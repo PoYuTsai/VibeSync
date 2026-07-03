@@ -14,12 +14,12 @@ void main() {
     test('first attempt mints a canonical UUID', () {
       final session = OpenerRequestIdSession();
 
-      final id = session.beginAttempt(fingerprint: 'fp-1');
+      final attempt = session.beginAttempt(fingerprint: 'fp-1');
 
       expect(
         RegExp(
           r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
-        ).hasMatch(id),
+        ).hasMatch(attempt.requestId),
         isTrue,
         reason: 'server 只認 canonical UUID，其他形狀會退回無去重舊路',
       );
@@ -33,7 +33,7 @@ void main() {
       // 沒有 markSuccess＝上一輪失敗（或回應丟失），同輸入重試必須同 id。
       final retry = session.beginAttempt(fingerprint: 'fp-1');
 
-      expect(retry, first);
+      expect(retry.requestId, first.requestId);
     });
 
     test('changed inputs mint a fresh id (server binds id to payload hash)',
@@ -43,7 +43,7 @@ void main() {
       final first = session.beginAttempt(fingerprint: 'fp-1');
       final afterEdit = session.beginAttempt(fingerprint: 'fp-2');
 
-      expect(afterEdit, isNot(first));
+      expect(afterEdit.requestId, isNot(first.requestId));
     });
 
     test('markSuccess rotates: next attempt is a fresh id (new billable run)',
@@ -54,7 +54,7 @@ void main() {
       session.markSuccess();
       final second = session.beginAttempt(fingerprint: 'fp-1');
 
-      expect(second, isNot(first));
+      expect(second.requestId, isNot(first.requestId));
     });
 
     test('markSuccess before any attempt is a safe no-op', () {
@@ -62,7 +62,51 @@ void main() {
 
       session.markSuccess();
 
-      expect(session.beginAttempt(fingerprint: 'fp-1'), isNotEmpty);
+      expect(session.beginAttempt(fingerprint: 'fp-1').requestId, isNotEmpty);
+    });
+
+    // Codex R2 P2：風格快照凍結在 pending attempt 上。同可見輸入的重試必須
+    // 原封重送（含首發 resolver 失敗時的 null）——否則 resolver 恢復後風格
+    // 突然出現，payload 換形、requestId 換新，server 對已扣費 run 去重失效。
+    test('retry with same inputs freezes the pending style snapshot', () {
+      final session = OpenerRequestIdSession();
+
+      final first = session.beginAttempt(
+        fingerprint: 'fp-1',
+        styleContext: null, // 首發 resolver 失敗
+      );
+      final retry = session.beginAttempt(
+        fingerprint: 'fp-1',
+        styleContext: '- Preferred voice: 幽默', // resolver 恢復
+      );
+
+      expect(retry.requestId, first.requestId);
+      expect(retry.styleContext, isNull, reason: '重試必須原封重送凍結快照');
+    });
+
+    test('changed inputs adopt the freshly resolved style snapshot', () {
+      final session = OpenerRequestIdSession();
+
+      session.beginAttempt(fingerprint: 'fp-1', styleContext: '舊風格');
+      final fresh = session.beginAttempt(
+        fingerprint: 'fp-2',
+        styleContext: '新風格',
+      );
+
+      expect(fresh.styleContext, '新風格');
+    });
+
+    test('markSuccess unfreezes: next attempt adopts the new style', () {
+      final session = OpenerRequestIdSession();
+
+      session.beginAttempt(fingerprint: 'fp-1', styleContext: null);
+      session.markSuccess();
+      final next = session.beginAttempt(
+        fingerprint: 'fp-1',
+        styleContext: '- Preferred voice: 穩重',
+      );
+
+      expect(next.styleContext, '- Preferred voice: 穩重');
     });
 
     test('fingerprintFor is stable for equal inputs and differs on any change',
@@ -105,27 +149,5 @@ void main() {
       expect(swappedImage, isNot(base));
     });
 
-    test('fingerprintFor covers effectiveStyleContext (F3-1: style is input)',
-        () {
-      // 風格設定會進 server input hash；client 指紋不跟上會讓「改風格後
-      // 重生成」誤沿用舊 requestId，被 server 判 payload mismatch 400。
-      final base = OpenerRequestIdSession.fingerprintFor(
-        name: 'Candy',
-        effectiveStyleContext: '- Preferred voice: 幽默',
-      );
-      final sameStyle = OpenerRequestIdSession.fingerprintFor(
-        name: 'Candy',
-        effectiveStyleContext: '- Preferred voice: 幽默',
-      );
-      final changedStyle = OpenerRequestIdSession.fingerprintFor(
-        name: 'Candy',
-        effectiveStyleContext: '- Preferred voice: 穩重',
-      );
-      final noStyle = OpenerRequestIdSession.fingerprintFor(name: 'Candy');
-
-      expect(sameStyle, base);
-      expect(changedStyle, isNot(base));
-      expect(noStyle, isNot(base));
-    });
   });
 }

@@ -490,6 +490,19 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       }
       if (!mounted) return;
 
+      // 同可見輸入的重試沿用 attempt 凍結的風格快照（Codex R2 P2），
+      // 所以 payload 一律取 attempt.styleContext 而非本次解析值。
+      final attempt = _requestSession.beginAttempt(
+        fingerprint: OpenerRequestIdSession.fingerprintFor(
+          images: input.images,
+          name: input.name,
+          bio: input.bio,
+          interests: input.interests,
+          meetingContext: input.meetingContext,
+        ),
+        styleContext: effectiveStyleContext,
+      );
+
       final service = OpenerService();
       final result = await service.generateOpeners(
         images: input.images,
@@ -499,17 +512,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         meetingContext: input.meetingContext,
         expectedTier: expectedTier,
         revenueCatAppUserId: revenueCatAppUserId,
-        effectiveStyleContext: effectiveStyleContext,
-        requestId: _requestSession.beginAttempt(
-          fingerprint: OpenerRequestIdSession.fingerprintFor(
-            images: input.images,
-            name: input.name,
-            bio: input.bio,
-            interests: input.interests,
-            meetingContext: input.meetingContext,
-            effectiveStyleContext: effectiveStyleContext,
-          ),
-        ),
+        effectiveStyleContext: attempt.styleContext,
+        requestId: attempt.requestId,
       );
       // 結果已到手＝這次計費完結；之後任何失敗（存草稿等）都不該讓
       // 下一次生成沿用同 id 而被 server 當重試去重。
