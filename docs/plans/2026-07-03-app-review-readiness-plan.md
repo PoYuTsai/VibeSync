@@ -51,7 +51,7 @@
 
 ## Batch F5 — UI/UX 文案總審（1 session，可與 F4 併）
 
-- [ ] 分頁 fan-out 文案審（首頁/分析/opener/coach/練習室/paywall/設定），輸出「改字清單」給 Eric 挑
+- [x] 分頁 fan-out 文案審完成（2026-07-03，7 路唯讀掃描）→ 改字清單＝`docs/reviews/2026-07-03-f5-copy-review.md`（A 級 8 條 App Review 風險／B 級 5 條計費語意／C 級術語標點批改）；**WAITING_ON_ERIC 挑字**，挑完一顆純文案 commit 批次收
 - [ ] 資訊架構觀察（非 blocker）：練習室入口在「學習」tab、opener 在新增對話 sheet，首頁無直接入口＝發現性弱
 
 ## Batch F4 — 高階技術文件 → prompt（1 session，建議上架後）
