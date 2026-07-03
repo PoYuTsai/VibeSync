@@ -16,6 +16,7 @@ import '../../data/providers/opener_providers.dart';
 import '../../data/services/opener_request_session.dart';
 import '../../data/services/opener_result_cache_service.dart';
 import '../../data/services/opener_service.dart';
+import '../widgets/opener_generation_progress.dart';
 
 class OpeningRescueScreen extends ConsumerStatefulWidget {
   const OpeningRescueScreen({super.key, this.partnerId});
@@ -743,24 +744,15 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Loading state
+                // Loading state：staged 本地進度文案（F3-2 低配版，
+                // 真 streaming 另案）。截圖/手動兩套文案由附圖與否決定。
                 if (_isGenerating)
                   Center(
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 8),
-                        const CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                              AppColors.ctaStart),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          '正在幫你想開場白…',
-                          style: AppTypography.bodyMedium.copyWith(
-                            color: AppColors.onBackgroundSecondary,
-                          ),
-                        ),
-                      ],
+                    child: OpenerGenerationProgress(
+                      phrases: OpenerGenerationProgress.phrasesFor(
+                        hasImages: activeInput.images != null &&
+                            activeInput.images!.isNotEmpty,
+                      ),
                     ),
                   ),
 
