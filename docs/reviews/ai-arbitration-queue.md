@@ -7,12 +7,6 @@
 
 ## OPEN（最新在最上）
 
-## [2026-06-25] practice-chat 續玩 tier gate — fail-closed 誤降風險（Codex review focus）
-Status: OPEN — Eric 指定 Batch 3/4 review 重點，**先不擴大修**，列為 Codex 審查焦點。
-**疑慮**：`decideContinuationGate`（`supabase/functions/practice-chat/quota_decision.ts`）對 unknown/缺 tier 一律 `normalizeTier→free` 而 **fail-closed**（roundIndex>1 擋下）。全站規則是**付費 tier 不得因 RevenueCat/DB 短暫空值被誤降 Free**。`index.ts` 目前餵給 gate 的是 `sub.tier`，來源為 `subscriptions` 表（DB 權威讀取，非即時 RevenueCat）。
-**Review 要確認**：`sub.tier` 是否可能在正常路徑出現 transient/missing（webhook 尚未回填、reset race 等），導致付費用戶續玩被誤擋 402。若可能 transient → Batch 4/Review 要改成「只有確定 free 才擋」或加 grace，不能讓付費被誤降。
-**證據**：gate 為純函式、未知 tier→free 已有單元測試覆蓋（quota_decision_test.ts「未知/缺 tier」）；但「sub.tier 是否權威」屬資料層問題，需 review subscriptions 寫入路徑。Batch 3 commit `fb238e4`。
-
 ## [2026-06-15] OCR side：nested-screenshot guard + single-side fallback gate（Eric 拍板方向，待 TDD）
 Status: OPEN — **自動 side detector 全線停（Eric 拍板 2026-06-15，見下「detector 第二輪結案」）**；短期靠 client confirm UI 兜底、承認暗色單側殘差。Track 2 step-2＝Path A client-only SHIPPED `5a54ae1`（push origin/main，無 Edge deploy，待新 TF build＋Eric/Bruce 目檢）；server only_right default 已實作+TDD 後依 Eric 撤回；Track 1 nested-screenshot guard 仍 OPEN（另案）。
 **🛑 detector 第二輪＝結案，自動 side 修法全線停（Eric 拍板 2026-06-15）**：
@@ -293,6 +287,16 @@ Close Condition:
 ---
 
 ## Live Queue
+
+## [2026-06-25] practice-chat 續玩 tier gate — fail-closed 誤降風險（Codex review focus）
+Status: CLOSED — **2026-07-04 全路徑唯讀調查完畢：transient 降級窗口不存在，fail-closed 安全，不動 code。**（Eric 指示本輪處理；調查=CC 主對話查 DB＋subagent 查 code）
+**原疑慮**：`decideContinuationGate`（`practice-chat/quota_decision.ts:75-83`）對 unknown/缺 tier 一律 `normalizeTier→free` fail-closed（roundIndex>1 擋 402）；若 `sub.tier` 可能 transient 缺值，付費用戶續玩會被誤降。
+**調查結論（證據鏈）**：
+- DB 層：`tier` NOT NULL DEFAULT 'free'（結構性不可能 null）；註冊 trigger `on_auth_user_created→handle_new_user` 即建 row（`migrations/00001_initial_schema.sql:17-20,54`），prod 實測 8/8 用戶零缺 row、無怪值 tier。
+- 讀取端：`handler.ts:824-840` 查無 row → 403（到不了 gate）；reset 只動計數不碰 tier（842-855）。
+- 寫入端三重防退回，「付費不被誤降」已全部落實在寫入側：sync-subscription 首購 RC 未確認 → 409 不寫（`index.ts:286-303`）、排程降級保留高 tier（311-317）、RC 空快照 guard 絕不把 paid 覆寫 free（323-329，源自 `4954581` client+server 雙修）；webhook EXPIRATION 有 expires_at 原子 guard、絕不 insert free row（`revenuecat-webhook/index.ts:673-718`）；月/日 reset RPC 不碰 tier。
+- 同型前例：coach-chat/analyze-chat 缺 row 走 selfHeal 插 free（非放行 grace）；practice draw `draw_handler.ts:131,228-233` 同款 fail-closed 已在 prod 跑；`quota_decision_test.ts:161-171` 證明 fail-closed 是刻意設計。
+**殘餘唯一情境**：首購後 RC REST 秒級延遲內立刻按續玩可能吃一次 402，重試即恢復；改「unknown 放行」反開 free 繞過面，不改。
 
 ## [2026-07-03] 刪帳初始清理 spinner 無 PopScope — Codex R3 P1，兩輪上限已到
 Status: CLOSED — Eric 放行第三輪 fix，`3f9a2ebe`＝spinner 包 `PopScope(canPop:false)`＋handlePopRoute 測試（settings 21/21 綠），Codex R4 APPROVED 0 findings。
