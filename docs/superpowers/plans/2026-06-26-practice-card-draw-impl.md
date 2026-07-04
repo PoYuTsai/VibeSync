@@ -106,7 +106,7 @@ git status --short
 Add one new migration under `supabase/migrations/`, for example:
 
 ```text
-supabase/migrations/20260626120000_practice_profile_draw_events.sql
+supabase/migrations/20260626064403_practice_profile_draw_events.sql
 ```
 
 Do not use `supabase db push`. Because this repo already has a known migration version mismatch, deployment must use Supabase MCP `apply_migration`.
@@ -199,7 +199,7 @@ select proname from pg_proc where proname = 'claim_practice_profile_draw';
 ### 1.5 Commit
 
 ```powershell
-git add supabase/migrations/20260626120000_practice_profile_draw_events.sql
+git add supabase/migrations/20260626064403_practice_profile_draw_events.sql
 git commit -m "feat(practice-chat): 新增每日翻牌 ledger 與扣費 RPC"
 ```
 

@@ -8,7 +8,7 @@
 -- 清理對象（全部已無新版呼叫點）：
 --   1. update_practice_temperature(UUID, TEXT, INTEGER)
 --      —— 20260628130000 起由 update_practice_learning_state 取代，生產已不呼叫。
---   2. commit_practice_chat_turn 4-arg 舊 overload（20260624120000 起、DEFAULT 10）
+--   2. commit_practice_chat_turn 4-arg 舊 overload（20260624074944 起、DEFAULT 10）
 --      —— 新版 handler 只用 7-arg（dual-axis）簽名。
 --   3. commit_practice_chat_turn 6-arg 舊 overload（20260628120000 起）
 --      —— 同上，已被 7-arg 取代。

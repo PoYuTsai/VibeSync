@@ -26,13 +26,13 @@
 
 ## Batch C — 扣費原子化（migration＋多 Edge，需先寫 invariants＋failure matrix）
 
-樣板：`claim_practice_profile_draw`（migrations/20260626120000_practice_profile_draw_events.sql:150-192，全 codebase 唯一交易內 FOR UPDATE 驗上限的路徑）。
+樣板：`claim_practice_profile_draw`（migrations/20260626064403_practice_profile_draw_events.sql:150-192，全 codebase 唯一交易內 FOR UPDATE 驗上限的路徑）。
 
 1. **increment_usage 改造**：交易內 FOR UPDATE＋驗月/日上限＋超限 RAISE（現版 20260316_z_fix_service_role_policies.sql:50-66 只擋非正數）。
 2. **reset 條件化**：coach-chat index.ts:107-137、coach-follow-up index.ts:128-165、analyze-chat index.ts:4639-4661、check_and_reset_usage RPC——全是無條件 UPDATE=0，跨日/月邊界會覆寫並發請求剛扣的額度。改為條件化或搬進 RPC。
 3. **coach-follow-up deductCredit 補重查**：index.ts:419-432 裸呼叫 RPC，對齊 coach-chat index.ts:341-390 的 fetchSubscription＋applyResetsIfNeeded＋checkQuota。
 
-鐵則：**絕不 `supabase db push`**；MCP `apply_migration` 目標式套用＋帳本 version 對齊本地檔名。注意既有 migration 版本號分歧未對齊（repo 20260626120000 vs prod ledger 20260626064403）。
+鐵則：**絕不 `supabase db push`**；MCP `apply_migration` 目標式套用＋帳本 version 對齊本地檔名。（版本號分歧已於 2026-07-04 對齊：本地檔名改為遠端帳本版本 20260624074944 / 20260626064403，SQL 內容經查等價、prod 零接觸。）
 
 ### Batch C 實作設計（2026-07-02 定稿，動碼前 invariants＋failure matrix）
 

@@ -5,7 +5,7 @@
 > 本計畫是動工前版本，原文照留。實作已完成（雙軸升溫版）並於 2026-07-03 再修一輪風險；以下逐條記錄最終實作與本計畫的差異，日後讀者以補記為準。
 
 - **temperature 模組實作與本計畫不同**：最終為「雙軸升溫」＝temperature（熱度）＋familiarity（熟悉度），judge 是 classifier（category/quality/impact 矩陣換算 delta），非本文 `parseTemperatureJudgement` 直接收 delta 的設計；clamp 為 heat [-12,+8]、familiarity [-12,+12]（越界強制 ≤-6），本文「delta clamp -8..8」相關步驟作廢。
-- **RPC 授權策略與本文不同（原文作廢）**：本文「Grant execution to the service role and authenticated role」一句作廢——實際 migration 全部 REVOKE anon/authenticated、GRANT service_role only（比照 `20260624120000` 現行風格）。
+- **RPC 授權策略與本文不同（原文作廢）**：本文「Grant execution to the service role and authenticated role」一句作廢——實際 migration 全部 REVOKE anon/authenticated、GRANT service_role only（比照 `20260624074944` 現行風格）。
 - **RPC 簽名策略（與原文不同）**：不留 overload。`commit_practice_chat_turn` 現役唯一簽名為 7-arg；本文的 6-arg overload 與更舊的 3/4-arg 簽名已由 migration `20260703160000` DROP（該 migration 須在新 Edge 部署後才套用）。
 - **client temperatureScore 已被忽略（與原文不同）**：本文 Step 4 的 `p_initial_temperature_score: request.temperatureScore` 語義已被取代——server 一律 ledger 權威（首回合固定 30），standard 模式 commit 傳 null。
 - **hint 冪等已實作（原文未涵蓋）**：client 產 requestId（失敗沿用、成功才 rotate）＋server ledger replay（`last_hint_request_id`/`last_hint_result` 欄位，migration `20260703150000`），replay 命中不重扣、不重生成。
@@ -292,7 +292,7 @@ END;
 $$;
 ```
 
-Grant execution to the service role and authenticated role following the current migration style in `supabase/migrations/20260624120000_practice_chat_sessions.sql`.
+Grant execution to the service role and authenticated role following the current migration style in `supabase/migrations/20260624074944_practice_chat_sessions.sql`.
 
 ## API Contract
 
