@@ -161,7 +161,8 @@ Deno.test("Free 第一抽：cost 0，回 profile + draw receipt + usage", async 
   assertEquals(body.profile.photoId, "practice_girl_007");
   assertEquals(body.draw.costMessages, 0);
   assertEquals(body.draw.freeAllowance, 1);
-  assertEquals(body.draw.extraCostMessages, 5);
+  // Free 不可付費額外抽 → 成功 payload 絕不宣傳加抽價格（0，非 5）。
+  assertEquals(body.draw.extraCostMessages, 0);
   assertEquals(body.usage.dailyUsed, 3);
   assertEquals(body.usage.dailyLimit, 15);
   // Free：傳給 RPC 的額度/付費旗標正確
@@ -182,7 +183,8 @@ Deno.test("Free 免費用完：RPC RAISE upgrade → 402 practice_draw_upgrade_r
   assertEquals(body.error, "practice_draw_upgrade_required");
   assertEquals(body.draw.freeAllowance, 1);
   assertEquals(body.draw.freeRemaining, 0);
-  assertEquals(body.draw.extraCostMessages, 5);
+  // 402＝該 tier 不可付費額外抽 → 絕不宣傳加抽價格。
+  assertEquals(body.draw.extraCostMessages, 0);
   assert(typeof body.draw.nextResetAt === "string");
 });
 
@@ -206,6 +208,8 @@ Deno.test("Starter 額外抽：cost 5，限額/付費旗標傳給 RPC 正確", a
   assertEquals(result.status, 200);
   assertEquals(body.profile.profileId, "practice_girl_010");
   assertEquals(body.draw.costMessages, 5);
+  // 可付費額外抽的 tier 維持宣傳加抽成本 5。
+  assertEquals(body.draw.extraCostMessages, 5);
   assertEquals(body.usage.dailyLimit, 50);
   assertEquals(body.usage.monthlyLimit, 300);
   assertEquals(rpcCalls[0].p_free_allowance, 3);

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show FunctionException;
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_learning_mode.dart';
@@ -667,6 +668,113 @@ void main() {
       expect(
         () => svc.drawProfile(requestId: 'req-8'),
         throwsA(isA<PracticeApiException>()),
+      );
+    });
+  });
+
+  // functions_client 2.5.0 的 invoke 對非 2xx 一律 throw FunctionException
+  // （status + details＝decode 後的 body），不會回 FunctionResponse。service 必須
+  // 接住並餵進既有 status→typed exception 映射，否則 402/429 分支是死碼、
+  // 一律落到 catch-all 顯示通用錯誤。
+  group('FunctionException（functions_client 非 2xx throw）映射', () {
+    PracticeChatApiService serviceThrowing(FunctionException e) {
+      return PracticeChatApiService(
+        invoker: (fn, {required body}) async => throw e,
+      );
+    }
+
+    test('drawProfile：402 practice_draw_upgrade_required → PracticeDrawUpgradeRequiredException',
+        () async {
+      final svc = serviceThrowing(const FunctionException(
+        status: 402,
+        details: {
+          'error': 'practice_draw_upgrade_required',
+          'message': '升級後每天可以翻更多陪練女孩。',
+          'draw': {
+            'freeAllowance': 1,
+            'freeUsed': 1,
+            'freeRemaining': 0,
+            'extraCostMessages': 0,
+            'nextResetAt': '2026-07-05T04:00:00.000Z',
+          },
+        },
+      ));
+      await expectLater(
+        svc.drawProfile(requestId: 'req-fx-1'),
+        throwsA(isA<PracticeDrawUpgradeRequiredException>()
+            .having((e) => e.freeAllowance, 'freeAllowance', 1)
+            .having((e) => e.extraCostMessages, 'extraCostMessages', 0)
+            .having((e) => e.nextResetAt, 'nextResetAt',
+                '2026-07-05T04:00:00.000Z')),
+      );
+    });
+
+    test('drawProfile：429 quota body → PracticeQuotaExceededException', () async {
+      final svc = serviceThrowing(const FunctionException(
+        status: 429,
+        details: {
+          'error': 'Daily limit exceeded',
+          'message': '今日額度已用完',
+          'used': 50,
+          'limit': 50,
+          'monthlyRemaining': 10,
+          'dailyRemaining': 0,
+        },
+      ));
+      await expectLater(
+        svc.drawProfile(requestId: 'req-fx-2'),
+        throwsA(isA<PracticeQuotaExceededException>()
+            .having((e) => e.dailyRemaining, 'dailyRemaining', 0)
+            .having((e) => e.message, 'message', '今日額度已用完')),
+      );
+    });
+
+    test('drawProfile：details 非 Map（如純文字 body）→ 仍走 402 映射不炸', () async {
+      final svc = serviceThrowing(const FunctionException(
+        status: 402,
+        details: 'Payment Required',
+      ));
+      await expectLater(
+        svc.drawProfile(requestId: 'req-fx-3'),
+        throwsA(isA<PracticeDrawUpgradeRequiredException>()),
+      );
+    });
+
+    test('drawProfile：500 → PracticeGenerationFailedException（不 rotate 語意不變）',
+        () async {
+      final svc = serviceThrowing(const FunctionException(status: 500));
+      await expectLater(
+        svc.drawProfile(requestId: 'req-fx-4'),
+        throwsA(isA<PracticeGenerationFailedException>()),
+      );
+    });
+
+    test('sendMessage：402 upgrade_required → PracticeUpgradeRequiredException',
+        () async {
+      final svc = serviceThrowing(const FunctionException(
+        status: 402,
+        details: {'error': 'upgrade_required'},
+      ));
+      await expectLater(
+        svc.sendMessage(sessionId: 's1', profile: profile, turns: turns),
+        throwsA(isA<PracticeUpgradeRequiredException>()),
+      );
+    });
+
+    test('sendMessage：429 MODEL_RATE_LIMITED → PracticeApiException（絕不誤標 quota）',
+        () async {
+      final svc = serviceThrowing(const FunctionException(
+        status: 429,
+        details: {
+          'code': 'MODEL_RATE_LIMITED',
+          'message': '請求太頻繁，請稍後再試。',
+        },
+      ));
+      await expectLater(
+        svc.sendMessage(sessionId: 's1', profile: profile, turns: turns),
+        throwsA(isA<PracticeApiException>()
+            .having((e) => e.status, 'status', 429)
+            .having((e) => e.message, 'message', '請求太頻繁，請稍後再試。')),
       );
     });
   });

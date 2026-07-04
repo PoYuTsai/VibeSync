@@ -247,9 +247,26 @@ class PracticeDrawUpgradeRequiredException implements Exception {
 
 class PracticeChatApiService {
   PracticeChatApiService({PracticeChatInvoker? invoker})
-      : _invoke = invoker ?? _defaultInvoker;
+      : _invoke = _mapFunctionExceptions(invoker ?? _defaultInvoker);
 
   final PracticeChatInvoker _invoke;
+
+  /// functions_client 2.5.0 的 `invoke` 對非 2xx **一律 throw [FunctionException]**
+  /// （status＋details＝decode 後的 body），不會把狀態碼帶回 [FunctionResponse]。
+  /// 不接住的話，下面所有 402/429/409 的 status→typed exception 映射全是死碼，
+  /// 錯誤一路落到 controller 的 catch-all 變通用「失敗了再試一次」。這裡把它
+  /// 轉回 [PracticeInvokeResponse] 餵進既有映射（只包 practice-chat 這個 service）。
+  static PracticeChatInvoker _mapFunctionExceptions(
+    PracticeChatInvoker inner,
+  ) {
+    return (String fn, {required Map<String, dynamic> body}) async {
+      try {
+        return await inner(fn, body: body);
+      } on FunctionException catch (e) {
+        return PracticeInvokeResponse(status: e.status, data: e.details);
+      }
+    };
+  }
 
   static const _functionName = 'practice-chat';
 

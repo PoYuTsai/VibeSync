@@ -139,6 +139,7 @@ List<Override> _collectionOverrides({
   PracticeChatController? controller,
   SubscriptionState subscription = const SubscriptionState(),
   PracticeCollectionNotifier? collectionNotifier,
+  VoidCallback? onSubscriptionRefresh,
 }) {
   return [
     practiceCollectionProvider.overrideWith(
@@ -148,6 +149,10 @@ List<Override> _collectionOverrides({
     ),
     subscriptionProvider
         .overrideWith((ref) => _SeededSubscriptionNotifier(subscription)),
+    // 402 導 paywall 順帶的訂閱重同步 seam：測試絕不打網路，只記呼叫。
+    subscriptionScreenRefreshProvider.overrideWithValue(() async {
+      onSubscriptionRefresh?.call();
+    }),
   ];
 }
 
@@ -172,6 +177,7 @@ Widget collectionApp({
 Widget collectionRouterApp({
   PracticeChatController? controller,
   SubscriptionState subscription = const SubscriptionState(),
+  VoidCallback? onSubscriptionRefresh,
 }) {
   final router = GoRouter(
     routes: [
@@ -191,6 +197,7 @@ Widget collectionRouterApp({
     overrides: _collectionOverrides(
       controller: controller,
       subscription: subscription,
+      onSubscriptionRefresh: onSubscriptionRefresh,
     ),
     child: MaterialApp.router(routerConfig: router),
   );
@@ -337,6 +344,48 @@ void main() {
       expect(find.text('每日翻牌有機會遇到她'), findsOneWidget);
     });
 
+    testWidgets('連點鎖卡不堆疊 SnackBar：一輪生命週期後全部消失', (tester) async {
+      await pumpCollection(tester);
+
+      final card =
+          find.byKey(const ValueKey('collection-card-practice_girl_001'));
+      // 重現真機連點。fake clock 陷阱：tap 後只 pump 一次時，ticker 首 tick
+      // 才定基準（elapsed=0），入場動畫會停在 value 0，hideCurrentSnackBar
+      // 就變成 reverse from 0 → 同步 dismissed → 佇列瞬間輪替、永遠堆不起來
+      // （測不到 bug）。所以每次 tap 後先 pump() 定基準、再 pump(duration)
+      // 真推進，讓第一條確實走到 completed / 退場中，才符合真機時序。
+      await tester.tap(card);
+      await tester.pump(); // 入場 ticker 定基準
+      await tester.pump(const Duration(seconds: 1)); // 第一條完整入場（completed）
+      await tester.tap(card); // hide：第一條開始 250ms 退場
+      await tester.pump(); // 退場 ticker 定基準
+      await tester.pump(const Duration(milliseconds: 100)); // 第一條退場中
+      await tester.tap(card); // 退場中再點：hide 對退場中條目無新效果
+      await tester.pump();
+
+      // 連點後只允許「一輪生命週期」的殘影：從第三點起算，走過
+      // 入場 250ms＋顯示 4s＋退場 250ms（frame 粒度放寬到 7s）後必須全空。
+      // pre-fix（hideCurrentSnackBar）佇列堆 3 條會輪播到 ~13s 才清空＝紅；
+      // post-fix（clearSnackBars）每次點都清佇列，7s 時早已全空＝綠。
+      var seenDuringLifecycle = false;
+      for (var i = 0; i < 14; i++) {
+        await tester.pump(const Duration(milliseconds: 500));
+        if (find.text('每日翻牌有機會遇到她').evaluate().isNotEmpty) {
+          seenDuringLifecycle = true;
+        }
+      }
+      // sanity：這段期間至少出現過一條（確認 tap 有命中、snackbar 有播）。
+      expect(seenDuringLifecycle, isTrue);
+      expect(find.text('每日翻牌有機會遇到她'), findsNothing);
+
+      // 佇列若殘留會跨頁持續輪播（root messenger 不隨本頁 dispose）：
+      // 再推 10s 仍必須全空，證明沒有殘留條目排隊中。
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(find.text('每日翻牌有機會遇到她'), findsNothing);
+      }
+    });
+
     testWidgets('點解鎖卡 → 導航 /practice-chat?profileId=…（不開全圖）', (tester) async {
       await tester.binding.setSurfaceSize(const Size(500, 1600));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -456,6 +505,29 @@ void main() {
 
       await tester.tap(find.byKey(drawButton));
       await tester.pumpAndSettle(); // revealed 無脈動，可 settle
+
+      expect(find.byKey(const ValueKey('paywall-stub')), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(controller.drawCalls, 0);
+    });
+
+    testWidgets('revealed＋免費額度用完＋payload 無加抽權（extraCost 0）→ 直接導 paywall、不彈 dialog、不 draw',
+        (tester) async {
+      // 訂閱快照 stale（essential 過期降 free 未同步）時 isFreeUser 擋門會放行；
+      // payload 的 extraCost 是 server 真實 tier 的鏡子（free 一律 0）→ 必須擋下。
+      final controller = _DrawSpyController(
+        _revealedSeed(freeAllowance: 1, freeRemaining: 0, extraCost: 0),
+      );
+      await pumpApp(
+        tester,
+        collectionRouterApp(
+          controller: controller,
+          subscription: _paidSubscription,
+        ),
+      );
+
+      await tester.tap(find.byKey(drawButton));
+      await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('paywall-stub')), findsOneWidget);
       expect(find.byType(AlertDialog), findsNothing);
@@ -586,9 +658,17 @@ void main() {
       expect(find.byKey(drawButton), findsOneWidget);
     });
 
-    testWidgets('draw 事後 402 → snackbar 帶「升級」動作鈕導 paywall', (tester) async {
+    testWidgets('draw 事後 402 → 直接導 paywall＋觸發訂閱重同步（不出升級 snackbar）',
+        (tester) async {
+      var refreshCalls = 0;
       final controller = _DrawSpyController(_lockedSeed());
-      await pumpApp(tester, collectionRouterApp(controller: controller));
+      await pumpApp(
+        tester,
+        collectionRouterApp(
+          controller: controller,
+          onSubscriptionRefresh: () => refreshCalls++,
+        ),
+      );
 
       // 模擬 drawNewPracticeGirl 在途 → 402 收場（controller 內部行為不真跑）。
       controller.debugSetState(
@@ -598,15 +678,15 @@ void main() {
       controller.debugSetState(
         _lockedSeed(upgradeRequired: true, errorMessage: '升級後每天可以翻更多陪練女孩。'),
       );
-      await tester.pump();
-
-      expect(find.text('升級後每天可以翻更多陪練女孩。'), findsOneWidget);
-      // 等 snackbar 進場動畫走完才點得到動作鈕（locked 脈動中不能 settle）。
-      await tester.pump(const Duration(milliseconds: 700));
-      await tester.tap(find.text('升級'));
+      // locked 脈動 repeat 中不能 settle；逐幀推進到路由轉場完。
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
+
+      // 產品拍板：Free 額度用完絕不出加抽/升級 snackbar，一律直接進 paywall。
       expect(find.byKey(const ValueKey('paywall-stub')), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+      // 402 常來自 stale 訂閱快照（付費過期降 free）→ 順帶重同步一次。
+      expect(refreshCalls, 1);
     });
 
     testWidgets('draw 事後 429 → snackbar 顯示 errorMessage', (tester) async {

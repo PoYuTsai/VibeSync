@@ -2,6 +2,8 @@
 //
 // display-only：稀有度／星等純前端呈現，不影響翻牌機率或扣費。解鎖集合來自
 // practiceCollectionProvider（settings box 持久化），翻牌成功／還原舊場即時 +1。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -246,6 +248,18 @@ class _PracticeCollectionScreenState
       return;
     }
 
+    // 免費額度用完且 payload 無加抽權（server 只對可付費加抽的 tier 帶
+    // extraCost>0）→ 直接付費牆。訂閱快照 stale（付費過期降 free 未同步）時
+    // 上面 isFreeUser 會放行，但 payload 是 server 真實 tier 的鏡子：這裡擋下，
+    // 絕不彈「扣 5 則」dialog、絕不打 API 吃 402。
+    final freeRemaining = state.drawFreeRemaining;
+    if (freeRemaining != null &&
+        freeRemaining <= 0 &&
+        (state.drawExtraCost ?? 0) <= 0) {
+      context.push('/paywall');
+      return;
+    }
+
     if (state.drawQuotaExceeded) {
       notifier.lockDrawQuotaExceeded();
       _showDrawSnackBar(
@@ -343,8 +357,10 @@ class _PracticeCollectionScreenState
 
   void _showDrawSnackBar(String message, {SnackBarAction? action}) {
     if (!mounted) return;
+    // clearSnackBars 而非 hideCurrentSnackBar：連點時後者只淡出當前那條，
+    // 佇列會持續堆積並跨頁面輪播（root messenger 佇列不隨本頁 dispose）。
     ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
+      ..clearSnackBars()
       ..showSnackBar(SnackBar(content: Text(message), action: action));
   }
 
@@ -373,15 +389,13 @@ class _PracticeCollectionScreenState
     ref.listen(practiceChatControllerProvider, (prev, next) {
       if (prev == null || !prev.isDrawing || next.isDrawing) return;
       if (next.drawUpgradeRequired) {
-        _showDrawSnackBar(
-          next.errorMessage ?? '升級後每天可以翻更多陪練女孩。',
-          action: SnackBarAction(
-            label: '升級',
-            onPressed: () {
-              if (mounted) context.push('/paywall');
-            },
-          ),
-        );
+        // 402＝Free 額度用完（產品拍板：絕不宣傳加抽）→ 直接進付費牆。
+        // 402 常代表訂閱快照 stale（付費過期降 free 未同步）→ 順帶重同步一次
+        // （沿用 paywall/settings 的 refresh seam；paywall 本身 initState 也會
+        // refresh，重複呼叫 idempotent）。
+        if (!mounted) return;
+        unawaited(ref.read(subscriptionScreenRefreshProvider)());
+        context.push('/paywall');
       } else if (next.drawQuotaExceeded || next.errorMessage != null) {
         _showDrawSnackBar(next.errorMessage ?? '翻牌失敗了，再試一次。');
       }
@@ -846,7 +860,7 @@ class _CollectionCard extends StatelessWidget {
           return;
         }
         ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
+          ..clearSnackBars()
           ..showSnackBar(const SnackBar(content: Text('每日翻牌有機會遇到她')));
       },
       child: Container(

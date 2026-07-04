@@ -185,6 +185,7 @@ export async function handleDrawProfile(
       }
       return mapDrawRpcError(msg, {
         freeAllowance,
+        allowPaidExtra,
         sub,
         limits,
         nextResetAt: window.nextResetAt,
@@ -203,7 +204,13 @@ export async function handleDrawProfile(
     // 不可用本地重選的 candidate（否則 replay 會回到別人）。
     const girl = getPracticeGirlProfile(receipt.profile_id) ?? candidate;
     return {
-      body: buildDrawResponseBody(girl, receipt, window.nextResetAt, limits),
+      body: buildDrawResponseBody(
+        girl,
+        receipt,
+        window.nextResetAt,
+        limits,
+        allowPaidExtra,
+      ),
       status: 200,
     };
   }
@@ -219,6 +226,7 @@ function mapDrawRpcError(
   message: string,
   ctx: {
     freeAllowance: number;
+    allowPaidExtra: boolean;
     sub: SubscriptionRow;
     limits: { monthly: number; daily: number };
     nextResetAt: string;
@@ -236,7 +244,7 @@ function mapDrawRpcError(
           freeAllowance: ctx.freeAllowance,
           freeUsed: ctx.freeAllowance,
           freeRemaining: 0,
-          extraCostMessages: PRACTICE_DRAW_EXTRA_COST,
+          extraCostMessages: extraCostForPayload(ctx.allowPaidExtra),
           nextResetAt: ctx.nextResetAt,
         },
       },
@@ -275,11 +283,17 @@ function mapDrawRpcError(
   return { body: { error: "draw_failed" }, status: 500 };
 }
 
+/** draw payload 的加抽宣傳成本：不可付費額外抽的 tier（Free）一律 0，絕不出價。 */
+function extraCostForPayload(allowPaidExtra: boolean): number {
+  return allowPaidExtra ? PRACTICE_DRAW_EXTRA_COST : 0;
+}
+
 function buildDrawResponseBody(
   girl: PracticeGirlProfile,
   receipt: DrawReceipt,
   nextResetAt: string,
   limits: { monthly: number; daily: number },
+  allowPaidExtra: boolean,
 ) {
   return {
     profile: {
@@ -294,7 +308,7 @@ function buildDrawResponseBody(
       freeAllowance: receipt.free_allowance,
       freeUsed: receipt.free_used,
       freeRemaining: receipt.free_remaining,
-      extraCostMessages: PRACTICE_DRAW_EXTRA_COST,
+      extraCostMessages: extraCostForPayload(allowPaidExtra),
       nextResetAt,
     },
     usage: {
