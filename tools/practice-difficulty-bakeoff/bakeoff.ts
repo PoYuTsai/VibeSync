@@ -328,9 +328,10 @@ async function runOneSession(args: {
   let debrief: DebriefCard | null = null;
   let debriefError: string | undefined;
   try {
-    const raw = await withRetry(
-      () =>
-        args.callModel({
+    // parse 放在重試內＝鏡像 handler.ts 的 debrief 迴圈（截斷 JSON 也要重試）
+    debrief = await withRetry(
+      async () => {
+        const raw = await args.callModel({
           messages: buildDebriefMessages(turns, profile, {
             practiceMode: "beginner",
             temperatureScore: temperature,
@@ -340,11 +341,12 @@ async function runOneSession(args: {
           temperature: DEBRIEF_TEMPERATURE,
           jsonMode: true,
           timeoutMs: MODEL_TIMEOUT_MS,
-        }),
+        });
+        return parseDebriefCard(raw);
+      },
       DEBRIEF_GENERATION_ATTEMPTS,
       `${args.difficulty}/${args.scriptId}/run${args.runIndex} debrief`,
     );
-    debrief = parseDebriefCard(raw);
   } catch (e) {
     debriefError = e instanceof Error ? e.message : String(e);
     console.error(`[bakeoff] debrief 失敗（不中斷整場）：${debriefError}`);
