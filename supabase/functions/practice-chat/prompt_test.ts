@@ -407,3 +407,32 @@ Deno.test("debrief system prompt asks for plain-language heat/familiarity explan
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("事件、個人、曖昧"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("不要只講分數"), true);
 });
+
+// ── Task 5：難度區塊移尾端＋砍 easy 混淆句＋debrief 判準隨難度注入 ──────────
+
+Deno.test("chat system prompt：不含寫死的（easy）混淆句", () => {
+  const profile = resolvePracticeProfile({ difficulty: "challenge" });
+  const sys = buildChatMessages([{ role: "user", text: "嗨" }], profile)[0]
+    .content;
+  assertEquals(sys.includes("（easy）"), false);
+});
+
+Deno.test("chat system prompt：難度區塊出現在絕對規則之後（高權重尾端）", () => {
+  const profile = resolvePracticeProfile({ difficulty: "challenge" });
+  const sys = buildChatMessages([{ role: "user", text: "嗨" }], profile)[0]
+    .content;
+  const absoluteRuleIndex = sys.indexOf("絕對規則：");
+  const difficultyBlockIndex = sys.indexOf("本場難度是挑戰");
+  assertEquals(absoluteRuleIndex > -1, true);
+  assertEquals(difficultyBlockIndex > -1, true);
+  assertEquals(difficultyBlockIndex > absoluteRuleIndex, true);
+});
+
+Deno.test("buildDebriefMessages：帶入本場難度對應的 debrief 判準分級", () => {
+  const profile = resolvePracticeProfile({ difficulty: "challenge" });
+  const msg = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "嗯？" }],
+    profile,
+  )[1].content;
+  assertEquals(msg.includes("本場為挑戰難度"), true);
+});

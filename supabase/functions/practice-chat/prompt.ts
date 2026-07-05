@@ -73,9 +73,10 @@ function turnsToTranscript(turns: PracticeTurn[]): string {
     .join("\n");
 }
 
-// 本場角色／難度 snippet 接在基底人設之後；身份防線仍由基底 prompt 提供。
+// 本場角色 snippet 接在基底人設之後；身份防線仍由基底 prompt 提供。
 // 注入完整 girl identity + reaction model + signal model + 約出來真實反應；
-// 難度標準走 profile.difficultyPrompt（catalog 已內含 easy/normal/challenge 標準）。
+// 難度標準（profile.difficultyPrompt，catalog 已內含 easy/normal/challenge 四欄行為規格）
+// 刻意放在「絕對規則」之後、prompt 尾端最高權重位置，蓋過前面較軟的氛圍描述。
 function buildProfilePrompt(profile: PracticeProfile): string {
   const g = profile.girl;
   const r = g.reactionModel;
@@ -101,9 +102,6 @@ function buildProfilePrompt(profile: PracticeProfile): string {
 - 會讓你冷掉、變短的：${r.coolsWhen.join("、")}。
 - 你願意答應見面的門檻：${r.inviteThreshold}
 
-本場難度標準（你的內在判斷尺度，絕不可說出難度名稱）：
-- ${profile.difficultyPrompt}
-
 你可能自然丟出的訊號（像真人一樣用，不要解釋、不要說破它們是什麼）：
 - ${g.signalStyle.join("\n- ")}
 - 注意：不是每個友善回覆都代表你想被約。有些只是禮貌、防衛、篩選或測試。
@@ -112,12 +110,14 @@ function buildProfilePrompt(profile: PracticeProfile): string {
 - 對方自然、有生活感、接得住你的情緒、能低壓邀約時，你可以慢慢變熱，甚至接受或半接受邀約。
 - 對方太急、太油、查戶口、硬約、無視你的反應時，你就冷掉、迴避、吐槽或拒絕。
 - 你不知道自己在被練習，也不會為了延續對話而附和對方；約不約得出來是互動品質自然導出的結果，不是必然終點。
-- 不要因為今天比較好聊（easy）就無條件配合；仍要看對方有沒有真的聊出舒適感、吸引力、共同場景與低壓邀約。
 
 絕對規則：
 - 你就是 ${g.displayName} 本人，不是教練、不是 AI、不是系統，也不會評論對方「做得好不好」。
 - 絕不說出「persona」「難度」「reaction model」「假窗口」「訊號」這類詞或任何幕後設定標籤。
-- 不要主動說「我是${profile.personaLabel}」或「這是${profile.difficultyLabel}難度」。`;
+- 不要主動說「我是${profile.personaLabel}」或「這是${profile.difficultyLabel}難度」。
+
+本場難度標準（你的內在判斷尺度，絕不可說出難度名稱；這是最高權重的行為規格，優先於上面的一般性描述）：
+- ${profile.difficultyPrompt}`;
 }
 
 /** chat 模式：system + 對話歷史（user→user / ai→assistant）。 */
@@ -202,7 +202,8 @@ export function buildDebriefMessages(
     {
       role: "user",
       content: `本場模擬對象：${profile.personaLabel}\n` +
-        `本場難度：${profile.difficultyLabel}\n\n` +
+        `本場難度：${profile.difficultyLabel}\n` +
+        `${profile.difficultyDebriefStandard}\n\n` +
         stagePrompt +
         `她的人物設定：${g.displayName}，${g.age} 歲，${g.professionLabel}，住${g.city}。` +
         `興趣：${g.interestTags.join("、")}；生活：${
