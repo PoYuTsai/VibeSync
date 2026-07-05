@@ -167,6 +167,24 @@ function impactMultiplier(impact: TurnImpact | undefined): number {
   return { minor: 0.6, medium: 1, strong: 1.4 }[impact ?? "medium"];
 }
 
+// ── 難度調參倍率（槓桿 A）：只吃 structural type，絕不 import practice_persona.ts
+// 以免耦合——DIFFICULTY_TUNING 的每個 entry 可直接當 LearningDeltaTuning 傳入。
+export interface LearningDeltaTuning {
+  positiveDeltaMultiplier: number;
+  negativeDeltaMultiplier: number;
+}
+
+const NEUTRAL_DELTA_TUNING: LearningDeltaTuning = {
+  positiveDeltaMultiplier: 1,
+  negativeDeltaMultiplier: 1,
+};
+
+function applyDeltaTuning(delta: number, tuning: LearningDeltaTuning): number {
+  if (delta > 0) return delta * tuning.positiveDeltaMultiplier;
+  if (delta < 0) return delta * tuning.negativeDeltaMultiplier;
+  return 0;
+}
+
 function scaleByQuality(
   base: number,
   quality: TurnQuality,
@@ -212,6 +230,7 @@ function learningReason(
 export function applyLearningClassification(
   state: LearningState,
   classification: TurnClassification,
+  tuning: LearningDeltaTuning = NEUTRAL_DELTA_TUNING,
 ): LearningJudgement {
   const currentHeat = clampTemperature(state.heatScore);
   const currentFamiliarity = clampTemperature(state.familiarityScore);
@@ -228,6 +247,9 @@ export function applyLearningClassification(
     classification.impact,
     clampLearningDelta,
   );
+
+  heatDelta = applyDeltaTuning(heatDelta, tuning);
+  familiarityDelta = applyDeltaTuning(familiarityDelta, tuning);
 
   if (classification.overstep) {
     heatDelta = Math.min(heatDelta, -6);

@@ -3,7 +3,10 @@
 // debrief 模式：練習結束後切換成教練口吻，產一張拆解卡（JSON）。
 
 import type { PracticeTurn } from "./validate.ts";
-import type { PracticeProfile } from "./practice_persona.ts";
+import {
+  difficultyTuningFor,
+  type PracticeProfile,
+} from "./practice_persona.ts";
 import type { PracticeLearningMode } from "./quota_decision.ts";
 import { scrubRawImageFilenames } from "./prompt_sanitizer.ts";
 import {
@@ -45,6 +48,7 @@ export const DEBRIEF_SYSTEM_PROMPT =
   - 高：她明顯接梗、願意延伸、接受具體場景，或主動釋出時間/興趣訊號。
   - 中：聊天有舒適感，但邀約鋪墊不足，或她還在觀察。
   - 低：冷、敷衍、查戶口感、太急、太油、沒有共同場景。
+  - 以上是預設判準；使用者訊息裡「本場難度」段落會給這場練習實際要用的 dateChance 判準，兩者衝突時以那段難度判準為準——各難度寬鬆或嚴格程度不同是刻意設計，不要用預設判準覆蓋它。
 - 要明確指出使用者有沒有做到：內容下切（抓住一個具體細節聊深）、關係連結（接住她的情緒/壓力）、在場感（回應情緒而非只回字面）。
 - 若使用者錯讀假窗口、忽略她的脆弱性暴露、只顧著邀約（goal-fixated）、或表現出冷處理/攻擊性/控制性，要在 watchouts 明確點出。
 - 要白話說明為什麼升溫或降溫：用事件、個人、曖昧三種導向與對方反應解釋，不要只講分數或抽象好壞。
@@ -70,9 +74,10 @@ function turnsToTranscript(turns: PracticeTurn[]): string {
     .join("\n");
 }
 
-// 本場角色／難度 snippet 接在基底人設之後；身份防線仍由基底 prompt 提供。
+// 本場角色 snippet 接在基底人設之後；身份防線仍由基底 prompt 提供。
 // 注入完整 girl identity + reaction model + signal model + 約出來真實反應；
-// 難度標準走 profile.difficultyPrompt（catalog 已內含 easy/normal/challenge 標準）。
+// 難度標準（profile.difficultyPrompt，catalog 已內含 easy/normal/challenge 四欄行為規格）
+// 刻意放在「絕對規則」之後、prompt 尾端最高權重位置，蓋過前面較軟的氛圍描述。
 function buildProfilePrompt(profile: PracticeProfile): string {
   const g = profile.girl;
   const r = g.reactionModel;
@@ -98,9 +103,6 @@ function buildProfilePrompt(profile: PracticeProfile): string {
 - 會讓你冷掉、變短的：${r.coolsWhen.join("、")}。
 - 你願意答應見面的門檻：${r.inviteThreshold}
 
-本場難度標準（你的內在判斷尺度，絕不可說出難度名稱）：
-- ${profile.difficultyPrompt}
-
 你可能自然丟出的訊號（像真人一樣用，不要解釋、不要說破它們是什麼）：
 - ${g.signalStyle.join("\n- ")}
 - 注意：不是每個友善回覆都代表你想被約。有些只是禮貌、防衛、篩選或測試。
@@ -109,12 +111,14 @@ function buildProfilePrompt(profile: PracticeProfile): string {
 - 對方自然、有生活感、接得住你的情緒、能低壓邀約時，你可以慢慢變熱，甚至接受或半接受邀約。
 - 對方太急、太油、查戶口、硬約、無視你的反應時，你就冷掉、迴避、吐槽或拒絕。
 - 你不知道自己在被練習，也不會為了延續對話而附和對方；約不約得出來是互動品質自然導出的結果，不是必然終點。
-- 不要因為今天比較好聊（easy）就無條件配合；仍要看對方有沒有真的聊出舒適感、吸引力、共同場景與低壓邀約。
 
 絕對規則：
 - 你就是 ${g.displayName} 本人，不是教練、不是 AI、不是系統，也不會評論對方「做得好不好」。
 - 絕不說出「persona」「難度」「reaction model」「假窗口」「訊號」這類詞或任何幕後設定標籤。
-- 不要主動說「我是${profile.personaLabel}」或「這是${profile.difficultyLabel}難度」。`;
+- 不要主動說「我是${profile.personaLabel}」或「這是${profile.difficultyLabel}難度」。
+
+本場難度標準（你的內在判斷尺度，絕不可說出難度名稱；這是最高權重的行為規格，優先於上面的一般性描述）：
+- ${profile.difficultyPrompt}`;
 }
 
 /** chat 模式：system + 對話歷史（user→user / ai→assistant）。 */
@@ -131,10 +135,17 @@ export function buildChatMessages(
     role: t.role === "user" ? "user" : "assistant",
     content: scrubRawImageFilenames(t.text),
   }));
+  // 難度接線（槓桿 A）：省略 temperatureScore 時 fallback 到本場難度起始溫度。
+  const fallbackTemperature = difficultyTuningFor(profile.difficulty)
+    .startTemperature;
   const temperaturePrompt = options.practiceMode === "beginner"
-    ? `\n\n${temperatureBandInstruction(options.temperatureScore ?? 30)}\n${
+    ? `\n\n${
+      temperatureBandInstruction(
+        options.temperatureScore ?? fallbackTemperature,
+      )
+    }\n${
       relationshipStageInstruction(
-        options.temperatureScore ?? 30,
+        options.temperatureScore ?? fallbackTemperature,
         options.familiarityScore ?? 0,
       )
     }`
@@ -181,7 +192,8 @@ export function buildDebriefMessages(
     ? `本場抽象關係階段：${
       relationshipStageFor(
         options.familiarityScore ?? 0,
-        options.temperatureScore ?? 30,
+        options.temperatureScore ??
+          difficultyTuningFor(profile.difficulty).startTemperature,
       ).label
     }\n` +
       `拆解升溫/降溫時，請用這個階段解釋為什麼目前適合事件、個人或輕曖昧，不要提熟悉度分數。\n\n`
@@ -191,7 +203,8 @@ export function buildDebriefMessages(
     {
       role: "user",
       content: `本場模擬對象：${profile.personaLabel}\n` +
-        `本場難度：${profile.difficultyLabel}\n\n` +
+        `本場難度：${profile.difficultyLabel}\n` +
+        `${profile.difficultyDebriefStandard}\n\n` +
         stagePrompt +
         `她的人物設定：${g.displayName}，${g.age} 歲，${g.professionLabel}，住${g.city}。` +
         `興趣：${g.interestTags.join("、")}；生活：${

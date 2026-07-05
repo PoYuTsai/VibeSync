@@ -33,6 +33,56 @@ Deno.test("beginner buildChatMessages includes temperature score", () => {
   assertEquals(sys.includes("升溫指數 30/100"), true);
 });
 
+// ── 難度接線（槓桿 A）：省略 temperatureScore 時 fallback 到難度起始溫度 ──────
+
+Deno.test("beginner buildChatMessages：省略 temperatureScore 時 fallback 到 normal 難度起始溫度 28", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    defaultProfile,
+    { practiceMode: "beginner" },
+  )[0].content;
+
+  assertEquals(sys.includes("升溫指數 28/100"), true);
+});
+
+Deno.test("beginner buildChatMessages：easy 難度省略 temperatureScore 時 fallback 到 35", () => {
+  const easyProfile = resolvePracticeProfile({ difficulty: "easy" });
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    easyProfile,
+    { practiceMode: "beginner" },
+  )[0].content;
+
+  assertEquals(sys.includes("升溫指數 35/100"), true);
+});
+
+Deno.test("beginner buildChatMessages：challenge 難度省略 temperatureScore 時 fallback 到 20", () => {
+  const challengeProfile = resolvePracticeProfile({ difficulty: "challenge" });
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    challengeProfile,
+    { practiceMode: "beginner" },
+  )[0].content;
+
+  assertEquals(sys.includes("升溫指數 20/100"), true);
+});
+
+Deno.test("beginner buildDebriefMessages：省略 temperatureScore 與明確傳入難度起始溫度結果一致", () => {
+  const easyProfile = resolvePracticeProfile({ difficulty: "easy" });
+  const omitted = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "嗯？" }],
+    easyProfile,
+    { practiceMode: "beginner", familiarityScore: 45 },
+  )[1].content;
+  const explicit = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "嗯？" }],
+    easyProfile,
+    { practiceMode: "beginner", familiarityScore: 45, temperatureScore: 35 },
+  )[1].content;
+
+  assertEquals(omitted, explicit);
+});
+
 Deno.test("beginner buildChatMessages includes relationship stage without exposing familiarity score", () => {
   const options = {
     practiceMode: "beginner",
@@ -278,7 +328,7 @@ Deno.test("chat system prompt：challenge 允許冷回/拒絕/推回/句點", ()
     .content;
   assertEquals(sys.includes("本場難度是挑戰"), true);
   assertEquals(sys.includes("句點"), true);
-  assertEquals(sys.includes("拒絕太快的邀約"), true);
+  assertEquals(sys.includes("也太快"), true);
 });
 
 Deno.test("chat system prompt：normal 明令不能太容易約", () => {
@@ -288,7 +338,7 @@ Deno.test("chat system prompt：normal 明令不能太容易約", () => {
   });
   const sys = buildChatMessages([{ role: "user", text: "嗨" }], profile)[0]
     .content;
-  assertEquals(sys.includes("不要因為是練習就讓邀約太容易成功"), true);
+  assertEquals(sys.includes("不夠就保留"), true);
 });
 
 Deno.test("chat system prompt：不洩漏 hidden labels（persona/難度/reaction/假窗口）", () => {
@@ -356,4 +406,33 @@ Deno.test("debrief system prompt asks for plain-language heat/familiarity explan
   );
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("事件、個人、曖昧"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("不要只講分數"), true);
+});
+
+// ── Task 5：難度區塊移尾端＋砍 easy 混淆句＋debrief 判準隨難度注入 ──────────
+
+Deno.test("chat system prompt：不含寫死的（easy）混淆句", () => {
+  const profile = resolvePracticeProfile({ difficulty: "challenge" });
+  const sys = buildChatMessages([{ role: "user", text: "嗨" }], profile)[0]
+    .content;
+  assertEquals(sys.includes("（easy）"), false);
+});
+
+Deno.test("chat system prompt：難度區塊出現在絕對規則之後（高權重尾端）", () => {
+  const profile = resolvePracticeProfile({ difficulty: "challenge" });
+  const sys = buildChatMessages([{ role: "user", text: "嗨" }], profile)[0]
+    .content;
+  const absoluteRuleIndex = sys.indexOf("絕對規則：");
+  const difficultyBlockIndex = sys.indexOf("本場難度是挑戰");
+  assertEquals(absoluteRuleIndex > -1, true);
+  assertEquals(difficultyBlockIndex > -1, true);
+  assertEquals(difficultyBlockIndex > absoluteRuleIndex, true);
+});
+
+Deno.test("buildDebriefMessages：帶入本場難度對應的 debrief 判準分級", () => {
+  const profile = resolvePracticeProfile({ difficulty: "challenge" });
+  const msg = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "嗯？" }],
+    profile,
+  )[1].content;
+  assertEquals(msg.includes("本場為挑戰難度"), true);
 });
