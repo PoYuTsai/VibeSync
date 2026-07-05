@@ -328,7 +328,7 @@ Deno.test("chat system prompt：challenge 允許冷回/拒絕/推回/句點", ()
     .content;
   assertEquals(sys.includes("本場難度是挑戰"), true);
   assertEquals(sys.includes("句點"), true);
-  assertEquals(sys.includes("拒絕太快的邀約"), true);
+  assertEquals(sys.includes("也太快"), true);
 });
 
 Deno.test("chat system prompt：normal 明令不能太容易約", () => {
@@ -338,7 +338,7 @@ Deno.test("chat system prompt：normal 明令不能太容易約", () => {
   });
   const sys = buildChatMessages([{ role: "user", text: "嗨" }], profile)[0]
     .content;
-  assertEquals(sys.includes("不要因為是練習就讓邀約太容易成功"), true);
+  assertEquals(sys.includes("不夠就保留"), true);
 });
 
 Deno.test("chat system prompt：不洩漏 hidden labels（persona/難度/reaction/假窗口）", () => {

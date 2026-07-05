@@ -13,6 +13,7 @@ import {
   getPracticeGirlProfile,
   LEGACY_CATALOG_SIZE,
   resolveDrawPoolSize,
+  resolvePracticeProfile,
   selectPracticeDrawProfile,
 } from "./practice_persona.ts";
 
@@ -297,6 +298,13 @@ Deno.test("difficultyTuningFor：未知/缺席一律 fallback 到 normal", () =>
   assertEquals(difficultyTuningFor("bogus"), DIFFICULTY_TUNING.normal);
   assertEquals(difficultyTuningFor(undefined), DIFFICULTY_TUNING.normal);
   assertEquals(difficultyTuningFor(""), DIFFICULTY_TUNING.normal);
+});
+
+// ── debrief 判準分級（槓桿 C）：resolvePracticeProfile 帶出對應難度的 debrief 標準 ──
+
+Deno.test("resolvePracticeProfile：challenge 難度帶出對應 difficultyDebriefStandard", () => {
+  const profile = resolvePracticeProfile({ difficulty: "challenge" });
+  assert(profile.difficultyDebriefStandard.includes("挑戰難度"));
 });
 
 Deno.test("選牌：切池後排除退避（撞號/全排除 fallback）也絕不逃出切池", () => {
