@@ -102,6 +102,25 @@ void main() {
     );
 
     testWidgets(
+      'hides stage-2 when userAction=askedCoach',
+      (tester) async {
+        await tester.pumpWidget(
+          _harness(
+            event: _event(
+              userAction: CoachingUserAction.askedCoach,
+              outcome: CoachingOutcomeSignal.unknown,
+            ),
+          ),
+        );
+
+        expect(find.text('有接話'), findsNothing);
+        expect(find.text('冷回'), findsNothing);
+        expect(find.text('已讀沒回'), findsNothing);
+        expect(find.text('反應不好'), findsNothing);
+      },
+    );
+
+    testWidgets(
       'tapping 改一改才發 fires onUserActionSelected with editedAndSent',
       (tester) async {
         CoachingUserAction? selected;

@@ -218,9 +218,7 @@ class CoachingOutcomeCaptureCard extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: _outcomeSignalOptions.map((option) {
-                final isSelected = event?.outcome == option.signal &&
-                    option.signal != CoachingOutcomeSignal.pending &&
-                    option.signal != CoachingOutcomeSignal.unknown;
+                final isSelected = event?.outcome == option.signal;
                 return ChoiceChip(
                   showCheckmark: false,
                   selected: isSelected,
