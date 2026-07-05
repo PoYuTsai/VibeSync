@@ -6,21 +6,16 @@
 //
 // 重要：直接 import practice-chat 的真管線模組（resolvePracticeProfile／buildChatMessages／
 // buildDebriefMessages／buildTurnClassifierMessages／parseTurnClassification／
-// applyLearningClassification／difficultyTuningFor／parseDebriefCard），絕不自造 prompt
-// 或分類邏輯——這樣量到的才是真的會上線的行為，不是這支工具自己腦補的行為。
+// applyLearningClassification／difficultyTuningFor／parseDebriefCard／callDeepSeek），
+// 絕不自造 prompt 或分類邏輯——這樣量到的才是真的會上線的行為，不是這支工具自己腦補的行為。
 //
-// ⚠️ 模型供應商說明（與 practice-chat 正式環境的差異，任務規格與現況有落差，此為刻意決策）：
-// practice-chat 正式環境的 chat/debrief/分類器全部呼叫 DeepSeek（見 handler.ts 的
-// DEEPSEEK_MODEL="deepseek-v4-flash"、deps.callDeepSeek、env DEEPSEEK_API_KEY）。但：
-//   1. 本機 repo 只有 CLAUDE_API_KEY（supabase/.env），完全沒有 DEEPSEEK_API_KEY，無法
-//      离线跑 DeepSeek。
-//   2. 本 task 規格文字明講「讀 env CLAUDE_API_KEY」。
-// 因此這支工具改打 Anthropic Messages API（CLAUDE_API_KEY + claude-sonnet-4-6，與
-// coach-chat/generation.ts、analyze-chat 現用的 Sonnet 常數一致），只重用「同一組
-// ChatMessage[] prompt 內容」與「同一套分類/溫度數學」，不重用 DeepSeek 這個 vendor。
-// 如果之後要用真正的 DEEPSEEK_API_KEY 重跑一次做交叉驗證，只需要替換 callModel() 的
-// 實作（可參考 supabase/functions/practice-chat/deepseek.ts 的 callDeepSeek）。
-// 這個落差已在 Task 7 交付時的回報中對 Eric 明講，非隱性偷改規格。
+// 模型供應商（Eric 2026-07-06 拍板）：
+// - 預設 provider = DeepSeek（deepseek-v4-flash），與 practice-chat 正式環境一模一樣：
+//   重用 supabase/functions/practice-chat/deepseek.ts 的 callDeepSeek＋DEEPSEEK_MODEL，
+//   呼叫形狀（jsonMode／maxTokens／temperature／timeout）照 handler.ts 現用值。
+//   key 讀 env DEEPSEEK_API_KEY。正式 gate 只認 DeepSeek 結果。
+// - --provider=claude 保留 Claude 路徑（CLAUDE_API_KEY + claude-sonnet-4-6）純作交叉
+//   參考，不作 gate 依據。
 
 import {
   difficultyTuningFor,
@@ -44,6 +39,10 @@ import {
   type DebriefCard,
   parseDebriefCard,
 } from "../../supabase/functions/practice-chat/debrief_card.ts";
+import {
+  callDeepSeek,
+  DEEPSEEK_MODEL,
+} from "../../supabase/functions/practice-chat/deepseek.ts";
 import type { PracticeTurn } from "../../supabase/functions/practice-chat/validate.ts";
 import { isScriptId, SCRIPT_IDS, SCRIPTS, type ScriptId } from "./scripts.ts";
 
@@ -57,23 +56,57 @@ const DEBRIEF_TEMPERATURE = 0.5;
 const DEBRIEF_GENERATION_ATTEMPTS = 2;
 const TEMPERATURE_JUDGE_MAX_TOKENS = 450;
 const TEMPERATURE_JUDGE_TEMPERATURE = 0.2;
-const MODEL_TIMEOUT_MS = 30000;
+const MODEL_TIMEOUT_MS = 30000; // = handler DEEPSEEK_TIMEOUT_MS
 
+// 參考用 Claude 路徑（--provider=claude；非 gate）。
 const CLAUDE_MODEL = "claude-sonnet-4-6";
 const CLAUDE_ENDPOINT = "https://api.anthropic.com/v1/messages";
 
 const PERFUNCTORY_PATTERN = /^(喔+|嗯+|還好|哈哈+|是喔|喔喔)[。.!?～~]?$/;
 
-// ── Claude 呼叫（全域律：外部 API 必 try-catch、錯誤訊息不得 minified）──────────
-interface ClaudeCallArgs {
-  apiKey: string;
+// ── provider 抽象 ────────────────────────────────────────────────────────
+type Provider = "deepseek" | "claude";
+
+interface ModelCallArgs {
   messages: ChatMessage[];
   maxTokens: number;
   temperature: number;
+  jsonMode?: boolean;
   timeoutMs: number;
 }
 
-async function callClaude(args: ClaudeCallArgs): Promise<string> {
+type ModelCaller = (args: ModelCallArgs) => Promise<string>;
+
+function modelLabelFor(provider: Provider): string {
+  return provider === "deepseek"
+    ? `DeepSeek（${DEEPSEEK_MODEL}，prod 同款，正式 gate 依據）`
+    : `Claude（${CLAUDE_MODEL}，僅供交叉參考，不作 gate 依據）`;
+}
+
+function envKeyNameFor(provider: Provider): string {
+  return provider === "deepseek" ? "DEEPSEEK_API_KEY" : "CLAUDE_API_KEY";
+}
+
+function makeModelCaller(provider: Provider, apiKey: string): ModelCaller {
+  if (provider === "deepseek") {
+    // 與 handler 完全同一個 callDeepSeek（同 endpoint/model/jsonMode 形狀）。
+    return (args) =>
+      callDeepSeek({
+        apiKey,
+        messages: args.messages,
+        maxTokens: args.maxTokens,
+        temperature: args.temperature,
+        jsonMode: args.jsonMode,
+        timeoutMs: args.timeoutMs,
+      });
+  }
+  return (args) => callClaude({ apiKey, ...args });
+}
+
+// ── Claude 呼叫（參考路徑；全域律：外部 API 必 try-catch、錯誤訊息不得 minified）──
+async function callClaude(
+  args: ModelCallArgs & { apiKey: string },
+): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), args.timeoutMs);
   try {
@@ -90,6 +123,7 @@ async function callClaude(args: ClaudeCallArgs): Promise<string> {
       );
     }
 
+    // Anthropic API 無 jsonMode 參數；prompt 本身已要求只輸出 JSON，此處直接忽略。
     const res = await fetch(CLAUDE_ENDPOINT, {
       method: "POST",
       headers: {
@@ -201,7 +235,7 @@ interface RunRecord {
 }
 
 async function runOneSession(args: {
-  apiKey: string;
+  callModel: ModelCaller;
   difficulty: PracticeDifficulty;
   scriptId: ScriptId;
   runIndex: number;
@@ -226,8 +260,7 @@ async function runOneSession(args: {
 
     const reply = await withRetry(
       () =>
-        callClaude({
-          apiKey: args.apiKey,
+        args.callModel({
           messages: buildChatMessages(turns, profile, {
             practiceMode: "beginner",
             temperatureScore: temperature,
@@ -245,8 +278,7 @@ async function runOneSession(args: {
 
     const classification = await withRetry(
       async () => {
-        const raw = await callClaude({
-          apiKey: args.apiKey,
+        const raw = await args.callModel({
           messages: buildTurnClassifierMessages({
             turns,
             profile,
@@ -255,6 +287,7 @@ async function runOneSession(args: {
           }),
           maxTokens: TEMPERATURE_JUDGE_MAX_TOKENS,
           temperature: TEMPERATURE_JUDGE_TEMPERATURE,
+          jsonMode: true,
           timeoutMs: MODEL_TIMEOUT_MS,
         });
         return parseTurnClassification(raw, {});
@@ -297,8 +330,7 @@ async function runOneSession(args: {
   try {
     const raw = await withRetry(
       () =>
-        callClaude({
-          apiKey: args.apiKey,
+        args.callModel({
           messages: buildDebriefMessages(turns, profile, {
             practiceMode: "beginner",
             temperatureScore: temperature,
@@ -306,6 +338,7 @@ async function runOneSession(args: {
           }),
           maxTokens: DEBRIEF_MAX_TOKENS,
           temperature: DEBRIEF_TEMPERATURE,
+          jsonMode: true,
           timeoutMs: MODEL_TIMEOUT_MS,
         }),
       DEBRIEF_GENERATION_ATTEMPTS,
@@ -331,6 +364,7 @@ async function runOneSession(args: {
 
 // ── CLI 參數 ────────────────────────────────────────────────────────────
 interface CliOptions {
+  provider: Provider;
   runs: number;
   scripts: ScriptId[];
   difficulties: PracticeDifficulty[];
@@ -340,6 +374,7 @@ interface CliOptions {
 
 function parseArgs(argv: string[]): CliOptions {
   const opts: CliOptions = {
+    provider: "deepseek",
     runs: 2,
     scripts: [...SCRIPT_IDS],
     difficulties: ["easy", "normal", "challenge"],
@@ -357,6 +392,15 @@ function parseArgs(argv: string[]): CliOptions {
     const key = arg.slice(2, eq);
     const value = arg.slice(eq + 1);
     switch (key) {
+      case "provider": {
+        if (value !== "deepseek" && value !== "claude") {
+          throw new Error(
+            `bakeoff_invalid_provider: "${value}"（合法值：deepseek（預設，prod 同款）、claude（參考用））`,
+          );
+        }
+        opts.provider = value;
+        break;
+      }
       case "runs": {
         const n = Number.parseInt(value, 10);
         if (!Number.isInteger(n) || n < 1) {
@@ -399,7 +443,7 @@ function parseArgs(argv: string[]): CliOptions {
         break;
       default:
         throw new Error(
-          `bakeoff_unknown_cli_flag: "--${key}"（支援：--runs、--scripts、--difficulties、--out、--profileId）`,
+          `bakeoff_unknown_cli_flag: "--${key}"（支援：--provider、--runs、--scripts、--difficulties、--out、--profileId）`,
         );
     }
   }
@@ -456,7 +500,8 @@ function buildGroupStats(
         .filter((v): v is number => v !== null);
       const dateChanceCounts: Record<string, number> = {};
       for (const r of okRuns) {
-        const key = r.debrief?.dateChance ?? (r.debriefError ? "error" : "unknown");
+        const key = r.debrief?.dateChance ??
+          (r.debriefError ? "error" : "unknown");
         dateChanceCounts[key] = (dateChanceCounts[key] ?? 0) + 1;
       }
       groups.push({
@@ -484,14 +529,19 @@ function fmt(n: number | null, digits = 1): string {
   return n === null ? "N/A" : n.toFixed(digits);
 }
 
-function renderReportMarkdown(groups: GroupStats[]): string {
+function renderReportMarkdown(
+  groups: GroupStats[],
+  provider: Provider,
+): string {
   const lines: string[] = [];
   lines.push("# 練習室難度 bakeoff 報告");
   lines.push("");
-  lines.push(
-    "> 模型：Claude（claude-sonnet-4-6，經 CLAUDE_API_KEY）——與 practice-chat 正式環境" +
-      "的 DeepSeek 不同 vendor，但 prompt／分類器／溫度數學皆為真管線重用。細節見 bakeoff.ts 檔頭註解。",
-  );
+  lines.push(`> 模型：${modelLabelFor(provider)}`);
+  if (provider === "claude") {
+    lines.push(
+      "> ⚠️ 本報告由 Claude 參考路徑產生，**不得**作為正式上線 gate 依據；gate 只認 DeepSeek（prod 同款）結果。",
+    );
+  }
   lines.push("");
   lines.push(
     "| 難度 | 腳本 | 場次(成功/失敗) | 平均回覆長度(字) | 敷衍輪占比 | 平均終值溫度 | 平均終值熟悉度 | dateChance 分佈 |",
@@ -532,33 +582,43 @@ function renderReportMarkdown(groups: GroupStats[]): string {
 
 async function writeReports(
   outDir: string,
+  provider: Provider,
   results: RunRecord[],
   groups: GroupStats[],
 ): Promise<void> {
   await Deno.mkdir(outDir, { recursive: true });
   await Deno.writeTextFile(
     `${outDir}/raw.json`,
-    JSON.stringify({ results, groups }, null, 2),
+    JSON.stringify({ provider, results, groups }, null, 2),
   );
   await Deno.writeTextFile(
     `${outDir}/report.md`,
-    renderReportMarkdown(groups),
+    renderReportMarkdown(groups, provider),
   );
 }
 
 // ── main ────────────────────────────────────────────────────────────────
 async function main(): Promise<void> {
-  const apiKey = Deno.env.get("CLAUDE_API_KEY");
+  const opts = parseArgs(Deno.args);
+
+  const envKeyName = envKeyNameFor(opts.provider);
+  const apiKey = Deno.env.get(envKeyName);
   if (!apiKey || apiKey.trim().length === 0) {
     throw new Error(
-      "bakeoff_missing_env: 未設定 CLAUDE_API_KEY。跑法：CLAUDE_API_KEY=... deno run " +
-        "--allow-net --allow-env --allow-read --allow-write tools/practice-difficulty-bakeoff/bakeoff.ts",
+      `bakeoff_missing_env: 未設定 ${envKeyName}（provider=${opts.provider}）。跑法：` +
+        `${envKeyName}=... deno run --allow-net --allow-env --allow-read --allow-write ` +
+        "tools/practice-difficulty-bakeoff/bakeoff.ts" +
+        (opts.provider === "deepseek"
+          ? "。預設 provider=deepseek（prod 同款、正式 gate）；本地若尚未有 DEEPSEEK_API_KEY，請先向 Eric 取得（Eric 會放進 supabase/.env）"
+          : ""),
     );
   }
+  const callModel = makeModelCaller(opts.provider, apiKey);
 
-  const opts = parseArgs(Deno.args);
   console.log(
-    `[bakeoff] 難度=${opts.difficulties.join(",")} 腳本=${
+    `[bakeoff] provider=${opts.provider}（${
+      modelLabelFor(opts.provider)
+    }）難度=${opts.difficulties.join(",")} 腳本=${
       opts.scripts.join(",")
     } runs=${opts.runs} profileId=${opts.profileId} outDir=${opts.outDir}`,
   );
@@ -569,7 +629,7 @@ async function main(): Promise<void> {
       for (let runIndex = 1; runIndex <= opts.runs; runIndex++) {
         try {
           const record = await runOneSession({
-            apiKey,
+            callModel,
             difficulty,
             scriptId,
             runIndex,
@@ -603,7 +663,7 @@ async function main(): Promise<void> {
   }
 
   const groups = buildGroupStats(opts.difficulties, opts.scripts, results);
-  await writeReports(opts.outDir, results, groups);
+  await writeReports(opts.outDir, opts.provider, results, groups);
   console.log(
     `[bakeoff] 全部完成，報告輸出於 ${opts.outDir}/report.md 與 ${opts.outDir}/raw.json`,
   );
@@ -612,7 +672,9 @@ async function main(): Promise<void> {
 if (import.meta.main) {
   main().catch((e) => {
     console.error(
-      `[bakeoff] 致命錯誤：${e instanceof Error ? e.stack ?? e.message : String(e)}`,
+      `[bakeoff] 致命錯誤：${
+        e instanceof Error ? e.stack ?? e.message : String(e)
+      }`,
     );
     Deno.exit(1);
   });

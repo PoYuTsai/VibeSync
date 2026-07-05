@@ -4,32 +4,25 @@
 gate 工具。直接重用 `supabase/functions/practice-chat/` 的真管線模組（`resolvePracticeProfile`
 ／`buildChatMessages`／`buildDebriefMessages`／`buildTurnClassifierMessages`／
 `parseTurnClassification`／`applyLearningClassification`／`difficultyTuningFor`／
-`parseDebriefCard`），跑「難度(easy/normal/challenge) × 腳本(bad_interrogator/average/
-high_quality) × runs」全組合，量測 AI 回覆長度、句點/敷衍占比、溫度軌跡、debrief
-`dateChance` 分佈，讓難度調參／prompt 改動有數字可對比，不用每次靠肉眼聊天判斷。
+`parseDebriefCard`／`callDeepSeek`），跑「難度(easy/normal/challenge) × 腳本
+(bad_interrogator/average/high_quality) × runs」全組合，量測 AI 回覆長度、句點/敷衍
+占比、溫度軌跡、debrief `dateChance` 分佈，讓難度調參／prompt 改動有數字可對比，
+不用每次靠肉眼聊天判斷。
 
-## ⚠️ 模型供應商差異（務必先讀）
+## 模型供應商（Eric 2026-07-06 拍板）
 
-`practice-chat` 正式環境的 chat／debrief／分類器三個呼叫全部打 **DeepSeek**
-（`handler.ts` 的 `DEEPSEEK_MODEL`、`deps.callDeepSeek`、env `DEEPSEEK_API_KEY`）。
-但本機 repo（`supabase/.env`）只有 `CLAUDE_API_KEY`，完全沒有 `DEEPSEEK_API_KEY`，
-無法離線打 DeepSeek；本 task 規格文字也明講「讀 env `CLAUDE_API_KEY`」。
-
-因此這支工具改打 **Anthropic Messages API**（`CLAUDE_API_KEY` + `claude-sonnet-4-6`，
-與 `coach-chat/generation.ts`、`analyze-chat` 現用的 Sonnet 常數一致）。重用的是
-**同一組 prompt 內容（ChatMessage[]）與同一套分類/溫度數學**，不是同一個模型供應商。
-
-這代表 bakeoff 量到的長度/敷衍/溫度數字是「同一套難度規格＋同一套溫度管線，換一個
-LLM 執行」的結果，可以用來比較難度 A vs 難度 B 的相對差異，但**不能**當成「上線後
-DeepSeek 真實表現」的絕對數字。若要交叉驗證正式模型，把 `bakeoff.ts` 裡的
-`callClaude()` 換成 `supabase/functions/practice-chat/deepseek.ts` 的
-`callDeepSeek()`，並改讀 `DEEPSEEK_API_KEY` 即可——`buildChatMessages` 等 prompt
-組裝函式完全不用動。
+- **預設 provider = DeepSeek（prod 同款，正式 gate 依據）**：重用
+  `supabase/functions/practice-chat/deepseek.ts` 的 `callDeepSeek`＋`DEEPSEEK_MODEL`
+  （`deepseek-v4-flash`），呼叫形狀（`jsonMode`／maxTokens／temperature／timeout）與
+  `handler.ts` 一模一樣。key 讀 env `DEEPSEEK_API_KEY`。
+- **`--provider=claude` 為參考路徑**（`CLAUDE_API_KEY` + `claude-sonnet-4-6`）：只供
+  交叉參考難度規格在不同 LLM 下的相對行為。**正式 gate 只認 DeepSeek 結果，Claude
+  報告不得作為上線依據**（report.md 會自動印警告標頭）。
 
 ## 跑法
 
 ```bash
-CLAUDE_API_KEY=sk-ant-... deno run \
+DEEPSEEK_API_KEY=... deno run \
   --allow-net --allow-env --allow-read --allow-write \
   tools/practice-difficulty-bakeoff/bakeoff.ts
 ```
@@ -40,6 +33,7 @@ CLAUDE_API_KEY=sk-ant-... deno run \
 
 | flag | 預設 | 說明 |
 |---|---|---|
+| `--provider=P` | `deepseek` | `deepseek`（prod 同款，正式 gate）或 `claude`（參考用，讀 `CLAUDE_API_KEY`） |
 | `--runs=N` | `2` | 每個(難度×腳本)組合跑幾場 |
 | `--scripts=a,b,c` | 三組全跑 | 合法值：`bad_interrogator`、`average`、`high_quality` |
 | `--difficulties=a,b,c` | 三難度全跑 | 合法值：`easy`、`normal`、`challenge`（`random` 不進 bakeoff） |
@@ -49,10 +43,19 @@ CLAUDE_API_KEY=sk-ant-... deno run \
 Smoke test（只跑 1 場、6 輪 + debrief）：
 
 ```bash
-CLAUDE_API_KEY=sk-ant-... deno run \
+DEEPSEEK_API_KEY=... deno run \
   --allow-net --allow-env --allow-read --allow-write \
   tools/practice-difficulty-bakeoff/bakeoff.ts \
   --runs=1 --scripts=bad_interrogator --difficulties=challenge
+```
+
+Claude 參考路徑（非 gate；2026-07-06 已用此路徑 smoke 過端到端）：
+
+```bash
+CLAUDE_API_KEY=sk-ant-... deno run \
+  --allow-net --allow-env --allow-read --allow-write \
+  tools/practice-difficulty-bakeoff/bakeoff.ts \
+  --provider=claude --runs=1 --scripts=bad_interrogator --difficulties=challenge
 ```
 
 ## 產物
