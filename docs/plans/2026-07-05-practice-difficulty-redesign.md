@@ -1,5 +1,7 @@
 # 練習室難度分級重設計 Implementation Plan
 
+> **狀態：SHIPPED 2026-07-06**（branch `15c5bc2b..e38fde8c`，merge `90f07e8d`；DeepSeek bakeoff runs=3 全過 gate，Codex APPROVED task-mr85dos8-rsrqgb）
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans（或 subagent-driven-development）task-by-task 執行本計畫。
 > 設計文件：`docs/plans/2026-07-05-practice-difficulty-redesign-design.md`（拍板依據，衝突時以設計文件為準）。
 
