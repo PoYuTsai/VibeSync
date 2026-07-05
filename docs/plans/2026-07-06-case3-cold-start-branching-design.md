@@ -1,7 +1,8 @@
 # 案 3 設計：冷啟動分流＋首頁空狀態 CTA
 
 > 2026-07-06 brainstorming 定稿，Eric 拍板。母案：`2026-07-06-post-review-optimization-roadmap.md` 案 3。
-> 狀態：APPROVED，開工中。風險：低（純 client UI/導流，不碰 gate、不碰 server）。
+> 狀態：SHIPPED（54260ad5，2026-07-06；flutter test 21 passed＋analyze 乾淨；待 Eric dogfood 體感）。
+> 風險：低（純 client UI/導流，不碰 gate、不碰 server），非高風險區故單審。
 
 ## 事實修正（對 roadmap 的更正）
 
