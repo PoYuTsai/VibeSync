@@ -262,6 +262,26 @@ export const DIFFICULTIES: readonly DifficultyConfig[] = [
   },
 ] as const;
 
+// ── 難度調參表（槓桿 A：僅 beginner 溫度管線生效；standard 無數值系統）──
+export interface DifficultyTuning {
+  startTemperature: number;
+  positiveDeltaMultiplier: number;
+  negativeDeltaMultiplier: number;
+}
+
+export const DIFFICULTY_TUNING: Record<PracticeDifficulty, DifficultyTuning> = {
+  easy: { startTemperature: 35, positiveDeltaMultiplier: 1.25, negativeDeltaMultiplier: 0.75 },
+  normal: { startTemperature: 28, positiveDeltaMultiplier: 1.0, negativeDeltaMultiplier: 1.0 },
+  challenge: { startTemperature: 20, positiveDeltaMultiplier: 0.7, negativeDeltaMultiplier: 1.3 },
+};
+
+export function difficultyTuningFor(
+  difficulty: PracticeDifficulty | string | undefined,
+): DifficultyTuning {
+  return DIFFICULTY_TUNING[difficulty as PracticeDifficulty] ??
+    DIFFICULTY_TUNING[DEFAULT_DIFFICULTY];
+}
+
 // ── profession allowlist（label + prompt 素材 + 升溫話題）──────────────
 // 全部禁止真實公司／航空／醫院／品牌／logo／制服標誌；可帶「公司感」但虛構。
 export const PROFESSIONS: readonly ProfessionConfig[] = [
