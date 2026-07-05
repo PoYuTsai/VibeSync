@@ -233,7 +233,7 @@ void main() {
         find.byKey(const ValueKey('collection-completion-count')),
       );
       expect(count.data, '2');
-      expect(find.text(' / 60'), findsOneWidget);
+      expect(find.text(' / 100'), findsOneWidget);
       expect(find.byKey(const ValueKey('collection-progress-fill')),
           findsOneWidget);
     });
@@ -527,7 +527,8 @@ void main() {
     testWidgets('locked＋drawQuotaExceeded 點擊 → snackbar 顯示 errorMessage、不 draw',
         (tester) async {
       final controller = _DrawSpyController(
-        _lockedSeed(quotaExceeded: true, errorMessage: '今日額度已用完，明天再來或升級方案繼續練習。'),
+        _lockedSeed(
+            quotaExceeded: true, errorMessage: '今日額度已用完，明天再來或升級方案繼續練習。'),
       );
       await pumpApp(tester, collectionApp(controller: controller));
 
@@ -551,7 +552,8 @@ void main() {
       expect(controller.drawCalls, 0);
     });
 
-    testWidgets('revealed＋免費額度用完＋payload 無加抽權（extraCost 0）→ 直接導 paywall、不彈 dialog、不 draw',
+    testWidgets(
+        'revealed＋免費額度用完＋payload 無加抽權（extraCost 0）→ 直接導 paywall、不彈 dialog、不 draw',
         (tester) async {
       // 訂閱快照 stale（essential 過期降 free 未同步）時 isFreeUser 擋門會放行；
       // payload 的 extraCost 是 server 真實 tier 的鏡子（free 一律 0）→ 必須擋下。
@@ -631,7 +633,8 @@ void main() {
       expect(controller.drawCalls, 1);
     });
 
-    testWidgets('revealed＋付費＋drawQuotaExceeded → lockDrawQuotaExceeded＋snackbar',
+    testWidgets(
+        'revealed＋付費＋drawQuotaExceeded → lockDrawQuotaExceeded＋snackbar',
         (tester) async {
       final controller = _DrawSpyController(_revealedSeed(quotaExceeded: true));
       await pumpApp(
@@ -738,8 +741,7 @@ void main() {
       );
       await tester.pump();
       controller.debugSetState(
-        _revealedSeed(quotaExceeded: true)
-            .copyWith(errorMessage: '今日翻牌額度用完了'),
+        _revealedSeed(quotaExceeded: true).copyWith(errorMessage: '今日翻牌額度用完了'),
       );
       await tester.pump();
 
@@ -782,15 +784,15 @@ void main() {
       expect(collectionHighlightIntensityAt(1), 0); // 收尾歸 0，不殘留
     });
 
-    testWidgets('主路徑時序：儀式 scrim 蓋著期間微光強度 0，過整條 reveal 時間軸後才亮起',
-        (tester) async {
+    testWidgets('主路徑時序：儀式 scrim 蓋著期間微光強度 0，過整條 reveal 時間軸後才亮起', (tester) async {
       final notifier = _seededCollection(const {});
       await pumpApp(tester, collectionApp(collectionNotifier: notifier));
 
       await notifier.add('practice_girl_004');
       await tester.pump(); // 掛上高亮（等待段）、post-frame 捲動起跑
       await tester.pump(const Duration(milliseconds: 100)); // 捲動 ticker 定基準
-      await tester.pump(const Duration(milliseconds: 300)); // 捲動走完 → forward 已呼叫
+      await tester
+          .pump(const Duration(milliseconds: 300)); // 捲動走完 → forward 已呼叫
       await tester.pump(const Duration(milliseconds: 16)); // 微光 ticker 定基準
 
       // 解鎖通知＝reveal 時間軸起點；中段（scrim 全黑）微光必須還沒亮。
@@ -833,7 +835,8 @@ void main() {
       await notifier.add('practice_girl_004');
       await tester.pump(); // 掛上高亮、post-frame 捲動起跑
       await tester.pump(const Duration(milliseconds: 100)); // 捲動 ticker 定基準
-      await tester.pump(const Duration(milliseconds: 300)); // 捲動走完 → forward 已呼叫
+      await tester
+          .pump(const Duration(milliseconds: 300)); // 捲動走完 → forward 已呼叫
       await tester.pump(const Duration(milliseconds: 16)); // 微光 ticker 定基準
       await tester.pump(const Duration(milliseconds: 300)); // 微光段推進
 
@@ -849,8 +852,7 @@ void main() {
       );
     });
 
-    testWidgets('儀式 overlay 掛在圖鑑頁：idle 休眠、drawing 浮卡背、揭曉走完收掉',
-        (tester) async {
+    testWidgets('儀式 overlay 掛在圖鑑頁：idle 休眠、drawing 浮卡背、揭曉走完收掉', (tester) async {
       final controller = _DrawSpyController(_lockedSeed());
       await pumpApp(tester, collectionApp(controller: controller));
 
@@ -875,16 +877,14 @@ void main() {
       expect(find.byKey(frontKey), findsNothing);
     });
 
-    testWidgets('翻牌解鎖 → 新卡微光高亮，單次 forward 走完自動移除（settle 收斂）',
-        (tester) async {
+    testWidgets('翻牌解鎖 → 新卡微光高亮，單次 forward 走完自動移除（settle 收斂）', (tester) async {
       final notifier = _seededCollection({'practice_girl_001'});
       await pumpApp(tester, collectionApp(collectionNotifier: notifier));
 
       await notifier.add('practice_girl_004');
       await tester.pump(); // 集合新增 → listener 掛上高亮
 
-      const highlightKey =
-          ValueKey('collection-highlight-practice_girl_004');
+      const highlightKey = ValueKey('collection-highlight-practice_girl_004');
       expect(find.byKey(highlightKey), findsOneWidget);
 
       await tester.pump(const Duration(milliseconds: 800)); // 微光中段仍在

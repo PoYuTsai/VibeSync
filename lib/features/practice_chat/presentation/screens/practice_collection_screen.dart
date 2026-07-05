@@ -1,4 +1,4 @@
-// 角色圖鑑（gacha Collection）：60 位陪練女孩的收藏頁。
+// 角色圖鑑（gacha Collection）：陪練女孩的收藏頁。
 //
 // display-only：稀有度／星等純前端呈現，不影響翻牌機率或扣費。解鎖集合來自
 // practiceCollectionProvider（settings box 持久化），翻牌成功／還原舊場即時 +1。
@@ -567,8 +567,7 @@ class _UnlockHighlight extends StatelessWidget {
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
               width: 2,
-              color: const Color(0xFFFFC24D)
-                  .withValues(alpha: 0.9 * intensity),
+              color: const Color(0xFFFFC24D).withValues(alpha: 0.9 * intensity),
             ),
           ),
           decoration: intensity <= 0.001
@@ -610,8 +609,7 @@ class _CollectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progress =
-        total == 0 ? 0.0 : (unlockedCount / total).clamp(0.0, 1.0);
+    final progress = total == 0 ? 0.0 : (unlockedCount / total).clamp(0.0, 1.0);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
       child: Column(
@@ -954,9 +952,8 @@ class _CollectionCard extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: AppTypography.caption.copyWith(
-                color: unlocked
-                    ? AppColors.onBackgroundSecondary
-                    : Colors.white38,
+                color:
+                    unlocked ? AppColors.onBackgroundSecondary : Colors.white38,
               ),
             ),
             const SizedBox(height: 6),
@@ -984,7 +981,7 @@ class _CollectionCard extends StatelessWidget {
   }
 }
 
-/// 收藏頁專用縮圖：60 張同屏必 cacheWidth 降採樣，不解全尺寸原圖。
+/// 收藏頁專用縮圖：大量同屏時必 cacheWidth 降採樣，不解全尺寸原圖。
 /// PracticeGirlPhoto 不支援 cacheWidth，故此頁自建輕量版（fallback 行為比照）。
 class _CollectionCardPhoto extends StatelessWidget {
   const _CollectionCardPhoto({required this.profile, required this.locked});

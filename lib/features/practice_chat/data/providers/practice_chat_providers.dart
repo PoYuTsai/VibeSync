@@ -70,7 +70,7 @@ class PracticeChatState {
   /// 翻牌揭曉狀態。locked / drawing 時 [girl] 為 null，畫面不得顯示任何對象。
   final PracticeDrawStatus drawStatus;
 
-  /// 本場對象（60-profile）：display-only 身份；尚未翻牌（locked/drawing）時為 null。
+  /// 本場對象（catalog-profile）：display-only 身份；尚未翻牌（locked/drawing）時為 null。
   final PracticeGirlProfile? girl;
 
   /// 翻牌免費額度狀態（server 為單一真實來源；給付費牆／提示文案用）。
@@ -970,8 +970,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       state = state.copyWith(
         messages: priorMessages,
         isSending: false,
-        errorMessage:
-            e.status == 429 ? e.message : '生成失敗了，再試一次（這次不扣額度）。',
+        errorMessage: e.status == 429 ? e.message : '生成失敗了，再試一次（這次不扣額度）。',
         restoreText: trimmed,
       );
     } catch (_) {
@@ -1193,7 +1192,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     }
   }
 
-  /// 本場送往 Edge 的對象 metadata：只送 allowlisted id（含 60-profile 身份）。
+  /// 本場送往 Edge 的對象 metadata：只送 allowlisted id（含 catalog-profile 身份）。
   PracticeProfileDto _profileDto() {
     final girl = state.girl!;
     return PracticeProfileDto(
@@ -1357,7 +1356,7 @@ final practiceCollectionProvider =
   return PracticeCollectionNotifier(ref.read(practiceCollectionStoreProvider));
 });
 
-/// 已解鎖數（只數 catalog 內成員，避免髒資料把 N 撐超過 60）。
+/// 已解鎖數（只數 catalog 內成員，避免髒資料把 N 撐超過 catalog 長度）。
 final unlockedPracticeGirlCountProvider = Provider<int>((ref) {
   final unlocked = ref.watch(practiceCollectionProvider);
   return practiceGirlProfiles

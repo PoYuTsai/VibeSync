@@ -5,8 +5,8 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_profile
 void main() {
   final personaIds = practicePersonas.map((p) => p.id).toSet();
 
-  test('陪練女孩 catalog 共 60 位（與 server GIRL_PROFILES 對齊）', () {
-    expect(practiceGirlProfiles.length, 60);
+  test('陪練女孩 catalog 共 100 位（與 server GIRL_PROFILES 對齊）', () {
+    expect(practiceGirlProfiles.length, 100);
   });
 
   test('profileId / photoId = practice_girl_NNN（1-based、3 位）且唯一', () {
@@ -16,7 +16,7 @@ void main() {
       expect(practiceGirlProfiles[i].photoId, expected);
     }
     final ids = practiceGirlProfiles.map((g) => g.profileId).toSet();
-    expect(ids.length, 60); // 無重複
+    expect(ids.length, practiceGirlProfiles.length); // 無重複
   });
 
   test('每位 personaId 都在 client persona allowlist 內', () {

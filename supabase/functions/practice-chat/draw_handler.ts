@@ -34,7 +34,7 @@ import {
 import type { PracticeDrawRequest } from "./validate.ts";
 import { logError, logWarn, summarizeUser } from "./logger.ts";
 
-// 撞號（同窗同 profile）時換一張重抽的上限。理論上不會用到（每窗抽數 << 60）。
+// 撞號（同窗同 profile）時換一張重抽的上限。理論上不會用到（每窗抽數 << catalog 總數）。
 const MAX_DRAW_SELECT_ATTEMPTS = 3;
 
 // ── 最小 supabase client 介面（真 client 結構上即滿足；test 注入 mock）──────────

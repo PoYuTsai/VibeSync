@@ -11,7 +11,7 @@ void main() {
   String personaLabelOf(String personaId) =>
       practicePersonas.firstWhere((p) => p.id == personaId).label;
 
-  test('createPracticeProfile 從 60 位 catalog 抽一位、persona 綁定該位', () {
+  test('createPracticeProfile 從 catalog 抽一位、persona 綁定該位', () {
     final p = createPracticeProfile(random: Random(0));
     expect(isInCatalog(p.girl.profileId), true);
     // server 帶 profileId 時 persona 綁定該 profile；client 也須一致。

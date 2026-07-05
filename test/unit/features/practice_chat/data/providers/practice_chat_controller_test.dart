@@ -465,8 +465,7 @@ void main() {
       expect(api.lastDrawRequestId, isNot('stale-id'));
     });
 
-    test('pending 超過 TTL（陳年首抽 id）→ 作廢鑄新 id（Codex client R1 P2）',
-        () async {
+    test('pending 超過 TTL（陳年首抽 id）→ 作廢鑄新 id（Codex client R1 P2）', () async {
       final pendingStore = InMemoryPracticePendingDrawStore();
       // locked 首抽指紋＝null：沒有 TTL 的話，幾天後的新首抽會誤沿用、
       // server replay 回舊 profile。
@@ -1088,8 +1087,8 @@ void main() {
     });
   });
 
-  // ── 60-profile 身份接線 ──────────────────────────────────────────────────
-  group('60-profile 身份接線', () {
+  // ── catalog-profile 身份接線 ─────────────────────────────────────────────
+  group('catalog-profile 身份接線', () {
     test('續玩同一位：girl 不漂移', () {
       final c = makeControllerFrom(round1Done());
       final before = c.currentState.girl!.profileId;
@@ -1616,8 +1615,12 @@ void main() {
 
     // ── 過期 hint 丟棄（generation 序號）──────────────────────────────────
     /// 進到「beginner、已有 ai 回覆、hint 在途（completer 未完成）」的共用起手式。
-    Future<(PracticeChatController, Completer<PracticeHintResult>, Future<void>)>
-        pendingHint() async {
+    Future<
+        (
+          PracticeChatController,
+          Completer<PracticeHintResult>,
+          Future<void>
+        )> pendingHint() async {
       final c = await makeRevealed();
       await c.setPracticeLearningMode(PracticeLearningMode.beginner);
       api.sendHandler = (_, {profile}) async => reply(
@@ -1638,8 +1641,7 @@ void main() {
       return (c, completer, hintFuture);
     }
 
-    test('續玩同一位期間在途 hint 回來 → 丟棄不填 state、isHintLoading 復位、額度仍同步',
-        () async {
+    test('續玩同一位期間在途 hint 回來 → 丟棄不填 state、isHintLoading 復位、額度仍同步', () async {
       final (c, completer, hintFuture) = await pendingHint();
 
       c.continueWithSamePartner(isPaid: true);
@@ -1674,8 +1676,7 @@ void main() {
       expect(c.currentState.isHintLoading, false);
     });
 
-    test('續玩後在途 hint 失敗回來 → 過期錯誤不打擾新狀態（無 errorMessage/旗標）',
-        () async {
+    test('續玩後在途 hint 失敗回來 → 過期錯誤不打擾新狀態（無 errorMessage/旗標）', () async {
       final (c, completer, hintFuture) = await pendingHint();
 
       c.continueWithSamePartner(isPaid: true);
@@ -1687,8 +1688,7 @@ void main() {
       expect(c.currentState.isHintLoading, false);
     });
 
-    test('過期舊 hint 完成 → 不得清掉較新 hint 的 pending requestId（replay 保護）',
-        () async {
+    test('過期舊 hint 完成 → 不得清掉較新 hint 的 pending requestId（replay 保護）', () async {
       // 舊 hint A 在途 → 續玩換場 → 新 hint B 在途（已存新 pending id）→
       // A 這時才回來：rotate 只認自己的 id，B 的 id 必須活下來供重試沿用。
       final (c, completerA, hintFutureA) = await pendingHint();
@@ -1767,8 +1767,7 @@ void main() {
       expect(pendingStore.load()!.requestId, bId);
     });
 
-    test('hint 在途時 canSend=false（雙向互斥）、sendMessage no-op，完成後恢復',
-        () async {
+    test('hint 在途時 canSend=false（雙向互斥）、sendMessage no-op，完成後恢復', () async {
       final (c, completer, hintFuture) = await pendingHint();
       expect(c.currentState.canSend, false);
 
@@ -1834,8 +1833,7 @@ void main() {
         onProfileUnlocked: onProfileUnlocked ?? sink.add,
         initialSession: initialSession,
         sessionId: initialSession == null ? 'sess-1' : null,
-        createdAt:
-            initialSession == null ? DateTime(2026, 6, 26, 13, 0) : null,
+        createdAt: initialSession == null ? DateTime(2026, 6, 26, 13, 0) : null,
       );
       addTearDown(c.dispose);
       return c;

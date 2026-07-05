@@ -32,7 +32,7 @@ void main() {
       expect(PracticeGirlRarity.n.label, 'N');
     });
 
-    test('60 位 catalog 全員 personaId 都在已知映射內（不靠 fallback）', () {
+    test('catalog 全員 personaId 都在已知映射內（不靠 fallback）', () {
       const known = {
         'teasing_humor',
         'cool_rational',
@@ -40,7 +40,6 @@ void main() {
         'playful_extrovert',
         'slow_worker',
       };
-      expect(practiceGirlProfiles, hasLength(60));
       for (final profile in practiceGirlProfiles) {
         expect(known, contains(profile.personaId),
             reason: '${profile.profileId} 的 personaId=${profile.personaId} '
@@ -48,12 +47,12 @@ void main() {
       }
     });
 
-    test('catalog SR 數量 = 9', () {
+    test('catalog SR 數量 = 20', () {
       final srCount = practiceGirlProfiles
-          .where((p) => practiceGirlRarityFor(p.personaId) ==
-              PracticeGirlRarity.sr)
+          .where((p) =>
+              practiceGirlRarityFor(p.personaId) == PracticeGirlRarity.sr)
           .length;
-      expect(srCount, 9);
+      expect(srCount, 20);
     });
   });
 }

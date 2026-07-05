@@ -1,4 +1,4 @@
-// 從 Edge 權威 catalog 產生 Flutter client 的 display-only 鏡像，確保 client 60 位
+// 從 Edge 權威 catalog 產生 Flutter client 的 display-only 鏡像，確保 client
 // 與 server GIRL_PROFILES 逐欄一致（profileId/nameId/professionId/personaId/...）。
 //
 // 執行：
@@ -41,12 +41,12 @@ const entries = GIRL_PROFILES.map((g) => {
 
 export function buildCatalogDart(): string {
   return `// GENERATED FILE — do not edit by hand.
-// 由 server 權威 catalog 鏡像而來，保證 client 60 位與 Edge GIRL_PROFILES 逐欄一致。
+// 由 server 權威 catalog 鏡像而來，保證 client ${GIRL_PROFILES.length} 位與 Edge GIRL_PROFILES 逐欄一致。
 // 來源：supabase/functions/practice-chat/practice_persona.ts (GIRL_PROFILES)
 // 重新產生：deno run --allow-read --allow-write tools/gen-practice-catalog/gen_practice_girl_catalog.ts
 import 'practice_girl_profile.dart';
 
-/// 60 位陪練女孩的 display-only catalog（profileId=photoId=practice_girl_NNN）。
+/// ${GIRL_PROFILES.length} 位陪練女孩的 display-only catalog（profileId=photoId=practice_girl_NNN）。
 const List<PracticeGirlProfile> practiceGirlProfiles = <PracticeGirlProfile>[
 ${entries}
 ];

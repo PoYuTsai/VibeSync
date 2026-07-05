@@ -13,13 +13,14 @@ void main() {
     }
   });
 
-  test('60 位的 photo asset 實體檔都存在（bundled 守門）', () {
+  test('catalog 內每位的 photo asset 實體檔都存在（bundled 守門）', () {
     final missing = <String>[];
     for (final g in practiceGirlProfiles) {
       if (!File(g.photoAssetPath).existsSync()) {
         missing.add(g.photoAssetPath);
       }
     }
-    expect(missing, isEmpty, reason: '缺少 ${missing.length} 張：${missing.join(", ")}');
+    expect(missing, isEmpty,
+        reason: '缺少 ${missing.length} 張：${missing.join(", ")}');
   });
 }

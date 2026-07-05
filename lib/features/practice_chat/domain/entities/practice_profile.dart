@@ -55,7 +55,8 @@ class PracticeProfile {
     PracticeGirlProfile next;
     do {
       next = practiceGirlProfiles[rng.nextInt(practiceGirlProfiles.length)];
-    } while (next.profileId == girl.profileId && practiceGirlProfiles.length > 1);
+    } while (
+        next.profileId == girl.profileId && practiceGirlProfiles.length > 1);
     return _profileFromGirl(next, difficulty);
   }
 }
@@ -116,7 +117,7 @@ PracticeProfile _profileFromGirl(PracticeGirlProfile girl, String difficulty) {
   );
 }
 
-/// 產生一場新的 profile：從 60 位 catalog 隨機抽一位；難度依偏好
+/// 產生一場新的 profile：從 catalog 隨機抽一位；難度依偏好
 /// （`random` 時才在此抽 3 選 1）。persona 綁定該位。
 PracticeProfile createPracticeProfile({
   PracticeDifficultyPreference difficultyPreference =
