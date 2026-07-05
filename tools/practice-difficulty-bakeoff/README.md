@@ -58,6 +58,18 @@ CLAUDE_API_KEY=sk-ant-... deno run \
   --provider=claude --runs=1 --scripts=bad_interrogator --difficulties=challenge
 ```
 
+## 過關判準（gate 門檻）
+
+設計文件（`docs/plans/2026-07-05-practice-difficulty-redesign.md` Task 8）拍板的量化基準，
+**兩項都要過**才可上線；不過→回頭調規格文字（優先動觸發條件與 few-shot）重跑，
+絕不因拉不開就直接上線：
+
+1. **回覆長度**：挑戰的 AI 回覆平均長度 ≤ 輕鬆的 **60%**。
+2. **dateChance**：`bad_interrogator` 腳本挑戰難度 **全 low**；`high_quality` 腳本
+   輕鬆 high 占比 **>** 挑戰 high 占比，且挑戰**不得全 high**。
+
+（2026-07-06 上線時 runs=3 實測：長度比 31%、兩項 dateChance 條件皆過。）
+
 ## 產物
 
 - `out/report.md`：人看的彙總表（每個難度×腳本一列：場次成功/失敗數、平均回覆長度、
