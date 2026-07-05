@@ -153,11 +153,17 @@ export async function handleDrawProfile(
   );
 
   // ── 5. 選候選 + 呼叫 RPC（撞號重抽，最多 3 次）─────────────────────────
+  // catalogSize（client 宣告的 catalog 人數）只影響「新抽」的候選切池，刻意不進
+  // 冪等識別：RPC 以 (user, requestId) 去重，replay 一律回 ledger 上原本抽到的
+  // profile_id（下方 getPracticeGirlProfile 反查全 catalog），與本地候選無關。
+  // 因此部署邊界上舊 client 的 in-flight retry（同 requestId、無 catalogSize）
+  // 仍命中原 receipt，不會因新欄位缺席而失效或換人。
   for (let attempt = 0; attempt < MAX_DRAW_SELECT_ATTEMPTS; attempt++) {
     const candidate = selectPracticeDrawProfile({
       currentProfileId: request.currentProfileId,
       excludedProfileIds: excluded,
       seed: `${userId}:${request.requestId}:${window.resetWindowStartAt}:${attempt}`,
+      catalogSize: request.catalogSize,
     });
 
     const { data: rpcData, error: rpcError } = await supabase.rpc(

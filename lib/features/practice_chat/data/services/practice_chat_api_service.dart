@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_learning_mode.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_temperature.dart';
@@ -404,6 +405,10 @@ class PracticeChatApiService {
         if (currentProfileId != null) 'currentProfileId': currentProfileId,
         if (visiblePracticeThreadId != null)
           'visiblePracticeThreadId': visiblePracticeThreadId,
+        // 宣告本 build 的 catalog 人數：server 只從前 n 位抽，避免舊 build 抽到
+        // 自己反查不到的新角色（會 fallback 渲染成第一位且額度白扣）。不硬編 100，
+        // catalog 擴充/回滾時自動跟上。
+        'catalogSize': practiceGirlProfiles.length,
       },
     );
 

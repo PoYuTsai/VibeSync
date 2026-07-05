@@ -317,3 +317,36 @@ Deno.test("draw handler 不需要 DEEPSEEK_API_KEY（移除 env 仍正常）", a
     if (prev !== undefined) Deno.env.set("DEEPSEEK_API_KEY", prev);
   }
 });
+
+// ── catalogSize 相容 gate 接線（handler → selectPracticeDrawProfile）────────
+// 舊 client（無 catalogSize）候選一律 001–060；新 client 宣告 100 → 可及全池。
+// 斷言對象是傳給 RPC 的 p_profile_id（= server 選的候選），不依賴 RPC 回應內容。
+
+function girlIndexOf(profileId: unknown): number {
+  return Number(String(profileId).replace("practice_girl_", ""));
+}
+
+Deno.test("catalogSize 缺席：多 requestId 掃描，RPC 候選全部 ≤ 060", async () => {
+  for (let i = 0; i < 40; i++) {
+    const { rpcCalls } = await run(
+      { sub: sub("free", 0, 0), drawn: [], rpc: [{ data: receipt() }] },
+      req({ requestId: `legacy-${i}` }),
+    );
+    const idx = girlIndexOf(rpcCalls[0].p_profile_id);
+    if (!(idx >= 1 && idx <= 60)) {
+      throw new Error(`無 catalogSize 候選逃出舊池：${rpcCalls[0].p_profile_id}`);
+    }
+  }
+});
+
+Deno.test("catalogSize=100：多 requestId 掃描，RPC 候選出現 061+（全池打開）", async () => {
+  let sawExpanded = false;
+  for (let i = 0; i < 40; i++) {
+    const { rpcCalls } = await run(
+      { sub: sub("free", 0, 0), drawn: [], rpc: [{ data: receipt() }] },
+      req({ requestId: `full-${i}`, catalogSize: 100 }),
+    );
+    if (girlIndexOf(rpcCalls[0].p_profile_id) > 60) sawExpanded = true;
+  }
+  assert(sawExpanded, "catalogSize=100 掃 40 個 requestId 應至少一個候選 > 060");
+});

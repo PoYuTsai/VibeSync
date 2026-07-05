@@ -880,6 +880,36 @@ export function getPracticeGirlProfile(
   return PROFILE_BY_ID.get(profileId);
 }
 
+// ── catalogSize 相容 gate：抽卡池依 client 宣告切池 ─────────────────────────
+// catalog 從 60 擴到 100 時，已裝機舊 build 的 client catalog 只有 60 位：server 若
+// 抽出 061+，舊 client 反查不到會 fallback 渲染成第一位（Alice）且額度照扣。故 draw
+// request 讓 client 宣告自己的 catalog 人數（catalogSize），server 只從前 n 位 seeds
+// 抽；欄位缺席/非法一律 fail-closed 回舊池。
+
+/** 舊 client（build ≤305）的 catalog 人數：擴充前 catalog 固定 60 位，不帶
+ * catalogSize 的 draw request 一律視為只認得這 60 位。 */
+export const LEGACY_CATALOG_SIZE = 60;
+
+/**
+ * 把 client 宣告的 catalogSize 正規化成實際切池人數 n：
+ *   n = clamp(catalogSize, LEGACY_CATALOG_SIZE, GIRL_PROFILES.length)
+ * 缺席/非正整數/非法型別 → 一律 LEGACY_CATALOG_SIZE（fail-closed 到舊池，絕不 400；
+ * 收緊會鎖死已裝機舊 client）。
+ */
+export function resolveDrawPoolSize(catalogSize: unknown): number {
+  if (
+    typeof catalogSize !== "number" ||
+    !Number.isInteger(catalogSize) ||
+    catalogSize <= 0
+  ) {
+    return LEGACY_CATALOG_SIZE;
+  }
+  return Math.min(
+    Math.max(catalogSize, LEGACY_CATALOG_SIZE),
+    GIRL_PROFILES.length,
+  );
+}
+
 /** FNV-1a：純 deterministic 雜湊（同 seed → 同 index），供 server 選牌穩定可重現。 */
 function hashSeed(seed: string): number {
   let h = 2166136261;
@@ -891,22 +921,28 @@ function hashSeed(seed: string): number {
 }
 
 /**
- * 從 catalog 選一位：排除 currentProfileId 與本 reset window 已抽過的 profile，
- * 以 seed 做 deterministic 選擇（同 seed 同結果，故 retry 穩定）。若全被排除（理論上不
- * 會發生——每窗抽數 << catalog 總數），退而只避開 current。
+ * 從 catalog 選一位：先依 client 宣告的 catalogSize 切池（見 resolveDrawPoolSize；
+ * 缺席＝舊 client 只認前 60 位），再排除 currentProfileId 與本 reset window 已抽過的
+ * profile，以 seed 做 deterministic 選擇（同 seed 同結果，故 retry 穩定）。若全被排除
+ * （理論上不會發生——每窗抽數 << 池大小），退而只避開 current；所有退避一律以切池後
+ * 的 base 為底，絕不逃出 client 認得的範圍。
  */
 export function selectPracticeDrawProfile(args: {
   currentProfileId?: string;
   excludedProfileIds: Set<string>;
   seed: string;
+  catalogSize?: unknown;
 }): PracticeGirlProfile {
+  // 切池：舊 client 抽到 061+ 會 fallback 渲染成第一位且額度白扣，故 base 只含前 n 位。
+  const base = GIRL_PROFILES.slice(0, resolveDrawPoolSize(args.catalogSize));
+
   const exclude = new Set(args.excludedProfileIds);
   if (args.currentProfileId) exclude.add(args.currentProfileId);
 
-  let pool = GIRL_PROFILES.filter((g) => !exclude.has(g.profileId));
+  let pool = base.filter((g) => !exclude.has(g.profileId));
   if (pool.length === 0) {
-    pool = GIRL_PROFILES.filter((g) => g.profileId !== args.currentProfileId);
-    if (pool.length === 0) pool = [...GIRL_PROFILES];
+    pool = base.filter((g) => g.profileId !== args.currentProfileId);
+    if (pool.length === 0) pool = [...base];
   }
   return pool[hashSeed(args.seed) % pool.length];
 }

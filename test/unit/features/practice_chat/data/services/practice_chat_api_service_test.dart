@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show FunctionException;
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_learning_mode.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_temperature.dart';
@@ -584,6 +585,19 @@ void main() {
       expect(captured.body?['requestId'], 'req-2');
       expect(captured.body?.containsKey('currentProfileId'), false);
       expect(captured.body?.containsKey('visiblePracticeThreadId'), false);
+    });
+
+    test('body 一律帶 catalogSize = client catalog 人數（server 切池相容 gate）',
+        () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+      captured.drawBody = okBody();
+
+      await svc.drawProfile(requestId: 'req-cs-1');
+
+      // 不可硬編 100：catalog 擴充/回滾時 client 宣告值必須自動跟上。
+      expect(captured.body?['catalogSize'], practiceGirlProfiles.length);
+      expect(captured.body?['catalogSize'], isA<int>());
     });
 
     test('200 → 解析 profile / draw / usage', () async {

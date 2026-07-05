@@ -243,12 +243,14 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
 
 // ── draw_profile：獨立 request shape ───────────────────────────────────────
 // 翻牌不需要 turns / sessionId / profile（server 選牌）。client 只送 requestId（冪等
-// key）、選填 currentProfileId（要排除的當前 profile）與選填 visiblePracticeThreadId。
+// key）、選填 currentProfileId（要排除的當前 profile）、選填 visiblePracticeThreadId
+// 與選填 catalogSize（client 宣告自己 catalog 的人數上限，server 據此切抽卡池）。
 export interface PracticeDrawRequest {
   mode: "draw_profile";
   requestId: string;
   currentProfileId?: string;
   visiblePracticeThreadId?: string;
+  catalogSize?: number;
 }
 
 // requestId：UUID 或安全 id 字串（client 產，server idempotency key）。長度 1..64
@@ -286,10 +288,23 @@ export function validateDrawRequest(raw: unknown): PracticeDrawRequest {
     visiblePracticeThreadId = raw.visiblePracticeThreadId;
   }
 
+  // catalogSize：選填，client 宣告自己 catalog 的人數上限（選牌切池用）。非法值
+  // 一律靜默降級成 undefined（→ 切池層 fail-closed 回舊池 60），絕不 throw 400——
+  // 400 會鎖死已裝機的舊 client（Edge 收緊必配 client clamp；這裡直接不收緊）。
+  let catalogSize: number | undefined;
+  if (
+    typeof raw.catalogSize === "number" &&
+    Number.isInteger(raw.catalogSize) &&
+    raw.catalogSize > 0
+  ) {
+    catalogSize = raw.catalogSize;
+  }
+
   return {
     mode: "draw_profile",
     requestId,
     currentProfileId,
     visiblePracticeThreadId,
+    catalogSize,
   };
 }

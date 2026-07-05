@@ -852,6 +852,36 @@ Deno.test("draw：錯 mode → invalid_mode", () => {
   );
 });
 
+Deno.test("draw：catalogSize 缺席 → undefined（legacy client，由切池層降級 60）", () => {
+  const r = validateDrawRequest({
+    mode: "draw_profile",
+    requestId: "req-1",
+  });
+  assertEquals(r.catalogSize, undefined);
+});
+
+Deno.test("draw：catalogSize 合法正整數 → 原值保留", () => {
+  const r = validateDrawRequest({
+    mode: "draw_profile",
+    requestId: "req-1",
+    catalogSize: 100,
+  });
+  assertEquals(r.catalogSize, 100);
+});
+
+Deno.test("draw：catalogSize 非法（型別/小數/非正）→ 靜默降級 undefined，絕不 400", () => {
+  // 400 會鎖死已裝機的舊 client（Edge 收緊必配 client clamp；這裡直接不收緊）。
+  const bads: unknown[] = ["abc", "100", 1.5, 0, -1, Number.NaN, true, {}, []];
+  for (const bad of bads) {
+    const r = validateDrawRequest({
+      mode: "draw_profile",
+      requestId: "req-1",
+      catalogSize: bad,
+    });
+    assertEquals(r.catalogSize, undefined, `catalogSize=${String(bad)} 應降級`);
+  }
+});
+
 Deno.test("draw：visiblePracticeThreadId 過長 → invalid_visiblePracticeThreadId", () => {
   assertThrows(
     () =>
