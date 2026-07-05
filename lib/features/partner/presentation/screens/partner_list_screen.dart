@@ -19,6 +19,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../data/providers/partner_banner_providers.dart';
 import '../../data/providers/partner_write_controller.dart';
@@ -69,6 +70,18 @@ class PartnerListScreen extends ConsumerWidget {
                   color: AppColors.onBackgroundSecondary,
                 ),
                 textAlign: TextAlign.center,
+              ),
+              // 案 3 冷啟動分流：空狀態直接給兩條路——建卡分析（與
+              // shell FAB 同路）或先去練習室熱身。有 partner 後不再顯示。
+              const SizedBox(height: 24),
+              BrandPrimaryButton(
+                label: '建立對象卡，開始分析',
+                onPressed: () => context.push('/partner/new'),
+              ),
+              const SizedBox(height: 12),
+              BrandSecondaryButton(
+                label: '先去練習室熱身',
+                onPressed: () => context.push('/practice-collection'),
               ),
             ],
           ),

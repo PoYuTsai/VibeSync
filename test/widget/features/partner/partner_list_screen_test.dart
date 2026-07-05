@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
@@ -51,6 +52,36 @@ Widget _screen({
     ProviderScope(
       overrides: overrides,
       child: const MaterialApp(home: Scaffold(body: PartnerListScreen())),
+    );
+
+/// GoRouter harness for the empty-state CTAs (案 3) — the buttons call
+/// context.push, so navigation assertions need real routes to land on.
+Widget _routedScreen({
+  required List<Override> overrides,
+}) =>
+    ProviderScope(
+      overrides: overrides,
+      child: MaterialApp.router(
+        routerConfig: GoRouter(
+          initialLocation: '/',
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (_, __) => const Scaffold(body: PartnerListScreen()),
+            ),
+            GoRoute(
+              path: '/partner/new',
+              builder: (_, __) =>
+                  const Scaffold(body: Text('partner-new-screen')),
+            ),
+            GoRoute(
+              path: '/practice-collection',
+              builder: (_, __) =>
+                  const Scaffold(body: Text('practice-collection-screen')),
+            ),
+          ],
+        ),
+      ),
     );
 
 void main() {
@@ -112,6 +143,55 @@ void main() {
     final zoe = t.getTopLeft(find.text('Zoe'));
     final alice = t.getTopLeft(find.text('Alice'));
     expect(zoe.dy < alice.dy, isTrue, reason: 'Zoe must render above Alice');
+  });
+
+  group('empty state CTAs（案 3 冷啟動分流）', () {
+    testWidgets('empty state shows both CTAs', (t) async {
+      await t.pumpWidget(_screen(overrides: [
+        partnerListProvider.overrideWith((_) => const <Partner>[]),
+      ]));
+      await t.pumpAndSettle();
+
+      expect(find.text('建立對象卡，開始分析'), findsOneWidget);
+      expect(find.text('先去練習室熱身'), findsOneWidget);
+    });
+
+    testWidgets('CTAs are hidden when a partner exists', (t) async {
+      await t.pumpWidget(_screen(overrides: [
+        partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
+        partnerAggregateProvider('a').overrideWith((_) => _agg()),
+        conversationsByPartnerProvider('a')
+            .overrideWith((_) => const <Conversation>[]),
+      ]));
+      await t.pumpAndSettle();
+
+      expect(find.text('建立對象卡，開始分析'), findsNothing);
+      expect(find.text('先去練習室熱身'), findsNothing);
+    });
+
+    testWidgets('primary CTA pushes /partner/new', (t) async {
+      await t.pumpWidget(_routedScreen(overrides: [
+        partnerListProvider.overrideWith((_) => const <Partner>[]),
+      ]));
+      await t.pumpAndSettle();
+
+      await t.tap(find.text('建立對象卡，開始分析'));
+      await t.pumpAndSettle();
+
+      expect(find.text('partner-new-screen'), findsOneWidget);
+    });
+
+    testWidgets('secondary CTA pushes /practice-collection', (t) async {
+      await t.pumpWidget(_routedScreen(overrides: [
+        partnerListProvider.overrideWith((_) => const <Partner>[]),
+      ]));
+      await t.pumpAndSettle();
+
+      await t.tap(find.text('先去練習室熱身'));
+      await t.pumpAndSettle();
+
+      expect(find.text('practice-collection-screen'), findsOneWidget);
+    });
   });
 
   group('delete dialog two-mode', () {

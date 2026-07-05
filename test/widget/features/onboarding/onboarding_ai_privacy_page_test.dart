@@ -38,17 +38,23 @@ void main() {
       expect(find.textContaining('同意'), findsWidgets);
     });
 
-    testWidgets('揭露頁是最終頁：CTA 顯示「開始使用」，前一頁仍是「下一步」',
+    // 案 3 冷啟動分流後，揭露頁不再是最終頁（第 5 頁是分流頁），
+    // 「開始使用」CTA 已移除，前 4 頁一律顯示「下一步」。
+    testWidgets('揭露頁不再是最終頁：CTA 仍是「下一步」，再滑一頁到分流頁',
         (tester) async {
       await pumpOnboarding(tester);
 
       await _swipeToNextPage(tester); // → 2
-      await _swipeToNextPage(tester); // → 3（原最終頁，現在不是了）
+      await _swipeToNextPage(tester); // → 3
       expect(find.text('下一步'), findsOneWidget);
       expect(find.text('開始使用'), findsNothing);
 
-      await _swipeToNextPage(tester); // → 4（揭露頁＝最終頁）
-      expect(find.text('開始使用'), findsOneWidget);
+      await _swipeToNextPage(tester); // → 4（揭露頁）
+      expect(find.text('下一步'), findsOneWidget);
+      expect(find.text('開始使用'), findsNothing);
+
+      await _swipeToNextPage(tester); // → 5（分流頁）
+      expect(find.text('你現在有正在聊的對象嗎？'), findsOneWidget);
       expect(find.text('下一步'), findsNothing);
     });
   });
