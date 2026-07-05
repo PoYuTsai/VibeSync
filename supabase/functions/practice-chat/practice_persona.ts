@@ -1004,12 +1004,61 @@ function hashSeed(seed: string): number {
   return h >>> 0;
 }
 
+/** 稀有度層權重（加權真 gacha）：SR 10% / R 30% / N 60%。 */
+const RARITY_WEIGHTS: ReadonlyArray<
+  { rarity: PracticeGirlRarityId; weight: number }
+> = [
+  { rarity: "sr", weight: 10 },
+  { rarity: "r", weight: 30 },
+  { rarity: "n", weight: 60 },
+];
+
+/** 空層退避順序（固定 SR→R→N）；全空回整池均勻，永遠抽得出人、絕不 400。 */
+const RARITY_FALLBACK_ORDER: readonly PracticeGirlRarityId[] = ["sr", "r", "n"];
+
+/**
+ * 加權選層＋層內均勻取一（deterministic）：由 seed 派生兩個獨立雜湊——先按
+ * SR 10%/R 30%/N 60% 擲層，該層在 pool 內無候選則依 SR→R→N 固定順序退層；
+ * 再於選中層內均勻取一。同 seed＋同 pool 必同人（冪等 retry 穩定）。
+ * pool 保證非空（由 selectPracticeDrawProfile 的排除退避兜底）。
+ */
+function pickWeightedByRarity(
+  pool: readonly PracticeGirlProfile[],
+  seed: string,
+): PracticeGirlProfile {
+  const totalWeight = RARITY_WEIGHTS.reduce((sum, w) => sum + w.weight, 0);
+  const roll = hashSeed(`${seed}|rarity-tier`) % totalWeight;
+  let chosen: PracticeGirlRarityId = "n";
+  let acc = 0;
+  for (const { rarity, weight } of RARITY_WEIGHTS) {
+    acc += weight;
+    if (roll < acc) {
+      chosen = rarity;
+      break;
+    }
+  }
+
+  // 空層退避：先試擲中的層，再依固定順序 SR→R→N 補位。
+  const order: PracticeGirlRarityId[] = [
+    chosen,
+    ...RARITY_FALLBACK_ORDER.filter((r) => r !== chosen),
+  ];
+  const pick = hashSeed(`${seed}|rarity-pick`);
+  for (const rarity of order) {
+    const tier = pool.filter((g) => g.rarity === rarity);
+    if (tier.length > 0) return tier[pick % tier.length];
+  }
+  // 理論上到不了（pool 非空必有某層非空）：防禦性回整池均勻。
+  return pool[pick % pool.length];
+}
+
 /**
  * 從 catalog 選一位：先依 client 宣告的 catalogSize 切池（見 resolveDrawPoolSize；
  * 缺席＝舊 client 只認前 60 位），再排除 currentProfileId 與本 reset window 已抽過的
- * profile，以 seed 做 deterministic 選擇（同 seed 同結果，故 retry 穩定）。若全被排除
- * （理論上不會發生——每窗抽數 << 池大小），退而只避開 current；所有退避一律以切池後
- * 的 base 為底，絕不逃出 client 認得的範圍。
+ * profile，最後以 seed 做 deterministic 的**稀有度加權**選擇（SR 10%/R 30%/N 60%，
+ * 層內均勻，見 pickWeightedByRarity；同 seed 同池同結果，故 retry 穩定）。若全被
+ * 排除（理論上不會發生——每窗抽數 << 池大小），退而只避開 current；所有退避一律
+ * 以切池後的 base 為底，絕不逃出 client 認得的範圍。
  */
 export function selectPracticeDrawProfile(args: {
   currentProfileId?: string;
@@ -1028,5 +1077,5 @@ export function selectPracticeDrawProfile(args: {
     pool = base.filter((g) => g.profileId !== args.currentProfileId);
     if (pool.length === 0) pool = [...base];
   }
-  return pool[hashSeed(args.seed) % pool.length];
+  return pickWeightedByRarity(pool, args.seed);
 }
