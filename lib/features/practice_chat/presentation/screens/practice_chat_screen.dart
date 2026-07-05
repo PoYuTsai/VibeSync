@@ -490,9 +490,12 @@ class _DifficultyChips extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final subtitle = _options
-        .firstWhere((option) => option.$1 == state.difficultyPreference)
-        .$3;
+    // 防禦性 orElse：enum 之後加值若忘了同步 _options，chip 只是少畫一顆
+    // （靜默），這裡絕不能讓 firstWhere 丟 StateError 崩整頁 → 退回最後一筆。
+    final (_, _, subtitle) = _options.firstWhere(
+      (option) => option.$1 == state.difficultyPreference,
+      orElse: () => _options.last,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -516,6 +519,8 @@ class _DifficultyChips extends ConsumerWidget {
           child: Text(
             subtitle,
             key: ValueKey(state.difficultyPreference),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: AppTypography.caption.copyWith(
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.8),
             ),
