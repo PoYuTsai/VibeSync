@@ -9,8 +9,10 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../data/providers/practice_chat_providers.dart';
 import '../../domain/entities/practice_girl_profile.dart';
+import '../../domain/entities/practice_girl_rarity.dart';
 import 'practice_draw_sfx.dart';
 import 'practice_girl_photo.dart';
+import 'practice_rarity_style.dart';
 
 const String _kReferenceCardBackBaseAsset =
     'assets/images/practice/practice_draw_card_back_base.png';
@@ -1241,6 +1243,15 @@ class _CeremonyCardFront extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isGrand = variant == _CeremonyCardVariant.grand;
+    // 結果卡稀有度呈現（純靜態裝飾，不動任何演出時間軸）：grand 典藏卡的
+    // 邊框／光暈套 rarity 色（SR 金近似原金框、R 紫、N 冷灰藍），badge＋星等
+    // 沿用圖鑑元件。girl 未知（理論上 grand 必有）兜底原金色。
+    final PracticeGirlRarity? rarity = isGrand ? girl?.rarity : null;
+    final Color frameColor =
+        rarity == null ? _kGold : practiceRarityColor(rarity);
+    final Color frameDeep = rarity == null
+        ? _kGoldDeep
+        : Color.lerp(frameColor, Colors.black, 0.35)!;
     final radius = BorderRadius.circular(24);
     // 揭曉後資訊「浮出」：自下方 14px 上升到定位。
     final infoRise = (1 - Curves.easeOutCubic.transform(appear)) * 14;
@@ -1253,16 +1264,16 @@ class _CeremonyCardFront extends StatelessWidget {
     // 像一張盛大的典藏角色牌。
     final BoxDecoration frame = isGrand
         ? BoxDecoration(
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [_kGold, _kGoldDeep, _kGold],
-              stops: [0.0, 0.5, 1.0],
+              colors: [frameColor, frameDeep, frameColor],
+              stops: const [0.0, 0.5, 1.0],
             ),
             borderRadius: radius,
             boxShadow: [
               BoxShadow(
-                color: _kGold.withValues(alpha: 0.46 + 0.32 * appear),
+                color: frameColor.withValues(alpha: 0.46 + 0.32 * appear),
                 blurRadius: 46,
                 spreadRadius: 2,
               ),
@@ -1322,16 +1333,28 @@ class _CeremonyCardFront extends StatelessWidget {
                 ),
               ),
             ),
-            // 細金內框，呼應卡背的鑲邊語彙（grand 略強）。
+            // 細內框，呼應卡背的鑲邊語彙（grand 略強＋套 rarity 色）。
             DecoratedBox(
               decoration: BoxDecoration(
                 borderRadius: innerRadius,
                 border: Border.all(
-                  color: _kGold.withValues(alpha: isGrand ? 0.72 : 0.55),
+                  color: isGrand
+                      ? frameColor.withValues(alpha: 0.72)
+                      : _kGold.withValues(alpha: 0.55),
                   width: isGrand ? 1.4 : 1,
                 ),
               ),
             ),
+            // 稀有度 badge（沿用圖鑑樣式）：只上 grand 結果卡，preview 白卡不標。
+            if (rarity != null)
+              Positioned(
+                top: 10,
+                left: 10,
+                child: KeyedSubtree(
+                  key: const ValueKey('practice-draw-ceremony-rarity-badge'),
+                  child: PracticeRarityBadge(rarity: rarity, fontSize: 12),
+                ),
+              ),
             if (girl != null)
               Positioned(
                 left: isGrand ? 12 : 14,
@@ -1386,20 +1409,23 @@ class _GrandInfoBar extends StatelessWidget {
               width: 1,
             ),
           ),
-          child: _FrontInfo(girl: girl, accent: _kTeal),
+          child: _FrontInfo(girl: girl, accent: _kTeal, rarity: girl.rarity),
         ),
       ),
     );
   }
 }
 
-/// 正面卡的文字資訊塊：名字（大）＋ 年齡·城市·職業（meta 行）。
+/// 正面卡的文字資訊塊：名字（大）＋ 年齡·城市·職業（meta 行）＋（grand）星等。
 class _FrontInfo extends StatelessWidget {
-  const _FrontInfo({required this.girl, this.accent = _kGold});
+  const _FrontInfo({required this.girl, this.accent = _kGold, this.rarity});
 
   final PracticeGirlProfile girl;
   // meta 行的 accent 色：preview 用金、grand 典藏卡用 teal。
   final Color accent;
+
+  // 有值＝grand 結果卡：meta 下加星等列（沿用圖鑑樣式）；preview 白卡不顯。
+  final PracticeGirlRarity? rarity;
 
   @override
   Widget build(BuildContext context) {
@@ -1438,6 +1464,13 @@ class _FrontInfo extends StatelessWidget {
             ],
           ),
         ),
+        if (rarity != null) ...[
+          const SizedBox(height: 6),
+          KeyedSubtree(
+            key: const ValueKey('practice-draw-ceremony-rarity-stars'),
+            child: PracticeRarityStars(rarity: rarity!, size: 16),
+          ),
+        ],
       ],
     );
   }
@@ -1450,6 +1483,21 @@ class _FrontInfo extends StatelessWidget {
 @visibleForTesting
 CustomPainter debugMysticBackPainter({required double glow}) =>
     _MysticBackPainter(glow: glow);
+
+/// 揭曉「結果卡」（grand 典藏卡）的 test/preview seam：免跑整條儀式時間軸即可
+/// 單獨渲染結果卡，驗稀有度邊框／badge／星等（動畫本體不在此 seam 範圍）。
+@visibleForTesting
+Widget debugCeremonyGrandCardFront({
+  required PracticeGirlProfile girl,
+  required double width,
+  required double height,
+}) =>
+    _CeremonyCardFront(
+      girl: girl,
+      width: width,
+      height: height,
+      variant: _CeremonyCardVariant.grand,
+    );
 
 /// 卡背整體（背景＋賽博金框＋羅盤紋章）的 test/preview seam：讓 still-recorder 與
 /// widget test 免跑整條儀式即可單獨渲染、目檢卡背還原度。
