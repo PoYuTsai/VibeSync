@@ -3,7 +3,10 @@
 // debrief 模式：練習結束後切換成教練口吻，產一張拆解卡（JSON）。
 
 import type { PracticeTurn } from "./validate.ts";
-import type { PracticeProfile } from "./practice_persona.ts";
+import {
+  difficultyTuningFor,
+  type PracticeProfile,
+} from "./practice_persona.ts";
 import type { PracticeLearningMode } from "./quota_decision.ts";
 import { scrubRawImageFilenames } from "./prompt_sanitizer.ts";
 import {
@@ -131,10 +134,17 @@ export function buildChatMessages(
     role: t.role === "user" ? "user" : "assistant",
     content: scrubRawImageFilenames(t.text),
   }));
+  // 難度接線（槓桿 A）：省略 temperatureScore 時 fallback 到本場難度起始溫度。
+  const fallbackTemperature = difficultyTuningFor(profile.difficulty)
+    .startTemperature;
   const temperaturePrompt = options.practiceMode === "beginner"
-    ? `\n\n${temperatureBandInstruction(options.temperatureScore ?? 30)}\n${
+    ? `\n\n${
+      temperatureBandInstruction(
+        options.temperatureScore ?? fallbackTemperature,
+      )
+    }\n${
       relationshipStageInstruction(
-        options.temperatureScore ?? 30,
+        options.temperatureScore ?? fallbackTemperature,
         options.familiarityScore ?? 0,
       )
     }`
@@ -181,7 +191,8 @@ export function buildDebriefMessages(
     ? `本場抽象關係階段：${
       relationshipStageFor(
         options.familiarityScore ?? 0,
-        options.temperatureScore ?? 30,
+        options.temperatureScore ??
+          difficultyTuningFor(profile.difficulty).startTemperature,
       ).label
     }\n` +
       `拆解升溫/降溫時，請用這個階段解釋為什麼目前適合事件、個人或輕曖昧，不要提熟悉度分數。\n\n`

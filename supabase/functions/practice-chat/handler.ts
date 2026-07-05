@@ -11,6 +11,7 @@ import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import { validateDrawRequest, validateRequest } from "./validate.ts";
 import { type DrawSupabaseClient, handleDrawProfile } from "./draw_handler.ts";
 import { buildChatMessages, buildDebriefMessages } from "./prompt.ts";
+import { difficultyTuningFor } from "./practice_persona.ts";
 import {
   decideChatGate,
   decideContinuationGate,
@@ -541,6 +542,8 @@ async function judgeLearningState(opts: {
   request: ReturnType<typeof validateRequest>;
   reply: string;
 }): Promise<LearningJudgement> {
+  // 難度接線（槓桿 A）：正負 delta 倍率只在 beginner 溫度管線生效，作用域內解析一次。
+  const tuning = difficultyTuningFor(opts.request.profile.difficulty);
   const fallbackForSnapshot = (
     currentTemperature: number,
     currentFamiliarity: number,
@@ -551,10 +554,14 @@ async function judgeLearningState(opts: {
       currentFamiliarity,
     });
     if (deterministic) {
-      return applyLearningClassification({
-        heatScore: currentTemperature,
-        familiarityScore: currentFamiliarity,
-      }, deterministic);
+      return applyLearningClassification(
+        {
+          heatScore: currentTemperature,
+          familiarityScore: currentFamiliarity,
+        },
+        deterministic,
+        tuning,
+      );
     }
     const base = fallbackLearningJudgement(
       currentTemperature,
@@ -580,10 +587,14 @@ async function judgeLearningState(opts: {
       currentTemperature,
       currentFamiliarity,
     });
-    const judgement = applyLearningClassification({
-      heatScore: currentTemperature,
-      familiarityScore: currentFamiliarity,
-    }, classification);
+    const judgement = applyLearningClassification(
+      {
+        heatScore: currentTemperature,
+        familiarityScore: currentFamiliarity,
+      },
+      classification,
+      tuning,
+    );
     const protectedHintType = shouldProtectAppliedHint({
         request: opts.request,
         classification,
@@ -812,6 +823,9 @@ export function createPracticeChatHandler(
     } catch (e) {
       return jsonResponse({ error: getErrorMessage(e) }, 400);
     }
+    // 難度接線（槓桿 A）：beginner 溫度初始值 fallback 隨難度變化（僅 beginner 生效）。
+    const difficultyStartTemperature =
+      difficultyTuningFor(request.profile.difficulty).startTemperature;
 
     const apiKey = deps.getEnv("DEEPSEEK_API_KEY");
     if (!apiKey) {
@@ -1045,7 +1059,8 @@ export function createPracticeChatHandler(
               messages: buildHintMessages({
                 turns: request.turns,
                 profile: request.profile,
-                temperatureScore: ledger.temperatureScore ?? 30,
+                temperatureScore: ledger.temperatureScore ??
+                  difficultyStartTemperature,
                 familiarityScore: ledger.familiarityScore ?? 0,
               }),
               maxTokens: HINT_MAX_TOKENS,
@@ -1249,7 +1264,8 @@ export function createPracticeChatHandler(
                 debriefBeginnerMode
                   ? {
                     practiceMode: "beginner",
-                    temperatureScore: ledger.temperatureScore ?? 30,
+                    temperatureScore: ledger.temperatureScore ??
+                      difficultyStartTemperature,
                     familiarityScore: ledger.familiarityScore ?? 0,
                   }
                   : {},
@@ -1379,7 +1395,7 @@ export function createPracticeChatHandler(
 
     const beginnerMode = request.practiceMode === "beginner";
     const currentTemperature = beginnerMode
-      ? ledger.temperatureScore ?? 30
+      ? ledger.temperatureScore ?? difficultyStartTemperature
       : null;
     const currentFamiliarity = beginnerMode
       ? ledger.familiarityScore ?? 0
@@ -1413,7 +1429,8 @@ export function createPracticeChatHandler(
               beginnerMode
                 ? {
                   practiceMode: request.practiceMode,
-                  temperatureScore: currentTemperature ?? 30,
+                  temperatureScore: currentTemperature ??
+                    difficultyStartTemperature,
                   familiarityScore: currentFamiliarity ?? 0,
                 }
                 : {},

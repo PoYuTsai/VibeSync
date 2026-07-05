@@ -33,6 +33,56 @@ Deno.test("beginner buildChatMessages includes temperature score", () => {
   assertEquals(sys.includes("升溫指數 30/100"), true);
 });
 
+// ── 難度接線（槓桿 A）：省略 temperatureScore 時 fallback 到難度起始溫度 ──────
+
+Deno.test("beginner buildChatMessages：省略 temperatureScore 時 fallback 到 normal 難度起始溫度 28", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    defaultProfile,
+    { practiceMode: "beginner" },
+  )[0].content;
+
+  assertEquals(sys.includes("升溫指數 28/100"), true);
+});
+
+Deno.test("beginner buildChatMessages：easy 難度省略 temperatureScore 時 fallback 到 35", () => {
+  const easyProfile = resolvePracticeProfile({ difficulty: "easy" });
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    easyProfile,
+    { practiceMode: "beginner" },
+  )[0].content;
+
+  assertEquals(sys.includes("升溫指數 35/100"), true);
+});
+
+Deno.test("beginner buildChatMessages：challenge 難度省略 temperatureScore 時 fallback 到 20", () => {
+  const challengeProfile = resolvePracticeProfile({ difficulty: "challenge" });
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    challengeProfile,
+    { practiceMode: "beginner" },
+  )[0].content;
+
+  assertEquals(sys.includes("升溫指數 20/100"), true);
+});
+
+Deno.test("beginner buildDebriefMessages：省略 temperatureScore 與明確傳入難度起始溫度結果一致", () => {
+  const easyProfile = resolvePracticeProfile({ difficulty: "easy" });
+  const omitted = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "嗯？" }],
+    easyProfile,
+    { practiceMode: "beginner", familiarityScore: 45 },
+  )[1].content;
+  const explicit = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "嗯？" }],
+    easyProfile,
+    { practiceMode: "beginner", familiarityScore: 45, temperatureScore: 35 },
+  )[1].content;
+
+  assertEquals(omitted, explicit);
+});
+
 Deno.test("beginner buildChatMessages includes relationship stage without exposing familiarity score", () => {
   const options = {
     practiceMode: "beginner",

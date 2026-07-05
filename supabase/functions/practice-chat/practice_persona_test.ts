@@ -7,8 +7,8 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   DIFFICULTIES,
-  difficultyTuningFor,
   DIFFICULTY_TUNING,
+  difficultyTuningFor,
   GIRL_PROFILES,
   getPracticeGirlProfile,
   LEGACY_CATALOG_SIZE,

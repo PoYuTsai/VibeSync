@@ -389,9 +389,9 @@ Deno.test("beginner first chat uses initial temp 30 and returns temperature plus
   assertEquals(json.reply, "AI reply");
   assertEquals(json.hintUsedCount, 0);
   assertEquals(json.temperature, {
-    score: 33,
+    score: 31,
     delta: 3,
-    band: temperatureBandFor(33),
+    band: temperatureBandFor(31),
     reason: "事件導向有助於建立熟悉，先讓對話自然有來有回。",
     familiarityScore: 8,
     familiarityDelta: 8,
@@ -399,8 +399,8 @@ Deno.test("beginner first chat uses initial temp 30 and returns temperature plus
   });
   assertLearningFieldsAndNoDebug(json.temperature);
   assert(
-    state.deepSeekCalls[0].messages[0].content.includes("30/100"),
-    "chat system prompt should include beginner initial temperature",
+    state.deepSeekCalls[0].messages[0].content.includes("28/100"),
+    "chat system prompt should include beginner (normal 難度) initial temperature 28",
   );
   const classifierPrompt = state.deepSeekCalls[1].messages
     .map((message) => message.content)
@@ -413,7 +413,7 @@ Deno.test("beginner first chat uses initial temp 30 and returns temperature plus
     {
       p_user_id: "user-1",
       p_session_id: "session-1",
-      p_expected_temperature_score: 30,
+      p_expected_temperature_score: 28,
       p_expected_familiarity_score: 0,
       p_temperature_delta: 3,
       p_familiarity_delta: 8,
@@ -421,14 +421,14 @@ Deno.test("beginner first chat uses initial temp 30 and returns temperature plus
   );
 });
 
-Deno.test("beginner first chat ignores client temperature and falls back to server initial 30", async () => {
+Deno.test("beginner first chat ignores client temperature and falls back to server normal 難度初始溫度 28", async () => {
   const { response, json, state } = await run({
     ledger: null,
     deepSeekReplies: ["AI reply", new Error("judge down")],
   }, chatBody({ practiceMode: "beginner", temperatureScore: 100 }));
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 30);
+  assertEquals(json.temperature.score, 28);
   assertEquals(json.temperature.delta, 0);
   assertEquals(json.temperature.stageLabel, "建立熟悉中");
   assertLearningFieldsAndNoDebug(json.temperature);
@@ -437,18 +437,80 @@ Deno.test("beginner first chat ignores client temperature and falls back to serv
     .flatMap((call) => call.messages)
     .map((message) => message.content)
     .join("\n");
-  assert(allDeepSeekPromptText.includes("30/100"));
+  assert(allDeepSeekPromptText.includes("28/100"));
   assertEquals(allDeepSeekPromptText.includes("100/100"), false);
 
   const commit = state.rpcCalls.find((call) =>
     call.fn === "commit_practice_chat_turn"
   );
   assert(commit);
-  assertEquals(commit.params.p_temperature_score, 30);
+  assertEquals(commit.params.p_temperature_score, 28);
   assertEquals(commit.params.p_familiarity_score, 0);
   assertEquals("p_initial_temperature_score" in commit.params, false);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
+});
+
+// ── 難度接線（槓桿 A）：easy/challenge 起始溫度＋delta 倍率生效 ─────────────
+
+Deno.test("beginner first chat：easy 難度起始溫度 35＋正 delta 放大 1.25x", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: null,
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"event","quality":"ordinary","overstep":false}`,
+      ],
+    },
+    chatBody({ practiceMode: "beginner", difficulty: "easy" }),
+  );
+
+  assertEquals(response.status, 200);
+  // base heatDelta=3、familiarityDelta=8（同 normal 案例）；easy positiveMultiplier=1.25：
+  // 3*1.25=3.75→round 4；8*1.25=10。起始溫度 35。
+  assertEquals(json.temperature, {
+    score: 39,
+    delta: 4,
+    band: temperatureBandFor(39),
+    reason: "事件導向有助於建立熟悉，先讓對話自然有來有回。",
+    familiarityScore: 10,
+    familiarityDelta: 10,
+    stageLabel: "建立熟悉中",
+  });
+  assert(state.deepSeekCalls[0].messages[0].content.includes("35/100"));
+  assertEquals(
+    learningUpdateCalls(state)[0]?.params.p_expected_temperature_score,
+    35,
+  );
+});
+
+Deno.test("beginner first chat：challenge 難度起始溫度 20＋負 delta 放大 1.3x", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: null,
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"personal","quality":"bad","impact":"medium","overstep":false}`,
+      ],
+    },
+    chatBody({ practiceMode: "beginner", difficulty: "challenge" }),
+  );
+
+  assertEquals(response.status, 200);
+  // base heatDelta=-2、familiarityDelta=-2；challenge negativeMultiplier=1.3：
+  // -2*1.3=-2.6→round -3；heatDelta 同理 -2*1.3=-2.6→round -3？
+  // 實際 HEAT_MATRIX.building_familiarity.personal=-2（負底數）→
+  // scaleByQuality 走一般乘數分支 base*1.5(bad)*1(medium)=-3，再乘 1.3=-3.9→round -4。
+  assertEquals(json.temperature.score, 16); // 20 + (-4)
+  assertEquals(json.temperature.delta, -4);
+  // fake RPC 直接回傳 expected+delta（不模擬 clamp，實際 Postgres RPC 才 clamp 下限）。
+  assertEquals(json.temperature.familiarityScore, -3); // 0 + (-3)
+  assertEquals(json.temperature.familiarityDelta, -3);
+  assert(state.deepSeekCalls[0].messages[0].content.includes("20/100"));
+  assertEquals(
+    learningUpdateCalls(state)[0]?.params.p_expected_temperature_score,
+    20,
+  );
 });
 
 Deno.test("beginner later chat uses ledger learning state over client sent scores", async () => {
@@ -612,7 +674,7 @@ Deno.test("ledger select includes beginner fields and old rows fallback safely",
 
   assertEquals(response.status, 200);
   assertEquals(json.hintUsedCount, 0);
-  assertEquals(json.temperature.score, 33);
+  assertEquals(json.temperature.score, 31); // normal 難度起始溫度 28 + delta 3
   assertEquals(json.temperature.stageLabel, "建立熟悉中");
   assertLearningFieldsAndNoDebug(json.temperature);
   const ledgerSelect = state.selects.find((select) =>
@@ -1889,7 +1951,7 @@ Deno.test("successful hint uses ledger temperature, records after parse, and ret
   ]);
 });
 
-Deno.test("successful hint falls back to temperature 30 when ledger has no score", async () => {
+Deno.test("successful hint falls back to normal 難度初始溫度 28 when ledger has no score", async () => {
   const { response, state } = await run({
     ledger: beginnerStartedLedger({ temperature_score: null }),
     deepSeekReplies: [validHintJson()],
@@ -1904,7 +1966,7 @@ Deno.test("successful hint falls back to temperature 30 when ledger has no score
   const promptText = state.deepSeekCalls[0].messages
     .map((message) => message.content)
     .join("\n");
-  assert(promptText.includes("currentTemperatureScore: 30/100"));
+  assert(promptText.includes("currentTemperatureScore: 28/100"));
   assertEquals(promptText.includes("currentTemperatureScore: 88/100"), false);
 });
 
