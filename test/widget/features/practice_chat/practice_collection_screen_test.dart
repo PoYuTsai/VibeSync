@@ -334,6 +334,46 @@ void main() {
           findsOneWidget);
     });
 
+    testWidgets('已解鎖卡置頂：catalog 尾端的解鎖卡排到第一格、鎖卡沉底', (tester) async {
+      final last = practiceGirlProfiles.last;
+      await pumpCollection(tester, unlocked: {last.profileId});
+
+      // 惰性 grid：尾端卡若還在原位絕不會 build；找得到＝已置頂。
+      final unlockedFinder =
+          find.byKey(ValueKey('collection-card-${last.profileId}'));
+      expect(unlockedFinder, findsOneWidget);
+
+      // grid 順序 =（dy, dx）字典序：解鎖卡必在首張鎖卡（001）之前。
+      final unlockedPos = tester.getTopLeft(unlockedFinder);
+      final lockedPos = tester.getTopLeft(
+        find.byKey(const ValueKey('collection-card-practice_girl_001')),
+      );
+      expect(
+        unlockedPos.dy < lockedPos.dy ||
+            (unlockedPos.dy == lockedPos.dy && unlockedPos.dx < lockedPos.dx),
+        isTrue,
+      );
+    });
+
+    testWidgets('解鎖組內維持圖鑑原序：001 仍排在 004 前', (tester) async {
+      await pumpCollection(
+        tester,
+        unlocked: {'practice_girl_004', 'practice_girl_001'},
+      );
+
+      final firstPos = tester.getTopLeft(
+        find.byKey(const ValueKey('collection-card-practice_girl_001')),
+      );
+      final secondPos = tester.getTopLeft(
+        find.byKey(const ValueKey('collection-card-practice_girl_004')),
+      );
+      expect(
+        firstPos.dy < secondPos.dy ||
+            (firstPos.dy == secondPos.dy && firstPos.dx < secondPos.dx),
+        isTrue,
+      );
+    });
+
     testWidgets('點鎖卡 → SnackBar「每日翻牌有機會遇到她」', (tester) async {
       await pumpCollection(tester);
 

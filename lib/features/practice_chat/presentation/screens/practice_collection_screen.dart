@@ -128,11 +128,17 @@ class _PracticeCollectionScreenState
   }
 
   /// 目前 filter 下 grid 實際顯示的清單（build 與捲動估算共用）。
+  /// 已解鎖置頂、鎖卡沉底，兩組內都維持 catalog 原序。
   List<PracticeGirlProfile> _visibleProfiles() {
-    if (_filter == null) return practiceGirlProfiles;
-    return practiceGirlProfiles
-        .where((p) => practiceGirlRarityFor(p.personaId) == _filter)
-        .toList(growable: false);
+    final unlocked = ref.read(practiceCollectionProvider);
+    final filtered = _filter == null
+        ? practiceGirlProfiles
+        : practiceGirlProfiles
+            .where((p) => practiceGirlRarityFor(p.personaId) == _filter);
+    return [
+      ...filtered.where((p) => unlocked.contains(p.profileId)),
+      ...filtered.where((p) => !unlocked.contains(p.profileId)),
+    ];
   }
 
   /// 集合新增（翻牌解鎖）→ 收掉會濾掉新卡的稀有度 filter、捲動定位＋微光高亮。
