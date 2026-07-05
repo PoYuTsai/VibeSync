@@ -247,4 +247,73 @@ void main() {
     expect(c.read(coachingUnboundOutcomesProvider).single.id, event.id);
     expect(c.read(coachingUnboundOutcomeDigestProvider).totalEvents, 1);
   });
+
+  test('recordCoachResultReaction 保留第一段 userAction、只更新 outcome', () async {
+    final repo = _MemoryOutcomeRepo();
+    final c = _container(repo: repo);
+    addTearDown(c.dispose);
+    final recorder = c.read(coachingOutcomeRecorderProvider);
+
+    final first = await recorder.recordCoachResultOutcome(
+      result: _coachResult(),
+      userAction: CoachingUserAction.editedAndSent,
+      outcome: CoachingOutcomeSignal.pending,
+    );
+
+    final updated = await recorder.recordCoachResultReaction(
+      result: _coachResult(),
+      outcome: CoachingOutcomeSignal.cold,
+    );
+
+    expect(updated, isNotNull);
+    expect(updated!.id, first.id);
+    expect(updated.adviceId, first.adviceId);
+    expect(updated.suggestedMoveSummary, first.suggestedMoveSummary);
+    expect(updated.userAction, CoachingUserAction.editedAndSent);
+    expect(updated.outcome, CoachingOutcomeSignal.cold);
+
+    final events = repo.listRecent();
+    expect(events, hasLength(1));
+    expect(events.single.userAction, CoachingUserAction.editedAndSent);
+    expect(events.single.outcome, CoachingOutcomeSignal.cold);
+  });
+
+  test('recordCoachResultReaction 在沒有第一段紀錄時不寫入', () async {
+    final repo = _MemoryOutcomeRepo();
+    final c = _container(repo: repo);
+    addTearDown(c.dispose);
+
+    final updated =
+        await c.read(coachingOutcomeRecorderProvider).recordCoachResultReaction(
+              result: _coachResult(),
+              outcome: CoachingOutcomeSignal.engaged,
+            );
+
+    expect(updated, isNull);
+    expect(repo.get('coach:result-1'), isNull);
+  });
+
+  test('recordCoachResultReaction 在 userAction=didNotSend 時不覆寫', () async {
+    final repo = _MemoryOutcomeRepo();
+    final c = _container(repo: repo);
+    addTearDown(c.dispose);
+    final recorder = c.read(coachingOutcomeRecorderProvider);
+
+    await recorder.recordCoachResultOutcome(
+      result: _coachResult(),
+      userAction: CoachingUserAction.didNotSend,
+      outcome: CoachingOutcomeSignal.unknown,
+    );
+
+    final updated = await recorder.recordCoachResultReaction(
+      result: _coachResult(),
+      outcome: CoachingOutcomeSignal.engaged,
+    );
+
+    expect(updated, isNull);
+    final event = repo.get('coach:result-1');
+    expect(event, isNotNull);
+    expect(event!.userAction, CoachingUserAction.didNotSend);
+    expect(event.outcome, CoachingOutcomeSignal.unknown);
+  });
 }

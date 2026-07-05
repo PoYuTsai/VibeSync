@@ -97,6 +97,51 @@ class CoachingOutcomeRecorder {
     return event;
   }
 
+  /// 第二段回報：只更新 outcome，保留第一段的 userAction 與其他欄位。
+  ///
+  /// 只在第一段回報為 sentAsIs / editedAndSent（有發出）時才合法；
+  /// 沒有第一段紀錄或第一段是 didNotSend / askedCoach 時回傳 null 不寫入。
+  Future<CoachingOutcomeEvent?> recordCoachResultReaction({
+    required CoachChatResult result,
+    required CoachingOutcomeSignal outcome,
+  }) async {
+    final repo = _ref.read(coachingOutcomeRepositoryProvider);
+    final now = _ref.read(coachingOutcomeNowProvider);
+    final id = coachingOutcomeIdForCoachResult(result.id);
+    final existing = repo.get(id);
+    final action = existing?.userAction;
+    if (existing == null ||
+        (action != CoachingUserAction.sentAsIs &&
+            action != CoachingUserAction.editedAndSent)) {
+      return null;
+    }
+    final updated = CoachingOutcomeEvent(
+      id: existing.id,
+      partnerId: existing.partnerId,
+      conversationId: existing.conversationId,
+      source: existing.source,
+      adviceId: existing.adviceId,
+      adviceType: existing.adviceType,
+      suggestedMoveSummary: existing.suggestedMoveSummary,
+      userAction: existing.userAction,
+      outcome: outcome,
+      outcomeTextPreview: existing.outcomeTextPreview,
+      userNote: existing.userNote,
+      createdAt: now(),
+    );
+    await repo.put(updated);
+    _ref.invalidate(coachingOutcomeEventProvider(updated.id));
+    final partnerId = CoachingOutcomeEvent.normalizeScope(updated.partnerId);
+    if (partnerId != null) {
+      _ref.invalidate(coachingOutcomesByPartnerProvider(partnerId));
+      _ref.invalidate(coachingOutcomeDigestProvider(partnerId));
+    } else {
+      _ref.invalidate(coachingUnboundOutcomesProvider);
+      _ref.invalidate(coachingUnboundOutcomeDigestProvider);
+    }
+    return updated;
+  }
+
   String _coachMoveSummary(CoachChatResult result) {
     final raw = [
       result.nextStep,
