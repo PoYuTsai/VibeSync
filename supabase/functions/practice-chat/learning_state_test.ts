@@ -131,6 +131,85 @@ Deno.test("applyLearningClassification lets good personal replies unlock the fli
   assert(result.reason.includes("個人"));
 });
 
+// ── 難度調參倍率（槓桿 A）：正負 delta 分開縮放，套在 scaleByQuality 之後、
+// overstep 硬扣與 per-axis clamp 之前 ──────────────────────────────────
+
+Deno.test("applyLearningClassification：正 delta 被 positiveDeltaMultiplier 放大", () => {
+  const applyLearningClassification = requireFn("applyLearningClassification");
+
+  const withoutTuning = applyLearningClassification(
+    { heatScore: 30, familiarityScore: 10 },
+    { category: "event", quality: "ordinary", overstep: false },
+  );
+  const withTuning = applyLearningClassification(
+    { heatScore: 30, familiarityScore: 10 },
+    { category: "event", quality: "ordinary", overstep: false },
+    { positiveDeltaMultiplier: 1.25, negativeDeltaMultiplier: 0.75 },
+  );
+
+  assertEquals(withoutTuning.delta, 3);
+  assertEquals(withTuning.delta, 4); // 3 * 1.25 = 3.75 → round 4
+  assertEquals(withoutTuning.familiarityDelta, 8);
+  assertEquals(withTuning.familiarityDelta, 10); // 8 * 1.25 = 10
+});
+
+Deno.test("applyLearningClassification：負 delta 被 negativeDeltaMultiplier 放大", () => {
+  const applyLearningClassification = requireFn("applyLearningClassification");
+
+  const withoutTuning = applyLearningClassification(
+    { heatScore: 45, familiarityScore: 45 },
+    { category: "personal", quality: "bad", impact: "medium", overstep: false },
+  );
+  const withTuning = applyLearningClassification(
+    { heatScore: 45, familiarityScore: 45 },
+    { category: "personal", quality: "bad", impact: "medium", overstep: false },
+    { positiveDeltaMultiplier: 1, negativeDeltaMultiplier: 1.3 },
+  );
+
+  assertEquals(withoutTuning.delta, -2);
+  assertEquals(withTuning.delta, -3); // -2 * 1.3 = -2.6 → round -3
+  assertEquals(withoutTuning.familiarityDelta, -2);
+  assertEquals(withTuning.familiarityDelta, -3);
+});
+
+Deno.test("applyLearningClassification：不傳 tuning 與傳 {1,1} 結果 byte-for-byte 相同", () => {
+  const applyLearningClassification = requireFn("applyLearningClassification");
+
+  const state = { heatScore: 35, familiarityScore: 20 };
+  const classification = {
+    category: "flirt",
+    quality: "bad",
+    overstep: true,
+  };
+
+  const omitted = applyLearningClassification(state, classification);
+  const explicitNeutral = applyLearningClassification(state, classification, {
+    positiveDeltaMultiplier: 1,
+    negativeDeltaMultiplier: 1,
+  });
+
+  assertEquals(omitted, explicitNeutral);
+});
+
+Deno.test("applyLearningClassification：零 delta 不受任何倍率影響", () => {
+  const applyLearningClassification = requireFn("applyLearningClassification");
+
+  const result = applyLearningClassification(
+    { heatScore: 30, familiarityScore: 10 },
+    {
+      category: "event",
+      quality: "ordinary",
+      impact: "minor",
+      overstep: false,
+      hintAlignment: "none",
+    },
+    { positiveDeltaMultiplier: 1.25, negativeDeltaMultiplier: 0.75 },
+  );
+
+  assertEquals(result.delta, 0);
+  assertEquals(result.familiarityDelta, 0);
+});
+
 Deno.test("parseTurnClassification accepts classifier JSON and normalizes fields", () => {
   const parseTurnClassification = requireFn("parseTurnClassification");
 
