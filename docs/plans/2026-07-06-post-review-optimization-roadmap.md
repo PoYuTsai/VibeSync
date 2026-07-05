@@ -54,7 +54,7 @@
 **現況**：
 - 動線：Splash(3.5s) → login → onboarding 4 頁靜態文案 → 一律落首頁 tab0 零資料空狀態。
 - 分流 gate 只看登入＋onboarding bool（`lib/app/routes.dart:38-70`），零用戶狀態判斷。
-- 首頁空狀態純文字無 CTA（`partner_list_screen.dart:43-77`）；練習室藏第 3 tab，要 3 步。
+- 首頁空狀態純文字無 CTA（`partner_list_screen.dart:43-77`）；練習室是獨立 route（`/practice-collection`，入口收在圖鑑），非 tab（2026-07-06 設計時更正，見案 3 設計檔）。
 - 分流所需訊號已存在：`partnerListProvider.isEmpty`。
 
 **精進後範圍**：
