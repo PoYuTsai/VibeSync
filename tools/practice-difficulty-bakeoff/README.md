@@ -37,7 +37,7 @@ DEEPSEEK_API_KEY=... deno run \
 | `--runs=N` | `2` | 每個(難度×腳本)組合跑幾場 |
 | `--scripts=a,b,c` | 三組全跑 | 合法值：`bad_interrogator`、`average`、`high_quality` |
 | `--difficulties=a,b,c` | 三難度全跑 | 合法值：`easy`、`normal`、`challenge`（`random` 不進 bakeoff） |
-| `--out=DIR` | `out` | 輸出目錄（相對於執行時的 cwd） |
+| `--out=DIR` | 腳本目錄下的 `out/` | 輸出目錄。預設落在 `tools/practice-difficulty-bakeoff/out/`，與 cwd 無關；顯式帶 `--out=DIR` 時才相對執行時的 cwd 解析 |
 | `--profileId=ID` | `practice_girl_001`（`DEFAULT_PROFILE_ID`） | 固定 persona，排除人設差異干擾 |
 
 Smoke test（只跑 1 場、6 輪 + debrief）：
