@@ -171,8 +171,13 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
           ),
         ],
         resizeToAvoidBottomInset: true,
-        body: Column(
-          children: [
+        // iPhone 鍵盤沒有收起鍵：點輸入框以外任何空白處都要能退出輸入狀態，
+        // 否則開場前的資訊卡被鍵盤壓縮後使用者會卡在打字模式。
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => _inputFocusNode.unfocus(),
+          child: Column(
+            children: [
             // 開場前：難度控制（深色 scaffold 底，沿用原樣式；換一位入口
             // 已收斂角色圖鑑）。
             // 開聊後：compact identity header（小圓照片＋名字/職業/難度）。
@@ -235,6 +240,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
               onNewPartner: () => context.go('/practice-collection'),
             ),
           ],
+          ),
         ),
       );
     }
@@ -731,8 +737,18 @@ class _PracticeProfileHero extends StatelessWidget {
       ...girl.interestTags.take(2),
       ...girl.lifestyleTags.take(1),
     ];
-    return SingleChildScrollView(
+    // 鍵盤開啟時資訊卡被壓縮：拖動卡片（即使內容未超出可視高度）也要收鍵盤，
+    // 讓使用者能立刻回看完整資料。
+    return NotificationListener<ScrollStartNotification>(
+      onNotification: (notification) {
+        if (notification.dragDetails != null) {
+          FocusManager.instance.primaryFocus?.unfocus();
+        }
+        return false;
+      },
+      child: SingleChildScrollView(
       key: const ValueKey('practice-profile-hero'),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
       child: Column(
         children: [
@@ -805,6 +821,7 @@ class _PracticeProfileHero extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -1094,6 +1111,45 @@ class _BottomBar extends StatelessWidget {
             ),
             const SizedBox(height: 8),
           ],
+          // iPhone 鍵盤沒有收起鍵：聚焦時給明確退出動作；開場前另給「看她的資料」
+          // （收鍵盤即回到完整資訊卡），開聊後資料入口已在 header 不重複。
+          ListenableBuilder(
+            listenable: inputFocusNode,
+            builder: (context, _) {
+              if (!inputFocusNode.hasFocus) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Row(
+                  children: [
+                    if (state.messages.isEmpty)
+                      TextButton.icon(
+                        key: const ValueKey('practice-view-profile-action'),
+                        onPressed: () => inputFocusNode.unfocus(),
+                        icon: const Icon(Icons.badge_outlined, size: 15),
+                        label: const Text('看她的資料'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.onBackgroundSecondary,
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                      ),
+                    const Spacer(),
+                    TextButton.icon(
+                      key: const ValueKey('practice-dismiss-keyboard'),
+                      onPressed: () => inputFocusNode.unfocus(),
+                      icon: const Icon(Icons.keyboard_hide_outlined, size: 15),
+                      label: const Text('收起鍵盤'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.onBackgroundSecondary,
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
           Row(
             children: [
               Expanded(
@@ -1123,7 +1179,33 @@ class _BottomBar extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: TextField(
+                // 聚焦時輕微抬升＋品牌橘光暈，跟送出鈕呼應（默認只留淡陰影）。
+                child: ListenableBuilder(
+                  listenable: inputFocusNode,
+                  builder: (context, child) => AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: inputFocusNode.hasFocus
+                          ? [
+                              BoxShadow(
+                                color:
+                                    AppColors.ctaStart.withValues(alpha: 0.22),
+                                blurRadius: 14,
+                                offset: const Offset(0, 3),
+                              ),
+                            ]
+                          : [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.18),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                    ),
+                    child: child,
+                  ),
+                  child: TextField(
                   controller: inputController,
                   focusNode: inputFocusNode,
                   enabled: canSend,
@@ -1136,7 +1218,8 @@ class _BottomBar extends StatelessWidget {
                     color: AppColors.onBackgroundPrimary,
                   ),
                   decoration: InputDecoration(
-                    hintText: '輸入訊息…',
+                    hintText:
+                        state.messages.isEmpty ? '傳出你的第一句開場白…' : '輸入訊息…',
                     counterText: '',
                     hintStyle: AppTypography.bodyMedium.copyWith(
                       color: AppColors.onBackgroundSecondary
@@ -1160,11 +1243,11 @@ class _BottomBar extends StatelessWidget {
                         color: Colors.white.withValues(alpha: 0.18),
                       ),
                     ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
+                    focusedBorder: const OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(24)),
                       borderSide: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.35),
-                        width: 1.2,
+                        color: AppColors.ctaStart,
+                        width: 1.4,
                       ),
                     ),
                     disabledBorder: OutlineInputBorder(
@@ -1174,10 +1257,18 @@ class _BottomBar extends StatelessWidget {
                       ),
                     ),
                   ),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
-              _SendButton(enabled: canSend, onTap: onSend),
+              // 空字串灰階、有字才亮橘：用狀態變化引導「打字→送出」。
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: inputController,
+                builder: (context, value, _) => _SendButton(
+                  enabled: canSend && value.text.trim().isNotEmpty,
+                  onTap: onSend,
+                ),
+              ),
             ],
           ),
         ],

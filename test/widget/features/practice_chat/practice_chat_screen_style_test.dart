@@ -1275,6 +1275,8 @@ void main() {
     );
 
     await tester.enterText(find.byType(TextField), 'huhu');
+    // 送出鈕現在跟輸入內容連動（空字串灰階），打完字要先讓它重建成可送狀態。
+    await tester.pump();
     final sendButton = find.byKey(const ValueKey('practice-send-button'));
 
     await tester.tap(sendButton);
