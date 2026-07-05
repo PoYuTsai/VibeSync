@@ -1140,17 +1140,38 @@ class _BottomBar extends StatelessWidget {
                     counterText: '',
                     hintStyle: AppTypography.bodyMedium.copyWith(
                       color: AppColors.onBackgroundSecondary
-                          .withValues(alpha: 0.6),
+                          .withValues(alpha: 0.85),
                     ),
                     filled: true,
-                    fillColor: AppColors.brandSurface2.withValues(alpha: 0.7),
+                    fillColor: Colors.white.withValues(alpha: 0.12),
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 12,
                     ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide.none,
+                      borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.18),
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.18),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.35),
+                        width: 1.2,
+                      ),
+                    ),
+                    disabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.10),
+                      ),
                     ),
                   ),
                 ),
