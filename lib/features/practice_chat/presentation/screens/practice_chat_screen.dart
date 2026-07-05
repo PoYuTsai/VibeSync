@@ -1308,7 +1308,8 @@ class _TemperatureMeter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final score = (state.temperatureScore ?? kInitialPracticeTemperatureScore)
+    final score = (state.temperatureScore ??
+            initialPracticeTemperatureScore(state.difficulty))
         .clamp(0, 100)
         .toInt();
     final color = _temperatureColor(score);

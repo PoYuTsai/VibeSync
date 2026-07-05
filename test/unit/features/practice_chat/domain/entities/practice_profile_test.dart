@@ -57,4 +57,18 @@ void main() {
     expect(f.girl.profileId, 'practice_girl_001');
     expect(f.personaId, f.girl.personaId);
   });
+
+  group('initialPracticeTemperatureScore', () {
+    test('鏡像 server DIFFICULTY_TUNING 起始溫度：easy 35／normal 28／challenge 20',
+        () {
+      expect(initialPracticeTemperatureScore('easy'), 35);
+      expect(initialPracticeTemperatureScore('normal'), 28);
+      expect(initialPracticeTemperatureScore('challenge'), 20);
+    });
+
+    test('未知或空難度 fallback 到 normal 起始溫度', () {
+      expect(initialPracticeTemperatureScore('weird'), 28);
+      expect(initialPracticeTemperatureScore(''), 28);
+    });
+  });
 }

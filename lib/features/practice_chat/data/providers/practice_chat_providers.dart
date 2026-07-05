@@ -29,7 +29,8 @@ const int kMaxPracticeHintsPerRound = 5;
 /// 同一位對象最多 3 輪（與伺服器 MAX_PRACTICE_ROUNDS 同步）；到頂不再顯示續玩。
 const int kMaxPracticeRounds = 3;
 
-const int kInitialPracticeTemperatureScore = 30;
+// 溫度開場 fallback 隨難度走：見 initialPracticeTemperatureScore（practice_profile.dart，
+// 鏡像 server DIFFICULTY_TUNING）。
 const int kInitialPracticeFamiliarityScore = 0;
 const String kInitialPracticeRelationshipStageLabel = '建立熟悉中';
 
@@ -499,7 +500,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       drawNextResetAt: draft.nextResetAt.toIso8601String(),
       learningMode: learningMode,
       temperatureScore: learningMode == PracticeLearningMode.beginner
-          ? draft.temperatureScore ?? kInitialPracticeTemperatureScore
+          ? draft.temperatureScore ??
+              initialPracticeTemperatureScore(draft.difficulty)
           : null,
       familiarityScore: learningMode == PracticeLearningMode.beginner
           ? draft.familiarityScore ?? kInitialPracticeFamiliarityScore
@@ -549,7 +551,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       visiblePracticeThreadId: session.visiblePracticeThreadId ?? session.id,
       learningMode: learningMode,
       temperatureScore: learningMode == PracticeLearningMode.beginner
-          ? session.temperatureScore ?? kInitialPracticeTemperatureScore
+          ? session.temperatureScore ??
+              initialPracticeTemperatureScore(difficulty)
           : null,
       familiarityScore: learningMode == PracticeLearningMode.beginner
           ? session.familiarityScore ?? kInitialPracticeFamiliarityScore
@@ -609,7 +612,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       visiblePracticeThreadId: sessionId,
       learningMode: prior.learningMode,
       temperatureScore: prior.learningMode == PracticeLearningMode.beginner
-          ? kInitialPracticeTemperatureScore
+          ? initialPracticeTemperatureScore(difficulty)
           : null,
       familiarityScore: prior.learningMode == PracticeLearningMode.beginner
           ? kInitialPracticeFamiliarityScore
@@ -692,7 +695,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         visiblePracticeThreadId: sessionId,
         learningMode: prior.learningMode,
         temperatureScore: prior.learningMode == PracticeLearningMode.beginner
-            ? kInitialPracticeTemperatureScore
+            ? initialPracticeTemperatureScore(difficulty)
             : null,
         familiarityScore: prior.learningMode == PracticeLearningMode.beginner
             ? kInitialPracticeFamiliarityScore
@@ -787,8 +790,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       roundIndex: state.roundIndex + 1,
       visiblePracticeThreadId: state.visiblePracticeThreadId,
       learningMode: state.learningMode,
-      temperatureScore:
-          state.isBeginnerMode ? kInitialPracticeTemperatureScore : null,
+      temperatureScore: state.isBeginnerMode
+          ? initialPracticeTemperatureScore(state.difficulty)
+          : null,
       familiarityScore:
           state.isBeginnerMode ? kInitialPracticeFamiliarityScore : null,
       relationshipStageLabel:
@@ -803,7 +807,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     final beginner = mode == PracticeLearningMode.beginner;
     state = state.copyWith(
       learningMode: mode,
-      temperatureScore: beginner ? kInitialPracticeTemperatureScore : null,
+      temperatureScore: beginner
+          ? initialPracticeTemperatureScore(state.difficulty)
+          : null,
       familiarityScore: beginner ? kInitialPracticeFamiliarityScore : null,
       relationshipStageLabel:
           beginner ? kInitialPracticeRelationshipStageLabel : null,
@@ -848,7 +854,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     final priorMessages = state.messages;
     final learningMode = state.learningMode;
     final temperatureScore = learningMode == PracticeLearningMode.beginner
-        ? state.temperatureScore ?? kInitialPracticeTemperatureScore
+        ? state.temperatureScore ??
+            initialPracticeTemperatureScore(state.difficulty)
         : null;
     final familiarityScore = learningMode == PracticeLearningMode.beginner
         ? state.familiarityScore ?? kInitialPracticeFamiliarityScore

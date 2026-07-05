@@ -88,6 +88,17 @@ String practiceDifficultyLabel(String difficulty) {
   };
 }
 
+/// beginner 溫度計開場 fallback。鏡像 server `practice_persona.ts` 的
+/// `DIFFICULTY_TUNING[difficulty].startTemperature`——真相源在 server，
+/// 這裡只查表，改值必兩邊同步，否則開場 meter 會先顯示舊值再跳到 server 值。
+int initialPracticeTemperatureScore(String difficulty) {
+  return switch (difficulty) {
+    'easy' => 35,
+    'challenge' => 20,
+    _ => 28,
+  };
+}
+
 const _randomDifficulties = ['easy', 'normal', 'challenge'];
 
 String _resolveDifficulty(PracticeDifficultyPreference preference, Random rng) {

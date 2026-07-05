@@ -336,6 +336,33 @@ void main() {
       expect(s.relationshipStageLabel, '可以聊個人');
     });
 
+    test('beginner draft 未帶 temperatureScore → fallback 隨難度（easy 35）', () {
+      draftStore.save(draftFor(
+        'practice_girl_005',
+        difficulty: 'easy',
+        learningMode: PracticeLearningMode.beginner,
+      ));
+      final c = makeController();
+      expect(c.currentState.temperatureScore, 35);
+    });
+
+    test('beginner session 未帶 temperatureScore → fallback 隨難度（challenge 20）',
+        () {
+      final c = makeControllerFrom(PracticeSession(
+        id: 'open-2',
+        createdAt: DateTime(2026, 6, 26, 12),
+        aiReplyCount: 1,
+        messages: const [
+          PracticeMessage(role: 'user', text: '嗨'),
+          PracticeMessage(role: 'ai', text: '嗯？'),
+        ],
+        profileId: 'practice_girl_009',
+        difficulty: 'challenge',
+        practiceMode: 'beginner',
+      ));
+      expect(c.currentState.temperatureScore, 20);
+    });
+
     test('過期 draft（已過 nextResetAt）→ 忽略 → locked', () {
       draftStore.save(
         draftFor('practice_girl_005', nextResetAt: DateTime.utc(2000, 1, 1, 4)),
@@ -1151,7 +1178,7 @@ void main() {
         () async {
       final c = await makeRevealed();
       await c.setPracticeLearningMode(PracticeLearningMode.beginner);
-      expect(c.currentState.temperatureScore, 30);
+      expect(c.currentState.temperatureScore, 28); // normal 難度起始溫度
       expect(c.currentState.familiarityScore, 0);
       expect(c.currentState.relationshipStageLabel, '建立熟悉中');
 
@@ -1173,7 +1200,7 @@ void main() {
 
       final s = c.currentState;
       expect(api.lastPracticeMode, PracticeLearningMode.beginner);
-      expect(api.lastTemperatureScore, 30);
+      expect(api.lastTemperatureScore, 28); // normal 難度起始溫度
       expect(api.lastFamiliarityScore, 0);
       expect(s.temperatureScore, 38);
       expect(s.lastTemperatureDelta, 8);
@@ -1196,7 +1223,7 @@ void main() {
 
       final draft = draftStore.load()!;
       expect(draft.learningMode, PracticeLearningMode.beginner);
-      expect(draft.temperatureScore, kInitialPracticeTemperatureScore);
+      expect(draft.temperatureScore, initialPracticeTemperatureScore('normal'));
       expect(draft.familiarityScore, kInitialPracticeFamiliarityScore);
       expect(
         draft.relationshipStageLabel,
@@ -1207,7 +1234,7 @@ void main() {
       expect(restored.currentState.learningMode, PracticeLearningMode.beginner);
       expect(
         restored.currentState.temperatureScore,
-        kInitialPracticeTemperatureScore,
+        initialPracticeTemperatureScore('normal'),
       );
       expect(
         restored.currentState.familiarityScore,
