@@ -362,6 +362,11 @@ async function runOneSession(args: {
   };
 }
 
+// 預設 outDir 相對於這支腳本自己的目錄，絕不是相對 cwd——
+// 否則從 repo 根目錄執行會把報告寫進 repo 根目錄的 out/（未被 gitignore，有被誤 commit 的風險）。
+// 只有明確帶 --out 才維持舊語意（相對使用者執行時的 cwd）。
+const DEFAULT_OUT_DIR = new URL(".", import.meta.url).pathname + "out";
+
 // ── CLI 參數 ────────────────────────────────────────────────────────────
 interface CliOptions {
   provider: Provider;
@@ -378,7 +383,7 @@ function parseArgs(argv: string[]): CliOptions {
     runs: 2,
     scripts: [...SCRIPT_IDS],
     difficulties: ["easy", "normal", "challenge"],
-    outDir: "out",
+    outDir: DEFAULT_OUT_DIR,
     profileId: DEFAULT_PROFILE_ID,
   };
 
