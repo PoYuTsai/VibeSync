@@ -481,27 +481,46 @@ class _DifficultyChips extends ConsumerWidget {
 
   final PracticeChatState state;
 
-  static const _options = <(PracticeDifficultyPreference, String)>[
-    (PracticeDifficultyPreference.easy, '輕鬆'),
-    (PracticeDifficultyPreference.normal, '一般'),
-    (PracticeDifficultyPreference.challenge, '挑戰'),
-    (PracticeDifficultyPreference.random, '隨機'),
+  static const _options = <(PracticeDifficultyPreference, String, String)>[
+    (PracticeDifficultyPreference.easy, '輕鬆', '她今天心情不錯，願意給你空間'),
+    (PracticeDifficultyPreference.normal, '一般', '真實交友軟體體感，會已讀、會變短'),
+    (PracticeDifficultyPreference.challenge, '挑戰', '高標準對象，不救場、會句點你'),
+    (PracticeDifficultyPreference.random, '隨機', '每場隨機抽一檔難度'),
   ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 6,
+    final subtitle = _options
+        .firstWhere((option) => option.$1 == state.difficultyPreference)
+        .$3;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final (pref, label) in _options)
-          _DifficultyChip(
-            label: label,
-            selected: state.difficultyPreference == pref,
-            onTap: () => ref
-                .read(practiceChatControllerProvider.notifier)
-                .setDifficultyPreference(pref),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          children: [
+            for (final (pref, label, _) in _options)
+              _DifficultyChip(
+                label: label,
+                selected: state.difficultyPreference == pref,
+                onTap: () => ref
+                    .read(practiceChatControllerProvider.notifier)
+                    .setDifficultyPreference(pref),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 150),
+          child: Text(
+            subtitle,
+            key: ValueKey(state.difficultyPreference),
+            style: AppTypography.caption.copyWith(
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.8),
+            ),
           ),
+        ),
       ],
     );
   }
