@@ -72,6 +72,9 @@ export interface ReactionModel {
   inviteThreshold: string;
 }
 
+/** 卡片稀有度（gacha）：SR 10% / R 30% / N 60% 加權抽層。server 為唯一真相源。 */
+export type PracticeGirlRarityId = "sr" | "r" | "n";
+
 /** 一位陪練女孩的完整 profile（同時服務 prompt 與（裁切後）UI）。 */
 export interface PracticeGirlProfile {
   profileId: string;
@@ -88,6 +91,8 @@ export interface PracticeGirlProfile {
   professionPrompt: string;
   photoId: string;
   personaId: PersonaId;
+  /** 卡片稀有度（每卡獨立指定，與 persona 解耦）。 */
+  rarity: PracticeGirlRarityId;
   personalityTags: string[];
   interestTags: string[];
   lifestyleTags: string[];
@@ -708,6 +713,84 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
   { nameId: "skye", age: 29, heightCm: 162, city: "新竹", zodiac: "天蠍座", goal: "慢慢認識", professionId: "ux_researcher", personaId: "cool_rational", personality: ["觀察細", "理性", "慢熱"], interests: ["使用者研究", "咖啡", "紀錄片"], lifestyle: ["訪談整理", "貼便利貼", "晚上看紀錄片"], intro: "我很會觀察細節，所以也很容易看出對方是不是用心。" },
 ] as const;
 
+// ── 稀有度指定（純資料，日後可調）────────────────────────────────────────
+// 每 persona 20 位 = 4 SR / 8 R / 8 N（總量 SR20 / R40 / N40），由測試守恆。
+// 首版指定：每 persona 依 catalog 序取第 2/7/12/17 位為 SR（teasing_humor 取
+// 1/6/11/16，保留 004 Mia 的 SR 錨點），SR 均勻散佈於新舊池；R 取其後兩位。
+// 錨點：001 Alice=N、004 Mia=SR（client 圖鑑測試同錨，改表前先對測試）。
+const SR_PROFILE_IDS: ReadonlySet<string> = new Set([
+  "practice_girl_004",
+  "practice_girl_006",
+  "practice_girl_007",
+  "practice_girl_008",
+  "practice_girl_009",
+  "practice_girl_028",
+  "practice_girl_032",
+  "practice_girl_033",
+  "practice_girl_036",
+  "practice_girl_038",
+  "practice_girl_051",
+  "practice_girl_052",
+  "practice_girl_055",
+  "practice_girl_063",
+  "practice_girl_065",
+  "practice_girl_079",
+  "practice_girl_080",
+  "practice_girl_082",
+  "practice_girl_085",
+  "practice_girl_087",
+]);
+
+const R_PROFILE_IDS: ReadonlySet<string> = new Set([
+  "practice_girl_010",
+  "practice_girl_011",
+  "practice_girl_012",
+  "practice_girl_013",
+  "practice_girl_014",
+  "practice_girl_015",
+  "practice_girl_016",
+  "practice_girl_017",
+  "practice_girl_018",
+  "practice_girl_022",
+  "practice_girl_031",
+  "practice_girl_034",
+  "practice_girl_035",
+  "practice_girl_037",
+  "practice_girl_039",
+  "practice_girl_040",
+  "practice_girl_043",
+  "practice_girl_044",
+  "practice_girl_049",
+  "practice_girl_050",
+  "practice_girl_054",
+  "practice_girl_056",
+  "practice_girl_057",
+  "practice_girl_060",
+  "practice_girl_062",
+  "practice_girl_064",
+  "practice_girl_066",
+  "practice_girl_067",
+  "practice_girl_070",
+  "practice_girl_075",
+  "practice_girl_083",
+  "practice_girl_084",
+  "practice_girl_086",
+  "practice_girl_088",
+  "practice_girl_089",
+  "practice_girl_090",
+  "practice_girl_091",
+  "practice_girl_095",
+  "practice_girl_097",
+  "practice_girl_099",
+]);
+
+/** profileId → 稀有度；不在 SR/R 名單即 N（其餘 40 位）。 */
+function rarityForProfileId(profileId: string): PracticeGirlRarityId {
+  if (SR_PROFILE_IDS.has(profileId)) return "sr";
+  if (R_PROFILE_IDS.has(profileId)) return "r";
+  return "n";
+}
+
 // ── 由 seed 推導完整 profile ───────────────────────────────────────────
 function professionConfig(id: ProfessionId): ProfessionConfig {
   return PROFESSIONS.find((p) => p.id === id)!;
@@ -750,6 +833,7 @@ function buildGirlProfile(seed: GirlSeed, index: number): PracticeGirlProfile {
     professionPrompt: prof.prompt,
     photoId: id,
     personaId: seed.personaId,
+    rarity: rarityForProfileId(id),
     personalityTags: [...seed.personality],
     interestTags: [...seed.interests],
     lifestyleTags: [...seed.lifestyle],

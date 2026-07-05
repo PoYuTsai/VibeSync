@@ -1,6 +1,7 @@
 // 角色圖鑑（gacha Collection）：陪練女孩的收藏頁。
 //
-// display-only：稀有度／星等純前端呈現，不影響翻牌機率或扣費。解鎖集合來自
+// 稀有度每卡獨立（鏡像 server 真相源）；抽中機率由 server 加權（SR 10%／R 30%／
+// N 60%），本頁只負責呈現（邊框／badge／星等），不影響扣費。解鎖集合來自
 // practiceCollectionProvider（settings box 持久化），翻牌成功／還原舊場即時 +1。
 import 'dart:async';
 
@@ -16,18 +17,7 @@ import '../../domain/entities/practice_girl_catalog.dart';
 import '../../domain/entities/practice_girl_profile.dart';
 import '../../domain/entities/practice_girl_rarity.dart';
 import '../widgets/practice_draw_ceremony.dart';
-
-/// 稀有度主色：SR 金、R 紫、N 冷灰藍。只用於邊框／badge／星等（display-only）。
-Color _rarityColor(PracticeGirlRarity rarity) {
-  switch (rarity) {
-    case PracticeGirlRarity.sr:
-      return const Color(0xFFFFB34D);
-    case PracticeGirlRarity.r:
-      return AppColors.primaryLight;
-    case PracticeGirlRarity.n:
-      return const Color(0xFF8FA0BE);
-  }
-}
+import '../widgets/practice_rarity_style.dart';
 
 /// 揭曉後新卡微光的等待段：等整條儀式 reveal 時間軸走完才點亮（儀式 scrim 中段
 /// 全黑，蓋著點了也看不到）。與儀式共用同一常數＝儀式重定時不會讓微光搶跑。
@@ -133,8 +123,7 @@ class _PracticeCollectionScreenState
     final unlocked = ref.read(practiceCollectionProvider);
     final filtered = _filter == null
         ? practiceGirlProfiles
-        : practiceGirlProfiles
-            .where((p) => practiceGirlRarityFor(p.personaId) == _filter);
+        : practiceGirlProfiles.where((p) => p.rarity == _filter);
     return [
       ...filtered.where((p) => unlocked.contains(p.profileId)),
       ...filtered.where((p) => !unlocked.contains(p.profileId)),
@@ -144,8 +133,7 @@ class _PracticeCollectionScreenState
   /// 集合新增（翻牌解鎖）→ 收掉會濾掉新卡的稀有度 filter、捲動定位＋微光高亮。
   void _onProfileUnlocked(PracticeGirlProfile profile) {
     setState(() {
-      if (_filter != null &&
-          practiceGirlRarityFor(profile.personaId) != _filter) {
+      if (_filter != null && profile.rarity != _filter) {
         _filter = null; // filter 開著時新卡可能不在 visible 清單：先收掉。
       }
       _highlightProfileId = profile.profileId;
@@ -849,8 +837,8 @@ class _CollectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rarity = practiceGirlRarityFor(profile.personaId);
-    final color = _rarityColor(rarity);
+    final rarity = profile.rarity;
+    final color = practiceRarityColor(rarity);
 
     return GestureDetector(
       key: ValueKey('collection-card-${profile.profileId}'),
@@ -902,22 +890,7 @@ class _CollectionCard extends StatelessWidget {
                       Positioned(
                         top: 6,
                         left: 6,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 7, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: color,
-                            borderRadius: BorderRadius.circular(7),
-                          ),
-                          child: Text(
-                            rarity.label,
-                            style: AppTypography.caption.copyWith(
-                              color: AppColors.brandInk,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
+                        child: PracticeRarityBadge(rarity: rarity),
                       )
                     else
                       Center(
@@ -958,20 +931,7 @@ class _CollectionCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             if (unlocked)
-              Row(
-                children: [
-                  for (var i = 0; i < 5; i++)
-                    Icon(
-                      i < rarity.stars
-                          ? Icons.star_rounded
-                          : Icons.star_outline_rounded,
-                      size: 14,
-                      color: i < rarity.stars
-                          ? color
-                          : Colors.white.withValues(alpha: 0.18),
-                    ),
-                ],
-              )
+              PracticeRarityStars(rarity: rarity)
             else
               const SizedBox(height: 14), // 鎖卡無星等：佔位維持排版高度
           ],

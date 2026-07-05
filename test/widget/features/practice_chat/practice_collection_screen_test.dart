@@ -905,7 +905,7 @@ void main() {
 
       // 開一個會把新卡濾掉的稀有度 filter。
       final last = practiceGirlProfiles.last;
-      final lastRarity = practiceGirlRarityFor(last.personaId);
+      final lastRarity = last.rarity;
       final otherRarity =
           PracticeGirlRarity.values.firstWhere((r) => r != lastRarity);
       await tester.tap(find.byKey(

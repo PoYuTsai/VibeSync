@@ -141,6 +141,37 @@ Deno.test("選牌：非法 catalogSize（30/0/-1/1.5/'abc'）→ 全部降級 60
   }
 });
 
+// ── 稀有度資料層：server 為唯一真相源，每 persona 20 位 = 4 SR / 8 R / 8 N ──
+
+Deno.test("稀有度：每位 profile 都帶合法 rarity（'sr' | 'r' | 'n'）", () => {
+  for (const g of GIRL_PROFILES) {
+    assert(
+      g.rarity === "sr" || g.rarity === "r" || g.rarity === "n",
+      `${g.profileId} rarity=${String(g.rarity)} 不合法`,
+    );
+  }
+});
+
+Deno.test("稀有度：每 persona 4 SR / 8 R / 8 N；總量 SR20 / R40 / N40", () => {
+  const perPersona = new Map<string, { sr: number; r: number; n: number }>();
+  const total = { sr: 0, r: 0, n: 0 };
+  for (const g of GIRL_PROFILES) {
+    const c = perPersona.get(g.personaId) ?? { sr: 0, r: 0, n: 0 };
+    c[g.rarity]++;
+    perPersona.set(g.personaId, c);
+    total[g.rarity]++;
+  }
+  assertEquals(total, { sr: 20, r: 40, n: 40 });
+  for (const [personaId, c] of perPersona) {
+    assertEquals(c, { sr: 4, r: 8, n: 8 }, `persona ${personaId} 配比不對`);
+  }
+});
+
+Deno.test("稀有度：既有錨點不漂移（001=N、004=SR；圖鑑測試同錨）", () => {
+  assertEquals(getPracticeGirlProfile("practice_girl_001")?.rarity, "n");
+  assertEquals(getPracticeGirlProfile("practice_girl_004")?.rarity, "sr");
+});
+
 Deno.test("選牌：切池後排除退避（撞號/全排除 fallback）也絕不逃出切池", () => {
   // 排除 legacy 池前 59 位 → 只剩 060 可抽（不可逃到 061+）。
   const excluded = new Set(

@@ -1,3 +1,5 @@
+import 'practice_girl_rarity.dart';
+
 /// 一位陪練女孩的「display-only」profile（與 Edge `practice_persona.ts` 的
 /// `PracticeGirlProfile` 對齊，但**不含** prompt／reactionModel／signalStyle 等
 /// server-only 欄位）。client 只拿來顯示與送 allowlisted id，絕不送 prompt 文字。
@@ -15,6 +17,7 @@ class PracticeGirlProfile {
     required this.professionLabel,
     required this.photoId,
     required this.personaId,
+    required this.rarity,
     required this.personalityTags,
     required this.interestTags,
     required this.lifestyleTags,
@@ -33,6 +36,10 @@ class PracticeGirlProfile {
   final String professionLabel;
   final String photoId;
   final String personaId;
+
+  /// 卡片稀有度（每卡獨立、與 persona 解耦），鏡像自 server 真相源。
+  /// 抽中機率由 server 加權決定（SR 10%／R 30%／N 60%），client 純呈現。
+  final PracticeGirlRarity rarity;
   final List<String> personalityTags;
   final List<String> interestTags;
   final List<String> lifestyleTags;

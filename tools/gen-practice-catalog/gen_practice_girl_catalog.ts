@@ -31,6 +31,7 @@ const entries = GIRL_PROFILES.map((g) => {
     `professionLabel: ${dartStr(g.professionLabel)}`,
     `photoId: ${dartStr(g.photoId)}`,
     `personaId: ${dartStr(g.personaId)}`,
+    `rarity: PracticeGirlRarity.${g.rarity}`,
     `personalityTags: ${dartList(g.personalityTags)}`,
     `interestTags: ${dartList(g.interestTags)}`,
     `lifestyleTags: ${dartList(g.lifestyleTags)}`,
@@ -45,6 +46,7 @@ export function buildCatalogDart(): string {
 // 來源：supabase/functions/practice-chat/practice_persona.ts (GIRL_PROFILES)
 // 重新產生：deno run --allow-read --allow-write tools/gen-practice-catalog/gen_practice_girl_catalog.ts
 import 'practice_girl_profile.dart';
+import 'practice_girl_rarity.dart';
 
 /// ${GIRL_PROFILES.length} 位陪練女孩的 display-only catalog（profileId=photoId=practice_girl_NNN）。
 const List<PracticeGirlProfile> practiceGirlProfiles = <PracticeGirlProfile>[
