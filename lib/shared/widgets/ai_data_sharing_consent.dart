@@ -5,7 +5,7 @@ import '../../core/services/supabase_service.dart';
 import '../services/link_launch_service.dart';
 
 class AiDataSharingConsent {
-  static const _acceptedKey = 'ai_data_sharing_consent_20260527_v2';
+  static const _acceptedKey = 'ai_data_sharing_consent_20260706_v3';
   static const acceptedKeyForTesting = _acceptedKey;
   static const _privacyUrl = 'https://vibesyncai.app/privacy';
   static const _termsUrl = 'https://vibesyncai.app/terms';
@@ -18,7 +18,7 @@ class AiDataSharingConsent {
   /// AI 實戰練習室走 DeepSeek（非 Claude），須與 Claude 功能各自獨立同意，
   /// 文案也須準確描述「模擬對象練習對話」而非 Claude 功能用途。
   static const practiceConsentKey =
-      'ai_data_sharing_consent_practice_20260624_v1';
+      'ai_data_sharing_consent_practice_20260706_v2';
   static const practiceDestinationLabel = 'DeepSeek API';
   static const practiceDataDescription =
       '可能包含：你在練習室輸入的訊息，以及本次練習的對話脈絡。';
