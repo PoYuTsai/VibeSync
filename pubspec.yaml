@@ -70,6 +70,10 @@ dependencies:
   shared_preferences: ^2.5.4
   audioplayers: ^6.7.1
 
+  # Local Notifications (案4：48h 跟進提醒)
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.9.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
