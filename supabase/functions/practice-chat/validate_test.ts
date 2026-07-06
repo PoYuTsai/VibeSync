@@ -55,10 +55,10 @@ Deno.test("chat without practiceMode defaults to standard", () => {
   assertEquals(r.practiceMode, "standard");
 });
 
-Deno.test("chat without practiceMode defaults temperatureScore to 30", () => {
+Deno.test("chat without practiceMode leaves temperatureScore undefined", () => {
   const r = validateRequest(chatReq([{ role: "user", text: "hi" }]));
   assertEquals(r.practiceMode, "standard");
-  assertEquals(r.temperatureScore, 30);
+  assertEquals(r.temperatureScore, undefined);
 });
 
 Deno.test("practiceMode standard is accepted", () => {
@@ -100,12 +100,12 @@ Deno.test("temperatureScore accepts integers from 0 to 100", () => {
   }
 });
 
-Deno.test("missing beginner temperatureScore defaults to 30", () => {
+Deno.test("missing beginner temperatureScore stays undefined", () => {
   const r = validateRequest({
     ...chatReq([{ role: "user", text: "hi" }]),
     practiceMode: "beginner",
   });
-  assertEquals(r.temperatureScore, 30);
+  assertEquals(r.temperatureScore, undefined);
 });
 
 Deno.test("invalid temperatureScore throws invalid_temperatureScore", () => {
@@ -123,12 +123,15 @@ Deno.test("invalid temperatureScore throws invalid_temperatureScore", () => {
   }
 });
 
-Deno.test("familiarityScore accepts integers from 0 to 100 and defaults to 0", () => {
+Deno.test("familiarityScore accepts integers from 0 to 100 and stays undefined when missing", () => {
   const missing = validateRequest({
     ...chatReq([{ role: "user", text: "hi" }]),
     practiceMode: "beginner",
   });
-  assertEquals((missing as { familiarityScore?: unknown }).familiarityScore, 0);
+  assertEquals(
+    (missing as { familiarityScore?: unknown }).familiarityScore,
+    undefined,
+  );
 
   for (const familiarityScore of [0, 1, 40, 100]) {
     const r = validateRequest({

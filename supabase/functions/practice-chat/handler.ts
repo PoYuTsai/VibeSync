@@ -1394,11 +1394,14 @@ export function createPracticeChatHandler(
     }
 
     const beginnerMode = request.practiceMode === "beginner";
+    // 續聊保溫：ledger 建檔前（新場首回合）允許以 client 攜帶值 seed；ledger
+    // 建檔後一律以 ledger 權威值為準（?? 鏈天然保證）。
     const currentTemperature = beginnerMode
-      ? ledger.temperatureScore ?? difficultyStartTemperature
+      ? ledger.temperatureScore ?? request.temperatureScore ??
+        difficultyStartTemperature
       : null;
     const currentFamiliarity = beginnerMode
-      ? ledger.familiarityScore ?? 0
+      ? ledger.familiarityScore ?? request.familiarityScore ?? 0
       : null;
 
     try {
@@ -1474,7 +1477,8 @@ export function createPracticeChatHandler(
         p_max_replies: MAX_AI_REPLIES,
         p_practice_mode: request.practiceMode,
         // standard 模式一律 null：client 溫度值本就被 RPC 忽略（非 beginner 存
-        // NULL），不再傳入以免誤導耦合。beginner 由 ledger 權威值（缺值 30）驅動。
+        // NULL）。beginner 由 ledger 權威值驅動；ledger 建檔前 fallback 為
+        // client 攜帶值（續聊保溫）→ 難度起始值。
         p_temperature_score: currentTemperature,
         p_familiarity_score: currentFamiliarity,
       },

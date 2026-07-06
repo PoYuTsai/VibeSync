@@ -33,8 +33,12 @@ export type AppliedHintType = "warm_up" | "steady";
 export interface PracticeChatRequest {
   mode: PracticeMode;
   practiceMode: PracticeLearningMode;
-  temperatureScore: number;
-  familiarityScore: number;
+  /**
+   * client 攜帶的溫度三元組分數（續聊同一位保溫用）。選填：缺值時 server 以
+   * ledger 權威值→難度起始值 fallback；ledger 建檔後 client 值一律被忽略。
+   */
+  temperatureScore?: number;
+  familiarityScore?: number;
   sessionId: string;
   turns: PracticeTurn[];
   profile: PracticeProfile;
@@ -77,7 +81,7 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     practiceMode = raw.practiceMode;
   }
 
-  let temperatureScore = 30;
+  let temperatureScore: number | undefined;
   if (raw.temperatureScore !== undefined) {
     if (
       typeof raw.temperatureScore !== "number" ||
@@ -90,7 +94,7 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     temperatureScore = raw.temperatureScore;
   }
 
-  let familiarityScore = 0;
+  let familiarityScore: number | undefined;
   if (raw.familiarityScore !== undefined) {
     if (
       typeof raw.familiarityScore !== "number" ||
