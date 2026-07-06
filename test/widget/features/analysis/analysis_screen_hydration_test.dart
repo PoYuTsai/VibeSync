@@ -3,7 +3,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/analysis_history/data/providers/analysis_history_providers.dart';
+import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
+import '../../../helpers/memory_analysis_history_repository.dart';
 import '../../../helpers/memory_coaching_outcome_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/features/analysis/data/notifiers/streaming_analyze_notifier.dart';
@@ -461,10 +464,12 @@ class _HydrationHarness {
   _HydrationHarness({
     required this.recorder,
     required this.repo,
+    required this.history,
     this.subscription,
   });
   final _RecordingAnalysisService recorder;
   final _StubConversationRepository repo;
+  final MemoryAnalysisHistoryRepository history;
   final _SeededSubscriptionNotifier? subscription;
 }
 
@@ -472,6 +477,7 @@ class _MutableHydrationHarness extends _HydrationHarness {
   _MutableHydrationHarness({
     required super.recorder,
     required super.repo,
+    required super.history,
     required this.notifier,
   });
 
@@ -488,12 +494,14 @@ Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
 
   final recorder = _RecordingAnalysisService();
   final repo = _StubConversationRepository(conversation);
+  final history = MemoryAnalysisHistoryRepository();
 
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         coachingOutcomeRepositoryProvider.overrideWithValue(
             MemoryCoachingOutcomeRepository()),
+        analysisHistoryRepositoryProvider.overrideWithValue(history),
         conversationRepositoryProvider.overrideWithValue(repo),
         conversationProvider(_conversationId).overrideWithValue(conversation),
         analysisServiceProvider.overrideWithValue(recorder),
@@ -512,7 +520,7 @@ Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
   // Let initState's post-frame hydration callback land.
   await tester.pump();
   await tester.pump();
-  return _HydrationHarness(recorder: recorder, repo: repo);
+  return _HydrationHarness(recorder: recorder, repo: repo, history: history);
 }
 
 Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
@@ -525,6 +533,7 @@ Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
 
   final recorder = _RecordingAnalysisService();
   final repo = _StubConversationRepository(conversation);
+  final history = MemoryAnalysisHistoryRepository();
   late final _MutableStreamingAnalyzeNotifier notifier;
 
   await tester.pumpWidget(
@@ -532,6 +541,7 @@ Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
       overrides: [
         coachingOutcomeRepositoryProvider.overrideWithValue(
             MemoryCoachingOutcomeRepository()),
+        analysisHistoryRepositoryProvider.overrideWithValue(history),
         conversationRepositoryProvider.overrideWithValue(repo),
         conversationProvider(_conversationId).overrideWithValue(conversation),
         analysisServiceProvider.overrideWithValue(recorder),
@@ -554,6 +564,7 @@ Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
   return _MutableHydrationHarness(
     recorder: recorder,
     repo: repo,
+    history: history,
     notifier: notifier,
   );
 }
@@ -568,6 +579,7 @@ Future<_HydrationHarness> _pumpAnalysisScreenForPremiumRefresh(
 
   final recorder = _RecordingAnalysisService()..streamResult = streamResult;
   final repo = _StubConversationRepository(conversation);
+  final history = MemoryAnalysisHistoryRepository();
   final limits =
       SubscriptionTierHelper.limitsFor(SubscriptionTierHelper.essential);
   late final _SeededSubscriptionNotifier subscriptionNotifier;
@@ -582,6 +594,7 @@ Future<_HydrationHarness> _pumpAnalysisScreenForPremiumRefresh(
       overrides: [
         coachingOutcomeRepositoryProvider.overrideWithValue(
             MemoryCoachingOutcomeRepository()),
+        analysisHistoryRepositoryProvider.overrideWithValue(history),
         conversationRepositoryProvider.overrideWithValue(repo),
         conversationProvider(_conversationId).overrideWithValue(conversation),
         analysisServiceProvider.overrideWithValue(recorder),
@@ -612,6 +625,7 @@ Future<_HydrationHarness> _pumpAnalysisScreenForPremiumRefresh(
   return _HydrationHarness(
     recorder: recorder,
     repo: repo,
+    history: history,
     subscription: subscriptionNotifier,
   );
 }
@@ -1231,5 +1245,59 @@ void main() {
         await tester.pump(const Duration(milliseconds: 500));
       },
     );
+  });
+
+  group('案2：analyze 歷史事件 hook', () {
+    testWidgets('hydrate persist 成功 → 寫入一筆 analyze 歷史事件', (tester) async {
+      final raw = _fullRawResponse();
+      final conv = _conversation(); // 無既有 snapshot → 會走 persist
+
+      final harness = await _pumpHydratedAnalysisScreenWithRepo(
+        tester,
+        seed: StreamingAnalysisState(
+          phase: StreamingAnalyzePhase.done,
+          recommendationPreview: _preview(runId: 'run_history_write'),
+          full: _fullWithRawResponse(raw),
+          analysisRunId: 'run_history_write',
+        ),
+        conversation: conv,
+      );
+
+      tester.takeException();
+      await tester.pump(const Duration(milliseconds: 1));
+
+      expect(harness.history.events.length, 1);
+      final event = harness.history.events.single;
+      expect(event.kind, AnalysisHistoryKind.analyze);
+      expect(event.conversationId, _conversationId);
+      expect(event.subjectName, '小雲');
+      expect(event.enthusiasmScore, 72);
+      expect(event.gameStageLabel, 'premise');
+    });
+
+    testWidgets('alreadyPersisted gate 命中 → 不寫歷史事件（去重繼承）', (tester) async {
+      final raw = _fullRawResponse();
+      final conv = _conversation(
+        lastAnalysisSnapshotJson: jsonEncode(raw),
+        lastAnalyzedMessageCount: 1,
+        lastEnthusiasmScore: 72,
+      );
+
+      final harness = await _pumpHydratedAnalysisScreenWithRepo(
+        tester,
+        seed: StreamingAnalysisState(
+          phase: StreamingAnalyzePhase.done,
+          recommendationPreview: _preview(runId: 'run_history_dedupe'),
+          full: _fullWithRawResponse(raw),
+          analysisRunId: 'run_history_dedupe',
+        ),
+        conversation: conv,
+      );
+
+      tester.takeException();
+      await tester.pump(const Duration(milliseconds: 1));
+
+      expect(harness.history.events, isEmpty);
+    });
   });
 }

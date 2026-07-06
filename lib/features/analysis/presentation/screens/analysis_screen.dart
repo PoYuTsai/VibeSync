@@ -29,6 +29,8 @@ import '../../../coach_chat/data/services/coach_chat_api_service.dart';
 import '../../../coach_chat/presentation/widgets/coach_chat_card.dart';
 import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
 import '../../../../shared/widgets/coaching_outcome_follow_up_bar.dart';
+import '../../../analysis_history/data/providers/analysis_history_providers.dart';
+import '../../../analysis_history/domain/entities/analysis_history_event.dart';
 import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
 import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
@@ -1316,6 +1318,25 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             : jsonEncode(result.rawResponse);
 
     await ref.read(conversationWriteControllerProvider.notifier).save(conv);
+
+    // 案2：analyze 歷史事件（best-effort：失敗只 debugPrint，絕不 rethrow，
+    // 分析呈現完全不受影響）。去重靠呼叫端既有 gate（hydrate 路徑
+    // _maybePersistAndSyncOnHydrate 的 alreadyPersisted 比對＋listener 路徑
+    // 一次性觸發），同一次分析絕不重複記錄，這裡不另做冪等。
+    try {
+      await ref.read(analysisHistoryRepositoryProvider).append(
+            AnalysisHistoryEvent.analyze(
+              id: const Uuid().v4(),
+              createdAt: DateTime.now(),
+              conversationId: widget.conversationId,
+              subjectName: conv.name,
+              enthusiasmScore: result.enthusiasmScore,
+              gameStageLabel: result.gameStage.current.name,
+            ),
+          );
+    } catch (e) {
+      debugPrint('AnalysisHistory analyze append failed: $e');
+    }
   }
 
   @override
