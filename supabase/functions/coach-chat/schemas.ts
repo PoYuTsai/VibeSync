@@ -78,7 +78,7 @@ export const RequestSchema = z.object({
   analysisSnapshot: AnalysisSnapshotSchema.nullable().optional(),
   effectiveStyleContext: z.string().max(500).nullable().optional(),
   partnerHint: PartnerHintSchema.nullable().optional(),
-  // 教練有記憶：近期建議結果的去識別化洞察句（client digest.localInsightLines）。
+  // 教練有記憶：近期建議結果的去識別化洞察句（client digest.statisticalInsightLines）。
   // 選填，缺席＝現行為（不注入 prompt）。只含統計句，不含對象回覆原文/筆記。
   outcomeInsightLines: z.array(z.string().max(120)).max(6).optional(),
   dataQualityFlagged: z.boolean().default(false),

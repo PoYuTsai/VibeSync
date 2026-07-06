@@ -237,7 +237,7 @@ class CoachChatApiService {
     return '${value.substring(0, maxLength - 1).trimRight()}…';
   }
 
-  // 近期教練建議結果洞察（來自 CoachingOutcomeDigest.localInsightLines）。
+  // 近期教練建議結果洞察（來自 CoachingOutcomeDigest.statisticalInsightLines）。
   // server schema 為 z.array(z.string().max(120)).max(6)，送出前照上限
   // 逐行截斷、去空白行，避免整包 400。含對象回覆原文/筆記的欄位絕不進這裡
   // ——localInsightLines 只含去識別化的統計句。
