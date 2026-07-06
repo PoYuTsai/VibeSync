@@ -27,6 +27,8 @@ import '../../../../shared/widgets/coach_action_card.dart';
 import '../../../../shared/widgets/score_hero_card.dart';
 import '../../../coach_chat/data/services/coach_chat_api_service.dart';
 import '../../../coach_chat/presentation/widgets/coach_chat_card.dart';
+import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
+import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/data/providers/conversation_write_controller.dart';
 import '../../data/providers/analysis_providers.dart';
@@ -154,6 +156,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   List<AnalysisStreamContent> _streamContents = const [];
   int? _activeAnalysisMessageCount;
   Map<String, dynamic>? _lastAiResponse; // 儲存最後的 AI 回應
+
+  /// 批2：本輪分析結果的 outcome 關聯鍵。AnalysisResult 無穩定 id
+  ///（已核實 analysis_models.dart:840 無 id 欄位、snapshot 只存 rawResponse），
+  /// 每次 _applyAnalysisResult 自產；重開畫面 restore 會重生→複製另開一筆
+  /// pending，為已拍板接受的邊際成本。
+  String? _analysisRunKey;
+
+  /// 潤飾稿獨立 runKey（_optimizeMessage 不走 _applyAnalysisResult 漏斗）。
+  String? _polishRunKey;
 
   // 對話延續功能
   final _messageController = TextEditingController();
@@ -1252,6 +1263,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     AnalysisResult result, {
     bool resetFeedbackState = true,
   }) {
+    _analysisRunKey = const Uuid().v4();
     _enthusiasmScore = result.enthusiasmScore;
     _dimensionScores = result.dimensionScores;
     _strategy = result.strategy;
@@ -3877,6 +3889,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     setState(() {
       _isOptimizing = true;
       _optimizedMessage = null;
+      _polishRunKey = null;
       _lastAnalysisTelemetry = null;
     });
 
@@ -3913,6 +3926,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       setState(() {
         _isOptimizing = false;
         _optimizedMessage = result.optimizedMessage;
+        _polishRunKey = const Uuid().v4();
       });
 
       if (_optimizedMessage == null || _optimizedMessage!.optimized.isEmpty) {
@@ -4380,10 +4394,41 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return replyText.isEmpty ? null : replyText;
   }
 
+  String? _analyzeAdviceId(String cardKey) {
+    final runKey = cardKey == 'polish' ? _polishRunKey : _analysisRunKey;
+    if (runKey == null) return null;
+    return 'analyze:${widget.conversationId}:$runKey:$cardKey';
+  }
+
+  Future<void> _recordAnalysisCopy({
+    required String cardKey,
+    required String copiedText,
+  }) async {
+    final adviceId = _analyzeAdviceId(cardKey);
+    if (adviceId == null) return;
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    try {
+      await ref.read(coachingOutcomeRecorderProvider).recordAdviceCopied(
+            CoachingAdviceContext(
+              eventId: adviceId,
+              partnerId: conversation?.partnerId,
+              conversationId: widget.conversationId,
+              source: CoachingOutcomeSource.analyze,
+              adviceId: adviceId,
+              adviceType: cardKey,
+              suggestedMoveSummary: copiedText,
+            ),
+          );
+    } catch (_) {
+      // 記錄失敗不擋複製主流程。
+    }
+  }
+
   void _copyRecommendationText(String text, String label) {
     Clipboard.setData(ClipboardData(text: text));
+    unawaited(_recordAnalysisCopy(cardKey: 'final', copiedText: text));
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(label)),
+      SnackBar(content: Text('$label，發出後記得回來回報結果')),
     );
   }
 
@@ -6668,10 +6713,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         Clipboard.setData(ClipboardData(
                                             text:
                                                 _optimizedMessage!.optimized));
+                                        unawaited(_recordAnalysisCopy(
+                                          cardKey: 'polish',
+                                          copiedText:
+                                              _optimizedMessage!.optimized,
+                                        ));
                                         ScaffoldMessenger.of(context)
                                             .showSnackBar(
                                           const SnackBar(
-                                              content: Text('已複製到剪貼簿')),
+                                              content: Text(
+                                                  '已複製草稿，發出後記得回來回報結果')),
                                         );
                                       },
                                       icon: const Icon(Icons.copy),
@@ -7066,11 +7117,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       content: content,
       option: option,
       isRecommended: isRecommended,
-      onCopy: (_, message) {
+      onCopy: (text, message) {
+        unawaited(_recordAnalysisCopy(cardKey: type, copiedText: text));
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(message),
-            duration: const Duration(seconds: 1),
+            content: Text('$message，發出後記得回來回報結果'),
+            duration: const Duration(seconds: 2),
           ),
         );
       },
