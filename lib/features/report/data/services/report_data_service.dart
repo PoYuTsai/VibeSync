@@ -2,6 +2,7 @@
 
 import 'dart:convert';
 
+import '../../../analysis_history/domain/entities/analysis_history_event.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../analysis/domain/entities/game_stage.dart';
 import '../../domain/entities/report_models.dart';
@@ -124,5 +125,68 @@ class ReportDataService {
     } catch (_) {
       return null;
     }
+  }
+
+  /// 案2：對象清單——distinct conversationId（取最新 subjectName 快照），
+  /// 按最近事件時間 desc（報告頁 chip 列預設選第一個＝最近分析過的對象）。
+  List<AnalysisSubject> analysisSubjects(List<AnalysisHistoryEvent> events) {
+    final latestByConversation = <String, AnalysisHistoryEvent>{};
+    for (final event in events) {
+      if (event.kind != AnalysisHistoryKind.analyze) continue;
+      final id = AnalysisHistoryEvent.normalizeScope(event.conversationId);
+      if (id == null) continue;
+      final existing = latestByConversation[id];
+      if (existing == null || event.createdAt.isAfter(existing.createdAt)) {
+        latestByConversation[id] = event;
+      }
+    }
+    return latestByConversation.entries
+        .map((entry) => AnalysisSubject(
+              conversationId: entry.key,
+              name: entry.value.subjectName ?? '未命名對象',
+              lastEventAt: entry.value.createdAt,
+            ))
+        .toList()
+      ..sort((a, b) => b.lastEventAt.compareTo(a.lastEventAt));
+  }
+
+  /// 案2：單對象熱度時間序列（createdAt 升序；enthusiasmScore null 跳過）。
+  List<HeatTrendPoint> subjectTrendPoints(
+    List<AnalysisHistoryEvent> events,
+    String conversationId,
+  ) {
+    final id = AnalysisHistoryEvent.normalizeScope(conversationId);
+    if (id == null) return const [];
+    return events
+        .where((event) =>
+            event.kind == AnalysisHistoryKind.analyze &&
+            AnalysisHistoryEvent.normalizeScope(event.conversationId) == id &&
+            event.enthusiasmScore != null)
+        .map((event) => HeatTrendPoint(
+              date: event.createdAt,
+              score: event.enthusiasmScore!,
+              conversationName: event.subjectName ?? '',
+            ))
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+  }
+
+  /// 案2：練習溫度全域時間序列——刻意不分對象混排（練習溫度量的是玩家
+  /// 本人的開場→升溫能力，跨對象看斜率才是成長曲線）。temperatureScore
+  /// null（非新手模式）跳過。familiarityScore 不畫第二條線（YAGNI）。
+  List<HeatTrendPoint> practiceTemperaturePoints(
+    List<AnalysisHistoryEvent> events,
+  ) {
+    return events
+        .where((event) =>
+            event.kind == AnalysisHistoryKind.practice &&
+            event.temperatureScore != null)
+        .map((event) => HeatTrendPoint(
+              date: event.createdAt,
+              score: event.temperatureScore!,
+              conversationName: '',
+            ))
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
   }
 }

@@ -53,3 +53,16 @@ class ReportData {
     required this.totalConversations,
   });
 }
+
+/// 案2：報告頁對象選擇器項目（來自 analyze 歷史事件的 distinct conversationId）。
+class AnalysisSubject {
+  final String conversationId;
+  final String name;
+  final DateTime lastEventAt;
+
+  const AnalysisSubject({
+    required this.conversationId,
+    required this.name,
+    required this.lastEventAt,
+  });
+}
