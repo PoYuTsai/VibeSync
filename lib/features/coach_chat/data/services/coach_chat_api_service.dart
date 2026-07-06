@@ -147,6 +147,7 @@ class CoachChatApiService {
     CoachChatAnalysisSnapshot? analysisSnapshot,
     String? effectiveStyleContext,
     CoachChatPartnerHint? partnerHint,
+    List<String> outcomeInsightLines = const [],
     required bool dataQualityFlagged,
   }) async {
     final body = <String, dynamic>{
@@ -177,6 +178,8 @@ class CoachChatApiService {
           partnerHint,
           dataQualityFlagged: dataQualityFlagged,
         ),
+      if (outcomeInsightLines.isNotEmpty)
+        'outcomeInsightLines': _outcomeInsightLinesToWire(outcomeInsightLines),
       'dataQualityFlagged': dataQualityFlagged,
     };
 
@@ -232,6 +235,19 @@ class CoachChatApiService {
   static String _clampForWire(String value, int maxLength) {
     if (value.length <= maxLength) return value;
     return '${value.substring(0, maxLength - 1).trimRight()}…';
+  }
+
+  // 近期教練建議結果洞察（來自 CoachingOutcomeDigest.localInsightLines）。
+  // server schema 為 z.array(z.string().max(120)).max(6)，送出前照上限
+  // 逐行截斷、去空白行，避免整包 400。含對象回覆原文/筆記的欄位絕不進這裡
+  // ——localInsightLines 只含去識別化的統計句。
+  List<String> _outcomeInsightLinesToWire(List<String> lines) {
+    return lines
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .map((line) => _clampForWire(line, 120))
+        .take(6)
+        .toList();
   }
 
   Map<String, dynamic> _messageToWire(CoachChatMessage message) {

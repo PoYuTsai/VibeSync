@@ -47,6 +47,44 @@ Deno.test("validateRequest accepts dialogue session fields", () => {
   assertEquals(parsed.activeSessionTurns.length, 2);
 });
 
+Deno.test("validateRequest accepts optional outcomeInsightLines (digest 回注)", () => {
+  const parsed = validateRequest({
+    ...baseRequest,
+    outcomeInsightLines: [
+      "最近 4 次教練建議結果：2 次有接、1 次冷回、1 次沒回。",
+      "她常在你照著發後冷回，先降速確認再推進。",
+    ],
+  });
+  assertEquals(parsed.outcomeInsightLines?.length, 2);
+});
+
+Deno.test("validateRequest keeps outcomeInsightLines absent when omitted (缺席＝現行為)", () => {
+  const parsed = validateRequest(baseRequest);
+  assertEquals(parsed.outcomeInsightLines, undefined);
+});
+
+Deno.test("validateRequest rejects outcomeInsightLines over the array cap", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        ...baseRequest,
+        outcomeInsightLines: Array.from({ length: 7 }, (_, i) => `洞察${i}`),
+      }),
+    Error,
+  );
+});
+
+Deno.test("validateRequest rejects over-length outcomeInsightLines entries", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        ...baseRequest,
+        outcomeInsightLines: ["長".repeat(121)],
+      }),
+    Error,
+  );
+});
+
 Deno.test("validateRequest rejects images for coach-chat v1", () => {
   assertThrows(
     () => validateRequest({ ...baseRequest, images: ["base64"] }),

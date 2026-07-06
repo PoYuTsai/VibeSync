@@ -14,6 +14,7 @@ export function buildCoachChatPrompt(input: CoachChatRequest): string {
     section("最近對話", formatMessages(input.recentMessages)),
     section("舊對話摘要", input.conversationSummary),
     section("最新分析快照", formatAnalysis(input.analysisSnapshot)),
+    section("近期教練建議結果", formatOutcomeInsights(input.outcomeInsightLines)),
     section("使用者風格設定", input.effectiveStyleContext),
     section("對方提示", formatPartnerHint(input)),
   ].filter(Boolean).join("\n\n");
@@ -67,6 +68,7 @@ const SYSTEM_PROMPT_BASE =
 - coachAnswer 至少自然點出一個具體依據，例如對方某句話、目前熱度/階段訊號、使用者風格、或可信的對方提示；但不要寫成「我參考了 A/B/C」的報告。
 - 如果 dataQualityFlagged=true，只能說「以這段對話看」，不要引用長期對象特質。
 - 如果上下文真的不足，誠實說目前只能先做低信心判斷，並用 clarifyingQuestion 或 reflectionQuestion 收斂，不要假裝有記憶。
+- 如果有「近期教練建議結果」，可自然參考它調整節奏與策略（例如對方常已讀不回就換打法、常接話就順勢推進）；但不要把統計數字或次數念給使用者聽，只把它變成更貼的判斷。
 
 內部先判斷，但輸出不要露出推理過程：
 - 表層事件：對方說了什麼、使用者問什麼。
@@ -118,6 +120,16 @@ const SYSTEM_PROMPT_BASE =
 function section(title: string, value?: string | null): string | null {
   if (value == null || value.trim() === "") return null;
   return `## ${title}\n${value.trim()}`;
+}
+
+function formatOutcomeInsights(
+  lines: CoachChatRequest["outcomeInsightLines"],
+): string {
+  if (!lines || lines.length === 0) return "";
+  return lines
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join("\n");
 }
 
 function formatMessages(messages: CoachChatRequest["recentMessages"]): string {

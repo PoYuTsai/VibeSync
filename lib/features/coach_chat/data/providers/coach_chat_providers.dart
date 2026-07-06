@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/services/storage_service.dart';
+import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
@@ -147,6 +148,16 @@ class CoachChatController
           : ref.read(dataQualityFlagProvider(partnerId));
       final flagged = dataQualityFlag?.isFlagged ?? false;
 
+      // 教練有記憶：近期建議結果 digest。≥3 筆訊號才注入（hasEnoughSignal），
+      // 不足時傳空陣列＝維持現行為（server 側該欄缺席，prompt 不加此節）。
+      // localInsightLines 只含去識別化統計句，不含對象回覆原文與使用者筆記。
+      final outcomeDigest = partnerId != null
+          ? ref.read(coachingOutcomeDigestProvider(partnerId))
+          : ref.read(coachingUnboundOutcomeDigestProvider);
+      final outcomeInsightLines = outcomeDigest.hasEnoughSignal
+          ? outcomeDigest.localInsightLines
+          : const <String>[];
+
       final result = await api.ask(
         conversationId: conversationId,
         partnerId: partnerId,
@@ -165,6 +176,7 @@ class CoachChatController
           partnerId: partnerId,
           dataQualityFlagged: flagged,
         ),
+        outcomeInsightLines: outcomeInsightLines,
         dataQualityFlagged: flagged,
       );
       await repo.put(result);

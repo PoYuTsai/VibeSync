@@ -236,6 +236,41 @@ Deno.test("buildCoachChatPrompt frames attached-partner invitations as role and 
   assertStringIncludes(prompt, "時間成本");
 });
 
+Deno.test("buildCoachChatPrompt injects recent outcome insights when provided", () => {
+  const prompt = buildCoachChatPrompt({
+    conversationId: "c1",
+    userQuestion: "這樣推進會太快嗎？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [],
+    dataQualityFlagged: false,
+    outcomeInsightLines: [
+      "最近 4 次教練建議結果：2 次有接、1 次冷回、1 次沒回。",
+      "她常在你照著發後冷回，先降速確認再推進。",
+    ],
+  });
+
+  assertStringIncludes(prompt, "## 近期教練建議結果");
+  assertStringIncludes(prompt, "最近 4 次教練建議結果");
+  assertStringIncludes(prompt, "先降速確認再推進");
+  // 記憶使用規則要教練自然參考近期結果，但不念統計數字。
+  assertStringIncludes(prompt, "可自然參考它調整節奏與策略");
+});
+
+Deno.test("buildCoachChatPrompt omits outcome section when absent (缺席＝現行為)", () => {
+  const prompt = buildCoachChatPrompt({
+    conversationId: "c1",
+    userQuestion: "她到底什麼意思？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [],
+    dataQualityFlagged: false,
+  });
+
+  // 記憶規則段落本身會提到「近期教練建議結果」，故以 section 標頭精準斷言缺席。
+  assertEquals(prompt.includes("## 近期教練建議結果"), false);
+});
+
 Deno.test("buildCoachChatPrompt makes force-answer session state explicit", () => {
   const prompt = buildCoachChatPrompt({
     conversationId: "c1",

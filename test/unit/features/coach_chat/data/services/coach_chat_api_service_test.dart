@@ -265,6 +265,72 @@ void main() {
       final trait = (hint['traits'] as List).single as String;
       expect(trait.length, lessThanOrEqualTo(40));
     });
+
+    test('wires outcomeInsightLines when provided (digest 回注)', () async {
+      final calls = <_Recorded>[];
+      final service =
+          CoachChatApiService(invoker: _stub(_ok(), recorder: calls));
+
+      await service.ask(
+        conversationId: 'c-1',
+        partnerId: 'p-1',
+        question: '這樣推進會太快嗎？',
+        recentMessages: const [],
+        outcomeInsightLines: const [
+          '最近 4 次教練建議結果：2 次有接、1 次冷回、1 次沒回。',
+          '  她常在你照著發後冷回，先降速確認再推進。  ',
+          '   ',
+        ],
+        dataQualityFlagged: false,
+      );
+
+      // 去空白行後只剩 2 行；每行 trim。
+      expect(calls.single.body['outcomeInsightLines'], [
+        '最近 4 次教練建議結果：2 次有接、1 次冷回、1 次沒回。',
+        '她常在你照著發後冷回，先降速確認再推進。',
+      ]);
+    });
+
+    test('omits outcomeInsightLines when empty (缺席＝現行為)', () async {
+      final calls = <_Recorded>[];
+      final service =
+          CoachChatApiService(invoker: _stub(_ok(), recorder: calls));
+
+      await service.ask(
+        conversationId: 'c-1',
+        partnerId: 'p-1',
+        question: '我該怎麼開場？',
+        recentMessages: const [],
+        outcomeInsightLines: const [],
+        dataQualityFlagged: false,
+      );
+
+      expect(calls.single.body.containsKey('outcomeInsightLines'), isFalse);
+    });
+
+    test('clamps outcomeInsightLines to schema limits (≤6 行、每行 ≤120)',
+        () async {
+      final calls = <_Recorded>[];
+      final service =
+          CoachChatApiService(invoker: _stub(_ok(), recorder: calls));
+
+      await service.ask(
+        conversationId: 'c-1',
+        partnerId: 'p-1',
+        question: '她到底在想什麼？',
+        recentMessages: const [],
+        outcomeInsightLines: [
+          for (var i = 0; i < 10; i++) '洞察$i：${'長' * 300}',
+        ],
+        dataQualityFlagged: false,
+      );
+
+      final lines = calls.single.body['outcomeInsightLines'] as List;
+      expect(lines.length, lessThanOrEqualTo(6));
+      for (final line in lines) {
+        expect((line as String).length, lessThanOrEqualTo(120));
+      }
+    });
   });
 
   group('CoachChatApiService response contract', () {

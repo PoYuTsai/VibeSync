@@ -6,6 +6,9 @@ import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers
 import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
 import 'package:vibesync/features/coach_chat/domain/repositories/coach_chat_repository.dart';
+import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
+import 'package:vibesync/features/coaching_memory/domain/entities/coaching_outcome_event.dart';
+import 'package:vibesync/features/coaching_memory/domain/repositories/coaching_outcome_repository.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation_summary.dart';
@@ -145,6 +148,70 @@ class _FakeRepo implements CoachChatRepository {
   Future<void> clearAll() async => _store.clear();
 }
 
+// digest 回注：controller 讀 coachingOutcomeDigestProvider，底層打 Hive。
+// 測試一律 override repository 成純記憶體 fake，預設空事件＝現行為（不注入）。
+class _FakeOutcomeRepo implements CoachingOutcomeRepository {
+  _FakeOutcomeRepo(this.events);
+
+  final List<CoachingOutcomeEvent> events;
+
+  @override
+  List<CoachingOutcomeEvent> listByPartner(String partnerId, {int? limit}) =>
+      events.where((e) => e.partnerId == partnerId).toList();
+
+  @override
+  List<CoachingOutcomeEvent> listUnbound({int? limit}) =>
+      events.where((e) => e.partnerId == null).toList();
+
+  @override
+  CoachingOutcomeEvent? get(String id) => null;
+
+  @override
+  List<CoachingOutcomeEvent> listRecent({int? limit}) => events;
+
+  @override
+  List<CoachingOutcomeEvent> listByConversation(
+    String conversationId, {
+    int? limit,
+  }) =>
+      const [];
+
+  @override
+  Future<void> put(CoachingOutcomeEvent event) async {}
+
+  @override
+  Future<void> delete(String id) async {}
+
+  @override
+  Future<int> deleteByPartner(String partnerId) async => 0;
+
+  @override
+  Future<int> reassignPartner({
+    required String fromPartnerId,
+    required String toPartnerId,
+  }) async =>
+      0;
+
+  @override
+  Future<void> clearAll() async {}
+}
+
+CoachingOutcomeEvent _outcomeEvent({
+  required String id,
+  String? partnerId = 'p-1',
+  CoachingUserAction userAction = CoachingUserAction.sentAsIs,
+  CoachingOutcomeSignal outcome = CoachingOutcomeSignal.engaged,
+}) =>
+    CoachingOutcomeEvent(
+      id: id,
+      partnerId: partnerId,
+      source: CoachingOutcomeSource.coach,
+      suggestedMoveSummary: '低壓邀約測窗口',
+      userAction: userAction,
+      outcome: outcome,
+      createdAt: DateTime(2026, 5, 7, 10),
+    );
+
 class _RecordedCall {
   final String fn;
   final Map<String, dynamic> body;
@@ -182,9 +249,12 @@ ProviderContainer _container({
   DataQualityFlag flag = const DataQualityFlag.unflagged(),
   String? styleContext = '- Preferred voice: 幽默；回覆要輕鬆、有留白',
   Future<void> Function()? usageSync,
+  List<CoachingOutcomeEvent> outcomeEvents = const [],
 }) {
   return ProviderContainer(overrides: [
     coachChatRepositoryProvider.overrideWithValue(repo),
+    coachingOutcomeRepositoryProvider
+        .overrideWithValue(_FakeOutcomeRepo(outcomeEvents)),
     coachChatApiServiceProvider
         .overrideWithValue(CoachChatApiService(invoker: invoker)),
     coachChatUsageSyncProvider.overrideWithValue(usageSync ?? () async {}),
@@ -599,6 +669,59 @@ void main() {
       expect(repo.latestForConversation('c-1')?.id, 'old');
       expect(repo.putCalls, 0);
       expect(syncCalls, 0);
+    });
+
+    test('injects outcome insight lines once digest has enough signal (≥3)',
+        () async {
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: _invoker(calls: calls),
+        conversation: _conversation(),
+        partner: _partner(),
+        outcomeEvents: [
+          _outcomeEvent(id: 'o1', outcome: CoachingOutcomeSignal.engaged),
+          _outcomeEvent(id: 'o2', outcome: CoachingOutcomeSignal.cold),
+          _outcomeEvent(id: 'o3', outcome: CoachingOutcomeSignal.noReply),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider('c-1').future);
+      await c.read(coachChatControllerProvider('c-1').notifier).ask(
+            question: '這樣推進會太快嗎？',
+            analysisSnapshot: _snapshot(),
+          );
+
+      final lines = calls.single.body['outcomeInsightLines'] as List;
+      expect(lines, isNotEmpty);
+      expect(lines.first, isA<String>());
+    });
+
+    test('omits outcome insight lines when digest lacks signal (<3＝現行為)',
+        () async {
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: _invoker(calls: calls),
+        conversation: _conversation(),
+        partner: _partner(),
+        outcomeEvents: [
+          _outcomeEvent(id: 'o1'),
+          _outcomeEvent(id: 'o2'),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider('c-1').future);
+      await c.read(coachChatControllerProvider('c-1').notifier).ask(
+            question: '她到底在想什麼？',
+            analysisSnapshot: _snapshot(),
+          );
+
+      expect(calls.single.body.containsKey('outcomeInsightLines'), isFalse);
     });
   });
 }
