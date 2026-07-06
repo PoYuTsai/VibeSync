@@ -248,7 +248,8 @@ class CoachingOutcomeCaptureCard extends StatelessWidget {
           ],
           const SizedBox(height: 8),
           Text(
-            '回報不扣額度，也不會自動改寫長期記憶；只是先把結果存在本機。',
+            '回報不扣額度，也不會自動改寫長期記憶。對話原文與筆記永遠只存在手機；'
+            '僅採用情況會去識別化上傳，用來改善建議品質。',
             style: AppTypography.caption.copyWith(
               color: AppColors.glassTextSecondary,
               height: 1.35,

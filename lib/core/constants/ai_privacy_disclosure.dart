@@ -12,5 +12,8 @@ class AiPrivacyDisclosure {
   static const String description =
       '你送出的對話與截圖，會經 VibeSync 後端傳送至第三方 AI\n'
       '（分析與教練用 Anthropic Claude，練習室用 DeepSeek）\n'
-      '每個 AI 功能首次使用前，都會先徵求你的同意';
+      '每個 AI 功能首次使用前，都會先徵求你的同意\n'
+      '\n'
+      '當你回報建議的採用情況時，僅去識別化的統計（採用了哪類建議、\n'
+      '後來互動概況）會上傳以改善服務；你的對話原文與筆記永遠只存在手機';
 }
