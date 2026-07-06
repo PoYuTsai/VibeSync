@@ -69,6 +69,12 @@ String? resolveAppRedirect({
   return null;
 }
 
+/// 跟進提醒本地通知的 deep-link：導到對象詳情頁並聚焦 coach 跟進區。
+/// 用 [PartnerDetailScreen] 的常數組字串，避免 query 參數與路由分歧。
+String followUpDeepLink(String partnerId) =>
+    '/partner/$partnerId?${PartnerDetailScreen.focusQueryParam}='
+    '${PartnerDetailScreen.coachFollowUpFocusValue}';
+
 final router = GoRouter(
   initialLocation: '/login',
   refreshListenable: _routerRefreshListenable,
