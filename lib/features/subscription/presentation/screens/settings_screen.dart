@@ -18,6 +18,8 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/services/link_launch_service.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
+import '../../../follow_up_notification/data/providers/follow_up_notification_service.dart';
+import '../../../follow_up_notification/domain/follow_up_opt_in.dart';
 import '../../../practice_chat/data/providers/practice_chat_providers.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/subscription_tier_helper.dart';
@@ -130,11 +132,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _versionString = '';
   bool _isRefreshingSubscription = true;
   bool _isRefreshingPendingDowngrade = false;
+  bool _followUpReminderOn = false;
 
   @override
   void initState() {
     super.initState();
     _loadVersion();
+    _loadFollowUpReminderState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(_refreshSubscriptionOnEntry());
@@ -147,6 +151,45 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     setState(() {
       _versionString = '${packageInfo.version} (${packageInfo.buildNumber})';
     });
+  }
+
+  /// 讀目前 opt-in 決定開關初值（granted=開）。只讀 store、不碰 gateway，
+  /// 讀失敗（Hive 未開等）退回關閉，絕不阻擋設定頁渲染。
+  void _loadFollowUpReminderState() {
+    try {
+      final optIn = ref.read(followUpOptInStoreProvider).read();
+      _followUpReminderOn = optIn == FollowUpOptIn.granted;
+    } catch (e) {
+      debugPrint('FollowUp reminder state load failed: $e');
+    }
+  }
+
+  /// 48h 跟進提醒總開關：
+  /// 開→requestSoftOptIn（向系統要權限，授權成功才維持開）；
+  /// 關→disableAll（cancelAll + opt-in=denied）。
+  Future<void> _onFollowUpReminderToggled(bool value) async {
+    final service = ref.read(followUpNotificationServiceProvider);
+    try {
+      if (value) {
+        final granted = await service.requestSoftOptIn();
+        if (!mounted) return;
+        setState(() => _followUpReminderOn = granted);
+        if (!granted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('系統未開啟通知權限，請到「設定 > 通知」允許後再試。'),
+            ),
+          );
+        }
+      } else {
+        await service.disableAll();
+        if (!mounted) return;
+        setState(() => _followUpReminderOn = false);
+      }
+    } catch (e) {
+      debugPrint('FollowUp reminder toggle failed: $e');
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _refreshSubscriptionOnEntry() async {
@@ -252,6 +295,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       title: '複製訂閱診斷',
                       onTap: _copySubscriptionDiagnostics,
                     ),
+                ],
+              ),
+              _buildSection(
+                title: '通知',
+                children: [
+                  _buildSwitchTile(
+                    icon: Icons.notifications_active_outlined,
+                    title: '48 小時後跟進提醒',
+                    subtitle: '分析完一段對話後，隔 48 小時提醒你回來看看下一步。',
+                    value: _followUpReminderOn,
+                    onChanged: _onFollowUpReminderToggled,
+                  ),
                 ],
               ),
               _buildSection(
@@ -515,6 +570,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           : Icon(Icons.chevron_right,
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7)),
       onTap: onTap,
+    );
+  }
+
+  Widget _buildSwitchTile({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return SwitchListTile(
+      secondary: Icon(
+        icon,
+        color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
+      ),
+      title: Text(
+        title,
+        style: AppTypography.bodyLarge.copyWith(
+          color: AppColors.onBackgroundPrimary,
+        ),
+      ),
+      subtitle: subtitle == null
+          ? null
+          : Text(
+              subtitle,
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
+              ),
+            ),
+      value: value,
+      activeThumbColor: AppColors.ctaStart,
+      onChanged: onChanged,
     );
   }
 
