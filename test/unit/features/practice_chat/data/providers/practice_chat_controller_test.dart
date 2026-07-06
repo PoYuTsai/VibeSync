@@ -1112,6 +1112,85 @@ void main() {
       expect(repo.getById(newSessionId), isNotNull);
       expect(repo.getById('round1'), isNotNull);
     });
+
+    // ── 續聊保溫：續同一位沿用上一輪溫度三元組 ──────────────────────────
+    PracticeSession beginnerRound1Done() => PracticeSession(
+          id: 'beginner-round1',
+          createdAt: DateTime(2026, 6, 24, 9),
+          aiReplyCount: 3,
+          messages: const [
+            PracticeMessage(role: 'user', text: '嗨'),
+            PracticeMessage(role: 'ai', text: '嗯？'),
+          ],
+          roundIndex: 1,
+          visiblePracticeThreadId: 'beginner-round1',
+          profileId: 'practice_girl_005',
+          practiceMode: 'beginner',
+          temperatureScore: 42,
+          familiarityScore: 10,
+          relationshipStageLabel: '建立熟悉中',
+          hintUsedCount: 2,
+          debriefSummary: '不錯',
+          debriefStrengths: const ['開場好'],
+          debriefSuggestedLine: '約她',
+          debriefVibe: '暖',
+        );
+
+    test('beginner 續玩：溫度三元組沿用上一輪，roundIndex+1、計數歸零', () {
+      final c = makeControllerFrom(beginnerRound1Done());
+      expect(c.currentState.temperatureScore, 42);
+
+      c.continueWithSamePartner(isPaid: true);
+      final s = c.currentState;
+
+      expect(s.temperatureScore, 42);
+      expect(s.familiarityScore, 10);
+      expect(s.relationshipStageLabel, '建立熟悉中');
+      expect(s.lastTemperatureDelta, isNull);
+      expect(s.temperatureReason, isNull);
+      expect(s.roundIndex, 2);
+      expect(s.aiReplyCount, 0);
+      expect(s.hintUsedCount, 0);
+    });
+
+    test('beginner 續玩後首則訊息：API 收到沿用的 temperatureScore 42', () async {
+      final c = makeControllerFrom(beginnerRound1Done());
+      c.continueWithSamePartner(isPaid: true);
+
+      api.sendHandler = (_, {profile}) async => reply(cost: 0);
+      await c.sendMessage('我們再聊聊');
+
+      expect(api.lastPracticeMode, PracticeLearningMode.beginner);
+      expect(api.lastTemperatureScore, 42);
+      expect(api.lastFamiliarityScore, 10);
+    });
+
+    test('standard 續玩：溫度三元組仍為 null', () {
+      final c = makeControllerFrom(round1Done());
+
+      c.continueWithSamePartner(isPaid: true);
+      final s = c.currentState;
+
+      expect(s.temperatureScore, isNull);
+      expect(s.familiarityScore, isNull);
+      expect(s.relationshipStageLabel, isNull);
+    });
+
+    test('startSessionWithProfile（拆解後同一位）：溫度重設為難度初始值（排除範圍鎖定）', () {
+      final c = makeControllerFrom(beginnerRound1Done());
+
+      // 已拆解場不可 resume → 開全新 thread，溫度必須回難度初始值。
+      c.startSessionWithProfile('practice_girl_005');
+      final s = c.currentState;
+
+      expect(s.roundIndex, 1);
+      expect(s.temperatureScore, initialPracticeTemperatureScore(s.difficulty));
+      expect(s.familiarityScore, kInitialPracticeFamiliarityScore);
+      expect(
+        s.relationshipStageLabel,
+        kInitialPracticeRelationshipStageLabel,
+      );
+    });
   });
 
   // ── catalog-profile 身份接線 ─────────────────────────────────────────────

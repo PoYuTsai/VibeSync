@@ -761,6 +761,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
 
   /// 續玩「同一位」：開新 billing session，roundIndex+1（封頂 [kMaxPracticeRounds]），
   /// threadId 不變、訊息／角色／難度保留。不走 draw、不換對象、不消耗翻牌次數。
+  /// beginner 溫度三元組沿用上一輪（續同一位保溫；delta／reason 歸零重來）。
   ///
   /// [isPaid]：Free 續同一位需升級，只觸發付費牆、不動 transcript／不扣費。
   void continueWithSamePartner({required bool isPaid}) {
@@ -791,12 +792,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       visiblePracticeThreadId: state.visiblePracticeThreadId,
       learningMode: state.learningMode,
       temperatureScore: state.isBeginnerMode
-          ? initialPracticeTemperatureScore(state.difficulty)
+          ? (state.temperatureScore ??
+              initialPracticeTemperatureScore(state.difficulty))
           : null,
-      familiarityScore:
-          state.isBeginnerMode ? kInitialPracticeFamiliarityScore : null,
-      relationshipStageLabel:
-          state.isBeginnerMode ? kInitialPracticeRelationshipStageLabel : null,
+      familiarityScore: state.isBeginnerMode
+          ? (state.familiarityScore ?? kInitialPracticeFamiliarityScore)
+          : null,
+      relationshipStageLabel: state.isBeginnerMode
+          ? (state.relationshipStageLabel ??
+              kInitialPracticeRelationshipStageLabel)
+          : null,
       hintUsedCount: 0,
     );
   }
