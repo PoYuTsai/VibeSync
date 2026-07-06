@@ -51,7 +51,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     // 文案與設定頁「AI 與你的隱私」共用 AiPrivacyDisclosure（F5-A7）。
     {
       'title': AiPrivacyDisclosure.title,
-      'description': AiPrivacyDisclosure.description,
+      // onboarding 不列廠商名（避免誤解練習室女孩＝DeepSeek）；
+      // 完整含廠商揭露留在設定頁 AI 隱私頁。
+      'description': AiPrivacyDisclosure.onboardingDescription,
       'imagePath': 'privacy',
     },
   ];

@@ -1,9 +1,10 @@
 // test/widget/features/onboarding/onboarding_ai_privacy_page_test.dart
 //
 // R1-4 App Review 保險：onboarding 最後一頁必須是輕量「AI 與隱私」揭露，
-// 點名第三方 AI 服務（Anthropic Claude／練習室 DeepSeek）與資料外送路徑，
-// 並說明 per-feature 同意閘才是實際同意點。此頁是靜態揭露非同意，
-// 「略過」行為不受影響。
+// 交代資料外送至第三方 AI 與 per-feature 同意閘才是實際同意點。
+// 廠商名（Anthropic Claude／練習室 DeepSeek）刻意不在 onboarding 揭露，
+// 避免誤解練習室女孩＝DeepSeek；完整廠商揭露留在設定頁 AI 隱私頁。
+// 此頁是靜態揭露非同意，「略過」行為不受影響。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/onboarding/presentation/screens/onboarding_screen.dart';
@@ -20,7 +21,7 @@ void main() {
   }
 
   group('onboarding AI 與隱私揭露頁（R1-4）', () {
-    testWidgets('最後一頁是 AI 與隱私揭露，點名 Anthropic 與 DeepSeek',
+    testWidgets('最後一頁是 AI 與隱私揭露：交代第三方 AI 與同意閘，但不列廠商名',
         (tester) async {
       await pumpOnboarding(tester);
 
@@ -32,10 +33,12 @@ void main() {
       await _swipeToNextPage(tester); // → 4（揭露頁）
 
       expect(find.text('AI 與你的隱私'), findsOneWidget);
-      expect(find.textContaining('Anthropic'), findsOneWidget);
-      expect(find.textContaining('DeepSeek'), findsOneWidget);
-      // 揭露必須交代同意閘：首次使用各 AI 功能前會再徵求同意。
+      // 保留第一句（送第三方 AI）與第三句（同意閘）。
+      expect(find.textContaining('第三方 AI'), findsOneWidget);
       expect(find.textContaining('同意'), findsWidgets);
+      // 廠商名刻意不在 onboarding 揭露（避免誤解練習室女孩＝DeepSeek）。
+      expect(find.textContaining('Anthropic'), findsNothing);
+      expect(find.textContaining('DeepSeek'), findsNothing);
     });
 
     // 案 3 冷啟動分流後，揭露頁不再是最終頁（第 5 頁是分流頁），
