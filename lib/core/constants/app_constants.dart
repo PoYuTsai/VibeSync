@@ -43,4 +43,5 @@ class AppConstants {
   static const settingsBox = 'settings';
   static const usageBox = 'usage';
   static const coachingOutcomeEventsBox = 'coaching_outcome_events';
+  static const analysisHistoryEventsBox = 'analysis_history_events';
 }

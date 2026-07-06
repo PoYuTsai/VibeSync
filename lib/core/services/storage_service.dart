@@ -4,6 +4,7 @@ import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../features/coach_chat/domain/entities/coach_chat_result.dart';
 import '../../features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
+import '../../features/analysis_history/domain/entities/analysis_history_event.dart';
 import '../../features/coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../features/conversation/domain/entities/conversation.dart';
 import '../../features/conversation/domain/entities/conversation_summary.dart';
@@ -53,6 +54,8 @@ class StorageService {
     Hive.registerAdapter(CoachingOutcomeSignalAdapter()); // typeId=21
     Hive.registerAdapter(PracticeMessageAdapter()); // typeId=22, AI 實戰練習室
     Hive.registerAdapter(PracticeSessionAdapter()); // typeId=23, AI 實戰練習室
+    Hive.registerAdapter(AnalysisHistoryEventAdapter()); // typeId=24, 案2 歷史表
+    Hive.registerAdapter(AnalysisHistoryKindAdapter()); // typeId=25, 案2 歷史表
 
     // Get or create encryption key
     final encryptionKey = await _getEncryptionKey();
@@ -95,6 +98,11 @@ class StorageService {
 
     await Hive.openBox<CoachingOutcomeEvent>(
       AppConstants.coachingOutcomeEventsBox,
+      encryptionCipher: HiveAesCipher(encryptionKey),
+    );
+
+    await Hive.openBox<AnalysisHistoryEvent>(
+      AppConstants.analysisHistoryEventsBox,
       encryptionCipher: HiveAesCipher(encryptionKey),
     );
 
@@ -179,6 +187,9 @@ class StorageService {
   static Box<CoachingOutcomeEvent> get coachingOutcomeEventsBox =>
       Hive.box<CoachingOutcomeEvent>(AppConstants.coachingOutcomeEventsBox);
 
+  static Box<AnalysisHistoryEvent> get analysisHistoryEventsBox =>
+      Hive.box<AnalysisHistoryEvent>(AppConstants.analysisHistoryEventsBox);
+
   static Box<PracticeSession> get practiceSessionsBox =>
       Hive.box<PracticeSession>('practice_sessions');
 
@@ -194,7 +205,8 @@ class StorageService {
 
   /// Clear all stored data (conversations, partners, user profile,
   /// partner style overrides, partner data quality states, coach follow-up /
-  /// coach chat results, practice sessions, settings, usage).
+  /// coach chat results, coaching outcome events, analysis history events,
+  /// practice sessions, settings, usage).
   static Future<void> clearAll() async {
     await conversationsBox.clear();
     await partnersBox.clear();
@@ -204,6 +216,7 @@ class StorageService {
     await coachFollowUpResultsBox.clear();
     await coachChatResultsBox.clear();
     await coachingOutcomeEventsBox.clear();
+    await analysisHistoryEventsBox.clear();
     await clearPracticeRoomState();
     await settingsBox.clear();
     await usageBox.clear();
