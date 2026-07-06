@@ -150,12 +150,14 @@ class CoachChatController
 
       // 教練有記憶：近期建議結果 digest。≥3 筆訊號才注入（hasEnoughSignal），
       // 不足時傳空陣列＝維持現行為（server 側該欄缺席，prompt 不加此節）。
-      // localInsightLines 只含去識別化統計句，不含對象回覆原文與使用者筆記。
+      // 一律用 statisticalInsightLines（只去識別化統計/類別句），絕不用
+      // localInsightLines——後者含「最近嘗試」自由文字建議，會夾帶複製/生成
+      // 回覆原文（Codex 批4 finding）。對象回覆原文與使用者筆記本就不在此。
       final outcomeDigest = partnerId != null
           ? ref.read(coachingOutcomeDigestProvider(partnerId))
           : ref.read(coachingUnboundOutcomeDigestProvider);
       final outcomeInsightLines = outcomeDigest.hasEnoughSignal
-          ? outcomeDigest.localInsightLines
+          ? outcomeDigest.statisticalInsightLines
           : const <String>[];
 
       final result = await api.ask(

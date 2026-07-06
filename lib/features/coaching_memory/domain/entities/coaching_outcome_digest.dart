@@ -200,7 +200,10 @@ class CoachingOutcomeDigest {
     return _dominant(counts);
   }
 
-  List<String> get localInsightLines {
+  /// 只含去識別化的統計／類別洞察句，絕不夾帶任何自由文字（建議內容、
+  /// 對象回覆原文、使用者筆記）。**prompt 回注與任何外送一律用這個**，
+  /// 不用 [localInsightLines]（後者含「最近嘗試」自由文字，只供本機 UI）。
+  List<String> get statisticalInsightLines {
     if (!hasEvents) return const [];
 
     final lines = <String>[
@@ -220,6 +223,15 @@ class CoachingOutcomeDigest {
       lines.add('近期回應偏卡，之後建議先調整節奏或降低推進感。');
     }
 
+    return List.unmodifiable(lines);
+  }
+
+  /// 本機 UI 顯示用，可含「最近嘗試」自由文字（建議摘要）。
+  /// **絕不用於 prompt 回注或外送**——那些路徑一律用 [statisticalInsightLines]。
+  List<String> get localInsightLines {
+    if (!hasEvents) return const [];
+
+    final lines = <String>[...statisticalInsightLines];
     if (recentMoveSummaries.isNotEmpty) {
       lines.add('最近嘗試：${recentMoveSummaries.first}');
     }

@@ -201,14 +201,19 @@ CoachingOutcomeEvent _outcomeEvent({
   String? partnerId = 'p-1',
   CoachingUserAction userAction = CoachingUserAction.sentAsIs,
   CoachingOutcomeSignal outcome = CoachingOutcomeSignal.engaged,
+  String suggestedMoveSummary = '低壓邀約測窗口',
+  String? outcomeTextPreview,
+  String? userNote,
 }) =>
     CoachingOutcomeEvent(
       id: id,
       partnerId: partnerId,
       source: CoachingOutcomeSource.coach,
-      suggestedMoveSummary: '低壓邀約測窗口',
+      suggestedMoveSummary: suggestedMoveSummary,
       userAction: userAction,
       outcome: outcome,
+      outcomeTextPreview: outcomeTextPreview,
+      userNote: userNote,
       createdAt: DateTime(2026, 5, 7, 10),
     );
 
@@ -697,6 +702,51 @@ void main() {
       final lines = calls.single.body['outcomeInsightLines'] as List;
       expect(lines, isNotEmpty);
       expect(lines.first, isA<String>());
+    });
+
+    test('injected outcome lines never leak preview/note/move-summary text',
+        () async {
+      // Codex 批4 finding 回歸：即使事件帶敏感自由文字，注入 coach-chat 的
+      // outcomeInsightLines 只能是統計句，絕不含對象回覆原文、使用者筆記、
+      // 或複製/生成的建議摘要原文。
+      const preview = '對方回覆原文機密不可外送ABC';
+      const note = '使用者私人筆記機密不可外送XYZ';
+      const move = '複製的完整回覆原文機密不可外送123';
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: _invoker(calls: calls),
+        conversation: _conversation(),
+        partner: _partner(),
+        outcomeEvents: [
+          _outcomeEvent(
+            id: 'o1',
+            outcome: CoachingOutcomeSignal.engaged,
+            suggestedMoveSummary: move,
+            outcomeTextPreview: preview,
+            userNote: note,
+          ),
+          _outcomeEvent(id: 'o2', outcome: CoachingOutcomeSignal.cold),
+          _outcomeEvent(id: 'o3', outcome: CoachingOutcomeSignal.noReply),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider('c-1').future);
+      await c.read(coachChatControllerProvider('c-1').notifier).ask(
+            question: '這樣推進會太快嗎？',
+            analysisSnapshot: _snapshot(),
+          );
+
+      final lines =
+          (calls.single.body['outcomeInsightLines'] as List).cast<String>();
+      expect(lines, isNotEmpty);
+      final joined = lines.join('\n');
+      expect(joined.contains(preview), isFalse);
+      expect(joined.contains(note), isFalse);
+      expect(joined.contains(move), isFalse);
+      expect(joined.contains('最近嘗試'), isFalse);
     });
 
     test('omits outcome insight lines when digest lacks signal (<3＝現行為)',

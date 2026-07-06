@@ -166,4 +166,38 @@ void main() {
       contains('近期回應偏卡，之後建議先調整節奏或降低推進感。'),
     );
   });
+
+  // Codex 批4 finding：注入 prompt 的洞察行絕不能夾帶自由文字建議摘要
+  // （複製/生成的回覆原文）。statisticalInsightLines 只含統計/類別句；
+  // 「最近嘗試：<摘要>」只准出現在本機 UI 的 localInsightLines。
+  test('statisticalInsightLines never carries free-text move summaries', () {
+    const secret = '被妳發現了我會在飲料櫃前思考人生要不要一起亂逛';
+    final digest = CoachingOutcomeDigest.fromEvents(
+      partnerId: 'p-1',
+      events: [
+        _event('m-1',
+            userAction: CoachingUserAction.sentAsIs,
+            outcome: CoachingOutcomeSignal.engaged,
+            summary: secret),
+        _event('m-2', outcome: CoachingOutcomeSignal.cold),
+        _event('m-3', outcome: CoachingOutcomeSignal.noReply),
+      ],
+    );
+
+    // 注入路徑：不得含建議原文，任一行都不得出現 secret。
+    for (final line in digest.statisticalInsightLines) {
+      expect(line.contains(secret), isFalse);
+      expect(line.startsWith('最近嘗試'), isFalse);
+    }
+    // 本機 UI 路徑：才顯示「最近嘗試：<摘要>」。
+    expect(
+      digest.localInsightLines.any((l) => l.contains('最近嘗試：$secret')),
+      isTrue,
+    );
+    // 統計首句在兩者都在。
+    expect(
+      digest.statisticalInsightLines.first.startsWith('最近 3 次教練建議結果'),
+      isTrue,
+    );
+  });
 }
