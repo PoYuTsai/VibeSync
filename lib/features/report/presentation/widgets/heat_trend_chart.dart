@@ -159,20 +159,28 @@ class HeatTrendChart extends StatelessWidget {
     final sorted = List<HeatTrendPoint>.from(trendPoints)
       ..sort((a, b) => a.date.compareTo(b.date));
 
-    final spots = <FlSpot>[];
-    for (var i = 0; i < sorted.length; i++) {
-      spots.add(FlSpot(i.toDouble(), sorted[i].score.toDouble()));
-    }
+    final firstDate = sorted.first.date;
+    // x＝距首點天數（分鐘精度轉天，同日多點不撞 x）。
+    double xOf(DateTime date) =>
+        date.difference(firstDate).inMinutes / (24 * 60.0);
+
+    final spots = [
+      for (final point in sorted) FlSpot(xOf(point.date), point.score.toDouble()),
+    ];
+    // 全部同一時刻（maxX=0）時 fl_chart 需要 minX<maxX，退 1 天刻度。
+    final maxX = spots.last.x <= 0 ? 1.0 : spots.last.x;
 
     return SizedBox(
       height: 180,
       child: LineChart(
         LineChartData(
+          minX: 0,
+          maxX: maxX,
           minY: 0,
           maxY: 100,
           clipData: const FlClipData.all(),
           gridData: _gridData(),
-          titlesData: _titlesData(sorted),
+          titlesData: _titlesData(firstDate, maxX),
           borderData: FlBorderData(show: false),
           lineBarsData: [_lineBarData(spots)],
           lineTouchData: _touchData(sorted),
@@ -221,8 +229,10 @@ class HeatTrendChart extends StatelessWidget {
     );
   }
 
-  FlTitlesData _titlesData(List<HeatTrendPoint> sorted) {
+  FlTitlesData _titlesData(DateTime firstDate, double maxX) {
     final dateFormat = DateFormat('M/dd');
+    // 最多 ~5 個日期標籤，避免重疊。
+    final bottomInterval = maxX <= 4 ? 1.0 : (maxX / 4).ceilToDouble();
 
     return FlTitlesData(
       topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -249,23 +259,19 @@ class HeatTrendChart extends StatelessWidget {
         sideTitles: SideTitles(
           showTitles: true,
           reservedSize: 28,
-          interval: 1,
+          interval: bottomInterval,
           getTitlesWidget: (value, meta) {
-            final idx = value.toInt();
-            if (idx < 0 || idx >= sorted.length) {
-              return const SizedBox.shrink();
-            }
-            // Show at most ~5 labels to avoid overlap
-            if (sorted.length > 5 && idx % (sorted.length ~/ 5 + 1) != 0 && idx != sorted.length - 1) {
-              return const SizedBox.shrink();
-            }
+            if (value < 0 || value > maxX) return const SizedBox.shrink();
+            final date =
+                firstDate.add(Duration(minutes: (value * 24 * 60).round()));
             return Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text(
-                dateFormat.format(sorted[idx].date),
+                dateFormat.format(date),
                 style: TextStyle(
                   fontSize: 10,
-                  color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
+                  color:
+                      AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
                 ),
               ),
             );
