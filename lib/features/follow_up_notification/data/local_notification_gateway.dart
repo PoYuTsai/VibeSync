@@ -98,7 +98,10 @@ class LocalNotificationGateway implements NotificationGateway {
       body,
       tz.TZDateTime.from(fireAt, tz.local),
       details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      // 48h 跟進提醒不需秒級精準；用 inexact 避免 Android 12+ 需宣告
+      // SCHEDULE_EXACT_ALARM 權限，否則 exact 模式會 throw exact_alarms_not_permitted
+      // 被上層 best-effort 吞成「靜默無通知」（Codex 案4 F1）。
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       payload: payload,
