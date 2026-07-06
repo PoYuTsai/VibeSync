@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:uuid/uuid.dart';
+
 import '../../../../core/services/supabase_service.dart';
 
 typedef OpenerInvoker = Future<OpenerInvokeResponse> Function(
@@ -88,6 +90,11 @@ class OpenerResult {
   final String? recommendedReason;
   final int costUsed;
 
+  /// 批2：outcome 回報的 adviceId 基底（`opener:<requestId>:<type>`）。
+  /// 生成時由 screen 掛上扣費 idempotency 的同一個 requestId；
+  /// 舊快取缺席時 fromJson 自產（冪等斷裂為已拍板接受的邊際成本）。
+  final String? requestId;
+
   const OpenerResult({
     this.profileAnalysis,
     required this.openers,
@@ -95,6 +102,7 @@ class OpenerResult {
     this.recommendedPick,
     this.recommendedReason,
     this.costUsed = 3,
+    this.requestId,
   });
 
   String? get bestOpenerType {
@@ -153,6 +161,19 @@ class OpenerResult {
       recommendedPick: visibleOpeners.isEmpty ? null : 'extend',
       recommendedReason: visibleReason,
       costUsed: costUsed,
+      requestId: requestId,
+    );
+  }
+
+  OpenerResult withRequestId(String? requestId) {
+    return OpenerResult(
+      profileAnalysis: profileAnalysis,
+      openers: openers,
+      pioneerPlan: pioneerPlan,
+      recommendedPick: recommendedPick,
+      recommendedReason: recommendedReason,
+      costUsed: costUsed,
+      requestId: requestId ?? this.requestId,
     );
   }
 
@@ -164,6 +185,7 @@ class OpenerResult {
       if (recommendedPick != null) 'recommendedPick': recommendedPick,
       if (recommendedReason != null) 'recommendedReason': recommendedReason,
       'costUsed': costUsed,
+      if (requestId != null) 'requestId': requestId,
     };
   }
 
@@ -176,6 +198,10 @@ class OpenerResult {
       recommendedPick: json['recommendedPick'] as String?,
       recommendedReason: json['recommendedReason'] as String?,
       costUsed: (json['costUsed'] as num?)?.round() ?? 3,
+      requestId: switch (json['requestId']) {
+        final String value when value.trim().isNotEmpty => value.trim(),
+        _ => const Uuid().v4(),
+      },
     );
   }
 

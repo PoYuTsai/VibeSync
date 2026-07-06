@@ -512,7 +512,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       );
 
       final service = OpenerService();
-      final result = await service.generateOpeners(
+      final rawResult = await service.generateOpeners(
         images: input.images,
         name: input.name,
         bio: input.bio,
@@ -526,6 +526,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       // 結果已到手＝這次計費完結；之後任何失敗（存草稿等）都不該讓
       // 下一次生成沿用同 id 而被 server 當重試去重。
       _requestSession.markSuccess();
+      // 批2：outcome adviceId 與扣費共用同一 requestId；必須在 saveDraft
+      // 前掛上，草稿序列化才帶得到。
+      final result = rawResult.withRequestId(attempt.requestId);
       try {
         final draft = await _resultCacheService.saveDraft(
           result: result,

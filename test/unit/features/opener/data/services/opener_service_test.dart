@@ -400,4 +400,50 @@ void main() {
       );
     });
   });
+
+  group('OpenerResult.requestId（批2 outcome adviceId 基底）', () {
+    test('toJson/fromJson round-trip 保留 requestId', () {
+      const result = OpenerResult(
+        openers: {'extend': '妳週末也會去爬山嗎？'},
+        requestId: 'req-1',
+      );
+      final restored = OpenerResult.fromJson(result.toJson());
+      expect(restored.requestId, 'req-1');
+    });
+
+    test('fromJson 缺 requestId（舊快取）自產非空 id，且每次解析各自成一 id', () {
+      final json = const OpenerResult(openers: {'extend': 'hi'}).toJson()
+        ..remove('requestId');
+      final a = OpenerResult.fromJson(json);
+      final b = OpenerResult.fromJson(json);
+      expect(a.requestId, isNotNull);
+      expect(a.requestId, isNotEmpty);
+      expect(a.requestId, isNot(b.requestId)); // 接受的邊際成本，鎖住行為
+    });
+
+    test('visibleForAccess 對 free user 保留 requestId', () {
+      const result = OpenerResult(
+        openers: {'extend': 'hi', 'tease': 'yo'},
+        recommendedPick: 'tease',
+        requestId: 'req-1',
+      );
+      expect(
+        result.visibleForAccess(isFreeUser: true).requestId,
+        'req-1',
+      );
+    });
+
+    test('withRequestId 只掛 id 不動其他欄位', () {
+      const result = OpenerResult(
+        openers: {'extend': 'hi'},
+        recommendedPick: 'extend',
+        costUsed: 5,
+      );
+      final tagged = result.withRequestId('req-9');
+      expect(tagged.requestId, 'req-9');
+      expect(tagged.openers, result.openers);
+      expect(tagged.recommendedPick, 'extend');
+      expect(tagged.costUsed, 5);
+    });
+  });
 }
