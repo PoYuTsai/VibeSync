@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,6 +18,10 @@ import '../../data/providers/opener_providers.dart';
 import '../../data/services/opener_request_session.dart';
 import '../../data/services/opener_result_cache_service.dart';
 import '../../data/services/opener_service.dart';
+import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
+import '../../../../shared/widgets/coaching_outcome_follow_up_bar.dart';
+import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
+import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../widgets/opener_generation_progress.dart';
 
 class OpeningRescueScreen extends ConsumerStatefulWidget {
@@ -66,7 +72,19 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
   }
 
   static String copiedOpenerMessage(String label) {
-    return '已複製這則開場白。貼到交友軟體送出；她回覆後，點下方「她回覆了，開始分析對話」。';
+    return '已複製這則開場白。貼到交友軟體送出，發出後記得回來回報結果；'
+        '她回覆後，點下方「她回覆了，開始分析對話」。';
+  }
+
+  /// 批2：opener outcome 事件的 adviceId（＝eventId）。
+  /// requestId 缺席→null＝不自動記、不渲染晶片條（防禦，正常路徑必有）。
+  static String? openerAdviceIdFor({
+    required String? requestId,
+    required String type,
+  }) {
+    final normalized = requestId?.trim();
+    if (normalized == null || normalized.isEmpty) return null;
+    return 'opener:$normalized:$type';
   }
 
   /// Canonical 5-style contract shared with the server's OPENER_TYPES.
@@ -1109,6 +1127,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           ),
         ),
 
+        ..._buildOpenerOutcomeBars(openerCards),
+
         // Recommended reason
         if (result.recommendedReason != null &&
             (!isFree || result.recommendedPick == 'extend')) ...[
@@ -1442,6 +1462,111 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     return items;
   }
 
+  String? _openerAdviceId(String type) => OpeningRescueScreen.openerAdviceIdFor(
+        requestId: _result?.requestId,
+        type: type,
+      );
+
+  CoachingAdviceContext? _openerAdviceContext({
+    required String type,
+    required String content,
+  }) {
+    final adviceId = _openerAdviceId(type);
+    if (adviceId == null) return null;
+    return CoachingAdviceContext(
+      eventId: adviceId,
+      partnerId: widget.partnerId,
+      source: CoachingOutcomeSource.opener,
+      adviceId: adviceId,
+      adviceType: type,
+      suggestedMoveSummary: content,
+    );
+  }
+
+  Future<void> _recordOpenerCopy({
+    required String type,
+    required String content,
+  }) async {
+    final advice = _openerAdviceContext(type: type, content: content);
+    if (advice == null) return;
+    try {
+      await ref
+          .read(coachingOutcomeRecorderProvider)
+          .recordAdviceCopied(advice);
+    } catch (_) {
+      // 記錄失敗不擋複製主流程，也不打擾使用者。
+    }
+  }
+
+  Future<void> _recordOpenerUserAction({
+    required String type,
+    required String content,
+    required CoachingUserAction action,
+  }) async {
+    final advice = _openerAdviceContext(type: type, content: content);
+    if (advice == null) return;
+    try {
+      await ref.read(coachingOutcomeRecorderProvider).recordAdviceUserAction(
+            advice: advice,
+            userAction: action,
+            outcome: coachingOutcomeForUserAction(action),
+          );
+      _showOpenerSnackBar(
+        '已記下「${coachingUserActionLabel(action)}」，不扣額度。',
+      );
+    } catch (_) {
+      _showOpenerSnackBar('暫時記不起來，晚點再試一次。');
+    }
+  }
+
+  Future<void> _recordOpenerReaction({
+    required String type,
+    required CoachingOutcomeSignal signal,
+  }) async {
+    final adviceId = _openerAdviceId(type);
+    if (adviceId == null) return;
+    try {
+      final updated = await ref
+          .read(coachingOutcomeRecorderProvider)
+          .recordAdviceReaction(eventId: adviceId, outcome: signal);
+      if (updated == null) return;
+      _showOpenerSnackBar(
+        '已記下「${coachingOutcomeSignalLabel(signal)}」，不扣額度。',
+      );
+    } catch (_) {
+      _showOpenerSnackBar('暫時記不起來，晚點再試一次。');
+    }
+  }
+
+  List<Widget> _buildOpenerOutcomeBars(List<OpenerCardSpec> openerCards) {
+    final bars = <Widget>[];
+    for (final card in openerCards) {
+      if (card.isLocked) continue;
+      final adviceId = _openerAdviceId(card.type);
+      if (adviceId == null) continue;
+      final event = ref.watch(coachingOutcomeEventProvider(adviceId));
+      if (event == null) continue; // 沒複製過不浮出
+      bars.add(Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: CoachingOutcomeFollowUpBar(
+          event: event,
+          label: OpeningRescueScreen.openerTypeLabels[card.type] ?? card.type,
+          onUserActionSelected: (action) => _recordOpenerUserAction(
+            type: card.type,
+            content: card.content,
+            action: action,
+          ),
+          onOutcomeSelected: (signal) => _recordOpenerReaction(
+            type: card.type,
+            signal: signal,
+          ),
+        ),
+      ));
+    }
+    if (bars.isEmpty) return const [];
+    return [const SizedBox(height: 4), ...bars];
+  }
+
   Widget _buildOpenerCard({
     required String type,
     required String content,
@@ -1529,6 +1654,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 child: TextButton.icon(
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: content));
+                    unawaited(_recordOpenerCopy(type: type, content: content));
                     _showOpenerSnackBar(
                       OpeningRescueScreen.copiedOpenerMessage(label),
                     );

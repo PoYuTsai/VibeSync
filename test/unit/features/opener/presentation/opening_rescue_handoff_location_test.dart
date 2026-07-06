@@ -83,8 +83,30 @@ void main() {
 
     expect(message, contains('已複製這則開場白'));
     expect(message, contains('貼到交友軟體送出'));
+    expect(message, contains('回來回報結果')); // 批2新增
     expect(message, contains('她回覆後'));
     expect(message, contains('點下方「她回覆了，開始分析對話」'));
+  });
+
+  group('openerAdviceIdFor', () {
+    test('組合 opener:<requestId>:<type>', () {
+      expect(
+        OpeningRescueScreen.openerAdviceIdFor(
+            requestId: 'req-1', type: 'tease'),
+        'opener:req-1:tease',
+      );
+    });
+
+    test('requestId 缺席回 null（不記錄、不渲染晶片條）', () {
+      expect(
+        OpeningRescueScreen.openerAdviceIdFor(requestId: null, type: 'extend'),
+        isNull,
+      );
+      expect(
+        OpeningRescueScreen.openerAdviceIdFor(requestId: '  ', type: 'extend'),
+        isNull,
+      );
+    });
   });
 
   test('handoff URL drops partnerId when entry was partner-less', () {
