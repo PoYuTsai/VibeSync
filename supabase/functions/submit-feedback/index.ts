@@ -10,6 +10,7 @@ import {
   stripBearer,
   truncateOptionalStringToMax,
 } from "./feedback_utils.ts";
+import { buildOutcomeRow } from "./outcome_utils.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -180,6 +181,28 @@ serve(async (req) => {
 
     if (!isPlainObject(body)) {
       return jsonResponse({ error: "Request body must be a JSON object" }, 400);
+    }
+
+    // 案1批3：outcome loop 去識別化上傳。與 feedback 流程互斥，提前 return。
+    if (body.kind === "outcome") {
+      const built = buildOutcomeRow(user.id, body.event);
+      if (!built.ok) {
+        return jsonResponse({ error: built.error }, 400);
+      }
+
+      const { error: upsertError } = await supabase
+        .from("outcome_events")
+        .upsert(
+          { ...built.row, updated_at: new Date().toISOString() },
+          { onConflict: "user_id,id" },
+        );
+
+      if (upsertError) {
+        console.error("Outcome upsert error:", upsertError);
+        return jsonResponse({ error: "Failed to save outcome" }, 500);
+      }
+
+      return jsonResponse({ success: true });
     }
 
     const rawRating = body.rating;
