@@ -514,7 +514,7 @@ class _CoachChatThreadView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _CoachChatResultView(
+        CoachChatResultView(
           result: latest,
           question: latest.question,
           dailyRemaining: dailyRemaining,
@@ -735,14 +735,17 @@ class _CoachChatHistoryTile extends StatelessWidget {
   }
 }
 
-class _CoachChatResultView extends ConsumerWidget {
+/// 公開僅為了 widget test 直接 pump；production 只在本檔內使用。
+@visibleForTesting
+class CoachChatResultView extends ConsumerWidget {
   final CoachChatResult result;
   final String? question;
   final int dailyRemaining;
   final VoidCallback onFollowUp;
   final VoidCallback onForceAnswer;
 
-  const _CoachChatResultView({
+  const CoachChatResultView({
+    super.key,
     required this.result,
     required this.dailyRemaining,
     required this.onFollowUp,
@@ -935,10 +938,7 @@ class _CoachChatResultView extends ConsumerWidget {
     WidgetRef ref,
     CoachingUserAction action,
   ) async {
-    final outcome = (action == CoachingUserAction.sentAsIs ||
-            action == CoachingUserAction.editedAndSent)
-        ? CoachingOutcomeSignal.pending
-        : CoachingOutcomeSignal.unknown;
+    final outcome = coachingOutcomeForUserAction(action);
     try {
       await ref.read(coachingOutcomeRecorderProvider).recordCoachResultOutcome(
             result: result,
