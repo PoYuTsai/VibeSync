@@ -18,10 +18,12 @@ import '../../../analysis/domain/entities/game_stage.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/presentation/widgets/about_me_card.dart';
+import '../../domain/entities/report_models.dart';
 import '../../data/providers/report_providers.dart';
 import '../widgets/heat_trend_chart.dart';
 import '../widgets/conversation_comparison_chart.dart';
 import '../widgets/partner_mindmap_card_list.dart';
+import '../widgets/report_subject_selector.dart';
 import '../widgets/stage_distribution_chart.dart';
 
 class MyReportScreen extends ConsumerWidget {
@@ -38,6 +40,15 @@ class MyReportScreen extends ConsumerWidget {
     final stageLabels = {
       for (final p in partners) p.id: _latestStageLabel(ref, p.id),
     };
+
+    // 案2：對象選擇器＋單對象熱度序列（averageScore/scoreDelta 維持
+    // Conversation 邏輯不動，只換 trendPoints 資料源）。
+    final subjects = ref.watch(analysisSubjectsProvider);
+    final selectedSubject = ref.watch(selectedReportSubjectProvider) ??
+        (subjects.isEmpty ? null : subjects.first.conversationId);
+    final subjectPoints = selectedSubject == null
+        ? const <HeatTrendPoint>[]
+        : ref.watch(subjectHeatTrendProvider(selectedSubject));
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
@@ -73,10 +84,23 @@ class MyReportScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 24),
+          if (subjects.isNotEmpty) ...[
+            ReportSubjectSelector(
+              subjects: subjects,
+              selectedConversationId: selectedSubject,
+              onSelected: (id) =>
+                  ref.read(selectedReportSubjectProvider.notifier).state = id,
+            ),
+            const SizedBox(height: 12),
+          ],
           HeatTrendChart(
-            trendPoints: report.trendPoints,
+            // 空狀態拍板：<2 筆畫不出趨勢 → 空清單走引導文案。
+            trendPoints: subjectPoints.length >= 2
+                ? subjectPoints
+                : const <HeatTrendPoint>[],
             averageScore: report.averageScore,
             scoreDelta: report.scoreDelta,
+            emptyMessage: '再多分析幾次，就能看到這位對象的熱度變化',
           ),
           const SizedBox(height: 16),
           ConversationComparisonChart(

@@ -17,12 +17,14 @@ class HeatTrendChart extends StatelessWidget {
   final List<HeatTrendPoint> trendPoints;
   final double averageScore;
   final double scoreDelta;
+  final String emptyMessage;
 
   const HeatTrendChart({
     super.key,
     required this.trendPoints,
     required this.averageScore,
     required this.scoreDelta,
+    this.emptyMessage = '尚無數據',
   });
 
   @override
@@ -141,7 +143,8 @@ class HeatTrendChart extends StatelessWidget {
       height: 180,
       child: Center(
         child: Text(
-          '\u5C1A\u7121\u6578\u64DA', // 尚無數據
+          emptyMessage,
+          textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 14,
             color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),

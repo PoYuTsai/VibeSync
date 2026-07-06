@@ -8,6 +8,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/report/data/providers/report_providers.dart';
@@ -76,11 +77,28 @@ ReportData _paidReport() => ReportData(
       totalConversations: 2,
     );
 
+AnalysisHistoryEvent _historyEvent(
+  String id,
+  String conversationId,
+  String name,
+  int score,
+  DateTime createdAt,
+) =>
+    AnalysisHistoryEvent.analyze(
+      id: id,
+      createdAt: createdAt,
+      conversationId: conversationId,
+      subjectName: name,
+      enthusiasmScore: score,
+      gameStageLabel: 'premise',
+    );
+
 Future<void> _pumpReportScreen(
   WidgetTester tester, {
   required SubscriptionState subscription,
   required ReportData report,
   required List<Partner> partners,
+  List<AnalysisHistoryEvent> historyEvents = const [],
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 2400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -91,6 +109,7 @@ Future<void> _pumpReportScreen(
         subscriptionProvider
             .overrideWith((ref) => _SeededSubscriptionNotifier(subscription)),
         reportDataProvider.overrideWithValue(report),
+        analysisHistoryEventsProvider.overrideWithValue(historyEvents),
         partnerListProvider.overrideWithValue(partners),
         conversationsByPartnerProvider
             .overrideWith((ref, id) => const []),
@@ -143,5 +162,85 @@ void main() {
     expect(find.byType(StageDistributionChart), findsOneWidget);
     expect(find.text('對象作戰板'), findsOneWidget);
     expect(find.text('Vivi'), findsWidgets);
+  });
+
+  group('案2：對象選擇器＋單對象熱度序列', () {
+    final events = [
+      _historyEvent('a1', 'c-1', '小雲', 50, DateTime(2026, 6, 1)),
+      _historyEvent('a2', 'c-1', '小雲', 70, DateTime(2026, 6, 8)),
+      _historyEvent('b1', 'c-2', '安安', 40, DateTime(2026, 6, 9)),
+      _historyEvent('b2', 'c-2', '安安', 66, DateTime(2026, 6, 10)),
+    ];
+
+    testWidgets('chip 列 render、預設選最近分析過的對象（安安）', (tester) async {
+      await _pumpReportScreen(
+        tester,
+        subscription: const SubscriptionState(
+          tier: SubscriptionTierHelper.starter,
+        ),
+        report: _paidReport(),
+        partners: [_partner('p1', 'Vivi')],
+        historyEvents: events,
+      );
+
+      expect(find.text('安安'), findsWidgets);
+      expect(find.text('小雲'), findsWidgets);
+      // 預設選最近事件的對象 c-2（安安）→ 圖上是安安的 2 點序列
+      final chart =
+          tester.widget<HeatTrendChart>(find.byType(HeatTrendChart));
+      expect(chart.trendPoints.map((p) => p.score), [40, 66]);
+    });
+
+    testWidgets('點另一個 chip → 熱度卡切到那位對象的序列', (tester) async {
+      await _pumpReportScreen(
+        tester,
+        subscription: const SubscriptionState(
+          tier: SubscriptionTierHelper.starter,
+        ),
+        report: _paidReport(),
+        partners: [_partner('p1', 'Vivi')],
+        historyEvents: events,
+      );
+
+      await tester.tap(find.text('小雲').first);
+      await tester.pumpAndSettle(); // LineChart 資料切換動畫有限時長，必收斂
+
+      final chart =
+          tester.widget<HeatTrendChart>(find.byType(HeatTrendChart));
+      expect(chart.trendPoints.map((p) => p.score), [50, 70]);
+    });
+
+    testWidgets('所選對象事件 <2 筆 → 引導文案、不畫圖', (tester) async {
+      await _pumpReportScreen(
+        tester,
+        subscription: const SubscriptionState(
+          tier: SubscriptionTierHelper.starter,
+        ),
+        report: _paidReport(),
+        partners: [_partner('p1', 'Vivi')],
+        historyEvents: [
+          _historyEvent('a1', 'c-1', '小雲', 50, DateTime(2026, 6, 1)),
+        ],
+      );
+
+      expect(find.text('再多分析幾次，就能看到這位對象的熱度變化'), findsOneWidget);
+    });
+
+    testWidgets('完全沒有事件（舊用戶未回填）→ 引導文案、既有其他區塊照常',
+        (tester) async {
+      await _pumpReportScreen(
+        tester,
+        subscription: const SubscriptionState(
+          tier: SubscriptionTierHelper.starter,
+        ),
+        report: _paidReport(),
+        partners: [_partner('p1', 'Vivi')],
+        historyEvents: const [],
+      );
+
+      expect(find.text('再多分析幾次，就能看到這位對象的熱度變化'), findsOneWidget);
+      expect(find.byType(ConversationComparisonChart), findsOneWidget);
+      expect(find.byType(StageDistributionChart), findsOneWidget);
+    });
   });
 }
