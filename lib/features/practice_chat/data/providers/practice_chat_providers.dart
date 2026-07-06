@@ -1173,6 +1173,11 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         debrief: debrief,
       );
       await _persist();
+      final s = state;
+      final girl = s.girl;
+      if (girl != null) {
+        await _recordPracticeHistoryEvent(s, girl.profileId);
+      }
     } catch (_) {
       state = state.copyWith(
         isDebriefing: false,
@@ -1282,11 +1287,12 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           s.isBeginnerMode ? s.relationshipStageLabel : null,
       hintUsedCount: s.isBeginnerMode ? s.hintUsedCount : null,
     ));
-    await _recordPracticeHistoryEvent(s, girl.profileId);
   }
 
   /// 案2：練習溫度歷史事件（best-effort：失敗只 debugPrint 絕不 rethrow，
-  /// 收操流程完全不受影響）。只在新手模式且 temperatureScore 有值時寫——
+  /// 收操流程完全不受影響）。只掛 endPractice 的 debrief 成功路徑——
+  /// 每局收操記一筆終溫；局中 _persist（送訊息/hint）絕不寫，避免同局多筆。
+  /// 只在新手模式且 temperatureScore 有值時寫——
   /// 非新手模式三元組全 null，是畫不出來的空點（設計拍板）。
   Future<void> _recordPracticeHistoryEvent(
     PracticeChatState s,

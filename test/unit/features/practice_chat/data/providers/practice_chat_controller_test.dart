@@ -2151,7 +2151,7 @@ void main() {
   });
 
   group('案2：practice 溫度歷史事件', () {
-    test('beginner 模式收到溫度 → _persist 落一筆 practice 事件', () async {
+    test('beginner 模式收到溫度 → endPractice 收操落一筆 practice 事件', () async {
       final c = await makeRevealed();
       await c.setPracticeLearningMode(PracticeLearningMode.beginner);
       api.sendHandler = (_, {profile}) async => reply(
@@ -2166,15 +2166,68 @@ void main() {
             ),
           );
       await c.sendMessage('嗨');
+      api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
+            summary: '整體不錯',
+            strengths: ['開場自然'],
+            watchouts: [],
+            suggestedLine: '下次直接約她',
+            vibe: '暖',
+          );
+      await c.endPractice();
 
-      expect(history.events, isNotEmpty);
-      final event = history.events.last;
+      expect(history.events.length, 1);
+      final event = history.events.single;
       expect(event.kind, AnalysisHistoryKind.practice);
       expect(event.profileId, isNotNull);
       expect(event.roundIndex, 1);
       expect(event.temperatureScore, 38);
       expect(event.familiarityScore, 12);
       expect(event.relationshipStageLabel, '破冰');
+    });
+
+    test('新手模式局中多次送訊息＋求 hint 絕不寫事件，收操恰記一筆終溫', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            temperature: const PracticeTemperature(
+              score: 38,
+              delta: 8,
+              band: 'cold',
+              reason: '有具體延伸話題',
+              familiarityScore: 12,
+              familiarityDelta: 12,
+              stageLabel: '破冰',
+            ),
+          );
+      await c.sendMessage('嗨');
+      api.sendHandler = (_, {profile}) async => reply(
+            temperature: const PracticeTemperature(
+              score: 45,
+              delta: 7,
+              band: 'warm',
+              reason: '互動加溫',
+              familiarityScore: 20,
+              familiarityDelta: 8,
+              stageLabel: '建立熟悉中',
+            ),
+          );
+      await c.sendMessage('妳今天過得如何');
+      api.hintHandler = (_, {profile}) async => hintResult();
+      await c.requestHint();
+
+      expect(history.events, isEmpty); // 局中（送訊息/hint 的 _persist）絕不寫
+
+      api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
+            summary: '整體不錯',
+            strengths: ['開場自然'],
+            watchouts: [],
+            suggestedLine: '下次直接約她',
+            vibe: '暖',
+          );
+      await c.endPractice();
+
+      expect(history.events.length, 1); // 每局收操恰一筆
+      expect(history.events.single.temperatureScore, 45); // 記終溫
     });
 
     test('standard 模式（temperatureScore null）→ 絕不寫事件', () async {
