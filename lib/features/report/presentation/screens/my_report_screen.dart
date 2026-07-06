@@ -23,6 +23,7 @@ import '../../data/providers/report_providers.dart';
 import '../widgets/heat_trend_chart.dart';
 import '../widgets/conversation_comparison_chart.dart';
 import '../widgets/partner_mindmap_card_list.dart';
+import '../widgets/practice_temperature_chart.dart';
 import '../widgets/report_subject_selector.dart';
 import '../widgets/stage_distribution_chart.dart';
 
@@ -49,6 +50,7 @@ class MyReportScreen extends ConsumerWidget {
     final subjectPoints = selectedSubject == null
         ? const <HeatTrendPoint>[]
         : ref.watch(subjectHeatTrendProvider(selectedSubject));
+    final practicePoints = ref.watch(practiceTemperatureTrendProvider);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
@@ -102,6 +104,8 @@ class MyReportScreen extends ConsumerWidget {
             scoreDelta: report.scoreDelta,
             emptyMessage: '再多分析幾次，就能看到這位對象的熱度變化',
           ),
+          const SizedBox(height: 16),
+          PracticeTemperatureChart(points: practicePoints),
           const SizedBox(height: 16),
           ConversationComparisonChart(
             comparisons: report.comparisons,

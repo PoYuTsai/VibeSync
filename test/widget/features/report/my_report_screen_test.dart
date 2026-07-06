@@ -16,6 +16,7 @@ import 'package:vibesync/features/report/domain/entities/report_models.dart';
 import 'package:vibesync/features/report/presentation/screens/my_report_screen.dart';
 import 'package:vibesync/features/report/presentation/widgets/conversation_comparison_chart.dart';
 import 'package:vibesync/features/report/presentation/widgets/heat_trend_chart.dart';
+import 'package:vibesync/features/report/presentation/widgets/practice_temperature_chart.dart';
 import 'package:vibesync/features/report/presentation/widgets/stage_distribution_chart.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
@@ -241,6 +242,36 @@ void main() {
       expect(find.text('再多分析幾次，就能看到這位對象的熱度變化'), findsOneWidget);
       expect(find.byType(ConversationComparisonChart), findsOneWidget);
       expect(find.byType(StageDistributionChart), findsOneWidget);
+    });
+
+    testWidgets('practice 事件 ≥2 → 練習溫度卡出現在報告區', (tester) async {
+      await _pumpReportScreen(
+        tester,
+        subscription: const SubscriptionState(
+          tier: SubscriptionTierHelper.starter,
+        ),
+        report: _paidReport(),
+        partners: [_partner('p1', 'Vivi')],
+        historyEvents: [
+          AnalysisHistoryEvent.practice(
+            id: 'p1',
+            createdAt: DateTime(2026, 6, 1),
+            profileId: 'practice_girl_001',
+            roundIndex: 1,
+            temperatureScore: 28,
+          ),
+          AnalysisHistoryEvent.practice(
+            id: 'p2',
+            createdAt: DateTime(2026, 6, 4),
+            profileId: 'practice_girl_002',
+            roundIndex: 1,
+            temperatureScore: 45,
+          ),
+        ],
+      );
+
+      expect(find.byType(PracticeTemperatureChart), findsOneWidget);
+      expect(find.text('練習溫度成長'), findsOneWidget);
     });
   });
 }
