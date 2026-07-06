@@ -5,6 +5,7 @@ import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcom
 import 'package:vibesync/features/coaching_memory/domain/entities/coaching_outcome_event.dart';
 
 import '../../../../../helpers/memory_coaching_outcome_repository.dart';
+import '../../../../../helpers/recording_coaching_outcome_uploader.dart';
 
 CoachChatResult _coachResult({
   String id = 'result-1',
@@ -47,11 +48,15 @@ CoachingAdviceContext _openerAdvice({String type = 'extend'}) {
 ProviderContainer _container({
   required MemoryCoachingOutcomeRepository repo,
   DateTime? now,
+  RecordingCoachingOutcomeUploader? uploader,
 }) {
   return ProviderContainer(overrides: [
     coachingOutcomeRepositoryProvider.overrideWithValue(repo),
     coachingOutcomeNowProvider.overrideWithValue(
       () => now ?? DateTime.utc(2026, 5, 15, 9),
+    ),
+    coachingOutcomeUploaderProvider.overrideWithValue(
+      uploader ?? RecordingCoachingOutcomeUploader(),
     ),
   ]);
 }
@@ -59,10 +64,14 @@ ProviderContainer _container({
 ProviderContainer _mutableNowContainer({
   required MemoryCoachingOutcomeRepository repo,
   required DateTime Function() now,
+  RecordingCoachingOutcomeUploader? uploader,
 }) {
   return ProviderContainer(overrides: [
     coachingOutcomeRepositoryProvider.overrideWithValue(repo),
     coachingOutcomeNowProvider.overrideWithValue(now),
+    coachingOutcomeUploaderProvider.overrideWithValue(
+      uploader ?? RecordingCoachingOutcomeUploader(),
+    ),
   ]);
 }
 
@@ -402,6 +411,146 @@ void main() {
 
       final stored = repo.get('coach:result-1')!;
       expect(stored.outcome, CoachingOutcomeSignal.cold); // 修前會被洗回 pending
+    });
+  });
+
+  group('批3 best-effort 上傳 wiring', () {
+    test('recordAdviceCopied 成功 put 後觸發一次上傳', () async {
+      final repo = MemoryCoachingOutcomeRepository();
+      final uploader = RecordingCoachingOutcomeUploader();
+      final c = _container(repo: repo, uploader: uploader);
+      addTearDown(c.dispose);
+
+      await c
+          .read(coachingOutcomeRecorderProvider)
+          .recordAdviceCopied(_openerAdvice());
+
+      expect(uploader.uploadCount, 1);
+      expect(uploader.uploaded.single.id, 'opener:req-1:extend');
+    });
+
+    test('recordAdviceUserAction 成功 put 後觸發一次上傳', () async {
+      final repo = MemoryCoachingOutcomeRepository();
+      final uploader = RecordingCoachingOutcomeUploader();
+      final c = _container(repo: repo, uploader: uploader);
+      addTearDown(c.dispose);
+
+      await c.read(coachingOutcomeRecorderProvider).recordAdviceUserAction(
+            advice: _openerAdvice(),
+            userAction: CoachingUserAction.editedAndSent,
+            outcome: CoachingOutcomeSignal.pending,
+          );
+
+      expect(uploader.uploadCount, 1);
+      expect(uploader.uploaded.single.userAction,
+          CoachingUserAction.editedAndSent);
+    });
+
+    test('recordAdviceReaction 成功 put 後觸發一次上傳', () async {
+      final repo = MemoryCoachingOutcomeRepository();
+      final uploader = RecordingCoachingOutcomeUploader();
+      final c = _container(repo: repo, uploader: uploader);
+      addTearDown(c.dispose);
+      final recorder = c.read(coachingOutcomeRecorderProvider);
+
+      await recorder.recordAdviceCopied(_openerAdvice()); // upload #1
+      final updated = await recorder.recordAdviceReaction(
+        eventId: 'opener:req-1:extend',
+        outcome: CoachingOutcomeSignal.engaged,
+      ); // upload #2
+
+      expect(updated, isNotNull);
+      expect(uploader.uploadCount, 2);
+      expect(uploader.uploaded.last.outcome, CoachingOutcomeSignal.engaged);
+    });
+
+    test('recordCoachResultOutcome 走 recordAdviceUserAction 也觸發一次上傳',
+        () async {
+      final repo = MemoryCoachingOutcomeRepository();
+      final uploader = RecordingCoachingOutcomeUploader();
+      final c = _container(repo: repo, uploader: uploader);
+      addTearDown(c.dispose);
+
+      await c.read(coachingOutcomeRecorderProvider).recordCoachResultOutcome(
+            result: _coachResult(),
+            userAction: CoachingUserAction.editedAndSent,
+            outcome: CoachingOutcomeSignal.pending,
+          );
+
+      expect(uploader.uploadCount, 1);
+      expect(uploader.uploaded.single.id, 'coach:result-1');
+    });
+
+    test('recordAdviceCopied 已有事件 no-op 短路時不觸發上傳', () async {
+      final repo = MemoryCoachingOutcomeRepository();
+      final uploader = RecordingCoachingOutcomeUploader();
+      final c = _container(repo: repo, uploader: uploader);
+      addTearDown(c.dispose);
+      final recorder = c.read(coachingOutcomeRecorderProvider);
+
+      await recorder.recordAdviceCopied(_openerAdvice()); // upload #1
+      final again = await recorder.recordAdviceCopied(_openerAdvice()); // no-op
+
+      expect(again, isNull);
+      expect(uploader.uploadCount, 1);
+    });
+
+    test('recordAdviceUserAction 同值重按 no-op 短路時不觸發上傳', () async {
+      final repo = MemoryCoachingOutcomeRepository();
+      final uploader = RecordingCoachingOutcomeUploader();
+      final c = _container(repo: repo, uploader: uploader);
+      addTearDown(c.dispose);
+      final recorder = c.read(coachingOutcomeRecorderProvider);
+
+      await recorder.recordAdviceUserAction(
+        advice: _openerAdvice(),
+        userAction: CoachingUserAction.didNotSend,
+        outcome: CoachingOutcomeSignal.unknown,
+      ); // upload #1
+      await recorder.recordAdviceUserAction(
+        advice: _openerAdvice(),
+        userAction: CoachingUserAction.didNotSend, // 同值
+        outcome: CoachingOutcomeSignal.unknown,
+      ); // no-op
+
+      expect(uploader.uploadCount, 1);
+    });
+
+    test('recordAdviceReaction 冪等 return null 時不觸發上傳', () async {
+      final repo = MemoryCoachingOutcomeRepository();
+      final uploader = RecordingCoachingOutcomeUploader();
+      final c = _container(repo: repo, uploader: uploader);
+      addTearDown(c.dispose);
+
+      // 沒有第一段紀錄 → recordAdviceReaction 回 null，不 put、不上傳
+      final updated =
+          await c.read(coachingOutcomeRecorderProvider).recordAdviceReaction(
+                eventId: 'opener:req-1:extend',
+                outcome: CoachingOutcomeSignal.engaged,
+              );
+
+      expect(updated, isNull);
+      expect(uploader.uploadCount, 0);
+    });
+
+    test('recordAdviceReaction 同值重按 no-op 短路時不觸發上傳', () async {
+      final repo = MemoryCoachingOutcomeRepository();
+      final uploader = RecordingCoachingOutcomeUploader();
+      final c = _container(repo: repo, uploader: uploader);
+      addTearDown(c.dispose);
+      final recorder = c.read(coachingOutcomeRecorderProvider);
+
+      await recorder.recordAdviceCopied(_openerAdvice()); // upload #1
+      await recorder.recordAdviceReaction(
+        eventId: 'opener:req-1:extend',
+        outcome: CoachingOutcomeSignal.cold,
+      ); // upload #2
+      await recorder.recordAdviceReaction(
+        eventId: 'opener:req-1:extend',
+        outcome: CoachingOutcomeSignal.cold, // 同值
+      ); // no-op
+
+      expect(uploader.uploadCount, 2);
     });
   });
 }

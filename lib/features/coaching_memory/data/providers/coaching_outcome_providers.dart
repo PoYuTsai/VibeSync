@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/services/storage_service.dart';
 import '../../../coach_chat/domain/entities/coach_chat_result.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../domain/entities/coaching_outcome_digest.dart';
 import '../../domain/entities/coaching_outcome_event.dart';
 import '../../domain/repositories/coaching_outcome_repository.dart';
 import '../repositories/coaching_outcome_repository_impl.dart';
+import '../services/coaching_outcome_uploader.dart';
 
 final coachingOutcomeRepositoryProvider =
     Provider<CoachingOutcomeRepository>((ref) {
@@ -49,6 +53,21 @@ final coachingUnboundOutcomeDigestProvider =
   return CoachingOutcomeDigest.fromEvents(
     partnerId: null,
     events: events,
+  );
+});
+
+/// Best-effort de-identified outcome uploader. Tests override this with a
+/// fake so that recorder writes never touch Supabase or subscription state.
+final coachingOutcomeUploaderProvider =
+    Provider<CoachingOutcomeUploader>((ref) {
+  return CoachingOutcomeUploader(
+    resolveUserTier: () {
+      try {
+        return ref.read(subscriptionProvider).tier;
+      } catch (_) {
+        return null;
+      }
+    },
   );
 });
 
@@ -119,6 +138,7 @@ class CoachingOutcomeRecorder {
     );
     await repo.put(event);
     _invalidateFor(event);
+    _uploadBestEffort(event);
     return event;
   }
 
@@ -167,6 +187,7 @@ class CoachingOutcomeRecorder {
           );
     await repo.put(event);
     _invalidateFor(event);
+    _uploadBestEffort(event);
     return event;
   }
 
@@ -202,6 +223,7 @@ class CoachingOutcomeRecorder {
     );
     await repo.put(updated);
     _invalidateFor(updated);
+    _uploadBestEffort(updated);
     return updated;
   }
 
@@ -241,6 +263,13 @@ class CoachingOutcomeRecorder {
       adviceType: result.mode,
       suggestedMoveSummary: _coachMoveSummary(result),
     );
+  }
+
+  /// 每次成功 put 後觸發一次 best-effort 去識別化上傳。fire-and-forget：
+  /// 絕不等待、絕不擋 UI、絕不因失敗回滾（uploader 內部吞掉所有錯誤）。
+  void _uploadBestEffort(CoachingOutcomeEvent event) {
+    final uploader = _ref.read(coachingOutcomeUploaderProvider);
+    unawaited(uploader.upload(event));
   }
 
   void _invalidateFor(CoachingOutcomeEvent event) {
