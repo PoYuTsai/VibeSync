@@ -35,6 +35,10 @@ import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart'
 import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/data/providers/conversation_write_controller.dart';
+import '../../../follow_up_notification/data/providers/follow_up_notification_service.dart';
+import '../../../follow_up_notification/domain/follow_up_opt_in.dart';
+import '../../../follow_up_notification/presentation/soft_opt_in_card.dart';
+import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../data/providers/analysis_providers.dart';
 import '../../../conversation/data/services/memory_service.dart';
 import '../../../conversation/domain/entities/conversation.dart';
@@ -1337,6 +1341,49 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     } catch (e) {
       debugPrint('AnalysisHistory analyze append failed: $e');
     }
+
+    // 案4：48h 跟進提醒 — 綁 partner 的分析完成後，首次詢問軟卡並排程。
+    // best-effort：失敗只 debugPrint，絕不影響分析呈現與快照持久化。
+    await _maybeScheduleFollowUpNotification(conv);
+  }
+
+  /// 綁 partner 的分析完成後：首次（opt-in=unknown）顯示軟詢問卡，
+  /// 再委派 service 依 opt-in 決定要不要排 48h 跟進通知。
+  Future<void> _maybeScheduleFollowUpNotification(Conversation conv) async {
+    final partnerId = conv.partnerId;
+    if (partnerId == null || partnerId.isEmpty) return;
+    try {
+      final service = ref.read(followUpNotificationServiceProvider);
+      final displayName = _partnerDisplayName(partnerId);
+
+      // 首次綁 partner 分析完成才問一次軟卡（之後 opt-in 非 unknown 不再問）。
+      if (shouldShowSoftCard(service.optIn)) {
+        if (!mounted) return;
+        final accepted = await showSoftOptInCard(
+          context,
+          displayName: displayName,
+        );
+        if (accepted == true) {
+          await service.requestSoftOptIn();
+        } else {
+          await service.declineSoftOptIn();
+        }
+      }
+
+      // opt-in=granted 才真的排；否則 service 內部（buildFollowUpPlan）回 null 略過。
+      await service.onPartnerAnalysisSaved(
+        partnerId: partnerId,
+        displayName: displayName,
+      );
+    } catch (e) {
+      debugPrint('FollowUp schedule after analysis failed: $e');
+    }
+  }
+
+  /// 由 partnerId 查 partner 顯示名，取不到回空字串（domain 文案層 fallback 用）。
+  String _partnerDisplayName(String partnerId) {
+    final partner = ref.read(partnerRepositoryProvider).getById(partnerId);
+    return partner?.name ?? '';
   }
 
   @override

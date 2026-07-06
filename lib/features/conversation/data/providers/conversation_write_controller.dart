@@ -1,6 +1,8 @@
 // lib/features/conversation/data/providers/conversation_write_controller.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../follow_up_notification/data/providers/follow_up_notification_service.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../domain/entities/conversation.dart';
@@ -64,6 +66,15 @@ class ConversationWriteController extends Notifier<void> {
     _invalidateConversationDetail(c.id);
     _invalidatePartnerScope(c.partnerId);
     _invalidateLegacyGlobal();
+    // 案4：刪 conversation 後取消該對象待發的 48h 跟進通知。
+    // best-effort：通知取消失敗絕不阻擋刪除本身（例如通知層未 wire 的測試環境）。
+    try {
+      await ref
+          .read(followUpNotificationServiceProvider)
+          .cancelForConversation(c.partnerId);
+    } catch (e) {
+      debugPrint('FollowUp cancel on delete failed: $e');
+    }
   }
 
   void _invalidateConversationDetail(String id) {

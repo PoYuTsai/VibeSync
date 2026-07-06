@@ -57,6 +57,11 @@ class FollowUpNotificationService {
     return granted;
   }
 
+  /// 軟卡「不用」後呼叫：記錄 denied，之後不再顯示軟卡（不動系統權限）。
+  Future<void> declineSoftOptIn() async {
+    await _optInStore.write(FollowUpOptIn.denied);
+  }
+
   /// 刪 conversation 時取消該對象的待發通知。
   Future<void> cancelForConversation(String? partnerId) async {
     if (partnerId == null || partnerId.isEmpty) return;
