@@ -6,6 +6,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
+import '../../../helpers/memory_coaching_outcome_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/features/analysis/data/notifiers/streaming_analyze_notifier.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
@@ -120,6 +122,8 @@ Future<_StubCoachChatRepository> _pumpScreen(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        coachingOutcomeRepositoryProvider.overrideWithValue(
+            MemoryCoachingOutcomeRepository()),
         conversationRepositoryProvider
             .overrideWithValue(_StubConversationRepository(conversation)),
         conversationProvider(_conversationId).overrideWithValue(conversation),

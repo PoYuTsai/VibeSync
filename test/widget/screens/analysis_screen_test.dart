@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
+import '../../helpers/memory_coaching_outcome_repository.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
@@ -27,6 +29,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+        coachingOutcomeRepositoryProvider.overrideWithValue(
+            MemoryCoachingOutcomeRepository()),
             conversationProvider('test-123')
                 .overrideWithValue(testConversation),
           ],
@@ -52,6 +56,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+        coachingOutcomeRepositoryProvider.overrideWithValue(
+            MemoryCoachingOutcomeRepository()),
             conversationProvider('test-123')
                 .overrideWithValue(testConversation),
           ],
@@ -76,6 +82,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+        coachingOutcomeRepositoryProvider.overrideWithValue(
+            MemoryCoachingOutcomeRepository()),
             conversationProvider('test-123')
                 .overrideWithValue(testConversation),
           ],
@@ -93,6 +101,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+        coachingOutcomeRepositoryProvider.overrideWithValue(
+            MemoryCoachingOutcomeRepository()),
             conversationProvider('non-existent').overrideWithValue(null),
           ],
           child: const MaterialApp(
@@ -123,6 +133,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+        coachingOutcomeRepositoryProvider.overrideWithValue(
+            MemoryCoachingOutcomeRepository()),
             conversationProvider('test-123')
                 .overrideWithValue(testConversation),
           ],

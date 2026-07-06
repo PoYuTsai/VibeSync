@@ -22,7 +22,7 @@ class ReplyStyleCard extends StatelessWidget {
     required this.onCopy,
   });
 
-  static const _labels = {
+  static const labels = {
     'extend': '\u{1F504} 延展',
     'resonate': '\u{1F4AC} 共鳴',
     'tease': '\u{1F60F} 調情',
@@ -96,7 +96,7 @@ class ReplyStyleCard extends StatelessWidget {
             Row(
               children: [
                 Text(
-                  _labels[type] ?? type,
+                  labels[type] ?? type,
                   style: AppTypography.titleMedium.copyWith(
                     color: _colorForType(type),
                   ),

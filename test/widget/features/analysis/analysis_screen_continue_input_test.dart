@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
+import '../../../helpers/memory_coaching_outcome_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
@@ -48,6 +50,8 @@ Future<void> _pumpAnalysisScreen(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        coachingOutcomeRepositoryProvider.overrideWithValue(
+            MemoryCoachingOutcomeRepository()),
         conversationRepositoryProvider.overrideWithValue(repository),
         conversationProvider('continue-input-test')
             .overrideWithValue(testConversation),

@@ -27,6 +27,8 @@ import '../../../../shared/widgets/coach_action_card.dart';
 import '../../../../shared/widgets/score_hero_card.dart';
 import '../../../coach_chat/data/services/coach_chat_api_service.dart';
 import '../../../coach_chat/presentation/widgets/coach_chat_card.dart';
+import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
+import '../../../../shared/widgets/coaching_outcome_follow_up_bar.dart';
 import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
 import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
@@ -4424,6 +4426,89 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
   }
 
+  Future<void> _recordAnalysisUserAction({
+    required String cardKey,
+    required String summary,
+    required CoachingUserAction action,
+  }) async {
+    final adviceId = _analyzeAdviceId(cardKey);
+    if (adviceId == null) return;
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    try {
+      await ref.read(coachingOutcomeRecorderProvider).recordAdviceUserAction(
+            advice: CoachingAdviceContext(
+              eventId: adviceId,
+              partnerId: conversation?.partnerId,
+              conversationId: widget.conversationId,
+              source: CoachingOutcomeSource.analyze,
+              adviceId: adviceId,
+              adviceType: cardKey,
+              suggestedMoveSummary: summary,
+            ),
+            userAction: action,
+            outcome: coachingOutcomeForUserAction(action),
+          );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content:
+                Text('已記下「${coachingUserActionLabel(action)}」，不扣額度。')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暫時記不起來，晚點再試一次。')),
+      );
+    }
+  }
+
+  Future<void> _recordAnalysisReaction({
+    required String cardKey,
+    required CoachingOutcomeSignal signal,
+  }) async {
+    final adviceId = _analyzeAdviceId(cardKey);
+    if (adviceId == null) return;
+    try {
+      final updated = await ref
+          .read(coachingOutcomeRecorderProvider)
+          .recordAdviceReaction(eventId: adviceId, outcome: signal);
+      if (updated == null || !mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content:
+                Text('已記下「${coachingOutcomeSignalLabel(signal)}」，不扣額度。')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暫時記不起來，晚點再試一次。')),
+      );
+    }
+  }
+
+  Widget _buildAnalysisOutcomeBar({required String cardKey, String? label}) {
+    final adviceId = _analyzeAdviceId(cardKey);
+    if (adviceId == null) return const SizedBox.shrink();
+    final event = ref.watch(coachingOutcomeEventProvider(adviceId));
+    if (event == null) return const SizedBox.shrink(); // 沒複製過不浮出
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: CoachingOutcomeFollowUpBar(
+        event: event,
+        label: label,
+        onUserActionSelected: (action) => _recordAnalysisUserAction(
+          cardKey: cardKey,
+          summary: event.suggestedMoveSummary,
+          action: action,
+        ),
+        onOutcomeSelected: (signal) => _recordAnalysisReaction(
+          cardKey: cardKey,
+          signal: signal,
+        ),
+      ),
+    );
+  }
+
   void _copyRecommendationText(String text, String label) {
     Clipboard.setData(ClipboardData(text: text));
     unawaited(_recordAnalysisCopy(cardKey: 'final', copiedText: text));
@@ -5941,6 +6026,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   '🧠 ${_finalRecommendation!.psychology}',
                                   style: AppTypography.caption,
                                 ),
+                                _buildAnalysisOutcomeBar(
+                                  cardKey: 'final',
+                                  label: 'AI 推薦回覆',
+                                ),
                               ],
                             ),
                           ),
@@ -6319,6 +6408,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   ],
                                 ),
                               ),
+                              for (final type in const [
+                                'extend',
+                                'resonate',
+                                'tease',
+                                'humor',
+                                'coldRead',
+                              ])
+                                if (_replies!.containsKey(type))
+                                  _buildAnalysisOutcomeBar(
+                                    cardKey: type,
+                                    label: ReplyStyleCard.labels[type] ?? type,
+                                  ),
                               // 如果只有 extend，根據用戶 tier 顯示不同提示
                               if (_replies!.length == 1 &&
                                   _replies!.containsKey('extend')) ...[
@@ -6728,6 +6829,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       icon: const Icon(Icons.copy),
                                       label: const Text('複製草稿'),
                                     ),
+                                  ),
+                                  _buildAnalysisOutcomeBar(
+                                    cardKey: 'polish',
+                                    label: '潤飾草稿',
                                   ),
                                 ],
                               ],
