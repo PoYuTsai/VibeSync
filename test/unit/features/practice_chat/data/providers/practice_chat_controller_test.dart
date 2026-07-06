@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
+import 'package:vibesync/features/analysis_history/data/providers/analysis_history_providers.dart';
+import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_draw_draft_store.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_pending_draw_store.dart';
@@ -16,6 +18,8 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_message
 import 'package:vibesync/features/practice_chat/domain/entities/practice_profile.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_temperature.dart';
+
+import '../../../../../helpers/memory_analysis_history_repository.dart';
 
 class _FakeApi extends PracticeChatApiService {
   Future<PracticeChatReply> Function(
@@ -125,6 +129,7 @@ void main() {
   late InMemoryPracticeDrawDraftStore draftStore;
   late _FakeApi api;
   late List<List<int>> synced;
+  late MemoryAnalysisHistoryRepository history;
 
   setUp(() async {
     Hive.init('./.dart_tool/test_hive_practice_ctrl');
@@ -140,6 +145,7 @@ void main() {
     draftStore = InMemoryPracticeDrawDraftStore();
     api = _FakeApi();
     synced = [];
+    history = MemoryAnalysisHistoryRepository();
     // 預設翻牌回一位固定對象（far-future reset → 草稿不過期）。
     api.drawHandler = ({currentProfileId}) async => drawResult();
   });
@@ -161,6 +167,7 @@ void main() {
       onUsageSynced: ({required monthlyRemaining, required dailyRemaining}) {
         synced.add([monthlyRemaining, dailyRemaining]);
       },
+      historyRepository: history,
       sessionId: 'sess-1',
       createdAt: DateTime(2026, 6, 26, 13, 0),
     );
@@ -180,6 +187,7 @@ void main() {
       onUsageSynced: ({required monthlyRemaining, required dailyRemaining}) {
         synced.add([monthlyRemaining, dailyRemaining]);
       },
+      historyRepository: history,
       initialSession: session,
     );
     addTearDown(c.dispose);
@@ -955,6 +963,7 @@ void main() {
           practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
           practicePendingHintStoreProvider
               .overrideWithValue(InMemoryPracticePendingHintStore()),
+          analysisHistoryRepositoryProvider.overrideWithValue(history),
         ],
       );
       addTearDown(container.dispose);
@@ -972,6 +981,7 @@ void main() {
           practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
           practicePendingHintStoreProvider
               .overrideWithValue(InMemoryPracticePendingHintStore()),
+          analysisHistoryRepositoryProvider.overrideWithValue(history),
         ],
       );
       addTearDown(container.dispose);
@@ -2137,6 +2147,58 @@ void main() {
       expect(s.errorMessage, isNull);
       expect(s.drawUpgradeRequired, false);
       expect(s.drawQuotaExceeded, false);
+    });
+  });
+
+  group('案2：practice 溫度歷史事件', () {
+    test('beginner 模式收到溫度 → _persist 落一筆 practice 事件', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            temperature: const PracticeTemperature(
+              score: 38,
+              delta: 8,
+              band: 'cold',
+              reason: '有具體延伸話題',
+              familiarityScore: 12,
+              familiarityDelta: 12,
+              stageLabel: '破冰',
+            ),
+          );
+      await c.sendMessage('嗨');
+
+      expect(history.events, isNotEmpty);
+      final event = history.events.last;
+      expect(event.kind, AnalysisHistoryKind.practice);
+      expect(event.profileId, isNotNull);
+      expect(event.roundIndex, 1);
+      expect(event.temperatureScore, 38);
+      expect(event.familiarityScore, 12);
+      expect(event.relationshipStageLabel, '破冰');
+    });
+
+    test('standard 模式（temperatureScore null）→ 絕不寫事件', () async {
+      final c = await makeRevealed();
+      api.sendHandler = (_, {profile}) async => reply();
+      await c.sendMessage('嗨');
+
+      expect(history.events, isEmpty);
+    });
+
+    test('endPractice（debrief 後 _persist）也只在有溫度時寫', () async {
+      final c = await makeRevealed();
+      api.sendHandler = (_, {profile}) async => reply();
+      api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
+            summary: '整體不錯',
+            strengths: ['開場自然'],
+            watchouts: [],
+            suggestedLine: '下次直接約她',
+            vibe: '暖',
+          );
+      await c.sendMessage('嗨');
+      await c.endPractice();
+
+      expect(history.events, isEmpty); // standard 全程無溫度
     });
   });
 }

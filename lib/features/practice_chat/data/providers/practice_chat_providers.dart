@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/services/storage_service.dart';
+import '../../../analysis_history/data/providers/analysis_history_providers.dart';
+import '../../../analysis_history/domain/entities/analysis_history_event.dart';
+import '../../../analysis_history/domain/repositories/analysis_history_repository.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../domain/entities/practice_draw_draft.dart';
 import '../../domain/entities/practice_girl_catalog.dart';
@@ -294,6 +297,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     void Function({required int monthlyRemaining, required int dailyRemaining})?
         onUsageSynced,
     void Function(String profileId)? onProfileUnlocked,
+    AnalysisHistoryRepository? historyRepository,
     PracticeSession? initialSession,
     String? sessionId,
     DateTime? createdAt,
@@ -308,6 +312,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
               pendingDrawStore ?? InMemoryPracticePendingDrawStore(),
           onUsageSynced: onUsageSynced,
           onProfileUnlocked: onProfileUnlocked,
+          historyRepository: historyRepository,
           initialSession: initialSession,
           sessionId: sessionId,
           createdAt: createdAt,
@@ -324,6 +329,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             {required int monthlyRemaining, required int dailyRemaining})?
         onUsageSynced,
     required void Function(String profileId)? onProfileUnlocked,
+    required AnalysisHistoryRepository? historyRepository,
     required PracticeSession? initialSession,
     required String? sessionId,
     required DateTime? createdAt,
@@ -335,6 +341,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         _pendingDrawStore = pendingDrawStore,
         _onUsageSynced = onUsageSynced,
         _onProfileUnlocked = onProfileUnlocked,
+        _historyRepository = historyRepository,
         super(_initialState(
           initialSession: initialSession,
           draft: _validDraft(draftStore, now),
@@ -354,6 +361,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       {required int monthlyRemaining,
       required int dailyRemaining})? _onUsageSynced;
   final void Function(String profileId)? _onProfileUnlocked;
+  final AnalysisHistoryRepository? _historyRepository;
 
   /// 圖鑑解鎖記錄：純附加 side-channel。用 microtask 延後（provider 建構期
   /// 不得同步改其他 provider 的 state），callback 例外一律吞掉——圖鑑記錄
@@ -1274,6 +1282,34 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           s.isBeginnerMode ? s.relationshipStageLabel : null,
       hintUsedCount: s.isBeginnerMode ? s.hintUsedCount : null,
     ));
+    await _recordPracticeHistoryEvent(s, girl.profileId);
+  }
+
+  /// 案2：練習溫度歷史事件（best-effort：失敗只 debugPrint 絕不 rethrow，
+  /// 收操流程完全不受影響）。只在新手模式且 temperatureScore 有值時寫——
+  /// 非新手模式三元組全 null，是畫不出來的空點（設計拍板）。
+  Future<void> _recordPracticeHistoryEvent(
+    PracticeChatState s,
+    String profileId,
+  ) async {
+    final history = _historyRepository;
+    if (history == null) return;
+    final temperature = s.isBeginnerMode ? s.temperatureScore : null;
+    if (temperature == null) return;
+    try {
+      await history.append(AnalysisHistoryEvent.practice(
+        id: const Uuid().v4(),
+        createdAt: DateTime.now(),
+        profileId: profileId,
+        roundIndex: s.roundIndex,
+        temperatureScore: temperature,
+        familiarityScore: s.isBeginnerMode ? s.familiarityScore : null,
+        relationshipStageLabel:
+            s.isBeginnerMode ? s.relationshipStageLabel : null,
+      ));
+    } catch (e) {
+      debugPrint('AnalysisHistory practice append failed: $e');
+    }
   }
 }
 
@@ -1380,6 +1416,14 @@ final unlockedPracticeGirlCountProvider = Provider<int>((ref) {
 final practiceChatControllerProvider = StateNotifierProvider.autoDispose<
     PracticeChatController, PracticeChatState>((ref) {
   final repository = ref.read(practiceSessionRepositoryProvider);
+  // 案2：歷史事件 repository 是 best-effort side-channel——拿不到（如 Hive box
+  // 未開）絕不擋 controller 建構，練習主流程完全不受影響。
+  AnalysisHistoryRepository? historyRepository;
+  try {
+    historyRepository = ref.read(analysisHistoryRepositoryProvider);
+  } catch (e) {
+    debugPrint('AnalysisHistory repository unavailable: $e');
+  }
   return PracticeChatController(
     api: ref.read(practiceChatApiServiceProvider),
     repository: repository,
@@ -1396,6 +1440,7 @@ final practiceChatControllerProvider = StateNotifierProvider.autoDispose<
     onProfileUnlocked: (profileId) {
       ref.read(practiceCollectionProvider.notifier).add(profileId);
     },
+    historyRepository: historyRepository,
   );
 });
 
