@@ -497,6 +497,45 @@ Deno.test("beginner chat with ledger values ignores client-carried scores", asyn
   assertEquals(commit.params.p_familiarity_score, 22);
 });
 
+Deno.test("beginner chat with existing ledger but null score columns falls back to difficulty start, not client values", async () => {
+  // 舊列（ledger 已建檔、溫度欄 null）不得吃 client seed：client 值只在
+  // ledger 尚未建檔的新場首回合生效。
+  const { response, json, state } = await run({
+    ledger: ledger({
+      ai_count: 1,
+      charged: true,
+      practice_mode: "beginner",
+      temperature_score: null,
+      familiarity_score: null,
+    }),
+    deepSeekReplies: ["AI reply", new Error("judge down")],
+  }, chatBody({
+    practiceMode: "beginner",
+    temperatureScore: 90,
+    familiarityScore: 80,
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 28); // normal 難度起始溫度
+  assertEquals(json.temperature.delta, 0);
+  assertLearningFieldsAndNoDebug(json.temperature);
+
+  const allDeepSeekPromptText = state.deepSeekCalls
+    .flatMap((call) => call.messages)
+    .map((message) => message.content)
+    .join("\n");
+  assert(allDeepSeekPromptText.includes("28/100"));
+  assertEquals(allDeepSeekPromptText.includes("90/100"), false);
+  assertEquals(allDeepSeekPromptText.includes("80/100"), false);
+
+  const commit = state.rpcCalls.find((call) =>
+    call.fn === "commit_practice_chat_turn"
+  );
+  assert(commit);
+  assertEquals(commit.params.p_temperature_score, 28);
+  assertEquals(commit.params.p_familiarity_score, 0);
+});
+
 Deno.test("beginner first chat without client scores falls back to difficulty start temperature (challenge=20)", async () => {
   const { response, json, state } = await run({
     ledger: null,
@@ -737,7 +776,8 @@ Deno.test("ledger select includes beginner fields and old rows fallback safely",
       "AI reply",
       `{"category":"event","quality":"ordinary","overstep":false}`,
     ],
-  }, chatBody({ practiceMode: "beginner" }));
+    // 舊列（ledger 已建檔、無溫度欄）：帶 client 值也不得被吃。
+  }, chatBody({ practiceMode: "beginner", temperatureScore: 30 }));
 
   assertEquals(response.status, 200);
   assertEquals(json.hintUsedCount, 0);

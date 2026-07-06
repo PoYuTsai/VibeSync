@@ -1394,14 +1394,18 @@ export function createPracticeChatHandler(
     }
 
     const beginnerMode = request.practiceMode === "beginner";
-    // 續聊保溫：ledger 建檔前（新場首回合）允許以 client 攜帶值 seed；ledger
-    // 建檔後一律以 ledger 權威值為準（?? 鏈天然保證）。
+    // 續聊保溫：只在 ledger 尚未建檔的新場首回合允許以 client 攜帶值 seed；
+    // ledger 已建檔一律以 ledger 為準（欄位 null 的舊列 fallback 難度起始值，
+    // 不吃 client 值——以建檔與否切分，堵舊列吃 seed 的洞）。
     const currentTemperature = beginnerMode
-      ? ledger.temperatureScore ?? request.temperatureScore ??
-        difficultyStartTemperature
+      ? ledger.exists
+        ? ledger.temperatureScore ?? difficultyStartTemperature
+        : request.temperatureScore ?? difficultyStartTemperature
       : null;
     const currentFamiliarity = beginnerMode
-      ? ledger.familiarityScore ?? request.familiarityScore ?? 0
+      ? ledger.exists
+        ? ledger.familiarityScore ?? 0
+        : request.familiarityScore ?? 0
       : null;
 
     try {
