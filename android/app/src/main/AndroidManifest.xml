@@ -39,6 +39,14 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- flutter_local_notifications：排程通知到期時的顯示 receiver。
+             plugin 18.x 的 library manifest 不含此宣告，必須 app 端手動加，
+             否則 48h 跟進通知到期會靜默不顯示（Codex 案4 F1）。
+             boot 持久化刻意不做，故不加 ScheduledNotificationBootReceiver /
+             RECEIVE_BOOT_COMPLETED（最小化送審面權限）。 -->
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
