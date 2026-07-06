@@ -3,7 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
 import 'package:vibesync/features/coaching_memory/domain/entities/coaching_outcome_event.dart';
-import 'package:vibesync/features/coaching_memory/domain/repositories/coaching_outcome_repository.dart';
+
+import '../../../../../helpers/memory_coaching_outcome_repository.dart';
 
 CoachChatResult _coachResult({
   String id = 'result-1',
@@ -32,124 +33,19 @@ CoachChatResult _coachResult({
   );
 }
 
-class _MemoryOutcomeRepo implements CoachingOutcomeRepository {
-  final _events = <String, CoachingOutcomeEvent>{};
-
-  @override
-  CoachingOutcomeEvent? get(String id) => _events[id.trim()];
-
-  @override
-  List<CoachingOutcomeEvent> listRecent({int? limit}) => _limit(
-        _events.values.toList()
-          ..sort((a, b) => b.createdAt.compareTo(a.createdAt)),
-        limit,
-      );
-
-  @override
-  List<CoachingOutcomeEvent> listByPartner(String partnerId, {int? limit}) {
-    final normalized = CoachingOutcomeEvent.normalizeScope(partnerId);
-    if (normalized == null) return const [];
-    return _limit(
-      listRecent()
-          .where((event) =>
-              CoachingOutcomeEvent.normalizeScope(event.partnerId) ==
-              normalized)
-          .toList(),
-      limit,
-    );
-  }
-
-  @override
-  List<CoachingOutcomeEvent> listUnbound({int? limit}) {
-    return _limit(
-      listRecent()
-          .where((event) =>
-              CoachingOutcomeEvent.normalizeScope(event.partnerId) == null)
-          .toList(),
-      limit,
-    );
-  }
-
-  @override
-  List<CoachingOutcomeEvent> listByConversation(
-    String conversationId, {
-    int? limit,
-  }) {
-    final normalized = CoachingOutcomeEvent.normalizeScope(conversationId);
-    if (normalized == null) return const [];
-    return _limit(
-      listRecent()
-          .where((event) =>
-              CoachingOutcomeEvent.normalizeScope(event.conversationId) ==
-              normalized)
-          .toList(),
-      limit,
-    );
-  }
-
-  @override
-  Future<void> put(CoachingOutcomeEvent event) async {
-    _events[event.id] = event;
-  }
-
-  @override
-  Future<void> delete(String id) async {
-    _events.remove(id.trim());
-  }
-
-  @override
-  Future<int> deleteByPartner(String partnerId) async {
-    final normalized = CoachingOutcomeEvent.normalizeScope(partnerId);
-    if (normalized == null) return 0;
-    final keys = _events.entries
-        .where((entry) =>
-            CoachingOutcomeEvent.normalizeScope(entry.value.partnerId) ==
-            normalized)
-        .map((entry) => entry.key)
-        .toList();
-    for (final key in keys) {
-      _events.remove(key);
-    }
-    return keys.length;
-  }
-
-  @override
-  Future<int> reassignPartner({
-    required String fromPartnerId,
-    required String toPartnerId,
-  }) async {
-    final from = CoachingOutcomeEvent.normalizeScope(fromPartnerId);
-    final to = CoachingOutcomeEvent.normalizeScope(toPartnerId);
-    if (from == null || to == null) {
-      throw ArgumentError('partner ids must be non-empty');
-    }
-    var count = 0;
-    for (final entry in _events.entries.toList()) {
-      if (CoachingOutcomeEvent.normalizeScope(entry.value.partnerId) == from) {
-        _events[entry.key] = entry.value.withPartnerId(to);
-        count++;
-      }
-    }
-    return count;
-  }
-
-  @override
-  Future<void> clearAll() async {
-    _events.clear();
-  }
-
-  List<CoachingOutcomeEvent> _limit(
-    List<CoachingOutcomeEvent> events,
-    int? limit,
-  ) {
-    if (limit == null || limit >= events.length) return events;
-    if (limit <= 0) return const [];
-    return events.take(limit).toList();
-  }
+CoachingAdviceContext _openerAdvice({String type = 'extend'}) {
+  return CoachingAdviceContext(
+    eventId: 'opener:req-1:$type',
+    partnerId: 'partner-1',
+    source: CoachingOutcomeSource.opener,
+    adviceId: 'opener:req-1:$type',
+    adviceType: type,
+    suggestedMoveSummary: '妳週末也會去爬山嗎？',
+  );
 }
 
 ProviderContainer _container({
-  required _MemoryOutcomeRepo repo,
+  required MemoryCoachingOutcomeRepository repo,
   DateTime? now,
 }) {
   return ProviderContainer(overrides: [
@@ -160,10 +56,20 @@ ProviderContainer _container({
   ]);
 }
 
+ProviderContainer _mutableNowContainer({
+  required MemoryCoachingOutcomeRepository repo,
+  required DateTime Function() now,
+}) {
+  return ProviderContainer(overrides: [
+    coachingOutcomeRepositoryProvider.overrideWithValue(repo),
+    coachingOutcomeNowProvider.overrideWithValue(now),
+  ]);
+}
+
 void main() {
   test('records a coach result outcome with stable local event fields',
       () async {
-    final repo = _MemoryOutcomeRepo();
+    final repo = MemoryCoachingOutcomeRepository();
     final c = _container(
       repo: repo,
       now: DateTime.utc(2026, 5, 15, 10),
@@ -202,7 +108,7 @@ void main() {
 
   test('recording the same coach result overwrites the previous signal',
       () async {
-    final repo = _MemoryOutcomeRepo();
+    final repo = MemoryCoachingOutcomeRepository();
     final c = _container(repo: repo);
     addTearDown(c.dispose);
     final recorder = c.read(coachingOutcomeRecorderProvider);
@@ -226,7 +132,7 @@ void main() {
 
   test('falls back to headline when next step and suggested line are empty',
       () async {
-    final repo = _MemoryOutcomeRepo();
+    final repo = MemoryCoachingOutcomeRepository();
     final c = _container(repo: repo);
     addTearDown(c.dispose);
 
@@ -249,7 +155,7 @@ void main() {
   });
 
   test('recordCoachResultReaction 保留第一段 userAction、只更新 outcome', () async {
-    final repo = _MemoryOutcomeRepo();
+    final repo = MemoryCoachingOutcomeRepository();
     final c = _container(repo: repo);
     addTearDown(c.dispose);
     final recorder = c.read(coachingOutcomeRecorderProvider);
@@ -279,7 +185,7 @@ void main() {
   });
 
   test('recordCoachResultReaction 在沒有第一段紀錄時不寫入', () async {
-    final repo = _MemoryOutcomeRepo();
+    final repo = MemoryCoachingOutcomeRepository();
     final c = _container(repo: repo);
     addTearDown(c.dispose);
 
@@ -294,7 +200,7 @@ void main() {
   });
 
   test('recordCoachResultReaction 在 userAction=didNotSend 時不覆寫', () async {
-    final repo = _MemoryOutcomeRepo();
+    final repo = MemoryCoachingOutcomeRepository();
     final c = _container(repo: repo);
     addTearDown(c.dispose);
     final recorder = c.read(coachingOutcomeRecorderProvider);
@@ -315,5 +221,187 @@ void main() {
     expect(event, isNotNull);
     expect(event!.userAction, CoachingUserAction.didNotSend);
     expect(event.outcome, CoachingOutcomeSignal.unknown);
+  });
+
+  group('批2 recorder 泛化', () {
+    test('coachingOutcomeForUserAction：send 類→pending、未送類→unknown', () {
+      expect(coachingOutcomeForUserAction(CoachingUserAction.sentAsIs),
+          CoachingOutcomeSignal.pending);
+      expect(coachingOutcomeForUserAction(CoachingUserAction.editedAndSent),
+          CoachingOutcomeSignal.pending);
+      expect(coachingOutcomeForUserAction(CoachingUserAction.didNotSend),
+          CoachingOutcomeSignal.unknown);
+      expect(coachingOutcomeForUserAction(CoachingUserAction.askedCoach),
+          CoachingOutcomeSignal.unknown);
+    });
+
+    test('recordAdviceCopied 建立 sentAsIs/pending 事件', () async {
+      final repo = MemoryCoachingOutcomeRepository();
+      final c = _container(repo: repo, now: DateTime.utc(2026, 7, 6, 10));
+      addTearDown(c.dispose);
+
+      final event = await c
+          .read(coachingOutcomeRecorderProvider)
+          .recordAdviceCopied(_openerAdvice());
+
+      expect(event, isNotNull);
+      expect(event!.id, 'opener:req-1:extend');
+      expect(event.source, CoachingOutcomeSource.opener);
+      expect(event.adviceId, 'opener:req-1:extend');
+      expect(event.adviceType, 'extend');
+      expect(event.userAction, CoachingUserAction.sentAsIs);
+      expect(event.outcome, CoachingOutcomeSignal.pending);
+      expect(event.partnerId, 'partner-1');
+      expect(
+          c.read(coachingOutcomeDigestProvider('partner-1')).totalEvents, 1);
+    });
+
+    test('recordAdviceCopied 已有事件時 no-op，不覆蓋已作答內容', () async {
+      final repo = MemoryCoachingOutcomeRepository();
+      var current = DateTime.utc(2026, 7, 6, 10);
+      final c = _mutableNowContainer(repo: repo, now: () => current);
+      addTearDown(c.dispose);
+      final recorder = c.read(coachingOutcomeRecorderProvider);
+
+      await recorder.recordAdviceUserAction(
+        advice: _openerAdvice(),
+        userAction: CoachingUserAction.didNotSend,
+        outcome: CoachingOutcomeSignal.unknown,
+      );
+      current = DateTime.utc(2026, 7, 6, 11);
+      final copied = await recorder.recordAdviceCopied(_openerAdvice());
+
+      expect(copied, isNull);
+      final stored = repo.get('opener:req-1:extend')!;
+      expect(stored.userAction, CoachingUserAction.didNotSend);
+      expect(stored.createdAt, DateTime.utc(2026, 7, 6, 10));
+    });
+
+    test('第一段同值重按 no-op：不洗第二段、不刷 createdAt', () async {
+      final repo = MemoryCoachingOutcomeRepository();
+      var current = DateTime.utc(2026, 7, 6, 10);
+      final c = _mutableNowContainer(repo: repo, now: () => current);
+      addTearDown(c.dispose);
+      final recorder = c.read(coachingOutcomeRecorderProvider);
+
+      await recorder.recordAdviceCopied(_openerAdvice()); // sentAsIs/pending @10
+      current = DateTime.utc(2026, 7, 6, 11);
+      await recorder.recordAdviceReaction(
+        eventId: 'opener:req-1:extend',
+        outcome: CoachingOutcomeSignal.engaged,
+      ); // engaged @11
+      current = DateTime.utc(2026, 7, 6, 12);
+      await recorder.recordAdviceUserAction(
+        advice: _openerAdvice(),
+        userAction: CoachingUserAction.sentAsIs, // 同值重按
+        outcome: CoachingOutcomeSignal.pending,
+      );
+
+      final stored = repo.get('opener:req-1:extend')!;
+      expect(stored.userAction, CoachingUserAction.sentAsIs);
+      expect(stored.outcome, CoachingOutcomeSignal.engaged); // 第二段答案保住
+      expect(stored.createdAt, DateTime.utc(2026, 7, 6, 11)); // 沒刷
+    });
+
+    test('第一段改選保留 preview/note、第二段刻意洗回 pending', () async {
+      final repo = MemoryCoachingOutcomeRepository();
+      final c = _container(repo: repo, now: DateTime.utc(2026, 7, 6, 12));
+      addTearDown(c.dispose);
+      await repo.put(CoachingOutcomeEvent(
+        id: 'opener:req-1:extend',
+        partnerId: 'partner-1',
+        source: CoachingOutcomeSource.opener,
+        adviceId: 'opener:req-1:extend',
+        adviceType: 'extend',
+        suggestedMoveSummary: '妳週末也會去爬山嗎？',
+        userAction: CoachingUserAction.sentAsIs,
+        outcome: CoachingOutcomeSignal.engaged,
+        outcomeTextPreview: '她回：真的假的你也爬山',
+        userNote: '這招對戶外掛有效',
+        createdAt: DateTime.utc(2026, 7, 6, 10),
+      ));
+
+      final updated = await c
+          .read(coachingOutcomeRecorderProvider)
+          .recordAdviceUserAction(
+            advice: _openerAdvice(),
+            userAction: CoachingUserAction.editedAndSent,
+            outcome: coachingOutcomeForUserAction(
+              CoachingUserAction.editedAndSent,
+            ),
+          );
+
+      expect(updated.userAction, CoachingUserAction.editedAndSent);
+      expect(updated.outcome, CoachingOutcomeSignal.pending); // 重問反應
+      expect(updated.outcomeTextPreview, '她回：真的假的你也爬山'); // 保留
+      expect(updated.userNote, '這招對戶外掛有效'); // 保留
+      expect(updated.createdAt, DateTime.utc(2026, 7, 6, 12)); // 改選有寫入，刷新
+    });
+
+    test('第一段改選到未送類 outcome=unknown', () async {
+      final repo = MemoryCoachingOutcomeRepository();
+      final c = _container(repo: repo);
+      addTearDown(c.dispose);
+      final recorder = c.read(coachingOutcomeRecorderProvider);
+
+      await recorder.recordAdviceCopied(_openerAdvice());
+      final updated = await recorder.recordAdviceUserAction(
+        advice: _openerAdvice(),
+        userAction: CoachingUserAction.didNotSend,
+        outcome: coachingOutcomeForUserAction(CoachingUserAction.didNotSend),
+      );
+
+      expect(updated.outcome, CoachingOutcomeSignal.unknown);
+    });
+
+    test('第二段同值重按 no-op：不刷 createdAt', () async {
+      final repo = MemoryCoachingOutcomeRepository();
+      var current = DateTime.utc(2026, 7, 6, 10);
+      final c = _mutableNowContainer(repo: repo, now: () => current);
+      addTearDown(c.dispose);
+      final recorder = c.read(coachingOutcomeRecorderProvider);
+
+      await recorder.recordAdviceCopied(_openerAdvice());
+      current = DateTime.utc(2026, 7, 6, 11);
+      await recorder.recordAdviceReaction(
+        eventId: 'opener:req-1:extend',
+        outcome: CoachingOutcomeSignal.cold,
+      );
+      current = DateTime.utc(2026, 7, 6, 12);
+      final again = await recorder.recordAdviceReaction(
+        eventId: 'opener:req-1:extend',
+        outcome: CoachingOutcomeSignal.cold, // 同值
+      );
+
+      expect(again, isNotNull);
+      expect(repo.get('opener:req-1:extend')!.createdAt,
+          DateTime.utc(2026, 7, 6, 11));
+    });
+
+    test('coach 薄包裝：重按同一顆第一段晶片不再洗掉第二段（批2核心 bug 修）',
+        () async {
+      final repo = MemoryCoachingOutcomeRepository();
+      final c = _container(repo: repo);
+      addTearDown(c.dispose);
+      final recorder = c.read(coachingOutcomeRecorderProvider);
+
+      await recorder.recordCoachResultOutcome(
+        result: _coachResult(),
+        userAction: CoachingUserAction.editedAndSent,
+        outcome: CoachingOutcomeSignal.pending,
+      );
+      await recorder.recordCoachResultReaction(
+        result: _coachResult(),
+        outcome: CoachingOutcomeSignal.cold,
+      );
+      await recorder.recordCoachResultOutcome(
+        result: _coachResult(), // 重按同一顆
+        userAction: CoachingUserAction.editedAndSent,
+        outcome: CoachingOutcomeSignal.pending,
+      );
+
+      final stored = repo.get('coach:result-1')!;
+      expect(stored.outcome, CoachingOutcomeSignal.cold); // 修前會被洗回 pending
+    });
   });
 }
