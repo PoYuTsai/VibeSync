@@ -421,6 +421,7 @@ Deno.test("parseHintResult rejects visible internal labels", () => {
       "memory_summary 裡面有舊脈絡",
       "partnerState guarded innerThought",
       "inviteGuidance says direct_invite_ready",
+      "next_invite_move says coffee",
     ]
   ) {
     assertThrows(

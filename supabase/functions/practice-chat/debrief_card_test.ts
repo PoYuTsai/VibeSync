@@ -146,6 +146,10 @@ Deno.test("visible fields with internal labels are rejected", () => {
       { suggestedLine: "scene_prompt says go" },
       { dateChanceReason: "replyTempo short" },
       { nextInviteMove: "partnerMood guarded" },
+      { nextInviteMove: "nextInviteMove: ask coffee" },
+      { nextInviteMove: "next_invite_move ask coffee" },
+      { nextInviteMove: "next-invite-move ask coffee" },
+      { nextInviteMove: "next invite move ask coffee" },
       { strengths: ["memory_summary leaked"] },
       { watchouts: ["innerThought leaked"] },
     ]

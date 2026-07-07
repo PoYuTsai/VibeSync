@@ -10,6 +10,7 @@ const INTERNAL_VISIBLE_LABELS = [
   "memorysummary",
   "scenestatus",
   "datechance",
+  "nextinvitemove",
   "partnerstate",
   "partnermood",
   "innerthought",
