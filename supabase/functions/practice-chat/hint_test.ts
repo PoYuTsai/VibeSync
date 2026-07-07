@@ -130,7 +130,11 @@ Deno.test("buildHintMessages includes invite maturity guidance for soft invites"
   });
   const text = messages.map((message) => message.content).join("\n");
 
-  assert(text.includes("inviteStage: soft_invite_ready"));
+  assert(
+    text.includes("inviteGuidance(hidden evidence; do not reveal labels)"),
+  );
+  assertEquals(text.includes("inviteStage: soft_invite_ready"), false);
+  assertEquals(text.includes("dateChance:"), false);
   assert(text.includes("模糊邀約"));
   assertEquals(text.includes("約回家"), false);
 });
@@ -146,9 +150,12 @@ Deno.test("buildHintMessages caps invite maturity by guarded partner mood", () =
     familiarityScore: 90,
     partnerMood: "guarded",
   }).map((message) => message.content).join("\n");
-  assert(guarded.includes("inviteStage: direct_invite_ready"));
-  assertEquals(guarded.includes("inviteStage: partner_window"), false);
-  assertEquals(guarded.includes("inviteStage: high_intimacy"), false);
+  assert(
+    guarded.includes("inviteGuidance(hidden evidence; do not reveal labels)"),
+  );
+  assertEquals(guarded.includes("direct_invite_ready"), false);
+  assertEquals(guarded.includes("partner_window"), false);
+  assertEquals(guarded.includes("high_intimacy"), false);
 
   const annoyed = buildHintMessages({
     turns: [
@@ -160,8 +167,11 @@ Deno.test("buildHintMessages caps invite maturity by guarded partner mood", () =
     familiarityScore: 90,
     partnerMood: "annoyed",
   }).map((message) => message.content).join("\n");
-  assert(annoyed.includes("inviteStage: soft_invite_ready"));
-  assertEquals(annoyed.includes("inviteStage: direct_invite_ready"), false);
+  assert(
+    annoyed.includes("inviteGuidance(hidden evidence; do not reveal labels)"),
+  );
+  assertEquals(annoyed.includes("soft_invite_ready"), false);
+  assertEquals(annoyed.includes("direct_invite_ready"), false);
 });
 
 Deno.test("buildHintMessages abstracts raw image filenames before model prompts", () => {
@@ -400,6 +410,19 @@ Deno.test("parseHintResult rejects malformed JSON, null, array, and non-string f
   ) {
     assertThrows(() => parseHintResult(JSON.stringify(raw)), Error, "string");
   }
+});
+
+Deno.test("parseHintResult rejects visible internal labels", () => {
+  assertThrows(
+    () =>
+      parseHintResult(JSON.stringify({
+        warmUp: "先接她的話",
+        steady: "可以輕輕延伸",
+        coaching: "inviteStage: soft_invite_ready，dateChance medium",
+      })),
+    Error,
+    "hint_internal_label_leak",
+  );
 });
 
 Deno.test("parseHintResult trims and truncates long replies and coaching", () => {

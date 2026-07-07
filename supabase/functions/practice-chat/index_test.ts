@@ -430,6 +430,55 @@ Deno.test("free continuation spoof with memorySummary is upgrade-gated before pr
   assertEquals(commitCalls(state).length, 0);
 });
 
+Deno.test("free existing ledger carrying memorySummary is upgrade-gated before provider", async () => {
+  const { response, json, state } = await run(
+    {
+      sub: subscription({ tier: "free" }),
+      ledger: ledger({ ai_count: 1, charged: true }),
+    },
+    chatBody({
+      sessionId: "session-1",
+      roundIndex: 1,
+      visiblePracticeThreadId: "session-1",
+      memorySummary: "OLDER_MEMORY_MARKER: she remembered coffee",
+      turns: [
+        { role: "user", text: "hi" },
+        { role: "ai", text: "hello" },
+        { role: "user", text: "hi again" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 402);
+  assertEquals(json, { error: "upgrade_required" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(commitCalls(state).length, 0);
+});
+
+Deno.test("free request with more AI history than ledger is upgrade-gated before provider", async () => {
+  const { response, json, state } = await run(
+    {
+      sub: subscription({ tier: "free" }),
+      ledger: ledger({ ai_count: 0, charged: true }),
+    },
+    chatBody({
+      sessionId: "session-1",
+      roundIndex: 1,
+      visiblePracticeThreadId: "session-1",
+      turns: [
+        { role: "user", text: "hi" },
+        { role: "ai", text: "hello" },
+        { role: "user", text: "hi again" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 402);
+  assertEquals(json, { error: "upgrade_required" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(commitCalls(state).length, 0);
+});
+
 Deno.test("chat retries a transient provider failure once before committing", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ practice_mode: "standard" }),
@@ -2267,9 +2316,14 @@ Deno.test("successful hint caps invite maturity with ledger partner mood", async
   assertEquals(response.status, 200);
   const promptText = state.deepSeekCalls[0].messages.map((m) => m.content)
     .join("\n");
-  assert(promptText.includes("inviteStage: direct_invite_ready"));
-  assertEquals(promptText.includes("inviteStage: partner_window"), false);
-  assertEquals(promptText.includes("inviteStage: high_intimacy"), false);
+  assert(
+    promptText.includes(
+      "inviteGuidance(hidden evidence; do not reveal labels)",
+    ),
+  );
+  assertEquals(promptText.includes("direct_invite_ready"), false);
+  assertEquals(promptText.includes("partner_window"), false);
+  assertEquals(promptText.includes("high_intimacy"), false);
 });
 
 Deno.test("successful hint falls back to normal 難度初始溫度 28 when ledger has no score", async () => {

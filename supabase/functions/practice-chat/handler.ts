@@ -1467,11 +1467,14 @@ export function createPracticeChatHandler(
       tier: sub.tier,
       roundIndex: request.roundIndex,
       ledgerExists: ledger.exists,
+      ledgerAiCount: ledger.aiCount,
       sessionId: request.sessionId,
       visiblePracticeThreadId: request.visiblePracticeThreadId,
       hasPriorAiTurns: request.turns.some((turn) => turn.role === "ai"),
       hasMemorySummary: !!request.memorySummary,
       hasMultipleTurns: request.turns.length > 1,
+      requestAiTurnCount: request.turns.filter((turn) => turn.role === "ai")
+        .length,
     });
     if (!continuation.allowed) {
       logInfo("practice_chat_upgrade_required", {

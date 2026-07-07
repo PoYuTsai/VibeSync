@@ -1169,7 +1169,16 @@ void main() {
 
     test('sendMessage 帶上 state 的 roundIndex 與 visiblePracticeThreadId',
         () async {
-      api.sendHandler = (_, {profile}) async => reply(cost: 0);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 48,
+              delta: 4,
+              band: 'cold',
+              reason: 'steady',
+            ),
+            hintUsedCount: 0,
+          );
       final c = resumeR2();
       await c.sendMessage('在嗎');
       expect(api.lastRoundIndex, 2);
@@ -1208,6 +1217,7 @@ void main() {
       expect(s.messages.map((m) => m.text).toList(), ['嗨', '嗯？']);
       expect(s.aiReplyCount, 0);
       expect(s.drawStatus, PracticeDrawStatus.revealed);
+      expect(s.canRequestHint, false);
     });
 
     test('付費續玩：清掉 debrief/ended/sessionComplete，可再聊', () {
@@ -1298,14 +1308,19 @@ void main() {
         roundIndex: 1,
         visiblePracticeThreadId: 'seed-round1',
         profileId: 'practice_girl_005',
+        practiceMode: 'beginner',
+        temperatureScore: 44,
+        familiarityScore: 30,
         debriefSummary: 'done',
       ));
       c.continueWithSamePartner(isPaid: true);
+      expect(c.currentState.canRequestHint, false);
 
       api.sendHandler = (_, {profile}) async => reply(cost: 0);
       await c.sendMessage('那我慢一點問');
 
       expect(api.lastContinuationPartnerState?.mood, 'guarded');
+      expect(c.currentState.canRequestHint, true);
       expect(
         api.lastContinuationPartnerState?.innerThought,
         '他剛剛有點急，我想先看他穩不穩。',

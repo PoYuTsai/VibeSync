@@ -138,3 +138,17 @@ Deno.test("舊卡缺 dateChance 欄位 → 向後相容 low + 空字串", () => 
   assertEquals(c.dateChanceReason, "");
   assertEquals(c.nextInviteMove, "");
 });
+
+Deno.test("visible fields with internal labels are rejected", () => {
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          summary: "relationshipScore 88",
+          suggestedLine: "約她喝咖啡",
+        }),
+      ),
+    Error,
+    "debrief_internal_label_leak",
+  );
+});

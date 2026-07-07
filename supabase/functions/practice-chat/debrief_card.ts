@@ -3,6 +3,8 @@
 
 export const VIBES = ["暖", "中性", "冷"];
 export const DATE_CHANCES = ["low", "medium", "high"];
+const INTERNAL_DEBRIEF_LABEL_PATTERN =
+  /\b(?:not_ready|soft_invite_ready|direct_invite_ready|partner_window|high_intimacy|relationshipScore|inviteStage|currentTemperatureScore|memorySummary|sceneStatus|dateChance)\b/i;
 
 export interface DebriefCard {
   summary: string;
@@ -32,6 +34,17 @@ export function clampList(
     .slice(0, maxItems);
 }
 
+function rejectInternalLabelLeak(value: string) {
+  if (INTERNAL_DEBRIEF_LABEL_PATTERN.test(value)) {
+    throw new Error("debrief_internal_label_leak");
+  }
+}
+
+function guardVisibleText(value: string): string {
+  rejectInternalLabelLeak(value);
+  return value;
+}
+
 function extractJsonObject(raw: string): string {
   const fenced = raw
     .trim()
@@ -54,8 +67,8 @@ export function parseDebriefCard(raw: string): DebriefCard {
     throw new Error("debrief_not_object");
   }
   const p = parsed as Record<string, unknown>;
-  const summary = clampStr(p.summary, 60);
-  const suggestedLine = clampStr(p.suggestedLine, 60);
+  const summary = guardVisibleText(clampStr(p.summary, 60));
+  const suggestedLine = guardVisibleText(clampStr(p.suggestedLine, 60));
   if (summary.length === 0 || suggestedLine.length === 0) {
     throw new Error("debrief_missing_fields");
   }
@@ -65,16 +78,16 @@ export function parseDebriefCard(raw: string): DebriefCard {
   // 約出來機會：合法值直接採用；非法/缺值時，有理由文字才 fallback medium，否則 low
   // （沒理由還說 medium 會誤導，往保守方向）。向後相容：舊卡缺這些欄位 → low + 空字串。
   const dateChanceRaw = clampStr(p.dateChance, 8).toLowerCase();
-  const dateChanceReason = clampStr(p.dateChanceReason, 60);
-  const nextInviteMove = clampStr(p.nextInviteMove, 60);
+  const dateChanceReason = guardVisibleText(clampStr(p.dateChanceReason, 60));
+  const nextInviteMove = guardVisibleText(clampStr(p.nextInviteMove, 60));
   const dateChance = DATE_CHANCES.includes(dateChanceRaw)
     ? dateChanceRaw
     : (dateChanceReason.length > 0 ? "medium" : "low");
 
   return {
     summary,
-    strengths: clampList(p.strengths, 2, 40),
-    watchouts: clampList(p.watchouts, 2, 40),
+    strengths: clampList(p.strengths, 2, 40).map(guardVisibleText),
+    watchouts: clampList(p.watchouts, 2, 40).map(guardVisibleText),
     suggestedLine,
     vibe,
     dateChance,

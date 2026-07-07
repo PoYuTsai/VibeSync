@@ -76,11 +76,13 @@ export function decideContinuationGate(opts: {
   tier: string | null | undefined;
   roundIndex: number;
   ledgerExists?: boolean;
+  ledgerAiCount?: number;
   sessionId?: string | null;
   visiblePracticeThreadId?: string | null;
   hasPriorAiTurns?: boolean;
   hasMemorySummary?: boolean;
   hasMultipleTurns?: boolean;
+  requestAiTurnCount?: number;
 }): { allowed: boolean; reason?: string } {
   if (normalizeTier(opts.tier) !== "free") {
     return { allowed: true };
@@ -88,12 +90,18 @@ export function decideContinuationGate(opts: {
   const continuedVisibleThread = !!opts.visiblePracticeThreadId &&
     !!opts.sessionId &&
     opts.visiblePracticeThreadId !== opts.sessionId;
+  const ledgerAiCount = Math.max(0, Math.trunc(opts.ledgerAiCount ?? 0));
+  const requestAiTurnCount = Math.max(
+    0,
+    Math.trunc(opts.requestAiTurnCount ?? (opts.hasPriorAiTurns ? 1 : 0)),
+  );
   const looksLikeContinuation = opts.roundIndex > 1 ||
+    continuedVisibleThread ||
+    opts.hasMemorySummary === true ||
     (!opts.ledgerExists &&
-      (continuedVisibleThread ||
-        opts.hasPriorAiTurns === true ||
-        opts.hasMemorySummary === true ||
-        opts.hasMultipleTurns === true));
+      (opts.hasPriorAiTurns === true ||
+        opts.hasMultipleTurns === true)) ||
+    (opts.ledgerExists === true && requestAiTurnCount > ledgerAiCount);
   if (looksLikeContinuation) {
     return { allowed: false, reason: "upgrade_required" };
   }

@@ -170,9 +170,11 @@ Deno.test("續玩：Free + 同 session 既有 ledger 第一輪續聊 → 放行"
       tier: "free",
       roundIndex: 1,
       ledgerExists: true,
+      ledgerAiCount: 1,
       sessionId: "session-1",
       visiblePracticeThreadId: "session-1",
       hasPriorAiTurns: true,
+      requestAiTurnCount: 1,
     }),
     { allowed: true },
   );
@@ -349,6 +351,38 @@ Deno.test("continuation gate blocks free new session carrying memorySummary", ()
       sessionId: "session-2",
       visiblePracticeThreadId: "session-2",
       hasMemorySummary: true,
+    }),
+    { allowed: false, reason: "upgrade_required" },
+  );
+});
+
+Deno.test("continuation gate blocks free existing ledger carrying memorySummary", () => {
+  assertEquals(
+    decideContinuationGate({
+      tier: "free",
+      roundIndex: 1,
+      ledgerExists: true,
+      ledgerAiCount: 1,
+      sessionId: "session-1",
+      visiblePracticeThreadId: "session-1",
+      hasMemorySummary: true,
+      requestAiTurnCount: 1,
+    }),
+    { allowed: false, reason: "upgrade_required" },
+  );
+});
+
+Deno.test("continuation gate blocks free request with more AI history than ledger", () => {
+  assertEquals(
+    decideContinuationGate({
+      tier: "free",
+      roundIndex: 1,
+      ledgerExists: true,
+      ledgerAiCount: 0,
+      sessionId: "session-1",
+      visiblePracticeThreadId: "session-1",
+      hasPriorAiTurns: true,
+      requestAiTurnCount: 1,
     }),
     { allowed: false, reason: "upgrade_required" },
   );

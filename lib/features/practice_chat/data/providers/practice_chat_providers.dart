@@ -191,6 +191,7 @@ class PracticeChatState {
       !ended &&
       !sessionComplete &&
       girl != null &&
+      aiReplyCount >= 1 &&
       messages.isNotEmpty &&
       messages.last.role == 'ai';
 
