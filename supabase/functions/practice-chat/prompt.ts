@@ -8,7 +8,10 @@ import {
   type PracticeProfile,
 } from "./practice_persona.ts";
 import type { PracticeLearningMode } from "./quota_decision.ts";
-import { buildConsistencyTestPrompt } from "./consistency_test.ts";
+import {
+  buildConsistencyTestPrompt,
+  formatConsistencyTestTypes,
+} from "./consistency_prompt.ts";
 import { scrubRawImageFilenames } from "./prompt_sanitizer.ts";
 import {
   relationshipStageFor,
@@ -225,7 +228,7 @@ export function buildDebriefMessages(
           g.signalStyle.join("；")
         }\n\n` +
         `她可能自然丟的小測試類型（評估使用者是否穩、是否防禦）：${
-          profile.consistencyTest.types.join("、")
+          formatConsistencyTestTypes(profile.consistencyTest.types)
         }\n\n` +
         `這是這場練習的逐字稿（「你」是學員、「她」是模擬對象）：\n\n${transcript}\n\n` +
         `請依系統指示，只回傳那個 JSON 物件。`,

@@ -14,6 +14,16 @@ const TEST_TYPE_PROMPTS: Record<ConsistencyTestType, string> = {
   boundary_check: "界線測試：提醒步調、距離或安全感，看對方是否尊重。",
 };
 
+export function formatConsistencyTestType(type: ConsistencyTestType): string {
+  return TEST_TYPE_PROMPTS[type];
+}
+
+export function formatConsistencyTestTypes(
+  types: readonly ConsistencyTestType[],
+): string {
+  return types.map(formatConsistencyTestType).join("；");
+}
+
 function difficultyLine(difficulty: PracticeDifficulty): string {
   if (difficulty === "easy") {
     return "輕鬆難度：小測試少量、柔和，丟了也要給台階，讓穩定幽默的回覆有機會加分。";
@@ -38,11 +48,10 @@ function propensityLine(
 
 export function buildConsistencyTestPrompt(profile: PracticeProfile): string {
   const testProfile = profile.consistencyTest;
-  const typeLines = testProfile.types.map((type) => TEST_TYPE_PROMPTS[type]);
   return `一致性小測試（你的自然個性，不要說破）：
 - ${propensityLine(testProfile.propensity)}
 - ${difficultyLine(profile.difficulty)}
-- 可用形狀：${typeLines.join("；")}
+- 可用形狀：${formatConsistencyTestTypes(testProfile.types)}
 - 如果對方先承認、幽默曲解、反打得輕鬆、或低壓接住，你可以變得更願意聊。
 - 如果對方防禦、自證、攻擊、討好或硬推進，你可以自然降溫、變短或吐槽。`;
 }

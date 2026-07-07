@@ -443,6 +443,24 @@ Deno.test("chat system prompt injects persona-specific consistency test guidance
   assertEquals(sys.includes("反問"), true);
 });
 
+Deno.test("debrief prompt formats consistency tests without raw enum keys", () => {
+  const profile = resolvePracticeProfile({
+    profileId: "practice_girl_004",
+    difficulty: "easy",
+  });
+  const msg = buildDebriefMessages(
+    [{ role: "user", text: "哈哈" }, { role: "ai", text: "你很會接欸" }],
+    profile,
+  )[1].content;
+
+  assertEquals(msg.includes("light_tease"), false);
+  assertEquals(msg.includes("counter_question"), false);
+  assertEquals(msg.includes("playful_rating"), false);
+  assertEquals(msg.includes("吐槽：用輕鬆挑釁或小虧一句"), true);
+  assertEquals(msg.includes("反問：把球丟回去"), true);
+  assertEquals(msg.includes("評分/標準"), true);
+});
+
 // ── Task 5：難度區塊移尾端＋砍 easy 混淆句＋debrief 判準隨難度注入 ──────────
 
 Deno.test("chat system prompt：不含寫死的（easy）混淆句", () => {
