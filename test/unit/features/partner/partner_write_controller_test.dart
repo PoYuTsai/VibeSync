@@ -199,6 +199,8 @@ void main() {
   setUp(() async {
     final ts = DateTime.now().microsecondsSinceEpoch;
     _partnerBox = await Hive.openBox<Partner>('pwc_partner_$ts');
+    // merge/delete cascades opener drafts, which live in the shared settings box.
+    await Hive.openBox(AppConstants.settingsBox);
     // Open the canonical conversations box because PartnerRepository.merge
     // and the real ConversationRepository both reach for
     // StorageService.conversationsBox = Hive.box(AppConstants.conversationsBox).
@@ -228,6 +230,7 @@ void main() {
   });
 
   tearDown(() async {
+    await Hive.deleteBoxFromDisk(AppConstants.settingsBox);
     await _outcomeBox.deleteFromDisk();
     await _followUpBox.deleteFromDisk();
     await _qualityBox.deleteFromDisk();
