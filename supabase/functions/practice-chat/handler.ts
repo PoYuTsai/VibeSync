@@ -28,6 +28,7 @@ import {
 import { DEEPSEEK_MODEL, type DeepSeekArgs } from "./deepseek.ts";
 import { type DebriefCard, parseDebriefCard } from "./debrief_card.ts";
 import { buildHintMessages, parseHintResult } from "./hint.ts";
+import { buildPracticeSceneContext } from "./life_schedule.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import {
   applyLearningClassification,
@@ -42,6 +43,7 @@ import {
   temperatureBandFor,
   type TurnClassification,
 } from "./temperature.ts";
+import { taipeiTimeContextFor } from "./time_context.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const CHAT_MAX_TOKENS = 200;
@@ -926,6 +928,13 @@ export function createPracticeChatHandler(
     // 難度接線（槓桿 A）：beginner 溫度初始值 fallback 隨難度變化（僅 beginner 生效）。
     const difficultyStartTemperature =
       difficultyTuningFor(request.profile.difficulty).startTemperature;
+    const requestNow = deps.now?.() ?? new Date();
+    const sceneContext = buildPracticeSceneContext({
+      profile: request.profile,
+      time: taipeiTimeContextFor(requestNow),
+      visiblePracticeThreadId: request.visiblePracticeThreadId ??
+        request.sessionId,
+    });
 
     const apiKey = deps.getEnv("DEEPSEEK_API_KEY");
     if (!apiKey) {
@@ -1166,6 +1175,7 @@ export function createPracticeChatHandler(
                 temperatureScore: ledger.temperatureScore ??
                   difficultyStartTemperature,
                 familiarityScore: ledger.familiarityScore ?? 0,
+                sceneContext,
               }),
               maxTokens: HINT_MAX_TOKENS,
               temperature: HINT_TEMPERATURE,
@@ -1372,8 +1382,9 @@ export function createPracticeChatHandler(
                       difficultyStartTemperature,
                     familiarityScore: ledger.familiarityScore ?? 0,
                     partnerState: partnerStateFromLedger(ledger),
+                    sceneContext,
                   }
-                  : {},
+                  : { sceneContext },
               ),
               maxTokens: DEBRIEF_MAX_TOKENS,
               temperature: DEBRIEF_TEMPERATURE,
@@ -1548,8 +1559,9 @@ export function createPracticeChatHandler(
                     difficultyStartTemperature,
                   familiarityScore: currentFamiliarity ?? 0,
                   partnerState: currentPartnerState,
+                  sceneContext,
                 }
-                : {},
+                : { sceneContext },
             ),
             maxTokens: CHAT_MAX_TOKENS,
             temperature: CHAT_TEMPERATURE,

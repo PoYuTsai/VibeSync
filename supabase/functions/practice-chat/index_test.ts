@@ -977,6 +977,19 @@ Deno.test("successful beginner classifier uses JSON mode and updates learning st
   assertEquals(state.deepSeekCalls[1].jsonMode, true);
   assertEquals(state.deepSeekCalls[1].maxTokens, 450);
   assert(state.deepSeekCalls[1].temperature <= 0.3);
+  const chatPrompt = state.deepSeekCalls[0].messages
+    .map((message) => message.content)
+    .join("\n");
+  const classifierPrompt = state.deepSeekCalls[1].messages
+    .map((message) => message.content)
+    .join("\n");
+  assert(chatPrompt.includes("sceneContext"));
+  assert(
+    chatPrompt.includes("如果對方問「在幹嘛」"),
+    "chat prompt should receive hidden life-scene guidance",
+  );
+  assertEquals(classifierPrompt.includes("sceneContext"), false);
+  assertEquals(classifierPrompt.includes("本場生活情境"), false);
   assertEquals(
     learningUpdateCalls(state)[0]?.params,
     {

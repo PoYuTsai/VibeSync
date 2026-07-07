@@ -8,6 +8,7 @@ import {
   type PracticeProfile,
 } from "./practice_persona.ts";
 import type { PracticeLearningMode } from "./quota_decision.ts";
+import type { PracticeSceneContext } from "./life_schedule.ts";
 import {
   buildConsistencyTestPrompt,
   formatConsistencyTestTypes,
@@ -29,6 +30,25 @@ function partnerStatePrompt(partnerState?: PartnerState | null): string {
   const innerThought = partnerState.innerThought.trim();
   const innerLine = innerThought ? `\ninnerThought: ${innerThought}` : "";
   return `\n\npartnerState（hidden guidance，不要直接說出 partnerState、mood 或 innerThought）：\nmood: ${partnerState.mood}${innerLine}\n請把它當成她此刻的情緒慣性：回覆要自然受到影響，但不能像報告或角色卡一樣明講。`;
+}
+
+function sceneContextPrompt(
+  sceneContext?: PracticeSceneContext | null,
+): string {
+  if (!sceneContext) return "";
+  const tempoGuidance = {
+    short: "回覆偏短，像手邊有事或精神有限，但不要無故攻擊對方。",
+    normal: "維持自然手機聊天節奏，不需要刻意熱情，也不要硬冷。",
+    engaged: "可以比平常多接一點生活話題，但仍維持真人聊天的鬆弛感。",
+  }[sceneContext.replyTempo];
+  return `\n\nsceneContext（hidden guidance，不要直接說出 sceneContext 或內部設定）：\n現在生活狀態：${sceneContext.statusLine}\n${sceneContext.promptLine}\n${tempoGuidance}\n如果對方問「在幹嘛」或聊到時間/行程，就照這個生活狀態自然回答；如果前文已經提過不同狀態，要自然銜接，不要自我矛盾。`;
+}
+
+function debriefSceneContextLine(
+  sceneContext?: PracticeSceneContext | null,
+): string {
+  if (!sceneContext) return "";
+  return `本場生活情境：${sceneContext.statusLine}。${sceneContext.promptLine}拆解時請把這視為她當時的生活背景；回覆變短、分心或想收尾不一定全是使用者表現差。\n\n`;
 }
 
 // ── chat：模擬對象女生人設 ──────────────────────────────────────────
@@ -145,6 +165,7 @@ export function buildChatMessages(
     temperatureScore?: number;
     familiarityScore?: number;
     partnerState?: PartnerState | null;
+    sceneContext?: PracticeSceneContext | null;
   } = {},
 ): ChatMessage[] {
   const history: ChatMessage[] = turns.map((t) => ({
@@ -169,8 +190,8 @@ export function buildChatMessages(
   return [
     {
       role: "system",
-      content: `${CHAT_SYSTEM_PROMPT}${
-        buildProfilePrompt(profile)
+      content: `${CHAT_SYSTEM_PROMPT}${buildProfilePrompt(profile)}${
+        sceneContextPrompt(options.sceneContext)
       }${temperaturePrompt}${partnerStatePrompt(options.partnerState)}`,
     },
     ...history,
@@ -200,6 +221,7 @@ export function buildDebriefMessages(
     temperatureScore?: number;
     familiarityScore?: number;
     partnerState?: PartnerState | null;
+    sceneContext?: PracticeSceneContext | null;
   } = {},
 ): ChatMessage[] {
   const transcript = turnsToTranscript(turns);
@@ -222,6 +244,7 @@ export function buildDebriefMessages(
       content: `本場模擬對象：${profile.personaLabel}\n` +
         `本場難度：${profile.difficultyLabel}\n` +
         `${profile.difficultyDebriefStandard}\n\n` +
+        debriefSceneContextLine(options.sceneContext) +
         stagePrompt +
         `她的人物設定：${g.displayName}，${g.age} 歲，${g.professionLabel}，住${g.city}。` +
         `興趣：${g.interestTags.join("、")}；生活：${

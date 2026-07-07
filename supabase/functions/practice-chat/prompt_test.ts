@@ -11,9 +11,16 @@ import {
 import { temperatureBandInstruction } from "./temperature.ts";
 import type { PracticeTurn } from "./validate.ts";
 import { resolvePracticeProfile } from "./practice_persona.ts";
+import type { PracticeSceneContext } from "./life_schedule.ts";
 
 // 預設 profile（slow_worker + normal），供既有不指定角色難度的測試沿用。
 const defaultProfile = resolvePracticeProfile({});
+const dinnerScene: PracticeSceneContext = {
+  id: "evening-dinner-friends",
+  statusLine: "剛跟朋友吃完飯，在回家的路上",
+  promptLine: "妳剛跟朋友吃完飯，在回家的路上，回覆可以比白天放鬆一點。",
+  replyTempo: "normal",
+};
 
 Deno.test("standard buildChatMessages does not include temperature score", () => {
   const sys =
@@ -147,6 +154,19 @@ Deno.test("buildChatMessages injects partner state as hidden behavior guidance",
   assertEquals(sys.includes("guarded"), true);
   assertEquals(sys.includes("他剛剛有點急，我想先看他穩不穩。"), true);
   assertEquals(sys.includes("不要直接說出 partnerState"), true);
+});
+
+Deno.test("buildChatMessages injects scene context as hidden life-state guidance", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "妳現在在幹嘛" }],
+    defaultProfile,
+    { sceneContext: dinnerScene },
+  )[0].content;
+
+  assertEquals(sys.includes("sceneContext"), true);
+  assertEquals(sys.includes("剛跟朋友吃完飯，在回家的路上"), true);
+  assertEquals(sys.includes("不要直接說出 sceneContext"), true);
+  assertEquals(sys.includes("如果對方問「在幹嘛」"), true);
 });
 
 Deno.test("beginner buildChatMessages does not mention hints", () => {
@@ -462,6 +482,18 @@ Deno.test("buildDebriefMessages includes final partner state for emotional cause
   assertEquals(msg.includes("partnerState"), true);
   assertEquals(msg.includes("amused"), true);
   assertEquals(msg.includes("他有接住我的吐槽，可以繼續丟輕鬆球。"), true);
+});
+
+Deno.test("buildDebriefMessages includes scene status as context without exposing internals", () => {
+  const msg = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "剛吃完飯" }],
+    defaultProfile,
+    { sceneContext: dinnerScene },
+  )[1].content;
+
+  assertEquals(msg.includes("本場生活情境"), true);
+  assertEquals(msg.includes("剛跟朋友吃完飯，在回家的路上"), true);
+  assertEquals(msg.includes("sceneContext"), false);
 });
 
 Deno.test("chat system prompt injects persona-specific consistency test guidance", () => {

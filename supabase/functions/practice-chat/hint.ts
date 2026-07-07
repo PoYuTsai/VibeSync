@@ -1,4 +1,5 @@
 import type { ChatMessage } from "./prompt.ts";
+import type { PracticeSceneContext } from "./life_schedule.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
 import { scrubRawImageFilenames } from "./prompt_sanitizer.ts";
 import { clampTemperature, relationshipStageFor } from "./temperature.ts";
@@ -65,10 +66,14 @@ export function buildHintMessages(opts: {
   profile: PracticeProfile;
   temperatureScore: number;
   familiarityScore?: number;
+  sceneContext?: PracticeSceneContext | null;
 }): ChatMessage[] {
   const score = clampTemperature(opts.temperatureScore);
   const stage = relationshipStageFor(opts.familiarityScore ?? 0, score);
   const stageGuidance = hintStageGuidance(stage.stage);
+  const sceneEvidence = opts.sceneContext
+    ? `sceneStatus: ${opts.sceneContext.statusLine}\nscenePrompt: ${opts.sceneContext.promptLine}\nreplyTempo: ${opts.sceneContext.replyTempo}\n\n`
+    : "";
   return [
     {
       role: "system",
@@ -94,6 +99,7 @@ export function buildHintMessages(opts: {
         `目前關係階段：${stage.label}\n` +
         `升溫回覆不是永遠更曖昧；請選目前階段最容易加分的方向。\n` +
         `目前最容易加分：${stageGuidance}\n\n` +
+        sceneEvidence +
         `profile evidence:\n${profileToEvidence(opts.profile)}\n\n` +
         `transcript evidence:\n${turnsToTranscript(opts.turns)}\n\n` +
         "請根據最近上下文，產生剛好兩個可直接貼上的回覆選項與一段教學心法。這是在幫使用者接 assistant 最新一句，不是在分析使用者剛才那句。只回傳繁體中文 JSON。",

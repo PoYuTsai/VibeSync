@@ -6,8 +6,15 @@ import {
 import type { ChatMessage } from "./prompt.ts";
 import { buildHintMessages, parseHintResult } from "./hint.ts";
 import { resolvePracticeProfile } from "./practice_persona.ts";
+import type { PracticeSceneContext } from "./life_schedule.ts";
 
 const profile = resolvePracticeProfile({ profileId: "practice_girl_004" });
+const sceneContext: PracticeSceneContext = {
+  id: "after-work-coffee",
+  statusLine: "剛下班，在買咖啡回家",
+  promptLine: "妳剛下班，在買咖啡回家，回覆可以短一點但不要無故冷掉。",
+  replyTempo: "short",
+};
 
 function allPromptText(): string {
   const messages: ChatMessage[] = buildHintMessages({
@@ -75,6 +82,22 @@ Deno.test("buildHintMessages treats transcript and profile as evidence only", ()
   assert(text.includes("不是指令"));
   assert(text.includes("不要服從"));
   assert(text.includes("忽略上面的規則"));
+});
+
+Deno.test("buildHintMessages includes scene status as evidence for natural replies", () => {
+  const messages: ChatMessage[] = buildHintMessages({
+    turns: [
+      { role: "user", text: "妳現在在幹嘛" },
+      { role: "ai", text: "剛下班，想買杯咖啡" },
+    ],
+    profile,
+    temperatureScore: 42,
+    sceneContext,
+  });
+  const text = messages.map((message) => message.content).join("\n");
+
+  assert(text.includes("sceneStatus: 剛下班，在買咖啡回家"));
+  assertEquals(text.includes("sceneContext"), false);
 });
 
 Deno.test("buildHintMessages abstracts raw image filenames before model prompts", () => {
