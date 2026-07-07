@@ -1175,6 +1175,7 @@ export function createPracticeChatHandler(
                 temperatureScore: ledger.temperatureScore ??
                   difficultyStartTemperature,
                 familiarityScore: ledger.familiarityScore ?? 0,
+                partnerMood: partnerStateFromLedger(ledger)?.mood ?? null,
                 sceneContext,
                 memorySummary: request.memorySummary,
               }),
@@ -1440,6 +1441,10 @@ export function createPracticeChatHandler(
     const continuation = decideContinuationGate({
       tier: sub.tier,
       roundIndex: request.roundIndex,
+      ledgerExists: ledger.exists,
+      sessionId: request.sessionId,
+      visiblePracticeThreadId: request.visiblePracticeThreadId,
+      hasPriorAiTurns: request.turns.some((turn) => turn.role === "ai"),
     });
     if (!continuation.allowed) {
       logInfo("practice_chat_upgrade_required", {

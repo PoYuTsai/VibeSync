@@ -385,6 +385,30 @@ Deno.test("standard chat response does not include temperature and does not judg
   assertEquals(state.deepSeekCalls[0].jsonMode, undefined);
 });
 
+Deno.test("free continuation spoof with roundIndex 1 is upgrade-gated before provider", async () => {
+  const { response, json, state } = await run(
+    {
+      sub: subscription({ tier: "free" }),
+      ledger: null,
+    },
+    chatBody({
+      sessionId: "session-2",
+      roundIndex: 1,
+      visiblePracticeThreadId: "thread-1",
+      turns: [
+        { role: "user", text: "hi" },
+        { role: "ai", text: "hello" },
+        { role: "user", text: "續聊一下" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 402);
+  assertEquals(json, { error: "upgrade_required" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(commitCalls(state).length, 0);
+});
+
 Deno.test("chat retries a transient provider failure once before committing", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ practice_mode: "standard" }),
@@ -2159,6 +2183,29 @@ Deno.test("successful hint uses ledger temperature, records after parse, and ret
     "deepseek",
     "rpc:record_practice_hint",
   ]);
+});
+
+Deno.test("successful hint caps invite maturity with ledger partner mood", async () => {
+  const { response, state } = await run({
+    ledger: beginnerStartedLedger({
+      temperature_score: 90,
+      familiarity_score: 90,
+      partner_mood: "guarded",
+    }),
+    deepSeekReplies: [validHintJson()],
+    rpc: {
+      record_practice_hint: [{
+        data: [{ new_hint_count: 1, did_charge: true }],
+      }],
+    },
+  }, hintBody({ practiceMode: "beginner" }));
+
+  assertEquals(response.status, 200);
+  const promptText = state.deepSeekCalls[0].messages.map((m) => m.content)
+    .join("\n");
+  assert(promptText.includes("inviteStage: direct_invite_ready"));
+  assertEquals(promptText.includes("inviteStage: partner_window"), false);
+  assertEquals(promptText.includes("inviteStage: high_intimacy"), false);
 });
 
 Deno.test("successful hint falls back to normal 難度初始溫度 28 when ledger has no score", async () => {

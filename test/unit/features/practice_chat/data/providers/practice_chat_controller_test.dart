@@ -43,6 +43,8 @@ class _FakeApi extends PracticeChatApiService {
   int? lastTemperatureScore;
   int? lastFamiliarityScore;
   String? lastMemorySummary;
+  String? lastHintMemorySummary;
+  String? lastDebriefMemorySummary;
   PracticeHintReplyType? lastAppliedHintType;
   String? lastAppliedHintText;
   int? lastDebriefRoundIndex;
@@ -96,6 +98,7 @@ class _FakeApi extends PracticeChatApiService {
     hintCallCount++;
     lastHintRoundIndex = roundIndex;
     lastHintThreadId = visiblePracticeThreadId;
+    lastHintMemorySummary = memorySummary;
     lastHintRequestId = requestId;
     return hintHandler!(turns, profile: profile);
   }
@@ -111,6 +114,7 @@ class _FakeApi extends PracticeChatApiService {
   }) {
     lastDebriefRoundIndex = roundIndex;
     lastDebriefThreadId = visiblePracticeThreadId;
+    lastDebriefMemorySummary = memorySummary;
     return debriefHandler!(turns, profile: profile);
   }
 
@@ -1270,7 +1274,10 @@ void main() {
     test('長 thread 送訊息：local 保留全歷史，API 只收近期 turns 與 memorySummary', () async {
       final longMessages = <PracticeMessage>[];
       for (var i = 0; i < 70; i++) {
-        longMessages.add(PracticeMessage(role: 'user', text: '舊使用者訊息 $i'));
+        longMessages.add(PracticeMessage(
+          role: 'user',
+          text: i == 0 ? '舊使用者訊息 $i S__42795075.jpg' : '舊使用者訊息 $i',
+        ));
         longMessages.add(PracticeMessage(role: 'ai', text: '舊 AI 回覆 $i'));
       }
       final c = makeControllerFrom(PracticeSession(
@@ -1298,8 +1305,60 @@ void main() {
       expect(sentTurns.any((turn) => turn.text == '舊使用者訊息 0'), false);
       expect(api.lastMemorySummary, contains('舊使用者訊息 0'));
       expect(api.lastMemorySummary, contains('舊 AI 回覆 0'));
+      expect(api.lastMemorySummary, contains('舊使用者訊息 30'));
+      expect(api.lastMemorySummary, contains('[image concept omitted]'));
+      expect(api.lastMemorySummary, isNot(contains('S__42795075.jpg')));
       expect(api.lastRoundIndex, 6);
       expect(api.lastVisibleThreadId, 'thread-long');
+    });
+
+    test('長 thread hint/debrief：API 收到近期 turns 與 memorySummary', () async {
+      final longMessages = <PracticeMessage>[];
+      for (var i = 0; i < 70; i++) {
+        longMessages.add(PracticeMessage(role: 'user', text: '舊使用者訊息 $i'));
+        longMessages.add(PracticeMessage(role: 'ai', text: '舊 AI 回覆 $i'));
+      }
+      final c = makeControllerFrom(PracticeSession(
+        id: 'long-beginner-thread',
+        createdAt: DateTime(2026, 6, 24, 9),
+        aiReplyCount: 19,
+        messages: longMessages,
+        roundIndex: 4,
+        visiblePracticeThreadId: 'thread-long-beginner',
+        profileId: 'practice_girl_005',
+        practiceMode: 'beginner',
+        temperatureScore: 58,
+        familiarityScore: 45,
+        relationshipStageLabel: '可以聊個人',
+      ));
+
+      late List<PracticeTurnDto> hintTurns;
+      api.hintHandler = (turns, {profile}) async {
+        hintTurns = turns;
+        return hintResult();
+      };
+      await c.requestHint();
+
+      expect(hintTurns.length, lessThan(c.currentState.messages.length));
+      expect(api.lastHintMemorySummary, contains('舊使用者訊息 0'));
+      expect(api.lastHintMemorySummary, contains('舊使用者訊息 29'));
+
+      late List<PracticeTurnDto> debriefTurns;
+      api.debriefHandler = (turns, {profile}) async {
+        debriefTurns = turns;
+        return const PracticeDebrief(
+          summary: '長 thread 拆解',
+          strengths: ['有延續前文'],
+          watchouts: [],
+          suggestedLine: '接著她剛剛的咖啡話題問一句。',
+          vibe: '自然',
+        );
+      };
+      await c.endPractice();
+
+      expect(debriefTurns.length, lessThan(c.currentState.messages.length));
+      expect(api.lastDebriefMemorySummary, contains('舊使用者訊息 0'));
+      expect(api.lastDebriefMemorySummary, contains('舊使用者訊息 29'));
     });
 
     // ── 續聊保溫：續同一位沿用上一輪溫度三元組 ──────────────────────────

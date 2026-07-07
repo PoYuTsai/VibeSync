@@ -137,6 +137,47 @@ Deno.test("續玩：Free + roundIndex 1 → 放行（可開新陪練女孩）", 
   );
 });
 
+Deno.test("續玩：Free + 新 session 但帶舊 visible thread → 擋下", () => {
+  assertEquals(
+    decideContinuationGate({
+      tier: "free",
+      roundIndex: 1,
+      ledgerExists: false,
+      sessionId: "session-2",
+      visiblePracticeThreadId: "thread-1",
+    }),
+    { allowed: false, reason: "upgrade_required" },
+  );
+});
+
+Deno.test("續玩：Free + 新 session 但 transcript 已有 AI turns → 擋下", () => {
+  assertEquals(
+    decideContinuationGate({
+      tier: "free",
+      roundIndex: 1,
+      ledgerExists: false,
+      sessionId: "session-2",
+      visiblePracticeThreadId: "session-2",
+      hasPriorAiTurns: true,
+    }),
+    { allowed: false, reason: "upgrade_required" },
+  );
+});
+
+Deno.test("續玩：Free + 同 session 既有 ledger 第一輪續聊 → 放行", () => {
+  assertEquals(
+    decideContinuationGate({
+      tier: "free",
+      roundIndex: 1,
+      ledgerExists: true,
+      sessionId: "session-1",
+      visiblePracticeThreadId: "session-1",
+      hasPriorAiTurns: true,
+    }),
+    { allowed: true },
+  );
+});
+
 Deno.test("續玩：Free + roundIndex 3 → 擋下", () => {
   assertEquals(
     decideContinuationGate({ tier: "free", roundIndex: 3 }).allowed,

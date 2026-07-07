@@ -38,6 +38,11 @@ const String kInitialPracticeRelationshipStageLabel = '建立熟悉中';
 const int kPracticePromptRecentTurns = 80;
 const int kPracticeMemorySummaryMaxChars = 800;
 
+final RegExp _practiceRawImageFilenamePattern = RegExp(
+  r'(?:[A-Za-z]:)?(?:[\\/][^\s\\/]+)*[\\/]?(?:S__\d+\.(?:jpe?g|png|webp|heic)|IMG_\d+\.(?:jpe?g|png|webp|heic)|[^\\/\s]+\.(?:jpe?g|png|webp|heic))',
+  caseSensitive: false,
+);
+
 const _sentinel = Object();
 
 /// 每日翻牌的揭曉狀態。locked＝今天還沒翻牌（不顯示任何對象）；drawing＝抽牌中；
@@ -1294,9 +1299,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   String? _memorySummaryForPrompt(List<PracticeMessage> messages) {
     final olderCount = messages.length - kPracticePromptRecentTurns;
     if (olderCount <= 0) return null;
-    final olderMessages = messages.take(olderCount);
+    final olderMessages = messages.take(olderCount).toList(growable: false);
     final buffer = StringBuffer('更早對話摘要（自動節錄 $olderCount 則）：');
-    for (final message in olderMessages.take(24)) {
+    for (final message in _memorySummarySample(olderMessages)) {
       final text = _compactMemoryText(message.text);
       if (text.isEmpty) continue;
       final speaker = message.role == 'user' ? '你' : '她';
@@ -1310,8 +1315,20 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     return summary.trim().isEmpty ? null : summary;
   }
 
-  String _compactMemoryText(String text) =>
-      text.trim().replaceAll(RegExp(r'\s+'), ' ');
+  Iterable<PracticeMessage> _memorySummarySample(
+    List<PracticeMessage> olderMessages,
+  ) {
+    if (olderMessages.length <= 24) return olderMessages;
+    return [
+      ...olderMessages.take(8),
+      ...olderMessages.skip(olderMessages.length - 16),
+    ];
+  }
+
+  String _compactMemoryText(String text) => text
+      .replaceAll(_practiceRawImageFilenamePattern, '[image concept omitted]')
+      .trim()
+      .replaceAll(RegExp(r'\s+'), ' ');
 
   String _clipMemoryText(String text, int maxChars) {
     if (text.length <= maxChars) return text;

@@ -63,20 +63,33 @@ export function decideChatGate(opts: {
 }
 
 /**
- * Free 續玩閘（MVP，無新 migration）：Free 帳號只能玩第 1 輪；要續「同一位」（roundIndex>1）
- * 須升級。付費（starter/essential）不限。roundIndex 缺值已由 validate fallback 1，故 Free
- * 開全新一位（新 session、roundIndex 1）仍放行，只擋同一位續玩。
+ * Free 續玩閘（MVP，無新 migration）：Free 帳號只能玩第 1 輪；要續「同一位」須升級。
+ * 付費（starter/essential）不限。roundIndex 缺值已由 validate fallback 1，故 Free
+ * 開全新一位（新 session、roundIndex 1、無舊 thread/AI turns）仍放行。
  *
  * 這是 server 正常路徑的硬閘：未知/缺 tier 一律 normalizeTier→free 而 fail-closed。
- * 但**不**宣稱 abuse-proof——沒有 per-thread ledger，惡意 client 可送 roundIndex=1 規避；
- * 此閘只保證 app 正常路徑擋住 Free 續同一位。
+ * 無 per-thread ledger 前，若 Free 開新 billing session 卻帶著舊 visible thread 或既有 AI
+ * turns，就視為同一位續聊並擋下，避免只靠 client roundIndex 當付費邊界。
  * @returns allowed=false 時 reason 一律 'upgrade_required'，由 handler 轉 402。
  */
 export function decideContinuationGate(opts: {
   tier: string | null | undefined;
   roundIndex: number;
+  ledgerExists?: boolean;
+  sessionId?: string | null;
+  visiblePracticeThreadId?: string | null;
+  hasPriorAiTurns?: boolean;
 }): { allowed: boolean; reason?: string } {
-  if (normalizeTier(opts.tier) === "free" && opts.roundIndex > 1) {
+  if (normalizeTier(opts.tier) !== "free") {
+    return { allowed: true };
+  }
+  const continuedVisibleThread = !!opts.visiblePracticeThreadId &&
+    !!opts.sessionId &&
+    opts.visiblePracticeThreadId !== opts.sessionId;
+  const looksLikeContinuation = opts.roundIndex > 1 ||
+    (!opts.ledgerExists &&
+      (continuedVisibleThread || opts.hasPriorAiTurns === true));
+  if (looksLikeContinuation) {
     return { allowed: false, reason: "upgrade_required" };
   }
   return { allowed: true };
