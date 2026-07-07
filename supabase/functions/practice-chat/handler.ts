@@ -361,6 +361,27 @@ function partnerStateFromLedger(row: SessionLedger): PartnerState | null {
   };
 }
 
+function requestLooksLikeContinuation(
+  request: ReturnType<typeof validateRequest>,
+): boolean {
+  return request.roundIndex > 1 ||
+    !!request.memorySummary ||
+    request.turns.length > 1 ||
+    request.turns.some((turn) => turn.role === "ai") ||
+    (!!request.visiblePracticeThreadId &&
+      request.visiblePracticeThreadId !== request.sessionId);
+}
+
+function partnerStateForRequest(
+  ledger: SessionLedger,
+  request: ReturnType<typeof validateRequest>,
+): PartnerState | null {
+  const authoritative = partnerStateFromLedger(ledger);
+  if (authoritative) return authoritative;
+  if (ledger.exists || !requestLooksLikeContinuation(request)) return null;
+  return request.continuationPartnerState ?? null;
+}
+
 function hintCountFromLedger(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(0, Math.trunc(value))
@@ -1387,7 +1408,11 @@ export function createPracticeChatHandler(
                     sceneContext,
                     memorySummary: request.memorySummary,
                   }
-                  : { sceneContext, memorySummary: request.memorySummary },
+                  : {
+                    partnerState: partnerStateFromLedger(ledger),
+                    sceneContext,
+                    memorySummary: request.memorySummary,
+                  },
               ),
               maxTokens: DEBRIEF_MAX_TOKENS,
               temperature: DEBRIEF_TEMPERATURE,
@@ -1445,6 +1470,8 @@ export function createPracticeChatHandler(
       sessionId: request.sessionId,
       visiblePracticeThreadId: request.visiblePracticeThreadId,
       hasPriorAiTurns: request.turns.some((turn) => turn.role === "ai"),
+      hasMemorySummary: !!request.memorySummary,
+      hasMultipleTurns: request.turns.length > 1,
     });
     if (!continuation.allowed) {
       logInfo("practice_chat_upgrade_required", {
@@ -1530,9 +1557,7 @@ export function createPracticeChatHandler(
         ? ledger.familiarityScore ?? 0
         : request.familiarityScore ?? 0
       : null;
-    const currentPartnerState = beginnerMode && ledger.exists
-      ? partnerStateFromLedger(ledger)
-      : null;
+    const currentPartnerState = partnerStateForRequest(ledger, request);
 
     try {
       await assertPracticeLearningReady({
@@ -1569,7 +1594,11 @@ export function createPracticeChatHandler(
                   sceneContext,
                   memorySummary: request.memorySummary,
                 }
-                : { sceneContext, memorySummary: request.memorySummary },
+                : {
+                  partnerState: currentPartnerState,
+                  sceneContext,
+                  memorySummary: request.memorySummary,
+                },
             ),
             maxTokens: CHAT_MAX_TOKENS,
             temperature: CHAT_TEMPERATURE,

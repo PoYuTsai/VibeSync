@@ -79,6 +79,8 @@ export function decideContinuationGate(opts: {
   sessionId?: string | null;
   visiblePracticeThreadId?: string | null;
   hasPriorAiTurns?: boolean;
+  hasMemorySummary?: boolean;
+  hasMultipleTurns?: boolean;
 }): { allowed: boolean; reason?: string } {
   if (normalizeTier(opts.tier) !== "free") {
     return { allowed: true };
@@ -88,7 +90,10 @@ export function decideContinuationGate(opts: {
     opts.visiblePracticeThreadId !== opts.sessionId;
   const looksLikeContinuation = opts.roundIndex > 1 ||
     (!opts.ledgerExists &&
-      (continuedVisibleThread || opts.hasPriorAiTurns === true));
+      (continuedVisibleThread ||
+        opts.hasPriorAiTurns === true ||
+        opts.hasMemorySummary === true ||
+        opts.hasMultipleTurns === true));
   if (looksLikeContinuation) {
     return { allowed: false, reason: "upgrade_required" };
   }

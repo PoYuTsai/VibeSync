@@ -118,6 +118,7 @@ class _NoopPracticeChatApi extends PracticeChatApiService {
     int? temperatureScore,
     int? familiarityScore,
     String? memorySummary,
+    PracticePartnerState? continuationPartnerState,
     PracticeHintReplyType? appliedHintType,
     String? appliedHintText,
   }) {
@@ -132,6 +133,7 @@ class _NoopPracticeChatApi extends PracticeChatApiService {
     int roundIndex = 1,
     String? visiblePracticeThreadId,
     String? memorySummary,
+    PracticePartnerState? continuationPartnerState,
   }) {
     throw UnimplementedError();
   }
@@ -179,6 +181,7 @@ class _DrawApi extends PracticeChatApiService {
     int? temperatureScore,
     int? familiarityScore,
     String? memorySummary,
+    PracticePartnerState? continuationPartnerState,
     PracticeHintReplyType? appliedHintType,
     String? appliedHintText,
   }) =>
@@ -192,6 +195,7 @@ class _DrawApi extends PracticeChatApiService {
     int roundIndex = 1,
     String? visiblePracticeThreadId,
     String? memorySummary,
+    PracticePartnerState? continuationPartnerState,
   }) =>
       throw UnimplementedError();
 }
@@ -245,6 +249,7 @@ class _HintApi extends _NoopPracticeChatApi {
     int roundIndex = 1,
     String? visiblePracticeThreadId,
     String? memorySummary,
+    PracticePartnerState? continuationPartnerState,
     String? requestId,
   }) async {
     hintCalls++;
@@ -273,6 +278,7 @@ class _MessageApi extends _NoopPracticeChatApi {
     int? temperatureScore,
     int? familiarityScore,
     String? memorySummary,
+    PracticePartnerState? continuationPartnerState,
     PracticeHintReplyType? appliedHintType,
     String? appliedHintText,
   }) {

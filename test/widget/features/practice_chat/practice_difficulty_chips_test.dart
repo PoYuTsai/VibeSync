@@ -47,6 +47,7 @@ class _NoopPracticeChatApi extends PracticeChatApiService {
     int? temperatureScore,
     int? familiarityScore,
     String? memorySummary,
+    PracticePartnerState? continuationPartnerState,
     PracticeHintReplyType? appliedHintType,
     String? appliedHintText,
   }) =>
@@ -60,6 +61,7 @@ class _NoopPracticeChatApi extends PracticeChatApiService {
     int roundIndex = 1,
     String? visiblePracticeThreadId,
     String? memorySummary,
+    PracticePartnerState? continuationPartnerState,
   }) =>
       throw UnimplementedError();
 }

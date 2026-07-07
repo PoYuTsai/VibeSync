@@ -52,6 +52,11 @@ class PracticePartnerState {
     required this.mood,
     required this.innerThought,
   });
+
+  Map<String, dynamic> toJson() => {
+        'mood': mood,
+        'innerThought': innerThought,
+      };
 }
 
 class PracticeChatReply {
@@ -293,6 +298,7 @@ class PracticeChatApiService {
     int? temperatureScore,
     int? familiarityScore,
     String? memorySummary,
+    PracticePartnerState? continuationPartnerState,
     PracticeHintReplyType? appliedHintType,
     String? appliedHintText,
   }) async {
@@ -322,6 +328,8 @@ class PracticeChatApiService {
           'appliedHintText': normalizedAppliedHintText,
         if (visiblePracticeThreadId != null)
           'visiblePracticeThreadId': visiblePracticeThreadId,
+        if (continuationPartnerState != null)
+          'continuationPartnerState': continuationPartnerState.toJson(),
       },
     );
     final data = _guardStatus(response);
@@ -357,6 +365,7 @@ class PracticeChatApiService {
     int roundIndex = 1,
     String? visiblePracticeThreadId,
     String? memorySummary,
+    PracticePartnerState? continuationPartnerState,
     String? requestId,
   }) async {
     final normalizedMemorySummary = memorySummary?.trim();
@@ -376,6 +385,8 @@ class PracticeChatApiService {
         'roundIndex': roundIndex,
         if (visiblePracticeThreadId != null)
           'visiblePracticeThreadId': visiblePracticeThreadId,
+        if (continuationPartnerState != null)
+          'continuationPartnerState': continuationPartnerState.toJson(),
       },
     );
     final data = _guardHintStatus(response);
@@ -389,6 +400,7 @@ class PracticeChatApiService {
     int roundIndex = 1,
     String? visiblePracticeThreadId,
     String? memorySummary,
+    PracticePartnerState? continuationPartnerState,
   }) async {
     final normalizedMemorySummary = memorySummary?.trim();
     final response = await _invoke(
@@ -404,6 +416,8 @@ class PracticeChatApiService {
         'roundIndex': roundIndex,
         if (visiblePracticeThreadId != null)
           'visiblePracticeThreadId': visiblePracticeThreadId,
+        if (continuationPartnerState != null)
+          'continuationPartnerState': continuationPartnerState.toJson(),
       },
     );
     final data = _guardStatus(response);

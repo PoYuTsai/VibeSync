@@ -45,6 +45,9 @@ class _FakeApi extends PracticeChatApiService {
   String? lastMemorySummary;
   String? lastHintMemorySummary;
   String? lastDebriefMemorySummary;
+  PracticePartnerState? lastContinuationPartnerState;
+  PracticePartnerState? lastHintContinuationPartnerState;
+  PracticePartnerState? lastDebriefContinuationPartnerState;
   PracticeHintReplyType? lastAppliedHintType;
   String? lastAppliedHintText;
   int? lastDebriefRoundIndex;
@@ -71,6 +74,7 @@ class _FakeApi extends PracticeChatApiService {
     int? temperatureScore,
     int? familiarityScore,
     String? memorySummary,
+    PracticePartnerState? continuationPartnerState,
     PracticeHintReplyType? appliedHintType,
     String? appliedHintText,
   }) {
@@ -80,6 +84,7 @@ class _FakeApi extends PracticeChatApiService {
     lastTemperatureScore = temperatureScore;
     lastFamiliarityScore = familiarityScore;
     lastMemorySummary = memorySummary;
+    lastContinuationPartnerState = continuationPartnerState;
     lastAppliedHintType = appliedHintType;
     lastAppliedHintText = appliedHintText;
     return sendHandler!(turns, profile: profile);
@@ -93,12 +98,14 @@ class _FakeApi extends PracticeChatApiService {
     int roundIndex = 1,
     String? visiblePracticeThreadId,
     String? memorySummary,
+    PracticePartnerState? continuationPartnerState,
     String? requestId,
   }) {
     hintCallCount++;
     lastHintRoundIndex = roundIndex;
     lastHintThreadId = visiblePracticeThreadId;
     lastHintMemorySummary = memorySummary;
+    lastHintContinuationPartnerState = continuationPartnerState;
     lastHintRequestId = requestId;
     return hintHandler!(turns, profile: profile);
   }
@@ -111,10 +118,12 @@ class _FakeApi extends PracticeChatApiService {
     int roundIndex = 1,
     String? visiblePracticeThreadId,
     String? memorySummary,
+    PracticePartnerState? continuationPartnerState,
   }) {
     lastDebriefRoundIndex = roundIndex;
     lastDebriefThreadId = visiblePracticeThreadId;
     lastDebriefMemorySummary = memorySummary;
+    lastDebriefContinuationPartnerState = continuationPartnerState;
     return debriefHandler!(turns, profile: profile);
   }
 
@@ -1269,6 +1278,38 @@ void main() {
       expect(api.lastVisibleThreadId, 'round1');
       expect(repo.getById(newSessionId), isNotNull);
       expect(repo.getById('round1'), isNotNull);
+    });
+
+    test('paid continuation forwards last partner state seed on first send',
+        () async {
+      final c = makeControllerFrom(PracticeSession(
+        id: 'seed-round1',
+        createdAt: DateTime(2026, 6, 24, 9),
+        aiReplyCount: 1,
+        messages: const [
+          PracticeMessage(role: 'user', text: 'hi'),
+          PracticeMessage(
+            role: 'ai',
+            text: 'hello',
+            mood: 'guarded',
+            innerThought: '他剛剛有點急，我想先看他穩不穩。',
+          ),
+        ],
+        roundIndex: 1,
+        visiblePracticeThreadId: 'seed-round1',
+        profileId: 'practice_girl_005',
+        debriefSummary: 'done',
+      ));
+      c.continueWithSamePartner(isPaid: true);
+
+      api.sendHandler = (_, {profile}) async => reply(cost: 0);
+      await c.sendMessage('那我慢一點問');
+
+      expect(api.lastContinuationPartnerState?.mood, 'guarded');
+      expect(
+        api.lastContinuationPartnerState?.innerThought,
+        '他剛剛有點急，我想先看他穩不穩。',
+      );
     });
 
     test('長 thread 送訊息：local 保留全歷史，API 只收近期 turns 與 memorySummary', () async {

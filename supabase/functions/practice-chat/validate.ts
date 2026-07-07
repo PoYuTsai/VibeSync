@@ -12,6 +12,7 @@ import {
   resolvePracticeProfile,
 } from "./practice_persona.ts";
 import { containsRawImageFilename } from "./prompt_sanitizer.ts";
+import type { PartnerMood, PartnerState } from "./temperature.ts";
 
 // 單次 prompt payload 上限。長 visible thread 由 client 送近期逐字稿 + memorySummary，
 // 不再把 3 輪當產品上限；這裡只防止一次 request 塞爆 prompt。
@@ -48,6 +49,8 @@ export interface PracticeChatRequest {
   memorySummary?: string;
   /** local 顯示用 thread id；僅供 log，絕不當作授權身份。 */
   visiblePracticeThreadId?: string;
+  /** Last local AI partner state. Seed only; server ledger wins when present. */
+  continuationPartnerState?: PartnerState;
   /** 使用者原封不動套用的新手 Hint 類型；只作學習評分保護，不作授權。 */
   appliedHintType?: AppliedHintType;
   appliedHintText?: string;
@@ -60,6 +63,15 @@ export interface PracticeChatRequest {
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function isPartnerMood(value: unknown): value is PartnerMood {
+  return value === "neutral" ||
+    value === "curious" ||
+    value === "amused" ||
+    value === "comfortable" ||
+    value === "guarded" ||
+    value === "annoyed";
 }
 
 /** 計算陣列中 role === "ai" 的數量。 */
@@ -243,6 +255,27 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     visiblePracticeThreadId = raw.visiblePracticeThreadId;
   }
 
+  let continuationPartnerState: PartnerState | undefined;
+  if (raw.continuationPartnerState !== undefined) {
+    if (!isRecord(raw.continuationPartnerState)) {
+      throw new Error("invalid_continuationPartnerState");
+    }
+    const mood = raw.continuationPartnerState.mood;
+    const innerThought = raw.continuationPartnerState.innerThought;
+    if (
+      !isPartnerMood(mood) ||
+      typeof innerThought !== "string" ||
+      innerThought.length > 160 ||
+      containsRawImageFilename(innerThought)
+    ) {
+      throw new Error("invalid_continuationPartnerState");
+    }
+    continuationPartnerState = {
+      mood,
+      innerThought: innerThought.trim().replace(/\s+/g, " ").slice(0, 80),
+    };
+  }
+
   return {
     mode,
     practiceMode,
@@ -254,6 +287,7 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     roundIndex,
     memorySummary,
     visiblePracticeThreadId,
+    continuationPartnerState,
     appliedHintType,
     appliedHintText,
     requestId,

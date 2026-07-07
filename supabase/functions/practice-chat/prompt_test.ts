@@ -30,6 +30,38 @@ Deno.test("standard buildChatMessages does not include temperature score", () =>
   assertEquals(sys.includes("升溫指數"), false);
 });
 
+Deno.test("standard buildChatMessages includes no-score invite guidance when continuation context exists", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "hi again" }],
+    defaultProfile,
+    {
+      memorySummary: "OLDER_MEMORY_MARKER: she mentioned coffee",
+      partnerState: { mood: "guarded", innerThought: "想先看他穩不穩。" },
+    },
+  )[0].content;
+
+  assertEquals(
+    sys.includes("inviteMaturity(hidden guidance; standard mode)"),
+    true,
+  );
+  assertEquals(sys.includes("relationshipScore: unavailable"), true);
+  assertEquals(sys.includes("memorySummary alone never upgrades"), true);
+  assertEquals(sys.includes("cap escalation"), true);
+});
+
+Deno.test("standard buildChatMessages includes no-score invite guidance without memory", () => {
+  const sys =
+    buildChatMessages([{ role: "user", text: "hi" }], defaultProfile)[0]
+      .content;
+
+  assertEquals(
+    sys.includes("inviteMaturity(hidden guidance; standard mode)"),
+    true,
+  );
+  assertEquals(sys.includes("relationshipScore: unavailable"), true);
+  assertEquals(sys.includes("memorySummary alone never upgrades"), true);
+});
+
 Deno.test("beginner buildChatMessages includes temperature score", () => {
   const sys = buildChatMessages(
     [{ role: "user", text: "嗨" }],
@@ -549,6 +581,7 @@ Deno.test("buildDebriefMessages includes final partner state for emotional cause
 
   assertEquals(msg.includes("partnerState"), true);
   assertEquals(msg.includes("amused"), true);
+  assertEquals(msg.includes("relationshipScore: unavailable"), true);
   assertEquals(msg.includes("他有接住我的吐槽，可以繼續丟輕鬆球。"), true);
 });
 

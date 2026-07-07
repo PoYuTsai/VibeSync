@@ -932,3 +932,52 @@ Deno.test("draw：visiblePracticeThreadId 過長 → invalid_visiblePracticeThre
     "invalid_visiblePracticeThreadId",
   );
 });
+
+Deno.test("continuationPartnerState：合法 seed → trim 後保留", () => {
+  const r = validateRequest({
+    mode: "chat",
+    sessionId: "session-1",
+    turns: [{ role: "user", text: "hi" }],
+    continuationPartnerState: {
+      mood: "guarded",
+      innerThought: "  他剛剛有點急，\n我想先看他穩不穩。  ",
+    },
+  });
+
+  assertEquals(r.continuationPartnerState, {
+    mood: "guarded",
+    innerThought: "他剛剛有點急， 我想先看他穩不穩。",
+  });
+});
+
+Deno.test("continuationPartnerState：非法 mood / raw filename → invalid", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "chat",
+        sessionId: "session-1",
+        turns: [{ role: "user", text: "hi" }],
+        continuationPartnerState: {
+          mood: "hot",
+          innerThought: "",
+        },
+      }),
+    Error,
+    "invalid_continuationPartnerState",
+  );
+
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "chat",
+        sessionId: "session-1",
+        turns: [{ role: "user", text: "hi" }],
+        continuationPartnerState: {
+          mood: "guarded",
+          innerThought: "看過 S__42795075.jpg",
+        },
+      }),
+    Error,
+    "invalid_continuationPartnerState",
+  );
+});

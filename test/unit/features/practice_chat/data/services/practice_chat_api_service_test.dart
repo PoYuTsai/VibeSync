@@ -1009,6 +1009,27 @@ void main() {
   });
 
   group('continuation metadata (roundIndex / visiblePracticeThreadId)', () {
+    test('sendMessage body includes continuationPartnerState when provided',
+        () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        continuationPartnerState: const PracticePartnerState(
+          mood: 'guarded',
+          innerThought: '他剛剛有點急，我想先看他穩不穩。',
+        ),
+      );
+
+      expect(captured.body?['continuationPartnerState'], {
+        'mood': 'guarded',
+        'innerThought': '他剛剛有點急，我想先看他穩不穩。',
+      });
+    });
+
     test('sendMessage body includes roundIndex and visiblePracticeThreadId',
         () async {
       final captured = _CapturedInvoke();

@@ -43,6 +43,15 @@ final RegExp _practiceRawImageFilenamePattern = RegExp(
   caseSensitive: false,
 );
 
+const Set<String> _practicePartnerMoodValues = {
+  'neutral',
+  'curious',
+  'amused',
+  'comfortable',
+  'guarded',
+  'annoyed',
+};
+
 const _sentinel = Object();
 
 /// 每日翻牌的揭曉狀態。locked＝今天還沒翻牌（不顯示任何對象）；drawing＝抽牌中；
@@ -911,6 +920,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         profile: _profileDto(),
         turns: _turnDtosForPrompt(optimistic),
         memorySummary: _memorySummaryForPrompt(optimistic),
+        continuationPartnerState: _lastPartnerStateForPrompt(priorMessages),
         roundIndex: state.roundIndex,
         visiblePracticeThreadId: state.visiblePracticeThreadId,
         practiceMode: learningMode,
@@ -1068,6 +1078,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         profile: _profileDto(),
         turns: _turnDtosForPrompt(state.messages),
         memorySummary: _memorySummaryForPrompt(state.messages),
+        continuationPartnerState: _lastPartnerStateForPrompt(state.messages),
         roundIndex: state.roundIndex,
         visiblePracticeThreadId: state.visiblePracticeThreadId,
       );
@@ -1183,6 +1194,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         profile: _profileDto(),
         turns: _turnDtosForPrompt(state.messages),
         memorySummary: _memorySummaryForPrompt(state.messages),
+        continuationPartnerState: _lastPartnerStateForPrompt(state.messages),
         roundIndex: state.roundIndex,
         visiblePracticeThreadId: state.visiblePracticeThreadId,
       );
@@ -1294,6 +1306,28 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         .skip(start)
         .map((m) => PracticeTurnDto(role: m.role, text: m.text))
         .toList();
+  }
+
+  PracticePartnerState? _lastPartnerStateForPrompt(
+    List<PracticeMessage> messages,
+  ) {
+    for (final message in messages.reversed) {
+      if (message.role != 'ai') continue;
+      final mood = message.mood?.trim();
+      if (mood == null || !_practicePartnerMoodValues.contains(mood)) {
+        return null;
+      }
+      final innerThought = (message.innerThought ?? '')
+          .replaceAll(
+              _practiceRawImageFilenamePattern, '[image concept omitted]')
+          .trim()
+          .replaceAll(RegExp(r'\s+'), ' ');
+      return PracticePartnerState(
+        mood: mood,
+        innerThought: _clipMemoryText(innerThought, 80),
+      );
+    }
+    return null;
   }
 
   String? _memorySummaryForPrompt(List<PracticeMessage> messages) {

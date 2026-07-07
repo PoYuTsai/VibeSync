@@ -339,3 +339,17 @@ Deno.test("hint gate session-complete respects a custom maxReplies", () => {
     { allowed: false, reason: "practice_session_complete" },
   );
 });
+
+Deno.test("continuation gate blocks free new session carrying memorySummary", () => {
+  assertEquals(
+    decideContinuationGate({
+      tier: "free",
+      roundIndex: 1,
+      ledgerExists: false,
+      sessionId: "session-2",
+      visiblePracticeThreadId: "session-2",
+      hasMemorySummary: true,
+    }),
+    { allowed: false, reason: "upgrade_required" },
+  );
+});

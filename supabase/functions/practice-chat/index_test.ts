@@ -409,6 +409,27 @@ Deno.test("free continuation spoof with roundIndex 1 is upgrade-gated before pro
   assertEquals(commitCalls(state).length, 0);
 });
 
+Deno.test("free continuation spoof with memorySummary is upgrade-gated before provider", async () => {
+  const { response, json, state } = await run(
+    {
+      sub: subscription({ tier: "free" }),
+      ledger: null,
+    },
+    chatBody({
+      sessionId: "session-2",
+      roundIndex: 1,
+      visiblePracticeThreadId: "session-2",
+      memorySummary: "OLDER_MEMORY_MARKER: she remembered coffee",
+      turns: [{ role: "user", text: "hi again" }],
+    }),
+  );
+
+  assertEquals(response.status, 402);
+  assertEquals(json, { error: "upgrade_required" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(commitCalls(state).length, 0);
+});
+
 Deno.test("chat retries a transient provider failure once before committing", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ practice_mode: "standard" }),
@@ -520,6 +541,49 @@ Deno.test("beginner first chat without ledger seeds temperature from client-carr
   assertEquals(
     learningUpdateCalls(state)[0].params.p_expected_familiarity_score,
     12,
+  );
+});
+
+Deno.test("paid continuation first chat seeds guarded partner state before ledger exists", async () => {
+  const { response, state } = await run(
+    {
+      sub: subscription({ tier: "starter" }),
+      ledger: null,
+      deepSeekReplies: [
+        "AI reply",
+        CLASSIFIER_CAUGHT_MINOR,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      sessionId: "session-2",
+      roundIndex: 2,
+      visiblePracticeThreadId: "thread-1",
+      memorySummary: "OLDER_MEMORY_MARKER: she had been guarded",
+      temperatureScore: 90,
+      familiarityScore: 90,
+      continuationPartnerState: {
+        mood: "guarded",
+        innerThought: "他剛剛有點急，我想先看他穩不穩。",
+      },
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  const chatPrompt = state.deepSeekCalls[0].messages
+    .map((message) => message.content)
+    .join("\n");
+  assert(chatPrompt.includes("partnerState"));
+  assert(chatPrompt.includes("guarded"));
+  assert(chatPrompt.includes("他剛剛有點急"));
+  assert(chatPrompt.includes("inviteStage: direct_invite_ready"));
+  assertEquals(chatPrompt.includes("inviteStage: partner_window"), false);
+  assertEquals(chatPrompt.includes("inviteStage: high_intimacy"), false);
+  const commit = commitCalls(state)[0];
+  assertEquals(commit.params.p_partner_mood, "guarded");
+  assertEquals(
+    commit.params.p_partner_inner_thought,
+    "他剛剛有點急，我想先看他穩不穩。",
   );
 });
 
