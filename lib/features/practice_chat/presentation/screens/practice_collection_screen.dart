@@ -417,6 +417,16 @@ class _PracticeCollectionScreenState
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
+        // stack 被收斂（go／deep link）進本頁時 canPop=false，AppBar 自動返回
+        // 鍵會消失＝死路。兜底補一顆回首頁的返回鍵；判斷用 ModalRoute.canPop
+        // （與自動返回鍵同一訊號源），canPop 時交還 null 走原生自動返回鍵。
+        leading: (ModalRoute.of(context)?.canPop ?? false)
+            ? null
+            : IconButton(
+                key: const ValueKey('collection-home-back'),
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => context.go('/'),
+              ),
         title: Text(
           '角色圖鑑',
           style: AppTypography.titleMedium.copyWith(

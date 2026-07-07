@@ -863,7 +863,8 @@ void main() {
     await tester.tap(find.text('去圖鑑換人'));
     await tester.pumpAndSettle();
 
-    // 導回圖鑑（go 收斂 stack）；draw 只在圖鑑翻牌鈕觸發，這裡絕不打 API。
+    // 導回圖鑑（go('/') 收斂 stack 再 push，圖鑑保有返回鍵）；draw 只在
+    // 圖鑑翻牌鈕觸發，這裡絕不打 API。
     // （controller 是 autoDispose，離開練習室後不可再讀 state；
     //   drawCalls == 0 已足證換人不再走 draw。）
     expect(

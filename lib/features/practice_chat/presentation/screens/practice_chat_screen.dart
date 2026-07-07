@@ -236,8 +236,13 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
               onHintApplied: (reply) => _appliedHintDraft = reply,
               onFinish: () => context.pop(),
               onContinueSamePartner: _continueSamePartner,
-              // 換人＝回圖鑑翻牌（top-level route，go 收斂 stack）。
-              onNewPartner: () => context.go('/practice-collection'),
+              // 換人＝回圖鑑翻牌。先 go('/') 收斂 stack 再 push（比照
+              // onboarding 分流頁）：圖鑑保有返回鍵、back 退回首頁不卡死；
+              // 直接 go('/practice-collection') 會清空 stack，返回鍵消失。
+              onNewPartner: () {
+                context.go('/');
+                context.push('/practice-collection');
+              },
             ),
           ],
           ),

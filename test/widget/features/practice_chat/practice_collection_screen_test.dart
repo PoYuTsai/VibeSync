@@ -475,6 +475,86 @@ void main() {
     });
   });
 
+  group('返回鍵兜底（stack 被收斂時不成死路）', () {
+    const homeBackKey = ValueKey('collection-home-back');
+
+    testWidgets('canPop=false（go／deep link 直達）→ 顯示兜底返回鍵，點了回首頁',
+        (tester) async {
+      final router = GoRouter(
+        initialLocation: '/practice-collection',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) => const Scaffold(
+              body: Text('home-stub', key: ValueKey('home-stub')),
+            ),
+          ),
+          GoRoute(
+            path: '/practice-collection',
+            builder: (context, state) => const PracticeCollectionScreen(),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+
+      await tester.binding.setSurfaceSize(const Size(500, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: _collectionOverrides(),
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(homeBackKey), findsOneWidget);
+
+      await tester.tap(find.byKey(homeBackKey));
+      await tester.pumpAndSettle(); // revealed seed 無脈動，可 settle
+
+      expect(find.byKey(const ValueKey('home-stub')), findsOneWidget);
+    });
+
+    testWidgets('canPop=true（由首頁 push 進來）→ 原生自動返回鍵，無兜底鍵',
+        (tester) async {
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  key: const ValueKey('go-collection'),
+                  onPressed: () => context.push('/practice-collection'),
+                  child: const Text('去圖鑑'),
+                ),
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/practice-collection',
+            builder: (context, state) => const PracticeCollectionScreen(),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+
+      await tester.binding.setSurfaceSize(const Size(500, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: _collectionOverrides(),
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('go-collection')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(homeBackKey), findsNothing);
+      expect(find.byType(BackButton), findsOneWidget);
+    });
+  });
+
   group('圖鑑翻牌鈕 gating', () {
     const drawButton = ValueKey('collection-draw-button');
     const confirmKey = ValueKey('collection-draw-confirm');
