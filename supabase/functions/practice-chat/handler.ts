@@ -140,10 +140,10 @@ function deterministicOverstepClassificationForSnapshot(opts: {
     containsObviousOverstepInvite(lastUserText(opts.request.turns))
   ) {
     return {
-      category: "flirt",
-      quality: "bad",
       impact: "strong",
-      overstep: true,
+      connection: "overstepped",
+      testHandling: "none",
+      boundary: "overstep",
       hintAlignment: "diverged",
     };
   }
@@ -401,8 +401,10 @@ function shouldProtectAppliedHint(opts: {
   }
   if (!opts.request.appliedHintText) return false;
   return opts.classification.hintAlignment === "aligned" &&
-    !opts.classification.overstep &&
-    opts.classification.quality !== "bad" &&
+    opts.classification.boundary === "safe" &&
+    opts.classification.connection !== "defensive" &&
+    opts.classification.connection !== "overstepped" &&
+    opts.classification.testHandling !== "failed" &&
     isLikelySmallHintEdit(opts.request);
 }
 
@@ -483,10 +485,10 @@ function fallbackLearningJudgement(
     stage: stage.stage,
     stageLabel: stage.label,
     classification: {
-      category: "event",
-      quality: "ordinary",
       impact: "minor",
-      overstep: false,
+      connection: "neutral",
+      testHandling: "none",
+      boundary: "safe",
       hintAlignment: "none",
     },
   };
@@ -624,6 +626,7 @@ async function judgeLearningState(opts: {
         familiarityScore: opts.currentFamiliarity,
         appliedHintType: opts.request.appliedHintType,
         appliedHintText: opts.request.appliedHintText,
+        assistantReply: opts.reply,
       }),
       maxTokens: TEMPERATURE_JUDGE_MAX_TOKENS,
       temperature: TEMPERATURE_JUDGE_TEMPERATURE,

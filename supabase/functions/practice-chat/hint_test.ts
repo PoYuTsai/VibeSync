@@ -145,7 +145,7 @@ Deno.test("buildHintMessages makes warm-up stage-aware in familiarity-building s
 
   assert(text.includes("目前關係階段：建立熟悉中"));
   assert(text.includes("升溫回覆不是永遠更曖昧"));
-  assert(text.includes("目前最容易加分：事件導向"));
+  assert(text.includes("目前最容易加分：先接住她的狀態"));
   assert(text.includes("不要直接曖昧"));
 });
 
@@ -162,7 +162,7 @@ Deno.test("buildHintMessages nudges personal replies after familiarity is establ
   const text = buildHintMessages(options).map((m) => m.content).join("\n");
 
   assert(text.includes("目前關係階段：可以聊個人"));
-  assert(text.includes("目前最容易加分：個人導向"));
+  assert(text.includes("目前最容易加分：多一點個人感"));
 });
 
 Deno.test("buildHintMessages allows only low-pressure flirt when heat and familiarity are ready", () => {
@@ -180,6 +180,25 @@ Deno.test("buildHintMessages allows only low-pressure flirt when heat and famili
   assert(text.includes("目前關係階段：可以輕推曖昧"));
   assert(text.includes("目前最容易加分：低壓曖昧"));
   assert(text.includes("不能油、不能逼近"));
+});
+
+Deno.test("buildHintMessages teaches how to handle consistency tests without using black-box jargon", () => {
+  const messages: ChatMessage[] = buildHintMessages({
+    turns: [
+      { role: "user", text: "等我替妳捏一把冷汗" },
+      { role: "ai", text: "你哪來什麼孫子，你兒子都還沒結婚！" },
+    ],
+    profile,
+    temperatureScore: 35,
+    familiarityScore: 10,
+  });
+  const text = messages.map((m) => m.content).join("\n");
+
+  assert(text.includes("小測試"));
+  assert(text.includes("先承認"));
+  assert(text.includes("幽默曲解"));
+  assert(text.includes("反打"));
+  assertEquals(text.includes("shit test"), false);
 });
 
 Deno.test("parseHintResult accepts valid JSON and returns exactly two labeled replies", () => {
