@@ -554,6 +554,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             watchouts: session.debriefWatchouts,
             suggestedLine: session.debriefSuggestedLine ?? '',
             vibe: session.debriefVibe ?? '中性',
+            dateChance: session.debriefDateChance,
+            dateChanceReason: session.debriefDateChanceReason,
+            nextInviteMove: session.debriefNextInviteMove,
           )
         : null;
     // 對象身份：依 profileId 從 catalog 解析；舊場（無 profileId）兜底預設位。
@@ -1426,6 +1429,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       debriefWatchouts: s.debrief?.watchouts ?? const [],
       debriefSuggestedLine: s.debrief?.suggestedLine,
       debriefVibe: s.debrief?.vibe,
+      debriefDateChance: s.debrief?.dateChance,
+      debriefDateChanceReason: s.debrief?.dateChanceReason,
+      debriefNextInviteMove: s.debrief?.nextInviteMove,
       personaId: s.personaId,
       personaLabel: s.personaLabel,
       difficulty: s.difficulty,

@@ -694,6 +694,7 @@ void main() {
   PracticeChatState debriefSeed({
     int roundIndex = 1,
     String persona = '慢熱上班族',
+    bool includeInviteInsight = false,
   }) {
     return PracticeChatState(
       sessionId: 'debrief-sess',
@@ -712,12 +713,15 @@ void main() {
       ],
       sessionComplete: true,
       ended: true,
-      debrief: const PracticeDebrief(
+      debrief: PracticeDebrief(
         summary: '整體不錯',
         strengths: ['開場好'],
         watchouts: [],
         suggestedLine: '約她',
         vibe: '暖',
+        dateChance: includeInviteInsight ? 'high' : null,
+        dateChanceReason: includeInviteInsight ? '她已經主動接住話題。' : null,
+        nextInviteMove: includeInviteInsight ? '用模糊邀約測窗口。' : null,
       ),
     );
   }
@@ -761,6 +765,19 @@ void main() {
     expect(find.textContaining('再扣 1 則'), findsOneWidget);
     expect(find.text('去圖鑑換人'), findsOneWidget);
     expect(find.text('完成'), findsOneWidget);
+  });
+
+  testWidgets('拆解卡顯示邀約判斷欄位', (tester) async {
+    final controller = _SeededPracticeChatController(
+      seed: debriefSeed(includeInviteInsight: true),
+      repository: repo,
+    );
+    await pumpDebrief(tester, controller: controller);
+
+    expect(find.text('邀約判斷'), findsOneWidget);
+    expect(find.text('機會 高'), findsOneWidget);
+    expect(find.text('她已經主動接住話題。'), findsOneWidget);
+    expect(find.textContaining('下一步：用模糊邀約測窗口。'), findsOneWidget);
   });
 
   testWidgets('第 3 輪拆解後：仍可續聊同一位', (tester) async {

@@ -77,11 +77,17 @@ void main() {
       debriefSummary: '整體不錯',
       debriefStrengths: const ['開場自然'],
       debriefVibe: '暖',
+      debriefDateChance: 'high',
+      debriefDateChanceReason: '她已經接住邀約鋪墊。',
+      debriefNextInviteMove: '直接約週末咖啡。',
     ));
     final loaded = repo.getById('d');
     expect(loaded!.hasDebrief, true);
     expect(loaded.debriefSummary, '整體不錯');
     expect(loaded.debriefVibe, '暖');
+    expect(loaded.debriefDateChance, 'high');
+    expect(loaded.debriefDateChanceReason, '她已經接住邀約鋪墊。');
+    expect(loaded.debriefNextInviteMove, '直接約週末咖啡。');
   });
 
   test('save 後可持久化 persona 與 difficulty', () async {

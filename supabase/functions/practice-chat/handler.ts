@@ -30,6 +30,7 @@ import { type DebriefCard, parseDebriefCard } from "./debrief_card.ts";
 import { buildHintMessages, parseHintResult } from "./hint.ts";
 import { buildPracticeSceneContext } from "./life_schedule.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
+import { rejectVisibleInternalLabelLeak } from "./visible_text_guard.ts";
 import {
   applyLearningClassification,
   applyPartnerStateUpdate,
@@ -372,7 +373,7 @@ function requestLooksLikeContinuation(
       request.visiblePracticeThreadId !== request.sessionId);
 }
 
-function partnerStateForRequest(
+function promptPartnerStateForRequest(
   ledger: SessionLedger,
   request: ReturnType<typeof validateRequest>,
 ): PartnerState | null {
@@ -1560,7 +1561,8 @@ export function createPracticeChatHandler(
         ? ledger.familiarityScore ?? 0
         : request.familiarityScore ?? 0
       : null;
-    const currentPartnerState = partnerStateForRequest(ledger, request);
+    const trustedPartnerState = partnerStateFromLedger(ledger);
+    const promptPartnerState = promptPartnerStateForRequest(ledger, request);
 
     try {
       await assertPracticeLearningReady({
@@ -1593,12 +1595,12 @@ export function createPracticeChatHandler(
                   temperatureScore: currentTemperature ??
                     difficultyStartTemperature,
                   familiarityScore: currentFamiliarity ?? 0,
-                  partnerState: currentPartnerState,
+                  partnerState: promptPartnerState,
                   sceneContext,
                   memorySummary: request.memorySummary,
                 }
                 : {
-                  partnerState: currentPartnerState,
+                  partnerState: promptPartnerState,
                   sceneContext,
                   memorySummary: request.memorySummary,
                 },
@@ -1607,6 +1609,7 @@ export function createPracticeChatHandler(
             temperature: CHAT_TEMPERATURE,
             timeoutMs: DEEPSEEK_TIMEOUT_MS,
           });
+          rejectVisibleInternalLabelLeak(reply, "chat_internal_label_leak");
           break;
         } catch (e) {
           lastError = e;
@@ -1646,8 +1649,8 @@ export function createPracticeChatHandler(
         // client 攜帶值（續聊保溫）→ 難度起始值。
         p_temperature_score: currentTemperature,
         p_familiarity_score: currentFamiliarity,
-        p_partner_mood: currentPartnerState?.mood ?? null,
-        p_partner_inner_thought: currentPartnerState?.innerThought ?? null,
+        p_partner_mood: trustedPartnerState?.mood ?? null,
+        p_partner_inner_thought: trustedPartnerState?.innerThought ?? null,
       },
     );
     if (commitError) {
@@ -1674,7 +1677,7 @@ export function createPracticeChatHandler(
           sessionId: request.sessionId,
           currentTemperature,
           currentFamiliarity: currentFamiliarity ?? 0,
-          currentPartnerState,
+          currentPartnerState: trustedPartnerState,
           request,
           reply,
         });

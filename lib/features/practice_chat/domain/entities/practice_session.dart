@@ -80,6 +80,15 @@ class PracticeSession {
   @HiveField(20)
   final String? relationshipStageLabel;
 
+  @HiveField(21)
+  final String? debriefDateChance;
+
+  @HiveField(22)
+  final String? debriefDateChanceReason;
+
+  @HiveField(23)
+  final String? debriefNextInviteMove;
+
   const PracticeSession({
     required this.id,
     required this.createdAt,
@@ -102,6 +111,9 @@ class PracticeSession {
     this.hintUsedCount,
     this.familiarityScore,
     this.relationshipStageLabel,
+    this.debriefDateChance,
+    this.debriefDateChanceReason,
+    this.debriefNextInviteMove,
   });
 
   bool get hasDebrief => debriefSummary != null;
@@ -126,6 +138,9 @@ class PracticeSession {
     int? hintUsedCount,
     int? familiarityScore,
     String? relationshipStageLabel,
+    String? debriefDateChance,
+    String? debriefDateChanceReason,
+    String? debriefNextInviteMove,
   }) {
     return PracticeSession(
       id: id,
@@ -151,6 +166,11 @@ class PracticeSession {
       familiarityScore: familiarityScore ?? this.familiarityScore,
       relationshipStageLabel:
           relationshipStageLabel ?? this.relationshipStageLabel,
+      debriefDateChance: debriefDateChance ?? this.debriefDateChance,
+      debriefDateChanceReason:
+          debriefDateChanceReason ?? this.debriefDateChanceReason,
+      debriefNextInviteMove:
+          debriefNextInviteMove ?? this.debriefNextInviteMove,
     );
   }
 }

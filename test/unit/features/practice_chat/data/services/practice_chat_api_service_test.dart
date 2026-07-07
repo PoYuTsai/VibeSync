@@ -451,6 +451,9 @@ void main() {
           'watchouts': ['問句太密'],
           'suggestedLine': '週末一起去？',
           'vibe': '中性',
+          'dateChance': 'high',
+          'dateChanceReason': '她已經主動接住話題。',
+          'nextInviteMove': '用模糊邀約測窗口。',
         },
         'costDeducted': 0,
         'monthlyRemaining': 29,
@@ -463,6 +466,9 @@ void main() {
       expect(d.watchouts, ['問句太密']);
       expect(d.suggestedLine, '週末一起去？');
       expect(d.vibe, '中性');
+      expect(d.dateChance, 'high');
+      expect(d.dateChanceReason, '她已經主動接住話題。');
+      expect(d.nextInviteMove, '用模糊邀約測窗口。');
     });
 
     test('200 但缺 card → generation failed', () async {

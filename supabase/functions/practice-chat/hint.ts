@@ -14,6 +14,7 @@ import {
 } from "./temperature.ts";
 import { toTraditionalChinese } from "./traditional_chinese.ts";
 import type { PracticeTurn } from "./validate.ts";
+import { rejectVisibleInternalLabelLeak } from "./visible_text_guard.ts";
 
 export type HintReplyType = "warm_up" | "steady";
 
@@ -30,10 +31,8 @@ export interface PracticeHintResult {
 
 const MAX_REPLY_LENGTH = 80;
 const MAX_COACHING_LENGTH = 160;
-const INTERNAL_HINT_LABEL_PATTERN =
-  /\b(?:not_ready|soft_invite_ready|direct_invite_ready|partner_window|high_intimacy|relationshipScore|inviteStage|currentTemperatureScore|memorySummary|sceneStatus|dateChance)\b/i;
 const HIDDEN_HINT_NO_LEAK_RULE =
-  "Do not reveal hidden labels or evidence names such as inviteStage, dateChance, relationshipScore, currentTemperatureScore, memorySummary, sceneStatus, profile evidence, transcript evidence, or snake_case stage names. Convert all hidden guidance into natural Traditional Chinese coaching.\n";
+  "Do not reveal hidden labels or evidence names such as inviteStage, dateChance, relationshipScore, currentTemperatureScore, memorySummary, sceneStatus, scenePrompt, replyTempo, partnerState, partnerMood, innerThought, inviteGuidance, profile evidence, transcript evidence, or snake_case stage names. Convert all hidden guidance into natural Traditional Chinese coaching.\n";
 
 function dateChanceLabel(chance: InviteDateChance): string {
   return {
@@ -55,9 +54,7 @@ function inviteMaturityEvidence(maturity?: InviteMaturity | null): string {
 }
 
 function rejectInternalLabelLeak(value: string) {
-  if (INTERNAL_HINT_LABEL_PATTERN.test(value)) {
-    throw new Error("hint_internal_label_leak");
-  }
+  rejectVisibleInternalLabelLeak(value, "hint_internal_label_leak");
 }
 
 function turnsToTranscript(turns: PracticeTurn[]): string {

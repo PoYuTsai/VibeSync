@@ -140,15 +140,27 @@ Deno.test("舊卡缺 dateChance 欄位 → 向後相容 low + 空字串", () => 
 });
 
 Deno.test("visible fields with internal labels are rejected", () => {
-  assertThrows(
-    () =>
-      parseDebriefCard(
-        JSON.stringify({
-          summary: "relationshipScore 88",
-          suggestedLine: "約她喝咖啡",
-        }),
-      ),
-    Error,
-    "debrief_internal_label_leak",
-  );
+  for (
+    const leaked of [
+      { summary: "relationshipScore 88" },
+      { suggestedLine: "scene_prompt says go" },
+      { dateChanceReason: "replyTempo short" },
+      { nextInviteMove: "partnerMood guarded" },
+      { strengths: ["memory_summary leaked"] },
+      { watchouts: ["innerThought leaked"] },
+    ]
+  ) {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({
+            summary: "整體不錯",
+            suggestedLine: "約她喝咖啡",
+            ...leaked,
+          }),
+        ),
+      Error,
+      "debrief_internal_label_leak",
+    );
+  }
 });

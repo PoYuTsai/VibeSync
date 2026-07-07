@@ -493,6 +493,18 @@ Deno.test("chat retries a transient provider failure once before committing", as
   assertEquals(commitCalls(state).length, 1);
 });
 
+Deno.test("chat retries a visible internal label leak before committing", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ practice_mode: "standard" }),
+    deepSeekReplies: ["dateChance: high", "AI clean reply"],
+  });
+
+  assertEquals(response.status, 200);
+  assertEquals(json.reply, "AI clean reply");
+  assertEquals(state.deepSeekCalls.length, 2);
+  assertEquals(commitCalls(state).length, 1);
+});
+
 Deno.test("beginner first chat without client scores uses difficulty initial temp and returns temperature plus hint count", async () => {
   const { response, json, state } = await run(
     {
@@ -629,10 +641,12 @@ Deno.test("paid continuation first chat seeds guarded partner state before ledge
   assertEquals(chatPrompt.includes("inviteStage: partner_window"), false);
   assertEquals(chatPrompt.includes("inviteStage: high_intimacy"), false);
   const commit = commitCalls(state)[0];
-  assertEquals(commit.params.p_partner_mood, "guarded");
+  assertEquals(commit.params.p_partner_mood, null);
+  assertEquals(commit.params.p_partner_inner_thought, null);
+  assertEquals(learningUpdateCalls(state)[0].params.p_partner_mood, "neutral");
   assertEquals(
-    commit.params.p_partner_inner_thought,
-    "他剛剛有點急，我想先看他穩不穩。",
+    learningUpdateCalls(state)[0].params.p_partner_inner_thought,
+    "",
   );
 });
 

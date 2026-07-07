@@ -923,13 +923,20 @@ void main() {
             watchouts: [],
             suggestedLine: '下次直接約她',
             vibe: '暖',
+            dateChance: 'medium',
+            dateChanceReason: '她有回應，但還需要鋪墊。',
+            nextInviteMove: '先丟一個模糊邀約。',
           );
       await c.endPractice();
       final s = c.currentState;
 
       expect(s.debrief, isNotNull);
       expect(s.sessionComplete, true);
-      expect(repo.getById(s.sessionId)!.debriefSummary, '整體不錯');
+      final saved = repo.getById(s.sessionId)!;
+      expect(saved.debriefSummary, '整體不錯');
+      expect(saved.debriefDateChance, 'medium');
+      expect(saved.debriefDateChanceReason, '她有回應，但還需要鋪墊。');
+      expect(saved.debriefNextInviteMove, '先丟一個模糊邀約。');
     });
 
     test('locked 時 endPractice 為 no-op', () async {

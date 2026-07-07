@@ -1,10 +1,10 @@
 // 教練拆解卡 JSON 解析（純函式、可 deno test）。
 // 防御性：去 markdown 圍欄、缺核心欄位丟出、vibe 非法則回退「中性」、長度 clamp。
 
+import { rejectVisibleInternalLabelLeak } from "./visible_text_guard.ts";
+
 export const VIBES = ["暖", "中性", "冷"];
 export const DATE_CHANCES = ["low", "medium", "high"];
-const INTERNAL_DEBRIEF_LABEL_PATTERN =
-  /\b(?:not_ready|soft_invite_ready|direct_invite_ready|partner_window|high_intimacy|relationshipScore|inviteStage|currentTemperatureScore|memorySummary|sceneStatus|dateChance)\b/i;
 
 export interface DebriefCard {
   summary: string;
@@ -35,9 +35,7 @@ export function clampList(
 }
 
 function rejectInternalLabelLeak(value: string) {
-  if (INTERNAL_DEBRIEF_LABEL_PATTERN.test(value)) {
-    throw new Error("debrief_internal_label_leak");
-  }
+  rejectVisibleInternalLabelLeak(value, "debrief_internal_label_leak");
 }
 
 function guardVisibleText(value: string): string {

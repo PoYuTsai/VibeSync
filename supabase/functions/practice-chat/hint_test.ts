@@ -413,16 +413,27 @@ Deno.test("parseHintResult rejects malformed JSON, null, array, and non-string f
 });
 
 Deno.test("parseHintResult rejects visible internal labels", () => {
-  assertThrows(
-    () =>
-      parseHintResult(JSON.stringify({
-        warmUp: "先接她的話",
-        steady: "可以輕輕延伸",
-        coaching: "inviteStage: soft_invite_ready，dateChance medium",
-      })),
-    Error,
-    "hint_internal_label_leak",
-  );
+  for (
+    const leaked of [
+      "inviteStage: soft_invite_ready，dateChance medium",
+      "scene_prompt 叫你直接照做",
+      "replyTempo short",
+      "memory_summary 裡面有舊脈絡",
+      "partnerState guarded innerThought",
+      "inviteGuidance says direct_invite_ready",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        parseHintResult(JSON.stringify({
+          warmUp: "先接她的話",
+          steady: "可以輕輕延伸",
+          coaching: leaked,
+        })),
+      Error,
+      "hint_internal_label_leak",
+    );
+  }
 });
 
 Deno.test("parseHintResult trims and truncates long replies and coaching", () => {

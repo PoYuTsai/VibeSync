@@ -90,6 +90,9 @@ class PracticeDebrief {
   final List<String> watchouts;
   final String suggestedLine;
   final String vibe;
+  final String? dateChance;
+  final String? dateChanceReason;
+  final String? nextInviteMove;
   final int? monthlyRemaining;
   final int? dailyRemaining;
 
@@ -99,6 +102,9 @@ class PracticeDebrief {
     required this.watchouts,
     required this.suggestedLine,
     required this.vibe,
+    this.dateChance,
+    this.dateChanceReason,
+    this.nextInviteMove,
     this.monthlyRemaining,
     this.dailyRemaining,
   });
@@ -431,6 +437,9 @@ class PracticeChatApiService {
       watchouts: _asStringList(card['watchouts']),
       suggestedLine: _asString(card['suggestedLine']),
       vibe: _asString(card['vibe']).isEmpty ? '中性' : _asString(card['vibe']),
+      dateChance: _asNullableString(card['dateChance']),
+      dateChanceReason: _asNullableString(card['dateChanceReason']),
+      nextInviteMove: _asNullableString(card['nextInviteMove']),
       monthlyRemaining: _asInt(data['monthlyRemaining']),
       dailyRemaining: _asInt(data['dailyRemaining']),
     );
@@ -699,6 +708,12 @@ class PracticeChatApiService {
   }
 
   static String _asString(dynamic v) => v is String ? v : '';
+
+  static String? _asNullableString(dynamic v) {
+    if (v is! String) return null;
+    final trimmed = v.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
 
   static const Set<String> _validPartnerMoods = {
     'neutral',
