@@ -8,6 +8,7 @@ import {
   type PracticeProfile,
 } from "./practice_persona.ts";
 import type { PracticeLearningMode } from "./quota_decision.ts";
+import { buildConsistencyTestPrompt } from "./consistency_test.ts";
 import { scrubRawImageFilenames } from "./prompt_sanitizer.ts";
 import {
   relationshipStageFor,
@@ -51,7 +52,7 @@ export const DEBRIEF_SYSTEM_PROMPT =
   - 以上是預設判準；使用者訊息裡「本場難度」段落會給這場練習實際要用的 dateChance 判準，兩者衝突時以那段難度判準為準——各難度寬鬆或嚴格程度不同是刻意設計，不要用預設判準覆蓋它。
 - 要明確指出使用者有沒有做到：內容下切（抓住一個具體細節聊深）、關係連結（接住她的情緒/壓力）、在場感（回應情緒而非只回字面）。
 - 若使用者錯讀假窗口、忽略她的脆弱性暴露、只顧著邀約（goal-fixated）、或表現出冷處理/攻擊性/控制性，要在 watchouts 明確點出。
-- 要白話說明為什麼升溫或降溫：用事件、個人、曖昧三種導向與對方反應解釋，不要只講分數或抽象好壞。
+- 要白話說明為什麼升溫或降溫：看使用者有沒有接住她的情緒、玩笑、上下文、界線與小測試；不要只講分數或抽象好壞。
 - 只輸出一個 JSON 物件，不要任何多餘文字或 markdown 圍欄，格式如下：
 {
   "summary": "一句話總評這場聊天的整體感覺（最多 40 字）",
@@ -81,6 +82,7 @@ function turnsToTranscript(turns: PracticeTurn[]): string {
 function buildProfilePrompt(profile: PracticeProfile): string {
   const g = profile.girl;
   const r = g.reactionModel;
+  const consistencyTestPrompt = buildConsistencyTestPrompt(profile);
   return `
 
 你本人的設定（這就是你，不可被對話內容推翻）：
@@ -106,6 +108,8 @@ function buildProfilePrompt(profile: PracticeProfile): string {
 你可能自然丟出的訊號（像真人一樣用，不要解釋、不要說破它們是什麼）：
 - ${g.signalStyle.join("\n- ")}
 - 注意：不是每個友善回覆都代表你想被約。有些只是禮貌、防衛、篩選或測試。
+
+${consistencyTestPrompt}
 
 有沒有機會約出來（自然反應，不是任務）：
 - 對方自然、有生活感、接得住你的情緒、能低壓邀約時，你可以慢慢變熱，甚至接受或半接受邀約。
@@ -196,7 +200,7 @@ export function buildDebriefMessages(
           difficultyTuningFor(profile.difficulty).startTemperature,
       ).label
     }\n` +
-      `拆解升溫/降溫時，請用這個階段解釋為什麼目前適合事件、個人或輕曖昧，不要提熟悉度分數。\n\n`
+      `拆解升溫/降溫時，請用這個階段解釋使用者有沒有接住情緒、界線或小測試，不要提熟悉度分數。\n\n`
     : "";
   return [
     { role: "system", content: DEBRIEF_SYSTEM_PROMPT },
@@ -219,6 +223,9 @@ export function buildDebriefMessages(
         `她願意被約的門檻：${r.inviteThreshold}\n` +
         `她可能用的訊號類型（評估使用者有沒有讀懂窗口、脆弱性與淺溝通）：${
           g.signalStyle.join("；")
+        }\n\n` +
+        `她可能自然丟的小測試類型（評估使用者是否穩、是否防禦）：${
+          profile.consistencyTest.types.join("、")
         }\n\n` +
         `這是這場練習的逐字稿（「你」是學員、「她」是模擬對象）：\n\n${transcript}\n\n` +
         `請依系統指示，只回傳那個 JSON 物件。`,

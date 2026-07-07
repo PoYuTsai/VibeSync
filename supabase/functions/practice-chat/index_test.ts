@@ -126,6 +126,25 @@ function validHintJson(overrides: Record<string, string> = {}) {
   });
 }
 
+const CLASSIFIER_CAUGHT_MEDIUM =
+  `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none"}`;
+const CLASSIFIER_CAUGHT_MINOR =
+  `{"connection":"caught","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none"}`;
+const CLASSIFIER_NEUTRAL_MINOR =
+  `{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none"}`;
+const CLASSIFIER_MISSED_MINOR =
+  `{"connection":"missed","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none"}`;
+const CLASSIFIER_DEFENSIVE_FAILED =
+  `{"connection":"defensive","impact":"medium","testHandling":"failed","boundary":"safe","hintAlignment":"none"}`;
+const CLASSIFIER_OVERSTEP =
+  `{"connection":"overstepped","impact":"strong","testHandling":"none","boundary":"overstep","hintAlignment":"none"}`;
+const CLASSIFIER_OVERSTEP_ALIGNED =
+  `{"connection":"overstepped","impact":"strong","testHandling":"none","boundary":"overstep","hintAlignment":"aligned"}`;
+const CLASSIFIER_OVERSTEP_DIVERGED =
+  `{"connection":"overstepped","impact":"strong","testHandling":"none","boundary":"overstep","hintAlignment":"diverged"}`;
+const CLASSIFIER_ALIGNED_NEUTRAL_MINOR =
+  `{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"aligned"}`;
+
 function obviousChineseOverstepInvite(): string {
   return String.fromCodePoint(
     0x4eca,
@@ -375,7 +394,7 @@ Deno.test("beginner first chat without client scores uses difficulty initial tem
       ledger: null,
       deepSeekReplies: [
         "AI reply",
-        `{"category":"event","quality":"ordinary","overstep":false}`,
+        CLASSIFIER_CAUGHT_MEDIUM,
       ],
     },
     chatBody({ practiceMode: "beginner" }),
@@ -385,12 +404,12 @@ Deno.test("beginner first chat without client scores uses difficulty initial tem
   assertEquals(json.reply, "AI reply");
   assertEquals(json.hintUsedCount, 0);
   assertEquals(json.temperature, {
-    score: 31,
-    delta: 3,
-    band: temperatureBandFor(31),
-    reason: "事件導向有助於建立熟悉，先讓對話自然有來有回。",
-    familiarityScore: 8,
-    familiarityDelta: 8,
+    score: 32,
+    delta: 4,
+    band: temperatureBandFor(32),
+    reason: "有接住她的情緒和前文，互動自然升溫。",
+    familiarityScore: 5,
+    familiarityDelta: 5,
     stageLabel: "建立熟悉中",
   });
   assertLearningFieldsAndNoDebug(json.temperature);
@@ -402,7 +421,9 @@ Deno.test("beginner first chat without client scores uses difficulty initial tem
     .map((message) => message.content)
     .join("\n");
   assert(classifierPrompt.includes("只分類最後一句 user 訊息"));
-  assert(classifierPrompt.includes("事件 / 個人 / 曖昧"));
+  assert(classifierPrompt.includes("互動結果"));
+  assert(classifierPrompt.includes("connection"));
+  assertEquals(classifierPrompt.includes("事件 / 個人 / 曖昧"), false);
   assertEquals(classifierPrompt.includes("S__42795075.jpg"), false);
   assertEquals(
     learningUpdateCalls(state)[0]?.params,
@@ -411,8 +432,8 @@ Deno.test("beginner first chat without client scores uses difficulty initial tem
       p_session_id: "session-1",
       p_expected_temperature_score: 28,
       p_expected_familiarity_score: 0,
-      p_temperature_delta: 3,
-      p_familiarity_delta: 8,
+      p_temperature_delta: 4,
+      p_familiarity_delta: 5,
     },
   );
 });
@@ -425,7 +446,7 @@ Deno.test("beginner first chat without ledger seeds temperature from client-carr
       ledger: null,
       deepSeekReplies: [
         "AI reply",
-        `{"category":"event","quality":"ordinary","overstep":false}`,
+        CLASSIFIER_CAUGHT_MEDIUM,
       ],
     },
     chatBody({
@@ -436,11 +457,11 @@ Deno.test("beginner first chat without ledger seeds temperature from client-carr
   );
 
   assertEquals(response.status, 200);
-  // 以 client 攜帶的 64/12 起算：event/ordinary → heat +3、familiarity +8。
-  assertEquals(json.temperature.score, 67);
-  assertEquals(json.temperature.delta, 3);
-  assertEquals(json.temperature.familiarityScore, 20);
-  assertEquals(json.temperature.familiarityDelta, 8);
+  // 以 client 攜帶的 64/12 起算：caught/medium → heat +4、familiarity +5。
+  assertEquals(json.temperature.score, 68);
+  assertEquals(json.temperature.delta, 4);
+  assertEquals(json.temperature.familiarityScore, 17);
+  assertEquals(json.temperature.familiarityDelta, 5);
   assertLearningFieldsAndNoDebug(json.temperature);
 
   assert(
@@ -465,17 +486,20 @@ Deno.test("beginner first chat without ledger seeds temperature from client-carr
 });
 
 Deno.test("beginner chat with ledger values ignores client-carried scores", async () => {
-  const { response, json, state } = await run({
-    ledger: beginnerStartedLedger({
-      temperature_score: 55,
-      familiarity_score: 22,
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({
+        temperature_score: 55,
+        familiarity_score: 22,
+      }),
+      deepSeekReplies: ["AI reply", new Error("judge down")],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 90,
+      familiarityScore: 80,
     }),
-    deepSeekReplies: ["AI reply", new Error("judge down")],
-  }, chatBody({
-    practiceMode: "beginner",
-    temperatureScore: 90,
-    familiarityScore: 80,
-  }));
+  );
 
   assertEquals(response.status, 200);
   assertEquals(json.temperature.score, 55);
@@ -500,20 +524,23 @@ Deno.test("beginner chat with ledger values ignores client-carried scores", asyn
 Deno.test("beginner chat with existing ledger but null score columns falls back to difficulty start, not client values", async () => {
   // 舊列（ledger 已建檔、溫度欄 null）不得吃 client seed：client 值只在
   // ledger 尚未建檔的新場首回合生效。
-  const { response, json, state } = await run({
-    ledger: ledger({
-      ai_count: 1,
-      charged: true,
-      practice_mode: "beginner",
-      temperature_score: null,
-      familiarity_score: null,
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        ai_count: 1,
+        charged: true,
+        practice_mode: "beginner",
+        temperature_score: null,
+        familiarity_score: null,
+      }),
+      deepSeekReplies: ["AI reply", new Error("judge down")],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 90,
+      familiarityScore: 80,
     }),
-    deepSeekReplies: ["AI reply", new Error("judge down")],
-  }, chatBody({
-    practiceMode: "beginner",
-    temperatureScore: 90,
-    familiarityScore: 80,
-  }));
+  );
 
   assertEquals(response.status, 200);
   assertEquals(json.temperature.score, 28); // normal 難度起始溫度
@@ -565,22 +592,22 @@ Deno.test("beginner first chat：easy 難度起始溫度 35＋正 delta 放大 1
       ledger: null,
       deepSeekReplies: [
         "AI reply",
-        `{"category":"event","quality":"ordinary","overstep":false}`,
+        CLASSIFIER_CAUGHT_MEDIUM,
       ],
     },
     chatBody({ practiceMode: "beginner", difficulty: "easy" }),
   );
 
   assertEquals(response.status, 200);
-  // base heatDelta=3、familiarityDelta=8（同 normal 案例）；easy positiveMultiplier=1.25：
-  // 3*1.25=3.75→round 4；8*1.25=10。起始溫度 35。
+  // base heatDelta=4、familiarityDelta=5；easy positiveMultiplier=1.25：
+  // 4*1.25=5；5*1.25=6.25→round 6。起始溫度 35。
   assertEquals(json.temperature, {
-    score: 39,
-    delta: 4,
-    band: temperatureBandFor(39),
-    reason: "事件導向有助於建立熟悉，先讓對話自然有來有回。",
-    familiarityScore: 10,
-    familiarityDelta: 10,
+    score: 40,
+    delta: 5,
+    band: temperatureBandFor(40),
+    reason: "有接住她的情緒和前文，互動自然升溫。",
+    familiarityScore: 6,
+    familiarityDelta: 6,
     stageLabel: "建立熟悉中",
   });
   assert(state.deepSeekCalls[0].messages[0].content.includes("35/100"));
@@ -596,22 +623,20 @@ Deno.test("beginner first chat：challenge 難度起始溫度 20＋負 delta 放
       ledger: null,
       deepSeekReplies: [
         "AI reply",
-        `{"category":"personal","quality":"bad","impact":"medium","overstep":false}`,
+        CLASSIFIER_DEFENSIVE_FAILED,
       ],
     },
     chatBody({ practiceMode: "beginner", difficulty: "challenge" }),
   );
 
   assertEquals(response.status, 200);
-  // base heatDelta=-2、familiarityDelta=-2；challenge negativeMultiplier=1.3：
-  // -2*1.3=-2.6→round -3；heatDelta 同理 -2*1.3=-2.6→round -3？
-  // 實際 HEAT_MATRIX.building_familiarity.personal=-2（負底數）→
-  // scaleByQuality 走一般乘數分支 base*1.5(bad)*1(medium)=-3，再乘 1.3=-3.9→round -4。
-  assertEquals(json.temperature.score, 16); // 20 + (-4)
-  assertEquals(json.temperature.delta, -4);
+  // defensive + failed test base heatDelta=-9、familiarityDelta=-5；
+  // challenge negativeMultiplier=1.3：heat clamp 到 -12、familiarity round 到 -6。
+  assertEquals(json.temperature.score, 8); // 20 + (-12)
+  assertEquals(json.temperature.delta, -12);
   // fake RPC 直接回傳 expected+delta（不模擬 clamp，實際 Postgres RPC 才 clamp 下限）。
-  assertEquals(json.temperature.familiarityScore, -3); // 0 + (-3)
-  assertEquals(json.temperature.familiarityDelta, -3);
+  assertEquals(json.temperature.familiarityScore, -6); // 0 + (-6)
+  assertEquals(json.temperature.familiarityDelta, -6);
   assert(state.deepSeekCalls[0].messages[0].content.includes("20/100"));
   assertEquals(
     learningUpdateCalls(state)[0]?.params.p_expected_temperature_score,
@@ -632,7 +657,7 @@ Deno.test("beginner later chat uses ledger learning state over client sent score
       }),
       deepSeekReplies: [
         "AI reply",
-        `{"category":"personal","quality":"ordinary","overstep":false}`,
+        CLASSIFIER_CAUGHT_MEDIUM,
       ],
     },
     chatBody({
@@ -644,8 +669,8 @@ Deno.test("beginner later chat uses ledger learning state over client sent score
 
   assertEquals(response.status, 200);
   assertEquals(json.hintUsedCount, 2);
-  assertEquals(json.temperature.score, 69);
-  assertEquals(json.temperature.delta, 5);
+  assertEquals(json.temperature.score, 68);
+  assertEquals(json.temperature.delta, 4);
   assertEquals(json.temperature.stageLabel, "可以輕推曖昧");
   assertLearningFieldsAndNoDebug(json.temperature);
   const systemPrompt = state.deepSeekCalls[0].messages[0].content;
@@ -774,14 +799,14 @@ Deno.test("ledger select includes beginner fields and old rows fallback safely",
     },
     deepSeekReplies: [
       "AI reply",
-      `{"category":"event","quality":"ordinary","overstep":false}`,
+      CLASSIFIER_CAUGHT_MEDIUM,
     ],
     // 舊列（ledger 已建檔、無溫度欄）：帶 client 值也不得被吃。
   }, chatBody({ practiceMode: "beginner", temperatureScore: 30 }));
 
   assertEquals(response.status, 200);
   assertEquals(json.hintUsedCount, 0);
-  assertEquals(json.temperature.score, 31); // normal 難度起始溫度 28 + delta 3
+  assertEquals(json.temperature.score, 32); // normal 難度起始溫度 28 + delta 4
   assertEquals(json.temperature.stageLabel, "建立熟悉中");
   assertLearningFieldsAndNoDebug(json.temperature);
   const ledgerSelect = state.selects.find((select) =>
@@ -917,16 +942,16 @@ Deno.test("successful beginner classifier uses JSON mode and updates learning st
     }),
     deepSeekReplies: [
       "AI reply",
-      `{"category":"personal","quality":"good","overstep":false}`,
+      CLASSIFIER_CAUGHT_MEDIUM,
     ],
   }, chatBody({ practiceMode: "beginner", temperatureScore: 30 }));
 
   assertEquals(response.status, 200);
   assertEquals(json.temperature, {
-    score: 29,
-    delta: -1,
-    band: temperatureBandFor(29),
-    reason: "個人分享接得住對方，熟悉度上升，熱度也比較穩。",
+    score: 34,
+    delta: 4,
+    band: temperatureBandFor(34),
+    reason: "有接住她的情緒和前文，互動自然升溫。",
     familiarityScore: 5,
     familiarityDelta: 5,
     stageLabel: "建立熟悉中",
@@ -943,7 +968,7 @@ Deno.test("successful beginner classifier uses JSON mode and updates learning st
       p_session_id: "session-1",
       p_expected_temperature_score: 30,
       p_expected_familiarity_score: 0,
-      p_temperature_delta: -1,
+      p_temperature_delta: 4,
       p_familiarity_delta: 5,
     },
   );
@@ -961,7 +986,7 @@ Deno.test("exact applied warm-up hint stays flat despite classifier overstep", a
       }),
       deepSeekReplies: [
         "AI reply",
-        `{"category":"flirt","quality":"bad","impact":"strong","overstep":true,"hintAlignment":"none"}`,
+        CLASSIFIER_OVERSTEP,
       ],
     },
     chatBody({
@@ -1065,7 +1090,7 @@ Deno.test("exact applied warm-up hint does not drop protected beginner temperatu
       }),
       deepSeekReplies: [
         "AI reply",
-        `{"category":"personal","quality":"ordinary","impact":"medium","overstep":true,"hintAlignment":"none"}`,
+        CLASSIFIER_OVERSTEP,
       ],
     },
     chatBody({
@@ -1105,7 +1130,7 @@ Deno.test("exact applied steady hint gets visible credit despite classifier over
       }),
       deepSeekReplies: [
         "AI reply",
-        `{"category":"personal","quality":"ordinary","impact":"medium","overstep":true,"hintAlignment":"none"}`,
+        CLASSIFIER_OVERSTEP,
       ],
     },
     chatBody({
@@ -1137,7 +1162,7 @@ Deno.test("exact applied hint with obvious overstep is not protected", async () 
       }),
       deepSeekReplies: [
         "AI reply",
-        `{"category":"event","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"none"}`,
+        CLASSIFIER_NEUTRAL_MINOR,
       ],
     },
     chatBody({
@@ -1154,7 +1179,7 @@ Deno.test("exact applied hint with obvious overstep is not protected", async () 
   assertEquals(json.temperature.delta, -12);
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -8);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -12);
 });
 
 Deno.test("exact applied steady hint shows a small heat bump when familiarity grows", async () => {
@@ -1170,7 +1195,7 @@ Deno.test("exact applied steady hint shows a small heat bump when familiarity gr
       }),
       deepSeekReplies: [
         "AI reply",
-        `{"category":"personal","quality":"ordinary","impact":"medium","overstep":false,"hintAlignment":"none"}`,
+        CLASSIFIER_CAUGHT_MEDIUM,
       ],
     },
     chatBody({
@@ -1183,11 +1208,11 @@ Deno.test("exact applied steady hint shows a small heat bump when familiarity gr
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 31);
-  assertEquals(json.temperature.delta, 1);
+  assertEquals(json.temperature.score, 34);
+  assertEquals(json.temperature.delta, 4);
   assertLearningFieldsAndNoDebug(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 4);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 4);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 5);
 });
 
 Deno.test("edited applied steady hint aligned with the original gets visible credit", async () => {
@@ -1201,7 +1226,7 @@ Deno.test("edited applied steady hint aligned with the original gets visible cre
       }),
       deepSeekReplies: [
         "AI reply",
-        `{"category":"personal","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"aligned"}`,
+        CLASSIFIER_ALIGNED_NEUTRAL_MINOR,
       ],
     },
     chatBody({
@@ -1232,7 +1257,7 @@ Deno.test("english edited applied steady hint with small wording changes gets vi
       }),
       deepSeekReplies: [
         "AI reply",
-        `{"category":"personal","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"aligned"}`,
+        CLASSIFIER_ALIGNED_NEUTRAL_MINOR,
       ],
     },
     chatBody({
@@ -1266,7 +1291,7 @@ Deno.test("edited applied hint with low text similarity is scored normally even 
       }),
       deepSeekReplies: [
         "AI reply",
-        `{"category":"personal","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"aligned"}`,
+        CLASSIFIER_MISSED_MINOR,
       ],
     },
     chatBody({
@@ -1283,7 +1308,7 @@ Deno.test("edited applied hint with low text similarity is scored normally even 
   assertEquals(json.temperature.delta, -1);
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -1);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -1);
 });
 
 Deno.test("edited applied hint with obvious overstep is penalized even when classifier says aligned", async () => {
@@ -1297,7 +1322,7 @@ Deno.test("edited applied hint with obvious overstep is penalized even when clas
       }),
       deepSeekReplies: [
         "AI reply",
-        `{"category":"event","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"aligned"}`,
+        CLASSIFIER_ALIGNED_NEUTRAL_MINOR,
       ],
     },
     chatBody({
@@ -1314,7 +1339,7 @@ Deno.test("edited applied hint with obvious overstep is penalized even when clas
   assertEquals(json.temperature.delta, -12);
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -8);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -12);
 });
 
 Deno.test("edited applied hint with obvious overstep is penalized when classifier returns old shape", async () => {
@@ -1345,7 +1370,7 @@ Deno.test("edited applied hint with obvious overstep is penalized when classifie
   assertEquals(json.temperature.delta, -12);
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -8);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -12);
 });
 
 Deno.test("edited applied hint marked aligned but overstepping is not protected", async () => {
@@ -1359,7 +1384,7 @@ Deno.test("edited applied hint marked aligned but overstepping is not protected"
       }),
       deepSeekReplies: [
         "AI reply",
-        `{"category":"flirt","quality":"bad","impact":"strong","overstep":true,"hintAlignment":"aligned"}`,
+        CLASSIFIER_OVERSTEP_ALIGNED,
       ],
     },
     chatBody({
@@ -1376,7 +1401,7 @@ Deno.test("edited applied hint marked aligned but overstepping is not protected"
   assertEquals(json.temperature.delta, -12);
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -8);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -12);
 });
 
 Deno.test("edited applied hint with old classifier shape falls back instead of scoring as diverged", async () => {
@@ -1421,7 +1446,7 @@ Deno.test("edited applied hint that diverges is scored like a normal reply", asy
       }),
       deepSeekReplies: [
         "AI reply",
-        `{"category":"flirt","quality":"bad","impact":"strong","overstep":true,"hintAlignment":"diverged"}`,
+        CLASSIFIER_OVERSTEP_DIVERGED,
       ],
     },
     chatBody({
@@ -1440,7 +1465,7 @@ Deno.test("edited applied hint that diverges is scored like a normal reply", asy
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
 });
 
-Deno.test("normal low-impact beginner chat can keep the visible temperature flat", async () => {
+Deno.test("normal low-impact beginner chat now gets small visible progress", async () => {
   const { response, json, state } = await run(
     {
       ledger: ledger({
@@ -1450,7 +1475,7 @@ Deno.test("normal low-impact beginner chat can keep the visible temperature flat
       }),
       deepSeekReplies: [
         "AI reply",
-        `{"category":"event","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"none"}`,
+        CLASSIFIER_NEUTRAL_MINOR,
       ],
     },
     chatBody({
@@ -1461,11 +1486,11 @@ Deno.test("normal low-impact beginner chat can keep the visible temperature flat
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 30);
-  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.score, 31);
+  assertEquals(json.temperature.delta, 1);
   assertLearningFieldsAndNoDebug(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 1);
 });
 
 Deno.test("low-information reply after a contextual question can cool both learning axes", async () => {
@@ -1478,7 +1503,7 @@ Deno.test("low-information reply after a contextual question can cool both learn
       }),
       deepSeekReplies: [
         "AI reply",
-        `{"category":"event","quality":"bad","impact":"minor","overstep":false,"hintAlignment":"none"}`,
+        CLASSIFIER_MISSED_MINOR,
       ],
     },
     chatBody({
@@ -1518,7 +1543,7 @@ Deno.test("appliedHintType without original hint text does not receive exact hin
       }),
       deepSeekReplies: [
         "AI reply",
-        `{"category":"flirt","quality":"bad","impact":"strong","overstep":true,"hintAlignment":"none"}`,
+        CLASSIFIER_OVERSTEP,
       ],
     },
     chatBody({
@@ -1537,7 +1562,7 @@ Deno.test("appliedHintType without original hint text does not receive exact hin
   assertEquals(json.temperature.delta, -12);
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -8);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -12);
 });
 
 Deno.test("appliedHintType without original hint text cannot receive aligned hint protection", async () => {
@@ -1551,7 +1576,7 @@ Deno.test("appliedHintType without original hint text cannot receive aligned hin
       }),
       deepSeekReplies: [
         "AI reply",
-        `{"category":"flirt","quality":"bad","impact":"strong","overstep":true,"hintAlignment":"aligned"}`,
+        CLASSIFIER_OVERSTEP_ALIGNED,
       ],
     },
     chatBody({
@@ -1567,7 +1592,7 @@ Deno.test("appliedHintType without original hint text cannot receive aligned hin
   assertEquals(json.temperature.delta, -12);
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -8);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -12);
 });
 
 Deno.test("exact applied hint keeps positive temperature judgement", async () => {
@@ -1582,7 +1607,7 @@ Deno.test("exact applied hint keeps positive temperature judgement", async () =>
       }),
       deepSeekReplies: [
         "AI reply",
-        `{"category":"event","quality":"good","impact":"medium","overstep":false,"hintAlignment":"none"}`,
+        CLASSIFIER_CAUGHT_MEDIUM,
       ],
     },
     chatBody({
@@ -1599,15 +1624,15 @@ Deno.test("exact applied hint keeps positive temperature judgement", async () =>
     score: 34,
     delta: 4,
     band: temperatureBandFor(34),
-    reason: "事件導向有助於建立熟悉，先讓對話自然有來有回。",
-    familiarityScore: 20,
-    familiarityDelta: 10,
+    reason: "有接住她的情緒和前文，互動自然升溫。",
+    familiarityScore: 15,
+    familiarityDelta: 5,
     stageLabel: "建立熟悉中",
   });
   assertEquals("classification" in json.temperature, false);
   assertEquals("stage" in json.temperature, false);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 4);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 10);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 5);
 });
 
 Deno.test("stale guarded learning update reloads ledger and retries deterministic delta", async () => {
@@ -1638,7 +1663,7 @@ Deno.test("stale guarded learning update reloads ledger and retries deterministi
       },
       deepSeekReplies: [
         "AI reply",
-        `{"category":"event","quality":"good","overstep":false}`,
+        CLASSIFIER_CAUGHT_MEDIUM,
       ],
     },
     chatBody({
@@ -1693,7 +1718,7 @@ Deno.test("stale retry recalculates obvious overstep while still below flirt-rea
       },
       deepSeekReplies: [
         "AI reply",
-        `{"category":"event","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"aligned"}`,
+        CLASSIFIER_ALIGNED_NEUTRAL_MINOR,
       ],
     },
     chatBody({
@@ -1712,7 +1737,7 @@ Deno.test("stale retry recalculates obvious overstep while still below flirt-rea
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state).length, 2);
   assertEquals(learningUpdateCalls(state)[1].params.p_temperature_delta, -12);
-  assertEquals(learningUpdateCalls(state)[1].params.p_familiarity_delta, -8);
+  assertEquals(learningUpdateCalls(state)[1].params.p_familiarity_delta, -12);
 });
 
 Deno.test("stale retry does not reuse low-stage overstep override after flirt-ready reload", async () => {
@@ -1737,7 +1762,7 @@ Deno.test("stale retry does not reuse low-stage overstep override after flirt-re
       },
       deepSeekReplies: [
         "AI reply",
-        `{"category":"event","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"aligned"}`,
+        CLASSIFIER_ALIGNED_NEUTRAL_MINOR,
       ],
     },
     chatBody({
@@ -1751,12 +1776,12 @@ Deno.test("stale retry does not reuse low-stage overstep override after flirt-re
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 60);
-  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.score, 61);
+  assertEquals(json.temperature.delta, 1);
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state).length, 2);
-  assertEquals(learningUpdateCalls(state)[1].params.p_temperature_delta, 0);
-  assertEquals(learningUpdateCalls(state)[1].params.p_familiarity_delta, 0);
+  assertEquals(learningUpdateCalls(state)[1].params.p_temperature_delta, 1);
+  assertEquals(learningUpdateCalls(state)[1].params.p_familiarity_delta, 1);
 });
 
 Deno.test("debrief retries a malformed provider card once before returning the card", async () => {

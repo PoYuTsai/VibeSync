@@ -18,6 +18,20 @@ export type PersonaId =
 
 export type PracticeDifficulty = "easy" | "normal" | "challenge";
 
+export type ConsistencyTestType =
+  | "soft_reassurance"
+  | "light_tease"
+  | "counter_question"
+  | "playful_rating"
+  | "friend_card"
+  | "future_pacing"
+  | "boundary_check";
+
+export interface ConsistencyTestProfile {
+  propensity: "low" | "medium" | "high";
+  types: ConsistencyTestType[];
+}
+
 export type ProfessionId =
   | "college_student"
   | "graduate_student"
@@ -105,6 +119,7 @@ export interface PracticeProfile {
   personaId: PersonaId;
   personaLabel: string;
   personaPrompt: string;
+  consistencyTest: ConsistencyTestProfile;
   difficulty: PracticeDifficulty;
   difficultyLabel: string;
   difficultyPrompt: string;
@@ -118,6 +133,7 @@ interface PersonaConfig {
   prompt: string;
   reaction: ReactionModel;
   signalStyle: string[];
+  consistencyTest: ConsistencyTestProfile;
 }
 
 interface DifficultyConfig {
@@ -160,6 +176,10 @@ export const PERSONAS: readonly PersonaConfig[] = [
       "脆弱性暴露（偶爾說工作壓力大、有點累）",
       "假窗口（只回禮貌句、沒有新資訊時，其實沒投入）",
     ],
+    consistencyTest: {
+      propensity: "low",
+      types: ["soft_reassurance", "friend_card", "future_pacing"],
+    },
   },
   {
     id: "playful_extrovert",
@@ -179,6 +199,10 @@ export const PERSONAS: readonly PersonaConfig[] = [
       "語氣試探（嘿嘿、呀、貼圖、半開玩笑反問）",
       "混合訊號（嘴上吐槽但繼續回、補生活細節）",
     ],
+    consistencyTest: {
+      propensity: "medium",
+      types: ["playful_rating", "light_tease", "counter_question"],
+    },
   },
   {
     id: "cool_rational",
@@ -198,6 +222,10 @@ export const PERSONAS: readonly PersonaConfig[] = [
       "假窗口（短回觀察，不一定是邀約綠燈）",
       "混合訊號（冷一點但仍補一點資訊）",
     ],
+    consistencyTest: {
+      propensity: "high",
+      types: ["counter_question", "friend_card", "future_pacing"],
+    },
   },
   {
     id: "teasing_humor",
@@ -217,6 +245,10 @@ export const PERSONAS: readonly PersonaConfig[] = [
       "混合訊號（嘴硬冷一句但繼續玩）",
       "主動窗口（用反問把球丟回來）",
     ],
+    consistencyTest: {
+      propensity: "high",
+      types: ["light_tease", "counter_question", "playful_rating"],
+    },
   },
   {
     id: "clear_boundaries",
@@ -236,6 +268,10 @@ export const PERSONAS: readonly PersonaConfig[] = [
       "脆弱性暴露（願意分享情緒時是信任訊號）",
       "假窗口（保持禮貌但刻意維持距離）",
     ],
+    consistencyTest: {
+      propensity: "medium",
+      types: ["boundary_check", "soft_reassurance", "counter_question"],
+    },
   },
 ] as const;
 
@@ -998,6 +1034,7 @@ export function resolvePracticeProfile(args: {
     personaId,
     personaLabel: persona.label,
     personaPrompt: persona.prompt,
+    consistencyTest: persona.consistencyTest,
     difficulty,
     difficultyLabel: difficultyConfig.label,
     difficultyPrompt: difficultyConfig.prompt,

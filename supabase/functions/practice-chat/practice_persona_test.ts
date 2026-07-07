@@ -9,8 +9,8 @@ import {
   DIFFICULTIES,
   DIFFICULTY_TUNING,
   difficultyTuningFor,
-  GIRL_PROFILES,
   getPracticeGirlProfile,
+  GIRL_PROFILES,
   LEGACY_CATALOG_SIZE,
   resolveDrawPoolSize,
   resolvePracticeProfile,
@@ -34,8 +34,14 @@ Deno.test("選牌：回傳的 profileId 是 catalog 內合法且 self-consistent
 });
 
 Deno.test("選牌：deterministic（同 seed + 同排除 → 同結果）", () => {
-  const a = selectPracticeDrawProfile({ excludedProfileIds: NONE, seed: "abc" });
-  const b = selectPracticeDrawProfile({ excludedProfileIds: NONE, seed: "abc" });
+  const a = selectPracticeDrawProfile({
+    excludedProfileIds: NONE,
+    seed: "abc",
+  });
+  const b = selectPracticeDrawProfile({
+    excludedProfileIds: NONE,
+    seed: "abc",
+  });
   assertEquals(a.profileId, b.profileId);
 });
 
@@ -305,6 +311,32 @@ Deno.test("difficultyTuningFor：未知/缺席一律 fallback 到 normal", () =>
 Deno.test("resolvePracticeProfile：challenge 難度帶出對應 difficultyDebriefStandard", () => {
   const profile = resolvePracticeProfile({ difficulty: "challenge" });
   assert(profile.difficultyDebriefStandard.includes("挑戰難度"));
+});
+
+Deno.test("resolvePracticeProfile：每個 persona 帶出一致性小測試設定", () => {
+  const teasing = resolvePracticeProfile({
+    profileId: "practice_girl_004",
+  }) as ReturnType<typeof resolvePracticeProfile> & {
+    consistencyTest: { propensity: string; types: string[] };
+  };
+  const slow = resolvePracticeProfile({
+    profileId: "practice_girl_001",
+  }) as ReturnType<typeof resolvePracticeProfile> & {
+    consistencyTest: { propensity: string; types: string[] };
+  };
+  const boundaries = resolvePracticeProfile({
+    profileId: "practice_girl_003",
+  }) as ReturnType<typeof resolvePracticeProfile> & {
+    consistencyTest: { propensity: string; types: string[] };
+  };
+
+  assertEquals(teasing.consistencyTest.propensity, "high");
+  assert(teasing.consistencyTest.types.includes("light_tease"));
+  assert(teasing.consistencyTest.types.includes("counter_question"));
+  assertEquals(slow.consistencyTest.propensity, "low");
+  assert(slow.consistencyTest.types.includes("soft_reassurance"));
+  assertEquals(boundaries.consistencyTest.propensity, "medium");
+  assert(boundaries.consistencyTest.types.includes("boundary_check"));
 });
 
 Deno.test("選牌：切池後排除退避（撞號/全排除 fallback）也絕不逃出切池", () => {

@@ -388,6 +388,23 @@ Deno.test("beginner debrief includes abstract relationship stage without numeric
   assertEquals(msg.includes("44/100"), false);
 });
 
+Deno.test("beginner debrief explains stage without event/personal/flirt scoring language", () => {
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_001" });
+  const msg = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "嗯？" }],
+    profile,
+    {
+      practiceMode: "beginner",
+      temperatureScore: 32,
+      familiarityScore: 10,
+    },
+  )[1].content;
+
+  assertEquals(msg.includes("本場抽象關係階段：建立熟悉中"), true);
+  assertEquals(msg.includes("接住情緒、界線或小測試"), true);
+  assertEquals(msg.includes("事件、個人或輕曖昧"), false);
+});
+
 Deno.test("debrief system prompt：含 dateChance 三欄與誤判評估準則", () => {
   for (const k of ["dateChance", "dateChanceReason", "nextInviteMove"]) {
     assertEquals(DEBRIEF_SYSTEM_PROMPT.includes(k), true);
@@ -404,8 +421,26 @@ Deno.test("debrief system prompt asks for plain-language heat/familiarity explan
     DEBRIEF_SYSTEM_PROMPT.includes("白話說明為什麼升溫或降溫"),
     true,
   );
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("事件、個人、曖昧"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("接住她的情緒"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("小測試"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("界線"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("事件、個人、曖昧"), false);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("不要只講分數"), true);
+});
+
+Deno.test("chat system prompt injects persona-specific consistency test guidance", () => {
+  const profile = resolvePracticeProfile({
+    profileId: "practice_girl_004",
+    difficulty: "easy",
+  });
+  const sys = buildChatMessages([{ role: "user", text: "嗨" }], profile)[0]
+    .content;
+
+  assertEquals(sys.includes("一致性小測試"), true);
+  assertEquals(sys.includes("輕鬆難度"), true);
+  assertEquals(sys.includes("給台階"), true);
+  assertEquals(sys.includes("吐槽"), true);
+  assertEquals(sys.includes("反問"), true);
 });
 
 // ── Task 5：難度區塊移尾端＋砍 easy 混淆句＋debrief 判準隨難度注入 ──────────
