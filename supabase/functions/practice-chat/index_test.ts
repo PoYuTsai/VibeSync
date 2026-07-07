@@ -144,6 +144,14 @@ const CLASSIFIER_OVERSTEP_DIVERGED =
   `{"connection":"overstepped","impact":"strong","testHandling":"none","boundary":"overstep","hintAlignment":"diverged"}`;
 const CLASSIFIER_ALIGNED_NEUTRAL_MINOR =
   `{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"aligned"}`;
+const NEUTRAL_PARTNER_STATE = {
+  mood: "neutral",
+  innerThought: "",
+};
+const GUARDED_PARTNER_STATE = {
+  mood: "guarded",
+  innerThought: "",
+};
 
 function obviousChineseOverstepInvite(): string {
   return String.fromCodePoint(
@@ -270,6 +278,8 @@ function makeFake(options: FakeOptions = {}) {
               familiarity_score:
                 (params.p_expected_familiarity_score as number) +
                 (params.p_familiarity_delta as number),
+              partner_mood: params.p_partner_mood ?? "neutral",
+              partner_inner_thought: params.p_partner_inner_thought ?? "",
             },
           };
         }
@@ -350,6 +360,7 @@ function learningUpdateCalls(state: FakeState) {
 function assertLearningFieldsAndNoDebug(temperature: Record<string, unknown>) {
   assertEquals(typeof temperature.familiarityScore, "number");
   assertEquals(typeof temperature.familiarityDelta, "number");
+  assert("partnerState" in temperature);
   assertEquals("classification" in temperature, false);
   assertEquals("stage" in temperature, false);
 }
@@ -411,6 +422,7 @@ Deno.test("beginner first chat without client scores uses difficulty initial tem
     familiarityScore: 5,
     familiarityDelta: 5,
     stageLabel: "建立熟悉中",
+    partnerState: NEUTRAL_PARTNER_STATE,
   });
   assertLearningFieldsAndNoDebug(json.temperature);
   assert(
@@ -434,6 +446,8 @@ Deno.test("beginner first chat without client scores uses difficulty initial tem
       p_expected_familiarity_score: 0,
       p_temperature_delta: 4,
       p_familiarity_delta: 5,
+      p_partner_mood: "neutral",
+      p_partner_inner_thought: "",
     },
   );
 });
@@ -609,6 +623,7 @@ Deno.test("beginner first chat：easy 難度起始溫度 35＋正 delta 放大 1
     familiarityScore: 6,
     familiarityDelta: 6,
     stageLabel: "建立熟悉中",
+    partnerState: NEUTRAL_PARTNER_STATE,
   });
   assert(state.deepSeekCalls[0].messages[0].content.includes("35/100"));
   assertEquals(
@@ -815,7 +830,7 @@ Deno.test("ledger select includes beginner fields and old rows fallback safely",
   assert(ledgerSelect);
   assertEquals(
     ledgerSelect.columns,
-    "ai_count, charged, debrief_count, practice_mode, temperature_score, familiarity_score, hint_count",
+    "ai_count, charged, debrief_count, practice_mode, temperature_score, familiarity_score, partner_mood, partner_inner_thought, hint_count",
   );
 });
 
@@ -955,6 +970,7 @@ Deno.test("successful beginner classifier uses JSON mode and updates learning st
     familiarityScore: 5,
     familiarityDelta: 5,
     stageLabel: "建立熟悉中",
+    partnerState: NEUTRAL_PARTNER_STATE,
   });
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(state.deepSeekCalls.length, 2);
@@ -970,6 +986,8 @@ Deno.test("successful beginner classifier uses JSON mode and updates learning st
       p_expected_familiarity_score: 0,
       p_temperature_delta: 4,
       p_familiarity_delta: 5,
+      p_partner_mood: "neutral",
+      p_partner_inner_thought: "",
     },
   );
 });
@@ -1007,6 +1025,7 @@ Deno.test("exact applied warm-up hint stays flat despite classifier overstep", a
     familiarityScore: 20,
     familiarityDelta: 0,
     stageLabel: "建立熟悉中",
+    partnerState: GUARDED_PARTNER_STATE,
   });
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
@@ -1111,6 +1130,7 @@ Deno.test("exact applied warm-up hint does not drop protected beginner temperatu
     familiarityScore: 20,
     familiarityDelta: 0,
     stageLabel: "建立熟悉中",
+    partnerState: GUARDED_PARTNER_STATE,
   });
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
@@ -1628,6 +1648,7 @@ Deno.test("exact applied hint keeps positive temperature judgement", async () =>
     familiarityScore: 15,
     familiarityDelta: 5,
     stageLabel: "建立熟悉中",
+    partnerState: NEUTRAL_PARTNER_STATE,
   });
   assertEquals("classification" in json.temperature, false);
   assertEquals("stage" in json.temperature, false);

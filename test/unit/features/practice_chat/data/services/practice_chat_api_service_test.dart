@@ -140,6 +140,25 @@ void main() {
       expect(r.temperature, isNull);
     });
 
+    test('sendMessage parses partnerState tracker payload', () async {
+      final svc = serviceReturning(200, {
+        'reply': '嗯？聽起來你今天很忙。',
+        'aiTurnCount': 1,
+        'sessionComplete': false,
+        'costDeducted': 1,
+        'partnerState': {
+          'mood': 'curious',
+          'innerThought': '他有回到我的情緒，我想多問一點。',
+        },
+      });
+
+      final r =
+          await svc.sendMessage(sessionId: 's', profile: profile, turns: turns);
+
+      expect(r.partnerState?.mood, 'curious');
+      expect(r.partnerState?.innerThought, '他有回到我的情緒，我想多問一點。');
+    });
+
     test('sendMessage body includes default standard practiceMode', () async {
       final captured = _CapturedInvoke();
       final svc = PracticeChatApiService(invoker: captured.call);
@@ -697,7 +716,8 @@ void main() {
       );
     }
 
-    test('drawProfile：402 practice_draw_upgrade_required → PracticeDrawUpgradeRequiredException',
+    test(
+        'drawProfile：402 practice_draw_upgrade_required → PracticeDrawUpgradeRequiredException',
         () async {
       final svc = serviceThrowing(const FunctionException(
         status: 402,
@@ -723,7 +743,8 @@ void main() {
       );
     });
 
-    test('drawProfile：429 quota body → PracticeQuotaExceededException', () async {
+    test('drawProfile：429 quota body → PracticeQuotaExceededException',
+        () async {
       final svc = serviceThrowing(const FunctionException(
         status: 429,
         details: {
@@ -775,7 +796,8 @@ void main() {
       );
     });
 
-    test('sendMessage：429 MODEL_RATE_LIMITED → PracticeApiException（絕不誤標 quota）',
+    test(
+        'sendMessage：429 MODEL_RATE_LIMITED → PracticeApiException（絕不誤標 quota）',
         () async {
       final svc = serviceThrowing(const FunctionException(
         status: 429,

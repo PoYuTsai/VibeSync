@@ -216,6 +216,7 @@ void main() {
     int? monthly = 29,
     int? daily = 14,
     PracticeTemperature? temperature,
+    PracticePartnerState? partnerState,
     int? hintUsedCount,
   }) =>
       PracticeChatReply(
@@ -226,6 +227,7 @@ void main() {
         monthlyRemaining: monthly,
         dailyRemaining: daily,
         temperature: temperature,
+        partnerState: partnerState,
         hintUsedCount: hintUsedCount,
       );
 
@@ -733,6 +735,28 @@ void main() {
         [29, 14]
       ]);
       expect(repo.getById(s.sessionId), isNotNull);
+    });
+
+    test('AI message stores server partnerState for later debrief context',
+        () async {
+      final c = await makeRevealed();
+      api.sendHandler = (_, {profile}) async => reply(
+            text: '嗯？聽起來你今天很忙。',
+            partnerState: const PracticePartnerState(
+              mood: 'curious',
+              innerThought: '他有回到我的情緒，我想多問一點。',
+            ),
+          );
+
+      await c.sendMessage('今天真的有點累');
+      final last = c.currentState.messages.last;
+
+      expect(last.role, 'ai');
+      expect(last.mood, 'curious');
+      expect(last.innerThought, '他有回到我的情緒，我想多問一點。');
+      final saved = repo.getById(c.currentState.sessionId)!;
+      expect(saved.messages.last.mood, 'curious');
+      expect(saved.messages.last.innerThought, '他有回到我的情緒，我想多問一點。');
     });
 
     test('翻牌後送訊息帶上 server 給的 girl 身份', () async {

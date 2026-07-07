@@ -12,7 +12,18 @@ class PracticeMessage {
   @HiveField(1)
   final String text;
 
-  const PracticeMessage({required this.role, required this.text});
+  @HiveField(2)
+  final String? mood;
+
+  @HiveField(3)
+  final String? innerThought;
+
+  const PracticeMessage({
+    required this.role,
+    required this.text,
+    this.mood,
+    this.innerThought,
+  });
 
   bool get isFromMe => role == 'user';
 }

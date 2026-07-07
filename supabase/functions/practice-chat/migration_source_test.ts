@@ -33,6 +33,12 @@ const rpcCleanupMigration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const partnerStateMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260707053000_practice_partner_state.sql",
+    import.meta.url,
+  ),
+);
 
 function requiredIndex(snippet: string): number {
   const index = migration.indexOf(snippet);
@@ -504,6 +510,25 @@ function requiredCleanupIndex(snippet: string): number {
   return index;
 }
 
+function requiredPartnerStateIndex(snippet: string): number {
+  const index = partnerStateMigration.indexOf(snippet);
+  assert(index >= 0, `Partner-state migration must contain: ${snippet}`);
+  return index;
+}
+
+function partnerStateFunctionBody(name: string): string {
+  const start = requiredPartnerStateIndex(
+    `CREATE OR REPLACE FUNCTION public.${name}(`,
+  );
+  const nextFunction = partnerStateMigration.indexOf(
+    "CREATE OR REPLACE FUNCTION public.",
+    start + 1,
+  );
+  return nextFunction >= 0
+    ? partnerStateMigration.slice(start, nextFunction)
+    : partnerStateMigration.slice(start);
+}
+
 Deno.test("rpc cleanup migration warns it must run only after the new Edge deploy", () => {
   requiredCleanupIndex("必須在新版 practice-chat Edge 部署完成後才可套用");
 });
@@ -527,5 +552,68 @@ Deno.test("rpc cleanup migration must not drop the live 7-arg commit RPC", () =>
       "commit_practice_chat_turn(UUID, TEXT, BOOLEAN, INTEGER, TEXT, INTEGER, INTEGER)",
     ),
     "the dual-axis 7-arg signature is the live one and must survive cleanup",
+  );
+});
+
+Deno.test("partner-state migration adds bounded relationship state columns", () => {
+  requiredPartnerStateIndex("ADD COLUMN IF NOT EXISTS partner_mood TEXT");
+  requiredPartnerStateIndex(
+    "ADD COLUMN IF NOT EXISTS partner_inner_thought TEXT",
+  );
+  requiredPartnerStateIndex(
+    "ADD COLUMN IF NOT EXISTS partner_state_updated_at TIMESTAMPTZ",
+  );
+  requiredPartnerStateIndex("practice_chat_sessions_partner_mood_check");
+  requiredPartnerStateIndex(
+    "partner_mood IN ('neutral', 'curious', 'amused', 'comfortable', 'guarded', 'annoyed')",
+  );
+  requiredPartnerStateIndex("char_length(partner_inner_thought) <= 80");
+});
+
+Deno.test("partner-state readiness RPC checks both tracker columns", () => {
+  const body = partnerStateFunctionBody("assert_practice_learning_ready");
+
+  assert(body.includes("column_name = 'partner_mood'"));
+  assert(body.includes("column_name = 'partner_inner_thought'"));
+  assert(body.includes("missing partner_mood"));
+  assert(body.includes("missing partner_inner_thought"));
+});
+
+Deno.test("partner-state commit RPC initializes state without charging behavior changes", () => {
+  const body = partnerStateFunctionBody("commit_practice_chat_turn");
+
+  assert(body.includes("p_partner_mood          TEXT"));
+  assert(body.includes("p_partner_inner_thought TEXT"));
+  assertEquals(body.includes("p_partner_mood TEXT DEFAULT NULL"), false);
+  assert(body.includes("partner_mood"));
+  assert(body.includes("partner_inner_thought"));
+  assert(body.includes("v_should_settle AND p_charge_quota IS TRUE"));
+  requiredPartnerStateIndex(
+    "GRANT EXECUTE ON FUNCTION public.commit_practice_chat_turn(UUID, TEXT, BOOLEAN, INTEGER, TEXT, INTEGER, INTEGER, TEXT, TEXT)",
+  );
+});
+
+Deno.test("partner-state learning update RPC atomically persists scores and state", () => {
+  const body = partnerStateFunctionBody("update_practice_learning_state");
+  const compactBody = compactSql(body);
+
+  assert(
+    body.includes(
+      "RETURNS TABLE(updated BOOLEAN, temperature_score INTEGER, familiarity_score INTEGER, partner_mood TEXT, partner_inner_thought TEXT)",
+    ),
+  );
+  assert(compactBody.includes("p_partner_mood TEXT"));
+  assert(compactBody.includes("p_partner_inner_thought TEXT"));
+  assertEquals(compactBody.includes("p_partner_mood TEXT DEFAULT NULL"), false);
+  assert(compactBody.includes("SET temperature_score = v_new_temperature"));
+  assert(compactBody.includes("familiarity_score = v_new_familiarity"));
+  assert(compactBody.includes("partner_mood = v_partner_mood"));
+  assert(
+    compactBody.includes("partner_inner_thought = v_partner_inner_thought"),
+  );
+  assert(body.includes("AND s.temperature_score = v_expected_temperature"));
+  assert(body.includes("AND s.familiarity_score = v_expected_familiarity"));
+  requiredPartnerStateIndex(
+    "GRANT EXECUTE ON FUNCTION public.update_practice_learning_state(UUID, TEXT, INTEGER, INTEGER, INTEGER, INTEGER, TEXT, TEXT)",
   );
 });

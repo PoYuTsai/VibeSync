@@ -19,17 +19,23 @@ class PracticeMessageAdapter extends TypeAdapter<PracticeMessage> {
     return PracticeMessage(
       role: fields[0] as String,
       text: fields[1] as String,
+      mood: fields[2] as String?,
+      innerThought: fields[3] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, PracticeMessage obj) {
     writer
-      ..writeByte(2)
+      ..writeByte(4)
       ..writeByte(0)
       ..write(obj.role)
       ..writeByte(1)
-      ..write(obj.text);
+      ..write(obj.text)
+      ..writeByte(2)
+      ..write(obj.mood)
+      ..writeByte(3)
+      ..write(obj.innerThought);
   }
 
   @override
