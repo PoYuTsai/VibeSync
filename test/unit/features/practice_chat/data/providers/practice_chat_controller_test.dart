@@ -865,10 +865,15 @@ void main() {
 
   // ── 結束練習 / 拆解 ──────────────────────────────────────────────────────
   group('結束練習', () {
-    test('產拆解卡、鎖定、持久化拆解欄位', () async {
+    Future<PracticeChatController> makeDebriefable() async {
       final c = await makeRevealed();
       api.sendHandler = (_, {profile}) async => reply();
       await c.sendMessage('嗨');
+      return c;
+    }
+
+    test('產拆解卡、鎖定、持久化拆解欄位', () async {
+      final c = await makeDebriefable();
 
       api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
             summary: '整體不錯',
@@ -893,9 +898,7 @@ void main() {
     });
 
     test('拆解失敗：標示失敗並鎖住輸入', () async {
-      final c = await makeRevealed();
-      api.sendHandler = (_, {profile}) async => reply();
-      await c.sendMessage('嗨');
+      final c = await makeDebriefable();
 
       api.debriefHandler = (_, {profile}) async =>
           throw PracticeGenerationFailedException('boom');
@@ -907,6 +910,115 @@ void main() {
       expect(s.ended, true);
       expect(s.canSend, false);
       expect(s.canDebrief, true);
+    });
+
+    test('拆解 429 模型限流：顯示 server 文案並保留重試', () async {
+      final c = await makeDebriefable();
+      api.debriefHandler = (_, {profile}) async => throw PracticeApiException(
+            '請求太頻繁，請稍後再試。',
+            status: 429,
+          );
+
+      await c.endPractice();
+      final s = c.currentState;
+
+      expect(s.isDebriefing, false);
+      expect(s.debriefFailed, true);
+      expect(s.debriefRetryable, true);
+      expect(s.quotaExceeded, false);
+      expect(s.errorMessage, '請求太頻繁，請稍後再試。');
+      expect(s.canDebrief, true);
+    });
+
+    test('拆解達單場上限：提示已用完且不再提供重試', () async {
+      final c = await makeDebriefable();
+      api.debriefHandler = (_, {profile}) async =>
+          throw PracticeApiException('practice_debrief_limit', status: 403);
+
+      await c.endPractice();
+      final s = c.currentState;
+
+      expect(s.isDebriefing, false);
+      expect(s.ended, true);
+      expect(s.debriefFailed, true);
+      expect(s.debriefRetryable, false);
+      expect(s.errorMessage, '這場練習的拆解次數已用完。');
+      expect(s.canDebrief, false);
+    });
+
+    test('拆解 quota / upgrade / mode locked 走明確旗標與文案', () async {
+      final cases = <({
+        Object exception,
+        bool quotaExceeded,
+        bool upgradeRequired,
+        String message,
+      })>[
+        (
+          exception: PracticeQuotaExceededException('額度已用完'),
+          quotaExceeded: true,
+          upgradeRequired: false,
+          message: '額度已用完',
+        ),
+        (
+          exception: PracticeUpgradeRequiredException(),
+          quotaExceeded: false,
+          upgradeRequired: true,
+          message: '這個拆解會消耗訊息額度，升級後就能繼續使用。',
+        ),
+        (
+          exception: PracticeModeLockedException(),
+          quotaExceeded: false,
+          upgradeRequired: false,
+          message: '這位陪練女孩這一輪已用另一種模式進行中，請切回原本的模式繼續',
+        ),
+      ];
+
+      for (final testCase in cases) {
+        final c = await makeDebriefable();
+        api.debriefHandler = (_, {profile}) async => throw testCase.exception;
+
+        await c.endPractice();
+        final s = c.currentState;
+
+        expect(s.debriefFailed, true);
+        expect(s.debriefRetryable, true);
+        expect(s.quotaExceeded, testCase.quotaExceeded);
+        expect(s.upgradeRequired, testCase.upgradeRequired);
+        expect(s.errorMessage, testCase.message);
+      }
+    });
+
+    test('拆解服務未就緒或設定缺失：顯示稍後再試文案', () async {
+      final cases = [
+        'practice_learning_not_ready',
+        'config_missing',
+      ];
+
+      for (final code in cases) {
+        final c = await makeDebriefable();
+        api.debriefHandler = (_, {profile}) async =>
+            throw PracticeGenerationFailedException(code);
+
+        await c.endPractice();
+        final s = c.currentState;
+
+        expect(s.debriefFailed, true);
+        expect(s.debriefRetryable, true);
+        expect(s.errorMessage, '拆解服務暫時無法使用，請稍後再試。');
+      }
+    });
+
+    test('拆解網路錯誤：提示網路不穩並保留重試', () async {
+      final c = await makeDebriefable();
+      api.debriefHandler =
+          (_, {profile}) async => throw TimeoutException('timeout');
+
+      await c.endPractice();
+      final s = c.currentState;
+
+      expect(s.debriefFailed, true);
+      expect(s.debriefRetryable, true);
+      expect(s.errorMessage, '網路不穩，拆解卡生成失敗，可以再按一次。');
     });
   });
 

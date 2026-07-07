@@ -1069,6 +1069,7 @@ class _BottomBar extends StatelessWidget {
 
     if (state.debriefFailed) {
       return _DebriefFailedActionsBar(
+        retryable: state.debriefRetryable,
         onRetry: onEndPractice,
         onFinish: onFinish,
       );
@@ -1765,10 +1766,12 @@ class _HintReplyButton extends StatelessWidget {
 
 class _DebriefFailedActionsBar extends StatelessWidget {
   const _DebriefFailedActionsBar({
+    required this.retryable,
     required this.onRetry,
     required this.onFinish,
   });
 
+  final bool retryable;
   final VoidCallback onRetry;
   final VoidCallback onFinish;
 
@@ -1780,7 +1783,7 @@ class _DebriefFailedActionsBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            '拆解卡暫時沒有產生',
+            retryable ? '拆解卡暫時沒有產生' : '這場練習已結束',
             textAlign: TextAlign.center,
             style: AppTypography.caption.copyWith(
               color: AppColors.onBackgroundSecondary,
@@ -1788,23 +1791,29 @@ class _DebriefFailedActionsBar extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: BrandPrimaryButton(
-                  label: '再試一次',
-                  onPressed: onRetry,
+          if (retryable)
+            Row(
+              children: [
+                Expanded(
+                  child: BrandPrimaryButton(
+                    label: '再試一次',
+                    onPressed: onRetry,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: BrandSecondaryButton(
-                  label: '完成',
-                  onPressed: onFinish,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: BrandSecondaryButton(
+                    label: '完成',
+                    onPressed: onFinish,
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            )
+          else
+            BrandPrimaryButton(
+              label: '完成',
+              onPressed: onFinish,
+            ),
         ],
       ),
     );

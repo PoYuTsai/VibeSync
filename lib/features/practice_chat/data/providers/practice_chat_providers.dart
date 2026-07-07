@@ -53,7 +53,8 @@ class PracticeChatState {
   final bool sessionComplete; // 已達 20 則
   final bool ended; // 使用者已結束練習，輸入鎖定
   final PracticeDebrief? debrief;
-  final bool debriefFailed; // 拆解失敗但仍可重試／完成，不回到普通輸入列
+  final bool debriefFailed; // 拆解失敗，不回到普通輸入列
+  final bool debriefRetryable; // true 顯示再試一次；false 只允許完成
   final String? errorMessage;
   final bool quotaExceeded;
   final bool upgradeRequired; // Free 續同一位被擋（402）：導向付費牆，與額度用罄分開
@@ -122,6 +123,7 @@ class PracticeChatState {
     this.ended = false,
     this.debrief,
     this.debriefFailed = false,
+    this.debriefRetryable = true,
     this.errorMessage,
     this.quotaExceeded = false,
     this.upgradeRequired = false,
@@ -179,7 +181,11 @@ class PracticeChatState {
 
   /// 至少有一則 AI 回覆、尚未拆解，才能結束練習看拆解卡。
   bool get canDebrief =>
-      aiReplyCount >= 1 && !isDebriefing && !isSending && debrief == null;
+      aiReplyCount >= 1 &&
+      !isDebriefing &&
+      !isSending &&
+      debrief == null &&
+      (!debriefFailed || debriefRetryable);
 
   PracticeChatState copyWith({
     List<PracticeMessage>? messages,
@@ -189,6 +195,7 @@ class PracticeChatState {
     bool? sessionComplete,
     bool? ended,
     bool? debriefFailed,
+    bool? debriefRetryable,
     bool? quotaExceeded,
     bool? upgradeRequired,
     PracticeDrawStatus? drawStatus,
@@ -241,6 +248,7 @@ class PracticeChatState {
       sessionComplete: sessionComplete ?? this.sessionComplete,
       ended: ended ?? this.ended,
       debriefFailed: debriefFailed ?? this.debriefFailed,
+      debriefRetryable: debriefRetryable ?? this.debriefRetryable,
       quotaExceeded: quotaExceeded ?? this.quotaExceeded,
       upgradeRequired: upgradeRequired ?? this.upgradeRequired,
       difficultyPreference: difficultyPreference ?? this.difficultyPreference,
@@ -549,6 +557,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       ended: debrief != null,
       debrief: debrief,
       debriefFailed: false,
+      debriefRetryable: true,
       girl: girl,
       personaId: personaId,
       personaLabel: session.personaLabel ?? practicePersonaLabel(personaId),
@@ -777,6 +786,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       state = state.copyWith(
         upgradeRequired: true,
         debriefFailed: false,
+        debriefRetryable: true,
         errorMessage: '想和同一位繼續練習，升級後就能解鎖。',
       );
       return;
@@ -884,6 +894,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       quotaExceeded: false,
       upgradeRequired: false,
       debriefFailed: false,
+      debriefRetryable: true,
       restoreText: null,
       hintReplies: const [],
       hintCoaching: null,
@@ -1154,8 +1165,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       isDebriefing: true,
       ended: true,
       debriefFailed: false,
+      debriefRetryable: true,
       errorMessage: null,
       quotaExceeded: false,
+      upgradeRequired: false,
     );
     try {
       final debrief = await _api.requestDebrief(
@@ -1178,12 +1191,61 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       if (girl != null) {
         await _recordPracticeHistoryEvent(s, girl.profileId);
       }
+    } on PracticeQuotaExceededException catch (e) {
+      state = state.copyWith(
+        isDebriefing: false,
+        ended: true,
+        debriefFailed: true,
+        debriefRetryable: true,
+        quotaExceeded: true,
+        errorMessage: e.message,
+      );
+    } on PracticeUpgradeRequiredException {
+      state = state.copyWith(
+        isDebriefing: false,
+        ended: true,
+        debriefFailed: true,
+        debriefRetryable: true,
+        upgradeRequired: true,
+        errorMessage: '這個拆解會消耗訊息額度，升級後就能繼續使用。',
+      );
+    } on PracticeModeLockedException {
+      state = state.copyWith(
+        isDebriefing: false,
+        ended: true,
+        debriefFailed: true,
+        debriefRetryable: true,
+        errorMessage: _practiceModeLockedMessage,
+      );
+    } on PracticeApiException catch (e) {
+      final debriefLimitReached = e.message == 'practice_debrief_limit';
+      state = state.copyWith(
+        isDebriefing: false,
+        ended: true,
+        sessionComplete: debriefLimitReached ? true : state.sessionComplete,
+        debriefFailed: true,
+        debriefRetryable: !debriefLimitReached,
+        errorMessage: debriefLimitReached
+            ? '這場練習的拆解次數已用完。'
+            : e.status == 429
+                ? e.message
+                : _debriefApiErrorMessage(e.message),
+      );
+    } on PracticeGenerationFailedException catch (e) {
+      state = state.copyWith(
+        isDebriefing: false,
+        ended: true,
+        debriefFailed: true,
+        debriefRetryable: true,
+        errorMessage: _debriefGenerationErrorMessage(e.message),
+      );
     } catch (_) {
       state = state.copyWith(
         isDebriefing: false,
         ended: true,
         debriefFailed: true,
-        errorMessage: '拆解卡生成失敗，可以再按一次。',
+        debriefRetryable: true,
+        errorMessage: '網路不穩，拆解卡生成失敗，可以再按一次。',
       );
     }
   }
@@ -1320,6 +1382,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
 }
 
 const _hintGenericErrorMessage = '提示暫時產生失敗，等一下再試。';
+const _debriefGenericErrorMessage = '拆解卡生成失敗，可以再按一次。';
+const _debriefServiceUnavailableMessage = '拆解服務暫時無法使用，請稍後再試。';
 
 /// 409 practice_mode_locked 共用文案（chat / hint 兩路徑同文案）。
 const _practiceModeLockedMessage = '這位陪練女孩這一輪已用另一種模式進行中，請切回原本的模式繼續';
@@ -1348,6 +1412,25 @@ String _hintGenerationErrorMessage(String code) {
       return '提示服務正在更新中，請稍後再試。';
     default:
       return _hintGenericErrorMessage;
+  }
+}
+
+String _debriefApiErrorMessage(String code) {
+  switch (code) {
+    case 'practice_session_not_started':
+      return _debriefGenericErrorMessage;
+    default:
+      return _debriefGenericErrorMessage;
+  }
+}
+
+String _debriefGenerationErrorMessage(String code) {
+  switch (code) {
+    case 'practice_learning_not_ready':
+    case 'config_missing':
+      return _debriefServiceUnavailableMessage;
+    default:
+      return _debriefGenericErrorMessage;
   }
 }
 

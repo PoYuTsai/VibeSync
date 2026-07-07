@@ -999,6 +999,45 @@ void main() {
     expect(find.text('輸入訊息…'), findsNothing);
   });
 
+  testWidgets('不可重試的拆解失敗只顯示完成', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final girl = practiceGirlProfiles.first;
+    final seed = PracticeChatState(
+      sessionId: 'debrief-limit-test',
+      createdAt: DateTime(2026, 6, 25, 18),
+      girl: girl,
+      personaId: girl.personaId,
+      personaLabel: '慢熱上班族',
+      difficulty: 'normal',
+      difficultyLabel: '一般',
+      aiReplyCount: 1,
+      ended: true,
+      debriefFailed: true,
+      debriefRetryable: false,
+      errorMessage: '這場練習的拆解次數已用完。',
+      messages: const [
+        PracticeMessage(role: 'user', text: '嗨'),
+        PracticeMessage(role: 'ai', text: '嗯？'),
+      ],
+    );
+    final controller =
+        _SeededPracticeChatController(seed: seed, repository: repo);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.text('這場練習已結束'), findsOneWidget);
+    expect(find.text('再試一次'), findsNothing);
+    expect(find.text('完成'), findsOneWidget);
+    expect(find.text('輸入訊息…'), findsNothing);
+  });
+
   testWidgets('首屏點大照可看未裁切全圖', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
