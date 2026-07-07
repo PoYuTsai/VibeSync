@@ -14,6 +14,7 @@ import {
 } from "./consistency_prompt.ts";
 import { scrubRawImageFilenames } from "./prompt_sanitizer.ts";
 import {
+  type PartnerState,
   relationshipStageFor,
   temperatureBandInstruction,
 } from "./temperature.ts";
@@ -21,6 +22,13 @@ import {
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
+}
+
+function partnerStatePrompt(partnerState?: PartnerState | null): string {
+  if (!partnerState) return "";
+  const innerThought = partnerState.innerThought.trim();
+  const innerLine = innerThought ? `\ninnerThought: ${innerThought}` : "";
+  return `\n\npartnerState（hidden guidance，不要直接說出 partnerState、mood 或 innerThought）：\nmood: ${partnerState.mood}${innerLine}\n請把它當成她此刻的情緒慣性：回覆要自然受到影響，但不能像報告或角色卡一樣明講。`;
 }
 
 // ── chat：模擬對象女生人設 ──────────────────────────────────────────
@@ -136,6 +144,7 @@ export function buildChatMessages(
     practiceMode?: PracticeLearningMode;
     temperatureScore?: number;
     familiarityScore?: number;
+    partnerState?: PartnerState | null;
   } = {},
 ): ChatMessage[] {
   const history: ChatMessage[] = turns.map((t) => ({
@@ -162,7 +171,7 @@ export function buildChatMessages(
       role: "system",
       content: `${CHAT_SYSTEM_PROMPT}${
         buildProfilePrompt(profile)
-      }${temperaturePrompt}`,
+      }${temperaturePrompt}${partnerStatePrompt(options.partnerState)}`,
     },
     ...history,
   ];
@@ -190,6 +199,7 @@ export function buildDebriefMessages(
     practiceMode?: PracticeLearningMode;
     temperatureScore?: number;
     familiarityScore?: number;
+    partnerState?: PartnerState | null;
   } = {},
 ): ChatMessage[] {
   const transcript = turnsToTranscript(turns);
@@ -230,6 +240,7 @@ export function buildDebriefMessages(
         `她可能自然丟的小測試類型（評估使用者是否穩、是否防禦）：${
           formatConsistencyTestTypes(profile.consistencyTest.types)
         }\n\n` +
+        `${partnerStatePrompt(options.partnerState)}\n\n` +
         `這是這場練習的逐字稿（「你」是學員、「她」是模擬對象）：\n\n${transcript}\n\n` +
         `請依系統指示，只回傳那個 JSON 物件。`,
     },

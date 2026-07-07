@@ -31,10 +31,13 @@ import { buildHintMessages, parseHintResult } from "./hint.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import {
   applyLearningClassification,
+  applyPartnerStateUpdate,
   buildTurnClassifierMessages,
   clampTemperature,
   type LearningJudgement,
   parseTurnClassification,
+  type PartnerMood,
+  type PartnerState,
   relationshipStageFor,
   temperatureBandFor,
   type TurnClassification,
@@ -145,6 +148,9 @@ function deterministicOverstepClassificationForSnapshot(opts: {
       testHandling: "none",
       boundary: "overstep",
       hintAlignment: "diverged",
+      partnerMood: "guarded",
+      moodConfidence: 1,
+      innerThought: "這個推進太快了，我會先退一步觀察。",
     };
   }
   return null;
@@ -239,6 +245,8 @@ function isMissingBeginnerHintLedgerSchema(message: string): boolean {
 function isMissingDualAxisLearningSchema(message: string): boolean {
   const normalized = message.toLowerCase();
   const referencesDualAxisLearning = normalized.includes("familiarity_score") ||
+    normalized.includes("partner_mood") ||
+    normalized.includes("partner_inner_thought") ||
     normalized.includes("assert_practice_learning_ready") ||
     normalized.includes("update_practice_learning_state") ||
     normalized.includes("commit_practice_chat_turn");
@@ -321,6 +329,36 @@ function familiarityFromLedger(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function partnerMoodFromLedger(value: unknown): PartnerMood | null {
+  if (
+    value === "neutral" ||
+    value === "curious" ||
+    value === "amused" ||
+    value === "comfortable" ||
+    value === "guarded" ||
+    value === "annoyed"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function partnerInnerThoughtFromLedger(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().replace(/\s+/g, " ").slice(0, 80);
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function partnerStateFromLedger(row: SessionLedger): PartnerState | null {
+  const mood = partnerMoodFromLedger(row.partnerMood);
+  const innerThought = partnerInnerThoughtFromLedger(row.partnerInnerThought);
+  if (!mood && !innerThought) return null;
+  return {
+    mood: mood ?? "neutral",
+    innerThought: innerThought ?? "",
+  };
+}
+
 function hintCountFromLedger(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(0, Math.trunc(value))
@@ -331,6 +369,8 @@ interface LearningStateUpdateResult {
   updated: boolean;
   temperatureScore: number | null;
   familiarityScore: number | null;
+  partnerMood: PartnerMood | null;
+  partnerInnerThought: string | null;
 }
 
 function learningStateUpdateResultFromData(
@@ -345,7 +385,27 @@ function learningStateUpdateResultFromData(
     familiarityScore: isPlainObject(row)
       ? familiarityFromLedger(row.familiarity_score)
       : null,
+    partnerMood: isPlainObject(row)
+      ? partnerMoodFromLedger(row.partner_mood)
+      : null,
+    partnerInnerThought: isPlainObject(row)
+      ? partnerInnerThoughtFromLedger(row.partner_inner_thought)
+      : null,
   };
+}
+
+function partnerStateFromUpdateResult(
+  result: LearningStateUpdateResult,
+): PartnerState | null {
+  if (!result.partnerMood && !result.partnerInnerThought) return null;
+  return {
+    mood: result.partnerMood ?? "neutral",
+    innerThought: result.partnerInnerThought ?? "",
+  };
+}
+
+function defaultPartnerState(): PartnerState {
+  return { mood: "neutral", innerThought: "" };
 }
 
 function withAuthoritativeLearningScores(
@@ -363,6 +423,8 @@ function withAuthoritativeLearningScores(
     familiarityScore,
     stage: stage.stage,
     stageLabel: stage.label,
+    partnerState: partnerStateFromUpdateResult(result) ??
+      judgement.partnerState ?? defaultPartnerState(),
   };
 }
 
@@ -377,6 +439,7 @@ function learningJudgementResponse(
     familiarityScore: judgement.familiarityScore,
     familiarityDelta: judgement.familiarityDelta,
     stageLabel: judgement.stageLabel,
+    partnerState: judgement.partnerState,
   };
 }
 
@@ -471,6 +534,7 @@ function protectAppliedHintTemperature(
 function fallbackLearningJudgement(
   currentTemperature: number,
   currentFamiliarity: number,
+  currentPartnerState?: PartnerState | null,
 ): LearningJudgement {
   const score = clampTemperature(currentTemperature);
   const familiarityScore = clampTemperature(currentFamiliarity);
@@ -490,7 +554,11 @@ function fallbackLearningJudgement(
       testHandling: "none",
       boundary: "safe",
       hintAlignment: "none",
+      partnerMood: "neutral",
+      moodConfidence: 0,
+      innerThought: "",
     },
+    partnerState: currentPartnerState ?? defaultPartnerState(),
   };
 }
 
@@ -525,6 +593,8 @@ async function updateLearningState(opts: {
       p_expected_familiarity_score: opts.expectedFamiliarity,
       p_temperature_delta: opts.judgement.delta,
       p_familiarity_delta: opts.judgement.familiarityDelta,
+      p_partner_mood: opts.judgement.partnerState?.mood ?? "neutral",
+      p_partner_inner_thought: opts.judgement.partnerState?.innerThought ?? "",
     },
   );
   if (error) {
@@ -541,6 +611,7 @@ async function judgeLearningState(opts: {
   sessionId: string;
   currentTemperature: number;
   currentFamiliarity: number;
+  currentPartnerState?: PartnerState | null;
   request: ReturnType<typeof validateRequest>;
   reply: string;
 }): Promise<LearningJudgement> {
@@ -549,6 +620,8 @@ async function judgeLearningState(opts: {
   const fallbackForSnapshot = (
     currentTemperature: number,
     currentFamiliarity: number,
+    currentPartnerState: PartnerState | null | undefined =
+      opts.currentPartnerState,
   ): LearningJudgement => {
     const deterministic = deterministicOverstepClassificationForSnapshot({
       request: opts.request,
@@ -556,7 +629,7 @@ async function judgeLearningState(opts: {
       currentFamiliarity,
     });
     if (deterministic) {
-      return applyLearningClassification(
+      const judgement = applyLearningClassification(
         {
           heatScore: currentTemperature,
           familiarityScore: currentFamiliarity,
@@ -564,10 +637,18 @@ async function judgeLearningState(opts: {
         deterministic,
         tuning,
       );
+      return {
+        ...judgement,
+        partnerState: applyPartnerStateUpdate(
+          currentPartnerState,
+          deterministic,
+        ),
+      };
     }
     const base = fallbackLearningJudgement(
       currentTemperature,
       currentFamiliarity,
+      currentPartnerState,
     );
     return protectAppliedHintTemperature(
       base,
@@ -581,6 +662,7 @@ async function judgeLearningState(opts: {
   const protectedJudgementForSnapshot = (
     currentTemperature: number,
     currentFamiliarity: number,
+    currentPartnerState: PartnerState | null | undefined,
     parsedClassification: TurnClassification,
   ): LearningJudgement => {
     const classification = withDeterministicSafetyOverride({
@@ -605,16 +687,24 @@ async function judgeLearningState(opts: {
       })
       ? opts.request.appliedHintType
       : undefined;
-    return protectAppliedHintTemperature(
+    const protectedJudgement = protectAppliedHintTemperature(
       judgement,
       currentTemperature,
       currentFamiliarity,
       protectedHintType,
     );
+    return {
+      ...protectedJudgement,
+      partnerState: applyPartnerStateUpdate(
+        currentPartnerState,
+        classification,
+      ),
+    };
   };
   const fallback = fallbackForSnapshot(
     opts.currentTemperature,
     opts.currentFamiliarity,
+    opts.currentPartnerState,
   );
   try {
     const rawClassification = await opts.deps.callDeepSeek({
@@ -643,6 +733,7 @@ async function judgeLearningState(opts: {
     const protectedJudgement = protectedJudgementForSnapshot(
       opts.currentTemperature,
       opts.currentFamiliarity,
+      opts.currentPartnerState,
       parsedClassification,
     );
     const updateLearning = async (
@@ -659,6 +750,9 @@ async function judgeLearningState(opts: {
           p_expected_familiarity_score: expectedFamiliarity,
           p_temperature_delta: learningJudgement.delta,
           p_familiarity_delta: learningJudgement.familiarityDelta,
+          p_partner_mood: learningJudgement.partnerState?.mood ?? "neutral",
+          p_partner_inner_thought:
+            learningJudgement.partnerState?.innerThought ?? "",
         },
       );
       if (error) {
@@ -682,6 +776,7 @@ async function judgeLearningState(opts: {
       const protectedRetryJudgement = protectedJudgementForSnapshot(
         firstUpdate.temperatureScore,
         firstUpdate.familiarityScore,
+        partnerStateFromUpdateResult(firstUpdate) ?? opts.currentPartnerState,
         parsedClassification,
       );
       const secondUpdate = await updateLearning(
@@ -725,6 +820,8 @@ async function judgeLearningState(opts: {
         const retryFallback = fallbackForSnapshot(
           fallbackUpdate.temperatureScore,
           fallbackUpdate.familiarityScore,
+          partnerStateFromUpdateResult(fallbackUpdate) ??
+            opts.currentPartnerState,
         );
         const retryUpdate = await updateLearningState({
           supabase: opts.supabase,
@@ -877,7 +974,7 @@ export function createPracticeChatHandler(
     const { data: ledgerRow, error: ledgerError } = await supabase
       .from("practice_chat_sessions")
       .select(
-        "ai_count, charged, debrief_count, practice_mode, temperature_score, familiarity_score, hint_count",
+        "ai_count, charged, debrief_count, practice_mode, temperature_score, familiarity_score, partner_mood, partner_inner_thought, hint_count",
       )
       .eq("user_id", user.id)
       .eq("session_id", request.sessionId)
@@ -903,6 +1000,10 @@ export function createPracticeChatHandler(
       practiceMode: practiceModeFromLedger(ledgerRow?.practice_mode),
       temperatureScore: temperatureFromLedger(ledgerRow?.temperature_score),
       familiarityScore: familiarityFromLedger(ledgerRow?.familiarity_score),
+      partnerMood: partnerMoodFromLedger(ledgerRow?.partner_mood),
+      partnerInnerThought: partnerInnerThoughtFromLedger(
+        ledgerRow?.partner_inner_thought,
+      ),
       hintCount: hintCountFromLedger(ledgerRow?.hint_count),
     };
 
@@ -1270,6 +1371,7 @@ export function createPracticeChatHandler(
                     temperatureScore: ledger.temperatureScore ??
                       difficultyStartTemperature,
                     familiarityScore: ledger.familiarityScore ?? 0,
+                    partnerState: partnerStateFromLedger(ledger),
                   }
                   : {},
               ),
@@ -1410,6 +1512,9 @@ export function createPracticeChatHandler(
         ? ledger.familiarityScore ?? 0
         : request.familiarityScore ?? 0
       : null;
+    const currentPartnerState = beginnerMode && ledger.exists
+      ? partnerStateFromLedger(ledger)
+      : null;
 
     try {
       await assertPracticeLearningReady({
@@ -1442,6 +1547,7 @@ export function createPracticeChatHandler(
                   temperatureScore: currentTemperature ??
                     difficultyStartTemperature,
                   familiarityScore: currentFamiliarity ?? 0,
+                  partnerState: currentPartnerState,
                 }
                 : {},
             ),
@@ -1488,6 +1594,8 @@ export function createPracticeChatHandler(
         // client 攜帶值（續聊保溫）→ 難度起始值。
         p_temperature_score: currentTemperature,
         p_familiarity_score: currentFamiliarity,
+        p_partner_mood: currentPartnerState?.mood ?? null,
+        p_partner_inner_thought: currentPartnerState?.innerThought ?? null,
       },
     );
     if (commitError) {
@@ -1514,6 +1622,7 @@ export function createPracticeChatHandler(
           sessionId: request.sessionId,
           currentTemperature,
           currentFamiliarity: currentFamiliarity ?? 0,
+          currentPartnerState,
           request,
           reply,
         });
@@ -1548,6 +1657,9 @@ export function createPracticeChatHandler(
     };
     if (temperature) {
       body.temperature = learningJudgementResponse(temperature);
+      if (temperature.partnerState) {
+        body.partnerState = temperature.partnerState;
+      }
       body.hintUsedCount = ledger.hintCount ?? 0;
     }
     return jsonResponse(body);

@@ -37,6 +37,8 @@ export interface SessionLedger {
   practiceMode?: PracticeLearningMode;
   temperatureScore?: number | null;
   familiarityScore?: number | null;
+  partnerMood?: string | null;
+  partnerInnerThought?: string | null;
   hintCount?: number;
 }
 

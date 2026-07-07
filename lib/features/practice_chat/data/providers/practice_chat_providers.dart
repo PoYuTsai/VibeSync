@@ -830,9 +830,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     final beginner = mode == PracticeLearningMode.beginner;
     state = state.copyWith(
       learningMode: mode,
-      temperatureScore: beginner
-          ? initialPracticeTemperatureScore(state.difficulty)
-          : null,
+      temperatureScore:
+          beginner ? initialPracticeTemperatureScore(state.difficulty) : null,
       familiarityScore: beginner ? kInitialPracticeFamiliarityScore : null,
       relationshipStageLabel:
           beginner ? kInitialPracticeRelationshipStageLabel : null,
@@ -923,7 +922,12 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       _hintGeneration++; // 成功送出新訊息：舊 transcript 的在途 hint 已過期
       final withAi = [
         ...optimistic,
-        PracticeMessage(role: 'ai', text: reply.reply),
+        PracticeMessage(
+          role: 'ai',
+          text: reply.reply,
+          mood: reply.partnerState?.mood,
+          innerThought: reply.partnerState?.innerThought,
+        ),
       ];
       final temperature = reply.temperature;
       final returnedFamiliarityScore =

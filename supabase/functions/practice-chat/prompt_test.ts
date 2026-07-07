@@ -131,6 +131,24 @@ Deno.test("beginner buildChatMessages forbids disclosing internal temperature ev
   );
 });
 
+Deno.test("buildChatMessages injects partner state as hidden behavior guidance", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "今天也太累" }],
+    defaultProfile,
+    {
+      partnerState: {
+        mood: "guarded",
+        innerThought: "他剛剛有點急，我想先看他穩不穩。",
+      },
+    },
+  )[0].content;
+
+  assertEquals(sys.includes("partnerState"), true);
+  assertEquals(sys.includes("guarded"), true);
+  assertEquals(sys.includes("他剛剛有點急，我想先看他穩不穩。"), true);
+  assertEquals(sys.includes("不要直接說出 partnerState"), true);
+});
+
 Deno.test("beginner buildChatMessages does not mention hints", () => {
   const sys = buildChatMessages(
     [{ role: "user", text: "嗨" }],
@@ -426,6 +444,24 @@ Deno.test("debrief system prompt asks for plain-language heat/familiarity explan
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("界線"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("事件、個人、曖昧"), false);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("不要只講分數"), true);
+});
+
+Deno.test("buildDebriefMessages includes final partner state for emotional cause analysis", () => {
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_001" });
+  const msg = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "嗯？" }],
+    profile,
+    {
+      partnerState: {
+        mood: "amused",
+        innerThought: "他有接住我的吐槽，可以繼續丟輕鬆球。",
+      },
+    },
+  )[1].content;
+
+  assertEquals(msg.includes("partnerState"), true);
+  assertEquals(msg.includes("amused"), true);
+  assertEquals(msg.includes("他有接住我的吐槽，可以繼續丟輕鬆球。"), true);
 });
 
 Deno.test("chat system prompt injects persona-specific consistency test guidance", () => {

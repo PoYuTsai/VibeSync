@@ -189,6 +189,9 @@ Deno.test("parseTurnClassification accepts v2 classifier JSON and defaults optio
       testHandling: "passed",
       boundary: "safe",
       hintAlignment: "none",
+      partnerMood: "neutral",
+      moodConfidence: 0,
+      innerThought: "",
     },
   );
 });
@@ -206,6 +209,74 @@ Deno.test("parseTurnClassification accepts hint alignment when present", () => {
       testHandling: "none",
       boundary: "safe",
       hintAlignment: "aligned",
+      partnerMood: "neutral",
+      moodConfidence: 0,
+      innerThought: "",
+    },
+  );
+});
+
+Deno.test("parseTurnClassification accepts partner state tracker fields", () => {
+  const parseTurnClassification = requireFn("parseTurnClassification");
+
+  assertEquals(
+    parseTurnClassification(
+      '{"connection":"caught","impact":"medium","testHandling":"passed","boundary":"safe","hintAlignment":"none","partnerMood":"amused","moodConfidence":0.82,"innerThought":"他有接住我的玩笑，可以多聊一點。"}',
+    ),
+    {
+      connection: "caught",
+      impact: "medium",
+      testHandling: "passed",
+      boundary: "safe",
+      hintAlignment: "none",
+      partnerMood: "amused",
+      moodConfidence: 0.82,
+      innerThought: "他有接住我的玩笑，可以多聊一點。",
+    },
+  );
+});
+
+Deno.test("applyPartnerStateUpdate keeps prior mood when confidence is low", () => {
+  const applyPartnerStateUpdate = requireFn("applyPartnerStateUpdate");
+
+  assertEquals(
+    applyPartnerStateUpdate(
+      { mood: "guarded", innerThought: "先保持距離。" },
+      {
+        connection: "neutral",
+        impact: "minor",
+        testHandling: "none",
+        boundary: "safe",
+        hintAlignment: "none",
+        partnerMood: "curious",
+        moodConfidence: 0.4,
+        innerThought: "也許他只是慢熱。",
+      },
+    ),
+    { mood: "guarded", innerThought: "也許他只是慢熱。" },
+  );
+});
+
+Deno.test("applyPartnerStateUpdate lets overstep override low confidence", () => {
+  const applyPartnerStateUpdate = requireFn("applyPartnerStateUpdate");
+
+  assertEquals(
+    applyPartnerStateUpdate(
+      { mood: "comfortable", innerThought: "剛剛聊得還可以。" },
+      {
+        connection: "overstepped",
+        impact: "strong",
+        testHandling: "none",
+        boundary: "overstep",
+        hintAlignment: "none",
+        partnerMood: "neutral",
+        moodConfidence: 0.2,
+        innerThought: "這個邀約太快了，我會想退後一點。",
+      },
+    ),
+    {
+      mood: "guarded",
+      innerThought: "這個邀約太快了，我會想退後一點。",
     },
   );
 });
@@ -275,6 +346,9 @@ Deno.test("buildTurnClassifierMessages asks for outcome schema instead of event/
   assert(text.includes("connection"));
   assert(text.includes("testHandling"));
   assert(text.includes("boundary"));
+  assert(text.includes("partnerMood"));
+  assert(text.includes("moodConfidence"));
+  assert(text.includes("innerThought"));
   assert(text.includes("assistantReplyAfterUser"));
   assert(text.includes("對啊，差點被簡報追著跑"));
   assert(text.includes("哈哈那你現在是簡報倖存者嗎"));

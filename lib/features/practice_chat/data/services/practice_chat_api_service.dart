@@ -44,6 +44,16 @@ class PracticeProfileDto {
 }
 
 /// chat 模式成功回應。
+class PracticePartnerState {
+  final String mood;
+  final String innerThought;
+
+  const PracticePartnerState({
+    required this.mood,
+    required this.innerThought,
+  });
+}
+
 class PracticeChatReply {
   final String reply;
   final int aiTurnCount;
@@ -52,6 +62,7 @@ class PracticeChatReply {
   final int? monthlyRemaining;
   final int? dailyRemaining;
   final PracticeTemperature? temperature;
+  final PracticePartnerState? partnerState;
   final int? hintUsedCount;
 
   const PracticeChatReply({
@@ -62,6 +73,7 @@ class PracticeChatReply {
     this.monthlyRemaining,
     this.dailyRemaining,
     this.temperature,
+    this.partnerState,
     this.hintUsedCount,
   });
 }
@@ -313,6 +325,11 @@ class PracticeChatApiService {
     if (rawReply is! String || rawReply.trim().isEmpty) {
       throw PracticeGenerationFailedException('empty_reply');
     }
+    final rawTemperature = data['temperature'];
+    final rawPartnerState = data['partnerState'];
+    final nestedPartnerState = rawPartnerState == null && rawTemperature is Map
+        ? rawTemperature['partnerState']
+        : null;
     return PracticeChatReply(
       reply: rawReply.trim(),
       aiTurnCount: _asInt(data['aiTurnCount']) ?? 0,
@@ -320,7 +337,8 @@ class PracticeChatApiService {
       costDeducted: _asInt(data['costDeducted']) ?? 0,
       monthlyRemaining: _asInt(data['monthlyRemaining']),
       dailyRemaining: _asInt(data['dailyRemaining']),
-      temperature: _parseTemperature(data['temperature']),
+      temperature: _parseTemperature(rawTemperature),
+      partnerState: _parsePartnerState(rawPartnerState ?? nestedPartnerState),
       hintUsedCount: _asInt(data['hintUsedCount']),
     );
   }
@@ -573,6 +591,22 @@ class PracticeChatApiService {
     );
   }
 
+  PracticePartnerState? _parsePartnerState(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is! Map) {
+      throw PracticeGenerationFailedException('malformed_partner_state');
+    }
+    final mood = raw['mood'];
+    final innerThought = raw['innerThought'];
+    if (mood is! String || !_validPartnerMoods.contains(mood)) {
+      throw PracticeGenerationFailedException('malformed_partner_state');
+    }
+    return PracticePartnerState(
+      mood: mood,
+      innerThought: innerThought is String ? innerThought.trim() : '',
+    );
+  }
+
   Map<String, dynamic> _guardHintStatus(PracticeInvokeResponse response) {
     if (response.status == 403) {
       final data = response.data is Map ? response.data as Map : const {};
@@ -636,6 +670,15 @@ class PracticeChatApiService {
   }
 
   static String _asString(dynamic v) => v is String ? v : '';
+
+  static const Set<String> _validPartnerMoods = {
+    'neutral',
+    'curious',
+    'amused',
+    'comfortable',
+    'guarded',
+    'annoyed',
+  };
 
   static int? _asInt(dynamic v) {
     if (v is int) return v;
