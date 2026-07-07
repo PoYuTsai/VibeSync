@@ -13,6 +13,10 @@ import {
   buildConsistencyTestPrompt,
   formatConsistencyTestTypes,
 } from "./consistency_prompt.ts";
+import {
+  inviteMaturityFromLearningScores,
+  inviteMaturityPrompt,
+} from "./invite_maturity.ts";
 import { scrubRawImageFilenames } from "./prompt_sanitizer.ts";
 import {
   type PartnerState,
@@ -30,6 +34,14 @@ function partnerStatePrompt(partnerState?: PartnerState | null): string {
   const innerThought = partnerState.innerThought.trim();
   const innerLine = innerThought ? `\ninnerThought: ${innerThought}` : "";
   return `\n\npartnerState（hidden guidance，不要直接說出 partnerState、mood 或 innerThought）：\nmood: ${partnerState.mood}${innerLine}\n請把它當成她此刻的情緒慣性：回覆要自然受到影響，但不能像報告或角色卡一樣明講。`;
+}
+
+function memorySummaryPrompt(memorySummary?: string | null): string {
+  const trimmed = memorySummary?.trim();
+  if (!trimmed) return "";
+  return `\n\nmemorySummary(hidden evidence)\n${
+    scrubRawImageFilenames(trimmed)
+  }\n把這段只當作更早對話的低敏摘要，用來維持連續性；若它與最新逐字稿衝突，以最新逐字稿為準，不要逐字背誦。`;
 }
 
 function sceneContextPrompt(
@@ -166,6 +178,7 @@ export function buildChatMessages(
     familiarityScore?: number;
     partnerState?: PartnerState | null;
     sceneContext?: PracticeSceneContext | null;
+    memorySummary?: string | null;
   } = {},
 ): ChatMessage[] {
   const history: ChatMessage[] = turns.map((t) => ({
@@ -187,12 +200,25 @@ export function buildChatMessages(
       )
     }`
     : "";
+  const invitePrompt = options.practiceMode === "beginner"
+    ? inviteMaturityPrompt(
+      inviteMaturityFromLearningScores({
+        temperatureScore: options.temperatureScore ?? fallbackTemperature,
+        familiarityScore: options.familiarityScore ?? 0,
+        partnerMood: options.partnerState?.mood ?? null,
+      }),
+    )
+    : "";
   return [
     {
       role: "system",
       content: `${CHAT_SYSTEM_PROMPT}${buildProfilePrompt(profile)}${
         sceneContextPrompt(options.sceneContext)
-      }${temperaturePrompt}${partnerStatePrompt(options.partnerState)}`,
+      }${
+        memorySummaryPrompt(options.memorySummary)
+      }${temperaturePrompt}${invitePrompt}${
+        partnerStatePrompt(options.partnerState)
+      }`,
     },
     ...history,
   ];
@@ -222,6 +248,7 @@ export function buildDebriefMessages(
     familiarityScore?: number;
     partnerState?: PartnerState | null;
     sceneContext?: PracticeSceneContext | null;
+    memorySummary?: string | null;
   } = {},
 ): ChatMessage[] {
   const transcript = turnsToTranscript(turns);
@@ -237,6 +264,16 @@ export function buildDebriefMessages(
     }\n` +
       `拆解升溫/降溫時，請用這個階段解釋使用者有沒有接住情緒、界線或小測試，不要提熟悉度分數。\n\n`
     : "";
+  const invitePrompt = options.practiceMode === "beginner"
+    ? inviteMaturityPrompt(
+      inviteMaturityFromLearningScores({
+        temperatureScore: options.temperatureScore ??
+          difficultyTuningFor(profile.difficulty).startTemperature,
+        familiarityScore: options.familiarityScore ?? 0,
+        partnerMood: options.partnerState?.mood ?? null,
+      }),
+    )
+    : "";
   return [
     { role: "system", content: DEBRIEF_SYSTEM_PROMPT },
     {
@@ -245,7 +282,11 @@ export function buildDebriefMessages(
         `本場難度：${profile.difficultyLabel}\n` +
         `${profile.difficultyDebriefStandard}\n\n` +
         debriefSceneContextLine(options.sceneContext) +
+        memorySummaryPrompt(options.memorySummary) +
+        "\n\n" +
         stagePrompt +
+        invitePrompt +
+        "\n\n" +
         `她的人物設定：${g.displayName}，${g.age} 歲，${g.professionLabel}，住${g.city}。` +
         `興趣：${g.interestTags.join("、")}；生活：${
           g.lifestyleTags.join("、")

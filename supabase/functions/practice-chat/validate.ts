@@ -3,7 +3,6 @@
 // 失敗一律 throw Error("invalid_*")，由 handler 轉 400。
 
 import {
-  MAX_PRACTICE_ROUNDS,
   type PracticeLearningMode,
   type PracticeMode,
 } from "./quota_decision.ts";
@@ -14,10 +13,11 @@ import {
 } from "./practice_persona.ts";
 import { containsRawImageFilename } from "./prompt_sanitizer.ts";
 
-// 一個 visible thread 最多 3 輪、每輪 20 則 AI 回覆。debrief 會把整個 visible thread
-// 的逐字稿一起送，故 turns 上界要涵蓋 3 輪：3×(20 AI + 20 user)=120，留緩衝到 130。
+// 單次 prompt payload 上限。長 visible thread 由 client 送近期逐字稿 + memorySummary，
+// 不再把 3 輪當產品上限；這裡只防止一次 request 塞爆 prompt。
 export const MAX_TURNS = 130;
 export const MAX_TEXT_LEN = 500; // 單則訊息字數上限
+export const MAX_MEMORY_SUMMARY_LEN = 1000;
 export const MAX_SESSION_ID_LEN = 64;
 export const MAX_VISIBLE_THREAD_ID_LEN = 128;
 
@@ -42,8 +42,10 @@ export interface PracticeChatRequest {
   sessionId: string;
   turns: PracticeTurn[];
   profile: PracticeProfile;
-  /** 本輪是第幾輪（1..3）；舊 client 缺值 fallback 1。 */
+  /** 本輪是第幾輪；舊 client 缺值 fallback 1。 */
   roundIndex: number;
+  /** Earlier local-thread summary. Evidence only; never sent to classifier. */
+  memorySummary?: string;
   /** local 顯示用 thread id；僅供 log，絕不當作授權身份。 */
   visiblePracticeThreadId?: string;
   /** 使用者原封不動套用的新手 Hint 類型；只作學習評分保護，不作授權。 */
@@ -202,14 +204,13 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     requestId = raw.requestId;
   }
 
-  // roundIndex：缺值 fallback 1；只收整數 1..MAX_PRACTICE_ROUNDS。
+  // roundIndex：缺值 fallback 1；續聊不再由 client cap 3 輪，只收正整數。
   let roundIndex = 1;
   if (raw.roundIndex !== undefined) {
     if (
       typeof raw.roundIndex !== "number" ||
       !Number.isInteger(raw.roundIndex) ||
-      raw.roundIndex < 1 ||
-      raw.roundIndex > MAX_PRACTICE_ROUNDS
+      raw.roundIndex < 1
     ) {
       throw new Error("invalid_roundIndex");
     }
@@ -218,6 +219,19 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
 
   // visiblePracticeThreadId：選填字串，長度上限；僅供 log，不當授權身份。
   let visiblePracticeThreadId: string | undefined;
+  let memorySummary: string | undefined;
+  if (raw.memorySummary !== undefined) {
+    if (
+      typeof raw.memorySummary !== "string" ||
+      raw.memorySummary.trim().length === 0 ||
+      raw.memorySummary.length > MAX_MEMORY_SUMMARY_LEN ||
+      containsRawImageFilename(raw.memorySummary)
+    ) {
+      throw new Error("invalid_memorySummary");
+    }
+    memorySummary = raw.memorySummary.trim();
+  }
+
   if (raw.visiblePracticeThreadId !== undefined) {
     if (
       typeof raw.visiblePracticeThreadId !== "string" ||
@@ -238,6 +252,7 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     turns,
     profile,
     roundIndex,
+    memorySummary,
     visiblePracticeThreadId,
     appliedHintType,
     appliedHintText,

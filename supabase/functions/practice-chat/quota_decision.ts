@@ -22,8 +22,6 @@ export const MAX_AI_REPLIES = 20;
 export const MAX_DEBRIEFS = 3;
 export const MAX_HINTS_PER_ROUND = 5;
 export const PRACTICE_QUOTA_COST = 1;
-/** MVP：一個 visible thread 最多 3 輪（60 則 AI 回覆）。roundIndex 的合法上界。 */
-export const MAX_PRACTICE_ROUNDS = 3;
 
 export type PracticeMode = "chat" | "debrief" | "hint";
 export type PracticeLearningMode = "standard" | "beginner";

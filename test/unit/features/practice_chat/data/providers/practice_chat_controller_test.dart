@@ -42,6 +42,7 @@ class _FakeApi extends PracticeChatApiService {
   PracticeLearningMode? lastPracticeMode;
   int? lastTemperatureScore;
   int? lastFamiliarityScore;
+  String? lastMemorySummary;
   PracticeHintReplyType? lastAppliedHintType;
   String? lastAppliedHintText;
   int? lastDebriefRoundIndex;
@@ -67,6 +68,7 @@ class _FakeApi extends PracticeChatApiService {
     PracticeLearningMode practiceMode = PracticeLearningMode.standard,
     int? temperatureScore,
     int? familiarityScore,
+    String? memorySummary,
     PracticeHintReplyType? appliedHintType,
     String? appliedHintText,
   }) {
@@ -75,6 +77,7 @@ class _FakeApi extends PracticeChatApiService {
     lastPracticeMode = practiceMode;
     lastTemperatureScore = temperatureScore;
     lastFamiliarityScore = familiarityScore;
+    lastMemorySummary = memorySummary;
     lastAppliedHintType = appliedHintType;
     lastAppliedHintText = appliedHintText;
     return sendHandler!(turns, profile: profile);
@@ -87,6 +90,7 @@ class _FakeApi extends PracticeChatApiService {
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
+    String? memorySummary,
     String? requestId,
   }) {
     hintCallCount++;
@@ -103,6 +107,7 @@ class _FakeApi extends PracticeChatApiService {
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
+    String? memorySummary,
   }) {
     lastDebriefRoundIndex = roundIndex;
     lastDebriefThreadId = visiblePracticeThreadId;
@@ -1220,7 +1225,7 @@ void main() {
       expect(api.drawCallCount, 0);
     });
 
-    test('roundIndex 已達上限 3：付費續玩為 no-op', () {
+    test('roundIndex 第 3 輪後仍可付費續玩到第 4 輪', () {
       final c = makeControllerFrom(PracticeSession(
         id: 'round3',
         createdAt: DateTime(2026, 6, 24, 9),
@@ -1234,8 +1239,11 @@ void main() {
       final before = c.currentState;
 
       c.continueWithSamePartner(isPaid: true);
-      expect(c.currentState.sessionId, before.sessionId);
-      expect(c.currentState.roundIndex, 3);
+      expect(c.currentState.sessionId, isNot(before.sessionId));
+      expect(c.currentState.roundIndex, 4);
+      expect(c.currentState.visiblePracticeThreadId, 'thread-orig');
+      expect(c.currentState.messages, before.messages);
+      expect(c.currentState.canSend, true);
     });
 
     test('續玩後送訊息：送出完整累積 thread、API 收到 roundIndex+1 與原 threadId', () async {
@@ -1257,6 +1265,41 @@ void main() {
       expect(api.lastVisibleThreadId, 'round1');
       expect(repo.getById(newSessionId), isNotNull);
       expect(repo.getById('round1'), isNotNull);
+    });
+
+    test('長 thread 送訊息：local 保留全歷史，API 只收近期 turns 與 memorySummary', () async {
+      final longMessages = <PracticeMessage>[];
+      for (var i = 0; i < 70; i++) {
+        longMessages.add(PracticeMessage(role: 'user', text: '舊使用者訊息 $i'));
+        longMessages.add(PracticeMessage(role: 'ai', text: '舊 AI 回覆 $i'));
+      }
+      final c = makeControllerFrom(PracticeSession(
+        id: 'long-thread',
+        createdAt: DateTime(2026, 6, 24, 9),
+        aiReplyCount: 20,
+        messages: longMessages,
+        roundIndex: 5,
+        visiblePracticeThreadId: 'thread-long',
+        profileId: 'practice_girl_005',
+        debriefSummary: '前一段結束',
+      ));
+      c.continueWithSamePartner(isPaid: true);
+
+      late List<PracticeTurnDto> sentTurns;
+      api.sendHandler = (turns, {profile}) async {
+        sentTurns = turns;
+        return reply();
+      };
+      await c.sendMessage('新的第六輪訊息');
+
+      expect(c.currentState.messages.length, 142);
+      expect(sentTurns.length, lessThan(c.currentState.messages.length));
+      expect(sentTurns.last.text, '新的第六輪訊息');
+      expect(sentTurns.any((turn) => turn.text == '舊使用者訊息 0'), false);
+      expect(api.lastMemorySummary, contains('舊使用者訊息 0'));
+      expect(api.lastMemorySummary, contains('舊 AI 回覆 0'));
+      expect(api.lastRoundIndex, 6);
+      expect(api.lastVisibleThreadId, 'thread-long');
     });
 
     // ── 續聊保溫：續同一位沿用上一輪溫度三元組 ──────────────────────────

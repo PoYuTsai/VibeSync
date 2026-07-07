@@ -169,6 +169,55 @@ Deno.test("buildChatMessages injects scene context as hidden life-state guidance
   assertEquals(sys.includes("如果對方問「在幹嘛」"), true);
 });
 
+Deno.test("buildChatMessages injects memorySummary as hidden evidence", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "今天呢" }],
+    defaultProfile,
+    { memorySummary: "更早她提過論文壓力與巷口咖啡" },
+  )[0].content;
+
+  assertEquals(sys.includes("memorySummary"), true);
+  assertEquals(sys.includes("更早她提過論文壓力與巷口咖啡"), true);
+  assertEquals(sys.includes("S__42795075.jpg"), false);
+});
+
+Deno.test("beginner buildChatMessages injects invite maturity guidance", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "下次一起喝咖啡？" }],
+    defaultProfile,
+    {
+      practiceMode: "beginner",
+      temperatureScore: 90,
+      familiarityScore: 82,
+      partnerState: { mood: "comfortable", innerThought: "他接得滿自然" },
+    },
+  )[0].content;
+
+  assertEquals(sys.includes("inviteMaturity"), true);
+  assertEquals(sys.includes("high_intimacy"), true);
+  assertEquals(sys.includes("類女友感"), true);
+  assertEquals(sys.includes("約回家"), false);
+});
+
+Deno.test("buildDebriefMessages includes memory and invite maturity context", () => {
+  const msg = buildDebriefMessages(
+    [{ role: "user", text: "今天呢" }, { role: "ai", text: "還在改論文" }],
+    defaultProfile,
+    {
+      practiceMode: "beginner",
+      temperatureScore: 58,
+      familiarityScore: 45,
+      memorySummary: "更早她說第二輪審查剛過",
+    },
+  )[1].content;
+
+  assertEquals(msg.includes("memorySummary"), true);
+  assertEquals(msg.includes("更早她說第二輪審查剛過"), true);
+  assertEquals(msg.includes("inviteMaturity"), true);
+  assertEquals(msg.includes("soft_invite_ready"), true);
+  assertEquals(msg.includes("模糊邀約"), true);
+});
+
 Deno.test("beginner buildChatMessages does not mention hints", () => {
   const sys = buildChatMessages(
     [{ role: "user", text: "嗨" }],

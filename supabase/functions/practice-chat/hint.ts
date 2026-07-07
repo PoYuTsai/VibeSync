@@ -1,4 +1,5 @@
 import type { ChatMessage } from "./prompt.ts";
+import { inviteMaturityFromLearningScores } from "./invite_maturity.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
 import { scrubRawImageFilenames } from "./prompt_sanitizer.ts";
@@ -67,12 +68,23 @@ export function buildHintMessages(opts: {
   temperatureScore: number;
   familiarityScore?: number;
   sceneContext?: PracticeSceneContext | null;
+  memorySummary?: string | null;
 }): ChatMessage[] {
   const score = clampTemperature(opts.temperatureScore);
   const stage = relationshipStageFor(opts.familiarityScore ?? 0, score);
   const stageGuidance = hintStageGuidance(stage.stage);
+  const inviteMaturity = inviteMaturityFromLearningScores({
+    temperatureScore: score,
+    familiarityScore: opts.familiarityScore ?? 0,
+  });
   const sceneEvidence = opts.sceneContext
     ? `sceneStatus: ${opts.sceneContext.statusLine}\nscenePrompt: ${opts.sceneContext.promptLine}\nreplyTempo: ${opts.sceneContext.replyTempo}\n\n`
+    : "";
+  const memoryEvidence = opts.memorySummary?.trim()
+    ? `memorySummary: ${scrubRawImageFilenames(opts.memorySummary.trim())}\n\n`
+    : "";
+  const inviteEvidence = inviteMaturity
+    ? `inviteStage: ${inviteMaturity.stage}\ninviteGuidance: ${inviteMaturity.guidance}\ndateChance: ${inviteMaturity.dateChance}\n\n`
     : "";
   return [
     {
@@ -100,6 +112,8 @@ export function buildHintMessages(opts: {
         `升溫回覆不是永遠更曖昧；請選目前階段最容易加分的方向。\n` +
         `目前最容易加分：${stageGuidance}\n\n` +
         sceneEvidence +
+        memoryEvidence +
+        inviteEvidence +
         `profile evidence:\n${profileToEvidence(opts.profile)}\n\n` +
         `transcript evidence:\n${turnsToTranscript(opts.turns)}\n\n` +
         "請根據最近上下文，產生剛好兩個可直接貼上的回覆選項與一段教學心法。這是在幫使用者接 assistant 最新一句，不是在分析使用者剛才那句。只回傳繁體中文 JSON。",

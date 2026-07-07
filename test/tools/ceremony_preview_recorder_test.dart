@@ -83,6 +83,7 @@ class _DrawApi extends PracticeChatApiService {
     int? familiarityScore,
     PracticeHintReplyType? appliedHintType,
     String? appliedHintText,
+    String? memorySummary,
   }) =>
       throw UnimplementedError();
   @override
@@ -92,6 +93,7 @@ class _DrawApi extends PracticeChatApiService {
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
+    String? memorySummary,
   }) =>
       throw UnimplementedError();
 }

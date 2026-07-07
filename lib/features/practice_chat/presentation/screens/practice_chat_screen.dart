@@ -178,68 +178,68 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
           onTap: () => _inputFocusNode.unfocus(),
           child: Column(
             children: [
-            // 開場前：難度控制（深色 scaffold 底，沿用原樣式；換一位入口
-            // 已收斂角色圖鑑）。
-            // 開聊後：compact identity header（小圓照片＋名字/職業/難度）。
-            if (state.messages.isEmpty)
-              _PracticeOpeningControls(state: state)
-            else
-              _PracticeProfileBar(state: state),
-            Expanded(
-              child: _PracticeChatWorkspaceFrame(
-                child: state.messages.isEmpty
-                    ? _PracticeProfileHero(state: state)
-                    : ListView(
-                        controller: _scrollController,
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
-                        children: [
-                          for (final m in state.messages) _Bubble(message: m),
-                          if (state.isSending) const _ThinkingBubble(),
-                          if (state.debrief != null) ...[
-                            const SizedBox(height: 8),
-                            PracticeDebriefCard(
-                              summary: state.debrief!.summary,
-                              strengths: state.debrief!.strengths,
-                              watchouts: state.debrief!.watchouts,
-                              suggestedLine: state.debrief!.suggestedLine,
-                              vibe: state.debrief!.vibe,
-                            ),
+              // 開場前：難度控制（深色 scaffold 底，沿用原樣式；換一位入口
+              // 已收斂角色圖鑑）。
+              // 開聊後：compact identity header（小圓照片＋名字/職業/難度）。
+              if (state.messages.isEmpty)
+                _PracticeOpeningControls(state: state)
+              else
+                _PracticeProfileBar(state: state),
+              Expanded(
+                child: _PracticeChatWorkspaceFrame(
+                  child: state.messages.isEmpty
+                      ? _PracticeProfileHero(state: state)
+                      : ListView(
+                          controller: _scrollController,
+                          keyboardDismissBehavior:
+                              ScrollViewKeyboardDismissBehavior.onDrag,
+                          padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
+                          children: [
+                            for (final m in state.messages) _Bubble(message: m),
+                            if (state.isSending) const _ThinkingBubble(),
+                            if (state.debrief != null) ...[
+                              const SizedBox(height: 8),
+                              PracticeDebriefCard(
+                                summary: state.debrief!.summary,
+                                strengths: state.debrief!.strengths,
+                                watchouts: state.debrief!.watchouts,
+                                suggestedLine: state.debrief!.suggestedLine,
+                                vibe: state.debrief!.vibe,
+                              ),
+                            ],
                           ],
-                        ],
-                      ),
+                        ),
+                ),
               ),
-            ),
-            if (state.errorMessage != null)
-              _ErrorBanner(
-                message: state.errorMessage!,
-                showUpgrade: state.quotaExceeded ||
-                    state.upgradeRequired ||
-                    state.drawUpgradeRequired ||
-                    state.drawQuotaExceeded,
-                onUpgrade: () => context.push('/paywall'),
-                onDismiss: () => ref
+              if (state.errorMessage != null)
+                _ErrorBanner(
+                  message: state.errorMessage!,
+                  showUpgrade: state.quotaExceeded ||
+                      state.upgradeRequired ||
+                      state.drawUpgradeRequired ||
+                      state.drawQuotaExceeded,
+                  onUpgrade: () => context.push('/paywall'),
+                  onDismiss: () => ref
+                      .read(practiceChatControllerProvider.notifier)
+                      .clearError(),
+                ),
+              _BottomBar(
+                state: state,
+                inputController: _controller,
+                inputFocusNode: _inputFocusNode,
+                isDebriefing: state.isDebriefing,
+                onSend: _send,
+                onEndPractice: () => ref
                     .read(practiceChatControllerProvider.notifier)
-                    .clearError(),
+                    .endPractice(),
+                onRequestHint: () => _requestHint(),
+                onHintApplied: (reply) => _appliedHintDraft = reply,
+                onFinish: () => context.pop(),
+                onContinueSamePartner: _continueSamePartner,
+                // 換人＝回圖鑑翻牌（top-level route，go 收斂 stack）。
+                onNewPartner: () => context.go('/practice-collection'),
               ),
-            _BottomBar(
-              state: state,
-              inputController: _controller,
-              inputFocusNode: _inputFocusNode,
-              isDebriefing: state.isDebriefing,
-              onSend: _send,
-              onEndPractice: () => ref
-                  .read(practiceChatControllerProvider.notifier)
-                  .endPractice(),
-              onRequestHint: () => _requestHint(),
-              onHintApplied: (reply) => _appliedHintDraft = reply,
-              onFinish: () => context.pop(),
-              onContinueSamePartner: _continueSamePartner,
-              // 換人＝回圖鑑翻牌（top-level route，go 收斂 stack）。
-              onNewPartner: () => context.go('/practice-collection'),
-            ),
-          ],
+            ],
           ),
         ),
       );
@@ -771,81 +771,81 @@ class _PracticeProfileHero extends StatelessWidget {
         return false;
       },
       child: SingleChildScrollView(
-      key: const ValueKey('practice-profile-hero'),
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
-      child: Column(
-        children: [
-          GestureDetector(
-            key: const ValueKey('practice-profile-hero-photo'),
-            onTap: () => showPracticeGirlFullPhoto(context, girl),
-            child: Stack(
-              alignment: Alignment.bottomCenter,
-              children: [
-                PracticeGirlPhoto(
-                  profile: girl,
-                  width: 232,
-                  height: 290,
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                const Positioned(
-                  bottom: 10,
-                  child: PracticeGirlPhotoExpandHint(),
-                ),
-              ],
+        key: const ValueKey('practice-profile-hero'),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+        child: Column(
+          children: [
+            GestureDetector(
+              key: const ValueKey('practice-profile-hero-photo'),
+              onTap: () => showPracticeGirlFullPhoto(context, girl),
+              child: Stack(
+                alignment: Alignment.bottomCenter,
+                children: [
+                  PracticeGirlPhoto(
+                    profile: girl,
+                    width: 232,
+                    height: 290,
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  const Positioned(
+                    bottom: 10,
+                    child: PracticeGirlPhotoExpandHint(),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '${girl.displayName}，${girl.age}',
-            style: AppTypography.titleLarge.copyWith(
-              color: AppColors.glassTextPrimary,
-              fontWeight: FontWeight.w800,
+            const SizedBox(height: 16),
+            Text(
+              '${girl.displayName}，${girl.age}',
+              style: AppTypography.titleLarge.copyWith(
+                color: AppColors.glassTextPrimary,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '${girl.professionLabel} · ${girl.city}',
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.glassTextSecondary,
+            const SizedBox(height: 4),
+            Text(
+              '${girl.professionLabel} · ${girl.city}',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.glassTextSecondary,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 8,
-            runSpacing: 8,
-            children: [for (final t in tags) _HeroTag(label: t)],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            girl.selfIntro,
-            textAlign: TextAlign.center,
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.glassTextSecondary,
-              height: 1.5,
+            const SizedBox(height: 12),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [for (final t in tags) _HeroTag(label: t)],
             ),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            '對方是個有自己個性的陪練女孩，不是教練。\n傳第一句出去，看看她怎麼回，練你的真實反應。',
-            textAlign: TextAlign.center,
-            style: AppTypography.caption.copyWith(
-              color: AppColors.glassTextSecondary,
-              height: 1.5,
+            const SizedBox(height: 14),
+            Text(
+              girl.selfIntro,
+              textAlign: TextAlign.center,
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.glassTextSecondary,
+                height: 1.5,
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            '首次 AI 回覆成功才扣 1 則；進來或送出失敗不扣。\n扣完這 1 則，本場最多可聊 20 則 AI 回覆，教練拆解不另扣。',
-            textAlign: TextAlign.center,
-            style: AppTypography.caption.copyWith(
-              color: AppColors.glassTextHint,
-              height: 1.45,
+            const SizedBox(height: 18),
+            Text(
+              '對方是個有自己個性的陪練女孩，不是教練。\n傳第一句出去，看看她怎麼回，練你的真實反應。',
+              textAlign: TextAlign.center,
+              style: AppTypography.caption.copyWith(
+                color: AppColors.glassTextSecondary,
+                height: 1.5,
+              ),
             ),
-          ),
-        ],
-      ),
+            const SizedBox(height: 10),
+            Text(
+              '首次 AI 回覆成功才扣 1 則；進來或送出失敗不扣。\n扣完這 1 則，本場最多可聊 20 則 AI 回覆，教練拆解不另扣。',
+              textAlign: TextAlign.center,
+              style: AppTypography.caption.copyWith(
+                color: AppColors.glassTextHint,
+                height: 1.45,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1231,57 +1231,57 @@ class _BottomBar extends StatelessWidget {
                     child: child,
                   ),
                   child: TextField(
-                  controller: inputController,
-                  focusNode: inputFocusNode,
-                  enabled: canSend,
-                  minLines: 1,
-                  maxLines: 4,
-                  maxLength: 240,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => canSend ? onSend() : null,
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                  ),
-                  decoration: InputDecoration(
-                    hintText:
-                        state.messages.isEmpty ? '傳出你的第一句開場白…' : '輸入訊息…',
-                    counterText: '',
-                    hintStyle: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.onBackgroundSecondary
-                          .withValues(alpha: 0.85),
+                    controller: inputController,
+                    focusNode: inputFocusNode,
+                    enabled: canSend,
+                    minLines: 1,
+                    maxLines: 4,
+                    maxLength: 240,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => canSend ? onSend() : null,
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.onBackgroundPrimary,
                     ),
-                    filled: true,
-                    fillColor: Colors.white.withValues(alpha: 0.12),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.18),
+                    decoration: InputDecoration(
+                      hintText:
+                          state.messages.isEmpty ? '傳出你的第一句開場白…' : '輸入訊息…',
+                      counterText: '',
+                      hintStyle: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.onBackgroundSecondary
+                            .withValues(alpha: 0.85),
+                      ),
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.12),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.18),
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.18),
+                        ),
+                      ),
+                      focusedBorder: const OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(24)),
+                        borderSide: BorderSide(
+                          color: AppColors.ctaStart,
+                          width: 1.4,
+                        ),
+                      ),
+                      disabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.10),
+                        ),
                       ),
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.18),
-                      ),
-                    ),
-                    focusedBorder: const OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(24)),
-                      borderSide: BorderSide(
-                        color: AppColors.ctaStart,
-                        width: 1.4,
-                      ),
-                    ),
-                    disabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.10),
-                      ),
-                    ),
-                  ),
                   ),
                 ),
               ),
@@ -1821,7 +1821,7 @@ class _DebriefFailedActionsBar extends StatelessWidget {
 }
 
 // ── 拆解後動作列：續玩同一位（主）＋ 去圖鑑換人／完成（次）─────────────
-// roundIndex 已達上限（kMaxPracticeRounds）時隱藏續玩，只留去圖鑑換人／完成。
+// 續聊不再以 3 輪封頂；每次續聊開新 billing session，但保留同一位與前文脈絡。
 // 換人＝導回角色圖鑑翻牌（Task 5：翻牌觸發點唯一收斂圖鑑）。
 class _DebriefActionsBar extends StatelessWidget {
   const _DebriefActionsBar({
@@ -1838,29 +1838,26 @@ class _DebriefActionsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final canContinue = state.roundIndex < kMaxPracticeRounds;
     return _BarContainer(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (canContinue) ...[
-            BrandPrimaryButton(
-              // 目前 client 只有 persona 型別標籤、無女孩名字（name batch 未接），
-              // 用「續聊同一位」避免「和慢熱上班族續聊」這種怪句；name 接上再改。
-              label: '續聊同一位',
-              onPressed: onContinueSamePartner,
+          BrandPrimaryButton(
+            // 目前 client 只有 persona 型別標籤、無女孩名字（name batch 未接），
+            // 用「續聊同一位」避免「和慢熱上班族續聊」這種怪句；name 接上再改。
+            label: '續聊同一位',
+            onPressed: onContinueSamePartner,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '再扣 1 則，最多 20 則 AI 回覆（她會記得前面的對話）',
+            textAlign: TextAlign.center,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.onBackgroundSecondary,
             ),
-            const SizedBox(height: 6),
-            Text(
-              '再扣 1 則，最多 20 則 AI 回覆（她會記得前面的對話）',
-              textAlign: TextAlign.center,
-              style: AppTypography.caption.copyWith(
-                color: AppColors.onBackgroundSecondary,
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(

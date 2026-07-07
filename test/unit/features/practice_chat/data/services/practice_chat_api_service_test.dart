@@ -874,6 +874,20 @@ void main() {
       expect(captured.body?['visiblePracticeThreadId'], 'thread-abc');
     });
 
+    test('sendMessage body includes memorySummary when provided', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        memorySummary: '更早聊過咖啡、論文與朋友聚餐',
+      );
+
+      expect(captured.body?['memorySummary'], '更早聊過咖啡、論文與朋友聚餐');
+    });
+
     test('body 帶 client 產的 requestId（扣費 idempotency）', () async {
       final captured = _CapturedInvoke();
       final svc = PracticeChatApiService(invoker: captured.call);
@@ -1027,6 +1041,50 @@ void main() {
 
       expect(captured.body?['roundIndex'], 3);
       expect(captured.body?['visiblePracticeThreadId'], 'thread-xyz');
+    });
+
+    test('hint and debrief body include memorySummary when provided', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+      captured.hintBody = {
+        'replies': [
+          {
+            'type': 'warm_up',
+            'label': '升溫回覆',
+            'text': '先接住她的狀態。',
+          },
+          {
+            'type': 'steady',
+            'label': '穩住回覆',
+            'text': '延續前面咖啡話題。',
+          },
+        ],
+        'coaching': '用舊脈絡做自然承接',
+        'costDeducted': 1,
+        'hintUsedCount': 1,
+      };
+
+      await svc.requestHint(
+        sessionId: 's',
+        profile: profile,
+        turns: const [
+          PracticeTurnDto(role: 'user', text: 'hi'),
+          PracticeTurnDto(role: 'ai', text: 'hello'),
+        ],
+        memorySummary: '更早她說喜歡巷口咖啡',
+      );
+      expect(captured.body?['memorySummary'], '更早她說喜歡巷口咖啡');
+
+      await svc.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: const [
+          PracticeTurnDto(role: 'user', text: 'hi'),
+          PracticeTurnDto(role: 'ai', text: 'hello'),
+        ],
+        memorySummary: '更早她說喜歡巷口咖啡',
+      );
+      expect(captured.body?['memorySummary'], '更早她說喜歡巷口咖啡');
     });
 
     test('roundIndex 缺值 → 預設 1；visiblePracticeThreadId 為 null 時不放進 body',

@@ -29,13 +29,14 @@ const int kMaxPracticeAiReplies = 20;
 /// 新手模式同一輪最多 5 次 Hint（與伺服器 MAX_HINTS_PER_ROUND 同步）。
 const int kMaxPracticeHintsPerRound = 5;
 
-/// 同一位對象最多 3 輪（與伺服器 MAX_PRACTICE_ROUNDS 同步）；到頂不再顯示續玩。
-const int kMaxPracticeRounds = 3;
-
 // 溫度開場 fallback 隨難度走：見 initialPracticeTemperatureScore（practice_profile.dart，
 // 鏡像 server DIFFICULTY_TUNING）。
 const int kInitialPracticeFamiliarityScore = 0;
 const String kInitialPracticeRelationshipStageLabel = '建立熟悉中';
+
+/// Long local threads are summarized before sending prompts to Edge.
+const int kPracticePromptRecentTurns = 80;
+const int kPracticeMemorySummaryMaxChars = 800;
 
 const _sentinel = Object();
 
@@ -94,7 +95,7 @@ class PracticeChatState {
   final String difficulty;
   final String difficultyLabel;
 
-  // ── 續玩同一位：roundIndex 第幾輪（1..3）；threadId 跨輪穩定識別（log 用）──
+  // ── 續玩同一位：roundIndex 第幾輪；threadId 跨輪穩定識別（log 用）──
   final int roundIndex;
   final String? visiblePracticeThreadId;
 
@@ -776,7 +777,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     );
   }
 
-  /// 續玩「同一位」：開新 billing session，roundIndex+1（封頂 [kMaxPracticeRounds]），
+  /// 續玩「同一位」：開新 billing session，roundIndex+1，
   /// threadId 不變、訊息／角色／難度保留。不走 draw、不換對象、不消耗翻牌次數。
   /// beginner 溫度三元組沿用上一輪（續同一位保溫；delta／reason 歸零重來）。
   ///
@@ -791,7 +792,6 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       );
       return;
     }
-    if (state.roundIndex >= kMaxPracticeRounds) return;
     _hintGeneration++; // 開新一輪：在途 hint 全部作廢
     _clearPendingHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
     state = PracticeChatState(
@@ -904,9 +904,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       final reply = await _api.sendMessage(
         sessionId: state.sessionId,
         profile: _profileDto(),
-        turns: optimistic
-            .map((m) => PracticeTurnDto(role: m.role, text: m.text))
-            .toList(),
+        turns: _turnDtosForPrompt(optimistic),
+        memorySummary: _memorySummaryForPrompt(optimistic),
         roundIndex: state.roundIndex,
         visiblePracticeThreadId: state.visiblePracticeThreadId,
         practiceMode: learningMode,
@@ -1062,9 +1061,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         sessionId: state.sessionId,
         requestId: requestId,
         profile: _profileDto(),
-        turns: state.messages
-            .map((m) => PracticeTurnDto(role: m.role, text: m.text))
-            .toList(),
+        turns: _turnDtosForPrompt(state.messages),
+        memorySummary: _memorySummaryForPrompt(state.messages),
         roundIndex: state.roundIndex,
         visiblePracticeThreadId: state.visiblePracticeThreadId,
       );
@@ -1178,9 +1176,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       final debrief = await _api.requestDebrief(
         sessionId: state.sessionId,
         profile: _profileDto(),
-        turns: state.messages
-            .map((m) => PracticeTurnDto(role: m.role, text: m.text))
-            .toList(),
+        turns: _turnDtosForPrompt(state.messages),
+        memorySummary: _memorySummaryForPrompt(state.messages),
         roundIndex: state.roundIndex,
         visiblePracticeThreadId: state.visiblePracticeThreadId,
       );
@@ -1284,6 +1281,44 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   }
 
   /// 本場送往 Edge 的對象 metadata：只送 allowlisted id（含 catalog-profile 身份）。
+  List<PracticeTurnDto> _turnDtosForPrompt(List<PracticeMessage> messages) {
+    final start = messages.length > kPracticePromptRecentTurns
+        ? messages.length - kPracticePromptRecentTurns
+        : 0;
+    return messages
+        .skip(start)
+        .map((m) => PracticeTurnDto(role: m.role, text: m.text))
+        .toList();
+  }
+
+  String? _memorySummaryForPrompt(List<PracticeMessage> messages) {
+    final olderCount = messages.length - kPracticePromptRecentTurns;
+    if (olderCount <= 0) return null;
+    final olderMessages = messages.take(olderCount);
+    final buffer = StringBuffer('更早對話摘要（自動節錄 $olderCount 則）：');
+    for (final message in olderMessages.take(24)) {
+      final text = _compactMemoryText(message.text);
+      if (text.isEmpty) continue;
+      final speaker = message.role == 'user' ? '你' : '她';
+      buffer.write('$speaker：${_clipMemoryText(text, 48)}；');
+      if (buffer.length >= kPracticeMemorySummaryMaxChars) break;
+    }
+    final summary = _clipMemoryText(
+      buffer.toString(),
+      kPracticeMemorySummaryMaxChars,
+    );
+    return summary.trim().isEmpty ? null : summary;
+  }
+
+  String _compactMemoryText(String text) =>
+      text.trim().replaceAll(RegExp(r'\s+'), ' ');
+
+  String _clipMemoryText(String text, int maxChars) {
+    if (text.length <= maxChars) return text;
+    if (maxChars <= 3) return text.substring(0, maxChars);
+    return '${text.substring(0, maxChars - 3)}...';
+  }
+
   PracticeProfileDto _profileDto() {
     final girl = state.girl!;
     return PracticeProfileDto(

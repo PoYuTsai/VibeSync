@@ -292,10 +292,12 @@ class PracticeChatApiService {
     PracticeLearningMode practiceMode = PracticeLearningMode.standard,
     int? temperatureScore,
     int? familiarityScore,
+    String? memorySummary,
     PracticeHintReplyType? appliedHintType,
     String? appliedHintText,
   }) async {
     final normalizedAppliedHintText = appliedHintText?.trim();
+    final normalizedMemorySummary = memorySummary?.trim();
     final response = await _invoke(
       _functionName,
       body: {
@@ -304,6 +306,9 @@ class PracticeChatApiService {
         'practiceMode': practiceMode.wireName,
         ...profile.toJson(),
         'turns': turns.map((t) => t.toJson()).toList(),
+        if (normalizedMemorySummary != null &&
+            normalizedMemorySummary.isNotEmpty)
+          'memorySummary': normalizedMemorySummary,
         'roundIndex': roundIndex,
         if (temperatureScore != null) 'temperatureScore': temperatureScore,
         if (familiarityScore != null) 'familiarityScore': familiarityScore,
@@ -351,8 +356,10 @@ class PracticeChatApiService {
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
+    String? memorySummary,
     String? requestId,
   }) async {
+    final normalizedMemorySummary = memorySummary?.trim();
     final response = await _invoke(
       _functionName,
       body: {
@@ -363,6 +370,9 @@ class PracticeChatApiService {
         'practiceMode': PracticeLearningMode.beginner.wireName,
         ...profile.toJson(),
         'turns': turns.map((t) => t.toJson()).toList(),
+        if (normalizedMemorySummary != null &&
+            normalizedMemorySummary.isNotEmpty)
+          'memorySummary': normalizedMemorySummary,
         'roundIndex': roundIndex,
         if (visiblePracticeThreadId != null)
           'visiblePracticeThreadId': visiblePracticeThreadId,
@@ -378,7 +388,9 @@ class PracticeChatApiService {
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
+    String? memorySummary,
   }) async {
+    final normalizedMemorySummary = memorySummary?.trim();
     final response = await _invoke(
       _functionName,
       body: {
@@ -386,6 +398,9 @@ class PracticeChatApiService {
         'sessionId': sessionId,
         ...profile.toJson(),
         'turns': turns.map((t) => t.toJson()).toList(),
+        if (normalizedMemorySummary != null &&
+            normalizedMemorySummary.isNotEmpty)
+          'memorySummary': normalizedMemorySummary,
         'roundIndex': roundIndex,
         if (visiblePracticeThreadId != null)
           'visiblePracticeThreadId': visiblePracticeThreadId,

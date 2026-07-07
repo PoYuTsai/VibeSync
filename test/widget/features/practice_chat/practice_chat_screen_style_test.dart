@@ -117,6 +117,7 @@ class _NoopPracticeChatApi extends PracticeChatApiService {
     PracticeLearningMode practiceMode = PracticeLearningMode.standard,
     int? temperatureScore,
     int? familiarityScore,
+    String? memorySummary,
     PracticeHintReplyType? appliedHintType,
     String? appliedHintText,
   }) {
@@ -130,6 +131,7 @@ class _NoopPracticeChatApi extends PracticeChatApiService {
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
+    String? memorySummary,
   }) {
     throw UnimplementedError();
   }
@@ -176,6 +178,7 @@ class _DrawApi extends PracticeChatApiService {
     PracticeLearningMode practiceMode = PracticeLearningMode.standard,
     int? temperatureScore,
     int? familiarityScore,
+    String? memorySummary,
     PracticeHintReplyType? appliedHintType,
     String? appliedHintText,
   }) =>
@@ -188,6 +191,7 @@ class _DrawApi extends PracticeChatApiService {
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
+    String? memorySummary,
   }) =>
       throw UnimplementedError();
 }
@@ -240,6 +244,7 @@ class _HintApi extends _NoopPracticeChatApi {
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
+    String? memorySummary,
     String? requestId,
   }) async {
     hintCalls++;
@@ -267,6 +272,7 @@ class _MessageApi extends _NoopPracticeChatApi {
     PracticeLearningMode practiceMode = PracticeLearningMode.standard,
     int? temperatureScore,
     int? familiarityScore,
+    String? memorySummary,
     PracticeHintReplyType? appliedHintType,
     String? appliedHintText,
   }) {
@@ -564,8 +570,7 @@ void main() {
     expect(find.text('還沒有練習紀錄'), findsOneWidget);
   });
 
-  testWidgets('翻牌後（revealed、未送出）顯示 hero + 難度 chips（換一位已收斂圖鑑）',
-      (tester) async {
+  testWidgets('翻牌後（revealed、未送出）顯示 hero + 難度 chips（換一位已收斂圖鑑）', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -752,7 +757,7 @@ void main() {
     expect(find.text('完成'), findsOneWidget);
   });
 
-  testWidgets('第 3 輪拆解後：隱藏續玩，只留去圖鑑換人與完成', (tester) async {
+  testWidgets('第 3 輪拆解後：仍可續聊同一位', (tester) async {
     final controller = _SeededPracticeChatController(
       seed: debriefSeed(roundIndex: 3),
       repository: repo,
@@ -767,8 +772,8 @@ void main() {
       ),
     );
 
-    expect(find.text('續聊同一位'), findsNothing);
-    expect(find.textContaining('再扣 1 則'), findsNothing);
+    expect(find.text('續聊同一位'), findsOneWidget);
+    expect(find.textContaining('再扣 1 則'), findsOneWidget);
     expect(find.text('去圖鑑換人'), findsOneWidget);
     expect(find.text('完成'), findsOneWidget);
   });
@@ -2147,8 +2152,7 @@ void main() {
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
   });
 
-  testWidgets('Task 4b：練習室本體不再掛儀式 overlay（抽牌中也無卡背，掛載點唯一在圖鑑）',
-      (tester) async {
+  testWidgets('Task 4b：練習室本體不再掛儀式 overlay（抽牌中也無卡背，掛載點唯一在圖鑑）', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await tester.binding.setSurfaceSize(const Size(390, 844));
@@ -3661,7 +3665,8 @@ void main() {
         findsOneWidget);
   });
 
-  testWidgets('startProfileId 進場 → post-frame 呼叫 startSessionWithProfile（圖鑑點卡縫）',
+  testWidgets(
+      'startProfileId 進場 → post-frame 呼叫 startSessionWithProfile（圖鑑點卡縫）',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));

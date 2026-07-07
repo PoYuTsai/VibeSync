@@ -100,6 +100,38 @@ Deno.test("buildHintMessages includes scene status as evidence for natural repli
   assertEquals(text.includes("sceneContext"), false);
 });
 
+Deno.test("buildHintMessages includes memory summary as evidence", () => {
+  const messages: ChatMessage[] = buildHintMessages({
+    turns: [
+      { role: "user", text: "今天呢" },
+      { role: "ai", text: "我還在改論文" },
+    ],
+    profile,
+    temperatureScore: 42,
+    memorySummary: "更早她提過第二輪審查剛過",
+  });
+  const text = messages.map((message) => message.content).join("\n");
+
+  assert(text.includes("memorySummary: 更早她提過第二輪審查剛過"));
+});
+
+Deno.test("buildHintMessages includes invite maturity guidance for soft invites", () => {
+  const messages: ChatMessage[] = buildHintMessages({
+    turns: [
+      { role: "user", text: "那下次一起？" },
+      { role: "ai", text: "你是說一起什麼啦" },
+    ],
+    profile,
+    temperatureScore: 55,
+    familiarityScore: 45,
+  });
+  const text = messages.map((message) => message.content).join("\n");
+
+  assert(text.includes("inviteStage: soft_invite_ready"));
+  assert(text.includes("模糊邀約"));
+  assertEquals(text.includes("約回家"), false);
+});
+
 Deno.test("buildHintMessages abstracts raw image filenames before model prompts", () => {
   const messages: ChatMessage[] = buildHintMessages({
     turns: [

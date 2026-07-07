@@ -409,7 +409,7 @@ Deno.test("turns 空陣列 → invalid_turns_empty", () => {
 });
 
 Deno.test("turns 過多 → invalid_turns_too_many", () => {
-  // MAX_TURNS=130（涵蓋 3 輪 visible thread）；131 才超量。
+  // MAX_TURNS=130；131 才超量。長 thread 由 memorySummary + 近期 turns 承接。
   const many = Array.from({ length: 131 }, () => ({ role: "user", text: "x" }));
   assertThrows(
     () => validateRequest(chatReq(many)),
@@ -418,7 +418,7 @@ Deno.test("turns 過多 → invalid_turns_too_many", () => {
   );
 });
 
-Deno.test("turns 120（3 輪 visible thread）→ 通過", () => {
+Deno.test("turns 120（大型近期 payload）→ 通過", () => {
   const turns: Array<{ role: string; text: string }> = [];
   for (let i = 0; i < 60; i++) {
     turns.push({ role: "user", text: `u${i}` });
@@ -702,8 +702,8 @@ Deno.test("roundIndex：缺值 → fallback 1", () => {
   assertEquals(r.roundIndex, 1);
 });
 
-Deno.test("roundIndex：合法 1..3 → 通過", () => {
-  for (const idx of [1, 2, 3]) {
+Deno.test("roundIndex：合法正整數可超過 3 → 通過", () => {
+  for (const idx of [1, 2, 3, 4, 40]) {
     const r = validateRequest({
       mode: "chat",
       sessionId: "s1",
@@ -714,13 +714,13 @@ Deno.test("roundIndex：合法 1..3 → 通過", () => {
   }
 });
 
-Deno.test("roundIndex：4（超過 3 輪上限）→ invalid_roundIndex", () => {
+Deno.test("roundIndex：0 → invalid_roundIndex", () => {
   assertThrows(
     () =>
       validateRequest({
         mode: "chat",
         sessionId: "s1",
-        roundIndex: 4,
+        roundIndex: 0,
         turns: [{ role: "user", text: "嗨" }],
       }),
     Error,
@@ -763,6 +763,41 @@ Deno.test("visiblePracticeThreadId：過長 → invalid_visiblePracticeThreadId"
       }),
     Error,
     "invalid_visiblePracticeThreadId",
+  );
+});
+
+Deno.test("memorySummary：合法字串 → trim 後保留", () => {
+  const r = validateRequest({
+    mode: "chat",
+    sessionId: "s1",
+    turns: [{ role: "user", text: "嗨" }],
+    memorySummary: "  更早她說喜歡咖啡，也聊過論文壓力  ",
+  });
+  assertEquals(r.memorySummary, "更早她說喜歡咖啡，也聊過論文壓力");
+});
+
+Deno.test("memorySummary：過長或 raw image filename → invalid_memorySummary", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "chat",
+        sessionId: "s1",
+        turns: [{ role: "user", text: "嗨" }],
+        memorySummary: "x".repeat(1001),
+      }),
+    Error,
+    "invalid_memorySummary",
+  );
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "chat",
+        sessionId: "s1",
+        turns: [{ role: "user", text: "嗨" }],
+        memorySummary: "更早傳過 S__42795075.jpg",
+      }),
+    Error,
+    "invalid_memorySummary",
   );
 });
 

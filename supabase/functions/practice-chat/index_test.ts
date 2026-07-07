@@ -768,9 +768,15 @@ Deno.test("chat commit uses practice mode and temperature RPC arguments", async 
 });
 
 Deno.test("existing ledger mode mismatch rejects before DeepSeek and RPC", async () => {
-  const { response, json, state } = await run({
-    ledger: ledger({ practice_mode: "standard" }),
-  }, chatBody({ practiceMode: "beginner", temperatureScore: 30 }));
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({ practice_mode: "standard" }),
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+    }),
+  );
 
   assertEquals(response.status, 409);
   assertEquals(json, { error: "practice_mode_locked" });
@@ -779,12 +785,18 @@ Deno.test("existing ledger mode mismatch rejects before DeepSeek and RPC", async
 });
 
 Deno.test("commit PRACTICE_MODE_LOCKED maps to HTTP 409 practice_mode_locked", async () => {
-  const { response, json, state } = await run({
-    ledger: ledger({ practice_mode: "standard" }),
-    rpc: {
-      commit_practice_chat_turn: [{ error: "PRACTICE_MODE_LOCKED" }],
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({ practice_mode: "standard" }),
+      rpc: {
+        commit_practice_chat_turn: [{ error: "PRACTICE_MODE_LOCKED" }],
+      },
     },
-  }, chatBody({ practiceMode: "beginner", temperatureScore: 30 }));
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+    }),
+  );
 
   assertEquals(response.status, 409);
   assertEquals(json, { error: "practice_mode_locked" });
@@ -806,18 +818,25 @@ Deno.test("commit PRACTICE_INVALID_MODE maps to HTTP 400 invalid_practiceMode", 
 });
 
 Deno.test("ledger select includes beginner fields and old rows fallback safely", async () => {
-  const { response, json, state } = await run({
-    ledger: {
-      ai_count: 1,
-      charged: true,
-      debrief_count: 0,
+  const { response, json, state } = await run(
+    {
+      ledger: {
+        ai_count: 1,
+        charged: true,
+        debrief_count: 0,
+      },
+      deepSeekReplies: [
+        "AI reply",
+        CLASSIFIER_CAUGHT_MEDIUM,
+      ],
+      // 舊列（ledger 已建檔、無溫度欄）：帶 client 值也不得被吃。
     },
-    deepSeekReplies: [
-      "AI reply",
-      CLASSIFIER_CAUGHT_MEDIUM,
-    ],
-    // 舊列（ledger 已建檔、無溫度欄）：帶 client 值也不得被吃。
-  }, chatBody({ practiceMode: "beginner", temperatureScore: 30 }));
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      memorySummary: "OLDER_MEMORY_MARKER: 她之前聊過論文與咖啡",
+    }),
+  );
 
   assertEquals(response.status, 200);
   assertEquals(json.hintUsedCount, 0);
@@ -949,17 +968,24 @@ Deno.test("exact applied hint stays non-negative when fallback retry sees stale 
 });
 
 Deno.test("successful beginner classifier uses JSON mode and updates learning state", async () => {
-  const { response, json, state } = await run({
-    ledger: ledger({
-      practice_mode: "beginner",
-      temperature_score: 30,
-      familiarity_score: 0,
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 0,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        CLASSIFIER_CAUGHT_MEDIUM,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      memorySummary: "OLDER_MEMORY_MARKER: 她之前聊過論文與咖啡",
     }),
-    deepSeekReplies: [
-      "AI reply",
-      CLASSIFIER_CAUGHT_MEDIUM,
-    ],
-  }, chatBody({ practiceMode: "beginner", temperatureScore: 30 }));
+  );
 
   assertEquals(response.status, 200);
   assertEquals(json.temperature, {
@@ -984,12 +1010,16 @@ Deno.test("successful beginner classifier uses JSON mode and updates learning st
     .map((message) => message.content)
     .join("\n");
   assert(chatPrompt.includes("sceneContext"));
+  assert(chatPrompt.includes("memorySummary"));
+  assert(chatPrompt.includes("OLDER_MEMORY_MARKER"));
+  assert(chatPrompt.includes("inviteMaturity"));
+  assert(chatPrompt.includes("not_ready"));
   assert(
     chatPrompt.includes("如果對方問「在幹嘛」"),
     "chat prompt should receive hidden life-scene guidance",
   );
   assertEquals(classifierPrompt.includes("sceneContext"), false);
-  assertEquals(classifierPrompt.includes("本場生活情境"), false);
+  assertEquals(classifierPrompt.includes("OLDER_MEMORY_MARKER"), false);
   assertEquals(
     learningUpdateCalls(state)[0]?.params,
     {
@@ -1849,14 +1879,19 @@ Deno.test("debrief returns generation_failed after exhausting malformed card ret
 });
 
 Deno.test("debrief accepts beginner ledger when client omits practiceMode", async () => {
-  const { response, json, state } = await run({
-    ledger: ledger({
-      ai_count: 1,
-      charged: true,
-      practice_mode: "beginner",
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        ai_count: 1,
+        charged: true,
+        practice_mode: "beginner",
+      }),
+      deepSeekReplies: [validDebriefJson({ summary: "新手拆解成功" })],
+    },
+    debriefBody({
+      memorySummary: "OLDER_DEBRIEF_MEMORY: 她之前說第二輪審查剛過",
     }),
-    deepSeekReplies: [validDebriefJson({ summary: "新手拆解成功" })],
-  }, debriefBody());
+  );
 
   assertEquals(response.status, 200);
   assertEquals(json.card.summary, "新手拆解成功");
@@ -1865,6 +1900,7 @@ Deno.test("debrief accepts beginner ledger when client omits practiceMode", asyn
     .map((message) => message.content)
     .join("\n");
   assert(debriefPrompt.includes("本場抽象關係階段：建立熟悉中"));
+  assert(debriefPrompt.includes("OLDER_DEBRIEF_MEMORY"));
   assertEquals(debriefPrompt.includes("familiarity"), false);
   assertEquals(claimDebriefCalls(state).length, 1);
 });
@@ -2057,18 +2093,25 @@ Deno.test("hint retries a malformed provider result once before recording", asyn
 });
 
 Deno.test("successful hint uses ledger temperature, records after parse, and returns response contract", async () => {
-  const { response, json, state } = await run({
-    ledger: beginnerStartedLedger({
-      temperature_score: 64,
-      hint_count: 2,
-    }),
-    deepSeekReplies: [validHintJson()],
-    rpc: {
-      record_practice_hint: [{
-        data: [{ new_hint_count: 3, did_charge: true }],
-      }],
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({
+        temperature_score: 64,
+        hint_count: 2,
+      }),
+      deepSeekReplies: [validHintJson()],
+      rpc: {
+        record_practice_hint: [{
+          data: [{ new_hint_count: 3, did_charge: true }],
+        }],
+      },
     },
-  }, hintBody({ practiceMode: "beginner", temperatureScore: 5 }));
+    hintBody({
+      practiceMode: "beginner",
+      temperatureScore: 5,
+      memorySummary: "OLDER_HINT_MEMORY: 她之前聊過巷口咖啡",
+    }),
+  );
 
   assertEquals(response.status, 200);
   assertEquals(json.replies.length, 2);
@@ -2092,6 +2135,7 @@ Deno.test("successful hint uses ledger temperature, records after parse, and ret
   assert(promptText.includes("currentTemperatureScore: 64/100"));
   assertEquals(promptText.includes("currentTemperatureScore: 5/100"), false);
   assert(promptText.includes("assistant: hello"));
+  assert(promptText.includes("OLDER_HINT_MEMORY"));
 
   assertEquals(claimHintCalls(state).length, 1);
   assertEquals(claimHintCalls(state)[0].params, {
