@@ -10,7 +10,11 @@ import {
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import { validateDrawRequest, validateRequest } from "./validate.ts";
 import { type DrawSupabaseClient, handleDrawProfile } from "./draw_handler.ts";
-import { buildChatMessages, buildDebriefMessages } from "./prompt.ts";
+import {
+  buildChatMessages,
+  buildDebriefMessages,
+  type ChatMessage,
+} from "./prompt.ts";
 import { difficultyTuningFor } from "./practice_persona.ts";
 import {
   decideChatGate,
@@ -260,6 +264,45 @@ export function jsonResponse(data: unknown, status = 200): Response {
 
 function getErrorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+function hintRetryReason(e: unknown): string {
+  const message = getErrorMessage(e);
+  if (message.includes("hint_bossy_pasteable_reply")) {
+    return "可貼回覆太像命令、面試官或叫她交作業";
+  }
+  if (message.includes("hint_l4_unsafe")) {
+    return "可見文字越過安全邊界";
+  }
+  if (message.includes("hint_internal_label_leak")) {
+    return "可見文字露出內部標籤";
+  }
+  if (
+    message.includes("JSON") ||
+    message.includes("Unexpected token") ||
+    message.includes("hint_not_object") ||
+    message.includes("hint_extra_keys") ||
+    message.includes("hint_missing")
+  ) {
+    return "不是合格的唯一 JSON 物件";
+  }
+  return "格式或安全規則不合格";
+}
+
+function withHintRetryInstruction(
+  messages: ChatMessage[],
+  error: unknown,
+): ChatMessage[] {
+  return [
+    ...messages,
+    {
+      role: "user",
+      content:
+        `上一版 Hint JSON 被拒絕：${hintRetryReason(error)}。請重新輸出唯一 JSON，` +
+        'shape 必須仍是 {"warmUp":"...","steady":"...","coaching":"..."}。' +
+        "可貼回覆要先接住她最新狀態，再給低壓接球；不要命令、不要面試官語氣、不要內部標籤、不要露骨或私密壓迫。",
+    },
+  ];
 }
 
 function isMissingPracticeHintRpc(message: string): boolean {
@@ -1423,9 +1466,7 @@ export function createPracticeChatHandler(
       const hintFamiliarityScore = ledger.familiarityScore ?? 0;
       const hintPartnerMood = partnerStateFromLedger(ledger)?.mood ??
         relationshipThreadState?.partnerState?.mood ?? null;
-      const hintGenerationAttempts = request.practiceMode === "game"
-        ? 1
-        : HINT_GENERATION_ATTEMPTS;
+      const hintGenerationAttempts = HINT_GENERATION_ATTEMPTS;
       const hintTimeoutMs = HINT_TIMEOUT_MS;
       let hintResult: ReturnType<typeof parseHintResult> | null = null;
       try {
@@ -1436,18 +1477,21 @@ export function createPracticeChatHandler(
           attempt++
         ) {
           try {
+            const hintMessages = buildHintMessages({
+              turns: request.turns,
+              profile: request.profile,
+              practiceMode: request.practiceMode,
+              temperatureScore: hintTemperatureScore,
+              familiarityScore: hintFamiliarityScore,
+              partnerMood: hintPartnerMood,
+              sceneContext,
+              memorySummary: promptMemorySummary,
+            });
             const rawHint = await deps.callDeepSeek({
               apiKey,
-              messages: buildHintMessages({
-                turns: request.turns,
-                profile: request.profile,
-                practiceMode: request.practiceMode,
-                temperatureScore: hintTemperatureScore,
-                familiarityScore: hintFamiliarityScore,
-                partnerMood: hintPartnerMood,
-                sceneContext,
-                memorySummary: promptMemorySummary,
-              }),
+              messages: attempt > 1 && lastError !== undefined
+                ? withHintRetryInstruction(hintMessages, lastError)
+                : hintMessages,
               maxTokens: HINT_MAX_TOKENS,
               temperature: HINT_TEMPERATURE,
               jsonMode: true,

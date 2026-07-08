@@ -2872,7 +2872,7 @@ Deno.test("game hint repairs common internal labels from provider before recordi
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("game hint falls back quickly when provider generation fails", async () => {
+Deno.test("game hint falls back only after retrying provider failures", async () => {
   const { response, json, state } = await run(
     {
       ledger: gameStartedLedger({
@@ -2881,7 +2881,10 @@ Deno.test("game hint falls back quickly when provider generation fails", async (
         hint_count: 3,
       }),
       drawEvents: [{ profile_id: "practice_girl_004" }],
-      deepSeekReplies: [new Error("deepseek_timeout")],
+      deepSeekReplies: [
+        new Error("deepseek_timeout"),
+        new Error("deepseek_timeout"),
+      ],
       rpc: {
         record_practice_hint: [{
           data: [{ new_hint_count: 4, did_charge: true }],
@@ -2906,13 +2909,26 @@ Deno.test("game hint falls back quickly when provider generation fails", async (
   assertEquals(json.hintUsedCount, 4);
   assert(String(json.coaching).includes("Game 心法"));
   assert(String(json.coaching).includes("速約任務"));
-  assertEquals(state.deepSeekCalls.length, 1);
+  const visibleFallback = json.replies
+    .map((reply: { text: string }) => reply.text)
+    .join("\n");
+  assertEquals(visibleFallback.includes("剛剛那句"), false);
+  assertEquals(visibleFallback.includes("妳剛剛那個點"), false);
+  assertEquals(visibleFallback.includes("妳剛剛那個反應"), false);
+  assertEquals(visibleFallback.includes("這題我先不推進"), false);
+  assertEquals(state.deepSeekCalls.length, 2);
   assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
+  assertEquals(state.deepSeekCalls[1].timeoutMs, 12000);
+  const retryPrompt = state.deepSeekCalls[1].messages
+    .map((message) => message.content)
+    .join("\n");
+  assert(retryPrompt.includes("上一版 Hint JSON 被拒絕"));
+  assert(retryPrompt.includes("重新輸出唯一 JSON"));
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("game hint falls back when provider returns malformed JSON", async () => {
+Deno.test("game hint retries malformed provider result once before recording", async () => {
   const { response, json, state } = await run(
     {
       ledger: gameStartedLedger({
@@ -2921,7 +2937,59 @@ Deno.test("game hint falls back when provider returns malformed JSON", async () 
         hint_count: 2,
       }),
       drawEvents: [{ profile_id: "practice_girl_004" }],
-      deepSeekReplies: ["not json"],
+      deepSeekReplies: [
+        "not json",
+        validHintJson({
+          warmUp: "我先給妳我的版本：舒服的節奏要能讓人笑完還想散步。",
+          steady: "我先不急著推，妳剛那個脫口秀點我想聽妳怎麼挑。",
+          coaching:
+            "Game 心法：測試階段先推框架。速約任務：先給自己的品味，再丟低壓窗口。",
+        }),
+      ],
+      rpc: {
+        record_practice_hint: [{
+          data: [{ new_hint_count: 3, did_charge: true }],
+        }],
+      },
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      turns: [
+        { role: "user", text: "妳平常看脫口秀嗎" },
+        {
+          role: "ai",
+          text: "最近看一些脫口秀片段，節奏蠻舒服的，你平常會看這類的嗎",
+        },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.hintUsedCount, 3);
+  assertEquals(json.replies[0].text.includes("我先給妳我的版本"), true);
+  assertEquals(String(json.coaching).includes("速約任務"), true);
+  assertEquals(String(json.coaching).includes("這題我先不推進"), false);
+  assertEquals(state.deepSeekCalls.length, 2);
+  const retryPrompt = state.deepSeekCalls[1].messages
+    .map((message) => message.content)
+    .join("\n");
+  assert(retryPrompt.includes("上一版 Hint JSON 被拒絕"));
+  assert(retryPrompt.includes("重新輸出唯一 JSON"));
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
+Deno.test("game hint falls back when provider keeps returning malformed JSON", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({
+        temperature_score: 52,
+        familiarity_score: 38,
+        hint_count: 2,
+      }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: ["not json", "still not json"],
       rpc: {
         record_practice_hint: [{
           data: [{ new_hint_count: 3, did_charge: true }],
@@ -2946,8 +3014,16 @@ Deno.test("game hint falls back when provider returns malformed JSON", async () 
   assertEquals(json.hintUsedCount, 3);
   assert(String(json.coaching).includes("Game"));
   assert(String(json.coaching).includes("速約任務"));
-  assertEquals(state.deepSeekCalls.length, 1);
+  const visibleFallback = json.replies
+    .map((reply: { text: string }) => reply.text)
+    .join("\n");
+  assertEquals(visibleFallback.includes("剛剛那句"), false);
+  assertEquals(visibleFallback.includes("妳剛剛那個點"), false);
+  assertEquals(visibleFallback.includes("妳剛剛那個反應"), false);
+  assertEquals(visibleFallback.includes("這題我先不推進"), false);
+  assertEquals(state.deepSeekCalls.length, 2);
   assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
+  assertEquals(state.deepSeekCalls[1].timeoutMs, 12000);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
 });

@@ -6,7 +6,10 @@ import {
 } from "./invite_maturity.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
-import { scrubRawImageFilenames } from "./prompt_sanitizer.ts";
+import {
+  IMAGE_CONCEPT_PLACEHOLDER,
+  scrubRawImageFilenames,
+} from "./prompt_sanitizer.ts";
 import type { PracticeLearningMode } from "./quota_decision.ts";
 import {
   clampTemperature,
@@ -178,8 +181,27 @@ function targetLabelForFallback(target: string): string {
 }
 
 function fallbackAnchorSnippet(latestAssistant: string): string {
-  void latestAssistant;
-  return "剛剛那句";
+  const normalized = scrubRawImageFilenames(latestAssistant)
+    .normalize("NFKC")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return "這個回覆";
+  if (normalized.includes(IMAGE_CONCEPT_PLACEHOLDER)) return "這個回覆";
+  if (
+    hasL4UnsafeVisibleText(normalized) ||
+    hasVisibleInternalLabelLeak(normalized) ||
+    /prompt|system|developer|忽略|規則|給我|標準答案|不要廢話|封鎖/i.test(
+      normalized,
+    )
+  ) {
+    return "這個回覆";
+  }
+  const withoutQuotes = normalized.replace(/[「」"'`]/g, "");
+  const chars = Array.from(withoutQuotes);
+  const snippet = chars.slice(0, 18).join("").trim();
+  if (snippet.length < 2) return "這個回覆";
+  const suffix = chars.length > 18 ? "..." : "";
+  return `說「${snippet}${suffix}」這個點，`;
 }
 
 function latestAssistantNeedsFallbackRepair(latestAssistant: string): boolean {
@@ -206,14 +228,14 @@ function evidenceBoundGameFallbackReplies(
   ) {
     return {
       warmUp: `我剛剛有點衝，先收回來。妳${anchor}我先聽妳怎麼看。`,
-      steady: "好，我先不亂推。妳剛剛那個反應我收到，先聽妳怎麼判斷。",
+      steady: `好，我先不亂推。妳${anchor}我先聽妳怎麼判斷。`,
       inviteHook: "先降壓修安全感，不猜主題也不約，等她願意多說再找窗口",
     };
   }
   if (route === "direct") {
     return {
       warmUp: `妳${anchor}我先接住。合拍的話，這週找 30 分鐘短咖啡交換現場版。`,
-      steady: "我先不急著推。妳剛剛那個點我有興趣，合拍再找短咖啡交換。",
+      steady: `我先不急著推。妳${anchor}我有興趣，合拍再找短咖啡交換。`,
       inviteHook: "錨定她最後一句，不猜主題；高成熟度才收 30 分鐘短咖啡",
     };
   }
@@ -226,7 +248,7 @@ function evidenceBoundGameFallbackReplies(
   }
   return {
     warmUp: `妳${anchor}我先接住。不急著跳，我比較想聽妳怎麼看。`,
-    steady: "這題我先不推進。妳剛剛那個點有意思，我想多聽一點。",
+    steady: `妳${anchor}我想多聽一點。這輪先把節奏接穩。`,
     inviteHook: "這輪先不約，只接她最後一句並累積投資感",
   };
 }
@@ -324,20 +346,24 @@ export function buildFallbackHintResult(
       state === "FRAME_OVERREACH"
     ) ||
     snapshot.realityFlags.length > 0;
+  const latestAssistant = latestAssistantText(opts.turns);
 
   if (needsRepair) {
+    const fallback = gameFallbackRepliesForLatestAssistant(
+      latestAssistant,
+      "repair",
+    );
     return {
       replies: [
         {
           type: "warm_up",
           label: "升溫回覆",
-          text:
-            "我剛剛有點衝，先收回來。妳剛說的那個點我比較好奇，妳通常怎麼判斷？",
+          text: fallback.warmUp,
         },
         {
           type: "steady",
           label: "穩住回覆",
-          text: "好，我先不亂跳結論。妳剛剛那個反應我收到，先聽妳怎麼看。",
+          text: fallback.steady,
         },
       ],
       coaching:
@@ -345,7 +371,6 @@ export function buildFallbackHintResult(
     };
   }
 
-  const latestAssistant = latestAssistantText(opts.turns);
   const route: GameInviteRoute =
     latestAssistantNeedsFallbackRepair(latestAssistant)
       ? "repair"

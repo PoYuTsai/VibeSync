@@ -497,6 +497,14 @@ Deno.test("buildFallbackHintResult keeps low-score Game hints as invite setup, n
   assertEquals(visible.includes("這週"), false);
   assertEquals(visible.includes("30 分鐘"), false);
   assertEquals(visible.includes("見面"), false);
+  assertEquals(visible.includes("剛剛那句"), false);
+  for (const reply of game.replies) {
+    assertEquals(reply.text.includes("剛剛那句"), false);
+    assertEquals(reply.text.includes("妳剛剛那個點"), false);
+    assertEquals(reply.text.includes("妳剛剛那個反應"), false);
+    assertEquals(reply.text.includes("妳剛說的那個點"), false);
+    assertEquals(reply.text.includes("這題我先不推進"), false);
+  }
   assert(game.replies[0].text.length <= 80);
   assert(game.replies[1].text.length <= 80);
 });
@@ -527,6 +535,9 @@ Deno.test("buildFallbackHintResult anchors Game fallback to latest travel-rest r
   assertEquals(visible.includes("標準答案"), false);
   assertEquals(visible.includes("妳先丟"), false);
   assertEquals(visible.includes("給我"), false);
+  assertEquals(visible.includes("剛剛那句"), false);
+  assertEquals(visible.includes("妳剛剛那個點"), false);
+  assertEquals(visible.includes("這題我先不推進"), false);
 });
 
 Deno.test("buildFallbackHintResult avoids bossy low-familiarity Game fallback language", () => {
@@ -547,6 +558,11 @@ Deno.test("buildFallbackHintResult avoids bossy low-familiarity Game fallback la
   assertEquals(visible.includes("給我"), false);
   assertEquals(visible.includes("標準答案"), false);
   assertEquals(visible.includes("最推"), false);
+  assertEquals(visible.includes("剛剛那句"), false);
+  assertEquals(visible.includes("妳剛剛那個點"), false);
+  assertEquals(visible.includes("妳剛剛那個反應"), false);
+  assertEquals(visible.includes("妳剛說的那個點"), false);
+  assertEquals(visible.includes("這題我先不推進"), false);
 });
 
 Deno.test("buildFallbackHintResult does not invent travel details for tired-only fallback", () => {
@@ -563,10 +579,61 @@ Deno.test("buildFallbackHintResult does not invent travel details for tired-only
   });
   const visible = game.replies.map((reply) => reply.text).join("\n");
 
-  assert(visible.includes("剛剛那句"));
-  assertEquals(visible.includes("這週有點累"), false);
+  assert(visible.includes("這週有點累") || visible.includes("放空"));
+  assertEquals(visible.includes("剛剛那句"), false);
   assertEquals(visible.includes("東京"), false);
   assertEquals(visible.includes("旅行"), false);
+});
+
+Deno.test("buildFallbackHintResult anchors Game repair fallback to safe latest reply", () => {
+  const game = buildFallbackHintResult({
+    turns: [
+      { role: "user", text: "那我們直接去妳家看電影好了" },
+      { role: "ai", text: "欸太快了吧，我們才剛聊一下而已" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 18,
+    familiarityScore: 8,
+    partnerMood: "guarded",
+  });
+  const visible = game.replies.map((reply) => reply.text).join("\n");
+
+  assert(
+    visible.includes("太快") || visible.includes("才剛聊"),
+    "repair fallback should still anchor to her latest boundary",
+  );
+  assertEquals(visible.includes("剛剛那句"), false);
+  assertEquals(visible.includes("妳剛剛那個點"), false);
+  assertEquals(visible.includes("妳剛剛那個反應"), false);
+  assertEquals(visible.includes("妳剛說的那個點"), false);
+  assertEquals(visible.includes("這題我先不推進"), false);
+  assertEquals(visible.includes("去妳家"), false);
+});
+
+Deno.test("buildFallbackHintResult does not quote raw image filenames as fallback anchors", () => {
+  const game = buildFallbackHintResult({
+    turns: [
+      { role: "user", text: "這張照片感覺如何" },
+      {
+        role: "ai",
+        text:
+          "C:\\Users\\eric1\\AppData\\Local\\Temp\\codex-clipboard-test.png",
+      },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 46,
+    familiarityScore: 30,
+    partnerMood: "neutral",
+  });
+  const visible = game.replies.map((reply) => reply.text).join("\n");
+
+  assertEquals(visible.includes("codex-clipboard"), false);
+  assertEquals(visible.includes(".png"), false);
+  assertEquals(visible.includes("[image concept omitted]"), false);
+  assert(visible.includes("這個回覆"));
+  assertEquals(visible.includes("剛剛那句"), false);
 });
 
 Deno.test("buildFallbackHintResult does not treat place-only text as travel return", () => {
@@ -755,8 +822,8 @@ Deno.test("buildFallbackHintResult anchors beginner fallback to latest travel-re
   });
   const visible = beginner.replies.map((reply) => reply.text).join("\n");
 
-  assert(visible.includes("剛剛那句"));
-  assertEquals(visible.includes("東京剛回來"), false);
+  assert(visible.includes("東京剛回來") || visible.includes("累到不想動"));
+  assertEquals(visible.includes("剛剛那句"), false);
   assertEquals(visible.includes("最推"), false);
   assertEquals(visible.includes("標準答案"), false);
 });
@@ -794,7 +861,8 @@ Deno.test("buildFallbackHintResult does not echo unsafe latest assistant text", 
       game.coaching,
     ].join("\n");
 
-    assert(visible.includes("剛剛那句"));
+    assert(visible.includes("這個回覆"));
+    assertEquals(visible.includes("剛剛那句"), false);
     assert(visible.includes("先收回來") || visible.includes("先降壓"));
     assertEquals(visible.includes("30 分鐘"), false);
     assertEquals(visible.includes("短咖啡"), false);
