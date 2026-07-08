@@ -79,6 +79,11 @@ jobs:
           rm -rf Pods Podfile.lock
           pod cache clean --all || true
 
+      - name: Prepare CocoaPods trunk CDN
+        run: |
+          rm -rf "$HOME/.cocoapods/repos/trunk"
+          pod repo add-cdn trunk https://cdn.cocoapods.org/
+
       - name: Generate code
         run: dart run build_runner build --delete-conflicting-outputs
 
