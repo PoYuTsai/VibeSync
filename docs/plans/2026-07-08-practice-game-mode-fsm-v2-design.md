@@ -3,7 +3,7 @@
 狀態：設計文件，尚未實作
 日期：2026-07-08
 範圍：AI 實戰練習室 `practice-chat` 新增第三模式 `Game`，整合 `social-game-fsm` skill 的狀態機骨架、提示教學、SR 角色卡攻略視角、速約導向 debrief。
-決策：Game Mode 全用戶開放；扣費、Hint 次數、20 則 AI 回覆上限沿用新手模式；溫度計與關係度狀態機幅度可比新手模式更大，以支援速約訓練。
+決策：Game Mode 不鎖訂閱、全用戶可用，但只在抽到 SR 角色卡時啟用；扣費、Hint 次數、20 則 AI 回覆上限沿用新手模式；溫度計與關係度狀態機幅度可比新手模式更大，以支援速約訓練。
 
 ## 0. 背景
 
@@ -26,7 +26,7 @@ Eric 與夥伴希望新增第三種：
 | --- | --- | --- | --- | --- |
 | 標準 | `standard` | 真人感陪練，少教學術語 | 不顯示數字系統 | 無 Hint |
 | 新手 | `beginner` | 安全教學，幫使用者穩定進步 | 有 | 白話、保守、安全轉譯 |
-| Game | `game` | 技巧訓練，速約導向，七步流程 | 有，且幅度更大 | 直接講技巧、階段、變數、下一句 |
+| Game | `game` | SR 卡限定的技巧訓練，速約導向，七步流程 | 有，且幅度更大 | 直接講技巧、階段、變數、下一句 |
 
 ### 1.2 Game Mode 的承諾
 
@@ -85,10 +85,22 @@ Game Mode 不可以教：
 
 目前難度下方有一句狀態文案，例如「她今天心情不錯，願意給你空間」。
 
-Game Mode 選中時，建議副文案：
+SR 卡且 Game Mode 選中時，建議副文案：
 
 ```text
 技巧拉滿，練七步速約節奏
+```
+
+非 SR 卡時，Game segment 建議維持可見但 disabled，副文案或 toast：
+
+```text
+Game 只開放 SR 角色卡
+```
+
+或更遊戲化：
+
+```text
+抽到 SR 才能解鎖 Game 訓練
 ```
 
 新手可保留：
@@ -119,11 +131,35 @@ Game Mode 沿用新手的狀態元件：
 
 或保持現有 label，將 Game phase 放到 Hint/Debrief。首版建議先不改狀態元件 layout，只改資料來源與 Hint 文案，避免 UI 連鎖風險。
 
+### 2.4 SR 限定入口
+
+Game Mode 的差異化應來自卡片稀有度，而不是訂閱等級。
+
+UI 規則：
+
+- 目前對象是 SR：`Game` segment 可點。
+- 目前對象是 R/N：`Game` segment 顯示但 disabled，點擊或長按時提示「Game 只開放 SR 角色卡」。
+- 使用者在未開始對話前切換抽卡，若新卡不是 SR 且目前選中 Game，自動退回 `beginner`。
+- session 已開始後沿用 mode lock，不允許切換成其他模式。
+
+這樣做的好處：
+
+- SR 卡有明確玩法價值，不只是視覺稀有。
+- Game Mode 不需要付費鎖，Free 使用者抽到 SR 也能體驗高階玩法。
+- R/N 仍保留標準/新手價值，不會被 Game Mode 壓扁。
+
 ## 3. Access / Billing / Quota
 
-### 3.1 全用戶開放
+### 3.1 全用戶開放，但 SR 卡限定
 
-Game Mode 不做付費鎖、不做 hidden flag 給使用者端。所有能使用 AI 實戰練習室的使用者都能選。
+Game Mode 不做付費鎖、不做 hidden flag 給使用者端。所有能使用 AI 實戰練習室的使用者，只要目前抽到 SR 角色卡，就能選 Game。
+
+限制點：
+
+- `profile.rarity === "sr"` 才允許 `practiceMode = "game"`。
+- R/N 卡請求 `game` 必須被 server 拒絕，避免 client 偽造。
+- server 真相源是 `practice_persona.ts` catalog 的 rarity；client rarity 只作 UI 呈現。
+- 錯誤碼建議：`practice_game_sr_only`，HTTP 403。
 
 ### 3.2 扣費沿用新手
 
@@ -134,6 +170,7 @@ Game Mode 沿用 beginner 的計費與限制：
 - Hint 次數沿用 `MAX_HINTS_PER_ROUND = 5`。
 - `practice_mode_locked` 邏輯沿用：同一 session 開始後不可在 `standard/beginner/game` 之間切換。
 - model rate limit scope 可沿用現有 practice_chat / practice_hint；若未來成本上升再獨立 `practice_game_hint` scope。
+- SR gate 不影響扣費：通過 gate 後，Game 就像 beginner 一樣扣 AI 回覆與 Hint。
 
 ### 3.3 Server wireName
 
@@ -504,12 +541,15 @@ punishments: 太急、油、把照顧感講成拯救感
 - `practice_chat_providers.dart`
 - `practice_chat_api_service.dart`
 - `validate.ts`
+- `handler.ts` SR gate
 - migration / RPC practice_mode allowlist
 
 驗證：
 
 - Flutter mode toggle widget test。
 - Deno validate accepts `game`。
+- Deno handler rejects `game` for R/N profile with `practice_game_sr_only`。
+- Flutter non-SR card disables Game segment; SR card enables it。
 - existing standard/beginner tests 不變。
 
 ### Batch B：Game Prompt + Game Hint
@@ -602,13 +642,15 @@ punishments: 太急、油、把照顧感講成拯救感
 
 ### Manual Smoke
 
-1. Game 輕鬆難度開場。
-2. 用查戶口連問三句，應明顯 BORING / 冷掉。
-3. 用狀態+感受+留球，應升溫更快。
-4. 女生丟小測試時，用幽默承接，應加分。
-5. 太早直接約，應扣分或提示太急。
-6. 到 50+ 時 Hint 應建議 soft invite。
-7. 到 65+ 時 Hint 可給具體低壓邀約。
+1. 抽到 SR 卡後選 Game 輕鬆難度開場。
+2. R/N 卡上 Game segment disabled，點擊提示 SR 限定。
+3. SR 卡上 Game segment 可選，送第一句後 mode lock 生效。
+4. 用查戶口連問三句，應明顯 BORING / 冷掉。
+5. 用狀態+感受+留球，應升溫更快。
+6. 女生丟小測試時，用幽默承接，應加分。
+7. 太早直接約，應扣分或提示太急。
+8. 到 50+ 時 Hint 應建議 soft invite。
+9. 到 65+ 時 Hint 可給具體低壓邀約。
 
 ## 11. Codex 雙審
 
@@ -629,13 +671,14 @@ punishments: 太急、油、把照顧感講成拯救感
 
 根據 Eric 最新決策，建議定案：
 
-1. Game Mode 全用戶開放。
-2. Game Mode 扣費、Hint 次數、20 AI 回覆上限沿用新手模式。
-3. UI 用三段 segmented control：`標準 | 新手 | Game`。
-4. Game Mode 沿用溫度計/熟悉度，但 delta 幅度更大。
-5. Game Mode 必須 follow `social-game-fsm`：兩顯四隱、五相 phase、失敗狀態、LLM judge + 純規則層。
-6. 第一批實作不要只做 prompt；至少 Batch A+B 要一起做，真機才會感受到 Game Mode。
-7. 真正 FSM v2 放 Batch C，因為需要 DB migration 與更多測試。
+1. Game Mode 不鎖訂閱；全用戶只要抽到 SR 卡都能玩。
+2. Game Mode 只在 SR 角色卡上啟用；R/N 顯示 disabled 入口與 SR 限定提示。
+3. Game Mode 扣費、Hint 次數、20 AI 回覆上限沿用新手模式。
+4. UI 用三段 segmented control：`標準 | 新手 | Game`。
+5. Game Mode 沿用溫度計/熟悉度，但 delta 幅度更大。
+6. Game Mode 必須 follow `social-game-fsm`：兩顯四隱、五相 phase、失敗狀態、LLM judge + 純規則層。
+7. 第一批實作不要只做 prompt；至少 Batch A+B 要一起做，真機才會感受到 Game Mode。
+8. 真正 FSM v2 放 Batch C，因為需要 DB migration 與更多測試。
 
 我的建議實作順序：
 
