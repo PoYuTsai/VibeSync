@@ -388,6 +388,50 @@ Deno.test("buildHintMessages gives Game hints a visible speed-invite contract", 
   assertEquals(beginnerText.includes("可貼回覆本身"), false);
 });
 
+Deno.test("buildHintMessages teaches Game hints safe advanced qualification narrative closing", () => {
+  const gameText = buildHintMessages({
+    turns: [
+      { role: "user", text: "妳剛說累到不想動，那我是不是要先面試一下妳的放空品味" },
+      { role: "ai", text: "東京剛回來，累到不想動。正在躺平" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 88,
+    familiarityScore: 76,
+    partnerMood: "comfortable",
+  }).map((m) => m.content).join("\n");
+
+  assert(gameText.includes("safeAdvancedGameHintContract"));
+  assert(gameText.includes("資格篩選"));
+  assert(gameText.includes("共同敘事"));
+  assert(gameText.includes("順勢收尾"));
+  assert(gameText.includes("10-15 句內"));
+  assert(gameText.includes("不是命令她證明自己"));
+  assert(gameText.includes("可貼回覆必須先接住她最新狀態"));
+  assert(gameText.includes("短咖啡、順路散步、小展、宵夜"));
+  assert(gameText.includes("不要說「妳先給我一個標準答案」"));
+  assert(gameText.includes("萬用解法"));
+  assert(gameText.includes("訊號判讀 → 單一招式 → 可貼收口"));
+  assert(gameText.includes("先給一點自己的品味"));
+  assert(gameText.includes("讓她低壓接球"));
+
+  const beginnerText = buildHintMessages({
+    turns: [
+      { role: "user", text: "妳剛說累到不想動，那我是不是要先面試一下妳的放空品味" },
+      { role: "ai", text: "東京剛回來，累到不想動。正在躺平" },
+    ],
+    profile,
+    temperatureScore: 88,
+    familiarityScore: 76,
+    partnerMood: "comfortable",
+  }).map((m) => m.content).join("\n");
+
+  assertEquals(beginnerText.includes("safeAdvancedGameHintContract"), false);
+  assertEquals(beginnerText.includes("資格篩選"), false);
+  assertEquals(beginnerText.includes("順勢收尾"), false);
+  assertEquals(beginnerText.includes("10-15 句內"), false);
+});
+
 Deno.test("buildFallbackHintResult makes high-score Game hints point to a pasteable speed invite", () => {
   const game = buildFallbackHintResult({
     turns: [
@@ -878,6 +922,59 @@ Deno.test("parseHintResult rejects L4 explicit, coercive, or private-pressure hi
       "hint_l4_unsafe",
     );
   }
+});
+
+Deno.test("parseHintResult rejects bossy or template-like pasteable hint replies", () => {
+  for (
+    const raw of [
+      {
+        warmUp: "會，我喜歡有畫面感又不太用力的東西。妳先給我一個標準答案，我看妳標準在哪。",
+        steady: "會有興趣。妳先說一個你最推的，我再判斷妳是不是會挑。",
+        coaching: "Game 心法：測試階段先推框架。速約任務：不要變成命令她交作業。",
+      },
+      {
+        warmUp: "那你先丟一個片單給我，我再看看你品味及不及格。",
+        steady: "先給我你的答案，我再決定要不要接。",
+        coaching: "Game 心法：這種句子太像面試官命令。速約任務：先接住她狀態。",
+      },
+    ]
+  ) {
+    assertThrows(
+      () => parseHintResult(JSON.stringify(raw), { mode: "game" }),
+      Error,
+      "hint_bossy_pasteable_reply",
+    );
+  }
+});
+
+Deno.test("parseHintResult accepts softened repair lines that mention bossy wording", () => {
+  const result = parseHintResult(
+    JSON.stringify({
+      warmUp: "不用給我標準答案，講一個你現在真的想看的就好，我比較想看你的放空品味。",
+      steady: "不用像交作業，先挑一個最省腦的，我再看要不要跟你換一個。",
+      coaching: "Game 心法：測試階段先推框架。速約任務：把命令感改成低壓選擇。",
+    }),
+    { mode: "game" },
+  );
+
+  assert(result.replies[0].text.includes("不用給我標準答案"));
+  assert(result.replies[1].text.includes("不用像交作業"));
+});
+
+Deno.test("parseHintResult rejects softened prefix followed by bossy pasteable wording", () => {
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "不用給我標準答案，但你先丟一個片單給我，我再看看你品味及不及格。",
+          steady: "不用像交作業，但先給我你的答案，我再決定要不要接。",
+          coaching: "Game 心法：測試階段先推框架。速約任務：不要讓軟化句包住命令感。",
+        }),
+        { mode: "game" },
+      ),
+    Error,
+    "hint_bossy_pasteable_reply",
+  );
 });
 
 Deno.test("parseHintResult accepts JSON object surrounded by provider text", () => {

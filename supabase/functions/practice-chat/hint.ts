@@ -417,6 +417,25 @@ The visible JSON must feel like Game攻略, not beginner mode.
 `;
 }
 
+function safeAdvancedGameHintContract(): string {
+  return `safeAdvancedGameHintContract:
+Game Hint must translate advanced social technique into safe, pasteable social skill. Use 資格篩選 / 共同敘事 / 順勢收尾 as the high-level route, but never as coercion.
+- Core product promise: SR 限定，技巧拉滿練速約. The coaching should help the user detect a window and move toward a low-pressure meet within 10-15 句內 when safety, heat, and familiarity allow.
+- 資格篩選 means a light taste filter or playful standard that invites her to reveal preference. 資格篩選不是命令她證明自己, not making her audition, and 不要說「妳先給我一個標準答案」.
+- 共同敘事 means turning her latest state into a small "我們可以怎麼相處" scene: shared taste, a tiny role, an inside joke, or a public micro-plan. It must be grounded in the latest assistant reply.
+- 順勢收尾 means converting a real opening into a short public plan: 短咖啡、順路散步、小展、宵夜, or an SR closeHook. Use opt-out language when the window is soft.
+- 可貼回覆必須先接住她最新狀態, then add exactly one advanced move: taste filter, push-pull, scene bridge, or invite window. Do not stack techniques or sound like a script.
+- 萬用解法 for any topic: 訊號判讀 → 單一招式 → 可貼收口. First identify what her latest line is doing, then choose only one move, then end the pasteable reply with a hook, a choice, or a small public window.
+- Give-first rule: 先給一點自己的品味, feeling, or tiny scene before asking her to qualify. The reply should feel like "I have a standard and I am inviting you in", not "answer my test".
+- Topic-agnostic route: extract one noun or feeling from her line, tie it to a small shared scene, then either let her reveal taste or open a low-effort next step. This keeps YouTube, travel, work, food, and jokes all on the same speed-invite track.
+- 可貼收口 should 讓她低壓接球: a playful either/or, "等你回血再...", "如果你剛好也想...", or "不急，但我會..." style. Avoid commands, auditions, and evaluator voice.
+- Read her 淺溝通 before giving the line: tired = lower effort window; micro-test = pass test first; curiosity = feed mystery; pushback = repair/tease; availability hint = close.
+- In high-score Game, warmUp should feel like a confident player leading lightly. In low-score, guarded, annoyed, or overstep states, the high-skill move is restraint and repair.
+- Never teach or output manipulation, shame, compliance pressure, sexual explicitness, private-location pressure, or demeaning qualification. High frame = standards + warmth + consent.
+
+`;
+}
+
 function gameHintEvidence(opts: {
   turns: PracticeTurn[];
   profile: PracticeProfile;
@@ -437,7 +456,7 @@ function gameHintEvidence(opts: {
     inviteStage: opts.inviteMaturity?.stage ?? null,
   });
   const strategy = srGameStrategyPrompt(opts.profile);
-  return `gameHint(hidden guidance)\nphase: ${snapshot.phase}\ntargetVariable: ${snapshot.targetVariable}\nspeedInviteDirection: ${snapshot.speedInviteDirection}\nallowSpicyLevel: ${snapshot.spicyLevel}\nGame coaching may directly name high-skill concepts in natural Traditional Chinese: 階段、目標變數、速約方向、Value / Frame / Emotion / Investment、測試、框架、情緒推進、投資感、性張力。\nVisible coaching should be practical and sharper than beginner mode: say what phase this reply is in, which variable to move, and whether to build, test, create tension, or open a low-pressure invite window.\nSpicy Ladder: L0 repair/safety, L1 playful tease, L2 adult-aware implication, L3 controlled sexual tension by implication only. High safety and high scores may use L2/L3; guarded/annoyed/recent overstep must downshift to L0/L1.\nL4 forbidden: explicit sexual content, explicit body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, or hard-pushing a private scene. Never output L4 in replies or coaching.\nReality Anchoring: if the transcript includes fake shared friends, fake introductions, fake prior meetings, fake workplace/clinic/school familiarity, or claims about her location/day without evidence, coach suspicion/confirmation instead of validating the story.\n\n${visibleGameHintContract()}${
+  return `gameHint(hidden guidance)\nphase: ${snapshot.phase}\ntargetVariable: ${snapshot.targetVariable}\nspeedInviteDirection: ${snapshot.speedInviteDirection}\nallowSpicyLevel: ${snapshot.spicyLevel}\nGame coaching may directly name high-skill concepts in natural Traditional Chinese: 階段、目標變數、速約方向、Value / Frame / Emotion / Investment、測試、框架、情緒推進、投資感、性張力。\nVisible coaching should be practical and sharper than beginner mode: say what phase this reply is in, which variable to move, and whether to build, test, create tension, or open a low-pressure invite window.\nSpicy Ladder: L0 repair/safety, L1 playful tease, L2 adult-aware implication, L3 controlled sexual tension by implication only. High safety and high scores may use L2/L3; guarded/annoyed/recent overstep must downshift to L0/L1.\nL4 forbidden: explicit sexual content, explicit body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, or hard-pushing a private scene. Never output L4 in replies or coaching.\nReality Anchoring: if the transcript includes fake shared friends, fake introductions, fake prior meetings, fake workplace/clinic/school familiarity, or claims about her location/day without evidence, coach suspicion/confirmation instead of validating the story.\n\n${visibleGameHintContract()}${safeAdvancedGameHintContract()}${
     gameFsmEvidencePrompt(snapshot)
   }${strategy ? `\n${strategy}\n` : "\n"}`;
 }
@@ -537,6 +556,34 @@ function parseObject(raw: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
+function rejectBossyPasteableHintReply(
+  value: string,
+  field: "warmUp" | "steady" | "coaching",
+) {
+  if (field === "coaching") return;
+  const compact = value.normalize("NFKC").replace(/\s+/g, "");
+  const softenedRepairPatterns = [
+    /(?:不用|不必|別|不要)(?:先)?(?:給我|丟給我)(?:一個|個)?.{0,10}(?:標準答案|答案|片單|推薦|選項)/,
+    /(?:不用|不必|別|不要)像?交作業/,
+    /(?:不用|不必|別|不要).{0,10}及不及格/,
+  ];
+  const guardTarget = softenedRepairPatterns.reduce(
+    (current, pattern) => current.replace(pattern, ""),
+    compact,
+  );
+  const bossyPatterns = [
+    /[妳你]先(?:給我|丟|說|交)(?:一個|個)?.{0,10}(?:標準答案|答案|片單|推薦|選項)/,
+    /先(?:給我|丟|說|交)(?:一個|個)?.{0,10}(?:標準答案|答案|片單|推薦|選項)/,
+    /(?:給我|丟給我)(?:一個|個)?.{0,10}(?:標準答案|答案|片單|推薦|選項)/,
+    /我再(?:判斷|看看|決定|評分).{0,14}(?:妳|你).{0,10}(?:標準|及不及格|會不會|是不是)/,
+    /及不及格/,
+    /交作業/,
+  ];
+  if (bossyPatterns.some((pattern) => pattern.test(guardTarget))) {
+    throw new Error("hint_bossy_pasteable_reply");
+  }
+}
+
 function requiredString(
   value: unknown,
   field: "warmUp" | "steady" | "coaching",
@@ -561,6 +608,7 @@ function requiredString(
   if (capped.length === 0) {
     throw new Error(`hint_missing_${field}`);
   }
+  rejectBossyPasteableHintReply(capped, field);
   rejectInternalLabelLeak(capped);
   rejectL4UnsafeVisibleText(capped, "hint_l4_unsafe");
   return capped;
