@@ -38,6 +38,15 @@ export interface PracticeHintResult {
   coaching: string;
 }
 
+interface HintBuildContext {
+  turns: PracticeTurn[];
+  profile: PracticeProfile;
+  practiceMode?: PracticeLearningMode;
+  temperatureScore: number;
+  familiarityScore?: number;
+  partnerMood?: PartnerMood | null;
+}
+
 interface HintParseOptions {
   mode?: PracticeLearningMode;
 }
@@ -138,6 +147,133 @@ function turnsToTranscript(turns: PracticeTurn[]): string {
       }`
     )
     .join("\n");
+}
+
+function latestAssistantText(turns: PracticeTurn[]): string {
+  const assistantTurns = turns.filter((turn) => turn.role === "ai");
+  return assistantTurns[assistantTurns.length - 1]?.text ?? "";
+}
+
+function phaseLabelForFallback(
+  phase: ReturnType<typeof evaluateGameFsm>["phase"],
+) {
+  return {
+    P1_OPEN: "開場",
+    P2_VALUE: "展示",
+    P3_TEST: "測試",
+    P4_TENSION: "張力",
+    P5_CLOSE: "收尾",
+  }[phase];
+}
+
+function targetLabelForFallback(target: string): string {
+  if (/investment|投入|invite/i.test(target)) return "投入";
+  if (/emotion|情緒|heat/i.test(target)) return "情緒";
+  if (/frame|框架/i.test(target)) return "框架";
+  if (/value|價值/i.test(target)) return "價值";
+  if (/safety|安全/i.test(target)) return "安全感";
+  return "熟悉感";
+}
+
+function fallbackRepliesForLatestAssistant(latestAssistant: string): {
+  warmUp: string;
+  steady: string;
+  inviteHook: string;
+} {
+  const text = latestAssistant.normalize("NFKC").toLowerCase();
+  if (/[脫脱]口秀|搞笑|好笑|笑點|幽默/.test(text)) {
+    return {
+      warmUp:
+        "會，我喜歡那種不硬搞笑、但一句話剛好打中的節奏。妳偏冷面笑點還是毒舌型？",
+      steady: "會看一點，舒服的節奏很加分。妳最近看到哪段最有印象？",
+      inviteHook: "把她喜歡的片段接成咖啡時交換一小段的窗口",
+    };
+  }
+  if (/咖啡|拿鐵|美式|cafe|coffee/.test(text)) {
+    return {
+      warmUp:
+        "會，我對咖啡店節奏也滿挑。妳是偏安靜窗邊，還是吧台那種有點吵的生活感？",
+      steady: "聽起來是妳會喜歡的節奏。那間是舒服到能待很久，還是只適合外帶？",
+      inviteHook: "把她的咖啡偏好接成短咖啡窗口",
+    };
+  }
+  if (/電影|影集|片段|影片|看/.test(text)) {
+    return {
+      warmUp:
+        "會，我喜歡那種看完會留下畫面的東西。妳剛剛講的那種節奏，感覺滿挑人的。",
+      steady:
+        "會看一點。妳說節奏舒服，我反而好奇是哪種舒服？輕鬆，還是有後勁？",
+      inviteHook: "把她的片單接成交換推薦的小窗口",
+    };
+  }
+  return {
+    warmUp:
+      "會，我喜歡有畫面感又不太用力的東西。妳剛剛這個說法，感覺滿有妳自己的標準。",
+    steady: "會有興趣。妳剛剛說的那個點滿具體，我想先聽妳怎麼挑。",
+    inviteHook: "先接她的偏好，再丟一個低壓小窗口",
+  };
+}
+
+export function buildFallbackHintResult(
+  opts: HintBuildContext,
+): PracticeHintResult {
+  const score = clampTemperature(opts.temperatureScore);
+  const familiarity = clampTemperature(opts.familiarityScore ?? 0);
+  const stage = relationshipStageFor(familiarity, score);
+  const inviteMaturity = inviteMaturityFromLearningScores({
+    temperatureScore: score,
+    familiarityScore: familiarity,
+    partnerMood: opts.partnerMood ?? null,
+  });
+  const snapshot = evaluateGameFsm({
+    turns: opts.turns,
+    temperatureScore: score,
+    familiarityScore: familiarity,
+    partnerMood: opts.partnerMood ?? null,
+    relationshipStage: stage.stage,
+    inviteStage: inviteMaturity?.stage ?? null,
+  });
+  const needsRepair = snapshot.spicyLevel === "L0" ||
+    snapshot.failureStates.some((state) =>
+      state === "GREASY" ||
+      state === "GHOST_RISK" ||
+      state === "FRAME_OVERREACH"
+    ) ||
+    snapshot.realityFlags.length > 0;
+
+  if (needsRepair) {
+    return {
+      replies: [
+        {
+          type: "warm_up",
+          label: "升溫回覆",
+          text:
+            "我剛剛有點衝，先收回來。妳剛說的那個點我比較好奇，妳通常怎麼判斷？",
+        },
+        {
+          type: "steady",
+          label: "穩住回覆",
+          text: "好，我先不亂跳結論。妳剛剛那個反應我收到，先聽妳怎麼看。",
+        },
+      ],
+      coaching:
+        "Game 心法：測試階段先修安全感，別硬推私密或假熟。速約任務：這輪不約，先把她願意接話救回來。",
+    };
+  }
+
+  const fallback = fallbackRepliesForLatestAssistant(
+    latestAssistantText(opts.turns),
+  );
+  const phaseLabel = phaseLabelForFallback(snapshot.phase);
+  const targetLabel = targetLabelForFallback(snapshot.targetVariable);
+  return {
+    replies: [
+      { type: "warm_up", label: "升溫回覆", text: fallback.warmUp },
+      { type: "steady", label: "穩住回覆", text: fallback.steady },
+    ],
+    coaching:
+      `Game 心法：${phaseLabel}階段先推${targetLabel}，接她的興趣再丟偏好測試。速約任務：${fallback.inviteHook}。`,
+  };
 }
 
 function extractJsonObject(raw: string): string {

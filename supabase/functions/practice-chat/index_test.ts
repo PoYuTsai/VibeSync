@@ -2800,6 +2800,86 @@ Deno.test("game hint repairs common internal labels from provider before recordi
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
+Deno.test("game hint falls back quickly when provider generation fails", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({
+        temperature_score: 47,
+        familiarity_score: 34,
+        hint_count: 3,
+      }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [new Error("deepseek_timeout")],
+      rpc: {
+        record_practice_hint: [{
+          data: [{ new_hint_count: 4, did_charge: true }],
+        }],
+      },
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      turns: [
+        { role: "user", text: "妳平常看脫口秀嗎" },
+        {
+          role: "ai",
+          text: "最近看一些脫口秀片段，節奏蠻舒服的，你平常會看這類的嗎",
+        },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.replies.length, 2);
+  assertEquals(json.hintUsedCount, 4);
+  assert(String(json.coaching).includes("Game 心法"));
+  assert(String(json.coaching).includes("速約任務"));
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
+Deno.test("game hint falls back when provider returns malformed JSON", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({
+        temperature_score: 52,
+        familiarity_score: 38,
+        hint_count: 2,
+      }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: ["not json"],
+      rpc: {
+        record_practice_hint: [{
+          data: [{ new_hint_count: 3, did_charge: true }],
+        }],
+      },
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      turns: [
+        { role: "user", text: "妳平常看脫口秀嗎" },
+        {
+          role: "ai",
+          text: "最近看一些脫口秀片段，節奏蠻舒服的，你平常會看這類的嗎",
+        },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.replies.length, 2);
+  assertEquals(json.hintUsedCount, 3);
+  assert(String(json.coaching).includes("Game"));
+  assert(String(json.coaching).includes("速約任務"));
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
 Deno.test("hint before first AI reply returns session_not_started before provider and record RPC", async () => {
   const { response, json, state } = await run({
     ledger: beginnerStartedLedger({ ai_count: 0 }),

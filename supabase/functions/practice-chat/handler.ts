@@ -28,7 +28,11 @@ import {
 } from "./quota_decision.ts";
 import { DEEPSEEK_MODEL, type DeepSeekArgs } from "./deepseek.ts";
 import { type DebriefCard, parseDebriefCard } from "./debrief_card.ts";
-import { buildHintMessages, parseHintResult } from "./hint.ts";
+import {
+  buildFallbackHintResult,
+  buildHintMessages,
+  parseHintResult,
+} from "./hint.ts";
 import { buildPracticeSceneContext } from "./life_schedule.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import {
@@ -73,6 +77,7 @@ const DEBRIEF_GENERATION_ATTEMPTS = 2;
 const HINT_MAX_TOKENS = 650;
 const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 2;
+const GAME_HINT_TIMEOUT_MS = 12000;
 const TEMPERATURE_JUDGE_MAX_TOKENS = 450;
 const TEMPERATURE_JUDGE_TEMPERATURE = 0.2;
 const DEEPSEEK_TIMEOUT_MS = 30000;
@@ -1408,12 +1413,23 @@ export function createPracticeChatHandler(
         return jsonResponse(claimHintRow.stored_result);
       }
 
+      const hintTemperatureScore = ledger.temperatureScore ??
+        difficultyStartTemperature;
+      const hintFamiliarityScore = ledger.familiarityScore ?? 0;
+      const hintPartnerMood = partnerStateFromLedger(ledger)?.mood ??
+        relationshipThreadState?.partnerState?.mood ?? null;
+      const hintGenerationAttempts = request.practiceMode === "game"
+        ? 1
+        : HINT_GENERATION_ATTEMPTS;
+      const hintTimeoutMs = request.practiceMode === "game"
+        ? GAME_HINT_TIMEOUT_MS
+        : DEEPSEEK_TIMEOUT_MS;
       let hintResult: ReturnType<typeof parseHintResult> | null = null;
       try {
         let lastError: unknown;
         for (
           let attempt = 1;
-          attempt <= HINT_GENERATION_ATTEMPTS;
+          attempt <= hintGenerationAttempts;
           attempt++
         ) {
           try {
@@ -1423,18 +1439,16 @@ export function createPracticeChatHandler(
                 turns: request.turns,
                 profile: request.profile,
                 practiceMode: request.practiceMode,
-                temperatureScore: ledger.temperatureScore ??
-                  difficultyStartTemperature,
-                familiarityScore: ledger.familiarityScore ?? 0,
-                partnerMood: partnerStateFromLedger(ledger)?.mood ??
-                  relationshipThreadState?.partnerState?.mood ?? null,
+                temperatureScore: hintTemperatureScore,
+                familiarityScore: hintFamiliarityScore,
+                partnerMood: hintPartnerMood,
                 sceneContext,
                 memorySummary: promptMemorySummary,
               }),
               maxTokens: HINT_MAX_TOKENS,
               temperature: HINT_TEMPERATURE,
               jsonMode: true,
-              timeoutMs: DEEPSEEK_TIMEOUT_MS,
+              timeoutMs: hintTimeoutMs,
             });
             hintResult = parseHintResult(rawHint, {
               mode: request.practiceMode,
@@ -1448,6 +1462,20 @@ export function createPracticeChatHandler(
               error: getErrorMessage(e),
             });
           }
+        }
+        if (hintResult === null && request.practiceMode === "game") {
+          logWarn("practice_chat_game_hint_fallback_used", {
+            user: summarizeUser(user.id),
+            error: getErrorMessage(lastError),
+          });
+          hintResult = buildFallbackHintResult({
+            turns: request.turns,
+            profile: request.profile,
+            practiceMode: request.practiceMode,
+            temperatureScore: hintTemperatureScore,
+            familiarityScore: hintFamiliarityScore,
+            partnerMood: hintPartnerMood,
+          });
         }
         if (hintResult === null) {
           throw lastError instanceof Error
