@@ -2569,17 +2569,55 @@ Deno.test("debrief retries a malformed provider card once before returning the c
   assertEquals(claimDebriefCalls(state).length, 1);
 });
 
-Deno.test("debrief returns generation_failed after exhausting malformed card retries", async () => {
+Deno.test("debrief falls back after exhausting malformed provider cards", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
     deepSeekReplies: ["not json", "["],
   }, debriefBody());
 
-  assertEquals(response.status, 500);
-  assertEquals(json, { error: "practice_generation_failed" });
+  assertEquals(response.status, 200);
+  assert(String(json.card.summary).length > 0);
+  assert(String(json.card.suggestedLine).length > 0);
+  assertEquals(json.card.gameBreakdown, null);
   assertEquals(state.deepSeekCalls.length, 2);
   assertEquals(state.deepSeekCalls[0].jsonMode, true);
   assertEquals(state.deepSeekCalls[1].jsonMode, true);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
+  assertEquals(state.deepSeekCalls[1].timeoutMs, 12000);
+  assertEquals(claimDebriefCalls(state).length, 1);
+});
+
+Deno.test("game debrief fallback includes game breakdown after provider failure", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({
+        temperature_score: 47,
+        familiarity_score: 34,
+      }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [new Error("deepseek_timeout"), "not json"],
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      turns: [
+        { role: "user", text: "你好" },
+        { role: "ai", text: "哈囉 正在看點東西" },
+        {
+          role: "user",
+          text: "有點好奇，不過妳這語氣，該不會是在偷學什麼神秘技能吧？",
+        },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assert(String(json.card.summary).length > 0);
+  assertEquals(typeof json.card.gameBreakdown.phaseReached, "string");
+  assertEquals(typeof json.card.gameBreakdown.nextFirstLine, "string");
+  assertEquals(state.deepSeekCalls.length, 2);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
+  assertEquals(state.deepSeekCalls[1].timeoutMs, 12000);
   assertEquals(claimDebriefCalls(state).length, 1);
 });
 

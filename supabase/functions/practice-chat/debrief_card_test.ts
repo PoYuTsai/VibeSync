@@ -5,7 +5,7 @@ import {
   assertEquals,
   assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { parseDebriefCard } from "./debrief_card.ts";
+import { buildFallbackDebriefCard, parseDebriefCard } from "./debrief_card.ts";
 
 const valid = JSON.stringify({
   summary: "整體有來有往，後段她有點冷掉",
@@ -302,4 +302,26 @@ Deno.test("parseDebriefCard can drop gameBreakdown outside Game mode", () => {
   );
 
   assertEquals(c.gameBreakdown, null);
+});
+
+Deno.test("buildFallbackDebriefCard returns safe standard and game fallback cards", () => {
+  const standard = buildFallbackDebriefCard({ practiceMode: "standard" });
+  const game = buildFallbackDebriefCard({ practiceMode: "game" });
+
+  assertEquals(standard.gameBreakdown, null);
+  assertEquals(typeof standard.summary, "string");
+  assertEquals(typeof standard.suggestedLine, "string");
+  assertEquals(game.gameBreakdown?.phaseReached, "開場到測試");
+  assertEquals(game.gameBreakdown?.failureState, "問題偏多");
+  const visible = [
+    game.summary,
+    game.suggestedLine,
+    game.gameBreakdown?.phaseReached,
+    game.gameBreakdown?.missedVariable,
+    game.gameBreakdown?.failureState,
+    game.gameBreakdown?.nextFirstLine,
+    game.gameBreakdown?.inviteDirection,
+  ].join("\n");
+  assertEquals(visible.includes("P4"), false);
+  assertEquals(visible.includes("targetVariable"), false);
 });

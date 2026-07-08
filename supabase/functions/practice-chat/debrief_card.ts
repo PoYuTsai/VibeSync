@@ -30,6 +30,31 @@ export interface DebriefCard {
   gameBreakdown: GameBreakdown | null;
 }
 
+export function buildFallbackDebriefCard(
+  opts: { practiceMode?: string } = {},
+): DebriefCard {
+  const suggestedLine = "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？";
+  return {
+    summary: "這輪有接到她的回覆，但連續提問偏多，自己的感受還不夠。",
+    strengths: ["有順著她的回覆接話"],
+    watchouts: ["問題偏多，容易像盤問"],
+    suggestedLine,
+    vibe: "中性",
+    dateChance: "low",
+    dateChanceReason: "熟悉度還在建立中，先把話題聊開比較穩。",
+    nextInviteMove: "先接她的答案，再分享一點自己的感受。",
+    gameBreakdown: opts.practiceMode === "game"
+      ? {
+        phaseReached: "開場到測試",
+        missedVariable: "投入感",
+        failureState: "問題偏多",
+        nextFirstLine: suggestedLine,
+        inviteDirection: "先不急約，接她興趣後再丟低壓窗口。",
+      }
+      : null,
+  };
+}
+
 export function clampStr(v: unknown, max: number): string {
   return typeof v === "string" ? v.trim().slice(0, max) : "";
 }

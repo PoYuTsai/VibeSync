@@ -27,7 +27,11 @@ import {
   type SessionLedger,
 } from "./quota_decision.ts";
 import { DEEPSEEK_MODEL, type DeepSeekArgs } from "./deepseek.ts";
-import { type DebriefCard, parseDebriefCard } from "./debrief_card.ts";
+import {
+  buildFallbackDebriefCard,
+  type DebriefCard,
+  parseDebriefCard,
+} from "./debrief_card.ts";
 import {
   buildFallbackHintResult,
   buildHintMessages,
@@ -74,6 +78,7 @@ const CHAT_GENERATION_ATTEMPTS = 2;
 const DEBRIEF_MAX_TOKENS = 800;
 const DEBRIEF_TEMPERATURE = 0.5;
 const DEBRIEF_GENERATION_ATTEMPTS = 2;
+const DEBRIEF_TIMEOUT_MS = 12000;
 const HINT_MAX_TOKENS = 650;
 const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 2;
@@ -1703,7 +1708,7 @@ export function createPracticeChatHandler(
               maxTokens: DEBRIEF_MAX_TOKENS,
               temperature: DEBRIEF_TEMPERATURE,
               jsonMode: true,
-              timeoutMs: DEEPSEEK_TIMEOUT_MS,
+              timeoutMs: DEBRIEF_TIMEOUT_MS,
             });
             debriefCard = parseDebriefCard(rawCard, {
               allowGameBreakdown: ledger.practiceMode === "game",
@@ -1719,9 +1724,14 @@ export function createPracticeChatHandler(
           }
         }
         if (debriefCard === null) {
-          throw lastError instanceof Error
-            ? lastError
-            : new Error("debrief_generation_failed");
+          logWarn("practice_chat_debrief_fallback_used", {
+            user: summarizeUser(user.id),
+            mode: ledger.practiceMode ?? request.practiceMode,
+            error: getErrorMessage(lastError),
+          });
+          debriefCard = buildFallbackDebriefCard({
+            practiceMode: ledger.practiceMode,
+          });
         }
       } catch (e) {
         logWarn("practice_chat_generation_failed", {
