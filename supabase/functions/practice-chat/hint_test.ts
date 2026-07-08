@@ -391,7 +391,10 @@ Deno.test("buildHintMessages gives Game hints a visible speed-invite contract", 
 Deno.test("buildHintMessages teaches Game hints safe advanced qualification narrative closing", () => {
   const gameText = buildHintMessages({
     turns: [
-      { role: "user", text: "妳剛說累到不想動，那我是不是要先面試一下妳的放空品味" },
+      {
+        role: "user",
+        text: "妳剛說累到不想動，那我是不是要先面試一下妳的放空品味",
+      },
       { role: "ai", text: "東京剛回來，累到不想動。正在躺平" },
     ],
     profile,
@@ -417,7 +420,10 @@ Deno.test("buildHintMessages teaches Game hints safe advanced qualification narr
 
   const beginnerText = buildHintMessages({
     turns: [
-      { role: "user", text: "妳剛說累到不想動，那我是不是要先面試一下妳的放空品味" },
+      {
+        role: "user",
+        text: "妳剛說累到不想動，那我是不是要先面試一下妳的放空品味",
+      },
       { role: "ai", text: "東京剛回來，累到不想動。正在躺平" },
     ],
     profile,
@@ -430,6 +436,39 @@ Deno.test("buildHintMessages teaches Game hints safe advanced qualification narr
   assertEquals(beginnerText.includes("資格篩選"), false);
   assertEquals(beginnerText.includes("順勢收尾"), false);
   assertEquals(beginnerText.includes("10-15 句內"), false);
+});
+
+Deno.test("buildHintMessages keeps Game Hint prompt compact enough for reliable generation", () => {
+  const gameText = buildHintMessages({
+    turns: [
+      { role: "user", text: "安" },
+      { role: "ai", text: "嗨 剛回來還在調時差" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 30,
+    familiarityScore: 20,
+    partnerMood: "neutral",
+  }).map((m) => m.content).join("\n");
+  const beginnerText = buildHintMessages({
+    turns: [
+      { role: "user", text: "安" },
+      { role: "ai", text: "嗨 剛回來還在調時差" },
+    ],
+    profile,
+    practiceMode: "beginner",
+    temperatureScore: 30,
+    familiarityScore: 20,
+    partnerMood: "neutral",
+  }).map((m) => m.content).join("\n");
+
+  assert(
+    gameText.length <= 6200,
+    `Game Hint prompt is too long: ${gameText.length}`,
+  );
+  assert(gameText.length <= beginnerText.length + 4600);
+  assert(gameText.includes("safeAdvancedGameHintContract"));
+  assert(gameText.includes("visibleGameHintContract"));
 });
 
 Deno.test("buildFallbackHintResult makes high-score Game hints point to a pasteable speed invite", () => {
@@ -509,6 +548,31 @@ Deno.test("buildFallbackHintResult keeps low-score Game hints as invite setup, n
   assert(game.replies[1].text.length <= 80);
 });
 
+Deno.test("buildFallbackHintResult uses topic-agnostic Game fallback instead of mechanical echo", () => {
+  const game = buildFallbackHintResult({
+    turns: [
+      { role: "user", text: "你平常看什麼放鬆" },
+      { role: "ai", text: "最近看一些脫口秀片段，節奏蠻舒服的" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 34,
+    familiarityScore: 18,
+    partnerMood: "neutral",
+  });
+  const visible = [
+    ...game.replies.map((reply) => reply.text),
+    game.coaching,
+  ].join("\n");
+
+  assert(visible.includes("我的版本") || visible.includes("哪一派"));
+  assert(visible.includes("節奏") || visible.includes("有畫面"));
+  assertEquals(visible.includes("妳說「"), false);
+  assertEquals(visible.includes("我先接住"), false);
+  assertEquals(visible.includes("我想多聽一點"), false);
+  assertEquals(visible.includes("這輪先把節奏接穩"), false);
+});
+
 Deno.test("buildFallbackHintResult anchors Game fallback to latest travel-rest reply", () => {
   const game = buildFallbackHintResult({
     turns: [
@@ -538,6 +602,42 @@ Deno.test("buildFallbackHintResult anchors Game fallback to latest travel-rest r
   assertEquals(visible.includes("剛剛那句"), false);
   assertEquals(visible.includes("妳剛剛那個點"), false);
   assertEquals(visible.includes("這題我先不推進"), false);
+});
+
+Deno.test("buildFallbackHintResult turns jetlag return into Game speed-invite setup", () => {
+  const game = buildFallbackHintResult({
+    turns: [
+      { role: "user", text: "安" },
+      { role: "ai", text: "嗨 剛回來還在調時差" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 30,
+    familiarityScore: 20,
+    partnerMood: "neutral",
+  });
+  const visible = [
+    ...game.replies.map((reply) => reply.text),
+    game.coaching,
+  ].join("\n");
+
+  assert(visible.includes("調時差"));
+  assert(
+    visible.includes("回血") ||
+      visible.includes("時差歸位") ||
+      visible.includes("這趟"),
+    "jetlag fallback should read the low-energy travel state",
+  );
+  assert(
+    visible.includes("咖啡") ||
+      visible.includes("短") ||
+      visible.includes("下次"),
+    "Game fallback should still plant a low-pressure future window",
+  );
+  assertEquals(visible.includes("妳說「"), false);
+  assertEquals(visible.includes("我先接住"), false);
+  assertEquals(visible.includes("我比較想聽妳怎麼看"), false);
+  assertEquals(visible.includes("這輪先把節奏接穩"), false);
 });
 
 Deno.test("buildFallbackHintResult avoids bossy low-familiarity Game fallback language", () => {
@@ -632,7 +732,7 @@ Deno.test("buildFallbackHintResult does not quote raw image filenames as fallbac
   assertEquals(visible.includes("codex-clipboard"), false);
   assertEquals(visible.includes(".png"), false);
   assertEquals(visible.includes("[image concept omitted]"), false);
-  assert(visible.includes("這個回覆"));
+  assert(visible.includes("我的版本") || visible.includes("哪一派"));
   assertEquals(visible.includes("剛剛那句"), false);
 });
 
@@ -752,7 +852,15 @@ Deno.test("buildFallbackHintResult does not treat general or future travel topic
   const cases = [
     "我喜歡旅行，尤其日本",
     "下週要出差，想到就累",
+    "下週飛回日本，想到就累",
+    "下禮拜回台，想到就累",
+    "週末回國想到就累",
+    "月底回台應該會很累",
+    "明年回國時差會累",
+    "下個月從東京飛回來，想到就累",
     "我下個月想去日本玩，應該會很累",
+    "我等等回台北，累到不想動",
+    "晚點回台中，想到就累",
     "這個想法很落地，暫時想放空",
   ];
 
@@ -783,6 +891,9 @@ Deno.test("buildFallbackHintResult does not treat overseas media wording as trav
   const cases = [
     "日本遊戲很好玩",
     "韓國綜藝很好玩",
+    "韓國電影剛看完回來好累",
+    "剛從韓國展回來，有點累",
+    "日本遊戲展剛回來累到不想動",
   ];
 
   for (const text of cases) {
@@ -805,7 +916,30 @@ Deno.test("buildFallbackHintResult does not treat overseas media wording as trav
     assertEquals(visible.includes("剛回來"), false);
     assertEquals(visible.includes("這趟"), false);
     assertEquals(visible.includes("旅行狀態"), false);
+    assertEquals(visible.includes("時差歸位"), false);
   }
+});
+
+Deno.test("buildFallbackHintResult still treats completed flight return as travel recovery", () => {
+  const game = buildFallbackHintResult({
+    turns: [
+      { role: "user", text: "最近忙什麼" },
+      { role: "ai", text: "剛從東京飛回來，累到不想動" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 34,
+    familiarityScore: 18,
+    partnerMood: "neutral",
+  });
+  const visible = [
+    ...game.replies.map((reply) => reply.text),
+    game.coaching,
+  ].join("\n");
+
+  assert(visible.includes("回血") || visible.includes("這趟"));
+  assert(visible.includes("咖啡") || visible.includes("短"));
+  assertEquals(visible.includes("妳說「"), false);
 });
 
 Deno.test("buildFallbackHintResult anchors beginner fallback to latest travel-rest reply", () => {
@@ -996,9 +1130,11 @@ Deno.test("parseHintResult rejects bossy or template-like pasteable hint replies
   for (
     const raw of [
       {
-        warmUp: "會，我喜歡有畫面感又不太用力的東西。妳先給我一個標準答案，我看妳標準在哪。",
+        warmUp:
+          "會，我喜歡有畫面感又不太用力的東西。妳先給我一個標準答案，我看妳標準在哪。",
         steady: "會有興趣。妳先說一個你最推的，我再判斷妳是不是會挑。",
-        coaching: "Game 心法：測試階段先推框架。速約任務：不要變成命令她交作業。",
+        coaching:
+          "Game 心法：測試階段先推框架。速約任務：不要變成命令她交作業。",
       },
       {
         warmUp: "那你先丟一個片單給我，我再看看你品味及不及格。",
@@ -1018,7 +1154,8 @@ Deno.test("parseHintResult rejects bossy or template-like pasteable hint replies
 Deno.test("parseHintResult accepts softened repair lines that mention bossy wording", () => {
   const result = parseHintResult(
     JSON.stringify({
-      warmUp: "不用給我標準答案，講一個你現在真的想看的就好，我比較想看你的放空品味。",
+      warmUp:
+        "不用給我標準答案，講一個你現在真的想看的就好，我比較想看你的放空品味。",
       steady: "不用像交作業，先挑一個最省腦的，我再看要不要跟你換一個。",
       coaching: "Game 心法：測試階段先推框架。速約任務：把命令感改成低壓選擇。",
     }),
@@ -1034,9 +1171,11 @@ Deno.test("parseHintResult rejects softened prefix followed by bossy pasteable w
     () =>
       parseHintResult(
         JSON.stringify({
-          warmUp: "不用給我標準答案，但你先丟一個片單給我，我再看看你品味及不及格。",
+          warmUp:
+            "不用給我標準答案，但你先丟一個片單給我，我再看看你品味及不及格。",
           steady: "不用像交作業，但先給我你的答案，我再決定要不要接。",
-          coaching: "Game 心法：測試階段先推框架。速約任務：不要讓軟化句包住命令感。",
+          coaching:
+            "Game 心法：測試階段先推框架。速約任務：不要讓軟化句包住命令感。",
         }),
         { mode: "game" },
       ),

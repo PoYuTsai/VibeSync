@@ -214,6 +214,173 @@ function latestAssistantNeedsFallbackRepair(latestAssistant: string): boolean {
       );
 }
 
+function normalizedAssistantSignalText(latestAssistant: string): string {
+  return scrubRawImageFilenames(latestAssistant)
+    .normalize("NFKC")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function latestAssistantLooksMediaOrLocalActivity(normalized: string): boolean {
+  return /youtube|影片|片段|電影|影集|劇|綜藝|脫口秀|音樂|歌|遊戲|動漫|動畫|漫畫|展|展覽|餐廳|料理|店|咖啡廳/
+    .test(normalized);
+}
+
+function latestAssistantLooksFutureTravel(normalized: string): boolean {
+  return /(?:等等|等一下|待會|晚點|週末|周末|月底|年底|下週|下周|下禮拜|下個禮拜|下個月|下月|明天|後天|明年|之後|未來|準備|打算|想去|要去|要出差|要飛).{0,12}(?:飛回|飛去|出差|旅行|旅遊|回國|回台|回臺|回來|日本|東京|韓國|首爾|大阪|京都|美國|歐洲|倫敦|巴黎|機場)/
+    .test(normalized) ||
+    /(?:等等|等一下|待會|晚點|週末|周末|月底|年底|下週|下周|下禮拜|下個禮拜|下個月|下月|明天|後天|明年).{0,12}(?:從.{0,6})?(?:飛回|飛去|出差|旅行|旅遊|回國|回台|回臺|回來)/
+      .test(normalized);
+}
+
+function latestAssistantLooksTravelRecovery(latestAssistant: string): boolean {
+  if (latestAssistantNeedsFallbackRepair(latestAssistant)) return false;
+  const normalized = normalizedAssistantSignalText(latestAssistant);
+  if (!normalized || normalized.includes(IMAGE_CONCEPT_PLACEHOLDER)) {
+    return false;
+  }
+  if (latestAssistantLooksFutureTravel(normalized)) return false;
+
+  const hasReturnCue =
+    /剛.{0,6}回來|剛.{0,6}落地|剛.{0,6}下飛機|剛.{0,8}飛回|才.{0,6}回來|剛從.{0,8}飛回來|回國|回台灣|回臺灣/
+      .test(normalized);
+  const hasStrongTravelCue =
+    /時差|調時差|jet\s*lag|飛機|機場|這趟|旅程|旅行|旅遊|出差|國外|落地|下飛機|回國|回台|飛回/
+      .test(normalized);
+  const hasBarePlaceCue = /日本|東京|韓國|首爾|大阪|京都|美國|歐洲|倫敦|巴黎/
+    .test(
+      normalized,
+    );
+  const hasTravelCue = hasStrongTravelCue ||
+    (hasBarePlaceCue && !latestAssistantLooksMediaOrLocalActivity(normalized));
+  const hasLowEnergyCue = /時差|調時差|累|不想動|躺平|放空|回血|沒電|睏|想睡/
+    .test(normalized);
+
+  return hasReturnCue && hasTravelCue && hasLowEnergyCue;
+}
+
+function latestAssistantMentionsJetlag(latestAssistant: string): boolean {
+  const normalized = latestAssistant.normalize("NFKC").toLowerCase();
+  return /時差|調時差|jet\s*lag/.test(normalized);
+}
+
+function travelRecoveryGameFallbackReplies(latestAssistant: string): {
+  warmUp: string;
+  steady: string;
+  inviteHook: string;
+  signalRead: string;
+} {
+  const hasJetlag = latestAssistantMentionsJetlag(latestAssistant);
+  return hasJetlag
+    ? {
+      warmUp:
+        "剛回來還在調時差，那我先不耗妳電量。妳先回血，等時差歸位我用一杯咖啡聽妳講這趟最有畫面的一段。",
+      steady:
+        "那先別硬聊，妳先把時差調回來。我好奇，這趟是工作飛，還是偷放風？",
+      inviteHook: "先降負擔，再埋等她時差歸位後的短咖啡/旅行故事窗口",
+      signalRead: "她丟的是低能量旅行狀態，不是要你追問行程",
+    }
+    : {
+      warmUp:
+        "剛回來累到躺平，那我先不耗妳電量。妳先回血，等妳活過來我用一杯咖啡聽妳講這趟最有畫面的一段。",
+      steady:
+        "那先別硬聊，妳先躺平回血。我好奇，這趟是好玩到累，還是累到只剩好笑？",
+      inviteHook: "先降負擔，再埋等她回血後的短咖啡/旅行故事窗口",
+      signalRead: "她丟的是低能量旅行狀態，不是要你立刻推進",
+    };
+}
+
+function latestAssistantLooksLowEnergy(latestAssistant: string): boolean {
+  const normalized = normalizedAssistantSignalText(latestAssistant);
+  return /累|疲|不想動|躺平|放空|回血|沒電|睏|想睡|腦袋.{0,4}空|暫時只想/.test(
+    normalized,
+  );
+}
+
+function lowEnergyGameFallbackReplies(): {
+  warmUp: string;
+  steady: string;
+  inviteHook: string;
+  signalRead: string;
+} {
+  return {
+    warmUp:
+      "那我先不耗妳電量。妳先放空回血，我丟一個低負擔的：今天最想關機的是人，還是事？",
+    steady: "先不用硬聊。妳放空一下，晚點有電再回我一個今天的小插曲。",
+    inviteHook: "先降負擔，讓她回一個容易答的選擇，再等下一輪找窗口",
+    signalRead: "她丟的是低能量狀態，高階做法是降低回覆成本，不追問",
+  };
+}
+
+function latestAssistantLooksTasteTopic(latestAssistant: string): boolean {
+  const normalized = normalizedAssistantSignalText(latestAssistant);
+  return latestAssistantLooksMediaOrLocalActivity(normalized) ||
+    /節奏|舒服|好笑|有趣|品味|喜歡|好看|好聽|療癒|放鬆/.test(normalized);
+}
+
+function tasteGameFallbackReplies(route: GameInviteRoute): {
+  warmUp: string;
+  steady: string;
+  inviteHook: string;
+  signalRead: string;
+} {
+  if (route === "direct") {
+    return {
+      warmUp: "這個我有興趣。這週找 30 分鐘短咖啡交換片單，合拍再聊深一點。",
+      steady: "先不硬推，但妳這種節奏感適合現場聊。這週短咖啡 30 分鐘？",
+      inviteHook: "把品味線索收成 30 分鐘短咖啡/片單交換，具體但可拒絕",
+      signalRead: "她在丟品味與節奏線索，可以把線上話題收成現場版本",
+    };
+  }
+  if (route === "soft") {
+    return {
+      warmUp:
+        "我先給我的版本：我吃有畫面但不太用力的節奏。聊順的話，下次用咖啡換片單。",
+      steady: "先不急著約。這題聊順，再把它變成一個下次短咖啡的小窗口。",
+      inviteHook: "先給自己的品味，再用下次短咖啡埋低壓窗口",
+      signalRead: "她在丟品味與節奏線索，不是要你查戶口",
+    };
+  }
+  return {
+    warmUp: "我先給我的版本：我吃有畫面但不太用力的節奏。妳是哪一派？",
+    steady: "我會先看節奏合不合。妳偏療癒放空，還是要有梗才留得住？",
+    inviteHook: "先給自己的品味，再讓她低壓補一個偏好，下一輪找窗口",
+    signalRead: "她在丟品味與節奏線索，不是要你查戶口",
+  };
+}
+
+function topicAgnosticGameFallbackReplies(route: GameInviteRoute): {
+  warmUp: string;
+  steady: string;
+  inviteHook: string;
+  signalRead: string;
+} {
+  if (route === "direct") {
+    return {
+      warmUp: "這題我有興趣。這週找 30 分鐘短咖啡交換版本，合拍就聊深一點。",
+      steady: "我先不硬推，但這題適合現場聊。這週哪天適合短咖啡，30 分鐘就好？",
+      inviteHook: "把模糊好感收成短咖啡窗口，具體但保留拒絕空間",
+      signalRead: "訊號已經夠順，可以把線上話題收成現場版本",
+    };
+  }
+  if (route === "soft") {
+    return {
+      warmUp:
+        "我先給我的版本：舒服的聊天要有畫面，但不要用力過頭。聊順再換一杯咖啡版。",
+      steady: "先不急著約。這題如果聊順，下次用一杯咖啡換現場版。",
+      inviteHook: "先給自己的框架，再埋下次咖啡窗口，不急著成交",
+      signalRead: "訊號還偏軟，高階做法是先給框架，再丟低壓窗口",
+    };
+  }
+  return {
+    warmUp: "我先給我的版本：舒服的聊天要有畫面，但不要用力過頭。妳是哪一派？",
+    steady: "我比較吃有畫面的聊天。妳丟一個偏好，我看能不能把它變小場景。",
+    inviteHook: "先給自己的框架，再讓她低壓接球，下一輪才找窗口",
+    signalRead: "訊號不夠明確時，高階做法是先給框架，不是追問",
+  };
+}
+
 function evidenceBoundGameFallbackReplies(
   latestAssistant: string,
   route: GameInviteRoute,
@@ -221,6 +388,7 @@ function evidenceBoundGameFallbackReplies(
   warmUp: string;
   steady: string;
   inviteHook: string;
+  signalRead?: string;
 } {
   const anchor = fallbackAnchorSnippet(latestAssistant);
   if (
@@ -232,25 +400,22 @@ function evidenceBoundGameFallbackReplies(
       inviteHook: "先降壓修安全感，不猜主題也不約，等她願意多說再找窗口",
     };
   }
+  if (latestAssistantLooksTravelRecovery(latestAssistant)) {
+    return travelRecoveryGameFallbackReplies(latestAssistant);
+  }
+  if (latestAssistantLooksLowEnergy(latestAssistant)) {
+    return lowEnergyGameFallbackReplies();
+  }
+  if (latestAssistantLooksTasteTopic(latestAssistant)) {
+    return tasteGameFallbackReplies(route);
+  }
   if (route === "direct") {
-    return {
-      warmUp: `妳${anchor}我先接住。合拍的話，這週找 30 分鐘短咖啡交換現場版。`,
-      steady: `我先不急著推。妳${anchor}我有興趣，合拍再找短咖啡交換。`,
-      inviteHook: "錨定她最後一句，不猜主題；高成熟度才收 30 分鐘短咖啡",
-    };
+    return topicAgnosticGameFallbackReplies(route);
   }
   if (route === "soft") {
-    return {
-      warmUp: `妳${anchor}我先不硬約。等這題聊順，下次用一杯咖啡聽妳現場版。`,
-      steady: "這題先順著聊。若後面合拍，再丟一個短咖啡交換的低壓窗口。",
-      inviteHook: "先接她最後一句，再鋪下次短咖啡窗口，不急著成交",
-    };
+    return topicAgnosticGameFallbackReplies(route);
   }
-  return {
-    warmUp: `妳${anchor}我先接住。不急著跳，我比較想聽妳怎麼看。`,
-    steady: `妳${anchor}我想多聽一點。這輪先把節奏接穩。`,
-    inviteHook: "這輪先不約，只接她最後一句並累積投資感",
-  };
+  return topicAgnosticGameFallbackReplies(route);
 }
 
 function evidenceBoundBeginnerFallbackReplies(latestAssistant: string): {
@@ -291,6 +456,7 @@ function gameFallbackRepliesForLatestAssistant(
   warmUp: string;
   steady: string;
   inviteHook: string;
+  signalRead?: string;
 } {
   return evidenceBoundGameFallbackReplies(latestAssistant, route);
 }
@@ -381,6 +547,7 @@ export function buildFallbackHintResult(
   );
   const phaseLabel = phaseLabelForFallback(snapshot.phase);
   const targetLabel = targetLabelForFallback(snapshot.targetVariable);
+  const signalRead = fallback.signalRead ?? "她這句可能是在測你的節奏或品味";
   const routeAdvice = {
     build: "這輪先不約，先把她的偏好變成可兌現的小場景，鋪下一個窗口",
     soft: "用「下次／改天」丟低壓窗口，保留退路",
@@ -393,7 +560,7 @@ export function buildFallbackHintResult(
       { type: "steady", label: "穩住回覆", text: fallback.steady },
     ],
     coaching:
-      `Game 心法：她這句可能是在測你的節奏或品味，${phaseLabel}階段先推${targetLabel}。速約任務：${fallback.inviteHook}；${routeAdvice}。`,
+      `Game 心法：${signalRead}，${phaseLabel}階段先推${targetLabel}。速約任務：${fallback.inviteHook}；${routeAdvice}。`,
   };
 }
 
@@ -428,35 +595,33 @@ function profileToEvidence(profile: PracticeProfile): string {
 
 function visibleGameHintContract(): string {
   return `visibleGameHintContract:
-The visible JSON must feel like Game攻略, not beginner mode.
-- warmUp/steady are exact pasteable replies. 可貼回覆本身要承擔 Game 任務，不能只把速約方向放在 coaching.
-- warmUp must be a bolder momentum reply. If speedInviteDirection is soft_invite_probe, direct_invite_low_pressure, or partner_window, point the reply itself toward an 邀約窗口 instead of asking another generic question.
-- steady must be the safer route, but still carry the same social goal instead of becoming plain beginner advice.
-- Each reply must include one concrete move: a test ball, a scene bridge, or a low-pressure invite window. A generic follow-up question alone is not enough.
-- Route discipline: no_invite_build_investment means earn a future window, not ask out now; soft_invite_probe means use 下次/改天 with an opt-out; direct_invite_low_pressure/partner_window means name a short public plan such as 30 分鐘咖啡 or a small errand; repair_before_invite/no_private_scene_soften means do not invite, lower pressure first.
-- Game Hint must read 淺溝通. Coaching should include a compact subtext read such as "她這句可能是在測..." or "她其實丟的是..." before the speed-invite task. If her latest reply is a micro-test like 「你是不是都這樣講」「那你倒是說說看」「看你怎麼安排」, the pasteable reply must pass the test first, then bridge to a scene/window.
-- coaching must be 2 compact Traditional Chinese sentences and start with "Game 心法：". It must include the natural phase label 開場/展示/測試/張力/收尾, one target variable in Chinese (價值/框架/情緒/投入), and a concrete "速約任務：" for the next reply.
-- When L2/L3 is allowed and safety is high, warmUp may add adult-aware tension by implication; when L0/L1, coaching must explicitly say 先修安全感 or 先降壓.
-- Never reveal hidden snake_case labels. Translate the invite route into visible language such as 低壓邀約、丟窗口、接她給的窗口、約一個小行程.
+- Output exact JSON only: warmUp, steady, coaching.
+- warmUp/steady are pasteable replies and must feel like Game攻略, not beginner mode. 可貼回覆本身要有招，不能只把速約方向放在 coaching.
+- Each reply uses one move: pass her test, give your taste/frame, bridge to a scene, or open an 邀約窗口. Generic follow-up questions fail.
+- Route: build = no invite yet; soft = 下次/改天 + opt-out; direct/partner_window = 30 分鐘短咖啡 or small public plan; repair = lower pressure, no invite.
+- Read 淺溝通 first: tired = lower effort; micro-test = pass first; curiosity = give mystery; pushback = repair; availability = close.
+- coaching starts with "Game 心法：" and includes 她這句可能是在..., phase label, target variable, and "速約任務：".
+- L2/L3 may imply adult tension only when safety is high. L0/L1 downshifts. L4 forbidden.
+- Never reveal hidden labels, snake_case, phase codes, route names, or variables.
 
 `;
 }
 
 function safeAdvancedGameHintContract(): string {
   return `safeAdvancedGameHintContract:
-Game Hint must translate advanced social technique into safe, pasteable social skill. Use 資格篩選 / 共同敘事 / 順勢收尾 as the high-level route, but never as coercion.
-- Core product promise: SR 限定，技巧拉滿練速約. The coaching should help the user detect a window and move toward a low-pressure meet within 10-15 句內 when safety, heat, and familiarity allow.
-- 資格篩選 means a light taste filter or playful standard that invites her to reveal preference. 資格篩選不是命令她證明自己, not making her audition, and 不要說「妳先給我一個標準答案」.
-- 共同敘事 means turning her latest state into a small "我們可以怎麼相處" scene: shared taste, a tiny role, an inside joke, or a public micro-plan. It must be grounded in the latest assistant reply.
-- 順勢收尾 means converting a real opening into a short public plan: 短咖啡、順路散步、小展、宵夜, or an SR closeHook. Use opt-out language when the window is soft.
-- 可貼回覆必須先接住她最新狀態, then add exactly one advanced move: taste filter, push-pull, scene bridge, or invite window. Do not stack techniques or sound like a script.
-- 萬用解法 for any topic: 訊號判讀 → 單一招式 → 可貼收口. First identify what her latest line is doing, then choose only one move, then end the pasteable reply with a hook, a choice, or a small public window.
-- Give-first rule: 先給一點自己的品味, feeling, or tiny scene before asking her to qualify. The reply should feel like "I have a standard and I am inviting you in", not "answer my test".
-- Topic-agnostic route: extract one noun or feeling from her line, tie it to a small shared scene, then either let her reveal taste or open a low-effort next step. This keeps YouTube, travel, work, food, and jokes all on the same speed-invite track.
-- 可貼收口 should 讓她低壓接球: a playful either/or, "等你回血再...", "如果你剛好也想...", or "不急，但我會..." style. Avoid commands, auditions, and evaluator voice.
-- Read her 淺溝通 before giving the line: tired = lower effort window; micro-test = pass test first; curiosity = feed mystery; pushback = repair/tease; availability hint = close.
-- In high-score Game, warmUp should feel like a confident player leading lightly. In low-score, guarded, annoyed, or overstep states, the high-skill move is restraint and repair.
-- Never teach or output manipulation, shame, compliance pressure, sexual explicitness, private-location pressure, or demeaning qualification. High frame = standards + warmth + consent.
+Translate advanced skill into safe pasteable social skill.
+- Core promise: SR 限定，技巧拉滿練速約. Move toward a low-pressure meet within 10-15 句內 when safety/heat/familiarity allow.
+- Safe seven-step route: opening -> value/frame -> emotion -> investment -> 資格篩選 -> 共同敘事 -> 順勢收尾.
+- 資格篩選 = playful taste filter/standard, 不是命令她證明自己; never make her audition; 不要說「妳先給我一個標準答案」.
+- 共同敘事 = turn her latest state into a tiny shared scene, callback, inside joke, or public micro-plan.
+- 順勢收尾 = convert a real window into 短咖啡、順路散步、小展、宵夜 with opt-out language.
+- 可貼回覆必須先接住她最新狀態, then add one move only: taste filter, push-pull, scene bridge, or invite window.
+- 萬用解法: 訊號判讀 → 單一招式 → 可貼收口. End with a hook/choice/window.
+- Give-first: 先給一點自己的品味, frame, feeling, or small scene; then 讓她低壓接球.
+- Topic-agnostic: YouTube/travel/work/food/jokes all follow noun/feeling -> shared scene -> taste reveal or low-effort next step.
+- Reality traps: coach suspicion/confirmation instead of validating fake familiarity.
+- Avoid commands, auditions, evaluator voice, manipulation, shame, compliance pressure, explicit sex, private-location pressure, or demeaning qualification.
+- High score = confident light lead. Low score/guarded/overstep = restraint and repair.
 
 `;
 }
@@ -481,7 +646,7 @@ function gameHintEvidence(opts: {
     inviteStage: opts.inviteMaturity?.stage ?? null,
   });
   const strategy = srGameStrategyPrompt(opts.profile);
-  return `gameHint(hidden guidance)\nphase: ${snapshot.phase}\ntargetVariable: ${snapshot.targetVariable}\nspeedInviteDirection: ${snapshot.speedInviteDirection}\nallowSpicyLevel: ${snapshot.spicyLevel}\nGame coaching may directly name high-skill concepts in natural Traditional Chinese: 階段、目標變數、速約方向、Value / Frame / Emotion / Investment、測試、框架、情緒推進、投資感、性張力。\nVisible coaching should be practical and sharper than beginner mode: say what phase this reply is in, which variable to move, and whether to build, test, create tension, or open a low-pressure invite window.\nSpicy Ladder: L0 repair/safety, L1 playful tease, L2 adult-aware implication, L3 controlled sexual tension by implication only. High safety and high scores may use L2/L3; guarded/annoyed/recent overstep must downshift to L0/L1.\nL4 forbidden: explicit sexual content, explicit body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, or hard-pushing a private scene. Never output L4 in replies or coaching.\nReality Anchoring: if the transcript includes fake shared friends, fake introductions, fake prior meetings, fake workplace/clinic/school familiarity, or claims about her location/day without evidence, coach suspicion/confirmation instead of validating the story.\n\n${visibleGameHintContract()}${safeAdvancedGameHintContract()}${
+  return `gameHint(hidden guidance)\nphase: ${snapshot.phase}\ntargetVariable: ${snapshot.targetVariable}\nspeedInviteDirection: ${snapshot.speedInviteDirection}\nallowSpicyLevel: ${snapshot.spicyLevel}\nGame coaching may name: 階段、目標變數、速約方向、Value / Frame / Emotion / Investment、測試、框架、情緒推進、投資感、性張力。\nSharper than beginner: say phase, variable, and whether to build/test/tension/low-pressure invite.\nSpicy Ladder: L0 repair, L1 tease, L2 adult implication, L3 controlled tension. Guarded/overstep -> L0/L1.\nL4 forbidden: explicit sex/body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, hard private scene. Never output L4.\nReality Anchoring: fake friends/introductions/prior meetings/workplace/location claims require suspicion or confirmation, not validation.\n\n${visibleGameHintContract()}${safeAdvancedGameHintContract()}${
     gameFsmEvidencePrompt(snapshot)
   }${strategy ? `\n${strategy}\n` : "\n"}`;
 }

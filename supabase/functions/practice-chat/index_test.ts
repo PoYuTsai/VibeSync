@@ -2895,10 +2895,10 @@ Deno.test("game hint falls back only after retrying provider failures", async ()
       practiceMode: "game",
       profileId: "practice_girl_004",
       turns: [
-        { role: "user", text: "妳平常看脫口秀嗎" },
+        { role: "user", text: "安" },
         {
           role: "ai",
-          text: "最近看一些脫口秀片段，節奏蠻舒服的，你平常會看這類的嗎",
+          text: "嗨 剛回來還在調時差",
         },
       ],
     }),
@@ -2912,6 +2912,19 @@ Deno.test("game hint falls back only after retrying provider failures", async ()
   const visibleFallback = json.replies
     .map((reply: { text: string }) => reply.text)
     .join("\n");
+  assert(visibleFallback.includes("調時差"));
+  assert(
+    visibleFallback.includes("回血") ||
+      visibleFallback.includes("時差歸位") ||
+      visibleFallback.includes("這趟"),
+  );
+  assert(
+    visibleFallback.includes("咖啡") ||
+      visibleFallback.includes("短") ||
+      visibleFallback.includes("下次"),
+  );
+  assertEquals(visibleFallback.includes("妳說「"), false);
+  assertEquals(visibleFallback.includes("我先接住"), false);
   assertEquals(visibleFallback.includes("剛剛那句"), false);
   assertEquals(visibleFallback.includes("妳剛剛那個點"), false);
   assertEquals(visibleFallback.includes("妳剛剛那個反應"), false);
