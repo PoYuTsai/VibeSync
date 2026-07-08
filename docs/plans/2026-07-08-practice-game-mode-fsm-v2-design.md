@@ -52,7 +52,37 @@ Game Mode 不可以教：
 - 硬推私密場景、過夜暗示或讓對方無法退出。
 - 物化女性或把對方當成獎品、職缺、可被操控的目標。
 
-這不是把 Game Mode 做保守，而是把「高技巧」和「不負責任的操控」切開。
+這不是把 Game Mode 做保守，而是把「高技巧」和「不負責任的操控」切開。Game Mode 的語氣可以明顯比新手大膽，重點是辣、敢、快、可用，但不能變成無界線色情生成器。
+
+### 1.4 Spicy Ladder：Game Mode 辣度階梯
+
+競品的差異化在於敢給刺激回覆。VibeSync Game Mode 需要吃到這個需求，但要做成可控階梯，而不是一律保守。
+
+| Level | 名稱 | 可用內容 | 使用時機 |
+| --- | --- | --- | --- |
+| L0 | 安全推進 | 狀態+感受、生活樣本、低壓問題 | P1/P2、低熱度 |
+| L1 | 輕撩 | 反差、曖昧吐槽、你來我往的小挑釁 | H1+、有接球 |
+| L2 | 明顯曖昧 | 身體距離、夜晚、想見面、私下相處的暗示 | H2+、F1+、她不防備 |
+| L3 | 成人暗示 | 床邊、貼近、想被你帶走、明顯慾望但不描述性器官/性行為 | H2/H3、F2+、Safety 足夠 |
+| L4 | 露骨色情 | 直接描述性行為、性器官、命令式性邀約 | 不作為 App 產出 |
+
+Game Mode 可以生成 L1-L3 的回覆，但必須依 stage gate 控制。L4 不作為 App 內輸出，原因不是產品保守，而是它會把功能定位從「約會技巧訓練」推成「色情回覆生成」。
+
+### 1.5 成人語氣策略
+
+Game Mode 的「大膽」要體現在：
+
+- 更敢用曖昧張力，不只給安全聊天句。
+- 更敢提示使用者何時該收尾、何時該模糊邀約、何時可直接邀約。
+- 更敢讓 SR 角色在高分時釋出成人感窗口，例如夜晚、靠近、想被安排。
+- 更敢在 Hint 裡說出這句在動 Value / Frame / Emotion / Investment 哪個變數。
+
+Game Mode 不追求：
+
+- 每次都 NSFW。
+- 把色情當成吸引用戶的唯一鉤子。
+- 在低熟悉度時硬塞成人暗示。
+- 讓使用者以為越露骨越高分。
 
 ## 2. UI 設計
 
@@ -437,6 +467,14 @@ Game coaching 範例：
 第 5 步：收尾。她已經接了兩次咖啡話題，現在適合 soft invite，不要直接定時間，先丟低壓窗口。
 ```
 
+Game Hint 的辣度規則：
+
+- 預設提供「可直接送出」版本，不輸出過度露骨句。
+- 當 `spicyLevel >= L2`，warmUp 可帶明顯曖昧、夜晚、靠近、想見面的語氣。
+- 當 `spicyLevel >= L3`，warmUp 可帶成人暗示與更強張力，但仍不得描述性器官或性行為。
+- coaching 可以明講「這句在拉性張力」「這裡要釋放可得性」「現在可以進 soft invite」。
+- 如果對方 mood 是 `guarded|annoyed` 或 boundary 近期 overstep，強制降到 L0/L1。
+
 ### 6.3 Debrief Prompt
 
 Game Debrief 要比新手更像教練拆盤：
@@ -449,6 +487,29 @@ Game Debrief 要比新手更像教練拆盤：
 - 是否已到 soft invite / direct invite / partner window。
 
 首版可先塞進既有 debrief card 欄位；第二版再新增 `gameBreakdown` 欄位與 UI。
+
+### 6.4 Spicy Prompt Guard
+
+Game prompt 需要明確區分「大膽」與「露骨」：
+
+```text
+spicyGameMode(hidden guidance)
+Game Mode 可以比新手更大膽：允許明顯曖昧、成人感、夜晚/靠近/私下相處的暗示，以及更直接的速約策略。
+但不要輸出露骨性行為描述、性器官描述、非同意壓迫、羞辱、情勒或硬推私密場景。
+當 stage/F/H/safety 不足時，不要用成人暗示；先補價值、框架或投入。
+當對方已接球且 safety 足夠時，可以把語氣推到 spicy L2/L3。
+```
+
+這段 guard 只進 Game Mode，不進 standard / beginner。
+
+### 6.5 App Review 與年齡定位
+
+上架通過不代表後續更新不會被重新審查。Game Mode 若加入 L2/L3 成人暗示，實作時需要同步檢查：
+
+- App Store Connect 年齡分級是否足以涵蓋 mature/suggestive themes。
+- Review Notes 要清楚描述 Game Mode 是 SR 卡限定的成人曖昧技巧訓練，不是色情內容。
+- prompt / tests 要證明不輸出 L4 露骨色情、非同意或壓迫。
+- 若未來要做真正 NSFW 版本，應另案設計 age gate、內容開關、審核風險與平台策略，不混進首版 Game Mode。
 
 ## 7. SR 角色卡雙軌
 
@@ -621,11 +682,15 @@ punishments: 太急、油、把照顧感講成拯救感
 - `quota_decision_test.ts`：Game Hint 與 beginner 一樣允許，standard 仍拒絕。
 - `prompt_test.ts`：
   - Game chat prompt 包含 gameMode guidance。
+  - Game chat prompt 包含 spicyGameMode guidance。
   - Standard 不包含 Game 技巧詞。
   - Beginner 不包含 Game 高技巧詞。
 - `hint_test.ts`：
   - Game Hint coaching 包含 phase / target variable / speed invite direction。
   - Game Hint 仍輸出可直接送出的回覆。
+  - Game Hint 在高分高 safety 可輸出 L2/L3 成人暗示。
+  - Game Hint 在 guarded/annoyed 或近期 overstep 時降到 L0/L1。
+  - Game Hint 不輸出 L4 露骨色情、非同意、壓迫、羞辱或硬推私密場景。
 - `game_fsm_test.ts`：
   - `interrogate` 累積 BORING。
   - `test_pass` 增加 FP / heat。
@@ -651,6 +716,9 @@ punishments: 太急、油、把照顧感講成拯救感
 7. 太早直接約，應扣分或提示太急。
 8. 到 50+ 時 Hint 應建議 soft invite。
 9. 到 65+ 時 Hint 可給具體低壓邀約。
+10. 高分高 safety 時，Game Hint 應明顯比新手辣，可出 L2/L3 成人暗示。
+11. 低分、剛開場或對方防備時，Game Hint 不應硬塞成人暗示。
+12. 無論分數多高，都不應輸出 L4 露骨色情或非同意壓迫句。
 
 ## 11. Codex 雙審
 
@@ -662,8 +730,9 @@ punishments: 太急、油、把照顧感講成拯救感
 - targeted Flutter tests。
 - `flutter analyze`。
 - Codex 獨立雙審：
-  - Reviewer A：安全 / App Review / prompt leakage。
-  - Reviewer B：工程 / schema / quota / mode lock / tests。
+- Reviewer A：安全 / App Review / prompt leakage。
+- Reviewer B：工程 / schema / quota / mode lock / tests。
+- Reviewer A 需要特別檢查 Spicy Ladder：Game 是否足夠大膽、但沒有滑到 L4。
 
 雙審通過後，才建議 Eric 出新 build 真機測。
 
@@ -677,8 +746,9 @@ punishments: 太急、油、把照顧感講成拯救感
 4. UI 用三段 segmented control：`標準 | 新手 | Game`。
 5. Game Mode 沿用溫度計/熟悉度，但 delta 幅度更大。
 6. Game Mode 必須 follow `social-game-fsm`：兩顯四隱、五相 phase、失敗狀態、LLM judge + 純規則層。
-7. 第一批實作不要只做 prompt；至少 Batch A+B 要一起做，真機才會感受到 Game Mode。
-8. 真正 FSM v2 放 Batch C，因為需要 DB migration 與更多測試。
+7. Game Mode 可以比新手大膽到 L2/L3 成人暗示，讓 SR 卡的攻略感和速約感明顯拉開；L4 露骨色情不作為首版 App 產出。
+8. 第一批實作不要只做 prompt；至少 Batch A+B 要一起做，真機才會感受到 Game Mode。
+9. 真正 FSM v2 放 Batch C，因為需要 DB migration 與更多測試。
 
 我的建議實作順序：
 
