@@ -77,7 +77,7 @@ const DEBRIEF_GENERATION_ATTEMPTS = 2;
 const HINT_MAX_TOKENS = 650;
 const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 2;
-const GAME_HINT_TIMEOUT_MS = 12000;
+const HINT_TIMEOUT_MS = 12000;
 const TEMPERATURE_JUDGE_MAX_TOKENS = 450;
 const TEMPERATURE_JUDGE_TEMPERATURE = 0.2;
 const DEEPSEEK_TIMEOUT_MS = 30000;
@@ -1421,9 +1421,7 @@ export function createPracticeChatHandler(
       const hintGenerationAttempts = request.practiceMode === "game"
         ? 1
         : HINT_GENERATION_ATTEMPTS;
-      const hintTimeoutMs = request.practiceMode === "game"
-        ? GAME_HINT_TIMEOUT_MS
-        : DEEPSEEK_TIMEOUT_MS;
+      const hintTimeoutMs = HINT_TIMEOUT_MS;
       let hintResult: ReturnType<typeof parseHintResult> | null = null;
       try {
         let lastError: unknown;
@@ -1463,11 +1461,20 @@ export function createPracticeChatHandler(
             });
           }
         }
-        if (hintResult === null && request.practiceMode === "game") {
-          logWarn("practice_chat_game_hint_fallback_used", {
-            user: summarizeUser(user.id),
-            error: getErrorMessage(lastError),
-          });
+        if (
+          hintResult === null &&
+          (request.practiceMode === "game" ||
+            request.practiceMode === "beginner")
+        ) {
+          logWarn(
+            request.practiceMode === "game"
+              ? "practice_chat_game_hint_fallback_used"
+              : "practice_chat_beginner_hint_fallback_used",
+            {
+              user: summarizeUser(user.id),
+              error: getErrorMessage(lastError),
+            },
+          );
           hintResult = buildFallbackHintResult({
             turns: request.turns,
             profile: request.profile,

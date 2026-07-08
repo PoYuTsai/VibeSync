@@ -214,9 +214,61 @@ function fallbackRepliesForLatestAssistant(latestAssistant: string): {
   };
 }
 
+function beginnerFallbackRepliesForLatestAssistant(latestAssistant: string): {
+  warmUp: string;
+  steady: string;
+} {
+  const text = latestAssistant.normalize("NFKC").toLowerCase();
+  if (/[脫脱]口秀|搞笑|好笑|笑點|幽默/.test(text)) {
+    return {
+      warmUp: "會，我也喜歡那種節奏舒服的笑點。妳最近看到哪一段最有印象？",
+      steady: "聽起來妳喜歡自然一點的幽默。我也比較吃不硬搞笑的風格。",
+    };
+  }
+  if (/咖啡|拿鐵|美式|cafe|coffee/.test(text)) {
+    return {
+      warmUp:
+        "聽起來那間店的節奏滿舒服的。妳通常會因為咖啡好喝，還是氣氛好才想再去？",
+      steady: "我也滿喜歡可以慢慢坐一下的咖啡店，會覺得人比較放鬆。",
+    };
+  }
+  if (/電影|影集|片段|影片|看/.test(text)) {
+    return {
+      warmUp:
+        "會，我喜歡看完會留下畫面的東西。妳最近有哪部是看完還會想一下的？",
+      steady:
+        "我也會看一點。妳說節奏舒服，我有點好奇是輕鬆那種，還是有後勁的？",
+    };
+  }
+  return {
+    warmUp: "聽起來妳對這個滿有感的。我有點好奇，妳通常是怎麼判斷喜不喜歡？",
+    steady: "我懂妳說的那種感覺。這題我會先想聽妳多講一點。",
+  };
+}
+
+function buildBeginnerFallbackHintResult(
+  opts: HintBuildContext,
+): PracticeHintResult {
+  const fallback = beginnerFallbackRepliesForLatestAssistant(
+    latestAssistantText(opts.turns),
+  );
+  return {
+    replies: [
+      { type: "warm_up", label: "升溫回覆", text: fallback.warmUp },
+      { type: "steady", label: "穩住回覆", text: fallback.steady },
+    ],
+    coaching:
+      "小提醒：先接她剛提到的點，再補一點你的感受，最後丟一個她好回答的小問題。",
+  };
+}
+
 export function buildFallbackHintResult(
   opts: HintBuildContext,
 ): PracticeHintResult {
+  if (opts.practiceMode !== "game") {
+    return buildBeginnerFallbackHintResult(opts);
+  }
+
   const score = clampTemperature(opts.temperatureScore);
   const familiarity = clampTemperature(opts.familiarityScore ?? 0);
   const stage = relationshipStageFor(familiarity, score);

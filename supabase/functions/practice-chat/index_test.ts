@@ -2988,33 +2988,51 @@ Deno.test("hint missing claim RPC returns not-ready before provider", async () =
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("hint DeepSeek failure releases claim and does not record hint", async () => {
+Deno.test("beginner hint falls back after provider failures without game coaching", async () => {
   const { response, json, state } = await run({
     ledger: beginnerStartedLedger(),
-    deepSeekReplies: [new Error("deepseek down")],
+    deepSeekReplies: [new Error("deepseek down"), new Error("deepseek down")],
+    rpc: {
+      record_practice_hint: [{
+        data: [{ new_hint_count: 1, did_charge: true }],
+      }],
+    },
   }, hintBody({ practiceMode: "beginner" }));
 
-  assertEquals(response.status, 500);
-  assertEquals(json, { error: "practice_generation_failed" });
+  assertEquals(response.status, 200);
+  assertEquals(json.replies.length, 2);
+  assertEquals(json.hintUsedCount, 1);
+  assertEquals(String(json.coaching).includes("Game"), false);
+  assertEquals(String(json.coaching).includes("速約任務"), false);
   assertEquals(state.deepSeekCalls.length, 2);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
+  assertEquals(state.deepSeekCalls[1].timeoutMs, 12000);
   assertEquals(claimHintCalls(state).length, 1);
-  assertEquals(releaseHintCalls(state).length, 1);
-  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 0);
+  assertEquals(recordHintCalls(state).length, 1);
   assertEquals(commitCalls(state).length, 0);
 });
 
-Deno.test("hint malformed JSON releases claim and does not record hint", async () => {
+Deno.test("beginner hint falls back when provider keeps returning malformed JSON", async () => {
   const { response, json, state } = await run({
     ledger: beginnerStartedLedger(),
-    deepSeekReplies: ["not json"],
+    deepSeekReplies: ["not json", "still not json"],
+    rpc: {
+      record_practice_hint: [{
+        data: [{ new_hint_count: 1, did_charge: true }],
+      }],
+    },
   }, hintBody({ practiceMode: "beginner" }));
 
-  assertEquals(response.status, 500);
-  assertEquals(json, { error: "practice_generation_failed" });
+  assertEquals(response.status, 200);
+  assertEquals(json.replies.length, 2);
+  assertEquals(json.hintUsedCount, 1);
+  assertEquals(String(json.coaching).includes("Game"), false);
+  assertEquals(String(json.coaching).includes("速約任務"), false);
   assertEquals(state.deepSeekCalls.length, 2);
   assertEquals(claimHintCalls(state).length, 1);
-  assertEquals(releaseHintCalls(state).length, 1);
-  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 0);
+  assertEquals(recordHintCalls(state).length, 1);
   assertEquals(commitCalls(state).length, 0);
 });
 
