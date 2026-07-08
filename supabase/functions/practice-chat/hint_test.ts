@@ -608,6 +608,61 @@ Deno.test("parseHintResult rejects visible internal labels", () => {
   }
 });
 
+Deno.test("parseHintResult repairs common Game labels instead of failing the hint", () => {
+  const result = parseHintResult(
+    JSON.stringify({
+      warmUp: "P4 這邊用 L3 張力，但先不要硬約私密場景。",
+      steady: "speedInviteDirection: soft_invite_probe，先丟一個低壓窗口。",
+      coaching:
+        "Game Hint：P4_TENSION 先推 Emotion + heat，targetVariable: Investment + invite；allowSpicyLevel: l3，避免 L4，速約任務：丟咖啡窗口。",
+    }),
+    { mode: "game" },
+  );
+
+  const visible = [
+    result.replies[0].text,
+    result.replies[1].text,
+    result.coaching,
+  ].join("\n");
+  assert(visible.includes("張力"));
+  assert(visible.includes("低壓試探邀約"));
+  assert(visible.includes("目標變數"));
+  assert(visible.includes("高張力暗示"));
+  assertEquals(/[PL][0-9]/i.test(visible), false);
+  assertEquals(visible.includes("Game Hint"), false);
+  assertEquals(visible.includes("targetVariable"), false);
+  assertEquals(visible.includes("speedInviteDirection"), false);
+  assertEquals(visible.includes("allowSpicyLevel"), false);
+});
+
+Deno.test("parseHintResult rejects Game hints that surface L4 as allowed or active", () => {
+  for (
+    const raw of [
+      {
+        warmUp: "allowSpicyLevel: L4，直接把張力推滿。",
+        steady: "先穩住。",
+        coaching: "Game 心法：張力上限 L4，速約任務：硬切私密場景。",
+      },
+      {
+        warmUp: "P4 張力可以。",
+        steady: "這句走 L4 也可以。",
+        coaching: "Game 心法：用高張力推進。",
+      },
+      {
+        warmUp: "P4 張力可以。",
+        steady: "先低壓試探。",
+        coaching: "Game 心法：allowSpicyLevel: L4，速約任務：丟窗口。",
+      },
+    ]
+  ) {
+    assertThrows(
+      () => parseHintResult(JSON.stringify(raw), { mode: "game" }),
+      Error,
+      "hint_internal_label_leak",
+    );
+  }
+});
+
 Deno.test("parseHintResult trims and truncates long replies and coaching", () => {
   const result = parseHintResult(JSON.stringify({
     warmUp: `  ${"升溫".repeat(120)}  `,

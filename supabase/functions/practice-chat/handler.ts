@@ -1436,7 +1436,9 @@ export function createPracticeChatHandler(
               jsonMode: true,
               timeoutMs: DEEPSEEK_TIMEOUT_MS,
             });
-            hintResult = parseHintResult(rawHint);
+            hintResult = parseHintResult(rawHint, {
+              mode: request.practiceMode,
+            });
             break;
           } catch (e) {
             lastError = e;

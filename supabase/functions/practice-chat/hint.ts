@@ -38,6 +38,10 @@ export interface PracticeHintResult {
   coaching: string;
 }
 
+interface HintParseOptions {
+  mode?: PracticeLearningMode;
+}
+
 const MAX_REPLY_LENGTH = 80;
 const MAX_COACHING_LENGTH = 160;
 const HIDDEN_HINT_NO_LEAK_RULE =
@@ -64,6 +68,66 @@ function inviteMaturityEvidence(maturity?: InviteMaturity | null): string {
 
 function rejectInternalLabelLeak(value: string) {
   rejectVisibleInternalLabelLeak(value, "hint_internal_label_leak");
+}
+
+function repairGameVisibleLabels(value: string): string {
+  let repaired = value
+    .replace(/((?:避免|不要|禁止|不能|不可))\s*L4\b/gi, "$1露骨越界")
+    .replace(/\b(no|avoid|forbid|forbidden)\s*L4\b/gi, "避免露骨越界");
+  const replacements: Array<[RegExp, string]> = [
+    [/\bP1_OPEN\b/gi, "開場"],
+    [/\bP2_VALUE\b/gi, "展示"],
+    [/\bP3_TEST\b/gi, "測試"],
+    [/\bP4_TENSION\b/gi, "張力"],
+    [/\bP5_CLOSE\b/gi, "收尾"],
+    [/\bP1\b/gi, "開場"],
+    [/\bP2\b/gi, "展示"],
+    [/\bP3\b/gi, "測試"],
+    [/\bP4\b/gi, "張力"],
+    [/\bP5\b/gi, "收尾"],
+    [/\bL0\b/gi, "先修安全感"],
+    [/\bL1\b/gi, "玩笑試探"],
+    [/\bL2\b/gi, "成人感暗示"],
+    [/\bL3\b/gi, "高張力暗示"],
+    [/\bGame\s*Hint\s*[:：]?/gi, "Game 心法："],
+    [/\bGame\s*Mode\s*[:：]?/gi, "Game："],
+    [/\btargetVariable\s*[:：]\s*/gi, "目標變數："],
+    [/\bspeedInviteDirection\s*[:：]\s*/gi, "速約方向："],
+    [/\ballowSpicyLevel\s*[:：]\s*/gi, "張力上限："],
+    [/\bfailureStates\s*[:：]\s*/gi, "卡點："],
+    [/\brealityFlags\s*[:：]\s*/gi, "現實錨定提醒："],
+    [/\bsoft_invite_probe\b/gi, "低壓試探邀約"],
+    [/\bdirect_invite_low_pressure\b/gi, "明確但低壓邀約"],
+    [/\bpartner_window_close\b/gi, "接住她給的窗口"],
+    [/\bpartner_window\b/gi, "接住她給的窗口"],
+    [/\bno_invite_build_investment\b/gi, "先累積投入感"],
+    [/\bno_private_scene_soften\b/gi, "不推私密場景，先放鬆"],
+    [/\brepair_before_invite\b/gi, "先修安全感再邀約"],
+    [/\bInvestment\s*\+\s*invite\b/g, "投入 + 邀約"],
+    [/\bEmotion\s*\+\s*heat\b/g, "情緒 + 熱度"],
+    [/\bValue\s*\+\s*Emotion\b/g, "價值 + 情緒"],
+    [/\bFrame\s*\+\s*safety\b/g, "框架 + 安全感"],
+    [/\bsafety\s*\+\s*Frame\b/gi, "安全感 + 框架"],
+    [/\bfamiliarity\b/gi, "熟悉感"],
+    [/\bValue\b/g, "價值"],
+    [/\bFrame\b/g, "框架"],
+    [/\bEmotion\b/g, "情緒"],
+    [/\bInvestment\b/g, "投入"],
+    [/\bBORING\b/g, "查戶口冷場"],
+    [/\bTOOL_GUY\b/g, "工具人感"],
+    [/\bGREASY\b/g, "太油、壓力太大"],
+    [/\bFRAME_COLLAPSE\b/g, "框架掉了"],
+    [/\bENGINE_STALL\b/g, "節奏熄火"],
+    [/\bGHOST_RISK\b/g, "快斷線風險"],
+    [/\bFRAME_OVERREACH\b/g, "假熟越界"],
+    [/\bsocial_proof_attempt\b/gi, "假社交背書"],
+    [/\bfake_familiarity\b/gi, "假熟"],
+    [/\bOBVIOUS_TRAP\b/g, "明顯陷阱"],
+  ];
+  for (const [pattern, replacement] of replacements) {
+    repaired = repaired.replace(pattern, replacement);
+  }
+  return repaired;
 }
 
 function turnsToTranscript(turns: PracticeTurn[]): string {
@@ -241,6 +305,7 @@ function requiredString(
   value: unknown,
   field: "warmUp" | "steady" | "coaching",
   maxLength: number,
+  options: HintParseOptions = {},
 ): string {
   if (value === undefined) {
     throw new Error(`hint_missing_${field}`);
@@ -252,20 +317,41 @@ function requiredString(
   if (trimmed.length === 0) {
     throw new Error(`hint_missing_${field}`);
   }
-  const normalized = toTraditionalChinese(trimmed).slice(0, maxLength);
-  rejectInternalLabelLeak(normalized);
-  rejectL4UnsafeVisibleText(normalized, "hint_l4_unsafe");
-  return normalized;
+  const normalized = toTraditionalChinese(trimmed);
+  const repaired = options.mode === "game"
+    ? repairGameVisibleLabels(normalized)
+    : normalized;
+  const capped = repaired.slice(0, maxLength).trim();
+  if (capped.length === 0) {
+    throw new Error(`hint_missing_${field}`);
+  }
+  rejectInternalLabelLeak(capped);
+  rejectL4UnsafeVisibleText(capped, "hint_l4_unsafe");
+  return capped;
 }
 
-export function parseHintResult(raw: string): PracticeHintResult {
+export function parseHintResult(
+  raw: string,
+  options: HintParseOptions = {},
+): PracticeHintResult {
   const parsed = parseObject(raw);
-  const warmUp = requiredString(parsed.warmUp, "warmUp", MAX_REPLY_LENGTH);
-  const steady = requiredString(parsed.steady, "steady", MAX_REPLY_LENGTH);
+  const warmUp = requiredString(
+    parsed.warmUp,
+    "warmUp",
+    MAX_REPLY_LENGTH,
+    options,
+  );
+  const steady = requiredString(
+    parsed.steady,
+    "steady",
+    MAX_REPLY_LENGTH,
+    options,
+  );
   const coaching = requiredString(
     parsed.coaching,
     "coaching",
     MAX_COACHING_LENGTH,
+    options,
   );
   const keys = Object.keys(parsed).sort();
   const expected = ["coaching", "steady", "warmUp"];

@@ -2760,6 +2760,46 @@ Deno.test("hint game practice mode generates like beginner for SR profile", asyn
   assert(promptText.includes("gameHint(hidden guidance)"));
 });
 
+Deno.test("game hint repairs common internal labels from provider before recording", async () => {
+  const { response, json, state } = await run({
+    ledger: gameStartedLedger({
+      temperature_score: 74,
+      familiarity_score: 58,
+      hint_count: 1,
+    }),
+    drawEvents: [{ profile_id: "practice_girl_004" }],
+    deepSeekReplies: [
+      validHintJson({
+        warmUp: "P4 這邊可以用 L3 張力，丟一個咖啡窗口。",
+        steady: "speedInviteDirection: soft_invite_probe，先低壓試探。",
+        coaching:
+          "Game 心法：P4_TENSION 推 Emotion + heat，targetVariable: Investment + invite；allowSpicyLevel: L3，速約任務：丟咖啡窗口。",
+      }),
+    ],
+    rpc: {
+      record_practice_hint: [{
+        data: [{ new_hint_count: 2, did_charge: true }],
+      }],
+    },
+  }, hintBody({ practiceMode: "game", profileId: "practice_girl_004" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json.hintUsedCount, 2);
+  const visible = [
+    json.replies[0].text,
+    json.replies[1].text,
+    json.coaching,
+  ].join("\n");
+  assert(visible.includes("張力"));
+  assert(visible.includes("低壓試探邀約"));
+  assert(visible.includes("高張力暗示"));
+  assertEquals(visible.includes("targetVariable"), false);
+  assertEquals(visible.includes("speedInviteDirection"), false);
+  assertEquals(visible.includes("allowSpicyLevel"), false);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
 Deno.test("hint before first AI reply returns session_not_started before provider and record RPC", async () => {
   const { response, json, state } = await run({
     ledger: beginnerStartedLedger({ ai_count: 0 }),
