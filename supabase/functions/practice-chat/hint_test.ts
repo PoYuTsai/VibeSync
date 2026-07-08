@@ -317,6 +317,9 @@ Deno.test("buildHintMessages adds game coaching anchors only in game mode", () =
   assert(gameText.includes("phase:"));
   assert(gameText.includes("targetVariable:"));
   assert(gameText.includes("speedInviteDirection:"));
+  assert(gameText.includes("socialGameFsm(hidden guidance)"));
+  assert(gameText.includes("failureStates: none"));
+  assert(gameText.includes("srGameStrategy(hidden guidance)"));
   assert(gameText.includes("Value / Frame / Emotion / Investment"));
   assert(gameText.includes("allowSpicyLevel: L3"));
   assert(gameText.includes("L4 forbidden"));
@@ -330,11 +333,33 @@ Deno.test("buildHintMessages adds game coaching anchors only in game mode", () =
   }).map((m) => m.content).join("\n");
 
   assertEquals(beginnerText.includes("gameHint(hidden guidance)"), false);
+  assertEquals(beginnerText.includes("socialGameFsm(hidden guidance)"), false);
+  assertEquals(beginnerText.includes("srGameStrategy(hidden guidance)"), false);
   assertEquals(
     beginnerText.includes("Value / Frame / Emotion / Investment"),
     false,
   );
   assertEquals(beginnerText.includes("allowSpicyLevel:"), false);
+});
+
+Deno.test("buildHintMessages marks fake familiarity as a Game reality-anchor trap", () => {
+  const text = buildHintMessages({
+    turns: [{
+      role: "user",
+      text:
+        "我是陳醫師的學生，最近在北醫實習的牙醫師 Bruce，上次經過你們診所跟 Joyce 要的 Line",
+    }],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 88,
+    familiarityScore: 72,
+    partnerMood: "comfortable",
+  }).map((m) => m.content).join("\n");
+
+  assert(text.includes("realityFlags: social_proof_attempt, fake_familiarity"));
+  assert(text.includes("failureStates: FRAME_OVERREACH"));
+  assert(text.includes("allowSpicyLevel: L0"));
+  assert(text.includes("coach suspicion/confirmation instead of validating"));
 });
 
 Deno.test("buildHintMessages downshifts spicy ladder when partner is guarded or annoyed", () => {
@@ -529,6 +554,8 @@ Deno.test("parseHintResult rejects visible internal labels", () => {
       "next_invite_move says coffee",
       "targetVariable: Emotion + heat",
       "allowSpicyLevel: L3",
+      "socialGameFsm phase P3_TEST",
+      "srGameStrategy valueHooks",
     ]
   ) {
     assertThrows(

@@ -35,6 +35,7 @@ import {
   rejectL4UnsafeVisibleText,
   rejectVisibleInternalLabelLeak,
 } from "./visible_text_guard.ts";
+import { applyGameLearningDelta, evaluateGameFsm } from "./game_fsm.ts";
 import {
   applyLearningClassification,
   applyPartnerStateUpdate,
@@ -675,6 +676,27 @@ async function judgeLearningState(opts: {
 }): Promise<LearningJudgement> {
   // 難度接線（槓桿 A）：正負 delta 倍率只在 beginner 溫度管線生效，作用域內解析一次。
   const tuning = difficultyTuningFor(opts.request.profile.difficulty);
+  const applyGameLearningIfNeeded = (
+    judgement: LearningJudgement,
+    currentTemperature: number,
+    currentFamiliarity: number,
+    partnerState: PartnerState | null | undefined,
+  ): LearningJudgement => {
+    if (opts.request.practiceMode !== "game") return judgement;
+    const snapshot = evaluateGameFsm({
+      turns: opts.request.turns,
+      temperatureScore: currentTemperature,
+      familiarityScore: currentFamiliarity,
+      partnerMood: judgement.partnerState?.mood ?? partnerState?.mood ?? null,
+      classification: judgement.classification,
+    });
+    return applyGameLearningDelta({
+      judgement,
+      currentTemperature,
+      currentFamiliarity,
+      snapshot,
+    });
+  };
   const fallbackForSnapshot = (
     currentTemperature: number,
     currentFamiliarity: number,
@@ -695,26 +717,38 @@ async function judgeLearningState(opts: {
         deterministic,
         tuning,
       );
-      return {
+      const withPartnerState = {
         ...judgement,
         partnerState: applyPartnerStateUpdate(
           currentPartnerState,
           deterministic,
         ),
       };
+      return applyGameLearningIfNeeded(
+        withPartnerState,
+        currentTemperature,
+        currentFamiliarity,
+        currentPartnerState,
+      );
     }
     const base = fallbackLearningJudgement(
       currentTemperature,
       currentFamiliarity,
       currentPartnerState,
     );
-    return protectAppliedHintTemperature(
+    const protectedFallback = protectAppliedHintTemperature(
       base,
       currentTemperature,
       currentFamiliarity,
       isExactAppliedHint(opts.request)
         ? opts.request.appliedHintType
         : undefined,
+    );
+    return applyGameLearningIfNeeded(
+      protectedFallback,
+      currentTemperature,
+      currentFamiliarity,
+      currentPartnerState,
     );
   };
   const protectedJudgementForSnapshot = (
@@ -751,13 +785,19 @@ async function judgeLearningState(opts: {
       currentFamiliarity,
       protectedHintType,
     );
-    return {
+    const withPartnerState = {
       ...protectedJudgement,
       partnerState: applyPartnerStateUpdate(
         currentPartnerState,
         classification,
       ),
     };
+    return applyGameLearningIfNeeded(
+      withPartnerState,
+      currentTemperature,
+      currentFamiliarity,
+      currentPartnerState,
+    );
   };
   const fallback = fallbackForSnapshot(
     opts.currentTemperature,

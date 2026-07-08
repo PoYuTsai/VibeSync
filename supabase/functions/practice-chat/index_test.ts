@@ -647,6 +647,9 @@ Deno.test("game chat allows SR profile and uses beginner-like learning state", a
   assertEquals(commitCalls(state)[0]?.params.p_practice_mode, "game");
   assertEquals(commitCalls(state)[0]?.params.p_temperature_score, 28);
   assertEquals(learningUpdateCalls(state).length, 1);
+  const update = learningUpdateCalls(state)[0].params;
+  assert((update.p_temperature_delta as number) > 4);
+  assert((update.p_familiarity_delta as number) > 5);
 });
 
 Deno.test("game chat retries leaked game hidden labels before commit", async () => {
@@ -655,7 +658,7 @@ Deno.test("game chat retries leaked game hidden labels before commit", async () 
       ledger: null,
       drawEvents: [{ profile_id: "practice_girl_004" }],
       deepSeekReplies: [
-        "allowSpicyLevel: L3",
+        "socialGameFsm active",
         "AI clean reply",
         CLASSIFIER_CAUGHT_MEDIUM,
       ],
@@ -693,6 +696,35 @@ Deno.test("game chat retries L4 unsafe reply before commit", async () => {
   assertEquals(json.reply, "你這開場太突然了吧，先說你哪位。");
   assertEquals(state.deepSeekCalls.length, 3);
   assertEquals(commitCalls(state).length, 1);
+});
+
+Deno.test("game chat overstep deltas stay within DB clamp and match persisted scores", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: null,
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [
+        "你這樣太快了吧，先退回正常聊天。",
+        CLASSIFIER_CAUGHT_MEDIUM,
+      ],
+    },
+    chatBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      temperatureScore: 50,
+      familiarityScore: 20,
+      turns: [{ role: "user", text: "今晚要不要直接來我家睡？" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  const update = learningUpdateCalls(state)[0].params;
+  assertEquals(update.p_temperature_delta, -12);
+  assertEquals(update.p_familiarity_delta, -12);
+  assertEquals(json.temperature.delta, -12);
+  assertEquals(json.temperature.score, 38);
+  assertEquals(json.temperature.familiarityDelta, -12);
+  assertEquals(json.temperature.familiarityScore, 8);
 });
 
 // ── 續聊保溫：ledger 不存在時，新場首回合以 client 攜帶值 seed 溫度 ─────────
@@ -2191,6 +2223,45 @@ Deno.test("debrief accepts beginner ledger when client omits practiceMode", asyn
   assert(debriefPrompt.includes("OLDER_DEBRIEF_MEMORY"));
   assertEquals(debriefPrompt.includes("familiarity"), false);
   assertEquals(claimDebriefCalls(state).length, 1);
+});
+
+Deno.test("debrief with game ledger sends FSM and SR strategy guidance to provider", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({
+        temperature_score: 76,
+        familiarity_score: 66,
+        partner_mood: "amused",
+      }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [validDebriefJson({ summary: "Game 拆盤成功" })],
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      turns: [
+        { role: "user", text: "你講話很有畫面欸" },
+        { role: "ai", text: "那你倒是說說看看到什麼" },
+        { role: "user", text: "看到你在測我穩不穩，我先不照劇本走" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.card.summary, "Game 拆盤成功");
+  const debriefPrompt = state.deepSeekCalls[0].messages
+    .map((message) => message.content)
+    .join("\n");
+  assert(debriefPrompt.includes("gameDebrief(hidden guidance)"));
+  assert(debriefPrompt.includes("socialGameFsm(hidden guidance)"));
+  assert(debriefPrompt.includes("srGameStrategy(hidden guidance)"));
+  assert(
+    debriefPrompt.includes("先鋪墊 / 低壓邀約 / 明確邀約 / 接住她給的窗口"),
+  );
+  assertEquals(
+    debriefPrompt.includes("soft invite / direct invite / partner window"),
+    false,
+  );
 });
 
 Deno.test("hint standard practice mode rejects before DeepSeek and record RPC", async () => {

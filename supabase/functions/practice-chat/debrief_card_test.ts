@@ -150,6 +150,8 @@ Deno.test("visible fields with internal labels are rejected", () => {
       { nextInviteMove: "next_invite_move ask coffee" },
       { nextInviteMove: "next-invite-move ask coffee" },
       { nextInviteMove: "next invite move ask coffee" },
+      { nextInviteMove: "soft invite first" },
+      { nextInviteMove: "direct invite later" },
       { strengths: ["memory_summary leaked"] },
       { watchouts: ["innerThought leaked"] },
     ]

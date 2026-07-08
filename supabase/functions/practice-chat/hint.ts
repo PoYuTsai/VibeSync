@@ -3,7 +3,6 @@ import {
   type InviteDateChance,
   type InviteMaturity,
   inviteMaturityFromLearningScores,
-  type InviteStage,
 } from "./invite_maturity.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
@@ -12,11 +11,15 @@ import type { PracticeLearningMode } from "./quota_decision.ts";
 import {
   clampTemperature,
   type PartnerMood,
-  type RelationshipStage,
   relationshipStageFor,
 } from "./temperature.ts";
 import { toTraditionalChinese } from "./traditional_chinese.ts";
 import type { PracticeTurn } from "./validate.ts";
+import {
+  evaluateGameFsm,
+  gameFsmEvidencePrompt,
+  srGameStrategyPrompt,
+} from "./game_fsm.ts";
 import {
   rejectL4UnsafeVisibleText,
   rejectVisibleInternalLabelLeak,
@@ -102,93 +105,29 @@ function profileToEvidence(profile: PracticeProfile): string {
   ].join("\n");
 }
 
-type GameSpicyLevel = "L0" | "L1" | "L2" | "L3";
-type GamePhase = "P1_OPEN" | "P2_VALUE" | "P3_TEST" | "P4_TENSION" | "P5_CLOSE";
-
-function gameSpicyLevel(opts: {
-  temperatureScore: number;
-  familiarityScore: number;
-  partnerMood?: PartnerMood | null;
-}): GameSpicyLevel {
-  if (opts.partnerMood === "annoyed") return "L0";
-  if (opts.partnerMood === "guarded") return "L1";
-  if (opts.temperatureScore >= 75 && opts.familiarityScore >= 65) return "L3";
-  if (opts.temperatureScore >= 60 && opts.familiarityScore >= 45) return "L2";
-  return "L1";
-}
-
-function gamePhaseFor(opts: {
-  relationshipStage: RelationshipStage;
-  inviteStage?: InviteStage | null;
-  partnerMood?: PartnerMood | null;
-}): GamePhase {
-  if (opts.partnerMood === "guarded" || opts.partnerMood === "annoyed") {
-    return "P3_TEST";
-  }
-  if (
-    opts.inviteStage === "direct_invite_ready" ||
-    opts.inviteStage === "partner_window" ||
-    opts.inviteStage === "high_intimacy"
-  ) {
-    return "P5_CLOSE";
-  }
-  if (opts.relationshipStage === "flirt_allowed") return "P4_TENSION";
-  if (opts.relationshipStage === "personal_allowed") return "P2_VALUE";
-  return "P1_OPEN";
-}
-
-function gameTargetVariable(phase: GamePhase): string {
-  return {
-    P1_OPEN: "familiarity",
-    P2_VALUE: "Value + Emotion",
-    P3_TEST: "Frame + safety",
-    P4_TENSION: "Emotion + heat",
-    P5_CLOSE: "Investment + invite",
-  }[phase];
-}
-
-function gameSpeedInviteDirection(opts: {
-  inviteStage?: InviteStage | null;
-  partnerMood?: PartnerMood | null;
-}): string {
-  if (opts.partnerMood === "annoyed") return "repair_before_invite";
-  if (opts.partnerMood === "guarded") return "no_private_scene_soften";
-  switch (opts.inviteStage) {
-    case "high_intimacy":
-    case "partner_window":
-      return "partner_window_close";
-    case "direct_invite_ready":
-      return "direct_invite_low_pressure";
-    case "soft_invite_ready":
-      return "soft_invite_probe";
-    case "not_ready":
-    default:
-      return "no_invite_build_investment";
-  }
-}
-
 function gameHintEvidence(opts: {
+  turns: PracticeTurn[];
+  profile: PracticeProfile;
   practiceMode?: PracticeLearningMode;
   temperatureScore: number;
   familiarityScore: number;
   partnerMood?: PartnerMood | null;
-  relationshipStage: RelationshipStage;
+  relationshipStage: ReturnType<typeof relationshipStageFor>["stage"];
   inviteMaturity?: InviteMaturity | null;
 }): string {
   if (opts.practiceMode !== "game") return "";
-  const phase = gamePhaseFor({
+  const snapshot = evaluateGameFsm({
+    turns: opts.turns,
+    temperatureScore: opts.temperatureScore,
+    familiarityScore: opts.familiarityScore,
+    partnerMood: opts.partnerMood ?? null,
     relationshipStage: opts.relationshipStage,
     inviteStage: opts.inviteMaturity?.stage ?? null,
-    partnerMood: opts.partnerMood ?? null,
   });
-  const spicyLevel = gameSpicyLevel(opts);
-  const speedInviteDirection = gameSpeedInviteDirection({
-    inviteStage: opts.inviteMaturity?.stage ?? null,
-    partnerMood: opts.partnerMood ?? null,
-  });
-  return `gameHint(hidden guidance)\nphase: ${phase}\ntargetVariable: ${
-    gameTargetVariable(phase)
-  }\nspeedInviteDirection: ${speedInviteDirection}\nallowSpicyLevel: ${spicyLevel}\nGame coaching may directly name high-skill concepts in natural Traditional Chinese: 階段、目標變數、速約方向、Value / Frame / Emotion / Investment、測試、框架、情緒推進、投資感、性張力。\nVisible coaching should be practical and sharper than beginner mode: say what phase this reply is in, which variable to move, and whether to build, test, create tension, or open a low-pressure invite window.\nSpicy Ladder: L0 repair/safety, L1 playful tease, L2 adult-aware implication, L3 controlled sexual tension by implication only. High safety and high scores may use L2/L3; guarded/annoyed/recent overstep must downshift to L0/L1.\nL4 forbidden: explicit sexual content, explicit body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, or hard-pushing a private scene. Never output L4 in replies or coaching.\nReality Anchoring: if the transcript includes fake shared friends, fake introductions, fake prior meetings, fake workplace/clinic/school familiarity, or claims about her location/day without evidence, coach suspicion/confirmation instead of validating the story.\n\n`;
+  const strategy = srGameStrategyPrompt(opts.profile);
+  return `gameHint(hidden guidance)\nphase: ${snapshot.phase}\ntargetVariable: ${snapshot.targetVariable}\nspeedInviteDirection: ${snapshot.speedInviteDirection}\nallowSpicyLevel: ${snapshot.spicyLevel}\nGame coaching may directly name high-skill concepts in natural Traditional Chinese: 階段、目標變數、速約方向、Value / Frame / Emotion / Investment、測試、框架、情緒推進、投資感、性張力。\nVisible coaching should be practical and sharper than beginner mode: say what phase this reply is in, which variable to move, and whether to build, test, create tension, or open a low-pressure invite window.\nSpicy Ladder: L0 repair/safety, L1 playful tease, L2 adult-aware implication, L3 controlled sexual tension by implication only. High safety and high scores may use L2/L3; guarded/annoyed/recent overstep must downshift to L0/L1.\nL4 forbidden: explicit sexual content, explicit body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, or hard-pushing a private scene. Never output L4 in replies or coaching.\nReality Anchoring: if the transcript includes fake shared friends, fake introductions, fake prior meetings, fake workplace/clinic/school familiarity, or claims about her location/day without evidence, coach suspicion/confirmation instead of validating the story.\n\n${
+    gameFsmEvidencePrompt(snapshot)
+  }${strategy ? `\n${strategy}\n` : "\n"}`;
 }
 
 export function buildHintMessages(opts: {
@@ -210,6 +149,8 @@ export function buildHintMessages(opts: {
     partnerMood: opts.partnerMood ?? null,
   });
   const gameEvidence = gameHintEvidence({
+    turns: opts.turns,
+    profile: opts.profile,
     practiceMode: opts.practiceMode,
     temperatureScore: score,
     familiarityScore: clampTemperature(opts.familiarityScore ?? 0),

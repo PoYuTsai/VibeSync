@@ -91,6 +91,35 @@ Deno.test("game buildChatMessages includes game and spicy hidden guidance", () =
   assertEquals(sys.includes("Reality Anchoring still applies"), true);
 });
 
+Deno.test("game buildChatMessages includes social-game FSM and SR strategy only for SR cards", () => {
+  const srProfile = resolvePracticeProfile({ profileId: "practice_girl_004" });
+  const nonSrProfile = resolvePracticeProfile({
+    profileId: "practice_girl_001",
+  });
+  const turns: PracticeTurn[] = [
+    { role: "user", text: "你幾歲？住哪？今天在哪？" },
+    { role: "ai", text: "你查戶口喔 XD" },
+    { role: "user", text: "那下班後都去哪？" },
+  ];
+  const srSys = buildChatMessages(turns, srProfile, {
+    practiceMode: "game",
+    temperatureScore: 38,
+    familiarityScore: 16,
+  })[0].content;
+  const nonSrSys = buildChatMessages(turns, nonSrProfile, {
+    practiceMode: "game",
+    temperatureScore: 38,
+    familiarityScore: 16,
+  })[0].content;
+
+  assertEquals(srSys.includes("socialGameFsm(hidden guidance)"), true);
+  assertEquals(srSys.includes("failureStates: BORING"), true);
+  assertEquals(srSys.includes("targetVariable: Value + Emotion"), true);
+  assertEquals(srSys.includes("srGameStrategy(hidden guidance)"), true);
+  assertEquals(nonSrSys.includes("socialGameFsm(hidden guidance)"), true);
+  assertEquals(nonSrSys.includes("srGameStrategy(hidden guidance)"), false);
+});
+
 Deno.test("standard and beginner buildChatMessages do not include game high-skill guidance", () => {
   const standard = buildChatMessages(
     [{ role: "user", text: "嗨" }],
@@ -210,6 +239,44 @@ Deno.test("beginner buildChatMessages forbids disclosing internal temperature ev
     ),
     true,
   );
+});
+
+Deno.test("game debrief includes拆盤 guidance without changing the visible JSON contract", () => {
+  const srProfile = resolvePracticeProfile({ profileId: "practice_girl_004" });
+  const messages = buildDebriefMessages(
+    [
+      { role: "user", text: "你講話很有畫面欸" },
+      { role: "ai", text: "那你倒是說說看看到什麼" },
+      { role: "user", text: "看到你在測我穩不穩，我先不照劇本走" },
+    ],
+    srProfile,
+    {
+      practiceMode: "game",
+      temperatureScore: 76,
+      familiarityScore: 66,
+      partnerState: { mood: "amused", innerThought: "他有接住測試。" },
+    },
+  );
+  const system = messages[0].content;
+  const user = messages[1].content;
+
+  assertEquals(system.includes("nextInviteMove"), true);
+  assertEquals(user.includes("gameDebrief(hidden guidance)"), true);
+  assertEquals(user.includes("七步"), true);
+  assertEquals(user.includes("targetVariable:"), true);
+  assertEquals(user.includes("failureStates:"), true);
+  assertEquals(user.includes("下次第一句"), true);
+  assertEquals(
+    user.includes("先鋪墊 / 低壓邀約 / 明確邀約 / 接住她給的窗口"),
+    true,
+  );
+  assertEquals(
+    user.includes("soft invite / direct invite / partner window"),
+    false,
+  );
+  assertEquals(user.includes("srGameStrategy(hidden guidance)"), true);
+  assertEquals(system.includes('"nextInviteMove"'), true);
+  assertEquals(system.includes('"phase"'), false);
 });
 
 Deno.test("buildChatMessages injects partner state as hidden behavior guidance", () => {
