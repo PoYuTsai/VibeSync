@@ -12,6 +12,7 @@ import { temperatureBandInstruction } from "./temperature.ts";
 import type { PracticeTurn } from "./validate.ts";
 import { resolvePracticeProfile } from "./practice_persona.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
+import { initialPersistedGameState } from "./game_state.ts";
 
 // 預設 profile（slow_worker + normal），供既有不指定角色難度的測試沿用。
 const defaultProfile = resolvePracticeProfile({});
@@ -118,6 +119,34 @@ Deno.test("game buildChatMessages includes social-game FSM and SR strategy only 
   assertEquals(srSys.includes("srGameStrategy(hidden guidance)"), true);
   assertEquals(nonSrSys.includes("socialGameFsm(hidden guidance)"), true);
   assertEquals(nonSrSys.includes("srGameStrategy(hidden guidance)"), false);
+});
+
+Deno.test("game buildChatMessages includes persisted game state when supplied", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "hi" }],
+    resolvePracticeProfile({ profileId: "practice_girl_004" }),
+    {
+      practiceMode: "game",
+      temperatureScore: 72,
+      familiarityScore: 61,
+      gameState: {
+        ...initialPersistedGameState(),
+        phase: "P4_TENSION",
+        turnCount: 4,
+        failureCounts: {
+          ...initialPersistedGameState().failureCounts,
+          GREASY: 1,
+        },
+        lastTargetVariable: "Emotion + heat",
+      },
+    },
+  )[0].content;
+
+  assertEquals(sys.includes("persistedGameState(hidden guidance)"), true);
+  assertEquals(sys.includes("phase: P4_TENSION"), true);
+  assertEquals(sys.includes("turnCount: 4"), true);
+  assertEquals(sys.includes("GREASY=1"), true);
+  assertEquals(sys.includes("Emotion + heat"), true);
 });
 
 Deno.test("standard and beginner buildChatMessages do not include game high-skill guidance", () => {
@@ -241,7 +270,7 @@ Deno.test("beginner buildChatMessages forbids disclosing internal temperature ev
   );
 });
 
-Deno.test("game debrief includes拆盤 guidance without changing the visible JSON contract", () => {
+Deno.test("game debrief includes拆盤 guidance and keeps non-game default null", () => {
   const srProfile = resolvePracticeProfile({ profileId: "practice_girl_004" });
   const messages = buildDebriefMessages(
     [
@@ -276,7 +305,39 @@ Deno.test("game debrief includes拆盤 guidance without changing the visible JSO
   );
   assertEquals(user.includes("srGameStrategy(hidden guidance)"), true);
   assertEquals(system.includes('"nextInviteMove"'), true);
+  assertEquals(system.includes('"gameBreakdown": null'), true);
   assertEquals(system.includes('"phase"'), false);
+});
+
+Deno.test("game debrief guidance asks Game to fill gameBreakdown fields", () => {
+  const messages = buildDebriefMessages(
+    [{ role: "user", text: "hi" }],
+    resolvePracticeProfile({ profileId: "practice_girl_004" }),
+    {
+      practiceMode: "game",
+      temperatureScore: 72,
+      familiarityScore: 61,
+      gameState: {
+        ...initialPersistedGameState(),
+        phase: "P4_TENSION",
+        turnCount: 5,
+        lastTargetVariable: "Emotion + heat",
+      },
+    },
+  );
+  const system = messages[0].content;
+  const user = messages[1].content;
+
+  assertEquals(system.includes('"gameBreakdown"'), true);
+  assertEquals(system.includes('"gameBreakdown": null'), true);
+  assertEquals(user.includes("gameBreakdown.phaseReached"), true);
+  assertEquals(user.includes("missedVariable"), true);
+  assertEquals(user.includes("failureState"), true);
+  assertEquals(user.includes("nextFirstLine"), true);
+  assertEquals(user.includes("inviteDirection"), true);
+  assertEquals(system.includes('"phase"'), false);
+  assertEquals(user.includes("persistedGameState(hidden guidance)"), true);
+  assertEquals(user.includes("turnCount: 5"), true);
 });
 
 Deno.test("buildChatMessages injects partner state as hidden behavior guidance", () => {

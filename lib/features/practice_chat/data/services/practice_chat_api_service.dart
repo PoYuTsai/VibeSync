@@ -84,6 +84,29 @@ class PracticeChatReply {
 }
 
 /// debrief 模式成功回應（教練拆解卡）。
+class PracticeGameBreakdown {
+  final String? phaseReached;
+  final String? missedVariable;
+  final String? failureState;
+  final String? nextFirstLine;
+  final String? inviteDirection;
+
+  const PracticeGameBreakdown({
+    this.phaseReached,
+    this.missedVariable,
+    this.failureState,
+    this.nextFirstLine,
+    this.inviteDirection,
+  });
+
+  bool get isEmpty =>
+      (phaseReached?.trim().isEmpty ?? true) &&
+      (missedVariable?.trim().isEmpty ?? true) &&
+      (failureState?.trim().isEmpty ?? true) &&
+      (nextFirstLine?.trim().isEmpty ?? true) &&
+      (inviteDirection?.trim().isEmpty ?? true);
+}
+
 class PracticeDebrief {
   final String summary;
   final List<String> strengths;
@@ -93,6 +116,7 @@ class PracticeDebrief {
   final String? dateChance;
   final String? dateChanceReason;
   final String? nextInviteMove;
+  final PracticeGameBreakdown? gameBreakdown;
   final int? monthlyRemaining;
   final int? dailyRemaining;
 
@@ -105,6 +129,7 @@ class PracticeDebrief {
     this.dateChance,
     this.dateChanceReason,
     this.nextInviteMove,
+    this.gameBreakdown,
     this.monthlyRemaining,
     this.dailyRemaining,
   });
@@ -403,6 +428,7 @@ class PracticeChatApiService {
     required String sessionId,
     required PracticeProfileDto profile,
     required List<PracticeTurnDto> turns,
+    PracticeLearningMode practiceMode = PracticeLearningMode.standard,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
     String? memorySummary,
@@ -414,6 +440,7 @@ class PracticeChatApiService {
       body: {
         'mode': 'debrief',
         'sessionId': sessionId,
+        'practiceMode': practiceMode.wireName,
         ...profile.toJson(),
         'turns': turns.map((t) => t.toJson()).toList(),
         if (normalizedMemorySummary != null &&
@@ -440,6 +467,9 @@ class PracticeChatApiService {
       dateChance: _asNullableString(card['dateChance']),
       dateChanceReason: _asNullableString(card['dateChanceReason']),
       nextInviteMove: _asNullableString(card['nextInviteMove']),
+      gameBreakdown: practiceMode == PracticeLearningMode.game
+          ? _parseGameBreakdown(card['gameBreakdown'])
+          : null,
       monthlyRemaining: _asInt(data['monthlyRemaining']),
       dailyRemaining: _asInt(data['dailyRemaining']),
     );
@@ -713,6 +743,18 @@ class PracticeChatApiService {
     if (v is! String) return null;
     final trimmed = v.trim();
     return trimmed.isEmpty ? null : trimmed;
+  }
+
+  static PracticeGameBreakdown? _parseGameBreakdown(dynamic v) {
+    if (v is! Map) return null;
+    final breakdown = PracticeGameBreakdown(
+      phaseReached: _asNullableString(v['phaseReached']),
+      missedVariable: _asNullableString(v['missedVariable']),
+      failureState: _asNullableString(v['failureState']),
+      nextFirstLine: _asNullableString(v['nextFirstLine']),
+      inviteDirection: _asNullableString(v['inviteDirection']),
+    );
+    return breakdown.isEmpty ? null : breakdown;
   }
 
   static const Set<String> _validPartnerMoods = {

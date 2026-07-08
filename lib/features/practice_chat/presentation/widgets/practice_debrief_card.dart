@@ -16,6 +16,11 @@ class PracticeDebriefCard extends StatelessWidget {
     this.dateChance,
     this.dateChanceReason,
     this.nextInviteMove,
+    this.gameBreakdownPhaseReached,
+    this.gameBreakdownMissedVariable,
+    this.gameBreakdownFailureState,
+    this.gameBreakdownNextFirstLine,
+    this.gameBreakdownInviteDirection,
   });
 
   final String summary;
@@ -26,6 +31,11 @@ class PracticeDebriefCard extends StatelessWidget {
   final String? dateChance;
   final String? dateChanceReason;
   final String? nextInviteMove;
+  final String? gameBreakdownPhaseReached;
+  final String? gameBreakdownMissedVariable;
+  final String? gameBreakdownFailureState;
+  final String? gameBreakdownNextFirstLine;
+  final String? gameBreakdownInviteDirection;
 
   @override
   Widget build(BuildContext context) {
@@ -88,6 +98,16 @@ class PracticeDebriefCard extends StatelessWidget {
               nextInviteMove: nextInviteMove,
             ),
           ],
+          if (_hasGameBreakdown) ...[
+            const SizedBox(height: 14),
+            _GameBreakdownInsight(
+              phaseReached: gameBreakdownPhaseReached,
+              missedVariable: gameBreakdownMissedVariable,
+              failureState: gameBreakdownFailureState,
+              nextFirstLine: gameBreakdownNextFirstLine,
+              inviteDirection: gameBreakdownInviteDirection,
+            ),
+          ],
           const SizedBox(height: 16),
           Container(
             width: double.infinity,
@@ -129,6 +149,91 @@ class PracticeDebriefCard extends StatelessWidget {
       (dateChance?.trim().isNotEmpty ?? false) ||
       (dateChanceReason?.trim().isNotEmpty ?? false) ||
       (nextInviteMove?.trim().isNotEmpty ?? false);
+
+  bool get _hasGameBreakdown =>
+      (gameBreakdownPhaseReached?.trim().isNotEmpty ?? false) ||
+      (gameBreakdownMissedVariable?.trim().isNotEmpty ?? false) ||
+      (gameBreakdownFailureState?.trim().isNotEmpty ?? false) ||
+      (gameBreakdownNextFirstLine?.trim().isNotEmpty ?? false) ||
+      (gameBreakdownInviteDirection?.trim().isNotEmpty ?? false);
+}
+
+class _GameBreakdownInsight extends StatelessWidget {
+  const _GameBreakdownInsight({
+    this.phaseReached,
+    this.missedVariable,
+    this.failureState,
+    this.nextFirstLine,
+    this.inviteDirection,
+  });
+
+  final String? phaseReached;
+  final String? missedVariable;
+  final String? failureState;
+  final String? nextFirstLine;
+  final String? inviteDirection;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <({String label, String value})>[
+      if ((phaseReached?.trim().isNotEmpty ?? false))
+        (label: '進度', value: phaseReached!.trim()),
+      if ((missedVariable?.trim().isNotEmpty ?? false))
+        (label: '缺口', value: missedVariable!.trim()),
+      if ((failureState?.trim().isNotEmpty ?? false))
+        (label: '卡點', value: failureState!.trim()),
+      if ((nextFirstLine?.trim().isNotEmpty ?? false))
+        (label: '下句', value: nextFirstLine!.trim()),
+      if ((inviteDirection?.trim().isNotEmpty ?? false))
+        (label: '邀約', value: inviteDirection!.trim()),
+    ];
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.ctaEnd.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.ctaEnd.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.sports_esports_outlined,
+                size: 16,
+                color: AppColors.ctaEnd,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Game 拆盤',
+                style: AppTypography.labelMedium.copyWith(
+                  color: AppColors.ctaEnd,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (final row in rows)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                '${row.label}：${row.value}',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                  height: 1.45,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _InviteInsight extends StatelessWidget {

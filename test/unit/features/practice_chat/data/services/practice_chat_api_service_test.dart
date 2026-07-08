@@ -448,6 +448,68 @@ void main() {
   });
 
   group('requestDebrief', () {
+    test('requestDebrief parses optional gameBreakdown', () async {
+      final svc = serviceReturning(200, {
+        'card': {
+          'summary': 'solid',
+          'strengths': ['hook'],
+          'watchouts': ['too fast'],
+          'suggestedLine': 'next line',
+          'vibe': 'neutral',
+          'gameBreakdown': {
+            'phaseReached': 'value stage',
+            'missedVariable': 'investment',
+            'failureState': 'too many questions',
+            'nextFirstLine': 'lead with a callback',
+            'inviteDirection': 'soft invite',
+          },
+        },
+        'costDeducted': 0,
+      });
+
+      final d = await svc.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.game,
+      );
+
+      expect(d.gameBreakdown?.phaseReached, 'value stage');
+      expect(d.gameBreakdown?.missedVariable, 'investment');
+      expect(d.gameBreakdown?.failureState, 'too many questions');
+      expect(d.gameBreakdown?.nextFirstLine, 'lead with a callback');
+      expect(d.gameBreakdown?.inviteDirection, 'soft invite');
+    });
+
+    test('requestDebrief drops gameBreakdown outside game mode', () async {
+      final svc = serviceReturning(200, {
+        'card': {
+          'summary': 'solid',
+          'strengths': ['hook'],
+          'watchouts': ['too fast'],
+          'suggestedLine': 'next line',
+          'vibe': 'neutral',
+          'gameBreakdown': {
+            'phaseReached': 'value stage',
+            'missedVariable': 'investment',
+            'failureState': 'too many questions',
+            'nextFirstLine': 'lead with a callback',
+            'inviteDirection': 'soft invite',
+          },
+        },
+        'costDeducted': 0,
+      });
+
+      final d = await svc.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.beginner,
+      );
+
+      expect(d.gameBreakdown, isNull);
+    });
+
     test('200 → 解析教練拆解卡', () async {
       final svc = serviceReturning(200, {
         'card': {
@@ -520,6 +582,7 @@ void main() {
 
       expect(captured.functionName, 'practice-chat');
       expect(captured.body?['mode'], 'debrief');
+      expect(captured.body?['practiceMode'], 'standard');
       expect(captured.body?['personaId'], 'cool_rational');
       expect(captured.body?['difficulty'], 'normal');
     });

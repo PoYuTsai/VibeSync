@@ -170,3 +170,136 @@ Deno.test("visible fields with internal labels are rejected", () => {
     );
   }
 });
+
+Deno.test("visible fields with L4 unsafe text are rejected", () => {
+  for (
+    const leaked of [
+      { suggestedLine: "今晚直接上床吧" },
+      { nextInviteMove: "帶她回家睡" },
+      { strengths: ["想看裸照"] },
+      { watchouts: ["不能拒絕"] },
+      {
+        gameBreakdown: {
+          phaseReached: "value stage",
+          missedVariable: "investment",
+          failureState: "too pushy",
+          nextFirstLine: "今晚直接上床吧",
+          inviteDirection: "low pressure invitation",
+        },
+      },
+    ]
+  ) {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({
+            summary: "solid",
+            suggestedLine: "next line",
+            ...leaked,
+          }),
+          { allowGameBreakdown: true },
+        ),
+      Error,
+      "debrief_l4_unsafe",
+    );
+  }
+});
+
+Deno.test("parseDebriefCard accepts optional gameBreakdown for Game debrief", () => {
+  const c = parseDebriefCard(
+    JSON.stringify({
+      summary: "solid",
+      strengths: ["hook"],
+      watchouts: ["too fast"],
+      suggestedLine: "next line",
+      gameBreakdown: {
+        phaseReached: "value stage",
+        missedVariable: "investment",
+        failureState: "too many questions",
+        nextFirstLine: "lead with a concrete callback",
+        inviteDirection: "low pressure invitation",
+      },
+    }),
+    { allowGameBreakdown: true },
+  );
+
+  assertEquals(c.gameBreakdown?.phaseReached, "value stage");
+  assertEquals(c.gameBreakdown?.missedVariable, "investment");
+  assertEquals(c.gameBreakdown?.failureState, "too many questions");
+  assertEquals(c.gameBreakdown?.nextFirstLine, "lead with a concrete callback");
+  assertEquals(c.gameBreakdown?.inviteDirection, "low pressure invitation");
+});
+
+Deno.test("parseDebriefCard omits malformed gameBreakdown without breaking old cards", () => {
+  const c = parseDebriefCard(
+    JSON.stringify({
+      summary: "solid",
+      suggestedLine: "next line",
+      gameBreakdown: "not an object",
+    }),
+    { allowGameBreakdown: true },
+  );
+
+  assertEquals(c.gameBreakdown, null);
+});
+
+Deno.test("gameBreakdown visible fields reject hidden internal labels", () => {
+  for (const hidden of ["P4", "L3", "BORING", "targetVariable"]) {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({
+            summary: "solid",
+            suggestedLine: "next line",
+            gameBreakdown: {
+              phaseReached: hidden,
+              missedVariable: "investment",
+              failureState: "too many questions",
+              nextFirstLine: "safe line",
+              inviteDirection: "low pressure invitation",
+            },
+          }),
+          { allowGameBreakdown: true },
+        ),
+      Error,
+      "debrief_internal_label_leak",
+    );
+  }
+});
+
+Deno.test("parseDebriefCard drops gameBreakdown by default", () => {
+  const c = parseDebriefCard(
+    JSON.stringify({
+      summary: "solid",
+      suggestedLine: "next line",
+      gameBreakdown: {
+        phaseReached: "value stage",
+        missedVariable: "investment",
+        failureState: "too many questions",
+        nextFirstLine: "safe line",
+        inviteDirection: "low pressure invitation",
+      },
+    }),
+  );
+
+  assertEquals(c.gameBreakdown, null);
+});
+
+Deno.test("parseDebriefCard can drop gameBreakdown outside Game mode", () => {
+  const c = parseDebriefCard(
+    JSON.stringify({
+      summary: "solid",
+      suggestedLine: "next line",
+      gameBreakdown: {
+        phaseReached: "value stage",
+        missedVariable: "investment",
+        failureState: "too many questions",
+        nextFirstLine: "safe line",
+        inviteDirection: "low pressure invitation",
+      },
+    }),
+    { allowGameBreakdown: false },
+  );
+
+  assertEquals(c.gameBreakdown, null);
+});

@@ -37,6 +37,18 @@ import {
 } from "./visible_text_guard.ts";
 import { applyGameLearningDelta, evaluateGameFsm } from "./game_fsm.ts";
 import {
+  buildNextGameState,
+  parsePersistedGameState,
+  type PersistedGameState,
+} from "./game_state.ts";
+import { inviteMaturityFromLearningScores } from "./invite_maturity.ts";
+import {
+  buildRelationshipThreadRpcParams,
+  parseRelationshipThreadRow,
+  type PracticeRelationshipThreadState,
+  threadIdForPracticeRequest,
+} from "./relationship_thread.ts";
+import {
   applyLearningClassification,
   applyPartnerStateUpdate,
   buildTurnClassifierMessages,
@@ -411,11 +423,32 @@ function requestLooksLikeContinuation(
 function promptPartnerStateForRequest(
   ledger: SessionLedger,
   request: ReturnType<typeof validateRequest>,
+  threadState?: PracticeRelationshipThreadState | null,
 ): PartnerState | null {
   const authoritative = partnerStateFromLedger(ledger);
   if (authoritative) return authoritative;
+  if (threadState?.partnerState) return threadState.partnerState;
   if (ledger.exists || !requestLooksLikeContinuation(request)) return null;
   return request.continuationPartnerState ?? null;
+}
+
+async function fetchRelationshipThreadState(opts: {
+  supabase: PracticeSupabaseClient;
+  userId: string;
+  visibleThreadId: string;
+}): Promise<PracticeRelationshipThreadState | null> {
+  const { data, error } = await opts.supabase
+    .from("practice_relationship_threads")
+    .select(
+      "memory_summary, partner_mood, partner_inner_thought, temperature_score, familiarity_score, profile_id, practice_mode, invite_stage",
+    )
+    .eq("user_id", opts.userId)
+    .eq("visible_thread_id", opts.visibleThreadId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(error.message);
+  }
+  return parseRelationshipThreadRow(data);
 }
 
 function hintCountFromLedger(value: unknown): number {
@@ -660,6 +693,41 @@ async function updateLearningState(opts: {
     throw new Error(error.message);
   }
   return learningStateUpdateResultFromData(data);
+}
+
+async function persistGameStateFailOpen(opts: {
+  supabase: PracticeSupabaseClient;
+  userId: string;
+  sessionId: string;
+  gameState: PersistedGameState;
+}): Promise<void> {
+  const { error } = await opts.supabase.rpc("update_practice_game_state", {
+    p_user_id: opts.userId,
+    p_session_id: opts.sessionId,
+    p_game_state: opts.gameState,
+  });
+  if (error) {
+    logWarn("practice_game_state_update_failed", {
+      user: summarizeUser(opts.userId),
+      error: error.message,
+    });
+  }
+}
+
+async function upsertRelationshipThreadFailOpen(opts: {
+  supabase: PracticeSupabaseClient;
+  params: ReturnType<typeof buildRelationshipThreadRpcParams>;
+}): Promise<void> {
+  const { error } = await opts.supabase.rpc(
+    "upsert_practice_relationship_thread",
+    opts.params,
+  );
+  if (error) {
+    logWarn("practice_relationship_thread_upsert_failed", {
+      user: summarizeUser(String(opts.params.p_user_id)),
+      error: error.message,
+    });
+  }
 }
 
 async function judgeLearningState(opts: {
@@ -1086,7 +1154,7 @@ export function createPracticeChatHandler(
     const { data: ledgerRow, error: ledgerError } = await supabase
       .from("practice_chat_sessions")
       .select(
-        "ai_count, charged, debrief_count, practice_mode, temperature_score, familiarity_score, partner_mood, partner_inner_thought, hint_count",
+        "ai_count, charged, debrief_count, practice_mode, temperature_score, familiarity_score, partner_mood, partner_inner_thought, hint_count, game_state",
       )
       .eq("user_id", user.id)
       .eq("session_id", request.sessionId)
@@ -1121,6 +1189,36 @@ export function createPracticeChatHandler(
     const lockedPracticeMode = explicitPracticeModeFromLedger(
       ledgerRow?.practice_mode,
     );
+    const ledgerGameState = parsePersistedGameState(ledgerRow?.game_state);
+    const visibleThreadId = threadIdForPracticeRequest({
+      sessionId: request.sessionId,
+      visiblePracticeThreadId: request.visiblePracticeThreadId,
+    });
+    let relationshipThreadState: PracticeRelationshipThreadState | null = null;
+    try {
+      relationshipThreadState = await fetchRelationshipThreadState({
+        supabase,
+        userId: user.id,
+        visibleThreadId,
+      });
+    } catch (e) {
+      logWarn("practice_relationship_thread_fetch_failed", {
+        user: summarizeUser(user.id),
+        error: getErrorMessage(e),
+      });
+    }
+    if (
+      relationshipThreadState &&
+      relationshipThreadState.profileId !== request.profile.girl.profileId
+    ) {
+      logWarn("practice_relationship_thread_profile_mismatch", {
+        user: summarizeUser(user.id),
+        requestedProfileId: request.profile.girl.profileId,
+        threadProfileId: relationshipThreadState.profileId ?? null,
+      });
+      relationshipThreadState = null;
+    }
+    const promptMemorySummary = relationshipThreadState?.memorySummary ?? null;
 
     if (request.mode === "hint") {
       if (!isAssistedPracticeMode(request.practiceMode)) {
@@ -1308,9 +1406,10 @@ export function createPracticeChatHandler(
                 temperatureScore: ledger.temperatureScore ??
                   difficultyStartTemperature,
                 familiarityScore: ledger.familiarityScore ?? 0,
-                partnerMood: partnerStateFromLedger(ledger)?.mood ?? null,
+                partnerMood: partnerStateFromLedger(ledger)?.mood ??
+                  relationshipThreadState?.partnerState?.mood ?? null,
                 sceneContext,
-                memorySummary: request.memorySummary,
+                memorySummary: promptMemorySummary,
               }),
               maxTokens: HINT_MAX_TOKENS,
               temperature: HINT_TEMPERATURE,
@@ -1531,14 +1630,17 @@ export function createPracticeChatHandler(
                     temperatureScore: ledger.temperatureScore ??
                       difficultyStartTemperature,
                     familiarityScore: ledger.familiarityScore ?? 0,
-                    partnerState: partnerStateFromLedger(ledger),
+                    partnerState: partnerStateFromLedger(ledger) ??
+                      relationshipThreadState?.partnerState ?? null,
                     sceneContext,
-                    memorySummary: request.memorySummary,
+                    memorySummary: promptMemorySummary,
+                    gameState: ledgerGameState,
                   }
                   : {
-                    partnerState: partnerStateFromLedger(ledger),
+                    partnerState: partnerStateFromLedger(ledger) ??
+                      relationshipThreadState?.partnerState ?? null,
                     sceneContext,
-                    memorySummary: request.memorySummary,
+                    memorySummary: promptMemorySummary,
                   },
               ),
               maxTokens: DEBRIEF_MAX_TOKENS,
@@ -1546,7 +1648,9 @@ export function createPracticeChatHandler(
               jsonMode: true,
               timeoutMs: DEEPSEEK_TIMEOUT_MS,
             });
-            debriefCard = parseDebriefCard(rawCard);
+            debriefCard = parseDebriefCard(rawCard, {
+              allowGameBreakdown: ledger.practiceMode === "game",
+            });
             break;
           } catch (e) {
             lastError = e;
@@ -1680,15 +1784,22 @@ export function createPracticeChatHandler(
     const currentTemperature = assistedMode
       ? ledger.exists
         ? ledger.temperatureScore ?? difficultyStartTemperature
-        : request.temperatureScore ?? difficultyStartTemperature
+        : relationshipThreadState?.temperatureScore ??
+          request.temperatureScore ?? difficultyStartTemperature
       : null;
     const currentFamiliarity = assistedMode
       ? ledger.exists
         ? ledger.familiarityScore ?? 0
-        : request.familiarityScore ?? 0
+        : relationshipThreadState?.familiarityScore ??
+          request.familiarityScore ?? 0
       : null;
-    const trustedPartnerState = partnerStateFromLedger(ledger);
-    const promptPartnerState = promptPartnerStateForRequest(ledger, request);
+    const trustedPartnerState = partnerStateFromLedger(ledger) ??
+      relationshipThreadState?.partnerState ?? null;
+    const promptPartnerState = promptPartnerStateForRequest(
+      ledger,
+      request,
+      relationshipThreadState,
+    );
 
     try {
       await assertPracticeLearningReady({
@@ -1723,12 +1834,13 @@ export function createPracticeChatHandler(
                   familiarityScore: currentFamiliarity ?? 0,
                   partnerState: promptPartnerState,
                   sceneContext,
-                  memorySummary: request.memorySummary,
+                  memorySummary: promptMemorySummary,
+                  gameState: ledgerGameState,
                 }
                 : {
                   partnerState: promptPartnerState,
                   sceneContext,
-                  memorySummary: request.memorySummary,
+                  memorySummary: promptMemorySummary,
                 },
             ),
             maxTokens: CHAT_MAX_TOKENS,
@@ -1736,9 +1848,7 @@ export function createPracticeChatHandler(
             timeoutMs: DEEPSEEK_TIMEOUT_MS,
           });
           rejectVisibleInternalLabelLeak(reply, "chat_internal_label_leak");
-          if (request.practiceMode === "game") {
-            rejectL4UnsafeVisibleText(reply, "chat_l4_unsafe");
-          }
+          rejectL4UnsafeVisibleText(reply, "chat_l4_unsafe");
           break;
         } catch (e) {
           lastError = e;
@@ -1817,6 +1927,53 @@ export function createPracticeChatHandler(
           error: getErrorMessage(e),
         });
         return jsonResponse({ error: mapped.error }, mapped.status);
+      }
+    }
+
+    if (request.practiceMode === "game" && temperature) {
+      const snapshot = evaluateGameFsm({
+        turns: request.turns,
+        temperatureScore: temperature.score,
+        familiarityScore: temperature.familiarityScore,
+        partnerMood: temperature.partnerState?.mood ??
+          trustedPartnerState?.mood ?? null,
+        classification: temperature.classification,
+      });
+      await persistGameStateFailOpen({
+        supabase,
+        userId: user.id,
+        sessionId: request.sessionId,
+        gameState: buildNextGameState({
+          previous: ledgerGameState,
+          snapshot,
+          now: deps.now?.(),
+        }),
+      });
+    }
+
+    if (assistedMode && temperature) {
+      const inviteMaturity = inviteMaturityFromLearningScores({
+        temperatureScore: temperature.score,
+        familiarityScore: temperature.familiarityScore,
+        partnerMood: temperature.partnerState?.mood ?? null,
+      });
+      if (inviteMaturity) {
+        await upsertRelationshipThreadFailOpen({
+          supabase,
+          params: buildRelationshipThreadRpcParams({
+            userId: user.id,
+            visibleThreadId,
+            profileId: request.profile.girl.profileId,
+            practiceMode: request.practiceMode,
+            relationshipScore: inviteMaturity.score,
+            temperatureScore: temperature.score,
+            familiarityScore: temperature.familiarityScore,
+            partnerState: temperature.partnerState ?? trustedPartnerState,
+            inviteStage: inviteMaturity.stage,
+            memorySummary: null,
+            aiTurnCount: newAiCount,
+          }),
+        });
       }
     }
 

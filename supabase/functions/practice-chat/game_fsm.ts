@@ -563,6 +563,159 @@ function uniqueNonEmpty(values: readonly string[], maxItems: number): string[] {
   return result;
 }
 
+const EXPLICIT_SR_GAME_STRATEGIES: Record<
+  string,
+  Omit<SrGameStrategy, "profileId">
+> = {
+  practice_girl_004: {
+    valueHooks: ["dry humor", "craft coffee", "small competence flex"],
+    testStyle: "teasing tests; she rewards calm wit and concise callbacks",
+    tensionStyle: "playful verbal tension, never push private scenes early",
+    closeHooks: ["coffee tasting", "quick bookstore loop", "dessert detour"],
+    punishments: ["needy approval", "over-explaining", "fake familiarity"],
+  },
+  practice_girl_006: {
+    valueHooks: ["night walk", "music taste", "low-key confidence"],
+    testStyle: "soft challenge; she checks if your frame survives silence",
+    tensionStyle: "quiet tension through implication and slower tempo",
+    closeHooks: ["live music", "late tea", "short city walk"],
+    punishments: ["interviewing", "rushing intimacy", "tool-guy favors"],
+  },
+  practice_girl_007: {
+    valueHooks: ["fitness discipline", "healthy routines", "playful stamina"],
+    testStyle: "direct energy test; she likes grounded banter",
+    tensionStyle: "athletic teasing and challenge, consent-forward",
+    closeHooks: ["smoothie stop", "easy hike", "weekend workout cafe"],
+    punishments: ["lazy vagueness", "sexual pressure", "bragging"],
+  },
+  practice_girl_008: {
+    valueHooks: ["art taste", "visual details", "curious observation"],
+    testStyle: "taste filter; she notices whether you actually observe",
+    tensionStyle: "aesthetic contrast and light mystery",
+    closeHooks: ["gallery loop", "design market", "photo walk"],
+    punishments: ["generic compliments", "explaining her taste", "neediness"],
+  },
+  practice_girl_009: {
+    valueHooks: ["career drive", "sharp boundaries", "efficient plans"],
+    testStyle: "competence test; she rewards clarity and low pressure",
+    tensionStyle: "confident compression, no rambling",
+    closeHooks: ["espresso between meetings", "short lunch", "after-work bar"],
+    punishments: ["unclear intent", "frame collapse", "time wasting"],
+  },
+  practice_girl_028: {
+    valueHooks: ["travel stories", "local gems", "spontaneous planning"],
+    testStyle: "adventure filter; she checks if you can lead lightly",
+    tensionStyle: "inviting momentum with easy opt-outs",
+    closeHooks: ["hidden cafe", "mini itinerary", "street food stop"],
+    punishments: ["controlling plans", "unsafe pressure", "boring logistics"],
+  },
+  practice_girl_032: {
+    valueHooks: ["book notes", "intellectual play", "specific memory"],
+    testStyle: "precision test; vague flirting cools her off",
+    tensionStyle: "smart challenge and understated warmth",
+    closeHooks: ["bookstore coffee", "quiet tea", "lecture after-chat"],
+    punishments: ["surface-level lines", "fake expertise", "pushiness"],
+  },
+  practice_girl_033: {
+    valueHooks: ["food curiosity", "sensory detail", "social ease"],
+    testStyle: "taste and generosity test; she dislikes show-off ordering",
+    tensionStyle: "warm sensory teasing without explicitness",
+    closeHooks: ["dessert split", "night market bite", "chef's pick"],
+    punishments: ["cheap innuendo", "indecision", "approval seeking"],
+  },
+  practice_girl_036: {
+    valueHooks: ["indie music", "private jokes", "calm originality"],
+    testStyle: "coolness test; she checks if you chase validation",
+    tensionStyle: "deadpan tension and selective compliments",
+    closeHooks: ["vinyl shop", "small gig", "late cafe"],
+    punishments: ["trying too hard", "copy-paste lines", "neediness"],
+  },
+  practice_girl_038: {
+    valueHooks: ["pet stories", "gentle reliability", "daily rituals"],
+    testStyle: "safety test; she warms to steady, non-pushy pacing",
+    tensionStyle: "soft warmth with tiny playful challenge",
+    closeHooks: ["pet-friendly cafe", "park coffee", "bakery errand"],
+    punishments: ["hard escalation", "unverified familiarity", "mocking"],
+  },
+  practice_girl_051: {
+    valueHooks: ["startup grit", "decision speed", "clear priorities"],
+    testStyle: "frame test; she pokes at indecision",
+    tensionStyle: "fast, confident, low-word-count tension",
+    closeHooks: ["15-minute coffee", "demo day drink", "late snack"],
+    punishments: ["rambling", "unclear plans", "bragging without proof"],
+  },
+  practice_girl_052: {
+    valueHooks: ["fashion detail", "tasteful restraint", "scene awareness"],
+    testStyle: "taste test; she notices if you over-compliment",
+    tensionStyle: "stylish restraint and one precise compliment",
+    closeHooks: ["concept store", "cocktail bar", "window-shopping loop"],
+    punishments: ["objectifying", "generic praise", "private-scene pressure"],
+  },
+  practice_girl_055: {
+    valueHooks: ["medical humor", "competence under stress", "care rhythm"],
+    testStyle: "stress test; she values steady humor without mansplaining",
+    tensionStyle: "warm competence and lightly mischievous callbacks",
+    closeHooks: ["post-shift dessert", "quiet ramen", "short coffee"],
+    punishments: ["fake hospital social proof", "lecture mode", "neediness"],
+  },
+  practice_girl_063: {
+    valueHooks: ["language play", "culture contrast", "travel curiosity"],
+    testStyle: "curiosity test; she dislikes exoticizing",
+    tensionStyle: "cross-cultural teasing with respect and boundaries",
+    closeHooks: ["language exchange cafe", "museum snack", "tea tasting"],
+    punishments: ["stereotyping", "over-explaining", "rushing intimacy"],
+  },
+  practice_girl_065: {
+    valueHooks: ["dance rhythm", "body confidence", "social calibration"],
+    testStyle: "calibration test; she checks if you read cues",
+    tensionStyle: "movement metaphors, never explicit body claims",
+    closeHooks: ["salsa night", "dessert after class", "music bar"],
+    punishments: ["greasy body comments", "pressure", "jealous framing"],
+  },
+  practice_girl_079: {
+    valueHooks: ["finance discipline", "dry wit", "long-game thinking"],
+    testStyle: "logic test; she rewards calm confidence",
+    tensionStyle: "controlled teasing with grounded specifics",
+    closeHooks: ["wine bar", "weekday coffee", "market brunch"],
+    punishments: ["showing off money", "vague flirting", "frame collapse"],
+  },
+  practice_girl_080: {
+    valueHooks: ["outdoor calm", "nature details", "prepared leadership"],
+    testStyle: "reliability test; she warms when plans feel safe",
+    tensionStyle: "fresh-air playfulness and slow burn",
+    closeHooks: ["sunset walk", "trail cafe", "morning bakery"],
+    punishments: ["unsafe spontaneity", "hard escalation", "complaint loops"],
+  },
+  practice_girl_082: {
+    valueHooks: ["gaming references", "team play", "creative problem solving"],
+    testStyle: "banter duel; she likes playful counters",
+    tensionStyle: "competitive teasing and quick callbacks",
+    closeHooks: ["arcade date", "board-game cafe", "late-night snack"],
+    punishments: ["mansplaining", "rage energy", "needy compliments"],
+  },
+  practice_girl_085: {
+    valueHooks: ["cinema taste", "emotional nuance", "observant callbacks"],
+    testStyle: "depth test; she notices shallow lines",
+    tensionStyle: "cinematic implication and emotional contrast",
+    closeHooks: ["indie movie", "post-film tea", "night walk"],
+    punishments: ["spoilers", "generic romance lines", "rushing close"],
+  },
+  practice_girl_087: {
+    valueHooks: ["law-school precision", "boundaries", "sharp teasing"],
+    testStyle: "argument test; she checks if you can disagree lightly",
+    tensionStyle: "controlled debate and respectful push-pull",
+    closeHooks: ["court-area coffee", "mocktail", "bookstore stop"],
+    punishments: ["pressure", "lying social proof", "defensive essays"],
+  },
+};
+
+export function hasExplicitSrGameStrategy(profileId: string): boolean {
+  return Object.prototype.hasOwnProperty.call(
+    EXPLICIT_SR_GAME_STRATEGIES,
+    profileId,
+  );
+}
+
 function testStyleFor(profile: PracticeProfile): string {
   const types = profile.consistencyTest.types.join(", ");
   const propensity = profile.consistencyTest.propensity;
@@ -599,6 +752,13 @@ export function buildSrGameStrategy(
 ): SrGameStrategy | null {
   if (profile.girl.rarity !== "sr") return null;
   const girl = profile.girl;
+  const explicit = EXPLICIT_SR_GAME_STRATEGIES[girl.profileId];
+  if (explicit) {
+    return {
+      profileId: girl.profileId,
+      ...explicit,
+    };
+  }
   return {
     profileId: girl.profileId,
     valueHooks: uniqueNonEmpty([

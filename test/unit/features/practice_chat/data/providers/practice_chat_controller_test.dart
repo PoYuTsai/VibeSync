@@ -119,6 +119,7 @@ class _FakeApi extends PracticeChatApiService {
     required String sessionId,
     required PracticeProfileDto profile,
     required List<PracticeTurnDto> turns,
+    PracticeLearningMode practiceMode = PracticeLearningMode.standard,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
     String? memorySummary,

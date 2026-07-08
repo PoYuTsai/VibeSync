@@ -1,10 +1,21 @@
 // 教練拆解卡 JSON 解析（純函式、可 deno test）。
 // 防御性：去 markdown 圍欄、缺核心欄位丟出、vibe 非法則回退「中性」、長度 clamp。
 
-import { rejectVisibleInternalLabelLeak } from "./visible_text_guard.ts";
+import {
+  rejectL4UnsafeVisibleText,
+  rejectVisibleInternalLabelLeak,
+} from "./visible_text_guard.ts";
 
 export const VIBES = ["暖", "中性", "冷"];
 export const DATE_CHANCES = ["low", "medium", "high"];
+
+export interface GameBreakdown {
+  phaseReached: string;
+  missedVariable: string;
+  failureState: string;
+  nextFirstLine: string;
+  inviteDirection: string;
+}
 
 export interface DebriefCard {
   summary: string;
@@ -16,6 +27,7 @@ export interface DebriefCard {
   dateChance: string;
   dateChanceReason: string;
   nextInviteMove: string;
+  gameBreakdown: GameBreakdown | null;
 }
 
 export function clampStr(v: unknown, max: number): string {
@@ -40,7 +52,25 @@ function rejectInternalLabelLeak(value: string) {
 
 function guardVisibleText(value: string): string {
   rejectInternalLabelLeak(value);
+  rejectL4UnsafeVisibleText(value, "debrief_l4_unsafe");
   return value;
+}
+
+function parseGameBreakdown(value: unknown): GameBreakdown | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const p = value as Record<string, unknown>;
+  const gameBreakdown = {
+    phaseReached: guardVisibleText(clampStr(p.phaseReached, 60)),
+    missedVariable: guardVisibleText(clampStr(p.missedVariable, 60)),
+    failureState: guardVisibleText(clampStr(p.failureState, 60)),
+    nextFirstLine: guardVisibleText(clampStr(p.nextFirstLine, 70)),
+    inviteDirection: guardVisibleText(clampStr(p.inviteDirection, 60)),
+  };
+  return Object.values(gameBreakdown).some((field) => field.length > 0)
+    ? gameBreakdown
+    : null;
 }
 
 function extractJsonObject(raw: string): string {
@@ -58,7 +88,10 @@ function extractJsonObject(raw: string): string {
   return fenced;
 }
 
-export function parseDebriefCard(raw: string): DebriefCard {
+export function parseDebriefCard(
+  raw: string,
+  opts: { allowGameBreakdown?: boolean } = {},
+): DebriefCard {
   const cleaned = extractJsonObject(raw);
   const parsed = JSON.parse(cleaned);
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
@@ -91,5 +124,8 @@ export function parseDebriefCard(raw: string): DebriefCard {
     dateChance,
     dateChanceReason,
     nextInviteMove,
+    gameBreakdown: opts.allowGameBreakdown === true
+      ? parseGameBreakdown(p.gameBreakdown)
+      : null,
   };
 }

@@ -45,13 +45,18 @@ class PracticeSessionAdapter extends TypeAdapter<PracticeSession> {
       debriefDateChance: fields[21] as String?,
       debriefDateChanceReason: fields[22] as String?,
       debriefNextInviteMove: fields[23] as String?,
+      debriefGamePhaseReached: fields[24] as String?,
+      debriefGameMissedVariable: fields[25] as String?,
+      debriefGameFailureState: fields[26] as String?,
+      debriefGameNextFirstLine: fields[27] as String?,
+      debriefGameInviteDirection: fields[28] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, PracticeSession obj) {
     writer
-      ..writeByte(24)
+      ..writeByte(29)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -99,7 +104,17 @@ class PracticeSessionAdapter extends TypeAdapter<PracticeSession> {
       ..writeByte(22)
       ..write(obj.debriefDateChanceReason)
       ..writeByte(23)
-      ..write(obj.debriefNextInviteMove);
+      ..write(obj.debriefNextInviteMove)
+      ..writeByte(24)
+      ..write(obj.debriefGamePhaseReached)
+      ..writeByte(25)
+      ..write(obj.debriefGameMissedVariable)
+      ..writeByte(26)
+      ..write(obj.debriefGameFailureState)
+      ..writeByte(27)
+      ..write(obj.debriefGameNextFirstLine)
+      ..writeByte(28)
+      ..write(obj.debriefGameInviteDirection);
   }
 
   @override

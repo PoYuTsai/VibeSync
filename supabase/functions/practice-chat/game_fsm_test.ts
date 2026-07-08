@@ -9,9 +9,10 @@ import {
   applyGameLearningDelta,
   buildSrGameStrategy,
   evaluateGameFsm,
+  hasExplicitSrGameStrategy,
 } from "./game_fsm.ts";
 import { applyLearningClassification } from "./temperature.ts";
-import { resolvePracticeProfile } from "./practice_persona.ts";
+import { GIRL_PROFILES, resolvePracticeProfile } from "./practice_persona.ts";
 
 Deno.test("evaluateGameFsm accumulates BORING when user interrogates instead of sharing", () => {
   const snapshot = evaluateGameFsm({
@@ -194,4 +195,22 @@ Deno.test("buildSrGameStrategy derives distinct SR hooks and ignores non-SR card
   assert(mia.valueHooks.join("|") !== nora.valueHooks.join("|"));
   assert(mia.closeHooks.length > 0);
   assert(mia.punishments.length > 0);
+});
+
+Deno.test("every SR card has an explicit Game strategy track", () => {
+  const srProfiles = GIRL_PROFILES.filter((girl) => girl.rarity === "sr");
+
+  assertEquals(srProfiles.length > 0, true);
+  for (const girl of srProfiles) {
+    const profile = resolvePracticeProfile({ profileId: girl.profileId });
+    const strategy = buildSrGameStrategy(profile);
+    assert(strategy, `${girl.profileId} should have an SR Game strategy`);
+    assert(
+      hasExplicitSrGameStrategy(girl.profileId),
+      `${girl.profileId} should not rely on fallback derivation`,
+    );
+    assert(strategy.valueHooks.length >= 2);
+    assert(strategy.closeHooks.length >= 2);
+    assert(strategy.punishments.length >= 1);
+  }
 });

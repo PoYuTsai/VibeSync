@@ -45,6 +45,12 @@ const gameModeMigration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const gameStateThreadMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260708130000_practice_game_state_relationship_threads.sql",
+    import.meta.url,
+  ),
+);
 
 function requiredIndex(snippet: string): number {
   const index = migration.indexOf(snippet);
@@ -554,6 +560,25 @@ function gameModeFunctionBody(name: string): string {
     : gameModeMigration.slice(start);
 }
 
+function requiredGameStateThreadIndex(snippet: string): number {
+  const index = gameStateThreadMigration.indexOf(snippet);
+  assert(index >= 0, `Game-state/thread migration must contain: ${snippet}`);
+  return index;
+}
+
+function gameStateThreadFunctionBody(name: string): string {
+  const start = requiredGameStateThreadIndex(
+    `CREATE OR REPLACE FUNCTION public.${name}(`,
+  );
+  const nextFunction = gameStateThreadMigration.indexOf(
+    "CREATE OR REPLACE FUNCTION public.",
+    start + 1,
+  );
+  return nextFunction >= 0
+    ? gameStateThreadMigration.slice(start, nextFunction)
+    : gameStateThreadMigration.slice(start);
+}
+
 Deno.test("rpc cleanup migration warns it must run only after the new Edge deploy", () => {
   requiredCleanupIndex("必須在新版 practice-chat Edge 部署完成後才可套用");
 });
@@ -705,5 +730,116 @@ Deno.test("game-mode learning update RPC applies guarded deltas to beginner and 
   assertEquals(body.includes("AND s.practice_mode = 'beginner'"), false);
   requiredGameModeIndex(
     "GRANT EXECUTE ON FUNCTION public.update_practice_learning_state(UUID, TEXT, INTEGER, INTEGER, INTEGER, INTEGER, TEXT, TEXT)",
+  );
+});
+
+Deno.test("game-state migration adds bounded jsonb state to practice sessions", () => {
+  requiredGameStateThreadIndex("ADD COLUMN IF NOT EXISTS game_state JSONB");
+  requiredGameStateThreadIndex(
+    "practice_chat_sessions_game_state_object_check",
+  );
+  requiredGameStateThreadIndex(
+    "CHECK (game_state IS NULL OR jsonb_typeof(game_state) = 'object')",
+  );
+});
+
+Deno.test("game-state RPC updates only authenticated game sessions", () => {
+  const body = gameStateThreadFunctionBody("update_practice_game_state");
+  const compactBody = compactSql(body);
+
+  assert(compactBody.includes("p_user_id UUID"));
+  assert(compactBody.includes("p_session_id TEXT"));
+  assert(compactBody.includes("p_game_state JSONB"));
+  assert(body.includes("jsonb_typeof(p_game_state) <> 'object'"));
+  assert(compactBody.includes("UPDATE public.practice_chat_sessions SET"));
+  assert(body.includes("WHERE user_id = p_user_id"));
+  assert(body.includes("AND session_id = p_session_id"));
+  assert(body.includes("AND practice_mode = 'game'"));
+  requiredGameStateThreadIndex(
+    "GRANT EXECUTE ON FUNCTION public.update_practice_game_state(UUID, TEXT, JSONB)",
+  );
+  assert(
+    /REVOKE EXECUTE ON FUNCTION public\.update_practice_game_state\(UUID, TEXT, JSONB\)\s+FROM PUBLIC, anon, authenticated/
+      .test(
+        gameStateThreadMigration,
+      ),
+  );
+  assert(
+    /GRANT EXECUTE ON FUNCTION public\.update_practice_game_state\(UUID, TEXT, JSONB\)\s+TO service_role/
+      .test(
+        gameStateThreadMigration,
+      ),
+  );
+});
+
+Deno.test("relationship thread migration creates scoped long-term practice thread state", () => {
+  requiredGameStateThreadIndex(
+    "CREATE TABLE IF NOT EXISTS public.practice_relationship_threads",
+  );
+  requiredGameStateThreadIndex("visible_thread_id TEXT NOT NULL");
+  requiredGameStateThreadIndex("profile_id TEXT");
+  requiredGameStateThreadIndex("practice_mode TEXT NOT NULL");
+  requiredGameStateThreadIndex("relationship_score INTEGER");
+  requiredGameStateThreadIndex("temperature_score INTEGER");
+  requiredGameStateThreadIndex("familiarity_score INTEGER");
+  requiredGameStateThreadIndex("partner_mood TEXT");
+  requiredGameStateThreadIndex("partner_inner_thought TEXT");
+  requiredGameStateThreadIndex("invite_stage TEXT");
+  requiredGameStateThreadIndex("memory_summary TEXT");
+  requiredGameStateThreadIndex("recent_facts JSONB");
+  requiredGameStateThreadIndex("last_interaction_at TIMESTAMPTZ");
+  requiredGameStateThreadIndex(
+    "UNIQUE (user_id, visible_thread_id)",
+  );
+  requiredGameStateThreadIndex(
+    "ALTER TABLE public.practice_relationship_threads ENABLE ROW LEVEL SECURITY",
+  );
+  requiredGameStateThreadIndex(
+    "REVOKE ALL ON TABLE public.practice_relationship_threads",
+  );
+  requiredGameStateThreadIndex(
+    "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.practice_relationship_threads",
+  );
+  assertEquals(
+    gameStateThreadMigration.includes(
+      "CREATE POLICY practice_relationship_threads",
+    ),
+    false,
+  );
+});
+
+Deno.test("relationship thread upsert RPC persists summary without raw transcript", () => {
+  const body = gameStateThreadFunctionBody(
+    "upsert_practice_relationship_thread",
+  );
+  const compactBody = compactSql(body);
+
+  assert(compactBody.includes("p_user_id UUID"));
+  assert(compactBody.includes("p_visible_thread_id TEXT"));
+  assert(compactBody.includes("p_memory_summary TEXT DEFAULT NULL"));
+  assert(compactBody.includes("p_recent_facts JSONB DEFAULT '{}'::jsonb"));
+  assert(body.includes("jsonb_typeof(p_recent_facts) <> 'object'"));
+  assert(body.includes("char_length(p_memory_summary) > 1000"));
+  assert(body.includes("ON CONFLICT (user_id, visible_thread_id) DO UPDATE"));
+  assertEquals(body.includes("p_turns"), false);
+  assertEquals(body.includes("transcript"), false);
+  requiredGameStateThreadIndex(
+    "GRANT EXECUTE ON FUNCTION public.upsert_practice_relationship_thread(UUID, TEXT, TEXT, TEXT, INTEGER, INTEGER, INTEGER, TEXT, TEXT, TEXT, TEXT, JSONB)",
+  );
+  assert(
+    /REVOKE EXECUTE ON FUNCTION public\.upsert_practice_relationship_thread\(UUID, TEXT, TEXT, TEXT, INTEGER, INTEGER, INTEGER, TEXT, TEXT, TEXT, TEXT, JSONB\)\s+FROM PUBLIC, anon, authenticated/
+      .test(
+        gameStateThreadMigration,
+      ),
+  );
+  assert(
+    /GRANT EXECUTE ON FUNCTION public\.upsert_practice_relationship_thread\(UUID, TEXT, TEXT, TEXT, INTEGER, INTEGER, INTEGER, TEXT, TEXT, TEXT, TEXT, JSONB\)\s+TO service_role/
+      .test(
+        gameStateThreadMigration,
+      ),
+  );
+  assertEquals(
+    gameStateThreadMigration.includes("TO authenticated, service_role"),
+    false,
   );
 });

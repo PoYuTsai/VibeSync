@@ -561,6 +561,13 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   }
 
   static PracticeChatState _stateFromSession(PracticeSession session) {
+    final gameBreakdown = PracticeGameBreakdown(
+      phaseReached: session.debriefGamePhaseReached,
+      missedVariable: session.debriefGameMissedVariable,
+      failureState: session.debriefGameFailureState,
+      nextFirstLine: session.debriefGameNextFirstLine,
+      inviteDirection: session.debriefGameInviteDirection,
+    );
     final debrief = session.hasDebrief
         ? PracticeDebrief(
             summary: session.debriefSummary ?? '',
@@ -571,6 +578,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             dateChance: session.debriefDateChance,
             dateChanceReason: session.debriefDateChanceReason,
             nextInviteMove: session.debriefNextInviteMove,
+            gameBreakdown: gameBreakdown.isEmpty ? null : gameBreakdown,
           )
         : null;
     // 對象身份：依 profileId 從 catalog 解析；舊場（無 profileId）兜底預設位。
@@ -1204,6 +1212,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         sessionId: state.sessionId,
         profile: _profileDto(),
         turns: _turnDtosForPrompt(state.messages),
+        practiceMode: state.learningMode,
         memorySummary: _memorySummaryForPrompt(state.messages),
         continuationPartnerState: _lastPartnerStateForPrompt(state.messages),
         roundIndex: state.roundIndex,
@@ -1439,6 +1448,11 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       debriefDateChance: s.debrief?.dateChance,
       debriefDateChanceReason: s.debrief?.dateChanceReason,
       debriefNextInviteMove: s.debrief?.nextInviteMove,
+      debriefGamePhaseReached: s.debrief?.gameBreakdown?.phaseReached,
+      debriefGameMissedVariable: s.debrief?.gameBreakdown?.missedVariable,
+      debriefGameFailureState: s.debrief?.gameBreakdown?.failureState,
+      debriefGameNextFirstLine: s.debrief?.gameBreakdown?.nextFirstLine,
+      debriefGameInviteDirection: s.debrief?.gameBreakdown?.inviteDirection,
       personaId: s.personaId,
       personaLabel: s.personaLabel,
       difficulty: s.difficulty,

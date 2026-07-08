@@ -89,6 +89,21 @@ class PracticeSession {
   @HiveField(23)
   final String? debriefNextInviteMove;
 
+  @HiveField(24)
+  final String? debriefGamePhaseReached;
+
+  @HiveField(25)
+  final String? debriefGameMissedVariable;
+
+  @HiveField(26)
+  final String? debriefGameFailureState;
+
+  @HiveField(27)
+  final String? debriefGameNextFirstLine;
+
+  @HiveField(28)
+  final String? debriefGameInviteDirection;
+
   const PracticeSession({
     required this.id,
     required this.createdAt,
@@ -114,6 +129,11 @@ class PracticeSession {
     this.debriefDateChance,
     this.debriefDateChanceReason,
     this.debriefNextInviteMove,
+    this.debriefGamePhaseReached,
+    this.debriefGameMissedVariable,
+    this.debriefGameFailureState,
+    this.debriefGameNextFirstLine,
+    this.debriefGameInviteDirection,
   });
 
   bool get hasDebrief => debriefSummary != null;
@@ -141,6 +161,11 @@ class PracticeSession {
     String? debriefDateChance,
     String? debriefDateChanceReason,
     String? debriefNextInviteMove,
+    String? debriefGamePhaseReached,
+    String? debriefGameMissedVariable,
+    String? debriefGameFailureState,
+    String? debriefGameNextFirstLine,
+    String? debriefGameInviteDirection,
   }) {
     return PracticeSession(
       id: id,
@@ -171,6 +196,16 @@ class PracticeSession {
           debriefDateChanceReason ?? this.debriefDateChanceReason,
       debriefNextInviteMove:
           debriefNextInviteMove ?? this.debriefNextInviteMove,
+      debriefGamePhaseReached:
+          debriefGamePhaseReached ?? this.debriefGamePhaseReached,
+      debriefGameMissedVariable:
+          debriefGameMissedVariable ?? this.debriefGameMissedVariable,
+      debriefGameFailureState:
+          debriefGameFailureState ?? this.debriefGameFailureState,
+      debriefGameNextFirstLine:
+          debriefGameNextFirstLine ?? this.debriefGameNextFirstLine,
+      debriefGameInviteDirection:
+          debriefGameInviteDirection ?? this.debriefGameInviteDirection,
     );
   }
 }

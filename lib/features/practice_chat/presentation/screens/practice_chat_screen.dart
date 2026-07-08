@@ -209,6 +209,16 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                                 dateChanceReason:
                                     state.debrief!.dateChanceReason,
                                 nextInviteMove: state.debrief!.nextInviteMove,
+                                gameBreakdownPhaseReached:
+                                    state.debrief!.gameBreakdown?.phaseReached,
+                                gameBreakdownMissedVariable: state
+                                    .debrief!.gameBreakdown?.missedVariable,
+                                gameBreakdownFailureState:
+                                    state.debrief!.gameBreakdown?.failureState,
+                                gameBreakdownNextFirstLine:
+                                    state.debrief!.gameBreakdown?.nextFirstLine,
+                                gameBreakdownInviteDirection: state
+                                    .debrief!.gameBreakdown?.inviteDirection,
                               ),
                             ],
                           ],
@@ -2243,6 +2253,12 @@ class _SessionReviewScreen extends StatelessWidget {
                 dateChance: session.debriefDateChance,
                 dateChanceReason: session.debriefDateChanceReason,
                 nextInviteMove: session.debriefNextInviteMove,
+                gameBreakdownPhaseReached: session.debriefGamePhaseReached,
+                gameBreakdownMissedVariable: session.debriefGameMissedVariable,
+                gameBreakdownFailureState: session.debriefGameFailureState,
+                gameBreakdownNextFirstLine: session.debriefGameNextFirstLine,
+                gameBreakdownInviteDirection:
+                    session.debriefGameInviteDirection,
               ),
             ],
           ],
