@@ -5,6 +5,7 @@ import {
   rejectL4UnsafeVisibleText,
   rejectVisibleInternalLabelLeak,
 } from "./visible_text_guard.ts";
+import type { AppliedHintTurn } from "./validate.ts";
 
 export const VIBES = ["暖", "中性", "冷"];
 export const DATE_CHANCES = ["low", "medium", "high"];
@@ -31,8 +32,43 @@ export interface DebriefCard {
 }
 
 export function buildFallbackDebriefCard(
-  opts: { practiceMode?: string } = {},
+  opts: { practiceMode?: string; appliedHintTurns?: AppliedHintTurn[] } = {},
 ): DebriefCard {
+  const hasAppliedHint = (opts.appliedHintTurns?.length ?? 0) > 0;
+  if (hasAppliedHint) {
+    const hasExactHint = opts.appliedHintTurns?.some((hint) => hint.exact) ??
+      false;
+    const suggestedLine =
+      "我有照著接妳剛剛那個點，但我也有點好奇，妳自己最喜歡那種放鬆感是哪一種？";
+    return {
+      summary: hasExactHint
+        ? "你有照提示接住她，這步是對的；只是這個提示偏保守，能穩住對話，但推進投入感有限。"
+        : "你有參考提示接住她，但這句已經被你改寫；下一步要看改寫有沒有加壓或偏題。",
+      strengths: [
+        hasExactHint ? "有照提示承接她的回覆" : "有參考提示延續對話",
+      ],
+      watchouts: [
+        hasExactHint
+          ? "提示偏保守，需要補自己的感受"
+          : "改寫後要避免加壓或偏題",
+      ],
+      suggestedLine,
+      vibe: "中性",
+      dateChance: "low",
+      dateChanceReason: "目前比較像穩住話題，還沒看到足夠投入或明確窗口。",
+      nextInviteMove:
+        "先不急約，下一句補自己的感受；如果她接住，再丟低壓邀約窗口。",
+      gameBreakdown: opts.practiceMode === "game"
+        ? {
+          phaseReached: "開場到測試",
+          missedVariable: "投入感",
+          failureState: "提示偏保守",
+          nextFirstLine: suggestedLine,
+          inviteDirection: "先補感受與投入，再接低壓邀約窗口。",
+        }
+        : null,
+    };
+  }
   const suggestedLine = "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？";
   return {
     summary: "這輪有接到她的回覆，但連續提問偏多，自己的感受還不夠。",

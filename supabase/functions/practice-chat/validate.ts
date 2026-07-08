@@ -31,6 +31,14 @@ export interface PracticeTurn {
 
 export type AppliedHintType = "warm_up" | "steady";
 
+export interface AppliedHintTurn {
+  turnIndex: number;
+  type: AppliedHintType;
+  originalHintText: string;
+  sentText: string;
+  exact: boolean;
+}
+
 export interface PracticeChatRequest {
   mode: PracticeMode;
   practiceMode: PracticeLearningMode;
@@ -54,6 +62,8 @@ export interface PracticeChatRequest {
   /** 使用者原封不動套用的新手 Hint 類型；只作學習評分保護，不作授權。 */
   appliedHintType?: AppliedHintType;
   appliedHintText?: string;
+  /** Debrief 專用：本場哪些 user turn 是由 Hint 建議而來，用於提示責任拆解。 */
+  appliedHintTurns?: AppliedHintTurn[];
   /**
    * hint 模式限定的冪等 key（client 產 uuid；失敗重試沿用同 id）。選填：舊
    * client 缺值走現行為（無冪等），向後相容。格式比照翻牌 requestId。
@@ -179,6 +189,73 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
 
   const aiCount = countAiTurns(turns);
 
+  let appliedHintTurns: AppliedHintTurn[] | undefined;
+  if (raw.appliedHintTurns !== undefined) {
+    if (
+      mode !== "debrief" ||
+      (practiceMode !== "beginner" && practiceMode !== "game") ||
+      !Array.isArray(raw.appliedHintTurns) ||
+      raw.appliedHintTurns.length === 0 ||
+      raw.appliedHintTurns.length > 5
+    ) {
+      throw new Error("invalid_appliedHintTurns");
+    }
+    const seenAppliedHintTurnIndexes = new Set<number>();
+    appliedHintTurns = raw.appliedHintTurns.map((item) => {
+      if (!isRecord(item)) throw new Error("invalid_appliedHintTurns");
+      const turnIndex = item.turnIndex;
+      const type = item.type;
+      const originalHintText = item.originalHintText;
+      const sentText = item.sentText;
+      const exact = item.exact;
+      const transcriptSentText = typeof turnIndex === "number" &&
+          Number.isInteger(turnIndex) &&
+          turnIndex >= 0 &&
+          turnIndex < turns.length
+        ? turns[turnIndex]?.text
+        : undefined;
+      const normalizedOriginalHintText = typeof originalHintText === "string"
+        ? originalHintText.trim()
+        : "";
+      const normalizedSentText = typeof sentText === "string"
+        ? sentText.trim()
+        : "";
+      const normalizedTranscriptSentText =
+        typeof transcriptSentText === "string" ? transcriptSentText.trim() : "";
+      if (
+        typeof turnIndex !== "number" ||
+        !Number.isInteger(turnIndex) ||
+        turnIndex < 0 ||
+        turnIndex >= turns.length ||
+        turns[turnIndex]?.role !== "user" ||
+        (type !== "warm_up" && type !== "steady") ||
+        typeof originalHintText !== "string" ||
+        normalizedOriginalHintText.length === 0 ||
+        originalHintText.length > MAX_TEXT_LEN ||
+        containsRawImageFilename(originalHintText) ||
+        typeof sentText !== "string" ||
+        normalizedSentText.length === 0 ||
+        sentText.length > MAX_TEXT_LEN ||
+        containsRawImageFilename(sentText) ||
+        normalizedSentText !== normalizedTranscriptSentText ||
+        typeof exact !== "boolean"
+      ) {
+        throw new Error("invalid_appliedHintTurns");
+      }
+      if (seenAppliedHintTurnIndexes.has(turnIndex)) {
+        throw new Error("invalid_appliedHintTurns");
+      }
+      seenAppliedHintTurnIndexes.add(turnIndex);
+      return {
+        turnIndex,
+        type,
+        originalHintText: normalizedOriginalHintText,
+        sentText: normalizedTranscriptSentText,
+        exact: normalizedOriginalHintText === normalizedTranscriptSentText,
+      };
+    });
+  }
+
   if (mode === "chat") {
     // chat：在回覆一則 user 訊息，故最後一則必須是 user。
     if (turns[turns.length - 1].role !== "user") {
@@ -294,6 +371,7 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     continuationPartnerState,
     appliedHintType,
     appliedHintText,
+    appliedHintTurns,
     requestId,
   };
 }

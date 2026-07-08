@@ -400,6 +400,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       required int dailyRemaining})? _onUsageSynced;
   final void Function(String profileId)? _onProfileUnlocked;
   final AnalysisHistoryRepository? _historyRepository;
+  final List<PracticeAppliedHintTurnDto> _appliedHintTurns = [];
 
   /// 圖鑑解鎖記錄：純附加 side-channel。用 microtask 延後（provider 建構期
   /// 不得同步改其他 provider 的 state），callback 例外一律吞掉——圖鑑記錄
@@ -443,6 +444,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 只對舊場有意義。
   void _clearPendingHintRequestId() {
     _pendingHintRequestId = null;
+    _appliedHintTurns.clear();
     unawaited(_pendingHintStore.clear());
   }
 
@@ -969,6 +971,25 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           innerThought: reply.partnerState?.innerThought,
         ),
       ];
+      final normalizedAppliedHintText = appliedHintText?.trim();
+      if (assisted &&
+          appliedHintType != null &&
+          normalizedAppliedHintText != null &&
+          normalizedAppliedHintText.isNotEmpty) {
+        _appliedHintTurns.add(PracticeAppliedHintTurnDto(
+          turnIndex: optimistic.length - 1,
+          type: appliedHintType,
+          originalHintText: normalizedAppliedHintText,
+          sentText: trimmed,
+          exact: normalizedAppliedHintText == trimmed,
+        ));
+        if (_appliedHintTurns.length > kMaxPracticeHintsPerRound) {
+          _appliedHintTurns.removeRange(
+            0,
+            _appliedHintTurns.length - kMaxPracticeHintsPerRound,
+          );
+        }
+      }
       final temperature = reply.temperature;
       final returnedFamiliarityScore =
           temperature?.familiarityScore ?? familiarityScore;
@@ -1217,6 +1238,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         continuationPartnerState: _lastPartnerStateForPrompt(state.messages),
         roundIndex: state.roundIndex,
         visiblePracticeThreadId: state.visiblePracticeThreadId,
+        appliedHintTurns: state.isAssistedLearningMode
+            ? List.unmodifiable(_appliedHintTurns)
+            : const [],
       );
       state = state.copyWith(
         isDebriefing: false,

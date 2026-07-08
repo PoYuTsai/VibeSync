@@ -1155,6 +1155,43 @@ void main() {
       expect(captured.body?['visiblePracticeThreadId'], 'thread-xyz');
     });
 
+    test('requestDebrief body includes appliedHintTurns for assisted modes',
+        () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: const [
+          PracticeTurnDto(role: 'user', text: '嗨'),
+          PracticeTurnDto(role: 'ai', text: '哈囉 正在看點東西'),
+          PracticeTurnDto(
+            role: 'user',
+            text: '我對妳剛說的那個點有點好奇，哪個部分最吸引妳？',
+          ),
+          PracticeTurnDto(role: 'ai', text: '在看 YouTube 啦'),
+        ],
+        practiceMode: PracticeLearningMode.game,
+        appliedHintTurns: const [
+          PracticeAppliedHintTurnDto(
+            turnIndex: 2,
+            type: PracticeHintReplyType.steady,
+            originalHintText: '我對妳剛說的那個點有點好奇，哪個部分最吸引妳？',
+            sentText: '我對妳剛說的那個點有點好奇，哪個部分最吸引妳？',
+            exact: true,
+          ),
+        ],
+      );
+
+      final applied = captured.body?['appliedHintTurns'];
+      expect(applied, isA<List>());
+      expect((applied as List).length, 1);
+      expect(applied.first['turnIndex'], 2);
+      expect(applied.first['type'], 'steady');
+      expect(applied.first['exact'], true);
+    });
+
     test('hint and debrief body include memorySummary when provided', () async {
       final captured = _CapturedInvoke();
       final svc = PracticeChatApiService(invoker: captured.call);

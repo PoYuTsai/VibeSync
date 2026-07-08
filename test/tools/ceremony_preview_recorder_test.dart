@@ -97,6 +97,7 @@ class _DrawApi extends PracticeChatApiService {
     String? visiblePracticeThreadId,
     String? memorySummary,
     PracticePartnerState? continuationPartnerState,
+    List<PracticeAppliedHintTurnDto> appliedHintTurns = const [],
   }) =>
       throw UnimplementedError();
 }

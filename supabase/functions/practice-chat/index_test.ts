@@ -2648,6 +2648,40 @@ Deno.test("debrief accepts beginner ledger when client omits practiceMode", asyn
   assertEquals(claimDebriefCalls(state).length, 1);
 });
 
+Deno.test("standard ledger ignores forged assisted appliedHintTurns during debrief", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({ ai_count: 1, charged: true }),
+      deepSeekReplies: [validDebriefJson({ summary: "standard debrief" })],
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      turns: [
+        { role: "user", text: "嗨" },
+        { role: "ai", text: "嗯？" },
+      ],
+      appliedHintTurns: [
+        {
+          turnIndex: 0,
+          type: "warm_up",
+          originalHintText: "嗨",
+          sentText: "嗨",
+          exact: true,
+        },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.card.summary, "standard debrief");
+  const debriefPrompt = state.deepSeekCalls[0].messages
+    .map((message) => message.content)
+    .join("\n");
+  assertEquals(debriefPrompt.includes("hintAssistedTurns"), false);
+  assertEquals(debriefPrompt.includes("你有照提示做"), false);
+  assertEquals(claimDebriefCalls(state).length, 1);
+});
+
 Deno.test("non-game debrief drops provider gameBreakdown", async () => {
   const { response, json } = await run(
     {

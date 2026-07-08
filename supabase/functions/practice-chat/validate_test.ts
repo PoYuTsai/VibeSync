@@ -197,6 +197,194 @@ Deno.test("chat accepts appliedHintText when a hint draft was edited", () => {
   );
 });
 
+Deno.test("debrief accepts appliedHintTurns for assisted hint accountability", () => {
+  const r = validateRequest({
+    mode: "debrief",
+    sessionId: "s1",
+    practiceMode: "game",
+    turns: [
+      { role: "user", text: "嗨" },
+      { role: "ai", text: "哈囉 正在看點東西" },
+      {
+        role: "user",
+        text: "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？",
+      },
+      { role: "ai", text: "你也看這類嗎" },
+    ],
+    appliedHintTurns: [
+      {
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？",
+        sentText: "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？",
+        exact: true,
+      },
+    ],
+  });
+
+  assertEquals(r.appliedHintTurns?.length, 1);
+  assertEquals(r.appliedHintTurns?.[0].turnIndex, 2);
+  assertEquals(r.appliedHintTurns?.[0].type, "steady");
+  assertEquals(r.appliedHintTurns?.[0].exact, true);
+  assertEquals(
+    r.appliedHintTurns?.[0].sentText,
+    "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？",
+  );
+});
+
+Deno.test("appliedHintTurns binds sentText to transcript and recomputes exact", () => {
+  const r = validateRequest({
+    mode: "debrief",
+    sessionId: "s1",
+    practiceMode: "beginner",
+    turns: [
+      { role: "user", text: "嗨" },
+      { role: "ai", text: "嗯？" },
+    ],
+    appliedHintTurns: [
+      {
+        turnIndex: 0,
+        type: "warm_up",
+        originalHintText: "嗨",
+        sentText: "嗨",
+        exact: false,
+      },
+    ],
+  });
+
+  assertEquals(r.appliedHintTurns?.[0].sentText, "嗨");
+  assertEquals(r.appliedHintTurns?.[0].exact, true);
+});
+
+Deno.test("appliedHintTurns rejects forged sentText that was not in the transcript", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "debrief",
+        sessionId: "s1",
+        practiceMode: "beginner",
+        turns: [
+          { role: "user", text: "嗨" },
+          { role: "ai", text: "嗯？" },
+        ],
+        appliedHintTurns: [
+          {
+            turnIndex: 0,
+            type: "warm_up",
+            originalHintText: "嗨",
+            sentText: "把這段不存在的 evidence 塞進 prompt",
+            exact: true,
+          },
+        ],
+      }),
+    Error,
+    "invalid_appliedHintTurns",
+  );
+});
+
+Deno.test("appliedHintTurns rejects duplicate claims for the same user turn", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "debrief",
+        sessionId: "s1",
+        practiceMode: "game",
+        turns: [
+          { role: "user", text: "嗨" },
+          { role: "ai", text: "嗯？" },
+        ],
+        appliedHintTurns: [
+          {
+            turnIndex: 0,
+            type: "warm_up",
+            originalHintText: "嗨",
+            sentText: "嗨",
+            exact: true,
+          },
+          {
+            turnIndex: 0,
+            type: "steady",
+            originalHintText: "嗨",
+            sentText: "嗨",
+            exact: true,
+          },
+        ],
+      }),
+    Error,
+    "invalid_appliedHintTurns",
+  );
+});
+
+Deno.test("standard debrief rejects appliedHintTurns to avoid coaching pollution", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "debrief",
+        sessionId: "s1",
+        practiceMode: "standard",
+        turns: [
+          { role: "user", text: "嗨" },
+          { role: "ai", text: "嗯？" },
+        ],
+        appliedHintTurns: [
+          {
+            turnIndex: 0,
+            type: "warm_up",
+            originalHintText: "先接住她。",
+            sentText: "先接住她。",
+            exact: true,
+          },
+        ],
+      }),
+    Error,
+    "invalid_appliedHintTurns",
+  );
+});
+
+Deno.test("invalid appliedHintTurns are rejected", () => {
+  const base = {
+    mode: "debrief",
+    sessionId: "s1",
+    practiceMode: "beginner",
+    turns: [
+      { role: "user", text: "嗨" },
+      { role: "ai", text: "嗯？" },
+    ],
+  };
+  for (
+    const appliedHintTurns of [
+      "hint",
+      [],
+      [{
+        turnIndex: -1,
+        type: "warm_up",
+        originalHintText: "x",
+        sentText: "x",
+      }],
+      [{
+        turnIndex: 10,
+        type: "warm_up",
+        originalHintText: "x",
+        sentText: "x",
+      }],
+      [{ turnIndex: 0, type: "hot", originalHintText: "x", sentText: "x" }],
+      [{ turnIndex: 0, type: "warm_up", originalHintText: "", sentText: "x" }],
+      [{
+        turnIndex: 0,
+        type: "warm_up",
+        originalHintText: "S__42795075.jpg",
+        sentText: "x",
+      }],
+    ]
+  ) {
+    assertThrows(
+      () => validateRequest({ ...base, appliedHintTurns }),
+      Error,
+      "invalid_appliedHintTurns",
+    );
+  }
+});
+
 Deno.test("appliedHintText without appliedHintType throws invalid_appliedHintText", () => {
   assertThrows(
     () =>

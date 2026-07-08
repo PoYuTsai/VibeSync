@@ -1613,6 +1613,9 @@ export function createPracticeChatHandler(
       const debriefAssistedMode = isAssistedPracticeMode(
         ledger.practiceMode ?? "standard",
       );
+      const ledgerAppliedHintTurns = debriefAssistedMode
+        ? request.appliedHintTurns
+        : undefined;
       if (debriefAssistedMode) {
         try {
           await assertPracticeLearningReady({
@@ -1697,6 +1700,7 @@ export function createPracticeChatHandler(
                     sceneContext,
                     memorySummary: promptMemorySummary,
                     gameState: ledgerGameState,
+                    appliedHintTurns: ledgerAppliedHintTurns,
                   }
                   : {
                     partnerState: partnerStateFromLedger(ledger) ??
@@ -1731,6 +1735,7 @@ export function createPracticeChatHandler(
           });
           debriefCard = buildFallbackDebriefCard({
             practiceMode: ledger.practiceMode,
+            appliedHintTurns: ledgerAppliedHintTurns,
           });
         }
       } catch (e) {

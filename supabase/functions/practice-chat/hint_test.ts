@@ -4,7 +4,11 @@ import {
   assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import type { ChatMessage } from "./prompt.ts";
-import { buildHintMessages, parseHintResult } from "./hint.ts";
+import {
+  buildFallbackHintResult,
+  buildHintMessages,
+  parseHintResult,
+} from "./hint.ts";
 import { resolvePracticeProfile } from "./practice_persona.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
 
@@ -360,6 +364,10 @@ Deno.test("buildHintMessages gives Game hints a visible speed-invite contract", 
   assert(gameText.includes("Game 心法"));
   assert(gameText.includes("速約任務"));
   assert(gameText.includes("邀約窗口"));
+  assert(gameText.includes("可貼回覆本身"));
+  assert(gameText.includes("不能只把速約方向放在 coaching"));
+  assert(gameText.includes("淺溝通"));
+  assert(gameText.includes("她這句可能是在"));
   assert(gameText.includes("warmUp"));
   assert(gameText.includes("steady"));
 
@@ -377,6 +385,72 @@ Deno.test("buildHintMessages gives Game hints a visible speed-invite contract", 
   assertEquals(beginnerText.includes("visibleGameHintContract"), false);
   assertEquals(beginnerText.includes("Game 心法"), false);
   assertEquals(beginnerText.includes("速約任務"), false);
+  assertEquals(beginnerText.includes("可貼回覆本身"), false);
+});
+
+Deno.test("buildFallbackHintResult makes high-score Game hints point to a pasteable speed invite", () => {
+  const game = buildFallbackHintResult({
+    turns: [
+      { role: "user", text: "你平常看什麼放鬆" },
+      { role: "ai", text: "最近看一些脫口秀片段 節奏蠻舒服的" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 88,
+    familiarityScore: 82,
+    partnerMood: "comfortable",
+  });
+
+  const warmUp = game.replies[0].text;
+  assert(warmUp.includes("這週") || warmUp.includes("下次"));
+  assert(warmUp.includes("30 分鐘") || warmUp.includes("短咖啡"));
+  assert(warmUp.includes("交換") || warmUp.includes("片單"));
+  assert(game.coaching.includes("速約任務"));
+  assert(game.coaching.includes("短咖啡") || game.coaching.includes("窗口"));
+  assert(warmUp.length <= 80);
+  assert(game.replies[1].text.length <= 80);
+
+  const beginner = buildFallbackHintResult({
+    turns: [
+      { role: "user", text: "你平常看什麼放鬆" },
+      { role: "ai", text: "最近看一些脫口秀片段 節奏蠻舒服的" },
+    ],
+    profile,
+    practiceMode: "beginner",
+    temperatureScore: 88,
+    familiarityScore: 82,
+    partnerMood: "comfortable",
+  });
+
+  assertEquals(beginner.coaching.includes("速約任務"), false);
+  assertEquals(beginner.replies[0].text.includes("30 分鐘"), false);
+});
+
+Deno.test("buildFallbackHintResult keeps low-score Game hints as invite setup, not a hard invite", () => {
+  const game = buildFallbackHintResult({
+    turns: [
+      { role: "user", text: "你好" },
+      { role: "ai", text: "最近看一些脫口秀片段 節奏蠻舒服的" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 28,
+    familiarityScore: 12,
+    partnerMood: "neutral",
+  });
+
+  const visible = [
+    game.replies[0].text,
+    game.replies[1].text,
+    game.coaching,
+  ].join("\n");
+  assert(game.coaching.includes("速約任務"));
+  assert(game.coaching.includes("先不約") || game.coaching.includes("鋪窗口"));
+  assertEquals(visible.includes("這週"), false);
+  assertEquals(visible.includes("30 分鐘"), false);
+  assertEquals(visible.includes("見面"), false);
+  assert(game.replies[0].text.length <= 80);
+  assert(game.replies[1].text.length <= 80);
 });
 
 Deno.test("buildHintMessages marks fake familiarity as a Game reality-anchor trap", () => {

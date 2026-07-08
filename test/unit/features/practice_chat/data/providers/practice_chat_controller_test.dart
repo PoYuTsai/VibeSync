@@ -51,6 +51,7 @@ class _FakeApi extends PracticeChatApiService {
   PracticePartnerState? lastDebriefContinuationPartnerState;
   PracticeHintReplyType? lastAppliedHintType;
   String? lastAppliedHintText;
+  List<PracticeAppliedHintTurnDto>? lastDebriefAppliedHintTurns;
   int? lastDebriefRoundIndex;
   String? lastDebriefThreadId;
   int? lastHintRoundIndex;
@@ -124,11 +125,13 @@ class _FakeApi extends PracticeChatApiService {
     String? visiblePracticeThreadId,
     String? memorySummary,
     PracticePartnerState? continuationPartnerState,
+    List<PracticeAppliedHintTurnDto> appliedHintTurns = const [],
   }) {
     lastDebriefRoundIndex = roundIndex;
     lastDebriefThreadId = visiblePracticeThreadId;
     lastDebriefMemorySummary = memorySummary;
     lastDebriefContinuationPartnerState = continuationPartnerState;
+    lastDebriefAppliedHintTurns = appliedHintTurns;
     return debriefHandler!(turns, profile: profile);
   }
 
@@ -1727,6 +1730,49 @@ void main() {
       expect(api.lastPracticeMode, PracticeLearningMode.beginner);
       expect(api.lastAppliedHintType, PracticeHintReplyType.warmUp);
       expect(api.lastAppliedHintText, 'original hint reply');
+    });
+
+    test('endPractice forwards copied Hint turns into debrief', () async {
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_004');
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.game);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 34,
+              delta: 4,
+              band: 'cold',
+              reason: '照提示穩住',
+              familiarityScore: 12,
+              familiarityDelta: 12,
+            ),
+          );
+
+      const hintText = '我對妳剛說的那個點有點好奇，哪個部分最吸引妳？';
+      await c.sendMessage(
+        hintText,
+        appliedHintType: PracticeHintReplyType.steady,
+        appliedHintText: hintText,
+      );
+      api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
+            summary: '整體不錯',
+            strengths: ['有照提示接住'],
+            watchouts: [],
+            suggestedLine: '補一句自己的感受',
+            vibe: '中性',
+          );
+
+      await c.endPractice();
+
+      final applied = api.lastDebriefAppliedHintTurns;
+      expect(applied, isNotNull);
+      expect(applied, hasLength(1));
+      expect(applied!.single.turnIndex, 0);
+      expect(applied.single.type, PracticeHintReplyType.steady);
+      expect(applied.single.originalHintText, hintText);
+      expect(applied.single.sentText, hintText);
+      expect(applied.single.exact, true);
     });
 
     test('standard mode ignores applied hint metadata', () async {

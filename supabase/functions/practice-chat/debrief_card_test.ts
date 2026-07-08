@@ -325,3 +325,60 @@ Deno.test("buildFallbackDebriefCard returns safe standard and game fallback card
   assertEquals(visible.includes("P4"), false);
   assertEquals(visible.includes("targetVariable"), false);
 });
+
+Deno.test("buildFallbackDebriefCard credits exact applied Hint instead of blaming the user", () => {
+  const card = buildFallbackDebriefCard({
+    practiceMode: "game",
+    appliedHintTurns: [
+      {
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？",
+        sentText: "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？",
+        exact: true,
+      },
+    ],
+  });
+
+  const visible = [
+    card.summary,
+    ...card.strengths,
+    ...card.watchouts,
+    card.suggestedLine,
+    card.dateChanceReason,
+    card.nextInviteMove,
+    card.gameBreakdown?.failureState,
+    card.gameBreakdown?.nextFirstLine,
+    card.gameBreakdown?.inviteDirection,
+  ].join("\n");
+
+  assertEquals(visible.includes("照提示"), true);
+  assertEquals(visible.includes("提示偏保守"), true);
+  assertEquals(visible.includes("問題偏多"), false);
+  assertEquals(visible.includes("盤問"), false);
+});
+
+Deno.test("buildFallbackDebriefCard treats edited applied Hint as reference, not exact copy", () => {
+  const card = buildFallbackDebriefCard({
+    practiceMode: "game",
+    appliedHintTurns: [
+      {
+        turnIndex: 2,
+        type: "warm_up",
+        originalHintText: "先接住她剛剛說的點",
+        sentText: "我有點好奇妳剛說的點，但先讓我猜一下",
+        exact: false,
+      },
+    ],
+  });
+
+  const visible = [
+    card.summary,
+    ...card.strengths,
+    ...card.watchouts,
+  ].join("\n");
+
+  assertEquals(visible.includes("參考提示"), true);
+  assertEquals(visible.includes("有照提示"), false);
+  assertEquals(visible.includes("照貼"), false);
+});

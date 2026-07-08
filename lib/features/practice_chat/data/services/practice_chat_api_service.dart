@@ -13,6 +13,33 @@ class PracticeTurnDto {
   Map<String, dynamic> toJson() => {'role': role, 'text': text};
 }
 
+class PracticeAppliedHintTurnDto {
+  final int turnIndex;
+  final PracticeHintReplyType type;
+  final String originalHintText;
+  final String sentText;
+  final bool exact;
+
+  const PracticeAppliedHintTurnDto({
+    required this.turnIndex,
+    required this.type,
+    required this.originalHintText,
+    required this.sentText,
+    required this.exact,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'turnIndex': turnIndex,
+        'type': switch (type) {
+          PracticeHintReplyType.warmUp => 'warm_up',
+          PracticeHintReplyType.steady => 'steady',
+        },
+        'originalHintText': originalHintText,
+        'sentText': sentText,
+        'exact': exact,
+      };
+}
+
 /// 本場「對象＋難度」的請求 metadata。client 只送 allowlisted id（絕不送 prompt
 /// 文字）；server 帶 profileId 時會綁定該位的 persona，並要求 nameId/professionId/
 /// photoId 與該位相符。身份欄位可空：舊路徑（無 catalog）只送 personaId+difficulty。
@@ -433,8 +460,16 @@ class PracticeChatApiService {
     String? visiblePracticeThreadId,
     String? memorySummary,
     PracticePartnerState? continuationPartnerState,
+    List<PracticeAppliedHintTurnDto> appliedHintTurns = const [],
   }) async {
     final normalizedMemorySummary = memorySummary?.trim();
+    final normalizedAppliedHintTurns = appliedHintTurns
+        .where((hint) =>
+            hint.turnIndex >= 0 &&
+            hint.originalHintText.trim().isNotEmpty &&
+            hint.sentText.trim().isNotEmpty)
+        .take(5)
+        .toList(growable: false);
     final response = await _invoke(
       _functionName,
       body: {
@@ -451,6 +486,10 @@ class PracticeChatApiService {
           'visiblePracticeThreadId': visiblePracticeThreadId,
         if (continuationPartnerState != null)
           'continuationPartnerState': continuationPartnerState.toJson(),
+        if (practiceMode.usesAssistedLearning &&
+            normalizedAppliedHintTurns.isNotEmpty)
+          'appliedHintTurns':
+              normalizedAppliedHintTurns.map((hint) => hint.toJson()).toList(),
       },
     );
     final data = _guardStatus(response);

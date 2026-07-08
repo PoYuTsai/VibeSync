@@ -214,6 +214,127 @@ function fallbackRepliesForLatestAssistant(latestAssistant: string): {
   };
 }
 
+type GameInviteRoute = "build" | "soft" | "direct" | "repair";
+
+function gameInviteRouteFor(direction: string): GameInviteRoute {
+  if (
+    direction === "repair_before_invite" ||
+    direction === "no_private_scene_soften"
+  ) {
+    return "repair";
+  }
+  if (
+    direction === "direct_invite_low_pressure" ||
+    direction === "partner_window_close" ||
+    direction === "partner_window"
+  ) {
+    return "direct";
+  }
+  if (direction === "soft_invite_probe") return "soft";
+  return "build";
+}
+
+function gameFallbackRepliesForLatestAssistant(
+  latestAssistant: string,
+  route: GameInviteRoute,
+): {
+  warmUp: string;
+  steady: string;
+  inviteHook: string;
+} {
+  const text = latestAssistant.normalize("NFKC").toLowerCase();
+  if (route === "repair") {
+    return {
+      warmUp:
+        "先收一點，我比較想聽妳剛那個標準怎麼來的。妳通常會被哪種節奏打中？",
+      steady: "好，我先不亂推。妳剛說的那個點我收到，先聽妳怎麼判斷。",
+      inviteHook: "先降壓修安全感，這輪不約，等她願意多說再找窗口",
+    };
+  }
+  if (/[脫脱]口秀|搞笑|好笑|笑點|幽默/.test(text)) {
+    if (route === "direct") {
+      return {
+        warmUp:
+          "那妳先丟一段最推的。笑點合拍的話，這週找 30 分鐘喝咖啡交換片單。",
+        steady: "我可以先看一段。要是笑點對得上，這週抓個短咖啡換妳現場吐槽。",
+        inviteHook: "把她的片段偏好收成這週 30 分鐘短咖啡",
+      };
+    }
+    if (route === "soft") {
+      return {
+        warmUp:
+          "妳先丟一段最推的。笑點合拍的話，下次換我用一杯咖啡跟妳交換片單。",
+        steady:
+          "可以，先給我妳最推的一段。若我笑了，下次就換我請妳喝咖啡還債。",
+        inviteHook: "用片單當測試球，接一個下次咖啡交換窗口",
+      };
+    }
+    return {
+      warmUp:
+        "會，我喜歡不硬搞笑但一句話打中的節奏。妳先丟一段，我判斷妳是冷面還毒舌。",
+      steady: "會看一點。妳先丟妳最推的一段，我看妳的笑點是不是比我想的壞。",
+      inviteHook: "這輪先不約，先讓她投資一段片單，再鋪短咖啡窗口",
+    };
+  }
+  if (/咖啡|拿鐵|美式|cafe|coffee/.test(text)) {
+    if (route === "direct") {
+      return {
+        warmUp:
+          "那妳先報一間妳會回訪的。這週找 30 分鐘短咖啡，我看妳品味有多挑。",
+        steady:
+          "可以，妳給我一間標準店。這週短咖啡交換，我負責看妳是不是窗邊派。",
+        inviteHook: "把咖啡偏好收成這週 30 分鐘短咖啡",
+      };
+    }
+    if (route === "soft") {
+      return {
+        warmUp: "那妳先報一間妳會回訪的。合拍的話，下次換我帶一間安靜窗邊派。",
+        steady: "可以，妳先丟一間標準店。下次如果有空，我們用短咖啡驗證品味。",
+        inviteHook: "用店家偏好丟下次短咖啡窗口",
+      };
+    }
+  }
+  if (/電影|影集|片段|影片|看/.test(text)) {
+    if (route === "direct") {
+      return {
+        warmUp:
+          "那妳先丟一部最有後勁的。這週找 30 分鐘喝咖啡交換片單，我看妳多會挑。",
+        steady:
+          "可以，妳先給我一部標準片。這週短咖啡交換，我看妳是輕鬆派還後勁派。",
+        inviteHook: "把片單偏好收成這週 30 分鐘短咖啡",
+      };
+    }
+    if (route === "soft") {
+      return {
+        warmUp: "妳先丟一部最有後勁的。合拍的話，下次換我請咖啡跟妳交換片單。",
+        steady: "可以，先給我一部標準片。下次若合拍，我們用咖啡交換片單。",
+        inviteHook: "用片單當測試球，接下次咖啡交換窗口",
+      };
+    }
+  }
+  if (route === "direct") {
+    return {
+      warmUp:
+        "這個我有興趣。妳先丟一個最推的，合拍的話這週找 30 分鐘交換答案。",
+      steady: "可以，妳先給我一個標準答案。合拍的話，這週短咖啡交換一下。",
+      inviteHook: "把她的偏好收成這週 30 分鐘短咖啡",
+    };
+  }
+  if (route === "soft") {
+    return {
+      warmUp: "這個我有興趣。妳先丟一個最推的，合拍的話下次換我用咖啡交換。",
+      steady: "可以，妳先給我一個標準答案。若合拍，下次短咖啡交換一下。",
+      inviteHook: "用偏好測試球接下次短咖啡窗口",
+    };
+  }
+  return {
+    warmUp:
+      "會，我喜歡有畫面感又不太用力的東西。妳先丟一個妳最推的，我看妳標準在哪。",
+    steady: "會有興趣。妳先給我一個標準答案，我再判斷妳是不是會挑。",
+    inviteHook: "這輪先不約，先接她的偏好，再鋪一個低壓小窗口",
+  };
+}
+
 function beginnerFallbackRepliesForLatestAssistant(latestAssistant: string): {
   warmUp: string;
   steady: string;
@@ -309,22 +430,30 @@ export function buildFallbackHintResult(
         },
       ],
       coaching:
-        "Game 心法：測試階段先修安全感，別硬推私密或假熟。速約任務：這輪不約，先把她願意接話救回來。",
+        "Game 心法：她這句可能是在測你有沒有分寸，先修安全感別硬推。速約任務：這輪不約，先把她願意接話救回來。",
     };
   }
 
-  const fallback = fallbackRepliesForLatestAssistant(
+  const route = gameInviteRouteFor(snapshot.speedInviteDirection);
+  const fallback = gameFallbackRepliesForLatestAssistant(
     latestAssistantText(opts.turns),
+    route,
   );
   const phaseLabel = phaseLabelForFallback(snapshot.phase);
   const targetLabel = targetLabelForFallback(snapshot.targetVariable);
+  const routeAdvice = {
+    build: "這輪先不約，先把她的偏好變成可兌現的小場景，鋪下一個窗口",
+    soft: "用「下次／改天」丟低壓窗口，保留退路",
+    direct: "把窗口收成 30 分鐘短咖啡或小行程，具體但可拒絕",
+    repair: "先降壓修安全感，不約，等她願意多說再找窗口",
+  }[route];
   return {
     replies: [
       { type: "warm_up", label: "升溫回覆", text: fallback.warmUp },
       { type: "steady", label: "穩住回覆", text: fallback.steady },
     ],
     coaching:
-      `Game 心法：${phaseLabel}階段先推${targetLabel}，接她的興趣再丟偏好測試。速約任務：${fallback.inviteHook}。`,
+      `Game 心法：她這句可能是在測你的節奏或品味，${phaseLabel}階段先推${targetLabel}。速約任務：${fallback.inviteHook}；${routeAdvice}。`,
   };
 }
 
@@ -360,8 +489,12 @@ function profileToEvidence(profile: PracticeProfile): string {
 function visibleGameHintContract(): string {
   return `visibleGameHintContract:
 The visible JSON must feel like Game攻略, not beginner mode.
-- warmUp must be a bolder momentum reply. If speedInviteDirection is soft_invite_probe, direct_invite_low_pressure, or partner_window, point the reply toward an 邀約窗口 instead of asking another generic question.
-- steady must be the safer route, but still explain the same social goal instead of becoming plain beginner advice.
+- warmUp/steady are exact pasteable replies. 可貼回覆本身要承擔 Game 任務，不能只把速約方向放在 coaching.
+- warmUp must be a bolder momentum reply. If speedInviteDirection is soft_invite_probe, direct_invite_low_pressure, or partner_window, point the reply itself toward an 邀約窗口 instead of asking another generic question.
+- steady must be the safer route, but still carry the same social goal instead of becoming plain beginner advice.
+- Each reply must include one concrete move: a test ball, a scene bridge, or a low-pressure invite window. A generic follow-up question alone is not enough.
+- Route discipline: no_invite_build_investment means earn a future window, not ask out now; soft_invite_probe means use 下次/改天 with an opt-out; direct_invite_low_pressure/partner_window means name a short public plan such as 30 分鐘咖啡 or a small errand; repair_before_invite/no_private_scene_soften means do not invite, lower pressure first.
+- Game Hint must read 淺溝通. Coaching should include a compact subtext read such as "她這句可能是在測..." or "她其實丟的是..." before the speed-invite task. If her latest reply is a micro-test like 「你是不是都這樣講」「那你倒是說說看」「看你怎麼安排」, the pasteable reply must pass the test first, then bridge to a scene/window.
 - coaching must be 2 compact Traditional Chinese sentences and start with "Game 心法：". It must include the natural phase label 開場/展示/測試/張力/收尾, one target variable in Chinese (價值/框架/情緒/投入), and a concrete "速約任務：" for the next reply.
 - When L2/L3 is allowed and safety is high, warmUp may add adult-aware tension by implication; when L0/L1, coaching must explicitly say 先修安全感 or 先降壓.
 - Never reveal hidden snake_case labels. Translate the invite route into visible language such as 低壓邀約、丟窗口、接她給的窗口、約一個小行程.
