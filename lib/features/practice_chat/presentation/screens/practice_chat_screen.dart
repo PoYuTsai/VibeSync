@@ -601,81 +601,115 @@ class _LearningModeToggle extends StatelessWidget {
   Widget build(BuildContext context) {
     final gameAvailable = state.canUseGameMode;
     final gameLockedByRarity = state.canChangeLearningMode && !gameAvailable;
-    final subtitle = switch (state.learningMode) {
-      PracticeLearningMode.standard => '像真實聊天一樣練反應',
-      PracticeLearningMode.beginner => 'AI 給提示，教你穩穩升溫',
-      PracticeLearningMode.game =>
-        gameAvailable ? 'SR 限定，技巧拉滿練速約' : '抽到 SR 角色卡解鎖 Game',
-    };
+    final descriptors = [
+      const _LearningModeDescriptor(
+        mode: PracticeLearningMode.standard,
+        icon: Icons.chat_bubble_outline,
+        title: '標準',
+        badge: '真人感',
+        summary: '像真實聊天一樣練反應',
+        accent: Color(0xFFBCA7FF),
+      ),
+      const _LearningModeDescriptor(
+        mode: PracticeLearningMode.beginner,
+        icon: Icons.school_outlined,
+        title: '新手',
+        badge: '有提示',
+        summary: 'AI 給提示，穩穩升溫',
+        accent: AppColors.info,
+      ),
+      _LearningModeDescriptor(
+        mode: PracticeLearningMode.game,
+        icon: Icons.sports_esports_outlined,
+        title: 'Game',
+        badge: gameAvailable ? 'SR速約' : 'SR解鎖',
+        summary: gameAvailable ? 'SR 限定，技巧拉滿練速約' : '抽到 SR 角色卡解鎖 Game',
+        accent: AppColors.ctaStart,
+      ),
+    ];
+    final selectedDescriptor = descriptors.firstWhere(
+      (descriptor) => descriptor.mode == state.learningMode,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(
-          height: 42,
-          child: DecoratedBox(
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.brandSurface2.withValues(alpha: 0.42),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.18),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Row(
+              children: descriptors.map((descriptor) {
+                final enabled = descriptor.mode == PracticeLearningMode.game
+                    ? state.canChangeLearningMode && gameAvailable
+                    : state.canChangeLearningMode;
+                return Expanded(
+                  child: _LearningModeSegment(
+                    key: ValueKey(
+                      'practice-learning-mode-${descriptor.mode.name}',
+                    ),
+                    descriptor: descriptor,
+                    selected: state.learningMode == descriptor.mode,
+                    enabled: enabled,
+                    onTap: () => onChanged(descriptor.mode),
+                    onDisabledTap:
+                        descriptor.mode == PracticeLearningMode.game &&
+                                gameLockedByRarity
+                            ? () => ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('抽到 SR 角色卡解鎖 Game'),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                )
+                            : null,
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 150),
+          child: Container(
+            key: ValueKey(
+              'practice-learning-mode-subtitle-${selectedDescriptor.mode.name}',
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: AppColors.brandSurface2.withValues(alpha: 0.42),
+              color: selectedDescriptor.accent.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.18),
+                color: selectedDescriptor.accent.withValues(alpha: 0.35),
               ),
             ),
             child: Row(
               children: [
-                Expanded(
-                  child: _LearningModeSegment(
-                    key: const ValueKey('practice-learning-mode-standard'),
-                    icon: Icons.chat_bubble_outline,
-                    label: '標準',
-                    selected:
-                        state.learningMode == PracticeLearningMode.standard,
-                    enabled: state.canChangeLearningMode,
-                    onTap: () => onChanged(PracticeLearningMode.standard),
-                  ),
+                Icon(
+                  selectedDescriptor.icon,
+                  size: 15,
+                  color: selectedDescriptor.accent,
                 ),
+                const SizedBox(width: 7),
                 Expanded(
-                  child: _LearningModeSegment(
-                    key: const ValueKey('practice-learning-mode-beginner'),
-                    icon: Icons.school_outlined,
-                    label: '新手',
-                    selected:
-                        state.learningMode == PracticeLearningMode.beginner,
-                    enabled: state.canChangeLearningMode,
-                    onTap: () => onChanged(PracticeLearningMode.beginner),
-                  ),
-                ),
-                Expanded(
-                  child: _LearningModeSegment(
-                    key: const ValueKey('practice-learning-mode-game'),
-                    icon: Icons.sports_esports_outlined,
-                    label: 'Game',
-                    selected: state.learningMode == PracticeLearningMode.game,
-                    enabled: state.canChangeLearningMode && gameAvailable,
-                    onTap: () => onChanged(PracticeLearningMode.game),
-                    onDisabledTap: gameLockedByRarity
-                        ? () => ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('抽到 SR 角色卡解鎖 Game'),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            )
-                        : null,
+                  child: Text(
+                    '${selectedDescriptor.title}｜${selectedDescriptor.summary}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundPrimary.withValues(
+                        alpha: 0.92,
+                      ),
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 6),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 150),
-          child: Text(
-            subtitle,
-            key: ValueKey('practice-learning-mode-subtitle-$subtitle'),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.caption.copyWith(
-              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.8),
             ),
           ),
         ),
@@ -684,19 +718,35 @@ class _LearningModeToggle extends StatelessWidget {
   }
 }
 
+class _LearningModeDescriptor {
+  const _LearningModeDescriptor({
+    required this.mode,
+    required this.icon,
+    required this.title,
+    required this.badge,
+    required this.summary,
+    required this.accent,
+  });
+
+  final PracticeLearningMode mode;
+  final IconData icon;
+  final String title;
+  final String badge;
+  final String summary;
+  final Color accent;
+}
+
 class _LearningModeSegment extends StatelessWidget {
   const _LearningModeSegment({
     super.key,
-    required this.icon,
-    required this.label,
+    required this.descriptor,
     required this.selected,
     required this.enabled,
     required this.onTap,
     this.onDisabledTap,
   });
 
-  final IconData icon;
-  final String label;
+  final _LearningModeDescriptor descriptor;
   final bool selected;
   final bool enabled;
   final VoidCallback onTap;
@@ -704,34 +754,90 @@ class _LearningModeSegment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final foreground = selected
-        ? Colors.white
-        : AppColors.onBackgroundSecondary.withValues(
-            alpha: enabled ? 0.86 : 0.45,
-          );
+    final accent = descriptor.accent;
+    final foreground = enabled
+        ? selected
+            ? Colors.white
+            : AppColors.onBackgroundSecondary.withValues(alpha: 0.88)
+        : AppColors.onBackgroundSecondary.withValues(alpha: 0.42);
+    final badgeColor = enabled
+        ? selected
+            ? Colors.white.withValues(alpha: 0.88)
+            : accent
+        : AppColors.onBackgroundSecondary.withValues(alpha: 0.45);
     return Tooltip(
-      message: label,
+      message: descriptor.summary,
       child: Padding(
-        padding: const EdgeInsets.all(3),
+        padding: const EdgeInsets.symmetric(horizontal: 2),
         child: Material(
-          color: selected ? AppColors.ctaStart : Colors.transparent,
-          borderRadius: BorderRadius.circular(9),
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(11),
           child: InkWell(
-            borderRadius: BorderRadius.circular(9),
+            borderRadius: BorderRadius.circular(11),
             onTap: enabled ? onTap : onDisabledTap,
-            child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              height: 58,
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+              decoration: BoxDecoration(
+                color: selected
+                    ? accent.withValues(alpha: 0.92)
+                    : enabled
+                        ? accent.withValues(alpha: 0.08)
+                        : AppColors.brandSurface.withValues(alpha: 0.28),
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(
+                  color: selected
+                      ? Colors.white.withValues(alpha: 0.20)
+                      : enabled
+                          ? accent.withValues(alpha: 0.38)
+                          : AppColors.onBackgroundSecondary.withValues(
+                              alpha: 0.14,
+                            ),
+                ),
+                boxShadow: selected
+                    ? [
+                        BoxShadow(
+                          color: accent.withValues(alpha: 0.24),
+                          blurRadius: 12,
+                          offset: const Offset(0, 5),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(icon, size: 16, color: foreground),
-                  const SizedBox(width: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(descriptor.icon, size: 15, color: foreground),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          descriptor.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.caption.copyWith(
+                            color: foreground,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
                   Text(
-                    label,
+                    descriptor.badge,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
                     style: AppTypography.caption.copyWith(
-                      color: foreground,
+                      color: badgeColor,
+                      fontSize: 10,
                       fontWeight: FontWeight.w800,
+                      height: 1,
                     ),
                   ),
                 ],
@@ -1523,6 +1629,10 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
     final canRequest = state.canRequestHint && !isHintLimitReached;
     final hasHint = state.hintReplies.isNotEmpty ||
         (state.hintCoaching != null && state.hintCoaching!.trim().isNotEmpty);
+    final isGameMode = state.learningMode == PracticeLearningMode.game;
+    final hintTitle = isGameMode ? 'Game Hint' : 'Hint';
+    final hintActionLabel = isGameMode ? '攻略 1 則' : '提示 1 則';
+    final hintMoreLabel = isGameMode ? '看完整攻略' : '看完整心法';
     return Container(
       key: const ValueKey('practice-hint-panel'),
       padding: const EdgeInsets.all(10),
@@ -1541,7 +1651,7 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
             children: [
               Expanded(
                 child: Text(
-                  'Hint $hintUsedCount/$kMaxPracticeHintsPerRound',
+                  '$hintTitle $hintUsedCount/$kMaxPracticeHintsPerRound',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.caption.copyWith(
@@ -1560,7 +1670,7 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.lightbulb_outline, size: 16),
-                label: Text(isHintLimitReached ? '本輪已用完' : '提示 1 則'),
+                label: Text(isHintLimitReached ? '本輪已用完' : hintActionLabel),
                 style: TextButton.styleFrom(
                   foregroundColor: AppColors.primaryLight,
                   padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1685,6 +1795,7 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
                         onPressed: () => _showCoachingSheet(
                           context,
                           state.hintCoaching!.trim(),
+                          isGameMode: isGameMode,
                         ),
                         style: TextButton.styleFrom(
                           foregroundColor: AppColors.primaryLight,
@@ -1692,7 +1803,7 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
                           minimumSize: const Size(0, 28),
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
-                        child: const Text('看完整心法'),
+                        child: Text(hintMoreLabel),
                       ),
                     ],
                   ),
@@ -1705,7 +1816,11 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
     );
   }
 
-  void _showCoachingSheet(BuildContext context, String coaching) {
+  void _showCoachingSheet(
+    BuildContext context,
+    String coaching, {
+    required bool isGameMode,
+  }) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.brandInk,
@@ -1721,7 +1836,7 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '回覆心法',
+                  isGameMode ? 'Game 攻略' : '回覆心法',
                   style: AppTypography.titleMedium.copyWith(
                     color: AppColors.onBackgroundPrimary,
                     fontWeight: FontWeight.w800,

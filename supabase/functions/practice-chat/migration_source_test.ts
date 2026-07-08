@@ -51,6 +51,12 @@ const gameStateThreadMigration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const gameDeltaClampMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260708143000_practice_game_delta_clamp.sql",
+    import.meta.url,
+  ),
+);
 
 function requiredIndex(snippet: string): number {
   const index = migration.indexOf(snippet);
@@ -579,6 +585,25 @@ function gameStateThreadFunctionBody(name: string): string {
     : gameStateThreadMigration.slice(start);
 }
 
+function requiredGameDeltaClampIndex(snippet: string): number {
+  const index = gameDeltaClampMigration.indexOf(snippet);
+  assert(index >= 0, `Game delta clamp migration must contain: ${snippet}`);
+  return index;
+}
+
+function gameDeltaClampFunctionBody(name: string): string {
+  const start = requiredGameDeltaClampIndex(
+    `CREATE OR REPLACE FUNCTION public.${name}(`,
+  );
+  const nextFunction = gameDeltaClampMigration.indexOf(
+    "CREATE OR REPLACE FUNCTION public.",
+    start + 1,
+  );
+  return nextFunction >= 0
+    ? gameDeltaClampMigration.slice(start, nextFunction)
+    : gameDeltaClampMigration.slice(start);
+}
+
 Deno.test("rpc cleanup migration warns it must run only after the new Edge deploy", () => {
   requiredCleanupIndex("必須在新版 practice-chat Edge 部署完成後才可套用");
 });
@@ -731,6 +756,52 @@ Deno.test("game-mode learning update RPC applies guarded deltas to beginner and 
   requiredGameModeIndex(
     "GRANT EXECUTE ON FUNCTION public.update_practice_learning_state(UUID, TEXT, INTEGER, INTEGER, INTEGER, INTEGER, TEXT, TEXT)",
   );
+});
+
+Deno.test("game delta clamp migration keeps beginner at 12 and allows game to 18", () => {
+  const body = gameDeltaClampFunctionBody("update_practice_learning_state");
+  const compactBody = compactSql(body);
+
+  assert(body.includes("v_practice_mode"));
+  assert(body.includes("v_delta_limit"));
+  assert(
+    compactBody.includes(
+      "SELECT s.practice_mode INTO v_practice_mode FROM public.practice_chat_sessions s",
+    ),
+  );
+  assert(
+    compactBody.includes(
+      "v_delta_limit := CASE WHEN v_practice_mode = 'game' THEN 18 ELSE 12 END",
+    ),
+  );
+  assert(
+    compactBody.includes(
+      "v_temperature_delta := GREATEST(-v_delta_limit, LEAST(v_delta_limit, p_temperature_delta))",
+    ),
+  );
+  assert(
+    compactBody.includes(
+      "v_familiarity_delta := GREATEST(-v_delta_limit, LEAST(v_delta_limit, p_familiarity_delta))",
+    ),
+  );
+  assert(body.includes("AND s.practice_mode IN ('beginner', 'game')"));
+  assert(body.includes("SECURITY DEFINER"));
+  requiredGameDeltaClampIndex(
+    "GRANT EXECUTE ON FUNCTION public.update_practice_learning_state(UUID, TEXT, INTEGER, INTEGER, INTEGER, INTEGER, TEXT, TEXT)",
+  );
+  assert(
+    /REVOKE EXECUTE ON FUNCTION public\.update_practice_learning_state\(UUID, TEXT, INTEGER, INTEGER, INTEGER, INTEGER, TEXT, TEXT\)\s+FROM PUBLIC, anon, authenticated/
+      .test(
+        gameDeltaClampMigration,
+      ),
+  );
+  assert(
+    /GRANT EXECUTE ON FUNCTION public\.update_practice_learning_state\(UUID, TEXT, INTEGER, INTEGER, INTEGER, INTEGER, TEXT, TEXT\)\s+TO service_role/
+      .test(
+        gameDeltaClampMigration,
+      ),
+  );
+  requiredGameDeltaClampIndex("NOTIFY pgrst, 'reload schema';");
 });
 
 Deno.test("game-state migration adds bounded jsonb state to practice sessions", () => {

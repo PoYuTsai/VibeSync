@@ -976,7 +976,7 @@ Deno.test("game chat retries L4 unsafe reply before commit", async () => {
   assertEquals(commitCalls(state).length, 1);
 });
 
-Deno.test("game chat overstep deltas stay within DB clamp and match persisted scores", async () => {
+Deno.test("game chat overstep deltas use stronger Game clamp and match persisted scores", async () => {
   const { response, json, state } = await run(
     {
       ledger: null,
@@ -997,12 +997,12 @@ Deno.test("game chat overstep deltas stay within DB clamp and match persisted sc
 
   assertEquals(response.status, 200);
   const update = learningUpdateCalls(state)[0].params;
-  assertEquals(update.p_temperature_delta, -12);
-  assertEquals(update.p_familiarity_delta, -12);
-  assertEquals(json.temperature.delta, -12);
-  assertEquals(json.temperature.score, 38);
-  assertEquals(json.temperature.familiarityDelta, -12);
-  assertEquals(json.temperature.familiarityScore, 8);
+  assertEquals(update.p_temperature_delta, -18);
+  assertEquals(update.p_familiarity_delta, -18);
+  assertEquals(json.temperature.delta, -18);
+  assertEquals(json.temperature.score, 32);
+  assertEquals(json.temperature.familiarityDelta, -18);
+  assertEquals(json.temperature.familiarityScore, 2);
 });
 
 // ── 續聊保溫：ledger 不存在時，新場首回合以 client 攜帶值 seed 溫度 ─────────
@@ -1904,6 +1904,114 @@ Deno.test("edited applied steady hint aligned with the original gets visible cre
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 1);
+});
+
+Deno.test("game exact warm-up hint gets visible reward when classifier falls back", async () => {
+  const exactHint = "先接她剛剛那個點，輕輕丟一個有畫面的球。";
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"flirt","quality":"bad","overstep":true}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      temperatureScore: 30,
+      appliedHintType: "warm_up",
+      appliedHintText: exactHint,
+      turns: [{ role: "user", text: exactHint }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 34);
+  assertEquals(json.temperature.delta, 4);
+  assertEquals(json.temperature.familiarityScore, 22);
+  assertEquals(json.temperature.familiarityDelta, 2);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 4);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 2);
+});
+
+Deno.test("game exact steady hint earns stronger execution credit than beginner", async () => {
+  const exactHint = "她丟了窗口，你直接用低壓句把時間地點收成一個小約。";
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [
+        "AI reply",
+        CLASSIFIER_ALIGNED_NEUTRAL_MINOR,
+      ],
+    },
+    chatBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      temperatureScore: 30,
+      appliedHintType: "steady",
+      appliedHintText: exactHint,
+      turns: [{ role: "user", text: exactHint }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 35);
+  assertEquals(json.temperature.delta, 5);
+  assertEquals(json.temperature.familiarityScore, 23);
+  assertEquals(json.temperature.familiarityDelta, 3);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 5);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 3);
+});
+
+Deno.test("game exact hint with obvious overstep still takes full penalty", async () => {
+  const exactHint = obviousChineseOverstepInvite();
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [
+        "AI reply",
+        CLASSIFIER_ALIGNED_NEUTRAL_MINOR,
+      ],
+    },
+    chatBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      temperatureScore: 30,
+      appliedHintType: "steady",
+      appliedHintText: exactHint,
+      turns: [{ role: "user", text: exactHint }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 12);
+  assertEquals(json.temperature.delta, -18);
+  assertEquals(json.temperature.familiarityScore, 2);
+  assertEquals(json.temperature.familiarityDelta, -18);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -18);
+  assertEquals(
+    learningUpdateCalls(state)[0].params.p_familiarity_delta,
+    -18,
+  );
 });
 
 Deno.test("english edited applied steady hint with small wording changes gets visible credit", async () => {

@@ -105,6 +105,18 @@ function profileToEvidence(profile: PracticeProfile): string {
   ].join("\n");
 }
 
+function visibleGameHintContract(): string {
+  return `visibleGameHintContract:
+The visible JSON must feel like Game攻略, not beginner mode.
+- warmUp must be a bolder momentum reply. If speedInviteDirection is soft_invite_probe, direct_invite_low_pressure, or partner_window, point the reply toward an 邀約窗口 instead of asking another generic question.
+- steady must be the safer route, but still explain the same social goal instead of becoming plain beginner advice.
+- coaching must be 2 compact Traditional Chinese sentences and start with "Game 心法：". It must include the natural phase label 開場/展示/測試/張力/收尾, one target variable in Chinese (價值/框架/情緒/投入), and a concrete "速約任務：" for the next reply.
+- When L2/L3 is allowed and safety is high, warmUp may add adult-aware tension by implication; when L0/L1, coaching must explicitly say 先修安全感 or 先降壓.
+- Never reveal hidden snake_case labels. Translate the invite route into visible language such as 低壓邀約、丟窗口、接她給的窗口、約一個小行程.
+
+`;
+}
+
 function gameHintEvidence(opts: {
   turns: PracticeTurn[];
   profile: PracticeProfile;
@@ -125,7 +137,7 @@ function gameHintEvidence(opts: {
     inviteStage: opts.inviteMaturity?.stage ?? null,
   });
   const strategy = srGameStrategyPrompt(opts.profile);
-  return `gameHint(hidden guidance)\nphase: ${snapshot.phase}\ntargetVariable: ${snapshot.targetVariable}\nspeedInviteDirection: ${snapshot.speedInviteDirection}\nallowSpicyLevel: ${snapshot.spicyLevel}\nGame coaching may directly name high-skill concepts in natural Traditional Chinese: 階段、目標變數、速約方向、Value / Frame / Emotion / Investment、測試、框架、情緒推進、投資感、性張力。\nVisible coaching should be practical and sharper than beginner mode: say what phase this reply is in, which variable to move, and whether to build, test, create tension, or open a low-pressure invite window.\nSpicy Ladder: L0 repair/safety, L1 playful tease, L2 adult-aware implication, L3 controlled sexual tension by implication only. High safety and high scores may use L2/L3; guarded/annoyed/recent overstep must downshift to L0/L1.\nL4 forbidden: explicit sexual content, explicit body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, or hard-pushing a private scene. Never output L4 in replies or coaching.\nReality Anchoring: if the transcript includes fake shared friends, fake introductions, fake prior meetings, fake workplace/clinic/school familiarity, or claims about her location/day without evidence, coach suspicion/confirmation instead of validating the story.\n\n${
+  return `gameHint(hidden guidance)\nphase: ${snapshot.phase}\ntargetVariable: ${snapshot.targetVariable}\nspeedInviteDirection: ${snapshot.speedInviteDirection}\nallowSpicyLevel: ${snapshot.spicyLevel}\nGame coaching may directly name high-skill concepts in natural Traditional Chinese: 階段、目標變數、速約方向、Value / Frame / Emotion / Investment、測試、框架、情緒推進、投資感、性張力。\nVisible coaching should be practical and sharper than beginner mode: say what phase this reply is in, which variable to move, and whether to build, test, create tension, or open a low-pressure invite window.\nSpicy Ladder: L0 repair/safety, L1 playful tease, L2 adult-aware implication, L3 controlled sexual tension by implication only. High safety and high scores may use L2/L3; guarded/annoyed/recent overstep must downshift to L0/L1.\nL4 forbidden: explicit sexual content, explicit body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, or hard-pushing a private scene. Never output L4 in replies or coaching.\nReality Anchoring: if the transcript includes fake shared friends, fake introductions, fake prior meetings, fake workplace/clinic/school familiarity, or claims about her location/day without evidence, coach suspicion/confirmation instead of validating the story.\n\n${visibleGameHintContract()}${
     gameFsmEvidencePrompt(snapshot)
   }${strategy ? `\n${strategy}\n` : "\n"}`;
 }

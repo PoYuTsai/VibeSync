@@ -342,6 +342,43 @@ Deno.test("buildHintMessages adds game coaching anchors only in game mode", () =
   assertEquals(beginnerText.includes("allowSpicyLevel:"), false);
 });
 
+Deno.test("buildHintMessages gives Game hints a visible speed-invite contract", () => {
+  const gameText = buildHintMessages({
+    turns: [
+      { role: "user", text: "你講話滿有畫面的" },
+      { role: "ai", text: "那你倒是說說看看到什麼" },
+      { role: "user", text: "看到妳在測我穩不穩，我先不照劇本走" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 86,
+    familiarityScore: 74,
+    partnerMood: "comfortable",
+  }).map((m) => m.content).join("\n");
+
+  assert(gameText.includes("visibleGameHintContract"));
+  assert(gameText.includes("Game 心法"));
+  assert(gameText.includes("速約任務"));
+  assert(gameText.includes("邀約窗口"));
+  assert(gameText.includes("warmUp"));
+  assert(gameText.includes("steady"));
+
+  const beginnerText = buildHintMessages({
+    turns: [
+      { role: "user", text: "你講話滿有畫面的" },
+      { role: "ai", text: "那你倒是說說看看到什麼" },
+    ],
+    profile,
+    temperatureScore: 86,
+    familiarityScore: 74,
+    partnerMood: "comfortable",
+  }).map((m) => m.content).join("\n");
+
+  assertEquals(beginnerText.includes("visibleGameHintContract"), false);
+  assertEquals(beginnerText.includes("Game 心法"), false);
+  assertEquals(beginnerText.includes("速約任務"), false);
+});
+
 Deno.test("buildHintMessages marks fake familiarity as a Game reality-anchor trap", () => {
   const text = buildHintMessages({
     turns: [{

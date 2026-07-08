@@ -121,6 +121,44 @@ Deno.test("game buildChatMessages includes social-game FSM and SR strategy only 
   assertEquals(nonSrSys.includes("srGameStrategy(hidden guidance)"), false);
 });
 
+Deno.test("game buildChatMessages gives SR NPC response a social-game behavior contract", () => {
+  const sys = buildChatMessages(
+    [
+      { role: "user", text: "你講話很有畫面欸" },
+      { role: "ai", text: "那你倒是說說看看到什麼" },
+      { role: "user", text: "看到妳在測我穩不穩，我先不照劇本走" },
+    ],
+    resolvePracticeProfile({ profileId: "practice_girl_004" }),
+    {
+      practiceMode: "game",
+      temperatureScore: 78,
+      familiarityScore: 64,
+      partnerState: { mood: "amused", innerThought: "他有接住測試。" },
+    },
+  )[0].content;
+
+  assertEquals(sys.includes("socialGameNpcResponseContract"), true);
+  assertEquals(sys.includes("NPC 回覆要讓玩家讀得出"), true);
+  assertEquals(sys.includes("七步聊天法"), true);
+  assertEquals(sys.includes("可診斷"), true);
+  assertEquals(sys.includes("BORING"), true);
+  assertEquals(sys.includes("TOOL_GUY"), true);
+  assertEquals(sys.includes("GREASY"), true);
+  assertEquals(sys.includes("FRAME_COLLAPSE"), true);
+  assertEquals(sys.includes("邀約窗口"), true);
+
+  const beginnerSys = buildChatMessages(
+    [{ role: "user", text: "你講話很有畫面欸" }],
+    resolvePracticeProfile({ profileId: "practice_girl_004" }),
+    {
+      practiceMode: "beginner",
+      temperatureScore: 78,
+      familiarityScore: 64,
+    },
+  )[0].content;
+  assertEquals(beginnerSys.includes("socialGameNpcResponseContract"), false);
+});
+
 Deno.test("game buildChatMessages includes persisted game state when supplied", () => {
   const sys = buildChatMessages(
     [{ role: "user", text: "hi" }],
@@ -338,6 +376,31 @@ Deno.test("game debrief guidance asks Game to fill gameBreakdown fields", () => 
   assertEquals(system.includes('"phase"'), false);
   assertEquals(user.includes("persistedGameState(hidden guidance)"), true);
   assertEquals(user.includes("turnCount: 5"), true);
+});
+
+Deno.test("game debrief follows seven-step variable and speed-invite breakdown", () => {
+  const user = buildDebriefMessages(
+    [
+      { role: "user", text: "你講話很有畫面欸" },
+      { role: "ai", text: "那你倒是說說看看到什麼" },
+      { role: "user", text: "看到妳在測我穩不穩，我先不照劇本走" },
+    ],
+    resolvePracticeProfile({ profileId: "practice_girl_004" }),
+    {
+      practiceMode: "game",
+      temperatureScore: 82,
+      familiarityScore: 70,
+      partnerState: { mood: "amused", innerThought: "他有把球接住。" },
+    },
+  )[1].content;
+
+  assertEquals(user.includes("gameDebriefSkillContract"), true);
+  assertEquals(user.includes("七步聊天法"), true);
+  assertEquals(user.includes("變數識別"), true);
+  assertEquals(user.includes("關鍵轉折點"), true);
+  assertEquals(user.includes("Failure State"), true);
+  assertEquals(user.includes("速約窗口"), true);
+  assertEquals(user.includes("下一句怎麼把窗口接成行動"), true);
 });
 
 Deno.test("buildChatMessages injects partner state as hidden behavior guidance", () => {

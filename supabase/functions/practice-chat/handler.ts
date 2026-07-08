@@ -77,7 +77,15 @@ const TEMPERATURE_JUDGE_MAX_TOKENS = 450;
 const TEMPERATURE_JUDGE_TEMPERATURE = 0.2;
 const DEEPSEEK_TIMEOUT_MS = 30000;
 
-function appliedHintHeatFloor(appliedHintType: string | undefined): number {
+function appliedHintHeatFloor(
+  appliedHintType: string | undefined,
+  practiceMode: PracticeLearningMode,
+): number {
+  if (practiceMode === "game") {
+    if (appliedHintType === "warm_up") return 2;
+    if (appliedHintType === "steady") return 3;
+    return Number.NEGATIVE_INFINITY;
+  }
   if (appliedHintType === "warm_up") return 0;
   if (appliedHintType === "steady") return 1;
   return Number.NEGATIVE_INFINITY;
@@ -85,7 +93,13 @@ function appliedHintHeatFloor(appliedHintType: string | undefined): number {
 
 function appliedHintFamiliarityFloor(
   appliedHintType: string | undefined,
+  practiceMode: PracticeLearningMode,
 ): number {
+  if (practiceMode === "game") {
+    if (appliedHintType === "warm_up") return 1;
+    if (appliedHintType === "steady") return 2;
+    return Number.NEGATIVE_INFINITY;
+  }
   if (appliedHintType === "warm_up") return 0;
   if (appliedHintType === "steady") return 1;
   return Number.NEGATIVE_INFINITY;
@@ -579,8 +593,9 @@ function protectAppliedHintTemperature(
   currentTemperature: number,
   currentFamiliarity: number,
   appliedHintType: string | undefined,
+  practiceMode: PracticeLearningMode,
 ): LearningJudgement {
-  const heatFloor = appliedHintHeatFloor(appliedHintType);
+  const heatFloor = appliedHintHeatFloor(appliedHintType, practiceMode);
   if (
     heatFloor === Number.NEGATIVE_INFINITY
   ) {
@@ -589,7 +604,10 @@ function protectAppliedHintTemperature(
   const visibleHintFloor = judgement.familiarityDelta > 0
     ? Math.max(heatFloor, 1)
     : heatFloor;
-  const familiarityFloor = appliedHintFamiliarityFloor(appliedHintType);
+  const familiarityFloor = appliedHintFamiliarityFloor(
+    appliedHintType,
+    practiceMode,
+  );
   const protectedHeatDelta = Math.max(judgement.delta, visibleHintFloor);
   const protectedFamiliarityDelta = Math.max(
     judgement.familiarityDelta,
@@ -811,6 +829,7 @@ async function judgeLearningState(opts: {
       isExactAppliedHint(opts.request)
         ? opts.request.appliedHintType
         : undefined,
+      opts.request.practiceMode,
     );
     return applyGameLearningIfNeeded(
       protectedFallback,
@@ -852,6 +871,7 @@ async function judgeLearningState(opts: {
       currentTemperature,
       currentFamiliarity,
       protectedHintType,
+      opts.request.practiceMode,
     );
     const withPartnerState = {
       ...protectedJudgement,

@@ -1308,6 +1308,9 @@ void main() {
       find.byKey(const ValueKey('practice-learning-mode-game')),
       findsOneWidget,
     );
+    expect(find.text('真人感'), findsOneWidget);
+    expect(find.text('有提示'), findsOneWidget);
+    expect(find.text('SR速約'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.byKey(const ValueKey('practice-learning-mode-game')));
@@ -1318,6 +1321,7 @@ void main() {
       find.byKey(const ValueKey('practice-temperature-meter')),
       findsOneWidget,
     );
+    expect(find.text('Game｜SR 限定，技巧拉滿練速約'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1358,6 +1362,7 @@ void main() {
       find.byKey(const ValueKey('practice-learning-mode-game')),
       findsOneWidget,
     );
+    expect(find.text('SR解鎖'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('practice-learning-mode-game')));
     await tester.pump();
@@ -1579,6 +1584,68 @@ void main() {
     expect(tester.testTextInput.isVisible, isTrue);
     expect(find.byKey(const ValueKey('practice-hint-collapsed-summary')),
         findsOneWidget);
+  });
+
+  testWidgets('game hint panel uses攻略 labels instead of beginner wording',
+      (tester) async {
+    const gameCoaching = 'Game 心法：現在是測試張力，目標是情緒與投入；下一句開低壓邀約窗口。';
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.game,
+      temperatureScore: 76,
+      messages: const [
+        PracticeMessage(role: 'user', text: '妳講話很有畫面欸'),
+        PracticeMessage(role: 'ai', text: '那你倒是說說看看到什麼'),
+      ],
+      aiReplyCount: 1,
+      hintReplies: const [
+        PracticeHintReply(
+          type: PracticeHintReplyType.warmUp,
+          label: '進攻回覆',
+          text: '看到妳在測我穩不穩，那我先不照劇本走。',
+        ),
+        PracticeHintReply(
+          type: PracticeHintReplyType.steady,
+          label: '保守回覆',
+          text: '看到妳很會丟球，我接一下。',
+        ),
+      ],
+      hintCoaching: gameCoaching,
+      hintUsedCount: 1,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.text('Game Hint 1/5'), findsOneWidget);
+    expect(find.text('攻略 1 則'), findsOneWidget);
+    expect(find.text('看完整攻略'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-coaching-more')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Game 攻略'), findsOneWidget);
+    expect(find.text(gameCoaching), findsWidgets);
   });
 
   testWidgets('sending an exact applied hint marks the hint type for scoring',

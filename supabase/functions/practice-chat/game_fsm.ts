@@ -62,10 +62,10 @@ export interface SrGameStrategy {
   punishments: string[];
 }
 
-const GAME_HEAT_DELTA_MIN = -12;
-const GAME_HEAT_DELTA_MAX = 12;
-const GAME_FAMILIARITY_DELTA_MIN = -12;
-const GAME_FAMILIARITY_DELTA_MAX = 12;
+const GAME_HEAT_DELTA_MIN = -18;
+const GAME_HEAT_DELTA_MAX = 18;
+const GAME_FAMILIARITY_DELTA_MIN = -18;
+const GAME_FAMILIARITY_DELTA_MAX = 18;
 
 function clampScore(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
@@ -501,9 +501,9 @@ export function applyGameLearningDelta(opts: {
   const hasFrameFailure = opts.snapshot.failureStates.includes(
     "FRAME_COLLAPSE",
   );
-  const positiveHeatScale = opts.snapshot.hidden.fp >= 65 ? 1.45 : 1.3;
-  const positiveFamiliarityScale = opts.snapshot.hidden.inv >= 55 ? 1.35 : 1.2;
-  const negativeScale = hasSafetyFailure ? 1.35 : hasFrameFailure ? 1.2 : 1.1;
+  const positiveHeatScale = opts.snapshot.hidden.fp >= 65 ? 2 : 1.75;
+  const positiveFamiliarityScale = opts.snapshot.hidden.inv >= 55 ? 1.8 : 1.6;
+  const negativeScale = hasSafetyFailure ? 1.8 : hasFrameFailure ? 1.55 : 1.35;
 
   const heatRaw = opts.judgement.delta >= 0
     ? opts.judgement.delta * positiveHeatScale

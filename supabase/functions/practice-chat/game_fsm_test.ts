@@ -126,9 +126,9 @@ Deno.test("applyGameLearningDelta scales game deltas but clamps the amplitude", 
     snapshot,
   });
 
-  assert(gamePositive.delta > basePositive.delta);
-  assert(gamePositive.familiarityDelta >= basePositive.familiarityDelta);
-  assert(gamePositive.delta <= 12);
+  assert(gamePositive.delta >= basePositive.delta + 4);
+  assert(gamePositive.familiarityDelta >= basePositive.familiarityDelta + 3);
+  assert(gamePositive.delta <= 18);
 
   const baseNegative = applyLearningClassification({
     heatScore: 50,
@@ -157,8 +157,8 @@ Deno.test("applyGameLearningDelta scales game deltas but clamps the amplitude", 
     snapshot: greasy,
   });
 
-  assertEquals(gameNegative.delta, -12);
-  assertEquals(gameNegative.familiarityDelta, -12);
+  assertEquals(gameNegative.delta, -18);
+  assertEquals(gameNegative.familiarityDelta, -18);
 });
 
 Deno.test("evaluateGameFsm marks fake familiarity and social proof as reality-anchor traps", () => {
