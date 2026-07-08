@@ -21,6 +21,8 @@ import {
   srGameStrategyPrompt,
 } from "./game_fsm.ts";
 import {
+  hasL4UnsafeVisibleText,
+  hasVisibleInternalLabelLeak,
   rejectL4UnsafeVisibleText,
   rejectVisibleInternalLabelLeak,
 } from "./visible_text_guard.ts";
@@ -175,42 +177,68 @@ function targetLabelForFallback(target: string): string {
   return "熟悉感";
 }
 
-function fallbackRepliesForLatestAssistant(latestAssistant: string): {
+function fallbackAnchorSnippet(latestAssistant: string): string {
+  void latestAssistant;
+  return "剛剛那句";
+}
+
+function latestAssistantNeedsFallbackRepair(latestAssistant: string): boolean {
+  const normalized = latestAssistant.normalize("NFKC").toLowerCase();
+  return hasL4UnsafeVisibleText(latestAssistant) ||
+    hasVisibleInternalLabelLeak(latestAssistant) ||
+    /忽略.{0,12}規則|忽略.{0,12}上面|prompt|system|developer|標準答案|不要廢話|封鎖|給我/
+      .test(
+        normalized,
+      );
+}
+
+function evidenceBoundGameFallbackReplies(
+  latestAssistant: string,
+  route: GameInviteRoute,
+): {
   warmUp: string;
   steady: string;
   inviteHook: string;
 } {
-  const text = latestAssistant.normalize("NFKC").toLowerCase();
-  if (/[脫脱]口秀|搞笑|好笑|笑點|幽默/.test(text)) {
+  const anchor = fallbackAnchorSnippet(latestAssistant);
+  if (
+    route === "repair" || latestAssistantNeedsFallbackRepair(latestAssistant)
+  ) {
     return {
-      warmUp:
-        "會，我喜歡那種不硬搞笑、但一句話剛好打中的節奏。妳偏冷面笑點還是毒舌型？",
-      steady: "會看一點，舒服的節奏很加分。妳最近看到哪段最有印象？",
-      inviteHook: "把她喜歡的片段接成咖啡時交換一小段的窗口",
+      warmUp: `我剛剛有點衝，先收回來。妳${anchor}我先聽妳怎麼看。`,
+      steady: "好，我先不亂推。妳剛剛那個反應我收到，先聽妳怎麼判斷。",
+      inviteHook: "先降壓修安全感，不猜主題也不約，等她願意多說再找窗口",
     };
   }
-  if (/咖啡|拿鐵|美式|cafe|coffee/.test(text)) {
+  if (route === "direct") {
     return {
-      warmUp:
-        "會，我對咖啡店節奏也滿挑。妳是偏安靜窗邊，還是吧台那種有點吵的生活感？",
-      steady: "聽起來是妳會喜歡的節奏。那間是舒服到能待很久，還是只適合外帶？",
-      inviteHook: "把她的咖啡偏好接成短咖啡窗口",
+      warmUp: `妳${anchor}我先接住。合拍的話，這週找 30 分鐘短咖啡交換現場版。`,
+      steady: "我先不急著推。妳剛剛那個點我有興趣，合拍再找短咖啡交換。",
+      inviteHook: "錨定她最後一句，不猜主題；高成熟度才收 30 分鐘短咖啡",
     };
   }
-  if (/電影|影集|片段|影片|看/.test(text)) {
+  if (route === "soft") {
     return {
-      warmUp:
-        "會，我喜歡那種看完會留下畫面的東西。妳剛剛講的那種節奏，感覺滿挑人的。",
-      steady:
-        "會看一點。妳說節奏舒服，我反而好奇是哪種舒服？輕鬆，還是有後勁？",
-      inviteHook: "把她的片單接成交換推薦的小窗口",
+      warmUp: `妳${anchor}我先不硬約。等這題聊順，下次用一杯咖啡聽妳現場版。`,
+      steady: "這題先順著聊。若後面合拍，再丟一個短咖啡交換的低壓窗口。",
+      inviteHook: "先接她最後一句，再鋪下次短咖啡窗口，不急著成交",
     };
   }
   return {
-    warmUp:
-      "會，我喜歡有畫面感又不太用力的東西。妳剛剛這個說法，感覺滿有妳自己的標準。",
-    steady: "會有興趣。妳剛剛說的那個點滿具體，我想先聽妳怎麼挑。",
-    inviteHook: "先接她的偏好，再丟一個低壓小窗口",
+    warmUp: `妳${anchor}我先接住。不急著跳，我比較想聽妳怎麼看。`,
+    steady: "這題我先不推進。妳剛剛那個點有意思，我想多聽一點。",
+    inviteHook: "這輪先不約，只接她最後一句並累積投資感",
+  };
+}
+
+function evidenceBoundBeginnerFallbackReplies(latestAssistant: string): {
+  warmUp: string;
+  steady: string;
+} {
+  const anchor = fallbackAnchorSnippet(latestAssistant);
+  return {
+    warmUp: `妳${anchor}我先接住。我有點好奇，哪一段最有感？`,
+    steady: "我懂妳剛剛那個點。先順著聊，不用急著轉話題。",
   };
 }
 
@@ -242,131 +270,14 @@ function gameFallbackRepliesForLatestAssistant(
   steady: string;
   inviteHook: string;
 } {
-  const text = latestAssistant.normalize("NFKC").toLowerCase();
-  if (route === "repair") {
-    return {
-      warmUp:
-        "先收一點，我比較想聽妳剛那個標準怎麼來的。妳通常會被哪種節奏打中？",
-      steady: "好，我先不亂推。妳剛說的那個點我收到，先聽妳怎麼判斷。",
-      inviteHook: "先降壓修安全感，這輪不約，等她願意多說再找窗口",
-    };
-  }
-  if (/[脫脱]口秀|搞笑|好笑|笑點|幽默/.test(text)) {
-    if (route === "direct") {
-      return {
-        warmUp:
-          "那妳先丟一段最推的。笑點合拍的話，這週找 30 分鐘喝咖啡交換片單。",
-        steady: "我可以先看一段。要是笑點對得上，這週抓個短咖啡換妳現場吐槽。",
-        inviteHook: "把她的片段偏好收成這週 30 分鐘短咖啡",
-      };
-    }
-    if (route === "soft") {
-      return {
-        warmUp:
-          "妳先丟一段最推的。笑點合拍的話，下次換我用一杯咖啡跟妳交換片單。",
-        steady:
-          "可以，先給我妳最推的一段。若我笑了，下次就換我請妳喝咖啡還債。",
-        inviteHook: "用片單當測試球，接一個下次咖啡交換窗口",
-      };
-    }
-    return {
-      warmUp:
-        "會，我喜歡不硬搞笑但一句話打中的節奏。妳先丟一段，我判斷妳是冷面還毒舌。",
-      steady: "會看一點。妳先丟妳最推的一段，我看妳的笑點是不是比我想的壞。",
-      inviteHook: "這輪先不約，先讓她投資一段片單，再鋪短咖啡窗口",
-    };
-  }
-  if (/咖啡|拿鐵|美式|cafe|coffee/.test(text)) {
-    if (route === "direct") {
-      return {
-        warmUp:
-          "那妳先報一間妳會回訪的。這週找 30 分鐘短咖啡，我看妳品味有多挑。",
-        steady:
-          "可以，妳給我一間標準店。這週短咖啡交換，我負責看妳是不是窗邊派。",
-        inviteHook: "把咖啡偏好收成這週 30 分鐘短咖啡",
-      };
-    }
-    if (route === "soft") {
-      return {
-        warmUp: "那妳先報一間妳會回訪的。合拍的話，下次換我帶一間安靜窗邊派。",
-        steady: "可以，妳先丟一間標準店。下次如果有空，我們用短咖啡驗證品味。",
-        inviteHook: "用店家偏好丟下次短咖啡窗口",
-      };
-    }
-  }
-  if (/電影|影集|片段|影片|看/.test(text)) {
-    if (route === "direct") {
-      return {
-        warmUp:
-          "那妳先丟一部最有後勁的。這週找 30 分鐘喝咖啡交換片單，我看妳多會挑。",
-        steady:
-          "可以，妳先給我一部標準片。這週短咖啡交換，我看妳是輕鬆派還後勁派。",
-        inviteHook: "把片單偏好收成這週 30 分鐘短咖啡",
-      };
-    }
-    if (route === "soft") {
-      return {
-        warmUp: "妳先丟一部最有後勁的。合拍的話，下次換我請咖啡跟妳交換片單。",
-        steady: "可以，先給我一部標準片。下次若合拍，我們用咖啡交換片單。",
-        inviteHook: "用片單當測試球，接下次咖啡交換窗口",
-      };
-    }
-  }
-  if (route === "direct") {
-    return {
-      warmUp:
-        "這個我有興趣。妳先丟一個最推的，合拍的話這週找 30 分鐘交換答案。",
-      steady: "可以，妳先給我一個標準答案。合拍的話，這週短咖啡交換一下。",
-      inviteHook: "把她的偏好收成這週 30 分鐘短咖啡",
-    };
-  }
-  if (route === "soft") {
-    return {
-      warmUp: "這個我有興趣。妳先丟一個最推的，合拍的話下次換我用咖啡交換。",
-      steady: "可以，妳先給我一個標準答案。若合拍，下次短咖啡交換一下。",
-      inviteHook: "用偏好測試球接下次短咖啡窗口",
-    };
-  }
-  return {
-    warmUp:
-      "會，我喜歡有畫面感又不太用力的東西。妳先丟一個妳最推的，我看妳標準在哪。",
-    steady: "會有興趣。妳先給我一個標準答案，我再判斷妳是不是會挑。",
-    inviteHook: "這輪先不約，先接她的偏好，再鋪一個低壓小窗口",
-  };
+  return evidenceBoundGameFallbackReplies(latestAssistant, route);
 }
-
 function beginnerFallbackRepliesForLatestAssistant(latestAssistant: string): {
   warmUp: string;
   steady: string;
 } {
-  const text = latestAssistant.normalize("NFKC").toLowerCase();
-  if (/[脫脱]口秀|搞笑|好笑|笑點|幽默/.test(text)) {
-    return {
-      warmUp: "會，我也喜歡那種節奏舒服的笑點。妳最近看到哪一段最有印象？",
-      steady: "聽起來妳喜歡自然一點的幽默。我也比較吃不硬搞笑的風格。",
-    };
-  }
-  if (/咖啡|拿鐵|美式|cafe|coffee/.test(text)) {
-    return {
-      warmUp:
-        "聽起來那間店的節奏滿舒服的。妳通常會因為咖啡好喝，還是氣氛好才想再去？",
-      steady: "我也滿喜歡可以慢慢坐一下的咖啡店，會覺得人比較放鬆。",
-    };
-  }
-  if (/電影|影集|片段|影片|看/.test(text)) {
-    return {
-      warmUp:
-        "會，我喜歡看完會留下畫面的東西。妳最近有哪部是看完還會想一下的？",
-      steady:
-        "我也會看一點。妳說節奏舒服，我有點好奇是輕鬆那種，還是有後勁的？",
-    };
-  }
-  return {
-    warmUp: "聽起來妳對這個滿有感的。我有點好奇，妳通常是怎麼判斷喜不喜歡？",
-    steady: "我懂妳說的那種感覺。這題我會先想聽妳多講一點。",
-  };
+  return evidenceBoundBeginnerFallbackReplies(latestAssistant);
 }
-
 function buildBeginnerFallbackHintResult(
   opts: HintBuildContext,
 ): PracticeHintResult {
@@ -434,9 +345,13 @@ export function buildFallbackHintResult(
     };
   }
 
-  const route = gameInviteRouteFor(snapshot.speedInviteDirection);
+  const latestAssistant = latestAssistantText(opts.turns);
+  const route: GameInviteRoute =
+    latestAssistantNeedsFallbackRepair(latestAssistant)
+      ? "repair"
+      : gameInviteRouteFor(snapshot.speedInviteDirection);
   const fallback = gameFallbackRepliesForLatestAssistant(
-    latestAssistantText(opts.turns),
+    latestAssistant,
     route,
   );
   const phaseLabel = phaseLabelForFallback(snapshot.phase);
