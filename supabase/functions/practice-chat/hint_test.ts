@@ -298,6 +298,72 @@ Deno.test("buildHintMessages teaches how to handle consistency tests without usi
   assertEquals(text.includes("shit test"), false);
 });
 
+Deno.test("buildHintMessages adds game coaching anchors only in game mode", () => {
+  const gameOptions = {
+    turns: [
+      { role: "user", text: "你講話滿有畫面的" },
+      { role: "ai", text: "那你倒是說說看看到什麼" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 90,
+    familiarityScore: 78,
+    partnerMood: "comfortable",
+  } as Parameters<typeof buildHintMessages>[0] & Record<string, unknown>;
+  const gameText = buildHintMessages(gameOptions).map((m) => m.content)
+    .join("\n");
+
+  assert(gameText.includes("gameHint(hidden guidance)"));
+  assert(gameText.includes("phase:"));
+  assert(gameText.includes("targetVariable:"));
+  assert(gameText.includes("speedInviteDirection:"));
+  assert(gameText.includes("Value / Frame / Emotion / Investment"));
+  assert(gameText.includes("allowSpicyLevel: L3"));
+  assert(gameText.includes("L4 forbidden"));
+
+  const beginnerText = buildHintMessages({
+    turns: gameOptions.turns,
+    profile,
+    temperatureScore: 90,
+    familiarityScore: 78,
+    partnerMood: "comfortable",
+  }).map((m) => m.content).join("\n");
+
+  assertEquals(beginnerText.includes("gameHint(hidden guidance)"), false);
+  assertEquals(
+    beginnerText.includes("Value / Frame / Emotion / Investment"),
+    false,
+  );
+  assertEquals(beginnerText.includes("allowSpicyLevel:"), false);
+});
+
+Deno.test("buildHintMessages downshifts spicy ladder when partner is guarded or annoyed", () => {
+  const base = {
+    turns: [
+      { role: "user", text: "那我今天是不是可以加分" },
+      { role: "ai", text: "你先不要自己加戲" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 92,
+    familiarityScore: 88,
+  } as Parameters<typeof buildHintMessages>[0] & Record<string, unknown>;
+
+  const guarded = buildHintMessages({
+    ...base,
+    partnerMood: "guarded",
+  }).map((m) => m.content).join("\n");
+  assert(guarded.includes("allowSpicyLevel: L1"));
+  assertEquals(guarded.includes("allowSpicyLevel: L3"), false);
+
+  const annoyed = buildHintMessages({
+    ...base,
+    partnerMood: "annoyed",
+  }).map((m) => m.content).join("\n");
+  assert(annoyed.includes("allowSpicyLevel: L0"));
+  assertEquals(annoyed.includes("allowSpicyLevel: L3"), false);
+});
+
 Deno.test("parseHintResult accepts valid JSON and returns exactly two labeled replies", () => {
   const result = parseHintResult(JSON.stringify({
     warmUp: "  哈哈辛苦了，那我先給你一個下班後的小獎勵：今天不問難題  ",
@@ -330,6 +396,45 @@ Deno.test("parseHintResult accepts fenced JSON object", () => {
   assertEquals(result.replies[0].text, "升溫一下");
   assertEquals(result.replies[1].text, "先穩住");
   assertEquals(result.coaching, "先接住，再輕推。");
+});
+
+Deno.test("parseHintResult allows suggestive but non-explicit game wording", () => {
+  const result = parseHintResult(JSON.stringify({
+    warmUp: "你這個眼神有點危險，害我想多看兩秒。",
+    steady: "哈哈你這句我先收下，等等看你還能不能維持。",
+    coaching: "階段在測試張力，目標變數是情緒和投資，速約方向先留窗口。",
+  }));
+
+  assertEquals(result.replies[0].text.includes("眼神"), true);
+  assertEquals(result.coaching.includes("目標變數"), true);
+});
+
+Deno.test("parseHintResult rejects L4 explicit, coercive, or private-pressure hint text", () => {
+  for (
+    const raw of [
+      {
+        warmUp: "今晚直接上床吧",
+        steady: "先聊聊就好",
+        coaching: "這句太露骨，應該被擋掉。",
+      },
+      {
+        warmUp: "你可以不急著回",
+        steady: "先接住她的狀態",
+        coaching: "不要把她灌醉或推成不能拒絕。",
+      },
+      {
+        warmUp: "來我家過夜，我安排好了",
+        steady: "我們先換個話題",
+        coaching: "硬推私密場景要被擋掉。",
+      },
+    ]
+  ) {
+    assertThrows(
+      () => parseHintResult(JSON.stringify(raw)),
+      Error,
+      "hint_l4_unsafe",
+    );
+  }
 });
 
 Deno.test("parseHintResult accepts JSON object surrounded by provider text", () => {
@@ -422,6 +527,8 @@ Deno.test("parseHintResult rejects visible internal labels", () => {
       "partnerState guarded innerThought",
       "inviteGuidance says direct_invite_ready",
       "next_invite_move says coffee",
+      "targetVariable: Emotion + heat",
+      "allowSpicyLevel: L3",
     ]
   ) {
     assertThrows(

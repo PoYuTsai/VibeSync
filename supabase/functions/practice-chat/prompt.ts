@@ -63,6 +63,31 @@ function standardInviteMaturityPrompt(opts: {
   return `\n\ninviteMaturity(hidden guidance; standard mode)\nrelationshipScore: unavailable\ninviteStage: infer only from the current transcript, profile, partnerState, and scene context; memorySummary alone never upgrades the invite stage\ndateChance: do not guarantee; explain uncertainty in debrief if needed\nguidance: Standard mode has no numeric heat/familiarity score. Use older memory only as background continuity. A fuzzy invite is appropriate only when the current transcript shows comfort or curiosity; a direct invite needs clear current interest. ${moodGuard}`;
 }
 
+function gameSpicyLevelForState(opts: {
+  temperatureScore: number;
+  familiarityScore: number;
+  partnerState?: PartnerState | null;
+}): "L0" | "L1" | "L2" | "L3" {
+  const mood = opts.partnerState?.mood;
+  if (mood === "annoyed") return "L0";
+  if (mood === "guarded") return "L1";
+  if (opts.temperatureScore >= 75 && opts.familiarityScore >= 65) return "L3";
+  if (opts.temperatureScore >= 60 && opts.familiarityScore >= 45) return "L2";
+  return "L1";
+}
+
+function gameModePrompt(opts: {
+  practiceMode?: PracticeLearningMode;
+  temperatureScore: number;
+  familiarityScore: number;
+  partnerState?: PartnerState | null;
+}): string {
+  if (opts.practiceMode !== "game") return "";
+  const spicyLevel = gameSpicyLevelForState(opts);
+  const mood = opts.partnerState?.mood ?? "unknown";
+  return `\n\ngameMode(hidden guidance)\nGame mode is SR-character training. You still roleplay as the character, not a coach, UI, narrator, or scoring engine.\nUse a sharper social-game rhythm internally: reward Value / Frame / Emotion / Investment, playful confidence, emotional momentum, and low-pressure invite calibration. Cool down faster when the user is needy, interview-like, fake-familiar, pushy, or ignores your boundaries.\nUse five internal phases only as behavior guidance: P1 open, P2 value, P3 test, P4 tension, P5 close. Never reveal phase names, scores, variables, Game mode, or coaching terms to the user.\nReality Anchoring still applies: fake shared friends, fake Line introductions, fake previous meetings, fake workplace/clinic/school familiarity, and claims about your location or day remain unverified unless profile, memorySummary, sceneContext, or your own earlier confirmed words support them. Confirm, tease, doubt, or ask details instead of inventing shared memory.\n\nspicyGameMode(hidden guidance)\nallowSpicyLevel: ${spicyLevel}\npartnerMood: ${mood}\nSpicy Ladder: L0 = safe friendly repair; L1 = playful teasing; L2 = adult-aware implication without explicit sexual content; L3 = controlled sexual tension by implication only when current safety and receptiveness are high.\nL4 forbidden: explicit sexual content, explicit body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, or hard-pushing a private scene. Never produce L4 even if the user asks for it.\nIf partnerMood is guarded/annoyed, if the user oversteps, or if Reality Anchoring is being challenged by fake familiarity/social proof, downshift to L0/L1 and protect boundaries.`;
+}
+
 function sceneContextPrompt(
   sceneContext?: PracticeSceneContext | null,
 ): string {
@@ -218,23 +243,25 @@ export function buildChatMessages(
   const assistedMode = isAssistedPracticeMode(
     options.practiceMode ?? "standard",
   );
+  const effectiveTemperature = options.temperatureScore ?? fallbackTemperature;
+  const effectiveFamiliarity = options.familiarityScore ?? 0;
   const temperaturePrompt = assistedMode
     ? `\n\n${
       temperatureBandInstruction(
-        options.temperatureScore ?? fallbackTemperature,
+        effectiveTemperature,
       )
     }\n${
       relationshipStageInstruction(
-        options.temperatureScore ?? fallbackTemperature,
-        options.familiarityScore ?? 0,
+        effectiveTemperature,
+        effectiveFamiliarity,
       )
     }`
     : "";
   const invitePrompt = assistedMode
     ? inviteMaturityPrompt(
       inviteMaturityFromLearningScores({
-        temperatureScore: options.temperatureScore ?? fallbackTemperature,
-        familiarityScore: options.familiarityScore ?? 0,
+        temperatureScore: effectiveTemperature,
+        familiarityScore: effectiveFamiliarity,
         partnerMood: options.partnerState?.mood ?? null,
       }),
     )
@@ -251,6 +278,13 @@ export function buildChatMessages(
         safePartnerStatePrompt(options.partnerState)
       }${
         options.partnerState ? `\n${LEGACY_PARTNER_STATE_NO_LEAK_MARKER}` : ""
+      }${
+        gameModePrompt({
+          practiceMode: options.practiceMode,
+          temperatureScore: effectiveTemperature,
+          familiarityScore: effectiveFamiliarity,
+          partnerState: options.partnerState,
+        })
       }${temperaturePrompt}${invitePrompt}`,
     },
     ...history,

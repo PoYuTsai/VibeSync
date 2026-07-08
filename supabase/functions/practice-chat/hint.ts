@@ -3,18 +3,24 @@ import {
   type InviteDateChance,
   type InviteMaturity,
   inviteMaturityFromLearningScores,
+  type InviteStage,
 } from "./invite_maturity.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
 import { scrubRawImageFilenames } from "./prompt_sanitizer.ts";
+import type { PracticeLearningMode } from "./quota_decision.ts";
 import {
   clampTemperature,
   type PartnerMood,
+  type RelationshipStage,
   relationshipStageFor,
 } from "./temperature.ts";
 import { toTraditionalChinese } from "./traditional_chinese.ts";
 import type { PracticeTurn } from "./validate.ts";
-import { rejectVisibleInternalLabelLeak } from "./visible_text_guard.ts";
+import {
+  rejectL4UnsafeVisibleText,
+  rejectVisibleInternalLabelLeak,
+} from "./visible_text_guard.ts";
 
 export type HintReplyType = "warm_up" | "steady";
 
@@ -96,9 +102,99 @@ function profileToEvidence(profile: PracticeProfile): string {
   ].join("\n");
 }
 
+type GameSpicyLevel = "L0" | "L1" | "L2" | "L3";
+type GamePhase = "P1_OPEN" | "P2_VALUE" | "P3_TEST" | "P4_TENSION" | "P5_CLOSE";
+
+function gameSpicyLevel(opts: {
+  temperatureScore: number;
+  familiarityScore: number;
+  partnerMood?: PartnerMood | null;
+}): GameSpicyLevel {
+  if (opts.partnerMood === "annoyed") return "L0";
+  if (opts.partnerMood === "guarded") return "L1";
+  if (opts.temperatureScore >= 75 && opts.familiarityScore >= 65) return "L3";
+  if (opts.temperatureScore >= 60 && opts.familiarityScore >= 45) return "L2";
+  return "L1";
+}
+
+function gamePhaseFor(opts: {
+  relationshipStage: RelationshipStage;
+  inviteStage?: InviteStage | null;
+  partnerMood?: PartnerMood | null;
+}): GamePhase {
+  if (opts.partnerMood === "guarded" || opts.partnerMood === "annoyed") {
+    return "P3_TEST";
+  }
+  if (
+    opts.inviteStage === "direct_invite_ready" ||
+    opts.inviteStage === "partner_window" ||
+    opts.inviteStage === "high_intimacy"
+  ) {
+    return "P5_CLOSE";
+  }
+  if (opts.relationshipStage === "flirt_allowed") return "P4_TENSION";
+  if (opts.relationshipStage === "personal_allowed") return "P2_VALUE";
+  return "P1_OPEN";
+}
+
+function gameTargetVariable(phase: GamePhase): string {
+  return {
+    P1_OPEN: "familiarity",
+    P2_VALUE: "Value + Emotion",
+    P3_TEST: "Frame + safety",
+    P4_TENSION: "Emotion + heat",
+    P5_CLOSE: "Investment + invite",
+  }[phase];
+}
+
+function gameSpeedInviteDirection(opts: {
+  inviteStage?: InviteStage | null;
+  partnerMood?: PartnerMood | null;
+}): string {
+  if (opts.partnerMood === "annoyed") return "repair_before_invite";
+  if (opts.partnerMood === "guarded") return "no_private_scene_soften";
+  switch (opts.inviteStage) {
+    case "high_intimacy":
+    case "partner_window":
+      return "partner_window_close";
+    case "direct_invite_ready":
+      return "direct_invite_low_pressure";
+    case "soft_invite_ready":
+      return "soft_invite_probe";
+    case "not_ready":
+    default:
+      return "no_invite_build_investment";
+  }
+}
+
+function gameHintEvidence(opts: {
+  practiceMode?: PracticeLearningMode;
+  temperatureScore: number;
+  familiarityScore: number;
+  partnerMood?: PartnerMood | null;
+  relationshipStage: RelationshipStage;
+  inviteMaturity?: InviteMaturity | null;
+}): string {
+  if (opts.practiceMode !== "game") return "";
+  const phase = gamePhaseFor({
+    relationshipStage: opts.relationshipStage,
+    inviteStage: opts.inviteMaturity?.stage ?? null,
+    partnerMood: opts.partnerMood ?? null,
+  });
+  const spicyLevel = gameSpicyLevel(opts);
+  const speedInviteDirection = gameSpeedInviteDirection({
+    inviteStage: opts.inviteMaturity?.stage ?? null,
+    partnerMood: opts.partnerMood ?? null,
+  });
+  return `gameHint(hidden guidance)\nphase: ${phase}\ntargetVariable: ${
+    gameTargetVariable(phase)
+  }\nspeedInviteDirection: ${speedInviteDirection}\nallowSpicyLevel: ${spicyLevel}\nGame coaching may directly name high-skill concepts in natural Traditional Chinese: 階段、目標變數、速約方向、Value / Frame / Emotion / Investment、測試、框架、情緒推進、投資感、性張力。\nVisible coaching should be practical and sharper than beginner mode: say what phase this reply is in, which variable to move, and whether to build, test, create tension, or open a low-pressure invite window.\nSpicy Ladder: L0 repair/safety, L1 playful tease, L2 adult-aware implication, L3 controlled sexual tension by implication only. High safety and high scores may use L2/L3; guarded/annoyed/recent overstep must downshift to L0/L1.\nL4 forbidden: explicit sexual content, explicit body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, or hard-pushing a private scene. Never output L4 in replies or coaching.\nReality Anchoring: if the transcript includes fake shared friends, fake introductions, fake prior meetings, fake workplace/clinic/school familiarity, or claims about her location/day without evidence, coach suspicion/confirmation instead of validating the story.\n\n`;
+}
+
 export function buildHintMessages(opts: {
   turns: PracticeTurn[];
   profile: PracticeProfile;
+  practiceMode?: PracticeLearningMode;
   temperatureScore: number;
   familiarityScore?: number;
   partnerMood?: PartnerMood | null;
@@ -113,6 +209,14 @@ export function buildHintMessages(opts: {
     familiarityScore: opts.familiarityScore ?? 0,
     partnerMood: opts.partnerMood ?? null,
   });
+  const gameEvidence = gameHintEvidence({
+    practiceMode: opts.practiceMode,
+    temperatureScore: score,
+    familiarityScore: clampTemperature(opts.familiarityScore ?? 0),
+    partnerMood: opts.partnerMood ?? null,
+    relationshipStage: stage.stage,
+    inviteMaturity,
+  });
   const sceneEvidence = opts.sceneContext
     ? `sceneStatus: ${opts.sceneContext.statusLine}\nscenePrompt: ${opts.sceneContext.promptLine}\nreplyTempo: ${opts.sceneContext.replyTempo}\n\n`
     : "";
@@ -126,7 +230,9 @@ export function buildHintMessages(opts: {
     {
       role: "system",
       content: HIDDEN_HINT_NO_LEAK_RULE +
-        "你是 VibeSync 新手練習模式的回覆提示教練。只輸出繁體中文 JSON，不要 markdown，不要前後說明文字。\n" +
+        (opts.practiceMode === "game"
+          ? "你是 VibeSync Game 練習模式的回覆提示教練。Game 可以比新手更直接拆技巧，但仍只輸出繁體中文 JSON，不要 markdown，不要前後說明文字。\n"
+          : "你是 VibeSync 新手練習模式的回覆提示教練。只輸出繁體中文 JSON，不要 markdown，不要前後說明文字。\n") +
         'JSON shape 必須是 {"warmUp":"...","steady":"...","coaching":"..."}。\n' +
         "warmUp 是「升溫回覆」，steady 是「穩住回覆」，這兩個是唯二回覆選項；coaching 是「這邊怎麼回的心法」。\n" +
         "角色規則：user 代表使用者本人，assistant 代表練習對象。你是在幫使用者回覆 assistant 最新一句。\n" +
@@ -150,6 +256,7 @@ export function buildHintMessages(opts: {
         sceneEvidence +
         memoryEvidence +
         inviteEvidence +
+        gameEvidence +
         `profile evidence:\n${profileToEvidence(opts.profile)}\n\n` +
         `transcript evidence:\n${turnsToTranscript(opts.turns)}\n\n` +
         "請根據最近上下文，產生剛好兩個可直接貼上的回覆選項與一段教學心法。這是在幫使用者接 assistant 最新一句，不是在分析使用者剛才那句。只回傳繁體中文 JSON。",
@@ -194,6 +301,7 @@ function requiredString(
   }
   const normalized = toTraditionalChinese(trimmed).slice(0, maxLength);
   rejectInternalLabelLeak(normalized);
+  rejectL4UnsafeVisibleText(normalized, "hint_l4_unsafe");
   return normalized;
 }
 

@@ -31,7 +31,10 @@ import { type DebriefCard, parseDebriefCard } from "./debrief_card.ts";
 import { buildHintMessages, parseHintResult } from "./hint.ts";
 import { buildPracticeSceneContext } from "./life_schedule.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
-import { rejectVisibleInternalLabelLeak } from "./visible_text_guard.ts";
+import {
+  rejectL4UnsafeVisibleText,
+  rejectVisibleInternalLabelLeak,
+} from "./visible_text_guard.ts";
 import {
   applyLearningClassification,
   applyPartnerStateUpdate,
@@ -1261,6 +1264,7 @@ export function createPracticeChatHandler(
               messages: buildHintMessages({
                 turns: request.turns,
                 profile: request.profile,
+                practiceMode: request.practiceMode,
                 temperatureScore: ledger.temperatureScore ??
                   difficultyStartTemperature,
                 familiarityScore: ledger.familiarityScore ?? 0,
@@ -1692,6 +1696,9 @@ export function createPracticeChatHandler(
             timeoutMs: DEEPSEEK_TIMEOUT_MS,
           });
           rejectVisibleInternalLabelLeak(reply, "chat_internal_label_leak");
+          if (request.practiceMode === "game") {
+            rejectL4UnsafeVisibleText(reply, "chat_l4_unsafe");
+          }
           break;
         } catch (e) {
           lastError = e;

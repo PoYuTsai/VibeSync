@@ -72,6 +72,48 @@ Deno.test("beginner buildChatMessages includes temperature score", () => {
   assertEquals(sys.includes("升溫指數 30/100"), true);
 });
 
+Deno.test("game buildChatMessages includes game and spicy hidden guidance", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    defaultProfile,
+    {
+      practiceMode: "game",
+      temperatureScore: 82,
+      familiarityScore: 70,
+      partnerState: { mood: "comfortable", innerThought: "他接得住玩笑。" },
+    },
+  )[0].content;
+
+  assertEquals(sys.includes("gameMode(hidden guidance)"), true);
+  assertEquals(sys.includes("spicyGameMode(hidden guidance)"), true);
+  assertEquals(sys.includes("Value / Frame / Emotion / Investment"), true);
+  assertEquals(sys.includes("L4 forbidden"), true);
+  assertEquals(sys.includes("Reality Anchoring still applies"), true);
+});
+
+Deno.test("standard and beginner buildChatMessages do not include game high-skill guidance", () => {
+  const standard = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    defaultProfile,
+    { practiceMode: "standard" },
+  )[0].content;
+  const beginner = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    defaultProfile,
+    { practiceMode: "beginner", temperatureScore: 55, familiarityScore: 50 },
+  )[0].content;
+
+  for (const sys of [standard, beginner]) {
+    assertEquals(sys.includes("gameMode(hidden guidance)"), false);
+    assertEquals(sys.includes("spicyGameMode(hidden guidance)"), false);
+    assertEquals(
+      sys.includes("Value / Frame / Emotion / Investment"),
+      false,
+    );
+    assertEquals(sys.includes("L4 forbidden"), false);
+  }
+});
+
 // ── 難度接線（槓桿 A）：省略 temperatureScore 時 fallback 到難度起始溫度 ──────
 
 Deno.test("beginner buildChatMessages：省略 temperatureScore 時 fallback 到 normal 難度起始溫度 28", () => {

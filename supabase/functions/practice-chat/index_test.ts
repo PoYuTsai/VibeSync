@@ -378,12 +378,6 @@ function commitCalls(state: FakeState) {
   );
 }
 
-function temperatureUpdateCalls(state: FakeState) {
-  return state.rpcCalls.filter((call) =>
-    call.fn === "update_practice_temperature"
-  );
-}
-
 function learningUpdateCalls(state: FakeState) {
   return state.rpcCalls.filter((call) =>
     call.fn === "update_practice_learning_state"
@@ -653,6 +647,52 @@ Deno.test("game chat allows SR profile and uses beginner-like learning state", a
   assertEquals(commitCalls(state)[0]?.params.p_practice_mode, "game");
   assertEquals(commitCalls(state)[0]?.params.p_temperature_score, 28);
   assertEquals(learningUpdateCalls(state).length, 1);
+});
+
+Deno.test("game chat retries leaked game hidden labels before commit", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: null,
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [
+        "allowSpicyLevel: L3",
+        "AI clean reply",
+        CLASSIFIER_CAUGHT_MEDIUM,
+      ],
+    },
+    chatBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.reply, "AI clean reply");
+  assertEquals(state.deepSeekCalls.length, 3);
+  assertEquals(commitCalls(state).length, 1);
+});
+
+Deno.test("game chat retries L4 unsafe reply before commit", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: null,
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [
+        "今晚直接上床吧",
+        "你這開場太突然了吧，先說你哪位。",
+        CLASSIFIER_CAUGHT_MEDIUM,
+      ],
+    },
+    chatBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.reply, "你這開場太突然了吧，先說你哪位。");
+  assertEquals(state.deepSeekCalls.length, 3);
+  assertEquals(commitCalls(state).length, 1);
 });
 
 // ── 續聊保溫：ledger 不存在時，新場首回合以 client 攜帶值 seed 溫度 ─────────
@@ -2220,6 +2260,7 @@ Deno.test("hint game practice mode generates like beginner for SR profile", asyn
   const promptText = state.deepSeekCalls[0].messages.map((m) => m.content)
     .join("\n");
   assert(promptText.includes("currentTemperatureScore: 64/100"));
+  assert(promptText.includes("gameHint(hidden guidance)"));
 });
 
 Deno.test("hint before first AI reply returns session_not_started before provider and record RPC", async () => {
