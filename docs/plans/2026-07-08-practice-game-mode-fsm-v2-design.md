@@ -384,7 +384,22 @@ LLM 只負責：
 
 這樣才能可測、可回放、可調參。
 
-### 5.3 Game state 儲存
+### 5.3 Reality Anchoring 共用規則
+
+Game Mode 必須遵守共用 Reality Anchoring 規則，詳見：
+
+- `docs/plans/2026-07-08-practice-reality-anchoring-design.md`
+
+原因：Game 會鼓勵使用者練 social proof、假熟、共同背景、框架帶領，這些技巧如果沒有現實錨定，模型會把使用者亂編的朋友、同事、上次見面、介紹人全部當真，反而失去真人感。
+
+Game 判斷原則：
+
+- 透明、可退、像玩笑的假熟，可以是 `opener_us` 或 `playful_tension`。
+- 硬塞共同朋友、共同經歷，要求她承認，應標成 `obvious_trap` / `frame_overreach`。
+- 對方質疑後能幽默補細節，算 `test_pass`。
+- 對方質疑後防禦、自證、怪她不記得，算 `test_fail`。
+
+### 5.4 Game state 儲存
 
 為了真的跟隨 `social-game-fsm`，Game Mode 需要持久化四個隱性變數與 flags。
 
