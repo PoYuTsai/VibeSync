@@ -17,6 +17,7 @@ import {
   decideContinuationGate,
   decideDebriefGate,
   decideHintGate,
+  isAssistedPracticeMode,
   isSessionComplete,
   MAX_AI_REPLIES,
   MAX_DEBRIEFS,
@@ -315,13 +316,43 @@ function remainingFrom(
 }
 
 function practiceModeFromLedger(value: unknown): PracticeLearningMode {
-  return value === "beginner" ? "beginner" : "standard";
+  return value === "beginner" || value === "game" ? value : "standard";
 }
 
 function explicitPracticeModeFromLedger(
   value: unknown,
 ): PracticeLearningMode | null {
-  return value === "beginner" || value === "standard" ? value : null;
+  return value === "beginner" || value === "standard" || value === "game"
+    ? value
+    : null;
+}
+
+function gameModeAllowedForProfile(
+  request: ReturnType<typeof validateRequest>,
+): boolean {
+  return request.practiceMode !== "game" ||
+    request.profile.girl.rarity === "sr";
+}
+
+async function gameModeUnlockedForUser(opts: {
+  supabase: PracticeSupabaseClient;
+  userId: string;
+  profileId: string;
+}): Promise<boolean> {
+  const { data, error } = await opts.supabase
+    .from("practice_profile_draw_events")
+    .select("profile_id")
+    .eq("user_id", opts.userId)
+    .eq("profile_id", opts.profileId);
+  if (error) {
+    logWarn("practice_chat_game_unlock_check_failed", {
+      user: summarizeUser(opts.userId),
+      profileId: opts.profileId,
+      error: error.message,
+    });
+    return false;
+  }
+  return Array.isArray(data) && data.length > 0;
 }
 
 function temperatureFromLedger(value: unknown): number | null {
@@ -947,6 +978,13 @@ export function createPracticeChatHandler(
     } catch (e) {
       return jsonResponse({ error: getErrorMessage(e) }, 400);
     }
+    if (!gameModeAllowedForProfile(request)) {
+      logWarn("practice_chat_game_rejected_non_sr", {
+        user: summarizeUser(user.id),
+        profileId: request.profile.girl.profileId,
+      });
+      return jsonResponse({ error: "practice_game_sr_only" }, 403);
+    }
     // 難度接線（槓桿 A）：beginner 溫度初始值 fallback 隨難度變化（僅 beginner 生效）。
     const difficultyStartTemperature =
       difficultyTuningFor(request.profile.difficulty).startTemperature;
@@ -1037,12 +1075,46 @@ export function createPracticeChatHandler(
       ),
       hintCount: hintCountFromLedger(ledgerRow?.hint_count),
     };
+    const lockedPracticeMode = explicitPracticeModeFromLedger(
+      ledgerRow?.practice_mode,
+    );
 
     if (request.mode === "hint") {
-      // requestId 冪等 preflight：回應遺失後的重試（同 requestId）直接回放上次
-      // 已扣費的結果。必須在 practiceMode / gate / quota 429 之前——重試在
-      // hint 上限、聊滿、額度耗盡邊緣都不得被擋死（同 opener preflight 前移慣例）。
-      // 缺欄位（migration 未套）或查詢失敗一律 fail-open 走現行為。
+      if (!isAssistedPracticeMode(request.practiceMode)) {
+        return jsonResponse({ error: "practice_hint_beginner_only" }, 403);
+      }
+
+      if (
+        ledger.exists && lockedPracticeMode !== null &&
+        lockedPracticeMode !== request.practiceMode
+      ) {
+        logWarn("practice_chat_mode_locked", {
+          user: summarizeUser(user.id),
+          sessionId: request.sessionId,
+          mode: "hint",
+        });
+        return jsonResponse({ error: "practice_mode_locked" }, 409);
+      }
+
+      if (
+        request.practiceMode === "game" &&
+        !(await gameModeUnlockedForUser({
+          supabase,
+          userId: user.id,
+          profileId: request.profile.girl.profileId,
+        }))
+      ) {
+        logWarn("practice_chat_game_rejected_not_unlocked", {
+          user: summarizeUser(user.id),
+          profileId: request.profile.girl.profileId,
+          mode: "hint",
+        });
+        return jsonResponse({ error: "practice_game_sr_only" }, 403);
+      }
+
+      // Replay a completed hint request after mode/unlock checks, but before
+      // cap and quota gates, so lost responses can be recovered idempotently.
+      // Missing replay columns or query failures fail open to the claim path.
       if (request.requestId) {
         const { data: replayRow, error: replayError } = await supabase
           .from("practice_chat_sessions")
@@ -1067,11 +1139,6 @@ export function createPracticeChatHandler(
           return jsonResponse(replayRow.last_hint_result);
         }
       }
-
-      if (request.practiceMode !== "beginner") {
-        return jsonResponse({ error: "practice_hint_beginner_only" }, 403);
-      }
-
       const gate = decideHintGate({
         ledger,
         maxHints: MAX_HINTS_PER_ROUND,
@@ -1300,9 +1367,6 @@ export function createPracticeChatHandler(
       });
     }
 
-    const lockedPracticeMode = explicitPracticeModeFromLedger(
-      ledgerRow?.practice_mode,
-    );
     if (
       request.mode === "chat" &&
       ledger.exists && lockedPracticeMode !== null &&
@@ -1315,6 +1379,22 @@ export function createPracticeChatHandler(
       return jsonResponse({ error: "practice_mode_locked" }, 409);
     }
 
+    if (
+      request.practiceMode === "game" &&
+      !(await gameModeUnlockedForUser({
+        supabase,
+        userId: user.id,
+        profileId: request.profile.girl.profileId,
+      }))
+    ) {
+      logWarn("practice_chat_game_rejected_not_unlocked", {
+        user: summarizeUser(user.id),
+        profileId: request.profile.girl.profileId,
+        mode: request.mode,
+      });
+      return jsonResponse({ error: "practice_game_sr_only" }, 403);
+    }
+
     if (request.mode === "debrief") {
       const gate = decideDebriefGate({ ledger });
       if (!gate.allowed) {
@@ -1325,8 +1405,10 @@ export function createPracticeChatHandler(
         return jsonResponse({ error: gate.reason }, 403);
       }
 
-      const debriefBeginnerMode = ledger.practiceMode === "beginner";
-      if (debriefBeginnerMode) {
+      const debriefAssistedMode = isAssistedPracticeMode(
+        ledger.practiceMode ?? "standard",
+      );
+      if (debriefAssistedMode) {
         try {
           await assertPracticeLearningReady({
             supabase,
@@ -1399,9 +1481,9 @@ export function createPracticeChatHandler(
               messages: buildDebriefMessages(
                 request.turns,
                 request.profile,
-                debriefBeginnerMode
+                debriefAssistedMode
                   ? {
-                    practiceMode: "beginner",
+                    practiceMode: ledger.practiceMode,
                     temperatureScore: ledger.temperatureScore ??
                       difficultyStartTemperature,
                     familiarityScore: ledger.familiarityScore ?? 0,
@@ -1547,16 +1629,16 @@ export function createPracticeChatHandler(
       });
     }
 
-    const beginnerMode = request.practiceMode === "beginner";
+    const assistedMode = isAssistedPracticeMode(request.practiceMode);
     // 續聊保溫：只在 ledger 尚未建檔的新場首回合允許以 client 攜帶值 seed；
     // ledger 已建檔一律以 ledger 為準（欄位 null 的舊列 fallback 難度起始值，
     // 不吃 client 值——以建檔與否切分，堵舊列吃 seed 的洞）。
-    const currentTemperature = beginnerMode
+    const currentTemperature = assistedMode
       ? ledger.exists
         ? ledger.temperatureScore ?? difficultyStartTemperature
         : request.temperatureScore ?? difficultyStartTemperature
       : null;
-    const currentFamiliarity = beginnerMode
+    const currentFamiliarity = assistedMode
       ? ledger.exists
         ? ledger.familiarityScore ?? 0
         : request.familiarityScore ?? 0
@@ -1589,7 +1671,7 @@ export function createPracticeChatHandler(
             messages: buildChatMessages(
               request.turns,
               request.profile,
-              beginnerMode
+              assistedMode
                 ? {
                   practiceMode: request.practiceMode,
                   temperatureScore: currentTemperature ??
@@ -1667,7 +1749,7 @@ export function createPracticeChatHandler(
     const deducted = didCharge ? PRACTICE_QUOTA_COST : 0;
 
     let temperature: LearningJudgement | null = null;
-    if (beginnerMode && currentTemperature !== null) {
+    if (assistedMode && currentTemperature !== null) {
       try {
         temperature = await judgeLearningState({
           deps,

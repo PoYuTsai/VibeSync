@@ -23,6 +23,8 @@ interface FakeOptions {
   subError?: string;
   ledger?: Record<string, unknown> | null;
   ledgerError?: string;
+  drawEvents?: Array<Record<string, unknown>>;
+  drawEventsError?: string;
   rpc?: Record<string, RpcResult[]>;
   deepSeekReplies?: Array<string | Error>;
 }
@@ -64,6 +66,18 @@ function beginnerStartedLedger(overrides: Record<string, unknown> = {}) {
     charged: true,
     practice_mode: "beginner",
     temperature_score: 30,
+    hint_count: 0,
+    ...overrides,
+  });
+}
+
+function gameStartedLedger(overrides: Record<string, unknown> = {}) {
+  return ledger({
+    ai_count: 1,
+    charged: true,
+    practice_mode: "game",
+    temperature_score: 30,
+    familiarity_score: 0,
     hint_count: 0,
     ...overrides,
   });
@@ -215,6 +229,19 @@ function makeFake(options: FakeOptions = {}) {
       return {
         select(columns: string) {
           state.selects.push({ table, columns });
+          function selectResult() {
+            if (table === "practice_profile_draw_events") {
+              return Promise.resolve(
+                options.drawEventsError
+                  ? {
+                    data: null,
+                    error: { message: options.drawEventsError },
+                  }
+                  : { data: options.drawEvents ?? [], error: null },
+              );
+            }
+            return Promise.resolve({ data: null, error: null });
+          }
           // deno-lint-ignore no-explicit-any
           const builder: any = {
             eq(_column: string, _value: unknown) {
@@ -245,7 +272,13 @@ function makeFake(options: FakeOptions = {}) {
                     },
                 );
               }
-              return Promise.resolve({ data: null, error: null });
+              return selectResult();
+            },
+            then(
+              onfulfilled?: (value: unknown) => unknown,
+              onrejected?: (reason: unknown) => unknown,
+            ) {
+              return selectResult().then(onfulfilled, onrejected);
             },
           };
           return builder;
@@ -556,6 +589,70 @@ Deno.test("beginner first chat without client scores uses difficulty initial tem
       p_partner_inner_thought: "",
     },
   );
+});
+
+Deno.test("game chat rejects non-SR profile before provider and RPC", async () => {
+  const { response, json, state } = await run(
+    { ledger: null },
+    chatBody({
+      practiceMode: "game",
+      profileId: "practice_girl_001",
+    }),
+  );
+
+  assertEquals(response.status, 403);
+  assertEquals(json, { error: "practice_game_sr_only" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.rpcCalls.length, 0);
+});
+
+Deno.test("game chat rejects forged SR profile that was never drawn by the user", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: null,
+      drawEvents: [],
+    },
+    chatBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+    }),
+  );
+
+  assertEquals(response.status, 403);
+  assertEquals(json, { error: "practice_game_sr_only" });
+  assertEquals(
+    state.selects.some((select) =>
+      select.table === "practice_profile_draw_events"
+    ),
+    true,
+  );
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.rpcCalls.length, 0);
+});
+
+Deno.test("game chat allows SR profile and uses beginner-like learning state", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: null,
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [
+        "AI reply",
+        CLASSIFIER_CAUGHT_MEDIUM,
+      ],
+    },
+    chatBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.reply, "AI reply");
+  assertEquals(typeof json.temperature.score, "number");
+  assertEquals(json.hintUsedCount, 0);
+  assertEquals(commitCalls(state)[0]?.params.p_practice_mode, "game");
+  assertEquals(commitCalls(state)[0]?.params.p_temperature_score, 28);
+  assertEquals(learningUpdateCalls(state).length, 1);
 });
 
 // ── 續聊保溫：ledger 不存在時，新場首回合以 client 攜帶值 seed 溫度 ─────────
@@ -2073,6 +2170,56 @@ Deno.test("hint standard practice mode rejects before DeepSeek and record RPC", 
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(commitCalls(state).length, 0);
   assertEquals(learningUpdateCalls(state).length, 0);
+});
+
+Deno.test("hint locked beginner session rejects forged game mode before DeepSeek and claim RPC", async () => {
+  const { response, json, state } = await run({
+    ledger: beginnerStartedLedger(),
+  }, hintBody({ practiceMode: "game", profileId: "practice_girl_004" }));
+
+  assertEquals(response.status, 409);
+  assertEquals(json, { error: "practice_mode_locked" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
+Deno.test("hint locked game session rejects forged beginner mode before DeepSeek and claim RPC", async () => {
+  const { response, json, state } = await run({
+    ledger: gameStartedLedger(),
+  }, hintBody({ practiceMode: "beginner", profileId: "practice_girl_004" }));
+
+  assertEquals(response.status, 409);
+  assertEquals(json, { error: "practice_mode_locked" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
+Deno.test("hint game practice mode generates like beginner for SR profile", async () => {
+  const { response, json, state } = await run({
+    ledger: gameStartedLedger({
+      temperature_score: 64,
+      hint_count: 2,
+    }),
+    drawEvents: [{ profile_id: "practice_girl_004" }],
+    deepSeekReplies: [validHintJson()],
+    rpc: {
+      record_practice_hint: [{
+        data: [{ new_hint_count: 3, did_charge: true }],
+      }],
+    },
+  }, hintBody({ practiceMode: "game", profileId: "practice_girl_004" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json.replies.length, 2);
+  assertEquals(json.hintUsedCount, 3);
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(claimHintCalls(state).length, 1);
+  assertEquals(recordHintCalls(state).length, 1);
+  const promptText = state.deepSeekCalls[0].messages.map((m) => m.content)
+    .join("\n");
+  assert(promptText.includes("currentTemperatureScore: 64/100"));
 });
 
 Deno.test("hint before first AI reply returns session_not_started before provider and record RPC", async () => {

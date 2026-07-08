@@ -126,13 +126,13 @@ class PracticeDrawDraft {
       freeRemaining: (json['freeRemaining'] as num?)?.toInt() ?? 0,
       extraCostMessages: (json['extraCostMessages'] as num?)?.toInt() ?? 0,
       learningMode: learningMode,
-      temperatureScore: learningMode == PracticeLearningMode.beginner
+      temperatureScore: learningMode.usesAssistedLearning
           ? (json['temperatureScore'] as num?)?.toInt()
           : null,
-      familiarityScore: learningMode == PracticeLearningMode.beginner
+      familiarityScore: learningMode.usesAssistedLearning
           ? (json['familiarityScore'] as num?)?.toInt()
           : null,
-      relationshipStageLabel: learningMode == PracticeLearningMode.beginner
+      relationshipStageLabel: learningMode.usesAssistedLearning
           ? json['relationshipStageLabel'] as String?
           : null,
       nextResetAt: DateTime.parse(json['nextResetAt'] as String),

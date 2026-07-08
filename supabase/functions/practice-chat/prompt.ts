@@ -7,7 +7,10 @@ import {
   difficultyTuningFor,
   type PracticeProfile,
 } from "./practice_persona.ts";
-import type { PracticeLearningMode } from "./quota_decision.ts";
+import {
+  isAssistedPracticeMode,
+  type PracticeLearningMode,
+} from "./quota_decision.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
 import {
   buildConsistencyTestPrompt,
@@ -212,7 +215,10 @@ export function buildChatMessages(
   // 難度接線（槓桿 A）：省略 temperatureScore 時 fallback 到本場難度起始溫度。
   const fallbackTemperature = difficultyTuningFor(profile.difficulty)
     .startTemperature;
-  const temperaturePrompt = options.practiceMode === "beginner"
+  const assistedMode = isAssistedPracticeMode(
+    options.practiceMode ?? "standard",
+  );
+  const temperaturePrompt = assistedMode
     ? `\n\n${
       temperatureBandInstruction(
         options.temperatureScore ?? fallbackTemperature,
@@ -224,7 +230,7 @@ export function buildChatMessages(
       )
     }`
     : "";
-  const invitePrompt = options.practiceMode === "beginner"
+  const invitePrompt = assistedMode
     ? inviteMaturityPrompt(
       inviteMaturityFromLearningScores({
         temperatureScore: options.temperatureScore ?? fallbackTemperature,
@@ -281,7 +287,10 @@ export function buildDebriefMessages(
   const transcript = turnsToTranscript(turns);
   const g = profile.girl;
   const r = g.reactionModel;
-  const stagePrompt = options.practiceMode === "beginner"
+  const assistedMode = isAssistedPracticeMode(
+    options.practiceMode ?? "standard",
+  );
+  const stagePrompt = assistedMode
     ? `本場抽象關係階段：${
       relationshipStageFor(
         options.familiarityScore ?? 0,
@@ -291,7 +300,7 @@ export function buildDebriefMessages(
     }\n` +
       `拆解升溫/降溫時，請用這個階段解釋使用者有沒有接住情緒、界線或小測試，不要提熟悉度分數。\n\n`
     : "";
-  const invitePrompt = options.practiceMode === "beginner"
+  const invitePrompt = assistedMode
     ? inviteMaturityPrompt(
       inviteMaturityFromLearningScores({
         temperatureScore: options.temperatureScore ??

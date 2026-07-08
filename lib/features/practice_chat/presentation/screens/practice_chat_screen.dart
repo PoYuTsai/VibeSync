@@ -589,41 +589,87 @@ class _LearningModeToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 42,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: AppColors.brandSurface2.withValues(alpha: 0.42),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: AppColors.onBackgroundSecondary.withValues(alpha: 0.18),
+    final gameAvailable = state.canUseGameMode;
+    final gameLockedByRarity = state.canChangeLearningMode && !gameAvailable;
+    final subtitle = switch (state.learningMode) {
+      PracticeLearningMode.standard => '像真實聊天一樣練反應',
+      PracticeLearningMode.beginner => 'AI 給提示，教你穩穩升溫',
+      PracticeLearningMode.game =>
+        gameAvailable ? 'SR 限定，技巧拉滿練速約' : '抽到 SR 角色卡解鎖 Game',
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 42,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: AppColors.brandSurface2.withValues(alpha: 0.42),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.18),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _LearningModeSegment(
+                    key: const ValueKey('practice-learning-mode-standard'),
+                    icon: Icons.chat_bubble_outline,
+                    label: '標準',
+                    selected:
+                        state.learningMode == PracticeLearningMode.standard,
+                    enabled: state.canChangeLearningMode,
+                    onTap: () => onChanged(PracticeLearningMode.standard),
+                  ),
+                ),
+                Expanded(
+                  child: _LearningModeSegment(
+                    key: const ValueKey('practice-learning-mode-beginner'),
+                    icon: Icons.school_outlined,
+                    label: '新手',
+                    selected:
+                        state.learningMode == PracticeLearningMode.beginner,
+                    enabled: state.canChangeLearningMode,
+                    onTap: () => onChanged(PracticeLearningMode.beginner),
+                  ),
+                ),
+                Expanded(
+                  child: _LearningModeSegment(
+                    key: const ValueKey('practice-learning-mode-game'),
+                    icon: Icons.sports_esports_outlined,
+                    label: 'Game',
+                    selected: state.learningMode == PracticeLearningMode.game,
+                    enabled: state.canChangeLearningMode && gameAvailable,
+                    onTap: () => onChanged(PracticeLearningMode.game),
+                    onDisabledTap: gameLockedByRarity
+                        ? () => ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('抽到 SR 角色卡解鎖 Game'),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            )
+                        : null,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: _LearningModeSegment(
-                key: const ValueKey('practice-learning-mode-standard'),
-                icon: Icons.chat_bubble_outline,
-                label: '標準',
-                selected: state.learningMode == PracticeLearningMode.standard,
-                enabled: state.canChangeLearningMode,
-                onTap: () => onChanged(PracticeLearningMode.standard),
-              ),
+        const SizedBox(height: 6),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 150),
+          child: Text(
+            subtitle,
+            key: ValueKey('practice-learning-mode-subtitle-$subtitle'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.8),
             ),
-            Expanded(
-              child: _LearningModeSegment(
-                key: const ValueKey('practice-learning-mode-beginner'),
-                icon: Icons.school_outlined,
-                label: '新手',
-                selected: state.learningMode == PracticeLearningMode.beginner,
-                enabled: state.canChangeLearningMode,
-                onTap: () => onChanged(PracticeLearningMode.beginner),
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -636,6 +682,7 @@ class _LearningModeSegment extends StatelessWidget {
     required this.selected,
     required this.enabled,
     required this.onTap,
+    this.onDisabledTap,
   });
 
   final IconData icon;
@@ -643,6 +690,7 @@ class _LearningModeSegment extends StatelessWidget {
   final bool selected;
   final bool enabled;
   final VoidCallback onTap;
+  final VoidCallback? onDisabledTap;
 
   @override
   Widget build(BuildContext context) {
@@ -660,7 +708,7 @@ class _LearningModeSegment extends StatelessWidget {
           borderRadius: BorderRadius.circular(9),
           child: InkWell(
             borderRadius: BorderRadius.circular(9),
-            onTap: enabled ? onTap : null,
+            onTap: enabled ? onTap : onDisabledTap,
             child: Center(
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -1128,11 +1176,11 @@ class _BottomBar extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (state.isBeginnerMode) ...[
+          if (state.isAssistedLearningMode) ...[
             _TemperatureMeter(state: state),
             const SizedBox(height: 8),
           ],
-          if (state.isBeginnerMode && state.messages.isNotEmpty) ...[
+          if (state.isAssistedLearningMode && state.messages.isNotEmpty) ...[
             _HintCoachPanel(
               state: state,
               onRequestHint: onRequestHint,

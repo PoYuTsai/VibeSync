@@ -295,6 +295,21 @@ Deno.test("hint gate allows beginner ledger before max hints", () => {
   );
 });
 
+Deno.test("hint gate allows game ledger before max hints", () => {
+  assertEquals(
+    decideHintGate({
+      ledger: ledger({
+        charged: true,
+        aiCount: 1,
+        practiceMode: "game",
+        temperatureScore: 30,
+        hintCount: 4,
+      }),
+    }),
+    { allowed: true },
+  );
+});
+
 Deno.test("MAX_HINTS_PER_ROUND is 5", () => {
   assertEquals(MAX_HINTS_PER_ROUND, 5);
 });

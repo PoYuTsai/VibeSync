@@ -39,6 +39,12 @@ const partnerStateMigration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const gameModeMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260708120000_practice_game_mode.sql",
+    import.meta.url,
+  ),
+);
 
 function requiredIndex(snippet: string): number {
   const index = migration.indexOf(snippet);
@@ -529,6 +535,25 @@ function partnerStateFunctionBody(name: string): string {
     : partnerStateMigration.slice(start);
 }
 
+function requiredGameModeIndex(snippet: string): number {
+  const index = gameModeMigration.indexOf(snippet);
+  assert(index >= 0, `Game-mode migration must contain: ${snippet}`);
+  return index;
+}
+
+function gameModeFunctionBody(name: string): string {
+  const start = requiredGameModeIndex(
+    `CREATE OR REPLACE FUNCTION public.${name}(`,
+  );
+  const nextFunction = gameModeMigration.indexOf(
+    "CREATE OR REPLACE FUNCTION public.",
+    start + 1,
+  );
+  return nextFunction >= 0
+    ? gameModeMigration.slice(start, nextFunction)
+    : gameModeMigration.slice(start);
+}
+
 Deno.test("rpc cleanup migration warns it must run only after the new Edge deploy", () => {
   requiredCleanupIndex("必須在新版 practice-chat Edge 部署完成後才可套用");
 });
@@ -614,6 +639,71 @@ Deno.test("partner-state learning update RPC atomically persists scores and stat
   assert(body.includes("AND s.temperature_score = v_expected_temperature"));
   assert(body.includes("AND s.familiarity_score = v_expected_familiarity"));
   requiredPartnerStateIndex(
+    "GRANT EXECUTE ON FUNCTION public.update_practice_learning_state(UUID, TEXT, INTEGER, INTEGER, INTEGER, INTEGER, TEXT, TEXT)",
+  );
+});
+
+Deno.test("game-mode migration expands the practice_mode constraint", () => {
+  requiredGameModeIndex(
+    "DROP CONSTRAINT IF EXISTS practice_chat_sessions_practice_mode_check",
+  );
+  requiredGameModeIndex(
+    "CHECK (practice_mode IN ('standard', 'beginner', 'game'))",
+  );
+  requiredGameModeIndex("NOTIFY pgrst, 'reload schema';");
+});
+
+Deno.test("game-mode commit RPC treats game as an assisted mode", () => {
+  const body = gameModeFunctionBody("commit_practice_chat_turn");
+  const compactBody = compactSql(body);
+
+  assert(
+    body.includes("IF v_mode NOT IN ('standard', 'beginner', 'game') THEN"),
+  );
+  assert(
+    compactBody.includes(
+      "CASE WHEN v_mode IN ('beginner', 'game') THEN v_initial_temp ELSE NULL END",
+    ),
+  );
+  assert(
+    compactBody.includes(
+      "WHEN practice_mode IN ('beginner', 'game') AND temperature_score IS NULL THEN v_initial_temp",
+    ),
+  );
+  assert(
+    compactBody.includes(
+      "WHEN practice_mode IN ('beginner', 'game') AND familiarity_score IS NULL THEN v_initial_familiarity",
+    ),
+  );
+  requiredGameModeIndex(
+    "GRANT EXECUTE ON FUNCTION public.commit_practice_chat_turn(UUID, TEXT, BOOLEAN, INTEGER, TEXT, INTEGER, INTEGER, TEXT, TEXT)",
+  );
+});
+
+Deno.test("game-mode hint RPC allows beginner and game but still rejects standard", () => {
+  const claimBody = gameModeFunctionBody("claim_practice_hint_generation");
+  const recordBody = gameModeFunctionBody("record_practice_hint");
+
+  assert(claimBody.includes("v_row.practice_mode NOT IN ('beginner', 'game')"));
+  assert(
+    recordBody.includes("v_row.practice_mode NOT IN ('beginner', 'game')"),
+  );
+  assertEquals(claimBody.includes("v_row.practice_mode <> 'beginner'"), false);
+  assertEquals(recordBody.includes("v_row.practice_mode <> 'beginner'"), false);
+  requiredGameModeIndex(
+    "GRANT EXECUTE ON FUNCTION public.claim_practice_hint_generation(UUID, TEXT, INTEGER, TEXT)",
+  );
+  requiredGameModeIndex(
+    "GRANT EXECUTE ON FUNCTION public.record_practice_hint(UUID, TEXT, BOOLEAN, INTEGER, TEXT, JSONB)",
+  );
+});
+
+Deno.test("game-mode learning update RPC applies guarded deltas to beginner and game", () => {
+  const body = gameModeFunctionBody("update_practice_learning_state");
+
+  assert(body.includes("AND s.practice_mode IN ('beginner', 'game')"));
+  assertEquals(body.includes("AND s.practice_mode = 'beginner'"), false);
+  requiredGameModeIndex(
     "GRANT EXECUTE ON FUNCTION public.update_practice_learning_state(UUID, TEXT, INTEGER, INTEGER, INTEGER, INTEGER, TEXT, TEXT)",
   );
 });

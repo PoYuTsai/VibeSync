@@ -11,6 +11,7 @@ import '../../../analysis_history/domain/repositories/analysis_history_repositor
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../domain/entities/practice_draw_draft.dart';
 import '../../domain/entities/practice_girl_catalog.dart';
+import '../../domain/entities/practice_girl_rarity.dart';
 import '../../domain/entities/practice_hint.dart';
 import '../../domain/entities/practice_learning_mode.dart';
 import '../../domain/entities/practice_message.dart';
@@ -51,6 +52,17 @@ const Set<String> _practicePartnerMoodValues = {
   'guarded',
   'annoyed',
 };
+
+PracticeLearningMode _modeAllowedForGirl(
+  PracticeLearningMode mode,
+  PracticeGirlProfile? girl,
+) {
+  if (mode == PracticeLearningMode.game &&
+      girl?.rarity != PracticeGirlRarity.sr) {
+    return PracticeLearningMode.beginner;
+  }
+  return mode;
+}
 
 const _sentinel = Object();
 
@@ -176,12 +188,14 @@ class PracticeChatState {
       !sessionComplete;
 
   bool get isBeginnerMode => learningMode == PracticeLearningMode.beginner;
+  bool get isAssistedLearningMode => learningMode.usesAssistedLearning;
+  bool get canUseGameMode => girl?.rarity == PracticeGirlRarity.sr;
 
   bool get canChangeLearningMode =>
       isRevealed && messages.isEmpty && !isSending && !isDebriefing;
 
   bool get canRequestHint =>
-      isBeginnerMode &&
+      isAssistedLearningMode &&
       isRevealed &&
       !hintLimitReached &&
       hintUsedCount < kMaxPracticeHintsPerRound &&
@@ -512,7 +526,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   static PracticeChatState? _stateFromDraft(PracticeDrawDraft draft) {
     final girl = girlProfileById(draft.profileId);
     if (girl == null) return null;
-    final learningMode = draft.learningMode;
+    final learningMode = _modeAllowedForGirl(draft.learningMode, girl);
     return PracticeChatState(
       sessionId: draft.sessionId,
       createdAt: draft.createdAt,
@@ -531,14 +545,14 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       drawExtraCost: draft.extraCostMessages,
       drawNextResetAt: draft.nextResetAt.toIso8601String(),
       learningMode: learningMode,
-      temperatureScore: learningMode == PracticeLearningMode.beginner
+      temperatureScore: learningMode.usesAssistedLearning
           ? draft.temperatureScore ??
               initialPracticeTemperatureScore(draft.difficulty)
           : null,
-      familiarityScore: learningMode == PracticeLearningMode.beginner
+      familiarityScore: learningMode.usesAssistedLearning
           ? draft.familiarityScore ?? kInitialPracticeFamiliarityScore
           : null,
-      relationshipStageLabel: learningMode == PracticeLearningMode.beginner
+      relationshipStageLabel: learningMode.usesAssistedLearning
           ? draft.relationshipStageLabel ??
               kInitialPracticeRelationshipStageLabel
           : null,
@@ -564,7 +578,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         girlProfileById(session.profileId) ?? fallbackPracticeProfile().girl;
     final personaId = session.personaId ?? girl.personaId;
     final difficulty = session.difficulty ?? 'normal';
-    final learningMode = PracticeLearningMode.fromWire(session.practiceMode);
+    final learningMode = _modeAllowedForGirl(
+      PracticeLearningMode.fromWire(session.practiceMode),
+      girl,
+    );
     return PracticeChatState(
       sessionId: session.id,
       createdAt: session.createdAt,
@@ -586,20 +603,19 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       roundIndex: session.roundIndex ?? 1,
       visiblePracticeThreadId: session.visiblePracticeThreadId ?? session.id,
       learningMode: learningMode,
-      temperatureScore: learningMode == PracticeLearningMode.beginner
+      temperatureScore: learningMode.usesAssistedLearning
           ? session.temperatureScore ??
               initialPracticeTemperatureScore(difficulty)
           : null,
-      familiarityScore: learningMode == PracticeLearningMode.beginner
+      familiarityScore: learningMode.usesAssistedLearning
           ? session.familiarityScore ?? kInitialPracticeFamiliarityScore
           : null,
-      relationshipStageLabel: learningMode == PracticeLearningMode.beginner
+      relationshipStageLabel: learningMode.usesAssistedLearning
           ? session.relationshipStageLabel ??
               kInitialPracticeRelationshipStageLabel
           : null,
-      hintUsedCount: learningMode == PracticeLearningMode.beginner
-          ? session.hintUsedCount ?? 0
-          : 0,
+      hintUsedCount:
+          learningMode.usesAssistedLearning ? session.hintUsedCount ?? 0 : 0,
     );
   }
 
@@ -634,6 +650,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     final difficulty = prior.difficulty.isNotEmpty
         ? prior.difficulty
         : practiceDifficultyId(prior.difficultyPreference);
+    final learningMode = _modeAllowedForGirl(prior.learningMode, girl);
     state = PracticeChatState(
       sessionId: sessionId,
       createdAt: DateTime.now(),
@@ -646,17 +663,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       drawStatus: PracticeDrawStatus.revealed,
       roundIndex: 1,
       visiblePracticeThreadId: sessionId,
-      learningMode: prior.learningMode,
-      temperatureScore: prior.learningMode == PracticeLearningMode.beginner
+      learningMode: learningMode,
+      temperatureScore: learningMode.usesAssistedLearning
           ? initialPracticeTemperatureScore(difficulty)
           : null,
-      familiarityScore: prior.learningMode == PracticeLearningMode.beginner
+      familiarityScore: learningMode.usesAssistedLearning
           ? kInitialPracticeFamiliarityScore
           : null,
-      relationshipStageLabel:
-          prior.learningMode == PracticeLearningMode.beginner
-              ? kInitialPracticeRelationshipStageLabel
-              : null,
+      relationshipStageLabel: learningMode.usesAssistedLearning
+          ? kInitialPracticeRelationshipStageLabel
+          : null,
       hintUsedCount: 0,
       // 非翻牌：額度快照沿用 prior（server 才是真實來源，這裡不造新值）。
       drawFreeAllowance: prior.drawFreeAllowance,
@@ -716,6 +732,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       final difficulty = prior.difficulty.isNotEmpty
           ? prior.difficulty
           : practiceDifficultyId(prior.difficultyPreference);
+      final learningMode = _modeAllowedForGirl(prior.learningMode, girl);
 
       state = PracticeChatState(
         sessionId: sessionId,
@@ -729,17 +746,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         drawStatus: PracticeDrawStatus.revealed,
         roundIndex: 1,
         visiblePracticeThreadId: sessionId,
-        learningMode: prior.learningMode,
-        temperatureScore: prior.learningMode == PracticeLearningMode.beginner
+        learningMode: learningMode,
+        temperatureScore: learningMode.usesAssistedLearning
             ? initialPracticeTemperatureScore(difficulty)
             : null,
-        familiarityScore: prior.learningMode == PracticeLearningMode.beginner
+        familiarityScore: learningMode.usesAssistedLearning
             ? kInitialPracticeFamiliarityScore
             : null,
-        relationshipStageLabel:
-            prior.learningMode == PracticeLearningMode.beginner
-                ? kInitialPracticeRelationshipStageLabel
-                : null,
+        relationshipStageLabel: learningMode.usesAssistedLearning
+            ? kInitialPracticeRelationshipStageLabel
+            : null,
         hintUsedCount: 0,
         drawFreeAllowance: result.draw.freeAllowance,
         drawFreeUsed: result.draw.freeUsed,
@@ -827,14 +843,14 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       roundIndex: state.roundIndex + 1,
       visiblePracticeThreadId: state.visiblePracticeThreadId,
       learningMode: state.learningMode,
-      temperatureScore: state.isBeginnerMode
+      temperatureScore: state.isAssistedLearningMode
           ? (state.temperatureScore ??
               initialPracticeTemperatureScore(state.difficulty))
           : null,
-      familiarityScore: state.isBeginnerMode
+      familiarityScore: state.isAssistedLearningMode
           ? (state.familiarityScore ?? kInitialPracticeFamiliarityScore)
           : null,
-      relationshipStageLabel: state.isBeginnerMode
+      relationshipStageLabel: state.isAssistedLearningMode
           ? (state.relationshipStageLabel ??
               kInitialPracticeRelationshipStageLabel)
           : null,
@@ -845,14 +861,15 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 由目前 state 組出 PracticeProfile（調難度的衍生用）。
   Future<void> setPracticeLearningMode(PracticeLearningMode mode) async {
     if (!state.canChangeLearningMode || state.learningMode == mode) return;
-    final beginner = mode == PracticeLearningMode.beginner;
+    if (mode == PracticeLearningMode.game && !state.canUseGameMode) return;
+    final assisted = mode.usesAssistedLearning;
     state = state.copyWith(
       learningMode: mode,
       temperatureScore:
-          beginner ? initialPracticeTemperatureScore(state.difficulty) : null,
-      familiarityScore: beginner ? kInitialPracticeFamiliarityScore : null,
+          assisted ? initialPracticeTemperatureScore(state.difficulty) : null,
+      familiarityScore: assisted ? kInitialPracticeFamiliarityScore : null,
       relationshipStageLabel:
-          beginner ? kInitialPracticeRelationshipStageLabel : null,
+          assisted ? kInitialPracticeRelationshipStageLabel : null,
       lastTemperatureDelta: null,
       temperatureReason: null,
       isHintLoading: false,
@@ -893,11 +910,12 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
 
     final priorMessages = state.messages;
     final learningMode = state.learningMode;
-    final temperatureScore = learningMode == PracticeLearningMode.beginner
+    final assisted = learningMode.usesAssistedLearning;
+    final temperatureScore = assisted
         ? state.temperatureScore ??
             initialPracticeTemperatureScore(state.difficulty)
         : null;
-    final familiarityScore = learningMode == PracticeLearningMode.beginner
+    final familiarityScore = assisted
         ? state.familiarityScore ?? kInitialPracticeFamiliarityScore
         : null;
     final optimistic = [
@@ -930,12 +948,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         practiceMode: learningMode,
         temperatureScore: temperatureScore,
         familiarityScore: familiarityScore,
-        appliedHintType: learningMode == PracticeLearningMode.beginner
-            ? appliedHintType
-            : null,
-        appliedHintText: learningMode == PracticeLearningMode.beginner
-            ? appliedHintText
-            : null,
+        appliedHintType: assisted ? appliedHintType : null,
+        appliedHintText: assisted ? appliedHintText : null,
       );
       _hintGeneration++; // 成功送出新訊息：舊 transcript 的在途 hint 已過期
       final withAi = [
@@ -955,24 +969,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         isSending: false,
         aiReplyCount: reply.aiTurnCount,
         sessionComplete: reply.sessionComplete,
-        temperatureScore: learningMode == PracticeLearningMode.beginner
-            ? temperature?.score ?? temperatureScore
-            : null,
-        familiarityScore: learningMode == PracticeLearningMode.beginner
-            ? returnedFamiliarityScore
-            : null,
-        relationshipStageLabel: learningMode == PracticeLearningMode.beginner
+        temperatureScore:
+            assisted ? temperature?.score ?? temperatureScore : null,
+        familiarityScore: assisted ? returnedFamiliarityScore : null,
+        relationshipStageLabel: assisted
             ? temperature?.stageLabel ?? state.relationshipStageLabel
             : null,
-        lastTemperatureDelta: learningMode == PracticeLearningMode.beginner
-            ? temperature?.delta
-            : null,
-        temperatureReason: learningMode == PracticeLearningMode.beginner
-            ? temperature?.reason
-            : null,
-        hintUsedCount: learningMode == PracticeLearningMode.beginner
-            ? reply.hintUsedCount ?? state.hintUsedCount
-            : 0,
+        lastTemperatureDelta: assisted ? temperature?.delta : null,
+        temperatureReason: assisted ? temperature?.reason : null,
+        hintUsedCount:
+            assisted ? reply.hintUsedCount ?? state.hintUsedCount : 0,
       );
       await _persist();
       // 第一則成功 → 草稿交棒給正式 session（之後靠 recentSessions 還原）。
@@ -1085,6 +1091,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         continuationPartnerState: _lastPartnerStateForPrompt(state.messages),
         roundIndex: state.roundIndex,
         visiblePracticeThreadId: state.visiblePracticeThreadId,
+        practiceMode: state.learningMode,
       );
       _rotateHintRequestId(requestId); // 成功 → rotate
       if (_dropStaleHint(generation)) {
@@ -1406,10 +1413,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       freeRemaining: s.drawFreeRemaining ?? 0,
       extraCostMessages: s.drawExtraCost ?? 0,
       learningMode: s.learningMode,
-      temperatureScore: s.isBeginnerMode ? s.temperatureScore : null,
-      familiarityScore: s.isBeginnerMode ? s.familiarityScore : null,
+      temperatureScore: s.isAssistedLearningMode ? s.temperatureScore : null,
+      familiarityScore: s.isAssistedLearningMode ? s.familiarityScore : null,
       relationshipStageLabel:
-          s.isBeginnerMode ? s.relationshipStageLabel : null,
+          s.isAssistedLearningMode ? s.relationshipStageLabel : null,
       nextResetAt: nextReset,
       createdAt: s.createdAt,
     ));
@@ -1440,26 +1447,26 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       roundIndex: s.roundIndex,
       profileId: girl.profileId,
       practiceMode: s.learningMode.wireName,
-      temperatureScore: s.isBeginnerMode ? s.temperatureScore : null,
-      familiarityScore: s.isBeginnerMode ? s.familiarityScore : null,
+      temperatureScore: s.isAssistedLearningMode ? s.temperatureScore : null,
+      familiarityScore: s.isAssistedLearningMode ? s.familiarityScore : null,
       relationshipStageLabel:
-          s.isBeginnerMode ? s.relationshipStageLabel : null,
-      hintUsedCount: s.isBeginnerMode ? s.hintUsedCount : null,
+          s.isAssistedLearningMode ? s.relationshipStageLabel : null,
+      hintUsedCount: s.isAssistedLearningMode ? s.hintUsedCount : null,
     ));
   }
 
   /// 案2：練習溫度歷史事件（best-effort：失敗只 debugPrint 絕不 rethrow，
   /// 收操流程完全不受影響）。只掛 endPractice 的 debrief 成功路徑——
   /// 每局收操記一筆終溫；局中 _persist（送訊息/hint）絕不寫，避免同局多筆。
-  /// 只在新手模式且 temperatureScore 有值時寫——
-  /// 非新手模式三元組全 null，是畫不出來的空點（設計拍板）。
+  /// 只在輔助模式且 temperatureScore 有值時寫——
+  /// 標準模式三元組全 null，是畫不出來的空點（設計拍板）。
   Future<void> _recordPracticeHistoryEvent(
     PracticeChatState s,
     String profileId,
   ) async {
     final history = _historyRepository;
     if (history == null) return;
-    final temperature = s.isBeginnerMode ? s.temperatureScore : null;
+    final temperature = s.isAssistedLearningMode ? s.temperatureScore : null;
     if (temperature == null) return;
     try {
       await history.append(AnalysisHistoryEvent.practice(
@@ -1468,9 +1475,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         profileId: profileId,
         roundIndex: s.roundIndex,
         temperatureScore: temperature,
-        familiarityScore: s.isBeginnerMode ? s.familiarityScore : null,
+        familiarityScore: s.isAssistedLearningMode ? s.familiarityScore : null,
         relationshipStageLabel:
-            s.isBeginnerMode ? s.relationshipStageLabel : null,
+            s.isAssistedLearningMode ? s.relationshipStageLabel : null,
       ));
     } catch (e) {
       debugPrint('AnalysisHistory practice append failed: $e');

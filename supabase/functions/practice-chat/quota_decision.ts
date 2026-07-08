@@ -24,7 +24,11 @@ export const MAX_HINTS_PER_ROUND = 5;
 export const PRACTICE_QUOTA_COST = 1;
 
 export type PracticeMode = "chat" | "debrief" | "hint";
-export type PracticeLearningMode = "standard" | "beginner";
+export type PracticeLearningMode = "standard" | "beginner" | "game";
+
+export function isAssistedPracticeMode(mode: PracticeLearningMode): boolean {
+  return mode === "beginner" || mode === "game";
+}
 
 /** 某場練習的 server 端權威狀態快照（preflight 讀取後傳入）。 */
 export interface SessionLedger {
@@ -143,7 +147,7 @@ export function decideHintGate(opts: {
   if (aiCount >= maxReplies) {
     return { allowed: false, reason: "practice_session_complete" };
   }
-  if (practiceMode !== "beginner") {
+  if (!isAssistedPracticeMode(practiceMode ?? "standard")) {
     return { allowed: false, reason: "practice_hint_beginner_only" };
   }
   if ((opts.ledger.hintCount ?? 0) >= max) {

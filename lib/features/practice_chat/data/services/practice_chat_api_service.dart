@@ -324,10 +324,9 @@ class PracticeChatApiService {
         'roundIndex': roundIndex,
         if (temperatureScore != null) 'temperatureScore': temperatureScore,
         if (familiarityScore != null) 'familiarityScore': familiarityScore,
-        if (practiceMode == PracticeLearningMode.beginner &&
-            appliedHintType != null)
+        if (practiceMode.usesAssistedLearning && appliedHintType != null)
           'appliedHintType': _hintReplyTypeWireName(appliedHintType),
-        if (practiceMode == PracticeLearningMode.beginner &&
+        if (practiceMode.usesAssistedLearning &&
             appliedHintType != null &&
             normalizedAppliedHintText != null &&
             normalizedAppliedHintText.isNotEmpty)
@@ -373,6 +372,7 @@ class PracticeChatApiService {
     String? memorySummary,
     PracticePartnerState? continuationPartnerState,
     String? requestId,
+    PracticeLearningMode practiceMode = PracticeLearningMode.beginner,
   }) async {
     final normalizedMemorySummary = memorySummary?.trim();
     final response = await _invoke(
@@ -382,7 +382,7 @@ class PracticeChatApiService {
         'sessionId': sessionId,
         if (requestId != null && requestId.trim().isNotEmpty)
           'requestId': requestId.trim(),
-        'practiceMode': PracticeLearningMode.beginner.wireName,
+        'practiceMode': practiceMode.wireName,
         ...profile.toJson(),
         'turns': turns.map((t) => t.toJson()).toList(),
         if (normalizedMemorySummary != null &&

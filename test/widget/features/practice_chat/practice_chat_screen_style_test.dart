@@ -17,6 +17,7 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.da
 import 'package:vibesync/features/practice_chat/domain/entities/practice_learning_mode.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_profile.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_rarity.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_message.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_temperature.dart';
@@ -251,6 +252,7 @@ class _HintApi extends _NoopPracticeChatApi {
     String? memorySummary,
     PracticePartnerState? continuationPartnerState,
     String? requestId,
+    PracticeLearningMode practiceMode = PracticeLearningMode.beginner,
   }) async {
     hintCalls++;
     return result;
@@ -1257,6 +1259,109 @@ void main() {
       find.byKey(const ValueKey('practice-temperature-meter')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('SR card enables Game mode without mobile overflow',
+      (tester) async {
+    final srGirl = practiceGirlProfiles
+        .firstWhere((g) => g.rarity == PracticeGirlRarity.sr);
+    final controller = _SeededPracticeChatController(
+      seed: revealedPreMsgSeed().copyWith(
+        girl: srGirl,
+        personaId: srGirl.personaId,
+        personaLabel: 'SR',
+      ),
+      repository: repo,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(320, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('practice-learning-mode-standard')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('practice-learning-mode-beginner')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('practice-learning-mode-game')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byKey(const ValueKey('practice-learning-mode-game')));
+    await tester.pumpAndSettle();
+
+    expect(controller.currentState.learningMode, PracticeLearningMode.game);
+    expect(
+      find.byKey(const ValueKey('practice-temperature-meter')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('non-SR card keeps Game visible but locked with a prompt',
+      (tester) async {
+    final nGirl = practiceGirlProfiles
+        .firstWhere((g) => g.rarity == PracticeGirlRarity.n);
+    final controller = _SeededPracticeChatController(
+      seed: revealedPreMsgSeed().copyWith(
+        girl: nGirl,
+        personaId: nGirl.personaId,
+        personaLabel: 'N',
+      ),
+      repository: repo,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('practice-learning-mode-game')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('practice-learning-mode-game')));
+    await tester.pump();
+
+    expect(controller.currentState.learningMode, PracticeLearningMode.standard);
+    expect(find.text('抽到 SR 角色卡解鎖 Game'), findsOneWidget);
   });
 
   testWidgets('temperature meter keeps feedback compact and Traditional',

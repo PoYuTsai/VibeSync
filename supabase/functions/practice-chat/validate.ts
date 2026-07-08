@@ -89,7 +89,11 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
 
   let practiceMode: PracticeLearningMode = "standard";
   if (raw.practiceMode !== undefined) {
-    if (raw.practiceMode !== "standard" && raw.practiceMode !== "beginner") {
+    if (
+      raw.practiceMode !== "standard" &&
+      raw.practiceMode !== "beginner" &&
+      raw.practiceMode !== "game"
+    ) {
       throw new Error("invalid_practiceMode");
     }
     practiceMode = raw.practiceMode;

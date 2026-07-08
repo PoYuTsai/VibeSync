@@ -67,12 +67,13 @@ void main() {
       PracticeProfileDto(personaId: 'slow_worker', difficulty: 'normal');
 
   group('PracticeLearningMode', () {
-    test('standard/beginner expose wireName and Traditional Chinese labels',
-        () {
+    test('standard/beginner/game expose wireName and labels', () {
       expect(PracticeLearningMode.standard.wireName, 'standard');
-      expect(PracticeLearningMode.standard.label, '練習');
+      expect(PracticeLearningMode.standard.label, '標準');
       expect(PracticeLearningMode.beginner.wireName, 'beginner');
       expect(PracticeLearningMode.beginner.label, '新手');
+      expect(PracticeLearningMode.game.wireName, 'game');
+      expect(PracticeLearningMode.game.label, 'Game');
     });
 
     test('fromWire falls back to standard for null or unknown values', () {
@@ -85,6 +86,10 @@ void main() {
       expect(
         PracticeLearningMode.fromWire('beginner'),
         PracticeLearningMode.beginner,
+      );
+      expect(
+        PracticeLearningMode.fromWire('game'),
+        PracticeLearningMode.game,
       );
     });
   });
@@ -878,6 +883,23 @@ void main() {
       ]);
       expect(captured.body?['roundIndex'], 4);
       expect(captured.body?['visiblePracticeThreadId'], 'thread-abc');
+    });
+
+    test('sends game practiceMode when requesting a game hint', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+      captured.hintBody = okHintBody();
+
+      await svc.requestHint(
+        sessionId: 'session-1',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.game,
+      );
+
+      expect(captured.functionName, 'practice-chat');
+      expect(captured.body?['mode'], 'hint');
+      expect(captured.body?['practiceMode'], 'game');
     });
 
     test('sendMessage body includes memorySummary when provided', () async {

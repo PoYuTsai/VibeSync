@@ -13,6 +13,7 @@ import 'package:vibesync/features/practice_chat/data/repositories/practice_sessi
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_draw_draft.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_rarity.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_learning_mode.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_message.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_profile.dart';
@@ -55,6 +56,7 @@ class _FakeApi extends PracticeChatApiService {
   int? lastHintRoundIndex;
   String? lastHintThreadId;
   String? lastHintRequestId;
+  PracticeLearningMode? lastHintPracticeMode;
   int hintCallCount = 0;
 
   // 翻牌捕捉。
@@ -100,6 +102,7 @@ class _FakeApi extends PracticeChatApiService {
     String? memorySummary,
     PracticePartnerState? continuationPartnerState,
     String? requestId,
+    PracticeLearningMode practiceMode = PracticeLearningMode.beginner,
   }) {
     hintCallCount++;
     lastHintRoundIndex = roundIndex;
@@ -107,6 +110,7 @@ class _FakeApi extends PracticeChatApiService {
     lastHintMemorySummary = memorySummary;
     lastHintContinuationPartnerState = continuationPartnerState;
     lastHintRequestId = requestId;
+    lastHintPracticeMode = practiceMode;
     return hintHandler!(turns, profile: profile);
   }
 
@@ -1607,6 +1611,77 @@ void main() {
       expect(saved.hintUsedCount, 1);
     });
 
+    test('SR game mode sends and persists beginner-like learning state',
+        () async {
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_004');
+      final c = await makeRevealed();
+      expect(c.currentState.girl?.rarity, PracticeGirlRarity.sr);
+
+      await c.setPracticeLearningMode(PracticeLearningMode.game);
+      expect(c.currentState.learningMode, PracticeLearningMode.game);
+      expect(c.currentState.temperatureScore, 28);
+      expect(c.currentState.familiarityScore, 0);
+
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 38,
+              delta: 8,
+              band: 'cold',
+              reason: 'game moved',
+              familiarityScore: 10,
+              familiarityDelta: 10,
+              stageLabel: '建立熟悉中',
+            ),
+            hintUsedCount: 1,
+          );
+
+      await c.sendMessage('hello');
+
+      final s = c.currentState;
+      expect(api.lastPracticeMode, PracticeLearningMode.game);
+      expect(api.lastTemperatureScore, 28);
+      expect(api.lastFamiliarityScore, 0);
+      expect(s.temperatureScore, 38);
+      expect(s.familiarityScore, 10);
+      expect(s.hintUsedCount, 1);
+
+      final saved = repo.getById(s.sessionId)!;
+      expect(saved.practiceMode, 'game');
+      expect(saved.temperatureScore, 38);
+      expect(saved.familiarityScore, 10);
+      expect(saved.hintUsedCount, 1);
+    });
+
+    test('non-SR cards cannot switch to game mode locally before chat starts',
+        () async {
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_001');
+      final c = await makeRevealed();
+      expect(c.currentState.girl?.rarity, isNot(PracticeGirlRarity.sr));
+
+      await c.setPracticeLearningMode(PracticeLearningMode.game);
+
+      expect(c.currentState.learningMode, PracticeLearningMode.standard);
+      expect(c.currentState.temperatureScore, isNull);
+      expect(c.currentState.familiarityScore, isNull);
+    });
+
+    test('R cards cannot switch to game mode locally before chat starts',
+        () async {
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_010');
+      final c = await makeRevealed();
+      expect(c.currentState.girl?.rarity, PracticeGirlRarity.r);
+
+      await c.setPracticeLearningMode(PracticeLearningMode.game);
+
+      expect(c.currentState.learningMode, PracticeLearningMode.standard);
+      expect(c.currentState.temperatureScore, isNull);
+      expect(c.currentState.familiarityScore, isNull);
+    });
+
     test('pre-message beginner mode is saved in draft and restored', () async {
       final c = await makeRevealed();
       await c.setPracticeLearningMode(PracticeLearningMode.beginner);
@@ -1726,6 +1801,36 @@ void main() {
         [28, 13]
       ]);
       expect(repo.getById(s.sessionId)!.hintUsedCount, 1);
+    });
+
+    test('requestHint is available in game mode and forwards game mode',
+        () async {
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_004');
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.game);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 34,
+              delta: 4,
+              band: 'cold',
+              reason: 'game moved',
+              familiarityScore: 4,
+              familiarityDelta: 4,
+              stageLabel: '建立熟悉中',
+            ),
+            hintUsedCount: 0,
+          );
+
+      await c.sendMessage('hello');
+      api.hintHandler = (_, {profile}) async => hintResult();
+
+      await c.requestHint();
+
+      expect(api.hintCallCount, 1);
+      expect(api.lastHintPracticeMode, PracticeLearningMode.game);
+      expect(c.currentState.hintReplies, hasLength(2));
     });
 
     test('requestHint marks limit reached without clearing chat', () async {

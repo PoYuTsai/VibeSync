@@ -77,6 +77,14 @@ Deno.test("practiceMode beginner is accepted", () => {
   assertEquals(r.practiceMode, "beginner");
 });
 
+Deno.test("practiceMode game is accepted", () => {
+  const r = validateRequest({
+    ...chatReq([{ role: "user", text: "hi" }]),
+    practiceMode: "game",
+  });
+  assertEquals(r.practiceMode, "game");
+});
+
 Deno.test("invalid practiceMode throws invalid_practiceMode", () => {
   assertThrows(
     () =>
