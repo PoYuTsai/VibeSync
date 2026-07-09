@@ -1014,7 +1014,9 @@ Deno.test("buildFallbackHintResult does not treat overseas media wording as trav
       game.coaching,
     ].join("\n");
 
-    assertEquals(visible.includes("剛回來"), false);
+    // 錨定引號會原樣引用她的話（可能含「剛回來」字面），所以改驗 travel
+    // 罐頭簽名句不得出現，確保沒被誤判成旅行返家分支。
+    assertEquals(visible.includes("妳先回血"), false);
     assertEquals(visible.includes("這趟"), false);
     assertEquals(visible.includes("旅行狀態"), false);
     assertEquals(visible.includes("時差歸位"), false);
@@ -1061,6 +1063,128 @@ Deno.test("buildFallbackHintResult anchors beginner fallback to latest travel-re
   assertEquals(visible.includes("剛剛那句"), false);
   assertEquals(visible.includes("最推"), false);
   assertEquals(visible.includes("標準答案"), false);
+});
+
+Deno.test("buildFallbackHintResult prioritizes topic over tiredness when both appear", () => {
+  // 實際失效例：疲累詞＋明顯話題詞同句，話題優先，不可回「放空回血」無視電影。
+  const game = buildFallbackHintResult({
+    turns: [
+      { role: "user", text: "今天過得怎樣" },
+      { role: "ai", text: "今天工作累死了但剛看完一部超好看的電影" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 36,
+    familiarityScore: 20,
+    partnerMood: "neutral",
+  });
+  const visible = [
+    ...game.replies.map((reply) => reply.text),
+    game.coaching,
+  ].join("\n");
+
+  assertEquals(visible.includes("先不耗妳電量"), false);
+  assertEquals(visible.includes("今天最想關機"), false);
+  assertEquals(visible.includes("先放空回血"), false);
+  assert(
+    /看完|好看|電影/.test(visible),
+    "fallback must pick up the movie topic she just raised",
+  );
+});
+
+Deno.test("buildFallbackHintResult does not force taste café canned lines on chat compliments", () => {
+  // 實際失效例：「跟你聊天蠻有趣」是聊天感受，不是品味話題，不可硬塞片單。
+  // 低分 build route 連短咖啡都不該出現；高分 direct route 可收窗口但不可談片單。
+  const low = buildFallbackHintResult({
+    turns: [
+      { role: "user", text: "妳今天心情不錯喔" },
+      { role: "ai", text: "跟你聊天蠻有趣" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 34,
+    familiarityScore: 18,
+    partnerMood: "neutral",
+  });
+  const lowVisible = [
+    ...low.replies.map((reply) => reply.text),
+    low.coaching,
+  ].join("\n");
+  assertEquals(lowVisible.includes("片單"), false);
+  assertEquals(lowVisible.includes("短咖啡"), false);
+  assertEquals(lowVisible.includes("30 分鐘"), false);
+
+  const high = buildFallbackHintResult({
+    turns: [
+      { role: "user", text: "妳今天心情不錯喔" },
+      { role: "ai", text: "跟你聊天蠻有趣" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 88,
+    familiarityScore: 82,
+    partnerMood: "comfortable",
+  });
+  const highVisible = [
+    ...high.replies.map((reply) => reply.text),
+    high.coaching,
+  ].join("\n");
+  assertEquals(highVisible.includes("片單"), false);
+});
+
+Deno.test("buildFallbackHintResult anchors canned game fallbacks to her latest words", () => {
+  const cases: Array<{
+    latest: string;
+    anchorPattern: RegExp;
+  }> = [
+    // taste 罐頭：要引到她剛講的內容片段。
+    { latest: "最近看一些脫口秀片段，節奏蠻舒服的", anchorPattern: /脫口秀/ },
+    // topic-agnostic 罐頭：也要引到她最新一句。
+    { latest: "跟你聊天蠻有趣", anchorPattern: /跟你聊天蠻有趣/ },
+    // low-energy 罐頭：純疲累句照樣先錨定她的話。
+    { latest: "這週有點累，暫時只想放空", anchorPattern: /這週有點累/ },
+  ];
+  for (const item of cases) {
+    const game = buildFallbackHintResult({
+      turns: [
+        { role: "user", text: "今天如何" },
+        { role: "ai", text: item.latest },
+      ],
+      profile,
+      practiceMode: "game",
+      temperatureScore: 34,
+      familiarityScore: 18,
+      partnerMood: "neutral",
+    });
+    const replies = game.replies.map((reply) => reply.text);
+    assert(
+      replies.some((text) => item.anchorPattern.test(text)),
+      `pasteable fallback should mention what she just said: ${item.latest}`,
+    );
+    for (const text of replies) {
+      assert(Array.from(text).length <= 80, `reply too long: ${text}`);
+    }
+  }
+});
+
+Deno.test("buildFallbackHintResult anchors beginner steady fallback to her latest words", () => {
+  const beginner = buildFallbackHintResult({
+    turns: [
+      { role: "user", text: "妳假日都做什麼" },
+      { role: "ai", text: "假日通常會去河堤跑步，順便放空" },
+    ],
+    profile,
+    practiceMode: "beginner",
+    temperatureScore: 30,
+    familiarityScore: 10,
+    partnerMood: "neutral",
+  });
+  const steady = beginner.replies[1].text;
+  assert(
+    steady.includes("河堤") || steady.includes("跑步"),
+    "beginner steady fallback should mention her latest topic",
+  );
+  assert(Array.from(steady).length <= 80);
 });
 
 Deno.test("buildFallbackHintResult does not echo unsafe latest assistant text", () => {

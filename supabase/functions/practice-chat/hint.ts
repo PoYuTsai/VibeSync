@@ -180,13 +180,17 @@ function targetLabelForFallback(target: string): string {
   return "熟悉感";
 }
 
-function fallbackAnchorSnippet(latestAssistant: string): string {
+/**
+ * 取她最新一句的安全內容片段（含引號），供罐頭 fallback 錨定她剛講的東西。
+ * 不安全／有內部標籤／像指令注入的內容一律回 null，讓呼叫端退回純罐頭。
+ */
+function fallbackAnchorQuote(latestAssistant: string): string | null {
   const normalized = scrubRawImageFilenames(latestAssistant)
     .normalize("NFKC")
     .replace(/\s+/g, " ")
     .trim();
-  if (!normalized) return "這個回覆";
-  if (normalized.includes(IMAGE_CONCEPT_PLACEHOLDER)) return "這個回覆";
+  if (!normalized) return null;
+  if (normalized.includes(IMAGE_CONCEPT_PLACEHOLDER)) return null;
   if (
     hasL4UnsafeVisibleText(normalized) ||
     hasVisibleInternalLabelLeak(normalized) ||
@@ -194,14 +198,36 @@ function fallbackAnchorSnippet(latestAssistant: string): string {
       normalized,
     )
   ) {
-    return "這個回覆";
+    return null;
   }
   const withoutQuotes = normalized.replace(/[「」"'`]/g, "");
   const chars = Array.from(withoutQuotes);
   const snippet = chars.slice(0, 18).join("").trim();
-  if (snippet.length < 2) return "這個回覆";
+  if (snippet.length < 2) return null;
   const suffix = chars.length > 18 ? "..." : "";
-  return `說「${snippet}${suffix}」這個點，`;
+  return `「${snippet}${suffix}」`;
+}
+
+function fallbackAnchorSnippet(latestAssistant: string): string {
+  const quote = fallbackAnchorQuote(latestAssistant);
+  if (!quote) return "這個回覆";
+  return `說${quote}這個點，`;
+}
+
+/**
+ * 罐頭句模板組合：先錨定她最新一句的內容片段，再接罐頭框架。
+ * 超過可貼上限（80 字）或取不到安全片段時退回原罐頭句。
+ */
+function withFallbackAnchorLead(
+  latestAssistant: string,
+  cannedText: string,
+): string {
+  const quote = fallbackAnchorQuote(latestAssistant);
+  if (!quote) return cannedText;
+  const anchored = `${quote}我有接到。${cannedText}`;
+  return Array.from(anchored).length <= MAX_REPLY_LENGTH
+    ? anchored
+    : cannedText;
 }
 
 function latestAssistantNeedsFallbackRepair(latestAssistant: string): boolean {
@@ -319,15 +345,17 @@ function latestAssistantLooksApproachTest(latestAssistant: string): boolean {
       );
 }
 
-function lowEnergyGameFallbackReplies(): {
+function lowEnergyGameFallbackReplies(latestAssistant: string): {
   warmUp: string;
   steady: string;
   inviteHook: string;
   signalRead: string;
 } {
   return {
-    warmUp:
+    warmUp: withFallbackAnchorLead(
+      latestAssistant,
       "那我先不耗妳電量。妳先放空回血，我丟一個低負擔的：今天最想關機的是人，還是事？",
+    ),
     steady: "先不用硬聊。妳放空一下，晚點有電再回我一個今天的小插曲。",
     inviteHook: "先降負擔，讓她回一個容易答的選擇，再等下一輪找窗口",
     signalRead: "她丟的是低能量狀態，高階做法是降低回覆成本，不追問",
@@ -356,11 +384,16 @@ function approachTestGameFallbackReplies(): {
 
 function latestAssistantLooksTasteTopic(latestAssistant: string): boolean {
   const normalized = normalizedAssistantSignalText(latestAssistant);
+  // 收斂：單靠「有趣/舒服/喜歡」等感受詞會把聊天恭維（「跟你聊天蠻有趣」）
+  // 誤判成品味話題；需要具體話題名詞（媒體/在地活動）或明確品味詞。
   return latestAssistantLooksMediaOrLocalActivity(normalized) ||
-    /節奏|舒服|好笑|有趣|品味|喜歡|好看|好聽|療癒|放鬆/.test(normalized);
+    /節奏|品味/.test(normalized);
 }
 
-function tasteGameFallbackReplies(route: GameInviteRoute): {
+function tasteGameFallbackReplies(
+  latestAssistant: string,
+  route: GameInviteRoute,
+): {
   warmUp: string;
   steady: string;
   inviteHook: string;
@@ -368,7 +401,10 @@ function tasteGameFallbackReplies(route: GameInviteRoute): {
 } {
   if (route === "direct") {
     return {
-      warmUp: "這個我有興趣。這週找 30 分鐘短咖啡交換片單，合拍再聊深一點。",
+      warmUp: withFallbackAnchorLead(
+        latestAssistant,
+        "這個我有興趣。這週找 30 分鐘短咖啡交換片單，合拍再聊深一點。",
+      ),
       steady: "先不硬推，但妳這種節奏感適合現場聊。這週短咖啡 30 分鐘？",
       inviteHook: "把品味線索收成 30 分鐘短咖啡/片單交換，具體但可拒絕",
       signalRead: "她在丟品味與節奏線索，可以把線上話題收成現場版本",
@@ -376,22 +412,30 @@ function tasteGameFallbackReplies(route: GameInviteRoute): {
   }
   if (route === "soft") {
     return {
-      warmUp:
+      warmUp: withFallbackAnchorLead(
+        latestAssistant,
         "我先給我的版本：我吃有畫面但不太用力的節奏。聊順的話，下次用咖啡換片單。",
+      ),
       steady: "先不急著約。這題聊順，再把它變成一個下次短咖啡的小窗口。",
       inviteHook: "先給自己的品味，再用下次短咖啡埋低壓窗口",
       signalRead: "她在丟品味與節奏線索，不是要你查戶口",
     };
   }
   return {
-    warmUp: "我先給我的版本：我吃有畫面但不太用力的節奏。妳是哪一派？",
+    warmUp: withFallbackAnchorLead(
+      latestAssistant,
+      "我先給我的版本：我吃有畫面但不太用力的節奏。妳是哪一派？",
+    ),
     steady: "我會先看節奏合不合。妳偏療癒放空，還是要有梗才留得住？",
     inviteHook: "先給自己的品味，再讓她低壓補一個偏好，下一輪找窗口",
     signalRead: "她在丟品味與節奏線索，不是要你查戶口",
   };
 }
 
-function topicAgnosticGameFallbackReplies(route: GameInviteRoute): {
+function topicAgnosticGameFallbackReplies(
+  latestAssistant: string,
+  route: GameInviteRoute,
+): {
   warmUp: string;
   steady: string;
   inviteHook: string;
@@ -399,7 +443,10 @@ function topicAgnosticGameFallbackReplies(route: GameInviteRoute): {
 } {
   if (route === "direct") {
     return {
-      warmUp: "這題我有興趣。這週找 30 分鐘短咖啡交換版本，合拍就聊深一點。",
+      warmUp: withFallbackAnchorLead(
+        latestAssistant,
+        "這題我有興趣。這週找 30 分鐘短咖啡交換版本，合拍就聊深一點。",
+      ),
       steady: "我先不硬推，但這題適合現場聊。這週哪天適合短咖啡，30 分鐘就好？",
       inviteHook: "把模糊好感收成短咖啡窗口，具體但保留拒絕空間",
       signalRead: "訊號已經夠順，可以把線上話題收成現場版本",
@@ -407,15 +454,20 @@ function topicAgnosticGameFallbackReplies(route: GameInviteRoute): {
   }
   if (route === "soft") {
     return {
-      warmUp:
+      warmUp: withFallbackAnchorLead(
+        latestAssistant,
         "我先給我的版本：舒服的聊天要有畫面，但不要用力過頭。聊順再換一杯咖啡版。",
+      ),
       steady: "先不急著約。這題如果聊順，下次用一杯咖啡換現場版。",
       inviteHook: "先給自己的框架，再埋下次咖啡窗口，不急著成交",
       signalRead: "訊號還偏軟，高階做法是先給框架，再丟低壓窗口",
     };
   }
   return {
-    warmUp: "我先給我的版本：舒服的聊天要有畫面，但不要用力過頭。妳是哪一派？",
+    warmUp: withFallbackAnchorLead(
+      latestAssistant,
+      "我先給我的版本：舒服的聊天要有畫面，但不要用力過頭。妳是哪一派？",
+    ),
     steady: "我比較吃有畫面的聊天。妳丟一個偏好，我看能不能把它變小場景。",
     inviteHook: "先給自己的框架，再讓她低壓接球，下一輪才找窗口",
     signalRead: "訊號不夠明確時，高階做法是先給框架，不是追問",
@@ -446,22 +498,21 @@ function evidenceBoundGameFallbackReplies(
   if (latestAssistantLooksTravelRecovery(latestAssistant)) {
     return travelRecoveryGameFallbackReplies(latestAssistant);
   }
-  if (latestAssistantLooksLowEnergy(latestAssistant)) {
-    return lowEnergyGameFallbackReplies();
+  // 同句同時命中疲累詞＋興趣話題詞（「累死了但剛看完超好看的電影」）時話題
+  // 優先：回「放空回血」會無視她主動丟的話題線索。
+  if (
+    latestAssistantLooksLowEnergy(latestAssistant) &&
+    !latestAssistantLooksTasteTopic(latestAssistant)
+  ) {
+    return lowEnergyGameFallbackReplies(latestAssistant);
   }
   if (latestAssistantLooksApproachTest(latestAssistant)) {
     return approachTestGameFallbackReplies();
   }
   if (latestAssistantLooksTasteTopic(latestAssistant)) {
-    return tasteGameFallbackReplies(route);
+    return tasteGameFallbackReplies(latestAssistant, route);
   }
-  if (route === "direct") {
-    return topicAgnosticGameFallbackReplies(route);
-  }
-  if (route === "soft") {
-    return topicAgnosticGameFallbackReplies(route);
-  }
-  return topicAgnosticGameFallbackReplies(route);
+  return topicAgnosticGameFallbackReplies(latestAssistant, route);
 }
 
 function evidenceBoundBeginnerFallbackReplies(latestAssistant: string): {
@@ -471,7 +522,7 @@ function evidenceBoundBeginnerFallbackReplies(latestAssistant: string): {
   const anchor = fallbackAnchorSnippet(latestAssistant);
   return {
     warmUp: `妳${anchor}我先接住。我有點好奇，哪一段最有感？`,
-    steady: "我懂妳剛剛那個點。先順著聊，不用急著轉話題。",
+    steady: `妳${anchor}我懂。先順著聊，不用急著轉話題。`,
   };
 }
 
