@@ -298,6 +298,27 @@ function latestAssistantLooksLowEnergy(latestAssistant: string): boolean {
   );
 }
 
+function latestAssistantLooksApproachTest(latestAssistant: string): boolean {
+  if (latestAssistantNeedsFallbackRepair(latestAssistant)) return false;
+  const normalized = normalizedAssistantSignalText(latestAssistant);
+  if (!normalized || normalized.includes(IMAGE_CONCEPT_PLACEHOLDER)) {
+    return false;
+  }
+  return /你.{0,8}(?:平常|都|常|一直).{0,10}(?:這樣|到處|隨便).{0,10}(?:認識|搭訕|撩|開場|加人|私訊)/
+    .test(
+      normalized,
+    ) ||
+    /你.{0,10}(?:亂槍打鳥|搭訕|撩妹|很會撩|很會搭訕|套路)/
+      .test(
+        normalized,
+      ) ||
+    /(?:這|又).{0,4}(?:套路|搭訕)/.test(normalized) ||
+    /(?:你.{0,8}(?:開場|這樣|一來|一開始).{0,8}(?:突然|太突然))|(?:(?:突然|太突然).{0,8}(?:你|這樣|開場))/
+      .test(
+        normalized,
+      );
+}
+
 function lowEnergyGameFallbackReplies(): {
   warmUp: string;
   steady: string;
@@ -310,6 +331,26 @@ function lowEnergyGameFallbackReplies(): {
     steady: "先不用硬聊。妳放空一下，晚點有電再回我一個今天的小插曲。",
     inviteHook: "先降負擔，讓她回一個容易答的選擇，再等下一輪找窗口",
     signalRead: "她丟的是低能量狀態，高階做法是降低回覆成本，不追問",
+  };
+}
+
+function approachTestGameFallbackReplies(): {
+  warmUp: string;
+  steady: string;
+  inviteHook: string;
+  signalRead: string;
+  phaseMove: string;
+  routeAdvice: string;
+} {
+  return {
+    warmUp:
+      "有點突然我認，但不是亂槍打鳥。只是妳這個反應蠻有趣，我想多聽一分鐘。",
+    steady:
+      "不是每個人都會這樣認識。妳是在測我是不是亂搭訕吧？我先把節奏放慢。",
+    inviteHook: "先承認突然、拆掉亂搭訕感，不急著約，等她回一句再鋪短窗口",
+    signalRead: "她在做微廢測：測你是不是亂搭訕，不是在要你講聊天哲學",
+    phaseMove: "開場測試階段先推框架與分寸",
+    routeAdvice: "這輪先不約，先讓她感覺你不是亂搭訕，再等她願意開一個小縫",
   };
 }
 
@@ -389,6 +430,8 @@ function evidenceBoundGameFallbackReplies(
   steady: string;
   inviteHook: string;
   signalRead?: string;
+  phaseMove?: string;
+  routeAdvice?: string;
 } {
   const anchor = fallbackAnchorSnippet(latestAssistant);
   if (
@@ -405,6 +448,9 @@ function evidenceBoundGameFallbackReplies(
   }
   if (latestAssistantLooksLowEnergy(latestAssistant)) {
     return lowEnergyGameFallbackReplies();
+  }
+  if (latestAssistantLooksApproachTest(latestAssistant)) {
+    return approachTestGameFallbackReplies();
   }
   if (latestAssistantLooksTasteTopic(latestAssistant)) {
     return tasteGameFallbackReplies(route);
@@ -457,6 +503,8 @@ function gameFallbackRepliesForLatestAssistant(
   steady: string;
   inviteHook: string;
   signalRead?: string;
+  phaseMove?: string;
+  routeAdvice?: string;
 } {
   return evidenceBoundGameFallbackReplies(latestAssistant, route);
 }
@@ -548,19 +596,21 @@ export function buildFallbackHintResult(
   const phaseLabel = phaseLabelForFallback(snapshot.phase);
   const targetLabel = targetLabelForFallback(snapshot.targetVariable);
   const signalRead = fallback.signalRead ?? "她這句可能是在測你的節奏或品味";
-  const routeAdvice = {
+  const phaseMove = fallback.phaseMove ?? `${phaseLabel}階段先推${targetLabel}`;
+  const defaultRouteAdvice = {
     build: "這輪先不約，先把她的偏好變成可兌現的小場景，鋪下一個窗口",
     soft: "用「下次／改天」丟低壓窗口，保留退路",
     direct: "把窗口收成 30 分鐘短咖啡或小行程，具體但可拒絕",
     repair: "先降壓修安全感，不約，等她願意多說再找窗口",
   }[route];
+  const routeAdvice = fallback.routeAdvice ?? defaultRouteAdvice;
   return {
     replies: [
       { type: "warm_up", label: "升溫回覆", text: fallback.warmUp },
       { type: "steady", label: "穩住回覆", text: fallback.steady },
     ],
     coaching:
-      `Game 心法：${signalRead}，${phaseLabel}階段先推${targetLabel}。速約任務：${fallback.inviteHook}；${routeAdvice}。`,
+      `Game 心法：${signalRead}，${phaseMove}。速約任務：${fallback.inviteHook}；${routeAdvice}。`,
   };
 }
 

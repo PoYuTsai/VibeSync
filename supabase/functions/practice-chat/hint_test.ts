@@ -573,6 +573,107 @@ Deno.test("buildFallbackHintResult uses topic-agnostic Game fallback instead of 
   assertEquals(visible.includes("這輪先把節奏接穩"), false);
 });
 
+Deno.test("buildFallbackHintResult treats sudden approach pushback as Game micro-test", () => {
+  const game = buildFallbackHintResult({
+    turns: [
+      { role: "user", text: "我覺得妳剛剛喝咖啡的樣子滿有畫面，想認識一下" },
+      {
+        role: "ai",
+        text: "喔...確實有點突然（喝一口咖啡） 你平常都這樣認識人喔",
+      },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 30,
+    familiarityScore: 18,
+    partnerMood: "neutral",
+  });
+  const visible = [
+    ...game.replies.map((reply) => reply.text),
+    game.coaching,
+  ].join("\n");
+
+  assert(visible.includes("突然"));
+  assert(
+    visible.includes("不是每個人") ||
+      visible.includes("不常") ||
+      visible.includes("亂槍打鳥"),
+  );
+  assert(
+    visible.includes("微廢測") ||
+      visible.includes("亂搭訕") ||
+      visible.includes("亂槍打鳥"),
+  );
+  assert(visible.includes("開場") || visible.includes("分寸"));
+  assertEquals(visible.includes("舒服的聊天要有畫面"), false);
+  assertEquals(visible.includes("妳是哪一派"), false);
+  assertEquals(visible.includes("變小場景"), false);
+  assertEquals(visible.includes("妳丟一個偏好"), false);
+  assertEquals(visible.includes("收尾階段"), false);
+  assertEquals(visible.includes("這週"), false);
+  assertEquals(visible.includes("30 分鐘"), false);
+  assertEquals(visible.includes("見面"), false);
+});
+
+Deno.test("buildFallbackHintResult keeps approach-test fallback from leaking direct-invite route", () => {
+  const game = buildFallbackHintResult({
+    turns: [
+      { role: "user", text: "我覺得妳剛剛喝咖啡的樣子滿有畫面，想認識一下" },
+      {
+        role: "ai",
+        text: "喔...確實有點突然（喝一口咖啡） 你平常都這樣認識人喔",
+      },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 88,
+    familiarityScore: 82,
+    partnerMood: "comfortable",
+  });
+  const visible = [
+    ...game.replies.map((reply) => reply.text),
+    game.coaching,
+  ].join("\n");
+
+  assert(visible.includes("亂搭訕") || visible.includes("亂槍打鳥"));
+  assert(visible.includes("開場") || visible.includes("分寸"));
+  assertEquals(visible.includes("這週"), false);
+  assertEquals(visible.includes("30 分鐘"), false);
+  assertEquals(visible.includes("短咖啡"), false);
+  assertEquals(visible.includes("見面"), false);
+  assertEquals(visible.includes("收尾階段"), false);
+});
+
+Deno.test("buildFallbackHintResult does not treat benign sudden or skill wording as approach test", () => {
+  for (
+    const latest of [
+      "我突然想喝咖啡，附近那間咖啡廳滿舒服的",
+      "我很會吃辣，但甜點就普通",
+    ]
+  ) {
+    const game = buildFallbackHintResult({
+      turns: [
+        { role: "user", text: "妳平常喜歡什麼" },
+        { role: "ai", text: latest },
+      ],
+      profile,
+      practiceMode: "game",
+      temperatureScore: 34,
+      familiarityScore: 18,
+      partnerMood: "neutral",
+    });
+    const visible = [
+      ...game.replies.map((reply) => reply.text),
+      game.coaching,
+    ].join("\n");
+
+    assertEquals(visible.includes("亂搭訕"), false);
+    assertEquals(visible.includes("亂槍打鳥"), false);
+    assertEquals(visible.includes("微廢測"), false);
+    assertEquals(visible.includes("開場測試"), false);
+  }
+});
+
 Deno.test("buildFallbackHintResult anchors Game fallback to latest travel-rest reply", () => {
   const game = buildFallbackHintResult({
     turns: [
