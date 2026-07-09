@@ -17,7 +17,7 @@ const String _kWaitingLoopAsset =
     'audio/practice_draw/practice_draw_waiting_loop.wav';
 const String _kRevealChimeAsset =
     'audio/practice_draw/practice_draw_reveal_chime.wav';
-// E2：揭曉配樂 bed（復刻 音檔.mp4 音軌）。mp3 以控資產體積（~9s wav 會爆 <500KB 預算）。
+// F1：揭曉配樂 bed。2–5s 改用夥伴 accent layer；5s 後沿用 E2 下半段。
 const String _kRevealBedAsset =
     'audio/practice_draw/practice_draw_reveal_bed.mp3';
 
