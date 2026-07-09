@@ -1486,6 +1486,7 @@ export function createPracticeChatHandler(
       const hintGenerationAttempts = HINT_GENERATION_ATTEMPTS;
       const hintTimeoutMs = HINT_TIMEOUT_MS;
       let hintResult: ReturnType<typeof parseHintResult> | null = null;
+      let hintResultIsFallback = false;
       try {
         let lastError: unknown;
         for (
@@ -1552,6 +1553,7 @@ export function createPracticeChatHandler(
             familiarityScore: hintFamiliarityScore,
             partnerMood: hintPartnerMood,
           });
+          hintResultIsFallback = true;
         }
         if (hintResult === null) {
           throw lastError instanceof Error
@@ -1574,17 +1576,20 @@ export function createPracticeChatHandler(
         return jsonResponse({ error: "practice_generation_failed" }, 500);
       }
 
+      // LLM 全敗只回罐頭 fallback 時不扣 quota；replay 快照仍照寫（冪等不變），
+      // 快照本身即 0 扣費，之後 replay 不會事後補扣。
+      const chargeHintQuota = !accountIsTest && !hintResultIsFallback;
       const recordHintParams: Record<string, unknown> = {
         p_user_id: user.id,
         p_session_id: request.sessionId,
-        p_charge_quota: !accountIsTest,
+        p_charge_quota: chargeHintQuota,
         p_max_hints: MAX_HINTS_PER_ROUND,
       };
       if (request.requestId) {
         // 供之後同 requestId 重試回放的完整回應快照。hintUsedCount 不在此預填：
         // 由 RPC 在鎖內以權威 new_hint_count merge 進 stored result。
         // costDeducted 可預判：record 的 did_charge 恆等於 p_charge_quota。
-        const predictedDeducted = accountIsTest ? 0 : PRACTICE_QUOTA_COST;
+        const predictedDeducted = chargeHintQuota ? PRACTICE_QUOTA_COST : 0;
         recordHintParams.p_request_id = request.requestId;
         recordHintParams.p_result = {
           ...hintResult,

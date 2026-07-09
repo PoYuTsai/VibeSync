@@ -3402,6 +3402,101 @@ Deno.test("successful hint charges false for test accounts and trusts record did
   assertEquals(recordHintCalls(state)[0].params.p_charge_quota, false);
 });
 
+// ── hint fallback 不扣 quota ────────────────────────────────────────────
+
+Deno.test("hint fallback after provider failures records without charging quota", async () => {
+  const { response, json, state } = await run({
+    ledger: beginnerStartedLedger(),
+    deepSeekReplies: [new Error("deepseek down"), new Error("deepseek down")],
+    rpc: {
+      record_practice_hint: [{
+        data: [{ new_hint_count: 1, did_charge: false }],
+      }],
+    },
+  }, hintBody({ practiceMode: "beginner", requestId: "req-fb" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json.replies.length, 2);
+  // LLM 全敗只給罐頭：不扣 quota，但 replay 快照仍要寫（冪等不變）。
+  assertEquals(recordHintCalls(state).length, 1);
+  const recordParams = recordHintCalls(state)[0].params;
+  assertEquals(recordParams.p_charge_quota, false);
+  assertEquals(recordParams.p_request_id, "req-fb");
+  const storedPayload = recordParams.p_result as Record<string, unknown>;
+  assertEquals(storedPayload.costDeducted, 0);
+  assertEquals(storedPayload.monthlyRemaining, 290);
+  assertEquals(storedPayload.dailyRemaining, 48);
+  assertEquals(json.costDeducted, 0);
+  assertEquals(json.monthlyRemaining, 290);
+  assertEquals(json.dailyRemaining, 48);
+});
+
+Deno.test("game hint timeout fallback records without charging quota", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({ hint_count: 1 }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [new Error("deepseek_timeout")],
+      rpc: {
+        record_practice_hint: [{
+          data: [{ new_hint_count: 2, did_charge: false }],
+        }],
+      },
+    },
+    hintBody({ practiceMode: "game", profileId: "practice_girl_004" }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(recordHintCalls(state)[0].params.p_charge_quota, false);
+  assertEquals(json.costDeducted, 0);
+});
+
+Deno.test("hint fallback for test accounts also records without charging quota", async () => {
+  const { response, json, state } = await run({
+    user: { id: "user-1", email: "vibesync.test@gmail.com" },
+    ledger: beginnerStartedLedger(),
+    deepSeekReplies: [new Error("deepseek down"), new Error("deepseek down")],
+    rpc: {
+      record_practice_hint: [{
+        data: [{ new_hint_count: 1, did_charge: false }],
+      }],
+    },
+  }, hintBody({ practiceMode: "beginner" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(recordHintCalls(state)[0].params.p_charge_quota, false);
+  assertEquals(json.costDeducted, 0);
+});
+
+Deno.test("hint requestId replay of a fallback snapshot does not charge again", async () => {
+  const stored = {
+    replies: [
+      { type: "warm_up", text: "罐頭 warm up" },
+      { type: "steady", text: "罐頭 steady" },
+    ],
+    coaching: "罐頭 coaching",
+    costDeducted: 0,
+    hintUsedCount: 1,
+    provider: "deepseek",
+    model: DEEPSEEK_MODEL,
+    generatedAt: NOW.toISOString(),
+    monthlyRemaining: 290,
+    dailyRemaining: 48,
+  };
+  const { response, json, state } = await run({
+    ledger: beginnerStartedLedger({
+      last_hint_request_id: "req-fb-replay",
+      last_hint_result: stored,
+    }),
+  }, hintBody({ practiceMode: "beginner", requestId: "req-fb-replay" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json, stored);
+  assertEquals(json.costDeducted, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
 // ── hint requestId 冪等 + 聊滿 gate ─────────────────────────────────────
 
 function storedHintResult(overrides: Record<string, unknown> = {}) {
