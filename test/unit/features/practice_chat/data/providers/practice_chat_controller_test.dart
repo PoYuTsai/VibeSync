@@ -183,6 +183,8 @@ void main() {
   PracticeChatController makeController({
     PracticePendingHintStore? pendingHintStore,
     PracticePendingDrawStore? pendingDrawStore,
+    Duration? hintRequestTimeout,
+    Duration? sendMessageTimeout,
   }) {
     final c = PracticeChatController(
       api: api,
@@ -196,6 +198,8 @@ void main() {
       historyRepository: history,
       sessionId: 'sess-1',
       createdAt: DateTime(2026, 6, 26, 13, 0),
+      hintRequestTimeout: hintRequestTimeout,
+      sendMessageTimeout: sendMessageTimeout,
     );
     addTearDown(c.dispose);
     return c;
@@ -224,10 +228,14 @@ void main() {
   Future<PracticeChatController> makeRevealed({
     PracticePendingHintStore? pendingHintStore,
     PracticePendingDrawStore? pendingDrawStore,
+    Duration? hintRequestTimeout,
+    Duration? sendMessageTimeout,
   }) async {
     final c = makeController(
       pendingHintStore: pendingHintStore,
       pendingDrawStore: pendingDrawStore,
+      hintRequestTimeout: hintRequestTimeout,
+      sendMessageTimeout: sendMessageTimeout,
     );
     await c.drawNewPracticeGirl();
     expect(c.currentState.drawStatus, PracticeDrawStatus.revealed);
@@ -2068,6 +2076,61 @@ void main() {
       api.hintHandler = (_, {profile}) async => hintResult();
       await c.requestHint();
       expect(api.lastHintRequestId, isNot(firstId));
+    });
+
+    test('requestHint 掛住超過 client timeout → 可重試錯誤、不 rotate requestId',
+        () async {
+      final c = await makeRevealed(
+        hintRequestTimeout: const Duration(milliseconds: 40),
+      );
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+
+      // API 掛住比 timeout 久：client 必須主動放棄，不能讓 loading 卡死等 server。
+      api.hintHandler = (_, {profile}) => Future<PracticeHintResult>.delayed(
+            const Duration(milliseconds: 300),
+            hintResult,
+          );
+      await c.requestHint();
+      final firstId = api.lastHintRequestId;
+      expect(firstId, isNotNull);
+      expect(c.currentState.isHintLoading, false);
+      expect(c.currentState.hintReplies, isEmpty);
+      expect(c.currentState.errorMessage, isNotNull);
+
+      // timeout 不 rotate：重試沿用同 id（server 若已完成會 replay 不重扣）。
+      api.hintHandler = (_, {profile}) async => hintResult();
+      await c.requestHint();
+      expect(api.lastHintRequestId, firstId);
+      expect(c.currentState.hintReplies, hasLength(2));
+    });
+
+    test('sendMessage 掛住超過 client timeout → 回滾樂觀訊息並給可重試錯誤', () async {
+      final c = await makeRevealed(
+        sendMessageTimeout: const Duration(milliseconds: 40),
+      );
+      api.sendHandler = (_, {profile}) => Future<PracticeChatReply>.delayed(
+            const Duration(milliseconds: 300),
+            () => reply(),
+          );
+
+      await c.sendMessage('嗨');
+
+      expect(c.currentState.isSending, false);
+      expect(c.currentState.messages, isEmpty);
+      expect(c.currentState.errorMessage, isNotNull);
+      // timeout 時 server 可能已完成扣費：文案不得宣稱「這次不扣額度」。
+      expect(c.currentState.errorMessage, isNot(contains('不扣額度')));
+      expect(c.currentState.restoreText, '嗨');
     });
 
     test('hint timeout 失敗 → controller 重建（同持久化 store）→ 重試沿用同 requestId',

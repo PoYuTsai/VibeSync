@@ -39,6 +39,15 @@ const String kInitialPracticeRelationshipStageLabel = '建立熟悉中';
 const int kPracticePromptRecentTurns = 80;
 const int kPracticeMemorySummaryMaxChars = 800;
 
+/// 專案鐵則：loading state 下 await 網路一律 .timeout。
+/// server hint 最壞 ≈ 9s 模型（timeout 不重試；格式類重試再 +9s）＋前置查詢，
+/// client 取 20s 蓋過 server 最壞預算。
+const Duration kPracticeHintRequestTimeout = Duration(seconds: 20);
+
+/// server chat 主回覆最壞 ≈ 30s × 2 次嘗試＋輪次分類器 30s ≈ 90s，
+/// client 取 120s 留裕度：只防 loading 卡死，不搶在 server 完成前放棄。
+const Duration kPracticeSendMessageTimeout = Duration(seconds: 120);
+
 final RegExp _practiceRawImageFilenamePattern = RegExp(
   r'(?:[A-Za-z]:)?(?:[\\/][^\s\\/]+)*[\\/]?(?:S__\d+\.(?:jpe?g|png|webp|heic)|IMG_\d+\.(?:jpe?g|png|webp|heic)|[^\\/\s]+\.(?:jpe?g|png|webp|heic))',
   caseSensitive: false,
@@ -340,6 +349,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     String? sessionId,
     DateTime? createdAt,
     DateTime? now,
+    Duration? hintRequestTimeout,
+    Duration? sendMessageTimeout,
   }) : this._(
           api: api,
           repository: repository,
@@ -355,6 +366,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           sessionId: sessionId,
           createdAt: createdAt,
           now: now ?? DateTime.now(),
+          hintRequestTimeout: hintRequestTimeout ?? kPracticeHintRequestTimeout,
+          sendMessageTimeout: sendMessageTimeout ?? kPracticeSendMessageTimeout,
         );
 
   PracticeChatController._({
@@ -372,6 +385,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     required String? sessionId,
     required DateTime? createdAt,
     required DateTime now,
+    required Duration hintRequestTimeout,
+    required Duration sendMessageTimeout,
   })  : _api = api,
         _repo = repository,
         _draftStore = draftStore,
@@ -380,6 +395,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         _onUsageSynced = onUsageSynced,
         _onProfileUnlocked = onProfileUnlocked,
         _historyRepository = historyRepository,
+        _hintRequestTimeout = hintRequestTimeout,
+        _sendMessageTimeout = sendMessageTimeout,
         super(_initialState(
           initialSession: initialSession,
           draft: _validDraft(draftStore, now),
@@ -400,6 +417,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       required int dailyRemaining})? _onUsageSynced;
   final void Function(String profileId)? _onProfileUnlocked;
   final AnalysisHistoryRepository? _historyRepository;
+  final Duration _hintRequestTimeout;
+  final Duration _sendMessageTimeout;
   final List<PracticeAppliedHintTurnDto> _appliedHintTurns = [];
 
   /// 圖鑑解鎖記錄：純附加 side-channel。用 microtask 延後（provider 建構期
@@ -947,20 +966,22 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     );
 
     try {
-      final reply = await _api.sendMessage(
-        sessionId: state.sessionId,
-        profile: _profileDto(),
-        turns: _turnDtosForPrompt(optimistic),
-        memorySummary: _memorySummaryForPrompt(optimistic),
-        continuationPartnerState: _lastPartnerStateForPrompt(priorMessages),
-        roundIndex: state.roundIndex,
-        visiblePracticeThreadId: state.visiblePracticeThreadId,
-        practiceMode: learningMode,
-        temperatureScore: temperatureScore,
-        familiarityScore: familiarityScore,
-        appliedHintType: assisted ? appliedHintType : null,
-        appliedHintText: assisted ? appliedHintText : null,
-      );
+      final reply = await _api
+          .sendMessage(
+            sessionId: state.sessionId,
+            profile: _profileDto(),
+            turns: _turnDtosForPrompt(optimistic),
+            memorySummary: _memorySummaryForPrompt(optimistic),
+            continuationPartnerState: _lastPartnerStateForPrompt(priorMessages),
+            roundIndex: state.roundIndex,
+            visiblePracticeThreadId: state.visiblePracticeThreadId,
+            practiceMode: learningMode,
+            temperatureScore: temperatureScore,
+            familiarityScore: familiarityScore,
+            appliedHintType: assisted ? appliedHintType : null,
+            appliedHintText: assisted ? appliedHintText : null,
+          )
+          .timeout(_sendMessageTimeout);
       _hintGeneration++; // 成功送出新訊息：舊 transcript 的在途 hint 已過期
       final withAi = [
         ...optimistic,
@@ -1061,6 +1082,14 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: e.status == 429 ? e.message : '生成失敗了，再試一次（這次不扣額度）。',
         restoreText: trimmed,
       );
+    } on TimeoutException {
+      // client 逾時：server 可能已完成並扣費，文案不得宣稱「這次不扣額度」。
+      state = state.copyWith(
+        messages: priorMessages,
+        isSending: false,
+        errorMessage: '回覆等太久了，請確認網路後再試一次。',
+        restoreText: trimmed,
+      );
     } catch (_) {
       state = state.copyWith(
         messages: priorMessages,
@@ -1111,17 +1140,20 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     final generation = _hintGeneration;
 
     try {
-      final result = await _api.requestHint(
-        sessionId: state.sessionId,
-        requestId: requestId,
-        profile: _profileDto(),
-        turns: _turnDtosForPrompt(state.messages),
-        memorySummary: _memorySummaryForPrompt(state.messages),
-        continuationPartnerState: _lastPartnerStateForPrompt(state.messages),
-        roundIndex: state.roundIndex,
-        visiblePracticeThreadId: state.visiblePracticeThreadId,
-        practiceMode: state.learningMode,
-      );
+      final result = await _api
+          .requestHint(
+            sessionId: state.sessionId,
+            requestId: requestId,
+            profile: _profileDto(),
+            turns: _turnDtosForPrompt(state.messages),
+            memorySummary: _memorySummaryForPrompt(state.messages),
+            continuationPartnerState:
+                _lastPartnerStateForPrompt(state.messages),
+            roundIndex: state.roundIndex,
+            visiblePracticeThreadId: state.visiblePracticeThreadId,
+            practiceMode: state.learningMode,
+          )
+          .timeout(_hintRequestTimeout);
       _rotateHintRequestId(requestId); // 成功 → rotate
       if (_dropStaleHint(generation)) {
         // 過期成功回應：內容不填、不持久化進新場；額度是 server 事實照樣同步。
@@ -1207,8 +1239,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         isHintLoading: false,
         errorMessage: _hintGenerationErrorMessage(e.message),
       );
+    } on TimeoutException {
+      // client 逾時：不 rotate requestId，重試沿用同 id——server 若已完成
+      // 會 replay 同一份結果，不會重複扣額度。
+      if (_dropStaleHint(generation)) return;
+      state = state.copyWith(
+        isHintLoading: false,
+        errorMessage: '提示等太久沒回應，請再試一次（不會重複扣額度）。',
+      );
     } catch (_) {
-      // timeout／網路失敗：id 保留，重試沿用。
+      // 網路失敗：id 保留，重試沿用。
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
