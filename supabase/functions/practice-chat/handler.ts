@@ -86,7 +86,8 @@ const DEBRIEF_TIMEOUT_MS = 12000;
 const HINT_MAX_TOKENS = 650;
 const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 2;
-const HINT_TIMEOUT_MS = 12000;
+// 9 秒：hint 有罐頭 fallback 兜底，逾時預算壓短讓用戶最壞等待更接近可忍受。
+const HINT_TIMEOUT_MS = 9000;
 const TEMPERATURE_JUDGE_MAX_TOKENS = 450;
 const TEMPERATURE_JUDGE_TEMPERATURE = 0.2;
 const DEEPSEEK_TIMEOUT_MS = 30000;
@@ -264,6 +265,22 @@ export function jsonResponse(data: unknown, status = 200): Response {
 
 function getErrorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+/** timeout 類失敗：上游慢，原樣重打大機率再逾時，直接跳 fallback 不重試。 */
+function isHintTimeoutError(e: unknown): boolean {
+  return getErrorMessage(e).includes("deepseek_timeout");
+}
+
+/**
+ * 格式／驗證類失敗（JSON 壞掉或 hint guard 拒絕）才適合帶「上一版被拒絕」的
+ * 重試指令；timeout／上游 5xx 帶這句是誤導（模型根本沒輸出被拒的 JSON）。
+ */
+function isHintFormatOrGuardError(e: unknown): boolean {
+  const message = getErrorMessage(e);
+  return message.includes("hint_") ||
+    message.includes("JSON") ||
+    message.includes("Unexpected token");
 }
 
 function hintRetryReason(e: unknown): string {
@@ -1489,7 +1506,8 @@ export function createPracticeChatHandler(
             });
             const rawHint = await deps.callDeepSeek({
               apiKey,
-              messages: attempt > 1 && lastError !== undefined
+              messages: attempt > 1 && lastError !== undefined &&
+                  isHintFormatOrGuardError(lastError)
                 ? withHintRetryInstruction(hintMessages, lastError)
                 : hintMessages,
               maxTokens: HINT_MAX_TOKENS,
@@ -1508,6 +1526,8 @@ export function createPracticeChatHandler(
               attempt,
               error: getErrorMessage(e),
             });
+            // timeout 不重試：上游慢時第 2 次大機率再等滿逾時，白耗用戶等待。
+            if (isHintTimeoutError(e)) break;
           }
         }
         if (

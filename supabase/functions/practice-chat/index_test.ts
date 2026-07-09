@@ -2872,7 +2872,7 @@ Deno.test("game hint repairs common internal labels from provider before recordi
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("game hint falls back only after retrying provider failures", async () => {
+Deno.test("game hint timeout skips the retry and goes straight to fallback", async () => {
   const { response, json, state } = await run(
     {
       ledger: gameStartedLedger({
@@ -2882,7 +2882,6 @@ Deno.test("game hint falls back only after retrying provider failures", async ()
       }),
       drawEvents: [{ profile_id: "practice_girl_004" }],
       deepSeekReplies: [
-        new Error("deepseek_timeout"),
         new Error("deepseek_timeout"),
       ],
       rpc: {
@@ -2929,16 +2928,57 @@ Deno.test("game hint falls back only after retrying provider failures", async ()
   assertEquals(visibleFallback.includes("妳剛剛那個點"), false);
   assertEquals(visibleFallback.includes("妳剛剛那個反應"), false);
   assertEquals(visibleFallback.includes("這題我先不推進"), false);
+  // timeout 代表上游慢：原樣重打大機率再逾時，直接跳 fallback 不做第 2 次。
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 9000);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
+Deno.test("beginner hint timeout also skips the retry and uses beginner fallback", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      deepSeekReplies: [new Error("deepseek_timeout")],
+      rpc: {
+        record_practice_hint: [{
+          data: [{ new_hint_count: 1, did_charge: true }],
+        }],
+      },
+    },
+    hintBody({ practiceMode: "beginner" }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.replies.length, 2);
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 9000);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
+Deno.test("hint retry after a non-format provider error carries no misleading JSON-rejected instruction", async () => {
+  const { response, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      deepSeekReplies: [new Error("deepseek_http_502"), validHintJson()],
+      rpc: {
+        record_practice_hint: [{
+          data: [{ new_hint_count: 1, did_charge: true }],
+        }],
+      },
+    },
+    hintBody({ practiceMode: "beginner" }),
+  );
+
+  assertEquals(response.status, 200);
   assertEquals(state.deepSeekCalls.length, 2);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
-  assertEquals(state.deepSeekCalls[1].timeoutMs, 12000);
   const retryPrompt = state.deepSeekCalls[1].messages
     .map((message) => message.content)
     .join("\n");
-  assert(retryPrompt.includes("上一版 Hint JSON 被拒絕"));
-  assert(retryPrompt.includes("重新輸出唯一 JSON"));
-  assertEquals(recordHintCalls(state).length, 1);
-  assertEquals(releaseHintCalls(state).length, 0);
+  // 上游 5xx 不是「上一版 JSON 被拒絕」：重試不得夾帶誤導性的格式指令。
+  assertEquals(retryPrompt.includes("上一版 Hint JSON 被拒絕"), false);
+  assertEquals(retryPrompt.includes("格式或安全規則不合格"), false);
 });
 
 Deno.test("game hint retries malformed provider result once before recording", async () => {
@@ -3035,8 +3075,8 @@ Deno.test("game hint falls back when provider keeps returning malformed JSON", a
   assertEquals(visibleFallback.includes("妳剛剛那個反應"), false);
   assertEquals(visibleFallback.includes("這題我先不推進"), false);
   assertEquals(state.deepSeekCalls.length, 2);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
-  assertEquals(state.deepSeekCalls[1].timeoutMs, 12000);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 9000);
+  assertEquals(state.deepSeekCalls[1].timeoutMs, 9000);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
 });
@@ -3166,8 +3206,8 @@ Deno.test("beginner hint falls back after provider failures without game coachin
   assertEquals(String(json.coaching).includes("Game"), false);
   assertEquals(String(json.coaching).includes("速約任務"), false);
   assertEquals(state.deepSeekCalls.length, 2);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
-  assertEquals(state.deepSeekCalls[1].timeoutMs, 12000);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 9000);
+  assertEquals(state.deepSeekCalls[1].timeoutMs, 9000);
   assertEquals(claimHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
   assertEquals(recordHintCalls(state).length, 1);
