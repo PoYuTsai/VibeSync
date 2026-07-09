@@ -103,6 +103,43 @@ void main() {
       expect(find.textContaining('降級則會在下次續訂時生效'), findsOneWidget);
     });
 
+    testWidgets('close button falls back home when paywall has no back stack',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(430, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final router = GoRouter(
+        initialLocation: '/paywall',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, __) => const Scaffold(body: Text('home-root')),
+          ),
+          GoRoute(
+            path: '/paywall',
+            builder: (_, __) => const PaywallScreen(),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('方案與額度'), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+
+      expect(find.text('home-root'), findsOneWidget);
+      expect(find.text('方案與額度'), findsNothing);
+    });
+
     testWidgets('shows current Free quota summary with remaining counts',
         (tester) async {
       await pumpPaywall(tester);
@@ -321,6 +358,53 @@ void main() {
       return stub;
     }
 
+    Future<_StubSubscriptionNotifier> pumpTopLevelPaywallWithStub(
+      WidgetTester tester, {
+      Future<bool> Function()? onRestore,
+      Future<void> Function()? onRefresh,
+      Future<SubscriptionPurchaseResult> Function()? onPurchase,
+      SubscriptionState? seededState,
+    }) async {
+      await tester.binding.setSurfaceSize(const Size(430, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final stub = _StubSubscriptionNotifier(
+        onRestore: onRestore,
+        onRefresh: onRefresh,
+        onPurchase: onPurchase,
+      );
+      final router = GoRouter(
+        initialLocation: '/paywall',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, __) => const Scaffold(body: Text('home-root')),
+          ),
+          GoRoute(
+            path: '/paywall',
+            builder: (_, __) => const PaywallScreen(),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            subscriptionProvider.overrideWith((ref) => stub),
+            subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      if (seededState != null) {
+        stub.seedState(seededState);
+        await tester.pump();
+      }
+      return stub;
+    }
+
     Future<void> startRestoreFlow(WidgetTester tester) async {
       final restoreLink = find.widgetWithText(TextButton, '恢復購買');
       await tester.ensureVisible(restoreLink);
@@ -359,8 +443,7 @@ void main() {
       await flushSnackBars(tester);
     });
 
-    testWidgets(
-        'restore success with hanging refresh still completes and pops',
+    testWidgets('restore success with hanging refresh still completes and pops',
         (tester) async {
       await pumpPaywallWithStub(
         tester,
@@ -412,8 +495,46 @@ void main() {
       await flushSnackBars(tester);
     });
 
-    testWidgets(
-        'purchase success with failing refresh must not report failure',
+    testWidgets('top-level paywall purchase success falls back home',
+        (tester) async {
+      await pumpTopLevelPaywallWithStub(
+        tester,
+        onPurchase: () async => const SubscriptionPurchaseResult(
+          success: true,
+          cancelled: false,
+          isDeferredDowngrade: false,
+          requestedTier: SubscriptionTierHelper.essential,
+          previousTier: SubscriptionTierHelper.free,
+          activeTier: SubscriptionTierHelper.essential,
+        ),
+        seededState: stateWithEssentialMonthly(),
+      );
+
+      final cta = find.textContaining('訂閱 Essential');
+      await tester.ensureVisible(cta);
+      await tester.pump();
+      await tester.tap(cta, warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(find.text('home-root'), findsOneWidget);
+      expect(find.text('訂閱處理失敗，請稍後再試。'), findsNothing);
+    });
+
+    testWidgets('top-level paywall restore success falls back home',
+        (tester) async {
+      await pumpTopLevelPaywallWithStub(
+        tester,
+        onRestore: () async => true,
+      );
+
+      await startRestoreFlow(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('home-root'), findsOneWidget);
+      expect(find.text('恢復購買失敗，請稍後再試。'), findsNothing);
+    });
+
+    testWidgets('purchase success with failing refresh must not report failure',
         (tester) async {
       await pumpPaywallWithStub(
         tester,

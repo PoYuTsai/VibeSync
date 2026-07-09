@@ -203,6 +203,16 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     return subscription.pendingDowngradeToTier == option.tier;
   }
 
+  void _leavePaywall([Object? result]) {
+    if (context.canPop()) {
+      context.pop(result);
+    } else {
+      context.go('/');
+    }
+  }
+
+  void _closePaywall() => _leavePaywall();
+
   @override
   Widget build(BuildContext context) {
     final subscription = ref.watch(subscriptionProvider);
@@ -250,7 +260,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       title: '方案與額度',
       leading: IconButton(
         icon: const Icon(Icons.close, color: Colors.white),
-        onPressed: () => context.pop(),
+        onPressed: _closePaywall,
       ),
       body: Stack(
         children: [
@@ -1042,7 +1052,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           '已排程於 ${_formatDate(result.effectiveAt)} 降級到 ${_tierLabel(result.requestedTier)}。',
           backgroundColor: AppColors.success,
         );
-        context.pop(result.activeTier);
+        _leavePaywall(result.activeTier);
         return;
       }
 
@@ -1058,7 +1068,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         '方案已更新，目前方案：$purchasedTier。',
         backgroundColor: AppColors.success,
       );
-      context.pop(result.activeTier);
+      _leavePaywall(result.activeTier);
     } on TimeoutException catch (error) {
       debugPrint('Paywall purchase timeout: $error');
       _showSnackBar('App Store 付款確認逾時，請稍後再試；如果已付款，可按「恢復購買」。');
@@ -1198,7 +1208,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           '訂閱狀態已更新。',
           backgroundColor: AppColors.success,
         );
-        context.pop(ref.read(subscriptionProvider).tier);
+        _leavePaywall(ref.read(subscriptionProvider).tier);
       } else {
         _showSnackBar('這個 Apple ID 目前沒有可恢復的有效訂閱。');
       }
