@@ -2752,7 +2752,7 @@ Deno.test("debrief with game ledger sends FSM and SR strategy guidance to provid
     .join("\n");
   assert(debriefPrompt.includes("gameDebrief(hidden guidance)"));
   assert(debriefPrompt.includes("socialGameFsm(hidden guidance)"));
-  assert(debriefPrompt.includes("srGameStrategy(hidden guidance)"));
+  assert(debriefPrompt.includes("gameStrategy(hidden guidance)"));
   assert(
     debriefPrompt.includes("先鋪墊 / 低壓邀約 / 明確邀約 / 接住她給的窗口"),
   );

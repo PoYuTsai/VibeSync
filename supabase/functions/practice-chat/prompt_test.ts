@@ -116,9 +116,9 @@ Deno.test("game buildChatMessages includes social-game FSM and persona strategy 
   assertEquals(srSys.includes("socialGameFsm(hidden guidance)"), true);
   assertEquals(srSys.includes("failureStates: BORING"), true);
   assertEquals(srSys.includes("targetVariable: Value + Emotion"), true);
-  assertEquals(srSys.includes("srGameStrategy(hidden guidance)"), true);
+  assertEquals(srSys.includes("gameStrategy(hidden guidance)"), true);
   assertEquals(nonSrSys.includes("socialGameFsm(hidden guidance)"), true);
-  assertEquals(nonSrSys.includes("srGameStrategy(hidden guidance)"), true);
+  assertEquals(nonSrSys.includes("gameStrategy(hidden guidance)"), true);
   assertEquals(nonSrSys.includes("profileId: practice_girl_001"), true);
 });
 
@@ -348,7 +348,7 @@ Deno.test("game debrief includes拆盤 guidance and keeps non-game default null"
     user.includes("soft invite / direct invite / partner window"),
     false,
   );
-  assertEquals(user.includes("srGameStrategy(hidden guidance)"), true);
+  assertEquals(user.includes("gameStrategy(hidden guidance)"), true);
   assertEquals(system.includes('"nextInviteMove"'), true);
   assertEquals(system.includes('"gameBreakdown": null'), true);
   assertEquals(system.includes('"phase"'), false);

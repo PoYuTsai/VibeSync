@@ -7,7 +7,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   applyGameLearningDelta,
-  buildSrGameStrategy,
+  buildGameStrategy,
   evaluateGameFsm,
   hasExplicitSrGameStrategy,
 } from "./game_fsm.ts";
@@ -179,12 +179,12 @@ Deno.test("evaluateGameFsm marks fake familiarity and social proof as reality-an
   assertEquals(snapshot.spicyLevel, "L0");
 });
 
-Deno.test("buildSrGameStrategy derives distinct SR hooks", () => {
+Deno.test("buildGameStrategy derives distinct SR hooks", () => {
   const srMia = resolvePracticeProfile({ profileId: "practice_girl_004" });
   const srNora = resolvePracticeProfile({ profileId: "practice_girl_006" });
 
-  const mia = buildSrGameStrategy(srMia);
-  const nora = buildSrGameStrategy(srNora);
+  const mia = buildGameStrategy(srMia);
+  const nora = buildGameStrategy(srNora);
 
   assert(mia);
   assert(nora);
@@ -193,12 +193,12 @@ Deno.test("buildSrGameStrategy derives distinct SR hooks", () => {
   assert(mia.punishments.length > 0);
 });
 
-Deno.test("buildSrGameStrategy gives non-SR cards concrete fallback hooks from tags", () => {
+Deno.test("buildGameStrategy gives non-SR cards concrete fallback hooks from tags", () => {
   const normalAlice = resolvePracticeProfile({
     profileId: "practice_girl_001",
   });
 
-  const strategy = buildSrGameStrategy(normalAlice);
+  const strategy = buildGameStrategy(normalAlice);
 
   assert(strategy, "non-SR card should still get a concrete strategy");
   assertEquals(strategy.profileId, "practice_girl_001");
@@ -223,7 +223,7 @@ Deno.test("every card in the pool gets a non-empty Game strategy regardless of r
   for (const girl of GIRL_PROFILES) {
     seenRarities.add(girl.rarity);
     const profile = resolvePracticeProfile({ profileId: girl.profileId });
-    const strategy = buildSrGameStrategy(profile);
+    const strategy = buildGameStrategy(profile);
     assert(strategy, `${girl.profileId} (${girl.rarity}) should get a strategy`);
     assert(
       strategy.valueHooks.length > 0,
@@ -249,7 +249,7 @@ Deno.test("every SR card has an explicit Game strategy track", () => {
   assertEquals(srProfiles.length > 0, true);
   for (const girl of srProfiles) {
     const profile = resolvePracticeProfile({ profileId: girl.profileId });
-    const strategy = buildSrGameStrategy(profile);
+    const strategy = buildGameStrategy(profile);
     assert(strategy, `${girl.profileId} should have an SR Game strategy`);
     assert(
       hasExplicitSrGameStrategy(girl.profileId),

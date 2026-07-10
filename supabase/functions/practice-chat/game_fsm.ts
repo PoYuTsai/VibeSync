@@ -53,7 +53,7 @@ export interface GameFsmSnapshot {
   spicyLevel: GameSpicyLevel;
 }
 
-export interface SrGameStrategy {
+export interface GameStrategy {
   profileId: string;
   valueHooks: string[];
   testStyle: string;
@@ -565,7 +565,7 @@ function uniqueNonEmpty(values: readonly string[], maxItems: number): string[] {
 
 const EXPLICIT_SR_GAME_STRATEGIES: Record<
   string,
-  Omit<SrGameStrategy, "profileId">
+  Omit<GameStrategy, "profileId">
 > = {
   practice_girl_004: {
     valueHooks: ["dry humor", "craft coffee", "small competence flex"],
@@ -747,9 +747,9 @@ function tensionStyleFor(profile: PracticeProfile): string {
   return "用生活感和低壓靠近做張力；先暖，不急著撩。";
 }
 
-export function buildSrGameStrategy(
+export function buildGameStrategy(
   profile: PracticeProfile,
-): SrGameStrategy {
+): GameStrategy {
   const girl = profile.girl;
   const explicit = EXPLICIT_SR_GAME_STRATEGIES[girl.profileId];
   if (explicit) {
@@ -779,9 +779,9 @@ export function buildSrGameStrategy(
   };
 }
 
-export function srGameStrategyPrompt(profile: PracticeProfile): string {
-  const strategy = buildSrGameStrategy(profile);
-  return `srGameStrategy(hidden guidance)\nprofileId: ${strategy.profileId}\nvalueHooks: ${
+export function gameStrategyPrompt(profile: PracticeProfile): string {
+  const strategy = buildGameStrategy(profile);
+  return `gameStrategy(hidden guidance)\nprofileId: ${strategy.profileId}\nvalueHooks: ${
     strategy.valueHooks.join("；")
   }\ntestStyle: ${strategy.testStyle}\ntensionStyle: ${strategy.tensionStyle}\ncloseHooks: ${
     strategy.closeHooks.join("；")

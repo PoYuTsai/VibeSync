@@ -21,7 +21,7 @@ import type { PracticeTurn } from "./validate.ts";
 import {
   evaluateGameFsm,
   gameFsmEvidencePrompt,
-  srGameStrategyPrompt,
+  gameStrategyPrompt,
 } from "./game_fsm.ts";
 import {
   hasL4UnsafeVisibleText,
@@ -746,7 +746,7 @@ function gameHintEvidence(opts: {
     relationshipStage: opts.relationshipStage,
     inviteStage: opts.inviteMaturity?.stage ?? null,
   });
-  const strategy = srGameStrategyPrompt(opts.profile);
+  const strategy = gameStrategyPrompt(opts.profile);
   return `gameHint(hidden guidance)\nphase: ${snapshot.phase}\ntargetVariable: ${snapshot.targetVariable}\nspeedInviteDirection: ${snapshot.speedInviteDirection}\nallowSpicyLevel: ${snapshot.spicyLevel}\nGame coaching may name: 階段、目標變數、速約方向、Value / Frame / Emotion / Investment、測試、框架、情緒推進、投資感、性張力。\nSharper than beginner: say phase, variable, and whether to build/test/tension/low-pressure invite.\nSpicy Ladder: L0 repair, L1 tease, L2 adult implication, L3 controlled tension. Guarded/overstep -> L0/L1.\nL4 forbidden: explicit sex/body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, hard private scene. Never output L4.\nReality Anchoring: fake friends/introductions/prior meetings/workplace/location claims require suspicion or confirmation, not validation.\n\n${visibleGameHintContract()}${safeAdvancedGameHintContract()}${
     gameFsmEvidencePrompt(snapshot)
   }${strategy ? `\n${strategy}\n` : "\n"}`;

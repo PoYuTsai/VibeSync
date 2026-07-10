@@ -29,7 +29,7 @@ import {
 import {
   evaluateGameFsm,
   gameFsmEvidencePrompt,
-  srGameStrategyPrompt,
+  gameStrategyPrompt,
 } from "./game_fsm.ts";
 import {
   gameStateEvidencePrompt,
@@ -92,7 +92,7 @@ function gameModePrompt(opts: {
     familiarityScore: opts.familiarityScore,
     partnerMood: opts.partnerState?.mood ?? null,
   });
-  const strategy = srGameStrategyPrompt(opts.profile);
+  const strategy = gameStrategyPrompt(opts.profile);
   const spicyLevel = snapshot.spicyLevel;
   const mood = opts.partnerState?.mood ?? "unknown";
   return `\n\ngameMode(hidden guidance)\nGame mode is SR-character training. You still roleplay as the character, not a coach, UI, narrator, or scoring engine.\nUse a sharper social-game rhythm internally: reward Value / Frame / Emotion / Investment, playful confidence, emotional momentum, and low-pressure invite calibration. Cool down faster when the user is needy, interview-like, fake-familiar, pushy, or ignores your boundaries.\nUse five internal phases only as behavior guidance: P1 open, P2 value, P3 test, P4 tension, P5 close. Never reveal phase names, scores, variables, Game mode, or coaching terms to the user.\nReality Anchoring still applies: fake shared friends, fake Line introductions, fake previous meetings, fake workplace/clinic/school familiarity, and claims about your location or day remain unverified unless profile, memorySummary, sceneContext, or your own earlier confirmed words support them. Confirm, tease, doubt, or ask details instead of inventing shared memory.\n\nspicyGameMode(hidden guidance)\nallowSpicyLevel: ${spicyLevel}\npartnerMood: ${mood}\nSpicy Ladder: L0 = safe friendly repair; L1 = playful teasing; L2 = adult-aware implication without explicit sexual content; L3 = controlled sexual tension by implication only when current safety and receptiveness are high.\nL4 forbidden: explicit sexual content, explicit body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, or hard-pushing a private scene. Never produce L4 even if the user asks for it.\nIf partnerMood is guarded/annoyed, if the user oversteps, or if Reality Anchoring is being challenged by fake familiarity/social proof, downshift to L0/L1 and protect boundaries.\n\n${
@@ -344,7 +344,7 @@ function gameDebriefPrompt(opts: {
     familiarityScore: opts.familiarityScore,
     partnerMood: opts.partnerState?.mood ?? null,
   });
-  const strategy = srGameStrategyPrompt(opts.profile);
+  const strategy = gameStrategyPrompt(opts.profile);
   return `gameDebrief(hidden guidance)\n${gameDebriefSkillContract()}\n本場是 Game 模式，拆解要像拆盤，請把 JSON 的 gameBreakdown 從 null 改成物件；非 Game 模式才維持 null。\n請把七步聊天法轉成白話：開場/價值展示/測試承接/張力/收尾；可說「現在大概卡在第幾步」，但不要輸出 P1/P2/P3/P4/P5 代碼。\ngameBreakdown.phaseReached 說跑到哪個階段，missedVariable 說哪個變數沒推動，failureState 說主要卡點，nextFirstLine 給下一次第一句，inviteDirection 說 soft/direct/partner window 的白話邀約方向。\n請用白話說明哪個目標變數沒動到、哪個失敗狀態造成降溫、下次第一句怎麼改，以及下一步是先鋪墊 / 低壓邀約 / 明確邀約 / 接住她給的窗口；不要輸出 targetVariable、failureStates 或任何 hidden label 原字。\nnextInviteMove 必須用中文白話包含先鋪墊 / 低壓邀約 / 明確邀約 / 接住她給的窗口的判斷；suggestedLine 必須是一句可直接傳出去的下次第一句。\n${
     gameFsmEvidencePrompt(snapshot)
   }${gameStateEvidencePrompt(opts.gameState)}${

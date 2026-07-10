@@ -323,7 +323,7 @@ Deno.test("buildHintMessages adds game coaching anchors only in game mode", () =
   assert(gameText.includes("speedInviteDirection:"));
   assert(gameText.includes("socialGameFsm(hidden guidance)"));
   assert(gameText.includes("failureStates: none"));
-  assert(gameText.includes("srGameStrategy(hidden guidance)"));
+  assert(gameText.includes("gameStrategy(hidden guidance)"));
   assert(gameText.includes("Value / Frame / Emotion / Investment"));
   assert(gameText.includes("allowSpicyLevel: L3"));
   assert(gameText.includes("L4 forbidden"));
@@ -338,7 +338,7 @@ Deno.test("buildHintMessages adds game coaching anchors only in game mode", () =
 
   assertEquals(beginnerText.includes("gameHint(hidden guidance)"), false);
   assertEquals(beginnerText.includes("socialGameFsm(hidden guidance)"), false);
-  assertEquals(beginnerText.includes("srGameStrategy(hidden guidance)"), false);
+  assertEquals(beginnerText.includes("gameStrategy(hidden guidance)"), false);
   assertEquals(
     beginnerText.includes("Value / Frame / Emotion / Investment"),
     false,
@@ -1502,7 +1502,7 @@ Deno.test("parseHintResult rejects visible internal labels", () => {
       "targetVariable: Emotion + heat",
       "allowSpicyLevel: L3",
       "socialGameFsm phase P3_TEST",
-      "srGameStrategy valueHooks",
+      "gameStrategy valueHooks",
     ]
   ) {
     assertThrows(

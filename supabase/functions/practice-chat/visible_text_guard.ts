@@ -31,7 +31,7 @@ const INTERNAL_VISIBLE_LABELS = [
   "realityflags",
   "deltaclamp",
   "srstrategy",
-  "srgamestrategy",
+  "gamestrategy",
   "valuehooks",
   "teststyle",
   "tensionstyle",
