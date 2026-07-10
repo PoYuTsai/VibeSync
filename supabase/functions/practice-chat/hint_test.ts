@@ -497,6 +497,50 @@ Deno.test("GAME_HINT_MOVE_EXAMPLES pass the visible-output guard pipeline unchan
   }
 });
 
+Deno.test("buildHintMessages feeds seven-step balance judgment rules into Game hints", () => {
+  const gameOptions = {
+    turns: [
+      { role: "user", text: "妳住哪？做什麼工作？平常都幾點下班？" },
+      { role: "ai", text: "你這是身家調查嗎哈哈" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 60,
+    familiarityScore: 50,
+    partnerMood: "comfortable",
+  } as Parameters<typeof buildHintMessages>[0] & Record<string, unknown>;
+  const gameText = buildHintMessages(gameOptions).map((m) => m.content)
+    .join("\n");
+
+  // 設計文件 3.3 節的可操作判斷規則。
+  assert(gameText.includes("聊她"));
+  assert(gameText.includes("聊我們"));
+  assert(gameText.includes("查戶口"));
+  assert(gameText.includes("狀態＋感受"));
+  assert(gameText.includes("給她一顆好接的球"));
+  assert(gameText.includes("邀約門檻"));
+  assert(gameText.includes("不硬衝"));
+  // 1.1 節安全說法。
+  assert(gameText.includes("生活樣本"));
+  assert(gameText.includes("互相合適度"));
+  assert(gameText.includes("輕鬆張力"));
+  assert(gameText.includes("安全感鋪墊"));
+  assert(gameText.includes("順勢邀約"));
+
+  const beginnerText = buildHintMessages({
+    turns: gameOptions.turns,
+    profile,
+    temperatureScore: 60,
+    familiarityScore: 50,
+    partnerMood: "comfortable",
+  } as Parameters<typeof buildHintMessages>[0]).map((m) => m.content)
+    .join("\n");
+
+  assertEquals(beginnerText.includes("聊我們"), false);
+  assertEquals(beginnerText.includes("互相合適度"), false);
+  assertEquals(beginnerText.includes("安全感鋪墊"), false);
+});
+
 Deno.test("buildHintMessages aligns Game hint seven-step skeleton with NPC and debrief", () => {
   const gameText = buildHintMessages({
     turns: [

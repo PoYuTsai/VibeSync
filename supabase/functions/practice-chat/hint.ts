@@ -769,6 +769,22 @@ ${gameHintFewShotExamples()}
 `;
 }
 
+/**
+ * 七步聊天法轉譯（docs/plans/2026-07-08-social-knowledge-integration-design.md
+ * 3.3 節）：依回合判斷聊天平衡與邀約節奏。用語走 1.1 節安全說法；
+ * 1.2 節原詞不得出現在可見輸出。
+ */
+function sevenStepBalanceContract(): string {
+  return `sevenStepBalanceContract:
+- 每回合先判斷這句該「聊她」「聊我」還是「聊我們」：連續停在同一邊就換邊，讓話題有來回感。
+- 使用者連續發問像查戶口＝提示他先補一點自己的狀態＋感受（給生活樣本，不是自誇），再丟問題。
+- 使用者只講自己＝提示給她一顆好接的球，把話題讓回去。
+- 關係分數接近邀約門檻＝提示先做安全感鋪墊，再順勢邀約；低壓、可拒絕、不硬衝。
+- 可見用語基準：生活樣本、互相合適度（不是考核她）、輕鬆張力（能退場的幽默）、安全感鋪墊、順勢邀約（分享一個自然選項，不是請求批准）。
+
+`;
+}
+
 function gameHintEvidence(opts: {
   turns: PracticeTurn[];
   profile: PracticeProfile;
@@ -789,7 +805,7 @@ function gameHintEvidence(opts: {
     inviteStage: opts.inviteMaturity?.stage ?? null,
   });
   const strategy = gameStrategyPrompt(opts.profile);
-  return `gameHint(hidden guidance)\nphase: ${snapshot.phase}\ntargetVariable: ${snapshot.targetVariable}\nspeedInviteDirection: ${snapshot.speedInviteDirection}\nallowSpicyLevel: ${snapshot.spicyLevel}\nGame coaching may name: 階段、目標變數、速約方向、Value / Frame / Emotion / Investment、測試、框架、情緒推進、投資感、性張力。\nSharper than beginner: say phase, variable, and whether to build/test/tension/low-pressure invite.\nSpicy Ladder: L0 repair, L1 tease, L2 adult implication, L3 controlled tension. Guarded/overstep -> L0/L1.\nL4 forbidden: explicit sex/body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, hard private scene. Never output L4.\nReality Anchoring: fake friends/introductions/prior meetings/workplace/location claims require suspicion or confirmation, not validation.\n\n${visibleGameHintContract()}${safeAdvancedGameHintContract()}${
+  return `gameHint(hidden guidance)\nphase: ${snapshot.phase}\ntargetVariable: ${snapshot.targetVariable}\nspeedInviteDirection: ${snapshot.speedInviteDirection}\nallowSpicyLevel: ${snapshot.spicyLevel}\nGame coaching may name: 階段、目標變數、速約方向、Value / Frame / Emotion / Investment、測試、框架、情緒推進、投資感、性張力。\nSharper than beginner: say phase, variable, and whether to build/test/tension/low-pressure invite.\nSpicy Ladder: L0 repair, L1 tease, L2 adult implication, L3 controlled tension. Guarded/overstep -> L0/L1.\nL4 forbidden: explicit sex/body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, hard private scene. Never output L4.\nReality Anchoring: fake friends/introductions/prior meetings/workplace/location claims require suspicion or confirmation, not validation.\n\n${visibleGameHintContract()}${safeAdvancedGameHintContract()}${sevenStepBalanceContract()}${
     gameFsmEvidencePrompt(snapshot)
   }${strategy ? `\n${strategy}\n` : "\n"}`;
 }
