@@ -99,7 +99,7 @@ function gameModePrompt(opts: {
     gameFsmEvidencePrompt(snapshot)
   }${socialGameNpcResponseContract()}${
     gameStateEvidencePrompt(opts.gameState)
-  }${strategy ? `\n${strategy}` : ""}`;
+  }\n${strategy}`;
 }
 
 function sceneContextPrompt(
@@ -347,9 +347,7 @@ function gameDebriefPrompt(opts: {
   const strategy = gameStrategyPrompt(opts.profile);
   return `gameDebrief(hidden guidance)\n${gameDebriefSkillContract()}\n本場是 Game 模式，拆解要像拆盤，請把 JSON 的 gameBreakdown 從 null 改成物件；非 Game 模式才維持 null。\n請把七步聊天法轉成白話：開場/價值展示/測試承接/張力/收尾；可說「現在大概卡在第幾步」，但不要輸出 P1/P2/P3/P4/P5 代碼。\ngameBreakdown.phaseReached 說跑到哪個階段，missedVariable 說哪個變數沒推動，failureState 說主要卡點，nextFirstLine 給下一次第一句，inviteDirection 說 soft/direct/partner window 的白話邀約方向。\n請用白話說明哪個目標變數沒動到、哪個失敗狀態造成降溫、下次第一句怎麼改，以及下一步是先鋪墊 / 低壓邀約 / 明確邀約 / 接住她給的窗口；不要輸出 targetVariable、failureStates 或任何 hidden label 原字。\nnextInviteMove 必須用中文白話包含先鋪墊 / 低壓邀約 / 明確邀約 / 接住她給的窗口的判斷；suggestedLine 必須是一句可直接傳出去的下次第一句。\n${
     gameFsmEvidencePrompt(snapshot)
-  }${gameStateEvidencePrompt(opts.gameState)}${
-    strategy ? `\n${strategy}` : ""
-  }`;
+  }${gameStateEvidencePrompt(opts.gameState)}\n${strategy}`;
 }
 
 function debriefHintAccountabilityPrompt(

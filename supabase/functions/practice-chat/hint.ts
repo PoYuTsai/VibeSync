@@ -839,7 +839,7 @@ function gameHintEvidence(opts: {
     speedInviteLadderPrompt(inviteRoute)
   }${
     gameFsmEvidencePrompt(snapshot)
-  }${strategy ? `\n${strategy}\n` : "\n"}`;
+  }\n${strategy}\n`;
 }
 
 export function buildHintMessages(opts: {
