@@ -3456,6 +3456,50 @@ void main() {
     });
 
     test(
+        'draw cannot overlap turn persistence or resurrect its gate on failure',
+        () async {
+      final controlled = _ControlledPracticeSessionRepository(box);
+      final saveStarted = Completer<void>();
+      final saveGate = Completer<void>();
+      controlled.saveHandler = (session) {
+        if (!saveStarted.isCompleted) saveStarted.complete();
+        return saveGate.future;
+      };
+      final c = makeControllerFrom(
+        assistedSession(id: 'draw-persist-race'),
+        repository: controlled,
+      );
+      api.sendHandler = (_, {profile}) async =>
+          assistedReply(aiTurnCount: 2, text: 'AI durable pending');
+      final drawGate = Completer<PracticeDrawResult>();
+      api.drawHandler = ({currentProfileId}) => drawGate.future;
+
+      final send = c.sendMessage('A');
+      await saveStarted.future;
+      expect(c.currentState.isPersistingTurn, true);
+
+      await c.drawNewPracticeGirl();
+      expect(api.drawCallCount, 0);
+      expect(c.currentState.isPersistingTurn, true);
+
+      saveGate.complete();
+      await send;
+      expect(c.currentState.isPersistingTurn, false);
+
+      final draw = c.drawNewPracticeGirl();
+      await pumpEventQueue();
+      expect(api.drawCallCount, 1);
+      expect(c.currentState.isDrawing, true);
+
+      drawGate.completeError(StateError('delayed draw failure'));
+      await draw;
+      expect(c.currentState.isPersistingTurn, false);
+      expect(c.currentState.isRevealed, true);
+      expect(c.currentState.canSend, true);
+      expect(c.currentState.canDebrief, true);
+    });
+
+    test(
         'second-turn persist failure aborts awaiting formal and fully rolls back',
         () async {
       final controlled = _ControlledPracticeSessionRepository(box);

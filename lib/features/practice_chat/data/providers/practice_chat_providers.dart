@@ -1032,7 +1032,14 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 目前這位以排除自己。成功 → 進 revealed、開全新一場（roundIndex 1）、存 draft。
   /// 任何失敗都**不**污染目前 profile／transcript（保留原狀態），只設對應旗標／訊息。
   Future<void> drawNewPracticeGirl() async {
-    if (state.isDrawing) return; // 防連點
+    // A failed draw restores its captured prior state. Never let it capture a
+    // transient turn-persistence flag whose owner may finish while draw is in
+    // flight, otherwise the failure rollback can resurrect a permanent lock.
+    if (state.isDrawing ||
+        state.isPersistingTurn ||
+        _activeSendPipelineToken != null) {
+      return;
+    }
     final prior = state;
     state = state.copyWith(
       drawStatus: PracticeDrawStatus.drawing,
