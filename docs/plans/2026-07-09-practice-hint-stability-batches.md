@@ -27,10 +27,10 @@
 
 待辦：flutter analyze＋全測試複跑 → spec 審＋品質審 → **Codex 雙審（S4 動 quota＝高風險）** → push（=自動部署）。
 
-## 批2 Game hint 高手化（Batch D 補做）— 🟡 實作完成待 Codex 雙審（ba893f0c..da7b83ba，local 未 push）
+## 批2 Game hint 高手化（Batch D 補做）— 🟡 實作＋品質審修完成待 Codex 雙審（ba893f0c..63b5dba5，local 未 push）
 
 素材源：`docs/plans/2026-07-08-social-knowledge-integration-design.md` 3.3 節。
-TDD 全程（每項先紅後綠）；Deno 528→535 綠（新增 7 測試）；Game prompt 長度 5933→5487（英文抽象句改繁中反而變短）。
+TDD 全程（每項先紅後綠）；Deno 528→539 綠（新增 11 測試）；Game prompt 長度 5933→5488（英文抽象句改繁中反而變短）。
 
 | 項 | 內容 | Commit |
 |---|---|---|
@@ -41,6 +41,7 @@ TDD 全程（每項先紅後綠）；Deno 528→535 綠（新增 7 測試）；G
 | 清理 | `gameStrategyPrompt` 恆真 ternary 三處收斂 | f483c966 |
 | 補 | gameHint header 英文段繁中化＋明禁可見輸出用 1.2 原詞（舊 header 允許 coaching 點名「框架、性張力」與紅線衝突）＋`repairGameVisibleLabels` 補 speedInviteLadder 映射 | 66252ae2 |
 | 補 | deno fmt；coaching 明示 140 字內防 160 hard-cap silent slice | e95d5be9、da7b83ba |
+| 審修 | 品質審 3 Important＋1 Nit：repair 表 Frame→節奏與主見對齊新紅線（FRAME_COLLAPSE→「框架掉了」刻意保留＝debrief 既定白話、口語狀態非招式語境）＋fallback 罐頭招式語境「框架」改白話；route LABEL/ADVICE export＋守門管道測試；階梯 rung 行常數插值去雙份真相；coaching 軟上限抽常數釘 headroom（140<160） | 2f496b20、9a638351、20a097f0、63b5dba5 |
 
 未做（如計畫）：項5 非 SR 具體招式（`buildGameStrategy` 已有全卡 fallback 分支，前案完成）；項6 模型升檔/溫度選配。
 
