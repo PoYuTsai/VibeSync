@@ -121,11 +121,11 @@ function repairGameVisibleLabels(value: string): string {
     [/\bInvestment\s*\+\s*invite\b/g, "投入 + 邀約"],
     [/\bEmotion\s*\+\s*heat\b/g, "情緒 + 熱度"],
     [/\bValue\s*\+\s*Emotion\b/g, "價值 + 情緒"],
-    [/\bFrame\s*\+\s*safety\b/g, "框架 + 安全感"],
-    [/\bsafety\s*\+\s*Frame\b/gi, "安全感 + 框架"],
+    [/\bFrame\s*\+\s*safety\b/g, "節奏與主見 + 安全感"],
+    [/\bsafety\s*\+\s*Frame\b/gi, "安全感 + 節奏與主見"],
     [/\bfamiliarity\b/gi, "熟悉感"],
     [/\bValue\b/g, "價值"],
-    [/\bFrame\b/g, "框架"],
+    [/\bFrame\b/g, "節奏與主見"],
     [/\bEmotion\b/g, "情緒"],
     [/\bInvestment\b/g, "投入"],
     [/\bBORING\b/g, "查戶口冷場"],
@@ -175,7 +175,7 @@ function phaseLabelForFallback(
 function targetLabelForFallback(target: string): string {
   if (/investment|投入|invite/i.test(target)) return "投入";
   if (/emotion|情緒|heat/i.test(target)) return "情緒";
-  if (/frame|框架/i.test(target)) return "框架";
+  if (/frame|框架/i.test(target)) return "節奏與主見";
   if (/value|價值/i.test(target)) return "價值";
   if (/safety|安全/i.test(target)) return "安全感";
   return "熟悉感";
@@ -378,7 +378,7 @@ function approachTestGameFallbackReplies(): {
       "不是每個人都會這樣認識。妳是在測我是不是亂搭訕吧？我先把節奏放慢。",
     inviteHook: "先承認突然、拆掉亂搭訕感，不急著約，等她回一句再鋪短窗口",
     signalRead: "她在做微廢測：測你是不是亂搭訕，不是在要你講聊天哲學",
-    phaseMove: "開場測試階段先推框架與分寸",
+    phaseMove: "開場測試階段先站穩節奏與分寸",
     routeAdvice: "這輪先不約，先讓她感覺你不是亂搭訕，再等她願意開一個小縫",
   };
 }
@@ -460,8 +460,8 @@ function topicAgnosticGameFallbackReplies(
         "我先給我的版本：舒服的聊天要有畫面，但不要用力過頭。聊順再換一杯咖啡版。",
       ),
       steady: "先不急著約。這題如果聊順，下次用一杯咖啡換現場版。",
-      inviteHook: "先給自己的框架，再埋下次咖啡窗口，不急著成交",
-      signalRead: "訊號還偏軟，高階做法是先給框架，再丟低壓窗口",
+      inviteHook: "先給自己的版本，再埋下次咖啡窗口，不急著成交",
+      signalRead: "訊號還偏軟，高階做法是先給自己的版本，再丟低壓窗口",
     };
   }
   return {
@@ -470,8 +470,8 @@ function topicAgnosticGameFallbackReplies(
       "我先給我的版本：舒服的聊天要有畫面，但不要用力過頭。妳是哪一派？",
     ),
     steady: "我比較吃有畫面的聊天。妳丟一個偏好，我看能不能把它變小場景。",
-    inviteHook: "先給自己的框架，再讓她低壓接球，下一輪才找窗口",
-    signalRead: "訊號不夠明確時，高階做法是先給框架，不是追問",
+    inviteHook: "先給自己的版本，再讓她低壓接球，下一輪才找窗口",
+    signalRead: "訊號不夠明確時，高階做法是先給自己的版本，不是追問",
   };
 }
 

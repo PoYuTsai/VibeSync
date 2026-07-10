@@ -524,6 +524,107 @@ Deno.test("buildHintMessages forbids 1.2 raw jargon in visible Game coaching and
   assertEquals(gameText.includes("say phase, variable"), false);
 });
 
+Deno.test("repairGameVisibleLabels maps variable tokens to 1.2-free white words", () => {
+  const result = parseHintResult(
+    JSON.stringify({
+      warmUp: "我先給我的版本：我吃有畫面但不太用力的節奏。妳是哪一派？",
+      steady: "先不急著約。這題聊順，再把它變成一個下次短咖啡的小窗口。",
+      coaching:
+        "Game 心法：她在測你穩不穩，Frame + safety 有推進，下一步顧 Frame。速約任務：這輪先鋪墊。",
+    }),
+    { mode: "game" },
+  );
+  // 變數名映射必須對齊 header 白話（Frame → 節奏與主見），
+  // 不得把 1.2 原詞「框架」注入可見輸出。
+  assert(result.coaching.includes("節奏與主見 + 安全感"));
+  assert(result.coaching.includes("下一步顧 節奏與主見"));
+  assertEquals(
+    /DHV|框架|篩選|推拉|可得性/.test(result.coaching),
+    false,
+    result.coaching,
+  );
+
+  // 刻意例外：FRAME_COLLAPSE 的白話「框架掉了」對齊 debrief 契約
+  // （prompt.ts gameDebriefSkillContract）既定用語，屬口語狀態描述，
+  // 不是招式/變數語境。
+  const failureState = parseHintResult(
+    JSON.stringify({
+      warmUp: "我先給我的版本：我吃有畫面但不太用力的節奏。妳是哪一派？",
+      steady: "先不急著約。這題聊順，再把它變成一個下次短咖啡的小窗口。",
+      coaching: "Game 心法：剛剛有點 FRAME_COLLAPSE。速約任務：這輪先鋪墊。",
+    }),
+    { mode: "game" },
+  );
+  assert(failureState.coaching.includes("框架掉了"));
+});
+
+Deno.test("Game fallback visible output contains no 1.2 raw jargon", () => {
+  const scenarios: Array<{
+    latest: string;
+    temperatureScore: number;
+    familiarityScore: number;
+    partnerMood: "neutral" | "comfortable";
+  }> = [
+    // approach test（微廢測）
+    {
+      latest: "喔...確實有點突然（喝一口咖啡） 你平常都這樣認識人喔",
+      temperatureScore: 30,
+      familiarityScore: 18,
+      partnerMood: "neutral",
+    },
+    // topic-agnostic build
+    {
+      latest: "還好啊就普通的一天",
+      temperatureScore: 30,
+      familiarityScore: 18,
+      partnerMood: "neutral",
+    },
+    // taste topic direct
+    {
+      latest: "最近看一些脫口秀片段 節奏蠻舒服的",
+      temperatureScore: 88,
+      familiarityScore: 82,
+      partnerMood: "comfortable",
+    },
+    // travel recovery
+    {
+      latest: "東京剛回來，累到不想動 正在躺平",
+      temperatureScore: 40,
+      familiarityScore: 30,
+      partnerMood: "neutral",
+    },
+    // low energy
+    {
+      latest: "這週有點累，暫時只想放空",
+      temperatureScore: 34,
+      familiarityScore: 18,
+      partnerMood: "neutral",
+    },
+  ];
+  for (const scenario of scenarios) {
+    const game = buildFallbackHintResult({
+      turns: [
+        { role: "user", text: "哈囉" },
+        { role: "ai", text: scenario.latest },
+      ],
+      profile,
+      practiceMode: "game",
+      temperatureScore: scenario.temperatureScore,
+      familiarityScore: scenario.familiarityScore,
+      partnerMood: scenario.partnerMood,
+    });
+    const visible = [
+      ...game.replies.map((reply) => reply.text),
+      game.coaching,
+    ].join("\n");
+    assertEquals(
+      /DHV|框架|篩選|推拉|可得性/.test(visible),
+      false,
+      `1.2 raw jargon leaked for latest=${scenario.latest}: ${visible}`,
+    );
+  }
+});
+
 Deno.test("parseHintResult repairs speedInviteLadder label echoes in game mode", () => {
   const result = parseHintResult(
     JSON.stringify({
