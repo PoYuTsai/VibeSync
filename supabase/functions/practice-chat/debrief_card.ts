@@ -5,6 +5,7 @@ import {
   rejectL4UnsafeVisibleText,
   rejectVisibleInternalLabelLeak,
 } from "./visible_text_guard.ts";
+import { temperatureBandFor } from "./temperature.ts";
 import type { AppliedHintTurn } from "./validate.ts";
 
 export const VIBES = ["暖", "中性", "冷"];
@@ -31,9 +32,73 @@ export interface DebriefCard {
   gameBreakdown: GameBreakdown | null;
 }
 
+/** fallback 卡上會隨溫度檔位變化的欄位（其餘欄位維持各路徑罐頭）。 */
+interface FallbackChanceTone {
+  vibe: string;
+  dateChance: string;
+  dateChanceReason: string;
+  nextInviteMove: string;
+  /** Game breakdown 的邀約方向；neutral 檔沿用各路徑罐頭。 */
+  inviteDirection: string | null;
+}
+
+/**
+ * 溫度檔位 → fallback 卡語氣（分檔唯一依據＝temperatureBandFor 五檔）。
+ * 溫度缺席或非法時回 null＝fail-safe 維持現行中性罐頭；可見文字絕不
+ * 提及溫度機制或內部詞，只改語氣與機會判斷。
+ */
+function fallbackChanceToneFor(
+  temperatureScore: number | undefined,
+): FallbackChanceTone | null {
+  if (
+    temperatureScore === undefined || !Number.isFinite(temperatureScore)
+  ) {
+    return null;
+  }
+  const band = temperatureBandFor(temperatureScore);
+  if (band === "frozen" || band === "cold") {
+    return {
+      vibe: "冷",
+      dateChance: "low",
+      dateChanceReason: "這場收在她比較保留的狀態，先把安全感補回來比較實際。",
+      nextInviteMove:
+        "先不約，下一句降壓接住她說過的點，等她願意多說再看窗口。",
+      inviteDirection: "先不約，降壓接住她說過的點，等她願意多說再看窗口。",
+    };
+  }
+  if (band === "warm") {
+    return {
+      vibe: "暖",
+      dateChance: "medium",
+      dateChanceReason:
+        "她的投入有起來，開始鋪一個具體的低壓邀約窗口正是時候。",
+      nextInviteMove:
+        "下一句先呼應她聊得起勁的點，再丟一個改天短聚的低壓窗口。",
+      inviteDirection: "先呼應她聊得起勁的點，再丟一個改天短聚的低壓窗口。",
+    };
+  }
+  if (band === "hot") {
+    return {
+      vibe: "暖",
+      dateChance: "high",
+      dateChanceReason: "她整場投入感很高，窗口已經開了，可以往具體邀約收。",
+      nextInviteMove:
+        "把她感興趣的話題收成一個具體的小邀約，時間短、好答應也好拒絕。",
+      inviteDirection:
+        "把她感興趣的話題收成具體小邀約，時間短、好答應也好拒絕。",
+    };
+  }
+  return null;
+}
+
 export function buildFallbackDebriefCard(
-  opts: { practiceMode?: string; appliedHintTurns?: AppliedHintTurn[] } = {},
+  opts: {
+    practiceMode?: string;
+    appliedHintTurns?: AppliedHintTurn[];
+    temperatureScore?: number;
+  } = {},
 ): DebriefCard {
+  const tone = fallbackChanceToneFor(opts.temperatureScore);
   const hasAppliedHint = (opts.appliedHintTurns?.length ?? 0) > 0;
   if (hasAppliedHint) {
     const hasExactHint = opts.appliedHintTurns?.some((hint) => hint.exact) ??
@@ -53,10 +118,11 @@ export function buildFallbackDebriefCard(
           : "改寫後要避免加壓或偏題",
       ],
       suggestedLine,
-      vibe: "中性",
-      dateChance: "low",
-      dateChanceReason: "目前比較像穩住話題，還沒看到足夠投入或明確窗口。",
-      nextInviteMove:
+      vibe: tone?.vibe ?? "中性",
+      dateChance: tone?.dateChance ?? "low",
+      dateChanceReason: tone?.dateChanceReason ??
+        "目前比較像穩住話題，還沒看到足夠投入或明確窗口。",
+      nextInviteMove: tone?.nextInviteMove ??
         "先不急約，下一句補自己的感受；如果她接住，再丟低壓邀約窗口。",
       gameBreakdown: opts.practiceMode === "game"
         ? {
@@ -64,7 +130,8 @@ export function buildFallbackDebriefCard(
           missedVariable: "投入感",
           failureState: "提示偏保守",
           nextFirstLine: suggestedLine,
-          inviteDirection: "先補感受與投入，再接低壓邀約窗口。",
+          inviteDirection: tone?.inviteDirection ??
+            "先補感受與投入，再接低壓邀約窗口。",
         }
         : null,
     };
@@ -75,17 +142,20 @@ export function buildFallbackDebriefCard(
     strengths: ["有順著她的回覆接話"],
     watchouts: ["問題偏多，容易像盤問"],
     suggestedLine,
-    vibe: "中性",
-    dateChance: "low",
-    dateChanceReason: "熟悉度還在建立中，先把話題聊開比較穩。",
-    nextInviteMove: "先接她的答案，再分享一點自己的感受。",
+    vibe: tone?.vibe ?? "中性",
+    dateChance: tone?.dateChance ?? "low",
+    dateChanceReason: tone?.dateChanceReason ??
+      "熟悉度還在建立中，先把話題聊開比較穩。",
+    nextInviteMove: tone?.nextInviteMove ??
+      "先接她的答案，再分享一點自己的感受。",
     gameBreakdown: opts.practiceMode === "game"
       ? {
         phaseReached: "開場到測試",
         missedVariable: "投入感",
         failureState: "問題偏多",
         nextFirstLine: suggestedLine,
-        inviteDirection: "先不急約，接她興趣後再丟低壓窗口。",
+        inviteDirection: tone?.inviteDirection ??
+          "先不急約，接她興趣後再丟低壓窗口。",
       }
       : null,
   };

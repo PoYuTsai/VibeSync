@@ -5,7 +5,12 @@ import {
   assertEquals,
   assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { buildFallbackDebriefCard, parseDebriefCard } from "./debrief_card.ts";
+import {
+  buildFallbackDebriefCard,
+  DATE_CHANCES,
+  parseDebriefCard,
+  VIBES,
+} from "./debrief_card.ts";
 
 const valid = JSON.stringify({
   summary: "整體有來有往，後段她有點冷掉",
@@ -324,6 +329,126 @@ Deno.test("buildFallbackDebriefCard returns safe standard and game fallback card
   ].join("\n");
   assertEquals(visible.includes("P4"), false);
   assertEquals(visible.includes("targetVariable"), false);
+});
+
+Deno.test("buildFallbackDebriefCard 低溫檔（frozen/cold）→ 冷 vibe 與低機會語氣", () => {
+  for (const score of [18, 35]) {
+    const card = buildFallbackDebriefCard({
+      practiceMode: "standard",
+      temperatureScore: score,
+    });
+    assertEquals(card.vibe, "冷");
+    assertEquals(card.dateChance, "low");
+    assertEquals(card.dateChanceReason.includes("保留"), true);
+    assertEquals(card.nextInviteMove.includes("先不約"), true);
+  }
+});
+
+Deno.test("buildFallbackDebriefCard 中溫檔（neutral）→ 維持現行中性罐頭", () => {
+  const neutral = buildFallbackDebriefCard({
+    practiceMode: "standard",
+    temperatureScore: 50,
+  });
+  const omitted = buildFallbackDebriefCard({ practiceMode: "standard" });
+  assertEquals(neutral, omitted);
+  assertEquals(neutral.vibe, "中性");
+  assertEquals(neutral.dateChance, "low");
+});
+
+Deno.test("buildFallbackDebriefCard warm → 暖 vibe + dateChance medium", () => {
+  const card = buildFallbackDebriefCard({
+    practiceMode: "standard",
+    temperatureScore: 70,
+  });
+  assertEquals(card.vibe, "暖");
+  assertEquals(card.dateChance, "medium");
+});
+
+Deno.test("buildFallbackDebriefCard hot → 暖 vibe + dateChance high 與正向語氣", () => {
+  const card = buildFallbackDebriefCard({
+    practiceMode: "standard",
+    temperatureScore: 90,
+  });
+  assertEquals(card.vibe, "暖");
+  assertEquals(card.dateChance, "high");
+  assertEquals(card.dateChanceReason.includes("投入"), true);
+  assertEquals(card.nextInviteMove.includes("先不約"), false);
+});
+
+Deno.test("buildFallbackDebriefCard 溫度缺席或非法 → fail-safe 維持中性不 throw", () => {
+  const omitted = buildFallbackDebriefCard({ practiceMode: "standard" });
+  const nan = buildFallbackDebriefCard({
+    practiceMode: "standard",
+    temperatureScore: Number.NaN,
+  });
+  assertEquals(omitted.vibe, "中性");
+  assertEquals(omitted.dateChance, "low");
+  assertEquals(nan, omitted);
+});
+
+Deno.test("buildFallbackDebriefCard 分檔後可見輸出不含內部詞，dateChance 落在合法值", () => {
+  for (const score of [10, 30, 50, 70, 95, undefined]) {
+    for (const practiceMode of ["standard", "game"]) {
+      const card = buildFallbackDebriefCard({
+        practiceMode,
+        temperatureScore: score,
+      });
+      assertEquals(DATE_CHANCES.includes(card.dateChance), true);
+      assertEquals(VIBES.includes(card.vibe), true);
+      const visible = [
+        card.summary,
+        ...card.strengths,
+        ...card.watchouts,
+        card.suggestedLine,
+        card.dateChanceReason,
+        card.nextInviteMove,
+        ...(card.gameBreakdown ? Object.values(card.gameBreakdown) : []),
+      ].join("\n");
+      for (
+        const banned of [
+          "band",
+          "score",
+          "temperature",
+          "frozen",
+          "warm",
+          "hot",
+          "升溫指數",
+          "篩選",
+          "推拉",
+          "可得性",
+          "框架",
+          "賦格",
+          "DHV",
+        ]
+      ) {
+        assertEquals(
+          visible.includes(banned),
+          false,
+          `visible output leaked "${banned}" at score=${score} mode=${practiceMode}`,
+        );
+      }
+    }
+  }
+});
+
+Deno.test("buildFallbackDebriefCard 高溫＋照提示 → 仍歸功提示且 dateChance high", () => {
+  const card = buildFallbackDebriefCard({
+    practiceMode: "game",
+    temperatureScore: 88,
+    appliedHintTurns: [
+      {
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？",
+        sentText: "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？",
+        exact: true,
+      },
+    ],
+  });
+
+  assertEquals(card.dateChance, "high");
+  assertEquals(card.vibe, "暖");
+  assertEquals(card.summary.includes("照提示"), true);
 });
 
 Deno.test("buildFallbackDebriefCard credits exact applied Hint instead of blaming the user", () => {

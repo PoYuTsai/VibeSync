@@ -1805,6 +1805,11 @@ export function createPracticeChatHandler(
           debriefCard = buildFallbackDebriefCard({
             practiceMode: ledger.practiceMode,
             appliedHintTurns: ledgerAppliedHintTurns,
+            // 與 debrief prompt 同源：assisted 模式吃 ledger 溫度（缺席退難度
+            // 起始溫度）；standard 模式不傳＝維持中性罐頭。
+            temperatureScore: debriefAssistedMode
+              ? ledger.temperatureScore ?? difficultyStartTemperature
+              : undefined,
           });
         }
       } catch (e) {

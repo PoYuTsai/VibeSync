@@ -2621,6 +2621,32 @@ Deno.test("game debrief fallback includes game breakdown after provider failure"
   assertEquals(claimDebriefCalls(state).length, 1);
 });
 
+Deno.test("debrief fallback card follows ledger temperature band instead of always neutral", async () => {
+  const { response, json } = await run(
+    {
+      ledger: gameStartedLedger({
+        temperature_score: 88,
+        familiarity_score: 70,
+      }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [new Error("deepseek_timeout"), "not json"],
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      turns: [
+        { role: "user", text: "你好" },
+        { role: "ai", text: "哈囉 正在看點東西" },
+        { role: "user", text: "妳這語氣有點可愛，我先接住" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.card.dateChance, "high");
+  assertEquals(json.card.vibe, "暖");
+});
+
 Deno.test("debrief accepts beginner ledger when client omits practiceMode", async () => {
   const { response, json, state } = await run(
     {
