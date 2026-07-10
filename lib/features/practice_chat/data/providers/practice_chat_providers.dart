@@ -504,6 +504,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   _HintPrefetchFlight? _hintPrefetchFlight;
   bool _hintPrefetchAttemptedSinceFormalDispatch = false;
   bool _hintRequiresConversationAdvance = false;
+  Object? _activeSendPipelineToken;
 
   PracticePendingHint? _loadPendingHintSafely() {
     try {
@@ -591,6 +592,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     _hintPrefetchFlight = null;
     _hintPrefetchAttemptedSinceFormalDispatch = false;
     _hintRequiresConversationAdvance = false;
+    // A lifecycle change may start a send in the new session while an old
+    // provider/persistence Future is still unwinding. Identity-checked finally
+    // blocks below keep that old operation from releasing the new owner.
+    _activeSendPipelineToken = null;
     _appliedHintTurns.clear();
     unawaited(_clearPendingHintSafely());
   }
@@ -1240,7 +1245,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       state = state.copyWith(errorMessage: '先翻開今日的陪練女孩，再開始聊天。');
       return;
     }
-    if (!state.canSend) return;
+    if (!state.canSend || _activeSendPipelineToken != null) return;
 
     final priorState = state;
     final priorMessages = priorState.messages;
@@ -1286,6 +1291,12 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       hintCoaching: null,
       hintLimitReached: false,
     );
+    // Keep the whole provider -> local persistence pipeline single-owner even
+    // after the AI reply makes isSending false so Hint can await its placeholder.
+    // Without this token, a second same-session send can start while the first
+    // turn is persisting, then be erased by the older persistence rollback.
+    final sendPipelineToken = Object();
+    _activeSendPipelineToken = sendPipelineToken;
 
     try {
       final reply = await _api
@@ -1462,6 +1473,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: '生成失敗了，再試一次（這次不扣額度）。',
         restoreText: trimmed,
       );
+    } finally {
+      if (identical(_activeSendPipelineToken, sendPipelineToken)) {
+        _activeSendPipelineToken = null;
+      }
     }
   }
 

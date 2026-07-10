@@ -3338,6 +3338,49 @@ void main() {
     });
 
     test(
+        'same-session second send cannot outrun prior turn persistence rollback',
+        () async {
+      final controlled = _ControlledPracticeSessionRepository(box);
+      final saveStarted = Completer<void>();
+      final saveGate = Completer<void>();
+      controlled.saveHandler = (session) {
+        if (!saveStarted.isCompleted) saveStarted.complete();
+        return saveGate.future;
+      };
+      final prior = assistedSession(id: 'send-pipeline-race');
+      final c = makeControllerFrom(prior, repository: controlled);
+      var sendCalls = 0;
+      api.sendHandler = (_, {profile}) async {
+        sendCalls++;
+        return assistedReply(
+          aiTurnCount: 2,
+          text: 'AI response $sendCalls',
+        );
+      };
+
+      final firstSend = c.sendMessage('A');
+      await saveStarted.future;
+      expect(c.currentState.isSending, false);
+
+      // isSending is intentionally false so Hint can wait on the persistence
+      // placeholder, but a second chat send must remain single-owner.
+      await c.sendMessage('B');
+      expect(sendCalls, 1);
+      expect(c.currentState.messages.last.text, 'AI response 1');
+
+      saveGate.completeError(StateError('A persistence failed'));
+      await firstSend;
+      expect(c.currentState.messages, prior.messages);
+      expect(c.currentState.aiReplyCount, prior.aiReplyCount);
+
+      // The failed owner's finally releases only its own token, so retry works.
+      controlled.saveHandler = null;
+      await c.sendMessage('B retry');
+      expect(sendCalls, 2);
+      expect(c.currentState.messages.last.text, 'AI response 2');
+    });
+
+    test(
         'second-turn persist failure aborts awaiting formal and fully rolls back',
         () async {
       final controlled = _ControlledPracticeSessionRepository(box);
