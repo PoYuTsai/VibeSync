@@ -567,10 +567,12 @@ function beginnerFallbackAnchor(latestAssistant: string): string {
  * 不能複用 latestAssistantNeedsFallbackRepair——那把 injection token
  * （prompt/給我…）也算進去，會讓「你給我推薦一部電影」誤觸道歉；
  * 非敵意的注入/標籤情況交給錨點抑制退中性罐頭即可。
+ * 詞條必須帶語境收斂：「不是不想聊」「我們不要吵架」這類否定/和解句
+ * 絕不能誤判成敵意；誤判寧可漏（退中性罐頭無害），不可錯道歉。
  */
 function latestAssistantShowsHostility(latestAssistant: string): boolean {
   const normalized = latestAssistant.normalize("NFKC").toLowerCase();
-  return /封鎖|不用再傳|不要再傳|別再傳|別再來|別來亂|不想聊|不想理|不要吵|別吵|離我遠|你很煩|滾開/
+  return /封鎖|不用再傳|不要再傳|別再傳|別再來|別來亂|不想(?:再)?聊了|不想跟你聊|不想理你|(?:不要|別)(?:再)?吵我|離我遠|你很煩|滾開/
     .test(normalized);
 }
 
