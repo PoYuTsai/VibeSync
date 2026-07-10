@@ -788,11 +788,11 @@ ${gameHintFewShotExamples()}
  */
 function speedInviteLadderPrompt(route: GameInviteRoute): string {
   return `speedInviteLadder(hidden guidance):
-- 速約階梯順序：先鋪墊 → 低壓試探邀約 → 明確但低壓邀約；修安全感隨時優先。
-- 先鋪墊：${GAME_INVITE_ROUTE_ADVICE.build}。
-- 低壓試探邀約：${GAME_INVITE_ROUTE_ADVICE.soft}。
-- 明確但低壓邀約：${GAME_INVITE_ROUTE_ADVICE.direct}；她主動給窗口就順勢接住。
-- 先修安全感：${GAME_INVITE_ROUTE_ADVICE.repair}。
+- 速約階梯順序：${GAME_INVITE_ROUTE_LABEL.build} → ${GAME_INVITE_ROUTE_LABEL.soft} → ${GAME_INVITE_ROUTE_LABEL.direct}；${GAME_INVITE_ROUTE_LABEL.repair}隨時優先。
+- ${GAME_INVITE_ROUTE_LABEL.build}：${GAME_INVITE_ROUTE_ADVICE.build}。
+- ${GAME_INVITE_ROUTE_LABEL.soft}：${GAME_INVITE_ROUTE_ADVICE.soft}。
+- ${GAME_INVITE_ROUTE_LABEL.direct}：${GAME_INVITE_ROUTE_ADVICE.direct}；她主動給窗口就順勢接住。
+- ${GAME_INVITE_ROUTE_LABEL.repair}：${GAME_INVITE_ROUTE_ADVICE.repair}。
 - 本輪階梯位置：${GAME_INVITE_ROUTE_LABEL[route]}。建議：${
     GAME_INVITE_ROUTE_ADVICE[route]
   }。
