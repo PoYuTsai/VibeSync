@@ -478,7 +478,9 @@ Deno.test("GAME_HINT_MOVE_EXAMPLES pass the visible-output guard pipeline unchan
     );
     // 1.2 節原詞與內部技術詞不得出現在可見示範句。
     assertEquals(
-      /DHV|篩選|框架|推拉|可得性|資格|賦格|窗口變數|L[0-4]|P[1-5]/.test(example),
+      /DHV|篩選|框架|推拉|可得性|資格|賦格|窗口變數|L[0-4]|P[1-5]/.test(
+        example,
+      ),
       false,
       `forbidden internal/1.2 wording in example: ${move}`,
     );
@@ -498,17 +500,19 @@ Deno.test("GAME_HINT_MOVE_EXAMPLES pass the visible-output guard pipeline unchan
 });
 
 Deno.test("buildHintMessages forbids 1.2 raw jargon in visible Game coaching and drops English header prose", () => {
-  const gameText = buildHintMessages({
-    turns: [
-      { role: "user", text: "你講話滿有畫面的" },
-      { role: "ai", text: "那你倒是說說看看到什麼" },
-    ],
-    profile,
-    practiceMode: "game",
-    temperatureScore: 86,
-    familiarityScore: 74,
-    partnerMood: "comfortable",
-  } as Parameters<typeof buildHintMessages>[0]).map((m) => m.content)
+  const gameText = buildHintMessages(
+    {
+      turns: [
+        { role: "user", text: "你講話滿有畫面的" },
+        { role: "ai", text: "那你倒是說說看看到什麼" },
+      ],
+      profile,
+      practiceMode: "game",
+      temperatureScore: 86,
+      familiarityScore: 74,
+      partnerMood: "comfortable",
+    } as Parameters<typeof buildHintMessages>[0],
+  ).map((m) => m.content)
     .join("\n");
 
   // 可見輸出不得用 1.2 節原詞；內部變數名仍可在 hidden guidance 出現。
@@ -525,7 +529,8 @@ Deno.test("parseHintResult repairs speedInviteLadder label echoes in game mode",
     JSON.stringify({
       warmUp: "我先給我的版本：我吃有畫面但不太用力的節奏。妳是哪一派？",
       steady: "先不急著約。這題聊順，再把它變成一個下次短咖啡的小窗口。",
-      coaching: "Game 心法：她在丟品味線索。speedInviteLadder: 先鋪墊，下一階丟低壓窗口。",
+      coaching:
+        "Game 心法：她在丟品味線索。speedInviteLadder: 先鋪墊，下一階丟低壓窗口。",
     }),
     { mode: "game" },
   );
@@ -534,17 +539,19 @@ Deno.test("parseHintResult repairs speedInviteLadder label echoes in game mode",
 });
 
 Deno.test("buildHintMessages promotes the speed-invite ladder into the main Game prompt", () => {
-  const highGame = buildHintMessages({
-    turns: [
-      { role: "user", text: "你平常看什麼放鬆" },
-      { role: "ai", text: "最近看一些脫口秀片段 節奏蠻舒服的" },
-    ],
-    profile,
-    practiceMode: "game",
-    temperatureScore: 88,
-    familiarityScore: 82,
-    partnerMood: "comfortable",
-  } as Parameters<typeof buildHintMessages>[0]).map((m) => m.content)
+  const highGame = buildHintMessages(
+    {
+      turns: [
+        { role: "user", text: "你平常看什麼放鬆" },
+        { role: "ai", text: "最近看一些脫口秀片段 節奏蠻舒服的" },
+      ],
+      profile,
+      practiceMode: "game",
+      temperatureScore: 88,
+      familiarityScore: 82,
+      partnerMood: "comfortable",
+    } as Parameters<typeof buildHintMessages>[0],
+  ).map((m) => m.content)
     .join("\n");
 
   // 階梯從 fallback-only 升為主 prompt 明確指令。
@@ -557,32 +564,36 @@ Deno.test("buildHintMessages promotes the speed-invite ladder into the main Game
   // 本輪位置由 server FSM 判定後直接告訴模型（白話標籤）。
   assert(highGame.includes("本輪階梯位置：明確但低壓邀約"));
 
-  const lowGame = buildHintMessages({
-    turns: [
-      { role: "user", text: "你平常看什麼放鬆" },
-      { role: "ai", text: "最近看一些脫口秀片段 節奏蠻舒服的" },
-    ],
-    profile,
-    practiceMode: "game",
-    temperatureScore: 30,
-    familiarityScore: 20,
-    partnerMood: "neutral",
-  } as Parameters<typeof buildHintMessages>[0]).map((m) => m.content)
+  const lowGame = buildHintMessages(
+    {
+      turns: [
+        { role: "user", text: "你平常看什麼放鬆" },
+        { role: "ai", text: "最近看一些脫口秀片段 節奏蠻舒服的" },
+      ],
+      profile,
+      practiceMode: "game",
+      temperatureScore: 30,
+      familiarityScore: 20,
+      partnerMood: "neutral",
+    } as Parameters<typeof buildHintMessages>[0],
+  ).map((m) => m.content)
     .join("\n");
 
   assert(lowGame.includes("本輪階梯位置：先鋪墊"));
   assertEquals(lowGame.includes("本輪階梯位置：明確但低壓邀約"), false);
 
-  const beginnerText = buildHintMessages({
-    turns: [
-      { role: "user", text: "你平常看什麼放鬆" },
-      { role: "ai", text: "最近看一些脫口秀片段 節奏蠻舒服的" },
-    ],
-    profile,
-    temperatureScore: 88,
-    familiarityScore: 82,
-    partnerMood: "comfortable",
-  } as Parameters<typeof buildHintMessages>[0]).map((m) => m.content)
+  const beginnerText = buildHintMessages(
+    {
+      turns: [
+        { role: "user", text: "你平常看什麼放鬆" },
+        { role: "ai", text: "最近看一些脫口秀片段 節奏蠻舒服的" },
+      ],
+      profile,
+      temperatureScore: 88,
+      familiarityScore: 82,
+      partnerMood: "comfortable",
+    } as Parameters<typeof buildHintMessages>[0],
+  ).map((m) => m.content)
     .join("\n");
 
   assertEquals(beginnerText.includes("速約階梯"), false);
@@ -619,13 +630,15 @@ Deno.test("buildHintMessages feeds seven-step balance judgment rules into Game h
   assert(gameText.includes("安全感鋪墊"));
   assert(gameText.includes("順勢邀約"));
 
-  const beginnerText = buildHintMessages({
-    turns: gameOptions.turns,
-    profile,
-    temperatureScore: 60,
-    familiarityScore: 50,
-    partnerMood: "comfortable",
-  } as Parameters<typeof buildHintMessages>[0]).map((m) => m.content)
+  const beginnerText = buildHintMessages(
+    {
+      turns: gameOptions.turns,
+      profile,
+      temperatureScore: 60,
+      familiarityScore: 50,
+      partnerMood: "comfortable",
+    } as Parameters<typeof buildHintMessages>[0],
+  ).map((m) => m.content)
     .join("\n");
 
   assertEquals(beginnerText.includes("聊我們"), false);
