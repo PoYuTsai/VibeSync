@@ -562,14 +562,25 @@ function beginnerFallbackAnchor(latestAssistant: string): string {
   return `妳說${quote}這個`;
 }
 
+/**
+ * beginner 道歉分支的窄敵意偵測：只認明確的逐客令/敵意句。
+ * 不能複用 latestAssistantNeedsFallbackRepair——那把 injection token
+ * （prompt/給我…）也算進去，會讓「你給我推薦一部電影」誤觸道歉；
+ * 非敵意的注入/標籤情況交給錨點抑制退中性罐頭即可。
+ */
+function latestAssistantShowsHostility(latestAssistant: string): boolean {
+  const normalized = latestAssistant.normalize("NFKC").toLowerCase();
+  return /封鎖|不用再傳|不要再傳|別再傳|別再來|別來亂|不想聊|不想理|不要吵|別吵|離我遠|你很煩|滾開/
+    .test(normalized);
+}
+
 function evidenceBoundBeginnerFallbackReplies(latestAssistant: string): {
   warmUp: string;
   steady: string;
   needsRepair: boolean;
 } {
-  // 沿用 game fallback 同一套敵意/注入偵測（hint.ts repair 分支）：
   // 她已經在下逐客令時，罐頭絕不能再暖場，也絕不引用她的敵意原句。
-  if (latestAssistantNeedsFallbackRepair(latestAssistant)) {
+  if (latestAssistantShowsHostility(latestAssistant)) {
     return {
       warmUp: "剛剛是我不好，那句話讓妳不舒服了，跟妳說聲抱歉。",
       steady: "好，我不鬧了，先不吵妳。等妳想聊的時候我都在。",
