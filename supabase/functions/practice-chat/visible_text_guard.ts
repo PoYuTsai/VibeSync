@@ -121,6 +121,53 @@ const L4_UNSAFE_VISIBLE_PATTERNS = [
   "回家睡",
 ];
 
+// ── debrief 可見欄位的溫度/內部機制詞守門（批3）─────────────────────────
+// debrief prompt 會注入 band 詞（frozen/cold/.../hot、升溫指數），模型可能
+// 抄進可見欄位。英文內部詞用 Latin word-boundary 比對，避免誤傷組合詞
+// （photo/husband/scoreboard）；中文詞去空白標點後 substring。
+// 只給 debrief 生成路徑用；chat/hint 既有詞表與放行語意不動。
+const INTERNAL_TEMPERATURE_LABELS_LATIN_PATTERN =
+  /\b(?:frozen|cold|neutral|warm|hot|band|score|temperature|dhv)\b/i;
+
+const INTERNAL_MECHANISM_PHRASES = [
+  "升溫指數",
+  "升温指数",
+  "篩選",
+  "筛选",
+  "推拉",
+  "可得性",
+  "賦格",
+  "赋格",
+  "框架",
+];
+
+/**
+ * 批2 拍板的唯一白話 sentinel：「框架掉了」是 debrief 既定失敗狀態說法，
+ * 檢查前先剝除＝維持放行；其他「框架」語境仍拒。
+ */
+const DEBRIEF_ALLOWED_SENTINELS = ["框架掉了"];
+
+export function hasVisibleTemperatureMechanismLeak(value: string): boolean {
+  const nfkc = value.normalize("NFKC");
+  if (INTERNAL_TEMPERATURE_LABELS_LATIN_PATTERN.test(nfkc)) return true;
+  let normalized = normalizeUnsafeText(nfkc);
+  for (const sentinel of DEBRIEF_ALLOWED_SENTINELS) {
+    normalized = normalized.replaceAll(normalizeUnsafeText(sentinel), "");
+  }
+  return INTERNAL_MECHANISM_PHRASES.some((phrase) =>
+    normalized.includes(normalizeUnsafeText(phrase))
+  );
+}
+
+export function rejectVisibleTemperatureMechanismLeak(
+  value: string,
+  errorCode: string,
+) {
+  if (hasVisibleTemperatureMechanismLeak(value)) {
+    throw new Error(errorCode);
+  }
+}
+
 function normalizeVisibleText(value: string): string {
   return value
     .normalize("NFKC")

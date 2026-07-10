@@ -309,6 +309,130 @@ Deno.test("parseDebriefCard can drop gameBreakdown outside Game mode", () => {
   assertEquals(c.gameBreakdown, null);
 });
 
+// ── debrief LLM 生成路徑：溫度/內部機制詞守門（批3 P1）──────────────────
+// 守門入口＝parseDebriefCard 的 guardVisibleText；被拒→handler 重試→fallback 卡。
+
+function debriefJsonWithVisibleField(
+  field: string,
+  value: string,
+): string {
+  const base: Record<string, unknown> = {
+    summary: "有接住她的情緒",
+    strengths: ["有接住話題"],
+    watchouts: ["問題偏多"],
+    suggestedLine: "我對妳說的那個點有點好奇",
+    vibe: "中性",
+    dateChance: "low",
+    dateChanceReason: "先把話題聊開比較穩",
+    nextInviteMove: "先接她的答案",
+    gameBreakdown: {
+      phaseReached: "開場",
+      missedVariable: "投入感",
+      failureState: "問題偏多",
+      nextFirstLine: "我先接住妳剛說的",
+      inviteDirection: "先鋪墊",
+    },
+  };
+  if (field.startsWith("gameBreakdown.")) {
+    (base.gameBreakdown as Record<string, unknown>)[field.split(".")[1]] =
+      value;
+  } else if (field === "strengths" || field === "watchouts") {
+    base[field] = [value];
+  } else {
+    base[field] = value;
+  }
+  return JSON.stringify(base);
+}
+
+const DEBRIEF_VISIBLE_FIELDS = [
+  "summary",
+  "strengths",
+  "watchouts",
+  "suggestedLine",
+  "dateChanceReason",
+  "nextInviteMove",
+  "gameBreakdown.phaseReached",
+  "gameBreakdown.missedVariable",
+  "gameBreakdown.failureState",
+  "gameBreakdown.nextFirstLine",
+  "gameBreakdown.inviteDirection",
+];
+
+Deno.test("parseDebriefCard 每個可見欄位拒絕溫度內部詞與 1.2 原詞", () => {
+  const bannedSamples = [
+    "本場升溫指數偏高",
+    "她現在是 hot 狀態",
+    "band 還在偏低",
+    "妳的 score 不錯",
+    "目前 frozen 要先修",
+    "temperature 有升",
+    "整體偏 cold",
+    "她 neutral 偏 warm",
+    "多用推拉節奏",
+    "展示你的可得性",
+    "先賦格再收",
+    "資格篩選要早做",
+    "記得做 DHV 展示",
+    "你的框架很穩",
+  ];
+  for (const field of DEBRIEF_VISIBLE_FIELDS) {
+    for (const banned of bannedSamples) {
+      assertThrows(
+        () =>
+          parseDebriefCard(debriefJsonWithVisibleField(field, banned), {
+            allowGameBreakdown: true,
+          }),
+        Error,
+        undefined,
+        `field=${field} should reject "${banned}"`,
+      );
+    }
+  }
+});
+
+Deno.test("parseDebriefCard 溫度詞用 Latin word-boundary，不誤傷組合詞", () => {
+  const safeSamples = [
+    "她提到 photo 跟 hotel 的話題也接得住",
+    "他說 husband 這個單字時妳有笑",
+    "妳聊到 scoreboard 與 underscore 都沒問題",
+    "回覆語氣溫暖自然，先把話題聊開",
+  ];
+  for (const safe of safeSamples) {
+    const card = parseDebriefCard(
+      debriefJsonWithVisibleField("summary", safe),
+      { allowGameBreakdown: true },
+    );
+    assertEquals(card.summary, safe);
+  }
+});
+
+Deno.test("parseDebriefCard 放行既定白話 sentinel「框架掉了」，其他框架語境仍拒", () => {
+  const okCard = parseDebriefCard(
+    debriefJsonWithVisibleField("gameBreakdown.failureState", "框架掉了"),
+    { allowGameBreakdown: true },
+  );
+  assertEquals(okCard.gameBreakdown?.failureState, "框架掉了");
+
+  const okSummary = parseDebriefCard(
+    debriefJsonWithVisibleField("summary", "這句讓框架掉了，下次先穩住"),
+    { allowGameBreakdown: true },
+  );
+  assertEquals(okSummary.summary, "這句讓框架掉了，下次先穩住");
+
+  assertThrows(() =>
+    parseDebriefCard(
+      debriefJsonWithVisibleField("summary", "框架掉了之後你的框架要重建"),
+      { allowGameBreakdown: true },
+    )
+  );
+  assertThrows(() =>
+    parseDebriefCard(
+      debriefJsonWithVisibleField("gameBreakdown.failureState", "框架不穩"),
+      { allowGameBreakdown: true },
+    )
+  );
+});
+
 Deno.test("buildFallbackDebriefCard returns safe standard and game fallback cards", () => {
   const standard = buildFallbackDebriefCard({ practiceMode: "standard" });
   const game = buildFallbackDebriefCard({ practiceMode: "game" });

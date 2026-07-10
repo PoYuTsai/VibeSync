@@ -4,6 +4,7 @@
 import {
   rejectL4UnsafeVisibleText,
   rejectVisibleInternalLabelLeak,
+  rejectVisibleTemperatureMechanismLeak,
 } from "./visible_text_guard.ts";
 import { temperatureBandFor } from "./temperature.ts";
 import type { AppliedHintTurn } from "./validate.ts";
@@ -183,6 +184,9 @@ function rejectInternalLabelLeak(value: string) {
 
 function guardVisibleText(value: string): string {
   rejectInternalLabelLeak(value);
+  // 批3 P1：debrief prompt 注入 band 詞後，模型可能把溫度內部詞或 1.2 原詞
+  // 抄進可見欄位；被拒→handler 重試→band-aware fallback 卡兜底。
+  rejectVisibleTemperatureMechanismLeak(value, "debrief_temperature_leak");
   rejectL4UnsafeVisibleText(value, "debrief_l4_unsafe");
   return value;
 }
