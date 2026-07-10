@@ -9,6 +9,8 @@ class AppColors {
   static const primaryDark = Color(0xFF4527A0);
 
   // Enthusiasm levels
+  // frozen 比 cold 更冷：偏白的冰藍，練習室溫度計 frozen band 專用。
+  static const frozen = Color(0xFF9BE7FF);
   static const cold = Color(0xFF64B5F6);
   static const warm = Color(0xFFD4A574);
   static const hot = Color(0xFFE57373);

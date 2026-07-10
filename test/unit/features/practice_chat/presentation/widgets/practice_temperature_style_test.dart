@@ -26,11 +26,12 @@ void main() {
   });
 
   group('practiceTemperatureColor', () {
-    test('band 驅動 5 檔色票（frozen 無專屬色票與 cold 共色）', () {
+    test('band 驅動 5 檔色票（frozen 用專屬冰藍，與 cold 分色）', () {
       expect(
         practiceTemperatureColor(band: 'frozen', score: 10),
-        AppColors.cold,
+        AppColors.frozen,
       );
+      expect(AppColors.frozen, isNot(AppColors.cold));
       expect(
         practiceTemperatureColor(band: 'cold', score: 30),
         AppColors.cold,
@@ -58,7 +59,7 @@ void main() {
     });
 
     test('band 缺席（null）→ 用 score 鏡像 server 邊界推 band', () {
-      expect(practiceTemperatureColor(band: null, score: 20), AppColors.cold);
+      expect(practiceTemperatureColor(band: null, score: 20), AppColors.frozen);
       expect(practiceTemperatureColor(band: null, score: 40), AppColors.cold);
       expect(
         practiceTemperatureColor(band: null, score: 60),

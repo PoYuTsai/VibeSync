@@ -20,15 +20,13 @@ String practiceTemperatureBandForScore(int score) {
 
 /// 溫度計顏色：優先吃 server 回的 [band]；缺席或未知值退回
 /// [practiceTemperatureBandForScore] 鏡像查表。
-/// frozen 無更冷的既有色票 → 與 cold 共色（AppColors 只有 cold/warm/hot；
-/// info 與 cold 同 hex，拿不出「更冷感」的差異）。
 Color practiceTemperatureColor({required int score, String? band}) {
   final resolved = switch (band) {
     'frozen' || 'cold' || 'neutral' || 'warm' || 'hot' => band!,
     _ => practiceTemperatureBandForScore(score),
   };
   return switch (resolved) {
-    'frozen' => AppColors.cold, // 共色：見檔頭註解
+    'frozen' => AppColors.frozen,
     'cold' => AppColors.cold,
     'neutral' => AppColors.warning,
     'warm' => AppColors.warm,
