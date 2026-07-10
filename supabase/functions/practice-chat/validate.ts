@@ -69,6 +69,11 @@ export interface PracticeChatRequest {
    * client 缺值走現行為（無冪等），向後相容。格式比照翻牌 requestId。
    */
   requestId?: string;
+  /**
+   * Hint-only transport intent. Missing means legacy client; explicit false is
+   * a formal request from a prefetch-aware client; true is background prefetch.
+   */
+  prefetch?: boolean;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -297,6 +302,19 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     requestId = raw.requestId;
   }
 
+  let prefetch: boolean | undefined;
+  if (raw.prefetch !== undefined) {
+    if (typeof raw.prefetch !== "boolean") {
+      throw new Error("invalid_prefetch");
+    }
+    if (raw.prefetch === true && (mode !== "hint" || requestId === undefined)) {
+      throw new Error("invalid_prefetch");
+    }
+    if (mode === "hint") {
+      prefetch = raw.prefetch;
+    }
+  }
+
   // roundIndex：缺值 fallback 1；續聊不再由 client cap 3 輪，只收正整數。
   let roundIndex = 1;
   if (raw.roundIndex !== undefined) {
@@ -373,6 +391,7 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     appliedHintText,
     appliedHintTurns,
     requestId,
+    prefetch,
   };
 }
 
