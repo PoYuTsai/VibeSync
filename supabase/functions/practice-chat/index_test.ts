@@ -2983,6 +2983,51 @@ Deno.test("beginner hint timeout also skips the retry and uses beginner fallback
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
+Deno.test("beginner hint fallback answers a hostile latest reply with apology-and-space, not warm-up canned lines", async () => {
+  // dogfood 實錄 bug：AI 說「你被封鎖也是剛好而已」，罐頭卻回
+  // 「我先接住＋哪一段最有感」被一鍵送出，語境全盲。
+  const { response, json } = await run(
+    {
+      ledger: beginnerStartedLedger({ temperature_score: 10 }),
+      deepSeekReplies: [new Error("deepseek_timeout")],
+      rpc: {
+        record_practice_hint: [{
+          data: [{ new_hint_count: 1, did_charge: false }],
+        }],
+      },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      turns: [
+        { role: "user", text: "睡了嗎" },
+        { role: "ai", text: "（你被封鎖也是剛好而已。不用再傳了。）" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.replies.length, 2);
+  const visibleReplies = json.replies
+    .map((reply: { text: string }) => reply.text)
+    .join("\n");
+  // 道歉降溫＋退一步給空間
+  assert(
+    visibleReplies.includes("抱歉") || visibleReplies.includes("對不起"),
+    visibleReplies,
+  );
+  assert(
+    visibleReplies.includes("不吵妳") || visibleReplies.includes("等妳"),
+    visibleReplies,
+  );
+  // 絕不引用她的敵意原句、絕不殘留暖場教練話術
+  assertEquals(visibleReplies.includes("封鎖"), false);
+  assertEquals(visibleReplies.includes("我先接住"), false);
+  assertEquals(visibleReplies.includes("最有感"), false);
+  assertEquals(visibleReplies.includes("好奇"), false);
+  // coaching 同步改修復向指導
+  assert(String(json.coaching).includes("道歉"), String(json.coaching));
+});
+
 Deno.test("hint retry after a non-format provider error carries no misleading JSON-rejected instruction", async () => {
   const { response, state } = await run(
     {

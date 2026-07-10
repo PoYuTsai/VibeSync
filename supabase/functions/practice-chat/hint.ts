@@ -552,14 +552,35 @@ function evidenceBoundGameFallbackReplies(
   return topicAgnosticGameFallbackReplies(latestAssistant, route);
 }
 
+/**
+ * beginner 專用錨點：錨得到就引她剛講的內容；錨不到退回自然口語的
+ * 「妳剛剛說的」，不用 game 共用的「這個回覆」（接罐頭句會不通順）。
+ */
+function beginnerFallbackAnchor(latestAssistant: string): string {
+  const quote = fallbackAnchorQuote(latestAssistant);
+  if (!quote) return "妳剛剛說的";
+  return `妳說${quote}這個`;
+}
+
 function evidenceBoundBeginnerFallbackReplies(latestAssistant: string): {
   warmUp: string;
   steady: string;
+  needsRepair: boolean;
 } {
-  const anchor = fallbackAnchorSnippet(latestAssistant);
+  // 沿用 game fallback 同一套敵意/注入偵測（hint.ts repair 分支）：
+  // 她已經在下逐客令時，罐頭絕不能再暖場，也絕不引用她的敵意原句。
+  if (latestAssistantNeedsFallbackRepair(latestAssistant)) {
+    return {
+      warmUp: "剛剛是我不好，那句話讓妳不舒服了，跟妳說聲抱歉。",
+      steady: "好，我不鬧了，先不吵妳。等妳想聊的時候我都在。",
+      needsRepair: true,
+    };
+  }
+  const anchor = beginnerFallbackAnchor(latestAssistant);
   return {
-    warmUp: `妳${anchor}我先接住。我有點好奇，哪一段最有感？`,
-    steady: `妳${anchor}我懂。先順著聊，不用急著轉話題。`,
+    warmUp: `${anchor}我蠻有興趣的，再多跟我講一點？`,
+    steady: `${anchor}我懂，就先這樣慢慢聊，我不急。`,
+    needsRepair: false,
   };
 }
 
@@ -615,9 +636,12 @@ function gameFallbackRepliesForLatestAssistant(
 function beginnerFallbackRepliesForLatestAssistant(latestAssistant: string): {
   warmUp: string;
   steady: string;
+  needsRepair: boolean;
 } {
   return evidenceBoundBeginnerFallbackReplies(latestAssistant);
 }
+const BEGINNER_FALLBACK_REPAIR_COACHING =
+  "小提醒：她現在在氣頭上，先真誠道歉、給她一點空間，別急著找話題或逗她。";
 const BEGINNER_FALLBACK_NEUTRAL_COACHING =
   "小提醒：先接她剛提到的點，再補一點你的感受，最後丟一個她好回答的小問題。";
 
@@ -651,7 +675,10 @@ function buildBeginnerFallbackHintResult(
       { type: "warm_up", label: "升溫回覆", text: fallback.warmUp },
       { type: "steady", label: "穩住回覆", text: fallback.steady },
     ],
-    coaching: beginnerFallbackCoachingFor(opts.temperatureScore),
+    // 修復語境時 coaching 蓋過溫度分檔：先修安全感，別教人找話題。
+    coaching: fallback.needsRepair
+      ? BEGINNER_FALLBACK_REPAIR_COACHING
+      : beginnerFallbackCoachingFor(opts.temperatureScore),
   };
 }
 
