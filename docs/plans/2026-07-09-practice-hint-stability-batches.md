@@ -27,7 +27,7 @@
 
 待辦：flutter analyze＋全測試複跑 → spec 審＋品質審 → **Codex 雙審（S4 動 quota＝高風險）** → push（=自動部署）。
 
-## 批2 Game hint 高手化（Batch D 補做）— 🟡 實作＋品質審修＋Codex P1 修完成待重審（ba893f0c..5523a80e，local 未 push）
+## 批2 Game hint 高手化（Batch D 補做）— ✅ SHIPPED（fc00c7cf..5523a80e，Codex 首審 P1→修→重審 APPROVED 零 finding，2026-07-10 push＝自動部署）
 
 素材源：`docs/plans/2026-07-08-social-knowledge-integration-design.md` 3.3 節。
 TDD 全程（每項先紅後綠）；Deno 528→540 綠（新增 12 測試）；Game prompt 長度 5933→5488（英文抽象句改繁中反而變短）。
@@ -44,9 +44,9 @@ TDD 全程（每項先紅後綠）；Deno 528→540 綠（新增 12 測試）；
 | 審修 | 品質審 3 Important＋1 Nit：repair 表 Frame→節奏與主見對齊新紅線（FRAME_COLLAPSE→「框架掉了」刻意保留＝debrief 既定白話、口語狀態非招式語境）＋fallback 罐頭招式語境「框架」改白話；route LABEL/ADVICE export＋守門管道測試；階梯 rung 行常數插值去雙份真相；coaching 軟上限抽常數釘 headroom（140<160） | 2f496b20、9a638351、20a097f0、63b5dba5 |
 | Codex P1 | 可見輸出補中文 1.2 原詞轉譯（篩選→互相合適度、推拉→輕鬆張力、可得性→安全感釋放、框架→節奏與主見、資格篩選/賦格→品味門檻、DHV→生活樣本）；選 repair 不選 reject（詞彙可安全轉譯；reject 觸發重試/fallback 懲罰過重）；「框架掉了」sentinel 限縮為唯一放行固定短語；被釘綠的 hint_test/index_test 補明確斷言（index_test＝handler 全路徑蓋 LLM 路徑） | 5523a80e |
 
-未做（如計畫）：項5 非 SR 具體招式（`buildGameStrategy` 已有全卡 fallback 分支，前案完成）；項6 模型升檔/溫度選配。
+項5 非 SR 具體招式已於本批 T1 完成（fc00c7cf 放寬 `buildSrGameStrategy` 非 SR gate＋6760dc86 改名 `buildGameStrategy`，spec/品質雙審過）。項6 模型升檔/溫度選配未做（如計畫，看體感另議）。
 
-高風險（AI prompt 行為）→ Codex 雙審後才 push。
+**待 Eric 拍板（產品決策）**：handler 有 `practice_game_sr_only` 403 gate（handler.ts:430-435、1182、1343、1669），非 SR 卡今日進不了 Game 模式——T1 放寬目前是鋪路死碼。若拍板開放，gate 拆除案 checklist：①拆三處 403；②`prompt.ts:76/98`「Game is SR 限定」「SR-character training」文案同步改（模板字串語意漂移沒有測試會抓）；③`visible_text_guard.ts:33` `srstrategy` 加 legacy 註解。
 
 ## 批3 溫度契約補洞 — ⬜ 未動工
 
