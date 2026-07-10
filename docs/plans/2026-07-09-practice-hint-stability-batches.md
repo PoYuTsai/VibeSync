@@ -27,18 +27,24 @@
 
 待辦：flutter analyze＋全測試複跑 → spec 審＋品質審 → **Codex 雙審（S4 動 quota＝高風險）** → push（=自動部署）。
 
-## 批2 Game hint 高手化（Batch D 補做）— ⬜ 未動工
+## 批2 Game hint 高手化（Batch D 補做）— 🟡 實作完成待 Codex 雙審（ba893f0c..da7b83ba，local 未 push）
 
 素材源：`docs/plans/2026-07-08-social-knowledge-integration-design.md` 3.3 節。
+TDD 全程（每項先紅後綠）；Deno 528→535 綠（新增 7 測試）；Game prompt 長度 5933→5487（英文抽象句改繁中反而變短）。
 
-1. 把七步轉譯（聊她/聊我/聊我們、給她一顆球、生活樣本）接進 hint prompt（現只進了 NPC 演法 `prompt.ts:76` 與 debrief `prompt.ts:328`）
-2. hint 的抽象英文祈使句改成繁中 few-shot 示範句（可借用現成 fallback 高手句 `hint.ts:588-606`）
-3. 統一七步骨架，與 NPC/debrief 對齊
-4. 速約推進階梯從 fallback-only 升為主 prompt 明確指令
-5. 非 SR 卡也給具體招式（`game_fsm.ts:753` 放寬）
-6. 選配（先不做，批2 完看體感）：hint 模型升檔或溫度 0.45→0.7
+| 項 | 內容 | Commit |
+|---|---|---|
+| G3 | 七步骨架對齊 NPC/debrief 的 P1 開場/資訊交換→P5 鎖定/收尾，捨棄 Codex 自編英文骨架 | ba893f0c |
+| G2 | 兩段 contract 改繁中規則＋`GAME_HINT_MOVE_EXAMPLES` few-shot（6 句借自 fallback 高手句；測試鎖 80 字、guard 管道原樣通過、1.2 原詞不外露） | f781cbb0 |
+| G1 | `sevenStepBalanceContract`：聊她/聊我/聊我們、查戶口補狀態＋感受、給球、近邀約門檻低壓不硬衝（3.3 節） | b7f280a4 |
+| G4 | `speedInviteLadderPrompt`：server FSM 判本輪階梯位置以白話標籤注入；階梯建議抽 `GAME_INVITE_ROUTE_ADVICE` 與 fallback 共用；coaching 須講這輪哪一階、下一階怎麼推 | f552cf4e |
+| 清理 | `gameStrategyPrompt` 恆真 ternary 三處收斂 | f483c966 |
+| 補 | gameHint header 英文段繁中化＋明禁可見輸出用 1.2 原詞（舊 header 允許 coaching 點名「框架、性張力」與紅線衝突）＋`repairGameVisibleLabels` 補 speedInviteLadder 映射 | 66252ae2 |
+| 補 | deno fmt；coaching 明示 140 字內防 160 hard-cap silent slice | e95d5be9、da7b83ba |
 
-高風險（AI prompt 行為）→ Codex 雙審。
+未做（如計畫）：項5 非 SR 具體招式（`buildGameStrategy` 已有全卡 fallback 分支，前案完成）；項6 模型升檔/溫度選配。
+
+高風險（AI prompt 行為）→ Codex 雙審後才 push。
 
 ## 批3 溫度契約補洞 — ⬜ 未動工
 
