@@ -48,15 +48,22 @@ TDD 全程（每項先紅後綠）；Deno 528→540 綠（新增 12 測試）；
 
 **待 Eric 拍板（產品決策）**：handler 有 `practice_game_sr_only` 403 gate（handler.ts:430-435、1182、1343、1669），非 SR 卡今日進不了 Game 模式——T1 放寬目前是鋪路死碼。若拍板開放，gate 拆除案 checklist：①拆三處 403；②`prompt.ts:76/98`「Game is SR 限定」「SR-character training」文案同步改（模板字串語意漂移沒有測試會抓）；③`visible_text_guard.ts:33` `srstrategy` 加 legacy 註解。
 
-## 批3 溫度契約補洞 — ⬜ 未動工
+## 批3 溫度契約補洞 — ✅ SHIPPED（63cea786..a2a2bd1c 共 5 commit，Codex 首審 P1→修→重審 APPROVED，2026-07-10）
 
-1. debrief prompt 注入實際溫度 band，要求評語不得與溫度矛盾（`prompt.ts:376-431`）
-2. `buildFallbackDebriefCard` 吃溫度參數分檔，不再恆為中性/低機會（`debrief_card.ts:34-92`）
-3. client 溫度計顏色改讀 server 回的 `band` 欄位，廢棄 client 自建 4 桶（`practice_chat_screen.dart:1573-1578`）
-4. 附帶：beginner fallback hint 不看溫度 → 一併接 band
+分檔唯一真相源＝既有 `temperatureBandFor` 五檔（temperature.ts:122，<=20/40/60/80），四處接線零新分檔。
+TDD 全程；Deno 540→559 綠、Dart practice_chat 435 綠；每 task 過 spec 審＋品質審雙關。
 
-高風險（AI prompt 行為）→ Codex 雙審。
+| 項 | 內容 | Commit |
+|---|---|---|
+| 1 | `temperatureBandDebriefInstruction` 注入 debrief prompt（assisted only，standard 本就不吃溫度＝不注入）；要求評語不得與溫度矛盾＋不得向使用者提及 score/band/temperature | 63cea786 |
+| 2 | `buildFallbackDebriefCard` 吃 `temperatureScore` 分檔：frozen/cold→冷+low、neutral/缺席/NaN→現行罐頭逐字不變、warm→暖+medium、hot→暖+high；handler 呼叫點 assisted 傳 ledger 溫度 | 952440c3 |
+| 4 | beginner fallback hint coaching 接 band（低檔降壓/中檔原句/高檔延續投入）；replies 錨句與 game 分支不動 | 876e9056 |
+| 3 | client 溫度計改讀 server `band`（state 補接 temperatureBand 管線），band 缺席以 score 鏡像 server 五檔邊界兜底；廢棄舊 4 桶（80/60/40 與 server 邊界分歧＝真 bug）；frozen/cold 共色（AppColors 無更冷色票） | 0a017224 |
+| Codex P1 | debrief 生成路徑可見欄位守門補溫度內部詞：`rejectVisibleTemperatureMechanismLeak` 專用函式只接 debrief（不擴 chat/hint 共用表）；英文詞 word-boundary、中文 NFKC substring 含 1.2 原詞；「框架掉了」sentinel 維持放行；reject 沿既有重試→band-aware fallback 卡鏈路 | a2a2bd1c |
 
-## 收尾
+品質審 Minor 留 boy-scout（不阻擋）：內部規則句抽常數共用、fallbackChanceToneFor 改 Record 風格、模式重設 band 歸 null 缺專測、neutral→warning 色票補註解。
 
-三批全過審後：push（觸發 Edge 自動部署）→ 白話文總報告（含「預期測試會看到什麼」）。
+## 收尾 — ✅ 三批全 SHIPPED（2026-07-10）
+
+push a2a2bd1c（觸發 Edge 自動部署）；白話文總報告已交付 Eric（含「預期測試會看到什麼」）。
+留觀察：批1 `practice_chat_*_hint_fallback_used` 日誌盯至 ~07-17。待 Eric 拍板：非 SR 開 Game 模式（checklist 在批2 節尾）、hint 模型升檔/升溫、frozen 獨立色票。
