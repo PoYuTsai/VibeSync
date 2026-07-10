@@ -31,6 +31,10 @@ class _FakeApi extends PracticeChatApiService {
     List<PracticeTurnDto> turns, {
     PracticeProfileDto? profile,
   })? hintHandler;
+  Future<void> Function(
+    List<PracticeTurnDto> turns, {
+    PracticeProfileDto? profile,
+  })? prefetchHandler;
   Future<PracticeDebrief> Function(
     List<PracticeTurnDto> turns, {
     PracticeProfileDto? profile,
@@ -57,8 +61,18 @@ class _FakeApi extends PracticeChatApiService {
   int? lastHintRoundIndex;
   String? lastHintThreadId;
   String? lastHintRequestId;
+  String? lastHintSessionId;
+  List<PracticeTurnDto>? lastFormalHintTurns;
   PracticeLearningMode? lastHintPracticeMode;
   int hintCallCount = 0;
+  int prefetchHintCallCount = 0;
+  String? lastPrefetchHintRequestId;
+  String? lastPrefetchHintSessionId;
+  List<PracticeTurnDto>? lastPrefetchHintTurns;
+  PracticeLearningMode? lastPrefetchHintPracticeMode;
+  final List<String> prefetchHintRequestIds = [];
+  final List<String> formalHintRequestIds = [];
+  final List<String> hintRequestOrder = [];
   Future<void> Function(String sessionId, String requestId)?
       confirmDebriefHandler;
 
@@ -113,8 +127,34 @@ class _FakeApi extends PracticeChatApiService {
     lastHintMemorySummary = memorySummary;
     lastHintContinuationPartnerState = continuationPartnerState;
     lastHintRequestId = requestId;
+    lastHintSessionId = sessionId;
+    lastFormalHintTurns = List<PracticeTurnDto>.of(turns);
     lastHintPracticeMode = practiceMode;
+    if (requestId != null) formalHintRequestIds.add(requestId);
+    hintRequestOrder.add('formal:$requestId');
     return hintHandler!(turns, profile: profile);
+  }
+
+  @override
+  Future<void> prefetchHint({
+    required String sessionId,
+    required String requestId,
+    required PracticeProfileDto profile,
+    required List<PracticeTurnDto> turns,
+    int roundIndex = 1,
+    String? visiblePracticeThreadId,
+    String? memorySummary,
+    PracticePartnerState? continuationPartnerState,
+    PracticeLearningMode practiceMode = PracticeLearningMode.beginner,
+  }) {
+    prefetchHintCallCount++;
+    lastPrefetchHintRequestId = requestId;
+    lastPrefetchHintSessionId = sessionId;
+    lastPrefetchHintTurns = List<PracticeTurnDto>.of(turns);
+    lastPrefetchHintPracticeMode = practiceMode;
+    prefetchHintRequestIds.add(requestId);
+    hintRequestOrder.add('prefetch:$requestId');
+    return prefetchHandler?.call(turns, profile: profile) ?? Future.value();
   }
 
   @override
@@ -159,6 +199,26 @@ class _FakeApi extends PracticeChatApiService {
   }
 }
 
+class _ControlledPracticeSessionRepository extends PracticeSessionRepository {
+  // Super's positional field is library-private, so it cannot be a super-formal here.
+  // ignore: use_super_parameters
+  _ControlledPracticeSessionRepository(Box<PracticeSession> box) : super(box);
+
+  Future<void> Function(PracticeSession session)? saveHandler;
+  int saveCallCount = 0;
+
+  @override
+  Future<void> save(PracticeSession session) async {
+    saveCallCount++;
+    final handler = saveHandler;
+    if (handler != null) {
+      await handler(session);
+      return;
+    }
+    await super.save(session);
+  }
+}
+
 void main() {
   late Box<PracticeSession> box;
   late PracticeSessionRepository repo;
@@ -191,6 +251,7 @@ void main() {
   });
 
   PracticeChatController makeController({
+    PracticeSessionRepository? repository,
     PracticePendingHintStore? pendingHintStore,
     PracticePendingDrawStore? pendingDrawStore,
     Duration? hintRequestTimeout,
@@ -198,7 +259,7 @@ void main() {
   }) {
     final c = PracticeChatController(
       api: api,
-      repository: repo,
+      repository: repository ?? repo,
       draftStore: draftStore,
       pendingHintStore: pendingHintStore,
       pendingDrawStore: pendingDrawStore,
@@ -219,11 +280,12 @@ void main() {
 
   PracticeChatController makeControllerFrom(
     PracticeSession session, {
+    PracticeSessionRepository? repository,
     PracticePendingHintStore? pendingHintStore,
   }) {
     final c = PracticeChatController(
       api: api,
-      repository: repo,
+      repository: repository ?? repo,
       draftStore: draftStore,
       pendingHintStore: pendingHintStore,
       onUsageSynced: ({required monthlyRemaining, required dailyRemaining}) {
@@ -240,12 +302,14 @@ void main() {
 
   /// 進到 revealed（翻好一張牌）的 controller，給「需要先有對象才能聊天」的測試用。
   Future<PracticeChatController> makeRevealed({
+    PracticeSessionRepository? repository,
     PracticePendingHintStore? pendingHintStore,
     PracticePendingDrawStore? pendingDrawStore,
     Duration? hintRequestTimeout,
     Duration? sendMessageTimeout,
   }) async {
     final c = makeController(
+      repository: repository,
       pendingHintStore: pendingHintStore,
       pendingDrawStore: pendingDrawStore,
       hintRequestTimeout: hintRequestTimeout,
@@ -2671,6 +2735,7 @@ void main() {
             ),
           );
       await c.sendMessage('hello');
+      await pumpEventQueue();
 
       final completer = Completer<PracticeHintResult>();
       api.hintHandler = (_, {profile}) => completer.future;
@@ -2733,6 +2798,7 @@ void main() {
 
       c.continueWithSamePartner(isPaid: true);
       await c.sendMessage('新一輪 hello');
+      await pumpEventQueue();
 
       final completerB = Completer<PracticeHintResult>();
       api.hintHandler = (_, {profile}) => completerB.future;
@@ -2856,6 +2922,477 @@ void main() {
         expect(c.currentState.errorMessage, expectedMessage);
         expect(c.currentState.messages.map((m) => m.role), ['user', 'ai']);
       }
+    });
+  });
+
+  group('Hint prefetch controller flight', () {
+    PracticeChatReply assistedReply({
+      int aiTurnCount = 1,
+      bool complete = false,
+      int? hintUsedCount = 0,
+      String text = 'AI reply',
+    }) =>
+        reply(
+          text: text,
+          aiTurnCount: aiTurnCount,
+          complete: complete,
+          cost: 0,
+          hintUsedCount: hintUsedCount,
+          temperature: const PracticeTemperature(
+            score: 34,
+            delta: 4,
+            band: 'cold',
+            reason: '有延續',
+            familiarityScore: 4,
+            familiarityDelta: 4,
+            stageLabel: '建立熟悉中',
+          ),
+        );
+
+    Future<PracticeChatController> makeAssisted(
+      PracticeLearningMode mode, {
+      PracticeSessionRepository? repository,
+      PracticePendingHintStore? pendingHintStore,
+    }) async {
+      if (mode == PracticeLearningMode.game) {
+        api.drawHandler = ({currentProfileId}) async =>
+            drawResult(profileId: 'practice_girl_004');
+      }
+      final c = await makeRevealed(
+        repository: repository,
+        pendingHintStore: pendingHintStore,
+      );
+      await c.setPracticeLearningMode(mode);
+      return c;
+    }
+
+    PracticeSession assistedSession({
+      required String id,
+      int aiReplyCount = 1,
+      int hintUsedCount = 0,
+      bool ended = false,
+      String practiceMode = 'beginner',
+      String profileId = 'practice_girl_005',
+    }) =>
+        PracticeSession(
+          id: id,
+          createdAt: DateTime(2026, 7, 11, 12),
+          aiReplyCount: aiReplyCount,
+          messages: const [
+            PracticeMessage(role: 'user', text: 'durable user'),
+            PracticeMessage(role: 'ai', text: 'durable AI'),
+          ],
+          profileId: profileId,
+          practiceMode: practiceMode,
+          temperatureScore: 30,
+          familiarityScore: 0,
+          relationshipStageLabel: '建立熟悉中',
+          hintUsedCount: hintUsedCount,
+          debriefSummary: ended ? 'done' : null,
+        );
+
+    test('beginner AI reply fires one opaque prefetch with no formal call',
+        () async {
+      final c = await makeAssisted(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => assistedReply();
+
+      await c.sendMessage('hello');
+      await pumpEventQueue();
+
+      expect(api.prefetchHintCallCount, 1);
+      expect(api.hintCallCount, 0);
+      expect(api.lastPrefetchHintPracticeMode, PracticeLearningMode.beginner);
+      expect(api.lastPrefetchHintSessionId, c.currentState.sessionId);
+      expect(api.lastPrefetchHintTurns!.last.text, 'AI reply');
+    });
+
+    test('Game AI reply uses the same prefetch path', () async {
+      final c = await makeAssisted(PracticeLearningMode.game);
+      api.sendHandler = (_, {profile}) async => assistedReply();
+
+      await c.sendMessage('hello');
+      await pumpEventQueue();
+
+      expect(api.prefetchHintCallCount, 1);
+      expect(api.hintCallCount, 0);
+      expect(api.lastPrefetchHintPracticeMode, PracticeLearningMode.game);
+    });
+
+    test('standard, Hint cap, and session-complete states do not prefetch',
+        () async {
+      final standard = await makeRevealed();
+      api.sendHandler = (_, {profile}) async => reply(cost: 0);
+      await standard.sendMessage('standard');
+      await pumpEventQueue();
+      expect(api.prefetchHintCallCount, 0);
+
+      final capped = await makeAssisted(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async =>
+          assistedReply(hintUsedCount: kMaxPracticeHintsPerRound);
+      await capped.sendMessage('cap');
+      await pumpEventQueue();
+      expect(api.prefetchHintCallCount, 0);
+
+      final complete = await makeAssisted(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => assistedReply(complete: true);
+      await complete.sendMessage('complete');
+      await pumpEventQueue();
+      expect(api.prefetchHintCallCount, 0);
+
+      final ended = makeControllerFrom(assistedSession(
+        id: 'ended-prefetch',
+        ended: true,
+      ));
+      expect(ended.currentState.ended, true);
+      expect(api.prefetchHintCallCount, 0);
+    });
+
+    test('pending prefetch is invisible to UI and does not block chat',
+        () async {
+      final started = Completer<void>();
+      final gate = Completer<void>();
+      api.prefetchHandler = (turns, {profile}) {
+        if (!started.isCompleted) started.complete();
+        return gate.future;
+      };
+      final c = await makeAssisted(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => assistedReply();
+
+      await c.sendMessage('hello');
+      await started.future;
+
+      expect(c.currentState.isHintLoading, false);
+      expect(c.currentState.hintReplies, isEmpty);
+      expect(c.currentState.hintCoaching, isNull);
+      expect(c.currentState.hintUsedCount, 0);
+      expect(c.currentState.canSend, true);
+      expect(synced, isEmpty);
+      expect(api.hintCallCount, 0);
+
+      gate.complete();
+      await pumpEventQueue();
+    });
+
+    test('prefetch quota/error is fully silent after chat success', () async {
+      api.prefetchHandler = (turns, {profile}) async =>
+          throw PracticeQuotaExceededException('prefetch quota');
+      final c = await makeAssisted(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => assistedReply();
+
+      await c.sendMessage('hello');
+      await pumpEventQueue();
+
+      expect(api.prefetchHintCallCount, 1);
+      expect(c.currentState.errorMessage, isNull);
+      expect(c.currentState.quotaExceeded, false);
+      expect(c.currentState.messages.map((m) => m.role), ['user', 'ai']);
+      expect(c.currentState.canSend, true);
+    });
+
+    test('unconsumed round prefetches once; formal dispatch reopens next turn',
+        () async {
+      var aiCount = 0;
+      final c = await makeAssisted(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async =>
+          assistedReply(aiTurnCount: ++aiCount, text: 'AI $aiCount');
+
+      await c.sendMessage('one');
+      await pumpEventQueue();
+      await c.sendMessage('two');
+      await pumpEventQueue();
+      expect(api.prefetchHintCallCount, 1);
+
+      api.hintHandler = (_, {profile}) async => hintResult();
+      await c.requestHint();
+      expect(api.hintCallCount, 1);
+
+      await c.sendMessage('three');
+      await pumpEventQueue();
+      expect(api.prefetchHintCallCount, 2);
+    });
+
+    test('formal waits for prefetch ack and dispatches with the same requestId',
+        () async {
+      final started = Completer<void>();
+      final gate = Completer<void>();
+      api.prefetchHandler = (turns, {profile}) {
+        if (!started.isCompleted) started.complete();
+        return gate.future;
+      };
+      final c = await makeAssisted(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => assistedReply();
+      api.hintHandler = (_, {profile}) async => hintResult();
+
+      await c.sendMessage('hello');
+      await started.future;
+      final prefetchId = api.lastPrefetchHintRequestId;
+      final formalFuture = c.requestHint();
+      await pumpEventQueue();
+      expect(api.hintCallCount, 0);
+      expect(c.currentState.isHintLoading, true);
+
+      gate.complete();
+      await formalFuture;
+
+      expect(api.hintCallCount, 1);
+      expect(api.lastHintRequestId, prefetchId);
+      expect(api.hintRequestOrder, [
+        'prefetch:$prefetchId',
+        'formal:$prefetchId',
+      ]);
+    });
+
+    test('formal also waits for failed prefetch then uses the same requestId',
+        () async {
+      final started = Completer<void>();
+      final gate = Completer<void>();
+      api.prefetchHandler = (turns, {profile}) {
+        if (!started.isCompleted) started.complete();
+        return gate.future;
+      };
+      final c = await makeAssisted(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => assistedReply();
+      api.hintHandler = (_, {profile}) async => hintResult();
+
+      await c.sendMessage('hello');
+      await started.future;
+      final prefetchId = api.lastPrefetchHintRequestId;
+      final formalFuture = c.requestHint();
+      await pumpEventQueue();
+      expect(api.hintCallCount, 0);
+
+      gate.completeError(PracticeGenerationFailedException('prefetch failed'));
+      await formalFuture;
+
+      expect(api.hintCallCount, 1);
+      expect(api.lastHintRequestId, prefetchId);
+      expect(c.currentState.hintReplies, hasLength(2));
+    });
+
+    test('latest-turn formal waits for old session latch then uses a new id',
+        () async {
+      final started = Completer<void>();
+      final oldGate = Completer<void>();
+      api.prefetchHandler = (turns, {profile}) {
+        if (!started.isCompleted) started.complete();
+        return oldGate.future;
+      };
+      var aiCount = 0;
+      final c = await makeAssisted(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async =>
+          assistedReply(aiTurnCount: ++aiCount, text: 'AI $aiCount');
+      api.hintHandler = (_, {profile}) async => hintResult();
+
+      await c.sendMessage('one');
+      await started.future;
+      final oldId = api.lastPrefetchHintRequestId;
+      await c.sendMessage('two');
+      final formalFuture = c.requestHint();
+      await pumpEventQueue();
+      expect(api.prefetchHintCallCount, 1);
+      expect(api.hintCallCount, 0);
+
+      oldGate.complete();
+      await formalFuture;
+
+      expect(api.hintCallCount, 1);
+      expect(api.lastHintRequestId, isNot(oldId));
+      expect(api.lastFormalHintTurns!.last.text, 'AI 2');
+    });
+
+    test(
+        'different-session resume while awaiting prefetch cancels formal intent',
+        () async {
+      final started = Completer<void>();
+      final gate = Completer<void>();
+      api.prefetchHandler = (turns, {profile}) {
+        if (!started.isCompleted) started.complete();
+        return gate.future;
+      };
+      final c = await makeAssisted(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => assistedReply();
+      api.hintHandler = (_, {profile}) async => hintResult();
+
+      await c.sendMessage('hello');
+      await started.future;
+      final formalFuture = c.requestHint();
+      c.resumeSession(assistedSession(id: 'session-b'));
+      gate.complete();
+      await formalFuture;
+
+      expect(api.hintCallCount, 0);
+      expect(c.currentState.sessionId, 'session-b');
+      expect(c.currentState.isHintLoading, false);
+    });
+
+    test('same-session resume is a no-op and preserves flight plus requestId',
+        () async {
+      final started = Completer<void>();
+      final gate = Completer<void>();
+      api.prefetchHandler = (turns, {profile}) {
+        if (!started.isCompleted) started.complete();
+        return gate.future;
+      };
+      final c = await makeAssisted(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => assistedReply();
+      api.hintHandler = (_, {profile}) async => hintResult();
+
+      await c.sendMessage('hello');
+      await started.future;
+      final sameSession = repo.getById(c.currentState.sessionId)!;
+      final prefetchId = api.lastPrefetchHintRequestId;
+      final formalFuture = c.requestHint();
+      c.resumeSession(sameSession);
+      expect(c.currentState.isHintLoading, true);
+
+      gate.complete();
+      await formalFuture;
+
+      expect(api.hintCallCount, 1);
+      expect(api.lastHintRequestId, prefetchId);
+      expect(c.currentState.sessionId, sameSession.id);
+    });
+
+    test(
+        'rebuild without a Future keeps stored id through in-flight then replay',
+        () async {
+      final pendingStore = InMemoryPracticePendingHintStore();
+      const requestId = 'durable-prefetch-request';
+      await pendingStore.save(const PracticePendingHint(
+        sessionId: 'rebuilt-prefetch',
+        aiCount: 1,
+        requestId: requestId,
+      ));
+      final c = makeControllerFrom(
+        assistedSession(id: 'rebuilt-prefetch'),
+        pendingHintStore: pendingStore,
+      );
+      api.hintHandler = (_, {profile}) async => throw PracticeApiException(
+            'practice_hint_in_flight',
+            status: 403,
+          );
+
+      await c.requestHint();
+      expect(api.lastHintRequestId, requestId);
+      expect(pendingStore.load()!.requestId, requestId);
+
+      api.hintHandler = (_, {profile}) async => hintResult();
+      await c.requestHint();
+      expect(api.formalHintRequestIds, [requestId, requestId]);
+      expect(pendingStore.load(), isNull);
+    });
+
+    test(
+        'second-turn persist failure aborts awaiting formal and fully rolls back',
+        () async {
+      final controlled = _ControlledPracticeSessionRepository(box);
+      final saveStarted = Completer<void>();
+      final saveGate = Completer<void>();
+      controlled.saveHandler = (session) {
+        if (!saveStarted.isCompleted) saveStarted.complete();
+        return saveGate.future;
+      };
+      final prior = assistedSession(id: 'persist-failure');
+      final c = makeControllerFrom(
+        prior,
+        repository: controlled,
+      );
+      api.sendHandler = (_, {profile}) async =>
+          assistedReply(aiTurnCount: 2, text: 'phantom AI');
+      api.hintHandler = (_, {profile}) async => hintResult();
+
+      final sendFuture = c.sendMessage('second turn');
+      await saveStarted.future;
+      final formalFuture = c.requestHint();
+      await pumpEventQueue();
+      expect(api.prefetchHintCallCount, 0);
+      expect(api.hintCallCount, 0);
+
+      saveGate.completeError(StateError('local persistence failed'));
+      await sendFuture;
+      await formalFuture;
+
+      expect(api.prefetchHintCallCount, 0);
+      expect(api.hintCallCount, 0);
+      expect(c.currentState.aiReplyCount, prior.aiReplyCount);
+      expect(c.currentState.messages, prior.messages);
+      expect(c.currentState.isHintLoading, false);
+
+      controlled.saveHandler = null;
+      await c.sendMessage('durable retry');
+      await pumpEventQueue();
+      expect(api.prefetchHintCallCount, 1);
+    });
+
+    test(
+        'old persist failure cannot overwrite resumed session or its formal loading',
+        () async {
+      final controlled = _ControlledPracticeSessionRepository(box);
+      final saveStarted = Completer<void>();
+      final saveGate = Completer<void>();
+      controlled.saveHandler = (session) {
+        if (!saveStarted.isCompleted) saveStarted.complete();
+        return saveGate.future;
+      };
+      final c = makeControllerFrom(
+        assistedSession(id: 'session-a'),
+        repository: controlled,
+      );
+      api.sendHandler = (_, {profile}) async =>
+          assistedReply(aiTurnCount: 2, text: 'A pending AI');
+      final sendFuture = c.sendMessage('A second turn');
+      await saveStarted.future;
+
+      c.resumeSession(assistedSession(id: 'session-b'));
+      final bFormalGate = Completer<PracticeHintResult>();
+      api.hintHandler = (_, {profile}) => bFormalGate.future;
+      final bFormalFuture = c.requestHint();
+      expect(api.hintCallCount, 1);
+      expect(c.currentState.isHintLoading, true);
+
+      saveGate.completeError(StateError('A persistence failed'));
+      await sendFuture;
+      expect(c.currentState.sessionId, 'session-b');
+      expect(c.currentState.isHintLoading, true);
+      expect(api.prefetchHintCallCount, 0);
+
+      bFormalGate.complete(hintResult());
+      await bFormalFuture;
+      expect(c.currentState.sessionId, 'session-b');
+      expect(c.currentState.hintReplies, hasLength(2));
+    });
+
+    test('late formal A completion cannot clear newer formal B loading',
+        () async {
+      final c = await makeAssisted(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => assistedReply();
+      await c.sendMessage('A');
+      await pumpEventQueue();
+
+      final aGate = Completer<PracticeHintResult>();
+      final bGate = Completer<PracticeHintResult>();
+      var formalIndex = 0;
+      api.hintHandler = (_, {profile}) {
+        formalIndex++;
+        return formalIndex == 1 ? aGate.future : bGate.future;
+      };
+      final aFuture = c.requestHint();
+      expect(c.currentState.isHintLoading, true);
+
+      c.resumeSession(assistedSession(id: 'newer-b'));
+      final bFuture = c.requestHint();
+      expect(api.hintCallCount, 2);
+      expect(c.currentState.isHintLoading, true);
+
+      aGate.complete(hintResult());
+      await aFuture;
+      expect(c.currentState.sessionId, 'newer-b');
+      expect(c.currentState.isHintLoading, true);
+
+      bGate.complete(hintResult());
+      await bFuture;
+      expect(c.currentState.isHintLoading, false);
+      expect(c.currentState.hintReplies, hasLength(2));
     });
   });
 
