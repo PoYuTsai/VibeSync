@@ -267,6 +267,7 @@ Deno.test("Discard and release never clear another request owner", () => {
   assert(discard.includes("FOR UPDATE"));
   assert(discard.includes("v_request.state = 'settled'"));
   assert(discard.includes("request_id = p_request_id"));
+  assert(discard.includes("is_prefetch = TRUE"));
   assert(discard.includes("state IN ('generating', 'prefetched')"));
 
   const release = functionBody("release_practice_hint_generation");

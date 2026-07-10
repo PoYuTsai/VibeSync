@@ -1033,6 +1033,7 @@ BEGIN
   WHERE r.user_id = p_user_id
     AND r.session_id = p_session_id
     AND r.request_id = p_request_id
+    AND r.is_prefetch = TRUE
     AND r.state IN ('generating', 'prefetched');
   GET DIAGNOSTICS v_rows = ROW_COUNT;
 
