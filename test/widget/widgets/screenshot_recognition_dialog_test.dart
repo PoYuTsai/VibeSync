@@ -403,6 +403,38 @@ void main() {
       );
     });
 
+    testWidgets('開啟時對第一則泡泡播一次性滑動教學動畫，播完停在原位', (tester) async {
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pump();
+      // 動畫中段：第一則泡泡有水平位移、示意箭頭可見。
+      await tester.pump(const Duration(milliseconds: 400));
+      final shifting = tester.widget<Transform>(
+        find.byKey(const ValueKey('ocr-swipe-tutorial-shift')),
+      );
+      expect(shifting.transform.getTranslation().x, isNot(0));
+      expect(
+        find.byKey(const ValueKey('ocr-swipe-tutorial-arrow')),
+        findsOneWidget,
+      );
+
+      // 一次性：pumpAndSettle 必收斂（零無限 repeat），播完位移歸零。
+      await tester.pumpAndSettle();
+      final settled = tester.widget<Transform>(
+        find.byKey(const ValueKey('ocr-swipe-tutorial-shift')),
+      );
+      expect(settled.transform.getTranslation().x, 0);
+    });
+
     testWidgets('全部都是對方說的時隱藏兜底鍵', (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(

@@ -59,7 +59,8 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
 }
 
 class _ScreenshotRecognitionDialogState
-    extends State<ScreenshotRecognitionDialog> {
+    extends State<ScreenshotRecognitionDialog>
+    with SingleTickerProviderStateMixin {
   late final TextEditingController _nameController;
   late final TextEditingController _analysisContextNoteController;
   late MeetingContext? _selectedMeeting;
@@ -68,6 +69,12 @@ class _ScreenshotRecognitionDialogState
   late String _selectedImportMode;
   late final List<_EditableRecognizedMessage> _editableMessages;
   String? _editValidationMessage;
+
+  // 滑動教學：dialog 開啟時對第一則泡泡播一次左右示意（forward 一次、零 repeat，
+  // 播完停在原位），只提示本次開啟，不落地「看過」旗標。
+  late final AnimationController _swipeTutorialController;
+  late final Animation<double> _swipeTutorialShift;
+  late final Animation<double> _swipeTutorialArrowOpacity;
 
   @override
   void initState() {
@@ -83,10 +90,47 @@ class _ScreenshotRecognitionDialogState
         (widget.recognized.messages ?? const <RecognizedMessage>[])
             .map(_EditableRecognizedMessage.fromRecognizedMessage)
             .toList();
+
+    _swipeTutorialController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+    // 右去右回、左去左回各一趟（對應右滑我說／左滑她說），首尾都是 0。
+    _swipeTutorialShift = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 0.0, end: 24.0)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 25,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 24.0, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 25,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 0.0, end: -24.0)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 25,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: -24.0, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 25,
+      ),
+    ]).animate(_swipeTutorialController);
+    _swipeTutorialArrowOpacity = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 15),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 70),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 15),
+    ]).animate(_swipeTutorialController);
+    if (_editableMessages.isNotEmpty) {
+      _swipeTutorialController.forward();
+    }
   }
 
   @override
   void dispose() {
+    _swipeTutorialController.dispose();
     _nameController.dispose();
     _analysisContextNoteController.dispose();
     for (final message in _editableMessages) {
@@ -356,9 +400,46 @@ class _ScreenshotRecognitionDialogState
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => _openMessageEditor(index),
-          child: _buildBubble(message),
+          child: index == 0
+              ? _buildTutorialBubble(message)
+              : _buildBubble(message),
         ),
       ),
+    );
+  }
+
+  /// 第一則泡泡包滑動教學動畫：水平位移跟著 [_swipeTutorialShift]、示意箭頭
+  /// 淡入淡出跟著 [_swipeTutorialArrowOpacity]；播完位移歸零、箭頭全透明。
+  Widget _buildTutorialBubble(_EditableRecognizedMessage message) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        AnimatedBuilder(
+          animation: _swipeTutorialShift,
+          builder: (context, child) => Transform.translate(
+            key: const ValueKey('ocr-swipe-tutorial-shift'),
+            offset: Offset(_swipeTutorialShift.value, 0),
+            child: child,
+          ),
+          child: _buildBubble(message),
+        ),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: FadeTransition(
+                opacity: _swipeTutorialArrowOpacity,
+                child: const Icon(
+                  Icons.swap_horiz_rounded,
+                  key: ValueKey('ocr-swipe-tutorial-arrow'),
+                  size: 18,
+                  color: AppColors.ctaStart,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
