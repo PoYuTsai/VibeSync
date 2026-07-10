@@ -4424,6 +4424,46 @@ Deno.test("formal Hint consumes an exact prefetched snapshot through settle only
   assertEquals(recordHintCalls(state).length, 0);
 });
 
+Deno.test("test account consumes prefetched Hint without charging but still increments count", async () => {
+  const prefetched = storedHintResult({
+    costDeducted: 0,
+    hintUsedCount: 1,
+    monthlyRemaining: 290,
+    dailyRemaining: 48,
+  });
+  const { response, json, state } = await run(
+    {
+      user: { id: "user-1", email: "vibesync.test@gmail.com" },
+      ledger: beginnerStartedLedger({ hint_count: 1 }),
+      hintRequest: {
+        state: "prefetched",
+        charged: false,
+        is_prefetch: true,
+        claimed_ai_count: 1,
+        result: prefetched,
+      },
+      env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "prefetched-formal-test-account",
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.costDeducted, 0);
+  assertEquals(json.hintUsedCount, 2);
+  assertEquals(json.monthlyRemaining, 290);
+  assertEquals(json.dailyRemaining, 48);
+  assertEquals(settleHintCalls(state).length, 1);
+  assertEquals(settleHintCalls(state)[0].params.p_charge_quota, false);
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(hintModelRateCalls(state).length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
 Deno.test("formal Hint fails closed on an unconfirmed settle response", async () => {
   const prefetched = storedHintResult({ costDeducted: 0, hintUsedCount: 0 });
   const { response, json, state } = await run(
