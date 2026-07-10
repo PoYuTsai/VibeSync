@@ -572,7 +572,9 @@ function beginnerFallbackAnchor(latestAssistant: string): string {
  */
 function latestAssistantShowsHostility(latestAssistant: string): boolean {
   const normalized = latestAssistant.normalize("NFKC").toLowerCase();
-  return /封鎖|不用再傳|不要再傳|別再傳|別再來|別來亂|不想(?:再)?聊了|不想跟你聊|不想理你|(?:不要|別)(?:再)?吵我|離我遠|你很煩|滾開/
+  // 「你很煩」在調情語境常是玩笑吐槽，不入列；真敵意幾乎必伴隨
+  // 不想聊了/別再傳等詞條，漏判也只是退中性罐頭。
+  return /封鎖|不用再傳|不要再傳|別再傳|別再來|別來亂|不想(?:再)?聊了|不想跟你聊|不想理你|(?:不要|別)(?:再)?吵我|離我遠|滾開/
     .test(normalized);
 }
 
