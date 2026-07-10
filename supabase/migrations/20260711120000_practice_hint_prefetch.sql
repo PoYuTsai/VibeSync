@@ -239,7 +239,10 @@ BEGIN
     RAISE EXCEPTION 'PRACTICE_SUBSCRIPTION_NOT_FOUND';
   END IF;
 
-  IF v_sub.monthly_reset_at < v_month_start THEN
+  -- Nullable reset timestamps are legacy-valid. Match the existing Edge
+  -- semantics: NULL means the window has never been reset.
+  IF v_sub.monthly_reset_at IS NULL
+     OR v_sub.monthly_reset_at < v_month_start THEN
     UPDATE public.subscriptions AS s
     SET monthly_messages_used = 0,
         monthly_reset_at = v_month_start
@@ -248,7 +251,8 @@ BEGIN
     v_sub.monthly_reset_at := v_month_start;
   END IF;
 
-  IF v_sub.daily_reset_at < v_day_start THEN
+  IF v_sub.daily_reset_at IS NULL
+     OR v_sub.daily_reset_at < v_day_start THEN
     UPDATE public.subscriptions AS s
     SET daily_messages_used = 0,
         daily_reset_at = v_day_start

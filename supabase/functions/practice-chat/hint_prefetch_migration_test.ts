@@ -160,6 +160,18 @@ Deno.test("Subscription preparation owns reset under the subscription row lock",
   assert(compact.includes("daily_messages_used = 0"));
   assert(
     compact.includes(
+      "IF v_sub.monthly_reset_at IS NULL OR v_sub.monthly_reset_at < v_month_start THEN",
+    ),
+    "NULL monthly reset timestamps must behave as never reset",
+  );
+  assert(
+    compact.includes(
+      "IF v_sub.daily_reset_at IS NULL OR v_sub.daily_reset_at < v_day_start THEN",
+    ),
+    "NULL daily reset timestamps must behave as never reset",
+  );
+  assert(
+    compact.includes(
       "RETURNS TABLE( tier TEXT, monthly_messages_used INTEGER, daily_messages_used INTEGER, daily_reset_at TIMESTAMPTZ, monthly_reset_at TIMESTAMPTZ )",
     ),
   );
