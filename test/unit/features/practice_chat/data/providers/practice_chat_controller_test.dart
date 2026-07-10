@@ -3283,6 +3283,61 @@ void main() {
     });
 
     test(
+        'lost chat response plus stale prefetch blocks Hint until chat advances',
+        () async {
+      final pendingStore = InMemoryPracticePendingHintStore();
+      final c = await makeAssisted(
+        PracticeLearningMode.beginner,
+        pendingHintStore: pendingStore,
+      );
+      api.sendHandler = (_, {profile}) async => assistedReply();
+
+      await c.sendMessage('first turn');
+      await pumpEventQueue();
+      final staleId = api.lastPrefetchHintRequestId!;
+      expect(pendingStore.load()!.requestId, staleId);
+
+      // The server may have committed this chat even though the client timed
+      // out and rolled back to the prior local transcript.
+      api.sendHandler =
+          (_, {profile}) async => throw TimeoutException('chat response lost');
+      await c.sendMessage('lost turn');
+      expect(c.currentState.aiReplyCount, 1);
+
+      api.hintHandler = (_, {profile}) async =>
+          throw PracticeApiException('practice_hint_stale', status: 409);
+      await c.requestHint();
+
+      expect(api.hintCallCount, 1);
+      expect(api.lastHintRequestId, staleId);
+      expect(pendingStore.load()!.requestId, staleId);
+      expect(
+        c.currentState.errorMessage,
+        '對話進度已往前，請先送出一則訊息同步，再取提示。',
+      );
+
+      // Repeated Hint taps must not mint a new id against the stale transcript.
+      await c.requestHint();
+      expect(api.hintCallCount, 1);
+      expect(pendingStore.load()!.requestId, staleId);
+
+      // A successful chat returns the authoritative count, advances the local
+      // fingerprint, and permits a fresh prefetch/formal pair.
+      api.sendHandler = (_, {profile}) async =>
+          assistedReply(aiTurnCount: 3, text: 'recovered AI');
+      await c.sendMessage('lost turn');
+      await pumpEventQueue();
+      expect(api.prefetchHintCallCount, 2);
+      final recoveredId = api.lastPrefetchHintRequestId!;
+      expect(recoveredId, isNot(staleId));
+
+      api.hintHandler = (_, {profile}) async => hintResult();
+      await c.requestHint();
+      expect(api.hintCallCount, 2);
+      expect(api.lastHintRequestId, recoveredId);
+    });
+
+    test(
         'second-turn persist failure aborts awaiting formal and fully rolls back',
         () async {
       final controlled = _ControlledPracticeSessionRepository(box);

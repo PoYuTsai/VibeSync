@@ -503,6 +503,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   PracticePendingHint? _pendingHintRequest;
   _HintPrefetchFlight? _hintPrefetchFlight;
   bool _hintPrefetchAttemptedSinceFormalDispatch = false;
+  bool _hintRequiresConversationAdvance = false;
 
   PracticePendingHint? _loadPendingHintSafely() {
     try {
@@ -589,6 +590,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     _pendingHintRequest = null;
     _hintPrefetchFlight = null;
     _hintPrefetchAttemptedSinceFormalDispatch = false;
+    _hintRequiresConversationAdvance = false;
     _appliedHintTurns.clear();
     unawaited(_clearPendingHintSafely());
   }
@@ -1375,6 +1377,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         }
         rethrow;
       }
+      _hintRequiresConversationAdvance = false;
       if (hintPrefetchFlight != null) {
         _launchHintPrefetchAfterPersist(hintPrefetchFlight);
       }
@@ -1465,6 +1468,13 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 結束練習，請伺服器產一張教練拆解卡（同場不另扣額度）。
   Future<void> requestHint() async {
     if (!state.canRequestHint) return;
+    if (_hintRequiresConversationAdvance) {
+      state = state.copyWith(
+        isHintLoading: false,
+        errorMessage: _hintStaleConversationMessage,
+      );
+      return;
+    }
     final intentState = state;
     final intentSessionId = intentState.sessionId;
     final intentAiCount = intentState.aiReplyCount;
@@ -1599,6 +1609,20 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: _practiceModeLockedMessage,
       );
     } on PracticeApiException catch (e) {
+      if (e.message == 'practice_hint_stale') {
+        if (_dropStaleHint(generation)) return;
+        // Keep the exact stale id as a persistent fence. Minting a fresh id
+        // against the locally stale transcript could generate and charge a
+        // Hint for the wrong server turn. A successful chat response advances
+        // aiReplyCount, naturally replaces the fingerprint, and clears this
+        // process-local block.
+        _hintRequiresConversationAdvance = true;
+        state = state.copyWith(
+          isHintLoading: false,
+          errorMessage: _hintStaleConversationMessage,
+        );
+        return;
+      }
       // 429＝server per-user 模型限流：沒打模型、沒扣費、沒占 latch，
       // id 保留供等待後重試（沿用同 id 可吃 server replay 去重）。
       if (e.status == 429) {
@@ -1986,6 +2010,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
 }
 
 const _hintGenericErrorMessage = '提示暫時產生失敗，等一下再試。';
+const _hintStaleConversationMessage = '對話進度已往前，請先送出一則訊息同步，再取提示。';
 const _debriefGenericErrorMessage = '拆解卡生成失敗，可以再按一次。';
 const _debriefServiceUnavailableMessage = '拆解服務暫時無法使用，請稍後再試。';
 

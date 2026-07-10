@@ -927,6 +927,16 @@ class PracticeChatApiService {
         throw PracticeHintLimitException();
       }
     }
+    if (response.status == 409) {
+      final data = response.data is Map ? response.data as Map : const {};
+      final error = data['error'];
+      // Hint-specific conflicts are retry/recovery states, not a completed
+      // practice session. Keep them out of the shared 409 fallback below.
+      if (error == 'practice_hint_stale' ||
+          error == 'practice_hint_prefetch_pending') {
+        throw PracticeApiException(error as String, status: 409);
+      }
+    }
     return _guardStatus(response);
   }
 

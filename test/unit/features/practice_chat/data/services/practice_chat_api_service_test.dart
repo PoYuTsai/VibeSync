@@ -1453,6 +1453,23 @@ void main() {
       );
     });
 
+    test('409 practice_hint_stale stays a retryable Hint conflict', () async {
+      final svc = serviceReturning(409, {'error': 'practice_hint_stale'});
+
+      expect(
+        () => svc.requestHint(
+          sessionId: 'session-1',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(
+          isA<PracticeApiException>()
+              .having((e) => e.status, 'status', 409)
+              .having((e) => e.message, 'message', 'practice_hint_stale'),
+        ),
+      );
+    });
+
     test('403 practice_hint_limit maps to PracticeHintLimitException',
         () async {
       final svc = serviceReturning(403, {'error': 'practice_hint_limit'});
