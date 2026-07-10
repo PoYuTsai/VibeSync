@@ -8,6 +8,7 @@ import {
   buildTemperatureJudgeMessages,
   clampTemperature,
   parseTemperatureJudgement,
+  temperatureBandDebriefInstruction,
   temperatureBandFor,
 } from "./temperature.ts";
 import { resolvePracticeProfile } from "./practice_persona.ts";
@@ -23,6 +24,36 @@ Deno.test("temperatureBandFor maps score ranges", () => {
   assertEquals(temperatureBandFor(50), "neutral");
   assertEquals(temperatureBandFor(70), "warm");
   assertEquals(temperatureBandFor(95), "hot");
+});
+
+Deno.test("temperatureBandDebriefInstruction 注入 band、含不矛盾與不洩漏規則", () => {
+  const low = temperatureBandDebriefInstruction(15);
+  assert(low.includes("升溫指數 15/100"));
+  assert(low.includes("frozen"));
+  assert(low.includes("不得與這個溫度矛盾"));
+  assert(
+    low.includes(
+      "不得向使用者提及升溫指數、score、band、temperature 或內部評估",
+    ),
+  );
+
+  const hot = temperatureBandDebriefInstruction(92);
+  assert(hot.includes("升溫指數 92/100"));
+  assert(hot.includes("hot"));
+  assert(hot.includes("不得與這個溫度矛盾"));
+});
+
+Deno.test("temperatureBandDebriefInstruction 各檔位語氣方向正確", () => {
+  // 低檔要求保守、不得誇大熱絡；高檔要求如實反映投入、不得說成毫無進展。
+  assert(temperatureBandDebriefInstruction(10).includes("保守"));
+  assert(temperatureBandDebriefInstruction(30).includes("誇大"));
+  assert(temperatureBandDebriefInstruction(70).includes("毫無進展"));
+  assert(temperatureBandDebriefInstruction(95).includes("毫無進展"));
+});
+
+Deno.test("temperatureBandDebriefInstruction 非法分數 clamp 後不 throw", () => {
+  assert(temperatureBandDebriefInstruction(Number.NaN).includes("0/100"));
+  assert(temperatureBandDebriefInstruction(120).includes("100/100"));
 });
 
 Deno.test("applyTemperatureDelta returns updated score and band", () => {

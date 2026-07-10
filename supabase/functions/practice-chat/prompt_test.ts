@@ -267,6 +267,45 @@ Deno.test("beginner buildDebriefMessages：省略 temperatureScore 與明確傳�
   assertEquals(omitted, explicit);
 });
 
+Deno.test("beginner buildDebriefMessages 注入實際溫度 band 與不矛盾約束", () => {
+  const user = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "嗯？" }],
+    defaultProfile,
+    { practiceMode: "beginner", temperatureScore: 15, familiarityScore: 10 },
+  )[1].content;
+
+  assertEquals(user.includes("升溫指數 15/100"), true);
+  assertEquals(user.includes("frozen"), true);
+  assertEquals(user.includes("不得與這個溫度矛盾"), true);
+  assertEquals(
+    user.includes(
+      "不得向使用者提及升溫指數、score、band、temperature 或內部評估",
+    ),
+    true,
+  );
+});
+
+Deno.test("game buildDebriefMessages 注入實際溫度 band", () => {
+  const user = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "嗯？" }],
+    resolvePracticeProfile({ profileId: "practice_girl_004" }),
+    { practiceMode: "game", temperatureScore: 76, familiarityScore: 66 },
+  )[1].content;
+
+  assertEquals(user.includes("升溫指數 76/100"), true);
+  assertEquals(user.includes("不得與這個溫度矛盾"), true);
+});
+
+Deno.test("standard buildDebriefMessages 不注入溫度 band", () => {
+  const user = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "嗯？" }],
+    defaultProfile,
+    { temperatureScore: 80 },
+  )[1].content;
+
+  assertEquals(user.includes("升溫指數"), false);
+});
+
 Deno.test("beginner buildChatMessages includes relationship stage without exposing familiarity score", () => {
   const options = {
     practiceMode: "beginner",

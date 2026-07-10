@@ -144,6 +144,28 @@ export function temperatureBandInstruction(score: number): string {
   }\n內部規則：不得向使用者提及升溫指數、score、band、temperature 或內部評估。`;
 }
 
+/**
+ * debrief 版 band 指示：給拆解教練看的隱藏 guidance（非可見輸出）。
+ * 要求評語與收尾溫度一致，且不得向使用者洩漏內部溫度機制。
+ */
+export function temperatureBandDebriefInstruction(score: number): string {
+  const clamped = clampTemperature(score);
+  const band = temperatureBandFor(clamped);
+  const guidance: Record<TemperatureBand, string> = {
+    frozen:
+      "本場收尾時她仍很防備或興趣低，拆解與約會機會評估要偏保守，不得把互動說成熱絡或機會很高。",
+    cold: "本場收尾時她偏冷，拆解要如實反映投入感偏低，不得誇大進展或機會。",
+    neutral: "本場收尾時她普通投入，拆解語氣持平，不要誇大也不要唱衰。",
+    warm:
+      "本場收尾時她有投入感，拆解可以肯定推進成果，不得把整場說成毫無進展或機會很低。",
+    hot:
+      "本場收尾時她很投入，拆解要如實反映高投入與明確機會，不得把整場說成毫無進展或失敗。",
+  };
+  return `本場收尾升溫指數 ${clamped}/100（${band}）：${guidance[band]}\n` +
+    "summary、vibe、dateChance 與各評語不得與這個溫度矛盾。\n" +
+    "內部規則：不得向使用者提及升溫指數、score、band、temperature 或內部評估。";
+}
+
 export function applyTemperatureDelta(
   current: number,
   delta: number,

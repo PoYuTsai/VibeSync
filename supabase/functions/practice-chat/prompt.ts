@@ -24,6 +24,7 @@ import { scrubRawImageFilenames } from "./prompt_sanitizer.ts";
 import {
   type PartnerState,
   relationshipStageFor,
+  temperatureBandDebriefInstruction,
   temperatureBandInstruction,
 } from "./temperature.ts";
 import {
@@ -391,12 +392,17 @@ export function buildDebriefMessages(
   const assistedMode = isAssistedPracticeMode(
     options.practiceMode ?? "standard",
   );
+  // 難度接線：省略 temperatureScore 時 fallback 到本場難度起始溫度（與 chat 一致）。
+  const effectiveTemperature = options.temperatureScore ??
+    difficultyTuningFor(profile.difficulty).startTemperature;
+  const temperaturePrompt = assistedMode
+    ? `${temperatureBandDebriefInstruction(effectiveTemperature)}\n\n`
+    : "";
   const stagePrompt = assistedMode
     ? `本場抽象關係階段：${
       relationshipStageFor(
         options.familiarityScore ?? 0,
-        options.temperatureScore ??
-          difficultyTuningFor(profile.difficulty).startTemperature,
+        effectiveTemperature,
       ).label
     }\n` +
       `拆解升溫/降溫時，請用這個階段解釋使用者有沒有接住情緒、界線或小測試，不要提熟悉度分數。\n\n`
@@ -404,8 +410,7 @@ export function buildDebriefMessages(
   const invitePrompt = assistedMode
     ? inviteMaturityPrompt(
       inviteMaturityFromLearningScores({
-        temperatureScore: options.temperatureScore ??
-          difficultyTuningFor(profile.difficulty).startTemperature,
+        temperatureScore: effectiveTemperature,
         familiarityScore: options.familiarityScore ?? 0,
         partnerMood: options.partnerState?.mood ?? null,
       }),
@@ -418,8 +423,7 @@ export function buildDebriefMessages(
     turns,
     profile,
     practiceMode: options.practiceMode,
-    temperatureScore: options.temperatureScore ??
-      difficultyTuningFor(profile.difficulty).startTemperature,
+    temperatureScore: effectiveTemperature,
     familiarityScore: options.familiarityScore ?? 0,
     partnerState: options.partnerState,
     gameState: options.gameState,
@@ -437,6 +441,7 @@ export function buildDebriefMessages(
         debriefSceneContextLine(options.sceneContext) +
         memorySummaryPrompt(options.memorySummary) +
         "\n\n" +
+        temperaturePrompt +
         stagePrompt +
         invitePrompt +
         (gamePrompt ? `\n\n${gamePrompt}\n\n` : "\n\n") +
