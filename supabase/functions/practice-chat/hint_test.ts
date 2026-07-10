@@ -8,6 +8,8 @@ import {
   buildFallbackHintResult,
   buildHintMessages,
   GAME_HINT_MOVE_EXAMPLES,
+  GAME_INVITE_ROUTE_ADVICE,
+  GAME_INVITE_ROUTE_LABEL,
   parseHintResult,
 } from "./hint.ts";
 import { resolvePracticeProfile } from "./practice_persona.ts";
@@ -622,6 +624,35 @@ Deno.test("Game fallback visible output contains no 1.2 raw jargon", () => {
       false,
       `1.2 raw jargon leaked for latest=${scenario.latest}: ${visible}`,
     );
+  }
+});
+
+Deno.test("GAME_INVITE_ROUTE labels and advice pass the visible-output guard pipeline unchanged", () => {
+  // 這組常數雙用途：fallback coaching（可見）＋主 prompt 階梯指令；
+  // 任何一階的文案都必須原樣通過與 LLM 輸出相同的守門管道。
+  const routes = ["build", "soft", "direct", "repair"] as const;
+  for (const route of routes) {
+    const label = GAME_INVITE_ROUTE_LABEL[route];
+    const advice = GAME_INVITE_ROUTE_ADVICE[route];
+    const coaching = `Game 心法：她在觀望。速約任務：${label}，${advice}。`;
+    assert(
+      Array.from(coaching).length <= 160,
+      `route coaching too long: ${route}`,
+    );
+    assertEquals(
+      /DHV|框架|篩選|推拉|可得性/.test(`${label}${advice}`),
+      false,
+      `1.2 raw jargon in route copy: ${route}`,
+    );
+    const parsed = parseHintResult(
+      JSON.stringify({
+        warmUp: "我先給我的版本：我吃有畫面但不太用力的節奏。妳是哪一派？",
+        steady: "先不急著約。這題聊順，再把它變成一個下次短咖啡的小窗口。",
+        coaching,
+      }),
+      { mode: "game" },
+    );
+    assertEquals(parsed.coaching, coaching, `route copy repaired: ${route}`);
   }
 });
 

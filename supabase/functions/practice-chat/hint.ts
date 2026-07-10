@@ -530,7 +530,7 @@ function evidenceBoundBeginnerFallbackReplies(latestAssistant: string): {
 type GameInviteRoute = "build" | "soft" | "direct" | "repair";
 
 /** 速約階梯各階的白話標籤（對齊 repairGameVisibleLabels/debrief 用語）。 */
-const GAME_INVITE_ROUTE_LABEL: Record<GameInviteRoute, string> = {
+export const GAME_INVITE_ROUTE_LABEL: Record<GameInviteRoute, string> = {
   build: "先鋪墊",
   soft: "低壓試探邀約",
   direct: "明確但低壓邀約",
@@ -538,7 +538,7 @@ const GAME_INVITE_ROUTE_LABEL: Record<GameInviteRoute, string> = {
 };
 
 /** 速約階梯各階的推進建議；fallback coaching 與主 prompt 共用同一套。 */
-const GAME_INVITE_ROUTE_ADVICE: Record<GameInviteRoute, string> = {
+export const GAME_INVITE_ROUTE_ADVICE: Record<GameInviteRoute, string> = {
   build: "這輪先不約，先把她的偏好變成可兌現的小場景，鋪下一個窗口",
   soft: "用「下次／改天」丟低壓窗口，保留退路",
   direct: "把窗口收成 30 分鐘短咖啡或小行程，具體但可拒絕",
