@@ -53,6 +53,7 @@ import '../../domain/mindmap/mind_map_builder.dart';
 import '../../domain/mindmap/partner_insight_presentation.dart';
 import '../dialogs/partner_settings_dialog.dart';
 import '../providers/partner_providers.dart';
+import '../utils/conversation_recency_sections.dart';
 import '../widgets/partner_conversation_tile.dart';
 import '../widgets/partner_data_quality_banner.dart';
 import '../widgets/partner_heat_hero_card.dart';
@@ -357,8 +358,18 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
           ],
         ),
       ),
-      ...conversations.map(
-        (c) => Padding(
+      ..._sectionedConversationTiles(context, ref, conversations),
+    ];
+  }
+
+  /// 依 30 天分區：兩區都有才顯示「進行中／較早的對話」header 與收合區；
+  /// 全部同一區（全新或全舊）維持單一列表，全舊直接展開顯示不留空白。
+  List<Widget> _sectionedConversationTiles(
+    BuildContext context,
+    WidgetRef ref,
+    List<Conversation> conversations,
+  ) {
+    Widget tileFor(Conversation c) => Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: PartnerConversationTile(
             conversation: c,
@@ -370,6 +381,40 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
             ),
             onDelete: () => _confirmDeleteConversation(context, ref, c),
           ),
+        );
+
+    final sections =
+        partitionConversationsByRecency(conversations, DateTime.now());
+    if (sections.active.isEmpty || sections.older.isEmpty) {
+      return conversations.map(tileFor).toList();
+    }
+
+    return [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(
+          '進行中',
+          style: AppTypography.bodySmall.copyWith(
+            color: AppColors.onBackgroundSecondary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      ...sections.active.map(tileFor),
+      Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 4),
+          iconColor: AppColors.onBackgroundSecondary,
+          collapsedIconColor: AppColors.onBackgroundSecondary,
+          title: Text(
+            '較早的對話 (${sections.older.length})',
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.onBackgroundSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          children: sections.older.map(tileFor).toList(),
         ),
       ),
     ];
