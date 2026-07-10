@@ -1330,6 +1330,7 @@ void main() {
           photoId: 'practice_girl_007',
         ),
         turns: turns,
+        expectedAiCount: 7,
         roundIndex: 4,
         visiblePracticeThreadId: 'thread-abc',
       );
@@ -1339,6 +1340,7 @@ void main() {
       expect(captured.body?['prefetch'], false);
       expect(captured.body?['practiceMode'], 'beginner');
       expect(captured.body?['sessionId'], 'session-1');
+      expect(captured.body?['expectedAiCount'], 7);
       expect(captured.body?['personaId'], 'cool_rational');
       expect(captured.body?['difficulty'], 'challenge');
       expect(captured.body?['profileId'], 'practice_girl_007');
@@ -1539,6 +1541,7 @@ void main() {
           photoId: 'practice_girl_007',
         ),
         turns: turns,
+        expectedAiCount: 3,
         roundIndex: 4,
         visiblePracticeThreadId: 'thread-abc',
         memorySummary: '  durable memory  ',
@@ -1555,6 +1558,7 @@ void main() {
         'mode': 'hint',
         'sessionId': 'session-1',
         'requestId': 'hint-prefetch-1',
+        'expectedAiCount': 3,
         'prefetch': true,
         'practiceMode': 'game',
         'personaId': 'cool_rational',

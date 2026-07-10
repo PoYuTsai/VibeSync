@@ -188,10 +188,12 @@ ON CONFLICT (user_id, session_id, request_id) DO NOTHING;
 DROP FUNCTION IF EXISTS public.claim_practice_hint_generation(UUID, TEXT, INTEGER, TEXT);
 DROP FUNCTION IF EXISTS public.claim_practice_hint_generation(UUID, TEXT, INTEGER, TEXT, BOOLEAN);
 DROP FUNCTION IF EXISTS public.claim_practice_hint_generation(UUID, TEXT, INTEGER, TEXT, BOOLEAN, TEXT);
+DROP FUNCTION IF EXISTS public.claim_practice_hint_generation(UUID, TEXT, INTEGER, TEXT, BOOLEAN, TEXT, INTEGER);
 DROP FUNCTION IF EXISTS public.record_practice_hint(UUID, TEXT, BOOLEAN, INTEGER, TEXT, JSONB);
 DROP FUNCTION IF EXISTS public.record_practice_hint(UUID, TEXT, BOOLEAN, INTEGER, TEXT, JSONB, BOOLEAN, INTEGER, INTEGER, INTEGER);
 DROP FUNCTION IF EXISTS public.record_practice_hint(UUID, TEXT, BOOLEAN, INTEGER, TEXT, JSONB, BOOLEAN, INTEGER, INTEGER, INTEGER, TEXT);
 DROP FUNCTION IF EXISTS public.settle_prefetched_practice_hint(UUID, TEXT, TEXT, BOOLEAN, INTEGER, INTEGER, INTEGER, INTEGER);
+DROP FUNCTION IF EXISTS public.settle_prefetched_practice_hint(UUID, TEXT, TEXT, BOOLEAN, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER);
 DROP FUNCTION IF EXISTS public.discard_prefetched_practice_hint(UUID, TEXT, TEXT);
 DROP FUNCTION IF EXISTS public.release_practice_hint_generation(UUID, TEXT);
 DROP FUNCTION IF EXISTS public.release_practice_hint_generation(UUID, TEXT, TEXT);
@@ -276,7 +278,8 @@ CREATE OR REPLACE FUNCTION public.claim_practice_hint_generation(
   p_max_hints  INTEGER,
   p_request_id TEXT DEFAULT NULL,
   p_prefetch   BOOLEAN DEFAULT FALSE,
-  p_generation_token TEXT DEFAULT NULL
+  p_generation_token TEXT DEFAULT NULL,
+  p_expected_ai_count INTEGER DEFAULT NULL
 )
 RETURNS TABLE(
   current_hint_count INTEGER,
@@ -314,6 +317,10 @@ BEGIN
   IF p_generation_token IS NOT NULL
      AND (length(p_generation_token) = 0 OR length(p_generation_token) > 64) THEN
     RAISE EXCEPTION 'claim_practice_hint_generation: invalid p_generation_token';
+  END IF;
+  IF p_expected_ai_count IS NOT NULL
+     AND (p_expected_ai_count < 1 OR p_expected_ai_count > 20) THEN
+    RAISE EXCEPTION 'claim_practice_hint_generation: invalid p_expected_ai_count';
   END IF;
   IF p_prefetch AND p_request_id IS NULL THEN
     RAISE EXCEPTION 'claim_practice_hint_generation: prefetch requires p_request_id';
@@ -353,6 +360,14 @@ BEGIN
        AND v_session.hint_generation_started_at > now() - interval '2 minutes' THEN
       RAISE EXCEPTION 'PRACTICE_HINT_IN_FLIGHT';
     END IF;
+  END IF;
+
+  -- Completed exact-request replay wins above. A fresh generation must bind
+  -- the client transcript version while the authoritative session row is
+  -- locked, closing check/claim races and lifecycle loss of client fences.
+  IF p_expected_ai_count IS NOT NULL
+     AND p_expected_ai_count <> v_session.ai_count THEN
+    RAISE EXCEPTION 'PRACTICE_HINT_STALE';
   END IF;
 
   IF v_session.practice_mode NOT IN ('beginner', 'game') THEN
@@ -818,7 +833,8 @@ CREATE OR REPLACE FUNCTION public.settle_prefetched_practice_hint(
   p_max_hints     INTEGER,
   p_max_replies   INTEGER,
   p_monthly_limit INTEGER,
-  p_daily_limit   INTEGER
+  p_daily_limit   INTEGER,
+  p_expected_ai_count INTEGER DEFAULT NULL
 )
 RETURNS TABLE(
   new_hint_count INTEGER,
@@ -862,6 +878,10 @@ BEGIN
      OR p_daily_limit IS NULL OR p_daily_limit < 1 THEN
     RAISE EXCEPTION 'settle_prefetched_practice_hint: invalid quota limits';
   END IF;
+  IF p_expected_ai_count IS NOT NULL
+     AND (p_expected_ai_count < 1 OR p_expected_ai_count > 20) THEN
+    RAISE EXCEPTION 'settle_prefetched_practice_hint: invalid p_expected_ai_count';
+  END IF;
 
   SELECT s.* INTO v_session
   FROM public.practice_chat_sessions AS s
@@ -892,6 +912,11 @@ BEGIN
     stored_charged := TRUE;
     RETURN NEXT;
     RETURN;
+  END IF;
+
+  IF p_expected_ai_count IS NOT NULL
+     AND p_expected_ai_count <> v_session.ai_count THEN
+    RAISE EXCEPTION 'PRACTICE_HINT_STALE';
   END IF;
 
   IF v_request.state <> 'prefetched'
@@ -1165,9 +1190,9 @@ REVOKE EXECUTE ON FUNCTION public.prepare_practice_subscription_usage(UUID)
 GRANT EXECUTE ON FUNCTION public.prepare_practice_subscription_usage(UUID)
   TO service_role;
 
-REVOKE EXECUTE ON FUNCTION public.claim_practice_hint_generation(UUID, TEXT, INTEGER, TEXT, BOOLEAN, TEXT)
+REVOKE EXECUTE ON FUNCTION public.claim_practice_hint_generation(UUID, TEXT, INTEGER, TEXT, BOOLEAN, TEXT, INTEGER)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.claim_practice_hint_generation(UUID, TEXT, INTEGER, TEXT, BOOLEAN, TEXT)
+GRANT EXECUTE ON FUNCTION public.claim_practice_hint_generation(UUID, TEXT, INTEGER, TEXT, BOOLEAN, TEXT, INTEGER)
   TO service_role;
 
 REVOKE EXECUTE ON FUNCTION public.record_practice_hint(UUID, TEXT, BOOLEAN, INTEGER, TEXT, JSONB, BOOLEAN, INTEGER, INTEGER, INTEGER, TEXT)
@@ -1175,9 +1200,9 @@ REVOKE EXECUTE ON FUNCTION public.record_practice_hint(UUID, TEXT, BOOLEAN, INTE
 GRANT EXECUTE ON FUNCTION public.record_practice_hint(UUID, TEXT, BOOLEAN, INTEGER, TEXT, JSONB, BOOLEAN, INTEGER, INTEGER, INTEGER, TEXT)
   TO service_role;
 
-REVOKE EXECUTE ON FUNCTION public.settle_prefetched_practice_hint(UUID, TEXT, TEXT, BOOLEAN, INTEGER, INTEGER, INTEGER, INTEGER)
+REVOKE EXECUTE ON FUNCTION public.settle_prefetched_practice_hint(UUID, TEXT, TEXT, BOOLEAN, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.settle_prefetched_practice_hint(UUID, TEXT, TEXT, BOOLEAN, INTEGER, INTEGER, INTEGER, INTEGER)
+GRANT EXECUTE ON FUNCTION public.settle_prefetched_practice_hint(UUID, TEXT, TEXT, BOOLEAN, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER)
   TO service_role;
 
 REVOKE EXECUTE ON FUNCTION public.discard_prefetched_practice_hint(UUID, TEXT, TEXT)

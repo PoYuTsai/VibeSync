@@ -256,6 +256,7 @@ class _HintApi extends _NoopPracticeChatApi {
     String? memorySummary,
     PracticePartnerState? continuationPartnerState,
     String? requestId,
+    int? expectedAiCount,
     PracticeLearningMode practiceMode = PracticeLearningMode.beginner,
   }) async {
     hintCalls++;

@@ -62,12 +62,14 @@ class _FakeApi extends PracticeChatApiService {
   String? lastHintThreadId;
   String? lastHintRequestId;
   String? lastHintSessionId;
+  int? lastHintExpectedAiCount;
   List<PracticeTurnDto>? lastFormalHintTurns;
   PracticeLearningMode? lastHintPracticeMode;
   int hintCallCount = 0;
   int prefetchHintCallCount = 0;
   String? lastPrefetchHintRequestId;
   String? lastPrefetchHintSessionId;
+  int? lastPrefetchHintExpectedAiCount;
   List<PracticeTurnDto>? lastPrefetchHintTurns;
   PracticeLearningMode? lastPrefetchHintPracticeMode;
   final List<String> prefetchHintRequestIds = [];
@@ -119,6 +121,7 @@ class _FakeApi extends PracticeChatApiService {
     String? memorySummary,
     PracticePartnerState? continuationPartnerState,
     String? requestId,
+    int? expectedAiCount,
     PracticeLearningMode practiceMode = PracticeLearningMode.beginner,
   }) {
     hintCallCount++;
@@ -128,6 +131,7 @@ class _FakeApi extends PracticeChatApiService {
     lastHintContinuationPartnerState = continuationPartnerState;
     lastHintRequestId = requestId;
     lastHintSessionId = sessionId;
+    lastHintExpectedAiCount = expectedAiCount;
     lastFormalHintTurns = List<PracticeTurnDto>.of(turns);
     lastHintPracticeMode = practiceMode;
     if (requestId != null) formalHintRequestIds.add(requestId);
@@ -145,11 +149,13 @@ class _FakeApi extends PracticeChatApiService {
     String? visiblePracticeThreadId,
     String? memorySummary,
     PracticePartnerState? continuationPartnerState,
+    int? expectedAiCount,
     PracticeLearningMode practiceMode = PracticeLearningMode.beginner,
   }) {
     prefetchHintCallCount++;
     lastPrefetchHintRequestId = requestId;
     lastPrefetchHintSessionId = sessionId;
+    lastPrefetchHintExpectedAiCount = expectedAiCount;
     lastPrefetchHintTurns = List<PracticeTurnDto>.of(turns);
     lastPrefetchHintPracticeMode = practiceMode;
     prefetchHintRequestIds.add(requestId);
@@ -3003,6 +3009,7 @@ void main() {
       expect(api.hintCallCount, 0);
       expect(api.lastPrefetchHintPracticeMode, PracticeLearningMode.beginner);
       expect(api.lastPrefetchHintSessionId, c.currentState.sessionId);
+      expect(api.lastPrefetchHintExpectedAiCount, 1);
       expect(api.lastPrefetchHintTurns!.last.text, 'AI reply');
     });
 
@@ -3136,6 +3143,7 @@ void main() {
 
       expect(api.hintCallCount, 1);
       expect(api.lastHintRequestId, prefetchId);
+      expect(api.lastHintExpectedAiCount, 1);
       expect(api.hintRequestOrder, [
         'prefetch:$prefetchId',
         'formal:$prefetchId',
@@ -3321,6 +3329,22 @@ void main() {
       expect(api.hintCallCount, 1);
       expect(pendingStore.load()!.requestId, staleId);
 
+      // Switching away clears the process-local fence and single-slot pending
+      // id. Returning to the stale local session may mint a new id, but every
+      // new client request still carries the old full-session AI count so the
+      // server can reject it atomically before binding a fresh generation.
+      final staleLocalSession = repo.getById(c.currentState.sessionId)!;
+      c.resumeSession(assistedSession(id: 'stale-switch-session-b'));
+      c.resumeSession(staleLocalSession);
+      await c.requestHint();
+      expect(api.hintCallCount, 2);
+      expect(api.lastHintRequestId, isNot(staleId));
+      expect(api.lastHintExpectedAiCount, 1);
+      expect(
+        c.currentState.errorMessage,
+        '對話進度已往前，請先送出一則訊息同步，再取提示。',
+      );
+
       // A successful chat returns the authoritative count, advances the local
       // fingerprint, and permits a fresh prefetch/formal pair.
       api.sendHandler = (_, {profile}) async =>
@@ -3333,8 +3357,9 @@ void main() {
 
       api.hintHandler = (_, {profile}) async => hintResult();
       await c.requestHint();
-      expect(api.hintCallCount, 2);
+      expect(api.hintCallCount, 3);
       expect(api.lastHintRequestId, recoveredId);
+      expect(api.lastHintExpectedAiCount, 3);
     });
 
     test(

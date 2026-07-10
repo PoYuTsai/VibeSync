@@ -115,6 +115,9 @@ Deno.test("Migration replaces RPC signatures without PostgREST overloads", () =>
     "DROP FUNCTION IF EXISTS public.claim_practice_hint_generation(UUID, TEXT, INTEGER, TEXT);",
   );
   required(
+    "DROP FUNCTION IF EXISTS public.claim_practice_hint_generation(UUID, TEXT, INTEGER, TEXT, BOOLEAN, TEXT, INTEGER);",
+  );
+  required(
     "DROP FUNCTION IF EXISTS public.record_practice_hint(UUID, TEXT, BOOLEAN, INTEGER, TEXT, JSONB);",
   );
   required(
@@ -124,6 +127,7 @@ Deno.test("Migration replaces RPC signatures without PostgREST overloads", () =>
   const claim = compactSql(functionBody("claim_practice_hint_generation"));
   assert(claim.includes("p_prefetch BOOLEAN DEFAULT FALSE"));
   assert(claim.includes("p_generation_token TEXT DEFAULT NULL"));
+  assert(claim.includes("p_expected_ai_count INTEGER DEFAULT NULL"));
   assert(
     claim.includes(
       "RETURNS TABLE( current_hint_count INTEGER, replay BOOLEAN, stored_result JSONB, stored_charged BOOLEAN )",
@@ -180,13 +184,27 @@ Deno.test("Subscription preparation owns reset under the subscription row lock",
 Deno.test("Claim replays exact requests before gates and fences stale generators", () => {
   const body = functionBody("claim_practice_hint_generation");
   const replay = body.indexOf("v_request.state IN ('prefetched', 'settled')");
+  const expectedTurn = body.indexOf(
+    "p_expected_ai_count <> v_session.ai_count",
+  );
   const cap = body.indexOf("v_session.hint_count >= p_max_hints");
   const latch = body.indexOf("PRACTICE_HINT_IN_FLIGHT");
   const cleanup = body.indexOf("DELETE FROM public.practice_hint_requests");
   const insert = body.indexOf("INSERT INTO public.practice_hint_requests");
-  assert(replay >= 0 && cap >= 0 && latch >= 0 && cleanup >= 0 && insert >= 0);
+  assert(
+    replay >= 0 &&
+      expectedTurn >= 0 &&
+      cap >= 0 &&
+      latch >= 0 &&
+      cleanup >= 0 &&
+      insert >= 0,
+  );
   assert(replay < cap, "exact replay must beat the mutable hint cap");
   assert(replay < latch, "exact replay must beat the global latch");
+  assert(
+    replay < expectedTurn && expectedTurn < cap,
+    "fresh expected turn must be checked under lock after exact replay",
+  );
   assert(
     cleanup < insert,
     "stale generating owner must be fenced before claim",
@@ -256,10 +274,17 @@ Deno.test("Settle is exact-once and validates caps, turn identity, and quota", (
   const body = functionBody("settle_prefetched_practice_hint");
   const compact = compactSql(body);
   const replay = body.indexOf("v_request.state = 'settled'");
+  const expectedTurn = body.indexOf(
+    "p_expected_ai_count <> v_session.ai_count",
+  );
   const cap = body.indexOf("v_session.hint_count >= p_max_hints");
   const charge = body.indexOf("PERFORM public.increment_usage(");
-  assert(replay >= 0 && cap >= 0 && charge >= 0);
+  assert(replay >= 0 && expectedTurn >= 0 && cap >= 0 && charge >= 0);
   assert(replay < cap, "settle retry must replay before mutable caps");
+  assert(
+    replay < expectedTurn && expectedTurn < cap,
+    "settle must bind the client turn after exact replay and before charging",
+  );
   assert(cap < charge, "settle must check caps before charging");
   assert(compact.includes("v_request.state <> 'prefetched'"));
   assert(compact.includes("v_request.claimed_ai_count <> v_session.ai_count"));
@@ -319,6 +344,16 @@ Deno.test("New RPCs are service-role only and reload the schema cache", () => {
       `${name} must grant service_role execution`,
     );
   }
+  assert(
+    migration.includes(
+      "GRANT EXECUTE ON FUNCTION public.claim_practice_hint_generation(UUID, TEXT, INTEGER, TEXT, BOOLEAN, TEXT, INTEGER)",
+    ),
+  );
+  assert(
+    migration.includes(
+      "GRANT EXECUTE ON FUNCTION public.settle_prefetched_practice_hint(UUID, TEXT, TEXT, BOOLEAN, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER)",
+    ),
+  );
   required("FROM PUBLIC, anon, authenticated");
   required("TO service_role");
   required("NOTIFY pgrst, 'reload schema';");

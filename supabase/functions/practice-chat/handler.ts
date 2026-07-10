@@ -1758,18 +1758,22 @@ export function createPracticeChatHandler(
         if (!hintRequestId) {
           return jsonResponse({ error: "practice_hint_not_ready" }, 503);
         }
+        const settleHintParams: Record<string, unknown> = {
+          p_user_id: user.id,
+          p_session_id: request.sessionId,
+          p_request_id: hintRequestId,
+          p_charge_quota: !accountIsTest,
+          p_max_hints: MAX_HINTS_PER_ROUND,
+          p_max_replies: MAX_AI_REPLIES,
+          p_monthly_limit: limits.monthly,
+          p_daily_limit: limits.daily,
+        };
+        if (request.expectedAiCount !== undefined) {
+          settleHintParams.p_expected_ai_count = request.expectedAiCount;
+        }
         const { data, error } = await supabase.rpc(
           "settle_prefetched_practice_hint",
-          {
-            p_user_id: user.id,
-            p_session_id: request.sessionId,
-            p_request_id: hintRequestId,
-            p_charge_quota: !accountIsTest,
-            p_max_hints: MAX_HINTS_PER_ROUND,
-            p_max_replies: MAX_AI_REPLIES,
-            p_monthly_limit: limits.monthly,
-            p_daily_limit: limits.daily,
-          },
+          settleHintParams,
         );
         if (error) {
           const quotaResponse = await quotaResponseForRpcError(error.message);
@@ -1912,6 +1916,29 @@ export function createPracticeChatHandler(
         if (discarded.kind === "response") return discarded.response;
       }
 
+      // Exact replay/settlement paths return above. Fresh generation must use
+      // the same full-session AI count the client transcript was built from.
+      // The RPC repeats this check under the session row lock to close a chat
+      // commit racing between this read and the claim.
+      if (
+        request.expectedAiCount !== undefined &&
+        request.expectedAiCount !== ledger.aiCount
+      ) {
+        if (requestIsPrefetch) {
+          logHintPrefetchTelemetry({
+            outcome: "failed",
+            reason: "gate",
+            practiceMode: request.practiceMode,
+          });
+        }
+        logWarn("practice_chat_hint_stale_client_turn", {
+          user: summarizeUser(user.id),
+          expectedAiCount: request.expectedAiCount,
+          serverAiCount: ledger.aiCount,
+        });
+        return jsonResponse({ error: "practice_hint_stale" }, 409);
+      }
+
       const freshGateResponse = mutableHintGateResponse();
       if (freshGateResponse) return freshGateResponse;
       if (requestIsPrefetch && !prefetchEnabled) {
@@ -1939,6 +1966,9 @@ export function createPracticeChatHandler(
         p_generation_token: hintGenerationToken,
       };
       if (hintRequestId) claimHintParams.p_request_id = hintRequestId;
+      if (request.expectedAiCount !== undefined) {
+        claimHintParams.p_expected_ai_count = request.expectedAiCount;
+      }
 
       let freshHintClaimed = false;
       for (let claimAttempt = 0; claimAttempt < 2; claimAttempt++) {

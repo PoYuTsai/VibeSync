@@ -4239,6 +4239,7 @@ for (
         ...bodyOverrides,
         requestId,
         prefetch: true,
+        expectedAiCount: 1,
       }),
     );
 
@@ -4250,6 +4251,7 @@ for (
     assertEquals(claimHintCalls(state).length, 1);
     assertEquals(claimHintCalls(state)[0].params.p_request_id, requestId);
     assertEquals(claimHintCalls(state)[0].params.p_prefetch, true);
+    assertEquals(claimHintCalls(state)[0].params.p_expected_ai_count, 1);
     assertEquals(
       claimHintCalls(state)[0].params.p_generation_token,
       "generation-token-1",
@@ -4386,6 +4388,56 @@ Deno.test("missing subscription prepare RPC returns Hint not-ready rollout guard
   assertEquals(state.deepSeekCalls.length, 0);
 });
 
+Deno.test("fresh Hint rejects a stale client turn before claim or provider work", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "fresh-stale-client-turn",
+      expectedAiCount: 1,
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 409);
+  assertEquals(json, { error: "practice_hint_stale" });
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(hintModelRateCalls(state).length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
+Deno.test("settled Hint replay wins over a stale client turn version", async () => {
+  const stored = storedHintResult({ hintUsedCount: 1 });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2, hint_count: 1 }),
+      hintRequest: {
+        state: "settled",
+        charged: true,
+        is_prefetch: false,
+        claimed_ai_count: 1,
+        result: stored,
+      },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "settled-stale-client-turn",
+      expectedAiCount: 1,
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json, stored);
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(settleHintCalls(state).length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+});
+
 Deno.test("formal Hint consumes an exact prefetched snapshot through settle only", async () => {
   const prefetched = storedHintResult({
     costDeducted: 0,
@@ -4408,6 +4460,7 @@ Deno.test("formal Hint consumes an exact prefetched snapshot through settle only
     hintBody({
       practiceMode: "beginner",
       requestId: "prefetched-formal",
+      expectedAiCount: 1,
       prefetch: false,
     }),
   );
@@ -4418,6 +4471,7 @@ Deno.test("formal Hint consumes an exact prefetched snapshot through settle only
   assertEquals(json.coaching, prefetched.coaching);
   assertEquals(settleHintCalls(state).length, 1);
   assertEquals(settleHintCalls(state)[0].params.p_charge_quota, true);
+  assertEquals(settleHintCalls(state)[0].params.p_expected_ai_count, 1);
   assertEquals(claimHintCalls(state).length, 0);
   assertEquals(hintModelRateCalls(state).length, 0);
   assertEquals(state.deepSeekCalls.length, 0);
@@ -4447,6 +4501,7 @@ Deno.test("test account consumes prefetched Hint without charging but still incr
     hintBody({
       practiceMode: "beginner",
       requestId: "prefetched-formal-test-account",
+      expectedAiCount: 1,
       prefetch: false,
     }),
   );
@@ -4458,6 +4513,7 @@ Deno.test("test account consumes prefetched Hint without charging but still incr
   assertEquals(json.dailyRemaining, 48);
   assertEquals(settleHintCalls(state).length, 1);
   assertEquals(settleHintCalls(state)[0].params.p_charge_quota, false);
+  assertEquals(settleHintCalls(state)[0].params.p_expected_ai_count, 1);
   assertEquals(claimHintCalls(state).length, 0);
   assertEquals(hintModelRateCalls(state).length, 0);
   assertEquals(state.deepSeekCalls.length, 0);
@@ -5013,6 +5069,7 @@ Deno.test("hint with a fresh requestId generates normally and threads the id int
     hintBody({
       practiceMode: "beginner",
       requestId: "req-new",
+      expectedAiCount: 1,
       prefetch: false,
     }),
   );
@@ -5029,6 +5086,7 @@ Deno.test("hint with a fresh requestId generates normally and threads the id int
     p_request_id: "req-new",
     p_prefetch: false,
     p_generation_token: "generation-token-1",
+    p_expected_ai_count: 1,
   });
   assertEquals(recordHintCalls(state).length, 1);
   const recordParams = recordHintCalls(state)[0].params;

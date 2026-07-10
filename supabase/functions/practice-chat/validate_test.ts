@@ -561,6 +561,45 @@ Deno.test("hint prefetch：chat/debrief 不得送 true；false 向後相容地�
   assertEquals(chat.prefetch, undefined);
 });
 
+Deno.test("hint expectedAiCount binds a new client to one full session turn", () => {
+  const request = validateRequest({
+    ...hintReq(validHintTurns()),
+    expectedAiCount: 7,
+  });
+  assertEquals(request.expectedAiCount, 7);
+  assertEquals(
+    validateRequest(hintReq(validHintTurns())).expectedAiCount,
+    undefined,
+  );
+});
+
+Deno.test("hint expectedAiCount rejects invalid ranges, types, and other modes", () => {
+  for (const expectedAiCount of [0, 21, 1.5, "1", null]) {
+    assertThrows(
+      () =>
+        validateRequest({
+          ...hintReq(validHintTurns()),
+          expectedAiCount,
+        }),
+      Error,
+      "invalid_expectedAiCount",
+    );
+  }
+
+  for (
+    const request of [
+      { ...chatReq([{ role: "user", text: "hi" }]), expectedAiCount: 1 },
+      { ...debriefReq(validHintTurns()), expectedAiCount: 1 },
+    ]
+  ) {
+    assertThrows(
+      () => validateRequest(request),
+      Error,
+      "invalid_expectedAiCount",
+    );
+  }
+});
+
 Deno.test("hint：合法 requestId（uuid）被解析", () => {
   const r = validateRequest({
     ...hintReq(validHintTurns()),
