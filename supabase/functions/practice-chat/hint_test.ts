@@ -953,6 +953,75 @@ Deno.test("buildFallbackHintResult makes high-score Game hints point to a pastea
   assertEquals(beginner.replies[0].text.includes("30 分鐘"), false);
 });
 
+Deno.test("beginner fallback hint coaching 隨溫度分檔：低溫降壓、高溫延續投入", () => {
+  const base = {
+    turns: [
+      { role: "user" as const, text: "你平常看什麼放鬆" },
+      { role: "ai" as const, text: "最近看一些脫口秀片段 節奏蠻舒服的" },
+    ],
+    profile,
+    practiceMode: "beginner" as const,
+    familiarityScore: 30,
+    partnerMood: "neutral" as const,
+  };
+  const low = buildFallbackHintResult({ ...base, temperatureScore: 12 });
+  const cold = buildFallbackHintResult({ ...base, temperatureScore: 35 });
+  const mid = buildFallbackHintResult({ ...base, temperatureScore: 50 });
+  const warm = buildFallbackHintResult({ ...base, temperatureScore: 70 });
+  const hot = buildFallbackHintResult({ ...base, temperatureScore: 88 });
+
+  // 低檔（frozen/cold）同一種降壓語氣；高檔（warm/hot）同一種延續投入語氣
+  assertEquals(low.coaching, cold.coaching);
+  assertEquals(warm.coaching, hot.coaching);
+  assert(low.coaching !== mid.coaching);
+  assert(hot.coaching !== mid.coaching);
+  assert(low.coaching !== hot.coaching);
+
+  // 低溫：降壓、不推進；不得帶高溫的聊深語氣
+  assert(low.coaching.includes("保留") || low.coaching.includes("降壓"));
+  assertEquals(low.coaching.includes("聊深"), false);
+
+  // 高溫：延續投入、不再從頭破冰；不得回到中性的丟小問題句
+  assert(hot.coaching.includes("投入"));
+  assertEquals(hot.coaching.includes("好回答的小問題"), false);
+
+  // 各檔 coaching 守軟上限；可見輸出不含內部詞
+  for (const result of [low, cold, mid, warm, hot]) {
+    assert(result.coaching.length <= HINT_COACHING_SOFT_CHAR_LIMIT);
+    const visible = [
+      result.replies[0].text,
+      result.replies[1].text,
+      result.coaching,
+    ].join("\n");
+    for (
+      const banned of ["band", "score", "temperature", "frozen", "升溫指數"]
+    ) {
+      assertEquals(visible.includes(banned), false);
+    }
+  }
+});
+
+Deno.test("beginner fallback hint 溫度非法時 fail-safe 回中性 coaching 不 throw", () => {
+  const base = {
+    turns: [
+      { role: "user" as const, text: "你平常看什麼放鬆" },
+      { role: "ai" as const, text: "最近看一些脫口秀片段 節奏蠻舒服的" },
+    ],
+    profile,
+    practiceMode: "beginner" as const,
+    familiarityScore: 30,
+    partnerMood: "neutral" as const,
+  };
+  const nan = buildFallbackHintResult({
+    ...base,
+    temperatureScore: Number.NaN,
+  });
+  const mid = buildFallbackHintResult({ ...base, temperatureScore: 50 });
+
+  assertEquals(nan.coaching, mid.coaching);
+  assertEquals(nan.replies, mid.replies);
+});
+
 Deno.test("buildFallbackHintResult keeps low-score Game hints as invite setup, not a hard invite", () => {
   const game = buildFallbackHintResult({
     turns: [

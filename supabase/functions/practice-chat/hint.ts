@@ -15,6 +15,7 @@ import {
   clampTemperature,
   type PartnerMood,
   relationshipStageFor,
+  temperatureBandFor,
 } from "./temperature.ts";
 import { toTraditionalChinese } from "./traditional_chinese.ts";
 import type { PracticeTurn } from "./validate.ts";
@@ -617,6 +618,28 @@ function beginnerFallbackRepliesForLatestAssistant(latestAssistant: string): {
 } {
   return evidenceBoundBeginnerFallbackReplies(latestAssistant);
 }
+const BEGINNER_FALLBACK_NEUTRAL_COACHING =
+  "小提醒：先接她剛提到的點，再補一點你的感受，最後丟一個她好回答的小問題。";
+
+/**
+ * beginner fallback coaching 隨溫度檔位分三檔（分檔唯一依據＝temperatureBandFor）：
+ * 低檔（frozen/cold）降壓修安全感、中檔（neutral）現行中性、高檔（warm/hot）
+ * 延續投入不從頭破冰。溫度非法時 fail-safe 回中性；可見文字不提溫度機制。
+ */
+function beginnerFallbackCoachingFor(temperatureScore: number): string {
+  if (!Number.isFinite(temperatureScore)) {
+    return BEGINNER_FALLBACK_NEUTRAL_COACHING;
+  }
+  const band = temperatureBandFor(temperatureScore);
+  if (band === "frozen" || band === "cold") {
+    return "小提醒：她現在回得比較保留，先降壓接住她剛說的點，不用急著逗她或推進，讓她覺得安全就好。";
+  }
+  if (band === "warm" || band === "hot") {
+    return "小提醒：她聊得蠻投入的，接住她的點之後多分享你自己的感受，可以自然聊深一點，不用再從頭找話題。";
+  }
+  return BEGINNER_FALLBACK_NEUTRAL_COACHING;
+}
+
 function buildBeginnerFallbackHintResult(
   opts: HintBuildContext,
 ): PracticeHintResult {
@@ -628,8 +651,7 @@ function buildBeginnerFallbackHintResult(
       { type: "warm_up", label: "升溫回覆", text: fallback.warmUp },
       { type: "steady", label: "穩住回覆", text: fallback.steady },
     ],
-    coaching:
-      "小提醒：先接她剛提到的點，再補一點你的感受，最後丟一個她好回答的小問題。",
+    coaching: beginnerFallbackCoachingFor(opts.temperatureScore),
   };
 }
 
