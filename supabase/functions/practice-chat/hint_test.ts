@@ -562,6 +562,58 @@ Deno.test("repairGameVisibleLabels maps variable tokens to 1.2-free white words"
   assert(failureState.coaching.includes("框架掉了"));
 });
 
+Deno.test("parseHintResult translates Chinese 1.2 jargon out of visible game output", () => {
+  // hidden prompt 餵了「P3 篩選/賦格」「推拉張力」「資格篩選」等內部詞，
+  // 小模型有材料照抄中文原詞；可見欄位必須轉譯成 1.2 表安全說法。
+  const result = parseHintResult(
+    JSON.stringify({
+      warmUp: "我先給我的版本，不是在推拉妳。妳是哪一派？",
+      steady: "先不急著約，我想先看我們的框架合不合。",
+      coaching:
+        "Game 心法：她在篩選你，先做資格篩選、展示可得性。速約任務：這輪先鋪墊。",
+    }),
+    { mode: "game" },
+  );
+  const visible = [
+    result.replies[0].text,
+    result.replies[1].text,
+    result.coaching,
+  ].join("\n");
+  assertEquals(/DHV|框架|篩選|推拉|可得性|賦格/.test(visible), false, visible);
+  assert(result.replies[0].text.includes("輕鬆張力"));
+  assert(result.replies[1].text.includes("節奏與主見"));
+  assert(result.coaching.includes("互相合適度"));
+  assert(result.coaching.includes("品味門檻"));
+  assert(result.coaching.includes("安全感釋放"));
+
+  // 招式/變數語境的「框架」不再放行。
+  const move = parseHintResult(
+    JSON.stringify({
+      warmUp: "我先給我的版本：我吃有畫面但不太用力的節奏。妳是哪一派？",
+      steady: "先不急著約。這題聊順，再把它變成一個下次短咖啡的小窗口。",
+      coaching: "Game 心法：測試階段先推框架。速約任務：這輪先鋪墊。",
+    }),
+    { mode: "game" },
+  );
+  assertEquals(move.coaching.includes("框架"), false, move.coaching);
+  assert(move.coaching.includes("先推節奏與主見"));
+
+  // 例外限縮：只放行 failure-state 固定短語「框架掉了」（debrief 既定白話）。
+  const collapse = parseHintResult(
+    JSON.stringify({
+      warmUp: "我先給我的版本：我吃有畫面但不太用力的節奏。妳是哪一派？",
+      steady: "先不急著約。這題聊順，再把它變成一個下次短咖啡的小窗口。",
+      coaching: "Game 心法：你剛那句讓框架掉了。速約任務：先修安全感。",
+    }),
+    { mode: "game" },
+  );
+  assert(collapse.coaching.includes("框架掉了"));
+  assertEquals(
+    collapse.coaching.replace("框架掉了", "").includes("框架"),
+    false,
+  );
+});
+
 Deno.test("Game fallback visible output contains no 1.2 raw jargon", () => {
   const scenarios: Array<{
     latest: string;
@@ -1777,6 +1829,9 @@ Deno.test("parseHintResult accepts softened repair lines that mention bossy word
 
   assert(result.replies[0].text.includes("不用給我標準答案"));
   assert(result.replies[1].text.includes("不用像交作業"));
+  // 招式語境「框架」已被中文 1.2 轉譯，不再放行進可見 coaching。
+  assertEquals(result.coaching.includes("框架"), false);
+  assert(result.coaching.includes("先推節奏與主見"));
 });
 
 Deno.test("parseHintResult rejects softened prefix followed by bossy pasteable wording", () => {

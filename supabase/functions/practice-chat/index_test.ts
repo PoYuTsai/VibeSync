@@ -3023,6 +3023,9 @@ Deno.test("game hint retries malformed provider result once before recording", a
   assertEquals(json.replies[0].text.includes("我先給妳我的版本"), true);
   assertEquals(String(json.coaching).includes("速約任務"), true);
   assertEquals(String(json.coaching).includes("這題我先不推進"), false);
+  // LLM 全路徑（handler→parse）也不得放行中文 1.2 原詞「框架」招式語境。
+  assertEquals(String(json.coaching).includes("框架"), false);
+  assertEquals(String(json.coaching).includes("節奏與主見"), true);
   assertEquals(state.deepSeekCalls.length, 2);
   const retryPrompt = state.deepSeekCalls[1].messages
     .map((message) => message.content)

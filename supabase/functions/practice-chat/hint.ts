@@ -147,7 +147,37 @@ function repairGameVisibleLabels(value: string): string {
   for (const [pattern, replacement] of replacements) {
     repaired = repaired.replace(pattern, replacement);
   }
-  return repaired;
+  return repairChineseJargon(repaired);
+}
+
+/** failure-state 固定短語，唯一放行的「框架」用法（對齊 debrief 既定白話）。 */
+const FRAME_COLLAPSE_PHRASE = "框架掉了";
+const FRAME_COLLAPSE_SENTINEL = "\uE000";
+
+/**
+ * 中文 1.2 原詞轉譯（設計文件 1.2 表）：hidden prompt 為了教招式必須用
+ * 「篩選/賦格」「推拉張力」「資格篩選」等內部詞，小模型有材料照抄；
+ * 可見欄位一律轉成安全說法，只放行固定短語「框架掉了」。
+ * 詞彙可安全轉譯就不 reject：reject 會觸發重試/fallback，懲罰過重。
+ */
+function repairChineseJargon(value: string): string {
+  let repaired = value.replaceAll(
+    FRAME_COLLAPSE_PHRASE,
+    FRAME_COLLAPSE_SENTINEL,
+  );
+  const replacements: Array<[RegExp, string]> = [
+    [/資格篩選/g, "品味門檻"],
+    [/賦格/g, "品味門檻"],
+    [/篩選/g, "互相合適度"],
+    [/推拉/g, "輕鬆張力"],
+    [/可得性/g, "安全感釋放"],
+    [/框架/g, "節奏與主見"],
+    [/\bDHV\b/gi, "生活樣本"],
+  ];
+  for (const [pattern, replacement] of replacements) {
+    repaired = repaired.replace(pattern, replacement);
+  }
+  return repaired.replaceAll(FRAME_COLLAPSE_SENTINEL, FRAME_COLLAPSE_PHRASE);
 }
 
 function turnsToTranscript(turns: PracticeTurn[]): string {
