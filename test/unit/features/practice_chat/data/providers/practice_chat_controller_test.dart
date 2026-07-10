@@ -2078,6 +2078,101 @@ void main() {
       expect(api.lastHintRequestId, isNot(firstId));
     });
 
+    test('requestHint 403 in-flight：不 rotate requestId、轉可重試錯誤', () async {
+      // server 回 403 practice_hint_in_flight＝原請求還在跑（latch 占用中），
+      // 不是明確拒絕：rotate 會把 id 從記憶體＋store 清掉，等原請求以舊 id
+      // 入帳後，新 id 重試＝replay miss＝重新生成＝重複扣費。
+      final pendingStore = InMemoryPracticePendingHintStore();
+      final c = await makeRevealed(pendingHintStore: pendingStore);
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+
+      api.hintHandler = (_, {profile}) async => throw PracticeApiException(
+            'practice_hint_in_flight',
+            status: 403,
+          );
+      await c.requestHint();
+      final firstId = api.lastHintRequestId;
+      expect(firstId, isNotNull);
+
+      // 不 rotate：持久化 store 仍握著同一個 id（replay 保護活著）
+      expect(pendingStore.load()!.requestId, firstId);
+      // 可重試錯誤 state：loading 收掉、不標 quota、文案提示稍候再試
+      expect(c.currentState.isHintLoading, false);
+      expect(c.currentState.quotaExceeded, false);
+      expect(c.currentState.errorMessage, '提示正在產生中，等一下再試。');
+      expect(c.currentState.canRequestHint, true);
+    });
+
+    test('requestHint 403 in-flight 後重試：沿用同 id（server replay 不重扣）',
+        () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+
+      api.hintHandler = (_, {profile}) async => throw PracticeApiException(
+            'practice_hint_in_flight',
+            status: 403,
+          );
+      await c.requestHint();
+      final firstId = api.lastHintRequestId;
+      expect(firstId, isNotNull);
+
+      // 原請求可能已在舊 id 名下寫入已扣費快照：重試沿用同 id 才吃得到 replay
+      api.hintHandler = (_, {profile}) async => hintResult();
+      await c.requestHint();
+      expect(api.lastHintRequestId, firstId);
+      expect(c.currentState.hintReplies, hasLength(2));
+    });
+
+    test('requestHint 其他 403（practice_session_not_started）仍照舊 rotate',
+        () async {
+      // in-flight 特例只認 code 字串：其他 403 明確拒絕維持 rotate，
+      // 確認沒把整個 4xx 分支改壞。
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+
+      api.hintHandler = (_, {profile}) async => throw PracticeApiException(
+            'practice_session_not_started',
+            status: 403,
+          );
+      await c.requestHint();
+      final firstId = api.lastHintRequestId;
+      expect(firstId, isNotNull);
+
+      api.hintHandler = (_, {profile}) async => hintResult();
+      await c.requestHint();
+      expect(api.lastHintRequestId, isNot(firstId));
+    });
+
     test('requestHint 掛住超過 client timeout → 可重試錯誤、不 rotate requestId',
         () async {
       final c = await makeRevealed(

@@ -1226,6 +1226,18 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         );
         return;
       }
+      // 403 practice_hint_in_flight＝原請求還在 server 跑（latch 占用中），
+      // 不是明確拒絕：rotate 會把 id 從記憶體＋store 清掉，等原請求以舊 id
+      // 寫入已扣費快照後，新 id 重試＝replay miss＝重新生成＝重複扣費。
+      // 比照 429：id 保留，稍候重試沿用同 id 吃 server replay 去重。
+      if (e.message == 'practice_hint_in_flight') {
+        if (_dropStaleHint(generation)) return;
+        state = state.copyWith(
+          isHintLoading: false,
+          errorMessage: _hintApiErrorMessage(e.message),
+        );
+        return;
+      }
       _rotateHintRequestId(requestId); // 4xx 明確拒絕 → rotate
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
