@@ -27,15 +27,19 @@ interface FakeOptions {
   threadError?: string;
   drawEvents?: Array<Record<string, unknown>>;
   drawEventsError?: string;
+  aiLogsError?: string;
+  aiLogsNeverCompletes?: boolean;
   rpc?: Record<string, RpcResult[]>;
   deepSeekReplies?: Array<string | Error>;
 }
 
 interface FakeState {
   selects: Array<{ table: string; columns: string }>;
+  inserts: Array<{ table: string; values: Record<string, unknown> }>;
   rpcCalls: Array<{ fn: string; params: Record<string, unknown> }>;
   deepSeekCalls: DeepSeekArgs[];
   events: string[];
+  backgroundTasks: Promise<void>[];
 }
 
 function subscription(overrides: Record<string, unknown> = {}) {
@@ -200,9 +204,11 @@ function makeRequest(body: unknown) {
 function makeFake(options: FakeOptions = {}) {
   const state: FakeState = {
     selects: [],
+    inserts: [],
     rpcCalls: [],
     deepSeekCalls: [],
     events: [],
+    backgroundTasks: [],
   };
   const rpcByName = new Map<string, number>();
   let deepSeekIndex = 0;
@@ -229,6 +235,19 @@ function makeFake(options: FakeOptions = {}) {
     },
     from(table: string) {
       return {
+        insert(values: Record<string, unknown>) {
+          state.inserts.push({ table, values });
+          state.events.push(`insert:${table}`);
+          if (table === "ai_logs" && options.aiLogsNeverCompletes) {
+            return new Promise(() => {});
+          }
+          return Promise.resolve({
+            data: null,
+            error: table === "ai_logs" && options.aiLogsError
+              ? { message: options.aiLogsError }
+              : null,
+          });
+        },
         select(columns: string) {
           state.selects.push({ table, columns });
           function selectResult() {
@@ -330,6 +349,9 @@ function makeFake(options: FakeOptions = {}) {
             },
           };
         }
+        if (fn === "record_practice_debrief") {
+          return { data: params.p_result };
+        }
         return { data: true };
       })();
       const result = options.rpc?.[fn]?.[index] ?? defaultResult;
@@ -359,6 +381,8 @@ function makeFake(options: FakeOptions = {}) {
       callDeepSeek: deepSeek,
       getEnv: (name) => name === "DEEPSEEK_API_KEY" ? "deepseek-key" : "",
       now: () => NOW,
+      waitUntil: (task) => state.backgroundTasks.push(task),
+      telemetryPersistTimeoutMs: options.aiLogsNeverCompletes ? 5 : undefined,
     }),
   };
 }
@@ -420,6 +444,14 @@ function assertLearningFieldsAndNoDebug(temperature: Record<string, unknown>) {
 
 function claimDebriefCalls(state: FakeState) {
   return state.rpcCalls.filter((call) => call.fn === "claim_practice_debrief");
+}
+
+function recordDebriefCalls(state: FakeState) {
+  return state.rpcCalls.filter((call) => call.fn === "record_practice_debrief");
+}
+
+function aiLogInserts(state: FakeState) {
+  return state.inserts.filter((insert) => insert.table === "ai_logs");
 }
 
 Deno.test("standard chat response does not include temperature and does not judge or update", async () => {
@@ -2553,6 +2585,388 @@ Deno.test("stale retry does not reuse low-stage overstep override after flirt-re
   assertEquals(learningUpdateCalls(state)[1].params.p_familiarity_delta, 1);
 });
 
+Deno.test("debrief requestId is threaded through claim and stored response replay", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    deepSeekReplies: [validDebriefJson()],
+  }, debriefBody({ requestId: "debrief-req-1" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json.card.summary, "有接住對方情緒");
+  assertEquals(
+    claimDebriefCalls(state)[0].params.p_request_id,
+    "debrief-req-1",
+  );
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(
+    recordDebriefCalls(state)[0].params.p_request_id,
+    "debrief-req-1",
+  );
+  const stored = recordDebriefCalls(state)[0].params.p_result as Record<
+    string,
+    unknown
+  >;
+  assertEquals(
+    (stored.card as Record<string, unknown>).summary,
+    "有接住對方情緒",
+  );
+  assertEquals(stored.provider, "deepseek");
+  assertEquals(aiLogInserts(state).length, 1);
+  const telemetryRow = aiLogInserts(state)[0].values;
+  assertEquals(telemetryRow.request_type, "practice_debrief_standard");
+  assertEquals(telemetryRow.fallback_used, false);
+  assertEquals(telemetryRow.status, "success");
+  assertEquals(telemetryRow.response_body, null);
+  assertEquals(telemetryRow.error_message, null);
+  assertEquals(JSON.stringify(telemetryRow).includes("有接住對方情緒"), false);
+});
+
+Deno.test("debrief record returns the first-writer authoritative response", async () => {
+  const authoritative = {
+    card: {
+      summary: "先落帳的權威拆解",
+      strengths: ["先接住她"],
+      watchouts: ["少一點追問"],
+      suggestedLine: "我先說我的版本",
+      vibe: "中性",
+      dateChance: "low",
+      dateChanceReason: "還在建立熟悉",
+      nextInviteMove: "先補自己的感受",
+      gameBreakdown: null,
+    },
+    costDeducted: 0,
+    provider: "deepseek",
+    model: DEEPSEEK_MODEL,
+    generatedAt: NOW.toISOString(),
+    monthlyRemaining: 290,
+    dailyRemaining: 98,
+  };
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    deepSeekReplies: [validDebriefJson({ summary: "晚到 worker 的拆解" })],
+    rpc: {
+      record_practice_debrief: [{ data: authoritative }],
+    },
+  }, debriefBody({ requestId: "debrief-stale-race" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json, authoritative);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("durable generation telemetry failure is fail-open", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    aiLogsError: "telemetry table temporarily unavailable",
+    deepSeekReplies: [validDebriefJson()],
+  }, debriefBody());
+
+  assertEquals(response.status, 200);
+  assertEquals(json.card.summary, "有接住對方情緒");
+  assertEquals(aiLogInserts(state).length, 1);
+});
+
+Deno.test("slow durable telemetry stays off the debrief response path after replay record", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    aiLogsNeverCompletes: true,
+    deepSeekReplies: [validDebriefJson()],
+  }, debriefBody({ requestId: "debrief-slow-telemetry" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json.card.summary, "有接住對方情緒");
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(aiLogInserts(state).length, 1);
+  assertEquals(state.backgroundTasks.length, 1);
+  assert(
+    state.events.indexOf("rpc:record_practice_debrief") <
+      state.events.indexOf("insert:ai_logs"),
+  );
+  await Promise.all(state.backgroundTasks);
+});
+
+Deno.test("slow durable telemetry stays off the Hint response path after quota record", async () => {
+  const { response, state } = await run({
+    ledger: beginnerStartedLedger(),
+    aiLogsNeverCompletes: true,
+    deepSeekReplies: [validHintJson()],
+  }, hintBody({ practiceMode: "beginner", requestId: "hint-slow-log" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(aiLogInserts(state).length, 1);
+  assertEquals(state.backgroundTasks.length, 1);
+  assert(
+    state.events.indexOf("rpc:record_practice_hint") <
+      state.events.indexOf("insert:ai_logs"),
+  );
+  await Promise.all(state.backgroundTasks);
+});
+
+Deno.test("debrief preflight replay wins at the cap without rate limit, claim, or provider", async () => {
+  const storedResult = {
+    card: {
+      summary: "已完成的拆解",
+      strengths: ["有接住話題"],
+      watchouts: ["少一點追問"],
+      suggestedLine: "我先說我的版本",
+      vibe: "中性",
+      dateChance: "low",
+      dateChanceReason: "還在建立熟悉",
+      nextInviteMove: "先補自己的感受",
+      gameBreakdown: null,
+    },
+    costDeducted: 0,
+  };
+  const { response, json, state } = await run({
+    ledger: ledger({
+      ai_count: 1,
+      charged: true,
+      debrief_count: 3,
+      last_debrief_request_id: "debrief-replay",
+      last_debrief_result: storedResult,
+    }),
+  }, debriefBody({ requestId: "debrief-replay" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json.card.summary, "已完成的拆解");
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimDebriefCalls(state).length, 0);
+  assertEquals(recordDebriefCalls(state).length, 0);
+  assertEquals(aiLogInserts(state).length, 0);
+  assertEquals(
+    state.rpcCalls.some((call) => call.fn === "enforce_model_rate_limit"),
+    false,
+  );
+});
+
+Deno.test("completed Game debrief replay wins before a transient unlock lookup failure", async () => {
+  const storedResult = {
+    card: {
+      summary: "已完成的 Game 拆解",
+      strengths: ["有守住節奏"],
+      watchouts: ["收尾再明確一點"],
+      suggestedLine: "我週六下午剛好有空，要不要喝杯咖啡？",
+      vibe: "暖",
+      dateChance: "medium",
+      dateChanceReason: "互動還有延續空間",
+      nextInviteMove: "給一個低壓、可拒絕的具體邀約",
+      gameBreakdown: {
+        phaseReached: "已走到收尾",
+        missedVariable: "邀約還不夠具體",
+        failureState: "沒有明顯失誤",
+        nextFirstLine: "先承接她剛分享的咖啡話題",
+        inviteDirection: "週末白天短約",
+      },
+    },
+    costDeducted: 0,
+  };
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({
+        debrief_count: 3,
+        last_debrief_request_id: "game-debrief-replay",
+        last_debrief_result: storedResult,
+      }),
+      drawEventsError: "unlock lookup temporarily unavailable",
+    },
+    debriefBody({
+      requestId: "game-debrief-replay",
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json, storedResult);
+  assertEquals(
+    state.selects.some((select) =>
+      select.table === "practice_profile_draw_events"
+    ),
+    false,
+  );
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimDebriefCalls(state).length, 0);
+});
+
+Deno.test("fresh debrief in-flight preflight returns 425 without consuming model rate limit", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({
+      ai_count: 1,
+      charged: true,
+      debrief_count: 3,
+      last_debrief_request_id: "debrief-fresh-latch",
+      last_debrief_result: null,
+      last_debrief_started_at: new Date(NOW.getTime() - 10_000).toISOString(),
+    }),
+  }, debriefBody({ requestId: "debrief-fresh-latch" }));
+
+  assertEquals(response.status, 425);
+  assertEquals(json, { error: "practice_debrief_in_flight" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimDebriefCalls(state).length, 0);
+  assertEquals(recordDebriefCalls(state).length, 0);
+  assertEquals(
+    state.rpcCalls.some((call) => call.fn === "increment_model_usage"),
+    false,
+  );
+});
+
+Deno.test("stale claimed Game debrief retry bypasses a transient unlock lookup failure", async () => {
+  const { response, state } = await run(
+    {
+      ledger: gameStartedLedger({
+        debrief_count: 3,
+        last_debrief_request_id: "game-debrief-stale",
+        last_debrief_result: null,
+        last_debrief_started_at: new Date(NOW.getTime() - 60_000).toISOString(),
+      }),
+      drawEventsError: "unlock lookup temporarily unavailable",
+      rpc: {
+        claim_practice_debrief: [{
+          data: [{ replay: false, in_flight: false, stored_result: null }],
+        }],
+      },
+      deepSeekReplies: [validDebriefJson({
+        gameBreakdown: {
+          phaseReached: "已走到收尾",
+          missedVariable: "邀約具體度",
+          failureState: "沒有明顯失誤",
+          nextFirstLine: "先承接她剛分享的點",
+          inviteDirection: "低壓短約",
+        },
+      })],
+    },
+    debriefBody({
+      requestId: "game-debrief-stale",
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(
+    state.selects.some((select) =>
+      select.table === "practice_profile_draw_events"
+    ),
+    false,
+  );
+  assertEquals(claimDebriefCalls(state).length, 1);
+  assertEquals(state.deepSeekCalls.length, 1);
+});
+
+Deno.test("debrief authoritative claim replay handles the preflight race", async () => {
+  const storedResult = {
+    card: { summary: "鎖內回放", suggestedLine: "下一句" },
+    costDeducted: 0,
+  };
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true, debrief_count: 2 }),
+    rpc: {
+      claim_practice_debrief: [{
+        data: [{ replay: true, stored_result: storedResult }],
+      }],
+    },
+  }, debriefBody({ requestId: "debrief-race" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json.card.summary, "鎖內回放");
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimDebriefCalls(state).length, 1);
+  assertEquals(recordDebriefCalls(state).length, 0);
+});
+
+Deno.test("debrief authoritative claim blocks a fresh same-request overlap", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true, debrief_count: 2 }),
+    rpc: {
+      claim_practice_debrief: [{
+        data: [{ replay: false, in_flight: true, stored_result: null }],
+      }],
+    },
+  }, debriefBody({ requestId: "debrief-in-flight" }));
+
+  assertEquals(response.status, 425);
+  assertEquals(json, { error: "practice_debrief_in_flight" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(recordDebriefCalls(state).length, 0);
+  assertEquals(aiLogInserts(state).length, 0);
+});
+
+Deno.test("same unfinished debrief request can recover at the cap", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({
+      ai_count: 1,
+      charged: true,
+      debrief_count: 3,
+      last_debrief_request_id: "debrief-pending",
+      last_debrief_result: null,
+    }),
+    deepSeekReplies: [validDebriefJson({ summary: "重試完成" })],
+  }, debriefBody({ requestId: "debrief-pending" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json.card.summary, "重試完成");
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(claimDebriefCalls(state).length, 1);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("debrief retries an incomplete card with a field repair instruction", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    deepSeekReplies: [
+      JSON.stringify({ summary: "只有摘要", suggestedLine: "下一句" }),
+      validDebriefJson({ summary: "修復完成" }),
+    ],
+  }, debriefBody());
+
+  assertEquals(response.status, 200);
+  assertEquals(json.card.summary, "修復完成");
+  assertEquals(state.deepSeekCalls.length, 2);
+  const repairPrompt = state.deepSeekCalls[1].messages.at(-1)?.content ?? "";
+  assert(repairPrompt.includes("拆解卡必填欄位缺漏或格式錯誤"));
+  assert(repairPrompt.includes("strengths、watchouts"));
+  const telemetry = aiLogInserts(state)[0].values;
+  assertEquals(telemetry.retry_count, 1);
+  assertEquals(telemetry.fallback_used, false);
+  const metrics = telemetry.request_body as Record<string, unknown>;
+  assertEquals((metrics.attemptDurationsMs as unknown[]).length, 2);
+  assertEquals(metrics.failureClasses, ["schema_invalid"]);
+});
+
+Deno.test("Game debrief repairs a missing breakdown before using fallback", async () => {
+  const completeGameCard = JSON.parse(validDebriefJson({
+    summary: "Game 修復完成",
+  }));
+  completeGameCard.gameBreakdown = {
+    phaseReached: "測試承接",
+    missedVariable: "投入感",
+    failureState: "追問偏多",
+    nextFirstLine: "我先說我的版本",
+    inviteDirection: "先鋪墊再丟低壓窗口",
+  };
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [validDebriefJson(), JSON.stringify(completeGameCard)],
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.card.summary, "Game 修復完成");
+  assertEquals(json.card.gameBreakdown.phaseReached, "測試承接");
+  assertEquals(state.deepSeekCalls.length, 2);
+  const repairPrompt = state.deepSeekCalls[1].messages.at(-1)?.content ?? "";
+  assert(repairPrompt.includes("Game 拆盤五個欄位有缺漏或空白"));
+  assert(repairPrompt.includes("gameBreakdown 必須含"));
+});
+
 Deno.test("debrief retries a malformed provider card once before returning the card", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
@@ -2567,6 +2981,9 @@ Deno.test("debrief retries a malformed provider card once before returning the c
   assertEquals(state.deepSeekCalls[0].maxTokens, 800);
   assertEquals(state.deepSeekCalls[1].maxTokens, 800);
   assertEquals(claimDebriefCalls(state).length, 1);
+  const repairPrompt = state.deepSeekCalls[1].messages.at(-1)?.content ?? "";
+  assert(repairPrompt.includes("上一版拆解 JSON 被拒絕"));
+  assert(repairPrompt.includes("不是可解析的單一 JSON 物件"));
 });
 
 Deno.test("debrief falls back after exhausting malformed provider cards", async () => {
@@ -2585,6 +3002,10 @@ Deno.test("debrief falls back after exhausting malformed provider cards", async 
   assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
   assertEquals(state.deepSeekCalls[1].timeoutMs, 12000);
   assertEquals(claimDebriefCalls(state).length, 1);
+  const telemetry = aiLogInserts(state)[0].values;
+  assertEquals(telemetry.status, "failed");
+  assertEquals(telemetry.fallback_used, true);
+  assertEquals(telemetry.error_code, "invalid_json");
 });
 
 Deno.test("game debrief fallback includes game breakdown after provider failure", async () => {
@@ -3214,6 +3635,18 @@ Deno.test("debrief missing dual-axis ledger column returns not-ready before prov
   assertEquals(state.deepSeekCalls.length, 0);
 });
 
+Deno.test("debrief missing replay columns returns not-ready before provider", async () => {
+  const { response, json, state } = await run({
+    ledgerError:
+      "Could not find the 'last_debrief_result' column of 'practice_chat_sessions' in the schema cache",
+  }, debriefBody({ requestId: "debrief-replay-not-ready" }));
+
+  assertEquals(response.status, 503);
+  assertEquals(json, { error: "practice_debrief_not_ready" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimDebriefCalls(state).length, 0);
+});
+
 Deno.test("hint quota exceeded returns 429 before provider and record RPC", async () => {
   const { response, json, state } = await run({
     sub: subscription({ monthly_messages_used: 300, daily_messages_used: 2 }),
@@ -3338,6 +3771,7 @@ Deno.test("hint retries a malformed provider result once before recording", asyn
     "deepseek",
     "deepseek",
     "rpc:record_practice_hint",
+    "insert:ai_logs",
   ]);
 });
 
@@ -3407,6 +3841,7 @@ Deno.test("successful hint uses ledger temperature, records after parse, and ret
     "rpc:claim_practice_hint_generation",
     "deepseek",
     "rpc:record_practice_hint",
+    "insert:ai_logs",
   ]);
 });
 

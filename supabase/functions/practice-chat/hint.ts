@@ -20,9 +20,9 @@ import {
 import { toTraditionalChinese } from "./traditional_chinese.ts";
 import type { PracticeTurn } from "./validate.ts";
 import {
+  compactGameFsmEvidencePrompt,
+  compactGameStrategyPrompt,
   evaluateGameFsm,
-  gameFsmEvidencePrompt,
-  gameStrategyPrompt,
 } from "./game_fsm.ts";
 import {
   hasL4UnsafeVisibleText,
@@ -30,6 +30,7 @@ import {
   rejectL4UnsafeVisibleText,
   rejectVisibleInternalLabelLeak,
 } from "./visible_text_guard.ts";
+import { latestAssistantShowsHostility } from "./conversation_signals.ts";
 
 export type HintReplyType = "warm_up" | "steady";
 
@@ -562,100 +563,6 @@ function beginnerFallbackAnchor(latestAssistant: string): string {
   return `妳說${quote}這個`;
 }
 
-/**
- * beginner 道歉分支的窄敵意偵測：只認明確的逐客令/敵意句。
- * 不能複用 latestAssistantNeedsFallbackRepair——那把 injection token
- * （prompt/給我…）也算進去，會讓「你給我推薦一部電影」誤觸道歉；
- * 非敵意的注入/標籤情況交給錨點抑制退中性罐頭即可。
- * 詞條必須帶語境收斂：「不是不想聊」「我們不要吵架」這類否定/和解句
- * 絕不能誤判成敵意；只收測試矩陣鎖住的直接逐客令，不靠裸關鍵字猜語境。
- */
-function latestAssistantShowsHostility(latestAssistant: string): boolean {
-  const normalized = latestAssistant.normalize("NFKC").trim().toLowerCase();
-  // 「你很煩」在調情語境常是玩笑吐槽，不入列；直接逐客令另由
-  // 不想聊了/別再傳等詞條判斷。先切句再比對，避免裸 substring 把
-  // 否定、第三人稱敘事或「不要再傳那張梗圖」當成退場要求。
-  // 「封鎖」「別再來」必須指向使用者或退場語境：敘事句（前任把我
-  // 封鎖了／下次別再來這家店）絕不能誤判。
-  const clauses = normalized
-    .split(/(?<=[，,。.!！?？；;\n])/)
-    .map((raw) => ({
-      isQuestion: /[?？]\s*$/.test(raw),
-      text: raw
-        .replace(/[，,。.!！?？；;\s]+$/g, "")
-        .replace(/^[\s（(「『"'`]+|[\s）)」』"'`]+$/g, "")
-        .trim(),
-    }))
-    .filter((clause) => clause.text.length > 0);
-
-  return clauses.some(({ text, isQuestion }, index) => {
-    const previousClause = clauses[index - 1]?.text ?? "";
-    const endsWithSpeechAttribution =
-      /(?:跟(?:我|他|她|你|妳)說|說|告訴(?:我|他|她|你|妳)|叫(?:我|他|她|你|妳)|傳訊息(?:說)?|回覆(?:我|他|她|你|妳)?|回(?:我|他|她|你|妳))(?:了)?$/
-        .test(previousClause);
-    const isDirectSpeakerPreamble =
-      /^(?:我(?:跟(?:你|妳)說|想說|要說|就說|只是說|說)|老實說|坦白說)(?:了)?$/
-        .test(previousClause);
-    const previousIntroducesQuotedSpeech = endsWithSpeechAttribution &&
-      !isDirectSpeakerPreamble;
-    if (previousIntroducesQuotedSpeech) return false;
-
-    const directBlockThreat = [
-      // 「我要封鎖你」；排除「我不會／沒有要封鎖你」。
-      /^(?:(?:那|不然|否則)\s*)?(?:我(?:要|會|就|想|直接|現在要|現在就)?\s*)?封鎖(?:你|妳)(?:了)?(?:啦|囉|喔|哦|吧|欸)?$/,
-      /^(?:(?:那|不然|否則)\s*)?(?:我(?:要|會|就|想|直接|現在要|現在就)?\s*)?(?:把|將)(?:你|妳)(?:給我)?封鎖(?:了)?(?:啦|囉|喔|哦|吧|欸)?$/,
-      // 被動句只收羞辱語境；普通「你被封鎖了嗎」不是對使用者下逐客令。
-      /^(?:你|妳)(?:已經)?被封鎖(?:也|就是|才|活該|剛好).*/,
-      // 「你再這樣我就封鎖」限定直接行為，不吃帳號／規則敘事。
-      /^(?:你|妳)?再(?:這樣|這麼|亂傳|傳|煩|鬧).{0,6}就(?:把(?:你|妳))?封鎖(?:你|妳)?$/,
-    ].some((pattern) => pattern.test(text)) ||
-      (!isQuestion &&
-        /^(?:你|妳)(?:已經)?被我封鎖(?:了)?(?:啦|囉|喔|哦|吧|欸)?$/
-          .test(text));
-    if (directBlockThreat) return true;
-
-    const directText = text.replace(
-      /^(?:(?:現在|今天|先|暫時)\s*)?(?:(?:拜託|請|麻煩)(?:你|妳)?\s*)?(?:(?:你|妳)?(?:可以|可不可以|能不能|真的|最好)\s*|(?:你|妳)\s*)?(?:(?:現在|今天|先|暫時)\s*)?/,
-      "",
-    );
-    const directExitPatterns = [
-      // 「不要再傳了／訊息給我」；不誤殺「不要再傳那張梗圖」。
-      /^(?:不用|不要|別)再傳(?:訊息)?(?:給我|過來)?(?:了)?(?:啦|囉|喔|哦|吧|欸|嗎)?$/,
-      /^(?:不要|別)傳(?:了)(?:啦|囉|喔|哦|吧|欸|嗎)?$/,
-      // 裸逐客令必須佔滿該句，排除「下次別再來這家店」。
-      /^(?:不要|別)再來(?:找我|煩我|亂)?(?:了)?(?:啦|囉|喔|哦|吧|欸|嗎)?$/,
-      /^(?:不要|別)(?:再)?來(?:找|煩)我(?:了)?(?:啦|囉|喔|哦|吧|欸|嗎)?$/,
-      /^(?:不要|別)(?:再)?(?:找|煩|聯絡|聯繫|打擾|密|私訊|吵)我(?:了)?(?:啦|囉|喔|哦|吧|欸|嗎)?$/,
-      /^(?:不要|別)(?:再)?跟我(?:說話|聊天|聊)(?:了)?(?:啦|囉|喔|哦|吧|欸|嗎)?$/,
-      /^(?:離我(?:遠(?:一?點)?|遠遠的)|滾開|走開)(?:了)?(?:啦|囉|喔|哦|吧|欸|嗎)?$/,
-      /^別來亂(?:了)?(?:啦|囉|喔|哦|吧|欸|嗎)?$/,
-      /^(?:我\s*)?想(?:先|暫時)?(?:不要|別|不)(?:再)?(?:跟(?:你|妳))?(?:聊|說話)(?:了)?(?:啦|囉|喔|哦|吧|欸)?$/,
-      /^(?:我們?\s*)?(?:現在|今天|先|暫時)?(?:不要|別|不)(?:再)?(?:跟(?:你|妳))?(?:聊|說話)(?:了)?(?:啦|囉|喔|哦|吧|欸)?$/,
-    ];
-    const matchesDirectExit = directExitPatterns.some((pattern) =>
-      pattern.test(directText)
-    );
-    const nextClause = clauses[index + 1]?.text ?? "";
-    const mentionsVenue =
-      /(?:這|那)(?:家|間)(?:店|店家|餐廳|酒吧|咖啡廳)|(?:這|那)個地方|店家|服務|餐點/
-        .test(nextClause);
-    const hasNegativeVenueReview =
-      /(?:很|超|有夠|真的)?(?:雷|爛|差)|不好|難吃|難喝|不推薦|踩雷|不行/
-        .test(nextClause);
-    const isVenueAdvice = /^(?:不要|別)再來/.test(directText) &&
-      mentionsVenue && hasNegativeVenueReview;
-    if (matchesDirectExit && !isVenueAdvice) {
-      return true;
-    }
-
-    // 「其實我／我其實不想…」可帶口語前綴；「不是／沒有不想」不匹配。
-    return [
-      /^(?:(?:其實|說真的|老實說)\s*)?(?:我\s*)?(?:(?:其實|真的|現在|今天|已經|目前|暫時|有點)\s*)*不(?:太)?想(?:再)?(?:跟(?:你|妳))?(?:聊|說話)(?:了)?(?:啦|囉|喔|哦|吧|欸)?$/,
-      /^(?:(?:其實|說真的|老實說)\s*)?(?:我\s*)?(?:(?:其實|真的|現在|今天|已經|目前|暫時|有點)\s*)*不(?:太)?想(?:再)?理(?:你|妳)(?:了)?(?:啦|囉|喔|哦|吧|欸)?$/,
-    ].some((pattern) => pattern.test(text));
-  });
-}
-
 function evidenceBoundBeginnerFallbackReplies(latestAssistant: string): {
   warmUp: string;
   steady: string;
@@ -779,6 +686,12 @@ export function buildFallbackHintResult(
   opts: HintBuildContext,
 ): PracticeHintResult {
   if (opts.practiceMode !== "game") {
+    return buildBeginnerFallbackHintResult(opts);
+  }
+
+  // Game 的速約／修復 FSM 也不得凌駕明確逐客令。共用同一個窄訊號，
+  // 不引用原句、不暖場、不邀約，只留下道歉與退一步。
+  if (latestAssistantShowsHostility(latestAssistantText(opts.turns))) {
     return buildBeginnerFallbackHintResult(opts);
   }
 
@@ -1013,11 +926,11 @@ function gameHintEvidence(opts: {
     relationshipStage: opts.relationshipStage,
     inviteStage: opts.inviteMaturity?.stage ?? null,
   });
-  const strategy = gameStrategyPrompt(opts.profile);
+  const strategy = compactGameStrategyPrompt(opts.profile);
   const inviteRoute = gameInviteRouteFor(snapshot.speedInviteDirection);
-  return `gameHint(hidden guidance)\nphase: ${snapshot.phase}\ntargetVariable: ${snapshot.targetVariable}\nspeedInviteDirection: ${snapshot.speedInviteDirection}\nallowSpicyLevel: ${snapshot.spicyLevel}\n內部用 Value / Frame / Emotion / Investment（收尾加 Safety）讀盤；coaching 可以比新手更直接拆招，講清楚現在在哪個階段、該推哪個變數、這輪是鋪墊/測試/張力/低壓邀約。\n可見文字一律轉白話：價值感、節奏與主見、情緒推進、投入感、曖昧張力；絕不用 DHV、篩選、框架、推拉、可得性這些原詞，也不輸出英文內部標籤。\nSpicy Ladder: L0 修復、L1 玩笑試探、L2 成人感暗示、L3 高張力暗示；對方保留或被越界時一律降回 L0/L1。\nL4 forbidden: 露骨性內容、身體或性行為描寫、脅迫、羞辱、非自願、灌醉施壓、硬推私密場景，任何情況都不得輸出。\n現實錨定：假朋友、假介紹、假見過面、假職場或行蹤宣稱要懷疑或確認，不可背書。\n\n${visibleGameHintContract()}${safeAdvancedGameHintContract()}${sevenStepBalanceContract()}${
+  return `gameHint(hidden guidance)\n內部用 Value / Frame / Emotion / Investment（收尾加 Safety）讀盤；coaching 要白話說清階段、該推的要素與這輪任務。L4 forbidden。\n可見文字一律轉白話：價值感、節奏與主見、情緒推進、投入感、曖昧張力；絕不用 DHV、篩選、框架、推拉、可得性這些原詞，也不輸出英文內部標籤。\n\n${visibleGameHintContract()}${safeAdvancedGameHintContract()}${sevenStepBalanceContract()}${
     speedInviteLadderPrompt(inviteRoute)
-  }${gameFsmEvidencePrompt(snapshot)}\n${strategy}\n`;
+  }${compactGameFsmEvidencePrompt(snapshot)}\n${strategy}\n`;
 }
 
 export function buildHintMessages(opts: {

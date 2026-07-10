@@ -59,6 +59,8 @@ class _FakeApi extends PracticeChatApiService {
   String? lastHintRequestId;
   PracticeLearningMode? lastHintPracticeMode;
   int hintCallCount = 0;
+  Future<void> Function(String sessionId, String requestId)?
+      confirmDebriefHandler;
 
   // 翻牌捕捉。
   int drawCallCount = 0;
@@ -136,6 +138,14 @@ class _FakeApi extends PracticeChatApiService {
   }
 
   @override
+  Future<void> confirmDebriefPersisted({
+    required String sessionId,
+    required String requestId,
+  }) async {
+    await confirmDebriefHandler?.call(sessionId, requestId);
+  }
+
+  @override
   Future<PracticeDrawResult> drawProfile({
     required String requestId,
     String? currentProfileId,
@@ -201,7 +211,9 @@ void main() {
       hintRequestTimeout: hintRequestTimeout,
       sendMessageTimeout: sendMessageTimeout,
     );
-    addTearDown(c.dispose);
+    addTearDown(() {
+      if (c.mounted) c.dispose();
+    });
     return c;
   }
 
@@ -220,7 +232,9 @@ void main() {
       historyRepository: history,
       initialSession: session,
     );
-    addTearDown(c.dispose);
+    addTearDown(() {
+      if (c.mounted) c.dispose();
+    });
     return c;
   }
 
@@ -932,6 +946,7 @@ void main() {
 
     test('產拆解卡、鎖定、持久化拆解欄位', () async {
       final c = await makeDebriefable();
+      var confirmedAfterPersist = false;
 
       api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
             summary: '整體不錯',
@@ -942,7 +957,13 @@ void main() {
             dateChance: 'medium',
             dateChanceReason: '她有回應，但還需要鋪墊。',
             nextInviteMove: '先丟一個模糊邀約。',
+            idempotencyRequestId: 'debrief-durable-1',
           );
+      api.confirmDebriefHandler = (sessionId, requestId) async {
+        final persisted = repo.getById(sessionId);
+        confirmedAfterPersist = persisted?.debriefSummary == '整體不錯' &&
+            requestId == 'debrief-durable-1';
+      };
       await c.endPractice();
       final s = c.currentState;
 
@@ -953,6 +974,112 @@ void main() {
       expect(saved.debriefDateChance, 'medium');
       expect(saved.debriefDateChanceReason, '她有回應，但還需要鋪墊。');
       expect(saved.debriefNextInviteMove, '先丟一個模糊邀約。');
+      expect(confirmedAfterPersist, true);
+    });
+
+    test('切到另一場後，舊場晚到的拆解成功不得污染 state、repo 或 confirm', () async {
+      final c = await makeDebriefable();
+      final originalSessionId = c.currentState.sessionId;
+      final pending = Completer<PracticeDebrief>();
+      var confirmCount = 0;
+      api.debriefHandler = (_, {profile}) => pending.future;
+      api.confirmDebriefHandler = (_, __) async => confirmCount++;
+
+      final inFlight = c.endPractice();
+      final otherSession = PracticeSession(
+        id: 'debrief-other-session',
+        createdAt: DateTime(2026, 6, 26, 14),
+        aiReplyCount: 1,
+        messages: const [
+          PracticeMessage(role: 'user', text: '另一場'),
+          PracticeMessage(role: 'ai', text: '另一場回覆'),
+        ],
+        profileId: 'practice_girl_005',
+      );
+      await repo.save(otherSession);
+      c.resumeSession(otherSession);
+
+      pending.complete(const PracticeDebrief(
+        summary: '舊場晚到卡片',
+        strengths: ['不該出現在新場'],
+        watchouts: [],
+        suggestedLine: '舊場下一句',
+        vibe: '中性',
+        idempotencyRequestId: 'old-debrief-request',
+      ));
+      await inFlight;
+
+      expect(c.currentState.sessionId, otherSession.id);
+      expect(c.currentState.debrief, isNull);
+      expect(c.currentState.errorMessage, isNull);
+      expect(repo.getById(otherSession.id)!.debriefSummary, isNull);
+      expect(repo.getById(originalSessionId)!.debriefSummary, isNull);
+      expect(confirmCount, 0);
+    });
+
+    test('切到另一場後，舊場晚到的拆解錯誤不得覆蓋新場狀態', () async {
+      final c = await makeDebriefable();
+      final pending = Completer<PracticeDebrief>();
+      api.debriefHandler = (_, {profile}) => pending.future;
+
+      final inFlight = c.endPractice();
+      final otherSession = PracticeSession(
+        id: 'debrief-error-other-session',
+        createdAt: DateTime(2026, 6, 26, 15),
+        aiReplyCount: 1,
+        messages: const [
+          PracticeMessage(role: 'user', text: '新場'),
+          PracticeMessage(role: 'ai', text: '新場回覆'),
+        ],
+        profileId: 'practice_girl_006',
+      );
+      await repo.save(otherSession);
+      c.resumeSession(otherSession);
+
+      pending.completeError(TimeoutException('old debrief timeout'));
+      await inFlight;
+
+      expect(c.currentState.sessionId, otherSession.id);
+      expect(c.currentState.debriefFailed, false);
+      expect(c.currentState.ended, false);
+      expect(c.currentState.errorMessage, isNull);
+    });
+
+    test('舊 controller dispose 後晚到的拆解不得覆寫重建 controller 的同場新內容', () async {
+      final c1 = await makeDebriefable();
+      final sessionId = c1.currentState.sessionId;
+      final pending = Completer<PracticeDebrief>();
+      var confirmCount = 0;
+      api.debriefHandler = (_, {profile}) => pending.future;
+      api.confirmDebriefHandler = (_, __) async => confirmCount++;
+
+      final oldInFlight = c1.endPractice();
+      c1.dispose();
+
+      final c2 = makeControllerFrom(repo.getById(sessionId)!);
+      api.sendHandler = (_, {profile}) async => reply(
+            text: '新 controller 回覆',
+            aiTurnCount: 2,
+            cost: 0,
+          );
+      await c2.sendMessage('重建後的新訊息');
+      expect(repo.getById(sessionId)!.messages, hasLength(4));
+
+      pending.complete(const PracticeDebrief(
+        summary: 'dispose 前的舊拆解',
+        strengths: ['不該落盤'],
+        watchouts: [],
+        suggestedLine: '舊下一句',
+        vibe: '中性',
+        idempotencyRequestId: 'disposed-debrief-request',
+      ));
+      await oldInFlight;
+
+      expect(c2.currentState.messages, hasLength(4));
+      expect(c2.currentState.debrief, isNull);
+      expect(repo.getById(sessionId)!.messages, hasLength(4));
+      expect(repo.getById(sessionId)!.debriefSummary, isNull);
+      expect(confirmCount, 0);
     });
 
     test('locked 時 endPractice 為 no-op', () async {
@@ -992,6 +1119,23 @@ void main() {
       expect(s.debriefRetryable, true);
       expect(s.quotaExceeded, false);
       expect(s.errorMessage, '請求太頻繁，請稍後再試。');
+      expect(s.canDebrief, true);
+    });
+
+    test('拆解 425 尚在生成：保留重試並提示稍等', () async {
+      final c = await makeDebriefable();
+      api.debriefHandler = (_, {profile}) async => throw PracticeApiException(
+            'practice_debrief_in_flight',
+            status: 425,
+          );
+
+      await c.endPractice();
+      final s = c.currentState;
+
+      expect(s.isDebriefing, false);
+      expect(s.debriefFailed, true);
+      expect(s.debriefRetryable, true);
+      expect(s.errorMessage, '拆解還在完成中，請稍等幾秒再試。');
       expect(s.canDebrief, true);
     });
 
@@ -1589,8 +1733,7 @@ void main() {
       expect(c.currentState.temperatureBand, 'warm');
     });
 
-    test('session 還原：temperatureBand null（Hive 不存 band，UI 用 score 鏡像兜底）',
-        () {
+    test('session 還原：temperatureBand null（Hive 不存 band，UI 用 score 鏡像兜底）', () {
       final c = makeControllerFrom(PracticeSession(
         id: 'restore-band',
         createdAt: DateTime(2026, 6, 26, 12),
@@ -2201,8 +2344,7 @@ void main() {
       expect(c.currentState.canRequestHint, true);
     });
 
-    test('requestHint 403 in-flight 後重試：沿用同 id（server replay 不重扣）',
-        () async {
+    test('requestHint 403 in-flight 後重試：沿用同 id（server replay 不重扣）', () async {
       final c = await makeRevealed();
       await c.setPracticeLearningMode(PracticeLearningMode.beginner);
       api.sendHandler = (_, {profile}) async => reply(
@@ -2632,11 +2774,13 @@ void main() {
       api.hintHandler = (_, {profile}) => completerA.future;
       final hintFutureA = c1.requestHint();
       final aId = api.lastHintRequestId;
+      final sessionId = c1.currentState.sessionId;
+      c1.dispose();
 
       // 模擬重建：新 controller 共用 store，聊到下一個 turn 後發起 hint B
       // （timeout 失敗 → B 的 id 保留在 store 供重試）
       final c2 = makeControllerFrom(
-        repo.getById(c1.currentState.sessionId)!,
+        repo.getById(sessionId)!,
         pendingHintStore: pendingStore,
       );
       api.sendHandler = (_, {profile}) async => reply(

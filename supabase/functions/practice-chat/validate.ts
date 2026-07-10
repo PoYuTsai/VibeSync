@@ -65,7 +65,7 @@ export interface PracticeChatRequest {
   /** Debrief 專用：本場哪些 user turn 是由 Hint 建議而來，用於提示責任拆解。 */
   appliedHintTurns?: AppliedHintTurn[];
   /**
-   * hint 模式限定的冪等 key（client 產 uuid；失敗重試沿用同 id）。選填：舊
+   * hint/debrief 模式的冪等 key（client 產 uuid；失敗重試沿用同 id）。選填：舊
    * client 缺值走現行為（無冪等），向後相容。格式比照翻牌 requestId。
    */
   requestId?: string;
@@ -284,10 +284,10 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     photoId: raw.photoId,
   });
 
-  // requestId：hint 模式限定的冪等 key（選填；缺值＝舊 client，走無冪等現行為）。
-  // 格式檢查比照翻牌 requestId；非 hint 模式一律忽略。
+  // requestId：hint/debrief 模式的冪等 key（選填；缺值＝舊 client，走無冪等
+  // 現行為）。格式檢查比照翻牌 requestId；chat 模式一律忽略。
   let requestId: string | undefined;
-  if (mode === "hint" && raw.requestId !== undefined) {
+  if ((mode === "hint" || mode === "debrief") && raw.requestId !== undefined) {
     if (
       typeof raw.requestId !== "string" ||
       !REQUEST_ID_RE.test(raw.requestId)

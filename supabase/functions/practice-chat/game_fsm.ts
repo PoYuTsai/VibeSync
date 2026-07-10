@@ -550,6 +550,17 @@ export function gameFsmEvidencePrompt(snapshot: GameFsmSnapshot): string {
   }\nallowSpicyLevel: ${snapshot.spicyLevel}\ndeltaClamp: heat ${GAME_HEAT_DELTA_MIN}..+${GAME_HEAT_DELTA_MAX}, familiarity ${GAME_FAMILIARITY_DELTA_MIN}..+${GAME_FAMILIARITY_DELTA_MAX}\nUse failure states internally only. BORING means stop interviewing and add Value/Emotion. TOOL_GUY means stop buying approval. GREASY means repair safety and lower sexual/private pressure. FRAME_COLLAPSE means stop over-explaining. ENGINE_STALL means add a concrete hook. GHOST_RISK means reduce pressure. FRAME_OVERREACH/Reality flags mean confirm, tease, or doubt instead of validating fake familiarity.\n`;
 }
 
+/** Hint/Debrief 專用：保留決策證據，移除只影響 NPC/評分的數值與重複說明。 */
+export function compactGameFsmEvidencePrompt(
+  snapshot: GameFsmSnapshot,
+): string {
+  return `socialGameFsm(hidden guidance)\nphase: ${snapshot.phase}\ntargetVariable: ${snapshot.targetVariable}\nspeedInviteDirection: ${snapshot.speedInviteDirection}\nfailureStates: ${
+    csv(snapshot.failureStates)
+  }\nrealityFlags: ${
+    csv(snapshot.realityFlags)
+  }\nallowSpicyLevel: ${snapshot.spicyLevel}\n`;
+}
+
 function uniqueNonEmpty(values: readonly string[], maxItems: number): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -568,144 +579,144 @@ const EXPLICIT_SR_GAME_STRATEGIES: Record<
   Omit<GameStrategy, "profileId">
 > = {
   practice_girl_004: {
-    valueHooks: ["dry humor", "craft coffee", "small competence flex"],
-    testStyle: "teasing tests; she rewards calm wit and concise callbacks",
-    tensionStyle: "playful verbal tension, never push private scenes early",
-    closeHooks: ["coffee tasting", "quick bookstore loop", "dessert detour"],
-    punishments: ["needy approval", "over-explaining", "fake familiarity"],
+    valueHooks: ["冷面幽默", "手作咖啡品味", "低調展現辦事能力"],
+    testStyle: "用吐槽測穩定度；她欣賞冷靜機智與簡短回呼",
+    tensionStyle: "用玩笑反打與言語留白做張力，前期絕不推私密場景",
+    closeHooks: ["咖啡品飲", "書店快逛", "順路吃甜點"],
+    punishments: ["討好求認可", "解釋過頭", "假裝很熟"],
   },
   practice_girl_006: {
-    valueHooks: ["night walk", "music taste", "low-key confidence"],
-    testStyle: "soft challenge; she checks if your frame survives silence",
-    tensionStyle: "quiet tension through implication and slower tempo",
-    closeHooks: ["live music", "late tea", "short city walk"],
-    punishments: ["interviewing", "rushing intimacy", "tool-guy favors"],
+    valueHooks: ["夜間散步", "音樂品味", "低調自信"],
+    testStyle: "用輕微挑戰測沉著；她會看你能不能自在承受沉默",
+    tensionStyle: "用暗示與慢節奏營造安靜張力，不急著逼近",
+    closeHooks: ["現場音樂", "晚茶", "城市短散步"],
+    punishments: ["查戶口式追問", "急著拉近親密", "用幫忙討好"],
   },
   practice_girl_007: {
-    valueHooks: ["fitness discipline", "healthy routines", "playful stamina"],
-    testStyle: "direct energy test; she likes grounded banter",
-    tensionStyle: "athletic teasing and challenge, consent-forward",
-    closeHooks: ["smoothie stop", "easy hike", "weekend workout cafe"],
-    punishments: ["lazy vagueness", "sexual pressure", "bragging"],
+    valueHooks: ["自律健身", "健康日常", "有玩心的體力感"],
+    testStyle: "直接測你的能量；她喜歡有根據、不飄的來回調侃",
+    tensionStyle: "用運動感的玩笑與挑戰做張力，以同意和分寸為前提",
+    closeHooks: ["果昔小聚", "輕鬆健行", "週末運動後咖啡"],
+    punishments: ["懶散含糊", "性壓力", "自我吹噓"],
   },
   practice_girl_008: {
-    valueHooks: ["art taste", "visual details", "curious observation"],
-    testStyle: "taste filter; she notices whether you actually observe",
-    tensionStyle: "aesthetic contrast and light mystery",
-    closeHooks: ["gallery loop", "design market", "photo walk"],
-    punishments: ["generic compliments", "explaining her taste", "neediness"],
+    valueHooks: ["藝術品味", "視覺細節", "好奇觀察"],
+    testStyle: "用品味辨識你是否真的有觀察，而不是套話",
+    tensionStyle: "用美感反差與一點神祕感做張力",
+    closeHooks: ["逛一圈畫廊", "設計市集", "街頭攝影散步"],
+    punishments: ["萬用稱讚", "替她解釋品味", "黏著求認可"],
   },
   practice_girl_009: {
-    valueHooks: ["career drive", "sharp boundaries", "efficient plans"],
-    testStyle: "competence test; she rewards clarity and low pressure",
-    tensionStyle: "confident compression, no rambling",
-    closeHooks: ["espresso between meetings", "short lunch", "after-work bar"],
-    punishments: ["unclear intent", "frame collapse", "time wasting"],
+    valueHooks: ["事業企圖", "清楚界線", "有效率的安排"],
+    testStyle: "用辦事能力測清晰度；她欣賞明確又低壓的表達",
+    tensionStyle: "用自信而精簡的表達做張力，不冗長繞圈",
+    closeHooks: ["會議空檔喝濃縮咖啡", "簡短午餐", "下班後小酌"],
+    punishments: ["意圖不清", "失去主見", "浪費時間"],
   },
   practice_girl_028: {
-    valueHooks: ["travel stories", "local gems", "spontaneous planning"],
-    testStyle: "adventure filter; she checks if you can lead lightly",
-    tensionStyle: "inviting momentum with easy opt-outs",
-    closeHooks: ["hidden cafe", "mini itinerary", "street food stop"],
-    punishments: ["controlling plans", "unsafe pressure", "boring logistics"],
+    valueHooks: ["旅行故事", "在地私房點", "隨興規劃"],
+    testStyle: "用冒險感看你能否輕鬆帶方向，不控制行程",
+    tensionStyle: "用有動能的邀請營造張力，隨時保留退出空間",
+    closeHooks: ["私房咖啡店", "迷你行程", "街頭小吃"],
+    punishments: ["控制行程", "不安全的施壓", "無聊的行程盤問"],
   },
   practice_girl_032: {
-    valueHooks: ["book notes", "intellectual play", "specific memory"],
-    testStyle: "precision test; vague flirting cools her off",
-    tensionStyle: "smart challenge and understated warmth",
-    closeHooks: ["bookstore coffee", "quiet tea", "lecture after-chat"],
-    punishments: ["surface-level lines", "fake expertise", "pushiness"],
+    valueHooks: ["讀書筆記", "知性玩心", "記得具體細節"],
+    testStyle: "用精準度測深度；空泛調情會讓她降溫",
+    tensionStyle: "用聰明挑戰與克制的溫度做張力",
+    closeHooks: ["書店咖啡", "安靜喝茶", "講座後短聊"],
+    punishments: ["表面套話", "假裝專業", "強勢逼近"],
   },
   practice_girl_033: {
-    valueHooks: ["food curiosity", "sensory detail", "social ease"],
-    testStyle: "taste and generosity test; she dislikes show-off ordering",
-    tensionStyle: "warm sensory teasing without explicitness",
-    closeHooks: ["dessert split", "night market bite", "chef's pick"],
-    punishments: ["cheap innuendo", "indecision", "approval seeking"],
+    valueHooks: ["對食物的好奇", "感官細節", "自在社交感"],
+    testStyle: "用口味與分享感測你；她不喜歡炫耀式點餐",
+    tensionStyle: "用溫暖的感官玩笑做張力，不露骨",
+    closeHooks: ["分吃甜點", "夜市小吃", "主廚推薦"],
+    punishments: ["廉價雙關", "猶豫不決", "討好求認可"],
   },
   practice_girl_036: {
-    valueHooks: ["indie music", "private jokes", "calm originality"],
-    testStyle: "coolness test; she checks if you chase validation",
-    tensionStyle: "deadpan tension and selective compliments",
-    closeHooks: ["vinyl shop", "small gig", "late cafe"],
-    punishments: ["trying too hard", "copy-paste lines", "neediness"],
+    valueHooks: ["獨立音樂", "兩人的小梗", "沉著原創感"],
+    testStyle: "測你會不會追著求認可；越自在越加分",
+    tensionStyle: "用冷面幽默與精準稱讚做張力",
+    closeHooks: ["黑膠唱片行", "小型演出", "深夜咖啡"],
+    punishments: ["用力過頭", "複製貼上話術", "黏著求認可"],
   },
   practice_girl_038: {
-    valueHooks: ["pet stories", "gentle reliability", "daily rituals"],
-    testStyle: "safety test; she warms to steady, non-pushy pacing",
-    tensionStyle: "soft warmth with tiny playful challenge",
-    closeHooks: ["pet-friendly cafe", "park coffee", "bakery errand"],
-    punishments: ["hard escalation", "unverified familiarity", "mocking"],
+    valueHooks: ["寵物故事", "溫柔可靠", "日常小儀式"],
+    testStyle: "測安全感；穩定、不施壓的節奏會讓她慢慢升溫",
+    tensionStyle: "用柔和溫度加一點小挑戰做張力",
+    closeHooks: ["寵物友善咖啡", "公園咖啡", "順路去麵包店"],
+    punishments: ["硬推進", "未確認就裝熟", "嘲弄她"],
   },
   practice_girl_051: {
-    valueHooks: ["startup grit", "decision speed", "clear priorities"],
-    testStyle: "frame test; she pokes at indecision",
-    tensionStyle: "fast, confident, low-word-count tension",
-    closeHooks: ["15-minute coffee", "demo day drink", "late snack"],
-    punishments: ["rambling", "unclear plans", "bragging without proof"],
+    valueHooks: ["創業韌性", "決策速度", "清楚優先順序"],
+    testStyle: "測你的主見；她會戳你猶豫不決的地方",
+    tensionStyle: "用快速、自信、少字的表達做張力",
+    closeHooks: ["十五分鐘咖啡", "展示活動後小酌", "深夜點心"],
+    punishments: ["長篇繞圈", "計畫不清", "沒有證據的吹噓"],
   },
   practice_girl_052: {
-    valueHooks: ["fashion detail", "tasteful restraint", "scene awareness"],
-    testStyle: "taste test; she notices if you over-compliment",
-    tensionStyle: "stylish restraint and one precise compliment",
-    closeHooks: ["concept store", "cocktail bar", "window-shopping loop"],
-    punishments: ["objectifying", "generic praise", "private-scene pressure"],
+    valueHooks: ["穿搭細節", "有品味的克制", "讀懂場合"],
+    testStyle: "用品味測你會不會稱讚過頭",
+    tensionStyle: "用有型的克制與一句精準稱讚做張力",
+    closeHooks: ["概念店", "雞尾酒吧", "短程逛街"],
+    punishments: ["物化她", "萬用稱讚", "施壓私密場景"],
   },
   practice_girl_055: {
-    valueHooks: ["medical humor", "competence under stress", "care rhythm"],
-    testStyle: "stress test; she values steady humor without mansplaining",
-    tensionStyle: "warm competence and lightly mischievous callbacks",
-    closeHooks: ["post-shift dessert", "quiet ramen", "short coffee"],
-    punishments: ["fake hospital social proof", "lecture mode", "neediness"],
+    valueHooks: ["醫療現場幽默", "壓力下的穩定能力", "懂得照顧節奏"],
+    testStyle: "用壓力測你的穩定；她欣賞不說教的沉著幽默",
+    tensionStyle: "用可靠能力與帶點調皮的回呼做張力",
+    closeHooks: ["下班後甜點", "安靜吃拉麵", "短暫喝咖啡"],
+    punishments: ["假借醫院人脈背書", "說教模式", "黏著求認可"],
   },
   practice_girl_063: {
-    valueHooks: ["language play", "culture contrast", "travel curiosity"],
-    testStyle: "curiosity test; she dislikes exoticizing",
-    tensionStyle: "cross-cultural teasing with respect and boundaries",
-    closeHooks: ["language exchange cafe", "museum snack", "tea tasting"],
-    punishments: ["stereotyping", "over-explaining", "rushing intimacy"],
+    valueHooks: ["語言玩心", "文化反差", "旅行好奇心"],
+    testStyle: "用好奇心測你；她討厭把文化差異當獵奇",
+    tensionStyle: "用跨文化玩笑做張力，同時尊重界線",
+    closeHooks: ["語言交換咖啡", "博物館點心", "品茶"],
+    punishments: ["刻板印象", "解釋過頭", "急著拉近親密"],
   },
   practice_girl_065: {
-    valueHooks: ["dance rhythm", "body confidence", "social calibration"],
-    testStyle: "calibration test; she checks if you read cues",
-    tensionStyle: "movement metaphors, never explicit body claims",
-    closeHooks: ["salsa night", "dessert after class", "music bar"],
-    punishments: ["greasy body comments", "pressure", "jealous framing"],
+    valueHooks: ["舞蹈節奏", "自在身體感", "社交分寸"],
+    testStyle: "測你能不能讀懂反應與節奏",
+    tensionStyle: "用動作隱喻做張力，絕不對身體做露骨宣稱",
+    closeHooks: ["拉丁舞之夜", "課後甜點", "音樂酒吧"],
+    punishments: ["油膩身體評論", "施壓", "用嫉妒操控"],
   },
   practice_girl_079: {
-    valueHooks: ["finance discipline", "dry wit", "long-game thinking"],
-    testStyle: "logic test; she rewards calm confidence",
-    tensionStyle: "controlled teasing with grounded specifics",
-    closeHooks: ["wine bar", "weekday coffee", "market brunch"],
-    punishments: ["showing off money", "vague flirting", "frame collapse"],
+    valueHooks: ["理財紀律", "冷面機智", "長線思考"],
+    testStyle: "用邏輯測穩定；她欣賞冷靜自信",
+    tensionStyle: "用有根據的具體細節與克制調侃做張力",
+    closeHooks: ["葡萄酒吧", "平日咖啡", "市場早午餐"],
+    punishments: ["炫耀金錢", "空泛調情", "失去主見"],
   },
   practice_girl_080: {
-    valueHooks: ["outdoor calm", "nature details", "prepared leadership"],
-    testStyle: "reliability test; she warms when plans feel safe",
-    tensionStyle: "fresh-air playfulness and slow burn",
-    closeHooks: ["sunset walk", "trail cafe", "morning bakery"],
-    punishments: ["unsafe spontaneity", "hard escalation", "complaint loops"],
+    valueHooks: ["戶外沉著", "自然細節", "有準備的帶領感"],
+    testStyle: "測可靠度；安排讓人安心時她會升溫",
+    tensionStyle: "用戶外感的玩心慢慢升溫",
+    closeHooks: ["夕陽散步", "步道咖啡", "早晨麵包店"],
+    punishments: ["不安全的臨時起意", "硬推進", "反覆抱怨"],
   },
   practice_girl_082: {
-    valueHooks: ["gaming references", "team play", "creative problem solving"],
-    testStyle: "banter duel; she likes playful counters",
-    tensionStyle: "competitive teasing and quick callbacks",
-    closeHooks: ["arcade date", "board-game cafe", "late-night snack"],
-    punishments: ["mansplaining", "rage energy", "needy compliments"],
+    valueHooks: ["遊戲梗", "團隊默契", "創意解題"],
+    testStyle: "用互虧來回測反應；她喜歡有玩心的反擊",
+    tensionStyle: "用競爭式調侃與快速回呼做張力",
+    closeHooks: ["街機小約", "桌遊咖啡", "深夜點心"],
+    punishments: ["居高臨下說教", "暴怒能量", "討好式稱讚"],
   },
   practice_girl_085: {
-    valueHooks: ["cinema taste", "emotional nuance", "observant callbacks"],
-    testStyle: "depth test; she notices shallow lines",
-    tensionStyle: "cinematic implication and emotional contrast",
-    closeHooks: ["indie movie", "post-film tea", "night walk"],
-    punishments: ["spoilers", "generic romance lines", "rushing close"],
+    valueHooks: ["電影品味", "情緒細節", "觀察式回呼"],
+    testStyle: "用深度測你；表面話術很快會被她看穿",
+    tensionStyle: "用電影感暗示與情緒反差做張力",
+    closeHooks: ["獨立電影", "散場後喝茶", "夜間散步"],
+    punishments: ["爆雷", "萬用浪漫台詞", "急著收尾"],
   },
   practice_girl_087: {
-    valueHooks: ["law-school precision", "boundaries", "sharp teasing"],
-    testStyle: "argument test; she checks if you can disagree lightly",
-    tensionStyle: "controlled debate and respectful push-pull",
-    closeHooks: ["court-area coffee", "mocktail", "bookstore stop"],
-    punishments: ["pressure", "lying social proof", "defensive essays"],
+    valueHooks: ["法律式精準", "清楚界線", "犀利調侃"],
+    testStyle: "用觀點交鋒測你能否輕鬆不同意",
+    tensionStyle: "用克制辯論與尊重的來回拉力做張力",
+    closeHooks: ["法院附近咖啡", "無酒精調飲", "書店短逛"],
+    punishments: ["施壓", "謊稱人脈背書", "防禦式長文"],
   },
 };
 
@@ -788,4 +799,14 @@ export function gameStrategyPrompt(profile: PracticeProfile): string {
   }\npunishments: ${
     strategy.punishments.join("；")
   }\nUse this only to make this card feel strategically distinct in Game mode. Do not reveal profileId, strategy labels, or hidden hook names.`;
+}
+
+/** Hint/Debrief 已有完整 profile evidence，只保留 Game 的差異化招式資料。 */
+export function compactGameStrategyPrompt(profile: PracticeProfile): string {
+  const strategy = buildGameStrategy(profile);
+  return `gameStrategy(hidden guidance)\nvalueHooks: ${
+    strategy.valueHooks.slice(0, 3).join("；")
+  }\ntestStyle: ${strategy.testStyle}\ntensionStyle: ${strategy.tensionStyle}\ncloseHooks: ${
+    strategy.closeHooks.slice(0, 2).join("；")
+  }\navoid: ${strategy.punishments.slice(0, 3).join("；")}\n`;
 }

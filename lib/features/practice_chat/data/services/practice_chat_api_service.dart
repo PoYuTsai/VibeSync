@@ -1,4 +1,9 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
+import 'package:vibesync/features/practice_chat/data/repositories/practice_pending_debrief_store.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_learning_mode.dart';
@@ -147,6 +152,11 @@ class PracticeDebrief {
   final int? monthlyRemaining;
   final int? dailyRemaining;
 
+  /// Transport idempotency key. The controller clears it only after the card
+  /// is durably persisted; keeping it out of the UI/domain serialization
+  /// avoids stranding a server-completed card during an app-kill window.
+  final String? idempotencyRequestId;
+
   const PracticeDebrief({
     required this.summary,
     required this.strengths,
@@ -159,6 +169,7 @@ class PracticeDebrief {
     this.gameBreakdown,
     this.monthlyRemaining,
     this.dailyRemaining,
+    this.idempotencyRequestId,
   });
 }
 
@@ -322,10 +333,86 @@ class PracticeDrawUpgradeRequiredException implements Exception {
 }
 
 class PracticeChatApiService {
-  PracticeChatApiService({PracticeChatInvoker? invoker})
-      : _invoke = _mapFunctionExceptions(invoker ?? _defaultInvoker);
+  PracticeChatApiService({
+    PracticeChatInvoker? invoker,
+    Duration debriefRequestTimeout = const Duration(seconds: 35),
+    String Function()? requestIdFactory,
+    PracticePendingDebriefStore? pendingDebriefStore,
+  })  : _invoke = _mapFunctionExceptions(invoker ?? _defaultInvoker),
+        _debriefRequestTimeout = debriefRequestTimeout,
+        _requestIdFactory = requestIdFactory ?? _newRequestId,
+        _pendingDebriefStore =
+            pendingDebriefStore ?? InMemoryPracticePendingDebriefStore();
 
   final PracticeChatInvoker _invoke;
+  final Duration _debriefRequestTimeout;
+  final String Function() _requestIdFactory;
+  final PracticePendingDebriefStore _pendingDebriefStore;
+
+  PracticePendingDebrief? _pendingDebriefRequest;
+
+  static String _newRequestId() => const Uuid().v4();
+
+  static String _payloadDigest(Map<String, dynamic> intentBody) =>
+      sha256.convert(utf8.encode(jsonEncode(intentBody))).toString();
+
+  Future<String> _requestIdForDebrief({
+    required String sessionId,
+    required String payloadDigest,
+  }) async {
+    bool matches(PracticePendingDebrief pending) =>
+        pending.sessionId == sessionId &&
+        pending.payloadDigest == payloadDigest;
+
+    final memoryPending = _pendingDebriefRequest;
+    if (memoryPending != null && matches(memoryPending)) {
+      return memoryPending.requestId;
+    }
+
+    final stored = _pendingDebriefStore.load();
+    final requestId = stored != null && matches(stored)
+        ? stored.requestId
+        : _requestIdFactory();
+    final pending = PracticePendingDebrief(
+      sessionId: sessionId,
+      payloadDigest: payloadDigest,
+      requestId: requestId,
+    );
+    _pendingDebriefRequest = pending;
+    // 在送出 request 前持久化，縮到最小的「server 已 claim、client 尚未存 id」窗口。
+    // store 自身 fail-open；box 不可用時仍會靠記憶體維持 process-lifetime 冪等。
+    await _pendingDebriefStore.save(pending);
+    return requestId;
+  }
+
+  Future<void> _clearPendingDebrief({
+    required String sessionId,
+    required String requestId,
+  }) async {
+    if (_pendingDebriefRequest?.sessionId == sessionId &&
+        _pendingDebriefRequest?.requestId == requestId) {
+      _pendingDebriefRequest = null;
+    }
+    // 晚到的舊 response 不得清掉較新的 pending request。
+    try {
+      final stored = _pendingDebriefStore.load();
+      if (stored?.sessionId == sessionId && stored?.requestId == requestId) {
+        await _pendingDebriefStore.clear();
+      }
+    } catch (_) {
+      // Persistence cleanup is fail-open. A stale key can only replay the same
+      // completed response and is overwritten by the next distinct intent.
+    }
+  }
+
+  /// A successful HTTP response is not enough to retire the requestId: the app
+  /// may be killed before the debrief card reaches Hive. The controller calls
+  /// this only after its session persistence succeeds.
+  Future<void> confirmDebriefPersisted({
+    required String sessionId,
+    required String requestId,
+  }) =>
+      _clearPendingDebrief(sessionId: sessionId, requestId: requestId);
 
   /// functions_client 2.5.0 的 `invoke` 對非 2xx **一律 throw [FunctionException]**
   /// （status＋details＝decode 後的 body），不會把狀態碼帶回 [FunctionResponse]。
@@ -470,34 +557,60 @@ class PracticeChatApiService {
             hint.sentText.trim().isNotEmpty)
         .take(5)
         .toList(growable: false);
+    // 冪等指紋只吃跨 controller/App 重建後仍可還原的場次事實。
+    // appliedHintTurns 是 controller RAM side-channel；memory/partnerState 也屬衍生
+    // context。把它們放進 digest 會讓同一場 lost-response retry 在重建後換 ID。
+    final durableIntentBody = <String, dynamic>{
+      'mode': 'debrief',
+      'sessionId': sessionId,
+      'practiceMode': practiceMode.wireName,
+      ...profile.toJson(),
+      'turns': turns.map((t) => t.toJson()).toList(),
+      'roundIndex': roundIndex,
+      if (visiblePracticeThreadId != null)
+        'visiblePracticeThreadId': visiblePracticeThreadId,
+    };
+    final intentBody = <String, dynamic>{
+      ...durableIntentBody,
+      if (normalizedMemorySummary != null && normalizedMemorySummary.isNotEmpty)
+        'memorySummary': normalizedMemorySummary,
+      if (continuationPartnerState != null)
+        'continuationPartnerState': continuationPartnerState.toJson(),
+      if (practiceMode.usesAssistedLearning &&
+          normalizedAppliedHintTurns.isNotEmpty)
+        'appliedHintTurns':
+            normalizedAppliedHintTurns.map((hint) => hint.toJson()).toList(),
+    };
+    final requestId = await _requestIdForDebrief(
+      sessionId: sessionId,
+      payloadDigest: _payloadDigest(durableIntentBody),
+    );
     final response = await _invoke(
       _functionName,
       body: {
-        'mode': 'debrief',
-        'sessionId': sessionId,
-        'practiceMode': practiceMode.wireName,
-        ...profile.toJson(),
-        'turns': turns.map((t) => t.toJson()).toList(),
-        if (normalizedMemorySummary != null &&
-            normalizedMemorySummary.isNotEmpty)
-          'memorySummary': normalizedMemorySummary,
-        'roundIndex': roundIndex,
-        if (visiblePracticeThreadId != null)
-          'visiblePracticeThreadId': visiblePracticeThreadId,
-        if (continuationPartnerState != null)
-          'continuationPartnerState': continuationPartnerState.toJson(),
-        if (practiceMode.usesAssistedLearning &&
-            normalizedAppliedHintTurns.isNotEmpty)
-          'appliedHintTurns':
-              normalizedAppliedHintTurns.map((hint) => hint.toJson()).toList(),
+        ...intentBody,
+        'requestId': requestId,
       },
-    );
+    ).timeout(_debriefRequestTimeout);
+    // 一般 4xx 是明確拒絕，下一次屬於新意圖；429 只代表目前限流，前一輪同 id
+    // 仍可能已 claim 未完成，所以和 timeout、網路例外、5xx、malformed 200 一樣
+    // 保留 id，避免下次換 id 又吃一個 debrief 次數。425 表示同 id 還在 server
+    // 生成中，也必須保留，稍後才能 replay 同一份結果。
+    if (response.status >= 400 &&
+        response.status < 500 &&
+        response.status != 429 &&
+        response.status != 425) {
+      await _clearPendingDebrief(
+        sessionId: sessionId,
+        requestId: requestId,
+      );
+    }
     final data = _guardStatus(response);
     final card = data['card'];
     if (card is! Map) {
       throw PracticeGenerationFailedException('malformed_debrief');
     }
-    return PracticeDebrief(
+    final debrief = PracticeDebrief(
       summary: _asString(card['summary']),
       strengths: _asStringList(card['strengths']),
       watchouts: _asStringList(card['watchouts']),
@@ -511,7 +624,9 @@ class PracticeChatApiService {
           : null,
       monthlyRemaining: _asInt(data['monthlyRemaining']),
       dailyRemaining: _asInt(data['dailyRemaining']),
+      idempotencyRequestId: requestId,
     );
+    return debrief;
   }
 
   /// 每日翻牌：server 選一位新對象並原子扣費（免費額度／付費額外）。

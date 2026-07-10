@@ -19,6 +19,10 @@ function hintReq(turns: Array<{ role: string; text: string }>) {
   return { mode: "hint", sessionId: "s1", turns };
 }
 
+function debriefReq(turns: Array<{ role: string; text: string }>) {
+  return { mode: "debrief", sessionId: "s1", turns };
+}
+
 // ── happy path ───────────────────────────────────────────────────────
 
 Deno.test("chat：合法第一則請求通過", () => {
@@ -471,7 +475,7 @@ Deno.test("hint whose latest turn is not AI throws invalid_hint_last_turn_must_b
   );
 });
 
-// ── hint requestId（冪等 key，選填）──────────────────────────────────
+// ── hint/debrief requestId（冪等 key，選填）──────────────────────────
 
 function validHintTurns(): Array<{ role: string; text: string }> {
   return [
@@ -491,6 +495,26 @@ Deno.test("hint：合法 requestId（uuid）被解析", () => {
     requestId: "11111111-2222-3333-4444-555555555555",
   });
   assertEquals(r.requestId, "11111111-2222-3333-4444-555555555555");
+});
+
+Deno.test("debrief：合法 requestId（uuid）被解析", () => {
+  const r = validateRequest({
+    ...debriefReq(validHintTurns()),
+    requestId: "22222222-3333-4444-5555-666666666666",
+  });
+  assertEquals(r.requestId, "22222222-3333-4444-5555-666666666666");
+});
+
+Deno.test("debrief：非法 requestId → invalid_requestId", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        ...debriefReq(validHintTurns()),
+        requestId: "bad id with space",
+      }),
+    Error,
+    "invalid_requestId",
+  );
 });
 
 Deno.test("hint：requestId 非字串 → invalid_requestId", () => {
@@ -541,7 +565,7 @@ Deno.test("hint：requestId 過長（>64）→ invalid_requestId", () => {
   );
 });
 
-Deno.test("chat：requestId 只屬於 hint，chat 模式一律忽略", () => {
+Deno.test("chat：requestId 只屬於 hint/debrief，chat 模式一律忽略", () => {
   const r = validateRequest({
     ...chatReq([{ role: "user", text: "hi" }]),
     requestId: "bad id with space",

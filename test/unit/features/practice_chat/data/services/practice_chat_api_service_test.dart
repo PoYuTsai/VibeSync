@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show FunctionException;
+import 'package:vibesync/features/practice_chat/data/repositories/practice_pending_debrief_store.dart';
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.dart';
@@ -448,6 +451,406 @@ void main() {
   });
 
   group('requestDebrief', () {
+    const okResponse = PracticeInvokeResponse(
+      status: 200,
+      data: {
+        'card': {
+          'summary': 'solid',
+          'strengths': ['hook'],
+          'watchouts': ['too fast'],
+          'suggestedLine': 'next line',
+          'vibe': 'neutral',
+        },
+        'costDeducted': 0,
+      },
+    );
+
+    test('requestDebrief sends a generated requestId', () async {
+      Map<String, dynamic>? capturedBody;
+      final svc = PracticeChatApiService(
+        requestIdFactory: () => 'debrief-req-1',
+        invoker: (fn, {required body}) async {
+          capturedBody = body;
+          return okResponse;
+        },
+      );
+
+      await svc.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+      );
+
+      expect(capturedBody?['requestId'], 'debrief-req-1');
+    });
+
+    test('timeout is bounded and retry reuses the same requestId', () async {
+      final requestIds = <String>[];
+      var generatedCount = 0;
+      var invokeCount = 0;
+      final neverCompletes = Completer<PracticeInvokeResponse>();
+      final svc = PracticeChatApiService(
+        debriefRequestTimeout: const Duration(milliseconds: 5),
+        requestIdFactory: () => 'debrief-req-${++generatedCount}',
+        invoker: (fn, {required body}) {
+          requestIds.add(body['requestId'] as String);
+          invokeCount++;
+          return invokeCount == 1
+              ? neverCompletes.future
+              : Future.value(okResponse);
+        },
+      );
+
+      await expectLater(
+        svc.requestDebrief(
+          sessionId: 's',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+      await svc.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+      );
+
+      expect(requestIds, ['debrief-req-1', 'debrief-req-1']);
+      expect(generatedCount, 1);
+    });
+
+    test(
+        'requestId survives service/App rebuild and ignores volatile applied Hint context',
+        () async {
+      final store = InMemoryPracticePendingDebriefStore();
+      final firstRequestIds = <String>[];
+      final neverCompletes = Completer<PracticeInvokeResponse>();
+      final first = PracticeChatApiService(
+        pendingDebriefStore: store,
+        debriefRequestTimeout: const Duration(milliseconds: 5),
+        requestIdFactory: () => 'debrief-restart-1',
+        invoker: (fn, {required body}) {
+          firstRequestIds.add(body['requestId'] as String);
+          return neverCompletes.future;
+        },
+      );
+
+      await expectLater(
+        first.requestDebrief(
+          sessionId: 's',
+          profile: profile,
+          turns: turns,
+          practiceMode: PracticeLearningMode.beginner,
+          memorySummary: '逐字稿裡沒有的舊摘要',
+          appliedHintTurns: const [
+            PracticeAppliedHintTurnDto(
+              turnIndex: 0,
+              type: PracticeHintReplyType.steady,
+              originalHintText: '敏感提示原文',
+              sentText: '敏感提示原文',
+              exact: true,
+            ),
+          ],
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+      final persisted = store.load();
+      expect(persisted, isNotNull);
+      expect(persisted!.payloadDigest, hasLength(64));
+      expect(persisted.payloadDigest, isNot(contains('敏感提示原文')));
+      expect(persisted.payloadDigest, isNot(contains('舊摘要')));
+
+      final secondRequestIds = <String>[];
+      final rebuilt = PracticeChatApiService(
+        pendingDebriefStore: store,
+        requestIdFactory: () => 'debrief-restart-2',
+        invoker: (fn, {required body}) async {
+          secondRequestIds.add(body['requestId'] as String);
+          return okResponse;
+        },
+      );
+      final replayed = await rebuilt.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.beginner,
+        // controller 重建後 appliedHintTurns/memory side-channel 可能消失。
+      );
+
+      expect(firstRequestIds, ['debrief-restart-1']);
+      expect(secondRequestIds, ['debrief-restart-1']);
+      // HTTP success alone must not open an app-kill window; controller clears
+      // only after the debrief card reaches the durable session store.
+      expect(store.load()?.requestId, 'debrief-restart-1');
+      await rebuilt.confirmDebriefPersisted(
+        sessionId: 's',
+        requestId: replayed.idempotencyRequestId!,
+      );
+      expect(store.load(), isNull);
+    });
+
+    test('ambiguous network failure keeps requestId until a successful retry',
+        () async {
+      final requestIds = <String>[];
+      var generatedCount = 0;
+      var invokeCount = 0;
+      final svc = PracticeChatApiService(
+        requestIdFactory: () => 'debrief-req-${++generatedCount}',
+        invoker: (fn, {required body}) async {
+          requestIds.add(body['requestId'] as String);
+          invokeCount++;
+          if (invokeCount == 1) throw StateError('connection reset');
+          return okResponse;
+        },
+      );
+
+      await expectLater(
+        svc.requestDebrief(
+          sessionId: 's',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsStateError,
+      );
+      await svc.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+      );
+
+      expect(requestIds, ['debrief-req-1', 'debrief-req-1']);
+      expect(generatedCount, 1);
+    });
+
+    test('changed debrief payload after failure gets a new requestId',
+        () async {
+      final requestIds = <String>[];
+      var generatedCount = 0;
+      var invokeCount = 0;
+      final svc = PracticeChatApiService(
+        requestIdFactory: () => 'debrief-req-${++generatedCount}',
+        invoker: (fn, {required body}) async {
+          requestIds.add(body['requestId'] as String);
+          invokeCount++;
+          if (invokeCount == 1) throw StateError('connection reset');
+          return okResponse;
+        },
+      );
+
+      await expectLater(
+        svc.requestDebrief(
+          sessionId: 's',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsStateError,
+      );
+      await svc.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: [
+          ...turns,
+          const PracticeTurnDto(role: 'ai', text: 'new turn'),
+        ],
+      );
+
+      expect(requestIds, ['debrief-req-1', 'debrief-req-2']);
+      expect(generatedCount, 2);
+    });
+
+    test('rate limit keeps requestId for a later retry', () async {
+      final requestIds = <String>[];
+      var generatedCount = 0;
+      var invokeCount = 0;
+      final svc = PracticeChatApiService(
+        requestIdFactory: () => 'debrief-req-${++generatedCount}',
+        invoker: (fn, {required body}) async {
+          requestIds.add(body['requestId'] as String);
+          invokeCount++;
+          if (invokeCount == 1) {
+            return const PracticeInvokeResponse(
+              status: 429,
+              data: {
+                'code': 'MODEL_RATE_LIMITED',
+                'message': '請求太頻繁，請稍後再試。',
+              },
+            );
+          }
+          return okResponse;
+        },
+      );
+
+      await expectLater(
+        svc.requestDebrief(
+          sessionId: 's',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(isA<PracticeApiException>()),
+      );
+      await svc.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+      );
+
+      expect(requestIds, ['debrief-req-1', 'debrief-req-1']);
+      expect(generatedCount, 1);
+    });
+
+    test('server in-flight response keeps requestId for replay retry',
+        () async {
+      final requestIds = <String>[];
+      var generatedCount = 0;
+      var invokeCount = 0;
+      final svc = PracticeChatApiService(
+        requestIdFactory: () => 'debrief-req-${++generatedCount}',
+        invoker: (fn, {required body}) async {
+          requestIds.add(body['requestId'] as String);
+          invokeCount++;
+          if (invokeCount == 1) {
+            return const PracticeInvokeResponse(
+              status: 425,
+              data: {'error': 'practice_debrief_in_flight'},
+            );
+          }
+          return okResponse;
+        },
+      );
+
+      await expectLater(
+        svc.requestDebrief(
+          sessionId: 's',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(
+          isA<PracticeApiException>()
+              .having((e) => e.status, 'status', 425)
+              .having(
+                (e) => e.message,
+                'message',
+                'practice_debrief_in_flight',
+              ),
+        ),
+      );
+      await svc.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+      );
+
+      expect(requestIds, ['debrief-req-1', 'debrief-req-1']);
+      expect(generatedCount, 1);
+    });
+
+    test('definitive 4xx clears pending requestId', () async {
+      final requestIds = <String>[];
+      var generatedCount = 0;
+      var invokeCount = 0;
+      final svc = PracticeChatApiService(
+        requestIdFactory: () => 'debrief-req-${++generatedCount}',
+        invoker: (fn, {required body}) async {
+          requestIds.add(body['requestId'] as String);
+          invokeCount++;
+          if (invokeCount == 1) {
+            return const PracticeInvokeResponse(
+              status: 403,
+              data: {'error': 'practice_session_not_started'},
+            );
+          }
+          return okResponse;
+        },
+      );
+
+      await expectLater(
+        svc.requestDebrief(
+          sessionId: 's',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(isA<PracticeApiException>()),
+      );
+      await svc.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+      );
+
+      expect(requestIds, ['debrief-req-1', 'debrief-req-2']);
+      expect(generatedCount, 2);
+    });
+
+    test(
+        'successful request keeps requestId until durable persistence confirms it',
+        () async {
+      final requestIds = <String>[];
+      var generatedCount = 0;
+      final svc = PracticeChatApiService(
+        requestIdFactory: () => 'debrief-req-${++generatedCount}',
+        invoker: (fn, {required body}) async {
+          requestIds.add(body['requestId'] as String);
+          return okResponse;
+        },
+      );
+
+      final first = await svc.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+      );
+      await svc.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+      );
+      await svc.confirmDebriefPersisted(
+        sessionId: 's',
+        requestId: first.idempotencyRequestId!,
+      );
+      await svc.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+      );
+
+      expect(
+        requestIds,
+        ['debrief-req-1', 'debrief-req-1', 'debrief-req-2'],
+      );
+    });
+
+    test('late persistence confirmation cannot clear a newer session requestId',
+        () async {
+      final store = InMemoryPracticePendingDebriefStore();
+      var generatedCount = 0;
+      final svc = PracticeChatApiService(
+        pendingDebriefStore: store,
+        requestIdFactory: () => 'debrief-req-${++generatedCount}',
+        invoker: (fn, {required body}) async => okResponse,
+      );
+
+      final old = await svc.requestDebrief(
+        sessionId: 'old-session',
+        profile: profile,
+        turns: turns,
+      );
+      final newer = await svc.requestDebrief(
+        sessionId: 'new-session',
+        profile: profile,
+        turns: turns,
+      );
+      expect(store.load()?.requestId, newer.idempotencyRequestId);
+
+      await svc.confirmDebriefPersisted(
+        sessionId: 'old-session',
+        requestId: old.idempotencyRequestId!,
+      );
+
+      expect(store.load()?.sessionId, 'new-session');
+      expect(store.load()?.requestId, newer.idempotencyRequestId);
+    });
+
     test('requestDebrief parses optional gameBreakdown', () async {
       final svc = serviceReturning(200, {
         'card': {

@@ -126,8 +126,19 @@ const L4_UNSAFE_VISIBLE_PATTERNS = [
 // 抄進可見欄位。英文內部詞用 Latin word-boundary 比對，避免誤傷組合詞
 // （photo/husband/scoreboard）；中文詞去空白標點後 substring。
 // 只給 debrief 生成路徑用；chat/hint 既有詞表與放行語意不動。
-const INTERNAL_TEMPERATURE_LABELS_LATIN_PATTERN =
-  /\b(?:frozen|cold|neutral|warm|hot|band|score|temperature|dhv)\b/i;
+const INTERNAL_TEMPERATURE_LABELS_LATIN = [
+  "frozen",
+  "cold",
+  "neutral",
+  "warm",
+  "hot",
+  "band",
+  "score",
+  "temperature",
+  "dhv",
+] as const;
+const LATIN_OBFUSCATION_SEPARATOR =
+  "[\\s\\p{P}\\p{S}\\p{C}\\p{M}\\u115f\\u1160\\u2800]*";
 
 const INTERNAL_MECHANISM_PHRASES = [
   "升溫指數",
@@ -149,7 +160,14 @@ const DEBRIEF_ALLOWED_SENTINELS = ["框架掉了"];
 
 export function hasVisibleTemperatureMechanismLeak(value: string): boolean {
   const nfkc = value.normalize("NFKC");
-  if (INTERNAL_TEMPERATURE_LABELS_LATIN_PATTERN.test(nfkc)) return true;
+  for (const label of INTERNAL_TEMPERATURE_LABELS_LATIN) {
+    const obfuscatedLabel = [...label].join(LATIN_OBFUSCATION_SEPARATOR);
+    const pattern = new RegExp(
+      `(?:^|[^a-z0-9])${obfuscatedLabel}(?:$|[^a-z0-9])`,
+      "iu",
+    );
+    if (pattern.test(nfkc)) return true;
+  }
   let normalized = normalizeUnsafeText(nfkc);
   for (const sentinel of DEBRIEF_ALLOWED_SENTINELS) {
     normalized = normalized.replaceAll(normalizeUnsafeText(sentinel), "");
@@ -179,7 +197,104 @@ function normalizeUnsafeText(value: string): string {
   return value
     .normalize("NFKC")
     .toLowerCase()
-    .replace(/[\s\p{P}\p{S}_]+/gu, "");
+    .replace(/[\s\p{P}\p{S}\p{C}\p{M}_\u115f\u1160\u2800]+/gu, "");
+}
+
+const CLEAR_SAFETY_NEGATION_PREFIX =
+  "(?:千萬不要|千万不要|不可以|不能|不准|不必|不用|不要|別|别|不可|不該|不该|不應|不应|避免|勿)";
+const CLEAR_SAFETY_NEGATION_BRIDGE =
+  "(?:再|去)?(?:說|说|叫|讓|让|逼|要求|帶|带)?(?:她|他|對方|对方|女生|人家)?";
+const NEGATED_SAFETY_WARNING_PREFIX =
+  /(?:誰說|谁说|不代表|不是(?:說|说|叫(?:你|妳|他|她)?|要(?:你|妳|他|她)?)?|並不是|并不是|並非|并非|沒(?:有)?(?:說|说|要(?:你|妳|他|她)?)?|没(?:有)?(?:说|要(?:你|妳|他|她)?)?|未必)$/u;
+const SAFETY_REVERSAL_AFTER =
+  /^(?:她|他|對方|对方|女生|人家)?(?:是假話|是假话|是假的|才怪|就怪了|只是表面(?:話|话)?|但|可是|不過|不过|實際上|实际上|反而|可以試試|可以试试|照做|直接做)/u;
+const SAFETY_REVERSAL_NEXT_CLAUSE =
+  /^(?:(?:但|可是|不過|不过)?(?:這|这|那)?(?:才怪|就怪了|是假話|是假话|是假的|只是表面(?:話|话)?|實際上|实际上|反而|可以試試|可以试试|照做|直接做))/u;
+const STACKED_SAFETY_NEGATION_PREFIX =
+  /(?:不要|別|别|勿|不能|不可以|不准|避免)$/u;
+const SAFE_META_NEGATION_PREFIX =
+  /(?:我)?(?:不是|並不是|并不是|並非|并非|沒有|没有|沒|没)(?:要|叫|讓|让|要求)(?:你|妳|他|她)?$/u;
+const SAFE_PERMISSION_DENIAL_PREFIX =
+  /(?:這|这|那|也)?不代表(?:你|妳|他|她|對方|对方)?(?:就)?可以$/u;
+const SAFE_CONDEMNATION_SUFFIX =
+  /^(?:她|他|對方|对方|女生|人家)?(?:是|這是|这是)?(?:不對|不对|錯的|错的|錯|错|違法|违法|不可以|不應該|不应该|不可取|有問題|有问题|越界|不尊重)(?:的|的行為|的行为|行為|行为)?(?:啦|囉|喔|哦|吧)?$/u;
+const DIRECT_SAFETY_NEGATION_SUFFIX = new RegExp(
+  `${CLEAR_SAFETY_NEGATION_PREFIX}${CLEAR_SAFETY_NEGATION_BRIDGE}$`,
+  "u",
+);
+
+interface UnsafeOccurrence {
+  index: number;
+  length: number;
+}
+
+function unsafeOccurrences(clause: string): UnsafeOccurrence[] {
+  const keyed = new Map<string, UnsafeOccurrence>();
+  for (const pattern of L4_UNSAFE_VISIBLE_PATTERNS) {
+    const normalizedPattern = normalizeUnsafeText(pattern);
+    let index = clause.indexOf(normalizedPattern);
+    while (index >= 0) {
+      keyed.set(`${index}:${normalizedPattern.length}`, {
+        index,
+        length: normalizedPattern.length,
+      });
+      index = clause.indexOf(normalizedPattern, index + 1);
+    }
+  }
+  return [...keyed.values()].sort((a, b) =>
+    a.index - b.index || b.length - a.length
+  );
+}
+
+function hasDirectSafetyNegation(
+  clause: string,
+  occurrence: UnsafeOccurrence,
+): boolean {
+  const before = clause.slice(0, occurrence.index);
+  const direct = before.match(DIRECT_SAFETY_NEGATION_SUFFIX)?.[0];
+  if (!direct) return false;
+  const beforeNegation = before.slice(0, -direct.length);
+  if (NEGATED_SAFETY_WARNING_PREFIX.test(beforeNegation)) return false;
+  if (STACKED_SAFETY_NEGATION_PREFIX.test(beforeNegation)) return false;
+  const after = clause.slice(occurrence.index + occurrence.length);
+  return !SAFETY_REVERSAL_AFTER.test(after);
+}
+
+function hasExplicitSafetyWarning(
+  clause: string,
+  occurrence: UnsafeOccurrence,
+): boolean {
+  const before = clause.slice(0, occurrence.index);
+  const after = clause.slice(occurrence.index + occurrence.length);
+  if (
+    SAFE_META_NEGATION_PREFIX.test(before) ||
+    SAFE_PERMISSION_DENIAL_PREFIX.test(before)
+  ) {
+    return !SAFETY_REVERSAL_AFTER.test(after);
+  }
+  return SAFE_CONDEMNATION_SUFFIX.test(after);
+}
+
+function clauseHasUnsafeAdvice(clause: string): boolean {
+  const occurrences = unsafeOccurrences(clause);
+  let previousSafe: UnsafeOccurrence | null = null;
+  for (const occurrence of occurrences) {
+    let safe = hasDirectSafetyNegation(clause, occurrence) ||
+      hasExplicitSafetyWarning(clause, occurrence);
+    if (!safe && previousSafe) {
+      const between = clause.slice(
+        previousSafe.index + previousSafe.length,
+        occurrence.index,
+      );
+      const sharesNegationScope = between.length === 0 ||
+        /^(?:她|他|對方|对方|女生|人家)?(?:或|和|以及|及)$/u.test(between);
+      const after = clause.slice(occurrence.index + occurrence.length);
+      safe = sharesNegationScope && !SAFETY_REVERSAL_AFTER.test(after);
+    }
+    if (!safe) return true;
+    previousSafe = occurrence;
+  }
+  return false;
 }
 
 export function hasVisibleInternalLabelLeak(value: string): boolean {
@@ -188,10 +303,36 @@ export function hasVisibleInternalLabelLeak(value: string): boolean {
 }
 
 export function hasL4UnsafeVisibleText(value: string): boolean {
-  const normalized = normalizeUnsafeText(value);
-  return L4_UNSAFE_VISIBLE_PATTERNS.some((pattern) =>
-    normalized.includes(normalizeUnsafeText(pattern))
+  const clauses = value
+    .normalize("NFKC")
+    .split(/[，,。.!！?？；;\n]+/u)
+    .map(normalizeUnsafeText)
+    .filter((clause) => clause.length > 0);
+  // Clause analysis preserves negation/reversal scope, but an attacker can put
+  // punctuation inside the unsafe token itself (強，迫／開。房). Detect any
+  // pattern that exists only after whole-text compaction and fail closed.
+  const compactWhole = normalizeUnsafeText(value);
+  const normalizedPatterns = new Set(
+    L4_UNSAFE_VISIBLE_PATTERNS.map(normalizeUnsafeText),
   );
+  for (const pattern of normalizedPatterns) {
+    if (
+      compactWhole.includes(pattern) &&
+      !clauses.some((clause) => clause.includes(pattern))
+    ) {
+      return true;
+    }
+  }
+  for (let index = 0; index < clauses.length; index++) {
+    const clause = clauses[index];
+    const occurrences = unsafeOccurrences(clause);
+    if (occurrences.length === 0) continue;
+    if (clauseHasUnsafeAdvice(clause)) return true;
+    if (SAFETY_REVERSAL_NEXT_CLAUSE.test(clauses[index + 1] ?? "")) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function rejectVisibleInternalLabelLeak(

@@ -28,6 +28,8 @@ import {
   temperatureBandInstruction,
 } from "./temperature.ts";
 import {
+  compactGameFsmEvidencePrompt,
+  compactGameStrategyPrompt,
   evaluateGameFsm,
   gameFsmEvidencePrompt,
   gameStrategyPrompt,
@@ -175,6 +177,19 @@ export const DEBRIEF_SYSTEM_PROMPT =
   "nextInviteMove": "下一步可以怎麼約；若還不適合約，說要先補什麼（最多 40 字）",
   "gameBreakdown": null
 }`;
+
+/** Game 專用高權重 JSON 契約；Beginner/Standard 仍沿用 null schema。 */
+export const GAME_DEBRIEF_SYSTEM_PROMPT = DEBRIEF_SYSTEM_PROMPT.replace(
+  '  "gameBreakdown": null',
+  `  "gameBreakdown": {
+    "phaseReached": "用白話說這場推進到哪個階段（最多 40 字）",
+    "missedVariable": "用白話說哪個互動要素沒有推動（最多 40 字）",
+    "failureState": "用白話說主要卡點（最多 40 字）",
+    "nextFirstLine": "下次可直接傳出的第一句（最多 40 字）",
+    "inviteDirection": "下一步邀約方向或先修什麼（最多 40 字）"
+  }`,
+) +
+  `\nGame 模式的 gameBreakdown 是必填物件；以上五個欄位都必須是非空字串，不可省略、不可輸出 null。`;
 
 function turnsToTranscript(turns: PracticeTurn[]): string {
   return turns
@@ -326,7 +341,13 @@ function relationshipStageInstruction(
 }
 
 function gameDebriefSkillContract(): string {
-  return `gameDebriefSkillContract(hidden guidance; Game only)\nGame debrief must feel like SR 攻略拆盤, not beginner teaching. Use 七步聊天法 to explain the run: 開場/資訊交換 → 展示價值 → 篩選賦格 → 推拉張力 → 鎖定收尾.\n變數識別: every visible coaching point should say which variable the user's line moved or failed to move: Value, Frame, Emotion, Investment, plus Safety for close. Translate into natural Chinese; do not leak hidden labels in final visible text.\n關鍵轉折點: identify the moment where she rewarded, tested, cooled down, or opened/closed an 邀約窗口. Explain the NPC response as evidence, not as a generic tip.\nFailure State: internally choose BORING / TOOL_GUY / GREASY / FRAME_COLLAPSE / ENGINE_STALL / GHOST_RISK, but visible text must describe it in plain Chinese like 查戶口冷場、工具人、太油、框架掉了、引擎熄火、快消失.\n速約窗口: nextInviteMove and gameBreakdown.inviteDirection must say 下一句怎麼把窗口接成行動: 先鋪墊、低壓邀約、明確邀約、接她給的窗口, or 先修安全感 when not ready.\nSuggestedLine must be a concrete next first line, not a generic principle.`;
+  return `gameDebriefSkillContract(hidden guidance; Game only)
+- 七步聊天法：開場/資訊交換 → 展示價值 → 篩選賦格 → 推拉張力 → 鎖定收尾。
+- 變數識別：內部看 Value / Frame / Emotion / Investment / Safety；可見文字只說白話，不洩漏 hidden labels。
+- 關鍵轉折點：用她獎勵、測試、降溫或開關邀約窗口的逐字稿證據拆解。
+- Failure State：內部判 BORING / TOOL_GUY / GREASY / FRAME_COLLAPSE / ENGINE_STALL / GHOST_RISK；可見文字改成查戶口冷場、工具人、太油、框架掉了、引擎熄火、快消失。
+- 速約窗口：nextInviteMove / inviteDirection 要說「下一句怎麼把窗口接成行動」：先鋪墊 / 低壓邀約 / 明確邀約 / 接住她給的窗口；未成熟就先修安全感。
+- suggestedLine / nextFirstLine 都要給可直接傳出的下次第一句。`;
 }
 
 function gameDebriefPrompt(opts: {
@@ -345,9 +366,9 @@ function gameDebriefPrompt(opts: {
     familiarityScore: opts.familiarityScore,
     partnerMood: opts.partnerState?.mood ?? null,
   });
-  const strategy = gameStrategyPrompt(opts.profile);
-  return `gameDebrief(hidden guidance)\n${gameDebriefSkillContract()}\n本場是 Game 模式，拆解要像拆盤，請把 JSON 的 gameBreakdown 從 null 改成物件；非 Game 模式才維持 null。\n請把七步聊天法轉成白話：開場/價值展示/測試承接/張力/收尾；可說「現在大概卡在第幾步」，但不要輸出 P1/P2/P3/P4/P5 代碼。\ngameBreakdown.phaseReached 說跑到哪個階段，missedVariable 說哪個變數沒推動，failureState 說主要卡點，nextFirstLine 給下一次第一句，inviteDirection 說 soft/direct/partner window 的白話邀約方向。\n請用白話說明哪個目標變數沒動到、哪個失敗狀態造成降溫、下次第一句怎麼改，以及下一步是先鋪墊 / 低壓邀約 / 明確邀約 / 接住她給的窗口；不要輸出 targetVariable、failureStates 或任何 hidden label 原字。\nnextInviteMove 必須用中文白話包含先鋪墊 / 低壓邀約 / 明確邀約 / 接住她給的窗口的判斷；suggestedLine 必須是一句可直接傳出去的下次第一句。\n${
-    gameFsmEvidencePrompt(snapshot)
+  const strategy = compactGameStrategyPrompt(opts.profile);
+  return `gameDebrief(hidden guidance)\n${gameDebriefSkillContract()}\n依 system 契約完整輸出 gameBreakdown 五個非空欄位：gameBreakdown.phaseReached=到達階段、missedVariable=未推動要素、failureState=主要卡點、nextFirstLine=下次第一句、inviteDirection=邀約方向。可說第幾步但不可輸出 P1-P5、targetVariable、failureStates 等內部代碼。\n${
+    compactGameFsmEvidencePrompt(snapshot)
   }${gameStateEvidencePrompt(opts.gameState)}\n${strategy}`;
 }
 
@@ -432,7 +453,12 @@ export function buildDebriefMessages(
     options.appliedHintTurns,
   );
   return [
-    { role: "system", content: DEBRIEF_SYSTEM_PROMPT },
+    {
+      role: "system",
+      content: options.practiceMode === "game"
+        ? GAME_DEBRIEF_SYSTEM_PROMPT
+        : DEBRIEF_SYSTEM_PROMPT,
+    },
     {
       role: "user",
       content: `本場模擬對象：${profile.personaLabel}\n` +

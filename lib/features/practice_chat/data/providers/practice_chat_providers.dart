@@ -20,6 +20,7 @@ import '../../domain/entities/practice_session.dart';
 import '../repositories/practice_collection_store.dart';
 import '../repositories/practice_draw_draft_store.dart';
 import '../repositories/practice_pending_draw_store.dart';
+import '../repositories/practice_pending_debrief_store.dart';
 import '../repositories/practice_pending_hint_store.dart';
 import '../repositories/practice_session_repository.dart';
 import '../services/practice_chat_api_service.dart';
@@ -493,15 +494,25 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 到達時序號不符＝過期（針對的 transcript 已翻頁）→ 丟棄不填 state。
   int _hintGeneration = 0;
 
+  /// debrief 世代序號：換場／續玩／換一位時遞增。晚到的舊場結果（成功或
+  /// 失敗）不得改寫目前場次、持久化到錯的 session，或確認錯的 requestId。
+  int _debriefGeneration = 0;
+
   /// 過期 hint 回應統一丟棄點：已扣額度認列不回滾（server 事實），只是 UI 不
   /// 顯示誤導內容；僅復位 loading 旗標。
   bool _dropStaleHint(int generation) {
+    if (!mounted) return true;
     if (generation == _hintGeneration) return false;
     if (state.isHintLoading) {
       state = state.copyWith(isHintLoading: false);
     }
     return true;
   }
+
+  bool _isStaleDebrief(int generation, String sessionId) =>
+      !mounted ||
+      generation != _debriefGeneration ||
+      state.sessionId != sessionId;
 
   /// 測試用：對外讀取目前狀態。
   @visibleForTesting
@@ -662,6 +673,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
 
   void resumeSession(PracticeSession session) {
     _hintGeneration++; // 換場：在途 hint 全部作廢
+    _debriefGeneration++; // 換場：在途 debrief 成功／失敗全部作廢
     _clearPendingHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
     state = _stateFromSession(session);
     _notifyProfileUnlocked(state.girl?.profileId); // 圖鑑種子：還原場的對象
@@ -684,6 +696,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     final girl = girlProfileById(profileId);
     if (girl == null) return; // catalog 解析不到：不碰 state
     _hintGeneration++; // 換場：在途 hint 全部作廢
+    _debriefGeneration++; // 換場：在途 debrief 成功／失敗全部作廢
     _clearPendingHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
     final prior = state;
     final sessionId = const Uuid().v4();
@@ -768,6 +781,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           fallbackPracticeProfile().girl;
       final sessionId = const Uuid().v4();
       _hintGeneration++; // 換一位成功：在途 hint 對舊對象已無意義
+      _debriefGeneration++; // 換一位成功：舊場 debrief 不得落到新對象
       _clearPendingHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
       // 難度沿用目前已解析值（換一位不重抽難度）；locked 首抽時為預設 normal。
       final difficulty = prior.difficulty.isNotEmpty
@@ -868,6 +882,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       return;
     }
     _hintGeneration++; // 開新一輪：在途 hint 全部作廢
+    _debriefGeneration++; // 開新一輪：舊輪 debrief 不得落到新 session
     _clearPendingHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
     state = PracticeChatState(
       sessionId: const Uuid().v4(),
@@ -1296,6 +1311,18 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
 
   Future<void> endPractice() async {
     if (!state.canDebrief) return;
+    final requestState = state;
+    final requestSessionId = requestState.sessionId;
+    final requestProfile = _profileDto();
+    final requestTurns = _turnDtosForPrompt(requestState.messages);
+    final requestMemorySummary = _memorySummaryForPrompt(requestState.messages);
+    final requestPartnerState = _lastPartnerStateForPrompt(
+      requestState.messages,
+    );
+    final requestAppliedHints = requestState.isAssistedLearningMode
+        ? List<PracticeAppliedHintTurnDto>.unmodifiable(_appliedHintTurns)
+        : const <PracticeAppliedHintTurnDto>[];
+    final generation = ++_debriefGeneration;
     state = state.copyWith(
       isDebriefing: true,
       ended: true,
@@ -1307,30 +1334,40 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     );
     try {
       final debrief = await _api.requestDebrief(
-        sessionId: state.sessionId,
-        profile: _profileDto(),
-        turns: _turnDtosForPrompt(state.messages),
-        practiceMode: state.learningMode,
-        memorySummary: _memorySummaryForPrompt(state.messages),
-        continuationPartnerState: _lastPartnerStateForPrompt(state.messages),
-        roundIndex: state.roundIndex,
-        visiblePracticeThreadId: state.visiblePracticeThreadId,
-        appliedHintTurns: state.isAssistedLearningMode
-            ? List.unmodifiable(_appliedHintTurns)
-            : const [],
+        sessionId: requestSessionId,
+        profile: requestProfile,
+        turns: requestTurns,
+        practiceMode: requestState.learningMode,
+        memorySummary: requestMemorySummary,
+        continuationPartnerState: requestPartnerState,
+        roundIndex: requestState.roundIndex,
+        visiblePracticeThreadId: requestState.visiblePracticeThreadId,
+        appliedHintTurns: requestAppliedHints,
       );
+      if (_isStaleDebrief(generation, requestSessionId)) return;
       state = state.copyWith(
         isDebriefing: false,
         sessionComplete: true,
         debrief: debrief,
       );
+      final completedState = state;
       await _persist();
-      final s = state;
-      final girl = s.girl;
+      final debriefRequestId = debrief.idempotencyRequestId;
+      if (debriefRequestId != null) {
+        // Retire the transport replay key only after the card is durable. If
+        // the app dies before this point, restart retry still replays the same
+        // server result instead of consuming another debrief slot.
+        await _api.confirmDebriefPersisted(
+          sessionId: requestSessionId,
+          requestId: debriefRequestId,
+        );
+      }
+      final girl = completedState.girl;
       if (girl != null) {
-        await _recordPracticeHistoryEvent(s, girl.profileId);
+        await _recordPracticeHistoryEvent(completedState, girl.profileId);
       }
     } on PracticeQuotaExceededException catch (e) {
+      if (_isStaleDebrief(generation, requestSessionId)) return;
       state = state.copyWith(
         isDebriefing: false,
         ended: true,
@@ -1340,6 +1377,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: e.message,
       );
     } on PracticeUpgradeRequiredException {
+      if (_isStaleDebrief(generation, requestSessionId)) return;
       state = state.copyWith(
         isDebriefing: false,
         ended: true,
@@ -1349,6 +1387,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: '這個拆解會消耗訊息額度，升級後就能繼續使用。',
       );
     } on PracticeModeLockedException {
+      if (_isStaleDebrief(generation, requestSessionId)) return;
       state = state.copyWith(
         isDebriefing: false,
         ended: true,
@@ -1357,6 +1396,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: _practiceModeLockedMessage,
       );
     } on PracticeApiException catch (e) {
+      if (_isStaleDebrief(generation, requestSessionId)) return;
       final debriefLimitReached = e.message == 'practice_debrief_limit';
       state = state.copyWith(
         isDebriefing: false,
@@ -1371,6 +1411,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
                 : _debriefApiErrorMessage(e.message),
       );
     } on PracticeGenerationFailedException catch (e) {
+      if (_isStaleDebrief(generation, requestSessionId)) return;
       state = state.copyWith(
         isDebriefing: false,
         ended: true,
@@ -1379,6 +1420,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: _debriefGenerationErrorMessage(e.message),
       );
     } catch (_) {
+      if (_isStaleDebrief(generation, requestSessionId)) return;
       state = state.copyWith(
         isDebriefing: false,
         ended: true,
@@ -1636,6 +1678,8 @@ String _hintGenerationErrorMessage(String code) {
 
 String _debriefApiErrorMessage(String code) {
   switch (code) {
+    case 'practice_debrief_in_flight':
+      return '拆解還在完成中，請稍等幾秒再試。';
     case 'practice_session_not_started':
       return _debriefGenericErrorMessage;
     default:
@@ -1656,7 +1700,9 @@ String _debriefGenerationErrorMessage(String code) {
 // ── providers ────────────────────────────────────────────────────────
 
 final practiceChatApiServiceProvider = Provider<PracticeChatApiService>((ref) {
-  return PracticeChatApiService();
+  return PracticeChatApiService(
+    pendingDebriefStore: ref.read(practicePendingDebriefStoreProvider),
+  );
 });
 
 final practiceSessionRepositoryProvider =
@@ -1677,6 +1723,13 @@ final practicePendingHintStoreProvider =
   // box getter 延遲取用：box 沒開的環境（headless／widget 測試）只退化成
   // 不持久化，不在 provider 建構期丟例外。
   return HivePracticePendingHintStore(() => StorageService.settingsBox);
+});
+
+/// 在途 debrief requestId 本地存取；只保存 payload SHA-256 digest，不保存逐字稿。
+/// 讓 response 遺失後的 retry 即使跨 App 重啟也能吃 server replay，不重複計次。
+final practicePendingDebriefStoreProvider =
+    Provider<PracticePendingDebriefStore>((ref) {
+  return HivePracticePendingDebriefStore(() => StorageService.settingsBox);
 });
 
 /// 在途翻牌 requestId 本地存取（JSON 存進加密 settings box）。讓翻牌失敗

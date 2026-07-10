@@ -224,7 +224,10 @@ Deno.test("every card in the pool gets a non-empty Game strategy regardless of r
     seenRarities.add(girl.rarity);
     const profile = resolvePracticeProfile({ profileId: girl.profileId });
     const strategy = buildGameStrategy(profile);
-    assert(strategy, `${girl.profileId} (${girl.rarity}) should get a strategy`);
+    assert(
+      strategy,
+      `${girl.profileId} (${girl.rarity}) should get a strategy`,
+    );
     assert(
       strategy.valueHooks.length > 0,
       `${girl.profileId} should have valueHooks`,
@@ -258,5 +261,33 @@ Deno.test("every SR card has an explicit Game strategy track", () => {
     assert(strategy.valueHooks.length >= 2);
     assert(strategy.closeHooks.length >= 2);
     assert(strategy.punishments.length >= 1);
+  }
+});
+
+Deno.test("every explicit SR Game strategy uses Traditional Chinese prompt values", () => {
+  const srProfiles = GIRL_PROFILES.filter((girl) => girl.rarity === "sr");
+
+  for (const girl of srProfiles) {
+    assert(
+      hasExplicitSrGameStrategy(girl.profileId),
+      `${girl.profileId} should have an explicit SR Game strategy`,
+    );
+    const strategy = buildGameStrategy(
+      resolvePracticeProfile({ profileId: girl.profileId }),
+    );
+    const promptValues = [
+      ...strategy.valueHooks,
+      strategy.testStyle,
+      strategy.tensionStyle,
+      ...strategy.closeHooks,
+      ...strategy.punishments,
+    ];
+
+    for (const value of promptValues) {
+      assert(
+        !/[A-Za-z]/.test(value),
+        `${girl.profileId} leaked English prompt value: ${value}`,
+      );
+    }
   }
 });

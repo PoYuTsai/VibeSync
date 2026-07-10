@@ -74,6 +74,13 @@ import {
   type TurnClassification,
 } from "./temperature.ts";
 import { taipeiTimeContextFor } from "./time_context.ts";
+import {
+  buildPracticeAiLogRow,
+  buildPracticeGenerationTelemetry,
+  classifyPracticeGenerationFailure,
+  countPromptChars,
+  type PracticeGenerationFailureClass,
+} from "./telemetry.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const CHAT_MAX_TOKENS = 200;
@@ -83,6 +90,7 @@ const DEBRIEF_MAX_TOKENS = 800;
 const DEBRIEF_TEMPERATURE = 0.5;
 const DEBRIEF_GENERATION_ATTEMPTS = 2;
 const DEBRIEF_TIMEOUT_MS = 12000;
+const DEBRIEF_IN_FLIGHT_STALE_MS = 45000;
 const HINT_MAX_TOKENS = 650;
 const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 2;
@@ -91,6 +99,24 @@ const HINT_TIMEOUT_MS = 9000;
 const TEMPERATURE_JUDGE_MAX_TOKENS = 450;
 const TEMPERATURE_JUDGE_TEMPERATURE = 0.2;
 const DEEPSEEK_TIMEOUT_MS = 30000;
+const TELEMETRY_PERSIST_TIMEOUT_MS = 1500;
+
+function elapsedMilliseconds(startedAt: number): number {
+  return Math.max(0, Math.round(performance.now() - startedAt));
+}
+
+function isFreshDebriefGeneration(
+  startedAt: unknown,
+  now: Date,
+): boolean {
+  const timestamp = startedAt instanceof Date
+    ? startedAt.getTime()
+    : typeof startedAt === "string"
+    ? Date.parse(startedAt)
+    : Number.NaN;
+  return Number.isFinite(timestamp) &&
+    timestamp > now.getTime() - DEBRIEF_IN_FLIGHT_STALE_MS;
+}
 
 function appliedHintHeatFloor(
   appliedHintType: string | undefined,
@@ -247,6 +273,109 @@ export interface PracticeChatHandlerDeps {
   callDeepSeek: DeepSeekCaller;
   getEnv: (name: string) => string | undefined;
   now?: () => Date;
+  /** Production uses EdgeRuntime.waitUntil; tests may inject a collector. */
+  waitUntil?: (task: Promise<void>) => void;
+  telemetryPersistTimeoutMs?: number;
+}
+
+async function persistGenerationTelemetryFailOpen(opts: {
+  supabase: PracticeSupabaseClient;
+  userId: string;
+  mode: "hint" | "debrief";
+  practiceMode: PracticeLearningMode;
+  attempt: number;
+  totalDurationMs: number;
+  promptChars: number;
+  fallbackUsed: boolean;
+  failureClass: PracticeGenerationFailureClass | null;
+  attemptDurationsMs: number[];
+  failureClasses: PracticeGenerationFailureClass[];
+  timeoutMs?: number;
+}): Promise<void> {
+  let timeoutHandle: number | undefined;
+  try {
+    const row = buildPracticeAiLogRow({
+      userId: opts.userId,
+      model: DEEPSEEK_MODEL,
+      telemetry: {
+        mode: opts.mode,
+        practiceMode: opts.practiceMode,
+        attempt: opts.attempt,
+        attemptDurationMs: null,
+        failureClass: opts.failureClass,
+        fallbackUsed: opts.fallbackUsed,
+        totalDurationMs: opts.totalDurationMs,
+        promptChars: opts.promptChars,
+      },
+      attemptDurationsMs: opts.attemptDurationsMs,
+      failureClasses: opts.failureClasses,
+    });
+    const abortController = new AbortController();
+    const rawQuery = opts.supabase.from("ai_logs").insert(row);
+    const boundedQuery = typeof rawQuery?.abortSignal === "function"
+      ? rawQuery.abortSignal(abortController.signal)
+      : rawQuery;
+    const insert = Promise.resolve(boundedQuery).then((value) => ({
+      kind: "insert" as const,
+      value: value as { error: { message: string } | null },
+    }));
+    const timeout = new Promise<{ kind: "timeout" }>((resolve) => {
+      timeoutHandle = setTimeout(() => {
+        abortController.abort();
+        resolve({ kind: "timeout" });
+      }, Math.max(1, opts.timeoutMs ?? TELEMETRY_PERSIST_TIMEOUT_MS));
+    });
+    const result = await Promise.race([insert, timeout]);
+    if (result.kind === "timeout") {
+      logError("practice_chat_generation_telemetry_persist_failed", {
+        mode: opts.mode,
+        practiceMode: opts.practiceMode,
+      });
+      return;
+    }
+    const { error } = result.value;
+    if (error) {
+      logError("practice_chat_generation_telemetry_persist_failed", {
+        mode: opts.mode,
+        practiceMode: opts.practiceMode,
+      });
+    }
+  } catch {
+    logError("practice_chat_generation_telemetry_persist_failed", {
+      mode: opts.mode,
+      practiceMode: opts.practiceMode,
+    });
+  } finally {
+    if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+  }
+}
+
+function scheduleGenerationTelemetry(
+  deps: PracticeChatHandlerDeps,
+  opts: Parameters<typeof persistGenerationTelemetryFailOpen>[0],
+): void {
+  const task = persistGenerationTelemetryFailOpen({
+    ...opts,
+    timeoutMs: deps.telemetryPersistTimeoutMs,
+  });
+  try {
+    if (deps.waitUntil) {
+      deps.waitUntil(task);
+      return;
+    }
+    const edgeRuntime = (globalThis as unknown as {
+      EdgeRuntime?: { waitUntil(task: Promise<void>): void };
+    }).EdgeRuntime;
+    if (edgeRuntime?.waitUntil) {
+      edgeRuntime.waitUntil(task);
+      return;
+    }
+  } catch {
+    // A scheduler failure must not turn optional observability into a 5xx.
+  }
+  // Local Deno tests do not expose EdgeRuntime. The persistence promise catches
+  // its own failures, so detaching it here cannot create an unhandled rejection.
+  void task;
 }
 
 export const corsHeaders = {
@@ -315,9 +444,49 @@ function withHintRetryInstruction(
     {
       role: "user",
       content:
-        `上一版 Hint JSON 被拒絕：${hintRetryReason(error)}。請重新輸出唯一 JSON，` +
+        `上一版 Hint JSON 被拒絕：${
+          hintRetryReason(error)
+        }。請重新輸出唯一 JSON，` +
         'shape 必須仍是 {"warmUp":"...","steady":"...","coaching":"..."}。' +
         "可貼回覆要先接住她最新狀態，再給低壓接球；不要命令、不要面試官語氣、不要內部標籤、不要露骨或私密壓迫。",
+    },
+  ];
+}
+
+function debriefRetryReason(error: unknown): string {
+  const failureClass = classifyPracticeGenerationFailure(error);
+  if (getErrorMessage(error).includes("game_breakdown_missing")) {
+    return "Game 拆盤五個欄位有缺漏或空白";
+  }
+  if (failureClass === "visible_text_guard") {
+    return "可見文字含內部標籤或越界措辭";
+  }
+  if (failureClass === "invalid_json") {
+    return "不是可解析的單一 JSON 物件";
+  }
+  if (failureClass === "schema_invalid") {
+    return "拆解卡必填欄位缺漏或格式錯誤";
+  }
+  return "上游生成未完成";
+}
+
+function withDebriefRetryInstruction(
+  messages: ChatMessage[],
+  error: unknown,
+  isGame: boolean,
+): ChatMessage[] {
+  const gameReminder = isGame
+    ? " Game 的 gameBreakdown 必須含 phaseReached、missedVariable、failureState、nextFirstLine、inviteDirection 五個非空字串。"
+    : " gameBreakdown 必須維持 null。";
+  return [
+    ...messages,
+    {
+      role: "user",
+      content: `上一版拆解 JSON 被拒絕：${debriefRetryReason(error)}。` +
+        "請重新輸出唯一且完整的 JSON 物件，不要 markdown 或說明文字。" +
+        "summary、strengths、watchouts、suggestedLine、vibe、dateChance、dateChanceReason、nextInviteMove 都必填且不可空白；" +
+        "vibe 只能是暖／中性／冷，dateChance 只能是 low／medium／high。" +
+        gameReminder,
     },
   ];
 }
@@ -331,6 +500,28 @@ function isMissingPracticeHintRpc(message: string): boolean {
   return referencesHintRpc &&
     (normalized.includes("could not find the function") ||
       normalized.includes("schema cache"));
+}
+
+function isMissingPracticeDebriefRpc(message: string): boolean {
+  const normalized = message.toLowerCase();
+  const referencesDebriefRpc = normalized.includes("claim_practice_debrief") ||
+    normalized.includes("record_practice_debrief");
+  return referencesDebriefRpc &&
+    (normalized.includes("could not find the function") ||
+      normalized.includes("schema cache"));
+}
+
+function isMissingPracticeDebriefReplaySchema(message: string): boolean {
+  const normalized = message.toLowerCase();
+  const referencesReplaySchema =
+    normalized.includes("last_debrief_request_id") ||
+    normalized.includes("last_debrief_result") ||
+    normalized.includes("last_debrief_started_at");
+  return referencesReplaySchema &&
+    (normalized.includes("schema cache") ||
+      normalized.includes("could not find") ||
+      normalized.includes("does not exist") ||
+      normalized.includes("undefined_column"));
 }
 
 function isMissingBeginnerHintLedgerSchema(message: string): boolean {
@@ -364,6 +555,9 @@ function isMissingDualAxisLearningSchema(message: string): boolean {
 function mapLedgerError(message: string): { error: string; status: number } {
   if (isMissingPracticeHintRpc(message)) {
     return { error: "practice_hint_not_ready", status: 503 };
+  }
+  if (isMissingPracticeDebriefRpc(message)) {
+    return { error: "practice_debrief_not_ready", status: 503 };
   }
   if (message.includes("PRACTICE_LEARNING_NOT_READY")) {
     return { error: "practice_learning_not_ready", status: 503 };
@@ -1241,17 +1435,23 @@ export function createPracticeChatHandler(
     const accountIsTest = TEST_EMAILS.includes(user.email || "");
     const limits = resolveLimits(sub.tier);
 
+    const baseLedgerColumns =
+      "ai_count, charged, debrief_count, practice_mode, temperature_score, familiarity_score, partner_mood, partner_inner_thought, hint_count, game_state";
+    const ledgerColumns = request.mode === "debrief"
+      ? `${baseLedgerColumns}, last_debrief_request_id, last_debrief_result, last_debrief_started_at`
+      : baseLedgerColumns;
     const { data: ledgerRow, error: ledgerError } = await supabase
       .from("practice_chat_sessions")
-      .select(
-        "ai_count, charged, debrief_count, practice_mode, temperature_score, familiarity_score, partner_mood, partner_inner_thought, hint_count, game_state",
-      )
+      .select(ledgerColumns)
       .eq("user_id", user.id)
       .eq("session_id", request.sessionId)
       .maybeSingle();
     if (ledgerError) {
       const mapped = isMissingDualAxisLearningSchema(ledgerError.message)
         ? { error: "practice_learning_not_ready", status: 503 }
+        : request.mode === "debrief" &&
+            isMissingPracticeDebriefReplaySchema(ledgerError.message)
+        ? { error: "practice_debrief_not_ready", status: 503 }
         : request.mode === "hint" &&
             isMissingBeginnerHintLedgerSchema(ledgerError.message)
         ? { error: "practice_hint_not_ready", status: 503 }
@@ -1487,30 +1687,40 @@ export function createPracticeChatHandler(
       const hintTimeoutMs = HINT_TIMEOUT_MS;
       let hintResult: ReturnType<typeof parseHintResult> | null = null;
       let hintResultIsFallback = false;
+      const hintGenerationStartedAt = performance.now();
+      let hintAttemptCount = 0;
+      let hintPromptChars = 0;
+      let hintLastFailureClass: PracticeGenerationFailureClass | null = null;
+      const hintAttemptDurationsMs: number[] = [];
+      const hintFailureClasses: PracticeGenerationFailureClass[] = [];
       try {
         let lastError: unknown;
+        const baseHintMessages = buildHintMessages({
+          turns: request.turns,
+          profile: request.profile,
+          practiceMode: request.practiceMode,
+          temperatureScore: hintTemperatureScore,
+          familiarityScore: hintFamiliarityScore,
+          partnerMood: hintPartnerMood,
+          sceneContext,
+          memorySummary: promptMemorySummary,
+        });
         for (
           let attempt = 1;
           attempt <= hintGenerationAttempts;
           attempt++
         ) {
+          const hintMessages = attempt > 1 && lastError !== undefined &&
+              isHintFormatOrGuardError(lastError)
+            ? withHintRetryInstruction(baseHintMessages, lastError)
+            : baseHintMessages;
+          hintAttemptCount = attempt;
+          hintPromptChars = countPromptChars(hintMessages);
+          const attemptStartedAt = performance.now();
           try {
-            const hintMessages = buildHintMessages({
-              turns: request.turns,
-              profile: request.profile,
-              practiceMode: request.practiceMode,
-              temperatureScore: hintTemperatureScore,
-              familiarityScore: hintFamiliarityScore,
-              partnerMood: hintPartnerMood,
-              sceneContext,
-              memorySummary: promptMemorySummary,
-            });
             const rawHint = await deps.callDeepSeek({
               apiKey,
-              messages: attempt > 1 && lastError !== undefined &&
-                  isHintFormatOrGuardError(lastError)
-                ? withHintRetryInstruction(hintMessages, lastError)
-                : hintMessages,
+              messages: hintMessages,
               maxTokens: HINT_MAX_TOKENS,
               temperature: HINT_TEMPERATURE,
               jsonMode: true,
@@ -1519,13 +1729,41 @@ export function createPracticeChatHandler(
             hintResult = parseHintResult(rawHint, {
               mode: request.practiceMode,
             });
+            hintLastFailureClass = null;
+            const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
+            hintAttemptDurationsMs.push(attemptDurationMs);
+            logInfo("practice_chat_generation_attempt", {
+              user: summarizeUser(user.id),
+              ...buildPracticeGenerationTelemetry({
+                mode: "hint",
+                practiceMode: request.practiceMode,
+                attempt,
+                attemptDurationMs,
+                failureClass: null,
+                fallbackUsed: false,
+                totalDurationMs: null,
+                promptChars: hintPromptChars,
+              }),
+            });
             break;
           } catch (e) {
             lastError = e;
-            logWarn("practice_chat_hint_generation_attempt_failed", {
+            hintLastFailureClass = classifyPracticeGenerationFailure(e);
+            const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
+            hintAttemptDurationsMs.push(attemptDurationMs);
+            hintFailureClasses.push(hintLastFailureClass);
+            logWarn("practice_chat_generation_attempt", {
               user: summarizeUser(user.id),
-              attempt,
-              error: getErrorMessage(e),
+              ...buildPracticeGenerationTelemetry({
+                mode: "hint",
+                practiceMode: request.practiceMode,
+                attempt,
+                attemptDurationMs,
+                failureClass: hintLastFailureClass,
+                fallbackUsed: false,
+                totalDurationMs: null,
+                promptChars: hintPromptChars,
+              }),
             });
             // timeout 不重試：上游慢時第 2 次大機率再等滿逾時，白耗用戶等待。
             if (isHintTimeoutError(e)) break;
@@ -1542,7 +1780,18 @@ export function createPracticeChatHandler(
               : "practice_chat_beginner_hint_fallback_used",
             {
               user: summarizeUser(user.id),
-              error: getErrorMessage(lastError),
+              ...buildPracticeGenerationTelemetry({
+                mode: "hint",
+                practiceMode: request.practiceMode,
+                attempt: hintAttemptCount,
+                attemptDurationMs: null,
+                failureClass: hintLastFailureClass,
+                fallbackUsed: true,
+                totalDurationMs: elapsedMilliseconds(
+                  hintGenerationStartedAt,
+                ),
+                promptChars: hintPromptChars,
+              }),
             },
           );
           hintResult = buildFallbackHintResult({
@@ -1576,6 +1825,22 @@ export function createPracticeChatHandler(
         return jsonResponse({ error: "practice_generation_failed" }, 500);
       }
 
+      const hintTotalDurationMs = elapsedMilliseconds(
+        hintGenerationStartedAt,
+      );
+      logInfo("practice_chat_generation_outcome", {
+        user: summarizeUser(user.id),
+        ...buildPracticeGenerationTelemetry({
+          mode: "hint",
+          practiceMode: request.practiceMode,
+          attempt: hintAttemptCount,
+          attemptDurationMs: null,
+          failureClass: hintResultIsFallback ? hintLastFailureClass : null,
+          fallbackUsed: hintResultIsFallback,
+          totalDurationMs: hintTotalDurationMs,
+          promptChars: hintPromptChars,
+        }),
+      });
       // LLM 全敗只回罐頭 fallback 時不扣 quota；replay 快照仍照寫（冪等不變），
       // 快照本身即 0 扣費，之後 replay 不會事後補扣。
       const chargeHintQuota = !accountIsTest && !hintResultIsFallback;
@@ -1623,6 +1888,21 @@ export function createPracticeChatHandler(
       const hintUsedCount = (recordRow?.new_hint_count as number | undefined) ??
         ((ledger.hintCount ?? 0) + 1);
 
+      // 權威扣費／replay 快照先完成；觀測 side-channel 不得增加回應延遲。
+      scheduleGenerationTelemetry(deps, {
+        supabase,
+        userId: user.id,
+        mode: "hint",
+        practiceMode: request.practiceMode,
+        attempt: hintAttemptCount,
+        totalDurationMs: hintTotalDurationMs,
+        promptChars: hintPromptChars,
+        fallbackUsed: hintResultIsFallback,
+        failureClass: hintResultIsFallback ? hintLastFailureClass : null,
+        attemptDurationsMs: hintAttemptDurationsMs,
+        failureClasses: hintFailureClasses,
+      });
+
       logInfo("practice_chat_succeeded", {
         user: summarizeUser(user.id),
         mode: "hint",
@@ -1653,8 +1933,41 @@ export function createPracticeChatHandler(
       return jsonResponse({ error: "practice_mode_locked" }, 409);
     }
 
+    const retryingClaimedDebrief = request.mode === "debrief" &&
+      !!request.requestId &&
+      ledgerRow?.last_debrief_request_id === request.requestId;
+    if (retryingClaimedDebrief) {
+      // A completed or still-running request was already authorized by the
+      // original call. Replay/latch checks must precede mutable Game unlock
+      // lookups: a transient unlock-query failure must not strand a completed
+      // card behind the debrief cap or make the client rotate its requestId.
+      if (isPlainObject(ledgerRow?.last_debrief_result)) {
+        logInfo("practice_chat_debrief_replayed", {
+          user: summarizeUser(user.id),
+          sessionId: request.sessionId,
+          source: "preflight",
+        });
+        return jsonResponse(ledgerRow.last_debrief_result);
+      }
+      if (
+        ledgerRow?.last_debrief_result == null &&
+        isFreshDebriefGeneration(
+          ledgerRow?.last_debrief_started_at,
+          deps.now?.() ?? new Date(),
+        )
+      ) {
+        logInfo("practice_chat_debrief_in_flight", {
+          user: summarizeUser(user.id),
+          sessionId: request.sessionId,
+          source: "preflight",
+        });
+        return jsonResponse({ error: "practice_debrief_in_flight" }, 425);
+      }
+    }
+
     if (
       request.practiceMode === "game" &&
+      !retryingClaimedDebrief &&
       !(await gameModeUnlockedForUser({
         supabase,
         userId: user.id,
@@ -1671,7 +1984,10 @@ export function createPracticeChatHandler(
 
     if (request.mode === "debrief") {
       const gate = decideDebriefGate({ ledger });
-      if (!gate.allowed) {
+      if (
+        !gate.allowed &&
+        !(gate.reason === "practice_debrief_limit" && retryingClaimedDebrief)
+      ) {
         logWarn("practice_chat_debrief_rejected", {
           user: summarizeUser(user.id),
           reason: gate.reason,
@@ -1727,13 +2043,17 @@ export function createPracticeChatHandler(
         });
       }
 
-      const { error: claimError } = await supabase.rpc(
+      const claimDebriefParams: Record<string, unknown> = {
+        p_user_id: user.id,
+        p_session_id: request.sessionId,
+        p_max_debriefs: MAX_DEBRIEFS,
+      };
+      if (request.requestId) {
+        claimDebriefParams.p_request_id = request.requestId;
+      }
+      const { data: claimData, error: claimError } = await supabase.rpc(
         "claim_practice_debrief",
-        {
-          p_user_id: user.id,
-          p_session_id: request.sessionId,
-          p_max_debriefs: MAX_DEBRIEFS,
-        },
+        claimDebriefParams,
       );
       if (claimError) {
         const mapped = mapLedgerError(claimError.message);
@@ -1743,68 +2063,151 @@ export function createPracticeChatHandler(
         });
         return jsonResponse({ error: mapped.error }, mapped.status);
       }
+      const claimRow = Array.isArray(claimData) ? claimData[0] : claimData;
+      if (
+        isPlainObject(claimRow) && claimRow.replay === true &&
+        isPlainObject(claimRow.stored_result)
+      ) {
+        logInfo("practice_chat_debrief_replayed", {
+          user: summarizeUser(user.id),
+          sessionId: request.sessionId,
+          source: "claim",
+        });
+        return jsonResponse(claimRow.stored_result);
+      }
+      if (isPlainObject(claimRow) && claimRow.in_flight === true) {
+        logInfo("practice_chat_debrief_in_flight", {
+          user: summarizeUser(user.id),
+          sessionId: request.sessionId,
+        });
+        return jsonResponse({ error: "practice_debrief_in_flight" }, 425);
+      }
 
       let debriefCard: DebriefCard | null = null;
+      let debriefUsedFallback = false;
+      const debriefPracticeMode = ledger.practiceMode ?? request.practiceMode;
+      const debriefGenerationStartedAt = performance.now();
+      let debriefAttemptCount = 0;
+      let debriefPromptChars = 0;
+      let debriefLastFailureClass: PracticeGenerationFailureClass | null = null;
+      const debriefAttemptDurationsMs: number[] = [];
+      const debriefFailureClasses: PracticeGenerationFailureClass[] = [];
       try {
         let lastError: unknown;
+        const baseDebriefMessages = buildDebriefMessages(
+          request.turns,
+          request.profile,
+          debriefAssistedMode
+            ? {
+              practiceMode: ledger.practiceMode,
+              temperatureScore: ledger.temperatureScore ??
+                difficultyStartTemperature,
+              familiarityScore: ledger.familiarityScore ?? 0,
+              partnerState: partnerStateFromLedger(ledger) ??
+                relationshipThreadState?.partnerState ?? null,
+              sceneContext,
+              memorySummary: promptMemorySummary,
+              gameState: ledgerGameState,
+              appliedHintTurns: ledgerAppliedHintTurns,
+            }
+            : {
+              partnerState: partnerStateFromLedger(ledger) ??
+                relationshipThreadState?.partnerState ?? null,
+              sceneContext,
+              memorySummary: promptMemorySummary,
+            },
+        );
         for (
           let attempt = 1;
           attempt <= DEBRIEF_GENERATION_ATTEMPTS;
           attempt++
         ) {
+          const shouldRepair = attempt > 1 && lastError !== undefined &&
+            (debriefLastFailureClass === "visible_text_guard" ||
+              debriefLastFailureClass === "invalid_json" ||
+              debriefLastFailureClass === "schema_invalid");
+          const debriefMessages = shouldRepair
+            ? withDebriefRetryInstruction(
+              baseDebriefMessages,
+              lastError,
+              debriefPracticeMode === "game",
+            )
+            : baseDebriefMessages;
+          debriefAttemptCount = attempt;
+          debriefPromptChars = countPromptChars(debriefMessages);
+          const attemptStartedAt = performance.now();
           try {
             const rawCard = await deps.callDeepSeek({
               apiKey,
-              messages: buildDebriefMessages(
-                request.turns,
-                request.profile,
-                debriefAssistedMode
-                  ? {
-                    practiceMode: ledger.practiceMode,
-                    temperatureScore: ledger.temperatureScore ??
-                      difficultyStartTemperature,
-                    familiarityScore: ledger.familiarityScore ?? 0,
-                    partnerState: partnerStateFromLedger(ledger) ??
-                      relationshipThreadState?.partnerState ?? null,
-                    sceneContext,
-                    memorySummary: promptMemorySummary,
-                    gameState: ledgerGameState,
-                    appliedHintTurns: ledgerAppliedHintTurns,
-                  }
-                  : {
-                    partnerState: partnerStateFromLedger(ledger) ??
-                      relationshipThreadState?.partnerState ?? null,
-                    sceneContext,
-                    memorySummary: promptMemorySummary,
-                  },
-              ),
+              messages: debriefMessages,
               maxTokens: DEBRIEF_MAX_TOKENS,
               temperature: DEBRIEF_TEMPERATURE,
               jsonMode: true,
               timeoutMs: DEBRIEF_TIMEOUT_MS,
             });
             debriefCard = parseDebriefCard(rawCard, {
-              allowGameBreakdown: ledger.practiceMode === "game",
+              allowGameBreakdown: debriefPracticeMode === "game",
+              requireCompleteCard: true,
+            });
+            debriefLastFailureClass = null;
+            const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
+            debriefAttemptDurationsMs.push(attemptDurationMs);
+            logInfo("practice_chat_generation_attempt", {
+              user: summarizeUser(user.id),
+              ...buildPracticeGenerationTelemetry({
+                mode: "debrief",
+                practiceMode: debriefPracticeMode,
+                attempt,
+                attemptDurationMs,
+                failureClass: null,
+                fallbackUsed: false,
+                totalDurationMs: null,
+                promptChars: debriefPromptChars,
+              }),
             });
             break;
           } catch (e) {
             lastError = e;
-            logWarn("practice_chat_debrief_generation_attempt_failed", {
+            debriefLastFailureClass = classifyPracticeGenerationFailure(e);
+            const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
+            debriefAttemptDurationsMs.push(attemptDurationMs);
+            debriefFailureClasses.push(debriefLastFailureClass);
+            logWarn("practice_chat_generation_attempt", {
               user: summarizeUser(user.id),
-              attempt,
-              error: getErrorMessage(e),
+              ...buildPracticeGenerationTelemetry({
+                mode: "debrief",
+                practiceMode: debriefPracticeMode,
+                attempt,
+                attemptDurationMs,
+                failureClass: debriefLastFailureClass,
+                fallbackUsed: false,
+                totalDurationMs: null,
+                promptChars: debriefPromptChars,
+              }),
             });
           }
         }
         if (debriefCard === null) {
+          debriefUsedFallback = true;
           logWarn("practice_chat_debrief_fallback_used", {
             user: summarizeUser(user.id),
-            mode: ledger.practiceMode ?? request.practiceMode,
-            error: getErrorMessage(lastError),
+            ...buildPracticeGenerationTelemetry({
+              mode: "debrief",
+              practiceMode: debriefPracticeMode,
+              attempt: debriefAttemptCount,
+              attemptDurationMs: null,
+              failureClass: debriefLastFailureClass,
+              fallbackUsed: true,
+              totalDurationMs: elapsedMilliseconds(
+                debriefGenerationStartedAt,
+              ),
+              promptChars: debriefPromptChars,
+            }),
           });
           debriefCard = buildFallbackDebriefCard({
             practiceMode: ledger.practiceMode,
             appliedHintTurns: ledgerAppliedHintTurns,
+            turns: request.turns,
             // 與 debrief prompt 同源：assisted 模式吃 ledger 溫度（缺席退難度
             // 起始溫度）；standard 模式不傳＝維持中性罐頭。
             temperatureScore: debriefAssistedMode
@@ -1818,10 +2221,77 @@ export function createPracticeChatHandler(
           mode: "debrief",
           personaId: request.profile.personaId,
           difficulty: request.profile.difficulty,
-          error: getErrorMessage(e),
+          failureClass: classifyPracticeGenerationFailure(e),
         });
         return jsonResponse({ error: "practice_generation_failed" }, 500);
       }
+
+      const debriefTotalDurationMs = elapsedMilliseconds(
+        debriefGenerationStartedAt,
+      );
+      logInfo("practice_chat_generation_outcome", {
+        user: summarizeUser(user.id),
+        ...buildPracticeGenerationTelemetry({
+          mode: "debrief",
+          practiceMode: debriefPracticeMode,
+          attempt: debriefAttemptCount,
+          attemptDurationMs: null,
+          failureClass: debriefUsedFallback ? debriefLastFailureClass : null,
+          fallbackUsed: debriefUsedFallback,
+          totalDurationMs: debriefTotalDurationMs,
+          promptChars: debriefPromptChars,
+        }),
+      });
+      const debriefResponse = {
+        card: debriefCard,
+        costDeducted: 0,
+        provider: "deepseek",
+        model: DEEPSEEK_MODEL,
+        generatedAt: (deps.now?.() ?? new Date()).toISOString(),
+        ...remainingFrom(sub, limits, 0),
+      };
+      let authoritativeDebriefResponse: Record<string, unknown> =
+        debriefResponse;
+      if (request.requestId) {
+        const { data: recordData, error: recordError } = await supabase.rpc(
+          "record_practice_debrief",
+          {
+            p_user_id: user.id,
+            p_session_id: request.sessionId,
+            p_request_id: request.requestId,
+            p_result: debriefResponse,
+          },
+        );
+        if (recordError) {
+          // 回放快照是韌性 side-channel；寫入失敗不應把已產生的拆解卡變成 5xx。
+          // 同 requestId 已由 claim 保證不再遞增次數，重試最多重新生成。
+          logWarn("practice_chat_debrief_record_failed", {
+            user: summarizeUser(user.id),
+            failureClass: isMissingPracticeDebriefRpc(recordError.message)
+              ? "schema_invalid"
+              : "unknown",
+          });
+        } else if (isPlainObject(recordData)) {
+          // first-writer-wins：stale takeover 若撞到仍存活的舊 worker，RPC 回傳
+          // 已落帳的權威卡；本次 response 與之後 replay 必須完全一致。
+          authoritativeDebriefResponse = recordData;
+        }
+      }
+
+      // replay 快照先寫；telemetry 慢或掛都不得拖住使用者拿到拆解卡。
+      scheduleGenerationTelemetry(deps, {
+        supabase,
+        userId: user.id,
+        mode: "debrief",
+        practiceMode: debriefPracticeMode,
+        attempt: debriefAttemptCount,
+        totalDurationMs: debriefTotalDurationMs,
+        promptChars: debriefPromptChars,
+        fallbackUsed: debriefUsedFallback,
+        failureClass: debriefUsedFallback ? debriefLastFailureClass : null,
+        attemptDurationsMs: debriefAttemptDurationsMs,
+        failureClasses: debriefFailureClasses,
+      });
 
       logInfo("practice_chat_succeeded", {
         user: summarizeUser(user.id),
@@ -1830,14 +2300,7 @@ export function createPracticeChatHandler(
         difficulty: request.profile.difficulty,
         costDeducted: 0,
       });
-      return jsonResponse({
-        card: debriefCard,
-        costDeducted: 0,
-        provider: "deepseek",
-        model: DEEPSEEK_MODEL,
-        generatedAt: (deps.now?.() ?? new Date()).toISOString(),
-        ...remainingFrom(sub, limits, 0),
-      });
+      return jsonResponse(authoritativeDebriefResponse);
     }
 
     const continuation = decideContinuationGate({

@@ -1,7 +1,10 @@
 // practice-chat prompt 組裝測試。
 // 跑法：deno test supabase/functions/practice-chat/prompt_test.ts
 
-import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   buildChatMessages,
   buildDebriefMessages,
@@ -354,7 +357,7 @@ Deno.test("beginner buildChatMessages forbids disclosing internal temperature ev
   );
 });
 
-Deno.test("game debrief includes拆盤 guidance and keeps non-game default null", () => {
+Deno.test("game debrief includes拆盤 guidance and mode-specific object schema", () => {
   const srProfile = resolvePracticeProfile({ profileId: "practice_girl_004" });
   const messages = buildDebriefMessages(
     [
@@ -388,9 +391,48 @@ Deno.test("game debrief includes拆盤 guidance and keeps non-game default null"
     false,
   );
   assertEquals(user.includes("gameStrategy(hidden guidance)"), true);
+  assertEquals(user.includes("tensionStyle:"), true);
   assertEquals(system.includes('"nextInviteMove"'), true);
-  assertEquals(system.includes('"gameBreakdown": null'), true);
+  assertEquals(system.includes('"gameBreakdown": {'), true);
+  assertEquals(system.includes('"gameBreakdown": null'), false);
+  assertEquals(user.includes("從 null 改成物件"), false);
   assertEquals(system.includes('"phase"'), false);
+});
+
+Deno.test("beginner debrief keeps the null gameBreakdown schema", () => {
+  const messages = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }],
+    resolvePracticeProfile({ profileId: "practice_girl_004" }),
+    { practiceMode: "beginner" },
+  );
+
+  assertEquals(messages[0].content.includes('"gameBreakdown": null'), true);
+  assertEquals(messages[0].content.includes('"gameBreakdown": {'), false);
+});
+
+Deno.test("Game Debrief prompt stays compact enough for its 12-second budget", () => {
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_004" });
+  const turns = [
+    { role: "user" as const, text: "你好" },
+    { role: "ai" as const, text: "哈囉 正在看點東西" },
+    { role: "user" as const, text: "妳這語氣有點可愛，我先說我的版本" },
+    { role: "ai" as const, text: "你是不是都這樣講" },
+  ];
+  const gameLength = buildDebriefMessages(turns, profile, {
+    practiceMode: "game",
+    temperatureScore: 60,
+    familiarityScore: 50,
+    partnerState: { mood: "amused", innerThought: "" },
+  }).reduce((total, message) => total + message.content.length, 0);
+  const beginnerLength = buildDebriefMessages(turns, profile, {
+    practiceMode: "beginner",
+    temperatureScore: 60,
+    familiarityScore: 50,
+    partnerState: { mood: "amused", innerThought: "" },
+  }).reduce((total, message) => total + message.content.length, 0);
+
+  assert(gameLength <= 4400, `Game Debrief prompt is too long: ${gameLength}`);
+  assert(gameLength <= beginnerLength + 2400);
 });
 
 Deno.test("game debrief guidance asks Game to fill gameBreakdown fields", () => {
@@ -413,7 +455,19 @@ Deno.test("game debrief guidance asks Game to fill gameBreakdown fields", () => 
   const user = messages[1].content;
 
   assertEquals(system.includes('"gameBreakdown"'), true);
-  assertEquals(system.includes('"gameBreakdown": null'), true);
+  assertEquals(system.includes('"gameBreakdown": {'), true);
+  assertEquals(system.includes('"gameBreakdown": null'), false);
+  for (
+    const field of [
+      "phaseReached",
+      "missedVariable",
+      "failureState",
+      "nextFirstLine",
+      "inviteDirection",
+    ]
+  ) {
+    assertEquals(system.includes(`"${field}"`), true);
+  }
   assertEquals(user.includes("gameBreakdown.phaseReached"), true);
   assertEquals(user.includes("missedVariable"), true);
   assertEquals(user.includes("failureState"), true);
