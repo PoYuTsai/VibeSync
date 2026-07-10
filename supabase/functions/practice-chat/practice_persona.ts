@@ -1144,12 +1144,29 @@ function pickWeightedByRarity(
 }
 
 /**
+ * 判斷切池（見 resolveDrawPoolSize）後扣掉排除集合與 currentProfileId 是否仍有
+ * 候選。handler 以此決定「全歷史永久去重」是否已把池抽滿：滿 → 降級回當日視窗
+ * 排除（允許跨窗重複），絕不讓抽卡因無候選而失敗。純函式，不觸發任何退避。
+ */
+export function hasEligibleDrawCandidate(args: {
+  currentProfileId?: string;
+  excludedProfileIds: Set<string>;
+  catalogSize?: unknown;
+}): boolean {
+  const base = GIRL_PROFILES.slice(0, resolveDrawPoolSize(args.catalogSize));
+  return base.some((g) =>
+    g.profileId !== args.currentProfileId &&
+    !args.excludedProfileIds.has(g.profileId)
+  );
+}
+
+/**
  * 從 catalog 選一位：先依 client 宣告的 catalogSize 切池（見 resolveDrawPoolSize；
- * 缺席＝舊 client 只認前 60 位），再排除 currentProfileId 與本 reset window 已抽過的
- * profile，最後以 seed 做 deterministic 的**稀有度加權**選擇（SR 10%/R 30%/N 60%，
- * 層內均勻，見 pickWeightedByRarity；同 seed 同池同結果，故 retry 穩定）。若全被
- * 排除（理論上不會發生——每窗抽數 << 池大小），退而只避開 current；所有退避一律
- * 以切池後的 base 為底，絕不逃出 client 認得的範圍。
+ * 缺席＝舊 client 只認前 60 位），再排除 currentProfileId 與呼叫端給的已抽集合
+ * （現為全歷史永久去重；池抽滿時 handler 會降級傳回當日視窗集合），最後以 seed 做
+ * deterministic 的**稀有度加權**選擇（SR 10%/R 30%/N 60%，層內均勻，見
+ * pickWeightedByRarity；同 seed 同池同結果，故 retry 穩定）。若全被排除，退而只
+ * 避開 current；所有退避一律以切池後的 base 為底，絕不逃出 client 認得的範圍。
  */
 export function selectPracticeDrawProfile(args: {
   currentProfileId?: string;

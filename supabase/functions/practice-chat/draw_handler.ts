@@ -2,7 +2,8 @@
 //
 // 與 chat/debrief 完全隔離：不碰 practice_chat_sessions ledger、不需要 DEEPSEEK_API_KEY、
 // 不呼叫 DeepSeek。流程：讀訂閱 → apply resets(UTC) + persist → 算 tier 額度/限額 →
-// 查本窗已抽 profile → server 選候選 → 呼叫 claim_practice_profile_draw RPC（原子扣費 +
+// 查全歷史已抽 profile（永久去重；池抽滿降級回本窗排除）→ server 選候選 →
+// 呼叫 claim_practice_profile_draw RPC（原子扣費 +
 // idempotent）→ 映射 402/429/200。
 //
 // 回傳 { body, status }（不碰 HTTP/CORS）由 index.ts 包成 Response，藉此：
@@ -28,6 +29,7 @@ import {
 } from "./draw_decision.ts";
 import {
   getPracticeGirlProfile,
+  hasEligibleDrawCandidate,
   type PracticeGirlProfile,
   selectPracticeDrawProfile,
 } from "./practice_persona.ts";
@@ -135,12 +137,13 @@ export async function handleDrawProfile(
   const allowPaidExtra = paidExtraDrawAllowedForTier(tier);
   const window = taipeiNoonResetWindow(now);
 
-  // ── 4. 查本窗已抽 profiles（給選牌排除用）──────────────────────────────
+  // ── 4. 查已抽 profiles：全歷史（永久去重）＋本窗（池抽滿降級用）──────────
+  // 表是 per-user 抽卡事件（每窗抽數個位數），全撈無效能疑慮。reset_window_start_at
+  // 以 Date 解析比對，不做字串比對（PostgREST timestamptz 格式與 toISOString 不同）。
   const { data: drawnRows, error: drawnError } = await supabase
     .from("practice_profile_draw_events")
-    .select("profile_id")
-    .eq("user_id", userId)
-    .eq("reset_window_start_at", window.resetWindowStartAt);
+    .select("profile_id, reset_window_start_at")
+    .eq("user_id", userId);
   if (drawnError) {
     logWarn("practice_draw_events_fetch_error", {
       user: summarizeUser(userId),
@@ -148,9 +151,33 @@ export async function handleDrawProfile(
     });
     return { body: { error: "draw_failed" }, status: 500 };
   }
-  const excluded = new Set<string>(
-    (drawnRows ?? []).map((r) => String(r.profile_id)),
-  );
+  const windowStartMs = new Date(window.resetWindowStartAt).getTime();
+  const permanentExcluded = new Set<string>();
+  const windowExcluded = new Set<string>();
+  for (const r of drawnRows ?? []) {
+    const id = String(r.profile_id);
+    permanentExcluded.add(id);
+    if (new Date(String(r.reset_window_start_at)).getTime() === windowStartMs) {
+      windowExcluded.add(id);
+    }
+  }
+
+  // 永久去重把切池抽滿 → 降級回現行「當日視窗排除」（允許跨窗重複收藏過的角色），
+  // 絕不讓抽卡因無候選而失敗。降級與否都用同一個 excluded 集合走選牌＋撞號重抽。
+  let excluded = permanentExcluded;
+  if (
+    !hasEligibleDrawCandidate({
+      currentProfileId: request.currentProfileId,
+      excludedProfileIds: permanentExcluded,
+      catalogSize: request.catalogSize,
+    })
+  ) {
+    logWarn("practice_draw_dedup_fallback", {
+      user: summarizeUser(userId),
+      drawnCount: permanentExcluded.size,
+    });
+    excluded = windowExcluded;
+  }
 
   // ── 5. 選候選 + 呼叫 RPC（撞號重抽，最多 3 次）─────────────────────────
   // catalogSize（client 宣告的 catalog 人數）只影響「新抽」的候選切池，刻意不進
