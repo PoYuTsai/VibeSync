@@ -2312,6 +2312,87 @@ void main() {
       expect(api.lastHintRequestId, isNot(firstId));
     });
 
+    test('同 controller：hint timeout 後對話推進（sendMessage 成功）→ 新回合 hint 鑄新 id',
+        () async {
+      // 記憶體 pending id 也必須綁回合指紋：對話推進後沿用舊 id，
+      // server 會 replay 上一回合的舊 hint＝牛頭不對馬嘴。
+      final pendingStore = InMemoryPracticePendingHintStore();
+      final c = await makeRevealed(pendingHintStore: pendingStore);
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+
+      // timeout：id 保留（同回合重試沿用）
+      api.hintHandler =
+          (_, {profile}) async => throw TimeoutException('timeout');
+      await c.requestHint();
+      final firstId = api.lastHintRequestId;
+      expect(firstId, isNotNull);
+
+      // 同一個 controller 繼續聊：對話推進（aiReplyCount 1→2）＝舊 id 過期
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            aiTurnCount: 2,
+            temperature: const PracticeTemperature(
+              score: 32,
+              delta: 2,
+              band: 'cold',
+              reason: '延伸',
+            ),
+          );
+      await c.sendMessage('再聊一句');
+
+      api.hintHandler = (_, {profile}) async => hintResult();
+      await c.requestHint();
+
+      expect(api.lastHintRequestId, isNotNull);
+      expect(api.lastHintRequestId, isNot(firstId));
+    });
+
+    test('同 controller：hint timeout 後 sendMessage 失敗回滾 → 回合未推進，重試沿用同 id',
+        () async {
+      // sendMessage 失敗＝回合沒推進：舊 id 的 replay 保護不得被誤清，
+      // 否則 server 已扣費的結果吃不到 replay 會重複扣費。
+      final pendingStore = InMemoryPracticePendingHintStore();
+      final c = await makeRevealed(pendingHintStore: pendingStore);
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+
+      api.hintHandler =
+          (_, {profile}) async => throw TimeoutException('timeout');
+      await c.requestHint();
+      final firstId = api.lastHintRequestId;
+      expect(firstId, isNotNull);
+
+      // sendMessage 失敗回滾：aiReplyCount 不變
+      api.sendHandler = (_, {profile}) async => throw Exception('network');
+      await c.sendMessage('這句送不出去');
+      expect(c.currentState.errorMessage, isNotNull);
+
+      api.hintHandler = (_, {profile}) async => hintResult();
+      await c.requestHint();
+
+      expect(api.lastHintRequestId, firstId);
+      expect(c.currentState.hintReplies, hasLength(2));
+    });
+
     test('requestHint mode locked（409）：同文案、isHintLoading 復位、不標 sessionComplete',
         () async {
       final c = await makeRevealed();

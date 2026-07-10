@@ -438,8 +438,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
 
   /// hint 扣費 idempotency（比照 opener requestId 生命週期）：發起時若為 null
   /// 才鑄新 id；失敗（timeout/5xx/網路）沿用同 id 供重試，成功或 4xx 明確拒絕
-  /// 才清空 rotate。
-  String? _pendingHintRequestId;
+  /// 才清空 rotate。記憶體 pending 帶指紋（sessionId＋aiCount），與持久化
+  /// store 同語意：沿用前必核對指紋，對話推進（aiCount 變動）後自動作廢——
+  /// 否則新回合沿用舊 id，server 會 replay 上一回合的舊 hint（牛頭不對馬嘴）。
+  PracticePendingHint? _pendingHintRequest;
 
   /// 成功或 4xx 明確拒絕 → rotate：清記憶體＋清持久化 store。5xx/timeout
   /// **不**走這裡（兩者都保留，重試與重建後沿用）。dispose 也不清——在途 id
@@ -447,8 +449,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 只在完成的 [completedId] 仍是當前 pending id 時才清：過期舊回應完成時
   /// pending 可能已被較新的 hint 覆寫，不得把新 id 連帶清掉（會失去 replay 保護）。
   void _rotateHintRequestId(String completedId) {
-    if (_pendingHintRequestId == completedId) {
-      _pendingHintRequestId = null;
+    if (_pendingHintRequest?.requestId == completedId) {
+      _pendingHintRequest = null;
     }
     // store 是跨 controller 共用的：autoDispose 後舊 controller 的在途請求
     // 可能晚到，這時 store 裡已是新 controller 的 id——只有 store 現值就是
@@ -462,7 +464,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 換場（送出新訊息／續玩／換一位／還原場次）時的無條件清：在途扣費 id
   /// 只對舊場有意義。
   void _clearPendingHintRequestId() {
-    _pendingHintRequestId = null;
+    _pendingHintRequest = null;
     _appliedHintTurns.clear();
     unawaited(_pendingHintStore.clear());
   }
@@ -1114,28 +1116,34 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     );
 
     // 發起時若無在途 id 才鑄新的：失敗重試沿用同一 id，server 才能去重雙扣。
-    // 記憶體優先；controller 是 autoDispose，重建後記憶體 id 消失 → 讀持久化
-    // store，指紋（sessionId＋當下 AI 回覆數）吻合才沿用，否則作廢鑄新 id。
-    var requestId = _pendingHintRequestId;
+    // 記憶體優先，但**必須**先核對指紋（sessionId＋當下 AI 回覆數）——記憶體
+    // 與持久化 store 同語意，對話推進後的舊回合 id 一律作廢；controller 是
+    // autoDispose，重建後記憶體 pending 消失 → 讀持久化 store，同樣指紋吻合
+    // 才沿用，否則作廢鑄新 id。
+    bool fingerprintMatches(PracticePendingHint p) =>
+        p.sessionId == state.sessionId && p.aiCount == state.aiReplyCount;
+    final memoryPending = _pendingHintRequest;
+    var requestId = (memoryPending != null && fingerprintMatches(memoryPending))
+        ? memoryPending.requestId
+        : null;
     if (requestId == null) {
       final stored = _pendingHintStore.load();
-      if (stored != null &&
-          stored.sessionId == state.sessionId &&
-          stored.aiCount == state.aiReplyCount) {
+      if (stored != null && fingerprintMatches(stored)) {
         requestId = stored.requestId;
       }
     }
     requestId ??= const Uuid().v4();
-    _pendingHintRequestId = requestId;
+    final pending = PracticePendingHint(
+      sessionId: state.sessionId,
+      aiCount: state.aiReplyCount,
+      requestId: requestId,
+    );
+    _pendingHintRequest = pending;
     // 無論 id 來源都寫回 store（覆寫舊指紋），讓在途 id 活過重建；store 實作
     // 自身防呆，寫失敗只是退回「重建後鑄新 id」，不阻斷 hint 主流程。
     // 刻意 fire-and-forget：不得在 API 呼叫前引入新的 await 縫隙，
     // 否則世代序號（_hintGeneration）的捕捉時序會被打亂。
-    unawaited(_pendingHintStore.save(PracticePendingHint(
-      sessionId: state.sessionId,
-      aiCount: state.aiReplyCount,
-      requestId: requestId,
-    )));
+    unawaited(_pendingHintStore.save(pending));
     // 捕捉當下世代：回應到達時序號不符＝過期回應，丟棄不填 state。
     final generation = _hintGeneration;
 
