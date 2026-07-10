@@ -97,6 +97,11 @@ class PracticeChatState {
   final String? restoreText; // 失敗時把使用者剛打的字還回輸入列
   final PracticeLearningMode learningMode;
   final int? temperatureScore;
+
+  /// server 回的溫度分檔（frozen/cold/neutral/warm/hot）；真相源在 server。
+  /// 還原（Hive/draft 不存 band）或尚未收到回合時為 null → UI 用 score
+  /// 鏡像 server 邊界查表兜底（practice_temperature_style.dart）。
+  final String? temperatureBand;
   final int? familiarityScore;
   final String? relationshipStageLabel;
   final int? lastTemperatureDelta;
@@ -166,6 +171,7 @@ class PracticeChatState {
     this.restoreText,
     this.learningMode = PracticeLearningMode.standard,
     this.temperatureScore,
+    this.temperatureBand,
     this.familiarityScore,
     this.relationshipStageLabel,
     this.lastTemperatureDelta,
@@ -262,6 +268,7 @@ class PracticeChatState {
     Object? errorMessage = _sentinel,
     Object? restoreText = _sentinel,
     Object? temperatureScore = _sentinel,
+    Object? temperatureBand = _sentinel,
     Object? familiarityScore = _sentinel,
     Object? relationshipStageLabel = _sentinel,
     Object? lastTemperatureDelta = _sentinel,
@@ -302,6 +309,9 @@ class PracticeChatState {
       temperatureScore: identical(temperatureScore, _sentinel)
           ? this.temperatureScore
           : temperatureScore as int?,
+      temperatureBand: identical(temperatureBand, _sentinel)
+          ? this.temperatureBand
+          : temperatureBand as String?,
       familiarityScore: identical(familiarityScore, _sentinel)
           ? this.familiarityScore
           : familiarityScore as int?,
@@ -878,6 +888,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           ? (state.temperatureScore ??
               initialPracticeTemperatureScore(state.difficulty))
           : null,
+      // 續同一位保溫：band 隨溫度三元組一起沿用（無值時 UI 用 score 鏡像兜底）。
+      temperatureBand:
+          state.isAssistedLearningMode ? state.temperatureBand : null,
       familiarityScore: state.isAssistedLearningMode
           ? (state.familiarityScore ?? kInitialPracticeFamiliarityScore)
           : null,
@@ -898,6 +911,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       learningMode: mode,
       temperatureScore:
           assisted ? initialPracticeTemperatureScore(state.difficulty) : null,
+      temperatureBand: null, // 重設為初始溫度：尚無 server band，UI 走 score 鏡像
       familiarityScore: assisted ? kInitialPracticeFamiliarityScore : null,
       relationshipStageLabel:
           assisted ? kInitialPracticeRelationshipStageLabel : null,
@@ -1023,6 +1037,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         sessionComplete: reply.sessionComplete,
         temperatureScore:
             assisted ? temperature?.score ?? temperatureScore : null,
+        // band 真相源在 server：本回合沒回 temperature 就保留前值（與 score 同步）。
+        temperatureBand:
+            assisted ? temperature?.band ?? state.temperatureBand : null,
         familiarityScore: assisted ? returnedFamiliarityScore : null,
         relationshipStageLabel: assisted
             ? temperature?.stageLabel ?? state.relationshipStageLabel

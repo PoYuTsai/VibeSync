@@ -1520,6 +1520,94 @@ void main() {
     });
   });
 
+  // ── 溫度 band 管線：server 真相源 → state → 溫度計 ───────────────────────
+  group('溫度 band 管線', () {
+    test('beginner 送訊息：state.temperatureBand 吃 server 回的 band', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      expect(c.currentState.temperatureBand, isNull); // 初始無 server band
+
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 55,
+              delta: 6,
+              band: 'neutral',
+              reason: '話題有來有回',
+            ),
+          );
+      await c.sendMessage('hello');
+
+      expect(c.currentState.temperatureBand, 'neutral');
+    });
+
+    test('server 未回 temperature → temperatureBand 保留前值', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 55,
+              delta: 6,
+              band: 'neutral',
+              reason: '話題有來有回',
+            ),
+          );
+      await c.sendMessage('hello');
+
+      api.sendHandler = (_, {profile}) async => reply(cost: 0);
+      await c.sendMessage('again');
+
+      expect(c.currentState.temperatureBand, 'neutral');
+    });
+
+    test('standard mode：temperatureBand 恆 null', () async {
+      final c = await makeRevealed();
+      api.sendHandler = (_, {profile}) async => reply(cost: 0);
+      await c.sendMessage('hello');
+      expect(c.currentState.temperatureBand, isNull);
+    });
+
+    test('beginner 續玩同一位：temperatureBand 沿用上一輪（續聊保溫）', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 72,
+              delta: 9,
+              band: 'warm',
+              reason: '她主動延伸話題',
+            ),
+          );
+      await c.sendMessage('hello');
+      expect(c.currentState.temperatureBand, 'warm');
+
+      c.continueWithSamePartner(isPaid: true);
+
+      expect(c.currentState.roundIndex, 2);
+      expect(c.currentState.temperatureBand, 'warm');
+    });
+
+    test('session 還原：temperatureBand null（Hive 不存 band，UI 用 score 鏡像兜底）',
+        () {
+      final c = makeControllerFrom(PracticeSession(
+        id: 'restore-band',
+        createdAt: DateTime(2026, 6, 26, 12),
+        aiReplyCount: 1,
+        messages: const [
+          PracticeMessage(role: 'user', text: '嗨'),
+          PracticeMessage(role: 'ai', text: '嗯？'),
+        ],
+        profileId: 'practice_girl_005',
+        practiceMode: 'beginner',
+        temperatureScore: 58,
+      ));
+      expect(c.currentState.temperatureScore, 58);
+      expect(c.currentState.temperatureBand, isNull);
+    });
+  });
+
   // ── catalog-profile 身份接線 ─────────────────────────────────────────────
   group('catalog-profile 身份接線', () {
     test('續玩同一位：girl 不漂移', () {

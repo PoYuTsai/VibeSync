@@ -17,6 +17,7 @@ import '../../domain/entities/practice_session.dart';
 import '../widgets/practice_debrief_card.dart';
 import '../widgets/practice_girl_photo.dart';
 import '../widgets/practice_profile_sheet.dart';
+import '../widgets/practice_temperature_style.dart';
 
 /// AI 實戰練習室主畫面：點入直接進聊天（不選目標）。
 /// 使用者先發訊息，AI 扮演模擬對象回覆；最多 20 則 AI 回覆；
@@ -1481,7 +1482,11 @@ class _TemperatureMeter extends StatelessWidget {
             initialPracticeTemperatureScore(state.difficulty))
         .clamp(0, 100)
         .toInt();
-    final color = _temperatureColor(score);
+    // 顏色由 server 回的 band 驅動；band 缺席（還原/舊快照）才用 score 鏡像兜底。
+    final color = practiceTemperatureColor(
+      score: score,
+      band: state.temperatureBand,
+    );
     final delta = state.lastTemperatureDelta;
     final signalText = _temperatureSignalText(delta);
     final stageLabel =
@@ -1568,13 +1573,6 @@ class _TemperatureMeter extends StatelessWidget {
       ),
     );
   }
-}
-
-Color _temperatureColor(int score) {
-  if (score >= 80) return AppColors.hot;
-  if (score >= 60) return AppColors.warm;
-  if (score >= 40) return AppColors.warning;
-  return AppColors.cold;
 }
 
 String? _temperatureSignalText(int? delta) {
