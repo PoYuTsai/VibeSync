@@ -7,6 +7,7 @@ import type { ChatMessage } from "./prompt.ts";
 import {
   buildFallbackHintResult,
   buildHintMessages,
+  GAME_HINT_MOVE_EXAMPLES,
   parseHintResult,
 } from "./hint.ts";
 import { resolvePracticeProfile } from "./practice_persona.ts";
@@ -436,6 +437,64 @@ Deno.test("buildHintMessages teaches Game hints safe advanced qualification narr
   assertEquals(beginnerText.includes("資格篩選"), false);
   assertEquals(beginnerText.includes("順勢收尾"), false);
   assertEquals(beginnerText.includes("10-15 句內"), false);
+});
+
+Deno.test("buildHintMessages rewrites Game contracts as Chinese rules with pasteable few-shot examples", () => {
+  const gameText = buildHintMessages({
+    turns: [
+      { role: "user", text: "你講話滿有畫面的" },
+      { role: "ai", text: "那你倒是說說看看到什麼" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 86,
+    familiarityScore: 74,
+    partnerMood: "comfortable",
+  }).map((m) => m.content).join("\n");
+
+  // 小模型靠模仿具體樣本，不靠消化抽象英文祈使句。
+  assert(gameText.includes("示範句"));
+  assert(gameText.includes("不要照抄"));
+  for (const { example } of GAME_HINT_MOVE_EXAMPLES) {
+    assert(gameText.includes(example), `missing few-shot example: ${example}`);
+  }
+  // 舊英文抽象祈使句退場。
+  assertEquals(gameText.includes("Output exact JSON only"), false);
+  assertEquals(
+    gameText.includes("Translate advanced skill into safe pasteable"),
+    false,
+  );
+  assertEquals(gameText.includes("feel like Game攻略"), false);
+  assertEquals(gameText.includes("Generic follow-up questions fail"), false);
+});
+
+Deno.test("GAME_HINT_MOVE_EXAMPLES pass the visible-output guard pipeline unchanged", () => {
+  assert(GAME_HINT_MOVE_EXAMPLES.length >= 5);
+  for (const { move, example } of GAME_HINT_MOVE_EXAMPLES) {
+    // 可貼上限 80 字。
+    assert(
+      Array.from(example).length <= 80,
+      `example too long for pasteable reply: ${move}`,
+    );
+    // 1.2 節原詞與內部技術詞不得出現在可見示範句。
+    assertEquals(
+      /DHV|篩選|框架|推拉|可得性|資格|賦格|窗口變數|L[0-4]|P[1-5]/.test(example),
+      false,
+      `forbidden internal/1.2 wording in example: ${move}`,
+    );
+    // 走與 LLM 輸出完全相同的守門管道（repair + bossy + label leak + L4），
+    // 且必須原樣通過，不被 repair 改寫。
+    const parsed = parseHintResult(
+      JSON.stringify({
+        warmUp: example,
+        steady: example,
+        coaching: "Game 心法：先接住她這句。速約任務：這輪先鋪墊。",
+      }),
+      { mode: "game" },
+    );
+    assertEquals(parsed.replies[0].text, example);
+    assertEquals(parsed.replies[1].text, example);
+  }
 });
 
 Deno.test("buildHintMessages aligns Game hint seven-step skeleton with NPC and debrief", () => {
@@ -1273,7 +1332,7 @@ Deno.test("buildHintMessages marks fake familiarity as a Game reality-anchor tra
   assert(text.includes("realityFlags: social_proof_attempt, fake_familiarity"));
   assert(text.includes("failureStates: FRAME_OVERREACH"));
   assert(text.includes("allowSpicyLevel: L0"));
-  assert(text.includes("coach suspicion/confirmation instead of validating"));
+  assert(text.includes("假熟、假介紹、假共同朋友要吐槽或確認，不能當真"));
 });
 
 Deno.test("buildHintMessages downshifts spicy ladder when partner is guarded or annoyed", () => {

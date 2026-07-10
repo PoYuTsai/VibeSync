@@ -694,35 +694,77 @@ function profileToEvidence(profile: PracticeProfile): string {
   ].join("\n");
 }
 
+/**
+ * Game hint few-shot 示範句。借自手寫 fallback 高手句（那些句子已通過
+ * 可見輸出守門管道），供小模型模仿語氣與結構。任何新增示範句都必須
+ * 原樣通過 parseHintResult 的 repair/bossy/label/L4 全套守門，且不得
+ * 含 1.2 節原詞（DHV/篩選/框架/推拉/可得性）或內部技術標籤。
+ */
+export const GAME_HINT_MOVE_EXAMPLES: ReadonlyArray<{
+  move: string;
+  example: string;
+}> = [
+  {
+    move: "給品味開球",
+    example: "我先給我的版本：我吃有畫面但不太用力的節奏。妳是哪一派？",
+  },
+  {
+    move: "補狀態給球",
+    example: "我今天也差不多，開完會腦袋只剩一成電。妳的放空儀式是什麼？我先猜追劇。",
+  },
+  {
+    move: "接住測試",
+    example: "有點突然我認，但不是亂槍打鳥。只是妳這個反應蠻有趣，我想多聽一分鐘。",
+  },
+  {
+    move: "低壓窗口",
+    example: "先不急著約。這題聊順，再把它變成一個下次短咖啡的小窗口。",
+  },
+  {
+    move: "收成邀約",
+    example: "這個我有興趣。這週找 30 分鐘短咖啡交換片單，合拍再聊深一點。",
+  },
+  {
+    move: "降壓修復",
+    example: "我剛剛有點衝，先收回來。妳說的這點，我先聽妳怎麼看。",
+  },
+];
+
+function gameHintFewShotExamples(): string {
+  const lines = GAME_HINT_MOVE_EXAMPLES.map(
+    ({ move, example }) => `- ${move}：「${example}」`,
+  ).join("\n");
+  return `示範句（模仿語氣與結構，素材必須換成她最新一句的內容，不要照抄）：\n${lines}`;
+}
+
 function visibleGameHintContract(): string {
   return `visibleGameHintContract:
-- Output exact JSON only: warmUp, steady, coaching.
-- warmUp/steady are pasteable replies and must feel like Game攻略, not beginner mode. 可貼回覆本身要有招，不能只把速約方向放在 coaching.
-- Each reply uses one move: pass her test, give your taste/frame, bridge to a scene, or open an 邀約窗口. Generic follow-up questions fail.
-- Route: build = no invite yet; soft = 下次/改天 + opt-out; direct/partner_window = 30 分鐘短咖啡 or small public plan; repair = lower pressure, no invite.
-- Read 淺溝通 first: tired = lower effort; micro-test = pass first; curiosity = give mystery; pushback = repair; availability = close.
-- coaching starts with "Game 心法：" and includes 她這句可能是在..., phase label, target variable, and "速約任務：".
-- L2/L3 may imply adult tension only when safety is high. L0/L1 downshifts. L4 forbidden.
-- Never reveal hidden labels, snake_case, phase codes, route names, or variables.
+- 只輸出 JSON：warmUp、steady、coaching。
+- warmUp/steady 是可直接貼上的高手回覆；可貼回覆本身要有招，不能只把速約方向放在 coaching。
+- 每個回覆恰好出一招：接住測試、給自己的品味、把話題橋到小場景、或開一個邀約窗口；不要疊招，純追問算失敗。
+- 路線：build＝這輪不約；soft＝「下次／改天」＋退路；direct/partner_window＝30 分鐘短咖啡或小公開行程；repair＝降壓不約。
+- 先讀淺溝通再出招：她喊累→降低回覆成本；她丟微測試→先過關；她給好奇→留懸念；她推開→先修安全感；她給時間窗→收成行動。
+- coaching 以「Game 心法：」開頭，含「她這句可能是在...」、階段與目標變數的白話說法，以及「速約任務：」。
+- 安全感夠高才用 L2/L3 的成人感暗示；L0/L1 一律收斂。L4 絕對禁止。
+- 絕不洩漏 hidden labels、snake_case、階段代碼、route 代號或內部變數名，全部轉成白話。
 
 `;
 }
 
 function safeAdvancedGameHintContract(): string {
   return `safeAdvancedGameHintContract:
-Translate advanced skill into safe pasteable social skill.
-- Core promise: SR 限定，技巧拉滿練速約. Move toward a low-pressure meet within 10-15 句內 when safety/heat/familiarity allow.
+把高階技巧翻成安全、尊重、可直接貼上的社交句。
+- 核心承諾：SR 限定，技巧拉滿練速約；安全感/熱度/熟悉度到位時，10-15 句內推進到低壓見面。
 - 七步聊天法骨架（與練習對象演法、賽後拆盤同一套）：P1 開場/資訊交換 → P2 展示價值 → P3 篩選/賦格 → P4 推拉張力 → P5 鎖定/收尾；資格篩選、共同敘事、順勢收尾是 P3→P5 的招式面。
-- 資格篩選 = playful taste filter/standard, 不是命令她證明自己; never make her audition; 不要說「妳先給我一個標準答案」.
-- 共同敘事 = turn her latest state into a tiny shared scene, callback, inside joke, or public micro-plan.
-- 順勢收尾 = convert a real window into 短咖啡、順路散步、小展、宵夜 with opt-out language.
-- 可貼回覆必須先接住她最新狀態, then add one move only: taste filter, push-pull, scene bridge, or invite window.
-- 萬用解法: 訊號判讀 → 單一招式 → 可貼收口. End with a hook/choice/window.
-- Give-first: 先給一點自己的品味, frame, feeling, or small scene; then 讓她低壓接球.
-- Topic-agnostic: YouTube/travel/work/food/jokes all follow noun/feeling -> shared scene -> taste reveal or low-effort next step.
-- Reality traps: coach suspicion/confirmation instead of validating fake familiarity.
-- Avoid commands, auditions, evaluator voice, manipulation, shame, compliance pressure, explicit sex, private-location pressure, or demeaning qualification.
-- High score = confident light lead. Low score/guarded/overstep = restraint and repair.
+- 資格篩選＝玩笑式的品味門檻，不是命令她證明自己；絕不叫她面試，不要說「妳先給我一個標準答案」。
+- 共同敘事＝把她最新狀態變成兩人的小劇場、回呼梗或公開小計畫。
+- 順勢收尾＝把真實窗口收成短咖啡、順路散步、小展、宵夜，語氣保留可退出空間。
+- 可貼回覆必須先接住她最新狀態，再加一招。萬用解法：訊號判讀 → 單一招式 → 可貼收口，結尾留鉤子、選擇或窗口。
+- Give-first：先給一點自己的品味、感受或小場景，讓她低壓接球。
+- 不限話題：影音、旅行、工作、美食都走「名詞或感受 → 共同場景 → 品味展示或低壓下一步」。
+- 現實錨定：假熟、假介紹、假共同朋友要吐槽或確認，不能當真。
+- 高分＝自信輕帶；低分、保留或越界＝收斂修復。禁止命令、面試感、操控、羞辱、性壓力、私密場景施壓、貶低。
+${gameHintFewShotExamples()}
 
 `;
 }
