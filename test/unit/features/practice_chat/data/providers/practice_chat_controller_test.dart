@@ -3380,6 +3380,56 @@ void main() {
       expect(c.currentState.messages.last.text, 'AI response 2');
     });
 
+    test('pending turn persistence gates send and debrief until rollback',
+        () async {
+      final controlled = _ControlledPracticeSessionRepository(box);
+      final saveStarted = Completer<void>();
+      final saveGate = Completer<void>();
+      controlled.saveHandler = (session) {
+        if (!saveStarted.isCompleted) saveStarted.complete();
+        return saveGate.future;
+      };
+      final prior = assistedSession(id: 'turn-durability-gate');
+      final c = makeControllerFrom(prior, repository: controlled);
+      var sendCalls = 0;
+      var debriefCalls = 0;
+      api.sendHandler = (_, {profile}) async {
+        sendCalls++;
+        return assistedReply(aiTurnCount: 2, text: 'AI durable pending');
+      };
+      api.debriefHandler = (_, {profile}) async {
+        debriefCalls++;
+        return const PracticeDebrief(
+          summary: 'must not run',
+          strengths: [],
+          watchouts: [],
+          suggestedLine: 'must not run',
+          vibe: '中性',
+        );
+      };
+
+      final send = c.sendMessage('A');
+      await saveStarted.future;
+
+      expect(c.currentState.isSending, false);
+      expect(c.currentState.isPersistingTurn, true);
+      expect(c.currentState.canSend, false);
+      expect(c.currentState.canDebrief, false);
+      expect(c.currentState.canRequestHint, true);
+
+      await c.sendMessage('B');
+      await c.endPractice();
+      expect(sendCalls, 1);
+      expect(debriefCalls, 0);
+
+      saveGate.completeError(StateError('turn persistence failed'));
+      await send;
+      expect(c.currentState.isPersistingTurn, false);
+      expect(c.currentState.messages, prior.messages);
+      expect(c.currentState.aiReplyCount, prior.aiReplyCount);
+      expect(debriefCalls, 0);
+    });
+
     test(
         'second-turn persist failure aborts awaiting formal and fully rolls back',
         () async {

@@ -133,6 +133,7 @@ class PracticeChatState {
   final DateTime createdAt;
   final List<PracticeMessage> messages;
   final bool isSending;
+  final bool isPersistingTurn;
   final bool isDebriefing;
   final int aiReplyCount;
   final bool sessionComplete; // 已達 20 則
@@ -207,6 +208,7 @@ class PracticeChatState {
     this.difficultyPreference = PracticeDifficultyPreference.normal,
     this.messages = const [],
     this.isSending = false,
+    this.isPersistingTurn = false,
     this.isDebriefing = false,
     this.aiReplyCount = 0,
     this.sessionComplete = false,
@@ -246,6 +248,7 @@ class PracticeChatState {
   bool get canSend =>
       isRevealed &&
       !isSending &&
+      !isPersistingTurn &&
       !isDebriefing &&
       !isHintLoading &&
       !ended &&
@@ -256,7 +259,11 @@ class PracticeChatState {
   bool get canUseGameMode => girl?.rarity == PracticeGirlRarity.sr;
 
   bool get canChangeLearningMode =>
-      isRevealed && messages.isEmpty && !isSending && !isDebriefing;
+      isRevealed &&
+      messages.isEmpty &&
+      !isSending &&
+      !isPersistingTurn &&
+      !isDebriefing;
 
   bool get canRequestHint =>
       isAssistedLearningMode &&
@@ -278,12 +285,14 @@ class PracticeChatState {
       aiReplyCount >= 1 &&
       !isDebriefing &&
       !isSending &&
+      !isPersistingTurn &&
       debrief == null &&
       (!debriefFailed || debriefRetryable);
 
   PracticeChatState copyWith({
     List<PracticeMessage>? messages,
     bool? isSending,
+    bool? isPersistingTurn,
     bool? isDebriefing,
     int? aiReplyCount,
     bool? sessionComplete,
@@ -338,6 +347,7 @@ class PracticeChatState {
       drawQuotaExceeded: drawQuotaExceeded ?? this.drawQuotaExceeded,
       messages: messages ?? this.messages,
       isSending: isSending ?? this.isSending,
+      isPersistingTurn: isPersistingTurn ?? this.isPersistingTurn,
       isDebriefing: isDebriefing ?? this.isDebriefing,
       aiReplyCount: aiReplyCount ?? this.aiReplyCount,
       sessionComplete: sessionComplete ?? this.sessionComplete,
@@ -1352,6 +1362,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       state = state.copyWith(
         messages: withAi,
         isSending: false,
+        isPersistingTurn: true,
         aiReplyCount: reply.aiTurnCount,
         sessionComplete: reply.sessionComplete,
         temperatureScore:
@@ -1387,6 +1398,18 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           _markHintPrefetchPersistFailed(hintPrefetchFlight);
         }
         rethrow;
+      }
+      final ownsDurableTurn = mounted &&
+          state.sessionId == priorState.sessionId &&
+          _hintGeneration == completedTurnGeneration &&
+          state.aiReplyCount == reply.aiTurnCount &&
+          identical(_activeSendPipelineToken, sendPipelineToken);
+      if (ownsDurableTurn) {
+        state = state.copyWith(isPersistingTurn: false);
+        // The authoritative turn is durable now. Release the chat/debrief gate
+        // before non-critical draft and usage side channels; identity-checked
+        // finally prevents this owner from clearing a newer send token.
+        _activeSendPipelineToken = null;
       }
       _hintRequiresConversationAdvance = false;
       if (hintPrefetchFlight != null) {
@@ -1692,7 +1715,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   }
 
   Future<void> endPractice() async {
-    if (!state.canDebrief) return;
+    if (!state.canDebrief || _activeSendPipelineToken != null) return;
     final requestState = state;
     final requestSessionId = requestState.sessionId;
     final requestProfile = _profileDto();
