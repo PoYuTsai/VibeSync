@@ -7,6 +7,16 @@
 
 ## OPEN（最新在最上）
 
+## [2026-07-10] Beginner/Game Hint＋兩路 Debrief 穩定度收斂
+Status: **APPROVED（0 P0 / 0 P1 / 0 P2）** — implementation `bfbebd70`，三路 Codex adversarial review（語境/守門、Debrief DB 併發、client requestId/telemetry）均結案。
+
+- **品質**：Beginner 與 Game fallback 共用窄逐客令訊號；明確退出只道歉＋退一步，不引用原句、不暖場/邀約。一般罐頭去教練腔；applied-Hint Debrief 依咖啡/電影/旅行/音樂/飲食/低能量語境接話。Game SR strategy 全改繁中；Game Debrief 五欄嚴格 schema＋格式/守門 repair retry。
+- **守門**：可見文字逐欄測試；封住 ZWSP/variation selector/Hangul filler、標點拆字、雙重否定、跨句反轉與 Latin 內部詞拆字，並保留安全否定句。第三人稱轉述（含冒號）不誤判逐客令。
+- **可靠性**：Debrief requestId 在送出前寫入加密 Hive，HTTP 200 後保留到卡片落盤才清；server 以 45s single-flight、stale takeover、first-writer-wins＋權威 replay 防重打/重計次。completed replay 先於 Game unlock/rate-limit；跨場、autoDispose 晚到結果不改 state/Hive 或清新 requestId。
+- **效能/可觀測性**：Hint/Debrief prompt 已壓在測試硬門檻內；telemetry 只存固定 aggregate scalar，排在權威寫入後用 `waitUntil` 背景執行，1.5s bounded/fail-open，不增加 response path latency。Hint 9s、Debrief 12s×2 與既有 retry/quota/response shape 決策不變。
+- **驗證**：practice-chat Deno **611 passed**；Flutter API/Hive/controller **212 passed**；Deno fmt/lint/check、Flutter analyze、`git diff --check` 全綠。Prompt 代表值：Beginner Hint 1,759 chars、Game Hint 4,269；Beginner Debrief 2,567、Game Debrief 3,944。
+- **部署 gate**：只准目標式套 `20260710120000_practice_debrief_idempotency.sql`、確認 migration ledger/RPC/PostgREST，再 push 部署 Edge；禁止 `supabase db push`。上線後需看真實 telemetry 樣本，不能把測試綠等同 production fallback=0。
+
 ## [2026-06-15] OCR side：nested-screenshot guard + single-side fallback gate（Eric 拍板方向，待 TDD）
 Status: OPEN — **自動 side detector 全線停（Eric 拍板 2026-06-15，見下「detector 第二輪結案」）**；短期靠 client confirm UI 兜底、承認暗色單側殘差。Track 2 step-2＝Path A client-only SHIPPED `5a54ae1`（push origin/main，無 Edge deploy，待新 TF build＋Eric/Bruce 目檢）；server only_right default 已實作+TDD 後依 Eric 撤回；Track 1 nested-screenshot guard 仍 OPEN（另案）。
 **🛑 detector 第二輪＝結案，自動 side 修法全線停（Eric 拍板 2026-06-15）**：
