@@ -103,6 +103,7 @@ function repairGameVisibleLabels(value: string): string {
     [/\bL1\b/gi, "玩笑試探"],
     [/\bL2\b/gi, "成人感暗示"],
     [/\bL3\b/gi, "高張力暗示"],
+    [/\bspeedInviteLadder\s*[:：]?\s*/gi, "速約階梯："],
     [/\bGame\s*Hint\s*[:：]?/gi, "Game 心法："],
     [/\bGame\s*Mode\s*[:：]?/gi, "Game："],
     [/\btargetVariable\s*[:：]\s*/gi, "目標變數："],
@@ -835,7 +836,7 @@ function gameHintEvidence(opts: {
   });
   const strategy = gameStrategyPrompt(opts.profile);
   const inviteRoute = gameInviteRouteFor(snapshot.speedInviteDirection);
-  return `gameHint(hidden guidance)\nphase: ${snapshot.phase}\ntargetVariable: ${snapshot.targetVariable}\nspeedInviteDirection: ${snapshot.speedInviteDirection}\nallowSpicyLevel: ${snapshot.spicyLevel}\nGame coaching may name: 階段、目標變數、速約方向、Value / Frame / Emotion / Investment、測試、框架、情緒推進、投資感、性張力。\nSharper than beginner: say phase, variable, and whether to build/test/tension/low-pressure invite.\nSpicy Ladder: L0 repair, L1 tease, L2 adult implication, L3 controlled tension. Guarded/overstep -> L0/L1.\nL4 forbidden: explicit sex/body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, hard private scene. Never output L4.\nReality Anchoring: fake friends/introductions/prior meetings/workplace/location claims require suspicion or confirmation, not validation.\n\n${visibleGameHintContract()}${safeAdvancedGameHintContract()}${sevenStepBalanceContract()}${
+  return `gameHint(hidden guidance)\nphase: ${snapshot.phase}\ntargetVariable: ${snapshot.targetVariable}\nspeedInviteDirection: ${snapshot.speedInviteDirection}\nallowSpicyLevel: ${snapshot.spicyLevel}\n內部用 Value / Frame / Emotion / Investment（收尾加 Safety）讀盤；coaching 可以比新手更直接拆招，講清楚現在在哪個階段、該推哪個變數、這輪是鋪墊/測試/張力/低壓邀約。\n可見文字一律轉白話：價值感、節奏與主見、情緒推進、投入感、曖昧張力；絕不用 DHV、篩選、框架、推拉、可得性這些原詞，也不輸出英文內部標籤。\nSpicy Ladder: L0 修復、L1 玩笑試探、L2 成人感暗示、L3 高張力暗示；對方保留或被越界時一律降回 L0/L1。\nL4 forbidden: 露骨性內容、身體或性行為描寫、脅迫、羞辱、非自願、灌醉施壓、硬推私密場景，任何情況都不得輸出。\n現實錨定：假朋友、假介紹、假見過面、假職場或行蹤宣稱要懷疑或確認，不可背書。\n\n${visibleGameHintContract()}${safeAdvancedGameHintContract()}${sevenStepBalanceContract()}${
     speedInviteLadderPrompt(inviteRoute)
   }${
     gameFsmEvidencePrompt(snapshot)

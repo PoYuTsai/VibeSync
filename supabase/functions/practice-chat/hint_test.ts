@@ -497,6 +497,42 @@ Deno.test("GAME_HINT_MOVE_EXAMPLES pass the visible-output guard pipeline unchan
   }
 });
 
+Deno.test("buildHintMessages forbids 1.2 raw jargon in visible Game coaching and drops English header prose", () => {
+  const gameText = buildHintMessages({
+    turns: [
+      { role: "user", text: "你講話滿有畫面的" },
+      { role: "ai", text: "那你倒是說說看看到什麼" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 86,
+    familiarityScore: 74,
+    partnerMood: "comfortable",
+  } as Parameters<typeof buildHintMessages>[0]).map((m) => m.content)
+    .join("\n");
+
+  // 可見輸出不得用 1.2 節原詞；內部變數名仍可在 hidden guidance 出現。
+  assert(gameText.includes("絕不用 DHV、篩選、框架、推拉、可得性這些原詞"));
+  assert(gameText.includes("Value / Frame / Emotion / Investment"));
+  // 舊 header 明文允許 coaching 點名「框架、性張力」的句子必須退場。
+  assertEquals(gameText.includes("Game coaching may name"), false);
+  assertEquals(gameText.includes("Sharper than beginner"), false);
+  assertEquals(gameText.includes("say phase, variable"), false);
+});
+
+Deno.test("parseHintResult repairs speedInviteLadder label echoes in game mode", () => {
+  const result = parseHintResult(
+    JSON.stringify({
+      warmUp: "我先給我的版本：我吃有畫面但不太用力的節奏。妳是哪一派？",
+      steady: "先不急著約。這題聊順，再把它變成一個下次短咖啡的小窗口。",
+      coaching: "Game 心法：她在丟品味線索。speedInviteLadder: 先鋪墊，下一階丟低壓窗口。",
+    }),
+    { mode: "game" },
+  );
+  assertEquals(result.coaching.includes("speedInviteLadder"), false);
+  assert(result.coaching.includes("速約階梯"));
+});
+
 Deno.test("buildHintMessages promotes the speed-invite ladder into the main Game prompt", () => {
   const highGame = buildHintMessages({
     turns: [
