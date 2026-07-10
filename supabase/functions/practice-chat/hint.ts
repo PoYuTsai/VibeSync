@@ -528,6 +528,22 @@ function evidenceBoundBeginnerFallbackReplies(latestAssistant: string): {
 
 type GameInviteRoute = "build" | "soft" | "direct" | "repair";
 
+/** 速約階梯各階的白話標籤（對齊 repairGameVisibleLabels/debrief 用語）。 */
+const GAME_INVITE_ROUTE_LABEL: Record<GameInviteRoute, string> = {
+  build: "先鋪墊",
+  soft: "低壓試探邀約",
+  direct: "明確但低壓邀約",
+  repair: "先修安全感",
+};
+
+/** 速約階梯各階的推進建議；fallback coaching 與主 prompt 共用同一套。 */
+const GAME_INVITE_ROUTE_ADVICE: Record<GameInviteRoute, string> = {
+  build: "這輪先不約，先把她的偏好變成可兌現的小場景，鋪下一個窗口",
+  soft: "用「下次／改天」丟低壓窗口，保留退路",
+  direct: "把窗口收成 30 分鐘短咖啡或小行程，具體但可拒絕",
+  repair: "先降壓修安全感，不約，等她願意多說再找窗口",
+};
+
 function gameInviteRouteFor(direction: string): GameInviteRoute {
   if (
     direction === "repair_before_invite" ||
@@ -648,13 +664,7 @@ export function buildFallbackHintResult(
   const targetLabel = targetLabelForFallback(snapshot.targetVariable);
   const signalRead = fallback.signalRead ?? "她這句可能是在測你的節奏或品味";
   const phaseMove = fallback.phaseMove ?? `${phaseLabel}階段先推${targetLabel}`;
-  const defaultRouteAdvice = {
-    build: "這輪先不約，先把她的偏好變成可兌現的小場景，鋪下一個窗口",
-    soft: "用「下次／改天」丟低壓窗口，保留退路",
-    direct: "把窗口收成 30 分鐘短咖啡或小行程，具體但可拒絕",
-    repair: "先降壓修安全感，不約，等她願意多說再找窗口",
-  }[route];
-  const routeAdvice = fallback.routeAdvice ?? defaultRouteAdvice;
+  const routeAdvice = fallback.routeAdvice ?? GAME_INVITE_ROUTE_ADVICE[route];
   return {
     replies: [
       { type: "warm_up", label: "升溫回覆", text: fallback.warmUp },
@@ -742,7 +752,7 @@ function visibleGameHintContract(): string {
 - 只輸出 JSON：warmUp、steady、coaching。
 - warmUp/steady 是可直接貼上的高手回覆；可貼回覆本身要有招，不能只把速約方向放在 coaching。
 - 每個回覆恰好出一招：接住測試、給自己的品味、把話題橋到小場景、或開一個邀約窗口；不要疊招，純追問算失敗。
-- 路線：build＝這輪不約；soft＝「下次／改天」＋退路；direct/partner_window＝30 分鐘短咖啡或小公開行程；repair＝降壓不約。
+- 邀約節奏依 speedInviteLadder 標的本輪階梯位置出招，見面提案一律公開場景、低壓、可拒絕。
 - 先讀淺溝通再出招：她喊累→降低回覆成本；她丟微測試→先過關；她給好奇→留懸念；她推開→先修安全感；她給時間窗→收成行動。
 - coaching 以「Game 心法：」開頭，含「她這句可能是在...」、階段與目標變數的白話說法，以及「速約任務：」。
 - 安全感夠高才用 L2/L3 的成人感暗示；L0/L1 一律收斂。L4 絕對禁止。
@@ -765,6 +775,25 @@ function safeAdvancedGameHintContract(): string {
 - 現實錨定：假熟、假介紹、假共同朋友要吐槽或確認，不能當真。
 - 高分＝自信輕帶；低分、保留或越界＝收斂修復。禁止命令、面試感、操控、羞辱、性壓力、私密場景施壓、貶低。
 ${gameHintFewShotExamples()}
+
+`;
+}
+
+/**
+ * 速約推進階梯：原本只活在 fallback 罐頭裡，這裡升為主 prompt 明確指令。
+ * 本輪位置由 server FSM 判定後直接用白話標籤告訴模型，不讓小模型自己猜。
+ */
+function speedInviteLadderPrompt(route: GameInviteRoute): string {
+  return `speedInviteLadder(hidden guidance):
+- 速約階梯順序：先鋪墊 → 低壓試探邀約 → 明確但低壓邀約；修安全感隨時優先。
+- 先鋪墊：${GAME_INVITE_ROUTE_ADVICE.build}。
+- 低壓試探邀約：${GAME_INVITE_ROUTE_ADVICE.soft}。
+- 明確但低壓邀約：${GAME_INVITE_ROUTE_ADVICE.direct}；她主動給窗口就順勢接住。
+- 先修安全感：${GAME_INVITE_ROUTE_ADVICE.repair}。
+- 本輪階梯位置：${GAME_INVITE_ROUTE_LABEL[route]}。建議：${
+    GAME_INVITE_ROUTE_ADVICE[route]
+  }。
+- coaching 的「速約任務：」必須用白話講明這輪在哪一階、下一階怎麼推；warmUp/steady 最多推進一階，不可跳階硬衝。
 
 `;
 }
@@ -805,7 +834,10 @@ function gameHintEvidence(opts: {
     inviteStage: opts.inviteMaturity?.stage ?? null,
   });
   const strategy = gameStrategyPrompt(opts.profile);
+  const inviteRoute = gameInviteRouteFor(snapshot.speedInviteDirection);
   return `gameHint(hidden guidance)\nphase: ${snapshot.phase}\ntargetVariable: ${snapshot.targetVariable}\nspeedInviteDirection: ${snapshot.speedInviteDirection}\nallowSpicyLevel: ${snapshot.spicyLevel}\nGame coaching may name: 階段、目標變數、速約方向、Value / Frame / Emotion / Investment、測試、框架、情緒推進、投資感、性張力。\nSharper than beginner: say phase, variable, and whether to build/test/tension/low-pressure invite.\nSpicy Ladder: L0 repair, L1 tease, L2 adult implication, L3 controlled tension. Guarded/overstep -> L0/L1.\nL4 forbidden: explicit sex/body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, hard private scene. Never output L4.\nReality Anchoring: fake friends/introductions/prior meetings/workplace/location claims require suspicion or confirmation, not validation.\n\n${visibleGameHintContract()}${safeAdvancedGameHintContract()}${sevenStepBalanceContract()}${
+    speedInviteLadderPrompt(inviteRoute)
+  }${
     gameFsmEvidencePrompt(snapshot)
   }${strategy ? `\n${strategy}\n` : "\n"}`;
 }

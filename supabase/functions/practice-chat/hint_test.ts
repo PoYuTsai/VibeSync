@@ -497,6 +497,62 @@ Deno.test("GAME_HINT_MOVE_EXAMPLES pass the visible-output guard pipeline unchan
   }
 });
 
+Deno.test("buildHintMessages promotes the speed-invite ladder into the main Game prompt", () => {
+  const highGame = buildHintMessages({
+    turns: [
+      { role: "user", text: "你平常看什麼放鬆" },
+      { role: "ai", text: "最近看一些脫口秀片段 節奏蠻舒服的" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 88,
+    familiarityScore: 82,
+    partnerMood: "comfortable",
+  } as Parameters<typeof buildHintMessages>[0]).map((m) => m.content)
+    .join("\n");
+
+  // 階梯從 fallback-only 升為主 prompt 明確指令。
+  assert(highGame.includes("速約階梯"));
+  assert(highGame.includes("這輪在哪一階、下一階怎麼推"));
+  assert(highGame.includes("可兌現的小場景"));
+  assert(highGame.includes("保留退路"));
+  assert(highGame.includes("具體但可拒絕"));
+  assert(highGame.includes("等她願意多說再找窗口"));
+  // 本輪位置由 server FSM 判定後直接告訴模型（白話標籤）。
+  assert(highGame.includes("本輪階梯位置：明確但低壓邀約"));
+
+  const lowGame = buildHintMessages({
+    turns: [
+      { role: "user", text: "你平常看什麼放鬆" },
+      { role: "ai", text: "最近看一些脫口秀片段 節奏蠻舒服的" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 30,
+    familiarityScore: 20,
+    partnerMood: "neutral",
+  } as Parameters<typeof buildHintMessages>[0]).map((m) => m.content)
+    .join("\n");
+
+  assert(lowGame.includes("本輪階梯位置：先鋪墊"));
+  assertEquals(lowGame.includes("本輪階梯位置：明確但低壓邀約"), false);
+
+  const beginnerText = buildHintMessages({
+    turns: [
+      { role: "user", text: "你平常看什麼放鬆" },
+      { role: "ai", text: "最近看一些脫口秀片段 節奏蠻舒服的" },
+    ],
+    profile,
+    temperatureScore: 88,
+    familiarityScore: 82,
+    partnerMood: "comfortable",
+  } as Parameters<typeof buildHintMessages>[0]).map((m) => m.content)
+    .join("\n");
+
+  assertEquals(beginnerText.includes("速約階梯"), false);
+  assertEquals(beginnerText.includes("本輪階梯位置"), false);
+});
+
 Deno.test("buildHintMessages feeds seven-step balance judgment rules into Game hints", () => {
   const gameOptions = {
     turns: [
