@@ -9,10 +9,7 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import {
-  type DrawSupabaseClient,
-  handleDrawProfile,
-} from "./draw_handler.ts";
+import { type DrawSupabaseClient, handleDrawProfile } from "./draw_handler.ts";
 import type { PracticeDrawRequest } from "./validate.ts";
 
 // 固定 now = Taipei 14:00（過中午 → 今日視窗）；sub reset_at 設同一 UTC 日/月 → 不觸發 reset。
@@ -35,6 +32,7 @@ function sub(
 
 interface MockOpts {
   sub: Record<string, unknown> | null;
+  preparedSub?: Record<string, unknown> | null;
   subError?: string;
   drawn?: string[];
   /** 完整 draw events 列（含 reset_window_start_at）；優先於 drawn。 */
@@ -45,13 +43,20 @@ interface MockOpts {
 
 function mockClient(
   opts: MockOpts,
-): { client: DrawSupabaseClient; rpcCalls: Array<Record<string, unknown>> } {
+): {
+  client: DrawSupabaseClient;
+  rpcCalls: Array<Record<string, unknown>>;
+  prepareCalls: Array<Record<string, unknown>>;
+  subscriptionUpdates: Array<Record<string, unknown>>;
+} {
   const rpcCalls: Array<Record<string, unknown>> = [];
+  const prepareCalls: Array<Record<string, unknown>> = [];
+  const subscriptionUpdates: Array<Record<string, unknown>> = [];
   let rpcIdx = 0;
 
   // deno-lint-ignore no-explicit-any
   const client: any = {
-    from(_table: string) {
+    from(table: string) {
       return {
         select(_cols: string) {
           // builder 同時是 thenable（events 直接 await）與有 maybeSingle（subscriptions）。
@@ -81,7 +86,8 @@ function mockClient(
           };
           return builder;
         },
-        update(_values: Record<string, unknown>) {
+        update(values: Record<string, unknown>) {
+          if (table === "subscriptions") subscriptionUpdates.push(values);
           return {
             eq(_c: string, _v: unknown) {
               return Promise.resolve({ data: null, error: null });
@@ -90,7 +96,26 @@ function mockClient(
         },
       };
     },
-    rpc(_fn: string, params: Record<string, unknown>) {
+    rpc(fn: string, params: Record<string, unknown>) {
+      if (fn === "prepare_practice_subscription_usage") {
+        prepareCalls.push(params);
+        if (opts.subError) {
+          return Promise.resolve({
+            data: null,
+            error: { message: opts.subError },
+          });
+        }
+        if (opts.preparedSub === null || opts.sub === null) {
+          return Promise.resolve({
+            data: null,
+            error: { message: "PRACTICE_SUBSCRIPTION_NOT_FOUND" },
+          });
+        }
+        return Promise.resolve({
+          data: opts.preparedSub ?? opts.sub,
+          error: null,
+        });
+      }
       rpcCalls.push(params);
       const r = opts.rpc[Math.min(rpcIdx, opts.rpc.length - 1)];
       rpcIdx++;
@@ -102,7 +127,12 @@ function mockClient(
     },
   };
 
-  return { client: client as DrawSupabaseClient, rpcCalls };
+  return {
+    client: client as DrawSupabaseClient,
+    rpcCalls,
+    prepareCalls,
+    subscriptionUpdates,
+  };
 }
 
 function req(
@@ -134,7 +164,9 @@ async function run(
   request = req(),
   email: string | null = "user@example.com",
 ) {
-  const { client, rpcCalls } = mockClient(opts);
+  const { client, rpcCalls, prepareCalls, subscriptionUpdates } = mockClient(
+    opts,
+  );
   const result = await handleDrawProfile({
     supabase: client,
     userId: "u-1",
@@ -143,8 +175,31 @@ async function run(
     now: NOW,
   });
   // deno-lint-ignore no-explicit-any
-  return { result, body: result.body as any, rpcCalls };
+  return {
+    result,
+    body: result.body as any,
+    rpcCalls,
+    prepareCalls,
+    subscriptionUpdates,
+  };
 }
+
+Deno.test("draw prepares subscription resets through the DB row lock", async () => {
+  const { result, prepareCalls, subscriptionUpdates } = await run({
+    sub: {
+      ...sub("starter", 49, 299),
+      daily_reset_at: "2026-06-25T00:00:00.000Z",
+      monthly_reset_at: "2026-05-01T00:00:00.000Z",
+    },
+    preparedSub: sub("starter", 0, 0),
+    drawn: [],
+    rpc: [{ data: receipt() }],
+  });
+
+  assertEquals(result.status, 200);
+  assertEquals(prepareCalls, [{ p_user_id: "u-1" }]);
+  assertEquals(subscriptionUpdates, []);
+});
 
 // ── Free 第一抽 → cost 0 ───────────────────────────────────────────────
 Deno.test("Free 第一抽：cost 0，回 profile + draw receipt + usage", async () => {
@@ -337,7 +392,9 @@ Deno.test("catalogSize 缺席：多 requestId 掃描，RPC 候選全部 ≤ 060"
     );
     const idx = girlIndexOf(rpcCalls[0].p_profile_id);
     if (!(idx >= 1 && idx <= 60)) {
-      throw new Error(`無 catalogSize 候選逃出舊池：${rpcCalls[0].p_profile_id}`);
+      throw new Error(
+        `無 catalogSize 候選逃出舊池：${rpcCalls[0].p_profile_id}`,
+      );
     }
   }
 });
@@ -351,7 +408,10 @@ Deno.test("catalogSize=100：多 requestId 掃描，RPC 候選出現 061+（全�
     );
     if (girlIndexOf(rpcCalls[0].p_profile_id) > 60) sawExpanded = true;
   }
-  assert(sawExpanded, "catalogSize=100 掃 40 個 requestId 應至少一個候選 > 060");
+  assert(
+    sawExpanded,
+    "catalogSize=100 掃 40 個 requestId 應至少一個候選 > 060",
+  );
 });
 
 // ── 永久去重（全歷史排除）＋池抽滿降級回視窗排除 ─────────────────────────
@@ -401,7 +461,10 @@ Deno.test("池抽滿：全歷史覆蓋全池 → 降級回視窗排除，仍成�
   // 降級後仍要排除本窗已抽（絕不同窗重複），且不逃出切池。
   assert(rpcCalls[0].p_profile_id !== "practice_girl_005");
   const idx = girlIndexOf(rpcCalls[0].p_profile_id);
-  assert(idx >= 1 && idx <= 60, `降級候選逃出舊池：${rpcCalls[0].p_profile_id}`);
+  assert(
+    idx >= 1 && idx <= 60,
+    `降級候選逃出舊池：${rpcCalls[0].p_profile_id}`,
+  );
   // response 形狀不變（profile / draw / usage 三段齊全）。
   assertEquals(body.profile.profileId, "practice_girl_007");
   assertEquals(body.draw.freeAllowance, 1);

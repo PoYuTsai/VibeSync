@@ -1,5 +1,4 @@
 import {
-  applyResetsIfNeeded,
   buildQuotaExceededPayload,
   checkQuota,
   isPlainObject,
@@ -606,6 +605,36 @@ function remainingFrom(
       0,
       limits.daily - sub.daily_messages_used - deducted,
     ),
+  };
+}
+
+function preparedSubscriptionFromRpc(value: unknown): SubscriptionRow | null {
+  const row = Array.isArray(value) ? value[0] : value;
+  if (!isPlainObject(row)) return null;
+  const tier = row.tier;
+  const monthlyUsed = row.monthly_messages_used;
+  const dailyUsed = row.daily_messages_used;
+  const dailyResetAt = row.daily_reset_at;
+  const monthlyResetAt = row.monthly_reset_at;
+  if (
+    (typeof tier !== "string" && tier !== null) ||
+    typeof monthlyUsed !== "number" ||
+    !Number.isInteger(monthlyUsed) ||
+    monthlyUsed < 0 ||
+    typeof dailyUsed !== "number" ||
+    !Number.isInteger(dailyUsed) ||
+    dailyUsed < 0 ||
+    (typeof dailyResetAt !== "string" && dailyResetAt !== null) ||
+    (typeof monthlyResetAt !== "string" && monthlyResetAt !== null)
+  ) {
+    return null;
+  }
+  return {
+    tier,
+    monthly_messages_used: monthlyUsed,
+    daily_messages_used: dailyUsed,
+    daily_reset_at: dailyResetAt,
+    monthly_reset_at: monthlyResetAt,
   };
 }
 
@@ -1399,37 +1428,27 @@ export function createPracticeChatHandler(
       return jsonResponse({ error: "config_missing" }, 500);
     }
 
-    const { data: subRow, error: subError } = await supabase
-      .from("subscriptions")
-      .select(
-        "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at",
-      )
-      .eq("user_id", user.id)
-      .maybeSingle();
+    const { data: preparedSubData, error: subError } = await supabase.rpc(
+      "prepare_practice_subscription_usage",
+      { p_user_id: user.id },
+    );
     if (subError) {
       logWarn("practice_chat_sub_fetch_error", {
         user: summarizeUser(user.id),
         error: subError.message,
       });
+      if (subError.message.includes("PRACTICE_SUBSCRIPTION_NOT_FOUND")) {
+        return jsonResponse({ error: "No subscription found" }, 403);
+      }
       return jsonResponse({ error: "subscription_fetch_failed" }, 500);
     }
-    if (!subRow) {
-      return jsonResponse({ error: "No subscription found" }, 403);
-    }
-
-    let sub = subRow as SubscriptionRow;
-    const reset = applyResetsIfNeeded(sub, deps.now?.() ?? new Date());
-    sub = reset.sub;
-    if (reset.dailyReset || reset.monthlyReset) {
-      await supabase
-        .from("subscriptions")
-        .update({
-          daily_messages_used: sub.daily_messages_used,
-          monthly_messages_used: sub.monthly_messages_used,
-          daily_reset_at: sub.daily_reset_at,
-          monthly_reset_at: sub.monthly_reset_at,
-        })
-        .eq("user_id", user.id);
+    const sub = preparedSubscriptionFromRpc(preparedSubData);
+    if (!sub) {
+      logWarn("practice_chat_sub_fetch_error", {
+        user: summarizeUser(user.id),
+        error: "invalid prepare_practice_subscription_usage response",
+      });
+      return jsonResponse({ error: "subscription_fetch_failed" }, 500);
     }
 
     const accountIsTest = TEST_EMAILS.includes(user.email || "");

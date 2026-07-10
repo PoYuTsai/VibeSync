@@ -20,6 +20,7 @@ interface FakeOptions {
   user?: { id: string; email?: string | null } | null;
   userError?: string;
   sub?: Record<string, unknown> | null;
+  preparedSub?: Record<string, unknown> | null;
   subError?: string;
   ledger?: Record<string, unknown> | null;
   ledgerError?: string;
@@ -36,6 +37,7 @@ interface FakeOptions {
 interface FakeState {
   selects: Array<{ table: string; columns: string }>;
   inserts: Array<{ table: string; values: Record<string, unknown> }>;
+  updates: Array<{ table: string; values: Record<string, unknown> }>;
   rpcCalls: Array<{ fn: string; params: Record<string, unknown> }>;
   deepSeekCalls: DeepSeekArgs[];
   events: string[];
@@ -205,6 +207,7 @@ function makeFake(options: FakeOptions = {}) {
   const state: FakeState = {
     selects: [],
     inserts: [],
+    updates: [],
     rpcCalls: [],
     deepSeekCalls: [],
     events: [],
@@ -316,7 +319,9 @@ function makeFake(options: FakeOptions = {}) {
           };
           return builder;
         },
-        update(_values: Record<string, unknown>) {
+        update(values: Record<string, unknown>) {
+          state.updates.push({ table, values });
+          state.events.push(`update:${table}`);
           return {
             eq(_column: string, _value: unknown) {
               return Promise.resolve({ data: null, error: null });
@@ -331,6 +336,15 @@ function makeFake(options: FakeOptions = {}) {
       const index = rpcByName.get(fn) ?? 0;
       rpcByName.set(fn, index + 1);
       const defaultResult: RpcResult = (() => {
+        if (fn === "prepare_practice_subscription_usage") {
+          if (options.subError) return { error: options.subError };
+          if (options.preparedSub === null || options.sub === null) {
+            return { error: "PRACTICE_SUBSCRIPTION_NOT_FOUND" };
+          }
+          return {
+            data: options.preparedSub ?? options.sub ?? subscription(),
+          };
+        }
         if (fn === "commit_practice_chat_turn") {
           return { data: { new_ai_count: 1, did_charge: true } };
         }
@@ -453,6 +467,43 @@ function recordDebriefCalls(state: FakeState) {
 function aiLogInserts(state: FakeState) {
   return state.inserts.filter((insert) => insert.table === "ai_logs");
 }
+
+Deno.test("practice-chat prepares subscription resets through the DB row lock", async () => {
+  const { response, state } = await run({
+    sub: subscription({
+      monthly_messages_used: 99,
+      daily_messages_used: 49,
+      monthly_reset_at: "2026-05-01T00:00:00.000Z",
+      daily_reset_at: "2026-06-27T00:00:00.000Z",
+    }),
+    preparedSub: subscription({
+      monthly_messages_used: 0,
+      daily_messages_used: 0,
+      monthly_reset_at: "2026-06-01T00:00:00.000Z",
+      daily_reset_at: "2026-06-28T00:00:00.000Z",
+    }),
+    ledger: ledger({ practice_mode: "standard" }),
+  });
+
+  assertEquals(response.status, 200);
+  const prepareCalls = state.rpcCalls.filter((call) =>
+    call.fn === "prepare_practice_subscription_usage"
+  );
+  assertEquals(prepareCalls.length, 1);
+  assertEquals(prepareCalls[0].params, { p_user_id: "user-1" });
+  assertEquals(
+    state.selects.some((select) => select.table === "subscriptions"),
+    false,
+  );
+  assertEquals(
+    state.updates.some((update) => update.table === "subscriptions"),
+    false,
+  );
+  assert(
+    state.events.indexOf("rpc:prepare_practice_subscription_usage") <
+      state.events.indexOf("deepseek"),
+  );
+});
 
 Deno.test("standard chat response does not include temperature and does not judge or update", async () => {
   const { response, json, state } = await run({
@@ -667,7 +718,12 @@ Deno.test("game chat rejects non-SR profile before provider and RPC", async () =
   assertEquals(response.status, 403);
   assertEquals(json, { error: "practice_game_sr_only" });
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.rpcCalls.length, 0);
+  assertEquals(
+    state.rpcCalls.filter((call) =>
+      call.fn !== "prepare_practice_subscription_usage"
+    ).length,
+    0,
+  );
 });
 
 Deno.test("game chat rejects forged SR profile that was never drawn by the user", async () => {
@@ -691,7 +747,12 @@ Deno.test("game chat rejects forged SR profile that was never drawn by the user"
     true,
   );
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.rpcCalls.length, 0);
+  assertEquals(
+    state.rpcCalls.filter((call) =>
+      call.fn !== "prepare_practice_subscription_usage"
+    ).length,
+    0,
+  );
 });
 
 Deno.test("game chat allows SR profile and uses beginner-like learning state", async () => {
@@ -1411,7 +1472,12 @@ Deno.test("existing ledger mode mismatch rejects before DeepSeek and RPC", async
   assertEquals(response.status, 409);
   assertEquals(json, { error: "practice_mode_locked" });
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.rpcCalls.length, 0);
+  assertEquals(
+    state.rpcCalls.filter((call) =>
+      call.fn !== "prepare_practice_subscription_usage"
+    ).length,
+    0,
+  );
 });
 
 Deno.test("commit PRACTICE_MODE_LOCKED maps to HTTP 409 practice_mode_locked", async () => {
@@ -3766,6 +3832,7 @@ Deno.test("hint retries a malformed provider result once before recording", asyn
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
   assertEquals(state.events, [
+    "rpc:prepare_practice_subscription_usage",
     "rpc:increment_model_usage",
     "rpc:claim_practice_hint_generation",
     "deepseek",
@@ -3837,6 +3904,7 @@ Deno.test("successful hint uses ledger temperature, records after parse, and ret
   assertEquals(commitCalls(state).length, 0);
   assertEquals(learningUpdateCalls(state).length, 0);
   assertEquals(state.events, [
+    "rpc:prepare_practice_subscription_usage",
     "rpc:increment_model_usage",
     "rpc:claim_practice_hint_generation",
     "deepseek",
