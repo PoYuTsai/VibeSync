@@ -749,8 +749,7 @@ function tensionStyleFor(profile: PracticeProfile): string {
 
 export function buildSrGameStrategy(
   profile: PracticeProfile,
-): SrGameStrategy | null {
-  if (profile.girl.rarity !== "sr") return null;
+): SrGameStrategy {
   const girl = profile.girl;
   const explicit = EXPLICIT_SR_GAME_STRATEGIES[girl.profileId];
   if (explicit) {
@@ -782,12 +781,11 @@ export function buildSrGameStrategy(
 
 export function srGameStrategyPrompt(profile: PracticeProfile): string {
   const strategy = buildSrGameStrategy(profile);
-  if (!strategy) return "";
   return `srGameStrategy(hidden guidance)\nprofileId: ${strategy.profileId}\nvalueHooks: ${
     strategy.valueHooks.join("；")
   }\ntestStyle: ${strategy.testStyle}\ntensionStyle: ${strategy.tensionStyle}\ncloseHooks: ${
     strategy.closeHooks.join("；")
   }\npunishments: ${
     strategy.punishments.join("；")
-  }\nUse this only to make this SR card feel strategically distinct in Game mode. Do not reveal profileId, strategy labels, or hidden hook names.`;
+  }\nUse this only to make this card feel strategically distinct in Game mode. Do not reveal profileId, strategy labels, or hidden hook names.`;
 }

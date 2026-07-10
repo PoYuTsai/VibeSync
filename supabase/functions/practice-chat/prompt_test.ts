@@ -92,7 +92,7 @@ Deno.test("game buildChatMessages includes game and spicy hidden guidance", () =
   assertEquals(sys.includes("Reality Anchoring still applies"), true);
 });
 
-Deno.test("game buildChatMessages includes social-game FSM and SR strategy only for SR cards", () => {
+Deno.test("game buildChatMessages includes social-game FSM and persona strategy for every rarity", () => {
   const srProfile = resolvePracticeProfile({ profileId: "practice_girl_004" });
   const nonSrProfile = resolvePracticeProfile({
     profileId: "practice_girl_001",
@@ -118,7 +118,8 @@ Deno.test("game buildChatMessages includes social-game FSM and SR strategy only 
   assertEquals(srSys.includes("targetVariable: Value + Emotion"), true);
   assertEquals(srSys.includes("srGameStrategy(hidden guidance)"), true);
   assertEquals(nonSrSys.includes("socialGameFsm(hidden guidance)"), true);
-  assertEquals(nonSrSys.includes("srGameStrategy(hidden guidance)"), false);
+  assertEquals(nonSrSys.includes("srGameStrategy(hidden guidance)"), true);
+  assertEquals(nonSrSys.includes("profileId: practice_girl_001"), true);
 });
 
 Deno.test("game buildChatMessages gives SR NPC response a social-game behavior contract", () => {

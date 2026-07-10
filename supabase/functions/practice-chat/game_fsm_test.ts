@@ -179,22 +179,68 @@ Deno.test("evaluateGameFsm marks fake familiarity and social proof as reality-an
   assertEquals(snapshot.spicyLevel, "L0");
 });
 
-Deno.test("buildSrGameStrategy derives distinct SR hooks and ignores non-SR cards", () => {
+Deno.test("buildSrGameStrategy derives distinct SR hooks", () => {
   const srMia = resolvePracticeProfile({ profileId: "practice_girl_004" });
   const srNora = resolvePracticeProfile({ profileId: "practice_girl_006" });
-  const normalAlice = resolvePracticeProfile({
-    profileId: "practice_girl_001",
-  });
 
   const mia = buildSrGameStrategy(srMia);
   const nora = buildSrGameStrategy(srNora);
 
   assert(mia);
   assert(nora);
-  assertEquals(buildSrGameStrategy(normalAlice), null);
   assert(mia.valueHooks.join("|") !== nora.valueHooks.join("|"));
   assert(mia.closeHooks.length > 0);
   assert(mia.punishments.length > 0);
+});
+
+Deno.test("buildSrGameStrategy gives non-SR cards concrete fallback hooks from tags", () => {
+  const normalAlice = resolvePracticeProfile({
+    profileId: "practice_girl_001",
+  });
+
+  const strategy = buildSrGameStrategy(normalAlice);
+
+  assert(strategy, "non-SR card should still get a concrete strategy");
+  assertEquals(strategy.profileId, "practice_girl_001");
+  assertEquals(hasExplicitSrGameStrategy("practice_girl_001"), false);
+  assert(strategy.valueHooks.length > 0);
+  assert(strategy.closeHooks.length > 0);
+  assert(strategy.punishments.length > 0);
+  assert(strategy.testStyle.trim().length > 0);
+  assert(strategy.tensionStyle.trim().length > 0);
+  const girl = normalAlice.girl;
+  const hookText = [...strategy.valueHooks, ...strategy.closeHooks].join("|");
+  assert(
+    [...girl.interestTags, ...girl.lifestyleTags].some((tag) =>
+      hookText.includes(tag)
+    ),
+    "fallback hooks should be derived from this card's own tags",
+  );
+});
+
+Deno.test("every card in the pool gets a non-empty Game strategy regardless of rarity", () => {
+  const seenRarities = new Set<string>();
+  for (const girl of GIRL_PROFILES) {
+    seenRarities.add(girl.rarity);
+    const profile = resolvePracticeProfile({ profileId: girl.profileId });
+    const strategy = buildSrGameStrategy(profile);
+    assert(strategy, `${girl.profileId} (${girl.rarity}) should get a strategy`);
+    assert(
+      strategy.valueHooks.length > 0,
+      `${girl.profileId} should have valueHooks`,
+    );
+    assert(
+      strategy.closeHooks.length > 0,
+      `${girl.profileId} should have closeHooks`,
+    );
+    assert(
+      strategy.punishments.length > 0,
+      `${girl.profileId} should have punishments`,
+    );
+  }
+  assert(seenRarities.has("sr"));
+  assert(seenRarities.has("r"));
+  assert(seenRarities.has("n"));
 });
 
 Deno.test("every SR card has an explicit Game strategy track", () => {
