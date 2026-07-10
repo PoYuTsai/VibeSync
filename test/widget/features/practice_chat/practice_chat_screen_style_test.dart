@@ -1368,9 +1368,68 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('practice-learning-mode-game')));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
 
     expect(controller.currentState.learningMode, PracticeLearningMode.standard);
-    expect(find.text('抽到 SR 角色卡解鎖 Game'), findsOneWidget);
+    // 鎖定提示走 toggle 內建字幕列，絕不掛全域 SnackBar：root messenger 會
+    // 連點排隊（每顆 4 秒）＋跨路由殘留成白色橫條（2026-07-10 bug）。
+    expect(find.byType(SnackBar), findsNothing);
+    expect(find.textContaining('抽到 SR 角色卡解鎖 Game'), findsOneWidget);
+
+    // 提示幾秒後自動還原成目前選中模式的字幕。
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.textContaining('抽到 SR 角色卡解鎖 Game'), findsNothing);
+    expect(find.textContaining('像真實聊天一樣練反應'), findsOneWidget);
+  });
+
+  testWidgets('repeated taps on locked Game restart one hint, never queue',
+      (tester) async {
+    final nGirl = practiceGirlProfiles
+        .firstWhere((g) => g.rarity == PracticeGirlRarity.n);
+    final controller = _SeededPracticeChatController(
+      seed: revealedPreMsgSeed().copyWith(
+        girl: nGirl,
+        personaId: nGirl.personaId,
+        personaLabel: 'N',
+      ),
+      repository: repo,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    final gameSegment = find.byKey(const ValueKey('practice-learning-mode-game'));
+    for (var i = 0; i < 3; i++) {
+      await tester.tap(gameSegment);
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
+    // 連點只維持同一份 inline 提示（timer 重新計時），不像 SnackBar 排隊。
+    expect(find.byType(SnackBar), findsNothing);
+    expect(find.textContaining('抽到 SR 角色卡解鎖 Game'), findsOneWidget);
+
+    // 最後一點起算的提示時長過後即消失，無任何殘留。
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.textContaining('抽到 SR 角色卡解鎖 Game'), findsNothing);
   });
 
   testWidgets('temperature meter keeps feedback compact and Traditional',

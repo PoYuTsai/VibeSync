@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -589,7 +591,7 @@ class _DifficultyChip extends StatelessWidget {
 }
 
 // ── 淺色聊天工作區：沿用 analyze-chat 的對話視窗底色 ─────────────────────
-class _LearningModeToggle extends StatelessWidget {
+class _LearningModeToggle extends StatefulWidget {
   const _LearningModeToggle({
     required this.state,
     required this.onChanged,
@@ -599,7 +601,43 @@ class _LearningModeToggle extends StatelessWidget {
   final ValueChanged<PracticeLearningMode> onChanged;
 
   @override
+  State<_LearningModeToggle> createState() => _LearningModeToggleState();
+}
+
+class _LearningModeToggleState extends State<_LearningModeToggle> {
+  // 鎖定提示走下方字幕列（本 widget 內），絕不掛全域 SnackBar：root
+  // ScaffoldMessenger 會連點排隊（每顆 4 秒）且跨路由存活，離開練習室後
+  // 在首頁/圖鑑殘留白色橫條（2026-07-10 SR 提示框 bug 根因）。
+  static const _lockHintDuration = Duration(milliseconds: 2600);
+  Timer? _lockHintTimer;
+  bool _showGameLockHint = false;
+
+  @override
+  void dispose() {
+    _lockHintTimer?.cancel();
+    super.dispose();
+  }
+
+  void _flashGameLockHint() {
+    _lockHintTimer?.cancel();
+    setState(() => _showGameLockHint = true);
+    _lockHintTimer = Timer(_lockHintDuration, () {
+      if (!mounted) return;
+      setState(() => _showGameLockHint = false);
+    });
+  }
+
+  void _dismissGameLockHint() {
+    _lockHintTimer?.cancel();
+    _lockHintTimer = null;
+    if (_showGameLockHint) {
+      setState(() => _showGameLockHint = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final state = widget.state;
     final gameAvailable = state.canUseGameMode;
     final gameLockedByRarity = state.canChangeLearningMode && !gameAvailable;
     final descriptors = [
@@ -631,6 +669,12 @@ class _LearningModeToggle extends StatelessWidget {
     final selectedDescriptor = descriptors.firstWhere(
       (descriptor) => descriptor.mode == state.learningMode,
     );
+    final gameDescriptor = descriptors.firstWhere(
+      (descriptor) => descriptor.mode == PracticeLearningMode.game,
+    );
+    // 點鎖定 Game 時字幕列臨時切成鎖定說明，時間到自動還原。
+    final subtitleDescriptor =
+        _showGameLockHint ? gameDescriptor : selectedDescriptor;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -657,16 +701,14 @@ class _LearningModeToggle extends StatelessWidget {
                     descriptor: descriptor,
                     selected: state.learningMode == descriptor.mode,
                     enabled: enabled,
-                    onTap: () => onChanged(descriptor.mode),
+                    onTap: () {
+                      _dismissGameLockHint();
+                      widget.onChanged(descriptor.mode);
+                    },
                     onDisabledTap:
                         descriptor.mode == PracticeLearningMode.game &&
                                 gameLockedByRarity
-                            ? () => ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('抽到 SR 角色卡解鎖 Game'),
-                                    behavior: SnackBarBehavior.floating,
-                                  ),
-                                )
+                            ? _flashGameLockHint
                             : null,
                   ),
                 );
@@ -679,27 +721,31 @@ class _LearningModeToggle extends StatelessWidget {
           duration: const Duration(milliseconds: 150),
           child: Container(
             key: ValueKey(
-              'practice-learning-mode-subtitle-${selectedDescriptor.mode.name}',
+              _showGameLockHint
+                  ? 'practice-learning-mode-subtitle-game-locked'
+                  : 'practice-learning-mode-subtitle-${selectedDescriptor.mode.name}',
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: selectedDescriptor.accent.withValues(alpha: 0.10),
+              color: subtitleDescriptor.accent.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: selectedDescriptor.accent.withValues(alpha: 0.35),
+                color: subtitleDescriptor.accent.withValues(alpha: 0.35),
               ),
             ),
             child: Row(
               children: [
                 Icon(
-                  selectedDescriptor.icon,
+                  _showGameLockHint
+                      ? Icons.lock_outline
+                      : subtitleDescriptor.icon,
                   size: 15,
-                  color: selectedDescriptor.accent,
+                  color: subtitleDescriptor.accent,
                 ),
                 const SizedBox(width: 7),
                 Expanded(
                   child: Text(
-                    '${selectedDescriptor.title}｜${selectedDescriptor.summary}',
+                    '${subtitleDescriptor.title}｜${subtitleDescriptor.summary}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppTypography.caption.copyWith(
