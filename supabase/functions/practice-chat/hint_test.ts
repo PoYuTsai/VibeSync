@@ -10,6 +10,8 @@ import {
   GAME_HINT_MOVE_EXAMPLES,
   GAME_INVITE_ROUTE_ADVICE,
   GAME_INVITE_ROUTE_LABEL,
+  HINT_COACHING_SOFT_CHAR_LIMIT,
+  MAX_COACHING_LENGTH,
   parseHintResult,
 } from "./hint.ts";
 import { resolvePracticeProfile } from "./practice_persona.ts";
@@ -654,6 +656,27 @@ Deno.test("GAME_INVITE_ROUTE labels and advice pass the visible-output guard pip
     );
     assertEquals(parsed.coaching, coaching, `route copy repaired: ${route}`);
   }
+});
+
+Deno.test("prompt coaching soft limit keeps headroom under the hard cap", () => {
+  // prompt 對模型宣稱的軟上限必須嚴格小於 slice 硬上限，
+  // 否則 160 一改，prompt 就在說謊、產出會被中句截斷。
+  assert(HINT_COACHING_SOFT_CHAR_LIMIT < MAX_COACHING_LENGTH);
+
+  const gameText = buildHintMessages(
+    {
+      turns: [
+        { role: "user", text: "你講話滿有畫面的" },
+        { role: "ai", text: "那你倒是說說看看到什麼" },
+      ],
+      profile,
+      practiceMode: "game",
+      temperatureScore: 86,
+      familiarityScore: 74,
+      partnerMood: "comfortable",
+    } as Parameters<typeof buildHintMessages>[0],
+  ).map((m) => m.content).join("\n");
+  assert(gameText.includes(`全文 ${HINT_COACHING_SOFT_CHAR_LIMIT} 字內`));
 });
 
 Deno.test("parseHintResult repairs speedInviteLadder label echoes in game mode", () => {
