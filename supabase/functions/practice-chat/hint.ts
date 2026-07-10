@@ -712,7 +712,7 @@ function safeAdvancedGameHintContract(): string {
   return `safeAdvancedGameHintContract:
 Translate advanced skill into safe pasteable social skill.
 - Core promise: SR 限定，技巧拉滿練速約. Move toward a low-pressure meet within 10-15 句內 when safety/heat/familiarity allow.
-- Safe seven-step route: opening -> value/frame -> emotion -> investment -> 資格篩選 -> 共同敘事 -> 順勢收尾.
+- 七步聊天法骨架（與練習對象演法、賽後拆盤同一套）：P1 開場/資訊交換 → P2 展示價值 → P3 篩選/賦格 → P4 推拉張力 → P5 鎖定/收尾；資格篩選、共同敘事、順勢收尾是 P3→P5 的招式面。
 - 資格篩選 = playful taste filter/standard, 不是命令她證明自己; never make her audition; 不要說「妳先給我一個標準答案」.
 - 共同敘事 = turn her latest state into a tiny shared scene, callback, inside joke, or public micro-plan.
 - 順勢收尾 = convert a real window into 短咖啡、順路散步、小展、宵夜 with opt-out language.

@@ -438,6 +438,31 @@ Deno.test("buildHintMessages teaches Game hints safe advanced qualification narr
   assertEquals(beginnerText.includes("10-15 句內"), false);
 });
 
+Deno.test("buildHintMessages aligns Game hint seven-step skeleton with NPC and debrief", () => {
+  const gameText = buildHintMessages({
+    turns: [
+      { role: "user", text: "你講話滿有畫面的" },
+      { role: "ai", text: "那你倒是說說看看到什麼" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 86,
+    familiarityScore: 74,
+    partnerMood: "comfortable",
+  }).map((m) => m.content).join("\n");
+
+  // 與 prompt.ts 的 NPC 演法（socialGameNpcResponseContract）與賽後拆盤
+  // （gameDebriefSkillContract）同一套 P1-P5 骨架。
+  assert(gameText.includes("P1 開場/資訊交換"));
+  assert(gameText.includes("P2 展示價值"));
+  assert(gameText.includes("P3 篩選/賦格"));
+  assert(gameText.includes("P4 推拉張力"));
+  assert(gameText.includes("P5 鎖定/收尾"));
+  // Codex 自編骨架必須退場。
+  assertEquals(gameText.includes("opening -> value/frame"), false);
+  assertEquals(gameText.includes("emotion -> investment"), false);
+});
+
 Deno.test("buildHintMessages keeps Game Hint prompt compact enough for reliable generation", () => {
   const gameText = buildHintMessages({
     turns: [
