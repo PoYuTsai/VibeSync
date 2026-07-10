@@ -1,6 +1,7 @@
 import {
   buildQuotaExceededPayload,
   checkQuota,
+  classifyQuotaRpcError,
   isPlainObject,
   resolveLimits,
   type SubscriptionRow,
@@ -8,6 +9,16 @@ import {
 } from "../_shared/quota.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import { validateDrawRequest, validateRequest } from "./validate.ts";
+import {
+  buildHintPrefetchTelemetry,
+  decideHintPrefetchReplay,
+  hintPrefetchAck,
+  type HintPrefetchTelemetryOutcome,
+  type HintPrefetchTelemetryReason,
+  hintRecordPolicy,
+  type HintRequestLedgerRow,
+  isHintPrefetchEnabled,
+} from "./hint_prefetch.ts";
 import { type DrawSupabaseClient, handleDrawProfile } from "./draw_handler.ts";
 import {
   buildChatMessages,
@@ -272,6 +283,7 @@ export interface PracticeChatHandlerDeps {
   callDeepSeek: DeepSeekCaller;
   getEnv: (name: string) => string | undefined;
   now?: () => Date;
+  randomUUID?: () => string;
   /** Production uses EdgeRuntime.waitUntil; tests may inject a collector. */
   waitUntil?: (task: Promise<void>) => void;
   telemetryPersistTimeoutMs?: number;
@@ -495,8 +507,18 @@ function isMissingPracticeHintRpc(message: string): boolean {
   const referencesHintRpc =
     normalized.includes("claim_practice_hint_generation") ||
     normalized.includes("record_practice_hint") ||
+    normalized.includes("settle_prefetched_practice_hint") ||
+    normalized.includes("discard_prefetched_practice_hint") ||
+    normalized.includes("prepare_practice_subscription_usage") ||
     normalized.includes("release_practice_hint_generation");
   return referencesHintRpc &&
+    (normalized.includes("could not find the function") ||
+      normalized.includes("schema cache"));
+}
+
+function isMissingPreparePracticeUsageRpc(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return normalized.includes("prepare_practice_subscription_usage") &&
     (normalized.includes("could not find the function") ||
       normalized.includes("schema cache"));
 }
@@ -579,6 +601,20 @@ function mapLedgerError(message: string): { error: string; status: number } {
   if (message.includes("PRACTICE_HINT_IN_FLIGHT")) {
     return { error: "practice_hint_in_flight", status: 403 };
   }
+  if (message.includes("PRACTICE_HINT_PREFETCH_PENDING")) {
+    return { error: "practice_hint_prefetch_pending", status: 409 };
+  }
+  if (message.includes("PRACTICE_HINT_OWNER_MISMATCH")) {
+    return { error: "practice_hint_in_flight", status: 403 };
+  }
+  if (
+    message.includes("PRACTICE_HINT_STALE") ||
+    message.includes("PRACTICE_HINT_PREFETCH_NOT_FOUND") ||
+    message.includes("PRACTICE_HINT_STATE_MISMATCH") ||
+    message.includes("PRACTICE_HINT_NOT_CLAIMED")
+  ) {
+    return { error: "practice_hint_stale", status: 409 };
+  }
   if (message.includes("PRACTICE_DEBRIEF_LIMIT")) {
     return { error: "practice_debrief_limit", status: 403 };
   }
@@ -636,6 +672,49 @@ function preparedSubscriptionFromRpc(value: unknown): SubscriptionRow | null {
     daily_reset_at: dailyResetAt,
     monthly_reset_at: monthlyResetAt,
   };
+}
+
+function firstRpcRow(value: unknown): unknown {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function hintRequestLedgerRowFromDb(
+  value: unknown,
+): HintRequestLedgerRow | null | undefined {
+  if (value === null || value === undefined) return null;
+  if (!isPlainObject(value)) return undefined;
+  const state = value.state;
+  const charged = value.charged;
+  if (
+    (state !== "generating" && state !== "prefetched" &&
+      state !== "settled") ||
+    typeof charged !== "boolean"
+  ) {
+    return undefined;
+  }
+  return { state, charged, result: value.result ?? null };
+}
+
+function logHintPrefetchTelemetry(opts: {
+  outcome: HintPrefetchTelemetryOutcome;
+  reason: HintPrefetchTelemetryReason;
+  practiceMode: PracticeLearningMode;
+}): void {
+  if (opts.practiceMode === "standard") return;
+  logInfo(
+    "practice_chat_hint_prefetch",
+    buildHintPrefetchTelemetry({
+      outcome: opts.outcome,
+      reason: opts.reason,
+      practiceMode: opts.practiceMode,
+    }),
+  );
+}
+
+function prefetchFailureReason(
+  failure: PracticeGenerationFailureClass | null,
+): HintPrefetchTelemetryReason {
+  return failure ?? "unknown";
 }
 
 function practiceModeFromLedger(value: unknown): PracticeLearningMode {
@@ -1328,12 +1407,18 @@ async function releaseHintGeneration(opts: {
   supabase: PracticeSupabaseClient;
   userId: string;
   sessionId: string;
+  requestId?: string;
+  generationToken?: string;
 }): Promise<void> {
   const { error } = await opts.supabase.rpc(
     "release_practice_hint_generation",
     {
       p_user_id: opts.userId,
       p_session_id: opts.sessionId,
+      ...(opts.requestId ? { p_request_id: opts.requestId } : {}),
+      ...(opts.generationToken
+        ? { p_generation_token: opts.generationToken }
+        : {}),
     },
   );
   if (error) {
@@ -1439,6 +1524,16 @@ export function createPracticeChatHandler(
       });
       if (subError.message.includes("PRACTICE_SUBSCRIPTION_NOT_FOUND")) {
         return jsonResponse({ error: "No subscription found" }, 403);
+      }
+      if (isMissingPreparePracticeUsageRpc(subError.message)) {
+        return jsonResponse(
+          {
+            error: request.mode === "hint"
+              ? "practice_hint_not_ready"
+              : "practice_learning_not_ready",
+          },
+          503,
+        );
       }
       return jsonResponse({ error: "subscription_fetch_failed" }, 500);
     }
@@ -1562,79 +1657,365 @@ export function createPracticeChatHandler(
         return jsonResponse({ error: "practice_game_sr_only" }, 403);
       }
 
-      // Replay a completed hint request after mode/unlock checks, but before
-      // cap and quota gates, so lost responses can be recovered idempotently.
-      // Missing replay columns or query failures fail open to the claim path.
-      if (request.requestId) {
-        const { data: replayRow, error: replayError } = await supabase
-          .from("practice_chat_sessions")
-          .select("last_hint_request_id, last_hint_result")
-          .eq("user_id", user.id)
-          .eq("session_id", request.sessionId)
-          .maybeSingle();
-        if (replayError) {
-          logWarn("practice_chat_hint_replay_preflight_failed", {
-            user: summarizeUser(user.id),
-            error: replayError.message,
-          });
-        } else if (
-          replayRow?.last_hint_request_id === request.requestId &&
-          isPlainObject(replayRow?.last_hint_result)
-        ) {
-          logInfo("practice_chat_hint_replayed", {
-            user: summarizeUser(user.id),
-            sessionId: request.sessionId,
-            source: "preflight",
-          });
-          return jsonResponse(replayRow.last_hint_result);
-        }
-      }
-      const gate = decideHintGate({
-        ledger,
-        maxHints: MAX_HINTS_PER_ROUND,
-        maxReplies: MAX_AI_REPLIES,
-      });
-      if (!gate.allowed) {
-        logWarn("practice_chat_hint_rejected", {
-          user: summarizeUser(user.id),
-          reason: gate.reason,
-        });
-        const reason = gate.reason ?? "practice_session_not_started";
-        // 聊滿 session 對齊 chat 的 409 practice_session_complete，client 走既有
-        // sessionComplete 分支；其餘 hint 拒絕維持 403。
-        return jsonResponse(
-          { error: reason },
-          reason === "practice_session_complete" ? 409 : 403,
-        );
-      }
+      const requestIsPrefetch = request.prefetch === true;
+      const prefetchEnabled = isHintPrefetchEnabled(
+        deps.getEnv("PRACTICE_HINT_PREFETCH_ENABLED"),
+      );
+      const hintRequestId = request.requestId;
 
-      const quotaGate = checkQuota({
-        sub,
-        cost: PRACTICE_QUOTA_COST,
-        isTestAccount: accountIsTest,
-        monthlyLimit: limits.monthly,
-        dailyLimit: limits.daily,
-      });
-      if (!quotaGate.ok) {
-        logWarn("practice_chat_quota_exceeded", {
-          user: summarizeUser(user.id),
-          reason: quotaGate.reason,
+      const mutableHintGateResponse = (): Response | null => {
+        const gate = decideHintGate({
+          ledger,
+          maxHints: MAX_HINTS_PER_ROUND,
+          maxReplies: MAX_AI_REPLIES,
         });
+        if (!gate.allowed) {
+          logWarn("practice_chat_hint_rejected", {
+            user: summarizeUser(user.id),
+            reason: gate.reason,
+          });
+          if (requestIsPrefetch) {
+            logHintPrefetchTelemetry({
+              outcome: "failed",
+              reason: "gate",
+              practiceMode: request.practiceMode,
+            });
+          }
+          const reason = gate.reason ?? "practice_session_not_started";
+          return jsonResponse(
+            { error: reason },
+            reason === "practice_session_complete" ? 409 : 403,
+          );
+        }
+
+        const quotaGate = checkQuota({
+          sub,
+          cost: PRACTICE_QUOTA_COST,
+          isTestAccount: accountIsTest,
+          monthlyLimit: limits.monthly,
+          dailyLimit: limits.daily,
+        });
+        if (!quotaGate.ok) {
+          logWarn("practice_chat_quota_exceeded", {
+            user: summarizeUser(user.id),
+            reason: quotaGate.reason,
+          });
+          if (requestIsPrefetch) {
+            logHintPrefetchTelemetry({
+              outcome: "failed",
+              reason: "quota",
+              practiceMode: request.practiceMode,
+            });
+          }
+          return jsonResponse(
+            buildQuotaExceededPayload({
+              sub,
+              cost: PRACTICE_QUOTA_COST,
+              reason: quotaGate.reason,
+              monthlyLimit: limits.monthly,
+              dailyLimit: limits.daily,
+            }),
+            429,
+          );
+        }
+        return null;
+      };
+
+      const quotaResponseForRpcError = async (
+        message: string,
+      ): Promise<Response | null> => {
+        const reason = classifyQuotaRpcError(message);
+        if (reason === null) return null;
+        const { data: refreshedData, error: refreshedError } = await supabase
+          .rpc("prepare_practice_subscription_usage", {
+            p_user_id: user.id,
+          });
+        const refreshedSub = refreshedError
+          ? null
+          : preparedSubscriptionFromRpc(refreshedData);
+        if (
+          refreshedError &&
+          isMissingPreparePracticeUsageRpc(refreshedError.message)
+        ) {
+          return jsonResponse({ error: "practice_hint_not_ready" }, 503);
+        }
+        if (!refreshedSub) {
+          return jsonResponse({ error: "subscription_fetch_failed" }, 500);
+        }
         return jsonResponse(
           buildQuotaExceededPayload({
-            sub,
+            sub: refreshedSub,
             cost: PRACTICE_QUOTA_COST,
-            reason: quotaGate.reason,
+            reason,
             monthlyLimit: limits.monthly,
             dailyLimit: limits.daily,
           }),
           429,
         );
+      };
+
+      const settlePrefetchedHint = async (): Promise<Response> => {
+        if (!hintRequestId) {
+          return jsonResponse({ error: "practice_hint_not_ready" }, 503);
+        }
+        const { data, error } = await supabase.rpc(
+          "settle_prefetched_practice_hint",
+          {
+            p_user_id: user.id,
+            p_session_id: request.sessionId,
+            p_request_id: hintRequestId,
+            p_charge_quota: !accountIsTest,
+            p_max_hints: MAX_HINTS_PER_ROUND,
+            p_max_replies: MAX_AI_REPLIES,
+            p_monthly_limit: limits.monthly,
+            p_daily_limit: limits.daily,
+          },
+        );
+        if (error) {
+          const quotaResponse = await quotaResponseForRpcError(error.message);
+          if (quotaResponse) return quotaResponse;
+          const mapped = mapLedgerError(error.message);
+          return jsonResponse({ error: mapped.error }, mapped.status);
+        }
+        const row = firstRpcRow(data);
+        if (
+          !isPlainObject(row) ||
+          !isPlainObject(row.stored_result) ||
+          row.stored_charged !== true ||
+          typeof row.did_charge !== "boolean" ||
+          typeof row.new_hint_count !== "number" ||
+          !Number.isInteger(row.new_hint_count) ||
+          row.new_hint_count < 0
+        ) {
+          return jsonResponse({ error: "practice_hint_not_ready" }, 503);
+        }
+        logHintPrefetchTelemetry({
+          outcome: "hit",
+          reason: "unknown",
+          practiceMode: request.practiceMode,
+        });
+        return jsonResponse(row.stored_result);
+      };
+
+      const discardPrefetchedHint = async (): Promise<
+        { kind: "fresh" } | { kind: "response"; response: Response }
+      > => {
+        if (!hintRequestId) return { kind: "fresh" };
+        const { data, error } = await supabase.rpc(
+          "discard_prefetched_practice_hint",
+          {
+            p_user_id: user.id,
+            p_session_id: request.sessionId,
+            p_request_id: hintRequestId,
+          },
+        );
+        if (error) {
+          const mapped = mapLedgerError(error.message);
+          return {
+            kind: "response",
+            response: jsonResponse({ error: mapped.error }, mapped.status),
+          };
+        }
+        const row = firstRpcRow(data);
+        if (
+          !isPlainObject(row) ||
+          typeof row.discarded !== "boolean" ||
+          typeof row.replay !== "boolean"
+        ) {
+          return {
+            kind: "response",
+            response: jsonResponse({ error: "practice_hint_not_ready" }, 503),
+          };
+        }
+        if (
+          row.replay === true &&
+          row.stored_charged === true &&
+          isPlainObject(row.stored_result)
+        ) {
+          logHintPrefetchTelemetry({
+            outcome: "hit",
+            reason: "unknown",
+            practiceMode: request.practiceMode,
+          });
+          return {
+            kind: "response",
+            response: jsonResponse(row.stored_result),
+          };
+        }
+        return { kind: "fresh" };
+      };
+
+      let preflightState: HintRequestLedgerRow | null = null;
+      let preflightWasPrefetch = false;
+      if (hintRequestId) {
+        const { data: requestRow, error: requestError } = await supabase
+          .from("practice_hint_requests")
+          .select("state, result, charged, is_prefetch, claimed_ai_count")
+          .eq("user_id", user.id)
+          .eq("session_id", request.sessionId)
+          .eq("request_id", hintRequestId)
+          .maybeSingle();
+        if (requestError) {
+          logWarn("practice_chat_hint_replay_preflight_failed", {
+            user: summarizeUser(user.id),
+            error: requestError.message,
+          });
+          return jsonResponse({ error: "practice_hint_not_ready" }, 503);
+        }
+        const parsed = hintRequestLedgerRowFromDb(requestRow);
+        if (
+          parsed === undefined ||
+          (requestRow !== null &&
+            (!isPlainObject(requestRow) ||
+              typeof requestRow.is_prefetch !== "boolean"))
+        ) {
+          return jsonResponse({ error: "practice_hint_not_ready" }, 503);
+        }
+        preflightState = parsed;
+        preflightWasPrefetch = isPlainObject(requestRow) &&
+          requestRow.is_prefetch === true;
       }
 
-      // 模型呼叫限流：practice_hint 4/分、40/日。放在 replay preflight／
-      // quota gate 後、claim latch 前——被限流的請求不占用 in-flight latch，
-      // replay 回放（不打模型）不計限流。
+      const preflightDecision = decideHintPrefetchReplay({
+        requestPrefetch: requestIsPrefetch,
+        row: preflightState,
+      });
+      if (preflightDecision.kind === "invalid") {
+        return jsonResponse({ error: "practice_hint_not_ready" }, 503);
+      }
+      if (preflightDecision.kind === "opaqueAck") {
+        return jsonResponse(hintPrefetchAck());
+      }
+      if (preflightDecision.kind === "settledReplay") {
+        if (preflightWasPrefetch) {
+          logHintPrefetchTelemetry({
+            outcome: "hit",
+            reason: "unknown",
+            practiceMode: request.practiceMode,
+          });
+        }
+        return jsonResponse(preflightDecision.result);
+      }
+      if (preflightDecision.kind === "prefetchedConsume") {
+        const gateResponse = mutableHintGateResponse();
+        if (gateResponse) return gateResponse;
+        if (prefetchEnabled) return await settlePrefetchedHint();
+        const discarded = await discardPrefetchedHint();
+        if (discarded.kind === "response") return discarded.response;
+      } else if (
+        preflightDecision.kind === "continueToClaim" &&
+        !requestIsPrefetch &&
+        !prefetchEnabled &&
+        preflightWasPrefetch
+      ) {
+        const discarded = await discardPrefetchedHint();
+        if (discarded.kind === "response") return discarded.response;
+      }
+
+      const freshGateResponse = mutableHintGateResponse();
+      if (freshGateResponse) return freshGateResponse;
+      if (requestIsPrefetch && !prefetchEnabled) {
+        logHintPrefetchTelemetry({
+          outcome: "failed",
+          reason: "disabled",
+          practiceMode: request.practiceMode,
+        });
+        return jsonResponse({ error: "practice_hint_prefetch_disabled" }, 503);
+      }
+      if (request.prefetch === false) {
+        logHintPrefetchTelemetry({
+          outcome: "miss",
+          reason: "unknown",
+          practiceMode: request.practiceMode,
+        });
+      }
+
+      const hintGenerationToken = deps.randomUUID?.() ?? crypto.randomUUID();
+      const claimHintParams: Record<string, unknown> = {
+        p_user_id: user.id,
+        p_session_id: request.sessionId,
+        p_max_hints: MAX_HINTS_PER_ROUND,
+        p_prefetch: requestIsPrefetch,
+        p_generation_token: hintGenerationToken,
+      };
+      if (hintRequestId) claimHintParams.p_request_id = hintRequestId;
+
+      let freshHintClaimed = false;
+      for (let claimAttempt = 0; claimAttempt < 2; claimAttempt++) {
+        const { data: claimHintData, error: claimHintError } = await supabase
+          .rpc("claim_practice_hint_generation", claimHintParams);
+        if (claimHintError) {
+          if (requestIsPrefetch) {
+            logHintPrefetchTelemetry({
+              outcome: "failed",
+              reason: claimHintError.message.includes(
+                  "PRACTICE_HINT_PREFETCH_PENDING",
+                )
+                ? "pending"
+                : "unknown",
+              practiceMode: request.practiceMode,
+            });
+          }
+          const mapped = mapLedgerError(claimHintError.message);
+          logWarn("practice_chat_hint_claim_failed", {
+            user: summarizeUser(user.id),
+            error: claimHintError.message,
+          });
+          return jsonResponse({ error: mapped.error }, mapped.status);
+        }
+        const claimHintRow = firstRpcRow(claimHintData);
+        if (
+          !isPlainObject(claimHintRow) ||
+          typeof claimHintRow.replay !== "boolean"
+        ) {
+          await releaseHintGeneration({
+            supabase,
+            userId: user.id,
+            sessionId: request.sessionId,
+            requestId: hintRequestId,
+            generationToken: hintGenerationToken,
+          });
+          return jsonResponse({ error: "practice_hint_not_ready" }, 503);
+        }
+        if (claimHintRow.replay === false) {
+          freshHintClaimed = true;
+          break;
+        }
+        if (
+          !isPlainObject(claimHintRow.stored_result) ||
+          typeof claimHintRow.stored_charged !== "boolean"
+        ) {
+          await releaseHintGeneration({
+            supabase,
+            userId: user.id,
+            sessionId: request.sessionId,
+            requestId: hintRequestId,
+            generationToken: hintGenerationToken,
+          });
+          return jsonResponse({ error: "practice_hint_not_ready" }, 503);
+        }
+        if (requestIsPrefetch) return jsonResponse(hintPrefetchAck());
+        if (claimHintRow.stored_charged) {
+          return jsonResponse(claimHintRow.stored_result);
+        }
+        if (prefetchEnabled) return await settlePrefetchedHint();
+        const discarded = await discardPrefetchedHint();
+        if (discarded.kind === "response") return discarded.response;
+      }
+      if (!freshHintClaimed) {
+        return jsonResponse({ error: "practice_hint_not_ready" }, 503);
+      }
+
+      if (requestIsPrefetch) {
+        logHintPrefetchTelemetry({
+          outcome: "fired",
+          reason: "unknown",
+          practiceMode: request.practiceMode,
+        });
+      }
+
+      // Fresh claims alone consume the model-rate budget. Claim-level replay
+      // returns above without touching rate limits.
       const hintRateVerdict = await enforceModelRateLimit({
         supabase,
         userId: user.id,
@@ -1642,6 +2023,20 @@ export function createPracticeChatHandler(
         isTestAccount: accountIsTest,
       });
       if (hintRateVerdict.kind === "limited") {
+        await releaseHintGeneration({
+          supabase,
+          userId: user.id,
+          sessionId: request.sessionId,
+          requestId: hintRequestId,
+          generationToken: hintGenerationToken,
+        });
+        if (requestIsPrefetch) {
+          logHintPrefetchTelemetry({
+            outcome: "failed",
+            reason: "rate_limit",
+            practiceMode: request.practiceMode,
+          });
+        }
         logWarn("model_rate_limited", {
           user: summarizeUser(user.id),
           scope: "practice_hint",
@@ -1655,46 +2050,6 @@ export function createPracticeChatHandler(
           scope: "practice_hint",
           error: hintRateVerdict.errorMessage,
         });
-      }
-
-      // p_request_id 只在 client 有送 requestId 時帶：舊 client 缺值時維持 3-arg
-      // 呼叫形狀，與尚未套 idempotency migration 的舊 RPC 相容。
-      const claimHintParams: Record<string, unknown> = {
-        p_user_id: user.id,
-        p_session_id: request.sessionId,
-        p_max_hints: MAX_HINTS_PER_ROUND,
-      };
-      if (request.requestId) {
-        claimHintParams.p_request_id = request.requestId;
-      }
-      const { data: claimHintData, error: claimHintError } = await supabase.rpc(
-        "claim_practice_hint_generation",
-        claimHintParams,
-      );
-      if (claimHintError) {
-        const mapped = mapLedgerError(claimHintError.message);
-        logWarn("practice_chat_hint_claim_failed", {
-          user: summarizeUser(user.id),
-          error: claimHintError.message,
-        });
-        return jsonResponse({ error: mapped.error }, mapped.status);
-      }
-      // claim 層 replay 後援：preflight 讀到 stale 快照、但 record 已在鎖內落帳的
-      // 併發窗口由 RPC 以 FOR UPDATE 權威判定。replay 不動 latch、不扣費。
-      const claimHintRow = Array.isArray(claimHintData)
-        ? claimHintData[0]
-        : claimHintData;
-      if (
-        isPlainObject(claimHintRow) &&
-        claimHintRow.replay === true &&
-        isPlainObject(claimHintRow.stored_result)
-      ) {
-        logInfo("practice_chat_hint_replayed", {
-          user: summarizeUser(user.id),
-          sessionId: request.sessionId,
-          source: "claim",
-        });
-        return jsonResponse(claimHintRow.stored_result);
       }
 
       const hintTemperatureScore = ledger.temperatureScore ??
@@ -1788,6 +2143,21 @@ export function createPracticeChatHandler(
             if (isHintTimeoutError(e)) break;
           }
         }
+        if (hintResult === null && requestIsPrefetch) {
+          logHintPrefetchTelemetry({
+            outcome: "failed",
+            reason: prefetchFailureReason(hintLastFailureClass),
+            practiceMode: request.practiceMode,
+          });
+          await releaseHintGeneration({
+            supabase,
+            userId: user.id,
+            sessionId: request.sessionId,
+            requestId: hintRequestId,
+            generationToken: hintGenerationToken,
+          });
+          return jsonResponse({ error: "practice_hint_prefetch_failed" }, 503);
+        }
         if (
           hintResult === null &&
           (request.practiceMode === "game" ||
@@ -1840,7 +2210,17 @@ export function createPracticeChatHandler(
           supabase,
           userId: user.id,
           sessionId: request.sessionId,
+          requestId: hintRequestId,
+          generationToken: hintGenerationToken,
         });
+        if (requestIsPrefetch) {
+          logHintPrefetchTelemetry({
+            outcome: "failed",
+            reason: prefetchFailureReason(hintLastFailureClass),
+            practiceMode: request.practiceMode,
+          });
+          return jsonResponse({ error: "practice_hint_prefetch_failed" }, 503);
+        }
         return jsonResponse({ error: "practice_generation_failed" }, 500);
       }
 
@@ -1860,27 +2240,37 @@ export function createPracticeChatHandler(
           promptChars: hintPromptChars,
         }),
       });
-      // LLM 全敗只回罐頭 fallback 時不扣 quota；replay 快照仍照寫（冪等不變），
-      // 快照本身即 0 扣費，之後 replay 不會事後補扣。
-      const chargeHintQuota = !accountIsTest && !hintResultIsFallback;
+      const recordPolicy = hintRecordPolicy({
+        isPrefetch: requestIsPrefetch,
+        isTestAccount: accountIsTest,
+        isFallback: hintResultIsFallback,
+      });
+      const predictedDeducted = recordPolicy.chargeQuota
+        ? PRACTICE_QUOTA_COST
+        : 0;
+      const generatedAt = (deps.now?.() ?? new Date()).toISOString();
       const recordHintParams: Record<string, unknown> = {
         p_user_id: user.id,
         p_session_id: request.sessionId,
-        p_charge_quota: chargeHintQuota,
+        p_charge_quota: recordPolicy.chargeQuota,
         p_max_hints: MAX_HINTS_PER_ROUND,
+        p_charged: recordPolicy.charged,
+        p_monthly_limit: limits.monthly,
+        p_daily_limit: limits.daily,
+        p_max_replies: MAX_AI_REPLIES,
+        p_generation_token: hintGenerationToken,
       };
-      if (request.requestId) {
-        // 供之後同 requestId 重試回放的完整回應快照。hintUsedCount 不在此預填：
-        // 由 RPC 在鎖內以權威 new_hint_count merge 進 stored result。
-        // costDeducted 可預判：record 的 did_charge 恆等於 p_charge_quota。
-        const predictedDeducted = chargeHintQuota ? PRACTICE_QUOTA_COST : 0;
-        recordHintParams.p_request_id = request.requestId;
+      if (hintRequestId) {
+        recordHintParams.p_request_id = hintRequestId;
         recordHintParams.p_result = {
           ...hintResult,
           costDeducted: predictedDeducted,
+          ...(requestIsPrefetch
+            ? { hintUsedCount: ledger.hintCount ?? 0 }
+            : {}),
           provider: "deepseek",
           model: DEEPSEEK_MODEL,
-          generatedAt: (deps.now?.() ?? new Date()).toISOString(),
+          generatedAt,
           ...remainingFrom(sub, limits, predictedDeducted),
         };
       }
@@ -1889,7 +2279,6 @@ export function createPracticeChatHandler(
         recordHintParams,
       );
       if (recordError) {
-        const mapped = mapLedgerError(recordError.message);
         logWarn("practice_chat_hint_record_failed", {
           user: summarizeUser(user.id),
           error: recordError.message,
@@ -1898,14 +2287,55 @@ export function createPracticeChatHandler(
           supabase,
           userId: user.id,
           sessionId: request.sessionId,
+          requestId: hintRequestId,
+          generationToken: hintGenerationToken,
         });
+        if (requestIsPrefetch) {
+          logHintPrefetchTelemetry({
+            outcome: "failed",
+            reason: classifyQuotaRpcError(recordError.message) === null
+              ? "unknown"
+              : "quota",
+            practiceMode: request.practiceMode,
+          });
+        }
+        const quotaResponse = await quotaResponseForRpcError(
+          recordError.message,
+        );
+        if (quotaResponse) return quotaResponse;
+        const mapped = mapLedgerError(recordError.message);
         return jsonResponse({ error: mapped.error }, mapped.status);
       }
-      const recordRow = Array.isArray(recordData) ? recordData[0] : recordData;
-      const didCharge = (recordRow?.did_charge as boolean | undefined) ?? false;
+      const recordRow = firstRpcRow(recordData);
+      if (
+        !isPlainObject(recordRow) ||
+        typeof recordRow.did_charge !== "boolean" ||
+        typeof recordRow.new_hint_count !== "number" ||
+        !Number.isInteger(recordRow.new_hint_count) ||
+        recordRow.new_hint_count < 0 ||
+        (hintRequestId !== undefined &&
+          (!isPlainObject(recordRow.stored_result) ||
+            recordRow.stored_charged !== recordPolicy.charged))
+      ) {
+        await releaseHintGeneration({
+          supabase,
+          userId: user.id,
+          sessionId: request.sessionId,
+          requestId: hintRequestId,
+          generationToken: hintGenerationToken,
+        });
+        if (requestIsPrefetch) {
+          logHintPrefetchTelemetry({
+            outcome: "failed",
+            reason: "unknown",
+            practiceMode: request.practiceMode,
+          });
+        }
+        return jsonResponse({ error: "practice_hint_not_ready" }, 503);
+      }
+      const didCharge = recordRow.did_charge;
       const deducted = didCharge ? PRACTICE_QUOTA_COST : 0;
-      const hintUsedCount = (recordRow?.new_hint_count as number | undefined) ??
-        ((ledger.hintCount ?? 0) + 1);
+      const hintUsedCount = recordRow.new_hint_count;
 
       // 權威扣費／replay 快照先完成；觀測 side-channel 不得增加回應延遲。
       scheduleGenerationTelemetry(deps, {
@@ -1929,13 +2359,19 @@ export function createPracticeChatHandler(
         difficulty: request.profile.difficulty,
         costDeducted: deducted,
       });
+      if (requestIsPrefetch) {
+        return jsonResponse(hintPrefetchAck());
+      }
+      if (hintRequestId && isPlainObject(recordRow.stored_result)) {
+        return jsonResponse(recordRow.stored_result);
+      }
       return jsonResponse({
         ...hintResult,
         costDeducted: deducted,
         hintUsedCount,
         provider: "deepseek",
         model: DEEPSEEK_MODEL,
-        generatedAt: (deps.now?.() ?? new Date()).toISOString(),
+        generatedAt,
         ...remainingFrom(sub, limits, deducted),
       });
     }
