@@ -26,10 +26,13 @@ class _MemoryArchiveStore implements ConversationArchiveStore {
   Future<void> markActive(
     Conversation conversation, {
     DateTime? changedAt,
+    String? analyzedContentRevision,
   }) async {
     lastMarkedActiveId = conversation.id;
     entries[conversation.id] = ConversationArchiveEntry.active(
       changedAt: changedAt ?? DateTime.now(),
+      contentRevision:
+          analyzedContentRevision ?? entries[conversation.id]?.contentRevision,
     );
   }
 
@@ -40,6 +43,7 @@ class _MemoryArchiveStore implements ConversationArchiveStore {
   }) async {
     entries[conversation.id] = ConversationArchiveEntry.archived(
       archivedAt: archivedAt,
+      contentRevision: conversationContentRevision(conversation),
     );
   }
 
@@ -82,6 +86,14 @@ Partner _partner() => Partner(
       ownerUserId: 'u1',
     );
 
+Partner _targetPartner() => Partner(
+      id: 'p2',
+      name: 'Bob',
+      createdAt: DateTime(2026, 1, 2),
+      updatedAt: DateTime(2026, 7, 11),
+      ownerUserId: 'u1',
+    );
+
 Conversation _conversation(String id, DateTime updatedAt) => Conversation(
       id: id,
       name: id,
@@ -90,6 +102,8 @@ Conversation _conversation(String id, DateTime updatedAt) => Conversation(
       updatedAt: updatedAt,
       ownerUserId: 'u1',
       partnerId: 'p1',
+      lastAnalysisSnapshotJson: '{"ok":true}',
+      lastAnalyzedMessageCount: 0,
     );
 
 GoRouter _router() => GoRouter(
@@ -125,6 +139,7 @@ Widget _host({
       analysisHistoryRepositoryProvider
           .overrideWithValue(_FakeHistoryRepository()),
       partnerByIdProvider('p1').overrideWith((_) => _partner()),
+      partnerListProvider.overrideWith((_) => [_partner(), _targetPartner()]),
       conversationsByPartnerProvider('p1').overrideWith((_) => conversations),
     ],
     child: MaterialApp.router(routerConfig: _router()),
@@ -193,5 +208,44 @@ void main() {
       find.byKey(const ValueKey('conversation-target-archived')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('封存對話保留改派與刪除操作', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final conversation = _conversation('actions', DateTime(2026, 7, 10));
+    final store = _MemoryArchiveStore();
+    await store.markArchived(
+      conversation,
+      archivedAt: DateTime(2026, 7, 11),
+    );
+
+    await tester.pumpWidget(
+      _host(conversations: [conversation], archiveStore: store),
+    );
+    await tester.pumpAndSettle();
+
+    final tile = tester.widget<PartnerConversationTile>(
+      find.byType(PartnerConversationTile),
+    );
+    expect(tile.onReassign, isNotNull);
+    expect(tile.onDelete, isNotNull);
+
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('改派到其他對象'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bob'), findsOneWidget);
+
+    Navigator.of(tester.element(find.text('Bob'))).pop();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('刪除對話'));
+    await tester.pumpAndSettle();
+    expect(find.text('刪除這段互動紀錄？'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
   });
 }

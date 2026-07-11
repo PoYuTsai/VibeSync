@@ -19,6 +19,7 @@ class RecordingConversationWriteController extends ConversationWriteController {
   String? savedPartnerIdAtCallTime;
   String? savedPreviousPartnerId;
   ConversationSaveIntent? savedIntent;
+  DateTime? savedPreservedArchivedAt;
   Object? throwOnSave;
   bool deleteCalled = false;
   Conversation? deletedConversation;
@@ -29,6 +30,8 @@ class RecordingConversationWriteController extends ConversationWriteController {
     Conversation c, {
     String? previousPartnerId,
     ConversationSaveIntent intent = ConversationSaveIntent.contentChanged,
+    String? expectedContentRevision,
+    DateTime? preservedArchivedAt,
   }) async {
     saveCalled = true;
     savedConversation = c;
@@ -37,6 +40,7 @@ class RecordingConversationWriteController extends ConversationWriteController {
     savedPartnerIdAtCallTime = c.partnerId;
     savedPreviousPartnerId = previousPartnerId;
     savedIntent = intent;
+    savedPreservedArchivedAt = preservedArchivedAt;
     if (throwOnSave != null) throw throwOnSave!;
   }
 

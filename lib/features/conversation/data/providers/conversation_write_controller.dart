@@ -7,11 +7,12 @@ import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../domain/entities/conversation.dart';
 import '../../domain/entities/message.dart';
+import '../repositories/conversation_archive_store.dart';
 import 'conversation_archive_providers.dart';
 import 'conversation_providers.dart';
 
 enum ConversationSaveIntent {
-  /// 新增／編輯／換邊／刪除訊息：先解除封存，避免新內容仍被藏在分析紀錄。
+  /// 新增／編輯／換邊／刪除訊息：儲存成功後解除封存，避免新內容仍被藏在分析紀錄。
   contentChanged,
 
   /// 成功分析快照已落盤：寫入封存 marker。
@@ -68,18 +69,61 @@ class ConversationWriteController extends Notifier<void> {
     Conversation c, {
     String? previousPartnerId,
     ConversationSaveIntent intent = ConversationSaveIntent.contentChanged,
+    String? expectedContentRevision,
+    DateTime? preservedArchivedAt,
   }) async {
     final repo = ref.read(conversationRepositoryProvider);
-    if (intent == ConversationSaveIntent.contentChanged) {
-      await ref
-          .read(conversationArchiveControllerProvider.notifier)
-          .markActive(c);
+    final archiveController =
+        ref.read(conversationArchiveControllerProvider.notifier);
+    final startedFromExpectedContent =
+        intent != ConversationSaveIntent.analysisCompleted ||
+            (expectedContentRevision != null &&
+                expectedContentRevision == conversationContentRevision(c));
+    if (startedFromExpectedContent) {
+      await repo.updateConversation(c);
     }
-    await repo.updateConversation(c);
-    if (intent == ConversationSaveIntent.analysisCompleted) {
-      await ref
-          .read(conversationArchiveControllerProvider.notifier)
-          .markArchived(c);
+    if (intent == ConversationSaveIntent.contentChanged) {
+      // Write the marker after the content save so concurrent saves resolve in
+      // persistence order instead of an early active marker being overwritten
+      // by an older analysis that finishes later.
+      await archiveController.markActive(c);
+    } else if (intent == ConversationSaveIntent.analysisCompleted) {
+      final hasPersistedSnapshot =
+          c.lastAnalysisSnapshotJson?.trim().isNotEmpty == true;
+      final analyzedEveryMessage =
+          c.lastAnalyzedMessageCount == c.messages.length;
+      final analyzedMessageCount = c.lastAnalyzedMessageCount;
+      final analyzedMessageCountIsValid = analyzedMessageCount != null &&
+          analyzedMessageCount >= 0 &&
+          analyzedMessageCount <= c.messages.length;
+      final currentContentRevision = conversationContentRevision(c);
+      final contentStillMatches = startedFromExpectedContent &&
+          expectedContentRevision != null &&
+          expectedContentRevision == currentContentRevision;
+      if (hasPersistedSnapshot && analyzedEveryMessage && contentStillMatches) {
+        await archiveController.markArchived(c);
+      } else {
+        // Parsed UI without a durable snapshot cannot be restored after an app
+        // restart. Partial refreshes and analyses produced from an older
+        // message revision must never hide newer content. All cases fail open.
+        await archiveController.markActive(
+          c,
+          analyzedContentRevision: hasPersistedSnapshot &&
+                  contentStillMatches &&
+                  analyzedMessageCountIsValid
+              ? conversationContentRevision(
+                  c,
+                  messageCount: analyzedMessageCount,
+                )
+              : null,
+        );
+      }
+    } else if (intent == ConversationSaveIntent.metadataOnly &&
+        preservedArchivedAt != null) {
+      // Markerless legacy conversations can only be identified before the
+      // repository refreshes updatedAt. The archive screen supplies this
+      // explicit presentation hint so reassignment preserves its location.
+      await archiveController.markArchived(c, archivedAt: preservedArchivedAt);
     }
     _invalidateConversationDetail(c.id);
     _invalidatePartnerScope(c.partnerId);

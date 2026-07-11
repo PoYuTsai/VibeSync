@@ -6,9 +6,11 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../analysis_history/data/providers/analysis_history_providers.dart';
 import '../../../conversation/data/providers/conversation_archive_providers.dart';
+import '../../../conversation/presentation/dialogs/conversation_reassign_picker.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
 import '../providers/partner_providers.dart';
 import '../utils/conversation_archive_sections.dart';
+import '../utils/conversation_record_actions.dart';
 import '../widgets/partner_conversation_tile.dart';
 
 class PartnerAnalysisArchiveScreen extends ConsumerWidget {
@@ -25,22 +27,13 @@ class PartnerAnalysisArchiveScreen extends ConsumerWidget {
     final conversations = ref.watch(conversationsByPartnerProvider(partnerId));
     ref.watch(conversationArchiveControllerProvider);
     final archiveStore = ref.watch(conversationArchiveStoreProvider);
+    final latestAnalysisAtFor = createLazyLatestAnalyzeAtLookup(
+      () => ref.read(analysisHistoryRepositoryProvider),
+    );
     final sections = partitionConversationsByArchive(
       conversations,
       entryFor: archiveStore.entryFor,
-      latestAnalysisAtFor: (conversationId) {
-        try {
-          return latestAnalyzeEventAt(
-            ref
-                .read(analysisHistoryRepositoryProvider)
-                .listByConversation(conversationId, limit: 1),
-          );
-        } catch (_) {
-          // Fail open: unavailable legacy history must never hide a current
-          // conversation from the partner page.
-          return null;
-        }
-      },
+      latestAnalysisAtFor: latestAnalysisAtFor,
     );
     final grouped = _groupByMonth(sections.archived);
 
@@ -109,6 +102,17 @@ class PartnerAnalysisArchiveScreen extends ConsumerWidget {
                           conversation: item.conversation,
                           onTap: () => context.push(
                             '/conversation/${item.conversation.id}',
+                          ),
+                          onReassign: () => showConversationReassignPicker(
+                            context,
+                            conversation: item.conversation,
+                            ref: ref,
+                            preservedArchivedAt: item.archivedAt,
+                          ),
+                          onDelete: () => confirmDeleteConversation(
+                            context,
+                            ref,
+                            item.conversation,
                           ),
                         ),
                         Align(

@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:hive_ce/hive_ce.dart';
 
 import '../../domain/entities/conversation.dart';
@@ -8,22 +11,32 @@ class ConversationArchiveEntry {
   const ConversationArchiveEntry._({
     required this.status,
     required this.changedAt,
+    this.contentRevision,
   });
 
-  factory ConversationArchiveEntry.active({required DateTime changedAt}) =>
+  factory ConversationArchiveEntry.active({
+    required DateTime changedAt,
+    String? contentRevision,
+  }) =>
       ConversationArchiveEntry._(
         status: ConversationArchiveStatus.active,
         changedAt: changedAt,
+        contentRevision: contentRevision,
       );
 
-  factory ConversationArchiveEntry.archived({required DateTime archivedAt}) =>
+  factory ConversationArchiveEntry.archived({
+    required DateTime archivedAt,
+    String? contentRevision,
+  }) =>
       ConversationArchiveEntry._(
         status: ConversationArchiveStatus.archived,
         changedAt: archivedAt,
+        contentRevision: contentRevision,
       );
 
   final ConversationArchiveStatus status;
   final DateTime changedAt;
+  final String? contentRevision;
 
   DateTime? get archivedAt =>
       status == ConversationArchiveStatus.archived ? changedAt : null;
@@ -35,6 +48,7 @@ abstract class ConversationArchiveStore {
   Future<void> markActive(
     Conversation conversation, {
     DateTime? changedAt,
+    String? analyzedContentRevision,
   });
 
   Future<void> markArchived(
@@ -63,9 +77,20 @@ class HiveConversationArchiveStore implements ConversationArchiveStore {
       if (status is! String || changedAtRaw is! String) return null;
       final changedAt = DateTime.tryParse(changedAtRaw);
       if (changedAt == null) return null;
+      final contentRevisionRaw = raw['contentRevision'];
+      final contentRevision =
+          contentRevisionRaw is String && contentRevisionRaw.trim().isNotEmpty
+              ? contentRevisionRaw
+              : null;
       return switch (status) {
-        'active' => ConversationArchiveEntry.active(changedAt: changedAt),
-        'archived' => ConversationArchiveEntry.archived(archivedAt: changedAt),
+        'active' => ConversationArchiveEntry.active(
+            changedAt: changedAt,
+            contentRevision: contentRevision,
+          ),
+        'archived' => ConversationArchiveEntry.archived(
+            archivedAt: changedAt,
+            contentRevision: contentRevision,
+          ),
         _ => null,
       };
     } catch (_) {
@@ -78,19 +103,29 @@ class HiveConversationArchiveStore implements ConversationArchiveStore {
   Future<void> markActive(
     Conversation conversation, {
     DateTime? changedAt,
-  }) =>
-      _write(
-        conversation,
-        status: 'active',
-        changedAt: changedAt ?? DateTime.now(),
-      );
+    String? analyzedContentRevision,
+  }) {
+    final preservedRevision =
+        analyzedContentRevision ?? entryFor(conversation)?.contentRevision;
+    return _write(
+      conversation,
+      status: 'active',
+      changedAt: changedAt ?? DateTime.now(),
+      contentRevision: preservedRevision,
+    );
+  }
 
   @override
   Future<void> markArchived(
     Conversation conversation, {
     required DateTime archivedAt,
   }) =>
-      _write(conversation, status: 'archived', changedAt: archivedAt);
+      _write(
+        conversation,
+        status: 'archived',
+        changedAt: archivedAt,
+        contentRevision: conversationContentRevision(conversation),
+      );
 
   @override
   Future<void> remove(Conversation conversation) async {
@@ -101,10 +136,12 @@ class HiveConversationArchiveStore implements ConversationArchiveStore {
     Conversation conversation, {
     required String status,
     required DateTime changedAt,
+    String? contentRevision,
   }) async {
     await _boxProvider().put(_keyFor(conversation), <String, String>{
       'status': status,
       'changedAt': changedAt.toUtc().toIso8601String(),
+      if (contentRevision != null) 'contentRevision': contentRevision,
     });
   }
 
@@ -113,4 +150,26 @@ class HiveConversationArchiveStore implements ConversationArchiveStore {
     final ownerScope = owner == null || owner.isEmpty ? '_legacy' : owner;
     return '$_keyPrefix:$ownerScope:${conversation.id}';
   }
+}
+
+/// Durable, privacy-preserving revision of the ordered message input behind
+/// the latest restorable analysis snapshot. Markers store only this digest,
+/// never conversation text. Metadata-only changes intentionally keep it.
+String conversationContentRevision(
+  Conversation conversation, {
+  int? messageCount,
+}) {
+  final messages = messageCount == null
+      ? conversation.messages
+      : conversation.messages.take(messageCount);
+  final canonicalMessages = messages
+      .map((message) => <Object?>[
+            message.id,
+            message.content,
+            message.isFromMe,
+            message.quotedReplyPreview,
+            message.quotedReplyPreviewIsFromMe,
+          ])
+      .toList(growable: false);
+  return sha256.convert(utf8.encode(jsonEncode(canonicalMessages))).toString();
 }

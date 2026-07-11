@@ -108,6 +108,7 @@ class StreamingAnalysisState {
   final int retriesRemaining;
   final int? conversationMessageCount;
   final int? analyzedMessageCount;
+  final String? conversationContentRevision;
 
   /// 非 null 表示這次失敗是額度不足（429），UI 必須走升級卡分流。
   final QuotaExceededInfo? quotaExceeded;
@@ -127,6 +128,7 @@ class StreamingAnalysisState {
     this.retriesRemaining = 0,
     this.conversationMessageCount,
     this.analyzedMessageCount,
+    this.conversationContentRevision,
     this.quotaExceeded,
   });
 
@@ -153,6 +155,7 @@ class StreamingAnalysisState {
     int? retriesRemaining,
     Object? conversationMessageCount = _unset,
     Object? analyzedMessageCount = _unset,
+    Object? conversationContentRevision = _unset,
     Object? quotaExceeded = _unset,
   }) {
     return StreamingAnalysisState(
@@ -192,6 +195,10 @@ class StreamingAnalysisState {
       analyzedMessageCount: identical(analyzedMessageCount, _unset)
           ? this.analyzedMessageCount
           : analyzedMessageCount as int?,
+      conversationContentRevision:
+          identical(conversationContentRevision, _unset)
+              ? this.conversationContentRevision
+              : conversationContentRevision as String?,
       quotaExceeded: identical(quotaExceeded, _unset)
           ? this.quotaExceeded
           : quotaExceeded as QuotaExceededInfo?,
@@ -227,6 +234,7 @@ class StreamingAnalyzeNotifier
   int? _cachedPreviousAnalyzedCount;
   int? _cachedConversationMessageCount;
   int? _cachedAnalyzedMessageCount;
+  String? _cachedConversationContentRevision;
   int? _cachedPreviousAnalyzedCharCount;
   OverchargeConfirmationPayload? _cachedConfirmedOvercharge;
   int? _cachedPayloadCharCount;
@@ -263,6 +271,7 @@ class StreamingAnalyzeNotifier
     OverchargeConfirmationPayload? confirmedOvercharge,
     int? conversationMessageCount,
     int? analyzedMessageCount,
+    String? conversationContentRevision,
   }) async {
     final myGen = ++_generation;
     _keepAliveLink ??= ref.keepAlive();
@@ -280,6 +289,7 @@ class StreamingAnalyzeNotifier
     _cachedPreviousAnalyzedCount = previousAnalyzedCount;
     _cachedConversationMessageCount = conversationMessageCount;
     _cachedAnalyzedMessageCount = effectiveAnalyzedMessageCount;
+    _cachedConversationContentRevision = conversationContentRevision;
     _cachedPreviousAnalyzedCharCount = previousAnalyzedCharCount;
     _cachedConfirmedOvercharge = confirmedOvercharge;
     // ADR #19 規格 #8：baseline 對應這次送出的 requestMessages。
@@ -291,6 +301,7 @@ class StreamingAnalyzeNotifier
       streamProgressDetail: '正在建立串流連線。',
       conversationMessageCount: conversationMessageCount,
       analyzedMessageCount: effectiveAnalyzedMessageCount,
+      conversationContentRevision: conversationContentRevision,
     );
 
     if (_shouldUseStreamingFull) {
@@ -307,6 +318,7 @@ class StreamingAnalyzeNotifier
         confirmedOvercharge: confirmedOvercharge,
         conversationMessageCount: conversationMessageCount,
         analyzedMessageCount: effectiveAnalyzedMessageCount,
+        conversationContentRevision: conversationContentRevision,
       );
       return;
     }
@@ -334,6 +346,7 @@ class StreamingAnalyzeNotifier
         recommendationPreviewErrorCode: code,
         conversationMessageCount: conversationMessageCount,
         analyzedMessageCount: effectiveAnalyzedMessageCount,
+        conversationContentRevision: conversationContentRevision,
       );
       return;
     }
@@ -346,6 +359,7 @@ class StreamingAnalyzeNotifier
       analysisRunId: recommendationPreview.analysisRunId,
       conversationMessageCount: conversationMessageCount,
       analyzedMessageCount: effectiveAnalyzedMessageCount,
+      conversationContentRevision: conversationContentRevision,
     );
 
     await _runFull(
@@ -377,6 +391,7 @@ class StreamingAnalyzeNotifier
     OverchargeConfirmationPayload? confirmedOvercharge,
     int? conversationMessageCount,
     int? analyzedMessageCount,
+    String? conversationContentRevision,
   }) async {
     final stopLocalProgress = _startLocalStreamPreludeProgress(
       generation: generation,
@@ -521,6 +536,7 @@ class StreamingAnalyzeNotifier
         recommendationPreviewErrorCode: code,
         conversationMessageCount: conversationMessageCount,
         analyzedMessageCount: analyzedMessageCount,
+        conversationContentRevision: conversationContentRevision,
         quotaExceeded: quotaExceeded,
       );
     } finally {
@@ -609,6 +625,7 @@ class StreamingAnalyzeNotifier
       retriesRemaining: 0,
       conversationMessageCount: _cachedConversationMessageCount,
       analyzedMessageCount: _cachedAnalyzedMessageCount,
+      conversationContentRevision: _cachedConversationContentRevision,
       quotaExceeded: null,
     );
 
@@ -627,6 +644,7 @@ class StreamingAnalyzeNotifier
         confirmedOvercharge: _cachedConfirmedOvercharge,
         conversationMessageCount: _cachedConversationMessageCount,
         analyzedMessageCount: _cachedAnalyzedMessageCount,
+        conversationContentRevision: _cachedConversationContentRevision,
       );
       return;
     }

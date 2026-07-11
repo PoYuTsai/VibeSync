@@ -22,6 +22,7 @@ Future<void> showConversationReassignPicker(
   BuildContext context, {
   required Conversation conversation,
   required WidgetRef ref,
+  DateTime? preservedArchivedAt,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -60,6 +61,7 @@ Future<void> showConversationReassignPicker(
                   conversation,
                   previousPartnerId: previousPartnerId,
                   intent: ConversationSaveIntent.metadataOnly,
+                  preservedArchivedAt: preservedArchivedAt,
                 );
             if (sheetCtx.mounted) Navigator.of(sheetCtx).pop();
           } catch (_) {

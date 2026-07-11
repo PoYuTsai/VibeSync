@@ -33,8 +33,10 @@ import '../../../analysis_history/data/providers/analysis_history_providers.dart
 import '../../../analysis_history/domain/entities/analysis_history_event.dart';
 import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
 import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
+import '../../../conversation/data/providers/conversation_archive_providers.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/data/providers/conversation_write_controller.dart';
+import '../../../conversation/data/repositories/conversation_archive_store.dart';
 import '../../../follow_up_notification/data/providers/follow_up_notification_service.dart';
 import '../../../follow_up_notification/domain/follow_up_opt_in.dart';
 import '../../../follow_up_notification/presentation/soft_opt_in_card.dart';
@@ -99,6 +101,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     with WidgetsBindingObserver {
   // 訂閱同步屬 best-effort 前置：卡住不得凍結分析/刷新 spinner（2.1(b)）。
   static const _subscriptionSyncTimeout = Duration(seconds: 20);
+  static const _snapshotClientMetaKey = '__vibesync_snapshot_meta_v1';
+  static const _snapshotRevisionKey = 'contentRevision';
+  static const _snapshotMessageCountKey = 'messageCount';
   final MemoryService _memoryService = MemoryService();
   bool get _showTelemetryDiagnostics => kDebugMode;
   bool _isAnalyzing = false;
@@ -820,6 +825,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _maybePersistAndSyncOnHydrate(
           result,
           analyzedMessageCount: s.analyzedMessageCount,
+          analyzedContentRevision: s.conversationContentRevision,
         );
         break;
       case StreamingAnalyzePhase.failedAfterRecommendation:
@@ -872,11 +878,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   /// Persist + sync usage from a hydrate-time done result IF the live
   /// `_onStreamingAnalyzeStateChanged` listener clearly did not already do so. Dedup
-  /// signal: `conv.lastAnalyzedMessageCount == conv.messages.length` AND
-  /// `conv.lastAnalysisSnapshotJson == jsonEncode(result.rawResponse)`. When
-  /// the signal matches, the listener path already wrote this exact snapshot
-  /// and re-running would be a wasted Hive write + a redundant subscription
-  /// sync (I-P2-e/f, Codex round-2).
+  /// signal: analyzed count, full input revision, analyzed-prefix revision,
+  /// and stored analysis payload all match. A match means the listener path
+  /// already wrote this exact snapshot (I-P2-e/f).
   ///
   /// Required for the off-screen completion path: user starts analyze, leaves
   /// the screen mid-`streamingReport`, the notifier transitions to `done`
@@ -885,18 +889,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   void _maybePersistAndSyncOnHydrate(
     AnalysisResult result, {
     int? analyzedMessageCount,
+    String? analyzedContentRevision,
   }) {
     final repository = ref.read(conversationRepositoryProvider);
     final conv = repository.getConversation(widget.conversationId);
     if (conv == null) return;
     final expectedAnalyzedCount = analyzedMessageCount ?? conv.messages.length;
 
-    final encoded = result.rawResponse == null || result.rawResponse!.isEmpty
-        ? null
-        : jsonEncode(result.rawResponse);
-    final alreadyPersisted =
-        conv.lastAnalyzedMessageCount == expectedAnalyzedCount &&
-            conv.lastAnalysisSnapshotJson == encoded;
+    final alreadyPersisted = _analysisSnapshotMatches(
+      conversation: conv,
+      snapshotJson: conv.lastAnalysisSnapshotJson,
+      rawResponse: result.rawResponse,
+      messageCount: expectedAnalyzedCount,
+      analyzedContentRevision: analyzedContentRevision,
+    );
     if (alreadyPersisted) {
       return;
     }
@@ -909,6 +915,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _persistLatestAnalysisSnapshot(
       result,
       analyzedMessageCount: expectedAnalyzedCount,
+      analyzedContentRevision: analyzedContentRevision,
     ).catchError((_) {
       // Same fire-and-forget contract as the listener path — Hive failures in
       // tests must not surface as unhandled futures.
@@ -1194,10 +1201,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   bool _isStreamingAnalyzeResultStaleForCurrentConversation(
     StreamingAnalysisState state,
   ) {
-    final expectedCount = state.conversationMessageCount;
-    if (expectedCount == null) return false;
     final conversation = ref.read(conversationProvider(widget.conversationId));
     if (conversation == null) return false;
+    final expectedRevision = state.conversationContentRevision;
+    if (expectedRevision != null) {
+      return conversationContentRevision(conversation) != expectedRevision;
+    }
+    // Backward-compatible guard for states created before content revisions
+    // were added (and for narrowly-scoped widget test seeds).
+    final expectedCount = state.conversationMessageCount;
+    if (expectedCount == null) return false;
     return conversation.messages.length != expectedCount;
   }
 
@@ -1230,9 +1243,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return;
     }
 
-    _lastAnalyzedMessageCount =
-        conversation.lastAnalyzedMessageCount ?? conversation.messages.length;
-
     final snapshotJson = conversation.lastAnalysisSnapshotJson;
     if (snapshotJson == null || snapshotJson.trim().isEmpty) {
       return;
@@ -1243,13 +1253,141 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       if (snapshot == null) {
         return;
       }
+      if (!_canRestorePersistedAnalysis(conversation, snapshot)) {
+        return;
+      }
+      _lastAnalyzedMessageCount = conversation.lastAnalyzedMessageCount!;
 
-      _applyAnalysisResult(AnalysisResult.fromJson(snapshot));
+      if (!snapshot.containsKey(_snapshotClientMetaKey)) {
+        final analyzedCount = conversation.lastAnalyzedMessageCount!;
+        snapshot[_snapshotClientMetaKey] = <String, Object>{
+          _snapshotRevisionKey: conversationContentRevision(
+            conversation,
+            messageCount: analyzedCount,
+          ),
+          _snapshotMessageCountKey: analyzedCount,
+        };
+        // Upgrade legacy snapshots in memory immediately. The next normal
+        // conversation save carries this metadata even if the archive marker
+        // write fails, closing same-count edit restores without a Hive schema.
+        conversation.lastAnalysisSnapshotJson = jsonEncode(snapshot);
+      }
+
+      final analysisPayload = Map<String, dynamic>.from(snapshot)
+        ..remove(_snapshotClientMetaKey);
+      _applyAnalysisResult(AnalysisResult.fromJson(analysisPayload));
     } catch (error) {
       _debugLog(
         '[AnalysisScreen] Failed to restore persisted analysis for '
         '${widget.conversationId}: $error',
       );
+    }
+  }
+
+  bool _canRestorePersistedAnalysis(
+    Conversation conversation,
+    Map<String, dynamic> snapshot,
+  ) {
+    final analyzedCount = conversation.lastAnalyzedMessageCount;
+    if (analyzedCount == null ||
+        analyzedCount < 0 ||
+        analyzedCount > conversation.messages.length) {
+      return false;
+    }
+    if (snapshot.containsKey(_snapshotClientMetaKey)) {
+      final rawMeta = snapshot[_snapshotClientMetaKey];
+      if (rawMeta is! Map) return false;
+      final embeddedRevision = rawMeta[_snapshotRevisionKey];
+      final embeddedCount = rawMeta[_snapshotMessageCountKey];
+      if (embeddedRevision is! String ||
+          embeddedRevision.trim().isEmpty ||
+          embeddedCount is! int ||
+          embeddedCount != analyzedCount) {
+        return false;
+      }
+      return embeddedRevision ==
+          conversationContentRevision(
+            conversation,
+            messageCount: embeddedCount,
+          );
+    }
+
+    final archiveEntry =
+        ref.read(conversationArchiveStoreProvider).entryFor(conversation);
+    if (archiveEntry != null) {
+      final analyzedRevision = archiveEntry.contentRevision;
+      if (archiveEntry.status == ConversationArchiveStatus.archived &&
+          analyzedCount != conversation.messages.length) {
+        return false;
+      }
+      return analyzedRevision != null &&
+          analyzedRevision ==
+              conversationContentRevision(
+                conversation,
+                messageCount: analyzedCount,
+              );
+    }
+
+    // Snapshot persistence predates both embedded revisions and archive
+    // markers. A markerless payload without client metadata is therefore true
+    // legacy compatibility. Every new snapshot embeds its own revision, so a
+    // failed marker write can no longer make a post-feature row look legacy.
+    return true;
+  }
+
+  String? _encodeAnalysisSnapshot(
+    Map<String, dynamic>? rawResponse, {
+    required String contentRevision,
+    required int messageCount,
+  }) {
+    if (rawResponse == null || rawResponse.isEmpty) {
+      return null;
+    }
+    final snapshot = Map<String, dynamic>.from(rawResponse)
+      ..[_snapshotClientMetaKey] = <String, Object>{
+        _snapshotRevisionKey: contentRevision,
+        _snapshotMessageCountKey: messageCount,
+      };
+    return jsonEncode(snapshot);
+  }
+
+  bool _analysisSnapshotMatches({
+    required Conversation conversation,
+    required String? snapshotJson,
+    required Map<String, dynamic>? rawResponse,
+    required int messageCount,
+    required String? analyzedContentRevision,
+  }) {
+    if (snapshotJson == null ||
+        snapshotJson.trim().isEmpty ||
+        rawResponse == null ||
+        rawResponse.isEmpty ||
+        messageCount < 0 ||
+        messageCount > conversation.messages.length ||
+        analyzedContentRevision == null ||
+        conversationContentRevision(conversation) != analyzedContentRevision) {
+      return false;
+    }
+    try {
+      final snapshot = _normalizeJsonMap(jsonDecode(snapshotJson));
+      if (snapshot == null) {
+        return false;
+      }
+      final rawMeta = snapshot[_snapshotClientMetaKey];
+      if (rawMeta is! Map ||
+          rawMeta[_snapshotMessageCountKey] != messageCount ||
+          rawMeta[_snapshotRevisionKey] !=
+              conversationContentRevision(
+                conversation,
+                messageCount: messageCount,
+              )) {
+        return false;
+      }
+      snapshot.remove(_snapshotClientMetaKey);
+      return jsonEncode(snapshot) == jsonEncode(rawResponse);
+    } catch (_) {
+      // A corrupt durable snapshot must not suppress a replacement write.
+      return false;
     }
   }
 
@@ -1296,16 +1434,38 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Future<void> _persistLatestAnalysisSnapshot(
     AnalysisResult result, {
     int? analyzedMessageCount,
+    String? analyzedContentRevision,
   }) async {
     final repository = ref.read(conversationRepositoryProvider);
     final conv = repository.getConversation(widget.conversationId);
     if (conv == null) {
       return;
     }
+    if (analyzedContentRevision == null ||
+        conversationContentRevision(conv) != analyzedContentRevision) {
+      return;
+    }
+
+    final previousAnalysis = (
+      enthusiasmScore: conv.lastEnthusiasmScore,
+      analyzedMessageCount: conv.lastAnalyzedMessageCount,
+      analyzedCharCount: conv.lastAnalyzedCharCount,
+      gameStage: conv.currentGameStage,
+      snapshotJson: conv.lastAnalysisSnapshotJson,
+    );
+    final targetAnalyzedMessageCount =
+        analyzedMessageCount ?? conv.messages.length;
+    final targetSnapshotJson = _encodeAnalysisSnapshot(
+      result.rawResponse,
+      contentRevision: conversationContentRevision(
+        conv,
+        messageCount: targetAnalyzedMessageCount,
+      ),
+      messageCount: targetAnalyzedMessageCount,
+    );
 
     conv.lastEnthusiasmScore = result.enthusiasmScore;
-    conv.lastAnalyzedMessageCount =
-        analyzedMessageCount ?? conv.messages.length;
+    conv.lastAnalyzedMessageCount = targetAnalyzedMessageCount;
     // ADR #19 規格 #8：char baseline 對應「實際送出的 requestMessages」
     //（notifier 在 start 時計），不是完成時 repository 裡的最新 messages
     //（避免分析中新進訊息造成 baseline 漂移）。
@@ -1316,15 +1476,45 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       conv.lastAnalyzedCharCount = payloadCharCount;
     }
     conv.currentGameStage = result.gameStage.current.name;
-    conv.lastAnalysisSnapshotJson =
-        result.rawResponse == null || result.rawResponse!.isEmpty
-            ? null
-            : jsonEncode(result.rawResponse);
+    conv.lastAnalysisSnapshotJson = targetSnapshotJson;
 
-    await ref.read(conversationWriteControllerProvider.notifier).save(
-          conv,
-          intent: ConversationSaveIntent.analysisCompleted,
-        );
+    final writeController =
+        ref.read(conversationWriteControllerProvider.notifier);
+    await writeController.save(
+      conv,
+      intent: ConversationSaveIntent.analysisCompleted,
+      expectedContentRevision: analyzedContentRevision,
+    );
+
+    if (conversationContentRevision(conv) != analyzedContentRevision) {
+      // Content changed while the snapshot write was in flight. Roll back this
+      // run's analysis fields only if they are still the values we wrote; a
+      // genuinely newer, different analysis must win. Then persist the latest
+      // messages as active and avoid creating fresh legacy-history evidence.
+      if (conv.lastAnalysisSnapshotJson == targetSnapshotJson &&
+          conv.lastAnalyzedMessageCount == targetAnalyzedMessageCount) {
+        conv.lastEnthusiasmScore = previousAnalysis.enthusiasmScore;
+        conv.lastAnalyzedMessageCount = previousAnalysis.analyzedMessageCount;
+        conv.lastAnalyzedCharCount = previousAnalysis.analyzedCharCount;
+        conv.currentGameStage = previousAnalysis.gameStage;
+        conv.lastAnalysisSnapshotJson = previousAnalysis.snapshotJson;
+        try {
+          await writeController.save(
+            conv,
+            intent: ConversationSaveIntent.contentChanged,
+          );
+        } catch (_) {
+          // The compensating conversation write can fail independently. Still
+          // leave an explicit active marker when settings storage is healthy,
+          // so cold restore cannot treat this post-feature row as legacy.
+          await ref
+              .read(conversationArchiveControllerProvider.notifier)
+              .markActive(conv);
+          rethrow;
+        }
+      }
+      return;
+    }
 
     // 案2：analyze 歷史事件（best-effort：失敗只 debugPrint，絕不 rethrow，
     // 分析呈現完全不受影響）。去重靠呼叫端既有 gate（hydrate 路徑
@@ -3657,6 +3847,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     try {
       final analyzedMessageCount = sourceMessages.length;
+      // Capture synchronously, before any preview/network await. The notifier
+      // carries this exact message revision through retry/remount so an older
+      // result can never archive or overwrite a same-count edit.
+      final analyzedContentRevision = conversationContentRevision(conversation);
       final analysisContext = await _buildSummaryAwareAnalysisContext(
         conversation: conversation,
         baseMessages: messagesForAnalysis,
@@ -3736,6 +3930,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             confirmedOvercharge: previewDecision.overcharge,
             conversationMessageCount: conversation.messages.length,
             analyzedMessageCount: analyzedMessageCount,
+            conversationContentRevision: analyzedContentRevision,
           );
       if (waitForCompletion) {
         await analysisFuture;
@@ -3875,6 +4070,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _persistLatestAnalysisSnapshot(
           result,
           analyzedMessageCount: analyzedMessageCount,
+          analyzedContentRevision: next.conversationContentRevision,
         ).catchError((_) {
           // Ignore errors in test environment.
         });
@@ -5380,11 +5576,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 conversation.messages,
                               ).map((m) => MessageBubble(
                                     message: m,
-                                    onEdit: () => _editMessage(conversation, m),
-                                    onSwapSide: () =>
-                                        _swapMessageSide(conversation, m),
-                                    onDelete: () =>
-                                        _deleteMessage(conversation, m),
+                                    onEdit: _isAnalyzing
+                                        ? null
+                                        : () => _editMessage(conversation, m),
+                                    onSwapSide: _isAnalyzing
+                                        ? null
+                                        : () =>
+                                            _swapMessageSide(conversation, m),
+                                    onDelete: _isAnalyzing
+                                        ? null
+                                        : () => _deleteMessage(conversation, m),
                                   )),
                               if (conversation.messages.length > 5)
                                 GestureDetector(

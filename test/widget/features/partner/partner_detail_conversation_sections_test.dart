@@ -23,7 +23,6 @@ import 'package:vibesync/features/partner/presentation/widgets/partner_conversat
 import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
 import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
-import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 
 Partner _p() => Partner(
@@ -42,6 +41,8 @@ Conversation _conv(String id) => Conversation(
       updatedAt: DateTime(2026, 7, 10),
       ownerUserId: 'u1',
       partnerId: 'p1',
+      lastAnalysisSnapshotJson: '{"ok":true}',
+      lastAnalyzedMessageCount: 0,
     );
 
 class _MemoryArchiveStore implements ConversationArchiveStore {
@@ -52,10 +53,15 @@ class _MemoryArchiveStore implements ConversationArchiveStore {
       entries[conversation.id];
 
   @override
-  Future<void> markActive(Conversation conversation,
-      {DateTime? changedAt}) async {
+  Future<void> markActive(
+    Conversation conversation, {
+    DateTime? changedAt,
+    String? analyzedContentRevision,
+  }) async {
     entries[conversation.id] = ConversationArchiveEntry.active(
       changedAt: changedAt ?? DateTime.now(),
+      contentRevision:
+          analyzedContentRevision ?? entries[conversation.id]?.contentRevision,
     );
   }
 
@@ -64,8 +70,10 @@ class _MemoryArchiveStore implements ConversationArchiveStore {
     Conversation conversation, {
     required DateTime archivedAt,
   }) async {
-    entries[conversation.id] =
-        ConversationArchiveEntry.archived(archivedAt: archivedAt);
+    entries[conversation.id] = ConversationArchiveEntry.archived(
+      archivedAt: archivedAt,
+      contentRevision: conversationContentRevision(conversation),
+    );
   }
 
   @override

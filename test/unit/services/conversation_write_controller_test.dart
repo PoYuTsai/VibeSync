@@ -15,6 +15,7 @@ import 'package:vibesync/features/analysis/data/providers/analysis_providers.dar
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
+import 'package:vibesync/features/partner/presentation/utils/conversation_archive_sections.dart';
 import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
 import 'package:vibesync/features/user_profile/data/repositories/partner_data_quality_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
@@ -31,6 +32,7 @@ class _FakeConversationRepository extends ConversationRepository {
   int globalListCalls = 0;
   int _idCounter = 0;
   Object? throwOnUpdate;
+  void Function(Conversation)? onUpdate;
 
   @override
   Future<Conversation> createConversation({
@@ -55,6 +57,7 @@ class _FakeConversationRepository extends ConversationRepository {
   Future<void> updateConversation(Conversation c) async {
     if (throwOnUpdate != null) throw throwOnUpdate!;
     store[c.id] = c;
+    onUpdate?.call(c);
   }
 
   @override
@@ -81,6 +84,7 @@ class _FakeConversationRepository extends ConversationRepository {
 
 class _MemoryConversationArchiveStore implements ConversationArchiveStore {
   final Map<String, ConversationArchiveEntry> entries = {};
+  bool throwOnMarkActive = false;
 
   @override
   ConversationArchiveEntry? entryFor(Conversation conversation) =>
@@ -90,9 +94,13 @@ class _MemoryConversationArchiveStore implements ConversationArchiveStore {
   Future<void> markActive(
     Conversation conversation, {
     DateTime? changedAt,
+    String? analyzedContentRevision,
   }) async {
+    if (throwOnMarkActive) throw StateError('marker write failed');
     entries[conversation.id] = ConversationArchiveEntry.active(
       changedAt: changedAt ?? DateTime.now(),
+      contentRevision:
+          analyzedContentRevision ?? entries[conversation.id]?.contentRevision,
     );
   }
 
@@ -103,6 +111,7 @@ class _MemoryConversationArchiveStore implements ConversationArchiveStore {
   }) async {
     entries[conversation.id] = ConversationArchiveEntry.archived(
       archivedAt: archivedAt,
+      contentRevision: conversationContentRevision(conversation),
     );
   }
 
@@ -310,6 +319,78 @@ void main() {
       final container = await _makeContainer();
       addTearDown(container.dispose);
       final conversation = _convo('archive-me', partnerId: 'p-X');
+      conversation.lastAnalysisSnapshotJson = '{"result":"saved"}';
+      conversation.lastAnalyzedMessageCount = 0;
+      _fakeRepo.store[conversation.id] = conversation;
+      final analyzedRevision = conversationContentRevision(conversation);
+
+      await container.read(conversationWriteControllerProvider.notifier).save(
+            conversation,
+            intent: ConversationSaveIntent.analysisCompleted,
+            expectedContentRevision: analyzedRevision,
+          );
+
+      expect(
+        _archiveStore.entryFor(conversation)?.status,
+        ConversationArchiveStatus.archived,
+      );
+    });
+
+    test('analysis completion without a durable snapshot stays active',
+        () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final conversation = _convo('no-snapshot', partnerId: 'p-X');
+      _fakeRepo.store[conversation.id] = conversation;
+      await _archiveStore.markArchived(
+        conversation,
+        archivedAt: DateTime.utc(2026, 7, 11),
+      );
+
+      await container.read(conversationWriteControllerProvider.notifier).save(
+            conversation,
+            intent: ConversationSaveIntent.analysisCompleted,
+            expectedContentRevision: conversationContentRevision(conversation),
+          );
+
+      expect(
+        _archiveStore.entryFor(conversation)?.status,
+        ConversationArchiveStatus.active,
+      );
+      expect(
+        _archiveStore.entryFor(conversation)?.contentRevision,
+        conversationContentRevision(conversation),
+      );
+    });
+
+    test('failed analysis snapshot save never archives the conversation',
+        () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final conversation = _convo('failed-analysis', partnerId: 'p-X');
+      conversation.lastAnalysisSnapshotJson = '{"result":"not-saved"}';
+      _fakeRepo.store[conversation.id] = conversation;
+      _fakeRepo.throwOnUpdate = StateError('disk full');
+
+      await expectLater(
+        container.read(conversationWriteControllerProvider.notifier).save(
+              conversation,
+              intent: ConversationSaveIntent.analysisCompleted,
+              expectedContentRevision:
+                  conversationContentRevision(conversation),
+            ),
+        throwsA(isA<StateError>()),
+      );
+
+      expect(_archiveStore.entryFor(conversation), isNull);
+    });
+
+    test('missing analysis revision fails open instead of archiving', () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final conversation = _convo('missing-revision', partnerId: 'p-X')
+        ..lastAnalysisSnapshotJson = '{"result":"saved"}'
+        ..lastAnalyzedMessageCount = 0;
       _fakeRepo.store[conversation.id] = conversation;
 
       await container.read(conversationWriteControllerProvider.notifier).save(
@@ -319,27 +400,159 @@ void main() {
 
       expect(
         _archiveStore.entryFor(conversation)?.status,
-        ConversationArchiveStatus.archived,
+        ConversationArchiveStatus.active,
       );
     });
 
-    test('failed analysis snapshot save never archives the conversation',
+    test('same-count edit interleaved with analysis persistence stays active',
         () async {
       final container = await _makeContainer();
       addTearDown(container.dispose);
-      final conversation = _convo('failed-analysis', partnerId: 'p-X');
+      final conversation = _convo('stale-analysis', partnerId: 'p-X')
+        ..messages = [
+          Message(
+            id: 'm-1',
+            content: '分析時的內容',
+            isFromMe: false,
+            timestamp: DateTime(2026, 7, 11),
+          ),
+        ]
+        ..lastAnalysisSnapshotJson = '{"result":"saved"}'
+        ..lastAnalyzedMessageCount = 1;
       _fakeRepo.store[conversation.id] = conversation;
-      _fakeRepo.throwOnUpdate = StateError('disk full');
+      final analyzedRevision = conversationContentRevision(conversation);
+      _fakeRepo.onUpdate = (saved) {
+        saved.messages = [
+          Message(
+            id: 'm-1',
+            content: '分析完成前被改掉',
+            isFromMe: false,
+            timestamp: DateTime(2026, 7, 11),
+          ),
+        ];
+      };
 
-      await expectLater(
-        container.read(conversationWriteControllerProvider.notifier).save(
-              conversation,
-              intent: ConversationSaveIntent.analysisCompleted,
-            ),
-        throwsA(isA<StateError>()),
+      await container.read(conversationWriteControllerProvider.notifier).save(
+            conversation,
+            intent: ConversationSaveIntent.analysisCompleted,
+            expectedContentRevision: analyzedRevision,
+          );
+
+      expect(
+        _archiveStore.entryFor(conversation)?.status,
+        ConversationArchiveStatus.active,
       );
+    });
 
-      expect(_archiveStore.entryFor(conversation), isNull);
+    test('partial analysis snapshot stays active', () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final conversation = _convo('partial-analysis', partnerId: 'p-X')
+        ..messages = [
+          Message(
+            id: 'm-1',
+            content: '她說',
+            isFromMe: false,
+            timestamp: DateTime(2026, 7, 11),
+          ),
+          Message(
+            id: 'm-2',
+            content: '我新增但這輪不分析',
+            isFromMe: true,
+            timestamp: DateTime(2026, 7, 11, 0, 1),
+          ),
+        ]
+        ..lastAnalysisSnapshotJson = '{"result":"saved"}'
+        ..lastAnalyzedMessageCount = 1;
+      _fakeRepo.store[conversation.id] = conversation;
+
+      await container.read(conversationWriteControllerProvider.notifier).save(
+            conversation,
+            intent: ConversationSaveIntent.analysisCompleted,
+            expectedContentRevision: conversationContentRevision(conversation),
+          );
+
+      expect(
+        _archiveStore.entryFor(conversation)?.status,
+        ConversationArchiveStatus.active,
+      );
+      expect(
+        _archiveStore.entryFor(conversation)?.contentRevision,
+        conversationContentRevision(conversation, messageCount: 1),
+      );
+    });
+
+    test('failed active-marker write cannot hide the saved content change',
+        () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final conversation = _convo('marker-failure', partnerId: 'p-X')
+        ..messages = [
+          Message(
+            id: 'm-1',
+            content: '舊內容',
+            isFromMe: false,
+            timestamp: DateTime(2026, 7, 11),
+          ),
+        ];
+      _fakeRepo.store[conversation.id] = conversation;
+      await _archiveStore.markArchived(
+        conversation,
+        archivedAt: DateTime.utc(2026, 7, 11),
+      );
+      conversation.messages = [
+        Message(
+          id: 'm-1',
+          content: '已成功儲存的新內容',
+          isFromMe: false,
+          timestamp: DateTime(2026, 7, 11),
+        ),
+      ];
+      _archiveStore.throwOnMarkActive = true;
+
+      await container.read(conversationWriteControllerProvider.notifier).save(
+            conversation,
+            intent: ConversationSaveIntent.contentChanged,
+          );
+
+      final sections = partitionConversationsByArchive(
+        [conversation],
+        entryFor: _archiveStore.entryFor,
+        latestAnalysisAtFor: (_) => null,
+      );
+      expect(sections.active.single.id, conversation.id);
+      expect(sections.archived, isEmpty);
+    });
+
+    test('old archived marker cannot hide an invalid replacement snapshot',
+        () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final conversation = _convo('invalid-replacement', partnerId: 'p-X')
+        ..lastAnalysisSnapshotJson = '{"result":"old"}'
+        ..lastAnalyzedMessageCount = 0;
+      _fakeRepo.store[conversation.id] = conversation;
+      await _archiveStore.markArchived(
+        conversation,
+        archivedAt: DateTime.utc(2026, 7, 1),
+      );
+      final analyzedRevision = conversationContentRevision(conversation);
+      conversation.lastAnalysisSnapshotJson = null;
+      _archiveStore.throwOnMarkActive = true;
+
+      await container.read(conversationWriteControllerProvider.notifier).save(
+            conversation,
+            intent: ConversationSaveIntent.analysisCompleted,
+            expectedContentRevision: analyzedRevision,
+          );
+
+      final sections = partitionConversationsByArchive(
+        [conversation],
+        entryFor: _archiveStore.entryFor,
+        latestAnalysisAtFor: (_) => null,
+      );
+      expect(sections.active.single.id, conversation.id);
+      expect(sections.archived, isEmpty);
     });
 
     test('content change returns an archived conversation to active', () async {
@@ -381,6 +594,31 @@ void main() {
       expect(
         _archiveStore.entryFor(conversation)?.status,
         ConversationArchiveStatus.archived,
+      );
+    });
+
+    test('metadata-only reassign can seed markerless legacy archive state',
+        () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final conversation = _convo('legacy-move', partnerId: 'p-Y')
+        ..lastAnalysisSnapshotJson = '{"result":"saved"}'
+        ..lastAnalyzedMessageCount = 0;
+      _fakeRepo.store[conversation.id] = conversation;
+
+      await container.read(conversationWriteControllerProvider.notifier).save(
+            conversation,
+            previousPartnerId: 'p-X',
+            intent: ConversationSaveIntent.metadataOnly,
+            preservedArchivedAt: DateTime.utc(2026, 7, 1),
+          );
+
+      final entry = _archiveStore.entryFor(conversation);
+      expect(entry?.status, ConversationArchiveStatus.archived);
+      expect(entry?.archivedAt, DateTime.utc(2026, 7, 1));
+      expect(
+        entry?.contentRevision,
+        conversationContentRevision(conversation),
       );
     });
 

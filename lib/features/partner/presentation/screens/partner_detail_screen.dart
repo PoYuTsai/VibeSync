@@ -32,10 +32,8 @@ import '../../../../shared/widgets/brand/brand_dialog.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../analysis_history/data/providers/analysis_history_providers.dart';
 import '../../../conversation/data/providers/conversation_archive_providers.dart';
-import '../../../conversation/data/providers/conversation_write_controller.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/presentation/dialogs/conversation_reassign_picker.dart';
-import '../../../conversation/presentation/dialogs/delete_conversation_confirm_dialog.dart';
 import '../../../analysis/data/providers/analysis_providers.dart';
 import '../../../analysis/domain/entities/analysis_models.dart';
 import '../../../coach_follow_up/data/providers/coach_follow_up_providers.dart';
@@ -56,6 +54,7 @@ import '../../domain/mindmap/partner_insight_presentation.dart';
 import '../dialogs/partner_settings_dialog.dart';
 import '../providers/partner_providers.dart';
 import '../utils/conversation_archive_sections.dart';
+import '../utils/conversation_record_actions.dart';
 import '../widgets/partner_conversation_tile.dart';
 import '../widgets/partner_data_quality_banner.dart';
 import '../widgets/partner_heat_hero_card.dart';
@@ -112,22 +111,13 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
     final conversations = ref.watch(conversationsByPartnerProvider(partnerId));
     ref.watch(conversationArchiveControllerProvider);
     final archiveStore = ref.watch(conversationArchiveStoreProvider);
+    final latestAnalysisAtFor = createLazyLatestAnalyzeAtLookup(
+      () => ref.read(analysisHistoryRepositoryProvider),
+    );
     final conversationSections = partitionConversationsByArchive(
       conversations,
       entryFor: archiveStore.entryFor,
-      latestAnalysisAtFor: (conversationId) {
-        try {
-          return latestAnalyzeEventAt(
-            ref
-                .read(analysisHistoryRepositoryProvider)
-                .listByConversation(conversationId, limit: 1),
-          );
-        } catch (_) {
-          // Legacy inference is optional. If history storage is unavailable,
-          // keep the conversation active instead of hiding it by mistake.
-          return null;
-        }
-      },
+      latestAnalysisAtFor: latestAnalysisAtFor,
     );
     final partners = ref.watch(partnerListProvider);
     final hasOtherPartner = partners.any((p) => p.id != partnerId);
@@ -406,7 +396,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                 ref: ref,
               ),
               onDelete: () =>
-                  _confirmDeleteConversation(context, ref, conversation),
+                  confirmDeleteConversation(context, ref, conversation),
             ),
           ),
         ),
@@ -1456,44 +1446,6 @@ Future<void> _onEditPartnerSettings(
     messenger.showSnackBar(
       buildBrandFeedbackSnackBar(
         title: '更新失敗，請稍後再試',
-        icon: Icons.error_outline_rounded,
-        accentColor: AppColors.error,
-      ),
-    );
-  }
-}
-
-Future<void> _confirmDeleteConversation(
-  BuildContext context,
-  WidgetRef ref,
-  Conversation c,
-) async {
-  final dateLabel = DateFormat('MM/dd').format(c.updatedAt);
-  final messenger = ScaffoldMessenger.of(context);
-  final controller = ref.read(conversationWriteControllerProvider.notifier);
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (_) => DeleteConversationConfirmDialog(
-      dateLabel: dateLabel,
-      messageCount: c.messages.length,
-    ),
-  );
-  if (confirmed != true) return;
-  try {
-    await controller.delete(c);
-    if (!context.mounted) return;
-    messenger.showSnackBar(
-      buildBrandFeedbackSnackBar(
-        title: '已刪除這段互動紀錄',
-        icon: Icons.delete_outline_rounded,
-      ),
-    );
-  } catch (e, st) {
-    debugPrint('PartnerDetailScreen conversation delete failed: $e\n$st');
-    if (!context.mounted) return;
-    messenger.showSnackBar(
-      buildBrandFeedbackSnackBar(
-        title: '刪除失敗，請稍後再試',
         icon: Icons.error_outline_rounded,
         accentColor: AppColors.error,
       ),

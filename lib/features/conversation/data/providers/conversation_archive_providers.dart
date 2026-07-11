@@ -14,9 +14,15 @@ class ConversationArchiveController extends Notifier<int> {
   @override
   int build() => 0;
 
-  Future<void> markActive(Conversation conversation) async {
+  Future<void> markActive(
+    Conversation conversation, {
+    String? analyzedContentRevision,
+  }) async {
     await _bestEffort(
-      () => ref.read(conversationArchiveStoreProvider).markActive(conversation),
+      () => ref.read(conversationArchiveStoreProvider).markActive(
+            conversation,
+            analyzedContentRevision: analyzedContentRevision,
+          ),
     );
   }
 
