@@ -90,11 +90,14 @@ interface HintParseOptions {
 }
 
 const MAX_REPLY_LENGTH = 80;
+const GENERATED_REPLY_MAX_LENGTH = 120;
 export const HINT_REPLY_SOFT_CHAR_LIMIT = 60;
 export const MAX_COACHING_LENGTH = 160;
+const GENERATED_COACHING_MAX_LENGTH = 320;
 /**
- * prompt 對模型宣稱的 coaching 軟上限；必須嚴格小於 MAX_COACHING_LENGTH
- * （硬上限 slice 是無聲截斷），留 headroom 讓模型寫完整句。
+ * Prompt soft cap stays below the legacy snapshot clamp. Fresh generated
+ * output is never sliced; it may use the wider absolute cap above when a
+ * complete grounded sentence runs slightly long.
  */
 export const HINT_COACHING_SOFT_CHAR_LIMIT = 140;
 const HIDDEN_HINT_NO_LEAK_RULE =
@@ -1243,13 +1246,18 @@ function requiredString(
   const repaired = options.mode === "game"
     ? repairGameVisibleLabels(normalized)
     : normalized;
+  const generatedMaxLength = field === "coaching"
+    ? GENERATED_COACHING_MAX_LENGTH
+    : GENERATED_REPLY_MAX_LENGTH;
   if (
     options.enforceGeneratedQuality === true &&
-    repaired.length > maxLength
+    repaired.length > generatedMaxLength
   ) {
     throw new Error("hint_quality_invalid_overlong");
   }
-  const capped = repaired.slice(0, maxLength).trim();
+  const capped = options.enforceGeneratedQuality === true
+    ? repaired.trim()
+    : repaired.slice(0, maxLength).trim();
   if (capped.length === 0) {
     throw new Error(`hint_missing_${field}`);
   }

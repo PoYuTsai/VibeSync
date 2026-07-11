@@ -839,7 +839,7 @@ Deno.test("generated Hint rejects overlong visible text instead of slicing a hal
     { role: "user" as const, text: "早安" },
     { role: "ai" as const, text: "我還在賴床，腦袋沒開機" },
   ];
-  const overlongCoaching = "賴床".repeat(81);
+  const overlongCoaching = "賴床".repeat(161);
   assertThrows(
     () =>
       parseHintResult(
@@ -875,7 +875,7 @@ Deno.test("generated Hint rejects overlong visible text instead of slicing a hal
         steady: "還在賴床喔，腦袋開機後再跟我說。",
         coaching: "她說還在賴床、腦袋沒開機，先把回覆成本放低。",
       };
-      raw[field] = "賴床".repeat(41);
+      raw[field] = "賴床".repeat(61);
       assertThrows(
         () =>
           parseHintResult(JSON.stringify(raw), {
@@ -888,6 +888,26 @@ Deno.test("generated Hint rejects overlong visible text instead of slicing a hal
       );
     }
   }
+
+  const completeGeneratedCoaching =
+    "她說還在賴床、腦袋沒開機，先接住賴床和腦袋沒開機的狀態，再用開機梗延伸低壓問題。" +
+    "她的語氣是輕鬆自嘲，不需要急著邀約；回覆先給一點自己的生活感，再讓她選擇要不要繼續聊。" +
+    "兩個版本都重用賴床和腦袋沒開機的具體詞，避免突然轉去問工作或私人行程，也不叫她交作業。" +
+    "這樣能回應她的自嘲，也讓她用很低成本回一小句，保留下一輪自然延伸的空間。";
+  assert(completeGeneratedCoaching.length > MAX_COACHING_LENGTH);
+  const completeGenerated = parseHintResult(
+    JSON.stringify({
+      warmUp: "賴床冠軍先慢慢醒，我等妳腦袋開機。",
+      steady: "還在賴床喔，腦袋開機後再跟我說。",
+      coaching: completeGeneratedCoaching,
+    }),
+    {
+      mode: "beginner",
+      turns,
+      enforceGeneratedQuality: true,
+    },
+  );
+  assertEquals(completeGenerated.coaching, completeGeneratedCoaching);
 });
 
 Deno.test("parseHintResult repairs speedInviteLadder label echoes in game mode", () => {

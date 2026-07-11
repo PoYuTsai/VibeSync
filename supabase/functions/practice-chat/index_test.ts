@@ -3528,11 +3528,27 @@ Deno.test("debrief repairs malformed DeepSeek JSON with Claude", async () => {
   assert(repairPrompt.includes("不是可解析的單一 JSON 物件"));
 });
 
+Deno.test("generated Debrief preserves a complete sentence beyond the legacy display clamp", async () => {
+  const completeWatchout =
+    "她說剛下班只想散步放空是清楚狀態，你有接到下班，但還沒聊深她想放空的感受，也錯過她主動分享的窗口。";
+  assert(completeWatchout.length > 40);
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    deepSeekReplies: [validDebriefJson({ watchouts: [completeWatchout] })],
+  }, debriefBody({ requestId: "debrief-complete-over-legacy-cap" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json.card.watchouts, [completeWatchout]);
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 0);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
 Deno.test("debrief repairs an overlong half-sentence instead of recording a sliced card", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
     deepSeekReplies: [validDebriefJson({
-      watchouts: ["下班".repeat(21)],
+      watchouts: ["下班".repeat(51)],
     })],
     claudeReplies: [validDebriefJson({
       watchouts: ["下班後先接住她想散步放空的感受"],
@@ -3555,7 +3571,7 @@ Deno.test("debrief repairs an overlong half-sentence instead of recording a slic
 
 Deno.test("both overlong Debrief providers fail retryably without recording a card", async () => {
   const overlong = validDebriefJson({
-    watchouts: ["下班".repeat(21)],
+    watchouts: ["下班".repeat(51)],
   });
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
@@ -4445,7 +4461,7 @@ Deno.test("Hint repairs overlong visible text instead of recording a sliced half
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
-      deepSeekReplies: [validHintJson({ coaching: "咖啡".repeat(81) })],
+      deepSeekReplies: [validHintJson({ coaching: "咖啡".repeat(161) })],
       claudeReplies: [validHintJson()],
       rpc: {
         record_practice_hint: [{
@@ -4468,7 +4484,7 @@ Deno.test("Hint repairs overlong visible text instead of recording a sliced half
 });
 
 Deno.test("both overlong Hint providers fail retryably without recording a snapshot", async () => {
-  const overlong = validHintJson({ coaching: "咖啡".repeat(81) });
+  const overlong = validHintJson({ coaching: "咖啡".repeat(161) });
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),

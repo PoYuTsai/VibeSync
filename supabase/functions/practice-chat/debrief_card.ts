@@ -31,6 +31,10 @@ export interface GameBreakdown {
   inviteDirection: string;
 }
 
+const GENERATED_DEBRIEF_PROSE_MAX_LENGTH = 120;
+const GENERATED_DEBRIEF_LIST_ITEM_MAX_LENGTH = 100;
+const GENERATED_GAME_BREAKDOWN_MAX_LENGTH = 140;
+
 export interface DebriefCard {
   summary: string;
   strengths: string[];
@@ -320,30 +324,37 @@ export function clampList(
 
 function generatedVisibleString(
   value: unknown,
-  max: number,
+  legacyMax: number,
+  generatedMax: number,
   enforceGeneratedQuality: boolean,
 ): string {
   if (typeof value !== "string") return "";
   const trimmed = value.trim();
-  if (enforceGeneratedQuality && trimmed.length > max) {
+  if (enforceGeneratedQuality && trimmed.length > generatedMax) {
     throw new Error("debrief_quality_invalid_overlong");
   }
-  return trimmed.slice(0, max);
+  return enforceGeneratedQuality ? trimmed : trimmed.slice(0, legacyMax);
 }
 
 function generatedVisibleList(
   value: unknown,
   maxItems: number,
-  maxLength: number,
+  legacyMaxLength: number,
+  generatedMaxLength: number,
   enforceGeneratedQuality: boolean,
 ): string[] {
   if (!Array.isArray(value)) return [];
   if (!enforceGeneratedQuality) {
-    return clampList(value, maxItems, maxLength);
+    return clampList(value, maxItems, legacyMaxLength);
   }
   return value.slice(0, maxItems)
     .map((item) =>
-      generatedVisibleString(item, maxLength, enforceGeneratedQuality)
+      generatedVisibleString(
+        item,
+        legacyMaxLength,
+        generatedMaxLength,
+        enforceGeneratedQuality,
+      )
     )
     .filter((item) => item.length > 0);
 }
@@ -371,19 +382,44 @@ function parseGameBreakdown(
   const p = value as Record<string, unknown>;
   const gameBreakdown = {
     phaseReached: guardVisibleText(
-      generatedVisibleString(p.phaseReached, 60, enforceGeneratedQuality),
+      generatedVisibleString(
+        p.phaseReached,
+        60,
+        GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
+        enforceGeneratedQuality,
+      ),
     ),
     missedVariable: guardVisibleText(
-      generatedVisibleString(p.missedVariable, 60, enforceGeneratedQuality),
+      generatedVisibleString(
+        p.missedVariable,
+        60,
+        GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
+        enforceGeneratedQuality,
+      ),
     ),
     failureState: guardVisibleText(
-      generatedVisibleString(p.failureState, 60, enforceGeneratedQuality),
+      generatedVisibleString(
+        p.failureState,
+        60,
+        GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
+        enforceGeneratedQuality,
+      ),
     ),
     nextFirstLine: guardVisibleText(
-      generatedVisibleString(p.nextFirstLine, 70, enforceGeneratedQuality),
+      generatedVisibleString(
+        p.nextFirstLine,
+        70,
+        GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
+        enforceGeneratedQuality,
+      ),
     ),
     inviteDirection: guardVisibleText(
-      generatedVisibleString(p.inviteDirection, 60, enforceGeneratedQuality),
+      generatedVisibleString(
+        p.inviteDirection,
+        60,
+        GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
+        enforceGeneratedQuality,
+      ),
     ),
   };
   if (Object.values(gameBreakdown).some((field) => field.length === 0)) {
@@ -698,10 +734,20 @@ export function parseDebriefCard(
   const p = parsed as Record<string, unknown>;
   const enforceGeneratedQuality = opts.enforceGeneratedQuality === true;
   const summary = guardVisibleText(
-    generatedVisibleString(p.summary, 60, enforceGeneratedQuality),
+    generatedVisibleString(
+      p.summary,
+      60,
+      GENERATED_DEBRIEF_PROSE_MAX_LENGTH,
+      enforceGeneratedQuality,
+    ),
   );
   const suggestedLine = guardVisibleText(
-    generatedVisibleString(p.suggestedLine, 60, enforceGeneratedQuality),
+    generatedVisibleString(
+      p.suggestedLine,
+      60,
+      GENERATED_DEBRIEF_PROSE_MAX_LENGTH,
+      enforceGeneratedQuality,
+    ),
   );
   if (summary.length === 0 || suggestedLine.length === 0) {
     throw new Error("debrief_missing_fields");
@@ -710,12 +756,14 @@ export function parseDebriefCard(
     p.strengths,
     2,
     40,
+    GENERATED_DEBRIEF_LIST_ITEM_MAX_LENGTH,
     enforceGeneratedQuality,
   ).map(guardVisibleText);
   const watchouts = generatedVisibleList(
     p.watchouts,
     2,
     40,
+    GENERATED_DEBRIEF_LIST_ITEM_MAX_LENGTH,
     enforceGeneratedQuality,
   ).map(guardVisibleText);
   const vibeRaw = clampStr(p.vibe, 4);
@@ -725,10 +773,20 @@ export function parseDebriefCard(
   // （沒理由還說 medium 會誤導，往保守方向）。向後相容：舊卡缺這些欄位 → low + 空字串。
   const dateChanceRaw = clampStr(p.dateChance, 8).toLowerCase();
   const dateChanceReason = guardVisibleText(
-    generatedVisibleString(p.dateChanceReason, 60, enforceGeneratedQuality),
+    generatedVisibleString(
+      p.dateChanceReason,
+      60,
+      GENERATED_DEBRIEF_PROSE_MAX_LENGTH,
+      enforceGeneratedQuality,
+    ),
   );
   const nextInviteMove = guardVisibleText(
-    generatedVisibleString(p.nextInviteMove, 60, enforceGeneratedQuality),
+    generatedVisibleString(
+      p.nextInviteMove,
+      60,
+      GENERATED_DEBRIEF_PROSE_MAX_LENGTH,
+      enforceGeneratedQuality,
+    ),
   );
   const dateChance = DATE_CHANCES.includes(dateChanceRaw)
     ? dateChanceRaw

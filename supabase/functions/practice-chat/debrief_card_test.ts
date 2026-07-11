@@ -324,10 +324,10 @@ Deno.test("generated Debrief rejects overlong fields instead of slicing visible 
     { role: "ai" as const, text: "我還在賴床，腦袋沒開機" },
   ];
   const proseCases = [
-    ["summary", "賴床".repeat(31)],
-    ["suggestedLine", "賴床".repeat(31)],
-    ["dateChanceReason", "賴床".repeat(31)],
-    ["nextInviteMove", "賴床".repeat(31)],
+    ["summary", "賴床".repeat(61)],
+    ["suggestedLine", "賴床".repeat(61)],
+    ["dateChanceReason", "賴床".repeat(61)],
+    ["nextInviteMove", "賴床".repeat(61)],
   ] as const;
   for (const [field, value] of proseCases) {
     assertThrows(
@@ -345,7 +345,7 @@ Deno.test("generated Debrief rejects overlong fields instead of slicing visible 
     );
   }
 
-  const overlongWatchout = "賴床".repeat(21);
+  const overlongWatchout = "賴床".repeat(51);
   for (const field of ["strengths", "watchouts"] as const) {
     assertThrows(
       () =>
@@ -365,13 +365,27 @@ Deno.test("generated Debrief rejects overlong fields instead of slicing visible 
     );
   }
 
+  const legacyWatchout = "賴床".repeat(21);
   const legacy = parseDebriefCard(
     JSON.stringify({
       ...generatedQualityCard,
-      watchouts: [overlongWatchout],
+      watchouts: [legacyWatchout],
     }),
   );
   assertEquals(legacy.watchouts[0].length, 40);
+
+  const completeGenerated = parseDebriefCard(
+    JSON.stringify({
+      ...generatedQualityCard,
+      watchouts: [legacyWatchout],
+    }),
+    {
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      turns,
+    },
+  );
+  assertEquals(completeGenerated.watchouts[0], legacyWatchout);
 });
 
 Deno.test("generated Game Debrief rejects an overlong breakdown field before clamping", () => {
@@ -391,9 +405,7 @@ Deno.test("generated Game Debrief rejects an overlong breakdown field before cla
       "inviteDirection",
     ] as const
   ) {
-    const overlong = field === "nextFirstLine"
-      ? "賴床".repeat(36)
-      : "賴床".repeat(31);
+    const overlong = "賴床".repeat(71);
     assertThrows(
       () =>
         parseDebriefCard(
