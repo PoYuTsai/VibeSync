@@ -220,6 +220,8 @@ class _PracticeCollectionScreenState
     if (state.isDrawing || state.isPersistingTurn) return;
 
     final notifier = ref.read(practiceChatControllerProvider.notifier);
+    final unlockedCount = ref.read(unlockedPracticeGirlCountProvider);
+    final collectionComplete = unlockedCount >= practiceGirlProfiles.length;
 
     if (!state.isRevealed) {
       // locked（今日首抽）：Free 每日首抽免費，直接翻（比照 _PracticeLockedEntry）。
@@ -229,6 +231,14 @@ class _PracticeCollectionScreenState
       }
       if (state.drawQuotaExceeded) {
         _showDrawSnackBar(state.errorMessage ?? '今日額度已用完，明天再來或升級方案繼續練習。');
+        return;
+      }
+      if (collectionComplete) {
+        _confirmDraw(
+          state,
+          collectionComplete: true,
+          unlockedCount: unlockedCount,
+        );
         return;
       }
       notifier.drawNewPracticeGirl();
@@ -272,29 +282,44 @@ class _PracticeCollectionScreenState
       return;
     }
 
-    if (_needsPaidDrawConfirmation(state)) {
-      _confirmPaidDraw(state);
+    if (_needsPaidDrawConfirmation(state) || collectionComplete) {
+      _confirmDraw(
+        state,
+        collectionComplete: collectionComplete,
+        unlockedCount: unlockedCount,
+      );
       return;
     }
 
     notifier.drawNewPracticeGirl();
   }
 
-  /// 免費次數用完要扣額度：圖鑑頁沒有 inline notice 區，改 AlertDialog 確認。
-  Future<void> _confirmPaidDraw(PracticeChatState state) async {
+  /// 滿池後再抽可能重複、免費次數用完則會扣額度；兩者同時發生時合併成同一個
+  /// AlertDialog，避免使用者連續確認兩次。
+  Future<void> _confirmDraw(
+    PracticeChatState state, {
+    required bool collectionComplete,
+    required int unlockedCount,
+  }) async {
+    final paidConfirmation = _needsPaidDrawConfirmation(state);
+    final messageParts = <String>[
+      if (collectionComplete)
+        '已收藏 $unlockedCount/${practiceGirlProfiles.length}，接下來可能抽到重複角色。',
+      if (paidConfirmation) _paidDrawSpendMessage(state),
+    ];
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: AppColors.brandSurface,
         title: Text(
-          '要扣額度翻牌嗎？',
+          collectionComplete ? '角色已集滿' : '要扣額度翻牌嗎？',
           style: AppTypography.titleMedium.copyWith(
             color: AppColors.onBackgroundPrimary,
             fontWeight: FontWeight.w800,
           ),
         ),
         content: Text(
-          _paidDrawSpendMessage(state),
+          messageParts.join('\n\n'),
           style: AppTypography.bodyMedium.copyWith(
             color: AppColors.onBackgroundSecondary,
             height: 1.5,
@@ -313,7 +338,7 @@ class _PracticeCollectionScreenState
               backgroundColor: AppColors.ctaStart,
               foregroundColor: Colors.white,
             ),
-            child: const Text('確認翻牌'),
+            child: Text(collectionComplete ? '仍要翻牌' : '確認翻牌'),
           ),
         ],
       ),
