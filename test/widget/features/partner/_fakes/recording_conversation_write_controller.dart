@@ -18,19 +18,29 @@ class RecordingConversationWriteController extends ConversationWriteController {
   Conversation? savedConversation;
   String? savedPartnerIdAtCallTime;
   String? savedPreviousPartnerId;
+  ConversationSaveIntent? savedIntent;
+  DateTime? savedPreservedArchivedAt;
   Object? throwOnSave;
   bool deleteCalled = false;
   Conversation? deletedConversation;
   Object? throwOnDelete;
 
   @override
-  Future<void> save(Conversation c, {String? previousPartnerId}) async {
+  Future<void> save(
+    Conversation c, {
+    String? previousPartnerId,
+    ConversationSaveIntent intent = ConversationSaveIntent.contentChanged,
+    String? expectedContentRevision,
+    DateTime? preservedArchivedAt,
+  }) async {
     saveCalled = true;
     savedConversation = c;
     // capture partnerId at the moment of the call — caller mutates it
     // back on failure, so we can't trust it after await returns.
     savedPartnerIdAtCallTime = c.partnerId;
     savedPreviousPartnerId = previousPartnerId;
+    savedIntent = intent;
+    savedPreservedArchivedAt = preservedArchivedAt;
     if (throwOnSave != null) throw throwOnSave!;
   }
 

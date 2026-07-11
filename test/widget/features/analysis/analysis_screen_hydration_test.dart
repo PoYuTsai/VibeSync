@@ -21,11 +21,14 @@ import 'package:vibesync/features/analysis/presentation/widgets/streaming_analys
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
 import 'package:vibesync/features/coach_chat/domain/repositories/coach_chat_repository.dart';
+import 'package:vibesync/features/conversation/data/providers/conversation_archive_providers.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
+import 'package:vibesync/features/conversation/data/repositories/conversation_archive_store.dart';
 import 'package:vibesync/features/conversation/data/repositories/conversation_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
+import 'package:vibesync/features/conversation/presentation/widgets/message_bubble.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/services/partner_summary_builder.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
@@ -36,6 +39,9 @@ import 'package:vibesync/shared/widgets/coach_action_card.dart';
 import 'package:vibesync/shared/widgets/image_picker_widget.dart';
 
 const _conversationId = 'hydration-test';
+const _snapshotClientMetaKey = '__vibesync_snapshot_meta_v1';
+const _snapshotRevisionKey = 'contentRevision';
+const _snapshotMessageCountKey = 'messageCount';
 
 /// Notifier that starts in a pre-seeded state, simulating a remount of
 /// AnalysisScreen onto an already-running provider. Critically, [build] is the
@@ -274,10 +280,10 @@ AnalysisResult _full() {
   );
 }
 
-/// Full result variant that carries a `rawResponse` so the P2 dedup signal
-/// `conv.lastAnalysisSnapshotJson == jsonEncode(result.rawResponse)` is
-/// exercisable. The fields below mirror what the Edge `analyze-chat` shape
-/// returns for the persistence path.
+/// Full result variant that carries a `rawResponse` so the P2 dedup signal can
+/// compare the analysis payload while ignoring reserved client metadata. The
+/// fields below mirror what the Edge `analyze-chat` shape returns for the
+/// persistence path.
 AnalysisResult _fullWithRawResponse(Map<String, dynamic> rawResponse) {
   final base = _full();
   return AnalysisResult(
@@ -359,6 +365,43 @@ Map<String, dynamic> _paidRawResponse() {
   return raw;
 }
 
+Map<String, dynamic> _decodeSnapshot(String? encoded) {
+  if (encoded == null) {
+    throw StateError('Expected an encoded analysis snapshot.');
+  }
+  final decoded = jsonDecode(encoded);
+  if (decoded is! Map) {
+    throw StateError('Expected the analysis snapshot to decode to a map.');
+  }
+  return Map<String, dynamic>.from(decoded);
+}
+
+Map<String, dynamic> _snapshotPayload(String? encoded) {
+  return _decodeSnapshot(encoded)..remove(_snapshotClientMetaKey);
+}
+
+Map<String, dynamic>? _snapshotClientMeta(String? encoded) {
+  final rawMeta = _decodeSnapshot(encoded)[_snapshotClientMetaKey];
+  if (rawMeta is! Map) return null;
+  return Map<String, dynamic>.from(rawMeta);
+}
+
+String _encodeSnapshotWithClientMeta(
+  Map<String, dynamic> payload, {
+  required Conversation conversation,
+  required int messageCount,
+}) {
+  final snapshot = Map<String, dynamic>.from(payload)
+    ..[_snapshotClientMetaKey] = <String, Object>{
+      _snapshotRevisionKey: conversationContentRevision(
+        conversation,
+        messageCount: messageCount,
+      ),
+      _snapshotMessageCountKey: messageCount,
+    };
+  return jsonEncode(snapshot);
+}
+
 Conversation _conversation({
   String? lastAnalysisSnapshotJson,
   int? lastAnalyzedMessageCount,
@@ -395,6 +438,7 @@ class _StubConversationRepository extends ConversationRepository {
   Conversation _conversation;
   int updateCalls = 0;
   Conversation? lastSaved;
+  void Function(Conversation)? onUpdate;
 
   @override
   Conversation? getConversation(String id) {
@@ -407,7 +451,66 @@ class _StubConversationRepository extends ConversationRepository {
     updateCalls++;
     lastSaved = c;
     _conversation = c;
+    onUpdate?.call(c);
   }
+}
+
+class _MemoryConversationArchiveStore implements ConversationArchiveStore {
+  final Map<String, ConversationArchiveEntry> entries = {};
+
+  void seedRestorable(Conversation conversation) {
+    final analyzedCount = conversation.lastAnalyzedMessageCount;
+    entries[conversation.id] = ConversationArchiveEntry.active(
+      changedAt: conversation.updatedAt,
+      contentRevision: conversationContentRevision(
+        conversation,
+        messageCount: analyzedCount,
+      ),
+    );
+  }
+
+  @override
+  ConversationArchiveEntry? entryFor(Conversation conversation) =>
+      entries[conversation.id];
+
+  @override
+  Future<void> markActive(
+    Conversation conversation, {
+    DateTime? changedAt,
+    String? analyzedContentRevision,
+  }) async {
+    entries[conversation.id] = ConversationArchiveEntry.active(
+      changedAt: changedAt ?? DateTime.now(),
+      contentRevision:
+          analyzedContentRevision ?? entries[conversation.id]?.contentRevision,
+    );
+  }
+
+  @override
+  Future<void> markArchived(
+    Conversation conversation, {
+    required DateTime archivedAt,
+  }) async {
+    entries[conversation.id] = ConversationArchiveEntry.archived(
+      archivedAt: archivedAt,
+      contentRevision: conversationContentRevision(conversation),
+    );
+  }
+
+  @override
+  Future<void> remove(Conversation conversation) async {
+    entries.remove(conversation.id);
+  }
+}
+
+_MemoryConversationArchiveStore _defaultArchiveStore(
+  Conversation conversation,
+) {
+  final store = _MemoryConversationArchiveStore();
+  if (conversation.lastAnalysisSnapshotJson?.trim().isNotEmpty == true) {
+    store.seedRestorable(conversation);
+  }
+  return store;
 }
 
 /// Old-run analysis snapshot used to seed `lastAnalysisSnapshotJson` so
@@ -465,11 +568,13 @@ class _HydrationHarness {
     required this.recorder,
     required this.repo,
     required this.history,
+    required this.archiveStore,
     this.subscription,
   });
   final _RecordingAnalysisService recorder;
   final _StubConversationRepository repo;
   final MemoryAnalysisHistoryRepository history;
+  final _MemoryConversationArchiveStore archiveStore;
   final _SeededSubscriptionNotifier? subscription;
 }
 
@@ -478,6 +583,7 @@ class _MutableHydrationHarness extends _HydrationHarness {
     required super.recorder,
     required super.repo,
     required super.history,
+    required super.archiveStore,
     required this.notifier,
   });
 
@@ -488,6 +594,7 @@ Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
   WidgetTester tester, {
   required StreamingAnalysisState seed,
   required Conversation conversation,
+  _MemoryConversationArchiveStore? archiveStore,
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -495,13 +602,18 @@ Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
   final recorder = _RecordingAnalysisService();
   final repo = _StubConversationRepository(conversation);
   final history = MemoryAnalysisHistoryRepository();
+  final resolvedArchiveStore =
+      archiveStore ?? _defaultArchiveStore(conversation);
 
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        coachingOutcomeRepositoryProvider.overrideWithValue(
-            MemoryCoachingOutcomeRepository()),
+        coachingOutcomeRepositoryProvider
+            .overrideWithValue(MemoryCoachingOutcomeRepository()),
         analysisHistoryRepositoryProvider.overrideWithValue(history),
+        conversationArchiveStoreProvider.overrideWithValue(
+          resolvedArchiveStore,
+        ),
         conversationRepositoryProvider.overrideWithValue(repo),
         conversationProvider(_conversationId).overrideWithValue(conversation),
         analysisServiceProvider.overrideWithValue(recorder),
@@ -520,13 +632,19 @@ Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
   // Let initState's post-frame hydration callback land.
   await tester.pump();
   await tester.pump();
-  return _HydrationHarness(recorder: recorder, repo: repo, history: history);
+  return _HydrationHarness(
+    recorder: recorder,
+    repo: repo,
+    history: history,
+    archiveStore: resolvedArchiveStore,
+  );
 }
 
 Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
   WidgetTester tester, {
   required StreamingAnalysisState seed,
   required Conversation conversation,
+  _MemoryConversationArchiveStore? archiveStore,
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -534,14 +652,19 @@ Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
   final recorder = _RecordingAnalysisService();
   final repo = _StubConversationRepository(conversation);
   final history = MemoryAnalysisHistoryRepository();
+  final resolvedArchiveStore =
+      archiveStore ?? _defaultArchiveStore(conversation);
   late final _MutableStreamingAnalyzeNotifier notifier;
 
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        coachingOutcomeRepositoryProvider.overrideWithValue(
-            MemoryCoachingOutcomeRepository()),
+        coachingOutcomeRepositoryProvider
+            .overrideWithValue(MemoryCoachingOutcomeRepository()),
         analysisHistoryRepositoryProvider.overrideWithValue(history),
+        conversationArchiveStoreProvider.overrideWithValue(
+          resolvedArchiveStore,
+        ),
         conversationRepositoryProvider.overrideWithValue(repo),
         conversationProvider(_conversationId).overrideWithValue(conversation),
         analysisServiceProvider.overrideWithValue(recorder),
@@ -565,6 +688,7 @@ Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
     recorder: recorder,
     repo: repo,
     history: history,
+    archiveStore: resolvedArchiveStore,
     notifier: notifier,
   );
 }
@@ -580,6 +704,7 @@ Future<_HydrationHarness> _pumpAnalysisScreenForPremiumRefresh(
   final recorder = _RecordingAnalysisService()..streamResult = streamResult;
   final repo = _StubConversationRepository(conversation);
   final history = MemoryAnalysisHistoryRepository();
+  final archiveStore = _defaultArchiveStore(conversation);
   final limits =
       SubscriptionTierHelper.limitsFor(SubscriptionTierHelper.essential);
   late final _SeededSubscriptionNotifier subscriptionNotifier;
@@ -592,9 +717,10 @@ Future<_HydrationHarness> _pumpAnalysisScreenForPremiumRefresh(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        coachingOutcomeRepositoryProvider.overrideWithValue(
-            MemoryCoachingOutcomeRepository()),
+        coachingOutcomeRepositoryProvider
+            .overrideWithValue(MemoryCoachingOutcomeRepository()),
         analysisHistoryRepositoryProvider.overrideWithValue(history),
+        conversationArchiveStoreProvider.overrideWithValue(archiveStore),
         conversationRepositoryProvider.overrideWithValue(repo),
         conversationProvider(_conversationId).overrideWithValue(conversation),
         analysisServiceProvider.overrideWithValue(recorder),
@@ -626,6 +752,7 @@ Future<_HydrationHarness> _pumpAnalysisScreenForPremiumRefresh(
     recorder: recorder,
     repo: repo,
     history: history,
+    archiveStore: archiveStore,
     subscription: subscriptionNotifier,
   );
 }
@@ -688,6 +815,27 @@ void main() {
                 'Manual composer should collapse while full analysis is streaming so it does not cover the result area.');
         expect(recorder.recommendationPreviewCalls, 0);
         expect(recorder.fullCalls, 0);
+      },
+    );
+
+    testWidgets(
+      'streamingReport 期間鎖住訊息編輯，避免同數量內容變更套用舊分析',
+      (tester) async {
+        await _pumpHydratedAnalysisScreen(
+          tester,
+          seed: StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.streamingReport,
+            recommendationPreview: _preview(runId: 'run_edit_lock'),
+            analysisRunId: 'run_edit_lock',
+          ),
+        );
+
+        final bubble = tester.widget<MessageBubble>(
+          find.byType(MessageBubble).first,
+        );
+        expect(bubble.onEdit, isNull);
+        expect(bubble.onSwapSide, isNull);
+        expect(bubble.onDelete, isNull);
       },
     );
 
@@ -766,6 +914,7 @@ void main() {
             recommendationPreview: recommendationPreview,
             analysisRunId: recommendationPreview.analysisRunId,
             conversationMessageCount: conv.messages.length,
+            conversationContentRevision: conversationContentRevision(conv),
           ),
           conversation: conv,
         );
@@ -780,6 +929,7 @@ void main() {
             full: _fullWithRawResponse(raw),
             analysisRunId: recommendationPreview.analysisRunId,
             conversationMessageCount: conv.messages.length,
+            conversationContentRevision: conversationContentRevision(conv),
           ),
         );
         await tester.pump();
@@ -932,6 +1082,7 @@ void main() {
               recommendationPreview: _preview(runId: 'run_off_screen'),
               full: _fullWithRawResponse(raw),
               analysisRunId: 'run_off_screen',
+              conversationContentRevision: conversationContentRevision(conv),
             ),
             conversation: conv,
           );
@@ -946,8 +1097,20 @@ void main() {
           expect(harness.repo.updateCalls, 1,
               reason:
                   'I-P2-e: off-screen done completion must persist the snapshot on hydrate; listener missed it.');
-          expect(harness.repo.lastSaved?.lastAnalysisSnapshotJson,
-              jsonEncode(raw));
+          expect(
+            _snapshotPayload(
+              harness.repo.lastSaved?.lastAnalysisSnapshotJson,
+            ),
+            equals(raw),
+          );
+          final snapshotMeta = _snapshotClientMeta(
+            harness.repo.lastSaved?.lastAnalysisSnapshotJson,
+          );
+          expect(snapshotMeta?[_snapshotMessageCountKey], conv.messages.length);
+          expect(
+            snapshotMeta?[_snapshotRevisionKey],
+            conversationContentRevision(conv),
+          );
           expect(harness.repo.lastSaved?.lastAnalyzedMessageCount,
               conv.messages.length);
           expect(harness.repo.lastSaved?.lastEnthusiasmScore, 72);
@@ -960,11 +1123,16 @@ void main() {
           final raw = _fullRawResponse();
           // Listener already ran during the original recommendationReady→done
           // transition, persisted the snapshot, then user navigated away and
-          // came back. Snapshot equality must short-circuit hydrate persist.
+          // came back. Payload + metadata equality must short-circuit hydrate
+          // persist.
           final conv = _conversation(
-            lastAnalysisSnapshotJson: jsonEncode(raw),
             lastAnalyzedMessageCount: 1,
             lastEnthusiasmScore: 72,
+          );
+          conv.lastAnalysisSnapshotJson = _encodeSnapshotWithClientMeta(
+            raw,
+            conversation: conv,
+            messageCount: 1,
           );
 
           final harness = await _pumpHydratedAnalysisScreenWithRepo(
@@ -974,6 +1142,7 @@ void main() {
               recommendationPreview: _preview(runId: 'run_already_persisted'),
               full: _fullWithRawResponse(raw),
               analysisRunId: 'run_already_persisted',
+              conversationContentRevision: conversationContentRevision(conv),
             ),
             conversation: conv,
           );
@@ -985,6 +1154,115 @@ void main() {
           expect(harness.repo.updateCalls, 0,
               reason:
                   'I-P2-f: when conv snapshot already matches result, hydrate must skip persist to avoid double-write.');
+        },
+      );
+
+      testWidgets(
+        'matching payload with stale metadata rewrites hydrate snapshot',
+        (tester) async {
+          final raw = _fullRawResponse();
+          final conv = _conversation(
+            lastAnalyzedMessageCount: 1,
+            lastEnthusiasmScore: 72,
+          );
+          conv.lastAnalysisSnapshotJson = _encodeSnapshotWithClientMeta(
+            raw,
+            conversation: conv,
+            messageCount: 1,
+          );
+          final staleRevision = _snapshotClientMeta(
+            conv.lastAnalysisSnapshotJson,
+          )?[_snapshotRevisionKey];
+          conv.messages = [
+            Message(
+              id: 'm1',
+              content: '同訊息數的新內容必須產生新快照版本',
+              isFromMe: false,
+              timestamp: DateTime(2026, 5, 28, 12),
+            ),
+          ];
+          final currentRevision = conversationContentRevision(conv);
+
+          final harness = await _pumpHydratedAnalysisScreenWithRepo(
+            tester,
+            seed: StreamingAnalysisState(
+              phase: StreamingAnalyzePhase.done,
+              recommendationPreview: _preview(runId: 'run_stale_metadata'),
+              full: _fullWithRawResponse(raw),
+              analysisRunId: 'run_stale_metadata',
+              conversationMessageCount: 1,
+              analyzedMessageCount: 1,
+              conversationContentRevision: currentRevision,
+            ),
+            conversation: conv,
+            archiveStore: _MemoryConversationArchiveStore(),
+          );
+
+          tester.takeException();
+          await tester.pump(const Duration(milliseconds: 1));
+
+          expect(harness.repo.updateCalls, 1);
+          expect(
+            _snapshotPayload(
+              harness.repo.lastSaved?.lastAnalysisSnapshotJson,
+            ),
+            equals(raw),
+          );
+          final rewrittenMeta = _snapshotClientMeta(
+            harness.repo.lastSaved?.lastAnalysisSnapshotJson,
+          );
+          expect(rewrittenMeta?[_snapshotMessageCountKey], 1);
+          expect(rewrittenMeta?[_snapshotRevisionKey], currentRevision);
+          expect(rewrittenMeta?[_snapshotRevisionKey], isNot(staleRevision));
+        },
+      );
+
+      testWidgets(
+        'matching premium prefix metadata still dedups with pending messages',
+        (tester) async {
+          final raw = _paidRawResponse();
+          final conv = _conversation(
+            lastAnalyzedMessageCount: 1,
+            lastEnthusiasmScore: 72,
+            extraMessages: [
+              Message(
+                id: 'm2',
+                content: '尚未納入 premium refresh 的待處理訊息',
+                isFromMe: true,
+                timestamp: DateTime(2026, 5, 28, 12, 1),
+              ),
+            ],
+          );
+          conv.lastAnalysisSnapshotJson = _encodeSnapshotWithClientMeta(
+            raw,
+            conversation: conv,
+            messageCount: 1,
+          );
+          final currentRevision = conversationContentRevision(conv);
+
+          final harness = await _pumpHydratedAnalysisScreenWithRepo(
+            tester,
+            seed: StreamingAnalysisState(
+              phase: StreamingAnalyzePhase.done,
+              recommendationPreview: _preview(runId: 'run_prefix_dedupe'),
+              full: _fullWithRawResponse(raw),
+              analysisRunId: 'run_prefix_dedupe',
+              conversationMessageCount: conv.messages.length,
+              analyzedMessageCount: 1,
+              conversationContentRevision: currentRevision,
+            ),
+            conversation: conv,
+          );
+
+          tester.takeException();
+          await tester.pump(const Duration(milliseconds: 1));
+
+          expect(
+            harness.repo.updateCalls,
+            0,
+            reason:
+                'A valid analyzed-prefix snapshot must dedup even while later messages remain pending.',
+          );
         },
       );
 
@@ -1006,6 +1284,7 @@ void main() {
               recommendationPreview: _preview(runId: 'run_after_stale'),
               full: _fullWithRawResponse(raw),
               analysisRunId: 'run_after_stale',
+              conversationContentRevision: conversationContentRevision(conv),
             ),
             conversation: conv,
           );
@@ -1017,8 +1296,12 @@ void main() {
           expect(harness.repo.updateCalls, 1,
               reason:
                   'I-P2-e: stale snapshot from a prior run must not be treated as matching; persist must run.');
-          expect(harness.repo.lastSaved?.lastAnalysisSnapshotJson,
-              jsonEncode(raw));
+          expect(
+            _snapshotPayload(
+              harness.repo.lastSaved?.lastAnalysisSnapshotJson,
+            ),
+            equals(raw),
+          );
         },
       );
     },
@@ -1026,6 +1309,185 @@ void main() {
 
   group('AnalysisScreen streaming stale result guard for newly added messages',
       () {
+    testWidgets(
+      'cold remount skips snapshot whose stored content revision is stale',
+      (tester) async {
+        final conversation = _conversation(
+          lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
+          lastAnalyzedMessageCount: 1,
+          lastEnthusiasmScore: 33,
+        );
+        final analyzedRevision = conversationContentRevision(conversation);
+        conversation.messages = [
+          Message(
+            id: 'm1',
+            content: '冷啟動前已改成新內容',
+            isFromMe: false,
+            timestamp: DateTime(2026, 5, 28, 12),
+          ),
+        ];
+        final archiveStore = _MemoryConversationArchiveStore();
+        archiveStore.entries[conversation.id] = ConversationArchiveEntry.active(
+          changedAt: DateTime(2026, 5, 28, 12, 1),
+          contentRevision: analyzedRevision,
+        );
+
+        final harness = await _pumpHydratedAnalysisScreenWithRepo(
+          tester,
+          seed: const StreamingAnalysisState.idle(),
+          conversation: conversation,
+          archiveStore: archiveStore,
+        );
+
+        expect(find.text('舊建議內容'), findsNothing);
+        expect(find.text('舊策略：保守'), findsNothing);
+        expect(find.text('AI 推薦回覆'), findsNothing);
+        expect(harness.repo.updateCalls, 0);
+      },
+    );
+
+    testWidgets('markerless legacy snapshot still restores without history',
+        (tester) async {
+      final conversation = _conversation(
+        lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
+        lastAnalyzedMessageCount: 1,
+        lastEnthusiasmScore: 33,
+      );
+      final analyzedRevision = conversationContentRevision(
+        conversation,
+        messageCount: 1,
+      );
+
+      final firstHarness = await _pumpHydratedAnalysisScreenWithRepo(
+        tester,
+        seed: const StreamingAnalysisState.idle(),
+        conversation: conversation,
+        archiveStore: _MemoryConversationArchiveStore(),
+      );
+      tester.takeException();
+
+      expect(find.text('AI 推薦回覆'), findsOneWidget);
+      expect(firstHarness.repo.updateCalls, 0);
+      expect(
+        _snapshotPayload(conversation.lastAnalysisSnapshotJson),
+        equals(_staleSnapshotJson()),
+      );
+      final upgradedMeta =
+          _snapshotClientMeta(conversation.lastAnalysisSnapshotJson);
+      expect(upgradedMeta?[_snapshotRevisionKey], analyzedRevision);
+      expect(upgradedMeta?[_snapshotMessageCountKey], 1);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      conversation.messages = [
+        Message(
+          id: 'm1',
+          content: '相同訊息數但內容已改變',
+          isFromMe: false,
+          timestamp: DateTime(2026, 5, 28, 12),
+        ),
+      ];
+
+      await _pumpHydratedAnalysisScreenWithRepo(
+        tester,
+        seed: const StreamingAnalysisState.idle(),
+        conversation: conversation,
+        archiveStore: _MemoryConversationArchiveStore(),
+      );
+      tester.takeException();
+
+      expect(find.text('舊建議內容'), findsNothing);
+      expect(find.text('舊策略：保守'), findsNothing);
+      expect(find.text('AI 推薦回覆'), findsNothing);
+    });
+
+    testWidgets(
+      'markerless post-feature snapshot rejects same-count content edit',
+      (tester) async {
+        final conversation = _conversation(
+          lastAnalyzedMessageCount: 1,
+          lastEnthusiasmScore: 33,
+        );
+        conversation.lastAnalysisSnapshotJson = _encodeSnapshotWithClientMeta(
+          _staleSnapshotJson(),
+          conversation: conversation,
+          messageCount: 1,
+        );
+        conversation.messages = [
+          Message(
+            id: 'm1',
+            content: 'post-feature 快照後改成同數量的新內容',
+            isFromMe: false,
+            timestamp: DateTime(2026, 5, 28, 12),
+          ),
+        ];
+
+        final harness = await _pumpHydratedAnalysisScreenWithRepo(
+          tester,
+          seed: const StreamingAnalysisState.idle(),
+          conversation: conversation,
+          archiveStore: _MemoryConversationArchiveStore(),
+        );
+        tester.takeException();
+
+        expect(find.text('舊建議內容'), findsNothing);
+        expect(find.text('舊策略：保守'), findsNothing);
+        expect(find.text('AI 推薦回覆'), findsNothing);
+        expect(harness.repo.updateCalls, 0);
+      },
+    );
+
+    testWidgets(
+      'cold remount restores analyzed prefix after a new message is appended',
+      (tester) async {
+        final conversation = _conversation(
+          lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
+          lastAnalyzedMessageCount: 1,
+          lastEnthusiasmScore: 33,
+        );
+
+        await _pumpHydratedAnalysisScreenWithRepo(
+          tester,
+          seed: const StreamingAnalysisState.idle(),
+          conversation: conversation,
+          archiveStore: _MemoryConversationArchiveStore(),
+        );
+        tester.takeException();
+
+        expect(find.text('AI 推薦回覆'), findsOneWidget);
+        expect(
+          _snapshotClientMeta(conversation.lastAnalysisSnapshotJson),
+          isNotNull,
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        conversation.messages = [
+          ...conversation.messages,
+          Message(
+            id: 'm2',
+            content: '分析後新增的待處理訊息',
+            isFromMe: false,
+            timestamp: DateTime(2026, 5, 28, 12, 1),
+          ),
+        ];
+
+        await _pumpHydratedAnalysisScreenWithRepo(
+          tester,
+          seed: const StreamingAnalysisState.idle(),
+          conversation: conversation,
+          archiveStore: _MemoryConversationArchiveStore(),
+        );
+        tester.takeException();
+
+        expect(find.text('AI 推薦回覆'), findsOneWidget);
+        expect(
+          find.text('有 1 則新訊息，可以更新下一步建議。'),
+          findsOneWidget,
+        );
+      },
+    );
+
     testWidgets(
       'done for an older message count shows stale-result retry and skips stale persist',
       (tester) async {
@@ -1066,6 +1528,124 @@ void main() {
                 'Stale full result must not persist or advance analyzed count.');
         expect(harness.recorder.recommendationPreviewCalls, 0);
         expect(harness.recorder.fullCalls, 0);
+      },
+    );
+
+    testWidgets(
+      'done for an older same-count content revision skips stale persist',
+      (tester) async {
+        final raw = _fullRawResponse();
+        final conversation = _conversation(
+          lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
+          lastAnalyzedMessageCount: 1,
+          lastEnthusiasmScore: 33,
+        );
+        final analyzedRevision = conversationContentRevision(conversation);
+        conversation.messages = [
+          Message(
+            id: 'm1',
+            content: '分析進行中把同一則訊息改掉',
+            isFromMe: false,
+            timestamp: DateTime(2026, 5, 28, 12),
+          ),
+        ];
+
+        final harness = await _pumpHydratedAnalysisScreenWithRepo(
+          tester,
+          seed: StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.done,
+            recommendationPreview: _preview(runId: 'run_stale_revision'),
+            full: _fullWithRawResponse(raw),
+            analysisRunId: 'run_stale_revision',
+            conversationMessageCount: 1,
+            conversationContentRevision: analyzedRevision,
+          ),
+          conversation: conversation,
+        );
+
+        expect(find.byType(CoachActionCard), findsNothing);
+        expect(find.byType(FullAnalysisRetryCard), findsOneWidget);
+        expect(harness.repo.updateCalls, 0,
+            reason:
+                'Same-count edits must invalidate an older full result before persistence.');
+      },
+    );
+
+    testWidgets(
+      'same-count edit during snapshot write skips new history evidence',
+      (tester) async {
+        final raw = _fullRawResponse();
+        final previousRaw = _staleSnapshotJson();
+        final conversation = _conversation(
+          lastAnalysisSnapshotJson: jsonEncode(previousRaw),
+          lastAnalyzedMessageCount: 1,
+          lastEnthusiasmScore: 33,
+        );
+        final analyzedRevision = conversationContentRevision(conversation);
+        final preview = _preview(runId: 'run_write_interleave');
+        final harness = await _pumpMutableAnalysisScreenWithRepo(
+          tester,
+          seed: StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.streamingReport,
+            recommendationPreview: preview,
+            analysisRunId: preview.analysisRunId,
+            conversationMessageCount: conversation.messages.length,
+            conversationContentRevision: analyzedRevision,
+          ),
+          conversation: conversation,
+        );
+        harness.repo.onUpdate = (saved) {
+          saved.messages = [
+            Message(
+              id: 'm1',
+              content: '快照寫入途中改成新內容',
+              isFromMe: false,
+              timestamp: DateTime(2026, 5, 28, 12),
+            ),
+          ];
+        };
+
+        harness.notifier.emit(
+          StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.done,
+            recommendationPreview: preview,
+            full: _fullWithRawResponse(raw),
+            analysisRunId: preview.analysisRunId,
+            conversationMessageCount: conversation.messages.length,
+            conversationContentRevision: analyzedRevision,
+          ),
+        );
+        await tester.pump();
+        tester.takeException();
+        await tester.pump(const Duration(milliseconds: 1));
+
+        expect(harness.repo.updateCalls, 2,
+            reason:
+                'The stale snapshot write is followed by a compensating active save.');
+        expect(
+          _snapshotPayload(
+            harness.repo.lastSaved?.lastAnalysisSnapshotJson,
+          ),
+          equals(previousRaw),
+        );
+        expect(
+          _snapshotClientMeta(
+            harness.repo.lastSaved?.lastAnalysisSnapshotJson,
+          )?[_snapshotRevisionKey],
+          analyzedRevision,
+        );
+        expect(harness.repo.lastSaved?.lastAnalyzedMessageCount, 1);
+        expect(
+          harness.archiveStore.entryFor(conversation)?.contentRevision,
+          analyzedRevision,
+        );
+        expect(
+          analyzedRevision,
+          isNot(conversationContentRevision(conversation)),
+        );
+        expect(harness.history.events, isEmpty,
+            reason:
+                'A stale completion must not create fresh legacy-inference evidence.');
       },
     );
   });
@@ -1237,8 +1817,12 @@ void main() {
               'Premium refresh should rerun the paid answer for the old analyzed slice only.',
         );
         expect(harness.recorder.streamPreviousAnalyzedCount, 1);
-        expect(harness.repo.lastSaved?.lastAnalysisSnapshotJson,
-            jsonEncode(paidRaw));
+        expect(
+          _snapshotPayload(
+            harness.repo.lastSaved?.lastAnalysisSnapshotJson,
+          ),
+          equals(paidRaw),
+        );
         expect(harness.repo.lastSaved?.lastAnalyzedMessageCount, 1,
             reason:
                 'The pending outgoing message must stay pending after paid reply refresh.');
@@ -1259,6 +1843,7 @@ void main() {
           recommendationPreview: _preview(runId: 'run_history_write'),
           full: _fullWithRawResponse(raw),
           analysisRunId: 'run_history_write',
+          conversationContentRevision: conversationContentRevision(conv),
         ),
         conversation: conv,
       );
@@ -1290,6 +1875,7 @@ void main() {
           recommendationPreview: _preview(runId: 'run_history_dedupe'),
           full: _fullWithRawResponse(raw),
           analysisRunId: 'run_history_dedupe',
+          conversationContentRevision: conversationContentRevision(conv),
         ),
         conversation: conv,
       );

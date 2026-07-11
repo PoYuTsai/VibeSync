@@ -1,25 +1,28 @@
-// 互動紀錄列表分區摺疊（Bruce 回饋案 C）：
-// - 「進行中」＝updatedAt 距今 ≤30 天；「較早的對話」＝>30 天，預設收合。
-// - 全部同一區（全新或全舊）→ 不顯示分區 header，維持單一列表。
-// Hermetic：沿用 partner_detail_screen_test 的窄 provider override，不碰 Hive。
+// 對象頁對話分流（Bruce 回饋 follow-up）：
+// - active 只留「目前對話」。
+// - analysisCompleted 進獨立「分析紀錄」入口，不再與新對話混排。
+// Hermetic：provider/store 全 override，不碰 Hive。
 import 'package:flutter/material.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
 
+import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
+import 'package:vibesync/features/analysis_history/domain/repositories/analysis_history_repository.dart';
+import 'package:vibesync/features/analysis_history/data/providers/analysis_history_providers.dart';
 import 'package:vibesync/features/coach_follow_up/data/providers/coach_follow_up_providers.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/coach_follow_up/domain/repositories/coach_follow_up_repository.dart';
+import 'package:vibesync/features/conversation/data/providers/conversation_archive_providers.dart';
+import 'package:vibesync/features/conversation/data/repositories/conversation_archive_store.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_detail_screen.dart';
-import 'package:vibesync/features/partner/presentation/utils/conversation_recency_sections.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_conversation_tile.dart';
 import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
 import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
-import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 
 Partner _p() => Partner(
@@ -30,16 +33,71 @@ Partner _p() => Partner(
       ownerUserId: 'u1',
     );
 
-Conversation _convAt(String id, DateTime updatedAt) => Conversation(
+Conversation _conv(String id) => Conversation(
       id: id,
       name: '第 $id 段',
       messages: const [],
-      createdAt: updatedAt,
-      updatedAt: updatedAt,
+      createdAt: DateTime(2026, 7, 10),
+      updatedAt: DateTime(2026, 7, 10),
+      ownerUserId: 'u1',
+      partnerId: 'p1',
+      lastAnalysisSnapshotJson: '{"ok":true}',
+      lastAnalyzedMessageCount: 0,
     );
 
-Conversation _convAgedDays(String id, int daysAgo) =>
-    _convAt(id, DateTime.now().subtract(Duration(days: daysAgo)));
+class _MemoryArchiveStore implements ConversationArchiveStore {
+  final Map<String, ConversationArchiveEntry> entries = {};
+
+  @override
+  ConversationArchiveEntry? entryFor(Conversation conversation) =>
+      entries[conversation.id];
+
+  @override
+  Future<void> markActive(
+    Conversation conversation, {
+    DateTime? changedAt,
+    String? analyzedContentRevision,
+  }) async {
+    entries[conversation.id] = ConversationArchiveEntry.active(
+      changedAt: changedAt ?? DateTime.now(),
+      contentRevision:
+          analyzedContentRevision ?? entries[conversation.id]?.contentRevision,
+    );
+  }
+
+  @override
+  Future<void> markArchived(
+    Conversation conversation, {
+    required DateTime archivedAt,
+  }) async {
+    entries[conversation.id] = ConversationArchiveEntry.archived(
+      archivedAt: archivedAt,
+      contentRevision: conversationContentRevision(conversation),
+    );
+  }
+
+  @override
+  Future<void> remove(Conversation conversation) async {
+    entries.remove(conversation.id);
+  }
+}
+
+class _FakeHistoryRepo implements AnalysisHistoryRepository {
+  @override
+  Future<void> append(AnalysisHistoryEvent event) async {}
+  @override
+  Future<void> clearAll() async {}
+  @override
+  List<AnalysisHistoryEvent> listByConversation(String conversationId,
+          {int? limit}) =>
+      const [];
+  @override
+  List<AnalysisHistoryEvent> listByKind(AnalysisHistoryKind kind,
+          {int? limit}) =>
+      const [];
+  @override
+  List<AnalysisHistoryEvent> listRecent({int? limit}) => const [];
+}
 
 class _FakeCoachFollowUpRepo implements CoachFollowUpRepository {
   final Map<String, CoachFollowUpResult> _store = {};
@@ -54,27 +112,24 @@ class _FakeCoachFollowUpRepo implements CoachFollowUpRepository {
 }
 
 class _FakeStyleRepo implements PartnerStyleRepository {
-  final Map<String, PartnerStyleOverride> byPartner = {};
   @override
-  Future<PartnerStyleOverride?> load(String partnerId) async =>
-      byPartner[partnerId];
+  Future<void> clearAll() async {}
   @override
-  Future<void> save(PartnerStyleOverride o) async {
-    if (o.isEmpty) {
-      byPartner.remove(o.partnerId);
-    } else {
-      byPartner[o.partnerId] = o;
-    }
-  }
-
+  Future<void> delete(String partnerId) async {}
   @override
-  Future<void> delete(String partnerId) async => byPartner.remove(partnerId);
+  Future<PartnerStyleOverride?> load(String partnerId) async => null;
   @override
-  Future<void> clearAll() async => byPartner.clear();
+  Future<void> save(PartnerStyleOverride o) async {}
 }
 
-Widget _host(List<Conversation> conversations) => ProviderScope(
+Widget _host(
+  List<Conversation> conversations,
+  ConversationArchiveStore archiveStore,
+) =>
+    ProviderScope(
       overrides: [
+        conversationArchiveStoreProvider.overrideWithValue(archiveStore),
+        analysisHistoryRepositoryProvider.overrideWithValue(_FakeHistoryRepo()),
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
@@ -83,91 +138,57 @@ Widget _host(List<Conversation> conversations) => ProviderScope(
             .overrideWith((_) => PartnerAggregateView.empty()),
         dataQualityFlagProvider('p1')
             .overrideWith((_) => const DataQualityFlag.unflagged()),
-        conversationsByPartnerProvider('p1')
-            .overrideWith((_) => conversations),
+        conversationsByPartnerProvider('p1').overrideWith((_) => conversations),
         partnerListProvider.overrideWith((_) => [_p()]),
       ],
       child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
     );
 
 void main() {
-  group('partitionConversationsByRecency 純函式', () {
-    test('依 30 天門檻分區且保留輸入順序', () {
-      final now = DateTime(2026, 7, 10);
-      final sections = partitionConversationsByRecency(
-        [
-          _convAt('a', now),
-          _convAt('b', now.subtract(const Duration(days: 29))),
-          _convAt('c', now.subtract(const Duration(days: 31))),
-        ],
-        now,
-      );
-      expect(sections.active.map((c) => c.id), ['a', 'b']);
-      expect(sections.older.map((c) => c.id), ['c']);
-    });
+  group('對象頁目前對話／分析紀錄分流', () {
+    testWidgets('active 留在頁面、archived 只顯示分析紀錄入口', (tester) async {
+      final active = _conv('active');
+      final archived = _conv('archived');
+      final store = _MemoryArchiveStore();
+      await store.markArchived(archived, archivedAt: DateTime(2026, 7, 10));
 
-    test('剛好 30 天算進行中（≤30 天）', () {
-      final now = DateTime(2026, 7, 10);
-      final sections = partitionConversationsByRecency(
-        [_convAt('x', now.subtract(const Duration(days: 30)))],
-        now,
-      );
-      expect(sections.active, hasLength(1));
-      expect(sections.older, isEmpty);
-    });
-  });
+      await tester.binding.setSurfaceSize(const Size(400, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(_host([active, archived], store));
+      await tester.pumpAndSettle();
 
-  group('互動紀錄列表分區摺疊', () {
-    testWidgets('3 新 + 2 舊 → 出現「較早的對話 (2)」收合區，展開後全部可見',
-        (t) async {
-      await t.binding.setSurfaceSize(const Size(400, 1600));
-      addTearDown(() => t.binding.setSurfaceSize(null));
-
-      await t.pumpWidget(_host([
-        _convAgedDays('n1', 1),
-        _convAgedDays('n2', 5),
-        _convAgedDays('n3', 10),
-        _convAgedDays('o1', 40),
-        _convAgedDays('o2', 50),
-      ]));
-      await t.pumpAndSettle();
-
-      expect(find.text('較早的對話 (2)'), findsOneWidget);
-      // 預設收合：只有 3 筆進行中 tile。
-      expect(find.byType(PartnerConversationTile), findsNWidgets(3));
-
-      await t.tap(find.text('較早的對話 (2)'));
-      await t.pumpAndSettle();
-      expect(find.byType(PartnerConversationTile), findsNWidgets(5));
-    });
-
-    testWidgets('全部 ≤30 天 → 無分區 header，單一列表', (t) async {
-      await t.binding.setSurfaceSize(const Size(400, 1600));
-      addTearDown(() => t.binding.setSurfaceSize(null));
-
-      await t.pumpWidget(_host([
-        _convAgedDays('n1', 1),
-        _convAgedDays('n2', 5),
-        _convAgedDays('n3', 10),
-      ]));
-      await t.pumpAndSettle();
-
+      expect(find.text('目前對話'), findsOneWidget);
+      expect(find.byType(PartnerConversationTile), findsOneWidget);
+      expect(find.text('分析紀錄 (1)'), findsOneWidget);
       expect(find.textContaining('較早的對話'), findsNothing);
-      expect(find.byType(PartnerConversationTile), findsNWidgets(3));
     });
 
-    testWidgets('全部 >30 天 → 無分區 header，直接展開顯示不留空白', (t) async {
-      await t.binding.setSurfaceSize(const Size(400, 1600));
-      addTearDown(() => t.binding.setSurfaceSize(null));
+    testWidgets('全部已分析時不留混排 tile，顯示清楚空狀態與紀錄入口', (tester) async {
+      final first = _conv('first');
+      final second = _conv('second');
+      final store = _MemoryArchiveStore();
+      await store.markArchived(first, archivedAt: DateTime(2026, 7, 10));
+      await store.markArchived(second, archivedAt: DateTime(2026, 7, 9));
 
-      await t.pumpWidget(_host([
-        _convAgedDays('o1', 40),
-        _convAgedDays('o2', 50),
-      ]));
-      await t.pumpAndSettle();
+      await tester.binding.setSurfaceSize(const Size(400, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(_host([first, second], store));
+      await tester.pumpAndSettle();
 
-      expect(find.textContaining('較早的對話'), findsNothing);
+      expect(find.byType(PartnerConversationTile), findsNothing);
+      expect(find.text('目前沒有待整理的對話'), findsOneWidget);
+      expect(find.text('分析紀錄 (2)'), findsOneWidget);
+    });
+
+    testWidgets('全部 active 時不顯示空的分析紀錄入口', (tester) async {
+      final store = _MemoryArchiveStore();
+      await tester.binding.setSurfaceSize(const Size(400, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(_host([_conv('a'), _conv('b')], store));
+      await tester.pumpAndSettle();
+
       expect(find.byType(PartnerConversationTile), findsNWidgets(2));
+      expect(find.textContaining('分析紀錄 ('), findsNothing);
     });
   });
 }

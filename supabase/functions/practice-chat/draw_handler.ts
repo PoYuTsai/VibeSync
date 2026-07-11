@@ -179,6 +179,7 @@ export async function handleDrawProfile(
   // 永久去重把切池抽滿 → 降級回現行「當日視窗排除」（允許跨窗重複收藏過的角色），
   // 絕不讓抽卡因無候選而失敗。降級與否都用同一個 excluded 集合走選牌＋撞號重抽。
   let excluded = permanentExcluded;
+  let dedupFallbackUsed = false;
   if (
     !hasEligibleDrawCandidate({
       currentProfileId: request.currentProfileId,
@@ -190,6 +191,7 @@ export async function handleDrawProfile(
       user: summarizeUser(userId),
       drawnCount: permanentExcluded.size,
     });
+    dedupFallbackUsed = true;
     excluded = windowExcluded;
   }
 
@@ -247,6 +249,28 @@ export async function handleDrawProfile(
     if (!receipt || typeof receipt.profile_id !== "string") {
       logError("practice_draw_empty_receipt", { user: summarizeUser(userId) });
       return { body: { error: "draw_failed" }, status: 500 };
+    }
+
+    // 正常的新卡不得出現在全歷史排除集合，也不得等於目前角色。唯二合法例外：
+    // 1) 同 requestId 的冪等 replay；2) 池滿後明確走 dedup fallback，允許跨窗重複。
+    // RPC 已原子完成時只做 telemetry，不得把成功改成 500、讓 client 重試再生風險。
+    const idempotentReplay = receipt.idempotent_replay === true;
+    const historicalDuplicate = permanentExcluded.has(receipt.profile_id);
+    const currentProfileDuplicate =
+      request.currentProfileId === receipt.profile_id;
+    if (
+      !idempotentReplay &&
+      ((historicalDuplicate && !dedupFallbackUsed) || currentProfileDuplicate)
+    ) {
+      logWarn("practice_draw_unexpected_duplicate", {
+        user: summarizeUser(userId),
+        profileId: receipt.profile_id,
+        historicalDuplicate,
+        currentProfileDuplicate,
+        dedupFallbackUsed,
+        drawnCount: permanentExcluded.size,
+        catalogSize: request.catalogSize ?? "legacy",
+      });
     }
 
     // idempotent replay 時 RPC 回的是「原本抽到的」profile_id；一律以它反查同一位，

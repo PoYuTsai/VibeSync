@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/domain/services/screenshot_recognition_helper.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart';
@@ -8,10 +9,22 @@ import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 
 void main() {
+  const ocrSwipeTutorialSeenKey = 'analysis_ocr_swipe_tutorial_seen_v1_global';
+
+  setUp(() {
+    // Existing dialog tests are not tutorial tests, so keep their
+    // pumpAndSettle paths fast and deterministic. Tutorial cases opt back into
+    // first-run state explicitly.
+    SharedPreferences.setMockInitialValues({
+      ocrSwipeTutorialSeenKey: true,
+    });
+  });
+
   Widget buildDialogHost({
     required RecognizedConversation recognized,
     required String initialImportMode,
     required bool forceShowSessionContextFields,
+    bool reduceMotion = false,
     String? warningMessage,
     String initialName = '',
     MeetingContext? initialMeetingContext,
@@ -22,6 +35,12 @@ void main() {
     ValueChanged<ScreenshotRecognitionDialogResult?>? onResult,
   }) {
     return MaterialApp(
+      builder: (context, child) => reduceMotion
+          ? MediaQuery(
+              data: MediaQuery.of(context).copyWith(disableAnimations: true),
+              child: child!,
+            )
+          : child!,
       home: Scaffold(
         body: Builder(
           builder: (context) => ElevatedButton(
@@ -137,8 +156,7 @@ void main() {
   );
 
   group('ScreenshotRecognitionDialog 滑動校正器', () {
-    testWidgets('顯示滑動提示，砍掉 OCR 信心徽章與安撫框，但保留警示與加入方式',
-        (tester) async {
+    testWidgets('顯示滑動提示，砍掉 OCR 信心徽章與安撫框，但保留警示與加入方式', (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(
         buildDialogHost(
@@ -154,7 +172,11 @@ void main() {
       await tester.pumpAndSettle();
 
       // 保留：滑動提示一行 + 加入方式切換 + 低信心警示。
-      expect(find.text('判錯邊？左右滑動訊息即可切換。'), findsOneWidget);
+      expect(find.text('判錯邊？滑動訊息切換說話者。'), findsOneWidget);
+      expect(
+        find.text('右滑＝我說，左滑＝她說；點訊息可改字或刪除。'),
+        findsOneWidget,
+      );
       expect(find.text('另存成新對話'), findsOneWidget);
       expect(find.textContaining('辨識信心較低'), findsWidgets);
 
@@ -314,8 +336,7 @@ void main() {
       );
     });
 
-    testWidgets('清空所有訊息後送出 → 顯示「至少保留一則」驗證且不送出',
-        (tester) async {
+    testWidgets('清空所有訊息後送出 → 顯示「至少保留一則」驗證且不送出', (tester) async {
       await _useTallSurface(tester);
       ScreenshotRecognitionDialogResult? dialogResult =
           const ScreenshotRecognitionDialogResult(
@@ -403,7 +424,8 @@ void main() {
       );
     });
 
-    testWidgets('開啟時對第一則泡泡播一次性滑動教學動畫，播完停在原位', (tester) async {
+    testWidgets('首次開啟進場 350ms 後依序播右滑我說、左滑她說，播完歸零', (tester) async {
+      SharedPreferences.setMockInitialValues({});
       await _useTallSurface(tester);
       await tester.pumpWidget(
         buildDialogHost(
@@ -416,23 +438,218 @@ void main() {
 
       await tester.tap(find.text('Open Dialog'));
       await tester.pump();
-      // 動畫中段：第一則泡泡有水平位移、示意箭頭可見。
-      await tester.pump(const Duration(milliseconds: 400));
-      final shifting = tester.widget<Transform>(
-        find.byKey(const ValueKey('ocr-swipe-tutorial-shift')),
-      );
-      expect(shifting.transform.getTranslation().x, isNot(0));
+      await tester.pump(); // flush SharedPreferences read after first frame
+
+      // Dialog 先完成進場；350ms 前不可偷跑。
+      await tester.pump(const Duration(milliseconds: 349));
+      expect(_tutorialShiftX(tester), 0);
+
+      // Timer 到點後先走右滑 phase。
+      await tester.pump(const Duration(milliseconds: 1));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(_tutorialShiftX(tester), greaterThan(0));
       expect(
-        find.byKey(const ValueKey('ocr-swipe-tutorial-arrow')),
-        findsOneWidget,
+        _tutorialHintOpacity(tester, 'ocr-swipe-tutorial-right-hint'),
+        greaterThan(0),
+      );
+      expect(
+        _tutorialHintOpacity(tester, 'ocr-swipe-tutorial-left-hint'),
+        0,
+      );
+
+      // 後半段切到左滑 phase，方向與文案一起換。
+      await tester.pump(const Duration(milliseconds: 900));
+      expect(_tutorialShiftX(tester), lessThan(0));
+      expect(
+        _tutorialHintOpacity(tester, 'ocr-swipe-tutorial-right-hint'),
+        0,
+      );
+      expect(
+        _tutorialHintOpacity(tester, 'ocr-swipe-tutorial-left-hint'),
+        greaterThan(0),
       );
 
       // 一次性：pumpAndSettle 必收斂（零無限 repeat），播完位移歸零。
       await tester.pumpAndSettle();
-      final settled = tester.widget<Transform>(
-        find.byKey(const ValueKey('ocr-swipe-tutorial-shift')),
+      expect(_tutorialShiftX(tester), 0);
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getBool(ocrSwipeTutorialSeenKey),
+        isTrue,
       );
-      expect(settled.transform.getTranslation().x, 0);
+    });
+
+    testWidgets('已看過不再自動播，但問號仍可重播', (tester) async {
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 2));
+      expect(_tutorialShiftX(tester), 0);
+      expect(find.byTooltip('重播滑動教學'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey('ocr-swipe-tutorial-replay')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(_tutorialShiftX(tester), greaterThan(0));
+      expect(
+        _tutorialHintOpacity(tester, 'ocr-swipe-tutorial-right-hint'),
+        greaterThan(0),
+      );
+      await tester.pumpAndSettle();
+      expect(_tutorialShiftX(tester), 0);
+    });
+
+    testWidgets('首次進場延遲內開始操作訊息會取消自動教學', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pump();
+      // 在 SharedPreferences read／350ms timer 都可能仍在途時先真實滑動。
+      await tester.drag(find.text('在幹嘛'), const Offset(40, 0));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 2));
+
+      expect(_tutorialShiftX(tester), 0);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool(ocrSwipeTutorialSeenKey), isNull);
+    });
+
+    testWidgets('首次進場延遲內一鍵改為對方也會取消自動教學', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pump();
+      await tester.pump(); // flush SharedPreferences read
+      final markAllButton = find.text('全部都是對方說的');
+      await tester.ensureVisible(markAllButton);
+      await tester.pump();
+      await tester.tap(markAllButton);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+
+      expect(_tutorialShiftX(tester), 0);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool(ocrSwipeTutorialSeenKey), isNull);
+    });
+
+    testWidgets('reduce-motion 不自動位移，問號改顯示靜態雙向圖例', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+          reduceMotion: true,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 2));
+      expect(_tutorialShiftX(tester), 0);
+
+      await tester.tap(
+        find.byKey(const ValueKey('ocr-swipe-tutorial-replay')),
+      );
+      await tester.pump();
+      expect(_tutorialShiftX(tester), 0);
+      expect(
+        find.byKey(const ValueKey('ocr-swipe-tutorial-static-legend')),
+        findsOneWidget,
+      );
+      expect(find.text('右滑 → 我說'), findsWidgets);
+      expect(find.text('左滑 → 她說'), findsWidgets);
+
+      // 沒有真的播放 motion，不消耗首次動畫旗標；日後關閉 reduce-motion
+      // 還能收到一次自動教學。
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool(ocrSwipeTutorialSeenKey), isNull);
+    });
+
+    testWidgets('350ms 延遲期間關閉 dialog 會取消 autoplay timer', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.text('稍後再加入'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(ScreenshotRecognitionDialog), findsNothing);
+    });
+
+    testWidgets('沒有可示範訊息時不播放也不寫 seen flag', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: const RecognizedConversation(
+            contactName: '小美',
+            messageCount: 0,
+            summary: '沒有訊息',
+            classification: 'low_confidence',
+            importPolicy: 'confirm',
+            confidence: 'low',
+            messages: [],
+          ),
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 2));
+
+      expect(
+        find.byKey(const ValueKey('ocr-swipe-tutorial-shift')),
+        findsNothing,
+      );
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool(ocrSwipeTutorialSeenKey), isNull);
     });
 
     testWidgets('全部都是對方說的時隱藏兜底鍵', (tester) async {
@@ -602,6 +819,20 @@ Finder _partnerNameField() {
     (widget) => widget is TextField && widget.decoration?.hintText == '輸入對方名字',
     description: 'partner name TextField',
   );
+}
+
+double _tutorialShiftX(WidgetTester tester) {
+  return tester
+      .widget<Transform>(
+        find.byKey(const ValueKey('ocr-swipe-tutorial-shift')),
+      )
+      .transform
+      .getTranslation()
+      .x;
+}
+
+double _tutorialHintOpacity(WidgetTester tester, String key) {
+  return tester.widget<FadeTransition>(find.byKey(ValueKey(key))).opacity.value;
 }
 
 Future<void> _useTallSurface(WidgetTester tester) async {

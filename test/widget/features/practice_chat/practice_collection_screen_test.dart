@@ -508,6 +508,35 @@ void main() {
       expect(controller.drawCalls, 1);
     });
 
+    testWidgets('locked＋已收藏全池 → 先提示可能重複；取消不抽、確認才抽', (tester) async {
+      final controller = _DrawSpyController(_lockedSeed());
+      final allUnlocked = practiceGirlProfiles.map((p) => p.profileId).toSet();
+      await pumpApp(
+        tester,
+        collectionApp(controller: controller, unlocked: allUnlocked),
+      );
+
+      await tester.tap(find.byKey(drawButton));
+      await tester.pump();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('角色已集滿'), findsOneWidget);
+      expect(find.text('已收藏 100/100，接下來可能抽到重複角色。'), findsOneWidget);
+      expect(find.text('仍要翻牌'), findsOneWidget);
+      expect(controller.drawCalls, 0);
+
+      await tester.tap(find.byKey(cancelKey));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(controller.drawCalls, 0);
+
+      await tester.tap(find.byKey(drawButton));
+      await tester.pump();
+      await tester.tap(find.byKey(confirmKey));
+      await tester.pump();
+      expect(controller.drawCalls, 1);
+    });
+
     testWidgets('locked＋drawUpgradeRequired 點擊 → 導 paywall、不 draw',
         (tester) async {
       final controller = _DrawSpyController(
@@ -595,6 +624,42 @@ void main() {
       await tester.tap(find.byKey(confirmKey));
       await tester.pumpAndSettle();
 
+      expect(controller.drawCalls, 1);
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+
+    testWidgets('已收藏全池＋付費翻牌 → 重複風險與扣額度合併成單一確認窗', (tester) async {
+      final controller = _DrawSpyController(
+        _revealedSeed(freeAllowance: 1, freeRemaining: 0, extraCost: 5),
+      );
+      final allUnlocked = practiceGirlProfiles.map((p) => p.profileId).toSet();
+      await pumpApp(
+        tester,
+        collectionApp(
+          controller: controller,
+          subscription: _paidSubscription,
+          unlocked: allUnlocked,
+        ),
+      );
+
+      await tester.tap(find.byKey(drawButton));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('角色已集滿'), findsOneWidget);
+      expect(
+        find.textContaining('已收藏 100/100，接下來可能抽到重複角色。'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('今日 1 次免費換人已用完，再按一次會扣 5 則額度。'),
+        findsOneWidget,
+      );
+      expect(find.text('要扣額度翻牌嗎？'), findsNothing);
+      expect(controller.drawCalls, 0);
+
+      await tester.tap(find.byKey(confirmKey));
+      await tester.pumpAndSettle();
       expect(controller.drawCalls, 1);
       expect(find.byType(AlertDialog), findsNothing);
     });

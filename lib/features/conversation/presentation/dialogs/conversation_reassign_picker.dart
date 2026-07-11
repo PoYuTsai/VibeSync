@@ -11,9 +11,9 @@ import '../../domain/entities/conversation.dart';
 /// Modal sheet that lets the user move a single Conversation to another
 /// Partner. Reuses [PartnerPickerSheet] for the list / filter UI.
 ///
-/// Save path: `ConversationWriteController.save(c, previousPartnerId:)` —
-/// Phase 1's narrow contract handles the dual-side (`previousPartnerId`
-/// + new `partnerId`) invalidation.
+/// Save path: `ConversationWriteController.save(c, previousPartnerId:,
+/// intent: metadataOnly)` — Phase 1's narrow contract handles dual-side
+/// invalidation without changing whether the conversation is archived.
 ///
 /// Failure handling: the in-memory `conversation.partnerId` is mutated
 /// optimistically before save and rolled back on throw, so the visible
@@ -22,6 +22,7 @@ Future<void> showConversationReassignPicker(
   BuildContext context, {
   required Conversation conversation,
   required WidgetRef ref,
+  DateTime? preservedArchivedAt,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -56,9 +57,12 @@ Future<void> showConversationReassignPicker(
 
           conversation.partnerId = target.id;
           try {
-            await ref
-                .read(conversationWriteControllerProvider.notifier)
-                .save(conversation, previousPartnerId: previousPartnerId);
+            await ref.read(conversationWriteControllerProvider.notifier).save(
+                  conversation,
+                  previousPartnerId: previousPartnerId,
+                  intent: ConversationSaveIntent.metadataOnly,
+                  preservedArchivedAt: preservedArchivedAt,
+                );
             if (sheetCtx.mounted) Navigator.of(sheetCtx).pop();
           } catch (_) {
             conversation.partnerId = previousPartnerId;

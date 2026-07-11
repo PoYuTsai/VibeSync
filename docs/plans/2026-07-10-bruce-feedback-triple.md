@@ -96,3 +96,54 @@ Run: `flutter test`，預期 FAIL。
 - 三案各自獨立 commit＋push（案 A 需 Codex APPROVED 證據才宣稱 dogfood safe）。
 - 更新記憶：練習室 hint 記憶檔補「抽卡跨天重複＝已改永久去重（池滿退避）」；本計畫檔路徑記入。
 - 全部完成後提醒 Eric 真機 dogfood：抽卡連兩天驗證不重複、OCR 確認頁動畫、舊對話摺疊。
+
+---
+
+## 2026-07-11 真機回饋後的最終優化（取代案 B／C 輕量版）
+
+Eric 在 build 322 實測後拍板「OK 處理」，因此下面規格為目前真相；上方案 B
+「每次開啟都播、不落旗標」與案 C「只做 30 天摺疊、不做封存頁」不再適用。
+
+### C：已分析對話改成真正的獨立分析紀錄
+
+- 分析快照成功落盤後才標記 archived；失敗絕不封存。
+- 新增／編輯／換邊／刪除訊息會標回 active；只改 partnerId 的 metadata save
+  保留原狀；刪除對話同步清 marker。
+- marker 存在已加密 `settingsBox`，owner-scoped，不新增 Conversation HiveField／
+  migration。舊資料只有 snapshot、message count、較新的 analyze history 三項證據
+  都成立時才保守推導 archived；歷史盒不可用則 fail-open 留在目前對話。
+- 對象頁只顯示「目前對話」，另有「分析紀錄 (N)」入口；獨立頁依月份分組，
+  可查看、可「繼續這一段」移回 active，也可新增對話。
+- Commit：`b7753875`。
+
+### B：首次自動播放、可重播、尊重 reduce-motion
+
+- 首幀後延遲 350ms，僅全裝置第一次自動播放；實際開始播放才寫 seen flag。
+- 第一則泡泡分兩段示範「右滑 → 我說」「左滑 → 她說」，播放完歸零、不 repeat。
+- 48px `?` 按鈕可隨時重播；永久提示保留絕對方向文字。
+- 使用者先操作訊息或關閉 dialog 會取消仍在途的偏好讀取／timer／動畫。
+- `MediaQuery.disableAnimations` 下不移動，按 `?` 顯示靜態雙向圖例。
+- Commit：`774ff49f`。
+
+### A：滿池預期管理與異常重複監測
+
+- 圖鑑既有 `X/100` 保留；收藏達 100/100 再翻牌時，先告知之後可能重複。
+- 若同時需要扣 5 則額度，重複風險與扣費合併成一個確認窗，取消不送抽卡。
+- server 對非 idempotent replay、非合法池滿退避卻回歷史角色，或回目前角色，
+  記 `practice_draw_unexpected_duplicate`；只記 telemetry，不改已成功 RPC／扣費／
+  response schema。合法 replay 與池滿 fallback 不誤報。
+- Commit：`a4f62428`。
+
+### 驗證狀態
+
+- Archive／analysis／OCR 高風險整合 bundle：126/126 通過。
+- Hint service + Collection screen：41/41 通過。
+- Draw handler：`deno test --allow-env .../draw_handler_test.ts` 18/18；
+  `deno check`、`deno fmt --check` 通過。
+- `flutter analyze`：0 issue；`git diff --check` 通過。
+- 競態修正 commit：`47d7986e`；OCR edge-case commit：`636c7c2b`。
+- Codex client red-team 與 test/migration/data-safety 第二輪皆 `APPROVED`，
+  P0/P1/P2 = 0/0/0；證據見
+  `docs/reviews/2026-07-11_bruce-ux-followup-codex-review.md`。
+- 出貨狀態：程式碼與雙審 gate 已完成；尚待 push／PR、`practice-chat` Edge deploy、
+  新 TestFlight build 與三案真機 dogfood。

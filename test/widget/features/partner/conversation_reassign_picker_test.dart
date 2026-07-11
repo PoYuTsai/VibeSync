@@ -34,7 +34,11 @@ Conversation _conv({String partnerId = 'A'}) => Conversation(
 
 class _Harness extends ConsumerWidget {
   final Conversation conversation;
-  const _Harness({required this.conversation});
+  final DateTime? preservedArchivedAt;
+  const _Harness({
+    required this.conversation,
+    this.preservedArchivedAt,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -45,6 +49,7 @@ class _Harness extends ConsumerWidget {
             context,
             conversation: conversation,
             ref: ref,
+            preservedArchivedAt: preservedArchivedAt,
           ),
           child: const Text('open-picker'),
         ),
@@ -60,6 +65,7 @@ Future<void> _pumpHarness(
   required Conversation conversation,
   required List<Partner> partners,
   required RecordingConversationWriteController fake,
+  DateTime? preservedArchivedAt,
 }) async {
   await t.binding.setSurfaceSize(const Size(400, 1200));
   addTearDown(() => t.binding.setSurfaceSize(null));
@@ -69,7 +75,12 @@ Future<void> _pumpHarness(
       partnerListProvider.overrideWith((_) => partners),
       conversationWriteControllerProvider.overrideWith(() => fake),
     ],
-    child: MaterialApp(home: _Harness(conversation: conversation)),
+    child: MaterialApp(
+      home: _Harness(
+        conversation: conversation,
+        preservedArchivedAt: preservedArchivedAt,
+      ),
+    ),
   ));
   await t.pumpAndSettle();
 }
@@ -118,9 +129,35 @@ void main() {
     expect(fake.savedConversation?.id, 'c1');
     expect(fake.savedPartnerIdAtCallTime, 'B');
     expect(fake.savedPreviousPartnerId, 'A');
+    expect(fake.savedIntent, ConversationSaveIntent.metadataOnly);
+    expect(fake.savedPreservedArchivedAt, isNull);
     // sheet popped → trigger button visible again
     expect(find.text('open-picker'), findsOneWidget);
     expect(find.text('Bob'), findsNothing);
+  });
+
+  testWidgets('archived reassign preserves the original archive timestamp',
+      (t) async {
+    final fake = RecordingConversationWriteController();
+    final c = _conv(partnerId: 'A');
+    final archivedAt = DateTime.utc(2026, 6, 20, 8);
+    await _pumpHarness(
+      t,
+      conversation: c,
+      partners: [_p('A', 'Alice'), _p('B', 'Bob')],
+      fake: fake,
+      preservedArchivedAt: archivedAt,
+    );
+
+    await t.tap(find.text('open-picker'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Bob'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('移過去'));
+    await t.pumpAndSettle();
+
+    expect(fake.savedIntent, ConversationSaveIntent.metadataOnly);
+    expect(fake.savedPreservedArchivedAt, archivedAt);
   });
 
   testWidgets('save failure rolls back conversation.partnerId + shows SnackBar',

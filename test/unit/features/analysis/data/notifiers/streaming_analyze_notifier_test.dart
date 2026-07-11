@@ -214,6 +214,7 @@ void main() {
       final startFuture = notifier.start(
         messages: [_msg('hi')],
         conversationMessageCount: 3,
+        conversationContentRevision: 'revision-happy',
       );
 
       // Allow recommendation preview to resolve and the streamingReport transition to land.
@@ -225,6 +226,7 @@ void main() {
       expect(afterQuick.recommendationPreview?.analysisRunId, 'run_happy');
       expect(afterQuick.analysisRunId, 'run_happy');
       expect(afterQuick.conversationMessageCount, 3);
+      expect(afterQuick.conversationContentRevision, 'revision-happy');
 
       fake.fullGate!.complete();
       await startFuture;
@@ -232,6 +234,7 @@ void main() {
       final afterFull = container.read(streamingAnalyzeProvider('conv-1'));
       expect(afterFull.phase, StreamingAnalyzePhase.done);
       expect(afterFull.conversationMessageCount, 3);
+      expect(afterFull.conversationContentRevision, 'revision-happy');
       expect(afterFull.full?.strategy, '保持沉穩');
 
       expect(
@@ -268,13 +271,17 @@ void main() {
       final notifier =
           container.read(streamingAnalyzeProvider('conv-1').notifier);
 
-      await notifier.start(messages: [_msg('hi')]);
+      await notifier.start(
+        messages: [_msg('hi')],
+        conversationContentRevision: 'revision-failure',
+      );
 
       final state = container.read(streamingAnalyzeProvider('conv-1'));
       expect(state.phase, StreamingAnalyzePhase.failedBeforeRecommendation);
       expect(state.recommendationPreview, isNull);
       expect(state.recommendationPreviewErrorMessage, '網路忙線');
       expect(state.recommendationPreviewErrorCode, 'NETWORK_ERROR');
+      expect(state.conversationContentRevision, 'revision-failure');
       expect(fake.fullCallCount, 0);
     });
 
@@ -292,7 +299,10 @@ void main() {
       final notifier =
           container.read(streamingAnalyzeProvider('conv-1').notifier);
 
-      await notifier.start(messages: [_msg('hi')]);
+      await notifier.start(
+        messages: [_msg('hi')],
+        conversationContentRevision: 'revision-quota',
+      );
 
       final state = container.read(streamingAnalyzeProvider('conv-1'));
       expect(state.phase, StreamingAnalyzePhase.failedBeforeRecommendation);
@@ -358,7 +368,10 @@ void main() {
       final notifier =
           container.read(streamingAnalyzeProvider('conv-1').notifier);
 
-      await notifier.start(messages: [_msg('hi')]);
+      await notifier.start(
+        messages: [_msg('hi')],
+        conversationContentRevision: 'revision-retry',
+      );
       expect(fake.streamCallCount, 1);
       expect(fake.recommendationPreviewCallCount, 0);
       expect(fake.fullCallCount, 0);
@@ -376,6 +389,7 @@ void main() {
 
       final state = container.read(streamingAnalyzeProvider('conv-1'));
       expect(state.phase, StreamingAnalyzePhase.done);
+      expect(state.conversationContentRevision, 'revision-retry');
     });
 
     test('retryFull after unrecoverable stream error keeps retriesRemaining=0',
@@ -473,8 +487,7 @@ void main() {
       expect(state.retriesRemaining, 0);
     });
 
-    test('retryFull 撞 quota 429 → quotaExceeded state（Bruce 實際觸發路）',
-        () async {
+    test('retryFull 撞 quota 429 → quotaExceeded state（Bruce 實際觸發路）', () async {
       final fake = _FakeAnalysisService()
         ..recommendationPreviewResult = _preview(runId: 'run_retry_quota')
         ..streamError = StreamModeException(
@@ -546,7 +559,8 @@ void main() {
       expect(state.quotaExceeded, isNull);
     });
 
-    test('fresh-start quota 429（無 content）維持 failedBeforeRecommendation 並帶 quotaExceeded',
+    test(
+        'fresh-start quota 429（無 content）維持 failedBeforeRecommendation 並帶 quotaExceeded',
         () async {
       final fake = _FakeAnalysisService()
         ..streamError = MonthlyLimitExceededException(
@@ -622,6 +636,7 @@ void main() {
         fullErrorMessage: 'keep me',
         fullErrorCode: 'KEEP',
         retriesRemaining: 2,
+        conversationContentRevision: 'revision-copy',
       );
 
       final preserved =
@@ -631,6 +646,7 @@ void main() {
       expect(preserved.fullErrorMessage, 'keep me');
       expect(preserved.fullErrorCode, 'KEEP');
       expect(preserved.retriesRemaining, 2);
+      expect(preserved.conversationContentRevision, 'revision-copy');
     });
   });
 

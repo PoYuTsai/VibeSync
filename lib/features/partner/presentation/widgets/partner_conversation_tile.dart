@@ -85,28 +85,33 @@ class PartnerConversationTile extends StatelessWidget {
                     color: AppColors.onBackgroundSecondary,
                   ),
                 ),
-                trailing: PopupMenuButton<String>(
-                  icon: const Icon(
-                    Icons.more_vert,
-                    color: AppColors.onBackgroundPrimary,
-                  ),
-                  onSelected: (v) {
-                    if (v == 'reassign') onReassign?.call();
-                    if (v == 'delete') onDelete?.call();
-                  },
-                  itemBuilder: (_) => [
-                    PopupMenuItem<String>(
-                      value: 'reassign',
-                      enabled: onReassign != null,
-                      child: const Text('改派到其他對象'),
-                    ),
-                    PopupMenuItem<String>(
-                      value: 'delete',
-                      enabled: onDelete != null,
-                      child: const Text('刪除對話'),
-                    ),
-                  ],
-                ),
+                trailing: onReassign == null && onDelete == null
+                    ? const Icon(
+                        Icons.chevron_right_rounded,
+                        color: AppColors.onBackgroundSecondary,
+                      )
+                    : PopupMenuButton<String>(
+                        icon: const Icon(
+                          Icons.more_vert,
+                          color: AppColors.onBackgroundPrimary,
+                        ),
+                        onSelected: (v) {
+                          if (v == 'reassign') onReassign?.call();
+                          if (v == 'delete') onDelete?.call();
+                        },
+                        itemBuilder: (_) => [
+                          PopupMenuItem<String>(
+                            value: 'reassign',
+                            enabled: onReassign != null,
+                            child: const Text('改派到其他對象'),
+                          ),
+                          PopupMenuItem<String>(
+                            value: 'delete',
+                            enabled: onDelete != null,
+                            child: const Text('刪除對話'),
+                          ),
+                        ],
+                      ),
               ),
               Positioned(
                 left: 0,

@@ -19,6 +19,7 @@ import '../features/subscription/presentation/screens/paywall_screen.dart';
 import '../features/conversation/presentation/screens/profile_card_screen.dart';
 import '../features/partner/presentation/screens/add_partner_screen.dart';
 import '../features/partner/presentation/screens/partner_detail_screen.dart';
+import '../features/partner/presentation/screens/partner_analysis_archive_screen.dart';
 import '../features/partner/presentation/screens/partner_merge_picker_screen.dart';
 import '../features/partner/presentation/screens/partner_mind_map_screen.dart';
 import '../features/subscription/presentation/screens/settings_screen.dart';
@@ -149,6 +150,12 @@ final router = GoRouter(
     GoRoute(
       path: '/partner/:partnerId/mindmap',
       builder: (context, state) => PartnerMindMapScreen(
+        partnerId: state.pathParameters['partnerId']!,
+      ),
+    ),
+    GoRoute(
+      path: '/partner/:partnerId/analysis-archive',
+      builder: (context, state) => PartnerAnalysisArchiveScreen(
         partnerId: state.pathParameters['partnerId']!,
       ),
     ),

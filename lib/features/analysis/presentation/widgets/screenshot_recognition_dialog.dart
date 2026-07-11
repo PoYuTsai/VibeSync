@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/session_context.dart';
+import '../../data/services/analysis_hint_service.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
 
@@ -70,11 +73,18 @@ class _ScreenshotRecognitionDialogState
   late final List<_EditableRecognizedMessage> _editableMessages;
   String? _editValidationMessage;
 
-  // 滑動教學：dialog 開啟時對第一則泡泡播一次左右示意（forward 一次、零 repeat，
-  // 播完停在原位），只提示本次開啟，不落地「看過」旗標。
+  static const _swipeTutorialEntryDelay = Duration(milliseconds: 350);
+
+  // 滑動教學：首次符合條件的 dialog 在進場後延遲播放，forward 一次、零 repeat，
+  // 播完停在原位。已看過仍可透過問號按鈕重播。
   late final AnimationController _swipeTutorialController;
   late final Animation<double> _swipeTutorialShift;
-  late final Animation<double> _swipeTutorialArrowOpacity;
+  late final Animation<double> _swipeTutorialRightHintOpacity;
+  late final Animation<double> _swipeTutorialLeftHintOpacity;
+  Timer? _swipeTutorialAutoPlayTimer;
+  bool _swipeTutorialAutoPlayScheduled = false;
+  bool _swipeTutorialAutoPlaySuppressed = false;
+  bool _showStaticSwipeTutorialLegend = false;
 
   @override
   void initState() {
@@ -93,43 +103,88 @@ class _ScreenshotRecognitionDialogState
 
     _swipeTutorialController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 1800),
     );
-    // 右去右回、左去左回各一趟（對應右滑我說／左滑她說），首尾都是 0。
+    // 右去右回、短暫停頓、左去左回各一趟，首尾都是 0。兩側各留一小段
+    // 定點時間，讓方向文案與位移可以被看清楚。
     _swipeTutorialShift = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween(begin: 0.0, end: 24.0)
+        tween: Tween(begin: 0.0, end: 28.0)
             .chain(CurveTween(curve: Curves.easeInOut)),
-        weight: 25,
+        weight: 18,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 24.0, end: 0.0)
-            .chain(CurveTween(curve: Curves.easeInOut)),
-        weight: 25,
+        tween: ConstantTween(28.0),
+        weight: 7,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 0.0, end: -24.0)
+        tween: Tween(begin: 28.0, end: 0.0)
             .chain(CurveTween(curve: Curves.easeInOut)),
-        weight: 25,
+        weight: 18,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: -24.0, end: 0.0)
+        tween: ConstantTween(0.0),
+        weight: 7,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 0.0, end: -28.0)
             .chain(CurveTween(curve: Curves.easeInOut)),
-        weight: 25,
+        weight: 18,
+      ),
+      TweenSequenceItem(
+        tween: ConstantTween(-28.0),
+        weight: 7,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: -28.0, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 18,
+      ),
+      TweenSequenceItem(
+        tween: ConstantTween(0.0),
+        weight: 7,
       ),
     ]).animate(_swipeTutorialController);
-    _swipeTutorialArrowOpacity = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 15),
-      TweenSequenceItem(tween: ConstantTween(1.0), weight: 70),
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 15),
+    _swipeTutorialRightHintOpacity = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 6),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 38),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 6),
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 50),
     ]).animate(_swipeTutorialController);
-    if (_editableMessages.isNotEmpty) {
-      _swipeTutorialController.forward();
+    _swipeTutorialLeftHintOpacity = TweenSequence<double>([
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 50),
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 6),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 38),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 6),
+    ]).animate(_swipeTutorialController);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (_reduceMotion) {
+      _swipeTutorialAutoPlayTimer?.cancel();
+      _swipeTutorialAutoPlayTimer = null;
+      if (_swipeTutorialController.isAnimating ||
+          _swipeTutorialController.value != 0) {
+        _swipeTutorialController
+          ..stop()
+          ..value = 0;
+      }
     }
+
+    if (_swipeTutorialAutoPlayScheduled) return;
+    _swipeTutorialAutoPlayScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_scheduleSwipeTutorialAutoPlay());
+    });
   }
 
   @override
   void dispose() {
+    _swipeTutorialAutoPlayTimer?.cancel();
     _swipeTutorialController.dispose();
     _nameController.dispose();
     _analysisContextNoteController.dispose();
@@ -137,6 +192,93 @@ class _ScreenshotRecognitionDialogState
       message.dispose();
     }
     super.dispose();
+  }
+
+  bool get _reduceMotion =>
+      MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+
+  Future<void> _scheduleSwipeTutorialAutoPlay() async {
+    if (_editableMessages.isEmpty || _reduceMotion) return;
+
+    var hasSeenTutorial = false;
+    try {
+      hasSeenTutorial = await AnalysisHintService.hasSeenOcrSwipeTutorial();
+    } catch (_) {
+      // Tutorial persistence is best-effort and must never block OCR import.
+    }
+    if (!mounted ||
+        hasSeenTutorial ||
+        _reduceMotion ||
+        _swipeTutorialAutoPlaySuppressed) {
+      return;
+    }
+
+    _swipeTutorialAutoPlayTimer?.cancel();
+    _swipeTutorialAutoPlayTimer = Timer(_swipeTutorialEntryDelay, () {
+      _swipeTutorialAutoPlayTimer = null;
+      if (!mounted ||
+          _editableMessages.isEmpty ||
+          _reduceMotion ||
+          _swipeTutorialAutoPlaySuppressed) {
+        return;
+      }
+      _playSwipeTutorial();
+    });
+  }
+
+  void _playSwipeTutorial() {
+    // A manual replay or the actual auto-play both consume any outstanding
+    // scheduling path, including an in-flight SharedPreferences read.
+    _swipeTutorialAutoPlaySuppressed = true;
+    _swipeTutorialAutoPlayTimer?.cancel();
+    _swipeTutorialAutoPlayTimer = null;
+    if (_editableMessages.isEmpty) return;
+
+    if (_reduceMotion) {
+      _swipeTutorialController
+        ..stop()
+        ..value = 0;
+      if (!_showStaticSwipeTutorialLegend) {
+        setState(() {
+          _showStaticSwipeTutorialLegend = true;
+        });
+      }
+      return;
+    }
+
+    if (_showStaticSwipeTutorialLegend) {
+      setState(() {
+        _showStaticSwipeTutorialLegend = false;
+      });
+    }
+    _swipeTutorialController.forward(from: 0);
+    unawaited(_markSwipeTutorialSeenBestEffort());
+  }
+
+  Future<void> _markSwipeTutorialSeenBestEffort() async {
+    try {
+      await AnalysisHintService.markOcrSwipeTutorialSeen();
+    } catch (_) {
+      // A failed hint write may replay the tutorial next time, but must not
+      // interrupt message correction or OCR import.
+    }
+  }
+
+  void _cancelSwipeTutorialForInteraction() {
+    _swipeTutorialAutoPlaySuppressed = true;
+    _swipeTutorialAutoPlayTimer?.cancel();
+    _swipeTutorialAutoPlayTimer = null;
+    if (_swipeTutorialController.isAnimating ||
+        _swipeTutorialController.value != 0) {
+      _swipeTutorialController
+        ..stop()
+        ..value = 0;
+    }
+    if (_showStaticSwipeTutorialLegend) {
+      setState(() {
+        _showStaticSwipeTutorialLegend = false;
+      });
+    }
   }
 
   void _dismissKeyboard() {
@@ -231,6 +373,7 @@ class _ScreenshotRecognitionDialogState
       _editableMessages.any((message) => message.isFromMe);
 
   void _markAllAsOtherPerson() {
+    _cancelSwipeTutorialForInteraction();
     setState(() {
       for (final message in _editableMessages) {
         message.isFromMe = false;
@@ -386,6 +529,11 @@ class _ScreenshotRecognitionDialogState
       },
       background: _buildSwipeHint(toMe: true),
       secondaryBackground: _buildSwipeHint(toMe: false),
+      onUpdate: (details) {
+        if (details.progress > 0) {
+          _cancelSwipeTutorialForInteraction();
+        }
+      },
       confirmDismiss: (direction) async {
         // 絕對方向映射，與目前側別無關：右滑一律我說、左滑一律她說。
         _setMessageSide(index, direction == DismissDirection.startToEnd);
@@ -399,7 +547,10 @@ class _ScreenshotRecognitionDialogState
             message.isFromMe ? Alignment.centerRight : Alignment.centerLeft,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: () => _openMessageEditor(index),
+          onTap: () {
+            _cancelSwipeTutorialForInteraction();
+            unawaited(_openMessageEditor(index));
+          },
           child: index == 0
               ? _buildTutorialBubble(message)
               : _buildBubble(message),
@@ -408,8 +559,8 @@ class _ScreenshotRecognitionDialogState
     );
   }
 
-  /// 第一則泡泡包滑動教學動畫：水平位移跟著 [_swipeTutorialShift]、示意箭頭
-  /// 淡入淡出跟著 [_swipeTutorialArrowOpacity]；播完位移歸零、箭頭全透明。
+  /// 第一則泡泡包滑動教學動畫：水平位移跟著 [_swipeTutorialShift]，右／左
+  /// 兩個 phase 各自顯示明確文案；播完位移歸零、提示全透明。
   Widget _buildTutorialBubble(_EditableRecognizedMessage message) {
     return Stack(
       clipBehavior: Clip.none,
@@ -425,21 +576,107 @@ class _ScreenshotRecognitionDialogState
         ),
         Positioned.fill(
           child: IgnorePointer(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: FadeTransition(
-                opacity: _swipeTutorialArrowOpacity,
-                child: const Icon(
-                  Icons.swap_horiz_rounded,
-                  key: ValueKey('ocr-swipe-tutorial-arrow'),
-                  size: 18,
-                  color: AppColors.ctaStart,
+            child: ExcludeSemantics(
+              child: OverflowBox(
+                alignment: Alignment.center,
+                maxWidth: double.infinity,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    FadeTransition(
+                      key: const ValueKey(
+                        'ocr-swipe-tutorial-right-hint',
+                      ),
+                      opacity: _swipeTutorialRightHintOpacity,
+                      child: _buildTutorialPhaseBadge(
+                        icon: Icons.arrow_forward_rounded,
+                        label: '右滑 → 我說',
+                        color: AppColors.ctaStart,
+                      ),
+                    ),
+                    FadeTransition(
+                      key: const ValueKey(
+                        'ocr-swipe-tutorial-left-hint',
+                      ),
+                      opacity: _swipeTutorialLeftHintOpacity,
+                      child: _buildTutorialPhaseBadge(
+                        icon: Icons.arrow_back_rounded,
+                        label: '左滑 → 她說',
+                        color: AppColors.info,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildTutorialPhaseBadge({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.42)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: AppTypography.bodySmall.copyWith(
+                color: color,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStaticSwipeTutorialLegend() {
+    return Semantics(
+      key: const ValueKey('ocr-swipe-tutorial-static-legend'),
+      container: true,
+      liveRegion: true,
+      label: '滑動教學：右滑改成我說，左滑改成她說。',
+      child: ExcludeSemantics(
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _buildTutorialPhaseBadge(
+              icon: Icons.arrow_forward_rounded,
+              label: '右滑 → 我說',
+              color: AppColors.ctaStart,
+            ),
+            _buildTutorialPhaseBadge(
+              icon: Icons.arrow_back_rounded,
+              label: '左滑 → 她說',
+              color: AppColors.info,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -568,7 +805,7 @@ class _ScreenshotRecognitionDialogState
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '判錯邊？左右滑動訊息即可切換。',
+                    '判錯邊？滑動訊息切換說話者。',
                     style: AppTypography.bodySmall.copyWith(
                       color: AppColors.glassTextPrimary,
                       fontWeight: FontWeight.w700,
@@ -576,16 +813,34 @@ class _ScreenshotRecognitionDialogState
                     ),
                   ),
                 ),
+                IconButton(
+                  key: const ValueKey('ocr-swipe-tutorial-replay'),
+                  onPressed: _playSwipeTutorial,
+                  tooltip: '重播滑動教學',
+                  constraints: const BoxConstraints.tightFor(
+                    width: 48,
+                    height: 48,
+                  ),
+                  icon: const Icon(
+                    Icons.help_outline_rounded,
+                    size: 20,
+                    color: AppColors.ctaStart,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 4),
             Text(
-              '左邊是她說、右邊是我說。點訊息可改錯字或刪除。',
+              '右滑＝我說，左滑＝她說；點訊息可改字或刪除。',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.glassTextSecondary,
                 height: 1.4,
               ),
             ),
+            if (_showStaticSwipeTutorialLegend) ...[
+              const SizedBox(height: 10),
+              _buildStaticSwipeTutorialLegend(),
+            ],
             const SizedBox(height: 12),
             _buildSwipeCorrector(),
             if (_hasAnyFromMeMessage()) ...[

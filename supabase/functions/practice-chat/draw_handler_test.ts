@@ -184,6 +184,21 @@ async function run(
   };
 }
 
+async function captureWarnings<T>(
+  action: () => Promise<T>,
+): Promise<{ value: T; warnings: string[] }> {
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args.map(String).join(" "));
+  };
+  try {
+    return { value: await action(), warnings };
+  } finally {
+    console.warn = originalWarn;
+  }
+}
+
 Deno.test("draw prepares subscription resets through the DB row lock", async () => {
   const { result, prepareCalls, subscriptionUpdates } = await run({
     sub: {
@@ -469,4 +484,106 @@ Deno.test("池抽滿：全歷史覆蓋全池 → 降級回視窗排除，仍成�
   assertEquals(body.profile.profileId, "practice_girl_007");
   assertEquals(body.draw.freeAllowance, 1);
   assertEquals(typeof body.usage.monthlyUsed, "number");
+});
+
+Deno.test("duplicate telemetry：非 replay、非池滿退避卻回歷史角色 → 記 unexpected", async () => {
+  const { value, warnings } = await captureWarnings(() =>
+    run({
+      sub: sub("starter", 0, 0),
+      drawnRows: historyRows(["practice_girl_002"], OLD_WINDOW_TS),
+      rpc: [{
+        data: receipt({
+          profile_id: "practice_girl_002",
+          idempotent_replay: false,
+          free_allowance: 3,
+        }),
+      }],
+    })
+  );
+
+  assertEquals(value.result.status, 200); // telemetry 絕不把已成功 RPC 改成失敗
+  assert(
+    warnings.some((line) =>
+      line.includes('"event":"practice_draw_unexpected_duplicate"') &&
+      line.includes('"historicalDuplicate":true')
+    ),
+    `應記 unexpected duplicate，實際 warnings=${warnings.join(" | ")}`,
+  );
+});
+
+Deno.test("duplicate telemetry：非 replay 卻回目前角色 → 即使非歷史重複也記 unexpected", async () => {
+  const { value, warnings } = await captureWarnings(() =>
+    run(
+      {
+        sub: sub("starter", 0, 0),
+        drawnRows: [],
+        rpc: [{
+          data: receipt({
+            profile_id: "practice_girl_001",
+            idempotent_replay: false,
+            free_allowance: 3,
+          }),
+        }],
+      },
+      req({ currentProfileId: "practice_girl_001" }),
+    )
+  );
+
+  assertEquals(value.result.status, 200);
+  assert(
+    warnings.some((line) =>
+      line.includes('"event":"practice_draw_unexpected_duplicate"') &&
+      line.includes('"currentProfileDuplicate":true')
+    ),
+    `應記 current-profile duplicate，實際 warnings=${warnings.join(" | ")}`,
+  );
+});
+
+Deno.test("duplicate telemetry：idempotent replay 與池滿退避的歷史重複都不誤報", async () => {
+  const replay = await captureWarnings(() =>
+    run({
+      sub: sub("starter", 0, 0),
+      drawnRows: historyRows(["practice_girl_002"], OLD_WINDOW_TS),
+      rpc: [{
+        data: receipt({
+          profile_id: "practice_girl_002",
+          idempotent_replay: true,
+          free_allowance: 3,
+        }),
+      }],
+    })
+  );
+  assertEquals(replay.value.result.status, 200);
+  assertEquals(
+    replay.warnings.some((line) =>
+      line.includes('"event":"practice_draw_unexpected_duplicate"')
+    ),
+    false,
+  );
+
+  const fallback = await captureWarnings(() =>
+    run({
+      sub: sub("starter", 0, 0),
+      drawnRows: historyRows(LEGACY_IDS, OLD_WINDOW_TS),
+      rpc: [{
+        data: receipt({
+          profile_id: "practice_girl_007",
+          idempotent_replay: false,
+          free_allowance: 3,
+        }),
+      }],
+    })
+  );
+  assertEquals(fallback.value.result.status, 200);
+  assert(
+    fallback.warnings.some((line) =>
+      line.includes('"event":"practice_draw_dedup_fallback"')
+    ),
+  );
+  assertEquals(
+    fallback.warnings.some((line) =>
+      line.includes('"event":"practice_draw_unexpected_duplicate"')
+    ),
+    false,
+  );
 });
