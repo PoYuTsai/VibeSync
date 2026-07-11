@@ -10,6 +10,28 @@
 
 ## 2026-07
 
+### [2026-07-11] Beginner／Game Hint 與 Debrief 把降級罐頭當成功結果
+
+**Symptom**: TestFlight 點 Game Hint 後會看到「妳剛說的那個點我有記住…」等一眼可辨識的萬用句；賽後 Debrief 又可能批評剛才的 Hint、給出與當時策略相反的「下次可以這樣說」，Game 拆盤欄位也會只剩空泛術語。Beginner 與 Game 都受影響。
+
+**Root Cause**:
+
+- provider timeout／格式失敗後會建立 deterministic fallback，並把它當成功快照 replay、扣費與計次。
+- 品質檢查只看整張卡是否某處碰到逐字稿；一個具體欄位可替其他萬用欄位洗白，短句／emoji 也有 fail-open 邊界。
+- Hint 的逐選項策略沒有成為 Debrief 的權威 lineage；Debrief 只靠 prompt 自己重判，能在沒有 Hint 後新證據時改口。
+- client 只暫存 requestId，成功 envelope／套用的 Hint lineage 在 crash、重啟與 A→B→A 切場時不完整。
+
+**Fix**:
+
+- Hint 與 Debrief 統一改成 DeepSeek 12 秒，失敗再由 Claude 12 秒修復；兩者都失敗或品質閘拒絕時只回 retryable error，**不落 fallback 快照、不扣費、不計次**。
+- Beginner／Game 共用黃金教練 rubric；每個 Hint 選項、Debrief 可貼句與 Game 拆盤五欄都必須各自引用真實逐字稿素材，並拒絕既知罐頭、萬用 meta 句及策略／可貼句衝突。
+- server 為每個 Hint 選項保存 decision；Debrief 只接受 server resolve 的權威 decision。若要改策略，必須標記 `revised`、逐字引用 Hint 送出後她的新回覆，並在可見拆解中呈現該證據。
+- 新 migration 以 generated-only CHECK、bounded Debrief ledger、owner token fence 與成功落檔同交易計次保護 replay／late worker；client 在 billable HTTP 前持久化 requestId，保存完整成功 envelope 與 applied-Hint lineage。
+
+**Prevention**: AI fallback 不可再偽裝成成功內容。新增任何可見 AI 欄位時，要逐欄通過 grounding／canned／internal-label guard；涉及 Hint→Debrief 判斷時必須沿用 server lineage，不可只靠第二份 prompt 猜回去。migration 只能目標式套用，Edge 先部署並等舊 worker drain，禁止 `supabase db push`。
+
+**Validation**: practice-chat Deno **746/746**；migration/source＋PGlite／真 PostgreSQL **17/17**；Flutter practice-chat unit＋widget **516/516**；changed TS check/fmt/lint、scoped Flutter analyze/format、`git diff --check` 全綠。高風險雙審與部署證據見 `docs/reviews/2026-07-11-practice-generated-only-codex-review.md`。
+
 ### [2026-07-04] blocking spinner 下的無界 await＝2.1(b) 無限轉圈同族（5 處）
 
 **Symptom**: paywall 購買成功後、恢復購買（paywall＋settings 兩入口）、取消降級同步（paywall＋settings）、分析頁訂閱刷新——只要 RevenueCat/後端卡住，全螢幕 overlay、不可關閉 dialog 或「同步中…」按鈕就永遠不退場。Apple 2026-05-27 以 2.1(b) 拒審過同型問題；Codex V-2 對抗審 R1–R3 每輪掃出一處。

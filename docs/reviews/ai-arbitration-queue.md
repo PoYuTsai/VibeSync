@@ -7,6 +7,17 @@
 
 ## OPEN（最新在最上）
 
+## [2026-07-11] Beginner／Game Hint＋Debrief generated-only，永久移除成功罐頭
+Status: **LOCAL APPROVED（SQL＋client＋兩路 backend final gate 全部 0 P0/P1/P2）／DEPLOY PENDING**
+
+- **契約**：Hint 與 Debrief 都走 DeepSeek 12s → Claude 12s；雙失敗或品質不合格只回 retryable error，絕不落 fallback snapshot、扣費或計次。Beginner＋Game 同一條 production path。
+- **高手腦與連動**：共用黃金教練 rubric；每個 Hint option 保存權威 decision，Debrief 無 Hint 後新證據不得推翻。改判必須附她在 Hint 後的逐字回覆，且在可見拆解中引用。
+- **品質閘**：每個 Hint 回覆、Debrief 可貼句、Game 拆盤五欄逐一 grounding；拒絕既知罐頭、meta 空話、邀約 route 衝突、短句／emoji 洗白。邀約分類區分共同計畫與純自我揭露。
+- **扣費／併發**：generated-only DB CHECK、bounded Debrief ledger、成功 record 同交易計次、normal／legacy／無 requestId owner token fence；replay 不重扣且回最新 usage。
+- **client**：billable HTTP 前保存 requestId；完整 Hint envelope、applied lineage、pending Debrief 跨 crash/restart 按 session 隔離，晚到結果不得污染另一場。
+- **驗證**：Deno 746/746、index 180/180、migration/Postgres 17/17、Flutter 516/516；SQL／client／兩路 backend final gate 全為 0/0/0。審查紀錄 `docs/reviews/2026-07-11-practice-generated-only-codex-review.md`。
+- **出貨 gate**：Edge-first、drain、目標式 migration、production smoke、TestFlight success 後才可宣稱新 build 可測。禁止 `supabase db push`。
+
 ## [2026-07-10] Beginner/Game Hint＋兩路 Debrief 穩定度收斂
 Status: **APPROVED（0 P0 / 0 P1 / 0 P2）** — implementation `bfbebd70`，三路 Codex adversarial review（語境/守門、Debrief DB 併發、client requestId/telemetry）均結案。
 

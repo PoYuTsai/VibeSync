@@ -29,6 +29,7 @@ Default priority:
 
 Recent commit themes, newest first:
 
+- Practice Hint／Debrief generated-only train（2026-07-11，branch `codex/no-canned-practice-ai`）：Beginner＋Game 共用 DeepSeek 12s → Claude 12s、逐欄品質閘與 Hint decision lineage；雙失敗不再把 fallback 當成功、不扣費不計次。local Deno 746/746、Flutter 516/516，SQL／client／兩路 backend gate 皆 0/0/0；等待 Edge-first deployment 與 TestFlight。
 - Analyze-chat full streaming is the current product path. The old user-visible two-stage quick/full plan is superseded; frontend legacy naming cleanup landed in `d12009e`. Backend `quick/full` compatibility remains hidden rollback / old-client support only.
 - `!codex` Phase 1 read-only Discord review gate: `dfde5f2`, `ec84bb0`.
 - `!cc-rotate` external/mobile session rotation and bootstrap hardening: `80ce48a` through `abd8200`.
