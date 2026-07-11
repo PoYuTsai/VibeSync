@@ -4388,6 +4388,7 @@ Deno.test("game hint repairs malformed DeepSeek output through Claude before rec
     .join("\n");
   assert(retryPrompt.includes("上一版 Hint JSON 被拒絕"));
   assert(retryPrompt.includes("重新輸出唯一 JSON"));
+  assert(retryPrompt.includes("三欄各自都要逐字重用"));
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
 });

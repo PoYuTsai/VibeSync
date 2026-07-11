@@ -543,6 +543,7 @@ function withHintRetryInstruction(
           hintRetryReason(error)
         }。請重新輸出唯一 JSON，` +
         'shape 必須仍是 {"warmUp":"...","steady":"...","coaching":"..."}。' +
+        "warmUp、steady、coaching 三欄各自都要逐字重用她最新一句的具體詞或短語，不能只有其中一欄具體。" +
         "可貼回覆要先接住她最新狀態，再給低壓接球；不要命令、不要面試官語氣、不要內部標籤、不要露骨或私密壓迫。",
     },
   ];
