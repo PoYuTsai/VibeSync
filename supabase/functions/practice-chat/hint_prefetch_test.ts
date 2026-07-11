@@ -7,7 +7,9 @@ import {
   decideHintPrefetchReplay,
   hintPrefetchAck,
   hintRecordPolicy,
+  isExplicitModelHintResult,
   isHintPrefetchEnabled,
+  isReplayableModelHintResult,
 } from "./hint_prefetch.ts";
 
 const result = {
@@ -16,6 +18,8 @@ const result = {
     { type: "steady", label: "穩健", text: "哈囉" },
   ],
   coaching: "接住她的語氣",
+  generationSource: "model",
+  fallbackUsed: false,
 };
 
 Deno.test("prefetch kill switch is exact true and defaults off", () => {
@@ -33,14 +37,24 @@ Deno.test("replay decision keeps generating distinct from consumable prefetch", 
   assertEquals(
     decideHintPrefetchReplay({
       requestPrefetch: false,
-      row: { state: "generating", charged: false, result: null },
+      row: {
+        state: "generating",
+        charged: false,
+        result: null,
+        legacyReplacementPending: false,
+      },
     }),
     { kind: "continueToClaim" },
   );
   assertEquals(
     decideHintPrefetchReplay({
       requestPrefetch: true,
-      row: { state: "generating", charged: false, result: null },
+      row: {
+        state: "generating",
+        charged: false,
+        result: null,
+        legacyReplacementPending: false,
+      },
     }),
     { kind: "continueToClaim" },
   );
@@ -50,14 +64,24 @@ Deno.test("settled request is formal replay but prefetch remains opaque", () => 
   assertEquals(
     decideHintPrefetchReplay({
       requestPrefetch: false,
-      row: { state: "settled", charged: true, result },
+      row: {
+        state: "settled",
+        charged: true,
+        result,
+        isPrefetch: false,
+      },
     }),
     { kind: "settledReplay", result },
   );
   assertEquals(
     decideHintPrefetchReplay({
       requestPrefetch: true,
-      row: { state: "settled", charged: true, result },
+      row: {
+        state: "settled",
+        charged: true,
+        result,
+        isPrefetch: false,
+      },
     }),
     { kind: "opaqueAck" },
   );
@@ -67,14 +91,14 @@ Deno.test("prefetched request is formal consume but retry remains opaque", () =>
   assertEquals(
     decideHintPrefetchReplay({
       requestPrefetch: false,
-      row: { state: "prefetched", charged: false, result },
+      row: { state: "prefetched", charged: false, result, isPrefetch: true },
     }),
     { kind: "prefetchedConsume", result },
   );
   assertEquals(
     decideHintPrefetchReplay({
       requestPrefetch: true,
-      row: { state: "prefetched", charged: false, result },
+      row: { state: "prefetched", charged: false, result, isPrefetch: true },
     }),
     { kind: "opaqueAck" },
   );
@@ -85,7 +109,6 @@ Deno.test("record policy keeps quota and formal consumption as separate axes", (
     hintRecordPolicy({
       isPrefetch: false,
       isTestAccount: false,
-      isFallback: false,
     }),
     { chargeQuota: true, charged: true },
   );
@@ -93,15 +116,6 @@ Deno.test("record policy keeps quota and formal consumption as separate axes", (
     hintRecordPolicy({
       isPrefetch: false,
       isTestAccount: true,
-      isFallback: false,
-    }),
-    { chargeQuota: false, charged: true },
-  );
-  assertEquals(
-    hintRecordPolicy({
-      isPrefetch: false,
-      isTestAccount: false,
-      isFallback: true,
     }),
     { chargeQuota: false, charged: true },
   );
@@ -109,9 +123,65 @@ Deno.test("record policy keeps quota and formal consumption as separate axes", (
     hintRecordPolicy({
       isPrefetch: true,
       isTestAccount: false,
-      isFallback: false,
     }),
     { chargeQuota: false, charged: false },
+  );
+  assertEquals(
+    hintRecordPolicy({
+      isPrefetch: false,
+      isTestAccount: false,
+      quotaAlreadyPaid: true,
+    }),
+    { chargeQuota: false, charged: true },
+  );
+});
+
+Deno.test("replay accepts only explicit model snapshots", () => {
+  assertEquals(isReplayableModelHintResult(result), true);
+  assertEquals(isExplicitModelHintResult(result), true);
+  assertEquals(
+    isReplayableModelHintResult({ costDeducted: 1, replies: [] }),
+    false,
+  );
+  assertEquals(
+    isReplayableModelHintResult({ costDeducted: 0, replies: [] }),
+    false,
+  );
+  assertEquals(
+    isReplayableModelHintResult({
+      generationSource: "fallback",
+      fallbackUsed: true,
+      costDeducted: 0,
+    }),
+    false,
+  );
+});
+
+Deno.test("unmarked prefetch snapshots never settle or replay as model output", () => {
+  const legacy = { costDeducted: 0, replies: [], coaching: "legacy" };
+  assertEquals(
+    decideHintPrefetchReplay({
+      requestPrefetch: false,
+      row: {
+        state: "prefetched",
+        charged: false,
+        result: legacy,
+        isPrefetch: true,
+      },
+    }),
+    { kind: "legacyPrefetchDiscard" },
+  );
+  assertEquals(
+    decideHintPrefetchReplay({
+      requestPrefetch: false,
+      row: {
+        state: "settled",
+        charged: true,
+        result: { ...legacy, costDeducted: 1 },
+        isPrefetch: true,
+      },
+    }),
+    { kind: "legacyReplacementClaim" },
   );
 });
 

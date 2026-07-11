@@ -3,12 +3,18 @@ import {
   checkQuota,
   classifyQuotaRpcError,
   isPlainObject,
+  normalizeTier,
   resolveLimits,
   type SubscriptionRow,
   TEST_EMAILS,
 } from "../_shared/quota.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
-import { validateDrawRequest, validateRequest } from "./validate.ts";
+import {
+  type AppliedHintDecision,
+  type AppliedHintTurn,
+  validateDrawRequest,
+  validateRequest,
+} from "./validate.ts";
 import {
   buildHintPrefetchTelemetry,
   decideHintPrefetchReplay,
@@ -17,7 +23,9 @@ import {
   type HintPrefetchTelemetryReason,
   hintRecordPolicy,
   type HintRequestLedgerRow,
+  isExplicitModelHintResult,
   isHintPrefetchEnabled,
+  isReplayableModelHintResult,
 } from "./hint_prefetch.ts";
 import { type DrawSupabaseClient, handleDrawProfile } from "./draw_handler.ts";
 import {
@@ -41,16 +49,17 @@ import {
   type SessionLedger,
 } from "./quota_decision.ts";
 import { DEEPSEEK_MODEL, type DeepSeekArgs } from "./deepseek.ts";
+import { type DebriefCard, parseDebriefCard } from "./debrief_card.ts";
 import {
-  buildFallbackDebriefCard,
-  type DebriefCard,
-  parseDebriefCard,
-} from "./debrief_card.ts";
-import {
-  buildFallbackHintResult,
+  buildHintDecision,
   buildHintMessages,
   parseHintResult,
 } from "./hint.ts";
+import {
+  CLAUDE_HAIKU_MODEL,
+  CLAUDE_SONNET_MODEL,
+  type ClaudeArgs,
+} from "./claude.ts";
 import { buildPracticeSceneContext } from "./life_schedule.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import {
@@ -98,18 +107,25 @@ const CHAT_TEMPERATURE = 0.9;
 const CHAT_GENERATION_ATTEMPTS = 2;
 const DEBRIEF_MAX_TOKENS = 800;
 const DEBRIEF_TEMPERATURE = 0.5;
-const DEBRIEF_GENERATION_ATTEMPTS = 2;
+const DEBRIEF_GENERATION_ATTEMPTS = 1;
 const DEBRIEF_TIMEOUT_MS = 12000;
 const DEBRIEF_IN_FLIGHT_STALE_MS = 45000;
 const HINT_MAX_TOKENS = 650;
 const HINT_TEMPERATURE = 0.45;
-const HINT_GENERATION_ATTEMPTS = 2;
-// 9 秒：hint 有罐頭 fallback 兜底，逾時預算壓短讓用戶最壞等待更接近可忍受。
-const HINT_TIMEOUT_MS = 9000;
+const HINT_GENERATION_ATTEMPTS = 1;
+// Each real provider gets a full 12s budget. There is never a canned fallback.
+const HINT_TIMEOUT_MS = 12000;
+const CLAUDE_FAILOVER_TIMEOUT_MS = 12000;
 const TEMPERATURE_JUDGE_MAX_TOKENS = 450;
 const TEMPERATURE_JUDGE_TEMPERATURE = 0.2;
 const DEEPSEEK_TIMEOUT_MS = 30000;
 const TELEMETRY_PERSIST_TIMEOUT_MS = 1500;
+
+function claudeFallbackModelForTier(tier: string | null): string {
+  return normalizeTier(tier) === "free"
+    ? CLAUDE_HAIKU_MODEL
+    : CLAUDE_SONNET_MODEL;
+}
 
 function elapsedMilliseconds(startedAt: number): number {
   return Math.max(0, Math.round(performance.now() - startedAt));
@@ -126,6 +142,68 @@ function isFreshDebriefGeneration(
     : Number.NaN;
   return Number.isFinite(timestamp) &&
     timestamp > now.getTime() - DEBRIEF_IN_FLIGHT_STALE_MS;
+}
+
+interface DebriefRequestLedgerEntry {
+  result: Record<string, unknown> | null;
+  startedAt: string | null;
+  generationToken: string | null;
+  counted: boolean;
+}
+
+function parseDebriefRequestLedger(
+  value: unknown,
+): Map<string, DebriefRequestLedgerEntry> | null {
+  if (!isPlainObject(value)) return null;
+  const rows = Object.entries(value);
+  if (rows.length > MAX_DEBRIEFS) return null;
+
+  const ledger = new Map<string, DebriefRequestLedgerEntry>();
+  for (const [requestId, rawEntry] of rows) {
+    if (requestId.length < 1 || requestId.length > 64) return null;
+    if (!isPlainObject(rawEntry)) return null;
+    const keys = Object.keys(rawEntry).sort();
+    if (
+      keys.length !== 4 ||
+      keys.join(",") !== "counted,generation_token,result,started_at"
+    ) {
+      return null;
+    }
+
+    const result = rawEntry.result === null
+      ? null
+      : isPlainObject(rawEntry.result)
+      ? rawEntry.result
+      : undefined;
+    const startedAt = rawEntry.started_at === null
+      ? null
+      : typeof rawEntry.started_at === "string" &&
+          Number.isFinite(Date.parse(rawEntry.started_at))
+      ? rawEntry.started_at
+      : undefined;
+    const generationToken = rawEntry.generation_token === null
+      ? null
+      : typeof rawEntry.generation_token === "string" &&
+          rawEntry.generation_token.length >= 1 &&
+          rawEntry.generation_token.length <= 64
+      ? rawEntry.generation_token
+      : undefined;
+    const counted = typeof rawEntry.counted === "boolean"
+      ? rawEntry.counted
+      : undefined;
+    if (
+      result === undefined || startedAt === undefined ||
+      generationToken === undefined || counted === undefined ||
+      (startedAt !== null && generationToken === null) ||
+      (result !== null && (startedAt !== null || !counted)) ||
+      (!counted &&
+        (result !== null || startedAt === null || generationToken === null))
+    ) {
+      return null;
+    }
+    ledger.set(requestId, { result, startedAt, generationToken, counted });
+  }
+  return ledger;
 }
 
 function appliedHintHeatFloor(
@@ -262,6 +340,7 @@ function lastUserText(turns: Array<{ role: string; text: string }>): string {
 }
 
 export type DeepSeekCaller = (args: DeepSeekArgs) => Promise<string>;
+export type ClaudeCaller = (args: ClaudeArgs) => Promise<string>;
 
 export interface PracticeSupabaseClient {
   auth: {
@@ -281,6 +360,7 @@ export interface PracticeSupabaseClient {
 export interface PracticeChatHandlerDeps {
   createSupabaseClient: () => PracticeSupabaseClient;
   callDeepSeek: DeepSeekCaller;
+  callClaude?: ClaudeCaller;
   getEnv: (name: string) => string | undefined;
   now?: () => Date;
   randomUUID?: () => string;
@@ -298,16 +378,18 @@ async function persistGenerationTelemetryFailOpen(opts: {
   totalDurationMs: number;
   promptChars: number;
   fallbackUsed: boolean;
+  failoverUsed?: boolean;
   failureClass: PracticeGenerationFailureClass | null;
   attemptDurationsMs: number[];
   failureClasses: PracticeGenerationFailureClass[];
+  model?: string;
   timeoutMs?: number;
 }): Promise<void> {
   let timeoutHandle: number | undefined;
   try {
     const row = buildPracticeAiLogRow({
       userId: opts.userId,
-      model: DEEPSEEK_MODEL,
+      model: opts.model ?? DEEPSEEK_MODEL,
       telemetry: {
         mode: opts.mode,
         practiceMode: opts.practiceMode,
@@ -315,6 +397,7 @@ async function persistGenerationTelemetryFailOpen(opts: {
         attemptDurationMs: null,
         failureClass: opts.failureClass,
         fallbackUsed: opts.fallbackUsed,
+        failoverUsed: opts.failoverUsed,
         totalDurationMs: opts.totalDurationMs,
         promptChars: opts.promptChars,
       },
@@ -407,11 +490,6 @@ function getErrorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/** timeout 類失敗：上游慢，原樣重打大機率再逾時，直接跳 fallback 不重試。 */
-function isHintTimeoutError(e: unknown): boolean {
-  return getErrorMessage(e).includes("deepseek_timeout");
-}
-
 /**
  * 格式／驗證類失敗（JSON 壞掉或 hint guard 拒絕）才適合帶「上一版被拒絕」的
  * 重試指令；timeout／上游 5xx 帶這句是誤導（模型根本沒輸出被拒的 JSON）。
@@ -425,6 +503,12 @@ function isHintFormatOrGuardError(e: unknown): boolean {
 
 function hintRetryReason(e: unknown): string {
   const message = getErrorMessage(e);
+  if (
+    message.includes("hint_quality_invalid") ||
+    message.includes("hint_canned_visible_text")
+  ) {
+    return "內容太空泛、像罐頭，或沒有接到她最新一句的具體素材";
+  }
   if (message.includes("hint_bossy_pasteable_reply")) {
     return "可貼回覆太像命令、面試官或叫她交作業";
   }
@@ -465,8 +549,15 @@ function withHintRetryInstruction(
 }
 
 function debriefRetryReason(error: unknown): string {
+  const message = getErrorMessage(error);
+  if (
+    message.includes("debrief_quality_invalid") ||
+    message.includes("debrief_canned_visible_text")
+  ) {
+    return "內容太空泛、重複舊提示，或沒有承認提示與逐字稿證據";
+  }
   const failureClass = classifyPracticeGenerationFailure(error);
-  if (getErrorMessage(error).includes("game_breakdown_missing")) {
+  if (message.includes("game_breakdown_missing")) {
     return "Game 拆盤五個欄位有缺漏或空白";
   }
   if (failureClass === "visible_text_guard") {
@@ -509,6 +600,9 @@ function isMissingPracticeHintRpc(message: string): boolean {
     normalized.includes("record_practice_hint") ||
     normalized.includes("settle_prefetched_practice_hint") ||
     normalized.includes("discard_prefetched_practice_hint") ||
+    normalized.includes("claim_legacy_practice_hint_replacement") ||
+    normalized.includes("record_legacy_practice_hint_replacement") ||
+    normalized.includes("release_legacy_practice_hint_replacement") ||
     normalized.includes("prepare_practice_subscription_usage") ||
     normalized.includes("release_practice_hint_generation");
   return referencesHintRpc &&
@@ -537,7 +631,8 @@ function isMissingPracticeDebriefReplaySchema(message: string): boolean {
   const referencesReplaySchema =
     normalized.includes("last_debrief_request_id") ||
     normalized.includes("last_debrief_result") ||
-    normalized.includes("last_debrief_started_at");
+    normalized.includes("last_debrief_started_at") ||
+    normalized.includes("debrief_request_ledger");
   return referencesReplaySchema &&
     (normalized.includes("schema cache") ||
       normalized.includes("could not find") ||
@@ -580,6 +675,9 @@ function mapLedgerError(message: string): { error: string; status: number } {
   if (isMissingPracticeDebriefRpc(message)) {
     return { error: "practice_debrief_not_ready", status: 503 };
   }
+  if (message.includes("PRACTICE_DEBRIEF_LEDGER_INVALID")) {
+    return { error: "practice_debrief_not_ready", status: 503 };
+  }
   if (message.includes("PRACTICE_LEARNING_NOT_READY")) {
     return { error: "practice_learning_not_ready", status: 503 };
   }
@@ -611,7 +709,8 @@ function mapLedgerError(message: string): { error: string; status: number } {
     message.includes("PRACTICE_HINT_STALE") ||
     message.includes("PRACTICE_HINT_PREFETCH_NOT_FOUND") ||
     message.includes("PRACTICE_HINT_STATE_MISMATCH") ||
-    message.includes("PRACTICE_HINT_NOT_CLAIMED")
+    message.includes("PRACTICE_HINT_NOT_CLAIMED") ||
+    message.includes("PRACTICE_HINT_REPLACEMENT_NOT_READY")
   ) {
     return { error: "practice_hint_stale", status: 409 };
   }
@@ -692,7 +791,13 @@ function hintRequestLedgerRowFromDb(
   ) {
     return undefined;
   }
-  return { state, charged, result: value.result ?? null };
+  return {
+    state,
+    charged,
+    result: value.result ?? null,
+    isPrefetch: value.is_prefetch === true,
+    legacyReplacementPending: value.legacy_replacement_pending === true,
+  };
 }
 
 function logHintPrefetchTelemetry(opts: {
@@ -1409,9 +1514,13 @@ async function releaseHintGeneration(opts: {
   sessionId: string;
   requestId?: string;
   generationToken?: string;
+  legacyReplacement?: boolean;
 }): Promise<void> {
+  const rpcName = opts.legacyReplacement
+    ? "release_legacy_practice_hint_replacement"
+    : "release_practice_hint_generation";
   const { error } = await opts.supabase.rpc(
-    "release_practice_hint_generation",
+    rpcName,
     {
       p_user_id: opts.userId,
       p_session_id: opts.sessionId,
@@ -1427,6 +1536,153 @@ async function releaseHintGeneration(opts: {
       error: error.message,
     });
   }
+}
+
+async function releaseDebriefGeneration(opts: {
+  supabase: PracticeSupabaseClient;
+  userId: string;
+  sessionId: string;
+  requestId?: string;
+  generationToken?: string;
+}): Promise<void> {
+  if (!opts.requestId || !opts.generationToken) return;
+  const { error } = await opts.supabase.rpc(
+    "release_practice_debrief_generation",
+    {
+      p_user_id: opts.userId,
+      p_session_id: opts.sessionId,
+      p_request_id: opts.requestId,
+      p_generation_token: opts.generationToken,
+    },
+  );
+  if (error) {
+    logWarn("practice_chat_debrief_release_failed", {
+      user: summarizeUser(opts.userId),
+      error: error.message,
+    });
+  }
+}
+
+function isGeneratedModelEnvelope(
+  value: unknown,
+): value is Record<string, unknown> {
+  return isPlainObject(value) &&
+    value.generationSource === "model" &&
+    value.fallbackUsed === false;
+}
+
+async function invalidateLegacyPracticeAiSnapshot(opts: {
+  supabase: PracticeSupabaseClient;
+  userId: string;
+  sessionId: string;
+  requestId?: string;
+  kind: "hint" | "debrief";
+}): Promise<boolean> {
+  if (!opts.requestId) return false;
+  const { data, error } = await opts.supabase.rpc(
+    "invalidate_legacy_practice_ai_snapshot",
+    {
+      p_user_id: opts.userId,
+      p_session_id: opts.sessionId,
+      p_request_id: opts.requestId,
+      p_kind: opts.kind,
+    },
+  );
+  if (error) {
+    logWarn("practice_chat_legacy_snapshot_invalidation_failed", {
+      user: summarizeUser(opts.userId),
+      kind: opts.kind,
+      error: error.message,
+    });
+    return false;
+  }
+  return data === true || (Array.isArray(data) && data[0] === true);
+}
+
+function parseAuthoritativeHintDecision(
+  value: unknown,
+): AppliedHintDecision | null {
+  if (!isPlainObject(value)) return null;
+  const fields = [
+    value.phase,
+    value.targetVariable,
+    value.move,
+    value.inviteRoute,
+    value.rationale,
+  ];
+  if (
+    fields.some((field) =>
+      typeof field !== "string" || field.trim().length === 0
+    ) ||
+    String(value.phase).length > 80 ||
+    String(value.targetVariable).length > 80 ||
+    String(value.move).length > 80 ||
+    String(value.inviteRoute).length > 80 ||
+    String(value.rationale).length > 160
+  ) {
+    return null;
+  }
+  return {
+    phase: String(value.phase).trim(),
+    targetVariable: String(value.targetVariable).trim(),
+    move: String(value.move).trim(),
+    inviteRoute: String(value.inviteRoute).trim(),
+    rationale: String(value.rationale).trim(),
+  };
+}
+
+function isDisconnectedHintLineageError(message: string): boolean {
+  const normalized = message.toUpperCase();
+  return normalized.includes("PRACTICE_HINT_LINEAGE_MISMATCH") ||
+    normalized.includes("PRACTICE_HINT_LINEAGE_NOT_READY") ||
+    normalized.includes("PRACTICE_HINT_DECISION_NOT_READY");
+}
+
+async function hydrateAppliedHintDecisions(opts: {
+  supabase: PracticeSupabaseClient;
+  userId: string;
+  sessionId: string;
+  turns?: AppliedHintTurn[];
+}): Promise<AppliedHintTurn[] | undefined> {
+  if (!opts.turns || opts.turns.length === 0) return opts.turns;
+  const hydrated: AppliedHintTurn[] = [];
+  let dropped = 0;
+  for (const turn of opts.turns) {
+    if (!turn.hintRequestId) {
+      dropped += 1;
+      continue;
+    }
+    const { data, error } = await opts.supabase.rpc(
+      "resolve_practice_hint_decision",
+      {
+        p_user_id: opts.userId,
+        p_session_id: opts.sessionId,
+        p_request_id: turn.hintRequestId,
+        p_hint_type: turn.type,
+        p_original_hint_text: turn.originalHintText,
+      },
+    );
+    if (error) {
+      if (isDisconnectedHintLineageError(error.message)) {
+        dropped += 1;
+        continue;
+      }
+      throw new Error("practice_hint_lineage_resolution_failed");
+    }
+    const decision = parseAuthoritativeHintDecision(data);
+    if (!decision) {
+      throw new Error("practice_hint_lineage_resolution_failed");
+    }
+    hydrated.push({ ...turn, decision });
+  }
+  if (dropped > 0) {
+    logWarn("practice_chat_hint_lineage_dropped", {
+      user: summarizeUser(opts.userId),
+      sessionId: opts.sessionId,
+      dropped,
+    });
+  }
+  return hydrated.length > 0 ? hydrated : undefined;
 }
 
 export function createPracticeChatHandler(
@@ -1505,13 +1761,20 @@ export function createPracticeChatHandler(
         request.sessionId,
     });
 
-    const apiKey = deps.getEnv("DEEPSEEK_API_KEY");
-    if (!apiKey) {
+    const configuredDeepSeekApiKey = deps.getEnv("DEEPSEEK_API_KEY");
+    const claudeApiKey = deps.getEnv("CLAUDE_API_KEY");
+    const structuredGenerationAvailable = !!configuredDeepSeekApiKey ||
+      (!!claudeApiKey && !!deps.callClaude);
+    if (
+      (request.mode === "chat" && !configuredDeepSeekApiKey) ||
+      (request.mode !== "chat" && !structuredGenerationAvailable)
+    ) {
       logError("practice_chat_config_missing", {
         user: summarizeUser(user.id),
       });
       return jsonResponse({ error: "config_missing" }, 500);
     }
+    const apiKey = configuredDeepSeekApiKey ?? "";
 
     const { data: preparedSubData, error: subError } = await supabase.rpc(
       "prepare_practice_subscription_usage",
@@ -1548,11 +1811,24 @@ export function createPracticeChatHandler(
 
     const accountIsTest = TEST_EMAILS.includes(user.email || "");
     const limits = resolveLimits(sub.tier);
+    const responsePayloadWithCurrentUsage = (
+      snapshot: Record<string, unknown>,
+      deductedThisCall = 0,
+    ): Record<string, unknown> => ({
+      ...snapshot,
+      // A stored snapshot records historical billing provenance, not what this
+      // HTTP call deducted. Replays must report zero; settle/record paths pass
+      // the exact amount charged now. Remaining counters likewise come from
+      // this request's freshly prepared subscription so another session or
+      // device can never be rolled backwards by an old snapshot.
+      costDeducted: deductedThisCall,
+      ...remainingFrom(sub, limits, deductedThisCall),
+    });
 
     const baseLedgerColumns =
       "ai_count, charged, debrief_count, practice_mode, temperature_score, familiarity_score, partner_mood, partner_inner_thought, hint_count, game_state";
     const ledgerColumns = request.mode === "debrief"
-      ? `${baseLedgerColumns}, last_debrief_request_id, last_debrief_result, last_debrief_started_at`
+      ? `${baseLedgerColumns}, last_debrief_request_id, last_debrief_result, last_debrief_started_at, debrief_request_ledger`
       : baseLedgerColumns;
     const { data: ledgerRow, error: ledgerError } = await supabase
       .from("practice_chat_sessions")
@@ -1663,6 +1939,38 @@ export function createPracticeChatHandler(
       );
       const hintRequestId = request.requestId;
 
+      const hintQuotaGateResponse = (): Response | null => {
+        const quotaGate = checkQuota({
+          sub,
+          cost: PRACTICE_QUOTA_COST,
+          isTestAccount: accountIsTest,
+          monthlyLimit: limits.monthly,
+          dailyLimit: limits.daily,
+        });
+        if (quotaGate.ok) return null;
+        logWarn("practice_chat_quota_exceeded", {
+          user: summarizeUser(user.id),
+          reason: quotaGate.reason,
+        });
+        if (requestIsPrefetch) {
+          logHintPrefetchTelemetry({
+            outcome: "failed",
+            reason: "quota",
+            practiceMode: request.practiceMode,
+          });
+        }
+        return jsonResponse(
+          buildQuotaExceededPayload({
+            sub,
+            cost: PRACTICE_QUOTA_COST,
+            reason: quotaGate.reason,
+            monthlyLimit: limits.monthly,
+            dailyLimit: limits.daily,
+          }),
+          429,
+        );
+      };
+
       const mutableHintGateResponse = (): Response | null => {
         const gate = decideHintGate({
           ledger,
@@ -1688,37 +1996,7 @@ export function createPracticeChatHandler(
           );
         }
 
-        const quotaGate = checkQuota({
-          sub,
-          cost: PRACTICE_QUOTA_COST,
-          isTestAccount: accountIsTest,
-          monthlyLimit: limits.monthly,
-          dailyLimit: limits.daily,
-        });
-        if (!quotaGate.ok) {
-          logWarn("practice_chat_quota_exceeded", {
-            user: summarizeUser(user.id),
-            reason: quotaGate.reason,
-          });
-          if (requestIsPrefetch) {
-            logHintPrefetchTelemetry({
-              outcome: "failed",
-              reason: "quota",
-              practiceMode: request.practiceMode,
-            });
-          }
-          return jsonResponse(
-            buildQuotaExceededPayload({
-              sub,
-              cost: PRACTICE_QUOTA_COST,
-              reason: quotaGate.reason,
-              monthlyLimit: limits.monthly,
-              dailyLimit: limits.daily,
-            }),
-            429,
-          );
-        }
-        return null;
+        return hintQuotaGateResponse();
       };
 
       const quotaResponseForRpcError = async (
@@ -1754,9 +2032,15 @@ export function createPracticeChatHandler(
         );
       };
 
-      const settlePrefetchedHint = async (): Promise<Response> => {
+      const settlePrefetchedHint = async (): Promise<
+        | { kind: "response"; response: Response }
+        | { kind: "legacyReplacement" }
+      > => {
         if (!hintRequestId) {
-          return jsonResponse({ error: "practice_hint_not_ready" }, 503);
+          return {
+            kind: "response",
+            response: jsonResponse({ error: "practice_hint_not_ready" }, 503),
+          };
         }
         const settleHintParams: Record<string, unknown> = {
           p_user_id: user.id,
@@ -1777,9 +2061,14 @@ export function createPracticeChatHandler(
         );
         if (error) {
           const quotaResponse = await quotaResponseForRpcError(error.message);
-          if (quotaResponse) return quotaResponse;
+          if (quotaResponse) {
+            return { kind: "response", response: quotaResponse };
+          }
           const mapped = mapLedgerError(error.message);
-          return jsonResponse({ error: mapped.error }, mapped.status);
+          return {
+            kind: "response",
+            response: jsonResponse({ error: mapped.error }, mapped.status),
+          };
         }
         const row = firstRpcRow(data);
         if (
@@ -1791,18 +2080,34 @@ export function createPracticeChatHandler(
           !Number.isInteger(row.new_hint_count) ||
           row.new_hint_count < 0
         ) {
-          return jsonResponse({ error: "practice_hint_not_ready" }, 503);
+          return {
+            kind: "response",
+            response: jsonResponse({ error: "practice_hint_not_ready" }, 503),
+          };
+        }
+        if (!isExplicitModelHintResult(row.stored_result)) {
+          return { kind: "legacyReplacement" };
         }
         logHintPrefetchTelemetry({
           outcome: "hit",
           reason: "unknown",
           practiceMode: request.practiceMode,
         });
-        return jsonResponse(row.stored_result);
+        return {
+          kind: "response",
+          response: jsonResponse(
+            responsePayloadWithCurrentUsage(
+              row.stored_result,
+              row.did_charge ? PRACTICE_QUOTA_COST : 0,
+            ),
+          ),
+        };
       };
 
       const discardPrefetchedHint = async (): Promise<
-        { kind: "fresh" } | { kind: "response"; response: Response }
+        | { kind: "fresh" }
+        | { kind: "legacyReplacement" }
+        | { kind: "response"; response: Response }
       > => {
         if (!hintRequestId) return { kind: "fresh" };
         const { data, error } = await supabase.rpc(
@@ -1836,6 +2141,9 @@ export function createPracticeChatHandler(
           row.stored_charged === true &&
           isPlainObject(row.stored_result)
         ) {
+          if (!isExplicitModelHintResult(row.stored_result)) {
+            return { kind: "legacyReplacement" };
+          }
           logHintPrefetchTelemetry({
             outcome: "hit",
             reason: "unknown",
@@ -1843,10 +2151,83 @@ export function createPracticeChatHandler(
           });
           return {
             kind: "response",
-            response: jsonResponse(row.stored_result),
+            response: jsonResponse(
+              responsePayloadWithCurrentUsage(row.stored_result),
+            ),
           };
         }
         return { kind: "fresh" };
+      };
+
+      const hintGenerationToken = deps.randomUUID?.() ?? crypto.randomUUID();
+      let hintLegacyReplacementClaimed = false;
+      let hintReplacementQuotaAlreadyPaid = false;
+      const claimLegacyHintReplacement = async (): Promise<
+        | { kind: "claimed" }
+        | { kind: "response"; response: Response }
+      > => {
+        if (!hintRequestId || request.expectedAiCount === undefined) {
+          return {
+            kind: "response",
+            response: jsonResponse({ error: "practice_hint_not_ready" }, 503),
+          };
+        }
+        const { data, error } = await supabase.rpc(
+          "claim_legacy_practice_hint_replacement",
+          {
+            p_user_id: user.id,
+            p_session_id: request.sessionId,
+            p_request_id: hintRequestId,
+            p_generation_token: hintGenerationToken,
+            p_expected_ai_count: request.expectedAiCount,
+          },
+        );
+        if (error) {
+          const mapped = mapLedgerError(error.message);
+          return {
+            kind: "response",
+            response: jsonResponse({ error: mapped.error }, mapped.status),
+          };
+        }
+        const row = firstRpcRow(data);
+        if (!isPlainObject(row)) {
+          return {
+            kind: "response",
+            response: jsonResponse({ error: "practice_hint_not_ready" }, 503),
+          };
+        }
+        if (
+          row.replay === true &&
+          isPlainObject(row.stored_result) &&
+          isReplayableModelHintResult(row.stored_result)
+        ) {
+          return {
+            kind: "response",
+            response: jsonResponse(
+              responsePayloadWithCurrentUsage(row.stored_result),
+            ),
+          };
+        }
+        if (
+          row.claimed !== true ||
+          row.replay !== false ||
+          typeof row.current_hint_count !== "number" ||
+          !Number.isInteger(row.current_hint_count) ||
+          row.current_hint_count < 1 ||
+          typeof row.quota_already_paid !== "boolean"
+        ) {
+          return {
+            kind: "response",
+            response: jsonResponse({ error: "practice_hint_not_ready" }, 503),
+          };
+        }
+        hintLegacyReplacementClaimed = true;
+        hintReplacementQuotaAlreadyPaid = row.quota_already_paid;
+        logInfo("practice_chat_legacy_hint_replacement_claimed", {
+          user: summarizeUser(user.id),
+          quotaAlreadyPaid: hintReplacementQuotaAlreadyPaid,
+        });
+        return { kind: "claimed" };
       };
 
       let preflightState: HintRequestLedgerRow | null = null;
@@ -1854,7 +2235,9 @@ export function createPracticeChatHandler(
       if (hintRequestId) {
         const { data: requestRow, error: requestError } = await supabase
           .from("practice_hint_requests")
-          .select("state, result, charged, is_prefetch, claimed_ai_count")
+          .select(
+            "state, result, charged, is_prefetch, claimed_ai_count, legacy_replacement_pending",
+          )
           .eq("user_id", user.id)
           .eq("session_id", request.sessionId)
           .eq("request_id", hintRequestId)
@@ -1876,8 +2259,7 @@ export function createPracticeChatHandler(
           return jsonResponse({ error: "practice_hint_not_ready" }, 503);
         }
         preflightState = parsed;
-        preflightWasPrefetch = isPlainObject(requestRow) &&
-          requestRow.is_prefetch === true;
+        preflightWasPrefetch = parsed?.isPrefetch === true;
       }
 
       const preflightDecision = decideHintPrefetchReplay({
@@ -1898,14 +2280,36 @@ export function createPracticeChatHandler(
             practiceMode: request.practiceMode,
           });
         }
-        return jsonResponse(preflightDecision.result);
+        return jsonResponse(
+          responsePayloadWithCurrentUsage(preflightDecision.result),
+        );
       }
-      if (preflightDecision.kind === "prefetchedConsume") {
-        const gateResponse = mutableHintGateResponse();
-        if (gateResponse) return gateResponse;
-        if (prefetchEnabled) return await settlePrefetchedHint();
+      if (preflightDecision.kind === "legacyReplacementClaim") {
+        const replacement = await claimLegacyHintReplacement();
+        if (replacement.kind === "response") return replacement.response;
+      } else if (preflightDecision.kind === "legacyPrefetchDiscard") {
         const discarded = await discardPrefetchedHint();
         if (discarded.kind === "response") return discarded.response;
+        if (discarded.kind === "legacyReplacement") {
+          const replacement = await claimLegacyHintReplacement();
+          if (replacement.kind === "response") return replacement.response;
+        }
+      } else if (preflightDecision.kind === "prefetchedConsume") {
+        const gateResponse = mutableHintGateResponse();
+        if (gateResponse) return gateResponse;
+        if (prefetchEnabled) {
+          const settled = await settlePrefetchedHint();
+          if (settled.kind === "response") return settled.response;
+          const replacement = await claimLegacyHintReplacement();
+          if (replacement.kind === "response") return replacement.response;
+        } else {
+          const discarded = await discardPrefetchedHint();
+          if (discarded.kind === "response") return discarded.response;
+          if (discarded.kind === "legacyReplacement") {
+            const replacement = await claimLegacyHintReplacement();
+            if (replacement.kind === "response") return replacement.response;
+          }
+        }
       } else if (
         preflightDecision.kind === "continueToClaim" &&
         !requestIsPrefetch &&
@@ -1914,50 +2318,73 @@ export function createPracticeChatHandler(
       ) {
         const discarded = await discardPrefetchedHint();
         if (discarded.kind === "response") return discarded.response;
+        if (discarded.kind === "legacyReplacement") {
+          const replacement = await claimLegacyHintReplacement();
+          if (replacement.kind === "response") return replacement.response;
+        }
       }
 
-      // Exact replay/settlement paths return above. Fresh generation must use
-      // the same full-session AI count the client transcript was built from.
-      // The RPC repeats this check under the session row lock to close a chat
-      // commit racing between this read and the claim.
-      if (
-        request.expectedAiCount !== undefined &&
-        request.expectedAiCount !== ledger.aiCount
-      ) {
-        if (requestIsPrefetch) {
+      if (hintLegacyReplacementClaimed) {
+        if (!hintReplacementQuotaAlreadyPaid) {
+          const quotaResponse = hintQuotaGateResponse();
+          if (quotaResponse) {
+            await releaseHintGeneration({
+              supabase,
+              userId: user.id,
+              sessionId: request.sessionId,
+              requestId: hintRequestId,
+              generationToken: hintGenerationToken,
+              legacyReplacement: true,
+            });
+            return quotaResponse;
+          }
+        }
+      } else {
+        // Exact replay/settlement paths return above. Fresh generation must use
+        // the same full-session AI count the client transcript was built from.
+        // The RPC repeats this check under the session row lock to close a chat
+        // commit racing between this read and the claim.
+        if (
+          request.expectedAiCount !== undefined &&
+          request.expectedAiCount !== ledger.aiCount
+        ) {
+          if (requestIsPrefetch) {
+            logHintPrefetchTelemetry({
+              outcome: "failed",
+              reason: "gate",
+              practiceMode: request.practiceMode,
+            });
+          }
+          logWarn("practice_chat_hint_stale_client_turn", {
+            user: summarizeUser(user.id),
+            expectedAiCount: request.expectedAiCount,
+            serverAiCount: ledger.aiCount,
+          });
+          return jsonResponse({ error: "practice_hint_stale" }, 409);
+        }
+
+        const freshGateResponse = mutableHintGateResponse();
+        if (freshGateResponse) return freshGateResponse;
+        if (requestIsPrefetch && !prefetchEnabled) {
           logHintPrefetchTelemetry({
             outcome: "failed",
-            reason: "gate",
+            reason: "disabled",
+            practiceMode: request.practiceMode,
+          });
+          return jsonResponse(
+            { error: "practice_hint_prefetch_disabled" },
+            503,
+          );
+        }
+        if (request.prefetch === false) {
+          logHintPrefetchTelemetry({
+            outcome: "miss",
+            reason: "unknown",
             practiceMode: request.practiceMode,
           });
         }
-        logWarn("practice_chat_hint_stale_client_turn", {
-          user: summarizeUser(user.id),
-          expectedAiCount: request.expectedAiCount,
-          serverAiCount: ledger.aiCount,
-        });
-        return jsonResponse({ error: "practice_hint_stale" }, 409);
       }
 
-      const freshGateResponse = mutableHintGateResponse();
-      if (freshGateResponse) return freshGateResponse;
-      if (requestIsPrefetch && !prefetchEnabled) {
-        logHintPrefetchTelemetry({
-          outcome: "failed",
-          reason: "disabled",
-          practiceMode: request.practiceMode,
-        });
-        return jsonResponse({ error: "practice_hint_prefetch_disabled" }, 503);
-      }
-      if (request.prefetch === false) {
-        logHintPrefetchTelemetry({
-          outcome: "miss",
-          reason: "unknown",
-          practiceMode: request.practiceMode,
-        });
-      }
-
-      const hintGenerationToken = deps.randomUUID?.() ?? crypto.randomUUID();
       const claimHintParams: Record<string, unknown> = {
         p_user_id: user.id,
         p_session_id: request.sessionId,
@@ -1970,8 +2397,12 @@ export function createPracticeChatHandler(
         claimHintParams.p_expected_ai_count = request.expectedAiCount;
       }
 
-      let freshHintClaimed = false;
-      for (let claimAttempt = 0; claimAttempt < 2; claimAttempt++) {
+      let freshHintClaimed = hintLegacyReplacementClaimed;
+      for (
+        let claimAttempt = 0;
+        !freshHintClaimed && claimAttempt < 2;
+        claimAttempt++
+      ) {
         const { data: claimHintData, error: claimHintError } = await supabase
           .rpc("claim_practice_hint_generation", claimHintParams);
         if (claimHintError) {
@@ -2004,6 +2435,7 @@ export function createPracticeChatHandler(
             sessionId: request.sessionId,
             requestId: hintRequestId,
             generationToken: hintGenerationToken,
+            legacyReplacement: hintLegacyReplacementClaimed,
           });
           return jsonResponse({ error: "practice_hint_not_ready" }, 503);
         }
@@ -2021,16 +2453,43 @@ export function createPracticeChatHandler(
             sessionId: request.sessionId,
             requestId: hintRequestId,
             generationToken: hintGenerationToken,
+            legacyReplacement: hintLegacyReplacementClaimed,
           });
           return jsonResponse({ error: "practice_hint_not_ready" }, 503);
         }
         if (requestIsPrefetch) return jsonResponse(hintPrefetchAck());
         if (claimHintRow.stored_charged) {
-          return jsonResponse(claimHintRow.stored_result);
+          if (!isExplicitModelHintResult(claimHintRow.stored_result)) {
+            const replacement = await claimLegacyHintReplacement();
+            if (replacement.kind === "response") {
+              return replacement.response;
+            }
+            freshHintClaimed = true;
+            break;
+          }
+          return jsonResponse(
+            responsePayloadWithCurrentUsage(claimHintRow.stored_result),
+          );
         }
-        if (prefetchEnabled) return await settlePrefetchedHint();
+        if (
+          prefetchEnabled &&
+          isExplicitModelHintResult(claimHintRow.stored_result)
+        ) {
+          const settled = await settlePrefetchedHint();
+          if (settled.kind === "response") return settled.response;
+          const replacement = await claimLegacyHintReplacement();
+          if (replacement.kind === "response") return replacement.response;
+          freshHintClaimed = true;
+          break;
+        }
         const discarded = await discardPrefetchedHint();
         if (discarded.kind === "response") return discarded.response;
+        if (discarded.kind === "legacyReplacement") {
+          const replacement = await claimLegacyHintReplacement();
+          if (replacement.kind === "response") return replacement.response;
+          freshHintClaimed = true;
+          break;
+        }
       }
       if (!freshHintClaimed) {
         return jsonResponse({ error: "practice_hint_not_ready" }, 503);
@@ -2059,6 +2518,7 @@ export function createPracticeChatHandler(
           sessionId: request.sessionId,
           requestId: hintRequestId,
           generationToken: hintGenerationToken,
+          legacyReplacement: hintLegacyReplacementClaimed,
         });
         if (requestIsPrefetch) {
           logHintPrefetchTelemetry({
@@ -2090,7 +2550,11 @@ export function createPracticeChatHandler(
       const hintGenerationAttempts = HINT_GENERATION_ATTEMPTS;
       const hintTimeoutMs = HINT_TIMEOUT_MS;
       let hintResult: ReturnType<typeof parseHintResult> | null = null;
-      let hintResultIsFallback = false;
+      let hintProvider = apiKey ? "deepseek" : "anthropic";
+      let hintModel = apiKey
+        ? DEEPSEEK_MODEL
+        : claudeFallbackModelForTier(sub.tier);
+      let hintFailoverUsed = false;
       const hintGenerationStartedAt = performance.now();
       let hintAttemptCount = 0;
       let hintPromptChars = 0;
@@ -2108,40 +2572,133 @@ export function createPracticeChatHandler(
           partnerMood: hintPartnerMood,
           sceneContext,
           memorySummary: promptMemorySummary,
+          gameState: ledgerGameState,
         });
-        for (
-          let attempt = 1;
-          attempt <= hintGenerationAttempts;
-          attempt++
+        const parseGeneratedHint = (rawHint: string) => {
+          const generatedHint = parseHintResult(rawHint, {
+            mode: request.practiceMode,
+            turns: request.turns,
+            enforceGeneratedQuality: true,
+          });
+          return {
+            ...generatedHint,
+            replies: generatedHint.replies.map((reply) => ({
+              ...reply,
+              decision: buildHintDecision({
+                turns: request.turns,
+                profile: request.profile,
+                practiceMode: request.practiceMode,
+                temperatureScore: hintTemperatureScore,
+                familiarityScore: hintFamiliarityScore,
+                partnerMood: hintPartnerMood,
+                gameState: ledgerGameState,
+                replyType: reply.type,
+                replyText: reply.text,
+                rationale: `${
+                  reply.type === "warm_up" ? "升溫選項" : "穩住選項"
+                }：${generatedHint.coaching}`,
+              }),
+            })) as typeof generatedHint.replies,
+          };
+        };
+        if (apiKey) {
+          for (
+            let attempt = 1;
+            attempt <= hintGenerationAttempts;
+            attempt++
+          ) {
+            const hintMessages = baseHintMessages;
+            hintAttemptCount += 1;
+            hintPromptChars = countPromptChars(hintMessages);
+            const attemptStartedAt = performance.now();
+            try {
+              const rawHint = await deps.callDeepSeek({
+                apiKey,
+                messages: hintMessages,
+                maxTokens: HINT_MAX_TOKENS,
+                temperature: HINT_TEMPERATURE,
+                jsonMode: true,
+                timeoutMs: hintTimeoutMs,
+              });
+              hintResult = parseGeneratedHint(rawHint);
+              hintLastFailureClass = null;
+              const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
+              hintAttemptDurationsMs.push(attemptDurationMs);
+              logInfo("practice_chat_generation_attempt", {
+                user: summarizeUser(user.id),
+                provider: "deepseek",
+                model: DEEPSEEK_MODEL,
+                ...buildPracticeGenerationTelemetry({
+                  mode: "hint",
+                  practiceMode: request.practiceMode,
+                  attempt: hintAttemptCount,
+                  attemptDurationMs,
+                  failureClass: null,
+                  fallbackUsed: false,
+                  totalDurationMs: null,
+                  promptChars: hintPromptChars,
+                }),
+              });
+              break;
+            } catch (e) {
+              lastError = e;
+              hintLastFailureClass = classifyPracticeGenerationFailure(e);
+              const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
+              hintAttemptDurationsMs.push(attemptDurationMs);
+              hintFailureClasses.push(hintLastFailureClass);
+              logWarn("practice_chat_generation_attempt", {
+                user: summarizeUser(user.id),
+                provider: "deepseek",
+                model: DEEPSEEK_MODEL,
+                ...buildPracticeGenerationTelemetry({
+                  mode: "hint",
+                  practiceMode: request.practiceMode,
+                  attempt: hintAttemptCount,
+                  attemptDurationMs,
+                  failureClass: hintLastFailureClass,
+                  fallbackUsed: false,
+                  totalDurationMs: null,
+                  promptChars: hintPromptChars,
+                }),
+              });
+            }
+          }
+        }
+
+        if (
+          hintResult === null && claudeApiKey && deps.callClaude
         ) {
-          const hintMessages = attempt > 1 && lastError !== undefined &&
+          const hintMessages = lastError !== undefined &&
               isHintFormatOrGuardError(lastError)
             ? withHintRetryInstruction(baseHintMessages, lastError)
             : baseHintMessages;
-          hintAttemptCount = attempt;
+          hintFailoverUsed = hintAttemptCount > 0;
+          hintAttemptCount += 1;
           hintPromptChars = countPromptChars(hintMessages);
           const attemptStartedAt = performance.now();
           try {
-            const rawHint = await deps.callDeepSeek({
-              apiKey,
+            hintModel = claudeFallbackModelForTier(sub.tier);
+            const rawHint = await deps.callClaude({
+              apiKey: claudeApiKey,
+              model: hintModel,
               messages: hintMessages,
               maxTokens: HINT_MAX_TOKENS,
               temperature: HINT_TEMPERATURE,
-              jsonMode: true,
-              timeoutMs: hintTimeoutMs,
+              timeoutMs: CLAUDE_FAILOVER_TIMEOUT_MS,
             });
-            hintResult = parseHintResult(rawHint, {
-              mode: request.practiceMode,
-            });
+            hintResult = parseGeneratedHint(rawHint);
+            hintProvider = "anthropic";
             hintLastFailureClass = null;
             const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
             hintAttemptDurationsMs.push(attemptDurationMs);
             logInfo("practice_chat_generation_attempt", {
               user: summarizeUser(user.id),
+              provider: hintProvider,
+              model: hintModel,
               ...buildPracticeGenerationTelemetry({
                 mode: "hint",
                 practiceMode: request.practiceMode,
-                attempt,
+                attempt: hintAttemptCount,
                 attemptDurationMs,
                 failureClass: null,
                 fallbackUsed: false,
@@ -2149,7 +2706,6 @@ export function createPracticeChatHandler(
                 promptChars: hintPromptChars,
               }),
             });
-            break;
           } catch (e) {
             lastError = e;
             hintLastFailureClass = classifyPracticeGenerationFailure(e);
@@ -2158,10 +2714,12 @@ export function createPracticeChatHandler(
             hintFailureClasses.push(hintLastFailureClass);
             logWarn("practice_chat_generation_attempt", {
               user: summarizeUser(user.id),
+              provider: "anthropic",
+              model: hintModel,
               ...buildPracticeGenerationTelemetry({
                 mode: "hint",
                 practiceMode: request.practiceMode,
-                attempt,
+                attempt: hintAttemptCount,
                 attemptDurationMs,
                 failureClass: hintLastFailureClass,
                 fallbackUsed: false,
@@ -2169,59 +2727,7 @@ export function createPracticeChatHandler(
                 promptChars: hintPromptChars,
               }),
             });
-            // timeout 不重試：上游慢時第 2 次大機率再等滿逾時，白耗用戶等待。
-            if (isHintTimeoutError(e)) break;
           }
-        }
-        if (hintResult === null && requestIsPrefetch) {
-          logHintPrefetchTelemetry({
-            outcome: "failed",
-            reason: prefetchFailureReason(hintLastFailureClass),
-            practiceMode: request.practiceMode,
-          });
-          await releaseHintGeneration({
-            supabase,
-            userId: user.id,
-            sessionId: request.sessionId,
-            requestId: hintRequestId,
-            generationToken: hintGenerationToken,
-          });
-          return jsonResponse({ error: "practice_hint_prefetch_failed" }, 503);
-        }
-        if (
-          hintResult === null &&
-          (request.practiceMode === "game" ||
-            request.practiceMode === "beginner")
-        ) {
-          logWarn(
-            request.practiceMode === "game"
-              ? "practice_chat_game_hint_fallback_used"
-              : "practice_chat_beginner_hint_fallback_used",
-            {
-              user: summarizeUser(user.id),
-              ...buildPracticeGenerationTelemetry({
-                mode: "hint",
-                practiceMode: request.practiceMode,
-                attempt: hintAttemptCount,
-                attemptDurationMs: null,
-                failureClass: hintLastFailureClass,
-                fallbackUsed: true,
-                totalDurationMs: elapsedMilliseconds(
-                  hintGenerationStartedAt,
-                ),
-                promptChars: hintPromptChars,
-              }),
-            },
-          );
-          hintResult = buildFallbackHintResult({
-            turns: request.turns,
-            profile: request.profile,
-            practiceMode: request.practiceMode,
-            temperatureScore: hintTemperatureScore,
-            familiarityScore: hintFamiliarityScore,
-            partnerMood: hintPartnerMood,
-          });
-          hintResultIsFallback = true;
         }
         if (hintResult === null) {
           throw lastError instanceof Error
@@ -2229,12 +2735,14 @@ export function createPracticeChatHandler(
             : new Error("hint_generation_failed");
         }
       } catch (e) {
+        const failureClass = hintLastFailureClass ??
+          classifyPracticeGenerationFailure(e);
         logWarn("practice_chat_generation_failed", {
           user: summarizeUser(user.id),
           mode: "hint",
           personaId: request.profile.personaId,
           difficulty: request.profile.difficulty,
-          error: getErrorMessage(e),
+          failureClass,
         });
         await releaseHintGeneration({
           supabase,
@@ -2242,6 +2750,25 @@ export function createPracticeChatHandler(
           sessionId: request.sessionId,
           requestId: hintRequestId,
           generationToken: hintGenerationToken,
+          legacyReplacement: hintLegacyReplacementClaimed,
+        });
+        const failureDurationMs = elapsedMilliseconds(
+          hintGenerationStartedAt,
+        );
+        scheduleGenerationTelemetry(deps, {
+          supabase,
+          userId: user.id,
+          mode: "hint",
+          practiceMode: request.practiceMode,
+          attempt: Math.max(1, hintAttemptCount),
+          totalDurationMs: failureDurationMs,
+          promptChars: hintPromptChars,
+          fallbackUsed: false,
+          failoverUsed: hintFailoverUsed,
+          failureClass,
+          attemptDurationsMs: hintAttemptDurationsMs,
+          failureClasses: hintFailureClasses,
+          model: hintModel,
         });
         if (requestIsPrefetch) {
           logHintPrefetchTelemetry({
@@ -2249,9 +2776,15 @@ export function createPracticeChatHandler(
             reason: prefetchFailureReason(hintLastFailureClass),
             practiceMode: request.practiceMode,
           });
-          return jsonResponse({ error: "practice_hint_prefetch_failed" }, 503);
+          return jsonResponse(
+            { error: "practice_hint_prefetch_failed", retryable: true },
+            503,
+          );
         }
-        return jsonResponse({ error: "practice_generation_failed" }, 500);
+        return jsonResponse(
+          { error: "practice_hint_generation_retryable", retryable: true },
+          503,
+        );
       }
 
       const hintTotalDurationMs = elapsedMilliseconds(
@@ -2259,13 +2792,16 @@ export function createPracticeChatHandler(
       );
       logInfo("practice_chat_generation_outcome", {
         user: summarizeUser(user.id),
+        provider: hintProvider,
+        model: hintModel,
         ...buildPracticeGenerationTelemetry({
           mode: "hint",
           practiceMode: request.practiceMode,
           attempt: hintAttemptCount,
           attemptDurationMs: null,
-          failureClass: hintResultIsFallback ? hintLastFailureClass : null,
-          fallbackUsed: hintResultIsFallback,
+          failureClass: null,
+          fallbackUsed: false,
+          failoverUsed: hintFailoverUsed,
           totalDurationMs: hintTotalDurationMs,
           promptChars: hintPromptChars,
         }),
@@ -2273,39 +2809,62 @@ export function createPracticeChatHandler(
       const recordPolicy = hintRecordPolicy({
         isPrefetch: requestIsPrefetch,
         isTestAccount: accountIsTest,
-        isFallback: hintResultIsFallback,
+        quotaAlreadyPaid: hintReplacementQuotaAlreadyPaid,
       });
       const predictedDeducted = recordPolicy.chargeQuota
         ? PRACTICE_QUOTA_COST
         : 0;
       const generatedAt = (deps.now?.() ?? new Date()).toISOString();
-      const recordHintParams: Record<string, unknown> = {
-        p_user_id: user.id,
-        p_session_id: request.sessionId,
-        p_charge_quota: recordPolicy.chargeQuota,
-        p_max_hints: MAX_HINTS_PER_ROUND,
-        p_charged: recordPolicy.charged,
-        p_monthly_limit: limits.monthly,
-        p_daily_limit: limits.daily,
-        p_max_replies: MAX_AI_REPLIES,
-        p_generation_token: hintGenerationToken,
-      };
-      if (hintRequestId) {
-        recordHintParams.p_request_id = hintRequestId;
-        recordHintParams.p_result = {
+      const generatedHintSnapshot = hintRequestId
+        ? {
           ...hintResult,
           costDeducted: predictedDeducted,
           ...(requestIsPrefetch
             ? { hintUsedCount: ledger.hintCount ?? 0 }
             : {}),
-          provider: "deepseek",
-          model: DEEPSEEK_MODEL,
+          generationSource: "model",
+          fallbackUsed: false,
+          failoverUsed: hintFailoverUsed,
+          provider: hintProvider,
+          model: hintModel,
           generatedAt,
           ...remainingFrom(sub, limits, predictedDeducted),
-        };
-      }
+        }
+        : null;
+      const recordHintParams: Record<string, unknown> =
+        hintLegacyReplacementClaimed
+          ? {
+            p_user_id: user.id,
+            p_session_id: request.sessionId,
+            p_request_id: hintRequestId,
+            p_generation_token: hintGenerationToken,
+            p_result: generatedHintSnapshot,
+            p_charge_quota: recordPolicy.chargeQuota,
+            p_monthly_limit: limits.monthly,
+            p_daily_limit: limits.daily,
+            p_max_hints: MAX_HINTS_PER_ROUND,
+          }
+          : {
+            p_user_id: user.id,
+            p_session_id: request.sessionId,
+            p_charge_quota: recordPolicy.chargeQuota,
+            p_max_hints: MAX_HINTS_PER_ROUND,
+            p_charged: recordPolicy.charged,
+            p_monthly_limit: limits.monthly,
+            p_daily_limit: limits.daily,
+            p_max_replies: MAX_AI_REPLIES,
+            p_generation_token: hintGenerationToken,
+            ...(hintRequestId
+              ? {
+                p_request_id: hintRequestId,
+                p_result: generatedHintSnapshot,
+              }
+              : {}),
+          };
       const { data: recordData, error: recordError } = await supabase.rpc(
-        "record_practice_hint",
+        hintLegacyReplacementClaimed
+          ? "record_legacy_practice_hint_replacement"
+          : "record_practice_hint",
         recordHintParams,
       );
       if (recordError) {
@@ -2319,6 +2878,7 @@ export function createPracticeChatHandler(
           sessionId: request.sessionId,
           requestId: hintRequestId,
           generationToken: hintGenerationToken,
+          legacyReplacement: hintLegacyReplacementClaimed,
         });
         if (requestIsPrefetch) {
           logHintPrefetchTelemetry({
@@ -2353,6 +2913,7 @@ export function createPracticeChatHandler(
           sessionId: request.sessionId,
           requestId: hintRequestId,
           generationToken: hintGenerationToken,
+          legacyReplacement: hintLegacyReplacementClaimed,
         });
         if (requestIsPrefetch) {
           logHintPrefetchTelemetry({
@@ -2376,10 +2937,12 @@ export function createPracticeChatHandler(
         attempt: hintAttemptCount,
         totalDurationMs: hintTotalDurationMs,
         promptChars: hintPromptChars,
-        fallbackUsed: hintResultIsFallback,
-        failureClass: hintResultIsFallback ? hintLastFailureClass : null,
+        fallbackUsed: false,
+        failoverUsed: hintFailoverUsed,
+        failureClass: null,
         attemptDurationsMs: hintAttemptDurationsMs,
         failureClasses: hintFailureClasses,
+        model: hintModel,
       });
 
       logInfo("practice_chat_succeeded", {
@@ -2393,14 +2956,22 @@ export function createPracticeChatHandler(
         return jsonResponse(hintPrefetchAck());
       }
       if (hintRequestId && isPlainObject(recordRow.stored_result)) {
-        return jsonResponse(recordRow.stored_result);
+        return jsonResponse(
+          responsePayloadWithCurrentUsage(
+            recordRow.stored_result,
+            recordRow.did_charge ? PRACTICE_QUOTA_COST : 0,
+          ),
+        );
       }
       return jsonResponse({
         ...hintResult,
         costDeducted: deducted,
         hintUsedCount,
-        provider: "deepseek",
-        model: DEEPSEEK_MODEL,
+        generationSource: "model",
+        fallbackUsed: false,
+        failoverUsed: hintFailoverUsed,
+        provider: hintProvider,
+        model: hintModel,
         generatedAt,
         ...remainingFrom(sub, limits, deducted),
       });
@@ -2418,26 +2989,56 @@ export function createPracticeChatHandler(
       return jsonResponse({ error: "practice_mode_locked" }, 409);
     }
 
-    const retryingClaimedDebrief = request.mode === "debrief" &&
-      !!request.requestId &&
-      ledgerRow?.last_debrief_request_id === request.requestId;
+    const debriefRequestLedger = request.mode === "debrief" && ledgerRow != null
+      ? parseDebriefRequestLedger(ledgerRow.debrief_request_ledger)
+      : new Map<string, DebriefRequestLedgerEntry>();
+    if (debriefRequestLedger === null) {
+      logError("practice_chat_debrief_ledger_invalid", {
+        user: summarizeUser(user.id),
+        sessionId: request.sessionId,
+      });
+      return jsonResponse({ error: "practice_debrief_not_ready" }, 503);
+    }
+    const exactDebriefRequest = request.mode === "debrief" && request.requestId
+      ? debriefRequestLedger.get(request.requestId)
+      : undefined;
+    const retryingClaimedDebrief = exactDebriefRequest !== undefined;
     if (retryingClaimedDebrief) {
-      // A completed or still-running request was already authorized by the
-      // original call. Replay/latch checks must precede mutable Game unlock
-      // lookups: a transient unlock-query failure must not strand a completed
-      // card behind the debrief cap or make the client rotate its requestId.
-      if (isPlainObject(ledgerRow?.last_debrief_result)) {
-        logInfo("practice_chat_debrief_replayed", {
-          user: summarizeUser(user.id),
+      // Exact request-ledger replay/latch checks precede mutable Game unlock
+      // and cap gates. This remains true after another logical ID becomes the
+      // session's last slot (A -> B -> A).
+      if (exactDebriefRequest.result !== null) {
+        if (isGeneratedModelEnvelope(exactDebriefRequest.result)) {
+          logInfo("practice_chat_debrief_replayed", {
+            user: summarizeUser(user.id),
+            sessionId: request.sessionId,
+            source: "preflight",
+          });
+          return jsonResponse(
+            responsePayloadWithCurrentUsage(exactDebriefRequest.result),
+          );
+        }
+        const invalidated = await invalidateLegacyPracticeAiSnapshot({
+          supabase,
+          userId: user.id,
           sessionId: request.sessionId,
-          source: "preflight",
+          requestId: request.requestId,
+          kind: "debrief",
         });
-        return jsonResponse(ledgerRow.last_debrief_result);
+        if (!invalidated) {
+          return jsonResponse(
+            { error: "practice_debrief_generation_retryable", retryable: true },
+            503,
+          );
+        }
+        logInfo("practice_chat_legacy_snapshot_invalidated", {
+          user: summarizeUser(user.id),
+          kind: "debrief",
+        });
       }
       if (
-        ledgerRow?.last_debrief_result == null &&
         isFreshDebriefGeneration(
-          ledgerRow?.last_debrief_started_at,
+          exactDebriefRequest.startedAt,
           deps.now?.() ?? new Date(),
         )
       ) {
@@ -2448,6 +3049,24 @@ export function createPracticeChatHandler(
         });
         return jsonResponse({ error: "practice_debrief_in_flight" }, 425);
       }
+    }
+
+    // Exact completed replay wins above. Otherwise the session-wide fresh
+    // owner blocks every logical ID, including one with an older released row.
+    if (
+      request.mode === "debrief" &&
+      ledgerRow?.last_debrief_result == null &&
+      isFreshDebriefGeneration(
+        ledgerRow?.last_debrief_started_at,
+        deps.now?.() ?? new Date(),
+      )
+    ) {
+      logInfo("practice_chat_debrief_in_flight", {
+        user: summarizeUser(user.id),
+        sessionId: request.sessionId,
+        source: "global_preflight",
+      });
+      return jsonResponse({ error: "practice_debrief_in_flight" }, 425);
     }
 
     if (
@@ -2483,7 +3102,7 @@ export function createPracticeChatHandler(
       const debriefAssistedMode = isAssistedPracticeMode(
         ledger.practiceMode ?? "standard",
       );
-      const ledgerAppliedHintTurns = debriefAssistedMode
+      let ledgerAppliedHintTurns = debriefAssistedMode
         ? request.appliedHintTurns
         : undefined;
       if (debriefAssistedMode) {
@@ -2501,11 +3120,142 @@ export function createPracticeChatHandler(
           });
           return jsonResponse({ error: mapped.error }, mapped.status);
         }
+        try {
+          ledgerAppliedHintTurns = await hydrateAppliedHintDecisions({
+            supabase,
+            userId: user.id,
+            sessionId: request.sessionId,
+            turns: ledgerAppliedHintTurns,
+          });
+        } catch {
+          logWarn("practice_chat_hint_lineage_resolution_failed", {
+            user: summarizeUser(user.id),
+            sessionId: request.sessionId,
+            failureClass: "schema_invalid",
+          });
+          return jsonResponse({ error: "practice_debrief_not_ready" }, 503);
+        }
       }
 
-      // 模型呼叫限流：practice_debrief 4/分、40/日（Codex R1 P2：debrief
-      // 也打 DeepSeek）。放在資格 gate 403 之後、claim 之前——被限流的
-      // 請求不得吃掉 MAX_DEBRIEFS 名額。
+      const debriefGenerationToken = request.requestId
+        ? deps.randomUUID?.() ?? crypto.randomUUID()
+        : undefined;
+      const claimDebriefParams: Record<string, unknown> = {
+        p_user_id: user.id,
+        p_session_id: request.sessionId,
+        p_max_debriefs: MAX_DEBRIEFS,
+      };
+      if (request.requestId) {
+        claimDebriefParams.p_request_id = request.requestId;
+        claimDebriefParams.p_generation_token = debriefGenerationToken;
+      }
+      let debriefClaimed = false;
+      for (let claimAttempt = 0; claimAttempt < 2; claimAttempt++) {
+        const { data: claimData, error: claimError } = await supabase.rpc(
+          "claim_practice_debrief",
+          claimDebriefParams,
+        );
+        if (claimError) {
+          const mapped = mapLedgerError(claimError.message);
+          logWarn("practice_chat_debrief_claim_failed", {
+            user: summarizeUser(user.id),
+            error: claimError.message,
+          });
+          return jsonResponse({ error: mapped.error }, mapped.status);
+        }
+        const claimDataHasSingleRow = !Array.isArray(claimData) ||
+          claimData.length === 1;
+        const claimRow = Array.isArray(claimData) ? claimData[0] : claimData;
+        const currentDebriefCount = isPlainObject(claimRow)
+          ? claimRow.current_debrief_count
+          : undefined;
+        if (
+          !claimDataHasSingleRow || !isPlainObject(claimRow) ||
+          typeof claimRow.replay !== "boolean" ||
+          typeof claimRow.in_flight !== "boolean" ||
+          typeof currentDebriefCount !== "number" ||
+          !Number.isInteger(currentDebriefCount) ||
+          currentDebriefCount < 0 ||
+          currentDebriefCount > MAX_DEBRIEFS
+        ) {
+          await releaseDebriefGeneration({
+            supabase,
+            userId: user.id,
+            sessionId: request.sessionId,
+            requestId: request.requestId,
+            generationToken: debriefGenerationToken,
+          });
+          return jsonResponse(
+            { error: "practice_debrief_not_ready", retryable: true },
+            503,
+          );
+        }
+        if (
+          claimRow.replay === true && claimRow.in_flight === false &&
+          isPlainObject(claimRow.stored_result)
+        ) {
+          if (isGeneratedModelEnvelope(claimRow.stored_result)) {
+            logInfo("practice_chat_debrief_replayed", {
+              user: summarizeUser(user.id),
+              sessionId: request.sessionId,
+              source: "claim",
+            });
+            return jsonResponse(
+              responsePayloadWithCurrentUsage(claimRow.stored_result),
+            );
+          }
+          const invalidated = await invalidateLegacyPracticeAiSnapshot({
+            supabase,
+            userId: user.id,
+            sessionId: request.sessionId,
+            requestId: request.requestId,
+            kind: "debrief",
+          });
+          if (invalidated) continue;
+          return jsonResponse(
+            { error: "practice_debrief_generation_retryable", retryable: true },
+            503,
+          );
+        }
+        if (
+          claimRow.replay === false && claimRow.in_flight === true &&
+          claimRow.stored_result === null
+        ) {
+          logInfo("practice_chat_debrief_in_flight", {
+            user: summarizeUser(user.id),
+            sessionId: request.sessionId,
+          });
+          return jsonResponse({ error: "practice_debrief_in_flight" }, 425);
+        }
+        if (
+          claimRow.replay !== false || claimRow.in_flight !== false ||
+          claimRow.stored_result !== null
+        ) {
+          await releaseDebriefGeneration({
+            supabase,
+            userId: user.id,
+            sessionId: request.sessionId,
+            requestId: request.requestId,
+            generationToken: debriefGenerationToken,
+          });
+          return jsonResponse(
+            { error: "practice_debrief_not_ready", retryable: true },
+            503,
+          );
+        }
+        debriefClaimed = true;
+        break;
+      }
+      if (!debriefClaimed) {
+        return jsonResponse(
+          { error: "practice_debrief_generation_retryable", retryable: true },
+          503,
+        );
+      }
+
+      // Claim-level replay and in-flight races returned above. Only a fresh
+      // owner consumes a model-rate slot; a limited request releases the exact
+      // token-fenced reservation before returning.
       const debriefRateVerdict = await enforceModelRateLimit({
         supabase,
         userId: user.id,
@@ -2518,6 +3268,13 @@ export function createPracticeChatHandler(
           scope: "practice_debrief",
           reason: debriefRateVerdict.reason,
         });
+        await releaseDebriefGeneration({
+          supabase,
+          userId: user.id,
+          sessionId: request.sessionId,
+          requestId: request.requestId,
+          generationToken: debriefGenerationToken,
+        });
         return jsonResponse(debriefRateVerdict.payload, 429);
       }
       if (debriefRateVerdict.kind === "failOpen") {
@@ -2528,48 +3285,12 @@ export function createPracticeChatHandler(
         });
       }
 
-      const claimDebriefParams: Record<string, unknown> = {
-        p_user_id: user.id,
-        p_session_id: request.sessionId,
-        p_max_debriefs: MAX_DEBRIEFS,
-      };
-      if (request.requestId) {
-        claimDebriefParams.p_request_id = request.requestId;
-      }
-      const { data: claimData, error: claimError } = await supabase.rpc(
-        "claim_practice_debrief",
-        claimDebriefParams,
-      );
-      if (claimError) {
-        const mapped = mapLedgerError(claimError.message);
-        logWarn("practice_chat_debrief_claim_failed", {
-          user: summarizeUser(user.id),
-          error: claimError.message,
-        });
-        return jsonResponse({ error: mapped.error }, mapped.status);
-      }
-      const claimRow = Array.isArray(claimData) ? claimData[0] : claimData;
-      if (
-        isPlainObject(claimRow) && claimRow.replay === true &&
-        isPlainObject(claimRow.stored_result)
-      ) {
-        logInfo("practice_chat_debrief_replayed", {
-          user: summarizeUser(user.id),
-          sessionId: request.sessionId,
-          source: "claim",
-        });
-        return jsonResponse(claimRow.stored_result);
-      }
-      if (isPlainObject(claimRow) && claimRow.in_flight === true) {
-        logInfo("practice_chat_debrief_in_flight", {
-          user: summarizeUser(user.id),
-          sessionId: request.sessionId,
-        });
-        return jsonResponse({ error: "practice_debrief_in_flight" }, 425);
-      }
-
       let debriefCard: DebriefCard | null = null;
-      let debriefUsedFallback = false;
+      let debriefProvider = apiKey ? "deepseek" : "anthropic";
+      let debriefModel = apiKey
+        ? DEEPSEEK_MODEL
+        : claudeFallbackModelForTier(sub.tier);
+      let debriefFailoverUsed = false;
       const debriefPracticeMode = ledger.practiceMode ?? request.practiceMode;
       const debriefGenerationStartedAt = performance.now();
       let debriefAttemptCount = 0;
@@ -2602,12 +3323,78 @@ export function createPracticeChatHandler(
               memorySummary: promptMemorySummary,
             },
         );
-        for (
-          let attempt = 1;
-          attempt <= DEBRIEF_GENERATION_ATTEMPTS;
-          attempt++
-        ) {
-          const shouldRepair = attempt > 1 && lastError !== undefined &&
+        if (apiKey) {
+          for (
+            let attempt = 1;
+            attempt <= DEBRIEF_GENERATION_ATTEMPTS;
+            attempt++
+          ) {
+            const debriefMessages = baseDebriefMessages;
+            debriefAttemptCount += 1;
+            debriefPromptChars = countPromptChars(debriefMessages);
+            const attemptStartedAt = performance.now();
+            try {
+              const rawCard = await deps.callDeepSeek({
+                apiKey,
+                messages: debriefMessages,
+                maxTokens: DEBRIEF_MAX_TOKENS,
+                temperature: DEBRIEF_TEMPERATURE,
+                jsonMode: true,
+                timeoutMs: DEBRIEF_TIMEOUT_MS,
+              });
+              debriefCard = parseDebriefCard(rawCard, {
+                allowGameBreakdown: debriefPracticeMode === "game",
+                requireCompleteCard: true,
+                turns: request.turns,
+                appliedHintTurns: ledgerAppliedHintTurns,
+                enforceGeneratedQuality: true,
+              });
+              debriefLastFailureClass = null;
+              const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
+              debriefAttemptDurationsMs.push(attemptDurationMs);
+              logInfo("practice_chat_generation_attempt", {
+                user: summarizeUser(user.id),
+                provider: "deepseek",
+                model: DEEPSEEK_MODEL,
+                ...buildPracticeGenerationTelemetry({
+                  mode: "debrief",
+                  practiceMode: debriefPracticeMode,
+                  attempt: debriefAttemptCount,
+                  attemptDurationMs,
+                  failureClass: null,
+                  fallbackUsed: false,
+                  totalDurationMs: null,
+                  promptChars: debriefPromptChars,
+                }),
+              });
+              break;
+            } catch (e) {
+              lastError = e;
+              debriefLastFailureClass = classifyPracticeGenerationFailure(e);
+              const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
+              debriefAttemptDurationsMs.push(attemptDurationMs);
+              debriefFailureClasses.push(debriefLastFailureClass);
+              logWarn("practice_chat_generation_attempt", {
+                user: summarizeUser(user.id),
+                provider: "deepseek",
+                model: DEEPSEEK_MODEL,
+                ...buildPracticeGenerationTelemetry({
+                  mode: "debrief",
+                  practiceMode: debriefPracticeMode,
+                  attempt: debriefAttemptCount,
+                  attemptDurationMs,
+                  failureClass: debriefLastFailureClass,
+                  fallbackUsed: false,
+                  totalDurationMs: null,
+                  promptChars: debriefPromptChars,
+                }),
+              });
+            }
+          }
+        }
+
+        if (debriefCard === null && claudeApiKey && deps.callClaude) {
+          const shouldRepair = lastError !== undefined &&
             (debriefLastFailureClass === "visible_text_guard" ||
               debriefLastFailureClass === "invalid_json" ||
               debriefLastFailureClass === "schema_invalid");
@@ -2618,31 +3405,39 @@ export function createPracticeChatHandler(
               debriefPracticeMode === "game",
             )
             : baseDebriefMessages;
-          debriefAttemptCount = attempt;
+          debriefFailoverUsed = debriefAttemptCount > 0;
+          debriefAttemptCount += 1;
           debriefPromptChars = countPromptChars(debriefMessages);
           const attemptStartedAt = performance.now();
           try {
-            const rawCard = await deps.callDeepSeek({
-              apiKey,
+            debriefModel = claudeFallbackModelForTier(sub.tier);
+            const rawCard = await deps.callClaude({
+              apiKey: claudeApiKey,
+              model: debriefModel,
               messages: debriefMessages,
               maxTokens: DEBRIEF_MAX_TOKENS,
               temperature: DEBRIEF_TEMPERATURE,
-              jsonMode: true,
-              timeoutMs: DEBRIEF_TIMEOUT_MS,
+              timeoutMs: CLAUDE_FAILOVER_TIMEOUT_MS,
             });
             debriefCard = parseDebriefCard(rawCard, {
               allowGameBreakdown: debriefPracticeMode === "game",
               requireCompleteCard: true,
+              turns: request.turns,
+              appliedHintTurns: ledgerAppliedHintTurns,
+              enforceGeneratedQuality: true,
             });
+            debriefProvider = "anthropic";
             debriefLastFailureClass = null;
             const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
             debriefAttemptDurationsMs.push(attemptDurationMs);
             logInfo("practice_chat_generation_attempt", {
               user: summarizeUser(user.id),
+              provider: debriefProvider,
+              model: debriefModel,
               ...buildPracticeGenerationTelemetry({
                 mode: "debrief",
                 practiceMode: debriefPracticeMode,
-                attempt,
+                attempt: debriefAttemptCount,
                 attemptDurationMs,
                 failureClass: null,
                 fallbackUsed: false,
@@ -2650,7 +3445,6 @@ export function createPracticeChatHandler(
                 promptChars: debriefPromptChars,
               }),
             });
-            break;
           } catch (e) {
             lastError = e;
             debriefLastFailureClass = classifyPracticeGenerationFailure(e);
@@ -2659,10 +3453,12 @@ export function createPracticeChatHandler(
             debriefFailureClasses.push(debriefLastFailureClass);
             logWarn("practice_chat_generation_attempt", {
               user: summarizeUser(user.id),
+              provider: "anthropic",
+              model: debriefModel,
               ...buildPracticeGenerationTelemetry({
                 mode: "debrief",
                 practiceMode: debriefPracticeMode,
-                attempt,
+                attempt: debriefAttemptCount,
                 attemptDurationMs,
                 failureClass: debriefLastFailureClass,
                 fallbackUsed: false,
@@ -2673,32 +3469,9 @@ export function createPracticeChatHandler(
           }
         }
         if (debriefCard === null) {
-          debriefUsedFallback = true;
-          logWarn("practice_chat_debrief_fallback_used", {
-            user: summarizeUser(user.id),
-            ...buildPracticeGenerationTelemetry({
-              mode: "debrief",
-              practiceMode: debriefPracticeMode,
-              attempt: debriefAttemptCount,
-              attemptDurationMs: null,
-              failureClass: debriefLastFailureClass,
-              fallbackUsed: true,
-              totalDurationMs: elapsedMilliseconds(
-                debriefGenerationStartedAt,
-              ),
-              promptChars: debriefPromptChars,
-            }),
-          });
-          debriefCard = buildFallbackDebriefCard({
-            practiceMode: ledger.practiceMode,
-            appliedHintTurns: ledgerAppliedHintTurns,
-            turns: request.turns,
-            // 與 debrief prompt 同源：assisted 模式吃 ledger 溫度（缺席退難度
-            // 起始溫度）；standard 模式不傳＝維持中性罐頭。
-            temperatureScore: debriefAssistedMode
-              ? ledger.temperatureScore ?? difficultyStartTemperature
-              : undefined,
-          });
+          throw lastError instanceof Error
+            ? lastError
+            : new Error("debrief_generation_failed");
         }
       } catch (e) {
         logWarn("practice_chat_generation_failed", {
@@ -2708,7 +3481,34 @@ export function createPracticeChatHandler(
           difficulty: request.profile.difficulty,
           failureClass: classifyPracticeGenerationFailure(e),
         });
-        return jsonResponse({ error: "practice_generation_failed" }, 500);
+        await releaseDebriefGeneration({
+          supabase,
+          userId: user.id,
+          sessionId: request.sessionId,
+          requestId: request.requestId,
+          generationToken: debriefGenerationToken,
+        });
+        const failureClass = debriefLastFailureClass ??
+          classifyPracticeGenerationFailure(e);
+        scheduleGenerationTelemetry(deps, {
+          supabase,
+          userId: user.id,
+          mode: "debrief",
+          practiceMode: debriefPracticeMode,
+          attempt: Math.max(1, debriefAttemptCount),
+          totalDurationMs: elapsedMilliseconds(debriefGenerationStartedAt),
+          promptChars: debriefPromptChars,
+          fallbackUsed: false,
+          failoverUsed: debriefFailoverUsed,
+          failureClass,
+          attemptDurationsMs: debriefAttemptDurationsMs,
+          failureClasses: debriefFailureClasses,
+          model: debriefModel,
+        });
+        return jsonResponse(
+          { error: "practice_debrief_generation_retryable", retryable: true },
+          503,
+        );
       }
 
       const debriefTotalDurationMs = elapsedMilliseconds(
@@ -2716,13 +3516,16 @@ export function createPracticeChatHandler(
       );
       logInfo("practice_chat_generation_outcome", {
         user: summarizeUser(user.id),
+        provider: debriefProvider,
+        model: debriefModel,
         ...buildPracticeGenerationTelemetry({
           mode: "debrief",
           practiceMode: debriefPracticeMode,
           attempt: debriefAttemptCount,
           attemptDurationMs: null,
-          failureClass: debriefUsedFallback ? debriefLastFailureClass : null,
-          fallbackUsed: debriefUsedFallback,
+          failureClass: null,
+          fallbackUsed: false,
+          failoverUsed: debriefFailoverUsed,
           totalDurationMs: debriefTotalDurationMs,
           promptChars: debriefPromptChars,
         }),
@@ -2730,8 +3533,11 @@ export function createPracticeChatHandler(
       const debriefResponse = {
         card: debriefCard,
         costDeducted: 0,
-        provider: "deepseek",
-        model: DEEPSEEK_MODEL,
+        generationSource: "model",
+        fallbackUsed: false,
+        failoverUsed: debriefFailoverUsed,
+        provider: debriefProvider,
+        model: debriefModel,
         generatedAt: (deps.now?.() ?? new Date()).toISOString(),
         ...remainingFrom(sub, limits, 0),
       };
@@ -2745,21 +3551,34 @@ export function createPracticeChatHandler(
             p_session_id: request.sessionId,
             p_request_id: request.requestId,
             p_result: debriefResponse,
+            p_generation_token: debriefGenerationToken,
           },
         );
-        if (recordError) {
-          // 回放快照是韌性 side-channel；寫入失敗不應把已產生的拆解卡變成 5xx。
-          // 同 requestId 已由 claim 保證不再遞增次數，重試最多重新生成。
+        if (recordError || !isPlainObject(recordData)) {
           logWarn("practice_chat_debrief_record_failed", {
             user: summarizeUser(user.id),
-            failureClass: isMissingPracticeDebriefRpc(recordError.message)
+            failureClass: recordError &&
+                isMissingPracticeDebriefRpc(recordError.message)
               ? "schema_invalid"
               : "unknown",
           });
-        } else if (isPlainObject(recordData)) {
+          await releaseDebriefGeneration({
+            supabase,
+            userId: user.id,
+            sessionId: request.sessionId,
+            requestId: request.requestId,
+            generationToken: debriefGenerationToken,
+          });
+          return jsonResponse(
+            { error: "practice_debrief_persist_retryable", retryable: true },
+            503,
+          );
+        } else {
           // first-writer-wins：stale takeover 若撞到仍存活的舊 worker，RPC 回傳
           // 已落帳的權威卡；本次 response 與之後 replay 必須完全一致。
-          authoritativeDebriefResponse = recordData;
+          authoritativeDebriefResponse = responsePayloadWithCurrentUsage(
+            recordData,
+          );
         }
       }
 
@@ -2772,10 +3591,12 @@ export function createPracticeChatHandler(
         attempt: debriefAttemptCount,
         totalDurationMs: debriefTotalDurationMs,
         promptChars: debriefPromptChars,
-        fallbackUsed: debriefUsedFallback,
-        failureClass: debriefUsedFallback ? debriefLastFailureClass : null,
+        fallbackUsed: false,
+        failoverUsed: debriefFailoverUsed,
+        failureClass: null,
         attemptDurationsMs: debriefAttemptDurationsMs,
         failureClasses: debriefFailureClasses,
+        model: debriefModel,
       });
 
       logInfo("practice_chat_succeeded", {

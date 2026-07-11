@@ -5,6 +5,7 @@ import {
 import type { GameFsmSnapshot } from "./game_fsm.ts";
 import {
   buildNextGameState,
+  effectiveGameFsmSnapshot,
   gameStateEvidencePrompt,
   initialPersistedGameState,
   parsePersistedGameState,
@@ -95,6 +96,33 @@ Deno.test("buildNextGameState merges a snapshot and accumulates failure and real
   assertEquals(next.lastTargetVariable, "Value + Emotion");
   assertEquals(next.lastSpeedInviteDirection, "no_invite_build_investment");
   assertEquals(next.lastSpicyLevel, "L1");
+});
+
+Deno.test("effectiveGameFsmSnapshot makes persisted judgement authoritative without losing current-turn signals", () => {
+  const effective = effectiveGameFsmSnapshot(baseSnapshot, {
+    ...initialPersistedGameState(),
+    phase: "P5_CLOSE",
+    pv: 81,
+    fp: 73,
+    inv: 66,
+    safety: 58,
+    lastTargetVariable: "Investment + close",
+    lastSpeedInviteDirection: "direct_invite_window",
+    lastSpicyLevel: "L2",
+  });
+
+  assertEquals(effective.phase, "P5_CLOSE");
+  assertEquals(effective.targetVariable, "Investment + close");
+  assertEquals(effective.speedInviteDirection, "direct_invite_window");
+  assertEquals(effective.hidden, {
+    pv: 81,
+    fp: 73,
+    inv: 66,
+    safety: 58,
+    heatBias: 4,
+  });
+  assertEquals(effective.spicyLevel, "L2");
+  assertEquals(effective.failureStates, ["BORING"]);
 });
 
 Deno.test("gameStateEvidencePrompt exposes persisted evidence only as hidden prompt context", () => {

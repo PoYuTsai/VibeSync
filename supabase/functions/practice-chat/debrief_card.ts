@@ -9,6 +9,16 @@ import {
 import { temperatureBandFor } from "./temperature.ts";
 import type { AppliedHintTurn, PracticeTurn } from "./validate.ts";
 import { latestAssistantShowsHostility } from "./conversation_signals.ts";
+import {
+  assertPracticeTextGroundedInTurns,
+  normalizedPracticeText,
+  rejectGenericPasteablePracticeText,
+  rejectKnownCannedPracticeText,
+} from "./practice_visible_quality.ts";
+import {
+  type PracticeInviteLevel,
+  practiceInviteLevelFor,
+} from "./practice_invite.ts";
 
 export const VIBES = ["暖", "中性", "冷"];
 export const DATE_CHANCES = ["low", "medium", "high"];
@@ -339,6 +349,279 @@ function parseGameBreakdown(value: unknown): GameBreakdown {
   return gameBreakdown;
 }
 
+function debriefVisibleFields(card: DebriefCard): string[] {
+  return [
+    card.summary,
+    ...card.strengths,
+    ...card.watchouts,
+    card.suggestedLine,
+    card.dateChanceReason,
+    card.nextInviteMove,
+    ...(card.gameBreakdown
+      ? [
+        card.gameBreakdown.phaseReached,
+        card.gameBreakdown.missedVariable,
+        card.gameBreakdown.failureState,
+        card.gameBreakdown.nextFirstLine,
+        card.gameBreakdown.inviteDirection,
+      ]
+      : []),
+  ];
+}
+
+function hasCompleteHintDecision(hint: AppliedHintTurn): boolean {
+  const decision = hint.decision;
+  return decision !== undefined &&
+    [
+      decision.phase,
+      decision.targetVariable,
+      decision.move,
+      decision.inviteRoute,
+      decision.rationale,
+    ].every((field) => typeof field === "string" && field.trim().length > 0);
+}
+
+type HintStrategyRoute = "repair" | "build" | "soft" | "direct";
+
+function authoritativeHintRoute(hint: AppliedHintTurn): HintStrategyRoute {
+  const decision = hint.decision!;
+  const route = `${decision.inviteRoute} ${decision.move}`.toLowerCase();
+  if (/(?:repair|safety|降壓|修復|停止)/u.test(route)) return "repair";
+  if (/(?:direct|明確邀約|直接邀約)/u.test(route)) return "direct";
+  if (/(?:soft|低壓邀約|試探邀約)/u.test(route)) return "soft";
+  return "build";
+}
+
+/**
+ * Reads explicit strategy claims, not ordinary retrospective prose. Ordering
+ * matters: 「先累積投入，等她再接才丟窗口」is a build route even though it
+ * mentions a later invitation.
+ */
+function explicitNarrativeRoute(value: string): HintStrategyRoute | null {
+  const text = value.normalize("NFKC").replace(/\s+/gu, "");
+  if (
+    /(?:先|需要|應該|這輪|現在).{0,10}(?:道歉|降壓|修復|修補安全|停下|退開)|(?:停止|不要|不再).{0,8}(?:推進|邀約|打擾)/u
+      .test(text)
+  ) {
+    return "repair";
+  }
+  if (
+    /(?:先|這輪|現在).{0,12}(?:不約|不急著約|別急著約|不硬約|鋪墊|累積|建立|延伸|補足|補感受|補投入|熟悉|安全)|等.{0,14}(?:再|才).{0,12}(?:約|邀|窗口)|(?:還沒|尚未|未到).{0,10}(?:窗口|時機)|先.{0,14}再.{0,12}(?:約|邀|窗口)/u
+      .test(text)
+  ) {
+    return "build";
+  }
+  if (
+    /(?:沒有|沒)(?:做|給|丟|推)?(?:出)?(?:直接|明確)?邀約.{0,10}(?:失誤|錯|問題|可惜)|(?:太被動|偏保守|早該).{0,12}(?:直接)?(?:約|邀約)|(?:現在|這輪|下一句|應該|可以|適合|立刻|趁現在).{0,12}(?:直接|明確)(?:約|邀約)|(?:直接|明確|立刻|趁現在)(?:約|邀約)|(?:約|邀約).{0,8}(?:時機|窗口)(?:已經)?成熟/u
+      .test(text)
+  ) {
+    return "direct";
+  }
+  if (
+    /(?:低壓|試探|模糊|輕量)(?:約|邀約)|(?:丟|開|給).{0,6}(?:低壓|試探|短聚|短咖啡)?窗口|短(?:咖啡|聚).{0,6}(?:邀約|窗口)/u
+      .test(text)
+  ) {
+    return "soft";
+  }
+  return null;
+}
+
+function strategyBearingFields(card: DebriefCard): string[] {
+  return [
+    card.summary,
+    ...card.watchouts,
+    card.nextInviteMove,
+    ...(card.gameBreakdown
+      ? [
+        card.gameBreakdown.failureState,
+        card.gameBreakdown.inviteDirection,
+      ]
+      : []),
+  ];
+}
+
+function inviteLevelContradicts(
+  authoritative: HintStrategyRoute,
+  actual: PracticeInviteLevel,
+): boolean {
+  if (actual === "none") return false;
+  if (authoritative === "repair" || authoritative === "build") return true;
+  return authoritative === "soft" && actual === "direct";
+}
+
+function cardContradictsHintStrategy(
+  card: DebriefCard,
+  appliedHintTurns: AppliedHintTurn[],
+): boolean {
+  const latestHint = appliedHintTurns.reduce((latest, hint) =>
+    hint.turnIndex >= latest.turnIndex ? hint : latest
+  );
+  const authoritative = authoritativeHintRoute(latestHint);
+  const narrativeRoutes = strategyBearingFields(card)
+    .map(explicitNarrativeRoute)
+    .filter((route): route is HintStrategyRoute => route !== null);
+  if (narrativeRoutes.some((route) => route !== authoritative)) return true;
+
+  const pasteableInviteLevels = [
+    practiceInviteLevelFor(card.suggestedLine),
+    ...(card.gameBreakdown
+      ? [practiceInviteLevelFor(card.gameBreakdown.nextFirstLine)]
+      : []),
+  ];
+  return pasteableInviteLevels.some((level) =>
+    inviteLevelContradicts(authoritative, level)
+  );
+}
+
+/**
+ * Hidden continuity contract. Debrief may revise a Hint only when it points to
+ * an exact assistant reply that happened after that Hint was sent. The hidden
+ * assessment is validated and then deliberately omitted from DebriefCard.
+ */
+function assertHintAssessment(opts: {
+  value: unknown;
+  card: DebriefCard;
+  turns?: PracticeTurn[];
+  appliedHintTurns: AppliedHintTurn[];
+}): void {
+  if (!opts.appliedHintTurns.every(hasCompleteHintDecision)) {
+    throw new Error("debrief_hint_decision_missing");
+  }
+  if (
+    typeof opts.value !== "object" || opts.value === null ||
+    Array.isArray(opts.value)
+  ) {
+    throw new Error("debrief_hint_assessment_missing");
+  }
+  const assessment = opts.value as Record<string, unknown>;
+  const keys = Object.keys(assessment).sort();
+  if (
+    keys.length !== 2 ||
+    keys[0] !== "revisedEvidenceQuote" ||
+    keys[1] !== "verdict"
+  ) {
+    throw new Error("debrief_hint_assessment_invalid");
+  }
+  const verdict = assessment.verdict;
+  if (verdict !== "preserved" && verdict !== "revised") {
+    throw new Error("debrief_hint_assessment_invalid");
+  }
+  const quote = assessment.revisedEvidenceQuote;
+  const visibleText = debriefVisibleFields(opts.card).join("\n");
+  const visiblyReversesHint =
+    /(?:提示|建議).{0,16}(?:錯|不對|不該|太急|偏保守|無效|不好|不合適|不適合|有問題|失準|誤判)/u
+      .test(visibleText);
+  const strategyContradictsHint = cardContradictsHintStrategy(
+    opts.card,
+    opts.appliedHintTurns,
+  );
+  if (
+    (visiblyReversesHint || strategyContradictsHint) && verdict !== "revised"
+  ) {
+    throw new Error("debrief_hint_assessment_revision_required");
+  }
+  if (verdict === "preserved") {
+    if (quote !== null) throw new Error("debrief_hint_assessment_invalid");
+    return;
+  }
+  if (
+    typeof quote !== "string" || quote.trim().length === 0 || quote.length > 120
+  ) {
+    throw new Error("debrief_hint_assessment_evidence_invalid");
+  }
+  const exactQuote = quote.trim();
+  const latestHintTurnIndex = Math.max(
+    ...opts.appliedHintTurns.map((hint) => hint.turnIndex),
+  );
+  const laterAssistantEvidence = (opts.turns ?? []).some((turn, index) =>
+    index > latestHintTurnIndex && turn.role === "ai" &&
+    turn.text.includes(exactQuote)
+  );
+  if (!laterAssistantEvidence) {
+    throw new Error("debrief_hint_assessment_evidence_invalid");
+  }
+  if (
+    !normalizedPracticeText(visibleText).includes(
+      normalizedPracticeText(exactQuote),
+    )
+  ) {
+    throw new Error("debrief_hint_assessment_evidence_not_visible");
+  }
+}
+
+function assertGeneratedDebriefQuality(
+  card: DebriefCard,
+  opts: {
+    turns?: PracticeTurn[];
+    appliedHintTurns?: AppliedHintTurn[];
+  },
+): void {
+  const visibleFields = debriefVisibleFields(card);
+  for (const field of visibleFields) {
+    rejectKnownCannedPracticeText(field, "debrief_canned_visible_text");
+  }
+  rejectGenericPasteablePracticeText(
+    card.suggestedLine,
+    "debrief_quality_invalid_suggested_line",
+  );
+  if (card.gameBreakdown) {
+    rejectGenericPasteablePracticeText(
+      card.gameBreakdown.nextFirstLine,
+      "debrief_quality_invalid_next_first_line",
+    );
+  }
+  const metaPasteablePattern =
+    /(?:先接住(?:她|對方)|補(?:上|一點)?感受|低壓邀約|邀約窗口|分享(?:你的|自己的)版本|再聽(?:她|對方)的)/u;
+  if (
+    metaPasteablePattern.test(card.suggestedLine) ||
+    (card.gameBreakdown &&
+      metaPasteablePattern.test(card.gameBreakdown.nextFirstLine))
+  ) {
+    throw new Error("debrief_quality_invalid_meta_line");
+  }
+
+  const appliedHints = opts.appliedHintTurns ?? [];
+  const suggestion = normalizedPracticeText(card.suggestedLine);
+  for (const hint of appliedHints) {
+    if (
+      suggestion === normalizedPracticeText(hint.originalHintText) ||
+      suggestion === normalizedPracticeText(hint.sentText)
+    ) {
+      throw new Error("debrief_quality_invalid_repeated_hint");
+    }
+  }
+  if (appliedHints.some((hint) => hint.exact)) {
+    const accountability = `${card.summary}\n${card.strengths.join("\n")}`;
+    if (
+      !/(?:有|已)(?:照|採用|使用)提示|照著提示|提示那句/u.test(accountability)
+    ) {
+      throw new Error("debrief_quality_invalid_hint_accountability");
+    }
+  }
+
+  assertPracticeTextGroundedInTurns({
+    visibleText: card.suggestedLine,
+    turns: opts.turns,
+    latestOnly: true,
+    errorCode: "debrief_quality_invalid_suggested_line_not_grounded",
+  });
+  if (card.gameBreakdown) {
+    for (const value of Object.values(card.gameBreakdown)) {
+      assertPracticeTextGroundedInTurns({
+        visibleText: value,
+        turns: opts.turns,
+        errorCode: "debrief_quality_invalid_game_breakdown_not_grounded",
+      });
+    }
+  }
+
+  assertPracticeTextGroundedInTurns({
+    visibleText: visibleFields.join("\n"),
+    turns: opts.turns,
+    errorCode: "debrief_quality_invalid_not_grounded",
+  });
+}
+
 function extractJsonObject(raw: string): string {
   const fenced = raw
     .trim()
@@ -359,6 +642,9 @@ export function parseDebriefCard(
   opts: {
     allowGameBreakdown?: boolean;
     requireCompleteCard?: boolean;
+    turns?: PracticeTurn[];
+    appliedHintTurns?: AppliedHintTurn[];
+    enforceGeneratedQuality?: boolean;
   } = {},
 ): DebriefCard {
   const cleaned = extractJsonObject(raw);
@@ -403,7 +689,7 @@ export function parseDebriefCard(
     }
   }
 
-  return {
+  const card: DebriefCard = {
     summary,
     strengths,
     watchouts,
@@ -418,4 +704,17 @@ export function parseDebriefCard(
       ? parseGameBreakdown(p.gameBreakdown)
       : null,
   };
+  const appliedHintTurns = opts.appliedHintTurns ?? [];
+  if (appliedHintTurns.length > 0) {
+    assertHintAssessment({
+      value: p.hintAssessment,
+      card,
+      turns: opts.turns,
+      appliedHintTurns,
+    });
+  }
+  if (opts.enforceGeneratedQuality === true) {
+    assertGeneratedDebriefQuality(card, opts);
+  }
+  return card;
 }

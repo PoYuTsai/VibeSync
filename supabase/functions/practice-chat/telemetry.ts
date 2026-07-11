@@ -26,6 +26,7 @@ export interface PracticeGenerationTelemetryInput {
   attemptDurationMs?: number | null;
   failureClass?: PracticeGenerationFailureClass | null;
   fallbackUsed?: boolean;
+  failoverUsed?: boolean;
   totalDurationMs?: number | null;
   promptChars: number;
 }
@@ -37,6 +38,7 @@ export interface PracticeGenerationTelemetry {
   attemptDurationMs: number | null;
   failureClass: PracticeGenerationFailureClass | null;
   fallbackUsed: boolean;
+  failoverUsed: boolean;
   totalDurationMs: number | null;
   promptChars: number;
 }
@@ -112,6 +114,7 @@ export function buildPracticeGenerationTelemetry(
     attemptDurationMs: normalizeOptionalCount(raw.attemptDurationMs),
     failureClass: normalizeFailureClass(raw.failureClass),
     fallbackUsed: raw.fallbackUsed === true,
+    failoverUsed: raw.failoverUsed === true,
     totalDurationMs: normalizeOptionalCount(raw.totalDurationMs),
     promptChars: normalizeOptionalCount(raw.promptChars) ?? 0,
   };
@@ -160,6 +163,7 @@ export function buildPracticeAiLogRow(input: {
 }): PracticeAiLogRow {
   const telemetry = buildPracticeGenerationTelemetry(input.telemetry);
   const attempt = telemetry.attempt ?? 1;
+  const failed = telemetry.fallbackUsed || telemetry.failureClass !== null;
   return {
     user_id: input.userId,
     model: input.model,
@@ -167,10 +171,8 @@ export function buildPracticeAiLogRow(input: {
     input_tokens: 0,
     output_tokens: 0,
     latency_ms: telemetry.totalDurationMs ?? 0,
-    status: telemetry.fallbackUsed ? "failed" : "success",
-    error_code: telemetry.fallbackUsed
-      ? telemetry.failureClass ?? "unknown"
-      : null,
+    status: failed ? "failed" : "success",
+    error_code: failed ? telemetry.failureClass ?? "unknown" : null,
     fallback_used: telemetry.fallbackUsed,
     retry_count: Math.max(0, attempt - 1),
     request_body: {
@@ -204,6 +206,7 @@ export function classifyPracticeGenerationFailure(
     message.includes("_l4_unsafe") ||
     message.includes("_internal_label_leak") ||
     message.includes("_temperature_leak") ||
+    message.includes("_canned_visible_text") ||
     message.includes("bossy_pasteable_reply")
   ) {
     return "visible_text_guard";
@@ -220,13 +223,17 @@ export function classifyPracticeGenerationFailure(
   if (
     /^(?:hint|debrief)_(?:missing|invalid|not_object|extra_keys|game_breakdown_missing)/
       .test(message) ||
-    message.includes("_must_be_string") || message.includes("schema_invalid")
+    message.includes("_must_be_string") ||
+    message.includes("quality_invalid") ||
+    message.includes("debrief_hint_") ||
+    message.includes("schema_invalid")
   ) {
     return "schema_invalid";
   }
 
   if (
-    message.includes("deepseek_") || message.includes("network") ||
+    message.includes("deepseek_") || message.includes("claude_") ||
+    message.includes("network") ||
     message.includes("fetch failed") || message.includes("connection") ||
     message.includes("socket") || message.includes("econn")
   ) {

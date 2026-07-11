@@ -32,12 +32,23 @@ export interface PracticeTurn {
 
 export type AppliedHintType = "warm_up" | "steady";
 
+export interface AppliedHintDecision {
+  phase: string;
+  targetVariable: string;
+  move: string;
+  inviteRoute: string;
+  rationale: string;
+}
+
 export interface AppliedHintTurn {
   turnIndex: number;
   type: AppliedHintType;
   originalHintText: string;
   sentText: string;
   exact: boolean;
+  hintRequestId?: string;
+  /** Server-hydrated from the authoritative Hint snapshot; never trusted from client. */
+  decision?: AppliedHintDecision;
 }
 
 export interface PracticeChatRequest {
@@ -69,6 +80,7 @@ export interface PracticeChatRequest {
    * hint/debrief 模式的冪等 key（client 產 uuid；失敗重試沿用同 id）。選填：舊
    * client 缺值走現行為（無冪等），向後相容。格式比照翻牌 requestId。
    */
+  /** Optional for legacy Hint; required for every Debrief request. */
   requestId?: string;
   /**
    * Hint-only local turn version. New clients send the full session AI count
@@ -220,6 +232,7 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
       const originalHintText = item.originalHintText;
       const sentText = item.sentText;
       const exact = item.exact;
+      const hintRequestId = item.hintRequestId;
       const transcriptSentText = typeof turnIndex === "number" &&
           Number.isInteger(turnIndex) &&
           turnIndex >= 0 &&
@@ -250,7 +263,10 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
         sentText.length > MAX_TEXT_LEN ||
         containsRawImageFilename(sentText) ||
         normalizedSentText !== normalizedTranscriptSentText ||
-        typeof exact !== "boolean"
+        typeof exact !== "boolean" ||
+        (hintRequestId !== undefined &&
+          (typeof hintRequestId !== "string" ||
+            !REQUEST_ID_RE.test(hintRequestId)))
       ) {
         throw new Error("invalid_appliedHintTurns");
       }
@@ -264,6 +280,7 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
         originalHintText: normalizedOriginalHintText,
         sentText: normalizedTranscriptSentText,
         exact: normalizedOriginalHintText === normalizedTranscriptSentText,
+        ...(typeof hintRequestId === "string" ? { hintRequestId } : {}),
       };
     });
   }
@@ -298,7 +315,12 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
 
   // requestId：hint/debrief 模式的冪等 key（選填；缺值＝舊 client，走無冪等
   // 現行為）。格式檢查比照翻牌 requestId；chat 模式一律忽略。
+  // Debrief cannot safely reserve/refund its bounded count without a stable
+  // logical identity. Hint keeps the legacy optional path for old clients.
   let requestId: string | undefined;
+  if (mode === "debrief" && raw.requestId === undefined) {
+    throw new Error("invalid_requestId");
+  }
   if ((mode === "hint" || mode === "debrief") && raw.requestId !== undefined) {
     if (
       typeof raw.requestId !== "string" ||

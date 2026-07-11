@@ -431,7 +431,7 @@ Deno.test("Game Debrief prompt stays compact enough for its 12-second budget", (
     partnerState: { mood: "amused", innerThought: "" },
   }).reduce((total, message) => total + message.content.length, 0);
 
-  assert(gameLength <= 4400, `Game Debrief prompt is too long: ${gameLength}`);
+  assert(gameLength <= 4500, `Game Debrief prompt is too long: ${gameLength}`);
   assert(gameLength <= beginnerLength + 2400);
 });
 
@@ -448,6 +448,7 @@ Deno.test("game debrief guidance asks Game to fill gameBreakdown fields", () => 
         phase: "P4_TENSION",
         turnCount: 5,
         lastTargetVariable: "Emotion + heat",
+        lastSpeedInviteDirection: "soft_invite_probe",
       },
     },
   );
@@ -474,8 +475,10 @@ Deno.test("game debrief guidance asks Game to fill gameBreakdown fields", () => 
   assertEquals(user.includes("nextFirstLine"), true);
   assertEquals(user.includes("inviteDirection"), true);
   assertEquals(system.includes('"phase"'), false);
-  assertEquals(user.includes("persistedGameState(hidden guidance)"), true);
-  assertEquals(user.includes("turnCount: 5"), true);
+  assertEquals(user.includes("persistedGameState(hidden guidance)"), false);
+  assertEquals(user.includes("phase: P4_TENSION"), true);
+  assertEquals(user.includes("targetVariable: Emotion + heat"), true);
+  assertEquals(user.includes("speedInviteDirection: soft_invite_probe"), true);
 });
 
 Deno.test("game debrief follows seven-step variable and speed-invite breakdown", () => {
@@ -504,7 +507,7 @@ Deno.test("game debrief follows seven-step variable and speed-invite breakdown",
 });
 
 Deno.test("debrief prompt separates copied Hint execution from Hint quality", () => {
-  const user = buildDebriefMessages(
+  const messages = buildDebriefMessages(
     [
       { role: "user", text: "嗨" },
       { role: "ai", text: "哈囉 正在看點東西" },
@@ -526,18 +529,41 @@ Deno.test("debrief prompt separates copied Hint execution from Hint quality", ()
           originalHintText: "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？",
           sentText: "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？",
           exact: true,
+          hintRequestId: "hint-request-123",
+          decision: {
+            phase: "P3_TEST",
+            targetVariable: "Investment",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先把她的影片素材變成兩人都能接的話題。",
+          },
         },
       ],
     },
-  )[1].content;
+  );
+  const system = messages[0].content;
+  const user = messages[1].content;
 
+  assertEquals(system.includes("practiceCoachingRubricV1"), true);
+  assertEquals(system.includes("不能無理由否定 Hint"), true);
   assertEquals(user.includes("hintAssistedTurns(hidden evidence)"), true);
   assertEquals(user.includes("turnIndex: 2"), true);
   assertEquals(user.includes("exact: true"), true);
   assertEquals(user.includes("不要把照貼 Hint 的句子當成使用者自己亂打"), true);
   assertEquals(user.includes("拆成：使用者執行 / Hint 品質 / 對方反應"), true);
+  assertEquals(user.includes('decision.phase: "P3_TEST"'), true);
+  assertEquals(user.includes('decision.targetVariable: "Investment"'), true);
+  assertEquals(user.includes("decision.move: build_connection"), true);
+  assertEquals(user.includes('decision.inviteRoute: "build"'), true);
+  assertEquals(user.includes("先把她的影片素材變成兩人都能接的話題"), true);
   assertEquals(
-    user.includes("如果成效弱，請說明 Hint 偏保守、時機不夠或需要升級"),
+    user.includes("只有 Hint 送出後「她」的新回覆出現明確反證時"),
+    true,
+  );
+  assertEquals(
+    user.includes(
+      '"hintAssessment":{"verdict":"preserved","revisedEvidenceQuote":null}',
+    ),
     true,
   );
 });

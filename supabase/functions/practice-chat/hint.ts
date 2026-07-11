@@ -1,4 +1,11 @@
 import type { ChatMessage } from "./prompt.ts";
+import { PRACTICE_COACHING_RUBRIC } from "./coaching_rubric.ts";
+import {
+  assertPracticeTextGroundedInTurns,
+  normalizedPracticeText,
+  rejectGenericPasteablePracticeText,
+  rejectKnownCannedPracticeText,
+} from "./practice_visible_quality.ts";
 import {
   type InviteDateChance,
   type InviteMaturity,
@@ -31,6 +38,15 @@ import {
   rejectVisibleInternalLabelLeak,
 } from "./visible_text_guard.ts";
 import { latestAssistantShowsHostility } from "./conversation_signals.ts";
+import {
+  effectiveGameFsmSnapshot,
+  type PersistedGameState,
+} from "./game_state.ts";
+import {
+  type PracticeInviteLevel,
+  practiceInviteLevelFor,
+  practiceInviteLevelRank,
+} from "./practice_invite.ts";
 
 export type HintReplyType = "warm_up" | "steady";
 
@@ -38,11 +54,21 @@ export interface HintReply {
   type: HintReplyType;
   label: "升溫回覆" | "穩住回覆";
   text: string;
+  /** Server-authored strategy for this exact option, never model-authored. */
+  decision?: PracticeHintDecision;
 }
 
 export interface PracticeHintResult {
   replies: [HintReply, HintReply];
   coaching: string;
+}
+
+export interface PracticeHintDecision {
+  phase: string;
+  targetVariable: string;
+  move: string;
+  inviteRoute: string;
+  rationale: string;
 }
 
 interface HintBuildContext {
@@ -52,10 +78,15 @@ interface HintBuildContext {
   temperatureScore: number;
   familiarityScore?: number;
   partnerMood?: PartnerMood | null;
+  gameState?: PersistedGameState | null;
 }
 
 interface HintParseOptions {
   mode?: PracticeLearningMode;
+  /** Full server-validated transcript used only by the generated quality gate. */
+  turns?: PracticeTurn[];
+  /** Dead legacy fallback tests intentionally do not opt into this gate. */
+  enforceGeneratedQuality?: boolean;
 }
 
 const MAX_REPLY_LENGTH = 80;
@@ -620,6 +651,132 @@ function gameInviteRouteFor(direction: string): GameInviteRoute {
   return "build";
 }
 
+function allowedInviteLevelForRoute(route: string): PracticeInviteLevel {
+  if (route === "direct" || route === "direct_invite_ready") return "direct";
+  if (route === "soft" || route === "soft_invite_ready") return "soft";
+  return "none";
+}
+
+/**
+ * Structured decision carried from Hint into Debrief. The values are hidden
+ * evidence, never user-facing copy. Debrief must explain any later change.
+ */
+export function buildHintDecision(
+  opts: HintBuildContext & {
+    rationale: string;
+    replyType: HintReplyType;
+    replyText: string;
+  },
+): PracticeHintDecision {
+  const temperatureScore = clampTemperature(opts.temperatureScore);
+  const familiarityScore = clampTemperature(opts.familiarityScore ?? 0);
+  let rationale = "";
+  for (const character of opts.rationale.trim()) {
+    if (rationale.length + character.length > 160) break;
+    rationale += character;
+  }
+  if (!rationale) rationale = "依本輪關係狀態選擇下一步。";
+  if (opts.practiceMode === "game") {
+    const freshSnapshot = evaluateGameFsm({
+      turns: opts.turns,
+      temperatureScore,
+      familiarityScore,
+      partnerMood: opts.partnerMood ?? null,
+      relationshipStage: relationshipStageFor(
+        familiarityScore,
+        temperatureScore,
+      ).stage,
+      inviteStage: inviteMaturityFromLearningScores({
+        temperatureScore,
+        familiarityScore,
+        partnerMood: opts.partnerMood ?? null,
+      })?.stage ?? null,
+    });
+    const snapshot = effectiveGameFsmSnapshot(freshSnapshot, opts.gameState);
+    const baseRoute = gameInviteRouteFor(snapshot.speedInviteDirection);
+    const allowedRoute = opts.replyType === "warm_up"
+      ? baseRoute
+      : baseRoute === "direct"
+      ? "soft"
+      : baseRoute === "soft"
+      ? "build"
+      : baseRoute;
+    const actualLevel = practiceInviteLevelFor(opts.replyText);
+    if (
+      practiceInviteLevelRank(actualLevel) >
+        practiceInviteLevelRank(allowedInviteLevelForRoute(allowedRoute))
+    ) {
+      throw new Error("hint_quality_invalid_invite_route");
+    }
+    const inviteRoute: GameInviteRoute = actualLevel === "direct"
+      ? "direct"
+      : actualLevel === "soft"
+      ? "soft"
+      : allowedRoute === "repair"
+      ? "repair"
+      : "build";
+    return {
+      phase: snapshot.phase,
+      targetVariable: snapshot.targetVariable,
+      move: inviteRoute === "repair"
+        ? "repair_safety"
+        : inviteRoute === "soft"
+        ? "soft_invite"
+        : inviteRoute === "direct"
+        ? "direct_invite"
+        : "build_connection",
+      inviteRoute,
+      rationale,
+    };
+  }
+
+  const relationshipStage = relationshipStageFor(
+    familiarityScore,
+    temperatureScore,
+  );
+  const maturity = inviteMaturityFromLearningScores({
+    temperatureScore,
+    familiarityScore,
+    partnerMood: opts.partnerMood ?? null,
+  });
+  const targetVariable = maturity?.stage === "not_ready" || !maturity
+    ? "安全感與熟悉感"
+    : maturity.stage === "soft_invite_ready"
+    ? "共同感與低壓窗口"
+    : "投入感與邀約窗口";
+  const baseRoute = maturity?.stage ?? "not_ready";
+  const allowedRoute = opts.replyType === "warm_up"
+    ? baseRoute
+    : baseRoute === "direct_invite_ready"
+    ? "soft_invite_ready"
+    : baseRoute === "soft_invite_ready"
+    ? "not_ready"
+    : baseRoute;
+  const actualLevel = practiceInviteLevelFor(opts.replyText);
+  if (
+    practiceInviteLevelRank(actualLevel) >
+      practiceInviteLevelRank(allowedInviteLevelForRoute(allowedRoute))
+  ) {
+    throw new Error("hint_quality_invalid_invite_route");
+  }
+  const inviteRoute = actualLevel === "direct"
+    ? "direct_invite_ready"
+    : actualLevel === "soft"
+    ? "soft_invite_ready"
+    : "not_ready";
+  return {
+    phase: relationshipStage.stage,
+    targetVariable,
+    move: inviteRoute === "not_ready"
+      ? "build_connection"
+      : inviteRoute === "soft_invite_ready"
+      ? "soft_invite"
+      : "direct_invite",
+    inviteRoute,
+    rationale,
+  };
+}
+
 function gameFallbackRepliesForLatestAssistant(
   latestAssistant: string,
   route: GameInviteRoute,
@@ -796,8 +953,8 @@ function profileToEvidence(profile: PracticeProfile): string {
 }
 
 /**
- * Game hint few-shot 示範句。借自手寫 fallback 高手句（那些句子已通過
- * 可見輸出守門管道），供小模型模仿語氣與結構。任何新增示範句都必須
+ * Game hint few-shot 示範句。混合安全手寫句與 Wen 真實高手局蒸餾句，
+ * 供模型模仿語氣、接素材與出手時機。任何新增示範句都必須
  * 原樣通過 parseHintResult 的 repair/bossy/label/L4 全套守門，且不得
  * 含 1.2 節原詞（DHV/篩選/框架/推拉/可得性）或內部技術標籤。
  */
@@ -806,22 +963,22 @@ export const GAME_HINT_MOVE_EXAMPLES: ReadonlyArray<{
   example: string;
 }> = [
   {
-    move: "給品味開球",
-    example: "我先給我的版本：我吃有畫面但不太用力的節奏。妳是哪一派？",
-  },
-  {
     move: "補狀態給球",
     example:
       "我今天也差不多，開完會腦袋只剩一成電。妳的放空儀式是什麼？我先猜追劇。",
   },
   {
+    move: "把她的素材變成合作畫面",
+    example: "酒吧這塊妳比較熟，那可以組隊了。妳酒量如何？",
+  },
+  {
+    move: "用前文做輕鬆回呼",
+    example: "我大概懂了，妳的導航只對酒吧有效😂",
+  },
+  {
     move: "接住測試",
     example:
       "有點突然我認，但不是亂槍打鳥。只是妳這個反應蠻有趣，我想多聽一分鐘。",
-  },
-  {
-    move: "低壓窗口",
-    example: "先不急著約。這題聊順，再把它變成一個下次短咖啡的小窗口。",
   },
   {
     move: "收成邀約",
@@ -858,7 +1015,7 @@ function safeAdvancedGameHintContract(): string {
   return `safeAdvancedGameHintContract:
 把高階技巧翻成安全、尊重、可直接貼上的社交句。
 - 核心承諾：SR 限定，技巧拉滿練速約；安全感/熱度/熟悉度到位時，10-15 句內推進到低壓見面。
-- 七步聊天法骨架（與練習對象演法、賽後拆盤同一套）：P1 開場/資訊交換 → P2 展示價值 → P3 篩選/賦格 → P4 推拉張力 → P5 鎖定/收尾；資格篩選、共同敘事、順勢收尾是 P3→P5 的招式面。
+- 七步聊天法骨架：P1 開場/資訊交換 → P2 展示價值 → P3 篩選/賦格 → P4 推拉張力 → P5 鎖定/收尾；資格篩選、共同敘事、順勢收尾是 P3→P5 的招式面。
 - 資格篩選＝玩笑式的品味門檻，不是命令她證明自己；絕不叫她面試，不要說「妳先給我一個標準答案」。
 - 共同敘事＝把她最新狀態變成兩人的小劇場、回呼梗或公開小計畫。
 - 順勢收尾＝把真實窗口收成短咖啡、順路散步、小展、宵夜，語氣保留可退出空間。
@@ -916,6 +1073,7 @@ function gameHintEvidence(opts: {
   partnerMood?: PartnerMood | null;
   relationshipStage: ReturnType<typeof relationshipStageFor>["stage"];
   inviteMaturity?: InviteMaturity | null;
+  gameState?: PersistedGameState | null;
 }): string {
   if (opts.practiceMode !== "game") return "";
   const snapshot = evaluateGameFsm({
@@ -926,11 +1084,14 @@ function gameHintEvidence(opts: {
     relationshipStage: opts.relationshipStage,
     inviteStage: opts.inviteMaturity?.stage ?? null,
   });
+  const effectiveSnapshot = effectiveGameFsmSnapshot(snapshot, opts.gameState);
   const strategy = compactGameStrategyPrompt(opts.profile);
-  const inviteRoute = gameInviteRouteFor(snapshot.speedInviteDirection);
+  const inviteRoute = gameInviteRouteFor(
+    effectiveSnapshot.speedInviteDirection,
+  );
   return `gameHint(hidden guidance)\n內部用 Value / Frame / Emotion / Investment（收尾加 Safety）讀盤；coaching 要白話說清階段、該推的要素與這輪任務。L4 forbidden。\n可見文字一律轉白話：價值感、節奏與主見、情緒推進、投入感、曖昧張力；絕不用 DHV、篩選、框架、推拉、可得性這些原詞，也不輸出英文內部標籤。\n\n${visibleGameHintContract()}${safeAdvancedGameHintContract()}${sevenStepBalanceContract()}${
     speedInviteLadderPrompt(inviteRoute)
-  }${compactGameFsmEvidencePrompt(snapshot)}\n${strategy}\n`;
+  }${compactGameFsmEvidencePrompt(effectiveSnapshot)}\n${strategy}\n`;
 }
 
 export function buildHintMessages(opts: {
@@ -942,6 +1103,7 @@ export function buildHintMessages(opts: {
   partnerMood?: PartnerMood | null;
   sceneContext?: PracticeSceneContext | null;
   memorySummary?: string | null;
+  gameState?: PersistedGameState | null;
 }): ChatMessage[] {
   const score = clampTemperature(opts.temperatureScore);
   const stage = relationshipStageFor(opts.familiarityScore ?? 0, score);
@@ -960,6 +1122,7 @@ export function buildHintMessages(opts: {
     partnerMood: opts.partnerMood ?? null,
     relationshipStage: stage.stage,
     inviteMaturity,
+    gameState: opts.gameState,
   });
   const sceneEvidence = opts.sceneContext
     ? `sceneStatus: ${opts.sceneContext.statusLine}\nscenePrompt: ${opts.sceneContext.promptLine}\nreplyTempo: ${opts.sceneContext.replyTempo}\n\n`
@@ -973,10 +1136,10 @@ export function buildHintMessages(opts: {
   return [
     {
       role: "system",
-      content: HIDDEN_HINT_NO_LEAK_RULE +
+      content: HIDDEN_HINT_NO_LEAK_RULE + PRACTICE_COACHING_RUBRIC + "\n\n" +
         (opts.practiceMode === "game"
-          ? "你是 VibeSync Game 練習模式的回覆提示教練。Game 可以比新手更直接拆技巧，但仍只輸出繁體中文 JSON，不要 markdown，不要前後說明文字。\n"
-          : "你是 VibeSync 新手練習模式的回覆提示教練。只輸出繁體中文 JSON，不要 markdown，不要前後說明文字。\n") +
+          ? "你是 VibeSync Game 回覆提示教練。可直接拆技巧，但只輸出繁中 JSON，不要 markdown 或多餘文字。\n"
+          : "你是 VibeSync 新手回覆提示教練。只輸出繁中 JSON，不要 markdown 或多餘文字。\n") +
         'JSON shape 必須是 {"warmUp":"...","steady":"...","coaching":"..."}。\n' +
         "warmUp 是「升溫回覆」，steady 是「穩住回覆」，這兩個是唯二回覆選項；coaching 是「這邊怎麼回的心法」。\n" +
         "角色規則：user 代表使用者本人，assistant 代表練習對象。你是在幫使用者回覆 assistant 最新一句。\n" +
@@ -1003,7 +1166,7 @@ export function buildHintMessages(opts: {
         gameEvidence +
         `profile evidence:\n${profileToEvidence(opts.profile)}\n\n` +
         `transcript evidence:\n${turnsToTranscript(opts.turns)}\n\n` +
-        "請根據最近上下文，產生剛好兩個可直接貼上的回覆選項與一段教學心法。這是在幫使用者接 assistant 最新一句，不是在分析使用者剛才那句。只回傳繁體中文 JSON。",
+        "請產生兩個可貼回覆與一段心法。warmUp、steady、coaching 各自重用 assistant 最新一句的具體詞、狀態或梗；不能只有 coaching 具體、回覆卻萬用。目標是接她最新一句，不是分析 user 前一句。只回繁中 JSON。",
     },
   ];
 }
@@ -1083,7 +1246,70 @@ function requiredString(
   rejectBossyPasteableHintReply(capped, field);
   rejectInternalLabelLeak(capped);
   rejectL4UnsafeVisibleText(capped, "hint_l4_unsafe");
+  if (options.enforceGeneratedQuality === true) {
+    rejectKnownCannedPracticeText(capped, "hint_canned_visible_text");
+    if (field !== "coaching") {
+      rejectGenericPasteablePracticeText(capped, "hint_quality_invalid");
+    }
+  }
   return capped;
+}
+
+function looksLikePureQuestion(value: string): boolean {
+  const compact = normalizedPracticeText(value);
+  return /[?？]/u.test(value) &&
+    !/(?:我|我們|讓我|害我|給妳|給你|哈哈|辛苦|聽起來|原來)/u.test(compact);
+}
+
+function assertGeneratedHintQuality(opts: {
+  warmUp: string;
+  steady: string;
+  coaching: string;
+  parseOptions: HintParseOptions;
+}): void {
+  if (opts.parseOptions.enforceGeneratedQuality !== true) return;
+  if (
+    normalizedPracticeText(opts.warmUp) ===
+      normalizedPracticeText(opts.steady)
+  ) {
+    throw new Error("hint_quality_invalid_duplicate_replies");
+  }
+  if (
+    looksLikePureQuestion(opts.warmUp) && looksLikePureQuestion(opts.steady)
+  ) {
+    throw new Error("hint_quality_invalid_pure_questions");
+  }
+  if (opts.parseOptions.mode === "game") {
+    const coaching = normalizedPracticeText(opts.coaching);
+    if (
+      !coaching.includes("game心法") ||
+      !coaching.includes("速約任務") ||
+      !/(?:階段|開場|測試|投入|熟悉|安全|窗口|這輪)/u.test(coaching)
+    ) {
+      throw new Error("hint_quality_invalid_game_contract");
+    }
+  }
+  const coachingSaysNoInvite =
+    /(?:這輪|現在)?(?:先)?(?:不約|不急著約|不硬約)|(?:先鋪墊|等窗口|先累積(?:投入|熟悉))/u
+      .test(opts.coaching);
+  if (
+    coachingSaysNoInvite &&
+    [opts.warmUp, opts.steady].some((reply) =>
+      practiceInviteLevelFor(reply) !== "none"
+    )
+  ) {
+    throw new Error("hint_quality_invalid_invite_coaching_conflict");
+  }
+  // One grounded coaching sentence must not launder two generic pasteable
+  // replies. Every visible choice independently touches the latest message.
+  for (const visibleText of [opts.warmUp, opts.steady, opts.coaching]) {
+    assertPracticeTextGroundedInTurns({
+      visibleText,
+      turns: opts.parseOptions.turns,
+      latestOnly: true,
+      errorCode: "hint_quality_invalid_not_grounded",
+    });
+  }
 }
 
 export function parseHintResult(
@@ -1117,6 +1343,13 @@ export function parseHintResult(
   ) {
     throw new Error("hint_extra_keys");
   }
+
+  assertGeneratedHintQuality({
+    warmUp,
+    steady,
+    coaching,
+    parseOptions: options,
+  });
 
   return {
     replies: [

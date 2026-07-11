@@ -20,7 +20,12 @@ function hintReq(turns: Array<{ role: string; text: string }>) {
 }
 
 function debriefReq(turns: Array<{ role: string; text: string }>) {
-  return { mode: "debrief", sessionId: "s1", turns };
+  return {
+    mode: "debrief",
+    sessionId: "s1",
+    requestId: "debrief-request-1",
+    turns,
+  };
 }
 
 // ── happy path ───────────────────────────────────────────────────────
@@ -46,6 +51,7 @@ Deno.test("debrief：有一來一回 → 通過", () => {
   const r = validateRequest({
     mode: "debrief",
     sessionId: "s1",
+    requestId: "debrief-request-happy-path",
     turns: [
       { role: "user", text: "嗨" },
       { role: "ai", text: "嗯？" },
@@ -205,6 +211,7 @@ Deno.test("debrief accepts appliedHintTurns for assisted hint accountability", (
   const r = validateRequest({
     mode: "debrief",
     sessionId: "s1",
+    requestId: "debrief-applied-hint-accountability",
     practiceMode: "game",
     turns: [
       { role: "user", text: "嗨" },
@@ -222,6 +229,14 @@ Deno.test("debrief accepts appliedHintTurns for assisted hint accountability", (
         originalHintText: "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？",
         sentText: "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？",
         exact: true,
+        hintRequestId: "hint-request-123",
+        decision: {
+          phase: "forged",
+          targetVariable: "forged",
+          move: "forged",
+          inviteRoute: "forged",
+          rationale: "client decision must be ignored",
+        },
       },
     ],
   });
@@ -230,6 +245,8 @@ Deno.test("debrief accepts appliedHintTurns for assisted hint accountability", (
   assertEquals(r.appliedHintTurns?.[0].turnIndex, 2);
   assertEquals(r.appliedHintTurns?.[0].type, "steady");
   assertEquals(r.appliedHintTurns?.[0].exact, true);
+  assertEquals(r.appliedHintTurns?.[0].hintRequestId, "hint-request-123");
+  assertEquals(r.appliedHintTurns?.[0].decision, undefined);
   assertEquals(
     r.appliedHintTurns?.[0].sentText,
     "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？",
@@ -240,6 +257,7 @@ Deno.test("appliedHintTurns binds sentText to transcript and recomputes exact", 
   const r = validateRequest({
     mode: "debrief",
     sessionId: "s1",
+    requestId: "debrief-applied-hint-binding",
     practiceMode: "beginner",
     turns: [
       { role: "user", text: "嗨" },
@@ -373,6 +391,14 @@ Deno.test("invalid appliedHintTurns are rejected", () => {
       }],
       [{ turnIndex: 0, type: "hot", originalHintText: "x", sentText: "x" }],
       [{ turnIndex: 0, type: "warm_up", originalHintText: "", sentText: "x" }],
+      [{
+        turnIndex: 0,
+        type: "warm_up",
+        originalHintText: "嗨",
+        sentText: "嗨",
+        exact: true,
+        hintRequestId: "bad request id",
+      }],
       [{
         turnIndex: 0,
         type: "warm_up",
@@ -614,6 +640,18 @@ Deno.test("debrief：合法 requestId（uuid）被解析", () => {
     requestId: "22222222-3333-4444-5555-666666666666",
   });
   assertEquals(r.requestId, "22222222-3333-4444-5555-666666666666");
+});
+
+Deno.test("debrief requires requestId before any count can be claimed", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        ...debriefReq(validHintTurns()),
+        requestId: undefined,
+      }),
+    Error,
+    "invalid_requestId",
+  );
 });
 
 Deno.test("debrief：非法 requestId → invalid_requestId", () => {

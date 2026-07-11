@@ -14,6 +14,7 @@ Deno.test("index.ts keeps Edge serve entrypoint wired to injectable handler", ()
   const createHandlerIndex = indexOfRequired("createPracticeChatHandler({");
   const createClientIndex = indexOfRequired("createClient(");
   const callDeepSeekIndex = indexOfRequired("callDeepSeek");
+  const callClaudeIndex = indexOfRequired("callClaude");
   const serveIndex = indexOfRequired("serve(handleRequest)");
 
   assert(
@@ -27,5 +28,9 @@ Deno.test("index.ts keeps Edge serve entrypoint wired to injectable handler", ()
   assert(
     callDeepSeekIndex < serveIndex,
     "entrypoint must still wire the production DeepSeek caller",
+  );
+  assert(
+    callClaudeIndex < serveIndex,
+    "entrypoint must wire the production Claude generated failover",
   );
 });

@@ -6,6 +6,7 @@ import {
 import type { ChatMessage } from "./prompt.ts";
 import {
   buildFallbackHintResult,
+  buildHintDecision,
   buildHintMessages,
   GAME_HINT_MOVE_EXAMPLES,
   GAME_INVITE_ROUTE_ADVICE,
@@ -16,6 +17,7 @@ import {
 } from "./hint.ts";
 import { resolvePracticeProfile } from "./practice_persona.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
+import { initialPersistedGameState } from "./game_state.ts";
 
 const profile = resolvePracticeProfile({ profileId: "practice_girl_004" });
 const sceneContext: PracticeSceneContext = {
@@ -51,9 +53,104 @@ Deno.test("buildHintMessages includes transcript, profile, temperature, and Trad
   assert(text.includes(profile.girl.profileId));
   assert(text.includes(profile.personaLabel));
   assert(text.includes("42/100"));
-  assert(text.includes("繁體中文"));
+  assert(text.includes("繁中"));
   assert(text.includes("JSON"));
   assert(text.includes("不要 markdown"));
+});
+
+Deno.test("Game Hint prompt and returned decision share persisted Game context", () => {
+  const gameState = {
+    ...initialPersistedGameState(),
+    phase: "P4_TENSION" as const,
+    pv: 61,
+    fp: 58,
+    inv: 47,
+    safety: 76,
+    lastTargetVariable: "Investment",
+    lastSpeedInviteDirection: "soft_invite_probe",
+  };
+  const options = {
+    turns: [
+      { role: "user" as const, text: "妳週末都去哪裡放空？" },
+      { role: "ai" as const, text: "最近會去河邊走走" },
+    ],
+    profile,
+    practiceMode: "game" as const,
+    temperatureScore: 62,
+    familiarityScore: 55,
+    gameState,
+  };
+  const prompt = buildHintMessages(options).map((message) => message.content)
+    .join("\n");
+  const decision = buildHintDecision({
+    ...options,
+    replyType: "warm_up",
+    replyText: "下次有空也可以去河邊走走。",
+    rationale: "她給了散步場景，先把它變成低壓共同畫面。",
+  });
+
+  assert(prompt.includes("practiceCoachingRubricV1"));
+  assert(prompt.includes("phase: P4_TENSION"));
+  assert(prompt.includes("targetVariable: Investment"));
+  assert(prompt.includes("speedInviteDirection: soft_invite_probe"));
+  assertEquals(prompt.includes("persistedGameState(hidden guidance)"), false);
+  assertEquals(decision.phase, "P4_TENSION");
+  assertEquals(decision.targetVariable, "Investment");
+  assertEquals(decision.move, "soft_invite");
+  assertEquals(decision.inviteRoute, "soft");
+});
+
+Deno.test("Hint decision rationale stays within the replay lineage contract", () => {
+  const decision = buildHintDecision({
+    turns: [
+      { role: "user", text: "嗨" },
+      { role: "ai", text: "妳好" },
+    ],
+    profile,
+    practiceMode: "beginner",
+    temperatureScore: 30,
+    replyType: "steady",
+    replyText: "妳好，今天過得怎麼樣？",
+    rationale: "高手判斷🙂".repeat(80),
+  });
+
+  assert(decision.rationale.length > 0);
+  assert(decision.rationale.length <= 160);
+});
+
+Deno.test("warm and steady Hint options carry different invite decisions", () => {
+  const options = {
+    turns: [
+      { role: "user" as const, text: "妳說的那間咖啡店我也想去" },
+      { role: "ai" as const, text: "那你下次可以帶路啊" },
+    ],
+    profile,
+    practiceMode: "game" as const,
+    temperatureScore: 82,
+    familiarityScore: 78,
+    gameState: {
+      ...initialPersistedGameState(),
+      phase: "P5_CLOSE" as const,
+      lastTargetVariable: "Investment + close",
+      lastSpeedInviteDirection: "direct_invite_low_pressure",
+    },
+    rationale: "她主動開了咖啡帶路窗口。",
+  };
+  const warm = buildHintDecision({
+    ...options,
+    replyType: "warm_up",
+    replyText: "這週六一起去那間咖啡店吧，我找位子。",
+  });
+  const steady = buildHintDecision({
+    ...options,
+    replyType: "steady",
+    replyText: "下次有空再去那間咖啡店走走。",
+  });
+
+  assertEquals(warm.move, "direct_invite");
+  assertEquals(warm.inviteRoute, "direct");
+  assertEquals(steady.move, "soft_invite");
+  assertEquals(steady.inviteRoute, "soft");
 });
 
 Deno.test("buildHintMessages names exactly the two reply choices and the coaching note", () => {
@@ -848,9 +945,10 @@ Deno.test("buildHintMessages feeds seven-step balance judgment rules into Game h
   ).map((m) => m.content)
     .join("\n");
 
-  assertEquals(beginnerText.includes("聊我們"), false);
-  assertEquals(beginnerText.includes("互相合適度"), false);
-  assertEquals(beginnerText.includes("安全感鋪墊"), false);
+  // Beginner 與 Game 共用同一黃金基本功，只在 Game 疊加速約/FSM 技術層。
+  assertEquals(beginnerText.includes("聊我們"), true);
+  assertEquals(beginnerText.includes("互相合適度"), true);
+  assertEquals(beginnerText.includes("安全感鋪墊"), true);
 });
 
 Deno.test("buildHintMessages aligns Game hint seven-step skeleton with NPC and debrief", () => {
@@ -903,7 +1001,7 @@ Deno.test("buildHintMessages keeps Game Hint prompt compact enough for reliable 
   }).map((m) => m.content).join("\n");
 
   assert(
-    gameText.length <= 4700,
+    gameText.length <= 4800,
     `Game Hint prompt is too long: ${gameText.length}`,
   );
   assert(gameText.length <= beginnerText.length + 3000);
@@ -2113,6 +2211,201 @@ Deno.test("buildHintMessages downshifts spicy ladder when partner is guarded or 
   }).map((m) => m.content).join("\n");
   assert(annoyed.includes("allowSpicyLevel: L0"));
   assertEquals(annoyed.includes("allowSpicyLevel: L3"), false);
+});
+
+Deno.test("generated Hint quality gate rejects canned screenshot text and empty Game coaching", () => {
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "妳剛說的那個點我有記住，我先分享我的版本，再聽妳的。",
+          steady: "賴床就慢慢醒，我今天也差點和鬧鐘談判。",
+          coaching:
+            "Game 心法：她在聊賴床狀態，這輪先推生活畫面。速約任務：先鋪墊。",
+        }),
+        {
+          mode: "game",
+          enforceGeneratedQuality: true,
+          turns: [{ role: "ai", text: "我還在賴床，腦袋根本沒開機" }],
+        },
+      ),
+    Error,
+    "hint_canned_visible_text",
+  );
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "嗯嗯我懂，妳慢慢來。",
+          steady: "好喔，那就先這樣。",
+          coaching: "接住她",
+        }),
+        { mode: "game", enforceGeneratedQuality: true },
+      ),
+    Error,
+    "hint_quality_invalid_game_contract",
+  );
+});
+
+Deno.test("generated Hint quality gate grounds every option instead of letting coaching launder generic replies", () => {
+  for (const mode of ["beginner", "game"] as const) {
+    assertThrows(
+      () =>
+        parseHintResult(
+          JSON.stringify({
+            warmUp: "哈哈懂，我也是，妳呢？",
+            steady: "原來如此，我也有過，妳呢？",
+            coaching: mode === "game"
+              ? "Game 心法：她這句在聊賴床，開場先累積投入。速約任務：這輪先不約，等窗口。"
+              : "她提到賴床，先接住這個生活狀態。",
+          }),
+          {
+            mode,
+            enforceGeneratedQuality: true,
+            turns: [{ role: "ai", text: "早安～我還在賴床😂" }],
+          },
+        ),
+      Error,
+      "hint_quality_invalid_not_grounded",
+    );
+  }
+});
+
+Deno.test("generated Hint fails closed on short, Latin, or emoji-only latest replies instead of serving generic copy", () => {
+  for (const latest of ["嗯", "OK", "Okay", "Thanks", "haha", "🙂"]) {
+    assertThrows(
+      () =>
+        parseHintResult(
+          JSON.stringify({
+            warmUp: "哈哈懂，我也是，妳呢？",
+            steady: "原來如此，我也有過，妳呢？",
+            coaching:
+              "Game 心法：她這句可能在測試你的節奏，先累積投入。速約任務：這輪先不約，等窗口。",
+          }),
+          {
+            mode: "game",
+            enforceGeneratedQuality: true,
+            turns: [{ role: "ai", text: latest }],
+          },
+        ),
+      Error,
+      "hint_quality_invalid_not_grounded",
+    );
+  }
+});
+
+Deno.test("generated Hint rejects invite options that contradict no-invite coaching", () => {
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "賴床也行，這週六直接一起喝咖啡吧，我找店。",
+          steady: "那就明天下班喝咖啡，我訂位，讓妳繼續賴床。",
+          coaching:
+            "Game 心法：她在聊賴床，現在還是開場先累積熟悉。速約任務：這輪先不約，等窗口。",
+        }),
+        {
+          mode: "game",
+          enforceGeneratedQuality: true,
+          turns: [{ role: "ai", text: "我今天突然很想喝咖啡，但還在賴床" }],
+        },
+      ),
+    Error,
+    "hint_quality_invalid_invite_coaching_conflict",
+  );
+});
+
+Deno.test("Hint decision refuses a pasteable invite above the authoritative route", () => {
+  for (
+    const replyText of [
+      "這週六直接一起喝咖啡吧，我找店。",
+      "週六我帶妳去那間店。",
+      "明晚我帶妳出去玩。",
+      "週末直接出來，我帶妳去一個地方。",
+      "我們週六約在那間店。",
+      "明天七點樓下見。",
+      "明天七點我在妳家樓下等妳。",
+      "明天七點在咖啡廳見面。",
+      "週六咖啡店見。",
+      "明晚七點咖啡店碰面。",
+      "週六我訂那間店，妳直接過來。",
+      "明晚妳直接過來。",
+      "週六來找我。",
+      "明晚過來找我。",
+      "週末來我家。",
+      "明晚到我這邊。",
+      "明天七點樓下見喔。",
+      "明天七點樓下見啦",
+      "明天七點樓下等妳。",
+      "明天七點我等妳。",
+      "明天七點妳下樓，我到了叫妳。",
+      "明天七點碰個面吧。",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        buildHintDecision({
+          turns: [{ role: "ai", text: "我今天突然很想喝咖啡" }],
+          profile,
+          practiceMode: "game",
+          temperatureScore: 20,
+          familiarityScore: 10,
+          replyType: "warm_up",
+          replyText,
+          rationale: "現在仍在開場，先累積熟悉。",
+        }),
+      Error,
+      "hint_quality_invalid_invite_route",
+    );
+  }
+});
+
+Deno.test("Hint decision does not mistake self-disclosure or a cancelled plan for an invitation", () => {
+  for (
+    const replyText of [
+      "明天我也想喝咖啡補血。",
+      "週末我去看電影放空，妳呢？",
+      "放心，明天七點我不會去接妳。",
+      "明天七點不用我去接妳。",
+      "週末我們不要去看電影了。",
+      "明天不要一起喝咖啡。",
+      "不是要約妳，我明天也會去那間店。",
+      "明天七點我不去接妳。",
+      "明天七點我不接妳了。",
+      "明天七點我沒有要去接妳。",
+      "週末別一起看電影了。",
+      "明天我要去咖啡廳見面。",
+    ]
+  ) {
+    const decision = buildHintDecision({
+      turns: [{ role: "ai", text: "我今天突然很想喝咖啡" }],
+      profile,
+      practiceMode: "game",
+      temperatureScore: 20,
+      familiarityScore: 10,
+      replyType: "warm_up",
+      replyText,
+      rationale: "先接她的咖啡話題，建立共同生活感。",
+    });
+    assertEquals(decision.inviteRoute, "build", replyText);
+  }
+});
+
+Deno.test("generated Hint quality gate accepts two distinct replies grounded in 賴床 context", () => {
+  const result = parseHintResult(
+    JSON.stringify({
+      warmUp: "還在賴床喔，那今天先准妳慢慢開機。",
+      steady: "賴床模式收到，我也先不拿早起標準為難妳。",
+      coaching:
+        "Game 心法：她在聊賴床狀態，這輪先接生活畫面與安全感。速約任務：先鋪墊，不急著約。",
+    }),
+    {
+      mode: "game",
+      enforceGeneratedQuality: true,
+      turns: [{ role: "ai", text: "我還在賴床，腦袋根本沒開機 😂" }],
+    },
+  );
+  assertEquals(result.replies[0].text.includes("賴床"), true);
 });
 
 Deno.test("parseHintResult accepts valid JSON and returns exactly two labeled replies", () => {

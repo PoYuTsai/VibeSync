@@ -183,6 +183,36 @@ export function buildNextGameState(opts: {
   };
 }
 
+/**
+ * Hint and Debrief must read one authoritative Game judgement.
+ *
+ * A fresh transcript-only FSM remains useful for current-turn failure/reality
+ * signals, but phase, target, invite direction, and accumulated hidden scores
+ * are server-ledger state. Overlay those fields once here so the two surfaces
+ * cannot present conflicting judgements to the model.
+ */
+export function effectiveGameFsmSnapshot(
+  fresh: GameFsmSnapshot,
+  persisted?: PersistedGameState | null,
+): GameFsmSnapshot {
+  if (!persisted) return fresh;
+  return {
+    ...fresh,
+    phase: persisted.phase,
+    targetVariable: persisted.lastTargetVariable ?? fresh.targetVariable,
+    speedInviteDirection: persisted.lastSpeedInviteDirection ??
+      fresh.speedInviteDirection,
+    hidden: {
+      ...fresh.hidden,
+      pv: persisted.pv,
+      fp: persisted.fp,
+      inv: persisted.inv,
+      safety: persisted.safety,
+    },
+    spicyLevel: persisted.lastSpicyLevel ?? fresh.spicyLevel,
+  };
+}
+
 function csvCounts<T extends string>(
   values: readonly T[],
   counts: Record<T, number>,

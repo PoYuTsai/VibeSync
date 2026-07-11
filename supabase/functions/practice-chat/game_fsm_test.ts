@@ -14,6 +14,92 @@ import {
 import { applyLearningClassification } from "./temperature.ts";
 import { GIRL_PROFILES, resolvePracticeProfile } from "./practice_persona.ts";
 
+const SR_STRATEGY_SEMANTIC_EXPECTATIONS: Record<
+  string,
+  { required: string[]; legacyMismatches: string[] }
+> = {
+  practice_girl_004: {
+    required: ["咖啡", "選物", "吐槽"],
+    legacyMismatches: ["法律", "健身"],
+  },
+  practice_girl_006: {
+    required: ["瑜珈", "身心平衡", "週末爬山"],
+    legacyMismatches: ["現場音樂", "晚茶"],
+  },
+  practice_girl_007: {
+    required: ["行銷", "電影", "音樂祭"],
+    legacyMismatches: ["自律健身", "果昔"],
+  },
+  practice_girl_008: {
+    required: ["診間", "在家做菜", "追劇"],
+    legacyMismatches: ["藝術品味", "畫廊", "街頭攝影"],
+  },
+  practice_girl_009: {
+    required: ["櫃上", "穿搭", "保養"],
+    legacyMismatches: ["會議空檔", "事業企圖"],
+  },
+  practice_girl_028: {
+    required: ["研究", "實驗室", "自助旅行"],
+    legacyMismatches: ["迷你行程"],
+  },
+  practice_girl_032: {
+    required: ["櫃上", "穿搭", "假日旅行"],
+    legacyMismatches: ["讀書筆記", "講座後"],
+  },
+  practice_girl_033: {
+    required: ["行銷", "跑活動加班", "音樂祭"],
+    legacyMismatches: ["主廚推薦", "炫耀式點餐"],
+  },
+  practice_girl_036: {
+    required: ["顧店手沖", "搞笑表情", "選物"],
+    legacyMismatches: ["獨立音樂", "黑膠唱片"],
+  },
+  practice_girl_038: {
+    required: ["瑜珈", "旅行進修", "健康飲食"],
+    legacyMismatches: ["寵物故事", "寵物友善"],
+  },
+  practice_girl_051: {
+    required: ["美甲", "做指甲", "拍照"],
+    legacyMismatches: ["創業韌性", "展示活動"],
+  },
+  practice_girl_052: {
+    required: ["飛行排班", "落地休整", "旅行"],
+    legacyMismatches: ["穿搭細節", "雞尾酒吧"],
+  },
+  practice_girl_055: {
+    required: ["跟診", "烘焙", "看書"],
+    legacyMismatches: ["醫療現場", "醫院人脈"],
+  },
+  practice_girl_063: {
+    required: ["理財", "週末烘焙", "老屋咖啡"],
+    legacyMismatches: ["語言交換", "跨文化"],
+  },
+  practice_girl_065: {
+    required: ["跑活動", "夜景", "音樂祭"],
+    legacyMismatches: ["舞蹈節奏", "拉丁舞"],
+  },
+  practice_girl_079: {
+    required: ["帶課訓練", "健身", "健康料理"],
+    legacyMismatches: ["理財紀律", "葡萄酒吧"],
+  },
+  practice_girl_080: {
+    required: ["跑工地", "空間設計", "老屋"],
+    legacyMismatches: ["戶外沉著", "步道咖啡"],
+  },
+  practice_girl_082: {
+    required: ["接案畫圖", "插畫", "獨立漫畫"],
+    legacyMismatches: ["遊戲梗", "街機小約", "桌遊咖啡"],
+  },
+  practice_girl_085: {
+    required: ["備課", "語言", "手帳"],
+    legacyMismatches: ["電影品味", "獨立電影", "爆雷"],
+  },
+  practice_girl_087: {
+    required: ["同理", "界線", "散步"],
+    legacyMismatches: ["法律式", "法院", "辯論", "人脈背書"],
+  },
+};
+
 Deno.test("evaluateGameFsm accumulates BORING when user interrogates instead of sharing", () => {
   const snapshot = evaluateGameFsm({
     turns: [
@@ -287,6 +373,57 @@ Deno.test("every explicit SR Game strategy uses Traditional Chinese prompt value
       assert(
         !/[A-Za-z]/.test(value),
         `${girl.profileId} leaked English prompt value: ${value}`,
+      );
+    }
+  }
+});
+
+Deno.test("every explicit SR Game strategy stays semantically aligned with its current catalog card", () => {
+  const srProfiles = GIRL_PROFILES.filter((girl) => girl.rarity === "sr");
+  assertEquals(
+    Object.keys(SR_STRATEGY_SEMANTIC_EXPECTATIONS).sort(),
+    srProfiles.map((girl) => girl.profileId).sort(),
+    "semantic parity table must cover exactly the current SR pool",
+  );
+
+  for (const girl of srProfiles) {
+    const expectation = SR_STRATEGY_SEMANTIC_EXPECTATIONS[girl.profileId];
+    const strategy = buildGameStrategy(
+      resolvePracticeProfile({ profileId: girl.profileId }),
+    );
+    const strategyText = [
+      ...strategy.valueHooks,
+      strategy.testStyle,
+      strategy.tensionStyle,
+      ...strategy.closeHooks,
+      ...strategy.punishments,
+    ].join("｜");
+
+    for (const required of expectation.required) {
+      assert(
+        strategyText.includes(required),
+        `${girl.profileId} strategy lost current-card anchor: ${required}`,
+      );
+    }
+
+    const matchedInterests = girl.interestTags.filter((tag) =>
+      strategyText.includes(tag)
+    );
+    assert(
+      matchedInterests.length >= 2,
+      `${girl.profileId} strategy should use at least two current interests; matched=${
+        matchedInterests.join(",")
+      }`,
+    );
+    assert(
+      girl.lifestyleTags.some((tag) => strategyText.includes(tag)),
+      `${girl.profileId} strategy should use at least one current lifestyle tag`,
+    );
+
+    for (const mismatch of expectation.legacyMismatches) {
+      assert(
+        !strategyText.includes(mismatch),
+        `${girl.profileId} strategy still contains legacy mismatched concept: ${mismatch}`,
       );
     }
   }

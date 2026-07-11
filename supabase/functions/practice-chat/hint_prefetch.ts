@@ -7,18 +7,44 @@ export interface HintRequestLedgerRow {
   state: HintRequestState;
   charged: boolean;
   result: unknown;
+  /** Settled rows keep their prefetch provenance after formal consumption. */
+  isPrefetch?: boolean;
+  /** Unsafe legacy settled rows reserve their already-counted replacement. */
+  legacyReplacementPending?: boolean;
 }
 
 export type HintPrefetchReplayDecision =
   | { kind: "miss" }
   | { kind: "invalid" }
   | { kind: "continueToClaim" }
+  | { kind: "legacyReplacementClaim" }
+  | { kind: "legacyPrefetchDiscard" }
   | { kind: "opaqueAck" }
   | { kind: "settledReplay"; result: Record<string, unknown> }
   | { kind: "prefetchedConsume"; result: Record<string, unknown> };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Only replay snapshots that are known to contain provider output.
+ *
+ * New snapshots carry an explicit generated-only marker. Unmarked legacy
+ * payloads are never replay-certified: quota provenance can prevent a second
+ * charge, but it cannot prove that visible text came from a provider.
+ */
+export function isExplicitModelHintResult(
+  value: unknown,
+): boolean {
+  if (!isRecord(value)) return false;
+  return value.generationSource === "model" && value.fallbackUsed === false;
+}
+
+export function isReplayableModelHintResult(
+  value: unknown,
+): value is Record<string, unknown> {
+  return isRecord(value) && isExplicitModelHintResult(value);
 }
 
 export function decideHintPrefetchReplay(opts: {
@@ -30,6 +56,9 @@ export function decideHintPrefetchReplay(opts: {
 
   // A generating row owns the provider latch, not a replayable snapshot.
   if (row.state === "generating") {
+    if (row.legacyReplacementPending === true) {
+      return { kind: "legacyReplacementClaim" };
+    }
     return row.charged === false && row.result === null
       ? { kind: "continueToClaim" }
       : { kind: "invalid" };
@@ -37,12 +66,17 @@ export function decideHintPrefetchReplay(opts: {
 
   if (row.state === "settled") {
     if (!row.charged || !isRecord(row.result)) return { kind: "invalid" };
-    return opts.requestPrefetch
-      ? { kind: "opaqueAck" }
-      : { kind: "settledReplay", result: row.result };
+    if (opts.requestPrefetch) return { kind: "opaqueAck" };
+    return isReplayableModelHintResult(row.result) &&
+        row.legacyReplacementPending !== true
+      ? { kind: "settledReplay", result: row.result }
+      : { kind: "legacyReplacementClaim" };
   }
 
   if (row.charged || !isRecord(row.result)) return { kind: "invalid" };
+  if (!opts.requestPrefetch && !isExplicitModelHintResult(row.result)) {
+    return { kind: "legacyPrefetchDiscard" };
+  }
   return opts.requestPrefetch
     ? { kind: "opaqueAck" }
     : { kind: "prefetchedConsume", result: row.result };
@@ -55,13 +89,13 @@ export function isHintPrefetchEnabled(value: string | undefined): boolean {
 export function hintRecordPolicy(opts: {
   isPrefetch: boolean;
   isTestAccount: boolean;
-  isFallback: boolean;
+  quotaAlreadyPaid?: boolean;
 }): { chargeQuota: boolean; charged: boolean } {
   if (opts.isPrefetch) {
     return { chargeQuota: false, charged: false };
   }
   return {
-    chargeQuota: !opts.isTestAccount && !opts.isFallback,
+    chargeQuota: !opts.isTestAccount && opts.quotaAlreadyPaid !== true,
     charged: true,
   };
 }
