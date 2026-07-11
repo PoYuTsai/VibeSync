@@ -686,6 +686,23 @@ void main() {
       expect(controller.drawCalls, 0);
     });
 
+    testWidgets('AI turn 落盤中 → 翻牌鈕停用且不呼叫 draw', (tester) async {
+      final controller = _DrawSpyController(
+        _revealedSeed().copyWith(isPersistingTurn: true),
+      );
+      await pumpApp(
+        tester,
+        collectionApp(controller: controller, subscription: _paidSubscription),
+      );
+
+      final button = tester.widget<GestureDetector>(find.byKey(drawButton));
+      expect(button.onTap, isNull);
+      await tester.tap(find.byKey(drawButton), warnIfMissed: false);
+      await tester.pump();
+
+      expect(controller.drawCalls, 0);
+    });
+
     testWidgets('repeat 鐵則：locked 脈動、revealed 後停（pumpAndSettle 不 hang）',
         (tester) async {
       final controller = _DrawSpyController(_lockedSeed());

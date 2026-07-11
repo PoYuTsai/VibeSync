@@ -511,31 +511,130 @@ class PracticeChatApiService {
     String? memorySummary,
     PracticePartnerState? continuationPartnerState,
     String? requestId,
+    int? expectedAiCount,
     PracticeLearningMode practiceMode = PracticeLearningMode.beginner,
   }) async {
-    final normalizedMemorySummary = memorySummary?.trim();
+    final data = await _invokeHint(
+      sessionId: sessionId,
+      profile: profile,
+      turns: turns,
+      roundIndex: roundIndex,
+      visiblePracticeThreadId: visiblePracticeThreadId,
+      memorySummary: memorySummary,
+      continuationPartnerState: continuationPartnerState,
+      requestId: requestId,
+      expectedAiCount: expectedAiCount,
+      practiceMode: practiceMode,
+      prefetch: false,
+    );
+    return _parseHintResult(data);
+  }
+
+  /// Pre-generates a Hint snapshot without exposing its content to the client.
+  /// The matching [requestHint] call consumes that snapshot using the same
+  /// [requestId].
+  Future<void> prefetchHint({
+    required String sessionId,
+    required String requestId,
+    required PracticeProfileDto profile,
+    required List<PracticeTurnDto> turns,
+    int roundIndex = 1,
+    String? visiblePracticeThreadId,
+    String? memorySummary,
+    PracticePartnerState? continuationPartnerState,
+    int? expectedAiCount,
+    PracticeLearningMode practiceMode = PracticeLearningMode.beginner,
+  }) async {
+    final normalizedRequestId = requestId.trim();
+    if (normalizedRequestId.isEmpty) {
+      throw ArgumentError.value(requestId, 'requestId', 'must not be empty');
+    }
+
+    final data = await _invokeHint(
+      sessionId: sessionId,
+      profile: profile,
+      turns: turns,
+      roundIndex: roundIndex,
+      visiblePracticeThreadId: visiblePracticeThreadId,
+      memorySummary: memorySummary,
+      continuationPartnerState: continuationPartnerState,
+      requestId: normalizedRequestId,
+      expectedAiCount: expectedAiCount,
+      practiceMode: practiceMode,
+      prefetch: true,
+    );
+    if (data.length != 1 || data['prefetched'] != true) {
+      throw PracticeGenerationFailedException(
+        'malformed_hint_prefetch_ack',
+      );
+    }
+  }
+
+  Future<Map<String, dynamic>> _invokeHint({
+    required String sessionId,
+    required PracticeProfileDto profile,
+    required List<PracticeTurnDto> turns,
+    required int roundIndex,
+    required String? visiblePracticeThreadId,
+    required String? memorySummary,
+    required PracticePartnerState? continuationPartnerState,
+    required String? requestId,
+    required int? expectedAiCount,
+    required PracticeLearningMode practiceMode,
+    required bool prefetch,
+  }) async {
     final response = await _invoke(
       _functionName,
-      body: {
-        'mode': 'hint',
-        'sessionId': sessionId,
-        if (requestId != null && requestId.trim().isNotEmpty)
-          'requestId': requestId.trim(),
-        'practiceMode': practiceMode.wireName,
-        ...profile.toJson(),
-        'turns': turns.map((t) => t.toJson()).toList(),
-        if (normalizedMemorySummary != null &&
-            normalizedMemorySummary.isNotEmpty)
-          'memorySummary': normalizedMemorySummary,
-        'roundIndex': roundIndex,
-        if (visiblePracticeThreadId != null)
-          'visiblePracticeThreadId': visiblePracticeThreadId,
-        if (continuationPartnerState != null)
-          'continuationPartnerState': continuationPartnerState.toJson(),
-      },
+      body: _hintBody(
+        sessionId: sessionId,
+        profile: profile,
+        turns: turns,
+        roundIndex: roundIndex,
+        visiblePracticeThreadId: visiblePracticeThreadId,
+        memorySummary: memorySummary,
+        continuationPartnerState: continuationPartnerState,
+        requestId: requestId,
+        expectedAiCount: expectedAiCount,
+        practiceMode: practiceMode,
+        prefetch: prefetch,
+      ),
     );
-    final data = _guardHintStatus(response);
-    return _parseHintResult(data);
+    return _guardHintStatus(response);
+  }
+
+  Map<String, dynamic> _hintBody({
+    required String sessionId,
+    required PracticeProfileDto profile,
+    required List<PracticeTurnDto> turns,
+    required int roundIndex,
+    required String? visiblePracticeThreadId,
+    required String? memorySummary,
+    required PracticePartnerState? continuationPartnerState,
+    required String? requestId,
+    required int? expectedAiCount,
+    required PracticeLearningMode practiceMode,
+    required bool prefetch,
+  }) {
+    final normalizedRequestId = requestId?.trim();
+    final normalizedMemorySummary = memorySummary?.trim();
+    return {
+      'mode': 'hint',
+      'sessionId': sessionId,
+      if (normalizedRequestId != null && normalizedRequestId.isNotEmpty)
+        'requestId': normalizedRequestId,
+      if (expectedAiCount != null) 'expectedAiCount': expectedAiCount,
+      'prefetch': prefetch,
+      'practiceMode': practiceMode.wireName,
+      ...profile.toJson(),
+      'turns': turns.map((t) => t.toJson()).toList(),
+      if (normalizedMemorySummary != null && normalizedMemorySummary.isNotEmpty)
+        'memorySummary': normalizedMemorySummary,
+      'roundIndex': roundIndex,
+      if (visiblePracticeThreadId != null)
+        'visiblePracticeThreadId': visiblePracticeThreadId,
+      if (continuationPartnerState != null)
+        'continuationPartnerState': continuationPartnerState.toJson(),
+    };
   }
 
   Future<PracticeDebrief> requestDebrief({
@@ -834,6 +933,16 @@ class PracticeChatApiService {
       final data = response.data is Map ? response.data as Map : const {};
       if (data['error'] == 'practice_hint_limit') {
         throw PracticeHintLimitException();
+      }
+    }
+    if (response.status == 409) {
+      final data = response.data is Map ? response.data as Map : const {};
+      final error = data['error'];
+      // Hint-specific conflicts are retry/recovery states, not a completed
+      // practice session. Keep them out of the shared 409 fallback below.
+      if (error == 'practice_hint_stale' ||
+          error == 'practice_hint_prefetch_pending') {
+        throw PracticeApiException(error as String, status: 409);
       }
     }
     return _guardStatus(response);

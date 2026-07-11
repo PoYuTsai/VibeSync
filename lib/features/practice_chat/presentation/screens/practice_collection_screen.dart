@@ -217,7 +217,7 @@ class _PracticeCollectionScreenState
   /// 掛著 listener，這裡的 read 只是取當下值。
   void _onDrawPressed() {
     final state = ref.read(practiceChatControllerProvider);
-    if (state.isDrawing) return; // 防連點
+    if (state.isDrawing || state.isPersistingTurn) return;
 
     final notifier = ref.read(practiceChatControllerProvider.notifier);
 
@@ -319,6 +319,8 @@ class _PracticeCollectionScreenState
       ),
     );
     if (confirmed != true || !mounted) return;
+    final latest = ref.read(practiceChatControllerProvider);
+    if (latest.isDrawing || latest.isPersistingTurn) return;
     ref.read(practiceChatControllerProvider.notifier).drawNewPracticeGirl();
   }
 
@@ -376,7 +378,10 @@ class _PracticeCollectionScreenState
     final chatState = ref.watch(practiceChatControllerProvider);
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    _syncDrawPulse(shouldPulse: !chatState.isRevealed && !reduceMotion);
+    _syncDrawPulse(
+      shouldPulse:
+          !chatState.isRevealed && !chatState.isPersistingTurn && !reduceMotion,
+    );
 
     // 402/429 事後錯誤呈現：只攔「翻牌在途 → 收場」的轉場（同步 gating 的
     // snackbar 由 _onDrawPressed 自己出，不會雙發）。
@@ -450,6 +455,8 @@ class _PracticeCollectionScreenState
                       total: total,
                       drawPulse: _drawPulse,
                       drawIsDrawing: chatState.isDrawing,
+                      drawEnabled:
+                          !chatState.isDrawing && !chatState.isPersistingTurn,
                       onDrawPressed: _onDrawPressed,
                     ),
                   ),
@@ -586,6 +593,7 @@ class _CollectionHeader extends StatelessWidget {
     required this.total,
     required this.drawPulse,
     required this.drawIsDrawing,
+    required this.drawEnabled,
     required this.onDrawPressed,
   });
 
@@ -593,6 +601,7 @@ class _CollectionHeader extends StatelessWidget {
   final int total;
   final Animation<double> drawPulse;
   final bool drawIsDrawing;
+  final bool drawEnabled;
   final VoidCallback onDrawPressed;
 
   @override
@@ -639,6 +648,7 @@ class _CollectionHeader extends StatelessWidget {
               _CollectionDrawButton(
                 pulse: drawPulse,
                 isDrawing: drawIsDrawing,
+                enabled: drawEnabled,
                 onPressed: onDrawPressed,
               ),
             ],
@@ -716,11 +726,13 @@ class _CollectionDrawButton extends StatelessWidget {
   const _CollectionDrawButton({
     required this.pulse,
     required this.isDrawing,
+    required this.enabled,
     required this.onPressed,
   });
 
   final Animation<double> pulse;
   final bool isDrawing;
+  final bool enabled;
   final VoidCallback onPressed;
 
   @override
@@ -732,7 +744,7 @@ class _CollectionDrawButton extends StatelessWidget {
         return GestureDetector(
           key: const ValueKey('collection-draw-button'),
           behavior: HitTestBehavior.opaque,
-          onTap: onPressed,
+          onTap: enabled ? onPressed : null,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(

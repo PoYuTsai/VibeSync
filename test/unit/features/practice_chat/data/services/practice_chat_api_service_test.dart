@@ -1330,14 +1330,17 @@ void main() {
           photoId: 'practice_girl_007',
         ),
         turns: turns,
+        expectedAiCount: 7,
         roundIndex: 4,
         visiblePracticeThreadId: 'thread-abc',
       );
 
       expect(captured.functionName, 'practice-chat');
       expect(captured.body?['mode'], 'hint');
+      expect(captured.body?['prefetch'], false);
       expect(captured.body?['practiceMode'], 'beginner');
       expect(captured.body?['sessionId'], 'session-1');
+      expect(captured.body?['expectedAiCount'], 7);
       expect(captured.body?['personaId'], 'cool_rational');
       expect(captured.body?['difficulty'], 'challenge');
       expect(captured.body?['profileId'], 'practice_girl_007');
@@ -1452,6 +1455,23 @@ void main() {
       );
     });
 
+    test('409 practice_hint_stale stays a retryable Hint conflict', () async {
+      final svc = serviceReturning(409, {'error': 'practice_hint_stale'});
+
+      expect(
+        () => svc.requestHint(
+          sessionId: 'session-1',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(
+          isA<PracticeApiException>()
+              .having((e) => e.status, 'status', 409)
+              .having((e) => e.message, 'message', 'practice_hint_stale'),
+        ),
+      );
+    });
+
     test('403 practice_hint_limit maps to PracticeHintLimitException',
         () async {
       final svc = serviceReturning(403, {'error': 'practice_hint_limit'});
@@ -1498,6 +1518,181 @@ void main() {
           turns: turns,
         ),
         throwsA(isA<PracticeGenerationFailedException>()),
+      );
+    });
+  });
+
+  group('prefetchHint', () {
+    test('sends the shared hint payload with prefetch true and requestId',
+        () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+      captured.hintBody = {'prefetched': true};
+
+      final Future<void> future = svc.prefetchHint(
+        sessionId: 'session-1',
+        requestId: '  hint-prefetch-1  ',
+        profile: const PracticeProfileDto(
+          personaId: 'cool_rational',
+          difficulty: 'challenge',
+          profileId: 'practice_girl_007',
+          nameId: 'mia',
+          professionId: 'nurse',
+          photoId: 'practice_girl_007',
+        ),
+        turns: turns,
+        expectedAiCount: 3,
+        roundIndex: 4,
+        visiblePracticeThreadId: 'thread-abc',
+        memorySummary: '  durable memory  ',
+        continuationPartnerState: const PracticePartnerState(
+          mood: 'curious',
+          innerThought: 'keep listening',
+        ),
+        practiceMode: PracticeLearningMode.game,
+      );
+      await future;
+
+      expect(captured.functionName, 'practice-chat');
+      expect(captured.body, {
+        'mode': 'hint',
+        'sessionId': 'session-1',
+        'requestId': 'hint-prefetch-1',
+        'expectedAiCount': 3,
+        'prefetch': true,
+        'practiceMode': 'game',
+        'personaId': 'cool_rational',
+        'difficulty': 'challenge',
+        'profileId': 'practice_girl_007',
+        'nameId': 'mia',
+        'professionId': 'nurse',
+        'photoId': 'practice_girl_007',
+        'turns': turns.map((turn) => turn.toJson()).toList(),
+        'memorySummary': 'durable memory',
+        'roundIndex': 4,
+        'visiblePracticeThreadId': 'thread-abc',
+        'continuationPartnerState': {
+          'mood': 'curious',
+          'innerThought': 'keep listening',
+        },
+      });
+    });
+
+    test('accepts only the exact opaque prefetched acknowledgement', () async {
+      final svc = serviceReturning(200, {'prefetched': true});
+
+      await expectLater(
+        svc.prefetchHint(
+          sessionId: 'session-1',
+          requestId: 'hint-prefetch-1',
+          profile: profile,
+          turns: turns,
+        ),
+        completes,
+      );
+    });
+
+    test('rejects a 200 response that exposes hint content', () async {
+      final svc = serviceReturning(200, {
+        'prefetched': true,
+        'coaching': 'must remain server-side',
+      });
+
+      await expectLater(
+        svc.prefetchHint(
+          sessionId: 'session-1',
+          requestId: 'hint-prefetch-1',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(
+          isA<PracticeGenerationFailedException>().having(
+            (e) => e.message,
+            'message',
+            'malformed_hint_prefetch_ack',
+          ),
+        ),
+      );
+    });
+
+    test('rejects missing, false, or non-opaque acknowledgements', () async {
+      for (final body in <Map<String, dynamic>>[
+        {},
+        {'prefetched': false},
+        {'prefetched': true, 'result': null},
+      ]) {
+        final svc = serviceReturning(200, body);
+        await expectLater(
+          svc.prefetchHint(
+            sessionId: 'session-1',
+            requestId: 'hint-prefetch-1',
+            profile: profile,
+            turns: turns,
+          ),
+          throwsA(isA<PracticeGenerationFailedException>()),
+        );
+      }
+    });
+
+    test('requires a non-empty requestId before invoking', () async {
+      var invoked = false;
+      final svc = PracticeChatApiService(
+        invoker: (fn, {required body}) async {
+          invoked = true;
+          return const PracticeInvokeResponse(
+            status: 200,
+            data: {'prefetched': true},
+          );
+        },
+      );
+
+      await expectLater(
+        svc.prefetchHint(
+          sessionId: 'session-1',
+          requestId: '   ',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsArgumentError,
+      );
+      expect(invoked, false);
+    });
+
+    test('keeps hint status mapping for prefetch failures', () async {
+      final quota = serviceReturning(429, {'message': 'quota exhausted'});
+      final hintCap = serviceReturning(
+        403,
+        {'error': 'practice_hint_limit'},
+      );
+      final failed = serviceReturning(
+        500,
+        {'error': 'practice_hint_prefetch_failed'},
+      );
+
+      Future<void> invoke(PracticeChatApiService svc) => svc.prefetchHint(
+            sessionId: 'session-1',
+            requestId: 'hint-prefetch-1',
+            profile: profile,
+            turns: turns,
+          );
+
+      await expectLater(
+        invoke(quota),
+        throwsA(isA<PracticeQuotaExceededException>()),
+      );
+      await expectLater(
+        invoke(hintCap),
+        throwsA(isA<PracticeHintLimitException>()),
+      );
+      await expectLater(
+        invoke(failed),
+        throwsA(
+          isA<PracticeGenerationFailedException>().having(
+            (e) => e.message,
+            'message',
+            'practice_hint_prefetch_failed',
+          ),
+        ),
       );
     });
   });

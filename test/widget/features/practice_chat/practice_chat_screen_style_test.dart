@@ -256,6 +256,7 @@ class _HintApi extends _NoopPracticeChatApi {
     String? memorySummary,
     PracticePartnerState? continuationPartnerState,
     String? requestId,
+    int? expectedAiCount,
     PracticeLearningMode practiceMode = PracticeLearningMode.beginner,
   }) async {
     hintCalls++;
@@ -1416,7 +1417,8 @@ void main() {
       ),
     );
 
-    final gameSegment = find.byKey(const ValueKey('practice-learning-mode-game'));
+    final gameSegment =
+        find.byKey(const ValueKey('practice-learning-mode-game'));
     for (var i = 0; i < 3; i++) {
       await tester.tap(gameSegment);
       await tester.pump(const Duration(milliseconds: 500));
@@ -1579,6 +1581,46 @@ void main() {
 
     // 輸入框／送出鈕都吃 canSend：hint 在途時一律停用，避免平行送出。
     expect(tester.widget<TextField>(find.byType(TextField)).enabled, false);
+  });
+
+  testWidgets(
+      'turn persistence disables composer and keeps debrief unavailable',
+      (tester) async {
+    final seed = revealedPreMsgSeed().copyWith(
+      messages: const [
+        PracticeMessage(role: 'user', text: 'hello'),
+        PracticeMessage(role: 'ai', text: 'hello back'),
+      ],
+      aiReplyCount: 1,
+      isPersistingTurn: true,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(tester.widget<TextField>(find.byType(TextField)).enabled, false);
+    expect(find.text('結束練習'), findsNothing);
   });
 
   testWidgets('hint panel can fill the composer with a suggested reply',
