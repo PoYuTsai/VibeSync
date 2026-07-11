@@ -3,6 +3,7 @@
 // 失敗一律 throw Error("invalid_*")，由 handler 轉 400。
 
 import {
+  MAX_AI_REPLIES,
   type PracticeLearningMode,
   type PracticeMode,
 } from "./quota_decision.ts";
@@ -69,6 +70,17 @@ export interface PracticeChatRequest {
    * client 缺值走現行為（無冪等），向後相容。格式比照翻牌 requestId。
    */
   requestId?: string;
+  /**
+   * Hint-only local turn version. New clients send the full session AI count
+   * even when the prompt transcript is truncated; the claim RPC compares it
+   * under the session row lock before binding a fresh generation.
+   */
+  expectedAiCount?: number;
+  /**
+   * Hint-only transport intent. Missing means legacy client; explicit false is
+   * a formal request from a prefetch-aware client; true is background prefetch.
+   */
+  prefetch?: boolean;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -297,6 +309,33 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     requestId = raw.requestId;
   }
 
+  let prefetch: boolean | undefined;
+  if (raw.prefetch !== undefined) {
+    if (typeof raw.prefetch !== "boolean") {
+      throw new Error("invalid_prefetch");
+    }
+    if (raw.prefetch === true && (mode !== "hint" || requestId === undefined)) {
+      throw new Error("invalid_prefetch");
+    }
+    if (mode === "hint") {
+      prefetch = raw.prefetch;
+    }
+  }
+
+  let expectedAiCount: number | undefined;
+  if (raw.expectedAiCount !== undefined) {
+    if (
+      mode !== "hint" ||
+      typeof raw.expectedAiCount !== "number" ||
+      !Number.isInteger(raw.expectedAiCount) ||
+      raw.expectedAiCount < 1 ||
+      raw.expectedAiCount > MAX_AI_REPLIES
+    ) {
+      throw new Error("invalid_expectedAiCount");
+    }
+    expectedAiCount = raw.expectedAiCount;
+  }
+
   // roundIndex：缺值 fallback 1；續聊不再由 client cap 3 輪，只收正整數。
   let roundIndex = 1;
   if (raw.roundIndex !== undefined) {
@@ -373,6 +412,8 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     appliedHintText,
     appliedHintTurns,
     requestId,
+    expectedAiCount,
+    prefetch,
   };
 }
 

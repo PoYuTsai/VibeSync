@@ -20,22 +20,28 @@ interface FakeOptions {
   user?: { id: string; email?: string | null } | null;
   userError?: string;
   sub?: Record<string, unknown> | null;
+  preparedSub?: Record<string, unknown> | null;
   subError?: string;
   ledger?: Record<string, unknown> | null;
   ledgerError?: string;
+  hintRequest?: Record<string, unknown> | null;
+  hintRequestError?: string;
   thread?: Record<string, unknown> | null;
   threadError?: string;
-  drawEvents?: Array<Record<string, unknown>>;
+  drawEvents?: ReadonlyArray<Record<string, unknown>>;
   drawEventsError?: string;
   aiLogsError?: string;
   aiLogsNeverCompletes?: boolean;
   rpc?: Record<string, RpcResult[]>;
-  deepSeekReplies?: Array<string | Error>;
+  deepSeekReplies?: ReadonlyArray<string | Error>;
+  env?: Record<string, string | undefined>;
+  randomUUID?: string;
 }
 
 interface FakeState {
   selects: Array<{ table: string; columns: string }>;
   inserts: Array<{ table: string; values: Record<string, unknown> }>;
+  updates: Array<{ table: string; values: Record<string, unknown> }>;
   rpcCalls: Array<{ fn: string; params: Record<string, unknown> }>;
   deepSeekCalls: DeepSeekArgs[];
   events: string[];
@@ -205,6 +211,7 @@ function makeFake(options: FakeOptions = {}) {
   const state: FakeState = {
     selects: [],
     inserts: [],
+    updates: [],
     rpcCalls: [],
     deepSeekCalls: [],
     events: [],
@@ -293,6 +300,21 @@ function makeFake(options: FakeOptions = {}) {
                     },
                 );
               }
+              if (table === "practice_hint_requests") {
+                return Promise.resolve(
+                  options.hintRequestError
+                    ? {
+                      data: null,
+                      error: { message: options.hintRequestError },
+                    }
+                    : {
+                      data: options.hintRequest === undefined
+                        ? null
+                        : options.hintRequest,
+                      error: null,
+                    },
+                );
+              }
               if (table === "practice_relationship_threads") {
                 return Promise.resolve(
                   options.threadError
@@ -316,7 +338,9 @@ function makeFake(options: FakeOptions = {}) {
           };
           return builder;
         },
-        update(_values: Record<string, unknown>) {
+        update(values: Record<string, unknown>) {
+          state.updates.push({ table, values });
+          state.events.push(`update:${table}`);
           return {
             eq(_column: string, _value: unknown) {
               return Promise.resolve({ data: null, error: null });
@@ -331,6 +355,15 @@ function makeFake(options: FakeOptions = {}) {
       const index = rpcByName.get(fn) ?? 0;
       rpcByName.set(fn, index + 1);
       const defaultResult: RpcResult = (() => {
+        if (fn === "prepare_practice_subscription_usage") {
+          if (options.subError) return { error: options.subError };
+          if (options.preparedSub === null || options.sub === null) {
+            return { error: "PRACTICE_SUBSCRIPTION_NOT_FOUND" };
+          }
+          return {
+            data: options.preparedSub ?? options.sub ?? subscription(),
+          };
+        }
         if (fn === "commit_practice_chat_turn") {
           return { data: { new_ai_count: 1, did_charge: true } };
         }
@@ -351,6 +384,70 @@ function makeFake(options: FakeOptions = {}) {
         }
         if (fn === "record_practice_debrief") {
           return { data: params.p_result };
+        }
+        if (fn === "claim_practice_hint_generation") {
+          return {
+            data: {
+              current_hint_count: options.ledger?.hint_count ?? 0,
+              replay: false,
+              stored_result: null,
+              stored_charged: null,
+            },
+          };
+        }
+        if (fn === "record_practice_hint") {
+          const isConsumed = params.p_charged !== false;
+          const currentHintCount =
+            typeof options.ledger?.hint_count === "number"
+              ? options.ledger.hint_count
+              : 0;
+          const newHintCount = currentHintCount + (isConsumed ? 1 : 0);
+          const storedResult = params.p_request_id && params.p_result
+            ? {
+              ...(params.p_result as Record<string, unknown>),
+              hintUsedCount: newHintCount,
+            }
+            : null;
+          return {
+            data: {
+              new_hint_count: newHintCount,
+              did_charge: params.p_charge_quota === true,
+              stored_result: storedResult,
+              stored_charged: isConsumed,
+            },
+          };
+        }
+        if (fn === "settle_prefetched_practice_hint") {
+          const currentHintCount =
+            typeof options.ledger?.hint_count === "number"
+              ? options.ledger.hint_count
+              : 0;
+          const didCharge = params.p_charge_quota === true;
+          return {
+            data: {
+              new_hint_count: currentHintCount + 1,
+              did_charge: didCharge,
+              stored_result: {
+                ...(options.hintRequest?.result as Record<string, unknown>),
+                costDeducted: didCharge ? 1 : 0,
+                hintUsedCount: currentHintCount + 1,
+              },
+              stored_charged: true,
+            },
+          };
+        }
+        if (fn === "discard_prefetched_practice_hint") {
+          return {
+            data: {
+              discarded: true,
+              replay: false,
+              stored_result: null,
+              stored_charged: false,
+            },
+          };
+        }
+        if (fn === "release_practice_hint_generation") {
+          return { data: { released: true } };
         }
         return { data: true };
       })();
@@ -379,8 +476,12 @@ function makeFake(options: FakeOptions = {}) {
     handler: createPracticeChatHandler({
       createSupabaseClient: () => client as PracticeSupabaseClient,
       callDeepSeek: deepSeek,
-      getEnv: (name) => name === "DEEPSEEK_API_KEY" ? "deepseek-key" : "",
+      getEnv: (name) => {
+        if (Object.hasOwn(options.env ?? {}, name)) return options.env?.[name];
+        return name === "DEEPSEEK_API_KEY" ? "deepseek-key" : "";
+      },
       now: () => NOW,
+      randomUUID: () => options.randomUUID ?? "generation-token-1",
       waitUntil: (task) => state.backgroundTasks.push(task),
       telemetryPersistTimeoutMs: options.aiLogsNeverCompletes ? 5 : undefined,
     }),
@@ -407,6 +508,25 @@ function claimHintCalls(state: FakeState) {
 function releaseHintCalls(state: FakeState) {
   return state.rpcCalls.filter((call) =>
     call.fn === "release_practice_hint_generation"
+  );
+}
+
+function settleHintCalls(state: FakeState) {
+  return state.rpcCalls.filter((call) =>
+    call.fn === "settle_prefetched_practice_hint"
+  );
+}
+
+function discardHintCalls(state: FakeState) {
+  return state.rpcCalls.filter((call) =>
+    call.fn === "discard_prefetched_practice_hint"
+  );
+}
+
+function hintModelRateCalls(state: FakeState) {
+  return state.rpcCalls.filter((call) =>
+    call.fn === "increment_model_usage" &&
+    call.params.p_scope === "practice_hint"
   );
 }
 
@@ -453,6 +573,43 @@ function recordDebriefCalls(state: FakeState) {
 function aiLogInserts(state: FakeState) {
   return state.inserts.filter((insert) => insert.table === "ai_logs");
 }
+
+Deno.test("practice-chat prepares subscription resets through the DB row lock", async () => {
+  const { response, state } = await run({
+    sub: subscription({
+      monthly_messages_used: 99,
+      daily_messages_used: 49,
+      monthly_reset_at: "2026-05-01T00:00:00.000Z",
+      daily_reset_at: "2026-06-27T00:00:00.000Z",
+    }),
+    preparedSub: subscription({
+      monthly_messages_used: 0,
+      daily_messages_used: 0,
+      monthly_reset_at: "2026-06-01T00:00:00.000Z",
+      daily_reset_at: "2026-06-28T00:00:00.000Z",
+    }),
+    ledger: ledger({ practice_mode: "standard" }),
+  });
+
+  assertEquals(response.status, 200);
+  const prepareCalls = state.rpcCalls.filter((call) =>
+    call.fn === "prepare_practice_subscription_usage"
+  );
+  assertEquals(prepareCalls.length, 1);
+  assertEquals(prepareCalls[0].params, { p_user_id: "user-1" });
+  assertEquals(
+    state.selects.some((select) => select.table === "subscriptions"),
+    false,
+  );
+  assertEquals(
+    state.updates.some((update) => update.table === "subscriptions"),
+    false,
+  );
+  assert(
+    state.events.indexOf("rpc:prepare_practice_subscription_usage") <
+      state.events.indexOf("deepseek"),
+  );
+});
 
 Deno.test("standard chat response does not include temperature and does not judge or update", async () => {
   const { response, json, state } = await run({
@@ -667,7 +824,12 @@ Deno.test("game chat rejects non-SR profile before provider and RPC", async () =
   assertEquals(response.status, 403);
   assertEquals(json, { error: "practice_game_sr_only" });
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.rpcCalls.length, 0);
+  assertEquals(
+    state.rpcCalls.filter((call) =>
+      call.fn !== "prepare_practice_subscription_usage"
+    ).length,
+    0,
+  );
 });
 
 Deno.test("game chat rejects forged SR profile that was never drawn by the user", async () => {
@@ -691,7 +853,12 @@ Deno.test("game chat rejects forged SR profile that was never drawn by the user"
     true,
   );
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.rpcCalls.length, 0);
+  assertEquals(
+    state.rpcCalls.filter((call) =>
+      call.fn !== "prepare_practice_subscription_usage"
+    ).length,
+    0,
+  );
 });
 
 Deno.test("game chat allows SR profile and uses beginner-like learning state", async () => {
@@ -1411,7 +1578,12 @@ Deno.test("existing ledger mode mismatch rejects before DeepSeek and RPC", async
   assertEquals(response.status, 409);
   assertEquals(json, { error: "practice_mode_locked" });
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.rpcCalls.length, 0);
+  assertEquals(
+    state.rpcCalls.filter((call) =>
+      call.fn !== "prepare_practice_subscription_usage"
+    ).length,
+    0,
+  );
 });
 
 Deno.test("commit PRACTICE_MODE_LOCKED maps to HTTP 409 practice_mode_locked", async () => {
@@ -3766,8 +3938,9 @@ Deno.test("hint retries a malformed provider result once before recording", asyn
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
   assertEquals(state.events, [
-    "rpc:increment_model_usage",
+    "rpc:prepare_practice_subscription_usage",
     "rpc:claim_practice_hint_generation",
+    "rpc:increment_model_usage",
     "deepseek",
     "deepseek",
     "rpc:record_practice_hint",
@@ -3825,6 +3998,8 @@ Deno.test("successful hint uses ledger temperature, records after parse, and ret
     p_user_id: "user-1",
     p_session_id: "session-1",
     p_max_hints: MAX_HINTS_PER_ROUND,
+    p_prefetch: false,
+    p_generation_token: "generation-token-1",
   });
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(recordHintCalls(state)[0].params, {
@@ -3832,13 +4007,19 @@ Deno.test("successful hint uses ledger temperature, records after parse, and ret
     p_session_id: "session-1",
     p_charge_quota: true,
     p_max_hints: MAX_HINTS_PER_ROUND,
+    p_charged: true,
+    p_monthly_limit: 300,
+    p_daily_limit: 50,
+    p_max_replies: MAX_AI_REPLIES,
+    p_generation_token: "generation-token-1",
   });
   assertEquals(releaseHintCalls(state).length, 0);
   assertEquals(commitCalls(state).length, 0);
   assertEquals(learningUpdateCalls(state).length, 0);
   assertEquals(state.events, [
-    "rpc:increment_model_usage",
+    "rpc:prepare_practice_subscription_usage",
     "rpc:claim_practice_hint_generation",
+    "rpc:increment_model_usage",
     "deepseek",
     "rpc:record_practice_hint",
     "insert:ai_logs",
@@ -3909,6 +4090,7 @@ Deno.test("successful hint charges false for test accounts and trusts record did
   assertEquals(json.monthlyRemaining, 290);
   assertEquals(json.dailyRemaining, 48);
   assertEquals(recordHintCalls(state)[0].params.p_charge_quota, false);
+  assertEquals(recordHintCalls(state)[0].params.p_charged, true);
 });
 
 // ── hint fallback 不扣 quota ────────────────────────────────────────────
@@ -3917,11 +4099,6 @@ Deno.test("hint fallback after provider failures records without charging quota"
   const { response, json, state } = await run({
     ledger: beginnerStartedLedger(),
     deepSeekReplies: [new Error("deepseek down"), new Error("deepseek down")],
-    rpc: {
-      record_practice_hint: [{
-        data: [{ new_hint_count: 1, did_charge: false }],
-      }],
-    },
   }, hintBody({ practiceMode: "beginner", requestId: "req-fb" }));
 
   assertEquals(response.status, 200);
@@ -3930,6 +4107,7 @@ Deno.test("hint fallback after provider failures records without charging quota"
   assertEquals(recordHintCalls(state).length, 1);
   const recordParams = recordHintCalls(state)[0].params;
   assertEquals(recordParams.p_charge_quota, false);
+  assertEquals(recordParams.p_charged, true);
   assertEquals(recordParams.p_request_id, "req-fb");
   const storedPayload = recordParams.p_result as Record<string, unknown>;
   assertEquals(storedPayload.costDeducted, 0);
@@ -3957,6 +4135,7 @@ Deno.test("game hint timeout fallback records without charging quota", async () 
 
   assertEquals(response.status, 200);
   assertEquals(recordHintCalls(state)[0].params.p_charge_quota, false);
+  assertEquals(recordHintCalls(state)[0].params.p_charged, true);
   assertEquals(json.costDeducted, 0);
 });
 
@@ -3974,6 +4153,7 @@ Deno.test("hint fallback for test accounts also records without charging quota",
 
   assertEquals(response.status, 200);
   assertEquals(recordHintCalls(state)[0].params.p_charge_quota, false);
+  assertEquals(recordHintCalls(state)[0].params.p_charged, true);
   assertEquals(json.costDeducted, 0);
 });
 
@@ -3993,10 +4173,14 @@ Deno.test("hint requestId replay of a fallback snapshot does not charge again", 
     dailyRemaining: 48,
   };
   const { response, json, state } = await run({
-    ledger: beginnerStartedLedger({
-      last_hint_request_id: "req-fb-replay",
-      last_hint_result: stored,
-    }),
+    ledger: beginnerStartedLedger(),
+    hintRequest: {
+      state: "settled",
+      charged: true,
+      is_prefetch: false,
+      claimed_ai_count: 1,
+      result: stored,
+    },
   }, hintBody({ practiceMode: "beginner", requestId: "req-fb-replay" }));
 
   assertEquals(response.status, 200);
@@ -4026,6 +4210,776 @@ function storedHintResult(overrides: Record<string, unknown> = {}) {
   };
 }
 
+for (
+  const [mode, options, bodyOverrides] of [
+    [
+      "beginner",
+      { ledger: beginnerStartedLedger() },
+      { practiceMode: "beginner" },
+    ],
+    [
+      "game",
+      {
+        ledger: gameStartedLedger(),
+        drawEvents: [{ profile_id: "practice_girl_004" }],
+      },
+      { practiceMode: "game", profileId: "practice_girl_004" },
+    ],
+  ] as const
+) {
+  Deno.test(`${mode} Hint prefetch stores an uncharged snapshot and returns only opaque ack`, async () => {
+    const requestId = `prefetch-${mode}`;
+    const { response, json, state } = await run(
+      {
+        ...options,
+        env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+        deepSeekReplies: [validHintJson()],
+      },
+      hintBody({
+        ...bodyOverrides,
+        requestId,
+        prefetch: true,
+        expectedAiCount: 1,
+      }),
+    );
+
+    assertEquals(response.status, 200);
+    assertEquals(json, { prefetched: true });
+    assertEquals(Object.keys(json), ["prefetched"]);
+    assertEquals(state.deepSeekCalls.length, 1);
+    assertEquals(hintModelRateCalls(state).length, 1);
+    assertEquals(claimHintCalls(state).length, 1);
+    assertEquals(claimHintCalls(state)[0].params.p_request_id, requestId);
+    assertEquals(claimHintCalls(state)[0].params.p_prefetch, true);
+    assertEquals(claimHintCalls(state)[0].params.p_expected_ai_count, 1);
+    assertEquals(
+      claimHintCalls(state)[0].params.p_generation_token,
+      "generation-token-1",
+    );
+    assertEquals(recordHintCalls(state).length, 1);
+    const params = recordHintCalls(state)[0].params;
+    assertEquals(params.p_request_id, requestId);
+    assertEquals(params.p_charge_quota, false);
+    assertEquals(params.p_charged, false);
+    assertEquals(params.p_generation_token, "generation-token-1");
+    assertEquals(params.p_max_replies, MAX_AI_REPLIES);
+    assertEquals(
+      (params.p_result as Record<string, unknown>).hintUsedCount,
+      0,
+    );
+    assertEquals(settleHintCalls(state).length, 0);
+    assertEquals(releaseHintCalls(state).length, 0);
+  });
+}
+
+for (
+  const [name, options, bodyOverrides, expectedAttempts] of [
+    [
+      "beginner provider failures",
+      {
+        ledger: beginnerStartedLedger(),
+        deepSeekReplies: [
+          new Error("deepseek down"),
+          new Error("deepseek down"),
+        ],
+      },
+      { practiceMode: "beginner" },
+      2,
+    ],
+    [
+      "game timeout",
+      {
+        ledger: gameStartedLedger(),
+        drawEvents: [{ profile_id: "practice_girl_004" }],
+        deepSeekReplies: [new Error("deepseek_timeout")],
+      },
+      { practiceMode: "game", profileId: "practice_girl_004" },
+      1,
+    ],
+  ] as const
+) {
+  Deno.test(`Hint prefetch ${name} releases ownership without recording fallback`, async () => {
+    const requestId = `prefetch-failure-${expectedAttempts}`;
+    const { response, json, state } = await run(
+      {
+        ...options,
+        env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+      },
+      hintBody({
+        ...bodyOverrides,
+        requestId,
+        prefetch: true,
+      }),
+    );
+
+    assertEquals(response.status, 503);
+    assertEquals(json, { error: "practice_hint_prefetch_failed" });
+    assertEquals(state.deepSeekCalls.length, expectedAttempts);
+    assertEquals(recordHintCalls(state).length, 0);
+    assertEquals(settleHintCalls(state).length, 0);
+    assertEquals(releaseHintCalls(state).length, 1);
+    assertEquals(releaseHintCalls(state)[0].params, {
+      p_user_id: "user-1",
+      p_session_id: "session-1",
+      p_request_id: requestId,
+      p_generation_token: "generation-token-1",
+    });
+    assertEquals(aiLogInserts(state).length, 0);
+  });
+}
+
+Deno.test("Hint prefetch malformed output never records the formal fallback", async () => {
+  const { response, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+      deepSeekReplies: ["not json", "still not json"],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "prefetch-malformed",
+      prefetch: true,
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(state.deepSeekCalls.length, 2);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
+});
+
+Deno.test("disabled Hint prefetch stops before claim, rate limit, and provider", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_HINT_PREFETCH_ENABLED: "false" },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "prefetch-disabled",
+      prefetch: true,
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json, { error: "practice_hint_prefetch_disabled" });
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(hintModelRateCalls(state).length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
+Deno.test("missing subscription prepare RPC returns Hint not-ready rollout guard", async () => {
+  const { response, json, state } = await run(
+    {
+      subError:
+        "Could not find the function public.prepare_practice_subscription_usage(p_user_id) in the schema cache",
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "prepare-not-ready",
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json, { error: "practice_hint_not_ready" });
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+});
+
+Deno.test("fresh Hint rejects a stale client turn before claim or provider work", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "fresh-stale-client-turn",
+      expectedAiCount: 1,
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 409);
+  assertEquals(json, { error: "practice_hint_stale" });
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(hintModelRateCalls(state).length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
+Deno.test("settled Hint replay wins over a stale client turn version", async () => {
+  const stored = storedHintResult({ hintUsedCount: 1 });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2, hint_count: 1 }),
+      hintRequest: {
+        state: "settled",
+        charged: true,
+        is_prefetch: false,
+        claimed_ai_count: 1,
+        result: stored,
+      },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "settled-stale-client-turn",
+      expectedAiCount: 1,
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json, stored);
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(settleHintCalls(state).length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+});
+
+Deno.test("formal Hint consumes an exact prefetched snapshot through settle only", async () => {
+  const prefetched = storedHintResult({
+    costDeducted: 0,
+    hintUsedCount: 1,
+    monthlyRemaining: 290,
+    dailyRemaining: 48,
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ hint_count: 1 }),
+      hintRequest: {
+        state: "prefetched",
+        charged: false,
+        is_prefetch: true,
+        claimed_ai_count: 1,
+        result: prefetched,
+      },
+      env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "prefetched-formal",
+      expectedAiCount: 1,
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.costDeducted, 1);
+  assertEquals(json.hintUsedCount, 2);
+  assertEquals(json.coaching, prefetched.coaching);
+  assertEquals(settleHintCalls(state).length, 1);
+  assertEquals(settleHintCalls(state)[0].params.p_charge_quota, true);
+  assertEquals(settleHintCalls(state)[0].params.p_expected_ai_count, 1);
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(hintModelRateCalls(state).length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
+Deno.test("test account consumes prefetched Hint without charging but still increments count", async () => {
+  const prefetched = storedHintResult({
+    costDeducted: 0,
+    hintUsedCount: 1,
+    monthlyRemaining: 290,
+    dailyRemaining: 48,
+  });
+  const { response, json, state } = await run(
+    {
+      user: { id: "user-1", email: "vibesync.test@gmail.com" },
+      ledger: beginnerStartedLedger({ hint_count: 1 }),
+      hintRequest: {
+        state: "prefetched",
+        charged: false,
+        is_prefetch: true,
+        claimed_ai_count: 1,
+        result: prefetched,
+      },
+      env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "prefetched-formal-test-account",
+      expectedAiCount: 1,
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.costDeducted, 0);
+  assertEquals(json.hintUsedCount, 2);
+  assertEquals(json.monthlyRemaining, 290);
+  assertEquals(json.dailyRemaining, 48);
+  assertEquals(settleHintCalls(state).length, 1);
+  assertEquals(settleHintCalls(state)[0].params.p_charge_quota, false);
+  assertEquals(settleHintCalls(state)[0].params.p_expected_ai_count, 1);
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(hintModelRateCalls(state).length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
+Deno.test("formal Hint fails closed on an unconfirmed settle response", async () => {
+  const prefetched = storedHintResult({ costDeducted: 0, hintUsedCount: 0 });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      hintRequest: {
+        state: "prefetched",
+        charged: false,
+        is_prefetch: true,
+        claimed_ai_count: 1,
+        result: prefetched,
+      },
+      env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+      rpc: {
+        settle_prefetched_practice_hint: [{
+          data: {
+            new_hint_count: 1,
+            did_charge: false,
+            stored_result: prefetched,
+            stored_charged: false,
+          },
+        }],
+      },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "settle-unconfirmed",
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json, { error: "practice_hint_not_ready" });
+  assertEquals(settleHintCalls(state).length, 1);
+  assertEquals(json.replies, undefined);
+});
+
+for (
+  const [rpcError, expectedStatus, expectedError] of [
+    ["QUOTA_EXCEEDED_DAILY", 429, "Daily limit exceeded"],
+    ["PRACTICE_SESSION_COMPLETE", 409, "practice_session_complete"],
+  ] as const
+) {
+  Deno.test(`prefetched Hint settle maps ${rpcError} without exposing content`, async () => {
+    const prefetched = storedHintResult({ costDeducted: 0, hintUsedCount: 0 });
+    const { response, json, state } = await run(
+      {
+        ledger: beginnerStartedLedger(),
+        hintRequest: {
+          state: "prefetched",
+          charged: false,
+          is_prefetch: true,
+          claimed_ai_count: 1,
+          result: prefetched,
+        },
+        env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+        rpc: {
+          settle_prefetched_practice_hint: [{ error: rpcError }],
+        },
+      },
+      hintBody({
+        practiceMode: "beginner",
+        requestId: `settle-${expectedStatus}`,
+        prefetch: false,
+      }),
+    );
+
+    assertEquals(response.status, expectedStatus);
+    assertEquals(json.error, expectedError);
+    assertEquals(json.replies, undefined);
+    assertEquals(settleHintCalls(state).length, 1);
+    assertEquals(claimHintCalls(state).length, 0);
+    assertEquals(state.deepSeekCalls.length, 0);
+    assertEquals(recordHintCalls(state).length, 0);
+  });
+}
+
+for (
+  const [stateName, charged] of [
+    ["prefetched", false],
+    ["settled", true],
+  ] as const
+) {
+  Deno.test(`prefetch retry of ${stateName} request returns opaque ack without side effects`, async () => {
+    const { response, json, state } = await run(
+      {
+        ledger: beginnerStartedLedger(),
+        hintRequest: {
+          state: stateName,
+          charged,
+          is_prefetch: true,
+          claimed_ai_count: 1,
+          result: storedHintResult({ costDeducted: charged ? 1 : 0 }),
+        },
+        env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+      },
+      hintBody({
+        practiceMode: "beginner",
+        requestId: `prefetch-retry-${stateName}`,
+        prefetch: true,
+      }),
+    );
+
+    assertEquals(response.status, 200);
+    assertEquals(json, { prefetched: true });
+    assertEquals(Object.keys(json), ["prefetched"]);
+    assertEquals(settleHintCalls(state).length, 0);
+    assertEquals(claimHintCalls(state).length, 0);
+    assertEquals(hintModelRateCalls(state).length, 0);
+    assertEquals(state.deepSeekCalls.length, 0);
+    assertEquals(recordHintCalls(state).length, 0);
+  });
+}
+
+Deno.test("claim-level uncharged replay settles without consuming model rate", async () => {
+  const prefetched = storedHintResult({ costDeducted: 0, hintUsedCount: 0 });
+  const finalized = storedHintResult({ hintUsedCount: 1 });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+      rpc: {
+        claim_practice_hint_generation: [{
+          data: {
+            current_hint_count: 0,
+            replay: true,
+            stored_result: prefetched,
+            stored_charged: false,
+          },
+        }],
+        settle_prefetched_practice_hint: [{
+          data: {
+            new_hint_count: 1,
+            did_charge: true,
+            stored_result: finalized,
+            stored_charged: true,
+          },
+        }],
+      },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "claim-race-prefetched",
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json, finalized);
+  assertEquals(claimHintCalls(state).length, 1);
+  assertEquals(settleHintCalls(state).length, 1);
+  assertEquals(hintModelRateCalls(state).length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
+Deno.test("model rate limit after fresh prefetch claim releases exact owner", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+      rpc: {
+        increment_model_usage: [{ error: "MODEL_RATE_LIMITED_MINUTE" }],
+      },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "prefetch-rate-limited",
+      prefetch: true,
+    }),
+  );
+
+  assertEquals(response.status, 429);
+  assertEquals(json.code, "MODEL_RATE_LIMITED");
+  assertEquals(claimHintCalls(state).length, 1);
+  assertEquals(hintModelRateCalls(state).length, 1);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
+  assertEquals(
+    releaseHintCalls(state)[0].params.p_request_id,
+    "prefetch-rate-limited",
+  );
+  assertEquals(
+    releaseHintCalls(state)[0].params.p_generation_token,
+    "generation-token-1",
+  );
+  assert(
+    state.events.indexOf("rpc:claim_practice_hint_generation") <
+      state.events.indexOf("rpc:increment_model_usage"),
+  );
+});
+
+Deno.test("record quota race returns 429 and releases the exact formal owner", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      deepSeekReplies: [validHintJson()],
+      rpc: {
+        record_practice_hint: [{ error: "QUOTA_EXCEEDED_MONTHLY" }],
+      },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "formal-quota-race",
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 429);
+  assertEquals(json.error, "Monthly limit exceeded");
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 1);
+  assertEquals(
+    releaseHintCalls(state)[0].params.p_request_id,
+    "formal-quota-race",
+  );
+  assertEquals(json.replies, undefined);
+});
+
+Deno.test("flag-off formal request discards its pending row before fresh generation", async () => {
+  const { response, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      hintRequest: {
+        state: "generating",
+        charged: false,
+        is_prefetch: true,
+        claimed_ai_count: 1,
+        result: null,
+      },
+      env: { PRACTICE_HINT_PREFETCH_ENABLED: "false" },
+      deepSeekReplies: [validHintJson()],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "flag-off-pending",
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(discardHintCalls(state).length, 1);
+  assertEquals(claimHintCalls(state).length, 1);
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(recordHintCalls(state).length, 1);
+  assert(
+    state.events.indexOf("rpc:discard_prefetched_practice_hint") <
+      state.events.indexOf("rpc:claim_practice_hint_generation"),
+  );
+});
+
+Deno.test("flag-off formal retry never discards a formal generating owner", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      hintRequest: {
+        state: "generating",
+        charged: false,
+        is_prefetch: false,
+        claimed_ai_count: 1,
+        result: null,
+      },
+      env: { PRACTICE_HINT_PREFETCH_ENABLED: "false" },
+      rpc: {
+        claim_practice_hint_generation: [{
+          error: "PRACTICE_HINT_IN_FLIGHT",
+        }],
+      },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "formal-owner",
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 403);
+  assertEquals(json, { error: "practice_hint_in_flight" });
+  assertEquals(discardHintCalls(state).length, 0);
+  assertEquals(claimHintCalls(state).length, 1);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
+Deno.test("flag-off discard race replays an already-settled result", async () => {
+  const stored = storedHintResult({ hintUsedCount: 1 });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      hintRequest: {
+        state: "generating",
+        charged: false,
+        is_prefetch: true,
+        claimed_ai_count: 1,
+        result: null,
+      },
+      env: { PRACTICE_HINT_PREFETCH_ENABLED: "false" },
+      rpc: {
+        discard_prefetched_practice_hint: [{
+          data: {
+            discarded: false,
+            replay: true,
+            stored_result: stored,
+            stored_charged: true,
+          },
+        }],
+      },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "flag-off-race",
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json, stored);
+  assertEquals(discardHintCalls(state).length, 1);
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
+Deno.test("a second prefetch maps current pending snapshot without provider work", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+      rpc: {
+        claim_practice_hint_generation: [{
+          error: "PRACTICE_HINT_PREFETCH_PENDING",
+        }],
+      },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "second-prefetch",
+      prefetch: true,
+    }),
+  );
+
+  assertEquals(response.status, 409);
+  assertEquals(json, { error: "practice_hint_prefetch_pending" });
+  assertEquals(claimHintCalls(state).length, 1);
+  assertEquals(hintModelRateCalls(state).length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
+Deno.test("malformed fresh claim response releases the fenced request owner", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      rpc: {
+        claim_practice_hint_generation: [{ data: { unexpected: true } }],
+      },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "malformed-claim",
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json, { error: "practice_hint_not_ready" });
+  assertEquals(releaseHintCalls(state).length, 1);
+  assertEquals(
+    releaseHintCalls(state)[0].params.p_request_id,
+    "malformed-claim",
+  );
+  assertEquals(
+    releaseHintCalls(state)[0].params.p_generation_token,
+    "generation-token-1",
+  );
+  assertEquals(state.deepSeekCalls.length, 0);
+});
+
+Deno.test("Hint request ledger schema failure is fail-closed before claim", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      hintRequestError:
+        "Could not find the table public.practice_hint_requests in the schema cache",
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "missing-request-ledger",
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json, { error: "practice_hint_not_ready" });
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+});
+
+Deno.test("stale formal record releases only its token and returns retryable conflict", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      deepSeekReplies: [validHintJson()],
+      rpc: {
+        record_practice_hint: [{ error: "PRACTICE_HINT_STALE" }],
+      },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "stale-formal",
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 409);
+  assertEquals(json, { error: "practice_hint_stale" });
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state)[0].params, {
+    p_user_id: "user-1",
+    p_session_id: "session-1",
+    p_request_id: "stale-formal",
+    p_generation_token: "generation-token-1",
+  });
+});
+
+Deno.test("formal request returns the authoritative first-writer Hint snapshot", async () => {
+  const authoritative = storedHintResult({
+    coaching: "first writer won",
+    hintUsedCount: 4,
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ hint_count: 3 }),
+      deepSeekReplies: [validHintJson({ coaching: "losing worker" })],
+      rpc: {
+        record_practice_hint: [{
+          data: {
+            new_hint_count: 4,
+            did_charge: false,
+            stored_result: authoritative,
+            stored_charged: true,
+          },
+        }],
+      },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "first-writer",
+      prefetch: false,
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json, authoritative);
+  assertEquals(json.coaching, "first writer won");
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
 Deno.test("hint on a completed session returns 409 practice_session_complete before provider and claim", async () => {
   const { response, json, state } = await run({
     ledger: beginnerStartedLedger({ ai_count: MAX_AI_REPLIES }),
@@ -4041,10 +4995,14 @@ Deno.test("hint on a completed session returns 409 practice_session_complete bef
 Deno.test("hint requestId matching stored ledger snapshot replays without provider, claim, or record", async () => {
   const stored = storedHintResult();
   const { response, json, state } = await run({
-    ledger: beginnerStartedLedger({
-      last_hint_request_id: "req-1",
-      last_hint_result: stored,
-    }),
+    ledger: beginnerStartedLedger(),
+    hintRequest: {
+      state: "settled",
+      charged: true,
+      is_prefetch: false,
+      claimed_ai_count: 1,
+      result: stored,
+    },
   }, hintBody({ practiceMode: "beginner", requestId: "req-1" }));
 
   assertEquals(response.status, 200);
@@ -4061,9 +5019,14 @@ Deno.test("hint requestId replay wins at the hint cap and session cap edge", asy
     ledger: beginnerStartedLedger({
       ai_count: MAX_AI_REPLIES,
       hint_count: MAX_HINTS_PER_ROUND,
-      last_hint_request_id: "req-edge",
-      last_hint_result: stored,
     }),
+    hintRequest: {
+      state: "settled",
+      charged: true,
+      is_prefetch: false,
+      claimed_ai_count: MAX_AI_REPLIES,
+      result: stored,
+    },
   }, hintBody({ practiceMode: "beginner", requestId: "req-edge" }));
 
   assertEquals(response.status, 200);
@@ -4077,10 +5040,14 @@ Deno.test("hint requestId replay bypasses the quota 429 gate because nothing new
   const stored = storedHintResult();
   const { response, json, state } = await run({
     sub: subscription({ monthly_messages_used: 300, daily_messages_used: 2 }),
-    ledger: beginnerStartedLedger({
-      last_hint_request_id: "req-quota",
-      last_hint_result: stored,
-    }),
+    ledger: beginnerStartedLedger(),
+    hintRequest: {
+      state: "settled",
+      charged: true,
+      is_prefetch: false,
+      claimed_ai_count: 1,
+      result: stored,
+    },
   }, hintBody({ practiceMode: "beginner", requestId: "req-quota" }));
 
   assertEquals(response.status, 200);
@@ -4091,18 +5058,21 @@ Deno.test("hint requestId replay bypasses the quota 429 gate because nothing new
 });
 
 Deno.test("hint with a fresh requestId generates normally and threads the id into claim and record", async () => {
-  const { response, json, state } = await run({
-    ledger: beginnerStartedLedger({
-      last_hint_request_id: "req-old",
-      last_hint_result: storedHintResult(),
-    }),
-    deepSeekReplies: [validHintJson()],
-    rpc: {
-      record_practice_hint: [{
-        data: [{ new_hint_count: 1, did_charge: true }],
-      }],
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({
+        last_hint_request_id: "req-old",
+        last_hint_result: storedHintResult(),
+      }),
+      deepSeekReplies: [validHintJson()],
     },
-  }, hintBody({ practiceMode: "beginner", requestId: "req-new" }));
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "req-new",
+      expectedAiCount: 1,
+      prefetch: false,
+    }),
+  );
 
   assertEquals(response.status, 200);
   assertEquals(json.replies.length, 2);
@@ -4114,6 +5084,9 @@ Deno.test("hint with a fresh requestId generates normally and threads the id int
     p_session_id: "session-1",
     p_max_hints: MAX_HINTS_PER_ROUND,
     p_request_id: "req-new",
+    p_prefetch: false,
+    p_generation_token: "generation-token-1",
+    p_expected_ai_count: 1,
   });
   assertEquals(recordHintCalls(state).length, 1);
   const recordParams = recordHintCalls(state)[0].params;
@@ -4137,7 +5110,12 @@ Deno.test("hint claim-level replay returns the stored result without provider or
     ledger: beginnerStartedLedger(),
     rpc: {
       claim_practice_hint_generation: [{
-        data: [{ current_hint_count: 3, replay: true, stored_result: stored }],
+        data: [{
+          current_hint_count: 3,
+          replay: true,
+          stored_result: stored,
+          stored_charged: true,
+        }],
       }],
     },
   }, hintBody({ practiceMode: "beginner", requestId: "req-race" }));
@@ -4166,12 +5144,19 @@ Deno.test("hint without requestId keeps legacy claim and record params and store
     p_user_id: "user-1",
     p_session_id: "session-1",
     p_max_hints: MAX_HINTS_PER_ROUND,
+    p_prefetch: false,
+    p_generation_token: "generation-token-1",
   });
   assertEquals(recordHintCalls(state)[0].params, {
     p_user_id: "user-1",
     p_session_id: "session-1",
     p_charge_quota: true,
     p_max_hints: MAX_HINTS_PER_ROUND,
+    p_charged: true,
+    p_monthly_limit: 300,
+    p_daily_limit: 50,
+    p_max_replies: MAX_AI_REPLIES,
+    p_generation_token: "generation-token-1",
   });
 });
 

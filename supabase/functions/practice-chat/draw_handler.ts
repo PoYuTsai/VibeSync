@@ -1,7 +1,7 @@
 // practice-chat draw_profile handler（自包含、可用 mock supabase client 測 RPC 行為）。
 //
 // 與 chat/debrief 完全隔離：不碰 practice_chat_sessions ledger、不需要 DEEPSEEK_API_KEY、
-// 不呼叫 DeepSeek。流程：讀訂閱 → apply resets(UTC) + persist → 算 tier 額度/限額 →
+// 不呼叫 DeepSeek。流程：DB row lock 內 reset/讀訂閱 → 算 tier 額度/限額 →
 // 查全歷史已抽 profile（永久去重；池抽滿降級回本窗排除）→ server 選候選 →
 // 呼叫 claim_practice_profile_draw RPC（原子扣費 +
 // idempotent）→ 映射 402/429/200。
@@ -11,10 +11,9 @@
 //   2. 整個 handler 可用 mock client 單元測試（無需起 HTTP / 真 Supabase）。
 //
 // 為何 self-contained 讀訂閱（而非沿用 index.ts 的 sub）：保持 chat/debrief 路徑 byte-
-// for-byte 不動（純加法 dispatch），且讓 RPC 鎖內讀到的是 persist 後的 reset 計數。
+// for-byte 不動（純加法 dispatch），且讓 RPC 鎖內讀到 reset 後的權威計數。
 
 import {
-  applyResetsIfNeeded,
   buildQuotaExceededPayload,
   normalizeTier,
   resolveLimits,
@@ -82,54 +81,69 @@ export interface DrawHandlerResult {
   status: number;
 }
 
+function preparedSubscriptionFromRpc(value: unknown): SubscriptionRow | null {
+  const row = Array.isArray(value) ? value[0] : value;
+  if (typeof row !== "object" || row === null || Array.isArray(row)) {
+    return null;
+  }
+  const data = row as Record<string, unknown>;
+  const tier = data.tier;
+  const monthlyUsed = data.monthly_messages_used;
+  const dailyUsed = data.daily_messages_used;
+  const dailyResetAt = data.daily_reset_at;
+  const monthlyResetAt = data.monthly_reset_at;
+  if (
+    (typeof tier !== "string" && tier !== null) ||
+    typeof monthlyUsed !== "number" ||
+    !Number.isInteger(monthlyUsed) ||
+    monthlyUsed < 0 ||
+    typeof dailyUsed !== "number" ||
+    !Number.isInteger(dailyUsed) ||
+    dailyUsed < 0 ||
+    (typeof dailyResetAt !== "string" && dailyResetAt !== null) ||
+    (typeof monthlyResetAt !== "string" && monthlyResetAt !== null)
+  ) {
+    return null;
+  }
+  return {
+    tier,
+    monthly_messages_used: monthlyUsed,
+    daily_messages_used: dailyUsed,
+    daily_reset_at: dailyResetAt,
+    monthly_reset_at: monthlyResetAt,
+  };
+}
+
 export async function handleDrawProfile(
   args: DrawHandlerArgs,
 ): Promise<DrawHandlerResult> {
   const { supabase, userId, userEmail, request, now } = args;
 
-  // ── 1. 讀訂閱 ──────────────────────────────────────────────────────────
-  const { data: subRow, error: subError } = await supabase
-    .from("subscriptions")
-    .select(
-      "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at",
-    )
-    .eq("user_id", userId)
-    .maybeSingle();
+  // ── 1. DB row lock 內 reset 並讀權威訂閱計數 ───────────────────────────
+  const { data: preparedSubData, error: subError } = await supabase.rpc(
+    "prepare_practice_subscription_usage",
+    { p_user_id: userId },
+  );
   if (subError) {
     logWarn("practice_draw_sub_fetch_error", {
       user: summarizeUser(userId),
       error: subError.message,
     });
+    if (subError.message.includes("PRACTICE_SUBSCRIPTION_NOT_FOUND")) {
+      return { body: { error: "No subscription found" }, status: 403 };
+    }
     return { body: { error: "subscription_fetch_failed" }, status: 500 };
   }
-  if (!subRow) {
-    return { body: { error: "No subscription found" }, status: 403 };
+  const sub = preparedSubscriptionFromRpc(preparedSubData);
+  if (!sub) {
+    logWarn("practice_draw_sub_fetch_error", {
+      user: summarizeUser(userId),
+      error: "invalid prepare_practice_subscription_usage response",
+    });
+    return { body: { error: "subscription_fetch_failed" }, status: 500 };
   }
 
-  // ── 2. apply resets(UTC) + persist（RPC 鎖內讀的是 persist 後計數）─────────
-  let sub = subRow as unknown as SubscriptionRow;
-  const reset = applyResetsIfNeeded(sub, now);
-  sub = reset.sub;
-  if (reset.dailyReset || reset.monthlyReset) {
-    const { error: persistError } = await supabase
-      .from("subscriptions")
-      .update({
-        daily_messages_used: sub.daily_messages_used,
-        monthly_messages_used: sub.monthly_messages_used,
-        daily_reset_at: sub.daily_reset_at,
-        monthly_reset_at: sub.monthly_reset_at,
-      })
-      .eq("user_id", userId);
-    if (persistError) {
-      logWarn("practice_draw_reset_persist_error", {
-        user: summarizeUser(userId),
-        error: persistError.message,
-      });
-      return { body: { error: "subscription_fetch_failed" }, status: 500 };
-    }
-  }
-
-  // ── 3. tier → 免費額度 / 是否可付費額外 / 限額 / 測試帳號 / reset window ─────
+  // ── 2. tier → 免費額度 / 是否可付費額外 / 限額 / 測試帳號 / reset window ─────
   const tier = normalizeTier(sub.tier);
   const accountIsTest = TEST_EMAILS.includes(userEmail ?? "");
   const limits = resolveLimits(tier);
@@ -137,7 +151,7 @@ export async function handleDrawProfile(
   const allowPaidExtra = paidExtraDrawAllowedForTier(tier);
   const window = taipeiNoonResetWindow(now);
 
-  // ── 4. 查已抽 profiles：全歷史（永久去重）＋本窗（池抽滿降級用）──────────
+  // ── 3. 查已抽 profiles：全歷史（永久去重）＋本窗（池抽滿降級用）──────────
   // 表是 per-user 抽卡事件（每窗抽數個位數），全撈無效能疑慮。reset_window_start_at
   // 以 Date 解析比對，不做字串比對（PostgREST timestamptz 格式與 toISOString 不同）。
   const { data: drawnRows, error: drawnError } = await supabase
@@ -179,7 +193,7 @@ export async function handleDrawProfile(
     excluded = windowExcluded;
   }
 
-  // ── 5. 選候選 + 呼叫 RPC（撞號重抽，最多 3 次）─────────────────────────
+  // ── 4. 選候選 + 呼叫 RPC（撞號重抽，最多 3 次）─────────────────────────
   // catalogSize（client 宣告的 catalog 人數）只影響「新抽」的候選切池，刻意不進
   // 冪等識別：RPC 以 (user, requestId) 去重，replay 一律回 ledger 上原本抽到的
   // profile_id（下方 getPracticeGirlProfile 反查全 catalog），與本地候選無關。
@@ -189,7 +203,8 @@ export async function handleDrawProfile(
     const candidate = selectPracticeDrawProfile({
       currentProfileId: request.currentProfileId,
       excludedProfileIds: excluded,
-      seed: `${userId}:${request.requestId}:${window.resetWindowStartAt}:${attempt}`,
+      seed:
+        `${userId}:${request.requestId}:${window.resetWindowStartAt}:${attempt}`,
       catalogSize: request.catalogSize,
     });
 
@@ -226,8 +241,9 @@ export async function handleDrawProfile(
       });
     }
 
-    const receipt =
-      (Array.isArray(rpcData) ? rpcData[0] : rpcData) as DrawReceipt | null;
+    const receipt = (Array.isArray(rpcData) ? rpcData[0] : rpcData) as
+      | DrawReceipt
+      | null;
     if (!receipt || typeof receipt.profile_id !== "string") {
       logError("practice_draw_empty_receipt", { user: summarizeUser(userId) });
       return { body: { error: "draw_failed" }, status: 500 };

@@ -487,6 +487,117 @@ function validHintTurns(): Array<{ role: string; text: string }> {
 Deno.test("hint：缺 requestId → 通過（向後相容，requestId undefined）", () => {
   const r = validateRequest(hintReq(validHintTurns()));
   assertEquals(r.requestId, undefined);
+  assertEquals(r.prefetch, undefined);
+});
+
+Deno.test("hint prefetch：explicit false 保留為正式新 client 訊號", () => {
+  const r = validateRequest({
+    ...hintReq(validHintTurns()),
+    requestId: "hint-formal-1",
+    prefetch: false,
+  });
+  assertEquals(r.prefetch, false);
+});
+
+Deno.test("hint prefetch：true 需搭配合法 requestId", () => {
+  const r = validateRequest({
+    ...hintReq(validHintTurns()),
+    requestId: "hint-prefetch-1",
+    prefetch: true,
+  });
+  assertEquals(r.prefetch, true);
+
+  assertThrows(
+    () =>
+      validateRequest({
+        ...hintReq(validHintTurns()),
+        prefetch: true,
+      }),
+    Error,
+    "invalid_prefetch",
+  );
+});
+
+Deno.test("hint prefetch：非 boolean（含 null）一律拒絕", () => {
+  for (const prefetch of ["true", 1, null]) {
+    assertThrows(
+      () =>
+        validateRequest({
+          ...hintReq(validHintTurns()),
+          requestId: "hint-prefetch-invalid",
+          prefetch,
+        }),
+      Error,
+      "invalid_prefetch",
+    );
+  }
+});
+
+Deno.test("hint prefetch：chat/debrief 不得送 true；false 向後相容地忽略", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        ...chatReq([{ role: "user", text: "hi" }]),
+        prefetch: true,
+      }),
+    Error,
+    "invalid_prefetch",
+  );
+  assertThrows(
+    () =>
+      validateRequest({
+        ...debriefReq(validHintTurns()),
+        requestId: "debrief-prefetch-invalid",
+        prefetch: true,
+      }),
+    Error,
+    "invalid_prefetch",
+  );
+
+  const chat = validateRequest({
+    ...chatReq([{ role: "user", text: "hi" }]),
+    prefetch: false,
+  });
+  assertEquals(chat.prefetch, undefined);
+});
+
+Deno.test("hint expectedAiCount binds a new client to one full session turn", () => {
+  const request = validateRequest({
+    ...hintReq(validHintTurns()),
+    expectedAiCount: 7,
+  });
+  assertEquals(request.expectedAiCount, 7);
+  assertEquals(
+    validateRequest(hintReq(validHintTurns())).expectedAiCount,
+    undefined,
+  );
+});
+
+Deno.test("hint expectedAiCount rejects invalid ranges, types, and other modes", () => {
+  for (const expectedAiCount of [0, 21, 1.5, "1", null]) {
+    assertThrows(
+      () =>
+        validateRequest({
+          ...hintReq(validHintTurns()),
+          expectedAiCount,
+        }),
+      Error,
+      "invalid_expectedAiCount",
+    );
+  }
+
+  for (
+    const request of [
+      { ...chatReq([{ role: "user", text: "hi" }]), expectedAiCount: 1 },
+      { ...debriefReq(validHintTurns()), expectedAiCount: 1 },
+    ]
+  ) {
+    assertThrows(
+      () => validateRequest(request),
+      Error,
+      "invalid_expectedAiCount",
+    );
+  }
 });
 
 Deno.test("hint：合法 requestId（uuid）被解析", () => {
