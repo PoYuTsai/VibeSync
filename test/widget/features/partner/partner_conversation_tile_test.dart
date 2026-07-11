@@ -131,6 +131,7 @@ void main() {
         body: PartnerConversationTile(
           conversation: _conv(),
           onTap: () {},
+          onReassign: () {},
         ),
       ),
     ));
@@ -152,6 +153,7 @@ void main() {
         body: PartnerConversationTile(
           conversation: _conv(),
           onTap: () {},
+          onDelete: () {},
         ),
       ),
     ));
@@ -165,5 +167,19 @@ void main() {
       ),
     );
     expect(item.enabled, isFalse);
+  });
+
+  testWidgets('無改派與刪除操作 → 顯示導覽箭頭，不顯示空選單', (t) async {
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PartnerConversationTile(
+          conversation: _conv(),
+          onTap: () {},
+        ),
+      ),
+    ));
+
+    expect(find.byIcon(Icons.more_vert), findsNothing);
+    expect(find.byIcon(Icons.chevron_right_rounded), findsOneWidget);
   });
 }
