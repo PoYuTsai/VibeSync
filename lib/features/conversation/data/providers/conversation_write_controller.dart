@@ -7,7 +7,19 @@ import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../domain/entities/conversation.dart';
 import '../../domain/entities/message.dart';
+import 'conversation_archive_providers.dart';
 import 'conversation_providers.dart';
+
+enum ConversationSaveIntent {
+  /// 新增／編輯／換邊／刪除訊息：先解除封存，避免新內容仍被藏在分析紀錄。
+  contentChanged,
+
+  /// 成功分析快照已落盤：寫入封存 marker。
+  analysisCompleted,
+
+  /// 只改 partnerId 等 metadata：保留既有封存狀態。
+  metadataOnly,
+}
 
 /// Single invalidation owner for all conversation writes.
 ///
@@ -43,15 +55,32 @@ class ConversationWriteController extends Notifier<void> {
       messages: messages,
       partnerId: partnerId,
     );
+    await ref
+        .read(conversationArchiveControllerProvider.notifier)
+        .markActive(c);
     _invalidateConversationDetail(c.id);
     _invalidatePartnerScope(partnerId);
     _invalidateLegacyGlobal();
     return c;
   }
 
-  Future<void> save(Conversation c, {String? previousPartnerId}) async {
+  Future<void> save(
+    Conversation c, {
+    String? previousPartnerId,
+    ConversationSaveIntent intent = ConversationSaveIntent.contentChanged,
+  }) async {
     final repo = ref.read(conversationRepositoryProvider);
+    if (intent == ConversationSaveIntent.contentChanged) {
+      await ref
+          .read(conversationArchiveControllerProvider.notifier)
+          .markActive(c);
+    }
     await repo.updateConversation(c);
+    if (intent == ConversationSaveIntent.analysisCompleted) {
+      await ref
+          .read(conversationArchiveControllerProvider.notifier)
+          .markArchived(c);
+    }
     _invalidateConversationDetail(c.id);
     _invalidatePartnerScope(c.partnerId);
     if (previousPartnerId != null && previousPartnerId != c.partnerId) {
@@ -63,6 +92,7 @@ class ConversationWriteController extends Notifier<void> {
   Future<void> delete(Conversation c) async {
     final repo = ref.read(conversationRepositoryProvider);
     await repo.deleteConversation(c.id);
+    await ref.read(conversationArchiveControllerProvider.notifier).remove(c);
     _invalidateConversationDetail(c.id);
     _invalidatePartnerScope(c.partnerId);
     _invalidateLegacyGlobal();

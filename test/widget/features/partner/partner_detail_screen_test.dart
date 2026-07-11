@@ -752,7 +752,7 @@ void main() {
       child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
-    expect(find.textContaining('還沒有互動紀錄'), findsOneWidget);
+    expect(find.textContaining('還沒有對話'), findsOneWidget);
   });
 
   testWidgets('renders one tile per conversation when list non-empty',
@@ -922,6 +922,7 @@ void main() {
     expect(fake.saveCalled, isTrue);
     expect(fake.savedPartnerIdAtCallTime, 'q1');
     expect(fake.savedPreviousPartnerId, 'p1');
+    expect(fake.savedIntent, ConversationSaveIntent.metadataOnly);
   });
 
   testWidgets('partner missing (deleted/merged) shows fallback', (t) async {

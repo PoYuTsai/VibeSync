@@ -35,7 +35,11 @@ class RecordingConversationWriteController extends ConversationWriteController {
   }
 
   @override
-  Future<void> save(Conversation c, {String? previousPartnerId}) async {
+  Future<void> save(
+    Conversation c, {
+    String? previousPartnerId,
+    ConversationSaveIntent intent = ConversationSaveIntent.contentChanged,
+  }) async {
     // no-op for hermetic widget test
   }
 }

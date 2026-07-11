@@ -30,6 +30,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_dialog.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
+import '../../../analysis_history/data/providers/analysis_history_providers.dart';
+import '../../../conversation/data/providers/conversation_archive_providers.dart';
 import '../../../conversation/data/providers/conversation_write_controller.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/presentation/dialogs/conversation_reassign_picker.dart';
@@ -53,7 +55,7 @@ import '../../domain/mindmap/mind_map_builder.dart';
 import '../../domain/mindmap/partner_insight_presentation.dart';
 import '../dialogs/partner_settings_dialog.dart';
 import '../providers/partner_providers.dart';
-import '../utils/conversation_recency_sections.dart';
+import '../utils/conversation_archive_sections.dart';
 import '../widgets/partner_conversation_tile.dart';
 import '../widgets/partner_data_quality_banner.dart';
 import '../widgets/partner_heat_hero_card.dart';
@@ -108,6 +110,25 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
     final partner = ref.watch(partnerByIdProvider(partnerId));
     final aggregate = ref.watch(partnerAggregateProvider(partnerId));
     final conversations = ref.watch(conversationsByPartnerProvider(partnerId));
+    ref.watch(conversationArchiveControllerProvider);
+    final archiveStore = ref.watch(conversationArchiveStoreProvider);
+    final conversationSections = partitionConversationsByArchive(
+      conversations,
+      entryFor: archiveStore.entryFor,
+      latestAnalysisAtFor: (conversationId) {
+        try {
+          return latestAnalyzeEventAt(
+            ref
+                .read(analysisHistoryRepositoryProvider)
+                .listByConversation(conversationId, limit: 1),
+          );
+        } catch (_) {
+          // Legacy inference is optional. If history storage is unavailable,
+          // keep the conversation active instead of hiding it by mistake.
+          return null;
+        }
+      },
+    );
     final partners = ref.watch(partnerListProvider);
     final hasOtherPartner = partners.any((p) => p.id != partnerId);
 
@@ -193,7 +214,11 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                   onTap: () => context.push('/partner/$partnerId/mindmap'),
                 ),
                 const SizedBox(height: 12),
-                ..._conversationRecordWidgets(context, ref, conversations),
+                ..._conversationRecordWidgets(
+                  context,
+                  ref,
+                  conversationSections,
+                ),
                 const SizedBox(height: 12),
                 _PartnerNextStepCard(
                   latestInsight: _PartnerLatestInsight.fromConversations(
@@ -317,14 +342,14 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
   List<Widget> _conversationRecordWidgets(
     BuildContext context,
     WidgetRef ref,
-    List<Conversation> conversations,
+    ConversationArchiveSections sections,
   ) {
-    if (conversations.isEmpty) {
+    if (sections.active.isEmpty && sections.archived.isEmpty) {
       return [
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Text(
-            '還沒有互動紀錄\n第一次聊天、截圖或手動輸入，都從「+ 新增對話」開始',
+            '還沒有對話\n第一次聊天、截圖或手動輸入，都從「+ 新增對話」開始',
             textAlign: TextAlign.center,
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.onBackgroundSecondary,
@@ -341,7 +366,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '互動紀錄',
+              '目前對話',
               style: AppTypography.titleSmall.copyWith(
                 color: AppColors.onBackgroundPrimary,
                 fontWeight: FontWeight.w700,
@@ -349,7 +374,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              '要接續同一段聊天，請點進原本那段紀錄；同一個人換日期或換平台，才建議再新增一段，保持對話的分析品質乾淨',
+              '尚未分析完成或後來補過新訊息的對話會留在這裡；分析完成後自動收進分析紀錄。',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.onBackgroundSecondary,
                 height: 1.35,
@@ -358,65 +383,42 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
           ],
         ),
       ),
-      ..._sectionedConversationTiles(context, ref, conversations),
-    ];
-  }
-
-  /// 依 30 天分區：兩區都有才顯示「進行中／較早的對話」header 與收合區；
-  /// 全部同一區（全新或全舊）維持單一列表，全舊直接展開顯示不留空白。
-  List<Widget> _sectionedConversationTiles(
-    BuildContext context,
-    WidgetRef ref,
-    List<Conversation> conversations,
-  ) {
-    Widget tileFor(Conversation c) => Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: PartnerConversationTile(
-            conversation: c,
-            onTap: () => context.push('/conversation/${c.id}'),
-            onReassign: () => showConversationReassignPicker(
-              context,
-              conversation: c,
-              ref: ref,
-            ),
-            onDelete: () => _confirmDeleteConversation(context, ref, c),
-          ),
-        );
-
-    final sections =
-        partitionConversationsByRecency(conversations, DateTime.now());
-    if (sections.active.isEmpty || sections.older.isEmpty) {
-      return conversations.map(tileFor).toList();
-    }
-
-    return [
-      Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Text(
-          '進行中',
-          style: AppTypography.bodySmall.copyWith(
-            color: AppColors.onBackgroundSecondary,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-      ...sections.active.map(tileFor),
-      Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 4),
-          iconColor: AppColors.onBackgroundSecondary,
-          collapsedIconColor: AppColors.onBackgroundSecondary,
-          title: Text(
-            '較早的對話 (${sections.older.length})',
+      if (sections.active.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Text(
+            '目前沒有待整理的對話',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.onBackgroundSecondary,
-              fontWeight: FontWeight.w600,
             ),
           ),
-          children: sections.older.map(tileFor).toList(),
+        )
+      else
+        ...sections.active.map(
+          (conversation) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: PartnerConversationTile(
+              conversation: conversation,
+              onTap: () => context.push('/conversation/${conversation.id}'),
+              onReassign: () => showConversationReassignPicker(
+                context,
+                conversation: conversation,
+                ref: ref,
+              ),
+              onDelete: () =>
+                  _confirmDeleteConversation(context, ref, conversation),
+            ),
+          ),
         ),
-      ),
+      if (sections.archived.isNotEmpty)
+        OutlinedButton.icon(
+          key: const ValueKey('partner-analysis-archive-entry'),
+          onPressed: () => context.push(
+            '/partner/${widget.partnerId}/analysis-archive',
+          ),
+          icon: const Icon(Icons.inventory_2_outlined),
+          label: Text('分析紀錄 (${sections.archived.length})'),
+        ),
     ];
   }
 

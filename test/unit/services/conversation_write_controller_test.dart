@@ -2,8 +2,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/core/constants/app_constants.dart';
+import 'package:vibesync/features/conversation/data/providers/conversation_archive_providers.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_write_controller.dart';
+import 'package:vibesync/features/conversation/data/repositories/conversation_archive_store.dart';
 import 'package:vibesync/features/conversation/data/repositories/conversation_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation_summary.dart';
@@ -28,6 +30,7 @@ class _FakeConversationRepository extends ConversationRepository {
   final Map<String, int> listByPartnerCalls = {};
   int globalListCalls = 0;
   int _idCounter = 0;
+  Object? throwOnUpdate;
 
   @override
   Future<Conversation> createConversation({
@@ -50,6 +53,7 @@ class _FakeConversationRepository extends ConversationRepository {
 
   @override
   Future<void> updateConversation(Conversation c) async {
+    if (throwOnUpdate != null) throw throwOnUpdate!;
     store[c.id] = c;
   }
 
@@ -75,12 +79,47 @@ class _FakeConversationRepository extends ConversationRepository {
   }
 }
 
+class _MemoryConversationArchiveStore implements ConversationArchiveStore {
+  final Map<String, ConversationArchiveEntry> entries = {};
+
+  @override
+  ConversationArchiveEntry? entryFor(Conversation conversation) =>
+      entries[conversation.id];
+
+  @override
+  Future<void> markActive(
+    Conversation conversation, {
+    DateTime? changedAt,
+  }) async {
+    entries[conversation.id] = ConversationArchiveEntry.active(
+      changedAt: changedAt ?? DateTime.now(),
+    );
+  }
+
+  @override
+  Future<void> markArchived(
+    Conversation conversation, {
+    required DateTime archivedAt,
+  }) async {
+    entries[conversation.id] = ConversationArchiveEntry.archived(
+      archivedAt: archivedAt,
+    );
+  }
+
+  @override
+  Future<void> remove(Conversation conversation) async {
+    entries.remove(conversation.id);
+  }
+}
+
 late Box<Partner> partnerBox;
 late _FakeConversationRepository _fakeRepo;
+late _MemoryConversationArchiveStore _archiveStore;
 
 Future<ProviderContainer> _makeContainer() async {
   final container = ProviderContainer(overrides: [
     conversationRepositoryProvider.overrideWithValue(_fakeRepo),
+    conversationArchiveStoreProvider.overrideWithValue(_archiveStore),
     partnerRepositoryProvider
         .overrideWithValue(PartnerRepository(box: partnerBox)),
     authConversationScopeProvider.overrideWith((ref) => Stream.value('u-1')),
@@ -146,6 +185,7 @@ void main() {
 
   setUp(() async {
     _fakeRepo = _FakeConversationRepository();
+    _archiveStore = _MemoryConversationArchiveStore();
     final ts = DateTime.now().microsecondsSinceEpoch;
     partnerBox = await Hive.openBox<Partner>('wc_partner_$ts');
     await partnerBox.put('p-X', _partner('p-X'));
@@ -266,6 +306,84 @@ void main() {
   });
 
   group('ConversationWriteController.save', () {
+    test('analysis completion archives only after the save succeeds', () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final conversation = _convo('archive-me', partnerId: 'p-X');
+      _fakeRepo.store[conversation.id] = conversation;
+
+      await container.read(conversationWriteControllerProvider.notifier).save(
+            conversation,
+            intent: ConversationSaveIntent.analysisCompleted,
+          );
+
+      expect(
+        _archiveStore.entryFor(conversation)?.status,
+        ConversationArchiveStatus.archived,
+      );
+    });
+
+    test('failed analysis snapshot save never archives the conversation',
+        () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final conversation = _convo('failed-analysis', partnerId: 'p-X');
+      _fakeRepo.store[conversation.id] = conversation;
+      _fakeRepo.throwOnUpdate = StateError('disk full');
+
+      await expectLater(
+        container.read(conversationWriteControllerProvider.notifier).save(
+              conversation,
+              intent: ConversationSaveIntent.analysisCompleted,
+            ),
+        throwsA(isA<StateError>()),
+      );
+
+      expect(_archiveStore.entryFor(conversation), isNull);
+    });
+
+    test('content change returns an archived conversation to active', () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final conversation = _convo('edit-me', partnerId: 'p-X');
+      _fakeRepo.store[conversation.id] = conversation;
+      await _archiveStore.markArchived(
+        conversation,
+        archivedAt: DateTime.utc(2026, 7, 11),
+      );
+
+      await container
+          .read(conversationWriteControllerProvider.notifier)
+          .save(conversation);
+
+      expect(
+        _archiveStore.entryFor(conversation)?.status,
+        ConversationArchiveStatus.active,
+      );
+    });
+
+    test('metadata-only save preserves the archive state', () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final conversation = _convo('move-me', partnerId: 'p-Y');
+      _fakeRepo.store[conversation.id] = conversation;
+      await _archiveStore.markArchived(
+        conversation,
+        archivedAt: DateTime.utc(2026, 7, 11),
+      );
+
+      await container.read(conversationWriteControllerProvider.notifier).save(
+            conversation,
+            previousPartnerId: 'p-X',
+            intent: ConversationSaveIntent.metadataOnly,
+          );
+
+      expect(
+        _archiveStore.entryFor(conversation)?.status,
+        ConversationArchiveStatus.archived,
+      );
+    });
+
     test('persists then aggregate(X) reflects the saved conversation',
         () async {
       final container = await _makeContainer();
@@ -378,6 +496,23 @@ void main() {
   });
 
   group('ConversationWriteController.delete', () {
+    test('removes the archive marker with the conversation', () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final conversation = _convo('delete-me', partnerId: 'p-X');
+      _fakeRepo.store[conversation.id] = conversation;
+      await _archiveStore.markArchived(
+        conversation,
+        archivedAt: DateTime.utc(2026, 7, 11),
+      );
+
+      await container
+          .read(conversationWriteControllerProvider.notifier)
+          .delete(conversation);
+
+      expect(_archiveStore.entryFor(conversation), isNull);
+    });
+
     test('removes from repo and aggregate(X) reflects removal', () async {
       final container = await _makeContainer();
       addTearDown(container.dispose);
@@ -442,6 +577,7 @@ void main() {
 
       final container = ProviderContainer(overrides: [
         conversationRepositoryProvider.overrideWithValue(_fakeRepo),
+        conversationArchiveStoreProvider.overrideWithValue(_archiveStore),
         partnerRepositoryProvider
             .overrideWithValue(PartnerRepository(box: partnerBox)),
         authConversationScopeProvider

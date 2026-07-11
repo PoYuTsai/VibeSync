@@ -118,6 +118,7 @@ void main() {
     expect(fake.savedConversation?.id, 'c1');
     expect(fake.savedPartnerIdAtCallTime, 'B');
     expect(fake.savedPreviousPartnerId, 'A');
+    expect(fake.savedIntent, ConversationSaveIntent.metadataOnly);
     // sheet popped → trigger button visible again
     expect(find.text('open-picker'), findsOneWidget);
     expect(find.text('Bob'), findsNothing);
