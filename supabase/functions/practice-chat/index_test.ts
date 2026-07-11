@@ -3505,6 +3505,7 @@ Deno.test("Game debrief repairs a missing breakdown through Claude failover", as
   const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
   assert(repairPrompt.includes("Game 拆盤五個欄位有缺漏或空白"));
   assert(repairPrompt.includes("gameBreakdown 必須含"));
+  assert(repairPrompt.includes("不得裁掉句尾"));
 });
 
 Deno.test("debrief repairs malformed DeepSeek JSON with Claude", async () => {
@@ -3527,6 +3528,50 @@ Deno.test("debrief repairs malformed DeepSeek JSON with Claude", async () => {
   assert(repairPrompt.includes("不是可解析的單一 JSON 物件"));
 });
 
+Deno.test("debrief repairs an overlong half-sentence instead of recording a sliced card", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    deepSeekReplies: [validDebriefJson({
+      watchouts: ["下班".repeat(21)],
+    })],
+    claudeReplies: [validDebriefJson({
+      watchouts: ["下班後先接住她想散步放空的感受"],
+    })],
+  }, debriefBody({ requestId: "debrief-overlong-repair" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(
+    json.card.watchouts,
+    ["下班後先接住她想散步放空的感受"],
+  );
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 1);
+  const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
+  assert(repairPrompt.includes("欄位太長，若直接裁尾會變成半句"));
+  assert(repairPrompt.includes("太長要重寫縮句"));
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
+});
+
+Deno.test("both overlong Debrief providers fail retryably without recording a card", async () => {
+  const overlong = validDebriefJson({
+    watchouts: ["下班".repeat(21)],
+  });
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    deepSeekReplies: [overlong],
+    claudeReplies: [overlong],
+  }, debriefBody({ requestId: "debrief-overlong-no-record" }));
+
+  assertEquals(response.status, 503);
+  assertEquals(json, {
+    error: "practice_debrief_generation_retryable",
+    retryable: true,
+  });
+  assertEquals(recordDebriefCalls(state).length, 0);
+  assertEquals(releaseDebriefCalls(state).length, 1);
+});
+
 Deno.test("debrief returns retryable error and stores no card when both models fail", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
@@ -3543,7 +3588,7 @@ Deno.test("debrief returns retryable error and stores no card when both models f
   assertEquals(state.claudeCalls.length, 1);
   assertEquals(state.deepSeekCalls[0].jsonMode, true);
   assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
-  assertEquals(state.claudeCalls[0].timeoutMs, 12000);
+  assertEquals(state.claudeCalls[0].timeoutMs, 24000);
   assertEquals(claimDebriefCalls(state).length, 1);
   assertEquals(recordDebriefCalls(state).length, 0);
   assertEquals(releaseDebriefCalls(state).length, 1);
@@ -3599,7 +3644,7 @@ Deno.test("game debrief Claude failover still returns a complete model breakdown
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 1);
   assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
-  assertEquals(state.claudeCalls[0].timeoutMs, 12000);
+  assertEquals(state.claudeCalls[0].timeoutMs, 24000);
   assertEquals(claimDebriefCalls(state).length, 1);
   assertEquals(
     (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
@@ -4388,9 +4433,61 @@ Deno.test("game hint repairs malformed DeepSeek output through Claude before rec
     .join("\n");
   assert(retryPrompt.includes("上一版 Hint JSON 被拒絕"));
   assert(retryPrompt.includes("重新輸出唯一 JSON"));
+  assert(retryPrompt.includes("warmUp、steady 各 60 字內"));
+  assert(retryPrompt.includes("coaching 140 字內"));
+  assert(retryPrompt.includes("三欄都要完整收句"));
   assert(retryPrompt.includes("三欄各自都要逐字重用"));
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
+});
+
+Deno.test("Hint repairs overlong visible text instead of recording a sliced half sentence", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      deepSeekReplies: [validHintJson({ coaching: "咖啡".repeat(81) })],
+      claudeReplies: [validHintJson()],
+      rpc: {
+        record_practice_hint: [{
+          data: [{ new_hint_count: 1, did_charge: true }],
+        }],
+      },
+    },
+    hintBody({ practiceMode: "beginner" }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.coaching, "她提到突然想喝咖啡，先交換一點生活感再延伸。");
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 1);
+  const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
+  assert(repairPrompt.includes("欄位太長，若直接裁尾會變成半句"));
+  assert(repairPrompt.includes("三欄都要完整收句"));
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
+Deno.test("both overlong Hint providers fail retryably without recording a snapshot", async () => {
+  const overlong = validHintJson({ coaching: "咖啡".repeat(81) });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      deepSeekReplies: [overlong],
+      claudeReplies: [overlong],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "hint-overlong-no-record",
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json, {
+    error: "practice_hint_generation_retryable",
+    retryable: true,
+  });
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
 });
 
 Deno.test("game hint rejects invite options that contradict its authoritative route and repairs with Claude", async () => {

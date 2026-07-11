@@ -318,6 +318,36 @@ export function clampList(
     .slice(0, maxItems);
 }
 
+function generatedVisibleString(
+  value: unknown,
+  max: number,
+  enforceGeneratedQuality: boolean,
+): string {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (enforceGeneratedQuality && trimmed.length > max) {
+    throw new Error("debrief_quality_invalid_overlong");
+  }
+  return trimmed.slice(0, max);
+}
+
+function generatedVisibleList(
+  value: unknown,
+  maxItems: number,
+  maxLength: number,
+  enforceGeneratedQuality: boolean,
+): string[] {
+  if (!Array.isArray(value)) return [];
+  if (!enforceGeneratedQuality) {
+    return clampList(value, maxItems, maxLength);
+  }
+  return value.slice(0, maxItems)
+    .map((item) =>
+      generatedVisibleString(item, maxLength, enforceGeneratedQuality)
+    )
+    .filter((item) => item.length > 0);
+}
+
 function rejectInternalLabelLeak(value: string) {
   rejectVisibleInternalLabelLeak(value, "debrief_internal_label_leak");
 }
@@ -331,17 +361,30 @@ function guardVisibleText(value: string): string {
   return value;
 }
 
-function parseGameBreakdown(value: unknown): GameBreakdown {
+function parseGameBreakdown(
+  value: unknown,
+  enforceGeneratedQuality: boolean,
+): GameBreakdown {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("debrief_game_breakdown_missing_fields");
   }
   const p = value as Record<string, unknown>;
   const gameBreakdown = {
-    phaseReached: guardVisibleText(clampStr(p.phaseReached, 60)),
-    missedVariable: guardVisibleText(clampStr(p.missedVariable, 60)),
-    failureState: guardVisibleText(clampStr(p.failureState, 60)),
-    nextFirstLine: guardVisibleText(clampStr(p.nextFirstLine, 70)),
-    inviteDirection: guardVisibleText(clampStr(p.inviteDirection, 60)),
+    phaseReached: guardVisibleText(
+      generatedVisibleString(p.phaseReached, 60, enforceGeneratedQuality),
+    ),
+    missedVariable: guardVisibleText(
+      generatedVisibleString(p.missedVariable, 60, enforceGeneratedQuality),
+    ),
+    failureState: guardVisibleText(
+      generatedVisibleString(p.failureState, 60, enforceGeneratedQuality),
+    ),
+    nextFirstLine: guardVisibleText(
+      generatedVisibleString(p.nextFirstLine, 70, enforceGeneratedQuality),
+    ),
+    inviteDirection: guardVisibleText(
+      generatedVisibleString(p.inviteDirection, 60, enforceGeneratedQuality),
+    ),
   };
   if (Object.values(gameBreakdown).some((field) => field.length === 0)) {
     throw new Error("debrief_game_breakdown_missing_fields");
@@ -653,21 +696,40 @@ export function parseDebriefCard(
     throw new Error("debrief_not_object");
   }
   const p = parsed as Record<string, unknown>;
-  const summary = guardVisibleText(clampStr(p.summary, 60));
-  const suggestedLine = guardVisibleText(clampStr(p.suggestedLine, 60));
+  const enforceGeneratedQuality = opts.enforceGeneratedQuality === true;
+  const summary = guardVisibleText(
+    generatedVisibleString(p.summary, 60, enforceGeneratedQuality),
+  );
+  const suggestedLine = guardVisibleText(
+    generatedVisibleString(p.suggestedLine, 60, enforceGeneratedQuality),
+  );
   if (summary.length === 0 || suggestedLine.length === 0) {
     throw new Error("debrief_missing_fields");
   }
-  const strengths = clampList(p.strengths, 2, 40).map(guardVisibleText);
-  const watchouts = clampList(p.watchouts, 2, 40).map(guardVisibleText);
+  const strengths = generatedVisibleList(
+    p.strengths,
+    2,
+    40,
+    enforceGeneratedQuality,
+  ).map(guardVisibleText);
+  const watchouts = generatedVisibleList(
+    p.watchouts,
+    2,
+    40,
+    enforceGeneratedQuality,
+  ).map(guardVisibleText);
   const vibeRaw = clampStr(p.vibe, 4);
   const vibe = VIBES.includes(vibeRaw) ? vibeRaw : "中性";
 
   // 約出來機會：合法值直接採用；非法/缺值時，有理由文字才 fallback medium，否則 low
   // （沒理由還說 medium 會誤導，往保守方向）。向後相容：舊卡缺這些欄位 → low + 空字串。
   const dateChanceRaw = clampStr(p.dateChance, 8).toLowerCase();
-  const dateChanceReason = guardVisibleText(clampStr(p.dateChanceReason, 60));
-  const nextInviteMove = guardVisibleText(clampStr(p.nextInviteMove, 60));
+  const dateChanceReason = guardVisibleText(
+    generatedVisibleString(p.dateChanceReason, 60, enforceGeneratedQuality),
+  );
+  const nextInviteMove = guardVisibleText(
+    generatedVisibleString(p.nextInviteMove, 60, enforceGeneratedQuality),
+  );
   const dateChance = DATE_CHANCES.includes(dateChanceRaw)
     ? dateChanceRaw
     : (dateChanceReason.length > 0 ? "medium" : "low");
@@ -701,7 +763,7 @@ export function parseDebriefCard(
     // handler 僅在 Game mode 傳 true；Game 卡少任何拆盤欄位都視為格式失敗，
     // 交由既有 retry/fallback 路徑處理，避免殘缺拆盤被當成成功。
     gameBreakdown: opts.allowGameBreakdown === true
-      ? parseGameBreakdown(p.gameBreakdown)
+      ? parseGameBreakdown(p.gameBreakdown, enforceGeneratedQuality)
       : null,
   };
   const appliedHintTurns = opts.appliedHintTurns ?? [];

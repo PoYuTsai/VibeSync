@@ -53,6 +53,8 @@ import { type DebriefCard, parseDebriefCard } from "./debrief_card.ts";
 import {
   buildHintDecision,
   buildHintMessages,
+  HINT_COACHING_SOFT_CHAR_LIMIT,
+  HINT_REPLY_SOFT_CHAR_LIMIT,
   parseHintResult,
 } from "./hint.ts";
 import {
@@ -109,13 +111,17 @@ const DEBRIEF_MAX_TOKENS = 800;
 const DEBRIEF_TEMPERATURE = 0.5;
 const DEBRIEF_GENERATION_ATTEMPTS = 1;
 const DEBRIEF_TIMEOUT_MS = 12000;
+// Game Debrief has a larger prompt and five additional grounded fields.
+// Keep DeepSeek at 12s, then give the final Claude lifeline enough room while
+// staying below the 45s stale-owner and 50s client request windows.
+const DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS = 24000;
 const DEBRIEF_IN_FLIGHT_STALE_MS = 45000;
 const HINT_MAX_TOKENS = 650;
 const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 1;
 // Each real provider gets a full 12s budget. There is never a canned fallback.
 const HINT_TIMEOUT_MS = 12000;
-const CLAUDE_FAILOVER_TIMEOUT_MS = 12000;
+const HINT_CLAUDE_FAILOVER_TIMEOUT_MS = 12000;
 const TEMPERATURE_JUDGE_MAX_TOKENS = 450;
 const TEMPERATURE_JUDGE_TEMPERATURE = 0.2;
 const DEEPSEEK_TIMEOUT_MS = 30000;
@@ -503,6 +509,9 @@ function isHintFormatOrGuardError(e: unknown): boolean {
 
 function hintRetryReason(e: unknown): string {
   const message = getErrorMessage(e);
+  if (message.includes("overlong")) {
+    return "欄位太長，若直接裁尾會變成半句";
+  }
   if (
     message.includes("hint_quality_invalid") ||
     message.includes("hint_canned_visible_text")
@@ -543,6 +552,7 @@ function withHintRetryInstruction(
           hintRetryReason(error)
         }。請重新輸出唯一 JSON，` +
         'shape 必須仍是 {"warmUp":"...","steady":"...","coaching":"..."}。' +
+        `warmUp、steady 各 ${HINT_REPLY_SOFT_CHAR_LIMIT} 字內，coaching ${HINT_COACHING_SOFT_CHAR_LIMIT} 字內，三欄都要完整收句。` +
         "warmUp、steady、coaching 三欄各自都要逐字重用她最新一句的具體詞或短語，不能只有其中一欄具體。" +
         "可貼回覆要先接住她最新狀態，再給低壓接球；不要命令、不要面試官語氣、不要內部標籤、不要露骨或私密壓迫。",
     },
@@ -551,6 +561,9 @@ function withHintRetryInstruction(
 
 function debriefRetryReason(error: unknown): string {
   const message = getErrorMessage(error);
+  if (message.includes("overlong")) {
+    return "欄位太長，若直接裁尾會變成半句";
+  }
   if (
     message.includes("debrief_quality_invalid") ||
     message.includes("debrief_canned_visible_text")
@@ -588,6 +601,7 @@ function withDebriefRetryInstruction(
       content: `上一版拆解 JSON 被拒絕：${debriefRetryReason(error)}。` +
         "請重新輸出唯一且完整的 JSON 物件，不要 markdown 或說明文字。" +
         "summary、strengths、watchouts、suggestedLine、vibe、dateChance、dateChanceReason、nextInviteMove 都必填且不可空白；" +
+        "strengths、watchouts 每點 30 字內，其餘敘述欄位 40 字內；太長要重寫縮句，不得裁掉句尾，所有句子都要完整收尾；" +
         "vibe 只能是暖／中性／冷，dateChance 只能是 low／medium／high。" +
         gameReminder,
     },
@@ -2685,7 +2699,7 @@ export function createPracticeChatHandler(
               messages: hintMessages,
               maxTokens: HINT_MAX_TOKENS,
               temperature: HINT_TEMPERATURE,
-              timeoutMs: CLAUDE_FAILOVER_TIMEOUT_MS,
+              timeoutMs: HINT_CLAUDE_FAILOVER_TIMEOUT_MS,
             });
             hintResult = parseGeneratedHint(rawHint);
             hintProvider = "anthropic";
@@ -3418,7 +3432,7 @@ export function createPracticeChatHandler(
               messages: debriefMessages,
               maxTokens: DEBRIEF_MAX_TOKENS,
               temperature: DEBRIEF_TEMPERATURE,
-              timeoutMs: CLAUDE_FAILOVER_TIMEOUT_MS,
+              timeoutMs: DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS,
             });
             debriefCard = parseDebriefCard(rawCard, {
               allowGameBreakdown: debriefPracticeMode === "game",

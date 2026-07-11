@@ -70,3 +70,34 @@ Deno.test("callClaude never leaks a provider response body", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+Deno.test("callClaude rejects max-token truncation before exposing partial text", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          stop_reason: "max_tokens",
+          content: [{ type: "text", text: '{"summary":"寫到一半' }],
+        }),
+        { status: 200 },
+      ),
+    );
+  try {
+    await assertRejects(
+      () =>
+        callClaude({
+          apiKey: "test-key",
+          model: "claude-test",
+          messages: [{ role: "user", content: "hello" }],
+          maxTokens: 10,
+          temperature: 0.2,
+          timeoutMs: 1_000,
+        }),
+      Error,
+      "claude_max_tokens",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

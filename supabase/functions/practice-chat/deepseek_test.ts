@@ -39,3 +39,33 @@ Deno.test("HTTP 失敗 → 錯誤訊息只含 status，不含 response body（lo
     globalThis.fetch = original;
   }
 });
+
+Deno.test("finish_reason=length → 拒絕 token 截斷的半成品", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = () =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          choices: [{
+            finish_reason: "length",
+            message: { content: '{"summary":"寫到一半' },
+          }],
+        }),
+        { status: 200 },
+      ),
+    );
+  try {
+    const msg = await expectThrowMessage(() =>
+      callDeepSeek({
+        apiKey: "k",
+        messages: [],
+        maxTokens: 10,
+        temperature: 0.5,
+        timeoutMs: 1000,
+      })
+    );
+    assertEquals(msg, "deepseek_max_tokens");
+  } finally {
+    globalThis.fetch = original;
+  }
+});

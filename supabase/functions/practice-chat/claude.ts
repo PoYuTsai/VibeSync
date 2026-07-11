@@ -65,6 +65,9 @@ export async function callClaude(args: ClaudeArgs): Promise<string> {
     }
 
     const json = await response.json();
+    if (json?.stop_reason === "max_tokens") {
+      throw new Error("claude_max_tokens");
+    }
     const blocks = Array.isArray(json?.content) ? json.content : [];
     const content = blocks
       .filter((block: unknown) =>

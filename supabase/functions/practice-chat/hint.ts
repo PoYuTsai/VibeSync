@@ -90,6 +90,7 @@ interface HintParseOptions {
 }
 
 const MAX_REPLY_LENGTH = 80;
+export const HINT_REPLY_SOFT_CHAR_LIMIT = 60;
 export const MAX_COACHING_LENGTH = 160;
 /**
  * prompt 對模型宣稱的 coaching 軟上限；必須嚴格小於 MAX_COACHING_LENGTH
@@ -1004,7 +1005,7 @@ function visibleGameHintContract(): string {
 - 每個回覆恰好出一招：接住測試、給自己的品味、把話題橋到小場景、或開一個邀約窗口；不要疊招，純追問算失敗。
 - 邀約節奏依 speedInviteLadder 給的本輪階梯位置出招，見面提案一律公開場景、低壓、可拒絕。
 - 先讀淺溝通再出招：她喊累→降低回覆成本；她丟微測試→先過關；她給好奇→留懸念；她推開→先修安全感；她給時間窗→收成行動。
-- coaching 以「Game 心法：」開頭，含「她這句可能是在...」、階段與目標變數的白話說法，以及「速約任務：」；全文 ${HINT_COACHING_SOFT_CHAR_LIMIT} 字內，寫完整句子不要被截斷。
+- warmUp/steady≤${HINT_REPLY_SOFT_CHAR_LIMIT}字；coaching以「Game 心法：」開頭，含「她這句可能是在...」、階段目標白話與「速約任務：」，全文≤${HINT_COACHING_SOFT_CHAR_LIMIT}字；完整收句。
 - 安全感夠高才用 L2/L3 的成人感暗示；L0/L1 一律收斂。L4 絕對禁止。
 - 絕不洩漏 hidden labels、snake_case、階段代碼、route 代號或內部變數名，全部轉成白話。
 
@@ -1141,6 +1142,9 @@ export function buildHintMessages(opts: {
           ? "你是 VibeSync Game 回覆提示教練。可直接拆技巧，但只輸出繁中 JSON，不要 markdown 或多餘文字。\n"
           : "你是 VibeSync 新手回覆提示教練。只輸出繁中 JSON，不要 markdown 或多餘文字。\n") +
         'JSON shape 必須是 {"warmUp":"...","steady":"...","coaching":"..."}。\n' +
+        (opts.practiceMode === "game"
+          ? ""
+          : `warmUp/steady≤${HINT_REPLY_SOFT_CHAR_LIMIT}字，coaching≤${HINT_COACHING_SOFT_CHAR_LIMIT}字；完整收句。\n`) +
         "warmUp 是「升溫回覆」，steady 是「穩住回覆」，這兩個是唯二回覆選項；coaching 是「這邊怎麼回的心法」。\n" +
         "角色規則：user 代表使用者本人，assistant 代表練習對象。你是在幫使用者回覆 assistant 最新一句。\n" +
         "可以讀最近上下文理解梗、情緒和前一句來源，但回覆目標必須以 assistant 最新一句為主。\n" +
@@ -1239,6 +1243,12 @@ function requiredString(
   const repaired = options.mode === "game"
     ? repairGameVisibleLabels(normalized)
     : normalized;
+  if (
+    options.enforceGeneratedQuality === true &&
+    repaired.length > maxLength
+  ) {
+    throw new Error("hint_quality_invalid_overlong");
+  }
   const capped = repaired.slice(0, maxLength).trim();
   if (capped.length === 0) {
     throw new Error(`hint_missing_${field}`);

@@ -12,6 +12,7 @@ import {
   GAME_INVITE_ROUTE_ADVICE,
   GAME_INVITE_ROUTE_LABEL,
   HINT_COACHING_SOFT_CHAR_LIMIT,
+  HINT_REPLY_SOFT_CHAR_LIMIT,
   MAX_COACHING_LENGTH,
   parseHintResult,
 } from "./hint.ts";
@@ -825,7 +826,68 @@ Deno.test("prompt coaching soft limit keeps headroom under the hard cap", () => 
       partnerMood: "comfortable",
     } as Parameters<typeof buildHintMessages>[0],
   ).map((m) => m.content).join("\n");
-  assert(gameText.includes(`全文 ${HINT_COACHING_SOFT_CHAR_LIMIT} 字內`));
+  assert(gameText.includes(`全文≤${HINT_COACHING_SOFT_CHAR_LIMIT}字`));
+  assert(
+    gameText.includes(
+      `warmUp/steady≤${HINT_REPLY_SOFT_CHAR_LIMIT}字；coaching`,
+    ),
+  );
+});
+
+Deno.test("generated Hint rejects overlong visible text instead of slicing a half sentence", () => {
+  const turns = [
+    { role: "user" as const, text: "早安" },
+    { role: "ai" as const, text: "我還在賴床，腦袋沒開機" },
+  ];
+  const overlongCoaching = "賴床".repeat(81);
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "賴床冠軍先慢慢醒，我等妳腦袋開機。",
+          steady: "還在賴床喔，腦袋開機後再跟我說。",
+          coaching: overlongCoaching,
+        }),
+        {
+          mode: "beginner",
+          turns,
+          enforceGeneratedQuality: true,
+        },
+      ),
+    Error,
+    "hint_quality_invalid_overlong",
+  );
+
+  const legacy = parseHintResult(
+    JSON.stringify({
+      warmUp: "賴床冠軍先慢慢醒，我等妳腦袋開機。",
+      steady: "還在賴床喔，腦袋開機後再跟我說。",
+      coaching: overlongCoaching,
+    }),
+    { mode: "beginner" },
+  );
+  assertEquals(legacy.coaching.length, MAX_COACHING_LENGTH);
+
+  for (const mode of ["beginner", "game"] as const) {
+    for (const field of ["warmUp", "steady"] as const) {
+      const raw = {
+        warmUp: "賴床冠軍先慢慢醒，我等妳腦袋開機。",
+        steady: "還在賴床喔，腦袋開機後再跟我說。",
+        coaching: "她說還在賴床、腦袋沒開機，先把回覆成本放低。",
+      };
+      raw[field] = "賴床".repeat(41);
+      assertThrows(
+        () =>
+          parseHintResult(JSON.stringify(raw), {
+            mode,
+            turns,
+            enforceGeneratedQuality: true,
+          }),
+        Error,
+        "hint_quality_invalid_overlong",
+      );
+    }
+  }
 });
 
 Deno.test("parseHintResult repairs speedInviteLadder label echoes in game mode", () => {

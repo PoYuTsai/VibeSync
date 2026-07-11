@@ -59,6 +59,20 @@ Deno.test("strengths/watchouts 超過 2 點 → clamp 到 2", () => {
   assertEquals(c.watchouts.length, 2);
 });
 
+Deno.test("legacy list clamp filters empty/non-string entries before keeping two", () => {
+  const c = parseDebriefCard(
+    JSON.stringify({
+      summary: "x",
+      suggestedLine: "y",
+      strengths: ["", 123, "a", "b"],
+      watchouts: [null, "", "c", "d"],
+      vibe: "中性",
+    }),
+  );
+  assertEquals(c.strengths, ["a", "b"]);
+  assertEquals(c.watchouts, ["c", "d"]);
+});
+
 Deno.test("vibe 非法 → 回退『中性』", () => {
   const c = parseDebriefCard(
     JSON.stringify({ summary: "x", suggestedLine: "y", vibe: "超熱" }),
@@ -302,6 +316,105 @@ Deno.test("generated Debrief accepts grounded, accountable next-step coaching", 
     appliedHintTurns: [appliedExactHint],
   });
   assertEquals(card.suggestedLine.includes("賴床"), true);
+});
+
+Deno.test("generated Debrief rejects overlong fields instead of slicing visible half sentences", () => {
+  const turns = [
+    { role: "user" as const, text: "早安" },
+    { role: "ai" as const, text: "我還在賴床，腦袋沒開機" },
+  ];
+  const proseCases = [
+    ["summary", "賴床".repeat(31)],
+    ["suggestedLine", "賴床".repeat(31)],
+    ["dateChanceReason", "賴床".repeat(31)],
+    ["nextInviteMove", "賴床".repeat(31)],
+  ] as const;
+  for (const [field, value] of proseCases) {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({ ...generatedQualityCard, [field]: value }),
+          {
+            requireCompleteCard: true,
+            enforceGeneratedQuality: true,
+            turns,
+          },
+        ),
+      Error,
+      "debrief_quality_invalid_overlong",
+    );
+  }
+
+  const overlongWatchout = "賴床".repeat(21);
+  for (const field of ["strengths", "watchouts"] as const) {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({
+            ...generatedQualityCard,
+            [field]: [overlongWatchout],
+          }),
+          {
+            requireCompleteCard: true,
+            enforceGeneratedQuality: true,
+            turns,
+          },
+        ),
+      Error,
+      "debrief_quality_invalid_overlong",
+    );
+  }
+
+  const legacy = parseDebriefCard(
+    JSON.stringify({
+      ...generatedQualityCard,
+      watchouts: [overlongWatchout],
+    }),
+  );
+  assertEquals(legacy.watchouts[0].length, 40);
+});
+
+Deno.test("generated Game Debrief rejects an overlong breakdown field before clamping", () => {
+  const baseBreakdown = {
+    phaseReached: "賴床互動仍在建立熟悉",
+    missedVariable: "賴床話題還缺投入感",
+    failureState: "賴床只停在表面問答",
+    nextFirstLine: "賴床冠軍醒了嗎？我剛找到一間咖啡店。",
+    inviteDirection: "先延續賴床梗，再看她是否願意投入。",
+  };
+  for (
+    const field of [
+      "phaseReached",
+      "missedVariable",
+      "failureState",
+      "nextFirstLine",
+      "inviteDirection",
+    ] as const
+  ) {
+    const overlong = field === "nextFirstLine"
+      ? "賴床".repeat(36)
+      : "賴床".repeat(31);
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({
+            ...generatedQualityCard,
+            gameBreakdown: { ...baseBreakdown, [field]: overlong },
+          }),
+          {
+            allowGameBreakdown: true,
+            requireCompleteCard: true,
+            enforceGeneratedQuality: true,
+            turns: [
+              { role: "user", text: "早安" },
+              { role: "ai", text: "我還在賴床，腦袋沒開機" },
+            ],
+          },
+        ),
+      Error,
+      "debrief_quality_invalid_overlong",
+    );
+  }
 });
 
 Deno.test("generated Debrief grounds each pasteable line instead of laundering it through the card", () => {

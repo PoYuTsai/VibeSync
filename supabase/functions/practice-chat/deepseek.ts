@@ -54,7 +54,11 @@ export async function callDeepSeek(args: DeepSeekArgs): Promise<string> {
     }
 
     const json = await res.json();
-    const content = json?.choices?.[0]?.message?.content;
+    const choice = json?.choices?.[0];
+    if (choice?.finish_reason === "length") {
+      throw new Error("deepseek_max_tokens");
+    }
+    const content = choice?.message?.content;
     if (typeof content !== "string" || content.trim().length === 0) {
       throw new Error("deepseek_empty_content");
     }
