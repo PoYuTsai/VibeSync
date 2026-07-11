@@ -15,6 +15,7 @@
 
 三關全過：驗證（Deno 526 綠、Dart 123 綠、analyze 零錯）→ 內部審查（F1 in-flight 403 rotate 重複扣費窗口→d21355cd 修；F2 timeout 20s→25s→60dc53bf）→ Codex 雙審（首審 NEEDS_FIX 抓 P1 跨回合 stale hint replay→c5b9fe47 指紋修；重審 APPROVED 零 finding）。
 部署後觀察項：`practice_chat_*_hint_fallback_used` 日誌盯一週，fallback 率暴升再考慮回調 9s 預算（nit-1）。
+2026-07-11 Build 322 真機立即命中 prefetch 9011ms＋formal 9012ms timeout；Eric 改拍板品質優先。首輪回到 12s、非 timeout 重試維持 9s，兼顧降低 fallback 與既有單次 HTTP client 25s 上限。
 記錄在案不修：chat 路徑無 requestId 冪等（F3，歷史既有，另案）。
 
 | 項 | 內容 | Commit |

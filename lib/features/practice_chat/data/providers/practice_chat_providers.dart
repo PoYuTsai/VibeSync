@@ -41,8 +41,8 @@ const int kPracticePromptRecentTurns = 80;
 const int kPracticeMemorySummaryMaxChars = 800;
 
 /// 專案鐵則：loading state 下 await 網路一律 .timeout。
-/// server hint 最壞 ≈ 9s 模型（timeout 不重試；格式類重試再 +9s＝18s）
-/// ＋RPC／冷啟動 ≈ 19-21s，client 取 25s 蓋過 server 最壞預算。
+/// server hint 首輪 12s（timeout 不重試）；非 timeout 重試輪再 +9s，最壞 21s。
+/// ＋RPC／冷啟動約 22-24s，client 取 25s 蓋過 server 最壞預算。
 const Duration kPracticeHintRequestTimeout = Duration(seconds: 25);
 
 /// server chat 主回覆最壞 ≈ 30s × 2 次嘗試＋輪次分類器 30s ≈ 90s，

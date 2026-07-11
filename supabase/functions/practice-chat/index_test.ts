@@ -3549,7 +3549,7 @@ Deno.test("game hint timeout skips the retry and goes straight to fallback", asy
   assertEquals(visibleFallback.includes("這題我先不推進"), false);
   // timeout 代表上游慢：原樣重打大機率再逾時，直接跳 fallback 不做第 2 次。
   assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 9000);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
 });
@@ -3571,7 +3571,7 @@ Deno.test("beginner hint timeout also skips the retry and uses beginner fallback
   assertEquals(response.status, 200);
   assertEquals(json.replies.length, 2);
   assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 9000);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
 });
@@ -3742,7 +3742,7 @@ Deno.test("game hint falls back when provider keeps returning malformed JSON", a
   assertEquals(visibleFallback.includes("妳剛剛那個反應"), false);
   assertEquals(visibleFallback.includes("這題我先不推進"), false);
   assertEquals(state.deepSeekCalls.length, 2);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 9000);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
   assertEquals(state.deepSeekCalls[1].timeoutMs, 9000);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
@@ -3885,7 +3885,7 @@ Deno.test("beginner hint falls back after provider failures without game coachin
   assertEquals(String(json.coaching).includes("Game"), false);
   assertEquals(String(json.coaching).includes("速約任務"), false);
   assertEquals(state.deepSeekCalls.length, 2);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 9000);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
   assertEquals(state.deepSeekCalls[1].timeoutMs, 9000);
   assertEquals(claimHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
@@ -4315,6 +4315,10 @@ for (
     assertEquals(response.status, 503);
     assertEquals(json, { error: "practice_hint_prefetch_failed" });
     assertEquals(state.deepSeekCalls.length, expectedAttempts);
+    assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
+    if (expectedAttempts > 1) {
+      assertEquals(state.deepSeekCalls[1].timeoutMs, 9000);
+    }
     assertEquals(recordHintCalls(state).length, 0);
     assertEquals(settleHintCalls(state).length, 0);
     assertEquals(releaseHintCalls(state).length, 1);

@@ -104,8 +104,10 @@ const DEBRIEF_IN_FLIGHT_STALE_MS = 45000;
 const HINT_MAX_TOKENS = 650;
 const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 2;
-// 9 秒：hint 有罐頭 fallback 兜底，逾時預算壓短讓用戶最壞等待更接近可忍受。
-const HINT_TIMEOUT_MS = 9000;
+// 首輪 12 秒優先降低 timeout fallback；非 timeout 重試輪保留 9 秒，讓兩輪模型
+// 最壞預算維持 21 秒，仍留在既有 25 秒 client timeout 內。
+const HINT_INITIAL_TIMEOUT_MS = 12000;
+const HINT_RETRY_TIMEOUT_MS = 9000;
 const TEMPERATURE_JUDGE_MAX_TOKENS = 450;
 const TEMPERATURE_JUDGE_TEMPERATURE = 0.2;
 const DEEPSEEK_TIMEOUT_MS = 30000;
@@ -2088,7 +2090,6 @@ export function createPracticeChatHandler(
       const hintPartnerMood = partnerStateFromLedger(ledger)?.mood ??
         relationshipThreadState?.partnerState?.mood ?? null;
       const hintGenerationAttempts = HINT_GENERATION_ATTEMPTS;
-      const hintTimeoutMs = HINT_TIMEOUT_MS;
       let hintResult: ReturnType<typeof parseHintResult> | null = null;
       let hintResultIsFallback = false;
       const hintGenerationStartedAt = performance.now();
@@ -2128,7 +2129,9 @@ export function createPracticeChatHandler(
               maxTokens: HINT_MAX_TOKENS,
               temperature: HINT_TEMPERATURE,
               jsonMode: true,
-              timeoutMs: hintTimeoutMs,
+              timeoutMs: attempt === 1
+                ? HINT_INITIAL_TIMEOUT_MS
+                : HINT_RETRY_TIMEOUT_MS,
             });
             hintResult = parseHintResult(rawHint, {
               mode: request.practiceMode,
