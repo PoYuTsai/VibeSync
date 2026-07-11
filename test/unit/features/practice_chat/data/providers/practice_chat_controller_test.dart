@@ -7,6 +7,7 @@ import 'package:vibesync/features/analysis_history/data/providers/analysis_histo
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_draw_draft_store.dart';
+import 'package:vibesync/features/practice_chat/data/repositories/practice_pending_debrief_store.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_pending_draw_store.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_pending_hint_store.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
@@ -225,6 +226,50 @@ class _ControlledPracticeSessionRepository extends PracticeSessionRepository {
   }
 }
 
+class _FailOncePracticeAppliedHintStore
+    extends InMemoryPracticeAppliedHintStore {
+  bool failNextSave = true;
+
+  @override
+  Future<void> save(PracticeAppliedHintContext context) async {
+    if (failNextSave) {
+      failNextSave = false;
+      throw StateError('simulated encrypted context save failure');
+    }
+    await super.save(context);
+  }
+}
+
+class _FailOnceClearPracticeAppliedHintStore
+    extends InMemoryPracticeAppliedHintStore {
+  bool failNextClear = false;
+
+  @override
+  Future<void> clearForSession(String sessionId) async {
+    if (failNextClear) {
+      failNextClear = false;
+      throw StateError('simulated provisional-lineage cleanup failure');
+    }
+    await super.clearForSession(sessionId);
+  }
+}
+
+class _FailOncePracticePendingHintStore
+    extends InMemoryPracticePendingHintStore {
+  bool failNextSave = false;
+  PracticePendingHint? attempted;
+
+  @override
+  Future<void> save(PracticePendingHint pending) async {
+    attempted = pending;
+    if (failNextSave) {
+      failNextSave = false;
+      throw StateError('simulated pending-id save failure');
+    }
+    await super.save(pending);
+  }
+}
+
 void main() {
   late Box<PracticeSession> box;
   late PracticeSessionRepository repo;
@@ -260,6 +305,7 @@ void main() {
     PracticeSessionRepository? repository,
     PracticePendingHintStore? pendingHintStore,
     PracticePendingDrawStore? pendingDrawStore,
+    PracticeAppliedHintStore? appliedHintStore,
     Duration? hintRequestTimeout,
     Duration? sendMessageTimeout,
   }) {
@@ -269,6 +315,7 @@ void main() {
       draftStore: draftStore,
       pendingHintStore: pendingHintStore,
       pendingDrawStore: pendingDrawStore,
+      appliedHintStore: appliedHintStore,
       onUsageSynced: ({required monthlyRemaining, required dailyRemaining}) {
         synced.add([monthlyRemaining, dailyRemaining]);
       },
@@ -288,12 +335,14 @@ void main() {
     PracticeSession session, {
     PracticeSessionRepository? repository,
     PracticePendingHintStore? pendingHintStore,
+    PracticeAppliedHintStore? appliedHintStore,
   }) {
     final c = PracticeChatController(
       api: api,
       repository: repository ?? repo,
       draftStore: draftStore,
       pendingHintStore: pendingHintStore,
+      appliedHintStore: appliedHintStore,
       onUsageSynced: ({required monthlyRemaining, required dailyRemaining}) {
         synced.add([monthlyRemaining, dailyRemaining]);
       },
@@ -311,6 +360,7 @@ void main() {
     PracticeSessionRepository? repository,
     PracticePendingHintStore? pendingHintStore,
     PracticePendingDrawStore? pendingDrawStore,
+    PracticeAppliedHintStore? appliedHintStore,
     Duration? hintRequestTimeout,
     Duration? sendMessageTimeout,
   }) async {
@@ -318,6 +368,7 @@ void main() {
       repository: repository,
       pendingHintStore: pendingHintStore,
       pendingDrawStore: pendingDrawStore,
+      appliedHintStore: appliedHintStore,
       hintRequestTimeout: hintRequestTimeout,
       sendMessageTimeout: sendMessageTimeout,
     );
@@ -354,18 +405,35 @@ void main() {
     int hintUsedCount = 1,
     int? monthly = 28,
     int? daily = 13,
+    String? requestId,
   }) =>
       PracticeHintResult(
-        replies: const [
+        replies: [
           PracticeHintReply(
             type: PracticeHintReplyType.warmUp,
             label: '加分回覆',
             text: '我也想聽你多講一點，這件事聽起來很有趣。',
+            hintRequestId: requestId,
+            decision: const PracticeHintDecision(
+              phase: '建立互動',
+              targetVariable: '投入感',
+              move: '承接她的內容並邀請她多說一點',
+              rationale: '讓她有容易接的具體方向，而不是抽象追問',
+              inviteRoute: 'hold',
+            ),
           ),
           PracticeHintReply(
             type: PracticeHintReplyType.steady,
             label: '不扣分回覆',
             text: '聽起來你今天過得很充實，最累的是哪一段？',
+            hintRequestId: requestId,
+            decision: const PracticeHintDecision(
+              phase: '建立互動',
+              targetVariable: '情緒交換',
+              move: '點出她的狀態後問一個可回答的細節',
+              rationale: '具體承接最新訊息，同時維持低壓節奏',
+              inviteRoute: 'soft_invite',
+            ),
           ),
         ],
         coaching: '先接住情緒，再丟一個好回答的小問題。',
@@ -2063,6 +2131,14 @@ void main() {
         hintText,
         appliedHintType: PracticeHintReplyType.steady,
         appliedHintText: hintText,
+        appliedHintRequestId: 'hint-ledger-game-1',
+        appliedHintDecision: const PracticeHintDecision(
+          phase: '建立互動',
+          targetVariable: '投入感',
+          move: '先接住她的內容再分享自己的版本',
+          rationale: '形成交換感，不讓對話變成訪問',
+          inviteRoute: 'hold',
+        ),
       );
       api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
             summary: '整體不錯',
@@ -2082,6 +2158,295 @@ void main() {
       expect(applied.single.originalHintText, hintText);
       expect(applied.single.sentText, hintText);
       expect(applied.single.exact, true);
+      expect(applied.single.hintRequestId, 'hint-ledger-game-1');
+      expect(applied.single.decision?.targetVariable, '投入感');
+    });
+
+    test('applied Hint decision survives controller/App rebuild into Debrief',
+        () async {
+      final appliedStore = InMemoryPracticeAppliedHintStore();
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_004');
+      final first = await makeRevealed(appliedHintStore: appliedStore);
+      await first.setPracticeLearningMode(PracticeLearningMode.game);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 40,
+              delta: 6,
+              band: 'neutral',
+              reason: '有形成交換感',
+              familiarityScore: 10,
+              familiarityDelta: 10,
+            ),
+          );
+
+      const hintText = '妳這個點很有意思，我自己的版本剛好相反。';
+      await first.sendMessage(
+        hintText,
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: hintText,
+        appliedHintRequestId: 'hint-ledger-restart-1',
+        appliedHintDecision: const PracticeHintDecision(
+          phase: '價值交換',
+          targetVariable: 'Value + Emotion',
+          move: '自我揭露後把球交回去',
+          rationale: '讓她能回應你的觀點，而不是只答問題',
+          inviteRoute: 'soft_invite',
+        ),
+      );
+
+      final saved = repo.getById(first.currentState.sessionId)!;
+      expect(appliedStore.load(saved.id)?.sessionId, saved.id);
+      expect(
+        appliedStore.load(saved.id)?.turns.single['hintRequestId'],
+        'hint-ledger-restart-1',
+      );
+      first.dispose();
+
+      final rebuilt = makeControllerFrom(
+        saved,
+        appliedHintStore: appliedStore,
+      );
+      api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
+            summary: '承接同一招拆解',
+            strengths: ['自我揭露有形成交換感'],
+            watchouts: [],
+            suggestedLine: '延續她接住的觀點。',
+            vibe: '暖',
+          );
+
+      await rebuilt.endPractice();
+
+      final restored = api.lastDebriefAppliedHintTurns!.single;
+      expect(restored.hintRequestId, 'hint-ledger-restart-1');
+      expect(restored.decision?.phase, '價值交換');
+      expect(restored.decision?.move, '自我揭露後把球交回去');
+      expect(appliedStore.load(saved.id), isNull);
+    });
+
+    test(
+        'applied Hint lineage save failure blocks session advance; restart Debrief sees no orphaned move',
+        () async {
+      final prior = PracticeSession(
+        id: 'applied-hint-save-gate',
+        createdAt: DateTime(2026, 7, 11, 21),
+        messages: const [
+          PracticeMessage(role: 'user', text: '原本的訊息'),
+          PracticeMessage(role: 'ai', text: '原本的回覆'),
+        ],
+        aiReplyCount: 1,
+        profileId: 'practice_girl_004',
+        practiceMode: 'game',
+        temperatureScore: 35,
+        familiarityScore: 8,
+      );
+      await repo.save(prior);
+      final appliedStore = _FailOncePracticeAppliedHintStore();
+      final first = makeControllerFrom(
+        prior,
+        appliedHintStore: appliedStore,
+      );
+      var sendCalls = 0;
+      api.sendHandler = (_, {profile}) async {
+        sendCalls++;
+        return reply(
+          aiTurnCount: 2,
+          cost: 0,
+          temperature: const PracticeTemperature(
+            score: 40,
+            delta: 5,
+            band: 'neutral',
+            reason: '用了提示',
+            familiarityScore: 12,
+            familiarityDelta: 4,
+          ),
+        );
+      };
+
+      const copied = '妳剛說的那個點我有記住，我的版本剛好相反。';
+      await first.sendMessage(
+        copied,
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: copied,
+        appliedHintRequestId: 'hint-lineage-write-failed',
+        appliedHintDecision: const PracticeHintDecision(
+          phase: '價值交換',
+          targetVariable: '投入感',
+          move: '自我揭露後把球交回去',
+          rationale: '建立交換感',
+          inviteRoute: 'hold',
+        ),
+      );
+
+      expect(sendCalls, 0);
+      expect(first.currentState.messages, prior.messages);
+      expect(first.currentState.aiReplyCount, prior.aiReplyCount);
+      expect(first.currentState.restoreText, copied);
+      expect(repo.getById(prior.id)?.messages, prior.messages);
+      expect(appliedStore.load(prior.id), isNull);
+
+      first.dispose();
+      final rebuilt = makeControllerFrom(
+        repo.getById(prior.id)!,
+        appliedHintStore: appliedStore,
+      );
+      late List<PracticeTurnDto> debriefTurns;
+      api.debriefHandler = (turns, {profile}) async {
+        debriefTurns = turns;
+        return const PracticeDebrief(
+          summary: '只拆解已落地內容',
+          strengths: ['脈絡一致'],
+          watchouts: [],
+          suggestedLine: '延續原本脈絡',
+          vibe: '中性',
+        );
+      };
+
+      await rebuilt.endPractice();
+
+      expect(debriefTurns.map((turn) => turn.text), isNot(contains(copied)));
+      expect(api.lastDebriefAppliedHintTurns, isEmpty);
+    });
+
+    test(
+        'failed staged Hint send cannot attach phantom lineage to a later different message after restart',
+        () async {
+      final prior = PracticeSession(
+        id: 'applied-hint-phantom-filter',
+        createdAt: DateTime(2026, 7, 11, 21, 30),
+        messages: const [
+          PracticeMessage(role: 'user', text: '原本的訊息'),
+          PracticeMessage(role: 'ai', text: '原本的回覆'),
+        ],
+        aiReplyCount: 1,
+        profileId: 'practice_girl_004',
+        practiceMode: 'game',
+        temperatureScore: 35,
+        familiarityScore: 8,
+      );
+      await repo.save(prior);
+      final appliedStore = _FailOnceClearPracticeAppliedHintStore();
+      final first = makeControllerFrom(
+        prior,
+        appliedHintStore: appliedStore,
+      );
+      var sendCalls = 0;
+      api.sendHandler = (_, {profile}) async {
+        sendCalls++;
+        if (sendCalls == 1) {
+          appliedStore.failNextClear = true;
+          throw PracticeGenerationFailedException('simulated network loss');
+        }
+        return reply(
+          aiTurnCount: 2,
+          cost: 0,
+          temperature: const PracticeTemperature(
+            score: 37,
+            delta: 2,
+            band: 'cold',
+            reason: '改用自己的話',
+            familiarityScore: 10,
+            familiarityDelta: 2,
+          ),
+        );
+      };
+
+      const failedCopiedLine = '妳剛說的那個點我有記住，我的版本剛好相反。';
+      await first.sendMessage(
+        failedCopiedLine,
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: failedCopiedLine,
+        appliedHintRequestId: 'hint-phantom-1',
+      );
+      expect(first.currentState.messages, prior.messages);
+      expect(
+        appliedStore.load(prior.id)?.turns.single['sentText'],
+        failedCopiedLine,
+      );
+
+      const independentLine = '我後來想到另一個角度，妳會怎麼看？';
+      await first.sendMessage(independentLine);
+      expect(sendCalls, 2);
+      final saved = repo.getById(prior.id)!;
+      expect(saved.messages.any((message) => message.text == independentLine),
+          true);
+      first.dispose();
+
+      final rebuilt = makeControllerFrom(
+        saved,
+        appliedHintStore: appliedStore,
+      );
+      api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
+            summary: '只拆解已落地訊息',
+            strengths: ['脈絡一致'],
+            watchouts: [],
+            suggestedLine: '延續自己的角度',
+            vibe: '中性',
+          );
+
+      await rebuilt.endPractice();
+
+      expect(api.lastDebriefAppliedHintTurns, isEmpty);
+    });
+
+    test('long continued thread rebases applied Hint index to prompt window',
+        () async {
+      final oldMessages = <PracticeMessage>[];
+      for (var i = 0; i < 90; i++) {
+        oldMessages.add(PracticeMessage(role: 'user', text: 'old user $i'));
+        oldMessages.add(PracticeMessage(role: 'ai', text: 'old ai $i'));
+      }
+      final c = makeControllerFrom(PracticeSession(
+        id: 'long-applied-hint-round-1',
+        createdAt: DateTime(2026, 7, 11, 20),
+        messages: oldMessages,
+        aiReplyCount: 20,
+        debriefSummary: '上一輪完成',
+        profileId: 'practice_girl_004',
+        practiceMode: 'game',
+        temperatureScore: 55,
+        familiarityScore: 30,
+      ));
+      c.continueWithSamePartner(isPaid: true);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 58,
+              delta: 3,
+              band: 'warm',
+              reason: '有承接',
+              familiarityScore: 34,
+              familiarityDelta: 4,
+            ),
+          );
+      const sent = '妳這個觀點有意思，我的版本剛好相反。';
+      await c.sendMessage(
+        sent,
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: sent,
+        appliedHintRequestId: 'hint-ledger-long-1',
+      );
+      late List<PracticeTurnDto> debriefTurns;
+      api.debriefHandler = (turns, {profile}) async {
+        debriefTurns = turns;
+        return const PracticeDebrief(
+          summary: '長對話也承接同一招',
+          strengths: ['有形成交換感'],
+          watchouts: [],
+          suggestedLine: '延續她接住的觀點。',
+          vibe: '暖',
+        );
+      };
+
+      await c.endPractice();
+
+      final applied = api.lastDebriefAppliedHintTurns!.single;
+      expect(debriefTurns, hasLength(kPracticePromptRecentTurns));
+      expect(applied.turnIndex, debriefTurns.length - 2);
+      expect(debriefTurns[applied.turnIndex].role, 'user');
+      expect(debriefTurns[applied.turnIndex].text, sent);
+      expect(applied.hintRequestId, 'hint-ledger-long-1');
     });
 
     test('standard mode ignores applied hint metadata', () async {
@@ -2189,6 +2554,315 @@ void main() {
       expect(c.currentState.hintReplies, hasLength(2));
     });
 
+    test('cost=0 replay/replacement still syncs authoritative remaining usage',
+        () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+      api.hintHandler = (_, {profile}) async => hintResult(
+            cost: 0,
+            monthly: 17,
+            daily: 6,
+            requestId: api.lastHintRequestId,
+          );
+
+      await c.requestHint();
+
+      expect(synced, [
+        [17, 6]
+      ]);
+    });
+
+    test('pending-id save failure aborts billable dispatch and retry reuses id',
+        () async {
+      final pendingStore = _FailOncePracticePendingHintStore();
+      final c = await makeRevealed(pendingHintStore: pendingStore);
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+      await pumpEventQueue();
+      pendingStore.failNextSave = true;
+      api.hintHandler =
+          (_, {profile}) async => hintResult(requestId: api.lastHintRequestId);
+
+      await c.requestHint();
+
+      final retainedId = pendingStore.attempted?.requestId;
+      expect(retainedId, isNotNull);
+      expect(api.hintCallCount, 0);
+      expect(c.currentState.hintFailed, true);
+      expect(c.currentState.errorMessage, '提示準備失敗，請再試一次。');
+
+      await c.requestHint();
+
+      expect(api.hintCallCount, 1);
+      expect(api.lastHintRequestId, retainedId);
+      expect(c.currentState.hintReplies, hasLength(2));
+    });
+
+    test(
+        'successful envelope save failure keeps request id; restart replays then restores full Hint',
+        () async {
+      final pendingStore = InMemoryPracticePendingHintStore();
+      final appliedStore = _FailOncePracticeAppliedHintStore();
+      final c = await makeRevealed(
+        pendingHintStore: pendingStore,
+        appliedHintStore: appliedStore,
+      );
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+      api.hintHandler =
+          (_, {profile}) async => hintResult(requestId: api.lastHintRequestId);
+
+      await c.requestHint();
+
+      final firstId = api.lastHintRequestId;
+      final sessionId = c.currentState.sessionId;
+      expect(firstId, isNotNull);
+      expect(c.currentState.hintReplies, hasLength(2));
+      expect(appliedStore.load(sessionId), isNull);
+      expect(pendingStore.load()?.requestId, firstId);
+
+      final firstSavedSession = repo.getById(sessionId)!;
+      c.dispose();
+      final replayed = makeControllerFrom(
+        firstSavedSession,
+        pendingHintStore: pendingStore,
+        appliedHintStore: appliedStore,
+      );
+      await replayed.requestHint();
+
+      expect(api.lastHintRequestId, firstId);
+      expect(pendingStore.load(), isNull);
+      final stored = appliedStore.load(sessionId);
+      expect(stored?.latestHint?.aiCount, 1);
+      expect(stored?.latestHint?.result.hintUsedCount, 1);
+      expect(stored?.latestHint?.result.monthlyRemaining, 28);
+      expect(
+        stored?.latestHint?.result.replies.first.hintRequestId,
+        firstId,
+      );
+      expect(
+        stored?.latestHint?.result.replies.first.decision?.isComplete,
+        true,
+      );
+
+      final replayedSavedSession = repo.getById(sessionId)!;
+      replayed.dispose();
+      // Simulate a process dying after the envelope save but before the
+      // matching pending-id delete finishes.
+      await pendingStore.save(PracticePendingHint(
+        sessionId: sessionId,
+        aiCount: 1,
+        requestId: firstId!,
+      ));
+      synced.clear();
+      final restored = makeControllerFrom(
+        replayedSavedSession,
+        pendingHintStore: pendingStore,
+        appliedHintStore: appliedStore,
+      );
+
+      expect(restored.currentState.hintReplies, hasLength(2));
+      expect(restored.currentState.hintCoaching, contains('接住情緒'));
+      expect(restored.currentState.hintUsedCount, 1);
+      expect(
+        restored.currentState.hintReplies.first.hintRequestId,
+        firstId,
+      );
+      expect(
+        restored.currentState.hintReplies.last.decision?.inviteRoute,
+        'soft_invite',
+      );
+      await pumpEventQueue();
+      expect(synced, isEmpty);
+
+      api.hintHandler = (_, {profile}) async =>
+          hintResult(hintUsedCount: 2, requestId: api.lastHintRequestId);
+      await restored.requestHint();
+      expect(api.lastHintRequestId, isNot(firstId));
+      expect(restored.currentState.hintUsedCount, 2);
+    });
+
+    test('A -> B -> A restores latest Hint and applied lineage by session',
+        () async {
+      final appliedStore = InMemoryPracticeAppliedHintStore();
+      final c = await makeRevealed(appliedHintStore: appliedStore);
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      var sendCount = 0;
+      api.sendHandler = (_, {profile}) async {
+        sendCount++;
+        return reply(
+          cost: 0,
+          aiTurnCount: sendCount,
+          hintUsedCount: sendCount == 1 ? 0 : 1,
+          temperature: const PracticeTemperature(
+            score: 34,
+            delta: 1,
+            band: 'cold',
+            reason: '有承接',
+          ),
+        );
+      };
+      api.hintHandler = (_, {profile}) async => hintResult(
+            hintUsedCount: sendCount,
+            requestId: api.lastHintRequestId,
+          );
+
+      await c.sendMessage('A 開場');
+      await c.requestHint();
+      final appliedReply = c.currentState.hintReplies.first;
+      final firstHintId = appliedReply.hintRequestId;
+      await c.sendMessage(
+        appliedReply.text,
+        appliedHintType: appliedReply.type,
+        appliedHintText: appliedReply.text,
+        appliedHintRequestId: appliedReply.hintRequestId,
+        appliedHintDecision: appliedReply.decision,
+      );
+      await c.requestHint();
+
+      final sessionA = repo.getById(c.currentState.sessionId)!;
+      final latestAId = c.currentState.hintReplies.first.hintRequestId;
+      expect(appliedStore.load(sessionA.id)?.turns, hasLength(1));
+      expect(appliedStore.load(sessionA.id)?.latestHint?.aiCount, 2);
+
+      final sessionB = PracticeSession(
+        id: 'session-b-context',
+        createdAt: DateTime(2026, 7, 11, 22),
+        messages: const [
+          PracticeMessage(role: 'user', text: 'B 開場'),
+          PracticeMessage(role: 'ai', text: 'B 回覆'),
+        ],
+        aiReplyCount: 1,
+        profileId: sessionA.profileId,
+        practiceMode: 'beginner',
+        temperatureScore: 30,
+        hintUsedCount: 0,
+      );
+      c.resumeSession(sessionB);
+      expect(c.currentState.sessionId, sessionB.id);
+      expect(c.currentState.hintReplies, isEmpty);
+      expect(appliedStore.load(sessionA.id), isNotNull);
+
+      c.resumeSession(sessionA);
+      expect(c.currentState.sessionId, sessionA.id);
+      expect(c.currentState.hintReplies, hasLength(2));
+      expect(c.currentState.hintReplies.first.hintRequestId, latestAId);
+      expect(c.currentState.hintUsedCount, 2);
+
+      api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
+            summary: '同一條策略拆解',
+            strengths: ['有使用 Hint'],
+            watchouts: [],
+            suggestedLine: '延續同一條線',
+            vibe: '暖',
+          );
+      await c.endPractice();
+
+      expect(api.lastDebriefAppliedHintTurns, hasLength(1));
+      expect(
+        api.lastDebriefAppliedHintTurns?.single.hintRequestId,
+        firstHintId,
+      );
+      expect(
+        api.lastDebriefAppliedHintTurns?.single.decision?.isComplete,
+        true,
+      );
+      expect(appliedStore.load(sessionA.id), isNull);
+    });
+
+    test(
+        'restoring A historical Hint snapshot cannot raise usage after live B consumed more',
+        () async {
+      final appliedStore = InMemoryPracticeAppliedHintStore();
+      final sessionA = PracticeSession(
+        id: 'usage-order-session-a',
+        createdAt: DateTime(2026, 7, 11, 23),
+        messages: const [
+          PracticeMessage(role: 'user', text: 'A user'),
+          PracticeMessage(role: 'ai', text: 'A AI'),
+        ],
+        aiReplyCount: 1,
+        profileId: 'practice_girl_005',
+        practiceMode: 'beginner',
+        temperatureScore: 30,
+      );
+      await appliedStore.save(PracticeAppliedHintContext(
+        sessionId: sessionA.id,
+        turns: const [],
+        latestHint: PracticeSuccessfulHintSnapshot(
+          aiCount: 1,
+          requestId: 'historical-a-hint',
+          result: hintResult(
+            monthly: 19,
+            daily: 9,
+            requestId: 'historical-a-hint',
+          ),
+        ),
+      ));
+      final sessionB = PracticeSession(
+        id: 'usage-order-session-b',
+        createdAt: DateTime(2026, 7, 11, 23, 1),
+        messages: const [
+          PracticeMessage(role: 'user', text: 'B user'),
+          PracticeMessage(role: 'ai', text: 'B AI'),
+        ],
+        aiReplyCount: 1,
+        profileId: 'practice_girl_005',
+        practiceMode: 'beginner',
+        temperatureScore: 30,
+      );
+      final c = makeControllerFrom(
+        sessionB,
+        appliedHintStore: appliedStore,
+      );
+      api.hintHandler = (_, {profile}) async => hintResult(
+            monthly: 18,
+            daily: 8,
+            requestId: api.lastHintRequestId,
+          );
+
+      await c.requestHint();
+      expect(synced, [
+        [18, 8]
+      ]);
+
+      c.resumeSession(sessionA);
+      await pumpEventQueue();
+
+      expect(c.currentState.hintReplies, hasLength(2));
+      expect(synced, [
+        [18, 8]
+      ]);
+    });
+
     test('requestHint marks limit reached without clearing chat', () async {
       final c = await makeRevealed();
       await c.setPracticeLearningMode(PracticeLearningMode.beginner);
@@ -2286,6 +2960,7 @@ void main() {
       await c.requestHint();
 
       expect(c.currentState.isHintLoading, false);
+      expect(c.currentState.hintFailed, true);
       expect(c.currentState.errorMessage, '提示服務正在更新中，請稍後再試。');
       expect(c.currentState.messages.map((m) => m.role), ['user', 'ai']);
     });
@@ -2310,11 +2985,15 @@ void main() {
       await c.requestHint();
       final firstId = api.lastHintRequestId;
       expect(firstId, isNotNull);
+      expect(c.currentState.hintFailed, true);
+      expect(c.currentState.hintReplies, isEmpty);
 
       // 重試成功：沿用同一 id（server 靠它去重雙扣）
       api.hintHandler = (_, {profile}) async => hintResult();
       await c.requestHint();
       expect(api.lastHintRequestId, firstId);
+      expect(c.currentState.hintFailed, false);
+      expect(c.currentState.hintReplies, hasLength(2));
 
       // 成功後 rotate：下一次 hint 是新意圖 → 新 id
       await c.requestHint();
@@ -2345,11 +3024,13 @@ void main() {
       final firstId = api.lastHintRequestId;
       expect(firstId, isNotNull);
       expect(c.currentState.quotaExceeded, false);
+      expect(c.currentState.hintFailed, true);
       expect(c.currentState.errorMessage, contains('太頻繁'));
 
       api.hintHandler = (_, {profile}) async => hintResult();
       await c.requestHint();
       expect(api.lastHintRequestId, firstId);
+      expect(c.currentState.hintFailed, false);
     });
 
     test('requestHint 4xx 明確拒絕 → rotate 新 id（不沿用）', () async {
@@ -2750,7 +3431,7 @@ void main() {
       return (c, completer, hintFuture);
     }
 
-    test('續玩同一位期間在途 hint 回來 → 丟棄不填 state、isHintLoading 復位、額度仍同步', () async {
+    test('續玩同一位期間在途 hint 回來 → 丟棄內容且不覆寫目前 usage', () async {
       final (c, completer, hintFuture) = await pendingHint();
 
       c.continueWithSamePartner(isPaid: true);
@@ -2763,10 +3444,8 @@ void main() {
       expect(s.hintUsedCount, 0); // 新一輪計數不被舊回應污染
       expect(s.isHintLoading, false);
       expect(repo.getById(s.sessionId), isNull); // 不把舊 hint 持久化進新場
-      // 已扣額度認列不回滾（server 事實）：剩餘額度照樣同步
-      expect(synced, [
-        [28, 13]
-      ]);
+      // 這是舊場晚到值；目前場可能已消耗更多，不能用它回升全域額度。
+      expect(synced, isEmpty);
     });
 
     test('換一位（draw）期間在途 hint 回來 → 丟棄、不污染新對象 state', () async {
@@ -2809,6 +3488,7 @@ void main() {
       final completerB = Completer<PracticeHintResult>();
       api.hintHandler = (_, {profile}) => completerB.future;
       final hintFutureB = c.requestHint();
+      await pumpEventQueue();
       final bId = api.lastHintRequestId;
       expect(bId, isNotNull);
 
@@ -3329,16 +4009,15 @@ void main() {
       expect(api.hintCallCount, 1);
       expect(pendingStore.load()!.requestId, staleId);
 
-      // Switching away clears the process-local fence and single-slot pending
-      // id. Returning to the stale local session may mint a new id, but every
-      // new client request still carries the old full-session AI count so the
-      // server can reject it atomically before binding a fresh generation.
+      // Switching away clears only the process-local fence. The per-session
+      // durable id remains, so returning to this stale local transcript cannot
+      // mint a second potentially billable intent.
       final staleLocalSession = repo.getById(c.currentState.sessionId)!;
       c.resumeSession(assistedSession(id: 'stale-switch-session-b'));
       c.resumeSession(staleLocalSession);
       await c.requestHint();
       expect(api.hintCallCount, 2);
-      expect(api.lastHintRequestId, isNot(staleId));
+      expect(api.lastHintRequestId, staleId);
       expect(api.lastHintExpectedAiCount, 1);
       expect(
         c.currentState.errorMessage,
@@ -3564,6 +4243,7 @@ void main() {
       final bFormalGate = Completer<PracticeHintResult>();
       api.hintHandler = (_, {profile}) => bFormalGate.future;
       final bFormalFuture = c.requestHint();
+      await pumpEventQueue();
       expect(api.hintCallCount, 1);
       expect(c.currentState.isHintLoading, true);
 
@@ -3594,10 +4274,12 @@ void main() {
         return formalIndex == 1 ? aGate.future : bGate.future;
       };
       final aFuture = c.requestHint();
+      await pumpEventQueue();
       expect(c.currentState.isHintLoading, true);
 
       c.resumeSession(assistedSession(id: 'newer-b'));
       final bFuture = c.requestHint();
+      await pumpEventQueue();
       expect(api.hintCallCount, 2);
       expect(c.currentState.isHintLoading, true);
 
@@ -3610,6 +4292,116 @@ void main() {
       await bFuture;
       expect(c.currentState.isHintLoading, false);
       expect(c.currentState.hintReplies, hasLength(2));
+    });
+
+    test('late A Hint response cannot raise usage after current B synced lower',
+        () async {
+      final c = makeControllerFrom(assistedSession(id: 'usage-late-a'));
+      final aGate = Completer<PracticeHintResult>();
+      var formalIndex = 0;
+      api.hintHandler = (_, {profile}) {
+        formalIndex++;
+        if (formalIndex == 1) return aGate.future;
+        return Future.value(hintResult(
+          monthly: 18,
+          daily: 8,
+          requestId: api.lastHintRequestId,
+        ));
+      };
+
+      final aFuture = c.requestHint();
+      await pumpEventQueue();
+      c.resumeSession(assistedSession(id: 'usage-current-b'));
+      await c.requestHint();
+      expect(synced, [
+        [18, 8]
+      ]);
+
+      aGate.complete(hintResult(
+        monthly: 19,
+        daily: 9,
+        requestId: api.formalHintRequestIds.first,
+      ));
+      await aFuture;
+
+      expect(c.currentState.sessionId, 'usage-current-b');
+      expect(synced, [
+        [18, 8]
+      ]);
+    });
+
+    test(
+        'A Hint in-flight survives switch to B and restart back into A with the same id',
+        () async {
+      final pendingStore = InMemoryPracticePendingHintStore();
+      final sessionA = assistedSession(id: 'pending-hint-session-a');
+      final first = makeControllerFrom(
+        sessionA,
+        pendingHintStore: pendingStore,
+      );
+      final aGate = Completer<PracticeHintResult>();
+      api.hintHandler = (_, {profile}) => aGate.future;
+
+      final oldAFuture = first.requestHint();
+      await pumpEventQueue();
+      final aRequestId = api.lastHintRequestId;
+      expect(aRequestId, isNotNull);
+      expect(
+        pendingStore
+            .loadFor(sessionId: sessionA.id, aiCount: sessionA.aiReplyCount)
+            ?.requestId,
+        aRequestId,
+      );
+
+      first.resumeSession(assistedSession(id: 'pending-hint-session-b'));
+      expect(
+        pendingStore
+            .loadFor(sessionId: sessionA.id, aiCount: sessionA.aiReplyCount)
+            ?.requestId,
+        aRequestId,
+      );
+      first.dispose();
+
+      api.hintHandler = (_, {profile}) async => hintResult();
+      final rebuiltA = makeControllerFrom(
+        sessionA,
+        pendingHintStore: pendingStore,
+      );
+      await rebuiltA.requestHint();
+
+      expect(api.lastHintRequestId, aRequestId);
+
+      aGate.complete(hintResult());
+      await oldAFuture;
+    });
+
+    test('Hint in-flight gates Debrief until Hint settles', () async {
+      final c = makeControllerFrom(assistedSession(id: 'hint-debrief-gate'));
+      final hintGate = Completer<PracticeHintResult>();
+      var debriefCalls = 0;
+      api.hintHandler = (_, {profile}) => hintGate.future;
+      api.debriefHandler = (_, {profile}) async {
+        debriefCalls++;
+        return const PracticeDebrief(
+          summary: 'must wait',
+          strengths: [],
+          watchouts: [],
+          suggestedLine: 'must wait',
+          vibe: '中性',
+        );
+      };
+
+      final hintFuture = c.requestHint();
+      await pumpEventQueue();
+      expect(c.currentState.isHintLoading, true);
+      expect(c.currentState.canDebrief, false);
+
+      await c.endPractice();
+      expect(debriefCalls, 0);
+
+      hintGate.complete(hintResult());
+      await hintFuture;
+      expect(c.currentState.canDebrief, true);
     });
   });
 

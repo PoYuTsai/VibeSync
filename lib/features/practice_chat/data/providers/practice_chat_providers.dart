@@ -41,9 +41,9 @@ const int kPracticePromptRecentTurns = 80;
 const int kPracticeMemorySummaryMaxChars = 800;
 
 /// 專案鐵則：loading state 下 await 網路一律 .timeout。
-/// server hint 最壞 ≈ 9s 模型（timeout 不重試；格式類重試再 +9s＝18s）
-/// ＋RPC／冷啟動 ≈ 19-21s，client 取 25s 蓋過 server 最壞預算。
-const Duration kPracticeHintRequestTimeout = Duration(seconds: 25);
+/// server 會給主 provider 12s，再給生成式 failover 12s；加上冷啟動與 RPC
+/// 裕度後，client 取 45s，只防 loading 卡死、不搶先放棄。
+const Duration kPracticeHintRequestTimeout = Duration(seconds: 45);
 
 /// server chat 主回覆最壞 ≈ 30s × 2 次嘗試＋輪次分類器 30s ≈ 90s，
 /// client 取 120s 留裕度：只防 loading 卡死，不搶在 server 完成前放棄。
@@ -157,6 +157,7 @@ class PracticeChatState {
   final int? lastTemperatureDelta;
   final String? temperatureReason;
   final bool isHintLoading;
+  final bool hintFailed; // 生成失敗；面板保留可重試入口，不顯示假內容
   final List<PracticeHintReply> hintReplies;
   final String? hintCoaching;
   final int hintUsedCount;
@@ -228,6 +229,7 @@ class PracticeChatState {
     this.lastTemperatureDelta,
     this.temperatureReason,
     this.isHintLoading = false,
+    this.hintFailed = false,
     this.hintReplies = const [],
     this.hintCoaching,
     this.hintUsedCount = 0,
@@ -286,6 +288,7 @@ class PracticeChatState {
       !isDebriefing &&
       !isSending &&
       !isPersistingTurn &&
+      !isHintLoading &&
       debrief == null &&
       (!debriefFailed || debriefRetryable);
 
@@ -319,6 +322,7 @@ class PracticeChatState {
     String? visiblePracticeThreadId,
     PracticeLearningMode? learningMode,
     bool? isHintLoading,
+    bool? hintFailed,
     List<PracticeHintReply>? hintReplies,
     int? hintUsedCount,
     bool? hintLimitReached,
@@ -384,6 +388,7 @@ class PracticeChatState {
           ? this.temperatureReason
           : temperatureReason as String?,
       isHintLoading: isHintLoading ?? this.isHintLoading,
+      hintFailed: hintFailed ?? this.hintFailed,
       hintReplies: hintReplies ?? this.hintReplies,
       hintCoaching: identical(hintCoaching, _sentinel)
           ? this.hintCoaching
@@ -410,6 +415,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     PracticeDrawDraftStore? draftStore,
     PracticePendingHintStore? pendingHintStore,
     PracticePendingDrawStore? pendingDrawStore,
+    PracticeAppliedHintStore? appliedHintStore,
     void Function({required int monthlyRemaining, required int dailyRemaining})?
         onUsageSynced,
     void Function(String profileId)? onProfileUnlocked,
@@ -428,6 +434,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
               pendingHintStore ?? InMemoryPracticePendingHintStore(),
           pendingDrawStore:
               pendingDrawStore ?? InMemoryPracticePendingDrawStore(),
+          appliedHintStore:
+              appliedHintStore ?? InMemoryPracticeAppliedHintStore(),
           onUsageSynced: onUsageSynced,
           onProfileUnlocked: onProfileUnlocked,
           historyRepository: historyRepository,
@@ -445,6 +453,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     required PracticeDrawDraftStore draftStore,
     required PracticePendingHintStore pendingHintStore,
     required PracticePendingDrawStore pendingDrawStore,
+    required PracticeAppliedHintStore appliedHintStore,
     required void Function(
             {required int monthlyRemaining, required int dailyRemaining})?
         onUsageSynced,
@@ -461,6 +470,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         _draftStore = draftStore,
         _pendingHintStore = pendingHintStore,
         _pendingDrawStore = pendingDrawStore,
+        _appliedHintStore = appliedHintStore,
         _onUsageSynced = onUsageSynced,
         _onProfileUnlocked = onProfileUnlocked,
         _historyRepository = historyRepository,
@@ -474,6 +484,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         )) {
     // 圖鑑種子：進場還原到的當前對象（session 或 draft）視同已解鎖。
     _notifyProfileUnlocked(state.girl?.profileId);
+    _restoreAppliedHintTurnsForCurrentSession();
   }
 
   final PracticeChatApiService _api;
@@ -481,6 +492,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   final PracticeDrawDraftStore _draftStore;
   final PracticePendingHintStore _pendingHintStore;
   final PracticePendingDrawStore _pendingDrawStore;
+  final PracticeAppliedHintStore _appliedHintStore;
   final void Function(
       {required int monthlyRemaining,
       required int dailyRemaining})? _onUsageSynced;
@@ -489,6 +501,146 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   final Duration _hintRequestTimeout;
   final Duration _sendMessageTimeout;
   final List<PracticeAppliedHintTurnDto> _appliedHintTurns = [];
+  PracticeSuccessfulHintSnapshot? _latestSuccessfulHint;
+  bool _latestSuccessfulHintIsDurable = false;
+
+  void _restoreAppliedHintTurnsForCurrentSession() {
+    _appliedHintTurns.clear();
+    _latestSuccessfulHint = null;
+    _latestSuccessfulHintIsDurable = false;
+    if (!state.isAssistedLearningMode) return;
+    PracticeAppliedHintContext? context;
+    try {
+      context = _appliedHintStore.load(state.sessionId);
+    } catch (_) {
+      return;
+    }
+    if (context == null || context.sessionId != state.sessionId) return;
+    for (final raw in context.turns) {
+      final hint = PracticeAppliedHintTurnDto.fromJson(raw);
+      if (hint == null || hint.turnIndex >= state.messages.length) continue;
+      final message = state.messages[hint.turnIndex];
+      if (message.role != 'user' || message.text.trim() != hint.sentText) {
+        continue;
+      }
+      _appliedHintTurns.add(hint);
+    }
+
+    final latest = context.latestHint;
+    final matchesCurrentTurn = latest != null &&
+        latest.aiCount == state.aiReplyCount &&
+        state.messages.isNotEmpty &&
+        state.messages.last.role == 'ai';
+    if (!matchesCurrentTurn) return;
+    _latestSuccessfulHint = latest;
+    _latestSuccessfulHintIsDurable = true;
+    final result = latest.result;
+    state = state.copyWith(
+      isHintLoading: false,
+      hintFailed: false,
+      hintReplies: result.replies,
+      hintCoaching: result.coaching,
+      hintUsedCount: result.hintUsedCount,
+      hintLimitReached: result.hintUsedCount >= kMaxPracticeHintsPerRound,
+    );
+    final durableRequestIds = result.replies
+        .map((reply) => reply.hintRequestId?.trim())
+        .whereType<String>()
+        .where((requestId) => requestId.isNotEmpty)
+        .toSet();
+    final snapshotRequestId = latest.requestId?.trim();
+    if (snapshotRequestId != null && snapshotRequestId.isNotEmpty) {
+      durableRequestIds.add(snapshotRequestId);
+    }
+    if (durableRequestIds.length == 1) {
+      _rotateHintRequestId(PracticePendingHint(
+        sessionId: state.sessionId,
+        aiCount: latest.aiCount,
+        requestId: durableRequestIds.single,
+      ));
+    }
+    // This envelope is a local historical snapshot, not a fresh authoritative
+    // usage response. Syncing its remaining counts can roll global quota back
+    // after another session has already consumed more (A=19, live B=18).
+  }
+
+  List<Map<String, dynamic>> _serializedAppliedHintTurns() =>
+      _appliedHintTurns.map((hint) => hint.toJson()).toList(growable: false);
+
+  Future<bool> _saveAppliedHintContext(
+    PracticeAppliedHintContext context,
+  ) async {
+    try {
+      await _appliedHintStore.save(context);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _saveAppliedHintTurnsForCurrentSession() async {
+    if (!state.isAssistedLearningMode || _appliedHintTurns.isEmpty) return;
+    final saved = await _saveAppliedHintContext(PracticeAppliedHintContext(
+      sessionId: state.sessionId,
+      turns: _serializedAppliedHintTurns(),
+      latestHint: _latestSuccessfulHint,
+    ));
+    if (!saved) {
+      // The session must not advance durably without the matching Hint lineage;
+      // otherwise a restart would let Debrief judge the copied line as if it
+      // were the user's independent move. The send pipeline rolls back safely.
+      throw StateError('practice_applied_hint_lineage_not_durable');
+    }
+  }
+
+  Future<bool> _saveSuccessfulHintForIntent({
+    required String sessionId,
+    required int aiCount,
+    required String requestId,
+    required PracticeHintResult result,
+    required List<Map<String, dynamic>> appliedTurns,
+  }) async {
+    PracticeAppliedHintContext? existing;
+    try {
+      existing = _appliedHintStore.load(sessionId);
+    } catch (_) {
+      // The write below remains the durability boundary even when an old
+      // context cannot be read.
+    }
+    final existingLatest = existing?.latestHint;
+    if (existingLatest != null &&
+        (existingLatest.aiCount > aiCount ||
+            (existingLatest.aiCount == aiCount &&
+                existingLatest.result.hintUsedCount > result.hintUsedCount))) {
+      // A newer result for this session/turn is already durable. Never let a
+      // late response overwrite it with an older envelope.
+      return true;
+    }
+    final preservedTurns =
+        existing != null && existing.turns.length > appliedTurns.length
+            ? existing.turns
+            : appliedTurns;
+    return _saveAppliedHintContext(PracticeAppliedHintContext(
+      sessionId: sessionId,
+      turns: preservedTurns,
+      latestHint: PracticeSuccessfulHintSnapshot(
+        aiCount: aiCount,
+        result: result,
+        requestId: requestId,
+      ),
+    ));
+  }
+
+  Future<void> _clearAppliedHintTurnsForSession(String sessionId) async {
+    _appliedHintTurns.clear();
+    _latestSuccessfulHint = null;
+    _latestSuccessfulHintIsDurable = false;
+    try {
+      await _appliedHintStore.clearForSession(sessionId);
+    } catch (_) {
+      // Best-effort side-channel; session identity filters stale context.
+    }
+  }
 
   /// 圖鑑解鎖記錄：純附加 side-channel。用 microtask 延後（provider 建構期
   /// 不得同步改其他 provider 的 state），callback 例外一律吞掉——圖鑑記錄
@@ -516,31 +668,42 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   bool _hintRequiresConversationAdvance = false;
   Object? _activeSendPipelineToken;
 
-  PracticePendingHint? _loadPendingHintSafely() {
+  PracticePendingHint? _loadPendingHintSafely({
+    required String sessionId,
+    required int aiCount,
+  }) {
     try {
-      return _pendingHintStore.load();
+      return _pendingHintStore.loadFor(
+        sessionId: sessionId,
+        aiCount: aiCount,
+      );
     } catch (_) {
       return null;
     }
   }
 
-  Future<void> _savePendingHintSafely(PracticePendingHint pending) async {
+  Future<bool> _savePendingHintSafely(PracticePendingHint pending) async {
     try {
       await _pendingHintStore.save(pending);
+      return true;
     } catch (_) {
-      // Pending persistence is a replay safety net; memory ownership remains.
+      return false;
     }
   }
 
-  Future<void> _clearPendingHintSafely() async {
+  Future<void> _clearPendingHintSafely(PracticePendingHint pending) async {
     try {
-      await _pendingHintStore.clear();
+      await _pendingHintStore.clearFor(
+        sessionId: pending.sessionId,
+        aiCount: pending.aiCount,
+        requestId: pending.requestId,
+      );
     } catch (_) {
       // A stale row is harmless because every read validates its fingerprint.
     }
   }
 
-  ({PracticePendingHint pending, Future<void> saved}) _loadOrCreatePendingHint({
+  ({PracticePendingHint pending, Future<bool> saved}) _loadOrCreatePendingHint({
     required String sessionId,
     required int aiCount,
   }) {
@@ -561,12 +724,28 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   }) {
     bool matches(PracticePendingHint pending) =>
         pending.sessionId == sessionId && pending.aiCount == aiCount;
+    bool alreadyDurable(PracticePendingHint pending) {
+      final latest = _latestSuccessfulHint;
+      return _latestSuccessfulHintIsDurable &&
+          latest?.aiCount == aiCount &&
+          (latest!.requestId == pending.requestId ||
+              latest.result.replies.any(
+                (reply) => reply.hintRequestId == pending.requestId,
+              ));
+    }
 
     final memoryPending = _pendingHintRequest;
-    final storedPending = _loadPendingHintSafely();
-    final requestId = memoryPending != null && matches(memoryPending)
+    final storedPending = _loadPendingHintSafely(
+      sessionId: sessionId,
+      aiCount: aiCount,
+    );
+    final requestId = memoryPending != null &&
+            matches(memoryPending) &&
+            !alreadyDurable(memoryPending)
         ? memoryPending.requestId
-        : storedPending != null && matches(storedPending)
+        : storedPending != null &&
+                matches(storedPending) &&
+                !alreadyDurable(storedPending)
             ? storedPending.requestId
             : const Uuid().v4();
     final pending = PracticePendingHint(
@@ -582,21 +761,19 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 必須活過 autoDispose 重建，server 才能 replay 不雙扣。
   /// 只在完成的 [completedId] 仍是當前 pending id 時才清：過期舊回應完成時
   /// pending 可能已被較新的 hint 覆寫，不得把新 id 連帶清掉（會失去 replay 保護）。
-  void _rotateHintRequestId(String completedId) {
-    if (_pendingHintRequest?.requestId == completedId) {
+  void _rotateHintRequestId(PracticePendingHint completed) {
+    if (_pendingHintRequest?.sessionId == completed.sessionId &&
+        _pendingHintRequest?.aiCount == completed.aiCount &&
+        _pendingHintRequest?.requestId == completed.requestId) {
       _pendingHintRequest = null;
     }
-    // store 是跨 controller 共用的：autoDispose 後舊 controller 的在途請求
-    // 可能晚到，這時 store 裡已是新 controller 的 id——只有 store 現值就是
-    // 完成中的 id 才清，絕不誤刪別人的 replay 保護。
-    final stored = _loadPendingHintSafely();
-    if (stored != null && stored.requestId == completedId) {
-      unawaited(_clearPendingHintSafely());
-    }
+    // Store 以 session＋turn 分槽。晚到 A 回應只會 identity-clear A，絕不
+    // 清掉 B；同一槽也以 requestId compare-and-delete 防舊完成誤刪新 id。
+    unawaited(_clearPendingHintSafely(completed));
   }
 
-  /// 換場（送出新訊息／續玩／換一位／還原場次）時的無條件清：在途扣費 id
-  /// 只對舊場有意義。
+  /// 換場只清 controller RAM。舊場的 durable pending 必須保留，因為 server
+  /// 可能已 claim；A → B → process kill → A 仍要用同一 id replay。
   void _clearPendingHintRequestId() {
     _pendingHintRequest = null;
     _hintPrefetchFlight = null;
@@ -606,8 +783,12 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     // provider/persistence Future is still unwinding. Identity-checked finally
     // blocks below keep that old operation from releasing the new owner.
     _activeSendPipelineToken = null;
+    // Session switches clear only controller RAM. The encrypted per-session
+    // context must survive A -> B -> A; explicit mode reset / Debrief success
+    // are the two lifecycle points that remove the stored context.
     _appliedHintTurns.clear();
-    unawaited(_clearPendingHintSafely());
+    _latestSuccessfulHint = null;
+    _latestSuccessfulHintIsDurable = false;
   }
 
   /// 翻牌成功或 4xx 明確拒絕 → rotate。網路／5xx 不走這裡（保留供重試
@@ -964,8 +1145,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     if (session.id == state.sessionId) return;
     _hintGeneration++; // 換場：在途 hint 全部作廢
     _debriefGeneration++; // 換場：在途 debrief 成功／失敗全部作廢
-    _clearPendingHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
+    _clearPendingHintRequestId(); // 換場只清 RAM；舊場 durable id 留供 replay
     state = _stateFromSession(session);
+    _restoreAppliedHintTurnsForCurrentSession();
     _notifyProfileUnlocked(state.girl?.profileId); // 圖鑑種子：還原場的對象
   }
 
@@ -987,7 +1169,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     if (girl == null) return; // catalog 解析不到：不碰 state
     _hintGeneration++; // 換場：在途 hint 全部作廢
     _debriefGeneration++; // 換場：在途 debrief 成功／失敗全部作廢
-    _clearPendingHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
+    _clearPendingHintRequestId(); // 換場只清 RAM；舊場 durable id 留供 replay
     final prior = state;
     final sessionId = const Uuid().v4();
     // 難度沿用目前已解析值（比照 drawNewPracticeGirl；未解析時回偏好預設）。
@@ -1079,7 +1261,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       final sessionId = const Uuid().v4();
       _hintGeneration++; // 換一位成功：在途 hint 對舊對象已無意義
       _debriefGeneration++; // 換一位成功：舊場 debrief 不得落到新對象
-      _clearPendingHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
+      _clearPendingHintRequestId(); // 換場只清 RAM；舊場 durable id 留供 replay
       // 難度沿用目前已解析值（換一位不重抽難度）；locked 首抽時為預設 normal。
       final difficulty = prior.difficulty.isNotEmpty
           ? prior.difficulty
@@ -1180,7 +1362,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     }
     _hintGeneration++; // 開新一輪：在途 hint 全部作廢
     _debriefGeneration++; // 開新一輪：舊輪 debrief 不得落到新 session
-    _clearPendingHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
+    _clearPendingHintRequestId(); // 換場只清 RAM；舊場 durable id 留供 replay
     state = PracticeChatState(
       sessionId: const Uuid().v4(),
       createdAt: DateTime.now(),
@@ -1218,6 +1400,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   Future<void> setPracticeLearningMode(PracticeLearningMode mode) async {
     if (!state.canChangeLearningMode || state.learningMode == mode) return;
     if (mode == PracticeLearningMode.game && !state.canUseGameMode) return;
+    await _clearAppliedHintTurnsForSession(state.sessionId);
     final assisted = mode.usesAssistedLearning;
     state = state.copyWith(
       learningMode: mode,
@@ -1230,6 +1413,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       lastTemperatureDelta: null,
       temperatureReason: null,
       isHintLoading: false,
+      hintFailed: false,
       hintReplies: const [],
       hintCoaching: null,
       hintUsedCount: 0,
@@ -1256,6 +1440,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     String text, {
     PracticeHintReplyType? appliedHintType,
     String? appliedHintText,
+    String? appliedHintRequestId,
+    PracticeHintDecision? appliedHintDecision,
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
@@ -1268,13 +1454,37 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     final priorState = state;
     final priorMessages = priorState.messages;
     final generationBeforeSend = _hintGeneration;
-    final appliedHintTurnCountBeforeSend = _appliedHintTurns.length;
+    final appliedHintTurnsBeforeSend =
+        List<PracticeAppliedHintTurnDto>.of(_appliedHintTurns);
+    final latestSuccessfulHintBeforeSend = _latestSuccessfulHint;
+    final latestSuccessfulHintWasDurable = _latestSuccessfulHintIsDurable;
     void restoreAppliedHintTurns() {
-      if (_appliedHintTurns.length > appliedHintTurnCountBeforeSend) {
-        _appliedHintTurns.removeRange(
-          appliedHintTurnCountBeforeSend,
-          _appliedHintTurns.length,
-        );
+      _appliedHintTurns
+        ..clear()
+        ..addAll(appliedHintTurnsBeforeSend);
+      _latestSuccessfulHint = latestSuccessfulHintBeforeSend;
+      _latestSuccessfulHintIsDurable = latestSuccessfulHintWasDurable;
+    }
+
+    var appliedHintStagingAttempted = false;
+    Future<void> restoreDurableAppliedHintsAfterFailedSend() async {
+      if (!appliedHintStagingAttempted) return;
+      try {
+        if (appliedHintTurnsBeforeSend.isEmpty &&
+            latestSuccessfulHintBeforeSend == null) {
+          await _appliedHintStore.clearForSession(priorState.sessionId);
+          return;
+        }
+        await _appliedHintStore.save(PracticeAppliedHintContext(
+          sessionId: priorState.sessionId,
+          turns: appliedHintTurnsBeforeSend
+              .map((hint) => hint.toJson())
+              .toList(growable: false),
+          latestHint: latestSuccessfulHintBeforeSend,
+        ));
+      } catch (_) {
+        // A stale provisional turn is ignored on restore unless its exact
+        // turn index and sent text both exist in the durable transcript.
       }
     }
 
@@ -1285,6 +1495,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
 
     final learningMode = priorState.learningMode;
     final assisted = learningMode.usesAssistedLearning;
+    final intentProfile = _profileDto();
     final temperatureScore = assisted
         ? state.temperatureScore ??
             initialPracticeTemperatureScore(state.difficulty)
@@ -1305,6 +1516,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       debriefFailed: false,
       debriefRetryable: true,
       restoreText: null,
+      hintFailed: false,
       hintReplies: const [],
       hintCoaching: null,
       hintLimitReached: false,
@@ -1317,34 +1529,6 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     _activeSendPipelineToken = sendPipelineToken;
 
     try {
-      final reply = await _api
-          .sendMessage(
-            sessionId: state.sessionId,
-            profile: _profileDto(),
-            turns: _turnDtosForPrompt(optimistic),
-            memorySummary: _memorySummaryForPrompt(optimistic),
-            continuationPartnerState: _lastPartnerStateForPrompt(priorMessages),
-            roundIndex: state.roundIndex,
-            visiblePracticeThreadId: state.visiblePracticeThreadId,
-            practiceMode: learningMode,
-            temperatureScore: temperatureScore,
-            familiarityScore: familiarityScore,
-            appliedHintType: assisted ? appliedHintType : null,
-            appliedHintText: assisted ? appliedHintText : null,
-          )
-          .timeout(_sendMessageTimeout);
-      if (!ownsPriorSendState()) return;
-      _hintGeneration++; // 成功送出新訊息：舊 transcript 的在途 hint 已過期
-      final completedTurnGeneration = _hintGeneration;
-      final withAi = [
-        ...optimistic,
-        PracticeMessage(
-          role: 'ai',
-          text: reply.reply,
-          mood: reply.partnerState?.mood,
-          innerThought: reply.partnerState?.innerThought,
-        ),
-      ];
       final normalizedAppliedHintText = appliedHintText?.trim();
       if (assisted &&
           appliedHintType != null &&
@@ -1356,6 +1540,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           originalHintText: normalizedAppliedHintText,
           sentText: trimmed,
           exact: normalizedAppliedHintText == trimmed,
+          hintRequestId: appliedHintRequestId,
+          decision: appliedHintDecision,
         ));
         if (_appliedHintTurns.length > kMaxPracticeHintsPerRound) {
           _appliedHintTurns.removeRange(
@@ -1363,7 +1549,45 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             _appliedHintTurns.length - kMaxPracticeHintsPerRound,
           );
         }
+        // This is the only new durability boundary introduced by Hint
+        // accountability, and it is deliberately before billable chat HTTP.
+        appliedHintStagingAttempted = true;
+        await _saveAppliedHintTurnsForCurrentSession();
+        if (!ownsPriorSendState()) {
+          await restoreDurableAppliedHintsAfterFailedSend();
+          return;
+        }
       }
+      final reply = await _api
+          .sendMessage(
+            sessionId: priorState.sessionId,
+            profile: intentProfile,
+            turns: _turnDtosForPrompt(optimistic),
+            memorySummary: _memorySummaryForPrompt(optimistic),
+            continuationPartnerState: _lastPartnerStateForPrompt(priorMessages),
+            roundIndex: priorState.roundIndex,
+            visiblePracticeThreadId: priorState.visiblePracticeThreadId,
+            practiceMode: learningMode,
+            temperatureScore: temperatureScore,
+            familiarityScore: familiarityScore,
+            appliedHintType: assisted ? appliedHintType : null,
+            appliedHintText: assisted ? appliedHintText : null,
+          )
+          .timeout(_sendMessageTimeout);
+      if (!ownsPriorSendState()) return;
+      _hintGeneration++; // 成功送出新訊息：舊 transcript 的在途 hint 已過期
+      _latestSuccessfulHint = null;
+      _latestSuccessfulHintIsDurable = false;
+      final completedTurnGeneration = _hintGeneration;
+      final withAi = [
+        ...optimistic,
+        PracticeMessage(
+          role: 'ai',
+          text: reply.reply,
+          mood: reply.partnerState?.mood,
+          innerThought: reply.partnerState?.innerThought,
+        ),
+      ];
       final temperature = reply.temperature;
       final returnedFamiliarityScore =
           temperature?.familiarityScore ?? familiarityScore;
@@ -1401,6 +1625,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         if (ownsFailedTurn) {
           _hintGeneration = generationBeforeSend;
           restoreAppliedHintTurns();
+          await restoreDurableAppliedHintsAfterFailedSend();
         }
         if (hintPrefetchFlight != null) {
           _markHintPrefetchPersistFailed(hintPrefetchFlight);
@@ -1444,6 +1669,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     } on PracticeQuotaExceededException catch (e) {
       if (!ownsPriorSendState()) return;
       restoreAppliedHintTurns();
+      await restoreDurableAppliedHintsAfterFailedSend();
       state = priorState.copyWith(
         isSending: false,
         quotaExceeded: true,
@@ -1453,6 +1679,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     } on PracticeSessionCompleteException {
       if (!ownsPriorSendState()) return;
       restoreAppliedHintTurns();
+      await restoreDurableAppliedHintsAfterFailedSend();
       state = priorState.copyWith(
         isSending: false,
         sessionComplete: true,
@@ -1464,6 +1691,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       // （誤標會引導「續聊同一位」開新 billing session 多扣一則）、不鎖輸入。
       if (!ownsPriorSendState()) return;
       restoreAppliedHintTurns();
+      await restoreDurableAppliedHintsAfterFailedSend();
       state = priorState.copyWith(
         isSending: false,
         errorMessage: _practiceModeLockedMessage,
@@ -1472,6 +1700,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     } on PracticeUpgradeRequiredException {
       if (!ownsPriorSendState()) return;
       restoreAppliedHintTurns();
+      await restoreDurableAppliedHintsAfterFailedSend();
       state = priorState.copyWith(
         isSending: false,
         upgradeRequired: true,
@@ -1482,6 +1711,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       // 429＝server per-user 模型限流：顯示 server 稍等文案、不標 quota。
       if (!ownsPriorSendState()) return;
       restoreAppliedHintTurns();
+      await restoreDurableAppliedHintsAfterFailedSend();
       state = priorState.copyWith(
         isSending: false,
         errorMessage: e.status == 429 ? e.message : '生成失敗了，再試一次（這次不扣額度）。',
@@ -1491,6 +1721,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       // client 逾時：server 可能已完成並扣費，文案不得宣稱「這次不扣額度」。
       if (!ownsPriorSendState()) return;
       restoreAppliedHintTurns();
+      await restoreDurableAppliedHintsAfterFailedSend();
       state = priorState.copyWith(
         isSending: false,
         errorMessage: '回覆等太久了，請確認網路後再試一次。',
@@ -1499,6 +1730,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     } catch (_) {
       if (!ownsPriorSendState()) return;
       restoreAppliedHintTurns();
+      await restoreDurableAppliedHintsAfterFailedSend();
       state = priorState.copyWith(
         isSending: false,
         errorMessage: '生成失敗了，再試一次（這次不扣額度）。',
@@ -1529,11 +1761,13 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     final intentTurns = _turnDtosForPrompt(intentState.messages);
     final intentMemorySummary = _memorySummaryForPrompt(intentState.messages);
     final intentPartnerState = _lastPartnerStateForPrompt(intentState.messages);
+    final intentAppliedHintTurns = _serializedAppliedHintTurns();
     final flight = _hintPrefetchFlight?.pending.sessionId == intentSessionId
         ? _hintPrefetchFlight
         : null;
     state = state.copyWith(
       isHintLoading: true,
+      hintFailed: false,
       hintReplies: const [],
       hintCoaching: null,
       hintLimitReached: false,
@@ -1570,7 +1804,18 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       aiCount: intentAiCount,
     );
     final requestId = pendingWrite.pending.requestId;
-    unawaited(pendingWrite.saved);
+    // The exact replay id must be durable before any billable HTTP dispatch.
+    // A process kill after dispatch can then always retry the same ledger row.
+    final pendingPersisted = await pendingWrite.saved;
+    if (!pendingPersisted) {
+      if (_dropStaleHint(generation)) return;
+      state = state.copyWith(
+        isHintLoading: false,
+        hintFailed: true,
+        errorMessage: '提示準備失敗，請再試一次。',
+      );
+      return;
+    }
 
     // Dispatch is the consumption boundary for the controller-only cost gate.
     // The DB still decides whether this exact request settles or generates.
@@ -1594,65 +1839,78 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             practiceMode: intentState.learningMode,
           )
           .timeout(_hintRequestTimeout);
-      _rotateHintRequestId(requestId); // 成功 → rotate
+      final envelopePersisted = await _saveSuccessfulHintForIntent(
+        sessionId: intentSessionId,
+        aiCount: intentAiCount,
+        requestId: requestId,
+        result: result,
+        appliedTurns: intentAppliedHintTurns,
+      );
+      if (envelopePersisted) {
+        // The complete generated envelope is now durable. Only this boundary
+        // may retire the request id; on save failure retry must replay it.
+        _rotateHintRequestId(pendingWrite.pending);
+      }
       if (_dropStaleHint(generation)) {
-        // 過期成功回應：內容不填、不持久化進新場；額度是 server 事實照樣同步。
-        if (result.costDeducted > 0 &&
-            result.monthlyRemaining != null &&
-            result.dailyRemaining != null) {
-          _onUsageSynced?.call(
-            monthlyRemaining: result.monthlyRemaining!,
-            dailyRemaining: result.dailyRemaining!,
-          );
-        }
+        // 過期成功回應仍可落自己的 durable envelope，但不得覆寫目前場次
+        // 已同步的全域 usage；只有 current live response 能更新 remaining。
         return;
       }
+      _latestSuccessfulHint = PracticeSuccessfulHintSnapshot(
+        aiCount: intentAiCount,
+        result: result,
+        requestId: requestId,
+      );
+      _latestSuccessfulHintIsDurable = envelopePersisted;
       state = state.copyWith(
         isHintLoading: false,
+        hintFailed: false,
         hintReplies: result.replies,
         hintCoaching: result.coaching,
         hintUsedCount: result.hintUsedCount,
         hintLimitReached: result.hintUsedCount >= kMaxPracticeHintsPerRound,
       );
       await _persist();
-      if (result.costDeducted > 0 &&
-          result.monthlyRemaining != null &&
-          result.dailyRemaining != null) {
+      if (result.monthlyRemaining != null && result.dailyRemaining != null) {
         _onUsageSynced?.call(
           monthlyRemaining: result.monthlyRemaining!,
           dailyRemaining: result.dailyRemaining!,
         );
       }
     } on PracticeHintLimitException {
-      _rotateHintRequestId(requestId); // 4xx 明確拒絕 → rotate
+      _rotateHintRequestId(pendingWrite.pending); // 4xx 明確拒絕 → rotate
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
+        hintFailed: false,
         hintLimitReached: true,
         errorMessage: '這段練習的提示已用完，先試著用自己的話回覆看看。',
       );
     } on PracticeQuotaExceededException catch (e) {
-      _rotateHintRequestId(requestId); // 4xx 明確拒絕 → rotate
+      _rotateHintRequestId(pendingWrite.pending); // 4xx 明確拒絕 → rotate
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
+        hintFailed: false,
         quotaExceeded: true,
         errorMessage: e.message,
       );
     } on PracticeUpgradeRequiredException {
-      _rotateHintRequestId(requestId); // 4xx 明確拒絕 → rotate
+      _rotateHintRequestId(pendingWrite.pending); // 4xx 明確拒絕 → rotate
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
+        hintFailed: false,
         upgradeRequired: true,
         errorMessage: '這個提示會消耗訊息額度，升級後就能繼續使用。',
       );
     } on PracticeModeLockedException {
-      _rotateHintRequestId(requestId); // 4xx 明確拒絕 → rotate
+      _rotateHintRequestId(pendingWrite.pending); // 4xx 明確拒絕 → rotate
       if (_dropStaleHint(generation)) return;
       // 同 sendMessage 的 409 分流：提示切回原模式，不標 sessionComplete。
       state = state.copyWith(
         isHintLoading: false,
+        hintFailed: false,
         errorMessage: _practiceModeLockedMessage,
       );
     } on PracticeApiException catch (e) {
@@ -1666,6 +1924,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         _hintRequiresConversationAdvance = true;
         state = state.copyWith(
           isHintLoading: false,
+          hintFailed: false,
           errorMessage: _hintStaleConversationMessage,
         );
         return;
@@ -1676,6 +1935,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         if (_dropStaleHint(generation)) return;
         state = state.copyWith(
           isHintLoading: false,
+          hintFailed: true,
           errorMessage: e.message,
         );
         return;
@@ -1688,14 +1948,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         if (_dropStaleHint(generation)) return;
         state = state.copyWith(
           isHintLoading: false,
+          hintFailed: true,
           errorMessage: _hintApiErrorMessage(e.message),
         );
         return;
       }
-      _rotateHintRequestId(requestId); // 4xx 明確拒絕 → rotate
+      _rotateHintRequestId(pendingWrite.pending); // 4xx 明確拒絕 → rotate
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
+        hintFailed: false,
         errorMessage: _hintApiErrorMessage(e.message),
       );
     } on PracticeGenerationFailedException catch (e) {
@@ -1703,6 +1965,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
+        hintFailed: true,
         errorMessage: _hintGenerationErrorMessage(e.message),
       );
     } on TimeoutException {
@@ -1711,6 +1974,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
+        hintFailed: true,
         errorMessage: '提示等太久沒回應，請再試一次（不會重複扣額度）。',
       );
     } catch (_) {
@@ -1718,6 +1982,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
+        hintFailed: true,
         errorMessage: '提示暫時產生失敗，等一下再試。',
       );
     }
@@ -1734,7 +1999,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       requestState.messages,
     );
     final requestAppliedHints = requestState.isAssistedLearningMode
-        ? List<PracticeAppliedHintTurnDto>.unmodifiable(_appliedHintTurns)
+        ? _appliedHintTurnsForPrompt(requestState.messages)
         : const <PracticeAppliedHintTurnDto>[];
     final generation = ++_debriefGeneration;
     state = state.copyWith(
@@ -1776,6 +2041,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           requestId: debriefRequestId,
         );
       }
+      await _clearAppliedHintTurnsForSession(requestSessionId);
       final girl = completedState.girl;
       if (girl != null) {
         await _recordPracticeHistoryEvent(completedState, girl.profileId);
@@ -1883,6 +2149,31 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         .skip(start)
         .map((m) => PracticeTurnDto(role: m.role, text: m.text))
         .toList();
+  }
+
+  /// Applied-Hint indexes are stored against the full local transcript, while
+  /// the Edge request only carries the recent prompt window. Rebase them to
+  /// that window so server validation can bind each record to the exact sent
+  /// user turn; hints outside the window are intentionally omitted.
+  List<PracticeAppliedHintTurnDto> _appliedHintTurnsForPrompt(
+    List<PracticeMessage> messages,
+  ) {
+    final start = messages.length > kPracticePromptRecentTurns
+        ? messages.length - kPracticePromptRecentTurns
+        : 0;
+    return _appliedHintTurns
+        .where((hint) =>
+            hint.turnIndex >= start && hint.turnIndex < messages.length)
+        .map((hint) => PracticeAppliedHintTurnDto(
+              turnIndex: hint.turnIndex - start,
+              type: hint.type,
+              originalHintText: hint.originalHintText,
+              sentText: hint.sentText,
+              exact: hint.exact,
+              hintRequestId: hint.hintRequestId,
+              decision: hint.decision,
+            ))
+        .toList(growable: false);
   }
 
   PracticePartnerState? _lastPartnerStateForPrompt(
@@ -2147,6 +2438,13 @@ final practicePendingDebriefStoreProvider =
   return HivePracticePendingDebriefStore(() => StorageService.settingsBox);
 });
 
+/// Hint 套用後的結構化判局脈絡。與 pending debrief 相同，寫入既有加密
+/// settings box，但使用獨立 JSON key，避免新增 Hive adapter migration。
+final practiceAppliedHintStoreProvider =
+    Provider<PracticeAppliedHintStore>((ref) {
+  return HivePracticeAppliedHintStore(() => StorageService.settingsBox);
+});
+
 /// 在途翻牌 requestId 本地存取（JSON 存進加密 settings box）。讓翻牌失敗
 /// 未 rotate 的 requestId 活過 autoDispose 重建，server 才能 replay 已入帳
 /// 的抽卡結果不雙扣。
@@ -2206,6 +2504,7 @@ final practiceChatControllerProvider = StateNotifierProvider.autoDispose<
     draftStore: ref.read(practiceDrawDraftStoreProvider),
     pendingHintStore: ref.read(practicePendingHintStoreProvider),
     pendingDrawStore: ref.read(practicePendingDrawStoreProvider),
+    appliedHintStore: ref.read(practiceAppliedHintStoreProvider),
     initialSession: _latestOpenPracticeSession(repository.recentSessions()),
     onUsageSynced: ({required monthlyRemaining, required dailyRemaining}) {
       ref.read(subscriptionProvider.notifier).syncUsageFromServer(

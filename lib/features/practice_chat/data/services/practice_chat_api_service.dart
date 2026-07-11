@@ -24,6 +24,8 @@ class PracticeAppliedHintTurnDto {
   final String originalHintText;
   final String sentText;
   final bool exact;
+  final String? hintRequestId;
+  final PracticeHintDecision? decision;
 
   const PracticeAppliedHintTurnDto({
     required this.turnIndex,
@@ -31,9 +33,11 @@ class PracticeAppliedHintTurnDto {
     required this.originalHintText,
     required this.sentText,
     required this.exact,
+    this.hintRequestId,
+    this.decision,
   });
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson({bool includeDecision = true}) => {
         'turnIndex': turnIndex,
         'type': switch (type) {
           PracticeHintReplyType.warmUp => 'warm_up',
@@ -42,7 +46,54 @@ class PracticeAppliedHintTurnDto {
         'originalHintText': originalHintText,
         'sentText': sentText,
         'exact': exact,
+        if (hintRequestId != null && hintRequestId!.trim().isNotEmpty)
+          'hintRequestId': hintRequestId!.trim(),
+        if (includeDecision && decision != null && !decision!.isEmpty)
+          'decision': decision!.toJson(),
       };
+
+  /// Server accountability must resolve the authoritative decision from the
+  /// settled Hint ledger via [hintRequestId], never trust a client-supplied
+  /// decision object. The decision remains local-only for durable UI context.
+  Map<String, dynamic> toRequestJson() => toJson(includeDecision: false);
+
+  static PracticeAppliedHintTurnDto? fromJson(dynamic raw) {
+    if (raw is! Map) return null;
+    final turnIndex = raw['turnIndex'];
+    final originalHintText = raw['originalHintText'];
+    final sentText = raw['sentText'];
+    final exact = raw['exact'];
+    final type = switch (raw['type']) {
+      'warm_up' => PracticeHintReplyType.warmUp,
+      'steady' => PracticeHintReplyType.steady,
+      _ => null,
+    };
+    if (turnIndex is! num ||
+        turnIndex.toInt() < 0 ||
+        type == null ||
+        originalHintText is! String ||
+        originalHintText.trim().isEmpty ||
+        sentText is! String ||
+        sentText.trim().isEmpty ||
+        exact is! bool) {
+      return null;
+    }
+    return PracticeAppliedHintTurnDto(
+      turnIndex: turnIndex.toInt(),
+      type: type,
+      originalHintText: originalHintText.trim(),
+      sentText: sentText.trim(),
+      exact: exact,
+      hintRequestId: _nonEmptyString(raw['hintRequestId']),
+      decision: PracticeHintDecision.fromJson(raw['decision']),
+    );
+  }
+
+  static String? _nonEmptyString(dynamic raw) {
+    if (raw is! String) return null;
+    final trimmed = raw.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
 }
 
 /// 本場「對象＋難度」的請求 metadata。client 只送 allowlisted id（絕不送 prompt
@@ -335,7 +386,7 @@ class PracticeDrawUpgradeRequiredException implements Exception {
 class PracticeChatApiService {
   PracticeChatApiService({
     PracticeChatInvoker? invoker,
-    Duration debriefRequestTimeout = const Duration(seconds: 35),
+    Duration debriefRequestTimeout = const Duration(seconds: 50),
     String Function()? requestIdFactory,
     PracticePendingDebriefStore? pendingDebriefStore,
   })  : _invoke = _mapFunctionExceptions(invoker ?? _defaultInvoker),
@@ -349,14 +400,17 @@ class PracticeChatApiService {
   final String Function() _requestIdFactory;
   final PracticePendingDebriefStore _pendingDebriefStore;
 
-  PracticePendingDebrief? _pendingDebriefRequest;
+  final Map<String, PracticePendingDebrief> _pendingDebriefRequests = {};
 
   static String _newRequestId() => const Uuid().v4();
 
   static String _payloadDigest(Map<String, dynamic> intentBody) =>
       sha256.convert(utf8.encode(jsonEncode(intentBody))).toString();
 
-  Future<String> _requestIdForDebrief({
+  static String _debriefIntentKey(String sessionId, String payloadDigest) =>
+      '${sessionId.trim()}::$payloadDigest';
+
+  Future<PracticePendingDebrief> _requestIdForDebrief({
     required String sessionId,
     required String payloadDigest,
   }) async {
@@ -364,44 +418,43 @@ class PracticeChatApiService {
         pending.sessionId == sessionId &&
         pending.payloadDigest == payloadDigest;
 
-    final memoryPending = _pendingDebriefRequest;
-    if (memoryPending != null && matches(memoryPending)) {
-      return memoryPending.requestId;
-    }
-
-    final stored = _pendingDebriefStore.load();
-    final requestId = stored != null && matches(stored)
-        ? stored.requestId
-        : _requestIdFactory();
-    final pending = PracticePendingDebrief(
+    final intentKey = _debriefIntentKey(sessionId, payloadDigest);
+    final memoryPending = _pendingDebriefRequests[intentKey];
+    final stored = _pendingDebriefStore.loadFor(
       sessionId: sessionId,
       payloadDigest: payloadDigest,
-      requestId: requestId,
     );
-    _pendingDebriefRequest = pending;
-    // 在送出 request 前持久化，縮到最小的「server 已 claim、client 尚未存 id」窗口。
-    // store 自身 fail-open；box 不可用時仍會靠記憶體維持 process-lifetime 冪等。
+    final pending = memoryPending != null && matches(memoryPending)
+        ? memoryPending
+        : stored != null && matches(stored)
+            ? stored
+            : PracticePendingDebrief(
+                sessionId: sessionId,
+                payloadDigest: payloadDigest,
+                requestId: _requestIdFactory(),
+              );
+    _pendingDebriefRequests[intentKey] = pending;
+    // 每次計費 request 前都要確認同一個 id 已持久化。即使前次 save 失敗後
+    // 記憶體仍有 pending，retry 也不得跳過這一步；save 失敗會直接阻止 HTTP。
     await _pendingDebriefStore.save(pending);
-    return requestId;
+    return pending;
   }
 
-  Future<void> _clearPendingDebrief({
-    required String sessionId,
-    required String requestId,
-  }) async {
-    if (_pendingDebriefRequest?.sessionId == sessionId &&
-        _pendingDebriefRequest?.requestId == requestId) {
-      _pendingDebriefRequest = null;
+  Future<void> _clearPendingDebrief(PracticePendingDebrief pending) async {
+    final intentKey = _debriefIntentKey(
+      pending.sessionId,
+      pending.payloadDigest,
+    );
+    if (_pendingDebriefRequests[intentKey]?.requestId == pending.requestId) {
+      _pendingDebriefRequests.remove(intentKey);
     }
-    // 晚到的舊 response 不得清掉較新的 pending request。
+    // Store 也以 session＋payload 分槽並 compare-and-delete。晚到 A response
+    // 絕不會清掉 B，或同一意圖後來換發的新 id。
     try {
-      final stored = _pendingDebriefStore.load();
-      if (stored?.sessionId == sessionId && stored?.requestId == requestId) {
-        await _pendingDebriefStore.clear();
-      }
+      await _pendingDebriefStore.clearFor(pending);
     } catch (_) {
-      // Persistence cleanup is fail-open. A stale key can only replay the same
-      // completed response and is overwritten by the next distinct intent.
+      // Persistence cleanup is fail-open. A stale key only replays the same
+      // completed response for its own session/payload.
     }
   }
 
@@ -411,8 +464,24 @@ class PracticeChatApiService {
   Future<void> confirmDebriefPersisted({
     required String sessionId,
     required String requestId,
-  }) =>
-      _clearPendingDebrief(sessionId: sessionId, requestId: requestId);
+  }) async {
+    PracticePendingDebrief? matching;
+    for (final pending in _pendingDebriefRequests.values) {
+      if (pending.sessionId == sessionId && pending.requestId == requestId) {
+        matching = pending;
+        break;
+      }
+    }
+    final latest = matching == null ? _pendingDebriefStore.load() : null;
+    if (matching == null &&
+        latest?.sessionId == sessionId &&
+        latest?.requestId == requestId) {
+      matching = latest;
+    }
+    if (matching != null) {
+      await _clearPendingDebrief(matching);
+    }
+  }
 
   /// functions_client 2.5.0 的 `invoke` 對非 2xx **一律 throw [FunctionException]**
   /// （status＋details＝decode 後的 body），不會把狀態碼帶回 [FunctionResponse]。
@@ -527,7 +596,10 @@ class PracticeChatApiService {
       practiceMode: practiceMode,
       prefetch: false,
     );
-    return _parseHintResult(data);
+    return _parseHintResult(
+      data,
+      hintRequestId: requestId?.trim(),
+    );
   }
 
   /// Pre-generates a Hint snapshot without exposing its content to the client.
@@ -677,13 +749,15 @@ class PracticeChatApiService {
         'continuationPartnerState': continuationPartnerState.toJson(),
       if (practiceMode.usesAssistedLearning &&
           normalizedAppliedHintTurns.isNotEmpty)
-        'appliedHintTurns':
-            normalizedAppliedHintTurns.map((hint) => hint.toJson()).toList(),
+        'appliedHintTurns': normalizedAppliedHintTurns
+            .map((hint) => hint.toRequestJson())
+            .toList(),
     };
-    final requestId = await _requestIdForDebrief(
+    final pending = await _requestIdForDebrief(
       sessionId: sessionId,
       payloadDigest: _payloadDigest(durableIntentBody),
     );
+    final requestId = pending.requestId;
     final response = await _invoke(
       _functionName,
       body: {
@@ -699,12 +773,10 @@ class PracticeChatApiService {
         response.status < 500 &&
         response.status != 429 &&
         response.status != 425) {
-      await _clearPendingDebrief(
-        sessionId: sessionId,
-        requestId: requestId,
-      );
+      await _clearPendingDebrief(pending);
     }
     final data = _guardStatus(response);
+    _rejectCannedGeneration(data, surface: 'debrief');
     final card = data['card'];
     if (card is! Map) {
       throw PracticeGenerationFailedException('malformed_debrief');
@@ -826,7 +898,12 @@ class PracticeChatApiService {
     );
   }
 
-  PracticeHintResult _parseHintResult(Map<String, dynamic> data) {
+  PracticeHintResult _parseHintResult(
+    Map<String, dynamic> data, {
+    String? hintRequestId,
+  }) {
+    _rejectCannedGeneration(data, surface: 'hint');
+    final isLegacyPaidModel = _isLegacyPaidModelGeneration(data);
     final rawReplies = data['replies'];
     final coaching = data['coaching'];
     if (rawReplies is! List ||
@@ -836,7 +913,13 @@ class PracticeChatApiService {
       throw PracticeGenerationFailedException('malformed_hint');
     }
 
-    final replies = rawReplies.map(_parseHintReply).toList();
+    final replies = rawReplies
+        .map((raw) => _parseHintReply(
+              raw,
+              hintRequestId: hintRequestId,
+              requireCompleteDecision: !isLegacyPaidModel,
+            ))
+        .toList();
     return PracticeHintResult(
       replies: replies,
       coaching: coaching.trim(),
@@ -847,7 +930,11 @@ class PracticeChatApiService {
     );
   }
 
-  PracticeHintReply _parseHintReply(dynamic raw) {
+  PracticeHintReply _parseHintReply(
+    dynamic raw, {
+    String? hintRequestId,
+    required bool requireCompleteDecision,
+  }) {
     if (raw is! Map) {
       throw PracticeGenerationFailedException('malformed_hint');
     }
@@ -861,11 +948,42 @@ class PracticeChatApiService {
         text.trim().isEmpty) {
       throw PracticeGenerationFailedException('malformed_hint');
     }
+    final decision = PracticeHintDecision.fromJson(raw['decision']);
+    if (requireCompleteDecision && decision?.isComplete != true) {
+      throw PracticeGenerationFailedException('malformed_hint_decision');
+    }
     return PracticeHintReply(
       type: type,
       label: label.trim(),
       text: text.trim(),
+      hintRequestId:
+          decision == null || hintRequestId == null || hintRequestId.isEmpty
+              ? null
+              : hintRequestId,
+      decision: decision,
     );
+  }
+
+  void _rejectCannedGeneration(
+    Map<String, dynamic> data, {
+    required String surface,
+  }) {
+    final source = data['generationSource'];
+    final normalizedSource =
+        source is String ? source.trim().toLowerCase() : '';
+    final explicitModel =
+        data['fallbackUsed'] == false && normalizedSource == 'model';
+    if (!explicitModel && !_isLegacyPaidModelGeneration(data)) {
+      throw PracticeGenerationFailedException(
+        'practice_${surface}_fallback_rejected',
+      );
+    }
+  }
+
+  bool _isLegacyPaidModelGeneration(Map<String, dynamic> data) {
+    return !data.containsKey('generationSource') &&
+        !data.containsKey('fallbackUsed') &&
+        data['costDeducted'] == 1;
   }
 
   PracticeHintReplyType? _parseHintReplyType(dynamic value) {

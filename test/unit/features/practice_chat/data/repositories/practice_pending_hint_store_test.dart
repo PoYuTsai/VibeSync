@@ -53,6 +53,42 @@ void main() {
       await store.clear();
       expect(store.load(), isNull);
     });
+
+    test('keeps independent session/turn slots and clears by identity',
+        () async {
+      final store = InMemoryPracticePendingHintStore();
+      await store.save(samplePending());
+      await store.save(const PracticePendingHint(
+        sessionId: 'sess-2',
+        aiCount: 1,
+        requestId: 'req-b',
+      ));
+
+      expect(
+        store.loadFor(sessionId: 'sess-1', aiCount: 3)?.requestId,
+        'req-abc',
+      );
+      expect(
+        store.loadFor(sessionId: 'sess-2', aiCount: 1)?.requestId,
+        'req-b',
+      );
+      await store.clearFor(
+        sessionId: 'sess-1',
+        aiCount: 3,
+        requestId: 'wrong-id',
+      );
+      expect(
+        store.loadFor(sessionId: 'sess-1', aiCount: 3)?.requestId,
+        'req-abc',
+      );
+      await store.clearFor(
+        sessionId: 'sess-1',
+        aiCount: 3,
+        requestId: 'req-abc',
+      );
+      expect(store.loadFor(sessionId: 'sess-1', aiCount: 3), isNull);
+      expect(store.loadFor(sessionId: 'sess-2', aiCount: 1), isNotNull);
+    });
   });
 
   group('HivePracticePendingHintStore', () {
@@ -79,6 +115,32 @@ void main() {
       expect(back.requestId, 'req-abc');
     });
 
+    test('A and B persist independently across session switches', () async {
+      final store = HivePracticePendingHintStore(() => box);
+      await store.save(samplePending());
+      await store.save(const PracticePendingHint(
+        sessionId: 'sess-2',
+        aiCount: 1,
+        requestId: 'req-b',
+      ));
+
+      expect(
+        store.loadFor(sessionId: 'sess-1', aiCount: 3)?.requestId,
+        'req-abc',
+      );
+      expect(
+        store.loadFor(sessionId: 'sess-2', aiCount: 1)?.requestId,
+        'req-b',
+      );
+      await store.clearFor(
+        sessionId: 'sess-1',
+        aiCount: 3,
+        requestId: 'req-abc',
+      );
+      expect(store.loadFor(sessionId: 'sess-1', aiCount: 3), isNull);
+      expect(store.loadFor(sessionId: 'sess-2', aiCount: 1), isNotNull);
+    });
+
     test('損毀資料 → load 回 null（不丟例外）', () async {
       await box.put('practice_pending_hint', 'not-json{');
       expect(HivePracticePendingHintStore(() => box).load(), isNull);
@@ -91,13 +153,16 @@ void main() {
       expect(store.load(), isNull);
     });
 
-    test('box getter 丟例外（box 沒開）→ load/save/clear 全 no-op 不丟例外',
+    test('box getter 丟例外時 load/clear fail-open，但 save 回報 durability failure',
         () async {
       final store = HivePracticePendingHintStore(
         () => throw HiveError('Box not found'),
       );
       expect(store.load(), isNull);
-      await store.save(samplePending());
+      await expectLater(
+        store.save(samplePending()),
+        throwsA(isA<HiveError>()),
+      );
       await store.clear();
     });
   });

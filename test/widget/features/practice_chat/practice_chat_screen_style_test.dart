@@ -1751,6 +1751,49 @@ void main() {
     expect(find.text(gameCoaching), findsWidgets);
   });
 
+  testWidgets('beginner/game Hint generation failure shows retry, no replies',
+      (tester) async {
+    for (final mode in [
+      PracticeLearningMode.beginner,
+      PracticeLearningMode.game,
+    ]) {
+      final seed = revealedPreMsgSeed().copyWith(
+        learningMode: mode,
+        temperatureScore: 42,
+        messages: const [
+          PracticeMessage(role: 'user', text: '嗨'),
+          PracticeMessage(role: 'ai', text: '你今天怎麼這麼早？'),
+        ],
+        aiReplyCount: 1,
+        hintFailed: true,
+        hintReplies: const [],
+        hintCoaching: null,
+        errorMessage: '提示暫時產生失敗，等一下再試。',
+      );
+      final controller = _SeededPracticeChatController(
+        seed: seed,
+        repository: repo,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            practiceChatControllerProvider.overrideWith((ref) => controller),
+          ],
+          child: const MaterialApp(home: PracticeChatScreen()),
+        ),
+      );
+
+      expect(find.text('再試一次'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('practice-hint-retry-message')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
   testWidgets('sending an exact applied hint marks the hint type for scoring',
       (tester) async {
     SharedPreferences.setMockInitialValues({
@@ -1903,6 +1946,122 @@ void main() {
     expect(api.lastAppliedHintType, PracticeHintReplyType.warmUp);
     expect(api.lastAppliedHintText, suggestedReply);
     expect(api.lastTurns.last.text, '$suggestedReply！');
+  });
+
+  testWidgets('session change clears input and cannot send old Hint lineage',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      AiDataSharingConsent.practiceConsentKey: true,
+    });
+    const suggestedReply = PracticeHintReply(
+      type: PracticeHintReplyType.warmUp,
+      label: '加分回覆',
+      text: '妳這個酒吧雷達是只對有故事的店有效嗎？',
+      hintRequestId: 'hint-session-a',
+      decision: PracticeHintDecision(
+        phase: '建立互動',
+        targetVariable: '投入感',
+        move: '用 callback 延伸她的品味',
+        rationale: '讓她補充自己的判斷，形成交換感',
+        inviteRoute: 'hold',
+      ),
+    );
+    final api = _MessageApi(
+      (_) async => const PracticeChatReply(
+        reply: 'B 的新回覆',
+        aiTurnCount: 2,
+        sessionComplete: false,
+        costDeducted: 0,
+      ),
+    );
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 42,
+      messages: const [
+        PracticeMessage(role: 'user', text: 'A 開場'),
+        PracticeMessage(role: 'ai', text: 'A 對方回覆'),
+      ],
+      aiReplyCount: 1,
+      hintReplies: const [
+        suggestedReply,
+        PracticeHintReply(
+          type: PracticeHintReplyType.steady,
+          label: '穩住回覆',
+          text: '我先記住這間，之後再跟妳交換口袋名單。',
+        ),
+      ],
+      hintCoaching: '延伸 A 的酒吧話題。',
+      hintUsedCount: 1,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+      api: api,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-reply-0')));
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      suggestedReply.text,
+    );
+
+    controller.resumeSession(PracticeSession(
+      id: 'widget-session-b',
+      createdAt: DateTime(2026, 7, 11, 22),
+      messages: const [
+        PracticeMessage(role: 'user', text: 'B 開場'),
+        PracticeMessage(role: 'ai', text: 'B 對方回覆'),
+      ],
+      aiReplyCount: 1,
+      profileId: seed.girl?.profileId,
+      practiceMode: 'beginner',
+      temperatureScore: 40,
+    ));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      isEmpty,
+    );
+    expect(controller.currentState.canSend, true);
+    await tester.enterText(find.byType(TextField), 'B 自己寫的新回覆');
+    await tester.pump();
+    expect(
+      tester
+          .widget<GestureDetector>(
+            find.byKey(const ValueKey('practice-send-button')),
+          )
+          .onTap,
+      isNotNull,
+    );
+    await tester.tap(find.byKey(const ValueKey('practice-send-button')));
+    await tester.pumpAndSettle();
+
+    expect(api.sendCalls, 1);
+    expect(api.lastAppliedHintType, isNull);
+    expect(api.lastAppliedHintText, isNull);
+    expect(api.lastTurns.last.text, 'B 自己寫的新回覆');
   });
 
   testWidgets('failed exact hint send keeps marker for retry', (tester) async {

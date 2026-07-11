@@ -36,11 +36,26 @@ class PracticeChatScreen extends ConsumerStatefulWidget {
   ConsumerState<PracticeChatScreen> createState() => _PracticeChatScreenState();
 }
 
+class _BoundAppliedHintDraft {
+  const _BoundAppliedHintDraft({
+    required this.reply,
+    required this.sessionId,
+    required this.aiReplyCount,
+  });
+
+  final PracticeHintReply reply;
+  final String sessionId;
+  final int aiReplyCount;
+
+  bool matches(PracticeChatState state) =>
+      sessionId == state.sessionId && aiReplyCount == state.aiReplyCount;
+}
+
 class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
   final _controller = TextEditingController();
   final _inputFocusNode = FocusNode();
   final _scrollController = ScrollController();
-  PracticeHintReply? _appliedHintDraft;
+  _BoundAppliedHintDraft? _appliedHintDraft;
 
   @override
   void initState() {
@@ -80,19 +95,29 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
       purposeText: AiDataSharingConsent.practicePurposeText,
     );
     if (!consented || !mounted) return;
-    final appliedHintDraft = _appliedHintDraft;
+    final currentState = ref.read(practiceChatControllerProvider);
+    final boundDraft = _appliedHintDraft;
+    final appliedHintDraft =
+        boundDraft?.matches(currentState) == true ? boundDraft!.reply : null;
     final appliedHintType = appliedHintDraft?.type;
     final appliedHintText = appliedHintDraft?.text.trim();
+    final appliedHintRequestId = appliedHintDraft?.hintRequestId;
+    final appliedHintDecision = appliedHintDraft?.decision;
     _controller.clear();
     await ref.read(practiceChatControllerProvider.notifier).sendMessage(
           text,
           appliedHintType: appliedHintType,
           appliedHintText: appliedHintText,
+          appliedHintRequestId: appliedHintRequestId,
+          appliedHintDecision: appliedHintDecision,
         );
     if (!mounted) return;
-    final restoredSameText =
-        ref.read(practiceChatControllerProvider).restoreText == text;
-    _appliedHintDraft = restoredSameText ? appliedHintDraft : null;
+    final nextState = ref.read(practiceChatControllerProvider);
+    final restoredSameText = nextState.restoreText == text;
+    _appliedHintDraft =
+        restoredSameText && boundDraft?.matches(nextState) == true
+            ? boundDraft
+            : null;
   }
 
   Future<void> _requestHint() async {
@@ -134,6 +159,14 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
 
     // 訊息變動或開始等待 → 捲到底。
     ref.listen(practiceChatControllerProvider, (prev, next) {
+      final turnChanged = prev != null &&
+          (prev.sessionId != next.sessionId ||
+              prev.aiReplyCount != next.aiReplyCount ||
+              prev.messages.length != next.messages.length);
+      if (turnChanged) {
+        _appliedHintDraft = null;
+        _controller.clear();
+      }
       if (prev?.messages.length != next.messages.length ||
           prev?.isSending != next.isSending ||
           prev?.debrief != next.debrief) {
@@ -250,7 +283,14 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                     .read(practiceChatControllerProvider.notifier)
                     .endPractice(),
                 onRequestHint: () => _requestHint(),
-                onHintApplied: (reply) => _appliedHintDraft = reply,
+                onHintApplied: (reply) {
+                  final current = ref.read(practiceChatControllerProvider);
+                  _appliedHintDraft = _BoundAppliedHintDraft(
+                    reply: reply,
+                    sessionId: current.sessionId,
+                    aiReplyCount: current.aiReplyCount,
+                  );
+                },
                 onFinish: () => context.pop(),
                 onContinueSamePartner: _continueSamePartner,
                 // 換人＝回圖鑑翻牌（top-level route，go 收斂 stack）。
@@ -1714,7 +1754,13 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.lightbulb_outline, size: 16),
-                label: Text(isHintLimitReached ? '本輪已用完' : hintActionLabel),
+                label: Text(
+                  isHintLimitReached
+                      ? '本輪已用完'
+                      : state.hintFailed
+                          ? '再試一次'
+                          : hintActionLabel,
+                ),
                 style: TextButton.styleFrom(
                   foregroundColor: AppColors.primaryLight,
                   padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1757,6 +1803,31 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
                 Expanded(
                   child: Text(
                     '本輪提示已用完，先用自己的話試著回覆。',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (state.hintFailed && !isHintLimitReached) ...[
+            const SizedBox(height: 4),
+            Row(
+              key: const ValueKey('practice-hint-retry-message'),
+              children: [
+                Icon(
+                  Icons.refresh,
+                  size: 14,
+                  color: AppColors.warning,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '$hintTitle 暫時沒有成功產生，請再試一次。',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: AppTypography.caption.copyWith(

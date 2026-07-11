@@ -16,6 +16,21 @@ PracticeChatApiService serviceReturning(int status, dynamic data) {
   );
 }
 
+class _FailOncePendingDebriefStore extends InMemoryPracticePendingDebriefStore {
+  bool failNextSave = true;
+  PracticePendingDebrief? lastAttempted;
+
+  @override
+  Future<void> save(PracticePendingDebrief pending) async {
+    lastAttempted = pending;
+    if (failNextSave) {
+      failNextSave = false;
+      throw StateError('pending debrief persistence unavailable');
+    }
+    await super.save(pending);
+  }
+}
+
 /// 攔截送出的 functionName 與 body，用來驗證有把 persona/difficulty 帶進請求。
 class _CapturedInvoke {
   String? functionName;
@@ -41,6 +56,8 @@ class _CapturedInvoke {
       return const PracticeInvokeResponse(
         status: 200,
         data: {
+          'generationSource': 'model',
+          'fallbackUsed': false,
           'card': {
             'summary': '有來有回，但可以少一點查戶口。',
             'strengths': ['有接到她的情緒'],
@@ -454,6 +471,8 @@ void main() {
     const okResponse = PracticeInvokeResponse(
       status: 200,
       data: {
+        'generationSource': 'model',
+        'fallbackUsed': false,
         'card': {
           'summary': 'solid',
           'strengths': ['hook'],
@@ -482,6 +501,43 @@ void main() {
       );
 
       expect(capturedBody?['requestId'], 'debrief-req-1');
+    });
+
+    test(
+        'rejects a canned/fallback debrief 200 as retryable generation failure',
+        () async {
+      for (final marker in <Map<String, dynamic>>[
+        {},
+        {'fallbackUsed': true},
+        {'generationSource': 'fallback'},
+        {'generationSource': 'CANNED'},
+      ]) {
+        final svc = serviceReturning(200, {
+          ...marker,
+          'card': {
+            'summary': 'generic',
+            'strengths': ['generic'],
+            'watchouts': ['generic'],
+            'suggestedLine': 'generic',
+            'vibe': 'neutral',
+          },
+        });
+
+        await expectLater(
+          svc.requestDebrief(
+            sessionId: 's',
+            profile: profile,
+            turns: turns,
+          ),
+          throwsA(
+            isA<PracticeGenerationFailedException>().having(
+              (e) => e.message,
+              'message',
+              'practice_debrief_fallback_rejected',
+            ),
+          ),
+        );
+      }
     });
 
     test('timeout is bounded and retry reuses the same requestId', () async {
@@ -516,6 +572,71 @@ void main() {
       );
 
       expect(requestIds, ['debrief-req-1', 'debrief-req-1']);
+      expect(generatedCount, 1);
+    });
+
+    test(
+        'persistence failure blocks dispatch; retry and rebuilt service reuse the same id',
+        () async {
+      final store = _FailOncePendingDebriefStore();
+      final dispatchedRequestIds = <String>[];
+      var generatedCount = 0;
+      var invokeCount = 0;
+      final first = PracticeChatApiService(
+        pendingDebriefStore: store,
+        requestIdFactory: () => 'debrief-durable-${++generatedCount}',
+        invoker: (fn, {required body}) async {
+          dispatchedRequestIds.add(body['requestId'] as String);
+          invokeCount++;
+          throw StateError('connection reset');
+        },
+      );
+
+      await expectLater(
+        first.requestDebrief(
+          sessionId: 's',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsStateError,
+      );
+
+      expect(invokeCount, 0, reason: 'save failure must prevent billable HTTP');
+      expect(store.lastAttempted?.requestId, 'debrief-durable-1');
+      expect(store.load(), isNull);
+
+      await expectLater(
+        first.requestDebrief(
+          sessionId: 's',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsStateError,
+      );
+
+      expect(invokeCount, 1);
+      expect(dispatchedRequestIds, ['debrief-durable-1']);
+      expect(store.load()?.requestId, 'debrief-durable-1');
+
+      final rebuilt = PracticeChatApiService(
+        pendingDebriefStore: store,
+        requestIdFactory: () => 'debrief-durable-${++generatedCount}',
+        invoker: (fn, {required body}) async {
+          dispatchedRequestIds.add(body['requestId'] as String);
+          return okResponse;
+        },
+      );
+
+      await rebuilt.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+      );
+
+      expect(
+        dispatchedRequestIds,
+        ['debrief-durable-1', 'debrief-durable-1'],
+      );
       expect(generatedCount, 1);
     });
 
@@ -587,6 +708,71 @@ void main() {
         requestId: replayed.idempotencyRequestId!,
       );
       expect(store.load(), isNull);
+    });
+
+    test(
+        'A in-flight then B cannot overwrite A; rebuilt A replays the same requestId',
+        () async {
+      final store = InMemoryPracticePendingDebriefStore();
+      final aGate = Completer<PracticeInvokeResponse>();
+      final calls = <String>[];
+      var generatedCount = 0;
+      var firstACall = true;
+      final first = PracticeChatApiService(
+        pendingDebriefStore: store,
+        requestIdFactory: () => 'debrief-multi-${++generatedCount}',
+        invoker: (fn, {required body}) {
+          final sessionId = body['sessionId'] as String;
+          final requestId = body['requestId'] as String;
+          calls.add('$sessionId:$requestId');
+          if (sessionId == 'session-a' && firstACall) {
+            firstACall = false;
+            return aGate.future;
+          }
+          return Future.value(okResponse);
+        },
+      );
+
+      final aFuture = first.requestDebrief(
+        sessionId: 'session-a',
+        profile: profile,
+        turns: turns,
+      );
+      await pumpEventQueue();
+      await first.requestDebrief(
+        sessionId: 'session-b',
+        profile: profile,
+        turns: turns,
+      );
+
+      final aRequestId = calls.first.split(':').last;
+
+      final rebuilt = PracticeChatApiService(
+        pendingDebriefStore: store,
+        requestIdFactory: () => 'debrief-multi-${++generatedCount}',
+        invoker: (fn, {required body}) async {
+          calls.add('${body['sessionId']}:${body['requestId']}');
+          return okResponse;
+        },
+      );
+      await rebuilt.requestDebrief(
+        sessionId: 'session-a',
+        profile: profile,
+        turns: turns,
+      );
+
+      expect(
+        calls,
+        [
+          'session-a:$aRequestId',
+          'session-b:debrief-multi-2',
+          'session-a:$aRequestId',
+        ],
+      );
+      expect(generatedCount, 2);
+
+      aGate.complete(okResponse);
+      await aFuture;
     });
 
     test('ambiguous network failure keeps requestId until a successful retry',
@@ -853,6 +1039,8 @@ void main() {
 
     test('requestDebrief parses optional gameBreakdown', () async {
       final svc = serviceReturning(200, {
+        'generationSource': 'model',
+        'fallbackUsed': false,
         'card': {
           'summary': 'solid',
           'strengths': ['hook'],
@@ -886,6 +1074,8 @@ void main() {
 
     test('requestDebrief drops gameBreakdown outside game mode', () async {
       final svc = serviceReturning(200, {
+        'generationSource': 'model',
+        'fallbackUsed': false,
         'card': {
           'summary': 'solid',
           'strengths': ['hook'],
@@ -915,6 +1105,8 @@ void main() {
 
     test('200 → 解析教練拆解卡', () async {
       final svc = serviceReturning(200, {
+        'generationSource': 'model',
+        'fallbackUsed': false,
         'card': {
           'summary': '整體有來有往',
           'strengths': ['開場自然'],
@@ -942,7 +1134,11 @@ void main() {
     });
 
     test('200 但缺 card → generation failed', () async {
-      final svc = serviceReturning(200, {'costDeducted': 0});
+      final svc = serviceReturning(200, {
+        'generationSource': 'model',
+        'fallbackUsed': false,
+        'costDeducted': 0,
+      });
       expect(
         () =>
             svc.requestDebrief(sessionId: 's', profile: profile, turns: turns),
@@ -1294,16 +1490,32 @@ void main() {
 
   group('requestHint', () {
     Map<String, dynamic> okHintBody() => {
+          'fallbackUsed': false,
+          'generationSource': 'model',
           'replies': [
             {
               'type': 'warm_up',
               'label': '升溫回覆',
               'text': '那我先查朧月。你如果只推一道，會推熟成魚還是酒單？',
+              'decision': {
+                'phase': '建立互動',
+                'targetVariable': '投入感',
+                'move': '用具體二選一讓她投入偏好',
+                'rationale': '問題容易接，又能取得她的品味素材',
+                'inviteRoute': 'hold',
+              },
             },
             {
               'type': 'steady',
               'label': '穩住回覆',
               'text': '好，我自己查。你剛剛提到酒單，看起來你蠻懂這類店。',
+              'decision': {
+                'phase': '建立互動',
+                'targetVariable': '投入感',
+                'move': '接住她的品味後自我揭露',
+                'rationale': '先形成有來有往，再打開邀約窗口',
+                'inviteRoute': 'soft_invite',
+              },
             },
           ],
           'coaching': '先接住資訊，再問一個具體但低壓力的問題。',
@@ -1406,6 +1618,7 @@ void main() {
 
       final result = await svc.requestHint(
         sessionId: 'session-1',
+        requestId: 'hint-ledger-1',
         profile: profile,
         turns: turns,
       );
@@ -1417,11 +1630,123 @@ void main() {
       expect(result.replies[1].type, PracticeHintReplyType.steady);
       expect(result.replies[1].label, '穩住回覆');
       expect(result.replies[1].text, contains('酒單'));
+      expect(result.replies[0].decision?.phase, '建立互動');
+      expect(result.replies[0].decision?.targetVariable, '投入感');
+      expect(result.replies[1].decision?.move, '接住她的品味後自我揭露');
+      expect(result.replies[1].decision?.inviteRoute, 'soft_invite');
+      expect(result.replies[0].hintRequestId, 'hint-ledger-1');
+      expect(result.replies[1].hintRequestId, 'hint-ledger-1');
       expect(result.coaching, '先接住資訊，再問一個具體但低壓力的問題。');
       expect(result.costDeducted, 1);
       expect(result.hintUsedCount, 2);
       expect(result.monthlyRemaining, 28);
       expect(result.dailyRemaining, 13);
+    });
+
+    test('parses and preserves distinct complete per-reply decisions',
+        () async {
+      final body = okHintBody();
+      final replies = (body['replies']! as List<dynamic>)
+          .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .toList();
+      replies.first['decision'] = {
+        'phase': '測試節奏',
+        'targetVariable': '情緒張力',
+        'move': '先用玩笑升溫',
+        'rationale': '她正在測節奏',
+        'inviteRoute': 'hold',
+      };
+      body['replies'] = replies;
+      final svc = serviceReturning(200, body);
+
+      final result = await svc.requestHint(
+        sessionId: 'session-1',
+        profile: profile,
+        turns: turns,
+      );
+
+      expect(result.replies.first.decision?.move, '先用玩笑升溫');
+      expect(result.replies.first.decision?.phase, '測試節奏');
+      expect(result.replies.last.decision?.phase, '建立互動');
+      final restored = PracticeHintResult.fromJson(result.toJson());
+      expect(restored?.replies.first.decision?.targetVariable, '情緒張力');
+      expect(restored?.replies.last.decision?.inviteRoute, 'soft_invite');
+    });
+
+    test('legacy paid model Hint remains replayable but carries no new lineage',
+        () async {
+      final body = okHintBody()
+        ..remove('generationSource')
+        ..remove('fallbackUsed');
+      for (final reply in body['replies']! as List<dynamic>) {
+        (reply as Map<String, dynamic>).remove('decision');
+      }
+      final svc = serviceReturning(200, body);
+
+      final result = await svc.requestHint(
+        sessionId: 'session-1',
+        requestId: 'legacy-paid-hint',
+        profile: profile,
+        turns: turns,
+      );
+
+      expect(result.replies, hasLength(2));
+      expect(result.replies.first.decision, isNull);
+      expect(result.replies.first.hintRequestId, isNull);
+    });
+
+    test('new model Hint requires a complete strategy decision per reply',
+        () async {
+      final body = okHintBody();
+      final replies = body['replies']! as List<dynamic>;
+      (replies.first as Map<String, dynamic>)['decision'] = {
+        'phase': '建立互動',
+        'move': '少了其他欄位',
+      };
+      final svc = serviceReturning(200, body);
+
+      await expectLater(
+        svc.requestHint(
+          sessionId: 'session-1',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(
+          isA<PracticeGenerationFailedException>().having(
+            (e) => e.message,
+            'message',
+            'malformed_hint_decision',
+          ),
+        ),
+      );
+    });
+
+    test('rejects a canned/fallback Hint 200 instead of rendering replies',
+        () async {
+      for (final marker in <Map<String, dynamic>>[
+        {'generationSource': null, 'fallbackUsed': null},
+        {'fallbackUsed': true},
+        {'generationSource': 'fallback'},
+        {'generationSource': 'canned'},
+      ]) {
+        final body = okHintBody()..addAll(marker);
+        final svc = serviceReturning(200, body);
+
+        await expectLater(
+          svc.requestHint(
+            sessionId: 'session-1',
+            profile: profile,
+            turns: turns,
+          ),
+          throwsA(
+            isA<PracticeGenerationFailedException>().having(
+              (e) => e.message,
+              'message',
+              'practice_hint_fallback_rejected',
+            ),
+          ),
+        );
+      }
     });
 
     test('429 maps to PracticeQuotaExceededException', () async {
@@ -1505,6 +1830,8 @@ void main() {
     test('malformed response maps to PracticeGenerationFailedException',
         () async {
       final svc = serviceReturning(200, {
+        'generationSource': 'model',
+        'fallbackUsed': false,
         'replies': [
           {'type': 'warmUp', 'label': '升溫回覆', 'text': '只有一則'},
         ],
@@ -1778,6 +2105,14 @@ void main() {
             originalHintText: '我對妳剛說的那個點有點好奇，哪個部分最吸引妳？',
             sentText: '我對妳剛說的那個點有點好奇，哪個部分最吸引妳？',
             exact: true,
+            hintRequestId: 'hint-ledger-1',
+            decision: PracticeHintDecision(
+              phase: '建立互動',
+              targetVariable: '投入感',
+              move: '接她的興趣再自我揭露',
+              rationale: '避免查戶口，建立交換感',
+              inviteRoute: 'hold',
+            ),
           ),
         ],
       );
@@ -1788,22 +2123,40 @@ void main() {
       expect(applied.first['turnIndex'], 2);
       expect(applied.first['type'], 'steady');
       expect(applied.first['exact'], true);
+      expect(applied.first['hintRequestId'], 'hint-ledger-1');
+      expect(applied.first, isNot(contains('decision')));
     });
 
     test('hint and debrief body include memorySummary when provided', () async {
       final captured = _CapturedInvoke();
       final svc = PracticeChatApiService(invoker: captured.call);
       captured.hintBody = {
+        'generationSource': 'model',
+        'fallbackUsed': false,
         'replies': [
           {
             'type': 'warm_up',
             'label': '升溫回覆',
             'text': '先接住她的狀態。',
+            'decision': {
+              'phase': '建立互動',
+              'targetVariable': '投入感',
+              'move': '承接她的狀態',
+              'rationale': '從她最新一句的情緒繼續，不另開空泛話題',
+              'inviteRoute': 'hold',
+            },
           },
           {
             'type': 'steady',
             'label': '穩住回覆',
             'text': '延續前面咖啡話題。',
+            'decision': {
+              'phase': '建立熟悉',
+              'targetVariable': '共同感',
+              'move': '用咖啡 callback 延續共同脈絡',
+              'rationale': '舊脈絡比抽象提問更像真實對話',
+              'inviteRoute': 'soft_invite',
+            },
           },
         ],
         'coaching': '用舊脈絡做自然承接',
