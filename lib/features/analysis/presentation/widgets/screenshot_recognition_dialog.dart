@@ -373,6 +373,7 @@ class _ScreenshotRecognitionDialogState
       _editableMessages.any((message) => message.isFromMe);
 
   void _markAllAsOtherPerson() {
+    _cancelSwipeTutorialForInteraction();
     setState(() {
       for (final message in _editableMessages) {
         message.isFromMe = false;

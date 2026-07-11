@@ -534,6 +534,33 @@ void main() {
       expect(prefs.getBool(ocrSwipeTutorialSeenKey), isNull);
     });
 
+    testWidgets('首次進場延遲內一鍵改為對方也會取消自動教學', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pump();
+      await tester.pump(); // flush SharedPreferences read
+      final markAllButton = find.text('全部都是對方說的');
+      await tester.ensureVisible(markAllButton);
+      await tester.pump();
+      await tester.tap(markAllButton);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+
+      expect(_tutorialShiftX(tester), 0);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool(ocrSwipeTutorialSeenKey), isNull);
+    });
+
     testWidgets('reduce-motion 不自動位移，問號改顯示靜態雙向圖例', (tester) async {
       SharedPreferences.setMockInitialValues({});
       await _useTallSurface(tester);
