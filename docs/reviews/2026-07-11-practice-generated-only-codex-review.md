@@ -38,4 +38,10 @@
 
 ## Deployment evidence
 
-PENDING — 只允許 Edge-first → 等舊 worker drain → 目標式 migration up；完成後補 revision、migration ledger、production smoke 與 TestFlight workflow run。
+DONE（2026-07-13，含 typed-facts-v1 後續批，Codex 雙審 APPROVED 見 docs/plans/2026-07-12-practice-typed-facts-handoff.md）：
+
+- 前置：origin/main（cd053be5 draw_handler 變更）已先 merge 進 branch（ab8cf849），Deno 841＋Flutter 536 綠後才部署，避免回滾 main 已上線的 practice-chat 變更。
+- Edge-first：workflow_dispatch `deploy-edge-function.yml` @ codex/no-canned-practice-ai，run 29206981634 success；practice-chat revision **83 → 84**。
+- Migration：`practice_hint_quality_schema_version` 經 MCP apply 入帳 **20260712200532**（檔名已對齊，68205cc4）；`20260711150000_practice_ai_no_canned_fallback` 先前已在帳本。
+- Smoke：兩 RPC（claim_legacy_practice_hint_replacement／invalidate_legacy_practice_ai_snapshot）存在且僅 service_role 可執行；無 JWT POST practice-chat 回 401 且命中 v84；edge logs 無 5xx。
+- 殘留：TestFlight build（client typed-facts 變更需隨下個 build 真機 dogfood），由 Eric 排program。
