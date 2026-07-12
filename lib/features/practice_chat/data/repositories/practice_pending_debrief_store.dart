@@ -259,16 +259,33 @@ class PracticeSuccessfulHintSnapshot {
   const PracticeSuccessfulHintSnapshot({
     required this.aiCount,
     required this.result,
+    required this.qualitySchemaVersion,
+    this.requestId,
+  }) : assert(qualitySchemaVersion == kPracticeHintQualitySchemaVersion);
+
+  const PracticeSuccessfulHintSnapshot._decoded({
+    required this.aiCount,
+    required this.result,
+    required this.qualitySchemaVersion,
     this.requestId,
   });
 
   final int aiCount;
   final PracticeHintResult result;
+  final String? qualitySchemaVersion;
   final String? requestId;
+
+  /// Old snapshots are still decoded so their request id can replay the same
+  /// server ledger row, but their visible content must never be restored.
+  bool get isRestorable =>
+      qualitySchemaVersion == kPracticeHintQualitySchemaVersion &&
+      result.hasCurrentQualitySchema;
 
   Map<String, dynamic> toJson() => {
         'aiCount': aiCount,
         'result': result.toJson(),
+        if (qualitySchemaVersion != null)
+          'qualitySchemaVersion': qualitySchemaVersion,
         if (requestId != null && requestId!.trim().isNotEmpty)
           'requestId': requestId!.trim(),
       };
@@ -278,13 +295,19 @@ class PracticeSuccessfulHintSnapshot {
     final aiCount = raw['aiCount'];
     final result = PracticeHintResult.fromJson(raw['result']);
     if (aiCount is! int || aiCount < 0 || result == null) return null;
+    final rawQualitySchemaVersion = raw['qualitySchemaVersion'];
+    final qualitySchemaVersion = rawQualitySchemaVersion is String &&
+            rawQualitySchemaVersion.trim().isNotEmpty
+        ? rawQualitySchemaVersion.trim()
+        : null;
     final rawRequestId = raw['requestId'];
     final requestId = rawRequestId is String && rawRequestId.trim().isNotEmpty
         ? rawRequestId.trim()
         : null;
-    return PracticeSuccessfulHintSnapshot(
+    return PracticeSuccessfulHintSnapshot._decoded(
       aiCount: aiCount,
       result: result,
+      qualitySchemaVersion: qualitySchemaVersion,
       requestId: requestId,
     );
   }

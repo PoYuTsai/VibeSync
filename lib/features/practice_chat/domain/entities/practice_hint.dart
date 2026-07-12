@@ -1,5 +1,11 @@
 enum PracticeHintReplyType { warmUp, steady }
 
+/// The only Hint payload version that is safe to persist and restore locally.
+const String kPracticeHintQualitySchemaVersion = 'typed-facts-v1';
+
+/// The only Debrief payload version that is safe to persist and restore.
+const String kPracticeDebriefQualitySchemaVersion = 'typed-facts-v1';
+
 /// The coaching decision behind a generated Hint.
 ///
 /// This is deliberately structured so the later Debrief can evaluate the
@@ -119,6 +125,7 @@ class PracticeHintResult {
   final int hintUsedCount;
   final int? monthlyRemaining;
   final int? dailyRemaining;
+  final String? qualitySchemaVersion;
 
   const PracticeHintResult({
     required this.replies,
@@ -127,7 +134,11 @@ class PracticeHintResult {
     required this.hintUsedCount,
     this.monthlyRemaining,
     this.dailyRemaining,
+    this.qualitySchemaVersion,
   });
+
+  bool get hasCurrentQualitySchema =>
+      qualitySchemaVersion == kPracticeHintQualitySchemaVersion;
 
   /// JSON representation for the encrypted local replay snapshot.
   ///
@@ -142,6 +153,8 @@ class PracticeHintResult {
         'hintUsedCount': hintUsedCount,
         if (monthlyRemaining != null) 'monthlyRemaining': monthlyRemaining,
         if (dailyRemaining != null) 'dailyRemaining': dailyRemaining,
+        if (qualitySchemaVersion != null)
+          'qualitySchemaVersion': qualitySchemaVersion,
       };
 
   static PracticeHintResult? fromJson(dynamic raw) {
@@ -150,6 +163,7 @@ class PracticeHintResult {
     final coaching = _nonEmptyString(raw['coaching']);
     final costDeducted = raw['costDeducted'];
     final hintUsedCount = raw['hintUsedCount'];
+    final qualitySchemaVersion = _nonEmptyString(raw['qualitySchemaVersion']);
     if (rawReplies is! List ||
         rawReplies.length != 2 ||
         coaching == null ||
@@ -167,7 +181,9 @@ class PracticeHintResult {
     final monthlyRemaining = _nonNegativeIntOrNull(raw['monthlyRemaining']);
     final dailyRemaining = _nonNegativeIntOrNull(raw['dailyRemaining']);
     if ((raw.containsKey('monthlyRemaining') && monthlyRemaining == null) ||
-        (raw.containsKey('dailyRemaining') && dailyRemaining == null)) {
+        (raw.containsKey('dailyRemaining') && dailyRemaining == null) ||
+        (raw.containsKey('qualitySchemaVersion') &&
+            qualitySchemaVersion == null)) {
       return null;
     }
     return PracticeHintResult(
@@ -177,6 +193,7 @@ class PracticeHintResult {
       hintUsedCount: hintUsedCount,
       monthlyRemaining: monthlyRemaining,
       dailyRemaining: dailyRemaining,
+      qualitySchemaVersion: qualitySchemaVersion,
     );
   }
 }

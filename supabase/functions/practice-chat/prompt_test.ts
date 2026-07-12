@@ -11,9 +11,10 @@ import {
   CHAT_SYSTEM_PROMPT,
   DEBRIEF_SYSTEM_PROMPT,
 } from "./prompt.ts";
+import { buildHintMessages } from "./hint.ts";
 import { temperatureBandInstruction } from "./temperature.ts";
 import type { PracticeTurn } from "./validate.ts";
-import { resolvePracticeProfile } from "./practice_persona.ts";
+import { GIRL_PROFILES, resolvePracticeProfile } from "./practice_persona.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
 import { initialPersistedGameState } from "./game_state.ts";
 
@@ -25,6 +26,16 @@ const dinnerScene: PracticeSceneContext = {
   promptLine: "妳剛跟朋友吃完飯，在回家的路上，回覆可以比白天放鬆一點。",
   replyTempo: "normal",
 };
+
+Deno.test("Debrief prompt forbids transferring partner facts into pasteable first-person lines", () => {
+  for (
+    const expected of ["suggestedLine", "nextFirstLine", "我", "使用者事實"]
+  ) {
+    assertEquals(DEBRIEF_SYSTEM_PROMPT.includes(expected), true, expected);
+  }
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("她的個資"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("沒有使用者證據"), true);
+});
 
 Deno.test("standard buildChatMessages does not include temperature score", () => {
   const sys =
@@ -435,6 +446,192 @@ Deno.test("Game Debrief prompt stays compact enough for its 12-second budget", (
   assert(gameLength <= beginnerLength + 2400);
 });
 
+Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", () => {
+  const srGirls = GIRL_PROFILES.filter((girl) => girl.rarity === "sr");
+  const maxMemorySummary = "記憶摘要保留完整句。".repeat(100);
+  assertEquals(srGirls.length, 20);
+  assertEquals(maxMemorySummary.length, 1000);
+  let maxHint = 0;
+  let maxDebrief = 0;
+  let maxDebriefWithHint = 0;
+  let maxHintCase = "";
+  let maxDebriefCase = "";
+  let maxDebriefWithHintCase = "";
+
+  for (const turnCount of [2, 20, 40]) {
+    const turns: PracticeTurn[] = Array.from(
+      { length: turnCount },
+      (_, index) => ({
+        role: index % 2 === 0 ? "user" : "ai",
+        text: `TURN_${index}_${"長對話內容".repeat(15)}`,
+      }),
+    );
+    const appliedHintTurns = Array.from(
+      { length: Math.min(5, Math.ceil(turnCount / 2)) },
+      (_, index) => {
+        const turnIndex = index * 2;
+        const originalHintText = `AUTHORITATIVE_HINT_${index}_` +
+          "原始提示是完整句。".repeat(6);
+        const sentText = `TURN_${turnIndex}_EDITED_SENT_${index}_` +
+          "使用者改寫後仍是完整句。".repeat(6);
+        turns[turnIndex] = { role: "user", text: sentText };
+        if (turnIndex + 1 < turns.length) {
+          turns[turnIndex + 1] = {
+            role: "ai",
+            text: `TURN_${turnIndex + 1}_PARTNER_REPLY_${index}_` +
+              "她針對改寫提示給了具體後續回覆。".repeat(5),
+          };
+        }
+        return {
+          turnIndex,
+          type: index % 2 === 0 ? "warm_up" as const : "steady" as const,
+          originalHintText,
+          sentText,
+          exact: false,
+          hintRequestId: `prompt-budget-hint-${index}`,
+          decision: {
+            phase: `PHASE_${index}_建立熟悉`,
+            targetVariable: `TARGET_${index}_投入感`,
+            move: `MOVE_${index}_build_connection`,
+            inviteRoute: `ROUTE_${index}_build`,
+            rationale:
+              `RATIONALE_${index}_先接住她的具體素材，再觀察她是否願意延伸。`,
+          },
+        };
+      },
+    );
+    for (const girl of srGirls) {
+      const profile = resolvePracticeProfile({
+        profileId: girl.profileId,
+        difficulty: "normal",
+      });
+      const hintLength = buildHintMessages({
+        turns,
+        profile,
+        practiceMode: "game",
+        temperatureScore: 30,
+        familiarityScore: 20,
+        partnerMood: "neutral",
+        memorySummary: maxMemorySummary,
+      }).reduce((total, message) => total + message.content.length, 0);
+      const debriefLength = buildDebriefMessages(turns, profile, {
+        practiceMode: "game",
+        temperatureScore: 30,
+        familiarityScore: 20,
+        partnerState: { mood: "neutral", innerThought: "" },
+        memorySummary: maxMemorySummary,
+      }).reduce((total, message) => total + message.content.length, 0);
+      const debriefWithHintMessages = buildDebriefMessages(turns, profile, {
+        practiceMode: "game",
+        temperatureScore: 30,
+        familiarityScore: 20,
+        partnerState: { mood: "neutral", innerThought: "" },
+        memorySummary: maxMemorySummary,
+        appliedHintTurns,
+      });
+      const debriefWithHintLength = debriefWithHintMessages.reduce(
+        (total, message) => total + message.content.length,
+        0,
+      );
+      const debriefWithHintUser = debriefWithHintMessages[1].content;
+      for (const hint of appliedHintTurns) {
+        assert(debriefWithHintUser.includes(hint.originalHintText));
+        assert(debriefWithHintUser.includes(hint.sentText));
+        assert(debriefWithHintUser.includes(hint.decision.phase));
+        assert(debriefWithHintUser.includes(hint.decision.targetVariable));
+        assert(debriefWithHintUser.includes(hint.decision.move));
+        assert(debriefWithHintUser.includes(hint.decision.inviteRoute));
+        assert(debriefWithHintUser.includes(hint.decision.rationale));
+        if (hint.turnIndex + 1 < turns.length) {
+          assert(
+            debriefWithHintUser.includes(
+              `TURN_${hint.turnIndex + 1}_PARTNER_REPLY_`,
+            ),
+          );
+        }
+      }
+      if (hintLength > maxHint) {
+        maxHint = hintLength;
+        maxHintCase = `${girl.profileId}/${turnCount}`;
+      }
+      if (debriefLength > maxDebrief) {
+        maxDebrief = debriefLength;
+        maxDebriefCase = `${girl.profileId}/${turnCount}`;
+      }
+      if (debriefWithHintLength > maxDebriefWithHint) {
+        maxDebriefWithHint = debriefWithHintLength;
+        maxDebriefWithHintCase = `${girl.profileId}/${turnCount}`;
+      }
+    }
+  }
+
+  const failures: string[] = [];
+  if (maxHint > 4800) {
+    failures.push(`Hint max ${maxHint} at ${maxHintCase}`);
+  }
+  if (maxDebrief > 4500) {
+    failures.push(`Debrief max ${maxDebrief} at ${maxDebriefCase}`);
+  }
+  // Applied-Hint Debrief intentionally carries the exact Hint plus its
+  // server-authored decision so the model cannot contradict its own advice.
+  // That high-integrity lineage gets a separate, still-bounded ceiling.
+  if (maxDebriefWithHint > 5700) {
+    failures.push(
+      `Debrief+Hint max ${maxDebriefWithHint} at ${maxDebriefWithHintCase}`,
+    );
+  }
+  assertEquals(failures, []);
+});
+
+Deno.test("prompt-only compaction preserves Debrief Hint lineage and recent context", () => {
+  const turns: PracticeTurn[] = Array.from({ length: 40 }, (_, index) => ({
+    role: index % 2 === 0 ? "user" : "ai",
+    text: `TURN_${index}_MARKER_${"內容".repeat(30)}`,
+  }));
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_004" });
+  const decision = {
+    phase: "P3_TEST",
+    targetVariable: "Investment",
+    move: "build_connection",
+    inviteRoute: "build",
+    rationale: "先接素材，再看她是否願意延伸。",
+  };
+  const appliedHintTurns = [{
+    turnIndex: 10,
+    type: "warm_up" as const,
+    originalHintText: turns[10].text,
+    sentText: turns[10].text,
+    exact: true,
+    hintRequestId: "prompt-budget-lineage",
+    decision,
+  }];
+
+  const hintUser = buildHintMessages({
+    turns,
+    profile,
+    practiceMode: "game",
+    temperatureScore: 30,
+    familiarityScore: 20,
+    partnerMood: "neutral",
+  })[1].content;
+  assert(hintUser.includes("earlierTranscriptSummary"));
+  assert(hintUser.includes("recentTranscript(last 10 turns)"));
+  assert(hintUser.includes("TURN_39_MARKER"));
+  assertEquals(hintUser.includes("TURN_5_MARKER"), false);
+
+  const debriefUser = buildDebriefMessages(turns, profile, {
+    practiceMode: "game",
+    temperatureScore: 30,
+    familiarityScore: 20,
+    appliedHintTurns,
+  })[1].content;
+  for (const marker of [0, 1, 10, 11, 28, 39]) {
+    assert(debriefUser.includes(`TURN_${marker}_MARKER`), `missing ${marker}`);
+  }
+  assert(debriefUser.includes("中段摘要"));
+  assertEquals(debriefUser.includes("TURN_5_MARKER"), false);
+});
+
 Deno.test("game debrief guidance asks Game to fill gameBreakdown fields", () => {
   const messages = buildDebriefMessages(
     [{ role: "user", text: "hi" }],
@@ -563,6 +760,12 @@ Deno.test("debrief prompt separates copied Hint execution from Hint quality", ()
   assertEquals(
     user.includes(
       '"hintAssessment":{"verdict":"preserved","revisedEvidenceQuote":null}',
+    ),
+    true,
+  );
+  assertEquals(
+    user.includes(
+      "exact＋preserved：不得批 Hint；watchouts／卡點只寫「下一步…」，或明寫「她／提示前／後來」",
     ),
     true,
   );

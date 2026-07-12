@@ -529,6 +529,104 @@ void main() {
     expect(find.text('還沒有練習紀錄'), findsOneWidget);
   });
 
+  for (final mode in <(String, String)>[
+    ('beginner', 'practice_girl_005'),
+    ('game', 'practice_girl_004'),
+  ]) {
+    testWidgets(
+        '${mode.$1} history hides an unversioned Debrief behind the retired notice',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final transcript = '舊版 ${mode.$1} 對話';
+      await repo.save(PracticeSession(
+        id: 'legacy-debrief-${mode.$1}',
+        createdAt: DateTime(2026, 7, 12, 13),
+        aiReplyCount: 1,
+        messages: [
+          PracticeMessage(role: 'user', text: transcript),
+          const PracticeMessage(role: 'ai', text: '舊版回覆'),
+        ],
+        profileId: mode.$2,
+        practiceMode: mode.$1,
+        debriefSummary: '不該顯示的舊版摘要 ${mode.$1}',
+        debriefSuggestedLine: '不該顯示的舊版下一句 ${mode.$1}',
+        debriefGameNextFirstLine: mode.$1 == 'game' ? '不該顯示的舊版 Game 下一句' : null,
+      ));
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            practiceSessionRepositoryProvider.overrideWithValue(repo),
+            practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
+          ],
+          child: const MaterialApp(home: PracticeChatScreen()),
+        ),
+      );
+
+      await tester.tap(find.byIcon(Icons.history));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(transcript));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('practice-retired-debrief-notice')),
+        findsOneWidget,
+      );
+      expect(find.text('舊版拆解已停用，請開始新一場取得新版。'), findsOneWidget);
+      expect(find.text('不該顯示的舊版摘要 ${mode.$1}'), findsNothing);
+      expect(find.text('不該顯示的舊版下一句 ${mode.$1}'), findsNothing);
+      expect(find.text('不該顯示的舊版 Game 下一句'), findsNothing);
+    });
+
+    testWidgets('${mode.$1} history renders a current-version Debrief normally',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final transcript = '新版 ${mode.$1} 對話';
+      await repo.save(PracticeSession(
+        id: 'current-debrief-${mode.$1}',
+        createdAt: DateTime(2026, 7, 12, 13, 1),
+        aiReplyCount: 1,
+        messages: [
+          PracticeMessage(role: 'user', text: transcript),
+          const PracticeMessage(role: 'ai', text: '新版回覆'),
+        ],
+        profileId: mode.$2,
+        practiceMode: mode.$1,
+        debriefSummary: '新版具體摘要 ${mode.$1}',
+        debriefSuggestedLine: '新版具體下一句 ${mode.$1}',
+        debriefGameNextFirstLine: mode.$1 == 'game' ? '新版 Game 具體下一句' : null,
+        debriefQualitySchemaVersion: kPracticeDebriefQualitySchemaVersion,
+      ));
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            practiceSessionRepositoryProvider.overrideWithValue(repo),
+            practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
+          ],
+          child: const MaterialApp(home: PracticeChatScreen()),
+        ),
+      );
+
+      await tester.tap(find.byIcon(Icons.history));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(transcript));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('practice-retired-debrief-notice')),
+        findsNothing,
+      );
+      expect(find.text('新版具體摘要 ${mode.$1}'), findsOneWidget);
+      expect(find.text('新版具體下一句 ${mode.$1}'), findsOneWidget);
+      if (mode.$1 == 'game') {
+        expect(find.textContaining('新版 Game 具體下一句'), findsOneWidget);
+      }
+    });
+  }
+
   testWidgets('deleting a continued conversation removes all its rounds',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
@@ -2241,6 +2339,7 @@ void main() {
         coaching: 'read the latest reply, then answer.',
         costDeducted: 0,
         hintUsedCount: 1,
+        qualitySchemaVersion: kPracticeHintQualitySchemaVersion,
       ),
     );
     final seed = revealedPreMsgSeed().copyWith(
@@ -2310,6 +2409,7 @@ void main() {
         coaching: 'she answered the latest turn; you can reply lightly.',
         costDeducted: 0,
         hintUsedCount: 1,
+        qualitySchemaVersion: kPracticeHintQualitySchemaVersion,
       ),
     );
     final seed = revealedPreMsgSeed().copyWith(
@@ -2386,6 +2486,7 @@ void main() {
         coaching: 'read the latest reply, then answer.',
         costDeducted: 0,
         hintUsedCount: 5,
+        qualitySchemaVersion: kPracticeHintQualitySchemaVersion,
       ),
     );
     final seed = revealedPreMsgSeed().copyWith(

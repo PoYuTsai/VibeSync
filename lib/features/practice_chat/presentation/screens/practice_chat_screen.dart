@@ -257,6 +257,10 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                                     .debrief!.gameBreakdown?.inviteDirection,
                               ),
                             ],
+                            if (state.hasRetiredDebrief) ...[
+                              const SizedBox(height: 8),
+                              const _RetiredDebriefNotice(),
+                            ],
                           ],
                         ),
                 ),
@@ -2472,7 +2476,7 @@ class _SessionReviewScreen extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
           children: [
             for (final m in session.messages) _Bubble(message: m),
-            if (session.hasDebrief) ...[
+            if (session.hasRestorableDebrief) ...[
               const SizedBox(height: 12),
               PracticeDebriefCard(
                 summary: session.debriefSummary ?? '',
@@ -2490,9 +2494,50 @@ class _SessionReviewScreen extends StatelessWidget {
                 gameBreakdownInviteDirection:
                     session.debriefGameInviteDirection,
               ),
+            ] else if (session.hasDebrief) ...[
+              const SizedBox(height: 12),
+              const _RetiredDebriefNotice(),
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _RetiredDebriefNotice extends StatelessWidget {
+  const _RetiredDebriefNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('practice-retired-debrief-notice'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.brandSurface2.withValues(alpha: 0.58),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.info_outline,
+            size: 19,
+            color: AppColors.warning,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              '舊版拆解已停用，請開始新一場取得新版。',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.onBackgroundPrimary,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -24,6 +24,49 @@ const GENERIC_META_SIGNATURES = [
   "再聽對方的",
 ];
 
+// These are semantic skeletons rather than exact canned sentences. Providers
+// often hide the same empty acknowledgement behind a topic slot, a discourse
+// particle (「啦／耶」), or a near-synonym (「也常這樣／跟妳一樣」).
+// A concrete continuation does not match because every skeleton is anchored at
+// the end of the visible line.
+const SLOT_PREFIX = ".*";
+const GENERIC_PARTICLE = "(?:啦|耶|啊|喔|哦|欸|齁)?";
+const GENERIC_ACK =
+  `(?:我)?(?:(?:懂|了解|明白|知道)(?:了)?${GENERIC_PARTICLE}|(?:有)?(?:收到|接到|接住)(?:了)?${GENERIC_PARTICLE}|(?:能理解|有共鳴|有感|get到(?:了)?)${GENERIC_PARTICLE})`;
+const GENERIC_SELF_LEAD =
+  "(?:(?:其實|大概|好像)?我|我(?:其實|大概|好像)?|(?:其實|大概|好像))?";
+const GENERIC_SELF_SIMILARITY =
+  `${GENERIC_SELF_LEAD}(?:也(?:是(?:這樣)?|有過|遇(?:過|到過)|常(?:常)?(?:會)?(?:這樣|遇到|碰到)|會(?:這樣)?|差不多|一樣)|跟[妳你她他](?:一樣|差不多))${GENERIC_PARTICLE}`;
+const GENERIC_RETURN_PROMPT =
+  "(?:再聊聊[妳你]的|(?:那)?[妳你](?:呢|勒|咧)|換[妳你](?:呢|勒|咧)?|[妳你]也(?:是|會)嗎)?";
+const GENERIC_HANDOFF =
+  "(?:換我(?:來)?(?:說說|講講|聊聊|說一點|講一點|分享|分享一下|(?:說|講|聊)我的)|我(?:來|也來)(?:說說|講講|聊聊|分享|分享一下|(?:說|講|聊)我的)|再(?:換|讓)我(?:說說|講講|聊聊|分享|分享一下)|(?:輪到|該)我(?:說|講|聊)(?:了)?|輪我(?:了|(?:說|講|聊)(?:了)?))";
+const GENERIC_HANDOFF_TAIL = "(?:再聽[妳你]的|再聊聊[妳你]的|[妳你]呢)?";
+
+const SLOT_FILLED_CANNED_PATTERNS = [
+  new RegExp(
+    `^${SLOT_PREFIX}${GENERIC_SELF_SIMILARITY}${GENERIC_RETURN_PROMPT}$`,
+    "u",
+  ),
+  new RegExp(
+    `^${SLOT_PREFIX}(?:這個點|這件事|這句|這段)(?:${GENERIC_ACK}|(?:我)?(?:先記住|記住了))(?:${GENERIC_RETURN_PROMPT}|${GENERIC_HANDOFF}${GENERIC_HANDOFF_TAIL})$`,
+    "u",
+  ),
+  new RegExp(
+    `^${SLOT_PREFIX}${GENERIC_ACK}${GENERIC_HANDOFF}${GENERIC_HANDOFF_TAIL}$`,
+    "u",
+  ),
+];
+
+const GENERIC_PRAISE_TAIL =
+  /(?:聽起來|感覺|看起來)?(?:很|蠻|滿|挺|有點)?(?:舒服|真實|有意思|有趣|有生活感|有感覺|特別|不錯|很好|很棒|很讚|可以)(?:耶|啦|啊|喔|哦|欸|齁)?$/u;
+const GENERIC_PRAISE_HANDOFF =
+  /(?:聽起來|感覺|看起來)?(?:很|蠻|滿|挺|有點)?(?:舒服|真實|有意思|有趣|有生活感|有感覺|特別|不錯|很好|很棒|很讚|可以)(?:[妳你])?(?:可以|願意|想|要不要)?(?:再|繼續)?(?:多)?(?:說|分享|聊|講)(?:一點|一些|一下|更多|下去)?(?:嗎|呢|嘛)?$/u;
+// A negated acknowledgement ("沒記住"／"不懂") is a substantive admission, not a
+// generic "收到／了解了" echo, so the tail must not fire when negated.
+const GENERIC_ECHO_TAIL =
+  /(?<![沒不未別])(?:收到|記住(?:了)?|聽到(?:了)?|懂(?:了)?|了解(?:了)?|明白(?:了)?|有接到(?:了)?|有接住(?:了)?)(?:耶|啦|啊|喔|哦|欸|齁)?$/u;
+
 const COMMON_EVIDENCE_FRAGMENTS = new Set([
   "妳好",
   "你好",
@@ -89,6 +132,25 @@ function compact(value: string): string {
     .replace(/[\s\p{P}\p{S}]/gu, "");
 }
 
+/**
+ * Detects a grounded topic slot wrapped in praise or acknowledgement but with
+ * no stance, scene, choice, or concrete next move. Grounding is deliberately
+ * checked elsewhere; repeating one transcript noun must not make this useful.
+ */
+export function isGenericPracticeComplimentOrEcho(value: string): boolean {
+  const normalized = compact(value);
+  return GENERIC_PRAISE_TAIL.test(normalized) ||
+    GENERIC_PRAISE_HANDOFF.test(normalized) ||
+    GENERIC_ECHO_TAIL.test(normalized);
+}
+
+function groundingCompact(value: string): string {
+  return compact(value)
+    .replace(/(?:發|送|寄|丟|轉)(?=給)/gu, "傳")
+    .replace(/那家店/gu, "那間店")
+    .replace(/這家店/gu, "這間店");
+}
+
 export function rejectKnownCannedPracticeText(
   value: string,
   errorCode: string,
@@ -111,6 +173,7 @@ export function rejectGenericPasteablePracticeText(
   const normalized = compact(value);
   if (
     normalized.length < 6 ||
+    SLOT_FILLED_CANNED_PATTERNS.some((pattern) => pattern.test(normalized)) ||
     GENERIC_META_SIGNATURES.some((signature) =>
       normalized === compact(signature) ||
       normalized === `${compact(signature)}。`
@@ -121,7 +184,7 @@ export function rejectGenericPasteablePracticeText(
 }
 
 function evidenceFragments(value: string): Set<string> {
-  const normalized = compact(value);
+  const normalized = groundingCompact(value);
   const result = new Set<string>();
   // Very short replies are common in real chats. Their whole token is the only
   // honest lexical anchor; treating them as "no evidence" would let generic
@@ -193,7 +256,7 @@ export function assertPracticeTextGroundedInTurns(opts: {
     }
     return;
   }
-  const visible = compact(opts.visibleText);
+  const visible = groundingCompact(opts.visibleText);
   if (![...fragments].some((fragment) => visible.includes(fragment))) {
     throw new Error(opts.errorCode);
   }

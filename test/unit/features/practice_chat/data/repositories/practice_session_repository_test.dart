@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_message.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 
@@ -80,14 +81,32 @@ void main() {
       debriefDateChance: 'high',
       debriefDateChanceReason: '她已經接住邀約鋪墊。',
       debriefNextInviteMove: '直接約週末咖啡。',
+      debriefQualitySchemaVersion: kPracticeDebriefQualitySchemaVersion,
     ));
     final loaded = repo.getById('d');
     expect(loaded!.hasDebrief, true);
+    expect(loaded.hasRestorableDebrief, true);
     expect(loaded.debriefSummary, '整體不錯');
     expect(loaded.debriefVibe, '暖');
     expect(loaded.debriefDateChance, 'high');
     expect(loaded.debriefDateChanceReason, '她已經接住邀約鋪墊。');
     expect(loaded.debriefNextInviteMove, '直接約週末咖啡。');
+    expect(loaded.debriefQualitySchemaVersion,
+        kPracticeDebriefQualitySchemaVersion);
+  });
+
+  test('舊拆解沒有品質版本時仍算完成，但不可 restore', () async {
+    await repo.save(PracticeSession(
+      id: 'legacy-debrief',
+      createdAt: DateTime(2026, 6, 24, 12, 1),
+      debriefSummary: '舊版拆解',
+      debriefSuggestedLine: '舊版下一句',
+    ));
+
+    final loaded = repo.getById('legacy-debrief')!;
+    expect(loaded.hasDebrief, true);
+    expect(loaded.hasRestorableDebrief, false);
+    expect(loaded.debriefQualitySchemaVersion, isNull);
   });
 
   test('save 後可持久化 persona 與 difficulty', () async {

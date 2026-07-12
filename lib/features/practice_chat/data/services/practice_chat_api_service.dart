@@ -202,6 +202,7 @@ class PracticeDebrief {
   final PracticeGameBreakdown? gameBreakdown;
   final int? monthlyRemaining;
   final int? dailyRemaining;
+  final String? qualitySchemaVersion;
 
   /// Transport idempotency key. The controller clears it only after the card
   /// is durably persisted; keeping it out of the UI/domain serialization
@@ -220,8 +221,12 @@ class PracticeDebrief {
     this.gameBreakdown,
     this.monthlyRemaining,
     this.dailyRemaining,
+    this.qualitySchemaVersion = kPracticeDebriefQualitySchemaVersion,
     this.idempotencyRequestId,
   });
+
+  bool get hasCurrentQualitySchema =>
+      qualitySchemaVersion == kPracticeDebriefQualitySchemaVersion;
 }
 
 /// 翻牌成功回應：server 選定的對象身份（display-only id）。
@@ -777,6 +782,13 @@ class PracticeChatApiService {
     }
     final data = _guardStatus(response);
     _rejectCannedGeneration(data, surface: 'debrief');
+    final qualitySchemaVersion =
+        _asNullableString(data['qualitySchemaVersion']);
+    if (qualitySchemaVersion != kPracticeDebriefQualitySchemaVersion) {
+      throw PracticeGenerationFailedException(
+        'practice_debrief_quality_schema_mismatch',
+      );
+    }
     final card = data['card'];
     if (card is! Map) {
       throw PracticeGenerationFailedException('malformed_debrief');
@@ -795,6 +807,7 @@ class PracticeChatApiService {
           : null,
       monthlyRemaining: _asInt(data['monthlyRemaining']),
       dailyRemaining: _asInt(data['dailyRemaining']),
+      qualitySchemaVersion: qualitySchemaVersion,
       idempotencyRequestId: requestId,
     );
     return debrief;
@@ -903,7 +916,13 @@ class PracticeChatApiService {
     String? hintRequestId,
   }) {
     _rejectCannedGeneration(data, surface: 'hint');
-    final isLegacyPaidModel = _isLegacyPaidModelGeneration(data);
+    final qualitySchemaVersion =
+        _asNullableString(data['qualitySchemaVersion']);
+    if (qualitySchemaVersion != kPracticeHintQualitySchemaVersion) {
+      throw PracticeGenerationFailedException(
+        'practice_hint_quality_schema_mismatch',
+      );
+    }
     final rawReplies = data['replies'];
     final coaching = data['coaching'];
     if (rawReplies is! List ||
@@ -917,7 +936,7 @@ class PracticeChatApiService {
         .map((raw) => _parseHintReply(
               raw,
               hintRequestId: hintRequestId,
-              requireCompleteDecision: !isLegacyPaidModel,
+              requireCompleteDecision: true,
             ))
         .toList();
     return PracticeHintResult(
@@ -927,6 +946,7 @@ class PracticeChatApiService {
       hintUsedCount: _asInt(data['hintUsedCount']) ?? 0,
       monthlyRemaining: _asInt(data['monthlyRemaining']),
       dailyRemaining: _asInt(data['dailyRemaining']),
+      qualitySchemaVersion: qualitySchemaVersion,
     );
   }
 
@@ -973,17 +993,11 @@ class PracticeChatApiService {
         source is String ? source.trim().toLowerCase() : '';
     final explicitModel =
         data['fallbackUsed'] == false && normalizedSource == 'model';
-    if (!explicitModel && !_isLegacyPaidModelGeneration(data)) {
+    if (!explicitModel) {
       throw PracticeGenerationFailedException(
         'practice_${surface}_fallback_rejected',
       );
     }
-  }
-
-  bool _isLegacyPaidModelGeneration(Map<String, dynamic> data) {
-    return !data.containsKey('generationSource') &&
-        !data.containsKey('fallbackUsed') &&
-        data['costDeducted'] == 1;
   }
 
   PracticeHintReplyType? _parseHintReplyType(dynamic value) {

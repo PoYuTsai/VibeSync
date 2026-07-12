@@ -18,6 +18,7 @@ import {
 import {
   buildHintPrefetchTelemetry,
   decideHintPrefetchReplay,
+  HINT_QUALITY_SCHEMA_VERSION,
   hintPrefetchAck,
   type HintPrefetchTelemetryOutcome,
   type HintPrefetchTelemetryReason,
@@ -49,12 +50,17 @@ import {
   type SessionLedger,
 } from "./quota_decision.ts";
 import { DEEPSEEK_MODEL, type DeepSeekArgs } from "./deepseek.ts";
-import { type DebriefCard, parseDebriefCard } from "./debrief_card.ts";
+import {
+  DEBRIEF_QUALITY_SCHEMA_VERSION,
+  type DebriefCard,
+  parseDebriefCard,
+} from "./debrief_card.ts";
 import {
   buildHintDecision,
   buildHintMessages,
   HINT_COACHING_SOFT_CHAR_LIMIT,
   HINT_REPLY_SOFT_CHAR_LIMIT,
+  hintTrustedFactualEvidence,
   parseHintResult,
 } from "./hint.ts";
 import {
@@ -509,6 +515,9 @@ function isHintFormatOrGuardError(e: unknown): boolean {
 
 function hintRetryReason(e: unknown): string {
   const message = getErrorMessage(e);
+  if (message.includes("unsupported_detail")) {
+    return "捏造證據未提供的店名、地點、時間、人物或聯絡資訊";
+  }
   if (message.includes("overlong")) {
     return "欄位太長，若直接裁尾會變成半句";
   }
@@ -561,6 +570,12 @@ function withHintRetryInstruction(
 
 function debriefRetryReason(error: unknown): string {
   const message = getErrorMessage(error);
+  if (message.includes("debrief_quality_invalid_unsupported_detail")) {
+    return "可貼回覆把她的個人事實錯寫成使用者自己的事實";
+  }
+  if (message.includes("debrief_hint_assessment")) {
+    return "已認定 Hint 策略延續，卻又把同一句批成禮貌收尾、沒給球或太保守";
+  }
   if (message.includes("overlong")) {
     return "欄位太長，若直接裁尾會變成半句";
   }
@@ -1578,12 +1593,13 @@ async function releaseDebriefGeneration(opts: {
   }
 }
 
-function isGeneratedModelEnvelope(
+function isCurrentGeneratedDebriefEnvelope(
   value: unknown,
 ): value is Record<string, unknown> {
   return isPlainObject(value) &&
     value.generationSource === "model" &&
-    value.fallbackUsed === false;
+    value.fallbackUsed === false &&
+    value.qualitySchemaVersion === DEBRIEF_QUALITY_SCHEMA_VERSION;
 }
 
 async function invalidateLegacyPracticeAiSnapshot(opts: {
@@ -2589,10 +2605,19 @@ export function createPracticeChatHandler(
           memorySummary: promptMemorySummary,
           gameState: ledgerGameState,
         });
+        const hintFactualEvidence = hintTrustedFactualEvidence({
+          profile: request.profile,
+          practiceMode: request.practiceMode,
+          sceneContext,
+          memorySummary: promptMemorySummary,
+        });
         const parseGeneratedHint = (rawHint: string) => {
           const generatedHint = parseHintResult(rawHint, {
             mode: request.practiceMode,
             turns: request.turns,
+            sharedFactualEvidence: hintFactualEvidence.shared,
+            partnerFactualEvidence: hintFactualEvidence.partner,
+            trustedFactClaims: hintFactualEvidence.claims,
             enforceGeneratedQuality: true,
           });
           return {
@@ -2839,6 +2864,7 @@ export function createPracticeChatHandler(
             : {}),
           generationSource: "model",
           fallbackUsed: false,
+          qualitySchemaVersion: HINT_QUALITY_SCHEMA_VERSION,
           failoverUsed: hintFailoverUsed,
           provider: hintProvider,
           model: hintModel,
@@ -2984,6 +3010,7 @@ export function createPracticeChatHandler(
         hintUsedCount,
         generationSource: "model",
         fallbackUsed: false,
+        qualitySchemaVersion: HINT_QUALITY_SCHEMA_VERSION,
         failoverUsed: hintFailoverUsed,
         provider: hintProvider,
         model: hintModel,
@@ -3023,7 +3050,7 @@ export function createPracticeChatHandler(
       // and cap gates. This remains true after another logical ID becomes the
       // session's last slot (A -> B -> A).
       if (exactDebriefRequest.result !== null) {
-        if (isGeneratedModelEnvelope(exactDebriefRequest.result)) {
+        if (isCurrentGeneratedDebriefEnvelope(exactDebriefRequest.result)) {
           logInfo("practice_chat_debrief_replayed", {
             user: summarizeUser(user.id),
             sessionId: request.sessionId,
@@ -3209,7 +3236,7 @@ export function createPracticeChatHandler(
           claimRow.replay === true && claimRow.in_flight === false &&
           isPlainObject(claimRow.stored_result)
         ) {
-          if (isGeneratedModelEnvelope(claimRow.stored_result)) {
+          if (isCurrentGeneratedDebriefEnvelope(claimRow.stored_result)) {
             logInfo("practice_chat_debrief_replayed", {
               user: summarizeUser(user.id),
               sessionId: request.sessionId,
@@ -3338,6 +3365,12 @@ export function createPracticeChatHandler(
               memorySummary: promptMemorySummary,
             },
         );
+        const debriefFactualEvidence = hintTrustedFactualEvidence({
+          profile: request.profile,
+          practiceMode: debriefPracticeMode,
+          sceneContext,
+          memorySummary: promptMemorySummary,
+        });
         if (apiKey) {
           for (
             let attempt = 1;
@@ -3362,6 +3395,9 @@ export function createPracticeChatHandler(
                 requireCompleteCard: true,
                 turns: request.turns,
                 appliedHintTurns: ledgerAppliedHintTurns,
+                sharedFactualEvidence: debriefFactualEvidence.shared,
+                partnerFactualEvidence: debriefFactualEvidence.partner,
+                trustedFactClaims: debriefFactualEvidence.claims,
                 enforceGeneratedQuality: true,
               });
               debriefLastFailureClass = null;
@@ -3439,6 +3475,9 @@ export function createPracticeChatHandler(
               requireCompleteCard: true,
               turns: request.turns,
               appliedHintTurns: ledgerAppliedHintTurns,
+              sharedFactualEvidence: debriefFactualEvidence.shared,
+              partnerFactualEvidence: debriefFactualEvidence.partner,
+              trustedFactClaims: debriefFactualEvidence.claims,
               enforceGeneratedQuality: true,
             });
             debriefProvider = "anthropic";
@@ -3550,6 +3589,7 @@ export function createPracticeChatHandler(
         costDeducted: 0,
         generationSource: "model",
         fallbackUsed: false,
+        qualitySchemaVersion: DEBRIEF_QUALITY_SCHEMA_VERSION,
         failoverUsed: debriefFailoverUsed,
         provider: debriefProvider,
         model: debriefModel,

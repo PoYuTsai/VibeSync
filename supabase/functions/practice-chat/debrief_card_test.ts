@@ -211,7 +211,7 @@ Deno.test("正式 debrief 契約拒絕非法 vibe/dateChance", () => {
 const generatedQualityCard = {
   summary: "你有照提示做，賴床這個梗也有接到。",
   strengths: ["有照提示做，也把賴床變成輕鬆畫面。"],
-  watchouts: ["下一步可以少一個問句，多留一點自己的生活感。"],
+  watchouts: ["下一步可以少一個賴床問句，多留一點自己的生活感。"],
   suggestedLine: "賴床冠軍先慢慢醒，下午清醒了再跟我報到。",
   vibe: "暖",
   dateChance: "medium",
@@ -239,6 +239,26 @@ const appliedExactHint = {
   },
 };
 
+const residenceTurns = [
+  { role: "user" as const, text: "妳平常住哪裡？" },
+  { role: "ai" as const, text: "我住台南，最常在中西區活動。" },
+];
+
+const groundedResidenceCard = {
+  summary: "她說自己住台南、常在中西區活動，你有接住這兩個生活圈資訊。",
+  strengths: ["你先問她住哪裡，讓她分享台南與中西區生活圈。"],
+  watchouts: ["下一步可以問她在中西區最常做什麼，別只重複地名。"],
+  suggestedLine: "原來妳常在中西區活動，休假最常去哪裡放空？",
+  vibe: "中性",
+  dateChance: "low",
+  dateChanceReason: "她分享台南與中西區生活圈，但還沒提見面或時間。",
+  nextInviteMove: "先問她在中西區最常去哪裡放空，等她回答再交換自己的生活圈。",
+  hintAssessment: {
+    verdict: "preserved",
+    revisedEvidenceQuote: null,
+  },
+};
+
 Deno.test("generated Debrief quality gate rejects the screenshot canned line", () => {
   assertThrows(
     () =>
@@ -258,6 +278,60 @@ Deno.test("generated Debrief quality gate rejects the screenshot canned line", (
       ),
     Error,
     "debrief_canned_visible_text",
+  );
+});
+
+Deno.test("generated Debrief rejects slot-filled canned next lines in Beginner and Game", () => {
+  const turns = [
+    { role: "user" as const, text: "還在賴床喔，那今天先慢慢開機。" },
+    { role: "ai" as const, text: "哈哈有慢慢開機了" },
+  ];
+  for (
+    const suggestedLine of [
+      "哈哈我有接到，換我說一點，再聽妳的。",
+      "慢慢開機這個點我接到了，換我分享一下。",
+      "哈哈收到，我也有過，再聊聊妳的。",
+      "慢慢開機我懂，我也是，妳呢？",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({ ...generatedQualityCard, suggestedLine }),
+          {
+            requireCompleteCard: true,
+            enforceGeneratedQuality: true,
+            turns,
+          },
+        ),
+      Error,
+      "debrief_quality_invalid_suggested_line",
+    );
+  }
+
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...generatedQualityCard,
+          suggestedLine: "哈哈有慢慢開機，我今天靠咖啡把自己叫醒。",
+          gameBreakdown: {
+            phaseReached: "賴床話題仍在建立熟悉",
+            missedVariable: "投入感",
+            failureState: "話題還能再延伸",
+            nextFirstLine: "哈哈收到，我也有過，再聊聊妳的。",
+            inviteDirection: "先延續賴床話題，再看她是否多投入",
+          },
+        }),
+        {
+          allowGameBreakdown: true,
+          requireCompleteCard: true,
+          enforceGeneratedQuality: true,
+          turns,
+        },
+      ),
+    Error,
+    "debrief_quality_invalid_next_first_line",
   );
 });
 
@@ -318,6 +392,578 @@ Deno.test("generated Debrief accepts grounded, accountable next-step coaching", 
   assertEquals(card.suggestedLine.includes("賴床"), true);
 });
 
+Deno.test("generated Beginner Debrief rejects partner facts rewritten into the pasteable line", () => {
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          summary: "她提到台南生活圈，互動仍在交換資訊。",
+          strengths: ["有接到她住台南這個具體資訊。"],
+          watchouts: ["下一步別亂補不存在的共同生活圈。"],
+          suggestedLine: "我也是台南人，妳最常去哪一區？",
+          vibe: "中性",
+          dateChance: "medium",
+          dateChanceReason: "她分享台南生活圈，但還沒提見面或時間。",
+          nextInviteMove: "先問她最常活動的台南區域。",
+        }),
+        {
+          requireCompleteCard: true,
+          enforceGeneratedQuality: true,
+          turns: [{ role: "ai", text: "我住台南，最常在中西區活動。" }],
+        },
+      ),
+    Error,
+    "debrief_quality_invalid_unsupported_detail",
+  );
+});
+
+Deno.test("generated Game Debrief rejects partner facts rewritten into nextFirstLine", () => {
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          summary: "她提到台南生活圈，這輪仍在交換資訊。",
+          strengths: ["你有接住她住台南的資訊，也保留追問生活圈的方向。"],
+          watchouts: ["別把她的台南生活圈冒充成自己的。"],
+          suggestedLine: "妳住台南喔，最常去哪一區？",
+          vibe: "中性",
+          dateChance: "medium",
+          dateChanceReason: "她分享台南生活圈，但還沒提見面或時間。",
+          nextInviteMove: "先延伸她常活動的台南區域。",
+          gameBreakdown: {
+            phaseReached: "台南生活資訊交換",
+            missedVariable: "還沒有形成雙方投入",
+            failureState: "共同生活圈證據不足",
+            nextFirstLine: "我的生活圈也在台南，這也太巧。",
+            inviteDirection: "先問她在台南常去哪裡",
+          },
+        }),
+        {
+          allowGameBreakdown: true,
+          requireCompleteCard: true,
+          enforceGeneratedQuality: true,
+          turns: [{ role: "ai", text: "我住台南，最常在中西區活動。" }],
+        },
+      ),
+    Error,
+    "debrief_quality_invalid_unsupported_detail",
+  );
+});
+
+Deno.test("generated Debrief permits partner callbacks, questions, and user-owned facts", () => {
+  const card = parseDebriefCard(
+    JSON.stringify({
+      summary: "雙方都提到台南，這個共同點有逐字稿證據。",
+      strengths: ["你有接住雙方都住台南，也保留追問生活圈的方向。"],
+      watchouts: ["她住台南；下一步問她在中西區最常去哪裡。"],
+      suggestedLine: "我也住台南，妳最常去哪一區？",
+      vibe: "暖",
+      dateChance: "medium",
+      dateChanceReason: "雙方都明確提過台南。",
+      nextInviteMove: "她住台南；下一步問她平常怎麼安排休息時間。",
+    }),
+    {
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      turns: [
+        { role: "user", text: "我住台南，平常在東區活動。" },
+        { role: "ai", text: "我也住台南，最常在中西區活動。" },
+      ],
+    },
+  );
+  assertEquals(card.suggestedLine.includes("我也住台南"), true);
+});
+
+Deno.test("preserved Debrief cannot indirectly blame an exact Hint in Beginner or Game fields", () => {
+  const turns = [
+    { role: "user" as const, text: "早安" },
+    { role: "ai" as const, text: "我還在賴床，腦袋沒開機" },
+    { role: "user" as const, text: appliedExactHint.sentText },
+    { role: "ai" as const, text: "哈哈有慢慢開機了" },
+  ];
+  const gameBreakdown = {
+    phaseReached: "賴床話題的熟悉建立",
+    missedVariable: "還在賴床喔這句沒有給她好接的球",
+    failureState: "照貼提示後停在禮貌收尾",
+    nextFirstLine: "慢慢開機也行，我先分享我的起床儀式",
+    inviteDirection: "先延續賴床話題，再看她是否多投入",
+  };
+  const cases: Array<{
+    card: Record<string, unknown>;
+    allowGameBreakdown?: boolean;
+  }> = [
+    {
+      card: {
+        ...generatedQualityCard,
+        watchouts: [
+          "只回『還在賴床喔，那今天先准妳慢慢開機』只是禮貌收尾，沒有給她好接的球。",
+        ],
+      },
+    },
+    {
+      card: {
+        ...generatedQualityCard,
+        summary: "你有照提示做，但這句只是禮貌收尾，沒有給球。",
+      },
+    },
+    {
+      card: {
+        ...generatedQualityCard,
+        summary: "你有照提示做，但只停在禮貌收尾。",
+      },
+    },
+    {
+      card: {
+        ...generatedQualityCard,
+        strengths: ["你有照提示做，但這個回應只是禮貌收尾。"],
+      },
+    },
+    {
+      card: {
+        ...generatedQualityCard,
+        watchouts: ["照提示做後，球沒有丟回去，話題像句點。"],
+      },
+    },
+    {
+      card: {
+        ...generatedQualityCard,
+        dateChanceReason: "你的回覆太客套，沒留接點。",
+      },
+    },
+    {
+      card: {
+        ...generatedQualityCard,
+        watchouts: ["沒有把話題往前帶，也沒有留下回應空間。"],
+      },
+    },
+    {
+      card: {
+        ...generatedQualityCard,
+        watchouts: ["回覆收得太乾淨，沒留鉤子，互動斷在這裡。"],
+      },
+    },
+    {
+      card: {
+        ...generatedQualityCard,
+        watchouts: ["這樣回像把門關上，沒有延伸。"],
+      },
+    },
+    {
+      card: {
+        ...generatedQualityCard,
+        nextInviteMove: "剛才那句太客套，下一步要多給她一顆球。",
+      },
+    },
+    {
+      card: { ...generatedQualityCard, gameBreakdown },
+      allowGameBreakdown: true,
+    },
+    {
+      card: {
+        ...generatedQualityCard,
+        gameBreakdown: {
+          ...gameBreakdown,
+          phaseReached: "賴床這輪只停在禮貌收尾",
+          missedVariable: "賴床話題的投入感",
+          failureState: "賴床話題還能再延伸",
+        },
+      },
+      allowGameBreakdown: true,
+    },
+  ];
+  for (const testCase of cases) {
+    assertThrows(
+      () =>
+        parseDebriefCard(JSON.stringify(testCase.card), {
+          allowGameBreakdown: testCase.allowGameBreakdown,
+          requireCompleteCard: true,
+          enforceGeneratedQuality: true,
+          turns,
+          appliedHintTurns: [appliedExactHint],
+        }),
+      Error,
+      "debrief_hint_assessment_revision_required",
+    );
+  }
+
+  for (
+    const summary of [
+      "你有照提示做，但這句讓對話停住了。",
+      "你有照提示做，但把話題聊死了。",
+      "你有照提示做，但沒有讓對話延續。",
+      "你有照提示做，但這句太乾。",
+      "你有照提示做，但收尾感太重。",
+      "你有照提示做，但對話沒有出口。",
+      "你有照提示做，但沒有留下下一球。",
+      "你有照提示做，但讓她很難接下去。",
+      "你有照提示做，但她收到的這句太乾。",
+      "你有照提示做，但她看到的回覆太客套。",
+      "你有照提示做。這句像客服。",
+      "你有照提示做，回覆太平淡。",
+      "你有照提示做。這句很無聊。",
+      "你有照提示做。回覆缺少生活感。",
+      "你有照提示做。這句不夠有趣。",
+      "你有照提示做，但對方看完覺得這句太客套。",
+      "你有照提示做，但她看完只覺得很難繼續。",
+      "你有照提示做，但她對你的回覆覺得太客套。",
+      "你有照提示做，但對方看到你的回覆後覺得太客套。",
+      "你有照提示做，但她覺得這句太客套。",
+      "你有照提示做，但她認為回覆太平淡。",
+      "你有照提示做，但對方感覺這個回答像客服。",
+      "你有照提示做，但她說這句很無聊。",
+      "她覺得這句太客套。",
+      "她認為回覆太平淡。",
+      "對方感覺這個回答像客服。",
+      "她說這句很無聊。",
+      "你有照提示做，唯獨這句少了鉤子。",
+      "你有照提示做；這句容易冷場。",
+      "你有照提示做；這句讓人接不下去。",
+      "你有照提示做；這句缺乏溫度。",
+      "你有照提示做；這句顯得敷衍。",
+      "你有照提示做；回覆略嫌平庸。",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({ ...generatedQualityCard, summary }),
+          {
+            requireCompleteCard: true,
+            enforceGeneratedQuality: true,
+            turns,
+            appliedHintTurns: [appliedExactHint],
+          },
+        ),
+      Error,
+      "debrief_hint_assessment_revision_required",
+    );
+  }
+
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...generatedQualityCard,
+          dateChanceReason: "這句讓她很難接下去。",
+        }),
+        {
+          requireCompleteCard: true,
+          enforceGeneratedQuality: true,
+          turns,
+          appliedHintTurns: [appliedExactHint],
+        },
+      ),
+    Error,
+    "debrief_hint_assessment_revision_required",
+  );
+
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...generatedQualityCard,
+          gameBreakdown: {
+            phaseReached: "賴床話題仍在建立熟悉",
+            missedVariable: "賴床話題的投入感",
+            failureState: "把賴床話題聊死",
+            nextFirstLine: "慢慢開機也行，我先分享我的起床儀式",
+            inviteDirection: "先延續賴床話題，再看她是否多投入",
+          },
+        }),
+        {
+          allowGameBreakdown: true,
+          requireCompleteCard: true,
+          enforceGeneratedQuality: true,
+          turns,
+          appliedHintTurns: [appliedExactHint],
+        },
+      ),
+    Error,
+    "debrief_hint_assessment_revision_required",
+  );
+
+  for (
+    const failureState of [
+      "賴床回覆像客服",
+      "太平淡",
+      "缺少生活感",
+      "很無聊",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({
+            ...generatedQualityCard,
+            gameBreakdown: {
+              phaseReached: "賴床話題仍在建立熟悉",
+              missedVariable: "賴床話題的投入感",
+              failureState,
+              nextFirstLine: "慢慢開機也行，我先分享我的起床儀式",
+              inviteDirection: "先延續賴床話題，再看她是否多投入",
+            },
+          }),
+          {
+            allowGameBreakdown: true,
+            requireCompleteCard: true,
+            enforceGeneratedQuality: true,
+            turns,
+            appliedHintTurns: [appliedExactHint],
+          },
+        ),
+      Error,
+      "debrief_hint_assessment_revision_required",
+    );
+  }
+
+  for (
+    const failureState of [
+      "賴床互動停在表面",
+      "賴床互動沒有往深處走",
+    ]
+  ) {
+    const objectiveOutcomeCard = parseDebriefCard(
+      JSON.stringify({
+        ...generatedQualityCard,
+        gameBreakdown: {
+          phaseReached: "賴床話題仍在建立熟悉",
+          missedVariable: "賴床話題的投入感",
+          failureState,
+          nextFirstLine: "慢慢開機也行，我先分享我的起床儀式",
+          inviteDirection: "先延續賴床話題，再看她是否多投入",
+        },
+      }),
+      {
+        allowGameBreakdown: true,
+        requireCompleteCard: true,
+        enforceGeneratedQuality: true,
+        turns,
+        appliedHintTurns: [appliedExactHint],
+      },
+    );
+    assertEquals(
+      objectiveOutcomeCard.gameBreakdown?.failureState,
+      failureState,
+    );
+  }
+});
+
+Deno.test("preserved Debrief may critique her response or a clearly identified non-Hint user turn", () => {
+  const baseTurns = [
+    { role: "user" as const, text: "早安" },
+    { role: "ai" as const, text: "我還在賴床，腦袋沒開機" },
+    { role: "user" as const, text: appliedExactHint.sentText },
+    { role: "ai" as const, text: "哈哈" },
+  ];
+  for (
+    const watchout of [
+      "提示本身沒問題；她這句只回哈哈，很難繼續。",
+      "這句有接住她賴床；但她只禮貌收尾，沒給球。",
+      "對方的回覆太客套，沒有留接點。",
+      "提示本身沒問題；她後來的回覆太客套，沒有留接點。",
+      "你的回覆有接住賴床，但她沒給球。",
+      "她最後沒給球，下一步可以先等她多投入。",
+      "她回得太客套，下一步先換一個好接的球。",
+      "照提示做後，她只回哈哈，沒給球。",
+      "你有照提示做，但她最後沒給球。",
+      "你有照提示做，但這次她只回哈哈，沒給球。",
+      "你有照提示做，但她看到你的回覆後只回哈哈。",
+      "你有照提示做，但對方對你的回覆只回哈哈。",
+      "照貼後，對方的回覆太客套。",
+      "目前她只回哈哈，還沒多投入。",
+      "這輪她只回哈哈，先觀察。",
+      "從她只回哈哈來看，還要再觀察。",
+      "回覆只有哈哈，先觀察她會不會多聊。",
+      "這句不像禮貌收尾，還有留球。",
+      "這句不只是禮貌收尾，還有留球。",
+      "這句不只停在禮貌收尾，還往前推了一步。",
+      "上一句沒給球，但這次有接住賴床。",
+      "前一則沒給球，但這次有接住賴床。",
+      "下一步你的回覆不要只問問題，補一點自己的生活感。",
+    ]
+  ) {
+    let card;
+    try {
+      card = parseDebriefCard(
+        JSON.stringify({ ...generatedQualityCard, watchouts: [watchout] }),
+        {
+          requireCompleteCard: true,
+          turns: baseTurns,
+          appliedHintTurns: [appliedExactHint],
+        },
+      );
+    } catch (error) {
+      throw new Error(`${watchout}: ${String(error)}`);
+    }
+    assertEquals(card.watchouts, [watchout]);
+  }
+
+  const laterUserText = "好啦我先睡";
+  const laterTurnCard = parseDebriefCard(
+    JSON.stringify({
+      ...generatedQualityCard,
+      watchouts: [
+        `你後來只回「${laterUserText}」，話題像句點；這不是原本 Hint 的問題。`,
+      ],
+    }),
+    {
+      requireCompleteCard: true,
+      turns: [
+        ...baseTurns,
+        { role: "user", text: laterUserText },
+        { role: "ai", text: "好喔晚安" },
+      ],
+      appliedHintTurns: [appliedExactHint],
+    },
+  );
+  assertEquals(laterTurnCard.watchouts[0].includes(laterUserText), true);
+
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...generatedQualityCard,
+          watchouts: [
+            "你後來照貼提示只停在禮貌收尾，沒有給球。",
+          ],
+        }),
+        {
+          requireCompleteCard: true,
+          turns: [
+            ...baseTurns,
+            { role: "user", text: laterUserText },
+            { role: "ai", text: "好喔晚安" },
+          ],
+          appliedHintTurns: [appliedExactHint],
+        },
+      ),
+    Error,
+    "debrief_hint_assessment_revision_required",
+  );
+
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...generatedQualityCard,
+          watchouts: [
+            "她只回哈哈，但你照提示那句太客套，沒有留接點。",
+          ],
+        }),
+        {
+          requireCompleteCard: true,
+          turns: baseTurns,
+          appliedHintTurns: [appliedExactHint],
+        },
+      ),
+    Error,
+    "debrief_hint_assessment_revision_required",
+  );
+
+  const partnerOutcomeCard = parseDebriefCard(
+    JSON.stringify({
+      ...generatedQualityCard,
+      summary: "你有照提示做，但她這輪只回哈哈。",
+      dateChanceReason: "聊天有舒適感，但邀約鋪墊不足。",
+      gameBreakdown: {
+        phaseReached: "賴床話題仍在建立熟悉",
+        missedVariable: "賴床話題的投入感",
+        failureState: "賴床話題沒有延伸",
+        nextFirstLine: "慢慢開機也行，我先分享我的起床儀式",
+        inviteDirection: "先延續賴床話題，再看她是否多投入",
+      },
+    }),
+    {
+      allowGameBreakdown: true,
+      requireCompleteCard: true,
+      turns: baseTurns,
+      appliedHintTurns: [appliedExactHint],
+    },
+  );
+  assertEquals(partnerOutcomeCard.summary.includes("她這輪只回哈哈"), true);
+
+  for (
+    const summary of [
+      "你有照提示做，但目前還不適合約。",
+      "你有照提示做，但還要再累積一輪。",
+      "你有照提示做，但這輪先穩住。",
+      "你有照提示做，但邀約窗口還沒開。",
+      "你有照提示做，但下一步可以補一點自己的感受。",
+    ]
+  ) {
+    const routeStateCard = parseDebriefCard(
+      JSON.stringify({ ...generatedQualityCard, summary }),
+      {
+        requireCompleteCard: true,
+        turns: baseTurns,
+        appliedHintTurns: [appliedExactHint],
+      },
+    );
+    assertEquals(routeStateCard.summary, summary);
+  }
+
+  const partnerReplyCard = parseDebriefCard(
+    JSON.stringify({
+      ...generatedQualityCard,
+      summary: "你有照提示做，但她的回覆太客套。",
+    }),
+    {
+      requireCompleteCard: true,
+      turns: baseTurns,
+      appliedHintTurns: [appliedExactHint],
+    },
+  );
+  assertEquals(partnerReplyCard.summary.includes("她的回覆太客套"), true);
+
+  for (
+    const dateChanceReason of [
+      "你的回覆讓互動自然。",
+      "你的回覆有接住她，邀約窗口尚未出現。",
+      "你的回覆沒有加壓，互動自然。",
+      "你的回覆不會太急，互動自然。",
+      "這句沒有太用力，互動自然。",
+      "這句不突兀，互動有承接。",
+      "這句不會太單薄，互動自然。",
+      "這句沒有缺少生活感，互動自然。",
+      "這句不是不夠具體，互動自然。",
+    ]
+  ) {
+    const dateCard = parseDebriefCard(
+      JSON.stringify({ ...generatedQualityCard, dateChanceReason }),
+      {
+        requireCompleteCard: true,
+        turns: baseTurns,
+        appliedHintTurns: [appliedExactHint],
+      },
+    );
+    assertEquals(dateCard.dateChanceReason, dateChanceReason);
+  }
+
+  for (
+    const nextInviteMove of [
+      "延續賴床梗，等她再投入一輪。",
+      "沿著賴床梗多聊一輪。",
+      "窗口還沒開，繼續累積投入。",
+      "繼續聊賴床梗，等她投入再約。",
+      "維持現在節奏，再聊一輪賴床。",
+      "把賴床梗拉長一輪，再看窗口。",
+      "多聊一輪賴床話題，再看她投入。",
+      "保留賴床梗，等她多回一點。",
+      "賴床梗再玩一輪，之後看窗口。",
+    ]
+  ) {
+    const nextMoveCard = parseDebriefCard(
+      JSON.stringify({ ...generatedQualityCard, nextInviteMove }),
+      {
+        requireCompleteCard: true,
+        turns: baseTurns,
+        appliedHintTurns: [appliedExactHint],
+      },
+    );
+    assertEquals(nextMoveCard.nextInviteMove, nextInviteMove);
+  }
+});
+
 Deno.test("generated Debrief rejects overlong fields instead of slicing visible half sentences", () => {
   const turns = [
     { role: "user" as const, text: "早安" },
@@ -365,7 +1011,8 @@ Deno.test("generated Debrief rejects overlong fields instead of slicing visible 
     );
   }
 
-  const legacyWatchout = "賴床".repeat(21);
+  const legacyWatchout =
+    "下一步延續賴床話題時，多放一點自己的生活畫面，再問她今天怎麼慢慢開機，讓她比較好接下一球。";
   const legacy = parseDebriefCard(
     JSON.stringify({
       ...generatedQualityCard,
@@ -439,7 +1086,7 @@ Deno.test("generated Debrief grounds each pasteable line instead of laundering i
       parseDebriefCard(
         JSON.stringify({
           ...generatedQualityCard,
-          suggestedLine: "哈哈懂，我也是，妳呢？",
+          suggestedLine: "我今天下班想整理書櫃，週末妳都怎麼放空？",
         }),
         {
           requireCompleteCard: true,
@@ -459,7 +1106,7 @@ Deno.test("generated Debrief grounds each pasteable line instead of laundering i
             phaseReached: "賴床話題的開場測試",
             missedVariable: "沒有把賴床延伸成生活畫面",
             failureState: "賴床梗停在表面",
-            nextFirstLine: "原來如此，我也有過，妳呢？",
+            nextFirstLine: "我最近在學做陶器，妳有碰過嗎？",
             inviteDirection: "先延伸賴床，不急著約",
           },
         }),
@@ -500,7 +1147,7 @@ Deno.test("Game Debrief cannot launder generic breakdown fields through one grou
         },
       ),
     Error,
-    "debrief_quality_invalid_game_breakdown_not_grounded",
+    "debrief_quality_invalid_field_not_grounded",
   );
 });
 
@@ -603,6 +1250,399 @@ Deno.test("Debrief cannot silently replace a build Hint with direct-invite advic
       ),
     Error,
     "debrief_hint_assessment_revision_required",
+  );
+});
+
+Deno.test("generated Debrief rejects generic Beginner and Game field roles", () => {
+  const turns = [
+    { role: "user" as const, text: "早安，妳平常住哪裡？" },
+    { role: "ai" as const, text: "我住台南，最常在中西區活動。" },
+  ];
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          summary: "整體互動自然，但還能更有生活感。",
+          strengths: ["語氣自然，聊天不會太用力。"],
+          watchouts: ["可以增加一點投入感。"],
+          suggestedLine: "妳住台南喔，最常去哪一區？",
+          vibe: "中性",
+          dateChance: "medium",
+          dateChanceReason: "目前聊天舒服，但還需要更多互動。",
+          nextInviteMove: "先累積熟悉感，再找自然窗口。",
+        }),
+        {
+          requireCompleteCard: true,
+          enforceGeneratedQuality: true,
+          turns,
+        },
+      ),
+    Error,
+    "debrief_quality_invalid_summary_role",
+  );
+
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...groundedResidenceCard,
+          gameBreakdown: {
+            phaseReached: "台南話題進行到互動階段",
+            missedVariable: "台南這題還沒推動投入感",
+            failureState: "台南話題目前有點卡住",
+            nextFirstLine: "妳說台南，最常去哪一區？",
+            inviteDirection: "先聊台南，再找自然窗口",
+          },
+        }),
+        {
+          allowGameBreakdown: true,
+          requireCompleteCard: true,
+          enforceGeneratedQuality: true,
+          turns,
+        },
+      ),
+    Error,
+    "debrief_quality_invalid_game_failure_role",
+  );
+});
+
+Deno.test("generated Debrief rejects grounded but generic text in every analytical role", () => {
+  const cases = [
+    {
+      card: {
+        ...groundedResidenceCard,
+        summary: "她說住台南，這個話題有接到。",
+      },
+      error: "debrief_quality_invalid_summary_substance",
+    },
+    {
+      card: { ...groundedResidenceCard, strengths: ["回覆有接到她住台南。"] },
+      error: "debrief_quality_invalid_strength_substance",
+    },
+    {
+      card: { ...groundedResidenceCard, watchouts: ["下一步可以再問台南。"] },
+      error: "debrief_quality_invalid_watchout_substance",
+    },
+    {
+      card: {
+        ...groundedResidenceCard,
+        suggestedLine: "台南聽起來很有生活感。",
+      },
+      error: "debrief_quality_invalid_suggested_line",
+    },
+    {
+      card: {
+        ...groundedResidenceCard,
+        dateChanceReason: "她願意說自己住台南。",
+      },
+      error: "debrief_quality_invalid_date_reason_substance",
+    },
+    {
+      card: { ...groundedResidenceCard, nextInviteMove: "接著聊她住台南。" },
+      error: "debrief_quality_invalid_next_move_substance",
+    },
+  ];
+  for (const testCase of cases) {
+    assertThrows(
+      () =>
+        parseDebriefCard(JSON.stringify(testCase.card), {
+          requireCompleteCard: true,
+          enforceGeneratedQuality: true,
+          turns: residenceTurns,
+        }),
+      Error,
+      testCase.error,
+    );
+  }
+});
+
+Deno.test("generated Debrief cannot launder residence grounding into a partner invitation", () => {
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...groundedResidenceCard,
+          summary: "她說住台南，也主動提了見面邀約。",
+          watchouts: ["下一步可以確認台南邀約時間。"],
+          suggestedLine: "台南邀約聽起來不錯，妳想約哪天？",
+          vibe: "暖",
+          dateChance: "high",
+          dateChanceReason: "她主動說想在台南見面。",
+          nextInviteMove: "接住她的台南邀約，問哪天。",
+        }),
+        {
+          requireCompleteCard: true,
+          enforceGeneratedQuality: true,
+          turns: residenceTurns,
+        },
+      ),
+    Error,
+    "debrief_quality_invalid_partner_initiative",
+  );
+
+  const invitationTurns = [
+    { role: "user" as const, text: "妳平常住哪裡？" },
+    {
+      role: "ai" as const,
+      text: "我住台南，週六有空，要不要一起喝咖啡？",
+    },
+  ];
+  const supported = parseDebriefCard(
+    JSON.stringify({
+      summary: "她說住台南，也主動提了週六一起喝咖啡的邀約。",
+      strengths: ["你有接住她週六喝咖啡的邀請，沒有急著加碼。"],
+      watchouts: ["下一步先確認她週六想約哪個時段，別替她決定地點。"],
+      suggestedLine: "週六咖啡可以，妳偏下午還是晚上？",
+      vibe: "暖",
+      dateChance: "high",
+      dateChanceReason: "她主動提出週六一起喝咖啡，已經有明確時間窗口。",
+      nextInviteMove: "先問她週六偏下午還是晚上，再一起確認咖啡地點。",
+      hintAssessment: {
+        verdict: "preserved",
+        revisedEvidenceQuote: null,
+      },
+    }),
+    {
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      turns: invitationTurns,
+    },
+  );
+  assertEquals(supported.dateChance, "high");
+});
+
+Deno.test("generated Debrief fact-checks every analytical field without rejecting partner-owned callbacks", () => {
+  const turns = [{ role: "ai" as const, text: "我住台南，最常在中西區活動。" }];
+  const base = {
+    summary: "她說自己住台南、常在中西區活動，你有接住這兩個生活圈資訊。",
+    strengths: ["你先問她住哪裡，讓她分享台南與中西區生活圈。"],
+    watchouts: ["她住台南；下一步別假設共同生活圈。"],
+    suggestedLine: "妳住台南喔，最常去哪一區？",
+    vibe: "中性",
+    dateChance: "medium",
+    dateChanceReason: "她分享台南與中西區，但還沒提見面或時間。",
+    nextInviteMove: "她住台南；下一步問她平常怎麼安排休息時間。",
+  };
+
+  const supported = parseDebriefCard(JSON.stringify(base), {
+    requireCompleteCard: true,
+    enforceGeneratedQuality: true,
+    turns,
+  });
+  assertEquals(supported.summary.includes("住台南"), true);
+
+  for (
+    const card of [
+      {
+        ...base,
+        summary: "她說自己住高雄、常在中西區活動，你有接住這兩個生活圈資訊。",
+      },
+      {
+        ...base,
+        strengths: ["你把她住高雄當成已知資訊，讓生活圈分析偏離逐字稿。"],
+      },
+      { ...base, watchouts: ["她住高雄；下一步別假設共同生活圈。"] },
+      {
+        ...base,
+        dateChanceReason: "她住高雄，但還沒提見面或時間。",
+      },
+      {
+        ...base,
+        nextInviteMove: "她住高雄；下一步問她平常怎麼安排休息時間。",
+      },
+    ]
+  ) {
+    assertThrows(
+      () =>
+        parseDebriefCard(JSON.stringify(card), {
+          requireCompleteCard: true,
+          enforceGeneratedQuality: true,
+          turns,
+        }),
+      Error,
+      "debrief_quality_invalid_unsupported_detail",
+    );
+  }
+});
+
+Deno.test("preserved build Hint blocks third-person invite coaching but revised evidence may upgrade", () => {
+  const baseTurns = [
+    { role: "user" as const, text: "早安" },
+    { role: "ai" as const, text: "我還在賴床，腦袋沒開機" },
+    { role: "user" as const, text: appliedExactHint.sentText },
+  ];
+  for (
+    const nextInviteMove of [
+      "現在可以約她去吃東西。",
+      "下一步就約她喝咖啡。",
+      "可以問她哪天有空。",
+      "可以把賴床話題收成一個見面邀約。",
+      "接下來可以去喝咖啡。",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({ ...generatedQualityCard, nextInviteMove }),
+          {
+            requireCompleteCard: true,
+            enforceGeneratedQuality: true,
+            turns: baseTurns,
+            appliedHintTurns: [appliedExactHint],
+          },
+        ),
+      Error,
+      "debrief_hint_assessment_revision_required",
+    );
+  }
+
+  const revisedTurns = [
+    ...baseTurns,
+    { role: "ai" as const, text: "我週六下午有空，可以喝咖啡。" },
+  ];
+  const revised = parseDebriefCard(
+    JSON.stringify({
+      ...generatedQualityCard,
+      summary: "你有照提示做；她後來說『我週六下午有空』。",
+      dateChanceReason: "她主動說『我週六下午有空』，窗口已出現。",
+      nextInviteMove: "她說『我週六下午有空』；下一步可以約她喝咖啡。",
+      hintAssessment: {
+        verdict: "revised",
+        revisedEvidenceQuote: "我週六下午有空",
+      },
+    }),
+    {
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      turns: revisedTurns,
+      appliedHintTurns: [appliedExactHint],
+    },
+  );
+  assertEquals(revised.nextInviteMove.includes("約她喝咖啡"), true);
+});
+
+Deno.test("preserved Hint route reads suggested lines, natural direct advice, and negated plans", () => {
+  const buildTurns = [
+    { role: "user" as const, text: "早安" },
+    { role: "ai" as const, text: "我還在賴床，腦袋沒開機" },
+    { role: "user" as const, text: appliedExactHint.sentText },
+  ];
+  for (
+    const nextInviteMove of [
+      "建議約她見面，沿用賴床這個梗。",
+      "不妨約她喝咖啡，再回呼賴床這個梗。",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({ ...generatedQualityCard, nextInviteMove }),
+          {
+            requireCompleteCard: true,
+            enforceGeneratedQuality: true,
+            turns: buildTurns,
+            appliedHintTurns: [appliedExactHint],
+          },
+        ),
+      Error,
+      "debrief_hint_assessment_revision_required",
+    );
+  }
+
+  const negatedMove = "下一步可以先不要問她哪天有空，先延續賴床這個梗。";
+  const negated = parseDebriefCard(
+    JSON.stringify({
+      ...generatedQualityCard,
+      nextInviteMove: negatedMove,
+    }),
+    {
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      turns: buildTurns,
+      appliedHintTurns: [appliedExactHint],
+    },
+  );
+  assertEquals(negated.nextInviteMove, negatedMove);
+
+  const directHint = {
+    ...appliedExactHint,
+    originalHintText: "賴床醒了，週六一起喝杯咖啡吧？",
+    sentText: "賴床醒了，週六一起喝杯咖啡吧？",
+    hintRequestId: "hint-quality-direct",
+    decision: {
+      phase: "邀約窗口已開",
+      targetVariable: "見面行動",
+      move: "direct_invite",
+      inviteRoute: "direct",
+      rationale: "她已經給出週六窗口，直接收成低壓咖啡邀約。",
+    },
+  };
+  const directTurns = [
+    { role: "user" as const, text: "早安" },
+    { role: "ai" as const, text: "我還在賴床，腦袋沒開機" },
+    { role: "user" as const, text: directHint.sentText },
+  ];
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...generatedQualityCard,
+          summary: "你有照提示送出週六咖啡邀約，但拆解又把邀約撤回。",
+          suggestedLine: "賴床先不約妳，繼續聊妳怎麼開機。",
+          nextInviteMove: "週六咖啡邀約已送出，先等她回覆。",
+        }),
+        {
+          requireCompleteCard: true,
+          enforceGeneratedQuality: true,
+          turns: directTurns,
+          appliedHintTurns: [directHint],
+        },
+      ),
+    Error,
+    "debrief_hint_assessment_revision_required",
+  );
+});
+
+Deno.test("preserved Hint accepts natural forward coaching openers", () => {
+  const turns = [
+    { role: "user" as const, text: "早安" },
+    { role: "ai" as const, text: "我還在賴床，腦袋沒開機" },
+    { role: "user" as const, text: appliedExactHint.sentText },
+  ];
+  for (
+    const watchout of [
+      "可以多放一點自己的賴床口味。",
+      "建議補一個自己的賴床習慣。",
+      "不妨沿著賴床梗多分享一句。",
+    ]
+  ) {
+    const card = parseDebriefCard(
+      JSON.stringify({ ...generatedQualityCard, watchouts: [watchout] }),
+      {
+        requireCompleteCard: true,
+        enforceGeneratedQuality: true,
+        turns,
+        appliedHintTurns: [appliedExactHint],
+      },
+    );
+    assertEquals(card.watchouts[0], watchout);
+  }
+
+  const naturalWindowState = parseDebriefCard(
+    JSON.stringify({
+      ...generatedQualityCard,
+      dateChanceReason: "賴床有來回，但邀約窗口還沒開。",
+    }),
+    {
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      turns,
+      appliedHintTurns: [appliedExactHint],
+    },
+  );
+  assertEquals(
+    naturalWindowState.dateChanceReason.includes("窗口還沒開"),
+    true,
   );
 });
 

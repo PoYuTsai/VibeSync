@@ -58,6 +58,7 @@ class _CapturedInvoke {
         data: {
           'generationSource': 'model',
           'fallbackUsed': false,
+          'qualitySchemaVersion': kPracticeDebriefQualitySchemaVersion,
           'card': {
             'summary': '有來有回，但可以少一點查戶口。',
             'strengths': ['有接到她的情緒'],
@@ -473,6 +474,7 @@ void main() {
       data: {
         'generationSource': 'model',
         'fallbackUsed': false,
+        'qualitySchemaVersion': kPracticeDebriefQualitySchemaVersion,
         'card': {
           'summary': 'solid',
           'strengths': ['hook'],
@@ -1041,6 +1043,7 @@ void main() {
       final svc = serviceReturning(200, {
         'generationSource': 'model',
         'fallbackUsed': false,
+        'qualitySchemaVersion': kPracticeDebriefQualitySchemaVersion,
         'card': {
           'summary': 'solid',
           'strengths': ['hook'],
@@ -1076,6 +1079,7 @@ void main() {
       final svc = serviceReturning(200, {
         'generationSource': 'model',
         'fallbackUsed': false,
+        'qualitySchemaVersion': kPracticeDebriefQualitySchemaVersion,
         'card': {
           'summary': 'solid',
           'strengths': ['hook'],
@@ -1107,6 +1111,7 @@ void main() {
       final svc = serviceReturning(200, {
         'generationSource': 'model',
         'fallbackUsed': false,
+        'qualitySchemaVersion': kPracticeDebriefQualitySchemaVersion,
         'card': {
           'summary': '整體有來有往',
           'strengths': ['開場自然'],
@@ -1131,12 +1136,48 @@ void main() {
       expect(d.dateChance, 'high');
       expect(d.dateChanceReason, '她已經主動接住話題。');
       expect(d.nextInviteMove, '用模糊邀約測窗口。');
+      expect(d.qualitySchemaVersion, kPracticeDebriefQualitySchemaVersion);
+    });
+
+    test('new model Debrief requires the current quality schema version',
+        () async {
+      for (final version in <String?>[null, 'string-heuristics-v0']) {
+        final body = <String, dynamic>{
+          'generationSource': 'model',
+          'fallbackUsed': false,
+          if (version != null) 'qualitySchemaVersion': version,
+          'card': {
+            'summary': 'solid',
+            'strengths': ['hook'],
+            'watchouts': ['too fast'],
+            'suggestedLine': 'next line',
+            'vibe': 'neutral',
+          },
+          'costDeducted': 0,
+        };
+
+        await expectLater(
+          serviceReturning(200, body).requestDebrief(
+            sessionId: 's',
+            profile: profile,
+            turns: turns,
+          ),
+          throwsA(
+            isA<PracticeGenerationFailedException>().having(
+              (e) => e.message,
+              'message',
+              'practice_debrief_quality_schema_mismatch',
+            ),
+          ),
+        );
+      }
     });
 
     test('200 但缺 card → generation failed', () async {
       final svc = serviceReturning(200, {
         'generationSource': 'model',
         'fallbackUsed': false,
+        'qualitySchemaVersion': kPracticeDebriefQualitySchemaVersion,
         'costDeducted': 0,
       });
       expect(
@@ -1492,6 +1533,7 @@ void main() {
     Map<String, dynamic> okHintBody() => {
           'fallbackUsed': false,
           'generationSource': 'model',
+          'qualitySchemaVersion': kPracticeHintQualitySchemaVersion,
           'replies': [
             {
               'type': 'warm_up',
@@ -1641,6 +1683,7 @@ void main() {
       expect(result.hintUsedCount, 2);
       expect(result.monthlyRemaining, 28);
       expect(result.dailyRemaining, 13);
+      expect(result.qualitySchemaVersion, kPracticeHintQualitySchemaVersion);
     });
 
     test('parses and preserves distinct complete per-reply decisions',
@@ -1671,28 +1714,92 @@ void main() {
       final restored = PracticeHintResult.fromJson(result.toJson());
       expect(restored?.replies.first.decision?.targetVariable, '情緒張力');
       expect(restored?.replies.last.decision?.inviteRoute, 'soft_invite');
+      expect(restored?.qualitySchemaVersion, kPracticeHintQualitySchemaVersion);
     });
 
-    test('legacy paid model Hint remains replayable but carries no new lineage',
+    test('legacy paid model Hint without a quality version is rejected',
         () async {
       final body = okHintBody()
         ..remove('generationSource')
-        ..remove('fallbackUsed');
+        ..remove('fallbackUsed')
+        ..remove('qualitySchemaVersion');
       for (final reply in body['replies']! as List<dynamic>) {
         (reply as Map<String, dynamic>).remove('decision');
       }
       final svc = serviceReturning(200, body);
 
-      final result = await svc.requestHint(
-        sessionId: 'session-1',
-        requestId: 'legacy-paid-hint',
-        profile: profile,
-        turns: turns,
+      await expectLater(
+        svc.requestHint(
+          sessionId: 'session-1',
+          requestId: 'legacy-paid-hint',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(
+          isA<PracticeGenerationFailedException>().having(
+            (e) => e.message,
+            'message',
+            'practice_hint_fallback_rejected',
+          ),
+        ),
       );
+    });
 
-      expect(result.replies, hasLength(2));
-      expect(result.replies.first.decision, isNull);
-      expect(result.replies.first.hintRequestId, isNull);
+    test(
+        'current-version paid Hint still requires explicit model provenance and decisions',
+        () async {
+      final body = okHintBody()
+        ..remove('generationSource')
+        ..remove('fallbackUsed')
+        ..['costDeducted'] = 1;
+      for (final reply in body['replies']! as List<dynamic>) {
+        (reply as Map<String, dynamic>).remove('decision');
+      }
+      final svc = serviceReturning(200, body);
+
+      await expectLater(
+        svc.requestHint(
+          sessionId: 'session-1',
+          requestId: 'forged-current-paid-hint',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(
+          isA<PracticeGenerationFailedException>().having(
+            (e) => e.message,
+            'message',
+            'practice_hint_fallback_rejected',
+          ),
+        ),
+      );
+    });
+
+    test('new model Hint requires the current quality schema version',
+        () async {
+      for (final version in <String?>[null, 'string-heuristics-v0']) {
+        final body = okHintBody();
+        if (version == null) {
+          body.remove('qualitySchemaVersion');
+        } else {
+          body['qualitySchemaVersion'] = version;
+        }
+        final svc = serviceReturning(200, body);
+
+        await expectLater(
+          svc.requestHint(
+            sessionId: 'session-1',
+            profile: profile,
+            turns: turns,
+          ),
+          throwsA(
+            isA<PracticeGenerationFailedException>().having(
+              (e) => e.message,
+              'message',
+              'practice_hint_quality_schema_mismatch',
+            ),
+          ),
+        );
+      }
     });
 
     test('new model Hint requires a complete strategy decision per reply',
@@ -2133,6 +2240,7 @@ void main() {
       captured.hintBody = {
         'generationSource': 'model',
         'fallbackUsed': false,
+        'qualitySchemaVersion': kPracticeHintQualitySchemaVersion,
         'replies': [
           {
             'type': 'warm_up',

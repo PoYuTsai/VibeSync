@@ -177,6 +177,7 @@ void main() {
     const latestHint = PracticeSuccessfulHintSnapshot(
       aiCount: 3,
       requestId: 'hint-req-2',
+      qualitySchemaVersion: kPracticeHintQualitySchemaVersion,
       result: PracticeHintResult(
         replies: [
           PracticeHintReply(
@@ -211,6 +212,7 @@ void main() {
         hintUsedCount: 2,
         monthlyRemaining: 18,
         dailyRemaining: 7,
+        qualitySchemaVersion: kPracticeHintQualitySchemaVersion,
       ),
     );
     final sample = PracticeAppliedHintContext(
@@ -252,6 +254,37 @@ void main() {
       );
       expect(back?.latestHint?.result.monthlyRemaining, 18);
       expect(back?.latestHint?.result.dailyRemaining, 7);
+      expect(back?.latestHint?.qualitySchemaVersion,
+          kPracticeHintQualitySchemaVersion);
+      expect(back?.latestHint?.isRestorable, true);
+    });
+
+    test('old Hint snapshots keep replay identity but are not restorable', () {
+      final legacyJson = sample.toJson();
+      final latest = legacyJson['latestHint']! as Map<String, dynamic>;
+      latest.remove('qualitySchemaVersion');
+      (latest['result']! as Map<String, dynamic>)
+          .remove('qualitySchemaVersion');
+
+      final back = PracticeAppliedHintContext.fromJson(legacyJson);
+
+      expect(back?.latestHint?.requestId, 'hint-req-2');
+      expect(back?.latestHint?.qualitySchemaVersion, isNull);
+      expect(back?.latestHint?.result.qualitySchemaVersion, isNull);
+      expect(back?.latestHint?.isRestorable, false);
+    });
+
+    test('unknown Hint snapshot versions are not restorable', () {
+      final unknownJson = sample.toJson();
+      final latest = unknownJson['latestHint']! as Map<String, dynamic>;
+      latest['qualitySchemaVersion'] = 'string-heuristics-v0';
+      (latest['result']! as Map<String, dynamic>)['qualitySchemaVersion'] =
+          'string-heuristics-v0';
+
+      final back = PracticeAppliedHintContext.fromJson(unknownJson);
+
+      expect(back?.latestHint?.requestId, 'hint-req-2');
+      expect(back?.latestHint?.isRestorable, false);
     });
 
     test('in-memory store keeps A and B independently across A -> B -> A',

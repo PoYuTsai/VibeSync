@@ -17,6 +17,12 @@ const generatedOnlyMigration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const qualitySchemaMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260712120000_practice_hint_quality_schema_version.sql",
+    import.meta.url,
+  ),
+);
 
 const userId = "11111111-1111-4111-8111-111111111111";
 
@@ -88,6 +94,7 @@ async function createDatabase(options: {
   }
   await db.exec(hintPrefetchMigration);
   await db.exec(generatedOnlyMigration);
+  await db.exec(qualitySchemaMigration);
   await db.query(
     `INSERT INTO public.subscriptions (
        user_id, monthly_messages_used, daily_messages_used,
@@ -156,6 +163,7 @@ async function bindLegacyLatch(
 const generatedHint = {
   generationSource: "model",
   fallbackUsed: false,
+  qualitySchemaVersion: "typed-facts-v1",
   replies: [
     {
       type: "warm_up",
@@ -170,6 +178,181 @@ const generatedHint = {
     },
   ],
 };
+
+Deno.test("PostgreSQL replaces an already-paid unversioned model Hint without another count or charge", async () => {
+  const db = await createDatabase();
+  try {
+    await insertSession(db, "unversioned-model", 3);
+    await db.query(
+      `INSERT INTO public.practice_hint_requests (
+         user_id, session_id, request_id, claimed_ai_count, is_prefetch,
+         state, result, charged
+       ) VALUES (
+         $1, $2, 'old-model', 1, FALSE, 'settled',
+         '{"generationSource":"model","fallbackUsed":false,"costDeducted":1}'::jsonb,
+         TRUE
+       )`,
+      [userId, "unversioned-model"],
+    );
+
+    const claim = await db.query<{
+      current_hint_count: number;
+      claimed: boolean;
+      replay: boolean;
+      stored_result: unknown;
+      quota_already_paid: boolean;
+    }>(
+      `SELECT * FROM public.claim_legacy_practice_hint_replacement(
+         $1, $2, 'old-model', 'typed-replacement-token', 1
+       )`,
+      [userId, "unversioned-model"],
+    );
+    assertEquals(claim.rows[0], {
+      current_hint_count: 3,
+      claimed: true,
+      replay: false,
+      stored_result: null,
+      quota_already_paid: true,
+    });
+
+    const record = await db.query<{
+      new_hint_count: number;
+      did_charge: boolean;
+      quality_schema_version: string;
+    }>(
+      `SELECT new_hint_count, did_charge,
+              stored_result ->> 'qualitySchemaVersion' AS quality_schema_version
+       FROM public.record_legacy_practice_hint_replacement(
+         $1, $2, 'old-model', 'typed-replacement-token', $3::jsonb,
+         TRUE, 50, 50, 5
+       )`,
+      [userId, "unversioned-model", JSON.stringify(generatedHint)],
+    );
+    assertEquals(record.rows[0], {
+      new_hint_count: 3,
+      did_charge: false,
+      quality_schema_version: "typed-facts-v1",
+    });
+
+    const usage = await db.query<{
+      hint_count: number;
+      monthly_messages_used: number;
+      daily_messages_used: number;
+    }>(
+      `SELECT s.hint_count, sub.monthly_messages_used, sub.daily_messages_used
+       FROM public.practice_chat_sessions AS s
+       JOIN public.subscriptions AS sub ON sub.user_id = s.user_id
+       WHERE s.user_id = $1 AND s.session_id = $2`,
+      [userId, "unversioned-model"],
+    );
+    assertEquals(usage.rows[0], {
+      hint_count: 3,
+      monthly_messages_used: 0,
+      daily_messages_used: 0,
+    });
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL replaces an already-counted unversioned model Debrief without another count", async () => {
+  const db = await createDatabase();
+  try {
+    await insertSession(db, "unversioned-debrief", 0, 0);
+    await db.query(
+      `SELECT * FROM public.claim_practice_debrief(
+         $1, $2, 3, 'old-debrief', 'old-debrief-token'
+       )`,
+      [userId, "unversioned-debrief"],
+    );
+    await db.query(
+      `SELECT public.record_practice_debrief(
+         $1, $2, 'old-debrief',
+         '{"generationSource":"model","fallbackUsed":false,"headline":"old"}'::jsonb,
+         'old-debrief-token'
+       )`,
+      [userId, "unversioned-debrief"],
+    );
+
+    const invalidated = await db.query<{ invalidated: boolean }>(
+      `SELECT public.invalidate_legacy_practice_ai_snapshot(
+         $1, $2, 'old-debrief', 'debrief'
+       ) AS invalidated`,
+      [userId, "unversioned-debrief"],
+    );
+    assertEquals(invalidated.rows[0].invalidated, true);
+
+    const invalidatedState = await db.query<{
+      debrief_count: number;
+      counted: boolean;
+      result: unknown;
+    }>(
+      `SELECT debrief_count,
+              (debrief_request_ledger -> 'old-debrief' ->> 'counted')::boolean AS counted,
+              debrief_request_ledger -> 'old-debrief' -> 'result' AS result
+       FROM public.practice_chat_sessions
+       WHERE user_id = $1 AND session_id = $2`,
+      [userId, "unversioned-debrief"],
+    );
+    assertEquals(invalidatedState.rows[0], {
+      debrief_count: 1,
+      counted: true,
+      result: null,
+    });
+
+    const replacementClaim = await db.query<{
+      current_debrief_count: number;
+      replay: boolean;
+      in_flight: boolean;
+      stored_result: unknown;
+    }>(
+      `SELECT * FROM public.claim_practice_debrief(
+         $1, $2, 3, 'old-debrief', 'typed-debrief-token'
+       )`,
+      [userId, "unversioned-debrief"],
+    );
+    assertEquals(replacementClaim.rows[0], {
+      current_debrief_count: 1,
+      replay: false,
+      in_flight: false,
+      stored_result: null,
+    });
+
+    await db.query(
+      `SELECT public.record_practice_debrief(
+         $1, $2, 'old-debrief',
+         '{"generationSource":"model","fallbackUsed":false,"qualitySchemaVersion":"typed-facts-v1","headline":"new"}'::jsonb,
+         'typed-debrief-token'
+       )`,
+      [userId, "unversioned-debrief"],
+    );
+    const finalState = await db.query<{
+      debrief_count: number;
+      quality_schema_version: string;
+    }>(
+      `SELECT debrief_count,
+              debrief_request_ledger -> 'old-debrief' -> 'result'
+                ->> 'qualitySchemaVersion' AS quality_schema_version
+       FROM public.practice_chat_sessions
+       WHERE user_id = $1 AND session_id = $2`,
+      [userId, "unversioned-debrief"],
+    );
+    assertEquals(finalState.rows[0], {
+      debrief_count: 1,
+      quality_schema_version: "typed-facts-v1",
+    });
+
+    const currentInvalidation = await db.query<{ invalidated: boolean }>(
+      `SELECT public.invalidate_legacy_practice_ai_snapshot(
+         $1, $2, 'old-debrief', 'debrief'
+       ) AS invalidated`,
+      [userId, "unversioned-debrief"],
+    );
+    assertEquals(currentInvalidation.rows[0].invalidated, false);
+  } finally {
+    await db.close();
+  }
+});
 
 Deno.test("PostgreSQL migration drains pre-token Hint owners and enforces strict latch shape", async () => {
   const db = await createDatabase({ legacyNullTokenLatch: true });

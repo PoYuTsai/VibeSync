@@ -139,6 +139,7 @@ class PracticeChatState {
   final bool sessionComplete; // 已達 20 則
   final bool ended; // 使用者已結束練習，輸入鎖定
   final PracticeDebrief? debrief;
+  final bool hasRetiredDebrief; // 舊版已完成卡：鎖定但不顯示、不重請
   final bool debriefFailed; // 拆解失敗，不回到普通輸入列
   final bool debriefRetryable; // true 顯示再試一次；false 只允許完成
   final String? errorMessage;
@@ -158,6 +159,7 @@ class PracticeChatState {
   final String? temperatureReason;
   final bool isHintLoading;
   final bool hintFailed; // 生成失敗；面板保留可重試入口，不顯示假內容
+  final bool hasRetiredHintForCurrentTurn; // 舊快照只可同 id 替換一次
   final List<PracticeHintReply> hintReplies;
   final String? hintCoaching;
   final int hintUsedCount;
@@ -215,6 +217,7 @@ class PracticeChatState {
     this.sessionComplete = false,
     this.ended = false,
     this.debrief,
+    this.hasRetiredDebrief = false,
     this.debriefFailed = false,
     this.debriefRetryable = true,
     this.errorMessage,
@@ -230,6 +233,7 @@ class PracticeChatState {
     this.temperatureReason,
     this.isHintLoading = false,
     this.hintFailed = false,
+    this.hasRetiredHintForCurrentTurn = false,
     this.hintReplies = const [],
     this.hintCoaching,
     this.hintUsedCount = 0,
@@ -270,8 +274,8 @@ class PracticeChatState {
   bool get canRequestHint =>
       isAssistedLearningMode &&
       isRevealed &&
-      !hintLimitReached &&
-      hintUsedCount < kMaxPracticeHintsPerRound &&
+      ((!hintLimitReached && hintUsedCount < kMaxPracticeHintsPerRound) ||
+          hasRetiredHintForCurrentTurn) &&
       !isHintLoading &&
       !isSending &&
       !isDebriefing &&
@@ -290,6 +294,7 @@ class PracticeChatState {
       !isPersistingTurn &&
       !isHintLoading &&
       debrief == null &&
+      !hasRetiredDebrief &&
       (!debriefFailed || debriefRetryable);
 
   PracticeChatState copyWith({
@@ -300,6 +305,7 @@ class PracticeChatState {
     int? aiReplyCount,
     bool? sessionComplete,
     bool? ended,
+    bool? hasRetiredDebrief,
     bool? debriefFailed,
     bool? debriefRetryable,
     bool? quotaExceeded,
@@ -323,6 +329,7 @@ class PracticeChatState {
     PracticeLearningMode? learningMode,
     bool? isHintLoading,
     bool? hintFailed,
+    bool? hasRetiredHintForCurrentTurn,
     List<PracticeHintReply>? hintReplies,
     int? hintUsedCount,
     bool? hintLimitReached,
@@ -356,6 +363,7 @@ class PracticeChatState {
       aiReplyCount: aiReplyCount ?? this.aiReplyCount,
       sessionComplete: sessionComplete ?? this.sessionComplete,
       ended: ended ?? this.ended,
+      hasRetiredDebrief: hasRetiredDebrief ?? this.hasRetiredDebrief,
       debriefFailed: debriefFailed ?? this.debriefFailed,
       debriefRetryable: debriefRetryable ?? this.debriefRetryable,
       quotaExceeded: quotaExceeded ?? this.quotaExceeded,
@@ -389,6 +397,8 @@ class PracticeChatState {
           : temperatureReason as String?,
       isHintLoading: isHintLoading ?? this.isHintLoading,
       hintFailed: hintFailed ?? this.hintFailed,
+      hasRetiredHintForCurrentTurn:
+          hasRetiredHintForCurrentTurn ?? this.hasRetiredHintForCurrentTurn,
       hintReplies: hintReplies ?? this.hintReplies,
       hintCoaching: identical(hintCoaching, _sentinel)
           ? this.hintCoaching
@@ -508,6 +518,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     _appliedHintTurns.clear();
     _latestSuccessfulHint = null;
     _latestSuccessfulHintIsDurable = false;
+    state = state.copyWith(hasRetiredHintForCurrentTurn: false);
     if (!state.isAssistedLearningMode) return;
     PracticeAppliedHintContext? context;
     try {
@@ -532,18 +543,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         state.messages.isNotEmpty &&
         state.messages.last.role == 'ai';
     if (!matchesCurrentTurn) return;
-    _latestSuccessfulHint = latest;
-    _latestSuccessfulHintIsDurable = true;
-    final result = latest.result;
-    state = state.copyWith(
-      isHintLoading: false,
-      hintFailed: false,
-      hintReplies: result.replies,
-      hintCoaching: result.coaching,
-      hintUsedCount: result.hintUsedCount,
-      hintLimitReached: result.hintUsedCount >= kMaxPracticeHintsPerRound,
-    );
-    final durableRequestIds = result.replies
+    final durableRequestIds = latest.result.replies
         .map((reply) => reply.hintRequestId?.trim())
         .whereType<String>()
         .where((requestId) => requestId.isNotEmpty)
@@ -552,6 +552,40 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     if (snapshotRequestId != null && snapshotRequestId.isNotEmpty) {
       durableRequestIds.add(snapshotRequestId);
     }
+    if (!latest.isRestorable) {
+      // Preserve only the idempotency identity. A click will re-request this
+      // exact ledger row so the server can replace an old/unversioned result;
+      // none of the stale visible content enters state.
+      final storedPending = _loadPendingHintSafely(
+        sessionId: state.sessionId,
+        aiCount: latest.aiCount,
+      );
+      final hasReusableRequestId =
+          storedPending != null || durableRequestIds.length == 1;
+      if (durableRequestIds.length == 1 && storedPending == null) {
+        _pendingHintRequest = PracticePendingHint(
+          sessionId: state.sessionId,
+          aiCount: latest.aiCount,
+          requestId: durableRequestIds.single,
+        );
+      }
+      state = state.copyWith(
+        hasRetiredHintForCurrentTurn: hasReusableRequestId,
+      );
+      return;
+    }
+    _latestSuccessfulHint = latest;
+    _latestSuccessfulHintIsDurable = true;
+    final result = latest.result;
+    state = state.copyWith(
+      isHintLoading: false,
+      hintFailed: false,
+      hintReplies: result.replies,
+      hintCoaching: result.coaching,
+      hasRetiredHintForCurrentTurn: false,
+      hintUsedCount: result.hintUsedCount,
+      hintLimitReached: result.hintUsedCount >= kMaxPracticeHintsPerRound,
+    );
     if (durableRequestIds.length == 1) {
       _rotateHintRequestId(PracticePendingHint(
         sessionId: state.sessionId,
@@ -600,6 +634,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     required PracticeHintResult result,
     required List<Map<String, dynamic>> appliedTurns,
   }) async {
+    if (!result.hasCurrentQualitySchema) return false;
     PracticeAppliedHintContext? existing;
     try {
       existing = _appliedHintStore.load(sessionId);
@@ -609,6 +644,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     }
     final existingLatest = existing?.latestHint;
     if (existingLatest != null &&
+        existingLatest.isRestorable &&
         (existingLatest.aiCount > aiCount ||
             (existingLatest.aiCount == aiCount &&
                 existingLatest.result.hintUsedCount > result.hintUsedCount))) {
@@ -626,6 +662,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       latestHint: PracticeSuccessfulHintSnapshot(
         aiCount: aiCount,
         result: result,
+        qualitySchemaVersion: result.qualitySchemaVersion!,
         requestId: requestId,
       ),
     ));
@@ -1082,7 +1119,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       nextFirstLine: session.debriefGameNextFirstLine,
       inviteDirection: session.debriefGameInviteDirection,
     );
-    final debrief = session.hasDebrief
+    final debrief = session.hasRestorableDebrief
         ? PracticeDebrief(
             summary: session.debriefSummary ?? '',
             strengths: session.debriefStrengths,
@@ -1093,8 +1130,11 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             dateChanceReason: session.debriefDateChanceReason,
             nextInviteMove: session.debriefNextInviteMove,
             gameBreakdown: gameBreakdown.isEmpty ? null : gameBreakdown,
+            qualitySchemaVersion: session.debriefQualitySchemaVersion,
           )
         : null;
+    final hasRetiredDebrief =
+        session.hasDebrief && !session.hasRestorableDebrief;
     // 對象身份：依 profileId 從 catalog 解析；舊場（無 profileId）兜底預設位。
     final girl =
         girlProfileById(session.profileId) ?? fallbackPracticeProfile().girl;
@@ -1111,9 +1151,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       aiReplyCount: session.aiReplyCount,
       drawStatus: PracticeDrawStatus.revealed, // 既有場一定已有對象
       sessionComplete:
-          debrief != null || session.aiReplyCount >= kMaxPracticeAiReplies,
-      ended: debrief != null,
+          session.hasDebrief || session.aiReplyCount >= kMaxPracticeAiReplies,
+      ended: session.hasDebrief,
       debrief: debrief,
+      hasRetiredDebrief: hasRetiredDebrief,
       debriefFailed: false,
       debriefRetryable: true,
       girl: girl,
@@ -1414,6 +1455,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       temperatureReason: null,
       isHintLoading: false,
       hintFailed: false,
+      hasRetiredHintForCurrentTurn: false,
       hintReplies: const [],
       hintCoaching: null,
       hintUsedCount: 0,
@@ -1608,6 +1650,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             : null,
         lastTemperatureDelta: assisted ? temperature?.delta : null,
         temperatureReason: assisted ? temperature?.reason : null,
+        hasRetiredHintForCurrentTurn: false,
         hintUsedCount:
             assisted ? reply.hintUsedCount ?? state.hintUsedCount : 0,
       );
@@ -1754,6 +1797,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       return;
     }
     final intentState = state;
+    final replacingRetiredHint = intentState.hasRetiredHintForCurrentTurn;
     final intentSessionId = intentState.sessionId;
     final intentAiCount = intentState.aiReplyCount;
     final generation = _hintGeneration;
@@ -1839,6 +1883,11 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             practiceMode: intentState.learningMode,
           )
           .timeout(_hintRequestTimeout);
+      if (!result.hasCurrentQualitySchema) {
+        throw PracticeGenerationFailedException(
+          'practice_hint_quality_schema_mismatch',
+        );
+      }
       final envelopePersisted = await _saveSuccessfulHintForIntent(
         sessionId: intentSessionId,
         aiCount: intentAiCount,
@@ -1856,15 +1905,20 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         // 已同步的全域 usage；只有 current live response 能更新 remaining。
         return;
       }
-      _latestSuccessfulHint = PracticeSuccessfulHintSnapshot(
-        aiCount: intentAiCount,
-        result: result,
-        requestId: requestId,
-      );
-      _latestSuccessfulHintIsDurable = envelopePersisted;
+      _latestSuccessfulHint = result.hasCurrentQualitySchema
+          ? PracticeSuccessfulHintSnapshot(
+              aiCount: intentAiCount,
+              result: result,
+              qualitySchemaVersion: result.qualitySchemaVersion!,
+              requestId: requestId,
+            )
+          : null;
+      _latestSuccessfulHintIsDurable =
+          envelopePersisted && _latestSuccessfulHint != null;
       state = state.copyWith(
         isHintLoading: false,
         hintFailed: false,
+        hasRetiredHintForCurrentTurn: false,
         hintReplies: result.replies,
         hintCoaching: result.coaching,
         hintUsedCount: result.hintUsedCount,
@@ -1883,24 +1937,34 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       state = state.copyWith(
         isHintLoading: false,
         hintFailed: false,
+        hasRetiredHintForCurrentTurn: false,
         hintLimitReached: true,
         errorMessage: '這段練習的提示已用完，先試著用自己的話回覆看看。',
       );
     } on PracticeQuotaExceededException catch (e) {
-      _rotateHintRequestId(pendingWrite.pending); // 4xx 明確拒絕 → rotate
+      // A retired snapshot replacement may be supplementally charged against
+      // its original ledger row. Quota/upgrade rejection releases that claim,
+      // so retry must keep the exact same id even at the local 5/5 ceiling.
+      if (!replacingRetiredHint) {
+        _rotateHintRequestId(pendingWrite.pending);
+      }
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
         hintFailed: false,
+        hasRetiredHintForCurrentTurn: replacingRetiredHint,
         quotaExceeded: true,
         errorMessage: e.message,
       );
     } on PracticeUpgradeRequiredException {
-      _rotateHintRequestId(pendingWrite.pending); // 4xx 明確拒絕 → rotate
+      if (!replacingRetiredHint) {
+        _rotateHintRequestId(pendingWrite.pending);
+      }
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
         hintFailed: false,
+        hasRetiredHintForCurrentTurn: replacingRetiredHint,
         upgradeRequired: true,
         errorMessage: '這個提示會消耗訊息額度，升級後就能繼續使用。',
       );
@@ -1911,6 +1975,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       state = state.copyWith(
         isHintLoading: false,
         hintFailed: false,
+        hasRetiredHintForCurrentTurn: false,
         errorMessage: _practiceModeLockedMessage,
       );
     } on PracticeApiException catch (e) {
@@ -1958,6 +2023,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       state = state.copyWith(
         isHintLoading: false,
         hintFailed: false,
+        hasRetiredHintForCurrentTurn: false,
         errorMessage: _hintApiErrorMessage(e.message),
       );
     } on PracticeGenerationFailedException catch (e) {
@@ -2024,10 +2090,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         appliedHintTurns: requestAppliedHints,
       );
       if (_isStaleDebrief(generation, requestSessionId)) return;
+      if (!debrief.hasCurrentQualitySchema) {
+        throw PracticeGenerationFailedException(
+          'practice_debrief_quality_schema_mismatch',
+        );
+      }
       state = state.copyWith(
         isDebriefing: false,
         sessionComplete: true,
         debrief: debrief,
+        hasRetiredDebrief: false,
       );
       final completedState = state;
       await _persist();
@@ -2301,6 +2373,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       debriefGameFailureState: s.debrief?.gameBreakdown?.failureState,
       debriefGameNextFirstLine: s.debrief?.gameBreakdown?.nextFirstLine,
       debriefGameInviteDirection: s.debrief?.gameBreakdown?.inviteDirection,
+      debriefQualitySchemaVersion: s.debrief?.qualitySchemaVersion,
       personaId: s.personaId,
       personaLabel: s.personaLabel,
       difficulty: s.difficulty,

@@ -3,6 +3,8 @@
 
 export type HintRequestState = "generating" | "prefetched" | "settled";
 
+export const HINT_QUALITY_SCHEMA_VERSION = "typed-facts-v1";
+
 export interface HintRequestLedgerRow {
   state: HintRequestState;
   charged: boolean;
@@ -38,7 +40,8 @@ export function isExplicitModelHintResult(
   value: unknown,
 ): boolean {
   if (!isRecord(value)) return false;
-  return value.generationSource === "model" && value.fallbackUsed === false;
+  return value.generationSource === "model" && value.fallbackUsed === false &&
+    value.qualitySchemaVersion === HINT_QUALITY_SCHEMA_VERSION;
 }
 
 export function isReplayableModelHintResult(

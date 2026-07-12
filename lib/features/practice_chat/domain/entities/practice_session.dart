@@ -1,5 +1,6 @@
 import 'package:hive_ce/hive_ce.dart';
 
+import 'practice_hint.dart';
 import 'practice_message.dart';
 
 part 'practice_session.g.dart';
@@ -104,6 +105,11 @@ class PracticeSession {
   @HiveField(28)
   final String? debriefGameInviteDirection;
 
+  /// Nullable for old builds. A completed session remains completed even when
+  /// its old Debrief is no longer safe to display.
+  @HiveField(29)
+  final String? debriefQualitySchemaVersion;
+
   const PracticeSession({
     required this.id,
     required this.createdAt,
@@ -134,9 +140,14 @@ class PracticeSession {
     this.debriefGameFailureState,
     this.debriefGameNextFirstLine,
     this.debriefGameInviteDirection,
+    this.debriefQualitySchemaVersion,
   });
 
   bool get hasDebrief => debriefSummary != null;
+
+  bool get hasRestorableDebrief =>
+      hasDebrief &&
+      debriefQualitySchemaVersion == kPracticeDebriefQualitySchemaVersion;
 
   PracticeSession copyWith({
     List<PracticeMessage>? messages,
@@ -166,6 +177,7 @@ class PracticeSession {
     String? debriefGameFailureState,
     String? debriefGameNextFirstLine,
     String? debriefGameInviteDirection,
+    String? debriefQualitySchemaVersion,
   }) {
     return PracticeSession(
       id: id,
@@ -206,6 +218,8 @@ class PracticeSession {
           debriefGameNextFirstLine ?? this.debriefGameNextFirstLine,
       debriefGameInviteDirection:
           debriefGameInviteDirection ?? this.debriefGameInviteDirection,
+      debriefQualitySchemaVersion:
+          debriefQualitySchemaVersion ?? this.debriefQualitySchemaVersion,
     );
   }
 }

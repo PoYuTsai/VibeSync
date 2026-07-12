@@ -441,6 +441,7 @@ void main() {
         hintUsedCount: hintUsedCount,
         monthlyRemaining: monthly,
         dailyRemaining: daily,
+        qualitySchemaVersion: kPracticeHintQualitySchemaVersion,
       );
 
   // 第一輪已完成並拆解的場次（多個 group 共用）。
@@ -459,6 +460,7 @@ void main() {
         debriefStrengths: const ['開場好'],
         debriefSuggestedLine: '約她',
         debriefVibe: '暖',
+        debriefQualitySchemaVersion: kPracticeDebriefQualitySchemaVersion,
       );
 
   PracticeDrawDraft draftFor(
@@ -1112,7 +1114,34 @@ void main() {
       expect(saved.debriefDateChance, 'medium');
       expect(saved.debriefDateChanceReason, '她有回應，但還需要鋪墊。');
       expect(saved.debriefNextInviteMove, '先丟一個模糊邀約。');
+      expect(saved.debriefQualitySchemaVersion,
+          kPracticeDebriefQualitySchemaVersion);
+      expect(saved.hasRestorableDebrief, true);
       expect(confirmedAfterPersist, true);
+    });
+
+    test('outdated Debrief response is not rendered, persisted, or confirmed',
+        () async {
+      final c = await makeDebriefable();
+      var confirmCount = 0;
+      api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
+            summary: '舊版拆解',
+            strengths: ['舊版優點'],
+            watchouts: [],
+            suggestedLine: '舊版下一句',
+            vibe: '中性',
+            qualitySchemaVersion: 'string-heuristics-v0',
+            idempotencyRequestId: 'outdated-debrief-id',
+          );
+      api.confirmDebriefHandler = (_, __) async => confirmCount++;
+
+      await c.endPractice();
+
+      expect(c.currentState.debrief, isNull);
+      expect(c.currentState.debriefFailed, true);
+      expect(c.currentState.debriefRetryable, true);
+      expect(repo.getById(c.currentState.sessionId)?.debriefSummary, isNull);
+      expect(confirmCount, 0);
     });
 
     test('切到另一場後，舊場晚到的拆解成功不得污染 state、repo 或 confirm', () async {
@@ -1396,6 +1425,53 @@ void main() {
       expect(c.currentState.aiReplyCount, 2);
       expect(repo.getById('resume-1')!.messages.length, 4);
     });
+
+    for (final mode in <(String, String)>[
+      ('beginner', 'practice_girl_005'),
+      ('game', 'practice_girl_004'),
+    ]) {
+      test('${mode.$1} completed session restores only current Debrief version',
+          () {
+        PracticeSession completed(String id, {String? qualityVersion}) =>
+            PracticeSession(
+              id: id,
+              createdAt: DateTime(2026, 7, 12, 13),
+              aiReplyCount: 1,
+              messages: const [
+                PracticeMessage(role: 'user', text: '早安'),
+                PracticeMessage(role: 'ai', text: '早安，你今天有什麼安排？'),
+              ],
+              profileId: mode.$2,
+              practiceMode: mode.$1,
+              temperatureScore: 30,
+              debriefSummary: '具體拆解 ${mode.$1}',
+              debriefSuggestedLine: '先接住她今天的安排',
+              debriefGameNextFirstLine:
+                  mode.$1 == 'game' ? '妳今天最期待哪個安排？' : null,
+              debriefQualitySchemaVersion: qualityVersion,
+            );
+
+        final legacy = makeControllerFrom(completed('legacy-${mode.$1}'));
+        expect(legacy.currentState.sessionComplete, true);
+        expect(legacy.currentState.ended, true);
+        expect(legacy.currentState.debrief, isNull);
+        expect(legacy.currentState.hasRetiredDebrief, true);
+        expect(legacy.currentState.canDebrief, false);
+
+        final current = makeControllerFrom(completed(
+          'current-${mode.$1}',
+          qualityVersion: kPracticeDebriefQualitySchemaVersion,
+        ));
+        expect(current.currentState.sessionComplete, true);
+        expect(current.currentState.ended, true);
+        expect(current.currentState.hasRetiredDebrief, false);
+        expect(current.currentState.debrief?.suggestedLine, '先接住她今天的安排');
+        if (mode.$1 == 'game') {
+          expect(current.currentState.debrief?.gameBreakdown?.nextFirstLine,
+              '妳今天最期待哪個安排？');
+        }
+      });
+    }
 
     test('provider 進房自動載入最近未拆解場次，略過已拆解紀錄', () async {
       await repo.save(PracticeSession(
@@ -2488,6 +2564,258 @@ void main() {
       expect(c.currentState.hintUsedCount, 2);
     });
 
+    for (final mode in <(String, String)>[
+      ('beginner', 'practice_girl_005'),
+      ('game', 'practice_girl_004'),
+    ]) {
+      test(
+          '${mode.$1} active turn does not restore an unversioned successful Hint snapshot',
+          () async {
+        final appliedStore = InMemoryPracticeAppliedHintStore();
+        final requestId = 'legacy-${mode.$1}-hint';
+        final session = PracticeSession(
+          id: 'legacy-${mode.$1}-session',
+          createdAt: DateTime(2026, 7, 12, 12),
+          aiReplyCount: 1,
+          messages: const [
+            PracticeMessage(role: 'user', text: '早安'),
+            PracticeMessage(role: 'ai', text: '早安，你今天有什麼安排？'),
+          ],
+          profileId: mode.$2,
+          practiceMode: mode.$1,
+          temperatureScore: 30,
+          hintUsedCount: 5,
+        );
+        final legacyResult = hintResult(
+          hintUsedCount: 5,
+          requestId: requestId,
+        ).toJson()
+          ..remove('qualitySchemaVersion');
+        final legacyContext = PracticeAppliedHintContext.fromJson({
+          'sessionId': session.id,
+          'turns': const [],
+          'latestHint': {
+            'aiCount': 1,
+            'requestId': requestId,
+            'result': legacyResult,
+          },
+        });
+        await appliedStore.save(legacyContext!);
+
+        final c = makeControllerFrom(
+          session,
+          appliedHintStore: appliedStore,
+        );
+
+        expect(c.currentState.hintReplies, isEmpty);
+        expect(c.currentState.hintUsedCount, 5);
+        expect(c.currentState.hasRetiredHintForCurrentTurn, true);
+        expect(c.currentState.canRequestHint, true);
+
+        api.hintHandler = (_, {profile}) async => hintResult(
+              hintUsedCount: 5,
+              requestId: api.lastHintRequestId,
+            );
+        await c.requestHint();
+
+        expect(api.lastHintRequestId, requestId);
+        expect(api.lastHintPracticeMode?.wireName, mode.$1);
+        expect(c.currentState.hintReplies, hasLength(2));
+        expect(c.currentState.hintUsedCount, 5);
+        expect(c.currentState.hasRetiredHintForCurrentTurn, false);
+        expect(c.currentState.canRequestHint, false);
+        final replacement = appliedStore.load(session.id)?.latestHint;
+        expect(replacement?.qualitySchemaVersion,
+            kPracticeHintQualitySchemaVersion);
+        expect(replacement?.isRestorable, true);
+
+        final savedSession = repo.getById(session.id)!;
+        c.dispose();
+        final restored = makeControllerFrom(
+          savedSession,
+          appliedHintStore: appliedStore,
+        );
+        expect(restored.currentState.hintReplies, hasLength(2));
+        expect(restored.currentState.hintUsedCount, 5);
+        expect(restored.currentState.canRequestHint, false);
+      });
+    }
+
+    test('5/5 retired Hint keeps its original request id across quota retry',
+        () async {
+      final appliedStore = InMemoryPracticeAppliedHintStore();
+      final pendingStore = InMemoryPracticePendingHintStore();
+      const sessionId = 'legacy-quota-retry-session';
+      const requestId = 'legacy-quota-retry-hint';
+      final session = PracticeSession(
+        id: sessionId,
+        createdAt: DateTime(2026, 7, 12, 12, 15),
+        aiReplyCount: 1,
+        messages: const [
+          PracticeMessage(role: 'user', text: '早安'),
+          PracticeMessage(role: 'ai', text: '早安，你今天有什麼安排？'),
+        ],
+        profileId: 'practice_girl_005',
+        practiceMode: 'beginner',
+        temperatureScore: 30,
+        hintUsedCount: 5,
+      );
+      final legacyResult = hintResult(
+        hintUsedCount: 5,
+        requestId: requestId,
+      ).toJson()
+        ..remove('qualitySchemaVersion');
+      await appliedStore.save(PracticeAppliedHintContext.fromJson({
+        'sessionId': sessionId,
+        'turns': const [],
+        'latestHint': {
+          'aiCount': 1,
+          'requestId': requestId,
+          'result': legacyResult,
+        },
+      })!);
+
+      final c = makeControllerFrom(
+        session,
+        pendingHintStore: pendingStore,
+        appliedHintStore: appliedStore,
+      );
+      var attempts = 0;
+      api.hintHandler = (_, {profile}) async {
+        attempts++;
+        if (attempts == 1) {
+          throw PracticeQuotaExceededException('本月額度已用完');
+        }
+        return hintResult(
+          hintUsedCount: 5,
+          requestId: api.lastHintRequestId,
+        );
+      };
+
+      await c.requestHint();
+
+      expect(api.formalHintRequestIds, [requestId]);
+      expect(
+        pendingStore.loadFor(sessionId: sessionId, aiCount: 1)?.requestId,
+        requestId,
+      );
+      expect(c.currentState.hasRetiredHintForCurrentTurn, true);
+      expect(c.currentState.canRequestHint, true);
+
+      await c.requestHint();
+
+      expect(api.formalHintRequestIds, [requestId, requestId]);
+      expect(c.currentState.hintReplies, hasLength(2));
+      expect(c.currentState.hintUsedCount, 5);
+      expect(c.currentState.hasRetiredHintForCurrentTurn, false);
+      expect(c.currentState.canRequestHint, false);
+      expect(pendingStore.loadFor(sessionId: sessionId, aiCount: 1), isNull);
+    });
+
+    for (final snapshotCase in <(String, String, String)>[
+      ('missing request id', 'beginner', 'practice_girl_005'),
+      ('ambiguous request ids', 'game', 'practice_girl_004'),
+    ]) {
+      test(
+          '5/5 old Hint with ${snapshotCase.$1} stays hidden and cannot mint a replacement id',
+          () async {
+        final appliedStore = InMemoryPracticeAppliedHintStore();
+        final session = PracticeSession(
+          id: 'legacy-no-replay-${snapshotCase.$2}',
+          createdAt: DateTime(2026, 7, 12, 12),
+          aiReplyCount: 1,
+          messages: const [
+            PracticeMessage(role: 'user', text: '早安'),
+            PracticeMessage(role: 'ai', text: '早安，你今天有什麼安排？'),
+          ],
+          profileId: snapshotCase.$3,
+          practiceMode: snapshotCase.$2,
+          temperatureScore: 30,
+          hintUsedCount: 5,
+        );
+        final legacyResult = hintResult(
+          hintUsedCount: 5,
+          requestId:
+              snapshotCase.$1 == 'ambiguous request ids' ? 'legacy-id-a' : null,
+        ).toJson()
+          ..remove('qualitySchemaVersion');
+        if (snapshotCase.$1 == 'ambiguous request ids') {
+          final replies = legacyResult['replies']! as List<dynamic>;
+          (replies.last as Map<String, dynamic>)['hintRequestId'] =
+              'legacy-id-b';
+        }
+        await appliedStore.save(PracticeAppliedHintContext.fromJson({
+          'sessionId': session.id,
+          'turns': const [],
+          'latestHint': {
+            'aiCount': 1,
+            'result': legacyResult,
+          },
+        })!);
+
+        final c = makeControllerFrom(
+          session,
+          appliedHintStore: appliedStore,
+        );
+
+        expect(c.currentState.hintReplies, isEmpty);
+        expect(c.currentState.hasRetiredHintForCurrentTurn, false);
+        expect(c.currentState.canRequestHint, false);
+        await c.requestHint();
+        expect(api.hintCallCount, 0);
+      });
+    }
+
+    test('newer pending Hint id wins over an old unversioned snapshot id',
+        () async {
+      final appliedStore = InMemoryPracticeAppliedHintStore();
+      final pendingStore = InMemoryPracticePendingHintStore();
+      const sessionId = 'legacy-snapshot-newer-pending';
+      const oldRequestId = 'old-success-id';
+      const pendingRequestId = 'newer-in-flight-id';
+      final legacyResult = hintResult(requestId: oldRequestId).toJson()
+        ..remove('qualitySchemaVersion');
+      await appliedStore.save(PracticeAppliedHintContext.fromJson({
+        'sessionId': sessionId,
+        'turns': const [],
+        'latestHint': {
+          'aiCount': 1,
+          'requestId': oldRequestId,
+          'result': legacyResult,
+        },
+      })!);
+      await pendingStore.save(const PracticePendingHint(
+        sessionId: sessionId,
+        aiCount: 1,
+        requestId: pendingRequestId,
+      ));
+      final c = makeControllerFrom(
+        PracticeSession(
+          id: sessionId,
+          createdAt: DateTime(2026, 7, 12, 12, 30),
+          aiReplyCount: 1,
+          messages: const [
+            PracticeMessage(role: 'user', text: '早安'),
+            PracticeMessage(role: 'ai', text: '早安'),
+          ],
+          profileId: 'practice_girl_005',
+          practiceMode: 'beginner',
+          hintUsedCount: 1,
+        ),
+        pendingHintStore: pendingStore,
+        appliedHintStore: appliedStore,
+      );
+      api.hintHandler = (_, {profile}) async => hintResult(
+            hintUsedCount: 2,
+            requestId: api.lastHintRequestId,
+          );
+
+      await c.requestHint();
+
+      expect(api.lastHintRequestId, pendingRequestId);
+      expect(c.currentState.hintReplies, hasLength(2));
+    });
+
     test('requestHint is beginner-only and uses existing AI turn', () async {
       final c = await makeRevealed();
       api.sendHandler = (_, {profile}) async => reply(
@@ -2522,6 +2850,46 @@ void main() {
         [28, 13]
       ]);
       expect(repo.getById(s.sessionId)!.hintUsedCount, 1);
+    });
+
+    test('outdated live Hint response is not rendered or persisted', () async {
+      final pendingStore = InMemoryPracticePendingHintStore();
+      final appliedStore = InMemoryPracticeAppliedHintStore();
+      final c = await makeRevealed(
+        pendingHintStore: pendingStore,
+        appliedHintStore: appliedStore,
+      );
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+      api.hintHandler = (_, {profile}) async {
+        final current = hintResult(requestId: api.lastHintRequestId);
+        return PracticeHintResult(
+          replies: current.replies,
+          coaching: current.coaching,
+          costDeducted: current.costDeducted,
+          hintUsedCount: current.hintUsedCount,
+          monthlyRemaining: current.monthlyRemaining,
+          dailyRemaining: current.dailyRemaining,
+          qualitySchemaVersion: 'string-heuristics-v0',
+        );
+      };
+
+      await c.requestHint();
+
+      expect(c.currentState.hintReplies, isEmpty);
+      expect(c.currentState.hintCoaching, isNull);
+      expect(c.currentState.hintFailed, true);
+      expect(appliedStore.load(c.currentState.sessionId)?.latestHint, isNull);
+      expect(pendingStore.load()?.requestId, api.lastHintRequestId);
     });
 
     test('requestHint is available in game mode and forwards game mode',
@@ -2820,6 +3188,7 @@ void main() {
         latestHint: PracticeSuccessfulHintSnapshot(
           aiCount: 1,
           requestId: 'historical-a-hint',
+          qualitySchemaVersion: kPracticeHintQualitySchemaVersion,
           result: hintResult(
             monthly: 19,
             daily: 9,

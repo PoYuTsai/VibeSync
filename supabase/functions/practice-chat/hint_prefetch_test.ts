@@ -5,6 +5,7 @@ import {
 import {
   buildHintPrefetchTelemetry,
   decideHintPrefetchReplay,
+  HINT_QUALITY_SCHEMA_VERSION,
   hintPrefetchAck,
   hintRecordPolicy,
   isExplicitModelHintResult,
@@ -20,6 +21,7 @@ const result = {
   coaching: "接住她的語氣",
   generationSource: "model",
   fallbackUsed: false,
+  qualitySchemaVersion: HINT_QUALITY_SCHEMA_VERSION,
 };
 
 Deno.test("prefetch kill switch is exact true and defaults off", () => {
@@ -145,6 +147,13 @@ Deno.test("replay accepts only explicit model snapshots", () => {
   );
   assertEquals(
     isReplayableModelHintResult({ costDeducted: 0, replies: [] }),
+    false,
+  );
+  assertEquals(
+    isReplayableModelHintResult({
+      generationSource: "model",
+      fallbackUsed: false,
+    }),
     false,
   );
   assertEquals(

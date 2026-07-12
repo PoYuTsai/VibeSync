@@ -16,6 +16,8 @@ import {
   type ClaudeArgs,
 } from "./claude.ts";
 import { MAX_AI_REPLIES, MAX_HINTS_PER_ROUND } from "./quota_decision.ts";
+import { HINT_QUALITY_SCHEMA_VERSION } from "./hint_prefetch.ts";
+import { DEBRIEF_QUALITY_SCHEMA_VERSION } from "./debrief_card.ts";
 
 const NOW = new Date("2026-06-28T04:00:00.000Z");
 const RESET_AT = "2026-06-28T00:00:00.000Z";
@@ -164,14 +166,14 @@ function debriefBody(overrides: Record<string, unknown> = {}) {
 
 function validDebriefJson(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
-    summary: "有接住她下班後想放空的情緒",
-    strengths: ["把下班狀態接得輕鬆"],
-    watchouts: ["散步話題可以再多一點自己的畫面"],
+    summary: "你說今天忙到剛下班，她接著分享只想散步放空。",
+    strengths: ["你先分享自己今天忙到剛下班，讓對話有具體情境。"],
+    watchouts: ["下一步要接住她想散步放空，不要只停在自己的忙碌。"],
     suggestedLine: "下班後散步很療癒，妳最常走哪一段？",
     vibe: "中性",
     dateChance: "medium",
-    dateChanceReason: "她願意分享下班後散步放空的狀態",
-    nextInviteMove: "先延伸下班散步，再看她是否願意多投入",
+    dateChanceReason: "她回覆自己剛下班，只想散步放空，但還沒提時間或見面。",
+    nextInviteMove: "先問她最常去哪裡散步，等她多分享再看是否出現邀約窗口。",
     hintAssessment: {
       verdict: "preserved",
       revisedEvidenceQuote: null,
@@ -182,19 +184,20 @@ function validDebriefJson(overrides: Record<string, unknown> = {}) {
 
 function validHintJson(overrides: Record<string, string> = {}) {
   return JSON.stringify({
-    warmUp: "突然想喝咖啡很真實，我今天也被咖啡香抓走。",
-    steady: "咖啡念頭收到，妳今天想醒腦還是想放空？",
-    coaching: "她提到突然想喝咖啡，先交換一點生活感再延伸。",
+    warmUp: "聽起來這杯咖啡有任務，是想醒腦還是想放空？",
+    steady: "咖啡念頭收到，我先押妳今天比較想放空，猜錯妳糾正我。",
+    coaching:
+      "她主動說突然想喝咖啡；先用醒腦或放空二選一接她的狀態，再沿她的答案分享。",
     ...overrides,
   });
 }
 
 function validGameHintJson(overrides: Record<string, string> = {}) {
   return validHintJson({
-    warmUp: "突然想喝咖啡有點意思，我今天也被香氣抓走。",
-    steady: "咖啡這個念頭我記住了，換我丟一個醒腦小畫面。",
+    warmUp: "聽起來這杯咖啡有任務，是想醒腦還是想放空？",
+    steady: "咖啡念頭收到，我先押妳今天比較想放空，猜錯妳糾正我。",
     coaching:
-      "Game 心法：她突然想喝咖啡，這輪先交換生活感再補投入。速約任務：這輪不硬約，先留窗口。",
+      "Game 心法：她主動提到想喝咖啡，現在只有話題還沒有時間窗口。速約任務：問她是想醒腦還是放空，因為先讓她補感受，再看是否出現邀約窗口。",
     ...overrides,
   });
 }
@@ -2912,7 +2915,10 @@ Deno.test("debrief requestId is threaded through claim and stored response repla
   }, debriefBody({ requestId: "debrief-req-1" }));
 
   assertEquals(response.status, 200);
-  assertEquals(json.card.summary, "有接住她下班後想放空的情緒");
+  assertEquals(
+    json.card.summary,
+    "你說今天忙到剛下班，她接著分享只想散步放空。",
+  );
   assertEquals(
     claimDebriefCalls(state)[0].params.p_request_id,
     "debrief-req-1",
@@ -2936,13 +2942,18 @@ Deno.test("debrief requestId is threaded through claim and stored response repla
   >;
   assertEquals(
     (stored.card as Record<string, unknown>).summary,
-    "有接住她下班後想放空的情緒",
+    "你說今天忙到剛下班，她接著分享只想散步放空。",
   );
   assertEquals(stored.provider, "deepseek");
   assertEquals(stored.generationSource, "model");
   assertEquals(stored.fallbackUsed, false);
+  assertEquals(
+    stored.qualitySchemaVersion,
+    DEBRIEF_QUALITY_SCHEMA_VERSION,
+  );
   assertEquals(json.generationSource, "model");
   assertEquals(json.fallbackUsed, false);
+  assertEquals(json.qualitySchemaVersion, DEBRIEF_QUALITY_SCHEMA_VERSION);
   assertEquals(aiLogInserts(state).length, 1);
   const telemetryRow = aiLogInserts(state)[0].values;
   assertEquals(telemetryRow.request_type, "practice_debrief_standard");
@@ -2951,7 +2962,9 @@ Deno.test("debrief requestId is threaded through claim and stored response repla
   assertEquals(telemetryRow.response_body, null);
   assertEquals(telemetryRow.error_message, null);
   assertEquals(
-    JSON.stringify(telemetryRow).includes("有接住她下班後想放空的情緒"),
+    JSON.stringify(telemetryRow).includes(
+      "你說今天忙到剛下班，她接著分享只想散步放空。",
+    ),
     false,
   );
 });
@@ -2974,6 +2987,7 @@ Deno.test("debrief record returns the first-writer authoritative response", asyn
     model: DEEPSEEK_MODEL,
     generationSource: "model",
     fallbackUsed: false,
+    qualitySchemaVersion: DEBRIEF_QUALITY_SCHEMA_VERSION,
     failoverUsed: false,
     generatedAt: NOW.toISOString(),
     monthlyRemaining: 290,
@@ -2981,7 +2995,7 @@ Deno.test("debrief record returns the first-writer authoritative response", asyn
   };
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
-    deepSeekReplies: [validDebriefJson({ summary: "晚到 worker 的拆解" })],
+    deepSeekReplies: [validDebriefJson()],
     rpc: {
       record_practice_debrief: [{ data: authoritative }],
     },
@@ -3000,7 +3014,10 @@ Deno.test("durable generation telemetry failure is fail-open", async () => {
   }, debriefBody());
 
   assertEquals(response.status, 200);
-  assertEquals(json.card.summary, "有接住她下班後想放空的情緒");
+  assertEquals(
+    json.card.summary,
+    "你說今天忙到剛下班，她接著分享只想散步放空。",
+  );
   assertEquals(aiLogInserts(state).length, 1);
 });
 
@@ -3012,7 +3029,10 @@ Deno.test("slow durable telemetry stays off the debrief response path after repl
   }, debriefBody({ requestId: "debrief-slow-telemetry" }));
 
   assertEquals(response.status, 200);
-  assertEquals(json.card.summary, "有接住她下班後想放空的情緒");
+  assertEquals(
+    json.card.summary,
+    "你說今天忙到剛下班，她接著分享只想散步放空。",
+  );
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(aiLogInserts(state).length, 1);
   assertEquals(state.backgroundTasks.length, 1);
@@ -3057,6 +3077,7 @@ Deno.test("debrief preflight replay wins at the cap without rate limit, claim, o
     costDeducted: 0,
     generationSource: "model",
     fallbackUsed: false,
+    qualitySchemaVersion: DEBRIEF_QUALITY_SCHEMA_VERSION,
   };
   const { response, json, state } = await run({
     ledger: ledger({
@@ -3093,6 +3114,7 @@ Deno.test("A to B to A debrief replay uses the exact bounded ledger before the c
     costDeducted: 0,
     generationSource: "model",
     fallbackUsed: false,
+    qualitySchemaVersion: DEBRIEF_QUALITY_SCHEMA_VERSION,
   };
   const resultB = {
     ...resultA,
@@ -3153,6 +3175,7 @@ Deno.test("completed Game debrief replay wins before a transient unlock lookup f
     costDeducted: 0,
     generationSource: "model",
     fallbackUsed: false,
+    qualitySchemaVersion: DEBRIEF_QUALITY_SCHEMA_VERSION,
   };
   const { response, json, state } = await run(
     {
@@ -3227,11 +3250,11 @@ Deno.test("stale claimed Game debrief retry bypasses a transient unlock lookup f
       },
       deepSeekReplies: [validDebriefJson({
         gameBreakdown: {
-          phaseReached: "下班散步話題已走到收尾",
-          missedVariable: "散步邀約的具體度",
-          failureState: "下班話題沒有明顯失誤",
-          nextFirstLine: "先承接她剛分享的下班散步",
-          inviteDirection: "下班後的低壓短約",
+          phaseReached: "下班散步仍在熟悉階段",
+          missedVariable: "還缺散步話題的具體畫面",
+          failureState: "下班話題仍停在表面，還沒補具體散步畫面。",
+          nextFirstLine: "妳下班後想散步放空，通常最常走哪一段？",
+          inviteDirection: "先問她散步最常走哪段，等她多分享再丟低壓短約。",
         },
       })],
     },
@@ -3259,6 +3282,7 @@ Deno.test("debrief authoritative claim replay handles the preflight race", async
     costDeducted: 0,
     generationSource: "model",
     fallbackUsed: false,
+    qualitySchemaVersion: DEBRIEF_QUALITY_SCHEMA_VERSION,
   };
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true, debrief_count: 2 }),
@@ -3350,7 +3374,7 @@ Deno.test("fresh debrief claim precedes rate limit and limited owner is released
   assertEquals(recordDebriefCalls(state).length, 0);
 });
 
-Deno.test("legacy debrief snapshot is invalidated and regenerated under the same requestId", async () => {
+Deno.test("unversioned model debrief snapshot is invalidated and regenerated under the same requestId", async () => {
   const { response, json, state } = await run({
     ledger: ledger({
       ai_count: 1,
@@ -3360,13 +3384,20 @@ Deno.test("legacy debrief snapshot is invalidated and regenerated under the same
       last_debrief_result: {
         card: { summary: "舊罐頭拆解", suggestedLine: "空泛下一句" },
         costDeducted: 0,
+        generationSource: "model",
+        fallbackUsed: false,
       },
     }),
-    deepSeekReplies: [validDebriefJson({ summary: "重新生成的高手拆解" })],
+    deepSeekReplies: [validDebriefJson({
+      summary: "新版拆解：你說今天忙到剛下班，她接著分享只想散步放空。",
+    })],
   }, debriefBody({ requestId: "legacy-debrief" }));
 
   assertEquals(response.status, 200);
-  assertEquals(json.card.summary, "重新生成的高手拆解");
+  assertEquals(
+    json.card.summary,
+    "新版拆解：你說今天忙到剛下班，她接著分享只想散步放空。",
+  );
   assertEquals(json.generationSource, "model");
   assertEquals(json.fallbackUsed, false);
   const invalidations = state.rpcCalls.filter((call) =>
@@ -3439,11 +3470,16 @@ Deno.test("same unfinished debrief request can recover at the cap", async () => 
       last_debrief_request_id: "debrief-pending",
       last_debrief_result: null,
     }),
-    deepSeekReplies: [validDebriefJson({ summary: "重試完成" })],
+    deepSeekReplies: [validDebriefJson({
+      summary: "重試後你仍說自己剛下班，她接著分享只想散步放空。",
+    })],
   }, debriefBody({ requestId: "debrief-pending" }));
 
   assertEquals(response.status, 200);
-  assertEquals(json.card.summary, "重試完成");
+  assertEquals(
+    json.card.summary,
+    "重試後你仍說自己剛下班，她接著分享只想散步放空。",
+  );
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(claimDebriefCalls(state).length, 1);
   assertEquals(recordDebriefCalls(state).length, 1);
@@ -3455,11 +3491,16 @@ Deno.test("debrief sends an incomplete DeepSeek card to Claude with repair guida
     deepSeekReplies: [
       JSON.stringify({ summary: "只有摘要", suggestedLine: "下一句" }),
     ],
-    claudeReplies: [validDebriefJson({ summary: "修復完成" })],
+    claudeReplies: [validDebriefJson({
+      summary: "修復後你說今天忙到剛下班，她接著分享只想散步放空。",
+    })],
   }, debriefBody());
 
   assertEquals(response.status, 200);
-  assertEquals(json.card.summary, "修復完成");
+  assertEquals(
+    json.card.summary,
+    "修復後你說今天忙到剛下班，她接著分享只想散步放空。",
+  );
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 1);
   const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
@@ -3475,14 +3516,14 @@ Deno.test("debrief sends an incomplete DeepSeek card to Claude with repair guida
 
 Deno.test("Game debrief repairs a missing breakdown through Claude failover", async () => {
   const completeGameCard = JSON.parse(validDebriefJson({
-    summary: "Game 修復完成",
+    summary: "Game 修復後你說自己剛下班，她接著分享只想散步放空。",
   }));
   completeGameCard.gameBreakdown = {
-    phaseReached: "下班散步的測試承接",
-    missedVariable: "散步話題的投入感",
-    failureState: "下班後的追問偏多",
-    nextFirstLine: "我先說我的下班散步版本",
-    inviteDirection: "先延伸下班散步再看窗口",
+    phaseReached: "下班散步仍在熟悉測試階段",
+    missedVariable: "還缺散步話題的具體畫面",
+    failureState: "下班話題仍偏表面，還沒接到她常走哪一段。",
+    nextFirstLine: "妳下班後想散步放空，通常最常走哪一段？",
+    inviteDirection: "先問她散步最常走哪一段，等她分享再看邀約窗口。",
   };
   const { response, json, state } = await run(
     {
@@ -3498,8 +3539,14 @@ Deno.test("Game debrief repairs a missing breakdown through Claude failover", as
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.card.summary, "Game 修復完成");
-  assertEquals(json.card.gameBreakdown.phaseReached, "下班散步的測試承接");
+  assertEquals(
+    json.card.summary,
+    "Game 修復後你說自己剛下班，她接著分享只想散步放空。",
+  );
+  assertEquals(
+    json.card.gameBreakdown.phaseReached,
+    "下班散步仍在熟悉測試階段",
+  );
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 1);
   const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
@@ -3507,6 +3554,102 @@ Deno.test("Game debrief repairs a missing breakdown through Claude failover", as
   assert(repairPrompt.includes("gameBreakdown 必須含"));
   assert(repairPrompt.includes("不得裁掉句尾"));
 });
+
+for (const mode of ["beginner", "game"] as const) {
+  const factGuardTurns = [
+    { role: "user" as const, text: "早安，妳平常住哪裡？" },
+    { role: "ai" as const, text: "我住台南，最常在中西區活動。" },
+  ];
+  const debriefCardWithLine = (
+    suggestedLine: string,
+    nextFirstLine = "妳住台南喔，最常去哪一區？",
+  ) =>
+    validDebriefJson({
+      summary: "她分享台南生活圈，這輪仍在交換資訊。",
+      strengths: ["有接到她住台南的具體素材。"],
+      watchouts: ["下一步不要亂補「我也住台南」這個共同點，先接她住台南。"],
+      suggestedLine,
+      dateChanceReason: "她願意分享台南生活圈，但還沒提見面時間或同行意願。",
+      nextInviteMove: "先問她在台南常去哪一區。",
+      ...(mode === "game"
+        ? {
+          gameBreakdown: {
+            phaseReached: "開場仍在台南中西區生活資訊交換",
+            missedVariable: "中西區話題還沒形成投入",
+            failureState: "只停在台南中西區資訊交換",
+            nextFirstLine,
+            inviteDirection: "先延伸台南中西區活動，再看投入",
+          },
+        }
+        : {}),
+    });
+  const body = debriefBody({
+    practiceMode: mode,
+    requestId: `typed-debrief-${mode}`,
+    turns: factGuardTurns,
+    ...(mode === "game" ? { profileId: "practice_girl_004" } : {}),
+  });
+  const modeOptions = mode === "game"
+    ? {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+    }
+    : { ledger: beginnerStartedLedger() };
+
+  Deno.test(`${mode} Debrief fact transfer fails over before recording`, async () => {
+    const bad = mode === "game"
+      ? debriefCardWithLine(
+        "妳住台南喔，最常去哪一區？",
+        "我的生活圈也在台南，這也太巧。",
+      )
+      : debriefCardWithLine("我也是台南人，妳最常去哪一區？");
+    const good = debriefCardWithLine("妳住台南喔，最常去哪一區？");
+    const { response, json, state } = await run(
+      {
+        ...modeOptions,
+        deepSeekReplies: [bad],
+        claudeReplies: [good],
+      },
+      body,
+    );
+
+    assertEquals(response.status, 200);
+    assertEquals(json.provider, "anthropic");
+    assertEquals(json.failoverUsed, true);
+    assertEquals(json.qualitySchemaVersion, DEBRIEF_QUALITY_SCHEMA_VERSION);
+    assertEquals(state.deepSeekCalls.length, 1);
+    assertEquals(state.claudeCalls.length, 1);
+    assertEquals(recordDebriefCalls(state).length, 1);
+    assertEquals(releaseDebriefCalls(state).length, 0);
+    const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
+    assert(repairPrompt.includes("她的個人事實錯寫成使用者"));
+  });
+
+  Deno.test(`${mode} Debrief dual fact transfer fails retryably without a snapshot`, async () => {
+    const bad = mode === "game"
+      ? debriefCardWithLine(
+        "我的生活圈也在台南，這也太巧。",
+        "我也是台南人，這個生活感很熟。",
+      )
+      : debriefCardWithLine("我的生活圈也在台南，這也太巧。");
+    const { response, json, state } = await run(
+      {
+        ...modeOptions,
+        deepSeekReplies: [bad],
+        claudeReplies: [bad],
+      },
+      { ...body, requestId: `typed-debrief-dual-${mode}` },
+    );
+
+    assertEquals(response.status, 503);
+    assertEquals(json, {
+      error: "practice_debrief_generation_retryable",
+      retryable: true,
+    });
+    assertEquals(recordDebriefCalls(state).length, 0);
+    assertEquals(releaseDebriefCalls(state).length, 1);
+  });
+}
 
 Deno.test("debrief repairs malformed DeepSeek JSON with Claude", async () => {
   const { response, json, state } = await run({
@@ -3516,7 +3659,10 @@ Deno.test("debrief repairs malformed DeepSeek JSON with Claude", async () => {
   }, debriefBody());
 
   assertEquals(response.status, 200);
-  assertEquals(json.card.summary, "有接住她下班後想放空的情緒");
+  assertEquals(
+    json.card.summary,
+    "你說今天忙到剛下班，她接著分享只想散步放空。",
+  );
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 1);
   assertEquals(state.deepSeekCalls[0].jsonMode, true);
@@ -3616,15 +3762,19 @@ Deno.test("debrief returns retryable error and stores no card when both models f
 
 Deno.test("game debrief Claude failover still returns a complete model breakdown", async () => {
   const failoverCard = JSON.parse(validDebriefJson({
-    summary: "Claude 接手拆盤",
-    suggestedLine: "看點東西看到這麼專心，我先猜你在研究週末去哪走走。",
+    summary: "你把她正在看點東西接成神祕技能的玩笑，對話停在這個猜測。",
+    strengths: ["你用神祕技能的猜測延伸她正在看點東西，沒有只回一句好。"],
+    watchouts: ["下一步可以問她在看什麼，不要再疊新的猜測。"],
+    suggestedLine: "妳說正在看點東西，神祕成這樣，我可以猜是哪一類嗎？",
+    dateChanceReason: "她只回正在看點東西，還沒分享內容或見面時間。",
+    nextInviteMove: "先問她在看什麼，等她分享內容再看邀約窗口。",
   }));
   failoverCard.gameBreakdown = {
-    phaseReached: "看點東西的測試承接",
-    missedVariable: "看點東西話題的投入感",
-    failureState: "看點東西沒有變成共同畫面",
-    nextFirstLine: "看點東西這句很神祕，我先猜你在找新的散步路線。",
-    inviteDirection: "先延伸看點東西的共同畫面，再看散步窗口",
+    phaseReached: "開場已進到看點東西的玩笑測試",
+    missedVariable: "還缺她正在看什麼的具體內容",
+    failureState: "神祕技能的猜測偏抽象，還沒接到她在看的內容。",
+    nextFirstLine: "妳說正在看點東西，神祕成這樣，我可以猜是哪一類嗎？",
+    inviteDirection: "先問她正在看哪一類，等她分享內容再看邀約窗口。",
   };
   const { response, json, state } = await run(
     {
@@ -3651,7 +3801,10 @@ Deno.test("game debrief Claude failover still returns a complete model breakdown
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.card.summary, "Claude 接手拆盤");
+  assertEquals(
+    json.card.summary,
+    "你把她正在看點東西接成神祕技能的玩笑，對話停在這個猜測。",
+  );
   assertEquals(typeof json.card.gameBreakdown.phaseReached, "string");
   assertEquals(typeof json.card.gameBreakdown.nextFirstLine, "string");
   assertEquals(json.provider, "anthropic");
@@ -3716,7 +3869,7 @@ Deno.test("new Debrief dual-provider failure releases without consuming settled 
 Deno.test("new Debrief consumes one settled slot only after record succeeds", async () => {
   const { response, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true, debrief_count: 2 }),
-    deepSeekReplies: [validDebriefJson({ summary: "第三張成功" })],
+    deepSeekReplies: [validDebriefJson()],
   }, debriefBody({ requestId: "debrief-success-counts" }));
 
   assertEquals(response.status, 200);
@@ -3766,7 +3919,7 @@ Deno.test("debrief accepts beginner ledger when client omits practiceMode", asyn
         charged: true,
         practice_mode: "beginner",
       }),
-      deepSeekReplies: [validDebriefJson({ summary: "新手拆解成功" })],
+      deepSeekReplies: [validDebriefJson()],
     },
     debriefBody({
       memorySummary: "OLDER_DEBRIEF_MEMORY: 她之前說第二輪審查剛過",
@@ -3774,7 +3927,10 @@ Deno.test("debrief accepts beginner ledger when client omits practiceMode", asyn
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.card.summary, "新手拆解成功");
+  assertEquals(
+    json.card.summary,
+    "你說今天忙到剛下班，她接著分享只想散步放空。",
+  );
   assertEquals(state.deepSeekCalls.length, 1);
   const debriefPrompt = state.deepSeekCalls[0].messages
     .map((message) => message.content)
@@ -3792,8 +3948,11 @@ Deno.test("assisted debrief resolves Hint strategy from the charged server snaps
       ledger: beginnerStartedLedger(),
       deepSeekReplies: [validDebriefJson({
         summary: "你有照提示分享散步節奏，沒有連續盤問她。",
-        strengths: ["有照提示接住她的散步話題"],
+        strengths: ["你照提示說下班後散步能切回節奏，她接著回散步很舒服。"],
+        watchouts: ["下一步可以接她說散步很舒服，問她最常走哪段。"],
         suggestedLine: "散步派加一，我通常會邊走邊清空腦袋；妳最喜歡哪一段路？",
+        dateChanceReason: "她回散步真的蠻舒服的，有延續話題，但還沒提時間或見面。",
+        nextInviteMove: "先問她散步最常走哪段，等她多分享再看邀約窗口。",
       })],
       rpc: {
         resolve_practice_hint_decision: [{
@@ -3856,14 +4015,141 @@ Deno.test("assisted debrief resolves Hint strategy from the charged server snaps
   assertEquals(prompt.includes("FORGED"), false);
 });
 
+Deno.test("assisted Debrief repairs indirect blame of an exact preserved Hint", async () => {
+  const hintText = "還在賴床喔，那今天先准妳慢慢開機。";
+  const turns = [
+    { role: "user" as const, text: "早安" },
+    { role: "ai" as const, text: "我還在賴床，腦袋沒開機" },
+    { role: "user" as const, text: hintText },
+    { role: "ai" as const, text: "哈哈有慢慢開機了" },
+  ];
+  const card = (watchout: string) =>
+    validDebriefJson({
+      summary: "你有照提示做，她後來也回說慢慢開機了。",
+      strengths: ["你照提示回她今天先准妳慢慢開機，她接著說有慢慢開機。"],
+      watchouts: [watchout],
+      suggestedLine: "慢慢開機就好，妳今天第一個讓腦袋上線的會是什麼？",
+      dateChanceReason: "她回說慢慢開機了，願意延續賴床話題，但還沒提時間或見面。",
+      nextInviteMove: "先問她慢慢開機後第一件會做什麼，再看她是否多投入。",
+    });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      deepSeekReplies: [card(
+        "只回『還在賴床喔，那今天先准妳慢慢開機』只是禮貌收尾，沒有給她好接的球。",
+      )],
+      claudeReplies: [card(
+        "下一步可以接慢慢開機，再分享你今天第一個起床動作。",
+      )],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "建立熟悉中",
+            targetVariable: "投入感",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先接住賴床狀態，再看她是否願意延伸。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      requestId: "debrief-indirect-hint-blame-repair",
+      practiceMode: "beginner",
+      turns,
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "warm_up",
+        originalHintText: hintText,
+        sentText: hintText,
+        exact: true,
+        hintRequestId: "hint-indirect-blame-1",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.provider, "anthropic");
+  assertEquals(json.failoverUsed, true);
+  assertEquals(
+    json.card.watchouts,
+    ["下一步可以接慢慢開機，再分享你今天第一個起床動作。"],
+  );
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
+  const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
+  assert(repairPrompt.includes("已認定 Hint 策略延續"));
+  assert(repairPrompt.includes("禮貌收尾、沒給球或太保守"));
+});
+
+Deno.test("both Debrief providers blaming a preserved exact Hint record no card", async () => {
+  const hintText = "還在賴床喔，那今天先准妳慢慢開機。";
+  const invalid = validDebriefJson({
+    summary: "你有照提示做，但這句只是禮貌收尾，沒有給球。",
+    strengths: ["你有照提示做，也接住她還在賴床的狀態。"],
+    watchouts: ["下一步可以補一點自己的早晨畫面。"],
+    suggestedLine: "慢慢開機就好，我今天也是靠咖啡把自己叫醒。",
+    dateChanceReason: "她回說慢慢開機了，願意延續賴床話題。",
+    nextInviteMove: "先延續慢慢開機的節奏，再看她是否多投入。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      deepSeekReplies: [invalid],
+      claudeReplies: [invalid],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "建立熟悉中",
+            targetVariable: "投入感",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先接住賴床狀態，再看她是否願意延伸。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      requestId: "debrief-indirect-hint-blame-no-record",
+      practiceMode: "beginner",
+      turns: [
+        { role: "user", text: "早安" },
+        { role: "ai", text: "我還在賴床，腦袋沒開機" },
+        { role: "user", text: hintText },
+        { role: "ai", text: "哈哈有慢慢開機了" },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "warm_up",
+        originalHintText: hintText,
+        sentText: hintText,
+        exact: true,
+        hintRequestId: "hint-indirect-blame-2",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json.retryable, true);
+  assertEquals(recordDebriefCalls(state).length, 0);
+  assertEquals(releaseDebriefCalls(state).length, 1);
+});
+
 Deno.test("assisted debrief drops disconnected Hint lineage and still generates", async () => {
   const hintText = "我先分享我的版本。";
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
       deepSeekReplies: [validDebriefJson({
-        summary: "她給了象山夜景這個具體話題，下一句可以補你的偏好。",
-        suggestedLine: "象山夜景聽起來不錯，我比較想挑平日晚點人少的時候走。",
+        summary: "她說最近想去象山看夜景，你還沒接這個具體話題。",
+        strengths: ["你先問她週末會不會爬山，讓她說出象山夜景這個方向。"],
+        watchouts: ["下一步要接住象山夜景，不要補成自己已有固定行程。"],
+        suggestedLine: "象山夜景聽起來不錯，妳偏好平日晚點還是假日慢慢走？",
+        dateChanceReason:
+          "她主動說最近想去象山看夜景，但還沒提時間或邀你同行。",
+        nextInviteMove: "先問她偏好平日還是假日去象山，等她回覆再看邀約窗口。",
       })],
       rpc: {
         resolve_practice_hint_decision: [{
@@ -3890,7 +4176,8 @@ Deno.test("assisted debrief drops disconnected Hint lineage and still generates"
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.card.summary.includes("象山夜景"), true);
+  assertEquals(json.card.summary.includes("象山"), true);
+  assertEquals(json.card.summary.includes("夜景"), true);
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(claimDebriefCalls(state).length, 1);
   const prompt = state.deepSeekCalls[0].messages.map((message) =>
@@ -4009,23 +4296,16 @@ Deno.test("standard ledger ignores forged assisted appliedHintTurns during debri
   const { response, json, state } = await run(
     {
       ledger: ledger({ ai_count: 1, charged: true }),
-      deepSeekReplies: [validDebriefJson({
-        summary: "standard debrief",
-        suggestedLine: "嗯，妳像是還沒開機；今天想慢慢聊哪件事？",
-      })],
+      deepSeekReplies: [validDebriefJson()],
     },
     debriefBody({
       practiceMode: "beginner",
-      turns: [
-        { role: "user", text: "嗨" },
-        { role: "ai", text: "嗯？" },
-      ],
       appliedHintTurns: [
         {
           turnIndex: 0,
           type: "warm_up",
-          originalHintText: "嗨",
-          sentText: "嗨",
+          originalHintText: "今天忙到剛下班",
+          sentText: "今天忙到剛下班",
           exact: true,
         },
       ],
@@ -4033,7 +4313,10 @@ Deno.test("standard ledger ignores forged assisted appliedHintTurns during debri
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.card.summary, "standard debrief");
+  assertEquals(
+    json.card.summary,
+    "你說今天忙到剛下班，她接著分享只想散步放空。",
+  );
   const debriefPrompt = state.deepSeekCalls[0].messages
     .map((message) => message.content)
     .join("\n");
@@ -4052,7 +4335,6 @@ Deno.test("non-game debrief drops provider gameBreakdown", async () => {
       }),
       deepSeekReplies: [
         validDebriefJson({
-          summary: "beginner debrief",
           gameBreakdown: {
             phaseReached: "value stage",
             missedVariable: "investment",
@@ -4067,7 +4349,10 @@ Deno.test("non-game debrief drops provider gameBreakdown", async () => {
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.card.summary, "beginner debrief");
+  assertEquals(
+    json.card.summary,
+    "你說今天忙到剛下班，她接著分享只想散步放空。",
+  );
   assertEquals(json.card.gameBreakdown, null);
 });
 
@@ -4083,11 +4368,15 @@ Deno.test("debrief with game ledger sends FSM and SR strategy guidance to provid
       deepSeekReplies: [
         validDebriefJson({
           summary: "她接住你說的畫面，這輪有維持住測試感。",
+          strengths: ["你回覆她的說說看測試，明確說自己不照劇本走。"],
+          watchouts: ["下一步可以補一個具體畫面，不要只停在測我穩不穩。"],
           suggestedLine: "妳叫我說說看，那我先猜：妳其實在看我能不能穩穩接招。",
+          dateChanceReason: "她回你倒是說說看看到什麼，但還沒提見面時間。",
+          nextInviteMove: "先補一個你看到的具體畫面，等她接住再看邀約窗口。",
           gameBreakdown: {
             phaseReached: "說說看從開場推到測試",
             missedVariable: "說說看之後的投入感",
-            failureState: "說說看後自己的感受還不夠具體",
+            failureState: "說說看後自己的感受仍偏表面",
             nextFirstLine: "妳叫我說說看，我看到的是妳還在測我穩不穩。",
             inviteDirection: "先維持說說看的測試感，等她投入再看窗口",
           },
@@ -4203,10 +4492,8 @@ Deno.test("game hint repairs common internal labels from provider before recordi
     drawEvents: [{ profile_id: "practice_girl_004" }],
     deepSeekReplies: [
       validHintJson({
-        warmUp: "P4 這邊可以用 L3 張力，丟一個咖啡窗口。",
-        steady: "咖啡的 speedInviteDirection: soft_invite_probe，先低壓試探。",
         coaching:
-          "Game 心法：P4_TENSION 推 Emotion + heat，targetVariable: Investment + invite；allowSpicyLevel: L3，速約任務：丟咖啡窗口。",
+          "Game 心法：她主動說想喝咖啡，P4_TENSION 要換成讓她補狀態，不是直接推 Emotion + heat 或 targetVariable: Investment + invite。速約任務：問她想醒腦還是放空，因為先用 speedInviteDirection: soft_invite_probe 和 allowSpicyLevel: L3 留下具體窗口。",
       }),
     ],
     rpc: {
@@ -4249,7 +4536,7 @@ Deno.test("game hint timeout fails over to Claude without exposing canned text",
         warmUp: "調時差辛苦了，妳這趟回來最想先用什麼方式回血？",
         steady: "等妳時差歸位，我拿一杯咖啡跟妳交換這趟最好笑的故事。",
         coaching:
-          "Game 心法：她還在調時差，這輪先接低能量再補熟悉感。速約任務：先留咖啡窗口，不追著定時間。",
+          "Game 心法：她還在調時差，這輪先接低能量再補熟悉感。速約任務：問她這趟回來最想怎麼回血，因為先接住時差再保留咖啡窗口，不追著定時間。",
       })],
       rpc: {
         record_practice_hint: [{
@@ -4412,7 +4699,7 @@ Deno.test("game hint repairs malformed DeepSeek output through Claude before rec
           warmUp: "我先給妳我的版本：舒服的節奏要能讓人笑完還想散步。",
           steady: "我先不急著推，妳剛那個脫口秀點我想聽妳怎麼挑。",
           coaching:
-            "Game 心法：測試階段先推框架。速約任務：先給自己的品味，再丟低壓窗口。",
+            "Game 心法：她問你平常會不會看脫口秀，還在測試你的框架與品味。速約任務：先回答你怎麼挑脫口秀片段，因為交換品味後她更容易接下一球。",
         }),
       ],
       rpc: {
@@ -4457,6 +4744,279 @@ Deno.test("game hint repairs malformed DeepSeek output through Claude before rec
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
+Deno.test("Beginner and Game Hint reject invented locations and venues before recording", async () => {
+  const turns = [
+    { role: "user" as const, text: "剛路過一間咖啡店，聞起來很香" },
+    { role: "ai" as const, text: "喔你鼻子也太靈，在哪啊" },
+  ];
+  for (const mode of ["beginner", "game"] as const) {
+    const invalidCoaching = mode === "game"
+      ? "Game 心法：她說鼻子也太靈又問在哪，這輪接住咖啡話題。速約任務：先交換生活感，不硬約。"
+      : "她說鼻子也太靈又問在哪，先接住咖啡話題。";
+    const repairedCoaching = mode === "game"
+      ? "Game 心法：她問咖啡店在哪，這輪先誠實承認沒記住。速約任務：回答店名沒記住，再問她平常怎麼挑咖啡店，因為先接她的問題比硬約自然。"
+      : "她說鼻子也太靈又問在哪，先誠實承認沒記住，再接咖啡香。";
+    const { response, json, state } = await run(
+      {
+        ...(mode === "game"
+          ? {
+            ledger: gameStartedLedger(),
+            drawEvents: [{ profile_id: "practice_girl_004" }],
+          }
+          : { ledger: beginnerStartedLedger() }),
+        deepSeekReplies: [JSON.stringify({
+          warmUp: "鼻子靈是基本配備😂 我在中山站巷子裡發現的，叫『黑露』。",
+          steady: "妳說我鼻子也太靈，店就在中山站附近。",
+          coaching: invalidCoaching,
+        })],
+        claudeReplies: [JSON.stringify({
+          warmUp: "鼻子靈是基本配備😂 我只顧著聞香，店名真的沒記住。",
+          steady: "妳說我鼻子也太靈，但問在哪我真的答不出來😂",
+          coaching: repairedCoaching,
+        })],
+      },
+      hintBody({
+        practiceMode: mode,
+        profileId: mode === "game" ? "practice_girl_004" : undefined,
+        requestId: `unsupported-detail-${mode}`,
+        turns,
+      }),
+    );
+
+    assertEquals(response.status, 200, mode);
+    assertEquals(json.provider, "anthropic", mode);
+    assertEquals(json.failoverUsed, true, mode);
+    assertEquals(JSON.stringify(json).includes("中山站"), false, mode);
+    assertEquals(JSON.stringify(json).includes("黑露"), false, mode);
+    assertEquals(state.deepSeekCalls.length, 1, mode);
+    assertEquals(state.claudeCalls.length, 1, mode);
+    assertEquals(recordHintCalls(state).length, 1, mode);
+    assertEquals(releaseHintCalls(state).length, 0, mode);
+    const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
+    assert(
+      repairPrompt.includes(
+        "捏造證據未提供的店名、地點、時間、人物或聯絡資訊",
+      ),
+      mode,
+    );
+  }
+});
+
+Deno.test("invented Hint details from both providers fail retryably without a snapshot", async () => {
+  const invented = JSON.stringify({
+    warmUp: "鼻子靈是基本配備😂 我在中山站巷子裡發現的。",
+    steady: "妳說我鼻子也太靈，那間咖啡店叫『黑露』。",
+    coaching: "她說鼻子也太靈又問在哪，先接住咖啡話題。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      deepSeekReplies: [invented],
+      claudeReplies: [invented],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "unsupported-detail-no-record",
+      turns: [
+        { role: "user", text: "剛路過一間咖啡店，聞起來很香" },
+        { role: "ai", text: "喔你鼻子也太靈，在哪啊" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json.retryable, true);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
+});
+
+Deno.test("Hint retries when provider turns her schedule into the user's schedule", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      deepSeekReplies: [validHintJson({
+        warmUp: "妳明天七點有空，我明天七點也有空。",
+        steady: "妳說明天七點可以，我也剛好有空。",
+        coaching: "她明天七點有空，直接說你也有空。",
+      })],
+      claudeReplies: [validHintJson({
+        warmUp: "妳明天七點有空，我先確認自己的行程再回妳。",
+        steady: "妳說明天七點可以，我確認好再跟妳說。",
+        coaching: "她說明天七點有空，只承接她已知的時間，不替使用者捏造行程。",
+      })],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "speaker-owned-schedule-repair",
+      turns: [
+        { role: "user", text: "最近工作有點忙" },
+        { role: "ai", text: "我明天七點有空，你呢？" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.provider, "anthropic");
+  assertEquals(json.failoverUsed, true);
+  assertEquals(json.replies[0].text.includes("先確認自己的行程"), true);
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
+Deno.test("Beginner and Game reject paraphrased partner facts before recording", async () => {
+  for (const mode of ["beginner", "game"] as const) {
+    const invalidMirror = validHintJson({
+      warmUp: "我住的地方也是台南，難怪生活圈很像。",
+      steady: "台南也是我家鄉，這個生活感很熟。",
+      coaching: mode === "game"
+        ? "Game 心法：她住台南，建議你回『我也住台南』建立同城感。這輪穩定接球。速約任務：先累積熟悉，不硬約。"
+        : "她住台南，建議你也說自己住台南來製造同城感。",
+    });
+    const validRepair = validHintJson({
+      warmUp: "妳住台南喔，平常最常去哪一區？",
+      steady: "妳住台南又少跑台北，生活圈很固定耶。",
+      coaching: mode === "game"
+        ? "Game 心法：她主動說自己住台南，這輪只有生活圈資訊。速約任務：問她平常最常去哪一區，因為先讓她補具體活動，再看有沒有見面窗口。"
+        : "她說自己住台南，只承接她的生活圈，不替使用者冒認同城。",
+    });
+    const setup = mode === "game"
+      ? {
+        ledger: gameStartedLedger(),
+        drawEvents: [{ profile_id: "practice_girl_004" }],
+      }
+      : { ledger: beginnerStartedLedger() };
+    const turns = [
+      { role: "user" as const, text: "我平常比較少往南部跑" },
+      { role: "ai" as const, text: "我住台南，平常很少跑台北。" },
+    ];
+    const { response, json, state } = await run(
+      {
+        ...setup,
+        deepSeekReplies: [invalidMirror],
+        claudeReplies: [validRepair],
+      },
+      hintBody({
+        practiceMode: mode,
+        profileId: mode === "game" ? "practice_girl_004" : undefined,
+        requestId: `typed-fact-repair-${mode}`,
+        turns,
+      }),
+    );
+
+    assertEquals(response.status, 200, `${mode}:${JSON.stringify(json)}`);
+    assertEquals(json.provider, "anthropic", mode);
+    assertEquals(json.failoverUsed, true, mode);
+    assertEquals(state.deepSeekCalls.length, 1, mode);
+    assertEquals(state.claudeCalls.length, 1, mode);
+    assertEquals(recordHintCalls(state).length, 1, mode);
+    assertEquals(releaseHintCalls(state).length, 0, mode);
+
+    const failed = await run(
+      {
+        ...setup,
+        deepSeekReplies: [invalidMirror],
+        claudeReplies: [invalidMirror],
+      },
+      hintBody({
+        practiceMode: mode,
+        profileId: mode === "game" ? "practice_girl_004" : undefined,
+        requestId: `typed-fact-dual-reject-${mode}`,
+        turns,
+      }),
+    );
+    assertEquals(failed.response.status, 503, mode);
+    assertEquals(failed.json, {
+      error: "practice_hint_generation_retryable",
+      retryable: true,
+    }, mode);
+    assertEquals(recordHintCalls(failed.state).length, 0, mode);
+    assertEquals(releaseHintCalls(failed.state).length, 1, mode);
+  }
+});
+
+Deno.test("Hint factual guard accepts a named place from trusted relationship memory", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      thread: {
+        profile_id: "practice_girl_004",
+        memory_summary: "她之前說中山站附近那間店叫黑露。",
+        partner_mood: "neutral",
+        partner_inner_thought: "",
+        temperature_score: 30,
+        familiarity_score: 20,
+      },
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [JSON.stringify({
+        warmUp: "鼻子靈是基本配備😂 中山站附近那間店叫黑露。",
+        steady: "妳說我鼻子也太靈：就是中山站附近的黑露。",
+        coaching:
+          "Game 心法：她說鼻子也太靈又問在哪，這輪直接回答中山站和黑露。速約任務：先交換生活感，不硬約。",
+      })],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      visiblePracticeThreadId: "thread-with-place-memory",
+      requestId: "trusted-memory-location",
+      turns: [
+        { role: "user", text: "剛路過一間咖啡店，聞起來很香" },
+        { role: "ai", text: "喔你鼻子也太靈，在哪啊" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.provider, "deepseek");
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.replies[0].text.includes("中山站"), true);
+  assertEquals(json.replies[1].text.includes("黑露"), true);
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 1);
+  const prompt = state.deepSeekCalls[0].messages
+    .map((message) => message.content)
+    .join("\n");
+  assert(prompt.includes("她之前說中山站附近那間店叫黑露"));
+});
+
+Deno.test("Game Hint may use generic profile strategy language without treating it as a named venue", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({
+        temperature_score: 52,
+        familiarity_score: 38,
+      }),
+      drawEvents: [{ profile_id: "practice_girl_063" }],
+      deepSeekReplies: [validGameHintJson({
+        warmUp: "突然想喝咖啡很真實，老屋咖啡那種慢節奏有沒有打中妳？",
+        steady: "咖啡念頭收到，我先猜你會選老屋咖啡那種慢節奏，猜錯妳糾正我。",
+        coaching:
+          "Game 心法：她突然想喝咖啡，可以用老屋咖啡的慢節奏接這個話題。速約任務：問她老屋咖啡有沒有打中，因為先聽她答案再看低壓窗口。",
+      })],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_063",
+      requestId: "trusted-game-strategy-hook",
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.provider, "deepseek");
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.replies[0].text.includes("老屋咖啡"), true);
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 1);
+  const prompt = state.deepSeekCalls[0].messages
+    .map((message) => message.content)
+    .join("\n");
+  assert(prompt.includes("老屋咖啡"));
+});
+
 Deno.test("Hint repairs overlong visible text instead of recording a sliced half sentence", async () => {
   const { response, json, state } = await run(
     {
@@ -4473,7 +5033,10 @@ Deno.test("Hint repairs overlong visible text instead of recording a sliced half
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.coaching, "她提到突然想喝咖啡，先交換一點生活感再延伸。");
+  assertEquals(
+    json.coaching,
+    "她主動說突然想喝咖啡；先用醒腦或放空二選一接她的狀態，再沿她的答案分享。",
+  );
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 1);
   const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
@@ -4521,10 +5084,10 @@ Deno.test("game hint rejects invite options that contradict its authoritative ro
           "Game 心法：她突然很想喝咖啡，但現在仍是開場。速約任務：這輪先不約，等窗口。",
       })],
       claudeReplies: [JSON.stringify({
-        warmUp: "突然很想喝咖啡這句很真實，我今天也被咖啡香抓走。",
-        steady: "喝咖啡的念頭收到，妳今天是想醒腦還是想放空？",
+        warmUp: "聽起來這杯咖啡有任務，是想醒腦還是想放空？",
+        steady: "咖啡念頭收到，我先押妳今天比較想放空，猜錯妳糾正我。",
         coaching:
-          "Game 心法：她突然很想喝咖啡，開場先交換生活感。速約任務：這輪先不約，等她多投入一輪。",
+          "Game 心法：她主動說很想喝咖啡，但目前仍是開場。速約任務：問她想醒腦還是放空，因為先讓她多投入一輪，再看邀約窗口。",
       })],
     },
     hintBody({
@@ -5051,6 +5614,13 @@ Deno.test("legacy zero-cost fallback snapshot is atomically replaced without rec
     ).length,
     1,
   );
+  const replacementPayload = state.rpcCalls.find((call) =>
+    call.fn === "record_legacy_practice_hint_replacement"
+  )?.params.p_result as Record<string, unknown>;
+  assertEquals(
+    replacementPayload.qualitySchemaVersion,
+    HINT_QUALITY_SCHEMA_VERSION,
+  );
   assertEquals(
     state.rpcCalls.filter((call) =>
       call.fn === "invalidate_legacy_practice_ai_snapshot"
@@ -5059,7 +5629,7 @@ Deno.test("legacy zero-cost fallback snapshot is atomically replaced without rec
   );
 });
 
-Deno.test("settled legacy prefetch replacement bypasses 5/5 gate and never charges twice", async () => {
+Deno.test("settled unversioned model prefetch is replaced at 5/5 without charging twice", async () => {
   const legacyPrefetch = {
     replies: [
       { type: "warm_up", text: "legacy warm" },
@@ -5070,6 +5640,8 @@ Deno.test("settled legacy prefetch replacement bypasses 5/5 gate and never charg
     hintUsedCount: 5,
     provider: "deepseek",
     model: DEEPSEEK_MODEL,
+    generationSource: "model",
+    fallbackUsed: false,
   };
   const { response, json, state } = await run(
     {
@@ -5105,6 +5677,11 @@ Deno.test("settled legacy prefetch replacement bypasses 5/5 gate and never charg
     call.fn === "record_legacy_practice_hint_replacement"
   );
   assertEquals(replacementRecord?.params.p_charge_quota, false);
+  assertEquals(
+    (replacementRecord?.params.p_result as Record<string, unknown>)
+      .qualitySchemaVersion,
+    HINT_QUALITY_SCHEMA_VERSION,
+  );
 });
 
 Deno.test("unconsumed legacy prefetch is discarded before normal generated-only claim", async () => {
@@ -5227,6 +5804,7 @@ function storedHintResult(overrides: Record<string, unknown> = {}) {
     model: DEEPSEEK_MODEL,
     generationSource: "model",
     fallbackUsed: false,
+    qualitySchemaVersion: HINT_QUALITY_SCHEMA_VERSION,
     failoverUsed: false,
     generatedAt: NOW.toISOString(),
     monthlyRemaining: 289,
@@ -5293,6 +5871,10 @@ for (
     assertEquals(
       (params.p_result as Record<string, unknown>).hintUsedCount,
       0,
+    );
+    assertEquals(
+      (params.p_result as Record<string, unknown>).qualitySchemaVersion,
+      HINT_QUALITY_SCHEMA_VERSION,
     );
     assertEquals(settleHintCalls(state).length, 0);
     assertEquals(releaseHintCalls(state).length, 0);
@@ -6162,6 +6744,10 @@ Deno.test("hint with a fresh requestId generates normally and threads the id int
   assertEquals(storedPayload.costDeducted, 1);
   assertEquals(storedPayload.provider, "deepseek");
   assertEquals(storedPayload.model, DEEPSEEK_MODEL);
+  assertEquals(
+    storedPayload.qualitySchemaVersion,
+    HINT_QUALITY_SCHEMA_VERSION,
+  );
   assertEquals(typeof storedPayload.generatedAt, "string");
   assertEquals(typeof storedPayload.monthlyRemaining, "number");
   assertEquals(typeof storedPayload.dailyRemaining, "number");
