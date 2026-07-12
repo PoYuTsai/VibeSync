@@ -59,6 +59,10 @@ Codex 撞 usage limit（恢復時間 2026-07-18 14:31），原雙審 job 又被 
 
 Eric 補了額度，正式雙審提前發出（原拍板等 07-18 作廢）。R1 唯一 finding（P2）：`NEGATED_ACK_TAIL` 只容「有＋窄動詞」，程度副詞形否定（「這個梗我**不太懂**」「不是很懂」「沒有很明白」）仍誤判 echo → 白燒重試。修法＝gap 擴成有界白名單 `(?:是)?(?:有)?(?:太|大|很|真的|完全|怎麼)?`＋複合動詞首字，**絕不用任意字元 gap**（會反向放行真 echo 偽裝成否定告白）。測試補 4 反例，Deno 841 綠。
 
+### 2026-07-13 Codex 雙審 R2：**APPROVED（最終）**
+
+R2 驗過 408421b7：否定告白全過（含「我不怎麼懂／我沒有真的了解／我不大明白」）、真 echo 仍擋（含 topic-negation 反例「妳說不太舒服我懂了／沒有下雨這點我收到」），無 P0/P1/P2、守門未放寬。**雙審 scope＝844f70fb＋4e881c66＋408421b7 全數 APPROVED。下一步＝部署（Edge-first → migration → smoke，見待辦 3），需 Eric 放行。**
+
 ## 待辦 / 給 Codex 回審的點
 
 1. **已知既有型別警告**（非本批引入）：`handler.ts:429` `timeoutHandle: number` 被 `setTimeout` 的 `Timeout` 型別打到，故全套用 `--no-check` 跑。HEAD/main 就有此警告、部署一直正常（Deno runtime 不受影響）。要清另開案。
