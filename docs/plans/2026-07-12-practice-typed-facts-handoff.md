@@ -55,6 +55,10 @@ Codex 撞 usage limit（恢復時間 2026-07-18 14:31），原雙審 job 又被 
 - **nit（不修，記錄）**：(a) 移除圖例後多筆 hint 緊湊列的 `exact` 旗標與 decision 五欄語義只能從末筆展開列反推；(b) `compactCompleteSentenceEvidence` 遇超長且無終止符的 memorySummary 會整段替換為省略佔位，失去記憶脈絡（Codex 本體行為）。
 - 審後全套：**Deno 841 passed / 0 failed**（838＋新增 3 測試）。純 server 端改動，Flutter 536 不受影響。
 
+### 2026-07-13 Codex 正式雙審 R1：REVISE_REQUIRED → 已修
+
+Eric 補了額度，正式雙審提前發出（原拍板等 07-18 作廢）。R1 唯一 finding（P2）：`NEGATED_ACK_TAIL` 只容「有＋窄動詞」，程度副詞形否定（「這個梗我**不太懂**」「不是很懂」「沒有很明白」）仍誤判 echo → 白燒重試。修法＝gap 擴成有界白名單 `(?:是)?(?:有)?(?:太|大|很|真的|完全|怎麼)?`＋複合動詞首字，**絕不用任意字元 gap**（會反向放行真 echo 偽裝成否定告白）。測試補 4 反例，Deno 841 綠。
+
 ## 待辦 / 給 Codex 回審的點
 
 1. **已知既有型別警告**（非本批引入）：`handler.ts:429` `timeoutHandle: number` 被 `setTimeout` 的 `Timeout` 型別打到，故全套用 `--no-check` 跑。HEAD/main 就有此警告、部署一直正常（Deno runtime 不受影響）。要清另開案。

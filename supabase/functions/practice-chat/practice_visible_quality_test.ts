@@ -67,6 +67,10 @@ Deno.test("generic echo detector keeps negated admissions substantive even past 
       "我沒聽懂",
       "沒有聽懂",
       "店名我沒有聽到",
+      "這個梗我不太懂",
+      "不是很懂",
+      "沒有很明白",
+      "沒完全聽懂",
     ]
   ) {
     assertEquals(isGenericPracticeComplimentOrEcho(line), false, line);
