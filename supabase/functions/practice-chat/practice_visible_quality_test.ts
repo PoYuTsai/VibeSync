@@ -60,6 +60,22 @@ Deno.test("generic compliment detector separates empty praise from a concrete mo
   }
 });
 
+Deno.test("generic echo detector keeps negated admissions substantive even past the last char", () => {
+  for (
+    const line of [
+      "抱歉我沒有記住",
+      "我沒聽懂",
+      "沒有聽懂",
+      "店名我沒有聽到",
+    ]
+  ) {
+    assertEquals(isGenericPracticeComplimentOrEcho(line), false, line);
+  }
+  for (const line of ["我聽懂了", "我有記住喔"]) {
+    assertEquals(isGenericPracticeComplimentOrEcho(line), true, line);
+  }
+});
+
 Deno.test("generic pasteable text rejects slot-filled canned acknowledgements", () => {
   for (
     const line of [

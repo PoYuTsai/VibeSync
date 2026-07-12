@@ -46,6 +46,15 @@ Codex 中斷在一半：**它自己新加的規格測試有 7 個是紅的**（`
 - Flutter practice_chat unit + widget：**536 passed / All tests passed**。
 - practice_visible_quality_test.ts：9/9。
 
+## 2026-07-13 審後補修（fresh Claude 對抗審，Codex 額度鎖到 07-18）
+
+Codex 撞 usage limit（恢復時間 2026-07-18 14:31），原雙審 job 又被 /clear 清掉，故先派 **fresh Claude 對抗審** 844f70fb 頂上。結果：**無 P0/P1；2 個 P2 已修、2 個 nit 不修**。Codex 額度恢復後仍需正式雙審（高風險區鐵則）。
+
+- **P2-1（已修）**：修法 2 的 `clippedDebriefTurn` 只救了「整則 turn 恰為佔位符」的測試特例；佔位符前後帶文字時仍被砍斷（`slice(effectiveLimit-1)` off-by-one 砍掉結尾 `]`、mid-sentence 直接砍爛）。改為原子重組：佔位符整顆保留，前綴照 limit 截、被略段落以 `…` 標示，總長仍有界。新增 2 個測試鎖行為。
+- **P2-2（已修）**：修法 3 的單字 lookbehind 看不到隔字否定——「沒**有**記住」「沒**聽**懂」仍被誤判 echo → 白燒重試。新增 `NEGATED_ACK_TAIL` 守門（`[沒不未別](?:有)?[聽記看搞弄]?＋告白詞`）先於 echo tail 判定；肯定式「我聽懂了/我有記住喔」維持判 echo。新增 1 個測試（4 反例＋2 正例）。
+- **nit（不修，記錄）**：(a) 移除圖例後多筆 hint 緊湊列的 `exact` 旗標與 decision 五欄語義只能從末筆展開列反推；(b) `compactCompleteSentenceEvidence` 遇超長且無終止符的 memorySummary 會整段替換為省略佔位，失去記憶脈絡（Codex 本體行為）。
+- 審後全套：**Deno 841 passed / 0 failed**（838＋新增 3 測試）。純 server 端改動，Flutter 536 不受影響。
+
 ## 待辦 / 給 Codex 回審的點
 
 1. **已知既有型別警告**（非本批引入）：`handler.ts:429` `timeoutHandle: number` 被 `setTimeout` 的 `Timeout` 型別打到，故全套用 `--no-check` 跑。HEAD/main 就有此警告、部署一直正常（Deno runtime 不受影響）。要清另開案。

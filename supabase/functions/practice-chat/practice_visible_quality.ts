@@ -66,6 +66,10 @@ const GENERIC_PRAISE_HANDOFF =
 // generic "收到／了解了" echo, so the tail must not fire when negated.
 const GENERIC_ECHO_TAIL =
   /(?<![沒不未別])(?:收到|記住(?:了)?|聽到(?:了)?|懂(?:了)?|了解(?:了)?|明白(?:了)?|有接到(?:了)?|有接住(?:了)?)(?:耶|啦|啊|喔|哦|欸|齁)?$/u;
+// The negation may sit further left than one char ("沒有記住"、"沒聽懂"), which a
+// single-char lookbehind cannot see, so this guard runs before the echo tail.
+const NEGATED_ACK_TAIL =
+  /[沒不未別](?:有)?[聽記看搞弄]?(?:收到|記住|聽到|聽懂|懂|了解|明白|接到|接住)(?:了)?(?:耶|啦|啊|喔|哦|欸|齁)?$/u;
 
 const COMMON_EVIDENCE_FRAGMENTS = new Set([
   "妳好",
@@ -141,7 +145,7 @@ export function isGenericPracticeComplimentOrEcho(value: string): boolean {
   const normalized = compact(value);
   return GENERIC_PRAISE_TAIL.test(normalized) ||
     GENERIC_PRAISE_HANDOFF.test(normalized) ||
-    GENERIC_ECHO_TAIL.test(normalized);
+    (!NEGATED_ACK_TAIL.test(normalized) && GENERIC_ECHO_TAIL.test(normalized));
 }
 
 function groundingCompact(value: string): string {

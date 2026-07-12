@@ -1096,6 +1096,34 @@ Deno.test("buildDebriefMessages abstracts raw image filenames before model promp
   assertEquals(text.includes("[image concept omitted]"), true);
 });
 
+Deno.test("buildDebriefMessages keeps image placeholder atomic when filename has trailing text", () => {
+  const msgs = buildDebriefMessages(
+    [
+      { role: "user", text: "S__42795075.jpg 這張拍得好看嗎你覺得如何" },
+      { role: "ai", text: "hello" },
+    ],
+    defaultProfile,
+  );
+  const text = msgs.map((msg) => msg.content).join("\n");
+
+  assertEquals(text.includes("S__42795075.jpg"), false);
+  assertEquals(text.includes("[image concept omitted]"), true);
+});
+
+Deno.test("buildDebriefMessages keeps image placeholder atomic when filename sits mid-sentence", () => {
+  const msgs = buildDebriefMessages(
+    [
+      { role: "user", text: "你看看這張 S__42795075.jpg 好看嗎" },
+      { role: "ai", text: "hello" },
+    ],
+    defaultProfile,
+  );
+  const text = msgs.map((msg) => msg.content).join("\n");
+
+  assertEquals(text.includes("S__42795075.jpg"), false);
+  assertEquals(text.includes("[image concept omitted]"), true);
+});
+
 // ── 角色難度注入 ─────────────────────────────────────────────────────
 
 Deno.test("buildChatMessages：system prompt 帶入 persona 與 difficulty", () => {

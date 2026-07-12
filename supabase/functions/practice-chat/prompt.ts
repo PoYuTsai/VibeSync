@@ -234,13 +234,21 @@ const DEBRIEF_PROMPT_HINT_REACTION_CHAR_LIMIT = 32;
 function clippedDebriefTurn(text: string, limit: number): string {
   const scrubbed = scrubRawImageFilenames(text).replace(/\s+/gu, " ").trim();
   if (scrubbed.length <= limit) return scrubbed;
+  const cut = Math.max(1, limit - 1);
+  const placeholderStart = scrubbed.indexOf(IMAGE_CONCEPT_PLACEHOLDER);
+  const placeholderEnd = placeholderStart + IMAGE_CONCEPT_PLACEHOLDER.length;
+  if (placeholderStart === -1 || placeholderEnd <= cut) {
+    return `${scrubbed.slice(0, cut).trimEnd()}…`;
+  }
   // The image-concept marker is an atomic token; never clip it mid-word or the
   // Debrief model loses the "an image was shared here" signal entirely.
-  const effectiveLimit = scrubbed.includes(IMAGE_CONCEPT_PLACEHOLDER)
-    ? Math.max(limit, IMAGE_CONCEPT_PLACEHOLDER.length)
-    : limit;
-  if (scrubbed.length <= effectiveLimit) return scrubbed;
-  return `${scrubbed.slice(0, Math.max(1, effectiveLimit - 1)).trimEnd()}…`;
+  const prefixCut = Math.min(cut, placeholderStart);
+  const prefix = scrubbed.slice(0, prefixCut).trimEnd();
+  const joiner = prefixCut < placeholderStart ? "…" : " ";
+  const kept = prefix.length > 0
+    ? `${prefix}${joiner}${IMAGE_CONCEPT_PLACEHOLDER}`
+    : IMAGE_CONCEPT_PLACEHOLDER;
+  return placeholderEnd < scrubbed.length ? `${kept}…` : kept;
 }
 
 function debriefTurnLine(turn: PracticeTurn, limit: number): string {
