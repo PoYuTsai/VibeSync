@@ -58,6 +58,6 @@ Codex 撞 usage limit（恢復時間 2026-07-18 14:31），原雙審 job 又被 
 ## 待辦 / 給 Codex 回審的點
 
 1. **已知既有型別警告**（非本批引入）：`handler.ts:429` `timeoutHandle: number` 被 `setTimeout` 的 `Timeout` 型別打到，故全套用 `--no-check` 跑。HEAD/main 就有此警告、部署一直正常（Deno runtime 不受影響）。要清另開案。
-2. 本批 **尚未 commit → 未雙審 → 未部署**。它動到 quota/計費 RPC 與 response schema（高風險），前一次 generated-only APPROVED **不涵蓋** typed-facts-v1，需重新雙審。
+2. 本批動到 quota/計費 RPC 與 response schema（高風險），前一次 generated-only APPROVED **不涵蓋** typed-facts-v1，需正式 Codex 雙審。**Eric 2026-07-13 拍板：不買額度，等 2026-07-18 14:31 Codex 恢復後重發 codex:rescue 雙審，scope＝844f70fb＋4e881c66（審後補修），背景＝本檔。**雙審過前不部署、不宣稱 dogfood safe。
 3. 部署順序沿用 `docs/reviews/2026-07-11-practice-generated-only-codex-review.md` 的 PENDING 流程：Edge-first → 舊 worker drain → 目標式 migration up → smoke。
 4. CC 的三處修改請 Codex 特別看：(3) echo 否定 lookbehind 是否有反例（例如「不錯」這種「不」開頭卻是稱讚的詞——已確認 `不錯` 不在 ECHO_TAIL 詞表，只在 PRAISE 表，不受影響）。
