@@ -760,8 +760,9 @@ Deno.test("production repair rewrites preserved exact Hint critique with grounde
     summary: "你有照提示做，但這句只是禮貌收尾，沒有給球。",
     strengths: ["你有照提示做，但這個回應只是禮貌收尾。"],
     watchouts: ["照提示後，球沒有丟回她。"],
+    suggestedLine: "休息完我們去喝咖啡吧？",
     dateChanceReason: "這句提示偏保守，讓互動停住。",
-    nextInviteMove: "先修正剛才提示太保守的問題。",
+    nextInviteMove: "先直接丟一個咖啡邀約窗口。",
   };
 
   assertThrows(
@@ -784,6 +785,8 @@ Deno.test("production repair rewrites preserved exact Hint critique with grounde
     repairPreservedHintCritique: true,
   });
   assertEquals(repaired.summary.includes("哈哈有慢慢開機了"), true);
+  assertEquals(repaired.suggestedLine.includes("哈哈有慢慢開機了"), true);
+  assertEquals(repaired.suggestedLine.includes("喝咖啡"), false);
   assertEquals(repaired.summary.includes("禮貌收尾"), false);
   assertEquals(repaired.watchouts[0].includes("下一步"), true);
   assertEquals(JSON.stringify(repaired).includes("hintAssessment"), false);
@@ -795,8 +798,8 @@ Deno.test("production repair rewrites preserved exact Hint critique with grounde
         phaseReached: "提示偏保守，還沒建立熟悉。",
         missedVariable: "提示太保守。",
         failureState: "太平淡。",
-        nextFirstLine: "慢慢開機也行，我先分享我的起床儀式。",
-        inviteDirection: "先修正提示太保守。",
+        nextFirstLine: "休息完我們去喝咖啡吧？",
+        inviteDirection: "先直接丟一個咖啡邀約窗口。",
       },
     }),
     {
@@ -815,6 +818,14 @@ Deno.test("production repair rewrites preserved exact Hint critique with grounde
   assertEquals(
     gameRepaired.gameBreakdown?.inviteDirection.includes("哈哈有慢慢開機了"),
     true,
+  );
+  assertEquals(
+    gameRepaired.gameBreakdown?.nextFirstLine.includes("哈哈有慢慢開機了"),
+    true,
+  );
+  assertEquals(
+    gameRepaired.gameBreakdown?.nextFirstLine.includes("喝咖啡"),
+    false,
   );
   assertEquals(
     JSON.stringify(gameRepaired.gameBreakdown).includes("提示太保守"),

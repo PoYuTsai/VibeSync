@@ -1185,7 +1185,7 @@ function assistantTextNearHint(
     for (let index = hintTurnIndex + 1; index < turns.length; index++) {
       if (turns[index]?.role === "ai") return turns[index].text;
     }
-    return latestAssistantText(turns);
+    return "";
   }
   for (let index = hintTurnIndex - 1; index >= 0; index--) {
     if (turns[index]?.role === "ai") return turns[index].text;
@@ -1210,6 +1210,7 @@ function repairPreservedHintCritiqueCard(
   const afterQuote = compactDebriefQuote(
     assistantTextNearHint(turns, latestHint.turnIndex, "after"),
   );
+  if (!afterQuote) return card;
   const beforeQuote = compactDebriefQuote(
     assistantTextNearHint(turns, latestHint.turnIndex, "before"),
   );
@@ -1227,6 +1228,9 @@ function repairPreservedHintCritiqueCard(
   const watchouts = [
     guardVisibleText(`下一步少一個追問，多留你對「${anchor}」的生活感。`),
   ];
+  const suggestedLine = guardVisibleText(
+    `聽起來「${anchor}」，我今天也想先慢慢進入狀態。`,
+  );
   const dateChanceReason = guardVisibleText(
     afterQuote
       ? `她願意延續「${afterQuote}」和你來回。`
@@ -1245,6 +1249,7 @@ function repairPreservedHintCritiqueCard(
       failureState: guardVisibleText(
         `她仍停在低壓延續「${anchor}」的節奏。`,
       ),
+      nextFirstLine: suggestedLine,
       inviteDirection: guardVisibleText(
         `先補你對「${anchor}」的生活畫面，保留低壓節奏。`,
       ),
@@ -1255,6 +1260,7 @@ function repairPreservedHintCritiqueCard(
     summary,
     strengths,
     watchouts,
+    suggestedLine,
     dateChanceReason,
     nextInviteMove,
     gameBreakdown,
@@ -1587,7 +1593,9 @@ export function parseDebriefCard(
     opts.repairPreservedHintCritique === true &&
     isPreservedHiddenHintAssessment(p.hintAssessment) &&
     (cardVisiblyReversesPreservedHint(card) ||
-      preservedCardCritiquesExactHint(card, appliedHintTurns, opts.turns))
+      preservedCardCritiquesExactHint(card, appliedHintTurns, opts.turns) ||
+      (appliedHintTurns.every(hasCompleteHintDecision) &&
+        cardContradictsHintStrategy(card, appliedHintTurns)))
   ) {
     card = repairPreservedHintCritiqueCard(
       card,
