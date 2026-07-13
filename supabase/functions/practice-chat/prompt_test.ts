@@ -53,6 +53,13 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
     DEBRIEF_SYSTEM_PROMPT.includes("禁編未出現劇名/店名/地點"),
     true,
   );
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("逐子句盤點"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("下週見"), true);
+  assertEquals(
+    DEBRIEF_SYSTEM_PROMPT.includes("永遠是使用者對她說"),
+    true,
+  );
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("承諾主詞"), true);
 });
 
 Deno.test("Hint and Debrief prompt clipping keeps emoji surrogate pairs intact", () => {

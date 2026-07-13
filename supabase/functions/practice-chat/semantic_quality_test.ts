@@ -350,6 +350,16 @@ Deno.test("fact verification is a bounded evidence audit, not another free-form 
   assertEquals(prompt.includes("不得因問號放行"), true);
   assertEquals(prompt.includes("職業或興趣只證明該屬性"), true);
   assertEquals(prompt.includes("不證明今天班別"), true);
+  assertEquals(prompt.includes("詞面重疊不代表屬性成立"), true);
+  assertEquals(prompt.includes("路過一家店"), true);
+  assertEquals(prompt.includes("路邊小店"), true);
+  assertEquals(prompt.includes("時間、班別、節日或場合"), true);
+  assertEquals(prompt.includes("完整讀完最新 assistant turn"), true);
+  assertEquals(
+    prompt.includes("suggestedLine/nextFirstLine 永遠是 user 對 assistant 說"),
+    true,
+  );
+  assertEquals(prompt.includes("不可反轉成等 assistant 做或回報"), true);
   assertEquals(prompt.includes("只回 accept/reject"), true);
   assertEquals(prompt.includes("turn-0 [user]"), true);
 });
@@ -387,6 +397,11 @@ Deno.test("debrief semantic adjudication breaks an identified question-answer lo
   assertEquals(prompt.includes("不得出現 P1-P5"), true);
   assertEquals(prompt.includes("整張卡跨欄一致"), true);
   assertEquals(prompt.includes("不得說只有基本回應／無延伸"), true);
+  assertEquals(prompt.includes("逐子句盤點"), true);
+  assertEquals(prompt.includes("下週見"), true);
+  assertEquals(prompt.includes("等你踩點報告"), true);
+  assertEquals(prompt.includes("行動承諾的 owner"), true);
+  assertEquals(prompt.includes("永遠是 user 對 assistant 說"), true);
 });
 
 Deno.test("debrief semantic repair keeps schema enums canonical", () => {
@@ -473,6 +488,68 @@ Deno.test("accepted candidates still require independent fact verification", asy
   assertEquals(result.candidate, hintCandidate);
   assertEquals(result.repaired, false);
   assertEquals(result.providerCalls, 2);
+});
+
+Deno.test("independent verifier fails closed when a Debrief reverses the promised action owner", async () => {
+  const ownerTurns = [
+    { role: "user" as const, text: "等我確認完再跟妳說。" },
+    {
+      role: "ai" as const,
+      text: "好啊，下週見，等你踩點報告，別報雷。",
+    },
+  ];
+  const candidate = {
+    summary: "她留下下週重連窗口。",
+    strengths: ["你有接住她的玩笑。"],
+    watchouts: ["下一步保持輕鬆。"],
+    suggestedLine: "有義氣！等妳確認完再跟我說。",
+    vibe: "暖",
+    dateChance: "medium",
+    dateChanceReason: "她主動提到下週見。",
+    nextInviteMove: "下週延續同一個話題。",
+    gameBreakdown: {
+      phaseReached: "建立熟悉",
+      missedVariable: "投入感",
+      failureState: "無",
+      nextFirstLine: "有義氣！等妳確認完再跟我說。",
+      inviteDirection: "下週低壓重連",
+    },
+  };
+
+  await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "debrief",
+        practiceMode: "game",
+        candidate,
+        candidateProvider: "deepseek",
+        turns: ownerTurns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 2,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: () =>
+          Promise.resolve(JSON.stringify({
+            verdict: "accept",
+            issues: [],
+            repairedResult: null,
+          })),
+        callDeepSeek: (args) => {
+          const prompt = args.messages.map((message) => message.content).join(
+            "\n",
+          );
+          assertEquals(prompt.includes(ownerTurns[1].text), true);
+          assertEquals(prompt.includes(String(candidate.suggestedLine)), true);
+          return Promise.resolve(JSON.stringify({
+            verdict: "reject",
+            issues: [{ kind: "unsupported_fact" }],
+          }));
+        },
+      }),
+    Error,
+    "semantic_fact_verification_rejected",
+  );
 });
 
 Deno.test("semantic adjudicator uses the alternate provider when the first reviewer fails", async () => {

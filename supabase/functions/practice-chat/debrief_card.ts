@@ -20,6 +20,7 @@ import {
   type PracticeInviteLevel,
   practiceInviteLevelFor,
 } from "./practice_invite.ts";
+import { toTraditionalChinese } from "./traditional_chinese.ts";
 import {
   assertHintFactClaimsSupported,
   buildHintFactContext,
@@ -314,7 +315,9 @@ export function buildFallbackDebriefCard(
 }
 
 export function clampStr(v: unknown, max: number): string {
-  return typeof v === "string" ? v.trim().slice(0, max) : "";
+  return typeof v === "string"
+    ? toTraditionalChinese(v.trim()).slice(0, max)
+    : "";
 }
 
 export function clampList(
@@ -336,7 +339,7 @@ function generatedVisibleString(
   enforceGeneratedQuality: boolean,
 ): string {
   if (typeof value !== "string") return "";
-  const trimmed = value.trim();
+  const trimmed = toTraditionalChinese(value.trim());
   if (enforceGeneratedQuality && trimmed.length > generatedMax) {
     throw new Error("debrief_quality_invalid_overlong");
   }
@@ -1463,8 +1466,8 @@ function assertHintAssessment(opts: {
     throw new Error("debrief_hint_assessment_evidence_invalid");
   }
   if (
-    !normalizedPracticeText(visibleText).includes(
-      normalizedPracticeText(exactQuote),
+    !normalizedPracticeText(toTraditionalChinese(visibleText)).includes(
+      normalizedPracticeText(toTraditionalChinese(exactQuote)),
     )
   ) {
     throw new Error("debrief_hint_assessment_evidence_not_visible");
@@ -1535,11 +1538,17 @@ function assertGeneratedDebriefQuality(
   }
 
   const appliedHints = opts.appliedHintTurns ?? [];
-  const suggestion = normalizedPracticeText(card.suggestedLine);
+  const suggestion = normalizedPracticeText(
+    toTraditionalChinese(card.suggestedLine),
+  );
   for (const hint of appliedHints) {
     if (
-      suggestion === normalizedPracticeText(hint.originalHintText) ||
-      suggestion === normalizedPracticeText(hint.sentText)
+      suggestion === normalizedPracticeText(
+          toTraditionalChinese(hint.originalHintText),
+        ) ||
+      suggestion === normalizedPracticeText(
+          toTraditionalChinese(hint.sentText),
+        )
     ) {
       throw new Error("debrief_quality_invalid_repeated_hint");
     }

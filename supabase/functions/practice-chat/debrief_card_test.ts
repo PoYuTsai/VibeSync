@@ -2173,6 +2173,48 @@ Deno.test("Game debrief requires and parses a complete gameBreakdown", () => {
   assertEquals(c.gameBreakdown?.inviteDirection, "low pressure invitation");
 });
 
+Deno.test("generated Debrief normalizes every visible field to Taiwan Traditional Chinese", () => {
+  const c = parseDebriefCard(
+    JSON.stringify({
+      summary: "她很积极，也愿意回应细节。",
+      strengths: ["你愿意尝试，也注意细节。"],
+      watchouts: ["建议别急着推进。"],
+      suggestedLine: "这个建议我愿意试试看。",
+      vibe: "暖",
+      dateChance: "medium",
+      dateChanceReason: "积极回应，细节仍少。",
+      nextInviteMove: "愿意时再尝试推进。",
+      gameBreakdown: {
+        phaseReached: "尝试到推进",
+        missedVariable: "细节还不够",
+        failureState: "建议太空泛",
+        nextFirstLine: "我愿意听你的建议",
+        inviteDirection: "确认意愿再推进",
+      },
+    }),
+    {
+      allowGameBreakdown: true,
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      semanticAdjudicated: true,
+    },
+  );
+
+  assertEquals(c.summary, "她很積極，也願意回應細節。");
+  assertEquals(c.strengths, ["你願意嘗試，也注意細節。"]);
+  assertEquals(c.watchouts, ["建議別急著推進。"]);
+  assertEquals(c.suggestedLine, "這個建議我願意試試看。");
+  assertEquals(c.dateChanceReason, "積極回應，細節仍少。");
+  assertEquals(c.nextInviteMove, "願意時再嘗試推進。");
+  assertEquals(c.gameBreakdown, {
+    phaseReached: "嘗試到推進",
+    missedVariable: "細節還不夠",
+    failureState: "建議太空泛",
+    nextFirstLine: "我願意聽你的建議",
+    inviteDirection: "確認意願再推進",
+  });
+});
+
 Deno.test("Game debrief rejects missing, malformed, partial, or blank gameBreakdown", () => {
   for (
     const gameBreakdown of [

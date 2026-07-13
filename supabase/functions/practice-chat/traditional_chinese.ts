@@ -1,80 +1,28 @@
-const PHRASE_REPLACEMENTS: Array<[string, string]> = [
-  ["用户", "使用者"],
-  ["回复", "回覆"],
-  ["回復", "回覆"],
-  ["风格", "風格"],
-  ["喜欢", "喜歡"],
-  ["有来有回", "有來有回"],
-  ["升温", "升溫"],
-  ["降温", "降溫"],
-  ["调侃", "調侃"],
-  ["轻松", "輕鬆"],
-  ["过于", "過於"],
-  ["省话", "省話"],
-  ["参与", "參與"],
-  ["后续", "後續"],
-  ["话题", "話題"],
+import OpenCC from "npm:opencc-js@1.4.1/cn2t";
+
+// Use OpenCC's complete Simplified Chinese -> Taiwan Traditional Chinese
+// dictionaries instead of maintaining an inevitably incomplete local map.
+const simplifiedToTaiwanTraditional = OpenCC.Converter({
+  from: "cn",
+  // `tw` gives complete character/phrase conversion without the aggressive
+  // Taiwan idiom pass that rewrites dating terms such as「邀約窗口」to「視窗」.
+  to: "tw",
+});
+
+const PRODUCT_TERMS: Array<[string, string]> = [
+  ["用戶", "使用者"],
+  ["軟件", "軟體"],
+  ["信息", "資訊"],
+  ["神秘", "神祕"],
+  // The app and transcript corpus consistently use「台」; keeping it stable
+  // prevents normalization from breaking exact evidence comparisons.
+  ["臺", "台"],
 ];
 
-const CHAR_REPLACEMENTS: Record<string, string> = {
-  "户": "戶",
-  "风": "風",
-  "欢": "歡",
-  "来": "來",
-  "于": "於",
-  "过": "過",
-  "话": "話",
-  "与": "與",
-  "轻": "輕",
-  "调": "調",
-  "为": "為",
-  "这": "這",
-  "个": "個",
-  "对": "對",
-  "会": "會",
-  "应": "應",
-  "现": "現",
-  "发": "發",
-  "开": "開",
-  "关": "關",
-  "紧": "緊",
-  "点": "點",
-  "后": "後",
-  "续": "續",
-  "气": "氣",
-  "数": "數",
-  "帮": "幫",
-  "压": "壓",
-  "进": "進",
-  "场": "場",
-  "总": "總",
-  "说": "說",
-  "讲": "講",
-  "没": "沒",
-  "题": "題",
-  "问": "問",
-  "间": "間",
-  "听": "聽",
-  "够": "夠",
-  "转": "轉",
-  "头": "頭",
-  "别": "別",
-  "觉": "覺",
-  "让": "讓",
-  "种": "種",
-  "较": "較",
-  "诚": "誠",
-  "实": "實",
-  "稳": "穩",
-  "里": "裡",
-};
-
 export function toTraditionalChinese(value: string): string {
-  let converted = value;
-  for (const [from, to] of PHRASE_REPLACEMENTS) {
+  let converted = simplifiedToTaiwanTraditional(value);
+  for (const [from, to] of PRODUCT_TERMS) {
     converted = converted.split(from).join(to);
   }
-  return [...converted]
-    .map((char) => CHAR_REPLACEMENTS[char] ?? char)
-    .join("");
+  return converted;
 }
