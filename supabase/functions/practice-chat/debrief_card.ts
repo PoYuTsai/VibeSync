@@ -1615,6 +1615,8 @@ export function parseDebriefCard(
     trustedFactClaims?: HintFactClaim[];
     enforceGeneratedQuality?: boolean;
     repairPreservedHintCritique?: boolean;
+    /** Disable deterministic copy repair when the writer can regenerate. */
+    repairUngroundedSuggestedLine?: boolean;
     /** Runtime semantic reviewer owns facts/grounding/Hint consistency. */
     semanticAdjudicated?: boolean;
     /** Pre-review hard pass may defer a missing hidden assessment to repair. */
@@ -1775,7 +1777,9 @@ export function parseDebriefCard(
         }
       }
     } else {
-      card = repairUngroundedUnansweredQuestionLine(card, opts.turns);
+      if (opts.repairUngroundedSuggestedLine !== false) {
+        card = repairUngroundedUnansweredQuestionLine(card, opts.turns);
+      }
       assertGeneratedDebriefQuality(card, opts);
     }
   }

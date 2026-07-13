@@ -129,6 +129,8 @@ const DEBRIEF_TIMEOUT_MS = 12000;
 // owner fence deliberately favor a verified result over a fast 503.
 const DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS = 24000;
 const DEBRIEF_IN_FLIGHT_STALE_MS = 105000;
+const DIRECT_PRACTICE_GENERATION_ATTEMPTS = 2;
+const DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS = 24000;
 const LEGACY_CLIENT_QUALITY_SCHEMA_VERSION = "typed-facts-v1";
 // 2026-07-13 probe: game hint 在 650 tokens 下 DeepSeek 47% finish_reason=length
 // 截斷（JSON 收不完→誤報 provider_error）。提高到 1600 給 Game Hint 完整 JSON 空間。
@@ -1830,6 +1832,12 @@ export function createPracticeChatHandler(
 
     const configuredDeepSeekApiKey = deps.getEnv("DEEPSEEK_API_KEY");
     const claudeApiKey = deps.getEnv("CLAUDE_API_KEY");
+    // Hint/Game Hint/Debrief default to one Claude Sonnet writer. The old
+    // multi-provider semantic pipeline remains only as an explicit emergency
+    // rollback and is never part of the normal request path.
+    const directClaudePracticeGeneration = request.mode !== "chat" &&
+      !!claudeApiKey && !!deps.callClaude &&
+      deps.getEnv("PRACTICE_CLAUDE_PRIMARY") !== "false";
     const structuredGenerationAvailable = !!configuredDeepSeekApiKey ||
       (!!claudeApiKey && !!deps.callClaude);
     if (
@@ -2630,8 +2638,14 @@ export function createPracticeChatHandler(
       const hintGenerationAttempts = HINT_GENERATION_ATTEMPTS;
       const hintTimeoutMs = HINT_TIMEOUT_MS;
       let hintResult: ReturnType<typeof parseHintResult> | null = null;
-      let hintProvider = apiKey ? "deepseek" : "anthropic";
-      let hintModel = apiKey
+      let hintProvider = directClaudePracticeGeneration
+        ? "anthropic"
+        : apiKey
+        ? "deepseek"
+        : "anthropic";
+      let hintModel = directClaudePracticeGeneration
+        ? CLAUDE_SONNET_MODEL
+        : apiKey
         ? DEEPSEEK_MODEL
         : claudeFallbackModelForTier(sub.tier);
       let hintFailoverUsed = false;
@@ -2672,6 +2686,34 @@ export function createPracticeChatHandler(
           enforceGeneratedQuality: true,
           semanticAdjudicated: true,
         } as const;
+        const attachHintDecisions = (
+          generatedHint: ReturnType<typeof parseHintResult>,
+        ): ReturnType<typeof parseHintResult> => ({
+          ...generatedHint,
+          replies: generatedHint.replies.map((reply) => ({
+            ...reply,
+            decision: buildHintDecision({
+              turns: request.turns,
+              profile: request.profile,
+              practiceMode: request.practiceMode,
+              temperatureScore: hintTemperatureScore,
+              familiarityScore: hintFamiliarityScore,
+              partnerMood: hintPartnerMood,
+              gameState: ledgerGameState,
+              replyType: reply.type,
+              replyText: reply.text,
+              rationale: SERVER_HINT_DECISION_RATIONALE,
+            }),
+          })) as ReturnType<typeof parseHintResult>["replies"],
+        });
+        const parseDirectGeneratedHint = (
+          rawHint: string,
+        ): ReturnType<typeof parseHintResult> =>
+          attachHintDecisions(parseHintResult(rawHint, {
+            ...generatedHintParseOptions,
+            semanticAdjudicated: false,
+            deferVisibleGuardsToSemantic: false,
+          }));
         const parseGeneratedHint = async (
           rawHint: string,
           candidateProvider: "deepseek" | "anthropic",
@@ -2762,26 +2804,78 @@ export function createPracticeChatHandler(
             repaired: semantic.repaired,
             issueKinds: semantic.issueKinds,
           });
-          return {
-            ...generatedHint,
-            replies: generatedHint.replies.map((reply) => ({
-              ...reply,
-              decision: buildHintDecision({
-                turns: request.turns,
-                profile: request.profile,
-                practiceMode: request.practiceMode,
-                temperatureScore: hintTemperatureScore,
-                familiarityScore: hintFamiliarityScore,
-                partnerMood: hintPartnerMood,
-                gameState: ledgerGameState,
-                replyType: reply.type,
-                replyText: reply.text,
-                rationale: SERVER_HINT_DECISION_RATIONALE,
-              }),
-            })) as typeof generatedHint.replies,
-          };
+          return attachHintDecisions(generatedHint);
         };
-        if (apiKey) {
+        if (directClaudePracticeGeneration && deps.callClaude) {
+          hintProvider = "anthropic";
+          hintModel = CLAUDE_SONNET_MODEL;
+          for (
+            let attempt = 1;
+            attempt <= DIRECT_PRACTICE_GENERATION_ATTEMPTS;
+            attempt++
+          ) {
+            const hintMessages = attempt > 1 && lastError !== undefined &&
+                isHintFormatOrGuardError(lastError)
+              ? withHintRetryInstruction(baseHintMessages, lastError)
+              : baseHintMessages;
+            hintAttemptCount += 1;
+            hintPromptChars = countPromptChars(hintMessages);
+            const attemptStartedAt = performance.now();
+            try {
+              const rawHint = await deps.callClaude({
+                apiKey: claudeApiKey,
+                model: CLAUDE_SONNET_MODEL,
+                messages: hintMessages,
+                maxTokens: HINT_MAX_TOKENS,
+                temperature: HINT_TEMPERATURE,
+                timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
+              });
+              hintResult = parseDirectGeneratedHint(rawHint);
+              hintLastFailureClass = null;
+              const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
+              hintAttemptDurationsMs.push(attemptDurationMs);
+              logInfo("practice_chat_generation_attempt", {
+                user: summarizeUser(user.id),
+                provider: hintProvider,
+                model: hintModel,
+                ...buildPracticeGenerationTelemetry({
+                  mode: "hint",
+                  practiceMode: request.practiceMode,
+                  attempt: hintAttemptCount,
+                  attemptDurationMs,
+                  failureClass: null,
+                  fallbackUsed: false,
+                  totalDurationMs: null,
+                  promptChars: hintPromptChars,
+                }),
+              });
+              break;
+            } catch (e) {
+              lastError = e;
+              hintLastFailureClass = classifyPracticeGenerationFailure(e);
+              const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
+              hintAttemptDurationsMs.push(attemptDurationMs);
+              hintFailureClasses.push(hintLastFailureClass);
+              const hintFailureCode = sanitizePracticeFailureCode(e);
+              if (hintFailureCode) hintFailureCodes.push(hintFailureCode);
+              logWarn("practice_chat_generation_attempt", {
+                user: summarizeUser(user.id),
+                provider: hintProvider,
+                model: hintModel,
+                ...buildPracticeGenerationTelemetry({
+                  mode: "hint",
+                  practiceMode: request.practiceMode,
+                  attempt: hintAttemptCount,
+                  attemptDurationMs,
+                  failureClass: hintLastFailureClass,
+                  fallbackUsed: false,
+                  totalDurationMs: null,
+                  promptChars: hintPromptChars,
+                }),
+              });
+            }
+          }
+        } else if (apiKey) {
           for (
             let attempt = 1;
             attempt <= hintGenerationAttempts;
@@ -2848,6 +2942,7 @@ export function createPracticeChatHandler(
         }
 
         if (
+          !directClaudePracticeGeneration &&
           hintResult === null && !hintSemanticAttempted && claudeApiKey &&
           deps.callClaude
         ) {
@@ -3475,8 +3570,14 @@ export function createPracticeChatHandler(
       }
 
       let debriefCard: DebriefCard | null = null;
-      let debriefProvider = apiKey ? "deepseek" : "anthropic";
-      let debriefModel = apiKey
+      let debriefProvider = directClaudePracticeGeneration
+        ? "anthropic"
+        : apiKey
+        ? "deepseek"
+        : "anthropic";
+      let debriefModel = directClaudePracticeGeneration
+        ? CLAUDE_SONNET_MODEL
+        : apiKey
         ? DEEPSEEK_MODEL
         : claudeFallbackModelForTier(sub.tier);
       let debriefFailoverUsed = false;
@@ -3533,6 +3634,17 @@ export function createPracticeChatHandler(
           enforceGeneratedQuality: true,
           semanticAdjudicated: true,
         } as const;
+        const parseDirectGeneratedDebrief = (
+          rawCard: string,
+        ): DebriefCard =>
+          parseDebriefCard(rawCard, {
+            ...generatedDebriefParseOptions,
+            repairPreservedHintCritique: false,
+            repairUngroundedSuggestedLine: false,
+            semanticAdjudicated: false,
+            deferHintAssessmentToSemantic: false,
+            deferVisibleGuardsToSemantic: false,
+          });
         const parseGeneratedDebrief = async (
           rawCard: string,
           candidateProvider: "deepseek" | "anthropic",
@@ -3643,7 +3755,84 @@ export function createPracticeChatHandler(
           });
           return reviewedCard;
         };
-        if (apiKey) {
+        if (directClaudePracticeGeneration && deps.callClaude) {
+          debriefProvider = "anthropic";
+          debriefModel = CLAUDE_SONNET_MODEL;
+          for (
+            let attempt = 1;
+            attempt <= DIRECT_PRACTICE_GENERATION_ATTEMPTS;
+            attempt++
+          ) {
+            const debriefMessages = attempt > 1 && lastError !== undefined &&
+                (debriefLastFailureClass === "visible_text_guard" ||
+                  debriefLastFailureClass === "invalid_json" ||
+                  debriefLastFailureClass === "schema_invalid")
+              ? withDebriefRetryInstruction(
+                baseDebriefMessages,
+                lastError,
+                debriefPracticeMode === "game",
+              )
+              : baseDebriefMessages;
+            debriefAttemptCount += 1;
+            debriefPromptChars = countPromptChars(debriefMessages);
+            const attemptStartedAt = performance.now();
+            try {
+              const rawCard = await deps.callClaude({
+                apiKey: claudeApiKey,
+                model: CLAUDE_SONNET_MODEL,
+                messages: debriefMessages,
+                maxTokens: DEBRIEF_MAX_TOKENS,
+                temperature: DEBRIEF_TEMPERATURE,
+                timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
+              });
+              debriefCard = parseDirectGeneratedDebrief(rawCard);
+              debriefLastFailureClass = null;
+              const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
+              debriefAttemptDurationsMs.push(attemptDurationMs);
+              logInfo("practice_chat_generation_attempt", {
+                user: summarizeUser(user.id),
+                provider: debriefProvider,
+                model: debriefModel,
+                ...buildPracticeGenerationTelemetry({
+                  mode: "debrief",
+                  practiceMode: debriefPracticeMode,
+                  attempt: debriefAttemptCount,
+                  attemptDurationMs,
+                  failureClass: null,
+                  fallbackUsed: false,
+                  totalDurationMs: null,
+                  promptChars: debriefPromptChars,
+                }),
+              });
+              break;
+            } catch (e) {
+              lastError = e;
+              debriefLastFailureClass = classifyPracticeGenerationFailure(e);
+              const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
+              debriefAttemptDurationsMs.push(attemptDurationMs);
+              debriefFailureClasses.push(debriefLastFailureClass);
+              const debriefFailureCode = sanitizePracticeFailureCode(e);
+              if (debriefFailureCode) {
+                debriefFailureCodes.push(debriefFailureCode);
+              }
+              logWarn("practice_chat_generation_attempt", {
+                user: summarizeUser(user.id),
+                provider: debriefProvider,
+                model: debriefModel,
+                ...buildPracticeGenerationTelemetry({
+                  mode: "debrief",
+                  practiceMode: debriefPracticeMode,
+                  attempt: debriefAttemptCount,
+                  attemptDurationMs,
+                  failureClass: debriefLastFailureClass,
+                  fallbackUsed: false,
+                  totalDurationMs: null,
+                  promptChars: debriefPromptChars,
+                }),
+              });
+            }
+          }
+        } else if (apiKey) {
           for (
             let attempt = 1;
             attempt <= DEBRIEF_GENERATION_ATTEMPTS;
@@ -3715,6 +3904,7 @@ export function createPracticeChatHandler(
         }
 
         if (
+          !directClaudePracticeGeneration &&
           debriefCard === null && !debriefSemanticAttempted && claudeApiKey &&
           deps.callClaude
         ) {

@@ -10,11 +10,7 @@ import {
 } from "./handler.ts";
 import { temperatureBandFor } from "./temperature.ts";
 import { DEEPSEEK_MODEL, type DeepSeekArgs } from "./deepseek.ts";
-import {
-  CLAUDE_HAIKU_MODEL,
-  CLAUDE_SONNET_MODEL,
-  type ClaudeArgs,
-} from "./claude.ts";
+import { CLAUDE_SONNET_MODEL, type ClaudeArgs } from "./claude.ts";
 import { MAX_AI_REPLIES, MAX_HINTS_PER_ROUND } from "./quota_decision.ts";
 import { HINT_QUALITY_SCHEMA_VERSION } from "./hint_prefetch.ts";
 import { DEBRIEF_QUALITY_SCHEMA_VERSION } from "./debrief_card.ts";
@@ -681,6 +677,9 @@ function makeFake(options: FakeOptions = {}) {
         if (name === "CLAUDE_API_KEY" && options.claudeReplies) {
           return "claude-key";
         }
+        // Most legacy tests intentionally exercise the rollback pipeline.
+        // Direct Claude tests opt in explicitly; production defaults to direct.
+        if (name === "PRACTICE_CLAUDE_PRIMARY") return "false";
         return "";
       },
       now: () => NOW,
@@ -4070,11 +4069,11 @@ Deno.test("Debrief record failure releases and leaves settled count unchanged", 
   assertEquals(state.debriefCount, 2);
 });
 
-Deno.test("starter debrief uses Claude Sonnet when DeepSeek is unavailable", async () => {
+Deno.test("Debrief defaults to one Claude Sonnet writer without semantic review", async () => {
   const { response, json, state } = await run({
     sub: subscription({ tier: "starter" }),
     ledger: ledger({ ai_count: 1, charged: true }),
-    env: { DEEPSEEK_API_KEY: undefined },
+    env: { PRACTICE_CLAUDE_PRIMARY: "true" },
     claudeReplies: [validDebriefJson()],
   }, debriefBody({ requestId: "claude-only-debrief" }));
 
@@ -4082,9 +4081,112 @@ Deno.test("starter debrief uses Claude Sonnet when DeepSeek is unavailable", asy
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 1);
   assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
+  assertEquals(state.claudeCalls[0].timeoutMs, 24000);
+  assertEquals(state.semanticCalls.length, 0);
   assertEquals(json.provider, "anthropic");
   assertEquals(json.model, CLAUDE_SONNET_MODEL);
   assertEquals(json.failoverUsed, false);
+});
+
+Deno.test("direct Game Debrief retries one rejected Claude card with the exact reason", async () => {
+  const completeGameCard = JSON.parse(validDebriefJson({
+    summary: "你接住她下班後想散步放空，現在仍在交換生活節奏。",
+  }));
+  completeGameCard.gameBreakdown = {
+    phaseReached: "開場進到下班散步的生活節奏交換",
+    missedVariable: "還缺她平常散步路線的具體畫面",
+    failureState: "目前只知道她想散步放空，投入感還沒展開。",
+    nextFirstLine: "妳下班後想散步放空，通常最常走哪一段？",
+    inviteDirection: "先問散步路線，等她投入後再看低壓邀約窗口。",
+  };
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [validDebriefJson(), JSON.stringify(completeGameCard)],
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-debrief-retry",
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
+  assertEquals(state.claudeCalls[1].model, CLAUDE_SONNET_MODEL);
+  const retryPrompt = state.claudeCalls[1].messages.at(-1)?.content ?? "";
+  assert(retryPrompt.includes("Game 拆盤五個欄位有缺漏或空白"));
+  assertEquals(typeof json.card.gameBreakdown.nextFirstLine, "string");
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("direct Debrief exhausts two Claude attempts without recording canned output", async () => {
+  const { response, json, state } = await run({
+    ledger: beginnerStartedLedger(),
+    env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+    claudeReplies: ["not json", "["],
+  }, debriefBody({ requestId: "direct-debrief-both-invalid" }));
+
+  assertEquals(response.status, 503);
+  assertEquals(json, {
+    error: "practice_debrief_generation_retryable",
+    retryable: true,
+  });
+  assertEquals("card" in json, false);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(recordDebriefCalls(state).length, 0);
+  assertEquals(releaseDebriefCalls(state).length, 1);
+});
+
+Deno.test("direct Debrief regenerates a hallucinated user fact without semantic review", async () => {
+  const card = (suggestedLine: string) =>
+    validDebriefJson({
+      summary: "她說自己住台南、常在中西區活動，你有接住這兩個生活圈資訊。",
+      strengths: ["你先問她住哪裡，讓她分享台南與中西區生活圈。"],
+      watchouts: ["下一步可以問她在中西區最常做什麼，別只重複地名。"],
+      suggestedLine,
+      dateChance: "low",
+      dateChanceReason: "她分享台南與中西區生活圈，但還沒提見面或時間。",
+      nextInviteMove:
+        "先問她在中西區最常去哪裡放空，等她回答再交換自己的生活圈。",
+    });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [
+        card("我也是台南人，妳最常去哪一區？"),
+        card("原來妳常在中西區活動，休假最常去哪裡放空？"),
+      ],
+    },
+    debriefBody({
+      requestId: "direct-debrief-fact-retry",
+      practiceMode: "beginner",
+      turns: [
+        { role: "user", text: "妳平常住哪裡？" },
+        { role: "ai", text: "我住台南，最常在中西區活動。" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(
+    json.card.suggestedLine,
+    "原來妳常在中西區活動，休假最常去哪裡放空？",
+  );
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.semanticCalls.length, 0);
+  const retryPrompt = state.claudeCalls[1].messages.at(-1)?.content ?? "";
+  assert(retryPrompt.includes("上一版拆解 JSON 被拒絕"));
+  assertEquals(recordDebriefCalls(state).length, 1);
 });
 
 Deno.test("debrief accepts beginner ledger when client omits practiceMode", async () => {
@@ -4192,7 +4294,7 @@ Deno.test("assisted debrief resolves Hint strategy from the charged server snaps
   assertEquals(prompt.includes("FORGED"), false);
 });
 
-Deno.test("assisted Debrief repairs indirect blame of an exact preserved Hint", async () => {
+Deno.test("direct Claude Debrief regenerates instead of blaming an exact preserved Hint", async () => {
   const hintText = "還在賴床喔，那今天先准妳慢慢開機。";
   const turns = [
     { role: "user" as const, text: "早安" },
@@ -4213,15 +4315,13 @@ Deno.test("assisted Debrief repairs indirect blame of an exact preserved Hint", 
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger({ ai_count: 2 }),
-      deepSeekReplies: [card(
-        "只回『還在賴床喔，那今天先准妳慢慢開機』只是禮貌收尾，沒有給她好接的球。",
-      )],
-      semanticReplies: [semanticDebriefResult(
-        JSON.parse(card(
-          "下一步可以接慢慢開機，再分享你今天第一個起床動作。",
-        )),
-        { issueKinds: ["strategy_mismatch"] },
-      )],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [
+        card(
+          "只回『還在賴床喔，那今天先准妳慢慢開機』只是禮貌收尾，沒有給她好接的球。",
+        ),
+        card("下一步可以接慢慢開機，再分享你今天第一個起床動作。"),
+      ],
       rpc: {
         resolve_practice_hint_decision: [{
           data: {
@@ -4250,11 +4350,17 @@ Deno.test("assisted Debrief repairs indirect blame of an exact preserved Hint", 
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.provider, "deepseek");
+  assertEquals(json.provider, "anthropic");
   assertEquals(json.failoverUsed, false);
-  assertEquals(json.card.watchouts[0].includes("下一步"), true);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 0);
+  assertEquals(
+    JSON.stringify(json.card).includes("只是禮貌收尾"),
+    false,
+  );
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.semanticCalls.length, 0);
+  const retryPrompt = state.claudeCalls[1].messages.at(-1)?.content ?? "";
+  assert(retryPrompt.includes("exact Hint"));
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
@@ -4797,12 +4903,12 @@ Deno.test("beginner hint timeout also fails over to Claude", async () => {
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("free Hint uses Claude Haiku when DeepSeek is unavailable", async () => {
+Deno.test("free Hint also defaults to Claude Sonnet without semantic review", async () => {
   const { response, json, state } = await run(
     {
       sub: subscription({ tier: "free" }),
       ledger: beginnerStartedLedger(),
-      env: { DEEPSEEK_API_KEY: undefined },
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
       claudeReplies: [validHintJson()],
     },
     hintBody({
@@ -4814,11 +4920,114 @@ Deno.test("free Hint uses Claude Haiku when DeepSeek is unavailable", async () =
   assertEquals(response.status, 200);
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 1);
-  assertEquals(state.claudeCalls[0].model, CLAUDE_HAIKU_MODEL);
+  assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
+  assertEquals(state.claudeCalls[0].timeoutMs, 24000);
+  assertEquals(state.semanticCalls.length, 0);
   assertEquals(json.provider, "anthropic");
-  assertEquals(json.model, CLAUDE_HAIKU_MODEL);
+  assertEquals(json.model, CLAUDE_SONNET_MODEL);
   assertEquals(json.generationSource, "model");
   assertEquals(json.failoverUsed, false);
+});
+
+Deno.test("direct Beginner and Game Hint regenerate hallucinated user facts once", async () => {
+  for (const mode of ["beginner", "game"] as const) {
+    const invalidMirror = validHintJson({
+      warmUp: "我住的地方也是台南，難怪生活圈很像。",
+      steady: "台南也是我家鄉，這個生活感很熟。",
+      coaching: mode === "game"
+        ? "Game 心法：她住台南，建議你回我也住台南建立同城感。速約任務：先聊生活圈再看窗口。"
+        : "她住台南，建議你也說自己住台南來製造同城感。",
+    });
+    const validRepair = validHintJson({
+      warmUp: "妳住台南喔，平常最常去哪一區？",
+      steady: "妳住台南又少跑台北，生活圈很固定耶。",
+      coaching: mode === "game"
+        ? "Game 心法：她主動說自己住台南，現在只有生活圈資訊。速約任務：問她平常最常去哪一區，因為先讓她補具體活動，再看有沒有見面窗口。"
+        : "她說自己住台南，只承接她的生活圈，不替使用者冒認同城。",
+    });
+    const setup = mode === "game"
+      ? {
+        ledger: gameStartedLedger(),
+        drawEvents: [{ profile_id: "practice_girl_004" }],
+      }
+      : { ledger: beginnerStartedLedger() };
+    const { response, json, state } = await run(
+      {
+        ...setup,
+        env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+        claudeReplies: [invalidMirror, validRepair],
+      },
+      hintBody({
+        practiceMode: mode,
+        profileId: mode === "game" ? "practice_girl_004" : undefined,
+        requestId: `direct-hint-fact-retry-${mode}`,
+        turns: [
+          { role: "user", text: "我平常比較少往南部跑" },
+          { role: "ai", text: "我住台南，平常很少跑台北。" },
+        ],
+      }),
+    );
+
+    assertEquals(response.status, 200, `${mode}:${JSON.stringify(json)}`);
+    assertEquals(json.provider, "anthropic", mode);
+    assertEquals(json.model, CLAUDE_SONNET_MODEL, mode);
+    assertEquals(state.deepSeekCalls.length, 0, mode);
+    assertEquals(state.claudeCalls.length, 2, mode);
+    assertEquals(state.semanticCalls.length, 0, mode);
+    const retryPrompt = state.claudeCalls[1].messages.at(-1)?.content ?? "";
+    assert(retryPrompt.includes("上一版 Hint JSON 被拒絕"), mode);
+    assertEquals(recordHintCalls(state).length, 1, mode);
+  }
+});
+
+Deno.test("direct Hint retries a transient Claude failure once without fake format blame", async () => {
+  const { response, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [new Error("claude_timeout"), validHintJson()],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "direct-hint-transient-retry",
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.semanticCalls.length, 0);
+  const retryPrompt = state.claudeCalls[1].messages
+    .map((message) => message.content)
+    .join("\n");
+  assertEquals(retryPrompt.includes("上一版 Hint JSON 被拒絕"), false);
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
+Deno.test("direct Hint exhausts two rejected Claude candidates without a snapshot", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: ["not json", "["],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "direct-hint-both-invalid",
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json, {
+    error: "practice_hint_generation_retryable",
+    retryable: true,
+  });
+  assertEquals("replies" in json, false);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
 });
 
 Deno.test("hostile context with both providers down returns retryable error, never canned lines", async () => {
