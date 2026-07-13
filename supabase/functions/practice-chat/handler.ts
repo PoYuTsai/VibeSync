@@ -135,6 +135,8 @@ const LEGACY_CLIENT_QUALITY_SCHEMA_VERSION = "typed-facts-v1";
 const HINT_MAX_TOKENS = 1600;
 const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 1;
+const SERVER_HINT_DECISION_RATIONALE =
+  "只依據本場逐字稿與已知角色資料；貼句已依目前關係階段與邀約路線校驗。";
 // Keep the common path at generation + one reviewer. Reserve a third reviewer
 // only when both distinct provider paths fail or a high-risk repair still needs
 // verification; generation failover must not consume that recovery slot.
@@ -143,7 +145,7 @@ const PRACTICE_SEMANTIC_REVIEWER_CALL_BUDGET = 3;
 // Sacrifice a little wait time to reduce Game Hint timeout/failover and avoid
 // returning retryable 503s when the model is just slow. There is never a canned
 // fallback.
-const HINT_TIMEOUT_MS = 18000;
+const HINT_TIMEOUT_MS = 24000;
 const HINT_CLAUDE_FAILOVER_TIMEOUT_MS = 18000;
 const TEMPERATURE_JUDGE_MAX_TOKENS = 450;
 const TEMPERATURE_JUDGE_TEMPERATURE = 0.2;
@@ -2719,15 +2721,12 @@ export function createPracticeChatHandler(
               claudeModel: claudeFallbackModelForTier(sub.tier),
               callDeepSeek: deps.callDeepSeek,
               callClaude: deps.callClaude,
-              validateCandidate: (reviewedCandidate, strategies) => {
-                if (!strategies) {
-                  throw new Error("semantic_adjudication_invalid_strategy");
-                }
+              validateCandidate: (reviewedCandidate) => {
                 const hardChecked = parseHintResult(
                   JSON.stringify(reviewedCandidate),
                   { ...generatedHintParseOptions },
                 );
-                for (const [index, reply] of hardChecked.replies.entries()) {
+                for (const reply of hardChecked.replies) {
                   buildHintDecision({
                     turns: request.turns,
                     profile: request.profile,
@@ -2738,12 +2737,7 @@ export function createPracticeChatHandler(
                     gameState: ledgerGameState,
                     replyType: reply.type,
                     replyText: reply.text,
-                    tacticalMove: index === 0
-                      ? strategies.warmUp.move
-                      : strategies.steady.move,
-                    rationale: index === 0
-                      ? strategies.warmUp.rationale
-                      : strategies.steady.rationale,
+                    rationale: SERVER_HINT_DECISION_RATIONALE,
                   });
                 }
               },
@@ -2754,9 +2748,6 @@ export function createPracticeChatHandler(
               hintSemanticProviderCalls += error.providerCalls;
             }
             throw error;
-          }
-          if (!semantic.strategies) {
-            throw new Error("semantic_adjudication_invalid_strategy");
           }
           const generatedHint = parseHintResult(
             JSON.stringify(semantic.candidate),
@@ -2771,10 +2762,9 @@ export function createPracticeChatHandler(
             repaired: semantic.repaired,
             issueKinds: semantic.issueKinds,
           });
-          const strategies = semantic.strategies;
           return {
             ...generatedHint,
-            replies: generatedHint.replies.map((reply, index) => ({
+            replies: generatedHint.replies.map((reply) => ({
               ...reply,
               decision: buildHintDecision({
                 turns: request.turns,
@@ -2786,12 +2776,7 @@ export function createPracticeChatHandler(
                 gameState: ledgerGameState,
                 replyType: reply.type,
                 replyText: reply.text,
-                tacticalMove: index === 0
-                  ? strategies.warmUp.move
-                  : strategies.steady.move,
-                rationale: index === 0
-                  ? strategies.warmUp.rationale
-                  : strategies.steady.rationale,
+                rationale: SERVER_HINT_DECISION_RATIONALE,
               }),
             })) as typeof generatedHint.replies,
           };

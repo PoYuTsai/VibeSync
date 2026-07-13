@@ -54,7 +54,7 @@ function validFactVerification(overrides: Record<string, unknown> = {}) {
   });
 }
 
-Deno.test("semantic adjudication requires exact latest assistant evidence for both Hint strategies", () => {
+Deno.test("semantic adjudication ignores legacy reviewer-owned Hint strategies", () => {
   const parsed = parseSemanticAdjudication({
     raw: validHintAdjudication(),
     surface: "hint",
@@ -64,8 +64,24 @@ Deno.test("semantic adjudication requires exact latest assistant evidence for bo
 
   assertEquals(parsed.candidate, hintCandidate);
   assertEquals(parsed.repaired, false);
-  assertEquals(parsed.strategies?.warmUp.move, "answer_then_question");
+  assertEquals("strategies" in parsed, false);
   assertEquals(parsed.issueKinds, []);
+});
+
+Deno.test("Hint semantic reviewer cannot own hidden strategy lineage", () => {
+  const parsed = parseSemanticAdjudication({
+    raw: JSON.stringify({
+      verdict: "accept",
+      issues: [],
+      repairedResult: null,
+    }),
+    surface: "hint",
+    candidate: hintCandidate,
+    turns,
+  });
+
+  assertEquals(parsed.candidate, hintCandidate);
+  assertEquals("strategies" in parsed, false);
 });
 
 Deno.test("semantic adjudication ignores harmless reviewer metadata and trailing prose objects", () => {
@@ -84,7 +100,7 @@ Deno.test("semantic adjudication ignores harmless reviewer metadata and trailing
   });
 
   assertEquals(parsed.candidate, hintCandidate);
-  assertEquals(parsed.strategies?.warmUp.move, "answer_then_question");
+  assertEquals("strategies" in parsed, false);
 });
 
 Deno.test("semantic adjudication accepts issue metadata while preserving required evidence", () => {
@@ -115,7 +131,7 @@ Deno.test("semantic adjudication accepts issue metadata while preserving require
   assertEquals(parsed.issueKinds, ["generic"]);
 });
 
-Deno.test("semantic adjudication canonicalizes a fabricated Hint quote to server evidence", () => {
+Deno.test("semantic adjudication discards fabricated reviewer Hint lineage", () => {
   const strategy = {
     move: "callback",
     evidenceTurnId: "turn-1",
@@ -131,31 +147,28 @@ Deno.test("semantic adjudication canonicalizes a fabricated Hint quote to server
     turns,
   });
 
-  assertEquals(parsed.strategies?.warmUp.evidenceTurnId, "turn-1");
-  assertEquals(parsed.strategies?.warmUp.evidenceQuote, turns[1].text);
-  assertEquals(parsed.strategies?.steady.evidenceQuote, turns[1].text);
+  assertEquals(parsed.candidate, hintCandidate);
+  assertEquals("strategies" in parsed, false);
 });
 
-Deno.test("semantic adjudication still rejects a stale Hint evidence turn", () => {
+Deno.test("semantic adjudication cannot import stale reviewer Hint lineage", () => {
   const strategy = {
     move: "callback",
     evidenceTurnId: "turn-0",
     evidenceQuote: turns[0].text,
     rationale: "points at the wrong owner",
   };
-  assertThrows(
-    () =>
-      parseSemanticAdjudication({
-        raw: validHintAdjudication({
-          strategies: { warmUp: strategy, steady: strategy },
-        }),
-        surface: "hint",
-        candidate: hintCandidate,
-        turns,
-      }),
-    Error,
-    "semantic_adjudication_invalid_evidence",
-  );
+  const parsed = parseSemanticAdjudication({
+    raw: validHintAdjudication({
+      strategies: { warmUp: strategy, steady: strategy },
+    }),
+    surface: "hint",
+    candidate: hintCandidate,
+    turns,
+  });
+
+  assertEquals(parsed.candidate, hintCandidate);
+  assertEquals("strategies" in parsed, false);
 });
 
 Deno.test("semantic adjudication accepts kind-only issue records", () => {
@@ -331,6 +344,8 @@ Deno.test("semantic adjudication prompt treats transcript and candidate as evide
   assertEquals(prompt.includes("不可 soft_invite/direct_invite"), true);
   assertEquals(prompt.includes("turn-2 [assistant]"), true);
   assertEquals(prompt.includes("direct invite forbidden"), true);
+  assertEquals(prompt.includes("不得輸出 strategies"), true);
+  assertEquals(prompt.includes("兩個選項都不得只是問句"), true);
 });
 
 Deno.test("fact verification is a bounded evidence audit, not another free-form rewrite", () => {
@@ -473,8 +488,9 @@ Deno.test("accepted candidates still require independent fact verification", asy
     deepSeekApiKey: "deepseek-key",
     claudeApiKey: "claude-key",
     claudeModel: "claude-test",
-    callClaude: () => {
+    callClaude: (args) => {
       calls.push("claude-full-review");
+      assertEquals(args.maxTokens, 1800);
       return Promise.resolve(validHintAdjudication());
     },
     callDeepSeek: (args) => {
@@ -574,7 +590,7 @@ Deno.test("semantic adjudicator uses the alternate provider when the first revie
     },
     callDeepSeek: (args) => {
       calls.push("deepseek");
-      assertEquals(args.timeoutMs, 30000);
+      assertEquals(args.timeoutMs, 24000);
       return Promise.resolve(validHintAdjudication());
     },
   };
@@ -633,7 +649,7 @@ Deno.test("unsupported-fact repairs require an independent semantic acceptance",
     true,
   );
   assertEquals(result.candidate, repaired);
-  assertEquals(result.strategies?.warmUp.move, "answer_then_question");
+  assertEquals("strategies" in result, false);
   assertEquals(result.repaired, true);
   assertEquals(result.issueKinds, ["unsupported_fact"]);
   assertEquals(result.providerCalls, 2);
@@ -660,7 +676,7 @@ Deno.test("high-risk repair gets one bounded fresh review after the alternate pr
     callClaude: (args) => {
       calls.push("claude");
       claudeCalls += 1;
-      assertEquals(args.maxTokens, claudeCalls === 1 ? 4000 : 1200);
+      assertEquals(args.maxTokens, claudeCalls === 1 ? 1800 : 1200);
       return Promise.resolve(
         claudeCalls === 1
           ? validHintAdjudication({
@@ -882,5 +898,5 @@ Deno.test("Debrief semantic adjudication does not require Hint strategies", () =
   });
 
   assertEquals(parsed.candidate, card);
-  assertEquals(parsed.strategies, undefined);
+  assertEquals("strategies" in parsed, false);
 });

@@ -57,6 +57,8 @@ Deno.test("buildHintMessages includes transcript, profile, temperature, and Trad
   assert(text.includes("繁中"));
   assert(text.includes("JSON"));
   assert(text.includes("不要 markdown"));
+  assert(text.includes("兩句都可直接送且不可只問"));
+  assert(text.includes("被直接問時先回答或表態"));
 });
 
 Deno.test("Game Hint prompt and returned decision share persisted Game context", () => {
@@ -327,13 +329,9 @@ Deno.test("buildHintMessages makes warm-up replies safe to apply without direct 
 
   for (
     const required of [
-      "可原封不動送出",
-      "不要直接邀約",
-      "不要提出見面",
-      "不要約出來",
-      "不要一起熬夜",
-      "穩住回覆必須不扣分",
-      "升溫回覆也不能讓溫度扣分",
+      "兩句都可直接送",
+      "不直接邀約、見面、一起熬夜",
+      "穩住與升溫都不可扣分",
     ]
   ) {
     assert(text.includes(required), required);

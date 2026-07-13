@@ -219,20 +219,6 @@ function semanticHintResult(
 ): SemanticAdjudicationResult {
   return {
     candidate,
-    strategies: {
-      warmUp: {
-        move: "answer_then_question",
-        evidenceTurnId: "turn-1",
-        evidenceQuote: "latest assistant evidence",
-        rationale: "先接住她最新訊號，再給一個具體而容易接的方向。",
-      },
-      steady: {
-        move: "shared_scene",
-        evidenceTurnId: "turn-1",
-        evidenceQuote: "latest assistant evidence",
-        rationale: "沿她最新訊號補一個低壓共同畫面。",
-      },
-    },
     repaired: options.repaired ?? true,
     issueKinds: options.issueKinds ?? ["unsupported_fact"],
     provider: "anthropic",
@@ -668,45 +654,14 @@ function makeFake(options: FakeOptions = {}) {
     if (configured instanceof Error) return Promise.reject(configured);
     if (configured) {
       try {
-        args.validateCandidate?.(
-          configured.candidate,
-          configured.strategies,
-        );
+        args.validateCandidate?.(configured.candidate);
       } catch (error) {
         return Promise.reject(error);
       }
       return Promise.resolve(configured);
     }
-    const latestAiIndex = args.turns.findLastIndex((turn) =>
-      turn.role === "ai"
-    );
-    const latestAiText = latestAiIndex >= 0
-      ? args.turns[latestAiIndex].text
-      : "";
-    const evidenceQuote = latestAiText.slice(
-      0,
-      Math.min(12, latestAiText.length),
-    );
     return Promise.resolve({
       candidate: args.candidate,
-      ...(args.surface === "hint"
-        ? {
-          strategies: {
-            warmUp: {
-              move: "answer_then_question" as const,
-              evidenceTurnId: `turn-${latestAiIndex}`,
-              evidenceQuote,
-              rationale: "接住她最新一句，再給一個容易接的具體方向。",
-            },
-            steady: {
-              move: "shared_scene" as const,
-              evidenceTurnId: `turn-${latestAiIndex}`,
-              evidenceQuote,
-              rationale: "沿她最新訊號補一個低壓共同畫面。",
-            },
-          },
-        }
-        : {}),
       repaired: false,
       issueKinds: [],
       providerCalls: 0,
@@ -4808,7 +4763,7 @@ Deno.test("game hint timeout fails over to Claude without exposing canned text",
   assert(visibleReplies.includes("咖啡"));
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 1);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 18000);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 24000);
   assertEquals(state.claudeCalls[0].timeoutMs, 18000);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
@@ -4833,7 +4788,7 @@ Deno.test("beginner hint timeout also fails over to Claude", async () => {
   assertEquals(json.replies.length, 2);
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 1);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 18000);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 24000);
   assertEquals(state.claudeCalls[0].timeoutMs, 18000);
   assertEquals(json.generationSource, "model");
   assertEquals(json.fallbackUsed, false);
@@ -5424,13 +5379,44 @@ Deno.test("game hint semantic review repairs invite options above the authoritat
   assertEquals(state.claudeCalls.length, 0);
   assertEquals(state.semanticCalls.length, 1);
   assertEquals(recordHintCalls(state).length, 1);
-  for (const [index, reply] of json.replies.entries()) {
-    assertEquals(
-      reply.decision.move,
-      index === 0 ? "answer_then_question" : "shared_scene",
-    );
+  for (const reply of json.replies) {
+    assertEquals(reply.decision.move, "build_connection");
     assertEquals(reply.decision.inviteRoute, "build");
     assertEquals(reply.text.includes("咖啡"), true);
+  }
+});
+
+Deno.test("Hint response decisions stay server-owned when semantic review returns no strategies", async () => {
+  const reviewed = {
+    warmUp: "這杯咖啡有任務感，我先猜你今天需要醒腦。",
+    steady: "咖啡念頭收到，今天先讓自己喘口氣。",
+    coaching: "她主動提咖啡；先接住她的狀態，再補一點自己的立場。",
+  };
+  const { response, json } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      deepSeekReplies: [validHintJson()],
+      semanticReplies: [{
+        candidate: reviewed,
+        repaired: true,
+        issueKinds: ["strategy_mismatch"],
+        provider: "anthropic",
+        providerCalls: 2,
+      }],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "server-owned-hint-lineage",
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  for (const reply of json.replies) {
+    assertEquals(
+      reply.decision.rationale,
+      "只依據本場逐字稿與已知角色資料；貼句已依目前關係階段與邀約路線校驗。",
+    );
+    assertEquals(reply.decision.rationale.includes("精神快關機"), false);
   }
 });
 
@@ -5467,7 +5453,7 @@ Deno.test("game hint returns retryable error when both providers return malforme
   });
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 1);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 18000);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 24000);
   assertEquals(state.claudeCalls[0].timeoutMs, 18000);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(releaseHintCalls(state).length, 1);
@@ -5744,6 +5730,7 @@ Deno.test("successful hint uses ledger temperature, records after parse, and ret
   assertEquals(hintCall.jsonMode, true);
   assertEquals(hintCall.maxTokens, 1600);
   assertEquals(hintCall.temperature, 0.45);
+  assertEquals(hintCall.timeoutMs, 24000);
   const promptText = hintCall.messages.map((m) => m.content).join("\n");
   assert(promptText.includes("currentTemperatureScore: 64/100"));
   assertEquals(promptText.includes("currentTemperatureScore: 5/100"), false);

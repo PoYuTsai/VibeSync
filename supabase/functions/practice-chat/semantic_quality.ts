@@ -6,29 +6,6 @@ import type { AppliedHintTurn, PracticeTurn } from "./validate.ts";
 
 export type PracticeSemanticSurface = "hint" | "debrief";
 
-export type HintTacticalMove =
-  | "callback"
-  | "self_disclosure"
-  | "shared_scene"
-  | "playful_reframe"
-  | "answer_then_question"
-  | "soft_invite"
-  | "direct_invite"
-  | "repair"
-  | "hold";
-
-export interface HintSemanticStrategy {
-  move: HintTacticalMove;
-  evidenceTurnId: string;
-  evidenceQuote: string;
-  rationale: string;
-}
-
-export interface HintSemanticStrategies {
-  warmUp: HintSemanticStrategy;
-  steady: HintSemanticStrategy;
-}
-
 export type SemanticIssueKind =
   | "unsupported_fact"
   | "generic"
@@ -37,7 +14,6 @@ export type SemanticIssueKind =
 
 export interface SemanticAdjudicationResult {
   candidate: Record<string, unknown>;
-  strategies?: HintSemanticStrategies;
   repaired: boolean;
   issueKinds: SemanticIssueKind[];
   provider?: "deepseek" | "anthropic";
@@ -68,10 +44,7 @@ export interface PracticeSemanticAdjudicatorArgs {
   callDeepSeek: SemanticDeepSeekCaller;
   callClaude?: SemanticClaudeCaller;
   /** Final deterministic schema/safety/FSM guard; a failure tries next reviewer. */
-  validateCandidate?: (
-    candidate: Record<string, unknown>,
-    strategies?: HintSemanticStrategies,
-  ) => void;
+  validateCandidate?: (candidate: Record<string, unknown>) => void;
 }
 
 export type PracticeSemanticAdjudicator = (
@@ -88,33 +61,22 @@ export class SemanticAdjudicationError extends Error {
   }
 }
 
-// A repaired Game card repeats all visible fields plus its breakdown. Hidden
-// reasoning/token accounting can exhaust 1800 before the JSON object closes.
-const ADJUDICATION_MAX_TOKENS = 4000;
+// Hint repair now contains only three visible fields, so 1800 is sufficient.
+// Debrief repeats the full Game breakdown and keeps the larger budget.
+const HINT_ADJUDICATION_MAX_TOKENS = 1800;
+const DEBRIEF_ADJUDICATION_MAX_TOKENS = 4000;
 const REPAIR_VERIFICATION_MAX_TOKENS = 1200;
 const ADJUDICATION_TEMPERATURE = 0.1;
 // Production semantic verification regularly completed just beyond 18s.
 // Keep the generation timeout bounded, but give the independent reviewer
 // enough time to finish instead of converting a valid generated Hint into 503.
-const ADJUDICATION_TIMEOUT_MS = 30000;
+const ADJUDICATION_TIMEOUT_MS = 24000;
 
 const ISSUE_KINDS = new Set<SemanticIssueKind>([
   "unsupported_fact",
   "generic",
   "strategy_mismatch",
   "unsafe",
-]);
-
-const TACTICAL_MOVES = new Set<HintTacticalMove>([
-  "callback",
-  "self_disclosure",
-  "shared_scene",
-  "playful_reframe",
-  "answer_then_question",
-  "soft_invite",
-  "direct_invite",
-  "repair",
-  "hold",
 ]);
 
 const DEBRIEF_VIBES = new Set(["暖", "中性", "冷"]);
@@ -247,96 +209,6 @@ function parseIssues(value: unknown): SemanticIssueKind[] {
   return [...new Set(kinds)];
 }
 
-function latestAssistantTurnIndex(turns: PracticeTurn[]): number {
-  for (let index = turns.length - 1; index >= 0; index--) {
-    if (turns[index].role === "ai") return index;
-  }
-  return -1;
-}
-
-function canonicalAssistantEvidenceQuote(
-  assistantText: string,
-  requestedQuote: string,
-): string {
-  const requested = requestedQuote.trim();
-  const requestedLength = Array.from(requested).length;
-  if (
-    requestedLength >= 2 && requestedLength <= 120 &&
-    assistantText.includes(requested)
-  ) {
-    return requested;
-  }
-  const canonical = Array.from(assistantText.trim())
-    .slice(0, 120)
-    .join("")
-    .trim();
-  if (Array.from(canonical).length < 2) {
-    throw new Error("semantic_adjudication_invalid_evidence");
-  }
-  return canonical;
-}
-
-function parseStrategy(
-  value: unknown,
-  turns: PracticeTurn[],
-): HintSemanticStrategy {
-  if (!isRecord(value)) {
-    throw new Error("semantic_adjudication_invalid_strategy");
-  }
-  assertRequiredKeys(
-    value,
-    ["move", "evidenceTurnId", "evidenceQuote", "rationale"],
-    "semantic_adjudication_invalid_strategy",
-  );
-  if (
-    typeof value.move !== "string" ||
-    !TACTICAL_MOVES.has(value.move as HintTacticalMove) ||
-    typeof value.evidenceTurnId !== "string" ||
-    typeof value.evidenceQuote !== "string" ||
-    typeof value.rationale !== "string" ||
-    value.rationale.trim().length < 4 || value.rationale.length > 180
-  ) {
-    throw new Error("semantic_adjudication_invalid_strategy");
-  }
-  const latestIndex = latestAssistantTurnIndex(turns);
-  const expectedTurnId = `turn-${latestIndex}`;
-  const evidenceTurn = turns[latestIndex];
-  if (
-    latestIndex < 0 || value.evidenceTurnId !== expectedTurnId ||
-    evidenceTurn.role !== "ai"
-  ) {
-    throw new Error("semantic_adjudication_invalid_evidence");
-  }
-  const evidenceQuote = canonicalAssistantEvidenceQuote(
-    evidenceTurn.text,
-    value.evidenceQuote,
-  );
-  return {
-    move: value.move as HintTacticalMove,
-    evidenceTurnId: value.evidenceTurnId,
-    evidenceQuote,
-    rationale: value.rationale.trim(),
-  };
-}
-
-function parseStrategies(
-  value: unknown,
-  turns: PracticeTurn[],
-): HintSemanticStrategies {
-  if (!isRecord(value)) {
-    throw new Error("semantic_adjudication_invalid_strategy");
-  }
-  assertRequiredKeys(
-    value,
-    ["warmUp", "steady"],
-    "semantic_adjudication_invalid_strategy",
-  );
-  return {
-    warmUp: parseStrategy(value.warmUp, turns),
-    steady: parseStrategy(value.steady, turns),
-  };
-}
-
 export function parseSemanticAdjudication(opts: {
   raw: string;
   surface: PracticeSemanticSurface;
@@ -352,9 +224,7 @@ export function parseSemanticAdjudication(opts: {
   if (!isRecord(parsed)) {
     throw new Error("semantic_adjudication_invalid_schema");
   }
-  const expectedKeys = opts.surface === "hint"
-    ? ["verdict", "issues", "repairedResult", "strategies"]
-    : ["verdict", "issues", "repairedResult"];
+  const expectedKeys = ["verdict", "issues", "repairedResult"];
   assertRequiredKeys(
     parsed,
     expectedKeys,
@@ -393,9 +263,6 @@ export function parseSemanticAdjudication(opts: {
     : opts.candidate;
   return {
     candidate,
-    strategies: opts.surface === "hint"
-      ? parseStrategies(parsed.strategies, opts.turns)
-      : undefined,
     repaired: verdict === "repair",
     issueKinds,
     providerCalls: 0,
@@ -507,7 +374,7 @@ export function buildSemanticAdjudicationMessages(opts: {
   trustedGenerationContext: string;
 }): ChatMessage[] {
   const hintShape =
-    'Hint 額外必填 "strategies":{"warmUp":strategy,"steady":strategy}；strategy 僅含 move、evidenceTurnId、evidenceQuote、rationale。move 只能是 callback/self_disclosure/shared_scene/playful_reframe/answer_then_question/soft_invite/direct_invite/repair/hold。兩個 evidence 都只能指向最新 assistant turn，quote 必須逐字存在。可見三欄不得出現 P1-P5、move enum、targetVariable、Failure State、temperature/score/band 或內部策略名；策略 move、貼句與 server route 必須一致。遇低能量／收尾／界線訊號，以 repair/hold 退壓，不開新壓力，不可 soft_invite/direct_invite。';
+    "Hint 完整 repair 只含 warmUp、steady、coaching，不得輸出 strategies；hidden 決策由 server 依逐字稿與邀約階段產生。可見三欄不得出現 P1-P5、move enum、targetVariable、Failure State、temperature/score/band 或內部策略名。兩個選項都要先回應、給內容／立場／小畫面，再選擇性問一句；兩個選項都不得只是問句。遇低能量／收尾／界線訊號就退壓，不開新壓力，不可 soft_invite/direct_invite。";
   const debriefShape =
     "Debrief 不輸出 strategies。完整 repair 必守原 schema：vibe 只能暖/中性/冷，dateChance 只能 low/medium/high，strengths/watchouts 維持陣列，Game 保留完整 gameBreakdown。所有 visible 文字不得出現 P1-P5、targetVariable、Failure State、temperature/score/band 或內部策略名。若有 applied Hint，除非 Hint 送出後的 assistant 新回覆有明確反證，必須 preserved；visible 欄位要承認採用 Hint，只分析執行與下一步，不得事後打臉。逐子句盤點最新 assistant 的回答、自我揭露、反問、玩笑／小測試、重連／時間窗口與界線；「下週見」「等你踩點報告」「別報雷」這類訊號不得被開頭客套或收尾蓋掉。整張卡跨欄一致：若任一欄承認她有新細節／自我揭露／反問／窗口，其他欄不得說只有基本回應／無延伸／無新素材。suggestedLine/nextFirstLine 永遠是 user 對 assistant 說；追蹤行動承諾的 owner，user 說會做、確認或回報，就不可反轉成等 assistant 做或回報。若診斷問答乒乓／查戶口，兩句要先給內容、感受、立場或小畫面，不得再用資訊題收尾。repair 時回傳完整 Debrief JSON，含 hidden hintAssessment。";
   const modeRule = opts.practiceMode === "game"
@@ -539,7 +406,7 @@ export function buildSemanticAdjudicationMessages(opts: {
           JSON.stringify(opts.candidate)
         }\n</candidate_json>\n` +
         (opts.surface === "hint"
-          ? '回傳 shape：{"verdict":"accept|repair|reject","issues":[],"repairedResult":null|完整Hint,"strategies":{"warmUp":strategy,"steady":strategy}}。'
+          ? '回傳 shape：{"verdict":"accept|repair|reject","issues":[],"repairedResult":null|完整Hint}。不得加入 strategies。'
           : '回傳 shape：{"verdict":"accept|repair|reject","issues":[],"repairedResult":null|完整Debrief}。'),
     },
   ];
@@ -610,7 +477,7 @@ export async function adjudicatePracticeCandidate(
   let pendingVerification:
     | Pick<
       SemanticAdjudicationResult,
-      "candidate" | "issueKinds" | "strategies" | "repaired"
+      "candidate" | "issueKinds" | "repaired"
     >
     | undefined;
   for (const reviewer of reviewPlan.slice(0, budget)) {
@@ -628,13 +495,9 @@ export async function adjudicatePracticeCandidate(
           REPAIR_VERIFICATION_MAX_TOKENS,
         );
         parseSemanticFactVerification({ raw });
-        args.validateCandidate?.(
-          pendingVerification.candidate,
-          pendingVerification.strategies,
-        );
+        args.validateCandidate?.(pendingVerification.candidate);
         return {
           candidate: pendingVerification.candidate,
-          strategies: pendingVerification.strategies,
           repaired: pendingVerification.repaired,
           issueKinds: pendingVerification.issueKinds,
           provider: reviewer.provider,
@@ -647,7 +510,9 @@ export async function adjudicatePracticeCandidate(
           ...args,
           candidate: candidateUnderReview,
         }),
-        ADJUDICATION_MAX_TOKENS,
+        args.surface === "hint"
+          ? HINT_ADJUDICATION_MAX_TOKENS
+          : DEBRIEF_ADJUDICATION_MAX_TOKENS,
       );
       const parsed = parseSemanticAdjudication({
         raw,
@@ -655,12 +520,11 @@ export async function adjudicatePracticeCandidate(
         candidate: candidateUnderReview,
         turns: args.turns,
       });
-      args.validateCandidate?.(parsed.candidate, parsed.strategies);
+      args.validateCandidate?.(parsed.candidate);
 
       pendingVerification = {
         candidate: parsed.candidate,
         issueKinds: parsed.issueKinds,
-        strategies: parsed.strategies,
         repaired: parsed.repaired,
       };
       lastError = new Error(
