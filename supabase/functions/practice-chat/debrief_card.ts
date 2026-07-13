@@ -1155,6 +1155,112 @@ function preservedCardCritiquesExactHint(
   return false;
 }
 
+function isPreservedHiddenHintAssessment(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const assessment = value as Record<string, unknown>;
+  return assessment.verdict === "preserved" &&
+    assessment.revisedEvidenceQuote === null;
+}
+
+function compactDebriefQuote(value: string, maxChars = 18): string {
+  const normalized = value
+    .normalize("NFKC")
+    .replace(/\s+/gu, " ")
+    .replace(/[「」"']/gu, "")
+    .trim();
+  const chars = [...normalized];
+  if (chars.length <= maxChars) return normalized;
+  return `${chars.slice(0, maxChars).join("")}…`;
+}
+
+function assistantTextNearHint(
+  turns: PracticeTurn[] | undefined,
+  hintTurnIndex: number,
+  direction: "before" | "after",
+): string {
+  if (!turns || turns.length === 0) return "";
+  if (direction === "after") {
+    for (let index = hintTurnIndex + 1; index < turns.length; index++) {
+      if (turns[index]?.role === "ai") return turns[index].text;
+    }
+    return latestAssistantText(turns);
+  }
+  for (let index = hintTurnIndex - 1; index >= 0; index--) {
+    if (turns[index]?.role === "ai") return turns[index].text;
+  }
+  return "";
+}
+
+function cardVisiblyReversesPreservedHint(card: DebriefCard): boolean {
+  const visible = normalizedPracticeText(debriefVisibleFields(card).join("\n"));
+  return /(?:提示|hint).{0,16}(?:錯|不對|不該|太急|偏保守|無效|不好|不合適|不適合|有問題|失準|誤判)/iu
+    .test(visible);
+}
+
+function repairPreservedHintCritiqueCard(
+  card: DebriefCard,
+  appliedHintTurns: AppliedHintTurn[],
+  turns?: PracticeTurn[],
+): DebriefCard {
+  const latestHint = appliedHintTurns.reduce((latest, hint) =>
+    hint.turnIndex >= latest.turnIndex ? hint : latest
+  );
+  const afterQuote = compactDebriefQuote(
+    assistantTextNearHint(turns, latestHint.turnIndex, "after"),
+  );
+  const beforeQuote = compactDebriefQuote(
+    assistantTextNearHint(turns, latestHint.turnIndex, "before"),
+  );
+  const anchor = afterQuote || beforeQuote || "這個話題";
+  const setup = beforeQuote || anchor;
+
+  const summary = guardVisibleText(
+    afterQuote
+      ? `你有照提示做，她也接住「${afterQuote}」。`
+      : "你有照提示做，這輪先保留低壓節奏。",
+  );
+  const strengths = [
+    guardVisibleText(`你先接她「${setup}」，沒有急著推進。`),
+  ];
+  const watchouts = [
+    guardVisibleText(`下一步少一個追問，多留你對「${anchor}」的生活感。`),
+  ];
+  const dateChanceReason = guardVisibleText(
+    afterQuote
+      ? `她願意延續「${afterQuote}」和你來回。`
+      : "她願意延續話題和你來回。",
+  );
+  const nextInviteMove = guardVisibleText(
+    `先接「${anchor}」，再補一點你的生活畫面。`,
+  );
+  const gameBreakdown = card.gameBreakdown
+    ? {
+      ...card.gameBreakdown,
+      phaseReached: guardVisibleText(`熟悉進度仍在延續「${anchor}」。`),
+      missedVariable: guardVisibleText(
+        `下一步缺的是你對「${anchor}」的生活畫面。`,
+      ),
+      failureState: guardVisibleText(
+        `她仍停在低壓延續「${anchor}」的節奏。`,
+      ),
+      inviteDirection: guardVisibleText(
+        `先補你對「${anchor}」的生活畫面，保留低壓節奏。`,
+      ),
+    }
+    : null;
+  return {
+    ...card,
+    summary,
+    strengths,
+    watchouts,
+    dateChanceReason,
+    nextInviteMove,
+    gameBreakdown,
+  };
+}
+
 /**
  * Hidden continuity contract. Debrief may revise a Hint only when it points to
  * an exact assistant reply that happened after that Hint was sent. The hidden
@@ -1374,6 +1480,7 @@ export function parseDebriefCard(
     partnerFactualEvidence?: string[];
     trustedFactClaims?: HintFactClaim[];
     enforceGeneratedQuality?: boolean;
+    repairPreservedHintCritique?: boolean;
   } = {},
 ): DebriefCard {
   const cleaned = extractJsonObject(raw);
@@ -1459,7 +1566,7 @@ export function parseDebriefCard(
     }
   }
 
-  const card: DebriefCard = {
+  let card: DebriefCard = {
     summary,
     strengths,
     watchouts,
@@ -1475,6 +1582,19 @@ export function parseDebriefCard(
       : null,
   };
   const appliedHintTurns = opts.appliedHintTurns ?? [];
+  if (
+    appliedHintTurns.length > 0 &&
+    opts.repairPreservedHintCritique === true &&
+    isPreservedHiddenHintAssessment(p.hintAssessment) &&
+    (cardVisiblyReversesPreservedHint(card) ||
+      preservedCardCritiquesExactHint(card, appliedHintTurns, opts.turns))
+  ) {
+    card = repairPreservedHintCritiqueCard(
+      card,
+      appliedHintTurns,
+      opts.turns,
+    );
+  }
   if (appliedHintTurns.length > 0) {
     assertHintAssessment({
       value: p.hintAssessment,

@@ -46,6 +46,8 @@
 
 **追加（2026-07-13 Codex takeover third fix）**: 第二輪 production smoke 已不再是 `debrief_hint_assessment_missing`，而是卡在 `debrief_hint_assessment_revision_required`：Debrief 會把使用者 exact 套用過的 Hint 當成問題，或在對方接球／延續但未明確拒絕時反轉策略。修法不是放寬 guard，而是把 invariant 寫硬：`exact` Hint 後若她有接球且沒有拒絕／糾正，`hintAssessment` 必須 `preserved`；可見欄位只能寫下一步，不能檢討 Hint。本次也補強 retry repair reason，讓修補請求明確要求「不得檢討 Hint」。驗證：`deno fmt --check` 4 檔、`git diff --check -- . ':!pubspec.lock' ':!.gstack'`、`deno test --allow-env --allow-read --no-check supabase/functions/practice-chat` = **854/854 passed**。後續需 deploy Edge 並重跑 production generated-only smoke。
 
+**追加（2026-07-13 Codex takeover fourth fix）**: 第三修 deploy 後 production smoke 仍卡 `debrief_hint_assessment_revision_required`；prompt-only 約束不足，模型會在 hidden `hintAssessment.verdict="preserved"` 的同一張卡裡，於可見 summary/watchouts/Game 拆盤繼續批評已套用且被對方接住的 Hint。修法仍維持 fail-closed：只有 generated Debrief 路徑、hidden verdict 明確 preserved、`revisedEvidenceQuote=null`、且可由逐字稿找到 Hint 後第一則 AI 回覆時，才 deterministic repair 可見拆盤，把內容改成「她有接住 → 下一步補生活畫面／追問」；repair 後仍重跑 `assertHintAssessment`、route guard、generated-quality guard。缺 hidden assessment、策略反轉、或無法 grounding 仍 503 retryable，不落 fallback 卡。本地 review 另補 Game breakdown repair：每個拆盤欄位都要帶 post-Hint AI quote 錨點，且文案必須通過 Game phase/variable/failure/invite role guard。驗證：`debrief_card_test.ts` 69/69、`index_test.ts` 197/197、practice-chat 全套 **855/855**（`--no-check`），`deno fmt --check` 4 檔與 `git diff --check -- . ':!pubspec.lock' ':!.gstack'` 全綠。
+
 ### [2026-07-11] Beginner／Game Hint 與 Debrief 把降級罐頭當成功結果
 
 **Symptom**: TestFlight 點 Game Hint 後會看到「妳剛說的那個點我有記住…」等一眼可辨識的萬用句；賽後 Debrief 又可能批評剛才的 Hint、給出與當時策略相反的「下次可以這樣說」，Game 拆盤欄位也會只剩空泛術語。Beginner 與 Game 都受影響。

@@ -748,6 +748,80 @@ Deno.test("preserved Debrief cannot indirectly blame an exact Hint in Beginner o
   }
 });
 
+Deno.test("production repair rewrites preserved exact Hint critique with grounded next step", () => {
+  const turns = [
+    { role: "user" as const, text: "早安" },
+    { role: "ai" as const, text: "我還在賴床，腦袋沒開機" },
+    { role: "user" as const, text: appliedExactHint.sentText },
+    { role: "ai" as const, text: "哈哈有慢慢開機了" },
+  ];
+  const blamingCard = {
+    ...generatedQualityCard,
+    summary: "你有照提示做，但這句只是禮貌收尾，沒有給球。",
+    strengths: ["你有照提示做，但這個回應只是禮貌收尾。"],
+    watchouts: ["照提示後，球沒有丟回她。"],
+    dateChanceReason: "這句提示偏保守，讓互動停住。",
+    nextInviteMove: "先修正剛才提示太保守的問題。",
+  };
+
+  assertThrows(
+    () =>
+      parseDebriefCard(JSON.stringify(blamingCard), {
+        requireCompleteCard: true,
+        enforceGeneratedQuality: true,
+        turns,
+        appliedHintTurns: [appliedExactHint],
+      }),
+    Error,
+    "debrief_hint_assessment_revision_required",
+  );
+
+  const repaired = parseDebriefCard(JSON.stringify(blamingCard), {
+    requireCompleteCard: true,
+    enforceGeneratedQuality: true,
+    turns,
+    appliedHintTurns: [appliedExactHint],
+    repairPreservedHintCritique: true,
+  });
+  assertEquals(repaired.summary.includes("哈哈有慢慢開機了"), true);
+  assertEquals(repaired.summary.includes("禮貌收尾"), false);
+  assertEquals(repaired.watchouts[0].includes("下一步"), true);
+  assertEquals(JSON.stringify(repaired).includes("hintAssessment"), false);
+
+  const gameRepaired = parseDebriefCard(
+    JSON.stringify({
+      ...blamingCard,
+      gameBreakdown: {
+        phaseReached: "提示偏保守，還沒建立熟悉。",
+        missedVariable: "提示太保守。",
+        failureState: "太平淡。",
+        nextFirstLine: "慢慢開機也行，我先分享我的起床儀式。",
+        inviteDirection: "先修正提示太保守。",
+      },
+    }),
+    {
+      allowGameBreakdown: true,
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      turns,
+      appliedHintTurns: [appliedExactHint],
+      repairPreservedHintCritique: true,
+    },
+  );
+  assertEquals(
+    gameRepaired.gameBreakdown?.missedVariable.includes("哈哈有慢慢開機了"),
+    true,
+  );
+  assertEquals(
+    gameRepaired.gameBreakdown?.inviteDirection.includes("哈哈有慢慢開機了"),
+    true,
+  );
+  assertEquals(
+    JSON.stringify(gameRepaired.gameBreakdown).includes("提示太保守"),
+    false,
+  );
+});
+
 Deno.test("preserved Debrief may critique her response or a clearly identified non-Hint user turn", () => {
   const baseTurns = [
     { role: "user" as const, text: "早安" },

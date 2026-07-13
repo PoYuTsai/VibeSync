@@ -4074,24 +4074,19 @@ Deno.test("assisted Debrief repairs indirect blame of an exact preserved Hint", 
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.provider, "anthropic");
-  assertEquals(json.failoverUsed, true);
-  assertEquals(
-    json.card.watchouts,
-    ["下一步可以接慢慢開機，再分享你今天第一個起床動作。"],
-  );
+  assertEquals(json.provider, "deepseek");
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.card.watchouts[0].includes("下一步"), true);
   assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
-  const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
-  assert(repairPrompt.includes("exact Hint 當成問題"));
-  assert(repairPrompt.includes("不得檢討 Hint"));
 });
 
-Deno.test("both Debrief providers blaming a preserved exact Hint record no card", async () => {
+Deno.test("both Debrief providers missing preserved Hint assessment record no card", async () => {
   const hintText = "還在賴床喔，那今天先准妳慢慢開機。";
   const invalid = validDebriefJson({
+    hintAssessment: undefined,
     summary: "你有照提示做，但這句只是禮貌收尾，沒有給球。",
     strengths: ["你有照提示做，也接住她還在賴床的狀態。"],
     watchouts: ["下一步可以補一點自己的早晨畫面。"],
