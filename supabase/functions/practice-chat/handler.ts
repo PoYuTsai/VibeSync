@@ -132,7 +132,10 @@ const DEBRIEF_IN_FLIGHT_STALE_MS = 105000;
 const DIRECT_PRACTICE_GENERATION_ATTEMPTS = 3;
 const DIRECT_PRACTICE_DEBRIEF_ATTEMPTS = 3;
 const DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS = 24000;
-const DIRECT_PRACTICE_RETRY_TEMPERATURE = 0.2;
+// Direct Claude is the final writer, not a brainstormer. Keep every attempt
+// low-variance so expert framing comes from the rubric instead of invented
+// scene props, user actions, or personal facts.
+const DIRECT_PRACTICE_TEMPERATURE = 0.2;
 const LEGACY_CLIENT_QUALITY_SCHEMA_VERSION = "typed-facts-v1";
 // 2026-07-13 probe: game hint 在 650 tokens 下 DeepSeek 47% finish_reason=length
 // 截斷（JSON 收不完→誤報 provider_error）。提高到 1600 給 Game Hint 完整 JSON 空間。
@@ -2850,9 +2853,7 @@ export function createPracticeChatHandler(
                 model: CLAUDE_SONNET_MODEL,
                 messages: hintMessages,
                 maxTokens: HINT_MAX_TOKENS,
-                temperature: attempt > 1
-                  ? DIRECT_PRACTICE_RETRY_TEMPERATURE
-                  : HINT_TEMPERATURE,
+                temperature: DIRECT_PRACTICE_TEMPERATURE,
                 timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
               });
               previousDirectHintCandidate = rawHint;
@@ -3841,9 +3842,7 @@ export function createPracticeChatHandler(
                 model: CLAUDE_SONNET_MODEL,
                 messages: debriefMessages,
                 maxTokens: DEBRIEF_MAX_TOKENS,
-                temperature: attempt > 1
-                  ? DIRECT_PRACTICE_RETRY_TEMPERATURE
-                  : DEBRIEF_TEMPERATURE,
+                temperature: DIRECT_PRACTICE_TEMPERATURE,
                 timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
               });
               previousDirectDebriefCandidate = rawCard;

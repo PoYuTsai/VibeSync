@@ -523,8 +523,8 @@ Deno.test("buildHintMessages teaches Game hints safe advanced qualification narr
   assert(gameText.includes("不要說「妳先給我一個標準答案」"));
   assert(gameText.includes("萬用解法"));
   assert(gameText.includes("訊號判讀 → 單一招式 → 可貼收口"));
-  assert(gameText.includes("先給一點自己的品味"));
-  assert(gameText.includes("讓她低壓接球"));
+  assert(gameText.includes("Give-first 只能使用逐字稿已知的 user 品味"));
+  assert(gameText.includes("沒有 user 證據時改給態度、比喻或問題"));
 
   const beginnerText = buildHintMessages({
     turns: [

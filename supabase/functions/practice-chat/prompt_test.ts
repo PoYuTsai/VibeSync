@@ -62,6 +62,31 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
     true,
   );
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("承諾主詞"), true);
+  assertEquals(
+    DEBRIEF_SYSTEM_PROMPT.includes("事件、物件、人物、動作、感官"),
+    true,
+  );
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("不得替使用者回答"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("輸出前逐句自審"), true);
+});
+
+Deno.test("Hint prompt makes expert framing evidence-only instead of inventing scene props", () => {
+  const prompt = buildHintMessages({
+    turns: [
+      { role: "user", text: "剛路過一家咖啡店，聞起來很香。" },
+      { role: "ai", text: "哪家啊，你有進去喝嗎？" },
+    ],
+    profile: resolvePracticeProfile({ profileId: "practice_girl_004" }),
+    practiceMode: "game",
+    temperatureScore: 30,
+    familiarityScore: 0,
+  }).map((message) => message.content).join("\n");
+
+  assert(prompt.includes("事件、物件、人物、動作、感官與是否做過"));
+  assert(prompt.includes("高手感只能放在 framing、節奏、比喻與提問"));
+  assert(prompt.includes("不能靠補場景道具或經歷"));
+  assert(prompt.includes("輸出前逐句自審"));
+  assert(prompt.includes("Give-first 只能使用逐字稿已知的 user 品味／小場景"));
 });
 
 Deno.test("Hint and Debrief prompt clipping keeps emoji surrogate pairs intact", () => {
@@ -643,7 +668,9 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   }
 
   const failures: string[] = [];
-  if (maxHint > 4800) {
+  // Evidence-only self-audit adds <200 chars but replaces a second-model
+  // review call. Keep the complete contract and bound the single-call prompt.
+  if (maxHint > 5000) {
     failures.push(`Hint max ${maxHint} at ${maxHintCase}`);
   }
   if (maxDebrief > 4500) {
@@ -652,7 +679,7 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // Applied-Hint Debrief intentionally carries the exact Hint plus its
   // server-authored decision so the model cannot contradict its own advice.
   // That high-integrity lineage gets a separate, still-bounded ceiling.
-  if (maxDebriefWithHint > 5700) {
+  if (maxDebriefWithHint > 5900) {
     failures.push(
       `Debrief+Hint max ${maxDebriefWithHint} at ${maxDebriefWithHintCase}`,
     );

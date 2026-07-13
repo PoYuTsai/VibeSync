@@ -4284,7 +4284,7 @@ Deno.test("direct Debrief regenerates a hallucinated user fact without semantic 
   assert(retryPrompt.includes("上一版拆解 JSON 被拒絕"));
   assert(retryPrompt.includes("我也／我喜歡"));
   assert(retryPrompt.includes("我通常／我都"));
-  assertEquals(state.claudeCalls[0].temperature, 0.5);
+  assertEquals(state.claudeCalls[0].temperature, 0.2);
   assertEquals(state.claudeCalls[1].temperature, 0.2);
   assertEquals(recordDebriefCalls(state).length, 1);
 });
@@ -5116,7 +5116,7 @@ Deno.test("direct Hint regenerates an invented media title from an unanswered qu
   assertEquals(JSON.stringify(json).includes("黑白大廚"), false);
   assertEquals(state.claudeCalls.length, 2);
   assertEquals(state.semanticCalls.length, 0);
-  assertEquals(state.claudeCalls[0].temperature, 0.45);
+  assertEquals(state.claudeCalls[0].temperature, 0.2);
   assertEquals(state.claudeCalls[1].temperature, 0.2);
   assertEquals(state.claudeCalls[1].messages.at(-2), {
     role: "assistant",
