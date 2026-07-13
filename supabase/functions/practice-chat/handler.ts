@@ -3558,9 +3558,39 @@ export function createPracticeChatHandler(
             deferHintAssessmentToSemantic: true,
             deferVisibleGuardsToSemantic: true,
           });
+          const rawHintAssessment = rawCandidate.hintAssessment;
+          const canonicalHintAssessment = (() => {
+            if (
+              typeof rawHintAssessment === "object" &&
+              rawHintAssessment !== null &&
+              !Array.isArray(rawHintAssessment)
+            ) {
+              const assessment = rawHintAssessment as Record<string, unknown>;
+              if (
+                assessment.verdict === "preserved" &&
+                assessment.revisedEvidenceQuote === null
+              ) {
+                return { verdict: "preserved", revisedEvidenceQuote: null };
+              }
+              if (
+                assessment.verdict === "revised" &&
+                typeof assessment.revisedEvidenceQuote === "string" &&
+                assessment.revisedEvidenceQuote.trim().length > 0 &&
+                assessment.revisedEvidenceQuote.length <= 120
+              ) {
+                return {
+                  verdict: "revised",
+                  revisedEvidenceQuote: assessment.revisedEvidenceQuote.trim(),
+                };
+              }
+            }
+            return { verdict: "preserved", revisedEvidenceQuote: null };
+          })();
           const candidate: Record<string, unknown> = {
             ...candidateCard,
-            ...(Object.hasOwn(rawCandidate, "hintAssessment")
+            ...((ledgerAppliedHintTurns?.length ?? 0) > 0
+              ? { hintAssessment: canonicalHintAssessment }
+              : Object.hasOwn(rawCandidate, "hintAssessment")
               ? { hintAssessment: rawCandidate.hintAssessment }
               : {}),
           };

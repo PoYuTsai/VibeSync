@@ -4366,6 +4366,10 @@ Deno.test("Debrief missing preserved Hint assessment safely records generated ca
   assertEquals(json.card.summary.includes("你有照提示"), true);
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 0);
+  assertEquals(state.semanticCalls[0].candidate.hintAssessment, {
+    verdict: "preserved",
+    revisedEvidenceQuote: null,
+  });
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
 });

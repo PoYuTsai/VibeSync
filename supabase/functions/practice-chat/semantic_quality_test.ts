@@ -105,37 +105,66 @@ Deno.test("semantic adjudication accepts issue metadata while preserving require
   assertEquals(parsed.issueKinds, ["generic"]);
 });
 
-Deno.test("semantic adjudication rejects a fabricated or stale Hint evidence quote", () => {
-  for (
-    const strategy of [
-      {
-        move: "callback",
-        evidenceTurnId: "turn-1",
-        evidenceQuote: "她說過最愛拿鐵",
-        rationale: "fabricated",
-      },
-      {
-        move: "callback",
-        evidenceTurnId: "turn-0",
-        evidenceQuote: "今天精神怎樣",
-        rationale: "wrong owner",
-      },
-    ]
-  ) {
-    assertThrows(
-      () =>
-        parseSemanticAdjudication({
-          raw: validHintAdjudication({
-            strategies: { warmUp: strategy, steady: strategy },
-          }),
-          surface: "hint",
-          candidate: hintCandidate,
-          turns,
+Deno.test("semantic adjudication canonicalizes a fabricated Hint quote to server evidence", () => {
+  const strategy = {
+    move: "callback",
+    evidenceTurnId: "turn-1",
+    evidenceQuote: "她說過最愛拿鐵",
+    rationale: "uses the latest assistant signal",
+  };
+  const parsed = parseSemanticAdjudication({
+    raw: validHintAdjudication({
+      strategies: { warmUp: strategy, steady: strategy },
+    }),
+    surface: "hint",
+    candidate: hintCandidate,
+    turns,
+  });
+
+  assertEquals(parsed.strategies?.warmUp.evidenceTurnId, "turn-1");
+  assertEquals(parsed.strategies?.warmUp.evidenceQuote, turns[1].text);
+  assertEquals(parsed.strategies?.steady.evidenceQuote, turns[1].text);
+});
+
+Deno.test("semantic adjudication still rejects a stale Hint evidence turn", () => {
+  const strategy = {
+    move: "callback",
+    evidenceTurnId: "turn-0",
+    evidenceQuote: turns[0].text,
+    rationale: "points at the wrong owner",
+  };
+  assertThrows(
+    () =>
+      parseSemanticAdjudication({
+        raw: validHintAdjudication({
+          strategies: { warmUp: strategy, steady: strategy },
         }),
-      Error,
-      "semantic_adjudication_invalid_evidence",
-    );
-  }
+        surface: "hint",
+        candidate: hintCandidate,
+        turns,
+      }),
+    Error,
+    "semantic_adjudication_invalid_evidence",
+  );
+});
+
+Deno.test("semantic adjudication accepts kind-only issue records", () => {
+  const parsed = parseSemanticAdjudication({
+    raw: validHintAdjudication({
+      verdict: "repair",
+      issues: [{ kind: "generic" }],
+      repairedResult: {
+        ...hintCandidate,
+        coaching: "Use the latest signal, then make one concrete move.",
+      },
+    }),
+    surface: "hint",
+    candidate: hintCandidate,
+    turns,
+  });
+
+  assertEquals(parsed.repaired, true);
+  assertEquals(parsed.issueKinds, ["generic"]);
 });
 
 Deno.test("semantic adjudication repair must return the complete surface candidate", () => {
@@ -245,21 +274,17 @@ Deno.test("semantic adjudication keeps verdict and issue evidence consistent", (
     Error,
     "semantic_adjudication_invalid_issue",
   );
-  assertThrows(
-    () =>
-      parseSemanticAdjudication({
-        raw: validHintAdjudication({
-          verdict: "repair",
-          issues: [],
-          repairedResult: hintCandidate,
-        }),
-        surface: "hint",
-        candidate: hintCandidate,
-        turns,
-      }),
-    Error,
-    "semantic_adjudication_invalid_issue",
-  );
+  const conservativeRepair = parseSemanticAdjudication({
+    raw: validHintAdjudication({
+      verdict: "repair",
+      issues: [],
+      repairedResult: hintCandidate,
+    }),
+    surface: "hint",
+    candidate: hintCandidate,
+    turns,
+  });
+  assertEquals(conservativeRepair.issueKinds, ["unsupported_fact"]);
 });
 
 Deno.test("semantic adjudication prompt treats transcript and candidate as evidence, not instructions", () => {

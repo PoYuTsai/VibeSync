@@ -203,17 +203,15 @@ function parseIssues(value: unknown): SemanticIssueKind[] {
     if (!isRecord(rawIssue)) {
       throw new Error("semantic_adjudication_invalid_issue");
     }
-    assertRequiredKeys(
-      rawIssue,
-      ["field", "kind", "span", "reason"],
-      "semantic_adjudication_invalid_issue",
-    );
     if (
-      typeof rawIssue.field !== "string" || rawIssue.field.length > 80 ||
       typeof rawIssue.kind !== "string" ||
       !ISSUE_KINDS.has(rawIssue.kind as SemanticIssueKind) ||
-      typeof rawIssue.span !== "string" || rawIssue.span.length > 120 ||
-      typeof rawIssue.reason !== "string" || rawIssue.reason.length > 240
+      (Object.hasOwn(rawIssue, "field") &&
+        (typeof rawIssue.field !== "string" || rawIssue.field.length > 80)) ||
+      (Object.hasOwn(rawIssue, "span") &&
+        (typeof rawIssue.span !== "string" || rawIssue.span.length > 120)) ||
+      (Object.hasOwn(rawIssue, "reason") &&
+        (typeof rawIssue.reason !== "string" || rawIssue.reason.length > 240))
     ) {
       throw new Error("semantic_adjudication_invalid_issue");
     }
@@ -227,6 +225,28 @@ function latestAssistantTurnIndex(turns: PracticeTurn[]): number {
     if (turns[index].role === "ai") return index;
   }
   return -1;
+}
+
+function canonicalAssistantEvidenceQuote(
+  assistantText: string,
+  requestedQuote: string,
+): string {
+  const requested = requestedQuote.trim();
+  const requestedLength = Array.from(requested).length;
+  if (
+    requestedLength >= 2 && requestedLength <= 120 &&
+    assistantText.includes(requested)
+  ) {
+    return requested;
+  }
+  const canonical = Array.from(assistantText.trim())
+    .slice(0, 120)
+    .join("")
+    .trim();
+  if (Array.from(canonical).length < 2) {
+    throw new Error("semantic_adjudication_invalid_evidence");
+  }
+  return canonical;
 }
 
 function parseStrategy(
@@ -246,7 +266,6 @@ function parseStrategy(
     !TACTICAL_MOVES.has(value.move as HintTacticalMove) ||
     typeof value.evidenceTurnId !== "string" ||
     typeof value.evidenceQuote !== "string" ||
-    value.evidenceQuote.trim().length < 2 || value.evidenceQuote.length > 120 ||
     typeof value.rationale !== "string" ||
     value.rationale.trim().length < 4 || value.rationale.length > 180
   ) {
@@ -257,15 +276,18 @@ function parseStrategy(
   const evidenceTurn = turns[latestIndex];
   if (
     latestIndex < 0 || value.evidenceTurnId !== expectedTurnId ||
-    evidenceTurn.role !== "ai" ||
-    !evidenceTurn.text.includes(value.evidenceQuote.trim())
+    evidenceTurn.role !== "ai"
   ) {
     throw new Error("semantic_adjudication_invalid_evidence");
   }
+  const evidenceQuote = canonicalAssistantEvidenceQuote(
+    evidenceTurn.text,
+    value.evidenceQuote,
+  );
   return {
     move: value.move as HintTacticalMove,
     evidenceTurnId: value.evidenceTurnId,
-    evidenceQuote: value.evidenceQuote.trim(),
+    evidenceQuote,
     rationale: value.rationale.trim(),
   };
 }
@@ -315,7 +337,15 @@ export function parseSemanticAdjudication(opts: {
   if (verdict !== "accept" && verdict !== "repair" && verdict !== "reject") {
     throw new Error("semantic_adjudication_invalid_schema");
   }
-  const issueKinds = parseIssues(parsed.issues);
+  let issueKinds = parseIssues(parsed.issues);
+  if (
+    verdict === "repair" && issueKinds.length === 0 &&
+    parsed.repairedResult !== null
+  ) {
+    // Missing reviewer metadata must never silently downgrade a repair. Treat
+    // it as fact-risk so a second independent reviewer is still required.
+    issueKinds = ["unsupported_fact"];
+  }
   if (
     (verdict === "accept" && issueKinds.length > 0) ||
     (verdict !== "accept" && issueKinds.length === 0)
