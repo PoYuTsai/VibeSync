@@ -324,6 +324,11 @@ Deno.test("semantic adjudication prompt treats transcript and candidate as evide
   );
   assertEquals(prompt.includes("問句的預設前提"), true);
   assertEquals(prompt.includes("不得因問號放行"), true);
+  assertEquals(prompt.includes("職業或興趣只證明該屬性"), true);
+  assertEquals(prompt.includes("不證明今天班別"), true);
+  assertEquals(prompt.includes("可見三欄不得出現 P1-P5"), true);
+  assertEquals(prompt.includes("低能量／收尾／界線"), true);
+  assertEquals(prompt.includes("不可 soft_invite/direct_invite"), true);
   assertEquals(prompt.includes("turn-2 [assistant]"), true);
   assertEquals(prompt.includes("direct invite forbidden"), true);
 });
@@ -343,6 +348,8 @@ Deno.test("fact verification is a bounded evidence audit, not another free-form 
   assertEquals(prompt.includes("不評文風、高手感、空泛或策略"), true);
   assertEquals(prompt.includes("問句的預設前提"), true);
   assertEquals(prompt.includes("不得因問號放行"), true);
+  assertEquals(prompt.includes("職業或興趣只證明該屬性"), true);
+  assertEquals(prompt.includes("不證明今天班別"), true);
   assertEquals(prompt.includes("只回 accept/reject"), true);
   assertEquals(prompt.includes("turn-0 [user]"), true);
 });
@@ -375,6 +382,42 @@ Deno.test("debrief semantic adjudication breaks an identified question-answer lo
 
   assertEquals(prompt.includes("問答乒乓／查戶口"), true);
   assertEquals(prompt.includes("不得再用資訊題收尾"), true);
+  assertEquals(prompt.includes("vibe 只能暖/中性/冷"), true);
+  assertEquals(prompt.includes("dateChance 只能 low/medium/high"), true);
+  assertEquals(prompt.includes("不得出現 P1-P5"), true);
+  assertEquals(prompt.includes("整張卡跨欄一致"), true);
+  assertEquals(prompt.includes("不得說只有基本回應／無延伸"), true);
+});
+
+Deno.test("debrief semantic repair keeps schema enums canonical", () => {
+  const candidate = {
+    summary: "她有補充咖啡話題。",
+    strengths: ["你有接住她的咖啡。"],
+    watchouts: ["下一步補生活感。"],
+    suggestedLine: "這杯聽起來很救命。",
+    vibe: "冷",
+    dateChance: "low",
+    dateChanceReason: "仍在暖場。",
+    nextInviteMove: "先延續話題。",
+    gameBreakdown: null,
+  };
+  const parsed = parseSemanticAdjudication({
+    raw: JSON.stringify({
+      verdict: "repair",
+      issues: [{ kind: "strategy_mismatch" }],
+      repairedResult: {
+        ...candidate,
+        vibe: "偏冷",
+        dateChance: "medium",
+      },
+    }),
+    surface: "debrief",
+    candidate,
+    turns,
+  });
+
+  assertEquals(parsed.candidate.vibe, "冷");
+  assertEquals(parsed.candidate.dateChance, "medium");
 });
 
 Deno.test("fact verification accepts only a binary safe verdict", () => {
