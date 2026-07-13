@@ -42,6 +42,8 @@
 
 **Validation（R1 修復＋Codex takeover R2）**：practice-chat Deno **854/854**（`--no-check`）；targeted `hint_fact_ledger_test.ts` + `telemetry_test.ts` + `index_test.ts` **238/238**；24 個台灣常見給定名 × 3 語境（同行/傳給/收到）全數 fail-closed；沙發/發/給 greedy 隱憂 probe 只產 LOW 或不產 claim；asksPlace 敘事/狀態句（聊天過程中、等妳的時候、心裡、夢裡）全放行，真地點（信義區/台北車站/貓空站）仍 fail-closed。probe out.json 23 個 parse-phase 樣本回放，fact-ledger 相關（`unsupported_detail`/third-party name）throw 數 0（其餘 game_coaching_substance/not_grounded/l4_unsafe 等非本次改動範圍的既有守門仍照常運作）。Codex takeover verdict：**APPROVED（0 P0/P1/P2）**，部署仍需 Edge deploy。
 
+**追記（2026-07-13 deploy smoke）**：Edge deploy 後 production smoke 顯示 Beginner Hint 已成功 generated，但 Debrief 連 3 次 503 retryable；ai_logs failureCodes 揭露根因＝DeepSeek `deepseek_max_tokens`、Claude failover `debrief_hint_assessment_missing`。補同型修法：`DEBRIEF_MAX_TOKENS` 800→1200，並把 `hintAssessment` 改成最外層 hidden-only hard JSON contract（不可省略、不可放進 card，server 驗證後移除）。本地驗證：targeted prompt/index/telemetry **279/279**，practice-chat 全套 **854/854**（`--no-check`）。
+
 ### [2026-07-11] Beginner／Game Hint 與 Debrief 把降級罐頭當成功結果
 
 **Symptom**: TestFlight 點 Game Hint 後會看到「妳剛說的那個點我有記住…」等一眼可辨識的萬用句；賽後 Debrief 又可能批評剛才的 Hint、給出與當時策略相反的「下次可以這樣說」，Game 拆盤欄位也會只剩空泛術語。Beginner 與 Game 都受影響。

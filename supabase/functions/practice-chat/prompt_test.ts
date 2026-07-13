@@ -763,6 +763,9 @@ Deno.test("debrief prompt separates copied Hint execution from Hint quality", ()
     ),
     true,
   );
+  assertEquals(user.includes("最外層必填 hidden-only key"), true);
+  assertEquals(user.includes("不可省略、不可放進 card"), true);
+  assertEquals(user.includes("server 驗證後會移除"), true);
   assertEquals(
     user.includes(
       "exact＋preserved：不得批 Hint；watchouts／卡點只寫「下一步…」，或明寫「她／提示前／後來」",

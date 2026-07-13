@@ -3669,8 +3669,8 @@ Deno.test("debrief repairs malformed DeepSeek JSON with Claude", async () => {
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 1);
   assertEquals(state.deepSeekCalls[0].jsonMode, true);
-  assertEquals(state.deepSeekCalls[0].maxTokens, 800);
-  assertEquals(state.claudeCalls[0].maxTokens, 800);
+  assertEquals(state.deepSeekCalls[0].maxTokens, 1200);
+  assertEquals(state.claudeCalls[0].maxTokens, 1200);
   assertEquals(claimDebriefCalls(state).length, 1);
   const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
   assert(repairPrompt.includes("上一版拆解 JSON 被拒絕"));
