@@ -8,15 +8,15 @@
 ## OPEN（最新在最上）
 
 ## [2026-07-11] Beginner／Game Hint＋Debrief generated-only，永久移除成功罐頭
-Status: **LOCAL APPROVED（SQL＋client＋兩路 backend final gate 全部 0 P0/P1/P2）／DEPLOY PENDING**
+Status: **CODEX APPROVED（0 P0/P1/P2）／EDGE SHIPPED／TESTFLIGHT REBUILD PENDING**
 
-- **契約**：Hint 與 Debrief 都走 DeepSeek 12s → Claude 12s；雙失敗或品質不合格只回 retryable error，絕不落 fallback snapshot、扣費或計次。Beginner＋Game 同一條 production path。
-- **高手腦與連動**：共用黃金教練 rubric；每個 Hint option 保存權威 decision，Debrief 無 Hint 後新證據不得推翻。改判必須附她在 Hint 後的逐字回覆，且在可見拆解中引用。
+- **契約**：Hint generation 為 DeepSeek 24s → Claude 18s，semantic call 24s、最多四次 provider call；雙失敗或品質不合格只回 retryable error，絕不落 fallback snapshot、扣費或計次。Beginner＋Game 同一條 production path；client Hint fence 115s。
+- **高手腦與連動**：共用黃金教練 rubric；模型只產可見三欄，hidden decision 完全由 server 依逐字稿／角色資料／Game ledger 建立。Debrief 無 Hint 後新證據不得推翻；改判必須附她在 Hint 後的逐字回覆。
 - **品質閘**：每個 Hint 回覆、Debrief 可貼句、Game 拆盤五欄逐一 grounding；拒絕既知罐頭、meta 空話、邀約 route 衝突、短句／emoji 洗白。邀約分類區分共同計畫與純自我揭露。
 - **扣費／併發**：generated-only DB CHECK、bounded Debrief ledger、成功 record 同交易計次、normal／legacy／無 requestId owner token fence；replay 不重扣且回最新 usage。
 - **client**：billable HTTP 前保存 requestId；完整 Hint envelope、applied lineage、pending Debrief 跨 crash/restart 按 session 隔離，晚到結果不得污染另一場。
-- **驗證**：Deno 746/746、index 180/180、migration/Postgres 17/17、Flutter 516/516；SQL／client／兩路 backend final gate 全為 0/0/0。審查紀錄 `docs/reviews/2026-07-11-practice-generated-only-codex-review.md`。
-- **出貨 gate**：Edge-first、drain、目標式 migration、production smoke、TestFlight success 後才可宣稱新 build 可測。禁止 `supabase db push`。
+- **驗證**：最終 practice-chat Deno **914/914**、Flutter controller **174/174**、check/fmt/diff 全綠。Edge production smoke：Beginner＋Game 正式 Hint 都第一次成功、replay stable、`fallbackUsed=false`；Game DeepSeek 24s timeout 後 Claude 62.7s 完成。審查紀錄 `docs/reviews/2026-07-13-practice-semantic-quality-pipeline-codex-review.md`。
+- **出貨狀態**：`practice-chat` 已部署、production smoke PASS；無新 migration。Server 已生效，但 115s client fence 需新 TestFlight build 才到真機。禁止 `supabase db push`。
 
 ## [2026-07-10] Beginner/Game Hint＋兩路 Debrief 穩定度收斂
 Status: **APPROVED（0 P0 / 0 P1 / 0 P2）** — implementation `bfbebd70`，三路 Codex adversarial review（語境/守門、Debrief DB 併發、client requestId/telemetry）均結案。
