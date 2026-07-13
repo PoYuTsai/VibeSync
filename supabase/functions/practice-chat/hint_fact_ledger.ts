@@ -125,7 +125,7 @@ const SCHEDULE_DAY =
 const SCHEDULE_TIME =
   `(?:${SCHEDULE_DAY})(?:早上|中午|下午|晚上)?(?:${NUMBER_TOKEN}點(?:半)?)?|(?:今晚|明晚|明早|早上|中午|下午|晚上)`;
 const SCHEDULE_STATUS =
-  "沒空|不方便|已經有約|有約|有空|可以|能|沒事|方便|排得開|休假|下班|忙|有事|有安排|排滿|要開會|要上班|要上課|要看醫生|值班|出差|在公司|在學校|在家裡|在外面";
+  "沒空|不方便|已經有約|有約|有空|可以|能|沒事|方便|排得開|放假|休假|下班|忙|有事|有安排|排滿|要開會|要上班|要上課|要看醫生|值班|出差|在公司|在學校|在家裡|在外面";
 const HISTORY_TIME =
   `去年(?:春天|夏天|秋天|冬天|年初|年中|年底)?|前年|大前年|上個月|上週|上星期|上禮拜|昨天|前天|前幾天|疫情前|(?:${NUMBER_TOKEN}|半)(?:個月|週|星期|禮拜|年)前|(?:小學|國中|高中|大學|研究所)(?:時|時候)|${NUMBER_TOKEN}月${NUMBER_TOKEN}(?:日|號)|[0-9]{1,2}[/.\\-][0-9]{1,2}`;
 
@@ -2412,6 +2412,37 @@ function contextualDirectAnswerClaims(input: {
   const add = (claim: Omit<HintFactClaim, "provenance" | "polarity">) => {
     claims.push({ ...claim, polarity: "positive", provenance });
   };
+
+  // The partner asking a yes/no schedule question does not prove the user's
+  // answer. Bind an affirmative/negative reply to the implied day and require
+  // matching user-owned evidence instead of accepting the question premise.
+  const asksUserSchedule =
+    /(?:放假|休假|有空|沒空|不用上班|要上班).{0,4}(?:嗎|呢|？|\?)|(?:嗎|呢|？|\?).{0,4}(?:放假|休假|有空|沒空|不用上班|要上班)/u
+      .test(latest);
+  if (input.field === "reply" && asksUserSchedule) {
+    const answer = text.match(
+      new RegExp(
+        `(?:^|[，,。！？!?；;])\\s*(?:我)?\\s*(${SCHEDULE_TIME})?\\s*(不是|沒有|沒)?\\s*(放假|休假|有空|沒空|要上班|不用上班)`,
+        "u",
+      ),
+    );
+    if (
+      answer &&
+      !/(?:不知道|不確定|還沒決定|先不說|不方便說)/u.test(text)
+    ) {
+      const status = answer[3] ?? "";
+      const negated = Boolean(answer[2]);
+      const busy = status === "沒空" || status === "要上班" ||
+        (negated && /^(?:放假|休假|有空)$/u.test(status));
+      const latestTime = latest.match(new RegExp(SCHEDULE_TIME, "u"))?.[0];
+      add({
+        owner: "user",
+        domain: "schedule",
+        relation: busy ? "busy_at" : "available_at",
+        anchor: normalizeSchedule(answer[1] ?? latestTime ?? "今天"),
+      });
+    }
+  }
 
   const asksPlace =
     /(?:在哪|哪裡|哪兒|哪間|店名|什麼店|位置|地址|怎麼去)|(?:店|店家|咖啡店|餐廳|酒吧|地方|地點).{0,8}(?:叫什麼|什麼名字)|叫什麼(?:店|餐廳|酒吧)/u

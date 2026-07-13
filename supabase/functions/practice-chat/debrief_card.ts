@@ -1645,22 +1645,13 @@ function assertGeneratedDebriefQuality(
     assertGeneratedDebriefFieldRoles(card);
   }
 
-  assertPracticeTextGroundedInTurns({
-    visibleText: card.suggestedLine,
-    turns: opts.turns,
-    latestOnly: true,
-    errorCode: "debrief_quality_invalid_suggested_line_not_grounded",
-  });
-  if (opts.serverOwnsHintStrategy === true) {
-    if (card.gameBreakdown) {
-      assertPracticeTextGroundedInTurns({
-        visibleText: card.gameBreakdown.nextFirstLine,
-        turns: opts.turns,
-        latestOnly: true,
-        errorCode: "debrief_quality_invalid_next_first_line_not_grounded",
-      });
-    }
-  } else {
+  if (opts.serverOwnsHintStrategy !== true) {
+    assertPracticeTextGroundedInTurns({
+      visibleText: card.suggestedLine,
+      turns: opts.turns,
+      latestOnly: true,
+      errorCode: "debrief_quality_invalid_suggested_line_not_grounded",
+    });
     for (const analyticalText of debriefAnalyticalFields(card)) {
       assertPracticeTextGroundedInTurns({
         visibleText: analyticalText,

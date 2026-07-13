@@ -1241,6 +1241,42 @@ Deno.test("typed direct-answer gate requires a source for named media titles", (
   );
 });
 
+Deno.test("typed direct-answer gate does not turn a schedule question into a user fact", () => {
+  const unknownSchedule = buildHintFactContext({
+    turns: [
+      { role: "user", text: "昨晚追劇追到兩點。" },
+      { role: "ai", text: "放假嗎？不用補眠？" },
+    ],
+  });
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "放假～補眠大概下午才會發生 😂 妳呢？",
+        field: "reply",
+        context: unknownSchedule,
+      }),
+    Error,
+    ERROR,
+  );
+  assertHintFactClaimsSupported({
+    text: "這題先保密 😂 妳等等要出門嗎？",
+    field: "reply",
+    context: unknownSchedule,
+  });
+
+  const knownSchedule = buildHintFactContext({
+    turns: [
+      { role: "user", text: "我今天放假，昨晚追劇追到兩點。" },
+      { role: "ai", text: "放假嗎？不用補眠？" },
+    ],
+  });
+  assertHintFactClaimsSupported({
+    text: "今天放假～補眠下午再說 😂",
+    field: "reply",
+    context: knownSchedule,
+  });
+});
+
 // P1 對抗審：asksPlace 新增的「在X(?=發現|找到|喝到…)」pattern 沒限定 X 是
 // 地點名詞，會把「在聊天過程中發現」「在等你的時候」這種心情/動作句抓成
 // venue candidate 誤殺。X 不具地點形態時必須落 low 放行，不確定就不殺。

@@ -5089,6 +5089,50 @@ Deno.test("direct Hint regenerates an invented media title from an unanswered qu
   assertEquals(recordHintCalls(state).length, 1);
 });
 
+Deno.test("direct Hint regenerates an unsupported yes-no schedule answer", async () => {
+  const inventedSchedule = validHintJson({
+    warmUp: "放假～補眠大概下午才會發生 😂 先撐著。",
+    steady: "今天休假，補眠先欠著；晚點再說。",
+    coaching: "她問放假嗎、要不要補眠；直接回答今天休假，再問她行程。",
+  });
+  const groundedReply = validHintJson({
+    warmUp: "妳問『放假嗎』，這題先保密😂 補眠倒是很有道理。",
+    steady: "『不用補眠』這句先記著😂 我只承認昨晚追太晚。",
+    coaching:
+      "她問『放假嗎』和『不用補眠』；逐字稿沒有使用者行程，先不替他回答，再接她的問題。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [inventedSchedule, groundedReply],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "direct-hint-schedule-answer-retry",
+      turns: [
+        { role: "user", text: "昨晚追劇追到兩點。" },
+        { role: "ai", text: "放假嗎？不用補眠？" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(JSON.stringify(json).includes("今天休假"), false);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(state.claudeCalls[1].messages.at(-2), {
+    role: "assistant",
+    content: inventedSchedule,
+  });
+  assert(
+    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
+      "放假／有空問句",
+    ),
+  );
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
 Deno.test("direct Hint retries a transient Claude failure once without fake format blame", async () => {
   const { response, state } = await run(
     {

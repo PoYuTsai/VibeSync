@@ -541,6 +541,9 @@ function isHintFormatOrGuardError(e: unknown): boolean {
 
 function hintRetryReason(e: unknown): string {
   const message = getErrorMessage(e);
+  if (message.includes("unsupported_detail:user:schedule")) {
+    return "把她的放假／有空問句直接當成使用者已知行程";
+  }
   if (message.includes("unsupported_detail")) {
     return "捏造證據未提供的具名事實（如劇名、店名、地點、時間、人物或聯絡資訊）";
   }
@@ -593,6 +596,7 @@ function withHintRetryInstruction(
         `warmUp、steady 各 ${HINT_REPLY_SOFT_CHAR_LIMIT} 字內，coaching ${HINT_COACHING_SOFT_CHAR_LIMIT} 字內，三欄都要完整收句。` +
         "warmUp、steady、coaching 三欄各自都要逐字重用她最新一句的具體詞或短語，不能只有其中一欄具體。" +
         "若她最新句在問具名答案（劇名／片名／書名／店名／地點），逐字稿沒有答案時：自然承認沒提或先不揭曉，再沿她已說的感受接球；不得編任何專名，也不得兩個回覆都只丟問題。" +
+        "若她問使用者是否放假／有空／上班，逐字稿沒答案就不得直接肯定或否定；自然保留後接已知內容。" +
         "可貼回覆要先接住她最新狀態，再給低壓接球；不要命令、不要面試官語氣、不要內部標籤、不要露骨或私密壓迫。",
     },
   ];

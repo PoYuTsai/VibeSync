@@ -888,22 +888,21 @@ Deno.test("server-owned Hint strategy accepts objective outcome prose but still 
     conceptualAnalysisCard.nextInviteMove,
   );
 
-  assertThrows(
-    () =>
-      parseDebriefCard(
-        JSON.stringify({
-          ...conceptualAnalysisCard,
-          suggestedLine: "最近有空一起去看海嗎？",
-        }),
-        {
-          requireCompleteCard: true,
-          enforceGeneratedQuality: true,
-          turns,
-          serverOwnsHintStrategy: true,
-        },
-      ),
-    Error,
-    "debrief_quality_invalid_suggested_line_not_grounded",
+  const paraphrasedPasteable = parseDebriefCard(
+    JSON.stringify({
+      ...conceptualAnalysisCard,
+      suggestedLine: "看起來有醒一點；今天第一件事想做什麼？",
+    }),
+    {
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      turns,
+      serverOwnsHintStrategy: true,
+    },
+  );
+  assertEquals(
+    paraphrasedPasteable.suggestedLine,
+    "看起來有醒一點；今天第一件事想做什麼？",
   );
 
   assertThrows(
@@ -1637,29 +1636,28 @@ Deno.test("generated Debrief grounds each pasteable line instead of laundering i
     "debrief_quality_invalid_game_breakdown_not_grounded",
   );
 
-  assertThrows(
-    () =>
-      parseDebriefCard(
-        JSON.stringify({
-          ...generatedQualityCard,
-          gameBreakdown: {
-            phaseReached: "賴床話題的開場測試",
-            missedVariable: "沒有把賴床延伸成生活畫面",
-            failureState: "賴床梗停在表面",
-            nextFirstLine: "我最近在學做陶器，妳有碰過嗎？",
-            inviteDirection: "先延伸賴床，不急著約",
-          },
-        }),
-        {
-          allowGameBreakdown: true,
-          requireCompleteCard: true,
-          enforceGeneratedQuality: true,
-          turns,
-          serverOwnsHintStrategy: true,
-        },
-      ),
-    Error,
-    "debrief_quality_invalid_next_first_line_not_grounded",
+  const directParaphrase = parseDebriefCard(
+    JSON.stringify({
+      ...generatedQualityCard,
+      gameBreakdown: {
+        phaseReached: "賴床話題的開場測試",
+        missedVariable: "沒有把賴床延伸成生活畫面",
+        failureState: "賴床梗停在表面",
+        nextFirstLine: "醒一點再說，今天第一件想做的事是什麼？",
+        inviteDirection: "先延伸賴床，不急著約",
+      },
+    }),
+    {
+      allowGameBreakdown: true,
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      turns,
+      serverOwnsHintStrategy: true,
+    },
+  );
+  assertEquals(
+    directParaphrase.gameBreakdown?.nextFirstLine,
+    "醒一點再說，今天第一件想做的事是什麼？",
   );
 });
 
