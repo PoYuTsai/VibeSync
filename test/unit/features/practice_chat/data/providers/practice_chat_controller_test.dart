@@ -62,6 +62,7 @@ class _FakeApi extends PracticeChatApiService {
   int? lastHintRoundIndex;
   String? lastHintThreadId;
   String? lastHintRequestId;
+  String? lastHintUserFact;
   String? lastHintSessionId;
   int? lastHintExpectedAiCount;
   List<PracticeTurnDto>? lastFormalHintTurns;
@@ -123,6 +124,7 @@ class _FakeApi extends PracticeChatApiService {
     PracticePartnerState? continuationPartnerState,
     String? requestId,
     int? expectedAiCount,
+    String? hintUserFact,
     PracticeLearningMode practiceMode = PracticeLearningMode.beginner,
   }) {
     hintCallCount++;
@@ -131,6 +133,7 @@ class _FakeApi extends PracticeChatApiService {
     lastHintMemorySummary = memorySummary;
     lastHintContinuationPartnerState = continuationPartnerState;
     lastHintRequestId = requestId;
+    lastHintUserFact = hintUserFact;
     lastHintSessionId = sessionId;
     lastHintExpectedAiCount = expectedAiCount;
     lastFormalHintTurns = List<PracticeTurnDto>.of(turns);
@@ -2567,6 +2570,50 @@ void main() {
       expect(c.currentState.familiarityScore, 46);
       expect(c.currentState.relationshipStageLabel, '可以聊個人');
       expect(c.currentState.hintUsedCount, 2);
+    });
+
+    test('Hint persists the first user fact and reuses it across a lost-response retry',
+        () async {
+      final pendingStore = InMemoryPracticePendingHintStore();
+      final session = PracticeSession(
+        id: 'hint-user-fact-retry',
+        createdAt: DateTime(2026, 7, 14, 12),
+        aiReplyCount: 1,
+        messages: const [
+          PracticeMessage(role: 'user', text: '我剛路過一家咖啡店'),
+          PracticeMessage(role: 'ai', text: '哪一區？你有進去嗎？'),
+        ],
+        profileId: 'practice_girl_005',
+        practiceMode: 'beginner',
+        temperatureScore: 30,
+      );
+      final first = makeControllerFrom(
+        session,
+        pendingHintStore: pendingStore,
+      );
+      api.hintHandler = (_, {profile}) =>
+          throw TimeoutException('lost response');
+
+      await first.requestHint(userFact: '我沒有進去，也沒記是哪區');
+
+      expect(api.lastHintUserFact, '我沒有進去，也沒記是哪區');
+      expect(
+        pendingStore.loadFor(sessionId: session.id, aiCount: 1)?.userFact,
+        '我沒有進去，也沒記是哪區',
+      );
+      first.dispose();
+
+      api.hintHandler = (_, {profile}) async => hintResult(
+            requestId: api.lastHintRequestId,
+          );
+      final rebuilt = makeControllerFrom(
+        session,
+        pendingHintStore: pendingStore,
+      );
+      await rebuilt.requestHint(userFact: '我後來改口說有進去');
+
+      expect(api.lastHintUserFact, '我沒有進去，也沒記是哪區');
+      expect(rebuilt.currentState.hintReplies, hasLength(2));
     });
 
     for (final mode in <(String, String)>[

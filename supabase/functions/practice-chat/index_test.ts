@@ -154,6 +154,62 @@ function hintBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
+Deno.test("new-client question prefetch waits for user facts without claiming, calling a model, or charging", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      supportsHintUserFact: true,
+      requestId: "hint-user-fact-prefetch",
+      expectedAiCount: 1,
+      prefetch: true,
+      turns: [
+        { role: "user", text: "我剛路過一家咖啡店" },
+        { role: "ai", text: "哪一區？你有進去嗎？" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json, { prefetched: true });
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(hintModelRateCalls(state).length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
+Deno.test("new-client formal Hint requires the user's real answer before generation", async () => {
+  const { response, json, state } = await run(
+    { ledger: beginnerStartedLedger() },
+    hintBody({
+      practiceMode: "beginner",
+      supportsHintUserFact: true,
+      requestId: "hint-user-fact-formal",
+      expectedAiCount: 1,
+      prefetch: false,
+      turns: [
+        { role: "user", text: "我剛路過一家咖啡店" },
+        { role: "ai", text: "哪一區？你有進去嗎？" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 409);
+  assertEquals(json, {
+    error: "practice_hint_user_fact_required",
+    retryable: true,
+  });
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(hintModelRateCalls(state).length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
 function debriefBody(overrides: Record<string, unknown> = {}) {
   return {
     mode: "debrief",

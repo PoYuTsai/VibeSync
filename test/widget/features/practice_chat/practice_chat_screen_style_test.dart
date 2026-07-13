@@ -245,6 +245,7 @@ class _HintApi extends _NoopPracticeChatApi {
 
   final PracticeHintResult result;
   int hintCalls = 0;
+  String? lastHintUserFact;
 
   @override
   Future<PracticeHintResult> requestHint({
@@ -257,9 +258,11 @@ class _HintApi extends _NoopPracticeChatApi {
     PracticePartnerState? continuationPartnerState,
     String? requestId,
     int? expectedAiCount,
+    String? hintUserFact,
     PracticeLearningMode practiceMode = PracticeLearningMode.beginner,
   }) async {
     hintCalls++;
+    lastHintUserFact = hintUserFact;
     return result;
   }
 }
@@ -2387,6 +2390,89 @@ void main() {
     expect(api.hintCalls, 1);
     expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsOneWidget);
     expect(tester.testTextInput.isVisible, isFalse);
+  });
+
+  testWidgets('question-shaped Hint asks for the user truth before calling Claude',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      AiDataSharingConsent.practiceConsentKey: true,
+    });
+    final api = _HintApi(
+      const PracticeHintResult(
+        replies: [
+          PracticeHintReply(
+            type: PracticeHintReplyType.warmUp,
+            label: 'warm',
+            text: '我只路過，還沒進去。妳是被金萱雷過嗎？',
+          ),
+          PracticeHintReply(
+            type: PracticeHintReplyType.steady,
+            label: 'steady',
+            text: '哪區我沒記，但金萱這個猜法很具體。',
+          ),
+        ],
+        coaching: '先照真實答案接住，再沿她的金萱梗延伸。',
+        costDeducted: 0,
+        hintUsedCount: 1,
+        qualitySchemaVersion: kPracticeHintQualitySchemaVersion,
+      ),
+    );
+    final controller = _SeededPracticeChatController(
+      seed: revealedPreMsgSeed().copyWith(
+        learningMode: PracticeLearningMode.game,
+        temperatureScore: 30,
+        messages: const [
+          PracticeMessage(role: 'user', text: '我剛路過一家很香的咖啡店'),
+          PracticeMessage(role: 'ai', text: '哪一區？你有進去嗎？'),
+        ],
+        aiReplyCount: 1,
+      ),
+      repository: repo,
+      api: api,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('practice-hint-user-fact-sheet')),
+      findsOneWidget,
+    );
+    expect(api.hintCalls, 0);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('practice-hint-user-fact-input')),
+      '我沒有進去，也沒記是哪區',
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey('practice-hint-user-fact-submit')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(api.hintCalls, 1);
+    expect(api.lastHintUserFact, '我沒有進去，也沒記是哪區');
+    expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsOneWidget);
   });
 
   testWidgets('hint panel auto-expands when a generated hint arrives',

@@ -14,16 +14,20 @@ class PracticePendingHint {
     required this.sessionId,
     required this.aiCount,
     required this.requestId,
+    this.userFact,
   });
 
   final String sessionId;
   final int aiCount;
   final String requestId;
+  final String? userFact;
 
   Map<String, dynamic> toJson() => {
         'sessionId': sessionId,
         'aiCount': aiCount,
         'requestId': requestId,
+        if (userFact != null && userFact!.trim().isNotEmpty)
+          'userFact': userFact!.trim(),
       };
 
   /// 欄位缺漏／型別不對回 null（當不存在），絕不丟例外。
@@ -31,13 +35,19 @@ class PracticePendingHint {
     final sessionId = json['sessionId'];
     final aiCount = json['aiCount'];
     final requestId = json['requestId'];
+    final userFact = json['userFact'];
     if (sessionId is! String || sessionId.isEmpty) return null;
     if (aiCount is! int) return null;
     if (requestId is! String || requestId.isEmpty) return null;
+    if (userFact != null &&
+        (userFact is! String || userFact.trim().isEmpty)) {
+      return null;
+    }
     return PracticePendingHint(
       sessionId: sessionId,
       aiCount: aiCount,
       requestId: requestId,
+      userFact: userFact is String ? userFact.trim() : null,
     );
   }
 }

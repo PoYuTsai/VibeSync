@@ -743,10 +743,23 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   ({PracticePendingHint pending, Future<bool> saved}) _loadOrCreatePendingHint({
     required String sessionId,
     required int aiCount,
+    String? userFact,
   }) {
-    final pending = _candidatePendingHint(
+    final candidate = _candidatePendingHint(
       sessionId: sessionId,
       aiCount: aiCount,
+    );
+    final normalizedUserFact = userFact?.trim();
+    final pending = PracticePendingHint(
+      sessionId: candidate.sessionId,
+      aiCount: candidate.aiCount,
+      requestId: candidate.requestId,
+      // Once a formal request has been dispatched, its user fact is part of
+      // the idempotent intent. Retries and process restarts must replay it.
+      userFact: candidate.userFact ??
+          (normalizedUserFact == null || normalizedUserFact.isEmpty
+              ? null
+              : normalizedUserFact),
     );
     _pendingHintRequest = pending;
     return (
@@ -776,21 +789,37 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       sessionId: sessionId,
       aiCount: aiCount,
     );
-    final requestId = memoryPending != null &&
+    final reusablePending = memoryPending != null &&
             matches(memoryPending) &&
             !alreadyDurable(memoryPending)
-        ? memoryPending.requestId
+        ? memoryPending
         : storedPending != null &&
                 matches(storedPending) &&
                 !alreadyDurable(storedPending)
-            ? storedPending.requestId
-            : const Uuid().v4();
+            ? storedPending
+            : null;
     final pending = PracticePendingHint(
       sessionId: sessionId,
       aiCount: aiCount,
-      requestId: requestId,
+      requestId: reusablePending?.requestId ?? const Uuid().v4(),
+      userFact: reusablePending?.userFact,
     );
     return pending;
+  }
+
+  /// The answer is encrypted with the pending request so a lost-response
+  /// retry cannot silently change facts while reusing the same idempotency id.
+  String? pendingHintUserFactForCurrentTurn() {
+    final current = _pendingHintRequest;
+    if (current != null &&
+        current.sessionId == state.sessionId &&
+        current.aiCount == state.aiReplyCount) {
+      return current.userFact;
+    }
+    return _loadPendingHintSafely(
+      sessionId: state.sessionId,
+      aiCount: state.aiReplyCount,
+    )?.userFact;
   }
 
   /// 成功或 4xx 明確拒絕 → rotate：清記憶體＋清持久化 store。5xx/timeout
@@ -1787,7 +1816,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   }
 
   /// 結束練習，請伺服器產一張教練拆解卡（同場不另扣額度）。
-  Future<void> requestHint() async {
+  Future<void> requestHint({String? userFact}) async {
     if (!state.canRequestHint) return;
     if (_hintRequiresConversationAdvance) {
       state = state.copyWith(
@@ -1806,6 +1835,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     final intentMemorySummary = _memorySummaryForPrompt(intentState.messages);
     final intentPartnerState = _lastPartnerStateForPrompt(intentState.messages);
     final intentAppliedHintTurns = _serializedAppliedHintTurns();
+    final normalizedUserFact = userFact?.trim();
     final flight = _hintPrefetchFlight?.pending.sessionId == intentSessionId
         ? _hintPrefetchFlight
         : null;
@@ -1846,6 +1876,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     final pendingWrite = _loadOrCreatePendingHint(
       sessionId: intentSessionId,
       aiCount: intentAiCount,
+      userFact: normalizedUserFact,
     );
     final requestId = pendingWrite.pending.requestId;
     // The exact replay id must be durable before any billable HTTP dispatch.
@@ -1876,6 +1907,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             profile: intentProfile,
             turns: intentTurns,
             expectedAiCount: intentAiCount,
+            hintUserFact: pendingWrite.pending.userFact,
             memorySummary: intentMemorySummary,
             continuationPartnerState: intentPartnerState,
             roundIndex: intentState.roundIndex,
@@ -2441,6 +2473,8 @@ String _hintApiErrorMessage(String code) {
       return '這場不是新手模式，下一場切到新手模式再用 Hint。';
     case 'practice_hint_not_ready':
       return '提示服務正在更新中，請稍後再試。';
+    case 'practice_hint_user_fact_required':
+      return '先補上你對她這個問題的真實答案，Hint 才不會替你亂編。';
     default:
       return _hintGenericErrorMessage;
   }

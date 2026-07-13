@@ -599,6 +599,7 @@ function looksLikePersonName(value: string): boolean {
   if (/^[A-Za-z][A-Za-z0-9._-]{1,19}$/u.test(value)) return true;
   if (!/^[\p{Script=Han}·・]{2,4}$/u.test(value)) return false;
   return !/^(?:我|妳|你|她|我們|對方|使用者)/u.test(value) &&
+    !/(?:我|妳|你|她|他|我們|對方)$/u.test(value) &&
     !/^(?:太|很|真|超|好|有點)/u.test(value) &&
     !/(?:本人|自己|生活|時間|空間|機會|答案|回覆|句子|感覺|確認|窗口|咖啡|低壓|邀約|版本|品味|畫面|話題)/u
       .test(value) &&
@@ -1825,7 +1826,13 @@ function memoryDefaultOwner(text: string): HintFactOwner {
  * 的 substring 比對不受標點與排版影響。
  */
 function supportSourceText(value: string): string {
-  return normalizeBase(value).replace(/[\s\p{P}\p{S}]/gu, "");
+  return normalizeBase(value)
+    .replace(/沒有/gu, "沒")
+    .replace(/[\s\p{P}\p{S}]/gu, "")
+    .replace(/也(?=沒|不)/gu, "")
+    .replace(/(?:哪(?:一|個)?區|位置|地點)/gu, "地點")
+    .replace(/(?:記得|記住)/gu, "記")
+    .replace(/記是(?=地點)/gu, "記");
 }
 
 function hasUnnamedVenueSource(context: HintFactContext): boolean {
@@ -2474,17 +2481,56 @@ function contextualDirectAnswerClaims(input: {
       "晚點揭曉",
       "等等再說",
     ]);
-    const candidatePatterns = [
-      /[「『“"（(【《〈〔\[]\s*([^」』”"）)】》〉〕\]]{2,60}?)\s*[」』”"）)】》〉〕\]]/gu,
-      /(?:答案|店名|咖啡店名|餐廳名|酒吧名|店家|地址|地點|位置)(?:是|叫|為|名為|稱作|[：:])\s*([\p{L}\p{N}·・._'’\-–—／/\s]{2,60}?)(?=[，,。！？!?；;]|$)/gu,
-      /(?:名為|稱作|叫做|那間(?:店)?(?:是|叫)|這間(?:店)?(?:是|叫))\s*([\p{L}\p{N}·・._'’\-–—／/\s]{2,40}?)(?=[，,。！？!?；;]|$)/gu,
-      /(?:^|[，,。！？!?；;：:#＃\s\p{S}])([\p{L}\p{N}·・._'’\-–—／/]{2,30}(?:\s+[A-Za-z0-9·・._'’\-–—]+){0,3}?)(?=\s*(?:啦|啊|呀|喔|欸|附近|旁邊|正對面|對面|一帶|巷口|路口|那邊|那家|那間|這家|這間|那裡|[，,](?:妳|你)(?:應該|一定|可能|搞不好|大概)?(?:知道|聽過|去過|記得)))/gu,
+    const candidatePatterns: Array<{
+      pattern: RegExp;
+      shortBareAnswerOnly: boolean;
+      replyOnly?: boolean;
+    }> = [
+      {
+        pattern:
+          /[「『“"（(【《〈〔\[]\s*([^」』”"）)】》〉〕\]]{2,60}?)\s*[」』”"）)】》〉〕\]]/gu,
+        shortBareAnswerOnly: false,
+        // Coaching naturally quotes the partner's wording and the user's
+        // answer while explaining the move. A bare quote is only a direct
+        // answer candidate in pasteable replies; explicit labels and proper
+        // place morphology below still protect coaching text.
+        replyOnly: true,
+      },
+      {
+        pattern:
+          /(?:答案|店名|咖啡店名|餐廳名|酒吧名|店家|地址|地點|位置)(?:是|叫|為|名為|稱作|[：:])\s*([\p{L}\p{N}·・._'’\-–—／/\s]{2,60}?)(?=[，,。！？!?；;]|$)/gu,
+        shortBareAnswerOnly: false,
+      },
+      {
+        pattern:
+          /(?:名為|稱作|叫做|那間(?:店)?(?:是|叫)|這間(?:店)?(?:是|叫))\s*([\p{L}\p{N}·・._'’\-–—／/\s]{2,40}?)(?=[，,。！？!?；;]|$)/gu,
+        shortBareAnswerOnly: false,
+      },
+      {
+        // 裸答案只用來抓「黑露啦／Kuro Cafe 附近」這類短專名。
+        // 長散文在「，妳知道…」前也會命中舊 regex；那不是可驗證地點，
+        // 不得用它 fail-close 整次生成。
+        pattern:
+          /(?:^|[，,。！？!?；;：:#＃\s\p{S}])([\p{L}\p{N}·・._'’\-–—／/]{2,30}(?:\s+[A-Za-z0-9·・._'’\-–—]+){0,3}?)(?=\s*(?:啦|啊|呀|喔|欸|附近|旁邊|正對面|對面|一帶|巷口|路口|那邊|那家|那間|這家|這間|那裡|[，,](?:妳|你)(?:應該|一定|可能|搞不好|大概)?(?:知道|聽過|去過|記得)))/gu,
+        shortBareAnswerOnly: true,
+      },
       // 她剛問「在哪」，回「我在Ｘ發現/找到…」＝直接報地點。
-      /(?:我|我們)?(?:就|剛|剛剛)?(?:是)?在\s*([\p{L}\p{N}·・._'’\-–—／/]{2,30}?)(?=發現|找到|喝到|買到|遇到|碰到|吃到|看到|挖到)/gu,
+      {
+        pattern:
+          /(?:我|我們)?(?:就|剛|剛剛)?(?:是)?在\s*([\p{L}\p{N}·・._'’\-–—／/]{2,30}?)(?=發現|找到|喝到|買到|遇到|碰到|吃到|看到|挖到)/gu,
+        shortBareAnswerOnly: false,
+      },
       // 完整街道地址（…路/街/大道…號/樓）＝直接報地點。
-      /([\p{Script=Han}0-9]{2,40}(?:路|街|大道)[\p{Script=Han}0-9]{0,20}(?:號|樓))/gu,
+      {
+        pattern:
+          /([\p{Script=Han}0-9]{2,40}(?:路|街|大道)[\p{Script=Han}0-9]{0,20}(?:號|樓))/gu,
+        shortBareAnswerOnly: false,
+      },
     ];
-    for (const pattern of candidatePatterns) {
+    for (
+      const { pattern, shortBareAnswerOnly, replyOnly } of candidatePatterns
+    ) {
+      if (replyOnly && input.field !== "reply") continue;
       for (const match of text.matchAll(pattern)) {
         const anchor = normalizeAnchor(match[1] ?? "")
           // 代名詞只跟著方位動詞一起剝（我在象山→象山）；裸剝「我」會把
@@ -2505,6 +2551,7 @@ function contextualDirectAnswerClaims(input: {
           );
         if (
           anchor.length < 2 || safeDirectAnswers.has(anchor) ||
+          (shortBareAnswerOnly && anchor.length > 8) ||
           /(?:我|妳|你|她|我們|想|努力|回想|記憶|招供|逗|翻|問|找|給|知道|記得|忘)/u
             .test(anchor) ||
           /(?:不知道|不記得|忘了|沒記住|先確認|查一下|問一下)/u.test(
@@ -2633,7 +2680,7 @@ function claimTextuallySupported(
   output: HintFactClaim,
   context: HintFactContext,
 ): boolean {
-  const anchor = output.anchor;
+  const anchor = supportSourceText(output.anchor);
   if (anchor.length < 2) return false;
   const stems = new Set<string>([anchor]);
   if (output.domain === "venue") {

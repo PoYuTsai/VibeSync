@@ -1307,6 +1307,85 @@ Deno.test("typed direct-answer gate rejects an invented district after a which-d
   });
 });
 
+Deno.test("typed asksPlace bare-name extraction does not turn a grounded reaction clause into a venue", () => {
+  const context = buildHintFactContext({
+    turns: [
+      {
+        role: "user",
+        text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+      },
+      {
+        role: "ai",
+        text: "在哪裡啊？該不會是被金萱味騙進去的吧。",
+      },
+    ],
+  });
+
+  assertHintFactClaimsSupported({
+    text: "金萱味這個猜法很具體，妳是被雷過嗎？位置我沒記。",
+    field: "reply",
+    context,
+  });
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "黑露，妳應該知道。",
+        field: "reply",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+});
+
+Deno.test("typed asksPlace direct answer accepts equivalent user-authored negation only with evidence", () => {
+  const turns: PracticeTurn[] = [
+    {
+      role: "user",
+      text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+    },
+    {
+      role: "ai",
+      text: "在哪裡啊？該不會是被金萱味騙進去的吧。",
+    },
+  ];
+  const output = "「沒進去、沒記位置。」";
+
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: output,
+        field: "reply",
+        context: buildHintFactContext({ turns }),
+      }),
+    Error,
+    ERROR,
+  );
+  assertHintFactClaimsSupported({
+    text: output,
+    field: "reply",
+    context: buildHintFactContext({
+      turns,
+      sharedFactualEvidence: ["使用者補充：我沒有進去，也沒記是哪區"],
+    }),
+  });
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "Game 心法：直接回答店名是黑露，再接她的咖啡話題。",
+        field: "coaching",
+        context: buildHintFactContext({ turns }),
+      }),
+    Error,
+    ERROR,
+  );
+  assertHintFactClaimsSupported({
+    text: "把她的金萱梗丟回給她，讓她多說一句。",
+    field: "coaching",
+    context: buildHintFactContext({ turns }),
+  });
+});
+
 // P1 對抗審：asksPlace 新增的「在X(?=發現|找到|喝到…)」pattern 沒限定 X 是
 // 地點名詞，會把「在聊天過程中發現」「在等你的時候」這種心情/動作句抓成
 // venue candidate 誤殺。X 不具地點形態時必須落 low 放行，不確定就不殺。

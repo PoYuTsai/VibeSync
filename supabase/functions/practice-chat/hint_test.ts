@@ -3961,6 +3961,54 @@ Deno.test("generated Hint quality gate grounds every option instead of letting c
   }
 });
 
+Deno.test("direct Claude Hint skips low-confidence lexical grounding but keeps hard fact gates", () => {
+  const turns: PracticeTurn[] = [
+    {
+      role: "user",
+      text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+    },
+    {
+      role: "ai",
+      text: "在哪裡啊？該不會是被金萱味騙進去的吧。",
+    },
+  ];
+  const options = {
+    mode: "game" as const,
+    enforceGeneratedQuality: true,
+    turns,
+    sharedFactualEvidence: ["使用者補充：我沒有進去，也沒記是哪區"],
+    semanticAdjudicated: false,
+    skipLexicalStyleGuards: true,
+  };
+  const result = parseHintResult(
+    JSON.stringify({
+      warmUp:
+        "沒進去，只是路過被香氣攔截😂 妳這個金萱雷達是職業病吧？",
+      steady:
+        "沒記是哪區，只記得香到停下來。妳怎麼判斷一家值不值得進？",
+      coaching:
+        "Game 心法：她在用金萱梗測你接不接得住，現在先建立熟悉感。你已補了「沒進去、不記得哪區」，直接接梗再把球丟回她的品味。速約任務：本輪先讓她多投入一句，下一輪再找低壓窗口。",
+    }),
+    options,
+  );
+  assertEquals(result.replies.length, 2);
+
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "我是在信義區那間店聞到的，妳一定知道。",
+          steady: "店在大安區，妳下次可以去看看。",
+          coaching:
+            "Game 心法：她問地點，現在直接回答再建立熟悉感。速約任務：先交換品味，下一輪再找低壓窗口。",
+        }),
+        options,
+      ),
+    Error,
+    "hint_quality_invalid_unsupported_detail",
+  );
+});
+
 Deno.test("generated Hint fails closed on short, Latin, or emoji-only latest replies instead of serving generic copy", () => {
   for (const latest of ["嗯", "OK", "Okay", "Thanks", "haha", "🙂"]) {
     assertThrows(

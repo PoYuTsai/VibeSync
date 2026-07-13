@@ -1587,6 +1587,7 @@ void main() {
         ),
         turns: turns,
         expectedAiCount: 7,
+        hintUserFact: '我沒有進去，也沒記是哪區',
         roundIndex: 4,
         visiblePracticeThreadId: 'thread-abc',
       );
@@ -1594,6 +1595,8 @@ void main() {
       expect(captured.functionName, 'practice-chat');
       expect(captured.body?['mode'], 'hint');
       expect(captured.body?['prefetch'], false);
+      expect(captured.body?['supportsHintUserFact'], true);
+      expect(captured.body?['hintUserFact'], '我沒有進去，也沒記是哪區');
       expect(captured.body?['acceptedQualitySchemaVersion'],
           kPracticeHintQualitySchemaVersion);
       expect(captured.body?['practiceMode'], 'beginner');
@@ -1908,6 +1911,31 @@ void main() {
       );
     });
 
+    test('409 practice_hint_user_fact_required remains a Hint conflict',
+        () async {
+      final svc = serviceReturning(
+        409,
+        {'error': 'practice_hint_user_fact_required'},
+      );
+
+      expect(
+        () => svc.requestHint(
+          sessionId: 'session-1',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(
+          isA<PracticeApiException>()
+              .having((e) => e.status, 'status', 409)
+              .having(
+                (e) => e.message,
+                'message',
+                'practice_hint_user_fact_required',
+              ),
+        ),
+      );
+    });
+
     test('403 practice_hint_limit maps to PracticeHintLimitException',
         () async {
       final svc = serviceReturning(403, {'error': 'practice_hint_limit'});
@@ -1999,6 +2027,7 @@ void main() {
         'requestId': 'hint-prefetch-1',
         'expectedAiCount': 3,
         'prefetch': true,
+        'supportsHintUserFact': true,
         'practiceMode': 'game',
         'personaId': 'cool_rational',
         'difficulty': 'challenge',

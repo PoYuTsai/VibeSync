@@ -6,6 +6,7 @@ PracticePendingHint samplePending() => const PracticePendingHint(
       sessionId: 'sess-1',
       aiCount: 3,
       requestId: 'req-abc',
+      userFact: '我沒有進去',
     );
 
 void main() {
@@ -17,6 +18,7 @@ void main() {
       expect(back!.sessionId, 'sess-1');
       expect(back.aiCount, 3);
       expect(back.requestId, 'req-abc');
+      expect(back.userFact, '我沒有進去');
     });
 
     test('欄位缺漏或型別不對 → null（當不存在）', () {
@@ -113,6 +115,7 @@ void main() {
       expect(back!.sessionId, 'sess-1');
       expect(back.aiCount, 3);
       expect(back.requestId, 'req-abc');
+      expect(back.userFact, '我沒有進去');
     });
 
     test('A and B persist independently across session switches', () async {

@@ -20,6 +20,7 @@ import type { PartnerMood, PartnerState } from "./temperature.ts";
 export const MAX_TURNS = 130;
 export const MAX_TEXT_LEN = 500; // 單則訊息字數上限
 export const MAX_MEMORY_SUMMARY_LEN = 1000;
+export const MAX_HINT_USER_FACT_LEN = 300;
 export const MAX_SESSION_ID_LEN = 64;
 export const MAX_VISIBLE_THREAD_ID_LEN = 128;
 export const SEMANTIC_QUALITY_SCHEMA_VERSION = "semantic-quality-v2";
@@ -100,6 +101,10 @@ export interface PracticeChatRequest {
    * a formal request from a prefetch-aware client; true is background prefetch.
    */
   prefetch?: boolean;
+  /** New clients can provide the user's real answer before Hint generation. */
+  supportsHintUserFact?: boolean;
+  /** User-authored facts for the latest partner question; never model-filled. */
+  hintUserFact?: string;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -150,6 +155,29 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
       throw new Error("invalid_practiceMode");
     }
     practiceMode = raw.practiceMode;
+  }
+
+  let supportsHintUserFact: boolean | undefined;
+  if (raw.supportsHintUserFact !== undefined) {
+    if (typeof raw.supportsHintUserFact !== "boolean" || mode !== "hint") {
+      throw new Error("invalid_supportsHintUserFact");
+    }
+    supportsHintUserFact = raw.supportsHintUserFact;
+  }
+
+  let hintUserFact: string | undefined;
+  if (raw.hintUserFact !== undefined) {
+    if (
+      mode !== "hint" ||
+      supportsHintUserFact !== true ||
+      typeof raw.hintUserFact !== "string" ||
+      raw.hintUserFact.trim().length === 0 ||
+      raw.hintUserFact.length > MAX_HINT_USER_FACT_LEN ||
+      containsRawImageFilename(raw.hintUserFact)
+    ) {
+      throw new Error("invalid_hintUserFact");
+    }
+    hintUserFact = raw.hintUserFact.trim();
   }
 
   let temperatureScore: number | undefined;
@@ -456,6 +484,8 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     requestId,
     expectedAiCount,
     prefetch,
+    supportsHintUserFact,
+    hintUserFact,
   };
 }
 

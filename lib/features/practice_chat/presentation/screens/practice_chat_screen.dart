@@ -131,7 +131,127 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
       purposeText: AiDataSharingConsent.practicePurposeText,
     );
     if (!consented || !mounted) return;
-    ref.read(practiceChatControllerProvider.notifier).requestHint();
+    final notifier = ref.read(practiceChatControllerProvider.notifier);
+    final currentState = ref.read(practiceChatControllerProvider);
+    final latestPartnerText = currentState.messages.isEmpty
+        ? ''
+        : currentState.messages.last.text.trim();
+    String? userFact = notifier.pendingHintUserFactForCurrentTurn();
+    if (RegExp(r'[？?]').hasMatch(latestPartnerText) &&
+        (userFact == null || userFact.isEmpty)) {
+      userFact = await _showHintUserFactSheet(latestPartnerText);
+      if (!mounted || userFact == null) return;
+    }
+    await notifier.requestHint(userFact: userFact);
+  }
+
+  Future<String?> _showHintUserFactSheet(String partnerQuestion) async {
+    var answer = '';
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.brandInk,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          final normalizedAnswer = answer.trim();
+          return SafeArea(
+            child: Padding(
+              key: const ValueKey('practice-hint-user-fact-sheet'),
+              padding: EdgeInsets.fromLTRB(
+                20,
+                4,
+                20,
+                20 + MediaQuery.viewInsetsOf(context).bottom,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      '先補一個真實答案',
+                      style: AppTypography.titleMedium.copyWith(
+                        color: AppColors.onBackgroundPrimary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '她問到你的真實情況。你先告訴教練，Claude 才不會替你編地點、經歷或做過的事；不知道或不想回答也請直接寫。',
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.onBackgroundSecondary,
+                        height: 1.45,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppColors.brandSurface2.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '她問：$partnerQuestion',
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.onBackgroundPrimary,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      key: const ValueKey('practice-hint-user-fact-input'),
+                      autofocus: true,
+                      maxLength: 300,
+                      minLines: 1,
+                      maxLines: 3,
+                      textInputAction: TextInputAction.done,
+                      onChanged: (value) {
+                        answer = value;
+                        setModalState(() {});
+                      },
+                      onSubmitted: (value) {
+                        value = value.trim();
+                        if (value.isNotEmpty) Navigator.of(context).pop(value);
+                      },
+                      decoration: const InputDecoration(
+                        labelText: '你的真實答案',
+                        hintText: '例如：我沒進去，也沒記是哪區',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('取消'),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          key: const ValueKey(
+                            'practice-hint-user-fact-submit',
+                          ),
+                          onPressed: normalizedAnswer.isEmpty
+                              ? null
+                              : () => Navigator.of(context).pop(
+                                  normalizedAnswer,
+                                ),
+                          child: const Text('產生高手 Hint'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   /// 續聊同一位：付費才放行；Free 由 controller 觸發付費牆（不動 transcript）。

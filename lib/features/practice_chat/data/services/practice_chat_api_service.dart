@@ -590,6 +590,7 @@ class PracticeChatApiService {
     PracticePartnerState? continuationPartnerState,
     String? requestId,
     int? expectedAiCount,
+    String? hintUserFact,
     PracticeLearningMode practiceMode = PracticeLearningMode.beginner,
   }) async {
     final data = await _invokeHint(
@@ -602,6 +603,7 @@ class PracticeChatApiService {
       continuationPartnerState: continuationPartnerState,
       requestId: requestId,
       expectedAiCount: expectedAiCount,
+      hintUserFact: hintUserFact,
       practiceMode: practiceMode,
       prefetch: false,
     );
@@ -641,6 +643,7 @@ class PracticeChatApiService {
       continuationPartnerState: continuationPartnerState,
       requestId: normalizedRequestId,
       expectedAiCount: expectedAiCount,
+      hintUserFact: null,
       practiceMode: practiceMode,
       prefetch: true,
     );
@@ -661,6 +664,7 @@ class PracticeChatApiService {
     required PracticePartnerState? continuationPartnerState,
     required String? requestId,
     required int? expectedAiCount,
+    required String? hintUserFact,
     required PracticeLearningMode practiceMode,
     required bool prefetch,
   }) async {
@@ -676,6 +680,7 @@ class PracticeChatApiService {
         continuationPartnerState: continuationPartnerState,
         requestId: requestId,
         expectedAiCount: expectedAiCount,
+        hintUserFact: hintUserFact,
         practiceMode: practiceMode,
         prefetch: prefetch,
       ),
@@ -693,11 +698,13 @@ class PracticeChatApiService {
     required PracticePartnerState? continuationPartnerState,
     required String? requestId,
     required int? expectedAiCount,
+    required String? hintUserFact,
     required PracticeLearningMode practiceMode,
     required bool prefetch,
   }) {
     final normalizedRequestId = requestId?.trim();
     final normalizedMemorySummary = memorySummary?.trim();
+    final normalizedHintUserFact = hintUserFact?.trim();
     return {
       'mode': 'hint',
       'sessionId': sessionId,
@@ -706,6 +713,10 @@ class PracticeChatApiService {
         'requestId': normalizedRequestId,
       if (expectedAiCount != null) 'expectedAiCount': expectedAiCount,
       'prefetch': prefetch,
+      'supportsHintUserFact': true,
+      if (normalizedHintUserFact != null &&
+          normalizedHintUserFact.isNotEmpty)
+        'hintUserFact': normalizedHintUserFact,
       'practiceMode': practiceMode.wireName,
       ...profile.toJson(),
       'turns': turns.map((t) => t.toJson()).toList(),
@@ -1079,7 +1090,8 @@ class PracticeChatApiService {
       // Hint-specific conflicts are retry/recovery states, not a completed
       // practice session. Keep them out of the shared 409 fallback below.
       if (error == 'practice_hint_stale' ||
-          error == 'practice_hint_prefetch_pending') {
+          error == 'practice_hint_prefetch_pending' ||
+          error == 'practice_hint_user_fact_required') {
         throw PracticeApiException(error as String, status: 409);
       }
     }

@@ -512,6 +512,53 @@ Deno.test("mode hint is accepted when latest turn is AI", () => {
   assertEquals(r.mode, "hint");
 });
 
+Deno.test("hint user-fact capability accepts and trims the user's real answer", () => {
+  const r = validateRequest({
+    ...hintReq([
+      { role: "user", text: "我剛路過一家咖啡店" },
+      { role: "ai", text: "你有進去嗎？" },
+    ]),
+    supportsHintUserFact: true,
+    hintUserFact: "  我沒有進去，也沒記是哪區  ",
+  });
+
+  assertEquals(r.supportsHintUserFact, true);
+  assertEquals(r.hintUserFact, "我沒有進去，也沒記是哪區");
+});
+
+Deno.test("hint user-fact input is capability-gated and bounded", () => {
+  const base = hintReq([
+    { role: "user", text: "我剛路過一家咖啡店" },
+    { role: "ai", text: "你有進去嗎？" },
+  ]);
+  for (const hintUserFact of ["", " ", "x".repeat(301), "S__123.jpg"]) {
+    assertThrows(
+      () =>
+        validateRequest({
+          ...base,
+          supportsHintUserFact: true,
+          hintUserFact,
+        }),
+      Error,
+      "invalid_hintUserFact",
+    );
+  }
+  assertThrows(
+    () => validateRequest({ ...base, hintUserFact: "我沒進去" }),
+    Error,
+    "invalid_hintUserFact",
+  );
+  assertThrows(
+    () =>
+      validateRequest({
+        ...chatReq([{ role: "user", text: "hi" }]),
+        supportsHintUserFact: true,
+      }),
+    Error,
+    "invalid_supportsHintUserFact",
+  );
+});
+
 Deno.test("hint with no AI turns throws invalid_hint_no_ai_turns", () => {
   assertThrows(
     () => validateRequest(hintReq([{ role: "user", text: "hi" }])),

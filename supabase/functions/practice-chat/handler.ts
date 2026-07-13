@@ -34,6 +34,7 @@ import {
   buildChatMessages,
   buildDebriefMessages,
   type ChatMessage,
+  hintRequiresUserFactClarification,
 } from "./prompt.ts";
 import { difficultyTuningFor } from "./practice_persona.ts";
 import {
@@ -2044,6 +2045,21 @@ export function createPracticeChatHandler(
       );
       const hintRequestId = request.requestId;
 
+      if (
+        request.supportsHintUserFact === true &&
+        hintRequiresUserFactClarification(request.turns) &&
+        request.hintUserFact === undefined
+      ) {
+        // New clients collect the user's real answer before writing. A
+        // background prefetch cannot ask for it, so acknowledge without
+        // claiming a ledger row, calling a model, or charging quota.
+        if (requestIsPrefetch) return jsonResponse(hintPrefetchAck());
+        return jsonResponse(
+          { error: "practice_hint_user_fact_required", retryable: true },
+          409,
+        );
+      }
+
       const hintQuotaGateResponse = (): Response | null => {
         const quotaGate = checkQuota({
           sub,
@@ -2687,12 +2703,14 @@ export function createPracticeChatHandler(
           sceneContext,
           memorySummary: promptMemorySummary,
           gameState: ledgerGameState,
+          userFactClarification: request.hintUserFact,
         });
         const hintFactualEvidence = hintTrustedFactualEvidence({
           profile: request.profile,
           practiceMode: request.practiceMode,
           sceneContext,
           memorySummary: promptMemorySummary,
+          userFactClarification: request.hintUserFact,
         });
         const generatedHintParseOptions = {
           mode: request.practiceMode,
