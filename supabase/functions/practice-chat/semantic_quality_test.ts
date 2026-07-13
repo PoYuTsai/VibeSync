@@ -323,8 +323,9 @@ Deno.test("semantic adjudicator uses the alternate provider when the first revie
       calls.push("claude");
       return Promise.reject(new Error("claude_timeout"));
     },
-    callDeepSeek: () => {
+    callDeepSeek: (args) => {
       calls.push("deepseek");
+      assertEquals(args.timeoutMs, 30000);
       return Promise.resolve(validHintAdjudication());
     },
   };

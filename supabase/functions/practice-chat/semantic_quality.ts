@@ -86,7 +86,10 @@ export class SemanticAdjudicationError extends Error {
 
 const ADJUDICATION_MAX_TOKENS = 1800;
 const ADJUDICATION_TEMPERATURE = 0.1;
-const ADJUDICATION_TIMEOUT_MS = 18000;
+// Production semantic verification regularly completed just beyond 18s.
+// Keep the generation timeout bounded, but give the independent reviewer
+// enough time to finish instead of converting a valid generated Hint into 503.
+const ADJUDICATION_TIMEOUT_MS = 30000;
 
 const ISSUE_KINDS = new Set<SemanticIssueKind>([
   "unsupported_fact",
