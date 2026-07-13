@@ -58,6 +58,53 @@ Deno.test("semantic adjudication requires exact latest assistant evidence for bo
   assertEquals(parsed.issueKinds, []);
 });
 
+Deno.test("semantic adjudication ignores harmless reviewer metadata and trailing prose objects", () => {
+  const raw = JSON.parse(validHintAdjudication()) as Record<string, unknown>;
+  raw.confidence = 0.91;
+  const strategies = raw.strategies as Record<string, unknown>;
+  strategies.reviewNotes = "grounded";
+  const warmUp = strategies.warmUp as Record<string, unknown>;
+  warmUp.confidence = "high";
+
+  const parsed = parseSemanticAdjudication({
+    raw: `${JSON.stringify(raw)}\n補充說明 {"ignored":true}`,
+    surface: "hint",
+    candidate: hintCandidate,
+    turns,
+  });
+
+  assertEquals(parsed.candidate, hintCandidate);
+  assertEquals(parsed.strategies?.warmUp.move, "answer_then_question");
+});
+
+Deno.test("semantic adjudication accepts issue metadata while preserving required evidence", () => {
+  const raw = JSON.parse(validHintAdjudication({
+    verdict: "repair",
+    issues: [{
+      field: "coaching",
+      kind: "generic",
+      span: "空泛",
+      reason: "沒有可執行動作",
+      confidence: 0.88,
+    }],
+    repairedResult: {
+      ...hintCandidate,
+      coaching: "先接她的咖啡話題，再補一個自己的具體偏好。",
+    },
+  })) as Record<string, unknown>;
+  raw.reviewNotes = ["safe to repair"];
+
+  const parsed = parseSemanticAdjudication({
+    raw: JSON.stringify(raw),
+    surface: "hint",
+    candidate: hintCandidate,
+    turns,
+  });
+
+  assertEquals(parsed.repaired, true);
+  assertEquals(parsed.issueKinds, ["generic"]);
+});
+
 Deno.test("semantic adjudication rejects a fabricated or stale Hint evidence quote", () => {
   for (
     const strategy of [

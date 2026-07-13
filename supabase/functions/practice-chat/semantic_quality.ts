@@ -114,25 +114,45 @@ function extractJsonObject(raw: string): string {
     .replace(/\s*```$/i, "")
     .trim();
   const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  return start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned;
+  if (start < 0) return cleaned;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < cleaned.length; index++) {
+    const char = cleaned[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+    } else if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return cleaned.slice(start, index + 1);
+    }
+  }
+  return cleaned.slice(start);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function assertExactKeys(
+function assertRequiredKeys(
   value: Record<string, unknown>,
-  expected: readonly string[],
+  required: readonly string[],
   errorCode: string,
 ): void {
-  const actual = Object.keys(value).sort();
-  const sortedExpected = [...expected].sort();
-  if (
-    actual.length !== sortedExpected.length ||
-    actual.some((key, index) => key !== sortedExpected[index])
-  ) {
+  if (required.some((key) => !Object.hasOwn(value, key))) {
     throw new Error(errorCode);
   }
 }
@@ -183,7 +203,7 @@ function parseIssues(value: unknown): SemanticIssueKind[] {
     if (!isRecord(rawIssue)) {
       throw new Error("semantic_adjudication_invalid_issue");
     }
-    assertExactKeys(
+    assertRequiredKeys(
       rawIssue,
       ["field", "kind", "span", "reason"],
       "semantic_adjudication_invalid_issue",
@@ -216,7 +236,7 @@ function parseStrategy(
   if (!isRecord(value)) {
     throw new Error("semantic_adjudication_invalid_strategy");
   }
-  assertExactKeys(
+  assertRequiredKeys(
     value,
     ["move", "evidenceTurnId", "evidenceQuote", "rationale"],
     "semantic_adjudication_invalid_strategy",
@@ -257,7 +277,7 @@ function parseStrategies(
   if (!isRecord(value)) {
     throw new Error("semantic_adjudication_invalid_strategy");
   }
-  assertExactKeys(
+  assertRequiredKeys(
     value,
     ["warmUp", "steady"],
     "semantic_adjudication_invalid_strategy",
@@ -286,7 +306,7 @@ export function parseSemanticAdjudication(opts: {
   const expectedKeys = opts.surface === "hint"
     ? ["verdict", "issues", "repairedResult", "strategies"]
     : ["verdict", "issues", "repairedResult"];
-  assertExactKeys(
+  assertRequiredKeys(
     parsed,
     expectedKeys,
     "semantic_adjudication_invalid_schema",

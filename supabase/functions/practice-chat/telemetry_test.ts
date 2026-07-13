@@ -136,11 +136,23 @@ Deno.test("classifyPracticeGenerationFailure maps errors to stable buckets", () 
     [new Error("debrief_internal_label_leak"), "visible_text_guard"],
     [new Error("hint_canned_visible_text"), "visible_text_guard"],
     [new SyntaxError("Unexpected token '<'"), "invalid_json"],
+    [
+      new Error(
+        "semantic_adjudication_failed:semantic_adjudication_invalid_json",
+      ),
+      "invalid_json",
+    ],
     [new Error("hint_missing_warmUp"), "schema_invalid"],
     [new Error("debrief_not_object"), "schema_invalid"],
     [new Error("debrief_game_breakdown_missing_fields"), "schema_invalid"],
     [new Error("debrief_quality_invalid_not_grounded"), "schema_invalid"],
     [new Error("debrief_hint_assessment_evidence_invalid"), "schema_invalid"],
+    [
+      new Error(
+        "semantic_adjudication_failed:semantic_adjudication_invalid_schema",
+      ),
+      "schema_invalid",
+    ],
     [new Error("deepseek_http_503"), "provider_error"],
     [new Error("claude_http_529"), "provider_error"],
     [new Error("network connection reset"), "provider_error"],

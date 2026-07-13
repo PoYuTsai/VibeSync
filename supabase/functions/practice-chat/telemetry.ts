@@ -282,7 +282,8 @@ export function classifyPracticeGenerationFailure(
   if (
     error instanceof SyntaxError || message.includes("unexpected token") ||
     message.includes("invalid json") || message.includes("json_parse") ||
-    message.includes("unterminated string")
+    message.includes("unterminated string") ||
+    message.includes("semantic_adjudication_invalid_json")
   ) {
     return "invalid_json";
   }
@@ -293,7 +294,8 @@ export function classifyPracticeGenerationFailure(
     message.includes("_must_be_string") ||
     message.includes("quality_invalid") ||
     message.includes("debrief_hint_") ||
-    message.includes("schema_invalid")
+    message.includes("schema_invalid") ||
+    message.includes("semantic_adjudication_")
   ) {
     return "schema_invalid";
   }
