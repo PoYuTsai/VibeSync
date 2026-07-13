@@ -1660,15 +1660,17 @@ Deno.test("buildDebriefMessages includes final partner state for emotional cause
   assertEquals(msg.includes("他有接住我的吐槽，可以繼續丟輕鬆球。"), true);
 });
 
-Deno.test("buildDebriefMessages includes scene status as context without exposing internals", () => {
+Deno.test("buildDebriefMessages keeps hidden scene state out of Debrief evidence", () => {
   const msg = buildDebriefMessages(
-    [{ role: "user", text: "嗨" }, { role: "ai", text: "剛吃完飯" }],
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "目前還沒看到效果" }],
     defaultProfile,
     { sceneContext: dinnerScene },
   )[1].content;
 
-  assertEquals(msg.includes("本場生活情境"), true);
-  assertEquals(msg.includes("剛跟朋友吃完飯，在回家的路上"), true);
+  assertEquals(msg.includes("隱藏生活情境只用來產生角色回覆"), true);
+  assertEquals(msg.includes("拆盤只認逐字稿"), true);
+  assertEquals(msg.includes("剛跟朋友吃完飯，在回家的路上"), false);
+  assertEquals(msg.includes(dinnerScene.promptLine), false);
   assertEquals(msg.includes("sceneContext"), false);
 });
 

@@ -194,7 +194,7 @@ function debriefSceneContextLine(
   sceneContext?: PracticeSceneContext | null,
 ): string {
   if (!sceneContext) return "";
-  return `本場生活情境：${sceneContext.statusLine}。${sceneContext.promptLine}拆解時請把這視為她當時的生活背景；回覆變短、分心或想收尾不一定全是使用者表現差。\n\n`;
+  return "隱藏生活情境只用來產生角色回覆，不是拆盤證據。拆盤只認逐字稿中她實際說出的狀態；未說出的行程、精神或情緒不得寫進任何可見欄位。\n\n";
 }
 
 // ── chat：模擬對象女生人設 ──────────────────────────────────────────

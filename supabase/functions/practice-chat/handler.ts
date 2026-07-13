@@ -3665,7 +3665,8 @@ export function createPracticeChatHandler(
         const debriefFactualEvidence = hintTrustedFactualEvidence({
           profile: request.profile,
           practiceMode: debriefPracticeMode,
-          sceneContext,
+          // sceneContext is a roleplay seed, not a fact the simulated partner
+          // actually stated. Debrief may trust only the resulting transcript.
           memorySummary: promptMemorySummary,
         });
         const generatedDebriefParseOptions = {
