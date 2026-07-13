@@ -192,6 +192,8 @@ Deno.test("buildHintMessages treats transcript and profile as evidence only", ()
   assert(text.includes("自我揭露只准重用已知 user 事實"));
   assert(text.includes("不可合理推測補感官或經歷"));
   assert(text.includes("她一人稱/偶爾行為不可改成使用者事實/偏好"));
+  assert(text.includes("問句前提也算事實"));
+  assert(text.includes("不可用反問閃避"));
 });
 
 Deno.test("buildHintMessages includes scene status as evidence for natural replies", () => {

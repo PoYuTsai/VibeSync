@@ -322,6 +322,8 @@ Deno.test("semantic adjudication prompt treats transcript and candidate as evide
     prompt.includes("self_disclosure 只准重用 user 已明示事實"),
     true,
   );
+  assertEquals(prompt.includes("問句的預設前提"), true);
+  assertEquals(prompt.includes("不得因問號放行"), true);
   assertEquals(prompt.includes("turn-2 [assistant]"), true);
   assertEquals(prompt.includes("direct invite forbidden"), true);
 });
@@ -339,8 +341,40 @@ Deno.test("fact verification is a bounded evidence audit, not another free-form 
   assertEquals(prompt.includes("semanticFactVerificationV1"), true);
   assertEquals(prompt.includes("不是改稿者"), true);
   assertEquals(prompt.includes("不評文風、高手感、空泛或策略"), true);
+  assertEquals(prompt.includes("問句的預設前提"), true);
+  assertEquals(prompt.includes("不得因問號放行"), true);
   assertEquals(prompt.includes("只回 accept/reject"), true);
   assertEquals(prompt.includes("turn-0 [user]"), true);
+});
+
+Deno.test("debrief semantic adjudication breaks an identified question-answer loop", () => {
+  const messages = buildSemanticAdjudicationMessages({
+    surface: "debrief",
+    practiceMode: "game",
+    candidate: {
+      summary: "她有回覆，但對話停在資訊交換。",
+      strengths: ["你有接她的咖啡話題。"],
+      watchouts: ["下一步別再問答乒乓。"],
+      suggestedLine: "淺焙不錯，妳工作時會推哪支豆子？",
+      vibe: "中性",
+      dateChance: "medium",
+      dateChanceReason: "她有回答咖啡話題。",
+      nextInviteMove: "先增加生活感。",
+      gameBreakdown: {
+        phaseReached: "開場資訊交換",
+        missedVariable: "情緒連結不足",
+        failureState: "停在問答乒乓",
+        nextFirstLine: "妳工作時最常推哪支豆子？",
+        inviteDirection: "先增加生活感",
+      },
+    },
+    turns,
+    trustedGenerationContext: "server route: build",
+  });
+  const prompt = messages.map((message) => message.content).join("\n");
+
+  assertEquals(prompt.includes("問答乒乓／查戶口"), true);
+  assertEquals(prompt.includes("不得再用資訊題收尾"), true);
 });
 
 Deno.test("fact verification accepts only a binary safe verdict", () => {

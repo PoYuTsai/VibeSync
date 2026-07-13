@@ -198,8 +198,8 @@ export const DEBRIEF_SYSTEM_PROMPT =
 - dateChance 依逐字稿/難度：high＝接梗、延伸、場景或時間；medium＝舒服但鋪墊不足；low＝冷、查戶口、太急或太油。
 - 評內容下切、關係連結、在場感；假窗口、脆弱性、goal-fixated、冷處理/攻擊/控制進 watchouts。
 - 白話說明為什麼升溫或降溫：是否接住她的情緒、玩笑、界線、小測試；不要只講分數。
-- summary/every strength/watchout/dateChanceReason/nextInviteMove 各自引用逐字稿具體詞或動作，且各守角色：優點寫使用者做了什麼；提醒寫可執行調整；機會理由寫她的行為；下一步寫具體動作，禁空泛句。
-- 欄位：summary=你/她/提示；strengths=你；watch/next=下一步；reason=她；Game=階段/缺口/卡點/方向。
+- 各欄引逐字稿具體詞/動作且守角色：優點=你；提醒/下一步=可執行調整；機會理由=她；Game=階段/缺口/卡點/方向。禁空泛。
+- 她最後回覆須整段判讀；有新素材、延伸或反問≠禮貌收尾。
 - suggestedLine/nextFirstLine：「我」只代表使用者；她的個資不可改成使用者事實；禁編未出現劇名/店名/地點；沒有使用者證據就提問/不爆雷。
 - 只輸出 JSON：
 {
@@ -225,13 +225,14 @@ export const GAME_DEBRIEF_SYSTEM_PROMPT = DEBRIEF_SYSTEM_PROMPT.replace(
     "inviteDirection": "下一步邀約方向或先修什麼（最多 40 字）"
   }`,
 ) +
-  `\nGame 的 gameBreakdown 五欄必填；每欄各自帶逐字稿具體詞，並分別扮演階段／缺口／卡點／可貼句／具體邀約方向，禁萬用術語。`;
+  `\nGame 的 gameBreakdown 五欄必填、各帶原話並守欄位角色；禁萬用術語。`;
 
 const DEBRIEF_PROMPT_FIRST_TURN_COUNT = 2;
 const DEBRIEF_PROMPT_RECENT_TURN_COUNT = 12;
 const DEBRIEF_PROMPT_TURN_CHAR_LIMIT = 16;
 const DEBRIEF_PROMPT_SUMMARY_SAMPLE_CHAR_LIMIT = 16;
 const DEBRIEF_PROMPT_HINT_REACTION_CHAR_LIMIT = 32;
+const DEBRIEF_PROMPT_LATEST_PARTNER_TURN_CHAR_LIMIT = 96;
 
 function clippedDebriefTurn(text: string, limit: number): string {
   const scrubbed = scrubRawImageFilenames(text).replace(/\s+/gu, " ").trim();
@@ -256,6 +257,30 @@ function clippedDebriefTurn(text: string, limit: number): string {
   return placeholderEnd < scrubbed.length ? `${kept}…` : kept;
 }
 
+function clipUtf16SafeTail(value: string, limit: number): string {
+  const safeLimit = Math.max(0, Math.floor(limit));
+  if (value.length <= safeLimit) return value;
+  let start = value.length - safeLimit;
+  const firstCodeUnit = value.charCodeAt(start);
+  if (firstCodeUnit >= 0xDC00 && firstCodeUnit <= 0xDFFF) start++;
+  return value.slice(start);
+}
+
+function compactLatestPartnerTurnEvidence(text: string, limit: number): string {
+  const scrubbed = scrubRawImageFilenames(text).replace(/\s+/gu, " ").trim();
+  if (scrubbed.length <= limit) return scrubbed;
+  if (scrubbed.includes(IMAGE_CONCEPT_PLACEHOLDER)) {
+    return clippedDebriefTurn(text, limit);
+  }
+  const marker = "…";
+  const contentBudget = Math.max(2, limit - marker.length);
+  const headBudget = Math.floor(contentBudget / 2);
+  const tailBudget = contentBudget - headBudget;
+  return `${clipUtf16Safe(scrubbed, headBudget).trimEnd()}${marker}${
+    clipUtf16SafeTail(scrubbed, tailBudget).trimStart()
+  }`;
+}
+
 function debriefTurnLine(turn: PracticeTurn, limit: number): string {
   return `${turn.role === "user" ? "你" : "她"}：${
     clippedDebriefTurn(turn.text, limit)
@@ -269,6 +294,13 @@ function debriefTurnsToPromptTranscript(
   const hintNumberByTurn = new Map<number, number>();
   const reactionTurns = new Set<number>();
   const kept = new Set<number>();
+  let latestPartnerTurnIndex = -1;
+  for (let index = turns.length - 1; index >= 0; index--) {
+    if (turns[index].role === "ai") {
+      latestPartnerTurnIndex = index;
+      break;
+    }
+  }
   for (
     let index = 0;
     index < Math.min(DEBRIEF_PROMPT_FIRST_TURN_COUNT, turns.length);
@@ -304,6 +336,13 @@ function debriefTurnsToPromptTranscript(
       const hintNumber = hintNumberByTurn.get(index);
       if (hintNumber !== undefined) {
         lines.push(`你：[H${hintNumber}.s]`);
+      } else if (index === latestPartnerTurnIndex) {
+        lines.push(`她：${
+          compactLatestPartnerTurnEvidence(
+            turns[index].text,
+            DEBRIEF_PROMPT_LATEST_PARTNER_TURN_CHAR_LIMIT,
+          )
+        }`);
       } else if (reactionTurns.has(index)) {
         // Complete sentences are preferred so Debrief can quote her reaction
         // verbatim; a single overlong unpunctuated turn falls back to a
@@ -493,7 +532,8 @@ function gameDebriefSkillContract(): string {
   return `gameDebriefSkillContract(hidden guidance; Game only)
 - 七步聊天法：開場/資訊→價值→篩選→張力→收尾；變數識別=Value/Frame/Emotion/Investment/Safety，可見白話。
 - 關鍵轉折點引她原話；Failure State 寫具體卡點。
-- 速約窗口＝下一句怎麼把窗口接成行動：先鋪墊 / 低壓邀約 / 明確邀約 / 接住她給的窗口；未成熟修安全。suggestedLine/nextFirstLine＝下次第一句。`;
+- 速約窗口＝下一句怎麼把窗口接成行動：先鋪墊 / 低壓邀約 / 明確邀約 / 接住她給的窗口；未成熟修安全。suggestedLine/nextFirstLine＝下次第一句。
+- 卡點=問答乒乓時，下句先給內容／感受／立場／畫面，不得再用工作／偏好資訊題收尾。`;
 }
 
 function phaseRelevantGameStrategyPrompt(
@@ -669,7 +709,7 @@ function debriefHintAccountabilityPrompt(
         : []),
     ].join("\n");
   }).join("\n");
-  return `\n\nhintAssistedTurns(hidden evidence)\n${rows}\ndecision＝server權威；末筆：build不升約、soft不升direct、repair不邊修邊約。不要把照貼 Hint 的句子當成使用者自己亂打；exact: true 時 summary/strengths 必含「你有照提示做」。拆成：使用者執行 / Hint 品質 / 對方反應。只有 Hint 送出後「她」的新回覆出現明確反證時才可 revised，否則不得批 Hint。頂層必填hidden "hintAssessment":{"verdict":"preserved","revisedEvidenceQuote":null}；不可省略/進card，server會移除。exact接球未拒=preserved；只寫下一步，不評Hint。exact＋preserved：不得批 Hint；watchouts／卡點只寫「下一步…」，或明寫「她／提示前／後來」。`;
+  return `\n\nhintAssistedTurns(hidden evidence)\n${rows}\ndecision＝server權威；末筆：build不升約、soft不升direct、repair不邊修邊約。不要把照貼 Hint 的句子當成使用者自己亂打；exact: true 時 summary/strengths 必含「你有照提示做」。拆成：使用者執行 / Hint 品質 / 對方反應。讀完整末筆她回覆；有新素材／反問就不是禮貌收尾。只有 Hint 送出後「她」的新回覆出現明確反證時才可 revised，否則不得批 Hint。頂層必填hidden "hintAssessment":{"verdict":"preserved","revisedEvidenceQuote":null}；不可省略/進card，server會移除。exact接球未拒=preserved；只寫下一步，不評Hint。exact＋preserved：不得批 Hint；watchouts／卡點只寫「下一步…」，或明寫「她／提示前／後來」。`;
 }
 
 /** debrief 模式：system + 一則含 profile/訊號脈絡與逐字稿的 user 指令。 */

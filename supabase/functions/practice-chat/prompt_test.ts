@@ -769,6 +769,43 @@ Deno.test("game debrief follows seven-step variable and speed-invite breakdown",
   assertEquals(user.includes("Failure State"), true);
   assertEquals(user.includes("速約窗口"), true);
   assertEquals(user.includes("下一句怎麼把窗口接成行動"), true);
+  assertEquals(user.includes("問答乒乓"), true);
+  assertEquals(user.includes("不得再用工作／偏好資訊題收尾"), true);
+});
+
+Deno.test("debrief keeps the complete latest partner turn for reaction judgment", () => {
+  const latestPartnerReply =
+    "哈哈好，你也是啊，追劇也要記得睡。我剛從朋友聚會回來，邊走邊滑一下而已😌 你昨天追哪部？";
+  const user = buildDebriefMessages(
+    [
+      { role: "user", text: "我昨天追劇追到兩點。" },
+      { role: "ai", text: latestPartnerReply },
+    ],
+    resolvePracticeProfile({ profileId: "practice_girl_004" }),
+    { practiceMode: "beginner" },
+  )[1].content;
+
+  assertEquals(user.includes(latestPartnerReply), true);
+  assertEquals(user.includes("我剛從朋友聚會回來"), true);
+  assertEquals(user.includes("你昨天追哪部？"), true);
+});
+
+Deno.test("debrief keeps the tail signal of an overlong latest partner turn", () => {
+  const latestPartnerReply = `哈哈好，前面先客氣一下。${
+    "中段補充狀態".repeat(20)
+  }我剛從朋友聚會回來，你昨天追哪部？`;
+  const user = buildDebriefMessages(
+    [
+      { role: "user", text: "我昨天追劇追到兩點。" },
+      { role: "ai", text: latestPartnerReply },
+    ],
+    resolvePracticeProfile({ profileId: "practice_girl_004" }),
+    { practiceMode: "beginner" },
+  )[1].content;
+
+  assertEquals(user.includes("哈哈好，前面先客氣一下"), true);
+  assertEquals(user.includes("我剛從朋友聚會回來，你昨天追哪部？"), true);
+  assertEquals(user.includes("中段補充狀態".repeat(20)), false);
 });
 
 Deno.test("debrief prompt separates copied Hint execution from Hint quality", () => {
@@ -836,6 +873,8 @@ Deno.test("debrief prompt separates copied Hint execution from Hint quality", ()
   assertEquals(user.includes("server會移除"), true);
   assertEquals(user.includes("exact接球未拒=preserved"), true);
   assertEquals(user.includes("不評Hint"), true);
+  assertEquals(user.includes("讀完整末筆她回覆"), true);
+  assertEquals(user.includes("有新素材／反問就不是禮貌收尾"), true);
   assertEquals(
     user.includes(
       "exact＋preserved：不得批 Hint；watchouts／卡點只寫「下一步…」，或明寫「她／提示前／後來」",
