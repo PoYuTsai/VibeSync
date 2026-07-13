@@ -1,57 +1,46 @@
 # Practice Hint／Debrief Claude-primary Codex Review
 
-Date: 2026-07-14  
-Scope: `da801fcc..working tree`  
-Verdict: **APPROVED FOR DEPLOY SMOKE（0 P0 / 0 P1 / 0 P2）**
+Date: 2026-07-14
+Scope: `da801fcc..50d91dbc`，最終收斂 commits `1a98cd8f`、`67c6d349`、`21159eeb`、`50d91dbc`
+Reviewer: Codex root（未派子代理，依 Eric 的 token 預算要求直接對抗檢查）
+Verdict: **APPROVED／DEPLOYED（0 P0 / 0 P1 / 0 P2）**
 
-## 問題與根因
+## Root cause
 
-Production v113 的 Hint 正式結果約半數失敗。命中帳號的 Game Hint 兩次分別耗時 19.1 秒與 32.9 秒，最後都以 `semantic_adjudication_repair_unverified:semantic_fact_verification_rejected` 結束。根因不是單一 regex 或 DeepSeek 掛掉，而是同步 `生成 → 語意改稿 → 事實再核驗` 管線把一次請求拆成多個相依模型階段；任一後段保守拒絕都會把前面已生成的內容變成 503。
+Production 失敗不是單一模型壞掉。舊同步管線在生成後再串 semantic repair／verifier，後段任何保守拒絕都會把已生成內容變成 503；另一方面，Game FSM 把「咖啡／吃飯」等話題詞誤當邀約，Debrief 又把未出現在逐字稿的隱藏生活情境當事實，造成 Hint 與 Debrief 自相矛盾。
 
-## 驗收不變量
+## 最終契約
 
-- 一般角色對話維持 DeepSeek，不受本次改動影響。
-- Beginner Hint、Game Hint、Beginner Debrief、Game Debrief 在正式預設路徑都由 Claude Sonnet 直接生成；第一次通過守門即回傳，最多只允許一次同模型重產。
-- 正式路徑不呼叫同步 semantic reviewer／repair verifier；不是「換另一個模型再審一次」。
-- 每次候選仍須通過既有 schema、逐欄 grounding、typed facts、角色主詞、已知罐頭、內部標籤、安全與 Game FSM／邀約階梯守門。
-- Hint decision 仍由 server 依逐字稿、角色與 Game ledger 建立，模型不能擁有 hidden strategy lineage。
-- Debrief 沿用 server resolve 的 Hint decision；無 Hint 後新反證時不得批評或反轉 exact Hint。
-- 正式 Debrief 不使用 deterministic visible-copy repair。怪句、捏造或 Hint 矛盾一律拒絕該候選，帶具體原因請 Sonnet 重寫。
-- 兩次都失敗時只回 retryable 503，釋放 generation owner；不落 Hint snapshot／Debrief card、不扣費、不計次、不回罐頭成功。
+- 一般角色對話維持 DeepSeek。
+- Beginner Hint、Game Hint、Beginner Debrief、Game Debrief 預設由 Claude Sonnet `claude-sonnet-4-6` 直接生成。
+- 正常路徑不呼叫同步 semantic reviewer／repair verifier；同一 Sonnet 最多 3 次、每次 24 秒。候選不合法才重產。
+- runtime 沒有 Hint／Debrief 罐頭成功路徑。全部失敗只回 retryable 503，不落 snapshot/card、不扣費、不計次。
+- 對方最新一句若是問句，新 client 必須先由使用者填真實答案，答案以 evidence-only 方式進 Hint；prefetch 沒答案只回 opaque ack。
+- 模型輸出的「我做過／我確認過／親身感受」必須能回指 user-authored evidence；問句、未來計畫不誤判成已發生經歷。
+- Game Debrief 只有一個權威下一句：`gameBreakdown.nextFirstLine = suggestedLine`，不允許同一卡內兩句漂移。
+- Game FSM 與 pasteable reply 共用 `practiceInviteLevelFor`。只聊咖啡不算邀約，必須有雙方計畫／提議語法才進邀約階。
+- 隱藏生活情境只可影響角色生成，不是 Debrief 證據；拆盤只認角色實際說進逐字稿的狀態。
+- Hint decision 由 server 依逐字稿、Game ledger 與邀約契約建立；Debrief 沿用該 decision，只有 Hint 後的新證據能改變下一步。
 
-## 失敗矩陣
+## 對抗檢查 findings 與修復
 
-| 情境 | 模型呼叫 | 結果 |
-|---|---:|---|
-| 第一次合法 | 1 次 Sonnet | 直接成功、正常落檔 |
-| 第一次格式／品質／事實不合法，第二次合法 | 2 次 Sonnet | 附拒絕理由重產後成功 |
-| 第一次 timeout，第二次合法 | 2 次 Sonnet | 原 prompt 重試，不偽稱 JSON 被拒絕 |
-| 兩次都不合法或 timeout | 2 次 Sonnet | retryable 503、無成功內容／扣費／計次 |
-| Debrief 打臉 preserved exact Hint | 2 次內 | 拒絕並重產，不由 server 套固定句 |
-| `PRACTICE_CLAUDE_PRIMARY=false` | 舊管線 | 僅供 production 緊急回滾 |
-
-## 成本與等待時間審查
-
-- 正式路徑通常 1 次 provider call，最差 2 次；舊路徑可能串接 generation、repair、alternate reviewer 與 verifier，共 3–5 次。
-- Hint 每次上限 1,600 output tokens，Debrief 每次 1,200；最差 output 上限分別為 3,200／2,400，但不再疊 semantic reviewer token。
-- 每次 Sonnet timeout 24 秒，兩次最差約 48 秒，加 DB 開銷仍低於 build 323 的 90 秒 client timeout，也低於 Debrief 105 秒 owner fence。
-- Free／Starter／Essential 的 Hint 與 Debrief 統一用 Sonnet，這是 Eric 為高手品質明確接受的單次成本上升；整體 provider call 數則下降。
-
-## 審查結果
-
-- 未發現 P0／P1／P2。
-- 正式 direct branch 與 rollback branch 明確互斥；direct branch 不會在第二次失敗後落回 DeepSeek 或 semantic pipeline。
-- `failoverUsed` 在同模型重產時保持 `false`，telemetry 的 attempt/retry/failureCodes 仍可區分第一次失敗。
-- record／release／prefetch settle／quota 邏輯位於生成分支之外且未更動；新增失敗測試確認兩次拒絕後 record=0、release=1。
+1. v126 smoke：Beginner Debrief 編出「我也試過硬撐」；Game card 的 `suggestedLine` 安全但 `nextFirstLine` 編出另一段經歷。修成 user-experience provenance gate＋單一權威下一句。
+2. 自審發現「這杯喝起來會酸嗎？」會被感受守門誤判。保留句尾問號，問句不進 completed-experience gate。
+3. v128 smoke：咖啡開場被標成 `P5_CLOSE`，Debrief 卻說太早。根因是 topic keyword 被當邀約；改共用中央邀約分類器後為 `P1_OPEN／build`。
+4. v128 smoke：Debrief 外洩「準備睡／精神快關機」。根因是 hidden scene 與逐字稿衝突仍被當 factual evidence；v129 起 hidden scene 不再進 Debrief prompt/fact evidence。
 
 ## 驗證證據
 
-- `deno check supabase/functions/practice-chat/handler.ts`：通過。
-- `deno fmt --check` changed files：通過。
-- `git diff --check`：通過。
-- direct-path targeted：7/7 passed，覆蓋 Beginner＋Game Hint、Game Debrief、事實捏造、transient timeout、Hint→Debrief 一致性、雙失敗不落檔。
-- `deno test --allow-env --allow-read --no-check supabase/functions/practice-chat`：**920/920 passed**。
+- `deno test --allow-env --allow-read --no-check supabase/functions/practice-chat`：**951/951 passed**。
+- changed files `deno fmt --check`、`deno check`、`git diff --check`：通過。
+- Flutter API/store/controller/widget contract 在 `1a98cd8f`：**275/275 + 126/126 passed**，`flutter analyze` 0。
+- production `practice-chat v129` full generated-only smoke：**PASS**。
+  - Beginner Hint／Debrief：第一次成功、provider=`anthropic`、model=`claude-sonnet-4-6`、`fallbackUsed=false`、Hint／Debrief replay stable。
+  - Game Hint／Debrief：第一次成功、同上；咖啡開場 decision=`P1_OPEN`、inviteRoute=`build`，Debrief 同樣先累積熟悉感、不邀約。
+  - `suggestedLine === gameBreakdown.nextFirstLine`；未再外洩 hidden 睡前情境；測試帳號 costDeducted=0。
 
-## 出貨門檻
+## 出貨與 rebuild
 
-本 verdict 核准部署 smoke，不等於已證明 production 99%。部署後必須以 production Test 帳號跑 Beginner Hint、Game Hint、Game Debrief、replay，並從 `ai_logs` 確認 provider=`anthropic`、model=`claude-sonnet-4-6`、`semanticProviderCalls=0`、`fallbackUsed=false`，再更新本文件結論。
+- Edge 改動已 live，build 323 也會立即吃到 Claude-primary、無罐頭成功、Game phase 與 Debrief 修正。
+- `supportsHintUserFact` 的填答視窗屬 Flutter 新 client contract，必須重新 build／上 TestFlight 才能測到。
+- production smoke 證明本輪樣本 4 個生成面都第一次成功，但不是數學上的 99% SLA；後續以 `ai_logs` 的 success/retryable 比率與真機 dogfood 持續觀測。

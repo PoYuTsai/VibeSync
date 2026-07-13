@@ -54,6 +54,8 @@
 
 **追加（2026-07-14 Claude-primary 重構）**: live `ai_logs` 顯示 v113 上線後，Game Hint 正式結果 8 成功／20 失敗、Beginner 約 21 成功／21 失敗；命中 dogfood 帳號的兩次 SR Game Hint 都死在 `semantic_adjudication_repair_unverified:semantic_fact_verification_rejected`，耗時 19.1／32.9 秒。根因是同步多模型階段本身：生成成功後仍可能被 repair/verifier 拒絕，增加等待又放大 503。正式預設路徑因此改為 Claude Sonnet 單一 writer：第一次通過既有 schema／grounding／typed-facts／角色／Game FSM／Hint lineage 守門就回傳；只有明確拒絕或暫時錯誤才再呼叫一次 Sonnet，最多 2 次 × 24 秒，不再同步 semantic 二審。Debrief direct path 同時關閉 deterministic 可見文案修補，避免 server 把怪答案改成另一句固定話術；不合法就要求 Sonnet 重寫。一般 chat 仍走 DeepSeek；`PRACTICE_CLAUDE_PRIMARY=false` 只作緊急回滾。兩次失敗仍 503 且不落檔／扣費／計次。local `practice-chat` **920/920**，Codex pre-deploy review 0 P0/P1/P2；production smoke 待部署後補證據。
 
+**最終追記（2026-07-14 v129）**：上段 pre-deploy 參數已由後續穩定性驗證取代，正式 direct path 為最多 **3 次 × 24 秒**。v126–v128 smoke 另外抓到三個結構根因：(1) Debrief 可貼句會編造使用者過去經歷，且 Game 同一卡有兩個互相漂移的下一句；(2) Game FSM 把只提到「咖啡／吃飯」當成邀約，咖啡開場誤跳 `P5_CLOSE`；(3) hidden scene「準備睡／精神快關機」即使未被角色說進逐字稿，仍被 Debrief 當成事實。修法分別是 user-authored completed-experience provenance、`nextFirstLine = suggestedLine` 單一權威面、FSM 共用中央邀約語法分類器、hidden scene 退出 Debrief prompt/factual evidence。`practice-chat` **951/951**、fmt/check/diff 全綠，Edge **v129** 已部署。最終 production generated-only smoke 的 Beginner＋Game Hint／Debrief 全部第一次 Sonnet 成功、`fallbackUsed=false`、replay stable；Game 咖啡開場 decision=`P1_OPEN`／`build`，Debrief 同樣暫不邀約，未再外洩 hidden 睡前情境。完整 review：`docs/reviews/2026-07-14-practice-claude-primary-codex-review.md`。
+
 ### [2026-07-11] Beginner／Game Hint 與 Debrief 把降級罐頭當成功結果
 
 **Symptom**: TestFlight 點 Game Hint 後會看到「妳剛說的那個點我有記住…」等一眼可辨識的萬用句；賽後 Debrief 又可能批評剛才的 Hint、給出與當時策略相反的「下次可以這樣說」，Game 拆盤欄位也會只剩空泛術語。Beginner 與 Game 都受影響。
