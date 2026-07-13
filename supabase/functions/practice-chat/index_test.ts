@@ -4345,6 +4345,86 @@ Deno.test("direct Debrief regenerates a hallucinated user fact without semantic 
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
+Deno.test("direct Debrief regenerates an invented completed user experience", async () => {
+  const card = (suggestedLine: string) =>
+    validDebriefJson({
+      summary: "她澄清是生理時鐘亂，下一步沿這個點輕鬆接。",
+      strengths: ["你有接住她說快睡著，沒有繼續拉長話題。"],
+      watchouts: ["下一步別替自己補一段逐字稿沒有的過去經歷。"],
+      suggestedLine,
+      dateChance: "low",
+      dateChanceReason: "她只簡短澄清原因，還沒有新的投入或時間線索。",
+      nextInviteMove: "先沿生理時鐘接一句，等她多投入再看邀約窗口。",
+    });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [
+        card("生理時鐘亂最難搞，我也試過硬撐結果更清醒 😂"),
+        card("生理時鐘亂真的難調，妳現在是越累反而越清醒嗎？"),
+      ],
+    },
+    debriefBody({
+      requestId: "direct-debrief-completed-experience-retry",
+      practiceMode: "beginner",
+      turns: [
+        { role: "user", text: "妳今天很累嗎？" },
+        { role: "ai", text: "不是工作累，就生理時鐘還在亂。" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(
+    json.card.suggestedLine,
+    "生理時鐘亂真的難調，妳現在是越累反而越清醒嗎？",
+  );
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("direct Game Debrief exposes one canonical next line across the card", async () => {
+  const card = JSON.parse(validDebriefJson({
+    summary: "她請你下次確認店名再說，這是保留後續接點。",
+    suggestedLine: "好，下次路過確認完再來報告。",
+  })) as Record<string, unknown>;
+  card.gameBreakdown = {
+    phaseReached: "咖啡話題剛開場，她保留了下次回報接點",
+    missedVariable: "還缺一輪真實咖啡感受交換",
+    failureState: "目前停在店名資訊，尚未形成共同畫面",
+    nextFirstLine: "那家店我確認了，手沖喝起來跟妳做的差很多。",
+    inviteDirection: "先接她留的回報窗口，再看低壓短約",
+  };
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [JSON.stringify(card)],
+    },
+    debriefBody({
+      requestId: "direct-game-debrief-one-canonical-line",
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      turns: [
+        { role: "user", text: "店名我真的沒記，下次路過再確認。" },
+        { role: "ai", text: "好，那你下次記住再跟我說。晚安～" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.suggestedLine, "好，下次路過確認完再來報告。");
+  assertEquals(
+    json.card.gameBreakdown.nextFirstLine,
+    json.card.suggestedLine,
+  );
+  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
 Deno.test("debrief accepts beginner ledger when client omits practiceMode", async () => {
   const { response, json, state } = await run(
     {

@@ -261,7 +261,7 @@ export const GAME_DEBRIEF_SYSTEM_PROMPT = DEBRIEF_SYSTEM_PROMPT.replace(
     "inviteDirection": "下一步邀約方向或先修什麼（最多 40 字）"
   }`,
 ) +
-  `\nGame 的 gameBreakdown 五欄必填、各帶原話並守欄位角色；禁萬用術語。`;
+  `\nGame 拆盤五欄必填、帶原話、守欄位；禁萬用術語；nextFirstLine＝suggestedLine。`;
 
 const DEBRIEF_PROMPT_FIRST_TURN_COUNT = 2;
 const DEBRIEF_PROMPT_RECENT_TURN_COUNT = 12;

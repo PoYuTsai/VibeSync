@@ -3717,9 +3717,25 @@ export function createPracticeChatHandler(
           rawCard: string,
         ): DebriefCard => {
           const rawCandidate = parseDebriefCandidateObject(rawCard);
+          const rawGameBreakdown = rawCandidate.gameBreakdown;
+          const canonicalGameBreakdown = debriefPracticeMode === "game" &&
+              typeof rawCandidate.suggestedLine === "string" &&
+              typeof rawGameBreakdown === "object" &&
+              rawGameBreakdown !== null &&
+              !Array.isArray(rawGameBreakdown)
+            ? {
+              ...(rawGameBreakdown as Record<string, unknown>),
+              // There is one authoritative next line, not two independent
+              // model surfaces that can contradict or invent separately.
+              nextFirstLine: rawCandidate.suggestedLine,
+            }
+            : rawGameBreakdown;
+          const coherentCandidate = debriefPracticeMode === "game"
+            ? { ...rawCandidate, gameBreakdown: canonicalGameBreakdown }
+            : rawCandidate;
           const directCandidate = (ledgerAppliedHintTurns?.length ?? 0) > 0
             ? {
-              ...rawCandidate,
+              ...coherentCandidate,
               // Applied Hint strategy is already committed by the server. The
               // direct Debrief writer analyzes the outcome; it does not get a
               // second vote on the Hint it is supposed to continue.
@@ -3728,7 +3744,7 @@ export function createPracticeChatHandler(
                 revisedEvidenceQuote: null,
               },
             }
-            : rawCandidate;
+            : coherentCandidate;
           return parseDebriefCard(JSON.stringify(directCandidate), {
             ...generatedDebriefParseOptions,
             repairPreservedHintCritique: false,

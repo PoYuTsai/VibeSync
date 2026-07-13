@@ -88,6 +88,8 @@ export interface HintFactContext {
   latestPartnerText: string;
   /** 全部輸入文本的 compact 正規化（turns＋factual evidence），供實體級模糊比對。 */
   sourceTexts?: readonly string[];
+  /** Raw user-authored evidence only; used for completed-experience provenance. */
+  userSourceTexts?: readonly string[];
 }
 
 export function claimConfidence(claim: HintFactClaim): HintFactConfidence {
@@ -1835,6 +1837,82 @@ function supportSourceText(value: string): string {
     .replace(/記是(?=地點)/gu, "記");
 }
 
+/**
+ * Extract completed/sensory first-person experiences from a pasteable line.
+ * This is a grammatical provenance boundary, not a topic or tone classifier:
+ * past actions and firsthand sensory comparisons must come from user-authored
+ * evidence. Future intentions, proposals, reactions, and partner questions do
+ * not enter this set.
+ */
+function completedUserExperienceAnchors(value: string): Set<string> {
+  const anchors = new Set<string>();
+  // Keep the clause terminator long enough to distinguish a claim from a
+  // question. Splitting the punctuation away would turn「喝起來會酸嗎？」
+  // into an apparent firsthand sensory assertion and waste a generation.
+  const clauses = normalizeBase(value).match(
+    /[^，,。！？!?；;\n]+[，,。！？!?；;\n]?/gu,
+  ) ?? [];
+  const completed =
+    /(?:我|我們)(?:也|曾經|以前|之前|上次|那次|剛剛?|才)?[^，,。！？!?；;]{0,6}?((?:試|去|看|吃|喝|玩|用|做|遇|碰|聽|住|待|學|買|點|進|確認|查|問)(?:過|了)[^，,。！？!?；;]{0,8}?)(?=結果|所以|但是|但|卻|$)/gu;
+  const sensory =
+    /([\p{Script=Han}A-Za-z0-9·・]{1,10}?(?:吃|喝|聞|用|玩)起來[^，,。！？!?；;]{0,10}?)(?=但是|但|卻|而|$)/gu;
+
+  for (const rawClause of clauses) {
+    const isQuestion = /[？?]\s*$/u.test(rawClause);
+    const clause = rawClause.replace(/[，,。！？!?；;\n]+$/u, "")
+      .replace(/\s+/gu, "").trim();
+    if (!clause) continue;
+    if (isQuestion) continue;
+    for (const match of clause.matchAll(completed)) {
+      const action = match[1] ?? "";
+      const actionOffset = match[0]?.indexOf(action) ?? -1;
+      const intentPrefix = actionOffset >= 0
+        ? (match[0] ?? "").slice(0, actionOffset)
+        : "";
+      if (
+        /(?:下次|改天|之後|等等|等下|明天|未來|到時|先|準備|打算|會|要|想|再)/u
+          .test(intentPrefix)
+      ) continue;
+      const beforeSubject = clause.slice(0, match.index ?? 0)
+        .replace(/^(?:哈哈|哈|欸|好)+/u, "");
+      const objectPrefix = beforeSubject.length > 0 &&
+          beforeSubject.length <= 8 &&
+          !/(?:妳|你|她|對方)/u.test(beforeSubject)
+        ? beforeSubject
+        : "";
+      const anchor = normalizeAnchor(`${objectPrefix}${action}`);
+      if (anchor.length >= 2) anchors.add(anchor);
+    }
+
+    if (/(?:應該|可能|如果|要是|想像|會不會)/u.test(clause)) continue;
+    for (const match of clause.matchAll(sensory)) {
+      const before = clause.slice(0, match.index ?? 0);
+      const anchor = normalizeAnchor(match[1] ?? "");
+      if (
+        anchor.length < 2 ||
+        /(?:妳|你|她|對方)/u.test(`${before}${anchor.slice(0, 4)}`)
+      ) continue;
+      anchors.add(anchor);
+    }
+  }
+  return anchors;
+}
+
+function unsupportedCompletedUserExperience(
+  text: string,
+  context: HintFactContext,
+): boolean {
+  const output = completedUserExperienceAnchors(text);
+  if (output.size === 0) return false;
+  const supported = new Set<string>();
+  for (const source of context.userSourceTexts ?? []) {
+    for (const anchor of completedUserExperienceAnchors(source)) {
+      supported.add(anchor);
+    }
+  }
+  return [...output].some((anchor) => !supported.has(anchor));
+}
+
 function hasUnnamedVenueSource(context: HintFactContext): boolean {
   return (context.sourceTexts ?? []).some((source) =>
     /(?:[一某那這](?:家|間).{0,12}(?:店|咖啡店|餐廳|酒吧)|(?:路過|看到|發現).{0,12}(?:店|咖啡店|餐廳|酒吧)|(?:店|咖啡店|餐廳|酒吧).{0,12}(?:聞起來|香|味道))/u
@@ -1867,10 +1945,20 @@ export function buildHintFactContext(input: {
     ...(input.sharedFactualEvidence ?? []),
     ...(input.partnerFactualEvidence ?? []),
   ].map(supportSourceText).filter((text) => text.length > 0);
+  const rawUserEvidence = [
+    ...(input.turns ?? []).filter((turn) => turn.role === "user").map((turn) =>
+      turn.text
+    ),
+    ...[
+      ...(input.factualEvidence ?? []),
+      ...(input.sharedFactualEvidence ?? []),
+    ].filter((evidence) => memoryDefaultOwner(evidence) === "user"),
+  ].filter((text) => text.trim().length > 0);
   const trustedContext: HintFactContext = {
     claims: trustedClaims,
     latestPartnerText,
     sourceTexts,
+    userSourceTexts: rawUserEvidence,
   };
   const claims: HintFactClaim[] = [...trustedClaims];
   for (const turn of input.turns ?? []) {
@@ -1920,6 +2008,7 @@ export function buildHintFactContext(input: {
     claims: [...deduped.values()],
     latestPartnerText,
     sourceTexts,
+    userSourceTexts: rawUserEvidence,
   };
 }
 
@@ -2713,6 +2802,12 @@ export function assertHintFactClaimsSupported(input: {
     new Error(
       `${errorCode}:${claim.owner}:${claim.domain}:${claim.relation}`,
     );
+  if (
+    input.field === "reply" &&
+    unsupportedCompletedUserExperience(input.text, input.context)
+  ) {
+    throw new Error(`${errorCode}:user:history:experienced`);
+  }
   const outputClaimsByKey = new Map<string, HintFactClaim>();
   for (
     const claim of [

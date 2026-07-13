@@ -1386,6 +1386,59 @@ Deno.test("typed asksPlace direct answer accepts equivalent user-authored negati
   });
 });
 
+Deno.test("typed pasteable provenance rejects invented completed user experiences across topics", () => {
+  const withoutExperience = buildHintFactContext({
+    turns: [
+      { role: "user", text: "妳現在還睡不著嗎？" },
+      { role: "ai", text: "生理時鐘還在亂，越累反而越清醒。" },
+    ],
+  });
+  for (
+    const text of [
+      "生理時鐘亂最難搞，我也試過硬撐結果更清醒。",
+      "那家店我確認了，晚點再跟妳說。",
+      "手沖喝起來跟妳做的感覺差很多。",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        assertHintFactClaimsSupported({
+          text,
+          field: "reply",
+          context: withoutExperience,
+        }),
+      Error,
+      `${ERROR}:user:history:experienced`,
+    );
+  }
+
+  const grounded = buildHintFactContext({
+    turns: [
+      { role: "user", text: "我以前也試過硬撐，結果反而更清醒。" },
+      { role: "ai", text: "真的，生理時鐘亂掉很難調。" },
+    ],
+  });
+  assertHintFactClaimsSupported({
+    text: "我以前也試過硬撐，結果反而更清醒。",
+    field: "reply",
+    context: grounded,
+  });
+  for (
+    const safeFutureOrPartnerLine of [
+      "我下次先查一下，再跟妳說。",
+      "好，下次路過確認完再來報告。",
+      "妳覺得這杯喝起來會不會太酸？",
+      "這杯喝起來會很酸嗎？",
+    ]
+  ) {
+    assertHintFactClaimsSupported({
+      text: safeFutureOrPartnerLine,
+      field: "reply",
+      context: withoutExperience,
+    });
+  }
+});
+
 // P1 對抗審：asksPlace 新增的「在X(?=發現|找到|喝到…)」pattern 沒限定 X 是
 // 地點名詞，會把「在聊天過程中發現」「在等你的時候」這種心情/動作句抓成
 // venue candidate 誤殺。X 不具地點形態時必須落 low 放行，不確定就不殺。
