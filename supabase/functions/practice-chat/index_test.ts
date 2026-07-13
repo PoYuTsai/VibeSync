@@ -4186,11 +4186,11 @@ Deno.test("direct Game Debrief retries one rejected Claude card with the exact r
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
-Deno.test("direct Debrief exhausts two Claude attempts without recording canned output", async () => {
+Deno.test("direct Debrief exhausts three Claude attempts without recording canned output", async () => {
   const { response, json, state } = await run({
     ledger: beginnerStartedLedger(),
     env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-    claudeReplies: ["not json", "["],
+    claudeReplies: ["not json", "[", "still not json"],
   }, debriefBody({ requestId: "direct-debrief-both-invalid" }));
 
   assertEquals(response.status, 503);
@@ -4200,7 +4200,7 @@ Deno.test("direct Debrief exhausts two Claude attempts without recording canned 
   });
   assertEquals("card" in json, false);
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 0);
   assertEquals(releaseDebriefCalls(state).length, 1);

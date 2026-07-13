@@ -130,6 +130,7 @@ const DEBRIEF_TIMEOUT_MS = 12000;
 const DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS = 24000;
 const DEBRIEF_IN_FLIGHT_STALE_MS = 105000;
 const DIRECT_PRACTICE_GENERATION_ATTEMPTS = 2;
+const DIRECT_PRACTICE_DEBRIEF_ATTEMPTS = 3;
 const DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS = 24000;
 const LEGACY_CLIENT_QUALITY_SCHEMA_VERSION = "typed-facts-v1";
 // 2026-07-13 probe: game hint 在 650 tokens 下 DeepSeek 47% finish_reason=length
@@ -606,7 +607,7 @@ function debriefRetryReason(error: unknown): string {
     return "suggestedLine 補了逐字稿沒有的事實；她問劇名、店名或地點但逐字稿沒答案時，不得編名稱，改用不爆雷、還在想怎麼形容或反問偏好來接";
   }
   if (message.includes("debrief_hint_assessment_revision_required")) {
-    return "上一版把 exact Hint 當成問題或反轉策略；若她後續有接球/延續且沒有明確拒絕或糾正，hintAssessment 必須 preserved，visible 欄位只能寫下一步，不得檢討 Hint";
+    return "上一版把 exact Hint 當成問題或反轉策略；若她回『不是 X，是 Y』，只能寫『她補充真正原因是 Y，下一步沿 Y 接』，不得寫 Hint／這句／回覆猜錯、誤判、偏保守或有問題";
   }
   if (message.includes("debrief_hint_assessment_missing")) {
     return "缺少最外層 hidden-only hintAssessment；exact Hint 後續有接球時必須 preserved";
@@ -3791,7 +3792,7 @@ export function createPracticeChatHandler(
           debriefModel = CLAUDE_SONNET_MODEL;
           for (
             let attempt = 1;
-            attempt <= DIRECT_PRACTICE_GENERATION_ATTEMPTS;
+            attempt <= DIRECT_PRACTICE_DEBRIEF_ATTEMPTS;
             attempt++
           ) {
             const retryBaseDebriefMessages: ChatMessage[] = attempt > 1 &&

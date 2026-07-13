@@ -1646,20 +1646,31 @@ function assertGeneratedDebriefQuality(
     latestOnly: true,
     errorCode: "debrief_quality_invalid_suggested_line_not_grounded",
   });
-  for (const analyticalText of debriefAnalyticalFields(card)) {
-    assertPracticeTextGroundedInTurns({
-      visibleText: analyticalText,
-      turns: opts.turns,
-      errorCode: "debrief_quality_invalid_field_not_grounded",
-    });
-  }
-  if (card.gameBreakdown) {
-    for (const value of Object.values(card.gameBreakdown)) {
+  if (opts.serverOwnsHintStrategy === true) {
+    if (card.gameBreakdown) {
       assertPracticeTextGroundedInTurns({
-        visibleText: value,
+        visibleText: card.gameBreakdown.nextFirstLine,
         turns: opts.turns,
-        errorCode: "debrief_quality_invalid_game_breakdown_not_grounded",
+        latestOnly: true,
+        errorCode: "debrief_quality_invalid_next_first_line_not_grounded",
       });
+    }
+  } else {
+    for (const analyticalText of debriefAnalyticalFields(card)) {
+      assertPracticeTextGroundedInTurns({
+        visibleText: analyticalText,
+        turns: opts.turns,
+        errorCode: "debrief_quality_invalid_field_not_grounded",
+      });
+    }
+    if (card.gameBreakdown) {
+      for (const value of Object.values(card.gameBreakdown)) {
+        assertPracticeTextGroundedInTurns({
+          visibleText: value,
+          turns: opts.turns,
+          errorCode: "debrief_quality_invalid_game_breakdown_not_grounded",
+        });
+      }
     }
   }
 }
