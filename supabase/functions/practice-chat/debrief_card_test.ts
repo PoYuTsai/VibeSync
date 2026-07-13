@@ -787,6 +787,7 @@ Deno.test("production repair rewrites preserved exact Hint critique with grounde
   assertEquals(repaired.summary.includes("哈哈有慢慢開機了"), true);
   assertEquals(repaired.suggestedLine.includes("哈哈有慢慢開機了"), true);
   assertEquals(repaired.suggestedLine.includes("喝咖啡"), false);
+  assertEquals(repaired.suggestedLine.includes("慢慢進入狀態"), false);
   assertEquals(repaired.summary.includes("禮貌收尾"), false);
   assertEquals(repaired.watchouts[0].includes("下一步"), true);
   assertEquals(JSON.stringify(repaired).includes("hintAssessment"), false);
@@ -828,9 +829,77 @@ Deno.test("production repair rewrites preserved exact Hint critique with grounde
     false,
   );
   assertEquals(
+    gameRepaired.gameBreakdown?.nextFirstLine.includes("慢慢進入狀態"),
+    false,
+  );
+  assertEquals(
     JSON.stringify(gameRepaired.gameBreakdown).includes("提示太保守"),
     false,
   );
+});
+
+Deno.test("production repair writes a concrete coffee follow-up instead of canned slow-entry text", () => {
+  const turns = [
+    {
+      role: "user" as const,
+      text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+    },
+    { role: "ai" as const, text: "哦？哪家啊？我最近也在找新的口袋名單" },
+    {
+      role: "user" as const,
+      text: "我沒記店名，只記得香味很衝擊。妳口袋名單都怎麼篩的？",
+    },
+    {
+      role: "ai" as const,
+      text: "我會先看裝潢跟氣味對不對，然後一定點一杯單品黑咖啡試水溫。",
+    },
+  ];
+  const appliedCoffeeHint = {
+    turnIndex: 2,
+    type: "steady" as const,
+    originalHintText: "我沒記店名，只記得香味很衝擊。妳口袋名單都怎麼篩的？",
+    sentText: "我沒記店名，只記得香味很衝擊。妳口袋名單都怎麼篩的？",
+    exact: true,
+    decision: {
+      phase: "P5_CLOSE",
+      targetVariable: "Investment + invite",
+      move: "build_connection",
+      inviteRoute: "build",
+      rationale: "不編店名，先接她的口袋名單標準。",
+    },
+  };
+
+  const repaired = parseDebriefCard(
+    JSON.stringify({
+      ...generatedQualityCard,
+      summary: "你有照提示做，但提示太保守，沒有收邀約。",
+      strengths: ["你有照提示做，但這句只是保守承接。"],
+      watchouts: ["照提示後，球沒有丟回她。"],
+      suggestedLine: "週末一起去那間咖啡店吧？",
+      dateChanceReason: "這句提示偏保守，讓互動停住。",
+      nextInviteMove: "直接丟一個咖啡邀約窗口。",
+      gameBreakdown: {
+        phaseReached: "提示偏保守，還沒建立熟悉。",
+        missedVariable: "提示太保守。",
+        failureState: "太平淡。",
+        nextFirstLine: "週末一起去那間咖啡店吧？",
+        inviteDirection: "先直接丟一個咖啡邀約窗口。",
+      },
+    }),
+    {
+      allowGameBreakdown: true,
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      turns,
+      appliedHintTurns: [appliedCoffeeHint],
+      repairPreservedHintCritique: true,
+    },
+  );
+
+  assertEquals(repaired.suggestedLine.includes("最在意哪一個"), true);
+  assertEquals(repaired.suggestedLine.includes("慢慢進入狀態"), false);
+  assertEquals(repaired.suggestedLine.includes("週末一起"), false);
+  assertEquals(repaired.gameBreakdown?.nextFirstLine, repaired.suggestedLine);
 });
 
 Deno.test("preserved Debrief may critique her response or a clearly identified non-Hint user turn", () => {

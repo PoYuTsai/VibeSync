@@ -1199,6 +1199,20 @@ function cardVisiblyReversesPreservedHint(card: DebriefCard): boolean {
     .test(visible);
 }
 
+function preservedHintRepairNextLine(anchor: string): string {
+  const normalized = normalizedPracticeText(anchor);
+  if (/(?:咖啡|口袋名單|裝潢|氣味|香味|單品|黑咖啡)/u.test(normalized)) {
+    return `「${anchor}」這個標準很細，妳最在意哪一個？`;
+  }
+  if (/(?:作息|時差|長班|上班|追劇|懸疑劇)/u.test(normalized)) {
+    return `「${anchor}」聽起來很硬，妳都怎麼拉回來？`;
+  }
+  if (/(?:賴床|開機|睡醒|醒了)/u.test(normalized)) {
+    return `「${anchor}」那我先陪妳用低速模式聊。`;
+  }
+  return `「${anchor}」這個判斷很有畫面，妳通常怎麼選？`;
+}
+
 function repairPreservedHintCritiqueCard(
   card: DebriefCard,
   appliedHintTurns: AppliedHintTurn[],
@@ -1229,7 +1243,7 @@ function repairPreservedHintCritiqueCard(
     guardVisibleText(`下一步少一個追問，多留你對「${anchor}」的生活感。`),
   ];
   const suggestedLine = guardVisibleText(
-    `聽起來「${anchor}」，我今天也想先慢慢進入狀態。`,
+    preservedHintRepairNextLine(anchor),
   );
   const dateChanceReason = guardVisibleText(
     afterQuote
