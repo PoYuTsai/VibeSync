@@ -837,8 +837,8 @@ Deno.test("production repair rewrites preserved exact Hint critique with grounde
     appliedHintTurns: [appliedExactHint],
     repairPreservedHintCritique: true,
   });
-  assertEquals(repaired.summary.includes("哈哈有慢慢開機了"), true);
-  assertEquals(repaired.suggestedLine.includes("哈哈有慢慢開機了"), true);
+  assertEquals(repaired.summary.includes("開機狀態"), true);
+  assertEquals(repaired.suggestedLine.includes("低速模式"), true);
   assertEquals(repaired.suggestedLine.includes("喝咖啡"), false);
   assertEquals(repaired.suggestedLine.includes("慢慢進入狀態"), false);
   assertEquals(repaired.summary.includes("禮貌收尾"), false);
@@ -866,15 +866,15 @@ Deno.test("production repair rewrites preserved exact Hint critique with grounde
     },
   );
   assertEquals(
-    gameRepaired.gameBreakdown?.missedVariable.includes("哈哈有慢慢開機了"),
+    gameRepaired.gameBreakdown?.missedVariable.includes("開機狀態"),
     true,
   );
   assertEquals(
-    gameRepaired.gameBreakdown?.inviteDirection.includes("哈哈有慢慢開機了"),
+    gameRepaired.gameBreakdown?.inviteDirection.includes("開機狀態"),
     true,
   );
   assertEquals(
-    gameRepaired.gameBreakdown?.nextFirstLine.includes("哈哈有慢慢開機了"),
+    gameRepaired.gameBreakdown?.nextFirstLine.includes("低速模式"),
     true,
   );
   assertEquals(

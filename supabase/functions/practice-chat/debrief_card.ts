@@ -1199,21 +1199,42 @@ function cardVisiblyReversesPreservedHint(card: DebriefCard): boolean {
     .test(visible);
 }
 
-function preservedHintRepairNextLine(anchor: string): string {
-  const normalized = normalizedPracticeText(anchor);
-  if (/(?:咖啡|口袋名單|裝潢|氣味|香味|單品|黑咖啡)/u.test(normalized)) {
-    return `「${anchor}」這個標準很細，妳最在意哪一個？`;
+function preservedHintTopicLabel(value: string): string {
+  const normalized = normalizedPracticeText(value);
+  if (
+    /(?:咖啡|口袋名單|裝潢|氣味|香味|單品|黑咖啡|拿鐵|美式)/u.test(normalized)
+  ) {
+    return "咖啡偏好";
+  }
+  if (/(?:追什麼劇|什麼劇|追劇|好看嗎|片單|懸疑|推薦)/u.test(normalized)) {
+    return "追劇片單";
+  }
+  if (/(?:作息|時差|長班|上班|飛久|飛回來|飛回|抗戰)/u.test(normalized)) {
+    return "時差狀態";
+  }
+  if (/(?:賴床|開機|睡醒|醒了)/u.test(normalized)) {
+    return "開機狀態";
+  }
+  return "她剛丟回來的話題";
+}
+
+function preservedHintRepairNextLine(anchor: string, context = anchor): string {
+  const normalized = normalizedPracticeText(`${anchor}\n${context}`);
+  if (
+    /(?:黑咖啡|單品|美式|拿鐵|咖啡|口袋名單|裝潢|氣味|香味)/u.test(normalized)
+  ) {
+    return "妳剛說咖啡偏好，清爽感跟香氣妳最在意哪一個？";
   }
   if (/(?:追什麼劇|什麼劇|追劇|好看嗎|片單|懸疑)/u.test(normalized)) {
     return `我昨晚追到停不下來；你飛久都怎麼撐過時差？`;
   }
   if (/(?:作息|時差|長班|上班|飛久|飛回來)/u.test(normalized)) {
-    return `「${anchor}」聽起來很硬，妳都怎麼拉回來？`;
+    return "飛回來還在抗戰時差，妳都怎麼拉回來？";
   }
   if (/(?:賴床|開機|睡醒|醒了)/u.test(normalized)) {
-    return `「${anchor}」那我先陪妳用低速模式聊。`;
+    return "那我先陪妳用低速模式聊，等妳慢慢開機。";
   }
-  return `「${anchor}」這個判斷很有畫面，妳通常怎麼選？`;
+  return "剛剛這個點我有接到，妳比較想先聊哪一段？";
 }
 
 function repairPreservedHintCritiqueCard(
@@ -1224,51 +1245,49 @@ function repairPreservedHintCritiqueCard(
   const latestHint = appliedHintTurns.reduce((latest, hint) =>
     hint.turnIndex >= latest.turnIndex ? hint : latest
   );
-  const afterQuote = compactDebriefQuote(
-    assistantTextNearHint(turns, latestHint.turnIndex, "after"),
-  );
+  const afterText = assistantTextNearHint(turns, latestHint.turnIndex, "after");
+  const afterQuote = compactDebriefQuote(afterText);
   if (!afterQuote) return card;
   const beforeQuote = compactDebriefQuote(
     assistantTextNearHint(turns, latestHint.turnIndex, "before"),
   );
   const anchor = afterQuote || beforeQuote || "這個話題";
+  const topic = preservedHintTopicLabel(`${afterText}\n${beforeQuote}`);
   const setup = beforeQuote || anchor;
 
   const summary = guardVisibleText(
     afterQuote
-      ? `你有照提示做，她也接住「${afterQuote}」。`
+      ? `你有照提示做，她也願意延續${topic}。`
       : "你有照提示做，這輪先保留低壓節奏。",
   );
   const strengths = [
-    guardVisibleText(`你先接她「${setup}」，沒有急著推進。`),
+    guardVisibleText(`你先接住${topic}，沒有急著推進。`),
   ];
   const watchouts = [
-    guardVisibleText(`下一步少一個追問，多留你對「${anchor}」的生活感。`),
+    guardVisibleText(`下一步別只追問，多補一點你對${topic}的生活感。`),
   ];
   const suggestedLine = guardVisibleText(
-    preservedHintRepairNextLine(anchor),
+    preservedHintRepairNextLine(anchor, afterText),
   );
   const dateChanceReason = guardVisibleText(
-    afterQuote
-      ? `她願意延續「${afterQuote}」和你來回。`
-      : "她願意延續話題和你來回。",
+    afterQuote ? `她願意延續${topic}和你來回。` : "她願意延續話題和你來回。",
   );
   const nextInviteMove = guardVisibleText(
-    `先接「${anchor}」，再補一點你的生活畫面。`,
+    `先接${topic}，再補一點你的生活畫面。`,
   );
   const gameBreakdown = card.gameBreakdown
     ? {
       ...card.gameBreakdown,
-      phaseReached: guardVisibleText(`熟悉進度仍在延續「${anchor}」。`),
+      phaseReached: guardVisibleText(`熟悉進度仍在延續${topic}。`),
       missedVariable: guardVisibleText(
-        `下一步缺的是你對「${anchor}」的生活畫面。`,
+        `下一步缺的是你對${topic}的生活畫面。`,
       ),
       failureState: guardVisibleText(
-        `她仍停在低壓延續「${anchor}」的節奏。`,
+        `她仍停在低壓延續${topic}的節奏。`,
       ),
       nextFirstLine: suggestedLine,
       inviteDirection: guardVisibleText(
-        `先補你對「${anchor}」的生活畫面，保留低壓節奏。`,
+        `先補你對${topic}的生活畫面，保留低壓節奏。`,
       ),
     }
     : null;
