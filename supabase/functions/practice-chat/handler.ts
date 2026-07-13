@@ -129,7 +129,7 @@ const DEBRIEF_TIMEOUT_MS = 12000;
 // owner fence deliberately favor a verified result over a fast 503.
 const DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS = 24000;
 const DEBRIEF_IN_FLIGHT_STALE_MS = 105000;
-const DIRECT_PRACTICE_GENERATION_ATTEMPTS = 2;
+const DIRECT_PRACTICE_GENERATION_ATTEMPTS = 3;
 const DIRECT_PRACTICE_DEBRIEF_ATTEMPTS = 3;
 const DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS = 24000;
 const LEGACY_CLIENT_QUALITY_SCHEMA_VERSION = "typed-facts-v1";
@@ -2719,6 +2719,7 @@ export function createPracticeChatHandler(
             ...generatedHintParseOptions,
             semanticAdjudicated: false,
             deferVisibleGuardsToSemantic: false,
+            skipLexicalStyleGuards: true,
           }));
         let previousDirectHintCandidate: string | null = null;
         const parseGeneratedHint = async (

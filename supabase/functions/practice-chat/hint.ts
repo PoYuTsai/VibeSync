@@ -118,6 +118,13 @@ interface HintParseOptions {
   /** Runtime semantic reviewer owns facts/grounding/style; parser keeps hard safety. */
   semanticAdjudicated?: boolean;
   /**
+   * Direct Claude generation owns natural phrasing. Keep deterministic safety,
+   * fact, route, canned-text, and substantive-move guards, but do not reject a
+   * grounded reply only because both options use questions or the coaching
+   * sentence misses a lexical style pattern.
+   */
+  skipLexicalStyleGuards?: boolean;
+  /**
    * A generated candidate is never user-visible. Let the semantic reviewer
    * repair visible safety/style defects, then run the normal hard guard again
    * on the reviewed result before recording or returning it.
@@ -1456,6 +1463,7 @@ function assertGeneratedHintQuality(opts: {
     throw new Error("hint_quality_invalid_duplicate_replies");
   }
   if (
+    opts.parseOptions.skipLexicalStyleGuards !== true &&
     looksLikePureQuestion(opts.warmUp) && looksLikePureQuestion(opts.steady)
   ) {
     throw new Error("hint_quality_invalid_pure_questions");
@@ -1520,7 +1528,10 @@ function assertGeneratedHintQuality(opts: {
       errorCode: "hint_quality_invalid_not_grounded",
     });
   }
-  if (opts.parseOptions.mode === "game") {
+  if (
+    opts.parseOptions.mode === "game" &&
+    opts.parseOptions.skipLexicalStyleGuards !== true
+  ) {
     assertGeneratedGameCoachingSubstance(opts.coaching);
   }
 }

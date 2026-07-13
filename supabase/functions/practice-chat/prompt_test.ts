@@ -930,6 +930,8 @@ Deno.test("server-owned Debrief keeps the applied Hint strategy locked", () => {
   assert(user.includes("不能寫成修正 Hint"));
   assert(user.includes("不是 X，是 Y"));
   assert(user.includes("她補充真正原因是 Y"));
+  assert(user.includes("指定你之後回報"));
+  assert(user.includes("不是禮貌收尾"));
   assert(user.includes("明確要求停止聯絡"));
   assert(user.includes("尊重界線並停止推進"));
   assert(user.includes("不必硬塞固定句型"));

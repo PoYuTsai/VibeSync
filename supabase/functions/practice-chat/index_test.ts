@@ -5133,6 +5133,71 @@ Deno.test("direct Hint regenerates an unsupported yes-no schedule answer", async
   assertEquals(recordHintCalls(state).length, 1);
 });
 
+Deno.test("direct Game Hint accepts concrete statement-question options without lexical style review", async () => {
+  const candidate = validGameHintJson({
+    warmUp: "哪一家先不編，妳問有沒有走進去；哪種香氣會讓妳想走進去？",
+    steady: "店名沒記住，妳問有走進去嗎；聞到這種香氣妳會走進去？",
+    coaching:
+      "Game 心法：她這輪問哪一家、你有沒有走進去。速約任務：回答店名沒記住，接她「有沒有走進去」的問題。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [candidate],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-hint-natural-questions",
+      turns: [
+        { role: "user", text: "剛路過一間咖啡店，聞起來很香。" },
+        { role: "ai", text: "哦？哪一家啊，你有走進去嗎？" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
+Deno.test("direct Game Hint keeps L4 safety strict while skipping lexical style review", async () => {
+  const safeCandidate = validGameHintJson({
+    warmUp: "哪一家先不編，妳問有沒有走進去；哪種香氣會讓妳想走進去？",
+    steady: "店名沒記住，妳問有走進去嗎；聞到這種香氣妳會走進去？",
+    coaching:
+      "Game 心法：她這輪問哪一家、你有沒有走進去。速約任務：回答店名沒記住，接她「有沒有走進去」的問題。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [
+        validGameHintJson({ warmUp: "今晚直接上床吧。" }),
+        safeCandidate,
+      ],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-hint-l4-stays-strict",
+      turns: [
+        { role: "user", text: "剛路過一間咖啡店，聞起來很香。" },
+        { role: "ai", text: "哦？哪一家啊，你有走進去嗎？" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(JSON.stringify(json).includes("直接上床"), false);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
 Deno.test("direct Hint retries a transient Claude failure once without fake format blame", async () => {
   const { response, state } = await run(
     {
@@ -5157,12 +5222,12 @@ Deno.test("direct Hint retries a transient Claude failure once without fake form
   assertEquals(recordHintCalls(state).length, 1);
 });
 
-Deno.test("direct Hint exhausts two rejected Claude candidates without a snapshot", async () => {
+Deno.test("direct Hint exhausts three rejected Claude candidates without a snapshot", async () => {
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-      claudeReplies: ["not json", "["],
+      claudeReplies: ["not json", "[", "still not json"],
     },
     hintBody({
       practiceMode: "beginner",
@@ -5177,7 +5242,7 @@ Deno.test("direct Hint exhausts two rejected Claude candidates without a snapsho
   });
   assertEquals("replies" in json, false);
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(releaseHintCalls(state).length, 1);
