@@ -1,10 +1,10 @@
 enum PracticeHintReplyType { warmUp, steady }
 
 /// The only Hint payload version that is safe to persist and restore locally.
-const String kPracticeHintQualitySchemaVersion = 'typed-facts-v1';
+const String kPracticeHintQualitySchemaVersion = 'semantic-quality-v2';
 
 /// The only Debrief payload version that is safe to persist and restore.
-const String kPracticeDebriefQualitySchemaVersion = 'typed-facts-v1';
+const String kPracticeDebriefQualitySchemaVersion = 'semantic-quality-v2';
 
 /// The coaching decision behind a generated Hint.
 ///

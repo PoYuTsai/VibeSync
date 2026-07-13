@@ -503,6 +503,8 @@ void main() {
       );
 
       expect(capturedBody?['requestId'], 'debrief-req-1');
+      expect(capturedBody?['acceptedQualitySchemaVersion'],
+          kPracticeDebriefQualitySchemaVersion);
     });
 
     test(
@@ -1592,6 +1594,8 @@ void main() {
       expect(captured.functionName, 'practice-chat');
       expect(captured.body?['mode'], 'hint');
       expect(captured.body?['prefetch'], false);
+      expect(captured.body?['acceptedQualitySchemaVersion'],
+          kPracticeHintQualitySchemaVersion);
       expect(captured.body?['practiceMode'], 'beginner');
       expect(captured.body?['sessionId'], 'session-1');
       expect(captured.body?['expectedAiCount'], 7);
@@ -1991,6 +1995,7 @@ void main() {
       expect(captured.body, {
         'mode': 'hint',
         'sessionId': 'session-1',
+        'acceptedQualitySchemaVersion': kPracticeHintQualitySchemaVersion,
         'requestId': 'hint-prefetch-1',
         'expectedAiCount': 3,
         'prefetch': true,

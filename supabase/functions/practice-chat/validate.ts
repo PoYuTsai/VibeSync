@@ -22,6 +22,7 @@ export const MAX_TEXT_LEN = 500; // 單則訊息字數上限
 export const MAX_MEMORY_SUMMARY_LEN = 1000;
 export const MAX_SESSION_ID_LEN = 64;
 export const MAX_VISIBLE_THREAD_ID_LEN = 128;
+export const SEMANTIC_QUALITY_SCHEMA_VERSION = "semantic-quality-v2";
 
 export type TurnRole = "user" | "ai";
 
@@ -54,6 +55,12 @@ export interface AppliedHintTurn {
 export interface PracticeChatRequest {
   mode: PracticeMode;
   practiceMode: PracticeLearningMode;
+  /**
+   * Response capability only. Missing identifies legacy clients that require
+   * the typed-facts-v1 compatibility marker; it never changes server-side
+   * generation, validation, or the stored snapshot certification.
+   */
+  acceptedQualitySchemaVersion?: typeof SEMANTIC_QUALITY_SCHEMA_VERSION;
   /**
    * client 攜帶的溫度三元組分數（續聊同一位保溫用）。選填：缺值時 server 以
    * ledger 權威值→難度起始值 fallback；ledger 建檔後 client 值一律被忽略。
@@ -119,6 +126,18 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
   const mode = raw.mode;
   if (mode !== "chat" && mode !== "debrief" && mode !== "hint") {
     throw new Error("invalid_mode");
+  }
+
+  let acceptedQualitySchemaVersion:
+    | typeof SEMANTIC_QUALITY_SCHEMA_VERSION
+    | undefined;
+  if (raw.acceptedQualitySchemaVersion !== undefined) {
+    if (
+      raw.acceptedQualitySchemaVersion !== SEMANTIC_QUALITY_SCHEMA_VERSION
+    ) {
+      throw new Error("invalid_acceptedQualitySchemaVersion");
+    }
+    acceptedQualitySchemaVersion = SEMANTIC_QUALITY_SCHEMA_VERSION;
   }
 
   let practiceMode: PracticeLearningMode = "standard";
@@ -421,6 +440,7 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
   return {
     mode,
     practiceMode,
+    acceptedQualitySchemaVersion,
     temperatureScore,
     familiarityScore,
     sessionId,

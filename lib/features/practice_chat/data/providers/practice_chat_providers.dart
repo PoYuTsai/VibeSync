@@ -41,9 +41,9 @@ const int kPracticePromptRecentTurns = 80;
 const int kPracticeMemorySummaryMaxChars = 800;
 
 /// 專案鐵則：loading state 下 await 網路一律 .timeout。
-/// server 會給主 provider 12s，再給生成式 failover 12s；加上冷啟動與 RPC
-/// 裕度後，client 取 45s，只防 loading 卡死、不搶先放棄。
-const Duration kPracticeHintRequestTimeout = Duration(seconds: 45);
+/// server 會先生成，再做獨立語意審核／必要時修復；最差可有三次 provider
+/// 呼叫。client 取 90s，明確以等待換取 generated-only Hint 成功率。
+const Duration kPracticeHintRequestTimeout = Duration(seconds: 90);
 
 /// server chat 主回覆最壞 ≈ 30s × 2 次嘗試＋輪次分類器 30s ≈ 90s，
 /// client 取 120s 留裕度：只防 loading 卡死，不搶在 server 完成前放棄。

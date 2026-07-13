@@ -388,10 +388,14 @@ class PracticeDrawUpgradeRequiredException implements Exception {
   String toString() => 'PracticeDrawUpgradeRequiredException: $message';
 }
 
+/// Debrief generation plus semantic adjudication may use up to three bounded
+/// provider calls; keep this aligned with the 105s server owner fence.
+const Duration kPracticeDebriefRequestTimeout = Duration(seconds: 90);
+
 class PracticeChatApiService {
   PracticeChatApiService({
     PracticeChatInvoker? invoker,
-    Duration debriefRequestTimeout = const Duration(seconds: 50),
+    Duration debriefRequestTimeout = kPracticeDebriefRequestTimeout,
     String Function()? requestIdFactory,
     PracticePendingDebriefStore? pendingDebriefStore,
   })  : _invoke = _mapFunctionExceptions(invoker ?? _defaultInvoker),
@@ -697,6 +701,7 @@ class PracticeChatApiService {
     return {
       'mode': 'hint',
       'sessionId': sessionId,
+      'acceptedQualitySchemaVersion': kPracticeHintQualitySchemaVersion,
       if (normalizedRequestId != null && normalizedRequestId.isNotEmpty)
         'requestId': normalizedRequestId,
       if (expectedAiCount != null) 'expectedAiCount': expectedAiCount,
@@ -748,6 +753,7 @@ class PracticeChatApiService {
     };
     final intentBody = <String, dynamic>{
       ...durableIntentBody,
+      'acceptedQualitySchemaVersion': kPracticeDebriefQualitySchemaVersion,
       if (normalizedMemorySummary != null && normalizedMemorySummary.isNotEmpty)
         'memorySummary': normalizedMemorySummary,
       if (continuationPartnerState != null)

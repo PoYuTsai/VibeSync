@@ -3,7 +3,7 @@
 
 export type HintRequestState = "generating" | "prefetched" | "settled";
 
-export const HINT_QUALITY_SCHEMA_VERSION = "typed-facts-v1";
+export const HINT_QUALITY_SCHEMA_VERSION = "semantic-quality-v2";
 
 export interface HintRequestLedgerRow {
   state: HintRequestState;

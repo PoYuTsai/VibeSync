@@ -56,6 +56,7 @@ import {
   type HintFactClaim,
   partnerFactClaimsFromProfile,
 } from "./hint_fact_ledger.ts";
+import type { HintTacticalMove } from "./semantic_quality.ts";
 
 export type HintReplyType = "warm_up" | "steady";
 
@@ -104,6 +105,14 @@ interface HintParseOptions {
   trustedFactClaims?: HintFactClaim[];
   /** Dead legacy fallback tests intentionally do not opt into this gate. */
   enforceGeneratedQuality?: boolean;
+  /** Runtime semantic reviewer owns facts/grounding/style; parser keeps hard safety. */
+  semanticAdjudicated?: boolean;
+  /**
+   * A generated candidate is never user-visible. Let the semantic reviewer
+   * repair visible safety/style defects, then run the normal hard guard again
+   * on the reviewed result before recording or returning it.
+   */
+  deferVisibleGuardsToSemantic?: boolean;
 }
 
 const MAX_REPLY_LENGTH = 80;
@@ -732,6 +741,7 @@ export function buildHintDecision(
     rationale: string;
     replyType: HintReplyType;
     replyText: string;
+    tacticalMove?: HintTacticalMove;
   },
 ): PracticeHintDecision {
   const temperatureScore = clampTemperature(opts.temperatureScore);
@@ -781,16 +791,23 @@ export function buildHintDecision(
       : allowedRoute === "repair"
       ? "repair"
       : "build";
+    const tacticalMove = inviteRoute === "repair"
+      ? "repair"
+      : inviteRoute === "soft"
+      ? "soft_invite"
+      : inviteRoute === "direct"
+      ? "direct_invite"
+      : opts.tacticalMove;
+    if (
+      inviteRoute === "build" &&
+      (tacticalMove === "soft_invite" || tacticalMove === "direct_invite")
+    ) {
+      throw new Error("hint_quality_invalid_semantic_invite_move");
+    }
     return {
       phase: snapshot.phase,
       targetVariable: snapshot.targetVariable,
-      move: inviteRoute === "repair"
-        ? "repair_safety"
-        : inviteRoute === "soft"
-        ? "soft_invite"
-        : inviteRoute === "direct"
-        ? "direct_invite"
-        : "build_connection",
+      move: tacticalMove ?? "build_connection",
       inviteRoute,
       rationale,
     };
@@ -830,14 +847,21 @@ export function buildHintDecision(
     : actualLevel === "soft"
     ? "soft_invite_ready"
     : "not_ready";
+  const tacticalMove = inviteRoute === "soft_invite_ready"
+    ? "soft_invite"
+    : inviteRoute === "direct_invite_ready"
+    ? "direct_invite"
+    : opts.tacticalMove;
+  if (
+    inviteRoute === "not_ready" &&
+    (tacticalMove === "soft_invite" || tacticalMove === "direct_invite")
+  ) {
+    throw new Error("hint_quality_invalid_semantic_invite_move");
+  }
   return {
     phase: relationshipStage.stage,
     targetVariable,
-    move: inviteRoute === "not_ready"
-      ? "build_connection"
-      : inviteRoute === "soft_invite_ready"
-      ? "soft_invite"
-      : "direct_invite",
+    move: tacticalMove ?? "build_connection",
     inviteRoute,
     rationale,
   };
@@ -1342,13 +1366,15 @@ function requiredString(
   if (capped.length === 0) {
     throw new Error(`hint_missing_${field}`);
   }
-  rejectBossyPasteableHintReply(capped, field);
-  rejectInternalLabelLeak(capped);
-  rejectL4UnsafeVisibleText(capped, "hint_l4_unsafe");
-  if (options.enforceGeneratedQuality === true) {
-    rejectKnownCannedPracticeText(capped, "hint_canned_visible_text");
-    if (field !== "coaching") {
-      rejectGenericPasteablePracticeText(capped, "hint_quality_invalid");
+  if (options.deferVisibleGuardsToSemantic !== true) {
+    rejectBossyPasteableHintReply(capped, field);
+    rejectInternalLabelLeak(capped);
+    rejectL4UnsafeVisibleText(capped, "hint_l4_unsafe");
+    if (options.enforceGeneratedQuality === true) {
+      rejectKnownCannedPracticeText(capped, "hint_canned_visible_text");
+      if (field !== "coaching" && options.semanticAdjudicated !== true) {
+        rejectGenericPasteablePracticeText(capped, "hint_quality_invalid");
+      }
     }
   }
   return capped;
@@ -1412,6 +1438,7 @@ function assertGeneratedHintQuality(opts: {
   parseOptions: HintParseOptions;
 }): void {
   if (opts.parseOptions.enforceGeneratedQuality !== true) return;
+  if (opts.parseOptions.deferVisibleGuardsToSemantic === true) return;
   if (
     normalizedPracticeText(opts.warmUp) ===
       normalizedPracticeText(opts.steady)
@@ -1423,6 +1450,10 @@ function assertGeneratedHintQuality(opts: {
   ) {
     throw new Error("hint_quality_invalid_pure_questions");
   }
+  // Natural-language truth, grounding, and coaching substance are judged by
+  // the semantic reviewer in production. Keep the legacy lexical gate only
+  // for direct parser regression tests and old stored payload validation.
+  if (opts.parseOptions.semanticAdjudicated === true) return;
   if (opts.parseOptions.mode === "game") {
     const coaching = normalizedPracticeText(opts.coaching);
     if (

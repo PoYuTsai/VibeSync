@@ -12,6 +12,7 @@ import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import {
   type AppliedHintDecision,
   type AppliedHintTurn,
+  SEMANTIC_QUALITY_SCHEMA_VERSION,
   validateDrawRequest,
   validateRequest,
 } from "./validate.ts";
@@ -53,6 +54,7 @@ import { DEEPSEEK_MODEL, type DeepSeekArgs } from "./deepseek.ts";
 import {
   DEBRIEF_QUALITY_SCHEMA_VERSION,
   type DebriefCard,
+  parseDebriefCandidateObject,
   parseDebriefCard,
 } from "./debrief_card.ts";
 import {
@@ -109,6 +111,10 @@ import {
   type PracticeGenerationFailureClass,
   sanitizePracticeFailureCode,
 } from "./telemetry.ts";
+import {
+  type PracticeSemanticAdjudicator,
+  SemanticAdjudicationError,
+} from "./semantic_quality.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const CHAT_MAX_TOKENS = 200;
@@ -119,15 +125,17 @@ const DEBRIEF_TEMPERATURE = 0.5;
 const DEBRIEF_GENERATION_ATTEMPTS = 1;
 const DEBRIEF_TIMEOUT_MS = 12000;
 // Game Debrief has a larger prompt and five additional grounded fields.
-// Keep DeepSeek at 12s, then give the final Claude lifeline enough room while
-// staying below the 45s stale-owner and 50s client request windows.
+// Generation is followed by semantic review; the 90s client window and 105s
+// owner fence deliberately favor a verified result over a fast 503.
 const DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS = 24000;
-const DEBRIEF_IN_FLIGHT_STALE_MS = 45000;
+const DEBRIEF_IN_FLIGHT_STALE_MS = 105000;
+const LEGACY_CLIENT_QUALITY_SCHEMA_VERSION = "typed-facts-v1";
 // 2026-07-13 probe: game hint 在 650 tokens 下 DeepSeek 47% finish_reason=length
 // 截斷（JSON 收不完→誤報 provider_error）。提高到 1600 給 Game Hint 完整 JSON 空間。
 const HINT_MAX_TOKENS = 1600;
 const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 1;
+const PRACTICE_GENERATION_PROVIDER_CALL_BUDGET = 3;
 // Sacrifice a little wait time to reduce Game Hint timeout/failover and avoid
 // returning retryable 503s when the model is just slow. There is never a canned
 // fallback.
@@ -378,6 +386,7 @@ export interface PracticeChatHandlerDeps {
   createSupabaseClient: () => PracticeSupabaseClient;
   callDeepSeek: DeepSeekCaller;
   callClaude?: ClaudeCaller;
+  semanticAdjudicate?: PracticeSemanticAdjudicator;
   getEnv: (name: string) => string | undefined;
   now?: () => Date;
   randomUUID?: () => string;
@@ -1866,16 +1875,29 @@ export function createPracticeChatHandler(
     const responsePayloadWithCurrentUsage = (
       snapshot: Record<string, unknown>,
       deductedThisCall = 0,
-    ): Record<string, unknown> => ({
-      ...snapshot,
-      // A stored snapshot records historical billing provenance, not what this
-      // HTTP call deducted. Replays must report zero; settle/record paths pass
-      // the exact amount charged now. Remaining counters likewise come from
-      // this request's freshly prepared subscription so another session or
-      // device can never be rolled backwards by an old snapshot.
-      costDeducted: deductedThisCall,
-      ...remainingFrom(sub, limits, deductedThisCall),
-    });
+    ): Record<string, unknown> => {
+      const isSemanticQualitySnapshot =
+        snapshot.qualitySchemaVersion === SEMANTIC_QUALITY_SCHEMA_VERSION;
+      return {
+        ...snapshot,
+        // The DB snapshot keeps the semantic-quality-v2 certification. Only
+        // the HTTP envelope is downlevelled for build 322 and older clients;
+        // generation and replay validation never fall back to typed-facts.
+        ...(isSemanticQualitySnapshot
+          ? {
+            qualitySchemaVersion: request.acceptedQualitySchemaVersion ??
+              LEGACY_CLIENT_QUALITY_SCHEMA_VERSION,
+          }
+          : {}),
+        // A stored snapshot records historical billing provenance, not what this
+        // HTTP call deducted. Replays must report zero; settle/record paths pass
+        // the exact amount charged now. Remaining counters likewise come from
+        // this request's freshly prepared subscription so another session or
+        // device can never be rolled backwards by an old snapshot.
+        costDeducted: deductedThisCall,
+        ...remainingFrom(sub, limits, deductedThisCall),
+      };
+    };
 
     const baseLedgerColumns =
       "ai_count, charged, debrief_count, practice_mode, temperature_score, familiarity_score, partner_mood, partner_inner_thought, hint_count, game_state";
@@ -2614,6 +2636,8 @@ export function createPracticeChatHandler(
       const hintAttemptDurationsMs: number[] = [];
       const hintFailureClasses: PracticeGenerationFailureClass[] = [];
       const hintFailureCodes: string[] = [];
+      let hintSemanticAttempted = false;
+      let hintSemanticProviderCalls = 0;
       try {
         let lastError: unknown;
         const baseHintMessages = buildHintMessages({
@@ -2633,18 +2657,117 @@ export function createPracticeChatHandler(
           sceneContext,
           memorySummary: promptMemorySummary,
         });
-        const parseGeneratedHint = (rawHint: string) => {
-          const generatedHint = parseHintResult(rawHint, {
-            mode: request.practiceMode,
-            turns: request.turns,
-            sharedFactualEvidence: hintFactualEvidence.shared,
-            partnerFactualEvidence: hintFactualEvidence.partner,
-            trustedFactClaims: hintFactualEvidence.claims,
-            enforceGeneratedQuality: true,
+        const generatedHintParseOptions = {
+          mode: request.practiceMode,
+          turns: request.turns,
+          sharedFactualEvidence: hintFactualEvidence.shared,
+          partnerFactualEvidence: hintFactualEvidence.partner,
+          trustedFactClaims: hintFactualEvidence.claims,
+          enforceGeneratedQuality: true,
+          semanticAdjudicated: true,
+        } as const;
+        const parseGeneratedHint = async (
+          rawHint: string,
+          candidateProvider: "deepseek" | "anthropic",
+        ) => {
+          // This candidate is never returned or recorded. Defer visible-text
+          // defects so the semantic reviewer can repair them, then rerun the
+          // normal hard safety/FSM guard on the reviewed result below.
+          const candidateHint = parseHintResult(rawHint, {
+            ...generatedHintParseOptions,
+            deferVisibleGuardsToSemantic: true,
           });
+          const candidate = {
+            warmUp: candidateHint.replies[0].text,
+            steady: candidateHint.replies[1].text,
+            coaching: candidateHint.coaching,
+          };
+          if (!deps.semanticAdjudicate) {
+            throw new Error("semantic_adjudication_unavailable");
+          }
+          hintSemanticAttempted = true;
+          let semantic;
+          try {
+            semantic = await deps.semanticAdjudicate({
+              surface: "hint",
+              practiceMode: request.practiceMode,
+              candidate,
+              turns: request.turns,
+              trustedGenerationContext: JSON.stringify({
+                temperatureScore: hintTemperatureScore,
+                familiarityScore: hintFamiliarityScore,
+                partnerMood: hintPartnerMood,
+                serverInviteRouteEnforcedAfterReview: true,
+                sharedFacts: hintFactualEvidence.shared,
+                partnerFacts: hintFactualEvidence.partner,
+                typedFacts: hintFactualEvidence.claims,
+              }),
+              candidateProvider,
+              maxProviderCalls: Math.max(
+                0,
+                PRACTICE_GENERATION_PROVIDER_CALL_BUDGET - hintAttemptCount,
+              ),
+              deepSeekApiKey: apiKey,
+              claudeApiKey,
+              claudeModel: claudeFallbackModelForTier(sub.tier),
+              callDeepSeek: deps.callDeepSeek,
+              callClaude: deps.callClaude,
+              validateCandidate: (reviewedCandidate, strategies) => {
+                if (!strategies) {
+                  throw new Error("semantic_adjudication_invalid_strategy");
+                }
+                const hardChecked = parseHintResult(
+                  JSON.stringify(reviewedCandidate),
+                  { ...generatedHintParseOptions },
+                );
+                for (const [index, reply] of hardChecked.replies.entries()) {
+                  buildHintDecision({
+                    turns: request.turns,
+                    profile: request.profile,
+                    practiceMode: request.practiceMode,
+                    temperatureScore: hintTemperatureScore,
+                    familiarityScore: hintFamiliarityScore,
+                    partnerMood: hintPartnerMood,
+                    gameState: ledgerGameState,
+                    replyType: reply.type,
+                    replyText: reply.text,
+                    tacticalMove: index === 0
+                      ? strategies.warmUp.move
+                      : strategies.steady.move,
+                    rationale: index === 0
+                      ? strategies.warmUp.rationale
+                      : strategies.steady.rationale,
+                  });
+                }
+              },
+            });
+            hintSemanticProviderCalls += semantic.providerCalls;
+          } catch (error) {
+            if (error instanceof SemanticAdjudicationError) {
+              hintSemanticProviderCalls += error.providerCalls;
+            }
+            throw error;
+          }
+          if (!semantic.strategies) {
+            throw new Error("semantic_adjudication_invalid_strategy");
+          }
+          const generatedHint = parseHintResult(
+            JSON.stringify(semantic.candidate),
+            { ...generatedHintParseOptions },
+          );
+          logInfo("practice_chat_semantic_adjudication", {
+            user: summarizeUser(user.id),
+            surface: "hint",
+            practiceMode: request.practiceMode,
+            provider: semantic.provider ?? "test",
+            providerCalls: semantic.providerCalls,
+            repaired: semantic.repaired,
+            issueKinds: semantic.issueKinds,
+          });
+          const strategies = semantic.strategies;
           return {
             ...generatedHint,
-            replies: generatedHint.replies.map((reply) => ({
+            replies: generatedHint.replies.map((reply, index) => ({
               ...reply,
               decision: buildHintDecision({
                 turns: request.turns,
@@ -2656,9 +2779,12 @@ export function createPracticeChatHandler(
                 gameState: ledgerGameState,
                 replyType: reply.type,
                 replyText: reply.text,
-                rationale: `${
-                  reply.type === "warm_up" ? "升溫選項" : "穩住選項"
-                }：${generatedHint.coaching}`,
+                tacticalMove: index === 0
+                  ? strategies.warmUp.move
+                  : strategies.steady.move,
+                rationale: index === 0
+                  ? strategies.warmUp.rationale
+                  : strategies.steady.rationale,
               }),
             })) as typeof generatedHint.replies,
           };
@@ -2682,7 +2808,7 @@ export function createPracticeChatHandler(
                 jsonMode: true,
                 timeoutMs: hintTimeoutMs,
               });
-              hintResult = parseGeneratedHint(rawHint);
+              hintResult = await parseGeneratedHint(rawHint, "deepseek");
               hintLastFailureClass = null;
               const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
               hintAttemptDurationsMs.push(attemptDurationMs);
@@ -2730,7 +2856,8 @@ export function createPracticeChatHandler(
         }
 
         if (
-          hintResult === null && claudeApiKey && deps.callClaude
+          hintResult === null && !hintSemanticAttempted && claudeApiKey &&
+          deps.callClaude
         ) {
           const hintMessages = lastError !== undefined &&
               isHintFormatOrGuardError(lastError)
@@ -2750,7 +2877,7 @@ export function createPracticeChatHandler(
               temperature: HINT_TEMPERATURE,
               timeoutMs: HINT_CLAUDE_FAILOVER_TIMEOUT_MS,
             });
-            hintResult = parseGeneratedHint(rawHint);
+            hintResult = await parseGeneratedHint(rawHint, "anthropic");
             hintProvider = "anthropic";
             hintLastFailureClass = null;
             const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
@@ -2808,6 +2935,7 @@ export function createPracticeChatHandler(
           mode: "hint",
           personaId: request.profile.personaId,
           difficulty: request.profile.difficulty,
+          semanticProviderCalls: hintSemanticProviderCalls,
           failureClass,
         });
         await releaseHintGeneration({
@@ -2861,6 +2989,7 @@ export function createPracticeChatHandler(
         user: summarizeUser(user.id),
         provider: hintProvider,
         model: hintModel,
+        semanticProviderCalls: hintSemanticProviderCalls,
         ...buildPracticeGenerationTelemetry({
           mode: "hint",
           practiceMode: request.practiceMode,
@@ -3032,9 +3161,8 @@ export function createPracticeChatHandler(
           ),
         );
       }
-      return jsonResponse({
+      return jsonResponse(responsePayloadWithCurrentUsage({
         ...hintResult,
-        costDeducted: deducted,
         hintUsedCount,
         generationSource: "model",
         fallbackUsed: false,
@@ -3043,8 +3171,7 @@ export function createPracticeChatHandler(
         provider: hintProvider,
         model: hintModel,
         generatedAt,
-        ...remainingFrom(sub, limits, deducted),
-      });
+      }, deducted));
     }
 
     if (
@@ -3369,6 +3496,8 @@ export function createPracticeChatHandler(
       const debriefAttemptDurationsMs: number[] = [];
       const debriefFailureClasses: PracticeGenerationFailureClass[] = [];
       const debriefFailureCodes: string[] = [];
+      let debriefSemanticAttempted = false;
+      let debriefSemanticProviderCalls = 0;
       try {
         let lastError: unknown;
         const baseDebriefMessages = buildDebriefMessages(
@@ -3400,6 +3529,95 @@ export function createPracticeChatHandler(
           sceneContext,
           memorySummary: promptMemorySummary,
         });
+        const generatedDebriefParseOptions = {
+          allowGameBreakdown: debriefPracticeMode === "game",
+          requireCompleteCard: true,
+          turns: request.turns,
+          appliedHintTurns: ledgerAppliedHintTurns,
+          repairPreservedHintCritique: false,
+          sharedFactualEvidence: debriefFactualEvidence.shared,
+          partnerFactualEvidence: debriefFactualEvidence.partner,
+          trustedFactClaims: debriefFactualEvidence.claims,
+          enforceGeneratedQuality: true,
+          semanticAdjudicated: true,
+        } as const;
+        const parseGeneratedDebrief = async (
+          rawCard: string,
+          candidateProvider: "deepseek" | "anthropic",
+        ): Promise<DebriefCard> => {
+          const rawCandidate = parseDebriefCandidateObject(rawCard);
+          const candidateCard = parseDebriefCard(rawCard, {
+            ...generatedDebriefParseOptions,
+            deferHintAssessmentToSemantic: true,
+            deferVisibleGuardsToSemantic: true,
+          });
+          const candidate: Record<string, unknown> = {
+            ...candidateCard,
+            ...(Object.hasOwn(rawCandidate, "hintAssessment")
+              ? { hintAssessment: rawCandidate.hintAssessment }
+              : {}),
+          };
+          if (!deps.semanticAdjudicate) {
+            throw new Error("semantic_adjudication_unavailable");
+          }
+          debriefSemanticAttempted = true;
+          let semantic;
+          try {
+            semantic = await deps.semanticAdjudicate({
+              surface: "debrief",
+              practiceMode: debriefPracticeMode,
+              candidate,
+              turns: request.turns,
+              appliedHintTurns: ledgerAppliedHintTurns,
+              trustedGenerationContext: JSON.stringify({
+                temperatureScore: ledger.temperatureScore ??
+                  difficultyStartTemperature,
+                familiarityScore: ledger.familiarityScore ?? 0,
+                partnerMood: partnerStateFromLedger(ledger)?.mood ??
+                  relationshipThreadState?.partnerState?.mood ?? null,
+                sharedFacts: debriefFactualEvidence.shared,
+                partnerFacts: debriefFactualEvidence.partner,
+                typedFacts: debriefFactualEvidence.claims,
+              }),
+              candidateProvider,
+              maxProviderCalls: Math.max(
+                0,
+                PRACTICE_GENERATION_PROVIDER_CALL_BUDGET -
+                  debriefAttemptCount,
+              ),
+              deepSeekApiKey: apiKey,
+              claudeApiKey,
+              claudeModel: claudeFallbackModelForTier(sub.tier),
+              callDeepSeek: deps.callDeepSeek,
+              callClaude: deps.callClaude,
+              validateCandidate: (reviewedCandidate) => {
+                parseDebriefCard(JSON.stringify(reviewedCandidate), {
+                  ...generatedDebriefParseOptions,
+                });
+              },
+            });
+            debriefSemanticProviderCalls += semantic.providerCalls;
+          } catch (error) {
+            if (error instanceof SemanticAdjudicationError) {
+              debriefSemanticProviderCalls += error.providerCalls;
+            }
+            throw error;
+          }
+          const reviewedCard = parseDebriefCard(
+            JSON.stringify(semantic.candidate),
+            { ...generatedDebriefParseOptions },
+          );
+          logInfo("practice_chat_semantic_adjudication", {
+            user: summarizeUser(user.id),
+            surface: "debrief",
+            practiceMode: debriefPracticeMode,
+            provider: semantic.provider ?? "test",
+            providerCalls: semantic.providerCalls,
+            repaired: semantic.repaired,
+            issueKinds: semantic.issueKinds,
+          });
+          return reviewedCard;
+        };
         if (apiKey) {
           for (
             let attempt = 1;
@@ -3419,17 +3637,10 @@ export function createPracticeChatHandler(
                 jsonMode: true,
                 timeoutMs: DEBRIEF_TIMEOUT_MS,
               });
-              debriefCard = parseDebriefCard(rawCard, {
-                allowGameBreakdown: debriefPracticeMode === "game",
-                requireCompleteCard: true,
-                turns: request.turns,
-                appliedHintTurns: ledgerAppliedHintTurns,
-                repairPreservedHintCritique: true,
-                sharedFactualEvidence: debriefFactualEvidence.shared,
-                partnerFactualEvidence: debriefFactualEvidence.partner,
-                trustedFactClaims: debriefFactualEvidence.claims,
-                enforceGeneratedQuality: true,
-              });
+              debriefCard = await parseGeneratedDebrief(
+                rawCard,
+                "deepseek",
+              );
               debriefLastFailureClass = null;
               const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
               debriefAttemptDurationsMs.push(attemptDurationMs);
@@ -3478,7 +3689,10 @@ export function createPracticeChatHandler(
           }
         }
 
-        if (debriefCard === null && claudeApiKey && deps.callClaude) {
+        if (
+          debriefCard === null && !debriefSemanticAttempted && claudeApiKey &&
+          deps.callClaude
+        ) {
           const shouldRepair = lastError !== undefined &&
             (debriefLastFailureClass === "visible_text_guard" ||
               debriefLastFailureClass === "invalid_json" ||
@@ -3504,17 +3718,10 @@ export function createPracticeChatHandler(
               temperature: DEBRIEF_TEMPERATURE,
               timeoutMs: DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS,
             });
-            debriefCard = parseDebriefCard(rawCard, {
-              allowGameBreakdown: debriefPracticeMode === "game",
-              requireCompleteCard: true,
-              turns: request.turns,
-              appliedHintTurns: ledgerAppliedHintTurns,
-              repairPreservedHintCritique: true,
-              sharedFactualEvidence: debriefFactualEvidence.shared,
-              partnerFactualEvidence: debriefFactualEvidence.partner,
-              trustedFactClaims: debriefFactualEvidence.claims,
-              enforceGeneratedQuality: true,
-            });
+            debriefCard = await parseGeneratedDebrief(
+              rawCard,
+              "anthropic",
+            );
             debriefProvider = "anthropic";
             debriefLastFailureClass = null;
             const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
@@ -3572,6 +3779,7 @@ export function createPracticeChatHandler(
           mode: "debrief",
           personaId: request.profile.personaId,
           difficulty: request.profile.difficulty,
+          semanticProviderCalls: debriefSemanticProviderCalls,
           failureClass: classifyPracticeGenerationFailure(e),
         });
         await releaseDebriefGeneration({
@@ -3612,6 +3820,7 @@ export function createPracticeChatHandler(
         user: summarizeUser(user.id),
         provider: debriefProvider,
         model: debriefModel,
+        semanticProviderCalls: debriefSemanticProviderCalls,
         ...buildPracticeGenerationTelemetry({
           mode: "debrief",
           practiceMode: debriefPracticeMode,
@@ -3671,9 +3880,7 @@ export function createPracticeChatHandler(
         } else {
           // first-writer-wins：stale takeover 若撞到仍存活的舊 worker，RPC 回傳
           // 已落帳的權威卡；本次 response 與之後 replay 必須完全一致。
-          authoritativeDebriefResponse = responsePayloadWithCurrentUsage(
-            recordData,
-          );
+          authoritativeDebriefResponse = recordData;
         }
       }
 
@@ -3702,7 +3909,9 @@ export function createPracticeChatHandler(
         difficulty: request.profile.difficulty,
         costDeducted: 0,
       });
-      return jsonResponse(authoritativeDebriefResponse);
+      return jsonResponse(
+        responsePayloadWithCurrentUsage(authoritativeDebriefResponse),
+      );
     }
 
     const continuation = decideContinuationGate({

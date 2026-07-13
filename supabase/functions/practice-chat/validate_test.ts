@@ -95,6 +95,40 @@ Deno.test("practiceMode game is accepted", () => {
   assertEquals(r.practiceMode, "game");
 });
 
+Deno.test("semantic quality capability is optional for legacy clients", () => {
+  const r = validateRequest(hintReq([
+    { role: "user", text: "hi" },
+    { role: "ai", text: "hello" },
+  ]));
+  assertEquals(r.acceptedQualitySchemaVersion, undefined);
+});
+
+Deno.test("semantic quality capability accepts only semantic-quality-v2", () => {
+  const r = validateRequest({
+    ...hintReq([
+      { role: "user", text: "hi" },
+      { role: "ai", text: "hello" },
+    ]),
+    acceptedQualitySchemaVersion: "semantic-quality-v2",
+  });
+  assertEquals(r.acceptedQualitySchemaVersion, "semantic-quality-v2");
+
+  for (const value of ["typed-facts-v1", "semantic-quality-v3", "", 2, null]) {
+    assertThrows(
+      () =>
+        validateRequest({
+          ...hintReq([
+            { role: "user", text: "hi" },
+            { role: "ai", text: "hello" },
+          ]),
+          acceptedQualitySchemaVersion: value,
+        }),
+      Error,
+      "invalid_acceptedQualitySchemaVersion",
+    );
+  }
+});
+
 Deno.test("invalid practiceMode throws invalid_practiceMode", () => {
   assertThrows(
     () =>

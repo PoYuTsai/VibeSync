@@ -28,7 +28,7 @@ import {
 
 export const VIBES = ["暖", "中性", "冷"];
 export const DATE_CHANCES = ["low", "medium", "high"];
-export const DEBRIEF_QUALITY_SCHEMA_VERSION = "typed-facts-v1";
+export const DEBRIEF_QUALITY_SCHEMA_VERSION = "semantic-quality-v2";
 
 export interface GameBreakdown {
   phaseReached: string;
@@ -370,7 +370,11 @@ function rejectInternalLabelLeak(value: string) {
   rejectVisibleInternalLabelLeak(value, "debrief_internal_label_leak");
 }
 
-function guardVisibleText(value: string): string {
+function guardVisibleText(
+  value: string,
+  deferToSemantic = false,
+): string {
+  if (deferToSemantic) return value;
   rejectInternalLabelLeak(value);
   // 批3 P1：debrief prompt 注入 band 詞後，模型可能把溫度內部詞或 1.2 原詞
   // 抄進可見欄位；被拒→handler 重試→band-aware fallback 卡兜底。
@@ -382,6 +386,7 @@ function guardVisibleText(value: string): string {
 function parseGameBreakdown(
   value: unknown,
   enforceGeneratedQuality: boolean,
+  deferVisibleGuardsToSemantic = false,
 ): GameBreakdown {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("debrief_game_breakdown_missing_fields");
@@ -395,6 +400,7 @@ function parseGameBreakdown(
         GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
         enforceGeneratedQuality,
       ),
+      deferVisibleGuardsToSemantic,
     ),
     missedVariable: guardVisibleText(
       generatedVisibleString(
@@ -403,6 +409,7 @@ function parseGameBreakdown(
         GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
         enforceGeneratedQuality,
       ),
+      deferVisibleGuardsToSemantic,
     ),
     failureState: guardVisibleText(
       generatedVisibleString(
@@ -411,6 +418,7 @@ function parseGameBreakdown(
         GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
         enforceGeneratedQuality,
       ),
+      deferVisibleGuardsToSemantic,
     ),
     nextFirstLine: guardVisibleText(
       generatedVisibleString(
@@ -419,6 +427,7 @@ function parseGameBreakdown(
         GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
         enforceGeneratedQuality,
       ),
+      deferVisibleGuardsToSemantic,
     ),
     inviteDirection: guardVisibleText(
       generatedVisibleString(
@@ -427,6 +436,7 @@ function parseGameBreakdown(
         GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
         enforceGeneratedQuality,
       ),
+      deferVisibleGuardsToSemantic,
     ),
   };
   if (Object.values(gameBreakdown).some((field) => field.length === 0)) {
@@ -1383,6 +1393,7 @@ function assertHintAssessment(opts: {
   card: DebriefCard;
   turns?: PracticeTurn[];
   appliedHintTurns: AppliedHintTurn[];
+  skipVisibleConsistency?: boolean;
 }): void {
   if (!opts.appliedHintTurns.every(hasCompleteHintDecision)) {
     throw new Error("debrief_hint_decision_missing");
@@ -1416,6 +1427,7 @@ function assertHintAssessment(opts: {
     opts.appliedHintTurns,
   );
   if (
+    opts.skipVisibleConsistency !== true &&
     (visiblyReversesHint || strategyContradictsHint) && verdict !== "revised"
   ) {
     throw new Error("debrief_hint_assessment_revision_required");
@@ -1423,6 +1435,7 @@ function assertHintAssessment(opts: {
   if (verdict === "preserved") {
     if (quote !== null) throw new Error("debrief_hint_assessment_invalid");
     if (
+      opts.skipVisibleConsistency !== true &&
       preservedCardCritiquesExactHint(
         opts.card,
         opts.appliedHintTurns,
@@ -1593,6 +1606,15 @@ export function parseDebriefCard(
     trustedFactClaims?: HintFactClaim[];
     enforceGeneratedQuality?: boolean;
     repairPreservedHintCritique?: boolean;
+    /** Runtime semantic reviewer owns facts/grounding/Hint consistency. */
+    semanticAdjudicated?: boolean;
+    /** Pre-review hard pass may defer a missing hidden assessment to repair. */
+    deferHintAssessmentToSemantic?: boolean;
+    /**
+     * The generated candidate is not user-visible. Defer visible guards for
+     * semantic repair, then parse the reviewed card again with normal guards.
+     */
+    deferVisibleGuardsToSemantic?: boolean;
   } = {},
 ): DebriefCard {
   const cleaned = extractJsonObject(raw);
@@ -1602,6 +1624,7 @@ export function parseDebriefCard(
   }
   const p = parsed as Record<string, unknown>;
   const enforceGeneratedQuality = opts.enforceGeneratedQuality === true;
+  const deferVisibleGuards = opts.deferVisibleGuardsToSemantic === true;
   const summary = guardVisibleText(
     generatedVisibleString(
       p.summary,
@@ -1609,6 +1632,7 @@ export function parseDebriefCard(
       GENERATED_DEBRIEF_PROSE_MAX_LENGTH,
       enforceGeneratedQuality,
     ),
+    deferVisibleGuards,
   );
   const suggestedLine = guardVisibleText(
     generatedVisibleString(
@@ -1617,6 +1641,7 @@ export function parseDebriefCard(
       GENERATED_DEBRIEF_PROSE_MAX_LENGTH,
       enforceGeneratedQuality,
     ),
+    deferVisibleGuards,
   );
   if (summary.length === 0 || suggestedLine.length === 0) {
     throw new Error("debrief_missing_fields");
@@ -1627,14 +1652,14 @@ export function parseDebriefCard(
     40,
     GENERATED_DEBRIEF_LIST_ITEM_MAX_LENGTH,
     enforceGeneratedQuality,
-  ).map(guardVisibleText);
+  ).map((item) => guardVisibleText(item, deferVisibleGuards));
   const watchouts = generatedVisibleList(
     p.watchouts,
     2,
     40,
     GENERATED_DEBRIEF_LIST_ITEM_MAX_LENGTH,
     enforceGeneratedQuality,
-  ).map(guardVisibleText);
+  ).map((item) => guardVisibleText(item, deferVisibleGuards));
   const vibeRaw = clampStr(p.vibe, 4);
   const vibe = VIBES.includes(vibeRaw) ? vibeRaw : "中性";
 
@@ -1648,6 +1673,7 @@ export function parseDebriefCard(
       GENERATED_DEBRIEF_PROSE_MAX_LENGTH,
       enforceGeneratedQuality,
     ),
+    deferVisibleGuards,
   );
   const nextInviteMove = guardVisibleText(
     generatedVisibleString(
@@ -1656,6 +1682,7 @@ export function parseDebriefCard(
       GENERATED_DEBRIEF_PROSE_MAX_LENGTH,
       enforceGeneratedQuality,
     ),
+    deferVisibleGuards,
   );
   const dateChance = DATE_CHANCES.includes(dateChanceRaw)
     ? dateChanceRaw
@@ -1690,7 +1717,11 @@ export function parseDebriefCard(
     // handler 僅在 Game mode 傳 true；Game 卡少任何拆盤欄位都視為格式失敗，
     // 交由既有 retry/fallback 路徑處理，避免殘缺拆盤被當成成功。
     gameBreakdown: opts.allowGameBreakdown === true
-      ? parseGameBreakdown(p.gameBreakdown, enforceGeneratedQuality)
+      ? parseGameBreakdown(
+        p.gameBreakdown,
+        enforceGeneratedQuality,
+        deferVisibleGuards,
+      )
       : null,
   };
   const appliedHintTurns = opts.appliedHintTurns ?? [];
@@ -1715,17 +1746,40 @@ export function parseDebriefCard(
       opts.turns,
     );
   }
-  if (appliedHintTurns.length > 0) {
+  if (
+    appliedHintTurns.length > 0 &&
+    opts.deferHintAssessmentToSemantic !== true
+  ) {
     assertHintAssessment({
       value: hiddenHintAssessment,
       card,
       turns: opts.turns,
       appliedHintTurns,
+      skipVisibleConsistency: opts.semanticAdjudicated === true,
     });
   }
   if (opts.enforceGeneratedQuality === true) {
-    card = repairUngroundedUnansweredQuestionLine(card, opts.turns);
-    assertGeneratedDebriefQuality(card, opts);
+    if (opts.semanticAdjudicated === true) {
+      if (opts.deferVisibleGuardsToSemantic !== true) {
+        for (const field of debriefVisibleFields(card)) {
+          rejectKnownCannedPracticeText(field, "debrief_canned_visible_text");
+        }
+      }
+    } else {
+      card = repairUngroundedUnansweredQuestionLine(card, opts.turns);
+      assertGeneratedDebriefQuality(card, opts);
+    }
   }
   return card;
+}
+
+/** Strictly extracts the provider object for the semantic review hand-off. */
+export function parseDebriefCandidateObject(
+  raw: string,
+): Record<string, unknown> {
+  const parsed = JSON.parse(extractJsonObject(raw));
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("debrief_not_object");
+  }
+  return parsed as Record<string, unknown>;
 }

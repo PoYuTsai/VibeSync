@@ -278,6 +278,11 @@ void main() {
   late List<List<int>> synced;
   late MemoryAnalysisHistoryRepository history;
 
+  test('Hint and Debrief semantic pipelines both wait up to 90 seconds', () {
+    expect(kPracticeHintRequestTimeout, const Duration(seconds: 90));
+    expect(kPracticeDebriefRequestTimeout, const Duration(seconds: 90));
+  });
+
   setUp(() async {
     Hive.init('./.dart_tool/test_hive_practice_ctrl');
     if (!Hive.isAdapterRegistered(22)) {
