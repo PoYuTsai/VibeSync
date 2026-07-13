@@ -890,6 +890,48 @@ Deno.test("debrief prompt separates copied Hint execution from Hint quality", ()
   );
 });
 
+Deno.test("server-owned Debrief keeps the applied Hint strategy locked", () => {
+  const user = buildDebriefMessages(
+    [
+      { role: "user", text: "早安" },
+      { role: "ai", text: "我還在賴床，腦袋沒開機" },
+      { role: "user", text: "還在賴床喔，那今天先准妳慢慢開機。" },
+      { role: "ai", text: "哈哈有慢慢開機了" },
+    ],
+    defaultProfile,
+    {
+      practiceMode: "beginner",
+      serverOwnsHintStrategy: true,
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "warm_up",
+        originalHintText: "還在賴床喔，那今天先准妳慢慢開機。",
+        sentText: "還在賴床喔，那今天先准妳慢慢開機。",
+        exact: true,
+        hintRequestId: "locked-hint-1",
+        decision: {
+          phase: "建立熟悉中",
+          targetVariable: "投入感",
+          move: "build_connection",
+          inviteRoute: "build",
+          rationale: "先接住賴床狀態，再看她是否延伸。",
+        },
+      }],
+    },
+  )[1].content;
+
+  assert(user.includes("這是同一位教練的下游拆盤"));
+  assert(user.includes("策略由 server 鎖定為正確"));
+  assert(user.includes("不可 revised"));
+  assert(user.includes("所有建議沿用 decision.inviteRoute"));
+  assert(user.includes("明確要求停止聯絡"));
+  assert(user.includes("尊重界線並停止推進"));
+  assertEquals(
+    user.includes("只有 Hint 送出後「她」的新回覆出現明確反證時才可 revised"),
+    false,
+  );
+});
+
 Deno.test("debrief prompt compacts long Hint decision rationale but keeps strategy linkage", () => {
   const longRationale = "先接住她的晚餐狀態，再把口袋名單變成低壓選擇；" +
     "不要急著直接約，也不要編店名或假裝知道她喜歡咖啡。".repeat(8);

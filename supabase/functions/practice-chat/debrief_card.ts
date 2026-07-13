@@ -553,6 +553,7 @@ function inviteLevelContradicts(
 function cardContradictsHintStrategy(
   card: DebriefCard,
   appliedHintTurns: AppliedHintTurn[],
+  allowSafetyRepairOverride = false,
 ): boolean {
   const latestHint = appliedHintTurns.reduce((latest, hint) =>
     hint.turnIndex >= latest.turnIndex ? hint : latest
@@ -561,7 +562,14 @@ function cardContradictsHintStrategy(
   const narrativeRoutes = strategyBearingFields(card)
     .map(explicitNarrativeRoute)
     .filter((route): route is HintStrategyRoute => route !== null);
-  if (narrativeRoutes.some((route) => route !== authoritative)) return true;
+  if (
+    narrativeRoutes.some((route) =>
+      route !== authoritative &&
+      !(allowSafetyRepairOverride && route === "repair")
+    )
+  ) {
+    return true;
+  }
 
   const pasteableInviteLevels = [
     practiceInviteLevelFor(card.suggestedLine),
@@ -1168,6 +1176,45 @@ function preservedCardCritiquesExactHint(
   return false;
 }
 
+/**
+ * Direct Claude Debrief is downstream of a server-owned Hint decision. Keep a
+ * narrow contradiction check here instead of re-inferring the whole strategy
+ * from every natural-language watchout. The broader legacy heuristic remains
+ * available for the reviewer-owned path below.
+ */
+function serverOwnedCardCritiquesExactHint(
+  card: DebriefCard,
+  appliedHintTurns: AppliedHintTurn[],
+): boolean {
+  const exactHints = appliedHintTurns.filter((hint) => hint.exact);
+  if (exactHints.length === 0) return false;
+  if (
+    [card.summary, ...card.strengths].some(
+      hintCreditHasUnscopedAdversative,
+    )
+  ) {
+    return true;
+  }
+  const exactTexts = exactHints
+    .flatMap((hint) => [hint.sentText, hint.originalHintText])
+    .map(normalizedPracticeText)
+    .filter((text) => text.length >= 4);
+  return debriefVisibleFields(card).some((field) => {
+    const compact = normalizedPracticeText(field);
+    const namesHint =
+      /(?:提示|照貼|照著提示|原本那句|hint|這句|這個回覆|你的回覆|只回|只問)/iu
+        .test(compact) || exactTexts.some((text) => {
+          const anchor = [...text].slice(0, 12).join("");
+          return compact.includes(text) || compact.includes(anchor);
+        });
+    if (!namesHint) return false;
+    const hasUnnegatedCritique = preservedHintCritiqueMatches(compact).some(
+      (match) => !critiqueIsNegatedPraise(compact, match.index),
+    );
+    return hasUnnegatedCritique || hasNegativeReplyEvaluation(field);
+  });
+}
+
 function isPreservedHiddenHintAssessment(value: unknown): boolean {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
@@ -1397,6 +1444,7 @@ function assertHintAssessment(opts: {
   turns?: PracticeTurn[];
   appliedHintTurns: AppliedHintTurn[];
   skipVisibleConsistency?: boolean;
+  serverOwnsHintStrategy?: boolean;
 }): void {
   if (!opts.appliedHintTurns.every(hasCompleteHintDecision)) {
     throw new Error("debrief_hint_decision_missing");
@@ -1425,9 +1473,18 @@ function assertHintAssessment(opts: {
   const visiblyReversesHint =
     /(?:提示|建議)(?:(?:本身|內容|那句|其實|真的|確實|有點|太|很|偏|是)){0,3}(?:錯|不對|不該|太急|偏保守|無效|不好|不合適|不適合|有問題|失準|誤判)/u
       .test(normalizedPracticeText(visibleText));
+  const postHintBoundary = opts.serverOwnsHintStrategy === true &&
+    latestAssistantShowsHostility(
+      assistantTextNearHint(
+        opts.turns,
+        Math.max(...opts.appliedHintTurns.map((hint) => hint.turnIndex)),
+        "after",
+      ),
+    );
   const strategyContradictsHint = cardContradictsHintStrategy(
     opts.card,
     opts.appliedHintTurns,
+    postHintBoundary,
   );
   if (
     opts.skipVisibleConsistency !== true &&
@@ -1439,11 +1496,17 @@ function assertHintAssessment(opts: {
     if (quote !== null) throw new Error("debrief_hint_assessment_invalid");
     if (
       opts.skipVisibleConsistency !== true &&
-      preservedCardCritiquesExactHint(
-        opts.card,
-        opts.appliedHintTurns,
-        opts.turns,
-      )
+      (opts.serverOwnsHintStrategy === true
+        ? !postHintBoundary &&
+          serverOwnedCardCritiquesExactHint(
+            opts.card,
+            opts.appliedHintTurns,
+          )
+        : preservedCardCritiquesExactHint(
+          opts.card,
+          opts.appliedHintTurns,
+          opts.turns,
+        ))
     ) {
       throw new Error("debrief_hint_assessment_revision_required");
     }
@@ -1626,6 +1689,8 @@ export function parseDebriefCard(
      * semantic repair, then parse the reviewed card again with normal guards.
      */
     deferVisibleGuardsToSemantic?: boolean;
+    /** Applied Hint strategy is authoritative; avoid broad prose re-inference. */
+    serverOwnsHintStrategy?: boolean;
   } = {},
 ): DebriefCard {
   const cleaned = extractJsonObject(raw);
@@ -1767,6 +1832,7 @@ export function parseDebriefCard(
       turns: opts.turns,
       appliedHintTurns,
       skipVisibleConsistency: opts.semanticAdjudicated === true,
+      serverOwnsHintStrategy: opts.serverOwnsHintStrategy === true,
     });
   }
   if (opts.enforceGeneratedQuality === true) {

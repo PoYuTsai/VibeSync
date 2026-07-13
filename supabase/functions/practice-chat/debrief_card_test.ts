@@ -801,6 +801,89 @@ Deno.test("preserved Debrief cannot indirectly blame an exact Hint in Beginner o
   }
 });
 
+Deno.test("server-owned Hint strategy accepts objective outcome prose but still rejects direct blame", () => {
+  const turns = [
+    { role: "user" as const, text: "早安" },
+    { role: "ai" as const, text: "我還在賴床，腦袋沒開機" },
+    { role: "user" as const, text: appliedExactHint.sentText },
+    { role: "ai" as const, text: "哈哈有慢慢開機了" },
+  ];
+  const objectiveCard = {
+    ...generatedQualityCard,
+    watchouts: ["少追問一個開機細節，多留一點自己的早晨畫面。"],
+  };
+
+  assertThrows(
+    () =>
+      parseDebriefCard(JSON.stringify(objectiveCard), {
+        requireCompleteCard: true,
+        enforceGeneratedQuality: true,
+        turns,
+        appliedHintTurns: [appliedExactHint],
+      }),
+    Error,
+    "debrief_hint_assessment_revision_required",
+  );
+  const accepted = parseDebriefCard(JSON.stringify(objectiveCard), {
+    requireCompleteCard: true,
+    enforceGeneratedQuality: true,
+    turns,
+    appliedHintTurns: [appliedExactHint],
+    serverOwnsHintStrategy: true,
+  });
+  assertEquals(accepted.watchouts, objectiveCard.watchouts);
+
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...generatedQualityCard,
+          watchouts: [
+            "只回『還在賴床喔，那今天先准妳慢慢開機』只是禮貌收尾，沒有給她好接的球。",
+          ],
+        }),
+        {
+          requireCompleteCard: true,
+          enforceGeneratedQuality: true,
+          turns,
+          appliedHintTurns: [appliedExactHint],
+          serverOwnsHintStrategy: true,
+        },
+      ),
+    Error,
+    "debrief_hint_assessment_revision_required",
+  );
+});
+
+Deno.test("server-owned Hint strategy still lets an explicit post-Hint boundary stop progression", () => {
+  const turns = [
+    { role: "user" as const, text: "早安" },
+    { role: "ai" as const, text: "我還在賴床，腦袋沒開機" },
+    { role: "user" as const, text: appliedExactHint.sentText },
+    { role: "ai" as const, text: "請停止聯絡我。" },
+  ];
+  const boundaryCard = {
+    ...generatedQualityCard,
+    summary: "你有照提示做；她後來明確要求停止聯絡，現在要尊重界線。",
+    strengths: ["你有照提示接住賴床狀態，沒有在當下加壓。"],
+    watchouts: ["下一步尊重界線，停止推進。"],
+    suggestedLine: "收到，我會停止聯絡。",
+    vibe: "冷",
+    dateChance: "low",
+    dateChanceReason: "她明確拒絕繼續聯絡，沒有邀約空間。",
+    nextInviteMove: "尊重界線，停止聯絡，不提出邀約。",
+  };
+
+  const accepted = parseDebriefCard(JSON.stringify(boundaryCard), {
+    requireCompleteCard: true,
+    enforceGeneratedQuality: true,
+    turns,
+    appliedHintTurns: [appliedExactHint],
+    serverOwnsHintStrategy: true,
+  });
+  assertEquals(accepted.nextInviteMove, boundaryCard.nextInviteMove);
+});
+
 Deno.test("production repair rewrites preserved exact Hint critique with grounded next step", () => {
   const turns = [
     { role: "user" as const, text: "早安" },

@@ -3617,6 +3617,7 @@ export function createPracticeChatHandler(
               memorySummary: promptMemorySummary,
               gameState: ledgerGameState,
               appliedHintTurns: ledgerAppliedHintTurns,
+              serverOwnsHintStrategy: directClaudePracticeGeneration,
             }
             : {
               partnerState: partnerStateFromLedger(ledger) ??
@@ -3683,7 +3684,13 @@ export function createPracticeChatHandler(
           const directCandidate = (ledgerAppliedHintTurns?.length ?? 0) > 0
             ? {
               ...rawCandidate,
-              hintAssessment: canonicalHintAssessment(rawCandidate),
+              // Applied Hint strategy is already committed by the server. The
+              // direct Debrief writer analyzes the outcome; it does not get a
+              // second vote on the Hint it is supposed to continue.
+              hintAssessment: {
+                verdict: "preserved",
+                revisedEvidenceQuote: null,
+              },
             }
             : rawCandidate;
           return parseDebriefCard(JSON.stringify(directCandidate), {
@@ -3693,6 +3700,7 @@ export function createPracticeChatHandler(
             semanticAdjudicated: false,
             deferHintAssessmentToSemantic: false,
             deferVisibleGuardsToSemantic: false,
+            serverOwnsHintStrategy: true,
           });
         };
         let previousDirectDebriefCandidate: string | null = null;
