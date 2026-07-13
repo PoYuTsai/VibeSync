@@ -105,6 +105,37 @@ Deno.test("Game Hint prompt and returned decision share persisted Game context",
   assertEquals(decision.inviteRoute, "soft");
 });
 
+Deno.test("Game Hint keeps a topic-only coffee opening out of the close phase", () => {
+  const options = {
+    turns: [
+      {
+        role: "user" as const,
+        text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+      },
+      { role: "ai" as const, text: "哦？在哪啊" },
+    ],
+    profile,
+    practiceMode: "game" as const,
+    temperatureScore: 30,
+    familiarityScore: 0,
+  };
+  const prompt = buildHintMessages(options).map((message) => message.content)
+    .join("\n");
+  const decision = buildHintDecision({
+    ...options,
+    replyType: "steady",
+    replyText: "說實話沒記住在哪，就記得香。妳有在追新開的店嗎？",
+    rationale: "先誠實回答，再沿咖啡偏好累積熟悉感。",
+  });
+
+  assert(prompt.includes("phase: P1_OPEN"));
+  assert(prompt.includes("speedInviteDirection: no_invite_build_investment"));
+  assertEquals(decision.phase, "P1_OPEN");
+  assertEquals(decision.targetVariable, "familiarity");
+  assertEquals(decision.move, "build_connection");
+  assertEquals(decision.inviteRoute, "build");
+});
+
 Deno.test("Hint decision rationale stays within the replay lineage contract", () => {
   const decision = buildHintDecision({
     turns: [
@@ -3982,10 +4013,8 @@ Deno.test("direct Claude Hint skips low-confidence lexical grounding but keeps h
   };
   const result = parseHintResult(
     JSON.stringify({
-      warmUp:
-        "沒進去，只是路過被香氣攔截😂 妳這個金萱雷達是職業病吧？",
-      steady:
-        "沒記是哪區，只記得香到停下來。妳怎麼判斷一家值不值得進？",
+      warmUp: "沒進去，只是路過被香氣攔截😂 妳這個金萱雷達是職業病吧？",
+      steady: "沒記是哪區，只記得香到停下來。妳怎麼判斷一家值不值得進？",
       coaching:
         "Game 心法：她在用金萱梗測你接不接得住，現在先建立熟悉感。你已補了「沒進去、不記得哪區」，直接接梗再把球丟回她的品味。速約任務：本輪先讓她多投入一句，下一輪再找低壓窗口。",
     }),

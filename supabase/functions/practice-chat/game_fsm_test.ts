@@ -184,6 +184,31 @@ Deno.test("evaluateGameFsm advances soft invite toward close when maturity is hi
   assertEquals(snapshot.speedInviteDirection, "direct_invite_low_pressure");
 });
 
+Deno.test("evaluateGameFsm does not mistake coffee topic or self-disclosure for an invite", () => {
+  for (
+    const text of [
+      "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+      "我明天也想喝咖啡。",
+      "我昨天跟朋友去吃飯。",
+    ]
+  ) {
+    const snapshot = evaluateGameFsm({
+      turns: [{ role: "user", text }],
+      temperatureScore: 30,
+      familiarityScore: 0,
+      partnerMood: "neutral",
+    });
+
+    assertEquals(snapshot.phase, "P1_OPEN", text);
+    assertEquals(snapshot.targetVariable, "familiarity", text);
+    assertEquals(
+      snapshot.speedInviteDirection,
+      "no_invite_build_investment",
+      text,
+    );
+  }
+});
+
 Deno.test("applyGameLearningDelta scales game deltas but clamps the amplitude", () => {
   const basePositive = applyLearningClassification({
     heatScore: 50,

@@ -1,5 +1,6 @@
 import type { InviteStage } from "./invite_maturity.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
+import { practiceInviteLevelFor } from "./practice_invite.ts";
 import {
   clampTemperature,
   type LearningJudgement,
@@ -187,19 +188,11 @@ function looksLikeEngineStall(texts: string[]): boolean {
     );
 }
 
-function looksLikeSoftInvite(text: string): boolean {
-  const compact = normalized(text);
-  return includesAny(compact, [
-    "下次",
-    "改天",
-    "有空",
-    "咖啡",
-    "吃飯",
-    "走走",
-    "逛逛",
-    "你會想去",
-    "找一間",
-  ]);
+function hasInviteAttempt(text: string): boolean {
+  // Game phase and pasteable-reply guards must share one invitation contract.
+  // A topic word such as「咖啡」is not an invitation unless the sentence also
+  // contains an addressee/mutual proposal cue.
+  return practiceInviteLevelFor(text) !== "none";
 }
 
 function realityFlagsFor(text: string): GameRealityFlag[] {
@@ -384,7 +377,7 @@ export function evaluateGameFsm(opts: {
   const failures = new Set<GameFailureState>();
   const realityFlags = realityFlagsFor(latest);
   const pressure = questionPressureScore(texts);
-  const softInvite = looksLikeSoftInvite(latest);
+  const softInvite = hasInviteAttempt(latest);
   const overEscalated = looksOverEscalated(latest);
   const classification = opts.classification;
 
