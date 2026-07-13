@@ -55,6 +55,8 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
   );
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("逐子句盤點"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("下週見"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("已落地"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("已落地勿再等"), true);
   assertEquals(
     DEBRIEF_SYSTEM_PROMPT.includes("永遠是使用者對她說"),
     true,

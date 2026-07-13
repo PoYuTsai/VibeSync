@@ -655,6 +655,7 @@ function withDebriefRetryInstruction(
       content: `上一版拆解 JSON 被拒絕：${debriefRetryReason(error)}。` +
         "請重新輸出唯一且完整的 JSON 物件，不要 markdown 或說明文字。" +
         "summary、strengths、watchouts、suggestedLine、vibe、dateChance、dateChanceReason、nextInviteMove 都必填且不可空白；" +
+        "狀態時序以她最後一則為準，已完成動作不可寫回未完成或未來（已落地不可再寫等她落地）；" +
         "strengths、watchouts 每點 30 字內，其餘敘述欄位 40 字內；太長要重寫縮句，不得裁掉句尾，所有句子都要完整收尾；" +
         "vibe 只能是暖／中性／冷，dateChance 只能是 low／medium／high。" +
         gameReminder,

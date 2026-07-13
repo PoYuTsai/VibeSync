@@ -59,6 +59,8 @@ Deno.test("buildHintMessages includes transcript, profile, temperature, and Trad
   assert(text.includes("不要 markdown"));
   assert(text.includes("兩句都可直接送且不可只問"));
   assert(text.includes("被直接問時先回答或表態"));
+  assert(text.includes("狀態以最新為準"));
+  assert(text.includes("已落地勿再等"));
 });
 
 Deno.test("Game Hint prompt and returned decision share persisted Game context", () => {

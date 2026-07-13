@@ -1952,6 +1952,57 @@ Deno.test("generated Debrief cannot launder residence grounding into a partner i
   assertEquals(supported.dateChance, "high");
 });
 
+Deno.test("partner recommendation can open an invite window without becoming a fabricated personal invite", () => {
+  const turns = [
+    { role: "user" as const, text: "哪家咖啡店？" },
+    {
+      role: "ai" as const,
+      text: "民生社區巷子裡有一家，你明天有空可以去試試看。",
+    },
+  ];
+  const card = {
+    summary: "她主動提供明天可去試的線索，邀約窗口變明確。",
+    strengths: ["你接住民生社區咖啡店，讓她多給一個明天線索。"],
+    watchouts: ["下一步先確認她是否同行，別把推薦直接當成約見。"],
+    suggestedLine: "民生社區那家聽起來有料；妳自己也會去嗎？",
+    vibe: "暖",
+    dateChance: "medium",
+    dateChanceReason: "她主動提供明天線索，但還沒說要一起見面。",
+    nextInviteMove: "先問她明天是否也會去，再判斷要不要同行。",
+    hintAssessment: {
+      verdict: "preserved",
+      revisedEvidenceQuote: null,
+    },
+  };
+
+  const accepted = parseDebriefCard(JSON.stringify(card), {
+    requireCompleteCard: true,
+    enforceGeneratedQuality: true,
+    turns,
+    serverOwnsHintStrategy: true,
+  });
+  assertEquals(accepted.dateChance, "medium");
+
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...card,
+          summary: "她主動邀你明天見面。",
+          dateChanceReason: "她主動約你明天見面。",
+        }),
+        {
+          requireCompleteCard: true,
+          enforceGeneratedQuality: true,
+          turns,
+          serverOwnsHintStrategy: true,
+        },
+      ),
+    Error,
+    "debrief_quality_invalid_partner_initiative",
+  );
+});
+
 Deno.test("generated Debrief fact-checks every analytical field without rejecting partner-owned callbacks", () => {
   const turns = [{ role: "ai" as const, text: "我住台南，最常在中西區活動。" }];
   const base = {

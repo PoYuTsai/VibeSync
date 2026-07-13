@@ -811,9 +811,12 @@ function claimsPartnerInitiatedInvite(value: string): boolean {
   ) {
     return false;
   }
-  return /(?:她|對方).{0,28}(?:主動(?:提(?:了|出)?|說|問|給|丟|發出)?|(?:提(?:了|出)?|說想|說要|問|給|丟|發出|表示想|想|要|願意)).{0,12}(?:見面|碰面|邀約|約你|邀你)/u
+  // A recommendation or a better "invite window" is not the same relation as
+  // the partner personally inviting the user. Require an explicit invitee,
+  // meeting proposal, or standalone invitation noun before fail-closing.
+  return /(?:她|對方).{0,28}(?:(?:邀|約)[妳你]|(?:主動)?提(?:了|出).{0,12}(?:見面|碰面|邀約(?!窗口))|(?:主動)?(?:給|發出).{0,8}邀約(?!窗口))/u
     .test(compact) ||
-    /(?:她|對方)的.{0,10}(?:邀約|見面提議|約見)/u.test(compact);
+    /(?:她|對方)的.{0,10}(?:邀約(?!窗口)|見面提議|約見)/u.test(compact);
 }
 
 function assertNoInventedPartnerInitiative(
@@ -1590,13 +1593,15 @@ function assertGeneratedDebriefQuality(
       errorCode: "debrief_quality_invalid_unsupported_detail",
     });
   }
-  for (const analyticalText of debriefAnalyticalFields(card)) {
-    assertHintFactClaimsSupported({
-      text: analyticalText,
-      field: "coaching",
-      context: factContext,
-      errorCode: "debrief_quality_invalid_unsupported_detail",
-    });
+  if (opts.serverOwnsHintStrategy !== true) {
+    for (const analyticalText of debriefAnalyticalFields(card)) {
+      assertHintFactClaimsSupported({
+        text: analyticalText,
+        field: "coaching",
+        context: factContext,
+        errorCode: "debrief_quality_invalid_unsupported_detail",
+      });
+    }
   }
   const metaPasteablePattern =
     /(?:先接住(?:她|對方)|補(?:上|一點)?感受|低壓邀約|邀約窗口|分享(?:你的|自己的)版本|再聽(?:她|對方)的)/u;
