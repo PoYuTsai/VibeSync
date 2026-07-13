@@ -278,8 +278,8 @@ void main() {
   late List<List<int>> synced;
   late MemoryAnalysisHistoryRepository history;
 
-  test('Hint and Debrief semantic pipelines both wait up to 90 seconds', () {
-    expect(kPracticeHintRequestTimeout, const Duration(seconds: 90));
+  test('Hint waits 115 seconds while Debrief keeps its 90-second fence', () {
+    expect(kPracticeHintRequestTimeout, const Duration(seconds: 115));
     expect(kPracticeDebriefRequestTimeout, const Duration(seconds: 90));
   });
 

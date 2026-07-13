@@ -42,8 +42,8 @@ const int kPracticeMemorySummaryMaxChars = 800;
 
 /// 專案鐵則：loading state 下 await 網路一律 .timeout。
 /// server 會先生成，再做獨立語意審核／必要時修復；generation failover 後
-/// 最差可有四次 provider 呼叫。client 取 90s，明確以等待換取成功率。
-const Duration kPracticeHintRequestTimeout = Duration(seconds: 90);
+/// 最差可有四次 provider 呼叫。client 取 115s，明確以等待換取成功率。
+const Duration kPracticeHintRequestTimeout = Duration(seconds: 115);
 
 /// server chat 主回覆最壞 ≈ 30s × 2 次嘗試＋輪次分類器 30s ≈ 90s，
 /// client 取 120s 留裕度：只防 loading 卡死，不搶在 server 完成前放棄。
