@@ -107,6 +107,7 @@ import {
   classifyPracticeGenerationFailure,
   countPromptChars,
   type PracticeGenerationFailureClass,
+  sanitizePracticeFailureCode,
 } from "./telemetry.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -122,7 +123,9 @@ const DEBRIEF_TIMEOUT_MS = 12000;
 // staying below the 45s stale-owner and 50s client request windows.
 const DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS = 24000;
 const DEBRIEF_IN_FLIGHT_STALE_MS = 45000;
-const HINT_MAX_TOKENS = 650;
+// 2026-07-13 probe: game hint 在 650 tokens 下 DeepSeek 47% finish_reason=length
+// 截斷（JSON 收不完→誤報 provider_error）。提高到 1000 給完整 JSON 空間。
+const HINT_MAX_TOKENS = 1000;
 const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 1;
 // Each real provider gets a full 12s budget. There is never a canned fallback.
@@ -394,6 +397,7 @@ async function persistGenerationTelemetryFailOpen(opts: {
   failureClass: PracticeGenerationFailureClass | null;
   attemptDurationsMs: number[];
   failureClasses: PracticeGenerationFailureClass[];
+  failureCodes?: string[];
   model?: string;
   timeoutMs?: number;
 }): Promise<void> {
@@ -415,6 +419,7 @@ async function persistGenerationTelemetryFailOpen(opts: {
       },
       attemptDurationsMs: opts.attemptDurationsMs,
       failureClasses: opts.failureClasses,
+      failureCodes: opts.failureCodes,
     });
     const abortController = new AbortController();
     const rawQuery = opts.supabase.from("ai_logs").insert(row);
@@ -2592,6 +2597,7 @@ export function createPracticeChatHandler(
       let hintLastFailureClass: PracticeGenerationFailureClass | null = null;
       const hintAttemptDurationsMs: number[] = [];
       const hintFailureClasses: PracticeGenerationFailureClass[] = [];
+      const hintFailureCodes: string[] = [];
       try {
         let lastError: unknown;
         const baseHintMessages = buildHintMessages({
@@ -2686,6 +2692,8 @@ export function createPracticeChatHandler(
               const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
               hintAttemptDurationsMs.push(attemptDurationMs);
               hintFailureClasses.push(hintLastFailureClass);
+              const hintFailureCode = sanitizePracticeFailureCode(e);
+              if (hintFailureCode) hintFailureCodes.push(hintFailureCode);
               logWarn("practice_chat_generation_attempt", {
                 user: summarizeUser(user.id),
                 provider: "deepseek",
@@ -2752,6 +2760,8 @@ export function createPracticeChatHandler(
             const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
             hintAttemptDurationsMs.push(attemptDurationMs);
             hintFailureClasses.push(hintLastFailureClass);
+            const hintFailureCode = sanitizePracticeFailureCode(e);
+            if (hintFailureCode) hintFailureCodes.push(hintFailureCode);
             logWarn("practice_chat_generation_attempt", {
               user: summarizeUser(user.id),
               provider: "anthropic",
@@ -2808,6 +2818,7 @@ export function createPracticeChatHandler(
           failureClass,
           attemptDurationsMs: hintAttemptDurationsMs,
           failureClasses: hintFailureClasses,
+          failureCodes: hintFailureCodes,
           model: hintModel,
         });
         if (requestIsPrefetch) {
@@ -2983,6 +2994,7 @@ export function createPracticeChatHandler(
         failureClass: null,
         attemptDurationsMs: hintAttemptDurationsMs,
         failureClasses: hintFailureClasses,
+        failureCodes: hintFailureCodes,
         model: hintModel,
       });
 
@@ -3340,6 +3352,7 @@ export function createPracticeChatHandler(
       let debriefLastFailureClass: PracticeGenerationFailureClass | null = null;
       const debriefAttemptDurationsMs: number[] = [];
       const debriefFailureClasses: PracticeGenerationFailureClass[] = [];
+      const debriefFailureCodes: string[] = [];
       try {
         let lastError: unknown;
         const baseDebriefMessages = buildDebriefMessages(
@@ -3425,6 +3438,10 @@ export function createPracticeChatHandler(
               const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
               debriefAttemptDurationsMs.push(attemptDurationMs);
               debriefFailureClasses.push(debriefLastFailureClass);
+              const debriefFailureCode = sanitizePracticeFailureCode(e);
+              if (debriefFailureCode) {
+                debriefFailureCodes.push(debriefFailureCode);
+              }
               logWarn("practice_chat_generation_attempt", {
                 user: summarizeUser(user.id),
                 provider: "deepseek",
@@ -3505,6 +3522,10 @@ export function createPracticeChatHandler(
             const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
             debriefAttemptDurationsMs.push(attemptDurationMs);
             debriefFailureClasses.push(debriefLastFailureClass);
+            const debriefFailureCode = sanitizePracticeFailureCode(e);
+            if (debriefFailureCode) {
+              debriefFailureCodes.push(debriefFailureCode);
+            }
             logWarn("practice_chat_generation_attempt", {
               user: summarizeUser(user.id),
               provider: "anthropic",
@@ -3557,6 +3578,7 @@ export function createPracticeChatHandler(
           failureClass,
           attemptDurationsMs: debriefAttemptDurationsMs,
           failureClasses: debriefFailureClasses,
+          failureCodes: debriefFailureCodes,
           model: debriefModel,
         });
         return jsonResponse(
@@ -3651,6 +3673,7 @@ export function createPracticeChatHandler(
         failureClass: null,
         attemptDurationsMs: debriefAttemptDurationsMs,
         failureClasses: debriefFailureClasses,
+        failureCodes: debriefFailureCodes,
         model: debriefModel,
       });
 

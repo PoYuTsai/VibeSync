@@ -7,6 +7,7 @@ import {
   buildPracticeGenerationTelemetry,
   classifyPracticeGenerationFailure,
   countPromptChars,
+  sanitizePracticeFailureCode,
 } from "./telemetry.ts";
 
 Deno.test("practice generation telemetry emits the fixed queryable shape", () => {
@@ -185,4 +186,134 @@ Deno.test("durable ai_logs row keeps only aggregate generation metrics", () => {
   assertEquals(row.error_message, null);
   assertFalse(JSON.stringify(row).includes("SECRET_TRANSCRIPT"));
   assertFalse(JSON.stringify(row).includes("SECRET_ERROR"));
+});
+
+Deno.test("practice failure codes keep machine codes and reject free text", () => {
+  assertEquals(
+    sanitizePracticeFailureCode(
+      new Error(
+        "hint_quality_invalid_unsupported_detail:world:venue:located_at",
+      ),
+    ),
+    "hint_quality_invalid_unsupported_detail:world:venue:located_at",
+  );
+  assertEquals(
+    sanitizePracticeFailureCode(new Error("deepseek_max_tokens")),
+    "deepseek_max_tokens",
+  );
+  // 只取第一段機器碼，後續自由文字不落盤。
+  assertEquals(
+    sanitizePracticeFailureCode(
+      new Error("claude_http_500: Internal Server Error"),
+    ),
+    "claude_http_500:",
+  );
+  // 含中文（可能夾用戶內容）→ 整筆拒收。
+  assertEquals(sanitizePracticeFailureCode(new Error("練習室生成失敗")), null);
+  assertEquals(
+    sanitizePracticeFailureCode(new Error("被拒絕 hint_quality_invalid")),
+    null,
+  );
+  assertEquals(sanitizePracticeFailureCode(new Error("   ")), null);
+  assertEquals(sanitizePracticeFailureCode(undefined), null);
+  // 超長截斷，且截斷後仍須通過字元白名單與已知前綴。
+  const longCode = sanitizePracticeFailureCode(
+    new Error(`hint_${"x".repeat(300)}`),
+  );
+  assertEquals(longCode, `hint_${"x".repeat(115)}`);
+});
+
+// P2 對抗審：sanitizePracticeFailureCode 先前只過 charset，靠呼叫點恰好安全；
+// 收斂成「必須以已知前綴開頭才收」，未知/自訂機器碼一律丟棄不落盤。
+Deno.test("practice failure codes require a known machine-code prefix", () => {
+  // 已知前綴（claude.ts / deepseek.ts / hint.ts / debrief_card.ts /
+  // practice_persona.ts / validate.ts / telemetry.ts classifyPracticeGenerationFailure
+  // 掃出的實際 throw 前綴）一律保留。
+  for (
+    const code of [
+      "hint_quality_invalid_unsupported_detail:third_party:name:is_named",
+      "hint_not_object",
+      "hint_l4_unsafe",
+      "debrief_quality_invalid_unsupported_detail",
+      "debrief_l4_unsafe",
+      "claude_timeout",
+      "claude_http_500",
+      "deepseek_max_tokens",
+      "deepseek_timeout",
+      "invalid_personaid",
+      "practice_hint_lineage_resolution_failed",
+      "schema_invalid_x",
+      "timeout",
+      "timeout_provider_x",
+      "provider_error_x",
+      "visible_text_guard_x",
+      "unsupported_detail_x",
+    ]
+  ) {
+    assertEquals(sanitizePracticeFailureCode(new Error(code)), code, code);
+  }
+
+  // 未知/自訂機器碼（非已知前綴開頭）一律丟棄，即使 charset 合法。
+  for (
+    const code of [
+      "foo_bar",
+      "custom_error_code",
+      "my_own_failure",
+      "timeoutsecret",
+      "timeout:secret",
+      "x_unrecognized",
+    ]
+  ) {
+    assertEquals(sanitizePracticeFailureCode(new Error(code)), null, code);
+  }
+});
+
+Deno.test("durable ai_logs row sanitizes failure codes", () => {
+  const row = buildPracticeAiLogRow({
+    userId: "11111111-2222-3333-4444-555555555555",
+    model: "deepseek-v4-flash",
+    telemetry: {
+      mode: "hint",
+      practiceMode: "game",
+      attempt: 2,
+      attemptDurationMs: null,
+      failureClass: "schema_invalid",
+      fallbackUsed: false,
+      failoverUsed: true,
+      totalDurationMs: 9012,
+      promptChars: 4300,
+    },
+    attemptDurationsMs: [9001],
+    failureClasses: ["provider_error", "schema_invalid"],
+    failureCodes: [
+      "deepseek_max_tokens",
+      "hint_quality_invalid_unsupported_detail:world:venue:located_at",
+      "夾帶用戶內容的訊息",
+    ],
+  });
+  assertEquals(row.request_body.failureCodes, [
+    "deepseek_max_tokens",
+    "hint_quality_invalid_unsupported_detail:world:venue:located_at",
+  ]);
+  assertFalse(JSON.stringify(row).includes("夾帶"));
+
+  // 舊呼叫端沒帶 failureCodes 也要有穩定空陣列形狀。
+  const legacyRow = buildPracticeAiLogRow({
+    userId: "11111111-2222-3333-4444-555555555555",
+    model: "deepseek-v4-flash",
+    telemetry: {
+      mode: "hint",
+      practiceMode: "game",
+      attempt: 1,
+      attemptDurationMs: null,
+      failureClass: null,
+      fallbackUsed: false,
+      failoverUsed: false,
+      totalDurationMs: 1200,
+      promptChars: 100,
+    },
+    attemptDurationsMs: [1200],
+    failureClasses: [],
+  });
+  assertEquals(legacyRow.request_body.failureCodes, []);
 });

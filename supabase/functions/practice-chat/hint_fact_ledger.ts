@@ -61,6 +61,15 @@ export type HintFactProvenance =
   | "generated_reply"
   | "generated_coaching";
 
+/**
+ * 分層信心捏造守門（2026-07-13）：
+ * - "high"＝高信心捏造候選（聯絡方式、帶引介語境的人名、具專名形態的地名），
+ *   輸出側找不到出處才允許 fail-closed 硬殺。
+ * - "low"＝只靠字尾/送收語境湊出來的候選，絕不 throw，只保留供觀測與比對。
+ * 欄位缺席（歷史 claim、profile 信任事實）一律視為 "high"。
+ */
+export type HintFactConfidence = "high" | "low";
+
 export interface HintFactClaim {
   owner: HintFactOwner;
   domain: HintFactDomain;
@@ -69,11 +78,18 @@ export interface HintFactClaim {
   quantity?: number;
   polarity: "positive" | "negative";
   provenance: HintFactProvenance;
+  confidence?: HintFactConfidence;
 }
 
 export interface HintFactContext {
   claims: readonly HintFactClaim[];
   latestPartnerText: string;
+  /** 全部輸入文本的 compact 正規化（turns＋factual evidence），供實體級模糊比對。 */
+  sourceTexts?: readonly string[];
+}
+
+export function claimConfidence(claim: HintFactClaim): HintFactConfidence {
+  return claim.confidence ?? "high";
 }
 
 type FactPerspective =
@@ -548,6 +564,22 @@ function factKey(claim: HintFactClaim): string {
   ].join("|");
 }
 
+/** 去重時同 key 的 high 不得被 low 蓋掉（high 才有 fail-closed 能力）。 */
+function setClaimPreferHigh(
+  map: Map<string, HintFactClaim>,
+  claim: HintFactClaim,
+): void {
+  const key = factKey(claim);
+  const existing = map.get(key);
+  if (
+    existing && claimConfidence(existing) === "high" &&
+    claimConfidence(claim) === "low"
+  ) {
+    return;
+  }
+  map.set(key, claim);
+}
+
 function looksLikeSchool(value: string): boolean {
   return /(?:大學|學院|高中|高職|國中|國小|研究所|台大|政大|清大|交大|成大|北大|輔大|淡江|東吳|逢甲|文化|世新|台科|北科)/u
     .test(value);
@@ -571,9 +603,79 @@ function looksLikePersonName(value: string): boolean {
       .test(value);
 }
 
+function isGenericPersonReference(value: string): boolean {
+  return /^(?:朋友|同事|同學|家人|室友|學長|學姊|學妹|學弟)$/u.test(value);
+}
+
 function looksLikePersonReference(value: string): boolean {
-  return looksLikePersonName(value) ||
-    /^(?:朋友|同事|同學|家人|室友|學長|學姊|學妹|學弟)$/u.test(value);
+  return looksLikePersonName(value) || isGenericPersonReference(value);
+}
+
+/**
+ * 對抗審 P0 修復（2026-07-13）：中文口語提朋友多半只講名不講姓
+ * （嘉玲/雅婷/淑芬…），這類一般給定名不是暱稱/疊字/姓氏開頭，正向強形
+ * allowlist（looksLikeStrongPersonName）判不出來，導致捏造的一般給定名
+ * 在送收/同行語境永遠落 low、fail-closed 形同虛設。改用反向排除哲學：
+ * 送收/同行語境改用既有 looksLikePersonReference（已含 pronoun/程度副詞/
+ * 抽象名詞/動詞字尾排除）判 high，只把 probe corpus 實錄的具體假陽性
+ * 慣用語（動詞片語誤命中：丟回她、沙發萬歲、丟小測試、給建議、給了你
+ * 素材）加進這個小型排除清單落回 low。新出現的誤殺仍靠
+ * looksLikePersonName 既有排除規則兜底，這只是已知誤殺的最後一道防線。
+ */
+const THIRD_PARTY_SEND_CONTEXT_LOW_CONFIDENCE_TOKENS = new Set<string>([
+  "回她",
+  "回他",
+  "回你",
+  "回妳",
+  "萬歲",
+  "小測試",
+  "建議",
+  "了你素材",
+]);
+
+const PLACE_SUFFIX_SPLIT =
+  /^(.+?)(站|路|街|巷|區|市|縣|鄉|鎮|村|里|町|山|公園|夜市|商圈|碼頭|廣場|大樓|中心|101)$/u;
+
+// 常見「碰巧以地名字尾收尾」的抽象/一般複合詞：字尾在這些詞裡不是地點語意。
+// 這是詞彙知識而非逐例黑名單——漏列的代價只是候選落到 low（少殺），不是誤殺。
+const NON_PLACE_COMPOUND_TAIL =
+  /(?:退路|套路|思路|出路|心路|後路|活路|絕路|末路|門路|歪路|岔路|網路|走路|迷路|問路|記路|上路|網站|誤區|雷區|盲區|禁區|舒適區|安全區|城市|都市|超市|冰山|靠山|火山|爬山|下山|上山)$/u;
+
+// 「在X(?=發現|找到…)」asksPlace pattern 的 X 若是敘事階段/心境詞（過程中／
+// 心裡／等妳的時候／剛剛…）而非地點，即使句型是「在X發現」也不是在報地點。
+// 全字串比對（^...$）：只擋已知的整詞誤殺，漏列的代價只是候選落到 low
+// （少殺），不是誤殺——與 NON_PLACE_COMPOUND_TAIL 同一套詞彙知識哲學。
+const NON_PLACE_NARRATIVE_STATE_ANCHOR =
+  /^(?:(?:聊天)?過程中?|期間|途中|同時|剛剛?|剛才|一開始|後來|心裡|心中|腦(?:海|中)裡?|夢裡|夢中|等(?:妳|你|她)?(?:的)?時候)$/u;
+
+/**
+ * 正向專名形態判準（HIGH venue 的必要條件）。
+ * 進 HIGH 的門檻而不是黑名單防線：不滿足就落到 low 放行，
+ * 所以漏抓的代價是少殺不是誤殺。
+ */
+export function isLikelyProperPlaceAnchor(anchor: string): boolean {
+  // 完整街道地址（X路X號/樓）視為專名。
+  if (
+    /^[\p{Script=Han}a-z0-9·・]{2,}(?:路|街|大道)[\p{Script=Han}0-9]*(?:號|樓)$/u
+      .test(anchor)
+  ) {
+    return true;
+  }
+  const match = anchor.match(PLACE_SUFFIX_SPLIT);
+  if (!match) return false;
+  const stem = match[1] ?? "";
+  // 單字 stem 資訊量不足（象山/東區…），寧可放行不硬殺。
+  if (stem.length < 2) return false;
+  // stem 以方位詞收尾＝相對位置描述（冰箱前站），不是專名。
+  if (/[前後旁邊裡上下內外]$/u.test(stem)) return false;
+  // 指示詞/數量詞＋量詞（這段路/一趟/下一站）＝量詞片語，不是專名。
+  if (/[這那哪每整一半][段條間家個趟次站場回]/u.test(anchor)) return false;
+  // 功能詞（的/了/或/把/被…）＝散文黏連進 anchor，不是專名。
+  if (/[的了嗎呢吧喔啦欸或與及而且就都很太把讓被用給跟]/u.test(stem)) {
+    return false;
+  }
+  if (NON_PLACE_COMPOUND_TAIL.test(anchor)) return false;
+  return true;
 }
 
 function looksLikeLocationAnchor(value: string): boolean {
@@ -635,6 +737,7 @@ export function extractHintFactClaims(
       quantity: input.quantity,
       polarity: input.polarity,
       provenance: options.provenance,
+      confidence: input.confidence,
     });
   };
 
@@ -956,34 +1059,49 @@ export function extractHintFactClaims(
       index: match.index ?? 0,
     });
   }
-  const thirdPartyNamePatterns: Array<{ pattern: RegExp; valueIndex: number }> =
-    [
-      {
-        pattern:
-          /(?:(?:我|我的|妳的|你的|她的|他的)(?:朋友|同事|同學|室友|學長|學姊|學妹|學弟)|(?:朋友|同事|同學|室友|學長|學姊|學妹|學弟)(?:名字是|叫))\s*([\p{Script=Han}A-Za-z·・]{2,8}?)(?=也|很|會|要|想|[，,。！？!?；;\s]|$)/gu,
-        valueIndex: 1,
-      },
-      {
-        pattern:
-          /(?:(?:傳|發|送|丟)(?:給)?|轉給|交給|給)\s*([\p{Script=Han}A-Za-z·・]{2,20})(?=[，,。！？!?；;\s]|$)/gu,
-        valueIndex: 1,
-      },
-      {
-        pattern:
-          /(?:^|[，,。！？!?；;\s])(?:我|我們)?(?:會|要|想)?(?:跟|和)\s*([\p{Script=Han}A-Za-z·・]{2,20}?)(?=(?:一起)?(?:去|來|吃|喝|看|逛|玩|走|見|碰面|同行))/gu,
-        valueIndex: 1,
-      },
-      {
-        pattern:
-          /(?:他|那個人|這個人)(?:的名字)?(?:是|叫)\s*([\p{Script=Han}A-Za-z·・]{2,20})(?=[，,。！？!?；;\s]|$)/gu,
-        valueIndex: 1,
-      },
-      {
-        pattern:
-          /(?:^|[，,。！？!?；;\s])([\p{Script=Han}A-Za-z·・]{2,20})(?:會|能|可以)?收到(?:這張|照片|訊息)/gu,
-        valueIndex: 1,
-      },
-    ];
+  // 分層信心：帶正向引介語境（我朋友X／他叫X）的人名直接 high；
+  // 送收/同行語境（丟給X、跟X去）沒有引介語詞，用既有 looksLikePersonName
+  // 的一般給定名判準（非強形 allowlist）才夠格 fail-closed——中文口語提
+  // 朋友多半只講名不講姓（嘉玲/雅婷/淑芬…），若只認暱稱/疊字/姓氏開頭
+  // 會讓一般給定名的捏造永遠繞過守門。已知的動詞片語誤命中（丟回她、
+  // 沙發萬歲、丟小測試、給建議）改用小型排除清單落 low，不靠正向 allowlist
+  // 防守。
+  const thirdPartyNamePatterns: Array<{
+    pattern: RegExp;
+    valueIndex: number;
+    introduction: boolean;
+  }> = [
+    {
+      pattern:
+        /(?:(?:我|我的|妳的|你的|她的|他的)(?:朋友|同事|同學|室友|學長|學姊|學妹|學弟)|(?:朋友|同事|同學|室友|學長|學姊|學妹|學弟)(?:名字是|叫))\s*([\p{Script=Han}A-Za-z·・]{2,8}?)(?=也|很|會|要|想|說|剛|上次|之前|昨天|那天|[，,。！？!?；;\s]|$)/gu,
+      valueIndex: 1,
+      introduction: true,
+    },
+    {
+      pattern:
+        /(?:(?:傳|發|送|丟)(?:給)?|轉給|交給|給)\s*([\p{Script=Han}A-Za-z·・]{2,20})(?=[，,。！？!?；;\s]|$)/gu,
+      valueIndex: 1,
+      introduction: false,
+    },
+    {
+      pattern:
+        /(?:^|[，,。！？!?；;\s])(?:我|我們)?(?:會|要|想)?(?:跟|和)\s*([\p{Script=Han}A-Za-z·・]{2,20}?)(?=(?:一起)?(?:去|來|吃|喝|看|逛|玩|走|見|碰面|同行))/gu,
+      valueIndex: 1,
+      introduction: false,
+    },
+    {
+      pattern:
+        /(?:他|那個人|這個人)(?:的名字)?(?:是|叫)\s*([\p{Script=Han}A-Za-z·・]{2,20})(?=[，,。！？!?；;\s]|$)/gu,
+      valueIndex: 1,
+      introduction: true,
+    },
+    {
+      pattern:
+        /(?:^|[，,。！？!?；;\s])([\p{Script=Han}A-Za-z·・]{2,20}?)(?=(?:會|能|可以)?收到(?:這張|照片|訊息))/gu,
+      valueIndex: 1,
+      introduction: false,
+    },
+  ];
   for (const config of thirdPartyNamePatterns) {
     for (const match of text.matchAll(config.pattern)) {
       const name = normalizeAnchor(match[config.valueIndex] ?? "");
@@ -995,6 +1113,14 @@ export function extractHintFactClaims(
         anchor: name,
         polarity: "positive",
         index: match.index ?? 0,
+        // 泛稱（朋友/同事…）與一般給定名一樣可 fail-closed：
+        // probe corpus 零誤殺，且「跟朋友去」「傳給嘉玲」都是既有真陽性
+        // 基準；已知動詞片語誤命中走排除清單落 low，不靠正向 allowlist。
+        confidence: config.introduction ||
+            (looksLikePersonReference(name) &&
+              !THIRD_PARTY_SEND_CONTEXT_LOW_CONFIDENCE_TOKENS.has(name))
+          ? "high"
+          : "low",
       });
     }
   }
@@ -1625,7 +1751,7 @@ export function extractHintFactClaims(
       }
       const anchor = normalizePlace(
         (match[1] ?? "").replace(
-          /^(?:(?:今天|明天|後天|昨天|前天|上週|這週|下週)(?:早上|中午|下午|晚上)?(?:也)?(?:在|到|去)|(?:在|到|去))/u,
+          /^(?:那|這)?(?:今天|明天|後天|昨天|前天|上週|這週|下週|改天|下次|之後|回頭|有空)?(?:早上|中午|下午|晚上)?(?:也)?(?:在|到|去)?/u,
           "",
         ),
       );
@@ -1649,6 +1775,8 @@ export function extractHintFactClaims(
         anchor,
         polarity: "positive",
         index: match.index ?? 0,
+        // 只靠地名字尾湊出來、不具專名形態的候選一律 low：保留供比對，絕不硬殺。
+        confidence: isLikelyProperPlaceAnchor(anchor) ? "high" : "low",
       });
     }
   }
@@ -1671,7 +1799,7 @@ export function extractHintFactClaims(
   const deduped = new Map<string, HintFactClaim>();
   for (const claim of claims) {
     if (claim.owner === "unknown" || !claim.anchor) continue;
-    deduped.set(factKey(claim), claim);
+    setClaimPreferHigh(deduped, claim);
   }
   return [...deduped.values()];
 }
@@ -1685,6 +1813,15 @@ function memoryDefaultOwner(text: string): HintFactOwner {
   return "unknown";
 }
 
+/**
+ * 支持比對用 compact 正規化：與 anchor 的 normalizeAnchor 同款
+ * （NFKC＋lowercase＋臺→台＋去空白/標點/符號），使 anchor ⊆ 輸入文本
+ * 的 substring 比對不受標點與排版影響。
+ */
+function supportSourceText(value: string): string {
+  return normalizeBase(value).replace(/[\s\p{P}\p{S}]/gu, "");
+}
+
 export function buildHintFactContext(input: {
   turns?: readonly PracticeTurn[];
   factualEvidence?: readonly string[];
@@ -1696,9 +1833,16 @@ export function buildHintFactContext(input: {
   const latestPartnerText =
     [...(input.turns ?? [])].reverse().find((turn) => turn.role === "ai")
       ?.text ?? "";
+  const sourceTexts = [
+    ...(input.turns ?? []).map((turn) => turn.text),
+    ...(input.factualEvidence ?? []),
+    ...(input.sharedFactualEvidence ?? []),
+    ...(input.partnerFactualEvidence ?? []),
+  ].map(supportSourceText).filter((text) => text.length > 0);
   const trustedContext: HintFactContext = {
     claims: trustedClaims,
     latestPartnerText,
+    sourceTexts,
   };
   const claims: HintFactClaim[] = [...trustedClaims];
   for (const turn of input.turns ?? []) {
@@ -1743,10 +1887,11 @@ export function buildHintFactContext(input: {
     }));
   }
   const deduped = new Map<string, HintFactClaim>();
-  for (const claim of claims) deduped.set(factKey(claim), claim);
+  for (const claim of claims) setClaimPreferHigh(deduped, claim);
   return {
     claims: [...deduped.values()],
     latestPartnerText,
+    sourceTexts,
   };
 }
 
@@ -2280,24 +2425,42 @@ function contextualDirectAnswerClaims(input: {
       /(?:答案|店名|咖啡店名|餐廳名|酒吧名|店家|地址|地點|位置)(?:是|叫|為|名為|稱作|[：:])\s*([\p{L}\p{N}·・._'’\-–—／/\s]{2,60}?)(?=[，,。！？!?；;]|$)/gu,
       /(?:名為|稱作|叫做|那間(?:店)?(?:是|叫)|這間(?:店)?(?:是|叫))\s*([\p{L}\p{N}·・._'’\-–—／/\s]{2,40}?)(?=[，,。！？!?；;]|$)/gu,
       /(?:^|[，,。！？!?；;：:#＃\s\p{S}])([\p{L}\p{N}·・._'’\-–—／/]{2,30}(?:\s+[A-Za-z0-9·・._'’\-–—]+){0,3}?)(?=\s*(?:啦|啊|呀|喔|欸|附近|旁邊|正對面|對面|一帶|巷口|路口|那邊|那家|那間|這家|這間|那裡|[，,](?:妳|你)(?:應該|一定|可能|搞不好|大概)?(?:知道|聽過|去過|記得)))/gu,
+      // 她剛問「在哪」，回「我在Ｘ發現/找到…」＝直接報地點。
+      /(?:我|我們)?(?:就|剛|剛剛)?(?:是)?在\s*([\p{L}\p{N}·・._'’\-–—／/]{2,30}?)(?=發現|找到|喝到|買到|遇到|碰到|吃到|看到|挖到)/gu,
+      // 完整街道地址（…路/街/大道…號/樓）＝直接報地點。
+      /([\p{Script=Han}0-9]{2,40}(?:路|街|大道)[\p{Script=Han}0-9]{0,20}(?:號|樓))/gu,
     ];
     for (const pattern of candidatePatterns) {
       for (const match of text.matchAll(pattern)) {
         const anchor = normalizeAnchor(match[1] ?? "")
+          // 代名詞只跟著方位動詞一起剝（我在象山→象山）；裸剝「我」會把
+          // 「我先站旁邊」變成假 venue candidate。
+          .replace(
+            /^(?:我們|我)(?=(?:就是|是|叫|在|去|到|位於|靠近|就在))/u,
+            "",
+          )
           .replace(/^(?:就是|是|叫|在|去|到|位於|靠近|就在)/u, "")
           .replace(
             /^(?:(?:昨天|前天|上週|上星期|上禮拜|去年|前年|前幾天|[0-9一二三四五六七八九十兩]+(?:週|個月|年)前)?在)/u,
             "",
           )
           .replace(/(?:見過|碰過|遇過|認識).*$/u, "")
-          .replace(/(?:附近|旁邊|正對面|對面|一帶|巷口|路口)$/u, "");
+          .replace(
+            /(?:附近|旁邊|正對面|對面|一帶|巷口|路口|前面|後面|裡面|門口|前|後|裡)$/u,
+            "",
+          );
         if (
           anchor.length < 2 || safeDirectAnswers.has(anchor) ||
           /(?:我|妳|你|她|我們|想|努力|回想|記憶|招供|逗|翻|問|找|給|知道|記得|忘)/u
             .test(anchor) ||
           /(?:不知道|不記得|忘了|沒記住|先確認|查一下|問一下)/u.test(
             anchor,
-          )
+          ) ||
+          // P1 對抗審：「在X(?=發現|找到…)」pattern 沒限定 X 是地點名詞，
+          // 「在聊天過程中發現」「在等妳的時候看到」這種心情/動作句會被
+          // 抓成 venue candidate。X 是敘事階段/心境詞而非地點時放行不殺，
+          // 不確定就落 low 不硬判——漏抓的代價只是少殺，不是誤殺。
+          NON_PLACE_NARRATIVE_STATE_ANCHOR.test(anchor)
         ) continue;
         add({
           owner: "world",
@@ -2371,6 +2534,39 @@ function contextualDirectAnswerClaims(input: {
   return claims;
 }
 
+/**
+ * 實體級模糊比對：claim 的實體 stem 只要在任一輸入文本（turns／factual
+ * evidence，皆已 compact 正規化）找得到出處，或與任一同 domain 證據實體
+ * 呈雙向 substring（她說「貓下去餐酒館」→ 輸出「貓下去」），就算有出處。
+ * 回呼她原句的實體（含改寫語序）永遠不該被判捏造。
+ * 僅用於 world/third_party 的「實體存在性」判定；user/partner 的
+ * 擁有者移轉檢查（我也住台南）不得走這條路，否則同鄉冒認會漏殺。
+ */
+function claimTextuallySupported(
+  output: HintFactClaim,
+  context: HintFactContext,
+): boolean {
+  const anchor = output.anchor;
+  if (anchor.length < 2) return false;
+  const stems = new Set<string>([anchor]);
+  if (output.domain === "venue") {
+    const stem = anchor.match(PLACE_SUFFIX_SPLIT)?.[1];
+    if (stem && stem.length >= 2) stems.add(stem);
+  }
+  for (const source of context.sourceTexts ?? []) {
+    for (const stem of stems) {
+      if (source.includes(stem)) return true;
+    }
+  }
+  // 單向包含：輸出實體 ⊆ 證據實體（她說「貓下去餐酒館」→ 輸出「貓下去」）。
+  // 反向（輸出比證據更具體，如證據「台北」→ 輸出「台北市中山區」）是在
+  // 加料，不算有出處。
+  return context.claims.some((claim) =>
+    claim.domain === output.domain && claim.anchor.length >= 2 &&
+    claim.anchor.includes(anchor)
+  );
+}
+
 export function assertHintFactClaimsSupported(input: {
   text: string;
   field: "reply" | "coaching";
@@ -2400,17 +2596,19 @@ export function assertHintFactClaimsSupported(input: {
       ...contextualDirectAnswerClaims(input),
     ]
   ) {
-    outputClaimsByKey.set(factKey(claim), claim);
+    setClaimPreferHigh(outputClaimsByKey, claim);
   }
   const outputClaims = [...outputClaimsByKey.values()];
 
   for (const output of outputClaims) {
+    // 低信心抽取絕不 fail-closed：只保留供觀測，永不因它 throw。
+    if (claimConfidence(output) === "low") continue;
     if (output.owner === "world" || output.owner === "third_party") {
       const supportedWorld = supportedBy(
         output,
         input.context.claims,
         [output.owner, "world", "shared"],
-      );
+      ) || claimTextuallySupported(output, input.context);
       if (ALWAYS_REQUIRE_SUPPORT.has(output.domain) && !supportedWorld) {
         throw unsupported(output);
       }

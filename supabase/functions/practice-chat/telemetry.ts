@@ -3,6 +3,9 @@
 // This module deliberately returns a fixed scalar-only shape. Do not add
 // transcript, prompt, model response, partner/profile text, or raw errors here.
 // promptChars is an aggregate count only; failureClass is a stable bucket.
+// failureCodes are machine codes only: each entry is the first token of an
+// error message, hard-limited to [a-z0-9_:.-] after lowercasing, so user or
+// model text can never leak through this field.
 
 export type PracticeGenerationMode = "hint" | "debrief";
 export type TelemetryPracticeMode = "standard" | "beginner" | "game";
@@ -57,6 +60,7 @@ export interface PracticeAiLogRow {
   request_body: PracticeGenerationTelemetry & {
     attemptDurationsMs: number[];
     failureClasses: PracticeGenerationFailureClass[];
+    failureCodes: string[];
   };
   response_body: null;
   error_message: null;
@@ -150,6 +154,66 @@ function normalizeFailureList(
     .slice(0, 3);
 }
 
+const FAILURE_CODE_MAX_LENGTH = 120;
+
+// 已知的機器碼前綴：claude.ts / deepseek.ts / hint.ts / debrief_card.ts /
+// practice_persona.ts / validate.ts 的實際 throw 前綴，加上
+// classifyPracticeGenerationFailure 的分類詞彙（schema_/timeout/provider_/
+// visible_）與 hint_fact_ledger.ts 的 unsupported_detail 家族，供未來
+// 直接以子碼（不掛 hint_/debrief_ 字首）拋出時仍收得到。charset 白名單只防
+// 夾帶用戶/模型文字，前綴白名單才是「這是設計過的機器碼」的正面判準——
+// 呼叫點以外新冒出的自訂碼一律落 null 丟棄，不落盤。
+const KNOWN_PRACTICE_FAILURE_CODE_PREFIXES = [
+  "claude_",
+  "deepseek_",
+  "hint_",
+  "debrief_",
+  "invalid_",
+  "practice_",
+  "unsupported_",
+  "schema_",
+  "timeout_",
+  "provider_",
+  "visible_",
+] as const;
+
+function hasKnownPracticeFailureCodePrefix(token: string): boolean {
+  if (token === "timeout") return true;
+  return KNOWN_PRACTICE_FAILURE_CODE_PREFIXES.some((prefix) =>
+    token.startsWith(prefix)
+  );
+}
+
+/**
+ * Reduce a raw generation error to a queryable machine code without ever
+ * echoing user or model text: keep only the first whitespace-delimited token
+ * of the message, truncated, and drop it entirely unless the token passes the
+ * [a-z0-9_:.-] whitelist after lowercasing AND starts with a known machine-code
+ * prefix. The charset whitelist alone only blocked stray user/model text that
+ * happened to look like one token; the prefix whitelist is the actual
+ * allowlist of designed codes.
+ */
+export function sanitizePracticeFailureCode(error: unknown): string | null {
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === "string"
+    ? error
+    : "";
+  const token = (message.trim().split(/\s+/u)[0] ?? "")
+    .slice(0, FAILURE_CODE_MAX_LENGTH)
+    .toLowerCase();
+  if (!token || !/^[a-z0-9_:.-]+$/.test(token)) return null;
+  if (!hasKnownPracticeFailureCodePrefix(token)) return null;
+  return token;
+}
+
+function normalizeFailureCodeList(values: readonly unknown[]): string[] {
+  return values
+    .map(sanitizePracticeFailureCode)
+    .filter((value): value is string => value !== null)
+    .slice(0, 3);
+}
+
 /**
  * Build one durable ai_logs outcome row. DeepSeek usage is not exposed by the
  * current caller, so token fields stay explicit zero rather than fake estimates.
@@ -160,6 +224,7 @@ export function buildPracticeAiLogRow(input: {
   telemetry: PracticeGenerationTelemetryInput;
   attemptDurationsMs: readonly unknown[];
   failureClasses: readonly unknown[];
+  failureCodes?: readonly unknown[];
 }): PracticeAiLogRow {
   const telemetry = buildPracticeGenerationTelemetry(input.telemetry);
   const attempt = telemetry.attempt ?? 1;
@@ -179,6 +244,7 @@ export function buildPracticeAiLogRow(input: {
       ...telemetry,
       attemptDurationsMs: normalizeCountList(input.attemptDurationsMs),
       failureClasses: normalizeFailureList(input.failureClasses),
+      failureCodes: normalizeFailureCodeList(input.failureCodes ?? []),
     },
     response_body: null,
     error_message: null,

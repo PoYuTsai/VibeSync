@@ -19,7 +19,7 @@ const generatedOnlyMigration = await Deno.readTextFile(
 );
 const qualitySchemaMigration = await Deno.readTextFile(
   new URL(
-    "../../migrations/20260712120000_practice_hint_quality_schema_version.sql",
+    "../../migrations/20260712200532_practice_hint_quality_schema_version.sql",
     import.meta.url,
   ),
 );

@@ -3512,6 +3512,9 @@ Deno.test("debrief sends an incomplete DeepSeek card to Claude with repair guida
   const metrics = telemetry.request_body as Record<string, unknown>;
   assertEquals((metrics.attemptDurationsMs as unknown[]).length, 2);
   assertEquals(metrics.failureClasses, ["schema_invalid"]);
+  const failureCodes = metrics.failureCodes as string[];
+  assertEquals(failureCodes.length, 1);
+  assert(/^debrief_/.test(failureCodes[0]), failureCodes[0]);
 });
 
 Deno.test("Game debrief repairs a missing breakdown through Claude failover", async () => {
@@ -3951,7 +3954,8 @@ Deno.test("assisted debrief resolves Hint strategy from the charged server snaps
         strengths: ["你照提示說下班後散步能切回節奏，她接著回散步很舒服。"],
         watchouts: ["下一步可以接她說散步很舒服，問她最常走哪段。"],
         suggestedLine: "散步派加一，我通常會邊走邊清空腦袋；妳最喜歡哪一段路？",
-        dateChanceReason: "她回散步真的蠻舒服的，有延續話題，但還沒提時間或見面。",
+        dateChanceReason:
+          "她回散步真的蠻舒服的，有延續話題，但還沒提時間或見面。",
         nextInviteMove: "先問她散步最常走哪段，等她多分享再看邀約窗口。",
       })],
       rpc: {
@@ -4029,7 +4033,8 @@ Deno.test("assisted Debrief repairs indirect blame of an exact preserved Hint", 
       strengths: ["你照提示回她今天先准妳慢慢開機，她接著說有慢慢開機。"],
       watchouts: [watchout],
       suggestedLine: "慢慢開機就好，妳今天第一個讓腦袋上線的會是什麼？",
-      dateChanceReason: "她回說慢慢開機了，願意延續賴床話題，但還沒提時間或見面。",
+      dateChanceReason:
+        "她回說慢慢開機了，願意延續賴床話題，但還沒提時間或見面。",
       nextInviteMove: "先問她慢慢開機後第一件會做什麼，再看她是否多投入。",
     });
   const { response, json, state } = await run(
@@ -5340,8 +5345,8 @@ Deno.test("hint repairs a malformed provider result with Claude before recording
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 1);
   assertEquals(state.deepSeekCalls[0].jsonMode, true);
-  assertEquals(state.deepSeekCalls[0].maxTokens, 650);
-  assertEquals(state.claudeCalls[0].maxTokens, 650);
+  assertEquals(state.deepSeekCalls[0].maxTokens, 1000);
+  assertEquals(state.claudeCalls[0].maxTokens, 1000);
   assertEquals(claimHintCalls(state).length, 1);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
@@ -5396,7 +5401,7 @@ Deno.test("successful hint uses ledger temperature, records after parse, and ret
   assertEquals(state.deepSeekCalls.length, 1);
   const hintCall = state.deepSeekCalls[0];
   assertEquals(hintCall.jsonMode, true);
-  assertEquals(hintCall.maxTokens, 650);
+  assertEquals(hintCall.maxTokens, 1000);
   assertEquals(hintCall.temperature, 0.45);
   const promptText = hintCall.messages.map((m) => m.content).join("\n");
   assert(promptText.includes("currentTemperatureScore: 64/100"));

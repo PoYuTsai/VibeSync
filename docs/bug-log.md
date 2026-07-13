@@ -10,6 +10,38 @@
 
 ## 2026-07
 
+### [2026-07-13] Game Hint 全線 503：typed-facts-v1 claim 抽取誤殺＋HINT_MAX_TOKENS 截斷
+
+**Symptom**: typed-facts-v1（Edge v84）上線後 game hint 幾乎必 503（prod 連續 4 次）；ai_logs 呈現「attempt 1 provider_error（10–12 秒）→ failover Claude 後仍 schema_invalid」。
+
+**Root Cause**（live probe 30 局實錘，證據＝scratchpad `hint-gate-probe/{report.md,out.json,replay-result.txt}`）:
+
+- `hint_fact_ledger.ts` 的 venue/third_party regex 把忠實回呼對方原句的好輸出抽成「捏造事實」而 fail-closed 硬殺：「從沙發到冰箱**這段路**」「冰箱前**站**五分鐘」命中地名字尾；「保留退**路**」等抽象複合詞同型；third_party 人名 anchor 撈到「回她」「萬歲」「小測試」（動詞片語/感嘆詞），probe 中零真陽性。Claude 13/15 被守門拒（venue/third_party 合計 12/21）。
+- `HINT_MAX_TOKENS=650` 下 DeepSeek game hint 47%（7/15）`finish_reason=length` JSON 收不完，`deepseek_max_tokens` 被 `classifyPracticeGenerationFailure` 歸成 provider_error → 誤導成網路問題。
+- 既有守門殺對樣本有兩處是「垃圾 anchor 碰巧殺對」（「現的」「什麼」），不是真的認出捏造實體。
+
+**Fix**（分層信心守門，fail-closed 只留給高信心捏造）:
+
+- `HintFactClaim` 加 `confidence: "high" | "low"`；**low 絕不 throw**、只保留觀測。high 門檻＝(a) 聯絡方式（不變）；(b) 人名：引介語境（我朋友X/他叫X）或強人名形態（阿哲/小美/疊字/姓氏開頭/拉丁名）或泛稱（朋友/同事）；(c) venue：`isLikelyProperPlaceAnchor` 正向專名形態（stem≥2、非方位詞結尾、非量詞片語、無功能詞黏連、非抽象複合詞）。
+- 支持判定升級為實體級模糊比對：`HintFactContext.sourceTexts`（turns＋factual evidence compact 正規化）substring＋同 domain 證據實體單向包含（輸出 ⊆ 證據）——回呼她原句的實體永遠不算捏造；反向（證據「台北」→ 輸出「台北市中山區」）仍殺。
+- 真陽性改為正路殺出：asksPlace 直接回答補「我在Ｘ發現」與完整街道地址 pattern，取代垃圾 anchor 的巧合殺。
+- `HINT_MAX_TOKENS` 650 → 1000（handler.ts）。
+- telemetry：ai_logs `request_body.failureCodes[]` 記各 attempt error.message 第一段機器碼，`sanitizePracticeFailureCode` 白名單 `[a-z0-9_:.-]`＋截斷，中文/自由文字整筆拒收——下次守門誤殺不再躲在 schema_invalid 桶裡。
+
+**Prevention**: 事實守門的 fail-closed 權力必須綁在「高信心抽取」上；regex 字尾/送收語境湊出來的候選一律 fail-open 只觀測。任何「殺對了」的守門測試要驗 anchor 是真實體，不接受垃圾 anchor 巧合殺。改 prompt/守門前先跑 probe corpus 回放。
+
+**Validation（初版）**: probe out.json 21 個被拒樣本回放＝HIGH venue/third_party 候選 0、fact gate 21/21 放行；既有真陽性（傳給阿哲/跟朋友去/台北車站/陽明山/完整地址/LINE ID）全數仍殺；practice-chat Deno **850/850**（`--no-check`，handler.ts Timeout 型別警告為 HEAD 既有）。
+
+**相關檔案**: `supabase/functions/practice-chat/hint_fact_ledger.ts`、`handler.ts`、`telemetry.ts`、對應 `_test.ts`。
+
+**追記（2026-07-13 對抗審 R1）**：雙審抓到守門本身還有三處漏洞，已修並補紅測試：
+
+- **P0（人名繞過）**：`looksLikeStrongPersonName` 正向強形 allowlist（暱稱/疊字/姓氏開頭/拉丁名）判第三方人名 HIGH，但中文口語提朋友多半只講名不講姓（嘉玲/雅婷/淑芬…），一般給定名全部落不進強形→永遠 LOW→送收/同行語境（跟X去/傳給X/X收到）的捏造人名永不 fail-closed。改回反向排除哲學：改用既有 `looksLikePersonName`（已含 pronoun/程度副詞/抽象名詞/動詞字尾排除）判 HIGH，只把 probe corpus 實錄的具體假陽性慣用語（萬歲/小測試/回她/回他/回你/回妳/建議/了你素材）加進小型排除清單落 LOW。`looksLikeStrongPersonName` 已刪除（無其他呼叫點）。
+- **P1（asksPlace over-kill）**：新增的 `在X(?=發現|找到|喝到…)` pattern 沒限定 X 是地點名詞，把「在聊天過程中發現」「在等妳的時候看到」這種心情/動作句抓成 venue candidate 誤殺。加 `NON_PLACE_NARRATIVE_STATE_ANCHOR` 排除清單（過程中/聊天過程中/心裡/心中/剛剛/等X的時候等敘事階段詞），不確定就落放行不殺。
+- **P2（telemetry 前綴收斂）**：`sanitizePracticeFailureCode` 先前只過 charset，靠呼叫點恰好安全。收斂成「必須以已知前綴或精確 `timeout` 開頭才收」（`claude_/deepseek_/hint_/debrief_/invalid_/practice_/unsupported_/schema_/timeout_/provider_/visible_` + exact `timeout`），不符前綴一律回 null 丟棄，不落盤；`timeoutsecret` / `timeout:secret` 明確拒收。
+
+**Validation（R1 修復＋Codex takeover R2）**：practice-chat Deno **854/854**（`--no-check`）；targeted `hint_fact_ledger_test.ts` + `telemetry_test.ts` + `index_test.ts` **238/238**；24 個台灣常見給定名 × 3 語境（同行/傳給/收到）全數 fail-closed；沙發/發/給 greedy 隱憂 probe 只產 LOW 或不產 claim；asksPlace 敘事/狀態句（聊天過程中、等妳的時候、心裡、夢裡）全放行，真地點（信義區/台北車站/貓空站）仍 fail-closed。probe out.json 23 個 parse-phase 樣本回放，fact-ledger 相關（`unsupported_detail`/third-party name）throw 數 0（其餘 game_coaching_substance/not_grounded/l4_unsafe 等非本次改動範圍的既有守門仍照常運作）。Codex takeover verdict：**APPROVED（0 P0/P1/P2）**，部署仍需 Edge deploy。
+
 ### [2026-07-11] Beginner／Game Hint 與 Debrief 把降級罐頭當成功結果
 
 **Symptom**: TestFlight 點 Game Hint 後會看到「妳剛說的那個點我有記住…」等一眼可辨識的萬用句；賽後 Debrief 又可能批評剛才的 Hint、給出與當時策略相反的「下次可以這樣說」，Game 拆盤欄位也會只剩空泛術語。Beginner 與 Game 都受影響。
