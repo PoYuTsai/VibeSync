@@ -835,6 +835,31 @@ Deno.test("server-owned Hint strategy accepts objective outcome prose but still 
   });
   assertEquals(accepted.watchouts, objectiveCard.watchouts);
 
+  const naturalStrengthCard = {
+    ...objectiveCard,
+    strengths: ["賴床畫面延續得很順，早安多了生活感。"],
+  };
+  assertThrows(
+    () =>
+      parseDebriefCard(JSON.stringify(naturalStrengthCard), {
+        requireCompleteCard: true,
+        enforceGeneratedQuality: true,
+        turns,
+      }),
+    Error,
+    "debrief_quality_invalid_strength_role",
+  );
+  const naturalAccepted = parseDebriefCard(
+    JSON.stringify(naturalStrengthCard),
+    {
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      turns,
+      serverOwnsHintStrategy: true,
+    },
+  );
+  assertEquals(naturalAccepted.strengths, naturalStrengthCard.strengths);
+
   assertThrows(
     () =>
       parseDebriefCard(

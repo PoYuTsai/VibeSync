@@ -2504,7 +2504,7 @@ function contextualDirectAnswerClaims(input: {
   // the trusted input. This rejects invented answers without trying to infer
   // the tone or meaning of arbitrary chat prose.
   const asksMediaTitle =
-    /(?:什麼|哪)(?:一)?(?:部|齣|本|首|張)?(?:劇|影集|電影|片|書|歌|專輯)|(?:劇名|片名|書名|歌名|影集名).{0,8}(?:是|叫|什麼)/u
+    /(?:什麼|哪)(?:一)?(?:部|齣|本|首|張)?(?:劇|影集|電影|片|書|歌|專輯)|(?:劇名|片名|書名|歌名|影集名).{0,8}(?:是|叫|什麼)|(?:追|看|聽|讀).{0,8}(?:什麼|哪)(?:一)?(?:部|齣|本|首|張)(?=[？?。！，,\s]|$)/u
       .test(latest);
   if (asksMediaTitle) {
     for (

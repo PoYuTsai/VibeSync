@@ -1222,6 +1222,23 @@ Deno.test("typed direct-answer gate requires a source for named media titles", (
     field: "reply",
     context: knownTitleContext,
   });
+
+  const omittedNounContext = buildHintFactContext({
+    turns: [
+      { role: "user", text: "昨晚追劇追到兩點。" },
+      { role: "ai", text: "我昨天也是早班飛回來就攤平了，你追哪部？" },
+    ],
+  });
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "我追的是《黑白大廚》，你休假都怎麼回血？",
+        field: "reply",
+        context: omittedNounContext,
+      }),
+    Error,
+    ERROR,
+  );
 });
 
 // P1 對抗審：asksPlace 新增的「在X(?=發現|找到|喝到…)」pattern 沒限定 X 是

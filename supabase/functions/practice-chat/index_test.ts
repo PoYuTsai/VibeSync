@@ -5047,15 +5047,15 @@ Deno.test("direct Beginner and Game Hint regenerate hallucinated user facts once
 
 Deno.test("direct Hint regenerates an invented media title from an unanswered question", async () => {
   const inventedTitle = validHintJson({
-    warmUp: "《黑暗榮耀》，一集接一集真的停不下來。",
-    steady: "看的是《黑暗榮耀》，妳也喜歡這種節奏嗎？",
-    coaching: "她問什麼劇；直接回《黑暗榮耀》，再問她是否喜歡快節奏影集。",
+    warmUp: "我追《黑白大廚》，一集接一集真的停不下來。",
+    steady: "追的是《黑白大廚》，妳也喜歡這種節奏嗎？",
+    coaching: "她問追哪部；直接回《黑白大廚》，再問她是否喜歡快節奏影集。",
   });
   const groundedReply = validHintJson({
-    warmUp: "妳問『什麼劇』問到點了，我先不爆雷；妳平常追哪一類？",
-    steady: "什麼劇先讓我賣個關子，妳會被哪種節奏勾到停不下來？",
+    warmUp: "妳問『追哪部』問到點了，我先不爆雷；妳平常追哪一類？",
+    steady: "追哪部先讓我賣個關子，妳會被哪種節奏勾到停不下來？",
     coaching:
-      "她問『什麼劇』；逐字稿沒有劇名，先不編答案，再沿她的追劇偏好延續。",
+      "她問『追哪部』；逐字稿沒有劇名，先不編答案，再沿她的追劇偏好延續。",
   });
   const { response, json, state } = await run(
     {
@@ -5068,13 +5068,13 @@ Deno.test("direct Hint regenerates an invented media title from an unanswered qu
       requestId: "direct-hint-media-title-retry",
       turns: [
         { role: "user", text: "昨晚追劇追到兩點。" },
-        { role: "ai", text: "你看什麼劇這麼好看？" },
+        { role: "ai", text: "我昨天也是早班飛回來就攤平了🤣 你追哪部？" },
       ],
     }),
   );
 
   assertEquals(response.status, 200, JSON.stringify(json));
-  assertEquals(JSON.stringify(json).includes("黑暗榮耀"), false);
+  assertEquals(JSON.stringify(json).includes("黑白大廚"), false);
   assertEquals(state.claudeCalls.length, 2);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(state.claudeCalls[1].messages.at(-2), {

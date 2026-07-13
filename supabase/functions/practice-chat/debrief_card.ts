@@ -1553,7 +1553,13 @@ function assertGeneratedDebriefQuality(
   for (const field of visibleFields) {
     rejectKnownCannedPracticeText(field, "debrief_canned_visible_text");
   }
-  assertGeneratedDebriefFieldSubstance(card);
+  // Claude direct mode keeps deterministic hard gates (facts, grounding,
+  // canned text, safety, and Hint continuity), but does not reject an entire
+  // card merely because natural Chinese missed a stylistic regex vocabulary.
+  // The legacy reviewed path retains those prose-role heuristics.
+  if (opts.serverOwnsHintStrategy !== true) {
+    assertGeneratedDebriefFieldSubstance(card);
+  }
   assertNoInventedPartnerInitiative(card, opts.turns);
   rejectGenericPasteablePracticeText(
     card.suggestedLine,
@@ -1630,7 +1636,9 @@ function assertGeneratedDebriefQuality(
     }
   }
 
-  assertGeneratedDebriefFieldRoles(card);
+  if (opts.serverOwnsHintStrategy !== true) {
+    assertGeneratedDebriefFieldRoles(card);
+  }
 
   assertPracticeTextGroundedInTurns({
     visibleText: card.suggestedLine,
