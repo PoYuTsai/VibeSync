@@ -2445,7 +2445,7 @@ function contextualDirectAnswerClaims(input: {
   }
 
   const asksPlace =
-    /(?:在哪|哪裡|哪兒|哪間|店名|什麼店|位置|地址|怎麼去)|(?:店|店家|咖啡店|餐廳|酒吧|地方|地點).{0,8}(?:叫什麼|什麼名字)|叫什麼(?:店|餐廳|酒吧)/u
+    /(?:在哪|哪裡|哪兒|哪間|哪(?:一|個)?區|哪一帶|店名|什麼店|位置|地址|怎麼去)|(?:店|店家|咖啡店|餐廳|酒吧|地方|地點).{0,8}(?:叫什麼|什麼名字)|叫什麼(?:店|餐廳|酒吧)/u
       .test(latest);
   if (asksPlace) {
     const safeDirectAnswers = new Set([

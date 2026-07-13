@@ -1277,6 +1277,36 @@ Deno.test("typed direct-answer gate does not turn a schedule question into a use
   });
 });
 
+Deno.test("typed direct-answer gate rejects an invented district after a which-district question", () => {
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_004" });
+  const context = buildHintFactContext({
+    turns: [
+      {
+        role: "user",
+        text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+      },
+      { role: "ai", text: "哦？哪一區的啊，不會是那種網美店吧。" },
+    ],
+    trustedFactClaims: partnerFactClaimsFromProfile(profile),
+  });
+
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "沒有乾燥花牆那種。大安附近，路過被香氣勾住的。",
+        field: "reply",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+  assertHintFactClaimsSupported({
+    text: "沒有乾燥花牆那種，但哪一區我沒記住，只記得香氣。",
+    field: "reply",
+    context,
+  });
+});
+
 // P1 對抗審：asksPlace 新增的「在X(?=發現|找到|喝到…)」pattern 沒限定 X 是
 // 地點名詞，會把「在聊天過程中發現」「在等你的時候」這種心情/動作句抓成
 // venue candidate 誤殺。X 不具地點形態時必須落 low 放行，不確定就不殺。

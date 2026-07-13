@@ -5130,6 +5130,65 @@ Deno.test("direct Hint regenerates an invented media title from an unanswered qu
   assertEquals(recordHintCalls(state).length, 1);
 });
 
+Deno.test("direct Game Hint regenerates an invented district from an unanswered question", async () => {
+  const inventedDistrict = validGameHintJson({
+    warmUp:
+      "不是網美店，沒有乾燥花牆😂 大安那邊，聞到就停下來了，不知道妳這種行家會不會嫌棄。",
+    steady:
+      "哈，沒有乾燥花牆那種。大安附近，路過被香氣勾住的，妳有沒有私藏的非網美版本？",
+    coaching:
+      "Game 心法：她這輪問哪一區、是不是網美店。速約任務：回答大安附近，接她「網美店」的吐槽。",
+  });
+  const groundedReply = validGameHintJson({
+    warmUp: "不是網美店，沒有乾燥花牆😂 哪一區我沒記住，只記得路過被香氣勾住。",
+    steady: "沒有乾燥花牆那種；區域我先不亂補，妳有沒有私藏的非網美版本？",
+    coaching:
+      "Game 心法：她這輪問哪一區、是不是網美店。速約任務：回答哪一區沒記住，接她「網美店」的吐槽。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [inventedDistrict, groundedReply],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-hint-invented-district-retry",
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        { role: "ai", text: "哦？哪一區的啊，不會是那種網美店吧。" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(JSON.stringify(json).includes("大安"), false);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(state.claudeCalls[1].messages.at(-2), {
+    role: "assistant",
+    content: inventedDistrict,
+  });
+  assert(
+    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
+      "店名／地點",
+    ),
+  );
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, [
+    "hint_quality_invalid_unsupported_detail:world:venue:venue_named",
+  ]);
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
 Deno.test("direct Hint regenerates an unsupported yes-no schedule answer", async () => {
   const inventedSchedule = validHintJson({
     warmUp: "放假～補眠大概下午才會發生 😂 先撐著。",
