@@ -1224,8 +1224,8 @@ export function buildHintMessages(opts: {
         (opts.practiceMode === "game"
           ? ""
           : `warmUp/steady≤${HINT_REPLY_SOFT_CHAR_LIMIT}字，coaching≤${HINT_COACHING_SOFT_CHAR_LIMIT}字；完整收句。\n`) +
-        "未提供店名、地點、共同經歷別捏造；問哪家/在哪而逐字稿沒答案時，說沒記店名、只記得感覺或再確認，別編店名、地址或地標。\n" +
-        "她的第一人稱事實不可改寫成使用者的。\n" +
+        "未給店名/地點/共同經歷別捏造；問店/路/區沒答案，說沒記店/路名、記感覺，別編店/路名/地址/地標。\n" +
+        "她一人稱/偶爾行為不可改成使用者事實/偏好。\n" +
         "warmUp 是「升溫回覆」，steady 是「穩住回覆」，這兩個是唯二回覆選項；coaching 是「這邊怎麼回的心法」。\n" +
         "角色規則：user 代表使用者本人，assistant 代表練習對象。你是在幫使用者回覆 assistant 最新一句。\n" +
         "不要把 user 說過的話寫成「對方說」或「對方問你」；coaching 要說明如何接住 assistant 最新一句。\n" +

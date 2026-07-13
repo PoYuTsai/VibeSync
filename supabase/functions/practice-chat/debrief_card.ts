@@ -1204,7 +1204,10 @@ function preservedHintRepairNextLine(anchor: string): string {
   if (/(?:咖啡|口袋名單|裝潢|氣味|香味|單品|黑咖啡)/u.test(normalized)) {
     return `「${anchor}」這個標準很細，妳最在意哪一個？`;
   }
-  if (/(?:作息|時差|長班|上班|追劇|懸疑劇)/u.test(normalized)) {
+  if (/(?:追什麼劇|什麼劇|追劇)/u.test(normalized)) {
+    return `我昨晚追到停不下來；你飛久都怎麼撐過時差？`;
+  }
+  if (/(?:作息|時差|長班|上班|飛久|飛回來)/u.test(normalized)) {
     return `「${anchor}」聽起來很硬，妳都怎麼拉回來？`;
   }
   if (/(?:賴床|開機|睡醒|醒了)/u.test(normalized)) {

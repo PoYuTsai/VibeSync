@@ -902,6 +902,64 @@ Deno.test("production repair writes a concrete coffee follow-up instead of canne
   assertEquals(repaired.gameBreakdown?.nextFirstLine, repaired.suggestedLine);
 });
 
+Deno.test("production repair answers follow-up questions instead of generic choice text", () => {
+  const turns = [
+    { role: "user" as const, text: "我昨天追劇追到兩點，今天腦袋當機。" },
+    {
+      role: "ai" as const,
+      text:
+        "辛苦了😂 我懂那種腦袋當機的感覺，我剛飛回來時差也還沒調回來，一樣眼神死。",
+    },
+    {
+      role: "user" as const,
+      text:
+        "哈眼神死，時差沒調回來真的很折磨。我是熬夜自找的，你是工作換來的，感覺你比我慘一點 😂",
+    },
+    {
+      role: "ai" as const,
+      text: "還好啦 飛久了就習慣了😂 你追什麼劇這麼入迷？",
+    },
+  ];
+  const appliedDramaHint = {
+    turnIndex: 2,
+    type: "steady" as const,
+    originalHintText:
+      "哈眼神死，時差沒調回來真的很折磨。我是熬夜自找的，你是工作換來的，感覺你比我慘一點 😂",
+    sentText:
+      "哈眼神死，時差沒調回來真的很折磨。我是熬夜自找的，你是工作換來的，感覺你比我慘一點 😂",
+    exact: true,
+    decision: {
+      phase: "building_familiarity",
+      targetVariable: "安全感與熟悉感",
+      move: "build_connection",
+      inviteRoute: "not_ready",
+      rationale: "接住眼神死和時差，再用自嘲延續追劇話題。",
+    },
+  };
+
+  const repaired = parseDebriefCard(
+    JSON.stringify({
+      ...generatedQualityCard,
+      summary: "你有照提示做，但提示太保守。",
+      watchouts: ["照提示後，球沒有丟回她。"],
+      suggestedLine: "我對妳剛說的很有畫面，妳通常怎麼選？",
+      dateChanceReason: "這句提示偏保守，讓互動停住。",
+      nextInviteMove: "先補生活畫面。",
+    }),
+    {
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      turns,
+      appliedHintTurns: [appliedDramaHint],
+      repairPreservedHintCritique: true,
+    },
+  );
+
+  assertEquals(repaired.suggestedLine.includes("追到停不下來"), true);
+  assertEquals(repaired.suggestedLine.includes("時差"), true);
+  assertEquals(repaired.suggestedLine.includes("通常怎麼選"), false);
+});
+
 Deno.test("preserved Debrief may critique her response or a clearly identified non-Hint user turn", () => {
   const baseTurns = [
     { role: "user" as const, text: "早安" },
