@@ -4085,8 +4085,8 @@ Deno.test("assisted Debrief repairs indirect blame of an exact preserved Hint", 
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
   const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
-  assert(repairPrompt.includes("已認定 Hint 策略延續"));
-  assert(repairPrompt.includes("禮貌收尾、沒給球或太保守"));
+  assert(repairPrompt.includes("exact Hint 當成問題"));
+  assert(repairPrompt.includes("不得檢討 Hint"));
 });
 
 Deno.test("both Debrief providers blaming a preserved exact Hint record no card", async () => {

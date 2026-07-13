@@ -44,6 +44,8 @@
 
 **追記（2026-07-13 deploy smoke）**：Edge deploy 後 production smoke 顯示 Beginner Hint 已成功 generated，但 Debrief 連 3 次 503 retryable；ai_logs failureCodes 揭露根因＝DeepSeek `deepseek_max_tokens`、Claude failover `debrief_hint_assessment_missing`。補同型修法：`DEBRIEF_MAX_TOKENS` 800→1200，並把 `hintAssessment` 改成最外層 hidden-only hard JSON contract（不可省略、不可放進 card，server 驗證後移除）。本地驗證：targeted prompt/index/telemetry **279/279**，practice-chat 全套 **854/854**（`--no-check`）。
 
+**追加（2026-07-13 Codex takeover third fix）**: 第二輪 production smoke 已不再是 `debrief_hint_assessment_missing`，而是卡在 `debrief_hint_assessment_revision_required`：Debrief 會把使用者 exact 套用過的 Hint 當成問題，或在對方接球／延續但未明確拒絕時反轉策略。修法不是放寬 guard，而是把 invariant 寫硬：`exact` Hint 後若她有接球且沒有拒絕／糾正，`hintAssessment` 必須 `preserved`；可見欄位只能寫下一步，不能檢討 Hint。本次也補強 retry repair reason，讓修補請求明確要求「不得檢討 Hint」。驗證：`deno fmt --check` 4 檔、`git diff --check -- . ':!pubspec.lock' ':!.gstack'`、`deno test --allow-env --allow-read --no-check supabase/functions/practice-chat` = **854/854 passed**。後續需 deploy Edge 並重跑 production generated-only smoke。
+
 ### [2026-07-11] Beginner／Game Hint 與 Debrief 把降級罐頭當成功結果
 
 **Symptom**: TestFlight 點 Game Hint 後會看到「妳剛說的那個點我有記住…」等一眼可辨識的萬用句；賽後 Debrief 又可能批評剛才的 Hint、給出與當時策略相反的「下次可以這樣說」，Game 拆盤欄位也會只剩空泛術語。Beginner 與 Game 都受影響。

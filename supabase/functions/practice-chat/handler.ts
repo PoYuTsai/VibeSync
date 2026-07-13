@@ -578,6 +578,12 @@ function debriefRetryReason(error: unknown): string {
   if (message.includes("debrief_quality_invalid_unsupported_detail")) {
     return "可貼回覆把她的個人事實錯寫成使用者自己的事實";
   }
+  if (message.includes("debrief_hint_assessment_revision_required")) {
+    return "上一版把 exact Hint 當成問題或反轉策略；若她後續有接球/延續且沒有明確拒絕或糾正，hintAssessment 必須 preserved，visible 欄位只能寫下一步，不得檢討 Hint";
+  }
+  if (message.includes("debrief_hint_assessment_missing")) {
+    return "缺少最外層 hidden-only hintAssessment；exact Hint 後續有接球時必須 preserved";
+  }
   if (message.includes("debrief_hint_assessment")) {
     return "已認定 Hint 策略延續，卻又把同一句批成禮貌收尾、沒給球或太保守";
   }
