@@ -541,7 +541,7 @@ function isHintFormatOrGuardError(e: unknown): boolean {
 function hintRetryReason(e: unknown): string {
   const message = getErrorMessage(e);
   if (message.includes("unsupported_detail")) {
-    return "捏造證據未提供的店名、地點、時間、人物或聯絡資訊";
+    return "捏造證據未提供的具名事實（如劇名、店名、地點、時間、人物或聯絡資訊）";
   }
   if (message.includes("overlong")) {
     return "欄位太長，若直接裁尾會變成半句";
@@ -591,7 +591,7 @@ function withHintRetryInstruction(
         'shape 必須仍是 {"warmUp":"...","steady":"...","coaching":"..."}。' +
         `warmUp、steady 各 ${HINT_REPLY_SOFT_CHAR_LIMIT} 字內，coaching ${HINT_COACHING_SOFT_CHAR_LIMIT} 字內，三欄都要完整收句。` +
         "warmUp、steady、coaching 三欄各自都要逐字重用她最新一句的具體詞或短語，不能只有其中一欄具體。" +
-        "若她最新句只是在問「在哪／哪家／哪條路」，而逐字稿沒店名或路名：先答沒記店/路名、只記得感覺或香味；不得編店名、路名、地址、地標，也不得兩個回覆都只丟問題。" +
+        "若她最新句在問具名答案（劇名／片名／書名／店名／地點），逐字稿沒有答案時：自然承認沒提或先不揭曉，再沿她已說的感受接球；不得編任何專名，也不得兩個回覆都只丟問題。" +
         "可貼回覆要先接住她最新狀態，再給低壓接球；不要命令、不要面試官語氣、不要內部標籤、不要露骨或私密壓迫。",
     },
   ];

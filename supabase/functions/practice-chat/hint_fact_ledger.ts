@@ -26,7 +26,8 @@ export type HintFactDomain =
   | "family"
   | "preference"
   | "lifestyle"
-  | "venue";
+  | "venue"
+  | "media_title";
 
 export type HintFactRelation =
   | "is_age"
@@ -51,6 +52,7 @@ export type HintFactRelation =
   | "hobby"
   | "does_activity"
   | "venue_named"
+  | "titled"
   | "located_at";
 
 export type HintFactProvenance =
@@ -191,6 +193,7 @@ const ALWAYS_REQUIRE_SUPPORT = new Set<HintFactDomain>([
   "preference",
   "lifestyle",
   "venue",
+  "media_title",
 ]);
 
 const CITY_ALIASES: Record<string, string> = {
@@ -2063,6 +2066,8 @@ function anchorCueMatches(domain: HintFactDomain, clause: string): boolean {
         .test(clause);
     case "venue":
       return /(?:店|店家|咖啡店|餐廳|酒吧|叫|名為)/u.test(clause);
+    case "media_title":
+      return /(?:劇|影集|電影|片|書|歌|專輯|《|〈)/u.test(clause);
   }
 }
 
@@ -2491,6 +2496,35 @@ function contextualDirectAnswerClaims(input: {
           anchor,
         });
       }
+    }
+  }
+
+  // Direct-answer grounding is category-based: when she asks for a concrete
+  // media title, any named title in the generated answer must already exist in
+  // the trusted input. This rejects invented answers without trying to infer
+  // the tone or meaning of arbitrary chat prose.
+  const asksMediaTitle =
+    /(?:什麼|哪)(?:一)?(?:部|齣|本|首|張)?(?:劇|影集|電影|片|書|歌|專輯)|(?:劇名|片名|書名|歌名|影集名).{0,8}(?:是|叫|什麼)/u
+      .test(latest);
+  if (asksMediaTitle) {
+    for (
+      const match of text.matchAll(
+        /[《〈]\s*([^》〉]{2,80}?)\s*[》〉]/gu,
+      )
+    ) {
+      const anchor = normalizeAnchor(match[1] ?? "");
+      if (
+        anchor.length < 2 ||
+        /^(?:不知道|不記得|忘了|還沒決定|先不爆雷)$/u.test(anchor)
+      ) {
+        continue;
+      }
+      add({
+        owner: "world",
+        domain: "media_title",
+        relation: "titled",
+        anchor,
+      });
     }
   }
 

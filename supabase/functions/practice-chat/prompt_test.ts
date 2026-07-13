@@ -921,11 +921,18 @@ Deno.test("server-owned Debrief keeps the applied Hint strategy locked", () => {
   )[1].content;
 
   assert(user.includes("這是同一位教練的下游拆盤"));
-  assert(user.includes("策略由 server 鎖定為正確"));
+  assert(user.includes("策略由 server 鎖定為「在送出當下正確」"));
   assert(user.includes("不可 revised"));
-  assert(user.includes("所有建議沿用 decision.inviteRoute"));
+  assert(user.includes("不是後續永久上限"));
+  assert(user.includes("下一步可自然前進、維持或退回"));
+  assert(user.includes("不能寫成修正 Hint"));
   assert(user.includes("明確要求停止聯絡"));
   assert(user.includes("尊重界線並停止推進"));
+  assert(user.includes("不必硬塞固定句型"));
+  assertEquals(
+    user.includes("exact: true 時 summary/strengths 必含「你有照提示做」"),
+    false,
+  );
   assertEquals(
     user.includes("只有 Hint 送出後「她」的新回覆出現明確反證時才可 revised"),
     false,

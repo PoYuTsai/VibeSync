@@ -810,6 +810,8 @@ Deno.test("server-owned Hint strategy accepts objective outcome prose but still 
   ];
   const objectiveCard = {
     ...generatedQualityCard,
+    summary: "你接住她賴床狀態，她後來也回說慢慢開機了。",
+    strengths: ["你沿著賴床狀態延續輕鬆畫面，她也願意接球。"],
     watchouts: ["少追問一個開機細節，多留一點自己的早晨畫面。"],
   };
 

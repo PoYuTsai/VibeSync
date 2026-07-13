@@ -1481,11 +1481,12 @@ function assertHintAssessment(opts: {
         "after",
       ),
     );
-  const strategyContradictsHint = cardContradictsHintStrategy(
-    opts.card,
-    opts.appliedHintTurns,
-    postHintBoundary,
-  );
+  // In the direct path the server owns whether the already-sent Hint was
+  // correct for its turn. A new partner reply may legitimately open or close
+  // the *next* route, so re-inferring that route is not a Hint contradiction.
+  const strategyContradictsHint = opts.serverOwnsHintStrategy === true
+    ? false
+    : cardContradictsHintStrategy(opts.card, opts.appliedHintTurns);
   if (
     opts.skipVisibleConsistency !== true &&
     (visiblyReversesHint || strategyContradictsHint) && verdict !== "revised"
@@ -1545,6 +1546,7 @@ function assertGeneratedDebriefQuality(
     sharedFactualEvidence?: string[];
     partnerFactualEvidence?: string[];
     trustedFactClaims?: HintFactClaim[];
+    serverOwnsHintStrategy?: boolean;
   },
 ): void {
   const visibleFields = debriefVisibleFields(card);
@@ -1616,7 +1618,10 @@ function assertGeneratedDebriefQuality(
       throw new Error("debrief_quality_invalid_repeated_hint");
     }
   }
-  if (appliedHints.some((hint) => hint.exact)) {
+  if (
+    opts.serverOwnsHintStrategy !== true &&
+    appliedHints.some((hint) => hint.exact)
+  ) {
     const accountability = `${card.summary}\n${card.strengths.join("\n")}`;
     if (
       !/(?:有|已)(?:照|採用|使用)提示|照著提示|提示那句/u.test(accountability)

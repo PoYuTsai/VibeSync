@@ -1172,6 +1172,58 @@ Deno.test("typed Hint fact gate passes when output entities all come from the in
   });
 });
 
+Deno.test("typed direct-answer gate requires a source for named media titles", () => {
+  const unknownTitleContext = buildHintFactContext({
+    turns: [
+      { role: "user", text: "昨晚追劇追到兩點。" },
+      { role: "ai", text: "你看什麼劇這麼好看？" },
+    ],
+  });
+  for (
+    const [text, field] of [
+      ["看的是《黑暗榮耀》，一集接一集停不下來。", "reply"],
+      ["看的是《 黑暗榮耀 》，一集接一集停不下來。", "reply"],
+      ["建議直接回《黑暗榮耀》來延續追劇話題。", "coaching"],
+    ] as const
+  ) {
+    assertThrows(
+      () =>
+        assertHintFactClaimsSupported({
+          text,
+          field,
+          context: unknownTitleContext,
+        }),
+      Error,
+      ERROR,
+      text,
+    );
+  }
+  for (
+    const safe of [
+      "片名先不爆雷，妳平常追哪一類？",
+      "我一時想不起片名，但節奏很緊。",
+    ] as const
+  ) {
+    assertHintFactClaimsSupported({
+      text: safe,
+      field: "reply",
+      context: unknownTitleContext,
+    });
+  }
+
+  const knownTitleContext = buildHintFactContext({
+    turns: [
+      { role: "user", text: "昨晚看《黑暗榮耀》追到兩點。" },
+      { role: "ai", text: "你看什麼劇這麼好看？" },
+    ],
+  });
+  assertHintFactClaimsSupported({
+    text: "《黑暗榮耀》，一集接一集真的停不下來。",
+    field: "reply",
+    context: knownTitleContext,
+  });
+});
+
 // P1 對抗審：asksPlace 新增的「在X(?=發現|找到|喝到…)」pattern 沒限定 X 是
 // 地點名詞，會把「在聊天過程中發現」「在等你的時候」這種心情/動作句抓成
 // venue candidate 誤殺。X 不具地點形態時必須落 low 放行，不確定就不殺。

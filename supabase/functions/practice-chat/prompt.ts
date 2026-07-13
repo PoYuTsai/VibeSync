@@ -711,13 +711,13 @@ function debriefHintAccountabilityPrompt(
     ].join("\n");
   }).join("\n");
   const sharedContract =
-    `\n\nhintAssistedTurns(hidden evidence)\n${rows}\ndecision＝server權威；末筆：build不升約、soft不升direct、repair不邊修邊約。不要把照貼 Hint 的句子當成使用者自己亂打；exact: true 時 summary/strengths 必含「你有照提示做」。拆成：使用者執行 / Hint 品質 / 對方反應。讀完整末筆她回覆；有新素材／反問就不是禮貌收尾。`;
+    `\n\nhintAssistedTurns(hidden evidence)\n${rows}\ndecision＝server權威；末筆：build不升約、soft不升direct、repair不邊修邊約。不要把照貼 Hint 的句子當成使用者自己亂打。拆成：使用者執行 / Hint 品質 / 對方反應。讀完整末筆她回覆；有新素材／反問就不是禮貌收尾。`;
   if (serverOwnsHintStrategy) {
     return sharedContract +
-      `這是同一位教練的下游拆盤：已套用 Hint 的策略由 server 鎖定為正確，不可 revised、不可重新審判或暗示 Hint 本身有錯。她後續冷淡、拒絕或轉題都是「對方反應／下一步條件」，不是 Hint 瑕疵。所有建議沿用 decision.inviteRoute；唯一例外是她在 Hint 後明確要求停止聯絡，此時保留 Hint 評價、改成尊重界線並停止推進。watchouts 與卡點只評她的反應、提示前／後來的其他句，或以「下一步…」給未來動作。頂層固定填 hidden "hintAssessment":{"verdict":"preserved","revisedEvidenceQuote":null}；不可省略/進card，server會移除。`;
+      `這是同一位教練的下游拆盤：已套用 Hint 的策略由 server 鎖定為「在送出當下正確」，不可 revised、不可重新審判或暗示 Hint 本身有錯。decision.inviteRoute 是當時路線，不是後續永久上限；她在 Hint 後的新回覆若提供明確新證據，下一步可自然前進、維持或退回，但要寫成「對方反應帶來的新條件」，不能寫成修正 Hint。她明確要求停止聯絡時，一律尊重界線並停止推進。watchouts 與卡點只評她的反應、提示前／後來的其他句，或以「下一步…」給未來動作。summary/strengths 可自然承接 Hint，不必硬塞固定句型。頂層固定填 hidden "hintAssessment":{"verdict":"preserved","revisedEvidenceQuote":null}；不可省略/進card，server會移除。`;
   }
   return sharedContract +
-    `只有 Hint 送出後「她」的新回覆出現明確反證時才可 revised，否則不得批 Hint。頂層必填hidden "hintAssessment":{"verdict":"preserved","revisedEvidenceQuote":null}；不可省略/進card，server會移除。exact接球未拒=preserved；只寫下一步，不評Hint。exact＋preserved：不得批 Hint；watchouts／卡點只寫「下一步…」，或明寫「她／提示前／後來」。`;
+    `exact: true 時 summary/strengths 必含「你有照提示做」。只有 Hint 送出後「她」的新回覆出現明確反證時才可 revised，否則不得批 Hint。頂層必填hidden "hintAssessment":{"verdict":"preserved","revisedEvidenceQuote":null}；不可省略/進card，server會移除。exact接球未拒=preserved；只寫下一步，不評Hint。exact＋preserved：不得批 Hint；watchouts／卡點只寫「下一步…」，或明寫「她／提示前／後來」。`;
 }
 
 /** debrief 模式：system + 一則含 profile/訊號脈絡與逐字稿的 user 指令。 */

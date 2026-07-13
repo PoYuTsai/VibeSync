@@ -4091,8 +4091,8 @@ Deno.test("Debrief defaults to one Claude Sonnet writer without semantic review"
 Deno.test("direct assisted Debrief fills missing hidden Hint assessment server-side", async () => {
   const hintText = "還在賴床喔，那今天先准妳慢慢開機。";
   const cardWithoutAssessment = validDebriefJson({
-    summary: "你有照提示做，她後來也回說慢慢開機了。",
-    strengths: ["你照提示回她今天先准妳慢慢開機，她接著說有慢慢開機。"],
+    summary: "你接住她賴床的狀態，她後來也回說慢慢開機了。",
+    strengths: ["你沿著賴床狀態延續輕鬆畫面，她接著說有慢慢開機。"],
     watchouts: ["下一步可以接慢慢開機，再分享你今天第一個起床動作。"],
     suggestedLine: "慢慢開機就好，妳今天第一個讓腦袋上線的會是什麼？",
     dateChanceReason:
@@ -5045,6 +5045,50 @@ Deno.test("direct Beginner and Game Hint regenerate hallucinated user facts once
   }
 });
 
+Deno.test("direct Hint regenerates an invented media title from an unanswered question", async () => {
+  const inventedTitle = validHintJson({
+    warmUp: "《黑暗榮耀》，一集接一集真的停不下來。",
+    steady: "看的是《黑暗榮耀》，妳也喜歡這種節奏嗎？",
+    coaching: "她問什麼劇；直接回《黑暗榮耀》，再問她是否喜歡快節奏影集。",
+  });
+  const groundedReply = validHintJson({
+    warmUp: "妳問『什麼劇』問到點了，我先不爆雷；妳平常追哪一類？",
+    steady: "什麼劇先讓我賣個關子，妳會被哪種節奏勾到停不下來？",
+    coaching:
+      "她問『什麼劇』；逐字稿沒有劇名，先不編答案，再沿她的追劇偏好延續。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [inventedTitle, groundedReply],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "direct-hint-media-title-retry",
+      turns: [
+        { role: "user", text: "昨晚追劇追到兩點。" },
+        { role: "ai", text: "你看什麼劇這麼好看？" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(JSON.stringify(json).includes("黑暗榮耀"), false);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(state.claudeCalls[1].messages.at(-2), {
+    role: "assistant",
+    content: inventedTitle,
+  });
+  assert(
+    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
+      "劇名／片名／書名",
+    ),
+  );
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
 Deno.test("direct Hint retries a transient Claude failure once without fake format blame", async () => {
   const { response, state } = await run(
     {
@@ -5957,8 +6001,8 @@ Deno.test("hint sends max-token truncation to Claude with repair guidance", asyn
   assertEquals(state.claudeCalls.length, 1);
   const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
   assert(repairPrompt.includes("provider 截斷"));
-  assert(repairPrompt.includes("在哪／哪家／哪條路"));
-  assert(repairPrompt.includes("不得編店名"));
+  assert(repairPrompt.includes("劇名／片名／書名／店名／地點"));
+  assert(repairPrompt.includes("不得編任何專名"));
   assertEquals(state.claudeCalls[0].maxTokens, 1600);
 });
 
