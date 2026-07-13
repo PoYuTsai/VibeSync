@@ -2554,12 +2554,10 @@ Deno.test("generated Game Hint still rejects invented concrete venues after whic
 Deno.test("generated Game Hint can answer which-road questions without inventing a road or preference", () => {
   const result = parseHintResult(
     JSON.stringify({
-      warmUp:
-        "路名先欠著，我沒記清楚，只記得那家店香味很有存在感😂 妳去咖啡店放空通常看氣氛還是咖啡？",
-      steady:
-        "哪條路我真的沒記，只記得路過時香味很明顯。妳偶爾去咖啡店都怎麼挑？",
+      warmUp: "妳問在哪，我只能交出香味線索：路名沒記，香到我停了三秒😂",
+      steady: "在哪我先欠著，路名沒記，只記得路過時香味很明顯。",
       coaching:
-        "Game 心法：她問路名時先不編路名，承認只記得香味，再接她去咖啡店放空的習慣。速約任務：先交換挑店標準，等她接住再丟低壓踩點窗口。",
+        "Game 心法：她問「在哪」是在要可驗證資訊，先不編路名，承認只記得香味。速約任務：先回答這個問題，因為沒有可驗證資訊要保留可信度，等她接住再把香味窗口轉成低壓踩點。",
     }),
     {
       mode: "game",
@@ -2571,10 +2569,9 @@ Deno.test("generated Game Hint can answer which-road questions without inventing
         },
         {
           role: "ai",
-          text: "哦？在哪條路上啊？我偶爾也會去咖啡店放空一下。",
+          text: "喔？在哪啊",
         },
       ],
-      partnerFactualEvidence: ["她偶爾會去咖啡店放空。"],
     },
   );
 
@@ -2602,10 +2599,39 @@ Deno.test("generated Game Hint still rejects invented concrete roads after which
             },
             {
               role: "ai",
-              text: "哦？在哪條路上啊？我偶爾也會去咖啡店放空一下。",
+              text: "喔？在哪啊",
             },
           ],
-          partnerFactualEvidence: ["她偶爾會去咖啡店放空。"],
+        },
+      ),
+    Error,
+    "hint_quality_invalid",
+  );
+});
+
+Deno.test("generated Game Hint still rejects remembered concrete roads after which-road questions", () => {
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "路名沒記，只記得信義路上那家。",
+          steady: "在哪我先欠著，只記得那股香味很明顯。",
+          coaching:
+            "Game 心法：她問「在哪」是在要可驗證資訊，先不編路名，承認只記得香味。速約任務：先回答這個問題，因為沒有可驗證資訊要保留可信度，等她接住再把香味窗口轉成低壓踩點。",
+        }),
+        {
+          mode: "game",
+          enforceGeneratedQuality: true,
+          turns: [
+            {
+              role: "user",
+              text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+            },
+            {
+              role: "ai",
+              text: "喔？在哪啊",
+            },
+          ],
         },
       ),
     Error,

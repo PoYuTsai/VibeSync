@@ -124,8 +124,8 @@ const DEBRIEF_TIMEOUT_MS = 12000;
 const DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS = 24000;
 const DEBRIEF_IN_FLIGHT_STALE_MS = 45000;
 // 2026-07-13 probe: game hint 在 650 tokens 下 DeepSeek 47% finish_reason=length
-// 截斷（JSON 收不完→誤報 provider_error）。提高到 1000 給完整 JSON 空間。
-const HINT_MAX_TOKENS = 1000;
+// 截斷（JSON 收不完→誤報 provider_error）。提高到 1200 給 Game Hint 完整 JSON 空間。
+const HINT_MAX_TOKENS = 1200;
 const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 1;
 // Sacrifice a little wait time to reduce Game Hint timeout/failover and avoid
