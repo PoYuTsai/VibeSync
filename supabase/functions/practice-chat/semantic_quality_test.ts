@@ -6,7 +6,9 @@ import {
 import {
   adjudicatePracticeCandidate,
   buildSemanticAdjudicationMessages,
+  buildSemanticRepairVerificationMessages,
   parseSemanticAdjudication,
+  parseSemanticRepairVerification,
   type PracticeSemanticAdjudicatorArgs,
 } from "./semantic_quality.ts";
 
@@ -40,6 +42,15 @@ function validHintAdjudication(overrides: Record<string, unknown> = {}) {
         rationale: "把咖啡轉成小暫停的共同畫面，不急著邀約。",
       },
     },
+    ...overrides,
+  });
+}
+
+function validRepairVerification(overrides: Record<string, unknown> = {}) {
+  return JSON.stringify({
+    verdict: "accept",
+    issues: [],
+    userFactEvidence: [],
     ...overrides,
   });
 }
@@ -316,6 +327,68 @@ Deno.test("semantic adjudication prompt treats transcript and candidate as evide
   assertEquals(prompt.includes("direct invite forbidden"), true);
 });
 
+Deno.test("repair verification is a bounded evidence audit, not another free-form rewrite", () => {
+  const messages = buildSemanticRepairVerificationMessages({
+    surface: "hint",
+    candidate: hintCandidate,
+    turns,
+    appliedHintTurns: [],
+    trustedGenerationContext: "partner facts only",
+  });
+  const prompt = messages.map((message) => message.content).join("\n");
+
+  assertEquals(prompt.includes("semanticRepairVerificationV1"), true);
+  assertEquals(prompt.includes("不是改稿者"), true);
+  assertEquals(prompt.includes("不評文風、高手感、空泛或策略"), true);
+  assertEquals(prompt.includes("userFactEvidence"), true);
+  assertEquals(prompt.includes("turn-0 [user]"), true);
+});
+
+Deno.test("repair verification binds every claimed user fact to an exact user turn", () => {
+  const evidenceTurns = [
+    { role: "user" as const, text: "我昨晚追劇追到兩點" },
+    { role: "ai" as const, text: "我也剛飛回來有時差" },
+  ];
+  const parsed = parseSemanticRepairVerification({
+    raw: validRepairVerification({
+      userFactEvidence: [{
+        field: "warmUp",
+        claim: "我昨晚追劇到兩點",
+        evidenceTurnId: "turn-0",
+        evidenceQuote: "昨晚追劇追到兩點",
+      }],
+    }),
+    turns: evidenceTurns,
+    candidate: {
+      ...hintCandidate,
+      warmUp: "我昨晚追劇到兩點，妳剛飛回來先補眠吧。",
+    },
+  });
+
+  assertEquals(parsed.userFactEvidence.length, 1);
+  assertEquals(parsed.userFactEvidence[0].evidenceTurnId, "turn-0");
+  assertThrows(
+    () =>
+      parseSemanticRepairVerification({
+        raw: validRepairVerification({
+          userFactEvidence: [{
+            field: "warmUp",
+            claim: "我剛飛回來有時差",
+            evidenceTurnId: "turn-1",
+            evidenceQuote: "剛飛回來有時差",
+          }],
+        }),
+        turns: evidenceTurns,
+        candidate: {
+          ...hintCandidate,
+          warmUp: "我剛飛回來有時差，先一起補眠吧。",
+        },
+      }),
+    Error,
+    "semantic_repair_verification_invalid_evidence",
+  );
+});
+
 Deno.test("semantic adjudicator uses the alternate provider when the first reviewer fails", async () => {
   const calls: string[] = [];
   const args: PracticeSemanticAdjudicatorArgs = {
@@ -382,13 +455,18 @@ Deno.test("unsupported-fact repairs require an independent semantic acceptance",
       reviewedPrompts.push(
         args.messages.map((message) => message.content).join("\n"),
       );
-      return Promise.resolve(validHintAdjudication());
+      return Promise.resolve(validRepairVerification());
     },
   });
 
   assertEquals(calls, ["claude", "deepseek"]);
   assertEquals(reviewedPrompts[0].includes(String(repaired.warmUp)), true);
+  assertEquals(
+    reviewedPrompts[0].includes("semanticRepairVerificationV1"),
+    true,
+  );
   assertEquals(result.candidate, repaired);
+  assertEquals(result.strategies?.warmUp.move, "answer_then_question");
   assertEquals(result.repaired, true);
   assertEquals(result.issueKinds, ["unsupported_fact"]);
   assertEquals(result.providerCalls, 2);
@@ -415,7 +493,7 @@ Deno.test("high-risk repair gets one bounded fresh review after the alternate pr
     callClaude: (args) => {
       calls.push("claude");
       claudeCalls += 1;
-      assertEquals(args.maxTokens, 4000);
+      assertEquals(args.maxTokens, claudeCalls === 1 ? 4000 : 1200);
       return Promise.resolve(
         claudeCalls === 1
           ? validHintAdjudication({
@@ -423,7 +501,7 @@ Deno.test("high-risk repair gets one bounded fresh review after the alternate pr
             issues: [{ kind: "unsupported_fact" }],
             repairedResult: repaired,
           })
-          : validHintAdjudication(),
+          : validRepairVerification(),
       );
     },
     callDeepSeek: () => {
@@ -437,6 +515,36 @@ Deno.test("high-risk repair gets one bounded fresh review after the alternate pr
   assertEquals(result.repaired, true);
   assertEquals(result.issueKinds, ["unsupported_fact"]);
   assertEquals(result.providerCalls, 3);
+});
+
+Deno.test("high-risk repair verifier cannot start another rewrite loop", async () => {
+  await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: hintCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 2,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: () =>
+          Promise.resolve(validHintAdjudication({
+            verdict: "repair",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: hintCandidate,
+          })),
+        callDeepSeek: () =>
+          Promise.resolve(validRepairVerification({
+            verdict: "repair",
+          })),
+      }),
+    Error,
+    "semantic_adjudication_repair_unverified",
+  );
 });
 
 Deno.test("unsupported-fact repair fails closed without an independent reviewer budget", async () => {
