@@ -385,6 +385,51 @@ Deno.test("unsupported-fact repairs require an independent semantic acceptance",
   assertEquals(result.providerCalls, 2);
 });
 
+Deno.test("high-risk repair gets one bounded fresh review after the alternate provider fails", async () => {
+  const repaired = {
+    ...hintCandidate,
+    warmUp: "只保留逐字稿裡真的出現過的咖啡話題。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "hint",
+    practiceMode: "beginner",
+    candidate: hintCandidate,
+    candidateProvider: "deepseek",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 3,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      calls.push("claude");
+      claudeCalls += 1;
+      assertEquals(args.maxTokens, 4000);
+      return Promise.resolve(
+        claudeCalls === 1
+          ? validHintAdjudication({
+            verdict: "repair",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: repaired,
+          })
+          : validHintAdjudication(),
+      );
+    },
+    callDeepSeek: () => {
+      calls.push("deepseek");
+      return Promise.reject(new Error("deepseek_timeout"));
+    },
+  });
+
+  assertEquals(calls, ["claude", "deepseek", "claude"]);
+  assertEquals(result.candidate, repaired);
+  assertEquals(result.repaired, true);
+  assertEquals(result.issueKinds, ["unsupported_fact"]);
+  assertEquals(result.providerCalls, 3);
+});
+
 Deno.test("unsupported-fact repair fails closed without an independent reviewer budget", async () => {
   await assertRejects(
     () =>

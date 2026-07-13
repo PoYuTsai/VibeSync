@@ -84,7 +84,9 @@ export class SemanticAdjudicationError extends Error {
   }
 }
 
-const ADJUDICATION_MAX_TOKENS = 1800;
+// A repaired Game card repeats all visible fields plus its breakdown. Hidden
+// reasoning/token accounting can exhaust 1800 before the JSON object closes.
+const ADJUDICATION_MAX_TOKENS = 4000;
 const ADJUDICATION_TEMPERATURE = 0.1;
 // Production semantic verification regularly completed just beyond 18s.
 // Keep the generation timeout bounded, but give the independent reviewer
@@ -492,14 +494,24 @@ export async function adjudicatePracticeCandidate(
         : 0
     );
   }
-  const budget = Math.max(0, Math.min(args.maxProviderCalls, reviewers.length));
+  const budget = Math.max(0, args.maxProviderCalls);
+  const reviewPlan = [...reviewers];
+  const boundedRetry =
+    reviewers.find((reviewer) => reviewer.provider === "anthropic") ??
+      reviewers[0];
+  // Try each distinct provider first. Only after both paths are exhausted may
+  // one fresh bounded call verify the repaired candidate; common-path accepts
+  // still return after the first reviewer.
+  while (boundedRetry && reviewPlan.length < budget) {
+    reviewPlan.push(boundedRetry);
+  }
   let providerCalls = 0;
   let lastError: unknown;
   let candidateUnderReview = args.candidate;
   let highRiskRepair:
     | Pick<SemanticAdjudicationResult, "candidate" | "issueKinds">
     | undefined;
-  for (const reviewer of reviewers.slice(0, budget)) {
+  for (const reviewer of reviewPlan.slice(0, budget)) {
     providerCalls += 1;
     try {
       const raw = await reviewer.call(buildSemanticAdjudicationMessages({
