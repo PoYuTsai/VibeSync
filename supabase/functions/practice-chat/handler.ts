@@ -585,6 +585,9 @@ function debriefRetryReason(error: unknown): string {
   if (message.includes("debrief_quality_invalid_unsupported_detail")) {
     return "可貼回覆把她的個人事實錯寫成使用者自己的事實";
   }
+  if (message.includes("debrief_quality_invalid_suggested_line_not_grounded")) {
+    return "suggestedLine 補了逐字稿沒有的事實；她問劇名、店名或地點但逐字稿沒答案時，不得編名稱，改用不爆雷、還在想怎麼形容或反問偏好來接";
+  }
   if (message.includes("debrief_hint_assessment_revision_required")) {
     return "上一版把 exact Hint 當成問題或反轉策略；若她後續有接球/延續且沒有明確拒絕或糾正，hintAssessment 必須 preserved，visible 欄位只能寫下一步，不得檢討 Hint";
   }

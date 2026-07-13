@@ -35,6 +35,10 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
   }
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("她的個資"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("沒有使用者證據"), true);
+  assertEquals(
+    DEBRIEF_SYSTEM_PROMPT.includes("禁編未出現劇名/店名/地點"),
+    true,
+  );
 });
 
 Deno.test("standard buildChatMessages does not include temperature score", () => {

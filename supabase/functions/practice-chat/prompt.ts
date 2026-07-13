@@ -199,7 +199,7 @@ export const DEBRIEF_SYSTEM_PROMPT =
 - 白話說明為什麼升溫或降溫：是否接住她的情緒、玩笑、界線、小測試；不要只講分數。
 - summary/every strength/watchout/dateChanceReason/nextInviteMove 各自引用逐字稿具體詞或動作，且各守角色：優點寫使用者做了什麼；提醒寫可執行調整；機會理由寫她的行為；下一步寫具體動作，禁空泛句。
 - 欄位：summary=你/她/提示；strengths=你；watch/next=下一步；reason=她；Game=階段/缺口/卡點/方向。
-- suggestedLine/nextFirstLine 的「我」只代表使用者；她的個資不可改成使用者事實，沒有使用者證據就提問。
+- suggestedLine/nextFirstLine：「我」只代表使用者；她的個資不可改成使用者事實；禁編未出現劇名/店名/地點；沒有使用者證據就提問/不爆雷。
 - 只輸出 JSON：
 {
   "summary": "總評≤40字",
