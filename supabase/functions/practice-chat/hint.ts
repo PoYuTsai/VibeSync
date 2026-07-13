@@ -15,6 +15,7 @@ import {
 import type { PracticeSceneContext } from "./life_schedule.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
 import {
+  clipUtf16Safe,
   IMAGE_CONCEPT_PLACEHOLDER,
   scrubRawImageFilenames,
 } from "./prompt_sanitizer.ts";
@@ -243,7 +244,7 @@ const HINT_MEMORY_SUMMARY_CHAR_LIMIT = 100;
 function clippedPromptTurn(text: string, limit: number): string {
   const scrubbed = scrubRawImageFilenames(text).replace(/\s+/gu, " ").trim();
   if (scrubbed.length <= limit) return scrubbed;
-  return `${scrubbed.slice(0, Math.max(1, limit - 1)).trimEnd()}…`;
+  return `${clipUtf16Safe(scrubbed, Math.max(1, limit - 1)).trimEnd()}…`;
 }
 
 function promptTurnLine(turn: PracticeTurn, limit: number): string {

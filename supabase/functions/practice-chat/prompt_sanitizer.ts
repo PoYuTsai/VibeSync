@@ -22,3 +22,14 @@ export function scrubRawImageFilenames(text: string): string {
     IMAGE_CONCEPT_PLACEHOLDER,
   );
 }
+
+export function clipUtf16Safe(text: string, maxCodeUnits: number): string {
+  if (maxCodeUnits <= 0) return "";
+  if (text.length <= maxCodeUnits) return text;
+  let end = maxCodeUnits;
+  const lastCodeUnit = text.charCodeAt(end - 1);
+  if (lastCodeUnit >= 0xD800 && lastCodeUnit <= 0xDBFF) {
+    end -= 1;
+  }
+  return text.slice(0, end);
+}

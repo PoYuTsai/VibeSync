@@ -27,6 +27,20 @@ const dinnerScene: PracticeSceneContext = {
   replyTempo: "normal",
 };
 
+function hasLoneSurrogate(value: string): boolean {
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xD800 && code <= 0xDBFF) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xDC00 && next <= 0xDFFF)) return true;
+      index++;
+      continue;
+    }
+    if (code >= 0xDC00 && code <= 0xDFFF) return true;
+  }
+  return false;
+}
+
 Deno.test("Debrief prompt forbids transferring partner facts into pasteable first-person lines", () => {
   for (
     const expected of ["suggestedLine", "nextFirstLine", "我", "使用者事實"]
@@ -39,6 +53,56 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
     DEBRIEF_SYSTEM_PROMPT.includes("禁編未出現劇名/店名/地點"),
     true,
   );
+});
+
+Deno.test("Hint and Debrief prompt clipping keeps emoji surrogate pairs intact", () => {
+  const gameProfile = resolvePracticeProfile({
+    profileId: "practice_girl_051",
+  });
+  const smokeEmojiTurn = "哦？你怎麼知道我喜歡咖啡的 🤔 哪區的店啊？";
+  const debriefMessages = buildDebriefMessages(
+    [
+      {
+        role: "user",
+        text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+      },
+      { role: "ai", text: smokeEmojiTurn },
+      {
+        role: "user",
+        text:
+          "妳限動有透露過，所以我就記住了。哪區我沒特別注意，只記得香味很衝，路過就停下來了。妳平常喝什麼類型的？",
+      },
+      {
+        role: "ai",
+        text: "哈哈，你記憶力不錯嘛👍 我大多喝拿鐵，奶泡綿的就很滿足～",
+      },
+    ],
+    gameProfile,
+    {
+      practiceMode: "game",
+      temperatureScore: 37,
+      familiarityScore: 5,
+      gameState: {
+        ...initialPersistedGameState(),
+        phase: "P1_OPEN",
+        turnCount: 2,
+      },
+    },
+  );
+  const hintMessages = buildHintMessages({
+    turns: [
+      { role: "user", text: "剛看到妳喜歡咖啡" },
+      { role: "ai", text: `${"a".repeat(66)}🤔 trailing text` },
+    ],
+    profile: gameProfile,
+    practiceMode: "game",
+    temperatureScore: 37,
+    familiarityScore: 5,
+  });
+
+  const serialized = JSON.stringify([...debriefMessages, ...hintMessages]);
+  assertEquals(hasLoneSurrogate(serialized), false);
+  assertEquals(serialized.includes("\\ud83e"), false);
 });
 
 Deno.test("standard buildChatMessages does not include temperature score", () => {
