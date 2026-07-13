@@ -4088,7 +4088,64 @@ Deno.test("Debrief defaults to one Claude Sonnet writer without semantic review"
   assertEquals(json.failoverUsed, false);
 });
 
+Deno.test("direct assisted Debrief fills missing hidden Hint assessment server-side", async () => {
+  const hintText = "還在賴床喔，那今天先准妳慢慢開機。";
+  const cardWithoutAssessment = validDebriefJson({
+    summary: "你有照提示做，她後來也回說慢慢開機了。",
+    strengths: ["你照提示回她今天先准妳慢慢開機，她接著說有慢慢開機。"],
+    watchouts: ["下一步可以接慢慢開機，再分享你今天第一個起床動作。"],
+    suggestedLine: "慢慢開機就好，妳今天第一個讓腦袋上線的會是什麼？",
+    dateChanceReason:
+      "她回說慢慢開機了，願意延續賴床話題，但還沒提時間或見面。",
+    nextInviteMove: "先問她慢慢開機後第一件會做什麼，再看她是否多投入。",
+    hintAssessment: undefined,
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [cardWithoutAssessment],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "建立熟悉中",
+            targetVariable: "投入感",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先接住賴床狀態，再看她是否願意延伸。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      requestId: "direct-debrief-missing-hidden-assessment",
+      practiceMode: "beginner",
+      turns: [
+        { role: "user", text: "早安" },
+        { role: "ai", text: "我還在賴床，腦袋沒開機" },
+        { role: "user", text: hintText },
+        { role: "ai", text: "哈哈有慢慢開機了" },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: hintText,
+        sentText: hintText,
+        exact: true,
+        hintRequestId: "hint-missing-assessment-1",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
 Deno.test("direct Game Debrief retries one rejected Claude card with the exact reason", async () => {
+  const incompleteGameCard = validDebriefJson();
   const completeGameCard = JSON.parse(validDebriefJson({
     summary: "你接住她下班後想散步放空，現在仍在交換生活節奏。",
   }));
@@ -4104,7 +4161,7 @@ Deno.test("direct Game Debrief retries one rejected Claude card with the exact r
       ledger: gameStartedLedger(),
       drawEvents: [{ profile_id: "practice_girl_004" }],
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-      claudeReplies: [validDebriefJson(), JSON.stringify(completeGameCard)],
+      claudeReplies: [incompleteGameCard, JSON.stringify(completeGameCard)],
     },
     debriefBody({
       practiceMode: "game",
@@ -4121,6 +4178,10 @@ Deno.test("direct Game Debrief retries one rejected Claude card with the exact r
   assertEquals(state.claudeCalls[1].model, CLAUDE_SONNET_MODEL);
   const retryPrompt = state.claudeCalls[1].messages.at(-1)?.content ?? "";
   assert(retryPrompt.includes("Game 拆盤五個欄位有缺漏或空白"));
+  assertEquals(state.claudeCalls[1].messages.at(-2), {
+    role: "assistant",
+    content: incompleteGameCard,
+  });
   assertEquals(typeof json.card.gameBreakdown.nextFirstLine, "string");
   assertEquals(recordDebriefCalls(state).length, 1);
 });
@@ -4976,6 +5037,10 @@ Deno.test("direct Beginner and Game Hint regenerate hallucinated user facts once
     assertEquals(state.semanticCalls.length, 0, mode);
     const retryPrompt = state.claudeCalls[1].messages.at(-1)?.content ?? "";
     assert(retryPrompt.includes("上一版 Hint JSON 被拒絕"), mode);
+    assertEquals(state.claudeCalls[1].messages.at(-2), {
+      role: "assistant",
+      content: invalidMirror,
+    });
     assertEquals(recordHintCalls(state).length, 1, mode);
   }
 });

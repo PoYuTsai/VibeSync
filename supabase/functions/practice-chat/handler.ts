@@ -2714,6 +2714,7 @@ export function createPracticeChatHandler(
             semanticAdjudicated: false,
             deferVisibleGuardsToSemantic: false,
           }));
+        let previousDirectHintCandidate: string | null = null;
         const parseGeneratedHint = async (
           rawHint: string,
           candidateProvider: "deepseek" | "anthropic",
@@ -2814,10 +2815,17 @@ export function createPracticeChatHandler(
             attempt <= DIRECT_PRACTICE_GENERATION_ATTEMPTS;
             attempt++
           ) {
+            const retryBaseHintMessages: ChatMessage[] = attempt > 1 &&
+                previousDirectHintCandidate !== null
+              ? [
+                ...baseHintMessages,
+                { role: "assistant", content: previousDirectHintCandidate },
+              ]
+              : baseHintMessages;
             const hintMessages = attempt > 1 && lastError !== undefined &&
                 isHintFormatOrGuardError(lastError)
-              ? withHintRetryInstruction(baseHintMessages, lastError)
-              : baseHintMessages;
+              ? withHintRetryInstruction(retryBaseHintMessages, lastError)
+              : retryBaseHintMessages;
             hintAttemptCount += 1;
             hintPromptChars = countPromptChars(hintMessages);
             const attemptStartedAt = performance.now();
@@ -2830,6 +2838,7 @@ export function createPracticeChatHandler(
                 temperature: HINT_TEMPERATURE,
                 timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
               });
+              previousDirectHintCandidate = rawHint;
               hintResult = parseDirectGeneratedHint(rawHint);
               hintLastFailureClass = null;
               const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
@@ -3634,10 +3643,50 @@ export function createPracticeChatHandler(
           enforceGeneratedQuality: true,
           semanticAdjudicated: true,
         } as const;
+        const canonicalHintAssessment = (
+          rawCandidate: Record<string, unknown>,
+        ): Record<string, unknown> => {
+          const rawHintAssessment = rawCandidate.hintAssessment;
+          if (
+            typeof rawHintAssessment === "object" &&
+            rawHintAssessment !== null &&
+            !Array.isArray(rawHintAssessment)
+          ) {
+            const assessment = rawHintAssessment as Record<string, unknown>;
+            if (
+              assessment.verdict === "preserved" &&
+              assessment.revisedEvidenceQuote === null
+            ) {
+              return { verdict: "preserved", revisedEvidenceQuote: null };
+            }
+            if (
+              assessment.verdict === "revised" &&
+              typeof assessment.revisedEvidenceQuote === "string" &&
+              assessment.revisedEvidenceQuote.trim().length > 0 &&
+              assessment.revisedEvidenceQuote.length <= 120
+            ) {
+              return {
+                verdict: "revised",
+                revisedEvidenceQuote: assessment.revisedEvidenceQuote.trim(),
+              };
+            }
+          }
+          // The server already owns the Hint decision. Missing/invalid model
+          // metadata cannot overturn it; visible contradictions still fail the
+          // normal continuity guard below and trigger one targeted rewrite.
+          return { verdict: "preserved", revisedEvidenceQuote: null };
+        };
         const parseDirectGeneratedDebrief = (
           rawCard: string,
-        ): DebriefCard =>
-          parseDebriefCard(rawCard, {
+        ): DebriefCard => {
+          const rawCandidate = parseDebriefCandidateObject(rawCard);
+          const directCandidate = (ledgerAppliedHintTurns?.length ?? 0) > 0
+            ? {
+              ...rawCandidate,
+              hintAssessment: canonicalHintAssessment(rawCandidate),
+            }
+            : rawCandidate;
+          return parseDebriefCard(JSON.stringify(directCandidate), {
             ...generatedDebriefParseOptions,
             repairPreservedHintCritique: false,
             repairUngroundedSuggestedLine: false,
@@ -3645,6 +3694,8 @@ export function createPracticeChatHandler(
             deferHintAssessmentToSemantic: false,
             deferVisibleGuardsToSemantic: false,
           });
+        };
+        let previousDirectDebriefCandidate: string | null = null;
         const parseGeneratedDebrief = async (
           rawCard: string,
           candidateProvider: "deepseek" | "anthropic",
@@ -3655,38 +3706,10 @@ export function createPracticeChatHandler(
             deferHintAssessmentToSemantic: true,
             deferVisibleGuardsToSemantic: true,
           });
-          const rawHintAssessment = rawCandidate.hintAssessment;
-          const canonicalHintAssessment = (() => {
-            if (
-              typeof rawHintAssessment === "object" &&
-              rawHintAssessment !== null &&
-              !Array.isArray(rawHintAssessment)
-            ) {
-              const assessment = rawHintAssessment as Record<string, unknown>;
-              if (
-                assessment.verdict === "preserved" &&
-                assessment.revisedEvidenceQuote === null
-              ) {
-                return { verdict: "preserved", revisedEvidenceQuote: null };
-              }
-              if (
-                assessment.verdict === "revised" &&
-                typeof assessment.revisedEvidenceQuote === "string" &&
-                assessment.revisedEvidenceQuote.trim().length > 0 &&
-                assessment.revisedEvidenceQuote.length <= 120
-              ) {
-                return {
-                  verdict: "revised",
-                  revisedEvidenceQuote: assessment.revisedEvidenceQuote.trim(),
-                };
-              }
-            }
-            return { verdict: "preserved", revisedEvidenceQuote: null };
-          })();
           const candidate: Record<string, unknown> = {
             ...candidateCard,
             ...((ledgerAppliedHintTurns?.length ?? 0) > 0
-              ? { hintAssessment: canonicalHintAssessment }
+              ? { hintAssessment: canonicalHintAssessment(rawCandidate) }
               : Object.hasOwn(rawCandidate, "hintAssessment")
               ? { hintAssessment: rawCandidate.hintAssessment }
               : {}),
@@ -3763,16 +3786,26 @@ export function createPracticeChatHandler(
             attempt <= DIRECT_PRACTICE_GENERATION_ATTEMPTS;
             attempt++
           ) {
+            const retryBaseDebriefMessages: ChatMessage[] = attempt > 1 &&
+                previousDirectDebriefCandidate !== null
+              ? [
+                ...baseDebriefMessages,
+                {
+                  role: "assistant",
+                  content: previousDirectDebriefCandidate,
+                },
+              ]
+              : baseDebriefMessages;
             const debriefMessages = attempt > 1 && lastError !== undefined &&
                 (debriefLastFailureClass === "visible_text_guard" ||
                   debriefLastFailureClass === "invalid_json" ||
                   debriefLastFailureClass === "schema_invalid")
               ? withDebriefRetryInstruction(
-                baseDebriefMessages,
+                retryBaseDebriefMessages,
                 lastError,
                 debriefPracticeMode === "game",
               )
-              : baseDebriefMessages;
+              : retryBaseDebriefMessages;
             debriefAttemptCount += 1;
             debriefPromptChars = countPromptChars(debriefMessages);
             const attemptStartedAt = performance.now();
@@ -3785,6 +3818,7 @@ export function createPracticeChatHandler(
                 temperature: DEBRIEF_TEMPERATURE,
                 timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
               });
+              previousDirectDebriefCandidate = rawCard;
               debriefCard = parseDirectGeneratedDebrief(rawCard);
               debriefLastFailureClass = null;
               const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
