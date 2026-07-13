@@ -4186,6 +4186,41 @@ Deno.test("direct Game Debrief retries one rejected Claude card with the exact r
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
+Deno.test("direct Game Debrief accepts expert vocabulary without the legacy mechanism wordlist", async () => {
+  const card = JSON.parse(validDebriefJson({
+    summary: "她用『裝潢比較美』做篩選，你接住後形成輕推拉。",
+  })) as Record<string, unknown>;
+  card.gameBreakdown = {
+    phaseReached: "開場進到咖啡踩雷經驗交換",
+    missedVariable: "還缺你對咖啡踩雷的具體畫面",
+    failureState: "目前只接到她說裝潢比較美",
+    nextFirstLine: "裝潢派先得一分，妳踩過最扯的是哪杯？",
+    inviteDirection: "先交換踩雷故事，再看低壓邀約窗口",
+  };
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [JSON.stringify(card)],
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-debrief-expert-vocabulary",
+      turns: [
+        { role: "user", text: "那杯有這麼慘？" },
+        { role: "ai", text: "只能說裝潢比較美，咖啡真的不行。" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.summary.includes("篩選"), true);
+  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
 Deno.test("direct Debrief exhausts three Claude attempts without recording canned output", async () => {
   const { response, json, state } = await run({
     ledger: beginnerStartedLedger(),
@@ -4223,7 +4258,7 @@ Deno.test("direct Debrief regenerates a hallucinated user fact without semantic 
       ledger: beginnerStartedLedger(),
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
       claudeReplies: [
-        card("我也是台南人，妳最常去哪一區？"),
+        card("我也喜歡中西區，妳最常去哪一區？"),
         card("原來妳常在中西區活動，休假最常去哪裡放空？"),
       ],
     },
@@ -4247,6 +4282,10 @@ Deno.test("direct Debrief regenerates a hallucinated user fact without semantic 
   assertEquals(state.semanticCalls.length, 0);
   const retryPrompt = state.claudeCalls[1].messages.at(-1)?.content ?? "";
   assert(retryPrompt.includes("上一版拆解 JSON 被拒絕"));
+  assert(retryPrompt.includes("我也／我喜歡"));
+  assert(retryPrompt.includes("我通常／我都"));
+  assertEquals(state.claudeCalls[0].temperature, 0.5);
+  assertEquals(state.claudeCalls[1].temperature, 0.2);
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
@@ -5077,6 +5116,8 @@ Deno.test("direct Hint regenerates an invented media title from an unanswered qu
   assertEquals(JSON.stringify(json).includes("黑白大廚"), false);
   assertEquals(state.claudeCalls.length, 2);
   assertEquals(state.semanticCalls.length, 0);
+  assertEquals(state.claudeCalls[0].temperature, 0.45);
+  assertEquals(state.claudeCalls[1].temperature, 0.2);
   assertEquals(state.claudeCalls[1].messages.at(-2), {
     role: "assistant",
     content: inventedTitle,

@@ -376,12 +376,15 @@ function rejectInternalLabelLeak(value: string) {
 function guardVisibleText(
   value: string,
   deferToSemantic = false,
+  skipLexicalStyleGuards = false,
 ): string {
   if (deferToSemantic) return value;
   rejectInternalLabelLeak(value);
   // 批3 P1：debrief prompt 注入 band 詞後，模型可能把溫度內部詞或 1.2 原詞
   // 抄進可見欄位；被拒→handler 重試→band-aware fallback 卡兜底。
-  rejectVisibleTemperatureMechanismLeak(value, "debrief_temperature_leak");
+  if (!skipLexicalStyleGuards) {
+    rejectVisibleTemperatureMechanismLeak(value, "debrief_temperature_leak");
+  }
   rejectL4UnsafeVisibleText(value, "debrief_l4_unsafe");
   return value;
 }
@@ -390,6 +393,7 @@ function parseGameBreakdown(
   value: unknown,
   enforceGeneratedQuality: boolean,
   deferVisibleGuardsToSemantic = false,
+  skipLexicalStyleGuards = false,
 ): GameBreakdown {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("debrief_game_breakdown_missing_fields");
@@ -404,6 +408,7 @@ function parseGameBreakdown(
         enforceGeneratedQuality,
       ),
       deferVisibleGuardsToSemantic,
+      skipLexicalStyleGuards,
     ),
     missedVariable: guardVisibleText(
       generatedVisibleString(
@@ -413,6 +418,7 @@ function parseGameBreakdown(
         enforceGeneratedQuality,
       ),
       deferVisibleGuardsToSemantic,
+      skipLexicalStyleGuards,
     ),
     failureState: guardVisibleText(
       generatedVisibleString(
@@ -422,6 +428,7 @@ function parseGameBreakdown(
         enforceGeneratedQuality,
       ),
       deferVisibleGuardsToSemantic,
+      skipLexicalStyleGuards,
     ),
     nextFirstLine: guardVisibleText(
       generatedVisibleString(
@@ -431,6 +438,7 @@ function parseGameBreakdown(
         enforceGeneratedQuality,
       ),
       deferVisibleGuardsToSemantic,
+      skipLexicalStyleGuards,
     ),
     inviteDirection: guardVisibleText(
       generatedVisibleString(
@@ -440,6 +448,7 @@ function parseGameBreakdown(
         enforceGeneratedQuality,
       ),
       deferVisibleGuardsToSemantic,
+      skipLexicalStyleGuards,
     ),
   };
   if (Object.values(gameBreakdown).some((field) => field.length === 0)) {
@@ -1204,13 +1213,24 @@ function serverOwnedCardCritiquesExactHint(
     .filter((text) => text.length >= 4);
   return debriefVisibleFields(card).some((field) => {
     const compact = normalizedPracticeText(field);
-    const namesHint =
-      /(?:提示|照貼|照著提示|原本那句|hint|這句|這個回覆|你的回覆|只回|只問)/iu
-        .test(compact) || exactTexts.some((text) => {
-          const anchor = [...text].slice(0, 12).join("");
-          return compact.includes(text) || compact.includes(anchor);
-        });
+    const explicitlyNamesHint =
+      /(?:提示|照貼|照著提示|原本那句|hint|這句|這個回覆|你的回覆)/iu
+        .test(compact);
+    const repeatsHintText = exactTexts.some((text) => {
+      const anchor = [...text].slice(0, 12).join("");
+      return compact.includes(text) || compact.includes(anchor);
+    });
+    const namesHint = explicitlyNamesHint || repeatsHintText ||
+      /(?:只回|只問)/u.test(compact);
     if (!namesHint) return false;
+    // 「下一步別只問…」是未來建議，不是在重審已送出的 Hint。
+    // 明講提示／這句或重複 Hint 原文時仍維持 fail-closed。
+    if (
+      hasForwardCoachingScope(field) && !explicitlyNamesHint &&
+      !repeatsHintText
+    ) {
+      return false;
+    }
     const hasUnnegatedCritique = preservedHintCritiqueMatches(compact).some(
       (match) => !critiqueIsNegatedPraise(compact, match.index),
     );
@@ -1711,6 +1731,8 @@ export function parseDebriefCard(
     deferVisibleGuardsToSemantic?: boolean;
     /** Applied Hint strategy is authoritative; avoid broad prose re-inference. */
     serverOwnsHintStrategy?: boolean;
+    /** Direct Claude owns expert wording; keep internal-label and L4 guards. */
+    skipLexicalStyleGuards?: boolean;
   } = {},
 ): DebriefCard {
   const cleaned = extractJsonObject(raw);
@@ -1729,6 +1751,7 @@ export function parseDebriefCard(
       enforceGeneratedQuality,
     ),
     deferVisibleGuards,
+    opts.skipLexicalStyleGuards === true,
   );
   const suggestedLine = guardVisibleText(
     generatedVisibleString(
@@ -1738,6 +1761,7 @@ export function parseDebriefCard(
       enforceGeneratedQuality,
     ),
     deferVisibleGuards,
+    opts.skipLexicalStyleGuards === true,
   );
   if (summary.length === 0 || suggestedLine.length === 0) {
     throw new Error("debrief_missing_fields");
@@ -1748,14 +1772,26 @@ export function parseDebriefCard(
     40,
     GENERATED_DEBRIEF_LIST_ITEM_MAX_LENGTH,
     enforceGeneratedQuality,
-  ).map((item) => guardVisibleText(item, deferVisibleGuards));
+  ).map((item) =>
+    guardVisibleText(
+      item,
+      deferVisibleGuards,
+      opts.skipLexicalStyleGuards === true,
+    )
+  );
   const watchouts = generatedVisibleList(
     p.watchouts,
     2,
     40,
     GENERATED_DEBRIEF_LIST_ITEM_MAX_LENGTH,
     enforceGeneratedQuality,
-  ).map((item) => guardVisibleText(item, deferVisibleGuards));
+  ).map((item) =>
+    guardVisibleText(
+      item,
+      deferVisibleGuards,
+      opts.skipLexicalStyleGuards === true,
+    )
+  );
   const vibeRaw = clampStr(p.vibe, 4);
   const vibe = VIBES.includes(vibeRaw) ? vibeRaw : "中性";
 
@@ -1770,6 +1806,7 @@ export function parseDebriefCard(
       enforceGeneratedQuality,
     ),
     deferVisibleGuards,
+    opts.skipLexicalStyleGuards === true,
   );
   const nextInviteMove = guardVisibleText(
     generatedVisibleString(
@@ -1779,6 +1816,7 @@ export function parseDebriefCard(
       enforceGeneratedQuality,
     ),
     deferVisibleGuards,
+    opts.skipLexicalStyleGuards === true,
   );
   const dateChance = DATE_CHANCES.includes(dateChanceRaw)
     ? dateChanceRaw
@@ -1817,6 +1855,7 @@ export function parseDebriefCard(
         p.gameBreakdown,
         enforceGeneratedQuality,
         deferVisibleGuards,
+        opts.skipLexicalStyleGuards === true,
       )
       : null,
   };

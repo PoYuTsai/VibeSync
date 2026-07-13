@@ -835,6 +835,22 @@ Deno.test("server-owned Hint strategy accepts objective outcome prose but still 
   });
   assertEquals(accepted.watchouts, objectiveCard.watchouts);
 
+  const forwardScopedCard = {
+    ...objectiveCard,
+    watchouts: ["下一步別只問開機狀態，補一點你的早晨畫面。"],
+  };
+  const forwardAccepted = parseDebriefCard(
+    JSON.stringify(forwardScopedCard),
+    {
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      turns,
+      appliedHintTurns: [appliedExactHint],
+      serverOwnsHintStrategy: true,
+    },
+  );
+  assertEquals(forwardAccepted.watchouts, forwardScopedCard.watchouts);
+
   const naturalStrengthCard = {
     ...objectiveCard,
     strengths: ["賴床畫面延續得很順，早安多了生活感。"],
@@ -2377,6 +2393,45 @@ Deno.test("visible fields with L4 unsafe text are rejected", () => {
     );
   }
 });
+
+Deno.test(
+  "direct Debrief lexical bypass still rejects internal labels and L4",
+  () => {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({
+            ...generatedQualityCard,
+            summary: "currentTemperatureScore 88",
+          }),
+          {
+            requireCompleteCard: true,
+            enforceGeneratedQuality: true,
+            skipLexicalStyleGuards: true,
+          },
+        ),
+      Error,
+      "debrief_internal_label_leak",
+    );
+
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({
+            ...generatedQualityCard,
+            suggestedLine: "今晚直接上床吧",
+          }),
+          {
+            requireCompleteCard: true,
+            enforceGeneratedQuality: true,
+            skipLexicalStyleGuards: true,
+          },
+        ),
+      Error,
+      "debrief_l4_unsafe",
+    );
+  },
+);
 
 Deno.test("Game debrief requires and parses a complete gameBreakdown", () => {
   const c = parseDebriefCard(

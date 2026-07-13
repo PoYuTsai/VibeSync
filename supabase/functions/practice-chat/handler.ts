@@ -132,6 +132,7 @@ const DEBRIEF_IN_FLIGHT_STALE_MS = 105000;
 const DIRECT_PRACTICE_GENERATION_ATTEMPTS = 3;
 const DIRECT_PRACTICE_DEBRIEF_ATTEMPTS = 3;
 const DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS = 24000;
+const DIRECT_PRACTICE_RETRY_TEMPERATURE = 0.2;
 const LEGACY_CLIENT_QUALITY_SCHEMA_VERSION = "typed-facts-v1";
 // 2026-07-13 probe: game hint 在 650 tokens 下 DeepSeek 47% finish_reason=length
 // 截斷（JSON 收不完→誤報 provider_error）。提高到 1600 給 Game Hint 完整 JSON 空間。
@@ -604,6 +605,13 @@ function withHintRetryInstruction(
 
 function debriefRetryReason(error: unknown): string {
   const message = getErrorMessage(error);
+  if (
+    message.includes(
+      "debrief_quality_invalid_unsupported_detail:user:preference",
+    )
+  ) {
+    return "suggestedLine／nextFirstLine 偷加了逐字稿沒有的使用者偏好；刪掉我也／我喜歡／我不喜歡／我通常／我都，改接她的原話或提問";
+  }
   if (message.includes("debrief_quality_invalid_unsupported_detail")) {
     return "可貼回覆把她的個人事實錯寫成使用者自己的事實";
   }
@@ -611,7 +619,7 @@ function debriefRetryReason(error: unknown): string {
     return "suggestedLine 補了逐字稿沒有的事實；她問劇名、店名或地點但逐字稿沒答案時，不得編名稱，改用不爆雷、還在想怎麼形容或反問偏好來接";
   }
   if (message.includes("debrief_hint_assessment_revision_required")) {
-    return "上一版把 exact Hint 當成問題或反轉策略；若她回『不是 X，是 Y』，只能寫『她補充真正原因是 Y，下一步沿 Y 接』，不得寫 Hint／這句／回覆猜錯、誤判、偏保守或有問題";
+    return "上一版把 exact Hint 當成問題或反轉策略；提醒只寫『下一步／下次／接下來…』，不得寫 Hint／這句／你的回覆／只回／只問／猜錯／誤判／偏保守或有問題";
   }
   if (message.includes("debrief_hint_assessment_missing")) {
     return "缺少最外層 hidden-only hintAssessment；exact Hint 後續有接球時必須 preserved";
@@ -2842,7 +2850,9 @@ export function createPracticeChatHandler(
                 model: CLAUDE_SONNET_MODEL,
                 messages: hintMessages,
                 maxTokens: HINT_MAX_TOKENS,
-                temperature: HINT_TEMPERATURE,
+                temperature: attempt > 1
+                  ? DIRECT_PRACTICE_RETRY_TEMPERATURE
+                  : HINT_TEMPERATURE,
                 timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
               });
               previousDirectHintCandidate = rawHint;
@@ -3708,6 +3718,7 @@ export function createPracticeChatHandler(
             deferHintAssessmentToSemantic: false,
             deferVisibleGuardsToSemantic: false,
             serverOwnsHintStrategy: true,
+            skipLexicalStyleGuards: true,
           });
         };
         let previousDirectDebriefCandidate: string | null = null;
@@ -3830,7 +3841,9 @@ export function createPracticeChatHandler(
                 model: CLAUDE_SONNET_MODEL,
                 messages: debriefMessages,
                 maxTokens: DEBRIEF_MAX_TOKENS,
-                temperature: DEBRIEF_TEMPERATURE,
+                temperature: attempt > 1
+                  ? DIRECT_PRACTICE_RETRY_TEMPERATURE
+                  : DEBRIEF_TEMPERATURE,
                 timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
               });
               previousDirectDebriefCandidate = rawCard;
