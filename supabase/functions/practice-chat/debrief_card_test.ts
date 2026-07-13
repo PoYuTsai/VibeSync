@@ -378,6 +378,40 @@ Deno.test("generated Debrief must acknowledge an exact Hint and must not repeat 
   );
 });
 
+Deno.test("generated Debrief keeps missing hidden Hint assessment strict unless repair mode infers preserved", () => {
+  const turns = [
+    { role: "user" as const, text: "早安" },
+    { role: "ai" as const, text: "我還在賴床，腦袋沒開機" },
+    { role: "user" as const, text: appliedExactHint.sentText },
+    { role: "ai" as const, text: "哈哈我真的還在賴床，慢慢開機中" },
+  ];
+  const { hintAssessment: _hidden, ...cardWithoutAssessment } =
+    generatedQualityCard;
+
+  assertThrows(
+    () =>
+      parseDebriefCard(JSON.stringify(cardWithoutAssessment), {
+        requireCompleteCard: true,
+        enforceGeneratedQuality: true,
+        turns,
+        appliedHintTurns: [appliedExactHint],
+      }),
+    Error,
+    "debrief_hint_assessment_missing",
+  );
+
+  const repaired = parseDebriefCard(JSON.stringify(cardWithoutAssessment), {
+    requireCompleteCard: true,
+    enforceGeneratedQuality: true,
+    repairPreservedHintCritique: true,
+    turns,
+    appliedHintTurns: [appliedExactHint],
+  });
+
+  assertEquals(repaired.summary.includes("你有照提示做"), true);
+  assertEquals(JSON.stringify(repaired).includes("hintAssessment"), false);
+});
+
 Deno.test("generated Debrief accepts grounded, accountable next-step coaching", () => {
   const card = parseDebriefCard(JSON.stringify(generatedQualityCard), {
     requireCompleteCard: true,

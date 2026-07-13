@@ -4083,7 +4083,7 @@ Deno.test("assisted Debrief repairs indirect blame of an exact preserved Hint", 
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
-Deno.test("both Debrief providers missing preserved Hint assessment record no card", async () => {
+Deno.test("Debrief missing preserved Hint assessment safely records generated card", async () => {
   const hintText = "還在賴床喔，那今天先准妳慢慢開機。";
   const invalid = validDebriefJson({
     hintAssessment: undefined,
@@ -4131,10 +4131,14 @@ Deno.test("both Debrief providers missing preserved Hint assessment record no ca
     }),
   );
 
-  assertEquals(response.status, 503);
-  assertEquals(json.retryable, true);
-  assertEquals(recordDebriefCalls(state).length, 0);
-  assertEquals(releaseDebriefCalls(state).length, 1);
+  assertEquals(response.status, 200);
+  assertEquals(json.provider, "deepseek");
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.card.summary.includes("你有照提示做"), true);
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 0);
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
 Deno.test("assisted debrief drops disconnected Hint lineage and still generates", async () => {

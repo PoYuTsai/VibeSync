@@ -1605,10 +1605,16 @@ export function parseDebriefCard(
       : null,
   };
   const appliedHintTurns = opts.appliedHintTurns ?? [];
+  const hiddenHintAssessment = appliedHintTurns.length > 0 &&
+      opts.repairPreservedHintCritique === true &&
+      (typeof p.hintAssessment !== "object" || p.hintAssessment === null ||
+        Array.isArray(p.hintAssessment))
+    ? { verdict: "preserved", revisedEvidenceQuote: null }
+    : p.hintAssessment;
   if (
     appliedHintTurns.length > 0 &&
     opts.repairPreservedHintCritique === true &&
-    isPreservedHiddenHintAssessment(p.hintAssessment) &&
+    isPreservedHiddenHintAssessment(hiddenHintAssessment) &&
     (cardVisiblyReversesPreservedHint(card) ||
       preservedCardCritiquesExactHint(card, appliedHintTurns, opts.turns) ||
       (appliedHintTurns.every(hasCompleteHintDecision) &&
@@ -1622,7 +1628,7 @@ export function parseDebriefCard(
   }
   if (appliedHintTurns.length > 0) {
     assertHintAssessment({
-      value: p.hintAssessment,
+      value: hiddenHintAssessment,
       card,
       turns: opts.turns,
       appliedHintTurns,
