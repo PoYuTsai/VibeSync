@@ -1013,6 +1013,101 @@ Deno.test("production repair answers follow-up questions instead of generic choi
   assertEquals(repaired.suggestedLine.includes("通常怎麼選"), false);
 });
 
+Deno.test("generated Debrief repairs invented drama answers when she asks for a recommendation", () => {
+  const turns = [
+    {
+      role: "user" as const,
+      text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機。",
+    },
+    {
+      role: "ai" as const,
+      text: "早安～你追哪一部啊？我昨天飛回來也累翻，趁放假一次補了好幾集 😅",
+    },
+    {
+      role: "user" as const,
+      text:
+        "早安～辛苦啦，飛回來還能追劇，看來放假很開心呢。我昨晚也追到兩點，現在半昏迷😂",
+    },
+    {
+      role: "ai" as const,
+      text:
+        "對啊難得放假，就是要追劇耍廢（笑）你追哪一部，有推薦嗎？我片單快空了～",
+    },
+  ];
+
+  const repaired = parseDebriefCard(
+    JSON.stringify({
+      ...generatedQualityCard,
+      summary: "你有照提示接追劇，她也問片單推薦。",
+      strengths: ["你有照提示接追劇，延續她的片單話題。"],
+      watchouts: ["下一步別編劇名，先問她片單想補哪種。"],
+      suggestedLine: "我最近在追黑暗榮耀，妳看過嗎？",
+      dateChanceReason: "她問你追哪一部，也說片單快空了。",
+      nextInviteMove: "先接片單快空了，再問她想補哪種節奏。",
+    }),
+    {
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      turns,
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: turns[2].text,
+        sentText: turns[2].text,
+        exact: true,
+        decision: {
+          phase: "building_familiarity",
+          targetVariable: "安全感與熟悉感",
+          move: "build_connection",
+          inviteRoute: "not_ready",
+          rationale: "接住飛回來累翻與追劇片單。",
+        },
+      }],
+      repairPreservedHintCritique: true,
+    },
+  );
+
+  assertEquals(repaired.suggestedLine.includes("片單"), true);
+  assertEquals(repaired.suggestedLine.includes("黑暗榮耀"), false);
+  assertEquals(repaired.suggestedLine.includes("不爆雷"), true);
+});
+
+Deno.test("generated Game Debrief repairs invented venue answers when she asks which shop", () => {
+  const turns = [
+    { role: "user" as const, text: "剛看到妳喜歡咖啡，我路過一家很香的店。" },
+    { role: "ai" as const, text: "哦？哪家啊？我最近也在找新的口袋名單" },
+  ];
+
+  const repaired = parseDebriefCard(
+    JSON.stringify({
+      ...generatedQualityCard,
+      summary: "這輪還在咖啡店名確認，她問哪家。",
+      strengths: ["你用咖啡香開話題，讓她問哪家。"],
+      watchouts: ["她問哪家；下一步別編店名，先問她通常怎麼收口袋名單。"],
+      suggestedLine: "我是在黑露咖啡看到的，妳去過嗎？",
+      dateChanceReason: "她問哪家，也提到口袋名單。",
+      nextInviteMove: "先接口袋名單，再問她通常在哪區找咖啡。",
+      gameBreakdown: {
+        phaseReached: "開場階段，她問哪家咖啡。",
+        missedVariable: "缺的是口袋名單不編店名的回應。",
+        failureState: "編店名會讓口袋名單有真實性風險。",
+        nextFirstLine: "我是在黑露咖啡看到的，妳去過嗎？",
+        inviteDirection: "先問她通常在哪區找咖啡。",
+      },
+    }),
+    {
+      allowGameBreakdown: true,
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      turns,
+    },
+  );
+
+  assertEquals(repaired.suggestedLine.includes("哪區"), true);
+  assertEquals(repaired.suggestedLine.includes("黑露"), false);
+  assertEquals(repaired.gameBreakdown?.nextFirstLine, repaired.suggestedLine);
+});
+
 Deno.test("preserved Debrief may critique her response or a clearly identified non-Hint user turn", () => {
   const baseTurns = [
     { role: "user" as const, text: "早安" },

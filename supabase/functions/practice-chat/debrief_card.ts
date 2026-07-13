@@ -1284,6 +1284,76 @@ function repairPreservedHintCritiqueCard(
   };
 }
 
+function unansweredQuestionRepairLine(turns?: PracticeTurn[]): string | null {
+  const latest = latestAssistantText(turns);
+  const normalized = normalizedPracticeText(latest);
+  if (!normalized) return null;
+  if (
+    /(?:追哪一部|哪一部|追什麼劇|什麼劇|有推薦|推薦嗎|片單)/u.test(normalized)
+  ) {
+    return "我先不爆雷，妳片單想補輕鬆還是燒腦的？";
+  }
+  if (/(?:哪區|哪一區|哪家|哪間|店名|咖啡店|口袋名單)/u.test(normalized)) {
+    return "我先不亂猜店名，妳口袋名單通常看哪區？";
+  }
+  if (/(?:哪裡|哪邊|地點|地址|路名|哪條路|哪一帶)/u.test(normalized)) {
+    return "我先不亂猜地點，妳說的是哪一帶？";
+  }
+  return null;
+}
+
+function isGroundedInLatestAssistant(
+  value: string,
+  turns?: PracticeTurn[],
+): boolean {
+  try {
+    assertPracticeTextGroundedInTurns({
+      visibleText: value,
+      turns,
+      latestOnly: true,
+      errorCode: "debrief_quality_invalid_suggested_line_not_grounded",
+    });
+    return true;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "debrief_quality_invalid_suggested_line_not_grounded"
+    ) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function repairUngroundedUnansweredQuestionLine(
+  card: DebriefCard,
+  turns?: PracticeTurn[],
+): DebriefCard {
+  const repairLine = unansweredQuestionRepairLine(turns);
+  if (!repairLine) return card;
+  const shouldRepairSuggested = !isGroundedInLatestAssistant(
+    card.suggestedLine,
+    turns,
+  );
+  const shouldRepairGameLine = card.gameBreakdown !== null &&
+    !isGroundedInLatestAssistant(card.gameBreakdown.nextFirstLine, turns);
+  if (!shouldRepairSuggested && !shouldRepairGameLine) return card;
+
+  const guardedLine = guardVisibleText(repairLine);
+  return {
+    ...card,
+    suggestedLine: shouldRepairSuggested ? guardedLine : card.suggestedLine,
+    gameBreakdown: card.gameBreakdown
+      ? {
+        ...card.gameBreakdown,
+        nextFirstLine: shouldRepairGameLine
+          ? guardedLine
+          : card.gameBreakdown.nextFirstLine,
+      }
+      : null,
+  };
+}
+
 /**
  * Hidden continuity contract. Debrief may revise a Hint only when it points to
  * an exact assistant reply that happened after that Hint was sent. The hidden
@@ -1635,6 +1705,7 @@ export function parseDebriefCard(
     });
   }
   if (opts.enforceGeneratedQuality === true) {
+    card = repairUngroundedUnansweredQuestionLine(card, opts.turns);
     assertGeneratedDebriefQuality(card, opts);
   }
   return card;
