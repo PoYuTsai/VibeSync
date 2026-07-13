@@ -5340,8 +5340,8 @@ Deno.test("hint repairs a malformed provider result with Claude before recording
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 1);
   assertEquals(state.deepSeekCalls[0].jsonMode, true);
-  assertEquals(state.deepSeekCalls[0].maxTokens, 1200);
-  assertEquals(state.claudeCalls[0].maxTokens, 1200);
+  assertEquals(state.deepSeekCalls[0].maxTokens, 1600);
+  assertEquals(state.claudeCalls[0].maxTokens, 1600);
   assertEquals(claimHintCalls(state).length, 1);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
@@ -5354,6 +5354,30 @@ Deno.test("hint repairs a malformed provider result with Claude before recording
     "rpc:record_practice_hint",
     "insert:ai_logs",
   ]);
+});
+
+Deno.test("hint sends max-token truncation to Claude with repair guidance", async () => {
+  const { response, json, state } = await run({
+    ledger: gameStartedLedger(),
+    drawEvents: [{ profile_id: "practice_girl_004" }],
+    deepSeekReplies: [new Error("deepseek_max_tokens")],
+    claudeReplies: [validGameHintJson()],
+    rpc: {
+      record_practice_hint: [{
+        data: [{ new_hint_count: 1, did_charge: true }],
+      }],
+    },
+  }, hintBody({ practiceMode: "game", profileId: "practice_girl_004" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json.replies.length, 2);
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 1);
+  const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
+  assert(repairPrompt.includes("provider 截斷"));
+  assert(repairPrompt.includes("在哪／哪家／哪條路"));
+  assert(repairPrompt.includes("不得編店名"));
+  assertEquals(state.claudeCalls[0].maxTokens, 1600);
 });
 
 Deno.test("successful hint uses ledger temperature, records after parse, and returns response contract", async () => {
@@ -5396,7 +5420,7 @@ Deno.test("successful hint uses ledger temperature, records after parse, and ret
   assertEquals(state.deepSeekCalls.length, 1);
   const hintCall = state.deepSeekCalls[0];
   assertEquals(hintCall.jsonMode, true);
-  assertEquals(hintCall.maxTokens, 1200);
+  assertEquals(hintCall.maxTokens, 1600);
   assertEquals(hintCall.temperature, 0.45);
   const promptText = hintCall.messages.map((m) => m.content).join("\n");
   assert(promptText.includes("currentTemperatureScore: 64/100"));

@@ -124,8 +124,8 @@ const DEBRIEF_TIMEOUT_MS = 12000;
 const DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS = 24000;
 const DEBRIEF_IN_FLIGHT_STALE_MS = 45000;
 // 2026-07-13 probe: game hint 在 650 tokens 下 DeepSeek 47% finish_reason=length
-// 截斷（JSON 收不完→誤報 provider_error）。提高到 1200 給 Game Hint 完整 JSON 空間。
-const HINT_MAX_TOKENS = 1200;
+// 截斷（JSON 收不完→誤報 provider_error）。提高到 1600 給 Game Hint 完整 JSON 空間。
+const HINT_MAX_TOKENS = 1600;
 const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 1;
 // Sacrifice a little wait time to reduce Game Hint timeout/failover and avoid
@@ -516,6 +516,7 @@ function getErrorMessage(e: unknown): string {
 function isHintFormatOrGuardError(e: unknown): boolean {
   const message = getErrorMessage(e);
   return message.includes("hint_") ||
+    message.includes("max_tokens") ||
     message.includes("JSON") ||
     message.includes("Unexpected token");
 }
@@ -527,6 +528,9 @@ function hintRetryReason(e: unknown): string {
   }
   if (message.includes("overlong")) {
     return "欄位太長，若直接裁尾會變成半句";
+  }
+  if (message.includes("max_tokens")) {
+    return "輸出太長導致 provider 截斷，必須壓短三欄並完整收句";
   }
   if (
     message.includes("hint_quality_invalid") ||
@@ -570,6 +574,7 @@ function withHintRetryInstruction(
         'shape 必須仍是 {"warmUp":"...","steady":"...","coaching":"..."}。' +
         `warmUp、steady 各 ${HINT_REPLY_SOFT_CHAR_LIMIT} 字內，coaching ${HINT_COACHING_SOFT_CHAR_LIMIT} 字內，三欄都要完整收句。` +
         "warmUp、steady、coaching 三欄各自都要逐字重用她最新一句的具體詞或短語，不能只有其中一欄具體。" +
+        "若她最新句只是在問「在哪／哪家／哪條路」，而逐字稿沒店名或路名：先答沒記店/路名、只記得感覺或香味；不得編店名、路名、地址、地標，也不得兩個回覆都只丟問題。" +
         "可貼回覆要先接住她最新狀態，再給低壓接球；不要命令、不要面試官語氣、不要內部標籤、不要露骨或私密壓迫。",
     },
   ];

@@ -1090,7 +1090,7 @@ Deno.test("buildHintMessages keeps Game Hint prompt compact enough for reliable 
   assert(gameText.length <= beginnerText.length + 3000);
   assert(gameText.includes("safeAdvancedGameHintContract"));
   assert(gameText.includes("visibleGameHintContract"));
-  assert(gameText.includes("別編店/路名/地址/地標"));
+  assert(gameText.includes("不編店/路名/地址/地標"));
 });
 
 Deno.test("buildFallbackHintResult makes high-score Game hints point to a pasteable speed invite", () => {
@@ -2268,7 +2268,7 @@ Deno.test("buildHintMessages marks fake familiarity as a Game reality-anchor tra
   assert(text.includes("failureStates: FRAME_OVERREACH"));
   assert(text.includes("allowSpicyLevel: L0"));
   assert(text.includes("假熟先確認"));
-  assert(text.includes("店名、地點、共同經歷沒出現就別捏造"));
+  assert(text.includes("未給店/路/共同經歷別捏造"));
 
   const beginnerText = buildHintMessages({
     turns: [
@@ -2279,7 +2279,7 @@ Deno.test("buildHintMessages marks fake familiarity as a Game reality-anchor tra
     practiceMode: "beginner",
     temperatureScore: 30,
   }).map((message) => message.content).join("\n");
-  assert(beginnerText.includes("未給店名/地點/共同經歷別捏造"));
+  assert(beginnerText.includes("未給店/路/共同經歷別捏造"));
 });
 
 Deno.test("buildHintMessages downshifts spicy ladder when partner is guarded or annoyed", () => {
