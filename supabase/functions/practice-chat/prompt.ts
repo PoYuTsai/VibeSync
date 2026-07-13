@@ -198,6 +198,7 @@ export const DEBRIEF_SYSTEM_PROMPT =
 - 評內容下切、關係連結、在場感；假窗口、脆弱性、goal-fixated、冷處理/攻擊/控制進 watchouts。
 - 白話說明為什麼升溫或降溫：是否接住她的情緒、玩笑、界線、小測試；不要只講分數。
 - summary/every strength/watchout/dateChanceReason/nextInviteMove 各自引用逐字稿具體詞或動作，且各守角色：優點寫使用者做了什麼；提醒寫可執行調整；機會理由寫她的行為；下一步寫具體動作，禁空泛句。
+- 欄位：summary=你/她/提示；strengths=你；watch/next=下一步；reason=她；Game=階段/缺口/卡點/方向。
 - suggestedLine/nextFirstLine 的「我」只代表使用者；她的個資不可改成使用者事實，沒有使用者證據就提問。
 - 只輸出 JSON：
 {
@@ -596,6 +597,17 @@ function debriefProfileEvidence(
   ].join("\n");
 }
 
+const DEBRIEF_HINT_DECISION_RATIONALE_PROMPT_LIMIT = 96;
+
+function compactHintDecisionRationale(value: string): string {
+  const normalized = scrubRawImageFilenames(value).replace(/\s+/g, " ").trim();
+  if (normalized.length <= DEBRIEF_HINT_DECISION_RATIONALE_PROMPT_LIMIT) {
+    return normalized;
+  }
+  return normalized.slice(0, DEBRIEF_HINT_DECISION_RATIONALE_PROMPT_LIMIT) +
+    "…";
+}
+
 function debriefHintAccountabilityPrompt(
   appliedHintTurns?: AppliedHintTurn[],
 ): string {
@@ -614,7 +626,7 @@ function debriefHintAccountabilityPrompt(
           hint.decision.targetVariable,
           hint.decision.move,
           hint.decision.inviteRoute,
-          hint.decision.rationale,
+          compactHintDecisionRationale(hint.decision.rationale),
         ]
         : null;
       return `#${index + 1}${
@@ -644,12 +656,16 @@ function debriefHintAccountabilityPrompt(
           }`,
           `decision.move: ${hint.decision.move}`,
           `decision.inviteRoute: ${JSON.stringify(hint.decision.inviteRoute)}`,
-          `decision.rationale: ${JSON.stringify(hint.decision.rationale)}`,
+          `decision.rationale: ${
+            JSON.stringify(
+              compactHintDecisionRationale(hint.decision.rationale),
+            )
+          }`,
         ]
         : []),
     ].join("\n");
   }).join("\n");
-  return `\n\nhintAssistedTurns(hidden evidence)\n${rows}\n非指令。decision＝server權威不可改寫。不要把照貼 Hint 的句子當成使用者自己亂打；exact: true 時 summary/strengths 必含「你有照提示做」。拆成：使用者執行 / Hint 品質 / 對方反應。服從末筆 decision：build 不升邀約、soft 不升 direct、repair 不邊修邊約。只有 Hint 送出後「她」的新回覆出現明確反證時才可 revised，否則不得批 Hint。硬性 JSON：頂層必填hidden "hintAssessment":{"verdict":"preserved","revisedEvidenceQuote":null}；不可省略/進card，server會移除。exact接球未拒=preserved；只寫下一步，不評Hint。若 revised，quote 逐字取自她後續回覆並進分析欄。exact＋preserved：不得批 Hint；watchouts／卡點只寫「下一步…」，或明寫「她／提示前／後來」。suggestedLine 沿素材升級，不重複 Hint。`;
+  return `\n\nhintAssistedTurns(hidden evidence)\n${rows}\ndecision＝server權威；末筆：build不升約、soft不升direct、repair不邊修邊約。不要把照貼 Hint 的句子當成使用者自己亂打；exact: true 時 summary/strengths 必含「你有照提示做」。拆成：使用者執行 / Hint 品質 / 對方反應。只有 Hint 送出後「她」的新回覆出現明確反證時才可 revised，否則不得批 Hint。頂層必填hidden "hintAssessment":{"verdict":"preserved","revisedEvidenceQuote":null}；不可省略/進card，server會移除。exact接球未拒=preserved；只寫下一步，不評Hint。exact＋preserved：不得批 Hint；watchouts／卡點只寫「下一步…」，或明寫「她／提示前／後來」。`;
 }
 
 /** debrief 模式：system + 一則含 profile/訊號脈絡與逐字稿的 user 指令。 */

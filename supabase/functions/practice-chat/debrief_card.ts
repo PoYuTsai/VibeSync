@@ -811,7 +811,7 @@ function assertNoInventedPartnerInitiative(
 function assertGeneratedDebriefFieldRoles(card: DebriefCard): void {
   const summary = normalizedPracticeText(card.summary);
   if (
-    !/(?:你|使用者|她|對方|雙方|提示|回覆|這句|話題|梗).{0,18}(?:接|回|問|提|說|分享|延伸|交換|照|聊|停|投入|開玩笑|升溫|降溫)|(?:接|回|問|提|說|分享|延伸|交換|照|聊|停|投入).{0,18}(?:她|對方|話題|梗|提示|回覆)/u
+    !/(?:你|使用者|她|對方|雙方|提示|回覆|這句|話題|梗).{0,18}(?:接|回|問|提|說|分享|延伸|交換|照|聊|停|投入|開玩笑|升溫|降溫)|(?:這輪|本輪|對話|互動).{0,24}(?:接|回|問|提|說|分享|延伸|交換|照|聊|投入|開玩笑|升溫|降溫)|(?:接|回|問|提|說|分享|延伸|交換|照|聊|停|投入).{0,18}(?:她|對方|話題|梗|提示|回覆)/u
       .test(summary)
   ) {
     throw new Error("debrief_quality_invalid_summary_role");

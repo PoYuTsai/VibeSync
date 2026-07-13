@@ -392,6 +392,25 @@ Deno.test("generated Debrief accepts grounded, accountable next-step coaching", 
   assertEquals(card.suggestedLine.includes("賴床"), true);
 });
 
+Deno.test("generated Debrief accepts concrete round-level summaries without generic role drift", () => {
+  const card = parseDebriefCard(
+    JSON.stringify({
+      ...groundedResidenceCard,
+      summary: "這輪接住台南生活圈，也讓她補出中西區活動。",
+    }),
+    {
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      turns: residenceTurns,
+    },
+  );
+
+  assertEquals(
+    card.summary,
+    "這輪接住台南生活圈，也讓她補出中西區活動。",
+  );
+});
+
 Deno.test("generated Beginner Debrief rejects partner facts rewritten into the pasteable line", () => {
   assertThrows(
     () =>

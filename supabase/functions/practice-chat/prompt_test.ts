@@ -776,6 +776,54 @@ Deno.test("debrief prompt separates copied Hint execution from Hint quality", ()
   );
 });
 
+Deno.test("debrief prompt compacts long Hint decision rationale but keeps strategy linkage", () => {
+  const longRationale = "先接住她的晚餐狀態，再把口袋名單變成低壓選擇；" +
+    "不要急著直接約，也不要編店名或假裝知道她喜歡咖啡。".repeat(8);
+  const user = buildDebriefMessages(
+    [
+      { role: "user", text: "剛看到妳喜歡咖啡，我路過一家店。" },
+      { role: "ai", text: "我什麼時候說過我喜歡咖啡？我想吃晚餐啦" },
+      { role: "user", text: "哈哈好吧通靈沒過關，妳現在想吃哪種晚餐？" },
+      { role: "ai", text: "我今天加班到快累壞，值得吃好一點" },
+    ],
+    resolvePracticeProfile({ profileId: "practice_girl_033" }),
+    {
+      practiceMode: "game",
+      temperatureScore: 34,
+      familiarityScore: 3,
+      appliedHintTurns: [
+        {
+          turnIndex: 2,
+          type: "steady",
+          originalHintText: "哈哈好吧通靈沒過關，妳現在想吃哪種晚餐？",
+          sentText: "哈哈好吧通靈沒過關，妳現在想吃哪種晚餐？",
+          exact: true,
+          hintRequestId: "hint-request-long-rationale",
+          decision: {
+            phase: "P5_CLOSE",
+            targetVariable: "Investment + invite",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: longRationale,
+          },
+        },
+      ],
+    },
+  )[1].content;
+
+  assert(user.includes('decision.phase: "P5_CLOSE"'));
+  assert(user.includes('decision.targetVariable: "Investment + invite"'));
+  assert(user.includes("decision.move: build_connection"));
+  assert(user.includes('decision.inviteRoute: "build"'));
+  assert(user.includes("decision.rationale:"));
+  assert(user.includes("不要急著直接約"));
+  assert(user.includes("…"));
+  assertEquals(user.includes(longRationale), false);
+  assert(
+    user.includes("exact: true 時 summary/strengths 必含「你有照提示做」"),
+  );
+});
+
 Deno.test("debrief prompt quotes applied Hint evidence to prevent newline-shaped rules", () => {
   const user = buildDebriefMessages(
     [
