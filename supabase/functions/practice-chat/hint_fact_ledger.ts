@@ -648,6 +648,9 @@ const NON_PLACE_COMPOUND_TAIL =
 const NON_PLACE_NARRATIVE_STATE_ANCHOR =
   /^(?:(?:聊天)?過程中?|期間|途中|同時|剛剛?|剛才|一開始|後來|心裡|心中|腦(?:海|中)裡?|夢裡|夢中|等(?:妳|你|她)?(?:的)?時候)$/u;
 
+const UNNAMED_VENUE_REFERENCE_ANCHOR =
+  /^(?:(?:那|這)?(?:家|間)(?:咖啡店|餐廳|酒吧|店|店家)?|(?:路過)?(?:那|這)(?:家|間)|咖啡店|餐廳|酒吧|店家|店|香味|咖啡香|味道)$/u;
+
 /**
  * 正向專名形態判準（HIGH venue 的必要條件）。
  * 進 HIGH 的門檻而不是黑名單防線：不滿足就落到 low 放行，
@@ -1822,6 +1825,21 @@ function supportSourceText(value: string): string {
   return normalizeBase(value).replace(/[\s\p{P}\p{S}]/gu, "");
 }
 
+function hasUnnamedVenueSource(context: HintFactContext): boolean {
+  return (context.sourceTexts ?? []).some((source) =>
+    /(?:[一某那這](?:家|間).{0,12}(?:店|咖啡店|餐廳|酒吧)|(?:路過|看到|發現).{0,12}(?:店|咖啡店|餐廳|酒吧)|(?:店|咖啡店|餐廳|酒吧).{0,12}(?:聞起來|香|味道))/u
+      .test(source)
+  );
+}
+
+function isUnnamedVenueCarryover(
+  anchor: string,
+  context: HintFactContext,
+): boolean {
+  return UNNAMED_VENUE_REFERENCE_ANCHOR.test(anchor) &&
+    hasUnnamedVenueSource(context);
+}
+
 export function buildHintFactContext(input: {
   turns?: readonly PracticeTurn[];
   factualEvidence?: readonly string[];
@@ -2460,7 +2478,11 @@ function contextualDirectAnswerClaims(input: {
           // 「在聊天過程中發現」「在等妳的時候看到」這種心情/動作句會被
           // 抓成 venue candidate。X 是敘事階段/心境詞而非地點時放行不殺，
           // 不確定就落 low 不硬判——漏抓的代價只是少殺，不是誤殺。
-          NON_PLACE_NARRATIVE_STATE_ANCHOR.test(anchor)
+          NON_PLACE_NARRATIVE_STATE_ANCHOR.test(anchor) ||
+          // 她問「哪家/在哪」時，逐字稿裡若只有「一家店/那間店」這種不具名
+          // 店鋪線索，回「那家/那間/店名沒記」是在忠實延續已知資訊，不是新增
+          // 一個可驗證地點。具體店名、地標、地址仍走上面的 HIGH venue fail-closed。
+          isUnnamedVenueCarryover(anchor, input.context)
         ) continue;
         add({
           owner: "world",

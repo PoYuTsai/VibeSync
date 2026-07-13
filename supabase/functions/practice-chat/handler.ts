@@ -128,9 +128,11 @@ const DEBRIEF_IN_FLIGHT_STALE_MS = 45000;
 const HINT_MAX_TOKENS = 1000;
 const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 1;
-// Each real provider gets a full 12s budget. There is never a canned fallback.
-const HINT_TIMEOUT_MS = 12000;
-const HINT_CLAUDE_FAILOVER_TIMEOUT_MS = 12000;
+// Sacrifice a little wait time to reduce Game Hint timeout/failover and avoid
+// returning retryable 503s when the model is just slow. There is never a canned
+// fallback.
+const HINT_TIMEOUT_MS = 18000;
+const HINT_CLAUDE_FAILOVER_TIMEOUT_MS = 18000;
 const TEMPERATURE_JUDGE_MAX_TOKENS = 450;
 const TEMPERATURE_JUDGE_TEMPERATURE = 0.2;
 const DEEPSEEK_TIMEOUT_MS = 30000;

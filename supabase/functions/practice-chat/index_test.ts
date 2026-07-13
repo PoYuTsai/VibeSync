@@ -4571,8 +4571,8 @@ Deno.test("game hint timeout fails over to Claude without exposing canned text",
   assert(visibleReplies.includes("咖啡"));
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 1);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
-  assertEquals(state.claudeCalls[0].timeoutMs, 12000);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 18000);
+  assertEquals(state.claudeCalls[0].timeoutMs, 18000);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
 });
@@ -4596,8 +4596,8 @@ Deno.test("beginner hint timeout also fails over to Claude", async () => {
   assertEquals(json.replies.length, 2);
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 1);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
-  assertEquals(state.claudeCalls[0].timeoutMs, 12000);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 18000);
+  assertEquals(state.claudeCalls[0].timeoutMs, 18000);
   assertEquals(json.generationSource, "model");
   assertEquals(json.fallbackUsed, false);
   assertEquals(json.failoverUsed, true);
@@ -5147,8 +5147,8 @@ Deno.test("game hint returns retryable error when both providers return malforme
   });
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 1);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
-  assertEquals(state.claudeCalls[0].timeoutMs, 12000);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 18000);
+  assertEquals(state.claudeCalls[0].timeoutMs, 18000);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(releaseHintCalls(state).length, 1);
 });

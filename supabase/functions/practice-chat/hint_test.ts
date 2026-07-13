@@ -1090,6 +1090,7 @@ Deno.test("buildHintMessages keeps Game Hint prompt compact enough for reliable 
   assert(gameText.length <= beginnerText.length + 3000);
   assert(gameText.includes("safeAdvancedGameHintContract"));
   assert(gameText.includes("visibleGameHintContract"));
+  assert(gameText.includes("別編店名、地址或地標"));
 });
 
 Deno.test("buildFallbackHintResult makes high-score Game hints point to a pasteable speed invite", () => {
@@ -2278,7 +2279,7 @@ Deno.test("buildHintMessages marks fake familiarity as a Game reality-anchor tra
     practiceMode: "beginner",
     temperatureScore: 30,
   }).map((message) => message.content).join("\n");
-  assert(beginnerText.includes("未提供的店名、地點、共同經歷不能捏造"));
+  assert(beginnerText.includes("未提供店名、地點、共同經歷別捏造"));
 });
 
 Deno.test("buildHintMessages downshifts spicy ladder when partner is guarded or annoyed", () => {
@@ -2487,6 +2488,67 @@ Deno.test("generated Hint does not mistake the verb 站 for a named station", ()
     },
   );
   assertEquals(result.replies[0].text.includes("先站旁邊"), true);
+});
+
+Deno.test("generated Game Hint can answer which-shop questions without inventing a venue", () => {
+  const result = parseHintResult(
+    JSON.stringify({
+      warmUp:
+        "哪家先欠著，我沒記店名，只記得那家咖啡香很犯規😂 下次路過我補名字。",
+      steady: "我只記得路過那間香到很誇張，店名還沒記😂 妳說不定真的會知道。",
+      coaching:
+        "Game 心法：她問哪家，先不編店名，承認只記得香味再接她的好奇。速約任務：先交換咖啡生活感，等她接住再開低壓窗口，避免硬約。",
+    }),
+    {
+      mode: "game",
+      enforceGeneratedQuality: true,
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        {
+          role: "ai",
+          text: "（正在煮水餃）哦真的嗎？哪家啊，說不定我知道。",
+        },
+      ],
+      partnerFactualEvidence: ["她喜歡咖啡。"],
+    },
+  );
+
+  assertEquals(result.replies[0].text.includes("沒記店名"), true);
+  assertEquals(result.replies[1].text.includes("店名還沒記"), true);
+});
+
+Deno.test("generated Game Hint still rejects invented concrete venues after which-shop questions", () => {
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "應該是台北車站旁那家咖啡店，我猜妳可能真的知道😂",
+          steady: "如果是信義區那間咖啡店，妳應該會有印象吧？",
+          coaching:
+            "Game 心法：她問哪家，先不編店名，承認只記得香味再接她的好奇。速約任務：先交換咖啡生活感，等她接住再開低壓窗口，避免硬約。",
+        }),
+        {
+          mode: "game",
+          enforceGeneratedQuality: true,
+          turns: [
+            {
+              role: "user",
+              text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+            },
+            {
+              role: "ai",
+              text: "（正在煮水餃）哦真的嗎？哪家啊，說不定我知道。",
+            },
+          ],
+          partnerFactualEvidence: ["她喜歡咖啡。"],
+        },
+      ),
+    Error,
+    "hint_quality_invalid_not_grounded",
+  );
 });
 
 Deno.test("generated Hint permits generic date activities instead of treating them as place names", () => {
