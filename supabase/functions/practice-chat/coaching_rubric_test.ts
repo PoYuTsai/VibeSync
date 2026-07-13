@@ -14,7 +14,8 @@ Deno.test("shared practice rubric carries the golden timing and accountability r
     const expected of [
       "技巧看時機，不看密度",
       "聊她／聊我／聊我們",
-      "狀態＋感受",
+      "只重用 user 已說的真實片段",
+      "禁替他補經歷、觀察、偏好、行程",
       "callback",
       "邀約沒被接住時不追投",
       "使用者執行、Hint 品質、她的新反應",
