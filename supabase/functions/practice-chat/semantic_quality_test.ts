@@ -6,9 +6,9 @@ import {
 import {
   adjudicatePracticeCandidate,
   buildSemanticAdjudicationMessages,
-  buildSemanticRepairVerificationMessages,
+  buildSemanticFactVerificationMessages,
   parseSemanticAdjudication,
-  parseSemanticRepairVerification,
+  parseSemanticFactVerification,
   type PracticeSemanticAdjudicatorArgs,
 } from "./semantic_quality.ts";
 
@@ -46,11 +46,10 @@ function validHintAdjudication(overrides: Record<string, unknown> = {}) {
   });
 }
 
-function validRepairVerification(overrides: Record<string, unknown> = {}) {
+function validFactVerification(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     verdict: "accept",
     issues: [],
-    userFactEvidence: [],
     ...overrides,
   });
 }
@@ -327,8 +326,8 @@ Deno.test("semantic adjudication prompt treats transcript and candidate as evide
   assertEquals(prompt.includes("direct invite forbidden"), true);
 });
 
-Deno.test("repair verification is a bounded evidence audit, not another free-form rewrite", () => {
-  const messages = buildSemanticRepairVerificationMessages({
+Deno.test("fact verification is a bounded evidence audit, not another free-form rewrite", () => {
+  const messages = buildSemanticFactVerificationMessages({
     surface: "hint",
     candidate: hintCandidate,
     turns,
@@ -337,73 +336,87 @@ Deno.test("repair verification is a bounded evidence audit, not another free-for
   });
   const prompt = messages.map((message) => message.content).join("\n");
 
-  assertEquals(prompt.includes("semanticRepairVerificationV1"), true);
+  assertEquals(prompt.includes("semanticFactVerificationV1"), true);
   assertEquals(prompt.includes("不是改稿者"), true);
   assertEquals(prompt.includes("不評文風、高手感、空泛或策略"), true);
-  assertEquals(prompt.includes("userFactEvidence"), true);
+  assertEquals(prompt.includes("只回 accept/reject"), true);
   assertEquals(prompt.includes("turn-0 [user]"), true);
 });
 
-Deno.test("repair verification binds every claimed user fact to an exact user turn", () => {
-  const evidenceTurns = [
-    { role: "user" as const, text: "我昨晚追劇追到兩點" },
-    { role: "ai" as const, text: "我也剛飛回來有時差" },
-  ];
-  const parsed = parseSemanticRepairVerification({
-    raw: validRepairVerification({
-      userFactEvidence: [{
-        field: "warmUp",
-        claim: "我昨晚追劇到兩點",
-        evidenceTurnId: "turn-0",
-        evidenceQuote: "昨晚追劇追到兩點",
-      }],
+Deno.test("fact verification accepts only a binary safe verdict", () => {
+  assertEquals(
+    parseSemanticFactVerification({ raw: validFactVerification() }),
+    { verified: true },
+  );
+  assertEquals(
+    parseSemanticFactVerification({
+      raw: validFactVerification({
+        issues: [{ kind: "generic" }],
+      }),
     }),
-    turns: evidenceTurns,
-    candidate: {
-      ...hintCandidate,
-      warmUp: "我昨晚追劇到兩點，妳剛飛回來先補眠吧。",
+    { verified: true },
+  );
+  assertThrows(
+    () =>
+      parseSemanticFactVerification({
+        raw: validFactVerification({
+          issues: [{ kind: "unsupported_fact" }],
+        }),
+      }),
+    Error,
+    "semantic_fact_verification_rejected",
+  );
+});
+
+Deno.test("accepted candidates still require independent fact verification", async () => {
+  const calls: string[] = [];
+  const result = await adjudicatePracticeCandidate({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: hintCandidate,
+    candidateProvider: "deepseek",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 2,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: () => {
+      calls.push("claude-full-review");
+      return Promise.resolve(validHintAdjudication());
+    },
+    callDeepSeek: (args) => {
+      calls.push("deepseek-fact-verification");
+      assertEquals(args.maxTokens, 1200);
+      return Promise.resolve(validFactVerification());
     },
   });
 
-  assertEquals(parsed.userFactEvidence.length, 1);
-  assertEquals(parsed.userFactEvidence[0].evidenceTurnId, "turn-0");
-  assertThrows(
-    () =>
-      parseSemanticRepairVerification({
-        raw: validRepairVerification({
-          userFactEvidence: [{
-            field: "warmUp",
-            claim: "我剛飛回來有時差",
-            evidenceTurnId: "turn-1",
-            evidenceQuote: "剛飛回來有時差",
-          }],
-        }),
-        turns: evidenceTurns,
-        candidate: {
-          ...hintCandidate,
-          warmUp: "我剛飛回來有時差，先一起補眠吧。",
-        },
-      }),
-    Error,
-    "semantic_repair_verification_invalid_evidence",
-  );
+  assertEquals(calls, ["claude-full-review", "deepseek-fact-verification"]);
+  assertEquals(result.candidate, hintCandidate);
+  assertEquals(result.repaired, false);
+  assertEquals(result.providerCalls, 2);
 });
 
 Deno.test("semantic adjudicator uses the alternate provider when the first reviewer fails", async () => {
   const calls: string[] = [];
+  let claudeCalls = 0;
   const args: PracticeSemanticAdjudicatorArgs = {
     surface: "hint",
     practiceMode: "beginner",
     candidate: hintCandidate,
     turns,
     trustedGenerationContext: "route build",
-    maxProviderCalls: 2,
+    maxProviderCalls: 3,
     deepSeekApiKey: "deepseek-key",
     claudeApiKey: "claude-key",
     claudeModel: "claude-test",
     callClaude: () => {
       calls.push("claude");
-      return Promise.reject(new Error("claude_timeout"));
+      claudeCalls += 1;
+      return claudeCalls === 1
+        ? Promise.reject(new Error("claude_timeout"))
+        : Promise.resolve(validFactVerification());
     },
     callDeepSeek: (args) => {
       calls.push("deepseek");
@@ -413,9 +426,9 @@ Deno.test("semantic adjudicator uses the alternate provider when the first revie
   };
 
   const result = await adjudicatePracticeCandidate(args);
-  assertEquals(calls, ["claude", "deepseek"]);
-  assertEquals(result.provider, "deepseek");
-  assertEquals(result.providerCalls, 2);
+  assertEquals(calls, ["claude", "deepseek", "claude"]);
+  assertEquals(result.provider, "anthropic");
+  assertEquals(result.providerCalls, 3);
   assertEquals(result.candidate, hintCandidate);
 });
 
@@ -455,14 +468,14 @@ Deno.test("unsupported-fact repairs require an independent semantic acceptance",
       reviewedPrompts.push(
         args.messages.map((message) => message.content).join("\n"),
       );
-      return Promise.resolve(validRepairVerification());
+      return Promise.resolve(validFactVerification());
     },
   });
 
   assertEquals(calls, ["claude", "deepseek"]);
   assertEquals(reviewedPrompts[0].includes(String(repaired.warmUp)), true);
   assertEquals(
-    reviewedPrompts[0].includes("semanticRepairVerificationV1"),
+    reviewedPrompts[0].includes("semanticFactVerificationV1"),
     true,
   );
   assertEquals(result.candidate, repaired);
@@ -501,7 +514,7 @@ Deno.test("high-risk repair gets one bounded fresh review after the alternate pr
             issues: [{ kind: "unsupported_fact" }],
             repairedResult: repaired,
           })
-          : validRepairVerification(),
+          : validFactVerification(),
       );
     },
     callDeepSeek: () => {
@@ -538,7 +551,7 @@ Deno.test("high-risk repair verifier cannot start another rewrite loop", async (
             repairedResult: hintCandidate,
           })),
         callDeepSeek: () =>
-          Promise.resolve(validRepairVerification({
+          Promise.resolve(validFactVerification({
             verdict: "repair",
           })),
       }),
@@ -582,7 +595,7 @@ Deno.test("unsupported-fact repair fails closed without an independent reviewer 
   );
 });
 
-Deno.test("generic-only repairs do not spend a third provider call", async () => {
+Deno.test("generic-only repairs use the bounded fact verifier instead of another rewrite", async () => {
   let deepSeekCalls = 0;
   const repaired = {
     ...hintCandidate,
@@ -612,13 +625,13 @@ Deno.test("generic-only repairs do not spend a third provider call", async () =>
       })),
     callDeepSeek: () => {
       deepSeekCalls++;
-      return Promise.resolve(validHintAdjudication());
+      return Promise.resolve(validFactVerification());
     },
   });
 
   assertEquals(result.candidate, repaired);
-  assertEquals(result.providerCalls, 1);
-  assertEquals(deepSeekCalls, 0);
+  assertEquals(result.providerCalls, 2);
+  assertEquals(deepSeekCalls, 1);
 });
 
 Deno.test("semantic adjudicator uses the alternate reviewer when a repair still fails the hard guard", async () => {
@@ -627,22 +640,28 @@ Deno.test("semantic adjudicator uses the alternate reviewer when a repair still 
     warmUp: "這週六直接一起喝咖啡吧，我訂位。",
   };
   const calls: string[] = [];
+  let claudeCalls = 0;
   const result = await adjudicatePracticeCandidate({
     surface: "hint",
     practiceMode: "game",
     candidate: hintCandidate,
     turns,
     trustedGenerationContext: "server route build",
-    maxProviderCalls: 2,
+    maxProviderCalls: 3,
     deepSeekApiKey: "deepseek-key",
     claudeApiKey: "claude-key",
     claudeModel: "claude-test",
     callClaude: () => {
       calls.push("claude");
-      return Promise.resolve(validHintAdjudication({
-        verdict: "repair",
-        repairedResult: firstRepair,
-      }));
+      claudeCalls += 1;
+      return Promise.resolve(
+        claudeCalls === 1
+          ? validHintAdjudication({
+            verdict: "repair",
+            repairedResult: firstRepair,
+          })
+          : validFactVerification(),
+      );
     },
     callDeepSeek: () => {
       calls.push("deepseek");
@@ -655,8 +674,8 @@ Deno.test("semantic adjudicator uses the alternate reviewer when a repair still 
     },
   });
 
-  assertEquals(calls, ["claude", "deepseek"]);
-  assertEquals(result.provider, "deepseek");
+  assertEquals(calls, ["claude", "deepseek", "claude"]);
+  assertEquals(result.provider, "anthropic");
   assertEquals(result.candidate, hintCandidate);
 });
 
