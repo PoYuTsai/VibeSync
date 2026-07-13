@@ -201,6 +201,14 @@ Deno.test("practice failure codes keep machine codes and reject free text", () =
     sanitizePracticeFailureCode(new Error("deepseek_max_tokens")),
     "deepseek_max_tokens",
   );
+  assertEquals(
+    sanitizePracticeFailureCode(
+      new Error(
+        "semantic_adjudication_failed:semantic_adjudication_invalid_schema",
+      ),
+    ),
+    "semantic_adjudication_failed:semantic_adjudication_invalid_schema",
+  );
   // 只取第一段機器碼，後續自由文字不落盤。
   assertEquals(
     sanitizePracticeFailureCode(
@@ -248,6 +256,7 @@ Deno.test("practice failure codes require a known machine-code prefix", () => {
       "provider_error_x",
       "visible_text_guard_x",
       "unsupported_detail_x",
+      "semantic_adjudication_failed:semantic_adjudication_invalid_schema",
     ]
   ) {
     assertEquals(sanitizePracticeFailureCode(new Error(code)), code, code);

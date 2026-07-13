@@ -175,6 +175,7 @@ const KNOWN_PRACTICE_FAILURE_CODE_PREFIXES = [
   "timeout_",
   "provider_",
   "visible_",
+  "semantic_",
 ] as const;
 
 function hasKnownPracticeFailureCodePrefix(token: string): boolean {

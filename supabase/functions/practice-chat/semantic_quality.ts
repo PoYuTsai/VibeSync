@@ -86,7 +86,7 @@ export class SemanticAdjudicationError extends Error {
 
 const ADJUDICATION_MAX_TOKENS = 1800;
 const ADJUDICATION_TEMPERATURE = 0.1;
-const ADJUDICATION_TIMEOUT_MS = 24000;
+const ADJUDICATION_TIMEOUT_MS = 18000;
 
 const ISSUE_KINDS = new Set<SemanticIssueKind>([
   "unsupported_fact",

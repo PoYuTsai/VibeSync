@@ -135,7 +135,11 @@ const LEGACY_CLIENT_QUALITY_SCHEMA_VERSION = "typed-facts-v1";
 const HINT_MAX_TOKENS = 1600;
 const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 1;
-const PRACTICE_GENERATION_PROVIDER_CALL_BUDGET = 3;
+// Production v101 showed that generation failover left only one semantic
+// reviewer call, so one malformed verdict or a valid repair became a 503.
+// Keep the common path at two calls, but reserve two reviewers after failover.
+const PRACTICE_GENERATION_PROVIDER_CALL_BUDGET = 4;
+const PRACTICE_SEMANTIC_REVIEWER_CALL_BUDGET = 2;
 // Sacrifice a little wait time to reduce Game Hint timeout/failover and avoid
 // returning retryable 503s when the model is just slow. There is never a canned
 // fallback.
@@ -2705,7 +2709,10 @@ export function createPracticeChatHandler(
               candidateProvider,
               maxProviderCalls: Math.max(
                 0,
-                PRACTICE_GENERATION_PROVIDER_CALL_BUDGET - hintAttemptCount,
+                Math.min(
+                  PRACTICE_SEMANTIC_REVIEWER_CALL_BUDGET,
+                  PRACTICE_GENERATION_PROVIDER_CALL_BUDGET - hintAttemptCount,
+                ),
               ),
               deepSeekApiKey: apiKey,
               claudeApiKey,
@@ -3582,8 +3589,11 @@ export function createPracticeChatHandler(
               candidateProvider,
               maxProviderCalls: Math.max(
                 0,
-                PRACTICE_GENERATION_PROVIDER_CALL_BUDGET -
-                  debriefAttemptCount,
+                Math.min(
+                  PRACTICE_SEMANTIC_REVIEWER_CALL_BUDGET,
+                  PRACTICE_GENERATION_PROVIDER_CALL_BUDGET -
+                    debriefAttemptCount,
+                ),
               ),
               deepSeekApiKey: apiKey,
               claudeApiKey,

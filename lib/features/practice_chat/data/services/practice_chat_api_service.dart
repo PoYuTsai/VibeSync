@@ -388,7 +388,7 @@ class PracticeDrawUpgradeRequiredException implements Exception {
   String toString() => 'PracticeDrawUpgradeRequiredException: $message';
 }
 
-/// Debrief generation plus semantic adjudication may use up to three bounded
+/// Debrief generation plus semantic adjudication may use up to four bounded
 /// provider calls; keep this aligned with the 105s server owner fence.
 const Duration kPracticeDebriefRequestTimeout = Duration(seconds: 90);
 
