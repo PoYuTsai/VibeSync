@@ -124,7 +124,7 @@ import {
 } from "./grounding_repair.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
-const CHAT_MAX_TOKENS = 200;
+const CHAT_MAX_TOKENS = 400;
 const CHAT_TEMPERATURE = 0.9;
 const CHAT_GENERATION_ATTEMPTS = 2;
 const DEBRIEF_MAX_TOKENS = 1200;

@@ -1156,10 +1156,10 @@ Deno.test("free request with more AI history than ledger is upgrade-gated before
   assertEquals(commitCalls(state).length, 0);
 });
 
-Deno.test("chat retries a transient provider failure once before committing", async () => {
+Deno.test("chat retries max-token truncation once with the full chat budget", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ practice_mode: "standard" }),
-    deepSeekReplies: [new Error("deepseek_timeout"), "AI retry reply"],
+    deepSeekReplies: [new Error("deepseek_max_tokens"), "AI retry reply"],
   });
 
   assertEquals(response.status, 200);
@@ -1167,6 +1167,8 @@ Deno.test("chat retries a transient provider failure once before committing", as
   assertEquals(state.deepSeekCalls.length, 2);
   assertEquals(state.deepSeekCalls[0].jsonMode, undefined);
   assertEquals(state.deepSeekCalls[1].jsonMode, undefined);
+  assertEquals(state.deepSeekCalls[0].maxTokens, 400);
+  assertEquals(state.deepSeekCalls[1].maxTokens, 400);
   assertEquals(commitCalls(state).length, 1);
 });
 
