@@ -57,7 +57,9 @@ Deno.test("buildHintMessages includes transcript, profile, temperature, and Trad
   assert(text.includes("繁中"));
   assert(text.includes("JSON"));
   assert(text.includes("不要 markdown"));
-  assert(text.includes("兩句都可直接送且不可只問"));
+  assert(text.includes("兩句皆為可貼草稿，不可只問"));
+  assert(text.includes("《{劇名}》、{店名}、{有／沒有}"));
+  assert(text.includes("禁自稱不知道、沒記"));
   assert(text.includes("被直接問時先回答或表態"));
   assert(text.includes("狀態以最新為準"));
   assert(text.includes("已落地勿再等"));
@@ -228,7 +230,7 @@ Deno.test("buildHintMessages treats transcript and profile as evidence only", ()
   assert(text.includes("不可合理推測補感官或經歷"));
   assert(text.includes("她一人稱/偶爾行為不可改成使用者事實/偏好"));
   assert(text.includes("問句前提也算事實"));
-  assert(text.includes("不可用反問閃避"));
+  assert(text.includes("不可只反問"));
 });
 
 Deno.test("buildHintMessages includes scene status as evidence for natural replies", () => {
@@ -362,7 +364,7 @@ Deno.test("buildHintMessages makes warm-up replies safe to apply without direct 
 
   for (
     const required of [
-      "兩句都可直接送",
+      "兩句皆為可貼草稿",
       "不直接邀約、見面、一起熬夜",
       "穩住與升溫都不可扣分",
     ]

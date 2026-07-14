@@ -115,7 +115,7 @@ export function latestAssistantQuestionEvidenceBoundary(
   const quotedQuestion = compactLatestPartnerTurnEvidence(normalized, 96);
   return `latestAssistantQuestionEvidenceBoundary(hidden)\nlatestAssistantQuestion: ${
     JSON.stringify(quotedQuestion)
-  }\n這是「她」的問句／猜測，不是 user 事實。句內對 user 的行為、地點、偏好、經歷、物件與是否做過都仍未驗證；只有逐字稿中的 user 句或 server trusted evidence 能證明。未證實時不得替 user 肯定、否定或補細節；可明說不知道／沒記／後補，或提出不偷帶答案的追問。suggestedLine 與 nextFirstLine 也必須遵守。`;
+  }\n這是「她」的問句／猜測，不是 user 事實。句內對 user 的行為、地點、偏好、經歷、物件與是否做過都仍未驗證；只有逐字稿中的 user 句或 server trusted evidence 能證明。未證實不得替 user 肯定、否定或補細節；用 {劇名}/{店名}/{真實答案} 留待使用者填，禁自稱不知道/沒記/後補。suggestedLine 與 nextFirstLine 也必須遵守。`;
 }
 
 export function hintRequiresUserFactClarification(
@@ -236,7 +236,7 @@ export const DEBRIEF_SYSTEM_PROMPT =
 - 逐子句盤點她最後回覆的回答、自揭、反問、玩笑/測試、時間窗口與界線；「下週見」不能被同句「晚安」蓋掉。
 - 狀態優先；已落地勿再等。
 - suggestedLine/nextFirstLine 永遠是使用者對她說；「我」只代表使用者，承諾主詞不可顛倒。她的個資不可改成使用者事實；禁編未出現劇名/店名/地點或近義補出新屬性；沒有使用者證據就提問/不爆雷。
-- 每個可見欄位逐子句只准使用逐字稿/profile 直接支持的事件、物件、人物、動作、感官與是否做過；不得為了畫面感補店內道具、消費內容、第三人或使用者沒說過的行動。她問「有沒有／做了什麼／點了什麼」而逐字稿沒答案時，suggestedLine/nextFirstLine 不得替使用者回答；改用不確定語氣或沿她原話提問。輸出前逐句自審並刪掉無證據細節。
+- 可見欄位逐子句只准使用逐字稿/profile 直接支持的事件、物件、人物、動作、感官與是否做過；禁為畫面感補店內道具、消費內容、第三人或使用者沒說過的行動。她問「有沒有／做了什麼／點了什麼」而逐字稿沒答案時，suggestedLine/nextFirstLine 用 {有／沒有}/{真實答案} 讓使用者填；禁代答、自稱不知道/沒記/後補。輸出前逐句自審並刪掉無證據細節。
 - 只輸出 JSON：
 {
   "summary": "總評≤40字",

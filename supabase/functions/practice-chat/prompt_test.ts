@@ -66,7 +66,12 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
     DEBRIEF_SYSTEM_PROMPT.includes("事件、物件、人物、動作、感官"),
     true,
   );
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("不得替使用者回答"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("禁代答"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("{真實答案}"), true);
+  assertEquals(
+    DEBRIEF_SYSTEM_PROMPT.includes("禁代答、自稱不知道/沒記/後補"),
+    true,
+  );
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("輸出前逐句自審"), true);
 });
 
@@ -124,7 +129,9 @@ Deno.test("Hint and Debrief treat the latest partner question as unverified user
         "只有逐字稿中的 user 句或 server trusted evidence 能證明",
       ),
     );
-    assert(prompt.includes("不得替 user 肯定、否定或補細節"));
+    assert(prompt.includes("未證實不得替 user 肯定、否定或補細節"));
+    assert(prompt.includes("{劇名}/{店名}/{真實答案}"));
+    assert(prompt.includes("禁自稱不知道/沒記/後補"));
   }
   assert(debriefUser.includes("suggestedLine 與 nextFirstLine 也必須遵守"));
 });

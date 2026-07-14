@@ -5756,10 +5756,10 @@ Deno.test("always-on grounding removes the exact build-323 smoke hallucination w
     coaching: "她問你看什麼這麼入迷；直接回答劇名，再補看到第六集的畫面。",
   });
   const repaired = validHintJson({
-    warmUp: "昨晚真的看到停不下來😂 劇名先賣個關子，妳最近有哪部也讓妳熬夜？",
-    steady: "妳問到重點了😂 先承認昨晚停不下來，劇名等我補真實答案。",
+    warmUp: "我在追《{劇名}》😂 昨晚一路看到兩點，妳最近也有哪部讓妳熬夜？",
+    steady: "《{劇名}》，昨晚一路看到兩點😂 妳最近在追哪部？",
     coaching:
-      "她直接問使用者看什麼，但逐字稿沒有真實劇名；不能代答，先自然保留答案。",
+      "她直接問使用者看什麼，但逐字稿沒有真實劇名；保留 {劇名} 讓使用者填入後再送。",
   });
   const { response, json, state } = await run(
     {
@@ -5782,6 +5782,7 @@ Deno.test("always-on grounding removes the exact build-323 smoke hallucination w
   assertEquals(json.qualitySchemaVersion, "typed-facts-v1");
   assertEquals(JSON.stringify(json).includes("黑白大廚"), false);
   assertEquals(JSON.stringify(json).includes("淚之女王"), false);
+  assertEquals(JSON.stringify(json).includes("{劇名}"), true);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
@@ -5806,12 +5807,11 @@ Deno.test("independent Hint verification catches a natural first-person memory h
       "Game 心法：她問哪家、猜使用者只是餓了。現在是開場建立熟悉感，先接住吐槽，再把球丟回她的咖啡專業。速約任務：本輪在鋪墊階，先把她的品味變成話題，不邀約。",
   });
   const verified = validGameHintJson({
-    warmUp:
-      "哈哈妳連我是不是餓了都要審😂 已知只有路過聞到香；妳通常怎麼判斷一家店認不認真？",
+    warmUp: "是{店名}，我當時{餓／不餓}😂 妳通常怎麼判斷一家店認不認真？",
     steady:
-      "哪家這題先欠妳，餓不餓也先不替我下結論😂 光是路過聞到香，妳覺得這訊號準嗎？",
+      "店名是{店名}，我當時{餓／不餓}；光是路過聞到香，妳覺得這訊號準嗎？",
     coaching:
-      "Game 心法：她問店名，但逐字稿沒有答案。現在是開場建立熟悉感，只沿用路過聞到香，把判斷球交回她。速約任務：本輪在鋪墊階，先讓她聊判斷標準，不邀約。",
+      "Game 心法：她問店名與是否餓，但逐字稿沒有答案。現在是開場建立熟悉感，保留 {店名}、{餓／不餓} 讓使用者填真值。速約任務：這輪先聊判斷標準，不邀約。",
   });
   const { response, json, state } = await run(
     {
@@ -5840,6 +5840,8 @@ Deno.test("independent Hint verification catches a natural first-person memory h
     }),
   );
   assertEquals(JSON.stringify(json).includes("沒記住"), false);
+  assertEquals(JSON.stringify(json).includes("{店名}"), true);
+  assertEquals(JSON.stringify(json).includes("{餓／不餓}"), true);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[2].temperature, 0);
   assert(
@@ -5865,7 +5867,7 @@ Deno.test("independent Debrief verification catches an invented sensory answer",
     "我沒記清楚是哪家，只記得像剛烤完的堅果味。妳猜是哪支豆？",
   );
   const verified = card(
-    "哪家跟香氣我得補真實答案😂 妳平常光聞香會怎麼判豆子？",
+    "店名是{店名}，聞起來是{香氣}😂 妳平常光聞香會怎麼判豆子？",
   );
   const { response, json, state } = await run(
     {
@@ -5886,6 +5888,8 @@ Deno.test("independent Debrief verification catches an invented sensory answer",
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(JSON.stringify(json).includes("堅果味"), false);
   assertEquals(JSON.stringify(json).includes("沒記清楚"), false);
+  assertEquals(JSON.stringify(json).includes("{店名}"), true);
+  assertEquals(JSON.stringify(json).includes("{香氣}"), true);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[2].temperature, 0);
   assertEquals(recordDebriefCalls(state).length, 1);
