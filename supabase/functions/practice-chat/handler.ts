@@ -3900,19 +3900,26 @@ export function createPracticeChatHandler(
           enforceGeneratedQuality: true,
           semanticAdjudicated: true,
         } as const;
-        const debriefHintContinuityContext =
+        const lastAppliedHintTurnIndex =
           (ledgerAppliedHintTurns?.length ?? 0) > 0
-            ? {
-              appliedHints: ledgerAppliedHintTurns!,
-              postHintAssistantTurns: request.turns
-                .filter((turn, index) =>
-                  turn.role === "ai" && index > Math.max(
-                      ...ledgerAppliedHintTurns!.map((hint) => hint.turnIndex),
-                    )
-                )
-                .map((turn) => turn.text),
-            }
-            : null;
+            ? Math.max(
+              ...ledgerAppliedHintTurns!.map((hint) => hint.turnIndex),
+            )
+            : -1;
+        const debriefGroundingContext = {
+          appliedHints: ledgerAppliedHintTurns ?? [],
+          postHintAssistantTurns: lastAppliedHintTurnIndex >= 0
+            ? request.turns
+              .filter((turn, index) =>
+                turn.role === "ai" && index > lastAppliedHintTurnIndex
+              )
+              .map((turn) => turn.text)
+            : [],
+          terminalTurnRole: request.turns[request.turns.length - 1]?.role ===
+              "ai"
+            ? "assistant" as const
+            : "user" as const,
+        };
         const canonicalHintAssessment = (
           rawCandidate: Record<string, unknown>,
         ): Record<string, unknown> => {
@@ -4119,7 +4126,7 @@ export function createPracticeChatHandler(
                 verificationPass: debriefGroundingReviewsCompleted > 0,
                 surface: "debrief",
                 isGame: debriefPracticeMode === "game",
-                hintContinuityContext: debriefHintContinuityContext,
+                debriefContext: debriefGroundingContext,
               })
               : baseDebriefMessages;
             debriefAttemptCount += 1;

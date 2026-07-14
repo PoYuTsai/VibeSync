@@ -86,7 +86,10 @@ function assertGroundingReviewInput(
   previousCandidate: string,
 ): void {
   const prompt = claudePrompt(call);
-  assert(prompt.includes("practiceGroundingReviewerV3"));
+  assert(
+    prompt.includes("practiceGroundingReviewerV3") ||
+      prompt.includes("practiceGroundingReleaseAuditorV1"),
+  );
   assert(prompt.includes("<candidate_untrusted>"));
   assert(prompt.includes(previousCandidate));
   assertEquals(
@@ -5122,7 +5125,8 @@ Deno.test("direct Debrief repairs a contradiction with the server-owned Hint bef
   assertEquals(JSON.stringify(json.card).includes("錯過了最好的窗口"), false);
   assertEquals(state.claudeCalls.length, 3);
   const reviewPrompt = claudePrompt(state.claudeCalls[1]);
-  assert(reviewPrompt.includes("<trusted_hint_contract_data>"));
+  assert(reviewPrompt.includes("<trusted_debrief_context_data>"));
+  assert(reviewPrompt.includes('"terminalTurnRole":"assistant"'));
   assert(reviewPrompt.includes('"inviteRoute":"build"'));
   assert(reviewPrompt.includes("散步真的蠻舒服的"));
   assertEquals(recordDebriefCalls(state).length, 1);
@@ -5956,7 +5960,9 @@ Deno.test("direct Game Hint lets reviewed activity questions bypass invite-route
   assertEquals(state.claudeCalls.length, 3);
   assert(claudePrompt(state.claudeCalls[1]).includes("按整句語意判斷"));
   assert(
-    claudePrompt(state.claudeCalls[2]).includes("第二次獨立複核"),
+    claudePrompt(state.claudeCalls[2]).includes(
+      "practiceGroundingReleaseAuditorV1",
+    ),
   );
   for (const reply of json.replies) {
     assertEquals(reply.decision.inviteRoute, "build");
@@ -7026,7 +7032,9 @@ Deno.test("Hint repair removes a memory hallucination before independent verific
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[2].temperature, 0);
   assert(
-    claudePrompt(state.claudeCalls[2]).includes("第二次獨立複核"),
+    claudePrompt(state.claudeCalls[2]).includes(
+      "practiceGroundingReleaseAuditorV1",
+    ),
   );
   assertEquals(recordHintCalls(state).length, 1);
 });
@@ -7088,9 +7096,9 @@ Deno.test("Hint repair removes partner speculation before independent verificati
   const firstVerificationPrompt = claudePrompt(state.claudeCalls[1]);
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
   assert(firstVerificationPrompt.includes("只證明她說過，不是 user 證據"));
-  assert(verificationPrompt.includes("只證明她說過，不是 user 證據"));
+  assert(verificationPrompt.includes("她的問句、猜測與玩笑不是 user 答案"));
   assert(firstVerificationPrompt.includes("自行肯定/否定"));
-  assert(verificationPrompt.includes("自行肯定/否定"));
+  assert(verificationPrompt.includes("只留她剛問的最小原子變數"));
   assertEquals(recordHintCalls(state).length, 1);
 });
 
@@ -7308,22 +7316,22 @@ Deno.test("Beginner Debrief repair removes an invented plan before independent v
     JSON.parse(verified).suggestedLine,
   );
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
-  assert(verificationPrompt.includes("貼句的「我」"));
+  assert(verificationPrompt.includes("所有可見與 nested 欄位"));
   assert(verificationPrompt.includes("server-trusted user evidence"));
   assert(
     verificationPrompt.includes(
-      "都須由 user_turn 或 server-trusted user evidence 單獨直接蘊含",
+      "都要由正確角色的 transcript turn 或 server-trusted evidence 直接蘊含",
     ),
   );
   assert(
-    verificationPrompt.includes("partner 現況/行程/動作只認 assistant_turn"),
+    verificationPrompt.includes("trusted_debrief_context_data"),
   );
   assert(
     verificationPrompt.includes(
-      "逐欄、逐句、逐命題重查角色顛倒與無證據 user 事實",
+      "terminalTurnRole 是伺服器權威事實",
     ),
   );
-  assert(verificationPrompt.includes("只修改不安全處"));
+  assert(verificationPrompt.includes("不安全只修不安全處"));
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 1);
@@ -7437,9 +7445,9 @@ Deno.test("Game Debrief repair removes partner speculation before independent ve
     JSON.parse(verified).suggestedLine,
   );
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
-  assert(verificationPrompt.includes("以 exact Hint decision object 為準"));
+  assert(verificationPrompt.includes("appliedHints 都是 user_turn"));
   assert(
-    verificationPrompt.includes("不可把 Hint 說成錯誤、太保守或錯失邀約"),
+    verificationPrompt.includes("exact Hint 的既定策略不可被 Debrief 推翻"),
   );
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.semanticCalls.length, 0);
@@ -7478,7 +7486,9 @@ Deno.test("direct Debrief lets reviewed partner questions bypass initiative rege
   assertEquals(state.claudeCalls.length, 3);
   assert(claudePrompt(state.claudeCalls[1]).includes("不是 user 證據"));
   assert(
-    claudePrompt(state.claudeCalls[2]).includes("第二次獨立複核"),
+    claudePrompt(state.claudeCalls[2]).includes(
+      "practiceGroundingReleaseAuditorV1",
+    ),
   );
   assertEquals(
     (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
@@ -7986,6 +7996,10 @@ Deno.test("direct Beginner Debrief repairs the latest production completion and 
     state.claudeCalls[2],
     JSON.parse(firstReview).suggestedLine,
   );
+  const releasePrompt = claudePrompt(state.claudeCalls[2]);
+  assert(releasePrompt.includes('"terminalTurnRole":"assistant"'));
+  assert(releasePrompt.includes("user 尚未有回覆機會"));
+  assert(releasePrompt.includes("不得自行發明 user 的立場、經歷或結果"));
   assertEquals(
     (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
       .failureCodes,
@@ -8133,6 +8147,20 @@ Deno.test("direct Game Debrief repairs the latest production tasting, timing, an
   assertGroundingReviewInput(
     state.claudeCalls[2],
     JSON.parse(firstReview).suggestedLine,
+  );
+  const firstAuditPrompt = claudePrompt(state.claudeCalls[1]);
+  const releaseAuditPrompt = claudePrompt(state.claudeCalls[2]);
+  assert(firstAuditPrompt.includes("practiceGroundingReviewerV3"));
+  assertEquals(
+    firstAuditPrompt.includes("practiceGroundingReleaseAuditorV1"),
+    false,
+  );
+  assert(firstAuditPrompt.includes('"terminalTurnRole":"assistant"'));
+  assert(releaseAuditPrompt.includes("practiceGroundingReleaseAuditorV1"));
+  assert(releaseAuditPrompt.includes('"terminalTurnRole":"assistant"'));
+  assert(releaseAuditPrompt.includes("user 尚未有回覆機會"));
+  assert(
+    releaseAuditPrompt.includes("不得自行發明 user 的立場、經歷或結果"),
   );
   assertEquals(
     (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
