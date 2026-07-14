@@ -129,6 +129,12 @@ interface HintParseOptions {
    */
   skipLexicalStyleGuards?: boolean;
   /**
+   * A conditional Claude grounding editor has already evaluated the complete
+   * candidate against the trusted transcript/facts. The lexical extractor is
+   * only a recovery trigger in that path, never the final semantic judge.
+   */
+  semanticGroundingRepaired?: boolean;
+  /**
    * A generated candidate is never user-visible. Let the semantic reviewer
    * repair visible safety/style defects, then run the normal hard guard again
    * on the reviewed result before recording or returning it.
@@ -1530,6 +1536,8 @@ function assertGeneratedHintQuality(opts: {
       text: visibleText,
       field,
       context: factContext,
+      contactIdentifiersOnly:
+        opts.parseOptions.semanticGroundingRepaired === true,
     });
   }
   for (const reply of [opts.warmUp, opts.steady]) {

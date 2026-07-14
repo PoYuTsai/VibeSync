@@ -116,6 +116,10 @@ import {
   type PracticeSemanticAdjudicator,
   SemanticAdjudicationError,
 } from "./semantic_quality.ts";
+import {
+  buildGroundingRepairMessages,
+  groundingFailureCode,
+} from "./grounding_repair.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const CHAT_MAX_TOKENS = 200;
@@ -126,8 +130,8 @@ const DEBRIEF_TEMPERATURE = 0.5;
 const DEBRIEF_GENERATION_ATTEMPTS = 1;
 const DEBRIEF_TIMEOUT_MS = 12000;
 // Game Debrief has a larger prompt and five additional grounded fields.
-// Generation is followed by semantic review; the 90s client window and 105s
-// owner fence deliberately favor a verified result over a fast 503.
+// A fact-guard suspicion may add one narrow grounding repair; the 90s client
+// window and 105s owner fence deliberately favor a verified result over 503.
 const DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS = 24000;
 const DEBRIEF_IN_FLIGHT_STALE_MS = 105000;
 const DIRECT_PRACTICE_GENERATION_ATTEMPTS = 3;
@@ -137,6 +141,7 @@ const DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS = 24000;
 // low-variance so expert framing comes from the rubric instead of invented
 // scene props, user actions, or personal facts.
 const DIRECT_PRACTICE_TEMPERATURE = 0.2;
+const GROUNDING_REPAIR_TEMPERATURE = 0;
 const LEGACY_CLIENT_QUALITY_SCHEMA_VERSION = "typed-facts-v1";
 // 2026-07-13 probe: game hint 在 650 tokens 下 DeepSeek 47% finish_reason=length
 // 截斷（JSON 收不完→誤報 provider_error）。提高到 1600 給 Game Hint 完整 JSON 空間。
@@ -2743,14 +2748,17 @@ export function createPracticeChatHandler(
         });
         const parseDirectGeneratedHint = (
           rawHint: string,
+          semanticGroundingRepaired = false,
         ): ReturnType<typeof parseHintResult> =>
           attachHintDecisions(parseHintResult(rawHint, {
             ...generatedHintParseOptions,
             semanticAdjudicated: false,
             deferVisibleGuardsToSemantic: false,
             skipLexicalStyleGuards: true,
+            semanticGroundingRepaired,
           }));
         let previousDirectHintCandidate: string | null = null;
+        let hintGroundingRepairAttempted = false;
         const parseGeneratedHint = async (
           rawHint: string,
           candidateProvider: "deepseek" | "anthropic",
@@ -2851,17 +2859,39 @@ export function createPracticeChatHandler(
             attempt <= DIRECT_PRACTICE_GENERATION_ATTEMPTS;
             attempt++
           ) {
-            const retryBaseHintMessages: ChatMessage[] = attempt > 1 &&
-                previousDirectHintCandidate !== null
-              ? [
-                ...baseHintMessages,
-                { role: "assistant", content: previousDirectHintCandidate },
-              ]
-              : baseHintMessages;
-            const hintMessages = attempt > 1 && lastError !== undefined &&
-                isHintFormatOrGuardError(lastError)
+            const groundingCode = attempt > 1 &&
+                previousDirectHintCandidate !== null &&
+                lastError !== undefined &&
+                !hintGroundingRepairAttempted
+              ? groundingFailureCode(lastError, "hint")
+              : null;
+            const isGroundingRepair = groundingCode !== null;
+            const hasRejectedHintCandidate = attempt > 1 &&
+              previousDirectHintCandidate !== null &&
+              lastError !== undefined &&
+              isHintFormatOrGuardError(lastError);
+            const retryBaseHintMessages: ChatMessage[] =
+              hasRejectedHintCandidate
+                ? [
+                  ...baseHintMessages,
+                  {
+                    role: "assistant",
+                    content: previousDirectHintCandidate!,
+                  },
+                ]
+                : baseHintMessages;
+            const hintMessages = isGroundingRepair
+              ? buildGroundingRepairMessages({
+                baseMessages: baseHintMessages,
+                previousCandidate: previousDirectHintCandidate!,
+                failureCode: groundingCode,
+                surface: "hint",
+                isGame: request.practiceMode === "game",
+              })
+              : hasRejectedHintCandidate
               ? withHintRetryInstruction(retryBaseHintMessages, lastError)
               : retryBaseHintMessages;
+            if (isGroundingRepair) hintGroundingRepairAttempted = true;
             hintAttemptCount += 1;
             hintPromptChars = countPromptChars(hintMessages);
             const attemptStartedAt = performance.now();
@@ -2871,11 +2901,16 @@ export function createPracticeChatHandler(
                 model: CLAUDE_SONNET_MODEL,
                 messages: hintMessages,
                 maxTokens: HINT_MAX_TOKENS,
-                temperature: DIRECT_PRACTICE_TEMPERATURE,
+                temperature: isGroundingRepair
+                  ? GROUNDING_REPAIR_TEMPERATURE
+                  : DIRECT_PRACTICE_TEMPERATURE,
                 timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
               });
               previousDirectHintCandidate = rawHint;
-              hintResult = parseDirectGeneratedHint(rawHint);
+              hintResult = parseDirectGeneratedHint(
+                rawHint,
+                isGroundingRepair,
+              );
               hintLastFailureClass = null;
               const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
               hintAttemptDurationsMs.push(attemptDurationMs);
@@ -2894,6 +2929,15 @@ export function createPracticeChatHandler(
                   promptChars: hintPromptChars,
                 }),
               });
+              if (isGroundingRepair) {
+                logInfo("practice_chat_grounding_repair", {
+                  user: summarizeUser(user.id),
+                  surface: "hint",
+                  practiceMode: request.practiceMode,
+                  outcome: "accepted",
+                  providerCalls: 1,
+                });
+              }
               break;
             } catch (e) {
               lastError = e;
@@ -2918,6 +2962,16 @@ export function createPracticeChatHandler(
                   promptChars: hintPromptChars,
                 }),
               });
+              if (isGroundingRepair) {
+                logWarn("practice_chat_grounding_repair", {
+                  user: summarizeUser(user.id),
+                  surface: "hint",
+                  practiceMode: request.practiceMode,
+                  outcome: "rejected",
+                  failureClass: hintLastFailureClass,
+                  providerCalls: 1,
+                });
+              }
             }
           }
         } else if (apiKey) {
@@ -3716,6 +3770,7 @@ export function createPracticeChatHandler(
         };
         const parseDirectGeneratedDebrief = (
           rawCard: string,
+          semanticGroundingRepaired = false,
         ): DebriefCard => {
           const rawCandidate = parseDebriefCandidateObject(rawCard);
           const rawGameBreakdown = rawCandidate.gameBreakdown;
@@ -3755,9 +3810,12 @@ export function createPracticeChatHandler(
             deferVisibleGuardsToSemantic: false,
             serverOwnsHintStrategy: true,
             skipLexicalStyleGuards: true,
+            semanticGroundingRepaired,
+            auditAllVisibleFacts: true,
           });
         };
         let previousDirectDebriefCandidate: string | null = null;
+        let debriefGroundingRepairAttempted = false;
         const parseGeneratedDebrief = async (
           rawCard: string,
           candidateProvider: "deepseek" | "anthropic",
@@ -3848,26 +3906,45 @@ export function createPracticeChatHandler(
             attempt <= DIRECT_PRACTICE_DEBRIEF_ATTEMPTS;
             attempt++
           ) {
-            const retryBaseDebriefMessages: ChatMessage[] = attempt > 1 &&
-                previousDirectDebriefCandidate !== null
-              ? [
-                ...baseDebriefMessages,
-                {
-                  role: "assistant",
-                  content: previousDirectDebriefCandidate,
-                },
-              ]
-              : baseDebriefMessages;
-            const debriefMessages = attempt > 1 && lastError !== undefined &&
-                (debriefLastFailureClass === "visible_text_guard" ||
-                  debriefLastFailureClass === "invalid_json" ||
-                  debriefLastFailureClass === "schema_invalid")
+            const groundingCode = attempt > 1 &&
+                previousDirectDebriefCandidate !== null &&
+                lastError !== undefined &&
+                !debriefGroundingRepairAttempted
+              ? groundingFailureCode(lastError, "debrief")
+              : null;
+            const isGroundingRepair = groundingCode !== null;
+            const hasRejectedDebriefCandidate = attempt > 1 &&
+              previousDirectDebriefCandidate !== null &&
+              lastError !== undefined &&
+              (debriefLastFailureClass === "visible_text_guard" ||
+                debriefLastFailureClass === "invalid_json" ||
+                debriefLastFailureClass === "schema_invalid");
+            const retryBaseDebriefMessages: ChatMessage[] =
+              hasRejectedDebriefCandidate
+                ? [
+                  ...baseDebriefMessages,
+                  {
+                    role: "assistant",
+                    content: previousDirectDebriefCandidate!,
+                  },
+                ]
+                : baseDebriefMessages;
+            const debriefMessages = isGroundingRepair
+              ? buildGroundingRepairMessages({
+                baseMessages: baseDebriefMessages,
+                previousCandidate: previousDirectDebriefCandidate!,
+                failureCode: groundingCode,
+                surface: "debrief",
+                isGame: debriefPracticeMode === "game",
+              })
+              : hasRejectedDebriefCandidate
               ? withDebriefRetryInstruction(
                 retryBaseDebriefMessages,
                 lastError,
                 debriefPracticeMode === "game",
               )
               : retryBaseDebriefMessages;
+            if (isGroundingRepair) debriefGroundingRepairAttempted = true;
             debriefAttemptCount += 1;
             debriefPromptChars = countPromptChars(debriefMessages);
             const attemptStartedAt = performance.now();
@@ -3877,11 +3954,16 @@ export function createPracticeChatHandler(
                 model: CLAUDE_SONNET_MODEL,
                 messages: debriefMessages,
                 maxTokens: DEBRIEF_MAX_TOKENS,
-                temperature: DIRECT_PRACTICE_TEMPERATURE,
+                temperature: isGroundingRepair
+                  ? GROUNDING_REPAIR_TEMPERATURE
+                  : DIRECT_PRACTICE_TEMPERATURE,
                 timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
               });
               previousDirectDebriefCandidate = rawCard;
-              debriefCard = parseDirectGeneratedDebrief(rawCard);
+              debriefCard = parseDirectGeneratedDebrief(
+                rawCard,
+                isGroundingRepair,
+              );
               debriefLastFailureClass = null;
               const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
               debriefAttemptDurationsMs.push(attemptDurationMs);
@@ -3900,6 +3982,15 @@ export function createPracticeChatHandler(
                   promptChars: debriefPromptChars,
                 }),
               });
+              if (isGroundingRepair) {
+                logInfo("practice_chat_grounding_repair", {
+                  user: summarizeUser(user.id),
+                  surface: "debrief",
+                  practiceMode: debriefPracticeMode,
+                  outcome: "accepted",
+                  providerCalls: 1,
+                });
+              }
               break;
             } catch (e) {
               lastError = e;
@@ -3926,6 +4017,16 @@ export function createPracticeChatHandler(
                   promptChars: debriefPromptChars,
                 }),
               });
+              if (isGroundingRepair) {
+                logWarn("practice_chat_grounding_repair", {
+                  user: summarizeUser(user.id),
+                  surface: "debrief",
+                  practiceMode: debriefPracticeMode,
+                  outcome: "rejected",
+                  failureClass: debriefLastFailureClass,
+                  providerCalls: 1,
+                });
+              }
             }
           }
         } else if (apiKey) {

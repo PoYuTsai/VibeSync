@@ -2795,6 +2795,13 @@ export function assertHintFactClaimsSupported(input: {
   field: "reply" | "coaching";
   context: HintFactContext;
   errorCode?: string;
+  /**
+   * A semantic grounding editor has already judged ambiguous assertions in
+   * sentence context. Keep only deterministic contact-identifier protection;
+   * the lexical extractor must not regain final-veto power over names, places,
+   * questions, hypotheticals, or ordinary relationship language.
+   */
+  contactIdentifiersOnly?: boolean;
 }): void {
   const errorCode = input.errorCode ??
     "hint_quality_invalid_unsupported_detail";
@@ -2803,6 +2810,7 @@ export function assertHintFactClaimsSupported(input: {
       `${errorCode}:${claim.owner}:${claim.domain}:${claim.relation}`,
     );
   if (
+    input.contactIdentifiersOnly !== true &&
     input.field === "reply" &&
     unsupportedCompletedUserExperience(input.text, input.context)
   ) {
@@ -2830,6 +2838,14 @@ export function assertHintFactClaimsSupported(input: {
   const outputClaims = [...outputClaimsByKey.values()];
 
   for (const output of outputClaims) {
+    if (
+      input.contactIdentifiersOnly === true &&
+      output.domain !== "phone" &&
+      output.domain !== "email" &&
+      output.domain !== "social"
+    ) {
+      continue;
+    }
     // 低信心抽取絕不 fail-closed：只保留供觀測，永不因它 throw。
     if (claimConfidence(output) === "low") continue;
     if (output.owner === "world" || output.owner === "third_party") {

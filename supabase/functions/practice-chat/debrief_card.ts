@@ -1570,6 +1570,8 @@ function assertGeneratedDebriefQuality(
     partnerFactualEvidence?: string[];
     trustedFactClaims?: HintFactClaim[];
     serverOwnsHintStrategy?: boolean;
+    semanticGroundingRepaired?: boolean;
+    auditAllVisibleFacts?: boolean;
   },
 ): void {
   const visibleFields = debriefVisibleFields(card);
@@ -1611,15 +1613,20 @@ function assertGeneratedDebriefQuality(
       field: "reply",
       context: factContext,
       errorCode: "debrief_quality_invalid_unsupported_detail",
+      contactIdentifiersOnly: opts.semanticGroundingRepaired === true,
     });
   }
-  if (opts.serverOwnsHintStrategy !== true) {
+  if (
+    opts.serverOwnsHintStrategy !== true ||
+    opts.auditAllVisibleFacts === true
+  ) {
     for (const analyticalText of debriefAnalyticalFields(card)) {
       assertHintFactClaimsSupported({
         text: analyticalText,
         field: "coaching",
         context: factContext,
         errorCode: "debrief_quality_invalid_unsupported_detail",
+        contactIdentifiersOnly: opts.semanticGroundingRepaired === true,
       });
     }
   }
@@ -1733,6 +1740,10 @@ export function parseDebriefCard(
     serverOwnsHintStrategy?: boolean;
     /** Direct Claude owns expert wording; keep internal-label and L4 guards. */
     skipLexicalStyleGuards?: boolean;
+    /** Ambiguous facts were checked in sentence context by Claude. */
+    semanticGroundingRepaired?: boolean;
+    /** Use lexical facts only to trigger semantic grounding on every field. */
+    auditAllVisibleFacts?: boolean;
   } = {},
 ): DebriefCard {
   const cleaned = extractJsonObject(raw);
