@@ -1188,56 +1188,6 @@ function preservedCardCritiquesExactHint(
   return false;
 }
 
-/**
- * Direct Claude Debrief is downstream of a server-owned Hint decision. Keep a
- * narrow contradiction check here instead of re-inferring the whole strategy
- * from every natural-language watchout. The broader legacy heuristic remains
- * available for the reviewer-owned path below.
- */
-function serverOwnedCardCritiquesExactHint(
-  card: DebriefCard,
-  appliedHintTurns: AppliedHintTurn[],
-): boolean {
-  const exactHints = appliedHintTurns.filter((hint) => hint.exact);
-  if (exactHints.length === 0) return false;
-  if (
-    [card.summary, ...card.strengths].some(
-      hintCreditHasUnscopedAdversative,
-    )
-  ) {
-    return true;
-  }
-  const exactTexts = exactHints
-    .flatMap((hint) => [hint.sentText, hint.originalHintText])
-    .map(normalizedPracticeText)
-    .filter((text) => text.length >= 4);
-  return debriefVisibleFields(card).some((field) => {
-    const compact = normalizedPracticeText(field);
-    const explicitlyNamesHint =
-      /(?:提示|照貼|照著提示|原本那句|hint|這句|這個回覆|你的回覆)/iu
-        .test(compact);
-    const repeatsHintText = exactTexts.some((text) => {
-      const anchor = [...text].slice(0, 12).join("");
-      return compact.includes(text) || compact.includes(anchor);
-    });
-    const namesHint = explicitlyNamesHint || repeatsHintText ||
-      /(?:只回|只問)/u.test(compact);
-    if (!namesHint) return false;
-    // 「下一步別只問…」是未來建議，不是在重審已送出的 Hint。
-    // 明講提示／這句或重複 Hint 原文時仍維持 fail-closed。
-    if (
-      hasForwardCoachingScope(field) && !explicitlyNamesHint &&
-      !repeatsHintText
-    ) {
-      return false;
-    }
-    const hasUnnegatedCritique = preservedHintCritiqueMatches(compact).some(
-      (match) => !critiqueIsNegatedPraise(compact, match.index),
-    );
-    return hasUnnegatedCritique || hasNegativeReplyEvaluation(field);
-  });
-}
-
 function isPreservedHiddenHintAssessment(value: unknown): boolean {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
@@ -1496,14 +1446,6 @@ function assertHintAssessment(opts: {
   const visiblyReversesHint =
     /(?:提示|建議)(?:(?:本身|內容|那句|其實|真的|確實|有點|太|很|偏|是)){0,3}(?:錯|不對|不該|太急|偏保守|無效|不好|不合適|不適合|有問題|失準|誤判)/u
       .test(normalizedPracticeText(visibleText));
-  const postHintBoundary = opts.serverOwnsHintStrategy === true &&
-    latestAssistantShowsHostility(
-      assistantTextNearHint(
-        opts.turns,
-        Math.max(...opts.appliedHintTurns.map((hint) => hint.turnIndex)),
-        "after",
-      ),
-    );
   // In the direct path the server owns whether the already-sent Hint was
   // correct for its turn. A new partner reply may legitimately open or close
   // the *next* route, so re-inferring that route is not a Hint contradiction.
@@ -1520,17 +1462,12 @@ function assertHintAssessment(opts: {
     if (quote !== null) throw new Error("debrief_hint_assessment_invalid");
     if (
       opts.skipVisibleConsistency !== true &&
-      (opts.serverOwnsHintStrategy === true
-        ? !postHintBoundary &&
-          serverOwnedCardCritiquesExactHint(
-            opts.card,
-            opts.appliedHintTurns,
-          )
-        : preservedCardCritiquesExactHint(
-          opts.card,
-          opts.appliedHintTurns,
-          opts.turns,
-        ))
+      opts.serverOwnsHintStrategy !== true &&
+      preservedCardCritiquesExactHint(
+        opts.card,
+        opts.appliedHintTurns,
+        opts.turns,
+      )
     ) {
       throw new Error("debrief_hint_assessment_revision_required");
     }

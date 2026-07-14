@@ -4685,7 +4685,7 @@ Deno.test("direct Claude Debrief regenerates instead of blaming an exact preserv
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
       claudeReplies: [
         card(
-          "只回『還在賴床喔，那今天先准妳慢慢開機』只是禮貌收尾，沒有給她好接的球。",
+          "這個提示偏保守，沒有給她好接的球。",
         ),
         card("下一步可以接慢慢開機，再分享你今天第一個起床動作。"),
       ],
@@ -4720,7 +4720,7 @@ Deno.test("direct Claude Debrief regenerates instead of blaming an exact preserv
   assertEquals(json.provider, "anthropic");
   assertEquals(json.failoverUsed, false);
   assertEquals(
-    JSON.stringify(json.card).includes("只是禮貌收尾"),
+    JSON.stringify(json.card).includes("提示偏保守"),
     false,
   );
   assertEquals(state.deepSeekCalls.length, 0);

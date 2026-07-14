@@ -927,7 +927,7 @@ Deno.test("server-owned Hint strategy accepts objective outcome prose but still 
         JSON.stringify({
           ...generatedQualityCard,
           watchouts: [
-            "只回『還在賴床喔，那今天先准妳慢慢開機』只是禮貌收尾，沒有給她好接的球。",
+            "這個提示偏保守，沒有給她好接的球。",
           ],
         }),
         {
