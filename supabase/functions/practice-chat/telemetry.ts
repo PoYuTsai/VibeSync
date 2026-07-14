@@ -176,6 +176,7 @@ const KNOWN_PRACTICE_FAILURE_CODE_PREFIXES = [
   "provider_",
   "visible_",
   "semantic_",
+  "grounding_review_",
 ] as const;
 
 function hasKnownPracticeFailureCodePrefix(token: string): boolean {
@@ -283,7 +284,8 @@ export function classifyPracticeGenerationFailure(
     error instanceof SyntaxError || message.includes("unexpected token") ||
     message.includes("invalid json") || message.includes("json_parse") ||
     message.includes("unterminated string") ||
-    message.includes("semantic_adjudication_invalid_json")
+    message.includes("semantic_adjudication_invalid_json") ||
+    message.includes("grounding_review_invalid_json")
   ) {
     return "invalid_json";
   }
@@ -295,7 +297,8 @@ export function classifyPracticeGenerationFailure(
     message.includes("quality_invalid") ||
     message.includes("debrief_hint_") ||
     message.includes("schema_invalid") ||
-    message.includes("semantic_adjudication_")
+    message.includes("semantic_adjudication_") ||
+    message.includes("grounding_review_")
   ) {
     return "schema_invalid";
   }
