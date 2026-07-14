@@ -8285,6 +8285,329 @@ Deno.test("direct Game Debrief repairs the latest production tasting, timing, an
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
+Deno.test("direct Beginner Debrief release review repairs the latest production global-negative claims", async () => {
+  const appliedHint = "哇難得早休息耶，我還在努力讓腦袋開機 😂 你今天有班嗎？";
+  const falseSummary =
+    "開場有接住她的狀態，但全場只有問句，缺乏自我揭露，連結感薄弱。";
+  const falseWatchout =
+    "全場 user 只有追劇開場＋Hint 句，沒有任何自我揭露，對話偏單向詢問。";
+  const falseDateChanceReason =
+    "她僅告知狀態、無延伸話題線索，也無時間或行程資訊可評估。";
+  const suggestedLine =
+    "休假廢在家很讚 😂 我現在也還在開機中；妳今天最想怎麼放空？";
+  const wrong = validDebriefJson({
+    summary: falseSummary,
+    strengths: ["Hint 有接住她難得早休息的狀態。"],
+    watchouts: [falseWatchout],
+    suggestedLine,
+    dateChance: "low",
+    dateChanceReason: falseDateChanceReason,
+    nextInviteMove: "先問她休假如何安排，再看有沒有邀約窗口。",
+  });
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary: "",
+    strengths: "她難得早休息←assistant_turn[1]:『我今天難得早點休息』",
+    watchouts: "",
+    suggestedLine:
+      "我還在開機中←user_turn[2]:『我還在努力讓腦袋開機』；她休假←assistant_turn[3]:『今天剛好休假』",
+    dateChanceReason: "",
+    nextInviteMove: "",
+    gameBreakdown: "",
+  });
+  const repaired = validDebriefJson({
+    summary:
+      "你先分享追劇到兩點與腦袋還沒開機，她則分享今天休假、沒計畫想待在家；雙方都有自我揭露。",
+    strengths: [
+      "你用追劇到兩點與腦袋沒開機提供自己的生活近況。",
+      "她也回覆今天休假、沒計畫想廢在家，留下可延伸的行程素材。",
+    ],
+    watchouts: ["目前是生活近況交換，還沒有一起活動或見面的訊號。"],
+    suggestedLine,
+    dateChance: "low",
+    dateChanceReason:
+      "她分享今天休假且沒計畫想待在家，這是行程資訊，但沒有邀約、一起活動或見面時間窗。",
+    nextInviteMove: "先沿她想廢在家的休假狀態接話，不急著邀約。",
+  });
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary:
+      "追劇到兩點←user_turn[0]:『昨晚追劇追到兩點』；她休假沒計畫←assistant_turn[3]:『今天剛好休假』『沒什麼計畫』",
+    strengths:
+      "腦袋沒開機←user_turn[0]:『腦袋還沒開機』；她想廢在家←assistant_turn[3]:『就想廢在家』",
+    watchouts: "",
+    suggestedLine:
+      "我還在開機中←user_turn[2]:『我還在努力讓腦袋開機』；她休假←assistant_turn[3]:『今天剛好休假』",
+    dateChanceReason:
+      "她休假沒計畫←assistant_turn[3]:『今天剛好休假』『沒什麼計畫』",
+    nextInviteMove: "她想廢在家←assistant_turn[3]:『就想廢在家』",
+    gameBreakdown: "",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [wrong, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "building_familiarity",
+            targetVariable: "安全感與熟悉感",
+            move: "build_connection",
+            inviteRoute: "not_ready",
+            rationale: "先接住她難得早休息，再問今天是否有班。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "direct-beginner-debrief-production-global-negatives",
+      turns: [
+        {
+          role: "user",
+          text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂",
+        },
+        {
+          role: "ai",
+          text: "早啊~追這麼晚喔😂 我今天難得早點休息，等等也要準備收工了。",
+        },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text: "今天剛好休假😌 不過也沒什麼計畫，就想廢在家。",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-production-global-negatives",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.summary, JSON.parse(repaired).summary);
+  assert(json.card.summary.includes("追劇到兩點"));
+  assert(json.card.summary.includes("今天休假"));
+  assertEquals(json.card.dateChance, "low");
+  assertEquals(
+    json.card.dateChanceReason,
+    JSON.parse(repaired).dateChanceReason,
+  );
+  const serialized = JSON.stringify(json.card);
+  for (
+    const repairedClaim of [
+      "全場只有問句",
+      "沒有任何自我揭露",
+      "無時間或行程資訊",
+    ]
+  ) {
+    assertEquals(serialized.includes(repairedClaim), false, repairedClaim);
+  }
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], falseSummary);
+  assertGroundingReviewInput(state.claudeCalls[2], falseSummary);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  assert(claudePrompt(state.claudeCalls[2]).includes(falseWatchout));
+  assert(claudePrompt(state.claudeCalls[2]).includes(falseDateChanceReason));
+  for (const call of state.claudeCalls.slice(1)) {
+    const prompt = claudePrompt(call);
+    assert(prompt.includes("反例掃描"));
+    assert(prompt.includes("今天剛好休假"));
+    assert(prompt.includes('"role":"assistant"'));
+  }
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("direct Game Debrief release review repairs terminal-reply blame and a nested variable", async () => {
+  const appliedHint = "叫{店名}，妳說香精豆，這樣聞起來也會不一樣嗎？";
+  const falseWatchout =
+    "全程都是你問她答，缺少你自己的感受或立場，對話容易像訪問。";
+  const falseMissedVariable =
+    "她問「你進去了嗎」，但目前 user 尚未回應，感受與立場缺席。";
+  const nestedLine =
+    "{有／沒有}進去，{有的話點了什麼／喝起來{真實感受}}——妳說味道散快，我現在有點懷疑。";
+  const wrongCard = JSON.parse(validDebriefJson({
+    summary: "開場聊到咖啡香氣，但互動仍偏單向。",
+    strengths: ["你用咖啡店香氣開場，讓她能分享香精豆判斷。"],
+    watchouts: [falseWatchout],
+    suggestedLine: nestedLine,
+    dateChance: "low",
+    dateChanceReason: "她有回答咖啡問題，但沒有邀約或時間窗。",
+    nextInviteMove: "先回答是否進店，再沿香精豆話題延伸。",
+  })) as Record<string, unknown>;
+  wrongCard.gameBreakdown = {
+    phaseReached: "開場進到香精豆與手沖味道的資訊交換",
+    missedVariable: falseMissedVariable,
+    failureState: "目前只看到你問她答，尚未形成雙向交換。",
+    nextFirstLine: nestedLine,
+    inviteDirection: "先回答是否進店，不急著邀約",
+  };
+  const wrong = JSON.stringify(wrongCard);
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary: "",
+    strengths: "咖啡店香氣←user_turn[0]:『聞起來超香的店』",
+    watchouts: "",
+    suggestedLine:
+      "{有／沒有}←variable；味道散快←assistant_turn[3]:『味道很快就散了』",
+    dateChanceReason: "",
+    nextInviteMove: "",
+    gameBreakdown: "",
+  });
+  const flatLine = "我{有／沒有}進去。妳說味道散得快，這通常是什麼原因？";
+  const repairedCard = JSON.parse(validDebriefJson({
+    summary:
+      "你分享路過咖啡店聞到香味，她解釋香精豆與手沖味道，最後反問你是否進店。",
+    strengths: [
+      "你先分享路過咖啡店聞到香味，提供具體話題。",
+      "她沿香精豆與手沖味道補充細節，也主動反問你是否進店。",
+    ],
+    watchouts: [
+      "她最後才問你是否進店，這是下一輪接話素材，不是本輪缺點。",
+      "下一句只需填進店與否，再沿她說味道散得快追問。",
+    ],
+    suggestedLine: flatLine,
+    dateChance: "low",
+    dateChanceReason:
+      "她延伸香精豆判斷並反問是否進店，但沒有邀約、共同行程或見面時間窗。",
+    nextInviteMove: "先補是否進店的真實答案，再沿香精豆話題延伸。",
+  })) as Record<string, unknown>;
+  repairedCard.gameBreakdown = {
+    phaseReached: "開場從咖啡店香氣進到香精豆判斷，她有主動反問",
+    missedVariable: "下一輪可補是否進店的真實答案，再沿香精豆話題延伸。",
+    failureState: "她末則直接問是否進店，下一輪可接真實答案。",
+    nextFirstLine: flatLine,
+    inviteDirection: "先接香精豆話題，不急著邀約",
+  };
+  const repaired = JSON.stringify(repairedCard);
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary:
+      "路過聞香←user_turn[0]:『路過一家聞起來超香的店』；她反問進店←assistant_turn[3]:『你進去了嗎』",
+    strengths:
+      "咖啡店香氣←user_turn[0]:『聞起來超香的店』；香精豆細節←assistant_turn[3]:『香精豆聞起來會有點太甜太假』",
+    watchouts: "她問是否進店←assistant_turn[3]:『你進去了嗎』",
+    suggestedLine:
+      "{有／沒有}←variable；味道散快←assistant_turn[3]:『味道很快就散了』",
+    dateChanceReason: "她反問進店←assistant_turn[3]:『你進去了嗎』",
+    nextInviteMove: "",
+    gameBreakdown:
+      "她反問進店←assistant_turn[3]:『你進去了嗎』；{有／沒有}←variable",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 2 }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [wrong, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "P1_OPEN",
+            targetVariable: "familiarity",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先補店名，再沿她的香精豆判斷建立熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-debrief-production-terminal-nested-variable",
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        { role: "ai", text: "哪家啊 過分香有時是香精豆" },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text:
+            "香精豆聞起來會有點太甜太假\n手沖下去味道很快就散了\n不過還是要看喝起來才知道\n你進去了嗎",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-production-terminal-nested-variable",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.suggestedLine, flatLine);
+  assertEquals(json.card.gameBreakdown.nextFirstLine, flatLine);
+  assertEquals(json.card.dateChance, "low");
+  assertEquals(
+    json.card.dateChanceReason,
+    JSON.parse(repaired).dateChanceReason,
+  );
+  assert(json.card.dateChanceReason.includes("沒有邀約"));
+  assert(json.card.dateChanceReason.includes("沒有邀約、共同行程或見面時間窗"));
+  const serialized = JSON.stringify(json.card);
+  for (
+    const repairedClaim of [
+      "全程都是你問她答",
+      "尚未回應",
+      "感受與立場缺席",
+      nestedLine,
+    ]
+  ) {
+    assertEquals(serialized.includes(repairedClaim), false, repairedClaim);
+  }
+  assertEquals((flatLine.match(/\{/g) ?? []).length, 1);
+  assertEquals((flatLine.match(/\}/g) ?? []).length, 1);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], falseWatchout);
+  assertGroundingReviewInput(state.claudeCalls[2], falseWatchout);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  assert(claudePrompt(state.claudeCalls[2]).includes(falseMissedVariable));
+  assert(claudePrompt(state.claudeCalls[2]).includes(nestedLine));
+  assert(claudePrompt(state.claudeCalls[2]).includes("反例掃描"));
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "practiceGroundingReleaseAuditorV1",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "terminalTurnRole=assistant 表示末則後 user 尚無回覆機會",
+    ),
+  );
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
 Deno.test("direct Game Debrief keeps an applied Hint question attributed to the user", async () => {
   const appliedHint =
     "叫{店名}，不過沒進去——妳覺得光聞香氣能判斷值不值得進去喝嗎？";
@@ -8584,6 +8907,11 @@ Deno.test("direct Game Debrief preserves an earlier question-only pattern when t
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(json.card.summary, card.summary);
   assert(JSON.stringify(json.card).includes("較早兩個 user turn"));
+  assertEquals(json.card.watchouts, card.watchouts);
+  assertEquals(
+    json.card.gameBreakdown.missedVariable,
+    card.gameBreakdown.missedVariable,
+  );
   assertEquals(json.card.suggestedLine, suggestedLine);
   assertEquals(json.fallbackUsed, false);
   assertEquals(json.groundingReviewFallbackUsed, false);
@@ -8597,6 +8925,11 @@ Deno.test("direct Game Debrief preserves an earlier question-only pattern when t
     state.claudeCalls[2],
     "較早兩個 user turn",
   );
+  for (const call of state.claudeCalls.slice(1)) {
+    assert(
+      claudePrompt(call).includes("較早實際 user_turn 仍可有據診斷"),
+    );
+  }
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown

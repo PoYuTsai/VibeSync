@@ -61,6 +61,20 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("下週見"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("已落地"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("已落地勿再等"), true);
+  for (
+    const expected of [
+      "全無X／只有Y／單向問答",
+      "找反例",
+      "user狀態/經歷=自揭",
+      "她自述休假/有無計畫=自揭/行程",
+      "反問/普通行程≠邀約",
+      "明示可約時間/意願=窗口",
+      "每個 {} 只放一個扁平原子槽",
+      "禁巢狀/分支句/故事",
+    ]
+  ) {
+    assertEquals(DEBRIEF_SYSTEM_PROMPT.includes(expected), true, expected);
+  }
   assertEquals(
     DEBRIEF_SYSTEM_PROMPT.includes("是 user 對她說"),
     true,
@@ -987,7 +1001,7 @@ Deno.test("debrief keeps an opening partner question after a later partner turn"
   assertEquals(user.includes("你追哪部啊？"), true);
   assertEquals(user.includes("中段近況".repeat(20)), false);
   assertEquals(system.includes("若有反問，勿寫「無反問」"), true);
-  assertEquals(system.includes("反問≠邀約"), true);
+  assertEquals(system.includes("反問/普通行程≠邀約"), true);
 });
 
 Deno.test("debrief keeps the tail signal of an overlong latest partner turn", () => {
