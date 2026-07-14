@@ -145,7 +145,7 @@ Deno.test("Hint prompt makes expert framing evidence-only instead of inventing s
   }).map((message) => message.content).join("\n");
 
   assert(prompt.includes("只記得香味/咖啡不懂/很想進去"));
-  assert(prompt.includes("停下查名進店"));
+  assert(prompt.includes("路過聞到香就記住了"));
   assert(prompt.includes("合理、相容或玩笑不算證據"));
   assert(prompt.includes("比喻的隱含命題也要有證據"));
   assert(prompt.includes("「我」事實只用 user 證據"));

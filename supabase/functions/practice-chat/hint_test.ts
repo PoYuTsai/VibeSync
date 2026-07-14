@@ -141,7 +141,7 @@ Deno.test("Game Hint keeps a topic-only coffee opening out of the close phase", 
   assert(messages[0].content.includes("有直接證據則保留"));
   assert(messages[0].content.includes("叫{店名}，我路過聞到很香"));
   assert(messages[0].content.includes("只記得香味/咖啡不懂/很想進去"));
-  assert(messages[0].content.includes("停下查名進店"));
+  assert(messages[0].content.includes("路過聞到香就記住了"));
   assert(
     messages[0].content.includes(
       "每個把「我」當 user 的過去/現在命題",

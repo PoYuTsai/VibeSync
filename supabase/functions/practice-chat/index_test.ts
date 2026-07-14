@@ -6948,33 +6948,53 @@ Deno.test("grounding repair and verifier remove the exact production Beginner bi
   assertEquals(recordHintCalls(state).length, 1);
 });
 
-Deno.test("grounding repair and verifier remove the latest production Game result and hobby inventions", async () => {
+Deno.test("Game Hint release review removes the fresh production remembered-shop result", async () => {
   const invented = validGameHintJson({
-    warmUp: "叫{店名}，路過聞到香就記下來了😂 妳最近在看哪幾家新店？",
-    steady: "叫{店名}，妳有聽過嗎？我最近也在注意新開的店。",
+    warmUp:
+      "叫{店名}，路過聞到香就記住了😂 妳說不定知道——香到那種等級妳覺得是哪家？",
+    steady: "{店名}。妳真的知道？咖啡師果然消息靈通哈哈",
     coaching:
-      "Game 心法：她問店名，現在是開場建立熟悉感。速約任務：保留 {店名} 讓使用者填真值，再問她最近在看哪些店。",
+      "Game 心法：她這句可能是在測你有沒有真的去過、還是隨口搭話。現在是建立熟悉的早期，任務是接住她的吐槽梗、讓她覺得你好接。直接回店名（填變數），再把球丟回她——用「妳說不定知道」讓她有機會展示咖啡師身份，自然加分。速約任務：本輪在鋪墊階，先讓她多說一句，不約。",
   });
   const repaired = validGameHintJson({
-    warmUp: "叫{店名}，我路過時聞到很香😂 妳最近在看哪幾家新店？",
-    steady: "叫{店名}，妳有聽過嗎？",
+    warmUp:
+      "叫{店名}，我今天路過時聞起來超香😂 妳說不定知道——香到那種等級妳覺得是哪家？",
+    steady: "{店名}。妳真的知道？咖啡師果然消息靈通哈哈",
     coaching:
-      "Game 心法：她問店名，現在是開場建立熟悉感。速約任務：保留 {店名} 讓使用者填真值，再問她最近在看哪些店。",
+      "Game 心法：她這句可能是在測你有沒有真的去過、還是隨口搭話。現在是建立熟悉的早期，任務是接住她的吐槽梗、讓她覺得你好接。直接回店名（填變數），再把球丟回她——用「妳說不定知道」讓她有機會展示咖啡師身份，自然加分。速約任務：本輪在鋪墊階，先讓她多說一句，不約。",
+  });
+  const firstReview = groundingReviewEnvelope(invented, {
+    warmUp:
+      "{店名}←variable；路過聞香就記住←user_turn[0]:『路過一家聞起來超香的店』",
+    steady: "{店名}←variable",
+    coaching: "她問哪家←assistant_turn[1]:『哪家啊？』",
+  });
+  const finalReview = groundingReviewEnvelope(repaired, {
+    warmUp:
+      "{店名}←variable；今天路過聞起來超香←user_turn[0]:『今天路過一家聞起來超香的店』",
+    steady: "{店名}←variable",
+    coaching: "她問哪家←assistant_turn[1]:『哪家啊？』",
   });
   const { response, json, state } = await run(
     {
       ledger: gameStartedLedger(),
       drawEvents: [{ profile_id: "practice_girl_004" }],
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-      claudeReplies: [invented, repaired, repaired],
+      claudeReplies: [invented, firstReview, finalReview],
     },
     hintBody({
       practiceMode: "game",
       profileId: "practice_girl_004",
       requestId: "production-game-storefront-second-review",
       turns: [
-        { role: "user", text: "我今天路過一家咖啡店，聞起來很香。" },
-        { role: "ai", text: "哪家啊？我最近也在看新店。" },
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        {
+          role: "ai",
+          text: "哦哪家啊？說不定我知道。\n還是你只是路過聞香而已哈哈",
+        },
       ],
     }),
   );
@@ -6988,12 +7008,95 @@ Deno.test("grounding repair and verifier remove the latest production Game resul
     }),
   );
   assertEquals(json.replies[0].text, JSON.parse(repaired).warmUp);
-  assertEquals(JSON.stringify(json).includes("記下來了"), false);
-  assertEquals(JSON.stringify(json).includes("我最近也在注意新開的店"), false);
+  assertEquals(JSON.stringify(json).includes("記住了"), false);
   assertEquals(JSON.stringify(json).includes("{店名}"), true);
+  assertEquals(json.replies[0].text.includes("路過"), true);
+  assertEquals(json.replies[0].text.includes("超香"), true);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
   assertEquals(state.claudeCalls.length, 3);
   assertGroundingReviewInput(state.claudeCalls[1], invented);
-  assertGroundingReviewInput(state.claudeCalls[2], repaired);
+  assertGroundingReviewInput(state.claudeCalls[2], invented);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  for (const call of state.claudeCalls) {
+    assert(claudePrompt(call).includes("路過聞到香就記住了"));
+  }
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
+Deno.test("Game Hint release review removes an unsupported new-shop habit", async () => {
+  const unsupportedHabit = "我最近也在注意新開的店";
+  const invented = validGameHintJson({
+    warmUp: "叫{店名}，我路過時聞到很香😂 妳最近在看哪幾家新店？",
+    steady: `叫{店名}，妳有聽過嗎？${unsupportedHabit}。`,
+    coaching:
+      "Game 心法：她問店名，現在是開場建立熟悉感。速約任務：保留 {店名} 讓使用者填真值，再問她最近在看哪些店。",
+  });
+  const repaired = validGameHintJson({
+    warmUp: "叫{店名}，我路過時聞到很香😂 妳最近在看哪幾家新店？",
+    steady: "叫{店名}，妳有聽過嗎？",
+    coaching:
+      "Game 心法：她問店名，現在是開場建立熟悉感。速約任務：保留 {店名} 讓使用者填真值，再問她最近在看哪些店。",
+  });
+  const firstReview = groundingReviewEnvelope(invented, {
+    warmUp:
+      "{店名}←variable；路過聞香←user_turn[0]:『路過一家咖啡店，聞起來很香』",
+    steady: "{店名}←variable；最近注意新店←user_turn[0]:『路過一家咖啡店』",
+    coaching: "她問店名←assistant_turn[1]:『哪家啊？』",
+  });
+  const finalReview = groundingReviewEnvelope(repaired, {
+    warmUp:
+      "{店名}←variable；路過聞香←user_turn[0]:『路過一家咖啡店，聞起來很香』",
+    steady: "{店名}←variable",
+    coaching: "她問店名←assistant_turn[1]:『哪家啊？』",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, firstReview, finalReview],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "production-game-new-shop-habit-release-review",
+      turns: [
+        { role: "user", text: "我今天路過一家咖啡店，聞起來很香。" },
+        { role: "ai", text: "哪家啊？我最近也在看新店。" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.replies[1].text, JSON.parse(repaired).steady);
+  assertEquals(JSON.stringify(json).includes(unsupportedHabit), false);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], unsupportedHabit);
+  assertGroundingReviewInput(state.claudeCalls[2], unsupportedHabit);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
   assertEquals(recordHintCalls(state).length, 1);
 });
 

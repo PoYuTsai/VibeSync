@@ -162,7 +162,7 @@ const HIDDEN_HINT_NO_LEAK_RULE =
   "隱藏資料 inviteStage/dateChance/relationshipScore/分數/memorySummary/evidence/snake_case 不得露出；scene/partnerState 只供角色回覆，Hint 事實只認逐字稿。\n";
 const HINT_FACT_BOUNDARY_PRIORITY =
   `最高優先事實邊界：產出前為每個把「我」當 user 的過去/現在命題，找到直接支持它的 user turn 或 server-trusted evidence；找不到就刪，只有她最新直接問的必要答案槽留{變數}。合理、相容或玩笑不算證據；比喻的隱含命題也要有證據。句中有一個真核心，不代表修飾、前因或結果也是真的。未來提議/提問/界線可創作，但不得暗示舊事。
-例（有直接證據則保留）：只見 user「追劇到兩點/腦袋沒開機」不支持「一開始隨便看看/停不下來/忘記時間/靠意志力」；她未說追劇勿問她追什麼。只見 user「路過聞香」、她問「哪家」時，安全句是「叫{店名}，我路過聞到很香」；不支持「被香氣偷襲」/{路名}/只記得香味/咖啡不懂/很想進去/停下查名進店，coaching 也不可教裝忘。
+例（有直接證據則保留）：只見 user「追劇到兩點/腦袋沒開機」不支持「一開始隨便看看/停不下來/忘記時間/靠意志力」；她未說追劇勿問她追什麼。只見 user「路過聞香」、她問「哪家」時，安全句是「叫{店名}，我路過聞到很香」；不支持「被香氣偷襲」/{路名}/只記得香味/咖啡不懂/很想進去/停下/查名/進店/「路過聞到香就記住了」，coaching 禁教裝忘。
 `;
 
 function dateChanceLabel(chance: InviteDateChance): string {
