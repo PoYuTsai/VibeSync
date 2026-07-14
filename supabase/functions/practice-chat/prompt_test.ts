@@ -69,6 +69,7 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
       "她自述休假/有無計畫=自揭/行程",
       "反問/普通行程≠邀約",
       "明示可約時間/意願=窗口",
+      "可見欄位稱「她／對方」，不稱「他／他的」",
       "「我有時候會X」屬 user 習慣/感受",
       "每個 {} 只放一個扁平原子槽",
       "禁巢狀/分支句/故事",
@@ -193,8 +194,11 @@ Deno.test("Hint and Debrief treat the latest partner question as unverified user
       ),
     );
     assert(prompt.includes("未證實不得替 user 肯定、否定或補細節"));
+    assert(prompt.includes("「好看啊/有啊/會啊/對啊」也算答案"));
+    assert(prompt.includes("只留單一{真實答案}/{真實感受}"));
+    assert(prompt.includes("變數不替肯定背書"));
     assert(prompt.includes("{劇名}/{店名}/{真實答案}"));
-    assert(prompt.includes("禁自稱不知道/沒記/後補"));
+    assert(prompt.includes("禁裝不知道/沒記/後補"));
   }
   assert(debriefUser.includes("suggestedLine 與 nextFirstLine 也必須遵守"));
 });

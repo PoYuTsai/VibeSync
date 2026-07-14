@@ -9166,7 +9166,158 @@ Deno.test("direct Beginner Debrief release review repairs the production compoun
     claudePrompt(state.claudeCalls[0]).includes("每個 {} 只放一個扁平原子槽"),
   );
   for (const call of state.claudeCalls.slice(1)) {
-    assert(claudePrompt(call).includes("無據「對啊」/複合槽須修"));
+    assert(
+      claudePrompt(call).includes(
+        "答詞如好看啊/有啊/會啊/對啊也算答案",
+      ),
+    );
+  }
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("direct Beginner Debrief release review repairs the production adjective answer and partner pronouns", async () => {
+  const appliedHint =
+    "同病相憐 😅 我追的是《{劇名}》，回魂中。你追什麼劇可以讓人熬到兩點？";
+  const unsupportedLine = "好看啊，{真實感受}那種感覺——你昨天看到哪集了？";
+  const groundedLine = "{真實感受}——妳昨天看到哪集了？";
+  const wrong = validDebriefJson({
+    summary: "你分享追劇到兩點，她也聊到昨天追劇並問好不好看。",
+    strengths: ["你沿追劇話題問她追什麼劇。"],
+    watchouts: ["他問你好不好看，下一步要接住。"],
+    suggestedLine: unsupportedLine,
+    vibe: "暖",
+    dateChance: "low",
+    dateChanceReason: "她有回應追劇話題，但還沒有見面窗口。",
+    nextInviteMove: "先接住他的問題，再問他昨天看到哪集。",
+  });
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary:
+      "追劇到兩點←user_turn[0]:『昨晚追劇追到兩點』；她看重啟人生到天亮←assistant_turn[3]:『《重啟人生》』『看到天亮』",
+    strengths: "問她追什麼劇←user_turn[2]:『你追什麼劇可以讓人熬到兩點？』",
+    watchouts: "他問好不好看←assistant_turn[3]:『你那個好看嗎？』",
+    suggestedLine:
+      "好看←assistant_turn[3]:『你那個好看嗎？』；{真實感受}←variable；妳昨天看到哪集←future_question",
+    dateChanceReason: "沒有見面窗口←assistant_turn[3]:『你那個好看嗎？』",
+    nextInviteMove: "他的問題←assistant_turn[3]:『你那個好看嗎？』",
+    gameBreakdown: "",
+  });
+  const repaired = validDebriefJson({
+    summary: "你分享追劇到兩點，她也聊到昨天追劇並問好不好看。",
+    strengths: ["你沿追劇話題問她追什麼劇。"],
+    watchouts: ["她問你好不好看；下一句先填真實感受。"],
+    suggestedLine: groundedLine,
+    vibe: "暖",
+    dateChance: "low",
+    dateChanceReason: "她有回應追劇話題，但還沒有見面窗口。",
+    nextInviteMove: "先填真實感受接她的問題，再問她昨天看到哪集。",
+  });
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary:
+      "追劇到兩點←user_turn[0]:『昨晚追劇追到兩點』；她看重啟人生到天亮←assistant_turn[3]:『《重啟人生》』『看到天亮』",
+    strengths: "問她追什麼劇←user_turn[2]:『你追什麼劇可以讓人熬到兩點？』",
+    watchouts: "她問好不好看←assistant_turn[3]:『你那個好看嗎？』",
+    suggestedLine: "{真實感受}←variable；妳昨天看到哪集←future_question",
+    dateChanceReason: "沒有見面窗口←assistant_turn[3]:『你那個好看嗎？』",
+    nextInviteMove: "她的問題←assistant_turn[3]:『你那個好看嗎？』",
+    gameBreakdown: "",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [wrong, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "building_familiarity",
+            targetVariable: "追劇感受與生活感",
+            move: "build_connection",
+            inviteRoute: "not_ready",
+            rationale: "先填真實劇名，再沿追劇話題交換生活感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "direct-beginner-debrief-production-adjective-answer",
+      turns: [
+        {
+          role: "user",
+          text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂",
+        },
+        {
+          role: "ai",
+          text:
+            "早啊～我昨天也差不多時間才睡，現在還在回魂 😅 你追什麼劇啊，感覺很認真",
+        },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text:
+            "《重啟人生》最近剛開始看，昨天不小心就一路看到天亮😂 你那個好看嗎？",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-production-adjective-answer",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.suggestedLine, groundedLine);
+  assertEquals(json.card.watchouts, [
+    "她問你好不好看；下一句先填真實感受。",
+  ]);
+  assertEquals(
+    json.card.nextInviteMove,
+    "先填真實感受接她的問題，再問她昨天看到哪集。",
+  );
+  assertEquals(JSON.stringify(json.card).includes("好看啊"), false);
+  assertEquals(JSON.stringify(json.card).includes("他問"), false);
+  assertEquals(JSON.stringify(json.card).includes("他的問題"), false);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], unsupportedLine);
+  assertGroundingReviewInput(state.claudeCalls[2], unsupportedLine);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[0]).includes(
+      "「好看啊/有啊/會啊/對啊」也算答案",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[0]).includes(
+      "可見欄位稱「她／對方」，不稱「他／他的」",
+    ),
+  );
+  for (const call of state.claudeCalls.slice(1)) {
+    assert(
+      claudePrompt(call).includes(
+        "答詞如好看啊/有啊/會啊/對啊也算答案",
+      ),
+    );
+    assert(
+      claudePrompt(call).includes(
+        "assistant 稱她/對方，不稱他/他的",
+      ),
+    );
   }
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
