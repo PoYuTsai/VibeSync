@@ -7857,6 +7857,11 @@ Deno.test("direct Beginner Debrief repairs the exact production round-one endura
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(json.card.suggestedLine, JSON.parse(repaired).suggestedLine);
+  assertEquals(
+    json.card.dateChanceReason,
+    JSON.parse(repaired).dateChanceReason,
+  );
+  assert(json.card.dateChanceReason.includes("無反問"));
   assertEquals(json.card.suggestedLine.includes("靠意志力"), false);
   assertEquals(json.card.suggestedLine.includes("撐到最後"), false);
   assertEquals(state.claudeCalls.length, 3);
@@ -7975,11 +7980,18 @@ Deno.test("direct Game Debrief repairs the exact production round-one pretend-ex
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
-Deno.test("direct Beginner Debrief reviewer audit removes the latest production binge-plan invention", async () => {
+Deno.test("direct Beginner Debrief reviewer audit removes the latest production binge-plan invention and partner-question denial", async () => {
   const trustedMemory = "SERVER_DEBRIEF_MEMORY_MARKER：她之前聊過輪班追劇。";
   const appliedHint =
     "《{劇名}》啦，太好看了根本忘記時間 哈哈。妳昨晚吃飯吃到很晚，今天還好嗎？";
-  const card = (suggestedLine: string) =>
+  const deniedPartnerQuestionReason =
+    "她僅禮貌回應，無延伸或反問，連結基礎不足。";
+  const verifiedPartnerQuestionReason =
+    "她有反問劇名，但目前仍在交換近況，尚無見面窗口。";
+  const card = (
+    suggestedLine: string,
+    dateChanceReason = deniedPartnerQuestionReason,
+  ) =>
     validDebriefJson({
       summary: "她回應平穩但投入感低，連結仍停在表面寒暄。",
       strengths: [
@@ -7992,7 +8004,7 @@ Deno.test("direct Beginner Debrief reviewer audit removes the latest production 
       ],
       suggestedLine,
       dateChance: "low",
-      dateChanceReason: "她僅禮貌回應，無延伸或反問，連結基礎不足。",
+      dateChanceReason,
       nextInviteMove: "先丟一個真實生活片段，引她分享興趣。",
     });
   const writer = card(
@@ -8000,6 +8012,7 @@ Deno.test("direct Beginner Debrief reviewer audit removes the latest production 
   );
   const reviewedCandidate = card(
     "補眠派！我昨晚追劇追到兩點，{真實感受}，下次要設個鬧鐘。",
+    verifiedPartnerQuestionReason,
   );
   const reviewAudit = {
     summary: "",
@@ -8007,7 +8020,7 @@ Deno.test("direct Beginner Debrief reviewer audit removes the latest production 
     watchouts: "",
     suggestedLine:
       "我昨晚追劇追到兩點←user_turn[0]:『我昨晚追劇追到兩點』；{真實感受}←variable",
-    dateChanceReason: "",
+    dateChanceReason: "她有反問劇名←assistant_turn[1]:『你看什麼劇這麼入迷』",
     nextInviteMove: "",
     gameBreakdown: "",
   };
@@ -8074,6 +8087,9 @@ Deno.test("direct Beginner Debrief reviewer audit removes the latest production 
   );
   assertEquals(json.card.suggestedLine.includes("本來只想看一集"), false);
   assertEquals(json.card.suggestedLine.includes("停不下來"), false);
+  assertEquals(json.card.dateChanceReason, verifiedPartnerQuestionReason);
+  assertEquals(json.card.dateChanceReason.includes("無延伸或反問"), false);
+  assertEquals(json.card.dateChance, "low");
   assertEquals(JSON.stringify(json.card).includes("user_turn[0]"), false);
   assertEquals(json.fallbackUsed, false);
   assertEquals(json.groundingReviewFallbackUsed, false);
@@ -8094,6 +8110,9 @@ Deno.test("direct Beginner Debrief reviewer audit removes the latest production 
     const prompt = claudePrompt(call);
     assert(prompt.includes(trustedMemory));
     assert(prompt.includes("olderMemoryEvidence"));
+    assert(prompt.includes("任何 assistant_turn 有直接問句"));
+    assert(prompt.includes('"role":"assistant"'));
+    assert(prompt.includes("你看什麼劇這麼入迷"));
     assertEquals(prompt.includes("CLIENT_DEBRIEF_MEMORY_MARKER"), false);
   }
   assertEquals(

@@ -233,7 +233,7 @@ export const DEBRIEF_SYSTEM_PROMPT =
 - 評內容下切/連結/在場感；假窗口、脆弱性、goal-fixated、冷處理/攻擊/控制進 watchouts。
 - 白話說明為什麼升溫或降溫：是否接住她的情緒、玩笑、界線、小測試；不要只講分數。
 - 各欄引逐字稿且守角色：優點=你；提醒/下一步=調整；機會理由=她；Game=階段/缺口/卡點/方向；禁空泛。
-- 逐句盤點她最後回覆的回答/自揭/反問/玩笑/測試/時間窗/界線；「下週見」不被同句「晚安」蓋掉。
+- 逐句盤點全場她的反問/自揭/時間窗（下週見）/界線；若有反問，勿寫「無反問」；反問≠邀約。
 - 狀態優先；已落地勿再等。
 - suggestedLine/nextFirstLine 是 user 對她說；「我」=user。她的個資/猜測/吐槽不是 user 事實或答案；禁編劇名/店名/地點，未知用 {真實答案}，禁裝忘或代答。
 - 她說淺焙果酸或建議手沖，不證 user 喝過、覺得「像果汁」或有感受。她答「淺焙單品比較多」只證常喝類型，不自動證喜歡/偏好；勿問「怎麼開始喜歡」。策略若需自揭而無證據，只能獨立留 {真實感受}/{真實立場}，不可替旁邊經驗背書。
@@ -267,6 +267,7 @@ export const GAME_DEBRIEF_SYSTEM_PROMPT = DEBRIEF_SYSTEM_PROMPT.replace(
   `\nGame 拆盤五欄必填、帶原話、守欄位；禁萬用術語；nextFirstLine＝suggestedLine。`;
 
 const DEBRIEF_PROMPT_FIRST_TURN_COUNT = 2;
+const DEBRIEF_PROMPT_FIRST_TURN_CHAR_LIMIT = 64;
 const DEBRIEF_PROMPT_RECENT_TURN_COUNT = 12;
 const DEBRIEF_PROMPT_TURN_CHAR_LIMIT = 16;
 const DEBRIEF_PROMPT_SUMMARY_SAMPLE_CHAR_LIMIT = 16;
@@ -397,6 +398,20 @@ function debriefTurnsToPromptTranscript(
               DEBRIEF_PROMPT_HINT_REACTION_CHAR_LIMIT,
             )
             : `${turns[index].role === "user" ? "你" : "她"}：${compacted}`,
+        );
+      } else if (
+        index < DEBRIEF_PROMPT_FIRST_TURN_COUNT &&
+        turns[index].role === "ai"
+      ) {
+        // The opener often ends with the partner's first direct question.
+        // Keep its head and tail so a later turn cannot erase that signal.
+        lines.push(
+          `她：${
+            compactLatestPartnerTurnEvidence(
+              turns[index].text,
+              DEBRIEF_PROMPT_FIRST_TURN_CHAR_LIMIT,
+            )
+          }`,
         );
       } else {
         lines.push(

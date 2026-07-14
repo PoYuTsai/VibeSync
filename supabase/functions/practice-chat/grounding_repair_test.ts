@@ -66,12 +66,25 @@ Deno.test("grounding editor requests a proof envelope around the complete produc
   );
   assertStringIncludes(
     messages[0].content,
-    "來源只能是 user_turn、trusted_user_fact、older_memory",
+    "來源只能是 user_turn、assistant_turn、trusted_user_fact、server_trusted_partner_fact、older_memory",
   );
   assertStringIncludes(messages[0].content, "最短逐字 evidenceQuote");
   assertStringIncludes(messages[0].content, "我有感/香會讓人停下來");
   assertStringIncludes(messages[0].content, "{真實感受}");
   assertStringIncludes(messages[0].content, "她的現況只認 assistant_turn");
+  assertStringIncludes(
+    messages[0].content,
+    "普通問句本身仍是反問／對話主動性",
+  );
+  assertStringIncludes(messages[0].content, "且不等於邀約窗口");
+  assertStringIncludes(
+    messages[0].content,
+    "沒有 user／partner 過去或現在命題才可為空字串",
+  );
+  assertStringIncludes(
+    messages[0].content,
+    "任何 assistant_turn 有直接問句就不得寫「無反問」",
+  );
   assertStringIncludes(messages[0].content, "scene/partnerState 非事實");
   assertStringIncludes(messages[0].content, "profile 只支持靜態設定");
   assertStringIncludes(messages[0].content, "拆成最小命題");
@@ -238,6 +251,10 @@ Deno.test("second review uses a compact release audit with authoritative termina
     "每欄都是一個最長 160 字的 proof ledger string",
   );
   assertStringIncludes(messages[0].content, "最短逐字 evidenceQuote");
+  assertStringIncludes(
+    messages[0].content,
+    "任何 assistant_turn 有直接問句就不得寫「無反問」",
+  );
   assertEquals(messages[0].content.includes("最高優先漏網例"), false);
   assertStringIncludes(messages[1].content, '"terminalTurnRole":"assistant"');
   assertStringIncludes(messages[1].content, "最後出貨複核");

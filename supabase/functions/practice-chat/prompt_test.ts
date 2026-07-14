@@ -966,6 +966,30 @@ Deno.test("debrief keeps the complete latest partner turn for reaction judgment"
   assertEquals(user.includes("你昨天追哪部？"), true);
 });
 
+Deno.test("debrief keeps an opening partner question after a later partner turn", () => {
+  const openingPartnerReply = `早安～我昨晚也在看劇，${
+    "中段近況".repeat(20)
+  }不過看到一半就睡著了😂 你追哪部啊？`;
+  const messages = buildDebriefMessages(
+    [
+      { role: "user", text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂" },
+      { role: "ai", text: openingPartnerReply },
+      { role: "user", text: "《{劇名}》！隔天還記得劇情嗎😂" },
+      { role: "ai", text: "大概記得八成，等等可能補個眠。" },
+    ],
+    resolvePracticeProfile({ profileId: "practice_girl_001" }),
+    { practiceMode: "beginner" },
+  );
+  const system = messages[0].content;
+  const user = messages[1].content;
+
+  assertEquals(user.includes("早安～我昨晚也在看劇"), true);
+  assertEquals(user.includes("你追哪部啊？"), true);
+  assertEquals(user.includes("中段近況".repeat(20)), false);
+  assertEquals(system.includes("若有反問，勿寫「無反問」"), true);
+  assertEquals(system.includes("反問≠邀約"), true);
+});
+
 Deno.test("debrief keeps the tail signal of an overlong latest partner turn", () => {
   const latestPartnerReply = `哈哈好，前面先客氣一下。${
     "中段補充狀態".repeat(20)
