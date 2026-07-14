@@ -8241,6 +8241,104 @@ Deno.test("direct Game Debrief keeps an applied Hint question attributed to the 
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
+Deno.test("direct Beginner Debrief removes a question-only critique when its next line stays a question", async () => {
+  const appliedHint = "《{劇名}》😂 你時差多久才會好？";
+  const suggestedLine = "長程一兩天⋯⋯那飛回來的第一餐你都怎麼補？";
+  const repaired = JSON.parse(validDebriefJson({
+    summary: "開場輕鬆，她有回應時差梗，但對話仍在起步階段。",
+    strengths: [
+      "你先分享追劇到兩點，主動給出生活樣本，讓她有話接。",
+      "Hint 句接住她的時差，話題自然延伸到她的工作情境。",
+    ],
+    watchouts: [
+      "對話剛起步，下一句先沿她的長程時差細節接話，觀察她是否願意延伸。",
+      "目前沒有邀約或時間窗口，維持低壓即可。",
+    ],
+    suggestedLine,
+    vibe: "冷",
+    dateChance: "low",
+    dateChanceReason: "對話剛起步，只有一來一往，尚無邀約或時間線索。",
+    nextInviteMove: "先沿她的恢復方式累積來回，再考慮邀約方向。",
+  })) as Record<string, unknown>;
+  repaired.gameBreakdown = null;
+  const wrong = structuredClone(repaired);
+  wrong.watchouts = [
+    "對話目前只有互報狀態，缺乏你自己的感受或立場，她沒有更深的東西可以接。",
+    "她回了長程時差細節，若下一句仍只問問題會顯得查戶口。",
+  ];
+  const writer = JSON.stringify(wrong);
+  const reviewed = JSON.stringify(repaired);
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [writer, reviewed, reviewed],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "building_familiarity",
+            targetVariable: "安全感與熟悉感",
+            move: "build_connection",
+            inviteRoute: "not_ready",
+            rationale: "接住她的時差狀態，先累積熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "direct-beginner-debrief-question-only-critique",
+      turns: [
+        {
+          role: "user",
+          text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂",
+        },
+        {
+          role: "ai",
+          text: "我也有時差😂 剛飛回來還沒調回來 你在追哪部",
+        },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text: "看飛多遠耶 長程大概要一兩天才會完全調回來吧😂",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-question-only-critique",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.watchouts, repaired.watchouts);
+  assertEquals(json.card.suggestedLine, suggestedLine);
+  assertEquals(
+    JSON.stringify(json.card).includes("只問問題會顯得查戶口"),
+    false,
+  );
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(
+    state.claudeCalls[1],
+    "若下一句仍只問問題會顯得查戶口",
+  );
+  assertGroundingReviewInput(
+    state.claudeCalls[2],
+    "對話剛起步，下一句先沿她的長程時差細節接話",
+  );
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "suggestedLine/nextFirstLine 就不可仍是純問句",
+    ),
+  );
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
 Deno.test("direct Game Debrief preserves user-stated taste claims through both reviews", async () => {
   const suggestedLine =
     "我平常喝淺焙果酸，也真的喜歡那個味道。妳最近都怎麼沖？";

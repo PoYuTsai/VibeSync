@@ -150,6 +150,10 @@ Deno.test("Debrief editor receives an escaped trusted Hint contract", () => {
   assertStringIncludes(messages[2].content, "尚未發生的回覆");
   assertStringIncludes(messages[2].content, "只能批較早 user_turn 或寫下一步");
   assertStringIncludes(messages[2].content, "貼句必用證據或原子變數實作");
+  assertStringIncludes(
+    messages[2].content,
+    "suggestedLine/nextFirstLine 就不可仍是純問句",
+  );
 });
 
 Deno.test("untrusted context and candidate cannot close bounded data tags", () => {
