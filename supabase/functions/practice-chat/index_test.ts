@@ -7955,7 +7955,7 @@ Deno.test("direct Game Debrief repairs the latest production tasting, timing, an
     ],
     watchouts: [
       "她說『下次可以試試看手沖』是小窗口，沒有接住就會冷掉。",
-      "目前停在問答乒乓，缺少自己的感受或立場。",
+      "她在單方面輸出，你尚未給出自己的立場或感受讓她有東西可接。",
     ],
     suggestedLine: suggested,
     dateChance: "low",
@@ -7963,10 +7963,10 @@ Deno.test("direct Game Debrief repairs the latest production tasting, timing, an
     nextInviteMove: "先給自己的感受或立場，累積投入感再說邀約。",
   })) as Record<string, unknown>;
   base.gameBreakdown = {
-    failureState: "你問偏好、她回答，但沒有你的立場，她無從反打。",
+    failureState: "你問偏好、她回答，但你的立場與感受缺席，她無從反打。",
     phaseReached: "開場資訊交換，她說出淺焙果酸偏好。",
     nextFirstLine: suggested,
-    missedVariable: "她說『下次可以試試手沖』是小窗口，沒有接住她的建議。",
+    missedVariable: "她說完建議後沒有你的回應讓她繼續投入。",
     inviteDirection: "先用自己的{真實感受}接她的手沖建議，不急邀約。",
   };
   const writer = JSON.stringify(base);
@@ -7985,7 +7985,7 @@ Deno.test("direct Game Debrief repairs the latest production tasting, timing, an
     "手沖建議是話題素材，不是邀約或見面窗口。",
     "下一句可補真實感受或立場，避免只停在資訊層。",
   ];
-  final.suggestedLine = "原來妳平常喝淺焙果酸。妳最近常喝手沖嗎？";
+  final.suggestedLine = "{真實立場}。妳平常喝淺焙果酸，最近也常做手沖嗎？";
   final.dateChanceReason = "她提供常喝類型與建議，但沒有見面邀約或時間窗。";
   final.nextInviteMove = "下一句沿她的建議接話，累積來回後再看邀約。";
   final.gameBreakdown = {
@@ -8055,6 +8055,10 @@ Deno.test("direct Game Debrief repairs the latest production tasting, timing, an
       "沒有接住",
       "小窗口",
       "沒有你的立場",
+      "尚未給出",
+      "立場與感受缺席",
+      "沒有你的回應",
+      "她無從反打",
       "偏淺焙",
       "開始喜歡",
       "真實偏好",
@@ -8138,6 +8142,70 @@ Deno.test("direct Game Debrief preserves user-stated taste claims through both r
   assertEquals(state.claudeCalls.length, 3);
   assertGroundingReviewInput(state.claudeCalls[1], suggestedLine);
   assertGroundingReviewInput(state.claudeCalls[2], suggestedLine);
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("direct Game Debrief preserves an earlier question-only pattern when the transcript ends on her", async () => {
+  const suggestedLine = "{真實立場}。妳手沖時最在意水溫還是研磨？";
+  const card = JSON.parse(validDebriefJson({
+    summary: "前兩輪都只追問她的咖啡習慣，尚未分享自己的內容。",
+    strengths: ["問題有沿她的回答往下接，主題保持連續。"],
+    watchouts: ["較早兩個 user turn 都只提問，缺少自揭。"],
+    suggestedLine,
+    dateChance: "low",
+    dateChanceReason: "她持續回答，但互動仍停在資訊交換。",
+    nextInviteMove: "下一句用真實立場接她的手沖細節。",
+  })) as Record<string, unknown>;
+  card.gameBreakdown = {
+    failureState: "較早兩個 user turn 連續提問，對話停在資訊蒐集。",
+    phaseReached: "開場資訊交換，已聊到手沖的水溫與研磨。",
+    nextFirstLine: suggestedLine,
+    missedVariable: "較早兩個 user turn 只有提問，缺少 user 自揭。",
+    inviteDirection: "下一句先補真實立場，不急邀約。",
+  };
+  const grounded = JSON.stringify(card);
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [grounded, grounded, grounded],
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-debrief-earlier-question-only-pattern",
+      turns: [
+        { role: "user", text: "妳平常喝什麼？" },
+        { role: "ai", text: "淺焙單品比較多。" },
+        { role: "user", text: "那妳通常都怎麼沖？" },
+        { role: "ai", text: "手沖比較多，水溫跟研磨我都會調。" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.summary, card.summary);
+  assert(JSON.stringify(json.card).includes("較早兩個 user turn"));
+  assertEquals(json.card.suggestedLine, suggestedLine);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(
+    state.claudeCalls[1],
+    "較早兩個 user turn",
+  );
+  assertGroundingReviewInput(
+    state.claudeCalls[2],
+    "較早兩個 user turn",
+  );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown

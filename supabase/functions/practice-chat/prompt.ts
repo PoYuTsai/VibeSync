@@ -238,7 +238,7 @@ export const DEBRIEF_SYSTEM_PROMPT =
 - suggestedLine/nextFirstLine 是 user 對她說；「我」=user。她的個資/猜測/吐槽不是 user 事實或答案；禁編劇名/店名/地點，未知用 {真實答案}，禁裝忘或代答。
 - 她說淺焙果酸或建議手沖，不證 user 喝過、覺得「像果汁」或有感受。她答「淺焙單品比較多」只證常喝類型，不自動證喜歡/偏好；勿問「怎麼開始喜歡」。策略若需自揭而無證據，只能獨立留 {真實感受}/{真實立場}，不可替旁邊經驗背書。
 - 可見欄位事實只准逐字稿/profile 直接支持；事件、人物、動作、感官、消費等都禁腦補。她問未知答案才留變數；輸出前刪無證據細節。
-- 貼句事實邊界：每個 user 過去/現在命題都須由 user 原句直接蘊含；合理相容不算。她的問句、挑戰或猜測不是 user 答案。未來提議/提問/界線可創作，但態度/比喻不得新增 user 知識、偏好、經歷、感官或欲望。逐字稿最後若是她，user 尚無回覆機會，禁批評「沒接住」她最後一句。追到兩點不支持「一開始隨便看看／停不下來／忘記時間／追完才發現／靠意志力」；她問會不會想睡、敢不敢或玩笑怕你裝懂，不支持「超想睡／靠咖啡撐著／敢／裝懂我倒不至於」。未知答案或單一策略自揭才用 {真實狀態}/{真實感受}/{真實立場}/{真實回應}/{敢／不敢}。
+- 貼句事實邊界：每個 user 過去/現在命題都須由 user 原句直接蘊含；合理相容不算。她的問句、挑戰或猜測不是 user 答案。未來提議/提問/界線可創作，但態度/比喻不得新增 user 知識、偏好、經歷、感官或欲望。逐字稿最後若是她，禁把最後一句後尚未發生的 user 回覆寫成「沒接住／沒回應／尚未給立場／感受缺席」；只能寫下一步。若較早 user turns 已存在且反覆只提問，可明引那些 turn 診斷缺自揭。追到兩點不支持「一開始隨便看看／停不下來／忘記時間／追完才發現／靠意志力」；她問會不會想睡、敢不敢或玩笑怕你裝懂，不支持「超想睡／靠咖啡撐著／敢／裝懂我倒不至於」。未知答案或單一策略自揭才用 {真實狀態}/{真實感受}/{真實立場}/{真實回應}/{敢／不敢}。
 - 她建議「下次試手沖」可算提供建議與話題素材，但不是邀你一起去、見面時間窗或主動邀約。
 - 只輸出 JSON：
 {
@@ -572,7 +572,7 @@ function gameDebriefSkillContract(): string {
 - 七步聊天法：開場/資訊→價值→篩選→張力→收尾；變數識別=Value/Frame/Emotion/Investment/Safety，可見白話。
 - 關鍵轉折點引她原話；Failure State 寫具體卡點。
 - 速約窗口＝下一句怎麼把窗口接成行動：先鋪墊 / 低壓邀約 / 明確邀約 / 接住她給的窗口；未成熟修安全。suggestedLine/nextFirstLine＝下次第一句。
-- 卡點=問答乒乓時，下句先接她已說內容；要補 user 感受/立場只用證據，沒有就獨立留 {真實感受}/{真實立場}，不可編喝過等經驗，不再用工作/偏好資訊題收尾。`;
+- 卡點=問答乒乓時，下句先接她已說內容；要補 user 感受/立場只用證據，沒有就獨立留 {真實感受}/{真實立場}，不可編喝過等經驗。分析若建議補立場/感受，貼句必實作，否則勿列缺口；不再用工作/偏好資訊題收尾。`;
 }
 
 function phaseRelevantGameStrategyPrompt(
@@ -753,7 +753,7 @@ function debriefHintAccountabilityPrompt(
     `\n\nhintAssistedTurns(hidden evidence)\n${rows}\ndecision＝server權威；末筆：build不升約、soft不升direct、repair不邊修邊約。不要把照貼 Hint 的句子當成使用者自己亂打。拆成：使用者執行 / Hint 品質 / 對方反應。讀完整末筆她回覆；有新素材／反問就不是禮貌收尾。Hint 鎖定只證明已發出策略，不替本次 suggestedLine/nextFirstLine 新增的 user 事實或她問題的答案背書；她的新問句仍不是 user 答案。`;
   if (serverOwnsHintStrategy) {
     return sharedContract +
-      `同一教練下游拆盤：已套用 Hint 的策略由 server 鎖定為「送出當下正確」，不可 revised、重審或暗示 Hint 有錯。inviteRoute 是當時路線；她後來若給新證據，下一步可前進/維持/退回，但只能寫成新條件。exact Hint 問偏好且她正常回答時，不可把「只問偏好／沒有立場」列本輪卡點，只能把補真實感受/立場寫成下一步。她指定之後回報／醒來再說／到家告訴她，是保留未來接點，除非同句拒絕。她回「不是 X，是 Y」只寫她補充 Y、下一步沿 Y 接，不可說 Hint 猜錯。她要求停止時停止推進。watchouts/卡點只評她的反應、其他 user 句或給下一步。頂層固定填 hidden "hintAssessment":{"verdict":"preserved","revisedEvidenceQuote":null}；不可省略/進card，server會移除。`;
+      `同一教練下游拆盤：策略由 server 鎖定為「送出當下正確」，不可 revised、重審或暗示 Hint 有錯。inviteRoute 是當時路線；她後來若給新證據，只能寫成新條件。exact Hint 問偏好、她正常回答：勿批「只問偏好／沒有立場」；她答後尚無 user turn，勿寫「尚未給立場／感受缺席／沒有你的回應」，只寫下一步；更早 user turn 可明引。她指定之後回報＝保留未來接點，除非同句拒絕。她回「不是 X，是 Y」只寫她補充 Y、下一步沿 Y 接，不可說 Hint 猜錯。她要求停止時停止推進。watchouts/卡點只評她反應、其他 user 句或下一步。頂層固定填 hidden "hintAssessment":{"verdict":"preserved","revisedEvidenceQuote":null}；不可省略/進card，server會移除。`;
   }
   return sharedContract +
     `exact: true 時 summary/strengths 必含「你有照提示做」。只有 Hint 送出後「她」的新回覆出現明確反證時才可 revised，否則不得批 Hint。頂層必填hidden "hintAssessment":{"verdict":"preserved","revisedEvidenceQuote":null}；不可省略/進card，server會移除。exact接球未拒=preserved；只寫下一步，不評Hint。exact＋preserved：不得批 Hint；watchouts／卡點只寫「下一步…」，或明寫「她／提示前／後來」。`;

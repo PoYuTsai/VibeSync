@@ -107,9 +107,12 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
     true,
   );
   assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("禁批評「沒接住」她最後一句"),
+    DEBRIEF_SYSTEM_PROMPT.includes("禁把最後一句後尚未發生"),
     true,
   );
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("尚未給立場"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("較早 user turns"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("只能寫下一步"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("可貼草稿≤40字；變數先填"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("可直接傳的一句"), false);
 });
@@ -1092,7 +1095,9 @@ Deno.test("server-owned Debrief keeps the applied Hint strategy locked", () => {
   assert(user.includes("inviteRoute 是當時路線"));
   assert(user.includes("她後來若給新證據"));
   assert(user.includes("只能寫成新條件"));
-  assert(user.includes("不可把「只問偏好／沒有立場」列本輪卡點"));
+  assert(user.includes("勿批「只問偏好／沒有立場」"));
+  assert(user.includes("她答後尚無 user turn"));
+  assert(user.includes("更早 user turn 可明引"));
   assert(user.includes("不是 X，是 Y"));
   assert(user.includes("她補充 Y"));
   assert(user.includes("指定之後回報"));
