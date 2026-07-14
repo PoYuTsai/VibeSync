@@ -5472,6 +5472,11 @@ Deno.test("direct Beginner Hint grounding repair handles the production hometown
       "使用者尚未親自回答",
     ),
   );
+  assert(
+    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
+      "沒記住、不知道、沒去過",
+    ),
+  );
   assertEquals(recordHintCalls(state).length, 1);
 });
 
