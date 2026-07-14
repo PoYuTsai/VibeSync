@@ -138,8 +138,8 @@ const DEBRIEF_TIMEOUT_MS = 12000;
 // window and 105s owner fence deliberately favor verified output over 503.
 const DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS = 24000;
 const DEBRIEF_IN_FLIGHT_STALE_MS = 105000;
-const DIRECT_PRACTICE_GENERATION_ATTEMPTS = 3;
-const DIRECT_PRACTICE_DEBRIEF_ATTEMPTS = 3;
+const DIRECT_PRACTICE_GENERATION_ATTEMPTS = 4;
+const DIRECT_PRACTICE_DEBRIEF_ATTEMPTS = 4;
 const DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS = 24000;
 // Direct Claude is the final writer, not a brainstormer. Keep every attempt
 // low-variance so expert framing comes from the rubric instead of invented
@@ -2898,11 +2898,19 @@ export function createPracticeChatHandler(
           ) {
             const isGroundingReview: boolean = hintGroundingCandidateReady &&
               previousDirectHintCandidate !== null;
-            // Reserve the final provider slot for the mandatory semantic
-            // grounding pass. An unaudited third writer can never be returned.
+            const needsFinalRepairVerification =
+              hintGroundingReviewsCompleted >= 2 &&
+              lastValidatedHintGroundingVerdict === "repair";
+            if (
+              attempt === DIRECT_PRACTICE_GENERATION_ATTEMPTS &&
+              !needsFinalRepairVerification
+            ) break;
+            // Reserve the final two provider slots for the mandatory two
+            // independent reviews. A second-review repair may use the fourth
+            // slot for one final accept; an unaudited writer is never returned.
             if (
               !isGroundingReview &&
-              attempt === DIRECT_PRACTICE_GENERATION_ATTEMPTS
+              attempt >= DIRECT_PRACTICE_GENERATION_ATTEMPTS - 1
             ) break;
             const groundingCode = isGroundingReview &&
                 lastError !== undefined
@@ -2960,7 +2968,10 @@ export function createPracticeChatHandler(
                 hintGroundingReviewsCompleted += 1;
                 lastValidatedReviewedHint = reviewedHint;
                 lastValidatedHintGroundingVerdict = grounded.verdict;
-                if (hintGroundingReviewsCompleted >= 2) {
+                if (
+                  hintGroundingReviewsCompleted >= 2 &&
+                  grounded.verdict === "accept"
+                ) {
                   hintResult = reviewedHint;
                 }
               } else {
@@ -4021,11 +4032,19 @@ export function createPracticeChatHandler(
           ) {
             const isGroundingReview: boolean = debriefGroundingCandidateReady &&
               previousDirectDebriefCandidate !== null;
-            // Reserve the final provider slot for the mandatory semantic
-            // grounding pass. An unaudited third writer can never be returned.
+            const needsFinalRepairVerification =
+              debriefGroundingReviewsCompleted >= 2 &&
+              lastValidatedDebriefGroundingVerdict === "repair";
+            if (
+              attempt === DIRECT_PRACTICE_DEBRIEF_ATTEMPTS &&
+              !needsFinalRepairVerification
+            ) break;
+            // Reserve the final two provider slots for the mandatory two
+            // independent reviews. A second-review repair may use the fourth
+            // slot for one final accept; an unaudited writer is never returned.
             if (
               !isGroundingReview &&
-              attempt === DIRECT_PRACTICE_DEBRIEF_ATTEMPTS
+              attempt >= DIRECT_PRACTICE_DEBRIEF_ATTEMPTS - 1
             ) break;
             const groundingCode = isGroundingReview &&
                 lastError !== undefined
@@ -4085,7 +4104,10 @@ export function createPracticeChatHandler(
                 debriefGroundingReviewsCompleted += 1;
                 lastValidatedReviewedDebrief = reviewedCard;
                 lastValidatedDebriefGroundingVerdict = grounded.verdict;
-                if (debriefGroundingReviewsCompleted >= 2) {
+                if (
+                  debriefGroundingReviewsCompleted >= 2 &&
+                  grounded.verdict === "accept"
+                ) {
                   debriefCard = reviewedCard;
                 }
               } else {

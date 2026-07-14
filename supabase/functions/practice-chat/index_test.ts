@@ -4627,6 +4627,77 @@ Deno.test("malformed independent Debrief verifier fails closed", async () => {
   assertEquals(releaseDebriefCalls(state).length, 1);
 });
 
+Deno.test("independent Debrief reviewer may apply a bounded repair", async () => {
+  const candidate = validDebriefJson({
+    suggestedLine: "我對咖啡的鑑賞力只到香不香，妳呢？",
+  });
+  const repaired = validDebriefJson({
+    suggestedLine: "妳看一間咖啡店，最先注意哪個細節？",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [candidate, candidate, repaired],
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "direct-debrief-second-review-bounded-repair",
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.suggestedLine, JSON.parse(repaired).suggestedLine);
+  assertEquals(state.claudeCalls.length, 4);
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
+});
+
+Deno.test("independent Debrief reviewer outage falls back after an accepted first review", async () => {
+  const candidate = validDebriefJson();
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [candidate, candidate, new Error("claude_timeout")],
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "direct-debrief-second-review-timeout-after-accept",
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
+});
+
+Deno.test("repaired Debrief never falls back when its second reviewer times out", async () => {
+  const candidate = validDebriefJson({
+    suggestedLine: "我對咖啡的鑑賞力只到香不香，妳呢？",
+  });
+  const repaired = validDebriefJson({
+    suggestedLine: "妳看一間咖啡店，最先注意哪個細節？",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [candidate, repaired, new Error("claude_timeout")],
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "direct-debrief-second-review-timeout-after-repair",
+    }),
+  );
+
+  assertEquals(response.status, 503, JSON.stringify(json));
+  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(recordDebriefCalls(state).length, 0);
+  assertEquals(releaseDebriefCalls(state).length, 1);
+});
+
 Deno.test("direct Debrief reviews one invalid candidate twice before failing closed", async () => {
   const { response, json, state } = await run({
     ledger: beginnerStartedLedger(),
@@ -6242,7 +6313,7 @@ Deno.test("explicit first-review semantic failure hard-stops without a rescue re
   assertEquals(releaseHintCalls(state).length, 1);
 });
 
-Deno.test("independent verifier cannot return an unreviewed repair", async () => {
+Deno.test("independent Hint reviewer may apply a bounded repair", async () => {
   const candidate = validHintJson();
   const rewritten = validHintJson({
     warmUp: "咖啡這句收到，我改成另一條沒被複核的回覆。",
@@ -6255,12 +6326,39 @@ Deno.test("independent verifier cannot return an unreviewed repair", async () =>
     },
     hintBody({
       practiceMode: "beginner",
-      requestId: "direct-hint-verifier-repair-rejected",
+      requestId: "direct-hint-second-review-bounded-repair",
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.replies[0].text, JSON.parse(rewritten).warmUp);
+  assertEquals(state.claudeCalls.length, 4);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
+Deno.test("a final Hint repair is never returned without another independent accept", async () => {
+  const candidate = validHintJson();
+  const repaired = validHintJson({
+    warmUp: "咖啡這題先不替自己補答案，妳會怎麼判斷？",
+  });
+  const unverified = validHintJson({
+    warmUp: "我住台中，最常去勤美喝咖啡；妳呢？",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [candidate, candidate, repaired, unverified],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "direct-hint-final-repair-needs-independent-accept",
     }),
   );
 
   assertEquals(response.status, 503, JSON.stringify(json));
-  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(state.claudeCalls.length, 4);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(releaseHintCalls(state).length, 1);
 });
@@ -6848,8 +6946,8 @@ Deno.test("Beginner Debrief repair removes an invented plan before independent v
     verificationPrompt.includes("partner relation 只能由 assistant_turn 支持"),
   );
   assert(verificationPrompt.includes("本來只想看一集"));
-  assert(verificationPrompt.includes("候選所有欄位"));
-  assert(verificationPrompt.includes("都不得改寫"));
+  assert(verificationPrompt.includes("重新檢查候選所有欄位"));
+  assert(verificationPrompt.includes("只改有 issue 的最小子句"));
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 1);

@@ -98,7 +98,10 @@ Deno.test("grounding reviewer uses a short isolated patch contract", () => {
   assertStringIncludes(messages[0].content, "只能由 user_turn");
   assertStringIncludes(messages[0].content, "只有 assistant_turn 明示邀約");
   assertStringIncludes(messages[0].content, "{劇名}");
-  assertStringIncludes(messages[0].content, "禁止 repair");
+  assertStringIncludes(messages[0].content, "重新檢查候選所有欄位");
+  assertStringIncludes(messages[0].content, '"verdict":"repair"');
+  assertStringIncludes(messages[0].content, "咖啡鑑賞力只到香不香");
+  assertStringIncludes(messages[0].content, "吧檯設備我看不懂");
   assertEquals(messages[0].content.includes("checkedFields"), false);
   assertEquals(messages[0].content.includes("userClaims"), false);
   assertEquals(messages[0].content.includes('"result"'), false);
@@ -393,18 +396,25 @@ Deno.test("Debrief continuity repair requires certification and only changes rep
   );
 });
 
-Deno.test("independent verification is accept-or-fail and cannot repair", () => {
+Deno.test("independent second review may apply one bounded repair", () => {
+  const previous = {
+    ...hintCandidate,
+    warmUp: "昨晚真的追到兩點。",
+  };
   const raw = repairEnvelope([{
     kind: "unsupported_user_fact",
     field: "warmUp",
     span: "昨晚真的追到兩點",
     replacement: "昨晚追到{時間}",
   }]);
-  const error = groundingError(() =>
-    parse(raw, JSON.stringify(hintCandidate), { verificationPass: true })
-  );
-  assertEquals(error.code, "grounding_review_verification_rejected");
-  assertEquals(canFallbackAfterGroundingReviewError(error), false);
+  const reviewed = parse(raw, JSON.stringify(previous), {
+    verificationPass: true,
+  });
+  assertEquals(reviewed.verdict, "repair");
+  assertEquals(JSON.parse(reviewed.candidateJson), {
+    ...previous,
+    warmUp: "昨晚追到{時間}。",
+  });
 });
 
 Deno.test("Game suggestedLine repair synchronizes its server-owned nextFirstLine mirror", () => {
