@@ -118,9 +118,8 @@ import {
 } from "./semantic_quality.ts";
 import {
   buildGroundingReviewMessages,
-  canFallbackAfterGroundingReviewError,
-  canRetryAfterGroundingReviewError,
   groundingFailureCode,
+  GroundingReviewError,
   parseGroundingReviewResult,
 } from "./grounding_repair.ts";
 
@@ -129,13 +128,13 @@ const CHAT_MAX_TOKENS = 200;
 const CHAT_TEMPERATURE = 0.9;
 const CHAT_GENERATION_ATTEMPTS = 2;
 const DEBRIEF_MAX_TOKENS = 1200;
-const GROUNDING_REVIEW_MAX_TOKENS = 800;
+const GROUNDING_REVIEW_MAX_TOKENS = DEBRIEF_MAX_TOKENS;
 const DEBRIEF_TEMPERATURE = 0.5;
 const DEBRIEF_GENERATION_ATTEMPTS = 1;
 const DEBRIEF_TIMEOUT_MS = 12000;
 // Game Debrief has a larger prompt and five additional grounded fields.
-// Every direct candidate gets one narrow grounding review; the 90s client
-// window and 105s owner fence deliberately favor verified output over 503.
+// Normal direct generation uses one writer plus two full-JSON grounding
+// reviews; the 90s client window and 105s owner fence favor verified output.
 const DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS = 24000;
 const DEBRIEF_IN_FLIGHT_STALE_MS = 105000;
 const DIRECT_PRACTICE_GENERATION_ATTEMPTS = 3;
@@ -2699,6 +2698,7 @@ export function createPracticeChatHandler(
         ? DEEPSEEK_MODEL
         : claudeFallbackModelForTier(sub.tier);
       let hintFailoverUsed = false;
+      let hintGroundingFallbackUsed = false;
       const hintGenerationStartedAt = performance.now();
       let hintAttemptCount = 0;
       let hintPromptChars = 0;
@@ -2789,8 +2789,7 @@ export function createPracticeChatHandler(
         let previousDirectHintCandidate: string | null = null;
         let hintGroundingCandidateReady = false;
         let hintGroundingReviewsCompleted = 0;
-        let lastValidatedHintGroundingVerdict: "accept" | "repair" | null =
-          null;
+        let hintGroundingExplicitFailure = false;
         let lastValidatedReviewedHint:
           | ReturnType<
             typeof parseHintResult
@@ -2898,9 +2897,8 @@ export function createPracticeChatHandler(
           ) {
             const isGroundingReview: boolean = hintGroundingCandidateReady &&
               previousDirectHintCandidate !== null;
-            // Reserve the final provider slot for the second independent
-            // review. Its bounded patch is the final semantic adjudication;
-            // an unaudited writer is never returned.
+            // Reserve the final provider slot for semantic review. A valid
+            // writer is never returned without at least one full-JSON review.
             if (
               !isGroundingReview &&
               attempt === DIRECT_PRACTICE_GENERATION_ATTEMPTS
@@ -2942,12 +2940,9 @@ export function createPracticeChatHandler(
                 timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
               });
               if (isGroundingReview) {
-                const verificationPass = hintGroundingReviewsCompleted > 0;
                 const grounded = parseGroundingReviewResult({
                   raw: rawHint,
                   previousCandidate: previousDirectHintCandidate!,
-                  surface: "hint",
-                  verificationPass,
                 });
                 const reviewedHint = parseDirectGeneratedHint(
                   grounded.candidateJson,
@@ -2960,7 +2955,6 @@ export function createPracticeChatHandler(
                 );
                 hintGroundingReviewsCompleted += 1;
                 lastValidatedReviewedHint = reviewedHint;
-                lastValidatedHintGroundingVerdict = grounded.verdict;
                 if (hintGroundingReviewsCompleted >= 2) {
                   hintResult = reviewedHint;
                 }
@@ -3043,29 +3037,30 @@ export function createPracticeChatHandler(
                 });
               }
               if (
-                isGroundingReview &&
-                hintGroundingReviewsCompleted > 0 &&
-                lastValidatedReviewedHint !== null &&
-                lastValidatedHintGroundingVerdict === "accept" &&
-                canFallbackAfterGroundingReviewError(e)
+                e instanceof GroundingReviewError &&
+                e.code === "grounding_review_explicit_fail"
               ) {
-                // The independent verification call failed, but the prior
-                // semantic review already passed every final hard gate.
-                hintResult = lastValidatedReviewedHint;
-                hintLastFailureClass = null;
-                logWarn("practice_chat_grounding_verification_fallback", {
-                  user: summarizeUser(user.id),
-                  surface: "hint",
-                  practiceMode: request.practiceMode,
-                  completedReviews: hintGroundingReviewsCompleted,
-                });
+                hintGroundingExplicitFailure = true;
                 break;
               }
-              if (
-                isGroundingReview &&
-                !canRetryAfterGroundingReviewError(e)
-              ) break;
             }
+          }
+          if (
+            !hintResult && !hintGroundingExplicitFailure &&
+            lastValidatedReviewedHint !== null
+          ) {
+            // Two reviewer calls are attempted when the writer succeeds on
+            // its first slot. One fully parsed review is sufficient when its
+            // redundant sibling has a provider or formatting failure.
+            hintResult = lastValidatedReviewedHint;
+            hintLastFailureClass = null;
+            hintGroundingFallbackUsed = true;
+            logWarn("practice_chat_grounding_review_redundancy_fallback", {
+              user: summarizeUser(user.id),
+              surface: "hint",
+              practiceMode: request.practiceMode,
+              completedReviews: hintGroundingReviewsCompleted,
+            });
           }
         } else if (apiKey) {
           for (
@@ -3236,7 +3231,7 @@ export function createPracticeChatHandler(
           attempt: Math.max(1, hintAttemptCount),
           totalDurationMs: failureDurationMs,
           promptChars: hintPromptChars,
-          fallbackUsed: false,
+          fallbackUsed: hintGroundingFallbackUsed,
           failoverUsed: hintFailoverUsed,
           failureClass,
           attemptDurationsMs: hintAttemptDurationsMs,
@@ -3275,7 +3270,7 @@ export function createPracticeChatHandler(
           attempt: hintAttemptCount,
           attemptDurationMs: null,
           failureClass: null,
-          fallbackUsed: false,
+          fallbackUsed: hintGroundingFallbackUsed,
           failoverUsed: hintFailoverUsed,
           totalDurationMs: hintTotalDurationMs,
           promptChars: hintPromptChars,
@@ -3298,7 +3293,10 @@ export function createPracticeChatHandler(
             ? { hintUsedCount: ledger.hintCount ?? 0 }
             : {}),
           generationSource: "model",
+          // Public fallbackUsed is reserved for canned/non-model output and is
+          // enforced by both DB constraints and existing Flutter clients.
           fallbackUsed: false,
+          groundingReviewFallbackUsed: hintGroundingFallbackUsed,
           qualitySchemaVersion: HINT_QUALITY_SCHEMA_VERSION,
           failoverUsed: hintFailoverUsed,
           provider: hintProvider,
@@ -3413,7 +3411,7 @@ export function createPracticeChatHandler(
         attempt: hintAttemptCount,
         totalDurationMs: hintTotalDurationMs,
         promptChars: hintPromptChars,
-        fallbackUsed: false,
+        fallbackUsed: hintGroundingFallbackUsed,
         failoverUsed: hintFailoverUsed,
         failureClass: null,
         attemptDurationsMs: hintAttemptDurationsMs,
@@ -3445,6 +3443,7 @@ export function createPracticeChatHandler(
         hintUsedCount,
         generationSource: "model",
         fallbackUsed: false,
+        groundingReviewFallbackUsed: hintGroundingFallbackUsed,
         qualitySchemaVersion: HINT_QUALITY_SCHEMA_VERSION,
         failoverUsed: hintFailoverUsed,
         provider: hintProvider,
@@ -3773,6 +3772,7 @@ export function createPracticeChatHandler(
         ? DEEPSEEK_MODEL
         : claudeFallbackModelForTier(sub.tier);
       let debriefFailoverUsed = false;
+      let debriefGroundingFallbackUsed = false;
       const debriefPracticeMode = ledger.practiceMode ?? request.practiceMode;
       const debriefGenerationStartedAt = performance.now();
       let debriefAttemptCount = 0;
@@ -3927,8 +3927,7 @@ export function createPracticeChatHandler(
         let previousDirectDebriefCandidate: string | null = null;
         let debriefGroundingCandidateReady = false;
         let debriefGroundingReviewsCompleted = 0;
-        let lastValidatedDebriefGroundingVerdict: "accept" | "repair" | null =
-          null;
+        let debriefGroundingExplicitFailure = false;
         let lastValidatedReviewedDebrief: DebriefCard | null = null;
         const parseGeneratedDebrief = async (
           rawCard: string,
@@ -4022,9 +4021,8 @@ export function createPracticeChatHandler(
           ) {
             const isGroundingReview: boolean = debriefGroundingCandidateReady &&
               previousDirectDebriefCandidate !== null;
-            // Reserve the final provider slot for the second independent
-            // review. Its bounded patch is the final semantic adjudication;
-            // an unaudited writer is never returned.
+            // Reserve the final provider slot for semantic review. A valid
+            // writer is never returned without at least one full-JSON review.
             if (
               !isGroundingReview &&
               attempt === DIRECT_PRACTICE_DEBRIEF_ATTEMPTS
@@ -4069,13 +4067,9 @@ export function createPracticeChatHandler(
                 timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
               });
               if (isGroundingReview) {
-                const verificationPass = debriefGroundingReviewsCompleted > 0;
                 const grounded = parseGroundingReviewResult({
                   raw: rawCard,
                   previousCandidate: previousDirectDebriefCandidate!,
-                  surface: "debrief",
-                  verificationPass,
-                  requireHintContinuity: debriefHintContinuityContext !== null,
                 });
                 const reviewedCard = parseDirectGeneratedDebrief(
                   grounded.candidateJson,
@@ -4086,7 +4080,6 @@ export function createPracticeChatHandler(
                 previousDirectDebriefCandidate = JSON.stringify(reviewedCard);
                 debriefGroundingReviewsCompleted += 1;
                 lastValidatedReviewedDebrief = reviewedCard;
-                lastValidatedDebriefGroundingVerdict = grounded.verdict;
                 if (debriefGroundingReviewsCompleted >= 2) {
                   debriefCard = reviewedCard;
                 }
@@ -4169,29 +4162,30 @@ export function createPracticeChatHandler(
                 });
               }
               if (
-                isGroundingReview &&
-                debriefGroundingReviewsCompleted > 0 &&
-                lastValidatedReviewedDebrief !== null &&
-                lastValidatedDebriefGroundingVerdict === "accept" &&
-                canFallbackAfterGroundingReviewError(e)
+                e instanceof GroundingReviewError &&
+                e.code === "grounding_review_explicit_fail"
               ) {
-                // The independent verification call failed, but the prior
-                // semantic review already passed every final hard gate.
-                debriefCard = lastValidatedReviewedDebrief;
-                debriefLastFailureClass = null;
-                logWarn("practice_chat_grounding_verification_fallback", {
-                  user: summarizeUser(user.id),
-                  surface: "debrief",
-                  practiceMode: debriefPracticeMode,
-                  completedReviews: debriefGroundingReviewsCompleted,
-                });
+                debriefGroundingExplicitFailure = true;
                 break;
               }
-              if (
-                isGroundingReview &&
-                !canRetryAfterGroundingReviewError(e)
-              ) break;
             }
+          }
+          if (
+            !debriefCard && !debriefGroundingExplicitFailure &&
+            lastValidatedReviewedDebrief !== null
+          ) {
+            // Two reviewer calls are attempted when the writer succeeds on
+            // its first slot. One fully parsed review is sufficient when its
+            // redundant sibling has a provider or formatting failure.
+            debriefCard = lastValidatedReviewedDebrief;
+            debriefLastFailureClass = null;
+            debriefGroundingFallbackUsed = true;
+            logWarn("practice_chat_grounding_review_redundancy_fallback", {
+              user: summarizeUser(user.id),
+              surface: "debrief",
+              practiceMode: debriefPracticeMode,
+              completedReviews: debriefGroundingReviewsCompleted,
+            });
           }
         } else if (apiKey) {
           for (
@@ -4375,7 +4369,7 @@ export function createPracticeChatHandler(
           attempt: Math.max(1, debriefAttemptCount),
           totalDurationMs: elapsedMilliseconds(debriefGenerationStartedAt),
           promptChars: debriefPromptChars,
-          fallbackUsed: false,
+          fallbackUsed: debriefGroundingFallbackUsed,
           failoverUsed: debriefFailoverUsed,
           failureClass,
           attemptDurationsMs: debriefAttemptDurationsMs,
@@ -4403,7 +4397,7 @@ export function createPracticeChatHandler(
           attempt: debriefAttemptCount,
           attemptDurationMs: null,
           failureClass: null,
-          fallbackUsed: false,
+          fallbackUsed: debriefGroundingFallbackUsed,
           failoverUsed: debriefFailoverUsed,
           totalDurationMs: debriefTotalDurationMs,
           promptChars: debriefPromptChars,
@@ -4414,6 +4408,7 @@ export function createPracticeChatHandler(
         costDeducted: 0,
         generationSource: "model",
         fallbackUsed: false,
+        groundingReviewFallbackUsed: debriefGroundingFallbackUsed,
         qualitySchemaVersion: DEBRIEF_QUALITY_SCHEMA_VERSION,
         failoverUsed: debriefFailoverUsed,
         provider: debriefProvider,
@@ -4469,7 +4464,7 @@ export function createPracticeChatHandler(
         attempt: debriefAttemptCount,
         totalDurationMs: debriefTotalDurationMs,
         promptChars: debriefPromptChars,
-        fallbackUsed: false,
+        fallbackUsed: debriefGroundingFallbackUsed,
         failoverUsed: debriefFailoverUsed,
         failureClass: null,
         attemptDurationsMs: debriefAttemptDurationsMs,

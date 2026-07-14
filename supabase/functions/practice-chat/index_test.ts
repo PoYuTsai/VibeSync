@@ -18,7 +18,6 @@ import type {
   PracticeSemanticAdjudicatorArgs,
   SemanticAdjudicationResult,
 } from "./semantic_quality.ts";
-import { parseGroundingReviewResult } from "./grounding_repair.ts";
 import { buildPracticeSceneContext } from "./life_schedule.ts";
 import { resolvePracticeProfile } from "./practice_persona.ts";
 import { taipeiTimeContextFor } from "./time_context.ts";
@@ -74,7 +73,7 @@ function assertGroundingReviewInput(
   previousCandidate: string,
 ): void {
   const prompt = claudePrompt(call);
-  assert(prompt.includes("practiceGroundingReviewerV2"));
+  assert(prompt.includes("practiceGroundingReviewerV3"));
   assert(prompt.includes("<candidate_untrusted>"));
   assert(prompt.includes(previousCandidate));
   assertEquals(
@@ -373,63 +372,6 @@ function validGameHintJson(overrides: Record<string, string> = {}) {
   });
 }
 
-function parsedJsonRecord(raw: string): Record<string, unknown> | null {
-  try {
-    const value = JSON.parse(raw);
-    return typeof value === "object" && value !== null && !Array.isArray(value)
-      ? value as Record<string, unknown>
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-interface MockStringChange {
-  span: string;
-  replacement: string;
-}
-
-function mockStringChanges(
-  previous: unknown,
-  next: unknown,
-): MockStringChange[] | null {
-  if (typeof previous === "string" && typeof next === "string") {
-    if (previous === next) return [];
-    return previous.length <= 240 && next.length <= 240
-      ? [{ span: previous, replacement: next }]
-      : null;
-  }
-  if (Array.isArray(previous) && Array.isArray(next)) {
-    if (previous.length !== next.length) return null;
-    const changes: MockStringChange[] = [];
-    for (let index = 0; index < previous.length; index++) {
-      const nested = mockStringChanges(previous[index], next[index]);
-      if (nested === null) return null;
-      changes.push(...nested);
-    }
-    return changes;
-  }
-  if (
-    typeof previous === "object" && previous !== null &&
-    !Array.isArray(previous) && typeof next === "object" && next !== null &&
-    !Array.isArray(next)
-  ) {
-    const previousRecord = previous as Record<string, unknown>;
-    const nextRecord = next as Record<string, unknown>;
-    const previousKeys = Object.keys(previousRecord).sort();
-    const nextKeys = Object.keys(nextRecord).sort();
-    if (JSON.stringify(previousKeys) !== JSON.stringify(nextKeys)) return null;
-    const changes: MockStringChange[] = [];
-    for (const key of previousKeys) {
-      const nested = mockStringChanges(previousRecord[key], nextRecord[key]);
-      if (nested === null) return null;
-      changes.push(...nested);
-    }
-    return changes;
-  }
-  return Object.is(previous, next) ? [] : null;
-}
-
 function groundingReviewCandidate(call: ClaudeArgs): string | null {
   const message = [...call.messages].reverse().find((item) =>
     item.role === "user" && item.content.includes("<candidate_untrusted>")
@@ -442,102 +384,6 @@ function groundingReviewCandidate(call: ClaudeArgs): string | null {
   return start >= 0 && end > start
     ? message.content.slice(start + open.length, end)
     : null;
-}
-
-function mockGroundingReviewEnvelope(
-  previousRaw: string,
-  resultRaw: string,
-  requireHintContinuity: boolean,
-): string {
-  const explicitEnvelope = parsedJsonRecord(resultRaw);
-  if (
-    explicitEnvelope && typeof explicitEnvelope.verdict === "string" &&
-    explicitEnvelope.checkedAllFields === true &&
-    Array.isArray(explicitEnvelope.issues)
-  ) return resultRaw;
-
-  const previous = parsedJsonRecord(previousRaw);
-  const rawResult = parsedJsonRecord(resultRaw);
-  if (!rawResult) return resultRaw;
-  const canProjectToCanonical = previous && Object.keys(previous).every(
-    (field) => Object.hasOwn(rawResult, field) || previous[field] === null,
-  );
-  const result = canProjectToCanonical
-    ? Object.fromEntries(
-      Object.keys(previous!).map((field) => [
-        field,
-        Object.hasOwn(rawResult, field) ? rawResult[field] : null,
-      ]),
-    )
-    : rawResult;
-  if (
-    typeof result.suggestedLine === "string" &&
-    typeof result.gameBreakdown === "object" &&
-    result.gameBreakdown !== null && !Array.isArray(result.gameBreakdown)
-  ) {
-    result.gameBreakdown = {
-      ...(result.gameBreakdown as Record<string, unknown>),
-      nextFirstLine: result.suggestedLine,
-    };
-  }
-  if (
-    previous && typeof previous.suggestedLine === "string" &&
-    typeof result.suggestedLine === "string" &&
-    previous.suggestedLine !== result.suggestedLine &&
-    typeof previous.gameBreakdown === "object" &&
-    previous.gameBreakdown !== null &&
-    !Array.isArray(previous.gameBreakdown) &&
-    typeof result.gameBreakdown === "object" && result.gameBreakdown !== null &&
-    !Array.isArray(result.gameBreakdown) &&
-    (previous.gameBreakdown as Record<string, unknown>).nextFirstLine ===
-      previous.suggestedLine
-  ) {
-    result.gameBreakdown = {
-      ...(result.gameBreakdown as Record<string, unknown>),
-      // Production synchronizes this server-owned mirror after patching
-      // suggestedLine, so the mock reviewer never patches it directly.
-      nextFirstLine: previous.suggestedLine,
-    };
-  }
-  if (previous && JSON.stringify(previous) === JSON.stringify(result)) {
-    return JSON.stringify({
-      verdict: "accept",
-      ...(requireHintContinuity ? { continuityChecked: true } : {}),
-      checkedAllFields: true,
-      issues: [],
-    });
-  }
-
-  const sameFields = previous &&
-    JSON.stringify(Object.keys(previous).sort()) ===
-      JSON.stringify(Object.keys(result).sort());
-  const changedFields = sameFields
-    ? Object.keys(previous!).filter((field) =>
-      JSON.stringify(previous![field]) !== JSON.stringify(result[field])
-    )
-    : [];
-  const changes: Array<{
-    field: string;
-    span: string;
-    replacement: string;
-  }> = [];
-  for (const field of changedFields) {
-    const nested = mockStringChanges(previous![field], result[field]);
-    if (nested === null) return resultRaw;
-    changes.push(...nested.map((change) => ({ field, ...change })));
-  }
-  if (changes.length === 0) return resultRaw;
-  return JSON.stringify({
-    verdict: "repair",
-    ...(requireHintContinuity ? { continuityChecked: true } : {}),
-    checkedAllFields: true,
-    issues: changes.map((change) => ({
-      kind: "unsupported_user_fact",
-      field: change.field,
-      span: change.span,
-      replacement: change.replacement,
-    })),
-  });
 }
 
 function semanticHintResult(
@@ -973,11 +819,7 @@ function makeFake(options: FakeOptions = {}) {
     const configuredReply = options.claudeReplies?.[claudeIndex];
     const isGroundingReview = args.messages.some((message) =>
       message.role === "system" &&
-      message.content.includes("practiceGroundingReviewerV2")
-    );
-    const requiresHintContinuity = args.messages.some((message) =>
-      message.role === "user" &&
-      message.content.includes("<trusted_hint_contract_data>")
+      message.content.includes("practiceGroundingReviewerV3")
     );
     const reviewCandidate = isGroundingReview
       ? groundingReviewCandidate(args)
@@ -988,29 +830,7 @@ function makeFake(options: FakeOptions = {}) {
         : "AI reply");
     claudeIndex++;
     if (selectedReply instanceof Error) return Promise.reject(selectedReply);
-    const reply = isGroundingReview && reviewCandidate !== null
-      ? mockGroundingReviewEnvelope(
-        reviewCandidate,
-        selectedReply,
-        requiresHintContinuity,
-      )
-      : selectedReply;
-    if (isGroundingReview && reviewCandidate !== null) {
-      try {
-        parseGroundingReviewResult({
-          raw: reply,
-          previousCandidate: reviewCandidate,
-          surface:
-            parsedJsonRecord(reviewCandidate)?.suggestedLine !== undefined
-              ? "debrief"
-              : "hint",
-          requireHintContinuity: requiresHintContinuity,
-        });
-      } catch {
-        // The handler under test owns the failure path.
-      }
-    }
-    return Promise.resolve(reply);
+    return Promise.resolve(selectedReply);
   };
   const semanticAdjudicate = (
     args: PracticeSemanticAdjudicatorArgs,
@@ -4454,8 +4274,8 @@ Deno.test("Debrief defaults to one Claude Sonnet writer plus two grounding revie
   assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(state.claudeCalls[0].timeoutMs, 24000);
   assertEquals(state.claudeCalls[0].maxTokens, 1200);
-  assertEquals(state.claudeCalls[1].maxTokens, 800);
-  assertEquals(state.claudeCalls[2].maxTokens, 800);
+  assertEquals(state.claudeCalls[1].maxTokens, 1200);
+  assertEquals(state.claudeCalls[2].maxTokens, 1200);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(json.provider, "anthropic");
   assertEquals(json.model, CLAUDE_SONNET_MODEL);
@@ -4518,7 +4338,7 @@ Deno.test("direct assisted Debrief fills missing hidden Hint assessment server-s
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
-Deno.test("malformed Game Debrief writer needs two fresh reviews and fails closed within three calls", async () => {
+Deno.test("a retried Game Debrief writer can return after one complete semantic review", async () => {
   const incompleteGameCard = validDebriefJson();
   const completeGameCard = JSON.parse(validDebriefJson({
     summary: "你接住她下班後想散步放空，現在仍在交換生活節奏。",
@@ -4544,20 +4364,22 @@ Deno.test("malformed Game Debrief writer needs two fresh reviews and fails close
     }),
   );
 
-  assertEquals(response.status, 503, JSON.stringify(json));
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, true);
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(state.claudeCalls[1].model, CLAUDE_SONNET_MODEL);
   assertEquals(
-    claudePrompt(state.claudeCalls[1]).includes("practiceGroundingReviewerV2"),
+    claudePrompt(state.claudeCalls[1]).includes("practiceGroundingReviewerV3"),
     false,
   );
   assertGroundingReviewInput(state.claudeCalls[2], '"gameBreakdown"');
   assertEquals(state.claudeCalls[2].temperature, 0);
-  assertEquals(recordDebriefCalls(state).length, 0);
-  assertEquals(releaseDebriefCalls(state).length, 1);
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
 Deno.test("direct Game Debrief accepts expert vocabulary without the legacy mechanism wordlist", async () => {
@@ -4601,7 +4423,7 @@ Deno.test("direct Game Debrief accepts expert vocabulary without the legacy mech
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
-Deno.test("malformed Debrief writer JSON cannot be rebuilt by a reviewer", async () => {
+Deno.test("a retried Debrief writer can return after one complete semantic review", async () => {
   const repaired = validDebriefJson();
   const { response, json, state } = await run(
     {
@@ -4615,17 +4437,19 @@ Deno.test("malformed Debrief writer JSON cannot be rebuilt by a reviewer", async
     }),
   );
 
-  assertEquals(response.status, 503, JSON.stringify(json));
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, true);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(
     claudePrompt(state.claudeCalls[1]).includes(
-      "practiceGroundingReviewerV2",
+      "practiceGroundingReviewerV3",
     ),
     false,
   );
   assertGroundingReviewInput(state.claudeCalls[2], '"summary"');
-  assertEquals(recordDebriefCalls(state).length, 0);
-  assertEquals(releaseDebriefCalls(state).length, 1);
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
 Deno.test("explicit Debrief review failure hard-stops without a rescue rewrite", async () => {
@@ -4653,7 +4477,7 @@ Deno.test("explicit Debrief review failure hard-stops without a rescue rewrite",
   assertEquals(releaseDebriefCalls(state).length, 1);
 });
 
-Deno.test("malformed independent Debrief verifier fails closed", async () => {
+Deno.test("malformed second Debrief review falls back to the first reviewed card", async () => {
   const candidate = validDebriefJson();
   const { response, json, state } = await run(
     {
@@ -4667,13 +4491,21 @@ Deno.test("malformed independent Debrief verifier fails closed", async () => {
     }),
   );
 
-  assertEquals(response.status, 503, JSON.stringify(json));
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, true);
   assertEquals(state.claudeCalls.length, 3);
-  assertEquals(recordDebriefCalls(state).length, 0);
-  assertEquals(releaseDebriefCalls(state).length, 1);
+  assertEquals(recordDebriefCalls(state).length, 1);
+  const storedDebrief = recordDebriefCalls(state)[0].params.p_result as Record<
+    string,
+    unknown
+  >;
+  assertEquals(storedDebrief.fallbackUsed, false);
+  assertEquals(storedDebrief.groundingReviewFallbackUsed, true);
+  assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
-Deno.test("independent Debrief reviewer may apply a bounded repair", async () => {
+Deno.test("independent Debrief reviewer may return a complete repaired card", async () => {
   const candidate = validDebriefJson({
     suggestedLine: "我對咖啡的鑑賞力只到香不香，妳呢？",
   });
@@ -4719,7 +4551,7 @@ Deno.test("independent Debrief reviewer outage falls back after an accepted firs
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
-Deno.test("repaired Debrief never falls back when its second reviewer times out", async () => {
+Deno.test("repaired Debrief falls back when its redundant second reviewer times out", async () => {
   const candidate = validDebriefJson({
     suggestedLine: "我對咖啡的鑑賞力只到香不香，妳呢？",
   });
@@ -4738,10 +4570,12 @@ Deno.test("repaired Debrief never falls back when its second reviewer times out"
     }),
   );
 
-  assertEquals(response.status, 503, JSON.stringify(json));
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, true);
   assertEquals(state.claudeCalls.length, 3);
-  assertEquals(recordDebriefCalls(state).length, 0);
-  assertEquals(releaseDebriefCalls(state).length, 1);
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
 Deno.test("direct Debrief reviews one invalid candidate twice before failing closed", async () => {
@@ -4805,7 +4639,7 @@ Deno.test("direct Debrief uses narrow semantic grounding repair for a hallucinat
   assertEquals(state.semanticCalls.length, 0);
   const retryPrompt = claudePrompt(state.claudeCalls[1]);
   assert(retryPrompt.includes("事實歸因校正"));
-  assert(retryPrompt.includes("只改有 issue 的最小子句"));
+  assert(retryPrompt.includes("只修改不安全處"));
   assert(retryPrompt.includes("不是文風評審"));
   assertEquals(state.claudeCalls[0].temperature, 0.2);
   assertEquals(state.claudeCalls[1].temperature, 0);
@@ -4951,7 +4785,7 @@ Deno.test("direct Game Debrief grounds invented facts inside the visible breakdo
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
     claudePrompt(state.claudeCalls[1]).includes(
-      "逐欄主動找候選所有欄位可見文字中的無證據事實",
+      "逐欄主動找無證據事實",
     ),
   );
   assertEquals(recordDebriefCalls(state).length, 1);
@@ -5203,36 +5037,15 @@ Deno.test("direct Debrief repairs a contradiction with the server-owned Hint bef
     watchouts: ["她只回散步很舒服；下一步先沿這個新回覆多問一個具體點。"],
     nextInviteMove: "先問她平常走哪一段，等她多分享再看邀約窗口。",
   };
-  const firstReview = JSON.stringify({
-    verdict: "repair",
-    continuityChecked: true,
-    checkedAllFields: true,
-    issues: [
-      {
-        kind: "hint_continuity",
-        field: "watchouts",
-        span: "你沒有立刻邀約，錯過了最好的窗口。",
-        replacement: "她只回散步很舒服；下一步先沿這個新回覆多問一個具體點。",
-      },
-      {
-        kind: "hint_continuity",
-        field: "nextInviteMove",
-        span: "放棄鋪陳，下一句立刻約她見面。",
-        replacement: "先問她平常走哪一段，等她多分享再看邀約窗口。",
-      },
-    ],
-  });
-  const secondReview = JSON.stringify({
-    verdict: "accept",
-    continuityChecked: true,
-    checkedAllFields: true,
-    issues: [],
-  });
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger({ ai_count: 2 }),
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-      claudeReplies: [JSON.stringify(invalid), firstReview, secondReview],
+      claudeReplies: [
+        JSON.stringify(invalid),
+        JSON.stringify(repaired),
+        JSON.stringify(repaired),
+      ],
       rpc: {
         resolve_practice_hint_decision: [{
           data: {
@@ -5998,7 +5811,7 @@ Deno.test("direct Beginner and Game Hint semantically repair hallucinated user f
     assertEquals(state.semanticCalls.length, 0, mode);
     const retryPrompt = claudePrompt(state.claudeCalls[1]);
     assert(retryPrompt.includes("事實歸因校正"), mode);
-    assert(retryPrompt.includes("完整閱讀上方逐字稿"), mode);
+    assert(retryPrompt.includes("完整閱讀逐字稿"), mode);
     assertGroundingReviewInput(state.claudeCalls[1], invalidMirror);
     assertEquals(state.claudeCalls[1].temperature, 0, mode);
     assertEquals(recordHintCalls(state).length, 1, mode);
@@ -6087,10 +5900,12 @@ Deno.test("direct Game Hint lets reviewed activity questions bypass invite-route
     }),
   );
   assertEquals(json.replies[0].text, JSON.parse(reviewed).warmUp);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
   assertEquals(state.claudeCalls.length, 3);
   assert(claudePrompt(state.claudeCalls[1]).includes("按整句語意判斷"));
   assert(
-    claudePrompt(state.claudeCalls[2]).includes("獨立第二道對抗複核"),
+    claudePrompt(state.claudeCalls[2]).includes("第二次獨立複核"),
   );
   for (const reply of json.replies) {
     assertEquals(reply.decision.inviteRoute, "build");
@@ -6177,9 +5992,8 @@ Deno.test("direct Beginner Hint grounding repair handles the production hometown
   assertEquals(state.claudeCalls.length, 3);
   const repairPrompt = claudePrompt(state.claudeCalls[1]);
   assert(repairPrompt.includes("不是 user 證據"));
-  assert(repairPrompt.includes("追到兩點"));
-  assert(repairPrompt.includes("本來只想看一集"));
-  assert(repairPrompt.includes("沒記住、不知道、沒去過"));
+  assert(repairPrompt.includes("未知劇名、店名、答案、感受或是否做過"));
+  assert(repairPrompt.includes("不可改成忘記、不知道、沒去過"));
   assertEquals(recordHintCalls(state).length, 1);
 });
 
@@ -6199,8 +6013,8 @@ Deno.test("semantic grounding cannot bypass unsupported contact identifiers", as
       ledger: beginnerStartedLedger(),
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
       // The first review wrongly leaves the invented number unchanged. The
-      // deterministic PII gate must hard-stop it; a later reply cannot rescue
-      // a semantic review that already accepted unsafe content.
+      // deterministic PII gate rejects that review, then the redundant review
+      // returns a complete safe candidate.
       claudeReplies: [unsupportedPhone, unsupportedPhone, safe],
     },
     hintBody({
@@ -6213,18 +6027,17 @@ Deno.test("semantic grounding cannot bypass unsupported contact identifiers", as
     }),
   );
 
-  assertEquals(response.status, 503, JSON.stringify(json));
-  assertEquals(json, {
-    error: "practice_hint_generation_retryable",
-    retryable: true,
-  });
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(JSON.stringify(json).includes("0912345678"), false);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, true);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
-  assertEquals(recordHintCalls(state).length, 0);
-  assertEquals(releaseHintCalls(state).length, 1);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("first grounding review timeout cannot downgrade the dual-review gate", async () => {
+Deno.test("a redundant Hint review can recover after the first review times out", async () => {
   const invented = validHintJson({
     warmUp: "這個傳給嘉玲看，她一定會笑。",
     steady: "我會丟給嘉玲，再問她最好笑的是哪段。",
@@ -6251,11 +6064,10 @@ Deno.test("first grounding review timeout cannot downgrade the dual-review gate"
     }),
   );
 
-  assertEquals(response.status, 503, JSON.stringify(json));
-  assertEquals(json, {
-    error: "practice_hint_generation_retryable",
-    retryable: true,
-  });
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(JSON.stringify(json).includes("嘉玲"), false);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, true);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assertEquals(state.claudeCalls[2].temperature, 0);
@@ -6264,8 +6076,8 @@ Deno.test("first grounding review timeout cannot downgrade the dual-review gate"
       message.content.includes("事實歸因校正")
     ),
   );
-  assertEquals(recordHintCalls(state).length, 0);
-  assertEquals(releaseHintCalls(state).length, 1);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
 });
 
 Deno.test("two grounding review failures never record an unaudited Hint", async () => {
@@ -6307,7 +6119,7 @@ Deno.test("two grounding review failures never record an unaudited Hint", async 
   assertEquals(releaseHintCalls(state).length, 1);
 });
 
-Deno.test("malformed Hint writer JSON cannot be rebuilt by a reviewer", async () => {
+Deno.test("a retried Hint writer can return after one complete semantic review", async () => {
   const repaired = validHintJson();
   const { response, json, state } = await run(
     {
@@ -6321,17 +6133,19 @@ Deno.test("malformed Hint writer JSON cannot be rebuilt by a reviewer", async ()
     }),
   );
 
-  assertEquals(response.status, 503, JSON.stringify(json));
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, true);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(
     claudePrompt(state.claudeCalls[1]).includes(
-      "practiceGroundingReviewerV2",
+      "practiceGroundingReviewerV3",
     ),
     false,
   );
   assertGroundingReviewInput(state.claudeCalls[2], '"warmUp"');
-  assertEquals(recordHintCalls(state).length, 0);
-  assertEquals(releaseHintCalls(state).length, 1);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
 });
 
 Deno.test("explicit first-review semantic failure hard-stops without a rescue rewrite", async () => {
@@ -6359,7 +6173,7 @@ Deno.test("explicit first-review semantic failure hard-stops without a rescue re
   assertEquals(releaseHintCalls(state).length, 1);
 });
 
-Deno.test("independent Hint reviewer may apply a bounded repair", async () => {
+Deno.test("independent Hint reviewer may return a complete repaired Hint", async () => {
   const candidate = validHintJson();
   const rewritten = validHintJson({
     warmUp: "咖啡這句收到，我改成另一條沒被複核的回覆。",
@@ -6383,7 +6197,7 @@ Deno.test("independent Hint reviewer may apply a bounded repair", async () => {
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("the second Hint review is the final bounded semantic adjudication", async () => {
+Deno.test("the second complete Hint review is the final semantic adjudication", async () => {
   const candidate = validHintJson();
   const repaired = validHintJson({
     warmUp: "咖啡這題先不替自己補答案，妳會怎麼判斷？",
@@ -6410,7 +6224,7 @@ Deno.test("the second Hint review is the final bounded semantic adjudication", a
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("malformed independent Hint verifier fails closed", async () => {
+Deno.test("malformed second Hint review falls back to the first reviewed Hint", async () => {
   const candidate = validHintJson();
   const { response, json, state } = await run(
     {
@@ -6424,10 +6238,18 @@ Deno.test("malformed independent Hint verifier fails closed", async () => {
     }),
   );
 
-  assertEquals(response.status, 503, JSON.stringify(json));
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, true);
   assertEquals(state.claudeCalls.length, 3);
-  assertEquals(recordHintCalls(state).length, 0);
-  assertEquals(releaseHintCalls(state).length, 1);
+  assertEquals(recordHintCalls(state).length, 1);
+  const storedHint = recordHintCalls(state)[0].params.p_result as Record<
+    string,
+    unknown
+  >;
+  assertEquals(storedHint.fallbackUsed, false);
+  assertEquals(storedHint.groundingReviewFallbackUsed, true);
+  assertEquals(releaseHintCalls(state).length, 0);
 });
 
 Deno.test("independent verifier outage falls back to the first fully reviewed Hint", async () => {
@@ -6457,8 +6279,10 @@ Deno.test("independent verifier outage falls back to the first fully reviewed Hi
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
+  await Promise.all(state.backgroundTasks);
   const log = aiLogInserts(state)[0].values;
-  assertEquals(log.status, "success");
+  assertEquals(log.status, "failed");
+  assertEquals(log.fallback_used, true);
   assertEquals(
     (log.request_body as Record<string, unknown>).failureClasses,
     ["timeout"],
@@ -6501,7 +6325,9 @@ Deno.test("direct Hint regenerates an invented media title from an unanswered qu
   assertEquals(state.claudeCalls[1].temperature, 0);
   assertGroundingReviewInput(state.claudeCalls[1], inventedTitle);
   assert(
-    claudePrompt(state.claudeCalls[1]).includes("具名人物、地點、時間"),
+    claudePrompt(state.claudeCalls[1]).includes(
+      "未知劇名、店名、答案、感受或是否做過",
+    ),
   );
   assertEquals(recordHintCalls(state).length, 1);
 });
@@ -6667,22 +6493,12 @@ Deno.test("grounding repair and verifier remove the exact production Game forgot
     coaching:
       "Game 心法：她問店名，現在是開場，但逐字稿沒有答案；保留 {店名} 讓使用者填真值，只沿明示的路過與聞到香接球。速約任務：先聊挑店標準，不邀約。",
   });
-  const repairReview = JSON.stringify({
-    verdict: "repair",
-    checkedAllFields: true,
-    issues: (["warmUp", "steady", "coaching"] as const).map((field) => ({
-      kind: "unsupported_user_fact",
-      field,
-      span: JSON.parse(invented)[field],
-      replacement: JSON.parse(repaired)[field],
-    })),
-  });
   const { response, json, state } = await run(
     {
       ledger: gameStartedLedger(),
       drawEvents: [{ profile_id: "practice_girl_004" }],
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-      claudeReplies: [invented, repairReview, repaired],
+      claudeReplies: [invented, repaired, repaired],
     },
     hintBody({
       practiceMode: "game",
@@ -6767,7 +6583,7 @@ Deno.test("Hint repair removes a memory hallucination before independent verific
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[2].temperature, 0);
   assert(
-    claudePrompt(state.claudeCalls[2]).includes("獨立第二道對抗複核"),
+    claudePrompt(state.claudeCalls[2]).includes("第二次獨立複核"),
   );
   assertEquals(recordHintCalls(state).length, 1);
 });
@@ -6828,14 +6644,10 @@ Deno.test("Hint repair removes partner speculation before independent verificati
   }
   const firstVerificationPrompt = claudePrompt(state.claudeCalls[1]);
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
-  assert(
-    firstVerificationPrompt.includes(
-      "被抓包／妳說中了／確實／就是／對啊",
-    ),
-  );
-  assert(verificationPrompt.includes("被抓包／妳說中了／確實／就是／對啊"));
   assert(firstVerificationPrompt.includes("只證明她說過，不是 user 證據"));
   assert(verificationPrompt.includes("只證明她說過，不是 user 證據"));
+  assert(firstVerificationPrompt.includes("自行肯定/否定"));
+  assert(verificationPrompt.includes("自行肯定/否定"));
   assertEquals(recordHintCalls(state).length, 1);
 });
 
@@ -7057,15 +6869,14 @@ Deno.test("Beginner Debrief repair removes an invented plan before independent v
   assert(verificationPrompt.includes("server-trusted user evidence"));
   assert(
     verificationPrompt.includes(
-      "user 事實只能由 user_turn 或 trusted_user_fact 支持",
+      "user 事實只認 user_turn 或 server-trusted user evidence",
     ),
   );
   assert(
     verificationPrompt.includes("partner 現況/行程/動作只認 assistant_turn"),
   );
-  assert(verificationPrompt.includes("本來只想看一集"));
-  assert(verificationPrompt.includes("重新檢查候選所有欄位"));
-  assert(verificationPrompt.includes("只改有 issue 的最小子句"));
+  assert(verificationPrompt.includes("重新檢查全部可見欄位"));
+  assert(verificationPrompt.includes("只修改不安全處"));
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 1);
@@ -7179,9 +6990,9 @@ Deno.test("Game Debrief repair removes partner speculation before independent ve
     JSON.parse(verified).suggestedLine,
   );
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
-  assert(verificationPrompt.includes("整段被承認內容都成了 user 事實"));
+  assert(verificationPrompt.includes("以 exact Hint decision object 為準"));
   assert(
-    verificationPrompt.includes("不得改寫 Hint 接球點、策略、邀約路線"),
+    verificationPrompt.includes("不可把 Hint 說成錯誤、太保守或錯失邀約"),
   );
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.semanticCalls.length, 0);
@@ -7220,8 +7031,58 @@ Deno.test("direct Debrief lets reviewed partner questions bypass initiative rege
   assertEquals(state.claudeCalls.length, 3);
   assert(claudePrompt(state.claudeCalls[1]).includes("不是 user 證據"));
   assert(
-    claudePrompt(state.claudeCalls[2]).includes("獨立第二道對抗複核"),
+    claudePrompt(state.claudeCalls[2]).includes("第二次獨立複核"),
   );
+  assertEquals(
+    (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
+      .failureCodes,
+    [],
+  );
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("direct Game Debrief lets a reviewed partner question bypass initiative regex", async () => {
+  const card = JSON.parse(validDebriefJson({
+    summary: "她提出朋友邀約問題，你尚未回答。",
+    strengths: ["你先分享朋友最近約你出去，讓她能沿這個近況追問。"],
+    watchouts: ["下一步先補真實答案，不要把她的問題寫成邀約。"],
+    suggestedLine: "妳問我怎麼看朋友的邀約，這題我先補真實想法；妳會怎麼看？",
+    dateChance: "low",
+    dateChanceReason: "她只是在問朋友邀約，沒有邀你見面。",
+    nextInviteMove: "先補真實想法，再交換對朋友邀約的看法，不急著邀約。",
+  })) as Record<string, unknown>;
+  card.gameBreakdown = {
+    phaseReached: "開場進到朋友邀約看法交換",
+    missedVariable: "還缺使用者對朋友邀約的真實想法",
+    failureState: "她只提出問題，尚未邀使用者見面",
+    nextFirstLine: card.suggestedLine,
+    inviteDirection: "先補真實想法並交換看法，不急著邀約",
+  };
+  const reviewed = JSON.stringify(card);
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [reviewed, reviewed, reviewed],
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-debrief-reviewed-partner-question",
+      turns: [
+        { role: "user", text: "朋友最近約我出去。" },
+        { role: "ai", text: "你怎麼看朋友的邀約？" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.summary, card.summary);
+  assertEquals(json.card.gameBreakdown.nextFirstLine, card.suggestedLine);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(
     (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
       .failureCodes,
@@ -7246,22 +7107,12 @@ Deno.test("direct Game Hint regenerates an invented district from an unanswered 
     coaching:
       "Game 心法：她問哪一區、是不是網美店，現在是開場，但逐字稿沒有答案；保留 {區域}、{是／不是} 與 {風格} 讓使用者填真值。速約任務：先聊挑店標準，不硬約。",
   });
-  const groundedReview = JSON.stringify({
-    verdict: "repair",
-    checkedAllFields: true,
-    issues: (["warmUp", "steady", "coaching"] as const).map((field) => ({
-      kind: "unsupported_user_fact",
-      field,
-      span: JSON.parse(inventedDistrict)[field],
-      replacement: JSON.parse(groundedReply)[field],
-    })),
-  });
   const { response, json, state } = await run(
     {
       ledger: gameStartedLedger(),
       drawEvents: [{ profile_id: "practice_girl_004" }],
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-      claudeReplies: [inventedDistrict, groundedReview],
+      claudeReplies: [inventedDistrict, groundedReply, groundedReply],
     },
     hintBody({
       practiceMode: "game",
@@ -7398,12 +7249,12 @@ Deno.test("direct Game Hint keeps L4 safety strict while skipping lexical style 
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
-    claudePrompt(state.claudeCalls[1]).includes("practiceGroundingReviewerV2"),
+    claudePrompt(state.claudeCalls[1]).includes("practiceGroundingReviewerV3"),
   );
   assertEquals(recordHintCalls(state).length, 1);
 });
 
-Deno.test("writer timeout cannot downgrade the direct Hint dual-review gate", async () => {
+Deno.test("a retried Hint writer returns after one complete semantic review", async () => {
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
@@ -7416,11 +7267,9 @@ Deno.test("writer timeout cannot downgrade the direct Hint dual-review gate", as
     }),
   );
 
-  assertEquals(response.status, 503);
-  assertEquals(json, {
-    error: "practice_hint_generation_retryable",
-    retryable: true,
-  });
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, true);
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
@@ -7428,8 +7277,8 @@ Deno.test("writer timeout cannot downgrade the direct Hint dual-review gate", as
     .map((message) => message.content)
     .join("\n");
   assertEquals(retryPrompt.includes("上一版 Hint JSON 被拒絕"), false);
-  assertEquals(recordHintCalls(state).length, 0);
-  assertEquals(releaseHintCalls(state).length, 1);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
 });
 
 Deno.test("direct Hint reviews one invalid candidate twice before failing closed", async () => {
