@@ -137,6 +137,8 @@ interface HintParseOptions {
   semanticGroundingRepaired?: boolean;
   /** Candidate-only pass: keep every hard guard except factual attribution. */
   deferFactGroundingToSemantic?: boolean;
+  /** Sentence-level semantic review already resolved invite-policy wording. */
+  semanticPolicyReviewed?: boolean;
   /**
    * A generated candidate is never user-visible. Let the semantic reviewer
    * repair visible safety/style defects, then run the normal hard guard again
@@ -1521,6 +1523,7 @@ function assertGeneratedHintQuality(opts: {
     /(?:這輪|現在)?(?:先)?(?:不約|不急著約|不硬約)|(?:先鋪墊|等窗口|先累積(?:投入|熟悉))/u
       .test(opts.coaching);
   if (
+    opts.parseOptions.semanticPolicyReviewed !== true &&
     coachingSaysNoInvite &&
     [opts.warmUp, opts.steady].some((reply) =>
       practiceInviteLevelFor(reply) !== "none"

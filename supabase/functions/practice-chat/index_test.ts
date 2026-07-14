@@ -5394,12 +5394,19 @@ Deno.test("direct Game Hint lets semantic grounding preserve a safe generic hypo
 });
 
 Deno.test("direct Game Hint lets reviewed activity questions bypass invite-route regex", async () => {
-  const reviewed = validGameHintJson({
+  const writer = validGameHintJson({
     warmUp: "這香味確實很犯規，妳下次有空也會去喝咖啡嗎？",
     steady:
       "哪家跟有沒有進去，我先補真實答案；妳通常怎麼判斷一家店值不值得進？",
     coaching:
       "Game 心法：她問店名，但逐字稿沒有答案。現在是開場建立熟悉感，只沿用路過聞到香，把判斷球交回她。速約任務：本輪在鋪墊階，先讓她聊判斷標準，不邀約。",
+  });
+  const reviewed = validGameHintJson({
+    warmUp: "這香味確實很犯規，妳下次有空也會去喝咖啡嗎？",
+    steady:
+      "哪家跟有沒有進去，我先補真實答案；妳通常怎麼判斷一家店值不值得進？",
+    coaching:
+      "Game 心法：她問店名，但逐字稿沒有答案。現在是開場建立熟悉感，只沿用路過聞到香，把判斷球交回她。速約任務：這輪先不約，先讓她聊判斷標準。",
   });
   const { response, json, state } = await run(
     {
@@ -5409,7 +5416,7 @@ Deno.test("direct Game Hint lets reviewed activity questions bypass invite-route
       }),
       drawEvents: [{ profile_id: "practice_girl_004" }],
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-      claudeReplies: [reviewed, reviewed, reviewed],
+      claudeReplies: [writer, reviewed, reviewed],
     },
     hintBody({
       practiceMode: "game",

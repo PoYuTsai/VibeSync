@@ -2770,6 +2770,7 @@ export function createPracticeChatHandler(
               skipLexicalStyleGuards: true,
               semanticGroundingRepaired,
               deferFactGroundingToSemantic,
+              semanticPolicyReviewed,
             }),
             semanticPolicyReviewed,
           );
