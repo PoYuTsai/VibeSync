@@ -68,6 +68,19 @@ function claudePrompt(call: ClaudeArgs): string {
   return call.messages.map((message) => message.content).join("\n");
 }
 
+function outputSchema(call: ClaudeArgs): Record<string, unknown> {
+  assert(call.outputJsonSchema !== undefined);
+  return call.outputJsonSchema as Record<string, unknown>;
+}
+
+function outputSchemaProperties(
+  call: ClaudeArgs,
+): Record<string, Record<string, unknown>> {
+  const properties = outputSchema(call).properties;
+  assert(typeof properties === "object" && properties !== null);
+  return properties as Record<string, Record<string, unknown>>;
+}
+
 function assertGroundingReviewInput(
   call: ClaudeArgs,
   previousCandidate: string,
@@ -80,6 +93,7 @@ function assertGroundingReviewInput(
     call.messages.some((message) => message.role === "assistant"),
     false,
   );
+  assert(call.outputJsonSchema !== undefined);
 }
 
 function subscription(overrides: Record<string, unknown> = {}) {
@@ -4276,6 +4290,24 @@ Deno.test("Debrief defaults to one Claude Sonnet writer plus two grounding revie
   assertEquals(state.claudeCalls[0].maxTokens, 1200);
   assertEquals(state.claudeCalls[1].maxTokens, 1200);
   assertEquals(state.claudeCalls[2].maxTokens, 1200);
+  assertEquals(state.claudeCalls[0].outputJsonSchema, undefined);
+  assert(state.claudeCalls[1].outputJsonSchema !== undefined);
+  assert(state.claudeCalls[2].outputJsonSchema !== undefined);
+  assertEquals(outputSchema(state.claudeCalls[1]).required, [
+    "summary",
+    "strengths",
+    "watchouts",
+    "suggestedLine",
+    "vibe",
+    "dateChance",
+    "dateChanceReason",
+    "nextInviteMove",
+    "gameBreakdown",
+  ]);
+  assertEquals(
+    outputSchemaProperties(state.claudeCalls[1]).gameBreakdown.type,
+    "null",
+  );
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(json.provider, "anthropic");
   assertEquals(json.model, CLAUDE_SONNET_MODEL);
@@ -4378,6 +4410,17 @@ Deno.test("a retried Game Debrief writer can return after one complete semantic 
   );
   assertGroundingReviewInput(state.claudeCalls[2], '"gameBreakdown"');
   assertEquals(state.claudeCalls[2].temperature, 0);
+  const gameBreakdownSchema = outputSchemaProperties(
+    state.claudeCalls[2],
+  ).gameBreakdown;
+  assertEquals(gameBreakdownSchema.type, "object");
+  assertEquals(gameBreakdownSchema.required, [
+    "phaseReached",
+    "missedVariable",
+    "failureState",
+    "nextFirstLine",
+    "inviteDirection",
+  ]);
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
@@ -5757,6 +5800,14 @@ Deno.test("free Hint uses Claude Sonnet writer plus two mandatory grounding revi
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(state.claudeCalls[0].timeoutMs, 24000);
+  assertEquals(state.claudeCalls[0].outputJsonSchema, undefined);
+  assert(state.claudeCalls[1].outputJsonSchema !== undefined);
+  assert(state.claudeCalls[2].outputJsonSchema !== undefined);
+  assertEquals(outputSchema(state.claudeCalls[1]).required, [
+    "warmUp",
+    "steady",
+    "coaching",
+  ]);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(json.provider, "anthropic");
   assertEquals(json.model, CLAUDE_SONNET_MODEL);

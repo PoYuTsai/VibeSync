@@ -39,6 +39,50 @@ Deno.test("callClaude maps practice messages to the Messages API", async () => {
       { role: "user", content: "user evidence" },
     ]);
     assertEquals(captured.model, "claude-test");
+    assertEquals(captured.output_config, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("callClaude sends an optional structured output schema", async () => {
+  const originalFetch = globalThis.fetch;
+  const capturedBodies: Record<string, unknown>[] = [];
+  globalThis.fetch = (_input, init) => {
+    const body = (init as { body?: BodyInit } | undefined)?.body;
+    capturedBodies.push(JSON.parse(String(body)));
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          content: [{ type: "text", text: '{"warmUp":"ok"}' }],
+        }),
+        { status: 200 },
+      ),
+    );
+  };
+  const outputJsonSchema = {
+    type: "object",
+    properties: { warmUp: { type: "string" } },
+    required: ["warmUp"],
+    additionalProperties: false,
+  } as const;
+  try {
+    const result = await callClaude({
+      apiKey: "test-key",
+      model: "claude-test",
+      messages: [{ role: "user", content: "return JSON" }],
+      maxTokens: 100,
+      temperature: 0,
+      timeoutMs: 1_000,
+      outputJsonSchema,
+    });
+    assertEquals(result, '{"warmUp":"ok"}');
+    assertEquals(capturedBodies[0].output_config, {
+      format: {
+        type: "json_schema",
+        schema: outputJsonSchema,
+      },
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }

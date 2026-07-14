@@ -145,6 +145,75 @@ const DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS = 24000;
 // scene props, user actions, or personal facts.
 const DIRECT_PRACTICE_TEMPERATURE = 0.2;
 const GROUNDING_REPAIR_TEMPERATURE = 0;
+// Grounding reviewers must return one parseable product object. These schemas
+// constrain JSON shape only; the existing Hint/Debrief parsers remain the
+// authority for content, safety, and user-visible quality.
+const HINT_GROUNDING_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    warmUp: { type: "string" },
+    steady: { type: "string" },
+    coaching: { type: "string" },
+  },
+  required: ["warmUp", "steady", "coaching"],
+  additionalProperties: false,
+} as const;
+const DEBRIEF_GROUNDING_PROPERTIES = {
+  summary: { type: "string" },
+  strengths: { type: "array", items: { type: "string" } },
+  watchouts: { type: "array", items: { type: "string" } },
+  suggestedLine: { type: "string" },
+  vibe: { type: "string" },
+  dateChance: { type: "string" },
+  dateChanceReason: { type: "string" },
+  nextInviteMove: { type: "string" },
+} as const;
+const DEBRIEF_GROUNDING_REQUIRED = [
+  "summary",
+  "strengths",
+  "watchouts",
+  "suggestedLine",
+  "vibe",
+  "dateChance",
+  "dateChanceReason",
+  "nextInviteMove",
+  "gameBreakdown",
+] as const;
+const STANDARD_DEBRIEF_GROUNDING_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    ...DEBRIEF_GROUNDING_PROPERTIES,
+    gameBreakdown: { type: "null" },
+  },
+  required: DEBRIEF_GROUNDING_REQUIRED,
+  additionalProperties: false,
+} as const;
+const GAME_DEBRIEF_GROUNDING_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    ...DEBRIEF_GROUNDING_PROPERTIES,
+    gameBreakdown: {
+      type: "object",
+      properties: {
+        phaseReached: { type: "string" },
+        missedVariable: { type: "string" },
+        failureState: { type: "string" },
+        nextFirstLine: { type: "string" },
+        inviteDirection: { type: "string" },
+      },
+      required: [
+        "phaseReached",
+        "missedVariable",
+        "failureState",
+        "nextFirstLine",
+        "inviteDirection",
+      ],
+      additionalProperties: false,
+    },
+  },
+  required: DEBRIEF_GROUNDING_REQUIRED,
+  additionalProperties: false,
+} as const;
 const LEGACY_CLIENT_QUALITY_SCHEMA_VERSION = "typed-facts-v1";
 // 2026-07-13 probe: game hint 在 650 tokens 下 DeepSeek 47% finish_reason=length
 // 截斷（JSON 收不完→誤報 provider_error）。提高到 1600 給 Game Hint 完整 JSON 空間。
@@ -2938,6 +3007,9 @@ export function createPracticeChatHandler(
                   ? GROUNDING_REPAIR_TEMPERATURE
                   : DIRECT_PRACTICE_TEMPERATURE,
                 timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
+                outputJsonSchema: isGroundingReview
+                  ? HINT_GROUNDING_JSON_SCHEMA
+                  : undefined,
               });
               if (isGroundingReview) {
                 const grounded = parseGroundingReviewResult({
@@ -4065,6 +4137,11 @@ export function createPracticeChatHandler(
                   ? GROUNDING_REPAIR_TEMPERATURE
                   : DIRECT_PRACTICE_TEMPERATURE,
                 timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
+                outputJsonSchema: isGroundingReview
+                  ? debriefPracticeMode === "game"
+                    ? GAME_DEBRIEF_GROUNDING_JSON_SCHEMA
+                    : STANDARD_DEBRIEF_GROUNDING_JSON_SCHEMA
+                  : undefined,
               });
               if (isGroundingReview) {
                 const grounded = parseGroundingReviewResult({

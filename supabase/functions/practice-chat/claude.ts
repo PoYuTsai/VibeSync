@@ -12,6 +12,8 @@ export interface ClaudeArgs {
   maxTokens: number;
   temperature: number;
   timeoutMs: number;
+  /** Optional provider-level JSON shape. Product semantics stay in the parser. */
+  outputJsonSchema?: Readonly<Record<string, unknown>>;
   endpoint?: string;
   model: string;
 }
@@ -55,6 +57,16 @@ export async function callClaude(args: ClaudeArgs): Promise<string> {
         temperature: args.temperature,
         system: prompt.system,
         messages: prompt.messages,
+        ...(args.outputJsonSchema
+          ? {
+            output_config: {
+              format: {
+                type: "json_schema",
+                schema: args.outputJsonSchema,
+              },
+            },
+          }
+          : {}),
       }),
       signal: controller.signal,
     });
