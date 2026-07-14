@@ -772,6 +772,8 @@ export function buildHintDecision(
     replyType: HintReplyType;
     replyText: string;
     tacticalMove?: HintTacticalMove;
+    /** A semantic editor already checked whether the visible line fits the route. */
+    semanticPolicyReviewed?: boolean;
   },
 ): PracticeHintDecision {
   const temperatureScore = clampTemperature(opts.temperatureScore);
@@ -808,15 +810,19 @@ export function buildHintDecision(
       ? "build"
       : baseRoute;
     const actualLevel = practiceInviteLevelFor(opts.replyText);
-    if (
-      practiceInviteLevelRank(actualLevel) >
-        practiceInviteLevelRank(allowedInviteLevelForRoute(allowedRoute))
-    ) {
+    const allowedLevel = allowedInviteLevelForRoute(allowedRoute);
+    const exceedsAllowedRoute = practiceInviteLevelRank(actualLevel) >
+      practiceInviteLevelRank(allowedLevel);
+    if (exceedsAllowedRoute && opts.semanticPolicyReviewed !== true) {
       throw new Error("hint_quality_invalid_invite_route");
     }
-    const inviteRoute: GameInviteRoute = actualLevel === "direct"
+    // The lexical classifier is only an early warning. Once the semantic editor
+    // has reviewed the whole sentence, clamp a disputed classification to the
+    // server-owned route instead of rejecting the same valid Chinese three times.
+    const effectiveLevel = exceedsAllowedRoute ? allowedLevel : actualLevel;
+    const inviteRoute: GameInviteRoute = effectiveLevel === "direct"
       ? "direct"
-      : actualLevel === "soft"
+      : effectiveLevel === "soft"
       ? "soft"
       : allowedRoute === "repair"
       ? "repair"
@@ -866,15 +872,16 @@ export function buildHintDecision(
     ? "not_ready"
     : baseRoute;
   const actualLevel = practiceInviteLevelFor(opts.replyText);
-  if (
-    practiceInviteLevelRank(actualLevel) >
-      practiceInviteLevelRank(allowedInviteLevelForRoute(allowedRoute))
-  ) {
+  const allowedLevel = allowedInviteLevelForRoute(allowedRoute);
+  const exceedsAllowedRoute = practiceInviteLevelRank(actualLevel) >
+    practiceInviteLevelRank(allowedLevel);
+  if (exceedsAllowedRoute && opts.semanticPolicyReviewed !== true) {
     throw new Error("hint_quality_invalid_invite_route");
   }
-  const inviteRoute = actualLevel === "direct"
+  const effectiveLevel = exceedsAllowedRoute ? allowedLevel : actualLevel;
+  const inviteRoute = effectiveLevel === "direct"
     ? "direct_invite_ready"
-    : actualLevel === "soft"
+    : effectiveLevel === "soft"
     ? "soft_invite_ready"
     : "not_ready";
   const tacticalMove = inviteRoute === "soft_invite_ready"

@@ -4134,7 +4134,7 @@ Deno.test("Debrief record failure releases and leaves settled count unchanged", 
   assertEquals(state.debriefCount, 2);
 });
 
-Deno.test("Debrief defaults to one Claude Sonnet writer without semantic review", async () => {
+Deno.test("Debrief defaults to one Claude Sonnet writer plus two grounding reviews", async () => {
   const { response, json, state } = await run({
     sub: subscription({ tier: "starter" }),
     ledger: ledger({ ai_count: 1, charged: true }),
@@ -5393,6 +5393,66 @@ Deno.test("direct Game Hint lets semantic grounding preserve a safe generic hypo
   assertEquals(recordHintCalls(state).length, 1);
 });
 
+Deno.test("direct Game Hint lets reviewed activity questions bypass invite-route regex", async () => {
+  const reviewed = validGameHintJson({
+    warmUp: "這香味確實很犯規，妳下次有空也會去喝咖啡嗎？",
+    steady:
+      "哪家跟有沒有進去，我先補真實答案；妳通常怎麼判斷一家店值不值得進？",
+    coaching:
+      "Game 心法：她問店名，但逐字稿沒有答案。現在是開場建立熟悉感，只沿用路過聞到香，把判斷球交回她。速約任務：本輪在鋪墊階，先讓她聊判斷標準，不邀約。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({
+        temperature_score: 20,
+        familiarity_score: 10,
+      }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [reviewed, reviewed, reviewed],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-hint-reviewed-activity-question",
+      turns: [
+        { role: "user", text: "剛路過一間咖啡店，聞起來很香。" },
+        { role: "ai", text: "哪家啊？你有走進去喝一杯嗎？" },
+      ],
+    }),
+  );
+
+  assertEquals(
+    response.status,
+    200,
+    JSON.stringify({
+      json,
+      telemetry: aiLogInserts(state)[0]?.values.request_body,
+    }),
+  );
+  assertEquals(json.replies[0].text, JSON.parse(reviewed).warmUp);
+  assertEquals(state.claudeCalls.length, 3);
+  assert(
+    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
+      "按整句語意校正",
+    ),
+  );
+  assert(
+    (state.claudeCalls[2].messages.at(-1)?.content ?? "").includes(
+      "獨立第二道對抗複核",
+    ),
+  );
+  for (const reply of json.replies) {
+    assertEquals(reply.decision.inviteRoute, "build");
+  }
+  assertEquals(
+    (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
+      .failureCodes,
+    ["hint_quality_invalid_invite_route"],
+  );
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
 Deno.test("direct Game Hint grounding repair removes a truly invented person name", async () => {
   const invented = validGameHintJson({
     warmUp: "這個傳給嘉玲看，她一定會笑。",
@@ -5821,6 +5881,53 @@ Deno.test("independent Debrief verification catches an invented sensory answer",
   assertEquals(JSON.stringify(json).includes("沒記清楚"), false);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[2].temperature, 0);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("direct Debrief lets reviewed partner questions bypass initiative regex", async () => {
+  const reviewed = validDebriefJson({
+    summary: "她提出朋友邀約問題，你尚未回答。",
+    strengths: ["你先分享朋友最近約你出去，讓她能沿這個近況追問。"],
+    watchouts: ["下一步先補真實答案，不要把她的問題寫成邀約。"],
+    suggestedLine: "妳問我怎麼看朋友的邀約，這題我先補真實想法；妳會怎麼看？",
+    dateChance: "low",
+    dateChanceReason: "她只是在問朋友邀約，沒有邀你見面。",
+    nextInviteMove: "先補真實想法，再交換對朋友邀約的看法，不急著邀約。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [reviewed, reviewed, reviewed],
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "direct-debrief-reviewed-partner-question",
+      turns: [
+        { role: "user", text: "朋友最近約我出去。" },
+        { role: "ai", text: "你怎麼看朋友的邀約？" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.summary, JSON.parse(reviewed).summary);
+  assertEquals(state.claudeCalls.length, 3);
+  assert(
+    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
+      "主客體關係",
+    ),
+  );
+  assert(
+    (state.claudeCalls[2].messages.at(-1)?.content ?? "").includes(
+      "獨立第二道對抗複核",
+    ),
+  );
+  assertEquals(
+    (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
+      .failureCodes,
+    ["debrief_quality_invalid_partner_initiative"],
+  );
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 

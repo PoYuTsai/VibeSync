@@ -1508,6 +1508,7 @@ function assertGeneratedDebriefQuality(
     trustedFactClaims?: HintFactClaim[];
     serverOwnsHintStrategy?: boolean;
     semanticGroundingRepaired?: boolean;
+    semanticPolicyReviewed?: boolean;
     auditAllVisibleFacts?: boolean;
     deferFactGroundingToSemantic?: boolean;
   },
@@ -1523,7 +1524,13 @@ function assertGeneratedDebriefQuality(
   if (opts.serverOwnsHintStrategy !== true) {
     assertGeneratedDebriefFieldSubstance(card);
   }
-  assertNoInventedPartnerInitiative(card, opts.turns);
+  // This relation-sensitive regex is an early warning for the semantic editor,
+  // not final authority. Natural lines such as「問你有沒有走進去喝一杯」are
+  // questions, not invitations. After sentence-level review, trust the
+  // reviewed wording so a false positive cannot kill all recovery attempts.
+  if (opts.semanticPolicyReviewed !== true) {
+    assertNoInventedPartnerInitiative(card, opts.turns);
+  }
   rejectGenericPasteablePracticeText(
     card.suggestedLine,
     "debrief_quality_invalid_suggested_line",
@@ -1682,6 +1689,8 @@ export function parseDebriefCard(
     skipLexicalStyleGuards?: boolean;
     /** Ambiguous facts were checked in sentence context by Claude. */
     semanticGroundingRepaired?: boolean;
+    /** Sentence-level semantic review resolved relation-policy wording. */
+    semanticPolicyReviewed?: boolean;
     /** Apply the final fact/contact pass to every visible Debrief field. */
     auditAllVisibleFacts?: boolean;
     /** Candidate-only pass: keep every hard guard except factual attribution. */

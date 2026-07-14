@@ -564,6 +564,11 @@ function hintRetryReason(e: unknown): string {
     return "輸出太長導致 provider 截斷，必須壓短三欄並完整收句";
   }
   if (
+    message.includes("hint_quality_invalid_invite_route")
+  ) {
+    return "可貼回覆被判成超過目前 server 鎖定的邀約階段；按整句語意校正，若只是談到喝咖啡／見面而非真的邀她，不要硬改成罐頭；若真在邀約則退回目前階段";
+  }
+  if (
     message.includes("hint_quality_invalid") ||
     message.includes("hint_canned_visible_text")
   ) {
@@ -635,6 +640,9 @@ function debriefRetryReason(error: unknown): string {
   }
   if (message.includes("debrief_hint_assessment")) {
     return "已認定 Hint 策略延續，卻又把同一句批成禮貌收尾、沒給球或太保守";
+  }
+  if (message.includes("debrief_quality_invalid_partner_initiative")) {
+    return "把對方的問句或對使用者行為的追問誤寫成對方主動邀約；逐字稿若沒有她明確邀你見面，只改正這個主客體關係";
   }
   if (message.includes("overlong")) {
     return "欄位太長，若直接裁尾會變成半句";
@@ -2728,6 +2736,7 @@ export function createPracticeChatHandler(
         } as const;
         const attachHintDecisions = (
           generatedHint: ReturnType<typeof parseHintResult>,
+          semanticPolicyReviewed = false,
         ): ReturnType<typeof parseHintResult> => ({
           ...generatedHint,
           replies: generatedHint.replies.map((reply) => ({
@@ -2743,6 +2752,7 @@ export function createPracticeChatHandler(
               replyType: reply.type,
               replyText: reply.text,
               rationale: SERVER_HINT_DECISION_RATIONALE,
+              semanticPolicyReviewed,
             }),
           })) as ReturnType<typeof parseHintResult>["replies"],
         });
@@ -2750,15 +2760,19 @@ export function createPracticeChatHandler(
           rawHint: string,
           semanticGroundingRepaired = false,
           deferFactGroundingToSemantic = false,
+          semanticPolicyReviewed = false,
         ): ReturnType<typeof parseHintResult> =>
-          attachHintDecisions(parseHintResult(rawHint, {
-            ...generatedHintParseOptions,
-            semanticAdjudicated: false,
-            deferVisibleGuardsToSemantic: false,
-            skipLexicalStyleGuards: true,
-            semanticGroundingRepaired,
-            deferFactGroundingToSemantic,
-          }));
+          attachHintDecisions(
+            parseHintResult(rawHint, {
+              ...generatedHintParseOptions,
+              semanticAdjudicated: false,
+              deferVisibleGuardsToSemantic: false,
+              skipLexicalStyleGuards: true,
+              semanticGroundingRepaired,
+              deferFactGroundingToSemantic,
+            }),
+            semanticPolicyReviewed,
+          );
         let previousDirectHintCandidate: string | null = null;
         let hintGroundingCandidateReady = false;
         let hintGroundingReviewsCompleted = 0;
@@ -2914,7 +2928,12 @@ export function createPracticeChatHandler(
               // bounded review even when its first hard-gate parse fails.
               hintGroundingCandidateReady = true;
               if (isGroundingReview) {
-                const reviewedHint = parseDirectGeneratedHint(rawHint, true);
+                const reviewedHint = parseDirectGeneratedHint(
+                  rawHint,
+                  true,
+                  false,
+                  true,
+                );
                 hintGroundingReviewsCompleted += 1;
                 lastValidatedReviewedHint = reviewedHint;
                 if (
@@ -3811,6 +3830,7 @@ export function createPracticeChatHandler(
           rawCard: string,
           semanticGroundingRepaired = false,
           deferFactGroundingToSemantic = false,
+          semanticPolicyReviewed = false,
         ): DebriefCard => {
           const rawCandidate = parseDebriefCandidateObject(rawCard);
           const rawGameBreakdown = rawCandidate.gameBreakdown;
@@ -3851,6 +3871,7 @@ export function createPracticeChatHandler(
             serverOwnsHintStrategy: true,
             skipLexicalStyleGuards: true,
             semanticGroundingRepaired,
+            semanticPolicyReviewed,
             auditAllVisibleFacts: true,
             deferFactGroundingToSemantic,
           });
@@ -3998,7 +4019,12 @@ export function createPracticeChatHandler(
               // bounded review even when its first hard-gate parse fails.
               debriefGroundingCandidateReady = true;
               if (isGroundingReview) {
-                const reviewedCard = parseDirectGeneratedDebrief(rawCard, true);
+                const reviewedCard = parseDirectGeneratedDebrief(
+                  rawCard,
+                  true,
+                  false,
+                  true,
+                );
                 debriefGroundingReviewsCompleted += 1;
                 lastValidatedReviewedDebrief = reviewedCard;
                 if (
