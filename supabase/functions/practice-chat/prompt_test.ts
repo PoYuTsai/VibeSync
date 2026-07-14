@@ -69,6 +69,7 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
       "她自述休假/有無計畫=自揭/行程",
       "反問/普通行程≠邀約",
       "明示可約時間/意願=窗口",
+      "「我有時候會X」屬 user 習慣/感受",
       "每個 {} 只放一個扁平原子槽",
       "禁巢狀/分支句/故事",
     ]

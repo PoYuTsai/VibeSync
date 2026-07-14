@@ -8285,7 +8285,7 @@ Deno.test("direct Game Debrief repairs the latest production tasting, timing, an
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
-Deno.test("direct Beginner Debrief release review repairs the latest production global-negative claims", async () => {
+Deno.test("direct Beginner Debrief release review repairs production global negatives and an invented habit", async () => {
   const appliedHint = "哇難得早休息耶，我還在努力讓腦袋開機 😂 你今天有班嗎？";
   const falseSummary =
     "開場有接住她的狀態，但全場只有問句，缺乏自我揭露，連結感薄弱。";
@@ -8293,13 +8293,15 @@ Deno.test("direct Beginner Debrief release review repairs the latest production 
     "全場 user 只有追劇開場＋Hint 句，沒有任何自我揭露，對話偏單向詢問。";
   const falseDateChanceReason =
     "她僅告知狀態、無延伸話題線索，也無時間或行程資訊可評估。";
+  const unsupportedHabitLine =
+    "班表亂真的很消耗人，我有時候也會突然很想追劇當作放電 😂";
   const suggestedLine =
     "休假廢在家很讚 😂 我現在也還在開機中；妳今天最想怎麼放空？";
   const wrong = validDebriefJson({
     summary: falseSummary,
     strengths: ["Hint 有接住她難得早休息的狀態。"],
     watchouts: [falseWatchout],
-    suggestedLine,
+    suggestedLine: unsupportedHabitLine,
     dateChance: "low",
     dateChanceReason: falseDateChanceReason,
     nextInviteMove: "先問她休假如何安排，再看有沒有邀約窗口。",
@@ -8308,8 +8310,7 @@ Deno.test("direct Beginner Debrief release review repairs the latest production 
     summary: "",
     strengths: "她難得早休息←assistant_turn[1]:『我今天難得早點休息』",
     watchouts: "",
-    suggestedLine:
-      "我還在開機中←user_turn[2]:『我還在努力讓腦袋開機』；她休假←assistant_turn[3]:『今天剛好休假』",
+    suggestedLine: "我有時候也會追劇放電←user_turn[0]:『昨晚追劇追到兩點』",
     dateChanceReason: "",
     nextInviteMove: "",
     gameBreakdown: "",
@@ -8389,6 +8390,7 @@ Deno.test("direct Beginner Debrief release review repairs the latest production 
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(json.card.summary, JSON.parse(repaired).summary);
+  assertEquals(json.card.suggestedLine, suggestedLine);
   assert(json.card.summary.includes("追劇到兩點"));
   assert(json.card.summary.includes("今天休假"));
   assertEquals(json.card.dateChance, "low");
@@ -8402,6 +8404,7 @@ Deno.test("direct Beginner Debrief release review repairs the latest production 
       "全場只有問句",
       "沒有任何自我揭露",
       "無時間或行程資訊",
+      "我有時候也會突然很想追劇當作放電",
     ]
   ) {
     assertEquals(serialized.includes(repairedClaim), false, repairedClaim);
@@ -8412,6 +8415,8 @@ Deno.test("direct Beginner Debrief release review repairs the latest production 
   assertEquals(state.claudeCalls.length, 3);
   assertGroundingReviewInput(state.claudeCalls[1], falseSummary);
   assertGroundingReviewInput(state.claudeCalls[2], falseSummary);
+  assertGroundingReviewInput(state.claudeCalls[1], unsupportedHabitLine);
+  assertGroundingReviewInput(state.claudeCalls[2], unsupportedHabitLine);
   assertEquals(
     groundingReviewCandidate(state.claudeCalls[2]),
     groundingReviewCandidate(state.claudeCalls[1]),
@@ -8421,6 +8426,7 @@ Deno.test("direct Beginner Debrief release review repairs the latest production 
   for (const call of state.claudeCalls.slice(1)) {
     const prompt = claudePrompt(call);
     assert(prompt.includes("反例掃描"));
+    assert(prompt.includes("我有時候也會X"));
     assert(prompt.includes("今天剛好休假"));
     assert(prompt.includes('"role":"assistant"'));
   }
@@ -8876,13 +8882,14 @@ Deno.test("direct Game Debrief preserves an earlier question-only pattern when t
     dateChanceReason: "她持續回答，但互動仍停在資訊交換。",
     nextInviteMove: "下一句用真實立場接她的手沖細節。",
   })) as Record<string, unknown>;
-  card.gameBreakdown = {
+  const gameBreakdown = {
     failureState: "較早兩個 user turn 連續提問，對話停在資訊蒐集。",
     phaseReached: "開場資訊交換，已聊到手沖的水溫與研磨。",
     nextFirstLine: suggestedLine,
     missedVariable: "較早兩個 user turn 只有提問，缺少 user 自揭。",
     inviteDirection: "下一句先補真實立場，不急邀約。",
   };
+  card.gameBreakdown = gameBreakdown;
   const grounded = JSON.stringify(card);
   const { response, json, state } = await run(
     {
@@ -8910,7 +8917,7 @@ Deno.test("direct Game Debrief preserves an earlier question-only pattern when t
   assertEquals(json.card.watchouts, card.watchouts);
   assertEquals(
     json.card.gameBreakdown.missedVariable,
-    card.gameBreakdown.missedVariable,
+    gameBreakdown.missedVariable,
   );
   assertEquals(json.card.suggestedLine, suggestedLine);
   assertEquals(json.fallbackUsed, false);
@@ -8927,7 +8934,7 @@ Deno.test("direct Game Debrief preserves an earlier question-only pattern when t
   );
   for (const call of state.claudeCalls.slice(1)) {
     assert(
-      claudePrompt(call).includes("較早實際 user_turn 仍可有據診斷"),
+      claudePrompt(call).includes("較早 user_turn 有據仍可批"),
     );
   }
   const metrics = aiLogInserts(state)[0].values.request_body as Record<

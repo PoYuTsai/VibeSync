@@ -182,13 +182,14 @@ Deno.test("Debrief editor receives escaped server-owned timing and Hint context"
   for (
     const expected of [
       "反例掃描",
-      "依 role/scope 掃每句",
-      "一個反例即刪除、改正或縮窄",
-      "omittedMiddleTurnCount>0 時不得斷言全場不存在",
+      "candidate 寫 role/scope",
+      "有即刪/修/縮窄",
+      "omittedMiddleTurnCount>0 禁全場否定",
       "user 狀態/經歷/感受算自揭",
-      "assistant 明確自述休假、有/沒計畫、在家才算 partner 自揭/行程",
-      "只禁把該未發生回覆寫成",
-      "較早實際 user_turn 仍可有據診斷",
+      "只把 assistant 明確自述的休假/有無計畫/在家算 partner 自揭/行程",
+      "只禁以該未發生回覆批",
+      "較早 user_turn 有據仍可批",
+      "「我有時候也會X」屬 user 習慣/感受",
       "omittedMiddleTurnCount 與 Hint decision metadata",
       "每個 {} 禁巢狀、分支句或故事",
     ]
@@ -270,17 +271,18 @@ Deno.test("second review uses a compact release audit with authoritative termina
   assertStringIncludes(messages[0].content, "最短逐字 evidenceQuote");
   assertStringIncludes(
     messages[0].content,
-    "任何 assistant_turn 有直接問句就不得寫「無反問」",
+    "有問句不得寫「無反問」",
   );
   for (
     const expected of [
       "反例掃描",
-      "一個反例即刪除、改正或縮窄",
-      "omittedMiddleTurnCount>0 時不得斷言全場不存在",
+      "有即刪/修/縮窄",
+      "omittedMiddleTurnCount>0 禁全場否定",
       "user 狀態/經歷/感受算自揭",
-      "assistant 明確自述休假、有/沒計畫、在家才算 partner 自揭/行程",
-      "只禁把該未發生回覆寫成",
-      "較早實際 user_turn 仍可有據診斷",
+      "只把 assistant 明確自述的休假/有無計畫/在家算 partner 自揭/行程",
+      "只禁以該未發生回覆批",
+      "較早 user_turn 有據仍可批",
+      "「我有時候也會X」屬 user 習慣/感受",
       "omittedMiddleTurnCount 與 Hint decision metadata",
       "每個 {} 禁巢狀、分支句或故事",
     ]
@@ -392,7 +394,7 @@ Deno.test("bounded Debrief evidence keeps a middle applied Hint and its partner 
   assertStringIncludes(prompt, '"omittedMiddleTurnCount":90');
   assertStringIncludes(
     prompt,
-    "omittedMiddleTurnCount>0 時不得斷言全場不存在",
+    "omittedMiddleTurnCount>0 禁全場否定",
   );
   assertStringIncludes(
     prompt,

@@ -314,7 +314,7 @@ export function buildGroundingReviewMessages(opts: {
     : "summary、strengths、watchouts、suggestedLine、dateChanceReason、nextInviteMove、gameBreakdown";
   const scopedClaimProtocol = opts.surface === "hint"
     ? "「無反問」是跨逐字稿的負向命題：任何 assistant_turn 有直接問句就不得寫「無反問」；不能用單一 turn 支持全局否定。"
-    : "反例掃描：任何「某 role 全場無 X／只有 Y／一方只問另一方只答」都是跨 turn 命題；依 role/scope 掃每句，一個反例即刪除、改正或縮窄，單一 turn 不證全局。omittedMiddleTurnCount>0 時不得斷言全場不存在，只能限可見/近期。user 狀態/經歷/感受算自揭；assistant 明確自述休假、有/沒計畫、在家才算 partner 自揭/行程，但非邀約；直接問句算反問/主動性，且任何 assistant_turn 有直接問句就不得寫「無反問」，但非邀約。terminalTurnRole=assistant 表示末則後 user 尚無回覆機會；只禁把該未發生回覆寫成「尚未回應／感受或立場缺席」，較早實際 user_turn 仍可有據診斷。";
+    : "反例掃描：candidate 寫 role/scope「全無X/只有Y/單向問答」時逐 turn 找反例；有即刪/修/縮窄，單一 turn 不證全局；omittedMiddleTurnCount>0 禁全場否定。user 狀態/經歷/感受算自揭；只把 assistant 明確自述的休假/有無計畫/在家算 partner 自揭/行程，非邀約。assistant 問句算反問/主動性，非邀約；有問句不得寫「無反問」。terminalTurnRole=assistant 表示末則後 user 尚無回覆機會；只禁以該未發生回覆批「尚未回應/感受或立場缺席」，較早 user_turn 有據仍可批。「我有時候也會X」屬 user 習慣/感受，無據改原子變數或刪。";
   const auditProtocol =
     `回傳固定 envelope：audit 在前、candidate 在後。audit 的 ${auditFields} 每欄都是一個最長 160 字的 proof ledger string；沒有 user／partner 過去或現在命題才可為空字串。每個原子命題都用「candidate 最短逐字 claim←來源[index]:『最短逐字 evidenceQuote』」記錄，多筆以；分隔；來源只能是 user_turn、assistant_turn、trusted_user_fact、server_trusted_partner_fact、older_memory。變數記成「{變數}←variable」。Hint 貼句的「我」、coaching/Debrief 分析的「你」、Debrief 貼句的「我」都算 user。未來提議、純問句與不新增 user 事實的輕量反應不用記錄。${scopedClaimProtocol}找不到直接證據時，先在 candidate 刪掉該命題，或改成單一扁平原子 {店名}/{劇名}/{真實答案}/{真實感受}/{真實立場}/{有／沒有}；每個 {} 禁巢狀、分支句或故事。若一欄無法在 160 字內證完，先精簡 candidate；絕不可亂引用一則 turn。`;
 
