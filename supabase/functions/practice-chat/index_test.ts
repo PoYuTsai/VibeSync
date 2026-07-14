@@ -19,6 +19,9 @@ import type {
   SemanticAdjudicationResult,
 } from "./semantic_quality.ts";
 import { parseGroundingReviewResult } from "./grounding_repair.ts";
+import { buildPracticeSceneContext } from "./life_schedule.ts";
+import { resolvePracticeProfile } from "./practice_persona.ts";
+import { taipeiTimeContextFor } from "./time_context.ts";
 
 const NOW = new Date("2026-06-28T04:00:00.000Z");
 const RESET_AT = "2026-06-28T00:00:00.000Z";
@@ -273,6 +276,49 @@ Deno.test("direct Hint preserves server-trusted user facts through both reviews"
   );
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
+});
+
+Deno.test("direct Hint keeps the deterministic hidden scene out of all three Claude calls", async () => {
+  const sessionId = "scene-hidden-hint-session";
+  const scene = buildPracticeSceneContext({
+    profile: resolvePracticeProfile({ profileId: "practice_girl_004" }),
+    time: taipeiTimeContextFor(NOW),
+    visiblePracticeThreadId: sessionId,
+  });
+  const candidate = validHintJson({
+    warmUp: "昨晚超晚才到家，辛苦了😂 妳今天狀態還好嗎？",
+    steady: "昨晚超晚才到家，妳今天還好嗎？",
+    coaching: "她說昨晚超晚才到家；先接這個已知資訊，再問她今天的狀態。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [candidate, candidate, candidate],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      profileId: "practice_girl_004",
+      sessionId,
+      requestId: "direct-hint-hidden-scene-boundary",
+      turns: [
+        {
+          role: "user",
+          text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂",
+        },
+        { role: "ai", text: "早～我也差不多 昨晚超晚才到家" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(state.claudeCalls.length, 3);
+  for (const call of state.claudeCalls) {
+    const prompt = claudePrompt(call);
+    assertEquals(prompt.includes(scene.statusLine), false);
+    assertEquals(prompt.includes(scene.promptLine), false);
+  }
+  assertEquals(recordHintCalls(state).length, 1);
 });
 
 function debriefBody(overrides: Record<string, unknown> = {}) {
@@ -6858,10 +6904,10 @@ Deno.test("grounding repair and verifier remove the exact production Game sensor
     return JSON.stringify(value);
   };
   const invented = card(
-    "烤堅果帶奶油香——妳這樣一說我才知道自己聞到的是什麼。妳最常去哪家？",
+    "手沖{有／沒有}喝過，但妳說「還沒走進就聞到」這個我有感，那種香是會讓人停下來的。",
   );
   const repaired = card(
-    "妳猜是烤堅果帶奶油香；真實答案我先填：{店名}、{香氣}。妳最常去哪家？",
+    "手沖{有／沒有}喝過。我的真實感受是{真實感受}；妳說的層次感是指什麼？",
   );
   const { response, json, state } = await run(
     {
@@ -6889,7 +6935,11 @@ Deno.test("grounding repair and verifier remove the exact production Game sensor
         { role: "user", text: "我今天路過一家咖啡店，聞起來很香。" },
         { role: "ai", text: "只聞香不進去喝喔，是哪家？" },
         { role: "user", text: appliedHint },
-        { role: "ai", text: "如果你那家是烤堅果、帶點奶油香，我大概知道。" },
+        {
+          role: "ai",
+          text:
+            "獨立店比較有層次，有時候還沒走進就聞到烤焙味。你平常會喝手沖嗎？",
+        },
       ],
       appliedHintTurns: [{
         turnIndex: 2,
@@ -6908,10 +6958,10 @@ Deno.test("grounding repair and verifier remove the exact production Game sensor
     json.card.gameBreakdown.nextFirstLine,
     json.card.suggestedLine,
   );
-  assertEquals(JSON.stringify(json.card).includes("妳這樣一說我才知道"), false);
-  assertEquals(JSON.stringify(json.card).includes("自己聞到的是什麼"), false);
-  assertEquals(JSON.stringify(json.card).includes("{店名}"), true);
-  assertEquals(JSON.stringify(json.card).includes("{香氣}"), true);
+  assertEquals(JSON.stringify(json.card).includes("這個我有感"), false);
+  assertEquals(JSON.stringify(json.card).includes("會讓人停下來"), false);
+  assertEquals(JSON.stringify(json.card).includes("{真實感受}"), true);
+  assertEquals(JSON.stringify(json.card).includes("{有／沒有}"), true);
   assertEquals(state.claudeCalls.length, 3);
   assertGroundingReviewInput(
     state.claudeCalls[1],
@@ -7011,7 +7061,7 @@ Deno.test("Beginner Debrief repair removes an invented plan before independent v
     ),
   );
   assert(
-    verificationPrompt.includes("partner relation 只能由 assistant_turn 支持"),
+    verificationPrompt.includes("partner 現況/行程/動作只認 assistant_turn"),
   );
   assert(verificationPrompt.includes("本來只想看一集"));
   assert(verificationPrompt.includes("重新檢查候選所有欄位"));

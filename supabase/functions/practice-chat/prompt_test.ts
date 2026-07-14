@@ -57,7 +57,7 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
     true,
   );
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("提問/不爆雷"), false);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("逐子句盤點"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("逐句盤點"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("下週見"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("已落地"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("已落地勿再等"), true);
@@ -72,6 +72,11 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
   );
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("禁代答"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("{真實答案}"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("我有感/香會讓人停下來"), true);
+  assertEquals(
+    DEBRIEF_SYSTEM_PROMPT.includes("未知用 {真實感受}/{有／沒有}"),
+    true,
+  );
   assertEquals(
     DEBRIEF_SYSTEM_PROMPT.includes("禁代答、自稱不知道/沒記/後補"),
     true,
@@ -733,6 +738,7 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
         partnerState: { mood: "neutral", innerThought: "" },
         memorySummary: maxMemorySummary,
         appliedHintTurns,
+        serverOwnsHintStrategy: true,
       });
       const debriefWithHintLength = debriefWithHintMessages.reduce(
         (total, message) => total + message.content.length,
@@ -782,7 +788,7 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // Applied-Hint Debrief intentionally carries the exact Hint plus its
   // server-authored decision so the model cannot contradict its own advice.
   // That high-integrity lineage gets a separate, still-bounded ceiling.
-  if (maxDebriefWithHint > 5900) {
+  if (maxDebriefWithHint > 6600) {
     failures.push(
       `Debrief+Hint max ${maxDebriefWithHint} at ${maxDebriefWithHintCase}`,
     );

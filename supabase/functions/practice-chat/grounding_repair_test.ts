@@ -105,11 +105,22 @@ Deno.test("grounding reviewer uses a short isolated patch contract", () => {
   assertStringIncludes(messages[0].content, "停下來／多站幾秒／進店／沒進店");
   assertStringIncludes(messages[0].content, "感覺不錯");
   assertStringIncludes(messages[0].content, "妳收藏的店");
+  assertStringIncludes(messages[0].content, "我有感／會讓人停下來");
+  assertStringIncludes(messages[0].content, "{真實感受}");
   assertStringIncludes(
     messages[0].content,
     "user 自身事實只認 user_turn 或 trusted_user_fact",
   );
-  assertStringIncludes(messages[0].content, "「她收藏」只認 assistant_turn");
+  assertStringIncludes(messages[0].content, "她的現況只認 assistant_turn");
+  assertStringIncludes(
+    messages[0].content,
+    "partner 現況/行程/動作只認 assistant_turn",
+  );
+  assertStringIncludes(
+    messages[0].content,
+    "scene/partnerState 非事實",
+  );
+  assertStringIncludes(messages[0].content, "profile 只支持靜態設定");
   assertStringIncludes(messages[0].content, "未知店名用 {店名}");
   assert(
     messages[0].content.indexOf("最高優先逐字例") <

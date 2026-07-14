@@ -14,6 +14,7 @@ import {
   GAME_INVITE_ROUTE_LABEL,
   HINT_COACHING_SOFT_CHAR_LIMIT,
   HINT_REPLY_SOFT_CHAR_LIMIT,
+  hintTrustedFactualEvidence,
   MAX_COACHING_LENGTH,
   parseHintResult,
 } from "./hint.ts";
@@ -147,7 +148,7 @@ Deno.test("Game Hint keeps a topic-only coffee opening out of the close phase", 
       "user 事實只認 user turn／trusted evidence",
     ),
   );
-  assert(messages[0].content.includes("她收藏只認 assistant turn"));
+  assert(messages[0].content.includes("她的現況只認 assistant turn"));
   assert(prompt.includes("未知事實用 {變數} 先答再問"));
   assert(prompt.includes("第一人稱事實限 user 證據"));
   assert(prompt.includes("phase: P1_OPEN"));
@@ -253,7 +254,7 @@ Deno.test("buildHintMessages treats transcript and profile as evidence only", ()
   assert(text.includes("不可只反問"));
 });
 
-Deno.test("buildHintMessages includes scene status as evidence for natural replies", () => {
+Deno.test("buildHintMessages keeps hidden scene seeds out of Hint evidence", () => {
   const messages: ChatMessage[] = buildHintMessages({
     turns: [
       { role: "user", text: "妳現在在幹嘛" },
@@ -265,8 +266,12 @@ Deno.test("buildHintMessages includes scene status as evidence for natural repli
   });
   const text = messages.map((message) => message.content).join("\n");
 
-  assert(text.includes("sceneStatus: 剛下班，在買咖啡回家"));
+  assertEquals(text.includes(sceneContext.statusLine), false);
+  assertEquals(text.includes(sceneContext.promptLine), false);
   assertEquals(text.includes("sceneContext"), false);
+  const evidence = hintTrustedFactualEvidence({ profile, sceneContext });
+  assertEquals(evidence.partner.includes(sceneContext.statusLine), false);
+  assertEquals(evidence.partner.includes(sceneContext.promptLine), false);
 });
 
 Deno.test("buildHintMessages includes memory summary as evidence", () => {
@@ -2748,7 +2753,7 @@ Deno.test("generated Hint permits generic date activities instead of treating th
   }
 });
 
-Deno.test("generated Hint accepts named details supported by trusted memory or scene evidence", () => {
+Deno.test("generated Hint accepts named details supported by trusted factual evidence", () => {
   const result = parseHintResult(
     JSON.stringify({
       warmUp: "鼻子靈是基本配備😂 中山站附近那間店叫黑露。",
