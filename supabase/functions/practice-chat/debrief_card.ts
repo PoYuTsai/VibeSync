@@ -1513,6 +1513,11 @@ function assertGeneratedDebriefQuality(
     deferFactGroundingToSemantic?: boolean;
   },
 ): void {
+  // The first direct-Claude parse only canonicalizes a structurally complete
+  // candidate for the semantic reviewer. No text can be returned from this
+  // pass; every visible/factual hard gate runs again after review.
+  const candidateOnly = opts.deferFactGroundingToSemantic === true;
+  if (candidateOnly) return;
   const visibleFields = debriefVisibleFields(card);
   for (const field of visibleFields) {
     rejectKnownCannedPracticeText(field, "debrief_canned_visible_text");

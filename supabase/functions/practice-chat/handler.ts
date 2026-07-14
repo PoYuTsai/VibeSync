@@ -129,7 +129,7 @@ const CHAT_MAX_TOKENS = 200;
 const CHAT_TEMPERATURE = 0.9;
 const CHAT_GENERATION_ATTEMPTS = 2;
 const DEBRIEF_MAX_TOKENS = 1200;
-const DEBRIEF_GROUNDING_MAX_TOKENS = 1800;
+const GROUNDING_REVIEW_MAX_TOKENS = 800;
 const DEBRIEF_TEMPERATURE = 0.5;
 const DEBRIEF_GENERATION_ATTEMPTS = 1;
 const DEBRIEF_TIMEOUT_MS = 12000;
@@ -551,27 +551,6 @@ function isHintFormatOrGuardError(e: unknown): boolean {
     message.includes("max_tokens") ||
     message.includes("JSON") ||
     message.includes("Unexpected token");
-}
-
-function isHintSchemaShapeError(error: unknown): boolean {
-  if (error instanceof SyntaxError) return true;
-  const message = getErrorMessage(error);
-  return message.includes("hint_not_object") ||
-    message.includes("hint_missing_") ||
-    message.includes("_must_be_string") ||
-    message.includes("hint_extra_keys");
-}
-
-function isDebriefSchemaShapeError(error: unknown): boolean {
-  if (error instanceof SyntaxError) return true;
-  const message = getErrorMessage(error);
-  return message.includes("debrief_not_object") ||
-    message.includes("debrief_missing_fields") ||
-    message.includes("debrief_invalid_vibe") ||
-    message.includes("debrief_invalid_date_chance") ||
-    message.includes("debrief_game_breakdown_missing_fields") ||
-    message.includes("debrief_hint_assessment_missing") ||
-    message.includes("debrief_hint_assessment_invalid");
 }
 
 function hintRetryReason(e: unknown): string {
@@ -2791,7 +2770,7 @@ export function createPracticeChatHandler(
             parseHintResult(rawHint, {
               ...generatedHintParseOptions,
               semanticAdjudicated: false,
-              deferVisibleGuardsToSemantic: false,
+              deferVisibleGuardsToSemantic: deferFactGroundingToSemantic,
               skipLexicalStyleGuards: true,
               semanticGroundingRepaired,
               deferFactGroundingToSemantic,
@@ -2799,10 +2778,17 @@ export function createPracticeChatHandler(
             }),
             semanticPolicyReviewed,
           );
+        const canonicalHintCandidate = (
+          hint: ReturnType<typeof parseHintResult>,
+        ): string =>
+          JSON.stringify({
+            warmUp: hint.replies[0].text,
+            steady: hint.replies[1].text,
+            coaching: hint.coaching,
+          });
         let previousDirectHintCandidate: string | null = null;
         let hintGroundingCandidateReady = false;
         let hintGroundingReviewsCompleted = 0;
-        let hintInitialCandidateSchemaInvalid = false;
         let lastValidatedHintGroundingVerdict: "accept" | "repair" | null =
           null;
         let lastValidatedReviewedHint:
@@ -2946,7 +2932,9 @@ export function createPracticeChatHandler(
                 apiKey: claudeApiKey,
                 model: CLAUDE_SONNET_MODEL,
                 messages: hintMessages,
-                maxTokens: HINT_MAX_TOKENS,
+                maxTokens: isGroundingReview
+                  ? GROUNDING_REVIEW_MAX_TOKENS
+                  : HINT_MAX_TOKENS,
                 temperature: isGroundingReview
                   ? GROUNDING_REPAIR_TEMPERATURE
                   : DIRECT_PRACTICE_TEMPERATURE,
@@ -2958,18 +2946,7 @@ export function createPracticeChatHandler(
                   raw: rawHint,
                   previousCandidate: previousDirectHintCandidate!,
                   surface: "hint",
-                  userTurnEvidence: request.turns
-                    .filter((turn) => turn.role === "user")
-                    .map((turn) => turn.text),
-                  assistantTurnEvidence: request.turns
-                    .filter((turn) => turn.role === "ai")
-                    .map((turn) => turn.text),
-                  trustedUserEvidence: request.hintUserFact
-                    ? [request.hintUserFact]
-                    : [],
                   verificationPass,
-                  allowFormatRepair: !verificationPass &&
-                    hintInitialCandidateSchemaInvalid,
                 });
                 const reviewedHint = parseDirectGeneratedHint(
                   grounded.candidateJson,
@@ -2977,7 +2954,9 @@ export function createPracticeChatHandler(
                   false,
                   true,
                 );
-                previousDirectHintCandidate = grounded.candidateJson;
+                previousDirectHintCandidate = canonicalHintCandidate(
+                  reviewedHint,
+                );
                 hintGroundingReviewsCompleted += 1;
                 lastValidatedReviewedHint = reviewedHint;
                 lastValidatedHintGroundingVerdict = grounded.verdict;
@@ -2985,14 +2964,16 @@ export function createPracticeChatHandler(
                   hintResult = reviewedHint;
                 }
               } else {
-                previousDirectHintCandidate = rawHint;
-                // A returned candidate can be repaired and grounded in one
-                // bounded review even when its first hard-gate parse fails.
+                const writerHint = parseDirectGeneratedHint(
+                  rawHint,
+                  false,
+                  true,
+                  true,
+                );
+                previousDirectHintCandidate = canonicalHintCandidate(
+                  writerHint,
+                );
                 hintGroundingCandidateReady = true;
-                // Candidate is not user-visible yet. Run every non-factual
-                // hard gate now, then always send it through semantic facts.
-                parseDirectGeneratedHint(rawHint, false, true);
-                hintInitialCandidateSchemaInvalid = false;
               }
               lastError = undefined;
               hintLastFailureClass = null;
@@ -3026,9 +3007,6 @@ export function createPracticeChatHandler(
               if (hintResult) break;
               continue;
             } catch (e) {
-              if (!isGroundingReview && previousDirectHintCandidate !== null) {
-                hintInitialCandidateSchemaInvalid = isHintSchemaShapeError(e);
-              }
               lastError = e;
               hintGroundingCandidateReady = isGroundingReview ||
                 previousDirectHintCandidate !== null;
@@ -3935,8 +3913,8 @@ export function createPracticeChatHandler(
             repairPreservedHintCritique: false,
             repairUngroundedSuggestedLine: false,
             semanticAdjudicated: false,
-            deferHintAssessmentToSemantic: false,
-            deferVisibleGuardsToSemantic: false,
+            deferHintAssessmentToSemantic: deferFactGroundingToSemantic,
+            deferVisibleGuardsToSemantic: deferFactGroundingToSemantic,
             serverOwnsHintStrategy: true,
             skipLexicalStyleGuards: true,
             semanticGroundingRepaired,
@@ -3948,7 +3926,6 @@ export function createPracticeChatHandler(
         let previousDirectDebriefCandidate: string | null = null;
         let debriefGroundingCandidateReady = false;
         let debriefGroundingReviewsCompleted = 0;
-        let debriefInitialCandidateSchemaInvalid = false;
         let lastValidatedDebriefGroundingVerdict: "accept" | "repair" | null =
           null;
         let lastValidatedReviewedDebrief: DebriefCard | null = null;
@@ -4082,7 +4059,7 @@ export function createPracticeChatHandler(
                 model: CLAUDE_SONNET_MODEL,
                 messages: debriefMessages,
                 maxTokens: isGroundingReview
-                  ? DEBRIEF_GROUNDING_MAX_TOKENS
+                  ? GROUNDING_REVIEW_MAX_TOKENS
                   : DEBRIEF_MAX_TOKENS,
                 temperature: isGroundingReview
                   ? GROUNDING_REPAIR_TEMPERATURE
@@ -4095,16 +4072,7 @@ export function createPracticeChatHandler(
                   raw: rawCard,
                   previousCandidate: previousDirectDebriefCandidate!,
                   surface: "debrief",
-                  userTurnEvidence: request.turns
-                    .filter((turn) => turn.role === "user")
-                    .map((turn) => turn.text),
-                  assistantTurnEvidence: request.turns
-                    .filter((turn) => turn.role === "ai")
-                    .map((turn) => turn.text),
-                  trustedUserEvidence: [],
                   verificationPass,
-                  allowFormatRepair: !verificationPass &&
-                    debriefInitialCandidateSchemaInvalid,
                   requireHintContinuity: debriefHintContinuityContext !== null,
                 });
                 const reviewedCard = parseDirectGeneratedDebrief(
@@ -4113,7 +4081,7 @@ export function createPracticeChatHandler(
                   false,
                   true,
                 );
-                previousDirectDebriefCandidate = grounded.candidateJson;
+                previousDirectDebriefCandidate = JSON.stringify(reviewedCard);
                 debriefGroundingReviewsCompleted += 1;
                 lastValidatedReviewedDebrief = reviewedCard;
                 lastValidatedDebriefGroundingVerdict = grounded.verdict;
@@ -4121,14 +4089,14 @@ export function createPracticeChatHandler(
                   debriefCard = reviewedCard;
                 }
               } else {
-                previousDirectDebriefCandidate = rawCard;
-                // A returned candidate can be repaired and grounded in one
-                // bounded review even when its first hard-gate parse fails.
+                const writerCard = parseDirectGeneratedDebrief(
+                  rawCard,
+                  false,
+                  true,
+                  true,
+                );
+                previousDirectDebriefCandidate = JSON.stringify(writerCard);
                 debriefGroundingCandidateReady = true;
-                // Candidate is not user-visible yet. Run every non-factual
-                // hard gate now, then always send it through semantic facts.
-                parseDirectGeneratedDebrief(rawCard, false, true);
-                debriefInitialCandidateSchemaInvalid = false;
               }
               lastError = undefined;
               debriefLastFailureClass = null;
@@ -4162,12 +4130,6 @@ export function createPracticeChatHandler(
               if (debriefCard) break;
               continue;
             } catch (e) {
-              if (
-                !isGroundingReview && previousDirectDebriefCandidate !== null
-              ) {
-                debriefInitialCandidateSchemaInvalid =
-                  isDebriefSchemaShapeError(e);
-              }
               lastError = e;
               debriefGroundingCandidateReady = isGroundingReview ||
                 previousDirectDebriefCandidate !== null;

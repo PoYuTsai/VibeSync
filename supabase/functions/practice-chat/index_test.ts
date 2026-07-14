@@ -18,6 +18,7 @@ import type {
   PracticeSemanticAdjudicatorArgs,
   SemanticAdjudicationResult,
 } from "./semantic_quality.ts";
+import { parseGroundingReviewResult } from "./grounding_repair.ts";
 
 const NOW = new Date("2026-06-28T04:00:00.000Z");
 const RESET_AT = "2026-06-28T00:00:00.000Z";
@@ -337,26 +338,64 @@ function parsedJsonRecord(raw: string): Record<string, unknown> | null {
   }
 }
 
-function firstRemovedString(previous: unknown, next: unknown): string | null {
-  const nextText = JSON.stringify(next);
-  const visit = (value: unknown): string | null => {
-    if (typeof value === "string") {
-      return value.length <= 240 && !nextText.includes(value) ? value : null;
+interface MockStringChange {
+  span: string;
+  replacement: string;
+}
+
+function mockStringChanges(
+  previous: unknown,
+  next: unknown,
+): MockStringChange[] | null {
+  if (typeof previous === "string" && typeof next === "string") {
+    if (previous === next) return [];
+    return previous.length <= 240 && next.length <= 240
+      ? [{ span: previous, replacement: next }]
+      : null;
+  }
+  if (Array.isArray(previous) && Array.isArray(next)) {
+    if (previous.length !== next.length) return null;
+    const changes: MockStringChange[] = [];
+    for (let index = 0; index < previous.length; index++) {
+      const nested = mockStringChanges(previous[index], next[index]);
+      if (nested === null) return null;
+      changes.push(...nested);
     }
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        const found = visit(item);
-        if (found) return found;
-      }
-    } else if (typeof value === "object" && value !== null) {
-      for (const item of Object.values(value as Record<string, unknown>)) {
-        const found = visit(item);
-        if (found) return found;
-      }
+    return changes;
+  }
+  if (
+    typeof previous === "object" && previous !== null &&
+    !Array.isArray(previous) && typeof next === "object" && next !== null &&
+    !Array.isArray(next)
+  ) {
+    const previousRecord = previous as Record<string, unknown>;
+    const nextRecord = next as Record<string, unknown>;
+    const previousKeys = Object.keys(previousRecord).sort();
+    const nextKeys = Object.keys(nextRecord).sort();
+    if (JSON.stringify(previousKeys) !== JSON.stringify(nextKeys)) return null;
+    const changes: MockStringChange[] = [];
+    for (const key of previousKeys) {
+      const nested = mockStringChanges(previousRecord[key], nextRecord[key]);
+      if (nested === null) return null;
+      changes.push(...nested);
     }
-    return null;
-  };
-  return visit(previous);
+    return changes;
+  }
+  return Object.is(previous, next) ? [] : null;
+}
+
+function groundingReviewCandidate(call: ClaudeArgs): string | null {
+  const message = [...call.messages].reverse().find((item) =>
+    item.role === "user" && item.content.includes("<candidate_untrusted>")
+  );
+  if (!message) return null;
+  const open = "<candidate_untrusted>\n";
+  const close = "\n</candidate_untrusted>";
+  const start = message.content.indexOf(open);
+  const end = message.content.lastIndexOf(close);
+  return start >= 0 && end > start
+    ? message.content.slice(start + open.length, end)
+    : null;
 }
 
 function mockGroundingReviewEnvelope(
@@ -367,21 +406,59 @@ function mockGroundingReviewEnvelope(
   const explicitEnvelope = parsedJsonRecord(resultRaw);
   if (
     explicitEnvelope && typeof explicitEnvelope.verdict === "string" &&
-    Array.isArray(explicitEnvelope.checkedFields) &&
-    Array.isArray(explicitEnvelope.userClaims)
+    explicitEnvelope.checkedAllFields === true &&
+    Array.isArray(explicitEnvelope.issues)
   ) return resultRaw;
 
   const previous = parsedJsonRecord(previousRaw);
-  const result = parsedJsonRecord(resultRaw);
-  if (!result) return resultRaw;
+  const rawResult = parsedJsonRecord(resultRaw);
+  if (!rawResult) return resultRaw;
+  const canProjectToCanonical = previous && Object.keys(previous).every(
+    (field) => Object.hasOwn(rawResult, field) || previous[field] === null,
+  );
+  const result = canProjectToCanonical
+    ? Object.fromEntries(
+      Object.keys(previous!).map((field) => [
+        field,
+        Object.hasOwn(rawResult, field) ? rawResult[field] : null,
+      ]),
+    )
+    : rawResult;
+  if (
+    typeof result.suggestedLine === "string" &&
+    typeof result.gameBreakdown === "object" &&
+    result.gameBreakdown !== null && !Array.isArray(result.gameBreakdown)
+  ) {
+    result.gameBreakdown = {
+      ...(result.gameBreakdown as Record<string, unknown>),
+      nextFirstLine: result.suggestedLine,
+    };
+  }
+  if (
+    previous && typeof previous.suggestedLine === "string" &&
+    typeof result.suggestedLine === "string" &&
+    previous.suggestedLine !== result.suggestedLine &&
+    typeof previous.gameBreakdown === "object" &&
+    previous.gameBreakdown !== null &&
+    !Array.isArray(previous.gameBreakdown) &&
+    typeof result.gameBreakdown === "object" && result.gameBreakdown !== null &&
+    !Array.isArray(result.gameBreakdown) &&
+    (previous.gameBreakdown as Record<string, unknown>).nextFirstLine ===
+      previous.suggestedLine
+  ) {
+    result.gameBreakdown = {
+      ...(result.gameBreakdown as Record<string, unknown>),
+      // Production synchronizes this server-owned mirror after patching
+      // suggestedLine, so the mock reviewer never patches it directly.
+      nextFirstLine: previous.suggestedLine,
+    };
+  }
   if (previous && JSON.stringify(previous) === JSON.stringify(result)) {
     return JSON.stringify({
       verdict: "accept",
       ...(requireHintContinuity ? { continuityChecked: true } : {}),
-      checkedFields: Object.keys(previous),
-      userClaims: [],
+      checkedAllFields: true,
       issues: [],
-      result: previous,
     });
   }
 
@@ -393,33 +470,27 @@ function mockGroundingReviewEnvelope(
       JSON.stringify(previous![field]) !== JSON.stringify(result[field])
     )
     : [];
-  const changes = changedFields.map((field) => ({
-    field,
-    span: firstRemovedString(previous![field], result[field]),
-  }));
-  const canDescribeAsFacts = changes.length > 0 &&
-    changes.every((change) => change.span !== null);
+  const changes: Array<{
+    field: string;
+    span: string;
+    replacement: string;
+  }> = [];
+  for (const field of changedFields) {
+    const nested = mockStringChanges(previous![field], result[field]);
+    if (nested === null) return resultRaw;
+    changes.push(...nested.map((change) => ({ field, ...change })));
+  }
+  if (changes.length === 0) return resultRaw;
   return JSON.stringify({
     verdict: "repair",
     ...(requireHintContinuity ? { continuityChecked: true } : {}),
-    checkedFields: Object.keys(result),
-    userClaims: canDescribeAsFacts
-      ? changes.map((change) => ({
-        field: change.field,
-        span: change.span,
-        subject: "user",
-        source: null,
-        evidence: null,
-      }))
-      : [],
-    issues: canDescribeAsFacts
-      ? changes.map((change) => ({
-        kind: "unsupported_user_fact",
-        field: change.field,
-        span: change.span,
-      }))
-      : [{ kind: "invalid_candidate", field: "$format", span: "" }],
-    result,
+    checkedAllFields: true,
+    issues: changes.map((change) => ({
+      kind: "unsupported_user_fact",
+      field: change.field,
+      span: change.span,
+      replacement: change.replacement,
+    })),
   });
 }
 
@@ -536,7 +607,6 @@ function makeFake(options: FakeOptions = {}) {
   const rpcByName = new Map<string, number>();
   let deepSeekIndex = 0;
   let claudeIndex = 0;
-  let previousClaudeText: string | undefined;
   let semanticIndex = 0;
 
   // deno-lint-ignore no-explicit-any
@@ -863,25 +933,37 @@ function makeFake(options: FakeOptions = {}) {
       message.role === "user" &&
       message.content.includes("<trusted_hint_contract_data>")
     );
+    const reviewCandidate = isGroundingReview
+      ? groundingReviewCandidate(args)
+      : null;
     const selectedReply = configuredReply ??
-      (isGroundingReview && previousClaudeText !== undefined
-        ? previousClaudeText
+      (isGroundingReview && reviewCandidate !== null
+        ? reviewCandidate
         : "AI reply");
     claudeIndex++;
     if (selectedReply instanceof Error) return Promise.reject(selectedReply);
-    const reply = isGroundingReview && previousClaudeText !== undefined
+    const reply = isGroundingReview && reviewCandidate !== null
       ? mockGroundingReviewEnvelope(
-        previousClaudeText,
+        reviewCandidate,
         selectedReply,
         requiresHintContinuity,
       )
       : selectedReply;
-    const envelope = parsedJsonRecord(reply);
-    previousClaudeText = isGroundingReview && envelope &&
-        typeof envelope.verdict === "string" &&
-        typeof envelope.result === "object" && envelope.result !== null
-      ? JSON.stringify(envelope.result)
-      : selectedReply;
+    if (isGroundingReview && reviewCandidate !== null) {
+      try {
+        parseGroundingReviewResult({
+          raw: reply,
+          previousCandidate: reviewCandidate,
+          surface:
+            parsedJsonRecord(reviewCandidate)?.suggestedLine !== undefined
+              ? "debrief"
+              : "hint",
+          requireHintContinuity: requiresHintContinuity,
+        });
+      } catch {
+        // The handler under test owns the failure path.
+      }
+    }
     return Promise.resolve(reply);
   };
   const semanticAdjudicate = (
@@ -4326,8 +4408,8 @@ Deno.test("Debrief defaults to one Claude Sonnet writer plus two grounding revie
   assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(state.claudeCalls[0].timeoutMs, 24000);
   assertEquals(state.claudeCalls[0].maxTokens, 1200);
-  assertEquals(state.claudeCalls[1].maxTokens, 1800);
-  assertEquals(state.claudeCalls[2].maxTokens, 1800);
+  assertEquals(state.claudeCalls[1].maxTokens, 800);
+  assertEquals(state.claudeCalls[2].maxTokens, 800);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(json.provider, "anthropic");
   assertEquals(json.model, CLAUDE_SONNET_MODEL);
@@ -4390,7 +4472,7 @@ Deno.test("direct assisted Debrief fills missing hidden Hint assessment server-s
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
-Deno.test("direct Game Debrief repairs and grounds one rejected Claude card in the same review", async () => {
+Deno.test("malformed Game Debrief writer needs two fresh reviews and fails closed within three calls", async () => {
   const incompleteGameCard = validDebriefJson();
   const completeGameCard = JSON.parse(validDebriefJson({
     summary: "你接住她下班後想散步放空，現在仍在交換生活節奏。",
@@ -4416,18 +4498,20 @@ Deno.test("direct Game Debrief repairs and grounds one rejected Claude card in t
     }),
   );
 
-  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(response.status, 503, JSON.stringify(json));
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(state.claudeCalls[1].model, CLAUDE_SONNET_MODEL);
-  const retryPrompt = claudePrompt(state.claudeCalls[1]);
-  assert(retryPrompt.includes("Game 拆盤五個欄位有缺漏或空白"));
-  assertGroundingReviewInput(state.claudeCalls[1], incompleteGameCard);
-  assertEquals(state.claudeCalls[1].temperature, 0);
-  assertEquals(typeof json.card.gameBreakdown.nextFirstLine, "string");
-  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(
+    claudePrompt(state.claudeCalls[1]).includes("practiceGroundingReviewerV2"),
+    false,
+  );
+  assertGroundingReviewInput(state.claudeCalls[2], '"gameBreakdown"');
+  assertEquals(state.claudeCalls[2].temperature, 0);
+  assertEquals(recordDebriefCalls(state).length, 0);
+  assertEquals(releaseDebriefCalls(state).length, 1);
 });
 
 Deno.test("direct Game Debrief accepts expert vocabulary without the legacy mechanism wordlist", async () => {
@@ -4471,7 +4555,7 @@ Deno.test("direct Game Debrief accepts expert vocabulary without the legacy mech
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
-Deno.test("first Debrief review may repair malformed writer JSON before verification", async () => {
+Deno.test("malformed Debrief writer JSON cannot be rebuilt by a reviewer", async () => {
   const repaired = validDebriefJson();
   const { response, json, state } = await run(
     {
@@ -4485,21 +4569,25 @@ Deno.test("first Debrief review may repair malformed writer JSON before verifica
     }),
   );
 
-  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(response.status, 503, JSON.stringify(json));
   assertEquals(state.claudeCalls.length, 3);
-  assertGroundingReviewInput(state.claudeCalls[1], "not json");
-  assertGroundingReviewInput(state.claudeCalls[2], repaired);
-  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "practiceGroundingReviewerV2",
+    ),
+    false,
+  );
+  assertGroundingReviewInput(state.claudeCalls[2], '"summary"');
+  assertEquals(recordDebriefCalls(state).length, 0);
+  assertEquals(releaseDebriefCalls(state).length, 1);
 });
 
 Deno.test("explicit Debrief review failure hard-stops without a rescue rewrite", async () => {
   const candidate = validDebriefJson();
   const explicitFail = JSON.stringify({
     verdict: "fail",
-    checkedFields: Object.keys(JSON.parse(candidate)),
-    userClaims: [],
+    checkedAllFields: true,
     issues: [],
-    result: null,
   });
   const { response, json, state } = await run(
     {
@@ -4553,7 +4641,7 @@ Deno.test("direct Debrief reviews one invalid candidate twice before failing clo
   });
   assertEquals("card" in json, false);
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 0);
   assertEquals(releaseDebriefCalls(state).length, 1);
@@ -4746,7 +4834,7 @@ Deno.test("direct Game Debrief grounds invented facts inside the visible breakdo
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
     claudePrompt(state.claudeCalls[1]).includes(
-      "逐欄主動找語意上的無證據事實",
+      "逐欄主動找候選所有欄位可見文字中的無證據事實",
     ),
   );
   assertEquals(recordDebriefCalls(state).length, 1);
@@ -4972,7 +5060,7 @@ Deno.test("direct Claude Debrief regenerates instead of blaming an exact preserv
   assertEquals(state.semanticCalls.length, 0);
   const retryPrompt = claudePrompt(state.claudeCalls[1]);
   assert(retryPrompt.includes("exact Hint"));
-  assert(retryPrompt.includes("已套用 Hint 是 server 鎖定的正確決策"));
+  assert(retryPrompt.includes("已套用 Hint 是 server 鎖定策略與正確決策"));
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
@@ -5001,29 +5089,27 @@ Deno.test("direct Debrief repairs a contradiction with the server-owned Hint bef
   const firstReview = JSON.stringify({
     verdict: "repair",
     continuityChecked: true,
-    checkedFields: Object.keys(invalid),
-    userClaims: [],
+    checkedAllFields: true,
     issues: [
       {
         kind: "hint_continuity",
         field: "watchouts",
         span: "你沒有立刻邀約，錯過了最好的窗口。",
+        replacement: "她只回散步很舒服；下一步先沿這個新回覆多問一個具體點。",
       },
       {
         kind: "hint_continuity",
         field: "nextInviteMove",
         span: "放棄鋪陳，下一句立刻約她見面。",
+        replacement: "先問她平常走哪一段，等她多分享再看邀約窗口。",
       },
     ],
-    result: repaired,
   });
   const secondReview = JSON.stringify({
     verdict: "accept",
     continuityChecked: true,
-    checkedFields: Object.keys(repaired),
-    userClaims: [],
+    checkedAllFields: true,
     issues: [],
-    result: repaired,
   });
   const { response, json, state } = await run(
     {
@@ -5078,13 +5164,10 @@ Deno.test("direct Debrief never records reviews that omit Hint continuity certif
     watchouts: ["下一步可以問她平常走哪一段。"],
     dateChanceReason: "她願意延續散步話題，但還沒有提出時間或見面。",
   });
-  const parsedCandidate = JSON.parse(candidate) as Record<string, unknown>;
   const uncertifiedAccept = JSON.stringify({
     verdict: "accept",
-    checkedFields: Object.keys(parsedCandidate),
-    userClaims: [],
+    checkedAllFields: true,
     issues: [],
-    result: parsedCandidate,
   });
   const { response, json, state } = await run(
     {
@@ -5898,7 +5981,7 @@ Deno.test("direct Game Hint lets reviewed activity questions bypass invite-route
   assertEquals(
     (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
       .failureCodes,
-    ["hint_quality_invalid_invite_route"],
+    [],
   );
   assertEquals(recordHintCalls(state).length, 1);
 });
@@ -6107,7 +6190,7 @@ Deno.test("two grounding review failures never record an unaudited Hint", async 
   assertEquals(releaseHintCalls(state).length, 1);
 });
 
-Deno.test("first grounding review may repair malformed writer JSON before verification", async () => {
+Deno.test("malformed Hint writer JSON cannot be rebuilt by a reviewer", async () => {
   const repaired = validHintJson();
   const { response, json, state } = await run(
     {
@@ -6121,21 +6204,25 @@ Deno.test("first grounding review may repair malformed writer JSON before verifi
     }),
   );
 
-  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(response.status, 503, JSON.stringify(json));
   assertEquals(state.claudeCalls.length, 3);
-  assertGroundingReviewInput(state.claudeCalls[1], "not json");
-  assertGroundingReviewInput(state.claudeCalls[2], repaired);
-  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "practiceGroundingReviewerV2",
+    ),
+    false,
+  );
+  assertGroundingReviewInput(state.claudeCalls[2], '"warmUp"');
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
 });
 
 Deno.test("explicit first-review semantic failure hard-stops without a rescue rewrite", async () => {
   const candidate = validHintJson();
   const explicitFail = JSON.stringify({
     verdict: "fail",
-    checkedFields: ["warmUp", "steady", "coaching"],
-    userClaims: [],
+    checkedAllFields: true,
     issues: [],
-    result: null,
   });
   const { response, json, state } = await run(
     {
@@ -6359,8 +6446,14 @@ Deno.test("grounding repair and verifier remove the exact production Beginner bi
   assertEquals(JSON.stringify(json).includes("本來只想看一集"), false);
   assertEquals(JSON.stringify(json).includes("{劇名}"), true);
   assertEquals(state.claudeCalls.length, 3);
-  assertGroundingReviewInput(state.claudeCalls[1], invented);
-  assertGroundingReviewInput(state.claudeCalls[2], repaired);
+  assertGroundingReviewInput(
+    state.claudeCalls[1],
+    JSON.parse(invented).warmUp,
+  );
+  assertGroundingReviewInput(
+    state.claudeCalls[2],
+    JSON.parse(repaired).warmUp,
+  );
   assertEquals(recordHintCalls(state).length, 1);
 });
 
@@ -6654,8 +6747,14 @@ Deno.test("grounding repair and verifier remove the exact production Game sensor
   assertEquals(JSON.stringify(json.card).includes("{店名}"), true);
   assertEquals(JSON.stringify(json.card).includes("{香氣}"), true);
   assertEquals(state.claudeCalls.length, 3);
-  assertGroundingReviewInput(state.claudeCalls[1], invented);
-  assertGroundingReviewInput(state.claudeCalls[2], repaired);
+  assertGroundingReviewInput(
+    state.claudeCalls[1],
+    JSON.parse(invented).suggestedLine,
+  );
+  assertGroundingReviewInput(
+    state.claudeCalls[2],
+    JSON.parse(repaired).suggestedLine,
+  );
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
@@ -6733,7 +6832,10 @@ Deno.test("Beginner Debrief repair removes an invented plan before independent v
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assertEquals(state.claudeCalls[2].temperature, 0);
-  assertGroundingReviewInput(state.claudeCalls[2], verified);
+  assertGroundingReviewInput(
+    state.claudeCalls[2],
+    JSON.parse(verified).suggestedLine,
+  );
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
   assert(verificationPrompt.includes("貼句的「我」"));
   assert(verificationPrompt.includes("server-trusted user evidence"));
@@ -6856,11 +6958,14 @@ Deno.test("Game Debrief repair removes partner speculation before independent ve
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assertEquals(state.claudeCalls[2].temperature, 0);
-  assertGroundingReviewInput(state.claudeCalls[2], verified);
+  assertGroundingReviewInput(
+    state.claudeCalls[2],
+    JSON.parse(verified).suggestedLine,
+  );
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
   assert(verificationPrompt.includes("整段被承認內容都成了 user 事實"));
   assert(
-    verificationPrompt.includes("Hint 接球點、策略、邀約路線都不得改寫"),
+    verificationPrompt.includes("不得改寫 Hint 接球點、策略、邀約路線"),
   );
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.semanticCalls.length, 0);
@@ -6904,7 +7009,7 @@ Deno.test("direct Debrief lets reviewed partner questions bypass initiative rege
   assertEquals(
     (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
       .failureCodes,
-    ["debrief_quality_invalid_partner_initiative"],
+    [],
   );
   assertEquals(recordDebriefCalls(state).length, 1);
 });
@@ -7064,7 +7169,7 @@ Deno.test("direct Game Hint keeps L4 safety strict while skipping lexical style 
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
-    claudePrompt(state.claudeCalls[1]).includes("未通過產品契約"),
+    claudePrompt(state.claudeCalls[1]).includes("practiceGroundingReviewerV2"),
   );
   assertEquals(recordHintCalls(state).length, 1);
 });
@@ -7118,7 +7223,7 @@ Deno.test("direct Hint reviews one invalid candidate twice before failing closed
   });
   assertEquals("replies" in json, false);
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(releaseHintCalls(state).length, 1);
