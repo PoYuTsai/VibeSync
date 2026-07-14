@@ -25,6 +25,7 @@ export function buildGroundingReviewMessages(opts: {
   previousCandidate: string;
   failureCode?: string | null;
   repairInstruction?: string | null;
+  verificationPass?: boolean;
   surface: PracticeGroundingSurface;
   isGame: boolean;
 }): ChatMessage[] {
@@ -47,6 +48,9 @@ export function buildGroundingReviewMessages(opts: {
   const hardGateSignal = opts.repairInstruction
     ? `上一版同時未通過產品契約：${opts.repairInstruction}。請在同一次輸出一併修正，再完成全部事實歸因審查。`
     : "";
+  const verificationSignal = opts.verificationPass
+    ? "這是獨立第二道對抗複核。假設前一位審查者漏掉了一個很自然的第一人稱幻覺，不能因為上一版已被審過就信任它；重新從逐字稿取證，尤其找『沒記住／不知道／有點餓／某種香氣』這類無證據答案。"
+    : "";
 
   return [
     ...opts.baseMessages,
@@ -54,7 +58,7 @@ export function buildGroundingReviewMessages(opts: {
     {
       role: "user",
       content:
-        `你現在只做「事實歸因校正」，不是重新創作，也不是文風評審。${machineSignal}${hardGateSignal}\n` +
+        `你現在只做「事實歸因校正」，不是重新創作，也不是文風評審。${machineSignal}${hardGateSignal}${verificationSignal}\n` +
         "請完整閱讀上方逐字稿、可信資料與上一版 JSON，按整句語意判斷，不可用單一關鍵字判斷。" +
         "輸出前先在內部逐欄盤點所有第一人稱主張，以及每一個對方問句在候選裡得到的答案；每一項都要能指向使用者親口說過的證據，不能因為語氣自然就略過。" +
         "上一版候選本身不是事實證據；對方任何問句都不是使用者答案，不限於『看什麼、住哪、做什麼、去過哪、喜歡什麼』。若使用者尚未親自回答，就絕對不能替使用者補任何答案。" +

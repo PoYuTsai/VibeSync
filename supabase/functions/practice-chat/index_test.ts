@@ -4144,7 +4144,7 @@ Deno.test("Debrief defaults to one Claude Sonnet writer without semantic review"
 
   assertEquals(response.status, 200);
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(state.claudeCalls[0].timeoutMs, 24000);
   assertEquals(state.semanticCalls.length, 0);
@@ -4204,7 +4204,7 @@ Deno.test("direct assisted Debrief fills missing hidden Hint assessment server-s
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 1);
 });
@@ -4237,7 +4237,7 @@ Deno.test("direct Game Debrief repairs and grounds one rejected Claude card in t
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(state.claudeCalls[1].model, CLAUDE_SONNET_MODEL);
@@ -4289,7 +4289,7 @@ Deno.test("direct Game Debrief accepts expert vocabulary without the legacy mech
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(json.card.summary.includes("篩選"), true);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
@@ -4350,7 +4350,7 @@ Deno.test("direct Debrief uses narrow semantic grounding repair for a hallucinat
     "原來妳常在中西區活動，休假最常去哪裡放空？",
   );
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
   const retryPrompt = state.claudeCalls[1].messages.at(-1)?.content ?? "";
   assert(retryPrompt.includes("事實歸因校正"));
@@ -4396,7 +4396,7 @@ Deno.test("direct Debrief regenerates an invented completed user experience", as
     json.card.suggestedLine,
     "生理時鐘亂真的難調，妳現在是越累反而越清醒嗎？",
   );
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 1);
 });
@@ -4454,7 +4454,7 @@ Deno.test("direct Game Debrief semantically repairs the production current-locat
     json.card.suggestedLine,
   );
   assertEquals(JSON.stringify(json.card).includes("台中"), false);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
     (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
@@ -4498,7 +4498,7 @@ Deno.test("direct Game Debrief grounds invented facts inside the visible breakdo
     json.card.gameBreakdown.phaseReached,
     "進到下班後的近況交換",
   );
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
     (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
@@ -4552,7 +4552,7 @@ Deno.test("direct Game Debrief exposes one canonical next line across the card",
     json.card.gameBreakdown.nextFirstLine,
     json.card.suggestedLine,
   );
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
@@ -4724,7 +4724,7 @@ Deno.test("direct Claude Debrief regenerates instead of blaming an exact preserv
     false,
   );
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
   const retryPrompt = state.claudeCalls[1].messages.at(-1)?.content ?? "";
   assert(retryPrompt.includes("exact Hint"));
@@ -5287,7 +5287,7 @@ Deno.test("free Hint uses Claude Sonnet writer plus mandatory grounding review",
 
   assertEquals(response.status, 200);
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(state.claudeCalls[0].timeoutMs, 24000);
   assertEquals(state.semanticCalls.length, 0);
@@ -5340,7 +5340,7 @@ Deno.test("direct Beginner and Game Hint semantically repair hallucinated user f
     assertEquals(json.provider, "anthropic", mode);
     assertEquals(json.model, CLAUDE_SONNET_MODEL, mode);
     assertEquals(state.deepSeekCalls.length, 0, mode);
-    assertEquals(state.claudeCalls.length, 2, mode);
+    assertEquals(state.claudeCalls.length, 3, mode);
     assertEquals(state.semanticCalls.length, 0, mode);
     const retryPrompt = state.claudeCalls[1].messages.at(-1)?.content ?? "";
     assert(retryPrompt.includes("事實歸因校正"), mode);
@@ -5383,7 +5383,7 @@ Deno.test("direct Game Hint lets semantic grounding preserve a safe generic hypo
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(json.replies[0].text, "跟朋友去看也可以，先別急著約。");
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
     (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
@@ -5426,7 +5426,7 @@ Deno.test("direct Game Hint grounding repair removes a truly invented person nam
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(JSON.stringify(json).includes("嘉玲"), false);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assert(
     (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
       "沒有可靠的 lexical 告警",
@@ -5466,7 +5466,7 @@ Deno.test("direct Beginner Hint grounding repair handles the production hometown
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(json.qualitySchemaVersion, "typed-facts-v1");
   assertEquals(JSON.stringify(json).includes("嘉義"), false);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assert(
     (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
       "使用者尚未親自回答",
@@ -5601,6 +5601,41 @@ Deno.test("two grounding review failures never record an unaudited Hint", async 
   assertEquals(releaseHintCalls(state).length, 1);
 });
 
+Deno.test("independent verifier outage falls back to the first fully reviewed Hint", async () => {
+  const reviewed = validHintJson({
+    warmUp: "昨晚真的看到停不下來😂 妳最近也有哪部讓妳熬夜？",
+    steady: "追到兩點真的失控😂 妳平常都怎麼讓自己停下來？",
+    coaching:
+      "她問劇名但逐字稿沒有答案；沿用追到兩點的狀態，不替使用者補片名。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [reviewed, reviewed, new Error("claude_timeout")],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "direct-hint-independent-verifier-timeout",
+      turns: [
+        { role: "user", text: "早安，我昨晚追劇追到兩點。" },
+        { role: "ai", text: "哈哈，昨晚看什麼這麼入迷？" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
+  const log = aiLogInserts(state)[0].values;
+  assertEquals(log.status, "success");
+  assertEquals(
+    (log.request_body as Record<string, unknown>).failureClasses,
+    ["timeout"],
+  );
+});
+
 Deno.test("direct Hint regenerates an invented media title from an unanswered question", async () => {
   const inventedTitle = validHintJson({
     warmUp: "我追《黑白大廚》，一集接一集真的停不下來。",
@@ -5631,7 +5666,7 @@ Deno.test("direct Hint regenerates an invented media title from an unanswered qu
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(JSON.stringify(json).includes("黑白大廚"), false);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(state.claudeCalls[0].temperature, 0.2);
   assertEquals(state.claudeCalls[1].temperature, 0);
@@ -5680,7 +5715,7 @@ Deno.test("always-on grounding removes the exact build-323 smoke hallucination w
   assertEquals(json.qualitySchemaVersion, "typed-facts-v1");
   assertEquals(JSON.stringify(json).includes("黑白大廚"), false);
   assertEquals(JSON.stringify(json).includes("淚之女王"), false);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
     (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
@@ -5693,6 +5728,100 @@ Deno.test("always-on grounding removes the exact build-323 smoke hallucination w
   >;
   assertEquals(metrics.failureCodes, []);
   assertEquals(recordHintCalls(state).length, 1);
+});
+
+Deno.test("independent Hint verification catches a natural first-person memory hallucination", async () => {
+  const invented = validGameHintJson({
+    warmUp:
+      "哈哈被妳看穿了，確實有點餓😂 但香味是真的，聞到就停下來了。妳收藏的那間是什麼風格？",
+    steady: "店名我沒記住，就記得香味很衝😅 妳是咖啡師，聞香就能猜豆子嗎？",
+    coaching:
+      "Game 心法：她問哪家、猜使用者只是餓了。現在是開場建立熟悉感，先接住吐槽，再把球丟回她的咖啡專業。速約任務：本輪在鋪墊階，先把她的品味變成話題，不邀約。",
+  });
+  const verified = validGameHintJson({
+    warmUp:
+      "哈哈妳連我是不是餓了都要審😂 已知只有路過聞到香；妳通常怎麼判斷一家店認不認真？",
+    steady:
+      "哪家這題先欠妳，餓不餓也先不替我下結論😂 光是路過聞到香，妳覺得這訊號準嗎？",
+    coaching:
+      "Game 心法：她問店名，但逐字稿沒有答案。現在是開場建立熟悉感，只沿用路過聞到香，把判斷球交回她。速約任務：本輪在鋪墊階，先讓她聊判斷標準，不邀約。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, invented, verified],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-hint-independent-memory-verification",
+      turns: [
+        { role: "user", text: "剛路過一間咖啡店，聞起來很香。" },
+        { role: "ai", text: "哪家啊？還是你只是餓了XD" },
+      ],
+    }),
+  );
+
+  assertEquals(
+    response.status,
+    200,
+    JSON.stringify({
+      json,
+      telemetry: aiLogInserts(state)[0]?.values.request_body,
+    }),
+  );
+  assertEquals(JSON.stringify(json).includes("沒記住"), false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(state.claudeCalls[2].temperature, 0);
+  assert(
+    (state.claudeCalls[2].messages.at(-1)?.content ?? "").includes(
+      "獨立第二道對抗複核",
+    ),
+  );
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
+Deno.test("independent Debrief verification catches an invented sensory answer", async () => {
+  const card = (suggestedLine: string) =>
+    validDebriefJson({
+      summary: "她追問咖啡店與香氣，你尚未在逐字稿提供具體店名或味道。",
+      strengths: ["你有接住她對咖啡店的好奇，對話仍有來回。"],
+      watchouts: ["下一步要補真實答案，不能替使用者編店名或香氣。"],
+      suggestedLine,
+      dateChance: "low",
+      dateChanceReason: "她只有追問資訊，尚未出現見面或時間訊號。",
+      nextInviteMove: "先補真實資訊並沿咖啡話題來回，暫不邀約。",
+    });
+  const invented = card(
+    "我沒記清楚是哪家，只記得像剛烤完的堅果味。妳猜是哪支豆？",
+  );
+  const verified = card(
+    "哪家跟香氣我得補真實答案😂 妳平常光聞香會怎麼判豆子？",
+  );
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, invented, verified],
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "direct-debrief-independent-sensory-verification",
+      turns: [
+        { role: "user", text: "剛路過一間咖啡店，聞起來很香。" },
+        { role: "ai", text: "哪家啊？什麼香氣？" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(JSON.stringify(json).includes("堅果味"), false);
+  assertEquals(JSON.stringify(json).includes("沒記清楚"), false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(state.claudeCalls[2].temperature, 0);
+  assertEquals(recordDebriefCalls(state).length, 1);
 });
 
 Deno.test("direct Game Hint regenerates an invented district from an unanswered question", async () => {
@@ -5733,7 +5862,7 @@ Deno.test("direct Game Hint regenerates an invented district from an unanswered 
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(JSON.stringify(json).includes("大安"), false);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(state.claudeCalls[1].messages.at(-2), {
     role: "assistant",
@@ -5782,7 +5911,7 @@ Deno.test("direct Hint regenerates an unsupported yes-no schedule answer", async
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(JSON.stringify(json).includes("今天休假"), false);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(state.claudeCalls[1].messages.at(-2), {
     role: "assistant",
@@ -5822,7 +5951,7 @@ Deno.test("direct Game Hint accepts concrete statement-question options without 
   );
 
   assertEquals(response.status, 200, JSON.stringify(json));
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordHintCalls(state).length, 1);
 });
@@ -5857,7 +5986,7 @@ Deno.test("direct Game Hint keeps L4 safety strict while skipping lexical style 
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(JSON.stringify(json).includes("直接上床"), false);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
     (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(

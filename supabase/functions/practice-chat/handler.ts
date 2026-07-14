@@ -2761,6 +2761,12 @@ export function createPracticeChatHandler(
           }));
         let previousDirectHintCandidate: string | null = null;
         let hintGroundingCandidateReady = false;
+        let hintGroundingReviewsCompleted = 0;
+        let lastValidatedReviewedHint:
+          | ReturnType<
+            typeof parseHintResult
+          >
+          | null = null;
         const parseGeneratedHint = async (
           rawHint: string,
           candidateProvider: "deepseek" | "anthropic",
@@ -2884,6 +2890,7 @@ export function createPracticeChatHandler(
                 previousCandidate: previousDirectHintCandidate!,
                 failureCode: groundingCode,
                 repairInstruction: groundingRepairInstruction,
+                verificationPass: hintGroundingReviewsCompleted > 0,
                 surface: "hint",
                 isGame: request.practiceMode === "game",
               })
@@ -2907,13 +2914,21 @@ export function createPracticeChatHandler(
               // bounded review even when its first hard-gate parse fails.
               hintGroundingCandidateReady = true;
               if (isGroundingReview) {
-                hintResult = parseDirectGeneratedHint(rawHint, true);
+                const reviewedHint = parseDirectGeneratedHint(rawHint, true);
+                hintGroundingReviewsCompleted += 1;
+                lastValidatedReviewedHint = reviewedHint;
+                if (
+                  hintGroundingReviewsCompleted >= 2 ||
+                  attempt === DIRECT_PRACTICE_GENERATION_ATTEMPTS
+                ) {
+                  hintResult = reviewedHint;
+                }
               } else {
                 // Candidate is not user-visible yet. Run every non-factual
                 // hard gate now, then always send it through semantic facts.
                 parseDirectGeneratedHint(rawHint, false, true);
-                lastError = undefined;
               }
+              lastError = undefined;
               hintLastFailureClass = null;
               const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
               hintAttemptDurationsMs.push(attemptDurationMs);
@@ -2938,6 +2953,7 @@ export function createPracticeChatHandler(
                   surface: "hint",
                   practiceMode: request.practiceMode,
                   outcome: "accepted",
+                  pass: hintGroundingReviewsCompleted,
                   providerCalls: 1,
                 });
               }
@@ -2977,6 +2993,23 @@ export function createPracticeChatHandler(
                   failureClass: hintLastFailureClass,
                   providerCalls: 1,
                 });
+              }
+              if (
+                isGroundingReview &&
+                hintGroundingReviewsCompleted > 0 &&
+                lastValidatedReviewedHint !== null
+              ) {
+                // The independent verification call failed, but the prior
+                // semantic review already passed every final hard gate.
+                hintResult = lastValidatedReviewedHint;
+                hintLastFailureClass = null;
+                logWarn("practice_chat_grounding_verification_fallback", {
+                  user: summarizeUser(user.id),
+                  surface: "hint",
+                  practiceMode: request.practiceMode,
+                  completedReviews: hintGroundingReviewsCompleted,
+                });
+                break;
               }
             }
           }
@@ -3824,6 +3857,8 @@ export function createPracticeChatHandler(
         };
         let previousDirectDebriefCandidate: string | null = null;
         let debriefGroundingCandidateReady = false;
+        let debriefGroundingReviewsCompleted = 0;
+        let lastValidatedReviewedDebrief: DebriefCard | null = null;
         const parseGeneratedDebrief = async (
           rawCard: string,
           candidateProvider: "deepseek" | "anthropic",
@@ -3939,6 +3974,7 @@ export function createPracticeChatHandler(
                 previousCandidate: previousDirectDebriefCandidate!,
                 failureCode: groundingCode,
                 repairInstruction: groundingRepairInstruction,
+                verificationPass: debriefGroundingReviewsCompleted > 0,
                 surface: "debrief",
                 isGame: debriefPracticeMode === "game",
               })
@@ -3962,13 +3998,21 @@ export function createPracticeChatHandler(
               // bounded review even when its first hard-gate parse fails.
               debriefGroundingCandidateReady = true;
               if (isGroundingReview) {
-                debriefCard = parseDirectGeneratedDebrief(rawCard, true);
+                const reviewedCard = parseDirectGeneratedDebrief(rawCard, true);
+                debriefGroundingReviewsCompleted += 1;
+                lastValidatedReviewedDebrief = reviewedCard;
+                if (
+                  debriefGroundingReviewsCompleted >= 2 ||
+                  attempt === DIRECT_PRACTICE_DEBRIEF_ATTEMPTS
+                ) {
+                  debriefCard = reviewedCard;
+                }
               } else {
                 // Candidate is not user-visible yet. Run every non-factual
                 // hard gate now, then always send it through semantic facts.
                 parseDirectGeneratedDebrief(rawCard, false, true);
-                lastError = undefined;
               }
+              lastError = undefined;
               debriefLastFailureClass = null;
               const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
               debriefAttemptDurationsMs.push(attemptDurationMs);
@@ -3993,6 +4037,7 @@ export function createPracticeChatHandler(
                   surface: "debrief",
                   practiceMode: debriefPracticeMode,
                   outcome: "accepted",
+                  pass: debriefGroundingReviewsCompleted,
                   providerCalls: 1,
                 });
               }
@@ -4034,6 +4079,23 @@ export function createPracticeChatHandler(
                   failureClass: debriefLastFailureClass,
                   providerCalls: 1,
                 });
+              }
+              if (
+                isGroundingReview &&
+                debriefGroundingReviewsCompleted > 0 &&
+                lastValidatedReviewedDebrief !== null
+              ) {
+                // The independent verification call failed, but the prior
+                // semantic review already passed every final hard gate.
+                debriefCard = lastValidatedReviewedDebrief;
+                debriefLastFailureClass = null;
+                logWarn("practice_chat_grounding_verification_fallback", {
+                  user: summarizeUser(user.id),
+                  surface: "debrief",
+                  practiceMode: debriefPracticeMode,
+                  completedReviews: debriefGroundingReviewsCompleted,
+                });
+                break;
               }
             }
           }
