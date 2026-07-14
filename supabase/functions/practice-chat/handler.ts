@@ -610,8 +610,8 @@ function withHintRetryInstruction(
         'shape 必須仍是 {"warmUp":"...","steady":"...","coaching":"..."}。' +
         `warmUp、steady 各 ${HINT_REPLY_SOFT_CHAR_LIMIT} 字內，coaching ${HINT_COACHING_SOFT_CHAR_LIMIT} 字內，三欄都要完整收句。` +
         "warmUp、steady、coaching 三欄各自都要逐字重用她最新一句的具體詞或短語，不能只有其中一欄具體。" +
-        "若她最新句在問具名答案（劇名／片名／書名／店名／地點），逐字稿沒有答案時：自然承認沒提或先不揭曉，再沿她已說的感受接球；不得編任何專名，也不得兩個回覆都只丟問題。" +
-        "若她問使用者是否放假／有空／上班，逐字稿沒答案就不得直接肯定或否定；自然保留後接已知內容。" +
+        "若她最新句在問具名答案（劇名／片名／書名／店名／地點），逐字稿沒有答案時用 {劇名}／{店名}／{真實答案} 讓使用者填；不得編任何專名、自稱不知道／沒記／保密／後補，也不得兩個回覆都只丟問題。" +
+        "若她問使用者是否放假／有空／上班，逐字稿沒答案就用 {有／沒有} 讓使用者填，不得直接肯定或否定。" +
         "可貼回覆要先接住她最新狀態，再給低壓接球；不要命令、不要面試官語氣、不要內部標籤、不要露骨或私密壓迫。",
     },
   ];
@@ -630,7 +630,7 @@ function debriefRetryReason(error: unknown): string {
     return "可貼回覆把她的個人事實錯寫成使用者自己的事實";
   }
   if (message.includes("debrief_quality_invalid_suggested_line_not_grounded")) {
-    return "suggestedLine 補了逐字稿沒有的事實；她問劇名、店名或地點但逐字稿沒答案時，不得編名稱，改用不爆雷、還在想怎麼形容或反問偏好來接";
+    return "suggestedLine 補了逐字稿沒有的事實；她問劇名、店名、地點或是否做過但逐字稿沒答案時，改用 {劇名}／{店名}／{真實答案}／{有／沒有} 讓使用者填，禁自稱不知道、沒記、保密或後補";
   }
   if (message.includes("debrief_hint_assessment_revision_required")) {
     return "上一版把 exact Hint 當成問題或反轉策略；提醒只寫『下一步／下次／接下來…』，不得寫 Hint／這句／你的回覆／只回／只問／猜錯／誤判／偏保守或有問題";

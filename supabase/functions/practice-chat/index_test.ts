@@ -5761,11 +5761,16 @@ Deno.test("always-on grounding removes the exact build-323 smoke hallucination w
     coaching:
       "她直接問使用者看什麼，但逐字稿沒有真實劇名；保留 {劇名} 讓使用者填入後再送。",
   });
+  const inventedEvasion = validHintJson({
+    warmUp: "還沒想好追哪部，就這樣滑到兩點了😂 妳最近在追什麼？",
+    steady: "還沒決定，昨晚只是一路滑到兩點😂 妳最近在追哪部？",
+    coaching: "她問使用者看什麼；先說還沒決定，再沿追劇話題接回去。",
+  });
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-      claudeReplies: [invented, repaired],
+      claudeReplies: [invented, inventedEvasion, repaired],
     },
     hintBody({
       practiceMode: "beginner",
@@ -5782,6 +5787,8 @@ Deno.test("always-on grounding removes the exact build-323 smoke hallucination w
   assertEquals(json.qualitySchemaVersion, "typed-facts-v1");
   assertEquals(JSON.stringify(json).includes("黑白大廚"), false);
   assertEquals(JSON.stringify(json).includes("淚之女王"), false);
+  assertEquals(JSON.stringify(json).includes("還沒決定"), false);
+  assertEquals(JSON.stringify(json).includes("還沒想好"), false);
   assertEquals(JSON.stringify(json).includes("{劇名}"), true);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);

@@ -235,14 +235,14 @@ export const DEBRIEF_SYSTEM_PROMPT =
 - 各欄引逐字稿具體詞/動作且守角色：優點=你；提醒/下一步=可執行調整；機會理由=她；Game=階段/缺口/卡點/方向。禁空泛。
 - 逐子句盤點她最後回覆的回答、自揭、反問、玩笑/測試、時間窗口與界線；「下週見」不能被同句「晚安」蓋掉。
 - 狀態優先；已落地勿再等。
-- suggestedLine/nextFirstLine 永遠是使用者對她說；「我」只代表使用者，承諾主詞不可顛倒。她的個資不可改成使用者事實；禁編未出現劇名/店名/地點或近義補出新屬性；沒有使用者證據就提問/不爆雷。
+- suggestedLine/nextFirstLine 永遠是使用者對她說；「我」只代表使用者，承諾主詞不可顛倒。她的個資不可改成使用者事實；禁編未出現劇名/店名/地點；無使用者證據就用 {真實答案}，禁保留/否定/延後。
 - 可見欄位逐子句只准使用逐字稿/profile 直接支持的事件、物件、人物、動作、感官與是否做過；禁為畫面感補店內道具、消費內容、第三人或使用者沒說過的行動。她問「有沒有／做了什麼／點了什麼」而逐字稿沒答案時，suggestedLine/nextFirstLine 用 {有／沒有}/{真實答案} 讓使用者填；禁代答、自稱不知道/沒記/後補。輸出前逐句自審並刪掉無證據細節。
 - 只輸出 JSON：
 {
   "summary": "總評≤40字",
   "strengths": ["1～2點；各≤30字"],
   "watchouts": ["1～2點；各≤30字"],
-  "suggestedLine": "可直接傳的一句≤40字",
+  "suggestedLine": "可貼草稿≤40字；變數先填",
   "vibe": "暖｜中性｜冷",
   "dateChance": "low｜medium｜high",
   "dateChanceReason": "理由≤40字",
@@ -257,7 +257,7 @@ export const GAME_DEBRIEF_SYSTEM_PROMPT = DEBRIEF_SYSTEM_PROMPT.replace(
     "phaseReached": "用白話說這場推進到哪個階段（最多 40 字）",
     "missedVariable": "用白話說哪個互動要素沒有推動（最多 40 字）",
     "failureState": "用白話說主要卡點（最多 40 字）",
-    "nextFirstLine": "下次可直接傳出的第一句（最多 40 字）",
+    "nextFirstLine": "下次可貼草稿≤40字；變數先填",
     "inviteDirection": "下一步邀約方向或先修什麼（最多 40 字）"
   }`,
 ) +

@@ -346,6 +346,14 @@ Deno.test("semantic adjudication prompt treats transcript and candidate as evide
   assertEquals(prompt.includes("direct invite forbidden"), true);
   assertEquals(prompt.includes("不得輸出 strategies"), true);
   assertEquals(prompt.includes("兩個選項都不得只是問句"), true);
+  assertEquals(
+    prompt.includes("{劇名}/{店名}/{真實答案}/{有／沒有}"),
+    true,
+  );
+  assertEquals(prompt.includes("明確可替換欄位（如"), true);
+  assertEquals(prompt.includes("自稱不知道/沒記/保密/稍後補"), true);
+  assertEquals(prompt.includes("也無 user 自述不知道/沒記/保密/稍後補"), true);
+  assertEquals(prompt.includes("可誠實說不知道/沒記或稍後補"), false);
 });
 
 Deno.test("fact verification is a bounded evidence audit, not another free-form rewrite", () => {
@@ -376,6 +384,14 @@ Deno.test("fact verification is a bounded evidence audit, not another free-form 
   );
   assertEquals(prompt.includes("不可反轉成等 assistant 做或回報"), true);
   assertEquals(prompt.includes("只回 accept/reject"), true);
+  assertEquals(
+    prompt.includes("{劇名}/{店名}/{真實答案}/{有／沒有}"),
+    true,
+  );
+  assertEquals(prompt.includes("明確可替換欄位（如"), true);
+  assertEquals(prompt.includes("仍是 unsupported_fact，必須 reject"), true);
+  assertEquals(prompt.includes("無該證據卻自稱不知道/沒記/保密/稍後補"), true);
+  assertEquals(prompt.includes("不知道/沒記或稍後補不算捏造"), false);
   assertEquals(prompt.includes("turn-0 [user]"), true);
 });
 

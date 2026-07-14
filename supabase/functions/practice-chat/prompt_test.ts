@@ -48,11 +48,15 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
     assertEquals(DEBRIEF_SYSTEM_PROMPT.includes(expected), true, expected);
   }
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("她的個資"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("沒有使用者證據"), true);
   assertEquals(
     DEBRIEF_SYSTEM_PROMPT.includes("禁編未出現劇名/店名/地點"),
     true,
   );
+  assertEquals(
+    DEBRIEF_SYSTEM_PROMPT.includes("無使用者證據就用 {真實答案}"),
+    true,
+  );
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("提問/不爆雷"), false);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("逐子句盤點"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("下週見"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("已落地"), true);
@@ -73,6 +77,8 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
     true,
   );
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("輸出前逐句自審"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("可貼草稿≤40字；變數先填"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("可直接傳的一句"), false);
 });
 
 Deno.test("Hint prompt makes expert framing evidence-only instead of inventing scene props", () => {
