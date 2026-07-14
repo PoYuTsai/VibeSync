@@ -4648,7 +4648,7 @@ Deno.test("independent Debrief reviewer may apply a bounded repair", async () =>
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(json.card.suggestedLine, JSON.parse(repaired).suggestedLine);
-  assertEquals(state.claudeCalls.length, 4);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
@@ -5879,7 +5879,7 @@ Deno.test("beginner hint timeout also fails over to Claude", async () => {
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("free Hint uses Claude Sonnet writer plus mandatory grounding review", async () => {
+Deno.test("free Hint uses Claude Sonnet writer plus two mandatory grounding reviews", async () => {
   const { response, json, state } = await run(
     {
       sub: subscription({ tier: "free" }),
@@ -6332,35 +6332,36 @@ Deno.test("independent Hint reviewer may apply a bounded repair", async () => {
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(json.replies[0].text, JSON.parse(rewritten).warmUp);
-  assertEquals(state.claudeCalls.length, 4);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("a final Hint repair is never returned without another independent accept", async () => {
+Deno.test("the second Hint review is the final bounded semantic adjudication", async () => {
   const candidate = validHintJson();
   const repaired = validHintJson({
     warmUp: "咖啡這題先不替自己補答案，妳會怎麼判斷？",
   });
-  const unverified = validHintJson({
+  const unusedFourthReply = validHintJson({
     warmUp: "我住台中，最常去勤美喝咖啡；妳呢？",
   });
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-      claudeReplies: [candidate, candidate, repaired, unverified],
+      claudeReplies: [candidate, candidate, repaired, unusedFourthReply],
     },
     hintBody({
       practiceMode: "beginner",
-      requestId: "direct-hint-final-repair-needs-independent-accept",
+      requestId: "direct-hint-second-review-is-final",
     }),
   );
 
-  assertEquals(response.status, 503, JSON.stringify(json));
-  assertEquals(state.claudeCalls.length, 4);
-  assertEquals(recordHintCalls(state).length, 0);
-  assertEquals(releaseHintCalls(state).length, 1);
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.replies[0].text, JSON.parse(repaired).warmUp);
+  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
 });
 
 Deno.test("malformed independent Hint verifier fails closed", async () => {

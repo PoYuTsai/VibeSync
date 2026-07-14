@@ -138,8 +138,8 @@ const DEBRIEF_TIMEOUT_MS = 12000;
 // window and 105s owner fence deliberately favor verified output over 503.
 const DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS = 24000;
 const DEBRIEF_IN_FLIGHT_STALE_MS = 105000;
-const DIRECT_PRACTICE_GENERATION_ATTEMPTS = 4;
-const DIRECT_PRACTICE_DEBRIEF_ATTEMPTS = 4;
+const DIRECT_PRACTICE_GENERATION_ATTEMPTS = 3;
+const DIRECT_PRACTICE_DEBRIEF_ATTEMPTS = 3;
 const DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS = 24000;
 // Direct Claude is the final writer, not a brainstormer. Keep every attempt
 // low-variance so expert framing comes from the rubric instead of invented
@@ -154,9 +154,9 @@ const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 1;
 const SERVER_HINT_DECISION_RATIONALE =
   "只依據本場逐字稿與已知角色資料；貼句已依目前關係階段與邀約路線校驗。";
-// Keep the common path at generation + one reviewer. Reserve a third reviewer
-// only when both distinct provider paths fail or a high-risk repair still needs
-// verification; generation failover must not consume that recovery slot.
+// The direct Claude path is fixed at writer + two reviews above. Keep the
+// rollback provider path bounded separately; generation failover must not
+// consume all of its semantic review budget.
 const PRACTICE_GENERATION_PROVIDER_CALL_BUDGET = 5;
 const PRACTICE_SEMANTIC_REVIEWER_CALL_BUDGET = 3;
 // Sacrifice a little wait time to reduce Game Hint timeout/failover and avoid
@@ -2898,19 +2898,12 @@ export function createPracticeChatHandler(
           ) {
             const isGroundingReview: boolean = hintGroundingCandidateReady &&
               previousDirectHintCandidate !== null;
-            const needsFinalRepairVerification =
-              hintGroundingReviewsCompleted >= 2 &&
-              lastValidatedHintGroundingVerdict === "repair";
-            if (
-              attempt === DIRECT_PRACTICE_GENERATION_ATTEMPTS &&
-              !needsFinalRepairVerification
-            ) break;
-            // Reserve the final two provider slots for the mandatory two
-            // independent reviews. A second-review repair may use the fourth
-            // slot for one final accept; an unaudited writer is never returned.
+            // Reserve the final provider slot for the second independent
+            // review. Its bounded patch is the final semantic adjudication;
+            // an unaudited writer is never returned.
             if (
               !isGroundingReview &&
-              attempt >= DIRECT_PRACTICE_GENERATION_ATTEMPTS - 1
+              attempt === DIRECT_PRACTICE_GENERATION_ATTEMPTS
             ) break;
             const groundingCode = isGroundingReview &&
                 lastError !== undefined
@@ -2968,10 +2961,7 @@ export function createPracticeChatHandler(
                 hintGroundingReviewsCompleted += 1;
                 lastValidatedReviewedHint = reviewedHint;
                 lastValidatedHintGroundingVerdict = grounded.verdict;
-                if (
-                  hintGroundingReviewsCompleted >= 2 &&
-                  grounded.verdict === "accept"
-                ) {
+                if (hintGroundingReviewsCompleted >= 2) {
                   hintResult = reviewedHint;
                 }
               } else {
@@ -4032,19 +4022,12 @@ export function createPracticeChatHandler(
           ) {
             const isGroundingReview: boolean = debriefGroundingCandidateReady &&
               previousDirectDebriefCandidate !== null;
-            const needsFinalRepairVerification =
-              debriefGroundingReviewsCompleted >= 2 &&
-              lastValidatedDebriefGroundingVerdict === "repair";
-            if (
-              attempt === DIRECT_PRACTICE_DEBRIEF_ATTEMPTS &&
-              !needsFinalRepairVerification
-            ) break;
-            // Reserve the final two provider slots for the mandatory two
-            // independent reviews. A second-review repair may use the fourth
-            // slot for one final accept; an unaudited writer is never returned.
+            // Reserve the final provider slot for the second independent
+            // review. Its bounded patch is the final semantic adjudication;
+            // an unaudited writer is never returned.
             if (
               !isGroundingReview &&
-              attempt >= DIRECT_PRACTICE_DEBRIEF_ATTEMPTS - 1
+              attempt === DIRECT_PRACTICE_DEBRIEF_ATTEMPTS
             ) break;
             const groundingCode = isGroundingReview &&
                 lastError !== undefined
@@ -4104,10 +4087,7 @@ export function createPracticeChatHandler(
                 debriefGroundingReviewsCompleted += 1;
                 lastValidatedReviewedDebrief = reviewedCard;
                 lastValidatedDebriefGroundingVerdict = grounded.verdict;
-                if (
-                  debriefGroundingReviewsCompleted >= 2 &&
-                  grounded.verdict === "accept"
-                ) {
+                if (debriefGroundingReviewsCompleted >= 2) {
                   debriefCard = reviewedCard;
                 }
               } else {
