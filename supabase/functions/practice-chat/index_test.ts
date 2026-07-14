@@ -6116,6 +6116,200 @@ Deno.test("direct Game Hint repairs the exact production round-one cafe-state in
   assertEquals(recordHintCalls(state).length, 1);
 });
 
+Deno.test("direct Beginner Hint repairs the latest production causal inventions across both reviews", async () => {
+  const writer = validHintJson({
+    warmUp:
+      "《{劇名}》，一開始以為隨便看看，結果根本停不下來 😂 妳昨晚跟朋友吃飯吃到哪裡？",
+    steady:
+      "《{劇名}》啦，太好看了根本忘記時間 哈哈。妳昨晚吃飯吃到很晚，今天還好嗎？",
+    coaching:
+      "她接住你的狀態、也分享昨晚跟朋友吃飯。先填劇名，再把球拋回她昨晚吃飯的話題。",
+  });
+  const firstReview = validHintJson({
+    warmUp:
+      "《{劇名}》，昨晚追到兩點，現在腦袋還沒開機 😂 妳昨晚跟朋友吃飯吃到哪裡？",
+    steady:
+      "《{劇名}》啦，太好看了根本忘記時間 哈哈。妳昨晚吃飯吃到很晚，今天還好嗎？",
+    coaching:
+      "她接住你的狀態、也分享昨晚跟朋友吃飯。先填劇名，再把球拋回她昨晚吃飯的話題。",
+  });
+  const finalReview = validHintJson({
+    warmUp:
+      "《{劇名}》，昨晚追到兩點，現在腦袋還沒開機 😂 妳昨晚跟朋友吃飯吃到哪裡？",
+    steady:
+      "《{劇名}》啦，昨晚追到兩點，現在腦袋還沒開機。妳昨晚吃飯吃到很晚，今天還好嗎？",
+    coaching:
+      "她接住你的狀態、也分享昨晚跟朋友吃飯。先填劇名，再把球拋回她昨晚吃飯的話題。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [writer, firstReview, finalReview],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "direct-beginner-hint-latest-production-causal-claims",
+      turns: [
+        {
+          role: "user",
+          text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂",
+        },
+        {
+          role: "ai",
+          text:
+            "哈哈 這麼拼喔\n我昨晚也滿晚睡 跟朋友吃飯到剛剛\n你看什麼劇這麼入迷",
+        },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.replies[0].text, JSON.parse(finalReview).warmUp);
+  assertEquals(json.replies[1].text, JSON.parse(finalReview).steady);
+  const serialized = JSON.stringify(json);
+  for (
+    const unsupported of [
+      "一開始以為隨便看看",
+      "停不下來",
+      "太好看了",
+      "忘記時間",
+    ]
+  ) {
+    assertEquals(serialized.includes(unsupported), false, unsupported);
+  }
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], writer);
+  assertGroundingReviewInput(state.claudeCalls[2], firstReview);
+  assertEquals(
+    (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
+      .failureCodes,
+    [],
+  );
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
+Deno.test("direct Game Hint repairs the latest production metaphor and knowledge claims across both reviews", async () => {
+  const writer = validGameHintJson({
+    warmUp: "叫{店名}，路過被香氣偷襲😂 妳身為咖啡師，聞香就能猜出是什麼豆嗎？",
+    steady: "{店名}，不過我對咖啡沒那麼懂，只知道聞起來很香。妳平常喝什麼？",
+    coaching:
+      "Game 心法：她直接問店名。先填好店名再送；升溫版用被香氣偷襲接她咖啡師身份，穩住版把球丟回她的日常偏好。速約任務：這輪先不約。",
+  });
+  const firstReview = validGameHintJson({
+    warmUp:
+      "叫{店名}，我今天路過時聞起來超香 😂 妳身為咖啡師，光聞能猜出是什麼豆嗎？",
+    steady: "{店名}，不過我對咖啡沒那麼懂，只知道聞起來很香。妳平常喝什麼？",
+    coaching:
+      "Game 心法：她直接問店名。先填好店名再送；沿用路過與聞香接她咖啡師身份，再把球丟回她的日常偏好。速約任務：這輪先不約。",
+  });
+  const finalReview = validGameHintJson({
+    warmUp:
+      "叫{店名}，我今天路過時聞起來超香 😂 妳身為咖啡師，光聞能猜出是什麼豆嗎？",
+    steady: "{店名}，我今天路過時聞起來超香。妳平常喝什麼？",
+    coaching:
+      "Game 心法：她直接問店名。先填好 {店名}；只沿用路過與聞香，再把球丟回她的日常偏好。速約任務：這輪先不約。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [writer, firstReview, finalReview],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-hint-latest-production-knowledge-claims",
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        { role: "ai", text: "喔？哪家啊？說來聽聽。" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.replies[0].text, JSON.parse(finalReview).warmUp);
+  assertEquals(json.replies[1].text, JSON.parse(finalReview).steady);
+  const serialized = JSON.stringify(json);
+  for (
+    const unsupported of [
+      "被香氣偷襲",
+      "對咖啡沒那麼懂",
+      "只知道聞起來很香",
+    ]
+  ) {
+    assertEquals(serialized.includes(unsupported), false, unsupported);
+  }
+  assert(serialized.includes("{店名}"));
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], writer);
+  assertGroundingReviewInput(state.claudeCalls[2], firstReview);
+  assertEquals(
+    (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
+      .failureCodes,
+    [],
+  );
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
+Deno.test("direct Game Hint preserves the same claims when the user stated them", async () => {
+  const grounded = validGameHintJson({
+    warmUp:
+      "叫{店名}，我真的像被香氣偷襲 😂 妳身為咖啡師，光聞能猜出是什麼豆嗎？",
+    steady: "{店名}，我對咖啡沒那麼懂，只知道它聞起來很香。妳平常喝什麼？",
+    coaching:
+      "Game 心法：她問店名；保留 {店名}，重用使用者明說的咖啡知識與香氣感受。速約任務：這輪先不約。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [grounded, grounded, grounded],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-hint-evidence-backed-metaphor-knowledge",
+      turns: [
+        {
+          role: "user",
+          text:
+            "我對咖啡沒那麼懂，今天路過一家店，真的像被香氣偷襲，只知道它聞起來很香。",
+        },
+        { role: "ai", text: "喔？哪家啊？說來聽聽。" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  const serialized = JSON.stringify(json);
+  assert(serialized.includes("被香氣偷襲"));
+  assert(serialized.includes("對咖啡沒那麼懂"));
+  assert(serialized.includes("只知道它聞起來很香"));
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], grounded);
+  assertGroundingReviewInput(state.claudeCalls[2], grounded);
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
 Deno.test("direct Game Hint grounding repair removes a truly invented person name", async () => {
   const invented = validGameHintJson({
     warmUp: "這個傳給嘉玲看，她一定會笑。",
@@ -7067,7 +7261,7 @@ Deno.test("Beginner Debrief repair removes an invented plan before independent v
   assert(verificationPrompt.includes("server-trusted user evidence"));
   assert(
     verificationPrompt.includes(
-      "都須由 user_turn 或 server-trusted user evidence 單獨直接支持",
+      "都須由 user_turn 或 server-trusted user evidence 單獨直接蘊含",
     ),
   );
   assert(
@@ -7558,7 +7752,7 @@ Deno.test("direct Game Debrief repairs the exact production round-one pretend-ex
         "她主動補充『被香味吸引的客人最有趣』，話題有延伸空間。",
       ],
       watchouts: [
-        "她說『怕被你拿去當藉口裝懂』是小測試，下一句若沒接住會顯得空洞。",
+        "她用裝懂玩笑丟小測試，下一句可直接接她後半句的素材。",
         "目前只停在資訊交換，缺乏她對你的好奇或情感投入。",
       ],
       suggestedLine,
@@ -7568,13 +7762,11 @@ Deno.test("direct Game Debrief repairs the exact production round-one pretend-ex
         "先接住她說的『最有趣』，讓她多說一個真實故事，再找鋪墊。",
     })) as Record<string, unknown>;
     value.gameBreakdown = {
-      failureState:
-        "對話停在問答乒乓，她吐槽『怕被拿去裝懂』是小測試，尚未被正面接住。",
+      failureState: "她最後補了『被香味吸引的客人最有趣』，末則正等待下一句。",
       phaseReached:
         "開場資訊交換完成，她給了一個職業視角的開口，但還沒進入價值或情感層。",
       nextFirstLine: suggestedLine,
-      missedVariable:
-        "她說『最有趣』卻沒被接住，情感投入（Emotion）這個變數還沒推動。",
+      missedVariable: "她提供『最有趣』素材，下一句可往真實故事延伸。",
       inviteDirection: "先讓她講一個真實故事，建立熟悉感後再考慮低壓咖啡短約。",
     };
     return JSON.stringify(value);
@@ -7653,6 +7845,308 @@ Deno.test("direct Game Debrief repairs the exact production round-one pretend-ex
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
+Deno.test("direct Beginner Debrief repairs the latest production completion and discovery claims", async () => {
+  const appliedHint =
+    "《{劇名}》啦，太好看了根本忘記時間 哈哈。妳昨晚吃飯吃到很晚，今天還好嗎？";
+  const card = (suggestedLine: string) =>
+    validDebriefJson({
+      summary: "她回應平穩但投入感低，連結仍停在表面寒暄。",
+      strengths: [
+        "記得她昨晚睡晚並主動關心，展現在場感。",
+        "照貼 Hint 問候自然，沒有急著推進。",
+      ],
+      watchouts: [
+        "她回『習慣了』是輕描淡寫，下一句不宜追問睡眠。",
+        "目前來回仍淺，先找共同話題鉤子。",
+      ],
+      suggestedLine,
+      dateChance: "low",
+      dateChanceReason: "她僅禮貌回應，無延伸或反問，連結基礎不足。",
+      nextInviteMove: "先丟一個真實生活片段，引她分享興趣。",
+    });
+  const writer = card(
+    "補眠派！我追完才發現已經兩點，{真實感受}，下次要設個鬧鐘提醒自己。",
+  );
+  const firstReview = card(
+    "補眠派！我昨晚追劇到兩點才發現時間，{真實感受}，下次要設個鬧鐘。",
+  );
+  const finalReview = card(
+    "補眠派！我昨晚追劇追到兩點，{真實感受}，下次要設個鬧鐘。",
+  );
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [writer, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "building_familiarity",
+            targetVariable: "安全感與熟悉感",
+            move: "build_connection",
+            inviteRoute: "not_ready",
+            rationale: "回答劇名，再沿她昨晚吃飯的話題建立熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "direct-beginner-debrief-latest-production-time-claims",
+      turns: [
+        {
+          role: "user",
+          text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂",
+        },
+        {
+          role: "ai",
+          text:
+            "哈哈 這麼拼喔\n我昨晚也滿晚睡 跟朋友吃飯到剛剛\n你看什麼劇這麼入迷",
+        },
+        { role: "user", text: appliedHint },
+        { role: "ai", text: "還行啦 習慣了\n等等回家補個眠就好" },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-latest-production-time-claims",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(
+    json.card.suggestedLine,
+    JSON.parse(finalReview).suggestedLine,
+  );
+  assertEquals(json.card.suggestedLine.includes("追完"), false);
+  assertEquals(json.card.suggestedLine.includes("才發現"), false);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(
+    state.claudeCalls[1],
+    JSON.parse(writer).suggestedLine,
+  );
+  assertGroundingReviewInput(
+    state.claudeCalls[2],
+    JSON.parse(firstReview).suggestedLine,
+  );
+  assertEquals(
+    (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
+      .failureCodes,
+    [],
+  );
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("direct Game Debrief repairs the latest production tasting, timing, and Hint blame across both reviews", async () => {
+  const appliedHint =
+    "{店名}，不過我對咖啡沒那麼懂，只知道聞起來很香。妳平常喝什麼？";
+  const suggested = "果酸那種我喝起來像在喝果汁，妳是怎麼開始喜歡這個的？";
+  const base = JSON.parse(validDebriefJson({
+    summary: "開場有接住咖啡話題，但她給了具體建議後沒有接住。",
+    strengths: [
+      "主動提起咖啡話題，讓她有機會展示專業。",
+      "用『妳平常喝什麼』讓她分享真實偏好。",
+    ],
+    watchouts: [
+      "她說『下次可以試試看手沖』是小窗口，沒有接住就會冷掉。",
+      "目前停在問答乒乓，缺少自己的感受或立場。",
+    ],
+    suggestedLine: suggested,
+    dateChance: "low",
+    dateChanceReason: "她給了建議但沒有延伸邀約意圖，互動仍停在資訊層。",
+    nextInviteMove: "先給自己的感受或立場，累積投入感再說邀約。",
+  })) as Record<string, unknown>;
+  base.gameBreakdown = {
+    failureState: "你問偏好、她回答，但沒有你的立場，她無從反打。",
+    phaseReached: "開場資訊交換，她說出淺焙果酸偏好。",
+    nextFirstLine: suggested,
+    missedVariable: "她說『下次可以試試手沖』是小窗口，沒有接住她的建議。",
+    inviteDirection: "先用自己的{真實感受}接她的手沖建議，不急邀約。",
+  };
+  const writer = JSON.stringify(base);
+  const first = structuredClone(base);
+  first.suggestedLine = "原來妳偏淺焙果酸。妳是怎麼開始喜歡這個的？";
+  (first.gameBreakdown as Record<string, unknown>).nextFirstLine =
+    first.suggestedLine;
+  const firstReview = JSON.stringify(first);
+  const final = structuredClone(first);
+  final.summary = "她給了具體手沖建議，下一輪可沿這個素材延伸。";
+  final.strengths = [
+    "主動提起咖啡話題，讓她有機會展示專業。",
+    "用『妳平常喝什麼』讓她分享常喝類型。",
+  ];
+  final.watchouts = [
+    "手沖建議是話題素材，不是邀約或見面窗口。",
+    "下一句可補真實感受或立場，避免只停在資訊層。",
+  ];
+  final.suggestedLine = "原來妳平常喝淺焙果酸。妳最近常喝手沖嗎？";
+  final.dateChanceReason = "她提供常喝類型與建議，但沒有見面邀約或時間窗。";
+  final.nextInviteMove = "下一句沿她的建議接話，累積來回後再看邀約。";
+  final.gameBreakdown = {
+    failureState: "目前仍是資訊交換；下一句可補真實感受或立場。",
+    phaseReached: "開場資訊交換，她分享常喝類型與手沖建議。",
+    nextFirstLine: final.suggestedLine,
+    missedVariable: "末則是她的新建議，等待使用者下一句接續。",
+    inviteDirection: "先沿她的手沖建議接話，不急邀約。",
+  };
+  const finalReview = JSON.stringify(final);
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 2 }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [writer, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "P1_OPEN",
+            targetVariable: "familiarity",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "回答店名，再問她的咖啡偏好建立熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-debrief-latest-production-timing-claims",
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        { role: "ai", text: "喔？哪家啊？說來聽聽。" },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text:
+            "淺焙單品比較多，果酸明顯的那種。那家沒喝過的話下次可以試試看他們的手沖。",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-latest-production-timing-claims",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.summary, final.summary);
+  assertEquals(json.card.watchouts, final.watchouts);
+  assertEquals(json.card.suggestedLine, final.suggestedLine);
+  assertEquals(json.card.gameBreakdown, final.gameBreakdown);
+  const serialized = JSON.stringify(json.card);
+  for (
+    const unsupported of [
+      "我喝起來",
+      "像在喝果汁",
+      "沒有接住",
+      "小窗口",
+      "沒有你的立場",
+      "偏淺焙",
+      "開始喜歡",
+      "真實偏好",
+      "淺焙果酸偏好",
+      "提供偏好",
+    ]
+  ) {
+    assertEquals(serialized.includes(unsupported), false, unsupported);
+  }
+  assertEquals(
+    json.card.gameBreakdown.nextFirstLine,
+    json.card.suggestedLine,
+  );
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(
+    state.claudeCalls[1],
+    JSON.parse(writer).suggestedLine,
+  );
+  assertGroundingReviewInput(
+    state.claudeCalls[2],
+    JSON.parse(firstReview).suggestedLine,
+  );
+  assertEquals(
+    (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
+      .failureCodes,
+    [],
+  );
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("direct Game Debrief preserves user-stated taste claims through both reviews", async () => {
+  const suggestedLine =
+    "我平常喝淺焙果酸，也真的喜歡那個味道。妳最近都怎麼沖？";
+  const card = JSON.parse(validDebriefJson({
+    summary: "你先分享常喝類型，她接著分享手沖習慣並反問。",
+    strengths: ["你明說自己常喝淺焙果酸，也說喜歡那個味道。"],
+    watchouts: ["下一句沿她的手沖習慣接話即可。"],
+    suggestedLine,
+    dateChance: "low",
+    dateChanceReason: "她有延伸咖啡話題，但沒有見面或時間訊號。",
+    nextInviteMove: "先交換手沖方式，累積來回後再看邀約。",
+  })) as Record<string, unknown>;
+  card.gameBreakdown = {
+    failureState: "目前是咖啡習慣交換，下一句可沿手沖延伸。",
+    phaseReached: "開場資訊交換，雙方都分享了咖啡習慣。",
+    nextFirstLine: suggestedLine,
+    missedVariable: "下一步可了解她平常的手沖方式。",
+    inviteDirection: "先把咖啡習慣聊深，不急邀約。",
+  };
+  const grounded = JSON.stringify(card);
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [grounded, grounded, grounded],
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-debrief-evidence-backed-taste",
+      turns: [
+        {
+          role: "user",
+          text: "我平常喝淺焙果酸，也真的喜歡那個味道。",
+        },
+        { role: "ai", text: "原來你也喝這種，我最近都自己手沖。你呢？" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.suggestedLine, suggestedLine);
+  assert(JSON.stringify(json.card).includes("平常喝淺焙果酸"));
+  assert(JSON.stringify(json.card).includes("真的喜歡那個味道"));
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], suggestedLine);
+  assertGroundingReviewInput(state.claudeCalls[2], suggestedLine);
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
 Deno.test("direct Game Hint regenerates an invented district from an unanswered question", async () => {
   const inventedDistrict = validGameHintJson({
     warmUp:
@@ -7663,8 +8157,7 @@ Deno.test("direct Game Hint regenerates an invented district from an unanswered 
       "Game 心法：她這輪問哪一區、是不是網美店。速約任務：回答大安附近，接她「網美店」的吐槽。",
   });
   const groundedReply = validGameHintJson({
-    warmUp:
-      "區域是{區域}，是不是網美店要填{是／不是}😂 我只知道路過時聞起來很香。",
+    warmUp: "區域是{區域}，是不是網美店要填{是／不是}😂 我路過時聞起來很香。",
     steady: "區域是{區域}，店的風格是{風格}；妳通常怎麼判斷一間店？",
     coaching:
       "Game 心法：她問哪一區、是不是網美店，現在是開場，但逐字稿沒有答案；保留 {區域}、{是／不是} 與 {風格} 讓使用者填真值。速約任務：先聊挑店標準，不硬約。",

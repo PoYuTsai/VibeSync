@@ -43,17 +43,17 @@ function hasLoneSurrogate(value: string): boolean {
 
 Deno.test("Debrief prompt forbids transferring partner facts into pasteable first-person lines", () => {
   for (
-    const expected of ["suggestedLine", "nextFirstLine", "我", "使用者事實"]
+    const expected of ["suggestedLine", "nextFirstLine", "我", "user 事實"]
   ) {
     assertEquals(DEBRIEF_SYSTEM_PROMPT.includes(expected), true, expected);
   }
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("她的個資"), true);
   assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("禁編未出現劇名/店名/地點"),
+    DEBRIEF_SYSTEM_PROMPT.includes("禁編劇名/店名/地點"),
     true,
   );
   assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("無使用者證據用 {真實答案}"),
+    DEBRIEF_SYSTEM_PROMPT.includes("未知用 {真實答案}"),
     true,
   );
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("提問/不爆雷"), false);
@@ -62,50 +62,52 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("已落地"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("已落地勿再等"), true);
   assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("是使用者對她說"),
+    DEBRIEF_SYSTEM_PROMPT.includes("是 user 對她說"),
     true,
   );
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("承諾主詞"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("「我」=user"), true);
   assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("事件、物件、人物、動作、感官"),
+    DEBRIEF_SYSTEM_PROMPT.includes("事件、人物、動作、感官、消費"),
     true,
   );
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("禁代答"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("禁裝忘或代答"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("{真實答案}"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("我有感/香會讓人停下來"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("淺焙果酸"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("像果汁"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("只證常喝類型"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("勿問「怎麼開始喜歡」"), true);
   assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("未知用 {真實感受}/{有／沒有}"),
+    DEBRIEF_SYSTEM_PROMPT.includes("獨立留 {真實感受}/{真實立場}"),
     true,
   );
   assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("禁代答、自稱不知道/沒記/後補"),
+    DEBRIEF_SYSTEM_PROMPT.includes("禁裝忘或代答"),
     true,
   );
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("輸出前刪除無證據細節"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("輸出前刪無證據細節"), true);
   assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("猜測/吐槽（有無問號）不是 user 答案"),
+    DEBRIEF_SYSTEM_PROMPT.includes("她的個資/猜測/吐槽不是 user 事實或答案"),
     true,
   );
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("變數不替鄰句補故事"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("貼句事實邊界"), true);
   assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("不論有無問號都不是 user 答案"),
+    DEBRIEF_SYSTEM_PROMPT.includes("她的問句、挑戰或猜測不是 user 答案"),
     true,
   );
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("靠咖啡撐著"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("敢不敢"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("靠意志力撐到最後"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("靠意志力"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("裝懂我倒不至於"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("{真實回應}"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("{真實狀態}"), true);
   assertEquals(
     DEBRIEF_SYSTEM_PROMPT.includes(
-      "未來提議、提問、界線、輕量態度可依策略創作",
+      "未來提議/提問/界線可創作",
     ),
     true,
   );
   assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("每個替代項也只能是最小答案"),
+    DEBRIEF_SYSTEM_PROMPT.includes("禁批評「沒接住」她最後一句"),
     true,
   );
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("可貼草稿≤40字；變數先填"), true);
@@ -125,13 +127,16 @@ Deno.test("Hint prompt makes expert framing evidence-only instead of inventing s
   }).map((message) => message.content).join("\n");
 
   assert(prompt.includes("只記得香味/咖啡不懂/很想進去"));
-  assert(prompt.includes("停下/查名/進店/感覺不錯/妳收藏的店"));
-  assert(prompt.includes("禁補已發生動作/感官/原因/場景"));
+  assert(prompt.includes("停下查名進店"));
+  assert(prompt.includes("合理、相容或玩笑不算證據"));
+  assert(prompt.includes("比喻的隱含命題也要有證據"));
   assert(prompt.includes("「我」事實只用 user 證據"));
   assert(prompt.includes("邀約只用逐字稿窗口"));
-  assert(prompt.includes("逐句刪無證據命題"));
+  assert(prompt.includes("最後逐句自查"));
   assert(prompt.includes("Give-first 只用 user 證據"));
-  assert(prompt.includes("無證據用態度/比喻/問題/未來提議"));
+  assert(prompt.includes("無證據就問她或用未來提議"));
+  assert(prompt.includes("態度/比喻若暗含 user"));
+  assertEquals(prompt.includes("無證據用態度/比喻"), false);
 });
 
 Deno.test("Hint and Debrief treat the latest partner question as unverified user facts", () => {
@@ -938,7 +943,7 @@ Deno.test("game debrief follows seven-step variable and speed-invite breakdown",
   assertEquals(user.includes("速約窗口"), true);
   assertEquals(user.includes("下一句怎麼把窗口接成行動"), true);
   assertEquals(user.includes("問答乒乓"), true);
-  assertEquals(user.includes("不得再用工作／偏好資訊題收尾"), true);
+  assertEquals(user.includes("不再用工作/偏好資訊題收尾"), true);
 });
 
 Deno.test("debrief keeps the complete latest partner turn for reaction judgment", () => {
@@ -1081,19 +1086,18 @@ Deno.test("server-owned Debrief keeps the applied Hint strategy locked", () => {
     },
   )[1].content;
 
-  assert(user.includes("這是同一位教練的下游拆盤"));
-  assert(user.includes("策略由 server 鎖定為「在送出當下正確」"));
+  assert(user.includes("同一教練下游拆盤"));
+  assert(user.includes("策略由 server 鎖定為「送出當下正確」"));
   assert(user.includes("不可 revised"));
-  assert(user.includes("不是後續永久上限"));
-  assert(user.includes("下一步可自然前進、維持或退回"));
-  assert(user.includes("不能寫成修正 Hint"));
+  assert(user.includes("inviteRoute 是當時路線"));
+  assert(user.includes("她後來若給新證據"));
+  assert(user.includes("只能寫成新條件"));
+  assert(user.includes("不可把「只問偏好／沒有立場」列本輪卡點"));
   assert(user.includes("不是 X，是 Y"));
-  assert(user.includes("她補充真正原因是 Y"));
-  assert(user.includes("指定你之後回報"));
-  assert(user.includes("不是禮貌收尾"));
-  assert(user.includes("明確要求停止聯絡"));
-  assert(user.includes("尊重界線並停止推進"));
-  assert(user.includes("不必硬塞固定句型"));
+  assert(user.includes("她補充 Y"));
+  assert(user.includes("指定之後回報"));
+  assert(user.includes("保留未來接點"));
+  assert(user.includes("她要求停止時停止推進"));
   assertEquals(
     user.includes("exact: true 時 summary/strengths 必含「你有照提示做」"),
     false,
