@@ -141,8 +141,9 @@ const DIRECT_PRACTICE_GENERATION_ATTEMPTS = 3;
 const DIRECT_PRACTICE_DEBRIEF_ATTEMPTS = 3;
 const DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS = 24000;
 // Structured-output grammar compilation can make the first review after a
-// deploy slower than the writer. Keep two reviews within the 90s client window.
-const GROUNDING_REVIEW_TIMEOUT_MS = 30000;
+// deploy slower than the writer. Keep two reviews plus request overhead within
+// the 90s Debrief client window.
+const GROUNDING_REVIEW_TIMEOUT_MS = 27000;
 // Direct Claude is the final writer, not a brainstormer. Keep every attempt
 // low-variance so expert framing comes from the rubric instead of invented
 // scene props, user actions, or personal facts.
