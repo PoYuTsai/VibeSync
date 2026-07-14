@@ -96,6 +96,11 @@ Deno.test("grounding reviewer uses a dedicated system and treats writer context 
   assertEquals(messages.some((message) => message.role === "assistant"), false);
   assertStringIncludes(messages[0].content, "checkedFields");
   assertStringIncludes(messages[0].content, "userClaims");
+  assertStringIncludes(messages[0].content, "userClaims 是精簡失敗清單");
+  assertStringIncludes(
+    messages[0].content,
+    "有證據的主張在心中核對即可，不要輸出",
+  );
   assertStringIncludes(messages[0].content, "昨晚追劇追到兩點");
   assertStringIncludes(messages[0].content, "一開始只想看一集");
   assertStringIncludes(messages[0].content, "招牌不大");

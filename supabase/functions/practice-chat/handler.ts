@@ -129,6 +129,7 @@ const CHAT_MAX_TOKENS = 200;
 const CHAT_TEMPERATURE = 0.9;
 const CHAT_GENERATION_ATTEMPTS = 2;
 const DEBRIEF_MAX_TOKENS = 1200;
+const DEBRIEF_GROUNDING_MAX_TOKENS = 1800;
 const DEBRIEF_TEMPERATURE = 0.5;
 const DEBRIEF_GENERATION_ATTEMPTS = 1;
 const DEBRIEF_TIMEOUT_MS = 12000;
@@ -4080,7 +4081,9 @@ export function createPracticeChatHandler(
                 apiKey: claudeApiKey,
                 model: CLAUDE_SONNET_MODEL,
                 messages: debriefMessages,
-                maxTokens: DEBRIEF_MAX_TOKENS,
+                maxTokens: isGroundingReview
+                  ? DEBRIEF_GROUNDING_MAX_TOKENS
+                  : DEBRIEF_MAX_TOKENS,
                 temperature: isGroundingReview
                   ? GROUNDING_REPAIR_TEMPERATURE
                   : DIRECT_PRACTICE_TEMPERATURE,

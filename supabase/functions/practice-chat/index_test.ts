@@ -4325,6 +4325,9 @@ Deno.test("Debrief defaults to one Claude Sonnet writer plus two grounding revie
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(state.claudeCalls[0].timeoutMs, 24000);
+  assertEquals(state.claudeCalls[0].maxTokens, 1200);
+  assertEquals(state.claudeCalls[1].maxTokens, 1800);
+  assertEquals(state.claudeCalls[2].maxTokens, 1800);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(json.provider, "anthropic");
   assertEquals(json.model, CLAUDE_SONNET_MODEL);
@@ -6734,9 +6737,13 @@ Deno.test("Beginner Debrief repair removes an invented plan before independent v
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
   assert(verificationPrompt.includes("貼句的「我」"));
   assert(verificationPrompt.includes("server-trusted user evidence"));
-  assert(verificationPrompt.includes("user 事實填 subject=user"));
   assert(
-    verificationPrompt.includes("partner relation 填 subject=partner_relation"),
+    verificationPrompt.includes(
+      "user 事實只能由 user_turn 或 trusted_user_fact 支持",
+    ),
+  );
+  assert(
+    verificationPrompt.includes("partner relation 只能由 assistant_turn 支持"),
   );
   assert(verificationPrompt.includes("本來只想看一集"));
   assert(verificationPrompt.includes("候選所有欄位"));
