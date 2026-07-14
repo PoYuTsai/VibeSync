@@ -8142,6 +8142,105 @@ Deno.test("direct Game Debrief repairs the latest production tasting, timing, an
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
+Deno.test("direct Game Debrief keeps an applied Hint question attributed to the user", async () => {
+  const appliedHint =
+    "叫{店名}，不過沒進去——妳覺得光聞香氣能判斷值不值得進去喝嗎？";
+  const suggestedLine =
+    "其實我也不確定算不算老店，{真實答案}——妳說要入口才知道，妳遇過聞起來很香喝起來讓妳失望的嗎？";
+  const repaired = JSON.parse(validDebriefJson({
+    summary: "開場靠咖啡話題破冰，她有回應，但目前仍停在資訊交換。",
+    strengths: [
+      "你先回答店名槽位，再沿她的咖啡專業提問。",
+      "她回答聞香判斷方式並反問是否老店，話題仍有來回。",
+    ],
+    watchouts: [
+      "她先問店名，你接著問聞香能否判斷，她才反問是不是老店；下一句直接回答她目前的問題。",
+      "下一句補真實答案或立場，避免只停在資訊交換。",
+    ],
+    suggestedLine,
+    vibe: "冷",
+    dateChance: "low",
+    dateChanceReason: "她有回應，但沒有見面邀約、延伸場景或時間線索。",
+    nextInviteMove: "先補自己的真實答案或立場，累積來回後再看邀約。",
+  })) as Record<string, unknown>;
+  repaired.gameBreakdown = {
+    failureState: "目前仍是資訊交換；下一句可補真實答案或立場。",
+    phaseReached: "停在開場資訊交換，她回答聞香判斷後反問是否老店。",
+    nextFirstLine: suggestedLine,
+    missedVariable: "她在等使用者回答是否老店；需要 {真實答案}。",
+    inviteDirection: "先回答她的問題並累積熟悉感，不急邀約。",
+  };
+  const wrong = structuredClone(repaired);
+  wrong.watchouts = [
+    "她問了兩個問題（值不值得進去、厲害的老店），下一步需要帶出自己的感受。",
+    "下一句補真實答案或立場，避免只停在資訊交換。",
+  ];
+  const writer = JSON.stringify(wrong);
+  const reviewed = JSON.stringify(repaired);
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 2 }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [writer, reviewed, reviewed],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "P1_OPEN",
+            targetVariable: "familiarity",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "回答店名，再沿她的咖啡專業建立熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-debrief-hint-question-speaker",
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        { role: "ai", text: "喔？哪一家啊，你沒進去喝一杯？" },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text:
+            "聞香大概能猜豆子狀態跟烘法啦，但好不好喝還是要入口才知道。\n\n不過你說的店名我沒聽過耶，厲害的老店？",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-question-speaker",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.watchouts, repaired.watchouts);
+  assertEquals(
+    JSON.stringify(json.card).includes("她問了兩個問題"),
+    false,
+  );
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], "她問了兩個問題");
+  assertGroundingReviewInput(state.claudeCalls[2], "她先問店名");
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "不得把 Hint 問句寫成『她問』",
+    ),
+  );
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
 Deno.test("direct Game Debrief preserves user-stated taste claims through both reviews", async () => {
   const suggestedLine =
     "我平常喝淺焙果酸，也真的喜歡那個味道。妳最近都怎麼沖？";
