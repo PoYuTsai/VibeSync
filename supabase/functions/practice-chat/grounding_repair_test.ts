@@ -100,6 +100,21 @@ Deno.test("grounding reviewer uses a short isolated patch contract", () => {
   assertStringIncludes(messages[0].content, "{劇名}");
   assertStringIncludes(messages[0].content, "重新檢查候選所有欄位");
   assertStringIncludes(messages[0].content, '"verdict":"repair"');
+  assertStringIncludes(messages[0].content, "最高優先逐字例");
+  assertStringIncludes(messages[0].content, "忘記名字／名字沒記到／沒記店名");
+  assertStringIncludes(messages[0].content, "停下來／多站幾秒／進店／沒進店");
+  assertStringIncludes(messages[0].content, "感覺不錯");
+  assertStringIncludes(messages[0].content, "妳收藏的店");
+  assertStringIncludes(
+    messages[0].content,
+    "user 自身事實只認 user_turn 或 trusted_user_fact",
+  );
+  assertStringIncludes(messages[0].content, "「她收藏」只認 assistant_turn");
+  assertStringIncludes(messages[0].content, "未知店名用 {店名}");
+  assert(
+    messages[0].content.indexOf("最高優先逐字例") <
+      messages[0].content.indexOf("完整閱讀上方逐字稿"),
+  );
   assertStringIncludes(messages[0].content, "咖啡鑑賞力只到香不香");
   assertStringIncludes(messages[0].content, "吧檯設備我看不懂");
   assertEquals(messages[0].content.includes("checkedFields"), false);

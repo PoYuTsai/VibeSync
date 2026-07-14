@@ -98,9 +98,10 @@ Deno.test("Hint prompt makes expert framing evidence-only instead of inventing s
     familiarityScore: 0,
   }).map((message) => message.content).join("\n");
 
-  assert(prompt.includes("事件、物件、人物、動作、感官與是否做過"));
-  assert(prompt.includes("高手感只能放在 framing、節奏、比喻與提問"));
-  assert(prompt.includes("不能靠補場景道具或經歷"));
+  assert(prompt.includes("不補「停下來／多站幾秒／進店／沒進店／感覺不錯」"));
+  assert(prompt.includes("高手感不靠補動作/感官/原因/場景"));
+  assert(prompt.includes("造小場景的「我」事實只用已有 user 素材"));
+  assert(prompt.includes("邀約窗口只用逐字稿真窗口"));
   assert(prompt.includes("輸出前逐句自審"));
   assert(prompt.includes("Give-first 只能使用逐字稿已知的 user 品味／小場景"));
 });

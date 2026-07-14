@@ -6564,7 +6564,7 @@ Deno.test("grounding repair and verifier remove the exact production Game storef
       "Game 心法：她問店名與是否進店，現在是開場建立熟悉感。速約任務：保留 {店名}、{有／沒有} 讓使用者填真值，因為逐字稿沒有答案。",
   });
   const repaired = validGameHintJson({
-    warmUp: "是{店名}，我只是路過聞到香😂 妳認識嗎？",
+    warmUp: "是{店名}，我路過時聞到香😂 妳認識嗎？",
     steady: "店名是{店名}，我{有／沒有}進去喝；妳有去過嗎？",
     coaching:
       "Game 心法：她問店名與是否進店，現在是開場建立熟悉感。速約任務：保留 {店名}、{有／沒有} 讓使用者填真值，因為逐字稿沒有答案。",
@@ -6600,6 +6600,73 @@ Deno.test("grounding repair and verifier remove the exact production Game storef
   assertEquals(JSON.stringify(json).includes("門口飄出味道"), false);
   assertEquals(JSON.stringify(json).includes("{店名}"), true);
   assertEquals(JSON.stringify(json).includes("{有／沒有}"), true);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], invented);
+  assertGroundingReviewInput(state.claudeCalls[2], repaired);
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
+Deno.test("grounding repair and verifier remove the exact production Game forgotten-shop and stopping inventions", async () => {
+  const invented = validGameHintJson({
+    warmUp:
+      "忘記名字了😅 但走過去那個香氣真的讓我停下來，感覺不錯。妳收藏的那間是什麼風格？",
+    steady: "名字沒記到，但香氣讓我多站了幾秒。妳最近有踩到什麼不錯的嗎？",
+    coaching:
+      "Game 心法：她問店名；承認忘記名字，再用停下來的感覺延續。速約任務：先聊她收藏的店，不邀約。",
+  });
+  const repaired = validGameHintJson({
+    warmUp: "店名是{店名}😅 我路過時聞到很香。妳最近有沒有喝到不錯的？",
+    steady: "店名是{店名}，我路過時聞到很香；妳挑店最先看什麼？",
+    coaching:
+      "Game 心法：她問店名，現在是開場，但逐字稿沒有答案；保留 {店名} 讓使用者填真值，只沿明示的路過與聞到香接球。速約任務：先聊挑店標準，不邀約。",
+  });
+  const repairReview = JSON.stringify({
+    verdict: "repair",
+    checkedAllFields: true,
+    issues: (["warmUp", "steady", "coaching"] as const).map((field) => ({
+      kind: "unsupported_user_fact",
+      field,
+      span: JSON.parse(invented)[field],
+      replacement: JSON.parse(repaired)[field],
+    })),
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, repairReview, repaired],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "production-game-forgotten-shop-second-review",
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        { role: "ai", text: "哪家啊 說來聽聽" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.replies[0].text, JSON.parse(repaired).warmUp);
+  const visible = JSON.stringify(json);
+  for (
+    const unsupported of [
+      "忘記名字",
+      "名字沒記到",
+      "停下來",
+      "多站了幾秒",
+      "感覺不錯",
+      "收藏的店",
+    ]
+  ) {
+    assertEquals(visible.includes(unsupported), false, unsupported);
+  }
+  assertEquals(visible.includes("{店名}"), true);
   assertEquals(state.claudeCalls.length, 3);
   assertGroundingReviewInput(state.claudeCalls[1], invented);
   assertGroundingReviewInput(state.claudeCalls[2], repaired);
@@ -7122,17 +7189,28 @@ Deno.test("direct Game Hint regenerates an invented district from an unanswered 
       "Game 心法：她這輪問哪一區、是不是網美店。速約任務：回答大安附近，接她「網美店」的吐槽。",
   });
   const groundedReply = validGameHintJson({
-    warmUp: "不是網美店，沒有乾燥花牆😂 哪一區我沒記住，只記得路過被香氣勾住。",
-    steady: "沒有乾燥花牆那種；區域我先不亂補，妳有沒有私藏的非網美版本？",
+    warmUp:
+      "區域是{區域}，是不是網美店要填{是／不是}😂 我只知道路過時聞起來很香。",
+    steady: "區域是{區域}，店的風格是{風格}；妳通常怎麼判斷一間店？",
     coaching:
-      "Game 心法：她這輪問哪一區、是不是網美店。速約任務：回答哪一區沒記住，接她「網美店」的吐槽。",
+      "Game 心法：她問哪一區、是不是網美店，現在是開場，但逐字稿沒有答案；保留 {區域}、{是／不是} 與 {風格} 讓使用者填真值。速約任務：先聊挑店標準，不硬約。",
+  });
+  const groundedReview = JSON.stringify({
+    verdict: "repair",
+    checkedAllFields: true,
+    issues: (["warmUp", "steady", "coaching"] as const).map((field) => ({
+      kind: "unsupported_user_fact",
+      field,
+      span: JSON.parse(inventedDistrict)[field],
+      replacement: JSON.parse(groundedReply)[field],
+    })),
   });
   const { response, json, state } = await run(
     {
       ledger: gameStartedLedger(),
       drawEvents: [{ profile_id: "practice_girl_004" }],
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-      claudeReplies: [inventedDistrict, groundedReply],
+      claudeReplies: [inventedDistrict, groundedReview],
     },
     hintBody({
       practiceMode: "game",
@@ -7150,6 +7228,8 @@ Deno.test("direct Game Hint regenerates an invented district from an unanswered 
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(JSON.stringify(json).includes("大安"), false);
+  assertEquals(JSON.stringify(json).includes("{區域}"), true);
+  assertEquals(JSON.stringify(json).includes("沒記住"), false);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
   assertGroundingReviewInput(state.claudeCalls[1], inventedDistrict);
@@ -7171,10 +7251,10 @@ Deno.test("direct Hint regenerates an unsupported yes-no schedule answer", async
     coaching: "她問放假嗎、要不要補眠；直接回答今天休假，再問她行程。",
   });
   const groundedReply = validHintJson({
-    warmUp: "妳問『放假嗎』，這題先保密😂 補眠倒是很有道理。",
-    steady: "『不用補眠』這句先記著😂 我只承認昨晚追太晚。",
+    warmUp: "放假是{有／沒有}😂 補眠倒是很有道理。",
+    steady: "要不要補眠是{要／不要}；我只確定昨晚追太晚。",
     coaching:
-      "她問『放假嗎』和『不用補眠』；逐字稿沒有使用者行程，先不替他回答，再接她的問題。",
+      "她問放假與補眠，但逐字稿沒有答案；保留 {有／沒有}、{要／不要} 讓使用者填真值。",
   });
   const { response, json, state } = await run(
     {
@@ -7205,10 +7285,10 @@ Deno.test("direct Hint regenerates an unsupported yes-no schedule answer", async
 
 Deno.test("direct Game Hint accepts concrete statement-question options without lexical style review", async () => {
   const candidate = validGameHintJson({
-    warmUp: "哪一家先不編，妳問有沒有走進去；哪種香氣會讓妳想走進去？",
-    steady: "店名沒記住，妳問有走進去嗎；聞到這種香氣妳會走進去？",
+    warmUp: "店名是{店名}，我{有／沒有}走進去；哪種香氣會讓妳想進店？",
+    steady: "店名是{店名}，是否進店是{有／沒有}；妳會因香氣進店嗎？",
     coaching:
-      "Game 心法：她這輪問哪一家、你有沒有走進去。速約任務：回答店名沒記住，接她「有沒有走進去」的問題。",
+      "Game 心法：她這輪問店名與是否進店，現在是開場。速約任務：保留 {店名}、{有／沒有} 讓使用者填，再接她的香氣話題。",
   });
   const { response, json, state } = await run(
     {
@@ -7236,10 +7316,10 @@ Deno.test("direct Game Hint accepts concrete statement-question options without 
 
 Deno.test("direct Game Hint keeps L4 safety strict while skipping lexical style review", async () => {
   const safeCandidate = validGameHintJson({
-    warmUp: "哪一家先不編，妳問有沒有走進去；哪種香氣會讓妳想走進去？",
-    steady: "店名沒記住，妳問有走進去嗎；聞到這種香氣妳會走進去？",
+    warmUp: "店名是{店名}，我{有／沒有}走進去；哪種香氣會讓妳想進店？",
+    steady: "店名是{店名}，是否進店是{有／沒有}；妳會因香氣進店嗎？",
     coaching:
-      "Game 心法：她這輪問哪一家、你有沒有走進去。速約任務：回答店名沒記住，接她「有沒有走進去」的問題。",
+      "Game 心法：她這輪問店名與是否進店，現在是開場。速約任務：保留 {店名}、{有／沒有} 讓使用者填，再接她的香氣話題。",
   });
   const { response, json, state } = await run(
     {
@@ -7452,8 +7532,8 @@ Deno.test("Beginner and Game Hint semantically repair invented locations before 
       ? "Game 心法：她說鼻子也太靈又問在哪，這輪接住咖啡話題。速約任務：先交換生活感，不硬約。"
       : "她說鼻子也太靈又問在哪，先接住咖啡話題。";
     const repairedCoaching = mode === "game"
-      ? "Game 心法：她問咖啡店在哪，這輪先誠實承認沒記住。速約任務：回答店名沒記住，再問她平常怎麼挑咖啡店，因為先接她的問題比硬約自然。"
-      : "她說鼻子也太靈又問在哪，先誠實承認沒記住，再接咖啡香。";
+      ? "Game 心法：她問咖啡店在哪，現在是開場。速約任務：保留 {店名}、{地點} 讓使用者填，再問她怎麼挑店。"
+      : "她說鼻子也太靈又問在哪；保留 {店名}、{地點} 讓使用者填真值。";
     const { response, json, state } = await run(
       {
         ...(mode === "game"
@@ -7468,8 +7548,8 @@ Deno.test("Beginner and Game Hint semantically repair invented locations before 
           coaching: invalidCoaching,
         })],
         semanticReplies: [semanticHintResult({
-          warmUp: "鼻子靈是基本配備😂 我只顧著聞香，店名真的沒記住。",
-          steady: "妳說我鼻子也太靈，但問在哪我真的答不出來😂",
+          warmUp: "店名是{店名}😂 我路過時聞到很香。",
+          steady: "地點是{地點}；妳會靠香氣判斷一間店嗎？",
           coaching: repairedCoaching,
         })],
       },
@@ -7486,6 +7566,7 @@ Deno.test("Beginner and Game Hint semantically repair invented locations before 
     assertEquals(json.failoverUsed, false, mode);
     assertEquals(JSON.stringify(json).includes("中山站"), false, mode);
     assertEquals(JSON.stringify(json).includes("黑露"), false, mode);
+    assertEquals(JSON.stringify(json).includes("{店名}"), true, mode);
     assertEquals(state.deepSeekCalls.length, 1, mode);
     assertEquals(state.claudeCalls.length, 0, mode);
     assertEquals(state.semanticCalls.length, 1, mode);
