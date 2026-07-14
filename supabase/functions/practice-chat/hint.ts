@@ -161,7 +161,8 @@ export const HINT_COACHING_SOFT_CHAR_LIMIT = 140;
 const HIDDEN_HINT_NO_LEAK_RULE =
   "隱藏資料 inviteStage/dateChance/relationshipScore/分數/memorySummary/evidence/snake_case 不得露出；scene/partnerState 只供角色回覆，Hint 事實只認逐字稿。\n";
 const HINT_FACT_BOUNDARY_PRIORITY =
-  `最高優先例（非本輪逐字稿）：user「路過聞到店香」，assistant「哪家啊 說來聽聽」。店名寫「店名是{店名}」；不代答「忘記名字／名字沒記到／沒記店名」，不補「停下來／多站幾秒／進店／沒進店／感覺不錯」，不預設「妳收藏的店」。user 事實只認 user turn／trusted evidence；她的現況只認 assistant turn。
+  `最高優先事實邊界：逐句拆命題；user 既有事實（動作/狀態/感受/結果/方式/資訊來源/時間/因果）及她問句/挑戰的答案只認 user turn／trusted evidence；推論/玩笑不算。非回答未知問句/挑戰的未來提議/提問/界線/態度可創作，不可暗示舊事。每個變數只答她最新訊息問的一件事；可接原問動作，禁帶未問動詞；其餘未知故事刪除，勿造故事再包 {有／沒有}。
+例：user「路過聞香」，她問「哪家」→「店名是{店名}」；禁代答忘記/沒記或補停下/查名/進店/感覺不錯/「妳收藏的店」。「追到兩點」≠坐著睡著/越看越清醒；她現況只認 assistant turn。
 `;
 
 function dateChanceLabel(chance: InviteDateChance): string {
@@ -1158,7 +1159,7 @@ function gameHintFewShotExamples(): string {
 function visibleGameHintContract(): string {
   return `visibleGameHintContract:
 - 只輸出 JSON：warmUp、steady、coaching。
-- 可貼回覆本身不能只把速約方向放在 coaching；造小場景的「我」事實只用已有 user 素材，邀約窗口只用逐字稿真窗口。未知事實用 {變數} 先答再問，不算純追問；勿補動作／經歷。
+- 可貼句含速約方向；「我」事實只用 user 證據，邀約只用逐字稿窗口。
 - 先讀淺溝通：累→降成本；微測試→先過關；好奇→留懸念；推開→修安全；時間窗→收成。
 - warmUp/steady≤${HINT_REPLY_SOFT_CHAR_LIMIT}字；coaching 以「Game 心法：」開頭，含「她這句可能是在...」、階段白話、具體任務與理由、「速約任務：」，全文≤${HINT_COACHING_SOFT_CHAR_LIMIT}字。
 - 依本輪速約階梯最多推一階；公開、低壓、可拒絕。L4 禁止；hidden labels、代碼與 snake_case 不輸出。
@@ -1171,7 +1172,7 @@ function safeAdvancedGameHintContract(): string {
 - SR 技巧拉滿但安全尊重：條件到位時 10-15 句內低壓見面。
 - 骨架：P1 開場/資訊交換 → P2 展示價值 → P3 篩選/賦格 → P4 推拉張力 → P5 鎖定/收尾。
 - 資格篩選是玩笑品味門檻，不是命令她證明自己；不要說「妳先給我一個標準答案」。共同敘事把最新狀態變兩人小劇場；順勢收尾只用真窗口收成短咖啡、順路散步、小展、宵夜。
-- 可貼回覆必須先接住她最新狀態。萬用解法：訊號判讀 → 單一招式 → 可貼收口；Give-first 只能使用逐字稿已知的 user 品味／小場景；沒有 user 證據時改給態度、比喻或問題，絕不補事件、物件、動作或感官細節。
+- 可貼句接最新狀態。骨架：訊號→招式→收口；Give-first 只用 user 證據；無證據用態度/比喻/問題/未來提議，禁補已發生事件/物件/動作/感官。
 - 假熟先確認；店名、地點、共同經歷沒出現就別捏造。禁止命令、面試、操控、羞辱、性壓力與私密施壓。
 ${gameHintFewShotExamples()}
 
@@ -1299,7 +1300,7 @@ export function buildHintMessages(opts: {
         (opts.practiceMode === "game"
           ? ""
           : `warmUp/steady≤${HINT_REPLY_SOFT_CHAR_LIMIT}字，coaching≤${HINT_COACHING_SOFT_CHAR_LIMIT}字；完整收句。\n`) +
-        "『我』=user；自我揭露只用已知 user 事實；禁猜感官/經歷；她的事實不改成 user 事實/偏好；問句前提也算事實，禁預設她收藏/去過/喜歡/做過。未知用《{劇名}》、{店名}、{有／沒有}，禁自稱不知道、沒記、保密、後補；也不可只反問。未給店/路/共同經歷勿捏造店/路名/地址/地標。高手感不靠補動作/感官/原因/場景。輸出前逐句自審，刪掉無證據細節。\n" +
+        "「我」=user；自揭只用 user 證據；她事實/問句前提不算。未知答：《{劇名}》、{店名}、{有／沒有}；變數各答她最新問題，可接原問動作，禁帶未問動作/結果/原因。禁裝忘/保密/後補/只反問；未知店/路名/地址/地標/共同經歷勿捏造。高手感禁補已發生動作/感官/原因/場景。逐句刪無證據命題。\n" +
         "warmUp=「升溫回覆」、steady=「穩住回覆」，是唯二回覆選項；coaching=「這邊怎麼回的心法」。\n" +
         "user 代表使用者本人，assistant 代表練習對象；幫 user 回 assistant 最新一句。\n" +
         "狀態以最新為準；已落地勿再等。\n" +

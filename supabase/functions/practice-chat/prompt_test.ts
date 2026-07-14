@@ -87,6 +87,24 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
     true,
   );
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("變數不替鄰句補故事"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("貼句事實邊界"), true);
+  assertEquals(
+    DEBRIEF_SYSTEM_PROMPT.includes("不論有無問號都不是 user 答案"),
+    true,
+  );
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("靠咖啡撐著"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("敢不敢"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("{真實狀態}"), true);
+  assertEquals(
+    DEBRIEF_SYSTEM_PROMPT.includes(
+      "未來提議、提問、界線、輕量態度可依策略創作",
+    ),
+    true,
+  );
+  assertEquals(
+    DEBRIEF_SYSTEM_PROMPT.includes("每個替代項也只能是最小答案"),
+    true,
+  );
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("可貼草稿≤40字；變數先填"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("可直接傳的一句"), false);
 });
@@ -103,12 +121,13 @@ Deno.test("Hint prompt makes expert framing evidence-only instead of inventing s
     familiarityScore: 0,
   }).map((message) => message.content).join("\n");
 
-  assert(prompt.includes("不補「停下來／多站幾秒／進店／沒進店／感覺不錯」"));
-  assert(prompt.includes("高手感不靠補動作/感官/原因/場景"));
-  assert(prompt.includes("造小場景的「我」事實只用已有 user 素材"));
-  assert(prompt.includes("邀約窗口只用逐字稿真窗口"));
-  assert(prompt.includes("輸出前逐句自審"));
-  assert(prompt.includes("Give-first 只能使用逐字稿已知的 user 品味／小場景"));
+  assert(prompt.includes("禁代答忘記/沒記或補停下/查名/進店/感覺不錯"));
+  assert(prompt.includes("高手感禁補已發生動作/感官/原因/場景"));
+  assert(prompt.includes("「我」事實只用 user 證據"));
+  assert(prompt.includes("邀約只用逐字稿窗口"));
+  assert(prompt.includes("逐句刪無證據命題"));
+  assert(prompt.includes("Give-first 只用 user 證據"));
+  assert(prompt.includes("無證據用態度/比喻/問題/未來提議"));
 });
 
 Deno.test("Hint and Debrief treat the latest partner question as unverified user facts", () => {

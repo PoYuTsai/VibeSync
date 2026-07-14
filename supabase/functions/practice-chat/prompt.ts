@@ -238,6 +238,7 @@ export const DEBRIEF_SYSTEM_PROMPT =
 - suggestedLine/nextFirstLine 是使用者對她說；「我」=使用者，承諾主詞不可顛倒。她的個資不可改成使用者事實；她的猜測/吐槽（有無問號）不是 user 答案，變數不替鄰句補故事。禁編未出現劇名/店名/地點；無使用者證據用 {真實答案}，禁保留/否定/延後。
 - 她的感官/手沖問句不證 user 感受；禁「我有感/香會讓人停下來」，未知用 {真實感受}/{有／沒有}。
 - 可見欄位每個事實只准逐字稿/profile 直接支持；事件、物件、人物、動作、感官、是否做過、店內道具、消費與第三人都禁腦補。她問有沒有/做了/點了什麼而無答案，貼句用 {有／沒有}/{真實答案}；禁代答、自稱不知道/沒記/後補。輸出前刪除無證據細節。
+- 貼句事實邊界：拆成最小命題；既有/過去/現在的 user 狀態、答案、動作、結果、因果及對她問句/挑戰的答案各自要有 user 證據。她的問句、挑戰、猜測或推論不論有無問號都不是 user 答案。不回答未知問句/挑戰的未來提議、提問、界線、輕量態度可依策略創作，但不得暗示未發生事實。每個變數只填她最新訊息直接提出的一個必要答案，不替旁邊前提背書；每個替代項也只能是最小答案。她問「今天不會想睡嗎」不支持「超想睡／靠咖啡撐著」，問「敢不敢」不支持 user 回「敢」，改用 {真實狀態}/{真實答案}/{敢／不敢} 或不主張真假。
 - 只輸出 JSON：
 {
   "summary": "總評≤40字",
@@ -748,7 +749,7 @@ function debriefHintAccountabilityPrompt(
     ].join("\n");
   }).join("\n");
   const sharedContract =
-    `\n\nhintAssistedTurns(hidden evidence)\n${rows}\ndecision＝server權威；末筆：build不升約、soft不升direct、repair不邊修邊約。不要把照貼 Hint 的句子當成使用者自己亂打。拆成：使用者執行 / Hint 品質 / 對方反應。讀完整末筆她回覆；有新素材／反問就不是禮貌收尾。`;
+    `\n\nhintAssistedTurns(hidden evidence)\n${rows}\ndecision＝server權威；末筆：build不升約、soft不升direct、repair不邊修邊約。不要把照貼 Hint 的句子當成使用者自己亂打。拆成：使用者執行 / Hint 品質 / 對方反應。讀完整末筆她回覆；有新素材／反問就不是禮貌收尾。Hint 鎖定只證明已發出策略，不替本次 suggestedLine/nextFirstLine 新增的 user 事實或她問題的答案背書；她的新問句仍不是 user 答案。`;
   if (serverOwnsHintStrategy) {
     return sharedContract +
       `這是同一位教練的下游拆盤：已套用 Hint 的策略由 server 鎖定為「在送出當下正確」，不可 revised、不可重新審判或暗示 Hint 本身有錯。decision.inviteRoute 是當時路線，不是後續永久上限；她在 Hint 後的新回覆若提供明確新證據，下一步可自然前進、維持或退回，但要寫成「對方反應帶來的新條件」，不能寫成修正 Hint。她指定你之後回報／醒來再說／到家告訴她，是主動保留未來接點，不是禮貌收尾；除非同句有拒絕或停止界線。若她回「不是 X，是 Y」澄清先前的玩笑推測，只寫「她補充真正原因是 Y，下一步沿 Y 接」；不可寫 Hint／這句／回覆猜錯、誤判或有問題。她明確要求停止聯絡時，一律尊重界線並停止推進。watchouts 與卡點只評她的反應、提示前／後來的其他句，或以「下一步…」給未來動作。summary/strengths 可自然承接 Hint，不必硬塞固定句型。頂層固定填 hidden "hintAssessment":{"verdict":"preserved","revisedEvidenceQuote":null}；不可省略/進card，server會移除。`;

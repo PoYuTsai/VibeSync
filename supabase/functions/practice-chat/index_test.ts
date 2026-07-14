@@ -5918,6 +5918,106 @@ Deno.test("direct Game Hint lets reviewed activity questions bypass invite-route
   assertEquals(recordHintCalls(state).length, 1);
 });
 
+Deno.test("direct Beginner Hint repairs the exact production sleep-state inventions", async () => {
+  const invented = validHintJson({
+    warmUp:
+      "《{劇名}》，追到停不下來那種 😂 妳飛回來還能癱沙發算好了，我是直接坐著就睡著",
+    steady: "《{劇名}》啦，結果越看越清醒 😂 妳飛回來還能撐到沙發？",
+    coaching: "她問劇名；先填劇名，再用熬夜後的小故事接她飛回來的狀態。",
+  });
+  const repaired = validHintJson({
+    warmUp: "《{劇名}》，昨晚一路追到兩點 😂 妳飛回來還好嗎？",
+    steady: "《{劇名}》，追到兩點後現在腦袋還沒開機 😂 妳飛回來也很累吧？",
+    coaching: "她問劇名；用 {劇名} 保留真實答案，只沿用追到兩點與腦袋沒開機。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, repaired, repaired],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "direct-beginner-hint-production-sleep-predicates",
+      turns: [
+        {
+          role: "user",
+          text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂",
+        },
+        {
+          role: "ai",
+          text:
+            "早啊哈哈 我昨天也差不多，飛回來直接癱在沙發上不想動 😅 你追哪部啊",
+        },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(JSON.stringify(json).includes("坐著就睡著"), false);
+  assertEquals(JSON.stringify(json).includes("越看越清醒"), false);
+  assert(JSON.stringify(json).includes("{劇名}"));
+  assertEquals(state.claudeCalls.length, 3);
+  assert(claudePrompt(state.claudeCalls[1]).includes("拆成最小命題"));
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
+Deno.test("direct Game Hint repairs the exact production name-lookup inventions", async () => {
+  const invented = validGameHintJson({
+    warmUp:
+      "店名是{店名}，香到我{有／沒有}停下來查了一下😂 妳對這種香味有感嗎？",
+    steady:
+      "店名是{店名}，不過我比較記得那個香味，名字是後來才查的哈哈 妳有去過嗎？",
+    coaching:
+      "Game 心法：她想知道店名。速約任務：填店名後補查名字的畫面，再把球丟回她。",
+  });
+  const repaired = validGameHintJson({
+    warmUp: "店名是{店名}。妳光聞香會猜是哪種豆子？",
+    steady: "我只確定路過時聞到很香，店名填{店名}；妳有去過嗎？",
+    coaching:
+      "Game 心法：她這句可能是在確認店名，也想看你會不會亂編。現在是開場建立熟悉感，任務是用 {店名} 保留真實答案，只沿用路過聞到香。速約任務：本輪先接咖啡話題，不約。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, repaired, repaired],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-hint-production-name-lookup-predicates",
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        {
+          role: "ai",
+          text: "哦？哪一家啊，你還有記得名字嗎，還是只聞到香就忘了哈哈哈",
+        },
+      ],
+    }),
+  );
+
+  assertEquals(
+    response.status,
+    200,
+    JSON.stringify({
+      json,
+      telemetry: aiLogInserts(state)[0]?.values.request_body,
+    }),
+  );
+  assertEquals(JSON.stringify(json).includes("停下來查"), false);
+  assertEquals(JSON.stringify(json).includes("後來才查"), false);
+  assertEquals(JSON.stringify(json.replies).includes("{有／沒有}"), false);
+  assert(JSON.stringify(json).includes("{店名}"));
+  assertEquals(state.claudeCalls.length, 3);
+  assert(claudePrompt(state.claudeCalls[1]).includes("變數只可填"));
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
 Deno.test("direct Game Hint grounding repair removes a truly invented person name", async () => {
   const invented = validGameHintJson({
     warmUp: "這個傳給嘉玲看，她一定會笑。",
@@ -5992,7 +6092,7 @@ Deno.test("direct Beginner Hint grounding repair handles the production hometown
   assertEquals(state.claudeCalls.length, 3);
   const repairPrompt = claudePrompt(state.claudeCalls[1]);
   assert(repairPrompt.includes("不是 user 證據"));
-  assert(repairPrompt.includes("未知劇名、店名、答案、感受或是否做過"));
+  assert(repairPrompt.includes("未知劇名、店名、答案、狀態、感受"));
   assert(repairPrompt.includes("不可改成忘記、不知道、沒去過"));
   assertEquals(recordHintCalls(state).length, 1);
 });
@@ -6326,7 +6426,7 @@ Deno.test("direct Hint regenerates an invented media title from an unanswered qu
   assertGroundingReviewInput(state.claudeCalls[1], inventedTitle);
   assert(
     claudePrompt(state.claudeCalls[1]).includes(
-      "未知劇名、店名、答案、感受或是否做過",
+      "未知劇名、店名、答案、狀態、感受",
     ),
   );
   assertEquals(recordHintCalls(state).length, 1);
@@ -6869,7 +6969,7 @@ Deno.test("Beginner Debrief repair removes an invented plan before independent v
   assert(verificationPrompt.includes("server-trusted user evidence"));
   assert(
     verificationPrompt.includes(
-      "user 事實只認 user_turn 或 server-trusted user evidence",
+      "都須由 user_turn 或 server-trusted user evidence 單獨直接支持",
     ),
   );
   assert(
@@ -7088,6 +7188,172 @@ Deno.test("direct Game Debrief lets a reviewed partner question bypass initiativ
       .failureCodes,
     [],
   );
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("direct Beginner Debrief repairs the exact production coffee-state invention", async () => {
+  const appliedHint =
+    "《{劇名}》啦，結果越看越清醒 😂 你飛回來還能撐到沙發？我以為空服員降落就直接充電模式";
+  const card = (suggestedLine: string) =>
+    validDebriefJson({
+      summary: "她接住追劇話題並分享長程飛行與時差，最後反問你今天的狀態。",
+      strengths: ["你有照 Hint 回答劇名槽，再沿她飛回來的狀態接球。"],
+      watchouts: ["她最後在問你的狀態，下一句只能填使用者真實答案。"],
+      suggestedLine,
+      dateChance: "low",
+      dateChanceReason: "她有反問並分享工作狀態，但還沒有見面或時間窗口。",
+      nextInviteMove: "先補真實狀態，再沿長程飛行與時差話題建立熟悉感。",
+    });
+  const invented = card(
+    "超想睡，現在靠咖啡撐著 😂 長程時差怎麼調？飛回來第一件事是倒頭就睡還是硬撐？",
+  );
+  const repaired = card(
+    "今天{想睡／不想睡} 😂 妳飛長程後都怎麼調時差？",
+  );
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, repaired, repaired],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "building_familiarity",
+            targetVariable: "安全感與熟悉感",
+            move: "build_connection",
+            inviteRoute: "not_ready",
+            rationale: "先回答劇名，再沿她飛回來的狀態接球。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "direct-beginner-debrief-production-coffee-state",
+      turns: [
+        {
+          role: "user",
+          text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂",
+        },
+        {
+          role: "ai",
+          text:
+            "早啊哈哈 我昨天也差不多，飛回來直接癱在沙發上不想動 😅 你追哪部啊",
+        },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text:
+            "哈哈哪有那麼厲害，落地也是一灘爛泥 😂 不過飛長程真的比較累，時間很長又調時差。你昨天追到兩點，今天上班不會很想睡嗎",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-production-coffee-state",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.suggestedLine, JSON.parse(repaired).suggestedLine);
+  assertEquals(json.card.suggestedLine.includes("靠咖啡"), false);
+  assert(json.card.suggestedLine.includes("{想睡／不想睡}"));
+  assertEquals(state.claudeCalls.length, 3);
+  assert(claudePrompt(state.claudeCalls[1]).includes("不論有無問號"));
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("direct Game Debrief repairs the exact production challenge answer", async () => {
+  const appliedHint =
+    "店名是{店名}，不過我比較記得那個香味，名字是後來才查的哈哈 妳有去過嗎？";
+  const card = (suggestedLine: string) => {
+    const value = JSON.parse(validDebriefJson({
+      summary: "她接住咖啡店話題並拋出盲測挑戰，等待你的真實回答。",
+      strengths: ["你有照 Hint 回答店名槽，她也沿咖啡話題繼續出題。"],
+      watchouts: ["她問敢不敢只是挑戰，下一句不能替使用者回答意願。"],
+      suggestedLine,
+      dateChance: "low",
+      dateChanceReason: "她有延續話題，但還沒有見面或時間窗口。",
+      nextInviteMove: "先填真實意願並接盲測話題，再累積熟悉感。",
+    })) as Record<string, unknown>;
+    value.gameBreakdown = {
+      phaseReached: "開場進到咖啡盲測的輕鬆挑戰",
+      missedVariable: "還缺使用者對挑戰的真實意願",
+      failureState: "她問敢不敢，但使用者尚未回答",
+      nextFirstLine: suggestedLine,
+      inviteDirection: "先補真實意願並接住盲測話題",
+    };
+    return JSON.stringify(value);
+  };
+  const invented = card(
+    "敢啊，不過盲測要公平，妳得當裁判——妳平常喝得出產區嗎？",
+  );
+  const repaired = card(
+    "{敢／不敢} 😂 妳盲測會拿哪支豆子出戰？",
+  );
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 2 }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, repaired, repaired],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "P1_OPEN",
+            targetVariable: "familiarity",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先補店名，再沿咖啡話題建立熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-debrief-production-challenge-answer",
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        {
+          role: "ai",
+          text: "哦？哪一家啊，你還有記得名字嗎，還是只聞到香就忘了哈哈哈",
+        },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text:
+            "沒去過耶，不過名字聽起來有文青感。你下次可以帶一件厲害的豆子去跟他盲測PK啊，敢不敢？",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-production-challenge-answer",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.suggestedLine, JSON.parse(repaired).suggestedLine);
+  assertEquals(json.card.suggestedLine.includes("敢啊"), false);
+  assert(json.card.suggestedLine.includes("{敢／不敢}"));
+  assertEquals(
+    json.card.gameBreakdown.nextFirstLine,
+    json.card.suggestedLine,
+  );
+  assertEquals(state.claudeCalls.length, 3);
+  assert(claudePrompt(state.claudeCalls[1]).includes("不支持 user 回「敢」"));
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
