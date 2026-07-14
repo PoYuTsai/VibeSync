@@ -7,15 +7,15 @@ Verdict: **APPROVED FOR DEPLOY（0 open P0 / 0 open P1 / 0 open P2）**
 
 ## Root cause
 
-Production `ai_logs` 證明模型有回覆，但 direct Hint／Debrief 的 lexical typed-facts guard 把自然中文跨字誤判成捏造；同一候選連續重產仍可能命中同一條 regex，最後 503。實例包含一般人名、家鄉、目前位置；這不是 DeepSeek 或 Claude 全線故障。
+Production `ai_logs` 證明模型有回覆，但 direct Hint／Debrief 的 lexical typed-facts guard 一方面把自然中文跨字誤判成捏造、另一方面也漏掉真捏造。前者讓一般人名、家鄉、目前位置候選連續被拒成 503；第一次 deploy smoke 又發現「昨晚看什麼這麼入迷」未命中 regex，Hint 直接替使用者編出《黑白大廚》與《淚之女王》。這不是 provider 全線故障，而是 regex 同時有 false positive 與 false negative，不能擁有是否審查的決策權。
 
 ## 最終契約
 
-- Regex／typed-facts 只作「可疑事實觸發器」，不再是人名、地點、時間、偏好、經歷、關係或行程的最終語意裁判。
-- 只有候選命中 unsupported-detail 時，追加一次 `temperature=0` 的 Claude 事實歸因校正；校正器閱讀完整逐字稿與可信事實，可原樣保留安全問句／假設／泛稱，也可最小幅刪除真正捏造。
+- 每個 direct Hint／Debrief 候選都固定經過一次 `temperature=0` 的 Claude 事實歸因審查，不論 regex 有沒有命中；regex 不再決定是否審查，也不再是人名、地點、時間、偏好、經歷、關係或行程的最終語意裁判。
+- 審查器閱讀完整逐字稿與可信事實，明訂「對方的問題不是使用者答案、上一版候選也不是證據」；可原樣保留安全問句／假設／泛稱，也可最小幅刪除真正捏造。
 - 校正後仍完整重跑 JSON/schema、罐頭、L4、安全、internal label、Game FSM、Hint→Debrief lineage 與單一權威下一句等 hard gates。
-- 電話、Email、社群帳號等明確 contact identifier 不交給語意模型放行，維持 deterministic fail-closed；校正器若保留捏造號碼，第三次乾淨 writer 仍可恢復。
-- 正常路徑仍只有一次 Claude；可疑路徑通常兩次，總上限維持三次 × 24 秒。失敗仍只回 retryable 503，不落罐頭快照、不扣費、不計次。
+- 電話、Email、社群帳號等明確 contact identifier 不交給語意模型放行，維持 deterministic fail-closed；第一次審查若仍保留捏造號碼，最後一個 provider slot 只能再審一次，不能回傳未審 writer。
+- 正常路徑固定 writer＋grounding review 兩次 Claude；若 writer 格式／hard guard 失敗，可重寫一次再審；若 review timeout／失敗，可重審一次。總上限仍為三次 × 24 秒，且任何成功結果必定完成 review。失敗只回 retryable 503，不落罐頭快照、不扣費、不計次。
 - Beginner／Game Hint 與 Beginner／Game Debrief 共用同一處理；Game Debrief 的所有可見拆盤欄位也納入可疑事實掃描。
 - 舊 build 323 未送 quality capability 時仍回 `typed-facts-v1`，server-only 部署後即可生效。
 
@@ -23,14 +23,15 @@ Production `ai_logs` 證明模型有回覆，但 direct Hint／Debrief 的 lexic
 
 1. **P0（已修）**：初版只掃 Debrief 的 `suggestedLine`／`nextFirstLine`，模型仍可在 summary 或 Game 拆盤編造位置。新增 `auditAllVisibleFacts`，direct Debrief 所有分析欄位都能觸發語意校正；補「只在 phaseReached 編出台中」回歸。
 2. **P1（已修）**：Game Hint repair prompt 一度誤提 Debrief `suggestedLine`。已依 surface／mode 分支，Game Hint 僅要求 `warmUp`、`steady`、`coaching`，Game Debrief 才要求完整拆盤與單一下一句。
-3. **P1（已修）**：校正 timeout 或保留 contact PII 時，後續 writer 可能沿用污染候選。第三次已改回乾淨 base prompt；補 timeout 與電話 hard-gate 回歸。
+3. **P1（已修）**：初版在 review timeout 或保留 contact PII 後會用第三次乾淨 writer 恢復，但該 writer 沒有剩餘 review 預算。最終改成保留最後一格給 review：writer 可重寫一次，review 也可重審一次，但未審 writer 絕不成功；補 timeout 與電話 hard-gate 回歸。
+4. **P0（已修）**：第一次 deploy smoke 雖機器腳本回 PASS，內容目檢發現 Beginner Hint 在完全未命中 regex 時編出兩個劇名，Debrief 又把該錯誤 Hint 當成使用者事實繼續肯定。最終改為 always-on grounding review，並以該 build 323 逐字情境新增零 lexical failureCodes 的回歸測試。
 
 ## 驗證證據
 
-- `deno check supabase/functions/practice-chat/handler.ts`：通過。
+- `deno check supabase/functions/practice-chat/index.ts`：通過。
 - changed files `deno fmt --check`、`git diff --check`：通過。
-- `deno test --no-check ...practice-chat/*_test.ts`：**958 passed / 0 failed**。
-- 覆蓋：production current-location／hometown failure、一般中文名、泛稱朋友假設、Game breakdown-only 幻覺、contact PII 不可繞過、repair timeout 乾淨重產、build 323 capability omission。
+- `deno test --no-check --allow-read --allow-env ...practice-chat/*_test.ts`：**960 passed / 0 failed**。
+- 覆蓋：production current-location／hometown failure、一般中文名、泛稱朋友假設、Game breakdown-only 幻覺、contact PII 不可繞過、review timeout 只可重審、雙 review timeout 不落未審快照、build 323 capability omission、regex 零告警的實際劇名幻覺。
 - 整目錄預設 type-check 仍會命中 HEAD 既有 `hint_test.ts` 缺 `PracticeTurn` 匯入；本輪主程式單檔 type-check 已通過，runtime 全套零失敗。
 
 ## Deploy gate

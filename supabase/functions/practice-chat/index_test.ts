@@ -375,6 +375,7 @@ function makeFake(options: FakeOptions = {}) {
   const rpcByName = new Map<string, number>();
   let deepSeekIndex = 0;
   let claudeIndex = 0;
+  let previousClaudeText: string | undefined;
   let semanticIndex = 0;
 
   // deno-lint-ignore no-explicit-any
@@ -692,9 +693,17 @@ function makeFake(options: FakeOptions = {}) {
   const claude: ClaudeCaller = (args) => {
     state.claudeCalls.push(args);
     state.events.push("claude");
-    const reply = options.claudeReplies?.[claudeIndex] ?? "AI reply";
+    const configuredReply = options.claudeReplies?.[claudeIndex];
+    const isGroundingReview = (args.messages.at(-1)?.content ?? "").includes(
+      "事實歸因校正",
+    );
+    const reply = configuredReply ??
+      (isGroundingReview && previousClaudeText !== undefined
+        ? previousClaudeText
+        : "AI reply");
     claudeIndex++;
     if (reply instanceof Error) return Promise.reject(reply);
+    previousClaudeText = reply;
     return Promise.resolve(reply);
   };
   const semanticAdjudicate = (
@@ -4135,7 +4144,7 @@ Deno.test("Debrief defaults to one Claude Sonnet writer without semantic review"
 
   assertEquals(response.status, 200);
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(state.claudeCalls[0].timeoutMs, 24000);
   assertEquals(state.semanticCalls.length, 0);
@@ -4195,7 +4204,7 @@ Deno.test("direct assisted Debrief fills missing hidden Hint assessment server-s
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 1);
 });
@@ -4228,7 +4237,7 @@ Deno.test("direct Game Debrief retries one rejected Claude card with the exact r
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(state.claudeCalls[1].model, CLAUDE_SONNET_MODEL);
@@ -4238,6 +4247,7 @@ Deno.test("direct Game Debrief retries one rejected Claude card with the exact r
     role: "assistant",
     content: incompleteGameCard,
   });
+  assertEquals(state.claudeCalls[2].temperature, 0);
   assertEquals(typeof json.card.gameBreakdown.nextFirstLine, "string");
   assertEquals(recordDebriefCalls(state).length, 1);
 });
@@ -4279,11 +4289,11 @@ Deno.test("direct Game Debrief accepts expert vocabulary without the legacy mech
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(json.card.summary.includes("篩選"), true);
-  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
-Deno.test("direct Debrief exhausts three Claude attempts without recording canned output", async () => {
+Deno.test("direct Debrief reserves review capacity and stops after two invalid writers", async () => {
   const { response, json, state } = await run({
     ledger: beginnerStartedLedger(),
     env: { PRACTICE_CLAUDE_PRIMARY: "true" },
@@ -4297,7 +4307,7 @@ Deno.test("direct Debrief exhausts three Claude attempts without recording canne
   });
   assertEquals("card" in json, false);
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 0);
   assertEquals(releaseDebriefCalls(state).length, 1);
@@ -4448,7 +4458,7 @@ Deno.test("direct Game Debrief semantically repairs the production current-locat
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
     (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "debrief_quality_invalid_unsupported_detail:partner:current_location:is_at",
+      "沒有可靠的 lexical 告警",
     ),
   );
   assertEquals(recordDebriefCalls(state).length, 1);
@@ -4492,7 +4502,7 @@ Deno.test("direct Game Debrief grounds invented facts inside the visible breakdo
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
     (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "debrief_quality_invalid_unsupported_detail:partner:current_location:is_at",
+      "逐欄主動找出語意上的無證據事實",
     ),
   );
   assertEquals(recordDebriefCalls(state).length, 1);
@@ -4542,7 +4552,7 @@ Deno.test("direct Game Debrief exposes one canonical next line across the card",
     json.card.gameBreakdown.nextFirstLine,
     json.card.suggestedLine,
   );
-  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
@@ -4714,7 +4724,7 @@ Deno.test("direct Claude Debrief regenerates instead of blaming an exact preserv
     false,
   );
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
   const retryPrompt = state.claudeCalls[1].messages.at(-1)?.content ?? "";
   assert(retryPrompt.includes("exact Hint"));
@@ -5260,7 +5270,7 @@ Deno.test("beginner hint timeout also fails over to Claude", async () => {
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("free Hint also defaults to Claude Sonnet without semantic review", async () => {
+Deno.test("free Hint uses Claude Sonnet writer plus mandatory grounding review", async () => {
   const { response, json, state } = await run(
     {
       sub: subscription({ tier: "free" }),
@@ -5276,7 +5286,7 @@ Deno.test("free Hint also defaults to Claude Sonnet without semantic review", as
 
   assertEquals(response.status, 200);
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(state.claudeCalls[0].timeoutMs, 24000);
   assertEquals(state.semanticCalls.length, 0);
@@ -5418,7 +5428,7 @@ Deno.test("direct Game Hint grounding repair removes a truly invented person nam
   assertEquals(state.claudeCalls.length, 2);
   assert(
     (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "hint_quality_invalid_unsupported_detail:third_party:name:is_named",
+      "沒有可靠的 lexical 告警",
     ),
   );
   assertEquals(recordHintCalls(state).length, 1);
@@ -5458,7 +5468,7 @@ Deno.test("direct Beginner Hint grounding repair handles the production hometown
   assertEquals(state.claudeCalls.length, 2);
   assert(
     (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "hint_quality_invalid_unsupported_detail:partner:residence:hometown_is",
+      "使用者尚未親自回答",
     ),
   );
   assertEquals(recordHintCalls(state).length, 1);
@@ -5479,8 +5489,8 @@ Deno.test("semantic grounding cannot bypass unsupported contact identifiers", as
     {
       ledger: beginnerStartedLedger(),
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-      // The first repair wrongly leaves the invented number unchanged. The
-      // deterministic PII gate must still reject it before attempt three.
+      // The first review wrongly leaves the invented number unchanged. The
+      // deterministic PII gate must still reject it before review attempt two.
       claudeReplies: [unsupportedPhone, unsupportedPhone, safe],
     },
     hintBody({
@@ -5497,16 +5507,16 @@ Deno.test("semantic grounding cannot bypass unsupported contact identifiers", as
   assertEquals(JSON.stringify(json).includes("0912345678"), false);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
-  assertEquals(state.claudeCalls[2].temperature, 0.2);
+  assertEquals(state.claudeCalls[2].temperature, 0);
   assert(
     (state.claudeCalls[2].messages.at(-1)?.content ?? "").includes(
-      "上一版 Hint JSON 被拒絕",
+      "事實歸因校正",
     ),
   );
   assertEquals(recordHintCalls(state).length, 1);
 });
 
-Deno.test("grounding repair timeout falls back to one clean writer attempt", async () => {
+Deno.test("grounding review timeout retries review without returning an unaudited writer", async () => {
   const invented = validHintJson({
     warmUp: "這個傳給嘉玲看，她一定會笑。",
     steady: "我會丟給嘉玲，再問她最好笑的是哪段。",
@@ -5537,15 +5547,52 @@ Deno.test("grounding repair timeout falls back to one clean writer attempt", asy
   assertEquals(JSON.stringify(json).includes("嘉玲"), false);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
-  assertEquals(state.claudeCalls[2].temperature, 0.2);
-  assertEquals(
+  assertEquals(state.claudeCalls[2].temperature, 0);
+  assert(
     state.claudeCalls[2].messages.some((message) =>
-      message.content.includes("事實歸因校正") ||
-      message.content.includes(invented)
+      message.content.includes("事實歸因校正")
     ),
-    false,
   );
   assertEquals(recordHintCalls(state).length, 1);
+});
+
+Deno.test("two grounding review failures never record an unaudited Hint", async () => {
+  const candidate = validHintJson({
+    warmUp: "昨晚真的看到停不下來😂 劇名先賣個關子，妳最近有哪部也讓妳熬夜？",
+    steady: "妳問到重點了😂 先承認昨晚停不下來，劇名等我補真實答案。",
+    coaching:
+      "她直接問使用者看什麼，但逐字稿沒有真實劇名；不能代答，先自然保留答案。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [
+        candidate,
+        new Error("claude_timeout"),
+        new Error("claude_timeout"),
+      ],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "direct-hint-grounding-double-timeout",
+      turns: [
+        { role: "user", text: "早安，我昨晚追劇追到兩點。" },
+        { role: "ai", text: "哈哈，昨晚看什麼這麼入迷？" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json, {
+    error: "practice_hint_generation_retryable",
+    retryable: true,
+  });
+  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(state.claudeCalls[1].temperature, 0);
+  assertEquals(state.claudeCalls[2].temperature, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
 });
 
 Deno.test("direct Hint regenerates an invented media title from an unanswered question", async () => {
@@ -5591,6 +5638,54 @@ Deno.test("direct Hint regenerates an invented media title from an unanswered qu
       "具名人物、地點、時間",
     ),
   );
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
+Deno.test("always-on grounding removes the exact build-323 smoke hallucination without a regex trigger", async () => {
+  const invented = validHintJson({
+    warmUp: "《黑白大廚》😂 本來說看一集就睡，結果一口氣看到第六集。",
+    steady: "韓劇《淚之女王》哈哈，說好只看一集，結果停不下來。妳午餐吃什麼？",
+    coaching: "她問你看什麼這麼入迷；直接回答劇名，再補看到第六集的畫面。",
+  });
+  const repaired = validHintJson({
+    warmUp: "昨晚真的看到停不下來😂 劇名先賣個關子，妳最近有哪部也讓妳熬夜？",
+    steady: "妳問到重點了😂 先承認昨晚停不下來，劇名等我補真實答案。",
+    coaching:
+      "她直接問使用者看什麼，但逐字稿沒有真實劇名；不能代答，先自然保留答案。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, repaired],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "build-323-unflagged-media-grounding",
+      acceptedQualitySchemaVersion: undefined,
+      turns: [
+        { role: "user", text: "早安，我昨晚追劇追到兩點。" },
+        { role: "ai", text: "哈哈，昨晚看什麼這麼入迷？" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.qualitySchemaVersion, "typed-facts-v1");
+  assertEquals(JSON.stringify(json).includes("黑白大廚"), false);
+  assertEquals(JSON.stringify(json).includes("淚之女王"), false);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[1].temperature, 0);
+  assert(
+    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
+      "使用者尚未親自回答",
+    ),
+  );
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
   assertEquals(recordHintCalls(state).length, 1);
 });
 
@@ -5647,9 +5742,7 @@ Deno.test("direct Game Hint regenerates an invented district from an unanswered 
     string,
     unknown
   >;
-  assertEquals(metrics.failureCodes, [
-    "hint_quality_invalid_unsupported_detail:world:venue:venue_named",
-  ]);
+  assertEquals(metrics.failureCodes, []);
   assertEquals(recordHintCalls(state).length, 1);
 });
 
@@ -5723,7 +5816,7 @@ Deno.test("direct Game Hint accepts concrete statement-question options without 
   );
 
   assertEquals(response.status, 200, JSON.stringify(json));
-  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordHintCalls(state).length, 1);
 });
@@ -5758,7 +5851,7 @@ Deno.test("direct Game Hint keeps L4 safety strict while skipping lexical style 
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(JSON.stringify(json).includes("直接上床"), false);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(recordHintCalls(state).length, 1);
 });
 
@@ -5777,7 +5870,7 @@ Deno.test("direct Hint retries a transient Claude failure once without fake form
 
   assertEquals(response.status, 200);
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
   const retryPrompt = state.claudeCalls[1].messages
     .map((message) => message.content)
@@ -5786,7 +5879,7 @@ Deno.test("direct Hint retries a transient Claude failure once without fake form
   assertEquals(recordHintCalls(state).length, 1);
 });
 
-Deno.test("direct Hint exhausts three rejected Claude candidates without a snapshot", async () => {
+Deno.test("direct Hint reserves review capacity and stops after two invalid writers", async () => {
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
@@ -5806,7 +5899,7 @@ Deno.test("direct Hint exhausts three rejected Claude candidates without a snaps
   });
   assertEquals("replies" in json, false);
   assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(releaseHintCalls(state).length, 1);

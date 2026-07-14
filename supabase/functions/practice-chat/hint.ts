@@ -129,11 +129,14 @@ interface HintParseOptions {
    */
   skipLexicalStyleGuards?: boolean;
   /**
-   * A conditional Claude grounding editor has already evaluated the complete
-   * candidate against the trusted transcript/facts. The lexical extractor is
-   * only a recovery trigger in that path, never the final semantic judge.
+   * The mandatory Claude grounding editor has already evaluated the complete
+   * candidate against the trusted transcript/facts. After this pass the
+   * lexical extractor only keeps explicit contact identifiers fail-closed;
+   * it is never the final judge for ordinary names, places, or experiences.
    */
   semanticGroundingRepaired?: boolean;
+  /** Candidate-only pass: keep every hard guard except factual attribution. */
+  deferFactGroundingToSemantic?: boolean;
   /**
    * A generated candidate is never user-visible. Let the semantic reviewer
    * repair visible safety/style defects, then run the normal hard guard again
@@ -1525,20 +1528,22 @@ function assertGeneratedHintQuality(opts: {
     partnerFactualEvidence: opts.parseOptions.partnerFactualEvidence,
     trustedFactClaims: opts.parseOptions.trustedFactClaims,
   });
-  for (
-    const [visibleText, field] of [
-      [opts.warmUp, "reply"],
-      [opts.steady, "reply"],
-      [opts.coaching, "coaching"],
-    ] as const
-  ) {
-    assertHintFactClaimsSupported({
-      text: visibleText,
-      field,
-      context: factContext,
-      contactIdentifiersOnly:
-        opts.parseOptions.semanticGroundingRepaired === true,
-    });
+  if (opts.parseOptions.deferFactGroundingToSemantic !== true) {
+    for (
+      const [visibleText, field] of [
+        [opts.warmUp, "reply"],
+        [opts.steady, "reply"],
+        [opts.coaching, "coaching"],
+      ] as const
+    ) {
+      assertHintFactClaimsSupported({
+        text: visibleText,
+        field,
+        context: factContext,
+        contactIdentifiersOnly:
+          opts.parseOptions.semanticGroundingRepaired === true,
+      });
+    }
   }
   for (const reply of [opts.warmUp, opts.steady]) {
     if (!hasSubstantiveHintMove(reply)) {

@@ -1572,6 +1572,7 @@ function assertGeneratedDebriefQuality(
     serverOwnsHintStrategy?: boolean;
     semanticGroundingRepaired?: boolean;
     auditAllVisibleFacts?: boolean;
+    deferFactGroundingToSemantic?: boolean;
   },
 ): void {
   const visibleFields = debriefVisibleFields(card);
@@ -1602,32 +1603,34 @@ function assertGeneratedDebriefQuality(
     partnerFactualEvidence: opts.partnerFactualEvidence,
     trustedFactClaims: opts.trustedFactClaims,
   });
-  for (
-    const pasteableText of [
-      card.suggestedLine,
-      ...(card.gameBreakdown ? [card.gameBreakdown.nextFirstLine] : []),
-    ]
-  ) {
-    assertHintFactClaimsSupported({
-      text: pasteableText,
-      field: "reply",
-      context: factContext,
-      errorCode: "debrief_quality_invalid_unsupported_detail",
-      contactIdentifiersOnly: opts.semanticGroundingRepaired === true,
-    });
-  }
-  if (
-    opts.serverOwnsHintStrategy !== true ||
-    opts.auditAllVisibleFacts === true
-  ) {
-    for (const analyticalText of debriefAnalyticalFields(card)) {
+  if (opts.deferFactGroundingToSemantic !== true) {
+    for (
+      const pasteableText of [
+        card.suggestedLine,
+        ...(card.gameBreakdown ? [card.gameBreakdown.nextFirstLine] : []),
+      ]
+    ) {
       assertHintFactClaimsSupported({
-        text: analyticalText,
-        field: "coaching",
+        text: pasteableText,
+        field: "reply",
         context: factContext,
         errorCode: "debrief_quality_invalid_unsupported_detail",
         contactIdentifiersOnly: opts.semanticGroundingRepaired === true,
       });
+    }
+    if (
+      opts.serverOwnsHintStrategy !== true ||
+      opts.auditAllVisibleFacts === true
+    ) {
+      for (const analyticalText of debriefAnalyticalFields(card)) {
+        assertHintFactClaimsSupported({
+          text: analyticalText,
+          field: "coaching",
+          context: factContext,
+          errorCode: "debrief_quality_invalid_unsupported_detail",
+          contactIdentifiersOnly: opts.semanticGroundingRepaired === true,
+        });
+      }
     }
   }
   const metaPasteablePattern =
@@ -1742,8 +1745,10 @@ export function parseDebriefCard(
     skipLexicalStyleGuards?: boolean;
     /** Ambiguous facts were checked in sentence context by Claude. */
     semanticGroundingRepaired?: boolean;
-    /** Use lexical facts only to trigger semantic grounding on every field. */
+    /** Apply the final fact/contact pass to every visible Debrief field. */
     auditAllVisibleFacts?: boolean;
+    /** Candidate-only pass: keep every hard guard except factual attribution. */
+    deferFactGroundingToSemantic?: boolean;
   } = {},
 ): DebriefCard {
   const cleaned = extractJsonObject(raw);

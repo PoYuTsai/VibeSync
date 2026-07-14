@@ -20,10 +20,10 @@ export function groundingFailureCode(
   return code.length <= 160 ? code : code.slice(0, 160);
 }
 
-export function buildGroundingRepairMessages(opts: {
+export function buildGroundingReviewMessages(opts: {
   baseMessages: ChatMessage[];
   previousCandidate: string;
-  failureCode: string;
+  failureCode?: string | null;
   surface: PracticeGroundingSurface;
   isGame: boolean;
 }): ChatMessage[] {
@@ -40,6 +40,9 @@ export function buildGroundingRepairMessages(opts: {
     : opts.isGame
     ? "Game 拆盤欄位都必須保留；suggestedLine 與 nextFirstLine 必須維持同一條策略。"
     : "gameBreakdown 必須維持 null，不要新增 Game 欄位。";
+  const machineSignal = opts.failureCode
+    ? `機器告警碼：${opts.failureCode}。`
+    : "這次沒有可靠的 lexical 告警；仍必須逐欄主動找出語意上的無證據事實。";
 
   return [
     ...opts.baseMessages,
@@ -47,8 +50,9 @@ export function buildGroundingRepairMessages(opts: {
     {
       role: "user",
       content:
-        `你現在只做「事實歸因校正」，不是重新創作，也不是文風評審。機器告警碼：${opts.failureCode}\n` +
+        `你現在只做「事實歸因校正」，不是重新創作，也不是文風評審。${machineSignal}\n` +
         "請完整閱讀上方逐字稿、可信資料與上一版 JSON，按整句語意判斷，不可用單一關鍵字判斷。" +
+        "上一版候選本身不是事實證據；對方只是在問使用者『看什麼、住哪、做什麼、去過哪、喜歡什麼』時，若使用者尚未親自回答，就絕對不能替使用者補劇名、地點、工作、經歷、偏好或任何答案。" +
         "問句、假設、條件句、泛稱人物、把問題交回對方、主觀感受或未來提案，不等於宣稱既成事實。" +
         "但任何具名人物、地點、時間、偏好、經歷、關係、行程或聯絡資料，只要上方沒有直接證據，就必須刪除或改成不預設答案的自然說法。" +
         "如果上一版其實沒有捏造，內容保持不變；如果真有捏造，只改涉及的最小子句，不能用空泛罐頭取代，也不能新增另一個事實。" +
