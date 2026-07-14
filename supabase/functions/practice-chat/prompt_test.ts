@@ -67,8 +67,9 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
       "找反例",
       "user狀態/經歷=自揭",
       "她自述休假/有無計畫=自揭/行程",
-      "assistant追問=延伸/接球，非邀約",
-      "有追問禁寫無反問/無延伸",
+      "追問/接球/新素材皆算延伸但非邀約",
+      "一欄承認→他欄禁寫無延伸/無來回",
+      "追到兩點不證追完/忘時/睏/沒想到或不小心/靠意志力或咖啡撐",
       "明示可約時間/意願=窗口",
       "可見欄位稱「她／對方」，不稱「他／他的」",
       "「我有時候會X」屬 user 習慣/感受",
@@ -101,7 +102,7 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
     DEBRIEF_SYSTEM_PROMPT.includes("禁裝忘或代答"),
     true,
   );
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("輸出前刪無證據細節"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("未知留變數，刪無據"), true);
   assertEquals(
     DEBRIEF_SYSTEM_PROMPT.includes("她的個資/猜測/吐槽不是 user 事實或答案"),
     true,
@@ -111,7 +112,7 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
     DEBRIEF_SYSTEM_PROMPT.includes("她的問句、挑戰或猜測不是 user 答案"),
     true,
   );
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("靠咖啡撐著"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("咖啡撐"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("敢不敢"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("靠意志力"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("裝懂我倒不至於"), true);
@@ -1011,8 +1012,14 @@ Deno.test("debrief keeps an opening partner question after a later partner turn"
   assertEquals(user.includes("早安～我昨晚也在看劇"), true);
   assertEquals(user.includes("你追哪部啊？"), true);
   assertEquals(user.includes("中段近況".repeat(20)), false);
-  assertEquals(system.includes("assistant追問=延伸/接球，非邀約"), true);
-  assertEquals(system.includes("有追問禁寫無反問/無延伸"), true);
+  assertEquals(
+    system.includes("追問/接球/新素材皆算延伸但非邀約"),
+    true,
+  );
+  assertEquals(
+    system.includes("一欄承認→他欄禁寫無延伸/無來回"),
+    true,
+  );
 });
 
 Deno.test("debrief keeps the tail signal of an overlong latest partner turn", () => {

@@ -7574,11 +7574,13 @@ Deno.test("Beginner Debrief repair removes an invented plan before independent v
     JSON.parse(verified).suggestedLine,
   );
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
-  assert(verificationPrompt.includes("所有可見與 nested 欄位"));
+  assert(
+    verificationPrompt.includes("可見/nested 的 user/partner 過去/現在事實"),
+  );
   assert(verificationPrompt.includes("trustedUserFacts"));
   assert(
     verificationPrompt.includes(
-      "都要由正確角色的 transcript turn 或 server-trusted evidence 直接蘊含",
+      "須由同角色 turn/trusted evidence 直接蘊含",
     ),
   );
   assert(
@@ -8299,7 +8301,7 @@ Deno.test("direct Beginner Debrief reviewer audit removes the latest production 
     const prompt = claudePrompt(call);
     assert(prompt.includes(trustedMemory));
     assert(prompt.includes("olderMemoryEvidence"));
-    assert(prompt.includes("assistant追問=延伸/接球≠邀約窗口"));
+    assert(prompt.includes("追問/接球/新素材皆算延伸≠邀約"));
     assert(prompt.includes('"role":"assistant"'));
     assert(prompt.includes("你看什麼劇這麼入迷"));
     assertEquals(prompt.includes("CLIENT_DEBRIEF_MEMORY_MARKER"), false);
@@ -8398,20 +8400,158 @@ Deno.test("Beginner Debrief release review keeps a direct follow-up from becomin
   );
   assert(
     claudePrompt(state.claudeCalls[0]).includes(
-      "assistant追問=延伸/接球，非邀約",
+      "追問/接球/新素材皆算延伸但非邀約",
     ),
   );
   for (const call of state.claudeCalls.slice(1)) {
     assert(
       claudePrompt(call).includes(
-        "assistant追問=延伸/接球≠邀約窗口",
+        "追問/接球/新素材皆算延伸≠邀約",
       ),
     );
     assert(
       claudePrompt(call).includes(
-        "有追問不得另欄寫無反問/尚無她延伸",
+        "任一欄承認→他欄禁寫無延伸/無來回",
       ),
     );
+  }
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("Beginner Debrief release review repairs the exact cross-field extension denial and surprise causality", async () => {
+  const ai1 = "早安～追到兩點也太拼了吧😂 是在追哪部啊";
+  const appliedHint = "《{劇名}》啦，結果現在整個人還沒回來 😅";
+  const ai2 = "喔那部喔！據說很好看但我不敢一次追太多，怕睡不著😂";
+  const badSummary = "開場自然，她有接梗並延伸，但收尾偏禮貌，整體熟悉感仍淺。";
+  const badSuggestedLine = "對吧，追到兩點也沒想到😅 妳睡前都怎麼放鬆的？";
+  const badDateReason = "僅一輪來回，她回應禮貌但無延伸訊號，熟悉感不足。";
+  const repairedSuggestedLine =
+    "對吧，我現在腦袋還沒開機 😅 妳睡前都怎麼放鬆的？";
+  const repairedDateReason =
+    "她有接梗並延伸『據說好看、怕睡不著』的新素材；但尚無邀約窗口，熟悉感仍淺。";
+  const wrong = validDebriefJson({
+    summary: badSummary,
+    strengths: ["她有接住劇名，並分享自己怕睡不著。"],
+    watchouts: ["目前互動仍淺，尚無邀約窗口。"],
+    suggestedLine: badSuggestedLine,
+    vibe: "暖",
+    dateChance: "low",
+    dateChanceReason: badDateReason,
+    nextInviteMove: "沿她怕睡不著的新素材再聊一輪，不急著邀約。",
+  });
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary: "她接梗並延伸←assistant_turn[3]:『據說很好看但我不敢一次追太多』",
+    strengths: "她怕睡不著←assistant_turn[3]:『怕睡不著』",
+    watchouts: "",
+    suggestedLine: "追到兩點沒想到←user_turn[0]:『追劇追到兩點』",
+    dateChanceReason: "無延伸訊號←assistant_turn[3]:『據說很好看』",
+    nextInviteMove: "她怕睡不著←assistant_turn[3]:『怕睡不著』",
+    gameBreakdown: "",
+  });
+  const repaired = validDebriefJson({
+    summary: badSummary,
+    strengths: ["她有接住劇名，並分享自己怕睡不著。"],
+    watchouts: ["目前互動仍淺，尚無邀約窗口。"],
+    suggestedLine: repairedSuggestedLine,
+    vibe: "暖",
+    dateChance: "low",
+    dateChanceReason: repairedDateReason,
+    nextInviteMove: "沿她怕睡不著的新素材再聊一輪，不急著邀約。",
+  });
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary: "她接梗並延伸←assistant_turn[3]:『據說很好看但我不敢一次追太多』",
+    strengths: "她怕睡不著←assistant_turn[3]:『怕睡不著』",
+    watchouts: "",
+    suggestedLine: "我腦袋還沒開機←user_turn[0]:『現在腦袋還沒開機』",
+    dateChanceReason:
+      "她延伸新素材←assistant_turn[3]:『據說很好看』『怕睡不著』",
+    nextInviteMove: "她怕睡不著←assistant_turn[3]:『怕睡不著』",
+    gameBreakdown: "",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [wrong, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "building_familiarity",
+            targetVariable: "熟悉感",
+            move: "build_connection",
+            inviteRoute: "not_ready",
+            rationale: "沿她怕睡不著的新素材延伸，不急著邀約。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "production-beginner-debrief-extension-surprise-causality",
+      turns: [
+        {
+          role: "user",
+          text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂",
+        },
+        { role: "ai", text: ai1 },
+        { role: "user", text: appliedHint },
+        { role: "ai", text: ai2 },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-production-extension-surprise-causality",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.summary, badSummary);
+  assertEquals(json.card.suggestedLine, repairedSuggestedLine);
+  assertEquals(json.card.dateChance, "low");
+  assertEquals(json.card.dateChanceReason, repairedDateReason);
+  assertEquals(JSON.stringify(json.card).includes("無延伸訊號"), false);
+  assertEquals(JSON.stringify(json.card).includes("沒想到"), false);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  for (const call of state.claudeCalls.slice(1)) {
+    assertGroundingReviewInput(call, badDateReason);
+    assertGroundingReviewInput(call, badSuggestedLine);
+  }
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  const writerPrompt = claudePrompt(state.claudeCalls[0]);
+  assert(
+    writerPrompt.includes(
+      "追問/接球/新素材皆算延伸但非邀約；一欄承認→他欄禁寫無延伸/無來回",
+    ),
+  );
+  assert(
+    writerPrompt.includes(
+      "追到兩點不證追完/忘時/睏/沒想到或不小心/靠意志力或咖啡撐",
+    ),
+  );
+  for (const call of state.claudeCalls.slice(1)) {
+    const prompt = claudePrompt(call);
+    assert(
+      prompt.includes(
+        "追問/接球/新素材皆算延伸≠邀約；任一欄承認→他欄禁寫無延伸/無來回",
+      ),
+    );
+    assert(prompt.includes("追到兩點≠沒想到/沒預料/不小心等意外因果"));
   }
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,

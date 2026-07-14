@@ -188,8 +188,10 @@ Deno.test("Debrief editor receives escaped server-owned timing and Hint context"
       "omittedMiddleTurnCount>0 禁全場否定",
       "user 狀態/經歷/感受算自揭",
       "只把 assistant 明確自述的休假/有無計畫/在家算 partner 自揭/行程",
-      "assistant追問=延伸/接球≠邀約窗口",
-      "有追問不得另欄寫無反問/尚無她延伸",
+      "追問=反問",
+      "追問/接球/新素材皆算延伸≠邀約",
+      "任一欄承認→他欄禁寫無延伸/無來回",
+      "追到兩點≠沒想到/沒預料/不小心等意外因果",
       "assistant 稱她/對方，不稱他/他的",
       "答詞如好看啊/有啊/會啊/對啊也算答案",
       "只留單一{真實答案}/{真實感受}",
@@ -278,7 +280,7 @@ Deno.test("second review uses a compact release audit with authoritative termina
   assertStringIncludes(messages[0].content, "最短逐字 evidenceQuote");
   assertStringIncludes(
     messages[0].content,
-    "有追問不得另欄寫無反問/尚無她延伸",
+    "任一欄承認→他欄禁寫無延伸/無來回",
   );
   for (
     const expected of [
@@ -287,8 +289,10 @@ Deno.test("second review uses a compact release audit with authoritative termina
       "omittedMiddleTurnCount>0 禁全場否定",
       "user 狀態/經歷/感受算自揭",
       "只把 assistant 明確自述的休假/有無計畫/在家算 partner 自揭/行程",
-      "assistant追問=延伸/接球≠邀約窗口",
-      "有追問不得另欄寫無反問/尚無她延伸",
+      "追問=反問",
+      "追問/接球/新素材皆算延伸≠邀約",
+      "任一欄承認→他欄禁寫無延伸/無來回",
+      "追到兩點≠沒想到/沒預料/不小心等意外因果",
       "assistant 稱她/對方，不稱他/他的",
       "答詞如好看啊/有啊/會啊/對啊也算答案",
       "只留單一{真實答案}/{真實感受}",
