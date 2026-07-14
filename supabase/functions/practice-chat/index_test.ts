@@ -4785,7 +4785,7 @@ Deno.test("direct Game Debrief grounds invented facts inside the visible breakdo
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
     claudePrompt(state.claudeCalls[1]).includes(
-      "逐欄主動找無證據事實",
+      "逐欄、逐句、逐命題檢查角色顛倒與無證據 user 事實",
     ),
   );
   assertEquals(recordDebriefCalls(state).length, 1);
@@ -6018,6 +6018,104 @@ Deno.test("direct Game Hint repairs the exact production name-lookup inventions"
   assertEquals(recordHintCalls(state).length, 1);
 });
 
+Deno.test("direct Beginner Hint repairs the exact production round-one subject reversal", async () => {
+  const invented = validHintJson({
+    warmUp:
+      "哈哈 兩個腦袋卡卡的人在這邊互相取暖 😂 你追的什麼劇，值得熬到兩點嗎？",
+    steady: "時差加上腦袋卡卡，聽起來比我昨晚還慘 😂 今天有飛嗎還是休息？",
+    coaching:
+      "她丟了『剛飛回來』＋『時差腦袋卡卡』，這是生活線索，不是客套。你的任務是接住她的狀態，讓她感覺被看見。warmUp 用『互相取暖』拉近距離再問她的習慣；steady 先確認她今天的狀態，低壓好接。兩句都不急著推進，先讓她多說一點。",
+  });
+  const repaired = validHintJson({
+    warmUp:
+      "哈哈 兩個腦袋卡卡的人在這邊互相取暖 😂 剛飛回來又要調時差真的很硬，今天有飛嗎？",
+    steady: "時差加上腦袋卡卡，聽起來比我昨晚還慘 😂 今天有飛嗎還是休息？",
+    coaching:
+      "她丟了『剛飛回來』＋『時差腦袋卡卡』，這是生活線索。接住她的狀態，再問今天有飛還是休息；追劇到兩點是使用者自己的經歷，不能反過來問她追了什麼劇。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, repaired, repaired],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "direct-beginner-hint-production-round-one-subject",
+      turns: [
+        {
+          role: "user",
+          text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂",
+        },
+        {
+          role: "ai",
+          text: "哈哈 你也太拼了吧 😂 我剛飛回來還在調時差，整個腦袋也是卡卡的",
+        },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.replies[0].text, JSON.parse(repaired).warmUp);
+  assertEquals(JSON.stringify(json).includes("你追的什麼劇"), false);
+  assertEquals(JSON.stringify(json).includes("值得熬到兩點"), false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], invented);
+  assertGroundingReviewInput(state.claudeCalls[2], repaired);
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
+Deno.test("direct Game Hint repairs the exact production round-one cafe-state inventions", async () => {
+  const invented = validGameHintJson({
+    warmUp:
+      "叫{店名}，在{路名}附近——說真的我也只記得那個香味，妳這行應該一聞就知道是什麼豆。",
+    steady:
+      "{店名}，不過我對咖啡沒那麼懂，只知道聞起來很想進去。妳遇過光靠香味就衝進去的店嗎？",
+    coaching:
+      "Game 心法：她這句可能是在測你有沒有真料、還是隨口聊。現在是 開場 建立熟悉感，任務是接住她的好奇、順帶讓她多說一點自己的品味。先填店名，填不出來就老實說只記得香味，再把球丟回她——她是咖啡師，問她「光靠香味能判斷什麼」比你解釋更有趣。速約任務：這輪在鋪墊階，先讓她多說一句，不約。",
+  });
+  const repaired = validGameHintJson({
+    warmUp: "叫{店名}，路過時聞起來真的超香。妳這行光聞會猜是哪種豆子嗎？",
+    steady:
+      "店名填{店名}，路過時聞起來真的超香。妳遇過光靠香味就被吸引進門的客人嗎？",
+    coaching:
+      "Game 心法：她問哪家店，直接用 {店名} 保留待填答案，只沿用使用者確實說過的『路過』與『聞起來超香』。不要補路名、咖啡知識程度、是否記得其他細節或想不想進去。速約任務：這輪先聊她對香味的專業觀察，不約。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, repaired, repaired],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-hint-production-round-one-cafe-state",
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        { role: "ai", text: "哦？哪家啊，被你講得有點好奇。" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.replies[0].text, JSON.parse(repaired).warmUp);
+  assertEquals(json.replies[1].text, JSON.parse(repaired).steady);
+  const serialized = JSON.stringify(json);
+  assertEquals(serialized.includes("{路名}"), false);
+  assertEquals(serialized.includes("只記得那個香味"), false);
+  assertEquals(serialized.includes("對咖啡沒那麼懂"), false);
+  assertEquals(serialized.includes("很想進去"), false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], invented);
+  assertGroundingReviewInput(state.claudeCalls[2], repaired);
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
 Deno.test("direct Game Hint grounding repair removes a truly invented person name", async () => {
   const invented = validGameHintJson({
     warmUp: "這個傳給嘉玲看，她一定會笑。",
@@ -6975,7 +7073,11 @@ Deno.test("Beginner Debrief repair removes an invented plan before independent v
   assert(
     verificationPrompt.includes("partner 現況/行程/動作只認 assistant_turn"),
   );
-  assert(verificationPrompt.includes("重新檢查全部可見欄位"));
+  assert(
+    verificationPrompt.includes(
+      "逐欄、逐句、逐命題重查角色顛倒與無證據 user 事實",
+    ),
+  );
   assert(verificationPrompt.includes("只修改不安全處"));
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.semanticCalls.length, 0);
@@ -7354,6 +7456,200 @@ Deno.test("direct Game Debrief repairs the exact production challenge answer", a
   );
   assertEquals(state.claudeCalls.length, 3);
   assert(claudePrompt(state.claudeCalls[1]).includes("不支持 user 回「敢」"));
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("direct Beginner Debrief repairs the exact production round-one endurance invention", async () => {
+  const appliedHint =
+    "時差加上腦袋卡卡，聽起來比我昨晚還慘 😂 今天有飛嗎還是休息？";
+  const card = (suggestedLine: string) =>
+    validDebriefJson({
+      summary: "對話剛起步，她有基本回應但投入感低，關係尚在暖機階段。",
+      strengths: [
+        "用自己的追劇狀態開場，先拋出生活樣本，沒有直接查戶口。",
+        "Hint 句接住她的時差狀態，問今天行程自然不壓迫。",
+      ],
+      watchouts: [
+        "她回覆資訊量少、只報備補眠計畫，尚未主動延伸或反問，投入感偏低。",
+        "目前來回次數不足，關係還太淺，任何邀約方向都還不成熟。",
+      ],
+      suggestedLine,
+      dateChance: "low",
+      dateChanceReason:
+        "她只報備補眠，無反問、無延伸、無共同話題鋪墊，正向訊號不足。",
+      nextInviteMove: "繼續累積來回，聊她的旅行或休假生活，先建立舒適感再說。",
+    });
+  const invented = card(
+    "補眠派對 😂 我昨晚也是靠意志力撐到最後，結果現在腦袋空空的",
+  );
+  const repaired = card(
+    "補眠派對 😂 我昨晚追到兩點，現在腦袋也還空空的。妳通常要幾天才調得回來？",
+  );
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, repaired, repaired],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "building_familiarity",
+            targetVariable: "安全感與熟悉感",
+            move: "build_connection",
+            inviteRoute: "not_ready",
+            rationale: "接住她剛飛回來與時差腦袋卡卡的狀態。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "direct-beginner-debrief-production-round-one-endurance",
+      turns: [
+        {
+          role: "user",
+          text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂",
+        },
+        {
+          role: "ai",
+          text: "哈哈 你也太拼了吧 😂 我剛飛回來還在調時差，整個腦袋也是卡卡的",
+        },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text: "今天休息，不過時差還沒調回來，下午應該會補個眠吧 😪",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-production-round-one-endurance",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.suggestedLine, JSON.parse(repaired).suggestedLine);
+  assertEquals(json.card.suggestedLine.includes("靠意志力"), false);
+  assertEquals(json.card.suggestedLine.includes("撐到最後"), false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(
+    state.claudeCalls[1],
+    JSON.parse(invented).suggestedLine,
+  );
+  assertGroundingReviewInput(
+    state.claudeCalls[2],
+    JSON.parse(repaired).suggestedLine,
+  );
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("direct Game Debrief repairs the exact production round-one pretend-expertise answer", async () => {
+  const appliedHint =
+    "{店名}，不過我對咖啡沒那麼懂，只知道聞起來很想進去。妳遇過光靠香味就衝進去的店嗎？";
+  const card = (suggestedLine: string) => {
+    const value = JSON.parse(validDebriefJson({
+      summary: "開場接住咖啡話題，她有回應但整體投入偏淺，連結尚未深化。",
+      strengths: [
+        "用香味問句帶出她的職業視角，讓她有東西可說。",
+        "她主動補充『被香味吸引的客人最有趣』，話題有延伸空間。",
+      ],
+      watchouts: [
+        "她說『怕被你拿去當藉口裝懂』是小測試，下一句若沒接住會顯得空洞。",
+        "目前只停在資訊交換，缺乏她對你的好奇或情感投入。",
+      ],
+      suggestedLine,
+      dateChance: "low",
+      dateChanceReason: "她有回應但無具體時間線索或主動延伸，投入感偏低。",
+      nextInviteMove:
+        "先接住她說的『最有趣』，讓她多說一個真實故事，再找鋪墊。",
+    })) as Record<string, unknown>;
+    value.gameBreakdown = {
+      failureState:
+        "對話停在問答乒乓，她吐槽『怕被拿去裝懂』是小測試，尚未被正面接住。",
+      phaseReached:
+        "開場資訊交換完成，她給了一個職業視角的開口，但還沒進入價值或情感層。",
+      nextFirstLine: suggestedLine,
+      missedVariable:
+        "她說『最有趣』卻沒被接住，情感投入（Emotion）這個變數還沒推動。",
+      inviteDirection: "先讓她講一個真實故事，建立熟悉感後再考慮低壓咖啡短約。",
+    };
+    return JSON.stringify(value);
+  };
+  const invented = card(
+    "裝懂我倒不至於，但『最有趣』這三個字讓我想知道，妳遇過最誇張的一次是什麼？",
+  );
+  const repaired = card(
+    "『最有趣』這三個字讓我想知道，妳遇過最誇張的一次是什麼？",
+  );
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 2 }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, repaired, repaired],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "P1_OPEN",
+            targetVariable: "familiarity",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先沿咖啡香味話題建立熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-debrief-production-round-one-pretend-expertise",
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        { role: "ai", text: "哦？哪家啊，被你講得有點好奇。" },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text:
+            "是有幾間啦，但說出來又怕被你拿去當藉口裝懂😂 \n開玩笑的，被香味吸引進門的客人反而最有趣。",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-production-round-one-pretend-expertise",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.suggestedLine, JSON.parse(repaired).suggestedLine);
+  assertEquals(
+    JSON.stringify(json.card).includes("裝懂我倒不至於"),
+    false,
+  );
+  assertEquals(
+    json.card.gameBreakdown.nextFirstLine,
+    json.card.suggestedLine,
+  );
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(
+    state.claudeCalls[1],
+    JSON.parse(invented).suggestedLine,
+  );
+  assertGroundingReviewInput(
+    state.claudeCalls[2],
+    JSON.parse(repaired).suggestedLine,
+  );
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 

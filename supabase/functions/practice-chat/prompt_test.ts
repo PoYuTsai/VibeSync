@@ -94,6 +94,9 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
   );
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("靠咖啡撐著"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("敢不敢"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("靠意志力撐到最後"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("裝懂我倒不至於"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("{真實回應}"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("{真實狀態}"), true);
   assertEquals(
     DEBRIEF_SYSTEM_PROMPT.includes(
@@ -121,8 +124,9 @@ Deno.test("Hint prompt makes expert framing evidence-only instead of inventing s
     familiarityScore: 0,
   }).map((message) => message.content).join("\n");
 
-  assert(prompt.includes("禁代答忘記/沒記或補停下/查名/進店/感覺不錯"));
-  assert(prompt.includes("高手感禁補已發生動作/感官/原因/場景"));
+  assert(prompt.includes("只記得香味/咖啡不懂/很想進去"));
+  assert(prompt.includes("停下/查名/進店/感覺不錯/妳收藏的店"));
+  assert(prompt.includes("禁補已發生動作/感官/原因/場景"));
   assert(prompt.includes("「我」事實只用 user 證據"));
   assert(prompt.includes("邀約只用逐字稿窗口"));
   assert(prompt.includes("逐句刪無證據命題"));

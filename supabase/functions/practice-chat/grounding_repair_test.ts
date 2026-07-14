@@ -56,13 +56,20 @@ Deno.test("grounding editor returns the complete product JSON without a patch en
   assertStringIncludes(messages[0].content, "完整候選 JSON");
   assertStringIncludes(messages[0].content, "其餘所有字串逐字保留");
   assertStringIncludes(messages[0].content, "不要 markdown、說明、verdict");
-  assertStringIncludes(messages[0].content, "我有感／會讓人停下來");
+  assertStringIncludes(messages[0].content, "我有感/香會讓人停下來");
   assertStringIncludes(messages[0].content, "{真實感受}");
   assertStringIncludes(messages[0].content, "她的現況只認 assistant_turn");
   assertStringIncludes(messages[0].content, "scene/partnerState 非事實");
   assertStringIncludes(messages[0].content, "profile 只支持靜態設定");
   assertStringIncludes(messages[0].content, "拆成最小命題");
   assertStringIncludes(messages[0].content, "變數只可填");
+  assertStringIncludes(messages[0].content, "你追什麼劇");
+  assertStringIncludes(messages[0].content, "靠意志力撐到最後");
+  assertStringIncludes(messages[0].content, "只記得香味");
+  assertStringIncludes(messages[0].content, "很想進去");
+  assertStringIncludes(messages[0].content, "裝懂我倒不至於");
+  assertStringIncludes(messages[0].content, "不要沿用前一審結論");
+  assertStringIncludes(messages[0].content, "另有對應直接證據則保留");
   assertStringIncludes(
     messages[0].content,
     "未來提議、提問、界線、輕量態度可依產品策略創作",
