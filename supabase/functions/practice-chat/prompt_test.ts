@@ -67,8 +67,8 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
       "找反例",
       "user狀態/經歷=自揭",
       "她自述休假/有無計畫=自揭/行程",
-      "追問/接球/新素材皆算延伸但非邀約",
-      "一欄承認→他欄禁寫無延伸/無來回",
+      "assistant問句/接球/新素材=延伸≠邀約",
+      "任一欄承認→他欄禁寫無延伸/無來回",
       "追到兩點不證追完/忘時/睏/沒想到或不小心/靠意志力或咖啡撐",
       "明示可約時間/意願=窗口",
       "可見欄位稱「她／對方」，不稱「他／他的」",
@@ -85,24 +85,38 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
   );
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("「我」=user"), true);
   assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("事件、人物、動作、感官、消費"),
+    DEBRIEF_SYSTEM_PROMPT.includes("人/事物屬性/能力/偏好/因果/頻率"),
     true,
   );
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("禁裝忘或代答"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("{真實答案}"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("淺焙果酸"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("咖啡描述/建議/推薦"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("像果汁"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("只證常喝類型"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("勿問「怎麼開始喜歡」"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("勿問怎麼開始喜歡"), true);
   assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("獨立留 {真實感受}/{真實立場}"),
+    DEBRIEF_SYSTEM_PROMPT.includes("{真實感受}/{真實立場}/避答"),
     true,
   );
   assertEquals(
     DEBRIEF_SYSTEM_PROMPT.includes("禁裝忘或代答"),
     true,
   );
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("未知留變數，刪無據"), true);
+  assertEquals(
+    DEBRIEF_SYSTEM_PROMPT.includes("逐字稿/profile證據；否則刪/原子變數"),
+    true,
+  );
+  assertEquals(
+    DEBRIEF_SYSTEM_PROMPT.includes("轉述守說話者/言語行為/情態"),
+    true,
+  );
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("條件提議≠問句"), true);
+  assertEquals(
+    DEBRIEF_SYSTEM_PROMPT.includes(
+      "回答/解釋須 user 證據，未知用 {真實答案}/避答",
+    ),
+    true,
+  );
   assertEquals(
     DEBRIEF_SYSTEM_PROMPT.includes("她的個資/猜測/吐槽不是 user 事實或答案"),
     true,
@@ -1013,11 +1027,11 @@ Deno.test("debrief keeps an opening partner question after a later partner turn"
   assertEquals(user.includes("你追哪部啊？"), true);
   assertEquals(user.includes("中段近況".repeat(20)), false);
   assertEquals(
-    system.includes("追問/接球/新素材皆算延伸但非邀約"),
+    system.includes("assistant問句/接球/新素材=延伸≠邀約"),
     true,
   );
   assertEquals(
-    system.includes("一欄承認→他欄禁寫無延伸/無來回"),
+    system.includes("任一欄承認→他欄禁寫無延伸/無來回"),
     true,
   );
 });

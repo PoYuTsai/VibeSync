@@ -57,7 +57,7 @@ Deno.test("grounding editor requests a proof envelope around the complete produc
     false,
   );
   assertEquals(messages.some((message) => message.role === "assistant"), false);
-  assertStringIncludes(messages[0].content, "完整候選 JSON");
+  assertStringIncludes(messages[0].content, "安全原樣，否則修好");
   assertStringIncludes(messages[0].content, "其餘所有字串逐字保留");
   assertStringIncludes(messages[0].content, "不要 markdown、說明、verdict");
   assertStringIncludes(messages[0].content, "只輸出一個 {audit,candidate}");
@@ -80,7 +80,7 @@ Deno.test("grounding editor requests a proof envelope around the complete produc
   assertStringIncludes(messages[0].content, "且不等於邀約窗口");
   assertStringIncludes(
     messages[0].content,
-    "沒有 user／partner 過去或現在命題才可為空字串",
+    "沒有可見的人/事物具體事實或逐字稿轉述才可空",
   );
   assertStringIncludes(
     messages[0].content,
@@ -188,9 +188,13 @@ Deno.test("Debrief editor receives escaped server-owned timing and Hint context"
       "omittedMiddleTurnCount>0 禁全場否定",
       "user 狀態/經歷/感受算自揭",
       "只把 assistant 明確自述的休假/有無計畫/在家算 partner 自揭/行程",
-      "追問=反問",
-      "追問/接球/新素材皆算延伸≠邀約",
+      "assistant問句=反問/延伸≠邀約",
+      "接球/新素材也算延伸",
       "任一欄承認→他欄禁寫無延伸/無來回",
+      "人/事物屬性/能力/偏好/因果/頻率",
+      "speech act（問/答/自揭/提議/猜測）",
+      "modality（肯定/條件/不確定）",
+      "教練評價可推導，但不得以無據世界事實作前提",
       "追到兩點≠沒想到/沒預料/不小心等意外因果",
       "assistant 稱她/對方，不稱他/他的",
       "答詞如好看啊/有啊/會啊/對啊也算答案",
@@ -289,9 +293,13 @@ Deno.test("second review uses a compact release audit with authoritative termina
       "omittedMiddleTurnCount>0 禁全場否定",
       "user 狀態/經歷/感受算自揭",
       "只把 assistant 明確自述的休假/有無計畫/在家算 partner 自揭/行程",
-      "追問=反問",
-      "追問/接球/新素材皆算延伸≠邀約",
+      "assistant問句=反問/延伸≠邀約",
+      "接球/新素材也算延伸",
       "任一欄承認→他欄禁寫無延伸/無來回",
+      "人/事物屬性/能力/偏好/因果/頻率",
+      "speech act（問/答/自揭/提議/猜測）",
+      "modality（肯定/條件/不確定）",
+      "教練評價可推導，但不得以無據世界事實作前提",
       "追到兩點≠沒想到/沒預料/不小心等意外因果",
       "assistant 稱她/對方，不稱他/他的",
       "答詞如好看啊/有啊/會啊/對啊也算答案",
