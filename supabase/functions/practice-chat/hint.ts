@@ -161,7 +161,7 @@ export const HINT_COACHING_SOFT_CHAR_LIMIT = 140;
 const HIDDEN_HINT_NO_LEAK_RULE =
   "隱藏資料 inviteStage/dateChance/relationshipScore/分數/memorySummary/evidence/snake_case 不得露出；scene/partnerState 只供角色回覆，Hint 事實只認逐字稿。\n";
 const HINT_FACT_BOUNDARY_PRIORITY =
-  `最高優先事實邊界：產出前為每個把「我」當 user 的過去/現在命題，找到直接支持它的 user turn 或 server-trusted evidence；找不到就刪，只有她最新直接問的必要答案槽留{變數}。合理、相容或玩笑不算證據；比喻的隱含命題也要有證據。句中有一個真核心，不代表修飾、前因或結果也是真的。未來提議/提問/界線可創作，但不得暗示舊事。
+  `最高優先事實邊界：產出前為每個把「我」當 user 的過去/現在命題，找到直接支持它的 user turn 或 server-trusted evidence；找不到就刪，只有她最新直接問的必要答案槽留{變數}。合理、相容或玩笑不算證據；比喻的隱含命題也要有證據。句中有一個真核心，不代表修飾、前因或結果也是真的。未來提議/提問/界線可創作，但不得暗示舊事。coaching「她說/她丟X」與貼句明示/省略你/妳的 partner 狀態只認 assistant turn；user opening 只稱「你說」。
 例（有直接證據則保留）：只見 user「追劇到兩點/腦袋沒開機」不支持「一開始隨便看看/停不下來/忘記時間/靠意志力」；她未說追劇勿問她追什麼。只見 user「路過聞香」、她問「哪家」時，安全句是「叫{店名}，我路過聞到很香」；不支持「被香氣偷襲」/{路名}/只記得香味/咖啡不懂/很想進去/停下/查名/進店/「路過聞到香就記住了」，coaching 禁教裝忘。
 `;
 
@@ -1300,10 +1300,8 @@ export function buildHintMessages(opts: {
           : `warmUp/steady≤${HINT_REPLY_SOFT_CHAR_LIMIT}字，coaching≤${HINT_COACHING_SOFT_CHAR_LIMIT}字；完整收句。\n`) +
         "「我」=user；未知答用《{劇名}》/{店名}/{有／沒有}，禁裝忘或捏造地點、共同經歷。\n" +
         "warmUp=「升溫回覆」、steady=「穩住回覆」，是唯二回覆選項；coaching=「這邊怎麼回的心法」。\n" +
-        "user 代表使用者本人，assistant 代表練習對象；幫 user 回 assistant 最新一句。\n" +
+        "user=使用者，assistant=對象；替 user 回最新 assistant，角色事實依上述邊界。\n" +
         "狀態以最新為準；已落地勿再等。\n" +
-        "不要把 user 說過的話寫成「對方說」或「對方問你」。\n" +
-        "coaching：「她」=練習對象，「你」=使用者。\n" +
         "兩句皆為可貼草稿，不可只問；{變數} 先填再送。被直接問時先回答或表態，再追問。穩住與升溫都不可扣分。\n" +
         "新手低溫或剛開場只輕推情緒，不直接邀約、見面、一起熬夜；勿突然推進私約。\n" +
         "接住語氣≠承認命題；只承認 user turn 或 server-trusted user evidence 支持的事實，否則轉框/留變數。勿防禦、自證、攻擊。\n" +

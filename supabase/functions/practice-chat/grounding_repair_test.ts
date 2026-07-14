@@ -84,8 +84,9 @@ Deno.test("grounding editor requests a proof envelope around the complete produc
   );
   assertStringIncludes(
     messages[0].content,
-    "任何 assistant_turn 有直接問句就不得寫「無反問」",
+    "coaching『她說/她丟X』及貼句明示/省略你/妳狀態只認 assistant_turn",
   );
+  assertStringIncludes(messages[0].content, "user opening 稱『你說』");
   assertStringIncludes(messages[0].content, "scene/partnerState 非事實");
   assertStringIncludes(messages[0].content, "profile 只支持靜態設定");
   assertStringIncludes(messages[0].content, "拆成最小命題");
@@ -176,7 +177,7 @@ Deno.test("Debrief editor receives escaped server-owned timing and Hint context"
     messages[0].content,
     "不替本次 Debrief 新增的 user 事實",
   );
-  assertStringIncludes(messages[0].content, "nextFirstLine 必須同步");
+  assertStringIncludes(messages[0].content, "nextFirstLine 須同步");
   assertStringIncludes(messages[0].content, "她回答後尚未有下一個 user_turn");
   assertStringIncludes(messages[0].content, "更早其他 user_turn");
   for (
@@ -187,6 +188,8 @@ Deno.test("Debrief editor receives escaped server-owned timing and Hint context"
       "omittedMiddleTurnCount>0 禁全場否定",
       "user 狀態/經歷/感受算自揭",
       "只把 assistant 明確自述的休假/有無計畫/在家算 partner 自揭/行程",
+      "assistant追問=延伸/接球≠邀約窗口",
+      "有追問不得另欄寫無反問/尚無她延伸",
       "assistant 稱她/對方，不稱他/他的",
       "答詞如好看啊/有啊/會啊/對啊也算答案",
       "只留單一{真實答案}/{真實感受}",
@@ -214,11 +217,11 @@ Deno.test("Debrief editor receives escaped server-owned timing and Hint context"
   assertStringIncludes(messages[1].content, "所有可見與 nested 欄位");
   assertStringIncludes(messages[1].content, "尚未發生的回覆");
   assertStringIncludes(messages[1].content, "只能批較早 user_turn 或寫下一步");
-  assertStringIncludes(messages[1].content, "貼句必用證據或原子變數實作");
   assertStringIncludes(
     messages[1].content,
-    "suggestedLine/nextFirstLine 就不可仍是純問句",
+    "gameBreakdown.missedVariable/failureState/他欄若要求感受/立場或批純問句",
   );
+  assertStringIncludes(messages[1].content, "{真實答案}不算");
 });
 
 Deno.test("second review uses a compact release audit with authoritative terminal role", () => {
@@ -258,7 +261,7 @@ Deno.test("second review uses a compact release audit with authoritative termina
   assertStringIncludes(messages[0].content, "user 尚未有回覆機會");
   assertStringIncludes(
     messages[0].content,
-    "不得自行發明 user 的立場、經歷或結果",
+    "貼句不得發明 user 立場/經歷/結果",
   );
   assertStringIncludes(
     messages[0].content,
@@ -275,7 +278,7 @@ Deno.test("second review uses a compact release audit with authoritative termina
   assertStringIncludes(messages[0].content, "最短逐字 evidenceQuote");
   assertStringIncludes(
     messages[0].content,
-    "有問句不得寫「無反問」",
+    "有追問不得另欄寫無反問/尚無她延伸",
   );
   for (
     const expected of [
@@ -284,6 +287,8 @@ Deno.test("second review uses a compact release audit with authoritative termina
       "omittedMiddleTurnCount>0 禁全場否定",
       "user 狀態/經歷/感受算自揭",
       "只把 assistant 明確自述的休假/有無計畫/在家算 partner 自揭/行程",
+      "assistant追問=延伸/接球≠邀約窗口",
+      "有追問不得另欄寫無反問/尚無她延伸",
       "assistant 稱她/對方，不稱他/他的",
       "答詞如好看啊/有啊/會啊/對啊也算答案",
       "只留單一{真實答案}/{真實感受}",
@@ -297,6 +302,11 @@ Deno.test("second review uses a compact release audit with authoritative termina
   ) {
     assertStringIncludes(messages[0].content, expected);
   }
+  assertStringIncludes(
+    messages[0].content,
+    "gameBreakdown.missedVariable/failureState 或他欄若要求自揭/感受/立場",
+  );
+  assertStringIncludes(messages[0].content, "{真實答案}不算");
   assertEquals(messages[0].content.includes("最高優先漏網例"), false);
   assertStringIncludes(messages[1].content, '"terminalTurnRole":"assistant"');
   assertStringIncludes(messages[1].content, "最後出貨複核");

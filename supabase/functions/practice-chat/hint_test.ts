@@ -154,6 +154,12 @@ Deno.test("Game Hint keeps a topic-only coffee opening out of the close phase", 
   assert(prompt.includes("未來提議/提問/界線可創作"));
   assert(prompt.includes("一開始隨便看看/停不下來/忘記時間"));
   assert(prompt.includes("她未說追劇勿問她追什麼"));
+  assert(
+    prompt.includes(
+      "coaching「她說/她丟X」與貼句明示/省略你/妳的 partner 狀態只認 assistant turn",
+    ),
+  );
+  assert(prompt.includes("user opening 只稱「你說」"));
   assert(prompt.includes("第一人稱事實限 user 證據"));
   assert(prompt.includes("phase: P1_OPEN"));
   assert(prompt.includes("speedInviteDirection: no_invite_build_investment"));
@@ -380,11 +386,9 @@ Deno.test("buildHintMessages anchors hint coaching to the latest assistant reply
   });
   const text = messages.map((m) => m.content).join("\n");
 
-  assert(text.includes("user 代表使用者本人"));
-  assert(text.includes("assistant 代表練習對象"));
-  assert(text.includes("幫 user 回 assistant 最新一句"));
-  assert(text.includes("不要把 user 說過的話寫成「對方說」或「對方問你」"));
-  assert(text.includes("coaching：「她」=練習對象，「你」=使用者"));
+  assert(text.includes("user=使用者，assistant=對象"));
+  assert(text.includes("替 user 回最新 assistant"));
+  assert(text.includes("角色事實依上述邊界"));
 });
 
 Deno.test("buildHintMessages makes warm-up replies safe to apply without direct escalation", () => {

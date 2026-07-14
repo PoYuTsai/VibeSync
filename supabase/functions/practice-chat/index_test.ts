@@ -289,7 +289,7 @@ Deno.test("direct Hint preserves server-trusted user facts through both reviews"
   }
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "server-trusted user evidence",
+      "各欄角色事實只認同角色 turn/trusted evidence",
     ),
   );
   assertEquals(recordHintCalls(state).length, 1);
@@ -6950,6 +6950,90 @@ Deno.test("grounding repair and verifier remove the exact production Beginner bi
   assertEquals(recordHintCalls(state).length, 1);
 });
 
+Deno.test("Beginner Hint release review keeps user opening facts out of partner coaching", async () => {
+  const invented = validHintJson({
+    warmUp: "哈哈追劇追到兩點，現在整個人是清醒的嗎還是半夢半醒那種 😂",
+    steady: "熬夜追劇最怕隔天腦袋轉不動，現在感覺怎麼樣，有好一點了嗎？",
+    coaching:
+      "她丟了『追劇追到兩點、腦袋沒開機』這個狀態球，你的任務是接住她的感受、讓她多說一點。warmUp 用輕鬆問句製造互動，steady 用關心語氣讓她覺得被在意。這階段先建立『有在聽她說話』的印象，比什麼都重要。",
+  });
+  const repaired = validHintJson({
+    warmUp: "調時差也太硬了 😮‍💨 妳現在是清醒還是半夢半醒？",
+    steady: "昨晚調時差到現在還在放空，妳有好一點了嗎？",
+    coaching:
+      "她說昨晚調時差、現在還在放空；先接她的狀態，用輕問句讓她多說一點。",
+  });
+  const firstReview = groundingReviewEnvelope(invented, {
+    warmUp:
+      "追劇到兩點←user_turn[0]:『昨晚追劇追到兩點』；腦袋沒開機←user_turn[0]:『腦袋還沒開機』",
+    steady:
+      "熬夜追劇←user_turn[0]:『昨晚追劇追到兩點』；腦袋轉不動←user_turn[0]:『腦袋還沒開機』",
+    coaching:
+      "她丟追劇到兩點與沒開機←user_turn[0]:『昨晚追劇追到兩點，現在腦袋還沒開機』",
+  });
+  const finalReview = groundingReviewEnvelope(repaired, {
+    warmUp: "調時差與放空←assistant_turn[1]:『昨晚調時差到現在還在放空』",
+    steady: "調時差與放空←assistant_turn[1]:『昨晚調時差到現在還在放空』",
+    coaching: "她說調時差與放空←assistant_turn[1]:『昨晚調時差到現在還在放空』",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, firstReview, finalReview],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "production-beginner-hint-partner-role-source",
+      turns: [
+        {
+          role: "user",
+          text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂",
+        },
+        {
+          role: "ai",
+          text: "早安～我也差不多，昨晚調時差到現在還在放空 😮‍💨",
+        },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.replies[0].text, JSON.parse(repaired).warmUp);
+  assertEquals(json.replies[1].text, JSON.parse(repaired).steady);
+  assertEquals(json.coaching, JSON.parse(repaired).coaching);
+  assertEquals(JSON.stringify(json).includes("她丟了『追劇追到兩點"), false);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], invented);
+  assertGroundingReviewInput(state.claudeCalls[2], invented);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[0]).includes(
+      "coaching「她說/她丟X」與貼句明示/省略你/妳的 partner 狀態只認 assistant turn",
+    ),
+  );
+  for (const call of state.claudeCalls.slice(1)) {
+    assert(
+      claudePrompt(call).includes(
+        "coaching『她說/她丟X』及貼句明示/省略你/妳狀態只認 assistant_turn",
+      ),
+    );
+  }
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
 Deno.test("Game Hint release review removes the fresh production remembered-shop result", async () => {
   const invented = validGameHintJson({
     warmUp:
@@ -7270,9 +7354,9 @@ Deno.test("Hint repair removes partner speculation before independent verificati
   const firstVerificationPrompt = claudePrompt(state.claudeCalls[1]);
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
   assert(firstVerificationPrompt.includes("只證明她說過，不是 user 證據"));
-  assert(verificationPrompt.includes("她的問句、猜測與玩笑不是 user 答案"));
+  assert(verificationPrompt.includes("她問/猜非 user 答案"));
   assert(firstVerificationPrompt.includes("自行肯定/否定"));
-  assert(verificationPrompt.includes("只留她剛問的最小原子變數"));
+  assert(verificationPrompt.includes("未知只留最小變數"));
   assertEquals(recordHintCalls(state).length, 1);
 });
 
@@ -8210,12 +8294,12 @@ Deno.test("direct Beginner Debrief reviewer audit removes the latest production 
   const releasePrompt = claudePrompt(state.claudeCalls[2]);
   assert(releasePrompt.includes('"terminalTurnRole":"assistant"'));
   assert(releasePrompt.includes("user 尚未有回覆機會"));
-  assert(releasePrompt.includes("不得自行發明 user 的立場、經歷或結果"));
+  assert(releasePrompt.includes("貼句不得發明 user 立場/經歷/結果"));
   for (const call of state.claudeCalls.slice(1)) {
     const prompt = claudePrompt(call);
     assert(prompt.includes(trustedMemory));
     assert(prompt.includes("olderMemoryEvidence"));
-    assert(prompt.includes("任何 assistant_turn 有直接問句"));
+    assert(prompt.includes("assistant追問=延伸/接球≠邀約窗口"));
     assert(prompt.includes('"role":"assistant"'));
     assert(prompt.includes("你看什麼劇這麼入迷"));
     assertEquals(prompt.includes("CLIENT_DEBRIEF_MEMORY_MARKER"), false);
@@ -8225,6 +8309,261 @@ Deno.test("direct Beginner Debrief reviewer audit removes the latest production 
       .failureCodes,
     [],
   );
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("Beginner Debrief release review keeps a direct follow-up from becoming no extension", async () => {
+  const wrong = validDebriefJson({
+    summary: "她有直接追問『你追哪部』，話題有來回。",
+    strengths: ["她有接住追劇狀態並追問劇名。"],
+    watchouts: ["下一步先回答真實劇名。"],
+    suggestedLine: "{劇名}。妳最近也有追到很晚的嗎？",
+    vibe: "暖",
+    dateChance: "low",
+    dateChanceReason: "目前尚無她的延伸，互動仍偏表面。",
+    nextInviteMove: "先回答劇名，再沿追劇話題累積來回。",
+  });
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary: "她追問劇名←assistant_turn[1]:『你追哪部？』",
+    strengths: "她接住並追問←assistant_turn[1]:『我也還在回魂』『你追哪部？』",
+    watchouts: "回答劇名←assistant_turn[1]:『你追哪部？』",
+    suggestedLine: "{劇名}←variable；妳最近是否追到很晚←future_question",
+    dateChanceReason: "尚無她延伸←assistant_turn[1]:『你追哪部？』",
+    nextInviteMove: "回答劇名←assistant_turn[1]:『你追哪部？』",
+    gameBreakdown: "",
+  });
+  const repaired = validDebriefJson({
+    summary: "她有直接追問『你追哪部』，話題有來回。",
+    strengths: ["她有接住追劇狀態並追問劇名。"],
+    watchouts: ["下一步先回答真實劇名。"],
+    suggestedLine: "{劇名}。妳最近也有追到很晚的嗎？",
+    vibe: "暖",
+    dateChance: "low",
+    dateChanceReason: "她有直接追問劇名，已延伸話題；但尚無邀約窗口。",
+    nextInviteMove: "先回答劇名，再沿追劇話題累積來回。",
+  });
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary: "她追問劇名←assistant_turn[1]:『你追哪部？』",
+    strengths: "她接住並追問←assistant_turn[1]:『我也還在回魂』『你追哪部？』",
+    watchouts: "回答劇名←assistant_turn[1]:『你追哪部？』",
+    suggestedLine: "{劇名}←variable；妳最近是否追到很晚←future_question",
+    dateChanceReason: "她延伸追劇話題←assistant_turn[1]:『你追哪部？』",
+    nextInviteMove: "回答劇名←assistant_turn[1]:『你追哪部？』",
+    gameBreakdown: "",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [wrong, firstReview, finalReview],
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "production-beginner-debrief-follow-up-is-extension",
+      turns: [
+        {
+          role: "user",
+          text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂",
+        },
+        {
+          role: "ai",
+          text: "早啊～我也還在回魂 😅 你追哪部？",
+        },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.dateChance, "low");
+  assertEquals(
+    json.card.dateChanceReason,
+    "她有直接追問劇名，已延伸話題；但尚無邀約窗口。",
+  );
+  assertEquals(json.card.dateChanceReason.includes("尚無她的延伸"), false);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(
+    state.claudeCalls[1],
+    "目前尚無她的延伸，互動仍偏表面。",
+  );
+  assertGroundingReviewInput(
+    state.claudeCalls[2],
+    "目前尚無她的延伸，互動仍偏表面。",
+  );
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[0]).includes(
+      "assistant追問=延伸/接球，非邀約",
+    ),
+  );
+  for (const call of state.claudeCalls.slice(1)) {
+    assert(
+      claudePrompt(call).includes(
+        "assistant追問=延伸/接球≠邀約窗口",
+      ),
+    );
+    assert(
+      claudePrompt(call).includes(
+        "有追問不得另欄寫無反問/尚無她延伸",
+      ),
+    );
+  }
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("Game Debrief release review makes the pasteable line satisfy the exact production feeling gap", async () => {
+  const appliedHint = "叫{店名}，我路過時聞到很香。妳有去過嗎？";
+  const missedVariable =
+    "情緒與立場：下一步需補上自己對這家店的真實感受或立場，讓對話有深度。";
+  const failureState =
+    "她拋出反問「還是隻在外聞香」等待接球，下一步需給出真實答案並把球拋回。";
+  const exactSuggestedLine = "{真實答案}啦，妳沒去過是在等什麼？";
+  const repairedLine = "{真實答案}啦，{真實感受}。妳沒去過是在等什麼？";
+  const watchout =
+    "她反問「你進去了沒，還是隻在外聞香」是小測試，若只答事實不帶感受，容易變成單向問答。";
+  const nextInviteMove =
+    "先接住她的反問給真實答案，再把球拋回給她，建立來回感後再談見面。";
+  const wrongCard = JSON.parse(validDebriefJson({
+    summary: "你補店名並問她去過沒，她回沒去過並反問是否進店。",
+    strengths: ["你有回答店名，也把球拋回她。"],
+    watchouts: [watchout],
+    suggestedLine: exactSuggestedLine,
+    vibe: "暖",
+    dateChance: "low",
+    dateChanceReason: "她有反問並延伸咖啡話題，但尚無邀約窗口。",
+    nextInviteMove,
+  })) as Record<string, unknown>;
+  wrongCard.gameBreakdown = {
+    phaseReached: "開場資訊交換，開始形成咖啡話題來回。",
+    missedVariable,
+    failureState,
+    nextFirstLine: exactSuggestedLine,
+    inviteDirection: "先建立來回感，不急著邀約。",
+  };
+  const wrong = JSON.stringify(wrongCard);
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary:
+      "補店名與反問是否去過←user_turn[2]:『叫{店名}』『妳有去過嗎？』；她沒去過並反問←assistant_turn[3]:『還沒去過』『你進去了沒』",
+    strengths: "補店名並拋球←user_turn[2]:『叫{店名}』『妳有去過嗎？』",
+    watchouts: "她反問是否進店←assistant_turn[3]:『你進去了沒』",
+    suggestedLine: "{真實答案}←variable；妳沒去過是在等什麼←future_question",
+    dateChanceReason: "她反問延伸←assistant_turn[3]:『你進去了沒』",
+    nextInviteMove: "她反問←assistant_turn[3]:『你進去了沒』",
+    gameBreakdown: "{真實答案}←variable",
+  });
+  const repairedCard = structuredClone(wrongCard);
+  repairedCard.suggestedLine = repairedLine;
+  (repairedCard.gameBreakdown as Record<string, unknown>).nextFirstLine =
+    repairedLine;
+  const repaired = JSON.stringify(repairedCard);
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary:
+      "補店名與反問是否去過←user_turn[2]:『叫{店名}』『妳有去過嗎？』；她沒去過並反問←assistant_turn[3]:『還沒去過』『你進去了沒』",
+    strengths: "補店名並拋球←user_turn[2]:『叫{店名}』『妳有去過嗎？』",
+    watchouts: "她反問是否進店←assistant_turn[3]:『你進去了沒』",
+    suggestedLine:
+      "{真實答案}←variable；{真實感受}←variable；妳沒去過是在等什麼←future_question",
+    dateChanceReason: "她反問延伸←assistant_turn[3]:『你進去了沒』",
+    nextInviteMove: "她反問←assistant_turn[3]:『你進去了沒』",
+    gameBreakdown: "{真實答案}←variable；{真實感受}←variable",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 2 }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [wrong, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "P1_OPEN",
+            targetVariable: "Emotion",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先補真實答案與感受，再沿她的反問建立來回。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "production-game-debrief-feeling-gap-consistency",
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        { role: "ai", text: "哪家啊？" },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text: "哦～那間啊，聽過但還沒去過。你進去了沒，還是只在外聞香？",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-production-game-feeling-gap",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.watchouts, [watchout]);
+  assertEquals(json.card.nextInviteMove, nextInviteMove);
+  assertEquals(json.card.gameBreakdown.missedVariable, missedVariable);
+  assertEquals(json.card.gameBreakdown.failureState, failureState);
+  assertEquals(json.card.suggestedLine, repairedLine);
+  assertEquals(json.card.gameBreakdown.nextFirstLine, repairedLine);
+  assertEquals(json.card.suggestedLine.includes("{真實感受}"), true);
+  assertEquals(json.card.suggestedLine === exactSuggestedLine, false);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], exactSuggestedLine);
+  assertGroundingReviewInput(state.claudeCalls[2], exactSuggestedLine);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[0]).includes(
+      "missedVariable/failureState 若要求 user 感受/立場",
+    ),
+  );
+  assert(claudePrompt(state.claudeCalls[0]).includes("{真實答案}不算"));
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "missedVariable/failureState 若要感受/立場",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "gameBreakdown.missedVariable/failureState 或他欄若要求自揭/感受/立場",
+    ),
+  );
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
@@ -8380,7 +8719,7 @@ Deno.test("direct Game Debrief repairs the latest production tasting, timing, an
   assert(releaseAuditPrompt.includes('"terminalTurnRole":"assistant"'));
   assert(releaseAuditPrompt.includes("user 尚未有回覆機會"));
   assert(
-    releaseAuditPrompt.includes("不得自行發明 user 的立場、經歷或結果"),
+    releaseAuditPrompt.includes("貼句不得發明 user 立場/經歷/結果"),
   );
   assertEquals(
     (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
@@ -8910,7 +9249,7 @@ Deno.test("direct Beginner Debrief removes a question-only critique when its nex
   );
   assert(
     claudePrompt(state.claudeCalls[1]).includes(
-      "suggestedLine/nextFirstLine 就不可仍是純問句",
+      "gameBreakdown.missedVariable/failureState/他欄若要求感受/立場或批純問句",
     ),
   );
   assertEquals(recordDebriefCalls(state).length, 1);

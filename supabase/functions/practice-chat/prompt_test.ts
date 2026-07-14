@@ -67,7 +67,8 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
       "找反例",
       "user狀態/經歷=自揭",
       "她自述休假/有無計畫=自揭/行程",
-      "反問/普通行程≠邀約",
+      "assistant追問=延伸/接球，非邀約",
+      "有追問禁寫無反問/無延伸",
       "明示可約時間/意願=窗口",
       "可見欄位稱「她／對方」，不稱「他／他的」",
       "「我有時候會X」屬 user 習慣/感受",
@@ -939,6 +940,11 @@ Deno.test("game debrief guidance asks Game to fill gameBreakdown fields", () => 
   assertEquals(user.includes("phase: P4_TENSION"), true);
   assertEquals(user.includes("targetVariable: Emotion + heat"), true);
   assertEquals(user.includes("speedInviteDirection: soft_invite_probe"), true);
+  assertEquals(
+    user.includes("missedVariable/failureState 若要求 user 感受/立場"),
+    true,
+  );
+  assertEquals(user.includes("{真實答案}不算"), true);
 });
 
 Deno.test("game debrief follows seven-step variable and speed-invite breakdown", () => {
@@ -965,7 +971,7 @@ Deno.test("game debrief follows seven-step variable and speed-invite breakdown",
   assertEquals(user.includes("速約窗口"), true);
   assertEquals(user.includes("下一句怎麼把窗口接成行動"), true);
   assertEquals(user.includes("問答乒乓"), true);
-  assertEquals(user.includes("不再用工作/偏好資訊題收尾"), true);
+  assertEquals(user.includes("再用資訊題收尾"), true);
 });
 
 Deno.test("debrief keeps the complete latest partner turn for reaction judgment", () => {
@@ -1005,8 +1011,8 @@ Deno.test("debrief keeps an opening partner question after a later partner turn"
   assertEquals(user.includes("早安～我昨晚也在看劇"), true);
   assertEquals(user.includes("你追哪部啊？"), true);
   assertEquals(user.includes("中段近況".repeat(20)), false);
-  assertEquals(system.includes("若有反問，勿寫「無反問」"), true);
-  assertEquals(system.includes("反問/普通行程≠邀約"), true);
+  assertEquals(system.includes("assistant追問=延伸/接球，非邀約"), true);
+  assertEquals(system.includes("有追問禁寫無反問/無延伸"), true);
 });
 
 Deno.test("debrief keeps the tail signal of an overlong latest partner turn", () => {
