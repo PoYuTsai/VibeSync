@@ -140,6 +140,9 @@ const DEBRIEF_IN_FLIGHT_STALE_MS = 105000;
 const DIRECT_PRACTICE_GENERATION_ATTEMPTS = 3;
 const DIRECT_PRACTICE_DEBRIEF_ATTEMPTS = 3;
 const DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS = 24000;
+// Structured-output grammar compilation can make the first review after a
+// deploy slower than the writer. Keep two reviews within the 90s client window.
+const GROUNDING_REVIEW_TIMEOUT_MS = 30000;
 // Direct Claude is the final writer, not a brainstormer. Keep every attempt
 // low-variance so expert framing comes from the rubric instead of invented
 // scene props, user actions, or personal facts.
@@ -3077,7 +3080,9 @@ export function createPracticeChatHandler(
                 temperature: isGroundingReview
                   ? GROUNDING_REPAIR_TEMPERATURE
                   : DIRECT_PRACTICE_TEMPERATURE,
-                timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
+                timeoutMs: isGroundingReview
+                  ? GROUNDING_REVIEW_TIMEOUT_MS
+                  : DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
                 outputJsonSchema: isGroundingReview
                   ? HINT_GROUNDING_JSON_SCHEMA
                   : undefined,
@@ -4210,7 +4215,9 @@ export function createPracticeChatHandler(
                 temperature: isGroundingReview
                   ? GROUNDING_REPAIR_TEMPERATURE
                   : DIRECT_PRACTICE_TEMPERATURE,
-                timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
+                timeoutMs: isGroundingReview
+                  ? GROUNDING_REVIEW_TIMEOUT_MS
+                  : DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
                 outputJsonSchema: isGroundingReview
                   ? debriefPracticeMode === "game"
                     ? GAME_DEBRIEF_GROUNDING_JSON_SCHEMA
