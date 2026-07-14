@@ -4302,8 +4302,8 @@ Deno.test("Debrief defaults to one Claude Sonnet writer plus two grounding revie
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(state.claudeCalls[0].timeoutMs, 24000);
-  assertEquals(state.claudeCalls[1].timeoutMs, 27000);
-  assertEquals(state.claudeCalls[2].timeoutMs, 27000);
+  assertEquals(state.claudeCalls[1].timeoutMs, 30000);
+  assertEquals(state.claudeCalls[2].timeoutMs, 30000);
   assertEquals(state.claudeCalls[0].maxTokens, 1200);
   assertEquals(state.claudeCalls[1].maxTokens, 2400);
   assertEquals(state.claudeCalls[2].maxTokens, 2400);
@@ -5854,8 +5854,8 @@ Deno.test("free Hint uses Claude Sonnet writer plus two mandatory grounding revi
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(state.claudeCalls[0].timeoutMs, 24000);
-  assertEquals(state.claudeCalls[1].timeoutMs, 27000);
-  assertEquals(state.claudeCalls[2].timeoutMs, 27000);
+  assertEquals(state.claudeCalls[1].timeoutMs, 30000);
+  assertEquals(state.claudeCalls[2].timeoutMs, 30000);
   assertEquals(state.claudeCalls[0].outputJsonSchema, undefined);
   assert(state.claudeCalls[1].outputJsonSchema !== undefined);
   assert(state.claudeCalls[2].outputJsonSchema !== undefined);
