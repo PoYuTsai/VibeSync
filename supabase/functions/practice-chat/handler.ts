@@ -2873,32 +2873,21 @@ export function createPracticeChatHandler(
                 lastError !== undefined
               ? groundingFailureCode(lastError, "hint")
               : null;
-            const hasRejectedHintCandidate = !isGroundingReview &&
-              attempt > 1 &&
-              previousDirectHintCandidate !== null &&
-              lastError !== undefined &&
-              isHintFormatOrGuardError(lastError);
-            const retryBaseHintMessages: ChatMessage[] =
-              hasRejectedHintCandidate
-                ? [
-                  ...baseHintMessages,
-                  {
-                    role: "assistant",
-                    content: previousDirectHintCandidate!,
-                  },
-                ]
-                : baseHintMessages;
+            const groundingRepairInstruction = isGroundingReview &&
+                lastError !== undefined &&
+                isHintFormatOrGuardError(lastError)
+              ? hintRetryReason(lastError)
+              : null;
             const hintMessages = isGroundingReview
               ? buildGroundingReviewMessages({
                 baseMessages: baseHintMessages,
                 previousCandidate: previousDirectHintCandidate!,
                 failureCode: groundingCode,
+                repairInstruction: groundingRepairInstruction,
                 surface: "hint",
                 isGame: request.practiceMode === "game",
               })
-              : hasRejectedHintCandidate
-              ? withHintRetryInstruction(retryBaseHintMessages, lastError)
-              : retryBaseHintMessages;
+              : baseHintMessages;
             hintAttemptCount += 1;
             hintPromptChars = countPromptChars(hintMessages);
             const attemptStartedAt = performance.now();
@@ -2914,13 +2903,15 @@ export function createPracticeChatHandler(
                 timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
               });
               previousDirectHintCandidate = rawHint;
+              // A returned candidate can be repaired and grounded in one
+              // bounded review even when its first hard-gate parse fails.
+              hintGroundingCandidateReady = true;
               if (isGroundingReview) {
                 hintResult = parseDirectGeneratedHint(rawHint, true);
               } else {
                 // Candidate is not user-visible yet. Run every non-factual
                 // hard gate now, then always send it through semantic facts.
                 parseDirectGeneratedHint(rawHint, false, true);
-                hintGroundingCandidateReady = true;
                 lastError = undefined;
               }
               hintLastFailureClass = null;
@@ -2954,7 +2945,8 @@ export function createPracticeChatHandler(
               continue;
             } catch (e) {
               lastError = e;
-              hintGroundingCandidateReady = isGroundingReview;
+              hintGroundingCandidateReady = isGroundingReview ||
+                previousDirectHintCandidate !== null;
               hintLastFailureClass = classifyPracticeGenerationFailure(e);
               const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
               hintAttemptDurationsMs.push(attemptDurationMs);
@@ -3934,38 +3926,23 @@ export function createPracticeChatHandler(
                 lastError !== undefined
               ? groundingFailureCode(lastError, "debrief")
               : null;
-            const hasRejectedDebriefCandidate = !isGroundingReview &&
-              attempt > 1 &&
-              previousDirectDebriefCandidate !== null &&
-              lastError !== undefined &&
-              (debriefLastFailureClass === "visible_text_guard" ||
-                debriefLastFailureClass === "invalid_json" ||
-                debriefLastFailureClass === "schema_invalid");
-            const retryBaseDebriefMessages: ChatMessage[] =
-              hasRejectedDebriefCandidate
-                ? [
-                  ...baseDebriefMessages,
-                  {
-                    role: "assistant",
-                    content: previousDirectDebriefCandidate!,
-                  },
-                ]
-                : baseDebriefMessages;
+            const groundingRepairInstruction = isGroundingReview &&
+                lastError !== undefined &&
+                (debriefLastFailureClass === "visible_text_guard" ||
+                  debriefLastFailureClass === "invalid_json" ||
+                  debriefLastFailureClass === "schema_invalid")
+              ? debriefRetryReason(lastError)
+              : null;
             const debriefMessages = isGroundingReview
               ? buildGroundingReviewMessages({
                 baseMessages: baseDebriefMessages,
                 previousCandidate: previousDirectDebriefCandidate!,
                 failureCode: groundingCode,
+                repairInstruction: groundingRepairInstruction,
                 surface: "debrief",
                 isGame: debriefPracticeMode === "game",
               })
-              : hasRejectedDebriefCandidate
-              ? withDebriefRetryInstruction(
-                retryBaseDebriefMessages,
-                lastError,
-                debriefPracticeMode === "game",
-              )
-              : retryBaseDebriefMessages;
+              : baseDebriefMessages;
             debriefAttemptCount += 1;
             debriefPromptChars = countPromptChars(debriefMessages);
             const attemptStartedAt = performance.now();
@@ -3981,13 +3958,15 @@ export function createPracticeChatHandler(
                 timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
               });
               previousDirectDebriefCandidate = rawCard;
+              // A returned candidate can be repaired and grounded in one
+              // bounded review even when its first hard-gate parse fails.
+              debriefGroundingCandidateReady = true;
               if (isGroundingReview) {
                 debriefCard = parseDirectGeneratedDebrief(rawCard, true);
               } else {
                 // Candidate is not user-visible yet. Run every non-factual
                 // hard gate now, then always send it through semantic facts.
                 parseDirectGeneratedDebrief(rawCard, false, true);
-                debriefGroundingCandidateReady = true;
                 lastError = undefined;
               }
               debriefLastFailureClass = null;
@@ -4021,7 +4000,8 @@ export function createPracticeChatHandler(
               continue;
             } catch (e) {
               lastError = e;
-              debriefGroundingCandidateReady = isGroundingReview;
+              debriefGroundingCandidateReady = isGroundingReview ||
+                previousDirectDebriefCandidate !== null;
               debriefLastFailureClass = classifyPracticeGenerationFailure(e);
               const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
               debriefAttemptDurationsMs.push(attemptDurationMs);

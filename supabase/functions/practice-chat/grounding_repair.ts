@@ -24,6 +24,7 @@ export function buildGroundingReviewMessages(opts: {
   baseMessages: ChatMessage[];
   previousCandidate: string;
   failureCode?: string | null;
+  repairInstruction?: string | null;
   surface: PracticeGroundingSurface;
   isGame: boolean;
 }): ChatMessage[] {
@@ -43,6 +44,9 @@ export function buildGroundingReviewMessages(opts: {
   const machineSignal = opts.failureCode
     ? `機器告警碼：${opts.failureCode}。`
     : "這次沒有可靠的 lexical 告警；仍必須逐欄主動找出語意上的無證據事實。";
+  const hardGateSignal = opts.repairInstruction
+    ? `上一版同時未通過產品契約：${opts.repairInstruction}。請在同一次輸出一併修正，再完成全部事實歸因審查。`
+    : "";
 
   return [
     ...opts.baseMessages,
@@ -50,7 +54,7 @@ export function buildGroundingReviewMessages(opts: {
     {
       role: "user",
       content:
-        `你現在只做「事實歸因校正」，不是重新創作，也不是文風評審。${machineSignal}\n` +
+        `你現在只做「事實歸因校正」，不是重新創作，也不是文風評審。${machineSignal}${hardGateSignal}\n` +
         "請完整閱讀上方逐字稿、可信資料與上一版 JSON，按整句語意判斷，不可用單一關鍵字判斷。" +
         "上一版候選本身不是事實證據；對方只是在問使用者『看什麼、住哪、做什麼、去過哪、喜歡什麼』時，若使用者尚未親自回答，就絕對不能替使用者補劇名、地點、工作、經歷、偏好或任何答案。" +
         "問句、假設、條件句、泛稱人物、把問題交回對方、主觀感受或未來提案，不等於宣稱既成事實。" +
