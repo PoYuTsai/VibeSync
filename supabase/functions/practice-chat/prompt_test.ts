@@ -53,7 +53,7 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
     true,
   );
   assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("無使用者證據就用 {真實答案}"),
+    DEBRIEF_SYSTEM_PROMPT.includes("無使用者證據用 {真實答案}"),
     true,
   );
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("提問/不爆雷"), false);
@@ -62,7 +62,7 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("已落地"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("已落地勿再等"), true);
   assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("永遠是使用者對她說"),
+    DEBRIEF_SYSTEM_PROMPT.includes("是使用者對她說"),
     true,
   );
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("承諾主詞"), true);
@@ -76,7 +76,12 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
     DEBRIEF_SYSTEM_PROMPT.includes("禁代答、自稱不知道/沒記/後補"),
     true,
   );
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("輸出前逐句自審"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("輸出前刪除無證據細節"), true);
+  assertEquals(
+    DEBRIEF_SYSTEM_PROMPT.includes("猜測/吐槽（有無問號）不是 user 答案"),
+    true,
+  );
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("變數不替鄰句補故事"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("可貼草稿≤40字；變數先填"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("可直接傳的一句"), false);
 });

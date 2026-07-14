@@ -210,6 +210,52 @@ Deno.test("new-client formal Hint requires the user's real answer before generat
   assertEquals(recordHintCalls(state).length, 0);
 });
 
+Deno.test("direct Hint preserves server-trusted user facts through both reviews", async () => {
+  const userFact = "店在東區，我沒有進去";
+  const candidate = validHintJson({
+    warmUp: "在東區，我沒有進去😂 只是路過聞到很香，妳會靠香氣判斷一家店嗎？",
+    steady: "店在東區，我沒有進去；妳通常怎麼判斷一家店值不值得進？",
+    coaching:
+      "她問哪區與是否進去；使用者已補答東區且沒有進去，直接用真實答案再沿咖啡話題接球。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [candidate, candidate, candidate],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      supportsHintUserFact: true,
+      hintUserFact: userFact,
+      requestId: "hint-user-fact-preserved",
+      expectedAiCount: 1,
+      prefetch: false,
+      turns: [
+        { role: "user", text: "我剛路過一家咖啡店，聞起來很香。" },
+        { role: "ai", text: "哪一區？你有進去嗎？" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(JSON.stringify(json).includes("東區"), true);
+  assertEquals(JSON.stringify(json).includes("沒有進去"), true);
+  assertEquals(JSON.stringify(json).includes("{有／沒有}"), false);
+  assertEquals(state.claudeCalls.length, 3);
+  for (const call of state.claudeCalls) {
+    const prompt = call.messages.map((message) => message.content).join("\n");
+    assert(prompt.includes(userFact));
+  }
+  assert(
+    (state.claudeCalls[2].messages.at(-1)?.content ?? "").includes(
+      "server-trusted user evidence",
+    ),
+  );
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
 function debriefBody(overrides: Record<string, unknown> = {}) {
   return {
     mode: "debrief",
@@ -5541,6 +5587,11 @@ Deno.test("direct Beginner Hint grounding repair handles the production hometown
   );
   assert(
     (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
+      "追劇到兩點』不支持『本來只看一集",
+    ),
+  );
+  assert(
+    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
       "沒記住、不知道、沒去過",
     ),
   );
@@ -5859,6 +5910,81 @@ Deno.test("independent Hint verification catches a natural first-person memory h
   assertEquals(recordHintCalls(state).length, 1);
 });
 
+Deno.test("independent Hint verification rejects agreement with partner speculation", async () => {
+  const invented = validGameHintJson({
+    warmUp:
+      "哈被妳說中了，就是那種下次再去然後永遠沒下次的路過😂 是{店名}，妳有去過嗎？",
+    steady: "被妳戳到了，確實就是那種下次藉口XD 是{店名}，妳認識嗎？",
+    coaching:
+      "Game 心法：她用下次藉口吐槽使用者。現在是開場建立熟悉感，先承認她說中，再問她認不認識店。速約任務：先讓她多說一句，不邀約。",
+  });
+  const verified = validGameHintJson({
+    warmUp: "是{店名}，我{有／沒有}進去喝😂 妳有去過嗎？",
+    steady: "店名是{店名}，我{有／沒有}進去喝；妳認識嗎？",
+    coaching:
+      "Game 心法：她猜使用者把路過當下次藉口，但逐字稿沒有答案。現在是開場建立熟悉感，保留 {店名}、{有／沒有} 讓使用者填真值。速約任務：先讓她多說一句，不邀約。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, invented, verified],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-hint-partner-speculation",
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        {
+          role: "ai",
+          text:
+            "只聞香不進去喝喔，這種路過最容易被當作下次再去的藉口XD 是哪家啊，說不定我知道。",
+        },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(JSON.stringify(json).includes("永遠沒下次"), false);
+  assertEquals(JSON.stringify(json).includes("確實就是那種下次藉口"), false);
+  assertEquals(JSON.stringify(json).includes("{有／沒有}"), true);
+  assertEquals(state.claudeCalls.length, 3);
+  for (const call of state.claudeCalls) {
+    assertEquals(
+      call.messages.some((message) =>
+        message.content.includes(
+          "latestAssistantQuestionEvidenceBoundary(hidden)",
+        )
+      ),
+      false,
+    );
+  }
+  const firstVerificationPrompt = state.claudeCalls[1].messages.at(-1)
+    ?.content ?? "";
+  const verificationPrompt = state.claudeCalls[2].messages.at(-1)?.content ??
+    "";
+  assert(
+    firstVerificationPrompt.includes(
+      "被抓包／妳說中了／確實／就是／對啊",
+    ),
+  );
+  assert(verificationPrompt.includes("被抓包／妳說中了／確實／就是／對啊"));
+  assert(
+    firstVerificationPrompt.includes(
+      "路過店』不支持『永遠沒下次／口袋名單存很多",
+    ),
+  );
+  assert(
+    verificationPrompt.includes("路過店』不支持『永遠沒下次／口袋名單存很多"),
+  );
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
 Deno.test("independent Debrief verification catches an invented sensory answer", async () => {
   const card = (suggestedLine: string) =>
     validDebriefJson({
@@ -5900,6 +6026,213 @@ Deno.test("independent Debrief verification catches an invented sensory answer",
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[2].temperature, 0);
   assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("independent Beginner Debrief removes an invented plan beside a placeholder", async () => {
+  const appliedHint = "卡關最難熬了，我現在也差不多這狀態 😂 妳是卡在哪邊？";
+  const card = (suggestedLine: string) =>
+    validDebriefJson({
+      summary: "她補充排班系統卡關，並反問你在追什麼劇。",
+      strengths: ["你沿她的卡關狀態追問，讓她補充排班系統。"],
+      watchouts: ["她問劇名時要填真實答案，不能在變數旁補計畫。"],
+      suggestedLine,
+      dateChance: "low",
+      dateChanceReason: "她有反問，但目前仍是剛開始交換近況。",
+      nextInviteMove: "先填真實劇名並接排班卡關，暫不邀約。",
+    });
+  const invented = card(
+    "《{真實劇名}》，本來說看一集就睡，結果眼神死跟妳一樣 😂 排班系統哪段最卡？",
+  );
+  const verified = card(
+    "《{真實劇名}》，昨晚真的追到兩點 😂 排班系統哪段最卡？",
+  );
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, invented, verified],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "建立熟悉中",
+            targetVariable: "安全感與熟悉感",
+            move: "build_connection",
+            inviteRoute: "not_ready",
+            rationale: "先接住卡關狀態，讓她補充細節，不邀約。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "direct-beginner-debrief-placeholder-adjacent-plan",
+      turns: [
+        { role: "user", text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂" },
+        { role: "ai", text: "早啊，我下午也卡關中。" },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text: "就排班系統跟一些文件，弄到眼神死😂 妳追什麼劇這麼認真",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-beginner-placeholder-plan",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.suggestedLine, JSON.parse(verified).suggestedLine);
+  assertEquals(json.card.suggestedLine.includes("本來說看一集就睡"), false);
+  assertEquals(json.card.suggestedLine.includes("眼神死跟妳一樣"), false);
+  assertEquals(json.card.suggestedLine.includes("{真實劇名}"), true);
+  const verifiedCard = JSON.parse(verified);
+  assertEquals(json.card.summary, verifiedCard.summary);
+  assertEquals(json.card.strengths, verifiedCard.strengths);
+  assertEquals(json.card.watchouts, verifiedCard.watchouts);
+  assertEquals(json.card.vibe, verifiedCard.vibe);
+  assertEquals(json.card.dateChance, verifiedCard.dateChance);
+  assertEquals(json.card.dateChanceReason, verifiedCard.dateChanceReason);
+  assertEquals(json.card.nextInviteMove, verifiedCard.nextInviteMove);
+  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(state.claudeCalls[1].temperature, 0);
+  assertEquals(state.claudeCalls[2].temperature, 0);
+  assertEquals(state.claudeCalls[2].messages.at(-2), {
+    role: "assistant",
+    content: invented,
+  });
+  const verificationPrompt = state.claudeCalls[2].messages.at(-1)?.content ??
+    "";
+  assert(verificationPrompt.includes("貼句的『我』"));
+  assert(verificationPrompt.includes("server-trusted user evidence"));
+  assert(verificationPrompt.includes("對齊同角色逐字稿"));
+  assert(verificationPrompt.includes("本來只看一集"));
+  assert(verificationPrompt.includes("未涉案欄位逐字保留"));
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
+});
+
+Deno.test("independent Game Debrief rejects agreement with partner speculation", async () => {
+  const appliedHint = "店名是{店名}，我{有／沒有}進去喝；妳認識嗎？";
+  const card = (suggestedLine: string) => {
+    const value = JSON.parse(validDebriefJson({
+      summary: "她用偷存口袋名單吐槽你，正在等你回應。",
+      strengths: ["你先分享路過聞到店香，讓她有具體話題可接。"],
+      watchouts: ["口袋名單是她的猜測，下一句只能填使用者真實答案。"],
+      suggestedLine,
+      dateChance: "low",
+      dateChanceReason: "她延續咖啡話題，但仍只有一個輕鬆吐槽。",
+      nextInviteMove: "先補真實答案並延續咖啡話題，暫不邀約。",
+    })) as Record<string, unknown>;
+    value.gameBreakdown = {
+      phaseReached: "開場進到咖啡店話題的輕鬆吐槽",
+      missedVariable: "還缺使用者對口袋名單的真實回答",
+      failureState: "她正在等你回應口袋名單的猜測",
+      nextFirstLine: suggestedLine,
+      inviteDirection: "先填真實答案，再沿咖啡話題建立熟悉感",
+    };
+    return JSON.stringify(value);
+  };
+  const invented = card(
+    "被抓包了，口袋名單確實存了不少，妳有沒有私藏的那種？",
+  );
+  const verified = card(
+    "這題先填真話：我{有／沒有}在存口袋名單XD 妳自己有私藏名單嗎？",
+  );
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 2 }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, invented, verified],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "P1_OPEN",
+            targetVariable: "familiarity",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先補真實店名與是否進店，再沿咖啡話題建立熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "direct-game-debrief-partner-speculation",
+      turns: [
+        { role: "user", text: "我今天路過一家聞起來很香的店。" },
+        { role: "ai", text: "只聞香不進去喝喔，是哪家啊？" },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text: "所以你只是經過就記住店名，是不是都在偷存口袋名單XD",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-game-partner-speculation",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(JSON.stringify(json.card).includes("確實存了不少"), false);
+  assertEquals(JSON.stringify(json.card).includes("{有／沒有}"), true);
+  const verifiedCard = JSON.parse(verified);
+  assertEquals(json.card.suggestedLine, verifiedCard.suggestedLine);
+  assertEquals(json.card.summary, verifiedCard.summary);
+  assertEquals(json.card.strengths, verifiedCard.strengths);
+  assertEquals(json.card.watchouts, verifiedCard.watchouts);
+  assertEquals(json.card.vibe, verifiedCard.vibe);
+  assertEquals(json.card.dateChance, verifiedCard.dateChance);
+  assertEquals(json.card.dateChanceReason, verifiedCard.dateChanceReason);
+  assertEquals(json.card.nextInviteMove, verifiedCard.nextInviteMove);
+  for (
+    const field of [
+      "phaseReached",
+      "missedVariable",
+      "failureState",
+      "inviteDirection",
+    ]
+  ) {
+    assertEquals(
+      json.card.gameBreakdown[field],
+      verifiedCard.gameBreakdown[field],
+      field,
+    );
+  }
+  assertEquals(
+    json.card.gameBreakdown.nextFirstLine,
+    json.card.suggestedLine,
+  );
+  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(state.claudeCalls[1].temperature, 0);
+  assertEquals(state.claudeCalls[2].temperature, 0);
+  assertEquals(state.claudeCalls[2].messages.at(-2), {
+    role: "assistant",
+    content: invented,
+  });
+  const verificationPrompt = state.claudeCalls[2].messages.at(-1)?.content ??
+    "";
+  assert(verificationPrompt.includes("整段被承認內容都成了 user 事實"));
+  assert(verificationPrompt.includes("不得改 Hint 接球點、策略或邀約路線"));
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
 Deno.test("direct Debrief lets reviewed partner questions bypass initiative regex", async () => {
