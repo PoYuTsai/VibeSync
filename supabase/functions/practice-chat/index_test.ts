@@ -90,6 +90,8 @@ function assertGroundingReviewInput(
     prompt.includes("practiceGroundingReviewerV3") ||
       prompt.includes("practiceGroundingReleaseAuditorV1"),
   );
+  assert(prompt.includes("<grounding_evidence_data>"));
+  assertEquals(prompt.includes("generation_context_untrusted"), false);
   assert(prompt.includes("<candidate_untrusted>"));
   assert(prompt.includes(previousCandidate));
   assertEquals(
@@ -6833,14 +6835,14 @@ Deno.test("always-on grounding removes the exact build-323 smoke hallucination w
 Deno.test("grounding repair and verifier remove the exact production Beginner binge-plan invention", async () => {
   const invented = validHintJson({
     warmUp:
-      "我在追《{劇名}》😂 一開始只想看一集，結果一路追到兩點；妳最近也有停不下來的嗎？",
-    steady: "《{劇名}》，本來只想看一集，結果追到兩點；妳最近在追哪部？",
+      "《{劇名}》，昨晚一直說再一集就睡，結果兩點了 😂 妳最近也有追劇嗎？",
+    steady: "《{劇名}》哈哈，腦袋沒開機的狀態追完的 😂 妳平常也會追劇嗎？",
     coaching:
       "她問劇名；保留 {劇名} 讓使用者填真值，再沿逐字稿明示的追到兩點接球。",
   });
   const repaired = validHintJson({
-    warmUp: "我在追《{劇名}》😂 昨晚一路追到兩點；妳最近也有停不下來的嗎？",
-    steady: "《{劇名}》，昨晚一路追到兩點；妳最近在追哪部？",
+    warmUp: "《{劇名}》，昨晚追到兩點了 😂 妳最近也有追劇嗎？",
+    steady: "《{劇名}》哈哈，昨晚追到兩點 😂 妳平常也會追劇嗎？",
     coaching:
       "她問劇名；保留 {劇名} 讓使用者填真值，再沿逐字稿明示的追到兩點接球。",
   });
@@ -6862,8 +6864,8 @@ Deno.test("grounding repair and verifier remove the exact production Beginner bi
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(json.replies[0].text, JSON.parse(repaired).warmUp);
-  assertEquals(JSON.stringify(json).includes("一開始只想看一集"), false);
-  assertEquals(JSON.stringify(json).includes("本來只想看一集"), false);
+  assertEquals(JSON.stringify(json).includes("再一集就睡"), false);
+  assertEquals(JSON.stringify(json).includes("追完"), false);
   assertEquals(JSON.stringify(json).includes("{劇名}"), true);
   assertEquals(state.claudeCalls.length, 3);
   assertGroundingReviewInput(
@@ -6877,19 +6879,18 @@ Deno.test("grounding repair and verifier remove the exact production Beginner bi
   assertEquals(recordHintCalls(state).length, 1);
 });
 
-Deno.test("grounding repair and verifier remove the exact production Game storefront invention", async () => {
+Deno.test("grounding repair and verifier remove the latest production Game result and hobby inventions", async () => {
   const invented = validGameHintJson({
-    warmUp: "那家招牌不大，門口飄出味道就把我勾住😂 是{店名}，妳認識嗎？",
-    steady:
-      "招牌不大但門口很香；店名是{店名}，我{有／沒有}進去喝，妳有去過嗎？",
+    warmUp: "叫{店名}，路過聞到香就記下來了😂 妳最近在看哪幾家新店？",
+    steady: "叫{店名}，妳有聽過嗎？我最近也在注意新開的店。",
     coaching:
-      "Game 心法：她問店名與是否進店，現在是開場建立熟悉感。速約任務：保留 {店名}、{有／沒有} 讓使用者填真值，因為逐字稿沒有答案。",
+      "Game 心法：她問店名，現在是開場建立熟悉感。速約任務：保留 {店名} 讓使用者填真值，再問她最近在看哪些店。",
   });
   const repaired = validGameHintJson({
-    warmUp: "是{店名}，我路過時聞到香😂 妳認識嗎？",
-    steady: "店名是{店名}，我{有／沒有}進去喝；妳有去過嗎？",
+    warmUp: "叫{店名}，我路過時聞到很香😂 妳最近在看哪幾家新店？",
+    steady: "叫{店名}，妳有聽過嗎？",
     coaching:
-      "Game 心法：她問店名與是否進店，現在是開場建立熟悉感。速約任務：保留 {店名}、{有／沒有} 讓使用者填真值，因為逐字稿沒有答案。",
+      "Game 心法：她問店名，現在是開場建立熟悉感。速約任務：保留 {店名} 讓使用者填真值，再問她最近在看哪些店。",
   });
   const { response, json, state } = await run(
     {
@@ -6904,7 +6905,7 @@ Deno.test("grounding repair and verifier remove the exact production Game storef
       requestId: "production-game-storefront-second-review",
       turns: [
         { role: "user", text: "我今天路過一家咖啡店，聞起來很香。" },
-        { role: "ai", text: "只聞香不進去喝喔，是哪家？" },
+        { role: "ai", text: "哪家啊？我最近也在看新店。" },
       ],
     }),
   );
@@ -6918,10 +6919,9 @@ Deno.test("grounding repair and verifier remove the exact production Game storef
     }),
   );
   assertEquals(json.replies[0].text, JSON.parse(repaired).warmUp);
-  assertEquals(JSON.stringify(json).includes("招牌不大"), false);
-  assertEquals(JSON.stringify(json).includes("門口飄出味道"), false);
+  assertEquals(JSON.stringify(json).includes("記下來了"), false);
+  assertEquals(JSON.stringify(json).includes("我最近也在注意新開的店"), false);
   assertEquals(JSON.stringify(json).includes("{店名}"), true);
-  assertEquals(JSON.stringify(json).includes("{有／沒有}"), true);
   assertEquals(state.claudeCalls.length, 3);
   assertGroundingReviewInput(state.claudeCalls[1], invented);
   assertGroundingReviewInput(state.claudeCalls[2], repaired);
@@ -7317,7 +7317,7 @@ Deno.test("Beginner Debrief repair removes an invented plan before independent v
   );
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
   assert(verificationPrompt.includes("所有可見與 nested 欄位"));
-  assert(verificationPrompt.includes("server-trusted user evidence"));
+  assert(verificationPrompt.includes("trustedUserFacts"));
   assert(
     verificationPrompt.includes(
       "都要由正確角色的 transcript turn 或 server-trusted evidence 直接蘊含",
@@ -7907,6 +7907,7 @@ Deno.test("direct Game Debrief repairs the exact production round-one pretend-ex
 });
 
 Deno.test("direct Beginner Debrief repairs the latest production completion and discovery claims", async () => {
+  const trustedMemory = "SERVER_DEBRIEF_MEMORY_MARKER：她之前聊過輪班追劇。";
   const appliedHint =
     "《{劇名}》啦，太好看了根本忘記時間 哈哈。妳昨晚吃飯吃到很晚，今天還好嗎？";
   const card = (suggestedLine: string) =>
@@ -7937,6 +7938,14 @@ Deno.test("direct Beginner Debrief repairs the latest production completion and 
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger({ ai_count: 2 }),
+      thread: {
+        profile_id: "practice_girl_001",
+        memory_summary: trustedMemory,
+        partner_mood: "neutral",
+        partner_inner_thought: "",
+        temperature_score: 28,
+        familiarity_score: 10,
+      },
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
       claudeReplies: [writer, firstReview, finalReview],
       rpc: {
@@ -7953,6 +7962,8 @@ Deno.test("direct Beginner Debrief repairs the latest production completion and 
     },
     debriefBody({
       practiceMode: "beginner",
+      visiblePracticeThreadId: "thread-with-debrief-memory",
+      memorySummary: "CLIENT_DEBRIEF_MEMORY_MARKER",
       requestId: "direct-beginner-debrief-latest-production-time-claims",
       turns: [
         {
@@ -8000,6 +8011,12 @@ Deno.test("direct Beginner Debrief repairs the latest production completion and 
   assert(releasePrompt.includes('"terminalTurnRole":"assistant"'));
   assert(releasePrompt.includes("user 尚未有回覆機會"));
   assert(releasePrompt.includes("不得自行發明 user 的立場、經歷或結果"));
+  for (const call of state.claudeCalls.slice(1)) {
+    const prompt = claudePrompt(call);
+    assert(prompt.includes(trustedMemory));
+    assert(prompt.includes("olderMemoryEvidence"));
+    assertEquals(prompt.includes("CLIENT_DEBRIEF_MEMORY_MARKER"), false);
+  }
   assertEquals(
     (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
       .failureCodes,
@@ -9094,30 +9111,99 @@ Deno.test("Beginner and Game reject paraphrased partner facts before recording",
 });
 
 Deno.test("Hint factual guard accepts a named place from trusted relationship memory", async () => {
+  const trustedMemory = "她之前說中山站附近那間店叫黑露。";
+  const candidate = JSON.stringify({
+    warmUp: "鼻子靈是基本配備😂 中山站附近那間店叫黑露。",
+    steady: "妳說我鼻子也太靈：就是中山站附近的黑露。",
+    coaching:
+      "Game 心法：她說鼻子也太靈又問在哪，這輪直接回答中山站和黑露。速約任務：先交換生活感，不硬約。",
+  });
   const { response, json, state } = await run(
     {
       ledger: gameStartedLedger(),
       thread: {
         profile_id: "practice_girl_004",
-        memory_summary: "她之前說中山站附近那間店叫黑露。",
+        memory_summary: trustedMemory,
         partner_mood: "neutral",
         partner_inner_thought: "",
         temperature_score: 30,
         familiarity_score: 20,
       },
       drawEvents: [{ profile_id: "practice_girl_004" }],
-      deepSeekReplies: [JSON.stringify({
-        warmUp: "鼻子靈是基本配備😂 中山站附近那間店叫黑露。",
-        steady: "妳說我鼻子也太靈：就是中山站附近的黑露。",
-        coaching:
-          "Game 心法：她說鼻子也太靈又問在哪，這輪直接回答中山站和黑露。速約任務：先交換生活感，不硬約。",
-      })],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [candidate, candidate, candidate],
     },
     hintBody({
       practiceMode: "game",
       profileId: "practice_girl_004",
       visiblePracticeThreadId: "thread-with-place-memory",
+      memorySummary: "CLIENT_MEMORY_MARKER",
       requestId: "trusted-memory-location",
+      turns: [
+        {
+          role: "user",
+          text: "剛路過妳之前提過的那間咖啡店，聞起來很香",
+        },
+        { role: "ai", text: "喔你鼻子也太靈，在哪啊" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.provider, "anthropic");
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.replies[0].text.includes("中山站"), true);
+  assertEquals(json.replies[1].text.includes("黑露"), true);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(recordHintCalls(state).length, 1);
+  for (const call of state.claudeCalls) {
+    const prompt = claudePrompt(call);
+    assert(prompt.includes(trustedMemory));
+    assertEquals(prompt.includes("CLIENT_MEMORY_MARKER"), false);
+  }
+  for (const call of state.claudeCalls.slice(1)) {
+    const prompt = claudePrompt(call);
+    assert(prompt.includes("olderMemoryEvidence"));
+    assert(prompt.includes("明確把當前指涉連回同一舊人／事／店"));
+    assertEquals(prompt.includes("currentTemperatureScore"), false);
+  }
+});
+
+Deno.test("Hint review does not use an unrelated old venue as the latest location answer", async () => {
+  const trustedMemory = "她之前說中山站附近那間店叫黑露。";
+  const invented = JSON.stringify({
+    warmUp: "就是中山站附近的黑露，我路過時聞到很香😂 妳也常去嗎？",
+    steady: "在中山站附近，店叫黑露。妳有去過嗎？",
+    coaching:
+      "Game 心法：她問今天路過的店在哪，這輪直接用舊記憶回答中山站和黑露。速約任務：先交換生活感。",
+  });
+  const repaired = JSON.stringify({
+    warmUp: "在{地點}，我路過時聞到很香😂 妳也常去那附近嗎？",
+    steady: "在{地點}。妳有去過那附近嗎？",
+    coaching:
+      "Game 心法：她問今天路過的店在哪；逐字稿沒有地點，這輪保留 {地點} 讓使用者填真值。速約任務：先交換生活感。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      thread: {
+        profile_id: "practice_girl_004",
+        memory_summary: trustedMemory,
+        partner_mood: "neutral",
+        partner_inner_thought: "",
+        temperature_score: 30,
+        familiarity_score: 20,
+      },
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, repaired, repaired],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      visiblePracticeThreadId: "thread-with-unrelated-place-memory",
+      requestId: "unrelated-memory-location",
       turns: [
         { role: "user", text: "剛路過一間咖啡店，聞起來很香" },
         { role: "ai", text: "喔你鼻子也太靈，在哪啊" },
@@ -9125,18 +9211,21 @@ Deno.test("Hint factual guard accepts a named place from trusted relationship me
     }),
   );
 
-  assertEquals(response.status, 200);
-  assertEquals(json.provider, "deepseek");
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.provider, "anthropic");
   assertEquals(json.failoverUsed, false);
-  assertEquals(json.replies[0].text.includes("中山站"), true);
-  assertEquals(json.replies[1].text.includes("黑露"), true);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 0);
+  assertEquals(JSON.stringify(json).includes("中山站"), false);
+  assertEquals(JSON.stringify(json).includes("黑露"), false);
+  assertEquals(JSON.stringify(json).includes("{地點}"), true);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], invented);
+  assertGroundingReviewInput(state.claudeCalls[2], repaired);
+  for (const call of state.claudeCalls.slice(1)) {
+    const prompt = claudePrompt(call);
+    assert(prompt.includes(trustedMemory));
+    assert(prompt.includes("不得只因同主題或相似描述自行綁定"));
+  }
   assertEquals(recordHintCalls(state).length, 1);
-  const prompt = state.deepSeekCalls[0].messages
-    .map((message) => message.content)
-    .join("\n");
-  assert(prompt.includes("她之前說中山站附近那間店叫黑露"));
 });
 
 Deno.test("Game Hint may use generic profile strategy language without treating it as a named venue", async () => {

@@ -2798,6 +2798,17 @@ export function createPracticeChatHandler(
           memorySummary: promptMemorySummary,
           userFactClarification: request.hintUserFact,
         });
+        const hintGroundingEvidenceContext = {
+          turns: request.turns,
+          trustedUserFacts: request.hintUserFact?.trim()
+            ? [request.hintUserFact.trim()]
+            : [],
+          olderMemoryEvidence: promptMemorySummary?.trim()
+            ? [promptMemorySummary.trim()]
+            : [],
+          partnerFacts: hintFactualEvidence.partner,
+          typedFacts: hintFactualEvidence.claims,
+        };
         const generatedHintParseOptions = {
           mode: request.practiceMode,
           turns: request.turns,
@@ -2983,7 +2994,7 @@ export function createPracticeChatHandler(
               : null;
             const hintMessages = isGroundingReview
               ? buildGroundingReviewMessages({
-                baseMessages: baseHintMessages,
+                evidenceContext: hintGroundingEvidenceContext,
                 previousCandidate: previousDirectHintCandidate!,
                 failureCode: groundingCode,
                 repairInstruction: groundingRepairInstruction,
@@ -3888,6 +3899,15 @@ export function createPracticeChatHandler(
           // actually stated. Debrief may trust only the resulting transcript.
           memorySummary: promptMemorySummary,
         });
+        const debriefGroundingEvidenceContext = {
+          turns: request.turns,
+          trustedUserFacts: [],
+          olderMemoryEvidence: promptMemorySummary?.trim()
+            ? [promptMemorySummary.trim()]
+            : [],
+          partnerFacts: debriefFactualEvidence.partner,
+          typedFacts: debriefFactualEvidence.claims,
+        };
         const generatedDebriefParseOptions = {
           allowGameBreakdown: debriefPracticeMode === "game",
           requireCompleteCard: true,
@@ -3900,21 +3920,8 @@ export function createPracticeChatHandler(
           enforceGeneratedQuality: true,
           semanticAdjudicated: true,
         } as const;
-        const lastAppliedHintTurnIndex =
-          (ledgerAppliedHintTurns?.length ?? 0) > 0
-            ? Math.max(
-              ...ledgerAppliedHintTurns!.map((hint) => hint.turnIndex),
-            )
-            : -1;
         const debriefGroundingContext = {
           appliedHints: ledgerAppliedHintTurns ?? [],
-          postHintAssistantTurns: lastAppliedHintTurnIndex >= 0
-            ? request.turns
-              .filter((turn, index) =>
-                turn.role === "ai" && index > lastAppliedHintTurnIndex
-              )
-              .map((turn) => turn.text)
-            : [],
           terminalTurnRole: request.turns[request.turns.length - 1]?.role ===
               "ai"
             ? "assistant" as const
@@ -4119,7 +4126,7 @@ export function createPracticeChatHandler(
               : null;
             const debriefMessages = isGroundingReview
               ? buildGroundingReviewMessages({
-                baseMessages: baseDebriefMessages,
+                evidenceContext: debriefGroundingEvidenceContext,
                 previousCandidate: previousDirectDebriefCandidate!,
                 failureCode: groundingCode,
                 repairInstruction: groundingRepairInstruction,
