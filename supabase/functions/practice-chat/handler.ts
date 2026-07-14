@@ -118,7 +118,10 @@ import {
 } from "./semantic_quality.ts";
 import {
   buildGroundingReviewMessages,
+  canFallbackAfterGroundingReviewError,
+  canRetryAfterGroundingReviewError,
   groundingFailureCode,
+  parseGroundingReviewResult,
 } from "./grounding_repair.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -547,6 +550,27 @@ function isHintFormatOrGuardError(e: unknown): boolean {
     message.includes("max_tokens") ||
     message.includes("JSON") ||
     message.includes("Unexpected token");
+}
+
+function isHintSchemaShapeError(error: unknown): boolean {
+  if (error instanceof SyntaxError) return true;
+  const message = getErrorMessage(error);
+  return message.includes("hint_not_object") ||
+    message.includes("hint_missing_") ||
+    message.includes("_must_be_string") ||
+    message.includes("hint_extra_keys");
+}
+
+function isDebriefSchemaShapeError(error: unknown): boolean {
+  if (error instanceof SyntaxError) return true;
+  const message = getErrorMessage(error);
+  return message.includes("debrief_not_object") ||
+    message.includes("debrief_missing_fields") ||
+    message.includes("debrief_invalid_vibe") ||
+    message.includes("debrief_invalid_date_chance") ||
+    message.includes("debrief_game_breakdown_missing_fields") ||
+    message.includes("debrief_hint_assessment_missing") ||
+    message.includes("debrief_hint_assessment_invalid");
 }
 
 function hintRetryReason(e: unknown): string {
@@ -2777,6 +2801,9 @@ export function createPracticeChatHandler(
         let previousDirectHintCandidate: string | null = null;
         let hintGroundingCandidateReady = false;
         let hintGroundingReviewsCompleted = 0;
+        let hintInitialCandidateSchemaInvalid = false;
+        let lastValidatedHintGroundingVerdict: "accept" | "repair" | null =
+          null;
         let lastValidatedReviewedHint:
           | ReturnType<
             typeof parseHintResult
@@ -2924,29 +2951,47 @@ export function createPracticeChatHandler(
                   : DIRECT_PRACTICE_TEMPERATURE,
                 timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
               });
-              previousDirectHintCandidate = rawHint;
-              // A returned candidate can be repaired and grounded in one
-              // bounded review even when its first hard-gate parse fails.
-              hintGroundingCandidateReady = true;
               if (isGroundingReview) {
+                const verificationPass = hintGroundingReviewsCompleted > 0;
+                const grounded = parseGroundingReviewResult({
+                  raw: rawHint,
+                  previousCandidate: previousDirectHintCandidate!,
+                  surface: "hint",
+                  userTurnEvidence: request.turns
+                    .filter((turn) => turn.role === "user")
+                    .map((turn) => turn.text),
+                  assistantTurnEvidence: request.turns
+                    .filter((turn) => turn.role === "ai")
+                    .map((turn) => turn.text),
+                  trustedUserEvidence: request.hintUserFact
+                    ? [request.hintUserFact]
+                    : [],
+                  verificationPass,
+                  allowFormatRepair: !verificationPass &&
+                    hintInitialCandidateSchemaInvalid,
+                });
                 const reviewedHint = parseDirectGeneratedHint(
-                  rawHint,
+                  grounded.candidateJson,
                   true,
                   false,
                   true,
                 );
+                previousDirectHintCandidate = grounded.candidateJson;
                 hintGroundingReviewsCompleted += 1;
                 lastValidatedReviewedHint = reviewedHint;
-                if (
-                  hintGroundingReviewsCompleted >= 2 ||
-                  attempt === DIRECT_PRACTICE_GENERATION_ATTEMPTS
-                ) {
+                lastValidatedHintGroundingVerdict = grounded.verdict;
+                if (hintGroundingReviewsCompleted >= 2) {
                   hintResult = reviewedHint;
                 }
               } else {
+                previousDirectHintCandidate = rawHint;
+                // A returned candidate can be repaired and grounded in one
+                // bounded review even when its first hard-gate parse fails.
+                hintGroundingCandidateReady = true;
                 // Candidate is not user-visible yet. Run every non-factual
                 // hard gate now, then always send it through semantic facts.
                 parseDirectGeneratedHint(rawHint, false, true);
+                hintInitialCandidateSchemaInvalid = false;
               }
               lastError = undefined;
               hintLastFailureClass = null;
@@ -2980,6 +3025,9 @@ export function createPracticeChatHandler(
               if (hintResult) break;
               continue;
             } catch (e) {
+              if (!isGroundingReview && previousDirectHintCandidate !== null) {
+                hintInitialCandidateSchemaInvalid = isHintSchemaShapeError(e);
+              }
               lastError = e;
               hintGroundingCandidateReady = isGroundingReview ||
                 previousDirectHintCandidate !== null;
@@ -3017,7 +3065,9 @@ export function createPracticeChatHandler(
               if (
                 isGroundingReview &&
                 hintGroundingReviewsCompleted > 0 &&
-                lastValidatedReviewedHint !== null
+                lastValidatedReviewedHint !== null &&
+                lastValidatedHintGroundingVerdict === "accept" &&
+                canFallbackAfterGroundingReviewError(e)
               ) {
                 // The independent verification call failed, but the prior
                 // semantic review already passed every final hard gate.
@@ -3031,6 +3081,10 @@ export function createPracticeChatHandler(
                 });
                 break;
               }
+              if (
+                isGroundingReview &&
+                !canRetryAfterGroundingReviewError(e)
+              ) break;
             }
           }
         } else if (apiKey) {
@@ -3794,6 +3848,19 @@ export function createPracticeChatHandler(
           enforceGeneratedQuality: true,
           semanticAdjudicated: true,
         } as const;
+        const debriefHintContinuityContext =
+          (ledgerAppliedHintTurns?.length ?? 0) > 0
+            ? {
+              appliedHints: ledgerAppliedHintTurns!,
+              postHintAssistantTurns: request.turns
+                .filter((turn, index) =>
+                  turn.role === "ai" && index > Math.max(
+                      ...ledgerAppliedHintTurns!.map((hint) => hint.turnIndex),
+                    )
+                )
+                .map((turn) => turn.text),
+            }
+            : null;
         const canonicalHintAssessment = (
           rawCandidate: Record<string, unknown>,
         ): Record<string, unknown> => {
@@ -3880,6 +3947,9 @@ export function createPracticeChatHandler(
         let previousDirectDebriefCandidate: string | null = null;
         let debriefGroundingCandidateReady = false;
         let debriefGroundingReviewsCompleted = 0;
+        let debriefInitialCandidateSchemaInvalid = false;
+        let lastValidatedDebriefGroundingVerdict: "accept" | "repair" | null =
+          null;
         let lastValidatedReviewedDebrief: DebriefCard | null = null;
         const parseGeneratedDebrief = async (
           rawCard: string,
@@ -3999,6 +4069,7 @@ export function createPracticeChatHandler(
                 verificationPass: debriefGroundingReviewsCompleted > 0,
                 surface: "debrief",
                 isGame: debriefPracticeMode === "game",
+                hintContinuityContext: debriefHintContinuityContext,
               })
               : baseDebriefMessages;
             debriefAttemptCount += 1;
@@ -4015,29 +4086,46 @@ export function createPracticeChatHandler(
                   : DIRECT_PRACTICE_TEMPERATURE,
                 timeoutMs: DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS,
               });
-              previousDirectDebriefCandidate = rawCard;
-              // A returned candidate can be repaired and grounded in one
-              // bounded review even when its first hard-gate parse fails.
-              debriefGroundingCandidateReady = true;
               if (isGroundingReview) {
+                const verificationPass = debriefGroundingReviewsCompleted > 0;
+                const grounded = parseGroundingReviewResult({
+                  raw: rawCard,
+                  previousCandidate: previousDirectDebriefCandidate!,
+                  surface: "debrief",
+                  userTurnEvidence: request.turns
+                    .filter((turn) => turn.role === "user")
+                    .map((turn) => turn.text),
+                  assistantTurnEvidence: request.turns
+                    .filter((turn) => turn.role === "ai")
+                    .map((turn) => turn.text),
+                  trustedUserEvidence: [],
+                  verificationPass,
+                  allowFormatRepair: !verificationPass &&
+                    debriefInitialCandidateSchemaInvalid,
+                  requireHintContinuity: debriefHintContinuityContext !== null,
+                });
                 const reviewedCard = parseDirectGeneratedDebrief(
-                  rawCard,
+                  grounded.candidateJson,
                   true,
                   false,
                   true,
                 );
+                previousDirectDebriefCandidate = grounded.candidateJson;
                 debriefGroundingReviewsCompleted += 1;
                 lastValidatedReviewedDebrief = reviewedCard;
-                if (
-                  debriefGroundingReviewsCompleted >= 2 ||
-                  attempt === DIRECT_PRACTICE_DEBRIEF_ATTEMPTS
-                ) {
+                lastValidatedDebriefGroundingVerdict = grounded.verdict;
+                if (debriefGroundingReviewsCompleted >= 2) {
                   debriefCard = reviewedCard;
                 }
               } else {
+                previousDirectDebriefCandidate = rawCard;
+                // A returned candidate can be repaired and grounded in one
+                // bounded review even when its first hard-gate parse fails.
+                debriefGroundingCandidateReady = true;
                 // Candidate is not user-visible yet. Run every non-factual
                 // hard gate now, then always send it through semantic facts.
                 parseDirectGeneratedDebrief(rawCard, false, true);
+                debriefInitialCandidateSchemaInvalid = false;
               }
               lastError = undefined;
               debriefLastFailureClass = null;
@@ -4071,6 +4159,12 @@ export function createPracticeChatHandler(
               if (debriefCard) break;
               continue;
             } catch (e) {
+              if (
+                !isGroundingReview && previousDirectDebriefCandidate !== null
+              ) {
+                debriefInitialCandidateSchemaInvalid =
+                  isDebriefSchemaShapeError(e);
+              }
               lastError = e;
               debriefGroundingCandidateReady = isGroundingReview ||
                 previousDirectDebriefCandidate !== null;
@@ -4110,7 +4204,9 @@ export function createPracticeChatHandler(
               if (
                 isGroundingReview &&
                 debriefGroundingReviewsCompleted > 0 &&
-                lastValidatedReviewedDebrief !== null
+                lastValidatedReviewedDebrief !== null &&
+                lastValidatedDebriefGroundingVerdict === "accept" &&
+                canFallbackAfterGroundingReviewError(e)
               ) {
                 // The independent verification call failed, but the prior
                 // semantic review already passed every final hard gate.
@@ -4124,6 +4220,10 @@ export function createPracticeChatHandler(
                 });
                 break;
               }
+              if (
+                isGroundingReview &&
+                !canRetryAfterGroundingReviewError(e)
+              ) break;
             }
           }
         } else if (apiKey) {

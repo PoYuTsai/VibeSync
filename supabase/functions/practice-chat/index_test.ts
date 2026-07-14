@@ -61,6 +61,24 @@ interface FakeState {
   debriefCount: number;
 }
 
+function claudePrompt(call: ClaudeArgs): string {
+  return call.messages.map((message) => message.content).join("\n");
+}
+
+function assertGroundingReviewInput(
+  call: ClaudeArgs,
+  previousCandidate: string,
+): void {
+  const prompt = claudePrompt(call);
+  assert(prompt.includes("practiceGroundingReviewerV2"));
+  assert(prompt.includes("<candidate_untrusted>"));
+  assert(prompt.includes(previousCandidate));
+  assertEquals(
+    call.messages.some((message) => message.role === "assistant"),
+    false,
+  );
+}
+
 function subscription(overrides: Record<string, unknown> = {}) {
   return {
     tier: "starter",
@@ -248,7 +266,7 @@ Deno.test("direct Hint preserves server-trusted user facts through both reviews"
     assert(prompt.includes(userFact));
   }
   assert(
-    (state.claudeCalls[2].messages.at(-1)?.content ?? "").includes(
+    claudePrompt(state.claudeCalls[2]).includes(
       "server-trusted user evidence",
     ),
   );
@@ -305,6 +323,103 @@ function validGameHintJson(overrides: Record<string, string> = {}) {
     coaching:
       "Game 心法：她主動提到想喝咖啡，現在只有話題還沒有時間窗口。速約任務：問她是想醒腦還是放空，因為先讓她補感受，再看是否出現邀約窗口。",
     ...overrides,
+  });
+}
+
+function parsedJsonRecord(raw: string): Record<string, unknown> | null {
+  try {
+    const value = JSON.parse(raw);
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function firstRemovedString(previous: unknown, next: unknown): string | null {
+  const nextText = JSON.stringify(next);
+  const visit = (value: unknown): string | null => {
+    if (typeof value === "string") {
+      return value.length <= 240 && !nextText.includes(value) ? value : null;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const found = visit(item);
+        if (found) return found;
+      }
+    } else if (typeof value === "object" && value !== null) {
+      for (const item of Object.values(value as Record<string, unknown>)) {
+        const found = visit(item);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  return visit(previous);
+}
+
+function mockGroundingReviewEnvelope(
+  previousRaw: string,
+  resultRaw: string,
+  requireHintContinuity: boolean,
+): string {
+  const explicitEnvelope = parsedJsonRecord(resultRaw);
+  if (
+    explicitEnvelope && typeof explicitEnvelope.verdict === "string" &&
+    Array.isArray(explicitEnvelope.checkedFields) &&
+    Array.isArray(explicitEnvelope.userClaims)
+  ) return resultRaw;
+
+  const previous = parsedJsonRecord(previousRaw);
+  const result = parsedJsonRecord(resultRaw);
+  if (!result) return resultRaw;
+  if (previous && JSON.stringify(previous) === JSON.stringify(result)) {
+    return JSON.stringify({
+      verdict: "accept",
+      ...(requireHintContinuity ? { continuityChecked: true } : {}),
+      checkedFields: Object.keys(previous),
+      userClaims: [],
+      issues: [],
+      result: previous,
+    });
+  }
+
+  const sameFields = previous &&
+    JSON.stringify(Object.keys(previous).sort()) ===
+      JSON.stringify(Object.keys(result).sort());
+  const changedFields = sameFields
+    ? Object.keys(previous!).filter((field) =>
+      JSON.stringify(previous![field]) !== JSON.stringify(result[field])
+    )
+    : [];
+  const changes = changedFields.map((field) => ({
+    field,
+    span: firstRemovedString(previous![field], result[field]),
+  }));
+  const canDescribeAsFacts = changes.length > 0 &&
+    changes.every((change) => change.span !== null);
+  return JSON.stringify({
+    verdict: "repair",
+    ...(requireHintContinuity ? { continuityChecked: true } : {}),
+    checkedFields: Object.keys(result),
+    userClaims: canDescribeAsFacts
+      ? changes.map((change) => ({
+        field: change.field,
+        span: change.span,
+        subject: "user",
+        source: null,
+        evidence: null,
+      }))
+      : [],
+    issues: canDescribeAsFacts
+      ? changes.map((change) => ({
+        kind: "unsupported_user_fact",
+        field: change.field,
+        span: change.span,
+      }))
+      : [{ kind: "invalid_candidate", field: "$format", span: "" }],
+    result,
   });
 }
 
@@ -740,16 +855,33 @@ function makeFake(options: FakeOptions = {}) {
     state.claudeCalls.push(args);
     state.events.push("claude");
     const configuredReply = options.claudeReplies?.[claudeIndex];
-    const isGroundingReview = (args.messages.at(-1)?.content ?? "").includes(
-      "事實歸因校正",
+    const isGroundingReview = args.messages.some((message) =>
+      message.role === "system" &&
+      message.content.includes("practiceGroundingReviewerV2")
     );
-    const reply = configuredReply ??
+    const requiresHintContinuity = args.messages.some((message) =>
+      message.role === "user" &&
+      message.content.includes("<trusted_hint_contract_data>")
+    );
+    const selectedReply = configuredReply ??
       (isGroundingReview && previousClaudeText !== undefined
         ? previousClaudeText
         : "AI reply");
     claudeIndex++;
-    if (reply instanceof Error) return Promise.reject(reply);
-    previousClaudeText = reply;
+    if (selectedReply instanceof Error) return Promise.reject(selectedReply);
+    const reply = isGroundingReview && previousClaudeText !== undefined
+      ? mockGroundingReviewEnvelope(
+        previousClaudeText,
+        selectedReply,
+        requiresHintContinuity,
+      )
+      : selectedReply;
+    const envelope = parsedJsonRecord(reply);
+    previousClaudeText = isGroundingReview && envelope &&
+        typeof envelope.verdict === "string" &&
+        typeof envelope.result === "object" && envelope.result !== null
+      ? JSON.stringify(envelope.result)
+      : selectedReply;
     return Promise.resolve(reply);
   };
   const semanticAdjudicate = (
@@ -4287,12 +4419,9 @@ Deno.test("direct Game Debrief repairs and grounds one rejected Claude card in t
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(state.claudeCalls[1].model, CLAUDE_SONNET_MODEL);
-  const retryPrompt = state.claudeCalls[1].messages.at(-1)?.content ?? "";
+  const retryPrompt = claudePrompt(state.claudeCalls[1]);
   assert(retryPrompt.includes("Game 拆盤五個欄位有缺漏或空白"));
-  assertEquals(state.claudeCalls[1].messages.at(-2), {
-    role: "assistant",
-    content: incompleteGameCard,
-  });
+  assertGroundingReviewInput(state.claudeCalls[1], incompleteGameCard);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assertEquals(typeof json.card.gameBreakdown.nextFirstLine, "string");
   assertEquals(recordDebriefCalls(state).length, 1);
@@ -4337,6 +4466,74 @@ Deno.test("direct Game Debrief accepts expert vocabulary without the legacy mech
   assertEquals(json.card.summary.includes("篩選"), true);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("first Debrief review may repair malformed writer JSON before verification", async () => {
+  const repaired = validDebriefJson();
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: ["not json", repaired, repaired],
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "direct-debrief-format-repair-then-verify",
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], "not json");
+  assertGroundingReviewInput(state.claudeCalls[2], repaired);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("explicit Debrief review failure hard-stops without a rescue rewrite", async () => {
+  const candidate = validDebriefJson();
+  const explicitFail = JSON.stringify({
+    verdict: "fail",
+    checkedFields: Object.keys(JSON.parse(candidate)),
+    userClaims: [],
+    issues: [],
+    result: null,
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [candidate, explicitFail, candidate],
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "direct-debrief-explicit-review-fail-hard-stop",
+    }),
+  );
+
+  assertEquals(response.status, 503, JSON.stringify(json));
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(recordDebriefCalls(state).length, 0);
+  assertEquals(releaseDebriefCalls(state).length, 1);
+});
+
+Deno.test("malformed independent Debrief verifier fails closed", async () => {
+  const candidate = validDebriefJson();
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [candidate, candidate, "not json"],
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "direct-debrief-malformed-independent-verifier",
+    }),
+  );
+
+  assertEquals(response.status, 503, JSON.stringify(json));
+  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(recordDebriefCalls(state).length, 0);
+  assertEquals(releaseDebriefCalls(state).length, 1);
 });
 
 Deno.test("direct Debrief reviews one invalid candidate twice before failing closed", async () => {
@@ -4398,9 +4595,9 @@ Deno.test("direct Debrief uses narrow semantic grounding repair for a hallucinat
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
-  const retryPrompt = state.claudeCalls[1].messages.at(-1)?.content ?? "";
+  const retryPrompt = claudePrompt(state.claudeCalls[1]);
   assert(retryPrompt.includes("事實歸因校正"));
-  assert(retryPrompt.includes("只改涉及的最小子句"));
+  assert(retryPrompt.includes("只改有 issue 的最小子句"));
   assert(retryPrompt.includes("不是文風評審"));
   assertEquals(state.claudeCalls[0].temperature, 0.2);
   assertEquals(state.claudeCalls[1].temperature, 0);
@@ -4503,9 +4700,7 @@ Deno.test("direct Game Debrief semantically repairs the production current-locat
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
-    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "沒有可靠的 lexical 告警",
-    ),
+    claudePrompt(state.claudeCalls[1]).includes("沒有可靠 lexical 告警"),
   );
   assertEquals(recordDebriefCalls(state).length, 1);
 });
@@ -4547,8 +4742,8 @@ Deno.test("direct Game Debrief grounds invented facts inside the visible breakdo
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
-    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "逐欄主動找出語意上的無證據事實",
+    claudePrompt(state.claudeCalls[1]).includes(
+      "逐欄主動找語意上的無證據事實",
     ),
   );
   assertEquals(recordDebriefCalls(state).length, 1);
@@ -4772,11 +4967,221 @@ Deno.test("direct Claude Debrief regenerates instead of blaming an exact preserv
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
-  const retryPrompt = state.claudeCalls[1].messages.at(-1)?.content ?? "";
+  const retryPrompt = claudePrompt(state.claudeCalls[1]);
   assert(retryPrompt.includes("exact Hint"));
-  assert(retryPrompt.includes("全部事實歸因審查"));
+  assert(retryPrompt.includes("已套用 Hint 是 server 鎖定的正確決策"));
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
+});
+
+Deno.test("direct Debrief repairs a contradiction with the server-owned Hint before verification", async () => {
+  const hintText = "我先說我的版本：下班後散步最能讓我切回自己的節奏。";
+  const turns = [
+    { role: "user" as const, text: "妳下班都怎麼放鬆？" },
+    { role: "ai" as const, text: "有時候走走路" },
+    { role: "user" as const, text: hintText },
+    { role: "ai" as const, text: "散步真的蠻舒服的" },
+  ];
+  const invalid = JSON.parse(validDebriefJson({
+    summary: "你有照提示分享散步節奏，她接著回散步很舒服。",
+    strengths: ["你沿著提示接住她的散步話題。"],
+    watchouts: ["你沒有立刻邀約，錯過了最好的窗口。"],
+    suggestedLine: "妳平常散步最常走哪一段？",
+    dateChanceReason: "她願意延續散步話題，但還沒有提出時間或見面。",
+    nextInviteMove: "放棄鋪陳，下一句立刻約她見面。",
+  })) as Record<string, unknown>;
+  const repaired = {
+    ...invalid,
+    watchouts: ["她只回散步很舒服；下一步先沿這個新回覆多問一個具體點。"],
+    nextInviteMove: "先問她平常走哪一段，等她多分享再看邀約窗口。",
+  };
+  const firstReview = JSON.stringify({
+    verdict: "repair",
+    continuityChecked: true,
+    checkedFields: Object.keys(invalid),
+    userClaims: [],
+    issues: [
+      {
+        kind: "hint_continuity",
+        field: "watchouts",
+        span: "你沒有立刻邀約，錯過了最好的窗口。",
+      },
+      {
+        kind: "hint_continuity",
+        field: "nextInviteMove",
+        span: "放棄鋪陳，下一句立刻約她見面。",
+      },
+    ],
+    result: repaired,
+  });
+  const secondReview = JSON.stringify({
+    verdict: "accept",
+    continuityChecked: true,
+    checkedFields: Object.keys(repaired),
+    userClaims: [],
+    issues: [],
+    result: repaired,
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [JSON.stringify(invalid), firstReview, secondReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "建立熟悉中",
+            targetVariable: "投入感",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "對方只給短回覆，先沿內容建立連結。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      requestId: "debrief-hint-continuity-repair",
+      practiceMode: "beginner",
+      turns,
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: hintText,
+        sentText: hintText,
+        exact: true,
+        hintRequestId: "hint-continuity-repair-1",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.watchouts, repaired.watchouts);
+  assertEquals(json.card.nextInviteMove, repaired.nextInviteMove);
+  assertEquals(JSON.stringify(json.card).includes("錯過了最好的窗口"), false);
+  assertEquals(state.claudeCalls.length, 3);
+  const reviewPrompt = claudePrompt(state.claudeCalls[1]);
+  assert(reviewPrompt.includes("<trusted_hint_contract_data>"));
+  assert(reviewPrompt.includes('"inviteRoute":"build"'));
+  assert(reviewPrompt.includes("散步真的蠻舒服的"));
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
+});
+
+Deno.test("direct Debrief never records reviews that omit Hint continuity certification", async () => {
+  const hintText = "我先分享一個散步習慣，再聽妳的版本。";
+  const candidate = validDebriefJson({
+    summary: "你有照提示分享散步習慣，她接著說散步很舒服。",
+    strengths: ["你沿提示接住她的散步話題。"],
+    watchouts: ["下一步可以問她平常走哪一段。"],
+    dateChanceReason: "她願意延續散步話題，但還沒有提出時間或見面。",
+  });
+  const parsedCandidate = JSON.parse(candidate) as Record<string, unknown>;
+  const uncertifiedAccept = JSON.stringify({
+    verdict: "accept",
+    checkedFields: Object.keys(parsedCandidate),
+    userClaims: [],
+    issues: [],
+    result: parsedCandidate,
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [candidate, uncertifiedAccept, uncertifiedAccept],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "建立熟悉中",
+            targetVariable: "投入感",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先沿內容建立連結。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      requestId: "debrief-hint-continuity-uncertified",
+      practiceMode: "beginner",
+      turns: [
+        { role: "user", text: "妳下班都怎麼放鬆？" },
+        { role: "ai", text: "有時候走走路" },
+        { role: "user", text: hintText },
+        { role: "ai", text: "散步真的蠻舒服的" },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: hintText,
+        sentText: hintText,
+        exact: true,
+        hintRequestId: "hint-continuity-uncertified-1",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 503, JSON.stringify(json));
+  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(recordDebriefCalls(state).length, 0);
+  assertEquals(releaseDebriefCalls(state).length, 1);
+});
+
+Deno.test("direct Debrief allows a next-step route change grounded in her post-Hint invitation", async () => {
+  const hintText = "我先分享我週末會散步，再問妳通常去哪裡。";
+  const turns = [
+    { role: "user" as const, text: "妳週末通常怎麼放鬆？" },
+    { role: "ai" as const, text: "有時候會去散步" },
+    { role: "user" as const, text: hintText },
+    { role: "ai" as const, text: "那週末要不要一起喝咖啡？" },
+  ];
+  const candidate = validDebriefJson({
+    summary: "你有照提示分享週末散步，她接著主動問週末要不要喝咖啡。",
+    strengths: ["你沿提示接住散步話題，讓她提出新的見面選項。"],
+    watchouts: ["她已經提出喝咖啡，下一步只要確認時間，不必另開話題。"],
+    suggestedLine: "可以啊，妳週六下午還是週日比較方便？",
+    dateChance: "high",
+    dateChanceReason: "她在提示後主動問週末要不要一起喝咖啡。",
+    nextInviteMove: "沿她的新邀請直接確認週末時間。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [candidate, candidate, candidate],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "建立熟悉中",
+            targetVariable: "投入感",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "送出 Hint 時尚未出現邀約窗口。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      requestId: "debrief-post-hint-invitation-route-change",
+      practiceMode: "beginner",
+      turns,
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: hintText,
+        sentText: hintText,
+        exact: true,
+        hintRequestId: "hint-post-invitation-1",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.nextInviteMove, "沿她的新邀請直接確認週末時間。");
+  assertEquals(state.claudeCalls.length, 3);
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes("那週末要不要一起喝咖啡？"),
+  );
+  assertEquals(recordDebriefCalls(state).length, 1);
 });
 
 Deno.test("Debrief missing preserved Hint assessment safely records generated card", async () => {
@@ -5388,13 +5793,10 @@ Deno.test("direct Beginner and Game Hint semantically repair hallucinated user f
     assertEquals(state.deepSeekCalls.length, 0, mode);
     assertEquals(state.claudeCalls.length, 3, mode);
     assertEquals(state.semanticCalls.length, 0, mode);
-    const retryPrompt = state.claudeCalls[1].messages.at(-1)?.content ?? "";
+    const retryPrompt = claudePrompt(state.claudeCalls[1]);
     assert(retryPrompt.includes("事實歸因校正"), mode);
     assert(retryPrompt.includes("完整閱讀上方逐字稿"), mode);
-    assertEquals(state.claudeCalls[1].messages.at(-2), {
-      role: "assistant",
-      content: invalidMirror,
-    });
+    assertGroundingReviewInput(state.claudeCalls[1], invalidMirror);
     assertEquals(state.claudeCalls[1].temperature, 0, mode);
     assertEquals(recordHintCalls(state).length, 1, mode);
   }
@@ -5432,9 +5834,7 @@ Deno.test("direct Game Hint lets semantic grounding preserve a safe generic hypo
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
-    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "問句、假設、條件句、泛稱人物",
-    ),
+    claudePrompt(state.claudeCalls[1]).includes("問句、假設、條件句"),
   );
   assertEquals(recordHintCalls(state).length, 1);
 });
@@ -5485,15 +5885,9 @@ Deno.test("direct Game Hint lets reviewed activity questions bypass invite-route
   );
   assertEquals(json.replies[0].text, JSON.parse(reviewed).warmUp);
   assertEquals(state.claudeCalls.length, 3);
+  assert(claudePrompt(state.claudeCalls[1]).includes("按整句語意判斷"));
   assert(
-    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "按整句語意校正",
-    ),
-  );
-  assert(
-    (state.claudeCalls[2].messages.at(-1)?.content ?? "").includes(
-      "獨立第二道對抗複核",
-    ),
+    claudePrompt(state.claudeCalls[2]).includes("獨立第二道對抗複核"),
   );
   for (const reply of json.replies) {
     assertEquals(reply.decision.inviteRoute, "build");
@@ -5541,9 +5935,7 @@ Deno.test("direct Game Hint grounding repair removes a truly invented person nam
   assertEquals(JSON.stringify(json).includes("嘉玲"), false);
   assertEquals(state.claudeCalls.length, 3);
   assert(
-    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "沒有可靠的 lexical 告警",
-    ),
+    claudePrompt(state.claudeCalls[1]).includes("沒有可靠 lexical 告警"),
   );
   assertEquals(recordHintCalls(state).length, 1);
 });
@@ -5580,21 +5972,11 @@ Deno.test("direct Beginner Hint grounding repair handles the production hometown
   assertEquals(json.qualitySchemaVersion, "typed-facts-v1");
   assertEquals(JSON.stringify(json).includes("嘉義"), false);
   assertEquals(state.claudeCalls.length, 3);
-  assert(
-    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "使用者尚未親自回答",
-    ),
-  );
-  assert(
-    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "追劇到兩點』不支持『本來只看一集",
-    ),
-  );
-  assert(
-    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "沒記住、不知道、沒去過",
-    ),
-  );
+  const repairPrompt = claudePrompt(state.claudeCalls[1]);
+  assert(repairPrompt.includes("不是 user 證據"));
+  assert(repairPrompt.includes("追到兩點"));
+  assert(repairPrompt.includes("本來只想看一集"));
+  assert(repairPrompt.includes("沒記住、不知道、沒去過"));
   assertEquals(recordHintCalls(state).length, 1);
 });
 
@@ -5614,7 +5996,8 @@ Deno.test("semantic grounding cannot bypass unsupported contact identifiers", as
       ledger: beginnerStartedLedger(),
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
       // The first review wrongly leaves the invented number unchanged. The
-      // deterministic PII gate must still reject it before review attempt two.
+      // deterministic PII gate must hard-stop it; a later reply cannot rescue
+      // a semantic review that already accepted unsafe content.
       claudeReplies: [unsupportedPhone, unsupportedPhone, safe],
     },
     hintBody({
@@ -5627,20 +6010,18 @@ Deno.test("semantic grounding cannot bypass unsupported contact identifiers", as
     }),
   );
 
-  assertEquals(response.status, 200, JSON.stringify(json));
-  assertEquals(JSON.stringify(json).includes("0912345678"), false);
-  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(response.status, 503, JSON.stringify(json));
+  assertEquals(json, {
+    error: "practice_hint_generation_retryable",
+    retryable: true,
+  });
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(state.claudeCalls[1].temperature, 0);
-  assertEquals(state.claudeCalls[2].temperature, 0);
-  assert(
-    (state.claudeCalls[2].messages.at(-1)?.content ?? "").includes(
-      "未通過產品契約",
-    ),
-  );
-  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
 });
 
-Deno.test("grounding review timeout retries review without returning an unaudited writer", async () => {
+Deno.test("first grounding review timeout cannot downgrade the dual-review gate", async () => {
   const invented = validHintJson({
     warmUp: "這個傳給嘉玲看，她一定會笑。",
     steady: "我會丟給嘉玲，再問她最好笑的是哪段。",
@@ -5667,8 +6048,11 @@ Deno.test("grounding review timeout retries review without returning an unaudite
     }),
   );
 
-  assertEquals(response.status, 200, JSON.stringify(json));
-  assertEquals(JSON.stringify(json).includes("嘉玲"), false);
+  assertEquals(response.status, 503, JSON.stringify(json));
+  assertEquals(json, {
+    error: "practice_hint_generation_retryable",
+    retryable: true,
+  });
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assertEquals(state.claudeCalls[2].temperature, 0);
@@ -5677,7 +6061,8 @@ Deno.test("grounding review timeout retries review without returning an unaudite
       message.content.includes("事實歸因校正")
     ),
   );
-  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
 });
 
 Deno.test("two grounding review failures never record an unaudited Hint", async () => {
@@ -5715,6 +6100,97 @@ Deno.test("two grounding review failures never record an unaudited Hint", async 
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assertEquals(state.claudeCalls[2].temperature, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
+});
+
+Deno.test("first grounding review may repair malformed writer JSON before verification", async () => {
+  const repaired = validHintJson();
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: ["not json", repaired, repaired],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "direct-hint-format-repair-then-verify",
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], "not json");
+  assertGroundingReviewInput(state.claudeCalls[2], repaired);
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
+Deno.test("explicit first-review semantic failure hard-stops without a rescue rewrite", async () => {
+  const candidate = validHintJson();
+  const explicitFail = JSON.stringify({
+    verdict: "fail",
+    checkedFields: ["warmUp", "steady", "coaching"],
+    userClaims: [],
+    issues: [],
+    result: null,
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [candidate, explicitFail, candidate],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "direct-hint-explicit-review-fail-hard-stop",
+    }),
+  );
+
+  assertEquals(response.status, 503, JSON.stringify(json));
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
+});
+
+Deno.test("independent verifier cannot return an unreviewed repair", async () => {
+  const candidate = validHintJson();
+  const rewritten = validHintJson({
+    warmUp: "咖啡這句收到，我改成另一條沒被複核的回覆。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [candidate, candidate, rewritten],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "direct-hint-verifier-repair-rejected",
+    }),
+  );
+
+  assertEquals(response.status, 503, JSON.stringify(json));
+  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
+});
+
+Deno.test("malformed independent Hint verifier fails closed", async () => {
+  const candidate = validHintJson();
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [candidate, candidate, "not json"],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "direct-hint-malformed-independent-verifier",
+    }),
+  );
+
+  assertEquals(response.status, 503, JSON.stringify(json));
+  assertEquals(state.claudeCalls.length, 3);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(releaseHintCalls(state).length, 1);
 });
@@ -5788,14 +6264,9 @@ Deno.test("direct Hint regenerates an invented media title from an unanswered qu
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(state.claudeCalls[0].temperature, 0.2);
   assertEquals(state.claudeCalls[1].temperature, 0);
-  assertEquals(state.claudeCalls[1].messages.at(-2), {
-    role: "assistant",
-    content: inventedTitle,
-  });
+  assertGroundingReviewInput(state.claudeCalls[1], inventedTitle);
   assert(
-    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "具名人物、地點、時間",
-    ),
+    claudePrompt(state.claudeCalls[1]).includes("具名人物、地點、時間"),
   );
   assertEquals(recordHintCalls(state).length, 1);
 });
@@ -5812,16 +6283,11 @@ Deno.test("always-on grounding removes the exact build-323 smoke hallucination w
     coaching:
       "她直接問使用者看什麼，但逐字稿沒有真實劇名；保留 {劇名} 讓使用者填入後再送。",
   });
-  const inventedEvasion = validHintJson({
-    warmUp: "還沒想好追哪部，就這樣滑到兩點了😂 妳最近在追什麼？",
-    steady: "還沒決定，昨晚只是一路滑到兩點😂 妳最近在追哪部？",
-    coaching: "她問使用者看什麼；先說還沒決定，再沿追劇話題接回去。",
-  });
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-      claudeReplies: [invented, inventedEvasion, repaired],
+      claudeReplies: [invented, repaired, repaired],
     },
     hintBody({
       practiceMode: "beginner",
@@ -5844,9 +6310,7 @@ Deno.test("always-on grounding removes the exact build-323 smoke hallucination w
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
-    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "使用者尚未親自回答",
-    ),
+    claudePrompt(state.claudeCalls[1]).includes("不是 user 證據"),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
@@ -5856,7 +6320,99 @@ Deno.test("always-on grounding removes the exact build-323 smoke hallucination w
   assertEquals(recordHintCalls(state).length, 1);
 });
 
-Deno.test("independent Hint verification catches a natural first-person memory hallucination", async () => {
+Deno.test("grounding repair and verifier remove the exact production Beginner binge-plan invention", async () => {
+  const invented = validHintJson({
+    warmUp:
+      "我在追《{劇名}》😂 一開始只想看一集，結果一路追到兩點；妳最近也有停不下來的嗎？",
+    steady: "《{劇名}》，本來只想看一集，結果追到兩點；妳最近在追哪部？",
+    coaching:
+      "她問劇名；保留 {劇名} 讓使用者填真值，再沿逐字稿明示的追到兩點接球。",
+  });
+  const repaired = validHintJson({
+    warmUp: "我在追《{劇名}》😂 昨晚一路追到兩點；妳最近也有停不下來的嗎？",
+    steady: "《{劇名}》，昨晚一路追到兩點；妳最近在追哪部？",
+    coaching:
+      "她問劇名；保留 {劇名} 讓使用者填真值，再沿逐字稿明示的追到兩點接球。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, repaired, repaired],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "production-beginner-binge-plan-second-review",
+      turns: [
+        { role: "user", text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂" },
+        { role: "ai", text: "妳到底追哪部？" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.replies[0].text, JSON.parse(repaired).warmUp);
+  assertEquals(JSON.stringify(json).includes("一開始只想看一集"), false);
+  assertEquals(JSON.stringify(json).includes("本來只想看一集"), false);
+  assertEquals(JSON.stringify(json).includes("{劇名}"), true);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], invented);
+  assertGroundingReviewInput(state.claudeCalls[2], repaired);
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
+Deno.test("grounding repair and verifier remove the exact production Game storefront invention", async () => {
+  const invented = validGameHintJson({
+    warmUp: "那家招牌不大，門口飄出味道就把我勾住😂 是{店名}，妳認識嗎？",
+    steady:
+      "招牌不大但門口很香；店名是{店名}，我{有／沒有}進去喝，妳有去過嗎？",
+    coaching:
+      "Game 心法：她問店名與是否進店，現在是開場建立熟悉感。速約任務：保留 {店名}、{有／沒有} 讓使用者填真值，因為逐字稿沒有答案。",
+  });
+  const repaired = validGameHintJson({
+    warmUp: "是{店名}，我只是路過聞到香😂 妳認識嗎？",
+    steady: "店名是{店名}，我{有／沒有}進去喝；妳有去過嗎？",
+    coaching:
+      "Game 心法：她問店名與是否進店，現在是開場建立熟悉感。速約任務：保留 {店名}、{有／沒有} 讓使用者填真值，因為逐字稿沒有答案。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, repaired, repaired],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "production-game-storefront-second-review",
+      turns: [
+        { role: "user", text: "我今天路過一家咖啡店，聞起來很香。" },
+        { role: "ai", text: "只聞香不進去喝喔，是哪家？" },
+      ],
+    }),
+  );
+
+  assertEquals(
+    response.status,
+    200,
+    JSON.stringify({
+      json,
+      telemetry: aiLogInserts(state)[0]?.values.request_body,
+    }),
+  );
+  assertEquals(json.replies[0].text, JSON.parse(repaired).warmUp);
+  assertEquals(JSON.stringify(json).includes("招牌不大"), false);
+  assertEquals(JSON.stringify(json).includes("門口飄出味道"), false);
+  assertEquals(JSON.stringify(json).includes("{店名}"), true);
+  assertEquals(JSON.stringify(json).includes("{有／沒有}"), true);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], invented);
+  assertGroundingReviewInput(state.claudeCalls[2], repaired);
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
+Deno.test("Hint repair removes a memory hallucination before independent verification", async () => {
   const invented = validGameHintJson({
     warmUp:
       "哈哈被妳看穿了，確實有點餓😂 但香味是真的，聞到就停下來了。妳收藏的那間是什麼風格？",
@@ -5876,7 +6432,7 @@ Deno.test("independent Hint verification catches a natural first-person memory h
       ledger: gameStartedLedger(),
       drawEvents: [{ profile_id: "practice_girl_004" }],
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-      claudeReplies: [invented, invented, verified],
+      claudeReplies: [invented, verified, verified],
     },
     hintBody({
       practiceMode: "game",
@@ -5903,14 +6459,12 @@ Deno.test("independent Hint verification catches a natural first-person memory h
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[2].temperature, 0);
   assert(
-    (state.claudeCalls[2].messages.at(-1)?.content ?? "").includes(
-      "獨立第二道對抗複核",
-    ),
+    claudePrompt(state.claudeCalls[2]).includes("獨立第二道對抗複核"),
   );
   assertEquals(recordHintCalls(state).length, 1);
 });
 
-Deno.test("independent Hint verification rejects agreement with partner speculation", async () => {
+Deno.test("Hint repair removes partner speculation before independent verification", async () => {
   const invented = validGameHintJson({
     warmUp:
       "哈被妳說中了，就是那種下次再去然後永遠沒下次的路過😂 是{店名}，妳有去過嗎？",
@@ -5929,7 +6483,7 @@ Deno.test("independent Hint verification rejects agreement with partner speculat
       ledger: gameStartedLedger(),
       drawEvents: [{ profile_id: "practice_girl_004" }],
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-      claudeReplies: [invented, invented, verified],
+      claudeReplies: [invented, verified, verified],
     },
     hintBody({
       practiceMode: "game",
@@ -5964,28 +6518,20 @@ Deno.test("independent Hint verification rejects agreement with partner speculat
       false,
     );
   }
-  const firstVerificationPrompt = state.claudeCalls[1].messages.at(-1)
-    ?.content ?? "";
-  const verificationPrompt = state.claudeCalls[2].messages.at(-1)?.content ??
-    "";
+  const firstVerificationPrompt = claudePrompt(state.claudeCalls[1]);
+  const verificationPrompt = claudePrompt(state.claudeCalls[2]);
   assert(
     firstVerificationPrompt.includes(
       "被抓包／妳說中了／確實／就是／對啊",
     ),
   );
   assert(verificationPrompt.includes("被抓包／妳說中了／確實／就是／對啊"));
-  assert(
-    firstVerificationPrompt.includes(
-      "路過店』不支持『永遠沒下次／口袋名單存很多",
-    ),
-  );
-  assert(
-    verificationPrompt.includes("路過店』不支持『永遠沒下次／口袋名單存很多"),
-  );
+  assert(firstVerificationPrompt.includes("只證明她說過，不是 user 證據"));
+  assert(verificationPrompt.includes("只證明她說過，不是 user 證據"));
   assertEquals(recordHintCalls(state).length, 1);
 });
 
-Deno.test("independent Debrief verification catches an invented sensory answer", async () => {
+Deno.test("Debrief repair removes an invented sensory answer before independent verification", async () => {
   const card = (suggestedLine: string) =>
     validDebriefJson({
       summary: "她追問咖啡店與香氣，你尚未在逐字稿提供具體店名或味道。",
@@ -6006,7 +6552,7 @@ Deno.test("independent Debrief verification catches an invented sensory answer",
     {
       ledger: beginnerStartedLedger(),
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-      claudeReplies: [invented, invented, verified],
+      claudeReplies: [invented, verified, verified],
     },
     debriefBody({
       practiceMode: "beginner",
@@ -6028,7 +6574,89 @@ Deno.test("independent Debrief verification catches an invented sensory answer",
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
-Deno.test("independent Beginner Debrief removes an invented plan beside a placeholder", async () => {
+Deno.test("grounding repair and verifier remove the exact production Game sensory-adoption invention", async () => {
+  const appliedHint = "店名是{店名}，我{有／沒有}進去喝；妳認識嗎？";
+  const card = (suggestedLine: string) => {
+    const value = JSON.parse(validDebriefJson({
+      summary: "她提出烤堅果與奶油香的條件猜測，等待你補真實資訊。",
+      strengths: ["你用 Hint 如實保留店名與是否進店的答案欄位。"],
+      watchouts: ["她的香氣描述只是條件猜測，下一句不可當成你的感官事實。"],
+      suggestedLine,
+      dateChance: "low",
+      dateChanceReason: "她延續咖啡話題，但仍在等待真實店名與香氣資訊。",
+      nextInviteMove: "先填真實店名與香氣，再沿咖啡話題建立熟悉感。",
+    })) as Record<string, unknown>;
+    value.gameBreakdown = {
+      phaseReached: "開場進到咖啡香氣猜測",
+      missedVariable: "還缺使用者的真實店名與香氣答案",
+      failureState: "她的條件猜測尚未被使用者證實",
+      nextFirstLine: suggestedLine,
+      inviteDirection: "先補真實答案，再沿咖啡話題建立熟悉感",
+    };
+    return JSON.stringify(value);
+  };
+  const invented = card(
+    "烤堅果帶奶油香——妳這樣一說我才知道自己聞到的是什麼。妳最常去哪家？",
+  );
+  const repaired = card(
+    "妳猜是烤堅果帶奶油香；真實答案我先填：{店名}、{香氣}。妳最常去哪家？",
+  );
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 2 }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [invented, repaired, repaired],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "P1_OPEN",
+            targetVariable: "familiarity",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先補真實店名與是否進店，再沿咖啡話題建立熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "production-game-sensory-adoption-second-review",
+      turns: [
+        { role: "user", text: "我今天路過一家咖啡店，聞起來很香。" },
+        { role: "ai", text: "只聞香不進去喝喔，是哪家？" },
+        { role: "user", text: appliedHint },
+        { role: "ai", text: "如果你那家是烤堅果、帶點奶油香，我大概知道。" },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-production-game-sensory-adoption",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.suggestedLine, JSON.parse(repaired).suggestedLine);
+  assertEquals(
+    json.card.gameBreakdown.nextFirstLine,
+    json.card.suggestedLine,
+  );
+  assertEquals(JSON.stringify(json.card).includes("妳這樣一說我才知道"), false);
+  assertEquals(JSON.stringify(json.card).includes("自己聞到的是什麼"), false);
+  assertEquals(JSON.stringify(json.card).includes("{店名}"), true);
+  assertEquals(JSON.stringify(json.card).includes("{香氣}"), true);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], invented);
+  assertGroundingReviewInput(state.claudeCalls[2], repaired);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("Beginner Debrief repair removes an invented plan before independent verification", async () => {
   const appliedHint = "卡關最難熬了，我現在也差不多這狀態 😂 妳是卡在哪邊？";
   const card = (suggestedLine: string) =>
     validDebriefJson({
@@ -6050,7 +6678,7 @@ Deno.test("independent Beginner Debrief removes an invented plan beside a placeh
     {
       ledger: beginnerStartedLedger({ ai_count: 2 }),
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-      claudeReplies: [invented, invented, verified],
+      claudeReplies: [invented, verified, verified],
       rpc: {
         resolve_practice_hint_decision: [{
           data: {
@@ -6102,24 +6730,24 @@ Deno.test("independent Beginner Debrief removes an invented plan beside a placeh
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assertEquals(state.claudeCalls[2].temperature, 0);
-  assertEquals(state.claudeCalls[2].messages.at(-2), {
-    role: "assistant",
-    content: invented,
-  });
-  const verificationPrompt = state.claudeCalls[2].messages.at(-1)?.content ??
-    "";
-  assert(verificationPrompt.includes("貼句的『我』"));
+  assertGroundingReviewInput(state.claudeCalls[2], verified);
+  const verificationPrompt = claudePrompt(state.claudeCalls[2]);
+  assert(verificationPrompt.includes("貼句的「我」"));
   assert(verificationPrompt.includes("server-trusted user evidence"));
-  assert(verificationPrompt.includes("對齊同角色逐字稿"));
-  assert(verificationPrompt.includes("本來只看一集"));
-  assert(verificationPrompt.includes("未涉案欄位逐字保留"));
+  assert(verificationPrompt.includes("user 事實填 subject=user"));
+  assert(
+    verificationPrompt.includes("partner relation 填 subject=partner_relation"),
+  );
+  assert(verificationPrompt.includes("本來只想看一集"));
+  assert(verificationPrompt.includes("候選所有欄位"));
+  assert(verificationPrompt.includes("都不得改寫"));
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
-Deno.test("independent Game Debrief rejects agreement with partner speculation", async () => {
+Deno.test("Game Debrief repair removes partner speculation before independent verification", async () => {
   const appliedHint = "店名是{店名}，我{有／沒有}進去喝；妳認識嗎？";
   const card = (suggestedLine: string) => {
     const value = JSON.parse(validDebriefJson({
@@ -6151,7 +6779,7 @@ Deno.test("independent Game Debrief rejects agreement with partner speculation",
       ledger: gameStartedLedger({ ai_count: 2 }),
       drawEvents: [{ profile_id: "practice_girl_004" }],
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
-      claudeReplies: [invented, invented, verified],
+      claudeReplies: [invented, verified, verified],
       rpc: {
         resolve_practice_hint_decision: [{
           data: {
@@ -6221,14 +6849,12 @@ Deno.test("independent Game Debrief rejects agreement with partner speculation",
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assertEquals(state.claudeCalls[2].temperature, 0);
-  assertEquals(state.claudeCalls[2].messages.at(-2), {
-    role: "assistant",
-    content: invented,
-  });
-  const verificationPrompt = state.claudeCalls[2].messages.at(-1)?.content ??
-    "";
+  assertGroundingReviewInput(state.claudeCalls[2], verified);
+  const verificationPrompt = claudePrompt(state.claudeCalls[2]);
   assert(verificationPrompt.includes("整段被承認內容都成了 user 事實"));
-  assert(verificationPrompt.includes("不得改 Hint 接球點、策略或邀約路線"));
+  assert(
+    verificationPrompt.includes("Hint 接球點、策略、邀約路線都不得改寫"),
+  );
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 1);
@@ -6264,15 +6890,9 @@ Deno.test("direct Debrief lets reviewed partner questions bypass initiative rege
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(json.card.summary, JSON.parse(reviewed).summary);
   assertEquals(state.claudeCalls.length, 3);
+  assert(claudePrompt(state.claudeCalls[1]).includes("不是 user 證據"));
   assert(
-    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "主客體關係",
-    ),
-  );
-  assert(
-    (state.claudeCalls[2].messages.at(-1)?.content ?? "").includes(
-      "獨立第二道對抗複核",
-    ),
+    claudePrompt(state.claudeCalls[2]).includes("獨立第二道對抗複核"),
   );
   assertEquals(
     (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
@@ -6322,14 +6942,9 @@ Deno.test("direct Game Hint regenerates an invented district from an unanswered 
   assertEquals(JSON.stringify(json).includes("大安"), false);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
-  assertEquals(state.claudeCalls[1].messages.at(-2), {
-    role: "assistant",
-    content: inventedDistrict,
-  });
+  assertGroundingReviewInput(state.claudeCalls[1], inventedDistrict);
   assert(
-    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "按整句語意判斷",
-    ),
+    claudePrompt(state.claudeCalls[1]).includes("按整句語意判斷"),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
@@ -6371,14 +6986,9 @@ Deno.test("direct Hint regenerates an unsupported yes-no schedule answer", async
   assertEquals(JSON.stringify(json).includes("今天休假"), false);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
-  assertEquals(state.claudeCalls[1].messages.at(-2), {
-    role: "assistant",
-    content: inventedSchedule,
-  });
+  assertGroundingReviewInput(state.claudeCalls[1], inventedSchedule);
   assert(
-    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "問句、假設、條件句",
-    ),
+    claudePrompt(state.claudeCalls[1]).includes("問句、假設、條件句"),
   );
   assertEquals(recordHintCalls(state).length, 1);
 });
@@ -6447,15 +7057,13 @@ Deno.test("direct Game Hint keeps L4 safety strict while skipping lexical style 
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
-    (state.claudeCalls[1].messages.at(-1)?.content ?? "").includes(
-      "未通過產品契約",
-    ),
+    claudePrompt(state.claudeCalls[1]).includes("未通過產品契約"),
   );
   assertEquals(recordHintCalls(state).length, 1);
 });
 
-Deno.test("direct Hint retries a transient Claude failure once without fake format blame", async () => {
-  const { response, state } = await run(
+Deno.test("writer timeout cannot downgrade the direct Hint dual-review gate", async () => {
+  const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
       env: { PRACTICE_CLAUDE_PRIMARY: "true" },
@@ -6467,7 +7075,11 @@ Deno.test("direct Hint retries a transient Claude failure once without fake form
     }),
   );
 
-  assertEquals(response.status, 200);
+  assertEquals(response.status, 503);
+  assertEquals(json, {
+    error: "practice_hint_generation_retryable",
+    retryable: true,
+  });
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.semanticCalls.length, 0);
@@ -6475,7 +7087,8 @@ Deno.test("direct Hint retries a transient Claude failure once without fake form
     .map((message) => message.content)
     .join("\n");
   assertEquals(retryPrompt.includes("上一版 Hint JSON 被拒絕"), false);
-  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
 });
 
 Deno.test("direct Hint reviews one invalid candidate twice before failing closed", async () => {
