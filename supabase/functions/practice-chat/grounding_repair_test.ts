@@ -31,7 +31,7 @@ function groundingError(fn: () => unknown): GroundingReviewError {
   throw new Error("expected_grounding_review_error");
 }
 
-Deno.test("grounding editor returns the complete product JSON without a patch envelope", () => {
+Deno.test("grounding editor requests a proof envelope around the complete product JSON", () => {
   const previousCandidate = JSON.stringify(hintCandidate);
   const messages = buildGroundingReviewMessages({
     evidenceContext: {
@@ -59,6 +59,16 @@ Deno.test("grounding editor returns the complete product JSON without a patch en
   assertStringIncludes(messages[0].content, "完整候選 JSON");
   assertStringIncludes(messages[0].content, "其餘所有字串逐字保留");
   assertStringIncludes(messages[0].content, "不要 markdown、說明、verdict");
+  assertStringIncludes(messages[0].content, "只輸出一個 {audit,candidate}");
+  assertStringIncludes(
+    messages[0].content,
+    "每欄都是一個最長 160 字的 proof ledger string",
+  );
+  assertStringIncludes(
+    messages[0].content,
+    "來源只能是 user_turn、trusted_user_fact、older_memory",
+  );
+  assertStringIncludes(messages[0].content, "最短逐字 evidenceQuote");
   assertStringIncludes(messages[0].content, "我有感/香會讓人停下來");
   assertStringIncludes(messages[0].content, "{真實感受}");
   assertStringIncludes(messages[0].content, "她的現況只認 assistant_turn");
@@ -106,7 +116,7 @@ Deno.test("grounding editor returns the complete product JSON without a patch en
     false,
   );
   assertStringIncludes(messages[1].content, previousCandidate);
-  assertStringIncludes(messages[1].content, "不顯示的證據表");
+  assertStringIncludes(messages[1].content, "逐句核對");
   assertStringIncludes(messages[1].content, "合理相容不算");
   assertStringIncludes(messages[1].content, "一開始隨便看看");
   assertStringIncludes(messages[1].content, "咖啡知識程度");
@@ -219,6 +229,15 @@ Deno.test("second review uses a compact release audit with authoritative termina
     messages[0].content,
     "nextFirstLine 必須與 suggestedLine 完全相同",
   );
+  assertStringIncludes(
+    messages[0].content,
+    "summary、strengths、watchouts、suggestedLine、dateChanceReason、nextInviteMove、gameBreakdown",
+  );
+  assertStringIncludes(
+    messages[0].content,
+    "每欄都是一個最長 160 字的 proof ledger string",
+  );
+  assertStringIncludes(messages[0].content, "最短逐字 evidenceQuote");
   assertEquals(messages[0].content.includes("最高優先漏網例"), false);
   assertStringIncludes(messages[1].content, '"terminalTurnRole":"assistant"');
   assertStringIncludes(messages[1].content, "最後出貨複核");
@@ -336,6 +355,28 @@ Deno.test("unchanged full candidate is accepted without an envelope", () => {
   const parsed = parse(JSON.stringify(hintCandidate));
   assertEquals(parsed.verdict, "accept");
   assertEquals(JSON.parse(parsed.candidateJson), hintCandidate);
+});
+
+Deno.test("structured review envelope extracts only candidate and gives audit no server veto", () => {
+  const repaired = {
+    ...hintCandidate,
+    steady: "我昨晚追劇追到兩點，今天腦袋還沒開機。",
+  };
+  const parsed = parse(
+    JSON.stringify({
+      audit: {
+        // The server deliberately does not validate semantic proof content.
+        // It only strips the audit before the product parser sees candidate.
+        unsupportedShape: "must_not_veto_candidate",
+      },
+      candidate: repaired,
+    }),
+  );
+
+  assertEquals(parsed.verdict, "repair");
+  assertEquals(JSON.parse(parsed.candidateJson), repaired);
+  assertEquals(parsed.candidateJson.includes("unsupportedShape"), false);
+  assertEquals(parsed.candidateJson.includes("must_not_veto_candidate"), false);
 });
 
 Deno.test("complete repaired candidate may change nested and repeated text directly", () => {

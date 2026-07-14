@@ -128,7 +128,7 @@ const CHAT_MAX_TOKENS = 200;
 const CHAT_TEMPERATURE = 0.9;
 const CHAT_GENERATION_ATTEMPTS = 2;
 const DEBRIEF_MAX_TOKENS = 1200;
-const GROUNDING_REVIEW_MAX_TOKENS = DEBRIEF_MAX_TOKENS;
+const GROUNDING_REVIEW_MAX_TOKENS = 2400;
 const DEBRIEF_TEMPERATURE = 0.5;
 const DEBRIEF_GENERATION_ATTEMPTS = 1;
 const DEBRIEF_TIMEOUT_MS = 12000;
@@ -145,10 +145,21 @@ const DIRECT_PRACTICE_CLAUDE_TIMEOUT_MS = 24000;
 // scene props, user actions, or personal facts.
 const DIRECT_PRACTICE_TEMPERATURE = 0.2;
 const GROUNDING_REPAIR_TEMPERATURE = 0;
-// Grounding reviewers must return one parseable product object. These schemas
-// constrain JSON shape only; the existing Hint/Debrief parsers remain the
-// authority for content, safety, and user-visible quality.
-const HINT_GROUNDING_JSON_SCHEMA = {
+// Grounding reviewers return a structured evidence audit plus one product
+// candidate. The server strips the audit; existing Hint/Debrief parsers remain
+// the only authority for content, safety, and user-visible quality.
+const GROUNDING_PROOF_LEDGER_JSON_SCHEMA = { type: "string" } as const;
+const HINT_GROUNDING_AUDIT_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    warmUp: GROUNDING_PROOF_LEDGER_JSON_SCHEMA,
+    steady: GROUNDING_PROOF_LEDGER_JSON_SCHEMA,
+    coaching: GROUNDING_PROOF_LEDGER_JSON_SCHEMA,
+  },
+  required: ["warmUp", "steady", "coaching"],
+  additionalProperties: false,
+} as const;
+const HINT_GROUNDING_CANDIDATE_JSON_SCHEMA = {
   type: "object",
   properties: {
     warmUp: { type: "string" },
@@ -156,6 +167,15 @@ const HINT_GROUNDING_JSON_SCHEMA = {
     coaching: { type: "string" },
   },
   required: ["warmUp", "steady", "coaching"],
+  additionalProperties: false,
+} as const;
+const HINT_GROUNDING_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    audit: HINT_GROUNDING_AUDIT_JSON_SCHEMA,
+    candidate: HINT_GROUNDING_CANDIDATE_JSON_SCHEMA,
+  },
+  required: ["audit", "candidate"],
   additionalProperties: false,
 } as const;
 const DEBRIEF_GROUNDING_PROPERTIES = {
@@ -179,7 +199,29 @@ const DEBRIEF_GROUNDING_REQUIRED = [
   "nextInviteMove",
   "gameBreakdown",
 ] as const;
-const STANDARD_DEBRIEF_GROUNDING_JSON_SCHEMA = {
+const DEBRIEF_GROUNDING_AUDIT_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: GROUNDING_PROOF_LEDGER_JSON_SCHEMA,
+    strengths: GROUNDING_PROOF_LEDGER_JSON_SCHEMA,
+    watchouts: GROUNDING_PROOF_LEDGER_JSON_SCHEMA,
+    suggestedLine: GROUNDING_PROOF_LEDGER_JSON_SCHEMA,
+    dateChanceReason: GROUNDING_PROOF_LEDGER_JSON_SCHEMA,
+    nextInviteMove: GROUNDING_PROOF_LEDGER_JSON_SCHEMA,
+    gameBreakdown: GROUNDING_PROOF_LEDGER_JSON_SCHEMA,
+  },
+  required: [
+    "summary",
+    "strengths",
+    "watchouts",
+    "suggestedLine",
+    "dateChanceReason",
+    "nextInviteMove",
+    "gameBreakdown",
+  ],
+  additionalProperties: false,
+} as const;
+const STANDARD_DEBRIEF_GROUNDING_CANDIDATE_JSON_SCHEMA = {
   type: "object",
   properties: {
     ...DEBRIEF_GROUNDING_PROPERTIES,
@@ -188,7 +230,16 @@ const STANDARD_DEBRIEF_GROUNDING_JSON_SCHEMA = {
   required: DEBRIEF_GROUNDING_REQUIRED,
   additionalProperties: false,
 } as const;
-const GAME_DEBRIEF_GROUNDING_JSON_SCHEMA = {
+const STANDARD_DEBRIEF_GROUNDING_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    audit: DEBRIEF_GROUNDING_AUDIT_JSON_SCHEMA,
+    candidate: STANDARD_DEBRIEF_GROUNDING_CANDIDATE_JSON_SCHEMA,
+  },
+  required: ["audit", "candidate"],
+  additionalProperties: false,
+} as const;
+const GAME_DEBRIEF_GROUNDING_CANDIDATE_JSON_SCHEMA = {
   type: "object",
   properties: {
     ...DEBRIEF_GROUNDING_PROPERTIES,
@@ -212,6 +263,15 @@ const GAME_DEBRIEF_GROUNDING_JSON_SCHEMA = {
     },
   },
   required: DEBRIEF_GROUNDING_REQUIRED,
+  additionalProperties: false,
+} as const;
+const GAME_DEBRIEF_GROUNDING_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    audit: DEBRIEF_GROUNDING_AUDIT_JSON_SCHEMA,
+    candidate: GAME_DEBRIEF_GROUNDING_CANDIDATE_JSON_SCHEMA,
+  },
+  required: ["audit", "candidate"],
   additionalProperties: false,
 } as const;
 const LEGACY_CLIENT_QUALITY_SCHEMA_VERSION = "typed-facts-v1";

@@ -381,6 +381,16 @@ function validHintJson(overrides: Record<string, string> = {}) {
   });
 }
 
+function groundingReviewEnvelope(
+  candidateJson: string,
+  audit: Record<string, unknown>,
+): string {
+  return JSON.stringify({
+    audit,
+    candidate: JSON.parse(candidateJson),
+  });
+}
+
 function validGameHintJson(overrides: Record<string, string> = {}) {
   return validHintJson({
     warmUp: "聽起來這杯咖啡有任務，是想醒腦還是想放空？",
@@ -4293,12 +4303,36 @@ Deno.test("Debrief defaults to one Claude Sonnet writer plus two grounding revie
   assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(state.claudeCalls[0].timeoutMs, 24000);
   assertEquals(state.claudeCalls[0].maxTokens, 1200);
-  assertEquals(state.claudeCalls[1].maxTokens, 1200);
-  assertEquals(state.claudeCalls[2].maxTokens, 1200);
+  assertEquals(state.claudeCalls[1].maxTokens, 2400);
+  assertEquals(state.claudeCalls[2].maxTokens, 2400);
   assertEquals(state.claudeCalls[0].outputJsonSchema, undefined);
   assert(state.claudeCalls[1].outputJsonSchema !== undefined);
   assert(state.claudeCalls[2].outputJsonSchema !== undefined);
   assertEquals(outputSchema(state.claudeCalls[1]).required, [
+    "audit",
+    "candidate",
+  ]);
+  const debriefSchema = outputSchemaProperties(state.claudeCalls[1]);
+  assertEquals(debriefSchema.audit.required, [
+    "summary",
+    "strengths",
+    "watchouts",
+    "suggestedLine",
+    "dateChanceReason",
+    "nextInviteMove",
+    "gameBreakdown",
+  ]);
+  const debriefAuditProperties = debriefSchema.audit.properties;
+  assert(
+    typeof debriefAuditProperties === "object" &&
+      debriefAuditProperties !== null,
+  );
+  assertEquals(
+    (debriefAuditProperties as Record<string, Record<string, unknown>>)
+      .suggestedLine.type,
+    "string",
+  );
+  assertEquals(debriefSchema.candidate.required, [
     "summary",
     "strengths",
     "watchouts",
@@ -4309,8 +4343,14 @@ Deno.test("Debrief defaults to one Claude Sonnet writer plus two grounding revie
     "nextInviteMove",
     "gameBreakdown",
   ]);
+  const debriefCandidateProperties = debriefSchema.candidate.properties;
+  assert(
+    typeof debriefCandidateProperties === "object" &&
+      debriefCandidateProperties !== null,
+  );
   assertEquals(
-    outputSchemaProperties(state.claudeCalls[1]).gameBreakdown.type,
+    (debriefCandidateProperties as Record<string, Record<string, unknown>>)
+      .gameBreakdown.type,
     "null",
   );
   assertEquals(state.semanticCalls.length, 0);
@@ -4415,8 +4455,14 @@ Deno.test("a retried Game Debrief writer can return after one complete semantic 
   );
   assertGroundingReviewInput(state.claudeCalls[2], '"gameBreakdown"');
   assertEquals(state.claudeCalls[2].temperature, 0);
-  const gameBreakdownSchema = outputSchemaProperties(
-    state.claudeCalls[2],
+  const gameReviewSchema = outputSchemaProperties(state.claudeCalls[2]);
+  const gameCandidateProperties = gameReviewSchema.candidate.properties;
+  assert(
+    typeof gameCandidateProperties === "object" &&
+      gameCandidateProperties !== null,
+  );
+  const gameBreakdownSchema = (
+    gameCandidateProperties as Record<string, Record<string, unknown>>
   ).gameBreakdown;
   assertEquals(gameBreakdownSchema.type, "object");
   assertEquals(gameBreakdownSchema.required, [
@@ -5810,6 +5856,25 @@ Deno.test("free Hint uses Claude Sonnet writer plus two mandatory grounding revi
   assert(state.claudeCalls[1].outputJsonSchema !== undefined);
   assert(state.claudeCalls[2].outputJsonSchema !== undefined);
   assertEquals(outputSchema(state.claudeCalls[1]).required, [
+    "audit",
+    "candidate",
+  ]);
+  const hintSchema = outputSchemaProperties(state.claudeCalls[1]);
+  assertEquals(hintSchema.audit.required, [
+    "warmUp",
+    "steady",
+    "coaching",
+  ]);
+  const hintAuditProperties = hintSchema.audit.properties;
+  assert(
+    typeof hintAuditProperties === "object" && hintAuditProperties !== null,
+  );
+  assertEquals(
+    (hintAuditProperties as Record<string, Record<string, unknown>>).warmUp
+      .type,
+    "string",
+  );
+  assertEquals(hintSchema.candidate.required, [
     "warmUp",
     "steady",
     "coaching",
@@ -7906,7 +7971,7 @@ Deno.test("direct Game Debrief repairs the exact production round-one pretend-ex
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
-Deno.test("direct Beginner Debrief repairs the latest production completion and discovery claims", async () => {
+Deno.test("direct Beginner Debrief reviewer audit removes the latest production binge-plan invention", async () => {
   const trustedMemory = "SERVER_DEBRIEF_MEMORY_MARKER：她之前聊過輪班追劇。";
   const appliedHint =
     "《{劇名}》啦，太好看了根本忘記時間 哈哈。妳昨晚吃飯吃到很晚，今天還好嗎？";
@@ -7914,8 +7979,8 @@ Deno.test("direct Beginner Debrief repairs the latest production completion and 
     validDebriefJson({
       summary: "她回應平穩但投入感低，連結仍停在表面寒暄。",
       strengths: [
-        "記得她昨晚睡晚並主動關心，展現在場感。",
-        "照貼 Hint 問候自然，沒有急著推進。",
+        "逐字稿裡有明寫追劇追到兩點。",
+        "她在 Hint 後仍回覆補眠計畫。",
       ],
       watchouts: [
         "她回『習慣了』是輕描淡寫，下一句不宜追問睡眠。",
@@ -7927,14 +7992,23 @@ Deno.test("direct Beginner Debrief repairs the latest production completion and 
       nextInviteMove: "先丟一個真實生活片段，引她分享興趣。",
     });
   const writer = card(
-    "補眠派！我追完才發現已經兩點，{真實感受}，下次要設個鬧鐘提醒自己。",
+    "補眠派！我本來只想看一集，結果停不下來，{真實感受}。",
   );
-  const firstReview = card(
-    "補眠派！我昨晚追劇到兩點才發現時間，{真實感受}，下次要設個鬧鐘。",
-  );
-  const finalReview = card(
+  const reviewedCandidate = card(
     "補眠派！我昨晚追劇追到兩點，{真實感受}，下次要設個鬧鐘。",
   );
+  const reviewAudit = {
+    summary: "",
+    strengths: "追劇追到兩點←user_turn[0]:『追劇追到兩點』",
+    watchouts: "",
+    suggestedLine:
+      "我昨晚追劇追到兩點←user_turn[0]:『我昨晚追劇追到兩點』；{真實感受}←variable",
+    dateChanceReason: "",
+    nextInviteMove: "",
+    gameBreakdown: "",
+  };
+  const firstReview = groundingReviewEnvelope(reviewedCandidate, reviewAudit);
+  const finalReview = groundingReviewEnvelope(reviewedCandidate, reviewAudit);
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger({ ai_count: 2 }),
@@ -7992,10 +8066,11 @@ Deno.test("direct Beginner Debrief repairs the latest production completion and 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(
     json.card.suggestedLine,
-    JSON.parse(finalReview).suggestedLine,
+    JSON.parse(reviewedCandidate).suggestedLine,
   );
-  assertEquals(json.card.suggestedLine.includes("追完"), false);
-  assertEquals(json.card.suggestedLine.includes("才發現"), false);
+  assertEquals(json.card.suggestedLine.includes("本來只想看一集"), false);
+  assertEquals(json.card.suggestedLine.includes("停不下來"), false);
+  assertEquals(JSON.stringify(json.card).includes("user_turn[0]"), false);
   assertEquals(json.fallbackUsed, false);
   assertEquals(json.groundingReviewFallbackUsed, false);
   assertEquals(state.claudeCalls.length, 3);
@@ -8005,7 +8080,7 @@ Deno.test("direct Beginner Debrief repairs the latest production completion and 
   );
   assertGroundingReviewInput(
     state.claudeCalls[2],
-    JSON.parse(firstReview).suggestedLine,
+    JSON.parse(reviewedCandidate).suggestedLine,
   );
   const releasePrompt = claudePrompt(state.claudeCalls[2]);
   assert(releasePrompt.includes('"terminalTurnRole":"assistant"'));
