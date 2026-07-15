@@ -70,6 +70,11 @@ function partialClaudeAnswer(overrides: Record<string, unknown> = {}) {
 function deps(opts: {
   callClaude?: (args: ClaudeCallArgs) => Promise<unknown>;
   deductCredit?: () => Promise<void>;
+  onProgress?: (update: {
+    stage: string;
+    attempt?: number;
+    maxAttempts?: number;
+  }) => void;
 }) {
   const events: string[] = [];
   let deductCalls = 0;
@@ -88,6 +93,7 @@ function deps(opts: {
         info: (event: string) => events.push(event),
         warn: (event: string) => events.push(event),
       },
+      onProgress: opts.onProgress,
       now: () => 1_700_000_000_000,
     },
   };
@@ -116,6 +122,47 @@ Deno.test("runCoachChat returns card and deducts one credit on success", async (
     "overPolishing",
   );
   assertEquals(harness.events.includes("coach_chat_succeeded"), true);
+});
+
+Deno.test("runCoachChat reports truthful retry stages without model content", async () => {
+  const progress: Array<{
+    stage: string;
+    attempt?: number;
+    maxAttempts?: number;
+  }> = [];
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(
+        calls === 1 ? malformedClaudeCard() : validClaudeCard(),
+      );
+    },
+    onProgress: (update) => progress.push(update),
+  });
+
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(harness.deductCalls, 1);
+  assertEquals(progress, [
+    { stage: "request" },
+    { stage: "generating", attempt: 1, maxAttempts: 3 },
+    { stage: "validating", attempt: 1, maxAttempts: 3 },
+    { stage: "retrying", attempt: 1, maxAttempts: 3 },
+    { stage: "generating", attempt: 2, maxAttempts: 3 },
+    { stage: "validating", attempt: 2, maxAttempts: 3 },
+    { stage: "finalizing" },
+  ]);
 });
 
 Deno.test("runCoachChat returns clarification without deducting credit", async () => {

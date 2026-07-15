@@ -72,6 +72,9 @@ final coachChatHistoryProvider =
   return repo.listByConversation(conversationId);
 });
 
+final coachChatProgressProvider = StateProvider.autoDispose
+    .family<CoachChatProgressUpdate?, String>((ref, conversationId) => null);
+
 final coachChatControllerProvider = AsyncNotifierProvider.autoDispose
     .family<CoachChatController, CoachChatResult?, String>(
   CoachChatController.new,
@@ -117,6 +120,7 @@ class CoachChatController
     final trimmed = question.trim();
     if (trimmed.isEmpty || _inFlight) return;
     _inFlight = true;
+    final keepAliveLink = ref.keepAlive();
     try {
       final conversationId = arg;
       final repo = ref.read(coachChatRepositoryProvider);
@@ -136,6 +140,7 @@ class CoachChatController
         forceAnswer: forceAnswer,
       );
       state = const AsyncValue.loading();
+      ref.read(coachChatProgressProvider(conversationId).notifier).state = null;
       final conversation = ref.read(conversationProvider(conversationId));
       if (conversation == null) {
         throw StateError('Conversation not found');
@@ -180,6 +185,10 @@ class CoachChatController
         ),
         outcomeInsightLines: outcomeInsightLines,
         dataQualityFlagged: flagged,
+        onProgress: (update) {
+          ref.read(coachChatProgressProvider(conversationId).notifier).state =
+              update;
+        },
       );
       await repo.put(result);
       ref.invalidate(coachChatHistoryProvider(conversationId));
@@ -208,7 +217,9 @@ class CoachChatController
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     } finally {
+      ref.read(coachChatProgressProvider(arg).notifier).state = null;
       _inFlight = false;
+      keepAliveLink.close();
     }
   }
 

@@ -49,6 +49,22 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "progress transport is opt-in and keeps buffered JSON rollback",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    assertEquals(source.includes("wantsCoachProgressStream(req)"), true);
+    assertEquals(source.includes("coachProgressStreamResponse("), true);
+    assertEquals(
+      source.includes("return jsonResponse(result.body, result.status)"),
+      true,
+    );
+  },
+});
+
 // 首次使用兩請求併發 selfHeal：後到者 insert 撞 unique constraint，
 // 必須回讀既有列而非 null（null 會被上游映射成 403 鎖住新用戶）。
 function buildRacedSupabaseFake(

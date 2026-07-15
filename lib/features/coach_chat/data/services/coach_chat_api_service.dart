@@ -1,5 +1,11 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../../core/config/environment.dart';
+import '../../../../core/services/supabase_service.dart';
 import '../../domain/entities/coach_chat_result.dart';
 
 class CoachChatMessage {
@@ -59,6 +65,36 @@ class CoachChatSessionTurn {
 typedef CoachChatInvoker = Future<CoachChatInvokeResponse> Function(
   String functionName, {
   required Map<String, dynamic> body,
+});
+
+enum CoachChatProgressStage {
+  request,
+  generating,
+  validating,
+  retrying,
+  finalizing,
+}
+
+class CoachChatProgressUpdate {
+  final CoachChatProgressStage stage;
+  final int? attempt;
+  final int? maxAttempts;
+
+  const CoachChatProgressUpdate({
+    required this.stage,
+    this.attempt,
+    this.maxAttempts,
+  });
+}
+
+typedef CoachChatProgressCallback = void Function(
+  CoachChatProgressUpdate update,
+);
+
+typedef CoachChatProgressInvoker = Future<CoachChatInvokeResponse> Function(
+  String functionName, {
+  required Map<String, dynamic> body,
+  required CoachChatProgressCallback onProgress,
 });
 
 class CoachChatInvokeResponse {
@@ -129,10 +165,38 @@ const _visibleCardFields = <String>[
 ];
 
 class CoachChatApiService {
-  CoachChatApiService({CoachChatInvoker? invoker})
-      : _invoke = invoker ?? _defaultInvoker;
+  CoachChatApiService({
+    CoachChatInvoker? invoker,
+    CoachChatProgressInvoker? progressInvoker,
+    http.Client Function()? clientFactory,
+    String? Function()? accessTokenProvider,
+    bool? progressStreamingEnabled,
+  })  : _invoke = invoker ?? _defaultInvoker,
+        _progressInvoker = progressInvoker,
+        _clientFactory = clientFactory ?? http.Client.new,
+        _accessTokenProvider =
+            accessTokenProvider ?? (() => SupabaseService.accessToken),
+        _useProgressStreaming = progressStreamingEnabled ??
+            (progressInvoker != null ||
+                (invoker == null && _defaultProgressStreamingEnabled));
+
+  static const _defaultProgressStreamingEnabled = bool.fromEnvironment(
+    'COACH_PROGRESS_STREAMING_ENABLED',
+    defaultValue: true,
+  );
+  static const _progressMediaType = 'application/x-ndjson';
+  // A new client can temporarily talk to an older buffered Edge revision
+  // during rollout. That path may legitimately use all three 60-second model
+  // attempts before response headers exist, so the header wait must cover the
+  // old worst case. A timeout still fails once and never replays the request.
+  static const defaultProgressConnectTimeout = Duration(minutes: 4);
+  static const _idleTimeout = Duration(seconds: 120);
 
   final CoachChatInvoker _invoke;
+  final CoachChatProgressInvoker? _progressInvoker;
+  final http.Client Function() _clientFactory;
+  final String? Function() _accessTokenProvider;
+  final bool _useProgressStreaming;
 
   Future<CoachChatResult> ask({
     required String conversationId,
@@ -149,6 +213,7 @@ class CoachChatApiService {
     CoachChatPartnerHint? partnerHint,
     List<String> outcomeInsightLines = const [],
     required bool dataQualityFlagged,
+    CoachChatProgressCallback? onProgress,
   }) async {
     final body = <String, dynamic>{
       'conversationId': conversationId,
@@ -183,7 +248,28 @@ class CoachChatApiService {
       'dataQualityFlagged': dataQualityFlagged,
     };
 
-    final response = await _invoke('coach-chat', body: body);
+    late final CoachChatInvokeResponse response;
+    if (_useProgressStreaming) {
+      final requestedProgressCallback = onProgress ?? (_) {};
+      void progressCallback(CoachChatProgressUpdate update) {
+        _emitProgress(requestedProgressCallback, update);
+      }
+
+      final progressInvoker = _progressInvoker;
+      response = progressInvoker != null
+          ? await progressInvoker(
+              'coach-chat',
+              body: body,
+              onProgress: progressCallback,
+            )
+          : await _invokeProgressHttp(
+              'coach-chat',
+              body: body,
+              onProgress: progressCallback,
+            );
+    } else {
+      response = await _invoke('coach-chat', body: body);
+    }
     switch (response.status) {
       case 200:
         return _parseSuccess(
@@ -219,6 +305,154 @@ class CoachChatApiService {
           _extractError(response.data),
           status: response.status,
         );
+    }
+  }
+
+  Future<CoachChatInvokeResponse> _invokeProgressHttp(
+    String functionName, {
+    required Map<String, dynamic> body,
+    required CoachChatProgressCallback onProgress,
+  }) async {
+    final accessToken = _accessTokenProvider();
+    if (accessToken == null || accessToken.trim().isEmpty) {
+      return const CoachChatInvokeResponse(
+        status: 401,
+        data: {'error': 'unauthorized'},
+      );
+    }
+
+    final client = _clientFactory();
+    try {
+      final request = http.Request(
+        'POST',
+        Uri.parse('${AppConfig.supabaseUrl}/functions/v1/$functionName'),
+      )
+        ..headers.addAll({
+          'Content-Type': 'application/json',
+          'Accept': _progressMediaType,
+          'Authorization': 'Bearer $accessToken',
+          'apikey': AppConfig.supabaseAnonKey,
+        })
+        ..body = jsonEncode(body);
+
+      final response =
+          await client.send(request).timeout(defaultProgressConnectTimeout);
+      final contentType = response.headers['content-type']?.toLowerCase() ?? '';
+
+      // Preflight/auth/quota failures keep their original HTTP status and JSON
+      // body. An older Edge revision also returns JSON 200 here; accepting it is
+      // the buffered compatibility path and must not trigger a second request.
+      if (response.statusCode != 200 ||
+          !contentType.contains(_progressMediaType)) {
+        final raw = await response.stream.bytesToString().timeout(_idleTimeout);
+        return CoachChatInvokeResponse(
+          status: response.statusCode,
+          data: _decodeJsonBody(raw),
+        );
+      }
+
+      await for (final rawLine in response.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .timeout(_idleTimeout)) {
+        final line = rawLine.trim();
+        if (line.isEmpty) continue;
+        final event = _decodeStreamEvent(line);
+        switch (event['type']) {
+          case 'coach.progress':
+            final stage = _progressStageFromWire(event['stage']);
+            if (stage == null) continue;
+            onProgress(
+              CoachChatProgressUpdate(
+                stage: stage,
+                attempt: _intFromWire(event['attempt']),
+                maxAttempts: _intFromWire(event['maxAttempts']),
+              ),
+            );
+            break;
+          case 'coach.done':
+            final result = event['result'];
+            if (result is! Map) {
+              throw CoachChatGenerationFailedException(
+                'invalid_progress_stream: missing_result',
+              );
+            }
+            return CoachChatInvokeResponse(
+              status: 200,
+              data: Map<String, dynamic>.from(result),
+            );
+          case 'coach.error':
+            final error = event['error'];
+            return CoachChatInvokeResponse(
+              status: _intFromWire(event['status']) ?? 500,
+              data: error is Map
+                  ? Map<String, dynamic>.from(error)
+                  : const {'error': 'unknown_error'},
+            );
+          default:
+            throw CoachChatGenerationFailedException(
+              'invalid_progress_stream: unknown_event',
+            );
+        }
+      }
+      throw CoachChatGenerationFailedException(
+        'invalid_progress_stream: missing_terminal_event',
+      );
+    } on TimeoutException {
+      throw CoachChatGenerationFailedException('timeout');
+    } finally {
+      client.close();
+    }
+  }
+
+  dynamic _decodeJsonBody(String raw) {
+    try {
+      return jsonDecode(raw);
+    } catch (_) {
+      return <String, dynamic>{
+        'error': raw.trim().isEmpty ? 'empty_response' : raw.trim(),
+      };
+    }
+  }
+
+  Map<String, dynamic> _decodeStreamEvent(String line) {
+    try {
+      final decoded = jsonDecode(line);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {
+      // Mapped below to the same non-retriable client contract failure.
+    }
+    throw CoachChatGenerationFailedException(
+      'invalid_progress_stream: malformed_event',
+    );
+  }
+
+  CoachChatProgressStage? _progressStageFromWire(dynamic value) {
+    return switch (value) {
+      'request' => CoachChatProgressStage.request,
+      'generating' => CoachChatProgressStage.generating,
+      'validating' => CoachChatProgressStage.validating,
+      'retrying' => CoachChatProgressStage.retrying,
+      'finalizing' => CoachChatProgressStage.finalizing,
+      _ => null,
+    };
+  }
+
+  int? _intFromWire(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return null;
+  }
+
+  void _emitProgress(
+    CoachChatProgressCallback callback,
+    CoachChatProgressUpdate update,
+  ) {
+    try {
+      callback(update);
+    } catch (_) {
+      // Progress is best-effort UI state and must never abort a request that
+      // may still produce and charge one validated formal answer.
     }
   }
 

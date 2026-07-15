@@ -25,7 +25,21 @@ export interface GenerationDeps {
   callClaude: (args: ClaudeCallArgs) => Promise<unknown>;
   deductCredit: (input: { userId: string }) => Promise<void>;
   logger: GenerationLogger;
+  onProgress?: (update: CoachChatProgressUpdate) => void;
   now?: () => number;
+}
+
+export type CoachChatProgressStage =
+  | "request"
+  | "generating"
+  | "validating"
+  | "retrying"
+  | "finalizing";
+
+export interface CoachChatProgressUpdate {
+  stage: CoachChatProgressStage;
+  attempt?: number;
+  maxAttempts?: number;
 }
 
 export class CoachChatQuotaExceededError extends Error {
@@ -76,6 +90,7 @@ export async function runCoachChat(
     forceAnswer: request.forceAnswer,
     dataQualityFlagged: request.dataQualityFlagged,
   });
+  emitProgress(deps, { stage: "request" });
 
   let card: CoachChatResponseCard | null = null;
   const basePrompt = buildCoachChatPrompt(request);
@@ -83,6 +98,11 @@ export async function runCoachChat(
 
   for (let attempt = 1; attempt <= MAX_CARD_GENERATION_ATTEMPTS; attempt++) {
     let claudeData: unknown;
+    emitProgress(deps, {
+      stage: "generating",
+      attempt,
+      maxAttempts: MAX_CARD_GENERATION_ATTEMPTS,
+    });
     try {
       claudeData = await deps.callClaude({
         model,
@@ -100,6 +120,11 @@ export async function runCoachChat(
       return { status: 500, body: { error: "AI 生成失敗" } };
     }
 
+    emitProgress(deps, {
+      stage: "validating",
+      attempt,
+      maxAttempts: MAX_CARD_GENERATION_ATTEMPTS,
+    });
     try {
       card = assertClarificationAllowed(
         parseAndValidateCard(claudeData, request),
@@ -134,6 +159,11 @@ export async function runCoachChat(
         card = buildFallbackCard(request);
         break;
       }
+      emitProgress(deps, {
+        stage: "retrying",
+        attempt,
+        maxAttempts: MAX_CARD_GENERATION_ATTEMPTS,
+      });
     }
   }
 
@@ -143,6 +173,8 @@ export async function runCoachChat(
 
   const shouldDeduct = card.responseType === "coachAnswer" &&
     card.costDeducted !== FALLBACK_NO_CHARGE;
+
+  emitProgress(deps, { stage: "finalizing" });
 
   if (shouldDeduct && !input.accountIsTest) {
     try {
@@ -199,6 +231,18 @@ export async function runCoachChat(
       generatedAt: new Date(now()).toISOString(),
     },
   };
+}
+
+function emitProgress(
+  deps: GenerationDeps,
+  update: CoachChatProgressUpdate,
+): void {
+  try {
+    deps.onProgress?.(update);
+  } catch {
+    // Progress is best-effort UI telemetry. It must never affect generation,
+    // validation, clarification, or quota behavior.
+  }
 }
 
 function assertClarificationAllowed(

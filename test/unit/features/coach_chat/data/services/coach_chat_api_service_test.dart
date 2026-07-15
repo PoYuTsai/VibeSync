@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
 
@@ -334,6 +338,239 @@ void main() {
   });
 
   group('CoachChatApiService response contract', () {
+    test('header wait covers the buffered old-Edge worst case', () {
+      expect(
+        CoachChatApiService.defaultProgressConnectTimeout,
+        greaterThanOrEqualTo(const Duration(seconds: 210)),
+      );
+    });
+
+    test('progress transport emits lifecycle stages then parses final card',
+        () async {
+      var calls = 0;
+      final client = MockClient((request) async {
+        calls++;
+        expect(request.headers['Accept'], 'application/x-ndjson');
+        expect(request.headers['Authorization'], 'Bearer access-token');
+        final lines = [
+          {'type': 'coach.progress', 'stage': 'request'},
+          {
+            'type': 'coach.progress',
+            'stage': 'generating',
+            'attempt': 1,
+            'maxAttempts': 3,
+          },
+          {'type': 'coach.progress', 'stage': 'validating'},
+          {'type': 'coach.progress', 'stage': 'finalizing'},
+          {'type': 'coach.done', 'result': _validResponse()},
+        ].map(jsonEncode).join('\n');
+        return http.Response(
+          '$lines\n',
+          200,
+          headers: {'content-type': 'application/x-ndjson; charset=utf-8'},
+        );
+      });
+      final service = CoachChatApiService(
+        clientFactory: () => client,
+        accessTokenProvider: () => 'access-token',
+        progressStreamingEnabled: true,
+      );
+      final updates = <CoachChatProgressUpdate>[];
+
+      final result = await service.ask(
+        conversationId: 'c-1',
+        partnerId: 'p-1',
+        question: '她是什麼意思？',
+        recentMessages: const [],
+        dataQualityFlagged: false,
+        onProgress: updates.add,
+      );
+
+      expect(calls, 1);
+      expect(
+        updates.map((update) => update.stage),
+        [
+          CoachChatProgressStage.request,
+          CoachChatProgressStage.generating,
+          CoachChatProgressStage.validating,
+          CoachChatProgressStage.finalizing,
+        ],
+      );
+      expect(updates[1].attempt, 1);
+      expect(updates[1].maxAttempts, 3);
+      expect(result.headline, '接住她的觀察');
+      expect(result.costDeducted, 1);
+    });
+
+    test('JSON 200 from an older Edge revision is accepted without replay',
+        () async {
+      var calls = 0;
+      final client = MockClient((request) async {
+        calls++;
+        return http.Response(
+          jsonEncode(_validResponse()),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+      final service = CoachChatApiService(
+        clientFactory: () => client,
+        accessTokenProvider: () => 'access-token',
+        progressStreamingEnabled: true,
+      );
+
+      final result = await service.ask(
+        conversationId: 'c-1',
+        partnerId: null,
+        question: '我該怎麼回？',
+        recentMessages: const [],
+        dataQualityFlagged: false,
+      );
+
+      expect(calls, 1);
+      expect(result.headline, '接住她的觀察');
+    });
+
+    test('a progress-listener failure cannot abort the validated result',
+        () async {
+      final service = CoachChatApiService(
+        progressInvoker: (
+          functionName, {
+          required body,
+          required onProgress,
+        }) async {
+          onProgress(const CoachChatProgressUpdate(
+            stage: CoachChatProgressStage.generating,
+          ));
+          return _ok();
+        },
+        progressStreamingEnabled: true,
+      );
+
+      final result = await service.ask(
+        conversationId: 'c-1',
+        partnerId: null,
+        question: '我該怎麼回？',
+        recentMessages: const [],
+        dataQualityFlagged: false,
+        onProgress: (_) => throw StateError('widget disposed'),
+      );
+
+      expect(result.headline, '接住她的觀察');
+    });
+
+    test('post-start 429 terminal frame preserves quota/paywall mapping',
+        () async {
+      final client = MockClient((request) async {
+        final lines = [
+          {'type': 'coach.progress', 'stage': 'finalizing'},
+          {
+            'type': 'coach.error',
+            'status': 429,
+            'error': {
+              'error': 'Daily limit exceeded',
+              'message': '今日額度已用完',
+              'used': 15,
+              'limit': 15,
+            },
+          },
+        ].map(jsonEncode).join('\n');
+        return http.Response(
+          '$lines\n',
+          200,
+          headers: {
+            'content-type': 'application/x-ndjson; charset=utf-8',
+          },
+        );
+      });
+      final service = CoachChatApiService(
+        clientFactory: () => client,
+        accessTokenProvider: () => 'access-token',
+        progressStreamingEnabled: true,
+      );
+
+      expect(
+        () => service.ask(
+          conversationId: 'c-1',
+          partnerId: null,
+          question: '再給我一次正式建議',
+          recentMessages: const [],
+          dataQualityFlagged: false,
+        ),
+        throwsA(
+          isA<CoachChatQuotaExceededException>()
+              .having((error) => error.used, 'used', 15)
+              .having((error) => error.limit, 'limit', 15),
+        ),
+      );
+    });
+
+    test('preflight model-rate 429 stays retryable API error, not paywall',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode({
+            'error': 'Model rate limited',
+            'code': 'MODEL_RATE_LIMITED',
+            'message': '操作太頻繁，請稍等一分鐘再試。',
+          }),
+          429,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final service = CoachChatApiService(
+        clientFactory: () => client,
+        accessTokenProvider: () => 'access-token',
+        progressStreamingEnabled: true,
+      );
+
+      await expectLater(
+        service.ask(
+          conversationId: 'c-1',
+          partnerId: null,
+          question: '我該怎麼回？',
+          recentMessages: const [],
+          dataQualityFlagged: false,
+        ),
+        throwsA(
+          allOf(
+            isA<CoachChatApiException>(),
+            isNot(isA<CoachChatQuotaExceededException>()),
+          ),
+        ),
+      );
+    });
+
+    test('malformed progress stream fails once and never replays request',
+        () async {
+      var calls = 0;
+      final client = MockClient((request) async {
+        calls++;
+        return http.Response(
+          '{not-json}\n',
+          200,
+          headers: {'content-type': 'application/x-ndjson'},
+        );
+      });
+      final service = CoachChatApiService(
+        clientFactory: () => client,
+        accessTokenProvider: () => 'access-token',
+        progressStreamingEnabled: true,
+      );
+
+      await expectLater(
+        service.ask(
+          conversationId: 'c-1',
+          partnerId: null,
+          question: '我該怎麼回？',
+          recentMessages: const [],
+          dataQualityFlagged: false,
+        ),
+        throwsA(isA<CoachChatGenerationFailedException>()),
+      );
+      expect(calls, 1);
+    });
+
     test('parses valid success response into a local result', () async {
       final service = CoachChatApiService(invoker: _stub(_ok()));
 
