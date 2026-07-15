@@ -236,7 +236,7 @@ export const DEBRIEF_SYSTEM_PROMPT =
 - 狀態優先；已落地勿再等。
 - 每個命題保留 owner/speech act/polarity/time-actuality/modality；未來/條件不得升格現在。
 - 問句/提議/玩笑的 presupposition 也須逐字稿/profile 證據；無據改無前提問法。
-- 任一 {變數} 都未填，絕不證具體值/經歷/答案；只留扁平原子槽，禁巢狀/故事。
+- {變數} token 本身不提供值；除非後續 user_turn/trusted 直接證據明寫該值，否則跨欄仍未知，禁寫已填、具體值或對方知道該值。assistant 未答問句/猜測只證她問過，不是 user 答案；作答/肯否須 user_turn/trusted user 證據，否則用扁平原子 {真實答案}/{有／沒有} 或避答。只留扁平原子槽，禁巢狀/故事。可忠實轉述 assistant 說了什麼，但其未證前提不可升格事實。
 - assistant 實質回答/自揭/新細節/問句/提議/玩笑梗/未來接點任一＝對話貢獻/新素材；非明確拒絕/終止也算延伸，但不等於邀約/window。拒絕/別再問可有資訊卻無正向延伸；回答後收尾可 extension+closure。即使 low，有非拒絕貢獻也禁寫只有客套/無延伸/無正向延伸/無新素材/無來回。
 - suggestedLine/nextFirstLine 是 user 對她說；「我」=user；禁編劇名/店名/地點。末則若是她，禁批最後一句後尚未發生的 user 回覆，只寫下一步；較早 user turn 可批。
 - 只輸出 JSON：
@@ -244,7 +244,7 @@ export const DEBRIEF_SYSTEM_PROMPT =
   "summary": "總評≤40字",
   "strengths": ["1～2點；各≤30字"],
   "watchouts": ["1～2點；各≤30字"],
-  "suggestedLine": "可貼草稿≤40字；變數先填",
+  "suggestedLine": "可貼草稿≤40字；未知留單一扁平 {變數}，勿猜值",
   "vibe": "暖｜中性｜冷",
   "dateChance": "low｜medium｜high",
   "dateChanceReason": "理由≤40字",
@@ -259,7 +259,7 @@ export const GAME_DEBRIEF_SYSTEM_PROMPT = DEBRIEF_SYSTEM_PROMPT.replace(
     "phaseReached": "用白話說這場推進到哪個階段（最多 40 字）",
     "missedVariable": "用白話說哪個互動要素沒有推動（最多 40 字）",
     "failureState": "用白話說主要卡點（最多 40 字）",
-    "nextFirstLine": "下次可貼草稿≤40字；變數先填",
+    "nextFirstLine": "下次可貼草稿≤40字；未知留單一扁平 {變數}，勿猜值",
     "inviteDirection": "下一步邀約方向或先修什麼（最多 40 字）"
   }`,
 ) +

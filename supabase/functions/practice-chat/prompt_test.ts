@@ -10,6 +10,7 @@ import {
   buildDebriefMessages,
   CHAT_SYSTEM_PROMPT,
   DEBRIEF_SYSTEM_PROMPT,
+  GAME_DEBRIEF_SYSTEM_PROMPT,
 } from "./prompt.ts";
 import { buildHintMessages } from "./hint.ts";
 import { temperatureBandInstruction } from "./temperature.ts";
@@ -49,7 +50,8 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
       "未來/條件不得升格現在",
       "問句/提議/玩笑的 presupposition",
       "無據改無前提問法",
-      "{變數} 都未填，絕不證具體值/經歷/答案",
+      "{變數} token 本身不提供值",
+      "未答問句/猜測只證她問過，不是 user 答案",
       "assistant 實質回答/自揭/新細節/問句/提議/玩笑梗/未來接點",
       "拒絕/別再問可有資訊卻無正向延伸",
       "即使 low，有非拒絕貢獻也禁寫只有客套/無延伸/無正向延伸/無新素材/無來回",
@@ -62,6 +64,8 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
   }
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("提問/不爆雷"), false);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("可直接傳的一句"), false);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("變數先填"), false);
+  assertEquals(GAME_DEBRIEF_SYSTEM_PROMPT.includes("變數先填"), false);
 });
 
 Deno.test("Hint prompt makes expert framing evidence-only instead of inventing scene props", () => {

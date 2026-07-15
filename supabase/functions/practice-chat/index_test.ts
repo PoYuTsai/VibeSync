@@ -289,7 +289,7 @@ Deno.test("direct Hint preserves server-trusted user facts through both reviews"
   }
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "Hint 角色歸屬仍須正確：貼句我=user、你/妳=assistant",
+      "Hint：貼句我=user、你/妳=assistant",
     ),
   );
   assertEquals(recordHintCalls(state).length, 1);
@@ -7025,7 +7025,7 @@ Deno.test("Beginner Hint release review keeps user opening facts out of partner 
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "coaching 的她說/丟X只認 assistant_turn",
+      "coaching 她說/丟X只認 assistant_turn",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -8434,7 +8434,7 @@ Deno.test("Beginner Debrief release review keeps a direct follow-up from becomin
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "即使 low，若 ledger 有非拒絕貢獻也禁寫只有客套/無延伸/無正向延伸/無新素材/無來回",
+      "即使 low，ledger 有非拒絕貢獻也禁寫只有客套/無延伸/無正向延伸/無新素材/無來回",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -8700,7 +8700,7 @@ Deno.test("production round-one Beginner release fixes an invented answer and de
   );
   assert(
     claudePrompt(state.claudeCalls[0]).includes(
-      "任一 {變數} 都未填，絕不證具體值/經歷/答案",
+      "{變數} token 本身不提供值",
     ),
   );
   assert(
@@ -10052,7 +10052,7 @@ Deno.test("direct Beginner Debrief release review repairs the production compoun
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "{變數} 永遠未填，不證值/經歷/答案",
+      "{變數} token 本身不提供值",
     ),
   );
   assertEquals(
@@ -13356,9 +13356,321 @@ Deno.test("source-first Game release repairs an unfilled store, scouting premise
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "{變數} 永遠未填，不證值/經歷/答案",
+      "{變數} token 本身不提供值",
     ),
   );
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("fresh production Beginner release leaves an unanswered work status unknown", async () => {
+  const appliedHint = "《{劇名}》！今天腦袋整個空白 😅 你都靠咖啡撐嗎？";
+  const badLine =
+    "有上班，但今天腦袋還沒完全開機 😅 時差沒調回來是什麼感覺，整個人飄嗎？";
+  const wrong = validDebriefJson({
+    summary: "她接梗並自揭時差苦，還反問你的生活，有好奇心但關係仍淺。",
+    strengths: [
+      "Hint 句帶出她的時差苦，讓她自然延伸分享工作狀態",
+      "她主動反問你的生活，顯示有基本好奇心",
+    ],
+    watchouts: [
+      "她反問你上班的事，若只回答不給她好接的球，對話容易斷",
+      "關係仍淺，勿因她分享工作細節就急著拉近或邀約",
+    ],
+    suggestedLine: badLine,
+    vibe: "冷",
+    dateChance: "low",
+    dateChanceReason:
+      "她分享工作狀態並反問，有好奇但無約見訊號，關係仍在建立初期。",
+    nextInviteMove:
+      "先回答她的問題並帶出自己的生活片段，讓她有東西可接，繼續累積熟悉感。",
+  });
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary:
+      "assistant 自揭時差/早班並反問←assistant_turn[3]:『時差還沒調回來又排早班』『都不用上班嗎』",
+    strengths:
+      "assistant 延伸工作狀態/反問←assistant_turn[3]:『又排早班』『都不用上班嗎』",
+    watchouts: "反問上班←assistant_turn[3]:『都不用上班嗎』",
+    suggestedLine:
+      "有上班←assistant_turn[3]:『都不用上班嗎』；腦袋未開機←user_turn[0]:『現在腦袋還沒開機』；時差←assistant_turn[3]:『時差還沒調回來』",
+    dateChanceReason:
+      "分享工作/反問/無約見←assistant_turn[3]:『時差還沒調回來又排早班』『都不用上班嗎』",
+    nextInviteMove: "回答問題←assistant_turn[3]:『都不用上班嗎』",
+    gameBreakdown: "",
+  });
+  const safeLine =
+    "{真實答案}。今天腦袋還沒完全開機 😅 時差沒調回來是什麼感覺，整個人飄嗎？";
+  const repaired = validDebriefJson({
+    summary: "她接梗並自揭時差苦，還問你是否需要上班，關係仍淺。",
+    strengths: [
+      "Hint 句帶出她的時差苦，讓她自然延伸分享工作狀態",
+      "她反問你的生活，留下可回應的新素材",
+    ],
+    watchouts: [
+      "她問你是否需要上班，下一句先填真實答案，不替你決定",
+      "關係仍淺，勿因她分享工作細節就急著拉近或邀約",
+    ],
+    suggestedLine: safeLine,
+    vibe: "冷",
+    dateChance: "low",
+    dateChanceReason:
+      "她分享工作狀態並反問，有延伸但無約見訊號，關係仍在建立初期。",
+    nextInviteMove:
+      "先用真實答案回她，再沿時差與早班簡短延伸，繼續累積熟悉感。",
+  });
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary:
+      "assistant 自揭時差/早班並問上班←assistant_turn[3]:『時差還沒調回來又排早班』『都不用上班嗎』",
+    strengths:
+      "assistant 延伸工作狀態/反問←assistant_turn[3]:『又排早班』『都不用上班嗎』",
+    watchouts: "先填上班真實答案←assistant_turn[3]:『都不用上班嗎』",
+    suggestedLine:
+      "{真實答案}←variable；腦袋未開機←user_turn[0]:『現在腦袋還沒開機』；時差←assistant_turn[3]:『時差還沒調回來』",
+    dateChanceReason:
+      "分享工作/反問延伸/無約見←assistant_turn[3]:『時差還沒調回來又排早班』『都不用上班嗎』",
+    nextInviteMove:
+      "回答真值/沿時差早班←assistant_turn[3]:『都不用上班嗎』『時差還沒調回來又排早班』",
+    gameBreakdown: "",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [wrong, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "building_familiarity",
+            targetVariable: "安全感與熟悉感",
+            move: "build_connection",
+            inviteRoute: "not_ready",
+            rationale: "先沿咖啡與生活狀態累積熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "fresh-production-beginner-unanswered-work-status",
+      turns: [
+        {
+          role: "user",
+          text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂",
+        },
+        {
+          role: "ai",
+          text: "早～我剛也去買了咖啡，不然撐不住 😅 你追哪一部啊？",
+        },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text:
+            "對啊，沒咖啡真的不行 😅 尤其有時候時差還沒調回來又排早班，超痛苦。你追劇追到那麼晚都不用上班嗎～",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-fresh-production-beginner-work-status",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.suggestedLine, safeLine);
+  assertEquals(JSON.stringify(json.card).includes("有上班"), false);
+  assert(JSON.stringify(json.card).includes("{真實答案}"));
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], badLine);
+  assertGroundingReviewInput(state.claudeCalls[2], badLine);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  assertEquals(
+    claudePrompt(state.claudeCalls[0]).includes(
+      "latestAssistantQuestionEvidenceBoundary",
+    ),
+    false,
+  );
+  for (const call of state.claudeCalls) {
+    assert(
+      claudePrompt(call).includes(
+        "未答問句/猜測只證她問過，不是 user 答案",
+      ),
+    );
+  }
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("fresh production Game release keeps a literal store variable unfilled across the card", async () => {
+  const appliedHint = "叫{店名}。妳問這個，是要幫我鑑定一下嗎？";
+  const badLine = "好，那我就去當你的試喝員，喝完要怎麼交報告？";
+  const wrongCard = JSON.parse(validDebriefJson({
+    summary: "開場有話題切入，她有回應但收尾偏指令式，關係仍淺。",
+    strengths: [
+      "用她的興趣咖啡開場，切入自然不突兀",
+      "照貼 Hint 接住她的反問，沒有防禦或冷掉",
+    ],
+    watchouts: [
+      "她說「你先喝過再來跟我說」帶有測試意味，若只回感想資訊會停在單向彙報",
+      "關係仍在建立初期，話題還停在資訊層，情感連結尚未展開",
+    ],
+    suggestedLine: badLine,
+    vibe: "冷",
+    dateChance: "low",
+    dateChanceReason:
+      "她給的是「去喝再回報」的指令，無明示約見意願或共同場景。",
+    nextInviteMove: "先接住她的「試喝員」框架，累積幾輪互動再看窗口。",
+  })) as Record<string, unknown>;
+  wrongCard.gameBreakdown = {
+    phaseReached:
+      "開場資訊交換，她說「有聽過但沒去過」，話題剛落地，熟悉感尚未建立。",
+    missedVariable:
+      "她說「你先喝過再來跟我說感想」，這是邀你繼續互動的鉤，但還沒有情感或立場的交流。",
+    failureState: "對話停在資訊層——她知道店名，你還沒給她一個想繼續聊的理由。",
+    nextFirstLine: badLine,
+    inviteDirection: "先沿「試喝員」梗建立輕鬆來回，累積投入感後再找窗口。",
+  };
+  const wrong = JSON.stringify(wrongCard);
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary:
+      "assistant 回覆/指令←assistant_turn[3]:『有聽過但還沒去過』『你先喝過再來跟我說感想』",
+    strengths: "咖啡開場/接反問←user_turn[0]/assistant_turn[1]",
+    watchouts: "回報指令/資訊層←assistant_turn[3]:『你先喝過再來跟我說感想』",
+    suggestedLine:
+      "未來試喝/報告問句←assistant_turn[3]:『先喝過再來跟我說感想』",
+    dateChanceReason: "無約見←assistant_turn[3]:『你先喝過再來跟我說感想』",
+    nextInviteMove: "試喝員框架←assistant_turn[3]:『先喝過再來跟我說感想』",
+    gameBreakdown:
+      "她知道店名←assistant_turn[3]:『那家喔，有聽過』；未來回報←assistant_turn[3]:『先喝過再來跟我說感想』",
+  });
+  const repairedCard = JSON.parse(validDebriefJson({
+    summary: "店名仍是未填變數；她回覆聽過但沒去過，並要你喝過後再分享感想。",
+    strengths: [
+      "她有回應咖啡話題，並留下喝過後回報的未來接點",
+      "照貼 Hint 接住她的反問，沒有防禦或冷掉",
+    ],
+    watchouts: [
+      "未填店名不能跨欄當成實名，只能如實轉述她的回覆",
+      "關係仍在建立初期，話題還停在資訊層，情感連結尚未展開",
+    ],
+    suggestedLine: badLine,
+    vibe: "冷",
+    dateChance: "low",
+    dateChanceReason:
+      "她留下喝過後回報的未來接點，但無明示約見意願或共同場景。",
+    nextInviteMove: "先接住她要你喝後回報的未來接點，累積幾輪互動再看窗口。",
+  })) as Record<string, unknown>;
+  repairedCard.gameBreakdown = {
+    phaseReached: "她回覆聽過但沒去過，咖啡話題剛展開，熟悉感尚未建立。",
+    missedVariable: "店名仍是未填的 {店名} 變數，還缺實際店名與喝後真實感想。",
+    failureState: "店名仍未填，話題停在她要求你喝過後回報的資訊層。",
+    nextFirstLine: badLine,
+    inviteDirection: "先沿喝後回報的未來接點建立來回，累積投入感後再找窗口。",
+  };
+  const repaired = JSON.stringify(repairedCard);
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary:
+      "{店名}←variable；assistant 回覆/要求回報←assistant_turn[3]:『有聽過但還沒去過』『先喝過再來跟我說感想』",
+    strengths:
+      "回應咖啡/未來接點←assistant_turn[3]:『有聽過但還沒去過』『先喝過再來跟我說感想』",
+    watchouts: "{店名}←variable",
+    suggestedLine:
+      "未來試喝/報告問句←assistant_turn[3]:『先喝過再來跟我說感想』",
+    dateChanceReason:
+      "未來回報/無約見←assistant_turn[3]:『先喝過再來跟我說感想』",
+    nextInviteMove: "喝後回報接點←assistant_turn[3]:『先喝過再來跟我說感想』",
+    gameBreakdown:
+      "{店名}←variable；assistant 回覆/回報接點←assistant_turn[3]:『有聽過但還沒去過』『先喝過再來跟我說感想』",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 2 }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [wrong, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "P1_OPEN",
+            targetVariable: "familiarity",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先沿咖啡話題建立熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "fresh-production-game-literal-store-variable",
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        { role: "ai", text: "哪家啊 這麼香" },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text: "那家喔，有聽過但還沒去過。\n你先喝過再來跟我說感想啊。",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-fresh-production-game-store-variable",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  const serialized = JSON.stringify(json.card);
+  assertEquals(serialized.includes("她知道店名"), false);
+  assertEquals(serialized.includes("具體店名"), false);
+  assert(serialized.includes("店名仍是未填"));
+  assert(serialized.includes("聽過但沒去過"));
+  assertEquals(json.card.suggestedLine, badLine);
+  assertEquals(json.card.gameBreakdown.nextFirstLine, badLine);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], "她知道店名");
+  assertGroundingReviewInput(state.claudeCalls[2], "她知道店名");
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  for (const call of state.claudeCalls) {
+    assert(
+      claudePrompt(call).includes(
+        "{變數} token 本身不提供值",
+      ),
+    );
+  }
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
@@ -13444,6 +13756,78 @@ Deno.test("source-first controls preserve grounded present state and scouting fa
     groundingReviewCandidate(beginnerRun.state.claudeCalls[1]),
   );
 
+  const groundedWork = validDebriefJson({
+    summary: "你已明說今天要上班、下午有會議；她回覆辛苦並提醒補咖啡。",
+    strengths: ["你直接回答上班狀態並補充下午行程。"],
+    watchouts: ["下一句沿她的咖啡回應簡短接球。"],
+    suggestedLine:
+      "有上班，下午還有會議，只能靠咖啡撐 😅 妳剛說早班真的累，最難撐是哪段？",
+    vibe: "暖",
+    dateChance: "low",
+    dateChanceReason: "她有接住你的上班狀態並提醒補咖啡，但沒有約見窗口。",
+    nextInviteMove: "先沿咖啡與早班簡短延伸，繼續累積熟悉感。",
+  });
+  const groundedWorkCandidateCard = JSON.parse(groundedWork) as Record<
+    string,
+    unknown
+  >;
+  delete groundedWorkCandidateCard.hintAssessment;
+  groundedWorkCandidateCard.gameBreakdown = null;
+  const groundedWorkCandidate = JSON.stringify(groundedWorkCandidateCard);
+  const groundedWorkReview = groundingReviewEnvelope(
+    groundedWorkCandidate,
+    {
+      summary:
+        "user 上班/下午會議←user_turn[2]:『我今天要上班，下午還有會議』；assistant 回應←assistant_turn[3]:『辛苦了，記得補咖啡』",
+      strengths:
+        "user 回答上班/行程←user_turn[2]:『我今天要上班，下午還有會議』",
+      watchouts: "咖啡回應←assistant_turn[3]:『記得補咖啡』",
+      suggestedLine:
+        "上班/下午會議←user_turn[2]:『我今天要上班，下午還有會議』；咖啡/早班累←assistant_turn[3]:『補咖啡』『早班真的累』",
+      dateChanceReason:
+        "接住上班/無約見←assistant_turn[3]:『辛苦了，記得補咖啡』",
+      nextInviteMove:
+        "咖啡/早班←assistant_turn[3]:『記得補咖啡』『早班真的累』",
+      gameBreakdown: "",
+    },
+  );
+  const groundedWorkRun = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [
+        groundedWork,
+        groundedWorkReview,
+        groundedWorkReview,
+      ],
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "source-first-control-grounded-work-status",
+      turns: [
+        { role: "user", text: "昨晚追劇追到兩點。" },
+        { role: "ai", text: "你今天不用上班嗎～" },
+        { role: "user", text: "有，我今天要上班，下午還有會議。" },
+        { role: "ai", text: "那真的辛苦了，早班真的累，記得補咖啡。" },
+      ],
+    }),
+  );
+
+  assertEquals(
+    groundedWorkRun.response.status,
+    200,
+    JSON.stringify(groundedWorkRun.json),
+  );
+  const groundedWorkSerialized = JSON.stringify(groundedWorkRun.json.card);
+  assert(groundedWorkSerialized.includes("有上班"));
+  assert(groundedWorkSerialized.includes("下午還有會議"));
+  assertEquals(groundedWorkRun.json.groundingReviewFallbackUsed, false);
+  assertEquals(groundedWorkRun.state.claudeCalls.length, 3);
+  assertEquals(
+    groundingReviewCandidate(groundedWorkRun.state.claudeCalls[2]),
+    groundingReviewCandidate(groundedWorkRun.state.claudeCalls[1]),
+  );
+
   const gameLine = "{真實答案}。妳最在意咖啡店哪一點？";
   const gameCard = JSON.parse(validDebriefJson({
     summary:
@@ -13470,18 +13854,18 @@ Deno.test("source-first controls preserve grounded present state and scouting fa
   const gameCandidate = JSON.stringify(gameCandidateCard);
   const gameReview = groundingReviewEnvelope(gameCandidate, {
     summary:
-      "店名/實際踩點/整理報告←user_turn[0]:『叫山嵐咖啡，我已經實際踩點，也整理好報告』；assistant 回答/追問←assistant_turn[1]:『知道啊，聽過但還沒去過。你報告裡最推哪一點』",
+      "店名/實際踩點/整理報告←user_turn[2]:『實際店名是山嵐咖啡，我已經實際踩點，也整理好報告』；assistant 回答/追問←assistant_turn[3]:『知道啊，聽過但還沒去過。你報告裡最推哪一點』",
     strengths:
-      "店名/踩點/報告←user_turn[0]:『山嵐咖啡』『實際踩點』『整理好報告』",
-    watchouts: "回答真實報告重點←assistant_turn[1]:『你報告裡最推哪一點』",
+      "店名/踩點/報告←user_turn[2]:『山嵐咖啡』『實際踩點』『整理好報告』",
+    watchouts: "回答真實報告重點←assistant_turn[3]:『你報告裡最推哪一點』",
     suggestedLine:
-      "{真實答案}←variable；問咖啡店重點←assistant_turn[1]:『最推哪一點』",
+      "{真實答案}←variable；問咖啡店重點←assistant_turn[3]:『最推哪一點』",
     dateChanceReason:
-      "實質回答/追問延伸/無約見←assistant_turn[1]:『聽過但還沒去過。你報告裡最推哪一點』",
+      "實質回答/追問延伸/無約見←assistant_turn[3]:『聽過但還沒去過。你報告裡最推哪一點』",
     nextInviteMove:
-      "回答報告後延伸偏好←assistant_turn[1]:『你報告裡最推哪一點』",
+      "回答報告後延伸偏好←assistant_turn[3]:『你報告裡最推哪一點』",
     gameBreakdown:
-      "實際踩點/報告←user_turn[0]；回答/追問←assistant_turn[1]；{真實答案}←variable",
+      "實際踩點/報告←user_turn[2]；回答/追問←assistant_turn[3]；{真實答案}←variable",
   });
   const gameRun = await run(
     {
@@ -13497,7 +13881,15 @@ Deno.test("source-first controls preserve grounded present state and scouting fa
       turns: [
         {
           role: "user",
-          text: "叫山嵐咖啡，我已經實際踩點，也整理好報告。",
+          text: "叫{店名}，我已經實際踩點，也整理好報告。",
+        },
+        {
+          role: "ai",
+          text: "店名還沒填喔，你真的有踩點？",
+        },
+        {
+          role: "user",
+          text: "實際店名是山嵐咖啡，我已經實際踩點，也整理好報告。",
         },
         {
           role: "ai",
@@ -13509,7 +13901,14 @@ Deno.test("source-first controls preserve grounded present state and scouting fa
 
   assertEquals(gameRun.response.status, 200, JSON.stringify(gameRun.json));
   const gameSerialized = JSON.stringify(gameRun.json.card);
-  for (const grounded of ["山嵐咖啡", "實際踩點", "整理好報告"]) {
+  for (
+    const grounded of [
+      "山嵐咖啡",
+      "實際踩點",
+      "整理好報告",
+      "聽過但沒去過",
+    ]
+  ) {
     assert(gameSerialized.includes(grounded), grounded);
   }
   assertEquals(gameRun.json.card.suggestedLine, gameLine);
