@@ -94,7 +94,7 @@ export function compactCompleteSentenceEvidence(
 }
 
 export const LATEST_ASSISTANT_EVIDENCE_RULE =
-  "末則只證她；問/猜/前提非user答案。貼句任一「我」的過去/現在自揭（含非答句）須 user/trusted 直證，無據刪；末問未知答案只留一槽型{變數}或無前提問，禁不確定/感官/肯否補答。";
+  "末則只證她；問猜前提≠user答。貼句「我」既成自揭(含非答)需user/trusted直證，無據刪；末問未知只留一槽{變數}或無前提問，禁肯否/不確定/感官補答；「有，今天{真實答案}」→單獨{真實答案}。";
 
 export function hintRequiresUserFactClarification(
   turns: PracticeTurn[],
@@ -846,7 +846,7 @@ export function buildDebriefMessages(
         `${compactDebriefPartnerStatePrompt(options.partnerState)}\n\n` +
         `這是這場練習的逐字稿（「你」是學員、「她」是模擬對象）：\n\n${transcript}\n\n` +
         `${LATEST_ASSISTANT_EVIDENCE_RULE}\n` +
-        `批沒接住須有後續 user turn。只回 JSON。`,
+        `批沒接住需後續user句；只回JSON。`,
     },
   ];
 }

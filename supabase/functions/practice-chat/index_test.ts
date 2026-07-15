@@ -10265,7 +10265,7 @@ Deno.test("direct Beginner Debrief release review repairs the production adjecti
   );
   assert(
     claudePrompt(state.claudeCalls[0]).includes(
-      "貼句任一「我」的過去/現在自揭（含非答句）須 user/trusted 直證",
+      "貼句「我」既成自揭(含非答)需user/trusted直證",
     ),
   );
   assert(
@@ -13452,9 +13452,10 @@ Deno.test("source-first Game release repairs an unfilled store, scouting premise
 });
 
 Deno.test("fresh production Beginner release leaves an unanswered work status unknown", async () => {
-  const appliedHint = "《{劇名}》！今天腦袋整個空白 😅 你都靠咖啡撐嗎？";
+  const appliedHint =
+    "哈哈懂，你剛落地還在調，我這邊是自己熬的😂 今天還有班嗎？";
   const badLine =
-    "有上班，但今天腦袋還沒完全開機 😅 時差沒調回來是什麼感覺，整個人飄嗎？";
+    "有，今天{真實答案}。早班飛完就休息聽起來很需要，你都怎麼調時差？";
   const wrong = validDebriefJson({
     summary: "她接梗並自揭時差苦，還反問你的生活，有好奇心但關係仍淺。",
     strengths: [
@@ -13475,19 +13476,19 @@ Deno.test("fresh production Beginner release leaves an unanswered work status un
   });
   const firstReview = groundingReviewEnvelope(wrong, {
     summary:
-      "assistant 自揭時差/早班並反問←assistant_turn[3]:『時差還沒調回來又排早班』『都不用上班嗎』",
+      "assistant 自揭早班飛完/休息並反問←assistant_turn[3]:『今天早班飛完』『先休息』『今天要上班嗎』",
     strengths:
-      "assistant 延伸工作狀態/反問←assistant_turn[3]:『又排早班』『都不用上班嗎』",
-    watchouts: "反問上班←assistant_turn[3]:『都不用上班嗎』",
+      "assistant 延伸工作狀態/反問←assistant_turn[3]:『早班飛完』『今天要上班嗎』",
+    watchouts: "反問上班←assistant_turn[3]:『今天要上班嗎』",
     suggestedLine:
-      "有上班←assistant_turn[3]:『都不用上班嗎』；腦袋未開機←user_turn[0]:『現在腦袋還沒開機』；時差←assistant_turn[3]:『時差還沒調回來』",
+      "有/今天答案←assistant_turn[3]:『今天要上班嗎』；腦袋未開機←user_turn[0]:『現在腦袋還沒開機』；時差←assistant_turn[3]:『調時差』",
     dateChanceReason:
-      "分享工作/反問/無約見←assistant_turn[3]:『時差還沒調回來又排早班』『都不用上班嗎』",
-    nextInviteMove: "回答問題←assistant_turn[3]:『都不用上班嗎』",
+      "分享工作/反問/無約見←assistant_turn[3]:『早班飛完』『今天要上班嗎』",
+    nextInviteMove: "回答問題←assistant_turn[3]:『今天要上班嗎』",
     gameBreakdown: "",
   });
   const safeLine =
-    "{真實答案}。今天腦袋還沒完全開機 😅 時差沒調回來是什麼感覺，整個人飄嗎？";
+    "{真實答案}。早班飛完就休息聽起來很需要，你都怎麼調時差？";
   const repaired = validDebriefJson({
     summary: "她接梗並自揭時差苦，還問你是否需要上班，關係仍淺。",
     strengths: [
@@ -13508,16 +13509,16 @@ Deno.test("fresh production Beginner release leaves an unanswered work status un
   });
   const finalReview = groundingReviewEnvelope(repaired, {
     summary:
-      "assistant 自揭時差/早班並問上班←assistant_turn[3]:『時差還沒調回來又排早班』『都不用上班嗎』",
+      "assistant 自揭早班飛完/休息並問上班←assistant_turn[3]:『今天早班飛完』『先休息』『今天要上班嗎』",
     strengths:
-      "assistant 延伸工作狀態/反問←assistant_turn[3]:『又排早班』『都不用上班嗎』",
-    watchouts: "先填上班真實答案←assistant_turn[3]:『都不用上班嗎』",
+      "assistant 延伸工作狀態/反問←assistant_turn[3]:『早班飛完』『今天要上班嗎』",
+    watchouts: "先填上班真實答案←assistant_turn[3]:『今天要上班嗎』",
     suggestedLine:
-      "{真實答案}←variable；腦袋未開機←user_turn[0]:『現在腦袋還沒開機』；時差←assistant_turn[3]:『時差還沒調回來』",
+      "{真實答案}←variable；早班飛完/休息←assistant_turn[3]:『早班飛完』『先休息』；調時差←assistant_turn[1]:『調時差』",
     dateChanceReason:
-      "分享工作/反問延伸/無約見←assistant_turn[3]:『時差還沒調回來又排早班』『都不用上班嗎』",
+      "分享工作/反問延伸/無約見←assistant_turn[3]:『早班飛完』『今天要上班嗎』",
     nextInviteMove:
-      "回答真值/沿時差早班←assistant_turn[3]:『都不用上班嗎』『時差還沒調回來又排早班』",
+      "回答真值/沿時差早班←assistant_turn[3]:『今天要上班嗎』『早班飛完』",
     gameBreakdown: "",
   });
   const { response, json, state } = await run(
@@ -13547,13 +13548,12 @@ Deno.test("fresh production Beginner release leaves an unanswered work status un
         },
         {
           role: "ai",
-          text: "早～我剛也去買了咖啡，不然撐不住 😅 你追哪一部啊？",
+          text: "哈哈 我懂，我也是剛落地還在調時差，腦袋還沒醒😂",
         },
         { role: "user", text: appliedHint },
         {
           role: "ai",
-          text:
-            "對啊，沒咖啡真的不行 😅 尤其有時候時差還沒調回來又排早班，超痛苦。你追劇追到那麼晚都不用上班嗎～",
+          text: "沒了 今天早班飛完就先休息\n你咧 今天要上班嗎",
         },
       ],
       appliedHintTurns: [{
@@ -13569,7 +13569,7 @@ Deno.test("fresh production Beginner release leaves an unanswered work status un
 
   assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(json.card.suggestedLine, safeLine);
-  assertEquals(JSON.stringify(json.card).includes("有上班"), false);
+  assertEquals(JSON.stringify(json.card).includes("有，今天"), false);
   assert(JSON.stringify(json.card).includes("{真實答案}"));
   assertEquals(json.fallbackUsed, false);
   assertEquals(json.failoverUsed, false);
@@ -13583,14 +13583,14 @@ Deno.test("fresh production Beginner release leaves an unanswered work status un
   );
   assertEquals(
     claudePrompt(state.claudeCalls[0]).includes(
-      "末則只證她",
+      "「有，今天{真實答案}」→單獨{真實答案}",
     ),
     true,
   );
   for (const call of state.claudeCalls.slice(0, 2)) {
     assert(
       claudePrompt(call).includes(
-        "答案只留 {真實答案}，尾句只可無前提反問",
+        "有，今天{真實答案}",
       ),
     );
   }
@@ -14400,7 +14400,7 @@ Deno.test("fresh production Game release removes an unsupported non-answer coffe
   );
   assert(
     claudePrompt(state.claudeCalls[0]).includes(
-      "貼句任一「我」的過去/現在自揭（含非答句）",
+      "貼句「我」既成自揭(含非答)",
     ),
   );
   assert(
@@ -14559,7 +14559,7 @@ Deno.test("fresh production Game release removes an unanswered entry presupposit
     const releaseRule of [
       "問句前提不可替它選分支",
       "沒忍住進去喝了{真實答案}」→「{有／沒有}進去」",
-      "喝了{真實答案}」「紅玉拿鐵{真實答案}」「我不確定」→單獨「{真實答案}」",
+      "喝了{真實答案}」「有，今天{真實答案}」「我不確定」→單獨「{真實答案}」",
       "明確槽型可用「叫{店名}」/「{有／沒有}進去喝」",
     ]
   ) {
