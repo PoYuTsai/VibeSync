@@ -31,7 +31,8 @@ Verdict: **APPROVED（0 P0 / 0 P1 / 0 P2）**
 
 ## Production smoke
 
-- Edge `practice-chat` 已部署，bundle 992.5 kB；無 DB migration。
+- Edge `practice-chat` 已部署，bundle 992.5 kB；本輪另有 owner-window function migration `20260713120000_practice_debrief_semantic_owner_window.sql`，將 Debrief single-flight owner fence 對齊為 105 秒。
+- 2026-07-16 landing 前以 `supabase migration list --linked` 直接核對 production ledger：local／remote 均存在 `20260713120000`。這更正原先「無 DB migration」的文件誤載；migration 實際已於 2026-07-13 套用。
 - Beginner：prefetch fail-closed 503 且未落壞快照；正式 Hint 第一次成功（DeepSeek、13.9 秒）、replay stable、`fallbackUsed=false`。Debrief 承認「你有照提示做」並正確保留她後續自揭內容。
 - Game：prefetch 200；正式 Hint 第一次成功，DeepSeek 24 秒 timeout 後 Claude failover，整體 62.7 秒、replay stable、`fallbackUsed=false`。輸出誠實承認被反問、接住打哈欠的低能量而不捏造咖啡店或共同經歷。
 - Game Debrief 第一次因 fact verifier 拒絕修正版而 503 fail-closed；同 requestId 重試 39.9 秒成功。最終卡明確寫「你照提示收尾」，`hintContinuityGuardPassed=true`。這是已披露的保守拒絕，不是罐頭成功，也不是本輪 Hint 點擊三連敗復發。
