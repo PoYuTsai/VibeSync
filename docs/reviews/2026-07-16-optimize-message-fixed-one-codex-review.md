@@ -33,15 +33,19 @@
 
 ## P3 與已知邊界
 
-1. 本機 Docker engine 不可用，因此未能執行真 PostgreSQL concurrency、RLS、RPC 與 cron integration test。部署後必須直接核對 `cron.job`／`cron.job_run_details`，並測 fresh request、同 request 並行 replay、quota rollback。
+1. 審查當下本機 Docker engine 不可用，因此沒有本地 PostgreSQL integration test。部署時已改以遠端真 PostgreSQL 驗證 migration、RLS、grants、RPC、原子 charge/replay、quota rollback、同 request 並行 first-writer-wins 與 cron 設定；測試列與額度變化均已清除／rollback。
 2. 舊版 App 不會傳 `requestId`；server 仍固定扣 1，但 legacy request 無法保證 exactly-once。新版 App 才具備 durable request identity 與安全重播。
 
-## 上線閘門
+## 2026-07-16 部署與 smoke 證據
 
-這個 commit 尚未部署。正式啟用前必須依序完成：
+- 線上政策：`vibesync-web` `9929d5b`；GitHub Pages run `29450492357` 成功，live URL 已驗新版揭露。
+- DB：只用 `supabase migration up --linked` 套用唯一待辦 `20260716170000`，沒有執行 `db push`；local／remote migration ledger 對齊。
+- Schema：兩個 usage counter 為 `NOT NULL DEFAULT 0`；ledger RLS 已開；anon／authenticated 無 table、settlement、cleanup 權限；service role 權限正確。
+- Cron：job id 1 於 2026-07-15 21:17:00 UTC 首次自然觸發，約 34ms 完成，`status=succeeded`、`return_message=1 row`。
+- PostgreSQL transaction smoke：fresh 固定 +1、同 request replay +0、hash mismatch fail、quota failure 連 ledger 一起 rollback；整段測試 transaction 最後 rollback，測試帳號維持 0／0。
+- 並行 smoke：兩個同 owner／requestId／hash 的請求只留下單一 first-writer result，兩邊取得相同結果；測試 row 已刪除。
+- Edge：GitHub Actions run `29450067262` 成功；`analyze-chat` v269 保持 `verify_jwt=false`，`coach-chat` v52 保持 JWT 驗證。
+- Live API：fresh 200 且有可用結果；同 ID／同 payload replay 200、回同一結果與 `optimize_message_idempotent_replay`；同 ID／不同 payload 回 400 `OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH`。測試 ledger 已刪除，測試帳號仍為 0／0。
+- Build：`cdafa244` 的 staging iOS IPA 與 Android APK 均成功，GitHub run `29450067276` 已上傳 Firebase App Distribution。
 
-1. 先發布新版線上隱私政策，並同步 App Store Connect 的資料使用揭露。
-2. 精準套用 `20260716170000_optimize_message_fixed_charge.sql`，不得用無差別 `supabase db push`。
-3. 驗證 RPC、grants、RLS 與 pg_cron 首次執行。
-4. 以專案既定的 `--no-verify-jwt` 部署 `analyze-chat`。
-5. 發佈包含 durable requestId 的新版 App／TestFlight，完成真機 fresh、retry、downgrade recovery 與 quota smoke。
+剩餘 release gate 是實機 dogfood：用新版 App 測 fresh、連線重試、背景／前景、降級後恢復已付結果與最後一格 quota；正式再次送審前仍須人工核對 App Store Connect／Review Notes。

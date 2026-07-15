@@ -29,7 +29,7 @@ Default priority:
 
 Recent commit themes, newest first:
 
-- Fable 5 回饋收斂（2026-07-16）：當次互動分數改成投入度語意；Coach 回答層級收合並改為只串流真實系統進度；空白對象／截圖續接與 Opener 三圖流程已修正。「我幫你修」成功固定扣 1，並以 owner-scoped durable requestId、原子 result/charge 與 7 天 live replay 防止新版 App 重複扣費。程式與獨立 review 已完成，但固定扣 1 尚待線上隱私政策、精準 DB migration、Edge deploy 與新版 TestFlight，不能視為 production 已生效。
+- Fable 5 回饋收斂（2026-07-16）：當次互動分數改成投入度語意；Coach 回答層級收合並改為只串流真實系統進度；空白對象／截圖續接與 Opener 三圖流程已修正。「我幫你修」成功固定扣 1，並以 owner-scoped durable requestId、原子 result/charge 與 7 天 live replay 防止新版 App 重複扣費。獨立 review、線上隱私政策、migration、Edge 與 live fresh/replay/mismatch smoke 均完成；同 commit 的 iOS／Android staging build 已成功上傳 Firebase App Distribution，下一關是真機 dogfood。舊 App 無 durable requestId，仍只有固定扣 1、沒有 exactly-once 保證。
 - Analyze-chat 獨立分析紀錄（2026-07-15 起）：主畫面只顯示 current／pending 片段，舊成功案例由對象頁／分析頁右上封存入口開啟；每筆 owner-scoped、自足快照、無 FIFO、手動刪除。`metVia` 與每筆 `sourcePlatform` 分開；未知來源留在「全部」但不露出「未分類」，平台篩選只在至少兩種已知來源時出現。原整段封存改稱「已收起的對話」並降為抽屜次入口。cleanup marker＋tombstone 保護刪除，冷啟動 repair 失敗時禁止覆寫 canonical snapshot。AI request、prompt、quota、billing 不變；client-only，不需 Edge／DB deploy。
 
 - Practice Hint／Debrief generated-only train（2026-07-11，branch `codex/no-canned-practice-ai`）：Beginner＋Game 共用 DeepSeek 12s → Claude 12s、逐欄品質閘與 Hint decision lineage；雙失敗不再把 fallback 當成功、不扣費不計次。local Deno 746/746、Flutter 516/516，SQL／client／兩路 backend gate 皆 0/0/0；等待 Edge-first deployment 與 TestFlight。

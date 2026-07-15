@@ -1,6 +1,6 @@
 # VibeSync 隱私權政策
 
-> 本檔是待發佈的政策來源；`optimize_message` ledger 上線前，必須先同步到 `https://vibesyncai.app/privacy`。截至 2026-07-16，本輪尚未執行網站發佈。
+> 本檔是政策完整來源。`optimize_message` ledger 的新增揭露已於 2026-07-16 發佈到 `https://vibesyncai.app/privacy`（網站 commit `9929d5b`），並以 live URL 驗證「我幫你修」、7 天重播、每小時清理與備份週期說明均可見。
 
 最後更新：2026-07-16
 生效日期：2026-04-05

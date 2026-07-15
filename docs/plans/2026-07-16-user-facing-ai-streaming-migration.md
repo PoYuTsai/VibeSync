@@ -83,7 +83,7 @@ Eric 本輪選擇 **progress-only**：只顯示伺服器確實走到的階段，
 
 ### Batch 1：Coach 1:1 進度
 
-**狀態：已完成（`b09b6dd1`）。**
+**狀態：已完成並部署（`b09b6dd1`；`coach-chat` v52）。** 2026-07-16 live smoke 依序收到 `request → generating → validating → finalizing → done`，最後事件含完整 validated card。
 
 - 在 `coach-chat` 加 gated progress response，僅傳真實生成／驗證／retry 階段，final 仍使用完整 validated Coach card。
 - Flutter 改用可逐行解析的 transport 與明確 loading stages，保留 429、clarification、deterministic fallback 及現有卡片 schema。
@@ -112,7 +112,7 @@ Eric 本輪選擇 **progress-only**：只顯示伺服器確實走到的階段，
 
 ### Batch 5：OCR／圖片分析／「我幫你修」
 
-**狀態：「我幫你修」固定扣 1 與 result replay 已完成（`4b624617`）；OCR／圖片分析的可信進度尚未實作。**
+**狀態：「我幫你修」固定扣 1 與 result replay 已完成並部署（`4b624617`；migration `20260716170000`；Edge v269）；fresh／replay／mismatch live smoke 通過。OCR／圖片分析的可信進度尚未實作。**
 
 - 分別處理 vision/OCR 與 `optimize_message`，不得與文字 Analyze 或 Coach 同 commit。
 - 先送 OCR/upload/model/validation 的可信進度；任何辨識文字、改寫句或分析內容仍需通過該 mode 的 schema、安全與 Sonnet 規則後才可見。

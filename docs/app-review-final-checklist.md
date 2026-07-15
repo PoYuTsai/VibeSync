@@ -1,6 +1,6 @@
 # App Review Final Checklist
 
-最後更新：2026-07-04
+最後更新：2026-07-16
 
 這份清單是送審前最後核對用，不是功能願望清單。
 
@@ -51,7 +51,7 @@ Repo 端已完成：`b515cad` 已 push、`flutter analyze` PASS、Phase 13 targe
 
 ## 4. 送審與對外資訊
 
-- [ ] `https://vibesyncai.app/privacy` 可正常開啟
+- [x] `https://vibesyncai.app/privacy` 可正常開啟；2026-07-16 已發佈「我幫你修」7 天重播揭露（網站 `9929d5b`）並驗 live 內容
 - [ ] `https://vibesyncai.app/terms` 可正常開啟
 - [ ] App Store Connect Support URL 使用已上線的 HTTPS 頁面：`https://vibesyncai.app/support`，不使用 `mailto:`
 - [ ] `vibesyncaiapp@gmail.com` 可收信
@@ -74,9 +74,9 @@ Repo 端已完成：`b515cad` 已 push、`flutter analyze` PASS、Phase 13 targe
 ## 5. Release / Workflow
 
 - [ ] 最新 iOS release workflow 綠燈
-- [ ] 最新 Edge Function deploy workflow 綠燈
+- [x] 最新 Edge Function deploy workflow 綠燈（`cdafa244`，run `29450067262`）
 - [ ] TestFlight build 可在 App Store Connect / TestFlight 看到
-- [ ] `analyze-chat` 目前維持 `--no-verify-jwt`，未被誤改
+- [x] `analyze-chat` 目前維持 `--no-verify-jwt`，未被誤改（v269）
 
 ## 6. Release Gate
 
