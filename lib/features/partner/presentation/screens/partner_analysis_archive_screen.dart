@@ -44,7 +44,7 @@ class PartnerAnalysisArchiveScreen extends ConsumerWidget {
         elevation: 0,
         iconTheme: const IconThemeData(color: AppColors.onBackgroundPrimary),
         title: Text(
-          partner == null ? '分析紀錄' : '${partner.name}的分析紀錄',
+          partner == null ? '已收起的對話' : '${partner.name}・已收起的對話',
           style: const TextStyle(color: AppColors.onBackgroundPrimary),
         ),
       ),
@@ -67,7 +67,7 @@ class PartnerAnalysisArchiveScreen extends ConsumerWidget {
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      '完成一次分析後，對話會自動收在這裡。',
+                      '完成分析且沒有待處理的新訊息時，整段對話會收在這裡。',
                       textAlign: TextAlign.center,
                       style: AppTypography.bodyMedium.copyWith(
                         color: AppColors.onBackgroundSecondary,
@@ -79,7 +79,7 @@ class PartnerAnalysisArchiveScreen extends ConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
                   children: [
                     Text(
-                      '已完成的分析與目前對話分開保存；要補新訊息時，可重新開啟該段。',
+                      '這裡收的是整段對話；要補新訊息時，可以重新開啟。每次獨立的 AI 分析片段請從分析頁右上角查看。',
                       style: AppTypography.bodySmall.copyWith(
                         color: AppColors.onBackgroundSecondary,
                         height: 1.4,

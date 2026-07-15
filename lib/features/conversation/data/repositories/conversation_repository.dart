@@ -9,6 +9,30 @@ import '../services/memory_service.dart';
 import '../../domain/entities/conversation.dart';
 import '../../domain/entities/message.dart';
 
+class ConversationDeleteOutcome {
+  const ConversationDeleteOutcome({
+    required this.deleted,
+    this.deletedOwnerUserId,
+    this.cleanupError,
+    this.cleanupStackTrace,
+  });
+
+  const ConversationDeleteOutcome.notFound()
+      : deleted = false,
+        deletedOwnerUserId = null,
+        cleanupError = null,
+        cleanupStackTrace = null;
+
+  final bool deleted;
+  final String? deletedOwnerUserId;
+
+  /// A secondary local cleanup failed after the conversation row was already
+  /// committed as deleted. Callers must continue their own cascades, then may
+  /// surface this error without pretending the primary delete rolled back.
+  final Object? cleanupError;
+  final StackTrace? cleanupStackTrace;
+}
+
 class ConversationRepository {
   ConversationRepository({MemoryService? memoryService})
       : _memoryService = memoryService ?? MemoryService();
@@ -123,14 +147,27 @@ class ConversationRepository {
     await conversation.save();
   }
 
-  Future<void> deleteConversation(String id) async {
+  Future<ConversationDeleteOutcome> deleteConversation(String id) async {
     final conversation = getConversation(id);
     if (conversation == null) {
-      return;
+      return const ConversationDeleteOutcome.notFound();
     }
 
     await StorageService.conversationsBox.delete(id);
-    await _deleteCoachChatForConversation(id);
+    try {
+      await _deleteCoachChatForConversation(id);
+      return ConversationDeleteOutcome(
+        deleted: true,
+        deletedOwnerUserId: conversation.ownerUserId,
+      );
+    } catch (error, stackTrace) {
+      return ConversationDeleteOutcome(
+        deleted: true,
+        deletedOwnerUserId: conversation.ownerUserId,
+        cleanupError: error,
+        cleanupStackTrace: stackTrace,
+      );
+    }
   }
 
   Future<void> deleteAll() async {

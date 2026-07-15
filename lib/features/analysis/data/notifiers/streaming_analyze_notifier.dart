@@ -107,6 +107,7 @@ class StreamingAnalysisState {
   final List<AnalysisStreamContent> streamContents;
   final int retriesRemaining;
   final int? conversationMessageCount;
+  final int? previousAnalyzedCount;
   final int? analyzedMessageCount;
   final String? conversationContentRevision;
 
@@ -127,6 +128,7 @@ class StreamingAnalysisState {
     this.streamContents = const [],
     this.retriesRemaining = 0,
     this.conversationMessageCount,
+    this.previousAnalyzedCount,
     this.analyzedMessageCount,
     this.conversationContentRevision,
     this.quotaExceeded,
@@ -154,6 +156,7 @@ class StreamingAnalysisState {
     List<AnalysisStreamContent>? streamContents,
     int? retriesRemaining,
     Object? conversationMessageCount = _unset,
+    Object? previousAnalyzedCount = _unset,
     Object? analyzedMessageCount = _unset,
     Object? conversationContentRevision = _unset,
     Object? quotaExceeded = _unset,
@@ -192,6 +195,9 @@ class StreamingAnalysisState {
       conversationMessageCount: identical(conversationMessageCount, _unset)
           ? this.conversationMessageCount
           : conversationMessageCount as int?,
+      previousAnalyzedCount: identical(previousAnalyzedCount, _unset)
+          ? this.previousAnalyzedCount
+          : previousAnalyzedCount as int?,
       analyzedMessageCount: identical(analyzedMessageCount, _unset)
           ? this.analyzedMessageCount
           : analyzedMessageCount as int?,
@@ -300,6 +306,7 @@ class StreamingAnalyzeNotifier
       streamProgressLabel: '開始完整分析',
       streamProgressDetail: '正在建立串流連線。',
       conversationMessageCount: conversationMessageCount,
+      previousAnalyzedCount: previousAnalyzedCount,
       analyzedMessageCount: effectiveAnalyzedMessageCount,
       conversationContentRevision: conversationContentRevision,
     );
@@ -345,6 +352,7 @@ class StreamingAnalyzeNotifier
         recommendationPreviewErrorMessage: message,
         recommendationPreviewErrorCode: code,
         conversationMessageCount: conversationMessageCount,
+        previousAnalyzedCount: previousAnalyzedCount,
         analyzedMessageCount: effectiveAnalyzedMessageCount,
         conversationContentRevision: conversationContentRevision,
       );
@@ -358,6 +366,7 @@ class StreamingAnalyzeNotifier
       recommendationPreview: recommendationPreview,
       analysisRunId: recommendationPreview.analysisRunId,
       conversationMessageCount: conversationMessageCount,
+      previousAnalyzedCount: previousAnalyzedCount,
       analyzedMessageCount: effectiveAnalyzedMessageCount,
       conversationContentRevision: conversationContentRevision,
     );
@@ -479,6 +488,7 @@ class StreamingAnalyzeNotifier
             state = state.copyWith(
               phase: StreamingAnalyzePhase.done,
               full: full,
+              analysisRunId: update.runId ?? state.analysisRunId,
               fullErrorMessage: null,
               fullErrorCode: null,
               streamProgressLabel: null,
@@ -535,6 +545,7 @@ class StreamingAnalyzeNotifier
         recommendationPreviewErrorMessage: message,
         recommendationPreviewErrorCode: code,
         conversationMessageCount: conversationMessageCount,
+        previousAnalyzedCount: previousAnalyzedCount,
         analyzedMessageCount: analyzedMessageCount,
         conversationContentRevision: conversationContentRevision,
         quotaExceeded: quotaExceeded,
@@ -624,6 +635,7 @@ class StreamingAnalyzeNotifier
       streamContents: const <AnalysisStreamContent>[],
       retriesRemaining: 0,
       conversationMessageCount: _cachedConversationMessageCount,
+      previousAnalyzedCount: _cachedPreviousAnalyzedCount,
       analyzedMessageCount: _cachedAnalyzedMessageCount,
       conversationContentRevision: _cachedConversationContentRevision,
       quotaExceeded: null,

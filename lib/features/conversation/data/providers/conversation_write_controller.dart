@@ -1,13 +1,17 @@
 // lib/features/conversation/data/providers/conversation_write_controller.dart
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../analysis/data/providers/analysis_record_providers.dart';
 import '../../../follow_up_notification/data/providers/follow_up_notification_service.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../domain/entities/conversation.dart';
 import '../../domain/entities/message.dart';
 import '../repositories/conversation_archive_store.dart';
+import '../repositories/conversation_repository.dart';
 import 'conversation_archive_providers.dart';
 import 'conversation_providers.dart';
 
@@ -42,7 +46,35 @@ enum ConversationSaveIntent {
 class ConversationWriteController extends Notifier<void> {
   @override
   void build() {
-    // Stateless write coordinator.
+    // Reconcile a previously interrupted delete whenever this authenticated
+    // write coordinator is (re)created. A live conversation cancels its
+    // marker; an absent one finishes record cleanup.
+    final ownerUserId = ref.watch(analysisRecordOwnerProvider)?.trim();
+    if (ownerUserId == null || ownerUserId.isEmpty) return;
+    final recordStore = ref.read(analysisRecordStoreProvider);
+    if (!recordStore.hasPendingConversationRemovals(
+      ownerUserId: ownerUserId,
+    )) {
+      return;
+    }
+    final liveConversationIds = ref
+        .read(conversationRepositoryProvider)
+        .getAllConversations()
+        .map((conversation) => conversation.id)
+        .toList(growable: false);
+    unawaited(
+      recordStore
+          .recoverPendingConversationRemovals(
+        ownerUserId: ownerUserId,
+        liveConversationIds: liveConversationIds,
+      )
+          .then<void>(
+        (_) {},
+        onError: (Object error, StackTrace stackTrace) {
+          debugPrint('Analysis record cleanup recovery failed: $error');
+        },
+      ),
+    );
   }
 
   Future<Conversation> create({
@@ -135,8 +167,70 @@ class ConversationWriteController extends Notifier<void> {
 
   Future<void> delete(Conversation c) async {
     final repo = ref.read(conversationRepositoryProvider);
-    await repo.deleteConversation(c.id);
-    await ref.read(conversationArchiveControllerProvider.notifier).remove(c);
+    final ownerUserId = ref.read(analysisRecordOwnerProvider)?.trim();
+    if (ownerUserId == null ||
+        ownerUserId.isEmpty ||
+        c.ownerUserId?.trim() != ownerUserId) {
+      throw StateError('Cannot delete a conversation outside the active user.');
+    }
+    final recordStore = ref.read(analysisRecordStoreProvider);
+    final prepared = await recordStore.prepareConversationRemoval(
+      ownerUserId: ownerUserId,
+      conversationId: c.id,
+    );
+    if (!prepared) {
+      throw StateError('Could not prepare private analysis cleanup.');
+    }
+
+    late final ConversationDeleteOutcome deleteOutcome;
+    try {
+      deleteOutcome = await repo.deleteConversation(c.id);
+    } catch (error, stackTrace) {
+      try {
+        await recordStore.cancelConversationRemoval(
+          ownerUserId: ownerUserId,
+          conversationId: c.id,
+        );
+      } catch (cancelError) {
+        debugPrint('Analysis cleanup marker cancel failed: $cancelError');
+      }
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+
+    if (!deleteOutcome.deleted) {
+      try {
+        await recordStore.cancelConversationRemoval(
+          ownerUserId: ownerUserId,
+          conversationId: c.id,
+        );
+      } catch (cancelError) {
+        debugPrint('Analysis cleanup marker cancel failed: $cancelError');
+      }
+      throw StateError('Conversation delete was not committed.');
+    }
+    if (deleteOutcome.deletedOwnerUserId != ownerUserId) {
+      // The primary row is already gone, so retain the durable marker for
+      // recovery instead of pretending that this was a pre-commit failure.
+      throw StateError('Committed conversation owner did not match cleanup.');
+    }
+
+    Object? cleanupError = deleteOutcome.cleanupError;
+    StackTrace? cleanupStackTrace = deleteOutcome.cleanupStackTrace;
+    try {
+      await recordStore.removeConversation(
+        ownerUserId: ownerUserId,
+        conversationId: c.id,
+      );
+    } catch (error, stackTrace) {
+      cleanupError = error;
+      cleanupStackTrace = stackTrace;
+    }
+    try {
+      await ref.read(conversationArchiveControllerProvider.notifier).remove(c);
+    } catch (error, stackTrace) {
+      cleanupError ??= error;
+      cleanupStackTrace ??= stackTrace;
+    }
     _invalidateConversationDetail(c.id);
     _invalidatePartnerScope(c.partnerId);
     _invalidateLegacyGlobal();
@@ -148,6 +242,12 @@ class ConversationWriteController extends Notifier<void> {
           .cancelForConversation(c.partnerId);
     } catch (e) {
       debugPrint('FollowUp cancel on delete failed: $e');
+    }
+    if (cleanupError != null) {
+      Error.throwWithStackTrace(
+        cleanupError,
+        cleanupStackTrace ?? StackTrace.current,
+      );
     }
   }
 

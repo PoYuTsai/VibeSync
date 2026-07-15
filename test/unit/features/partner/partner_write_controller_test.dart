@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/core/constants/app_constants.dart';
+import 'package:vibesync/features/analysis/data/providers/analysis_record_providers.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/coaching_memory/domain/entities/coaching_outcome_event.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
@@ -91,6 +92,35 @@ class _PartiallyFailingPartnerRepository extends PartnerRepository {
     firstMoved.partnerId = toId;
     await firstMoved.save();
     throw StateError('simulated partial merge failure');
+  }
+}
+
+class _CommittedThenThrowingPartnerRepository extends PartnerRepository {
+  _CommittedThenThrowingPartnerRepository({
+    required Box<Partner> box,
+    required Box<Conversation> conversationBox,
+  })  : _partnerBox = box,
+        _conversationBox = conversationBox,
+        super(box: box, conversationBox: conversationBox);
+
+  final Box<Partner> _partnerBox;
+  final Box<Conversation> _conversationBox;
+
+  @override
+  Future<void> merge({required String fromId, required String toId}) async {
+    for (final conversation
+        in _conversationBox.values.where((item) => item.partnerId == fromId)) {
+      conversation.partnerId = toId;
+      await conversation.save();
+    }
+    await _partnerBox.delete(fromId);
+    throw StateError('secondary merge cleanup failed');
+  }
+
+  @override
+  Future<void> delete(String partnerId) async {
+    await _partnerBox.delete(partnerId);
+    throw StateError('secondary delete cleanup failed');
   }
 }
 
@@ -342,6 +372,33 @@ void main() {
       );
     });
 
+    test('merge carries source met-via only when target has no value',
+        () async {
+      await _partnerBox.put('A', _partner('A', name: 'Alice'));
+      await _partnerBox.put('B', _partner('B', name: 'Bob'));
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final recordStore = container.read(analysisRecordStoreProvider);
+      await recordStore.setPartnerMetVia(
+        ownerUserId: 'u-1',
+        partnerId: 'A',
+        sourcePlatform: 'Omi',
+      );
+
+      await container
+          .read(partnerWriteControllerProvider.notifier)
+          .merge(fromId: 'A', toId: 'B');
+
+      expect(
+        recordStore.partnerMetVia(ownerUserId: 'u-1', partnerId: 'A'),
+        isNull,
+      );
+      expect(
+        recordStore.partnerMetVia(ownerUserId: 'u-1', partnerId: 'B'),
+        'Omi',
+      );
+    });
+
     test('merge throws ArgumentError when source missing', () async {
       await _partnerBox.put('B', _partner('B'));
       final container = await _makeContainer();
@@ -403,6 +460,47 @@ void main() {
       expect(container.read(conversationsByPartnerProvider('B')).length, 1,
           reason:
               'failure path must surface partial repo writes if they happen');
+    });
+
+    test('committed merge still carries met-via before surfacing cleanup error',
+        () async {
+      await _partnerBox.put('A', _partner('A'));
+      await _partnerBox.put('B', _partner('B'));
+      final container = ProviderContainer(overrides: [
+        conversationRepositoryProvider.overrideWithValue(_convoRepo),
+        partnerRepositoryProvider.overrideWithValue(
+          _CommittedThenThrowingPartnerRepository(
+            box: _partnerBox,
+            conversationBox: _convoBox,
+          ),
+        ),
+        authConversationScopeProvider
+            .overrideWith((ref) => Stream.value('u-1')),
+      ]);
+      await container.read(authConversationScopeProvider.future);
+      addTearDown(container.dispose);
+      final recordStore = container.read(analysisRecordStoreProvider);
+      await recordStore.setPartnerMetVia(
+        ownerUserId: 'u-1',
+        partnerId: 'A',
+        sourcePlatform: 'Omi',
+      );
+
+      await expectLater(
+        container
+            .read(partnerWriteControllerProvider.notifier)
+            .merge(fromId: 'A', toId: 'B'),
+        throwsStateError,
+      );
+
+      expect(
+        recordStore.partnerMetVia(ownerUserId: 'u-1', partnerId: 'A'),
+        isNull,
+      );
+      expect(
+        recordStore.partnerMetVia(ownerUserId: 'u-1', partnerId: 'B'),
+        'Omi',
+      );
     });
   });
 
@@ -493,6 +591,63 @@ void main() {
           reason: 'failure path must still invalidate conversation scope');
       expect(container.read(partnerByIdProvider('A')), isNotNull,
           reason: 'A still in box because delete threw before _box.delete');
+    });
+
+    test('successful delete removes owner-scoped met-via metadata', () async {
+      final partner = _partner('A', name: 'Alice');
+      await _partnerBox.put('A', partner);
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final recordStore = container.read(analysisRecordStoreProvider);
+      await recordStore.setPartnerMetVia(
+        ownerUserId: 'u-1',
+        partnerId: 'A',
+        sourcePlatform: 'Threads',
+      );
+
+      await container
+          .read(partnerWriteControllerProvider.notifier)
+          .delete(partner);
+
+      expect(
+        recordStore.partnerMetVia(ownerUserId: 'u-1', partnerId: 'A'),
+        isNull,
+      );
+    });
+
+    test('committed delete removes met-via before surfacing cleanup error',
+        () async {
+      final partner = _partner('A', name: 'Alice');
+      await _partnerBox.put('A', partner);
+      final container = ProviderContainer(overrides: [
+        conversationRepositoryProvider.overrideWithValue(_convoRepo),
+        partnerRepositoryProvider.overrideWithValue(
+          _CommittedThenThrowingPartnerRepository(
+            box: _partnerBox,
+            conversationBox: _convoBox,
+          ),
+        ),
+        authConversationScopeProvider
+            .overrideWith((ref) => Stream.value('u-1')),
+      ]);
+      await container.read(authConversationScopeProvider.future);
+      addTearDown(container.dispose);
+      final recordStore = container.read(analysisRecordStoreProvider);
+      await recordStore.setPartnerMetVia(
+        ownerUserId: 'u-1',
+        partnerId: 'A',
+        sourcePlatform: 'Threads',
+      );
+
+      await expectLater(
+        container.read(partnerWriteControllerProvider.notifier).delete(partner),
+        throwsStateError,
+      );
+
+      expect(
+        recordStore.partnerMetVia(ownerUserId: 'u-1', partnerId: 'A'),
+        isNull,
+      );
     });
   });
 

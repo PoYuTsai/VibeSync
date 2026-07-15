@@ -80,6 +80,7 @@ class _FakeAnalysisService extends AnalysisService {
   Completer<void>? streamStartGate;
   Completer<void>? fullGate;
   List<AnalysisStreamContent> streamContents = const [];
+  bool emitRunIdOnlyOnDone = false;
 
   int streamCallCount = 0;
   int recommendationPreviewCallCount = 0;
@@ -143,8 +144,8 @@ class _FakeAnalysisService extends AnalysisService {
     lastStreamRunId = analysisRunId;
     capturedStreamMessages = List<Message>.from(messages);
     if (streamStartGate != null) await streamStartGate!.future;
-    yield const AnalysisStreamUpdate.started(
-      runId: 'stream-run',
+    yield AnalysisStreamUpdate.started(
+      runId: emitRunIdOnlyOnDone ? null : 'stream-run',
       label: 'starting stream',
     );
     for (final content in streamContents) {
@@ -168,7 +169,9 @@ class _FakeAnalysisService extends AnalysisService {
     if (fullResult != null) {
       yield AnalysisStreamUpdate.done(
         result: fullResult!,
-        runId: recommendationPreviewResult?.analysisRunId ?? 'stream-run',
+        runId: emitRunIdOnlyOnDone
+            ? 'done-only-run'
+            : recommendationPreviewResult?.analysisRunId ?? 'stream-run',
       );
     }
   }
@@ -213,6 +216,7 @@ void main() {
 
       final startFuture = notifier.start(
         messages: [_msg('hi')],
+        previousAnalyzedCount: 2,
         conversationMessageCount: 3,
         conversationContentRevision: 'revision-happy',
       );
@@ -226,6 +230,7 @@ void main() {
       expect(afterQuick.recommendationPreview?.analysisRunId, 'run_happy');
       expect(afterQuick.analysisRunId, 'run_happy');
       expect(afterQuick.conversationMessageCount, 3);
+      expect(afterQuick.previousAnalyzedCount, 2);
       expect(afterQuick.conversationContentRevision, 'revision-happy');
 
       fake.fullGate!.complete();
@@ -234,6 +239,7 @@ void main() {
       final afterFull = container.read(streamingAnalyzeProvider('conv-1'));
       expect(afterFull.phase, StreamingAnalyzePhase.done);
       expect(afterFull.conversationMessageCount, 3);
+      expect(afterFull.previousAnalyzedCount, 2);
       expect(afterFull.conversationContentRevision, 'revision-happy');
       expect(afterFull.full?.strategy, '保持沉穩');
 
@@ -252,6 +258,23 @@ void main() {
       expect(fake.capturedStreamMessages?.map((m) => m.content).toList(), [
         'hi',
       ]);
+    });
+
+    test('done event preserves a run id not emitted by earlier events',
+        () async {
+      final fake = _FakeAnalysisService()
+        ..emitRunIdOnlyOnDone = true
+        ..fullResult = _full();
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      await container.read(streamingAnalyzeProvider('conv-1').notifier).start(
+        messages: [_msg('hi')],
+      );
+
+      final state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.phase, StreamingAnalyzePhase.done);
+      expect(state.analysisRunId, 'done-only-run');
     });
   });
 
@@ -273,6 +296,7 @@ void main() {
 
       await notifier.start(
         messages: [_msg('hi')],
+        previousAnalyzedCount: 2,
         conversationContentRevision: 'revision-failure',
       );
 
@@ -281,6 +305,7 @@ void main() {
       expect(state.recommendationPreview, isNull);
       expect(state.recommendationPreviewErrorMessage, '網路忙線');
       expect(state.recommendationPreviewErrorCode, 'NETWORK_ERROR');
+      expect(state.previousAnalyzedCount, 2);
       expect(state.conversationContentRevision, 'revision-failure');
       expect(fake.fullCallCount, 0);
     });
@@ -370,6 +395,7 @@ void main() {
 
       await notifier.start(
         messages: [_msg('hi')],
+        previousAnalyzedCount: 1,
         conversationContentRevision: 'revision-retry',
       );
       expect(fake.streamCallCount, 1);
@@ -389,6 +415,7 @@ void main() {
 
       final state = container.read(streamingAnalyzeProvider('conv-1'));
       expect(state.phase, StreamingAnalyzePhase.done);
+      expect(state.previousAnalyzedCount, 1);
       expect(state.conversationContentRevision, 'revision-retry');
     });
 
@@ -636,6 +663,7 @@ void main() {
         fullErrorMessage: 'keep me',
         fullErrorCode: 'KEEP',
         retriesRemaining: 2,
+        previousAnalyzedCount: 4,
         conversationContentRevision: 'revision-copy',
       );
 
@@ -646,6 +674,7 @@ void main() {
       expect(preserved.fullErrorMessage, 'keep me');
       expect(preserved.fullErrorCode, 'KEEP');
       expect(preserved.retriesRemaining, 2);
+      expect(preserved.previousAnalyzedCount, 4);
       expect(preserved.conversationContentRevision, 'revision-copy');
     });
   });
@@ -905,13 +934,17 @@ void main() {
       final notifier =
           container.read(streamingAnalyzeProvider('conv-1').notifier);
 
-      final startFuture = notifier.start(messages: [_msg('hi')]);
+      final startFuture = notifier.start(
+        messages: [_msg('hi')],
+        previousAnalyzedCount: 3,
+      );
 
       await Future<void>.delayed(Duration.zero);
       await Future<void>.delayed(Duration.zero);
 
       final waiting = container.read(streamingAnalyzeProvider('conv-1'));
       expect(waiting.phase, StreamingAnalyzePhase.connecting);
+      expect(waiting.previousAnalyzedCount, 3);
       expect(waiting.streamProgressLabel, '正在送出完整分析請求');
       expect(waiting.streamProgressDetail, '正在把最新對話與脈絡送到分析端。');
 
@@ -920,6 +953,7 @@ void main() {
 
       final done = container.read(streamingAnalyzeProvider('conv-1'));
       expect(done.phase, StreamingAnalyzePhase.done);
+      expect(done.previousAnalyzedCount, 3);
     });
 
     test('accumulates structured content while full stream is running',

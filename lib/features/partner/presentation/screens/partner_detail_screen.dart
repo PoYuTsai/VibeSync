@@ -364,7 +364,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              '尚未分析完成或後來補過新訊息的對話會留在這裡；分析完成後自動收進分析紀錄。',
+              '尚未分析完成或後來補過新訊息的對話會留在這裡；分析完成後自動收起。',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.onBackgroundSecondary,
                 height: 1.35,
@@ -407,7 +407,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
             '/partner/${widget.partnerId}/analysis-archive',
           ),
           icon: const Icon(Icons.inventory_2_outlined),
-          label: Text('分析紀錄 (${sections.archived.length})'),
+          label: Text('已收起的對話 (${sections.archived.length})'),
         ),
     ];
   }

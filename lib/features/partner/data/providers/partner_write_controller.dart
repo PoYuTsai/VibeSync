@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../analysis/data/providers/analysis_record_providers.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/data/providers/partner_style_providers.dart';
@@ -29,12 +30,44 @@ class PartnerWriteController extends Notifier<void> {
   }) async {
     if (fromId == toId) return;
     final repo = ref.read(partnerRepositoryProvider);
+    final ownerUserId = ref.read(analysisRecordOwnerProvider)?.trim();
+    final fromOwner = repo.getById(fromId)?.ownerUserId?.trim();
+    final toOwner = repo.getById(toId)?.ownerUserId?.trim();
+    final canMovePrivateMetadata = ownerUserId != null &&
+        ownerUserId.isNotEmpty &&
+        fromOwner == ownerUserId &&
+        toOwner == ownerUserId;
+    Object? operationError;
+    StackTrace? operationStackTrace;
     try {
       await repo.merge(fromId: fromId, toId: toId);
+    } catch (error, stackTrace) {
+      operationError = error;
+      operationStackTrace = stackTrace;
+    }
+    try {
+      final primaryMergeCommitted =
+          repo.getById(fromId) == null && repo.getById(toId) != null;
+      if (canMovePrivateMetadata && primaryMergeCommitted) {
+        await ref.read(analysisRecordStoreProvider).mergePartnerMetadata(
+              ownerUserId: ownerUserId,
+              fromPartnerId: fromId,
+              toPartnerId: toId,
+            );
+      }
+    } catch (error, stackTrace) {
+      operationError ??= error;
+      operationStackTrace ??= stackTrace;
     } finally {
       // Repo merge is multi-step Hive I/O. If it throws after a partial write,
       // invalidate anyway so the UI reflects the real local state.
       _invalidateMergeScopes(fromId, toId);
+    }
+    if (operationError != null) {
+      Error.throwWithStackTrace(
+        operationError,
+        operationStackTrace ?? StackTrace.current,
+      );
     }
   }
 
@@ -46,10 +79,36 @@ class PartnerWriteController extends Notifier<void> {
   /// guaranteed unchanged.
   Future<void> delete(Partner partner) async {
     final repo = ref.read(partnerRepositoryProvider);
+    final ownerUserId = ref.read(analysisRecordOwnerProvider)?.trim();
+    final canRemovePrivateMetadata = ownerUserId != null &&
+        ownerUserId.isNotEmpty &&
+        partner.ownerUserId?.trim() == ownerUserId;
+    Object? operationError;
+    StackTrace? operationStackTrace;
     try {
       await repo.delete(partner.id);
+    } catch (error, stackTrace) {
+      operationError = error;
+      operationStackTrace = stackTrace;
+    }
+    try {
+      if (canRemovePrivateMetadata && repo.getById(partner.id) == null) {
+        await ref.read(analysisRecordStoreProvider).removePartnerMetadata(
+              ownerUserId: ownerUserId,
+              partnerId: partner.id,
+            );
+      }
+    } catch (error, stackTrace) {
+      operationError ??= error;
+      operationStackTrace ??= stackTrace;
     } finally {
       _invalidateDeleteScopes(partner.id);
+    }
+    if (operationError != null) {
+      Error.throwWithStackTrace(
+        operationError,
+        operationStackTrace ?? StackTrace.current,
+      );
     }
   }
 

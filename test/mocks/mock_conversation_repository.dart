@@ -1,6 +1,7 @@
 // test/mocks/mock_conversation_repository.dart
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
+import 'package:vibesync/features/conversation/data/repositories/conversation_repository.dart';
 
 /// In-memory mock of ConversationRepository for testing
 class MockConversationRepository {
@@ -42,8 +43,14 @@ class MockConversationRepository {
     _conversations[conversation.id] = conversation;
   }
 
-  Future<void> deleteConversation(String id) async {
-    _conversations.remove(id);
+  Future<ConversationDeleteOutcome> deleteConversation(String id) async {
+    final removed = _conversations.remove(id);
+    return removed == null
+        ? const ConversationDeleteOutcome.notFound()
+        : ConversationDeleteOutcome(
+            deleted: true,
+            deletedOwnerUserId: removed.ownerUserId,
+          );
   }
 
   List<Message> parseMessages(String text) {

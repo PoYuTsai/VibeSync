@@ -29,8 +29,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-        coachingOutcomeRepositoryProvider.overrideWithValue(
-            MemoryCoachingOutcomeRepository()),
+            coachingOutcomeRepositoryProvider
+                .overrideWithValue(MemoryCoachingOutcomeRepository()),
             conversationProvider('test-123')
                 .overrideWithValue(testConversation),
           ],
@@ -42,6 +42,14 @@ void main() {
 
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.text('開始分析'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('analysis-records-entry')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('analysis-source-pill')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('shows back button', (tester) async {
@@ -56,8 +64,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-        coachingOutcomeRepositoryProvider.overrideWithValue(
-            MemoryCoachingOutcomeRepository()),
+            coachingOutcomeRepositoryProvider
+                .overrideWithValue(MemoryCoachingOutcomeRepository()),
             conversationProvider('test-123')
                 .overrideWithValue(testConversation),
           ],
@@ -82,8 +90,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-        coachingOutcomeRepositoryProvider.overrideWithValue(
-            MemoryCoachingOutcomeRepository()),
+            coachingOutcomeRepositoryProvider
+                .overrideWithValue(MemoryCoachingOutcomeRepository()),
             conversationProvider('test-123')
                 .overrideWithValue(testConversation),
           ],
@@ -101,8 +109,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-        coachingOutcomeRepositoryProvider.overrideWithValue(
-            MemoryCoachingOutcomeRepository()),
+            coachingOutcomeRepositoryProvider
+                .overrideWithValue(MemoryCoachingOutcomeRepository()),
             conversationProvider('non-existent').overrideWithValue(null),
           ],
           child: const MaterialApp(
@@ -133,8 +141,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-        coachingOutcomeRepositoryProvider.overrideWithValue(
-            MemoryCoachingOutcomeRepository()),
+            coachingOutcomeRepositoryProvider
+                .overrideWithValue(MemoryCoachingOutcomeRepository()),
             conversationProvider('test-123')
                 .overrideWithValue(testConversation),
           ],

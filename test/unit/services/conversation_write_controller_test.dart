@@ -12,6 +12,7 @@ import 'package:vibesync/features/conversation/domain/entities/conversation_summ
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
+import 'package:vibesync/features/analysis/data/providers/analysis_record_providers.dart';
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
@@ -33,6 +34,8 @@ class _FakeConversationRepository extends ConversationRepository {
   int _idCounter = 0;
   Object? throwOnUpdate;
   void Function(Conversation)? onUpdate;
+  Future<void> Function()? onDelete;
+  Object? deleteCleanupError;
 
   @override
   Future<Conversation> createConversation({
@@ -61,8 +64,16 @@ class _FakeConversationRepository extends ConversationRepository {
   }
 
   @override
-  Future<void> deleteConversation(String id) async {
-    store.remove(id);
+  Future<ConversationDeleteOutcome> deleteConversation(String id) async {
+    final removed = store.remove(id);
+    if (removed == null) return const ConversationDeleteOutcome.notFound();
+    await onDelete?.call();
+    return ConversationDeleteOutcome(
+      deleted: true,
+      deletedOwnerUserId: removed.ownerUserId,
+      cleanupError: deleteCleanupError,
+      cleanupStackTrace: deleteCleanupError == null ? null : StackTrace.current,
+    );
   }
 
   @override
@@ -125,13 +136,15 @@ late Box<Partner> partnerBox;
 late _FakeConversationRepository _fakeRepo;
 late _MemoryConversationArchiveStore _archiveStore;
 
-Future<ProviderContainer> _makeContainer() async {
+Future<ProviderContainer> _makeContainer({String? ownerUserId = 'u-1'}) async {
   final container = ProviderContainer(overrides: [
     conversationRepositoryProvider.overrideWithValue(_fakeRepo),
     conversationArchiveStoreProvider.overrideWithValue(_archiveStore),
+    analysisRecordOwnerProvider.overrideWithValue(ownerUserId),
     partnerRepositoryProvider
         .overrideWithValue(PartnerRepository(box: partnerBox)),
-    authConversationScopeProvider.overrideWith((ref) => Stream.value('u-1')),
+    authConversationScopeProvider
+        .overrideWith((ref) => Stream.value(ownerUserId)),
   ]);
   // Settle the StreamProvider loading→data transition before any partner
   // read, so the auth state change doesn't invalidate downstream providers
@@ -204,12 +217,14 @@ void main() {
     // but opening it keeps StorageService.conversationsBox happy if any
     // provider chain reaches it.
     await Hive.openBox<Conversation>(AppConstants.conversationsBox);
+    await Hive.openBox<dynamic>(AppConstants.settingsBox);
   });
 
   tearDown(() async {
     await partnerBox.deleteFromDisk();
     await Hive.box<Conversation>(AppConstants.conversationsBox)
         .deleteFromDisk();
+    await Hive.box<dynamic>(AppConstants.settingsBox).deleteFromDisk();
   });
 
   group('partnerListProvider', () {
@@ -749,6 +764,337 @@ void main() {
           .delete(conversation);
 
       expect(_archiveStore.entryFor(conversation), isNull);
+    });
+
+    test('removes current and archived independent analysis records', () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final conversation = _convo('delete-private-records', partnerId: 'p-X')
+        ..messages = [
+          Message(
+            id: 'm1',
+            content: '第一段',
+            isFromMe: false,
+            timestamp: DateTime.utc(2026, 7, 15, 10),
+          ),
+        ];
+      _fakeRepo.store[conversation.id] = conversation;
+      final recordStore = container.read(analysisRecordStoreProvider);
+      await recordStore.saveSuccessfulAnalysis(
+        ownerUserId: 'u-1',
+        conversation: conversation,
+        completionKey: 'run-1',
+        runStartPreviousCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: conversationContentRevision(conversation),
+        analysisSnapshotJson: '{}',
+        enthusiasmScore: 60,
+        gameStageLabel: 'opening',
+      );
+      conversation.messages.add(
+        Message(
+          id: 'm2',
+          content: '第二段',
+          isFromMe: true,
+          timestamp: DateTime.utc(2026, 7, 15, 10, 1),
+        ),
+      );
+      await recordStore.saveSuccessfulAnalysis(
+        ownerUserId: 'u-1',
+        conversation: conversation,
+        completionKey: 'run-2',
+        runStartPreviousCount: 1,
+        analyzedMessageCount: 2,
+        analyzedContentRevision: conversationContentRevision(conversation),
+        analysisSnapshotJson: '{}',
+        enthusiasmScore: 62,
+        gameStageLabel: 'opening',
+      );
+      expect(
+        recordStore.listArchived(
+          ownerUserId: 'u-1',
+          conversationIds: [conversation.id],
+        ),
+        hasLength(1),
+      );
+
+      await container
+          .read(conversationWriteControllerProvider.notifier)
+          .delete(conversation);
+
+      expect(
+        recordStore.currentFor(
+          ownerUserId: 'u-1',
+          conversationId: conversation.id,
+        ),
+        isNull,
+      );
+      expect(
+        recordStore.listArchived(
+          ownerUserId: 'u-1',
+          conversationIds: [conversation.id],
+        ),
+        isEmpty,
+      );
+    });
+
+    test('expired session cannot erase a still-live conversation record',
+        () async {
+      final container = await _makeContainer(ownerUserId: null);
+      addTearDown(container.dispose);
+      final conversation = _convo('expired-delete', partnerId: 'p-X')
+        ..messages = [
+          Message(
+            id: 'm-expired',
+            content: '私密分析',
+            isFromMe: false,
+            timestamp: DateTime.utc(2026, 7, 15),
+          ),
+        ];
+      _fakeRepo.store[conversation.id] = conversation;
+      final recordStore = container.read(analysisRecordStoreProvider);
+      await recordStore.saveSuccessfulAnalysis(
+        ownerUserId: 'u-1',
+        conversation: conversation,
+        completionKey: 'expired-run',
+        runStartPreviousCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: conversationContentRevision(conversation),
+        analysisSnapshotJson: '{}',
+        enthusiasmScore: 50,
+        gameStageLabel: 'opening',
+      );
+
+      await expectLater(
+        container
+            .read(conversationWriteControllerProvider.notifier)
+            .delete(conversation),
+        throwsStateError,
+      );
+
+      expect(_fakeRepo.store.containsKey(conversation.id), isTrue);
+      expect(
+        recordStore.currentFor(
+          ownerUserId: 'u-1',
+          conversationId: conversation.id,
+        ),
+        isNotNull,
+      );
+    });
+
+    test('active user cannot cascade-delete another owner record', () async {
+      final container = await _makeContainer(ownerUserId: 'u-1');
+      addTearDown(container.dispose);
+      final conversation = _convo('owner-mismatch', partnerId: 'p-X')
+        ..ownerUserId = 'u-2'
+        ..messages = [
+          Message(
+            id: 'm-other-owner',
+            content: '另一個帳號的私密分析',
+            isFromMe: false,
+            timestamp: DateTime.utc(2026, 7, 15),
+          ),
+        ];
+      _fakeRepo.store[conversation.id] = conversation;
+      final recordStore = container.read(analysisRecordStoreProvider);
+      await recordStore.saveSuccessfulAnalysis(
+        ownerUserId: 'u-2',
+        conversation: conversation,
+        completionKey: 'other-owner-run',
+        runStartPreviousCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: conversationContentRevision(conversation),
+        analysisSnapshotJson: '{}',
+        enthusiasmScore: 50,
+        gameStageLabel: 'opening',
+      );
+
+      await expectLater(
+        container
+            .read(conversationWriteControllerProvider.notifier)
+            .delete(conversation),
+        throwsStateError,
+      );
+
+      expect(_fakeRepo.store.containsKey(conversation.id), isTrue);
+      expect(
+        recordStore.currentFor(
+          ownerUserId: 'u-2',
+          conversationId: conversation.id,
+        ),
+        isNotNull,
+      );
+    });
+
+    test('repository no-op cancels cleanup marker and preserves records',
+        () async {
+      final container = await _makeContainer(ownerUserId: 'u-1');
+      addTearDown(container.dispose);
+      final conversation = _convo('repo-no-op', partnerId: 'p-X')
+        ..messages = [
+          Message(
+            id: 'm-no-op',
+            content: '主對話已不可刪時仍須保留',
+            isFromMe: false,
+            timestamp: DateTime.utc(2026, 7, 15),
+          ),
+        ];
+      final recordStore = container.read(analysisRecordStoreProvider);
+      await recordStore.saveSuccessfulAnalysis(
+        ownerUserId: 'u-1',
+        conversation: conversation,
+        completionKey: 'repo-no-op-run',
+        runStartPreviousCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: conversationContentRevision(conversation),
+        analysisSnapshotJson: '{}',
+        enthusiasmScore: 50,
+        gameStageLabel: 'opening',
+      );
+      // Deliberately do not insert the conversation into _fakeRepo: the
+      // repository must report that no authoritative delete was committed.
+      await expectLater(
+        container
+            .read(conversationWriteControllerProvider.notifier)
+            .delete(conversation),
+        throwsStateError,
+      );
+
+      expect(
+        recordStore.currentFor(
+          ownerUserId: 'u-1',
+          conversationId: conversation.id,
+        ),
+        isNotNull,
+      );
+      expect(
+        recordStore.hasPendingConversationRemovals(ownerUserId: 'u-1'),
+        isFalse,
+      );
+    });
+
+    test('post-commit repository cleanup error still finishes private cascades',
+        () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final conversation = _convo('coach-cleanup-failed', partnerId: 'p-X')
+        ..messages = [
+          Message(
+            id: 'm-coach-cleanup',
+            content: '保留到刪除完成的私密分析',
+            isFromMe: false,
+            timestamp: DateTime.utc(2026, 7, 15),
+          ),
+        ];
+      _fakeRepo.store[conversation.id] = conversation;
+      await _archiveStore.markArchived(
+        conversation,
+        archivedAt: DateTime.utc(2026, 7, 15),
+      );
+      final recordStore = container.read(analysisRecordStoreProvider);
+      await recordStore.saveSuccessfulAnalysis(
+        ownerUserId: 'u-1',
+        conversation: conversation,
+        completionKey: 'coach-cleanup-run',
+        runStartPreviousCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: conversationContentRevision(conversation),
+        analysisSnapshotJson: '{}',
+        enthusiasmScore: 50,
+        gameStageLabel: 'opening',
+      );
+      _fakeRepo.deleteCleanupError = StateError('coach cleanup failed');
+
+      await expectLater(
+        container
+            .read(conversationWriteControllerProvider.notifier)
+            .delete(conversation),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            'coach cleanup failed',
+          ),
+        ),
+      );
+
+      expect(_fakeRepo.store.containsKey(conversation.id), isFalse);
+      expect(_archiveStore.entryFor(conversation), isNull);
+      expect(
+        recordStore.currentFor(
+          ownerUserId: 'u-1',
+          conversationId: conversation.id,
+        ),
+        isNull,
+      );
+      expect(
+        recordStore.hasPendingConversationRemovals(ownerUserId: 'u-1'),
+        isFalse,
+      );
+    });
+
+    test('cleanup failure keeps a durable marker and recovery finishes later',
+        () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final conversation = _convo('retry-private-cleanup', partnerId: 'p-X')
+        ..messages = [
+          Message(
+            id: 'm-retry',
+            content: '需要稍後清理的私密分析',
+            isFromMe: false,
+            timestamp: DateTime.utc(2026, 7, 15),
+          ),
+        ];
+      _fakeRepo.store[conversation.id] = conversation;
+      await _archiveStore.markArchived(
+        conversation,
+        archivedAt: DateTime.utc(2026, 7, 15),
+      );
+      final recordStore = container.read(analysisRecordStoreProvider);
+      await recordStore.saveSuccessfulAnalysis(
+        ownerUserId: 'u-1',
+        conversation: conversation,
+        completionKey: 'cleanup-retry-run',
+        runStartPreviousCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: conversationContentRevision(conversation),
+        analysisSnapshotJson: '{}',
+        enthusiasmScore: 50,
+        gameStageLabel: 'opening',
+      );
+      _fakeRepo.onDelete = () async {
+        await Hive.box<dynamic>(AppConstants.settingsBox).close();
+      };
+
+      await expectLater(
+        container
+            .read(conversationWriteControllerProvider.notifier)
+            .delete(conversation),
+        throwsA(anything),
+      );
+
+      expect(_fakeRepo.store.containsKey(conversation.id), isFalse);
+      expect(_archiveStore.entryFor(conversation), isNull);
+      final reopened = await Hive.openBox<dynamic>(AppConstants.settingsBox);
+      final cleanupKey = 'analysis_record_cleanup_v1:u-1:${conversation.id}';
+      expect(reopened.containsKey(cleanupKey), isTrue);
+
+      expect(
+        await recordStore.recoverPendingConversationRemovals(
+          ownerUserId: 'u-1',
+          liveConversationIds: const [],
+        ),
+        1,
+      );
+      expect(reopened.containsKey(cleanupKey), isFalse);
+      expect(
+        recordStore.currentFor(
+          ownerUserId: 'u-1',
+          conversationId: conversation.id,
+        ),
+        isNull,
+      );
     });
 
     test('removes from repo and aggregate(X) reflects removal', () async {

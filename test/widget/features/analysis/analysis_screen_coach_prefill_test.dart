@@ -48,7 +48,13 @@ class _StubCoachChatRepository implements CoachChatRepository {
   }
 
   @override
-  Future<void> deleteConversation(String conversationId) async {}
+  Future<ConversationDeleteOutcome> deleteConversation(
+    String conversationId,
+  ) async =>
+      const ConversationDeleteOutcome(
+        deleted: true,
+        deletedOwnerUserId: 'stub-owner',
+      );
 
   @override
   Future<void> clearAll() async {}
@@ -122,8 +128,8 @@ Future<_StubCoachChatRepository> _pumpScreen(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        coachingOutcomeRepositoryProvider.overrideWithValue(
-            MemoryCoachingOutcomeRepository()),
+        coachingOutcomeRepositoryProvider
+            .overrideWithValue(MemoryCoachingOutcomeRepository()),
         conversationRepositoryProvider
             .overrideWithValue(_StubConversationRepository(conversation)),
         conversationProvider(_conversationId).overrideWithValue(conversation),
@@ -174,8 +180,7 @@ void main() {
       expect(coachRepo.putCalls, 0);
     });
 
-    testWidgets('未帶 coachPrefillQuestion → 輸入框維持空白（既有行為不變）',
-        (tester) async {
+    testWidgets('未帶 coachPrefillQuestion → 輸入框維持空白（既有行為不變）', (tester) async {
       await _pumpScreen(
         tester,
         conversation: _conversation(snapshotJson: _analyzedSnapshotJson()),

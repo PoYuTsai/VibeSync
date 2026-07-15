@@ -3,6 +3,7 @@
 // lib/features/analysis/presentation/screens/analysis_screen.dart
 import 'dart:async';
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -41,6 +42,7 @@ import '../../../follow_up_notification/data/providers/follow_up_notification_se
 import '../../../follow_up_notification/domain/follow_up_opt_in.dart';
 import '../../../follow_up_notification/presentation/soft_opt_in_card.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
+import '../../data/providers/analysis_record_providers.dart';
 import '../../data/providers/analysis_providers.dart';
 import '../../../conversation/data/services/memory_service.dart';
 import '../../../conversation/domain/entities/conversation.dart';
@@ -56,8 +58,11 @@ import '../../data/services/analysis_service.dart';
 import '../../data/services/analysis_telemetry_guardrail_helper.dart';
 import '../../domain/coach/coach_action_policy.dart';
 import '../../domain/entities/analysis_models.dart';
+import '../../domain/entities/analysis_record.dart';
 import '../../domain/entities/game_stage.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
+import '../screens/partner_analysis_records_screen.dart';
+import '../widgets/analysis_platform_picker.dart';
 import '../widgets/reply_style_card.dart';
 import '../widgets/screenshot_added_feedback_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
@@ -95,6 +100,11 @@ class AnalysisScreen extends ConsumerStatefulWidget {
 enum _AnalysisErrorOrigin {
   analysis,
   recognition,
+}
+
+enum _AnalysisAppBarAction {
+  profile,
+  export,
 }
 
 class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
@@ -168,6 +178,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   String? _streamProgressDetail;
   List<AnalysisStreamContent> _streamContents = const [];
   int? _activeAnalysisMessageCount;
+  int _analysisPersistenceInFlight = 0;
+  bool _analysisRecordNeedsRepair = false;
+  Future<void>? _analysisRecordRepairFuture;
   Map<String, dynamic>? _lastAiResponse; // 儲存最後的 AI 回應
 
   /// 批2：本輪分析結果的 outcome 關聯鍵。AnalysisResult 無穩定 id
@@ -185,7 +198,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   final _messageFocusNode = FocusNode();
   final _messageInputKey = GlobalKey();
   final _coachChatCardKey = GlobalKey();
-  bool _showAllMessages = false;
   String? _lastManualAddedMessageId;
   String? _lastManualAddedContent;
   bool? _lastManualAddedIsFromMe;
@@ -689,14 +701,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _messageFocusNode.addListener(_handleMessageInputFocus);
     _screenshotAnalysisContextNoteController
         .addListener(_refreshScreenshotAnalysisSettingsSummary);
-    _restorePersistedAnalysis();
+    final initialState =
+        ref.read(streamingAnalyzeProvider(widget.conversationId));
+    _restorePersistedAnalysis(
+      repairRecord: initialState.phase != StreamingAnalyzePhase.done,
+    );
     // If the provider is already mid-analyze on remount, the snapshot we just
     // restored is from a *previous* completed run. Clear the detailed mirrors
     // synchronously so the first frame does not flash the old detailed
     // analysis on top of the new run's streaming loader / retry state.
     // (I-P1-c, Codex round-2).
-    final initialState =
-        ref.read(streamingAnalyzeProvider(widget.conversationId));
     if (_isStreamingAnalyzePartialPhase(initialState.phase) ||
         _isStreamingAnalyzeResultStaleForCurrentConversation(initialState)) {
       _clearDetailedAnalysisStateForStreamingAnalyzePartial();
@@ -824,6 +838,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         // short-circuits to avoid double-writes (I-P2-e/f, Codex round-2).
         _maybePersistAndSyncOnHydrate(
           result,
+          completionKey: s.analysisRunId,
+          previousAnalyzedCount: s.previousAnalyzedCount,
           analyzedMessageCount: s.analyzedMessageCount,
           analyzedContentRevision: s.conversationContentRevision,
         );
@@ -888,6 +904,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// but the snapshot + usage were never written.
   void _maybePersistAndSyncOnHydrate(
     AnalysisResult result, {
+    String? completionKey,
+    int? previousAnalyzedCount,
     int? analyzedMessageCount,
     String? analyzedContentRevision,
   }) {
@@ -904,6 +922,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       analyzedContentRevision: analyzedContentRevision,
     );
     if (alreadyPersisted) {
+      _analysisRecordRepairFuture = _repairAnalysisRecord(
+        conversation: conv,
+        result: result,
+        completionKey: completionKey,
+        previousAnalyzedCount: previousAnalyzedCount,
+        analyzedMessageCount: expectedAnalyzedCount,
+        analyzedContentRevision: analyzedContentRevision,
+      );
       return;
     }
 
@@ -914,6 +940,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
     _persistLatestAnalysisSnapshot(
       result,
+      completionKey: completionKey,
+      previousAnalyzedCount: previousAnalyzedCount,
       analyzedMessageCount: expectedAnalyzedCount,
       analyzedContentRevision: analyzedContentRevision,
     ).catchError((_) {
@@ -1198,6 +1226,264 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return _pendingMessages(conversation).any((message) => !message.isFromMe);
   }
 
+  String? _analysisRecordOwner(Conversation conversation) {
+    final currentUserId = ref.read(analysisRecordOwnerProvider)?.trim();
+    if (currentUserId == null || currentUserId.isEmpty) return null;
+    final conversationOwner = conversation.ownerUserId?.trim();
+    if (conversationOwner != null &&
+        conversationOwner.isNotEmpty &&
+        conversationOwner != currentUserId) {
+      return null;
+    }
+    return currentUserId;
+  }
+
+  AnalysisRecord? _currentAnalysisRecord(Conversation conversation) {
+    final ownerUserId = _analysisRecordOwner(conversation);
+    if (ownerUserId == null) return null;
+    return ref.read(analysisRecordStoreProvider).currentFor(
+          ownerUserId: ownerUserId,
+          conversationId: conversation.id,
+        );
+  }
+
+  List<Message> _analysisFragmentMessages(Conversation conversation) {
+    if (conversation.messages.isEmpty) return const <Message>[];
+
+    final completed = _effectiveLastAnalyzedMessageCount(conversation)
+        .clamp(0, conversation.messages.length)
+        .toInt();
+    final active = _activeAnalysisMessageCount;
+    if (active != null &&
+        active > completed &&
+        active <= conversation.messages.length) {
+      // A message can be appended while the stream is running. Keep every
+      // pending message visible; the stale-result guard will prevent the
+      // older in-flight result from being persisted as this fragment.
+      return conversation.messages.sublist(completed);
+    }
+
+    if (conversation.messages.length > completed) {
+      return conversation.messages.sublist(completed);
+    }
+
+    final current = _currentAnalysisRecord(conversation);
+    final streamingState =
+        ref.read(streamingAnalyzeProvider(widget.conversationId));
+    final streamTarget = streamingState.analyzedMessageCount;
+    final streamCompletionKey = streamingState.analysisRunId?.trim();
+    if (streamingState.phase == StreamingAnalyzePhase.done &&
+        streamTarget != null &&
+        streamTarget > 0 &&
+        streamTarget <= conversation.messages.length &&
+        (current == null ||
+            streamCompletionKey == null ||
+            current.completionKey != streamCompletionKey)) {
+      final previous = streamingState.previousAnalyzedCount ?? 0;
+      final start = current != null && streamTarget <= previous
+          ? current.segmentStart
+          : previous;
+      if (start >= 0 && start < streamTarget) {
+        return conversation.messages.sublist(start, streamTarget);
+      }
+    }
+
+    if (current != null &&
+        current.segmentEnd >= 0 &&
+        current.segmentEnd < completed) {
+      // Canonical snapshot persistence may win while the independent record
+      // write is still retrying. On a cold idle restore, show the canonical
+      // newer fragment (the exact range repair will create), not the stale
+      // current record beside newer analysis cards.
+      return conversation.messages.sublist(current.segmentEnd, completed);
+    }
+
+    if (current != null &&
+        current.segmentStart >= 0 &&
+        current.segmentStart < current.segmentEnd &&
+        current.segmentEnd <= conversation.messages.length) {
+      // Use the live message instances so an edit is visible immediately;
+      // the archived record itself remains an immutable deep copy.
+      return conversation.messages.sublist(
+        current.segmentStart,
+        current.segmentEnd,
+      );
+    }
+
+    final legacyEnd = conversation.lastAnalyzedMessageCount;
+    if (legacyEnd != null &&
+        legacyEnd > 0 &&
+        legacyEnd <= conversation.messages.length) {
+      return conversation.messages.sublist(0, legacyEnd);
+    }
+    return conversation.messages;
+  }
+
+  bool _isShowingPendingAnalysisFragment(Conversation conversation) {
+    final completed = _effectiveLastAnalyzedMessageCount(conversation)
+        .clamp(0, conversation.messages.length)
+        .toInt();
+    final active = _activeAnalysisMessageCount;
+    return (active != null && active > completed) ||
+        conversation.messages.length > completed;
+  }
+
+  String? _conversationAnalysisSource(Conversation conversation) {
+    final ownerUserId = _analysisRecordOwner(conversation);
+    if (ownerUserId == null) return null;
+    return ref.read(analysisRecordStoreProvider).conversationSource(
+          ownerUserId: ownerUserId,
+          conversationId: conversation.id,
+        );
+  }
+
+  Future<void> _chooseConversationAnalysisSource(
+    Conversation conversation,
+  ) async {
+    final ownerUserId = _analysisRecordOwner(conversation);
+    if (ownerUserId == null) return;
+    final result = await showAnalysisPlatformPicker(
+      context,
+      currentValue: _conversationAnalysisSource(conversation),
+      title: '這段聊天來自哪裡？',
+    );
+    if (!mounted || result == null) return;
+    if (_analysisPersistenceInFlight != 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('分析紀錄正在保存，完成後再設定聊天來源')),
+      );
+      return;
+    }
+    final relabelCurrent = !_analysisRecordNeedsRepair &&
+        _analysisPersistenceInFlight == 0 &&
+        !_isShowingPendingAnalysisFragment(conversation) &&
+        _currentAnalysisRecord(conversation) != null;
+    try {
+      final saved =
+          await ref.read(analysisRecordStoreProvider).setConversationSource(
+                ownerUserId: ownerUserId,
+                conversationId: conversation.id,
+                sourcePlatform: result.platform,
+                relabelCurrent: relabelCurrent,
+              );
+      if (!saved) throw StateError('source write rejected');
+      if (mounted) setState(() {});
+    } catch (error) {
+      debugPrint('Analysis source save failed: $error');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('聊天來源儲存失敗，請再試一次')),
+      );
+    }
+  }
+
+  Future<void> _openPartnerAnalysisRecords(
+    Conversation conversation,
+  ) async {
+    final ownerUserId = _analysisRecordOwner(conversation);
+    if (ownerUserId == null) return;
+    final partnerId = conversation.partnerId?.trim();
+    final conversations = partnerId == null || partnerId.isEmpty
+        ? <Conversation>[conversation]
+        : ref.read(conversationsByPartnerProvider(partnerId));
+    final store = ref.read(analysisRecordStoreProvider);
+    final records = store.listArchived(
+      ownerUserId: ownerUserId,
+      conversationIds: conversations.map((item) => item.id),
+    );
+    final partner = partnerId == null || partnerId.isEmpty
+        ? null
+        : ref.read(partnerRepositoryProvider).getById(partnerId);
+    final metVia = partnerId == null || partnerId.isEmpty
+        ? null
+        : store.partnerMetVia(
+            ownerUserId: ownerUserId,
+            partnerId: partnerId,
+          );
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => PartnerAnalysisRecordsScreen(
+          subjectName: partner?.name ?? conversation.name,
+          records: records,
+          metVia: metVia,
+          platformForRecord: (record) => record.sourcePlatform,
+          onSetMetVia: partnerId == null || partnerId.isEmpty
+              ? null
+              : (platform) async {
+                  final saved = await store.setPartnerMetVia(
+                    ownerUserId: ownerUserId,
+                    partnerId: partnerId,
+                    sourcePlatform: platform,
+                  );
+                  if (!saved) throw StateError('met-via write rejected');
+                },
+          onDelete: (record) async {
+            final deleted = await store.deleteRecord(
+              ownerUserId: ownerUserId,
+              conversationId: record.conversationId,
+              recordId: record.id,
+            );
+            if (!deleted) throw StateError('record delete rejected');
+          },
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  Widget _buildConversationSourcePill(Conversation conversation) {
+    final source = _conversationAnalysisSource(conversation) ?? '未分類';
+    final canEdit = _analysisRecordOwner(conversation) != null &&
+        !_isAnalyzing &&
+        _analysisPersistenceInFlight == 0;
+    return Material(
+      color: AppColors.ctaStart.withValues(alpha: 0.10),
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        key: const ValueKey('analysis-source-pill'),
+        borderRadius: BorderRadius.circular(999),
+        onTap: canEdit
+            ? () => _chooseConversationAnalysisSource(conversation)
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.layers_outlined,
+                size: 15,
+                color: AppColors.ctaStart,
+              ),
+              const SizedBox(width: 5),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 96),
+                child: Text(
+                  '來源：$source',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.ctaStart,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (canEdit) ...[
+                const SizedBox(width: 2),
+                Icon(
+                  Icons.arrow_drop_down_rounded,
+                  size: 18,
+                  color: AppColors.ctaStart,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   bool _isStreamingAnalyzeResultStaleForCurrentConversation(
     StreamingAnalysisState state,
   ) {
@@ -1236,7 +1522,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  void _restorePersistedAnalysis() {
+  void _restorePersistedAnalysis({bool repairRecord = true}) {
     final repository = ref.read(conversationRepositoryProvider);
     final conversation = repository.getConversation(widget.conversationId);
     if (conversation == null) {
@@ -1275,7 +1561,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
       final analysisPayload = Map<String, dynamic>.from(snapshot)
         ..remove(_snapshotClientMetaKey);
-      _applyAnalysisResult(AnalysisResult.fromJson(analysisPayload));
+      final restoredResult = AnalysisResult.fromJson(analysisPayload);
+      _applyAnalysisResult(restoredResult);
+      if (repairRecord) {
+        final analyzedCount = conversation.lastAnalyzedMessageCount!;
+        final current = _currentAnalysisRecord(conversation);
+        _analysisRecordRepairFuture = _repairAnalysisRecord(
+          conversation: conversation,
+          result: restoredResult,
+          completionKey: null,
+          previousAnalyzedCount: current?.segmentEnd ?? 0,
+          analyzedMessageCount: analyzedCount,
+          analyzedContentRevision: conversationContentRevision(conversation),
+        );
+      }
     } catch (error) {
       _debugLog(
         '[AnalysisScreen] Failed to restore persisted analysis for '
@@ -1433,6 +1732,33 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   Future<void> _persistLatestAnalysisSnapshot(
     AnalysisResult result, {
+    String? completionKey,
+    int? previousAnalyzedCount,
+    int? analyzedMessageCount,
+    String? analyzedContentRevision,
+  }) async {
+    _analysisPersistenceInFlight++;
+    if (mounted) setState(() {});
+    try {
+      await _persistLatestAnalysisSnapshotCore(
+        result,
+        completionKey: completionKey,
+        previousAnalyzedCount: previousAnalyzedCount,
+        analyzedMessageCount: analyzedMessageCount,
+        analyzedContentRevision: analyzedContentRevision,
+      );
+    } finally {
+      if (_analysisPersistenceInFlight > 0) {
+        _analysisPersistenceInFlight--;
+      }
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _persistLatestAnalysisSnapshotCore(
+    AnalysisResult result, {
+    String? completionKey,
+    int? previousAnalyzedCount,
     int? analyzedMessageCount,
     String? analyzedContentRevision,
   }) async {
@@ -1516,6 +1842,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return;
     }
 
+    final recordSaved = await _ensureAnalysisRecord(
+      conversation: conv,
+      result: result,
+      completionKey: completionKey,
+      previousAnalyzedCount: previousAnalyzedCount,
+      analyzedMessageCount: targetAnalyzedMessageCount,
+      analyzedContentRevision: analyzedContentRevision,
+    );
+    _setAnalysisRecordNeedsRepair(!recordSaved);
+
     // 案2：analyze 歷史事件（best-effort：失敗只 debugPrint，絕不 rethrow，
     // 分析呈現完全不受影響）。去重靠呼叫端既有 gate（hydrate 路徑
     // _maybePersistAndSyncOnHydrate 的 alreadyPersisted 比對＋listener 路徑
@@ -1538,6 +1874,124 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     // 案4：48h 跟進提醒 — 綁 partner 的分析完成後，首次詢問軟卡並排程。
     // best-effort：失敗只 debugPrint，絕不影響分析呈現與快照持久化。
     await _maybeScheduleFollowUpNotification(conv);
+  }
+
+  void _setAnalysisRecordNeedsRepair(bool value) {
+    if (_analysisRecordNeedsRepair == value) return;
+    _analysisRecordNeedsRepair = value;
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _repairAnalysisRecord({
+    required Conversation conversation,
+    required AnalysisResult result,
+    required String? completionKey,
+    required int? previousAnalyzedCount,
+    required int analyzedMessageCount,
+    required String? analyzedContentRevision,
+  }) async {
+    _analysisPersistenceInFlight++;
+    if (mounted) setState(() {});
+    try {
+      final prefixRevision = analyzedMessageCount > 0 &&
+              analyzedMessageCount <= conversation.messages.length
+          ? conversationContentRevision(
+              conversation,
+              messageCount: analyzedMessageCount,
+            )
+          : null;
+      final rawResponse = result.rawResponse;
+      final current = _currentAnalysisRecord(conversation);
+      if (!_analysisRecordNeedsRepair &&
+          prefixRevision != null &&
+          rawResponse != null &&
+          current != null &&
+          current.segmentEnd == analyzedMessageCount &&
+          current.analyzedContentRevision == prefixRevision &&
+          current.analysisSnapshotJson == jsonEncode(rawResponse)) {
+        _setAnalysisRecordNeedsRepair(false);
+        return;
+      }
+      final saved = await _ensureAnalysisRecord(
+        conversation: conversation,
+        result: result,
+        completionKey: completionKey,
+        previousAnalyzedCount: previousAnalyzedCount,
+        analyzedMessageCount: analyzedMessageCount,
+        analyzedContentRevision: analyzedContentRevision,
+      );
+      _setAnalysisRecordNeedsRepair(!saved);
+    } finally {
+      if (_analysisPersistenceInFlight > 0) {
+        _analysisPersistenceInFlight--;
+      }
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<bool> _ensureAnalysisRecord({
+    required Conversation conversation,
+    required AnalysisResult result,
+    required String? completionKey,
+    required int? previousAnalyzedCount,
+    required int analyzedMessageCount,
+    required String? analyzedContentRevision,
+  }) async {
+    final ownerUserId = _analysisRecordOwner(conversation);
+    final rawResponse = result.rawResponse;
+    if (ownerUserId == null ||
+        rawResponse == null ||
+        rawResponse.isEmpty ||
+        analyzedContentRevision == null ||
+        analyzedMessageCount <= 0 ||
+        analyzedMessageCount > conversation.messages.length ||
+        conversationContentRevision(conversation) != analyzedContentRevision) {
+      return false;
+    }
+
+    final analyzedPrefixRevision = conversationContentRevision(
+      conversation,
+      messageCount: analyzedMessageCount,
+    );
+    final snapshotJson = jsonEncode(rawResponse);
+    final snapshotDigest = sha256.convert(utf8.encode(snapshotJson));
+    final stableCompletionKey = completionKey?.trim().isNotEmpty == true
+        ? completionKey!.trim()
+        : 'snapshot:$analyzedPrefixRevision:$analyzedMessageCount:'
+            '$snapshotDigest';
+    final runStartPreviousCount =
+        (previousAnalyzedCount ?? 0).clamp(0, analyzedMessageCount).toInt();
+    final store = ref.read(analysisRecordStoreProvider);
+    try {
+      final saveResult = await store.saveSuccessfulAnalysis(
+        ownerUserId: ownerUserId,
+        conversation: conversation,
+        completionKey: stableCompletionKey,
+        runStartPreviousCount: runStartPreviousCount,
+        analyzedMessageCount: analyzedMessageCount,
+        analyzedContentRevision: analyzedPrefixRevision,
+        analysisSnapshotJson: snapshotJson,
+        enthusiasmScore: result.enthusiasmScore,
+        gameStageLabel: result.gameStage.current.label,
+        sourcePlatform: store.conversationSource(
+          ownerUserId: ownerUserId,
+          conversationId: conversation.id,
+        ),
+      );
+      if (!saveResult.accepted) {
+        debugPrint(
+          'Analysis record save rejected: ${saveResult.rejectionReason}',
+        );
+        return false;
+      }
+      if (mounted) setState(() {});
+      return true;
+    } catch (error) {
+      // The canonical analysis snapshot already succeeded. Keep the result
+      // usable and let hydrate retry this idempotent record write later.
+      debugPrint('Analysis record save failed: $error');
+      return false;
+    }
   }
 
   /// 綁 partner 的分析完成後：首次（opt-in=unknown）顯示軟詢問卡，
@@ -2504,9 +2958,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       detail: '若訊息不連貫，建議從首頁開新對話，避免對方檔案混淆。',
       actionLabel: '捲到加入位置',
       onAction: () {
-        if (!_showAllMessages) {
-          setState(() => _showAllMessages = true);
-        }
         _scrollToBottom(delay: const Duration(milliseconds: 80));
       },
     );
@@ -2601,15 +3052,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         curve: Curves.easeOut,
       );
     }
-  }
-
-  List<Message> _visibleMessagePreview(List<Message> messages) {
-    if (_showAllMessages || messages.length <= 5) {
-      return messages;
-    }
-    // Collapsed mode must show the latest messages so a freshly added
-    // manual "她說 / 我說" appears immediately in the preview card.
-    return messages.skip(messages.length - 5).toList();
   }
 
   Future<void> _editLastManualAddedMessage() async {
@@ -3774,6 +4216,29 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     int? analysisMessageLimit,
     bool allowPendingOutgoingRefresh = false,
   }) async {
+    final pendingRecordRepair = _analysisRecordRepairFuture;
+    if (pendingRecordRepair != null) {
+      await pendingRecordRepair;
+    }
+    if (!mounted) return;
+    if (_analysisRecordNeedsRepair) {
+      _restorePersistedAnalysis();
+      final retry = _analysisRecordRepairFuture;
+      if (retry != null) await retry;
+      if (!mounted) return;
+      if (_analysisRecordNeedsRepair) {
+        setState(() {
+          _isAnalyzing = false;
+          _applyErrorState(
+            message: '上一筆分析紀錄尚未安全保存，請稍後再試。',
+            action: AnalysisErrorAction.retry,
+            origin: _AnalysisErrorOrigin.analysis,
+            guidance: '我們會先保留上一筆結果，等紀錄保存成功後才能開始新的分析。',
+          );
+        });
+        return;
+      }
+    }
     // 先關閉 SnackBar (如果有的話)
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
@@ -4069,6 +4534,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         });
         _persistLatestAnalysisSnapshot(
           result,
+          completionKey: next.analysisRunId,
+          previousAnalyzedCount: next.previousAnalyzedCount,
           analyzedMessageCount: analyzedMessageCount,
           analyzedContentRevision: next.conversationContentRevision,
         ).catchError((_) {
@@ -4718,8 +5185,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content:
-                Text('已記下「${coachingUserActionLabel(action)}」，不扣額度。')),
+            content: Text('已記下「${coachingUserActionLabel(action)}」，不扣額度。')),
       );
     } catch (_) {
       if (!mounted) return;
@@ -4742,8 +5208,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       if (updated == null || !mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content:
-                Text('已記下「${coachingOutcomeSignalLabel(signal)}」，不扣額度。')),
+            content: Text('已記下「${coachingOutcomeSignalLabel(signal)}」，不扣額度。')),
       );
     } catch (_) {
       if (!mounted) return;
@@ -5461,6 +5926,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _fullErrorMessage == null;
     final isScreenshotOnlyEmptyState =
         showInitialScreenshotSetup && conversation.messages.isEmpty;
+    final analysisFragmentMessages = _analysisFragmentMessages(conversation);
+    final isPendingAnalysisFragment =
+        _isShowingPendingAnalysisFragment(conversation);
 
     return BrandScaffold(
       // body 自帶 SafeArea（見下方），故關掉鷹架的外層 SafeArea 避免雙層巢套。
@@ -5472,20 +5940,43 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         onPressed: _cleanupAndGoBack,
       ),
       actions: [
-        // 對方檔案按鈕
         IconButton(
-          icon: const Icon(Icons.person_outline),
-          tooltip: '對方檔案',
-          onPressed: () {
-            _clearAnalysisSnackBarsBeforePush();
-            context.push('/profile/${widget.conversationId}');
-          },
+          key: const ValueKey('analysis-records-entry'),
+          icon: const Icon(Icons.inventory_2_outlined),
+          tooltip: '分析紀錄',
+          onPressed: () => _openPartnerAnalysisRecords(conversation),
         ),
-        // 匯出按鈕
-        IconButton(
-          icon: const Icon(Icons.share),
-          tooltip: '匯出對話紀錄',
-          onPressed: () => _exportConversation(conversation),
+        PopupMenuButton<_AnalysisAppBarAction>(
+          tooltip: '更多',
+          onSelected: (action) {
+            switch (action) {
+              case _AnalysisAppBarAction.profile:
+                _clearAnalysisSnackBarsBeforePush();
+                context.push('/profile/${widget.conversationId}');
+                break;
+              case _AnalysisAppBarAction.export:
+                _exportConversation(conversation);
+                break;
+            }
+          },
+          itemBuilder: (_) => const [
+            PopupMenuItem(
+              value: _AnalysisAppBarAction.profile,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.person_outline),
+                title: Text('對方檔案'),
+              ),
+            ),
+            PopupMenuItem(
+              value: _AnalysisAppBarAction.export,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.share_outlined),
+                title: Text('匯出對話紀錄'),
+              ),
+            ),
+          ],
         ),
         if (_isAnalyzing || _isRefreshingPremiumReplies)
           const Padding(
@@ -5534,8 +6025,50 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             ],
                           ),
                           child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              if (conversation.messages.isEmpty)
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      isPendingAnalysisFragment
+                                          ? '待分析的新片段'
+                                          : '本次分析片段',
+                                      style: AppTypography.titleMedium.copyWith(
+                                        color: AppColors.glassTextPrimary,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _buildConversationSourcePill(conversation),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                isPendingAnalysisFragment
+                                    ? '這批新聊天會獨立分析；完成後，上一筆才會收進右上角紀錄。'
+                                    : '每次新增的聊天會獨立整理，不會和舊片段串成逐字稿。',
+                                style: AppTypography.bodySmall.copyWith(
+                                  color: AppColors.glassTextSecondary,
+                                  height: 1.35,
+                                ),
+                              ),
+                              if (_analysisRecordNeedsRepair) ...[
+                                const SizedBox(height: 7),
+                                Text(
+                                  '分析已完成，但紀錄尚未儲存；系統會自動重試。',
+                                  key: const ValueKey(
+                                    'analysis-record-repair-warning',
+                                  ),
+                                  style: AppTypography.bodySmall.copyWith(
+                                    color: AppColors.warning,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 10),
+                              if (analysisFragmentMessages.isEmpty)
                                 Padding(
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 20,
@@ -5571,10 +6104,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     ],
                                   ),
                                 ),
-                              // 顯示訊息 (可展開/收合)
-                              ..._visibleMessagePreview(
-                                conversation.messages,
-                              ).map((m) => MessageBubble(
+                              ...analysisFragmentMessages.map((m) =>
+                                  MessageBubble(
                                     message: m,
                                     onEdit: _isAnalyzing
                                         ? null
@@ -5587,35 +6118,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         ? null
                                         : () => _deleteMessage(conversation, m),
                                   )),
-                              if (conversation.messages.length > 5)
-                                GestureDetector(
-                                  onTap: () => setState(() =>
-                                      _showAllMessages = !_showAllMessages),
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(top: 8),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          _showAllMessages
-                                              ? Icons.expand_less
-                                              : Icons.expand_more,
-                                          size: 16,
-                                          color: AppColors.ctaStart,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          _showAllMessages
-                                              ? '收合訊息'
-                                              : '展開全部 ${conversation.messages.length} 則訊息',
-                                          style: AppTypography.caption.copyWith(
-                                              color: AppColors.ctaStart),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
                             ],
                           ),
                         ),
@@ -7094,8 +7596,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         ScaffoldMessenger.of(context)
                                             .showSnackBar(
                                           const SnackBar(
-                                              content: Text(
-                                                  '已複製草稿，發出後記得回來回報結果')),
+                                              content:
+                                                  Text('已複製草稿，發出後記得回來回報結果')),
                                         );
                                       },
                                       icon: const Icon(Icons.copy),

@@ -50,8 +50,8 @@ Future<void> _pumpAnalysisScreen(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        coachingOutcomeRepositoryProvider.overrideWithValue(
-            MemoryCoachingOutcomeRepository()),
+        coachingOutcomeRepositoryProvider
+            .overrideWithValue(MemoryCoachingOutcomeRepository()),
         conversationRepositoryProvider.overrideWithValue(repository),
         conversationProvider('continue-input-test')
             .overrideWithValue(testConversation),
@@ -97,7 +97,13 @@ class _StubCoachChatRepository implements CoachChatRepository {
   Future<void> put(CoachChatResult result) async {}
 
   @override
-  Future<void> deleteConversation(String conversationId) async {}
+  Future<ConversationDeleteOutcome> deleteConversation(
+    String conversationId,
+  ) async =>
+      const ConversationDeleteOutcome(
+        deleted: true,
+        deletedOwnerUserId: 'stub-owner',
+      );
 
   @override
   Future<void> clearAll() async {}
@@ -407,7 +413,8 @@ void main() {
       expect(find.text('不確定可以先跳過；AI 會用預設情境分析。'), findsNothing);
     });
 
-    testWidgets('collapsed preview shows latest messages instead of oldest',
+    testWidgets(
+        'independent fragment is not truncated into a five-message preview',
         (tester) async {
       await _pumpAnalysisScreen(
         tester,
@@ -422,10 +429,39 @@ void main() {
         ),
       );
 
-      expect(find.text('訊息 1'), findsNothing);
+      expect(find.text('訊息 1'), findsOneWidget);
       expect(find.text('訊息 2'), findsOneWidget);
       expect(find.text('訊息 6'), findsOneWidget);
-      expect(find.text('展開全部 6 則訊息'), findsOneWidget);
+      expect(find.textContaining('展開全部'), findsNothing);
+    });
+
+    testWidgets('pending fragment hides messages from the completed analysis',
+        (tester) async {
+      final conversation = Conversation(
+        id: 'continue-input-test',
+        name: '小雲',
+        messages: List.generate(
+          4,
+          (index) => Message(
+            id: 'm$index',
+            content: '片段 ${index + 1}',
+            isFromMe: index.isOdd,
+            timestamp: DateTime(2026, 5, 4, 12, index),
+          ),
+        ),
+        createdAt: DateTime(2026, 5, 4),
+        updatedAt: DateTime(2026, 5, 4),
+        lastAnalyzedMessageCount: 2,
+        lastAnalysisSnapshotJson: jsonEncode(_analysisSnapshotJson()),
+      );
+
+      await _pumpAnalysisScreen(tester, conversation: conversation);
+
+      expect(find.text('待分析的新片段'), findsOneWidget);
+      expect(find.text('片段 1'), findsNothing);
+      expect(find.text('片段 2'), findsNothing);
+      expect(find.text('片段 3'), findsOneWidget);
+      expect(find.text('片段 4'), findsOneWidget);
     });
   });
 }

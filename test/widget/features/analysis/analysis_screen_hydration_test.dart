@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/analysis_history/data/providers/analysis_history_providers.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
@@ -10,10 +11,13 @@ import '../../../helpers/memory_analysis_history_repository.dart';
 import '../../../helpers/memory_coaching_outcome_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/features/analysis/data/notifiers/streaming_analyze_notifier.dart';
+import 'package:vibesync/features/analysis/data/providers/analysis_record_providers.dart';
 import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
+import 'package:vibesync/features/analysis/data/repositories/analysis_record_store.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
 import 'package:vibesync/features/analysis/data/services/partner_context_resolver.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
+import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_recommendation_preview.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
@@ -185,7 +189,13 @@ class _EmptyCoachChatRepository extends CoachChatRepository {
   Future<void> put(CoachChatResult result) async {}
 
   @override
-  Future<void> deleteConversation(String conversationId) async {}
+  Future<ConversationDeleteOutcome> deleteConversation(
+    String conversationId,
+  ) async =>
+      const ConversationDeleteOutcome(
+        deleted: true,
+        deletedOwnerUserId: 'stub-owner',
+      );
 
   @override
   Future<void> clearAll() async {}
@@ -503,6 +513,185 @@ class _MemoryConversationArchiveStore implements ConversationArchiveStore {
   }
 }
 
+class _MemoryBox implements Box<dynamic> {
+  final Map<dynamic, dynamic> _values = <dynamic, dynamic>{};
+
+  @override
+  dynamic get(dynamic key, {dynamic defaultValue}) =>
+      _values.containsKey(key) ? _values[key] : defaultValue;
+
+  @override
+  Iterable<dynamic> get keys => _values.keys;
+
+  @override
+  bool containsKey(dynamic key) => _values.containsKey(key);
+
+  @override
+  Future<void> put(dynamic key, dynamic value) async {
+    _values[key] = value;
+  }
+
+  @override
+  Future<void> putAll(Map<dynamic, dynamic> entries) async {
+    _values.addAll(entries);
+  }
+
+  @override
+  Future<void> delete(dynamic key) async {
+    _values.remove(key);
+  }
+
+  @override
+  Future<void> deleteAll(Iterable<dynamic> keys) async {
+    for (final key in keys) {
+      _values.remove(key);
+    }
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _RecordingAnalysisRecordStore implements AnalysisRecordStore {
+  int saveCalls = 0;
+  AnalysisRecord? currentRecord;
+  String? savedOwnerUserId;
+  String? savedCompletionKey;
+  int? savedRunStartPreviousCount;
+  int? savedAnalyzedMessageCount;
+  String? savedAnalyzedContentRevision;
+
+  @override
+  Future<AnalysisRecordSaveResult> saveSuccessfulAnalysis({
+    required String ownerUserId,
+    required Conversation conversation,
+    required String completionKey,
+    required int runStartPreviousCount,
+    required int analyzedMessageCount,
+    required String analyzedContentRevision,
+    required String analysisSnapshotJson,
+    required int enthusiasmScore,
+    required String gameStageLabel,
+    String? sourcePlatform,
+    DateTime? completedAt,
+  }) async {
+    saveCalls++;
+    savedOwnerUserId = ownerUserId;
+    savedCompletionKey = completionKey;
+    savedRunStartPreviousCount = runStartPreviousCount;
+    savedAnalyzedMessageCount = analyzedMessageCount;
+    savedAnalyzedContentRevision = analyzedContentRevision;
+    return const AnalysisRecordSaveResult.rejected('recorded_by_test');
+  }
+
+  @override
+  AnalysisRecord? currentFor({
+    required String ownerUserId,
+    required String conversationId,
+  }) =>
+      currentRecord;
+
+  @override
+  AnalysisRecord? recordById({
+    required String ownerUserId,
+    required String conversationId,
+    required String recordId,
+  }) =>
+      null;
+
+  @override
+  List<AnalysisRecord> listArchived({
+    required String ownerUserId,
+    required Iterable<String> conversationIds,
+  }) =>
+      const [];
+
+  @override
+  Future<bool> deleteRecord({
+    required String ownerUserId,
+    required String conversationId,
+    required String recordId,
+  }) async =>
+      false;
+
+  @override
+  Future<int> removeConversation({
+    required String ownerUserId,
+    required String conversationId,
+  }) async =>
+      0;
+
+  @override
+  Future<bool> prepareConversationRemoval({
+    required String ownerUserId,
+    required String conversationId,
+  }) async =>
+      true;
+
+  @override
+  Future<bool> cancelConversationRemoval({
+    required String ownerUserId,
+    required String conversationId,
+  }) async =>
+      true;
+
+  @override
+  bool hasPendingConversationRemovals({required String ownerUserId}) => false;
+
+  @override
+  Future<int> recoverPendingConversationRemovals({
+    required String ownerUserId,
+    required Iterable<String> liveConversationIds,
+  }) async =>
+      0;
+
+  @override
+  String? conversationSource({
+    required String ownerUserId,
+    required String conversationId,
+  }) =>
+      null;
+
+  @override
+  Future<bool> setConversationSource({
+    required String ownerUserId,
+    required String conversationId,
+    required String? sourcePlatform,
+    bool relabelCurrent = false,
+  }) async =>
+      false;
+
+  @override
+  String? partnerMetVia({
+    required String ownerUserId,
+    required String partnerId,
+  }) =>
+      null;
+
+  @override
+  Future<bool> setPartnerMetVia({
+    required String ownerUserId,
+    required String partnerId,
+    required String? sourcePlatform,
+  }) async =>
+      false;
+
+  @override
+  Future<bool> removePartnerMetadata({
+    required String ownerUserId,
+    required String partnerId,
+  }) async =>
+      false;
+
+  @override
+  Future<bool> mergePartnerMetadata({
+    required String ownerUserId,
+    required String fromPartnerId,
+    required String toPartnerId,
+  }) async =>
+      false;
+}
+
 _MemoryConversationArchiveStore _defaultArchiveStore(
   Conversation conversation,
 ) {
@@ -595,6 +784,8 @@ Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
   required StreamingAnalysisState seed,
   required Conversation conversation,
   _MemoryConversationArchiveStore? archiveStore,
+  AnalysisRecordStore? analysisRecordStore,
+  String? analysisRecordOwnerUserId,
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -616,6 +807,11 @@ Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
         ),
         conversationRepositoryProvider.overrideWithValue(repo),
         conversationProvider(_conversationId).overrideWithValue(conversation),
+        if (analysisRecordStore != null)
+          analysisRecordStoreProvider.overrideWithValue(analysisRecordStore),
+        if (analysisRecordOwnerUserId != null)
+          analysisRecordOwnerProvider
+              .overrideWithValue(analysisRecordOwnerUserId),
         analysisServiceProvider.overrideWithValue(recorder),
         coachChatRepositoryProvider.overrideWithValue(
           _EmptyCoachChatRepository(),
@@ -697,6 +893,8 @@ Future<_HydrationHarness> _pumpAnalysisScreenForPremiumRefresh(
   WidgetTester tester, {
   required Conversation conversation,
   required AnalysisResult streamResult,
+  AnalysisRecordStore? analysisRecordStore,
+  String? analysisRecordOwnerUserId,
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -723,6 +921,11 @@ Future<_HydrationHarness> _pumpAnalysisScreenForPremiumRefresh(
         conversationArchiveStoreProvider.overrideWithValue(archiveStore),
         conversationRepositoryProvider.overrideWithValue(repo),
         conversationProvider(_conversationId).overrideWithValue(conversation),
+        if (analysisRecordStore != null)
+          analysisRecordStoreProvider.overrideWithValue(analysisRecordStore),
+        if (analysisRecordOwnerUserId != null)
+          analysisRecordOwnerProvider
+              .overrideWithValue(analysisRecordOwnerUserId),
         analysisServiceProvider.overrideWithValue(recorder),
         partnerContextResolverProvider.overrideWithValue(
           _emptyPartnerContextResolver(),
@@ -1114,6 +1317,177 @@ void main() {
           expect(harness.repo.lastSaved?.lastAnalyzedMessageCount,
               conv.messages.length);
           expect(harness.repo.lastSaved?.lastEnthusiasmScore, 72);
+        },
+      );
+
+      testWidgets(
+        'matching snapshot still ensures one owner-scoped analysis record',
+        (tester) async {
+          final raw = _fullRawResponse();
+          final conv = _conversation(
+            lastAnalyzedMessageCount: 1,
+            lastEnthusiasmScore: 72,
+          )..ownerUserId = 'record-owner';
+          conv.lastAnalysisSnapshotJson = _encodeSnapshotWithClientMeta(
+            raw,
+            conversation: conv,
+            messageCount: 1,
+          );
+          final recordStore = _RecordingAnalysisRecordStore();
+
+          final harness = await _pumpHydratedAnalysisScreenWithRepo(
+            tester,
+            seed: StreamingAnalysisState(
+              phase: StreamingAnalyzePhase.done,
+              full: _fullWithRawResponse(raw),
+              analysisRunId: 'run-record-ensure',
+              previousAnalyzedCount: 0,
+              analyzedMessageCount: 1,
+              conversationContentRevision: conversationContentRevision(conv),
+            ),
+            conversation: conv,
+            analysisRecordStore: recordStore,
+            analysisRecordOwnerUserId: 'record-owner',
+          );
+
+          tester.takeException();
+          await tester.pump(const Duration(milliseconds: 1));
+
+          expect(harness.repo.updateCalls, 0);
+          expect(recordStore.saveCalls, 1);
+          expect(recordStore.savedOwnerUserId, 'record-owner');
+          expect(recordStore.savedCompletionKey, 'run-record-ensure');
+          expect(recordStore.savedRunStartPreviousCount, 0);
+          expect(recordStore.savedAnalyzedMessageCount, 1);
+          expect(
+            recordStore.savedAnalyzedContentRevision,
+            conversationContentRevision(conv, messageCount: 1),
+          );
+        },
+      );
+
+      testWidgets(
+        'cold idle restore retries a missing record from canonical snapshot metadata',
+        (tester) async {
+          final raw = _fullRawResponse();
+          final conv = _conversation(
+            lastAnalyzedMessageCount: 1,
+            lastEnthusiasmScore: 72,
+          )..ownerUserId = 'record-owner';
+          conv.lastAnalysisSnapshotJson = _encodeSnapshotWithClientMeta(
+            raw,
+            conversation: conv,
+            messageCount: 1,
+          );
+          final recordStore = _RecordingAnalysisRecordStore();
+
+          final harness = await _pumpHydratedAnalysisScreenWithRepo(
+            tester,
+            seed: const StreamingAnalysisState(
+              phase: StreamingAnalyzePhase.idle,
+            ),
+            conversation: conv,
+            analysisRecordStore: recordStore,
+            analysisRecordOwnerUserId: 'record-owner',
+          );
+
+          tester.takeException();
+          await tester.pump(const Duration(milliseconds: 1));
+
+          expect(harness.repo.updateCalls, 0);
+          expect(recordStore.saveCalls, 1);
+          expect(
+            recordStore.savedCompletionKey,
+            startsWith(
+              'snapshot:${conversationContentRevision(conv, messageCount: 1)}:1:',
+            ),
+          );
+          expect(
+            find.byKey(
+              const ValueKey('analysis-record-repair-warning'),
+            ),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        'cold idle restore shows canonical newer fragment while old current repair fails',
+        (tester) async {
+          final raw = _fullRawResponse();
+          final conv = _conversation(
+            lastAnalyzedMessageCount: 4,
+            lastEnthusiasmScore: 72,
+            extraMessages: [
+              Message(
+                id: 'm2',
+                content: '舊片段最後一則',
+                isFromMe: true,
+                timestamp: DateTime(2026, 5, 28, 12, 1),
+              ),
+              Message(
+                id: 'm3',
+                content: '新的片段第一則',
+                isFromMe: false,
+                timestamp: DateTime(2026, 5, 28, 12, 2),
+              ),
+              Message(
+                id: 'm4',
+                content: '新的片段第二則',
+                isFromMe: true,
+                timestamp: DateTime(2026, 5, 28, 12, 3),
+              ),
+            ],
+          )..ownerUserId = 'record-owner';
+          conv.lastAnalysisSnapshotJson = _encodeSnapshotWithClientMeta(
+            raw,
+            conversation: conv,
+            messageCount: 4,
+          );
+          final recordStore = _RecordingAnalysisRecordStore()
+            ..currentRecord = AnalysisRecord(
+              id: 'old-current',
+              ownerUserId: 'record-owner',
+              conversationId: conv.id,
+              partnerId: conv.partnerId,
+              subjectName: conv.name,
+              segmentStart: 0,
+              segmentEnd: 2,
+              createdAt: DateTime(2026, 5, 28, 12),
+              messages: conv.messages
+                  .take(2)
+                  .map(AnalysisRecordMessage.fromMessage)
+                  .toList(growable: false),
+              analysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
+              analyzedContentRevision: conversationContentRevision(
+                conv,
+                messageCount: 2,
+              ),
+              completionKey: 'old-run',
+              sourcePlatform: 'LINE',
+              enthusiasmScore: 33,
+              gameStageLabel: 'opening',
+            );
+
+          await _pumpHydratedAnalysisScreenWithRepo(
+            tester,
+            seed: const StreamingAnalysisState(
+              phase: StreamingAnalyzePhase.idle,
+            ),
+            conversation: conv,
+            analysisRecordStore: recordStore,
+            analysisRecordOwnerUserId: 'record-owner',
+          );
+          tester.takeException();
+          await tester.pump(const Duration(milliseconds: 1));
+
+          expect(recordStore.saveCalls, 1);
+          expect(recordStore.savedRunStartPreviousCount, 2);
+          expect(find.text('本次分析片段'), findsOneWidget);
+          expect(find.text('新的片段第一則'), findsOneWidget);
+          expect(find.text('新的片段第二則'), findsOneWidget);
+          expect(find.text('今天加班好累喔'), findsNothing);
+          expect(find.text('舊片段最後一則'), findsNothing);
         },
       );
 
@@ -1734,6 +2108,91 @@ void main() {
 
   group('AnalysisScreen premium reply refresh after upgrade', () {
     testWidgets(
+      'repeated record repair failure blocks reanalysis and preserves canonical snapshot',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({
+          AiDataSharingConsent.acceptedKeyForTesting: true,
+        });
+
+        final canonicalRaw = _freeSingleReplyRawResponse();
+        final conversation = _conversation(
+          lastAnalyzedMessageCount: 1,
+          lastEnthusiasmScore: 72,
+        )..ownerUserId = 'record-owner';
+        conversation.lastAnalysisSnapshotJson = _encodeSnapshotWithClientMeta(
+          canonicalRaw,
+          conversation: conversation,
+          messageCount: 1,
+        );
+        final canonicalSnapshot = conversation.lastAnalysisSnapshotJson;
+        final recordStore = _RecordingAnalysisRecordStore();
+
+        final harness = await _pumpAnalysisScreenForPremiumRefresh(
+          tester,
+          conversation: conversation,
+          streamResult: _fullWithRawResponse(_paidRawResponse()),
+          analysisRecordStore: recordStore,
+          analysisRecordOwnerUserId: 'record-owner',
+        );
+        tester.takeException();
+        await tester.pump(const Duration(milliseconds: 1));
+        expect(recordStore.saveCalls, 1,
+            reason: 'Cold restore must make the first repair attempt.');
+
+        final dismissCoachMark = find.text('知道了');
+        if (dismissCoachMark.evaluate().isNotEmpty) {
+          await tester.tap(dismissCoachMark);
+          await tester.pump();
+        }
+        await tester.tap(find.text('展開'));
+        await tester.pump();
+
+        final refreshButton = find.text('重新產生完整分析');
+        await tester.ensureVisible(refreshButton);
+        await tester.pump();
+        final refreshOutlinedButton = find.ancestor(
+          of: refreshButton,
+          matching: find.byType(OutlinedButton),
+        );
+        final onRefreshPressed =
+            tester.widget<OutlinedButton>(refreshOutlinedButton).onPressed;
+        expect(onRefreshPressed, isNotNull);
+        onRefreshPressed!();
+        for (var i = 0; i < 40 && recordStore.saveCalls < 2; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        await tester.pump(const Duration(milliseconds: 50));
+        tester.takeException();
+
+        expect(recordStore.saveCalls, 2,
+            reason:
+                'Starting another analysis must retry the missing record once.');
+        expect(harness.recorder.recommendationPreviewCalls, 0);
+        expect(harness.recorder.fullCalls, 0);
+        expect(harness.recorder.streamCalls, 0,
+            reason:
+                'A fresh analysis must not start while the canonical record still needs repair.');
+        expect(harness.repo.updateCalls, 0);
+        expect(
+          harness.repo
+              .getConversation(_conversationId)
+              ?.lastAnalysisSnapshotJson,
+          canonicalSnapshot,
+          reason:
+              'The last canonical snapshot must survive repeated record repair failures.',
+        );
+        expect(
+          _snapshotPayload(
+            harness.repo
+                .getConversation(_conversationId)
+                ?.lastAnalysisSnapshotJson,
+          ),
+          equals(canonicalRaw),
+        );
+      },
+    );
+
+    testWidgets(
       'reanalyzes the previously analyzed slice and keeps pending outgoing messages pending',
       (tester) async {
         SharedPreferences.setMockInitialValues({
@@ -1754,12 +2213,18 @@ void main() {
               timestamp: DateTime(2026, 5, 28, 12, 1),
             ),
           ],
+        )..ownerUserId = 'premium-refresh-owner';
+        final analysisRecordBox = _MemoryBox();
+        final successfulRecordStore = HiveAnalysisRecordStore(
+          () => analysisRecordBox,
         );
 
         final harness = await _pumpAnalysisScreenForPremiumRefresh(
           tester,
           conversation: conversationWithPendingOutgoing,
           streamResult: _fullWithRawResponse(paidRaw),
+          analysisRecordStore: successfulRecordStore,
+          analysisRecordOwnerUserId: 'premium-refresh-owner',
         );
         tester.takeException();
 
