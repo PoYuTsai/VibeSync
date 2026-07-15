@@ -51,7 +51,7 @@ Deno.test("Debrief prompt forbids transferring partner facts into pasteable firs
       "問句/提議/玩笑的 presupposition",
       "無據改無前提問法",
       "{變數} token 本身不提供值",
-      "凡以肯否/自揭/感官/比喻/例子代答",
+      "答案只留 {真實答案}，尾句只可無前提反問",
       "assistant 實質回答/自揭/新細節/問句/提議/玩笑梗/未來接點",
       "拒絕/別再問可有資訊卻無正向延伸",
       "即使 low，有非拒絕貢獻也禁寫只有客套/無延伸/無正向延伸/無新素材/無來回",
