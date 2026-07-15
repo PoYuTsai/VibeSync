@@ -117,6 +117,7 @@ class CoachFollowUpSection extends ConsumerStatefulWidget {
   final Future<void> Function()? onQuotaExceeded;
   final Key? openCoachEntryAnchorKey;
   final bool openCoachInputOnFirstBuild;
+  final bool compactPracticePresentation;
 
   const CoachFollowUpSection({
     super.key,
@@ -125,6 +126,7 @@ class CoachFollowUpSection extends ConsumerStatefulWidget {
     this.onQuotaExceeded,
     this.openCoachEntryAnchorKey,
     this.openCoachInputOnFirstBuild = false,
+    this.compactPracticePresentation = false,
   });
 
   @override
@@ -354,6 +356,9 @@ class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
     bool isLoading,
     Object? error,
   ) {
+    if (widget.compactPracticePresentation) {
+      return _buildCompactPractice(hinted, isLoading, error);
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -385,6 +390,51 @@ class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
           key: widget.openCoachEntryAnchorKey,
           isLoading: isLoading,
           onTap: _onOpenCoachTap,
+        ),
+        if (isLoading) ...[
+          const SizedBox(height: 10),
+          _StatusText.loading(),
+        ],
+        if (error != null) ...[
+          const SizedBox(height: 10),
+          _StatusText.error(error),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCompactPractice(
+    CoachFollowUpPhase? hinted,
+    bool isLoading,
+    Object? error,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(
+              Icons.auto_awesome_outlined,
+              size: 18,
+              color: AppColors.ctaStart,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '還沒有素材？先練習一下',
+              style: AppTypography.titleSmall.copyWith(
+                color: AppColors.onBackgroundPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        CoachFollowUpChipRow(
+          selectedPhase: _selectedPhase,
+          hintedPhase: hinted,
+          hintText: _hintTextFor(hinted),
+          isLoading: isLoading,
+          onPhaseSelected: _onChipTap,
         ),
         if (isLoading) ...[
           const SizedBox(height: 10),
