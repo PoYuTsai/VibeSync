@@ -1022,7 +1022,7 @@ class _ScreenshotRecognitionDialogState
             ),
             const SizedBox(height: 4),
             Text(
-              '另存成新對話：建立獨立紀錄，適合不同人或另一段聊天。',
+              '另存成新對話：建立獨立紀錄，適合同一人的另一段聊天。',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.onBackgroundSecondary,
                 height: 1.45,

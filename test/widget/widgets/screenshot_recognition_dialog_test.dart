@@ -175,7 +175,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.text('另存成新對話：建立獨立紀錄，適合不同人或另一段聊天。'),
+        find.text('另存成新對話：建立獨立紀錄，適合同一人的另一段聊天。'),
         findsOneWidget,
       );
       expect(find.textContaining('目前選擇：只有在你確定這批截圖'), findsOneWidget);
@@ -188,7 +188,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.text('另存成新對話：建立獨立紀錄，適合不同人或另一段聊天。'),
+        find.text('另存成新對話：建立獨立紀錄，適合同一人的另一段聊天。'),
         findsOneWidget,
       );
       expect(find.textContaining('目前選擇：這是目前較安全的選擇'), findsOneWidget);
