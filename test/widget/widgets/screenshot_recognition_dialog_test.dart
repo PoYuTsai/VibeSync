@@ -171,7 +171,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('加入目前對話：接在目前紀錄後面，適合同一段最新續聊。'),
+        find.text('加入目前對話：加入現在開啟的對話，適合同一段聊天。'),
         findsOneWidget,
       );
       expect(
@@ -184,7 +184,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('加入目前對話：接在目前紀錄後面，適合同一段最新續聊。'),
+        find.text('加入目前對話：加入現在開啟的對話，適合同一段聊天。'),
         findsOneWidget,
       );
       expect(
@@ -192,6 +192,37 @@ void main() {
         findsOneWidget,
       );
       expect(find.textContaining('目前選擇：這是目前較安全的選擇'), findsOneWidget);
+    });
+
+    testWidgets('目前對話尚無訊息時，加入說明不誤稱為接續既有紀錄', (tester) async {
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: recognizedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+          currentConversation: Conversation(
+            id: 'empty-conversation',
+            name: '小美',
+            messages: const [],
+            createdAt: DateTime(2026, 7, 16),
+            updatedAt: DateTime(2026, 7, 16),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('加入目前對話：加入現在開啟的對話，適合同一段聊天。'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('目前選擇：會把這批訊息存進目前這個新對話'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('顯示滑動提示，砍掉 OCR 信心徽章與安撫框，但保留警示與加入方式', (tester) async {

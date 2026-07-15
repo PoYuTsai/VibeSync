@@ -1014,7 +1014,7 @@ class _ScreenshotRecognitionDialogState
             ),
             const SizedBox(height: 8),
             Text(
-              '加入目前對話：接在目前紀錄後面，適合同一段最新續聊。',
+              '加入目前對話：加入現在開啟的對話，適合同一段聊天。',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.onBackgroundSecondary,
                 height: 1.45,
