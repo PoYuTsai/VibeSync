@@ -88,7 +88,7 @@ function assertGroundingReviewInput(
   const prompt = claudePrompt(call);
   assert(
     prompt.includes("practiceGroundingReviewerV3") ||
-      prompt.includes("practiceGroundingReleaseAuditorV1"),
+      prompt.includes("practiceGroundingReleaseAuditorV2"),
   );
   assert(prompt.includes("<grounding_evidence_data>"));
   assertEquals(prompt.includes("generation_context_untrusted"), false);
@@ -289,7 +289,7 @@ Deno.test("direct Hint preserves server-trusted user facts through both reviews"
   }
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "Hint：貼句我=user、你/妳=assistant",
+      "Hint 貼句與 Debrief suggestedLine/nextFirstLine 的「我」=user",
     ),
   );
   assertEquals(recordHintCalls(state).length, 1);
@@ -6034,7 +6034,7 @@ Deno.test("direct Game Hint lets reviewed activity questions bypass invite-route
   assert(claudePrompt(state.claudeCalls[1]).includes("按整句語意判斷"));
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "practiceGroundingReleaseAuditorV1",
+      "practiceGroundingReleaseAuditorV2",
     ),
   );
   for (const reply of json.replies) {
@@ -7294,7 +7294,7 @@ Deno.test("Hint repair removes a memory hallucination before independent verific
   assertEquals(state.claudeCalls[2].temperature, 0);
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "practiceGroundingReleaseAuditorV1",
+      "practiceGroundingReleaseAuditorV2",
     ),
   );
   assertEquals(recordHintCalls(state).length, 1);
@@ -7358,12 +7358,14 @@ Deno.test("Hint repair removes partner speculation before independent verificati
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
   assert(firstVerificationPrompt.includes("只證明她說過，不是 user 證據"));
   assert(
-    verificationPrompt.includes("問句/提議/玩笑的 presupposition 也須證據"),
+    verificationPrompt.includes(
+      "問句、挑戰、猜測、玩笑、條件不論有無問號都只證她說過，不證 user 的答案",
+    ),
   );
   assert(firstVerificationPrompt.includes("自行肯定/否定"));
   assert(
     verificationPrompt.includes(
-      "無據命題刪除或改單一原子變數/無前提問法",
+      "無據就刪；不可把未知改寫成忘記、不知道或任何感官評價",
     ),
   );
   assertEquals(recordHintCalls(state).length, 1);
@@ -7596,13 +7598,13 @@ Deno.test("Beginner Debrief repair removes an invented plan before independent v
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
   assert(
     verificationPrompt.includes(
-      "先只讀 transcript/trusted evidence，逐 user/assistant clause 與 trusted fact 建雙角色 source ledger",
+      "最後事實／變數稽核員",
     ),
   );
   assert(verificationPrompt.includes("trustedUserFacts"));
   assert(
     verificationPrompt.includes(
-      "source ledger 完成後才可查 candidate",
+      "candidate 每個過去／現在的回答、狀態、感受、偏好、能力、經歷、評價、因果",
     ),
   );
   assert(
@@ -7610,10 +7612,10 @@ Deno.test("Beginner Debrief repair removes an invented plan before independent v
   );
   assert(
     verificationPrompt.includes(
-      "terminalTurnRole 是伺服器權威事實",
+      "terminalTurnRole=assistant 時不可批尚未發生的 user 回覆",
     ),
   );
-  assert(verificationPrompt.includes("不安全只修不安全處"));
+  assert(verificationPrompt.includes("不安全只改上述問題"));
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 1);
@@ -7728,7 +7730,9 @@ Deno.test("Game Debrief repair removes partner speculation before independent ve
   );
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
   assert(
-    verificationPrompt.includes("Hint 是 user_turn 且既定策略不推翻"),
+    verificationPrompt.includes(
+      "applied Hint 是 user_turn，Hint decision 只鎖既定策略",
+    ),
   );
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.semanticCalls.length, 0);
@@ -7768,7 +7772,7 @@ Deno.test("direct Debrief lets reviewed partner questions bypass initiative rege
   assert(claudePrompt(state.claudeCalls[1]).includes("不是 user 證據"));
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "practiceGroundingReleaseAuditorV1",
+      "practiceGroundingReleaseAuditorV2",
     ),
   );
   assertEquals(
@@ -8316,8 +8320,12 @@ Deno.test("direct Beginner Debrief reviewer audit removes the latest production 
   );
   const releasePrompt = claudePrompt(state.claudeCalls[2]);
   assert(releasePrompt.includes('"terminalTurnRole":"assistant"'));
-  assert(releasePrompt.includes("末則 assistant 後不可批未發生的 user 回覆"));
-  assert(releasePrompt.includes("source-first 四步"));
+  assert(
+    releasePrompt.includes(
+      "terminalTurnRole=assistant 時不可批尚未發生的 user 回覆",
+    ),
+  );
+  assert(releasePrompt.includes("practiceGroundingReleaseAuditorV2"));
   for (const call of state.claudeCalls.slice(1)) {
     const prompt = claudePrompt(call);
     assert(prompt.includes(trustedMemory));
@@ -8331,10 +8339,9 @@ Deno.test("direct Beginner Debrief reviewer audit removes the latest production 
       "assistant 問句/接球/新素材算對話貢獻",
     ),
   );
-  assert(
-    releasePrompt.includes(
-      "只對 assistant clause 標回答/自揭/新細節/問句/提議/玩笑梗/未來接點及拒絕/終止",
-    ),
+  assertEquals(
+    releasePrompt.includes("前七者是貢獻/新素材"),
+    false,
   );
   assertEquals(
     (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
@@ -8344,7 +8351,7 @@ Deno.test("direct Beginner Debrief reviewer audit removes the latest production 
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
-Deno.test("Beginner Debrief release review keeps a direct follow-up from becoming no extension", async () => {
+Deno.test("Beginner Debrief first review keeps a direct follow-up and release preserves it", async () => {
   const wrong = validDebriefJson({
     summary: "她有直接追問『你追哪部』，話題有來回。",
     strengths: ["她有接住追劇狀態並追問劇名。"],
@@ -8354,15 +8361,6 @@ Deno.test("Beginner Debrief release review keeps a direct follow-up from becomin
     dateChance: "low",
     dateChanceReason: "目前尚無她的延伸，互動仍偏表面。",
     nextInviteMove: "先回答劇名，再沿追劇話題累積來回。",
-  });
-  const firstReview = groundingReviewEnvelope(wrong, {
-    summary: "她追問劇名←assistant_turn[1]:『你追哪部？』",
-    strengths: "她接住並追問←assistant_turn[1]:『我也還在回魂』『你追哪部？』",
-    watchouts: "回答劇名←assistant_turn[1]:『你追哪部？』",
-    suggestedLine: "{劇名}←variable；妳最近是否追到很晚←future_question",
-    dateChanceReason: "尚無她延伸←assistant_turn[1]:『你追哪部？』",
-    nextInviteMove: "回答劇名←assistant_turn[1]:『你追哪部？』",
-    gameBreakdown: "",
   });
   const repaired = validDebriefJson({
     summary: "她有直接追問『你追哪部』，話題有來回。",
@@ -8374,7 +8372,7 @@ Deno.test("Beginner Debrief release review keeps a direct follow-up from becomin
     dateChanceReason: "她有直接追問劇名，已延伸話題；但尚無邀約窗口。",
     nextInviteMove: "先回答劇名，再沿追劇話題累積來回。",
   });
-  const finalReview = groundingReviewEnvelope(repaired, {
+  const firstReview = groundingReviewEnvelope(repaired, {
     summary: "她追問劇名←assistant_turn[1]:『你追哪部？』",
     strengths: "她接住並追問←assistant_turn[1]:『我也還在回魂』『你追哪部？』",
     watchouts: "回答劇名←assistant_turn[1]:『你追哪部？』",
@@ -8382,6 +8380,15 @@ Deno.test("Beginner Debrief release review keeps a direct follow-up from becomin
     dateChanceReason: "她延伸追劇話題←assistant_turn[1]:『你追哪部？』",
     nextInviteMove: "回答劇名←assistant_turn[1]:『你追哪部？』",
     gameBreakdown: "",
+  });
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "OK",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "OK",
   });
   const { response, json, state } = await run(
     {
@@ -8422,11 +8429,17 @@ Deno.test("Beginner Debrief release review keeps a direct follow-up from becomin
   );
   assertGroundingReviewInput(
     state.claudeCalls[2],
-    "目前尚無她的延伸，互動仍偏表面。",
+    "她有直接追問劇名，已延伸話題；但尚無邀約窗口。",
   );
-  assertEquals(
-    groundingReviewCandidate(state.claudeCalls[2]),
-    groundingReviewCandidate(state.claudeCalls[1]),
+  assert(
+    groundingReviewCandidate(state.claudeCalls[1])!.includes(
+      "目前尚無她的延伸，互動仍偏表面。",
+    ),
+  );
+  assert(
+    groundingReviewCandidate(state.claudeCalls[2])!.includes(
+      "她有直接追問劇名，已延伸話題；但尚無邀約窗口。",
+    ),
   );
   assert(
     claudePrompt(state.claudeCalls[0]).includes(
@@ -8443,10 +8456,9 @@ Deno.test("Beginner Debrief release review keeps a direct follow-up from becomin
       "任一欄承認非拒絕貢獻→他欄禁寫無延伸/無來回",
     ),
   );
-  assert(
-    claudePrompt(state.claudeCalls[2]).includes(
-      "即使 low，ledger 有非拒絕貢獻也禁寫只有客套/無延伸/無正向延伸/無新素材/無來回",
-    ),
+  assertEquals(
+    claudePrompt(state.claudeCalls[2]).includes("前七者是貢獻/新素材"),
+    false,
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
@@ -8457,7 +8469,7 @@ Deno.test("Beginner Debrief release review keeps a direct follow-up from becomin
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
-Deno.test("Beginner Debrief release review repairs the exact cross-field extension denial and surprise causality", async () => {
+Deno.test("Beginner Debrief first review repairs extension denial and release checks facts", async () => {
   const ai1 = "早安～追到兩點也太拼了吧😂 是在追哪部啊";
   const appliedHint = "《{劇名}》啦，結果現在整個人還沒回來 😅";
   const ai2 = "喔那部喔！據說很好看但我不敢一次追太多，怕睡不著😂";
@@ -8478,15 +8490,6 @@ Deno.test("Beginner Debrief release review repairs the exact cross-field extensi
     dateChanceReason: badDateReason,
     nextInviteMove: "沿她怕睡不著的新素材再聊一輪，不急著邀約。",
   });
-  const firstReview = groundingReviewEnvelope(wrong, {
-    summary: "她接梗並延伸←assistant_turn[3]:『據說很好看但我不敢一次追太多』",
-    strengths: "她怕睡不著←assistant_turn[3]:『怕睡不著』",
-    watchouts: "",
-    suggestedLine: "追到兩點沒想到←user_turn[0]:『追劇追到兩點』",
-    dateChanceReason: "無延伸訊號←assistant_turn[3]:『據說很好看』",
-    nextInviteMove: "她怕睡不著←assistant_turn[3]:『怕睡不著』",
-    gameBreakdown: "",
-  });
   const repaired = validDebriefJson({
     summary: badSummary,
     strengths: ["她有接住劇名，並分享自己怕睡不著。"],
@@ -8497,7 +8500,7 @@ Deno.test("Beginner Debrief release review repairs the exact cross-field extensi
     dateChanceReason: repairedDateReason,
     nextInviteMove: "沿她怕睡不著的新素材再聊一輪，不急著邀約。",
   });
-  const finalReview = groundingReviewEnvelope(repaired, {
+  const firstReview = groundingReviewEnvelope(repaired, {
     summary: "她接梗並延伸←assistant_turn[3]:『據說很好看但我不敢一次追太多』",
     strengths: "她怕睡不著←assistant_turn[3]:『怕睡不著』",
     watchouts: "",
@@ -8506,6 +8509,15 @@ Deno.test("Beginner Debrief release review repairs the exact cross-field extensi
       "她延伸新素材←assistant_turn[3]:『據說很好看』『怕睡不著』",
     nextInviteMove: "她怕睡不著←assistant_turn[3]:『怕睡不著』",
     gameBreakdown: "",
+  });
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "OK",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "OK",
   });
   const { response, json, state } = await run(
     {
@@ -8558,13 +8570,17 @@ Deno.test("Beginner Debrief release review repairs the exact cross-field extensi
   assertEquals(json.failoverUsed, false);
   assertEquals(json.groundingReviewFallbackUsed, false);
   assertEquals(state.claudeCalls.length, 3);
-  for (const call of state.claudeCalls.slice(1)) {
-    assertGroundingReviewInput(call, badDateReason);
-    assertGroundingReviewInput(call, badSuggestedLine);
-  }
-  assertEquals(
-    groundingReviewCandidate(state.claudeCalls[2]),
-    groundingReviewCandidate(state.claudeCalls[1]),
+  assertGroundingReviewInput(state.claudeCalls[1], badDateReason);
+  assertGroundingReviewInput(state.claudeCalls[1], badSuggestedLine);
+  assertGroundingReviewInput(state.claudeCalls[2], repairedDateReason);
+  assertGroundingReviewInput(state.claudeCalls[2], repairedSuggestedLine);
+  assert(
+    groundingReviewCandidate(state.claudeCalls[1])!.includes(badDateReason),
+  );
+  assert(
+    groundingReviewCandidate(state.claudeCalls[2])!.includes(
+      repairedDateReason,
+    ),
   );
   const writerPrompt = claudePrompt(state.claudeCalls[0]);
   assert(
@@ -8589,7 +8605,7 @@ Deno.test("Beginner Debrief release review repairs the exact cross-field extensi
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "未來/條件不可升格現在",
+      "candidate 每個過去／現在的回答、狀態、感受、偏好、能力、經歷、評價、因果",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -8724,10 +8740,9 @@ Deno.test("production round-one Beginner release fixes an invented answer and de
       "assistant 問句/接球/新素材算對話貢獻",
     ),
   );
-  assert(
-    claudePrompt(state.claudeCalls[2]).includes(
-      "只對 assistant clause 標回答/自揭/新細節/問句/提議/玩笑梗/未來接點及拒絕/終止",
-    ),
+  assertEquals(
+    claudePrompt(state.claudeCalls[2]).includes("前七者是貢獻/新素材"),
+    false,
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
@@ -8899,7 +8914,7 @@ Deno.test("production round-one Game release preserves a conditional recommendat
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "owner/speech act/polarity/time-actuality/modality",
+      "同一 owner 的直證明寫",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -9044,7 +9059,7 @@ Deno.test("Game Debrief release review makes the pasteable line satisfy the exac
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "Game nextFirstLine=suggestedLine，自揭須有證據或原子變數",
+      "Game 修改 suggestedLine 時同步 nextFirstLine",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -9200,17 +9215,20 @@ Deno.test("direct Game Debrief repairs the latest production tasting, timing, an
   const releaseAuditPrompt = claudePrompt(state.claudeCalls[2]);
   assert(firstAuditPrompt.includes("practiceGroundingReviewerV3"));
   assertEquals(
-    firstAuditPrompt.includes("practiceGroundingReleaseAuditorV1"),
+    firstAuditPrompt.includes("practiceGroundingReleaseAuditorV2"),
     false,
   );
   assert(firstAuditPrompt.includes('"terminalTurnRole":"assistant"'));
-  assert(releaseAuditPrompt.includes("practiceGroundingReleaseAuditorV1"));
+  assert(releaseAuditPrompt.includes("practiceGroundingReleaseAuditorV2"));
   assert(releaseAuditPrompt.includes('"terminalTurnRole":"assistant"'));
   assert(
-    releaseAuditPrompt.includes("末則 assistant 後不可批未發生的 user 回覆"),
+    releaseAuditPrompt.includes(
+      "terminalTurnRole=assistant 時不可批尚未發生的 user 回覆",
+    ),
   );
-  assert(
-    releaseAuditPrompt.includes("source ledger 完成後才可查 candidate"),
+  assertEquals(
+    releaseAuditPrompt.includes("source ledger"),
+    false,
   );
   assertEquals(
     (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
@@ -9363,9 +9381,9 @@ Deno.test("direct Beginner Debrief release review repairs production global nega
   assert(firstPrompt.includes("反例掃描"));
   assert(firstPrompt.includes("我有時候也會X"));
   assert(firstPrompt.includes("今天剛好休假"));
-  assert(releasePrompt.includes("source-first 四步"));
-  assert(releasePrompt.includes("每層只做一次，禁止先看 candidate"));
-  assert(releasePrompt.includes("只有 candidate 自創且零既成前提"));
+  assert(releasePrompt.includes("practiceGroundingReleaseAuditorV2"));
+  assert(releasePrompt.includes("只做五件事"));
+  assert(releasePrompt.includes("不知道／沒記住／沒去過"));
   assertEquals(
     releasePrompt.includes("反例掃描：candidate 寫 role/scope"),
     false,
@@ -9539,7 +9557,9 @@ Deno.test("direct Game Debrief release review repairs terminal-reply blame and a
   assert(claudePrompt(state.claudeCalls[2]).includes(nestedLine));
   assert(claudePrompt(state.claudeCalls[1]).includes("反例掃描"));
   assert(
-    claudePrompt(state.claudeCalls[2]).includes("source-first 四步"),
+    claudePrompt(state.claudeCalls[2]).includes(
+      "practiceGroundingReleaseAuditorV2",
+    ),
   );
   assertEquals(
     claudePrompt(state.claudeCalls[2]).includes(
@@ -9549,12 +9569,12 @@ Deno.test("direct Game Debrief release review repairs terminal-reply blame and a
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "practiceGroundingReleaseAuditorV1",
+      "practiceGroundingReleaseAuditorV2",
     ),
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "末則 assistant 後不可批未發生的 user 回覆",
+      "terminalTurnRole=assistant 時不可批尚未發生的 user 回覆",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -9664,17 +9684,17 @@ Deno.test("direct Game Debrief keeps an applied Hint question attributed to the 
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "Hint 是 user_turn 且既定策略不推翻",
+      "applied Hint 是 user_turn，Hint decision 只鎖既定策略",
     ),
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "Debrief 分析的「你」=user、「她/對方」=assistant",
+      "Debrief 分析的「你」=user、「她／對方」=assistant",
     ),
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "suggestedLine/nextFirstLine 的「我」=user、「你/妳」=assistant",
+      "Hint 貼句與 Debrief suggestedLine/nextFirstLine 的「我」=user、「你／妳」=assistant",
     ),
   );
   assertEquals(recordDebriefCalls(state).length, 1);
@@ -9777,12 +9797,12 @@ Deno.test("direct Beginner Debrief removes a question-only critique when its nex
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "Game nextFirstLine=suggestedLine，自揭須有證據或原子變數",
+      "Game 修改 suggestedLine 時同步 nextFirstLine",
     ),
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "只有 candidate 自創且零既成前提的未來提議/純問句免記",
+      "可再接不含未證前提的反問",
     ),
   );
   assertEquals(
@@ -9922,7 +9942,7 @@ Deno.test("direct Game Debrief preserves an earlier question-only pattern when t
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "末則 assistant 後不可批未發生的 user 回覆",
+      "terminalTurnRole=assistant 時不可批尚未發生的 user 回覆",
     ),
   );
   assertEquals(
@@ -10219,7 +10239,7 @@ Deno.test("direct Beginner Debrief release review repairs the production adjecti
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "owner/speech act/polarity/time-actuality/modality",
+      "同一 owner 的直證明寫",
     ),
   );
   assertEquals(
@@ -10361,7 +10381,7 @@ Deno.test("direct Game Debrief release review keeps a question from becoming kno
   assert(claudePrompt(state.claudeCalls[1]).includes("早班待確認"));
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "問句/提議/玩笑的 presupposition 也須證據",
+      "不論有無問號都只證她說過，不證 user 的答案",
     ),
   );
   assertEquals(
@@ -13213,10 +13233,11 @@ Deno.test("source-first Beginner release repairs present fatigue and denied exte
     groundingReviewCandidate(state.claudeCalls[2]),
     groundingReviewCandidate(state.claudeCalls[1]),
   );
-  assert(
+  assertEquals(
     claudePrompt(state.claudeCalls[2]).includes(
       "回答後收尾可 extension+closure",
     ),
+    false,
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
@@ -13524,7 +13545,7 @@ Deno.test("fresh production Beginner release leaves an unanswered work status un
   }
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "終審尾掃：末則 assistant 問 user（含無問號的嗎/吧/呢/該不會）",
+      "末則 assistant 在語意上問 user，標點不影響",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -13850,8 +13871,133 @@ Deno.test("fresh production Game release keeps an unanswered drink status atomic
   }
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "終審尾掃：末則 assistant 問 user（含無問號的嗎/吧/呢/該不會）",
+      "末則 assistant 在語意上問 user，標點不影響",
     ),
+  );
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("fresh production Game release removes the exact unanswered bean inventions", async () => {
+  const appliedHint =
+    "叫{店名}，我路過時聞到很香。妳是咖啡師，光聞香能猜豆子嗎？";
+  const badLine = "說實話，豆款我沒記住，但那個香氣很難忽略——妳遇過這種店嗎？";
+  const safeLine = "{真實答案}。妳遇過這種店嗎？";
+  const wrongCard = JSON.parse(validDebriefJson({
+    summary: "她接住店名與聞香話題，接著問你知不知道今天烘哪支豆。",
+    strengths: [
+      "照貼 Hint 延伸咖啡話題，她有回應並追問豆款。",
+      "她補充沒聽過這家店，讓你可以接著問她的經驗。",
+    ],
+    watchouts: [
+      "她問的豆款尚未回答，貼句不能替你填入答案。",
+      "目前沒有約見訊號，先沿咖啡經驗建立來回。",
+    ],
+    suggestedLine: badLine,
+    vibe: "暖",
+    dateChance: "low",
+    dateChanceReason: "她有追問，但沒有明示約見或提供時間。",
+    nextInviteMove: "先回答真實豆款資訊，再問她遇過的咖啡店。",
+  })) as Record<string, unknown>;
+  wrongCard.gameBreakdown = {
+    phaseReached: "她接住聞香話題並追問今天烘的豆款。",
+    missedVariable: "你是否知道豆款尚未回答。",
+    failureState: "她正在等你的真實答案，不能替你補成忘記或感官評價。",
+    nextFirstLine: badLine,
+    inviteDirection: "先回答真實資訊並延伸她的咖啡店經驗。",
+  };
+  const wrong = JSON.stringify(wrongCard);
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "OK",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "OK",
+  });
+  const repairedCard = JSON.parse(wrong) as Record<string, unknown>;
+  repairedCard.suggestedLine = safeLine;
+  (repairedCard.gameBreakdown as Record<string, unknown>).nextFirstLine =
+    safeLine;
+  const repaired = JSON.stringify(repairedCard);
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "FIX: 未答豆款只能保留真實答案變數",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "FIX: Game 貼句同步",
+  });
+
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 2 }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [wrong, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "P1_OPEN",
+            targetVariable: "familiarity",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先沿咖啡話題建立熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "fresh-prod-game-unanswered-bean-inventions",
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        { role: "ai", text: "哪家啊？該不會是被香味勾進去的吧😂" },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text:
+            "沒聽過欸，但敢叫這個名字應該有點東西。\n不過你光聞香就知道厲害喔？它今天烘哪支豆你知道嗎。",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-fresh-prod-game-unanswered-bean",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.suggestedLine, safeLine);
+  assertEquals(json.card.gameBreakdown.nextFirstLine, safeLine);
+  const serialized = JSON.stringify(json.card);
+  for (const invented of ["豆款我沒記住", "那個香氣很難忽略"]) {
+    assertEquals(serialized.includes(invented), false, invented);
+  }
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], badLine);
+  assertGroundingReviewInput(state.claudeCalls[2], badLine);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
@@ -14228,11 +14374,17 @@ Deno.test("source-first controls preserve an explicit refusal and an accepted me
     groundingReviewCandidate(acceptedRun.state.claudeCalls[2]),
     groundingReviewCandidate(acceptedRun.state.claudeCalls[1]),
   );
-  for (const call of acceptedRun.state.claudeCalls) {
+  for (const call of acceptedRun.state.claudeCalls.slice(0, 2)) {
     assert(
       claudePrompt(call).includes(
         "約見脈絡明確給可約時間/共同場景",
       ),
     );
   }
+  assertEquals(
+    claudePrompt(acceptedRun.state.claudeCalls[2]).includes(
+      "約見脈絡明確給可約時間/共同場景",
+    ),
+    false,
+  );
 });
