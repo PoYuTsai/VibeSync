@@ -10,23 +10,24 @@ class AiPrivacyDisclosure {
   static const String title = 'AI 與你的隱私';
 
   // 共用單句，避免 onboarding 與設定頁雙份漂移。
-  static const String _openingLine =
-      '你送出的對話與截圖，會經 VibeSync 後端傳送至第三方 AI';
+  static const String _openingLine = '你送出的對話與截圖，會經 VibeSync 後端傳送至第三方 AI';
 
   // 廠商行：只在設定頁 AI 隱私頁揭露。onboarding 刻意不列，
   // 避免使用者誤以為練習室女孩「背後就是 DeepSeek」。
-  static const String _vendorLine =
-      '（分析與教練用 Anthropic Claude，練習室用 DeepSeek）';
+  static const String _vendorLine = '（分析與教練用 Anthropic Claude，練習室用 DeepSeek）';
 
   static const String _consentLine = '每個 AI 功能首次使用前，都會先徵求你的同意';
 
-  static const String _uploadParagraph =
-      '當你回報建議的採用情況時，僅去識別化的統計（採用了哪類建議、\n'
+  static const String _uploadParagraph = '當你回報建議的採用情況時，僅去識別化的統計（採用了哪類建議、\n'
       '後來互動概況）會上傳以改善服務；你的對話原文與筆記永遠只存在手機';
+
+  static const String _optimizeReplayParagraph =
+      '使用「我幫你修」時，為了在網路中斷後恢復同一結果並避免重複扣額度，\n'
+      'VibeSync 後端的可用重播資料保留 7 天並每小時清除，只存 AI 產生的潤飾句與理由，不另存原始草稿或完整對話輸入；AI 生成文字仍可能反映你提供的內容，刪除後的備份副本依 Supabase 備份週期處理';
 
   /// 設定頁 AI 隱私頁：完整揭露，含第三方 AI 廠商名與去識別化上傳說明。
   static const String description =
-      '$_openingLine\n$_vendorLine\n$_consentLine\n\n$_uploadParagraph';
+      '$_openingLine\n$_vendorLine\n$_consentLine\n\n$_uploadParagraph\n\n$_optimizeReplayParagraph';
 
   /// Onboarding 第 4 頁：只保留「送第三方 AI」與「同意閘」兩句，
   /// 不列廠商名（避免誤解練習室女孩＝DeepSeek）。完整揭露留在設定頁。

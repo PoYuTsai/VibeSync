@@ -13,6 +13,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/services/message_calculator.dart';
+import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -57,6 +58,7 @@ import '../../data/services/ocr_recognition_cache_service.dart';
 import '../../data/services/analysis_hint_service.dart';
 import '../../data/services/analysis_service.dart';
 import '../../data/services/analysis_telemetry_guardrail_helper.dart';
+import '../../data/services/optimize_message_request_session.dart';
 import '../../domain/coach/coach_action_policy.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/analysis_record.dart';
@@ -68,6 +70,7 @@ import '../widgets/reply_style_card.dart';
 import '../widgets/screenshot_added_feedback_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
 import '../widgets/analysis_usage_summary_line.dart';
+import '../helpers/analysis_usage_copy.dart';
 import '../widgets/streaming_analysis_loading_widgets.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
@@ -161,7 +164,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   bool _showDetailedAnalysis = false;
   bool _isOptimizing = false;
   final _optimizeController = TextEditingController();
+  final _optimizeRequestSession = OptimizeMessageRequestIdSession(
+    store: HiveOptimizeMessagePendingRequestStore(
+      () => StorageService.settingsBox,
+    ),
+  );
   OptimizedMessage? _optimizedMessage;
+  OptimizeMessagePendingRequest? _optimizePendingAwaitingPresentation;
 
   String? _feedbackCategory;
   final _feedbackCommentController = TextEditingController();
@@ -3482,6 +3491,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   void _syncSubscriptionUsageFromResult(
     AnalysisResult result, {
     bool showChargeToast = false,
+    String chargeActionLabel = '分析',
   }) {
     final usage = result.rawResponse?['usage'];
     if (usage is! Map) {
@@ -3491,11 +3501,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     // ADR #19 r3：預覽只報區間，分析後告知 server 實扣則數。
     // 只在分析完成現場顯示（hydration 恢復快照時不顯示）。
     if (showChargeToast) {
-      final messagesUsed = usage['messagesUsed'];
-      if (messagesUsed is num &&
-          messagesUsed > 0 &&
-          usage['isTestAccount'] != true) {
-        _showFloatingSnackBar('本次分析使用 ${messagesUsed.round()} 則');
+      final toast = buildAnalysisUsageChargeToast(
+        usage,
+        actionLabel: chargeActionLabel,
+      );
+      if (toast != null) {
+        _showFloatingSnackBar(toast);
       }
     }
 
@@ -4676,65 +4687,117 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final draft = _optimizeController.text.trim();
     if (draft.isEmpty) return;
 
-    if (!ref.read(subscriptionProvider).isEssential) {
-      _showFloatingSnackBar('草稿潤飾器需要 Essential 方案。');
-      await _showPaywall(context);
-      return;
-    }
-    final consented = await AiDataSharingConsent.ensure(
-      context,
-      featureLabel: '草稿潤飾',
-    );
-    if (!consented || !mounted) return;
-
-    _dismissKeyboard();
-    setState(() {
-      _isOptimizing = true;
-      _optimizedMessage = null;
-      _polishRunKey = null;
-      _lastAnalysisTelemetry = null;
-    });
-
     final conversation = ref.read(conversationProvider(widget.conversationId));
-    if (conversation == null) {
-      setState(() => _isOptimizing = false);
+    if (conversation == null) return;
+    final ownerUserId = SupabaseService.currentUser?.id;
+    if (ownerUserId == null || ownerUserId.isEmpty) {
+      _showFloatingSnackBar('登入狀態已失效，請重新登入後再試。本次不會扣額度。');
       return;
     }
 
+    OptimizeMessagePendingRequest? optimizePending;
     try {
       final analysisContext = await _buildSummaryAwareAnalysisContext(
         conversation: conversation,
         baseMessages: conversation.messages,
       );
+      final partnerSummary = _resolvePartnerSummary(conversation);
+      final effectiveStyleContext = _resolveEffectiveStyleContext(conversation);
+      final knownContactName =
+          ScreenshotRecognitionHelper.isPlaceholderConversationName(
+        conversation.name,
+      )
+              ? null
+              : conversation.name.trim();
+      final optimizeFingerprint =
+          OptimizeMessageRequestIdSession.fingerprintFor(
+        messages: analysisContext.requestMessages,
+        userDraft: draft,
+        sessionContext: conversation.sessionContext,
+        conversationSummary: analysisContext.conversationSummary,
+        partnerSummary: partnerSummary,
+        effectiveStyleContext: effectiveStyleContext,
+        knownContactName: knownContactName,
+      );
+      final existingPending = await _optimizeRequestSession.findPending(
+        ownerUserId: ownerUserId,
+        fingerprint: optimizeFingerprint,
+      );
+      if (!mounted) return;
+      if (!canSendOptimizeMessageRequest(
+        isEssential: ref.read(subscriptionProvider).isEssential,
+        pending: existingPending,
+      )) {
+        if (!mounted) return;
+        _showFloatingSnackBar(
+          '新的草稿潤飾需要 Essential；若是恢復已付結果，請貼回同一份草稿。',
+        );
+        await _showPaywall(context);
+        return;
+      }
+
+      final consented = await AiDataSharingConsent.ensure(
+        context,
+        featureLabel: '草稿潤飾',
+        consentKey: AiDataSharingConsent.optimizeReplayConsentKey,
+        dataDescription: AiDataSharingConsent.optimizeReplayDataDescription,
+        purposeText: AiDataSharingConsent.optimizeReplayPurposeText,
+      );
+      if (!consented || !mounted) return;
+
+      _dismissKeyboard();
+      setState(() {
+        _isOptimizing = true;
+        _optimizedMessage = null;
+        _polishRunKey = null;
+        _lastAnalysisTelemetry = null;
+      });
+
+      final pending = existingPending ??
+          await _optimizeRequestSession.beginAttempt(
+            ownerUserId: ownerUserId,
+            fingerprint: optimizeFingerprint,
+          );
+      optimizePending = pending;
 
       final analysisService = AnalysisService();
       final result = await analysisService.analyzeConversation(
         analysisContext.requestMessages,
         sessionContext: conversation.sessionContext,
         conversationSummary: analysisContext.conversationSummary,
-        partnerSummary: _resolvePartnerSummary(conversation),
-        effectiveStyleContext: _resolveEffectiveStyleContext(conversation),
-        knownContactName:
-            ScreenshotRecognitionHelper.isPlaceholderConversationName(
-          conversation.name,
-        )
-                ? null
-                : conversation.name.trim(),
+        partnerSummary: partnerSummary,
+        effectiveStyleContext: effectiveStyleContext,
+        knownContactName: knownContactName,
         userDraft: draft,
+        requestId: pending.requestId,
         onTelemetry: _handleAnalysisTelemetry,
       );
+      if (result.optimizedMessage == null ||
+          result.optimizedMessage!.optimized.trim().isEmpty) {
+        throw AnalysisException(
+          '這次沒有產生可用的優化結果，請稍後再試。',
+          code: 'OPTIMIZE_MESSAGE_RESULT_INVALID',
+          suggestedAction: AnalysisErrorAction.wait,
+        );
+      }
       if (!mounted) return;
 
       setState(() {
         _isOptimizing = false;
         _optimizedMessage = result.optimizedMessage;
         _polishRunKey = const Uuid().v4();
+        _optimizePendingAwaitingPresentation = pending;
       });
 
-      if (_optimizedMessage == null || _optimizedMessage!.optimized.isEmpty) {
-        _showFloatingSnackBar('這次沒有產生可用的優化結果，請稍後再試。');
-      }
-      _syncSubscriptionUsageFromResult(result, showChargeToast: true);
+      _syncSubscriptionUsageFromResult(
+        result,
+        showChargeToast: true,
+        chargeActionLabel: '潤飾',
+      );
+      // Only clear the durable replay identity after Flutter has rendered the
+      // paid result. If the user leaves before this frame, returning with the
+      // same payload replays the server result instead of minting a new charge.
+      await _clearOptimizePendingAfterVisibleFrame(pending);
     } on DailyLimitExceededException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -4750,6 +4813,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _showFloatingSnackBar(_monthlyQuotaExceededMessage(e));
       await _showPaywall(context);
     } on AnalysisException catch (e) {
+      if (e.code == 'INVALID_OPTIMIZE_MESSAGE_REQUEST_ID' ||
+          e.code == 'OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH') {
+        if (optimizePending != null) {
+          try {
+            await _optimizeRequestSession.reset(optimizePending);
+          } catch (_) {
+            // A stale encrypted snapshot is replay-safe; the next attempt can
+            // surface a storage error without sending another billable call.
+          }
+        }
+      }
       if (!mounted) return;
       setState(() {
         _isOptimizing = false;
@@ -4765,6 +4839,34 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       });
       _showFloatingSnackBar('訊息優化暫時失敗，請稍後再試。');
     }
+  }
+
+  Future<void> _clearOptimizePendingAfterVisibleFrame(
+    OptimizeMessagePendingRequest pending,
+  ) async {
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted ||
+        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
+        ModalRoute.of(context)?.isCurrent != true ||
+        _optimizePendingAwaitingPresentation?.requestId != pending.requestId) {
+      return;
+    }
+    await _optimizeRequestSession.markSuccess(pending);
+    if (_optimizePendingAwaitingPresentation?.requestId == pending.requestId) {
+      _optimizePendingAwaitingPresentation = null;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    final pending = _optimizePendingAwaitingPresentation;
+    if (pending == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(_clearOptimizePendingAfterVisibleFrame(pending));
+      }
+    });
   }
 
   // ===== 分析輔助方法 (Mock 邏輯，之後會被真正的 AI 取代) =====
@@ -5949,6 +6051,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   @override
   Widget build(BuildContext context) {
+    final optimizePending = _optimizePendingAwaitingPresentation;
+    if (optimizePending != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          unawaited(_clearOptimizePendingAfterVisibleFrame(optimizePending));
+        }
+      });
+    }
     // Mirror streaming analyze transitions onto local setState fields so the
     // legacy render tree (which reads _enthusiasmScore, _isAnalyzing, etc.)
     // keeps working without a screen-wide rewrite. See Phase 3 plan §Task 3.4.
@@ -7484,7 +7594,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
-                                            '草稿潤飾器是 Essential 功能，升級後可直接把你的草稿修得更自然。',
+                                            '草稿潤飾器是 Essential 功能。若先前已扣額度但沒看到結果，展開後貼回同一草稿可免費恢復。',
                                             style: AppTypography.bodyMedium
                                                 .copyWith(
                                               color: AppColors.ctaStart,
@@ -7499,7 +7609,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       ],
                                     ),
                                   ),
-                                ] else if (_showOptimizeInput) ...[
+                                ],
+                                if (_showOptimizeInput) ...[
                                   const SizedBox(height: 12),
                                   TextField(
                                     controller: _optimizeController,
@@ -7507,7 +7618,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         color: AppColors.onBackgroundPrimary),
                                     decoration: InputDecoration(
                                       hintText: '貼上你原本想傳的訊息…',
-                                      helperText: '這裡只修草稿；想討論下一步，請用「問教練」。',
+                                      helperText: subscription.isEssential
+                                          ? '這裡只修草稿；成功完成使用 1 則。想討論下一步，請用「問教練」。'
+                                          : '只供恢復已付但未顯示的結果：請貼回同一份草稿；新的潤飾仍需 Essential。',
                                       hintStyle:
                                           AppTypography.bodyMedium.copyWith(
                                         color: AppColors.onBackgroundSecondary
@@ -7572,16 +7685,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                               child: CircularProgressIndicator(
                                                   strokeWidth: 2),
                                             )
-                                          : const Icon(Icons.auto_fix_high),
+                                          : Icon(subscription.isEssential
+                                              ? Icons.auto_fix_high
+                                              : Icons.restore_rounded),
                                       label: Text(
-                                        _isOptimizing ? '優化中…' : '優化這段草稿',
+                                        _isOptimizing
+                                            ? '優化中…'
+                                            : subscription.isEssential
+                                                ? '優化這段草稿'
+                                                : '恢復已付結果',
                                       ),
                                     ),
                                   ),
                                 ],
                                 // 顯示優化結果
-                                if (subscription.isEssential &&
-                                    _optimizedMessage != null &&
+                                if (_optimizedMessage != null &&
                                     _optimizedMessage!
                                         .optimized.isNotEmpty) ...[
                                   const SizedBox(height: 16),

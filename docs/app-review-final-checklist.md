@@ -57,6 +57,7 @@ Repo 端已完成：`b515cad` 已 push、`flutter analyze` PASS、Phase 13 targe
 - [ ] `vibesyncaiapp@gmail.com` 可收信
 - [ ] App Store Connect 的 privacy disclosure 已依目前資料流填寫
 - [ ] Privacy Label 已揭露 Email / User ID / Purchase History / User Content / Photos / Usage Data / Diagnostics
+- [ ] App 內 AI 隱私頁、線上 Privacy Policy 與 App Store Connect 已揭露「我幫你修」暫存 AI 生成潤飾句／理由、生成文字可能反映輸入、不另存原始草稿／完整對話輸入（重播 7 天、每小時清除逾期 live row，備份依 Supabase 週期）
 - [ ] Privacy Label 未勾 tracking、location、contacts 等未使用資料類型
 - [ ] App Review 說明文已更新成目前實際功能與資料流
 - [ ] App Review Information 已填測試帳號、測試步驟、IAP/AI/OCR 說明

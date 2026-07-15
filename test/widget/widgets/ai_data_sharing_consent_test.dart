@@ -102,8 +102,7 @@ void main() {
 
   // ── 參數化：practice-chat 走 DeepSeek，文案與 key 須與 Claude 路徑分離 ──
 
-  testWidgets('custom destinationLabel 顯示於揭露文案（DeepSeek 路徑）',
-      (tester) async {
+  testWidgets('custom destinationLabel 顯示於揭露文案（DeepSeek 路徑）', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Builder(
@@ -141,7 +140,8 @@ void main() {
                   context,
                   featureLabel: 'AI 實戰練習室',
                   consentKey: 'practice_consent_test_key2',
-                  destinationLabel: AiDataSharingConsent.practiceDestinationLabel,
+                  destinationLabel:
+                      AiDataSharingConsent.practiceDestinationLabel,
                   purposeText: AiDataSharingConsent.practicePurposeText,
                   dataDescription: AiDataSharingConsent.practiceDataDescription,
                 );
@@ -159,8 +159,7 @@ void main() {
     expect(find.textContaining('截圖辨識'), findsNothing);
   });
 
-  test('不同 consentKey 各自獨立（同意 Claude 不代表同意 DeepSeek 練習室）',
-      () async {
+  test('不同 consentKey 各自獨立（同意 Claude 不代表同意 DeepSeek 練習室）', () async {
     SharedPreferences.setMockInitialValues({
       AiDataSharingConsent.acceptedKeyForTesting: true,
     });
@@ -171,6 +170,38 @@ void main() {
       ),
       isFalse,
     );
+  });
+
+  testWidgets('草稿潤飾獨立揭露生成結果暫存、7 天重播與備份週期', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                await AiDataSharingConsent.ensure(
+                  context,
+                  featureLabel: '草稿潤飾',
+                  consentKey: AiDataSharingConsent.optimizeReplayConsentKey,
+                  dataDescription:
+                      AiDataSharingConsent.optimizeReplayDataDescription,
+                  purposeText: AiDataSharingConsent.optimizeReplayPurposeText,
+                );
+              },
+              child: const Text('start'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('start'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('不另存原始草稿或完整對話輸入'), findsOneWidget);
+    expect(find.textContaining('可用重播資料保留 7 天'), findsOneWidget);
+    expect(find.textContaining('生成文字仍可能重述或反映'), findsOneWidget);
+    expect(find.textContaining('備份副本依 Supabase'), findsOneWidget);
   });
 
   // ── 帳號級同意（5.1.1(i)/5.1.2(i)）：consent 綁 userId，不得跨帳號沿用 ──
@@ -185,8 +216,7 @@ void main() {
       expect(await AiDataSharingConsent.hasAccepted(), isFalse);
     });
 
-    testWidgets('登入時同意持久化到該帳號，換帳號不沿用、回原帳號仍有效',
-        (tester) async {
+    testWidgets('登入時同意持久化到該帳號，換帳號不沿用、回原帳號仍有效', (tester) async {
       AiDataSharingConsent.debugUserIdOverride = () => 'user-a';
 
       await pumpConsentLauncher(tester);
@@ -227,8 +257,7 @@ void main() {
       expect(await AiDataSharingConsent.hasAccepted(), isTrue);
     });
 
-    testWidgets('dialog 開啟期間身份變動：不寫入、不放行（Codex P2 競態）',
-        (tester) async {
+    testWidgets('dialog 開啟期間身份變動：不寫入、不放行（Codex P2 競態）', (tester) async {
       var currentUserId = 'user-a';
       AiDataSharingConsent.debugUserIdOverride = () => currentUserId;
 

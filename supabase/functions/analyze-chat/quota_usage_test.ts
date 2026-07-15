@@ -78,3 +78,47 @@ Deno.test("quota usage: direct image analysis is charged by message count, not i
     },
   );
 });
+
+Deno.test("quota usage: optimize-message is fixed at one regardless of context estimate", () => {
+  const requestType = deriveRequestType({
+    recognizeOnly: false,
+    hasImages: false,
+    isMyMessageMode: false,
+    hasUserDraft: true,
+  });
+
+  assertEquals(requestType, "optimize_message");
+  assertEquals(
+    buildQuotaUsageMetadata({
+      requestType,
+      recognizeOnly: false,
+      accountIsTest: false,
+      estimatedMessageCount: 20,
+    }),
+    {
+      shouldChargeQuota: true,
+      quotaReason: "optimize_message_fixed_1",
+      quotaUnit: "messages",
+      chargedMessageCount: 1,
+      estimatedMessageCount: 1,
+    },
+  );
+});
+
+Deno.test("quota usage: optimize-message remains free for test accounts", () => {
+  assertEquals(
+    buildQuotaUsageMetadata({
+      requestType: "optimize_message",
+      recognizeOnly: false,
+      accountIsTest: true,
+      estimatedMessageCount: 20,
+    }),
+    {
+      shouldChargeQuota: false,
+      quotaReason: "test_account_waived",
+      quotaUnit: "messages",
+      chargedMessageCount: 0,
+      estimatedMessageCount: 1,
+    },
+  );
+});

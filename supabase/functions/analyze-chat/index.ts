@@ -50,6 +50,19 @@ import {
 } from "./opener_charge.ts";
 import { buildQuotaUsageMetadata, deriveRequestType } from "./quota_usage.ts";
 import {
+  buildOptimizeMessageLedgerResult,
+  classifyOptimizeMessageReplayPreflight,
+  computeOptimizeMessageInputHash,
+  hasUsableOptimizedMessage,
+  hydrateOptimizeMessageReplayResult,
+  isValidOptimizeMessageRequestId,
+  OPTIMIZE_MESSAGE_COST,
+  optimizeMessageReplayCutoffIso,
+  type OptimizeMessageReplayRow,
+  settleOptimizeMessageRequest,
+} from "./optimize_message_billing.ts";
+import { findClientShapeViolations } from "./client_shape_validator.ts";
+import {
   computeBillingPayloadHash,
   MAX_BILLABLE_CHARS,
   parseBillingProtocolVersion,
@@ -4450,6 +4463,30 @@ serve(async (req) => {
     const isStreamRetryMode = responseMode === "stream" &&
       analysisRunId !== null;
 
+    if (rawRecognizeOnly != null && typeof rawRecognizeOnly !== "boolean") {
+      return jsonResponse({ error: "Invalid recognizeOnly" }, 400);
+    }
+    const recognizeOnly = rawRecognizeOnly === true;
+    const isOptimizeMessageRequestShape = !recognizeOnly &&
+      rawMode !== "opener" &&
+      !(Array.isArray(images) && images.length > 0) &&
+      typeof rawUserDraft === "string" &&
+      rawUserDraft.trim().length > 0 &&
+      rawAnalyzeMode !== "my_message";
+
+    // optimize_message has exactly one authoritative response/billing path.
+    // Reject compatibility quick/full/stream modes before any model or quota
+    // work so they cannot bypass the fixed-one idempotency ledger.
+    if (isOptimizeMessageRequestShape && responseMode !== "legacy") {
+      return jsonResponse({
+        error: "OPTIMIZE_MESSAGE_UNSUPPORTED_RESPONSE_MODE",
+        code: "OPTIMIZE_MESSAGE_UNSUPPORTED_RESPONSE_MODE",
+        message:
+          "草稿潤飾暫不支援這種回應模式，請更新 App 後再試。本次不會扣額度。",
+        shouldChargeQuota: false,
+      }, 400);
+    }
+
     // ------------------------------------------------------------------
     // Phase 1.3 (Codex round-2) — early MISSING_RUN_ID bounce.
     // Phase 2.1 — full+runId now flows through to the real handler below.
@@ -4483,10 +4520,6 @@ serve(async (req) => {
       );
     }
 
-    if (rawRecognizeOnly != null && typeof rawRecognizeOnly !== "boolean") {
-      return jsonResponse({ error: "Invalid recognizeOnly" }, 400);
-    }
-    const recognizeOnly = rawRecognizeOnly === true;
     // ADR #19：新欄位只有新 client 會送，可嚴格驗證（舊欄位
     // previousAnalyzedCount 維持寬容，在 billing fallback 內降級處理）。
     if (
@@ -4825,6 +4858,7 @@ serve(async (req) => {
     // validates the run via AnalysisRunStore.validateRunForFull instead.
     if (
       !recognizeOnly && !isOpenerMode && !accountIsTest &&
+      !isOptimizeMessageRequestShape &&
       responseMode !== "full" &&
       !isStreamRetryMode &&
       sub.monthly_messages_used >= monthlyLimit
@@ -4862,6 +4896,7 @@ serve(async (req) => {
     // Check daily limit (測試帳號跳過, full mode 跳過 — 同上)
     if (
       !recognizeOnly && !isOpenerMode && !accountIsTest &&
+      !isOptimizeMessageRequestShape &&
       responseMode !== "full" &&
       !isStreamRetryMode &&
       sub.daily_messages_used >= dailyLimit
@@ -5743,6 +5778,111 @@ ${recentText}`;
       hasUserDraft:
         !!(userDraft && typeof userDraft === "string" && userDraft.trim()),
     });
+    const isOptimizeMessageMode = requestType === "optimize_message";
+    let optimizeRequestId: string | null = null;
+    let optimizeInputHash: string | null = null;
+    let optimizeReplayResult: Record<string, unknown> | null = null;
+
+    if (isOptimizeMessageMode) {
+      // Missing requestId is allowed only for old clients. Current clients
+      // always send a UUID; malformed identities fail closed instead of
+      // silently losing retry idempotency.
+      if (
+        rawRequestId != null &&
+        !isValidOptimizeMessageRequestId(rawRequestId)
+      ) {
+        return jsonResponse({
+          error: "INVALID_OPTIMIZE_MESSAGE_REQUEST_ID",
+          code: "INVALID_OPTIMIZE_MESSAGE_REQUEST_ID",
+          message: "草稿潤飾請求格式有誤，請重新送出。本次不會扣額度。",
+        }, 400);
+      }
+      optimizeRequestId = isValidOptimizeMessageRequestId(rawRequestId)
+        ? rawRequestId
+        : null;
+
+      if (optimizeRequestId !== null && userDraft) {
+        optimizeInputHash = await computeOptimizeMessageInputHash({
+          messages,
+          userDraft,
+          sessionContext,
+          conversationSummary,
+          partnerSummary,
+          effectiveStyleContext,
+          knownContactName,
+          forceModel: typeof forceModel === "string" ? forceModel : null,
+        });
+        const { data: replayRow, error: replayReadError } = await supabase
+          .from("optimize_message_requests")
+          .select("input_hash, result_json, created_at")
+          .eq("user_id", user.id)
+          .eq("request_id", optimizeRequestId)
+          .gte("created_at", optimizeMessageReplayCutoffIso())
+          .maybeSingle();
+        if (replayReadError) {
+          // A paid result may already exist. Treating a failed read as fresh
+          // can strand the final credit behind the projected quota gate, so
+          // fail closed and let the client retry with the same durable UUID.
+          logError("optimize_message_replay_preflight_read_failed", {
+            user: summarizeUser(user.id),
+            error: replayReadError.message,
+          });
+          return jsonResponse({
+            error: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
+            code: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
+            message: "草稿潤飾安全重試確認中斷，請再試一次。本次不會重複扣額度。",
+            retryable: true,
+          }, 503);
+        } else {
+          const replay = classifyOptimizeMessageReplayPreflight(
+            replayRow as OptimizeMessageReplayRow | null,
+            optimizeInputHash,
+          );
+          if (replay.kind === "mismatch") {
+            return jsonResponse({
+              error: "OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH",
+              code: "OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH",
+              message:
+                "這次草稿和先前的重試不一致，請重新送出。本次不會扣額度。",
+            }, 400);
+          }
+          if (replay.kind === "replay") {
+            const hydratedReplay = hydrateOptimizeMessageReplayResult(
+              replay.result,
+              userDraft,
+            );
+            const replayShapeViolations = findClientShapeViolations(
+              hydratedReplay,
+            );
+            if (
+              hydratedReplay === null ||
+              !hasUsableOptimizedMessage(hydratedReplay) ||
+              replayShapeViolations.length > 0
+            ) {
+              logError("optimize_message_replay_result_invalid", {
+                user: summarizeUser(user.id),
+                requestId: optimizeRequestId,
+                violationCount: replayShapeViolations.length,
+                violationPaths: replayShapeViolations
+                  .slice(0, 8)
+                  .map((violation) => violation.path),
+              });
+              return jsonResponse({
+                error: "OPTIMIZE_MESSAGE_REPLAY_INVALID",
+                code: "OPTIMIZE_MESSAGE_REPLAY_INVALID",
+                message:
+                  "草稿潤飾結果暫時無法恢復，請重新送出。本次不會扣額度。",
+              }, 500);
+            }
+            optimizeReplayResult = hydratedReplay;
+          }
+        }
+      } else {
+        logWarn("optimize_message_request_id_missing_legacy", {
+          user: summarizeUser(user.id),
+        });
+      }
+    }
     // ADR #19 r3：全對話字數合併計費。增量 = 字數差（三層 compat fallback）、
     // 分段帶 1~40=1 / 41~400=ceil/40 / 401~2000=10 / 2001~4000=20（新 client
     // 需確認）/ 4001+ reject。詳見 billing.ts。
@@ -5819,6 +5959,7 @@ ${recentText}`;
       quotaUsage.chargedMessageCount;
     if (
       quotaUsage.shouldChargeQuota && !recognizeOnly && !accountIsTest &&
+      optimizeReplayResult === null &&
       responseMode !== "full" &&
       !isStreamRetryMode &&
       projectedMonthlyUsage > monthlyLimit
@@ -5851,6 +5992,7 @@ ${recentText}`;
     }
     if (
       quotaUsage.shouldChargeQuota && !recognizeOnly && !accountIsTest &&
+      optimizeReplayResult === null &&
       responseMode !== "full" &&
       !isStreamRetryMode &&
       projectedDailyUsage > dailyLimit
@@ -5881,10 +6023,11 @@ ${recentText}`;
         );
       }
     }
-    const isOptimizeMessageMode = requestType === "optimize_message";
     if (
-      (isMyMessageMode || isOptimizeMessageMode) &&
-      effectiveTier !== "essential"
+      (
+        isMyMessageMode ||
+        (isOptimizeMessageMode && optimizeReplayResult === null)
+      ) && effectiveTier !== "essential"
     ) {
       const refreshStatus = await maybeRefreshSubscriptionTierFromRevenueCat(
         isMyMessageMode
@@ -5903,6 +6046,69 @@ ${recentText}`;
       }
     }
 
+    // A known replay is an already-paid result. It still passed auth, payload
+    // hash, hard caps, and client-shape validation above, but intentionally
+    // bypasses the current Essential gate so a later downgrade cannot strand
+    // it. Fresh optimize requests remain Essential-only.
+    if (isOptimizeMessageMode && optimizeReplayResult !== null) {
+      let replayMonthlyUsed = sub.monthly_messages_used;
+      let replayDailyUsed = sub.daily_messages_used;
+      if (!accountIsTest) {
+        const { data: replayUsage, error: replayUsageError } = await supabase
+          .from("subscriptions")
+          .select("monthly_messages_used, daily_messages_used")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (replayUsageError || !replayUsage) {
+          logError("optimize_message_replay_usage_sync_failed", {
+            user: summarizeUser(user.id),
+            requestId: optimizeRequestId,
+            error: replayUsageError?.message ?? "subscription missing",
+          });
+          return jsonResponse({
+            error: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
+            code: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
+            message: "草稿潤飾額度確認回應中斷，正在安全重試。",
+            retryable: true,
+          }, 503);
+        }
+        replayMonthlyUsed = replayUsage.monthly_messages_used;
+        replayDailyUsed = replayUsage.daily_messages_used;
+      }
+      const replayResponse = { ...optimizeReplayResult };
+      replayResponse.usage = {
+        messagesUsed: 0,
+        estimatedMessages: OPTIMIZE_MESSAGE_COST,
+        monthlyRemaining: accountIsTest
+          ? 999999
+          : Math.max(0, monthlyLimit - replayMonthlyUsed),
+        dailyRemaining: accountIsTest
+          ? 999999
+          : Math.max(0, dailyLimit - replayDailyUsed),
+        model,
+        imagesUsed: 0,
+        tierUsed: effectiveTier,
+        isTestAccount: accountIsTest,
+        requestType,
+        shouldChargeQuota: false,
+        quotaReason: "optimize_message_idempotent_replay",
+        quotaUnit: "messages",
+      };
+      replayResponse.telemetry = {
+        requestType,
+        shouldChargeQuota: false,
+        chargedMessageCount: 0,
+        estimatedMessageCount: 1,
+        quotaReason: "optimize_message_idempotent_replay",
+        idempotentReplay: true,
+      };
+      logInfo("optimize_message_replayed_without_charge", {
+        user: summarizeUser(user.id),
+        requestId: optimizeRequestId,
+      });
+      return jsonResponse(replayResponse);
+    }
+
     // ------------------------------------------------------------------
     // ADR #19 定案 #4/#5 — >2000 字確認帶閘門（server 守門層）。
     // ------------------------------------------------------------------
@@ -5914,6 +6120,7 @@ ${recentText}`;
     // cap 10 的 "charge"）。
     if (
       billing.outcome === "requires_confirmation" &&
+      !isOptimizeMessageMode &&
       quotaUsage.shouldChargeQuota &&
       responseMode !== "full" &&
       !isStreamRetryMode
@@ -7667,6 +7874,32 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       allowedFeatures,
       requestMessages: messages,
     });
+    const optimizeClientShapeViolations = isOptimizeMessageMode
+      ? findClientShapeViolations(result)
+      : [];
+    if (
+      isOptimizeMessageMode &&
+      (
+        !hasUsableOptimizedMessage(result) ||
+        optimizeClientShapeViolations.length > 0
+      )
+    ) {
+      logWarn("optimize_message_result_invalid_no_charge", {
+        user: summarizeUser(user.id),
+        model: actualModel,
+        requestId: optimizeRequestId,
+        violationCount: optimizeClientShapeViolations.length,
+        violationPaths: optimizeClientShapeViolations
+          .slice(0, 8)
+          .map((violation) => violation.path),
+      });
+      return jsonResponse({
+        error: "OPTIMIZE_MESSAGE_RESULT_INVALID",
+        code: "OPTIMIZE_MESSAGE_RESULT_INVALID",
+        message: "這次沒有產生可用的潤飾結果，請稍後再試。本次不會扣額度。",
+        shouldChargeQuota: false,
+      }, 502);
+    }
     const warnings = Array.isArray((result as { warnings?: unknown }).warnings)
       ? ((result as {
         warnings?: Array<{ type?: string }>;
@@ -7729,6 +7962,135 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       },
     });
 
+    // Current optimize clients settle the validated result and fixed one-unit
+    // charge atomically. Legacy clients without requestId fall through to the
+    // generic increment_usage path, still with the fixed quota metadata.
+    let optimizeSettledReportedCharge: number | null = null;
+    let optimizeSettledMonthlyUsed: number | null = null;
+    let optimizeSettledDailyUsed: number | null = null;
+    if (
+      isOptimizeMessageMode && optimizeRequestId !== null &&
+      optimizeInputHash !== null
+    ) {
+      const optimizeLedgerResult = buildOptimizeMessageLedgerResult(result);
+      if (optimizeLedgerResult === null) {
+        logError("optimize_message_ledger_snapshot_invalid", {
+          user: summarizeUser(user.id),
+          requestId: optimizeRequestId,
+        });
+        return jsonResponse({
+          error: "OPTIMIZE_MESSAGE_RESULT_INVALID",
+          code: "OPTIMIZE_MESSAGE_RESULT_INVALID",
+          message: "這次沒有產生可用的潤飾結果，本次不會扣額度。",
+        }, 500);
+      }
+      const settlement = await settleOptimizeMessageRequest({
+        rpc: (fn, params) => supabase.rpc(fn, params),
+        userId: user.id,
+        requestId: optimizeRequestId,
+        inputHash: optimizeInputHash,
+        result: optimizeLedgerResult,
+        monthlyLimit,
+        dailyLimit,
+        chargeQuota: quotaUsage.shouldChargeQuota && !accountIsTest,
+      });
+      if (settlement.kind === "quota_exceeded") {
+        const { data: authoritativeSub, error: authoritativeSubError } =
+          await supabase
+            .from("subscriptions")
+            .select(
+              "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at",
+            )
+            .eq("user_id", user.id)
+            .maybeSingle();
+        if (authoritativeSubError || !authoritativeSub) {
+          logError("optimize_message_quota_usage_sync_failed", {
+            user: summarizeUser(user.id),
+            requestId: optimizeRequestId,
+            reason: settlement.reason,
+            error: authoritativeSubError?.message ?? "subscription missing",
+          });
+          return jsonResponse({
+            error: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
+            code: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
+            message: "草稿潤飾額度確認回應中斷，正在安全重試。",
+            retryable: true,
+          }, 503);
+        }
+        return jsonResponse(
+          buildQuotaExceededPayload({
+            sub: authoritativeSub,
+            cost: OPTIMIZE_MESSAGE_COST,
+            reason: settlement.reason,
+            monthlyLimit,
+            dailyLimit,
+          }),
+          429,
+        );
+      }
+      if (settlement.kind === "mismatch") {
+        return jsonResponse({
+          error: "OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH",
+          code: "OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH",
+          message: "這次草稿和先前的重試不一致，請重新送出。本次不會扣額度。",
+        }, 409);
+      }
+      if (settlement.kind === "retryable") {
+        logError("optimize_message_settlement_transport_unknown", {
+          user: summarizeUser(user.id),
+          requestId: optimizeRequestId,
+          error: settlement.message,
+        });
+        return jsonResponse({
+          error: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
+          code: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
+          message: "草稿潤飾額度確認回應中斷，正在安全重試。",
+          retryable: true,
+        }, 503);
+      }
+      if (settlement.kind === "failed") {
+        logError("optimize_message_settlement_failed", {
+          user: summarizeUser(user.id),
+          requestId: optimizeRequestId,
+          error: settlement.message,
+        });
+        return jsonResponse({
+          error: "OPTIMIZE_MESSAGE_SETTLEMENT_FAILED",
+          code: "OPTIMIZE_MESSAGE_SETTLEMENT_FAILED",
+          message: "草稿潤飾額度確認失敗，請稍後再試。本次不會扣額度。",
+        }, 500);
+      }
+
+      const hydratedSettlement = hydrateOptimizeMessageReplayResult(
+        settlement.result,
+        userDraft ?? "",
+      );
+      if (hydratedSettlement === null) {
+        logError("optimize_message_settlement_result_invalid", {
+          user: summarizeUser(user.id),
+          requestId: optimizeRequestId,
+        });
+        return jsonResponse({
+          error: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
+          code: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
+          message: "草稿潤飾結果恢復中斷，正在安全重試。",
+          retryable: true,
+        }, 503);
+      }
+      result = hydratedSettlement;
+      optimizeSettledReportedCharge = settlement.charged
+        ? OPTIMIZE_MESSAGE_COST
+        : 0;
+      optimizeSettledMonthlyUsed = settlement.monthlyUsed;
+      optimizeSettledDailyUsed = settlement.dailyUsed;
+      quotaUsage.shouldChargeQuota = false;
+      quotaUsage.quotaReason = settlement.charged
+        ? "optimize_message_fixed_1"
+        : accountIsTest
+        ? "test_account_waived"
+        : "optimize_message_idempotent_replay";
+    }
+
     // Update usage count (測試帳號、純識別模式不扣額度)。
     // 已驗證且已扣費的 stream retry fallback 也不扣（streamRetryChargeWaived
     // ＝上面 getRun 驗過 charged_at）：原始 stream 已在 analysis_stream_runs
@@ -7781,18 +8143,25 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     // messagesUsed / remaining 做扣費 toast 與本地額度同步。
     const legacyReportedCharge = streamRetryChargeWaived
       ? 0
-      : quotaUsage.chargedMessageCount;
+      : (optimizeSettledReportedCharge ?? quotaUsage.chargedMessageCount);
+    const reportedShouldCharge = optimizeSettledReportedCharge == null
+      ? quotaUsage.shouldChargeQuota &&
+        !streamRetryChargeWaived
+      : optimizeSettledReportedCharge > 0;
     result.usage = {
       messagesUsed: legacyReportedCharge,
       estimatedMessages: quotaUsage.estimatedMessageCount,
       monthlyRemaining: accountIsTest ? 999999 : Math.max(
         0,
-        monthlyLimit - sub.monthly_messages_used -
-          legacyReportedCharge,
+        monthlyLimit -
+          (optimizeSettledMonthlyUsed ??
+            (sub.monthly_messages_used + legacyReportedCharge)),
       ),
       dailyRemaining: accountIsTest ? 999999 : Math.max(
         0,
-        dailyLimit - sub.daily_messages_used - legacyReportedCharge,
+        dailyLimit -
+          (optimizeSettledDailyUsed ??
+            (sub.daily_messages_used + legacyReportedCharge)),
       ),
       model: actualModel,
       fallbackUsed: claudeResult.fallbackUsed,
@@ -7801,8 +8170,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       tierUsed: effectiveTier,
       isTestAccount: accountIsTest,
       requestType,
-      shouldChargeQuota: quotaUsage.shouldChargeQuota &&
-        !streamRetryChargeWaived,
+      shouldChargeQuota: reportedShouldCharge,
       quotaReason: quotaUsage.quotaReason,
       quotaUnit: quotaUsage.quotaUnit,
     };
@@ -7846,8 +8214,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       guardrailCount: successGuardrails.guardrailCount,
       guardrailFlags: successGuardrails.guardrailFlags,
       totalTokens: successGuardrails.totalTokens,
-      shouldChargeQuota: quotaUsage.shouldChargeQuota &&
-        !streamRetryChargeWaived,
+      shouldChargeQuota: reportedShouldCharge,
       chargedMessageCount: legacyReportedCharge,
       estimatedMessageCount: quotaUsage.estimatedMessageCount,
       quotaReason: quotaUsage.quotaReason,

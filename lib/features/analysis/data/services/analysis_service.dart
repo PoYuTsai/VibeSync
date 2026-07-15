@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
 
 import '../../../../core/config/environment.dart';
 import '../../../../core/services/message_calculator.dart';
@@ -860,6 +861,13 @@ AnalysisException _mapAnalysisHttpError({
   switch (statusCode) {
     case 400:
       switch (errorCode) {
+        case 'INVALID_OPTIMIZE_MESSAGE_REQUEST_ID':
+        case 'OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH':
+          return AnalysisException(
+            '這次草稿潤飾請求無法安全重送，請重新操作。本次不會扣額度。',
+            code: errorCode,
+            suggestedAction: AnalysisErrorAction.retry,
+          );
         case 'RECOGNITION_UNSUPPORTED':
           return AnalysisException(
             recognitionUnsupportedMessage(),
@@ -1003,6 +1011,13 @@ AnalysisException _mapAnalysisHttpError({
         suggestedAction: AnalysisErrorAction.wait,
       );
     case 409:
+      if (errorCode == 'OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH') {
+        return AnalysisException(
+          '這次草稿和先前的重試不一致，請重新操作。本次不會扣額度。',
+          code: errorCode,
+          suggestedAction: AnalysisErrorAction.retry,
+        );
+      }
       if (errorCode == 'OVERCHARGE_CONFIRMATION_REQUIRED') {
         // ADR #19 定案 #5：>2000 字確認帶 server 守門。正常流程 client
         // 已先本地確認；走到這代表確認缺失或內容已變更（hash 不符）。
@@ -1051,9 +1066,38 @@ AnalysisException _mapAnalysisHttpError({
         code: errorCode ?? 'RATE_LIMITED',
         suggestedAction: AnalysisErrorAction.wait,
       );
+    case 500:
+      if (errorCode == 'OPTIMIZE_MESSAGE_REPLAY_INVALID' ||
+          errorCode == 'OPTIMIZE_MESSAGE_SETTLEMENT_FAILED') {
+        return AnalysisException(
+          errorCode == 'OPTIMIZE_MESSAGE_REPLAY_INVALID'
+              ? '草稿潤飾結果暫時無法恢復，請重新操作。本次不會扣額度。'
+              : '草稿潤飾額度確認失敗，請稍後再試。本次不會扣額度。',
+          code: errorCode,
+          suggestedAction: AnalysisErrorAction.wait,
+        );
+      }
+      return AnalysisException(
+        hasImages
+            ? recognizeOnly
+                ? '截圖辨識暫時失敗，請稍後再試。'
+                : '圖片分析暫時失敗，請稍後再試。'
+            : hasUserDraft
+                ? '訊息優化暫時失敗，請稍後再試。'
+                : '分析暫時失敗，請稍後再試。',
+        code: errorCode ?? 'UNKNOWN_HTTP_ERROR',
+        suggestedAction: AnalysisErrorAction.retry,
+      );
     case 502:
     case 503:
     case 504:
+      if (errorCode == 'OPTIMIZE_MESSAGE_RESULT_INVALID') {
+        return AnalysisException(
+          '這次沒有產生可用的潤飾結果，請稍後再試。本次不會扣額度。',
+          code: errorCode,
+          suggestedAction: AnalysisErrorAction.wait,
+        );
+      }
       if (errorCode == 'OVERCHARGE_CLAIM_UNAVAILABLE') {
         // ADR #19：idempotency claim 不可用時 server fail closed 不扣費。
         return AnalysisException(
@@ -1149,6 +1193,7 @@ class AnalysisService {
     'TIMEOUT',
     'UNEXPECTED_ERROR',
     'UPSTREAM_UNAVAILABLE',
+    'OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE',
   };
 
   /// 圖片完整分析（已扣費路徑）的 TIMEOUT 不自動重試：server Claude timeout
@@ -1239,6 +1284,7 @@ class AnalysisService {
     String? effectiveStyleContext,
     String? knownContactName,
     String? userDraft,
+    String? requestId,
     String? analyzeMode,
     bool recognizeOnly = false,
     int? previousAnalyzedCount,
@@ -1260,6 +1306,13 @@ class AnalysisService {
     }
 
     const maxRetries = 2;
+    final isOptimizeMessageRequest = !recognizeOnly &&
+        (images == null || images.isEmpty) &&
+        userDraft != null &&
+        userDraft.trim().isNotEmpty &&
+        analyzeMode != 'my_message';
+    final logicalRequestId =
+        isOptimizeMessageRequest ? (requestId ?? const Uuid().v4()) : null;
 
     Exception? lastError;
 
@@ -1282,6 +1335,7 @@ class AnalysisService {
           effectiveStyleContext: effectiveStyleContext,
           knownContactName: knownContactName,
           userDraft: userDraft,
+          requestId: logicalRequestId,
           analyzeMode: analyzeMode,
           recognizeOnly: recognizeOnly,
           previousAnalyzedCount: previousAnalyzedCount,
@@ -1368,6 +1422,7 @@ class AnalysisService {
     String? effectiveStyleContext,
     String? knownContactName,
     String? userDraft,
+    String? requestId,
     String? analyzeMode,
     required bool recognizeOnly,
     int? previousAnalyzedCount,
@@ -1457,6 +1512,7 @@ class AnalysisService {
         if (knownContactName != null && knownContactName.trim().isNotEmpty)
           'knownContactName': knownContactName.trim(),
         if (hasUserDraft) 'userDraft': userDraft.trim(),
+        if (requestId != null) 'requestId': requestId,
         if (analyzeMode != null) 'analyzeMode': analyzeMode,
         if (recognizeOnly) 'recognizeOnly': true,
         if (previousAnalyzedCount != null && previousAnalyzedCount > 0)

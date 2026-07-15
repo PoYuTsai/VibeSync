@@ -12,18 +12,24 @@ class AiDataSharingConsent {
   static const _defaultDestinationLabel = 'Anthropic Claude API';
   static const _defaultDataDescription =
       '可能包含：聊天文字、上傳的聊天或個人檔案截圖、對方名稱、你填寫的情境或草稿，以及本次結果所需的對話脈絡。';
-  static const _defaultPurposeText =
-      '用途：只用來產生你按下的分析、截圖辨識、開場建議或 Coach 1:1 回覆。';
+  static const _defaultPurposeText = '用途：只用來產生你按下的分析、截圖辨識、開場建議或 Coach 1:1 回覆。';
+
+  /// 「我幫你修」有額外的安全重播暫存，因此使用獨立同意版本；已同意
+  /// 其他 AI 功能的帳號仍會在首次潤飾前看到這項具體揭露。
+  static const optimizeReplayConsentKey =
+      'ai_data_sharing_consent_optimize_replay_20260716_v1';
+  static const optimizeReplayDataDescription =
+      '可能包含：你的草稿、目前對話、對方名稱與你填寫的情境。這些內容會送至 VibeSync 後端與 Anthropic Claude 產生潤飾結果。';
+  static const optimizeReplayPurposeText =
+      '用途：產生這次草稿潤飾。為了在回應中斷時恢復同一結果並避免重複扣額度，後端的可用重播資料保留 7 天並每小時清除，只存 AI 產生的潤飾句與理由，不另存原始草稿或完整對話輸入；AI 生成文字仍可能重述或反映你提供的草稿、姓名與對話內容。刪除後的備份副本依 Supabase 的備份與還原週期處理。';
 
   /// AI 實戰練習室走 DeepSeek（非 Claude），須與 Claude 功能各自獨立同意，
   /// 文案也須準確描述「模擬對象練習對話」而非 Claude 功能用途。
   static const practiceConsentKey =
       'ai_data_sharing_consent_practice_20260706_v2';
   static const practiceDestinationLabel = 'DeepSeek API';
-  static const practiceDataDescription =
-      '可能包含：你在練習室輸入的訊息，以及本次練習的對話脈絡。';
-  static const practicePurposeText =
-      '用途：只用來在 AI 實戰練習室產生陪練女孩的回覆，以及練習結束後的一張拆解卡。';
+  static const practiceDataDescription = '可能包含：你在練習室輸入的訊息，以及本次練習的對話脈絡。';
+  static const practicePurposeText = '用途：只用來在 AI 實戰練習室產生陪練女孩的回覆，以及練習結束後的一張拆解卡。';
 
   /// 測試 seam：覆寫 userId 解析（回傳 null 模擬未登入）。production 不碰。
   @visibleForTesting

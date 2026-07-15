@@ -1,7 +1,8 @@
 // Read-only 偵測版的 client 形狀守門：reframer.ts 的 coerce/conform 路徑在
 // 出貨時把錯型欄位丟掉/取整來救 client；這個模組反過來「只看不改」，回報哪些
-// 欄位若沒被守門就會讓 client fromJson 硬 cast throw。給測試基建（黑箱
-// baseline、forceModel=haiku 必測錨）當斷言用，零 prod 行為。
+// 欄位若沒被守門就會讓 client fromJson 硬 cast throw。除測試基建（黑箱
+// baseline、forceModel=haiku 必測錨）外，optimize_message 也在原子扣點前用它
+// fail closed，避免扣了額度才發現 App 解析不了結果。
 //
 // 契約來源＝reframer.ts 匯出的 client 形狀表（client analysis_models.dart /
 // analysis_result.dart 的 fromJson 硬 cast 的 server 端轉錄）。

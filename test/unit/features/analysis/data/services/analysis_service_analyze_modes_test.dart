@@ -458,6 +458,201 @@ void main() {
     });
   });
 
+  group('AnalysisService.optimizeMessage billing contract', () {
+    const requestId = '123e4567-e89b-42d3-a456-426614174000';
+
+    test('wires one logical request id and reuses it across HTTP retry',
+        () async {
+      final bodies = <Map<String, dynamic>>[];
+      var calls = 0;
+      Future<http.Response> handler(http.Request request) async {
+        calls += 1;
+        bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+        if (calls == 1) {
+          return http.Response(
+            jsonEncode({
+              'error': 'OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE',
+              'code': 'OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE',
+              'message': '額度確認回應中斷',
+            }),
+            503,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response(
+          jsonEncode({
+            ..._fullSuccessBody,
+            'optimizedMessage': {
+              'original': '要不要喝咖啡',
+              'optimized': '這週要不要一起喝杯咖啡？',
+              'improvements': ['更自然'],
+            },
+            'usage': {
+              'messagesUsed': 1,
+              'monthlyRemaining': 799,
+              'dailyRemaining': 79,
+              'requestType': 'optimize_message',
+              'quotaReason': 'optimize_message_fixed_1',
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      final service = AnalysisService(
+        clientFactory: () => MockClient(handler),
+        accessTokenProvider: () => 'fake-token',
+        expectedTierProvider: () => 'essential',
+        revenueCatAppUserIdProvider: () async => r'$RCAnonymousID:optimize',
+      );
+
+      final result = await service.analyzeConversation(
+        [_msg('最近有空嗎？')],
+        userDraft: '要不要喝咖啡',
+        requestId: requestId,
+      );
+
+      expect(calls, 2);
+      expect(bodies.map((body) => body['requestId']), everyElement(requestId));
+      expect(bodies.last['billingProtocolVersion'], 3);
+      expect(bodies.last['userDraft'], '要不要喝咖啡');
+      expect(result.optimizedMessage?.optimized, '這週要不要一起喝杯咖啡？');
+      expect(result.rawResponse?['usage']['messagesUsed'], 1);
+      expect(
+        result.rawResponse?['usage']['quotaReason'],
+        'optimize_message_fixed_1',
+      );
+    });
+
+    test('maps fixed-cost monthly 429 with quotaNeeded one', () async {
+      final service = AnalysisService(
+        clientFactory: () => MockClient((request) async {
+          return http.Response(
+            jsonEncode({
+              'error': 'Monthly limit exceeded',
+              'message': '本月額度已用完',
+              'quotaNeeded': 1,
+              'monthlyLimit': 800,
+              'dailyLimit': 80,
+              'monthlyUsed': 800,
+              'dailyUsed': 20,
+              'monthlyRemaining': 0,
+              'dailyRemaining': 60,
+            }),
+            429,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+        accessTokenProvider: () => 'fake-token',
+        expectedTierProvider: () => 'essential',
+        revenueCatAppUserIdProvider: () async => r'$RCAnonymousID:optimize',
+      );
+
+      await expectLater(
+        () => service.analyzeConversation(
+          [_msg('最近有空嗎？')],
+          userDraft: '要不要喝咖啡',
+          requestId: requestId,
+        ),
+        throwsA(
+          isA<MonthlyLimitExceededException>()
+              .having((error) => error.quotaNeeded, 'quotaNeeded', 1)
+              .having((error) => error.remaining, 'remaining', 0),
+        ),
+      );
+    });
+
+    test('surfaces authoritative invalid-result failure without usage',
+        () async {
+      var calls = 0;
+      final service = AnalysisService(
+        clientFactory: () => MockClient((request) async {
+          calls += 1;
+          return http.Response(
+            jsonEncode({
+              'error': 'OPTIMIZE_MESSAGE_RESULT_INVALID',
+              'code': 'OPTIMIZE_MESSAGE_RESULT_INVALID',
+              'message': '這次沒有產生可用的潤飾結果，本次不會扣額度。',
+              'shouldChargeQuota': false,
+            }),
+            502,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+        accessTokenProvider: () => 'fake-token',
+        expectedTierProvider: () => 'essential',
+        revenueCatAppUserIdProvider: () async => r'$RCAnonymousID:optimize',
+      );
+
+      await expectLater(
+        () => service.analyzeConversation(
+          [_msg('最近有空嗎？')],
+          userDraft: '要不要喝咖啡',
+          requestId: requestId,
+        ),
+        throwsA(
+          isA<AnalysisException>()
+              .having(
+                (error) => error.code,
+                'code',
+                'OPTIMIZE_MESSAGE_RESULT_INVALID',
+              )
+              .having(
+                (error) => error.message,
+                'message',
+                contains('本次不會扣額度'),
+              ),
+        ),
+      );
+      expect(calls, 1, reason: 'authoritative failure must not auto-retry');
+    });
+
+    test('surfaces settlement failure as no-charge and does not retry',
+        () async {
+      var calls = 0;
+      final service = AnalysisService(
+        clientFactory: () => MockClient((request) async {
+          calls += 1;
+          return http.Response(
+            jsonEncode({
+              'error': 'OPTIMIZE_MESSAGE_SETTLEMENT_FAILED',
+              'code': 'OPTIMIZE_MESSAGE_SETTLEMENT_FAILED',
+              'message': '草稿潤飾額度確認失敗，本次不會扣額度。',
+            }),
+            500,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+        accessTokenProvider: () => 'fake-token',
+        expectedTierProvider: () => 'essential',
+        revenueCatAppUserIdProvider: () async => r'$RCAnonymousID:optimize',
+      );
+
+      await expectLater(
+        () => service.analyzeConversation(
+          [_msg('最近有空嗎？')],
+          userDraft: '要不要喝咖啡',
+          requestId: requestId,
+        ),
+        throwsA(
+          isA<AnalysisException>()
+              .having(
+                (error) => error.code,
+                'code',
+                'OPTIMIZE_MESSAGE_SETTLEMENT_FAILED',
+              )
+              .having(
+                (error) => error.message,
+                'message',
+                contains('本次不會扣額度'),
+              ),
+        ),
+      );
+      expect(calls, 1, reason: 'settlement failure must not auto-retry');
+    });
+  });
+
   group('AnalysisService.analyzeStream', () {
     test('POSTs responseMode:stream and parses NDJSON updates', () async {
       late http.Request capturedRequest;

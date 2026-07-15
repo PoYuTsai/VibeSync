@@ -46,6 +46,8 @@
 
 **決定**: 對話歷史只存本地，伺服器不保留
 
+**窄例外（2026-07-16，ADR #22）**: Essential「我幫你修」為避免回應中斷後重複扣額度，伺服器提供 7 天的 AI 生成潤飾句／理由重播，並由每小時排程清除逾期 live-table 列（最晚約 7 天 + 1 小時）；備份／PITR 副本依 Supabase 供應商週期處理。ledger 不另存原始草稿或完整對話輸入，但生成文字仍可能重述或反映草稿、姓名與對話內容；這是對「伺服器不保留對話歷史」的限時、結果型窄例外，不得擴張成對話歷史庫。
+
 **原因**:
 1. 隱私風險最小化
 2. GDPR 合規簡化
@@ -677,3 +679,22 @@
 4. 歷次分數可以畫成每次互動投入度的變化，但每個點仍只代表當次互動；GameStage、使用者目標中的「維持熱度」與練習室溫度計是不同概念，不在此決策範圍。
 
 **不動**: AI prompt、分數公式、門檻、quota、既有分析資料與歷史分數。
+
+## ADR #22 — [2026-07-16] Essential「我幫你修」成功固定扣 1 則
+
+**狀態**: 🟢 Active — Eric 拍板
+
+**背景**: 草稿潤飾原本共用 analyze-chat 的全對話字數計費。即使使用者只是修一句草稿，也可能因帶入聊天脈絡而扣 10 則、要求確認 20 則，與「幫我修一句」的產品感受不一致。
+
+**決定**:
+
+1. `optimize_message` 只限 Essential；每次伺服器成功產生非空、可用的 `optimizedMessage.optimized`，固定扣 1 則。
+2. 脈絡長度不提高扣費，也不進入 2001–4000 字的 20 則確認；既有 4000 計費字元上限、單則訊息、草稿長度與 request body hard cap 全部保留。
+3. AI、解析、格式驗證、額度 settlement 或網路前置失敗皆不扣；日／月額度仍在模型前預檢，並在原子扣費時再次檢查競態。
+4. 新 App 每次 logical request 傳 UUID。伺服器把第一個成功結果與 `increment_usage(..., 1)` 放在同一交易；相同 user／request／input 重送直接回第一次結果且不重扣，不同 input 重用 request id 則拒絕。
+5. 測試帳號仍免扣，但可寫入同一結果 ledger 以保持重送結果一致。舊 App 未帶 request id 時維持相容並固定扣 1，但不具新 ledger 的重送保證。
+6. 一般分析、圖片分析、Opener、Coach 與 `my_message` 的既有計費不變。
+7. 相同請求只在 7 天內可免費重播；Edge 查詢逾期即視為新請求。`pg_cron` 每小時清除逾期 live-table 列（最晚約 7 天 + 1 小時）；備份／PITR 副本依 Supabase 供應商週期處理。migration 若無法啟用排程則 fail closed，不接受 live table 無界保留。
+8. ledger 只允許 AI 產生的 `optimized` 與 `reason` 欄位，DB constraint 拒絕另存原始草稿、完整對話輸入、usage、telemetry 或任何額外欄位；生成文字仍可能重述輸入內容。App 用同一 hash 綁定請求內的草稿重建 `original`。功能獨立同意、App 內 AI 隱私頁與 repo 隱私政策來源已更新；**部署前仍須把新版政策發佈到 `https://vibesyncai.app/privacy` 並核對 App Store Connect 揭露，否則不得上線本功能。**
+
+**部署要求**: 必須先套用 `20260716170000_optimize_message_fixed_charge.sql`，再部署 `analyze-chat`，最後發佈含 request id wire contract 的 App build。這是 quota／Edge 高風險變更，Codex `APPROVED` 前不得宣稱可供 dogfood。

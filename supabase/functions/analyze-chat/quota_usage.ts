@@ -1,3 +1,5 @@
+import { OPTIMIZE_MESSAGE_COST } from "./optimize_message_billing.ts";
+
 export function deriveRequestType({
   recognizeOnly,
   hasImages,
@@ -46,12 +48,25 @@ export function buildQuotaUsageMetadata({
   }
 
   if (accountIsTest) {
+    const waivedEstimate = requestType === "optimize_message"
+      ? OPTIMIZE_MESSAGE_COST
+      : estimatedMessageCount;
     return {
       shouldChargeQuota: false,
       quotaReason: "test_account_waived",
       quotaUnit: "messages",
       chargedMessageCount: 0,
-      estimatedMessageCount,
+      estimatedMessageCount: waivedEstimate,
+    };
+  }
+
+  if (requestType === "optimize_message") {
+    return {
+      shouldChargeQuota: true,
+      quotaReason: "optimize_message_fixed_1",
+      quotaUnit: "messages",
+      chargedMessageCount: OPTIMIZE_MESSAGE_COST,
+      estimatedMessageCount: OPTIMIZE_MESSAGE_COST,
     };
   }
 
@@ -62,9 +77,6 @@ export function buildQuotaUsageMetadata({
       break;
     case "my_message":
       quotaReason = "my_message_message_based";
-      break;
-    case "optimize_message":
-      quotaReason = "optimize_message_message_based";
       break;
   }
 
