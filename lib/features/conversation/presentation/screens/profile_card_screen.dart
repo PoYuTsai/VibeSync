@@ -181,8 +181,8 @@ class ProfileCardScreen extends ConsumerWidget {
                 Text(
                   '興趣',
                   style: AppTypography.labelMedium.copyWith(
-                    color: AppColors.onBackgroundSecondary
-                        .withValues(alpha: 0.75),
+                    color:
+                        AppColors.onBackgroundSecondary.withValues(alpha: 0.75),
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -203,8 +203,8 @@ class ProfileCardScreen extends ConsumerWidget {
                 Text(
                   '性格',
                   style: AppTypography.labelMedium.copyWith(
-                    color: AppColors.onBackgroundSecondary
-                        .withValues(alpha: 0.75),
+                    color:
+                        AppColors.onBackgroundSecondary.withValues(alpha: 0.75),
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -225,8 +225,8 @@ class ProfileCardScreen extends ConsumerWidget {
                 Text(
                   '備註',
                   style: AppTypography.labelMedium.copyWith(
-                    color: AppColors.onBackgroundSecondary
-                        .withValues(alpha: 0.75),
+                    color:
+                        AppColors.onBackgroundSecondary.withValues(alpha: 0.75),
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -308,7 +308,7 @@ class ProfileCardScreen extends ConsumerWidget {
 
   Widget _buildHeatRow(int? score) {
     if (score == null) {
-      return _buildInfoRow('熱度', '--');
+      return _buildInfoRow('本次投入', '--');
     }
     final level = EnthusiasmLevel.fromScore(score);
     return Padding(
@@ -317,7 +317,7 @@ class ProfileCardScreen extends ConsumerWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
-            '熱度',
+            '本次投入',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.75),
             ),
@@ -346,8 +346,8 @@ class ProfileCardScreen extends ConsumerWidget {
               Text(
                 summary.content,
                 style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.onBackgroundSecondary
-                      .withValues(alpha: 0.82),
+                  color:
+                      AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
                 ),
               ),
               if (summary.keyTopics.isNotEmpty) ...[
@@ -356,8 +356,7 @@ class ProfileCardScreen extends ConsumerWidget {
                   spacing: 6,
                   runSpacing: 6,
                   children: [
-                    for (final topic in summary.keyTopics)
-                      _buildChip(topic),
+                    for (final topic in summary.keyTopics) _buildChip(topic),
                   ],
                 ),
               ],

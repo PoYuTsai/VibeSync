@@ -102,7 +102,7 @@ class MyReportScreen extends ConsumerWidget {
                 : const <HeatTrendPoint>[],
             averageScore: report.averageScore,
             scoreDelta: report.scoreDelta,
-            emptyMessage: '再多分析幾次，就能看到這位對象的熱度變化',
+            emptyMessage: '再多分析幾次，就能比較對方每次互動的投入度',
           ),
           const SizedBox(height: 16),
           PracticeTemperatureChart(points: practicePoints),
@@ -147,7 +147,8 @@ class MyReportScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const BrandIconBadge(icon: Icons.lock_outline, size: 40, iconSize: 22),
+          const BrandIconBadge(
+              icon: Icons.lock_outline, size: 40, iconSize: 22),
           const SizedBox(height: 12),
           Text(
             '我的報告會在 Starter 解鎖',

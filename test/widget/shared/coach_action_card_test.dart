@@ -14,7 +14,7 @@ void main() {
             body: CoachActionCard(
               data: const CoachActionCardData(
                 actionLabel: '故事框架',
-                whyNow: '熱度 50，可以用故事框架往下展開',
+                whyNow: '對方這次的投入度 50，可以用故事框架往下展開',
                 task: '用「場景 + 觀點/情緒 + 開放式提問」',
                 suggestedLine: '聽起來最近壓力大，是哪一塊？',
                 avoid: '別只丟一個開放式問句',
@@ -29,7 +29,7 @@ void main() {
 
       expect(find.text('本回合怎麼接'), findsOneWidget);
       expect(find.textContaining('· 故事框架'), findsOneWidget);
-      expect(find.textContaining('熱度 50'), findsOneWidget);
+      expect(find.textContaining('對方這次的投入度 50'), findsOneWidget);
       expect(find.textContaining('場景 + 觀點'), findsOneWidget);
       expect(find.textContaining('節奏提醒：'), findsOneWidget);
       expect(find.textContaining('別只丟一個開放式問句'), findsOneWidget);
@@ -48,7 +48,7 @@ void main() {
             body: CoachActionCard(
               data: const CoachActionCardData(
                 actionLabel: '互動品質觀察',
-                whyNow: '熱度 50，先別下定論',
+                whyNow: '對方這次的投入度 50，先別下定論',
                 task: '觀察這次的節奏',
                 suggestedLine: null,
                 avoid: '不要急著貼標籤',
@@ -95,7 +95,7 @@ void main() {
             body: CoachActionCard(
               data: const CoachActionCardData(
                 actionLabel: '模糊邀約',
-                whyNow: '熱度 88，可以給具體選項',
+                whyNow: '對方這次的投入度 88，可以給具體選項',
                 task: '拋一個低門檻邀約',
                 suggestedLine: '週六下午有空嗎？',
                 avoid: '別要對方立刻決定',
@@ -121,7 +121,7 @@ void main() {
             body: CoachActionCard(
               data: const CoachActionCardData(
                 actionLabel: '故事框架',
-                whyNow: '熱度 50',
+                whyNow: '對方這次的投入度 50',
                 task: '用故事框架展開',
                 suggestedLine: null,
                 avoid: '別只丟問句',

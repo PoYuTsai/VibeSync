@@ -31,10 +31,10 @@ void main() {
 
     group('label', () {
       test('returns correct Chinese label for each level', () {
-        expect(EnthusiasmLevel.cold.label, '冰點');
-        expect(EnthusiasmLevel.warm.label, '溫和');
-        expect(EnthusiasmLevel.hot.label, '熱情');
-        expect(EnthusiasmLevel.veryHot.label, '高熱');
+        expect(EnthusiasmLevel.cold.label, '投入偏低');
+        expect(EnthusiasmLevel.warm.label, '有在回應');
+        expect(EnthusiasmLevel.hot.label, '投入明顯');
+        expect(EnthusiasmLevel.veryHot.label, '高度投入');
       });
     });
 

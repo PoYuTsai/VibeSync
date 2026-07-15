@@ -119,7 +119,7 @@ class PartnerTraitsCard extends StatelessWidget {
               _CounterText('${view.totalRounds} 段對話'),
               _CounterText('${view.totalMessages} 則訊息'),
               if (view.latestHeat != null)
-                _CounterText('最新熱度 ${view.latestHeat}'),
+                _CounterText('最近一次投入 ${view.latestHeat}'),
             ],
           ),
         ],

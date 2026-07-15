@@ -216,7 +216,7 @@ class _SavedAnalysisCard extends StatelessWidget {
             children: [
               _AnalysisMetricChip(
                 icon: Icons.local_fire_department_outlined,
-                label: '熱度 ${record.enthusiasmScore}',
+                label: '本次投入 ${record.enthusiasmScore}',
               ),
               if (stage.isNotEmpty)
                 _AnalysisMetricChip(

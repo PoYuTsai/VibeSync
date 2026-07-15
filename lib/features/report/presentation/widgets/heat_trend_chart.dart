@@ -35,6 +35,15 @@ class HeatTrendChart extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildHeader(),
+          const SizedBox(height: 8),
+          Text(
+            '只反映這次互動中的文字訊號，不代表關係進度。',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.4,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
+            ),
+          ),
           const SizedBox(height: 16),
           trendPoints.isEmpty ? _buildEmptyState() : _buildChart(),
         ],
@@ -59,7 +68,7 @@ class HeatTrendChart extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '\u71B1\u5EA6\u8DA8\u52E2', // 熱度趨勢
+                '每次互動投入度',
                 style: TextStyle(
                   fontSize: 12,
                   color:
@@ -72,7 +81,7 @@ class HeatTrendChart extends StatelessWidget {
                 textBaseline: TextBaseline.alphabetic,
                 children: [
                   Text(
-                    '\u5E73\u5747 ${averageScore.round()}', // 平均 XX
+                    '全部平均 ${averageScore.round()}',
                     style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
@@ -110,7 +119,7 @@ class HeatTrendChart extends StatelessWidget {
   Widget _buildDeltaBadge() {
     if (scoreDelta == 0) {
       return Text(
-        '\u2014 0',
+        '前後 0',
         style: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w600,
@@ -120,12 +129,11 @@ class HeatTrendChart extends StatelessWidget {
     }
 
     final isPositive = scoreDelta > 0;
-    final arrow = isPositive ? '\u2191' : '\u2193'; // ↑ or ↓
     final sign = isPositive ? '+' : '';
     final color = isPositive ? AppColors.success : AppColors.error;
 
     return Text(
-      '$arrow $sign${scoreDelta.round()}',
+      '前後 $sign${scoreDelta.round()}',
       style: TextStyle(
         fontSize: 14,
         fontWeight: FontWeight.w600,
@@ -168,7 +176,8 @@ class HeatTrendChart extends StatelessWidget {
         date.difference(firstDate).inMinutes / (24 * 60.0);
 
     final spots = [
-      for (final point in sorted) FlSpot(xOf(point.date), point.score.toDouble()),
+      for (final point in sorted)
+        FlSpot(xOf(point.date), point.score.toDouble()),
     ];
     // 全部同一時刻（maxX=0）時 fl_chart 需要 minX<maxX，退 1 天刻度。
     final maxX = spots.last.x <= 0 ? 1.0 : spots.last.x;

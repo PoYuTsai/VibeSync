@@ -4847,7 +4847,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     // AI 分析結果
     if (_enthusiasmScore != null) {
       buffer.writeln('--- AI 分析結果 ---');
-      buffer.writeln('熱度分數: $_enthusiasmScore/100');
+      buffer.writeln('對方這次的投入度: $_enthusiasmScore/100');
 
       if (_gameStage != null) {
         buffer.writeln('對話進度: ${_gameStage!.current.label}');
@@ -5798,7 +5798,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          '熱度、階段、心理訊號、互動雷達與更多回覆風格',
+                          '本次投入、階段、心理訊號、互動雷達與更多回覆風格',
                           style: AppTypography.caption.copyWith(
                             color: AppColors.onBackgroundSecondary,
                             height: 1.25,
@@ -5847,7 +5847,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                 runSpacing: 8,
                 children: [
                   if (_enthusiasmScore != null)
-                    _buildDetailedAnalysisPill('熱度 $_enthusiasmScore'),
+                    _buildDetailedAnalysisPill('本次投入 $_enthusiasmScore'),
                   if (_gameStage != null)
                     _buildDetailedAnalysisPill(_gameStage!.current.label),
                   if (_replies != null && _replies!.isNotEmpty)
@@ -6504,7 +6504,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 ],
                                 const SizedBox(height: 16),
                                 Text(
-                                  'AI 會分析她的熱度、讀懂語意，教你最適合的回覆方式',
+                                  'AI 會分析對方這次的投入度、讀懂語意，教你最適合的回覆方式',
                                   style: AppTypography.bodySmall.copyWith(
                                     color: AppColors.textSecondary,
                                   ),
@@ -7857,7 +7857,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    '已修改已分析過的訊息，重新分析後會更新熱度與回覆建議。',
+                                    '已修改已分析過的訊息，重新分析後會更新本次投入與回覆建議。',
                                     style: AppTypography.bodyMedium,
                                   ),
                                 ),

@@ -9,15 +9,30 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_conversation_tile.dart';
 
-Conversation _conv() => Conversation(
+Conversation _conv({int? heat}) => Conversation(
       id: 'c1',
       name: '第 a 段',
       messages: const [],
       createdAt: DateTime(2026, 4, 20),
       updatedAt: DateTime(2026, 4, 20),
+      lastEnthusiasmScore: heat,
     );
 
 void main() {
+  testWidgets('最近分數明確標示為本次投入', (t) async {
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PartnerConversationTile(
+          conversation: _conv(heat: 72),
+          onTap: () {},
+        ),
+      ),
+    ));
+
+    expect(find.textContaining('本次投入 72'), findsOneWidget);
+    expect(find.textContaining('熱度'), findsNothing);
+  });
+
   testWidgets('trailing renders ⋮ icon (not chevron_right)', (t) async {
     await t.pumpWidget(MaterialApp(
       home: Scaffold(

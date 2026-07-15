@@ -19,13 +19,13 @@ enum EnthusiasmLevel {
   String get label {
     switch (this) {
       case cold:
-        return '冰點';
+        return '投入偏低';
       case warm:
-        return '溫和';
+        return '有在回應';
       case hot:
-        return '熱情';
+        return '投入明顯';
       case veryHot:
-        return '高熱';
+        return '高度投入';
     }
   }
 

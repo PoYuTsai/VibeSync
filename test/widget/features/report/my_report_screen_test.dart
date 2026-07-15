@@ -112,8 +112,7 @@ Future<void> _pumpReportScreen(
         reportDataProvider.overrideWithValue(report),
         analysisHistoryEventsProvider.overrideWithValue(historyEvents),
         partnerListProvider.overrideWithValue(partners),
-        conversationsByPartnerProvider
-            .overrideWith((ref, id) => const []),
+        conversationsByPartnerProvider.overrideWith((ref, id) => const []),
         userProfileControllerProvider
             .overrideWith(_NullUserProfileController.new),
       ],
@@ -160,6 +159,7 @@ void main() {
     expect(find.text('我的報告會在 Starter 解鎖'), findsNothing);
     expect(find.byType(HeatTrendChart), findsOneWidget);
     expect(find.byType(ConversationComparisonChart), findsOneWidget);
+    expect(find.text('最近一次投入度比較'), findsOneWidget);
     expect(find.byType(StageDistributionChart), findsOneWidget);
     expect(find.text('對象作戰板'), findsOneWidget);
     expect(find.text('Vivi'), findsWidgets);
@@ -187,8 +187,7 @@ void main() {
       expect(find.text('安安'), findsWidgets);
       expect(find.text('小雲'), findsWidgets);
       // 預設選最近事件的對象 c-2（安安）→ 圖上是安安的 2 點序列
-      final chart =
-          tester.widget<HeatTrendChart>(find.byType(HeatTrendChart));
+      final chart = tester.widget<HeatTrendChart>(find.byType(HeatTrendChart));
       expect(chart.trendPoints.map((p) => p.score), [40, 66]);
     });
 
@@ -206,8 +205,7 @@ void main() {
       await tester.tap(find.text('小雲').first);
       await tester.pumpAndSettle(); // LineChart 資料切換動畫有限時長，必收斂
 
-      final chart =
-          tester.widget<HeatTrendChart>(find.byType(HeatTrendChart));
+      final chart = tester.widget<HeatTrendChart>(find.byType(HeatTrendChart));
       expect(chart.trendPoints.map((p) => p.score), [50, 70]);
     });
 
@@ -224,11 +222,13 @@ void main() {
         ],
       );
 
-      expect(find.text('再多分析幾次，就能看到這位對象的熱度變化'), findsOneWidget);
+      expect(
+        find.text('再多分析幾次，就能比較對方每次互動的投入度'),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('完全沒有事件（舊用戶未回填）→ 引導文案、既有其他區塊照常',
-        (tester) async {
+    testWidgets('完全沒有事件（舊用戶未回填）→ 引導文案、既有其他區塊照常', (tester) async {
       await _pumpReportScreen(
         tester,
         subscription: const SubscriptionState(
@@ -239,7 +239,10 @@ void main() {
         historyEvents: const [],
       );
 
-      expect(find.text('再多分析幾次，就能看到這位對象的熱度變化'), findsOneWidget);
+      expect(
+        find.text('再多分析幾次，就能比較對方每次互動的投入度'),
+        findsOneWidget,
+      );
       expect(find.byType(ConversationComparisonChart), findsOneWidget);
       expect(find.byType(StageDistributionChart), findsOneWidget);
     });

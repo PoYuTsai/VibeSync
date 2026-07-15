@@ -30,17 +30,22 @@ class ConversationComparisonChart extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '對話比較',
+            '最近一次投入度比較',
             style: AppTypography.titleMedium.copyWith(
               color: Colors.white,
               fontWeight: FontWeight.bold,
             ),
           ),
+          const SizedBox(height: 8),
+          Text(
+            '只反映這次互動中的文字訊號，不代表關係進度。',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
+              height: 1.4,
+            ),
+          ),
           const SizedBox(height: 16),
-          if (comparisons.isEmpty)
-            _buildEmptyState()
-          else
-            _buildBars(),
+          if (comparisons.isEmpty) _buildEmptyState() else _buildBars(),
         ],
       ),
     );

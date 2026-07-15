@@ -125,7 +125,7 @@ class PartnerListCard extends StatelessWidget {
 
   Widget _buildStatusPill(EnthusiasmLevel? level, int? heat) {
     final tone = level?.color ?? Colors.white.withValues(alpha: 0.64);
-    final text = heat == null ? '待分析' : '$heat';
+    final text = heat == null ? '待分析' : '本次投入 $heat';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

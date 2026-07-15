@@ -62,7 +62,7 @@ void main() {
     expect(find.text('Alice'), findsOneWidget);
     expect(find.text('01/05'), findsOneWidget);
     expect(find.byIcon(Icons.local_fire_department_rounded), findsOneWidget);
-    expect(find.text('70'), findsOneWidget);
+    expect(find.text('本次投入 70'), findsOneWidget);
     expect(find.text('coffee · bold'), findsOneWidget);
     expect(find.byIcon(Icons.delete_outline), findsOneWidget);
   });

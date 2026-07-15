@@ -21,20 +21,22 @@ import '../../../../core/theme/app_typography.dart';
 class PartnerHeatMessaging {
   PartnerHeatMessaging._();
 
+  static const scopeExplanation = '只反映這次互動中的文字訊號，不代表關係進度。';
+
   static String labelFor(int? heat) {
     if (heat == null) return '待分析';
-    if (heat <= 30) return '冷靜觀察';
-    if (heat <= 60) return '穩定互動';
-    if (heat <= 80) return '升溫中';
-    return '高互動熱度';
+    if (heat <= 30) return '投入偏低';
+    if (heat <= 60) return '有在回應';
+    if (heat <= 80) return '投入明顯';
+    return '高度投入';
   }
 
   static String subtitleFor(int? heat) {
-    if (heat == null) return '新增或分析第一段互動後，這裡會顯示狀態';
-    if (heat <= 30) return '先觀察節奏，別急著推進';
-    if (heat <= 60) return '互動穩定，可以慢慢加深';
-    if (heat <= 80) return '關係正在升溫中';
-    return '互動熱度很高，適合延續話題';
+    if (heat == null) return '分析第一段互動後，這裡會顯示對方這次的投入度';
+    if (heat <= 30) return '這次文字訊號較少';
+    if (heat <= 60) return '這次有回應，投入訊號普通';
+    if (heat <= 80) return '這次有多個明顯的投入訊號';
+    return '這次文字訊號呈現高度投入';
   }
 
   static String numberFor(int? heat) => heat?.toString() ?? '--';
@@ -74,6 +76,13 @@ class PartnerHeatHeroCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
+                  '對方這次的投入度',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
                   number,
                   style: const TextStyle(
                     fontSize: 56,
@@ -94,6 +103,14 @@ class PartnerHeatHeroCard extends StatelessWidget {
                 Text(
                   subtitle,
                   style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  PartnerHeatMessaging.scopeExplanation,
+                  style: AppTypography.caption.copyWith(
                     color: AppColors.onBackgroundSecondary,
                     height: 1.4,
                   ),

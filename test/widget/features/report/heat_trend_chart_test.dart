@@ -21,11 +21,26 @@ Future<void> _pump(WidgetTester tester, List<HeatTrendPoint> points) async {
 }
 
 void main() {
+  testWidgets('標題與說明限定為每次互動的文字訊號', (tester) async {
+    await _pump(tester, const []);
+
+    expect(find.text('每次互動投入度'), findsOneWidget);
+    expect(find.text('全部平均 60'), findsOneWidget);
+    expect(find.text('前後 +5'), findsOneWidget);
+    expect(
+      find.text('只反映這次互動中的文字訊號，不代表關係進度。'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('x 軸用距首點天數：6/1、6/2、6/5 → x = 0, 1, 4', (tester) async {
     await _pump(tester, [
-      HeatTrendPoint(date: DateTime(2026, 6, 2), score: 60, conversationName: 'A'),
-      HeatTrendPoint(date: DateTime(2026, 6, 1), score: 50, conversationName: 'A'),
-      HeatTrendPoint(date: DateTime(2026, 6, 5), score: 80, conversationName: 'A'),
+      HeatTrendPoint(
+          date: DateTime(2026, 6, 2), score: 60, conversationName: 'A'),
+      HeatTrendPoint(
+          date: DateTime(2026, 6, 1), score: 50, conversationName: 'A'),
+      HeatTrendPoint(
+          date: DateTime(2026, 6, 5), score: 80, conversationName: 'A'),
     ]);
 
     final chart = tester.widget<LineChart>(find.byType(LineChart));
@@ -36,8 +51,10 @@ void main() {
 
   testWidgets('底部標籤是真日期 M/dd', (tester) async {
     await _pump(tester, [
-      HeatTrendPoint(date: DateTime(2026, 6, 1), score: 50, conversationName: 'A'),
-      HeatTrendPoint(date: DateTime(2026, 6, 5), score: 80, conversationName: 'A'),
+      HeatTrendPoint(
+          date: DateTime(2026, 6, 1), score: 50, conversationName: 'A'),
+      HeatTrendPoint(
+          date: DateTime(2026, 6, 5), score: 80, conversationName: 'A'),
     ]);
 
     expect(find.text('6/01'), findsOneWidget);

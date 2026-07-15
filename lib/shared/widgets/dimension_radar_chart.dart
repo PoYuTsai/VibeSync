@@ -88,13 +88,7 @@ class DimensionRadarChart extends StatelessWidget {
                     color: AppColors.glassBorder.withValues(alpha: 0.3)),
                 titlePositionPercentageOffset: 0.2,
                 getTitle: (index, angle) {
-                  const titles = [
-                    '熱度',
-                    '投入度',
-                    '話題深度',
-                    '回覆意願',
-                    '情感連結'
-                  ];
+                  const titles = ['整體投入', '回覆投入', '話題深度', '回覆意願', '情感連結'];
                   return RadarChartTitle(
                     text: titles[index],
                     angle: 0,
@@ -109,7 +103,7 @@ class DimensionRadarChart extends StatelessWidget {
           const SizedBox(height: 16),
 
           // Score grid
-          _buildScoreRow('熱度', scores.heat, '投入度', scores.engagement),
+          _buildScoreRow('整體投入', scores.heat, '回覆投入', scores.engagement),
           const SizedBox(height: 8),
           _buildScoreRow(
               '話題深度', scores.topicDepth, '回覆意願', scores.replyWillingness),
@@ -120,8 +114,7 @@ class DimensionRadarChart extends StatelessWidget {
     );
   }
 
-  Widget _buildScoreRow(
-      String label1, int score1, String label2, int score2) {
+  Widget _buildScoreRow(String label1, int score1, String label2, int score2) {
     return Row(
       children: [
         Expanded(child: _buildScoreItem(label1, score1)),

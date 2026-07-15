@@ -39,7 +39,7 @@ const List<(String, String)> _streamPreludeProgress = <(String, String)>[
   ),
   (
     '正在推演回覆策略',
-    '正在判斷關係階段、情緒溫度與最適合的下一步。',
+    '正在判斷關係階段、對方這次的投入訊號與最適合的下一步。',
   ),
   (
     '完整分析仍在進行',

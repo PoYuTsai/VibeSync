@@ -152,6 +152,7 @@ void main() {
     expect(find.text('Omi'), findsWidgets);
     expect(find.text('LINE'), findsWidgets);
     expect(find.text('未分類'), findsWidgets);
+    expect(find.text('本次投入 72'), findsNWidgets(3));
     expect(
       tester.getTopLeft(find.text('Omi 上的新片段')).dy,
       lessThan(tester.getTopLeft(find.text('LINE 上的舊片段')).dy),
@@ -200,6 +201,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('小雲・Threads'), findsOneWidget);
+    expect(find.text('本次投入 72'), findsOneWidget);
     expect(find.text('妳週末去哪裡玩？'), findsOneWidget);
     expect(find.text('我去了台南，吃到一家很好吃的小店。'), findsOneWidget);
     expect(find.text('先接住她提到的旅行，再分享一個短故事。'), findsOneWidget);

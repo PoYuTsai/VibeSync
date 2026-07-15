@@ -272,7 +272,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       expect(
-        find.text('已修改已分析過的訊息，重新分析後會更新熱度與回覆建議。'),
+        find.text('已修改已分析過的訊息，重新分析後會更新本次投入與回覆建議。'),
         findsOneWidget,
       );
       expect(find.text('已儲存，點重新分析更新結果。'), findsOneWidget);

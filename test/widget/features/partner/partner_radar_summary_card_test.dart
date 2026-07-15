@@ -24,8 +24,7 @@ Conversation _conv({String? snapshot}) => Conversation(
 void main() {
   testWidgets('null conversation → fallback text', (t) async {
     await t.pumpWidget(const MaterialApp(
-      home:
-          Scaffold(body: PartnerRadarSummaryCard(latestConversation: null)),
+      home: Scaffold(body: PartnerRadarSummaryCard(latestConversation: null)),
     ));
     expect(find.text('最新對話尚未分析'), findsOneWidget);
   });
@@ -43,12 +42,15 @@ void main() {
     });
     await t.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: PartnerRadarSummaryCard(latestConversation: _conv(snapshot: snapshot)),
+        body: PartnerRadarSummaryCard(
+            latestConversation: _conv(snapshot: snapshot)),
       ),
     ));
     await t.pumpAndSettle();
     expect(find.text('最新對話尚未分析'), findsNothing);
-    expect(find.byType(RadarChart), findsOneWidget);
+    final chart = t.widget<RadarChart>(find.byType(RadarChart));
+    expect(chart.data.getTitle!(0, 0).text, '整體投入');
+    expect(chart.data.getTitle!(1, 0).text, '回覆投入');
   });
 
   testWidgets(
@@ -59,7 +61,8 @@ void main() {
     });
     await t.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: PartnerRadarSummaryCard(latestConversation: _conv(snapshot: snapshot)),
+        body: PartnerRadarSummaryCard(
+            latestConversation: _conv(snapshot: snapshot)),
       ),
     ));
     expect(find.text('最新對話尚未分析'), findsOneWidget);

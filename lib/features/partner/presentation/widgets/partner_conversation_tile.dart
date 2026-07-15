@@ -80,7 +80,7 @@ class PartnerConversationTile extends StatelessWidget {
                 ),
                 subtitle: Text(
                   '${conversation.currentRound} 輪 · ${conversation.messages.length} 則訊息'
-                  '${heat != null ? ' · 熱度 $heat' : ''}',
+                  '${heat != null ? ' · 本次投入 $heat' : ''}',
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.onBackgroundSecondary,
                   ),

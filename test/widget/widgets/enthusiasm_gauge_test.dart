@@ -22,7 +22,7 @@ void main() {
       );
 
       expect(find.text('❄️'), findsOneWidget);
-      expect(find.text('冰點'), findsOneWidget);
+      expect(find.text('投入偏低'), findsOneWidget);
     });
 
     testWidgets('displays warm emoji for moderate score', (tester) async {
@@ -33,7 +33,7 @@ void main() {
       );
 
       expect(find.text('🌤️'), findsOneWidget);
-      expect(find.text('溫和'), findsOneWidget);
+      expect(find.text('有在回應'), findsOneWidget);
     });
 
     testWidgets('displays hot emoji for high score', (tester) async {
@@ -44,7 +44,7 @@ void main() {
       );
 
       expect(find.text('🔥'), findsOneWidget);
-      expect(find.text('熱情'), findsOneWidget);
+      expect(find.text('投入明顯'), findsOneWidget);
     });
 
     testWidgets('displays veryHot emoji for very high score', (tester) async {
@@ -55,7 +55,7 @@ void main() {
       );
 
       expect(find.text('💖'), findsOneWidget);
-      expect(find.text('高熱'), findsOneWidget);
+      expect(find.text('高度投入'), findsOneWidget);
     });
   });
 }

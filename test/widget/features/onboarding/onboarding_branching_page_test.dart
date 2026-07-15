@@ -25,8 +25,7 @@ GoRouter _stubRouter() => GoRouter(
         ),
         GoRoute(
           path: '/partner/new',
-          builder: (_, __) =>
-              const Scaffold(body: Text('partner-new-screen')),
+          builder: (_, __) => const Scaffold(body: Text('partner-new-screen')),
         ),
         GoRoute(
           path: '/practice-collection',
@@ -59,8 +58,19 @@ void main() {
   });
 
   group('onboarding 第 5 頁分流頁（案 3）', () {
-    testWidgets('分流頁顯示標題＋兩顆按鈕，底部「下一步」隱藏、指示點 5 顆',
-        (tester) async {
+    testWidgets('第 2 頁將分數限定為對方這次的投入度', (tester) async {
+      await _pumpOnboarding(tester);
+      await _swipeToNextPage(tester);
+
+      expect(find.text('即時看懂她的訊號'), findsOneWidget);
+      expect(
+        find.text('對方這次的投入度 0-100 一目瞭然\n讀懂她這輪話裡的訊號'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('熱度分析'), findsNothing);
+    });
+
+    testWidgets('分流頁顯示標題＋兩顆按鈕，底部「下一步」隱藏、指示點 5 顆', (tester) async {
       await _pumpOnboarding(tester);
       await _swipeToBranchingPage(tester);
 
@@ -104,8 +114,7 @@ void main() {
       expect(prefs.getBool('onboarding_completed'), isTrue);
     });
 
-    testWidgets('主按鈕導流後 back 可退回首頁（go / 再 push，不卡死）',
-        (tester) async {
+    testWidgets('主按鈕導流後 back 可退回首頁（go / 再 push，不卡死）', (tester) async {
       await _pumpOnboarding(tester);
       await _swipeToBranchingPage(tester);
 
@@ -122,8 +131,7 @@ void main() {
       expect(find.text('main-shell'), findsOneWidget);
     });
 
-    testWidgets('前 4 頁底部一律顯示「下一步」，末頁不再有「開始使用」',
-        (tester) async {
+    testWidgets('前 4 頁底部一律顯示「下一步」，末頁不再有「開始使用」', (tester) async {
       await _pumpOnboarding(tester);
 
       for (var page = 0; page < 4; page++) {
@@ -133,8 +141,7 @@ void main() {
       }
     });
 
-    testWidgets('第 4 頁按「下一步」進入分流頁（不再直接完成 onboarding）',
-        (tester) async {
+    testWidgets('第 4 頁按「下一步」進入分流頁（不再直接完成 onboarding）', (tester) async {
       await _pumpOnboarding(tester);
       for (var i = 0; i < 3; i++) {
         await _swipeToNextPage(tester);

@@ -222,7 +222,7 @@ class AnalysisStreamContent {
           kind: AnalysisStreamContentKind.metrics,
           title: '互動指標',
           body: _joinNonEmpty([
-            score == null ? null : '互動熱度：$score/100',
+            score == null ? null : '本次投入：$score/100',
             _prefix(
               '話題深度',
               _stringField(topicDepth?['suggestion']) ??
@@ -1031,7 +1031,8 @@ AnalysisException _mapAnalysisHttpError({
       // 判成訂閱額度（那會誤導升級 paywall CTA）。wait 而非 retry。
       // MODEL_RATE_LIMITED＝analyze 模型呼叫限流（6/分、60/天），同型契約
       // （docs/plans/2026-07-03-model-rate-limit-design.md）。
-      if (errorCode == 'OCR_RATE_LIMITED' || errorCode == 'MODEL_RATE_LIMITED') {
+      if (errorCode == 'OCR_RATE_LIMITED' ||
+          errorCode == 'MODEL_RATE_LIMITED') {
         return AnalysisException(
           _isReadableUserMessage(normalizedMessage) &&
                   normalizedMessage.isNotEmpty

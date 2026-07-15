@@ -1077,7 +1077,7 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '目前：$state',
+                      '最近一次：$state',
                       style: AppTypography.titleSmall.copyWith(
                         color: AppColors.onBackgroundPrimary,
                         fontWeight: FontWeight.w700,
@@ -1125,7 +1125,7 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
     PartnerAggregateView aggregate,
     String state,
   ) {
-    final result = <String>['狀態：$state'];
+    final result = <String>['本次投入：$state'];
     final maxLength =
         aggregate.unionInterests.length > aggregate.unionTraits.length
             ? aggregate.unionInterests.length

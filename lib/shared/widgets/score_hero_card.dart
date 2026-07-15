@@ -74,7 +74,7 @@ class ScoreHeroCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '對話健康分數',
+                  '對方這次的投入度',
                   style: AppTypography.caption.copyWith(
                     color: AppColors.ctaStart,
                     fontWeight: FontWeight.w600,
@@ -87,12 +87,18 @@ class ScoreHeroCard extends StatelessWidget {
                     color: AppColors.glassTextPrimary,
                   ),
                 ),
+                const SizedBox(height: 4),
+                Text(
+                  '只反映這次互動中的文字訊號，不代表關係進度。',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.glassTextSecondary,
+                    height: 1.3,
+                  ),
+                ),
                 if (delta != null) ...[
                   const SizedBox(height: 4),
                   Text(
-                    delta >= 0
-                        ? '較上次 +$delta，建議趁熱推進'
-                        : '較上次 $delta，需要調整策略',
+                    delta >= 0 ? '較上次 +$delta，只比較兩次互動' : '較上次 $delta，只比較兩次互動',
                     style: AppTypography.caption.copyWith(
                       color: delta >= 0 ? AppColors.success : AppColors.error,
                     ),
@@ -109,13 +115,13 @@ class ScoreHeroCard extends StatelessWidget {
   String _descriptionForLevel(EnthusiasmLevel level) {
     switch (level) {
       case EnthusiasmLevel.cold:
-        return '對話偏冷，需要換個方式';
+        return '這次投入訊號偏少';
       case EnthusiasmLevel.warm:
-        return '溫和互動中，可以加點張力';
+        return '這次有一定回應';
       case EnthusiasmLevel.hot:
-        return '熱情互動中，持續保持節奏 \u{1F44D}';
+        return '這次投入訊號明顯';
       case EnthusiasmLevel.veryHot:
-        return '超高熱度！趁熱推進見面 \u{1F525}';
+        return '這次投入訊號很多';
     }
   }
 }

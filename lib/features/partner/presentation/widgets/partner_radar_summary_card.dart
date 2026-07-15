@@ -44,7 +44,7 @@ class PartnerRadarSummaryCard extends StatelessWidget {
       'replyWillingness',
       'emotionalConnection',
     ];
-    final labels = const ['熱度', '互動', '深度', '回應', '情感'];
+    final labels = const ['整體投入', '回覆投入', '深度', '回應', '情感'];
     final values =
         order.map((k) => (dims[k] ?? 50).toDouble()).toList(growable: false);
 

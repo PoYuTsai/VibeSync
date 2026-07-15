@@ -478,7 +478,7 @@ class _AnalysisRecordTile extends StatelessWidget {
                     runSpacing: 4,
                     children: [
                       Text(
-                        '熱度 ${record.enthusiasmScore}',
+                        '本次投入 ${record.enthusiasmScore}',
                         style: AppTypography.bodySmall.copyWith(
                           color: AppColors.ctaStart,
                           fontWeight: FontWeight.w700,

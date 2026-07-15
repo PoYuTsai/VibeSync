@@ -29,7 +29,7 @@ void main() {
     test('should be value-equal when all 6 fields match', () {
       const a = CoachActionCardData(
         actionLabel: '模糊邀約',
-        whyNow: '熱度 88，可以給具體時間',
+        whyNow: '對方這次的投入度 88，可以給具體時間',
         task: '拋一個低門檻邀約',
         suggestedLine: '週六下午有空嗎？',
         avoid: '別問三題',
@@ -37,7 +37,7 @@ void main() {
       );
       const b = CoachActionCardData(
         actionLabel: '模糊邀約',
-        whyNow: '熱度 88，可以給具體時間',
+        whyNow: '對方這次的投入度 88，可以給具體時間',
         task: '拋一個低門檻邀約',
         suggestedLine: '週六下午有空嗎？',
         avoid: '別問三題',
@@ -140,6 +140,8 @@ void main() {
 
       expect(card.actionLabel, '接住生活話題');
       expect(card.whyNow, contains('在家追劇 看絕命毒師'));
+      expect(card.whyNow, contains('對方這次的投入度 60'));
+      expect(card.whyNow, isNot(contains('熱度')));
       expect(card.task, contains('補一個你的感受'));
       expect(card.avoidLabel, '節奏提醒');
       expect(card.avoid, contains('別只連問清單題'));

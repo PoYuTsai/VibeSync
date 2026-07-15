@@ -441,7 +441,7 @@ class CoachActionPolicy {
     final candidate = finalRecommendation.content.trim();
     return CoachActionCardData(
       actionLabel: '模糊邀約',
-      whyNow: '熱度 $heatScore，互動穩定且對方有訊號，可以給具體選項',
+      whyNow: '對方這次的投入度 $heatScore，且有見面訊號，可以給具體選項',
       task: '拋一個低門檻邀約，給具體時間和場景',
       avoid: '別要對方立刻決定',
       avoidLabel: _avoidLabelForActionType(CoachActionType.softInvite),
@@ -456,8 +456,9 @@ class CoachActionPolicy {
     required bool flaggedPath,
   }) {
     final candidate = finalRecommendation.content.trim();
-    final whyNow =
-        flaggedPath ? '這位對象目前資料還不完整，先放慢一拍別追問' : '熱度 $heatScore，先把溫度留住不要追問結果';
+    final whyNow = flaggedPath
+        ? '這位對象目前資料還不完整，先放慢一拍別追問'
+        : '對方這次的投入度 $heatScore，先接住這輪訊號，不要追問結果';
     return CoachActionCardData(
       actionLabel: '降低壓力',
       whyNow: whyNow,
@@ -477,7 +478,7 @@ class CoachActionPolicy {
     final candidate = finalRecommendation.content.trim();
     return CoachActionCardData(
       actionLabel: '輕鬆幽默',
-      whyNow: '熱度 $heatScore，可以丟一個 playful 卡點維持張力',
+      whyNow: '對方這次的投入度 $heatScore，可以丟一個 playful 卡點維持張力',
       task: '拋一個 playful 卡點，留半步空白',
       avoid: '別讓玩笑變嘲弄',
       avoidLabel: _avoidLabelForActionType(CoachActionType.playfulReply),
@@ -489,7 +490,7 @@ class CoachActionPolicy {
   static CoachActionCardData _buildPausePursuit({required int heatScore}) {
     return CoachActionCardData(
       actionLabel: '暫停追問',
-      whyNow: '熱度 $heatScore，這時推進反而容易把話聊死',
+      whyNow: '對方這次的投入度 $heatScore，這時推進反而容易把話聊死',
       task: '今天先不主動再傳，明天觀察她有沒有開新話題',
       avoid: '別連發訊息追問結果',
       avoidLabel: _avoidLabelForActionType(CoachActionType.pausePursuit),
@@ -525,8 +526,8 @@ class CoachActionPolicy {
   }) {
     final topic = _compactTopic(latestPartnerMessage);
     final whyNow = topic.isEmpty
-        ? '熱度 $heatScore，她有丟出可延展的生活話題，先接住內容再觀察'
-        : '熱度 $heatScore，她丟出「$topic」這種生活話題，先接住內容再觀察';
+        ? '對方這次的投入度 $heatScore，她有丟出可延展的生活話題，先接住內容再觀察'
+        : '對方這次的投入度 $heatScore，她丟出「$topic」這種生活話題，先接住內容再觀察';
     return CoachActionCardData(
       actionLabel: '接住生活話題',
       whyNow: whyNow,
@@ -547,7 +548,7 @@ class CoachActionPolicy {
     final candidate = finalRecommendation.content.trim();
     return CoachActionCardData(
       actionLabel: '故事框架',
-      whyNow: '熱度 $heatScore，可以用故事框架往下展開',
+      whyNow: '對方這次的投入度 $heatScore，可以用故事框架往下展開',
       task: '用「場景 + 觀點/情緒 + 開放式提問」這個框架延展話題',
       avoid: '別只丟一個開放式問句',
       avoidLabel:
@@ -561,7 +562,7 @@ class CoachActionPolicy {
   static CoachActionCardData _buildPreferenceSignal({required int heatScore}) {
     return CoachActionCardData(
       actionLabel: '輕量表達偏好',
-      whyNow: '熱度 $heatScore，可以輕鬆露出自己的偏好',
+      whyNow: '對方這次的投入度 $heatScore，可以輕鬆露出自己的偏好',
       task: '講一個自己的小喜好或觀點，不問問題',
       avoid: '別把這當解釋自己',
       avoidLabel: _avoidLabelForActionType(CoachActionType.preferenceSignal),
@@ -578,7 +579,7 @@ class CoachActionPolicy {
     final candidate = finalRecommendation.content.trim();
     return CoachActionCardData(
       actionLabel: '回得剛剛好',
-      whyNow: '熱度 $heatScore，下一句先精簡一點，讓對方更容易接球',
+      whyNow: '對方這次的投入度 $heatScore，下一句先精簡一點，讓對方更容易接球',
       task: '先抓對方上一句的份量，控制在 1.8 倍內再延伸',
       avoid: '別一次塞太多細節',
       avoidLabel: _avoidLabelForActionType(CoachActionType.rightSizeReply),
@@ -595,8 +596,8 @@ class CoachActionPolicy {
   }) {
     final candidate = finalRecommendation.content.trim();
     final whyNow = challengeSignal
-        ? '熱度 $heatScore，她丟的是互動測試，不是要你解釋；先穩住語氣'
-        : '熱度 $heatScore，這次有明確情緒訊號，先讓她覺得被理解';
+        ? '對方這次的投入度 $heatScore，她丟的是互動測試，不是要你解釋；先穩住語氣'
+        : '對方這次的投入度 $heatScore，這次有明確情緒訊號，先讓她覺得被理解';
     return CoachActionCardData(
       actionLabel: challengeSignal ? '接住試探球' : '情緒共鳴',
       whyNow: whyNow,
@@ -617,7 +618,7 @@ class CoachActionPolicy {
     // long-term knowledge of the person — fall back to "this interaction only".
     final whyNow = isDataQualityFlagged
         ? '這位對象目前資料還不完整，先用這次互動的訊號來判斷'
-        : '熱度 $heatScore，訊號還輕；先看她願不願意把話接回來';
+        : '對方這次的投入度 $heatScore，訊號還輕；先看她願不願意把話接回來';
     return CoachActionCardData(
       actionLabel: '互動品質觀察',
       whyNow: whyNow,
