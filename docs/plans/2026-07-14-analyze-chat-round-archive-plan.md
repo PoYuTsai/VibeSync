@@ -1,5 +1,7 @@
 # analyze-chat 分輪封存重設計 — Implementation Plan（純顯示層 v2）
 
+> **SUPERSEDED — 2026-07-15，禁止照此執行。** 本文的 `conversationId -> List`、FIFO 5 筆與舊輪 cursor 方案已作廢。現行實作與驗收契約見 `2026-07-15-analyze-chat-independent-records-implementation.md`。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 主畫面對話筐只顯示「最新一輪」，舊輪次收進右上角封存盒（一次分析＝一張卡）；模型輸入、計費、prompt 一律不動。

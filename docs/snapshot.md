@@ -29,6 +29,8 @@ Default priority:
 
 Recent commit themes, newest first:
 
+- Analyze-chat 獨立分析紀錄（2026-07-15，`255803c0`）：主畫面只顯示 current／pending 片段，舊成功案例收進右上「分析紀錄」；每筆 owner-scoped、自足快照、無 FIFO、手動刪除。`metVia` 與每筆 `sourcePlatform` 分開；cleanup marker＋tombstone 保護刪除，冷啟動 repair 失敗時禁止覆寫 canonical snapshot。原整段封存入口改稱「已收起的對話」。Codex 儲存／流程雙路終審與 sanity check 均通過；`flutter analyze` 0 issue、148 項 targeted tests 全過。AI request、prompt、quota、billing 不變；client-only，需新 TestFlight build、不需 Edge／DB deploy。
+
 - Practice Hint／Debrief generated-only train（2026-07-11，branch `codex/no-canned-practice-ai`）：Beginner＋Game 共用 DeepSeek 12s → Claude 12s、逐欄品質閘與 Hint decision lineage；雙失敗不再把 fallback 當成功、不扣費不計次。local Deno 746/746、Flutter 516/516，SQL／client／兩路 backend gate 皆 0/0/0；等待 Edge-first deployment 與 TestFlight。
 - Analyze-chat full streaming is the current product path. The old user-visible two-stage quick/full plan is superseded; frontend legacy naming cleanup landed in `d12009e`. Backend `quick/full` compatibility remains hidden rollback / old-client support only.
 - `!codex` Phase 1 read-only Discord review gate: `dfde5f2`, `ec84bb0`.
@@ -87,6 +89,9 @@ Coach 1:1 rule:
 Analyze-chat rule:
 
 - Current analyze-chat UX is full streaming analyze. Do not revive the old two-stage quick/full UX unless Eric explicitly reopens that decision.
+- Client display separates each successful analysis into a self-contained record. The current/pending fragment stays on the main screen; only older successful records appear in the top-right analysis archive.
+- Records have no FIFO and require manual deletion. `metVia` is partner-level; source platform is snapshotted per record and never guessed by OCR.
+- This record feature must not alter AI request messages, prompt, quota, billing, or Edge behavior.
 - Existing backend `responseMode: quick/full` and `analysis_runs` artifacts are compatibility / rollback surfaces, not the official user-visible analyze design.
 - Reply suggestions should read the actual conversation.
 - Prefer "接住情緒 -> 互動感 -> 順勢延伸" over summary-like suggestions.

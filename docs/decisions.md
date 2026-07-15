@@ -632,3 +632,30 @@
 - `docs/pricing-final.md` 訊息計算邏輯段（實作 commit 同步改寫）
 - `docs/cost-optimization.md`（實作 commit 同步）
 - ADR #18（opener flat-3，本 ADR 不動其範圍）
+
+## ADR #20 — [2026-07-15] analyze-chat 採獨立分析紀錄，不再用長逐字稿收納
+
+**狀態**: 🟢 Active — 2026-07-15 Codex 儲存／流程雙路終審與最終 sanity check 通過，無 P0/P1/P2
+
+**背景**: Sam 指出一般使用者不會用「一段一段的邏輯」整理聊天，且同一對象可能從交友軟體轉到 LINE、IG 或 Threads；Bruce 指出既有長 OCR／長逐字稿會越疊越亂，收納盒真正要解的是疊加與找回問題。Eric 拍板融合兩者：保留目前片段的即時感，舊分析改成可按對象與平台找回的獨立案例。
+
+**決定**:
+
+1. 一次成功分析保存一筆 self-contained record，包含當時訊息 deep copy、AI snapshot、分析邊界、完成 key、內容 revision、熱度／階段與來源平台。
+2. 每個 conversation 只有一個 current pointer；current 留在主畫面且不出現在 archive。有新片段成功分析時才讓舊 current 進 archive。
+3. 同片段刷新或 completion replay 只覆寫／重放 current，不製造重複案例。
+4. `metVia` 存在 partner scope；`sourcePlatform` 在每筆成功分析時 snapshot。平台由使用者選擇，OCR 不推測。
+5. owner scope 進入 key 與 record body，使用既有 AES 加密 `settingsBox`；每筆獨立 key、無 FIFO、無自動 pruning。刪除對話以 cleanup marker＋tombstone 防止中斷或延遲寫入復活資料。
+6. 使用者只能手動刪除 archived record；conversation 刪除時 cascade 清該 conversation 的 records/state/source。partner `metVia` 不因刪一條 conversation 而消失，並跟隨 partner merge／delete lifecycle。
+7. 原有整段 conversation archive 保留，但使用者名稱改成「已收起的對話」，避免和新「分析紀錄」混淆。
+8. 本案不改 AI request messages、prompt、Edge schema、quota 或 billing；紀錄資料不回流成模型輸入。
+
+**後果**:
+
+- 優點：避免逐字稿越疊越亂；跨平台仍能以同一對象找回；刪除與 owner 隔離可被單元測試鎖定。
+- 代價：本地紀錄沒有自動上限，容量交給使用者手動管理；更換裝置不會自動同步這批 local-only record。
+- 舊 `2026-07-14-analyze-chat-round-archive-*` 文件只保留歷史／程式地圖，產品與資料設計均已 superseded。
+
+**詳細實作與驗收**: `docs/plans/2026-07-15-analyze-chat-independent-records-implementation.md`
+
+**審查證據**: `docs/reviews/2026-07-15-analyze-chat-independent-records-codex-review.md`；`flutter analyze` 0 issue，148 項 targeted unit／widget tests 全數通過。

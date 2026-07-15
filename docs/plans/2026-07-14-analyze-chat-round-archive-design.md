@@ -1,5 +1,7 @@
 # analyze-chat 分輪封存重設計（需求定案 v2 — 純顯示層）
 
+> **SUPERSEDED — 2026-07-15。** Sam／Bruce 回饋與 Eric 後續拍板已改成「獨立分析紀錄」；現行規格見 `2026-07-15-analyze-chat-independent-records-implementation.md`。本文提到的單一對話分輪、FIFO 等內容不得實作。
+
 - 日期：2026-07-14
 - 狀態：需求 LOCKED（砍薄定案）→ writing-plans 已出 plan
 - 參與：Eric（產品）、Bruce（夥伴，關鍵校正）、Claude（Opus，主討論）

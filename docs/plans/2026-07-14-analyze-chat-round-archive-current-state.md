@@ -1,5 +1,7 @@
 # analyze-chat 分輪封存重設計 — 實作前現況核對
 
+> **SUPERSEDED — 2026-07-15。** 本文只保留實作前的程式地圖；其中的產品假設與建議資料結構已被 `2026-07-15-analyze-chat-independent-records-implementation.md` 取代，不可再當成現行規格。
+
 - 日期：2026-07-14
 - 調查對象：docs/plans/2026-07-14-analyze-chat-round-archive-design.md 六項待驗證
 - 方法：Grep 定位 + 段落 Read（大檔不整檔讀）
