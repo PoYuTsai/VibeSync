@@ -45,6 +45,19 @@ D4 曾從 `音檔.mp4` 切出 riser（5.95–7.10s）／settle（6.95–8.00s）
 - 原 bed 在 2–5s 僅保留低頻底（FFT low-pass 後 18% 音量）並以 0.22s crossfade 進出，移除高頻「西西素素」感但避免接縫突然變乾。
 - 輸出 `practice_draw_reveal_bed.mp3`（約 10.06s、192kbps/44.1kHz/mono、242KB），peak 約 0.79，無 clipping。
 
+### F2 改版：移除 2–5s 細碎高頻（2026-07-16）
+
+F1 真機回饋仍可聽見 2–5s「西西簌簌」聲。播放路徑確認揭曉時 waiting loop 已停止、舊 chime
+也未疊放；頻譜量測進一步確認噪聲已烘焙在 F1 master 的 2–5s accent layer，而非重複播放：
+
+- F1 2–5s 頻譜重心約 2782Hz、頻譜平坦度 0.056804、6kHz 以上能量占 13.91%。
+- F2 保留同一段低頻與 C／G 揭牌音色；以 2100Hz、8th-order crossover 分離高頻，1.8–2.2s
+  平滑降到 0%，4.8–5.2s 平滑恢復，避免硬切或時間軸漂移。
+- F2 2–5s 頻譜重心降至約 747Hz、頻譜平坦度 0.000018、6kHz 以上能量降至 0.043%；
+  10 秒時間軸、3.0s 第一張卡翻開與 5.0s 屏息節點全部不變。
+- 輸出仍為 `practice_draw_reveal_bed.mp3`（約 10.06s、192kbps/44.1kHz/mono、242KB），
+  SHA-256 `20a516649bc6ac59b32ed73520b473e4ded6e1f7d091b45d7f69ae7fdfda92e2`，無 clipping／接縫 click。
+
 ## 授權鐵則（放音檔進來前必過）
 
 - **僅可用**：本專案原創生成、CC0、自製、買斷、或授權條款明確允許「商用 app bundling」的素材。
@@ -59,7 +72,7 @@ D4 曾從 `音檔.mp4` 切出 riser（5.95–7.10s）／settle（6.95–8.00s）
 | `playWhoosh()` 抽牌咻聲（一次性，~0.3–0.6s） | `practice_draw_whoosh.wav` | `A_romantic_magic_01_whoosh.wav` | Codex 原創程式化 synthesis（for VibeSync） | 專案原創（非 CC0） | 2026-06-26 | 否 |
 | `playWaitingLoop()` 等待 shimmer loop（循環、極小聲） | `practice_draw_waiting_loop.wav` | `A_romantic_magic_02_waiting_loop.wav` | Codex 原創程式化 synthesis（for VibeSync） | 專案原創（非 CC0） | 2026-06-26 | 否 |
 | `playRevealChime()` 揭曉 chime/sparkle（一次性，~0.6–1s） | `practice_draw_reveal_chime.wav` | `B_gacha_sss_03_reveal_chime.wav` | Codex 原創程式化 synthesis（for VibeSync） | 專案原創（非 CC0） | 2026-06-26 | 否 |
-| `playRevealBed()` 揭曉配樂 bed（一次性，約 10.06s，與 `_reveal` 同步） | `practice_draw_reveal_bed.mp3`（242KB，已 bundle） | E2 bed + 夥伴提供 `preview_accent_layer.wav` 2–5s 替換 | 夥伴提供 VibeSync 專用 accent layer + Codex 後製 | 專案原創（AI/自製後製，非第三方 sample） | 2026-07-09 | 否 |
+| `playRevealBed()` 揭曉配樂 bed（一次性，約 10.06s，與 `_reveal` 同步） | `practice_draw_reveal_bed.mp3`（242KB，已 bundle） | F1 master + F2 2–5s 去細碎高頻後製 | 夥伴提供 VibeSync 專用 accent layer + Codex 後製 | 專案原創（AI/自製後製，非第三方 sample） | 2026-07-16 | 否 |
 
 > ~~`playRiser()`／`playSettle()`（D4，`practice_draw_riser.wav`／`practice_draw_settle.wav`）已於 E2 退役並移除。~~
 
@@ -83,8 +96,10 @@ D4 曾從 `音檔.mp4` 切出 riser（5.95–7.10s）／settle（6.95–8.00s）
 
 - [x] **E2 抽取 bed mp3**：已抽 `音檔.mp4` 0–9s、peak-normalize、mp3 128k 落地（142KB）＋asset-exists 測試綠。
 - [x] **F1 上半段替換**：2–5s 改用夥伴 accent layer，3.0s 對齊第一張卡翻開；5s 後沿用 E2 下半段。
+- [x] **F2 去細碎高頻**：保留揭牌音色與節點，只平滑壓掉 2–5s 的寬頻顆粒噪聲；音檔 hash 已鎖測試。
 - [ ] Eric 出新 TestFlight build 後真機目檢音效（romantic 基調＋reveal hit 是否到位、loop 是否夠小聲）。
-- [ ] **F1 真機目檢**：揭曉配樂 bed 是否與 `_reveal` 三爆點對齊（預覽~3s／屏息~5s／高潮~8.5s）；
-      bed 與保留的 reveal chime 疊放是否好聽（不合可拿掉 chime 或調 `_kRevealBedVolume`）。
+- [x] **F1 真機目檢未通過**：三爆點仍對齊，但 2–5s 細碎高頻需移除；production 未疊放 reveal chime，
+      問題確認來自 bed 本身，後續由 F2 收斂。
+- [ ] **F2 真機目檢**：確認 2–5s「西西簌簌」已消失，且保留的揭牌音色不會顯得過悶。
 - [ ] reduce-motion 目前保留 haptic 與一次性音效、但不啟動 waiting loop；未來若加「使用者
       靜音偏好」，再決定是否連一次性音效一併靜音。

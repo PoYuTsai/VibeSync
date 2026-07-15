@@ -10,6 +10,27 @@
 
 ## 2026-07
 
+### [2026-07-16] 翻牌揭曉 2–5 秒出現細碎「西西簌簌」聲
+
+**Symptom**: 角色圖鑑翻牌儀式開始後約 2–5 秒，配樂出現與揭牌儀式不搭的高頻細碎聲。
+
+**Root Cause**: 不是播放器疊音。揭曉成功會先停止 waiting loop，舊 reveal chime 也未觸發，production 只播放一次
+`practice_draw_reveal_bed.mp3`。2026-07-09 F1 替換進去的 accent layer 本身帶寬頻顆粒噪聲，3.16–4.28 秒最明顯；
+2–5 秒頻譜平坦度 0.056804、6kHz 以上能量占 13.91%，因此固定被聽成「西西簌簌」。
+
+**Fix**: F2 保留低頻與 C／G 揭牌音色，用 2100Hz 8th-order crossover 把高頻於 1.8–2.2 秒平滑淡出、
+4.8–5.2 秒平滑恢復；總長與 3.0／5.0／6.5／8.5 秒動畫節點不變。修後 2–5 秒頻譜平坦度降至
+0.000018、6kHz 以上能量降至 0.043%，全檔 peak -2.56dBFS，無 clipping／接縫 click。
+
+**Prevention**: unit test 鎖定 F2 master SHA-256，避免日後誤換回 F1；音訊品質仍需真機聽感驗收。既有 build
+bundle 不會自動更新 asset，必須 fresh build／新 TestFlight 才會生效。
+
+**Validation**: audio asset tests 8/8、翻牌音效 widget tests 13/13、E1 音軌時間軸 3/3、scoped
+`flutter analyze` clean；FFmpeg decode 與頻譜門檻檢查通過。
+
+**相關檔案**: `assets/audio/practice_draw/practice_draw_reveal_bed.mp3`、
+`assets/audio/practice_draw/licenses/practice_draw_audio.md`、`test/unit/features/practice_chat/practice_draw_audio_sfx_test.dart`。
+
 ### [2026-07-13] Game Hint 全線 503：typed-facts-v1 claim 抽取誤殺＋HINT_MAX_TOKENS 截斷
 
 **Symptom**: typed-facts-v1（Edge v84）上線後 game hint 幾乎必 503（prod 連續 4 次）；ai_logs 呈現「attempt 1 provider_error（10–12 秒）→ failover Claude 後仍 schema_invalid」。

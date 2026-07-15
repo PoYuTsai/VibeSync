@@ -17,7 +17,7 @@ const String _kWaitingLoopAsset =
     'audio/practice_draw/practice_draw_waiting_loop.wav';
 const String _kRevealChimeAsset =
     'audio/practice_draw/practice_draw_reveal_chime.wav';
-// F1：揭曉配樂 bed。2–5s 改用夥伴 accent layer；5s 後沿用 E2 下半段。
+// F2：揭曉配樂 bed。保留既有節奏，2–5s 的細碎高頻已平滑移除。
 const String _kRevealBedAsset =
     'audio/practice_draw/practice_draw_reveal_bed.mp3';
 
@@ -110,8 +110,7 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
       _loopActive = true;
       unawaited(
         player
-            .play(AssetSource(_kWaitingLoopAsset),
-                volume: _kWaitingLoopVolume)
+            .play(AssetSource(_kWaitingLoopAsset), volume: _kWaitingLoopVolume)
             .catchError((Object _) {}),
       );
     } catch (_) {
