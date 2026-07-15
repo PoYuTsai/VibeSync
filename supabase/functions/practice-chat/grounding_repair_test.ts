@@ -326,7 +326,7 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   );
   assertStringIncludes(
     messages[0].content,
-    "先審 terminal 直接答案",
+    "先審 terminal 答案",
   );
   assertStringIncludes(
     messages[0].content,
@@ -334,7 +334,7 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   );
   assertStringIncludes(
     messages[0].content,
-    "較早相容行為不算回答",
+    "較早相容行為非回答",
   );
   assertStringIncludes(
     messages[0].content,
@@ -342,7 +342,7 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   );
   assertStringIncludes(
     messages[0].content,
-    "較早明說「這部我超推」才可答「超推」",
+    "明說「這部我超推」才可答「超推」",
   );
   assertStringIncludes(
     messages[0].content,
@@ -362,7 +362,7 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   );
   assertStringIncludes(
     messages[0].content,
-    "未知禁改成忘記／不知道／沒去過／不確定／感官評價",
+    "未知禁改成忘記／不知道／沒記住／沒去過／不確定／感官評價",
   );
   assertStringIncludes(messages[0].content, "{變數}無值");
   assertStringIncludes(

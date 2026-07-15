@@ -7394,7 +7394,7 @@ Deno.test("Hint repair removes partner speculation before independent verificati
   assert(firstVerificationPrompt.includes("自行肯定/否定"));
   assert(
     verificationPrompt.includes(
-      "未知禁改成忘記／不知道／沒去過／不確定／感官評價",
+      "未知禁改成忘記／不知道／沒記住／沒去過／不確定／感官評價",
     ),
   );
   assertEquals(recordHintCalls(state).length, 1);
@@ -9412,7 +9412,7 @@ Deno.test("direct Beginner Debrief release review repairs production global nega
   assert(firstPrompt.includes("今天剛好休假"));
   assert(releasePrompt.includes("practiceGroundingReleaseAuditorV3"));
   assert(releasePrompt.includes("其餘只做三件事"));
-  assert(releasePrompt.includes("不知道／沒去過／不確定"));
+  assert(releasePrompt.includes("不知道／沒記住／沒去過／不確定"));
   assertEquals(
     releasePrompt.includes("反例掃描：candidate 寫 role/scope"),
     false,
@@ -13574,7 +13574,7 @@ Deno.test("fresh production Beginner release leaves an unanswered work status un
   }
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "先審 terminal 直接答案",
+      "先審 terminal 答案",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -13846,7 +13846,7 @@ Deno.test("fresh production Beginner release removes an unanswered recommendatio
   );
   for (
     const releaseRule of [
-      "較早相容行為不算回答",
+      "較早相容行為非回答",
       "只說追到兩點不證「有推嗎」",
       "「超推」改「{真實答案}」",
     ]
@@ -13930,7 +13930,7 @@ Deno.test("fresh production Beginner release preserves an earlier explicit recom
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "較早明說「這部我超推」才可答「超推」",
+      "明說「這部我超推」才可答「超推」",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -14876,7 +14876,7 @@ Deno.test("fresh production Game release replaces an invented uncertain answer",
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "未知禁改成忘記／不知道／沒去過／不確定／感官評價",
+      "未知禁改成忘記／不知道／沒記住／沒去過／不確定／感官評價",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
