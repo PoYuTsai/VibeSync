@@ -93,30 +93,8 @@ export function compactCompleteSentenceEvidence(
     : "［摘要含單一過長句，已省略］";
 }
 
-/**
- * Partner questions often contain guesses about what the user did. Those
- * guesses are conversational material, not evidence. Put that ownership
- * boundary next to the final generation instruction so both Hint and Debrief
- * cannot silently turn a question premise into the user's biography.
- */
-export function latestAssistantQuestionEvidenceBoundary(
-  turns: PracticeTurn[],
-): string {
-  const latestAssistant = [...turns].reverse().find((turn) =>
-    turn.role === "ai"
-  );
-  if (!latestAssistant) return "";
-
-  const normalized = scrubRawImageFilenames(latestAssistant.text)
-    .replace(/\s+/gu, " ")
-    .trim();
-  if (!normalized || !/[？?]/u.test(normalized)) return "";
-
-  const quotedQuestion = compactLatestPartnerTurnEvidence(normalized, 96);
-  return `latestAssistantQuestionEvidenceBoundary(hidden)\nlatestAssistantQuestion: ${
-    JSON.stringify(quotedQuestion)
-  }\n這是「她」的問句／猜測，不是 user 事實。句內對 user 的行為、地點、偏好、經歷、物件與是否做過都仍未驗證；只有逐字稿中的 user 句或 server trusted evidence 能證明。未證實不得替 user 肯定、否定或補細節；「好看啊/有啊/會啊/對啊」也算答案；無據只留單一{真實答案}/{真實感受}，變數不替肯定背書；未知用{劇名}/{店名}/{真實答案}，禁裝不知道/沒記/後補。suggestedLine 與 nextFirstLine 也必須遵守。`;
-}
+export const LATEST_ASSISTANT_EVIDENCE_RULE =
+  "末則只證她；問/猜/前提非user答案。無 user/trusted 直證，貼句僅用一槽型{變數}，接無前提問；禁「我不確定」/感官/肯否補答。";
 
 export function hintRequiresUserFactClarification(
   turns: PracticeTurn[],
@@ -839,9 +817,6 @@ export function buildDebriefMessages(
     options.appliedHintTurns,
     options.serverOwnsHintStrategy === true,
   );
-  const questionEvidenceBoundary = latestAssistantQuestionEvidenceBoundary(
-    turns,
-  );
   return [
     {
       role: "system",
@@ -870,8 +845,8 @@ export function buildDebriefMessages(
         }\n\n` +
         `${compactDebriefPartnerStatePrompt(options.partnerState)}\n\n` +
         `這是這場練習的逐字稿（「你」是學員、「她」是模擬對象）：\n\n${transcript}\n\n` +
-        (questionEvidenceBoundary ? `${questionEvidenceBoundary}\n\n` : "") +
-        `最後做不顯示的證據表：貼句每個「我」的過去/現在命題須引用 user 原句；每項「你沒接住」須有該 assistant 句之後的 user turn。只相容不算證據。請只回傳那個 JSON 物件。`,
+        `${LATEST_ASSISTANT_EVIDENCE_RULE}\n` +
+        `其餘 user命題需 user/trusted 直證；批沒接住須有後續 user turn。只回 JSON。`,
     },
   ];
 }

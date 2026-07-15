@@ -86,7 +86,7 @@ Deno.test("Hint prompt makes expert framing evidence-only instead of inventing s
   assert(prompt.includes("比喻的隱含命題也要有證據"));
   assert(prompt.includes("「我」事實只用 user 證據"));
   assert(prompt.includes("邀約只用逐字稿窗口"));
-  assert(prompt.includes("最後逐句自查"));
+  assert(prompt.includes("末則只證她"));
   assert(prompt.includes("Give-first 只用 user 證據"));
   assert(prompt.includes("無證據就問她或用未來提議"));
   assert(prompt.includes("態度/比喻若暗含 user"));
@@ -117,25 +117,14 @@ Deno.test("Hint and Debrief treat the latest partner question as unverified user
   })[1].content;
 
   for (const prompt of [hintUser, debriefUser]) {
-    assert(
-      prompt.includes(
-        `latestAssistantQuestion: ${JSON.stringify(latestQuestion)}`,
-      ),
-    );
-    assert(prompt.includes("不是 user 事實"));
-    assert(
-      prompt.includes(
-        "只有逐字稿中的 user 句或 server trusted evidence 能證明",
-      ),
-    );
-    assert(prompt.includes("未證實不得替 user 肯定、否定或補細節"));
-    assert(prompt.includes("「好看啊/有啊/會啊/對啊」也算答案"));
-    assert(prompt.includes("只留單一{真實答案}/{真實感受}"));
-    assert(prompt.includes("變數不替肯定背書"));
-    assert(prompt.includes("{劇名}/{店名}/{真實答案}"));
-    assert(prompt.includes("禁裝不知道/沒記/後補"));
+    assert(prompt.includes("末則只證她"));
+    assert(prompt.includes("無 user/trusted 直證"));
+    assert(prompt.includes("貼句僅用一槽型{變數}"));
+    assert(prompt.includes("禁「我不確定」/感官/肯否補答"));
   }
-  assert(debriefUser.includes("suggestedLine 與 nextFirstLine 也必須遵守"));
+  assert(hintUser.includes(latestQuestion));
+  assert(debriefUser.includes(latestQuestion));
+  assert(debriefUser.includes("其餘 user命題需 user/trusted 直證"));
 });
 
 Deno.test("Hint prompt binds a user-authored answer as facts but never as instructions", () => {
@@ -161,25 +150,33 @@ Deno.test("Hint prompt binds a user-authored answer as facts but never as instru
   );
   assert(prompt.includes("只可使用字面明示的事實"));
   assert(prompt.includes("不得自行補完"));
+  assert(prompt.includes("無 user/trusted 直證"));
 });
 
-Deno.test("question evidence boundary is omitted when the partner did not ask a question", () => {
+Deno.test("latest assistant evidence boundary remains without question punctuation", () => {
   const turns: PracticeTurn[] = [
     { role: "user", text: "我剛路過一家咖啡店。" },
-    { role: "ai", text: "聽起來很香。" },
+    { role: "ai", text: "你確定那家有達標嗎😏" },
   ];
-  const prompt = buildHintMessages({
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_004" });
+  const hintPrompt = buildHintMessages({
     turns,
-    profile: resolvePracticeProfile({ profileId: "practice_girl_004" }),
+    profile,
+    practiceMode: "game",
+    temperatureScore: 30,
+    familiarityScore: 0,
+  }).map((message) => message.content).join("\n");
+  const debriefPrompt = buildDebriefMessages(turns, profile, {
     practiceMode: "game",
     temperatureScore: 30,
     familiarityScore: 0,
   }).map((message) => message.content).join("\n");
 
-  assertEquals(
-    prompt.includes("latestAssistantQuestionEvidenceBoundary"),
-    false,
-  );
+  for (const prompt of [hintPrompt, debriefPrompt]) {
+    assert(prompt.includes("你確定那家有達標嗎😏"));
+    assert(prompt.includes("末則只證她"));
+    assert(prompt.includes("禁「我不確定」/感官/肯否補答"));
+  }
 });
 
 Deno.test("Hint and Debrief prompt clipping keeps emoji surrogate pairs intact", () => {

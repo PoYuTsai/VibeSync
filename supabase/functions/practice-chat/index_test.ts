@@ -7373,11 +7373,16 @@ Deno.test("Hint repair removes partner speculation before independent verificati
   assertEquals(JSON.stringify(json).includes("確實就是那種下次藉口"), false);
   assertEquals(JSON.stringify(json).includes("{有／沒有}"), true);
   assertEquals(state.claudeCalls.length, 3);
-  for (const call of state.claudeCalls) {
+  assert(
+    claudePrompt(state.claudeCalls[0]).includes(
+      "末則只證她",
+    ),
+  );
+  for (const call of state.claudeCalls.slice(1)) {
     assertEquals(
       call.messages.some((message) =>
         message.content.includes(
-          "latestAssistantQuestionEvidenceBoundary(hidden)",
+          "末則只證她",
         )
       ),
       false,
@@ -10260,7 +10265,7 @@ Deno.test("direct Beginner Debrief release review repairs the production adjecti
   );
   assert(
     claudePrompt(state.claudeCalls[0]).includes(
-      "「好看啊/有啊/會啊/對啊」也算答案",
+      "無 user/trusted 直證，貼句僅用一槽型{變數}",
     ),
   );
   assert(
@@ -13578,9 +13583,9 @@ Deno.test("fresh production Beginner release leaves an unanswered work status un
   );
   assertEquals(
     claudePrompt(state.claudeCalls[0]).includes(
-      "latestAssistantQuestionEvidenceBoundary",
+      "末則只證她",
     ),
-    false,
+    true,
   );
   for (const call of state.claudeCalls.slice(0, 2)) {
     assert(
