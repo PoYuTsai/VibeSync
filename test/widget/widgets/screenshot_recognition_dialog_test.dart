@@ -191,7 +191,7 @@ void main() {
         find.text('另存成新對話：建立獨立紀錄，適合同一人的另一段聊天。'),
         findsOneWidget,
       );
-      expect(find.textContaining('目前選擇：這是目前較安全的選擇'), findsOneWidget);
+      expect(find.textContaining('目前選擇：只適合同一人的另一段聊天'), findsOneWidget);
     });
 
     testWidgets('目前對話尚無訊息時，加入說明不誤稱為接續既有紀錄', (tester) async {
@@ -222,6 +222,82 @@ void main() {
       expect(
         find.textContaining('目前選擇：會把這批訊息存進目前這個新對話'),
         findsOneWidget,
+      );
+    });
+
+    testWidgets('辨識名稱不同時，必須明確確認同一對象才能加入', (tester) async {
+      await _useTallSurface(tester);
+      ScreenshotRecognitionDialogResult? result;
+      const mismatchedConversation = RecognizedConversation(
+        contactName: 'Amber',
+        messageCount: 2,
+        summary: '識別到 2 則訊息',
+        classification: 'valid_chat',
+        importPolicy: 'allow',
+        confidence: 'high',
+        messages: [
+          RecognizedMessage(
+            side: 'left',
+            isFromMe: false,
+            content: '晚安',
+          ),
+          RecognizedMessage(
+            side: 'right',
+            isFromMe: true,
+            content: '你也是',
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mismatchedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeNewConversation,
+          forceShowSessionContextFields: false,
+          onResult: (value) => result = value,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('我確認這些截圖都是目前這位對象'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('另存成新對話仍會歸在目前對象'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<ElevatedButton>(find.widgetWithText(
+              ElevatedButton,
+              '確認加入對話',
+            ))
+            .onPressed,
+        isNull,
+      );
+
+      await _tapVisible(tester, find.text('我確認這些截圖都是目前這位對象'));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<ElevatedButton>(find.widgetWithText(
+              ElevatedButton,
+              '確認加入對話',
+            ))
+            .onPressed,
+        isNotNull,
+      );
+      await _tapVisible(tester, find.text('確認加入對話'));
+      await tester.pumpAndSettle();
+
+      expect(result, isNotNull);
+      expect(
+        result!.importMode,
+        ScreenshotRecognitionHelper.importModeNewConversation,
       );
     });
 

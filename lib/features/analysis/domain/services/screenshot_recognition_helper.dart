@@ -43,11 +43,47 @@ class ScreenshotRecognitionHelper {
         normalized.contains('mixed thread');
   }
 
+  static bool _looksLikeDifferentContactWarning(String value) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return false;
+    }
+
+    return normalized.contains('不同聯絡人') ||
+        normalized.contains('不同人') ||
+        normalized.contains('different contact') ||
+        normalized.contains('multiple contacts');
+  }
+
   static bool isPlaceholderConversationName(String name) {
     final normalized = name.trim();
     return normalized.isEmpty ||
         normalized == untitledConversationName ||
         normalized == '新的對話';
+  }
+
+  static bool hasContactNameMismatch({
+    required RecognizedConversation recognized,
+    required Conversation currentConversation,
+  }) {
+    final recognizedName = recognized.contactName?.trim();
+    final currentName = currentConversation.name.trim();
+    return currentConversation.messages.isNotEmpty &&
+        !isPlaceholderConversationName(currentName) &&
+        recognizedName != null &&
+        recognizedName.isNotEmpty &&
+        recognizedName != currentName;
+  }
+
+  static bool requiresSamePartnerConfirmation({
+    required RecognizedConversation recognized,
+    required Conversation currentConversation,
+  }) {
+    return hasContactNameMismatch(
+          recognized: recognized,
+          currentConversation: currentConversation,
+        ) ||
+        _looksLikeDifferentContactWarning(recognized.warning ?? '');
   }
 
   static String? fallbackWarningForClassification(String classification) {
@@ -82,17 +118,12 @@ class ScreenshotRecognitionHelper {
     }
 
     final recognizedName = recognized.contactName?.trim();
-    final currentName = currentConversation.name.trim();
-    final hasExistingThread = currentConversation.messages.isNotEmpty;
-    final hasNamedThread = !isPlaceholderConversationName(currentName);
-
-    if (hasExistingThread &&
-        hasNamedThread &&
-        recognizedName != null &&
-        recognizedName.isNotEmpty &&
-        recognizedName != currentName) {
+    if (hasContactNameMismatch(
+      recognized: recognized,
+      currentConversation: currentConversation,
+    )) {
       warnings.add(
-        '這張截圖辨識到的對方名字是「$recognizedName」，和目前對話名稱不同，請先確認沒有選錯截圖。',
+        '這張截圖辨識到的對方名字是「$recognizedName」，和目前對象不同。若是另一人，請取消並到正確對象再匯入；只有確認是目前這位對象時才能繼續。',
       );
     }
 
@@ -101,7 +132,9 @@ class ScreenshotRecognitionHelper {
     }
 
     if (serverWarning != null && _looksLikeMixedThreadWarning(serverWarning)) {
-      warnings.add('如果這批截圖不是同一個人的同一段對話，建議改用「另存成新對話」，比較不會混在一起。');
+      warnings.add(
+        '請確認這批截圖都是目前這位對象；不同人的內容不能靠「另存成新對話」分開，請取消並到正確對象再匯入。',
+      );
     }
 
     final sideWarning = sideConfidenceWarning(recognized);
@@ -133,13 +166,10 @@ class ScreenshotRecognitionHelper {
       return importModeAppendCurrent;
     }
 
-    final recognizedName = recognized.contactName?.trim();
-    final currentName = currentConversation.name.trim();
-    final hasNamedThread = !isPlaceholderConversationName(currentName);
-    final nameMismatch = hasNamedThread &&
-        recognizedName != null &&
-        recognizedName.isNotEmpty &&
-        recognizedName != currentName;
+    final nameMismatch = hasContactNameMismatch(
+      recognized: recognized,
+      currentConversation: currentConversation,
+    );
 
     if (recognized.importPolicy == 'confirm' || nameMismatch) {
       return importModeNewConversation;
@@ -303,8 +333,8 @@ class ScreenshotRecognitionHelper {
 
     if (looksLikeMixedThread) {
       return const ScreenshotRecognitionGuidance(
-        title: '建議另存成新對話',
-        body: '這批截圖可能混到不同人的內容。先看一下預覽；如果不是同一段續聊，請改用「另存成新對話」。',
+        title: '先確認是不是同一人',
+        body: '這批截圖可能混到不同人的內容。若不是目前這位對象，請取消並到正確對象再匯入；只有同一人的另一段聊天才適合另存成新對話。',
         tone: ScreenshotRecognitionGuidanceTone.caution,
       );
     }
@@ -344,7 +374,7 @@ class ScreenshotRecognitionHelper {
 
     return const ScreenshotRecognitionGuidance(
       title: '可直接加入',
-      body: '這看起來是正常聊天截圖。如果不是最新續聊，建議改用「另存成新對話」避免污染目前對話。',
+      body: '這看起來是正常聊天截圖。如果是同一人的另一段聊天，可改用「另存成新對話」避免混入目前紀錄。',
       tone: ScreenshotRecognitionGuidanceTone.stable,
     );
   }
@@ -359,14 +389,10 @@ class ScreenshotRecognitionHelper {
     required String selectedImportMode,
   }) {
     final hasExistingThread = currentConversation.messages.isNotEmpty;
-    final recognizedName = recognized.contactName?.trim();
-    final currentName = currentConversation.name.trim();
-    final hasNamedThread = !isPlaceholderConversationName(currentName);
-    final nameMismatch = hasExistingThread &&
-        hasNamedThread &&
-        recognizedName != null &&
-        recognizedName.isNotEmpty &&
-        recognizedName != currentName;
+    final nameMismatch = hasContactNameMismatch(
+      recognized: recognized,
+      currentConversation: currentConversation,
+    );
     final mixedThread =
         _looksLikeMixedThreadWarning(recognized.warning?.trim() ?? '');
     final hasQuotedReplyPreview =
@@ -388,15 +414,19 @@ class ScreenshotRecognitionHelper {
         return '這批截圖含回覆引用框，加入目前對話前請特別確認「我說 / 她說」，避免引用卡的人名讓左右判反。';
       }
 
+      if (nameMismatch) {
+        return '辨識到的名字與目前對象不同；若是另一人請取消，只有確認是目前這位對象時才能繼續。';
+      }
+
       if (shouldPreferNewConversation) {
-        return '只有在你確定這批截圖就是目前這段續聊時，才建議加入目前對話；不確定時改用「另存成新對話」會更安全。';
+        return '只有在你確定這批截圖是目前這位對象的同一段續聊時，才建議加入目前對話。';
       }
 
       return '會把這批訊息接到目前對話尾端，適合剛截到最新續聊。';
     }
 
     if (shouldPreferNewConversation) {
-      return '這是目前較安全的選擇，可避免把不同人的內容或不同段落混進目前對話。';
+      return '只適合同一人的另一段聊天；若截圖是另一人，請取消並到正確對象再匯入。';
     }
 
     if (!hasExistingThread) {

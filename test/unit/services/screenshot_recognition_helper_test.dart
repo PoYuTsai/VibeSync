@@ -131,7 +131,50 @@ void main() {
 
       expect(result, isNotNull);
       expect(result, contains('Amber'));
-      expect(result, contains('名稱不同'));
+      expect(result, contains('目前對象不同'));
+      expect(result, contains('取消並到正確對象'));
+    });
+
+    test('requires explicit same-partner confirmation for name mismatch', () {
+      const recognized = RecognizedConversation(
+        contactName: 'Amber',
+        messageCount: 2,
+        summary: '識別到 2 則訊息',
+      );
+      final conversation = buildConversation(
+        name: '小美',
+        messages: [buildMessage(isFromMe: false, content: '晚安')],
+      );
+
+      expect(
+        ScreenshotRecognitionHelper.requiresSamePartnerConfirmation(
+          recognized: recognized,
+          currentConversation: conversation,
+        ),
+        isTrue,
+      );
+    });
+
+    test('requires explicit confirmation when server sees different contacts',
+        () {
+      const recognized = RecognizedConversation(
+        contactName: '小美',
+        messageCount: 2,
+        summary: '識別到 2 則訊息',
+        warning: '這批截圖可能混入不同聯絡人的內容',
+      );
+      final conversation = buildConversation(
+        name: '小美',
+        messages: [buildMessage(isFromMe: false, content: '晚安')],
+      );
+
+      expect(
+        ScreenshotRecognitionHelper.requiresSamePartnerConfirmation(
+          recognized: recognized,
+          currentConversation: conversation,
+        ),
+        isTrue,
+      );
     });
 
     test('falls back to confidence warning for confirm imports', () {
@@ -272,7 +315,8 @@ void main() {
       expect(result, contains('相簿'));
     });
 
-    test('prefers new conversation copy for mixed-thread append mode', () {
+    test('mixed-thread copy never claims new conversation can separate people',
+        () {
       const recognized = RecognizedConversation(
         contactName: 'Amy',
         messageCount: 4,
@@ -291,8 +335,16 @@ void main() {
         selectedImportMode: ScreenshotRecognitionHelper.importModeAppendCurrent,
       );
 
-      expect(result, contains('只有在你確定'));
-      expect(result, contains('另存成新對話'));
+      final guidance = ScreenshotRecognitionHelper.guidance(recognized);
+      final warning = ScreenshotRecognitionHelper.buildWarning(
+        recognized: recognized,
+        currentConversation: conversation,
+      );
+
+      expect(result, contains('目前這位對象'));
+      expect(guidance.title, '先確認是不是同一人');
+      expect(guidance.body, contains('取消並到正確對象'));
+      expect(warning, contains('不能靠「另存成新對話」分開'));
     });
 
     test('warns to fix direction before appending when side confidence is low',

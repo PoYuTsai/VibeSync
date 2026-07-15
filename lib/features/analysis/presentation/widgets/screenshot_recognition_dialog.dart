@@ -72,6 +72,7 @@ class _ScreenshotRecognitionDialogState
   late String _selectedImportMode;
   late final List<_EditableRecognizedMessage> _editableMessages;
   String? _editValidationMessage;
+  bool _confirmedSamePartner = false;
 
   static const _swipeTutorialEntryDelay = Duration(milliseconds: 350);
 
@@ -338,6 +339,13 @@ class _ScreenshotRecognitionDialogState
   }
 
   void _submit() {
+    if (_requiresSamePartnerConfirmation && !_confirmedSamePartner) {
+      setState(() {
+        _editValidationMessage = '請先確認這些截圖都是目前這位對象；如果是另一人，請取消後到正確對象再匯入。';
+      });
+      return;
+    }
+
     final sanitizedMessages = _sanitizedMessages();
     if (sanitizedMessages.isEmpty) {
       setState(() {
@@ -360,6 +368,12 @@ class _ScreenshotRecognitionDialogState
       ),
     );
   }
+
+  bool get _requiresSamePartnerConfirmation =>
+      ScreenshotRecognitionHelper.requiresSamePartnerConfirmation(
+        recognized: widget.recognized,
+        currentConversation: widget.currentConversation,
+      );
 
   // 滑動絕對方向映射：右滑 = 我說、左滑 = 她說。
   void _setMessageSide(int index, bool isFromMe) {
@@ -1040,6 +1054,45 @@ class _ScreenshotRecognitionDialogState
                 height: 1.45,
               ),
             ),
+            if (_requiresSamePartnerConfirmation) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppColors.error.withValues(alpha: 0.24),
+                  ),
+                ),
+                child: CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: _confirmedSamePartner,
+                  onChanged: (value) {
+                    setState(() {
+                      _confirmedSamePartner = value ?? false;
+                      _editValidationMessage = null;
+                    });
+                  },
+                  title: Text(
+                    '我確認這些截圖都是目前這位對象',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.onBackgroundPrimary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '另存成新對話仍會歸在目前對象；如果是另一人，請取消並到正確對象再匯入。',
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             const Text(
               '對方名字',
@@ -1231,7 +1284,9 @@ class _ScreenshotRecognitionDialogState
           ),
         ),
         ElevatedButton(
-          onPressed: _submit,
+          onPressed: _requiresSamePartnerConfirmation && !_confirmedSamePartner
+              ? null
+              : _submit,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.ctaStart,
             foregroundColor: Colors.white,
