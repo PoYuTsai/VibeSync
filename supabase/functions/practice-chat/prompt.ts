@@ -94,7 +94,7 @@ export function compactCompleteSentenceEvidence(
 }
 
 export const LATEST_ASSISTANT_EVIDENCE_RULE =
-  "末則只證她；問/猜/前提非user答案。無 user/trusted 直證，貼句僅用一槽型{變數}，接無前提問；禁「我不確定」/感官/肯否補答。";
+  "末則只證她；問/猜/前提非user答案。貼句任一「我」的過去/現在自揭（含非答句）須 user/trusted 直證，無據刪；末問未知答案只留一槽型{變數}或無前提問，禁不確定/感官/肯否補答。";
 
 export function hintRequiresUserFactClarification(
   turns: PracticeTurn[],
@@ -846,7 +846,7 @@ export function buildDebriefMessages(
         `${compactDebriefPartnerStatePrompt(options.partnerState)}\n\n` +
         `這是這場練習的逐字稿（「你」是學員、「她」是模擬對象）：\n\n${transcript}\n\n` +
         `${LATEST_ASSISTANT_EVIDENCE_RULE}\n` +
-        `其餘 user命題需 user/trusted 直證；批沒接住須有後續 user turn。只回 JSON。`,
+        `批沒接住須有後續 user turn。只回 JSON。`,
     },
   ];
 }
