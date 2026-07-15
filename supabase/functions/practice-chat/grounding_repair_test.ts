@@ -298,6 +298,10 @@ Deno.test("second review is a focused fact and variable release audit", () => {
       "追到兩點≠一開就停不下來",
       "{真實答案} 只能獨立取代整個未知答案子句",
       "紅玉拿鐵{真實答案}",
+      "輕量反應只能是「哈哈／欸／原來」",
+      "不得聲稱 user 的感受、狀態、偏好或立場",
+      "{真實答案} 後也不得再接無據 user 命題",
+      "{真實答案}，你這樣問我有點壓力",
     ]
   ) {
     assertStringIncludes(messages[0].content, atomicClaim);

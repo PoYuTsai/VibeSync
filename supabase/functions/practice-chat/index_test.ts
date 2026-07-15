@@ -13746,6 +13746,145 @@ Deno.test("fresh production Game release keeps a literal store variable unfilled
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
+Deno.test("fresh production Game release removes an invented feeling after an atomic answer", async () => {
+  const appliedHint = "叫{店名}，路過聞到很香。妳說聞香就停——咖啡師的本能嗎？";
+  const badLine = "{真實答案}，你這樣問我有點壓力。";
+  const safeLine = "{真實答案}。你怎麼會猜我是同行？";
+  const wrongCard = JSON.parse(validDebriefJson({
+    summary: "她說改天可以踩點，並用玩笑反問你是不是同行。",
+    strengths: [
+      "用她明說的聞香就停回球，讓她感覺被聽見。",
+      "她用同行猜測接梗，話題仍有來回。",
+    ],
+    watchouts: [
+      "她問你是不是同行尚未得到回答，貼句不能替你填答案或感受。",
+      "關係仍在建立初期，先接住玩笑，不宜急著邀約。",
+    ],
+    suggestedLine: badLine,
+    vibe: "中性",
+    dateChance: "low",
+    dateChanceReason: "她有接梗但關係淺，沒有具體約見訊號。",
+    nextInviteMove: "先回答真實狀態並輕鬆接住她的同行猜測。",
+  })) as Record<string, unknown>;
+  wrongCard.gameBreakdown = {
+    phaseReached: "她說改天可以踩點，並反問你是不是同行。",
+    missedVariable: "你是否同行尚未回答。",
+    failureState: "她正在等你的真實答案，不能替你補上壓力感受。",
+    nextFirstLine: badLine,
+    inviteDirection: "先回答真實狀態並接住她的玩笑，暫不邀約。",
+  };
+  const wrong = JSON.stringify(wrongCard);
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "OK",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "OK",
+  });
+  const repairedCard = structuredClone(wrongCard);
+  repairedCard.suggestedLine = safeLine;
+  (repairedCard.gameBreakdown as Record<string, unknown>).nextFirstLine =
+    safeLine;
+  const repaired = JSON.stringify(repairedCard);
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "FIX: 真實答案後的壓力感受無 user 直證",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "FIX: Game 貼句同步",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 2 }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [wrong, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "P1_OPEN",
+            targetVariable: "familiarity",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先沿咖啡話題建立熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "fresh-prod-game-atomic-answer-no-invented-feeling",
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        { role: "ai", text: "哦？哪一家啊，我聞香就會停下來那種人。" },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text:
+            "{店名}沒聽過欸，改天路過可以踩點看看。\n你鼻子這麼靈，該不會也是同行吧？",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-fresh-prod-game-atomic-answer-feeling",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  const expectedCard = structuredClone(repairedCard);
+  delete expectedCard.hintAssessment;
+  assertEquals(json.card, expectedCard);
+  assertEquals(json.card.suggestedLine, safeLine);
+  assertEquals(json.card.gameBreakdown.nextFirstLine, safeLine);
+  const serialized = JSON.stringify(json.card);
+  assertEquals(serialized.includes(badLine), false);
+  assertEquals(serialized.includes("有點壓力"), false);
+  assert(serialized.includes("{真實答案}"));
+  assert(serialized.includes("尚未回答"));
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], badLine);
+  assertGroundingReviewInput(state.claudeCalls[2], badLine);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  for (const call of state.claudeCalls.slice(0, 2)) {
+    assert(
+      claudePrompt(call).includes(
+        "答案只留 {真實答案}，尾句只可無前提反問",
+      ),
+    );
+  }
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "{真實答案} 後也不得再接無據 user 命題",
+    ),
+  );
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
 Deno.test("fresh production Game release keeps an unanswered drink status atomic", async () => {
   const appliedHint =
     "叫{店名}，路過聞到香的。妳是咖啡師，這種店妳會想進去試試嗎？";
@@ -13755,75 +13894,49 @@ Deno.test("fresh production Game release keeps an unanswered drink status atomic
   const wrongCard = JSON.parse(validDebriefJson({
     summary: "她吐槽店名與香氣判斷，並問你喝過沒有；關係仍淺。",
     strengths: [
-      "照貼 Hint 反問她意見，讓她有話接，沒有單向推銷",
-      "她吐槽後仍主動反問，說明對話意願還在",
+      "照貼 Hint 反問她意見，讓她有話接。",
+      "她吐槽後仍主動反問，留下可接話題。",
     ],
     watchouts: [
-      "她問你喝過沒有，若只答肯否就收尾，容易停在資訊交換",
-      "關係仍在建立初期，不宜急著帶場景或邀約",
+      "你尚未回答是否喝過，貼句只能保留答案變數。",
+      "關係仍淺，先延伸咖啡話題，不急著邀約。",
     ],
     suggestedLine: badLine,
-    vibe: "冷",
-    dateChance: "low",
-    dateChanceReason: "她有吐槽互動但關係淺，沒有約見訊號。",
-    nextInviteMove: "先接住反問並帶出她的咖啡師視角。",
-  })) as Record<string, unknown>;
-  wrongCard.gameBreakdown = {
-    phaseReached: "她吐槽香氣判斷後反問你喝過沒有，停在資訊交換。",
-    missedVariable: "你的喝過狀態尚未回答。",
-    failureState: "她在等你的答案，若只答肯否會停在乒乓問答。",
-    nextFirstLine: badLine,
-    inviteDirection: "先回答並延伸她的判斷標準，暫不邀約。",
-  };
-  const wrong = JSON.stringify(wrongCard);
-  const firstReview = groundingReviewEnvelope(wrong, {
-    summary:
-      "assistant 吐槽/反問←assistant_turn[3]:『聞起來香不一定準』『你喝過嗎』",
-    strengths:
-      "assistant 吐槽/反問←assistant_turn[3]:『聞起來香不一定準』『你喝過嗎』",
-    watchouts: "喝過狀態問句←assistant_turn[3]:『你喝過嗎』",
-    suggestedLine:
-      "{有／沒有}←variable；好喝/標準←assistant_turn[3]:『聞起來香不一定準』",
-    dateChanceReason: "反問/無約見←assistant_turn[3]",
-    nextInviteMove: "咖啡師判斷←assistant_turn[3]",
-    gameBreakdown:
-      "{有／沒有}←variable；好喝/標準←assistant_turn[3]:『聞起來香不一定準』",
-  });
-  const repairedCard = JSON.parse(validDebriefJson({
-    summary: "她吐槽店名與香氣判斷，並問你喝過沒有；關係仍淺。",
-    strengths: [
-      "照貼 Hint 反問她意見，讓她有話接",
-      "她吐槽後仍主動反問，留下可接話題",
-    ],
-    watchouts: [
-      "你尚未回答是否喝過，貼句只能保留答案變數",
-      "關係仍淺，先延伸咖啡話題，不急著邀約",
-    ],
-    suggestedLine: safeLine,
     vibe: "冷",
     dateChance: "low",
     dateChanceReason: "她有反問但沒有約見訊號，仍在資訊交換初期。",
     nextInviteMove: "先回答真實狀態，再反問她判斷店家的方式。",
   })) as Record<string, unknown>;
-  repairedCard.gameBreakdown = {
+  wrongCard.gameBreakdown = {
     phaseReached: "她問你喝過沒有，仍在資訊交換初期。",
     missedVariable: "你的真實喝過狀態尚未回答。",
     failureState: "她在等你的真實答案，不能再掛未證實的好喝評價。",
-    nextFirstLine: safeLine,
+    nextFirstLine: badLine,
     inviteDirection: "先回答真實狀態並延伸她的判斷方式，再找窗口。",
   };
+  const wrong = JSON.stringify(wrongCard);
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "OK",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "OK",
+  });
+  const repairedCard = structuredClone(wrongCard);
+  repairedCard.suggestedLine = safeLine;
+  (repairedCard.gameBreakdown as Record<string, unknown>).nextFirstLine =
+    safeLine;
   const repaired = JSON.stringify(repairedCard);
   const finalReview = groundingReviewEnvelope(repaired, {
-    summary:
-      "assistant 吐槽/反問←assistant_turn[3]:『聞起來香不一定準』『你喝過嗎』",
-    strengths:
-      "assistant 吐槽/反問←assistant_turn[3]:『聞起來香不一定準』『你喝過嗎』",
-    watchouts: "user 喝過狀態未答←assistant_turn[3]:『你喝過嗎』",
-    suggestedLine:
-      "{真實答案}←variable；判斷店家反問←assistant_turn[3]:『聞起來香不一定準』",
-    dateChanceReason: "反問/無約見←assistant_turn[3]",
-    nextInviteMove: "真實狀態/判斷店家←assistant_turn[3]",
-    gameBreakdown: "user 喝過狀態未答←assistant_turn[3]；{真實答案}←variable",
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "FIX: 未答狀態後夾帶好喝評價與標準比較",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "FIX: Game 貼句同步",
   });
   const { response, json, state } = await run(
     {
@@ -13872,6 +13985,9 @@ Deno.test("fresh production Game release keeps an unanswered drink status atomic
   );
 
   assertEquals(response.status, 200, JSON.stringify(json));
+  const expectedCard = structuredClone(repairedCard);
+  delete expectedCard.hintAssessment;
+  assertEquals(json.card, expectedCard);
   assertEquals(json.card.suggestedLine, safeLine);
   assertEquals(json.card.gameBreakdown.nextFirstLine, safeLine);
   const serialized = JSON.stringify(json.card);
@@ -13890,18 +14006,6 @@ Deno.test("fresh production Game release keeps an unanswered drink status atomic
   assertEquals(
     groundingReviewCandidate(state.claudeCalls[2]),
     groundingReviewCandidate(state.claudeCalls[1]),
-  );
-  for (const call of state.claudeCalls.slice(0, 2)) {
-    assert(
-      claudePrompt(call).includes(
-        "答案只留 {真實答案}，尾句只可無前提反問",
-      ),
-    );
-  }
-  assert(
-    claudePrompt(state.claudeCalls[2]).includes(
-      "末則 assistant 問 user 而其後沒有 user/trusted 直答",
-    ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
