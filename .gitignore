@@ -62,6 +62,9 @@ supabase/.env.local
 .claude/skills.disabled/
 .mcp.json
 
+# Local gstack investigation scratch (durable artifacts belong in tools/ or docs/)
+.gstack/
+
 # Externally-cloned GitHub Pages repo (has its own .git, should live outside this repo)
 vibesync-web/
 
