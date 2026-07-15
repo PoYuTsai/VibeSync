@@ -177,9 +177,21 @@ void main() {
         ),
         isTrue,
       );
+      expect(
+        ScreenshotRecognitionHelper.requiresSamePartnerConfirmation(
+          recognized: const RecognizedConversation(
+            contactName: '小美',
+            messageCount: 2,
+            summary: '識別到 2 則訊息',
+            warning: '畫面可能混入另一段對話',
+          ),
+          currentConversation: conversation,
+        ),
+        isTrue,
+      );
     });
 
-    test('requires confirmation for empty placeholder already bound to partner',
+    test('requires confirmation for any placeholder already bound to partner',
         () {
       const recognized = RecognizedConversation(
         contactName: 'Amber',
@@ -190,11 +202,23 @@ void main() {
         name: '新對話',
         partnerId: 'partner-xiaomei',
       );
+      final placeholderWithMessage = buildConversation(
+        name: '新對話',
+        partnerId: 'partner-xiaomei',
+        messages: [buildMessage(isFromMe: false, content: '嗨')],
+      );
 
       expect(
         ScreenshotRecognitionHelper.requiresSamePartnerConfirmation(
           recognized: recognized,
           currentConversation: conversation,
+        ),
+        isTrue,
+      );
+      expect(
+        ScreenshotRecognitionHelper.requiresSamePartnerConfirmation(
+          recognized: recognized,
+          currentConversation: placeholderWithMessage,
         ),
         isTrue,
       );

@@ -43,18 +43,6 @@ class ScreenshotRecognitionHelper {
         normalized.contains('mixed thread');
   }
 
-  static bool _looksLikeDifferentContactWarning(String value) {
-    final normalized = value.trim().toLowerCase();
-    if (normalized.isEmpty) {
-      return false;
-    }
-
-    return normalized.contains('不同聯絡人') ||
-        normalized.contains('不同人') ||
-        normalized.contains('different contact') ||
-        normalized.contains('multiple contacts');
-  }
-
   static bool isPlaceholderConversationName(String name) {
     final normalized = name.trim();
     return normalized.isEmpty ||
@@ -81,7 +69,6 @@ class ScreenshotRecognitionHelper {
     final partnerId = currentConversation.partnerId?.trim();
     return partnerId != null &&
         partnerId.isNotEmpty &&
-        currentConversation.messages.isEmpty &&
         isPlaceholderConversationName(currentConversation.name);
   }
 
@@ -94,7 +81,7 @@ class ScreenshotRecognitionHelper {
           currentConversation: currentConversation,
         ) ||
         isPartnerBoundPlaceholderConversation(currentConversation) ||
-        _looksLikeDifferentContactWarning(recognized.warning ?? '');
+        _looksLikeMixedThreadWarning(recognized.warning ?? '');
   }
 
   static String? fallbackWarningForClassification(String classification) {
