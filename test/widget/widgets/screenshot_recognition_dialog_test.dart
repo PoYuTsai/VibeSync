@@ -156,6 +156,44 @@ void main() {
   );
 
   group('ScreenshotRecognitionDialog 滑動校正器', () {
+    testWidgets('兩種加入方式的差異說明同時可見，並保留選中模式提醒', (tester) async {
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: recognizedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('加入目前對話：接在目前紀錄後面，適合同一段最新續聊。'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('另存成新對話：建立獨立紀錄，適合不同人或另一段聊天。'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('目前選擇：只有在你確定這批截圖'), findsOneWidget);
+
+      await _tapVisible(tester, find.text('另存成新對話'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('加入目前對話：接在目前紀錄後面，適合同一段最新續聊。'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('另存成新對話：建立獨立紀錄，適合不同人或另一段聊天。'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('目前選擇：這是目前較安全的選擇'), findsOneWidget);
+    });
+
     testWidgets('顯示滑動提示，砍掉 OCR 信心徽章與安撫框，但保留警示與加入方式', (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(

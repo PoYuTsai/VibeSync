@@ -1014,11 +1014,27 @@ class _ScreenshotRecognitionDialogState
             ),
             const SizedBox(height: 8),
             Text(
-              ScreenshotRecognitionHelper.importModeDescription(
+              '加入目前對話：接在目前紀錄後面，適合同一段最新續聊。',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.onBackgroundSecondary,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '另存成新對話：建立獨立紀錄，適合不同人或另一段聊天。',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.onBackgroundSecondary,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '目前選擇：${ScreenshotRecognitionHelper.importModeDescription(
                 recognized: widget.recognized,
                 currentConversation: widget.currentConversation,
                 selectedImportMode: _selectedImportMode,
-              ),
+              )}',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.onBackgroundSecondary,
                 height: 1.45,
