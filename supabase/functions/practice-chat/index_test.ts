@@ -13873,7 +13873,7 @@ Deno.test("fresh production Game release removes an invented feeling after an at
   }
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "{真實答案} 後也不得再接無據 user 命題",
+      "後接無據 user 命題",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -14007,6 +14007,157 @@ Deno.test("fresh production Game release keeps an unanswered drink status atomic
     groundingReviewCandidate(state.claudeCalls[2]),
     groundingReviewCandidate(state.claudeCalls[1]),
   );
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("fresh production Game release removes an unanswered entry presupposition before an atomic answer", async () => {
+  const appliedHint =
+    "{有／沒有}進去，妳怎麼第一個猜「不敢點」？咖啡師的直覺？";
+  const badLine = "喝了{真實答案}。妳偏愛淺焙果酸款，是喜歡哪種風味？";
+  const safeLine = "{真實答案}。妳偏愛淺焙果酸款，是喜歡哪種風味？";
+  const wrongCard = JSON.parse(validDebriefJson({
+    summary: "她接住咖啡師玩笑，問你喝了哪支豆子，並分享偏愛淺焙果酸款。",
+    strengths: [
+      "用咖啡師直覺接住她的吐槽，讓話題繼續。",
+      "她主動分享淺焙果酸偏好，提供可延伸的新細節。",
+    ],
+    watchouts: [
+      "她的問句預設你已進店，但是否進店尚未回答。",
+      "關係仍淺，先接住她明說的豆子偏好，不急著邀約。",
+    ],
+    suggestedLine: badLine,
+    vibe: "中性",
+    dateChance: "low",
+    dateChanceReason: "她有接梗延伸，但沒有具體約見訊號。",
+    nextInviteMove: "先保留真實答案，再問她如何挑豆子。",
+  })) as Record<string, unknown>;
+  wrongCard.gameBreakdown = {
+    phaseReached: "她接梗後問你喝了哪支豆子，並分享自己的偏好。",
+    missedVariable: "你是否進店尚未回答，豆子答案也未知。",
+    failureState: "她的問句含進店前提，但該前提不是 user 事實。",
+    nextFirstLine: badLine,
+    inviteDirection: "先保留完整真實答案，再延伸她明說的豆子偏好。",
+  };
+  const wrong = JSON.stringify(wrongCard);
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "OK",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "OK",
+  });
+  const repairedCard = structuredClone(wrongCard);
+  repairedCard.suggestedLine = safeLine;
+  (repairedCard.gameBreakdown as Record<string, unknown>).nextFirstLine =
+    safeLine;
+  const repaired = JSON.stringify(repairedCard);
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "FIX: assistant 問句不證 user 已進店喝過",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "FIX: Game 貼句同步",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 2 }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [wrong, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "P1_OPEN",
+            targetVariable: "familiarity",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先沿咖啡話題建立熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "fresh-prod-game-unanswered-entry-presupposition",
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        {
+          role: "ai",
+          text: "哦？只聞沒進去喔 😏 該不會是路過香但不敢點吧。",
+        },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text:
+            "咖啡師什麼客人沒見過啊～那你最後進去喝了哪支豆子？我最近偏愛淺焙的果酸款。",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-fresh-prod-game-unanswered-entry-presupposition",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  const expectedCard = structuredClone(repairedCard);
+  delete expectedCard.hintAssessment;
+  assertEquals(json.card, expectedCard);
+  assertEquals(json.card.suggestedLine, safeLine);
+  assertEquals(json.card.gameBreakdown.nextFirstLine, safeLine);
+  assertEquals(json.card.suggestedLine, json.card.gameBreakdown.nextFirstLine);
+  const serialized = JSON.stringify(json.card);
+  assertEquals(serialized.includes(badLine), false);
+  assertEquals(serialized.includes("喝了{真實答案}"), false);
+  assert(serialized.includes("{真實答案}"));
+  assert(serialized.includes("是否進店尚未回答"));
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], badLine);
+  assertGroundingReviewInput(state.claudeCalls[2], badLine);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "practiceGroundingReviewerV3",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "practiceGroundingReleaseAuditorV3",
+    ),
+  );
+  for (
+    const releaseRule of [
+      "assistant 問句的預設前提也不是 user 事實",
+      "喝了{真實答案}",
+      "仍不證 user 進店或喝過",
+    ]
+  ) {
+    assert(claudePrompt(state.claudeCalls[2]).includes(releaseRule));
+  }
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown

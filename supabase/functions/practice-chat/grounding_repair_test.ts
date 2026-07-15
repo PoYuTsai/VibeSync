@@ -300,8 +300,13 @@ Deno.test("second review is a focused fact and variable release audit", () => {
       "紅玉拿鐵{真實答案}",
       "輕量反應只能是「哈哈／欸／原來」",
       "不得聲稱 user 的感受、狀態、偏好或立場",
-      "{真實答案} 後也不得再接無據 user 命題",
+      "後接無據 user 命題",
       "{真實答案}，你這樣問我有點壓力",
+      "assistant 問句的預設前提也不是 user 事實",
+      "不能替先前 user 的 literal 變數選分支",
+      "前提與被問值分開核",
+      "喝了{真實答案}",
+      "仍不證 user 進店或喝過",
     ]
   ) {
     assertStringIncludes(messages[0].content, atomicClaim);
