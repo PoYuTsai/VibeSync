@@ -1320,7 +1320,7 @@ export function buildHintMessages(opts: {
         }\n\n` +
         `transcript evidence:\n${hintTurnsToPromptTranscript(opts.turns)}\n\n` +
         `${LATEST_ASSISTANT_EVIDENCE_RULE}\n` +
-        "產生兩句可貼回覆與一段心法；三欄各自重用 assistant 最新詞/狀態/梗，接她最新一句。只回繁中 JSON。",
+        "兩貼句+心法接最新詞/狀態/梗；心法按來源：user_turn→你、assistant_turn→她；勿顛倒。繁中JSON。",
     },
   ];
 }

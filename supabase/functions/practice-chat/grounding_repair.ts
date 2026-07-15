@@ -314,7 +314,7 @@ export function buildGroundingReviewMessages(opts: {
     ? "warmUp、steady、coaching"
     : "summary、strengths、watchouts、suggestedLine、dateChanceReason、nextInviteMove、gameBreakdown";
   const scopedClaimProtocol = opts.surface === "hint"
-    ? "coaching『她說/她丟X』及貼句明示/省略你/妳狀態只認 assistant_turn；user opening 稱『你說』；有 assistant 問句禁寫無反問。"
+    ? "coaching『她說/她丟X』及貼句明示/省略你/妳狀態只認 assistant_turn；user opening 稱『你說』；user_turn追劇誤寫『她分享』→『你分享』；有 assistant 問句禁寫無反問。"
     : "反例掃描：candidate 寫 role/scope「全無X/只有Y/單向問答」時逐 turn 找反例；有即刪/修/縮窄，單一 turn 不證全局；omittedMiddleTurnCount>0 禁全場否定。每個人/事物屬性/能力/偏好/因果/頻率須 transcript/trusted evidence 直接支持，否則刪/原子變數；轉述保留 speaker + speech act（問/答/自揭/提議/猜測）+ modality（肯定/條件/不確定）。user 狀態/經歷/感受算自揭；只把 assistant 明確自述的休假/有無計畫/在家算 partner 自揭/行程，非邀約。assistant 問句/接球/新素材算對話貢獻，非明確拒絕/終止才算延伸；都不等於邀約。拒絕/別再問可有資訊但無正向延伸；任一欄承認非拒絕貢獻→他欄禁寫無延伸/無來回。條件提議≠問句。assistant 稱她/對方，不稱他/他的。terminalTurnRole=assistant 表示末則後 user 尚無回覆機會；只禁以該未發生回覆批「尚未回應/感受或立場缺席」，較早 user_turn 有據仍可批。「我有時候也會X」屬 user 習慣/感受，無據改原子變數或刪。";
   const unansweredAnswerProtocol = opts.surface === "hint"
     ? "無據答詞（好看啊/有啊/會啊/對啊）須修；"
@@ -345,7 +345,7 @@ ${releasePasteablePriority}
 
 其餘只做三件事：
 1. 變數／未答：末則 assistant 問 user（任一類型、無論標點），若全部直證無同 owner 同命題明答，答案未知；較早明答可用，相容行為非回答（追到兩點≠超推）。她的問／猜測／吐槽／評價／條件只證她說過。literal {變數} 無值；問句前提不可替它選分支。未知禁改忘記／不知道／沒記住／沒去過／不確定／感官評價。
-2. 角色／跨欄：Debrief 分析：你/user→user；她/對方/assistant→assistant；可見分析只稱 user「你」、assistant「她」，禁輸出內部 role 字。錯「assistant 問劇名後她有回答」→「她問劇名後你有回答」。Hint coaching 她說/丟X只認 assistant_turn。其他欄只掃角色顛倒、無據事實、打臉 Hint、批未發生回覆。applied Hint=user_turn，Hint decision 不提供 user 事實；terminalTurnRole=assistant 禁批未發生 user 回覆；Game 改 suggestedLine 須同步 nextFirstLine。
+2. 角色／跨欄：Debrief 分析：你/user→user；她/對方/assistant→assistant；可見分析只稱 user「你」、assistant「她」，禁輸出內部 role 字。錯「assistant 問劇名後她有回答」→「她問劇名後你有回答」。Hint心法按turn：user→你,assistant→她；勿顛倒。其他欄只掃角色顛倒、無據事實、打臉 Hint、批未發生回覆。applied Hint=user_turn，Hint decision 不提供 user 事實；terminalTurnRole=assistant 禁批未發生 user 回覆；Game 改 suggestedLine 須同步 nextFirstLine。
 3. 輸出：安全字串逐字不動；不安全只改上述問題。輸出完整原 candidate 的全部 keys/types；不增刪欄位、不潤飾、不重決定 vibe/dateChance。
 
 audit 的 ${auditFields} 每欄只寫 OK 或 FIX:<一句>。只輸出一個 {audit,candidate} JSON object；不要 markdown、說明、verdict 或 issues。`;

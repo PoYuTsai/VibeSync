@@ -89,6 +89,10 @@ Deno.test("grounding editor requests a proof envelope around the complete produc
   assertStringIncludes(messages[0].content, "且不等於邀約窗口");
   assertStringIncludes(messages[0].content, "有 assistant 問句禁寫無反問");
   assertStringIncludes(messages[0].content, "user opening 稱『你說』");
+  assertStringIncludes(
+    messages[0].content,
+    "user_turn追劇誤寫『她分享』→『你分享』",
+  );
   assertStringIncludes(messages[0].content, "scene/partnerState 非事實");
   assertStringIncludes(messages[0].content, "profile 只支持靜態設定");
   assertStringIncludes(messages[0].content, "拆成最小命題");
@@ -333,6 +337,10 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   assertStringIncludes(
     messages[0].content,
     "錯「assistant 問劇名後她有回答」→「她問劇名後你有回答」",
+  );
+  assertStringIncludes(
+    messages[0].content,
+    "Hint心法按turn：user→你,assistant→她；勿顛倒",
   );
   assertStringIncludes(
     messages[0].content,

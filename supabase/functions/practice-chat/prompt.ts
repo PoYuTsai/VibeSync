@@ -94,7 +94,7 @@ export function compactCompleteSentenceEvidence(
 }
 
 export const LATEST_ASSISTANT_EVIDENCE_RULE =
-  "末則只證她；問猜前提≠user答。貼句「我」既成自揭(含非答)需user/trusted直證，無據刪；末問未知只留一槽{變數}或無前提問，禁肯否/不確定/感官補答；「有，今天{真實答案}」→單獨{真實答案}。";
+  "末則只證她；問猜前提≠user答。「我」既成自揭(含非答)無user/trusted直證即刪；末問未知僅一槽{變數}或無前提問，禁肯否/不確定/感官補答；「有，今天{真實答案}」→單獨{真實答案}。";
 
 export function hintRequiresUserFactClarification(
   turns: PracticeTurn[],

@@ -6984,13 +6984,13 @@ Deno.test("Beginner Hint release review keeps user opening facts out of partner 
     warmUp: "哈哈追劇追到兩點，現在整個人是清醒的嗎還是半夢半醒那種 😂",
     steady: "熬夜追劇最怕隔天腦袋轉不動，現在感覺怎麼樣，有好一點了嗎？",
     coaching:
-      "她丟了『追劇追到兩點、腦袋沒開機』這個狀態球，你的任務是接住她的感受、讓她多說一點。warmUp 用輕鬆問句製造互動，steady 用關心語氣讓她覺得被在意。這階段先建立『有在聽她說話』的印象，比什麼都重要。",
+      "她剛開口分享追劇到兩點的狀態，Alice 也丟了「飛回來時差」的共鳴。這一輪任務是接住她的狀態、讓她感覺被懂。",
   });
   const repaired = validHintJson({
     warmUp: "調時差也太硬了 😮‍💨 妳現在是清醒還是半夢半醒？",
     steady: "昨晚調時差到現在還在放空，妳有好一點了嗎？",
     coaching:
-      "她說昨晚調時差、現在還在放空；先接她的狀態，用輕問句讓她多說一點。",
+      "你剛分享追劇到兩點；Alice 回了「飛回來時差」。接她的時差狀態再問一句，讓她多說一點。",
   });
   const firstReview = groundingReviewEnvelope(invented, {
     warmUp:
@@ -6998,12 +6998,13 @@ Deno.test("Beginner Hint release review keeps user opening facts out of partner 
     steady:
       "熬夜追劇←user_turn[0]:『昨晚追劇追到兩點』；腦袋轉不動←user_turn[0]:『腦袋還沒開機』",
     coaching:
-      "她丟追劇到兩點與沒開機←user_turn[0]:『昨晚追劇追到兩點，現在腦袋還沒開機』",
+      "她分享追劇到兩點←user_turn[0]:『昨晚追劇追到兩點，現在腦袋還沒開機』；Alice 時差←assistant_turn[1]:『調時差』",
   });
   const finalReview = groundingReviewEnvelope(repaired, {
     warmUp: "調時差與放空←assistant_turn[1]:『昨晚調時差到現在還在放空』",
     steady: "調時差與放空←assistant_turn[1]:『昨晚調時差到現在還在放空』",
-    coaching: "她說調時差與放空←assistant_turn[1]:『昨晚調時差到現在還在放空』",
+    coaching:
+      "你分享追劇←user_turn[0]:『昨晚追劇追到兩點』；Alice 時差←assistant_turn[1]:『昨晚調時差』",
   });
   const { response, json, state } = await run(
     {
@@ -7031,7 +7032,8 @@ Deno.test("Beginner Hint release review keeps user opening facts out of partner 
   assertEquals(json.replies[0].text, JSON.parse(repaired).warmUp);
   assertEquals(json.replies[1].text, JSON.parse(repaired).steady);
   assertEquals(json.coaching, JSON.parse(repaired).coaching);
-  assertEquals(JSON.stringify(json).includes("她丟了『追劇追到兩點"), false);
+  assertEquals(JSON.stringify(json).includes("她剛開口分享追劇"), false);
+  assert(JSON.stringify(json).includes("你剛分享追劇"));
   assertEquals(json.fallbackUsed, false);
   assertEquals(json.failoverUsed, false);
   assertEquals(json.groundingReviewFallbackUsed, false);
@@ -7048,13 +7050,18 @@ Deno.test("Beginner Hint release review keeps user opening facts out of partner 
     ),
   );
   assert(
+    claudePrompt(state.claudeCalls[0]).includes(
+      "心法按來源：user_turn→你、assistant_turn→她；勿顛倒",
+    ),
+  );
+  assert(
     claudePrompt(state.claudeCalls[1]).includes(
-      "coaching『她說/她丟X』及貼句明示/省略你/妳狀態只認 assistant_turn",
+      "user_turn追劇誤寫『她分享』→『你分享』",
     ),
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "coaching 她說/丟X只認 assistant_turn",
+      "Hint心法按turn：user→你,assistant→她；勿顛倒",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -10265,7 +10272,7 @@ Deno.test("direct Beginner Debrief release review repairs the production adjecti
   );
   assert(
     claudePrompt(state.claudeCalls[0]).includes(
-      "貼句「我」既成自揭(含非答)需user/trusted直證",
+      "「我」既成自揭(含非答)無user/trusted直證即刪",
     ),
   );
   assert(
@@ -14400,7 +14407,7 @@ Deno.test("fresh production Game release removes an unsupported non-answer coffe
   );
   assert(
     claudePrompt(state.claudeCalls[0]).includes(
-      "貼句「我」既成自揭(含非答)",
+      "「我」既成自揭(含非答)",
     ),
   );
   assert(

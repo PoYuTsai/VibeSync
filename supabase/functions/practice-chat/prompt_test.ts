@@ -118,14 +118,19 @@ Deno.test("Hint and Debrief treat the latest partner question as unverified user
 
   for (const prompt of [hintUser, debriefUser]) {
     assert(prompt.includes("末則只證她"));
-    assert(prompt.includes("貼句「我」既成自揭(含非答)"));
-    assert(prompt.includes("需user/trusted直證，無據刪"));
-    assert(prompt.includes("末問未知只留一槽{變數}或無前提問"));
+    assert(prompt.includes("「我」既成自揭(含非答)"));
+    assert(prompt.includes("無user/trusted直證即刪"));
+    assert(prompt.includes("末問未知僅一槽{變數}或無前提問"));
     assert(prompt.includes("禁肯否/不確定/感官補答"));
     assert(prompt.includes("「有，今天{真實答案}」→單獨{真實答案}"));
   }
   assert(hintUser.includes(latestQuestion));
   assert(debriefUser.includes(latestQuestion));
+  assert(
+    hintUser.includes(
+      "心法按來源：user_turn→你、assistant_turn→她；勿顛倒",
+    ),
+  );
   assert(debriefUser.includes("批沒接住需後續user句"));
 });
 
@@ -152,7 +157,7 @@ Deno.test("Hint prompt binds a user-authored answer as facts but never as instru
   );
   assert(prompt.includes("只可使用字面明示的事實"));
   assert(prompt.includes("不得自行補完"));
-  assert(prompt.includes("需user/trusted直證"));
+  assert(prompt.includes("無user/trusted直證即刪"));
 });
 
 Deno.test("latest assistant evidence boundary remains without question punctuation", () => {
