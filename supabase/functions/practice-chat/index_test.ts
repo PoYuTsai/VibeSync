@@ -7388,13 +7388,13 @@ Deno.test("Hint repair removes partner speculation before independent verificati
   assert(firstVerificationPrompt.includes("只證明她說過，不是 user 證據"));
   assert(
     verificationPrompt.includes(
-      "問句、挑戰、猜測、玩笑、條件不論有無問號都只證她說過，不證 user 的答案",
+      "其他問／挑戰／猜測／玩笑／條件只證她說過",
     ),
   );
   assert(firstVerificationPrompt.includes("自行肯定/否定"));
   assert(
     verificationPrompt.includes(
-      "未知不可改寫成忘記、不知道、沒記住、沒去過或任何感官評價",
+      "未知禁改成忘記／不知道／沒記住／沒去過／感官評價",
     ),
   );
   assertEquals(recordHintCalls(state).length, 1);
@@ -9412,7 +9412,7 @@ Deno.test("direct Beginner Debrief release review repairs production global nega
   assert(firstPrompt.includes("今天剛好休假"));
   assert(releasePrompt.includes("practiceGroundingReleaseAuditorV3"));
   assert(releasePrompt.includes("其餘只做三件事"));
-  assert(releasePrompt.includes("不知道、沒記住、沒去過"));
+  assert(releasePrompt.includes("不知道／沒記住／沒去過"));
   assertEquals(
     releasePrompt.includes("反例掃描：candidate 寫 role/scope"),
     false,
@@ -10112,7 +10112,7 @@ Deno.test("direct Beginner Debrief release review repairs the production compoun
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "{變數} token 本身不提供值",
+      "{變數}無值",
     ),
   );
   assertEquals(
@@ -10410,7 +10410,7 @@ Deno.test("direct Game Debrief release review keeps a question from becoming kno
   assert(claudePrompt(state.claudeCalls[1]).includes("早班待確認"));
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "不論有無問號都只證她說過，不證 user 的答案",
+      "其他問／挑戰／猜測／玩笑／條件只證她說過",
     ),
   );
   assertEquals(
@@ -13417,7 +13417,7 @@ Deno.test("source-first Game release repairs an unfilled store, scouting premise
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "{變數} token 本身不提供值",
+      "{變數}無值",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -13574,7 +13574,223 @@ Deno.test("fresh production Beginner release leaves an unanswered work status un
   }
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "末則 assistant 問 user 而其後沒有 user/trusted 直答",
+      "先審 terminal 直接答案",
+    ),
+  );
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("fresh production Beginner release removes an unanswered recommendation stance", async () => {
+  const appliedHint =
+    "我追《{劇名}》追到兩點，現在腦袋整個還沒回來 😂 你都這時候才吃東西嗎";
+  const badLine = "超推！你最近有在看什麼嗎？";
+  const safeLine = "{真實答案}。你最近有在看什麼嗎？";
+  const wrongCard = JSON.parse(validDebriefJson({
+    summary: "她沿追劇話題問你是否推薦，尚待你的真實答案。",
+    strengths: [
+      "用追劇到兩點的生活片段開場，讓她有話可接。",
+      "她分享空服員作息並追問是否推薦，話題有來回。",
+    ],
+    watchouts: [
+      "你只說追到兩點，未表明推薦或不推薦。",
+      "關係仍淺，先回答她的問題，再自然延伸話題。",
+    ],
+    suggestedLine: badLine,
+    vibe: "冷",
+    dateChance: "low",
+    dateChanceReason: "她有追問但沒有具體約見訊號，關係仍淺。",
+    nextInviteMove: "先保留真實推薦立場，再沿追劇話題累積熟悉感。",
+  })) as Record<string, unknown>;
+  const wrong = JSON.stringify(wrongCard);
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "OK",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "OK",
+  });
+  const repairedCard = structuredClone(wrongCard);
+  repairedCard.suggestedLine = safeLine;
+  const repaired = JSON.stringify(repairedCard);
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "FIX: assistant 問推薦不證 user 已推薦",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "OK",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [wrong, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "building_familiarity",
+            targetVariable: "安全感與熟悉感",
+            move: "build_connection",
+            inviteRoute: "not_ready",
+            rationale: "先沿追劇與作息話題建立熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "fresh-prod-beginner-unanswered-recommendation",
+      turns: [
+        {
+          role: "user",
+          text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂",
+        },
+        {
+          role: "ai",
+          text: "早啊，我也才剛忙完正想找東西吃。你追哪部啊？",
+        },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text:
+            "對啊，空服員作息就是這樣，常半夜才在覓食😂\n{劇名}聽說很好看耶 有推嗎",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-fresh-prod-beginner-unanswered-recommendation",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  const expectedCard = structuredClone(repairedCard);
+  delete expectedCard.hintAssessment;
+  expectedCard.gameBreakdown = null;
+  assertEquals(json.card, expectedCard);
+  assertEquals(json.card.suggestedLine, safeLine);
+  assertEquals(json.card.suggestedLine.includes("超推"), false);
+  assertEquals(json.card.suggestedLine.match(/\{真實答案\}/g)?.length, 1);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], badLine);
+  assertGroundingReviewInput(state.claudeCalls[2], badLine);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "practiceGroundingReviewerV3",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "practiceGroundingReleaseAuditorV3",
+    ),
+  );
+  for (
+    const releaseRule of [
+      "較早相容行為不算回答",
+      "只說追到兩點不證「有推嗎」",
+      "「超推」改「{真實答案}」",
+    ]
+  ) {
+    assert(claudePrompt(state.claudeCalls[2]).includes(releaseRule));
+  }
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("fresh production Beginner release preserves an earlier explicit recommendation answer", async () => {
+  const line = "超推！你最近有在看什麼嗎？";
+  const card = JSON.parse(validDebriefJson({
+    summary: "你已明說這部很推薦，她又追問是否推薦。",
+    strengths: ["你明確表達推薦，立場清楚。"],
+    watchouts: ["她重複確認時，直接回答後再延伸即可。"],
+    suggestedLine: line,
+    vibe: "暖",
+    dateChance: "low",
+    dateChanceReason: "她有追問但沒有具體約見訊號。",
+    nextInviteMove: "先回答推薦立場，再沿追劇話題累積熟悉感。",
+  })) as Record<string, unknown>;
+  const raw = JSON.stringify(card);
+  const acceptedReview = groundingReviewEnvelope(raw, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "OK",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "OK",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 1 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [raw, acceptedReview, acceptedReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "building_familiarity",
+            targetVariable: "安全感與熟悉感",
+            move: "build_connection",
+            inviteRoute: "not_ready",
+            rationale: "先沿追劇話題建立熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "fresh-prod-beginner-explicit-recommendation",
+      turns: [
+        { role: "user", text: "我最近重看《想見你》，這部我超推。" },
+        { role: "ai", text: "真的有推嗎" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  const expectedCard = structuredClone(card);
+  delete expectedCard.hintAssessment;
+  expectedCard.gameBreakdown = null;
+  assertEquals(json.card, expectedCard);
+  assertEquals(json.card.suggestedLine, line);
+  assertEquals(JSON.stringify(json.card).includes("{真實答案}"), false);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], line);
+  assertGroundingReviewInput(state.claudeCalls[2], line);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "較早明說「這部我超推」才可答「超推」",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -13730,13 +13946,14 @@ Deno.test("fresh production Game release keeps a literal store variable unfilled
     groundingReviewCandidate(state.claudeCalls[2]),
     groundingReviewCandidate(state.claudeCalls[1]),
   );
-  for (const call of state.claudeCalls) {
+  for (const call of state.claudeCalls.slice(0, 2)) {
     assert(
       claudePrompt(call).includes(
         "{變數} token 本身不提供值",
       ),
     );
   }
+  assert(claudePrompt(state.claudeCalls[2]).includes("{變數}無值"));
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
@@ -13873,7 +14090,7 @@ Deno.test("fresh production Game release removes an invented feeling after an at
   }
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "後接無據 user 命題",
+      "{真實答案}，你這樣問我有點壓力",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -14151,9 +14368,9 @@ Deno.test("fresh production Game release removes an unanswered entry presupposit
   );
   for (
     const releaseRule of [
-      "assistant 問句的預設前提也不是 user 事實",
+      "問句前提非 user 事實",
       "喝了{真實答案}",
-      "仍不證 user 進店或喝過",
+      "不證進店/喝過",
     ]
   ) {
     assert(claudePrompt(state.claudeCalls[2]).includes(releaseRule));

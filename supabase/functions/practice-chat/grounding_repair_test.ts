@@ -296,17 +296,16 @@ Deno.test("second review is a focused fact and variable release audit", () => {
       "一次早睡≠早睡派",
       "存一家店≠收藏很多",
       "追到兩點≠一開就停不下來",
-      "{真實答案} 只能獨立取代整個未知答案子句",
+      "{真實答案}須獨立取代未知答案子句",
       "紅玉拿鐵{真實答案}",
       "輕量反應只能是「哈哈／欸／原來」",
       "不得聲稱 user 的感受、狀態、偏好或立場",
-      "後接無據 user 命題",
       "{真實答案}，你這樣問我有點壓力",
-      "assistant 問句的預設前提也不是 user 事實",
-      "不能替先前 user 的 literal 變數選分支",
-      "前提與被問值分開核",
+      "問句前提非 user 事實",
+      "不可替 literal 變數選分支",
+      "前提/被問值分開核",
       "喝了{真實答案}",
-      "仍不證 user 進店或喝過",
+      "不證進店/喝過",
     ]
   ) {
     assertStringIncludes(messages[0].content, atomicClaim);
@@ -321,32 +320,45 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   );
   assertStringIncludes(
     messages[0].content,
-    "未知不可改寫成忘記、不知道、沒記住、沒去過",
+    "先審 terminal 直接答案",
   );
   assertStringIncludes(
     messages[0].content,
-    "不論有無問號都只證她說過，不證 user 的答案",
+    "肯否／評價／推薦；無論標點",
   );
   assertStringIncludes(
     messages[0].content,
-    "未知不可改寫成忘記、不知道、沒記住、沒去過或任何感官評價",
+    "較早相容行為不算回答",
   );
   assertStringIncludes(
     messages[0].content,
-    "{變數} token 本身不提供值",
+    "全部直證無同 owner 同命題明答",
   );
   assertStringIncludes(
     messages[0].content,
-    "末則 assistant 問 user 而其後沒有 user/trusted 直答",
+    "較早明說「這部我超推」才可答「超推」",
   );
   assertStringIncludes(
     messages[0].content,
-    "只能用單一原子 {真實答案}",
+    "答案只留單一 {真實答案}",
+  );
+  assertStringIncludes(
+    messages[0].content,
+    "只說追到兩點不證「有推嗎」",
+  );
+  assertStringIncludes(
+    messages[0].content,
+    "「超推」改「{真實答案}」",
   );
   assertStringIncludes(
     messages[0].content,
     "再接無前提反問",
   );
+  assertStringIncludes(
+    messages[0].content,
+    "未知禁改成忘記／不知道／沒記住／沒去過／感官評價",
+  );
+  assertStringIncludes(messages[0].content, "{變數}無值");
   assertStringIncludes(
     messages[0].content,
     "applied Hint 是 user_turn",
