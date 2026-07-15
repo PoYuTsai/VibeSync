@@ -43,109 +43,24 @@ function hasLoneSurrogate(value: string): boolean {
 
 Deno.test("Debrief prompt forbids transferring partner facts into pasteable first-person lines", () => {
   for (
-    const expected of ["suggestedLine", "nextFirstLine", "我", "user 事實"]
-  ) {
-    assertEquals(DEBRIEF_SYSTEM_PROMPT.includes(expected), true, expected);
-  }
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("她的個資"), true);
-  assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("禁編劇名/店名/地點"),
-    true,
-  );
-  assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("未知用 {真實答案}"),
-    true,
-  );
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("提問/不爆雷"), false);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("逐句盤點"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("下週見"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("已落地"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("已落地勿再等"), true);
-  for (
     const expected of [
-      "全無X／只有Y／單向問答",
-      "找反例",
-      "user狀態/經歷=自揭",
-      "她自述休假/有無計畫=自揭/行程",
-      "assistant問句/接球/新素材=延伸≠邀約",
-      "任一欄承認→他欄禁寫無延伸/無來回",
-      "追到兩點不證追完/忘時/睏/沒想到或不小心/靠意志力或咖啡撐",
-      "明示可約時間/意願=窗口",
+      "suggestedLine/nextFirstLine 是 user 對她說",
+      "owner/speech act/polarity/time-actuality/modality",
+      "未來/條件不得升格現在",
+      "問句/提議/玩笑的 presupposition",
+      "無據改無前提問法",
+      "{變數} 都未填，絕不證具體值/經歷/答案",
+      "assistant 實質回答/自揭/新細節/問句/提議/玩笑梗/未來接點",
+      "拒絕/別再問可有資訊卻無正向延伸",
+      "即使 low，有非拒絕貢獻也禁寫只有客套/無延伸/無正向延伸/無新素材/無來回",
+      "只有明示約見意願，或在約見脈絡明確給可約時間/共同場景才是窗口",
+      "禁批最後一句後尚未發生的 user 回覆",
       "可見欄位稱「她／對方」，不稱「他／他的」",
-      "「我有時候會X」屬 user 習慣/感受",
-      "每個 {} 只放一個扁平原子槽",
-      "禁巢狀/分支句/故事",
     ]
   ) {
     assertEquals(DEBRIEF_SYSTEM_PROMPT.includes(expected), true, expected);
   }
-  assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("是 user 對她說"),
-    true,
-  );
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("「我」=user"), true);
-  assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("人/事物屬性/能力/偏好/因果/頻率"),
-    true,
-  );
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("禁裝忘或代答"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("{真實答案}"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("咖啡描述/建議/推薦"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("像果汁"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("只證常喝類型"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("勿問怎麼開始喜歡"), true);
-  assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("{真實感受}/{真實立場}/避答"),
-    true,
-  );
-  assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("禁裝忘或代答"),
-    true,
-  );
-  assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("逐字稿/profile證據；否則刪/原子變數"),
-    true,
-  );
-  assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("轉述守說話者/言語行為/情態"),
-    true,
-  );
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("條件提議≠問句"), true);
-  assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes(
-      "回答/解釋須 user 證據，未知用 {真實答案}/避答",
-    ),
-    true,
-  );
-  assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("她的個資/猜測/吐槽不是 user 事實或答案"),
-    true,
-  );
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("貼句事實邊界"), true);
-  assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("她的問句、挑戰或猜測不是 user 答案"),
-    true,
-  );
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("咖啡撐"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("敢不敢"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("靠意志力"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("裝懂我倒不至於"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("{真實回應}"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("{真實狀態}"), true);
-  assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes(
-      "未來提議/提問/界線可創作",
-    ),
-    true,
-  );
-  assertEquals(
-    DEBRIEF_SYSTEM_PROMPT.includes("禁把最後一句後尚未發生"),
-    true,
-  );
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("尚未給立場"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("較早 user turns"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("只能寫下一步"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("可貼草稿≤40字；變數先填"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("提問/不爆雷"), false);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("可直接傳的一句"), false);
 });
 
@@ -1027,11 +942,13 @@ Deno.test("debrief keeps an opening partner question after a later partner turn"
   assertEquals(user.includes("你追哪部啊？"), true);
   assertEquals(user.includes("中段近況".repeat(20)), false);
   assertEquals(
-    system.includes("assistant問句/接球/新素材=延伸≠邀約"),
+    system.includes("assistant 實質回答/自揭/新細節/問句/提議/玩笑梗/未來接點"),
     true,
   );
   assertEquals(
-    system.includes("任一欄承認→他欄禁寫無延伸/無來回"),
+    system.includes(
+      "即使 low，有非拒絕貢獻也禁寫只有客套/無延伸/無正向延伸/無新素材/無來回",
+    ),
     true,
   );
 });
@@ -1754,6 +1671,14 @@ Deno.test("debrief system prompt：含 dateChance 三欄與誤判評估準則", 
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("脆弱性"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("goal-fixated"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("內容下切"), true);
+  assertEquals(
+    DEBRIEF_SYSTEM_PROMPT.includes(
+      "high＝明示約見意願，或在約見脈絡明確給可約時間/共同場景",
+    ),
+    true,
+  );
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("一般延伸仍可 low"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("high＝延伸/場景/時間"), false);
 });
 
 Deno.test("debrief system prompt asks for plain-language heat/familiarity explanation", () => {

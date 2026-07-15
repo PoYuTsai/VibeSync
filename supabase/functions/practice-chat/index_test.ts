@@ -289,7 +289,7 @@ Deno.test("direct Hint preserves server-trusted user facts through both reviews"
   }
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "各欄角色事實只認同角色 turn/trusted evidence",
+      "Hint 角色歸屬仍須正確：貼句我=user、你/妳=assistant",
     ),
   );
   assertEquals(recordHintCalls(state).length, 1);
@@ -4883,7 +4883,7 @@ Deno.test("direct Game Debrief grounds invented facts inside the visible breakdo
   assertEquals(state.claudeCalls[1].temperature, 0);
   assert(
     claudePrompt(state.claudeCalls[1]).includes(
-      "逐欄/句/命題審所有可見的人或事物具體事實及所有逐字稿轉述",
+      "第一次複核採 candidate→evidence：逐欄/句/命題找直接證據",
     ),
   );
   assertEquals(recordDebriefCalls(state).length, 1);
@@ -7018,13 +7018,16 @@ Deno.test("Beginner Hint release review keeps user opening facts out of partner 
       "coaching「她說/她丟X」與貼句明示/省略你/妳的 partner 狀態只認 assistant turn",
     ),
   );
-  for (const call of state.claudeCalls.slice(1)) {
-    assert(
-      claudePrompt(call).includes(
-        "coaching『她說/她丟X』及貼句明示/省略你/妳狀態只認 assistant_turn",
-      ),
-    );
-  }
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "coaching『她說/她丟X』及貼句明示/省略你/妳狀態只認 assistant_turn",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "coaching 的她說/丟X只認 assistant_turn",
+    ),
+  );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
@@ -7354,9 +7357,15 @@ Deno.test("Hint repair removes partner speculation before independent verificati
   const firstVerificationPrompt = claudePrompt(state.claudeCalls[1]);
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
   assert(firstVerificationPrompt.includes("只證明她說過，不是 user 證據"));
-  assert(verificationPrompt.includes("她問/猜非 user 答案"));
+  assert(
+    verificationPrompt.includes("問句/提議/玩笑的 presupposition 也須證據"),
+  );
   assert(firstVerificationPrompt.includes("自行肯定/否定"));
-  assert(verificationPrompt.includes("未知只留最小變數"));
+  assert(
+    verificationPrompt.includes(
+      "無據命題刪除或改單一原子變數/無前提問法",
+    ),
+  );
   assertEquals(recordHintCalls(state).length, 1);
 });
 
@@ -7576,13 +7585,13 @@ Deno.test("Beginner Debrief repair removes an invented plan before independent v
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
   assert(
     verificationPrompt.includes(
-      "可見/nested 每個人/事物屬性/能力/偏好/因果/頻率",
+      "先只讀 transcript/trusted evidence，逐 user/assistant clause 與 trusted fact 建雙角色 source ledger",
     ),
   );
   assert(verificationPrompt.includes("trustedUserFacts"));
   assert(
     verificationPrompt.includes(
-      "須同角色 turn/trusted evidence 直接支持",
+      "source ledger 完成後才可查 candidate",
     ),
   );
   assert(
@@ -7707,9 +7716,8 @@ Deno.test("Game Debrief repair removes partner speculation before independent ve
     JSON.parse(verified).suggestedLine,
   );
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
-  assert(verificationPrompt.includes("appliedHints 都是 user_turn"));
   assert(
-    verificationPrompt.includes("exact Hint 的既定策略不可被 Debrief 推翻"),
+    verificationPrompt.includes("Hint 是 user_turn 且既定策略不推翻"),
   );
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.semanticCalls.length, 0);
@@ -8297,17 +8305,26 @@ Deno.test("direct Beginner Debrief reviewer audit removes the latest production 
   );
   const releasePrompt = claudePrompt(state.claudeCalls[2]);
   assert(releasePrompt.includes('"terminalTurnRole":"assistant"'));
-  assert(releasePrompt.includes("user 尚未有回覆機會"));
-  assert(releasePrompt.includes("貼句不得發明 user 立場/經歷/結果"));
+  assert(releasePrompt.includes("末則 assistant 後不可批未發生的 user 回覆"));
+  assert(releasePrompt.includes("source-first 四步"));
   for (const call of state.claudeCalls.slice(1)) {
     const prompt = claudePrompt(call);
     assert(prompt.includes(trustedMemory));
     assert(prompt.includes("olderMemoryEvidence"));
-    assert(prompt.includes("assistant問句=反問/延伸≠邀約"));
     assert(prompt.includes('"role":"assistant"'));
     assert(prompt.includes("你看什麼劇這麼入迷"));
     assertEquals(prompt.includes("CLIENT_DEBRIEF_MEMORY_MARKER"), false);
   }
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "assistant 問句/接球/新素材算對話貢獻",
+    ),
+  );
+  assert(
+    releasePrompt.includes(
+      "只對 assistant clause 標回答/自揭/新細節/問句/提議/玩笑梗/未來接點及拒絕/終止",
+    ),
+  );
   assertEquals(
     (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
       .failureCodes,
@@ -8402,21 +8419,24 @@ Deno.test("Beginner Debrief release review keeps a direct follow-up from becomin
   );
   assert(
     claudePrompt(state.claudeCalls[0]).includes(
-      "assistant問句/接球/新素材=延伸≠邀約",
+      "assistant 實質回答/自揭/新細節/問句/提議/玩笑梗/未來接點任一＝對話貢獻/新素材",
     ),
   );
-  for (const call of state.claudeCalls.slice(1)) {
-    assert(
-      claudePrompt(call).includes(
-        "assistant問句=反問/延伸≠邀約",
-      ),
-    );
-    assert(
-      claudePrompt(call).includes(
-        "任一欄承認→他欄禁寫無延伸/無來回",
-      ),
-    );
-  }
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "assistant 問句/接球/新素材算對話貢獻",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "任一欄承認非拒絕貢獻→他欄禁寫無延伸/無來回",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "即使 low，若 ledger 有非拒絕貢獻也禁寫只有客套/無延伸/無正向延伸/無新素材/無來回",
+    ),
+  );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
@@ -8538,23 +8558,29 @@ Deno.test("Beginner Debrief release review repairs the exact cross-field extensi
   const writerPrompt = claudePrompt(state.claudeCalls[0]);
   assert(
     writerPrompt.includes(
-      "assistant問句/接球/新素材=延伸≠邀約；任一欄承認→他欄禁寫無延伸/無來回",
+      "assistant 實質回答/自揭/新細節/問句/提議/玩笑梗/未來接點任一＝對話貢獻/新素材",
     ),
   );
   assert(
     writerPrompt.includes(
-      "追到兩點不證追完/忘時/睏/沒想到或不小心/靠意志力或咖啡撐",
+      "每個命題保留 owner/speech act/polarity/time-actuality/modality",
     ),
   );
-  for (const call of state.claudeCalls.slice(1)) {
-    const prompt = claudePrompt(call);
-    assert(
-      prompt.includes(
-        "assistant問句=反問/延伸≠邀約；接球/新素材也算延伸；任一欄承認→他欄禁寫無延伸/無來回",
-      ),
-    );
-    assert(prompt.includes("追到兩點≠沒想到/沒預料/不小心等意外因果"));
-  }
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "assistant 問句/接球/新素材算對話貢獻，非明確拒絕/終止才算延伸；都不等於邀約",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "追到兩點≠沒想到/沒預料/不小心等意外因果",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "未來/條件不可升格現在",
+    ),
+  );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
@@ -8674,15 +8700,24 @@ Deno.test("production round-one Beginner release fixes an invented answer and de
   );
   assert(
     claudePrompt(state.claudeCalls[0]).includes(
-      "回答/解釋須 user 證據，未知用 {真實答案}/避答",
+      "任一 {變數} 都未填，絕不證具體值/經歷/答案",
     ),
   );
-  for (const call of state.claudeCalls.slice(1)) {
-    const prompt = claudePrompt(call);
-    assert(prompt.includes("夯/節奏/懸念"));
-    assert(prompt.includes("assistant問句=反問/延伸≠邀約"));
-    assert(prompt.includes("人/事物具體事實或逐字稿轉述"));
-  }
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "未答問句非他欄證據；答詞如好看啊/有啊/會啊/對啊也算答案",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "assistant 問句/接球/新素材算對話貢獻",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "只對 assistant clause 標回答/自揭/新細節/問句/提議/玩笑梗/未來接點及拒絕/終止",
+    ),
+  );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
@@ -8828,16 +8863,34 @@ Deno.test("production round-one Game release preserves a conditional recommendat
   );
   const writerPrompt = claudePrompt(state.claudeCalls[0]);
   assert(writerPrompt.includes(appliedHint));
-  assert(writerPrompt.includes("轉述守說話者/言語行為/情態"));
-  assert(writerPrompt.includes("條件提議≠問句"));
-  assert(writerPrompt.includes("辨味能力"));
-  for (const call of state.claudeCalls.slice(1)) {
-    const prompt = claudePrompt(call);
-    assert(prompt.includes(appliedHint));
-    assert(prompt.includes("speech act（問/答/自揭/提議/猜測）"));
-    assert(prompt.includes("modality（肯定/條件/不確定）"));
-    assert(prompt.includes("條件提議『你如果喜歡重一點我可推薦』≠問句"));
-  }
+  assert(
+    writerPrompt.includes(
+      "每個命題保留 owner/speech act/polarity/time-actuality/modality",
+    ),
+  );
+  assert(writerPrompt.includes("未來/條件不得升格現在"));
+  assert(
+    writerPrompt.includes(
+      "問句/提議/玩笑的 presupposition 也須逐字稿/profile 證據",
+    ),
+  );
+  assert(claudePrompt(state.claudeCalls[1]).includes(appliedHint));
+  assert(claudePrompt(state.claudeCalls[2]).includes(appliedHint));
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "speech act（問/答/自揭/提議/猜測）",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "modality（肯定/條件/不確定）",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "owner/speech act/polarity/time-actuality/modality",
+    ),
+  );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
@@ -8980,7 +9033,7 @@ Deno.test("Game Debrief release review makes the pasteable line satisfy the exac
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "gameBreakdown.missedVariable/failureState 或他欄若要求自揭/感受/立場",
+      "Game nextFirstLine=suggestedLine，自揭須有證據或原子變數",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -9142,9 +9195,11 @@ Deno.test("direct Game Debrief repairs the latest production tasting, timing, an
   assert(firstAuditPrompt.includes('"terminalTurnRole":"assistant"'));
   assert(releaseAuditPrompt.includes("practiceGroundingReleaseAuditorV1"));
   assert(releaseAuditPrompt.includes('"terminalTurnRole":"assistant"'));
-  assert(releaseAuditPrompt.includes("user 尚未有回覆機會"));
   assert(
-    releaseAuditPrompt.includes("貼句不得發明 user 立場/經歷/結果"),
+    releaseAuditPrompt.includes("末則 assistant 後不可批未發生的 user 回覆"),
+  );
+  assert(
+    releaseAuditPrompt.includes("source ledger 完成後才可查 candidate"),
   );
   assertEquals(
     (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
@@ -9292,11 +9347,19 @@ Deno.test("direct Beginner Debrief release review repairs production global nega
   );
   assert(claudePrompt(state.claudeCalls[2]).includes(falseWatchout));
   assert(claudePrompt(state.claudeCalls[2]).includes(falseDateChanceReason));
-  for (const call of state.claudeCalls.slice(1)) {
-    const prompt = claudePrompt(call);
-    assert(prompt.includes("反例掃描"));
-    assert(prompt.includes("我有時候也會X"));
-    assert(prompt.includes("今天剛好休假"));
+  const firstPrompt = claudePrompt(state.claudeCalls[1]);
+  const releasePrompt = claudePrompt(state.claudeCalls[2]);
+  assert(firstPrompt.includes("反例掃描"));
+  assert(firstPrompt.includes("我有時候也會X"));
+  assert(firstPrompt.includes("今天剛好休假"));
+  assert(releasePrompt.includes("source-first 四步"));
+  assert(releasePrompt.includes("每層只做一次，禁止先看 candidate"));
+  assert(releasePrompt.includes("只有 candidate 自創且零既成前提"));
+  assertEquals(
+    releasePrompt.includes("反例掃描：candidate 寫 role/scope"),
+    false,
+  );
+  for (const prompt of [firstPrompt, releasePrompt]) {
     assert(prompt.includes('"role":"assistant"'));
   }
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -9463,7 +9526,16 @@ Deno.test("direct Game Debrief release review repairs terminal-reply blame and a
   );
   assert(claudePrompt(state.claudeCalls[2]).includes(falseMissedVariable));
   assert(claudePrompt(state.claudeCalls[2]).includes(nestedLine));
-  assert(claudePrompt(state.claudeCalls[2]).includes("反例掃描"));
+  assert(claudePrompt(state.claudeCalls[1]).includes("反例掃描"));
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes("source-first 四步"),
+  );
+  assertEquals(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "反例掃描：candidate 寫 role/scope",
+    ),
+    false,
+  );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
       "practiceGroundingReleaseAuditorV1",
@@ -9471,7 +9543,7 @@ Deno.test("direct Game Debrief release review repairs terminal-reply blame and a
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "terminalTurnRole=assistant 表示末則後 user 尚無回覆機會",
+      "末則 assistant 後不可批未發生的 user 回覆",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -9576,7 +9648,22 @@ Deno.test("direct Game Debrief keeps an applied Hint question attributed to the 
   assertGroundingReviewInput(state.claudeCalls[2], "她先問店名");
   assert(
     claudePrompt(state.claudeCalls[1]).includes(
-      "不得把 Hint 問句寫成『她問』",
+      "Hint 貼句的「我」、coaching/Debrief 分析的「你」、Debrief 貼句的「我」都算 user",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "Hint 是 user_turn 且既定策略不推翻",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "Debrief 分析的「你」=user、「她/對方」=assistant",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "suggestedLine/nextFirstLine 的「我」=user、「你/妳」=assistant",
     ),
   );
   assertEquals(recordDebriefCalls(state).length, 1);
@@ -9674,8 +9761,24 @@ Deno.test("direct Beginner Debrief removes a question-only critique when its nex
   );
   assert(
     claudePrompt(state.claudeCalls[1]).includes(
-      "gameBreakdown.missedVariable/failureState/他欄若要求感受/立場或批純問句",
+      "反例掃描：candidate 寫 role/scope",
     ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "Game nextFirstLine=suggestedLine，自揭須有證據或原子變數",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "只有 candidate 自創且零既成前提的未來提議/純問句免記",
+    ),
+  );
+  assertEquals(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "反例掃描：candidate 寫 role/scope",
+    ),
+    false,
   );
   assertEquals(recordDebriefCalls(state).length, 1);
 });
@@ -9803,11 +9906,20 @@ Deno.test("direct Game Debrief preserves an earlier question-only pattern when t
     state.claudeCalls[2],
     "較早兩個 user turn",
   );
-  for (const call of state.claudeCalls.slice(1)) {
-    assert(
-      claudePrompt(call).includes("較早 user_turn 有據仍可批"),
-    );
-  }
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes("較早 user_turn 有據仍可批"),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "末則 assistant 後不可批未發生的 user 回覆",
+    ),
+  );
+  assertEquals(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "terminalTurnRole=assistant 表示末則後 user 尚無回覆機會",
+    ),
+    false,
+  );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
@@ -9929,15 +10041,26 @@ Deno.test("direct Beginner Debrief release review repairs the production compoun
     groundingReviewCandidate(state.claudeCalls[1]),
   );
   assert(
-    claudePrompt(state.claudeCalls[0]).includes("每個 {} 只放一個扁平原子槽"),
+    claudePrompt(state.claudeCalls[0]).includes(
+      "只留扁平原子槽，禁巢狀/故事",
+    ),
   );
-  for (const call of state.claudeCalls.slice(1)) {
-    assert(
-      claudePrompt(call).includes(
-        "答詞如好看啊/有啊/會啊/對啊也算答案",
-      ),
-    );
-  }
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "答詞如好看啊/有啊/會啊/對啊也算答案",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "{變數} 永遠未填，不證值/經歷/答案",
+    ),
+  );
+  assertEquals(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "答詞如好看啊/有啊/會啊/對啊也算答案",
+    ),
+    false,
+  );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
@@ -10073,18 +10196,27 @@ Deno.test("direct Beginner Debrief release review repairs the production adjecti
       "可見欄位稱「她／對方」，不稱「他／他的」",
     ),
   );
-  for (const call of state.claudeCalls.slice(1)) {
-    assert(
-      claudePrompt(call).includes(
-        "答詞如好看啊/有啊/會啊/對啊也算答案",
-      ),
-    );
-    assert(
-      claudePrompt(call).includes(
-        "assistant 稱她/對方，不稱他/他的",
-      ),
-    );
-  }
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "答詞如好看啊/有啊/會啊/對啊也算答案",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "assistant 稱她/對方，不稱他/他的",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "owner/speech act/polarity/time-actuality/modality",
+    ),
+  );
+  assertEquals(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "assistant 稱她/對方，不稱他/他的",
+    ),
+    false,
+  );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
@@ -10211,13 +10343,20 @@ Deno.test("direct Game Debrief release review keeps a question from becoming kno
   );
   assert(
     claudePrompt(state.claudeCalls[0]).includes(
-      "未答問句僅待確認；回答/解釋須 user 證據",
+      "問句/提議/玩笑的 presupposition 也須逐字稿/profile 證據",
     ),
   );
-  for (const call of state.claudeCalls.slice(1)) {
-    assert(claudePrompt(call).includes("未答問句非他欄證據"));
-    assert(claudePrompt(call).includes("早班待確認"));
-  }
+  assert(claudePrompt(state.claudeCalls[1]).includes("未答問句非他欄證據"));
+  assert(claudePrompt(state.claudeCalls[1]).includes("早班待確認"));
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "問句/提議/玩笑的 presupposition 也須證據",
+    ),
+  );
+  assertEquals(
+    claudePrompt(state.claudeCalls[2]).includes("早班待確認"),
+    false,
+  );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
@@ -10881,12 +11020,18 @@ Deno.test("Hint factual guard accepts a named place from trusted relationship me
     assert(prompt.includes(trustedMemory));
     assertEquals(prompt.includes("CLIENT_MEMORY_MARKER"), false);
   }
-  for (const call of state.claudeCalls.slice(1)) {
-    const prompt = claudePrompt(call);
+  const firstPrompt = claudePrompt(state.claudeCalls[1]);
+  const releasePrompt = claudePrompt(state.claudeCalls[2]);
+  for (const prompt of [firstPrompt, releasePrompt]) {
     assert(prompt.includes("olderMemoryEvidence"));
-    assert(prompt.includes("明確把當前指涉連回同一舊人／事／店"));
     assertEquals(prompt.includes("currentTemperatureScore"), false);
   }
+  assert(firstPrompt.includes("明確把當前指涉連回同一舊人／事／店"));
+  assert(releasePrompt.includes("相似主題不可自行綁定"));
+  assertEquals(
+    releasePrompt.includes("明確把當前指涉連回同一舊人／事／店"),
+    false,
+  );
 });
 
 Deno.test("Hint review does not use an unrelated old venue as the latest location answer", async () => {
@@ -10939,11 +11084,16 @@ Deno.test("Hint review does not use an unrelated old venue as the latest locatio
   assertEquals(state.claudeCalls.length, 3);
   assertGroundingReviewInput(state.claudeCalls[1], invented);
   assertGroundingReviewInput(state.claudeCalls[2], repaired);
-  for (const call of state.claudeCalls.slice(1)) {
-    const prompt = claudePrompt(call);
-    assert(prompt.includes(trustedMemory));
-    assert(prompt.includes("不得只因同主題或相似描述自行綁定"));
-  }
+  const firstPrompt = claudePrompt(state.claudeCalls[1]);
+  const releasePrompt = claudePrompt(state.claudeCalls[2]);
+  assert(firstPrompt.includes(trustedMemory));
+  assert(releasePrompt.includes(trustedMemory));
+  assert(firstPrompt.includes("不得只因同主題或相似描述自行綁定"));
+  assert(releasePrompt.includes("相似主題不可自行綁定"));
+  assertEquals(
+    releasePrompt.includes("不得只因同主題或相似描述自行綁定"),
+    false,
+  );
   assertEquals(recordHintCalls(state).length, 1);
 });
 
@@ -12931,3 +13081,577 @@ for (
     assertEquals(learningUpdateCalls(state).length, 0);
   });
 }
+
+Deno.test("source-first Beginner release repairs present fatigue and denied extension from the exact smoke transcript", async () => {
+  const appliedHint = "哈哈羨慕你睡得好，我這邊還在等系統重啟 😂 你都幾點睡？";
+  const badLine = "早班啊，那你現在是靠什麼撐著的？☕";
+  const badReason = "對話剛起步，她回覆禮貌但資訊量少，尚無正向延伸訊號。";
+  const wrong = validDebriefJson({
+    summary: "她回答十二點多會睡，並提到明天早班；整體仍在疲憊狀態。",
+    strengths: ["她有回答睡眠時間。"],
+    watchouts: ["疲憊狀態下先別拉太長。"],
+    suggestedLine: badLine,
+    vibe: "暖",
+    dateChance: "low",
+    dateChanceReason: badReason,
+    nextInviteMove:
+      "先接住她早班／疲憊的狀態，累積幾次有內容的來回再考慮邀約。",
+  });
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary:
+      "回答十二點多/明天早班←assistant_turn[3]:『大概十二點多吧』『明天飛早班』；疲憊狀態←assistant_turn[3]:『會崩潰』",
+    strengths: "回答睡眠時間←assistant_turn[3]:『大概十二點多吧』",
+    watchouts: "疲憊狀態←assistant_turn[3]:『明天飛早班會崩潰』",
+    suggestedLine: "現在累/靠東西撐←assistant_turn[3]:『不然明天飛早班會崩潰』",
+    dateChanceReason: "尚無正向延伸←assistant_turn[3]:『大概十二點多吧』",
+    nextInviteMove: "疲憊狀態←assistant_turn[3]:『明天飛早班會崩潰』",
+    gameBreakdown: "",
+  });
+  const safeLine = "原來妳十二點多就準備睡 😂 明天早班幾點要起床？";
+  const safeReason =
+    "她有實質回答並補充明天飛早班，是正向延伸；但同時準備收尾，且沒有邀約或見面窗口。";
+  const repaired = validDebriefJson({
+    summary:
+      "她回答大約十二點多睡，並補充明天要飛早班，提供新的作息與明日行程素材。",
+    strengths: ["她實質回答睡覺時間，也自揭明天飛早班。"],
+    watchouts: [
+      "她正準備睡，下一句保持短，不把明天可能累寫成現在已疲憊。",
+    ],
+    suggestedLine: safeLine,
+    vibe: "暖",
+    dateChance: "low",
+    dateChanceReason: safeReason,
+    nextInviteMove: "先沿她明天早班與睡眠作息簡短回一句，不急著邀約。",
+  });
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary:
+      "回答作息/明日行程←assistant_turn[3]:『大概十二點多吧』『明天飛早班』",
+    strengths:
+      "實質回答/自揭明日行程←assistant_turn[3]:『大概十二點多吧』『明天飛早班』",
+    watchouts: "準備睡←assistant_turn[3]:『也該睡了』",
+    suggestedLine:
+      "十二點多準備睡/明天早班←assistant_turn[3]:『大概十二點多吧』『明天飛早班』",
+    dateChanceReason:
+      "回答與新行程素材←assistant_turn[3]:『大概十二點多吧』『明天飛早班』",
+    nextInviteMove:
+      "明天早班/作息←assistant_turn[3]:『明天飛早班』『十二點多』",
+    gameBreakdown: "",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [wrong, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "building_familiarity",
+            targetVariable: "作息",
+            move: "build_connection",
+            inviteRoute: "not_ready",
+            rationale: "沿她回答的作息與明日早班簡短延伸。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "source-first-exact-beginner-sleep-early-flight",
+      turns: [
+        {
+          role: "user",
+          text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂",
+        },
+        { role: "ai", text: "哈哈辛苦了 我昨晚倒是睡得不錯 難得精神好😂" },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text: "大概十二點多吧 也該睡了 不然明天飛早班會崩潰😂",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-source-first-exact-beginner",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.suggestedLine, safeLine);
+  assertEquals(json.card.dateChance, "low");
+  assertEquals(json.card.dateChanceReason, safeReason);
+  const serialized = JSON.stringify(json.card);
+  for (const rejected of ["現在靠什麼撐", "疲憊狀態", "尚無正向延伸"]) {
+    assertEquals(serialized.includes(rejected), false, rejected);
+  }
+  assert(serialized.includes("明天飛早班"));
+  assert(serialized.includes("正向延伸"));
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], badLine);
+  assertGroundingReviewInput(state.claudeCalls[1], badReason);
+  assertGroundingReviewInput(state.claudeCalls[2], badLine);
+  assertGroundingReviewInput(state.claudeCalls[2], badReason);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "回答後收尾可 extension+closure",
+    ),
+  );
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("source-first Game release repairs an unfilled store, scouting premise, and denied extension from the exact smoke transcript", async () => {
+  const appliedHint = "叫{店名}，妳知道這家嗎？聞起來超香。";
+  const badLine = "踩點這詞用得好，那妳要不要聽一下踩點報告 😏";
+  const badReason =
+    "她有好奇但只有一個訊號，尚無延伸或時間線索，關係鋪墊不足。";
+  const wrongCard = JSON.parse(validDebriefJson({
+    summary: "你給了具體店名，她知道這家並追問你是不是在幫她踩點。",
+    strengths: ["有具體店名，讓她能接住同一家店。"],
+    watchouts: ["她尚未提供邀約時間。"],
+    suggestedLine: badLine,
+    vibe: "暖",
+    dateChance: "low",
+    dateChanceReason: badReason,
+    nextInviteMove: "先交代踩點報告，再觀察她是否接球。",
+  })) as Record<string, unknown>;
+  wrongCard.gameBreakdown = {
+    phaseReached: "有具體店名後進入咖啡話題",
+    missedVariable: "她在等你的踩點報告",
+    failureState: "尚無延伸",
+    nextFirstLine: badLine,
+    inviteDirection: "先完成踩點報告，不急著邀約。",
+  };
+  const wrong = JSON.stringify(wrongCard);
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary:
+      "具體店名←user_turn[2]:『叫{店名}』；她問踩點←assistant_turn[3]:『還是在幫我踩點』",
+    strengths: "具體店名←user_turn[2]:『叫{店名}』",
+    watchouts: "尚無邀約時間←assistant_turn[3]:『幫我踩點』",
+    suggestedLine: "踩點報告←assistant_turn[3]:『幫我踩點』",
+    dateChanceReason: "尚無延伸←assistant_turn[3]:『知道啊，聽過但還沒去過』",
+    nextInviteMove: "踩點報告←assistant_turn[3]:『幫我踩點』",
+    gameBreakdown: "具體店名/踩點報告←user_turn[2]/assistant_turn[3]",
+  });
+  const safeLine = "妳這個問法很像在派任務 😏 哪種店會讓妳想親自去？";
+  const safeReason =
+    "她有實質回答、自揭還沒去過，並用玩笑問句延伸；但沒有明示約見，尚無邀約窗口。";
+  const repairedCard = JSON.parse(validDebriefJson({
+    summary:
+      "店名仍是未填變數；她實質回答聽過但沒去過，也用玩笑問你是在探險或幫她踩點，已延伸新素材。",
+    strengths: ["她回答知道與沒去過，並丟回帶玩笑的問題。"],
+    watchouts: ["別把她的玩笑選項當成你真的做過其中一件事。"],
+    suggestedLine: safeLine,
+    vibe: "暖",
+    dateChance: "low",
+    dateChanceReason: safeReason,
+    nextInviteMove: "先接她的玩笑再問偏好，累積來回，不把玩笑升格成邀約。",
+  })) as Record<string, unknown>;
+  repairedCard.gameBreakdown = {
+    phaseReached: "她回答並以玩笑問句延伸咖啡話題",
+    missedVariable: "店名仍是未填的 {店名} 變數。",
+    failureState: "不要把她的玩笑選項當成已發生事件。",
+    nextFirstLine: safeLine,
+    inviteDirection: "她沒有明示約見，先沿玩笑與咖啡偏好延伸。",
+  };
+  const repaired = JSON.stringify(repairedCard);
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary:
+      "{店名}←variable；回答/自揭/玩笑問句←assistant_turn[3]:『知道啊』『還沒去過』『探險還是在幫我踩點』",
+    strengths:
+      "回答與玩笑問句←assistant_turn[3]:『聽過但還沒去過』『探險還是在幫我踩點』",
+    watchouts: "玩笑選項非 user 事實←assistant_turn[3]:『探險還是在幫我踩點』",
+    suggestedLine: "她的問法像派任務←assistant_turn[3]:『在幫我踩點』",
+    dateChanceReason:
+      "回答/自揭/問句延伸←assistant_turn[3]:『聽過但還沒去過』『探險還是在幫我踩點』",
+    nextInviteMove: "接她玩笑←assistant_turn[3]:『探險還是在幫我踩點』",
+    gameBreakdown:
+      "{店名}←variable；回答/玩笑問句←assistant_turn[3]:『知道啊』『探險還是在幫我踩點』",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 2 }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [wrong, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "P1_OPEN",
+            targetVariable: "familiarity",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先接她的玩笑與問題，不急著邀約。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "source-first-exact-game-unfilled-store-scouting",
+      turns: [
+        {
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+        },
+        { role: "ai", text: "喔？哪家啊 😏" },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text: "知道啊，聽過但還沒去過。\n你這是跑去探險還是在幫我踩點 😏",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-source-first-exact-game",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.card.suggestedLine, safeLine);
+  assertEquals(json.card.gameBreakdown.nextFirstLine, safeLine);
+  assertEquals(json.card.dateChance, "low");
+  assertEquals(json.card.dateChanceReason, safeReason);
+  const serialized = JSON.stringify(json.card);
+  for (const rejected of ["有具體店名", "踩點報告", "尚無延伸"]) {
+    assertEquals(serialized.includes(rejected), false, rejected);
+  }
+  assert(serialized.includes("店名仍是未填"));
+  assert(serialized.includes("玩笑問句延伸"));
+  assertEquals(json.card.suggestedLine.includes("踩點"), false);
+  assertEquals(json.card.suggestedLine.includes("報告"), false);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], "有具體店名");
+  assertGroundingReviewInput(state.claudeCalls[1], badLine);
+  assertGroundingReviewInput(state.claudeCalls[2], "有具體店名");
+  assertGroundingReviewInput(state.claudeCalls[2], badLine);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "{變數} 永遠未填，不證值/經歷/答案",
+    ),
+  );
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("source-first controls preserve grounded present state and scouting facts while allowing extension plus closure", async () => {
+  const beginner = validDebriefJson({
+    summary:
+      "你明說現在很累、靠咖啡撐；她回答大概十二點睡，並說現在要睡、明天再聊。",
+    strengths: ["她實質回答睡覺時間，也留下明天再聊的未來接點。"],
+    watchouts: ["她現在要睡，下一句保持簡短。"],
+    suggestedLine: "晚安，妳先睡，明天聊。",
+    vibe: "暖",
+    dateChance: "low",
+    dateChanceReason:
+      "她實質回答並留下明天再聊的未來接點，是延伸；同時也在收尾，且沒有明示約見。",
+    nextInviteMove: "先簡短收尾，等明天再沿作息話題接續。",
+  });
+  const beginnerCandidateCard = JSON.parse(beginner) as Record<
+    string,
+    unknown
+  >;
+  delete beginnerCandidateCard.hintAssessment;
+  beginnerCandidateCard.gameBreakdown = null;
+  const beginnerCandidate = JSON.stringify(beginnerCandidateCard);
+  const beginnerReview = groundingReviewEnvelope(beginnerCandidate, {
+    summary:
+      "user 現在很累/靠咖啡撐←user_turn[0]:『我現在真的很累，只能靠咖啡撐』；assistant 回答/現在要睡/明天再聊←assistant_turn[1]:『大概十二點吧，我現在要睡了，明天再聊』",
+    strengths:
+      "回答睡覺時間/未來接點←assistant_turn[1]:『大概十二點吧』『明天再聊』",
+    watchouts: "現在要睡←assistant_turn[1]:『我現在要睡了』",
+    suggestedLine:
+      "晚安/先睡/明天聊←assistant_turn[1]:『我現在要睡了，明天再聊』",
+    dateChanceReason:
+      "回答/明天接點/收尾/無約見←assistant_turn[1]:『大概十二點吧，我現在要睡了，明天再聊』",
+    nextInviteMove:
+      "簡短收尾/明天沿作息←assistant_turn[1]:『我現在要睡了，明天再聊』",
+    gameBreakdown: "",
+  });
+  const beginnerRun = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [beginner, beginnerReview, beginnerReview],
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "source-first-control-grounded-current-state-closure",
+      turns: [
+        {
+          role: "user",
+          text: "我現在真的很累，只能靠咖啡撐。妳通常幾點睡？",
+        },
+        { role: "ai", text: "大概十二點吧，我現在要睡了，明天再聊。" },
+      ],
+    }),
+  );
+
+  assertEquals(
+    beginnerRun.response.status,
+    200,
+    JSON.stringify(beginnerRun.json),
+  );
+  const beginnerSerialized = JSON.stringify(beginnerRun.json.card);
+  assert(beginnerSerialized.includes("現在很累"));
+  assert(beginnerSerialized.includes("靠咖啡撐"));
+  assert(beginnerSerialized.includes("是延伸；同時也在收尾"));
+  assertEquals(beginnerRun.json.card.dateChance, "low");
+  assertEquals(beginnerRun.json.fallbackUsed, false);
+  assertEquals(beginnerRun.json.failoverUsed, false);
+  assertEquals(beginnerRun.json.groundingReviewFallbackUsed, false);
+  assertEquals(beginnerRun.state.claudeCalls.length, 3);
+  assertEquals(
+    groundingReviewCandidate(beginnerRun.state.claudeCalls[1]),
+    beginnerCandidate,
+  );
+  assertEquals(
+    groundingReviewCandidate(beginnerRun.state.claudeCalls[2]),
+    groundingReviewCandidate(beginnerRun.state.claudeCalls[1]),
+  );
+
+  const gameLine = "{真實答案}。妳最在意咖啡店哪一點？";
+  const gameCard = JSON.parse(validDebriefJson({
+    summary:
+      "你明確說店名是山嵐咖啡，也說已實際踩點並整理好報告；她回答聽過但沒去過，接著追問報告重點。",
+    strengths: ["具體店名、實際踩點與報告都有逐字稿證據。"],
+    watchouts: ["下一句先用真實答案回她問的報告重點。"],
+    suggestedLine: gameLine,
+    vibe: "暖",
+    dateChance: "low",
+    dateChanceReason:
+      "她實質回答並追問報告內容，已延伸新素材；但沒有明示約見，尚無邀約窗口。",
+    nextInviteMove: "先回答報告重點，再沿她在意的咖啡店條件延伸。",
+  })) as Record<string, unknown>;
+  gameCard.gameBreakdown = {
+    phaseReached: "她回答並追問實際踩點報告",
+    missedVariable: "還缺使用者對報告最推薦哪一點的真實答案",
+    failureState: "她已追問報告內容，下一句要先回答",
+    nextFirstLine: gameLine,
+    inviteDirection: "先回答並延伸偏好，不急著邀約",
+  };
+  const game = JSON.stringify(gameCard);
+  const gameCandidateCard = { ...gameCard };
+  delete gameCandidateCard.hintAssessment;
+  const gameCandidate = JSON.stringify(gameCandidateCard);
+  const gameReview = groundingReviewEnvelope(gameCandidate, {
+    summary:
+      "店名/實際踩點/整理報告←user_turn[0]:『叫山嵐咖啡，我已經實際踩點，也整理好報告』；assistant 回答/追問←assistant_turn[1]:『知道啊，聽過但還沒去過。你報告裡最推哪一點』",
+    strengths:
+      "店名/踩點/報告←user_turn[0]:『山嵐咖啡』『實際踩點』『整理好報告』",
+    watchouts: "回答真實報告重點←assistant_turn[1]:『你報告裡最推哪一點』",
+    suggestedLine:
+      "{真實答案}←variable；問咖啡店重點←assistant_turn[1]:『最推哪一點』",
+    dateChanceReason:
+      "實質回答/追問延伸/無約見←assistant_turn[1]:『聽過但還沒去過。你報告裡最推哪一點』",
+    nextInviteMove:
+      "回答報告後延伸偏好←assistant_turn[1]:『你報告裡最推哪一點』",
+    gameBreakdown:
+      "實際踩點/報告←user_turn[0]；回答/追問←assistant_turn[1]；{真實答案}←variable",
+  });
+  const gameRun = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [game, gameReview, gameReview],
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "source-first-control-grounded-scouting-report",
+      turns: [
+        {
+          role: "user",
+          text: "叫山嵐咖啡，我已經實際踩點，也整理好報告。",
+        },
+        {
+          role: "ai",
+          text: "知道啊，聽過但還沒去過。你報告裡最推哪一點？",
+        },
+      ],
+    }),
+  );
+
+  assertEquals(gameRun.response.status, 200, JSON.stringify(gameRun.json));
+  const gameSerialized = JSON.stringify(gameRun.json.card);
+  for (const grounded of ["山嵐咖啡", "實際踩點", "整理好報告"]) {
+    assert(gameSerialized.includes(grounded), grounded);
+  }
+  assertEquals(gameRun.json.card.suggestedLine, gameLine);
+  assertEquals(gameRun.json.card.gameBreakdown.nextFirstLine, gameLine);
+  assertEquals(gameRun.json.card.dateChance, "low");
+  assertEquals(gameRun.json.fallbackUsed, false);
+  assertEquals(gameRun.json.failoverUsed, false);
+  assertEquals(gameRun.json.groundingReviewFallbackUsed, false);
+  assertEquals(gameRun.state.claudeCalls.length, 3);
+  assertEquals(
+    groundingReviewCandidate(gameRun.state.claudeCalls[1]),
+    gameCandidate,
+  );
+  assertEquals(
+    groundingReviewCandidate(gameRun.state.claudeCalls[2]),
+    groundingReviewCandidate(gameRun.state.claudeCalls[1]),
+  );
+});
+
+Deno.test("source-first controls preserve an explicit refusal and an accepted meeting-time window", async () => {
+  const refusal = validDebriefJson({
+    summary: "你提出週末喝咖啡，她明確拒絕並請你別再問。",
+    strengths: ["你有清楚提出邀約。"],
+    watchouts: ["她已明確拒絕，下一步尊重界線並停止邀約。"],
+    suggestedLine: "收到，我會尊重妳的界線。",
+    vibe: "冷",
+    dateChance: "low",
+    dateChanceReason:
+      "她明確拒絕且要求別再問，雖提供清楚資訊，但沒有正向延伸或邀約窗口。",
+    nextInviteMove: "停止邀約並尊重她的界線。",
+  });
+  const refusalCandidateCard = JSON.parse(refusal) as Record<string, unknown>;
+  delete refusalCandidateCard.hintAssessment;
+  refusalCandidateCard.gameBreakdown = null;
+  const refusalCandidate = JSON.stringify(refusalCandidateCard);
+  const refusalReview = groundingReviewEnvelope(refusalCandidate, {
+    summary:
+      "user 提議週末咖啡←user_turn[0]:『這週末要不要一起喝咖啡』；assistant 拒絕/終止←assistant_turn[1]:『不要，我沒興趣，別再問了』",
+    strengths: "user 清楚提出邀約←user_turn[0]:『這週末要不要一起喝咖啡』",
+    watchouts: "拒絕/界線←assistant_turn[1]:『不要，我沒興趣，別再問了』",
+    suggestedLine: "尊重界線←assistant_turn[1]:『別再問了』",
+    dateChanceReason:
+      "拒絕/無正向延伸/無窗口←assistant_turn[1]:『不要，我沒興趣，別再問了』",
+    nextInviteMove: "停止邀約/尊重界線←assistant_turn[1]:『別再問了』",
+    gameBreakdown: "",
+  });
+  const refusalRun = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [refusal, refusalReview, refusalReview],
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "source-first-control-explicit-refusal",
+      turns: [
+        { role: "user", text: "這週末要不要一起喝咖啡？" },
+        { role: "ai", text: "不要，我沒興趣，別再問了。" },
+      ],
+    }),
+  );
+
+  assertEquals(
+    refusalRun.response.status,
+    200,
+    JSON.stringify(refusalRun.json),
+  );
+  assertEquals(refusalRun.json.card.dateChance, "low");
+  assert(refusalRun.json.card.dateChanceReason.includes("沒有正向延伸"));
+  assert(refusalRun.json.card.nextInviteMove.includes("停止邀約"));
+  assertEquals(refusalRun.json.groundingReviewFallbackUsed, false);
+  assertEquals(refusalRun.state.claudeCalls.length, 3);
+  assertEquals(
+    groundingReviewCandidate(refusalRun.state.claudeCalls[2]),
+    groundingReviewCandidate(refusalRun.state.claudeCalls[1]),
+  );
+
+  const accepted = validDebriefJson({
+    summary: "你邀她週六下午喝咖啡，她明確答應並確認有空。",
+    strengths: ["她明確接受週六下午的約見提議。"],
+    watchouts: ["下一步簡短確認地點，不必再試探意願。"],
+    suggestedLine: "好，那週六下午見。妳比較方便在哪一區？",
+    vibe: "暖",
+    dateChance: "high",
+    dateChanceReason:
+      "她在明確約見脈絡答應，並確認週六下午有空，已有可約時間窗口。",
+    nextInviteMove: "直接確認週六下午的地點與時間。",
+  });
+  const acceptedCandidateCard = JSON.parse(accepted) as Record<
+    string,
+    unknown
+  >;
+  delete acceptedCandidateCard.hintAssessment;
+  acceptedCandidateCard.gameBreakdown = null;
+  const acceptedCandidate = JSON.stringify(acceptedCandidateCard);
+  const acceptedReview = groundingReviewEnvelope(acceptedCandidate, {
+    summary:
+      "user 邀週六下午咖啡←user_turn[0]:『週六下午要不要一起喝咖啡』；assistant 答應/有空←assistant_turn[1]:『可以啊，週六下午有空』",
+    strengths: "接受週六下午約見←assistant_turn[1]:『可以啊，週六下午有空』",
+    watchouts:
+      "確認地點←user_turn[0]/assistant_turn[1]:『一起喝咖啡』『可以啊』",
+    suggestedLine: "週六下午見←assistant_turn[1]:『可以啊，週六下午有空』",
+    dateChanceReason:
+      "約見脈絡答應/可約時間←user_turn[0]:『一起喝咖啡』；assistant_turn[1]:『可以啊，週六下午有空』",
+    nextInviteMove:
+      "確認週六下午地點時間←user_turn[0]/assistant_turn[1]:『週六下午』『可以啊』",
+    gameBreakdown: "",
+  });
+  const acceptedRun = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [accepted, acceptedReview, acceptedReview],
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "source-first-control-accepted-meeting-time",
+      turns: [
+        { role: "user", text: "週六下午要不要一起喝咖啡？" },
+        { role: "ai", text: "可以啊，週六下午有空。" },
+      ],
+    }),
+  );
+
+  assertEquals(
+    acceptedRun.response.status,
+    200,
+    JSON.stringify(acceptedRun.json),
+  );
+  assertEquals(acceptedRun.json.card.dateChance, "high");
+  assert(acceptedRun.json.card.dateChanceReason.includes("可約時間窗口"));
+  assertEquals(acceptedRun.json.groundingReviewFallbackUsed, false);
+  assertEquals(acceptedRun.state.claudeCalls.length, 3);
+  assertEquals(
+    groundingReviewCandidate(acceptedRun.state.claudeCalls[2]),
+    groundingReviewCandidate(acceptedRun.state.claudeCalls[1]),
+  );
+  for (const call of acceptedRun.state.claudeCalls) {
+    assert(
+      claudePrompt(call).includes(
+        "約見脈絡明確給可約時間/共同場景",
+      ),
+    );
+  }
+});
