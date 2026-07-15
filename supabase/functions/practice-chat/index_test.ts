@@ -7641,7 +7641,7 @@ Deno.test("Beginner Debrief repair removes an invented plan before independent v
   );
   assert(
     verificationPrompt.includes(
-      "terminalTurnRole=assistant 時不可批尚未發生的 user 回覆",
+      "terminalTurnRole=assistant 禁批未發生 user 回覆",
     ),
   );
   assert(verificationPrompt.includes("不安全只改上述問題"));
@@ -7760,7 +7760,7 @@ Deno.test("Game Debrief repair removes partner speculation before independent ve
   const verificationPrompt = claudePrompt(state.claudeCalls[2]);
   assert(
     verificationPrompt.includes(
-      "applied Hint 是 user_turn，Hint decision 不提供新 user 事實",
+      "applied Hint=user_turn，Hint decision 不提供 user 事實",
     ),
   );
   assertEquals(state.deepSeekCalls.length, 0);
@@ -8351,7 +8351,7 @@ Deno.test("direct Beginner Debrief reviewer audit removes the latest production 
   assert(releasePrompt.includes('"terminalTurnRole":"assistant"'));
   assert(
     releasePrompt.includes(
-      "terminalTurnRole=assistant 時不可批尚未發生的 user 回覆",
+      "terminalTurnRole=assistant 禁批未發生 user 回覆",
     ),
   );
   assert(releasePrompt.includes("practiceGroundingReleaseAuditorV3"));
@@ -9088,7 +9088,7 @@ Deno.test("Game Debrief release review makes the pasteable line satisfy the exac
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "Game 修改 suggestedLine 時同步 nextFirstLine",
+      "Game 改 suggestedLine 須同步 nextFirstLine",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -9252,7 +9252,7 @@ Deno.test("direct Game Debrief repairs the latest production tasting, timing, an
   assert(releaseAuditPrompt.includes('"terminalTurnRole":"assistant"'));
   assert(
     releaseAuditPrompt.includes(
-      "terminalTurnRole=assistant 時不可批尚未發生的 user 回覆",
+      "terminalTurnRole=assistant 禁批未發生 user 回覆",
     ),
   );
   assertEquals(
@@ -9603,7 +9603,7 @@ Deno.test("direct Game Debrief release review repairs terminal-reply blame and a
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "terminalTurnRole=assistant 時不可批尚未發生的 user 回覆",
+      "terminalTurnRole=assistant 禁批未發生 user 回覆",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -9713,12 +9713,12 @@ Deno.test("direct Game Debrief keeps an applied Hint question attributed to the 
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "applied Hint 是 user_turn，Hint decision 不提供新 user 事實",
+      "applied Hint=user_turn，Hint decision 不提供 user 事實",
     ),
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "Debrief 分析的「你」=user、「她／對方」=assistant",
+      "Debrief 分析：你/user→user；她/對方/assistant→assistant",
     ),
   );
   assert(
@@ -9826,7 +9826,7 @@ Deno.test("direct Beginner Debrief removes a question-only critique when its nex
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "Game 修改 suggestedLine 時同步 nextFirstLine",
+      "Game 改 suggestedLine 須同步 nextFirstLine",
     ),
   );
   assert(
@@ -9971,7 +9971,7 @@ Deno.test("direct Game Debrief preserves an earlier question-only pattern when t
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "terminalTurnRole=assistant 時不可批尚未發生的 user 回覆",
+      "terminalTurnRole=assistant 禁批未發生 user 回覆",
     ),
   );
   assertEquals(
@@ -10137,7 +10137,7 @@ Deno.test("direct Beginner Debrief release review repairs the production adjecti
   const groundedLine = "{真實感受}——妳昨天看到哪集了？";
   const wrong = validDebriefJson({
     summary: "你分享追劇到兩點，她也聊到昨天追劇並問好不好看。",
-    strengths: ["你沿追劇話題問她追什麼劇。"],
+    strengths: ["user 自揭看到天亮，話題有延伸。"],
     watchouts: ["他問你好不好看，下一步要接住。"],
     suggestedLine: unsupportedLine,
     vibe: "暖",
@@ -10148,7 +10148,7 @@ Deno.test("direct Beginner Debrief release review repairs the production adjecti
   const firstReview = groundingReviewEnvelope(wrong, {
     summary:
       "追劇到兩點←user_turn[0]:『昨晚追劇追到兩點』；她看重啟人生到天亮←assistant_turn[3]:『《重啟人生》』『看到天亮』",
-    strengths: "問她追什麼劇←user_turn[2]:『你追什麼劇可以讓人熬到兩點？』",
+    strengths: "user 自揭看到天亮←assistant_turn[3]:『看到天亮』",
     watchouts: "他問好不好看←assistant_turn[3]:『你那個好看嗎？』",
     suggestedLine:
       "好看←assistant_turn[3]:『你那個好看嗎？』；{真實感受}←variable；妳昨天看到哪集←future_question",
@@ -10158,7 +10158,7 @@ Deno.test("direct Beginner Debrief release review repairs the production adjecti
   });
   const repaired = validDebriefJson({
     summary: "你分享追劇到兩點，她也聊到昨天追劇並問好不好看。",
-    strengths: ["你沿追劇話題問她追什麼劇。"],
+    strengths: ["她分享看到天亮，話題有延伸。"],
     watchouts: ["她問你好不好看；下一句先填真實感受。"],
     suggestedLine: groundedLine,
     vibe: "暖",
@@ -10169,7 +10169,7 @@ Deno.test("direct Beginner Debrief release review repairs the production adjecti
   const finalReview = groundingReviewEnvelope(repaired, {
     summary:
       "追劇到兩點←user_turn[0]:『昨晚追劇追到兩點』；她看重啟人生到天亮←assistant_turn[3]:『《重啟人生》』『看到天亮』",
-    strengths: "問她追什麼劇←user_turn[2]:『你追什麼劇可以讓人熬到兩點？』",
+    strengths: "她分享看到天亮←assistant_turn[3]:『看到天亮』",
     watchouts: "她問好不好看←assistant_turn[3]:『你那個好看嗎？』",
     suggestedLine: "{真實感受}←variable；妳昨天看到哪集←future_question",
     dateChanceReason: "沒有見面窗口←assistant_turn[3]:『你那個好看嗎？』",
@@ -10229,6 +10229,9 @@ Deno.test("direct Beginner Debrief release review repairs the production adjecti
   assertEquals(json.card.watchouts, [
     "她問你好不好看；下一句先填真實感受。",
   ]);
+  assertEquals(json.card.strengths, [
+    "她分享看到天亮，話題有延伸。",
+  ]);
   assertEquals(
     json.card.nextInviteMove,
     "先填真實感受接她的問題，再問她昨天看到哪集。",
@@ -10236,6 +10239,10 @@ Deno.test("direct Beginner Debrief release review repairs the production adjecti
   assertEquals(JSON.stringify(json.card).includes("好看啊"), false);
   assertEquals(JSON.stringify(json.card).includes("他問"), false);
   assertEquals(JSON.stringify(json.card).includes("他的問題"), false);
+  assertEquals(
+    JSON.stringify(json.card).includes("user 自揭看到天亮"),
+    false,
+  );
   assertEquals(json.fallbackUsed, false);
   assertEquals(json.failoverUsed, false);
   assertEquals(json.groundingReviewFallbackUsed, false);
@@ -10269,6 +10276,11 @@ Deno.test("direct Beginner Debrief release review repairs the production adjecti
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
       "過去／現在須同承諾者完整直證",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "Debrief 分析：你/user→user；她/對方/assistant→assistant",
     ),
   );
   assertEquals(

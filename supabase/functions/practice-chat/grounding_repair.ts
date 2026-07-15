@@ -345,7 +345,7 @@ ${releasePasteablePriority}
 
 其餘只做三件事：
 1. 變數／未答：先審 terminal 答案。末則 assistant 問 user（肯否／評價／推薦；無論標點），僅當全部直證無同 owner 同命題明答，答案才未知；較早相容行為非回答，明說「這部我超推」才可答「超推」。答案只留單一 {真實答案} 或避答，再接無前提反問。只說追到兩點不證「有推嗎」；「超推」改「{真實答案}」。她的問／猜測／吐槽／評價／條件只證她說過；未知禁改成忘記／不知道／沒記住／沒去過／不確定／感官評價，{變數}無值。問句前提非 user 事實，不可替 literal 變數選分支；前提/被問值分開核。{真實答案}須獨立取代未知答案子句，前後禁未證命題；「喝了{真實答案}」「紅玉拿鐵{真實答案}」「{真實答案}，你這樣問我有點壓力」均改「{真實答案}」。user 只有「{有／沒有}進去」時，她問豆子不證進店/喝過。槽型明確才可「叫{店名}」或「{有／沒有}進去喝」；一槽一值。
-2. 角色／跨欄：Debrief 分析的「你」=user、「她／對方」=assistant；Hint coaching 她說/丟X只認 assistant_turn。其他欄只掃角色顛倒、無據事實、打臉 Hint、批未發生回覆；不重做品質。applied Hint 是 user_turn，Hint decision 不提供新 user 事實；terminalTurnRole=assistant 時不可批尚未發生的 user 回覆；Game 修改 suggestedLine 時同步 nextFirstLine。
+2. 角色／跨欄：Debrief 分析：你/user→user；她/對方/assistant→assistant；Hint coaching 她說/丟X只認 assistant_turn。其他欄只掃角色顛倒、無據事實、打臉 Hint、批未發生回覆。applied Hint=user_turn，Hint decision 不提供 user 事實；terminalTurnRole=assistant 禁批未發生 user 回覆；Game 改 suggestedLine 須同步 nextFirstLine。
 3. 輸出：安全字串逐字不動；不安全只改上述問題。輸出完整原 candidate 的全部 keys/types；不增刪欄位、不潤飾、不重決定 vibe/dateChance。
 
 audit 的 ${auditFields} 每欄只寫 OK 或 FIX:<一句>。只輸出一個 {audit,candidate} JSON object；不要 markdown、說明、verdict 或 issues。`;

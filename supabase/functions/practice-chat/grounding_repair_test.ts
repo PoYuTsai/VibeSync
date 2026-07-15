@@ -322,7 +322,7 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   );
   assertStringIncludes(
     messages[0].content,
-    "Debrief 分析的「你」=user、「她／對方」=assistant",
+    "Debrief 分析：你/user→user；她/對方/assistant→assistant",
   );
   assertStringIncludes(
     messages[0].content,
@@ -367,19 +367,19 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   assertStringIncludes(messages[0].content, "{變數}無值");
   assertStringIncludes(
     messages[0].content,
-    "applied Hint 是 user_turn",
+    "applied Hint=user_turn",
   );
   assertStringIncludes(
     messages[0].content,
-    "Hint decision 不提供新 user 事實",
+    "Hint decision 不提供 user 事實",
   );
   assertStringIncludes(
     messages[0].content,
-    "terminalTurnRole=assistant 時不可批尚未發生的 user 回覆",
+    "terminalTurnRole=assistant 禁批未發生 user 回覆",
   );
   assertStringIncludes(
     messages[0].content,
-    "Game 修改 suggestedLine 時同步 nextFirstLine",
+    "Game 改 suggestedLine 須同步 nextFirstLine",
   );
   assertStringIncludes(
     messages[0].content,
