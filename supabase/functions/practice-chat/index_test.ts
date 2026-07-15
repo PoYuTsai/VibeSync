@@ -7388,7 +7388,7 @@ Deno.test("Hint repair removes partner speculation before independent verificati
   assert(firstVerificationPrompt.includes("只證明她說過，不是 user 證據"));
   assert(
     verificationPrompt.includes(
-      "其他問／挑戰／猜測／玩笑／條件只證她說過",
+      "她的問／猜測／吐槽／評價／條件只證她說過",
     ),
   );
   assert(firstVerificationPrompt.includes("自行肯定/否定"));
@@ -7633,7 +7633,7 @@ Deno.test("Beginner Debrief repair removes an invented plan before independent v
   assert(verificationPrompt.includes("trustedUserFacts"));
   assert(
     verificationPrompt.includes(
-      "每個過去／現在命題都要由同 owner 直證完整蘊含",
+      "過去／現在須同承諾者完整直證",
     ),
   );
   assert(
@@ -8634,7 +8634,7 @@ Deno.test("Beginner Debrief first review repairs extension denial and release ch
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "每個過去／現在命題都要由同 owner 直證完整蘊含",
+      "過去／現在須同承諾者完整直證",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -8943,7 +8943,7 @@ Deno.test("production round-one Game release preserves a conditional recommendat
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "每個過去／現在命題都要由同 owner 直證完整蘊含",
+      "過去／現在須同承諾者完整直證",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -10268,7 +10268,7 @@ Deno.test("direct Beginner Debrief release review repairs the production adjecti
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "每個過去／現在命題都要由同 owner 直證完整蘊含",
+      "過去／現在須同承諾者完整直證",
     ),
   );
   assertEquals(
@@ -10410,7 +10410,7 @@ Deno.test("direct Game Debrief release review keeps a question from becoming kno
   assert(claudePrompt(state.claudeCalls[1]).includes("早班待確認"));
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "其他問／挑戰／猜測／玩笑／條件只證她說過",
+      "她的問／猜測／吐槽／評價／條件只證她說過",
     ),
   );
   assertEquals(
@@ -13710,9 +13710,9 @@ Deno.test("fresh production Beginner release removes unsupported hot-food stance
   );
   for (
     const releaseRule of [
-      "貼句無主詞／泛稱評價",
-      "熱天吃熱食太折磨」算 user 立場",
-      "保留 owner 的忠實改述可留",
+      "貼句泛評（熱食太折磨）",
+      "認同她對 user 的評價都算 user 立場",
+      "忠實改述她可留",
     ]
   ) {
     assert(claudePrompt(state.claudeCalls[2]).includes(releaseRule));
@@ -14647,6 +14647,123 @@ Deno.test("fresh production Game release removes exact variable suffix and colle
     groundingReviewCandidate(state.claudeCalls[2]),
     groundingReviewCandidate(state.claudeCalls[1]),
   );
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("fresh production Game release removes an invented sensory ability self-claim", async () => {
+  const badLine =
+    "哈，我鼻子確實靈。妳說的「太雷」是什麼等級的雷？";
+  const safeLine = "哈，妳說的「太雷」是什麼等級的雷？";
+  const wrongCard = JSON.parse(validDebriefJson({
+    summary: "她接住咖啡話題，吐槽你鼻子靈並分享踩店標準。",
+    strengths: ["她用玩笑接住聞香話題，並提供自己的新店習慣。"],
+    watchouts: [
+      "「你鼻子太靈」是她的玩笑評價，不是 user 能力直證。",
+      "下一句可接她明說的雷店標準。",
+    ],
+    suggestedLine: badLine,
+    vibe: "中性",
+    dateChance: "low",
+    dateChanceReason: "只有一輪輕鬆來回，沒有約見訊號。",
+    nextInviteMove: "先聊她的雷店標準，暫不邀約。",
+  })) as Record<string, unknown>;
+  wrongCard.gameBreakdown = {
+    phaseReached: "開場資訊交換，她分享自己的踩店標準。",
+    missedVariable: "她認定雷店的具體標準。",
+    failureState: "球在 user 手上，尚未接她提供的新素材。",
+    nextFirstLine: badLine,
+    inviteDirection: "先聊雷店標準，累積共同話語。",
+  };
+  const wrong = JSON.stringify(wrongCard);
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "OK",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "OK",
+  });
+  const repairedCard = structuredClone(wrongCard);
+  repairedCard.suggestedLine = safeLine;
+  (repairedCard.gameBreakdown as Record<string, unknown>).nextFirstLine =
+    safeLine;
+  const repaired = JSON.stringify(repairedCard);
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "FIX: partner 評價不證 user 自認感官能力",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "FIX: Game 貼句同步",
+  });
+  const userTurn = "剛剛路過一家新咖啡店 聞起來很香";
+  const assistantTurn =
+    "香到路過都聞到，你鼻子也太靈了吧XD\n我喔～新店會去，但太雷的踩過一次就不會再去了。";
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [wrong, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "P1_OPEN",
+            targetVariable: "familiarity",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先沿咖啡話題建立熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "fresh-prod-game-invented-sensory-self-claim",
+      turns: [
+        { role: "user", text: userTurn },
+        { role: "ai", text: assistantTurn },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  const expectedCard = structuredClone(repairedCard);
+  delete expectedCard.hintAssessment;
+  assertEquals(json.card, expectedCard);
+  assertEquals(json.card.suggestedLine, safeLine);
+  assertEquals(json.card.gameBreakdown.nextFirstLine, safeLine);
+  assert(json.card.suggestedLine.startsWith("哈，"));
+  assert(json.card.suggestedLine.includes("妳說的「太雷」是什麼等級的雷？"));
+  assertEquals(json.card.suggestedLine.includes("我鼻子確實靈"), false);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], badLine);
+  assertGroundingReviewInput(state.claudeCalls[2], badLine);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  assert(claudePrompt(state.claudeCalls[1]).includes("practiceGroundingReviewerV3"));
+  const releasePrompt = claudePrompt(state.claudeCalls[2]);
+  assert(releasePrompt.includes("practiceGroundingReleaseAuditorV3"));
+  assert(releasePrompt.includes("被評者非 owner"));
+  assert(releasePrompt.includes("你鼻子太靈」≠user 自認鼻子靈"));
+  assert(releasePrompt.includes("認同她對 user 的評價都算 user 立場"));
+  assert(releasePrompt.includes(userTurn));
+  assert(releasePrompt.includes("香到路過都聞到，你鼻子也太靈了吧XD"));
+  assert(releasePrompt.includes("太雷的踩過一次就不會再去了"));
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
