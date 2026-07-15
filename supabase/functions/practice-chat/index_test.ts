@@ -13586,6 +13586,146 @@ Deno.test("fresh production Beginner release leaves an unanswered work status un
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
+Deno.test("fresh production Beginner release removes unsupported hot-food stances", async () => {
+  const appliedHint =
+    "《{劇名}》啦，結果就熬到兩點了😅 你剛忙完，出去找什麼吃？";
+  const badLine =
+    "涼麵是對的選擇，熱天吃熱食太折磨😅 你有固定愛去的那種店嗎？";
+  const safeLine = "原來你要找涼麵😅 你有固定愛去的那種店嗎？";
+  const wrongCard = JSON.parse(validDebriefJson({
+    summary: "她接住追劇話題，並分享今天要找涼麵吃。",
+    strengths: [
+      "用追劇到兩點的生活片段開場，讓她有話可接。",
+      "照 Hint 回問她要吃什麼，維持自然來回。",
+    ],
+    watchouts: [
+      "使用者沒有表達對涼麵或熱食的評價。",
+      "關係仍淺，繼續從她已分享的內容延伸即可。",
+    ],
+    suggestedLine: badLine,
+    vibe: "冷",
+    dateChance: "low",
+    dateChanceReason: "她有回應但沒有具體約見訊號，關係仍淺。",
+    nextInviteMove: "沿她要吃涼麵的資訊延伸，暫不邀約。",
+  })) as Record<string, unknown>;
+  const wrong = JSON.stringify(wrongCard);
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "OK",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "OK",
+  });
+  const repairedCard = structuredClone(wrongCard);
+  repairedCard.suggestedLine = safeLine;
+  const repaired = JSON.stringify(repairedCard);
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "FIX: 無主詞飲食評價沒有同 owner 直證",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "OK",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger({ ai_count: 2 }),
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [wrong, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "building_familiarity",
+            targetVariable: "安全感與熟悉感",
+            move: "build_connection",
+            inviteRoute: "not_ready",
+            rationale: "先沿追劇與飲食話題建立熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "beginner",
+      requestId: "fresh-prod-beginner-hot-food-stance",
+      turns: [
+        {
+          role: "user",
+          text: "早安，我昨晚追劇追到兩點，現在腦袋還沒開機 😂",
+        },
+        {
+          role: "ai",
+          text: "早😂 你追哪部，有這麼好看？\n我剛忙完，正想出去找吃的。",
+        },
+        { role: "user", text: appliedHint },
+        {
+          role: "ai",
+          text:
+            "天啊你太扯😂\n應該蠻好看的吧？\n我喔，隨便找個涼麵吃，天氣熱到沒胃口。",
+        },
+      ],
+      appliedHintTurns: [{
+        turnIndex: 2,
+        type: "steady",
+        originalHintText: appliedHint,
+        sentText: appliedHint,
+        exact: true,
+        hintRequestId: "hint-fresh-prod-beginner-hot-food-stance",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  const expectedCard = structuredClone(repairedCard);
+  delete expectedCard.hintAssessment;
+  expectedCard.gameBreakdown = null;
+  assertEquals(json.card, expectedCard);
+  assertEquals(json.card.suggestedLine, safeLine);
+  assert(json.card.suggestedLine.includes("原來你要找涼麵"));
+  assert(json.card.suggestedLine.includes("你有固定愛去的那種店嗎？"));
+  assertEquals(json.card.suggestedLine.includes("涼麵是對的選擇"), false);
+  assertEquals(json.card.suggestedLine.includes("熱天吃熱食太折磨"), false);
+  assertEquals(json.card.suggestedLine.includes("{真實答案}"), false);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], badLine);
+  assertGroundingReviewInput(state.claudeCalls[2], badLine);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[1]).includes(
+      "practiceGroundingReviewerV3",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "practiceGroundingReleaseAuditorV3",
+    ),
+  );
+  for (
+    const releaseRule of [
+      "貼句無主詞／泛稱評價",
+      "熱天吃熱食太折磨」算 user 立場",
+      "保留 owner 的忠實改述可留",
+    ]
+  ) {
+    assert(claudePrompt(state.claudeCalls[2]).includes(releaseRule));
+  }
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
 Deno.test("fresh production Beginner release removes an unanswered recommendation stance", async () => {
   const appliedHint =
     "我追《{劇名}》追到兩點，現在腦袋整個還沒回來 😂 你都這時候才吃東西嗎";
