@@ -30,6 +30,9 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_dialog.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
+import '../../../analysis/data/providers/analysis_record_providers.dart';
+import '../../../analysis/domain/entities/analysis_record.dart';
+import '../../../analysis/presentation/screens/partner_analysis_records_screen.dart';
 import '../../../analysis_history/data/providers/analysis_history_providers.dart';
 import '../../../conversation/data/providers/conversation_archive_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
@@ -119,6 +122,11 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
       entryFor: archiveStore.entryFor,
       latestAnalysisAtFor: latestAnalysisAtFor,
     );
+    final analysisRecordOwner = ref.watch(analysisRecordOwnerProvider)?.trim();
+    final archivedAnalysisRecords = _listArchivedAnalysisRecords(
+      conversations: conversations,
+      ownerUserId: analysisRecordOwner,
+    );
     final partners = ref.watch(partnerListProvider);
     final hasOtherPartner = partners.any((p) => p.id != partnerId);
 
@@ -141,6 +149,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
         partner: partner,
         dataQualityFlag: dataQualityFlag,
         hasOtherPartner: hasOtherPartner,
+        archivedAnalysisCount: archivedAnalysisRecords.length,
       );
     }
 
@@ -158,6 +167,15 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
           style: const TextStyle(color: AppColors.onBackgroundPrimary),
         ),
         actions: [
+          AnalysisRecordsEntryButton(
+            key: const ValueKey('partner-analysis-records-entry'),
+            archivedCount: archivedAnalysisRecords.length,
+            onPressed: () => _openPartnerAnalysisRecords(
+              partner: partner,
+              conversations: conversations,
+              archivedConversationCount: conversationSections.archived.length,
+            ),
+          ),
           IconButton(
             tooltip: '對象設定',
             onPressed: () => _onEditPartnerSettings(context, ref, partner),
@@ -339,12 +357,81 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
     );
   }
 
+  List<AnalysisRecord> _listArchivedAnalysisRecords({
+    required List<Conversation> conversations,
+    required String? ownerUserId,
+  }) {
+    final owner = ownerUserId?.trim();
+    if (owner == null || owner.isEmpty || conversations.isEmpty) {
+      return const [];
+    }
+    return ref.read(analysisRecordStoreProvider).listArchived(
+          ownerUserId: owner,
+          conversationIds: conversations.map((conversation) => conversation.id),
+        );
+  }
+
+  Future<void> _openPartnerAnalysisRecords({
+    required Partner partner,
+    required List<Conversation> conversations,
+    required int archivedConversationCount,
+  }) async {
+    final ownerUserId = ref.read(analysisRecordOwnerProvider)?.trim();
+    final store = ref.read(analysisRecordStoreProvider);
+    final records = _listArchivedAnalysisRecords(
+      conversations: conversations,
+      ownerUserId: ownerUserId,
+    );
+    final metVia = ownerUserId == null || ownerUserId.isEmpty
+        ? null
+        : store.partnerMetVia(
+            ownerUserId: ownerUserId,
+            partnerId: partner.id,
+          );
+
+    final action = await showPartnerAnalysisRecordsSheet(
+      context,
+      subjectName: partner.name,
+      records: records,
+      metVia: metVia,
+      platformForRecord: (record) => record.sourcePlatform,
+      archivedConversationCount: archivedConversationCount,
+      onSetMetVia: ownerUserId == null || ownerUserId.isEmpty
+          ? null
+          : (platform) async {
+              final saved = await store.setPartnerMetVia(
+                ownerUserId: ownerUserId,
+                partnerId: partner.id,
+                sourcePlatform: platform,
+              );
+              if (!saved) throw StateError('met-via write rejected');
+            },
+      onDelete: ownerUserId == null || ownerUserId.isEmpty
+          ? null
+          : (record) async {
+              final deleted = await store.deleteRecord(
+                ownerUserId: ownerUserId,
+                conversationId: record.conversationId,
+                recordId: record.id,
+              );
+              if (!deleted) throw StateError('record delete rejected');
+            },
+    );
+
+    if (!mounted) return;
+    if (action == PartnerAnalysisRecordsSheetAction.openArchivedConversations) {
+      await context.push('/partner/${partner.id}/analysis-archive');
+    }
+    if (mounted) setState(() {});
+  }
+
   Widget _buildEmptyStateScaffold({
     required BuildContext context,
     required WidgetRef ref,
     required Partner partner,
     required DataQualityFlag dataQualityFlag,
     required bool hasOtherPartner,
+    required int archivedAnalysisCount,
   }) {
     final partnerId = partner.id;
     const conversations = <Conversation>[];
@@ -361,6 +448,15 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
           style: const TextStyle(color: AppColors.onBackgroundPrimary),
         ),
         actions: [
+          AnalysisRecordsEntryButton(
+            key: const ValueKey('partner-analysis-records-entry'),
+            archivedCount: archivedAnalysisCount,
+            onPressed: () => _openPartnerAnalysisRecords(
+              partner: partner,
+              conversations: conversations,
+              archivedConversationCount: 0,
+            ),
+          ),
           IconButton(
             tooltip: '對象設定',
             onPressed: () => _onEditPartnerSettings(context, ref, partner),
@@ -561,15 +657,6 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                   confirmDeleteConversation(context, ref, conversation),
             ),
           ),
-        ),
-      if (sections.archived.isNotEmpty)
-        OutlinedButton.icon(
-          key: const ValueKey('partner-analysis-archive-entry'),
-          onPressed: () => context.push(
-            '/partner/${widget.partnerId}/analysis-archive',
-          ),
-          icon: const Icon(Icons.inventory_2_outlined),
-          label: Text('已收起的對話 (${sections.archived.length})'),
         ),
     ];
   }

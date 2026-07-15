@@ -110,5 +110,6 @@ void main() {
 
     expect(longRecord.previewText, endsWith('…'));
     expect(longRecord.previewText, isNot(contains('我的回覆')));
+    expect(longRecord.archiveTitle, startsWith('她說：「'));
   });
 }

@@ -42,6 +42,7 @@ import '../../../follow_up_notification/data/providers/follow_up_notification_se
 import '../../../follow_up_notification/domain/follow_up_opt_in.dart';
 import '../../../follow_up_notification/presentation/soft_opt_in_card.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
+import '../../../partner/presentation/utils/conversation_archive_sections.dart';
 import '../../data/providers/analysis_record_providers.dart';
 import '../../data/providers/analysis_providers.dart';
 import '../../../conversation/data/services/memory_service.dart';
@@ -181,6 +182,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   int _analysisPersistenceInFlight = 0;
   bool _analysisRecordNeedsRepair = false;
   Future<void>? _analysisRecordRepairFuture;
+  String? _analysisArchiveCountScopeKey;
+  int _analysisArchiveCount = 0;
   Map<String, dynamic>? _lastAiResponse; // 儲存最後的 AI 回應
 
   /// 批2：本輪分析結果的 outcome 關聯鍵。AnalysisResult 無穩定 id
@@ -1377,20 +1380,64 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
   }
 
+  List<Conversation> _analysisArchiveConversations(
+    Conversation conversation,
+  ) {
+    final partnerId = conversation.partnerId?.trim();
+    return partnerId == null || partnerId.isEmpty
+        ? <Conversation>[conversation]
+        : ref.read(conversationsByPartnerProvider(partnerId));
+  }
+
+  List<AnalysisRecord> _archivedAnalysisRecordsFor(
+    Conversation conversation,
+  ) {
+    final ownerUserId = _analysisRecordOwner(conversation);
+    if (ownerUserId == null) return const [];
+    return ref.read(analysisRecordStoreProvider).listArchived(
+          ownerUserId: ownerUserId,
+          conversationIds: _analysisArchiveConversations(conversation)
+              .map((item) => item.id),
+        );
+  }
+
+  int _archivedAnalysisRecordCountFor(Conversation conversation) {
+    final ownerUserId = _analysisRecordOwner(conversation);
+    if (ownerUserId == null) {
+      _analysisArchiveCountScopeKey = null;
+      _analysisArchiveCount = 0;
+      return 0;
+    }
+    final conversationIds = _analysisArchiveConversations(conversation)
+        .map((item) => item.id)
+        .toList(growable: false);
+    final scopeKey = '$ownerUserId|${conversationIds.join(',')}';
+    if (_analysisArchiveCountScopeKey != scopeKey) {
+      _analysisArchiveCountScopeKey = scopeKey;
+      _analysisArchiveCount = ref
+          .read(analysisRecordStoreProvider)
+          .listArchived(
+            ownerUserId: ownerUserId,
+            conversationIds: conversationIds,
+          )
+          .length;
+    }
+    return _analysisArchiveCount;
+  }
+
+  void _invalidateAnalysisArchiveCount() {
+    _analysisArchiveCountScopeKey = null;
+  }
+
   Future<void> _openPartnerAnalysisRecords(
     Conversation conversation,
   ) async {
     final ownerUserId = _analysisRecordOwner(conversation);
     if (ownerUserId == null) return;
     final partnerId = conversation.partnerId?.trim();
-    final conversations = partnerId == null || partnerId.isEmpty
-        ? <Conversation>[conversation]
-        : ref.read(conversationsByPartnerProvider(partnerId));
+    final conversations = _analysisArchiveConversations(conversation);
     final store = ref.read(analysisRecordStoreProvider);
-    final records = store.listArchived(
-      ownerUserId: ownerUserId,
-      conversationIds: conversations.map((item) => item.id),
-    );
+    final records = _archivedAnalysisRecordsFor(conversation);
     final partner = partnerId == null || partnerId.isEmpty
         ? null
         : ref.read(partnerRepositoryProvider).getById(partnerId);
@@ -1400,40 +1447,58 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             ownerUserId: ownerUserId,
             partnerId: partnerId,
           );
-
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => PartnerAnalysisRecordsScreen(
-          subjectName: partner?.name ?? conversation.name,
-          records: records,
-          metVia: metVia,
-          platformForRecord: (record) => record.sourcePlatform,
-          onSetMetVia: partnerId == null || partnerId.isEmpty
-              ? null
-              : (platform) async {
-                  final saved = await store.setPartnerMetVia(
-                    ownerUserId: ownerUserId,
-                    partnerId: partnerId,
-                    sourcePlatform: platform,
-                  );
-                  if (!saved) throw StateError('met-via write rejected');
-                },
-          onDelete: (record) async {
-            final deleted = await store.deleteRecord(
-              ownerUserId: ownerUserId,
-              conversationId: record.conversationId,
-              recordId: record.id,
-            );
-            if (!deleted) throw StateError('record delete rejected');
-          },
-        ),
-      ),
+    final archiveStore = ref.read(conversationArchiveStoreProvider);
+    final latestAnalysisAtFor = createLazyLatestAnalyzeAtLookup(
+      () => ref.read(analysisHistoryRepositoryProvider),
     );
+    final archivedConversationCount = partnerId == null || partnerId.isEmpty
+        ? 0
+        : partitionConversationsByArchive(
+            conversations,
+            entryFor: archiveStore.entryFor,
+            latestAnalysisAtFor: latestAnalysisAtFor,
+          ).archived.length;
+
+    final action = await showPartnerAnalysisRecordsSheet(
+      context,
+      subjectName: partner?.name ?? conversation.name,
+      records: records,
+      metVia: metVia,
+      platformForRecord: (record) => record.sourcePlatform,
+      archivedConversationCount: archivedConversationCount,
+      onSetMetVia: partnerId == null || partnerId.isEmpty
+          ? null
+          : (platform) async {
+              final saved = await store.setPartnerMetVia(
+                ownerUserId: ownerUserId,
+                partnerId: partnerId,
+                sourcePlatform: platform,
+              );
+              if (!saved) throw StateError('met-via write rejected');
+            },
+      onDelete: (record) async {
+        final deleted = await store.deleteRecord(
+          ownerUserId: ownerUserId,
+          conversationId: record.conversationId,
+          recordId: record.id,
+        );
+        if (!deleted) throw StateError('record delete rejected');
+      },
+    );
+
+    if (!mounted) return;
+    _invalidateAnalysisArchiveCount();
+    if (action == PartnerAnalysisRecordsSheetAction.openArchivedConversations &&
+        partnerId != null &&
+        partnerId.isNotEmpty) {
+      await context.push('/partner/$partnerId/analysis-archive');
+    }
     if (mounted) setState(() {});
   }
 
   Widget _buildConversationSourcePill(Conversation conversation) {
-    final source = _conversationAnalysisSource(conversation) ?? '未分類';
+    final source = _conversationAnalysisSource(conversation);
+    final sourceLabel = source == null ? '來源未設定' : '來源：$source';
     final canEdit = _analysisRecordOwner(conversation) != null &&
         !_isAnalyzing &&
         _analysisPersistenceInFlight == 0;
@@ -1460,7 +1525,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 96),
                 child: Text(
-                  '來源：$source',
+                  sourceLabel,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.caption.copyWith(
@@ -1984,6 +2049,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         );
         return false;
       }
+      _invalidateAnalysisArchiveCount();
       if (mounted) setState(() {});
       return true;
     } catch (error) {
@@ -5940,10 +6006,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         onPressed: _cleanupAndGoBack,
       ),
       actions: [
-        IconButton(
+        AnalysisRecordsEntryButton(
           key: const ValueKey('analysis-records-entry'),
-          icon: const Icon(Icons.inventory_2_outlined),
-          tooltip: '分析紀錄',
+          archivedCount: _archivedAnalysisRecordCountFor(conversation),
           onPressed: () => _openPartnerAnalysisRecords(conversation),
         ),
         PopupMenuButton<_AnalysisAppBarAction>(

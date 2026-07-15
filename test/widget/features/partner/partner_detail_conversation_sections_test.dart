@@ -1,6 +1,7 @@
 // 對象頁對話分流（Bruce 回饋 follow-up）：
 // - active 只留「目前對話」。
-// - analysisCompleted 進獨立「已收起的對話」入口，不再與新對話混排。
+// - analysisCompleted 不再與新對話混排。
+// - 已收起對話降為右上分析紀錄抽屜內的次入口。
 // Hermetic：provider/store 全 override，不碰 Hive。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -146,7 +147,7 @@ Widget _host(
 
 void main() {
   group('對象頁目前對話／已收起的對話分流', () {
-    testWidgets('active 留在頁面、archived 只顯示已收起的對話入口', (tester) async {
+    testWidgets('active 留在頁面、archived 收進分析紀錄抽屜次入口', (tester) async {
       final active = _conv('active');
       final archived = _conv('archived');
       final store = _MemoryArchiveStore();
@@ -159,11 +160,29 @@ void main() {
 
       expect(find.text('目前對話'), findsOneWidget);
       expect(find.byType(PartnerConversationTile), findsOneWidget);
-      expect(find.text('已收起的對話 (1)'), findsOneWidget);
+      expect(find.text('已收起的對話 (1)'), findsNothing);
       expect(find.textContaining('較早的對話'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('partner-analysis-records-entry')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('partner-analysis-records-entry')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Alice 的分析紀錄'), findsOneWidget);
+      expect(find.text('已收起的對話 1'), findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey('archived-conversations-secondary-entry'),
+        ),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('全部已分析時不留混排 tile，顯示清楚空狀態與紀錄入口', (tester) async {
+    testWidgets('全部已分析時不留混排 tile，次入口顯示正確數量', (tester) async {
       final first = _conv('first');
       final second = _conv('second');
       final store = _MemoryArchiveStore();
@@ -177,10 +196,23 @@ void main() {
 
       expect(find.byType(PartnerConversationTile), findsNothing);
       expect(find.text('目前沒有待整理的對話'), findsOneWidget);
-      expect(find.text('已收起的對話 (2)'), findsOneWidget);
+      expect(find.text('已收起的對話 (2)'), findsNothing);
+
+      await tester.tap(
+        find.byKey(const ValueKey('partner-analysis-records-entry')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('已收起的對話 2'), findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey('archived-conversations-secondary-entry'),
+        ),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('全部 active 時不顯示空的已收起對話入口', (tester) async {
+    testWidgets('全部 active 時抽屜不顯示空的已收起對話入口', (tester) async {
       final store = _MemoryArchiveStore();
       await tester.binding.setSurfaceSize(const Size(400, 1600));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -189,6 +221,19 @@ void main() {
 
       expect(find.byType(PartnerConversationTile), findsNWidgets(2));
       expect(find.textContaining('已收起的對話 ('), findsNothing);
+
+      await tester.tap(
+        find.byKey(const ValueKey('partner-analysis-records-entry')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('已收起的對話'), findsNothing);
+      expect(
+        find.byKey(
+          const ValueKey('archived-conversations-secondary-entry'),
+        ),
+        findsNothing,
+      );
     });
   });
 }

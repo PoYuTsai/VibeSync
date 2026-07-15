@@ -649,6 +649,9 @@
 6. 使用者只能手動刪除 archived record；conversation 刪除時 cascade 清該 conversation 的 records/state/source。partner `metVia` 不因刪一條 conversation 而消失，並跟隨 partner merge／delete lifecycle。
 7. 原有整段 conversation archive 保留，但使用者名稱改成「已收起的對話」，避免和新「分析紀錄」混淆。
 8. 本案不改 AI request messages、prompt、Edge schema、quota 或 billing；紀錄資料不回流成模型輸入。
+9. 對象頁右上封存圖示是分析紀錄的主要入口；分析頁保留同一入口作捷徑。「已收起的對話」降為封存抽屜內的次入口，不再佔用對象頁主內容。
+10. `sourcePlatform == null` 的紀錄保留在「全部」，但 UI 不顯示「未分類」badge／filter，也不得由 `metVia` 或 OCR 猜測。只有至少兩種已知平台時才顯示平台篩選。
+11. 清單不常駐顯示刪除；點入唯讀快照後才可從右上管理選單刪除。詳情必須讀 frozen messages／AI snapshot，不重新分析，並保留回覆引用脈絡。
 
 **後果**:
 

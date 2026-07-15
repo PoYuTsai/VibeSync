@@ -49,15 +49,30 @@ class AnalysisRecord {
   final int enthusiasmScore;
   final String gameStageLabel;
 
-  String get previewText {
+  AnalysisRecordMessage? get _previewMessage {
     final incoming = messages.where((message) => !message.isFromMe);
-    final source = incoming.isNotEmpty
-        ? incoming.last.content
-        : messages.lastOrNull?.content;
+    return incoming.isNotEmpty ? incoming.last : messages.lastOrNull;
+  }
+
+  String get previewText {
+    final source = _previewMessage?.content;
     final normalized =
         (source ?? '這次分析').replaceAll(RegExp(r'\s+'), ' ').trim();
     if (normalized.length <= 32) return normalized;
     return '${normalized.substring(0, 32)}…';
+  }
+
+  /// A truthful, compact archive title based only on the saved fragment.
+  ///
+  /// This deliberately does not invent a semantic summary. The snapshot may
+  /// contain only a few short messages, so quoting the latest incoming line
+  /// (or the user's latest line when there is no incoming message) is the most
+  /// honest label for the independent record.
+  String get archiveTitle {
+    final message = _previewMessage;
+    if (message == null) return '這次分析';
+    final speaker = message.isFromMe ? '你說' : '她說';
+    return '$speaker：「$previewText」';
   }
 
   Map<String, Object?> toJson() => <String, Object?>{

@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/analysis_record.dart';
 import '../widgets/analysis_platform_picker.dart';
 import 'analysis_record_detail_screen.dart';
@@ -20,10 +19,128 @@ typedef DeleteAnalysisRecordCallback = FutureOr<void> Function(
   AnalysisRecord record,
 );
 
-/// Read-only archive for a partner's completed, independent analysis cases.
-///
-/// The caller owns persistence and must pass archived records only; the current
-/// record intentionally stays on the analyze-chat screen.
+enum PartnerAnalysisRecordsSheetAction {
+  openArchivedConversations,
+}
+
+const _archiveAccent = Color(0xFF9D78F5);
+const _archiveAccentBright = Color(0xFFC68BFF);
+const _archivePink = Color(0xFFFF5DA8);
+const _archivePanel = Color(0xFF15152A);
+const _archivePanelRaised = Color(0xFF24172F);
+
+/// Opens the partner-level archive with the same presentation from both the
+/// partner page and the analyze-chat shortcut.
+Future<PartnerAnalysisRecordsSheetAction?> showPartnerAnalysisRecordsSheet(
+  BuildContext context, {
+  required String subjectName,
+  required List<AnalysisRecord> records,
+  required AnalysisRecordPlatformResolver platformForRecord,
+  String? metVia,
+  SetAnalysisPlatformCallback? onSetMetVia,
+  DeleteAnalysisRecordCallback? onDelete,
+  int archivedConversationCount = 0,
+}) {
+  return showModalBottomSheet<PartnerAnalysisRecordsSheetAction>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.72),
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (sheetContext) {
+      final availableHeight = MediaQuery.sizeOf(sheetContext).height;
+      final heightFactor = availableHeight < 700 ? 0.90 : 0.74;
+      return FractionallySizedBox(
+        heightFactor: heightFactor,
+        alignment: Alignment.bottomCenter,
+        child: PartnerAnalysisRecordsScreen(
+          subjectName: subjectName,
+          records: records,
+          platformForRecord: platformForRecord,
+          metVia: metVia,
+          onSetMetVia: onSetMetVia,
+          onDelete: onDelete,
+          archivedConversationCount: archivedConversationCount,
+          onOpenArchivedConversations: archivedConversationCount > 0
+              ? () => Navigator.of(sheetContext).pop(
+                    PartnerAnalysisRecordsSheetAction.openArchivedConversations,
+                  )
+              : null,
+        ),
+      );
+    },
+  );
+}
+
+/// Compact app-bar entry shared by the partner page and analyze-chat page.
+class AnalysisRecordsEntryButton extends StatelessWidget {
+  const AnalysisRecordsEntryButton({
+    super.key,
+    required this.archivedCount,
+    required this.onPressed,
+  });
+
+  final int archivedCount;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final badgeText = archivedCount > 99 ? '99+' : '$archivedCount';
+    return Semantics(
+      button: true,
+      label: archivedCount == 0 ? '分析紀錄' : '分析紀錄，$archivedCount 筆',
+      child: IconButton(
+        tooltip: '分析紀錄',
+        onPressed: onPressed,
+        icon: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Icon(
+              Icons.inventory_2_outlined,
+              color: archivedCount > 0
+                  ? _archiveAccentBright
+                  : AppColors.onBackgroundPrimary,
+            ),
+            if (archivedCount > 0)
+              Positioned(
+                key: const ValueKey('analysis-record-count-badge'),
+                right: -8,
+                top: -8,
+                child: Container(
+                  constraints: const BoxConstraints(
+                    minWidth: 18,
+                    minHeight: 18,
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: _archivePink,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: const Color(0xFF120B1F),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Text(
+                    badgeText,
+                    style: AppTypography.labelMedium.copyWith(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      height: 1,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Partner-level archive content. The parent presents this widget as a modal
+/// bottom sheet so the user keeps spatial context with the partner page.
 class PartnerAnalysisRecordsScreen extends StatefulWidget {
   const PartnerAnalysisRecordsScreen({
     super.key,
@@ -33,6 +150,9 @@ class PartnerAnalysisRecordsScreen extends StatefulWidget {
     this.metVia,
     this.onSetMetVia,
     this.onDelete,
+    this.archivedConversationCount = 0,
+    this.onOpenArchivedConversations,
+    this.scrollController,
   });
 
   final String subjectName;
@@ -41,6 +161,9 @@ class PartnerAnalysisRecordsScreen extends StatefulWidget {
   final AnalysisRecordPlatformResolver platformForRecord;
   final SetAnalysisPlatformCallback? onSetMetVia;
   final DeleteAnalysisRecordCallback? onDelete;
+  final int archivedConversationCount;
+  final VoidCallback? onOpenArchivedConversations;
+  final ScrollController? scrollController;
 
   @override
   State<PartnerAnalysisRecordsScreen> createState() =>
@@ -55,7 +178,6 @@ class _PartnerAnalysisRecordsScreenState
   late String? _metVia;
   String _selectedPlatform = _allPlatforms;
   bool _isSettingMetVia = false;
-  final Set<String> _deletingIds = <String>{};
 
   @override
   void initState() {
@@ -67,10 +189,14 @@ class _PartnerAnalysisRecordsScreenState
   @override
   void didUpdateWidget(covariant PartnerAnalysisRecordsScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _records = _latestFirst(widget.records);
-    _metVia = normalizeAnalysisPlatform(widget.metVia);
+    if (!identical(oldWidget.records, widget.records)) {
+      _records = _latestFirst(widget.records);
+    }
+    if (oldWidget.metVia != widget.metVia) {
+      _metVia = normalizeAnalysisPlatform(widget.metVia);
+    }
     if (_selectedPlatform != _allPlatforms &&
-        !_platforms.contains(_selectedPlatform)) {
+        !_knownPlatformCounts.containsKey(_selectedPlatform)) {
       _selectedPlatform = _allPlatforms;
     }
   }
@@ -81,23 +207,27 @@ class _PartnerAnalysisRecordsScreenState
     return records;
   }
 
-  String _platformLabel(AnalysisRecord record) =>
-      normalizeAnalysisPlatform(widget.platformForRecord(record)) ?? '未分類';
+  String? _platformFor(AnalysisRecord record) =>
+      normalizeAnalysisPlatform(widget.platformForRecord(record));
 
-  List<String> get _platforms {
-    final result = <String>[];
+  Map<String, int> get _knownPlatformCounts {
+    final counts = <String, int>{};
     for (final record in _records) {
-      final label = _platformLabel(record);
-      if (!result.contains(label)) result.add(label);
+      final platform = _platformFor(record);
+      if (platform == null) continue;
+      counts.update(platform, (count) => count + 1, ifAbsent: () => 1);
     }
-    return result;
+    return counts;
   }
 
-  List<AnalysisRecord> get _visibleRecords => _selectedPlatform == _allPlatforms
-      ? _records
-      : _records
-          .where((record) => _platformLabel(record) == _selectedPlatform)
-          .toList();
+  bool get _showPlatformFilters => _knownPlatformCounts.length >= 2;
+
+  List<AnalysisRecord> get _visibleRecords {
+    if (_selectedPlatform == _allPlatforms) return _records;
+    return _records
+        .where((record) => _platformFor(record) == _selectedPlatform)
+        .toList();
+  }
 
   Future<void> _chooseMetVia() async {
     if (_isSettingMetVia || widget.onSetMetVia == null) return;
@@ -123,181 +253,199 @@ class _PartnerAnalysisRecordsScreenState
     }
   }
 
-  Future<void> _confirmDelete(AnalysisRecord record) async {
-    if (widget.onDelete == null || _deletingIds.contains(record.id)) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.brandSurface2,
-        title: Text(
-          '刪除這筆分析？',
-          style: AppTypography.titleLarge.copyWith(
-            color: AppColors.onBackgroundPrimary,
-          ),
-        ),
-        content: Text(
-          '只會刪除這次獨立保存的聊天片段與分析，不會影響其他紀錄。',
-          style: AppTypography.bodyMedium.copyWith(
-            color: AppColors.onBackgroundSecondary,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            key: const ValueKey('analysis-record-delete-confirm'),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text(
-              '刪除',
-              style: TextStyle(color: AppColors.error),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-
-    setState(() => _deletingIds.add(record.id));
-    try {
-      await Future<void>.sync(() => widget.onDelete!(record));
-      if (!mounted) return;
-      setState(() {
-        _records.removeWhere((item) => item.id == record.id);
-        _deletingIds.remove(record.id);
-        if (_selectedPlatform != _allPlatforms &&
-            !_platforms.contains(_selectedPlatform)) {
-          _selectedPlatform = _allPlatforms;
-        }
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _deletingIds.remove(record.id));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('刪除失敗，請再試一次')),
-      );
-    }
-  }
-
-  void _openRecord(AnalysisRecord record) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
+  Future<void> _openRecord(AnalysisRecord record) async {
+    final deleted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
         builder: (_) => AnalysisRecordDetailScreen(
           record: record,
-          platform: normalizeAnalysisPlatform(
-            widget.platformForRecord(record),
-          ),
+          platform: _platformFor(record),
+          onDelete: widget.onDelete == null
+              ? null
+              : () async {
+                  await Future<void>.sync(() => widget.onDelete!(record));
+                },
         ),
       ),
     );
+    if (!mounted || deleted != true) return;
+    setState(() {
+      _records.removeWhere((item) => item.id == record.id);
+      if (_selectedPlatform != _allPlatforms &&
+          !_knownPlatformCounts.containsKey(_selectedPlatform)) {
+        _selectedPlatform = _allPlatforms;
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final subjectName =
         widget.subjectName.trim().isEmpty ? '對方' : widget.subjectName.trim();
-    return BrandScaffold(
-      title: '$subjectName的分析紀錄',
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600),
-          child: ListView(
-            key: const ValueKey('partner-analysis-records-list'),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+    final counts = _knownPlatformCounts;
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF2A1831),
+              Color(0xFF111329),
+              Color(0xFF090C1B),
+            ],
+            stops: [0, 0.46, 1],
+          ),
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(30),
+          ),
+          border: Border.all(
+            color: _archivePink.withValues(alpha: 0.58),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: _archivePink.withValues(alpha: 0.16),
+              blurRadius: 34,
+              spreadRadius: 2,
+              offset: const Offset(0, -8),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
             children: [
-              BrandSurfaceCard(
-                elevated: false,
-                borderRadius: 20,
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(height: 12),
+              Container(
+                width: 48,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: _archiveAccentBright.withValues(alpha: 0.46),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+                child: Column(
                   children: [
-                    const BrandIconBadge(
-                      icon: Icons.inventory_2_outlined,
-                      size: 38,
-                      iconSize: 20,
+                    Text(
+                      '$subjectName 的分析紀錄',
+                      textAlign: TextAlign.center,
+                      style: AppTypography.headlineMedium.copyWith(
+                        color: AppColors.onBackgroundPrimary,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '每次分析獨立保存，不會串成逐字稿',
-                            style: AppTypography.titleSmall.copyWith(
-                              color: AppColors.onBackgroundPrimary,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          Text(
-                            '你可以從平台篩選舊紀錄，也可以單獨刪除不需要的分析。',
-                            style: AppTypography.bodySmall.copyWith(
-                              color: AppColors.onBackgroundSecondary,
-                            ),
-                          ),
-                        ],
+                    const SizedBox(height: 10),
+                    if (_metVia != null || widget.onSetMetVia != null)
+                      _MetViaPill(
+                        value: _metVia,
+                        enabled:
+                            widget.onSetMetVia != null && !_isSettingMetVia,
+                        isSaving: _isSettingMetVia,
+                        onTap: _chooseMetVia,
+                      ),
+                    const SizedBox(height: 10),
+                    Text(
+                      '每次分析獨立保存，不會串成逐字稿',
+                      textAlign: TextAlign.center,
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: _archiveAccentBright.withValues(alpha: 0.90),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
-              _MetViaCard(
-                value: _metVia,
-                enabled: widget.onSetMetVia != null && !_isSettingMetVia,
-                isSaving: _isSettingMetVia,
-                onTap: _chooseMetVia,
+              Expanded(
+                child: ListView(
+                  key: const ValueKey('partner-analysis-records-list'),
+                  controller: widget.scrollController,
+                  padding: const EdgeInsets.fromLTRB(16, 2, 16, 24),
+                  children: [
+                    if (_showPlatformFilters) ...[
+                      SizedBox(
+                        height: 40,
+                        child: ListView.separated(
+                          key: const ValueKey(
+                            'analysis-record-platform-filters',
+                          ),
+                          scrollDirection: Axis.horizontal,
+                          itemCount: counts.length + 1,
+                          separatorBuilder: (_, __) => const SizedBox(width: 8),
+                          itemBuilder: (context, index) {
+                            final platform = index == 0
+                                ? _allPlatforms
+                                : counts.keys.elementAt(index - 1);
+                            final label = index == 0 ? '全部' : platform;
+                            final count = index == 0
+                                ? _records.length
+                                : counts[platform]!;
+                            return _PlatformFilterChip(
+                              key: ValueKey(
+                                'analysis-record-filter-$label',
+                              ),
+                              label: label,
+                              count: count,
+                              selected: _selectedPlatform == platform,
+                              accent: index == 0
+                                  ? _archiveAccentBright
+                                  : _platformAccent(platform),
+                              onSelected: () => setState(
+                                () => _selectedPlatform = platform,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+                    if (_visibleRecords.isEmpty)
+                      const _EmptyRecordsCard()
+                    else
+                      for (final record in _visibleRecords) ...[
+                        _AnalysisRecordTile(
+                          key: ValueKey('analysis-record-${record.id}'),
+                          record: record,
+                          platform: _platformFor(record),
+                          onTap: () => _openRecord(record),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                    if (widget.archivedConversationCount > 0 &&
+                        widget.onOpenArchivedConversations != null) ...[
+                      const SizedBox(height: 6),
+                      _ArchivedConversationsEntry(
+                        count: widget.archivedConversationCount,
+                        onTap: widget.onOpenArchivedConversations!,
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.verified_user_outlined,
+                          size: 17,
+                          color: _archiveAccent.withValues(alpha: 0.72),
+                        ),
+                        const SizedBox(width: 7),
+                        Flexible(
+                          child: Text(
+                            '每筆都是獨立分析，可自行管理',
+                            textAlign: TextAlign.center,
+                            style: AppTypography.bodySmall.copyWith(
+                              color: AppColors.onBackgroundSecondary
+                                  .withValues(alpha: 0.72),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 20),
-              if (_records.isNotEmpty) ...[
-                Text(
-                  '分析來源',
-                  style: AppTypography.labelLarge.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 9),
-                SizedBox(
-                  height: 44,
-                  child: ListView.separated(
-                    key: const ValueKey('analysis-record-platform-filters'),
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _platforms.length + 1,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
-                    itemBuilder: (context, index) {
-                      final value =
-                          index == 0 ? _allPlatforms : _platforms[index - 1];
-                      final label = index == 0 ? '全部' : value;
-                      return _PlatformFilterChip(
-                        key: ValueKey('analysis-record-filter-$label'),
-                        label: label,
-                        selected: _selectedPlatform == value,
-                        onSelected: () =>
-                            setState(() => _selectedPlatform = value),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 14),
-              ],
-              if (_visibleRecords.isEmpty)
-                const _EmptyRecordsCard()
-              else
-                for (final record in _visibleRecords) ...[
-                  _AnalysisRecordTile(
-                    key: ValueKey('analysis-record-${record.id}'),
-                    record: record,
-                    platform: _platformLabel(record),
-                    deleting: _deletingIds.contains(record.id),
-                    canDelete: widget.onDelete != null,
-                    onTap: () => _openRecord(record),
-                    onDelete: () => _confirmDelete(record),
-                  ),
-                  const SizedBox(height: 10),
-                ],
             ],
           ),
         ),
@@ -306,8 +454,8 @@ class _PartnerAnalysisRecordsScreenState
   }
 }
 
-class _MetViaCard extends StatelessWidget {
-  const _MetViaCard({
+class _MetViaPill extends StatelessWidget {
+  const _MetViaPill({
     required this.value,
     required this.enabled,
     required this.isSaving,
@@ -321,59 +469,60 @@ class _MetViaCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BrandSurfaceCard(
-      elevated: false,
-      borderRadius: 18,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      onTap: enabled ? onTap : null,
-      child: Row(
-        children: [
-          const Icon(
-            Icons.favorite_outline_rounded,
-            color: AppColors.ctaStart,
-            size: 22,
+    final label = value == null ? '設定認識平台' : '認識於 $value';
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        key: const ValueKey('analysis-record-met-via'),
+        borderRadius: BorderRadius.circular(999),
+        onTap: enabled ? onTap : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          decoration: BoxDecoration(
+            color: _archivePink.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: _archivePink.withValues(alpha: 0.72),
+            ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '認識平台',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.onBackgroundSecondary,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isSaving)
+                const SizedBox(
+                  width: 15,
+                  height: 15,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: _archivePink,
                   ),
+                )
+              else
+                const Icon(
+                  Icons.favorite_outline_rounded,
+                  size: 16,
+                  color: _archivePink,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  value == null ? '尚未設定' : '認識於 $value',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.titleSmall.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                    fontWeight: FontWeight.w700,
-                  ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: AppTypography.labelLarge.copyWith(
+                  color: const Color(0xFFFFAA8C),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (enabled && !isSaving) ...[
+                const SizedBox(width: 4),
+                const Icon(
+                  Icons.edit_outlined,
+                  size: 14,
+                  color: Color(0xFFFFAA8C),
                 ),
               ],
-            ),
+            ],
           ),
-          const SizedBox(width: 8),
-          if (isSaving)
-            const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: AppColors.ctaStart,
-              ),
-            )
-          else if (enabled)
-            const Icon(
-              Icons.edit_outlined,
-              color: AppColors.onBackgroundSecondary,
-              size: 20,
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -383,33 +532,52 @@ class _PlatformFilterChip extends StatelessWidget {
   const _PlatformFilterChip({
     super.key,
     required this.label,
+    required this.count,
     required this.selected,
+    required this.accent,
     required this.onSelected,
   });
 
   final String label;
+  final int count;
   final bool selected;
+  final Color accent;
   final VoidCallback onSelected;
 
   @override
   Widget build(BuildContext context) {
-    return ChoiceChip(
-      label: Text(label),
+    return Semantics(
+      button: true,
       selected: selected,
-      onSelected: (_) => onSelected(),
-      showCheckmark: false,
-      selectedColor: AppColors.ctaStart,
-      backgroundColor: Colors.white.withValues(alpha: 0.08),
-      side: BorderSide(
-        color: selected
-            ? AppColors.ctaStart
-            : Colors.white.withValues(alpha: 0.14),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: onSelected,
+          child: Ink(
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
+            decoration: BoxDecoration(
+              color: selected
+                  ? accent.withValues(alpha: 0.18)
+                  : const Color(0xFF111225),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: selected
+                    ? accent.withValues(alpha: 0.78)
+                    : Colors.white.withValues(alpha: 0.12),
+              ),
+            ),
+            child: Text(
+              '$label $count',
+              style: AppTypography.labelMedium.copyWith(
+                color: selected ? accent : AppColors.onBackgroundSecondary,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
       ),
-      labelStyle: AppTypography.labelLarge.copyWith(
-        color: selected ? Colors.white : AppColors.onBackgroundSecondary,
-        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-      ),
-      visualDensity: VisualDensity.compact,
     );
   }
 }
@@ -419,146 +587,212 @@ class _AnalysisRecordTile extends StatelessWidget {
     super.key,
     required this.record,
     required this.platform,
-    required this.deleting,
-    required this.canDelete,
     required this.onTap,
-    required this.onDelete,
   });
 
   final AnalysisRecord record;
-  final String platform;
-  final bool deleting;
-  final bool canDelete;
+  final String? platform;
   final VoidCallback onTap;
-  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     final localDate = record.createdAt.toLocal();
-    return BrandSurfaceCard(
-      borderRadius: 18,
-      padding: EdgeInsets.zero,
-      onTap: deleting ? null : onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(15, 14, 8, 14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                    spacing: 7,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
+    final accent = _platformAccent(platform);
+    final stage = record.gameStageLabel.trim();
+    final metadata = StringBuffer(
+      '${record.messages.length} 則訊息 · 本次投入 ${record.enthusiasmScore}',
+    );
+    if (stage.isNotEmpty) metadata.write(' · $stage');
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                _archivePanelRaised.withValues(alpha: 0.92),
+                _archivePanel.withValues(alpha: 0.96),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: accent.withValues(alpha: platform == null ? 0.30 : 0.50),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 13, 10, 13),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: accent.withValues(alpha: 0.34),
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.chat_bubble_outline_rounded,
+                    color: accent,
+                    size: 21,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _MiniBadge(label: platform),
+                      Wrap(
+                        spacing: 7,
+                        runSpacing: 5,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            DateFormat('M 月 d 日 · HH:mm').format(localDate),
+                            style: AppTypography.bodySmall.copyWith(
+                              color: platform == null
+                                  ? AppColors.onBackgroundSecondary
+                                  : accent,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (platform != null)
+                            _PlatformBadge(
+                              label: platform!,
+                              accent: accent,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
                       Text(
-                        DateFormat('yyyy/MM/dd HH:mm').format(localDate),
+                        record.archiveTitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.titleSmall.copyWith(
+                          color: AppColors.onBackgroundPrimary,
+                          fontWeight: FontWeight.w800,
+                          height: 1.3,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        metadata.toString(),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: AppTypography.bodySmall.copyWith(
                           color: AppColors.onBackgroundSecondary,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    record.previewText,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.onBackgroundPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 4,
-                    children: [
-                      Text(
-                        '本次投入 ${record.enthusiasmScore}',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.ctaStart,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      if (record.gameStageLabel.trim().isNotEmpty)
-                        Text(
-                          record.gameStageLabel,
-                          style: AppTypography.bodySmall.copyWith(
-                            color: AppColors.onBackgroundSecondary,
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 4),
-            if (deleting)
-              const Padding(
-                padding: EdgeInsets.all(12),
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppColors.ctaStart,
-                  ),
                 ),
-              )
-            else if (canDelete)
-              IconButton(
-                key: ValueKey('analysis-record-delete-${record.id}'),
-                tooltip: '刪除這筆分析',
-                onPressed: onDelete,
-                icon: const Icon(
-                  Icons.delete_outline_rounded,
-                  color: AppColors.onBackgroundSecondary,
-                  size: 21,
-                ),
-              )
-            else
-              const Padding(
-                padding: EdgeInsets.all(12),
-                child: Icon(
+                const SizedBox(width: 6),
+                Icon(
                   Icons.chevron_right_rounded,
-                  color: AppColors.onBackgroundSecondary,
+                  color: accent.withValues(alpha: 0.90),
+                  size: 26,
                 ),
-              ),
-          ],
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-class _MiniBadge extends StatelessWidget {
-  const _MiniBadge({required this.label});
+class _PlatformBadge extends StatelessWidget {
+  const _PlatformBadge({
+    required this.label,
+    required this.accent,
+  });
 
   final String label;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(maxWidth: 150),
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      constraints: const BoxConstraints(maxWidth: 110),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: AppColors.ctaStart.withValues(alpha: 0.17),
+        color: accent.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: AppColors.ctaStart.withValues(alpha: 0.35),
-        ),
+        border: Border.all(color: accent.withValues(alpha: 0.40)),
       ),
       child: Text(
         label,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: AppTypography.bodySmall.copyWith(
-          color: AppColors.ctaStart,
-          fontWeight: FontWeight.w700,
+        style: AppTypography.labelMedium.copyWith(
+          color: accent,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _ArchivedConversationsEntry extends StatelessWidget {
+  const _ArchivedConversationsEntry({
+    required this.count,
+    required this.onTap,
+  });
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        key: const ValueKey('archived-conversations-secondary-entry'),
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Ink(
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.16),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.inventory_2_outlined,
+                  color: _archiveAccent,
+                  size: 21,
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Text(
+                    '已收起的對話 $count',
+                    style: AppTypography.titleSmall.copyWith(
+                      color: _archiveAccent,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: _archiveAccent,
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -570,37 +804,66 @@ class _EmptyRecordsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BrandSurfaceCard(
-      elevated: false,
-      borderRadius: 20,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        child: Column(
-          children: [
-            const Icon(
-              Icons.inventory_2_outlined,
-              size: 34,
-              color: AppColors.onBackgroundSecondary,
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.045),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.inventory_2_outlined,
+            size: 24,
+            color: _archiveAccent,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '還沒有舊的分析紀錄',
+                  style: AppTypography.titleSmall.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  '目前這次分析會留在主畫面；下一次完成後，上一筆才會收進來。',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                    height: 1.45,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              '還沒有舊的分析紀錄',
-              style: AppTypography.titleSmall.copyWith(
-                color: AppColors.onBackgroundPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              '目前這次分析會留在主畫面，下一次完成後才會收進來。',
-              textAlign: TextAlign.center,
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.onBackgroundSecondary,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
+  }
+}
+
+Color _platformAccent(String? platform) {
+  switch (platform?.trim().toLowerCase()) {
+    case 'omi':
+      return const Color(0xFFFF5F91);
+    case 'line':
+      return const Color(0xFF55D884);
+    case 'ig':
+    case 'instagram':
+      return const Color(0xFFFF7A72);
+    case 'threads':
+      return const Color(0xFFE2D8EA);
+    case 'tinder':
+      return const Color(0xFFFF5A65);
+    case 'bumble':
+      return const Color(0xFFFFC857);
+    default:
+      return _archiveAccent;
   }
 }

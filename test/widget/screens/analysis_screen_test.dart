@@ -46,10 +46,17 @@ void main() {
         find.byKey(const ValueKey('analysis-records-entry')),
         findsOneWidget,
       );
+      expect(find.byTooltip('分析紀錄'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('analysis-record-count-badge')),
+        findsNothing,
+      );
       expect(
         find.byKey(const ValueKey('analysis-source-pill')),
         findsOneWidget,
       );
+      expect(find.text('來源未設定'), findsOneWidget);
+      expect(find.textContaining('未分類'), findsNothing);
     });
 
     testWidgets('shows back button', (tester) async {

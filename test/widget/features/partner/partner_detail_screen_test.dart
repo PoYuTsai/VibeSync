@@ -294,8 +294,7 @@ void main() {
     expect(find.text('已刪除這段互動紀錄'), findsOneWidget);
   });
 
-  testWidgets('settings gear + ⋮ merge only, no disabled delete item',
-      (t) async {
+  testWidgets('右上有分析紀錄與 settings gear，⋮ 只放合併', (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
@@ -315,6 +314,11 @@ void main() {
     await t.pumpAndSettle();
 
     expect(find.text('Alice'), findsWidgets);
+    expect(find.byTooltip('分析紀錄'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('partner-analysis-records-entry')),
+      findsOneWidget,
+    );
     expect(find.byTooltip('對象設定'), findsOneWidget);
     expect(find.byIcon(Icons.more_vert), findsOneWidget);
 
@@ -588,6 +592,10 @@ void main() {
 
     expect(find.text('還沒有對話紀錄'), findsOneWidget);
     expect(find.textContaining('開始你們的第一次分析'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('partner-analysis-records-entry')),
+      findsOneWidget,
+    );
     expect(find.text('+ 新增對話'), findsOneWidget);
     expect(find.byKey(const Key('partner-empty-add-conversation')),
         findsOneWidget);
@@ -769,6 +777,10 @@ void main() {
     expect(find.byType(PartnerConversationTile), findsNWidgets(2),
         reason: 'Tile titles no longer carry conversation.name (per "人 vs 互動" '
             'mental-model fix); verify by widget count instead.');
+    expect(
+      find.byKey(const ValueKey('partner-analysis-records-entry')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('conversation records sit between heat score and next step',

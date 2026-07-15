@@ -21,7 +21,8 @@ String? normalizeAnalysisPlatform(String? value) {
 }
 
 /// `null` from [showAnalysisPlatformPicker] means the sheet was cancelled.
-/// A non-null result whose [platform] is null explicitly means 「未分類」.
+/// A non-null result whose [platform] is null explicitly leaves the source
+/// unset (or clears a previously selected source).
 class AnalysisPlatformPickerResult {
   const AnalysisPlatformPickerResult(this.platform);
 
@@ -154,8 +155,8 @@ class _AnalysisPlatformPickerSheetState
                           onTap: _enterCustomPlatform,
                         ),
                         _PlatformOptionTile(
-                          key: const ValueKey('analysis-platform-unclassified'),
-                          label: '未分類',
+                          key: const ValueKey('analysis-platform-unset'),
+                          label: _current == null ? '暫不設定' : '清除平台設定',
                           selected: _current == null,
                           icon: Icons.help_outline_rounded,
                           onTap: () => _select(null),
