@@ -362,7 +362,7 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   );
   assertStringIncludes(
     messages[0].content,
-    "未知禁改成忘記／不知道／沒記住／沒去過／感官評價",
+    "未知禁改成忘記／不知道／沒去過／不確定／感官評價",
   );
   assertStringIncludes(messages[0].content, "{變數}無值");
   assertStringIncludes(

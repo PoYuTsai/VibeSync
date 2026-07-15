@@ -7394,7 +7394,7 @@ Deno.test("Hint repair removes partner speculation before independent verificati
   assert(firstVerificationPrompt.includes("自行肯定/否定"));
   assert(
     verificationPrompt.includes(
-      "未知禁改成忘記／不知道／沒記住／沒去過／感官評價",
+      "未知禁改成忘記／不知道／沒去過／不確定／感官評價",
     ),
   );
   assertEquals(recordHintCalls(state).length, 1);
@@ -9412,7 +9412,7 @@ Deno.test("direct Beginner Debrief release review repairs production global nega
   assert(firstPrompt.includes("今天剛好休假"));
   assert(releasePrompt.includes("practiceGroundingReleaseAuditorV3"));
   assert(releasePrompt.includes("其餘只做三件事"));
-  assert(releasePrompt.includes("不知道／沒記住／沒去過"));
+  assert(releasePrompt.includes("不知道／沒去過／不確定"));
   assertEquals(
     releasePrompt.includes("反例掃描：candidate 寫 role/scope"),
     false,
@@ -14764,6 +14764,121 @@ Deno.test("fresh production Game release removes an invented sensory ability sel
   assert(releasePrompt.includes(userTurn));
   assert(releasePrompt.includes("香到路過都聞到，你鼻子也太靈了吧XD"));
   assert(releasePrompt.includes("太雷的踩過一次就不會再去了"));
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, []);
+  assertEquals(metrics.failureClasses, []);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("fresh production Game release replaces an invented uncertain answer", async () => {
+  const badLine =
+    "烘豆機有沒有看到我不確定，但淺焙還是中深焙——妳覺得哪個比較難挑剔？";
+  const safeLine =
+    "{真實答案}。淺焙還是中深焙——妳覺得哪個比較難挑剔？";
+  const wrongCard = JSON.parse(validDebriefJson({
+    summary: "她接住咖啡話題，追問烘豆機與焙度。",
+    strengths: ["照咖啡話題反問她的標準，成功讓她延伸。"],
+    watchouts: ["她問有沒有看到烘豆機，user 尚未回答。"],
+    suggestedLine: badLine,
+    vibe: "冷",
+    dateChance: "low",
+    dateChanceReason: "只有一輪試探，沒有約見訊號。",
+    nextInviteMove: "先回答真實狀態，再沿焙度話題延伸。",
+  })) as Record<string, unknown>;
+  wrongCard.gameBreakdown = {
+    phaseReached: "開場資訊交換，她追問烘豆機與焙度。",
+    missedVariable: "有沒有看到烘豆機尚待 user 真實回答。",
+    failureState: "球在 user 手上，不能替 user 填成不確定。",
+    nextFirstLine: badLine,
+    inviteDirection: "先回答，再沿焙度話題累積熟悉感。",
+  };
+  const wrong = JSON.stringify(wrongCard);
+  const firstReview = groundingReviewEnvelope(wrong, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "OK",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "OK",
+  });
+  const repairedCard = structuredClone(wrongCard);
+  repairedCard.suggestedLine = safeLine;
+  (repairedCard.gameBreakdown as Record<string, unknown>).nextFirstLine =
+    safeLine;
+  const repaired = JSON.stringify(repairedCard);
+  const finalReview = groundingReviewEnvelope(repaired, {
+    summary: "OK",
+    strengths: "OK",
+    watchouts: "OK",
+    suggestedLine: "FIX: 未答問句不能改成不確定",
+    dateChanceReason: "OK",
+    nextInviteMove: "OK",
+    gameBreakdown: "FIX: Game 貼句同步",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: { PRACTICE_CLAUDE_PRIMARY: "true" },
+      claudeReplies: [wrong, firstReview, finalReview],
+      rpc: {
+        resolve_practice_hint_decision: [{
+          data: {
+            phase: "P1_OPEN",
+            targetVariable: "familiarity",
+            move: "build_connection",
+            inviteRoute: "build",
+            rationale: "先沿咖啡話題建立熟悉感。",
+          },
+        }],
+      },
+    },
+    debriefBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      requestId: "fresh-prod-game-invented-uncertain-answer",
+      turns: [
+        {
+          role: "user",
+          text:
+            "叫{店名}，我路過聞到很香。妳說「看我懂不懂挑」——標準是什麼？",
+        },
+        {
+          role: "ai",
+          text:
+            "嗯哼，路過聞到香算有基本sense啦～啊標準喔……看你是只會說香，還是有注意到他們是淺焙還是中深焙啊？隨便一間都說香，那跟沒說差不多哈哈。你有看到烘豆機嗎？",
+        },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  const expectedCard = structuredClone(repairedCard);
+  delete expectedCard.hintAssessment;
+  assertEquals(json.card, expectedCard);
+  assertEquals(json.card.suggestedLine, safeLine);
+  assertEquals(json.card.gameBreakdown.nextFirstLine, safeLine);
+  assertEquals(json.card.suggestedLine.includes("我不確定"), false);
+  assertEquals(json.card.suggestedLine.match(/\{真實答案\}/g)?.length, 1);
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.groundingReviewFallbackUsed, false);
+  assertEquals(state.claudeCalls.length, 3);
+  assertGroundingReviewInput(state.claudeCalls[1], badLine);
+  assertGroundingReviewInput(state.claudeCalls[2], badLine);
+  assertEquals(
+    groundingReviewCandidate(state.claudeCalls[2]),
+    groundingReviewCandidate(state.claudeCalls[1]),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "未知禁改成忘記／不知道／沒去過／不確定／感官評價",
+    ),
+  );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
