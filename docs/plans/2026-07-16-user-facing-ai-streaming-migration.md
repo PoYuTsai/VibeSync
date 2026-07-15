@@ -1,13 +1,15 @@
-# 使用者可見 AI 串流遷移計畫（草稿）
+# 使用者可見 AI 串流遷移計畫
 
-> 狀態：DRAFT／尚未核准實作  
-> 目的：讓長時間 AI 請求能立即顯示可信進度；若 Eric 另行核准，才提早顯示已驗證、可直接使用的內容。
+> 狀態：APPROVED／分批實作中；Eric 於 2026-07-16 拍板採用 progress-only
+> 目前進度：Coach 1:1 已完成可信進度串流；Opener 已完成誠實的本地分階段等待，但不是 server streaming；「我幫你修」已完成固定扣 1 與安全重播。其他流程仍依風險分批處理。
 
 ## 決策摘要
 
 不採用「Flash 先產生看似思考的 stream，再由高級模型產生 final」的雙模型架構。`analyze-chat` 的正式文字路徑已是單一選定 Claude 模型做 full streaming；舊 quick/full 僅保留 rollback。新增流程應讓原本負責答案的模型直接工作，進度由系統事件表達，避免多一次模型呼叫造成更慢、更貴、前後建議衝突與扣額度語意不清。
 
 本計畫先解決「等很久但不知道發生什麼事」。任何提早顯示實質建議的改動，必須先有可重播的 run/result ledger、原子扣額度及內容可見前驗證，不與單純進度 UX 綁在同一批。
+
+Eric 本輪選擇 **progress-only**：只顯示伺服器確實走到的階段，完整答案通過驗證後才一次顯示。**Early usable content 未被選用**，因此不會提前顯示模型候選文字或模擬思考。
 
 ## Scope
 
@@ -81,17 +83,23 @@
 
 ### Batch 1：Coach 1:1 進度
 
+**狀態：已完成（`b09b6dd1`）。**
+
 - 在 `coach-chat` 加 gated progress response，僅傳真實生成／驗證／retry 階段，final 仍使用完整 validated Coach card。
 - Flutter 改用可逐行解析的 transport 與明確 loading stages，保留 429、clarification、deterministic fallback 及現有卡片 schema。
 - 若 progress 與 final 共用連線，先補最低限度 request idempotency；沒有可重播 final 前，不提供斷線後自動重送。
 
 ### Batch 2：Coach 已驗證內容 ledger（只有 Eric 選 early usable content 才做）
 
+**狀態：本輪不做。** Eric 未選 early usable content；Coach 目前沒有 final result replay ledger，App 也不會在斷線後自動重送並冒著重複扣費風險。
+
 - 新增 owner-scoped Coach run/result ledger 與原子 `persist + charge` RPC；定義 pending／charged／done／partial／failed lifecycle。
 - 僅在一張完整 Coach card 通過安全與 schema 後送出，不逐 token 顯示；實作 replay、續傳與 ordinal 去重。
 - clarification 與 deterministic fallback 保持不扣費；模型 retry 必須發生在 official emit 前。
 
 ### Batch 3：Opener
+
+**狀態：等待體驗已完成（`971b7214`、`8f6b5f8e`），server streaming 尚未實作。** 本輪讓使用者可一次選三張截圖，並以誠實的本地階段文案說明正在處理；不宣稱答案正在逐段從伺服器傳回。
 
 - 先做 progress-only；保留五種 opener、recommended pick、profile/pioneer plan、format repair 與一次扣 3 的既有契約。
 - 若核准 early content，將現有「只去重扣費」ledger 升級為可保存／replay 結果；先送 recommended opener 也必須是完整驗證並已原子扣費的官方內容。
@@ -103,6 +111,8 @@
 - 只有數據證明等待痛點與 early-content 收益，才複用 Coach run ledger；不另造第二套 quota protocol。
 
 ### Batch 5：OCR／圖片分析／「我幫你修」
+
+**狀態：「我幫你修」固定扣 1 與 result replay 已完成（`4b624617`）；OCR／圖片分析的可信進度尚未實作。**
 
 - 分別處理 vision/OCR 與 `optimize_message`，不得與文字 Analyze 或 Coach 同 commit。
 - 先送 OCR/upload/model/validation 的可信進度；任何辨識文字、改寫句或分析內容仍需通過該 mode 的 schema、安全與 Sonnet 規則後才可見。
@@ -125,11 +135,6 @@
 - Edge smoke 後才切 whitelist；需要 client 改動的批次送 TestFlight，使用真 iPhone 確認 chunk 真的逐步到達而非結尾一次吐出。未通過時關 flag，不提交 App Review。
 - 完成一批並觀察 dogfood telemetry 後才開始下一批；不得把 Coach、Opener、OCR 與 Practice 合成同一次 rollout。
 
-## Open product choice
+## 產品選擇已結案
 
-Eric 需先選定本輪承諾：
-
-1. **Progress-only（建議）**：使用者立即看到可信階段，答案仍在完整驗證後一次出現；風險較低、可先解 Fable 的等待感。
-2. **Early usable content**：提早看到一張可直接使用的正式建議；需先投入 run/result ledger、原子扣費、replay 與 partial failure 設計，不能當成單純 `stream: true`。
-
-在選項 2 未明確核准前，所有批次都以 progress-only 為上限。
+Eric 於 2026-07-16 選擇 **Progress-only**：使用者看到的只能是可信系統階段，答案仍在完整驗證後一次出現。**Early usable content 不採用**；若未來要提前顯示正式內容，必須另案核准 run/result ledger、原子扣費、replay 與 partial failure 設計，不能直接打開 `stream: true`。
