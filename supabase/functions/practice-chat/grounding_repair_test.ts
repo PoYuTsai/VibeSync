@@ -294,8 +294,9 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   for (
     const atomicClaim of [
       "末問未答時",
-      "答案整段只可單獨 {真實答案} 或省略",
-      "後面只接無前提問句",
+      "未知答案子句只可是一個符合槽型的原子變數",
+      "槽型明確可用「叫{店名}」或「{有／沒有}進去喝」",
+      "可保留已直證內容與無前提問句",
       "我不確定」必修",
       "一次早睡≠早睡派",
       "存一家店≠收藏很多",
