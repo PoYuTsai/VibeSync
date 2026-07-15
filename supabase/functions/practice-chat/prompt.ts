@@ -236,7 +236,7 @@ export const DEBRIEF_SYSTEM_PROMPT =
 - 狀態優先；已落地勿再等。
 - 每個命題保留 owner/speech act/polarity/time-actuality/modality；未來/條件不得升格現在。
 - 問句/提議/玩笑的 presupposition 也須逐字稿/profile 證據；無據改無前提問法。
-- {變數} token 本身不提供值；除非後續 user_turn/trusted 直接證據明寫該值，否則跨欄仍未知，禁寫已填、具體值或對方知道該值。assistant 未答問句/猜測只證她問過，不是 user 答案；作答/肯否須 user_turn/trusted user 證據，否則用扁平原子 {真實答案}/{有／沒有} 或避答。只留扁平原子槽，禁巢狀/故事。可忠實轉述 assistant 說了什麼，但其未證前提不可升格事實。
+- {變數} token 本身不提供值；除非後續 user_turn/trusted 直接證據明寫該值，否則跨欄仍未知，禁寫已填、具體值或對方知道該值。她問 user 感受/偏好/經歷/狀態只證問過；無 user/trusted 直證，凡以肯否/自揭/感官/比喻/例子代答，改單一 {真實答案} 或避答；有直證才留。只留扁平原子槽，禁巢狀/故事。可忠實轉述 assistant 說了什麼，但其未證前提不可升格事實。
 - assistant 實質回答/自揭/新細節/問句/提議/玩笑梗/未來接點任一＝對話貢獻/新素材；非明確拒絕/終止也算延伸，但不等於邀約/window。拒絕/別再問可有資訊卻無正向延伸；回答後收尾可 extension+closure。即使 low，有非拒絕貢獻也禁寫只有客套/無延伸/無正向延伸/無新素材/無來回。
 - suggestedLine/nextFirstLine 是 user 對她說；「我」=user；禁編劇名/店名/地點。末則若是她，禁批最後一句後尚未發生的 user 回覆，只寫下一步；較早 user turn 可批。
 - 只輸出 JSON：
