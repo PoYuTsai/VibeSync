@@ -273,7 +273,7 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   assertEquals(messages.length, 2);
   assertStringIncludes(
     messages[0].content,
-    "practiceGroundingReleaseAuditorV2",
+    "practiceGroundingReleaseAuditorV3",
   );
   assert(
     messages[0].content.length < 5_000,
@@ -285,7 +285,26 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   );
   assertStringIncludes(
     messages[0].content,
-    "Hint 貼句與 Debrief suggestedLine/nextFirstLine 的「我」=user",
+    "第一且主要任務：先只逐句審 suggestedLine",
+  );
+  assertStringIncludes(
+    messages[0].content,
+    "Game 同步審 nextFirstLine",
+  );
+  for (
+    const atomicClaim of [
+      "一次早睡≠早睡派",
+      "存一家店≠收藏很多",
+      "追到兩點≠一開就停不下來",
+      "{真實答案} 只能獨立取代整個未知答案子句",
+      "紅玉拿鐵{真實答案}",
+    ]
+  ) {
+    assertStringIncludes(messages[0].content, atomicClaim);
+  }
+  assertStringIncludes(
+    messages[0].content,
+    "這是 user 準備送出的話，其中『我』及省略主詞的自述都屬 user",
   );
   assertStringIncludes(
     messages[0].content,
@@ -293,7 +312,7 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   );
   assertStringIncludes(
     messages[0].content,
-    "不知道／沒記住／沒去過",
+    "未知不可改寫成忘記、不知道、沒記住、沒去過",
   );
   assertStringIncludes(
     messages[0].content,
@@ -301,15 +320,15 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   );
   assertStringIncludes(
     messages[0].content,
-    "不可把未知改寫成忘記、不知道或任何感官評價",
+    "未知不可改寫成忘記、不知道、沒記住、沒去過或任何感官評價",
   );
   assertStringIncludes(
     messages[0].content,
-    "{變數} token 本身不提供值，只是 literal 待填槽",
+    "{變數} token 本身不提供值",
   );
   assertStringIncludes(
     messages[0].content,
-    "末則 assistant 在語意上問 user，標點不影響",
+    "末則 assistant 問 user 而其後沒有 user/trusted 直答",
   );
   assertStringIncludes(
     messages[0].content,
@@ -317,11 +336,7 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   );
   assertStringIncludes(
     messages[0].content,
-    "可再接不含未證前提的反問",
-  );
-  assertStringIncludes(
-    messages[0].content,
-    "omittedMiddleTurnCount>0，不得做全場全無的絕對斷言",
+    "再接無前提反問",
   );
   assertStringIncludes(
     messages[0].content,
@@ -329,7 +344,7 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   );
   assertStringIncludes(
     messages[0].content,
-    "Hint decision 只鎖既定策略，不提供新的 user 事實，也不可被 Debrief 無據打臉",
+    "Hint decision 不提供新 user 事實",
   );
   assertStringIncludes(
     messages[0].content,
@@ -365,7 +380,6 @@ Deno.test("second review is a focused fact and variable release audit", () => {
       "最高優先漏網例",
       "答詞如好看啊/有啊/會啊/對啊也算答案",
       "每個 {} 禁巢狀/分支/故事",
-      "追到兩點≠",
       "只說路過聞香",
     ]
   ) {
@@ -438,6 +452,10 @@ Deno.test("structured grounding evidence stays bounded at the request limits", (
   const prompt = messages.map((message) => message.content).join("\n");
 
   assert(prompt.length < 22_000, `grounding_prompt_too_large_${prompt.length}`);
+  assertStringIncludes(
+    prompt,
+    "第一且主要任務：先只逐句審 warmUp、steady",
+  );
   assertStringIncludes(prompt, '"omittedMiddleTurnCount":90');
   assertStringIncludes(prompt, '"index":0');
   assertStringIncludes(prompt, '"index":129');
@@ -479,10 +497,6 @@ Deno.test("bounded Debrief evidence keeps a middle applied Hint and its partner 
 
   assert(prompt.length < 22_000, `grounding_prompt_too_large_${prompt.length}`);
   assertStringIncludes(prompt, '"omittedMiddleTurnCount":90');
-  assertStringIncludes(
-    prompt,
-    "omittedMiddleTurnCount>0，不得做全場全無的絕對斷言",
-  );
   assertStringIncludes(
     prompt,
     '"index":50,"role":"user","text":"TURN_50_APPLIED_HINT"',
