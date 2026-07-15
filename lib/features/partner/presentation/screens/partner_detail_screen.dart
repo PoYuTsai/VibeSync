@@ -13,11 +13,10 @@
 //  - Spec 6D shifts the page from dashboard-first to command-center-first:
 //    summary → heat → records → next step → coach/style → detailed data.
 //
-// Behavior unchanged:
+// Stable behavior:
 //  - ⋮ menu (merge / edit / delete-即將推出) — see partner_detail_screen_test.
 //  - FAB still opens NewConversationSheet(partnerId).
-//  - FAB label STAYS "+ 新增對話" per ADR-15 vocabulary contract
-//    (see test/widget/features/copy_sweep_snapshot_test.dart).
+//  - Partner-bound entry starts one independent analysis fragment.
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -31,10 +30,12 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_dialog.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../analysis/data/providers/analysis_record_providers.dart';
+import '../../../analysis/data/services/analysis_archive_lifecycle.dart';
 import '../../../analysis/domain/entities/analysis_record.dart';
 import '../../../analysis/presentation/screens/partner_analysis_records_screen.dart';
 import '../../../analysis_history/data/providers/analysis_history_providers.dart';
 import '../../../conversation/data/providers/conversation_archive_providers.dart';
+import '../../../conversation/data/providers/conversation_write_controller.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/presentation/dialogs/conversation_reassign_picker.dart';
 import '../../../analysis/data/providers/analysis_providers.dart';
@@ -127,6 +128,14 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
       conversations: conversations,
       ownerUserId: analysisRecordOwner,
     );
+    final legacyArchivedConversationCount = conversationSections.archived
+        .where(
+          (item) => !AnalysisArchiveLifecycle.hasStandaloneFragmentRecord(
+            conversation: item.conversation,
+            records: archivedAnalysisRecords,
+          ),
+        )
+        .length;
     final partners = ref.watch(partnerListProvider);
     final hasOtherPartner = partners.any((p) => p.id != partnerId);
 
@@ -173,7 +182,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
             onPressed: () => _openPartnerAnalysisRecords(
               partner: partner,
               conversations: conversations,
-              archivedConversationCount: conversationSections.archived.length,
+              archivedConversationCount: legacyArchivedConversationCount,
             ),
           ),
           IconButton(
@@ -345,12 +354,8 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
         foregroundColor: Colors.white,
         elevation: 8,
         shape: const StadiumBorder(),
-        // ADR-15 vocabulary lock — copy stays "+ 新增對話" verbatim
-        // (Path A 2026-04-28). Visual is the only thing that changed:
-        // pill shape + warm orange + amplified elevation. Subtle warm
-        // glow comes from the bottom-left bubble in the backdrop.
         label: const Text(
-          '+ 新增對話',
+          '+ 分析新片段',
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
@@ -365,10 +370,11 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
     if (owner == null || owner.isEmpty || conversations.isEmpty) {
       return const [];
     }
-    return ref.read(analysisRecordStoreProvider).listArchived(
-          ownerUserId: owner,
-          conversationIds: conversations.map((conversation) => conversation.id),
-        );
+    return AnalysisArchiveLifecycle.recordsFor(
+      store: ref.read(analysisRecordStoreProvider),
+      ownerUserId: owner,
+      conversations: conversations,
+    );
   }
 
   Future<void> _openPartnerAnalysisRecords({
@@ -378,6 +384,22 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
   }) async {
     final ownerUserId = ref.read(analysisRecordOwnerProvider)?.trim();
     final store = ref.read(analysisRecordStoreProvider);
+    if (ownerUserId != null && ownerUserId.isNotEmpty) {
+      final promoted =
+          await AnalysisArchiveLifecycle.promoteCompletedCurrentRecords(
+        store: store,
+        ownerUserId: ownerUserId,
+        conversations: conversations,
+      );
+      if (!promoted || !mounted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('分析紀錄整理失敗，請再試一次。')),
+          );
+        }
+        return;
+      }
+    }
     final records = _listArchivedAnalysisRecords(
       conversations: conversations,
       ownerUserId: ownerUserId,
@@ -409,6 +431,25 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
       onDelete: ownerUserId == null || ownerUserId.isEmpty
           ? null
           : (record) async {
+              Conversation? recordConversation;
+              for (final candidate in conversations) {
+                if (candidate.id == record.conversationId) {
+                  recordConversation = candidate;
+                  break;
+                }
+              }
+              if (recordConversation != null &&
+                  AnalysisArchiveLifecycle.isStandaloneFragmentRecord(
+                    record: record,
+                    conversation: recordConversation,
+                    records: records,
+                  )) {
+                await ref
+                    .read(conversationWriteControllerProvider.notifier)
+                    .delete(recordConversation);
+                return;
+              }
+
               final deleted = await store.deleteRecord(
                 ownerUserId: ownerUserId,
                 conversationId: record.conversationId,
@@ -597,7 +638,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Text(
-            '還沒有對話\n第一次聊天、截圖或手動輸入，都從「+ 新增對話」開始',
+            '還沒有分析片段\n截圖、貼上文字或手動輸入，都從「+ 分析新片段」開始',
             textAlign: TextAlign.center,
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.onBackgroundSecondary,
@@ -614,7 +655,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '目前對話',
+              '待分析片段',
               style: AppTypography.titleSmall.copyWith(
                 color: AppColors.onBackgroundPrimary,
                 fontWeight: FontWeight.w700,
@@ -622,7 +663,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              '尚未分析完成或後來補過新訊息的對話會留在這裡；分析完成後自動收起。',
+              '尚未完成的片段留在這裡；分析完成後會收進右上角的分析紀錄。',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.onBackgroundSecondary,
                 height: 1.35,
@@ -1458,7 +1499,7 @@ class _PartnerEmptyStateCard extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           Text(
-            '還沒有對話紀錄',
+            '還沒有分析片段',
             textAlign: TextAlign.center,
             style: AppTypography.titleLarge.copyWith(
               color: AppColors.onBackgroundPrimary,
@@ -1491,7 +1532,7 @@ class _PartnerEmptyStateCard extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              child: const Text('+ 新增對話'),
+              child: const Text('+ 分析新片段'),
             ),
           ),
         ],

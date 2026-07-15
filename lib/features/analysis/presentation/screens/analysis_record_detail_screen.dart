@@ -71,7 +71,7 @@ class _AnalysisRecordDetailScreenState
           ),
         ),
         content: Text(
-          '只會刪除這次獨立保存的聊天片段與分析，不會影響其他紀錄。',
+          '會刪除這次分析的保存內容，不會影響其他紀錄；刪除後無法復原。',
           style: AppTypography.bodyMedium.copyWith(
             color: AppColors.onBackgroundSecondary,
           ),

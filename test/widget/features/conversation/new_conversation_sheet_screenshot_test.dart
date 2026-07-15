@@ -80,6 +80,9 @@ void main() {
     await t.tap(find.text('open sheet'));
     await _settle(t);
 
+    expect(find.text('分析新片段'), findsOneWidget);
+    expect(find.textContaining('不會接到舊紀錄'), findsOneWidget);
+    expect(find.text('貼上這次要分析的一段聊天'), findsOneWidget);
     await t.tap(find.byIcon(Icons.edit_note));
     await _settle(t);
 
@@ -99,13 +102,16 @@ void main() {
     await t.tap(find.text('open sheet'));
     await _settle(t);
 
+    expect(find.text('新增對話'), findsOneWidget);
+    expect(find.text('分析新片段'), findsNothing);
     await t.tap(find.byIcon(Icons.edit_note));
     await _settle(t);
 
     expect(find.text('manual-entry:null'), findsOneWidget);
   });
 
-  testWidgets('sheet partnerId="p-test" + 截圖開始 → controller.create(partnerId: "p-test")',
+  testWidgets(
+      'sheet partnerId="p-test" + 截圖開始 → controller.create(partnerId: "p-test")',
       (t) async {
     // Phase 2 已驗 sheet bottom sheet 在 800x600 default 有 1.5px overflow。
     // 用 partner_detail_screen_test.dart 的 setSurfaceSize pattern 避開。
@@ -137,7 +143,8 @@ void main() {
         reason: '截圖 path 在 sheet 階段不傳 messages — OCR 完才補');
   });
 
-  testWidgets('sheet partnerId=null + 截圖開始 → controller.create(partnerId: null)',
+  testWidgets(
+      'sheet partnerId=null + 截圖開始 → controller.create(partnerId: null)',
       (t) async {
     await t.binding.setSurfaceSize(const Size(400, 900));
     addTearDown(() => t.binding.setSurfaceSize(null));
@@ -161,11 +168,12 @@ void main() {
     expect(fake.createCalled, isTrue);
     expect(fake.capturedPartnerId, isNull,
         reason: 'Legacy entry: 從非 PartnerDetail 進入截圖 flow（例如未來新加的 home FAB '
-                '快捷），sheet 不帶 partnerId → controller.create(partnerId: null)。'
-                '與 manual entry path 一致：auto-derive on create 不在現行架構。');
+            '快捷），sheet 不帶 partnerId → controller.create(partnerId: null)。'
+            '與 manual entry path 一致：auto-derive on create 不在現行架構。');
   });
 
-  testWidgets('sheet partnerId="p-test" + 開場救星 → opener route carries partnerId',
+  testWidgets(
+      'sheet partnerId="p-test" + 開場救星 → opener route carries partnerId',
       (t) async {
     await t.binding.setSurfaceSize(const Size(400, 900));
     addTearDown(() => t.binding.setSurfaceSize(null));

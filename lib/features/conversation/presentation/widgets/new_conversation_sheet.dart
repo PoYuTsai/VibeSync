@@ -3,11 +3,8 @@
 // Shared bottom sheet for creating new conversations. Pure move from
 // `lib/app/main_shell.dart` (`_NewConversationSheet`) — no behavior change.
 //
-// ADR-15 vocabulary contract (Phase 4 Task 5): the title「新增對話」STAYS.
-// This sheet is primarily reached from `PartnerDetailScreen` with `partnerId`
-// set, and can also be opened from an analyzed conversation as a fast
-// "start a fresh interaction" escape hatch.
-// Drift-protected by `test/widget/features/copy_sweep_snapshot_test.dart`.
+// Partner-bound entry creates an independent analysis fragment. The global
+// entry keeps the broader "new conversation" wording.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -55,14 +52,14 @@ class NewConversationSheet extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              '新增對話',
+              hasPartner ? '分析新片段' : '新增對話',
               style: AppTypography.titleMedium.copyWith(
                 color: AppColors.glassTextPrimary,
               ),
             ),
             const SizedBox(height: 6),
             Text(
-              hasPartner ? '在這張對象卡裡新增同一個人的一段互動紀錄' : '建立一段新的互動紀錄',
+              hasPartner ? '只放這次想讓 AI 看的內容，不會接到舊紀錄' : '建立一段新的互動紀錄',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.unselectedText,
               ),
@@ -82,7 +79,7 @@ class NewConversationSheet extends ConsumerWidget {
                 style: TextStyle(color: AppColors.glassTextPrimary),
               ),
               subtitle: Text(
-                '貼上或輸入這個人的一段聊天',
+                hasPartner ? '貼上這次要分析的一段聊天' : '貼上或輸入一段聊天',
                 style: TextStyle(color: AppColors.unselectedText, fontSize: 12),
               ),
               onTap: () {
@@ -106,7 +103,7 @@ class NewConversationSheet extends ConsumerWidget {
                 style: TextStyle(color: AppColors.glassTextPrimary),
               ),
               subtitle: Text(
-                '選這個人的聊天截圖，AI 辨識後會建立一段互動紀錄',
+                hasPartner ? '選這次要分析的聊天截圖，會建立獨立片段' : '選聊天截圖，AI 辨識後會建立互動紀錄',
                 style: TextStyle(color: AppColors.unselectedText, fontSize: 12),
               ),
               onTap: () async {

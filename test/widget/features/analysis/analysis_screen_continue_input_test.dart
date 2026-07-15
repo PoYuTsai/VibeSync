@@ -16,6 +16,7 @@ import 'package:vibesync/features/conversation/data/providers/conversation_write
 import 'package:vibesync/features/conversation/data/repositories/conversation_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
+import 'package:vibesync/features/conversation/presentation/widgets/message_bubble.dart';
 import 'package:vibesync/shared/widgets/image_picker_widget.dart';
 
 import '../conversation/_fakes/recording_conversation_write_controller.dart';
@@ -164,7 +165,7 @@ void main() {
       await _pumpAnalysisScreen(tester);
 
       expect(find.text('貼上或輸入新的一則訊息…'), findsOneWidget);
-      expect(find.text('建立這段對話'), findsOneWidget);
+      expect(find.text('建立本次片段'), findsOneWidget);
       expect(find.text('輸入完先收起鍵盤，再選這句是她說，還是我說。'), findsOneWidget);
       expect(find.text('這句是她說'), findsOneWidget);
       expect(find.text('這句是我說'), findsOneWidget);
@@ -227,8 +228,7 @@ void main() {
           AppColors.brandInk.withValues(alpha: 0.4));
     });
 
-    testWidgets('editing an analyzed bubble shows a reanalysis call to action',
-        (tester) async {
+    testWidgets('completed analysis fragment is read-only', (tester) async {
       final conversation = Conversation(
         id: 'continue-input-test',
         name: '小雲',
@@ -254,29 +254,46 @@ void main() {
         writeController: RecordingConversationWriteController(),
       );
 
-      final bubble = find.text('Original analyzed text').first;
-      await tester.ensureVisible(bubble);
-      await tester.longPress(bubble);
-      await tester.pump(const Duration(milliseconds: 300));
-
-      await tester.tap(find.text('編輯文字'));
-      await tester.pump(const Duration(milliseconds: 300));
-
-      final fieldFinder = find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.byType(TextField),
+      final bubble = tester.widget<MessageBubble>(
+        find.byType(MessageBubble).first,
       );
-      await tester.enterText(fieldFinder, 'Updated analyzed text');
-      await tester.tap(find.widgetWithText(TextButton, '儲存'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+      expect(bubble.onEdit, isNull);
+      expect(bubble.onSwapSide, isNull);
+      expect(bubble.onDelete, isNull);
+      expect(find.textContaining('內容唯讀'), findsOneWidget);
+    });
 
-      expect(
-        find.text('已修改已分析過的訊息，重新分析後會更新本次投入與回覆建議。'),
-        findsOneWidget,
+    testWidgets(
+        'completed fragment stays closed when its old snapshot is corrupt',
+        (tester) async {
+      final conversation = Conversation(
+        id: 'continue-input-test',
+        name: '小雲',
+        messages: [
+          Message(
+            id: 'm1',
+            content: '已經分析過的內容',
+            isFromMe: false,
+            timestamp: DateTime(2026, 5, 4),
+          ),
+        ],
+        createdAt: DateTime(2026, 5, 4),
+        updatedAt: DateTime(2026, 5, 4),
+        lastAnalyzedMessageCount: 1,
+        lastAnalysisSnapshotJson: 'corrupt-snapshot',
       );
-      expect(find.text('已儲存，點重新分析更新結果。'), findsOneWidget);
-      expect(find.text('重新分析'), findsWidgets);
+
+      await _pumpAnalysisScreen(tester, conversation: conversation);
+
+      final bubble = tester.widget<MessageBubble>(
+        find.byType(MessageBubble).first,
+      );
+      expect(bubble.onEdit, isNull);
+      expect(bubble.onSwapSide, isNull);
+      expect(bubble.onDelete, isNull);
+      expect(find.byType(ImagePickerWidget), findsNothing);
+      expect(find.text('分析新片段'), findsOneWidget);
+      expect(find.textContaining('內容唯讀'), findsOneWidget);
     });
 
     testWidgets('editing any bubble shows an immediate reanalysis snackbar',
@@ -337,9 +354,15 @@ void main() {
       await _pumpAnalysisScreen(tester, messages: const []);
 
       expect(find.text('還沒有訊息'), findsOneWidget);
-      expect(find.text('先上傳聊天截圖，確認文字後再加入這段對話。'), findsOneWidget);
+      expect(find.text('新的分析片段'), findsOneWidget);
+      expect(
+        find.text('先加入這次想給 AI 解析的聊天；不會接回舊紀錄。'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('內容唯讀'), findsNothing);
+      expect(find.text('先上傳聊天截圖，確認文字後再加入本次片段。'), findsOneWidget);
       expect(find.byType(ImagePickerWidget), findsOneWidget);
-      expect(find.text('建立這段對話'), findsNothing);
+      expect(find.text('建立本次片段'), findsNothing);
       expect(find.text('貼上或輸入新的一則訊息…'), findsNothing);
       expect(find.text('這句是她說'), findsNothing);
       expect(find.text('這句是我說'), findsNothing);
@@ -361,7 +384,7 @@ void main() {
       expect(find.text('補充背景（選填）'), findsOneWidget);
       expect(find.text('沒有可以留空'), findsOneWidget);
       expect(find.text('其他'), findsNothing);
-      expect(find.textContaining('只影響這個對話的分析'), findsAtLeastNWidgets(1));
+      expect(find.textContaining('只影響本次片段的分析'), findsAtLeastNWidgets(1));
       final noteField = tester.widget<TextField>(
         find.byWidgetPredicate(
           (widget) =>
@@ -373,7 +396,7 @@ void main() {
     });
 
     testWidgets(
-        'continue composer hides screenshot analysis settings to keep the follow-up flow clean',
+        'completed analysis starts a new independent fragment instead of reopening input',
         (tester) async {
       final conversation = Conversation(
         id: 'continue-input-test',
@@ -394,23 +417,17 @@ void main() {
 
       await _pumpAnalysisScreen(tester, conversation: conversation);
 
-      final continueButton = find.text('補聊天紀錄');
-      await tester.ensureVisible(continueButton);
-      await tester.tap(continueButton);
-      await tester.pump(const Duration(milliseconds: 80));
-      await tester.pump(const Duration(milliseconds: 180));
+      expect(find.text('補聊天紀錄'), findsNothing);
+      expect(find.byType(ImagePickerWidget), findsNothing);
+      final newFragmentButton = find.text('分析新片段');
+      expect(newFragmentButton, findsOneWidget);
+      expect(find.textContaining('舊片段不會接進來'), findsOneWidget);
 
-      expect(find.text('正在補聊天紀錄'), findsOneWidget);
-      expect(find.byType(ImagePickerWidget), findsOneWidget);
-      final uploadHint = find.text('請上傳聊天畫面，盡量保留標題列、訊息泡泡和前後文。');
-      expect(uploadHint, findsOneWidget);
-      expect(
-        tester.widget<Text>(uploadHint).style?.color,
-        AppColors.onBackgroundSecondary,
-      );
-      expect(find.text('這次分析設定（可不改）'), findsNothing);
-      expect(find.text('交友軟體・剛認識・邀約見面'), findsNothing);
-      expect(find.text('不確定可以先跳過；AI 會用預設情境分析。'), findsNothing);
+      await tester.tap(newFragmentButton);
+      await tester.pumpAndSettle();
+
+      expect(find.text('新增對話'), findsOneWidget);
+      expect(find.textContaining('建立一段新的互動紀錄'), findsOneWidget);
     });
 
     testWidgets(

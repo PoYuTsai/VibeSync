@@ -637,27 +637,29 @@
 
 ## ADR #20 — [2026-07-15] analyze-chat 採獨立分析紀錄，不再用長逐字稿收納
 
-**狀態**: 🟢 Active — 2026-07-15 Codex 儲存／流程雙路終審與最終 sanity check 通過，無 P0/P1/P2
+**狀態**: 🟢 Active decision／2026-07-16 修訂實作終審通過 — Eric 拍板
 
 **背景**: Sam 指出一般使用者不會用「一段一段的邏輯」整理聊天，且同一對象可能從交友軟體轉到 LINE、IG 或 Threads；Bruce 指出既有長 OCR／長逐字稿會越疊越亂，收納盒真正要解的是疊加與找回問題。Eric 拍板融合兩者：保留目前片段的即時感，舊分析改成可按對象與平台找回的獨立案例。
 
 **決定**:
 
 1. 一次成功分析保存一筆 self-contained record，包含當時訊息 deep copy、AI snapshot、分析邊界、完成 key、內容 revision、熱度／階段與來源平台。
-2. 每個 conversation 只有一個 current pointer；current 留在主畫面且不出現在 archive。有新片段成功分析時才讓舊 current 進 archive。
-3. 同片段刷新或 completion replay 只覆寫／重放 current，不製造重複案例。
+2. 一次分析請求就是一個獨立 fragment／Conversation。第一次分析前，同一次選取的多張截圖或手動訊息可累積；成功後立即關閉並收進右上分析紀錄，之後的新輸入必須建立新的 Conversation id（同一 partner），不得接回上一筆。
+3. 成功 fragment 的聊天內容唯讀。同內容、同邊界的付費回覆刷新可明確覆寫該 archived record；completion replay 只重放，不製造重複案例。任何內容 revision 改變、邊界延伸或已刪除 record 都不得用刷新路徑復活。
 4. `metVia` 存在 partner scope；`sourcePlatform` 在每筆成功分析時 snapshot。平台由使用者選擇，OCR 不推測。
 5. owner scope 進入 key 與 record body，使用既有 AES 加密 `settingsBox`；每筆獨立 key、無 FIFO、無自動 pruning。刪除對話以 cleanup marker＋tombstone 防止中斷或延遲寫入復活資料。
-6. 使用者只能手動刪除 archived record；conversation 刪除時 cascade 清該 conversation 的 records/state/source。partner `metVia` 不因刪一條 conversation 而消失，並跟隨 partner merge／delete lifecycle。
-7. 原有整段 conversation archive 保留，但使用者名稱改成「已收起的對話」，避免和新「分析紀錄」混淆。
+6. 完整覆蓋單一 Conversation 的唯一 record 被刪除時，走 Conversation 的 owner-scoped 安全刪除與 records/state/source cascade；舊制同一 Conversation 多筆或 partial records 只刪指定 record，避免誤刪其他歷史。partner `metVia` 不因刪一條 conversation 而消失，並跟隨 partner merge／delete lifecycle。
+7. 原有整段 conversation archive 保留並改稱「已收起的對話」，只承接無法安全視為單一完整 record 的舊制資料；已由完整獨立 record 承接的 Conversation 必須從該入口排除，避免重複顯示或刪除後看似復活。
 8. 本案不改 AI request messages、prompt、Edge schema、quota 或 billing；紀錄資料不回流成模型輸入。
 9. 對象頁右上封存圖示是分析紀錄的主要入口；分析頁保留同一入口作捷徑。「已收起的對話」降為封存抽屜內的次入口，不再佔用對象頁主內容。
 10. `sourcePlatform == null` 的紀錄保留在「全部」，但 UI 不顯示「未分類」badge／filter，也不得由 `metVia` 或 OCR 猜測。只有至少兩種已知平台時才顯示平台篩選。
 11. 清單不常駐顯示刪除；點入唯讀快照後才可從右上管理選單刪除。詳情必須讀 frozen messages／AI snapshot，不重新分析，並保留回覆引用脈絡。
+12. 舊版已疊加資料不自動猜測或切割；它可以保守留在舊入口，但任何已有完成證據的 Conversation 都不得再追加新截圖或新訊息。
+13. 48 小時跟進提醒以 partner 為單位。刪除單一 fragment／Conversation 時，只有該 partner 已無其他 Conversation 才取消提醒；刪除舊片段或放棄空白新片段不得誤取消其他片段排定的提醒。
 
 **後果**:
 
-- 優點：避免逐字稿越疊越亂；跨平台仍能以同一對象找回；刪除與 owner 隔離可被單元測試鎖定。
+- 優點：避免逐字稿越疊越亂；跨平台仍能以同一對象找回；完成後唯讀使畫面、AI snapshot 與封存內容維持一致；刪除與 owner 隔離可被單元測試鎖定。
 - 代價：本地紀錄沒有自動上限，容量交給使用者手動管理；更換裝置不會自動同步這批 local-only record。
 - 舊 `2026-07-14-analyze-chat-round-archive-*` 文件只保留歷史／程式地圖，產品與資料設計均已 superseded。
 

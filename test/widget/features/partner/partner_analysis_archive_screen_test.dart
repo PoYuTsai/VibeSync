@@ -3,12 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:vibesync/features/analysis/data/providers/analysis_record_providers.dart';
+import 'package:vibesync/features/analysis/data/repositories/analysis_record_store.dart';
+import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
 import 'package:vibesync/features/analysis_history/data/providers/analysis_history_providers.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/analysis_history/domain/repositories/analysis_history_repository.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_archive_providers.dart';
 import 'package:vibesync/features/conversation/data/repositories/conversation_archive_store.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
+import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_analysis_archive_screen.dart';
@@ -78,6 +82,37 @@ class _FakeHistoryRepository implements AnalysisHistoryRepository {
   List<AnalysisHistoryEvent> listRecent({int? limit}) => const [];
 }
 
+class _StaticAnalysisRecordStore implements AnalysisRecordStore {
+  _StaticAnalysisRecordStore(this.records);
+
+  final List<AnalysisRecord> records;
+
+  @override
+  AnalysisRecord? currentFor({
+    required String ownerUserId,
+    required String conversationId,
+  }) =>
+      null;
+
+  @override
+  List<AnalysisRecord> listArchived({
+    required String ownerUserId,
+    required Iterable<String> conversationIds,
+  }) {
+    final ids = conversationIds.toSet();
+    return records
+        .where(
+          (record) =>
+              record.ownerUserId == ownerUserId &&
+              ids.contains(record.conversationId),
+        )
+        .toList(growable: false);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 Partner _partner() => Partner(
       id: 'p1',
       name: 'Alice',
@@ -132,6 +167,7 @@ GoRouter _router() => GoRouter(
 Widget _host({
   required List<Conversation> conversations,
   required _MemoryArchiveStore archiveStore,
+  AnalysisRecordStore? analysisRecordStore,
 }) {
   return ProviderScope(
     overrides: [
@@ -141,6 +177,10 @@ Widget _host({
       partnerByIdProvider('p1').overrideWith((_) => _partner()),
       partnerListProvider.overrideWith((_) => [_partner(), _targetPartner()]),
       conversationsByPartnerProvider('p1').overrideWith((_) => conversations),
+      if (analysisRecordStore != null) ...[
+        analysisRecordOwnerProvider.overrideWithValue('u1'),
+        analysisRecordStoreProvider.overrideWithValue(analysisRecordStore),
+      ],
     ],
     child: MaterialApp.router(routerConfig: _router()),
   );
@@ -175,10 +215,10 @@ void main() {
     expect(find.text('05/01 互動紀錄'), findsNothing);
     expect(
         find.byKey(const ValueKey('archive-new-conversation')), findsOneWidget);
-    expect(find.text('+ 新增對話'), findsOneWidget);
+    expect(find.text('+ 分析新片段'), findsOneWidget);
   });
 
-  testWidgets('繼續這一段會改回 active 並導航到該對話', (tester) async {
+  testWidgets('舊對話只能查看，不會被改回 active', (tester) async {
     await tester.binding.setSurfaceSize(const Size(400, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -194,18 +234,83 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(
+    expect(
       find.byKey(const ValueKey('archive-continue-archived')),
+      findsNothing,
     );
+    expect(find.text('繼續這一段'), findsNothing);
+    await tester.tap(find.text('07/10 互動紀錄'));
     await tester.pumpAndSettle();
 
-    expect(store.lastMarkedActiveId, 'archived');
+    expect(store.lastMarkedActiveId, isNull);
     expect(
       store.entryFor(conversation)?.status,
-      ConversationArchiveStatus.active,
+      ConversationArchiveStatus.archived,
     );
     expect(
       find.byKey(const ValueKey('conversation-target-archived')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('完整獨立分析片段不會重複出現在舊版整段對話', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final timestamp = DateTime(2026, 7, 10);
+    final message = Message(
+      id: 'm1',
+      content: '這次只想分析這一句',
+      isFromMe: false,
+      timestamp: timestamp,
+    );
+    final conversation = Conversation(
+      id: 'standalone',
+      name: 'standalone',
+      messages: [message],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      ownerUserId: 'u1',
+      partnerId: 'p1',
+      lastAnalysisSnapshotJson: '{"completed":true}',
+      lastAnalyzedMessageCount: 1,
+      lastEnthusiasmScore: 72,
+    );
+    final record = AnalysisRecord(
+      id: 'record-standalone',
+      ownerUserId: 'u1',
+      conversationId: conversation.id,
+      partnerId: 'p1',
+      subjectName: 'Alice',
+      segmentStart: 0,
+      segmentEnd: 1,
+      createdAt: timestamp,
+      messages: [AnalysisRecordMessage.fromMessage(message)],
+      analysisSnapshotJson: '{"completed":true}',
+      analyzedContentRevision: conversationContentRevision(conversation),
+      completionKey: 'run-standalone',
+      sourcePlatform: 'Omi',
+      enthusiasmScore: 72,
+      gameStageLabel: '建立連結',
+    );
+    final archiveStore = _MemoryArchiveStore();
+    await archiveStore.markArchived(
+      conversation,
+      archivedAt: timestamp.add(const Duration(hours: 1)),
+    );
+
+    await tester.pumpWidget(
+      _host(
+        conversations: [conversation],
+        archiveStore: archiveStore,
+        analysisRecordStore: _StaticAnalysisRecordStore([record]),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PartnerConversationTile), findsNothing);
+    expect(
+      find.text('這裡保留舊版整段對話供查看；新內容請另開分析片段。'),
       findsOneWidget,
     );
   });

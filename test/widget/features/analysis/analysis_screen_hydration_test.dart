@@ -572,6 +572,7 @@ class _RecordingAnalysisRecordStore implements AnalysisRecordStore {
     required String analysisSnapshotJson,
     required int enthusiasmScore,
     required String gameStageLabel,
+    bool allowArchivedRefresh = false,
     String? sourcePlatform,
     DateTime? completedAt,
   }) async {
@@ -605,6 +606,13 @@ class _RecordingAnalysisRecordStore implements AnalysisRecordStore {
     required Iterable<String> conversationIds,
   }) =>
       const [];
+
+  @override
+  Future<bool> archiveCurrentRecord({
+    required String ownerUserId,
+    required String conversationId,
+  }) async =>
+      true;
 
   @override
   Future<bool> deleteRecord({
@@ -1012,7 +1020,7 @@ void main() {
         expect(find.byType(ImagePickerWidget), findsNothing,
             reason:
                 'Running full analysis should show streaming progress, not the upload/start-analysis card.');
-        expect(find.text('建立這段對話'), findsNothing);
+        expect(find.text('建立本次片段'), findsNothing);
         expect(find.text('貼上或輸入新的一則訊息…'), findsNothing,
             reason:
                 'Manual composer should collapse while full analysis is streaming so it does not cover the result area.');
@@ -1407,6 +1415,81 @@ void main() {
               const ValueKey('analysis-record-repair-warning'),
             ),
             findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        'cold repair finishes an interrupted paid refresh in the archive',
+        (tester) async {
+          final freeRaw = _freeSingleReplyRawResponse();
+          final paidRaw = _paidRawResponse();
+          final conv = _conversation(
+            lastAnalyzedMessageCount: 1,
+            lastEnthusiasmScore: 72,
+          )..ownerUserId = 'record-owner';
+          final box = _MemoryBox();
+          final recordStore = HiveAnalysisRecordStore(() => box);
+          await recordStore.saveSuccessfulAnalysis(
+            ownerUserId: 'record-owner',
+            conversation: conv,
+            completionKey: 'free-run',
+            runStartPreviousCount: 0,
+            analyzedMessageCount: 1,
+            analyzedContentRevision: conversationContentRevision(conv),
+            analysisSnapshotJson: jsonEncode(freeRaw),
+            enthusiasmScore: 72,
+            gameStageLabel: 'opening',
+          );
+          await recordStore.archiveCurrentRecord(
+            ownerUserId: 'record-owner',
+            conversationId: conv.id,
+          );
+
+          // Simulate process death after the canonical conversation write but
+          // before its archived record was refreshed.
+          conv.lastAnalysisSnapshotJson = _encodeSnapshotWithClientMeta(
+            paidRaw,
+            conversation: conv,
+            messageCount: 1,
+          );
+
+          await _pumpHydratedAnalysisScreenWithRepo(
+            tester,
+            seed: const StreamingAnalysisState(
+              phase: StreamingAnalyzePhase.idle,
+            ),
+            conversation: conv,
+            analysisRecordStore: recordStore,
+            analysisRecordOwnerUserId: 'record-owner',
+          );
+          tester.takeException();
+          for (var i = 0; i < 20; i++) {
+            final records = recordStore.listArchived(
+              ownerUserId: 'record-owner',
+              conversationIds: [conv.id],
+            );
+            if (records.isNotEmpty &&
+                records.single.analysisSnapshotJson == jsonEncode(paidRaw)) {
+              break;
+            }
+            await tester.pump(const Duration(milliseconds: 20));
+          }
+
+          final repaired = recordStore.listArchived(
+            ownerUserId: 'record-owner',
+            conversationIds: [conv.id],
+          );
+          expect(repaired, hasLength(1));
+          expect(
+            jsonDecode(repaired.single.analysisSnapshotJson),
+            equals(paidRaw),
+          );
+          expect(
+            find.byKey(
+              const ValueKey('analysis-record-repair-warning'),
+            ),
+            findsNothing,
           );
         },
       );
@@ -2291,6 +2374,25 @@ void main() {
         expect(harness.repo.lastSaved?.lastAnalyzedMessageCount, 1,
             reason:
                 'The pending outgoing message must stay pending after paid reply refresh.');
+        AnalysisRecord? refreshedArchive;
+        for (var i = 0; i < 40 && refreshedArchive == null; i++) {
+          final records = successfulRecordStore.listArchived(
+            ownerUserId: 'premium-refresh-owner',
+            conversationIds: const [_conversationId],
+          );
+          if (records.isNotEmpty &&
+              records.single.analysisSnapshotJson == jsonEncode(paidRaw)) {
+            refreshedArchive = records.single;
+            break;
+          }
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        expect(
+          jsonDecode(refreshedArchive!.analysisSnapshotJson),
+          equals(paidRaw),
+          reason:
+              'The archived fragment must show the refreshed paid analysis.',
+        );
         await tester.pump(const Duration(milliseconds: 500));
       },
     );

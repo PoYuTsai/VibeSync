@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/analysis/data/repositories/analysis_record_store.dart';
+import 'package:vibesync/features/analysis/data/services/analysis_archive_lifecycle.dart';
 import 'package:vibesync/features/conversation/data/repositories/conversation_archive_store.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
@@ -318,6 +321,646 @@ void main() {
       );
     });
 
+    test('completed single-fragment current can be archived and deleted',
+        () async {
+      final conversation = _conversation(id: 'single-fragment');
+      final saved = await _save(
+        store,
+        conversation,
+        completionKey: 'single-run',
+        previousCount: 0,
+      );
+
+      expect(
+        store.listArchived(
+          ownerUserId: 'owner-1',
+          conversationIds: [conversation.id],
+        ),
+        isEmpty,
+        reason: 'The current record stays on the analysis screen until closed.',
+      );
+
+      expect(
+        await store.archiveCurrentRecord(
+          ownerUserId: 'owner-1',
+          conversationId: conversation.id,
+        ),
+        isTrue,
+      );
+      expect(
+        store
+            .listArchived(
+              ownerUserId: 'owner-1',
+              conversationIds: [conversation.id],
+            )
+            .single
+            .id,
+        saved.record!.id,
+      );
+
+      expect(
+        await store.deleteRecord(
+          ownerUserId: 'owner-1',
+          conversationId: conversation.id,
+          recordId: saved.record!.id,
+        ),
+        isTrue,
+      );
+      expect(
+        store.listArchived(
+          ownerUserId: 'owner-1',
+          conversationIds: [conversation.id],
+        ),
+        isEmpty,
+      );
+      expect(
+        store.currentFor(
+          ownerUserId: 'owner-1',
+          conversationId: conversation.id,
+        ),
+        isNull,
+      );
+    });
+
+    test('rejecting deletion of a live current leaves it fully readable',
+        () async {
+      final conversation = _conversation(id: 'live-current');
+      final saved = await _save(
+        store,
+        conversation,
+        completionKey: 'live-run',
+        previousCount: 0,
+      );
+
+      expect(
+        await store.deleteRecord(
+          ownerUserId: 'owner-1',
+          conversationId: conversation.id,
+          recordId: saved.record!.id,
+        ),
+        isFalse,
+      );
+      expect(
+        store
+            .currentFor(
+              ownerUserId: 'owner-1',
+              conversationId: conversation.id,
+            )
+            ?.id,
+        saved.record!.id,
+      );
+      expect(
+        store
+            .recordById(
+              ownerUserId: 'owner-1',
+              conversationId: conversation.id,
+              recordId: saved.record!.id,
+            )
+            ?.id,
+        saved.record!.id,
+      );
+      expect(
+        box.containsKey(
+          'analysis_record_item_deleted_v1:owner-1:${conversation.id}:'
+          '${saved.record!.id}',
+        ),
+        isFalse,
+      );
+    });
+
+    test('archive lifecycle exposes and promotes a legacy completed current',
+        () async {
+      final conversation = _conversation(id: 'legacy-current')
+        ..lastAnalysisSnapshotJson = '{"legacy":true}'
+        ..lastAnalyzedMessageCount = 2
+        ..lastEnthusiasmScore = 61;
+      final saved = await _save(
+        store,
+        conversation,
+        completionKey: 'legacy-run',
+        previousCount: 0,
+      );
+
+      expect(
+        store.listArchived(
+          ownerUserId: 'owner-1',
+          conversationIds: [conversation.id],
+        ),
+        isEmpty,
+      );
+      expect(
+        AnalysisArchiveLifecycle.recordsFor(
+          store: store,
+          ownerUserId: 'owner-1',
+          conversations: [conversation],
+        ).single.id,
+        saved.record!.id,
+      );
+      expect(
+        await AnalysisArchiveLifecycle.promoteCompletedCurrentRecords(
+          store: store,
+          ownerUserId: 'owner-1',
+          conversations: [conversation],
+        ),
+        isTrue,
+      );
+      expect(
+        store
+            .listArchived(
+              ownerUserId: 'owner-1',
+              conversationIds: [conversation.id],
+            )
+            .single
+            .id,
+        saved.record!.id,
+      );
+    });
+
+    test('archive lifecycle identifies only an exact full standalone fragment',
+        () async {
+      final conversation = _conversation(id: 'standalone-fragment')
+        ..lastAnalysisSnapshotJson = '{"completed":true}'
+        ..lastAnalyzedMessageCount = 2
+        ..lastEnthusiasmScore = 72;
+      final saved = await _save(
+        store,
+        conversation,
+        completionKey: 'standalone-run',
+        previousCount: 0,
+      );
+      await store.archiveCurrentRecord(
+        ownerUserId: 'owner-1',
+        conversationId: conversation.id,
+      );
+      final records = AnalysisArchiveLifecycle.recordsFor(
+        store: store,
+        ownerUserId: 'owner-1',
+        conversations: [conversation],
+      );
+
+      expect(
+        AnalysisArchiveLifecycle.isStandaloneFragmentRecord(
+          record: saved.record!,
+          conversation: conversation,
+          records: records,
+        ),
+        isTrue,
+      );
+      expect(
+        AnalysisArchiveLifecycle.hasStandaloneFragmentRecord(
+          conversation: conversation,
+          records: records,
+        ),
+        isTrue,
+      );
+
+      final originalOwner = conversation.ownerUserId;
+      conversation.ownerUserId = null;
+      expect(
+        AnalysisArchiveLifecycle.hasStandaloneFragmentRecord(
+          conversation: conversation,
+          records: records,
+        ),
+        isFalse,
+        reason: '缺 owner 的舊資料不能走整個 Conversation 的安全刪除',
+      );
+      conversation.ownerUserId = originalOwner;
+
+      final original = conversation.messages.first;
+      conversation.messages[0] = Message(
+        id: original.id,
+        content: '事後修改過的內容',
+        isFromMe: original.isFromMe,
+        timestamp: original.timestamp,
+        enthusiasmScore: original.enthusiasmScore,
+        quotedReplyPreview: original.quotedReplyPreview,
+        quotedReplyPreviewIsFromMe: original.quotedReplyPreviewIsFromMe,
+      );
+      expect(
+        AnalysisArchiveLifecycle.hasStandaloneFragmentRecord(
+          conversation: conversation,
+          records: records,
+        ),
+        isFalse,
+        reason: 'revision 不符時必須保守保留 canonical conversation',
+      );
+    });
+
+    test('legacy stacked records never own the whole conversation', () async {
+      final conversation = _conversation(id: 'legacy-stacked-fragments');
+      await _save(
+        store,
+        conversation,
+        completionKey: 'legacy-first-run',
+        previousCount: 0,
+      );
+      conversation.messages = List.generate(4, _message);
+      await _save(
+        store,
+        conversation,
+        completionKey: 'legacy-second-run',
+        previousCount: 2,
+      );
+      conversation
+        ..lastAnalysisSnapshotJson = '{"completed":true}'
+        ..lastAnalyzedMessageCount = 4
+        ..lastEnthusiasmScore = 72;
+      await store.archiveCurrentRecord(
+        ownerUserId: 'owner-1',
+        conversationId: conversation.id,
+      );
+      final records = AnalysisArchiveLifecycle.recordsFor(
+        store: store,
+        ownerUserId: 'owner-1',
+        conversations: [conversation],
+      );
+
+      expect(records, hasLength(2));
+      expect(
+        AnalysisArchiveLifecycle.hasStandaloneFragmentRecord(
+          conversation: conversation,
+          records: records,
+        ),
+        isFalse,
+      );
+    });
+
+    test('deleted completed fragment stays deleted on repair replay', () async {
+      final conversation = _conversation(id: 'deleted-fragment');
+      final first = await _save(
+        store,
+        conversation,
+        completionKey: 'first-run',
+        previousCount: 0,
+      );
+      await store.archiveCurrentRecord(
+        ownerUserId: 'owner-1',
+        conversationId: conversation.id,
+      );
+      await store.deleteRecord(
+        ownerUserId: 'owner-1',
+        conversationId: conversation.id,
+        recordId: first.record!.id,
+      );
+
+      final repairReplay = await _save(
+        store,
+        conversation,
+        completionKey: 'cold-repair-key-can-differ',
+        previousCount: 0,
+      );
+
+      expect(repairReplay.status, AnalysisRecordSaveStatus.replayed);
+      expect(repairReplay.record, isNull);
+      expect(
+        store.listArchived(
+          ownerUserId: 'owner-1',
+          conversationIds: [conversation.id],
+        ),
+        isEmpty,
+        reason: 'Cold snapshot repair must not resurrect a manual deletion.',
+      );
+
+      conversation.messages = List.generate(3, _message);
+      final nextFragment = await _save(
+        store,
+        conversation,
+        completionKey: 'next-run',
+        previousCount: 2,
+      );
+      expect(nextFragment.status, AnalysisRecordSaveStatus.advancedCurrent);
+      expect(nextFragment.record!.segmentStart, 2);
+    });
+
+    test('archived current is immutable at the same boundary', () async {
+      final conversation = _conversation(id: 'archived-immutable');
+      final first = await _save(
+        store,
+        conversation,
+        completionKey: 'first-run',
+        previousCount: 0,
+      );
+      await store.archiveCurrentRecord(
+        ownerUserId: 'owner-1',
+        conversationId: conversation.id,
+      );
+
+      final replacement = await _save(
+        store,
+        conversation,
+        completionKey: 'different-run',
+        previousCount: 0,
+        snapshot: '{"different":true}',
+      );
+
+      expect(replacement.rejectionReason, 'archived_fragment_closed');
+      expect(
+        store
+            .listArchived(
+              ownerUserId: 'owner-1',
+              conversationIds: [conversation.id],
+            )
+            .single
+            .id,
+        first.record!.id,
+      );
+    });
+
+    test('explicit paid refresh can replace the same archived fragment',
+        () async {
+      final conversation = _conversation(id: 'archived-paid-refresh');
+      final first = await _save(
+        store,
+        conversation,
+        completionKey: 'free-run',
+        previousCount: 0,
+        snapshot: '{"tier":"free"}',
+      );
+      await store.archiveCurrentRecord(
+        ownerUserId: 'owner-1',
+        conversationId: conversation.id,
+      );
+
+      final refreshed = await store.saveSuccessfulAnalysis(
+        ownerUserId: 'owner-1',
+        conversation: conversation,
+        completionKey: 'paid-refresh-run',
+        runStartPreviousCount: conversation.messages.length,
+        analyzedMessageCount: conversation.messages.length,
+        analyzedContentRevision: conversationContentRevision(conversation),
+        analysisSnapshotJson: '{"tier":"paid"}',
+        enthusiasmScore: 78,
+        gameStageLabel: '穩定互動',
+        allowArchivedRefresh: true,
+      );
+
+      expect(refreshed.status, AnalysisRecordSaveStatus.replacedCurrent);
+      expect(refreshed.record!.id, first.record!.id);
+      expect(refreshed.record!.analysisSnapshotJson, '{"tier":"paid"}');
+      expect(
+        await store.archiveCurrentRecord(
+          ownerUserId: 'owner-1',
+          conversationId: conversation.id,
+        ),
+        isTrue,
+      );
+      expect(
+        store
+            .listArchived(
+              ownerUserId: 'owner-1',
+              conversationIds: [conversation.id],
+            )
+            .single
+            .analysisSnapshotJson,
+        '{"tier":"paid"}',
+      );
+    });
+
+    test('deleted boundary rejects shorter or changed same-boundary repair',
+        () async {
+      final conversation = _conversation(id: 'deleted-closed');
+      final first = await _save(
+        store,
+        conversation,
+        completionKey: 'first-run',
+        previousCount: 0,
+      );
+      await store.archiveCurrentRecord(
+        ownerUserId: 'owner-1',
+        conversationId: conversation.id,
+      );
+      await store.deleteRecord(
+        ownerUserId: 'owner-1',
+        conversationId: conversation.id,
+        recordId: first.record!.id,
+      );
+
+      final changed = await _save(
+        store,
+        conversation,
+        completionKey: 'changed-run',
+        previousCount: 0,
+        snapshot: '{"changed":true}',
+      );
+      final shorter = await _save(
+        store,
+        conversation,
+        completionKey: 'short-run',
+        previousCount: 0,
+        analyzedCount: 1,
+      );
+
+      expect(changed.rejectionReason, 'deleted_fragment_closed');
+      expect(shorter.rejectionReason, 'deleted_fragment_closed');
+      expect(
+        store.listArchived(
+          ownerUserId: 'owner-1',
+          conversationIds: [conversation.id],
+        ),
+        isEmpty,
+      );
+    });
+
+    test('archived boundary extension rejects an edited historical prefix',
+        () async {
+      final conversation = _conversation(id: 'edited-prefix');
+      await _save(
+        store,
+        conversation,
+        completionKey: 'first-run',
+        previousCount: 0,
+      );
+      await store.archiveCurrentRecord(
+        ownerUserId: 'owner-1',
+        conversationId: conversation.id,
+      );
+      conversation.messages[0] = Message(
+        id: 'message-0',
+        content: '已被修改的舊訊息',
+        isFromMe: true,
+        timestamp: DateTime.utc(2026, 7, 15, 10),
+      );
+      conversation.messages.add(_message(2));
+
+      final extension = await _save(
+        store,
+        conversation,
+        completionKey: 'extended-run',
+        previousCount: 2,
+      );
+
+      expect(extension.rejectionReason, 'fragment_prefix_changed');
+    });
+
+    test('partial-delete residual record stays tombstoned after extension',
+        () async {
+      final conversation = _conversation(id: 'partial-delete');
+      final first = await _save(
+        store,
+        conversation,
+        completionKey: 'first-run',
+        previousCount: 0,
+      );
+      await store.archiveCurrentRecord(
+        ownerUserId: 'owner-1',
+        conversationId: conversation.id,
+      );
+      await store.deleteRecord(
+        ownerUserId: 'owner-1',
+        conversationId: conversation.id,
+        recordId: first.record!.id,
+      );
+      final oldRecordKey =
+          'analysis_record_v2:owner-1:${conversation.id}:${first.record!.id}';
+      await box.put(oldRecordKey, first.record!.encode());
+
+      expect(
+        store.recordById(
+          ownerUserId: 'owner-1',
+          conversationId: conversation.id,
+          recordId: first.record!.id,
+        ),
+        isNull,
+      );
+      conversation.messages.add(_message(2));
+      final next = await _save(
+        store,
+        conversation,
+        completionKey: 'next-run',
+        previousCount: 2,
+      );
+
+      expect(next.status, AnalysisRecordSaveStatus.advancedCurrent);
+      expect(next.record!.segmentStart, 2);
+      expect(
+        store.listArchived(
+          ownerUserId: 'owner-1',
+          conversationIds: [conversation.id],
+        ).where((record) => record.id == first.record!.id),
+        isEmpty,
+      );
+    });
+
+    test('item tombstone alone hides current during a partial delete window',
+        () async {
+      final conversation = _conversation(id: 'partial-current-delete');
+      final saved = await _save(
+        store,
+        conversation,
+        completionKey: 'first-run',
+        previousCount: 0,
+      );
+      await store.archiveCurrentRecord(
+        ownerUserId: 'owner-1',
+        conversationId: conversation.id,
+      );
+      await box.put(
+        'analysis_record_item_deleted_v1:owner-1:${conversation.id}:'
+        '${saved.record!.id}',
+        true,
+      );
+
+      expect(
+        store.currentFor(
+          ownerUserId: 'owner-1',
+          conversationId: conversation.id,
+        ),
+        isNull,
+      );
+      expect(
+        store.recordById(
+          ownerUserId: 'owner-1',
+          conversationId: conversation.id,
+          recordId: saved.record!.id,
+        ),
+        isNull,
+      );
+
+      final replay = await _save(
+        store,
+        conversation,
+        completionKey: 'cold-repair-after-partial-delete',
+        previousCount: 0,
+      );
+      expect(replay.status, AnalysisRecordSaveStatus.replayed);
+      expect(replay.record, isNull);
+      expect(
+        await store.archiveCurrentRecord(
+          ownerUserId: 'owner-1',
+          conversationId: conversation.id,
+        ),
+        isTrue,
+        reason: 'Cold repair must not hard-gate on a durable item tombstone.',
+      );
+      expect(
+        store.currentFor(
+          ownerUserId: 'owner-1',
+          conversationId: conversation.id,
+        ),
+        isNull,
+      );
+      expect(
+        store.listArchived(
+          ownerUserId: 'owner-1',
+          conversationIds: [conversation.id],
+        ),
+        isEmpty,
+      );
+      final healedState = jsonDecode(
+        box.get(
+          'analysis_record_state_v1:owner-1:${conversation.id}',
+        ) as String,
+      ) as Map<String, dynamic>;
+      expect(healedState['currentDeleted'], isTrue);
+    });
+
+    test('schema v1 current lazily upgrades before archive and delete',
+        () async {
+      final conversation = _conversation(id: 'schema-v1');
+      final first = await _save(
+        store,
+        conversation,
+        completionKey: 'first-run',
+        previousCount: 0,
+      );
+      final stateKey = 'analysis_record_state_v1:owner-1:${conversation.id}';
+      await box.put(
+        stateKey,
+        jsonEncode(<String, Object>{
+          'schemaVersion': 1,
+          'currentRecordId': first.record!.id,
+          'lastCompletionKey': 'first-run',
+          'currentStart': 0,
+          'currentEnd': 2,
+        }),
+      );
+
+      expect(
+        await store.archiveCurrentRecord(
+          ownerUserId: 'owner-1',
+          conversationId: conversation.id,
+        ),
+        isTrue,
+      );
+      expect(box.get(stateKey), contains('"schemaVersion":2'));
+      expect(
+        await store.deleteRecord(
+          ownerUserId: 'owner-1',
+          conversationId: conversation.id,
+          recordId: first.record!.id,
+        ),
+        isTrue,
+      );
+      final replay = await _save(
+        store,
+        conversation,
+        completionKey: 'repair-run',
+        previousCount: 0,
+      );
+      expect(replay.status, AnalysisRecordSaveStatus.replayed);
+      expect(replay.record, isNull);
+    });
+
     test('archived listing spans requested conversations but isolates owner',
         () async {
       final first = _conversation(id: 'conversation-1');
@@ -484,6 +1127,22 @@ void main() {
         completionKey: 'run-2',
         previousCount: 2,
       );
+      expect(
+        await store.deleteRecord(
+          ownerUserId: 'owner-1',
+          conversationId: conversation.id,
+          recordId: first.record!.id,
+        ),
+        isTrue,
+      );
+      final recordTombstonePrefix =
+          'analysis_record_item_deleted_v1:owner-1:${conversation.id}:';
+      expect(
+        box.keys.whereType<String>().where(
+              (key) => key.startsWith(recordTombstonePrefix),
+            ),
+        isNotEmpty,
+      );
       final corruptedKey =
           'analysis_record_v2:owner-1:${conversation.id}:${first.record!.id}';
       await box.put(corruptedKey, 'malformed private record');
@@ -523,6 +1182,31 @@ void main() {
         ),
         isTrue,
       );
+      expect(
+        box.keys.whereType<String>().where(
+              (key) => key.startsWith(recordTombstonePrefix),
+            ),
+        isEmpty,
+      );
+
+      // A stale payload that appears after whole-conversation cleanup must
+      // not let a concurrent item delete leave a ghost tombstone behind.
+      await box.put(corruptedKey, first.record!.encode());
+      expect(
+        await store.deleteRecord(
+          ownerUserId: 'owner-1',
+          conversationId: conversation.id,
+          recordId: first.record!.id,
+        ),
+        isFalse,
+      );
+      expect(
+        box.keys.whereType<String>().where(
+              (key) => key.startsWith(recordTombstonePrefix),
+            ),
+        isEmpty,
+      );
+      await box.delete(corruptedKey);
 
       final staleWriter = await _save(
         store,

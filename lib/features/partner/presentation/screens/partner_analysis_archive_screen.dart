@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../analysis/data/providers/analysis_record_providers.dart';
+import '../../../analysis/data/services/analysis_archive_lifecycle.dart';
+import '../../../analysis/domain/entities/analysis_record.dart';
 import '../../../analysis_history/data/providers/analysis_history_providers.dart';
 import '../../../conversation/data/providers/conversation_archive_providers.dart';
 import '../../../conversation/presentation/dialogs/conversation_reassign_picker.dart';
@@ -35,7 +38,24 @@ class PartnerAnalysisArchiveScreen extends ConsumerWidget {
       entryFor: archiveStore.entryFor,
       latestAnalysisAtFor: latestAnalysisAtFor,
     );
-    final grouped = _groupByMonth(sections.archived);
+    final ownerUserId = ref.watch(analysisRecordOwnerProvider)?.trim();
+    final List<AnalysisRecord> records =
+        ownerUserId == null || ownerUserId.isEmpty
+            ? const <AnalysisRecord>[]
+            : AnalysisArchiveLifecycle.recordsFor(
+                store: ref.read(analysisRecordStoreProvider),
+                ownerUserId: ownerUserId,
+                conversations: conversations,
+              );
+    final legacyArchived = sections.archived
+        .where(
+          (item) => !AnalysisArchiveLifecycle.hasStandaloneFragmentRecord(
+            conversation: item.conversation,
+            records: records,
+          ),
+        )
+        .toList(growable: false);
+    final grouped = _groupByMonth(legacyArchived);
 
     return Scaffold(
       backgroundColor: AppColors.backgroundGradientStart,
@@ -67,7 +87,7 @@ class PartnerAnalysisArchiveScreen extends ConsumerWidget {
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      '完成分析且沒有待處理的新訊息時，整段對話會收在這裡。',
+                      '這裡保留舊版整段對話供查看；新內容請另開分析片段。',
                       textAlign: TextAlign.center,
                       style: AppTypography.bodyMedium.copyWith(
                         color: AppColors.onBackgroundSecondary,
@@ -79,7 +99,7 @@ class PartnerAnalysisArchiveScreen extends ConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
                   children: [
                     Text(
-                      '這裡收的是整段對話；要補新訊息時，可以重新開啟。每次獨立的 AI 分析片段請從分析頁右上角查看。',
+                      '這裡收的是舊版整段對話，只供查看。新內容請使用「分析新片段」，不會接回舊紀錄。',
                       style: AppTypography.bodySmall.copyWith(
                         color: AppColors.onBackgroundSecondary,
                         height: 1.4,
@@ -115,27 +135,6 @@ class PartnerAnalysisArchiveScreen extends ConsumerWidget {
                             item.conversation,
                           ),
                         ),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton.icon(
-                            key: ValueKey(
-                              'archive-continue-${item.conversation.id}',
-                            ),
-                            onPressed: () async {
-                              await ref
-                                  .read(conversationArchiveControllerProvider
-                                      .notifier)
-                                  .markActive(item.conversation);
-                              if (context.mounted) {
-                                context.push(
-                                  '/conversation/${item.conversation.id}',
-                                );
-                              }
-                            },
-                            icon: const Icon(Icons.edit_note_rounded),
-                            label: const Text('繼續這一段'),
-                          ),
-                        ),
                         const SizedBox(height: 8),
                       ],
                     ],
@@ -154,7 +153,7 @@ class PartnerAnalysisArchiveScreen extends ConsumerWidget {
                 ),
         backgroundColor: AppColors.ctaStart,
         foregroundColor: Colors.white,
-        label: const Text('+ 新增對話'),
+        label: const Text('+ 分析新片段'),
       ),
     );
   }

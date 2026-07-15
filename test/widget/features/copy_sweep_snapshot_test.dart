@@ -131,7 +131,7 @@ void main() {
   );
 
   testWidgets(
-    'partner detail "+ 新增對話" FAB stays Conversation-level (kept)',
+    'partner detail uses independent analysis-fragment vocabulary',
     (t) async {
       // Spec 5 C24 — CoachFollowUpSection lives inside the same ListView,
       // pushing the empty-conversation hint past the default cache extent.
@@ -159,21 +159,19 @@ void main() {
       ));
       await t.pumpAndSettle();
 
-      // FAB label MUST stay 「新增對話」 — this is Conversation creation under
-      // an existing Partner, the ADR-15 contract explicitly keeps this.
+      // The partner-bound entry closes the old stacking loophole: every new
+      // analysis starts as a separate fragment under the same Partner.
       expect(
-        find.text('+ 新增對話'),
+        find.text('+ 分析新片段'),
         findsOneWidget,
-        reason: 'Partner detail FAB creates a Conversation under the current '
-            'Partner — string must stay 「新增對話」 per ADR-15.',
+        reason: 'Partner detail must not imply that new input continues the '
+            'previous analyzed transcript.',
       );
-      // Empty conversation hint stays Conversation-level, but uses plainer
-      // "互動紀錄" wording so first-time users understand the folder model.
       expect(
-        find.textContaining('還沒有互動紀錄'),
+        find.textContaining('還沒有分析片段'),
         findsOneWidget,
-        reason: 'Partner detail empty conversation hint must stay '
-            '「對話」 (Conversation-level).',
+        reason:
+            'The empty state should explain the independent-fragment model.',
       );
     },
   );

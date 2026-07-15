@@ -590,13 +590,13 @@ void main() {
     ));
     await t.pumpAndSettle();
 
-    expect(find.text('還沒有對話紀錄'), findsOneWidget);
+    expect(find.text('還沒有分析片段'), findsOneWidget);
     expect(find.textContaining('開始你們的第一次分析'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('partner-analysis-records-entry')),
       findsOneWidget,
     );
-    expect(find.text('+ 新增對話'), findsOneWidget);
+    expect(find.text('+ 分析新片段'), findsOneWidget);
     expect(find.byKey(const Key('partner-empty-add-conversation')),
         findsOneWidget);
     expect(find.byType(FloatingActionButton), findsNothing);
@@ -750,7 +750,7 @@ void main() {
       child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
-    expect(find.textContaining('還沒有對話'), findsOneWidget);
+    expect(find.textContaining('還沒有分析片段'), findsOneWidget);
   });
 
   testWidgets('renders one tile per conversation when list non-empty',

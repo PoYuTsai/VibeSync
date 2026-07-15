@@ -7,6 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:vibesync/features/analysis/data/providers/analysis_record_providers.dart';
+import 'package:vibesync/features/analysis/data/repositories/analysis_record_store.dart';
+import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/analysis_history/domain/repositories/analysis_history_repository.dart';
 import 'package:vibesync/features/analysis_history/data/providers/analysis_history_providers.dart';
@@ -14,8 +17,10 @@ import 'package:vibesync/features/coach_follow_up/data/providers/coach_follow_up
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/coach_follow_up/domain/repositories/coach_follow_up_repository.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_archive_providers.dart';
+import 'package:vibesync/features/conversation/data/providers/conversation_write_controller.dart';
 import 'package:vibesync/features/conversation/data/repositories/conversation_archive_store.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
+import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
@@ -25,6 +30,8 @@ import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_
 import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
+
+import '_fakes/recording_conversation_write_controller.dart';
 
 Partner _p() => Partner(
       id: 'p1',
@@ -123,10 +130,50 @@ class _FakeStyleRepo implements PartnerStyleRepository {
   Future<void> save(PartnerStyleOverride o) async {}
 }
 
+class _StaticAnalysisRecordStore implements AnalysisRecordStore {
+  _StaticAnalysisRecordStore(this.records);
+
+  final List<AnalysisRecord> records;
+
+  @override
+  AnalysisRecord? currentFor({
+    required String ownerUserId,
+    required String conversationId,
+  }) =>
+      null;
+
+  @override
+  List<AnalysisRecord> listArchived({
+    required String ownerUserId,
+    required Iterable<String> conversationIds,
+  }) {
+    final ids = conversationIds.toSet();
+    return records
+        .where(
+          (record) =>
+              record.ownerUserId == ownerUserId &&
+              ids.contains(record.conversationId),
+        )
+        .toList(growable: false);
+  }
+
+  @override
+  String? partnerMetVia({
+    required String ownerUserId,
+    required String partnerId,
+  }) =>
+      null;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 Widget _host(
   List<Conversation> conversations,
-  ConversationArchiveStore archiveStore,
-) =>
+  ConversationArchiveStore archiveStore, {
+  AnalysisRecordStore? analysisRecordStore,
+  ConversationWriteController? writeController,
+}) =>
     ProviderScope(
       overrides: [
         conversationArchiveStoreProvider.overrideWithValue(archiveStore),
@@ -141,6 +188,14 @@ Widget _host(
             .overrideWith((_) => const DataQualityFlag.unflagged()),
         conversationsByPartnerProvider('p1').overrideWith((_) => conversations),
         partnerListProvider.overrideWith((_) => [_p()]),
+        if (analysisRecordStore != null) ...[
+          analysisRecordOwnerProvider.overrideWithValue('u1'),
+          analysisRecordStoreProvider.overrideWithValue(analysisRecordStore),
+        ],
+        if (writeController != null)
+          conversationWriteControllerProvider.overrideWith(
+            () => writeController,
+          ),
       ],
       child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
     );
@@ -158,7 +213,7 @@ void main() {
       await tester.pumpWidget(_host([active, archived], store));
       await tester.pumpAndSettle();
 
-      expect(find.text('目前對話'), findsOneWidget);
+      expect(find.text('待分析片段'), findsOneWidget);
       expect(find.byType(PartnerConversationTile), findsOneWidget);
       expect(find.text('已收起的對話 (1)'), findsNothing);
       expect(find.textContaining('較早的對話'), findsNothing);
@@ -234,6 +289,92 @@ void main() {
         ),
         findsNothing,
       );
+    });
+
+    testWidgets('刪除完整獨立紀錄會走 Conversation 安全刪除', (tester) async {
+      final timestamp = DateTime(2026, 7, 16, 10);
+      final message = Message(
+        id: 'standalone-message',
+        content: '只分析這個新片段',
+        isFromMe: false,
+        timestamp: timestamp,
+      );
+      final conversation = Conversation(
+        id: 'standalone-conversation',
+        name: 'Alice',
+        messages: [message],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        ownerUserId: 'u1',
+        partnerId: 'p1',
+        lastAnalysisSnapshotJson: '{"completed":true}',
+        lastAnalyzedMessageCount: 1,
+        lastEnthusiasmScore: 72,
+      );
+      final record = AnalysisRecord(
+        id: 'standalone-record',
+        ownerUserId: 'u1',
+        conversationId: conversation.id,
+        partnerId: 'p1',
+        subjectName: 'Alice',
+        segmentStart: 0,
+        segmentEnd: 1,
+        createdAt: timestamp,
+        messages: [AnalysisRecordMessage.fromMessage(message)],
+        analysisSnapshotJson: '{"completed":true}',
+        analyzedContentRevision: conversationContentRevision(conversation),
+        completionKey: 'standalone-run',
+        sourcePlatform: 'Omi',
+        enthusiasmScore: 72,
+        gameStageLabel: '建立連結',
+      );
+      final archiveStore = _MemoryArchiveStore();
+      await archiveStore.markArchived(
+        conversation,
+        archivedAt: timestamp,
+      );
+      final writeController = RecordingConversationWriteController();
+
+      await tester.binding.setSurfaceSize(const Size(400, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        _host(
+          [conversation],
+          archiveStore,
+          analysisRecordStore: _StaticAnalysisRecordStore([record]),
+          writeController: writeController,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey('partner-analysis-records-entry')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('analysis-record-standalone-record')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('analysis-record-detail-menu')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('analysis-record-delete-action')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('analysis-record-delete-confirm')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(writeController.deleteCalled, isTrue);
+      expect(
+        writeController.deletedConversation?.id,
+        conversation.id,
+      );
+      expect(find.text('她說：「只分析這個新片段」'), findsNothing);
+      expect(tester.takeException(), isNull);
     });
   });
 }

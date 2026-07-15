@@ -171,24 +171,24 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('加入目前對話：加入現在開啟的對話，適合同一段聊天。'),
+        find.text('加入本次片段：只補這次尚未分析的同一批內容。'),
         findsOneWidget,
       );
       expect(
-        find.text('另存成新對話：建立獨立紀錄，適合同一人的另一段聊天。'),
+        find.text('另開分析片段：建立獨立紀錄，不和目前內容拼成逐字稿。'),
         findsOneWidget,
       );
       expect(find.textContaining('目前選擇：只有在你確定這批截圖'), findsOneWidget);
 
-      await _tapVisible(tester, find.text('另存成新對話'));
+      await _tapVisible(tester, find.text('另開分析片段'));
       await tester.pumpAndSettle();
 
       expect(
-        find.text('加入目前對話：加入現在開啟的對話，適合同一段聊天。'),
+        find.text('加入本次片段：只補這次尚未分析的同一批內容。'),
         findsOneWidget,
       );
       expect(
-        find.text('另存成新對話：建立獨立紀錄，適合同一人的另一段聊天。'),
+        find.text('另開分析片段：建立獨立紀錄，不和目前內容拼成逐字稿。'),
         findsOneWidget,
       );
       expect(find.textContaining('目前選擇：只適合同一人的另一段聊天'), findsOneWidget);
@@ -216,12 +216,59 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('加入目前對話：加入現在開啟的對話，適合同一段聊天。'),
+        find.text('加入本次片段：只補這次尚未分析的同一批內容。'),
         findsOneWidget,
       );
       expect(
-        find.textContaining('目前選擇：會把這批訊息存進目前這個新對話'),
+        find.textContaining('目前選擇：會把這批訊息放進本次片段'),
         findsOneWidget,
+      );
+    });
+
+    testWidgets('已完成分析時只能另開片段，不能再加入舊內容下方', (tester) async {
+      await _useTallSurface(tester);
+      ScreenshotRecognitionDialogResult? result;
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: recognizedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+          onResult: (value) => result = value,
+          currentConversation: Conversation(
+            id: 'completed-fragment',
+            name: '小美',
+            messages: [
+              Message(
+                id: 'old-message',
+                content: '舊片段',
+                isFromMe: false,
+                timestamp: DateTime(2026, 7, 16),
+              ),
+            ],
+            createdAt: DateTime(2026, 7, 16),
+            updatedAt: DateTime(2026, 7, 16),
+            lastAnalysisSnapshotJson: '{"done":true}',
+            lastAnalyzedMessageCount: 1,
+            lastEnthusiasmScore: 45,
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('加入本次片段'), findsNothing);
+      expect(find.text('另開分析片段'), findsOneWidget);
+      expect(
+        find.textContaining('新內容會另開分析片段'),
+        findsOneWidget,
+      );
+      await _tapVisible(tester, find.text('確認加入對話'));
+
+      expect(
+        result?.importMode,
+        ScreenshotRecognitionHelper.importModeNewConversation,
       );
     });
 
@@ -266,7 +313,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('另存成新對話仍會歸在目前對象'),
+        find.textContaining('另開分析片段仍會歸在目前對象'),
         findsOneWidget,
       );
       expect(
@@ -408,7 +455,7 @@ void main() {
         find.text('右滑＝我說，左滑＝她說；點訊息可改字或刪除。'),
         findsOneWidget,
       );
-      expect(find.text('另存成新對話'), findsOneWidget);
+      expect(find.text('另開分析片段'), findsOneWidget);
       expect(find.textContaining('辨識信心較低'), findsWidgets);
 
       // 砍掉：狀態徽章、安撫框、舊編輯器入口。
@@ -602,7 +649,7 @@ void main() {
 
       await _tapVisible(tester, find.text('確認加入對話'));
 
-      expect(find.text('至少要保留一則可加入對話的訊息。'), findsOneWidget);
+      expect(find.text('至少要保留一則可加入片段的訊息。'), findsOneWidget);
       // dialog 不應 pop（仍是初始 sentinel，未被覆寫）。
       expect(dialogResult, isNotNull);
       expect(dialogResult!.name, 'sentinel');
@@ -919,7 +966,7 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      await _tapVisible(tester, find.text('另存成新對話'));
+      await _tapVisible(tester, find.text('另開分析片段'));
       await tester.enterText(_partnerNameField(), 'Amber');
       await _tapVisible(tester, find.text('確認加入對話'));
 

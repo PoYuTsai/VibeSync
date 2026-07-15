@@ -67,13 +67,28 @@ abstract class AnalysisRecordStore {
     required String recordId,
   });
 
-  /// Lists archived records for the supplied live conversations. Each
-  /// conversation's current record is excluded. Results are newest first.
+  /// Lists archived records for the supplied live conversations. A current
+  /// record is included only after [archiveCurrentRecord] closes its fragment.
+  /// Results are newest first.
   List<AnalysisRecord> listArchived({
     required String ownerUserId,
     required Iterable<String> conversationIds,
   });
 
+  /// Makes the current successful record visible in the archive without
+  /// changing the immutable conversation snapshot it came from.
+  ///
+  /// This closes the one-fragment lifecycle. It is deliberately separate
+  /// from [saveSuccessfulAnalysis] so legacy multi-fragment conversations can
+  /// keep using the current pointer as their boundary authority.
+  Future<bool> archiveCurrentRecord({
+    required String ownerUserId,
+    required String conversationId,
+  });
+
+  /// [allowArchivedRefresh] is reserved for an explicit paid refresh of the
+  /// exact same message boundary. It never permits appending messages,
+  /// changing the analyzed revision, or reviving a deleted record.
   Future<AnalysisRecordSaveResult> saveSuccessfulAnalysis({
     required String ownerUserId,
     required Conversation conversation,
@@ -84,6 +99,7 @@ abstract class AnalysisRecordStore {
     required String analysisSnapshotJson,
     required int enthusiasmScore,
     required String gameStageLabel,
+    bool allowArchivedRefresh = false,
     String? sourcePlatform,
     DateTime? completedAt,
   });
@@ -168,6 +184,7 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
   static const conversationSourceKeyPrefix = 'analysis_conversation_source_v1';
   static const cleanupKeyPrefix = 'analysis_record_cleanup_v1';
   static const tombstoneKeyPrefix = 'analysis_record_deleted_v1';
+  static const recordTombstoneKeyPrefix = 'analysis_record_item_deleted_v1';
 
   /// Lazy getter keeps widget/headless tests that never initialize Hive from
   /// failing merely by constructing the provider or building a screen.
@@ -185,9 +202,12 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
       final box = _openBox();
       if (box.containsKey(_tombstoneKey(owner, conversation))) return null;
       final state = _stateFromRaw(box.get(_stateKey(owner, conversation)));
-      if (state == null) return null;
-      final record = AnalysisRecord.tryDecode(
-        box.get(_recordKey(owner, conversation, state.currentRecordId)),
+      if (state == null || state.currentDeleted) return null;
+      final record = _recordFromBox(
+        box,
+        owner: owner,
+        recordId: state.currentRecordId,
+        conversationId: conversation,
       );
       if (record == null ||
           record.id != state.currentRecordId ||
@@ -217,14 +237,16 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
     try {
       final box = _openBox();
       if (box.containsKey(_tombstoneKey(owner, conversation))) return null;
-      final record = AnalysisRecord.tryDecode(
-        box.get(_recordKey(owner, conversation, id)),
+      final state = _stateFromRaw(box.get(_stateKey(owner, conversation)));
+      if (state?.currentRecordId == id && state?.currentDeleted == true) {
+        return null;
+      }
+      return _recordFromBox(
+        box,
+        owner: owner,
+        recordId: id,
+        conversationId: conversation,
       );
-      return record?.ownerUserId == owner &&
-              record?.conversationId == conversation &&
-              record?.id == id
-          ? record
-          : null;
     } catch (_) {
       return null;
     }
@@ -252,7 +274,9 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
         );
         if (state != null) {
           conversationsWithState.add(conversationId);
-          currentIds.add(state.currentRecordId);
+          if (!state.currentArchived || state.currentDeleted) {
+            currentIds.add(state.currentRecordId);
+          }
         }
       }
 
@@ -263,6 +287,9 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
         final record = AnalysisRecord.tryDecode(box.get(key));
         if (record == null ||
             key != _recordKey(owner, record.conversationId, record.id) ||
+            box.containsKey(
+              _recordTombstoneKey(owner, record.conversationId, record.id),
+            ) ||
             record.ownerUserId != owner ||
             !conversations.contains(record.conversationId) ||
             !conversationsWithState.contains(record.conversationId) ||
@@ -282,6 +309,91 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
   }
 
   @override
+  Future<bool> archiveCurrentRecord({
+    required String ownerUserId,
+    required String conversationId,
+  }) async {
+    final owner = _normalized(ownerUserId);
+    final conversation = _normalized(conversationId);
+    if (owner == null || conversation == null) return false;
+
+    final box = _openBox();
+    if (box.containsKey(_tombstoneKey(owner, conversation))) return false;
+    final state = _stateFromRaw(box.get(_stateKey(owner, conversation)));
+    if (state == null) return false;
+    if (state.currentDeleted) return true;
+
+    final currentRecordTombstoned = box.containsKey(
+      _recordTombstoneKey(owner, conversation, state.currentRecordId),
+    );
+    if (currentRecordTombstoned) {
+      // The item tombstone is the first durable write during manual deletion.
+      // If the app stopped before the state write, treat the deletion as
+      // complete and heal the state when its immutable identity is available.
+      final rawCurrent = _recordFromBox(
+        box,
+        owner: owner,
+        recordId: state.currentRecordId,
+        conversationId: conversation,
+        ignoreRecordTombstone: true,
+      );
+      final revision =
+          state.currentRevision ?? rawCurrent?.analyzedContentRevision;
+      final snapshotDigest = state.currentSnapshotDigest ??
+          (rawCurrent == null
+              ? null
+              : _snapshotDigest(rawCurrent.analysisSnapshotJson));
+      if (revision != null && snapshotDigest != null) {
+        await box.put(
+          _stateKey(owner, conversation),
+          state
+              .copyWith(
+                currentArchived: true,
+                currentDeleted: true,
+                currentRevision: revision,
+                currentSnapshotDigest: snapshotDigest,
+              )
+              .encode(),
+        );
+      }
+      return true;
+    }
+
+    final current = _recordFromBox(
+      box,
+      owner: owner,
+      recordId: state.currentRecordId,
+      conversationId: conversation,
+    );
+    if (current == null ||
+        current.completionKey != state.lastCompletionKey ||
+        current.segmentStart != state.currentStart ||
+        current.segmentEnd != state.currentEnd) {
+      return false;
+    }
+    if (state.currentArchived &&
+        state.currentRevision == current.analyzedContentRevision &&
+        state.currentSnapshotDigest ==
+            _snapshotDigest(current.analysisSnapshotJson)) {
+      return true;
+    }
+
+    await box.put(
+      _stateKey(owner, conversation),
+      state
+          .copyWith(
+            currentArchived: true,
+            currentDeleted: false,
+            currentRevision: current.analyzedContentRevision,
+            currentSnapshotDigest:
+                _snapshotDigest(current.analysisSnapshotJson),
+          )
+          .encode(),
+    );
+    return true;
+  }
+
+  @override
   Future<AnalysisRecordSaveResult> saveSuccessfulAnalysis({
     required String ownerUserId,
     required Conversation conversation,
@@ -292,6 +404,7 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
     required String analysisSnapshotJson,
     required int enthusiasmScore,
     required String gameStageLabel,
+    bool allowArchivedRefresh = false,
     String? sourcePlatform,
     DateTime? completedAt,
   }) async {
@@ -335,6 +448,7 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
         'analysis_snapshot_is_blank',
       );
     }
+    final snapshotDigest = _snapshotDigest(analysisSnapshotJson);
 
     // Reads are intentionally fail-safe. The actual write below is not
     // swallowed: an unavailable/encryption-failed box is a persistence error
@@ -346,14 +460,26 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
       );
     }
     final state = _stateFromRaw(box.get(_stateKey(owner, conversationId)));
-    final currentCandidate = state == null
+    final rawCurrentCandidate = state == null
         ? null
         : _recordFromBox(
             box,
             owner: owner,
             recordId: state.currentRecordId,
             conversationId: conversationId,
+            ignoreRecordTombstone: true,
           );
+    final currentRecordTombstoned = state != null &&
+        box.containsKey(
+          _recordTombstoneKey(
+            owner,
+            conversationId,
+            state.currentRecordId,
+          ),
+        );
+    final currentWasDeleted =
+        state != null && (state.currentDeleted || currentRecordTombstoned);
+    final currentCandidate = currentWasDeleted ? null : rawCurrentCandidate;
     final current = state != null &&
             currentCandidate != null &&
             currentCandidate.completionKey == state.lastCompletionKey &&
@@ -361,30 +487,88 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
             currentCandidate.segmentEnd == state.currentEnd
         ? currentCandidate
         : null;
-    if (state?.lastCompletionKey == completion &&
-        current != null &&
+    final currentMatchesSnapshot = current != null &&
         current.analyzedContentRevision == revision &&
         current.segmentEnd == analyzedMessageCount &&
-        current.analysisSnapshotJson == analysisSnapshotJson) {
+        _snapshotDigest(current.analysisSnapshotJson) == snapshotDigest;
+    if (currentMatchesSnapshot) {
       return AnalysisRecordSaveResult._(
         status: AnalysisRecordSaveStatus.replayed,
         record: current,
       );
     }
 
-    final advancesCurrent =
-        current != null && analyzedMessageCount > current.segmentEnd;
+    final durableDeletedRevision =
+        state?.currentRevision ?? rawCurrentCandidate?.analyzedContentRevision;
+    final durableDeletedSnapshotDigest = state?.currentSnapshotDigest ??
+        (rawCurrentCandidate == null
+            ? null
+            : _snapshotDigest(rawCurrentCandidate.analysisSnapshotJson));
+    final deletedCurrentMatchesSnapshot = currentWasDeleted &&
+        state.currentEnd == analyzedMessageCount &&
+        durableDeletedRevision == revision &&
+        durableDeletedSnapshotDigest == snapshotDigest;
+    if (deletedCurrentMatchesSnapshot) {
+      // A cold hydration repair may use a different synthetic completion key
+      // from the original stream. Revision + snapshot digest are the durable
+      // identity here; accepting without rewriting preserves manual deletion.
+      return const AnalysisRecordSaveResult._(
+        status: AnalysisRecordSaveStatus.replayed,
+      );
+    }
+
+    if (currentWasDeleted && analyzedMessageCount <= state.currentEnd) {
+      return const AnalysisRecordSaveResult.rejected(
+        'deleted_fragment_closed',
+      );
+    }
+    final isExplicitArchivedRefresh = allowArchivedRefresh &&
+        state?.currentArchived == true &&
+        current != null &&
+        analyzedMessageCount == current.segmentEnd &&
+        revision == current.analyzedContentRevision;
+    if (state?.currentArchived == true &&
+        current != null &&
+        analyzedMessageCount <= current.segmentEnd &&
+        !isExplicitArchivedRefresh) {
+      return const AnalysisRecordSaveResult.rejected(
+        'archived_fragment_closed',
+      );
+    }
+
+    final boundaryEnd =
+        current?.segmentEnd ?? (currentWasDeleted ? state.currentEnd : null);
+    final boundaryRevision = current?.analyzedContentRevision ??
+        (currentWasDeleted ? durableDeletedRevision : null);
+    if (boundaryEnd != null && analyzedMessageCount > boundaryEnd) {
+      final prefixRevision = conversationContentRevision(
+        conversation,
+        messageCount: boundaryEnd,
+      );
+      if (boundaryRevision == null || prefixRevision != boundaryRevision) {
+        return const AnalysisRecordSaveResult.rejected(
+          'fragment_prefix_changed',
+        );
+      }
+    }
+
+    final deletedBoundary = currentWasDeleted ? state : null;
+    final advancesCurrent = current != null
+        ? analyzedMessageCount > current.segmentEnd
+        : deletedBoundary != null &&
+            analyzedMessageCount > deletedBoundary.currentEnd;
     final segmentStart = advancesCurrent
         // A validated current pointer is the durable boundary authority. The
         // caller baseline can be stale after cold repair or a missed write;
         // using it here could overlap or skip private message fragments.
-        ? current.segmentEnd
-        : current == null
+        ? (current?.segmentEnd ?? deletedBoundary!.currentEnd)
+        : current == null && deletedBoundary == null
             // Legacy/same-count hydration without a state must still create a
             // usable first current record from the full analyzed input.
             ? 0
-            : current.segmentStart < analyzedMessageCount
-                ? current.segmentStart
+            : (current?.segmentStart ?? deletedBoundary!.currentStart) <
+                    analyzedMessageCount
+                ? (current?.segmentStart ?? deletedBoundary!.currentStart)
                 : 0;
     if (segmentStart < 0 || segmentStart >= analyzedMessageCount) {
       return const AnalysisRecordSaveResult.rejected(
@@ -438,14 +622,26 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
       lastCompletionKey: completion,
       currentStart: segmentStart,
       currentEnd: analyzedMessageCount,
+      currentArchived: false,
+      currentDeleted: false,
+      currentRevision: revision,
+      currentSnapshotDigest: snapshotDigest,
     );
+    if (deletedBoundary != null) {
+      // The per-record tombstone already hides this item. Remove any residual
+      // payload before advancing the pointer so an interrupted prior delete
+      // can never reappear as an older archive after state replacement.
+      await box.delete(
+        _recordKey(owner, conversationId, deletedBoundary.currentRecordId),
+      );
+    }
     await box.putAll(<String, Object?>{
       _recordKey(owner, conversationId, record.id): record.encode(),
       _stateKey(owner, conversationId): nextState.encode(),
     });
 
     return AnalysisRecordSaveResult._(
-      status: current == null
+      status: current == null && deletedBoundary == null
           ? AnalysisRecordSaveStatus.createdCurrent
           : advancesCurrent
               ? AnalysisRecordSaveStatus.advancedCurrent
@@ -466,6 +662,7 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
     final id = _normalized(recordId);
     if (owner == null || conversation == null || id == null) return false;
     final box = _openBox();
+    if (box.containsKey(_tombstoneKey(owner, conversation))) return false;
     final record = AnalysisRecord.tryDecode(
       box.get(_recordKey(owner, conversation, id)),
     );
@@ -476,13 +673,36 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
       return false;
     }
 
-    final keys = <String>[_recordKey(owner, conversation, id)];
     final stateKey = _stateKey(owner, record.conversationId);
     final state = _stateFromRaw(box.get(stateKey));
-    // The user-facing delete action is for archived records. Protect the
-    // current pointer invariant even if a caller passes a detail-screen id.
-    if (state?.currentRecordId == id) return false;
-    await box.deleteAll(keys);
+    if (state?.currentRecordId == id && !state!.currentArchived) {
+      return false;
+    }
+    await box.put(
+      _recordTombstoneKey(owner, record.conversationId, id),
+      true,
+    );
+    if (state?.currentRecordId == id) {
+      final currentState = state!;
+      // A live current record still belongs to the analysis screen. Once the
+      // fragment is closed, retain its boundary/digest as a durable deletion
+      // tombstone so cold snapshot repair cannot recreate the user's record.
+      await box.put(
+        stateKey,
+        currentState
+            .copyWith(
+              currentArchived: true,
+              currentDeleted: true,
+              currentRevision: record.analyzedContentRevision,
+              currentSnapshotDigest:
+                  _snapshotDigest(record.analysisSnapshotJson),
+            )
+            .encode(),
+      );
+      await box.delete(_recordKey(owner, conversation, id));
+      return true;
+    }
+    await box.delete(_recordKey(owner, conversation, id));
     return true;
   }
 
@@ -595,6 +815,7 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
       _conversationSourceKey(owner, conversationId),
     };
     final recordKeys = <String>{};
+    final recordTombstoneKeys = <String>{};
     final state = _stateFromRaw(box.get(_stateKey(owner, conversationId)));
     if (state != null) {
       final currentKey =
@@ -608,11 +829,18 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
     }
 
     final recordPrefix = '$recordKeyPrefix:$owner:$conversationId:';
+    final recordTombstonePrefix =
+        '$recordTombstoneKeyPrefix:$owner:$conversationId:';
     for (final key in box.keys) {
-      if (key is! String || !key.startsWith(recordPrefix)) continue;
-      recordKeys.add(key);
+      if (key is! String) continue;
+      if (key.startsWith(recordPrefix)) {
+        recordKeys.add(key);
+      } else if (key.startsWith(recordTombstonePrefix)) {
+        recordTombstoneKeys.add(key);
+      }
     }
     keys.addAll(recordKeys);
+    keys.addAll(recordTombstoneKeys);
     await box.deleteAll(keys);
     // The marker is removed last. If any prior cleanup throws, recovery can
     // retry while the tombstone blocks every stale post-delete writer.
@@ -806,7 +1034,14 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
     required String owner,
     required String recordId,
     required String conversationId,
+    bool ignoreRecordTombstone = false,
   }) {
+    if (!ignoreRecordTombstone &&
+        box.containsKey(
+          _recordTombstoneKey(owner, conversationId, recordId),
+        )) {
+      return null;
+    }
     final record = AnalysisRecord.tryDecode(
       box.get(_recordKey(owner, conversationId, recordId)),
     );
@@ -847,6 +1082,9 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
         .toString();
   }
 
+  static String _snapshotDigest(String snapshotJson) =>
+      sha256.convert(utf8.encode(snapshotJson)).toString();
+
   static String _recordKey(
     String owner,
     String conversationId,
@@ -863,6 +1101,12 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
       '$cleanupKeyPrefix:$owner:$conversationId';
   static String _tombstoneKey(String owner, String conversationId) =>
       '$tombstoneKeyPrefix:$owner:$conversationId';
+  static String _recordTombstoneKey(
+    String owner,
+    String conversationId,
+    String recordId,
+  ) =>
+      '$recordTombstoneKeyPrefix:$owner:$conversationId:$recordId';
 
   static String? _normalized(Object? value) {
     if (value is! String) return null;
@@ -882,13 +1126,27 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
       final lastCompletionKey = _normalized(json['lastCompletionKey']);
       final currentStart = json['currentStart'];
       final currentEnd = json['currentEnd'];
-      if (json['schemaVersion'] != 1 ||
+      final schemaVersion = json['schemaVersion'];
+      final currentArchived =
+          schemaVersion == 2 ? json['currentArchived'] : false;
+      final currentDeleted =
+          schemaVersion == 2 ? json['currentDeleted'] : false;
+      final currentRevision =
+          schemaVersion == 2 ? _normalized(json['currentRevision']) : null;
+      final currentSnapshotDigest = schemaVersion == 2
+          ? _normalized(json['currentSnapshotDigest'])
+          : null;
+      if ((schemaVersion != 1 && schemaVersion != 2) ||
           currentRecordId == null ||
           lastCompletionKey == null ||
           currentStart is! int ||
           currentEnd is! int ||
+          currentArchived is! bool ||
+          currentDeleted is! bool ||
           currentStart < 0 ||
-          currentEnd <= currentStart) {
+          currentEnd <= currentStart ||
+          (currentDeleted &&
+              (currentRevision == null || currentSnapshotDigest == null))) {
         return null;
       }
       return _AnalysisRecordState(
@@ -896,6 +1154,10 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
         lastCompletionKey: lastCompletionKey,
         currentStart: currentStart,
         currentEnd: currentEnd,
+        currentArchived: currentArchived,
+        currentDeleted: currentDeleted,
+        currentRevision: currentRevision,
+        currentSnapshotDigest: currentSnapshotDigest,
       );
     } catch (_) {
       return null;
@@ -909,18 +1171,49 @@ class _AnalysisRecordState {
     required this.lastCompletionKey,
     required this.currentStart,
     required this.currentEnd,
+    required this.currentArchived,
+    required this.currentDeleted,
+    required this.currentRevision,
+    required this.currentSnapshotDigest,
   });
 
   final String currentRecordId;
   final String lastCompletionKey;
   final int currentStart;
   final int currentEnd;
+  final bool currentArchived;
+  final bool currentDeleted;
+  final String? currentRevision;
+  final String? currentSnapshotDigest;
+
+  _AnalysisRecordState copyWith({
+    bool? currentArchived,
+    bool? currentDeleted,
+    String? currentRevision,
+    String? currentSnapshotDigest,
+  }) =>
+      _AnalysisRecordState(
+        currentRecordId: currentRecordId,
+        lastCompletionKey: lastCompletionKey,
+        currentStart: currentStart,
+        currentEnd: currentEnd,
+        currentArchived: currentArchived ?? this.currentArchived,
+        currentDeleted: currentDeleted ?? this.currentDeleted,
+        currentRevision: currentRevision ?? this.currentRevision,
+        currentSnapshotDigest:
+            currentSnapshotDigest ?? this.currentSnapshotDigest,
+      );
 
   String encode() => jsonEncode(<String, Object>{
-        'schemaVersion': 1,
+        'schemaVersion': 2,
         'currentRecordId': currentRecordId,
         'lastCompletionKey': lastCompletionKey,
         'currentStart': currentStart,
         'currentEnd': currentEnd,
+        'currentArchived': currentArchived,
+        'currentDeleted': currentDeleted,
+        if (currentRevision != null) 'currentRevision': currentRevision!,
+        if (currentSnapshotDigest != null)
+          'currentSnapshotDigest': currentSnapshotDigest!,
       });
 }

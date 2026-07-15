@@ -234,14 +234,22 @@ class ConversationWriteController extends Notifier<void> {
     _invalidateConversationDetail(c.id);
     _invalidatePartnerScope(c.partnerId);
     _invalidateLegacyGlobal();
-    // 案4：刪 conversation 後取消該對象待發的 48h 跟進通知。
-    // best-effort：通知取消失敗絕不阻擋刪除本身（例如通知層未 wire 的測試環境）。
-    try {
-      await ref
-          .read(followUpNotificationServiceProvider)
-          .cancelForConversation(c.partnerId);
-    } catch (e) {
-      debugPrint('FollowUp cancel on delete failed: $e');
+    // 跟進通知以 partnerId 為單位；刪除其中一個獨立片段時，其他片段仍
+    // 共用同一個提醒。只有該對象已無任何 conversation 時才取消。
+    // best-effort：查詢或通知取消失敗絕不阻擋刪除本身。
+    final partnerId = c.partnerId?.trim();
+    if (partnerId != null && partnerId.isNotEmpty) {
+      try {
+        final hasRemainingConversation =
+            repo.listByPartner(partnerId).isNotEmpty;
+        if (!hasRemainingConversation) {
+          await ref
+              .read(followUpNotificationServiceProvider)
+              .cancelForConversation(partnerId);
+        }
+      } catch (e) {
+        debugPrint('FollowUp cancel on delete failed: $e');
+      }
     }
     if (cleanupError != null) {
       Error.throwWithStackTrace(

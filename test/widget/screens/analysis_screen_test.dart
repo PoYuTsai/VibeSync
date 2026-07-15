@@ -160,7 +160,7 @@ void main() {
       );
 
       expect(find.text('週末我去爬抹茶山'), findsOneWidget);
-      expect(find.text('建立這段對話'), findsOneWidget);
+      expect(find.text('建立本次片段'), findsOneWidget);
       expect(find.text('貼上或輸入新的一則訊息…'), findsOneWidget);
     });
   });

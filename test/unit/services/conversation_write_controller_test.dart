@@ -11,6 +11,9 @@ import 'package:vibesync/features/conversation/domain/entities/conversation.dart
 import 'package:vibesync/features/conversation/domain/entities/conversation_summary.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
+import 'package:vibesync/features/follow_up_notification/data/notification_gateway.dart';
+import 'package:vibesync/features/follow_up_notification/data/providers/follow_up_notification_service.dart';
+import 'package:vibesync/features/follow_up_notification/domain/notification_id.dart';
 import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
 import 'package:vibesync/features/analysis/data/providers/analysis_record_providers.dart';
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
@@ -132,14 +135,44 @@ class _MemoryConversationArchiveStore implements ConversationArchiveStore {
   }
 }
 
+class _RecordingNotificationGateway implements NotificationGateway {
+  final List<int> cancelled = [];
+
+  @override
+  Future<void> init() async {}
+
+  @override
+  Future<bool> requestPermission() async => true;
+
+  @override
+  Future<void> schedule({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime fireAt,
+    required String payload,
+  }) async {}
+
+  @override
+  Future<void> cancel(int id) async => cancelled.add(id);
+
+  @override
+  Future<void> cancelAll() async {}
+
+  @override
+  Future<String?> launchPayload() async => null;
+}
+
 late Box<Partner> partnerBox;
 late _FakeConversationRepository _fakeRepo;
 late _MemoryConversationArchiveStore _archiveStore;
+late _RecordingNotificationGateway _notificationGateway;
 
 Future<ProviderContainer> _makeContainer({String? ownerUserId = 'u-1'}) async {
   final container = ProviderContainer(overrides: [
     conversationRepositoryProvider.overrideWithValue(_fakeRepo),
     conversationArchiveStoreProvider.overrideWithValue(_archiveStore),
+    notificationGatewayProvider.overrideWithValue(_notificationGateway),
     analysisRecordOwnerProvider.overrideWithValue(ownerUserId),
     partnerRepositoryProvider
         .overrideWithValue(PartnerRepository(box: partnerBox)),
@@ -208,6 +241,7 @@ void main() {
   setUp(() async {
     _fakeRepo = _FakeConversationRepository();
     _archiveStore = _MemoryConversationArchiveStore();
+    _notificationGateway = _RecordingNotificationGateway();
     final ts = DateTime.now().microsecondsSinceEpoch;
     partnerBox = await Hive.openBox<Partner>('wc_partner_$ts');
     await partnerBox.put('p-X', _partner('p-X'));
@@ -749,6 +783,41 @@ void main() {
   });
 
   group('ConversationWriteController.delete', () {
+    test('keeps partner reminder while another independent fragment remains',
+        () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final deletedFragment = _convo('delete-old-fragment', partnerId: 'p-X');
+      final remainingFragment =
+          _convo('keep-latest-fragment', partnerId: 'p-X');
+      _fakeRepo.store[deletedFragment.id] = deletedFragment;
+      _fakeRepo.store[remainingFragment.id] = remainingFragment;
+
+      await container
+          .read(conversationWriteControllerProvider.notifier)
+          .delete(deletedFragment);
+
+      expect(_fakeRepo.store.containsKey(remainingFragment.id), isTrue);
+      expect(_notificationGateway.cancelled, isEmpty);
+    });
+
+    test('cancels partner reminder after its last fragment is deleted',
+        () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final lastFragment = _convo('delete-last-fragment', partnerId: 'p-X');
+      _fakeRepo.store[lastFragment.id] = lastFragment;
+
+      await container
+          .read(conversationWriteControllerProvider.notifier)
+          .delete(lastFragment);
+
+      expect(
+        _notificationGateway.cancelled,
+        contains(followUpNotificationId('p-X')),
+      );
+    });
+
     test('removes the archive marker with the conversation', () async {
       final container = await _makeContainer();
       addTearDown(container.dispose);

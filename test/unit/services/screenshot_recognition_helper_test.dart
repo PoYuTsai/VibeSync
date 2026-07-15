@@ -95,6 +95,33 @@ void main() {
         ScreenshotRecognitionHelper.importModeNewConversation,
       );
     });
+
+    test('uses a new fragment after the current fragment was analyzed', () {
+      final recognized = const RecognizedConversation(
+        contactName: '小美',
+        messageCount: 2,
+        summary: '識別到 2 則訊息',
+        importPolicy: 'allow',
+        confidence: 'high',
+      );
+      final conversation = buildConversation(
+        name: '小美',
+        messages: [buildMessage(isFromMe: false, content: '舊片段')],
+      )
+        ..lastAnalyzedMessageCount = 1
+        ..lastAnalysisSnapshotJson = '{"enthusiasm":{"score":45}}'
+        ..lastEnthusiasmScore = 45;
+
+      final result = ScreenshotRecognitionHelper.defaultImportMode(
+        recognized: recognized,
+        currentConversation: conversation,
+      );
+
+      expect(
+        result,
+        ScreenshotRecognitionHelper.importModeNewConversation,
+      );
+    });
   });
 
   group('ScreenshotRecognitionHelper.isPlaceholderConversationName', () {
@@ -427,7 +454,7 @@ void main() {
       expect(result, contains('目前這位對象'));
       expect(guidance.title, '先確認是不是同一人');
       expect(guidance.body, contains('取消並到正確對象'));
-      expect(warning, contains('不能靠「另存成新對話」分開'));
+      expect(warning, contains('不能靠「另開分析片段」分開'));
     });
 
     test('warns to fix direction before appending when side confidence is low',
@@ -449,7 +476,7 @@ void main() {
       );
 
       expect(result, contains('我說 / 她說'));
-      expect(result, contains('加入目前對話前'));
+      expect(result, contains('加入本次片段前'));
     });
 
     test('treats quoted replies as speaker-direction review risk', () {

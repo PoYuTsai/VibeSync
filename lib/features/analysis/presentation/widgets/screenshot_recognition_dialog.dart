@@ -8,6 +8,7 @@ import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../data/services/analysis_hint_service.dart';
 import '../../domain/entities/analysis_models.dart';
+import '../../domain/services/analysis_fragment_policy.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
 
 class ScreenshotRecognitionDialogResult {
@@ -96,7 +97,9 @@ class _ScreenshotRecognitionDialogState
     _selectedMeeting = widget.initialMeetingContext;
     _selectedDuration = widget.initialDuration;
     _selectedGoal = widget.initialGoal;
-    _selectedImportMode = widget.initialImportMode;
+    _selectedImportMode = _canAppendToCurrent
+        ? widget.initialImportMode
+        : ScreenshotRecognitionHelper.importModeNewConversation;
     _editableMessages =
         (widget.recognized.messages ?? const <RecognizedMessage>[])
             .map(_EditableRecognizedMessage.fromRecognizedMessage)
@@ -349,7 +352,7 @@ class _ScreenshotRecognitionDialogState
     final sanitizedMessages = _sanitizedMessages();
     if (sanitizedMessages.isEmpty) {
       setState(() {
-        _editValidationMessage = '至少要保留一則可加入對話的訊息。';
+        _editValidationMessage = '至少要保留一則可加入片段的訊息。';
       });
       return;
     }
@@ -374,6 +377,9 @@ class _ScreenshotRecognitionDialogState
         recognized: widget.recognized,
         currentConversation: widget.currentConversation,
       );
+
+  bool get _canAppendToCurrent =>
+      AnalysisFragmentPolicy.canAppendInput(widget.currentConversation);
 
   // 滑動絕對方向映射：右滑 = 我說、左滑 = 她說。
   void _setMessageSide(int index, bool isFromMe) {
@@ -913,7 +919,7 @@ class _ScreenshotRecognitionDialogState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '共抓到 ${widget.recognized.messageCount} 則訊息，加入對話前先確認一下。',
+              '共抓到 ${widget.recognized.messageCount} 則訊息，加入片段前先確認一下。',
               style: const TextStyle(color: AppColors.onBackgroundPrimary),
             ),
             if (widget.warningMessage != null &&
@@ -968,35 +974,39 @@ class _ScreenshotRecognitionDialogState
               spacing: 8,
               runSpacing: 8,
               children: [
-                ChoiceChip(
-                  label: const Text('加入目前對話'),
-                  selected: _selectedImportMode ==
-                      ScreenshotRecognitionHelper.importModeAppendCurrent,
-                  onSelected: (selected) {
-                    if (!selected) return;
-                    setState(() {
-                      _selectedImportMode =
-                          ScreenshotRecognitionHelper.importModeAppendCurrent;
-                    });
-                  },
-                  showCheckmark: false,
-                  selectedColor: AppColors.ctaStart.withValues(alpha: 0.2),
-                  backgroundColor: AppColors.brandInk.withValues(alpha: 0.4),
-                  side: BorderSide(
-                    color: _selectedImportMode ==
-                            ScreenshotRecognitionHelper.importModeAppendCurrent
-                        ? AppColors.ctaStart.withValues(alpha: 0.4)
-                        : AppColors.onBackgroundPrimary.withValues(alpha: 0.2),
+                if (_canAppendToCurrent)
+                  ChoiceChip(
+                    label: const Text('加入本次片段'),
+                    selected: _selectedImportMode ==
+                        ScreenshotRecognitionHelper.importModeAppendCurrent,
+                    onSelected: (selected) {
+                      if (!selected) return;
+                      setState(() {
+                        _selectedImportMode =
+                            ScreenshotRecognitionHelper.importModeAppendCurrent;
+                      });
+                    },
+                    showCheckmark: false,
+                    selectedColor: AppColors.ctaStart.withValues(alpha: 0.2),
+                    backgroundColor: AppColors.brandInk.withValues(alpha: 0.4),
+                    side: BorderSide(
+                      color: _selectedImportMode ==
+                              ScreenshotRecognitionHelper
+                                  .importModeAppendCurrent
+                          ? AppColors.ctaStart.withValues(alpha: 0.4)
+                          : AppColors.onBackgroundPrimary
+                              .withValues(alpha: 0.2),
+                    ),
+                    labelStyle: TextStyle(
+                      color: _selectedImportMode ==
+                              ScreenshotRecognitionHelper
+                                  .importModeAppendCurrent
+                          ? AppColors.ctaStart
+                          : AppColors.onBackgroundPrimary,
+                    ),
                   ),
-                  labelStyle: TextStyle(
-                    color: _selectedImportMode ==
-                            ScreenshotRecognitionHelper.importModeAppendCurrent
-                        ? AppColors.ctaStart
-                        : AppColors.onBackgroundPrimary,
-                  ),
-                ),
                 ChoiceChip(
-                  label: const Text('另存成新對話'),
+                  label: const Text('另開分析片段'),
                   selected: _selectedImportMode ==
                       ScreenshotRecognitionHelper.importModeNewConversation,
                   onSelected: (selected) {
@@ -1027,21 +1037,41 @@ class _ScreenshotRecognitionDialogState
               ],
             ),
             const SizedBox(height: 8),
-            Text(
-              '加入目前對話：加入現在開啟的對話，適合同一段聊天。',
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.onBackgroundSecondary,
-                height: 1.45,
+            if (_canAppendToCurrent) ...[
+              Text(
+                '加入本次片段：只補這次尚未分析的同一批內容。',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                  height: 1.45,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '另存成新對話：建立獨立紀錄，適合同一人的另一段聊天。',
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.onBackgroundSecondary,
-                height: 1.45,
+              const SizedBox(height: 4),
+              Text(
+                '另開分析片段：建立獨立紀錄，不和目前內容拼成逐字稿。',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                  height: 1.45,
+                ),
               ),
-            ),
+            ] else
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.ctaStart.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppColors.ctaStart.withValues(alpha: 0.24),
+                  ),
+                ),
+                child: Text(
+                  '這段已完成分析。新內容會另開分析片段，不會接到舊訊息下面。',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    height: 1.45,
+                  ),
+                ),
+              ),
             const SizedBox(height: 8),
             Text(
               '目前選擇：${ScreenshotRecognitionHelper.importModeDescription(
@@ -1084,7 +1114,7 @@ class _ScreenshotRecognitionDialogState
                     ),
                   ),
                   subtitle: Text(
-                    '另存成新對話仍會歸在目前對象；如果是另一人，請取消並到正確對象再匯入。',
+                    '另開分析片段仍會歸在目前對象；如果是另一人，請取消並到正確對象再匯入。',
                     style: AppTypography.caption.copyWith(
                       color: AppColors.onBackgroundSecondary,
                       height: 1.35,
@@ -1265,7 +1295,7 @@ class _ScreenshotRecognitionDialogState
               ),
               const SizedBox(height: 6),
               Text(
-                '把 AI 看不到的關係、背景或你的真實狀態補在這裡。只影響這個對話的分析，不會改對象資料。',
+                '把 AI 看不到的關係、背景或你的真實狀態補在這裡。只影響這個片段的分析，不會改對象資料。',
                 style: AppTypography.bodySmall.copyWith(
                   color: AppColors.onBackgroundSecondary,
                   height: 1.35,

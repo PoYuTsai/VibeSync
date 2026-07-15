@@ -833,7 +833,7 @@ class _EmptyRecordsCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  '目前這次分析會留在主畫面；下一次完成後，上一筆才會收進來。',
+                  '每次完成的分析片段都會獨立收進這裡，可依平台篩選或單獨刪除。',
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.onBackgroundSecondary,
                     height: 1.45,

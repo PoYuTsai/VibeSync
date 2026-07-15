@@ -1,4 +1,5 @@
 import '../../../conversation/domain/entities/conversation.dart';
+import 'analysis_fragment_policy.dart';
 import '../entities/analysis_models.dart';
 
 enum ScreenshotRecognitionGuidanceTone {
@@ -136,7 +137,7 @@ class ScreenshotRecognitionHelper {
 
     if (serverWarning != null && _looksLikeMixedThreadWarning(serverWarning)) {
       warnings.add(
-        '請確認這批截圖都是目前這位對象；不同人的內容不能靠「另存成新對話」分開，請取消並到正確對象再匯入。',
+        '請確認這批截圖都是目前這位對象；不同人的內容不能靠「另開分析片段」分開，請取消並到正確對象再匯入。',
       );
     }
 
@@ -164,6 +165,9 @@ class ScreenshotRecognitionHelper {
     required RecognizedConversation recognized,
     required Conversation currentConversation,
   }) {
+    if (!AnalysisFragmentPolicy.canAppendInput(currentConversation)) {
+      return importModeNewConversation;
+    }
     final hasExistingThread = currentConversation.messages.isNotEmpty;
     if (!hasExistingThread) {
       return importModeAppendCurrent;
@@ -337,7 +341,7 @@ class ScreenshotRecognitionHelper {
     if (looksLikeMixedThread) {
       return const ScreenshotRecognitionGuidance(
         title: '先確認是不是同一人',
-        body: '這批截圖可能混到不同人的內容。若不是目前這位對象，請取消並到正確對象再匯入；只有同一人的另一段聊天才適合另存成新對話。',
+        body: '這批截圖可能混到不同人的內容。若不是目前這位對象，請取消並到正確對象再匯入；只有同一人的另一段聊天才適合另開分析片段。',
         tone: ScreenshotRecognitionGuidanceTone.caution,
       );
     }
@@ -377,7 +381,7 @@ class ScreenshotRecognitionHelper {
 
     return const ScreenshotRecognitionGuidance(
       title: '可直接加入',
-      body: '這看起來是正常聊天截圖。如果是同一人的另一段聊天，可改用「另存成新對話」避免混入目前紀錄。',
+      body: '這看起來是正常聊天截圖。如果是同一人的另一段聊天，可改用「另開分析片段」，不要接成一份逐字稿。',
       tone: ScreenshotRecognitionGuidanceTone.stable,
     );
   }
@@ -391,6 +395,9 @@ class ScreenshotRecognitionHelper {
     required Conversation currentConversation,
     required String selectedImportMode,
   }) {
+    if (!AnalysisFragmentPolicy.canAppendInput(currentConversation)) {
+      return '這段已完成分析。新內容會建立獨立片段，不會接到舊訊息下面。';
+    }
     final hasExistingThread = currentConversation.messages.isNotEmpty;
     final nameMismatch = hasContactNameMismatch(
       recognized: recognized,
@@ -405,16 +412,16 @@ class ScreenshotRecognitionHelper {
 
     if (selectedImportMode == importModeAppendCurrent) {
       if (!hasExistingThread) {
-        return '會把這批訊息存進目前這個新對話，適合剛開始用第一批截圖建立對話。';
+        return '會把這批訊息放進本次片段，分析前還可以補同一批的其他截圖。';
       }
 
       if (recognized.sideConfidence == 'low' ||
           recognized.uncertainSideCount > 0) {
-        return '加入目前對話前，建議先把「我說 / 她說」看清楚，避免接錯。';
+        return '加入本次片段前，建議先把「我說 / 她說」看清楚，避免接錯。';
       }
 
       if (hasQuotedReplyPreview) {
-        return '這批截圖含回覆引用框，加入目前對話前請特別確認「我說 / 她說」，避免引用卡的人名讓左右判反。';
+        return '這批截圖含回覆引用框，加入本次片段前請特別確認「我說 / 她說」，避免引用卡的人名讓左右判反。';
       }
 
       if (nameMismatch) {
@@ -422,10 +429,10 @@ class ScreenshotRecognitionHelper {
       }
 
       if (shouldPreferNewConversation) {
-        return '只有在你確定這批截圖是目前這位對象的同一段續聊時，才建議加入目前對話。';
+        return '只有在你確定這批截圖是目前這位對象，而且屬於同一次待分析內容時，才建議加入本次片段。';
       }
 
-      return '會把這批訊息接到目前對話尾端，適合剛截到最新續聊。';
+      return '會放進本次尚未分析的片段；請只加入這次要讓 AI 看的同一批內容。';
     }
 
     if (shouldPreferNewConversation) {
@@ -433,9 +440,9 @@ class ScreenshotRecognitionHelper {
     }
 
     if (!hasExistingThread) {
-      return '會用這批截圖建立新的對話，之後可再補手動輸入或新的截圖。';
+      return '會用這批截圖建立新的分析片段，分析前仍可補同一批內容。';
     }
 
-    return '會建立新的對話，不會污染目前這段聊天紀錄。';
+    return '會建立獨立分析片段，不會和目前內容拼成逐字稿。';
   }
 }
