@@ -9723,6 +9723,11 @@ Deno.test("direct Game Debrief keeps an applied Hint question attributed to the 
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
+      "錯「assistant 問劇名後她有回答」→「她問劇名後你有回答」",
+    ),
+  );
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
       "第一且主要任務：先只逐句審 suggestedLine",
     ),
   );
@@ -9831,7 +9836,7 @@ Deno.test("direct Beginner Debrief removes a question-only critique when its nex
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "可保留已直證內容與無前提問句",
+      "可留直證內容/無前提問句",
     ),
   );
   assertEquals(
@@ -14530,8 +14535,9 @@ Deno.test("fresh production Game release removes an unanswered entry presupposit
   for (
     const releaseRule of [
       "問句前提不可替它選分支",
-      "喝了{真實答案}",
-      "槽型明確可用「叫{店名}」或「{有／沒有}進去喝」",
+      "沒忍住進去喝了{真實答案}」→「{有／沒有}進去」",
+      "喝了{真實答案}」「紅玉拿鐵{真實答案}」「我不確定」→單獨「{真實答案}」",
+      "明確槽型可用「叫{店名}」/「{有／沒有}進去喝」",
     ]
   ) {
     assert(claudePrompt(state.claudeCalls[2]).includes(releaseRule));

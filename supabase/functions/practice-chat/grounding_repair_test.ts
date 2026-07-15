@@ -294,10 +294,11 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   for (
     const atomicClaim of [
       "末問未答時",
-      "未知答案子句只可是一個符合槽型的原子變數",
-      "槽型明確可用「叫{店名}」或「{有／沒有}進去喝」",
-      "可保留已直證內容與無前提問句",
-      "我不確定」必修",
+      "未知答案子句只可一個槽型原子變數",
+      "明確槽型可用「叫{店名}」/「{有／沒有}進去喝」",
+      "可留直證內容/無前提問句",
+      "沒忍住進去喝了{真實答案}」→「{有／沒有}進去」",
+      "我不確定」→單獨「{真實答案}」",
       "一次早睡≠早睡派",
       "存一家店≠收藏很多",
       "追到兩點≠一開就停不下來",
@@ -325,6 +326,10 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   assertStringIncludes(
     messages[0].content,
     "Debrief 分析：你/user→user；她/對方/assistant→assistant",
+  );
+  assertStringIncludes(
+    messages[0].content,
+    "錯「assistant 問劇名後她有回答」→「她問劇名後你有回答」",
   );
   assertStringIncludes(
     messages[0].content,
