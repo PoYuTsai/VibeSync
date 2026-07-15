@@ -24,7 +24,6 @@ import 'package:vibesync/features/partner/presentation/screens/partner_detail_sc
 import 'package:vibesync/features/partner/presentation/widgets/partner_conversation_tile.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_data_quality_banner.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_heat_hero_card.dart';
-import 'package:vibesync/features/partner/presentation/widgets/partner_radar_summary_card.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_traits_card.dart';
 import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
 import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
@@ -483,7 +482,7 @@ void main() {
         dataQualityFlagProvider('p1')
             .overrideWith((_) => const DataQualityFlag.unflagged()),
         conversationsByPartnerProvider('p1')
-            .overrideWith((_) => const <Conversation>[]),
+            .overrideWith((_) => [_conv('existing')]),
         partnerListProvider.overrideWith(
           (_) => [_p(customNote: '慢熱，喜歡戶外活動')],
         ),
@@ -569,8 +568,7 @@ void main() {
     expect(find.text('merge-stub-p1'), findsOneWidget);
   });
 
-  testWidgets('renders command summary + hero + details + new-conversation FAB',
-      (t) async {
+  testWidgets('renders simplified first-conversation empty state', (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
@@ -588,31 +586,23 @@ void main() {
     ));
     await t.pumpAndSettle();
 
-    // Spec 6D — command-center content comes before detailed traits/radar.
-    expect(find.text('目前：待分析'), findsOneWidget);
-    expect(find.byType(PartnerHeatHeroCard), findsOneWidget);
-    // FAB copy stays "+ 新增對話" verbatim per ADR-15 vocabulary lock
-    // (Path A 2026-04-28). Visual changed (pill + orange), copy did not.
+    expect(find.text('還沒有對話紀錄'), findsOneWidget);
+    expect(find.textContaining('開始你們的第一次分析'), findsOneWidget);
     expect(find.text('+ 新增對話'), findsOneWidget);
-    // Empty-aggregate path → hero shows "待分析" (deterministic mapping,
-    // never a fake score).
-    expect(find.text('待分析'), findsWidgets);
-    expect(find.text('--'), findsOneWidget);
-    // 作戰板入口卡 sits between hero and records; the next-step card now
-    // starts below the lazy ListView's first viewport, so bring it on
-    // screen before asserting (off-screen children aren't built).
-    await _scrollUntilVisible(t, find.text('下一步行動'));
-    expect(find.text('下一步行動'), findsOneWidget);
-
-    await _scrollUntilVisible(t, find.text('詳細特質與趨勢'));
-    expect(find.text('詳細特質與趨勢'), findsOneWidget);
-    expect(find.text('長期資料與雷達圖，給想確認依據時展開。'), findsOneWidget);
-    expect(find.text('展開'), findsOneWidget);
+    expect(find.byKey(const Key('partner-empty-add-conversation')),
+        findsOneWidget);
+    expect(find.byType(FloatingActionButton), findsNothing);
+    expect(find.byType(PartnerHeatHeroCard), findsNothing);
     expect(find.byType(PartnerTraitsCard), findsNothing);
+    expect(find.text('還沒有素材？先練習一下'), findsOneWidget);
+    expect(find.text('準備邀約'), findsOneWidget);
+    expect(find.text('約會前提醒'), findsOneWidget);
+    expect(find.text('約會後復盤'), findsOneWidget);
 
-    await _expandDetailedTraits(t);
-    expect(find.byType(PartnerTraitsCard), findsOneWidget);
-    expect(find.byType(PartnerRadarSummaryCard), findsOneWidget);
+    await _scrollUntilVisible(t, find.text('關係下一步'));
+    expect(find.text('對象作戰板'), findsOneWidget);
+    expect(find.text('關係下一步'), findsOneWidget);
+    expect(find.text('完成第一次分析後解鎖'), findsNWidgets(2));
   });
 
   testWidgets('new-conversation sheet receives current partnerId', (t) async {
@@ -639,7 +629,7 @@ void main() {
     ));
     await t.pumpAndSettle();
 
-    await t.tap(find.byType(FloatingActionButton));
+    await t.tap(find.byKey(const Key('partner-empty-add-conversation')));
     await t.pumpAndSettle();
 
     final sheet =

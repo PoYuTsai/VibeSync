@@ -134,6 +134,16 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
     // shape of the partnerStyleEntryCard placement.
     final dataQualityFlag = ref.watch(dataQualityFlagProvider(partnerId));
 
+    if (conversations.isEmpty) {
+      return _buildEmptyStateScaffold(
+        context: context,
+        ref: ref,
+        partner: partner,
+        dataQualityFlag: dataQualityFlag,
+        hasOtherPartner: hasOtherPartner,
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBodyBehindAppBar: true,
@@ -325,6 +335,158 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
           '+ 新增對話',
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyStateScaffold({
+    required BuildContext context,
+    required WidgetRef ref,
+    required Partner partner,
+    required DataQualityFlag dataQualityFlag,
+    required bool hasOtherPartner,
+  }) {
+    final partnerId = partner.id;
+    const conversations = <Conversation>[];
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: AppColors.onBackgroundPrimary),
+        title: Text(
+          partner.name,
+          style: const TextStyle(color: AppColors.onBackgroundPrimary),
+        ),
+        actions: [
+          IconButton(
+            tooltip: '對象設定',
+            onPressed: () => _onEditPartnerSettings(context, ref, partner),
+            icon: const Icon(
+              Icons.settings_outlined,
+              color: AppColors.onBackgroundPrimary,
+            ),
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(
+              Icons.more_vert,
+              color: AppColors.onBackgroundPrimary,
+            ),
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'merge',
+                enabled: hasOtherPartner,
+                child: Text(
+                  hasOtherPartner ? '合併重複對象' : '合併重複對象（需至少 2 個對象）',
+                ),
+              ),
+            ],
+            onSelected: (value) {
+              if (value == 'merge') context.push('/partner/$partnerId/merge');
+            },
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          const Positioned.fill(child: _PartnerDetailBackground()),
+          SafeArea(
+            child: ListView(
+              controller: _scrollController,
+              padding: EdgeInsets.fromLTRB(
+                16,
+                0,
+                16,
+                widget.focusCoachFollowUp ? 120 : 36,
+              ),
+              children: [
+                _PartnerEmptyStateCard(
+                  onAddConversation: () => showModalBottomSheet<void>(
+                    context: context,
+                    backgroundColor: Colors.transparent,
+                    builder: (_) => NewConversationSheet(partnerId: partnerId),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _PartnerDetailSection(
+                  child: KeyedSubtree(
+                    key: _coachSectionKey,
+                    child: CoachFollowUpSection(
+                      partnerId: partnerId,
+                      onTelemetry: _logCoachFollowUpTelemetry,
+                      onQuotaExceeded: () async => context.push('/paywall'),
+                      openCoachEntryAnchorKey: _coachAnchorKey,
+                      compactPracticePresentation: !widget.focusCoachFollowUp,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const _LockedFeatureCard(
+                  icon: Icons.explore_outlined,
+                  title: '對象作戰板',
+                  subtitle: '完成第一次分析後解鎖',
+                ),
+                const SizedBox(height: 12),
+                const _LockedFeatureCard(
+                  icon: Icons.auto_awesome_outlined,
+                  title: '關係下一步',
+                  subtitle: '完成第一次分析後解鎖',
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  '我的風格・對 ${partner.name}　沿用全域預設 →',
+                  textAlign: TextAlign.center,
+                  style: AppTypography.bodySmall.copyWith(
+                    color:
+                        AppColors.onBackgroundSecondary.withValues(alpha: 0.45),
+                  ),
+                ),
+                if (dataQualityFlag.isFlagged &&
+                    dataQualityFlag.conflictingPair != null) ...[
+                  const SizedBox(height: 16),
+                  PartnerDataQualityBanner(
+                    nameA: _displayNameForCanonical(
+                      conversations,
+                      dataQualityFlag.conflictingPair!.first,
+                      fallback: _fallbackDisplayName(
+                        dataQualityFlag.conflictingPair!.first,
+                      ),
+                    ),
+                    nameB: _displayNameForCanonical(
+                      conversations,
+                      dataQualityFlag.conflictingPair!.second,
+                      fallback: _fallbackDisplayName(
+                        dataQualityFlag.conflictingPair!.second,
+                      ),
+                    ),
+                    onMarkSamePerson: () => _handleMarkSamePerson(
+                      ref,
+                      partner.id,
+                      dataQualityFlag.conflictingPair!,
+                    ),
+                    onSplit: () => _handleSplit(
+                      context,
+                      ref,
+                      partner,
+                      dataQualityFlag.conflictingPair!,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (widget.focusCoachFollowUp)
+            _CoachFocusOrchestrator(
+              scrollController: _scrollController,
+              anchorKey: _coachAnchorKey,
+              sectionKey: _coachSectionKey,
+              openInputAfterFocus: widget.openCoachInputOnFocus,
+              partnerId: partnerId,
+              onQuotaExceeded: () async => context.push('/paywall'),
+            ),
+        ],
       ),
     );
   }
@@ -1153,6 +1315,170 @@ class _PartnerTag extends StatelessWidget {
         label,
         style: AppTypography.bodySmall.copyWith(
           color: AppColors.onBackgroundPrimary,
+        ),
+      ),
+    );
+  }
+}
+
+class _PartnerEmptyStateCard extends StatelessWidget {
+  final VoidCallback onAddConversation;
+
+  const _PartnerEmptyStateCard({required this.onAddConversation});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(24, 34, 24, 24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.white.withValues(alpha: 0.075),
+            Colors.white.withValues(alpha: 0.025),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 76,
+            height: 76,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [AppColors.ctaStart, AppColors.bokehPink],
+              ),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.ctaStart.withValues(alpha: 0.2),
+                  blurRadius: 24,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.chat_bubble_outline_rounded,
+              color: Colors.white,
+              size: 34,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            '還沒有對話紀錄',
+            textAlign: TextAlign.center,
+            style: AppTypography.titleLarge.copyWith(
+              color: AppColors.onBackgroundPrimary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '截圖、貼上文字，或手動輸入\n開始你們的第一次分析',
+            textAlign: TextAlign.center,
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.onBackgroundSecondary,
+              height: 1.55,
+            ),
+          ),
+          const SizedBox(height: 26),
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: FilledButton(
+              key: const Key('partner-empty-add-conversation'),
+              onPressed: onAddConversation,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.ctaStart,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                textStyle: AppTypography.titleSmall.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              child: const Text('+ 新增對話'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LockedFeatureCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _LockedFeatureCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '$title，$subtitle',
+      enabled: false,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.025),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.11)),
+        ),
+        child: Opacity(
+          opacity: 0.48,
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Icon(icon, color: AppColors.onBackgroundSecondary),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: AppTypography.titleSmall.copyWith(
+                        color: AppColors.onBackgroundPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.onBackgroundSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.lock_outline_rounded,
+                size: 20,
+                color: AppColors.onBackgroundSecondary,
+              ),
+            ],
+          ),
         ),
       ),
     );

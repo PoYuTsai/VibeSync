@@ -61,6 +61,15 @@ Partner _p() => Partner(
       ownerUserId: 'u1',
     );
 
+Conversation _conversation() => Conversation(
+      id: 'c1',
+      name: 'Alice',
+      messages: const [],
+      createdAt: DateTime(2026, 4, 20),
+      updatedAt: DateTime(2026, 4, 20),
+      partnerId: 'p1',
+    );
+
 void main() {
   testWidgets(
       'PartnerStyleEntryCard appears before detailed traits on detail screen',
@@ -71,7 +80,7 @@ void main() {
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
         conversationsByPartnerProvider('p1')
-            .overrideWith((_) => const <Conversation>[]),
+            .overrideWith((_) => [_conversation()]),
         partnerListProvider.overrideWith((_) => [_p()]),
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
