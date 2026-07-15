@@ -338,6 +338,55 @@ void main() {
       );
     });
 
+    testWidgets('具名對話刪到空白後，名稱不一致仍會停用加入', (tester) async {
+      await _useTallSurface(tester);
+      const mismatchedConversation = RecognizedConversation(
+        contactName: 'Amber',
+        messageCount: 1,
+        summary: '識別到 1 則訊息',
+        messages: [
+          RecognizedMessage(
+            side: 'left',
+            isFromMe: false,
+            content: '晚安',
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mismatchedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeNewConversation,
+          forceShowSessionContextFields: false,
+          currentConversation: Conversation(
+            id: 'named-empty-conversation',
+            name: '小美',
+            partnerId: 'partner-xiaomei',
+            messages: const [],
+            createdAt: DateTime(2026, 7, 16),
+            updatedAt: DateTime(2026, 7, 16),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('我確認這些截圖都是目前這位對象'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<ElevatedButton>(find.widgetWithText(
+              ElevatedButton,
+              '確認加入對話',
+            ))
+            .onPressed,
+        isNull,
+      );
+    });
+
     testWidgets('顯示滑動提示，砍掉 OCR 信心徽章與安撫框，但保留警示與加入方式', (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(

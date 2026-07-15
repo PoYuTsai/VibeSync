@@ -155,6 +155,18 @@ void main() {
         ),
         isTrue,
       );
+
+      final emptyNamedConversation = buildConversation(
+        name: '小美',
+        partnerId: 'partner-xiaomei',
+      );
+      expect(
+        ScreenshotRecognitionHelper.requiresSamePartnerConfirmation(
+          recognized: recognized,
+          currentConversation: emptyNamedConversation,
+        ),
+        isTrue,
+      );
     });
 
     test('requires explicit confirmation when server sees different contacts',

@@ -56,8 +56,7 @@ class ScreenshotRecognitionHelper {
   }) {
     final recognizedName = recognized.contactName?.trim();
     final currentName = currentConversation.name.trim();
-    return currentConversation.messages.isNotEmpty &&
-        !isPlaceholderConversationName(currentName) &&
+    return !isPlaceholderConversationName(currentName) &&
         recognizedName != null &&
         recognizedName.isNotEmpty &&
         recognizedName != currentName;
