@@ -20,7 +20,7 @@ const List<String> kOpenerScreenshotProgressPhrases = <String>[
   '從對方的資訊找切入點…',
   '構思開場方向…',
   '打磨每一句開場白…',
-  '快好了，做最後檢查…',
+  '還在整理開場方向，請保持連線…',
 ];
 
 const List<String> kOpenerManualProgressPhrases = <String>[
@@ -28,7 +28,7 @@ const List<String> kOpenerManualProgressPhrases = <String>[
   '從對方的資訊找切入點…',
   '構思開場方向…',
   '打磨每一句開場白…',
-  '快好了，做最後檢查…',
+  '還在整理開場方向，請保持連線…',
 ];
 
 const Duration kOpenerProgressStageInterval = Duration(seconds: 3);

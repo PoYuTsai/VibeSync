@@ -19,6 +19,16 @@ void main() {
       expect(phrases.any((p) => p.contains('截圖')), isFalse);
       expect(phrases.length, greaterThanOrEqualTo(3));
     });
+
+    test('final stage stays honest when generation takes longer', () {
+      for (final phrases in [
+        kOpenerScreenshotProgressPhrases,
+        kOpenerManualProgressPhrases,
+      ]) {
+        expect(phrases.last, '還在整理開場方向，請保持連線…');
+        expect(phrases.last, isNot(contains('快好了')));
+      }
+    });
   });
 
   group('OpenerGenerationProgress staged copy', () {
