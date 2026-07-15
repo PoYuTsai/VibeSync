@@ -825,30 +825,24 @@ class CoachChatResultView extends ConsumerWidget {
               body: result.reflectionQuestion ?? result.answer,
             ),
             const SizedBox(height: 10),
-          ],
-          Text(
-            result.answer,
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.glassTextPrimary,
-              height: 1.45,
+            Text(
+              result.answer,
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.glassTextPrimary,
+                height: 1.45,
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          if (result.userTruth != null)
-            _InfoLine(label: '我理解你的真實想法', value: result.userTruth!),
-          _InfoLine(
-            label: '這輪卡點',
-            value: _frictionTypeLabel(result.frictionType),
-          ),
-          _InfoLine(label: '你現在卡在', value: result.userState),
-          _InfoLine(
-              label: isClarifying ? '先補充這一點' : '這次先做', value: result.nextStep),
-          if (!isClarifying && result.rewriteDecision != null)
+            const SizedBox(height: 10),
+            if (result.userTruth != null)
+              _InfoLine(label: '我理解你的真實想法', value: result.userTruth!),
             _InfoLine(
-              label: '教練判斷',
-              value:
-                  '${_rewriteDecisionLabel(result.rewriteDecision!)}${result.rewriteReason == null ? '' : '：${result.rewriteReason}'}',
+              label: '這輪卡點',
+              value: _frictionTypeLabel(result.frictionType),
             ),
+            _InfoLine(label: '你現在卡在', value: result.userState),
+            _InfoLine(label: '先補充這一點', value: result.nextStep),
+          ] else
+            _InfoLine(label: '這次先做', value: result.nextStep),
           if (result.suggestedLine != null) ...[
             const SizedBox(height: 10),
             Container(
@@ -880,10 +874,70 @@ class CoachChatResultView extends ConsumerWidget {
           ],
           const SizedBox(height: 10),
           _InfoLine(label: '邊界提醒', value: result.boundaryReminder),
-          if (!isClarifying &&
-              result.needsReflection &&
-              result.reflectionQuestion != null)
-            _InfoLine(label: '教練追問', value: result.reflectionQuestion!),
+          if (!isClarifying)
+            Theme(
+              data: Theme.of(context).copyWith(
+                dividerColor: Colors.transparent,
+              ),
+              child: ExpansionTile(
+                key: ValueKey('coach-full-analysis-${result.id}'),
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: const EdgeInsets.only(bottom: 8),
+                visualDensity: VisualDensity.compact,
+                iconColor: AppColors.primary,
+                collapsedIconColor: AppColors.glassTextSecondary,
+                title: Text(
+                  '看完整教練分析',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          result.answer,
+                          style: AppTypography.bodyMedium.copyWith(
+                            color: AppColors.glassTextPrimary,
+                            height: 1.45,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        if (result.userTruth != null)
+                          _InfoLine(
+                            label: '我理解你的真實想法',
+                            value: result.userTruth!,
+                          ),
+                        _InfoLine(
+                          label: '這輪卡點',
+                          value: _frictionTypeLabel(result.frictionType),
+                        ),
+                        _InfoLine(
+                          label: '你現在卡在',
+                          value: result.userState,
+                        ),
+                        if (result.rewriteDecision != null)
+                          _InfoLine(
+                            label: '教練判斷',
+                            value:
+                                '${_rewriteDecisionLabel(result.rewriteDecision!)}${result.rewriteReason == null ? '' : '：${result.rewriteReason}'}',
+                          ),
+                        if (result.needsReflection &&
+                            result.reflectionQuestion != null)
+                          _InfoLine(
+                            label: '教練追問',
+                            value: result.reflectionQuestion!,
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
