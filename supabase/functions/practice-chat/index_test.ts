@@ -13515,13 +13515,18 @@ Deno.test("fresh production Beginner release leaves an unanswered work status un
     ),
     false,
   );
-  for (const call of state.claudeCalls) {
+  for (const call of state.claudeCalls.slice(0, 2)) {
     assert(
       claudePrompt(call).includes(
         "答案只留 {真實答案}，尾句只可無前提反問",
       ),
     );
   }
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "終審尾掃：末則 assistant 問 user（含無問號的嗎/吧/呢/該不會）",
+    ),
+  );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
@@ -13836,13 +13841,18 @@ Deno.test("fresh production Game release keeps an unanswered drink status atomic
     groundingReviewCandidate(state.claudeCalls[2]),
     groundingReviewCandidate(state.claudeCalls[1]),
   );
-  for (const call of state.claudeCalls) {
+  for (const call of state.claudeCalls.slice(0, 2)) {
     assert(
       claudePrompt(call).includes(
         "答案只留 {真實答案}，尾句只可無前提反問",
       ),
     );
   }
+  assert(
+    claudePrompt(state.claudeCalls[2]).includes(
+      "終審尾掃：末則 assistant 問 user（含無問號的嗎/吧/呢/該不會）",
+    ),
+  );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
