@@ -293,10 +293,13 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   );
   for (
     const atomicClaim of [
+      "末問未答時",
+      "答案整段只可單獨 {真實答案} 或省略",
+      "後面只接無前提問句",
+      "我不確定」必修",
       "一次早睡≠早睡派",
       "存一家店≠收藏很多",
       "追到兩點≠一開就停不下來",
-      "{真實答案}須獨立取代未知答案子句",
       "紅玉拿鐵{真實答案}",
       "逐句拆最小命題",
       "同承諾者完整直證",
@@ -306,12 +309,10 @@ Deno.test("second review is a focused fact and variable release audit", () => {
       "認同她對 user 的評價都算 user 立場",
       "無同 owner 直證即刪",
       "忠實改述她可留",
-      "{真實答案}，你這樣問我有點壓力",
-      "問句前提非 user 事實",
-      "不可替 literal 變數選分支",
-      "前提/被問值分開核",
       "喝了{真實答案}",
-      "不證進店/喝過",
+      "literal {變數} 無值",
+      "問句前提不可替它選分支",
+      "未知禁改忘記／不知道／沒記住／沒去過／不確定／感官評價",
     ]
   ) {
     assertStringIncludes(messages[0].content, atomicClaim);
@@ -326,45 +327,25 @@ Deno.test("second review is a focused fact and variable release audit", () => {
   );
   assertStringIncludes(
     messages[0].content,
-    "先審 terminal 答案",
+    "任一類型、無論標點",
   );
   assertStringIncludes(
     messages[0].content,
-    "肯否／評價／推薦；無論標點",
+    "若全部直證無同 owner 同命題明答",
   );
   assertStringIncludes(
     messages[0].content,
-    "較早相容行為非回答",
+    "較早明答可用，相容行為非回答",
   );
   assertStringIncludes(
     messages[0].content,
-    "全部直證無同 owner 同命題明答",
+    "追到兩點≠超推",
   );
-  assertStringIncludes(
-    messages[0].content,
-    "明說「這部我超推」才可答「超推」",
-  );
-  assertStringIncludes(
-    messages[0].content,
-    "答案只留單一 {真實答案}",
-  );
-  assertStringIncludes(
-    messages[0].content,
-    "只說追到兩點不證「有推嗎」",
-  );
-  assertStringIncludes(
-    messages[0].content,
-    "「超推」改「{真實答案}」",
-  );
-  assertStringIncludes(
-    messages[0].content,
-    "再接無前提反問",
-  );
-  assertStringIncludes(
-    messages[0].content,
-    "未知禁改成忘記／不知道／沒記住／沒去過／不確定／感官評價",
-  );
-  assertStringIncludes(messages[0].content, "{變數}無值");
+  const suggestedIndex = messages[0].content.indexOf("先只逐句審 suggestedLine");
+  const terminalIndex = messages[0].content.indexOf("末問未答時");
+  const broadIndex = messages[0].content.indexOf("逐句拆最小命題");
+  assert(suggestedIndex >= 0 && suggestedIndex < terminalIndex);
+  assert(terminalIndex < broadIndex);
   assertStringIncludes(
     messages[0].content,
     "applied Hint=user_turn",

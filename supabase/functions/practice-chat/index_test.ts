@@ -7394,7 +7394,7 @@ Deno.test("Hint repair removes partner speculation before independent verificati
   assert(firstVerificationPrompt.includes("自行肯定/否定"));
   assert(
     verificationPrompt.includes(
-      "未知禁改成忘記／不知道／沒記住／沒去過／不確定／感官評價",
+      "未知禁改忘記／不知道／沒記住／沒去過／不確定／感官評價",
     ),
   );
   assertEquals(recordHintCalls(state).length, 1);
@@ -9831,7 +9831,7 @@ Deno.test("direct Beginner Debrief removes a question-only critique when its nex
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "再接無前提反問",
+      "後面只接無前提問句",
     ),
   );
   assertEquals(
@@ -10112,7 +10112,7 @@ Deno.test("direct Beginner Debrief release review repairs the production compoun
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "{變數}無值",
+      "literal {變數} 無值",
     ),
   );
   assertEquals(
@@ -13429,7 +13429,7 @@ Deno.test("source-first Game release repairs an unfilled store, scouting premise
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "{變數}無值",
+      "literal {變數} 無值",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -13586,7 +13586,7 @@ Deno.test("fresh production Beginner release leaves an unanswered work status un
   }
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "先審 terminal 答案",
+      "末問未答時",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -13729,6 +13729,15 @@ Deno.test("fresh production Beginner release removes unsupported hot-food stance
   ) {
     assert(claudePrompt(state.claudeCalls[2]).includes(releaseRule));
   }
+  const releasePrompt = claudePrompt(state.claudeCalls[2]);
+  assert(
+    releasePrompt.indexOf("先只逐句審 suggestedLine") <
+      releasePrompt.indexOf("末問未答時"),
+  );
+  assert(
+    releasePrompt.indexOf("末問未答時") <
+      releasePrompt.indexOf("逐句拆最小命題"),
+  );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
@@ -13858,9 +13867,9 @@ Deno.test("fresh production Beginner release removes an unanswered recommendatio
   );
   for (
     const releaseRule of [
-      "較早相容行為非回答",
-      "只說追到兩點不證「有推嗎」",
-      "「超推」改「{真實答案}」",
+      "較早明答可用，相容行為非回答",
+      "追到兩點≠超推",
+      "若全部直證無同 owner 同命題明答，答案未知",
     ]
   ) {
     assert(claudePrompt(state.claudeCalls[2]).includes(releaseRule));
@@ -13942,7 +13951,7 @@ Deno.test("fresh production Beginner release preserves an earlier explicit recom
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "明說「這部我超推」才可答「超推」",
+      "較早明答可用",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
@@ -14105,7 +14114,7 @@ Deno.test("fresh production Game release keeps a literal store variable unfilled
       ),
     );
   }
-  assert(claudePrompt(state.claudeCalls[2]).includes("{變數}無值"));
+  assert(claudePrompt(state.claudeCalls[2]).includes("literal {變數} 無值"));
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
@@ -14520,9 +14529,9 @@ Deno.test("fresh production Game release removes an unanswered entry presupposit
   );
   for (
     const releaseRule of [
-      "問句前提非 user 事實",
+      "問句前提不可替它選分支",
       "喝了{真實答案}",
-      "不證進店/喝過",
+      "槽型明確才可「叫{店名}」或「{有／沒有}進去喝」",
     ]
   ) {
     assert(claudePrompt(state.claudeCalls[2]).includes(releaseRule));
@@ -14888,7 +14897,7 @@ Deno.test("fresh production Game release replaces an invented uncertain answer",
   );
   assert(
     claudePrompt(state.claudeCalls[2]).includes(
-      "未知禁改成忘記／不知道／沒記住／沒去過／不確定／感官評價",
+      "未知禁改忘記／不知道／沒記住／沒去過／不確定／感官評價",
     ),
   );
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
