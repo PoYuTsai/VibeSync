@@ -825,6 +825,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         const SizedBox(height: 12),
         ImagePickerWidget(
           maxImages: 3,
+          allowMultiSelect: true,
           onImagesChanged: (images) => setState(() {
             _images = images;
             _result = null;

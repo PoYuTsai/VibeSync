@@ -8,6 +8,11 @@ import '../services/image_compress_service.dart';
 import '../services/screenshot_preflight_service.dart';
 import 'glassmorphic_container.dart';
 
+typedef ImagePickerFileSelector = Future<List<XFile>> Function({
+  required bool allowMultiple,
+  required int limit,
+});
+
 class SelectedImageMetrics {
   final int originalBytes;
   final int compressedBytes;
@@ -24,6 +29,8 @@ class ImagePickerWidget extends StatefulWidget {
   final ValueChanged<List<SelectedImageMetrics>>? onMetricsChanged;
   final List<Uint8List>? externalImages;
   final Color? helperTextColor;
+  final bool allowMultiSelect;
+  final ImagePickerFileSelector? fileSelector;
 
   const ImagePickerWidget({
     super.key,
@@ -32,6 +39,8 @@ class ImagePickerWidget extends StatefulWidget {
     this.onMetricsChanged,
     this.externalImages,
     this.helperTextColor,
+    this.allowMultiSelect = false,
+    this.fileSelector,
   });
 
   @override
@@ -67,15 +76,35 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
     }
 
     try {
-      final file = await _picker.pickImage(source: ImageSource.gallery);
-      if (file == null) {
+      final remaining = widget.maxImages - _images.length;
+      final files = await _selectFiles(remaining);
+      if (files.isEmpty) {
         return;
       }
 
-      await _processImage(await file.readAsBytes(), file.mimeType);
+      for (final file in files.take(remaining)) {
+        await _processImage(await file.readAsBytes(), file.mimeType);
+      }
     } catch (_) {
       _showError('選取圖片失敗，請稍後再試。');
     }
+  }
+
+  Future<List<XFile>> _selectFiles(int limit) async {
+    final injected = widget.fileSelector;
+    if (injected != null) {
+      return injected(
+        allowMultiple: widget.allowMultiSelect,
+        limit: limit,
+      );
+    }
+
+    if (widget.allowMultiSelect) {
+      return _picker.pickMultiImage(limit: limit);
+    }
+
+    final file = await _picker.pickImage(source: ImageSource.gallery);
+    return file == null ? const <XFile>[] : <XFile>[file];
   }
 
   Future<void> _pasteFromClipboard() async {
@@ -345,7 +374,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
             ),
             const SizedBox(height: 2),
             Text(
-              '選圖',
+              widget.allowMultiSelect ? '多選' : '選圖',
               style: TextStyle(
                 fontSize: 10,
                 color: AppColors.unselectedText,
