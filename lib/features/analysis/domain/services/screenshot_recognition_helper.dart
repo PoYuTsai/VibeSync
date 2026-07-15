@@ -75,6 +75,16 @@ class ScreenshotRecognitionHelper {
         recognizedName != currentName;
   }
 
+  static bool isPartnerBoundPlaceholderConversation(
+    Conversation currentConversation,
+  ) {
+    final partnerId = currentConversation.partnerId?.trim();
+    return partnerId != null &&
+        partnerId.isNotEmpty &&
+        currentConversation.messages.isEmpty &&
+        isPlaceholderConversationName(currentConversation.name);
+  }
+
   static bool requiresSamePartnerConfirmation({
     required RecognizedConversation recognized,
     required Conversation currentConversation,
@@ -83,6 +93,7 @@ class ScreenshotRecognitionHelper {
           recognized: recognized,
           currentConversation: currentConversation,
         ) ||
+        isPartnerBoundPlaceholderConversation(currentConversation) ||
         _looksLikeDifferentContactWarning(recognized.warning ?? '');
   }
 
@@ -124,6 +135,12 @@ class ScreenshotRecognitionHelper {
     )) {
       warnings.add(
         '這張截圖辨識到的對方名字是「$recognizedName」，和目前對象不同。若是另一人，請取消並到正確對象再匯入；只有確認是目前這位對象時才能繼續。',
+      );
+    }
+
+    if (isPartnerBoundPlaceholderConversation(currentConversation)) {
+      warnings.add(
+        '這段新對話已歸在目前對象名下。加入截圖前，請確認內容確實都是同一位對象。',
       );
     }
 

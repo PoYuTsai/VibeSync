@@ -301,6 +301,43 @@ void main() {
       );
     });
 
+    testWidgets('對象頁建立的空白對話，也必須確認截圖屬於目前對象', (tester) async {
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: recognizedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+          currentConversation: Conversation(
+            id: 'partner-bound-placeholder',
+            name: '新對話',
+            partnerId: 'partner-xiaomei',
+            messages: const [],
+            createdAt: DateTime(2026, 7, 16),
+            updatedAt: DateTime(2026, 7, 16),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('我確認這些截圖都是目前這位對象'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<ElevatedButton>(find.widgetWithText(
+              ElevatedButton,
+              '確認加入對話',
+            ))
+            .onPressed,
+        isNull,
+      );
+    });
+
     testWidgets('顯示滑動提示，砍掉 OCR 信心徽章與安撫框，但保留警示與加入方式', (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(

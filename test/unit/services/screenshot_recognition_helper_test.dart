@@ -8,10 +8,12 @@ void main() {
   Conversation buildConversation({
     required String name,
     List<Message>? messages,
+    String? partnerId,
   }) {
     return Conversation(
       id: 'conversation-1',
       name: name,
+      partnerId: partnerId,
       messages: messages ?? <Message>[],
       createdAt: DateTime(2026, 3, 17),
       updatedAt: DateTime(2026, 3, 17),
@@ -174,6 +176,51 @@ void main() {
           currentConversation: conversation,
         ),
         isTrue,
+      );
+    });
+
+    test('requires confirmation for empty placeholder already bound to partner',
+        () {
+      const recognized = RecognizedConversation(
+        contactName: 'Amber',
+        messageCount: 2,
+        summary: '識別到 2 則訊息',
+      );
+      final conversation = buildConversation(
+        name: '新對話',
+        partnerId: 'partner-xiaomei',
+      );
+
+      expect(
+        ScreenshotRecognitionHelper.requiresSamePartnerConfirmation(
+          recognized: recognized,
+          currentConversation: conversation,
+        ),
+        isTrue,
+      );
+      expect(
+        ScreenshotRecognitionHelper.buildWarning(
+          recognized: recognized,
+          currentConversation: conversation,
+        ),
+        contains('已歸在目前對象名下'),
+      );
+    });
+
+    test('standalone empty placeholder does not add partner confirmation', () {
+      const recognized = RecognizedConversation(
+        contactName: 'Amber',
+        messageCount: 2,
+        summary: '識別到 2 則訊息',
+      );
+      final conversation = buildConversation(name: '新對話');
+
+      expect(
+        ScreenshotRecognitionHelper.requiresSamePartnerConfirmation(
+          recognized: recognized,
+          currentConversation: conversation,
+        ),
+        isFalse,
       );
     });
 
