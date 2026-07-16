@@ -6,6 +6,12 @@ class _MemoryKeyboardStore implements KeyboardCredentialStore {
   final operations = <String>[];
 
   @override
+  Future<String?> read(String key) async {
+    operations.add('read:$key');
+    return values[key];
+  }
+
+  @override
   Future<void> delete(String key) async {
     operations.add('delete:$key');
     values.remove(key);
@@ -48,6 +54,16 @@ void main() {
 
     expect(
         store.operations.first, 'delete:${KeyboardTokenBridge.accessTokenKey}');
+    expect(store.values, isEmpty);
+  });
+
+  test('quota signal is consumed only once', () async {
+    final store = _MemoryKeyboardStore()
+      ..values[KeyboardTokenBridge.quotaExceededKey] = '1';
+    final bridge = KeyboardTokenBridge(store: store);
+
+    expect(await bridge.consumeQuotaExceededSignalForTesting(), isTrue);
+    expect(await bridge.consumeQuotaExceededSignalForTesting(), isFalse);
     expect(store.values, isEmpty);
   });
 }

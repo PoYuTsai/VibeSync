@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'supabase_service.dart';
 
 abstract class KeyboardCredentialStore {
+  Future<String?> read(String key);
   Future<void> write(String key, String value);
   Future<void> delete(String key);
 }
@@ -19,6 +20,10 @@ class SecureKeyboardCredentialStore implements KeyboardCredentialStore {
     groupId: KeyboardTokenBridge.accessGroup,
     accessibility: KeychainAccessibility.unlocked_this_device,
   );
+
+  @override
+  Future<String?> read(String key) =>
+      _storage.read(key: key, iOptions: _iosOptions);
 
   @override
   Future<void> write(String key, String value) =>
@@ -46,10 +51,11 @@ class KeyboardTokenBridge {
   KeyboardTokenBridge({required KeyboardCredentialStore store})
       : _store = store;
 
-  static const accessGroup = 'group.com.poyutsai.vibesync';
+  static const accessGroup = 'TTQHTVG8CC.group.com.poyutsai.vibesync';
   static const accessTokenKey = 'vibesync_keyboard_access_token';
   static const userIdKey = 'vibesync_keyboard_user_id';
   static const expiresAtKey = 'vibesync_keyboard_expires_at';
+  static const quotaExceededKey = 'vibesync_keyboard_quota_exceeded';
 
   static KeyboardTokenBridge? _instance;
   static StreamSubscription<AuthState>? _authSubscription;
@@ -83,6 +89,14 @@ class KeyboardTokenBridge {
     await _instance?._enqueue(
       () => _instance!.syncCurrentSession(refreshIfExpired: true),
     );
+  }
+
+  /// Consumes the extension's server-confirmed subscription quota signal.
+  /// Model rate limits use a distinct error and must never open the paywall.
+  static Future<bool> consumeQuotaExceededSignal() async {
+    final bridge = _instance;
+    if (bridge == null) return false;
+    return bridge._enqueueWithResult(bridge._consumeQuotaExceededSignal);
   }
 
   Future<void> syncCurrentSession({required bool refreshIfExpired}) async {
@@ -127,6 +141,30 @@ class KeyboardTokenBridge {
     );
     return _pendingOperation;
   }
+
+  Future<T> _enqueueWithResult<T>(Future<T> Function() operation) {
+    final completer = Completer<T>();
+    _pendingOperation = _pendingOperation.then((_) async {
+      try {
+        completer.complete(await operation());
+      } catch (error, stackTrace) {
+        debugPrint('Keyboard bridge operation failed: $error\n$stackTrace');
+        completer.completeError(error, stackTrace);
+      }
+    });
+    return completer.future;
+  }
+
+  Future<bool> _consumeQuotaExceededSignal() async {
+    final value = await _store.read(quotaExceededKey);
+    if (value == null) return false;
+    await _store.delete(quotaExceededKey);
+    return value == '1';
+  }
+
+  @visibleForTesting
+  Future<bool> consumeQuotaExceededSignalForTesting() =>
+      _consumeQuotaExceededSignal();
 
   static KeyboardSessionPayload? _payloadFromSession(Session? session) {
     final expiresAt = session?.expiresAt;

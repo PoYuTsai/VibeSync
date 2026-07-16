@@ -16,12 +16,14 @@ class App extends ConsumerStatefulWidget {
 
 class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   bool _splashComplete = false;
+  bool _openPaywallAfterSplash = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _handleColdStartNotification();
+    _handleKeyboardQuotaSignal();
   }
 
   @override
@@ -33,8 +35,26 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      KeyboardTokenBridge.syncOnForeground();
+      _handleKeyboardQuotaSignal();
     }
+  }
+
+  Future<void> _handleKeyboardQuotaSignal() async {
+    await KeyboardTokenBridge.syncOnForeground();
+    final shouldOpenPaywall =
+        await KeyboardTokenBridge.consumeQuotaExceededSignal();
+    if (!mounted || !shouldOpenPaywall) return;
+    if (!_splashComplete) {
+      _openPaywallAfterSplash = true;
+      return;
+    }
+    _openKeyboardPaywall();
+  }
+
+  void _openKeyboardPaywall() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) router.push('/paywall');
+    });
   }
 
   /// 冷啟動：若 app 由點擊 48h 跟進通知從終止態啟動，導到該對象跟進頁。
@@ -60,6 +80,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
             setState(() {
               _splashComplete = true;
             });
+            if (_openPaywallAfterSplash) {
+              _openPaywallAfterSplash = false;
+              _openKeyboardPaywall();
+            }
           },
         ),
       );

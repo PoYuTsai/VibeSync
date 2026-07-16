@@ -258,7 +258,9 @@ final class KeyboardViewController: UIInputViewController {
     private func message(for error: KeyboardAPIError) -> String {
         switch error {
         case .unauthorized: return "登入已過期，請先開啟 VibeSync App 再回來"
-        case .quotaExceeded: return "額度已用完，請回 VibeSync App 查看"
+        case .quotaExceeded:
+            SharedAuth.markQuotaExceeded()
+            return "額度已用完，打開 VibeSync 即可查看方案"
         case .modelRateLimited(let message): return message
         case .fullAccessRequired: return "請在設定開啟「允許完整取用」"
         case .network: return "網路不穩，請稍後再試"

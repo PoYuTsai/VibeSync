@@ -10,5 +10,9 @@
 	<array>
 		<string>group.com.poyutsai.vibesync</string>
 	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)group.com.poyutsai.vibesync</string>
+	</array>
 </dict>
 </plist>
