@@ -10,6 +10,20 @@
 
 ## 2026-07
 
+### [2026-07-16] 讀圖確認卡在正式分析前顯示英文分析摘要
+
+**Symptom**: 使用者選完聊天截圖、尚未按「開始分析」，確認卡就出現英文段落，內容還提到餐廳與 Google Maps，容易誤以為正式分析已提前執行。
+
+**Root Cause**: 選圖後會先呼叫免費 `recognizeOnly` 做 OCR 與左右辨識；後端 schema 範例的 `summary` 是英文自由文字，而 client 直接把該欄當確認卡標題顯示。原圖中的 Google Maps 網址與連結預覽本來就是右側聊天泡泡，因此被辨識為我方訊息是正確行為，不應過濾。
+
+**Fix**: 確認卡不再顯示模型自由生成的 `summary`，改用 client deterministic 文案「已讀取 N 則聊天內容，尚未開始分析」。辨識訊息、方向、警告與正式分析 payload 均不變。
+
+**Prevention**: OCR 前置步驟的使用者可見標題不得直接使用模型自由文字；測試鎖定英文摘要與 Google Maps 字樣不會出現在標題，且筆數以實際辨識訊息為準。
+
+**Validation**: `flutter test test/unit/services/screenshot_recognition_helper_test.dart` 24/24；scoped `flutter analyze` 3 檔無問題。
+
+**相關檔案**: `lib/features/analysis/domain/services/screenshot_recognition_helper.dart`、`lib/features/analysis/presentation/screens/analysis_screen.dart`、`test/unit/services/screenshot_recognition_helper_test.dart`。
+
 ### [2026-07-16] 翻牌揭曉 2–5 秒出現細碎「西西簌簌」聲
 
 **Symptom**: 角色圖鑑翻牌儀式開始後約 2–5 秒，配樂出現與揭牌儀式不搭的高頻細碎聲。
