@@ -309,6 +309,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ],
               ),
+              if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS)
+                _buildSection(
+                  title: '鍵盤',
+                  children: [
+                    _buildTile(
+                      icon: Icons.keyboard_alt_outlined,
+                      title: 'VibeSync AI 鍵盤',
+                      trailing: '設定與教學',
+                      onTap: () => context.push('/settings/keyboard'),
+                    ),
+                  ],
+                ),
               _buildSection(
                 title: '隱私與資料',
                 children: [
@@ -501,9 +513,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           ? null
                           : _refreshAfterExternalDowngradeCancel,
                       child: Text(
-                        _isRefreshingPendingDowngrade
-                            ? '同步中…'
-                            : '我已取消降級，更新狀態',
+                        _isRefreshingPendingDowngrade ? '同步中…' : '我已取消降級，更新狀態',
                         style: AppTypography.bodyMedium.copyWith(
                           color: AppColors.onBackgroundPrimary,
                         ),

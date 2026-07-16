@@ -9,6 +9,7 @@ import '../features/auth/presentation/screens/login_screen.dart';
 import '../features/conversation/presentation/screens/new_conversation_screen.dart';
 import 'main_shell.dart';
 import '../features/learning/presentation/screens/article_detail_screen.dart';
+import '../features/keyboard/presentation/screens/keyboard_setup_screen.dart';
 import '../features/opener/presentation/screens/opening_rescue_screen.dart';
 import '../features/practice_chat/presentation/screens/practice_chat_screen.dart';
 import '../features/practice_chat/presentation/screens/practice_collection_screen.dart';
@@ -168,6 +169,10 @@ final router = GoRouter(
     GoRoute(
       path: '/settings',
       builder: (context, state) => const SettingsScreen(),
+    ),
+    GoRoute(
+      path: '/settings/keyboard',
+      builder: (context, state) => const KeyboardSetupScreen(),
     ),
     // F5-A7：設定頁常駐「AI 與你的隱私」靜態揭露（onboarding 第 4 頁可略過的補位）。
     GoRoute(

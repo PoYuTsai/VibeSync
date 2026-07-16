@@ -7,6 +7,7 @@ import 'app/routes.dart';
 import 'core/config/environment.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/revenuecat_service.dart';
+import 'core/services/keyboard_token_bridge.dart';
 import 'core/services/supabase_service.dart';
 import 'features/follow_up_notification/data/local_notification_gateway.dart';
 import 'features/follow_up_notification/data/providers/follow_up_notification_service.dart';
@@ -29,6 +30,10 @@ void main() async {
     url: AppConfig.supabaseUrl,
     anonKey: AppConfig.supabaseAnonKey,
   );
+
+  // iOS keyboard extension receives access-token metadata through the shared
+  // App Group keychain. No refresh token is ever exposed to the extension.
+  await KeyboardTokenBridge.initializeDefault();
 
   // Initialize RevenueCat (iOS/Android only)
   await RevenueCatService.initialize(
