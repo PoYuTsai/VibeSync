@@ -22,8 +22,53 @@ String _firstExistingPath(List<String> candidates) {
   throw StateError('No visual proof asset found in: ${candidates.join(', ')}');
 }
 
+String? _fontconfigMatch(String family) {
+  if (Platform.isWindows) return null;
+  try {
+    final result = Process.runSync(
+      'fc-match',
+      ['--format=%{file}', family],
+    );
+    if (result.exitCode != 0) return null;
+    final path = result.stdout.toString().trim();
+    return path.isEmpty ? null : path;
+  } on ProcessException {
+    return null;
+  }
+}
+
+String? _flutterSdkRoot() {
+  final configured = Platform.environment['FLUTTER_ROOT']?.trim();
+  if (configured != null &&
+      configured.isNotEmpty &&
+      Directory(configured).existsSync()) {
+    return configured;
+  }
+
+  try {
+    final result = Process.runSync(
+      Platform.isWindows ? 'where.exe' : 'which',
+      ['flutter'],
+    );
+    if (result.exitCode != 0) return null;
+    for (final line in result.stdout.toString().split(RegExp(r'\r?\n'))) {
+      final executable = line.trim();
+      if (executable.isEmpty || !File(executable).existsSync()) continue;
+      final resolved = File(executable).resolveSymbolicLinksSync();
+      return File(resolved).parent.parent.path;
+    }
+  } on ProcessException {
+    return null;
+  }
+  return null;
+}
+
 Future<void> loadProofFonts() async {
-  final tc = File(_firstExistingPath(const [
+  final fontconfigTc = _fontconfigMatch('Noto Sans CJK TC');
+  final tc = File(_firstExistingPath([
+    if (fontconfigTc != null) fontconfigTc,
+    '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+    '/usr/share/fonts/opentype/noto/NotoSansCJKtc-Regular.otf',
     'C:/Windows/Fonts/NotoSansTC-VF.ttf',
     '/mnt/c/Windows/Fonts/NotoSansTC-VF.ttf',
   ])).readAsBytesSync();
@@ -31,7 +76,18 @@ Future<void> loadProofFonts() async {
       .load();
   // Material icons aren't auto-resolved headlessly once a global default font
   // is in play — load the real glyph font so icons aren't tofu.
-  final mi = File(_firstExistingPath(const [
+  final flutterRoot = _flutterSdkRoot();
+  final separator = Platform.pathSeparator;
+  final mi = File(_firstExistingPath([
+    if (flutterRoot != null)
+      [
+        flutterRoot,
+        'bin',
+        'cache',
+        'artifacts',
+        'material_fonts',
+        'MaterialIcons-Regular.otf',
+      ].join(separator),
     'D:/tools/flutter/bin/cache/artifacts/material_fonts/materialicons-regular.otf',
     'D:/tools/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
     '/home/eric1/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',

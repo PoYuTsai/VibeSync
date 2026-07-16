@@ -69,6 +69,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Install Traditional Chinese visual-test font
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y fonts-noto-cjk
+
       - name: Generate code
         run: dart run build_runner build --delete-conflicting-outputs
 
