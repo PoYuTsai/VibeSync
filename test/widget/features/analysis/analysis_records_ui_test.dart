@@ -16,15 +16,43 @@ String _snapshot() => jsonEncode({
         'status': 'normal',
         'nextStep': '延伸共同話題',
       },
-      'psychology': {'subtext': '她願意多分享，是可以繼續接球的訊號。'},
-      'topicDepth': {'current': 'personal', 'suggestion': ''},
-      'replies': {'extend': '聽起來超有趣，哪一段最讓妳印象深刻？'},
+      'psychology': {
+        'subtext': '她願意多分享，是可以繼續接球的訊號。',
+        'shitTest': {
+          'detected': true,
+          'suggestion': '她在確認你是不是只會嘴上說說。',
+        },
+        'qualificationSignal': true,
+      },
+      'topicDepth': {
+        'current': 'personal',
+        'suggestion': '從旅行經驗聊到她在意的生活感受。',
+      },
+      'healthCheck': {
+        'issues': ['連續問句偏多'],
+        'suggestions': ['先分享再提一個問題'],
+      },
+      'dimensions': {
+        'heat': 72,
+        'engagement': 68,
+        'topicDepth': 64,
+        'replyWillingness': 75,
+        'emotionalConnection': 61,
+      },
+      'replies': {
+        'extend': '聽起來超有趣，哪一段最讓妳印象深刻？',
+        'resonate': '我也很喜歡那種意外找到小店的驚喜感。',
+        'tease': '妳這樣講，我要先懷疑妳是不是台南美食臥底。',
+        'humor': '收到，下次行程直接交給妳這位民間米其林。',
+        'coldRead': '感覺妳旅行時比起踩景點，更在意遇到的小驚喜。',
+      },
       'finalRecommendation': {
         'pick': 'extend',
         'content': '聽起來超有趣，哪一段最讓妳印象深刻？',
         'reason': '順著她主動分享的內容延伸，回覆壓力比較低。',
         'psychology': '讓她感覺你真的有在聽，而不是急著換話題。',
       },
+      'reminder': '別急著證明自己，先觀察她是否也願意投入。',
     });
 
 AnalysisRecord _record({
@@ -32,6 +60,7 @@ AnalysisRecord _record({
   required DateTime createdAt,
   required String preview,
   String? sourcePlatform,
+  String? analysisSnapshotJson,
 }) {
   return AnalysisRecord(
     id: id,
@@ -58,7 +87,7 @@ AnalysisRecord _record({
         quotedReplyPreviewIsFromMe: true,
       ),
     ],
-    analysisSnapshotJson: _snapshot(),
+    analysisSnapshotJson: analysisSnapshotJson ?? _snapshot(),
     analyzedContentRevision: 'revision-$id',
     completionKey: 'completion-$id',
     sourcePlatform: sourcePlatform,
@@ -335,9 +364,40 @@ void main() {
     expect(find.text('我去了台南，吃到一家很好吃的小店。'), findsOneWidget);
     expect(find.text('引用我說的：妳週末去哪裡玩？'), findsOneWidget);
     expect(find.text('先接住她提到的旅行，再分享一個短故事。'), findsOneWidget);
-    expect(find.text('聽起來超有趣，哪一段最讓妳印象深刻？'), findsOneWidget);
+    expect(find.text('聽起來超有趣，哪一段最讓妳印象深刻？'), findsWidgets);
     expect(find.text('為什麼這樣回'), findsOneWidget);
     expect(find.text('順著她主動分享的內容延伸，回覆壓力比較低。'), findsOneWidget);
+    expect(find.text('五維度剖析', skipOffstage: false), findsOneWidget);
+    expect(find.text('對話進度', skipOffstage: false), findsOneWidget);
+    expect(find.text('她在確認你是不是只會嘴上說說。', skipOffstage: false), findsOneWidget);
+    expect(find.text('從旅行經驗聊到她在意的生活感受。', skipOffstage: false), findsOneWidget);
+    expect(find.text('連續問句偏多', skipOffstage: false), findsOneWidget);
+    expect(find.text('先分享再提一個問題', skipOffstage: false), findsOneWidget);
+    expect(find.text('接法建議・5 種風格', skipOffstage: false), findsOneWidget);
+    expect(
+      find.text('別急著證明自己，先觀察她是否也願意投入。', skipOffstage: false),
+      findsOneWidget,
+    );
+    final detailList = find.byKey(const ValueKey('analysis-record-detail'));
+    await tester.drag(detailList, const Offset(0, -700));
+    await tester.pumpAndSettle();
+    await tester.drag(detailList, const Offset(0, -700));
+    await tester.pumpAndSettle();
+    expect(find.text('🔄 延展'), findsOneWidget);
+    final replyCarousel =
+        find.byKey(const ValueKey('analysis-record-reply-styles'));
+    await tester.drag(replyCarousel, const Offset(-330, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('💬 共鳴'), findsOneWidget);
+    await tester.drag(replyCarousel, const Offset(-330, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('😏 調情'), findsOneWidget);
+    await tester.drag(replyCarousel, const Offset(-330, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('🎭 幽默'), findsOneWidget);
+    await tester.drag(replyCarousel, const Offset(-330, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('🔮 冷讀'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('analysis-record-copy-recommendation')),
       findsOneWidget,
@@ -349,6 +409,107 @@ void main() {
     expect(find.byIcon(Icons.edit_outlined), findsNothing);
     expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);
     expect(find.text('未分類'), findsNothing);
+    expect(find.textContaining('重新分析'), findsNothing);
+    expect(find.textContaining('繼續這一段'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('冰點分析紀錄會保留當時的停損警示', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final record = _record(
+      id: 'cold-detail',
+      createdAt: DateTime(2026, 7, 13, 22),
+      preview: '她只回了一個貼圖。',
+      analysisSnapshotJson: jsonEncode({
+        'enthusiasm': {'score': 18, 'level': 'cold'},
+        'warnings': ['建議放棄：目前投入明顯不對等'],
+        'strategy': '先停止追問，觀察對方是否會主動。',
+        'reminder': '你不需要靠更多訊息換取回覆。',
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisRecordDetailScreen(record: record)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('analysis-record-give-up-warning')),
+      findsOneWidget,
+    );
+    expect(
+      find.text('這段互動目前不建議再投入，先保護自己的時間與情緒成本。'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('你不需要靠更多訊息換取回覆。', skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(find.textContaining('重新分析'), findsNothing);
+    expect(find.textContaining('繼續這一段'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('舊版缺欄位快照仍能唯讀顯示已有分析', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final record = _record(
+      id: 'legacy-detail',
+      createdAt: DateTime(2026, 6, 1, 18),
+      preview: '這是舊版保存的聊天。',
+      analysisSnapshotJson: jsonEncode({
+        'enthusiasm': {'score': 58, 'level': 'warm'},
+        'strategy': '舊版仍有的互動策略。',
+        'finalRecommendation': {
+          'content': '先接住她的情緒，再問一個小問題。',
+          'reason': '讓對話保持輕鬆。',
+          'psychology': '',
+        },
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisRecordDetailScreen(record: record)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('這是舊版保存的聊天。'), findsOneWidget);
+    expect(find.text('舊版仍有的互動策略。', skipOffstage: false), findsOneWidget);
+    expect(
+      find.text('先接住她的情緒，再問一個小問題。', skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(find.text('五維度剖析', skipOffstage: false), findsNothing);
+    expect(find.textContaining('種風格', skipOffstage: false), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('損壞分析快照仍保留當時聊天且不提供重跑入口', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final record = _record(
+      id: 'corrupt-detail',
+      createdAt: DateTime(2026, 6, 2, 19),
+      preview: '即使分析壞掉，這段聊天也不能消失。',
+      analysisSnapshotJson: '{not-json',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisRecordDetailScreen(record: record)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('即使分析壞掉，這段聊天也不能消失。'), findsOneWidget);
+    expect(
+      find.text('這筆分析內容暫時無法顯示，但上方聊天片段仍完整保留。'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('重新分析'), findsNothing);
+    expect(find.textContaining('繼續這一段'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

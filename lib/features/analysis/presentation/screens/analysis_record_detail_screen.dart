@@ -7,10 +7,13 @@ import 'package:intl/intl.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../../shared/widgets/dimension_radar_chart.dart';
+import '../../../../shared/widgets/game_stage_indicator.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/analysis_record.dart';
 import '../../domain/entities/enthusiasm_level.dart';
 import '../widgets/analysis_platform_picker.dart';
+import '../widgets/reply_style_card.dart';
 
 enum _RecordDetailAction { delete }
 
@@ -116,6 +119,13 @@ class _AnalysisRecordDetailScreenState
     );
   }
 
+  void _showReplyCopyFeedback(String _, String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final record = widget.record;
@@ -193,6 +203,7 @@ class _AnalysisRecordDetailScreenState
                 _SavedAnalysisCard(
                   result: _result,
                   onCopyRecommendation: _copyRecommendation,
+                  onReplyCopied: _showReplyCopyFeedback,
                 ),
               const SizedBox(height: 18),
               Text(
@@ -534,10 +545,20 @@ class _SavedAnalysisCard extends StatelessWidget {
   const _SavedAnalysisCard({
     required this.result,
     required this.onCopyRecommendation,
+    required this.onReplyCopied,
   });
 
   final AnalysisResult result;
   final Future<void> Function(String content) onCopyRecommendation;
+  final void Function(String text, String message) onReplyCopied;
+
+  static const _replyOrder = <String>[
+    'extend',
+    'resonate',
+    'tease',
+    'humor',
+    'coldRead',
+  ];
 
   String get _recommendationContent {
     final content = result.recommendation.content.trim();
@@ -548,63 +569,373 @@ class _SavedAnalysisCard extends StatelessWidget {
         .join('\n');
   }
 
+  List<String> get _availableReplyTypes => _replyOrder
+      .where((type) => result.replies[type]?.trim().isNotEmpty == true)
+      .toList();
+
   @override
   Widget build(BuildContext context) {
     final psychology = result.psychology.subtext.trim();
     final strategy = result.strategy.trim();
-    final summary = psychology.isNotEmpty ? psychology : strategy;
-    final nextStep = result.gameStage.nextStep.trim();
     final recommendation = _recommendationContent;
     final reason = result.recommendation.reason.trim();
     final explanation = result.recommendation.psychology.trim();
-    final hasContent = summary.isNotEmpty ||
-        nextStep.isNotEmpty ||
+    final reminder = result.reminder?.trim() ?? '';
+    final dimensions = result.dimensionScores;
+    final healthCheck = result.healthCheck;
+    final replyTypes = _availableReplyTypes;
+    final rawGameStage = result.rawResponse?['gameStage'];
+    final rawTopicDepth = result.rawResponse?['topicDepth'];
+    final hasGameStage =
+        rawGameStage is Map && rawGameStage['current'] is String;
+    final hasPsychology = psychology.isNotEmpty ||
+        result.psychology.shitTest?.trim().isNotEmpty == true ||
+        result.psychology.qualificationSignal;
+    final hasStrategy = strategy.isNotEmpty;
+    final hasTopicDepth =
+        rawTopicDepth is Map && rawTopicDepth['current'] is String;
+    final hasHealthCheck = healthCheck != null &&
+        (healthCheck.issues.isNotEmpty || healthCheck.suggestions.isNotEmpty);
+    final hasReplies = replyTypes.isNotEmpty;
+    final hasRecommendation = recommendation.isNotEmpty ||
         reason.isNotEmpty ||
-        recommendation.isNotEmpty ||
         explanation.isNotEmpty;
+    final hasReminder = reminder.isNotEmpty;
+    final hasContentAfterWarning = dimensions != null ||
+        hasGameStage ||
+        hasPsychology ||
+        hasStrategy ||
+        hasTopicDepth ||
+        hasHealthCheck ||
+        hasReplies ||
+        hasRecommendation ||
+        hasReminder;
+    final hasAnyContent = result.shouldGiveUp ||
+        dimensions != null ||
+        hasGameStage ||
+        hasPsychology ||
+        hasStrategy ||
+        hasTopicDepth ||
+        hasHealthCheck ||
+        hasReplies ||
+        hasRecommendation ||
+        hasReminder;
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _ArchivePanel(
-          padding: const EdgeInsets.all(14),
-          child: hasContent
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (summary.isNotEmpty)
-                      _AnalysisTextBlock(
-                        icon: Icons.description_outlined,
-                        title: '互動摘要',
-                        content: summary,
-                      ),
-                    if (strategy.isNotEmpty && strategy != summary) ...[
-                      const _AnalysisDivider(),
-                      _AnalysisTextBlock(
-                        icon: Icons.route_outlined,
-                        title: '互動策略',
-                        content: strategy,
-                      ),
-                    ],
-                    if (nextStep.isNotEmpty) ...[
-                      const _AnalysisDivider(),
-                      _AnalysisTextBlock(
-                        icon: Icons.adjust_rounded,
-                        title: '下一步',
-                        content: nextStep,
-                      ),
-                    ],
-                  ],
-                )
-              : Text(
-                  '這筆紀錄沒有可顯示的文字建議。',
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.onBackgroundSecondary,
+        if (result.shouldGiveUp) ...[
+          Container(
+            key: const ValueKey('analysis-record-give-up-warning'),
+            padding: const EdgeInsets.all(13),
+            decoration: BoxDecoration(
+              color: AppColors.error.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: AppColors.error.withValues(alpha: 0.34),
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('⚠️', style: TextStyle(fontSize: 20)),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    '這段互動目前不建議再投入，先保護自己的時間與情緒成本。',
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.onBackgroundPrimary,
+                      height: 1.45,
+                    ),
                   ),
                 ),
-        ),
-        if (recommendation.isNotEmpty ||
-            reason.isNotEmpty ||
-            explanation.isNotEmpty) ...[
+              ],
+            ),
+          ),
+          if (hasContentAfterWarning) const SizedBox(height: 12),
+        ],
+        if (dimensions != null)
+          DimensionRadarChart(
+            key: const ValueKey('analysis-record-dimensions'),
+            scores: DimensionScores(
+              heat: dimensions['heat'] ?? 50,
+              engagement: dimensions['engagement'] ?? 50,
+              topicDepth: dimensions['topicDepth'] ?? 50,
+              replyWillingness: dimensions['replyWillingness'] ?? 50,
+              emotionalConnection: dimensions['emotionalConnection'] ?? 50,
+            ),
+          ),
+        if (dimensions != null && hasGameStage) const SizedBox(height: 12),
+        if (hasGameStage)
+          GameStageIndicator(
+            key: const ValueKey('analysis-record-game-stage'),
+            currentStage: result.gameStage.current,
+            status: result.gameStage.status,
+            nextStep: result.gameStage.nextStep.trim().isEmpty
+                ? null
+                : result.gameStage.nextStep.trim(),
+          ),
+        if ((dimensions != null || hasGameStage) && hasPsychology)
+          const SizedBox(height: 12),
+        if (hasPsychology)
+          _ArchivePanel(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text('🧠', style: TextStyle(fontSize: 19)),
+                    const SizedBox(width: 8),
+                    Text(
+                      '她話裡的意思',
+                      style: AppTypography.titleMedium.copyWith(
+                        color: AppColors.onBackgroundPrimary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                if (psychology.isNotEmpty) ...[
+                  const SizedBox(height: 9),
+                  Text(
+                    psychology,
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+                if (result.psychology.shitTest?.trim().isNotEmpty == true) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(11),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withValues(alpha: 0.09),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.warning.withValues(alpha: 0.34),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '互動測試訊號',
+                          style: AppTypography.labelLarge.copyWith(
+                            color: AppColors.warning,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          result.psychology.shitTest!.trim(),
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.onBackgroundSecondary,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                if (result.psychology.qualificationSignal) ...[
+                  const SizedBox(height: 11),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.check_circle_rounded,
+                        size: 17,
+                        color: AppColors.success,
+                      ),
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: Text(
+                          '她有主動投入訊號',
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.success,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        if ((dimensions != null || hasGameStage || hasPsychology) &&
+            hasStrategy)
+          const SizedBox(height: 12),
+        if (hasStrategy)
+          _ArchivePanel(
+            padding: const EdgeInsets.all(14),
+            child: _AnalysisTextBlock(
+              icon: Icons.route_outlined,
+              title: '互動策略',
+              content: strategy,
+            ),
+          ),
+        if ((dimensions != null ||
+                hasGameStage ||
+                hasPsychology ||
+                hasStrategy) &&
+            hasTopicDepth)
+          const SizedBox(height: 12),
+        if (hasTopicDepth)
+          _ArchivePanel(
+            padding: const EdgeInsets.all(14),
+            child: _AnalysisTextBlock(
+              icon: Icons.layers_outlined,
+              title: '話題深度・${result.topicDepth.current.label}',
+              content: result.topicDepth.suggestion.trim().isEmpty
+                  ? '這次對話停留在${result.topicDepth.current.label}。'
+                  : result.topicDepth.suggestion.trim(),
+            ),
+          ),
+        if ((dimensions != null ||
+                hasGameStage ||
+                hasPsychology ||
+                hasStrategy ||
+                hasTopicDepth) &&
+            hasHealthCheck)
+          const SizedBox(height: 12),
+        if (hasHealthCheck)
+          _ArchivePanel(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text('🩺', style: TextStyle(fontSize: 19)),
+                    const SizedBox(width: 8),
+                    Text(
+                      '對話健檢',
+                      style: AppTypography.titleMedium.copyWith(
+                        color: AppColors.onBackgroundPrimary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                if (healthCheck.issues.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  for (final issue in healthCheck.issues)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.warning_amber_rounded,
+                            size: 17,
+                            color: AppColors.warning,
+                          ),
+                          const SizedBox(width: 7),
+                          Expanded(
+                            child: Text(
+                              issue,
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.onBackgroundSecondary,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+                if (healthCheck.suggestions.isNotEmpty) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    '改善建議',
+                    style: AppTypography.labelLarge.copyWith(
+                      color: AppColors.success,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  for (final suggestion in healthCheck.suggestions)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.lightbulb_outline_rounded,
+                            size: 17,
+                            color: AppColors.success,
+                          ),
+                          const SizedBox(width: 7),
+                          Expanded(
+                            child: Text(
+                              suggestion,
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.onBackgroundSecondary,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          ),
+        if ((dimensions != null ||
+                hasGameStage ||
+                hasPsychology ||
+                hasStrategy ||
+                hasTopicDepth ||
+                hasHealthCheck) &&
+            hasReplies)
+          const SizedBox(height: 20),
+        if (hasReplies) ...[
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '接法建議・${replyTypes.length} 種風格',
+                  style: AppTypography.titleLarge.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Text(
+                '← 左右滑動',
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.onBackgroundSecondary.withValues(
+                    alpha: 0.66,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            key: const ValueKey('analysis-record-reply-styles'),
+            height: 360,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final type in replyTypes)
+                  ReplyStyleCard(
+                    type: type,
+                    content: result.replies[type]!,
+                    option: result.replyOptions[type],
+                    isRecommended: result.recommendation.pick.trim() == type,
+                    onCopy: onReplyCopied,
+                  ),
+              ],
+            ),
+          ),
+        ],
+        if (hasReplies && hasRecommendation) const SizedBox(height: 16),
+        if (hasRecommendation) ...[
           const SizedBox(height: 12),
           Container(
             width: double.infinity,
@@ -698,6 +1029,49 @@ class _SavedAnalysisCard extends StatelessWidget {
             ),
           ),
         ],
+        if ((result.shouldGiveUp ||
+                dimensions != null ||
+                hasGameStage ||
+                hasPsychology ||
+                hasStrategy ||
+                hasTopicDepth ||
+                hasHealthCheck ||
+                hasReplies ||
+                hasRecommendation) &&
+            hasReminder)
+          const SizedBox(height: 12),
+        if (hasReminder)
+          _ArchivePanel(
+            padding: const EdgeInsets.all(13),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('💬', style: TextStyle(fontSize: 18)),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    reminder,
+                    key: const ValueKey('analysis-record-reminder'),
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                      fontStyle: FontStyle.italic,
+                      height: 1.45,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (!hasAnyContent)
+          _ArchivePanel(
+            padding: const EdgeInsets.all(14),
+            child: Text(
+              '這筆紀錄沒有可顯示的文字建議。',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.onBackgroundSecondary,
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -755,21 +1129,6 @@ class _AnalysisTextBlock extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _AnalysisDivider extends StatelessWidget {
-  const _AnalysisDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 13),
-      child: Divider(
-        height: 1,
-        color: Colors.white.withValues(alpha: 0.09),
-      ),
     );
   }
 }
