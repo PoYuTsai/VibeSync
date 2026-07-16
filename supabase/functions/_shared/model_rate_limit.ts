@@ -12,6 +12,7 @@ export const MODEL_RATE_LIMITS = {
   analyze: { perMinute: 6, perDay: 60 },
   coach_chat: { perMinute: 10, perDay: 300 },
   coach_follow_up: { perMinute: 6, perDay: 60 },
+  keyboard_reply: { perMinute: 12, perDay: 300 },
   practice_turn: { perMinute: 12, perDay: 400 },
   practice_hint: { perMinute: 4, perDay: 40 },
   // Codex R1 P2：debrief 也打 DeepSeek（session 內另有 MAX_DEBRIEFS=3，
