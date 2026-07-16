@@ -1895,7 +1895,7 @@ void main() {
     );
 
     testWidgets(
-      'cold remount restores analyzed prefix after a new message is appended',
+      'cold remount keeps completed fragment closed when legacy tail exists',
       (tester) async {
         final conversation = _conversation(
           lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
@@ -1940,8 +1940,10 @@ void main() {
         expect(find.text('AI 推薦回覆'), findsOneWidget);
         expect(
           find.text('有 1 則新訊息，可以更新下一步建議。'),
-          findsOneWidget,
+          findsNothing,
         );
+        expect(find.text('分析新增內容'), findsNothing);
+        expect(find.text('分析新片段'), findsOneWidget);
       },
     );
 
@@ -2107,9 +2109,9 @@ void main() {
     );
   });
 
-  group('AnalysisScreen pending outgoing analysis guard', () {
+  group('AnalysisScreen legacy pending fragment recovery', () {
     testWidgets(
-      'shows analyze CTA when pending segment contains her reply even if latest message is outgoing',
+      'never offers to append-analyze legacy pending messages',
       (tester) async {
         final conversationWithMixedPending = _conversation(
           lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
@@ -2138,25 +2140,14 @@ void main() {
         );
         tester.takeException();
 
-        final analyzeButton = find.widgetWithText(TextButton, '分析新增內容');
-        expect(
-          analyzeButton,
-          findsOneWidget,
-          reason:
-              'A mixed pending OCR import should remain analyzable even when the latest row is outgoing.',
-        );
-
-        expect(
-          find.textContaining('包含她的新回覆'),
-          findsOneWidget,
-          reason:
-              'The CTA copy should explain that analysis is based on her latest reply, not predicting after my final row.',
-        );
+        expect(find.text('分析新增內容'), findsNothing);
+        expect(find.textContaining('有 2 則新訊息'), findsNothing);
+        expect(find.text('分析新片段'), findsOneWidget);
       },
     );
 
     testWidgets(
-      'keeps blocking when all pending messages are outgoing',
+      'does not revive append UI for outgoing-only legacy data',
       (tester) async {
         final conversationWithOutgoingOnlyPending = _conversation(
           lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
@@ -2180,11 +2171,11 @@ void main() {
         tester.takeException();
 
         expect(
-          find.widgetWithText(TextButton, '分析新增內容'),
+          find.text('分析新增內容'),
           findsNothing,
-          reason:
-              'Pure outgoing pending content should still wait for her reply.',
         );
+        expect(find.textContaining('有 1 則新訊息'), findsNothing);
+        expect(find.text('分析新片段'), findsOneWidget);
       },
     );
   });

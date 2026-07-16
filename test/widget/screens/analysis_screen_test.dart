@@ -129,7 +129,8 @@ void main() {
       expect(find.text('找不到對話'), findsOneWidget);
     });
 
-    testWidgets('shows message preview and manual-input guide', (tester) async {
+    testWidgets('shows message preview without legacy append controls',
+        (tester) async {
       final testConversation = Conversation(
         id: 'test-123',
         name: 'Alice',
@@ -160,8 +161,11 @@ void main() {
       );
 
       expect(find.text('週末我去爬抹茶山'), findsOneWidget);
-      expect(find.text('建立本次片段'), findsOneWidget);
-      expect(find.text('貼上或輸入新的一則訊息…'), findsOneWidget);
+      expect(find.text('開始分析'), findsOneWidget);
+      expect(find.text('建立本次片段'), findsNothing);
+      expect(find.text('貼上或輸入新的一則訊息…'), findsNothing);
+      expect(find.text('分析新增內容'), findsNothing);
+      expect(find.textContaining('有 1 則新訊息'), findsNothing);
     });
   });
 }

@@ -644,17 +644,17 @@
 **決定**:
 
 1. 一次成功分析保存一筆 self-contained record，包含當時訊息 deep copy、AI snapshot、分析邊界、完成 key、內容 revision、熱度／階段與來源平台。
-2. 一次分析請求就是一個獨立 fragment／Conversation。第一次分析前，同一次選取的多張截圖或手動訊息可累積；成功後立即關閉並收進右上分析紀錄，之後的新輸入必須建立新的 Conversation id（同一 partner），不得接回上一筆。
+2. 一次分析請求就是一個獨立 fragment／Conversation。使用者一次選取 1–3 張截圖形成一批；第一次分析前若重新選圖，必須整批取代目前草稿，不得逐則追加或把零散內容拼成逐字稿。成功後立即關閉並收進右上分析紀錄，之後的新輸入必須建立新的 Conversation id（同一 partner），不得接回上一筆。
 3. 成功 fragment 的聊天內容唯讀。同內容、同邊界的付費回覆刷新可明確覆寫該 archived record；completion replay 只重放，不製造重複案例。任何內容 revision 改變、邊界延伸或已刪除 record 都不得用刷新路徑復活。
 4. `metVia` 存在 partner scope；`sourcePlatform` 在每筆成功分析時 snapshot。平台由使用者選擇，OCR 不推測。
 5. owner scope 進入 key 與 record body，使用既有 AES 加密 `settingsBox`；每筆獨立 key、無 FIFO、無自動 pruning。刪除對話以 cleanup marker＋tombstone 防止中斷或延遲寫入復活資料。
 6. 完整覆蓋單一 Conversation 的唯一 record 被刪除時，走 Conversation 的 owner-scoped 安全刪除與 records/state/source cascade；舊制同一 Conversation 多筆或 partial records 只刪指定 record，避免誤刪其他歷史。partner `metVia` 不因刪一條 conversation 而消失，並跟隨 partner merge／delete lifecycle。
 7. 原有整段 conversation archive 保留並改稱「已收起的對話」，只承接無法安全視為單一完整 record 的舊制資料；已由完整獨立 record 承接的 Conversation 必須從該入口排除，避免重複顯示或刪除後看似復活。
-8. 本案不改 AI request messages、prompt、Edge schema、quota 或 billing；紀錄資料不回流成模型輸入。
+8. OCR `recognizeOnly` request 不帶目前或歷史訊息，只保留必要的 canonical Partner name 做身份核對；舊批次摘要在整批取代時一併清除。正式分析仍只使用這次 fragment 的內容，封存紀錄不回流成模型輸入。本案不改 Edge schema、quota 或 billing。
 9. 對象頁右上封存圖示是分析紀錄的主要入口；分析頁保留同一入口作捷徑。「已收起的對話」降為封存抽屜內的次入口，不再佔用對象頁主內容。
 10. `sourcePlatform == null` 的紀錄保留在「全部」，但 UI 不顯示「未分類」badge／filter，也不得由 `metVia` 或 OCR 猜測。只有至少兩種已知平台時才顯示平台篩選。
 11. 清單不常駐顯示刪除；點入唯讀快照後才可從右上管理選單刪除。詳情必須讀 frozen messages／AI snapshot，不重新分析，並保留回覆引用脈絡。
-12. 舊版已疊加資料不自動猜測或切割；它可以保守留在舊入口，但任何已有完成證據的 Conversation 都不得再追加新截圖或新訊息。
+12. 舊版已疊加資料不自動猜測或切割；它可以保守留在舊入口，但不得再顯示「分析新增內容」或逐則輸入入口。任何已有完成證據的 Conversation 都不得再追加或重跑，後續內容一律另建獨立 fragment。
 13. 48 小時跟進提醒以 partner 為單位。刪除單一 fragment／Conversation 時，只有該 partner 已無其他 Conversation 才取消提醒；刪除舊片段或放棄空白新片段不得誤取消其他片段排定的提醒。
 
 **後果**:

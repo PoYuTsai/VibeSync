@@ -253,8 +253,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       AnalysisProgressStage.preparingPayload;
   AnalysisTelemetry? _lastRecognizeTelemetry;
   AnalysisTelemetry? _lastAnalysisTelemetry;
-  static const String _importModeNewConversation =
-      ScreenshotRecognitionHelper.importModeNewConversation;
   MeetingContext _screenshotMeetingContext = MeetingContext.datingApp;
   AcquaintanceDuration _screenshotDuration = AcquaintanceDuration.justMet;
   UserGoal _screenshotGoal = UserGoal.dateInvite;
@@ -481,19 +479,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case AnalysisErrorAction.relogin:
         return '登入狀態可能已過期，重新登入後即可恢復分析與訂閱資料。';
       case AnalysisErrorAction.rescreenshot:
-        return '保留標題列、左右對話氣泡與外層主訊息；長截圖可拆成 2-3 張分段加入。';
+        return '保留標題列、左右對話氣泡與外層主訊息；長對話可拆成 2–3 張同批選取。';
       case AnalysisErrorAction.shortenInput:
         return _selectedImages.isNotEmpty
-            ? '每張截圖建議少於 15 則訊息；若內容太長，請拆成多張後再加入。'
-            : '可先刪減較舊訊息、縮短草稿，或分成兩次分析。';
+            ? '每張截圖建議少於 15 則訊息；若內容太長，請拆成 2–3 張同批選取。'
+            : '請重新選擇較短、真正需要 AI 解析的聊天片段。';
       case AnalysisErrorAction.upgrade:
         return '升級後可解鎖更完整的分析能力與較高額度。';
       case AnalysisErrorAction.wait:
         return '今日額度用完後會在隔天重置，或升級方案取得更多額度。';
       case AnalysisErrorAction.addIncomingMessage:
         return _selectedImages.isNotEmpty
-            ? '先把截圖辨識成文字並加入本次片段，或在下方補上一則她的回覆後再分析。'
-            : '一般分析至少需要一則對方訊息；你也可以先存著，等她回覆後再回來分析。';
+            ? '先把截圖辨識成文字並確認為本次片段；若沒有她的訊息，請重新選擇包含她回覆的截圖。'
+            : '一般分析至少需要一則對方訊息；請重新選擇包含她回覆的聊天截圖。';
       case null:
         return null;
     }
@@ -516,7 +514,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case AnalysisErrorAction.wait:
         return '稍後再試';
       case AnalysisErrorAction.addIncomingMessage:
-        return _selectedImages.isNotEmpty ? '先辨識截圖' : '補上對方訊息';
+        if (_selectedImages.isNotEmpty) {
+          return '先辨識截圖';
+        }
+        return _hasCompletedCurrentFragment
+            ? '分析新片段'
+            : '重新選擇截圖';
     }
   }
 
@@ -548,17 +551,32 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  Future<void> _openContinueComposer() async {
+  bool get _hasCompletedCurrentFragment {
+    final conversation = ref.read(
+      conversationProvider(widget.conversationId),
+    );
+    return _enthusiasmScore != null ||
+        (conversation != null &&
+            AnalysisFragmentPolicy.hasCompletedAnalysis(conversation));
+  }
+
+  Future<void> _openReplacementInput() async {
     if (!mounted) {
       return;
     }
-    if (_enthusiasmScore != null) {
+    if (_hasCompletedCurrentFragment) {
       await _openNewConversationSheet();
       return;
     }
     _dismissKeyboard();
-    await Future.delayed(const Duration(milliseconds: 60));
-    await _scrollToBottom();
+    if (!_scrollController.hasClients) {
+      return;
+    }
+    await _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
+    );
   }
 
   Future<void> _openCoachQuestion({String? prefill}) async {
@@ -671,15 +689,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         return;
       case AnalysisErrorAction.rescreenshot:
         setState(_resetErrorState);
-        if (_enthusiasmScore != null) {
-          await _openContinueComposer();
-        }
+        await _openReplacementInput();
         return;
       case AnalysisErrorAction.shortenInput:
         setState(_resetErrorState);
-        if (_selectedImages.isNotEmpty || _enthusiasmScore != null) {
-          await _openContinueComposer();
-        }
+        await _openReplacementInput();
         return;
       case AnalysisErrorAction.upgrade:
         setState(_resetErrorState);
@@ -694,7 +708,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           await _recognizeAndAddToConversation();
           return;
         }
-        await _openContinueComposer();
+        await _openReplacementInput();
         return;
     }
   }
@@ -804,7 +818,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         if (_isStreamingAnalyzeResultStaleForCurrentConversation(s)) {
           setState(() {
             _isAnalyzing = false;
-            _fullErrorMessage = '你剛剛補了新的聊天紀錄，這份完整分析先不套用。請按「分析新增內容」更新到最新版。';
+            _fullErrorMessage = '你剛剛更新了本次片段，這份完整分析先不套用。請重新按「開始分析」。';
             _fullErrorRetriesRemaining = 0;
             _quotaExceededInfo = null;
             _streamContents = const [];
@@ -1262,17 +1276,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         .clamp(0, conversation.messages.length)
         .toInt();
     final active = _activeAnalysisMessageCount;
-    if (active != null &&
-        active > completed &&
-        active <= conversation.messages.length) {
-      // A message can be appended while the stream is running. Keep every
-      // pending message visible; the stale-result guard will prevent the
-      // older in-flight result from being persisted as this fragment.
-      return conversation.messages.sublist(completed);
-    }
+    if (!AnalysisFragmentPolicy.hasCompletedAnalysis(conversation)) {
+      if (active != null &&
+          active > completed &&
+          active <= conversation.messages.length) {
+        // A draft can change while the stream is running. Keep the active
+        // batch visible; the stale-result guard prevents an older result from
+        // being persisted over it.
+        return conversation.messages.sublist(completed);
+      }
 
-    if (conversation.messages.length > completed) {
-      return conversation.messages.sublist(completed);
+      if (conversation.messages.length > completed) {
+        return conversation.messages.sublist(completed);
+      }
     }
 
     final current = _currentAnalysisRecord(conversation);
@@ -1328,6 +1344,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   bool _isShowingPendingAnalysisFragment(Conversation conversation) {
+    if (AnalysisFragmentPolicy.hasCompletedAnalysis(conversation)) {
+      return false;
+    }
     final completed = _effectiveLastAnalyzedMessageCount(conversation)
         .clamp(0, conversation.messages.length)
         .toInt();
@@ -2556,7 +2575,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return _recognizeStageLabel(_recognizeStage);
     }
 
-    return '辨識截圖文字（${_selectedImages.length} 張）';
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    final isReplacingCurrentBatch = conversation != null &&
+        AnalysisFragmentPolicy.canAppendInput(conversation) &&
+        conversation.messages.isNotEmpty;
+    return isReplacingCurrentBatch
+        ? '辨識並取代本次內容（${_selectedImages.length} 張）'
+        : '辨識截圖文字（${_selectedImages.length} 張）';
   }
 
   void _clearScreenshotAddedFeedback() {
@@ -2881,7 +2906,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          '也可以直接上傳聊天截圖，先辨識成文字，確認後加入本次片段，再開始分析。',
+          '也可以直接上傳聊天截圖，辨識並確認後作為本次片段，再開始分析。',
           style: AppTypography.bodySmall.copyWith(
             color: AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
           ),
@@ -2974,18 +2999,27 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final sourceConversation =
         repository.getConversation(widget.conversationId);
     final mustStartNewFragment = sourceConversation != null &&
-        (!AnalysisFragmentPolicy.canAppendInput(sourceConversation) ||
-            _enthusiasmScore != null);
-    final importMode = mustStartNewFragment
-        ? _importModeNewConversation
-        : dialogResult.importMode;
+        AnalysisFragmentPolicy.mustCreateNewFragmentForImport(
+          conversation: sourceConversation,
+          hasLoadedAnalysisResult: _enthusiasmScore != null,
+        );
+    final sourcePartnerId = sourceConversation?.partnerId?.trim();
+    final isPartnerBound =
+        sourcePartnerId != null && sourcePartnerId.isNotEmpty;
+    final expectedPartnerName = sourceConversation == null
+        ? null
+        : _recognitionExpectedPartnerName(sourceConversation);
     final updatedRecognized = recognized.copyWith(
-      contactName: newName.isNotEmpty ? newName : recognized.contactName,
+      contactName: isPartnerBound
+          ? recognized.contactName
+          : newName.isNotEmpty
+              ? newName
+              : recognized.contactName,
       messageCount: editedRecognizedMessages.length,
       messages: editedRecognizedMessages,
     );
 
-    if (importMode == _importModeNewConversation) {
+    if (mustStartNewFragment) {
       final controller = ref.read(conversationWriteControllerProvider.notifier);
       // Inherit partnerId from the source conversation so the new "互動紀錄"
       // shows up under the same Partner detail page. Pre-A2 this path
@@ -2993,12 +3027,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       // disappeared from `conversationsByPartnerProvider(partnerId)`.
       // (Bruce TF feedback 2026-04-28.)
       final createdConversation = await controller.create(
-        name: _resolveImportedConversationName(
-          enteredName: newName,
-          recognizedName: recognized.contactName,
-        ),
+        name: isPartnerBound
+            ? ScreenshotRecognitionHelper.resolvePartnerBoundNewFragmentName(
+                currentConversation: sourceConversation,
+                expectedPartnerName: expectedPartnerName,
+              )
+            : _resolveImportedConversationName(
+                enteredName: newName,
+                recognizedName: recognized.contactName,
+              ),
         messages: importedMessages,
-        partnerId: sourceConversation?.partnerId,
+        partnerId: sourceConversation.partnerId,
       );
 
       if (meeting != null && duration != null) {
@@ -3053,7 +3092,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return;
     }
 
-    if (newName.isNotEmpty &&
+    final partnerId = conv.partnerId?.trim();
+    if (partnerId != null && partnerId.isNotEmpty) {
+      conv.name =
+          ScreenshotRecognitionHelper.resolvePartnerBoundConversationName(
+            currentConversation: conv,
+            expectedPartnerName: _recognitionExpectedPartnerName(conv),
+          );
+    } else if (newName.isNotEmpty &&
         ScreenshotRecognitionHelper.isPlaceholderConversationName(conv.name)) {
       conv.name = newName;
     }
@@ -3080,12 +3126,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       );
     }
 
-    conv.messages.addAll(importedMessages);
+    // 一次 OCR 選取（1–3 張）就是完整的一個待分析片段。重新選圖時
+    // 整批取代，不把不連貫的新內容接成越來越長的逐字稿。
+    AnalysisFragmentPolicy.replaceDraftBatch(
+      conversation: conv,
+      messages: importedMessages,
+    );
     await ref.read(conversationWriteControllerProvider.notifier).save(conv);
     ref.invalidate(conversationProvider(widget.conversationId));
 
     final messageCount = importedMessages.length;
-    final lastImportedMessage = importedMessages.last;
     if (!mounted || _recognizeCancelled) {
       _debugLog('[Recognize] Ignore post-save UI update after cancel/dispose');
       return;
@@ -3099,18 +3149,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _lastManualAddedMessageId = null;
       _lastManualAddedContent = null;
       _lastManualAddedIsFromMe = null;
-      _lastScreenshotAddedMessageId = lastImportedMessage.id;
-      _lastScreenshotAddedPreview = lastImportedMessage.content;
-      _lastScreenshotAddedIsFromMe = lastImportedMessage.isFromMe;
-      _lastScreenshotAddedCount = messageCount;
+      _clearScreenshotAddedFeedback();
     });
 
     _showOcrImportSuccessSnackBar(
-      title: '已加入本次片段，共 $messageCount 則訊息',
-      detail: '分析前可以繼續補同一批截圖；不同脈絡請另開分析片段。',
-      actionLabel: '捲到加入位置',
+      title: '已確認本次片段，共 $messageCount 則訊息',
+      detail: '這批內容已固定；重新選擇截圖會整批取代，不會往下追加。',
+      actionLabel: '查看本次內容',
       onAction: () {
-        _scrollToBottom(delay: const Duration(milliseconds: 80));
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+          );
+        }
       },
     );
   }
@@ -3132,7 +3185,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       if (!mounted) return;
       showBrandFeedbackSnackBar(
         context,
-        title: '已保留這次辨識結果，你可以稍後再繼續加入。',
+        title: '已保留這次辨識結果，你可以稍後再繼續確認。',
         icon: Icons.info_outline_rounded,
       );
       return;
@@ -3713,16 +3766,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       ScreenshotRecognitionHelper.buildWarning(
         recognized: recognized,
         currentConversation: currentConversation,
+        expectedPartnerName:
+            _recognitionExpectedPartnerName(currentConversation),
       );
 
-  String _defaultRecognitionImportMode({
-    required RecognizedConversation recognized,
-    required Conversation currentConversation,
-  }) =>
-      ScreenshotRecognitionHelper.defaultImportMode(
-        recognized: recognized,
-        currentConversation: currentConversation,
-      );
+  String? _recognitionExpectedPartnerName(Conversation conversation) {
+    final partnerId = conversation.partnerId?.trim();
+    if (partnerId == null || partnerId.isEmpty) {
+      return null;
+    }
+    final name =
+        ref.read(partnerRepositoryProvider).getById(partnerId)?.name.trim();
+    return name == null || name.isEmpty ? null : name;
+  }
 
   List<Message> _buildImportedMessages(List<RecognizedMessage> recognized) {
     final baseTimestamp = DateTime.now();
@@ -4066,17 +4122,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     required Conversation currentConversation,
     String? warningMessage,
   }) async {
-    final defaultImportMode = _defaultRecognitionImportMode(
-      recognized: recognized,
-      currentConversation: currentConversation,
-    );
+    final expectedPartnerName =
+        _recognitionExpectedPartnerName(currentConversation);
+    final partnerId = currentConversation.partnerId?.trim();
+    final isPartnerBound = partnerId != null && partnerId.isNotEmpty;
     return showDialog<ScreenshotRecognitionDialogResult>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => ScreenshotRecognitionDialog(
         recognized: recognized,
         warningMessage: warningMessage,
-        initialName: recognized.contactName?.trim() ?? '',
+        initialName: isPartnerBound
+            ? expectedPartnerName ?? currentConversation.name
+            : recognized.contactName?.trim() ?? '',
         initialMeetingContext:
             _screenshotSessionContextFor(currentConversation).meetingContext,
         initialDuration:
@@ -4084,10 +4142,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         initialGoal: _screenshotSessionContextFor(currentConversation).goal,
         initialAnalysisContextNote:
             _screenshotAnalysisContextNoteFor(currentConversation) ?? '',
-        initialImportMode: defaultImportMode,
         forceShowSessionContextFields:
             currentConversation.sessionContext == null,
         currentConversation: currentConversation,
+        expectedPartnerName: expectedPartnerName,
       ),
     );
   }
@@ -4216,23 +4274,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         // 使用 Future.any 來實現強制 timeout
         result = await Future.any([
           analysisService.analyzeConversation(
-            conversation.messages.isEmpty
-                ? [
-                    Message(
-                        id: 'placeholder',
-                        content: '請識別截圖內容',
-                        isFromMe: true,
-                        timestamp: DateTime.now())
-                  ]
-                : conversation.messages,
+            const <Message>[],
             images: imagesToProcess,
             sessionContext: _screenshotSessionContextFor(conversation),
             knownContactName:
-                ScreenshotRecognitionHelper.isPlaceholderConversationName(
-              conversation.name,
-            )
-                    ? null
-                    : conversation.name.trim(),
+                ScreenshotRecognitionHelper.resolveKnownContactName(
+              currentConversation: conversation,
+              expectedPartnerName:
+                  _recognitionExpectedPartnerName(conversation),
+            ),
             onProgress: _handleRecognizeProgress,
             onTelemetry: _handleRecognizeTelemetry,
             recognizeOnly: true, // 純識別模式：只識別截圖，不扣額度
@@ -4312,7 +4362,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           if (!mounted) return;
           showBrandFeedbackSnackBar(
             context,
-            title: '已保留這次辨識結果，你可以稍後再繼續加入。',
+            title: '已保留這次辨識結果，你可以稍後再繼續確認。',
             icon: Icons.info_outline_rounded,
           );
           return;
@@ -4427,7 +4477,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           message: '請先輸入對話內容或上傳截圖',
           action: AnalysisErrorAction.addIncomingMessage,
           origin: _AnalysisErrorOrigin.analysis,
-          guidance: '你可以先在下方補上一則她的回覆，或先上傳截圖辨識文字後再分析。',
+          guidance: '請重新選擇包含她回覆的聊天截圖，確認文字後再分析。',
         );
       });
       return;
@@ -4449,7 +4499,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           message: '目前還沒有她的新回覆可以分析。',
           action: AnalysisErrorAction.addIncomingMessage,
           origin: _AnalysisErrorOrigin.analysis,
-          guidance: '你可以先補上你說的內容作紀錄；等她回覆後，再按「分析新增內容」會比較準。',
+          guidance: '請重新選擇包含她回覆的聊天截圖，再按「開始分析」。',
         );
       });
       return;
@@ -4644,7 +4694,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         if (_isStreamingAnalyzeResultStaleForCurrentConversation(next)) {
           setState(() {
             _isAnalyzing = false;
-            _fullErrorMessage = '你剛剛補了新的聊天紀錄，這份完整分析先不套用。請按「分析新增內容」更新到最新版。';
+            _fullErrorMessage = '你剛剛更新了本次片段，這份完整分析先不套用。請重新按「開始分析」。';
             _fullErrorRetriesRemaining = 0;
             _quotaExceededInfo = null;
             _streamContents = const [];
@@ -5963,7 +6013,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   child: ElevatedButton.icon(
                     onPressed: _resumeRecognitionImport,
                     icon: const Icon(Icons.edit_note_rounded),
-                    label: const Text('繼續確認加入'),
+                    label: const Text('繼續確認本次內容'),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -6364,8 +6414,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       const SizedBox(height: 6),
                                       Text(
                                         isScreenshotOnlyEmptyState
-                                            ? '先上傳聊天截圖，確認文字後再加入本次片段。'
-                                            : '先在下方輸入一句，再選「這句是她說」或「這句是我說」。',
+                                            ? '先上傳 1–3 張聊天截圖，確認文字後作為本次片段。'
+                                            : '請回到上一頁建立新的獨立分析片段。',
                                         textAlign: TextAlign.center,
                                         style: AppTypography.bodySmall.copyWith(
                                           color: AppColors.glassTextSecondary,
@@ -6532,6 +6582,30 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             ),
                             child: Column(
                               children: [
+                                if (conversation.messages.isNotEmpty) ...[
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.ctaStart
+                                          .withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: AppColors.ctaStart
+                                            .withValues(alpha: 0.22),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '本次片段已有 ${conversation.messages.length} 則訊息。重新選擇 1–3 張截圖會整批取代目前內容，不會往下追加。',
+                                      style: AppTypography.bodySmall.copyWith(
+                                        color: AppColors.onBackgroundPrimary,
+                                        height: 1.4,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
                                 // 動作優先：選圖按鈕置頂，介紹文字降到 caption。
                                 ImagePickerWidget(
                                   maxImages: 3,
@@ -6740,7 +6814,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     ),
                                   if (!_isRecognizing)
                                     Text(
-                                      '截圖會先辨識成對話文字。請先確認我說／她說與內容，再加入對話；加入後再開始分析。',
+                                      '截圖會先辨識成對話文字。請確認我說／她說與內容；確認後會成為本次完整片段。',
                                       style: AppTypography.bodySmall.copyWith(
                                         color: AppColors.warning,
                                       ),
@@ -8119,88 +8193,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           ],
                         ],
 
-                        // 新訊息提示 (根據最後一則是誰來顯示不同內容)
-                        if (conversation.messages.isNotEmpty &&
-                            _pendingMessageCount(conversation) > 0) ...[
-                          const SizedBox(height: 16),
-                          Builder(
-                            builder: (context) {
-                              final lastIsFromMe =
-                                  conversation.messages.last.isFromMe;
-                              final pendingCount =
-                                  _pendingMessageCount(conversation);
-                              final pendingContainsIncoming =
-                                  _pendingMessagesContainIncoming(
-                                conversation,
-                              );
-
-                              if (lastIsFromMe && !pendingContainsIncoming) {
-                                // 只有新的「我說」→ 只記錄，不預測她可能怎麼回。
-                                return Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.ctaStart
-                                        .withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                        color: AppColors.ctaStart
-                                            .withValues(alpha: 0.3)),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.arrow_downward,
-                                          color: AppColors.ctaStart),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          '有 $pendingCount 則新訊息，最後一則是你說。等她回覆後再按分析會比較準；現在不會自動預測她怎麼回。',
-                                          style: AppTypography.bodyMedium,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              } else {
-                                // 有新的「她說」→ 可以重新分析；若最後是「我說」，
-                                // request payload 仍會截到最後一則「她說」為止。
-                                return Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.warning
-                                        .withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                        color: AppColors.warning
-                                            .withValues(alpha: 0.3)),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.update,
-                                          color: AppColors.warning),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          lastIsFromMe
-                                              ? '有 $pendingCount 則新訊息，包含她的新回覆；會分析到她最新回覆，不預測最後那句你說之後她怎麼回。'
-                                              : '有 $pendingCount 則新訊息，可以更新下一步建議。',
-                                          style: AppTypography.bodyMedium,
-                                        ),
-                                      ),
-                                      TextButton.icon(
-                                        onPressed:
-                                            _isAnalyzing ? null : _runAnalysis,
-                                        icon:
-                                            const Icon(Icons.refresh, size: 18),
-                                        label: const Text('分析新增內容'),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }
-                            },
-                          ),
-                        ],
-
                         const SizedBox(height: 24),
                       ],
                     ),
@@ -8265,10 +8257,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final hasCompletedAnalysisEvidence = conversation != null &&
         AnalysisFragmentPolicy.hasCompletedAnalysis(conversation);
 
-    // 沒有任何完成證據時，才顯示原片段的輸入區。即使舊 snapshot
-    // 損壞而無法還原分數，完成邊界仍然關閉，不能再往下疊內容。
+    // 待分析片段的內容在前一頁一次建立；OCR 重新選圖也只會整批
+    // 取代。這裡不再提供逐則追加入口，避免把零散聊天拼成逐字稿。
     if (_enthusiasmScore == null && !hasCompletedAnalysisEvidence) {
-      return _buildMessageInput(showScreenshotUpload: false);
+      return const SizedBox.shrink();
     }
 
     // 分析完成後關閉原片段；任何新內容都另開獨立片段。
@@ -8329,6 +8321,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   /// 建立訊息輸入區
+  // Legacy composer implementation retained for older recovery work while the
+  // single-batch fragment contract intentionally keeps it unreachable.
+  // ignore: unused_element
   Widget _buildMessageInput({
     required bool showScreenshotUpload,
     bool showScreenshotAnalysisSettings = true,

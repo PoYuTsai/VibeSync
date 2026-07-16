@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
+import 'package:vibesync/features/conversation/domain/entities/message.dart';
 
 // recognizeOnly OCR 限流 429 的 client 側契約
 // （docs/plans/2026-07-02-ocr-rate-limit-design.md I4/I5）。
@@ -34,6 +35,45 @@ Map<String, dynamic> _ocrRateLimitedBody({required String message}) {
 }
 
 void main() {
+  group('recognizeOnly request isolation', () {
+    test('never serializes discarded conversation rows but keeps contact name',
+        () async {
+      Map<String, dynamic>? capturedBody;
+      final mockClient = MockClient((request) async {
+        capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode(_ocrRateLimitedBody(message: '截圖辨識太頻繁，請稍後再試。')),
+          429,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      try {
+        await _service(mockClient).analyzeConversation(
+          [
+            Message(
+              id: 'discarded-old-batch',
+              content: '這句舊內容不可出現在 OCR request',
+              isFromMe: false,
+              timestamp: DateTime(2026, 7, 16),
+            ),
+          ],
+          images: [Uint8List.fromList([1, 2, 3])],
+          knownContactName: 'Bruce',
+          recognizeOnly: true,
+        );
+        fail('expected AnalysisException');
+      } on AnalysisException {
+        // The non-retriable 429 is only used to stop after the captured request.
+      }
+
+      expect(capturedBody?['messages'], isEmpty);
+      expect(capturedBody?['knownContactName'], 'Bruce');
+      expect(capturedBody?['recognizeOnly'], isTrue);
+      expect(jsonEncode(capturedBody), isNot(contains('這句舊內容')));
+    });
+  });
+
   group('recognizeOnly 429 OCR_RATE_LIMITED mapping', () {
     test('maps to wait action with server message, single request (no retry)',
         () async {

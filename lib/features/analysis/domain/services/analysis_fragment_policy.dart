@@ -1,4 +1,5 @@
 import '../../../conversation/domain/entities/conversation.dart';
+import '../../../conversation/domain/entities/message.dart';
 
 /// Lifecycle boundary for user-selected analysis fragments.
 ///
@@ -18,4 +19,31 @@ class AnalysisFragmentPolicy {
 
   static bool canAppendInput(Conversation conversation) =>
       !hasCompletedAnalysis(conversation);
+
+  /// Re-evaluated when an OCR confirmation dialog returns. The fragment may
+  /// have completed while the dialog was open, so the caller must not trust
+  /// the state captured before awaiting user input.
+  static bool mustCreateNewFragmentForImport({
+    required Conversation conversation,
+    required bool hasLoadedAnalysisResult,
+  }) =>
+      !canAppendInput(conversation) || hasLoadedAnalysisResult;
+
+  /// Replaces the whole pending input batch instead of appending snippets.
+  /// A completed fragment is immutable and must be handled by creating a new
+  /// [Conversation] before calling this method. Any summary derived from the
+  /// discarded batch must go with it, or the next analysis would still receive
+  /// stale context even though the visible messages were replaced.
+  static void replaceDraftBatch({
+    required Conversation conversation,
+    required List<Message> messages,
+  }) {
+    if (!canAppendInput(conversation)) {
+      throw StateError('Completed analysis fragments cannot be replaced.');
+    }
+    conversation.messages
+      ..clear()
+      ..addAll(messages);
+    conversation.summaries = null;
+  }
 }

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
-import 'package:vibesync/features/analysis/domain/services/screenshot_recognition_helper.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
@@ -22,7 +21,6 @@ void main() {
 
   Widget buildDialogHost({
     required RecognizedConversation recognized,
-    required String initialImportMode,
     required bool forceShowSessionContextFields,
     bool reduceMotion = false,
     String? warningMessage,
@@ -32,6 +30,7 @@ void main() {
     UserGoal? initialGoal,
     String initialAnalysisContextNote = '',
     Conversation? currentConversation,
+    String? expectedPartnerName,
     ValueChanged<ScreenshotRecognitionDialogResult?>? onResult,
   }) {
     return MaterialApp(
@@ -56,7 +55,6 @@ void main() {
                   initialDuration: initialDuration,
                   initialGoal: initialGoal,
                   initialAnalysisContextNote: initialAnalysisContextNote,
-                  initialImportMode: initialImportMode,
                   forceShowSessionContextFields: forceShowSessionContextFields,
                   currentConversation: currentConversation ??
                       Conversation(
@@ -73,6 +71,7 @@ void main() {
                         createdAt: DateTime(2026, 3, 24),
                         updatedAt: DateTime(2026, 3, 24),
                       ),
+                  expectedPartnerName: expectedPartnerName,
                 ),
               );
               onResult?.call(result);
@@ -156,13 +155,11 @@ void main() {
   );
 
   group('ScreenshotRecognitionDialog 滑動校正器', () {
-    testWidgets('兩種加入方式的差異說明同時可見，並保留選中模式提醒', (tester) async {
+    testWidgets('已有草稿時提示整批取代，且不再顯示加入方式', (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
         ),
       );
@@ -170,37 +167,19 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(
-        find.text('加入本次片段：只補這次尚未分析的同一批內容。'),
-        findsOneWidget,
-      );
-      expect(
-        find.text('另開分析片段：建立獨立紀錄，不和目前內容拼成逐字稿。'),
-        findsOneWidget,
-      );
-      expect(find.textContaining('目前選擇：只有在你確定這批截圖'), findsOneWidget);
-
-      await _tapVisible(tester, find.text('另開分析片段'));
-      await tester.pumpAndSettle();
-
-      expect(
-        find.text('加入本次片段：只補這次尚未分析的同一批內容。'),
-        findsOneWidget,
-      );
-      expect(
-        find.text('另開分析片段：建立獨立紀錄，不和目前內容拼成逐字稿。'),
-        findsOneWidget,
-      );
-      expect(find.textContaining('目前選擇：只適合同一人的另一段聊天'), findsOneWidget);
+      expect(find.textContaining('整批取代目前內容'), findsOneWidget);
+      expect(find.textContaining('不會接在原訊息下面'), findsOneWidget);
+      expect(find.text('加入方式'), findsNothing);
+      expect(find.text('加入本次片段'), findsNothing);
+      expect(find.text('另開分析片段'), findsNothing);
+      expect(find.textContaining('目前選擇：'), findsNothing);
     });
 
-    testWidgets('目前對話尚無訊息時，加入說明不誤稱為接續既有紀錄', (tester) async {
+    testWidgets('空白草稿不顯示取代提示或加入方式', (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
           currentConversation: Conversation(
             id: 'empty-conversation',
@@ -215,14 +194,10 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(
-        find.text('加入本次片段：只補這次尚未分析的同一批內容。'),
-        findsOneWidget,
-      );
-      expect(
-        find.textContaining('目前選擇：會把這批訊息放進本次片段'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('整批取代目前內容'), findsNothing);
+      expect(find.text('加入方式'), findsNothing);
+      expect(find.text('加入本次片段'), findsNothing);
+      expect(find.text('另開分析片段'), findsNothing);
     });
 
     testWidgets('已完成分析時只能另開片段，不能再加入舊內容下方', (tester) async {
@@ -231,8 +206,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
           onResult: (value) => result = value,
           currentConversation: Conversation(
@@ -258,18 +231,16 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
+      expect(find.text('加入方式'), findsNothing);
       expect(find.text('加入本次片段'), findsNothing);
-      expect(find.text('另開分析片段'), findsOneWidget);
+      expect(find.text('另開分析片段'), findsNothing);
       expect(
-        find.textContaining('新內容會另開分析片段'),
+        find.textContaining('自動另存成新的分析片段'),
         findsOneWidget,
       );
-      await _tapVisible(tester, find.text('確認加入對話'));
+      await _tapVisible(tester, find.text('確認本次內容'));
 
-      expect(
-        result?.importMode,
-        ScreenshotRecognitionHelper.importModeNewConversation,
-      );
+      expect(result, isNotNull);
     });
 
     testWidgets('辨識名稱不同時，必須明確確認同一對象才能加入', (tester) async {
@@ -298,8 +269,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mismatchedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeNewConversation,
           forceShowSessionContextFields: false,
           onResult: (value) => result = value,
         ),
@@ -313,14 +282,14 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('另開分析片段仍會歸在目前對象'),
+        find.textContaining('如果是另一人，請取消並回到正確對象'),
         findsOneWidget,
       );
       expect(
         tester
             .widget<ElevatedButton>(find.widgetWithText(
               ElevatedButton,
-              '確認加入對話',
+              '確認本次內容',
             ))
             .onPressed,
         isNull,
@@ -333,29 +302,25 @@ void main() {
         tester
             .widget<ElevatedButton>(find.widgetWithText(
               ElevatedButton,
-              '確認加入對話',
+              '確認本次內容',
             ))
             .onPressed,
         isNotNull,
       );
-      await _tapVisible(tester, find.text('確認加入對話'));
+      await _tapVisible(tester, find.text('確認本次內容'));
       await tester.pumpAndSettle();
 
       expect(result, isNotNull);
-      expect(
-        result!.importMode,
-        ScreenshotRecognitionHelper.importModeNewConversation,
-      );
     });
 
-    testWidgets('對象頁建立的空白對話，也必須確認截圖屬於目前對象', (tester) async {
+    testWidgets('對象頁名稱相符時不重複要求確認，並隱藏名字欄', (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
+          expectedPartnerName: '小美',
+          initialName: '小美',
           currentConversation: Conversation(
             id: 'partner-bound-placeholder',
             name: '新對話',
@@ -372,23 +337,26 @@ void main() {
 
       expect(
         find.text('我確認這些截圖都是目前這位對象'),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         tester
             .widget<ElevatedButton>(find.widgetWithText(
               ElevatedButton,
-              '確認加入對話',
+              '確認本次內容',
             ))
             .onPressed,
-        isNull,
+        isNotNull,
       );
+      expect(find.text('對方名字'), findsNothing);
+      expect(_partnerNameField(), findsNothing);
     });
 
-    testWidgets('具名對話刪到空白後，名稱不一致仍會停用加入', (tester) async {
+    testWidgets('OCR 名稱衝突時仍保留目前 Partner 名稱', (tester) async {
       await _useTallSurface(tester);
+      ScreenshotRecognitionDialogResult? result;
       const mismatchedConversation = RecognizedConversation(
-        contactName: 'Amber',
+        contactName: 'L',
         messageCount: 1,
         summary: '識別到 1 則訊息',
         messages: [
@@ -402,13 +370,14 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mismatchedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeNewConversation,
           forceShowSessionContextFields: false,
+          expectedPartnerName: 'Bruce',
+          initialName: 'Bruce',
+          onResult: (value) => result = value,
           currentConversation: Conversation(
             id: 'named-empty-conversation',
-            name: '小美',
-            partnerId: 'partner-xiaomei',
+            name: 'Bruce',
+            partnerId: 'partner-bruce',
             messages: const [],
             createdAt: DateTime(2026, 7, 16),
             updatedAt: DateTime(2026, 7, 16),
@@ -420,28 +389,33 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('我確認這些截圖都是目前這位對象'),
+        find.text('我確認這些是「Bruce」的聊天'),
         findsOneWidget,
       );
       expect(
         tester
             .widget<ElevatedButton>(find.widgetWithText(
               ElevatedButton,
-              '確認加入對話',
+              '確認本次內容',
             ))
             .onPressed,
         isNull,
       );
+      expect(find.text('對方名字'), findsNothing);
+
+      await _tapVisible(tester, find.text('我確認這些是「Bruce」的聊天'));
+      await _tapVisible(tester, find.text('確認本次內容'));
+
+      expect(result, isNotNull);
+      expect(result!.name, 'Bruce');
     });
 
-    testWidgets('顯示滑動提示，砍掉 OCR 信心徽章與安撫框，但保留警示與加入方式', (tester) async {
+    testWidgets('顯示滑動提示與警示，但不再顯示加入方式', (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
           warningMessage: '這張截圖辨識信心較低，加入前請先確認預覽內容是否正確。',
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeNewConversation,
           forceShowSessionContextFields: true,
         ),
       );
@@ -449,13 +423,14 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      // 保留：滑動提示一行 + 加入方式切換 + 低信心警示。
+      // 保留：滑動提示一行 + 低信心警示。
       expect(find.text('判錯邊？滑動訊息切換說話者。'), findsOneWidget);
       expect(
         find.text('右滑＝我說，左滑＝她說；點訊息可改字或刪除。'),
         findsOneWidget,
       );
-      expect(find.text('另開分析片段'), findsOneWidget);
+      expect(find.text('加入方式'), findsNothing);
+      expect(find.text('另開分析片段'), findsNothing);
       expect(find.textContaining('辨識信心較低'), findsWidgets);
 
       // 砍掉：狀態徽章、安撫框、舊編輯器入口。
@@ -473,8 +448,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
@@ -487,7 +460,7 @@ void main() {
       await tester.drag(find.text('在幹嘛'), const Offset(400, 0));
       await tester.pumpAndSettle();
 
-      await _tapVisible(tester, find.text('確認加入對話'));
+      await _tapVisible(tester, find.text('確認本次內容'));
 
       expect(dialogResult, isNotNull);
       expect(dialogResult!.messages[0].isFromMe, isTrue);
@@ -500,8 +473,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
@@ -514,7 +485,7 @@ void main() {
       await tester.drag(find.text('剛回到家'), const Offset(-400, 0));
       await tester.pumpAndSettle();
 
-      await _tapVisible(tester, find.text('確認加入對話'));
+      await _tapVisible(tester, find.text('確認本次內容'));
 
       expect(dialogResult, isNotNull);
       expect(dialogResult!.messages[1].isFromMe, isFalse);
@@ -527,8 +498,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
@@ -542,7 +511,7 @@ void main() {
       await tester.drag(find.text('在幹嘛'), const Offset(40, 0));
       await tester.pumpAndSettle();
 
-      await _tapVisible(tester, find.text('確認加入對話'));
+      await _tapVisible(tester, find.text('確認本次內容'));
 
       expect(dialogResult, isNotNull);
       expect(dialogResult!.messages[0].isFromMe, isFalse);
@@ -555,8 +524,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
@@ -576,7 +543,7 @@ void main() {
       await tester.pumpAndSettle();
       await _tapVisible(tester, find.text('完成'));
 
-      await _tapVisible(tester, find.text('確認加入對話'));
+      await _tapVisible(tester, find.text('確認本次內容'));
 
       expect(dialogResult, isNotNull);
       expect(dialogResult!.messages[0].content, '你在幹嘛呀');
@@ -589,8 +556,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
@@ -604,7 +569,7 @@ void main() {
       // 二次確認刪除。
       await _tapVisible(tester, find.text('刪除'));
 
-      await _tapVisible(tester, find.text('確認加入對話'));
+      await _tapVisible(tester, find.text('確認本次內容'));
 
       expect(dialogResult, isNotNull);
       expect(dialogResult!.messages, hasLength(2));
@@ -623,15 +588,12 @@ void main() {
         duration: null,
         goal: null,
         analysisContextNote: null,
-        importMode: ScreenshotRecognitionHelper.importModeAppendCurrent,
         messages: [],
       );
 
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
@@ -647,7 +609,7 @@ void main() {
         await _tapVisible(tester, find.text('完成'));
       }
 
-      await _tapVisible(tester, find.text('確認加入對話'));
+      await _tapVisible(tester, find.text('確認本次內容'));
 
       expect(find.text('至少要保留一則可加入片段的訊息。'), findsOneWidget);
       // dialog 不應 pop（仍是初始 sentinel，未被覆寫）。
@@ -660,8 +622,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: quotedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
         ),
       );
@@ -681,8 +641,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
@@ -692,7 +650,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await _tapVisible(tester, find.text('全部都是對方說的'));
-      await _tapVisible(tester, find.text('確認加入對話'));
+      await _tapVisible(tester, find.text('確認本次內容'));
 
       expect(dialogResult, isNotNull);
       expect(dialogResult!.messages, hasLength(3));
@@ -708,8 +666,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
         ),
       );
@@ -762,8 +718,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
         ),
       );
@@ -794,8 +748,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
         ),
       );
@@ -818,8 +770,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
         ),
       );
@@ -845,8 +795,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
           reduceMotion: true,
         ),
@@ -881,8 +829,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
         ),
       );
@@ -890,7 +836,7 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pump();
       await tester.pump();
-      await tester.tap(find.text('稍後再加入'));
+      await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
       await tester.pump(const Duration(milliseconds: 400));
 
@@ -912,8 +858,6 @@ void main() {
             confidence: 'low',
             messages: [],
           ),
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
         ),
       );
@@ -935,8 +879,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: singleSpeakerConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
         ),
       );
@@ -948,16 +890,14 @@ void main() {
     });
   });
 
-  group('ScreenshotRecognitionDialog 加入流程（不受改版影響）', () {
-    testWidgets('returns selected import mode on confirm', (tester) async {
+  group('ScreenshotRecognitionDialog 確認流程', () {
+    testWidgets('returns edited content without exposing import mode controls', (tester) async {
       await _useTallSurface(tester);
       ScreenshotRecognitionDialogResult? dialogResult;
 
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
@@ -966,15 +906,12 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      await _tapVisible(tester, find.text('另開分析片段'));
+      expect(find.text('加入方式'), findsNothing);
+      expect(find.text('另開分析片段'), findsNothing);
       await tester.enterText(_partnerNameField(), 'Amber');
-      await _tapVisible(tester, find.text('確認加入對話'));
+      await _tapVisible(tester, find.text('確認本次內容'));
 
       expect(dialogResult, isNotNull);
-      expect(
-        dialogResult!.importMode,
-        ScreenshotRecognitionHelper.importModeNewConversation,
-      );
       expect(dialogResult!.name, 'Amber');
     });
 
@@ -983,8 +920,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeNewConversation,
           forceShowSessionContextFields: true,
         ),
       );
@@ -1004,15 +939,12 @@ void main() {
         duration: null,
         goal: null,
         analysisContextNote: null,
-        importMode: ScreenshotRecognitionHelper.importModeAppendCurrent,
         messages: [],
       );
 
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeAppendCurrent,
           forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
@@ -1020,7 +952,7 @@ void main() {
 
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('稍後再加入'));
+      await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
 
       expect(dialogResult, isNull);
@@ -1034,8 +966,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeNewConversation,
           forceShowSessionContextFields: true,
           initialMeetingContext: MeetingContext.datingApp,
           initialDuration: AcquaintanceDuration.justMet,
@@ -1048,7 +978,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('目前目標'), findsOneWidget);
-      await _tapVisible(tester, find.text('確認加入對話'));
+      await _tapVisible(tester, find.text('確認本次內容'));
 
       expect(dialogResult, isNotNull);
       expect(dialogResult!.goal, UserGoal.maintainHeat);
@@ -1062,8 +992,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          initialImportMode:
-              ScreenshotRecognitionHelper.importModeNewConversation,
           forceShowSessionContextFields: true,
           initialMeetingContext: MeetingContext.committedPartner,
           initialDuration: AcquaintanceDuration.monthPlus,
@@ -1084,7 +1012,7 @@ void main() {
       expect(noteField.maxLength, 300);
       expect(noteField.textInputAction, TextInputAction.done);
       await tester.enterText(find.byType(TextField).last, '她是我女友');
-      await _tapVisible(tester, find.text('確認加入對話'));
+      await _tapVisible(tester, find.text('確認本次內容'));
 
       expect(dialogResult, isNotNull);
       expect(dialogResult!.analysisContextNote, '她是我女友');

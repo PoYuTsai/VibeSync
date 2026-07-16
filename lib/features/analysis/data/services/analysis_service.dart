@@ -1293,9 +1293,10 @@ class AnalysisService {
     AnalysisProgressCallback? onProgress,
     AnalysisTelemetryCallback? onTelemetry,
   }) async {
-    final sanitizedMessages = recognizeOnly
-        ? messages.where((message) => message.id != 'placeholder').toList()
-        : messages;
+    // Screenshot recognition is one independent batch. Existing conversation
+    // rows are deliberately excluded so the Edge prompt cannot turn a batch
+    // that is about to be replaced into `Existing Thread Context`.
+    final sanitizedMessages = recognizeOnly ? const <Message>[] : messages;
 
     if (sanitizedMessages.isEmpty && !recognizeOnly) {
       throw AnalysisException(

@@ -1,13 +1,20 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive_ce/hive_ce.dart';
+import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
 import '../../../helpers/memory_coaching_outcome_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
+import 'package:vibesync/features/analysis/data/services/ocr_recognition_cache_service.dart';
+import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
+import 'package:vibesync/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
 import 'package:vibesync/features/coach_chat/domain/repositories/coach_chat_repository.dart';
@@ -17,6 +24,10 @@ import 'package:vibesync/features/conversation/data/repositories/conversation_re
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/presentation/widgets/message_bubble.dart';
+import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
+import 'package:vibesync/features/partner/domain/entities/partner.dart';
+import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
+import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 import 'package:vibesync/shared/widgets/image_picker_widget.dart';
 
 import '../conversation/_fakes/recording_conversation_write_controller.dart';
@@ -26,6 +37,8 @@ Future<void> _pumpAnalysisScreen(
   Conversation? conversation,
   List<Message>? messages,
   ConversationWriteController? writeController,
+  _StubConversationRepository? repository,
+  PartnerRepository? partnerRepository,
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -46,18 +59,21 @@ Future<void> _pumpAnalysisScreen(
         createdAt: DateTime(2026, 5, 4),
         updatedAt: DateTime(2026, 5, 4),
       );
-  final repository = _StubConversationRepository(testConversation);
+  final resolvedRepository =
+      repository ?? _StubConversationRepository(testConversation);
 
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         coachingOutcomeRepositoryProvider
             .overrideWithValue(MemoryCoachingOutcomeRepository()),
-        conversationRepositoryProvider.overrideWithValue(repository),
+        conversationRepositoryProvider.overrideWithValue(resolvedRepository),
         conversationProvider('continue-input-test')
             .overrideWithValue(testConversation),
         coachChatRepositoryProvider
             .overrideWithValue(_StubCoachChatRepository()),
+        if (partnerRepository != null)
+          partnerRepositoryProvider.overrideWithValue(partnerRepository),
         if (writeController != null)
           conversationWriteControllerProvider
               .overrideWith(() => writeController),
@@ -76,6 +92,10 @@ class _StubConversationRepository extends ConversationRepository {
 
   Conversation _conversation;
 
+  void replace(Conversation conversation) {
+    _conversation = conversation;
+  }
+
   @override
   Conversation? getConversation(String id) {
     return id == _conversation.id ? _conversation : null;
@@ -85,6 +105,18 @@ class _StubConversationRepository extends ConversationRepository {
   Future<void> updateConversation(Conversation conversation) async {
     _conversation = conversation;
   }
+}
+
+class _StubPartnerRepository implements PartnerRepository {
+  _StubPartnerRepository(this.partner);
+
+  final Partner partner;
+
+  @override
+  Partner? getById(String id) => id == partner.id ? partner : null;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class _StubCoachChatRepository implements CoachChatRepository {
@@ -160,34 +192,156 @@ void main() {
   });
 
   group('AnalysisScreen continue input', () {
-    testWidgets('explains that text must be entered before choosing speaker',
+    testWidgets('pending fragment no longer exposes the manual append composer',
         (tester) async {
       await _pumpAnalysisScreen(tester);
 
-      expect(find.text('貼上或輸入新的一則訊息…'), findsOneWidget);
-      expect(find.text('建立本次片段'), findsOneWidget);
-      expect(find.text('輸入完先收起鍵盤，再選這句是她說，還是我說。'), findsOneWidget);
-      expect(find.text('這句是她說'), findsOneWidget);
-      expect(find.text('這句是我說'), findsOneWidget);
+      expect(find.text('開始分析'), findsOneWidget);
+      expect(find.text('貼上或輸入新的一則訊息…'), findsNothing);
+      expect(find.text('建立本次片段'), findsNothing);
+      expect(find.text('這句是她說'), findsNothing);
+      expect(find.text('這句是我說'), findsNothing);
     });
 
-    testWidgets('manual input can dismiss keyboard before choosing speaker',
+    testWidgets('pending fragment explains that a new OCR batch replaces it',
         (tester) async {
       await _pumpAnalysisScreen(tester);
 
-      final textFieldFinder = find.byType(TextField).last;
-      final textField = tester.widget<TextField>(textFieldFinder);
-      expect(textField.textInputAction, TextInputAction.done);
-      expect(find.byTooltip('收起鍵盤'), findsOneWidget);
+      expect(find.byType(ImagePickerWidget), findsOneWidget);
+      expect(find.textContaining('重新選擇 1–3 張截圖會整批取代'),
+          findsOneWidget);
+      expect(find.textContaining('不會往下追加'), findsOneWidget);
+    });
 
-      await tester.tap(textFieldFinder);
-      await tester.enterText(textFieldFinder, '要幫你帶什麼嗎？');
-      expect(tester.testTextInput.isVisible, isTrue);
+    testWidgets(
+        'stale OCR confirmation creates a new Partner fragment and preserves completed source',
+        (tester) async {
+      final imageBytes = Uint8List.fromList([1, 2, 3, 4]);
+      final tempDir = (await tester.runAsync(() async {
+        final directory = await Directory.systemTemp.createTemp(
+          'vibesync_ocr_stale_confirm_',
+        );
+        Hive.init(directory.path);
+        await Hive.openBox<dynamic>(AppConstants.settingsBox);
+        await OcrRecognitionCacheService.write(
+          images: [imageBytes],
+          conversationId: 'continue-input-test',
+          recognizedConversation: const RecognizedConversation(
+            contactName: 'Bruce',
+            messageCount: 2,
+            summary: '新批次',
+            classification: 'valid_chat',
+            importPolicy: 'allow',
+            confidence: 'high',
+            sideConfidence: 'high',
+            messages: [
+              RecognizedMessage(
+                side: 'left',
+                isFromMe: false,
+                content: '新一',
+              ),
+              RecognizedMessage(
+                side: 'right',
+                isFromMe: true,
+                content: '新二',
+              ),
+            ],
+          ),
+        );
+        return directory;
+      }))!;
+      addTearDown(() async {
+        if (Hive.isBoxOpen(AppConstants.settingsBox)) {
+          await Hive.box<dynamic>(AppConstants.settingsBox).close();
+        }
+        if (await tempDir.exists()) {
+          await tempDir.delete(recursive: true);
+        }
+      });
+      SharedPreferences.setMockInitialValues({
+        AiDataSharingConsent.acceptedKeyForTesting: true,
+        'analysis_ocr_swipe_tutorial_seen_v1_global': true,
+      });
 
-      await tester.tap(find.byTooltip('收起鍵盤'));
+      final draft = Conversation(
+        id: 'continue-input-test',
+        name: '春季活動那次',
+        partnerId: 'partner-bruce',
+        messages: [
+          Message(
+            id: 'old',
+            content: '完成前的舊內容',
+            isFromMe: false,
+            timestamp: DateTime(2026, 7, 16),
+          ),
+        ],
+        createdAt: DateTime(2026, 7, 16),
+        updatedAt: DateTime(2026, 7, 16),
+      );
+      final repository = _StubConversationRepository(draft);
+      final writer = RecordingConversationWriteController();
+      final partnerRepository = _StubPartnerRepository(
+        Partner(
+          id: 'partner-bruce',
+          name: 'Bruce',
+          createdAt: DateTime(2026, 7, 16),
+          updatedAt: DateTime(2026, 7, 16),
+        ),
+      );
+
+      await _pumpAnalysisScreen(
+        tester,
+        conversation: draft,
+        repository: repository,
+        partnerRepository: partnerRepository,
+        writeController: writer,
+      );
+
+      final picker = tester.widget<ImagePickerWidget>(
+        find.byType(ImagePickerWidget),
+      );
+      picker.onImagesChanged([imageBytes]);
       await tester.pump();
+      final recognizeButton = find.text('辨識並取代本次內容（1 張）');
+      await tester.ensureVisible(recognizeButton);
+      await tester.tap(recognizeButton);
+      await tester.pumpAndSettle();
+      expect(find.byType(ScreenshotRecognitionDialog), findsOneWidget);
 
-      expect(tester.testTextInput.isVisible, isFalse);
+      final completedSource = Conversation(
+        id: 'continue-input-test',
+        name: '春季活動那次',
+        partnerId: 'partner-bruce',
+        messages: [
+          Message(
+            id: 'old',
+            content: '完成前的舊內容',
+            isFromMe: false,
+            timestamp: DateTime(2026, 7, 16),
+          ),
+        ],
+        createdAt: DateTime(2026, 7, 16),
+        updatedAt: DateTime(2026, 7, 16),
+        lastAnalyzedMessageCount: 1,
+        lastAnalysisSnapshotJson: jsonEncode(_analysisSnapshotJson()),
+        lastEnthusiasmScore: 65,
+      );
+      repository.replace(completedSource);
+
+      final confirmButton = find.text('確認本次內容');
+      await tester.ensureVisible(confirmButton);
+      await tester.tap(confirmButton);
+      await tester.pumpAndSettle();
+
+      expect(writer.createCalled, isTrue);
+      expect(writer.capturedPartnerId, 'partner-bruce');
+      expect(writer.capturedName, 'Bruce');
+      expect(writer.capturedMessageCount, 2);
+      expect(completedSource.messages, hasLength(1));
+      expect(completedSource.messages.single.id, 'old');
+      expect(completedSource.messages.single.content, '完成前的舊內容');
+      expect(completedSource.lastAnalyzedMessageCount, 1);
+      expect(completedSource.lastAnalysisSnapshotJson, isNotEmpty);
     });
 
     testWidgets('edit dialog keeps the text field readable on a dark surface',
@@ -333,20 +487,12 @@ void main() {
     });
 
     testWidgets(
-        'shows a reminder when tapping her-message button with empty input',
+        'first analysis is not mislabeled as pending appended content',
         (tester) async {
       await _pumpAnalysisScreen(tester);
 
-      final herButton = find.text('這句是她說');
-      await tester.ensureVisible(herButton);
-      await tester.tap(herButton);
-      await tester.pump();
-
-      expect(
-        find.text('先貼上或輸入對方的新回覆，再點「這句是她說」。'),
-        findsOneWidget,
-      );
-      await tester.pump(const Duration(seconds: 5));
+      expect(find.text('分析新增內容'), findsNothing);
+      expect(find.textContaining('有 1 則新訊息'), findsNothing);
     });
 
     testWidgets('empty screenshot-start conversation keeps upload flow clean',
@@ -360,7 +506,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.textContaining('內容唯讀'), findsNothing);
-      expect(find.text('先上傳聊天截圖，確認文字後再加入本次片段。'), findsOneWidget);
+      expect(find.text('先上傳 1–3 張聊天截圖，確認文字後作為本次片段。'), findsOneWidget);
       expect(find.byType(ImagePickerWidget), findsOneWidget);
       expect(find.text('建立本次片段'), findsNothing);
       expect(find.text('貼上或輸入新的一則訊息…'), findsNothing);
@@ -452,7 +598,7 @@ void main() {
       expect(find.textContaining('展開全部'), findsNothing);
     });
 
-    testWidgets('pending fragment hides messages from the completed analysis',
+    testWidgets('legacy appended tail cannot reopen a completed fragment',
         (tester) async {
       final conversation = Conversation(
         id: 'continue-input-test',
@@ -474,11 +620,13 @@ void main() {
 
       await _pumpAnalysisScreen(tester, conversation: conversation);
 
-      expect(find.text('待分析的新片段'), findsOneWidget);
-      expect(find.text('片段 1'), findsNothing);
-      expect(find.text('片段 2'), findsNothing);
-      expect(find.text('片段 3'), findsOneWidget);
-      expect(find.text('片段 4'), findsOneWidget);
+      expect(find.text('本次分析片段'), findsOneWidget);
+      expect(find.text('片段 1'), findsOneWidget);
+      expect(find.text('片段 2'), findsOneWidget);
+      expect(find.text('片段 3'), findsNothing);
+      expect(find.text('片段 4'), findsNothing);
+      expect(find.text('分析新增內容'), findsNothing);
+      expect(find.text('分析新片段'), findsOneWidget);
     });
   });
 }

@@ -29,101 +29,6 @@ void main() {
     );
   }
 
-  group('ScreenshotRecognitionHelper.defaultImportMode', () {
-    test('uses current thread for empty conversation', () {
-      final recognized = const RecognizedConversation(
-        contactName: '小美',
-        messageCount: 3,
-        summary: '識別到 3 則訊息',
-      );
-      final conversation = buildConversation(name: '新對話');
-
-      final result = ScreenshotRecognitionHelper.defaultImportMode(
-        recognized: recognized,
-        currentConversation: conversation,
-      );
-
-      expect(
-        result,
-        ScreenshotRecognitionHelper.importModeAppendCurrent,
-      );
-    });
-
-    test('uses new conversation for low-confidence import', () {
-      final recognized = const RecognizedConversation(
-        contactName: '小美',
-        messageCount: 3,
-        summary: '識別到 3 則訊息',
-        importPolicy: 'confirm',
-        confidence: 'low',
-      );
-      final conversation = buildConversation(
-        name: '小美',
-        messages: [buildMessage(isFromMe: false, content: '嗨')],
-      );
-
-      final result = ScreenshotRecognitionHelper.defaultImportMode(
-        recognized: recognized,
-        currentConversation: conversation,
-      );
-
-      expect(
-        result,
-        ScreenshotRecognitionHelper.importModeNewConversation,
-      );
-    });
-
-    test('uses new conversation when recognized name mismatches thread name',
-        () {
-      final recognized = const RecognizedConversation(
-        contactName: 'Amber',
-        messageCount: 2,
-        summary: '識別到 2 則訊息',
-      );
-      final conversation = buildConversation(
-        name: '小美',
-        messages: [buildMessage(isFromMe: false, content: '晚安')],
-      );
-
-      final result = ScreenshotRecognitionHelper.defaultImportMode(
-        recognized: recognized,
-        currentConversation: conversation,
-      );
-
-      expect(
-        result,
-        ScreenshotRecognitionHelper.importModeNewConversation,
-      );
-    });
-
-    test('uses a new fragment after the current fragment was analyzed', () {
-      final recognized = const RecognizedConversation(
-        contactName: '小美',
-        messageCount: 2,
-        summary: '識別到 2 則訊息',
-        importPolicy: 'allow',
-        confidence: 'high',
-      );
-      final conversation = buildConversation(
-        name: '小美',
-        messages: [buildMessage(isFromMe: false, content: '舊片段')],
-      )
-        ..lastAnalyzedMessageCount = 1
-        ..lastAnalysisSnapshotJson = '{"enthusiasm":{"score":45}}'
-        ..lastEnthusiasmScore = 45;
-
-      final result = ScreenshotRecognitionHelper.defaultImportMode(
-        recognized: recognized,
-        currentConversation: conversation,
-      );
-
-      expect(
-        result,
-        ScreenshotRecognitionHelper.importModeNewConversation,
-      );
-    });
-  });
-
   group('ScreenshotRecognitionHelper.isPlaceholderConversationName', () {
     test('treats both 新對話 and 新的對話 as placeholder titles', () {
       expect(
@@ -137,6 +42,41 @@ void main() {
       expect(
         ScreenshotRecognitionHelper.isPlaceholderConversationName('Amy'),
         isFalse,
+      );
+    });
+
+    test('recognition contact name prefers Partner and skips placeholders', () {
+      final partnerBound = buildConversation(
+        name: '舊片段自訂標題',
+        partnerId: 'partner-bruce',
+      );
+      final placeholder = buildConversation(name: '新對話');
+      final standalone = buildConversation(name: 'Amy');
+
+      expect(
+        ScreenshotRecognitionHelper.resolveKnownContactName(
+          currentConversation: partnerBound,
+          expectedPartnerName: ' Bruce ',
+        ),
+        'Bruce',
+      );
+      expect(
+        ScreenshotRecognitionHelper.resolveKnownContactName(
+          currentConversation: partnerBound,
+        ),
+        isNull,
+      );
+      expect(
+        ScreenshotRecognitionHelper.resolveKnownContactName(
+          currentConversation: placeholder,
+        ),
+        isNull,
+      );
+      expect(
+        ScreenshotRecognitionHelper.resolveKnownContactName(
+          currentConversation: standalone,
+        ),
+        'Amy',
       );
     });
   });
@@ -161,7 +101,7 @@ void main() {
       expect(result, isNotNull);
       expect(result, contains('Amber'));
       expect(result, contains('目前對象不同'));
-      expect(result, contains('取消並到正確對象'));
+      expect(result, contains('取消並回到正確對象'));
     });
 
     test('requires explicit same-partner confirmation for name mismatch', () {
@@ -270,6 +210,70 @@ void main() {
       );
     });
 
+    test('uses the real partner name to avoid generic confirmation', () {
+      final conversation = buildConversation(
+        name: '新對話',
+        partnerId: 'partner-bruce',
+      );
+
+      expect(
+        ScreenshotRecognitionHelper.requiresSamePartnerConfirmation(
+          recognized: const RecognizedConversation(
+            contactName: 'Bruce',
+            messageCount: 2,
+            summary: '識別到 2 則訊息',
+          ),
+          currentConversation: conversation,
+          expectedPartnerName: 'Bruce',
+        ),
+        isFalse,
+      );
+      expect(
+        ScreenshotRecognitionHelper.requiresSamePartnerConfirmation(
+          recognized: const RecognizedConversation(
+            contactName: 'L',
+            messageCount: 2,
+            summary: '識別到 2 則訊息',
+          ),
+          currentConversation: conversation,
+          expectedPartnerName: 'Bruce',
+        ),
+        isTrue,
+      );
+      expect(
+        ScreenshotRecognitionHelper.buildWarning(
+          recognized: const RecognizedConversation(
+            contactName: 'L',
+            messageCount: 2,
+            summary: '識別到 2 則訊息',
+          ),
+          currentConversation: conversation,
+          expectedPartnerName: 'Bruce',
+        ),
+        allOf(contains('L'), contains('Bruce')),
+      );
+    });
+
+    test('missing OCR name is not a mismatch when partner identity is known',
+        () {
+      final conversation = buildConversation(
+        name: '新對話',
+        partnerId: 'partner-bruce',
+      );
+
+      expect(
+        ScreenshotRecognitionHelper.requiresSamePartnerConfirmation(
+          recognized: const RecognizedConversation(
+            messageCount: 2,
+            summary: '識別到 2 則訊息',
+          ),
+          currentConversation: conversation,
+          expectedPartnerName: 'Bruce',
+        ),
+        isFalse,
+      );
+    });
+
     test('standalone empty placeholder does not add partner confirmation', () {
       const recognized = RecognizedConversation(
         contactName: 'Amber',
@@ -300,7 +304,7 @@ void main() {
         currentConversation: conversation,
       );
 
-      expect(result, '這張圖還不太確定，加入前請先看一下內容有沒有抓對。');
+      expect(result, '這張圖還不太確定，請先看一下內容有沒有抓對。');
     });
   });
 
@@ -330,6 +334,49 @@ void main() {
           recognizedName: '   ',
         ),
         '新對話',
+      );
+    });
+
+    test('partner-bound name trusts Partner identity instead of OCR', () {
+      final conversation = buildConversation(
+        name: '新對話',
+        partnerId: 'partner-bruce',
+      );
+
+      expect(
+        ScreenshotRecognitionHelper.resolvePartnerBoundConversationName(
+          currentConversation: conversation,
+          expectedPartnerName: ' Bruce ',
+        ),
+        'Bruce',
+      );
+      expect(
+        ScreenshotRecognitionHelper.resolvePartnerBoundConversationName(
+          currentConversation: conversation,
+        ),
+        '新對話',
+      );
+    });
+
+    test('partner-bound replacement preserves an existing custom title', () {
+      final conversation = buildConversation(
+        name: '春季活動那次',
+        partnerId: 'partner-bruce',
+      );
+
+      expect(
+        ScreenshotRecognitionHelper.resolvePartnerBoundConversationName(
+          currentConversation: conversation,
+          expectedPartnerName: 'Bruce',
+        ),
+        '春季活動那次',
+      );
+      expect(
+        ScreenshotRecognitionHelper.resolvePartnerBoundNewFragmentName(
+          currentConversation: conversation,
+          expectedPartnerName: 'Bruce',
+        ),
+        'Bruce',
       );
     });
   });
@@ -387,7 +434,7 @@ void main() {
 
       expect(result, contains('LINE 的回覆引用框'));
       expect(result, contains('重截'));
-      expect(guidance.title, '先確認再加入');
+      expect(guidance.title, '先確認本次內容');
       expect(guidance.tone, ScreenshotRecognitionGuidanceTone.review);
     });
 
@@ -439,44 +486,27 @@ void main() {
         messages: [buildMessage(isFromMe: false, content: '嗨')],
       );
 
-      final result = ScreenshotRecognitionHelper.importModeDescription(
-        recognized: recognized,
-        currentConversation: conversation,
-        selectedImportMode: ScreenshotRecognitionHelper.importModeAppendCurrent,
-      );
-
       final guidance = ScreenshotRecognitionHelper.guidance(recognized);
       final warning = ScreenshotRecognitionHelper.buildWarning(
         recognized: recognized,
         currentConversation: conversation,
       );
 
-      expect(result, contains('目前這位對象'));
       expect(guidance.title, '先確認是不是同一人');
-      expect(guidance.body, contains('取消並到正確對象'));
-      expect(warning, contains('不能靠「另開分析片段」分開'));
+      expect(guidance.body, contains('取消並回到正確對象'));
+      expect(warning, contains('若混到另一人'));
     });
 
-    test('warns to fix direction before appending when side confidence is low',
-        () {
+    test('warns to fix direction when side confidence is low', () {
       const recognized = RecognizedConversation(
         messageCount: 4,
         summary: '識別到 4 則訊息',
         sideConfidence: 'low',
       );
-      final conversation = buildConversation(
-        name: 'Amy',
-        messages: [buildMessage(isFromMe: false, content: '嗨')],
-      );
+      final guidance = ScreenshotRecognitionHelper.guidance(recognized);
 
-      final result = ScreenshotRecognitionHelper.importModeDescription(
-        recognized: recognized,
-        currentConversation: conversation,
-        selectedImportMode: ScreenshotRecognitionHelper.importModeAppendCurrent,
-      );
-
-      expect(result, contains('我說 / 她說'));
-      expect(result, contains('加入本次片段前'));
+      expect(guidance.title, '先確認我說 / 她說');
+      expect(guidance.body, contains('「我說」還是「她說」'));
     });
 
     test('treats quoted replies as speaker-direction review risk', () {
@@ -501,27 +531,15 @@ void main() {
           ),
         ],
       );
-      final conversation = buildConversation(
-        name: 'Candy',
-        messages: [buildMessage(isFromMe: false, content: '前文')],
-      );
-
       final warning =
           ScreenshotRecognitionHelper.sideConfidenceWarning(recognized);
       final guidance = ScreenshotRecognitionHelper.guidance(recognized);
-      final appendCopy = ScreenshotRecognitionHelper.importModeDescription(
-        recognized: recognized,
-        currentConversation: conversation,
-        selectedImportMode: ScreenshotRecognitionHelper.importModeAppendCurrent,
-      );
 
       expect(warning, contains('回覆引用框'));
       expect(warning, contains('我說 / 她說'));
       expect(guidance.title, '先確認我說 / 她說');
       expect(guidance.body, contains('引用'));
       expect(guidance.tone, ScreenshotRecognitionGuidanceTone.review);
-      expect(appendCopy, contains('回覆引用框'));
-      expect(appendCopy, contains('我說 / 她說'));
     });
   });
 }

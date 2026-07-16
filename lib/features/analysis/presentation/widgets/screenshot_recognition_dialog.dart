@@ -17,7 +17,6 @@ class ScreenshotRecognitionDialogResult {
   final AcquaintanceDuration? duration;
   final UserGoal? goal;
   final String? analysisContextNote;
-  final String importMode;
   final List<RecognizedMessage> messages;
 
   const ScreenshotRecognitionDialogResult({
@@ -26,7 +25,6 @@ class ScreenshotRecognitionDialogResult {
     required this.duration,
     required this.goal,
     required this.analysisContextNote,
-    required this.importMode,
     required this.messages,
   });
 }
@@ -39,9 +37,9 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
   final AcquaintanceDuration? initialDuration;
   final UserGoal? initialGoal;
   final String initialAnalysisContextNote;
-  final String initialImportMode;
   final bool forceShowSessionContextFields;
   final Conversation currentConversation;
+  final String? expectedPartnerName;
 
   const ScreenshotRecognitionDialog({
     super.key,
@@ -52,9 +50,9 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
     required this.initialDuration,
     required this.initialGoal,
     required this.initialAnalysisContextNote,
-    required this.initialImportMode,
     required this.forceShowSessionContextFields,
     required this.currentConversation,
+    this.expectedPartnerName,
   });
 
   @override
@@ -70,7 +68,6 @@ class _ScreenshotRecognitionDialogState
   late MeetingContext? _selectedMeeting;
   late AcquaintanceDuration? _selectedDuration;
   late UserGoal? _selectedGoal;
-  late String _selectedImportMode;
   late final List<_EditableRecognizedMessage> _editableMessages;
   String? _editValidationMessage;
   bool _confirmedSamePartner = false;
@@ -97,9 +94,6 @@ class _ScreenshotRecognitionDialogState
     _selectedMeeting = widget.initialMeetingContext;
     _selectedDuration = widget.initialDuration;
     _selectedGoal = widget.initialGoal;
-    _selectedImportMode = _canAppendToCurrent
-        ? widget.initialImportMode
-        : ScreenshotRecognitionHelper.importModeNewConversation;
     _editableMessages =
         (widget.recognized.messages ?? const <RecognizedMessage>[])
             .map(_EditableRecognizedMessage.fromRecognizedMessage)
@@ -366,7 +360,6 @@ class _ScreenshotRecognitionDialogState
         analysisContextNote: _analysisContextNoteController.text.trim().isEmpty
             ? null
             : _analysisContextNoteController.text.trim(),
-        importMode: _selectedImportMode,
         messages: sanitizedMessages,
       ),
     );
@@ -376,10 +369,16 @@ class _ScreenshotRecognitionDialogState
       ScreenshotRecognitionHelper.requiresSamePartnerConfirmation(
         recognized: widget.recognized,
         currentConversation: widget.currentConversation,
+        expectedPartnerName: widget.expectedPartnerName,
       );
 
-  bool get _canAppendToCurrent =>
+  bool get _canReplaceCurrentDraft =>
       AnalysisFragmentPolicy.canAppendInput(widget.currentConversation);
+
+  bool get _isPartnerBound {
+    final partnerId = widget.currentConversation.partnerId?.trim();
+    return partnerId != null && partnerId.isNotEmpty;
+  }
 
   // 滑動絕對方向映射：右滑 = 我說、左滑 = 她說。
   void _setMessageSide(int index, bool isFromMe) {
@@ -902,9 +901,10 @@ class _ScreenshotRecognitionDialogState
   @override
   Widget build(BuildContext context) {
     final shouldShowSessionContextFields =
-        widget.forceShowSessionContextFields ||
-            _selectedImportMode ==
-                ScreenshotRecognitionHelper.importModeNewConversation;
+        widget.forceShowSessionContextFields || !_canReplaceCurrentDraft;
+    final willReplaceCurrentBatch =
+        _canReplaceCurrentDraft &&
+        widget.currentConversation.messages.isNotEmpty;
 
     return AlertDialog(
       backgroundColor: AppColors.brandSurface2,
@@ -919,7 +919,7 @@ class _ScreenshotRecognitionDialogState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '共抓到 ${widget.recognized.messageCount} 則訊息，加入片段前先確認一下。',
+              '共抓到 ${widget.recognized.messageCount} 則訊息，確認後會作為這次完整片段。',
               style: const TextStyle(color: AppColors.onBackgroundPrimary),
             ),
             if (widget.warningMessage != null &&
@@ -961,99 +961,8 @@ class _ScreenshotRecognitionDialogState
             const SizedBox(height: 12),
             // 滑動校正器：只留一句能幫使用者完成動作的提示，不放系統狀態說明。
             _buildMessageEditWorkspace(),
-            const SizedBox(height: 16),
-            const Text(
-              '加入方式',
-              style: TextStyle(
-                color: AppColors.onBackgroundPrimary,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                if (_canAppendToCurrent)
-                  ChoiceChip(
-                    label: const Text('加入本次片段'),
-                    selected: _selectedImportMode ==
-                        ScreenshotRecognitionHelper.importModeAppendCurrent,
-                    onSelected: (selected) {
-                      if (!selected) return;
-                      setState(() {
-                        _selectedImportMode =
-                            ScreenshotRecognitionHelper.importModeAppendCurrent;
-                      });
-                    },
-                    showCheckmark: false,
-                    selectedColor: AppColors.ctaStart.withValues(alpha: 0.2),
-                    backgroundColor: AppColors.brandInk.withValues(alpha: 0.4),
-                    side: BorderSide(
-                      color: _selectedImportMode ==
-                              ScreenshotRecognitionHelper
-                                  .importModeAppendCurrent
-                          ? AppColors.ctaStart.withValues(alpha: 0.4)
-                          : AppColors.onBackgroundPrimary
-                              .withValues(alpha: 0.2),
-                    ),
-                    labelStyle: TextStyle(
-                      color: _selectedImportMode ==
-                              ScreenshotRecognitionHelper
-                                  .importModeAppendCurrent
-                          ? AppColors.ctaStart
-                          : AppColors.onBackgroundPrimary,
-                    ),
-                  ),
-                ChoiceChip(
-                  label: const Text('另開分析片段'),
-                  selected: _selectedImportMode ==
-                      ScreenshotRecognitionHelper.importModeNewConversation,
-                  onSelected: (selected) {
-                    if (!selected) return;
-                    setState(() {
-                      _selectedImportMode =
-                          ScreenshotRecognitionHelper.importModeNewConversation;
-                    });
-                  },
-                  showCheckmark: false,
-                  selectedColor: AppColors.ctaStart.withValues(alpha: 0.2),
-                  backgroundColor: AppColors.brandInk.withValues(alpha: 0.4),
-                  side: BorderSide(
-                    color: _selectedImportMode ==
-                            ScreenshotRecognitionHelper
-                                .importModeNewConversation
-                        ? AppColors.ctaStart.withValues(alpha: 0.4)
-                        : AppColors.onBackgroundPrimary.withValues(alpha: 0.2),
-                  ),
-                  labelStyle: TextStyle(
-                    color: _selectedImportMode ==
-                            ScreenshotRecognitionHelper
-                                .importModeNewConversation
-                        ? AppColors.ctaStart
-                        : AppColors.onBackgroundPrimary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (_canAppendToCurrent) ...[
-              Text(
-                '加入本次片段：只補這次尚未分析的同一批內容。',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.onBackgroundSecondary,
-                  height: 1.45,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '另開分析片段：建立獨立紀錄，不和目前內容拼成逐字稿。',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.onBackgroundSecondary,
-                  height: 1.45,
-                ),
-              ),
-            ] else
+            if (willReplaceCurrentBatch) ...[
+              const SizedBox(height: 16),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(10),
@@ -1065,25 +974,34 @@ class _ScreenshotRecognitionDialogState
                   ),
                 ),
                 child: Text(
-                  '這段已完成分析。新內容會另開分析片段，不會接到舊訊息下面。',
+                  '確認後會以這批 ${_editableMessages.length} 則訊息整批取代目前內容，不會接在原訊息下面。',
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.onBackgroundPrimary,
                     height: 1.45,
                   ),
                 ),
               ),
-            const SizedBox(height: 8),
-            Text(
-              '目前選擇：${ScreenshotRecognitionHelper.importModeDescription(
-                recognized: widget.recognized,
-                currentConversation: widget.currentConversation,
-                selectedImportMode: _selectedImportMode,
-              )}',
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.onBackgroundSecondary,
-                height: 1.45,
+            ] else if (!_canReplaceCurrentDraft) ...[
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.ctaStart.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppColors.ctaStart.withValues(alpha: 0.24),
+                  ),
+                ),
+                child: Text(
+                  '原片段已完成分析；這批內容會自動另存成新的分析片段，不會改動舊紀錄。',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    height: 1.45,
+                  ),
+                ),
               ),
-            ),
+            ],
             if (_requiresSamePartnerConfirmation) ...[
               const SizedBox(height: 12),
               Container(
@@ -1107,14 +1025,16 @@ class _ScreenshotRecognitionDialogState
                     });
                   },
                   title: Text(
-                    '我確認這些截圖都是目前這位對象',
+                    widget.expectedPartnerName?.trim().isNotEmpty == true
+                        ? '我確認這些是「${widget.expectedPartnerName!.trim()}」的聊天'
+                        : '我確認這些截圖都是目前這位對象',
                     style: AppTypography.bodySmall.copyWith(
                       color: AppColors.onBackgroundPrimary,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   subtitle: Text(
-                    '另開分析片段仍會歸在目前對象；如果是另一人，請取消並到正確對象再匯入。',
+                    '如果是另一人，請取消並回到正確對象再匯入。',
                     style: AppTypography.caption.copyWith(
                       color: AppColors.onBackgroundSecondary,
                       height: 1.35,
@@ -1123,30 +1043,32 @@ class _ScreenshotRecognitionDialogState
                 ),
               ),
             ],
-            const SizedBox(height: 16),
-            const Text(
-              '對方名字',
-              style: TextStyle(
-                color: AppColors.onBackgroundPrimary,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _nameController,
-              decoration: InputDecoration(
-                hintText: '輸入對方名字',
-                hintStyle:
-                    const TextStyle(color: AppColors.onBackgroundSecondary),
-                filled: true,
-                fillColor: AppColors.brandInk.withValues(alpha: 0.4),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
+            if (!_isPartnerBound) ...[
+              const SizedBox(height: 16),
+              const Text(
+                '對方名字',
+                style: TextStyle(
+                  color: AppColors.onBackgroundPrimary,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-              style: const TextStyle(color: AppColors.onBackgroundPrimary),
-            ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _nameController,
+                decoration: InputDecoration(
+                  hintText: '輸入對方名字',
+                  hintStyle:
+                      const TextStyle(color: AppColors.onBackgroundSecondary),
+                  filled: true,
+                  fillColor: AppColors.brandInk.withValues(alpha: 0.4),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+                style: const TextStyle(color: AppColors.onBackgroundPrimary),
+              ),
+            ],
             if (shouldShowSessionContextFields) ...[
               const SizedBox(height: 16),
               const Text(
@@ -1309,7 +1231,7 @@ class _ScreenshotRecognitionDialogState
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text(
-            '稍後再加入',
+            '取消',
             style: TextStyle(color: AppColors.onBackgroundSecondary),
           ),
         ),
@@ -1321,7 +1243,7 @@ class _ScreenshotRecognitionDialogState
             backgroundColor: AppColors.ctaStart,
             foregroundColor: Colors.white,
           ),
-          child: const Text('確認加入對話'),
+          child: const Text('確認本次內容'),
         ),
       ],
     );
