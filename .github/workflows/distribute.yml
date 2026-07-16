@@ -24,7 +24,33 @@ env:
   APP_VERSION: 1.0.1
 
 jobs:
+  flutter-gate:
+    name: Flutter distribution gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run full test suite serially
+        run: flutter test --concurrency=1
+
   build-android:
+    needs: flutter-gate
     runs-on: ubuntu-latest
     env:
       # Safe environment variable assignments
@@ -56,10 +82,6 @@ jobs:
 
       - name: Generate code
         run: dart run build_runner build --delete-conflicting-outputs
-
-      - name: Run tests
-        run: flutter test || echo "Tests failed but continuing build"
-        continue-on-error: true
 
       - name: Build APK (Staging)
         env:
@@ -116,6 +138,7 @@ jobs:
           retention-days: 7
 
   build-ios:
+    needs: flutter-gate
     runs-on: macos-26
     env:
       GIT_REF: ${{ github.ref_name }}

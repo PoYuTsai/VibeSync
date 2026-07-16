@@ -1,21 +1,7 @@
 # .github/workflows/flutter-ci.yml
-# PR-gate CI: blocks merge on red `flutter analyze` 與 partner-scoped
-# `flutter test`. 跟 distribute.yml 的差別：本 workflow 失敗會擋 PR merge；
-# distribute.yml 對 `flutter test` 用 `|| echo` 吞錯是因為「ship build 比
-# 測試 pass 重要」，那條邏輯在 PR gate 不適用。
-#
-# Test scope 為何只跑 partner subset:
-# 第一輪 CI run (PR #6) 揭露 repo `flutter test` 全套在 Linux 紅 86/391 個。
-# 失敗根因不是 locale (我先誤判為 locale 並開了兩個無效 commit，已在本 commit
-# revert)，而是 86 個 stale-test rot — 產品端 hardcoded 字串 (e.g.
-# `message_booster.dart:33: '$messageCount messages'`) 跟 test 斷言 (e.g.
-# `'50 則'`) 對不上，雙方各往不同方向漂移。CI 從未跑 Linux flutter test，
-# 所以這些 drift 一直沒被擋住。
-#
-# 暫定 scope `test/widget/features/partner/` 4 支 partner widget tests —
-# Phase 3 / 4 直接打到的範圍，本來就乾淨。其他 86 個 stale test 留作 tech
-# debt，由後續實際動到那塊 (paywall / analysis / screenshot) 的 PR 順手清。
-# 待 PR-A merge 後跟著加 `test/widget/features/conversation/`。
+# PR gate: analysis and the complete Flutter test suite are blocking.
+# The suite runs serially because several tests share process-global Hive and
+# Supabase state; parallel workers can otherwise create false red runs.
 #
 # Security note (per GitHub Actions injection guide):
 # 此 workflow 不消費任何 untrusted user input。唯一 ${{ }} expression 是
@@ -62,8 +48,5 @@ jobs:
       - name: Analyze
         run: flutter analyze --no-fatal-infos
 
-      - name: Run tests (partner + conversation subset)
-        run: |
-          flutter test test/widget/features/partner/
-          flutter test test/widget/features/conversation/
-          flutter test test/unit/features/partner/
+      - name: Run full test suite serially
+        run: flutter test --concurrency=1

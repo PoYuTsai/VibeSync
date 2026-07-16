@@ -236,6 +236,7 @@ void main() {
             ),
           ),
           reportDataProvider.overrideWithValue(_paidReport()),
+          analysisHistoryEventsProvider.overrideWithValue(const []),
           partnerListProvider.overrideWithValue(const []),
           conversationsByPartnerProvider.overrideWith((ref, id) => const []),
           userProfileControllerProvider

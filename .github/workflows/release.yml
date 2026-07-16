@@ -46,9 +46,35 @@ jobs:
         env:
           REVENUECAT_IOS_API_KEY: ${{ secrets.REVENUECAT_IOS_API_KEY }}
 
+  flutter-gate:
+    name: Flutter release gate
+    needs: production-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run full test suite serially
+        run: flutter test --concurrency=1
+
   release-ios:
     if: inputs.platform == 'ios' || inputs.platform == 'both'
-    needs: production-preflight
+    needs: [production-preflight, flutter-gate]
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
@@ -86,10 +112,6 @@ jobs:
 
       - name: Generate code
         run: dart run build_runner build --delete-conflicting-outputs
-
-      - name: Run tests
-        run: flutter test || echo "Some tests failed, continuing build..."
-        continue-on-error: true
 
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
@@ -327,7 +349,7 @@ jobs:
 
   release-android:
     if: inputs.platform == 'android' || inputs.platform == 'both'
-    needs: production-preflight
+    needs: [production-preflight, flutter-gate]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -346,10 +368,6 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
-
-      - name: Run tests
-        run: flutter test || echo "Some tests failed, continuing build..."
-        continue-on-error: true
 
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1

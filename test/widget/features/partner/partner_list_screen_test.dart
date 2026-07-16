@@ -120,7 +120,7 @@ void main() {
     expect(find.text('AL'), findsOneWidget);
     expect(find.text('BO'), findsOneWidget);
     expect(find.byIcon(Icons.local_fire_department_rounded), findsOneWidget);
-    expect(find.text('70'), findsOneWidget);
+    expect(find.text('本次投入 70'), findsOneWidget);
     expect(find.byIcon(Icons.insights_rounded), findsOneWidget);
     expect(find.text('待分析'), findsOneWidget);
     expect(find.text('coffee · bold'), findsOneWidget);
