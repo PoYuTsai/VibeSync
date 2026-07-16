@@ -281,12 +281,16 @@ final class KeyboardViewController: UIInputViewController {
         switch error {
         case .unauthorized: return "登入已過期，請先開啟 VibeSync App 再回來"
         case .quotaExceeded:
-            SharedAuth.markQuotaExceeded()
+            if let userId = SharedAuth.currentSession()?.userId {
+                SharedAuth.markQuotaExceeded(userId: userId)
+            }
             return "額度已用完，打開 VibeSync 即可查看方案"
         case .modelRateLimited(let message): return message
         case .fullAccessRequired: return "請在設定開啟「允許完整取用」"
         case .requestIdentityUnavailable:
             return "無法建立安全重試識別，本次未送出，請稍後再試"
+        case .requestPending:
+            return "上一個回覆仍在處理，請稍後用同一段文字再試。"
         case .requestConflict:
             return "重試狀態已更新，請再點一次產生"
         case .network: return "網路不穩，請稍後再試"

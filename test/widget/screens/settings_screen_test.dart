@@ -86,6 +86,7 @@ class _FakeAccountDeletionActions extends AccountDeletionActions {
   final confirmations = <String>[];
   var clearLocalStorageCalls = 0;
   var clearLocalSessionCalls = 0;
+  var purgeKeyboardCredentialsCalls = 0;
 
   @override
   Future<void> deleteAccount({required String confirmation}) async {
@@ -108,6 +109,11 @@ class _FakeAccountDeletionActions extends AccountDeletionActions {
     final error = clearLocalSessionError;
     if (error != null) throw error;
     await onClearLocalSessionAfterDeletion?.call();
+  }
+
+  @override
+  Future<void> purgeKeyboardCredentials() async {
+    purgeKeyboardCredentialsCalls++;
   }
 }
 
@@ -471,6 +477,7 @@ void main() {
       expect(actions.confirmations, ['DELETE']);
       expect(actions.clearLocalStorageCalls, 1);
       expect(actions.clearLocalSessionCalls, 1);
+      expect(actions.purgeKeyboardCredentialsCalls, 1);
       expect(find.text('Login'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
@@ -621,8 +628,7 @@ void main() {
       expect(find.text('Login'), findsOneWidget);
     });
 
-    testWidgets(
-        'system back cannot dismiss the initial cleanup spinner (F2-5)',
+    testWidgets('system back cannot dismiss the initial cleanup spinner (F2-5)',
         (tester) async {
       final gate = Completer<void>();
       final actions = _FakeAccountDeletionActions();

@@ -5,7 +5,15 @@ import {
 import { parseAndValidateReply, validateRequest } from "./validate.ts";
 
 Deno.test("validateRequest accepts all five styles", () => {
-  for (const style of ["extend", "resonate", "tease", "humor", "coldRead"]) {
+  for (
+    const style of [
+      "extend",
+      "resonate",
+      "tease",
+      "humor",
+      "coldRead",
+    ] as const
+  ) {
     assertEquals(validateRequest({ message: "  今天好累  ", style }), {
       message: "今天好累",
       style,

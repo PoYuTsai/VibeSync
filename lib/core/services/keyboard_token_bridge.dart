@@ -10,6 +10,7 @@ abstract class KeyboardCredentialStore {
   Future<String?> read(String key);
   Future<void> write(String key, String value);
   Future<void> delete(String key);
+  Future<void> deleteAll();
 }
 
 class SecureKeyboardCredentialStore implements KeyboardCredentialStore {
@@ -32,6 +33,9 @@ class SecureKeyboardCredentialStore implements KeyboardCredentialStore {
   @override
   Future<void> delete(String key) =>
       _storage.delete(key: key, iOptions: _iosOptions);
+
+  @override
+  Future<void> deleteAll() => _storage.deleteAll(iOptions: _iosOptions);
 }
 
 @immutable
@@ -96,7 +100,15 @@ class KeyboardTokenBridge {
   static Future<bool> consumeQuotaExceededSignal() async {
     final bridge = _instance;
     if (bridge == null) return false;
-    return bridge._enqueueWithResult(bridge._consumeQuotaExceededSignal);
+    final userId = SupabaseService.currentUser?.id;
+    return bridge._enqueueWithResult(
+      () => bridge._consumeQuotaExceededSignal(userId),
+    );
+  }
+
+  static Future<void> purgeAllForAccountDeletion() async {
+    if (!_supportsKeyboardBridge) return;
+    await const SecureKeyboardCredentialStore().deleteAll();
   }
 
   Future<void> syncCurrentSession({required bool refreshIfExpired}) async {
@@ -127,10 +139,13 @@ class KeyboardTokenBridge {
 
   @visibleForTesting
   Future<void> clear() async {
-    // Revoke usability first, then remove non-secret metadata.
+    // Keep pending_* replay identities across ordinary logout. An in-flight
+    // Edge request may still settle after auth is revoked; deleting its ID
+    // would allow the same account to log back in and be charged again.
     await _store.delete(accessTokenKey);
     await _store.delete(userIdKey);
     await _store.delete(expiresAtKey);
+    await _store.delete(quotaExceededKey);
   }
 
   Future<void> _enqueue(Future<void> Function() operation) {
@@ -155,16 +170,16 @@ class KeyboardTokenBridge {
     return completer.future;
   }
 
-  Future<bool> _consumeQuotaExceededSignal() async {
+  Future<bool> _consumeQuotaExceededSignal(String? expectedUserId) async {
     final value = await _store.read(quotaExceededKey);
     if (value == null) return false;
     await _store.delete(quotaExceededKey);
-    return value == '1';
+    return expectedUserId != null && value == expectedUserId;
   }
 
   @visibleForTesting
-  Future<bool> consumeQuotaExceededSignalForTesting() =>
-      _consumeQuotaExceededSignal();
+  Future<bool> consumeQuotaExceededSignalForTesting(String expectedUserId) =>
+      _consumeQuotaExceededSignal(expectedUserId);
 
   static KeyboardSessionPayload? _payloadFromSession(Session? session) {
     final expiresAt = session?.expiresAt;

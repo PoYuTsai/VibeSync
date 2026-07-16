@@ -26,8 +26,12 @@ class AiPrivacyDisclosure {
       'VibeSync 後端的可用重播資料保留 7 天並每小時清除，只存 AI 產生的潤飾句與理由，不另存原始草稿或完整對話輸入；AI 生成文字仍可能反映你提供的內容，刪除後的備份副本依 Supabase 備份週期處理';
 
   /// 設定頁 AI 隱私頁：完整揭露，含第三方 AI 廠商名與去識別化上傳說明。
+  static const String _keyboardReplayParagraph =
+      '使用 AI 鍵盤時，只有你主動載入並送出的文字會傳給 Anthropic 產生回覆；原文不會寫入回覆重播紀錄。\n'
+      '裝置的共享 Keychain 會暫存 request ID、使用者 ID 與不含原文的指紋；重試資格約 23 小時，成功後或鍵盤下次啟用時會盡力清理，若未再啟用則實體項目可能延後移除。伺服器重播資料保存 24 小時並每小時清理，因此實際刪除可能接近 25 小時；備份與 PITR 依 Supabase 的獨立保存週期處理。';
+
   static const String description =
-      '$_openingLine\n$_vendorLine\n$_consentLine\n\n$_uploadParagraph\n\n$_optimizeReplayParagraph';
+      '$_openingLine\n$_vendorLine\n$_consentLine\n\n$_uploadParagraph\n\n$_optimizeReplayParagraph\n\n$_keyboardReplayParagraph';
 
   /// Onboarding 第 4 頁：只保留「送第三方 AI」與「同意閘」兩句，
   /// 不列廠商名（避免誤解練習室女孩＝DeepSeek）。完整揭露留在設定頁。

@@ -1,15 +1,11 @@
 import { containsBannedToken } from "../_shared/banned_tokens.ts";
-import { isValidKeyboardReplyRequestId } from "./billing.ts";
+import {
+  isValidKeyboardReplyRequestId,
+  KEYBOARD_REPLY_STYLES,
+  type KeyboardReplyStyle,
+} from "./contract.ts";
 
-export const KEYBOARD_REPLY_STYLES = [
-  "extend",
-  "resonate",
-  "tease",
-  "humor",
-  "coldRead",
-] as const;
-
-export type KeyboardReplyStyle = typeof KEYBOARD_REPLY_STYLES[number];
+export { KEYBOARD_REPLY_STYLES, type KeyboardReplyStyle } from "./contract.ts";
 
 export interface KeyboardReplyRequest {
   message: string;

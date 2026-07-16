@@ -33,8 +33,8 @@ enum SharedAuth {
         return session.isExpired ? nil : session
     }
 
-    static func markQuotaExceeded() {
-        let value = Data("1".utf8)
+    static func markQuotaExceeded(userId: String) {
+        let value = Data(userId.utf8)
         let query: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
             kSecAttrAccount: quotaExceededKey,

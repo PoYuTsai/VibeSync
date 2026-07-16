@@ -18,6 +18,12 @@ class _MemoryKeyboardStore implements KeyboardCredentialStore {
   }
 
   @override
+  Future<void> deleteAll() async {
+    operations.add('deleteAll');
+    values.clear();
+  }
+
+  @override
   Future<void> write(String key, String value) async {
     operations.add('write:$key');
     values[key] = value;
@@ -46,24 +52,48 @@ void main() {
     ]);
   });
 
-  test('clear revokes access token before metadata', () async {
-    final store = _MemoryKeyboardStore();
+  test('ordinary clear preserves pending replay metadata', () async {
+    final store = _MemoryKeyboardStore()
+      ..values[KeyboardTokenBridge.accessTokenKey] = 'token'
+      ..values['pending_fingerprint'] = 'opaque';
     final bridge = KeyboardTokenBridge(store: store);
 
     await bridge.clear();
 
-    expect(
-        store.operations.first, 'delete:${KeyboardTokenBridge.accessTokenKey}');
-    expect(store.values, isEmpty);
+    expect(store.operations, [
+      'delete:${KeyboardTokenBridge.accessTokenKey}',
+      'delete:${KeyboardTokenBridge.userIdKey}',
+      'delete:${KeyboardTokenBridge.expiresAtKey}',
+      'delete:${KeyboardTokenBridge.quotaExceededKey}',
+    ]);
+    expect(store.values, {'pending_fingerprint': 'opaque'});
   });
 
   test('quota signal is consumed only once', () async {
     final store = _MemoryKeyboardStore()
-      ..values[KeyboardTokenBridge.quotaExceededKey] = '1';
+      ..values[KeyboardTokenBridge.quotaExceededKey] = 'owner-1';
     final bridge = KeyboardTokenBridge(store: store);
 
-    expect(await bridge.consumeQuotaExceededSignalForTesting(), isTrue);
-    expect(await bridge.consumeQuotaExceededSignalForTesting(), isFalse);
+    expect(
+      await bridge.consumeQuotaExceededSignalForTesting('owner-1'),
+      isTrue,
+    );
+    expect(
+      await bridge.consumeQuotaExceededSignalForTesting('owner-1'),
+      isFalse,
+    );
+    expect(store.values, isEmpty);
+  });
+
+  test('quota signal from another account is ignored and consumed', () async {
+    final store = _MemoryKeyboardStore()
+      ..values[KeyboardTokenBridge.quotaExceededKey] = 'owner-1';
+    final bridge = KeyboardTokenBridge(store: store);
+
+    expect(
+      await bridge.consumeQuotaExceededSignalForTesting('owner-2'),
+      isFalse,
+    );
     expect(store.values, isEmpty);
   });
 }

@@ -1,8 +1,8 @@
 # VibeSync 隱私權政策
 
-> 本檔是政策完整來源。`optimize_message` ledger 的新增揭露已於 2026-07-16 發佈到 `https://vibesyncai.app/privacy`（網站 commit `9929d5b`），並以 live URL 驗證「我幫你修」、7 天重播、每小時清理與備份週期說明均可見。
+> 本檔是政策完整來源。`optimize_message` ledger 的揭露已於 2026-07-16 發佈到 `https://vibesyncai.app/privacy`（網站 commit `9929d5b`）；2026-07-17 新增的 AI 鍵盤短期 replay／Keychain 揭露仍待同步到公開網站與 App Store Connect，因此目前仍是發布硬閘。
 
-最後更新：2026-07-16
+最後更新：2026-07-17
 生效日期：2026-04-05
 
 ## 1. 適用範圍
@@ -91,7 +91,7 @@ Apple 的 App Review Guidelines 要求我們清楚說明保留與刪除政策，
 ### 6.1 本地資料
 
 - 對話內容、部分個人化資訊與本地快取主要保存在您的裝置。
-- 您可以透過 app 內刪除對話、刪除帳號，或移除 app/清除本機資料來刪除這些內容。
+- 您可以透過 app 內刪除對話、刪除帳號，或移除 app/清除本機資料來刪除這些內容。iOS Keychain 可能在移除 App 後保留 AI 鍵盤的短期 pending metadata；此例外、重試資格與清理時點詳見第 11 節。
 
 ### 6.2 伺服器端資料
 
@@ -155,3 +155,15 @@ VibeSync 目前定位為 17+ 使用者的服務。若您未滿可適用年齡，
 若您對本政策、刪除資料、帳號問題或隱私事項有疑問，請聯繫：
 
 - vibesyncaiapp@gmail.com
+
+## 11. AI 鍵盤資料與短期重播紀錄
+
+只有在使用者主動將文字載入 AI 鍵盤並點選生成時，該段文字與所選回覆風格才會送至 VibeSync 的 Edge Function，並由 Anthropic Claude 處理以產生回覆。來源文字不會寫入鍵盤的重播資料表。
+
+為避免網路中斷後重試造成重複扣額或重複呼叫模型：
+
+- 裝置端共享 Keychain 只保存 request ID、使用者 ID、使用者／風格／文字所形成的 SHA-256 指紋與建立時間，不保存來源文字。每個使用者分開計算待處理上限。成功插入回覆後立即刪除；刪除帳號時會連同共享鍵盤憑證清除。一般登出會移除登入憑證，但為避免已在途的回覆於重新登入後重複扣額，pending metadata 仍依約 23 小時重試資格保留，並在鍵盤再次啟用或使用時進行最佳努力清理。iOS Keychain 可能在 App 移除後保留資料；若使用者移除 App 前未刪除帳號，實體項目可能延後至重新安裝後的下次清理。
+- 伺服器端 `keyboard_reply_requests` 保存使用者／請求識別、claim／lease 與時間 metadata、配額結算狀態、以伺服器秘密金鑰產生的 HMAC，完成後另保存產生的回覆與風格；不保存來源文字。重播資格為 24 小時；排程每小時清理，因此實際刪除時間可能接近 25 小時。
+- Supabase 的資料庫備份、WAL／PITR 與災難復原副本有獨立保存週期，可能晚於線上資料列清除時間移除。
+
+正式發布前，VibeSync 會同步更新公開隱私政策頁面與 App Store Connect 的 App Privacy 標示；repo 內文件不代表公開頁面已自動更新。
