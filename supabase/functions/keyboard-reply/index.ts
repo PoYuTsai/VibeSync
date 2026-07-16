@@ -20,7 +20,15 @@ import {
 } from "../_shared/quota.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import {
+  classifyKeyboardReplyReplayPreflight,
+  computeKeyboardReplyInputHash,
+  KEYBOARD_REPLY_COST,
+  keyboardReplyReplayCutoffIso,
+  settleKeyboardReplyRequest,
+} from "./billing.ts";
+import {
   callClaudeAPI,
+  KeyboardReplyFinalizeError,
   KeyboardReplyQuotaExceededError,
   runKeyboardReply,
 } from "./generation.ts";
@@ -29,7 +37,7 @@ import { validateRequest } from "./validate.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const REVENUECAT_IOS_API_KEY = Deno.env.get("REVENUECAT_IOS_API_KEY");
-const COST = 1;
+const COST = KEYBOARD_REPLY_COST;
 const MAX_BODY_BYTES = 32 * 1024;
 const SUBSCRIPTION_COLUMNS =
   "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at";
@@ -199,6 +207,44 @@ export async function handleRequest(request: Request): Promise<Response> {
     }, 400);
   }
 
+  let inputHash: string | null = null;
+  if (payload.requestId !== null) {
+    inputHash = await computeKeyboardReplyInputHash(payload);
+    const { data: replayRow, error: replayReadError } = await client
+      .from("keyboard_reply_requests")
+      .select("input_hash, result_json, created_at")
+      .eq("user_id", user.id)
+      .eq("request_id", payload.requestId)
+      .gte("created_at", keyboardReplyReplayCutoffIso())
+      .maybeSingle();
+    if (replayReadError) {
+      console.error("keyboard_reply_replay_preflight_read_failed");
+      return jsonResponse({
+        error: "KEYBOARD_REPLY_SETTLEMENT_RETRYABLE",
+        code: "KEYBOARD_REPLY_SETTLEMENT_RETRYABLE",
+        retryable: true,
+      }, 503);
+    }
+    const replay = classifyKeyboardReplyReplayPreflight(
+      replayRow,
+      inputHash,
+    );
+    if (replay.kind === "mismatch") {
+      return jsonResponse({
+        error: "KEYBOARD_REPLY_REQUEST_REPLAY_MISMATCH",
+        code: "KEYBOARD_REPLY_REQUEST_REPLAY_MISMATCH",
+      }, 409);
+    }
+    if (replay.kind === "replay") {
+      console.info(JSON.stringify({
+        event: "keyboard_reply_replayed",
+        style: replay.result.style,
+        costDeducted: 0,
+      }));
+      return jsonResponse(replay.result);
+    }
+  }
+
   let sub = await fetchSubscription(client, user.id);
   if (!sub) sub = await selfHealSubscription(client, user.id);
   if (!sub) return jsonResponse({ error: "subscription_unavailable" }, 503);
@@ -257,6 +303,8 @@ export async function handleRequest(request: Request): Promise<Response> {
 
   const apiKey = Deno.env.get("CLAUDE_API_KEY");
   if (!apiKey) return jsonResponse({ error: "config_missing" }, 500);
+  const requestId = payload.requestId;
+  const requestInputHash = inputHash;
 
   const result = await runKeyboardReply(
     {
@@ -267,7 +315,10 @@ export async function handleRequest(request: Request): Promise<Response> {
     },
     {
       callClaude: callClaudeAPI,
-      deductCredit: async (userId) => {
+      finalizeReply: async (userId, generatedReply) => {
+        if (requestId === null && accountIsTest) {
+          return { reply: generatedReply, costDeducted: 0 as const };
+        }
         let latest = await fetchSubscription(client, userId);
         if (!latest) throw new Error("subscription_unavailable");
         const latestReset = applyResetsIfNeeded(latest, new Date());
@@ -297,6 +348,55 @@ export async function handleRequest(request: Request): Promise<Response> {
             });
           }
         }
+
+        if (requestId !== null && requestInputHash !== null) {
+          const settlement = await settleKeyboardReplyRequest({
+            rpc: async (fn, params) => await client.rpc(fn, params),
+            userId,
+            requestId,
+            inputHash: requestInputHash,
+            result: { reply: generatedReply, style: payload.style },
+            monthlyLimit: latestLimits.monthly,
+            dailyLimit: latestLimits.daily,
+            chargeQuota: !accountIsTest,
+          });
+          if (settlement.kind === "settled") {
+            return {
+              reply: settlement.result.reply,
+              costDeducted: settlement.charged ? 1 as const : 0 as const,
+            };
+          }
+          if (settlement.kind === "quota_exceeded") {
+            const monthly = settlement.reason === "monthly_limit_exceeded";
+            throw new KeyboardReplyQuotaExceededError(
+              settlement.reason,
+              monthly
+                ? latest.monthly_messages_used
+                : latest.daily_messages_used,
+              monthly ? latestLimits.monthly : latestLimits.daily,
+            );
+          }
+          if (settlement.kind === "mismatch") {
+            throw new KeyboardReplyFinalizeError(
+              409,
+              "KEYBOARD_REPLY_REQUEST_REPLAY_MISMATCH",
+              "request identity reused for different input",
+            );
+          }
+          if (settlement.kind === "retryable") {
+            throw new KeyboardReplyFinalizeError(
+              503,
+              "KEYBOARD_REPLY_SETTLEMENT_RETRYABLE",
+              settlement.message,
+            );
+          }
+          throw new KeyboardReplyFinalizeError(
+            500,
+            "KEYBOARD_REPLY_SETTLEMENT_FAILED",
+            settlement.message,
+          );
+        }
+
         if (!latestGate.ok) {
           throw new KeyboardReplyQuotaExceededError(
             latestGate.reason,
@@ -310,7 +410,9 @@ export async function handleRequest(request: Request): Promise<Response> {
           p_monthly_limit: latestLimits.monthly,
           p_daily_limit: latestLimits.daily,
         });
-        if (!error) return;
+        if (!error) {
+          return { reply: generatedReply, costDeducted: 1 as const };
+        }
         const reason = classifyQuotaRpcError(error.message);
         if (reason) {
           const monthly = reason === "monthly_limit_exceeded";
@@ -329,7 +431,7 @@ export async function handleRequest(request: Request): Promise<Response> {
       event: "keyboard_reply_succeeded",
       style: payload.style,
       tier: normalizeTier(sub.tier),
-      costDeducted: accountIsTest ? 0 : 1,
+      costDeducted: result.costDeducted,
     }));
   }
   return jsonResponse(result.body, result.status);

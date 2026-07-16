@@ -9,8 +9,24 @@ Deno.test("validateRequest accepts all five styles", () => {
     assertEquals(validateRequest({ message: "  今天好累  ", style }), {
       message: "今天好累",
       style,
+      requestId: null,
     });
   }
+});
+
+Deno.test("validateRequest accepts canonical request id and rejects malformed identity", () => {
+  const requestId = "123e4567-e89b-42d3-a456-426614174000";
+  assertEquals(
+    validateRequest({ message: "今天好累", style: "resonate", requestId }),
+    { message: "今天好累", style: "resonate", requestId },
+  );
+  assertThrows(() =>
+    validateRequest({
+      message: "今天好累",
+      style: "resonate",
+      requestId: "retry-1",
+    })
+  );
 });
 
 Deno.test("validateRequest rejects empty, oversized and unknown style", () => {

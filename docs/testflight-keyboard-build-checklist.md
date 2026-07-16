@@ -5,6 +5,7 @@
 ## 額度契約
 
 - 只有伺服器成功產出並驗證回覆後扣 1 則共用額度。
+- 每次產生先在 App Group 原子保存 request ID；伺服器把結果與扣額度放在同一交易。網路中斷後用同一段文字與風格重試，回傳原結果且不重複扣額度。
 - Free：每日 15、每月 30。
 - Starter：每日 50、每月 300。
 - Essential：每日 120、每月 800。
@@ -22,7 +23,8 @@
    - Team 都是 `TTQHTVG8CC`
    - Signing 無紅字
    - Runner 的 Frameworks, Libraries, and Embedded Content 有 VibeSyncKeyboard.appex
-5. 部署 `keyboard-reply` Edge Function；此 function 使用一般 JWT 驗證，不加 `--no-verify-jwt`：
+5. 先套用 migration `20260717120000_keyboard_reply_exactly_once.sql`，確認 `keyboard_reply_requests` 與 `settle_keyboard_reply_request` 存在。不可先部署新版 Edge，否則 replay preflight 會 fail closed。
+6. 再部署 `keyboard-reply` Edge Function；此 function 使用一般 JWT 驗證，不加 `--no-verify-jwt`：
 
    `supabase functions deploy keyboard-reply --project-ref fcmwrmwdoqiqdnbisdpg`
 
@@ -44,6 +46,7 @@
 7. 用測試 quota 將每日額度耗盡：鍵盤提示額度已用完；開啟 VibeSync 後應直接進 paywall，且只導一次。
 8. 觸發模型限流：只顯示稍後再試，不可進 paywall、不可扣額度。
 9. Supabase 核對成功請求每次 `daily_messages_used`、`monthly_messages_used` 各只增加 1；失敗請求不增加。
+10. 送出產生後在回應前切斷網路，再恢復網路並用同一段文字、同一風格重試：應拿到第一次已結算的相同結果，兩個 usage counter 合計只增加 1。換文字或風格則必須使用新 request ID。
 
 ## 出貨判定
 

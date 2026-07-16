@@ -18,6 +18,7 @@ final class KeyboardViewController: UIInputViewController {
     private var styleButtons: [KeyboardReplyStyle: UIButton] = [:]
     private var loadedMessage = ""
     private var lastInsertedReply: String?
+    private var isGenerating = false
     private var mode: Mode = .ai
     private var deleteTimer: Timer?
 
@@ -197,10 +198,11 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func refreshAvailability() {
-        let enabled = hasFullAccess
+        let fullAccessEnabled = hasFullAccess
+        let enabled = fullAccessEnabled && !isGenerating
         pasteButton.isEnabled = enabled
         pasteButton.alpha = enabled ? 1 : 0.45
-        if !enabled {
+        if !fullAccessEnabled {
             statusLabel.text = "請在設定開啟「允許完整取用」；ABC 基本輸入仍可使用"
         } else if SharedAuth.currentSession() == nil {
             statusLabel.text = "請先開啟 VibeSync App 更新登入狀態"
@@ -208,17 +210,20 @@ final class KeyboardViewController: UIInputViewController {
         updateStyleButtons()
     }
 
-    private func updateStyleButtons(isLoading: Bool = false, selected: KeyboardReplyStyle? = nil) {
+    private func updateStyleButtons(selected: KeyboardReplyStyle? = nil) {
+        pasteButton.isEnabled = hasFullAccess && !isGenerating
+        pasteButton.alpha = pasteButton.isEnabled ? 1 : 0.45
         for (style, button) in styleButtons {
-            let enabled = hasFullAccess && !loadedMessage.isEmpty && !isLoading
+            let enabled = hasFullAccess && !loadedMessage.isEmpty && !isGenerating
             button.isEnabled = enabled
             button.alpha = enabled || style == selected ? 1 : 0.45
             button.backgroundColor = style == selected ? primary : surface
-            button.setTitle(style == selected && isLoading ? "產生中…" : style.title, for: .normal)
+            button.setTitle(style == selected && isGenerating ? "產生中…" : style.title, for: .normal)
         }
     }
 
     @objc private func loadClipboard() {
+        guard !isGenerating else { return }
         guard hasFullAccess else { refreshAvailability(); return }
         guard let text = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
             statusLabel.text = "剪貼簿沒有文字"
@@ -231,6 +236,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     @objc private func clearContext() {
+        guard !isGenerating else { return }
         loadedMessage = ""
         contextLabel.text = "先複製對方訊息，再點載入"
         statusLabel.text = "只會送出你主動載入的文字"
@@ -238,6 +244,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     @objc private func generateReply(_ sender: UIButton) {
+        guard !isGenerating else { return }
         guard let raw = sender.accessibilityIdentifier,
               let style = KeyboardReplyStyle(rawValue: raw),
               !loadedMessage.isEmpty else { return }
@@ -246,19 +253,23 @@ final class KeyboardViewController: UIInputViewController {
             statusLabel.text = "登入已過期，請先開啟 VibeSync App 再回來"
             return
         }
-        updateStyleButtons(isLoading: true, selected: style)
+        isGenerating = true
+        updateStyleButtons(selected: style)
         statusLabel.text = "正在幫你接住這句話…"
         api.generate(message: loadedMessage, style: style, session: session) { [weak self] result in
             guard let self else { return }
+            self.isGenerating = false
             self.updateStyleButtons()
             switch result {
-            case .success(let reply):
+            case .success(let success):
+                let reply = success.reply
                 if let previous = self.lastInsertedReply,
                    self.textDocumentProxy.documentContextBeforeInput?.hasSuffix(previous) == true {
                     for _ in previous { self.textDocumentProxy.deleteBackward() }
                 }
                 self.textDocumentProxy.insertText(reply)
                 self.lastInsertedReply = reply
+                self.api.markPresented(requestId: success.requestId)
                 self.statusLabel.text = "已插入輸入框；你確認後再送出。再點同風格可換一則"
             case .failure(let error):
                 self.statusLabel.text = self.message(for: error)
@@ -274,8 +285,13 @@ final class KeyboardViewController: UIInputViewController {
             return "額度已用完，打開 VibeSync 即可查看方案"
         case .modelRateLimited(let message): return message
         case .fullAccessRequired: return "請在設定開啟「允許完整取用」"
+        case .requestIdentityUnavailable:
+            return "無法建立安全重試識別，本次未送出，請稍後再試"
+        case .requestConflict:
+            return "重試狀態已更新，請再點一次產生"
         case .network: return "網路不穩，請稍後再試"
-        case .invalidResponse, .server(_): return "這次沒有產生成功，不會扣額度，請再試一次"
+        case .invalidResponse, .server(_):
+            return "結果暫時未收到，請再試一次；系統不會重複扣額度"
         }
     }
 

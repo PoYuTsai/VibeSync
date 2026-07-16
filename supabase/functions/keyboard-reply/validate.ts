@@ -1,4 +1,5 @@
 import { containsBannedToken } from "../_shared/banned_tokens.ts";
+import { isValidKeyboardReplyRequestId } from "./billing.ts";
 
 export const KEYBOARD_REPLY_STYLES = [
   "extend",
@@ -13,6 +14,7 @@ export type KeyboardReplyStyle = typeof KEYBOARD_REPLY_STYLES[number];
 export interface KeyboardReplyRequest {
   message: string;
   style: KeyboardReplyStyle;
+  requestId: string | null;
 }
 
 export function validateRequest(value: unknown): KeyboardReplyRequest {
@@ -31,7 +33,17 @@ export function validateRequest(value: unknown): KeyboardReplyRequest {
   ) {
     throw new Error("invalid_style");
   }
-  return { message, style: body.style as KeyboardReplyStyle };
+  if (
+    body.requestId !== undefined &&
+    !isValidKeyboardReplyRequestId(body.requestId)
+  ) {
+    throw new Error("invalid_request_id");
+  }
+  return {
+    message,
+    style: body.style as KeyboardReplyStyle,
+    requestId: typeof body.requestId === "string" ? body.requestId : null,
+  };
 }
 
 export function parseAndValidateReply(value: unknown): string {
