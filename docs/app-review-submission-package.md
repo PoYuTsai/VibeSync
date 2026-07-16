@@ -374,6 +374,17 @@ H batch 完成紀錄（2026-07-04 送審前全數處理）：
 - [x] H-6 live `vibesyncai.app/privacy` 重新部署（vibesync-web `5fdc46b`），6 處 DeepSeek 揭露已驗；年齡分級 Apple 新制 18+（=舊 17+）免動。
 - [x] Supabase secrets 抽查 OK；`ai_logs` 最後一筆停 2026-07-02（telemetry 疑斷，非送審 blocker，另案追）。
 
+### 6.4 AI Keyboard Next-Build Gate - 2026-07-17（現行判定）
+
+目前判定：**`Repo GO / Next Build HOLD`**。§6.3 只代表 build 305 在 2026-07-04 的送審狀態；PR #17 新增 AI 鍵盤恰一次計費與新的短期保存／Keychain 資料流，不能沿用舊 build 的 Submit GO。
+
+Repo 端已完成完整 Flutter／Edge／admin 驗證與獨立 code review；下一個 TestFlight／App Review build 仍須逐項完成：
+
+- [ ] 精準套用 `20260717120000_keyboard_reply_exactly_once.sql`，在真實 PostgreSQL 驗證 claim、settlement rollback、replay、cleanup、RLS／grant，並對齊 migration 帳本。
+- [ ] 設定 `KEYBOARD_REPLAY_HMAC_KEY`，再部署 JWT-verified `keyboard-reply`；live health 必須回 `keyboard-reply-exactly-once-v1`。
+- [ ] macOS signed Archive / IPA 包含 `VibeSyncKeyboard.appex`，TestFlight 真機完成 fresh、lost-response replay、pending、mismatch、quota、model-rate 與 Full Access 矩陣。
+- [ ] 公開 Privacy Policy、App 內 AI 隱私頁、App Store Connect App Privacy 與 Review Notes 同步 AI 鍵盤 24 小時 replay／每小時清理、共享 Keychain retry identity、input HMAC 與不保存原始複製文字的資料流。
+
 ---
 
 ## 7. 參考來源
