@@ -275,8 +275,8 @@ Important GitHub Actions secret names:
 | Secret | Purpose |
 | --- | --- |
 | `SUPABASE_ACCESS_TOKEN` | Deploy Supabase Edge Functions. |
-| `SUPABASE_STAGING_URL` | Staging app build. |
-| `SUPABASE_STAGING_ANON_KEY` | Staging app build. |
+| `SUPABASE_STAGING_URL` | Legacy/unwired; current distribution builds use production backend. |
+| `SUPABASE_STAGING_ANON_KEY` | Legacy/unwired; current distribution builds use production backend. |
 | `SUPABASE_PROD_URL` | Production app build. |
 | `SUPABASE_PROD_ANON_KEY` | Production app build. |
 | `FIREBASE_ANDROID_APP_ID` | Firebase App Distribution Android. |
@@ -296,8 +296,8 @@ Flutter build-time variables:
 | Variable | Purpose |
 | --- | --- |
 | `ENV` | `dev`, `staging`, or `prod`. |
-| `SUPABASE_STAGING_URL` | Staging Supabase URL. |
-| `SUPABASE_STAGING_ANON_KEY` | Staging Supabase anon key. |
+| `SUPABASE_STAGING_URL` | Reserved; current `AppConfig` does not read it. |
+| `SUPABASE_STAGING_ANON_KEY` | Reserved; current `AppConfig` does not read it. |
 | `SUPABASE_PROD_URL` | Production Supabase URL. |
 | `SUPABASE_PROD_ANON_KEY` | Production Supabase anon key. |
 | `REVENUECAT_API_KEY` | Public RevenueCat app SDK key. Must start with `appl_`. |
@@ -305,6 +305,13 @@ Flutter build-time variables:
 | `REVENUECAT_PROD_KEY` | Optional prod public SDK key. |
 
 Claude API key must never be in Flutter build variables. It belongs only in Supabase Edge Function secrets.
+
+Current Firebase distribution artifacts intentionally use `ENV=prod` with the
+production Supabase URL/key so the Runner token and hardcoded keyboard endpoint
+belong to the same project. Do not label those artifacts as a staging backend.
+`KEYBOARD_REPLAY_HMAC_KEY` is also a Supabase Edge secret, not a Flutter or
+GitHub build secret; generate at least 32 random bytes and store only its Base64
+value in Supabase.
 
 ## Domains And DNS
 

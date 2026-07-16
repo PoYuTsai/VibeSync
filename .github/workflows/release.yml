@@ -46,6 +46,12 @@ jobs:
         env:
           REVENUECAT_IOS_API_KEY: ${{ secrets.REVENUECAT_IOS_API_KEY }}
 
+      - name: Verify production keyboard contract
+        shell: pwsh
+        run: ./tools/preflight/check-keyboard-contract.ps1
+        env:
+          SUPABASE_PROD_ANON_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
+
   flutter-gate:
     name: Flutter release gate
     needs: production-preflight

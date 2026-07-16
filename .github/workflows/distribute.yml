@@ -7,15 +7,6 @@ on:
   push:
     branches: [main, develop]
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Target environment'
-        required: true
-        default: 'staging'
-        type: choice
-        options:
-          - staging
-          - dev
 
 permissions:
   contents: read
@@ -48,6 +39,12 @@ jobs:
 
       - name: Run full test suite serially
         run: flutter test --concurrency=1
+
+      - name: Verify production keyboard contract
+        shell: pwsh
+        run: ./tools/preflight/check-keyboard-contract.ps1
+        env:
+          SUPABASE_PROD_ANON_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
 
   build-android:
     needs: flutter-gate
@@ -83,26 +80,26 @@ jobs:
       - name: Generate code
         run: dart run build_runner build --delete-conflicting-outputs
 
-      - name: Build APK (Staging)
+      - name: Build APK (Production backend)
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_STAGING_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_PROD_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
           REVENUECAT_KEY: appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY
         run: |
           flutter build apk --release \
             --build-name="$APP_VERSION" \
             --build-number=${{ github.run_number }} \
             --dart-define=GIT_SHA=$GIT_SHA \
-            --dart-define=ENV=staging \
-            --dart-define=SUPABASE_STAGING_URL="$SUPABASE_URL" \
-            --dart-define=SUPABASE_STAGING_ANON_KEY="$SUPABASE_KEY" \
+            --dart-define=ENV=prod \
+            --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
             --dart-define=REVENUECAT_API_KEY="$REVENUECAT_KEY"
 
       - name: Prepare release notes
         run: |
           echo "Branch: $GIT_REF" > release-notes.txt
           echo "Commit: $GIT_SHA" >> release-notes.txt
-          echo "Environment: staging" >> release-notes.txt
+          echo "Environment: production backend" >> release-notes.txt
 
       - name: Debug Firebase config
         run: |
@@ -122,7 +119,6 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
       - name: Upload to Firebase App Distribution
-        continue-on-error: true
         uses: wzieba/Firebase-Distribution-Github-Action@v1
         with:
           appId: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
@@ -184,10 +180,10 @@ jobs:
           echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH/vibesync.mobileprovision"
           echo "$KEYBOARD_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH/vibesync-keyboard.mobileprovision"
 
-      - name: Build iOS (Staging)
+      - name: Build iOS (Production backend)
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_STAGING_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_PROD_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
           REVENUECAT_KEY: appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY
         run: |
           rm -rf build/ios/ipa build/ios/archive
@@ -195,9 +191,9 @@ jobs:
             --build-name="$APP_VERSION" \
             --build-number=${{ github.run_number }} \
             --dart-define=GIT_SHA=$GIT_SHA \
-            --dart-define=ENV=staging \
-            --dart-define=SUPABASE_STAGING_URL="$SUPABASE_URL" \
-            --dart-define=SUPABASE_STAGING_ANON_KEY="$SUPABASE_KEY" \
+            --dart-define=ENV=prod \
+            --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
             --dart-define=REVENUECAT_API_KEY="$REVENUECAT_KEY" \
             --export-options-plist=ios/ExportOptions.plist
 
@@ -221,10 +217,9 @@ jobs:
         run: |
           echo "Branch: $GIT_REF" > release-notes.txt
           echo "Commit: $GIT_SHA" >> release-notes.txt
-          echo "Environment: staging" >> release-notes.txt
+          echo "Environment: production backend" >> release-notes.txt
 
       - name: Upload to Firebase App Distribution
-        continue-on-error: true
         env:
           FIREBASE_IOS_APP_ID: ${{ secrets.FIREBASE_IOS_APP_ID }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}

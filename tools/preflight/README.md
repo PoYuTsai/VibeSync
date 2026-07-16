@@ -11,6 +11,7 @@ powershell -ExecutionPolicy Bypass -File tools/preflight/check-supabase-secrets.
 The check fails if any required Edge Function secret is missing:
 
 - `CLAUDE_API_KEY`
+- `KEYBOARD_REPLAY_HMAC_KEY`
 - `REVENUECAT_IOS_API_KEY`
 - `REVENUECAT_WEBHOOK_SECRET`
 
@@ -21,6 +22,32 @@ Why this exists:
 - If the server key is missing, the app can show Essential locally while `analyze-chat` still enforces Free quota from Supabase.
 
 The GitHub Actions release and Edge deploy workflows run this check automatically.
+
+`KEYBOARD_REPLAY_HMAC_KEY` must be a Base64-encoded random value of at least 32
+bytes. Generate it outside the repository, then set it directly in Supabase:
+
+```powershell
+openssl rand -base64 32
+npx.cmd --yes supabase secrets set KEYBOARD_REPLAY_HMAC_KEY="<generated-value>" --project-ref fcmwrmwdoqiqdnbisdpg
+```
+
+Do not rotate this key while 24-hour replay rows still exist. Either wait at
+least 24 hours after pausing keyboard traffic or introduce a versioned-key
+migration first; otherwise valid retries will become replay mismatches.
+
+## Keyboard Exactly-Once Contract
+
+After applying the keyboard migration and deploying `keyboard-reply`, verify
+that the Edge binary, DB RPCs, and HMAC configuration agree:
+
+```powershell
+$env:SUPABASE_PROD_ANON_KEY = "<production-anon-key>"
+powershell -ExecutionPolicy Bypass -File tools/preflight/check-keyboard-contract.ps1
+```
+
+Release and Firebase distribution workflows run this live production check and
+fail closed unless the DB-owned capability reports
+`keyboard-reply-exactly-once-v1`.
 
 ## RevenueCat Server Key Smoke
 
