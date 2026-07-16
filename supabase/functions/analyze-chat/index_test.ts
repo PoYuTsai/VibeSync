@@ -17,6 +17,35 @@ function base64PayloadWithEstimatedBytes(bytes: number): string {
 }
 
 Deno.test({
+  name: "every metered non-stream log forwards prompt-cache usage into cost",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    const blocks = source.match(/await logAiCall\([\s\S]*?\n\s*\}\);/g) ?? [];
+    const meteredBlocks = blocks.filter((block) =>
+      /inputTokens: (quickTokenUsage|fullTokenUsage|tokenUsage)\.inputTokens/
+        .test(
+          block,
+        )
+    );
+
+    assertEquals(meteredBlocks.length, 7);
+    for (const block of meteredBlocks) {
+      const usageName = block.match(
+        /inputTokens: (quickTokenUsage|fullTokenUsage|tokenUsage)\.inputTokens/,
+      )?.[1];
+      assert(usageName !== undefined);
+      assert(
+        block.includes(`cacheCreationTokens: ${usageName}.cacheCreationTokens`),
+      );
+      assert(block.includes(`cacheReadTokens: ${usageName}.cacheReadTokens`));
+    }
+  },
+});
+
+Deno.test({
   name: "quota reset comparisons use UTC helpers, not local time",
   permissions: { read: true },
   fn: async () => {

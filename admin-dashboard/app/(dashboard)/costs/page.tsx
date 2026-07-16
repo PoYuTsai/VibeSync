@@ -60,7 +60,7 @@ function formatUsd(value: number, digits = 2): string {
 export default function CostsPage() {
   const [profitData, setProfitData] = useState<ProfitData[]>([]);
   const [summary, setSummary] = useState<CostSummary>(emptySummary);
-  const [source, setSource] = useState("token_usage + revenue_events");
+  const [source, setSource] = useState("ai_logs + revenue_events");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -179,7 +179,7 @@ export default function CostsPage() {
             </div>
           ) : profitData.length === 0 ? (
             <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
-              目前沒有 token_usage 或 revenue_events 可計算成本。
+              目前沒有 ai_logs 或 revenue_events 可計算成本。
             </div>
           ) : (
             <div className="h-80">

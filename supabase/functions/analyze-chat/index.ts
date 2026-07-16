@@ -986,8 +986,8 @@ function buildRecognizeOnlyImagePrompt(options: {
   return joinPromptSections(
     `You received ${imageCount} chat screenshot(s). Extract the visible conversation only and return the JSON schema below.`,
     SCREENSHOT_OCR_ACCURACY_RULES_WITH_META_ANCHORS,
-    "### Quote Preview Rules\n- In LINE-style quoted replies, emit the smaller inset quote card as its OWN row with `blockType: \"quoted_preview\"`; do not merge or omit it. Put the card's readable text in `content`.\n- Do this even when the inset card only shows the old message body and the quoted author's name is missing or too small to read.\n- In dark mode the quoted card often renders as a single dimmer gray line sitting DIRECTLY under the sender name+avatar header and ABOVE the brighter main message, with no separate card border and no avatar of its own. That dim under-name line is still a quoted_preview: tag it `blockType: \"quoted_preview\"` and tag the brighter line below it as its owner `blockType: \"message\"`. Never output the dim under-name line as a normal message.\n- Emit the larger outer bubble (the live reply) as a separate `blockType: \"message\"` row on the same side, right after its quoted_preview row. A deterministic post-step folds the card into it.\n- Tag every normal live message row as `blockType: \"message\"`; do not decide whether a card is worth keeping, just transcribe and tag.\n- Preserve visible names and nicknames exactly as shown in the screenshot header or quote card. Do not guess or normalize similar-looking Han characters.\n- IMPORTANT: If the quoted card shows the same name as the chat header (e.g., header='Bruce' and quoted card shows 'Bruce'), it means the contact is quoting old messages. The quoted card name does NOT change who is sending the OUTER bubble.\n- When all outer bubbles are visually on the LEFT side and only quoted cards reference the header contact, set `screenSpeakerPattern: only_left` and ALL messages must have `isFromMe: false`.",
-    "### Output Rules\n- Return only `recognizedConversation`.\n- Do not include extra analysis fields.\n- Use `classification`, `importPolicy`, and `confidence` conservatively.\n- Valid `classification` values are: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- If the thread only contains missed-call or call-record entries but is still a normal one-to-one chat view, return those call events as messages instead of rejecting the screenshot outright.\n- Determine each bubble's `side` from the outer chat layout first, before reading the text inside that bubble.\n- For speaker direction, layout beats semantics: a clearly right-side bubble should stay `isFromMe: true` even if the text itself is very short or could also sound like the other person.\n- This also applies to media placeholders and image-in-image content: a right-side photo bubble must not be flipped to `她說` just because the OCR text or the inner image content is generic.\n- If multiple visible bubbles continue on the same left side, keep them as the other person even when only the first bubble shows an avatar; do not treat missing-avatar rows as an automatic side switch.\n- Emit each quoted-reply preview card as its own `blockType: \"quoted_preview\"` row on the same outer side as the reply it belongs to; do not merge it into the reply and do not omit it. The quoted card never overrides the outer bubble speaker.\n- Tag every live message row as `blockType: \"message\"`. A deterministic post-step folds quoted_preview rows into their owner message.\n- For each returned message, include `outerColumn` as `left`, `right`, or `center`, and include `horizontalPosition` as an approximate 0-100 number for the outer bubble center.\n- For each returned message, include `side` as `left`, `right`, or `unknown`. If `outerColumn` or `horizontalPosition` is clear, keep `side` and `isFromMe` consistent with that geometry.",
+    '### Quote Preview Rules\n- In LINE-style quoted replies, emit the smaller inset quote card as its OWN row with `blockType: "quoted_preview"`; do not merge or omit it. Put the card\'s readable text in `content`.\n- Do this even when the inset card only shows the old message body and the quoted author\'s name is missing or too small to read.\n- In dark mode the quoted card often renders as a single dimmer gray line sitting DIRECTLY under the sender name+avatar header and ABOVE the brighter main message, with no separate card border and no avatar of its own. That dim under-name line is still a quoted_preview: tag it `blockType: "quoted_preview"` and tag the brighter line below it as its owner `blockType: "message"`. Never output the dim under-name line as a normal message.\n- Emit the larger outer bubble (the live reply) as a separate `blockType: "message"` row on the same side, right after its quoted_preview row. A deterministic post-step folds the card into it.\n- Tag every normal live message row as `blockType: "message"`; do not decide whether a card is worth keeping, just transcribe and tag.\n- Preserve visible names and nicknames exactly as shown in the screenshot header or quote card. Do not guess or normalize similar-looking Han characters.\n- IMPORTANT: If the quoted card shows the same name as the chat header (e.g., header=\'Bruce\' and quoted card shows \'Bruce\'), it means the contact is quoting old messages. The quoted card name does NOT change who is sending the OUTER bubble.\n- When all outer bubbles are visually on the LEFT side and only quoted cards reference the header contact, set `screenSpeakerPattern: only_left` and ALL messages must have `isFromMe: false`.',
+    '### Output Rules\n- Return only `recognizedConversation`.\n- Do not include extra analysis fields.\n- Use `classification`, `importPolicy`, and `confidence` conservatively.\n- Valid `classification` values are: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- If the thread only contains missed-call or call-record entries but is still a normal one-to-one chat view, return those call events as messages instead of rejecting the screenshot outright.\n- Determine each bubble\'s `side` from the outer chat layout first, before reading the text inside that bubble.\n- For speaker direction, layout beats semantics: a clearly right-side bubble should stay `isFromMe: true` even if the text itself is very short or could also sound like the other person.\n- This also applies to media placeholders and image-in-image content: a right-side photo bubble must not be flipped to `她說` just because the OCR text or the inner image content is generic.\n- If multiple visible bubbles continue on the same left side, keep them as the other person even when only the first bubble shows an avatar; do not treat missing-avatar rows as an automatic side switch.\n- Emit each quoted-reply preview card as its own `blockType: "quoted_preview"` row on the same outer side as the reply it belongs to; do not merge it into the reply and do not omit it. The quoted card never overrides the outer bubble speaker.\n- Tag every live message row as `blockType: "message"`. A deterministic post-step folds quoted_preview rows into their owner message.\n- For each returned message, include `outerColumn` as `left`, `right`, or `center`, and include `horizontalPosition` as an approximate 0-100 number for the outer bubble center.\n- For each returned message, include `side` as `left`, `right`, or `unknown`. If `outerColumn` or `horizontalPosition` is clear, keep `side` and `isFromMe` consistent with that geometry.',
     "### JSON Schema",
     RECOGNIZED_CONVERSATION_SCHEMA,
     META_ANCHOR_SCHEMA_NOTE,
@@ -1026,8 +1026,8 @@ function buildImageAnalysisPrompt(options: {
   return joinPromptSections(
     `You received ${imageCount} chat screenshot(s). First extract the visible conversation, then analyze it and return the normal structured JSON response.`,
     SCREENSHOT_OCR_ACCURACY_RULES,
-    "### Quote Preview Rules\n- In LINE-style quoted replies, emit the smaller inset quote card as its OWN row with `blockType: \"quoted_preview\"`; do not merge or omit it. Put the card's readable text in `content`.\n- Do this even when the inset card only shows the old message body and the quoted author's name is missing or too small to read.\n- In dark mode the quoted card often renders as a single dimmer gray line sitting DIRECTLY under the sender name+avatar header and ABOVE the brighter main message, with no separate card border and no avatar of its own. That dim under-name line is still a quoted_preview: tag it `blockType: \"quoted_preview\"` and tag the brighter line below it as its owner `blockType: \"message\"`. Never output the dim under-name line as a normal message.\n- Emit the larger outer bubble (the live reply) as a separate `blockType: \"message\"` row on the same side, right after its quoted_preview row. A deterministic post-step folds the card into it.\n- Tag every normal live message row as `blockType: \"message\"`; do not decide whether a card is worth keeping, just transcribe and tag.\n- Preserve visible names and nicknames exactly as shown in the screenshot header or quote card. Do not guess or normalize similar-looking Han characters.\n- IMPORTANT: If the quoted card shows the same name as the chat header (e.g., header='Bruce' and quoted card shows 'Bruce'), it means the contact is quoting old messages. The quoted card name does NOT change who is sending the OUTER bubble.\n- When all outer bubbles are visually on the LEFT side and only quoted cards reference the header contact, set `screenSpeakerPattern: only_left` and ALL messages must have `isFromMe: false`.",
-    "### Additional Rules\n- Always include `recognizedConversation` in the response.\n- Base the final analysis on the screenshot content plus any existing thread context.\n- If the screenshot is likely unsupported, set `recognizedConversation.importPolicy` to `reject` and explain why in `warning`.\n- Prefer the most specific `classification` from: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- Do not reject a screenshot only because the visible thread is dominated by call records, as long as it is still clearly a one-to-one chat conversation view.\n- Build `recognizedConversation.messages` with a layout-first pass: identify bubble side from the screen position first, then transcribe content.\n- When `recognizedConversation.messages` is built, verify speaker direction from bubble side before finalizing the JSON. Do not let semantic inference override a clearly left- or right-aligned bubble.\n- If a LINE-style bubble contains a quoted-reply preview card plus a larger main reply, emit BOTH as separate rows: the card as `blockType: \"quoted_preview\"` and the larger main reply as `blockType: \"message\"`, both on the same outer side, card first. Do not merge or omit the card. A deterministic post-step folds the card into the reply.\n- The quoted card never flips the outer reply bubble's speaker.\n- Be extra careful with media rows: image bubbles and the text bubble immediately after them often belong to the same side and should not be split across two speakers unless the layout clearly changes.\n- If a bubble contains a screenshot/photo/video preview, use the outer bubble container to decide side; ignore the inner image contents for speaker assignment.\n- If the screenshots seem to mix two different contacts or unrelated thread segments, do not silently merge them into a clean conversation. Mark it low-confidence and explain the mismatch in `warning`.",
+    '### Quote Preview Rules\n- In LINE-style quoted replies, emit the smaller inset quote card as its OWN row with `blockType: "quoted_preview"`; do not merge or omit it. Put the card\'s readable text in `content`.\n- Do this even when the inset card only shows the old message body and the quoted author\'s name is missing or too small to read.\n- In dark mode the quoted card often renders as a single dimmer gray line sitting DIRECTLY under the sender name+avatar header and ABOVE the brighter main message, with no separate card border and no avatar of its own. That dim under-name line is still a quoted_preview: tag it `blockType: "quoted_preview"` and tag the brighter line below it as its owner `blockType: "message"`. Never output the dim under-name line as a normal message.\n- Emit the larger outer bubble (the live reply) as a separate `blockType: "message"` row on the same side, right after its quoted_preview row. A deterministic post-step folds the card into it.\n- Tag every normal live message row as `blockType: "message"`; do not decide whether a card is worth keeping, just transcribe and tag.\n- Preserve visible names and nicknames exactly as shown in the screenshot header or quote card. Do not guess or normalize similar-looking Han characters.\n- IMPORTANT: If the quoted card shows the same name as the chat header (e.g., header=\'Bruce\' and quoted card shows \'Bruce\'), it means the contact is quoting old messages. The quoted card name does NOT change who is sending the OUTER bubble.\n- When all outer bubbles are visually on the LEFT side and only quoted cards reference the header contact, set `screenSpeakerPattern: only_left` and ALL messages must have `isFromMe: false`.',
+    '### Additional Rules\n- Always include `recognizedConversation` in the response.\n- Base the final analysis on the screenshot content plus any existing thread context.\n- If the screenshot is likely unsupported, set `recognizedConversation.importPolicy` to `reject` and explain why in `warning`.\n- Prefer the most specific `classification` from: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- Do not reject a screenshot only because the visible thread is dominated by call records, as long as it is still clearly a one-to-one chat conversation view.\n- Build `recognizedConversation.messages` with a layout-first pass: identify bubble side from the screen position first, then transcribe content.\n- When `recognizedConversation.messages` is built, verify speaker direction from bubble side before finalizing the JSON. Do not let semantic inference override a clearly left- or right-aligned bubble.\n- If a LINE-style bubble contains a quoted-reply preview card plus a larger main reply, emit BOTH as separate rows: the card as `blockType: "quoted_preview"` and the larger main reply as `blockType: "message"`, both on the same outer side, card first. Do not merge or omit the card. A deterministic post-step folds the card into the reply.\n- The quoted card never flips the outer reply bubble\'s speaker.\n- Be extra careful with media rows: image bubbles and the text bubble immediately after them often belong to the same side and should not be split across two speakers unless the layout clearly changes.\n- If a bubble contains a screenshot/photo/video preview, use the outer bubble container to decide side; ignore the inner image contents for speaker assignment.\n- If the screenshots seem to mix two different contacts or unrelated thread segments, do not silently merge them into a clean conversation. Mark it low-confidence and explain the mismatch in `warning`.',
     "### recognizedConversation Schema",
     RECOGNIZED_CONVERSATION_SCHEMA,
     contextInfo,
@@ -4932,7 +4932,8 @@ serve(async (req) => {
         });
         return jsonResponse({
           error: "Daily limit exceeded",
-          message: "今日額度已用完，每天早上 8 點恢復；也可以升級取得更多額度。",
+          message:
+            "今日額度已用完，每天早上 8 點恢復；也可以升級取得更多額度。",
           dailyLimit,
           used: sub.daily_messages_used,
           resetAt: "tomorrow",
@@ -4969,8 +4970,8 @@ serve(async (req) => {
       if (openerStyleValidation.error) {
         return jsonResponse({ error: openerStyleValidation.error }, 400);
       }
-      const openerStyleContext =
-        openerStyleValidation.effectiveStyleContext ?? null;
+      const openerStyleContext = openerStyleValidation.effectiveStyleContext ??
+        null;
 
       const imageCount = Array.isArray(images) ? images.length : 0;
       // Flat cost regardless of image count: image processing cost is
@@ -5769,7 +5770,7 @@ ${recentText}`;
       "claude-sonnet-5",
     ];
     const model = (forceModel && (accountIsTest || TEST_MODE) &&
-          VALID_MODELS.includes(forceModel))
+        VALID_MODELS.includes(forceModel))
       ? forceModel
       : selectModel({
         conversationLength: messages.length,
@@ -5843,7 +5844,8 @@ ${recentText}`;
           return jsonResponse({
             error: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
             code: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
-            message: "草稿潤飾安全重試確認中斷，請再試一次。本次不會重複扣額度。",
+            message:
+              "草稿潤飾安全重試確認中斷，請再試一次。本次不會重複扣額度。",
             retryable: true,
           }, 503);
         } else {
@@ -6579,6 +6581,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           requestType,
           inputTokens: quickTokenUsage.inputTokens,
           outputTokens: quickTokenUsage.outputTokens,
+          cacheCreationTokens: quickTokenUsage.cacheCreationTokens,
+          cacheReadTokens: quickTokenUsage.cacheReadTokens,
           latencyMs: quickLatencyMs,
           status: "failed",
           errorCode: "QUICK_RESPONSE_INVALID",
@@ -6686,6 +6690,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         latencyMs: quickLatencyMs,
         inputTokens: quickTokenUsage.inputTokens,
         outputTokens: quickTokenUsage.outputTokens,
+        cacheCreationTokens: quickTokenUsage.cacheCreationTokens,
+        cacheReadTokens: quickTokenUsage.cacheReadTokens,
         safetyFiltered: guarded.safetyFiltered,
         chargedQuota: shouldCharge,
       });
@@ -6696,6 +6702,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         requestType,
         inputTokens: quickTokenUsage.inputTokens,
         outputTokens: quickTokenUsage.outputTokens,
+        cacheCreationTokens: quickTokenUsage.cacheCreationTokens,
+        cacheReadTokens: quickTokenUsage.cacheReadTokens,
         latencyMs: quickLatencyMs,
         status: guarded.safetyFiltered ? "filtered" : "success",
         fallbackUsed: quickClaude.fallbackUsed,
@@ -7020,6 +7028,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           requestType,
           inputTokens: fullTokenUsage.inputTokens,
           outputTokens: fullTokenUsage.outputTokens,
+          cacheCreationTokens: fullTokenUsage.cacheCreationTokens,
+          cacheReadTokens: fullTokenUsage.cacheReadTokens,
           latencyMs: fullLatencyMs,
           status: "failed",
           errorCode: "FULL_RESPONSE_INVALID",
@@ -7104,6 +7114,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         latencyMs: fullLatencyMs,
         inputTokens: fullTokenUsage.inputTokens,
         outputTokens: fullTokenUsage.outputTokens,
+        cacheCreationTokens: fullTokenUsage.cacheCreationTokens,
+        cacheReadTokens: fullTokenUsage.cacheReadTokens,
         retryCount: run.retry_count,
         retriesRemaining,
         parseSource: parsed.result.source,
@@ -7116,6 +7128,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         requestType,
         inputTokens: fullTokenUsage.inputTokens,
         outputTokens: fullTokenUsage.outputTokens,
+        cacheCreationTokens: fullTokenUsage.cacheCreationTokens,
+        cacheReadTokens: fullTokenUsage.cacheReadTokens,
         latencyMs: fullLatencyMs,
         status: "success",
         fallbackUsed: fullClaude.fallbackUsed,
@@ -7250,6 +7264,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
 
       let streamModel = selectedModel;
       const streamStartTime = Date.now();
+      let streamTokenUsage = {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 0,
+      };
       const streamUsage = {
         messagesUsed: shouldCharge ? quotaUsage.chargedMessageCount : 0,
         estimatedMessages: quotaUsage.estimatedMessageCount,
@@ -7305,6 +7325,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             { timeout: STREAM_CLAUDE_TIMEOUT_MS },
           );
           streamModel = claude.model;
+          streamTokenUsage = claude.usage;
           streamUsage.model = claude.model;
           return claude;
         },
@@ -7377,8 +7398,10 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             userId: user.id,
             model: streamModel,
             requestType,
-            inputTokens: 0,
-            outputTokens: 0,
+            inputTokens: streamTokenUsage.inputTokens,
+            outputTokens: streamTokenUsage.outputTokens,
+            cacheCreationTokens: streamTokenUsage.cacheCreationTokens,
+            cacheReadTokens: streamTokenUsage.cacheReadTokens,
             latencyMs,
             status: "success",
             requestBody: {
@@ -7389,6 +7412,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             responseBody: {
               streamRunStatus: "done",
               chargedQuota: shouldCharge,
+              cacheCreationTokens: streamTokenUsage.cacheCreationTokens,
+              cacheReadTokens: streamTokenUsage.cacheReadTokens,
             },
           });
 
@@ -7421,8 +7446,10 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             userId: user.id,
             model: streamModel,
             requestType,
-            inputTokens: 0,
-            outputTokens: 0,
+            inputTokens: streamTokenUsage.inputTokens,
+            outputTokens: streamTokenUsage.outputTokens,
+            cacheCreationTokens: streamTokenUsage.cacheCreationTokens,
+            cacheReadTokens: streamTokenUsage.cacheReadTokens,
             latencyMs: Date.now() - streamStartTime,
             status: "failed",
             errorCode: code,
@@ -7603,6 +7630,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       latencyMs,
       inputTokens: tokenUsage.inputTokens,
       outputTokens: tokenUsage.outputTokens,
+      cacheCreationTokens: tokenUsage.cacheCreationTokens,
+      cacheReadTokens: tokenUsage.cacheReadTokens,
       fallbackUsed: claudeResult.fallbackUsed,
       retries: claudeResult.retries,
       requestType,
@@ -7731,10 +7760,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
 
     // Phase 1 量測閘：在 normalize 折疊/重排「之前」快照原始 vision 觀測欄。
     // 只在本機 bench（旗標）且 recognizeOnly；prod 旗標不設 ⇒ 恆 null、零開銷。
-    const phase1VisionTelemetry =
-      (OCR_PHASE1_INSTRUMENT && recognizeOnly)
-        ? extractPhase1VisionTelemetry(result)
-        : null;
+    const phase1VisionTelemetry = (OCR_PHASE1_INSTRUMENT && recognizeOnly)
+      ? extractPhase1VisionTelemetry(result)
+      : null;
 
     result = normalizeRecognizedConversation(result, {
       knownContactName,
@@ -7807,6 +7835,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         requestType,
         inputTokens: tokenUsage.inputTokens,
         outputTokens: tokenUsage.outputTokens,
+        cacheCreationTokens: tokenUsage.cacheCreationTokens,
+        cacheReadTokens: tokenUsage.cacheReadTokens,
         latencyMs,
         status: "failed",
         errorCode: "RECOGNITION_UNSUPPORTED",
@@ -7852,6 +7882,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         requestType,
         inputTokens: tokenUsage.inputTokens,
         outputTokens: tokenUsage.outputTokens,
+        cacheCreationTokens: tokenUsage.cacheCreationTokens,
+        cacheReadTokens: tokenUsage.cacheReadTokens,
         latencyMs,
         status: "failed",
         errorCode: "RECOGNITION_FAILED",
@@ -7958,6 +7990,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       requestType,
       inputTokens: tokenUsage.inputTokens,
       outputTokens: tokenUsage.outputTokens,
+      cacheCreationTokens: tokenUsage.cacheCreationTokens,
+      cacheReadTokens: tokenUsage.cacheReadTokens,
       latencyMs,
       status: wasFiltered ? "filtered" : "success",
       fallbackUsed: claudeResult.fallbackUsed,

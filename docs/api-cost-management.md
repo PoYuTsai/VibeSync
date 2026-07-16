@@ -14,6 +14,8 @@
 
 > Sonnet 5 為至 2026-08-31 的 launch price，到期前必須重新核價。
 
+`ai_logs.cost_usd` 會把 Anthropic prompt cache creation 依 input 單價 1.25 倍、cache read 依 input 單價 0.1 倍納入；串流路徑必須解析 `message_start`／`message_delta` usage，不能以 0 tokens 記帳。未知模型 ID 以較保守的 Sonnet 4.6 價格估算。
+
 ### 單次分析成本估算
 
 | 項目 | Tokens | 說明 |
@@ -218,28 +220,22 @@ function localQuickAnalysis(messages: Message[]) {
 SELECT
   DATE(created_at) as date,
   COUNT(*) as calls,
-  SUM(CASE WHEN model = 'haiku' THEN 1 ELSE 0 END) as haiku_calls,
-  SUM(CASE WHEN model = 'sonnet' THEN 1 ELSE 0 END) as sonnet_calls
-FROM api_logs
+  COUNT(*) FILTER (WHERE model LIKE '%haiku%') as haiku_calls,
+  COUNT(*) FILTER (WHERE model LIKE '%sonnet%') as sonnet_calls
+FROM ai_logs
 GROUP BY DATE(created_at)
 ORDER BY date DESC;
 
 -- 2. 每日成本估算
 SELECT
   DATE(created_at) as date,
-  SUM(
-    CASE
-      WHEN model = 'claude-haiku-4-5-20251001' THEN (input_tokens * 0.0000008 + output_tokens * 0.000004)
-      WHEN model = 'claude-sonnet-5' THEN (input_tokens * 0.000002 + output_tokens * 0.000010)
-      WHEN model = 'claude-sonnet-4-6' THEN (input_tokens * 0.000003 + output_tokens * 0.000015)
-    END
-  ) as estimated_cost_usd
-FROM api_logs
+  SUM(cost_usd) as estimated_cost_usd
+FROM ai_logs
 GROUP BY DATE(created_at);
 
 -- 3. 異常用戶偵測 (單日使用超過 50 次)
 SELECT user_id, COUNT(*) as daily_usage
-FROM api_logs
+FROM ai_logs
 WHERE created_at > NOW() - INTERVAL '1 day'
 GROUP BY user_id
 HAVING COUNT(*) > 50;

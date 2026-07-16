@@ -80,7 +80,8 @@ Deno.test("parseAnthropicSse parses events split across stream chunks", async ()
 
 Deno.test("parseAnthropicSse fails on malformed Claude SSE data", async () => {
   const error = await assertRejects(
-    () => collect(parseAnthropicSse(streamFromChunks(["data: {not-json}\n\n"]))),
+    () =>
+      collect(parseAnthropicSse(streamFromChunks(["data: {not-json}\n\n"]))),
     AiStreamingServiceError,
   );
 
@@ -106,8 +107,10 @@ Deno.test("callClaudeStreaming sends streaming request with cached system prompt
         capturedInit = init;
         return new Response(
           streamFromChunks([
+            'data: {"type":"message_start","message":{"usage":{"input_tokens":120,"output_tokens":1,"cache_creation_input_tokens":80,"cache_read_input_tokens":40}}}\n\n',
             'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"first"}}\n\n',
             'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" second"}}\n\n',
+            'data: {"type":"message_delta","usage":{"output_tokens":25}}\n\n',
           ]),
           { status: 200 },
         );
@@ -119,7 +122,9 @@ Deno.test("callClaudeStreaming sends streaming request with cached system prompt
     model: string;
     max_tokens: number;
     stream: boolean;
-    system: Array<{ type: string; text: string; cache_control: { type: string } }>;
+    system: Array<
+      { type: string; text: string; cache_control: { type: string } }
+    >;
     messages: Array<{ role: string; content: string }>;
   };
   const headers = capturedInit?.headers as Record<string, string>;
@@ -135,6 +140,12 @@ Deno.test("callClaudeStreaming sends streaming request with cached system prompt
   assertEquals(body.messages[0].content, "hello");
   assertEquals(result.model, "claude-sonnet-4-6");
   assertEquals(await collect(result.textStream), ["first", " second"]);
+  assertEquals(result.usage, {
+    inputTokens: 120,
+    outputTokens: 25,
+    cacheCreationTokens: 80,
+    cacheReadTokens: 40,
+  });
 });
 
 Deno.test("callClaudeStreaming maps non-ok Anthropic responses", async () => {

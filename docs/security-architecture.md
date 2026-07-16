@@ -247,7 +247,7 @@ await SentryFlutter.init(
 
 -- 1. 單一用戶短時間大量請求
 SELECT user_id, COUNT(*) as count
-FROM api_logs
+FROM ai_logs
 WHERE created_at > NOW() - INTERVAL '1 minute'
 GROUP BY user_id
 HAVING COUNT(*) > 10;  -- Alert threshold

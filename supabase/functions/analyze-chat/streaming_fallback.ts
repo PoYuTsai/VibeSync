@@ -26,6 +26,14 @@ export interface ClaudeStreamingOptions {
 export interface StreamingClaudeResult {
   model: string;
   textStream: AsyncGenerator<string>;
+  usage: ClaudeStreamTokenUsage;
+}
+
+export interface ClaudeStreamTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
 }
 
 export interface AiStreamingServiceErrorMetadata {
@@ -76,7 +84,11 @@ function parseErrorMessage(errorText: string): string {
   }
 }
 
-function extractTextDelta(dataLines: string[]): { done: boolean; text?: string } {
+function extractStreamEvent(dataLines: string[]): {
+  done: boolean;
+  text?: string;
+  usage?: Partial<ClaudeStreamTokenUsage>;
+} {
   const data = dataLines.join("\n").trim();
   if (!data || data === "[DONE]") {
     return { done: data === "[DONE]" };
@@ -85,6 +97,20 @@ function extractTextDelta(dataLines: string[]): { done: boolean; text?: string }
   let parsed: {
     type?: string;
     delta?: { type?: string; text?: string };
+    message?: {
+      usage?: {
+        input_tokens?: number;
+        output_tokens?: number;
+        cache_creation_input_tokens?: number;
+        cache_read_input_tokens?: number;
+      };
+    };
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      cache_creation_input_tokens?: number;
+      cache_read_input_tokens?: number;
+    };
   };
   try {
     parsed = JSON.parse(data);
@@ -106,11 +132,45 @@ function extractTextDelta(dataLines: string[]): { done: boolean; text?: string }
     return { done: false, text: parsed.delta.text };
   }
 
+  const rawUsage = parsed.type === "message_start"
+    ? parsed.message?.usage
+    : parsed.type === "message_delta"
+    ? parsed.usage
+    : undefined;
+  if (rawUsage) {
+    const usage: Partial<ClaudeStreamTokenUsage> = {};
+    if (Number.isFinite(rawUsage.input_tokens)) {
+      usage.inputTokens = Math.max(0, rawUsage.input_tokens ?? 0);
+    }
+    if (Number.isFinite(rawUsage.output_tokens)) {
+      usage.outputTokens = Math.max(0, rawUsage.output_tokens ?? 0);
+    }
+    if (Number.isFinite(rawUsage.cache_creation_input_tokens)) {
+      usage.cacheCreationTokens = Math.max(
+        0,
+        rawUsage.cache_creation_input_tokens ?? 0,
+      );
+    }
+    if (Number.isFinite(rawUsage.cache_read_input_tokens)) {
+      usage.cacheReadTokens = Math.max(
+        0,
+        rawUsage.cache_read_input_tokens ?? 0,
+      );
+    }
+    return { done: false, usage };
+  }
+
   return { done: false };
 }
 
 export async function* parseAnthropicSse(
   readable: ReadableStream<Uint8Array>,
+  usage: ClaudeStreamTokenUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
+  },
 ): AsyncGenerator<string> {
   const reader = readable.getReader();
   const decoder = new TextDecoder();
@@ -121,7 +181,7 @@ export async function* parseAnthropicSse(
     if (dataLines.length === 0) {
       return;
     }
-    const event = extractTextDelta(dataLines);
+    const event = extractStreamEvent(dataLines);
     dataLines = [];
     if (event.done) {
       return;
@@ -129,6 +189,7 @@ export async function* parseAnthropicSse(
     if (event.text !== undefined) {
       yield event.text;
     }
+    if (event.usage) Object.assign(usage, event.usage);
   }
 
   function normalizeLine(line: string): string {
@@ -239,7 +300,9 @@ export async function callClaudeStreaming(
       );
     }
     throw new AiStreamingServiceError(
-      error instanceof Error ? error.message : "Claude streaming request failed.",
+      error instanceof Error
+        ? error.message
+        : "Claude streaming request failed.",
       "NETWORK_ERROR",
       true,
     );
@@ -282,12 +345,19 @@ export async function callClaudeStreaming(
     );
   }
 
+  const usage: ClaudeStreamTokenUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
+  };
   return {
     model: request.model,
     textStream: cleanupOnStreamEnd(
-      parseAnthropicSse(response.body),
+      parseAnthropicSse(response.body, usage),
       () => clearTimeout(timeoutId),
       opts.timeout,
     ),
+    usage,
   };
 }
