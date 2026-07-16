@@ -885,63 +885,66 @@ class CoachChatResultView extends ConsumerWidget {
               data: Theme.of(context).copyWith(
                 dividerColor: Colors.transparent,
               ),
-              child: ExpansionTile(
-                key: ValueKey('coach-full-analysis-${result.id}'),
-                tilePadding: EdgeInsets.zero,
-                childrenPadding: const EdgeInsets.only(bottom: 8),
-                visualDensity: VisualDensity.compact,
-                iconColor: AppColors.primary,
-                collapsedIconColor: AppColors.glassTextSecondary,
-                title: Text(
-                  '看完整教練分析',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          result.answer,
-                          style: AppTypography.bodyMedium.copyWith(
-                            color: AppColors.glassTextPrimary,
-                            height: 1.45,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        if (result.userTruth != null)
-                          _InfoLine(
-                            label: '我理解你的真實想法',
-                            value: result.userTruth!,
-                          ),
-                        _InfoLine(
-                          label: '這輪卡點',
-                          value: _frictionTypeLabel(result.frictionType),
-                        ),
-                        _InfoLine(
-                          label: '你現在卡在',
-                          value: result.userState,
-                        ),
-                        if (result.rewriteDecision != null)
-                          _InfoLine(
-                            label: '教練判斷',
-                            value:
-                                '${_rewriteDecisionLabel(result.rewriteDecision!)}${result.rewriteReason == null ? '' : '：${result.rewriteReason}'}',
-                          ),
-                        if (result.needsReflection &&
-                            result.reflectionQuestion != null)
-                          _InfoLine(
-                            label: '教練追問',
-                            value: result.reflectionQuestion!,
-                          ),
-                      ],
+              child: Material(
+                type: MaterialType.transparency,
+                child: ExpansionTile(
+                  key: ValueKey('coach-full-analysis-${result.id}'),
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: const EdgeInsets.only(bottom: 8),
+                  visualDensity: VisualDensity.compact,
+                  iconColor: AppColors.primary,
+                  collapsedIconColor: AppColors.glassTextSecondary,
+                  title: Text(
+                    '看完整教練分析',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                ],
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            result.answer,
+                            style: AppTypography.bodyMedium.copyWith(
+                              color: AppColors.glassTextPrimary,
+                              height: 1.45,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          if (result.userTruth != null)
+                            _InfoLine(
+                              label: '我理解你的真實想法',
+                              value: result.userTruth!,
+                            ),
+                          _InfoLine(
+                            label: '這輪卡點',
+                            value: _frictionTypeLabel(result.frictionType),
+                          ),
+                          _InfoLine(
+                            label: '你現在卡在',
+                            value: result.userState,
+                          ),
+                          if (result.rewriteDecision != null)
+                            _InfoLine(
+                              label: '教練判斷',
+                              value:
+                                  '${_rewriteDecisionLabel(result.rewriteDecision!)}${result.rewriteReason == null ? '' : '：${result.rewriteReason}'}',
+                            ),
+                          if (result.needsReflection &&
+                              result.reflectionQuestion != null)
+                            _InfoLine(
+                              label: '教練追問',
+                              value: result.reflectionQuestion!,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           const SizedBox(height: 12),

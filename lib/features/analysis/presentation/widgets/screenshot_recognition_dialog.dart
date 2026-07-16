@@ -902,8 +902,7 @@ class _ScreenshotRecognitionDialogState
   Widget build(BuildContext context) {
     final shouldShowSessionContextFields =
         widget.forceShowSessionContextFields || !_canReplaceCurrentDraft;
-    final willReplaceCurrentBatch =
-        _canReplaceCurrentDraft &&
+    final willReplaceCurrentBatch = _canReplaceCurrentDraft &&
         widget.currentConversation.messages.isNotEmpty;
 
     return AlertDialog(
@@ -1014,30 +1013,33 @@ class _ScreenshotRecognitionDialogState
                     color: AppColors.error.withValues(alpha: 0.24),
                   ),
                 ),
-                child: CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  value: _confirmedSamePartner,
-                  onChanged: (value) {
-                    setState(() {
-                      _confirmedSamePartner = value ?? false;
-                      _editValidationMessage = null;
-                    });
-                  },
-                  title: Text(
-                    widget.expectedPartnerName?.trim().isNotEmpty == true
-                        ? '我確認這些是「${widget.expectedPartnerName!.trim()}」的聊天'
-                        : '我確認這些截圖都是目前這位對象',
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.onBackgroundPrimary,
-                      fontWeight: FontWeight.w700,
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    value: _confirmedSamePartner,
+                    onChanged: (value) {
+                      setState(() {
+                        _confirmedSamePartner = value ?? false;
+                        _editValidationMessage = null;
+                      });
+                    },
+                    title: Text(
+                      widget.expectedPartnerName?.trim().isNotEmpty == true
+                          ? '我確認這些是「${widget.expectedPartnerName!.trim()}」的聊天'
+                          : '我確認這些截圖都是目前這位對象',
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.onBackgroundPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                  subtitle: Text(
-                    '如果是另一人，請取消並回到正確對象再匯入。',
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.onBackgroundSecondary,
-                      height: 1.35,
+                    subtitle: Text(
+                      '如果是另一人，請取消並回到正確對象再匯入。',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.onBackgroundSecondary,
+                        height: 1.35,
+                      ),
                     ),
                   ),
                 ),
