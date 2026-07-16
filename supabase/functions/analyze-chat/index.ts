@@ -130,6 +130,7 @@ import {
 } from "./quick_response.ts";
 import { parseFullPayload } from "./full_response.ts";
 import { detectAnchorDrift } from "./anchor_drift.ts";
+import { normalizeGoogleMapsShares } from "./map_share_normalizer.ts";
 
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -760,6 +761,7 @@ function buildRecognitionObservability(
         quotedPreviewRemovedCount?: number;
         quotedPreviewAttachedCount?: number;
         overlapRemovedCount?: number;
+        mapShareCollapsedCount?: number;
       };
     }
     | undefined,
@@ -785,6 +787,8 @@ function buildRecognitionObservability(
       ?.quotedPreviewAttachedCount ?? 0,
     overlapRemovedCount: recognizedConversation?.normalizationTelemetry
       ?.overlapRemovedCount ?? 0,
+    mapShareCollapsedCount: recognizedConversation?.normalizationTelemetry
+      ?.mapShareCollapsedCount ?? 0,
   };
 }
 
@@ -4012,8 +4016,11 @@ function normalizeRecognizedConversation(
   const trailingAdjustment = applyTrailingSpeakerHeuristics(
     layoutFirstAdjustment.messages,
   );
-  const overlapAdjustment = deduplicateSequentialMessages(
+  const mapShareAdjustment = normalizeGoogleMapsShares(
     trailingAdjustment.messages,
+  );
+  const overlapAdjustment = deduplicateSequentialMessages(
+    mapShareAdjustment.messages,
   );
   const finalMessages = overlapAdjustment.messages;
   const finalMessageCount = finalMessages.length;
@@ -4061,6 +4068,7 @@ function normalizeRecognizedConversation(
       quotedPreviewRemovedCount: quotedPreviewAdjustment.removedCount,
       quotedPreviewAttachedCount: quotedPreviewAdjustment.attachedCount,
       overlapRemovedCount: overlapAdjustment.removedCount,
+      mapShareCollapsedCount: mapShareAdjustment.collapsedCount,
       // bake-off arm-2 量測：blockType 折疊 telemetry。
       blockTypeMessageCount: foldAdjustment.blockTypeCounts.message,
       blockTypeQuotedPreviewCount:
@@ -7751,6 +7759,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           quotedPreviewRemovedCount?: number;
           quotedPreviewAttachedCount?: number;
           overlapRemovedCount?: number;
+          mapShareCollapsedCount?: number;
         };
       }
       | undefined;
@@ -8215,6 +8224,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         ?.quotedPreviewAttachedCount ?? 0,
       overlapRemovedCount: recognizedConversation?.normalizationTelemetry
         ?.overlapRemovedCount ?? 0,
+      mapShareCollapsedCount: recognizedConversation?.normalizationTelemetry
+        ?.mapShareCollapsedCount ?? 0,
       guardrailSeverity: successGuardrails.guardrailSeverity,
       guardrailCount: successGuardrails.guardrailCount,
       guardrailFlags: successGuardrails.guardrailFlags,

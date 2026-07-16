@@ -23,9 +23,9 @@ class OcrRecognitionCacheService {
   static const _cachePrefix = 'ocr_recognition_cache';
   // Bump this whenever OCR structure/speaker heuristics change so the app
   // does not keep replaying stale local recognition results for the same image.
-  // v5: server 端 LINE meta 錨點（bc023822）＋ metaDecisive guard（9b670516）
-  // 改變 side 判別行為，v4 快取的高信心錯誤結果不得再重播。
-  static const _cacheVersion = 5;
+  // v6: server 端會把 Google Maps 網址＋預覽收斂成單一地點分享語意，
+  // v5 快取的 URL／制式英文預覽不得再重播。
+  static const _cacheVersion = 6;
 
   @visibleForTesting
   static int get debugCacheVersion => _cacheVersion;
