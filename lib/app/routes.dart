@@ -172,7 +172,9 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/settings/keyboard',
-      builder: (context, state) => const KeyboardSetupScreen(),
+      builder: (context, state) => KeyboardSetupScreen(
+        firstRun: state.uri.queryParameters['firstRun'] == '1',
+      ),
     ),
     // F5-A7：設定頁常駐「AI 與你的隱私」靜態揭露（onboarding 第 4 頁可略過的補位）。
     GoRoute(

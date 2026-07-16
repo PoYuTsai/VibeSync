@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../onboarding/data/onboarding_service.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 
 typedef OpenKeyboardSettings = Future<bool> Function();
@@ -12,9 +13,11 @@ class KeyboardSetupScreen extends StatefulWidget {
   const KeyboardSetupScreen({
     super.key,
     this.openSettings = _openIOSSettings,
+    this.firstRun = false,
   });
 
   final OpenKeyboardSettings openSettings;
+  final bool firstRun;
 
   static Future<bool> _openIOSSettings() {
     return launchUrl(
@@ -79,13 +82,38 @@ class _KeyboardSetupScreenState extends State<KeyboardSetupScreen>
 
   void _next() {
     if (_page == 3) {
-      context.pop();
+      _finishFirstRun();
       return;
     }
     _controller.nextPage(
       duration: const Duration(milliseconds: 320),
       curve: Curves.easeOutCubic,
     );
+  }
+
+  Future<void> _finishFirstRun() async {
+    if (widget.firstRun) {
+      await OnboardingService.markKeyboardCompleted();
+    }
+    if (!mounted) return;
+    if (widget.firstRun) {
+      context.go('/');
+    } else {
+      context.pop();
+    }
+  }
+
+  Future<void> _skipFirstRun() async {
+    await OnboardingService.markKeyboardCompleted();
+    if (mounted) context.go('/');
+  }
+
+  void _close() {
+    if (widget.firstRun) {
+      _skipFirstRun();
+    } else {
+      context.pop();
+    }
   }
 
   @override
@@ -98,7 +126,7 @@ class _KeyboardSetupScreenState extends State<KeyboardSetupScreen>
           title: const Text('VibeSync AI 鍵盤'),
           leading: IconButton(
             icon: const Icon(Icons.close),
-            onPressed: () => context.pop(),
+            onPressed: _close,
           ),
         ),
         body: SafeArea(
@@ -180,6 +208,14 @@ class _KeyboardSetupScreenState extends State<KeyboardSetupScreen>
                   onPressed: _next,
                 ),
               ),
+              if (widget.firstRun)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: TextButton(
+                    onPressed: _skipFirstRun,
+                    child: const Text('稍後設定'),
+                  ),
+                ),
             ],
           ),
         ),

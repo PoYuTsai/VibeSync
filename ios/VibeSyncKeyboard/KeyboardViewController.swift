@@ -180,9 +180,20 @@ final class KeyboardViewController: UIInputViewController {
 
     private func show(_ newMode: Mode) {
         mode = newMode
-        aiPanel.isHidden = newMode != .ai
-        typingPanel.isHidden = newMode != .typing
-        view.setNeedsLayout()
+        preferredContentSize.height = newMode == .ai ? 300 : 280
+
+        // Switch both panels and flush the host keyboard layout in the same
+        // transaction. Without this, iOS can briefly composite the previous
+        // panel while the input view changes height, which looks like a
+        // one-frame ghost during AI/ABC switching.
+        UIView.performWithoutAnimation {
+            aiPanel.isHidden = newMode != .ai
+            typingPanel.isHidden = newMode != .typing
+            view.setNeedsLayout()
+            view.layoutIfNeeded()
+            view.superview?.setNeedsLayout()
+            view.superview?.layoutIfNeeded()
+        }
     }
 
     private func refreshAvailability() {

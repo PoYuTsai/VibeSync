@@ -2,8 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vibesync/features/keyboard/presentation/screens/keyboard_setup_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibesync/features/onboarding/data/onboarding_service.dart';
 
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    await OnboardingService.load();
+  });
+
   testWidgets('teaches settings permission before globe and quick reply',
       (tester) async {
     var settingsOpened = 0;
@@ -46,5 +53,30 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('三步就有好回覆'), findsOneWidget);
     expect(find.text('選風格，確認後送出'), findsOneWidget);
+  });
+
+  testWidgets('first-run setup can be postponed and is persisted',
+      (tester) async {
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(path: '/', builder: (_, __) => const SizedBox.shrink()),
+        GoRoute(
+          path: '/keyboard',
+          builder: (_, __) => const KeyboardSetupScreen(firstRun: true),
+        ),
+      ],
+    );
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    router.push('/keyboard');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('稍後設定'), findsOneWidget);
+    await tester.tap(find.text('稍後設定'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(OnboardingService.isKeyboardCompletedSync, isTrue);
   });
 }

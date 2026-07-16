@@ -49,4 +49,28 @@ void main() {
     await OnboardingService.reset();
     expect(OnboardingService.isCompletedSync, isFalse);
   });
+
+  test('load() restores keyboard onboarding independently', () async {
+    SharedPreferences.setMockInitialValues({
+      'onboarding_completed': true,
+      'keyboard_onboarding_completed': true,
+    });
+    await OnboardingService.load();
+
+    expect(OnboardingService.isCompletedSync, isTrue);
+    expect(OnboardingService.isKeyboardCompletedSync, isTrue);
+  });
+
+  test('markKeyboardCompleted() flips only the keyboard cache', () async {
+    await OnboardingService.load();
+    final pending = OnboardingService.markKeyboardCompleted();
+
+    expect(OnboardingService.isCompletedSync, isFalse);
+    expect(OnboardingService.isKeyboardCompletedSync, isTrue);
+    await pending;
+    expect(OnboardingService.isKeyboardCompletedSync, isTrue);
+
+    await OnboardingService.resetKeyboard();
+    expect(OnboardingService.isKeyboardCompletedSync, isFalse);
+  });
 }
