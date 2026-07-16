@@ -40,7 +40,11 @@ function selectModel(context: {
   isFirstAnalysis: boolean;
   tier: string;
 }): string {
-  if (context.tier === "essential") {
+  if (context.tier === "free") {
+    return "claude-sonnet-5";
+  }
+
+  if (context.tier === "starter" || context.tier === "essential") {
     return "claude-sonnet-4-6";
   }
 
@@ -71,7 +75,7 @@ Deno.test("selectModel - essential tier always uses Sonnet", () => {
   assertEquals(model, "claude-sonnet-4-6");
 });
 
-Deno.test("selectModel - first analysis uses Sonnet", () => {
+Deno.test("selectModel - free first analysis uses Sonnet 5", () => {
   const model = selectModel({
     conversationLength: 3,
     enthusiasmLevel: null,
@@ -79,7 +83,7 @@ Deno.test("selectModel - first analysis uses Sonnet", () => {
     isFirstAnalysis: true,
     tier: "free",
   });
-  assertEquals(model, "claude-sonnet-4-6");
+  assertEquals(model, "claude-sonnet-5");
 });
 
 Deno.test("selectModel - cold enthusiasm uses Sonnet", () => {
@@ -93,7 +97,7 @@ Deno.test("selectModel - cold enthusiasm uses Sonnet", () => {
   assertEquals(model, "claude-sonnet-4-6");
 });
 
-Deno.test("selectModel - long conversation uses Sonnet", () => {
+Deno.test("selectModel - free long conversation uses Sonnet 5", () => {
   const model = selectModel({
     conversationLength: 25,
     enthusiasmLevel: "warm",
@@ -101,10 +105,10 @@ Deno.test("selectModel - long conversation uses Sonnet", () => {
     isFirstAnalysis: false,
     tier: "free",
   });
-  assertEquals(model, "claude-sonnet-4-6");
+  assertEquals(model, "claude-sonnet-5");
 });
 
-Deno.test("selectModel - simple conversation uses Haiku", () => {
+Deno.test("selectModel - free simple conversation uses Sonnet 5", () => {
   const model = selectModel({
     conversationLength: 10,
     enthusiasmLevel: "warm",
@@ -112,7 +116,7 @@ Deno.test("selectModel - simple conversation uses Haiku", () => {
     isFirstAnalysis: false,
     tier: "free",
   });
-  assertEquals(model, "claude-3-5-haiku-20241022");
+  assertEquals(model, "claude-sonnet-5");
 });
 
 Deno.test("selectModel - complex emotions uses Sonnet", () => {
@@ -124,6 +128,26 @@ Deno.test("selectModel - complex emotions uses Sonnet", () => {
     tier: "starter",
   });
   assertEquals(model, "claude-sonnet-4-6");
+});
+
+Deno.test({
+  name: "production routing keeps Free on Sonnet 5 without changing paid cards",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes('if (context.tier === "free")'));
+    assert(source.includes('return "claude-sonnet-5";'));
+    assert(source.includes(
+      'context.tier === "starter" || context.tier === "essential"',
+    ));
+    assert(source.includes('return "claude-sonnet-4-6";'));
+    assertFalse(source.includes(
+      'const model = hasImages\n      ? "claude-sonnet-4-6"',
+    ));
+  },
 });
 
 Deno.test({

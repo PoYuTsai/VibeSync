@@ -621,6 +621,7 @@ const VALID_ANALYZE_MODES = new Set(["normal", "my_message"]);
 const VALID_FORCE_MODELS = new Set([
   "claude-haiku-4-5-20251001",
   "claude-sonnet-4-6",
+  "claude-sonnet-5",
 ]);
 const MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024;
 
@@ -4327,7 +4328,12 @@ function selectModel(context: {
     return "claude-haiku-4-5-20251001";
   }
 
-  // Starter / Essential 用戶優先使用 Sonnet
+  // Free 只有一種回覆，固定使用最新 Sonnet，優先守住首次體驗品質。
+  if (context.tier === "free") {
+    return "claude-sonnet-5";
+  }
+
+  // Starter / Essential 維持 Sonnet 4.6；付費模型升級另行驗證。
   if (context.tier === "starter" || context.tier === "essential") {
     return "claude-sonnet-4-6";
   }
@@ -5752,10 +5758,9 @@ ${recentText}`;
     const VALID_MODELS = [
       "claude-haiku-4-5-20251001",
       "claude-sonnet-4-6",
+      "claude-sonnet-5",
     ];
-    const model = hasImages
-      ? "claude-sonnet-4-6" // Vision 強制 Sonnet
-      : (forceModel && (accountIsTest || TEST_MODE) &&
+    const model = (forceModel && (accountIsTest || TEST_MODE) &&
           VALID_MODELS.includes(forceModel))
       ? forceModel
       : selectModel({
