@@ -18,6 +18,8 @@
     <dict>
         <key>com.poyutsai.vibesync</key>
         <string>VibeSync App Store</string>
+        <key>com.poyutsai.vibesync.keyboard</key>
+        <string>VibeSync Keyboard App Store</string>
     </dict>
 </dict>
 </plist>

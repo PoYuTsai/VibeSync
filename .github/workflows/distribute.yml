@@ -154,10 +154,12 @@ jobs:
       - name: Install provisioning profile
         env:
           PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+          KEYBOARD_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_KEYBOARD_PROVISIONING_PROFILE }}
         run: |
           PROFILE_PATH="$HOME/Library/MobileDevice/Provisioning Profiles"
           mkdir -p "$PROFILE_PATH"
           echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH/vibesync.mobileprovision"
+          echo "$KEYBOARD_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH/vibesync-keyboard.mobileprovision"
 
       - name: Build iOS (Staging)
         env:

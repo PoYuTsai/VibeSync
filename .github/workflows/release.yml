@@ -109,6 +109,7 @@ jobs:
           CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE }}
           CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+          KEYBOARD_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_KEYBOARD_PROVISIONING_PROFILE }}
           KEYCHAIN_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
           set -e  # Exit on error
@@ -116,6 +117,7 @@ jobs:
           # Create variables
           CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
           PROFILE_PATH=$RUNNER_TEMP/build_profile.mobileprovision
+          KEYBOARD_PROFILE_PATH=$RUNNER_TEMP/keyboard_build_profile.mobileprovision
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
 
           echo "=== Step 1: Decode certificate and profile from base64 ==="
@@ -124,6 +126,9 @@ jobs:
 
           echo -n "$PROVISIONING_PROFILE_BASE64" | base64 --decode -o $PROFILE_PATH
           echo "Profile decoded, size: $(wc -c < $PROFILE_PATH) bytes"
+
+          echo -n "$KEYBOARD_PROVISIONING_PROFILE_BASE64" | base64 --decode -o $KEYBOARD_PROFILE_PATH
+          echo "Keyboard profile decoded, size: $(wc -c < $KEYBOARD_PROFILE_PATH) bytes"
 
           echo "=== Step 2: Create and configure keychain ==="
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
@@ -150,6 +155,10 @@ jobs:
           PROFILE_UUID=$(echo "$PROFILE_CONTENT" | /usr/libexec/PlistBuddy -c "Print :UUID" /dev/stdin)
           echo "Profile UUID: $PROFILE_UUID"
 
+          KEYBOARD_PROFILE_CONTENT=$(security cms -D -i $KEYBOARD_PROFILE_PATH)
+          KEYBOARD_PROFILE_UUID=$(echo "$KEYBOARD_PROFILE_CONTENT" | /usr/libexec/PlistBuddy -c "Print :UUID" /dev/stdin)
+          echo "Keyboard profile UUID: $KEYBOARD_PROFILE_UUID"
+
           # Extract profile name
           PROFILE_NAME=$(echo "$PROFILE_CONTENT" | /usr/libexec/PlistBuddy -c "Print :Name" /dev/stdin)
           echo "Profile Name: $PROFILE_NAME"
@@ -165,12 +174,15 @@ jobs:
           # Copy profile with UUID as filename
           cp $PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
           echo "Profile installed as: $PROFILE_UUID.mobileprovision"
+          cp $KEYBOARD_PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$KEYBOARD_PROFILE_UUID.mobileprovision
+          echo "Keyboard profile installed as: $KEYBOARD_PROFILE_UUID.mobileprovision"
 
           echo "=== Step 6: Verify installation ==="
           ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
 
           # Export for later steps
           echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
+          echo "KEYBOARD_PROFILE_UUID=$KEYBOARD_PROFILE_UUID" >> $GITHUB_ENV
           echo "=== Setup complete ==="
 
       - name: Generate ExportOptions.plist
@@ -194,9 +206,11 @@ jobs:
               <string>Apple Distribution</string>
               <key>provisioningProfiles</key>
               <dict>
-                  <key>com.poyutsai.vibesync</key>
-                  <string>${PROFILE_UUID}</string>
-              </dict>
+                   <key>com.poyutsai.vibesync</key>
+                   <string>${PROFILE_UUID}</string>
+                   <key>com.poyutsai.vibesync.keyboard</key>
+                   <string>${KEYBOARD_PROFILE_UUID}</string>
+               </dict>
           </dict>
           </plist>
           EOF
