@@ -237,7 +237,7 @@ Size practiceCeremonyCardSize(Size screen) {
 
 /// 每日翻牌「揭曉儀式」全螢幕 overlay（Batch 4 → 4.5 高還原 → 4.6 等待微動）。
 ///
-/// 純原生實作（無 lottie/rive/音檔）：抽牌中浮現一張**神秘卡背**（深紫＋金框＋圖騰
+/// 純原生視覺實作（無 lottie/rive）：抽牌中浮現一張**神秘卡背**（深紫＋金框＋圖騰
 /// ＋星光，不顯名字／照片），server 抽中後以兩段升階 `Transform`(rotateY) 做 3D 翻面
 /// （白卡預覽→收回蓄力→盛大典藏卡），高潮配 flash／**軌道彗星 halo** 揭曉今日對象，
 /// 短暫停留後整片淡出露出底下 hero。
@@ -253,13 +253,10 @@ Size practiceCeremonyCardSize(Size screen) {
 ///   reveal／error／hidden／dispose 一律明確 `stop()`。故 `pumpAndSettle` 仍必收斂、
 ///   widget test 不 hang；三條 controller 都在 dispose 先收。
 /// - reduce-motion（`MediaQuery.disableAnimations`）：跳過 3D 翻面與強動畫，抽牌中
-///   定住靜態卡背、reveal 直接收掉 overlay 露出 hero；haptic／一次性音效（咻聲、揭曉
-///   叮聲）仍照觸發，但**不**啟動等待 shimmer loop（與 `_waiting` 微動同步靜止）。
+///   定住靜態卡背、reveal 直接收掉 overlay 露出 hero；haptic／一次性咻聲仍照觸發。
 /// - haptic 走 [HapticFeedback]（抽牌 light、翻開成功 medium）；音效走
-///   [PracticeDrawSfx]（由 [practiceDrawSfxProvider] 注入，目前 no-op、未打包音檔）。
-///   等待 loop 的播放／停止與 [_waiting] controller 的 repeat／stop 點一一對應：每個
-///   離開 drawing 的出口（reveal／error／402／429／hidden／dispose）都 `stopWaitingLoop`，
-///   絕不殘留背景音。
+///   [PracticeDrawSfx]（由 [practiceDrawSfxProvider] 注入真實音效）。F3 起所有 motion 模式
+///   的 server 等待期都保持安靜；成功 reveal 才由修正版 master bed 接手。
 ///
 /// 由角色圖鑑頁（PracticeCollectionScreen，翻牌入口所在地）以 `Positioned.fill`
 /// 疊在內容最上層；idle 時整片透明且 `IgnorePointer`，不攔截底下的點擊。
@@ -297,7 +294,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     duration: const Duration(milliseconds: 2600),
   );
 
-  // 翻牌音效（咻／等待 loop／揭曉叮）。預設 no-op（未打包音檔），測試以
+  // 翻牌音效（咻／揭曉配樂）。等待期只保留視覺微動，不再播放 shimmer loop；測試以
   // [practiceDrawSfxProvider] override 注入 spy。於 initState 以 `ref.read` 鎖定實例
   // （Provider 無 async／context 依賴，initState read 安全），故 dispose 取用時純欄位
   // 讀取、不再碰 ref。
@@ -382,7 +379,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       } else {
         _intro.forward(from: 0);
         _waiting.repeat(); // 等待 server 期間持續蓄力微動。
-        _sfx.playWaitingLoop(); // 與微動同步：等待 server 期間的 shimmer loop。
+        // F3：等待 server 期間保持安靜。舊 shimmer loop 就是 build 326 仍可聽見的
+        // 「西西簌簌」來源；揭曉成功後再由修正版 reveal bed 接手。
       }
       return;
     }

@@ -2,9 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'practice_draw_audio_sfx.dart';
 
-/// 每日翻牌音效掛勾（Batch 4 種呼叫點 → 4.7 補滿 API／waiting loop → 4.7B 接真音檔）。
+/// 每日翻牌音效掛勾（Batch 4 種呼叫點 → 4.7B 接真音檔 → F3 退役 waiting loop）。
 ///
-/// 把「抽牌咻聲」「等待 shimmer loop」「揭曉叮聲」三組呼叫點種進揭曉儀式
+/// 把「抽牌咻聲」「揭曉配樂」呼叫點種進揭曉儀式
 /// （[PracticeDrawCeremony]）的狀態機；實際發聲由 [practiceDrawSfxProvider] 注入的
 /// [PracticeDrawSfx] 實作決定，呼叫端完全不必管是 no-op 還是真音檔。
 ///
@@ -16,21 +16,17 @@ import 'practice_draw_audio_sfx.dart';
 /// - 真實 impl **lazy + guarded**：headless／widget-test 環境（無 audio platform channel）
 ///   一律靜默、不丟例外；測試以 [practiceDrawSfxProvider] override 注入 spy，不真的播放。
 /// - 方法一律靜默、不丟例外；reduce-motion 與 widget test 環境呼叫都安全。
-/// - **lifecycle 安全**：等待 loop 必須能被明確 [stopWaitingLoop]（reveal／error／402／
-///   429／hidden／dispose 一律呼叫），絕不在背景殘留。呼叫端負責「每個離開 drawing
-///   的出口都 stop」，與 `_waiting` 動畫 controller 的 stop 點一一對應。
-/// - 可注入：[practiceDrawSfxProvider] 預設給 [NoopPracticeDrawSfx]，測試以 override
-///   注入 spy 驗證「在對的轉場呼叫對的音效」。
+/// - waiting loop 已於 F3 退役；相容方法仍保留為 no-op，避免舊 lifecycle 出口在過渡期失效。
+/// - 可注入：[practiceDrawSfxProvider] 預設給 [AudioPlayersPracticeDrawSfx]，測試以
+///   override 注入 spy 驗證「在對的轉場呼叫對的音效」。
 abstract class PracticeDrawSfx {
   /// 抽牌啟動：翻牌「咻」的滑出聲（約 0.3–0.6 秒，音量克制）。
   void playWhoosh();
 
-  /// 等待 server 抽牌期間的極小聲 shimmer/ambient loop。
-  /// 僅在 `drawStatus == drawing` 且**非** reduce-motion 時由呼叫端啟動。
+  /// 已退役的等待 shimmer loop。production 固定 no-op，儀式流程也不得呼叫。
   void playWaitingLoop();
 
-  /// 停止等待 loop。reveal／error／402／429／hidden／dispose 一律呼叫；可重複呼叫
-  /// （idempotent），未在播放時呼叫為 no-op。
+  /// 已退役 waiting loop 的相容 stop；固定 no-op 且可重複呼叫。
   void stopWaitingLoop();
 
   /// 揭曉成功：卡片翻正的 chime/sparkle（約 0.6–1 秒，與 medium haptic 同步）。

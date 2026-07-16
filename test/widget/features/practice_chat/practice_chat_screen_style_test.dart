@@ -3265,7 +3265,7 @@ void main() {
     );
   }
 
-  testWidgets('音效：抽牌啟動 → playWhoosh ＋ playWaitingLoop', (tester) async {
+  testWidgets('音效：抽牌啟動只播 whoosh，不啟動 waiting loop', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
@@ -3275,17 +3275,16 @@ void main() {
     await tester.pump(); // 進入 drawing
 
     expect(spy.whoosh, 1);
-    expect(spy.waitingStart, 1); // 等待 loop 啟動
+    expect(spy.waitingStart, 0); // F3：等待期保持安靜，不再播細碎 shimmer。
     expect(spy.chime, 0); // 尚未揭曉
-    expect(spy.looping, isTrue);
+    expect(spy.looping, isFalse);
 
     // 收尾：成功揭曉、settle 收掉 overlay（避免殘留 ticker）。
     completer.complete(_drawResultFor(practiceGirlProfiles[2]));
     await tester.pumpAndSettle();
   });
 
-  testWidgets('音效：揭曉成功 → stopWaitingLoop ＋ playRevealBed（loop 不殘留）',
-      (tester) async {
+  testWidgets('音效：揭曉成功 → waiting loop 未啟動、playRevealBed', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final zoe = practiceGirlProfiles[2];
     final api = _DrawApi(() async => _drawResultFor(zoe));
@@ -3295,14 +3294,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(spy.whoosh, 1);
-    expect(spy.waitingStart, 1);
+    expect(spy.waitingStart, 0);
     expect(spy.waitingStop, greaterThanOrEqualTo(1));
     expect(spy.chime, 0); // 舊 reveal chime 不再疊在 master audio 上
     expect(spy.bedStart, 1); // 完整參考片主音軌接管揭曉音效
     expect(spy.looping, isFalse); // 等待 loop 已停、不殘留
   });
 
-  testWidgets('音效：抽牌 402 → stopWaitingLoop、不播揭曉叮聲', (tester) async {
+  testWidgets('音效：抽牌 402 → waiting loop 未啟動、不播揭曉叮聲', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final api = _DrawApi(
       () async => throw PracticeDrawUpgradeRequiredException(
@@ -3315,13 +3314,13 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
     await tester.pumpAndSettle();
 
-    expect(spy.waitingStart, 1); // 曾進 drawing 啟動 loop
-    expect(spy.waitingStop, greaterThanOrEqualTo(1)); // 失敗兜底停 loop
+    expect(spy.waitingStart, 0); // F3：drawing 等待期固定靜音
+    expect(spy.waitingStop, greaterThanOrEqualTo(1)); // 相容 stop 仍安全收斂
     expect(spy.chime, 0); // 402 不慶祝
     expect(spy.looping, isFalse);
   });
 
-  testWidgets('音效：抽牌 429 → stopWaitingLoop、不播揭曉叮聲', (tester) async {
+  testWidgets('音效：抽牌 429 → waiting loop 未啟動、不播揭曉叮聲', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final api = _DrawApi(
       () async => throw PracticeQuotaExceededException('本月額度已用完',
@@ -3332,7 +3331,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
     await tester.pumpAndSettle();
 
-    expect(spy.waitingStart, 1);
+    expect(spy.waitingStart, 0);
     expect(spy.waitingStop, greaterThanOrEqualTo(1));
     expect(spy.chime, 0); // 429 不慶祝
     expect(spy.looping, isFalse);
@@ -3355,16 +3354,16 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('音效：drawing 中卸載儀式 → dispose stopWaitingLoop，loop 不殘留',
-      (tester) async {
+  testWidgets('音效：drawing 中卸載儀式 → waiting loop 從未啟動', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLockedWithSfx(tester, api: api, sfx: spy);
 
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
-    await tester.pump(); // drawing：等待 loop 啟動
-    expect(spy.looping, isTrue);
+    await tester.pump(); // drawing：只保留視覺等待微動
+    expect(spy.waitingStart, 0);
+    expect(spy.looping, isFalse);
 
     // 整個 PracticeChatScreen 子樹卸載 → 儀式 dispose 必停 loop。
     await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));

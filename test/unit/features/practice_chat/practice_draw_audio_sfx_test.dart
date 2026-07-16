@@ -55,7 +55,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
 
-    test('stopWaitingLoop idempotent：未播放／重複呼叫皆 no-op 不丟', () async {
+    test('waiting loop 已退役：start／stop 相容 API 固定 no-op 不丟', () async {
       final sfx = AudioPlayersPracticeDrawSfx();
 
       expect(() {

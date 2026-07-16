@@ -7,14 +7,11 @@ import 'practice_draw_sfx.dart';
 // ── 音量常數（集中於此，方便真機調整）─────────────────────────────────────
 // 真機目檢時直接調這三個值即可，不必動播放邏輯。
 const double _kWhooshVolume = 0.7; // 抽牌咻聲：建議 0.6–0.8。
-const double _kWaitingLoopVolume = 0.22; // 等待 loop：建議 0.18–0.28，務必小聲。
 const double _kRevealChimeVolume = 0.8; // 揭曉叮聲：建議 0.7–0.9。
 const double _kRevealBedVolume = 0.75; // 揭曉配樂 bed（主配樂）：建議 0.6–0.85。
 
 // ── 音檔路徑（相對 AudioCache 預設 prefix `assets/`）────────────────────────
 const String _kWhooshAsset = 'audio/practice_draw/practice_draw_whoosh.wav';
-const String _kWaitingLoopAsset =
-    'audio/practice_draw/practice_draw_waiting_loop.wav';
 const String _kRevealChimeAsset =
     'audio/practice_draw/practice_draw_reveal_chime.wav';
 // F2：揭曉配樂 bed。保留既有節奏，2–5s 的細碎高頻已平滑移除。
@@ -29,23 +26,19 @@ const String _kRevealBedAsset =
 ///   播放時才建立。所有 play／stop／context 設定都吞掉同步與 async 例外，因此在 headless
 ///   ／widget-test 環境（無 audio platform channel）一律靜默、絕不丟例外、絕不留未監聽的
 ///   create 失敗。真機才會真的發聲。
-/// - **獨立 player**：whoosh／reveal chime／揭曉配樂 bed 各自一個一次性（`ReleaseMode.release`）
-///   player 避免互相截斷；waiting loop 用 `ReleaseMode.loop` 的獨立 player，方便獨立 stop。
-///   bed 與 loop 都可被明確 stop（[stopRevealBed]／[stopWaitingLoop]），離開出口一律收掉。
-/// - **stopWaitingLoop idempotent**：未啟動或重複呼叫皆 no-op，呼叫端（揭曉儀式）在每個
-///   離開 drawing 的出口（reveal／error／402／429／hidden／dispose／reduce-motion）呼叫，
-///   loop 一律不殘留。
+/// - **獨立 player**：whoosh／reveal chime／揭曉配樂 bed 各自一個一次性
+///   （`ReleaseMode.release`）player，避免互相截斷。
+/// - **waiting loop 已退役**：build 326 證實等待期 shimmer 是殘留「西西簌簌」來源；
+///   [playWaitingLoop]／[stopWaitingLoop] 暫留介面相容，但 production 實作固定 no-op。
 /// - **iOS AudioContext**：`respectSilence`（ambient，尊重靜音鍵）＋`mixWithOthers`
 ///   （不中斷使用者背景音樂）；非必要的浪漫音效在公共場合不擾人。
 class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   AudioPlayersPracticeDrawSfx();
 
   AudioPlayer? _whooshPlayer;
-  AudioPlayer? _loopPlayer;
   AudioPlayer? _chimePlayer;
   AudioPlayer? _bedPlayer;
 
-  bool _loopActive = false;
   bool _bedActive = false;
   bool _contextConfigured = false;
 
@@ -104,31 +97,12 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
 
   @override
   void playWaitingLoop() {
-    try {
-      _ensureContext();
-      final player = _loopPlayer ??= _create(ReleaseMode.loop);
-      _loopActive = true;
-      unawaited(
-        player
-            .play(AssetSource(_kWaitingLoopAsset), volume: _kWaitingLoopVolume)
-            .catchError((Object _) {}),
-      );
-    } catch (_) {
-      // 啟動失敗也不丟；loop 視為未啟動。
-      _loopActive = false;
-    }
+    // F3：刻意固定靜音。勿重新接回舊 asset；見 docs/bug-log.md 2026-07-16。
   }
 
   @override
   void stopWaitingLoop() {
-    final player = _loopPlayer;
-    if (player == null || !_loopActive) return; // 未建立／未播放 → idempotent no-op。
-    _loopActive = false;
-    try {
-      unawaited(player.stop().catchError((Object _) {}));
-    } catch (_) {
-      // 停止失敗也不丟。
-    }
+    // 相容舊 lifecycle 出口的 idempotent no-op。
   }
 
   // E2：揭曉配樂 bed（復刻 音檔.mp4 音軌）。一條與 `_reveal`（~9s）同長的連續配樂，揭曉

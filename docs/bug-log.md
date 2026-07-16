@@ -14,22 +14,26 @@
 
 **Symptom**: 角色圖鑑翻牌儀式開始後約 2–5 秒，配樂出現與揭牌儀式不搭的高頻細碎聲。
 
-**Root Cause**: 不是播放器疊音。揭曉成功會先停止 waiting loop，舊 reveal chime 也未觸發，production 只播放一次
-`practice_draw_reveal_bed.mp3`。2026-07-09 F1 替換進去的 accent layer 本身帶寬頻顆粒噪聲，3.16–4.28 秒最明顯；
-2–5 秒頻譜平坦度 0.056804、6kHz 以上能量占 13.91%，因此固定被聽成「西西簌簌」。
+**Root Cause**: 有兩個獨立來源。2026-07-09 F1 的 reveal bed accent layer 本身帶寬頻顆粒噪聲，F2 已移除；
+但 F2 只在 server 回傳成功、進入 reveal 後才播放。按下翻牌到 server 回傳前，production 仍以 0.22 音量無限重播
+1.75 秒的 `practice_draw_waiting_loop.wav`，它的 shimmer 音色同樣會被聽成「西西簌簌」。因此 build 326 即使已正確
+bundle F2，等待期約 2–5 秒的聲音仍完全不受 F2 影響。
 
-**Fix**: F2 保留低頻與 C／G 揭牌音色，用 2100Hz 8th-order crossover 把高頻於 1.8–2.2 秒平滑淡出、
-4.8–5.2 秒平滑恢復；總長與 3.0／5.0／6.5／8.5 秒動畫節點不變。修後 2–5 秒頻譜平坦度降至
-0.000018、6kHz 以上能量降至 0.043%，全檔 peak -2.56dBFS，無 clipping／接縫 click。
+**Fix**: F2 保留低頻與 C／G 揭牌音色，用 2100Hz 8th-order crossover 移除 reveal bed 的細碎高頻；F3 再把
+waiting loop 從正式儀式退役：drawing 期間只保留視覺微動與一次性 whoosh，成功後才播放 F2 reveal bed。
+`playWaitingLoop()`／`stopWaitingLoop()` 暫留介面相容，但 production 實作固定 no-op，避免其他呼叫點復活舊聲音。
 
-**Prevention**: unit test 鎖定 F2 master SHA-256，避免日後誤換回 F1；音訊品質仍需真機聽感驗收。既有 build
-bundle 不會自動更新 asset，必須 fresh build／新 TestFlight 才會生效。
+**Prevention**: unit test 鎖定 F2 master SHA-256，widget test 鎖定 normal-motion drawing 也不得呼叫
+`playWaitingLoop()`；音訊品質仍需真機聽感驗收。
 
-**Validation**: audio asset tests 8/8、翻牌音效 widget tests 13/13、E1 音軌時間軸 3/3、scoped
-`flutter analyze` clean；FFmpeg decode 與頻譜門檻檢查通過。
+**Validation**: build 326 = commit `63fe4c82`，同 SHA staging IPA 內 F2 SHA-256 與 source byte-for-byte 相同；
+`audioplayers` 6.7.1 每個 app process 使用新 UUID temp cache，排除跨 TestFlight build 舊檔快取。F3 targeted
+widget／unit tests 與 scoped analyze 通過（詳見修復 commit）。
 
 **相關檔案**: `assets/audio/practice_draw/practice_draw_reveal_bed.mp3`、
-`assets/audio/practice_draw/licenses/practice_draw_audio.md`、`test/unit/features/practice_chat/practice_draw_audio_sfx_test.dart`。
+`lib/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart`、
+`lib/features/practice_chat/presentation/widgets/practice_draw_audio_sfx.dart`、
+`test/widget/features/practice_chat/practice_chat_screen_style_test.dart`。
 
 ### [2026-07-13] Game Hint 全線 503：typed-facts-v1 claim 抽取誤殺＋HINT_MAX_TOKENS 截斷
 
