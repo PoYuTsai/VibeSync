@@ -382,6 +382,26 @@ void main() {
   });
 
   group('ScreenshotRecognitionHelper.copyAndGuidance', () {
+    test('讀圖確認卡不顯示模型摘要，並明確標示尚未開始分析', () {
+      const recognized = RecognizedConversation(
+        messageCount: 99,
+        summary:
+            'Bruce asks if the food is good and shares a Google Maps link.',
+        messages: [
+          RecognizedMessage(isFromMe: false, content: '好吃嗎'),
+          RecognizedMessage(isFromMe: true, content: '我在春水堂排隊'),
+        ],
+      );
+
+      final title = ScreenshotRecognitionHelper.recognitionPreviewTitle(
+        recognized,
+      );
+
+      expect(title, '已讀取 2 則聊天內容，尚未開始分析');
+      expect(title, isNot(contains('Bruce asks')));
+      expect(title, isNot(contains('Google Maps')));
+    });
+
     test('returns localized labels', () {
       expect(
         ScreenshotRecognitionHelper.classificationLabel('social_feed'),

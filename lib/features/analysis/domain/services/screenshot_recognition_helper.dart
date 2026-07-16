@@ -294,6 +294,14 @@ class ScreenshotRecognitionHelper {
     }
   }
 
+  static String recognitionPreviewTitle(RecognizedConversation recognized) {
+    final recognizedMessageCount = recognized.messages?.length ?? 0;
+    final messageCount = recognizedMessageCount > 0
+        ? recognizedMessageCount
+        : recognized.messageCount;
+    return '已讀取 $messageCount 則聊天內容，尚未開始分析';
+  }
+
   static bool hasQuotedReplyPreview(RecognizedConversation recognized) {
     return (recognized.messages ?? const <RecognizedMessage>[]).any(
       (message) => message.quotedReplyPreview?.trim().isNotEmpty ?? false,

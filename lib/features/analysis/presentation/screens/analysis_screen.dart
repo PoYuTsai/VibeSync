@@ -5801,7 +5801,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  recognized.summary,
+                  ScreenshotRecognitionHelper.recognitionPreviewTitle(
+                    recognized,
+                  ),
                   style: AppTypography.bodyMedium.copyWith(
                     fontWeight: FontWeight.bold,
                     color: AppColors.onBackgroundPrimary,
