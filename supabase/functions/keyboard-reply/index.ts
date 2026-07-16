@@ -9,11 +9,14 @@ import {
   buildQuotaExceededPayload,
   checkQuota,
   classifyQuotaRpcError,
+  isPlainObject,
   normalizeTier,
+  parseRevenueCatSubscriber,
   type ResetResult,
   resolveLimits,
   type SubscriptionRow,
   TEST_EMAILS,
+  tierRank,
 } from "../_shared/quota.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import {
@@ -25,6 +28,7 @@ import { validateRequest } from "./validate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const REVENUECAT_IOS_API_KEY = Deno.env.get("REVENUECAT_IOS_API_KEY");
 const COST = 1;
 const MAX_BODY_BYTES = 32 * 1024;
 const SUBSCRIPTION_COLUMNS =
@@ -110,6 +114,48 @@ async function persistResets(
   }
 }
 
+// Paid users must not be treated as Free merely because the RevenueCat webhook
+// is delayed. This mirrors the established coach-follow-up upgrade-only heal.
+// deno-lint-ignore no-explicit-any
+async function maybeRefreshTier(
+  client: any,
+  userId: string,
+  sub: SubscriptionRow,
+) {
+  if (!REVENUECAT_IOS_API_KEY) return null;
+  const previousTier = normalizeTier(sub.tier);
+  if (previousTier === "essential") return null;
+  try {
+    const response = await fetch(
+      `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(userId)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${REVENUECAT_IOS_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+    if (!response.ok) return null;
+    const payload = await response.json().catch(() => null);
+    if (!isPlainObject(payload) || !isPlainObject(payload.subscriber)) {
+      return null;
+    }
+    const parsed = parseRevenueCatSubscriber(payload.subscriber);
+    if (!parsed || tierRank(parsed.tier) <= tierRank(previousTier)) return null;
+    const update: Record<string, unknown> = {
+      tier: parsed.tier,
+      status: "active",
+    };
+    if (parsed.expiresAt) update.expires_at = parsed.expiresAt;
+    const { data } = await client.from("subscriptions").update(update)
+      .eq("user_id", userId).select(SUBSCRIPTION_COLUMNS).maybeSingle();
+    return (data ?? { ...sub, tier: parsed.tier }) as SubscriptionRow;
+  } catch {
+    console.warn("keyboard_reply_revenuecat_refresh_failed");
+    return null;
+  }
+}
+
 export async function handleRequest(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -162,15 +208,29 @@ export async function handleRequest(request: Request): Promise<Response> {
   if (reset.dailyReset || reset.monthlyReset) {
     await persistResets(client, user.id, reset);
   }
-  const limits = resolveLimits(sub.tier);
+  let limits = resolveLimits(sub.tier);
   const accountIsTest = TEST_EMAILS.includes(user.email ?? "");
-  const gate = checkQuota({
+  let gate = checkQuota({
     sub,
     cost: COST,
     isTestAccount: accountIsTest,
     monthlyLimit: limits.monthly,
     dailyLimit: limits.daily,
   });
+  if (!gate.ok) {
+    const refreshed = await maybeRefreshTier(client, user.id, sub);
+    if (refreshed) {
+      sub = refreshed;
+      limits = resolveLimits(sub.tier);
+      gate = checkQuota({
+        sub,
+        cost: COST,
+        isTestAccount: accountIsTest,
+        monthlyLimit: limits.monthly,
+        dailyLimit: limits.daily,
+      });
+    }
+  }
   if (!gate.ok) {
     return jsonResponse(
       buildQuotaExceededPayload({
@@ -215,14 +275,28 @@ export async function handleRequest(request: Request): Promise<Response> {
         if (latestReset.dailyReset || latestReset.monthlyReset) {
           await persistResets(client, userId, latestReset);
         }
-        const latestLimits = resolveLimits(latest.tier);
-        const latestGate = checkQuota({
+        let latestLimits = resolveLimits(latest.tier);
+        let latestGate = checkQuota({
           sub: latest,
           cost: COST,
           isTestAccount: accountIsTest,
           monthlyLimit: latestLimits.monthly,
           dailyLimit: latestLimits.daily,
         });
+        if (!latestGate.ok) {
+          const refreshed = await maybeRefreshTier(client, userId, latest);
+          if (refreshed) {
+            latest = refreshed;
+            latestLimits = resolveLimits(latest.tier);
+            latestGate = checkQuota({
+              sub: latest,
+              cost: COST,
+              isTestAccount: accountIsTest,
+              monthlyLimit: latestLimits.monthly,
+              dailyLimit: latestLimits.daily,
+            });
+          }
+        }
         if (!latestGate.ok) {
           throw new KeyboardReplyQuotaExceededError(
             latestGate.reason,

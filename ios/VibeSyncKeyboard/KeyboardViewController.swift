@@ -17,6 +17,7 @@ final class KeyboardViewController: UIInputViewController {
     private let pasteButton = UIButton(type: .system)
     private var styleButtons: [KeyboardReplyStyle: UIButton] = [:]
     private var loadedMessage = ""
+    private var lastInsertedReply: String?
     private var mode: Mode = .ai
     private var deleteTimer: Timer?
 
@@ -158,7 +159,7 @@ final class KeyboardViewController: UIInputViewController {
         space.setContentHuggingPriority(.defaultLow, for: .horizontal)
         row.addArrangedSubview(space)
         row.addArrangedSubview(makeButton("換行", action: #selector(insertReturn)))
-        let backspace = makeButton("⌫", action: #selector(deleteBackward))
+        let backspace = makeButton("⌫", action: #selector(noop))
         backspace.addTarget(self, action: #selector(startDeleting), for: .touchDown)
         backspace.addTarget(self, action: #selector(stopDeleting), for: [.touchUpInside, .touchUpOutside, .touchCancel])
         row.addArrangedSubview(backspace)
@@ -241,7 +242,12 @@ final class KeyboardViewController: UIInputViewController {
             self.updateStyleButtons()
             switch result {
             case .success(let reply):
+                if let previous = self.lastInsertedReply,
+                   self.textDocumentProxy.documentContextBeforeInput?.hasSuffix(previous) == true {
+                    for _ in previous { self.textDocumentProxy.deleteBackward() }
+                }
                 self.textDocumentProxy.insertText(reply)
+                self.lastInsertedReply = reply
                 self.statusLabel.text = "已插入輸入框；你確認後再送出。再點同風格可換一則"
             case .failure(let error):
                 self.statusLabel.text = self.message(for: error)
@@ -252,7 +258,7 @@ final class KeyboardViewController: UIInputViewController {
     private func message(for error: KeyboardAPIError) -> String {
         switch error {
         case .unauthorized: return "登入已過期，請先開啟 VibeSync App 再回來"
-        case .quotaExceeded: return "額度已用完，請回 VibeSync 查看方案"
+        case .quotaExceeded: return "額度已用完，請回 VibeSync App 查看"
         case .modelRateLimited(let message): return message
         case .fullAccessRequired: return "請在設定開啟「允許完整取用」"
         case .network: return "網路不穩，請稍後再試"

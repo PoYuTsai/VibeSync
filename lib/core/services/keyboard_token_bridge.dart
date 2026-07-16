@@ -55,6 +55,7 @@ class KeyboardTokenBridge {
   static StreamSubscription<AuthState>? _authSubscription;
 
   final KeyboardCredentialStore _store;
+  Future<void> _pendingOperation = Future<void>.value();
 
   static bool get _supportsKeyboardBridge =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
@@ -68,16 +69,20 @@ class KeyboardTokenBridge {
     await _authSubscription?.cancel();
     _authSubscription = SupabaseService.authStateChanges.listen((state) {
       if (state.event == AuthChangeEvent.signedOut) {
-        unawaited(bridge.clear());
+        unawaited(bridge._enqueue(bridge.clear));
         return;
       }
       final payload = _payloadFromSession(state.session);
-      if (payload != null) unawaited(bridge.sync(payload));
+      if (payload != null) {
+        unawaited(bridge._enqueue(() => bridge.sync(payload)));
+      }
     });
   }
 
   static Future<void> syncOnForeground() async {
-    await _instance?.syncCurrentSession(refreshIfExpired: true);
+    await _instance?._enqueue(
+      () => _instance!.syncCurrentSession(refreshIfExpired: true),
+    );
   }
 
   Future<void> syncCurrentSession({required bool refreshIfExpired}) async {
@@ -112,6 +117,15 @@ class KeyboardTokenBridge {
     await _store.delete(accessTokenKey);
     await _store.delete(userIdKey);
     await _store.delete(expiresAtKey);
+  }
+
+  Future<void> _enqueue(Future<void> Function() operation) {
+    _pendingOperation = _pendingOperation.then((_) => operation()).catchError(
+      (Object error, StackTrace stackTrace) {
+        debugPrint('Keyboard credential sync failed: $error\n$stackTrace');
+      },
+    );
+    return _pendingOperation;
   }
 
   static KeyboardSessionPayload? _payloadFromSession(Session? session) {
