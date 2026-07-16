@@ -1,7 +1,7 @@
 # VibeSync 定價方案 (最終版)
 
 > **原始決定日期**：2026-02-26
-> **最新修訂**：2026-07-16（ADR #22「我幫你修」成功固定 1 則）
+> **最新修訂**：2026-07-17（ADR #23 Free 分析升級 Sonnet 5）
 > **目標用戶**：個人用戶
 > **計費模式**：訊息制
 >
@@ -95,12 +95,10 @@
 | 練習室續玩同一位角色 | ✗（僅第 1 輪）| ✓ | ✓ |
 | 學習專區（每日上限）| 3 篇/日 | ∞ | ∞ |
 | 對話歷史 | 3 個 | 15 個 | 50 個 |
-| AI 模型 | Haiku（關鍵時刻升 Sonnet¹）| **Sonnet**（2026-04-22 升級）| Sonnet |
+| AI 模型 | 分析對話 Sonnet 5¹；其他 Free endpoint 原則上 Haiku | 分析對話 Sonnet 4.6 | 分析對話 Sonnet 4.6 |
 | 有圖片時 | Sonnet（強制）| Sonnet | Sonnet |
 
-> ¹ Free 在「首次分析（≤5 則）、長對話（>20 則）、冷淡、複雜情緒」由 `selectModel` 升 Sonnet
-> （`analyze-chat/index.ts`）。2026-07-03 Eric 拍板：**接受為轉換投資、不 clamp**——首次分析
-> 是轉換 demo，品質優先；成本已被月/日額度＋per-user 模型限流雙層封頂。
+> ¹ 2026-07-16 起 Free `analyze-chat` 全部固定 Sonnet 5，不再依對話長度或情緒升降模型。這是首次體驗品質投資；月/日額度與 per-user 限流仍為成本上限。Sonnet 5 launch price 到 2026-08-31，到期前必須重審。
 >
 > 上表 gating 對照 2026-07-03 實碼：opener Free 僅 `extend`（`index.ts:527`）、草稿潤飾
 > client＋server 雙閘 Essential、翻牌 1/3/5＋加購規則（`practice-chat/draw_decision.ts`）、
@@ -140,10 +138,11 @@ Paywall 目前預設先選 `essential_monthly`；若該方案尚未回傳，會 
 
 | 方案 | 月費 | 最大成本（全用滿） | 毛利率 |
 |------|------|--------------------|--------|
-| Free | NT$0 | ~NT$1.5–5 (30 × Haiku，關鍵時刻升 Sonnet¹) | — |
+| Free | NT$0 | ~NT$4–13（沿用舊 token 假設；Sonnet 5 launch price 約 2.5× Haiku） | — |
 | Starter | NT$590 | ~NT$100 (300 × Sonnet) | ~83% |
 | Essential | NT$1,290 | ~NT$270 (800 × Sonnet) | ~79% |
 
+> 2026-07-16 起，Free 分析對話使用 Sonnet 5；表內 Free 成本只是沿用舊 token 分佈的粗估，營運決策以 `ai_logs` 為準。
 > 2026-04-22 起，Starter 也使用 Sonnet（原 Haiku）。毛利率從 90% 降至 ~83%，但品質提升預期可降低退訂率。
 > 有圖片時所有層強制 Sonnet（Vision API 需求）。
 > Prompt Caching 啟用可降 ~60% cost（`cache_control: { type: "ephemeral" }`）。

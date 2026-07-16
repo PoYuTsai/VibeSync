@@ -212,7 +212,7 @@
 ---
 
 ## ADR #11 — [2026-04-22] AI 模型策略更新（Starter 升 Sonnet）
-**狀態**: ✅ Active（取代 ADR #2）
+**狀態**: 🟡 Partially superseded（Starter / Essential 仍有效；Free analyze-chat 由 ADR #23 取代）
 
 **決定**: Starter 層從 Haiku 升級為 Sonnet
 
@@ -700,3 +700,17 @@
 8. ledger 只允許 AI 產生的 `optimized` 與 `reason` 欄位，DB constraint 拒絕另存原始草稿、完整對話輸入、usage、telemetry 或任何額外欄位；生成文字仍可能重述輸入內容。App 用同一 hash 綁定請求內的草稿重建 `original`。功能獨立同意、App 內 AI 隱私頁與 repo 隱私政策來源已更新；**部署前仍須把新版政策發佈到 `https://vibesyncai.app/privacy` 並核對 App Store Connect 揭露，否則不得上線本功能。**
 
 **部署要求**: 必須先套用 `20260716170000_optimize_message_fixed_charge.sql`，再部署 `analyze-chat`，最後發佈含 request id wire contract 的 App build。這是 quota／Edge 高風險變更，Codex `APPROVED` 前不得宣稱可供 dogfood。
+
+## ADR #23 — [2026-07-16] Free analyze-chat 固定使用 Sonnet 5
+
+**狀態**: 🟢 Active — Eric 已以 commit `5f12c1b4` 實作拍板
+
+**決定**:
+
+1. Free `analyze-chat` 不再依首次、長度、冷淡或複雜情緒分流，所有分析固定使用 `claude-sonnet-5`。
+2. Starter / Essential 分析維持 `claude-sonnet-4-6`，不跟著 Free 升級。其他 Free AI endpoint 仍以各自實碼路由為準，本 ADR 不把 Coach、Opener 或 Keyboard 一律改成 Sonnet 5。
+3. 品質優先於舊的 70% Haiku 成本假設，但月/日額度、per-user rate limit 與請求 hard cap 仍是強制上限。
+4. logger 以 Sonnet 5 launch price 計價：input $2 / 1M tokens、output $10 / 1M tokens，同 token mix 為 Haiku 4.5 的 2.5 倍。此價格只到 2026-08-31，到期前必須重新核價。
+5. 放量前以 `ai_logs` 監看 Free 每次成功成本、每日總成本、cache hit 與 Sonnet 5 → 4.6 fallback 比例；不再沿用「Free 100% Haiku」的毛利預估。
+
+**驗證**: `analyze-chat/index_test.ts` 鎖定 Free 路由；`logger_test.ts` 鎖定當前 launch price 與 2.5 倍成本比。

@@ -4,14 +4,17 @@
 
 ---
 
-## 模型路由（2026-04-22 起，見 ADR #11）
+## 模型路由（2026-07-16 起，見 ADR #23）
 
 | Tier | 模型 | 成本比重 |
 |------|------|----------|
-| Free | Haiku (`claude-haiku-4-5-20251001`) | 低 |
-| Starter | **Sonnet** (`claude-sonnet-4-20250514`) | 中（原為 Haiku，升級後） |
-| Essential | Sonnet | 中高 |
+| Free 分析對話 | Sonnet 5 (`claude-sonnet-5`) | 中；launch price 到 2026-08-31 |
+| Starter 分析對話 | Sonnet 4.6 (`claude-sonnet-4-6`) | 中高 |
+| Essential 分析對話 | Sonnet 4.6 (`claude-sonnet-4-6`) | 中高 |
+| 其他 Free AI endpoint | 原則上 Haiku，以各 function 實碼為準 | 低 |
 | 有圖片（所有層） | 強制 Sonnet（Vision 需要） | 高 |
+
+Sonnet 5 launch token price 在目前 logger 為 Haiku 的 **2.5 倍**；此價格只鎖到 2026-08-31，到期前必須核對 Anthropic 正式價格、`ai_logs` 實際 tokens 與 Free 轉換效益。
 
 ---
 
@@ -41,8 +44,10 @@
 
 **關鍵指標**:
 - 每用戶每日平均 cost
-- Free tier fallback 到 Haiku 的比例
+- Free `analyze-chat` 每次成功成本與每日總成本
+- Sonnet 5 fallback 到 Sonnet 4.6 的比例
 - Sonnet 呼叫的 cache hit rate（目標 > 60%）
+- 2026-08-31 前完成 Sonnet 5 價格與 Free 單位經濟重審
 
 ---
 
@@ -82,7 +87,7 @@
 ## 成本敏感操作
 
 ### 有圖片分析
-強制 Sonnet，成本約是 Haiku 的 10-15 倍。優化方向：
+強制 Sonnet；不含圖片 token 時，Sonnet 5 / 4.6 的 token 單價約是 Haiku 的 2.5 / 3.75 倍，Vision 還會另增圖片 input tokens。優化方向：
 1. 截圖上傳前自動壓縮（~1024px、85% quality）
 2. 限制最多 3 張/次
 3. 識別與分析分離（純識別用精簡 prompt）
