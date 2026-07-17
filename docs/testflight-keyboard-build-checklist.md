@@ -45,6 +45,16 @@
 
 6. HMAC key 不可在 24 小時 replay window 內直接輪替。要輪替時先暫停鍵盤流量並等待至少 24 小時，或先實作 versioned-key migration。
 
+### Production 完成證據（2026-07-17）
+
+- [x] `20260717120000` 精準套用，migration ledger local／remote version 對齊。
+- [x] 32-byte random Base64 `KEYBOARD_REPLAY_HMAC_KEY` 已設定，必要 secret preflight 通過。
+- [x] `keyboard-reply` v5 已部署，`verify_jwt=true`。
+- [x] Live health 回 `keyboard-reply-exactly-once-v1`。
+- [x] 真實 PostgreSQL claim／pending／owner release／settlement／replay／mismatch transaction smoke 通過並 rollback；RLS／grant／cron 正確。
+- [x] Production 測試帳號 fresh／replay／mismatch 通過、quota 不變、smoke rows 清為 0。
+- [ ] 非測試 quota +1／429、HTTP 並行 pending／lost-response 與 iPhone Full Access 仍待真機矩陣。
+
 ## Apple／Build
 
 1. Runner `com.poyutsai.vibesync` 與 Keyboard `com.poyutsai.vibesync.keyboard` 都啟用：

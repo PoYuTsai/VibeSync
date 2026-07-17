@@ -31,7 +31,7 @@ Recent commit themes, newest first:
 
 - Build 332 產品校準（2026-07-17）：Free `analyze-chat` 回覆從單一延展改為固定產出延展＋調情兩種，保留共鳴／幽默／冷讀作為付費完整五種差異；Free Opener 仍只有延展。對方這次的投入度在完成回應層統一改為 `ceil(AI 原分 × 0.9)`（例 82 → 74），不改 prompt、AI 理由或回覆選擇。OCR 確認視窗每次開啟都會自動播放一次左右滑動教學；長 OCR 等待以準備／上傳／讀圖／辨識訊息／校對說話者／整理結果狀態切換，不傳輸中間分析內容。
 
-- AI 鍵盤恰一次結算（2026-07-17）：extension 以共享 Keychain 分指紋原子保存、綁 user＋文字＋風格的 durable UUID（重試資格約 23 小時，多筆／多帳號在途不互蓋）；`keyboard-reply` 先以 DB claim／lease 序列化模型呼叫，再由原子 RPC 同交易保存結果與扣 1。Server replay window 為 24 小時、每小時清理，input identity 使用 user-bound server-keyed HMAC。通用 Edge auto-deploy 已排除 keyboard；發布仍 blocked，必須依序完成 HMAC secret、migration、Edge、live contract、signed iOS keyboard compile、公開隱私更新，以及真機 fresh／replay／pending／mismatch／quota／Full Access 測試。
+- AI 鍵盤恰一次結算（2026-07-17）：extension 以共享 Keychain 分指紋原子保存、綁 user＋文字＋風格的 durable UUID（重試資格約 23 小時，多筆／多帳號在途不互蓋）；`keyboard-reply` 先以 DB claim／lease 序列化模型呼叫，再由原子 RPC 同交易保存結果與扣 1。Server replay window 為 24 小時、每小時清理，input identity 使用 user-bound server-keyed HMAC。Production 已依 DB migration `20260717120000` → 32-byte HMAC secret → JWT-verified Edge v5 順序部署，live contract、DB transaction 與測試帳號 fresh／replay／mismatch smoke 通過且零殘留。發布仍 blocked 於 signed iOS keyboard、非測試 quota／HTTP 並行與 lost-response、公開隱私更新，以及 LINE／Instagram／Messages Full Access 真機矩陣。
 
 - Sonnet 5 主模型統一（2026-07-17）：`analyze-chat` Free／Starter／Essential、付費或圖片 Opener、圖片分析、付費 Coach／Follow-up，以及 Practice 的付費 Claude failover 都以 Sonnet 5 為主；Sonnet 4.6 只保留在 `analyze-chat` 降級鏈與測試相容。其他 Free endpoint 與 Keyboard 仍依既有成本路由使用 Haiku，Practice 仍以 DeepSeek 為主。Sonnet 5 launch token price 只到 2026-08-31，放量前與到期前都要以 `ai_logs` 重審。
 

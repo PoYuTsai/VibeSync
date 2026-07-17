@@ -49,10 +49,11 @@
 
 以下不影響 repo 產生 Build 332，但完成前不能宣稱本輪已可正式送審：
 
-1. Production keyboard 必須依 migration `20260717120000` → `KEYBOARD_REPLAY_HMAC_KEY` → JWT-verified Edge deploy → live contract 順序完成；目前 release preflight 會刻意阻擋舊 contract。
-2. 必須在 macOS 產 signed iOS Build 332，並確認 archive 含 `VibeSyncKeyboard.appex`。
-3. 必須用 iPhone 真機驗證 Free 雙風格、付費 Sonnet 路由的實際結果、82 → 74 校準、OCR 每次開啟動畫、4／9／15 秒等待狀態、訂閱升降級與鍵盤 fresh／replay／quota／Full Access。
+1. 必須在 macOS 產 signed iOS Build 332，並確認 archive 含 `VibeSyncKeyboard.appex`。
+2. 必須用 iPhone 真機驗證 Free 雙風格、付費 Sonnet 路由的實際結果、82 → 74 校準、OCR 每次開啟動畫、4／9／15 秒等待狀態、訂閱升降級與鍵盤非測試 quota／HTTP 並行／lost-response／Full Access。
+
+Production keyboard gate 已於 2026-07-17 依 DB → Secret → JWT-verified Edge v5 → live contract 完成；DB transaction 與測試帳號 fresh／replay／mismatch smoke 通過。證據見 `docs/reviews/2026-07-17-keyboard-production-deployment.md`。
 
 ## Verdict
 
-`APPROVED FOR BUILD 332`，但 `NOT YET APP REVIEW READY`。Repo 層的 Build 332 功能與回歸測試已收斂；production keyboard gate 與 iPhone 真機證據仍是送審前硬條件。
+`APPROVED FOR BUILD 332`，但 `NOT YET APP REVIEW READY`。Repo 層與 production keyboard backend gate 已收斂；signed iOS、非測試 quota／HTTP 並行與 lost-response、隱私揭露及 iPhone 真機證據仍是送審前硬條件。

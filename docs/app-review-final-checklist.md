@@ -10,11 +10,11 @@
 
 ## 0. Phase 14 目前判定
 
-目前判定：`Repo GO / Next Build HOLD`。2026-07-04 的 build 305 已送審是歷史紀錄；2026-07-17 新增的 AI 鍵盤恰一次計費與隱私資料流，必須先完成 production、signed iOS、真機與 App Store Connect 新一輪 gate。
+目前判定：`Repo GO / Next Build HOLD`。2026-07-04 的 build 305 已送審是歷史紀錄；2026-07-17 新增的 AI 鍵盤恰一次計費與隱私資料流，其 production backend gate 已完成，仍須完成 signed iOS、真機與 App Store Connect 新一輪 gate。
 
-Repo 端目前證據：發布硬化 PR #17 已建立；`flutter analyze` PASS、Flutter 2,252 passed / 4 skipped、Edge contracts 177 passed / 0 failed、admin production build / lint / audit PASS。最終 code review 無剩餘 P0/P1/P2。
+Repo 端目前證據：發布硬化 PR #17 已建立；`flutter analyze` PASS、Flutter 2,251 passed / 4 skipped、Edge contracts 177 passed / 0 failed、admin production build / lint / audit PASS。最終 code review 無剩餘 P0/P1/P2。
 
-送出下一個 build 前仍需完成：keyboard migration → HMAC secret → Edge 的 production 順序部署、live contract、signed keyboard extension、真機 smoke、公開隱私頁與 App Store Connect Privacy Label 對齊，以及既有 RevenueCat / reviewer / logs gate。
+送出下一個 build 前仍需完成：signed keyboard extension、非測試 quota／HTTP 並行與 lost-response 真機 smoke、公開隱私頁與 App Store Connect Privacy Label 對齊，以及既有 RevenueCat / reviewer / logs gate。Keyboard migration → HMAC secret → JWT-verified Edge → live contract 已完成。
 
 ## 1. 帳號與登入
 
@@ -77,10 +77,10 @@ Repo 端目前證據：發布硬化 PR #17 已建立；`flutter analyze` PASS、
 - [ ] 最新 iOS release workflow 綠燈
 - [x] 最新 Edge Function deploy workflow 綠燈（`cdafa244`，run `29450067262`）
 - [ ] TestFlight build 可在 App Store Connect / TestFlight 看到
-- [x] `analyze-chat` 目前維持 `--no-verify-jwt`，未被誤改（v269）
-- [ ] Production 已精準套用 `20260717120000_keyboard_reply_exactly_once.sql`，且 migration 帳本 version 對齊
-- [ ] Supabase 已設定 `KEYBOARD_REPLAY_HMAC_KEY`，再部署 JWT-verified `keyboard-reply`
-- [ ] Live keyboard health 回 `keyboard-reply-exactly-once-v1`
+- [x] `analyze-chat` 目前維持 `--no-verify-jwt`，未被誤改（v274）
+- [x] Production 已精準套用 `20260717120000_keyboard_reply_exactly_once.sql`，且 migration 帳本 version 對齊
+- [x] Supabase 已設定 `KEYBOARD_REPLAY_HMAC_KEY`，再部署 JWT-verified `keyboard-reply` v5
+- [x] Live keyboard health 回 `keyboard-reply-exactly-once-v1`
 - [ ] Signed Archive / IPA 包含 `VibeSyncKeyboard.appex`
 - [ ] 真機 fresh / lost-response replay / pending / mismatch / quota / model-rate 與 LINE／Instagram／Messages Full Access 全過
 

@@ -380,8 +380,8 @@ H batch 完成紀錄（2026-07-04 送審前全數處理）：
 
 Repo 端已完成完整 Flutter／Edge／admin 驗證與獨立 code review；下一個 TestFlight／App Review build 仍須逐項完成：
 
-- [ ] 精準套用 `20260717120000_keyboard_reply_exactly_once.sql`，在真實 PostgreSQL 驗證 claim、settlement rollback、replay、cleanup、RLS／grant，並對齊 migration 帳本。
-- [ ] 設定 `KEYBOARD_REPLAY_HMAC_KEY`，再部署 JWT-verified `keyboard-reply`；live health 必須回 `keyboard-reply-exactly-once-v1`。
+- [x] 精準套用 `20260717120000_keyboard_reply_exactly_once.sql`，在真實 PostgreSQL 驗證 claim、settlement rollback、replay、cleanup、RLS／grant，並對齊 migration 帳本。
+- [x] 設定 `KEYBOARD_REPLAY_HMAC_KEY`，再部署 JWT-verified `keyboard-reply` v5；live health 回 `keyboard-reply-exactly-once-v1`。
 - [ ] macOS signed Archive / IPA 包含 `VibeSyncKeyboard.appex`，TestFlight 真機完成 fresh、lost-response replay、pending、mismatch、quota、model-rate 與 Full Access 矩陣。
 - [ ] 公開 Privacy Policy、App 內 AI 隱私頁、App Store Connect App Privacy 與 Review Notes 同步 AI 鍵盤 24 小時 replay／每小時清理、共享 Keychain retry identity、input HMAC 與不保存原始複製文字的資料流。
 
