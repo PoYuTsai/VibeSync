@@ -73,6 +73,7 @@ import '../widgets/screenshot_added_feedback_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
 import '../widgets/analysis_usage_summary_line.dart';
 import '../helpers/analysis_usage_copy.dart';
+import '../widgets/analysis_action_widgets.dart';
 import '../widgets/streaming_analysis_loading_widgets.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
@@ -6248,11 +6249,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _fullErrorMessage == null;
     final isScreenshotOnlyEmptyState =
         showInitialScreenshotSetup && conversation.messages.isEmpty;
+    final showFloatingAnalysisAction = showInitialScreenshotSetup &&
+        analysisFragmentMessages.isNotEmpty &&
+        _selectedImages.isEmpty;
 
     return BrandScaffold(
       // body 自帶 SafeArea（見下方），故關掉鷹架的外層 SafeArea 避免雙層巢套。
       safeArea: false,
       resizeToAvoidBottomInset: true,
+      floatingActionButton: showFloatingAnalysisAction
+          ? FloatingAnalysisActionButton(
+              onPressed: (_isAnalyzing || _isRecognizing)
+                  ? null
+                  : _runAnalysis,
+            )
+          : null,
       title: conversation.name,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
@@ -6839,24 +6850,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       ),
                                     */
                                   const SizedBox(height: 12),
-                                ] else if (conversation
-                                    .messages.isNotEmpty) ...[
-                                  // 沒有截圖時才顯示「開始分析」按鈕
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton.icon(
-                                      onPressed:
-                                          (_isAnalyzing || _isRecognizing)
-                                              ? null
-                                              : _runAnalysis,
-                                      icon: const Icon(Icons.auto_awesome),
-                                      label: const Text('開始分析'),
-                                      style: ElevatedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 14),
-                                      ),
-                                    ),
-                                  ),
                                 ],
                                 const SizedBox(height: 16),
                                 Text(
