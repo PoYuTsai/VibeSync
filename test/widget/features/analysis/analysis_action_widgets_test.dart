@@ -61,4 +61,54 @@ void main() {
       expect(button.onPressed, isNull);
     });
   });
+
+  group('AnalysisScrollHint', () {
+    testWidgets('moves downward then disappears after about two seconds',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(const AnalysisScrollHint(duration: Duration(seconds: 2))),
+      );
+
+      expect(find.byKey(AnalysisScrollHint.hintKey), findsOneWidget);
+      expect(find.text('往下滑'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('分析內容會在下方陸續出現，請往下滑'),
+        findsOneWidget,
+      );
+      final initialY =
+          tester.getTopLeft(find.byKey(AnalysisScrollHint.hintKey)).dy;
+
+      await tester.pump(const Duration(seconds: 1));
+      final laterY =
+          tester.getTopLeft(find.byKey(AnalysisScrollHint.hintKey)).dy;
+      expect(laterY, greaterThan(initialY));
+
+      await tester.pump(const Duration(milliseconds: 1100));
+      await tester.pump();
+      expect(find.byKey(AnalysisScrollHint.hintKey), findsNothing);
+    });
+
+    testWidgets('respects reduced motion while retaining the timed cue',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          MediaQuery(
+            data: const MediaQueryData(disableAnimations: true),
+            child:
+                const AnalysisScrollHint(duration: Duration(milliseconds: 300)),
+          ),
+        ),
+      );
+
+      final initialY =
+          tester.getTopLeft(find.byKey(AnalysisScrollHint.hintKey)).dy;
+      await tester.pump(const Duration(milliseconds: 150));
+      final laterY =
+          tester.getTopLeft(find.byKey(AnalysisScrollHint.hintKey)).dy;
+      expect(laterY, initialY);
+
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(find.byKey(AnalysisScrollHint.hintKey), findsNothing);
+    });
+  });
 }

@@ -6263,7 +6263,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   ? null
                   : _runAnalysis,
             )
-          : null,
+          : _isAnalyzing && _enthusiasmScore == null
+              ? const AnalysisScrollHint()
+              : null,
       title: conversation.name,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),

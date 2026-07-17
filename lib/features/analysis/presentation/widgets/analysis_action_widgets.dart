@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -67,6 +69,157 @@ class FloatingAnalysisActionButton extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A short, non-interactive cue that tells users where streamed analysis
+/// content will appear after they start a long conversation analysis.
+class AnalysisScrollHint extends StatefulWidget {
+  static const hintKey = ValueKey('analysis-scroll-hint');
+  static const defaultDuration = Duration(milliseconds: 2100);
+
+  final Duration duration;
+
+  const AnalysisScrollHint({
+    super.key,
+    this.duration = defaultDuration,
+  });
+
+  @override
+  State<AnalysisScrollHint> createState() => _AnalysisScrollHintState();
+}
+
+class _AnalysisScrollHintState extends State<AnalysisScrollHint>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+  late final Animation<Offset> _offset;
+  Timer? _reducedMotionTimer;
+  bool _started = false;
+  bool _visible = true;
+  bool _reduceMotion = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: widget.duration,
+    );
+    _opacity = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0, end: 1),
+        weight: 15,
+      ),
+      TweenSequenceItem(
+        tween: ConstantTween<double>(1),
+        weight: 60,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1, end: 0),
+        weight: 25,
+      ),
+    ]).animate(_controller);
+    _offset = Tween<Offset>(
+      begin: const Offset(0, -0.12),
+      end: const Offset(0, 0.18),
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeInOutCubic,
+      ),
+    );
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        _hide();
+      }
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    _reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (_reduceMotion) {
+      _reducedMotionTimer = Timer(widget.duration, _hide);
+    } else {
+      _controller.forward();
+    }
+  }
+
+  void _hide() {
+    if (!mounted || !_visible) return;
+    setState(() => _visible = false);
+  }
+
+  @override
+  void dispose() {
+    _reducedMotionTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_visible) return const SizedBox.shrink();
+
+    final hint = Semantics(
+      liveRegion: true,
+      excludeSemantics: true,
+      label: '分析內容會在下方陸續出現，請往下滑',
+      child: IgnorePointer(
+        child: Container(
+          key: AnalysisScrollHint.hintKey,
+          width: 72,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.brandInk.withValues(alpha: 0.94),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: AppColors.ctaStart.withValues(alpha: 0.62),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.34),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.keyboard_double_arrow_down_rounded,
+                size: 22,
+                color: AppColors.ctaStart,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '往下滑',
+                maxLines: 1,
+                style: AppTypography.caption.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (_reduceMotion) return hint;
+    return SlideTransition(
+      position: _offset,
+      child: FadeTransition(
+        opacity: _opacity,
+        alwaysIncludeSemantics: true,
+        child: hint,
       ),
     );
   }
