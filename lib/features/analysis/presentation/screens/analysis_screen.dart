@@ -6257,15 +6257,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       // body 自帶 SafeArea（見下方），故關掉鷹架的外層 SafeArea 避免雙層巢套。
       safeArea: false,
       resizeToAvoidBottomInset: true,
-      floatingActionButton: showFloatingAnalysisAction
-          ? FloatingAnalysisActionButton(
-              onPressed: (_isAnalyzing || _isRecognizing)
-                  ? null
-                  : _runAnalysis,
-            )
-          : _isAnalyzing && _enthusiasmScore == null
-              ? const AnalysisScrollHint()
-              : null,
+      floatingActionButton: buildAnalysisFloatingOverlay(
+        showStartAction: showFloatingAnalysisAction,
+        isAnalyzing: _isAnalyzing,
+        analysisCompleted: _enthusiasmScore != null,
+        onStart: (_isAnalyzing || _isRecognizing) ? null : _runAnalysis,
+      ),
       title: conversation.name,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),

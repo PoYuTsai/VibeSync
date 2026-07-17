@@ -5,6 +5,27 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 
+/// Resolves the single floating surface used by the analysis screen.
+///
+/// The in-progress hint must win over the idle CTA. Long pending fragments
+/// still satisfy the CTA's visibility rules after analysis starts, so letting
+/// the caller order these conditions can leave the disabled CTA covering the
+/// scroll hint for the entire stream.
+Widget? buildAnalysisFloatingOverlay({
+  required bool showStartAction,
+  required bool isAnalyzing,
+  required bool analysisCompleted,
+  required VoidCallback? onStart,
+}) {
+  if (isAnalyzing && !analysisCompleted) {
+    return const AnalysisScrollHint();
+  }
+  if (showStartAction) {
+    return FloatingAnalysisActionButton(onPressed: onStart);
+  }
+  return null;
+}
+
 /// Keeps the primary analyze action reachable while the user reviews a long
 /// conversation preview.
 ///

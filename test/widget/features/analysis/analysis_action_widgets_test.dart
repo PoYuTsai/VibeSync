@@ -11,6 +11,31 @@ Widget _wrap(Widget child) {
 }
 
 void main() {
+  group('buildAnalysisFloatingOverlay', () {
+    test('stream hint replaces the start action while analysis is running', () {
+      final overlay = buildAnalysisFloatingOverlay(
+        showStartAction: true,
+        isAnalyzing: true,
+        analysisCompleted: false,
+        onStart: () {},
+      );
+
+      expect(overlay, isA<AnalysisScrollHint>());
+      expect(overlay, isNot(isA<FloatingAnalysisActionButton>()));
+    });
+
+    test('idle pending analysis keeps the start action', () {
+      final overlay = buildAnalysisFloatingOverlay(
+        showStartAction: true,
+        isAnalyzing: false,
+        analysisCompleted: false,
+        onStart: () {},
+      );
+
+      expect(overlay, isA<FloatingAnalysisActionButton>());
+    });
+  });
+
   group('FloatingAnalysisActionButton', () {
     testWidgets('uses a labelled 52px extended action', (tester) async {
       await tester.pumpWidget(
