@@ -405,7 +405,7 @@ async function repairMalformedOpenerPayload({
 }> {
   const repairResult = await callClaudeWithFallback(
     {
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
       max_tokens: OPENER_MAX_TOKENS,
       system: OPENER_REPAIR_PROMPT,
       messages: [
@@ -538,7 +538,7 @@ function collectLatestExpirationFromRevenueCatPayload(
 
 // 功能權限
 const TIER_FEATURES: Record<string, string[]> = {
-  free: ["extend"], // 只有延展回覆
+  free: ["extend", "tease"], // Free 可比較延展／調情兩種回覆
   starter: [
     "extend",
     "resonate",
@@ -4336,14 +4336,15 @@ function selectModel(context: {
     return "claude-haiku-4-5-20251001";
   }
 
-  // Free 只有一種回覆，固定使用最新 Sonnet，優先守住首次體驗品質。
+  // Free 分析固定提供延展＋調情，並使用最新 Sonnet 守住首次體驗品質。
   if (context.tier === "free") {
     return "claude-sonnet-5";
   }
 
-  // Starter / Essential 維持 Sonnet 4.6；付費模型升級另行驗證。
+  // Starter / Essential 與 Free 分析都以最新 Sonnet 作為主模型；
+  // 4.6 僅保留在 fallback chain，避免上游短暫異常直接失敗。
   if (context.tier === "starter" || context.tier === "essential") {
-    return "claude-sonnet-4-6";
+    return "claude-sonnet-5";
   }
 
   // 使用 Sonnet 的情況 (30%)
@@ -4353,7 +4354,7 @@ function selectModel(context: {
     context.hasComplexEmotions || // 複雜情緒
     context.isFirstAnalysis // 首次分析建立基準
   ) {
-    return "claude-sonnet-4-6";
+    return "claude-sonnet-5";
   }
 
   // 預設使用 Haiku (70%)
@@ -5179,7 +5180,7 @@ serve(async (req) => {
 
       // Select model based on tier
       const openerModel = imageCount > 0 || effectiveTier !== "free"
-        ? "claude-sonnet-4-6"
+        ? "claude-sonnet-5"
         : "claude-haiku-4-5-20251001";
 
       // Build messages for Claude API
@@ -5320,15 +5321,20 @@ serve(async (req) => {
         }, 502);
       }
 
+      // Free 雙風格只適用於 analyze-chat；Opener 維持原本的
+      // Free=extend 單卡產品契約，避免隨分析調整意外擴大開場白權益。
+      const openerAllowedFeatures = effectiveTier === "free"
+        ? ["extend"]
+        : allowedFeatures;
       const filteredOpenerPayload = filterOpenerPayloadForAllowedFeatures(
         parsed,
-        allowedFeatures,
+        openerAllowedFeatures,
       );
       if (!filteredOpenerPayload) {
         logWarn("opener_response_no_allowed_styles", {
           user: summarizeUser(user.id),
           tier: effectiveTier,
-          allowedFeatures,
+          allowedFeatures: openerAllowedFeatures,
           openerKeys: Object.keys(
             isPlainObject(parsed.openers) ? parsed.openers : {},
           ),
@@ -6377,7 +6383,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
 
     // 「我說」模式用 Haiku 省成本（但有圖片時強制 Sonnet）
     const selectedModel = hasImages
-      ? "claude-sonnet-4-6"
+      ? "claude-sonnet-5"
       : isMyMessageMode
       ? "claude-haiku-4-5-20251001"
       : model;
@@ -6673,7 +6679,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       }
 
       const fullModelForEta = hasImages
-        ? "claude-sonnet-4-6"
+        ? "claude-sonnet-5"
         : isMyMessageMode
         ? "claude-haiku-4-5-20251001"
         : model;

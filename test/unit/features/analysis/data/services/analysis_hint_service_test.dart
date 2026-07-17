@@ -3,8 +3,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_hint_service.dart';
 
 void main() {
-  const ocrSwipeTutorialSeenKey = 'analysis_ocr_swipe_tutorial_seen_v1_global';
-
   setUp(() {
     SharedPreferences.setMockInitialValues({});
   });
@@ -61,24 +59,5 @@ void main() {
       await AnalysisHintService.hasSeenEditMessage(partnerId: 'partner-a'),
       isFalse,
     );
-  });
-
-  test('OCR swipe tutorial is unseen when its global flag is absent', () async {
-    expect(await AnalysisHintService.hasSeenOcrSwipeTutorial(), isFalse);
-  });
-
-  test('markOcrSwipeTutorialSeen persists one global device flag', () async {
-    await AnalysisHintService.markOcrSwipeTutorialSeen();
-
-    expect(await AnalysisHintService.hasSeenOcrSwipeTutorial(), isTrue);
-    final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getBool(ocrSwipeTutorialSeenKey), isTrue);
-  });
-
-  test('OCR swipe tutorial respects persisted seen state in debug builds',
-      () async {
-    SharedPreferences.setMockInitialValues({ocrSwipeTutorialSeenKey: true});
-
-    expect(await AnalysisHintService.hasSeenOcrSwipeTutorial(), isTrue);
   });
 }

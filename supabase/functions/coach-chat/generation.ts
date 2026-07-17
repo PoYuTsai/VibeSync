@@ -80,7 +80,7 @@ export async function runCoachChat(
     : input.request;
   const model = input.tier === "free"
     ? "claude-haiku-4-5-20251001"
-    : "claude-sonnet-4-6";
+    : "claude-sonnet-5";
 
   deps.logger.info("coach_chat_invoked", {
     tier: input.tier,

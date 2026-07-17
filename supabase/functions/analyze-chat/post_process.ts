@@ -16,6 +16,7 @@
 //      reason/psychology, falling back to safe defaults
 //   4. sanitizeCoachActionHint        — schema-check or remove
 //   5. healthCheck entitlement gate   — strip when tier excludes health_check
+//   6. enthusiasm score calibration   — display score = ceil(raw * 0.9)
 //
 // Invariants (must hold in BOTH modes):
 //   I1. result.healthCheck is absent unless allowedFeatures.includes("health_check")
@@ -24,6 +25,7 @@
 //       reason/psychology (or is normalized to safe defaults)
 //   I4. result.coachActionHint is either schema-valid or absent
 //   I5. result.replies is non-empty unless recognizeOnly || isMyMessageMode
+//   I6. returned enthusiasm.score is the calibrated 0–90 client score
 
 import { getSafeReplies } from "./guardrails.ts";
 
@@ -509,6 +511,44 @@ function getSafeReplyLevelFromScore(score: number): string {
   return "very_hot";
 }
 
+/**
+ * Product calibration for the user-visible 「對方這次的投入度」 score.
+ *
+ * Claude's raw score remains available during reasoning. Only the finalized
+ * response is scaled, so this does not silently change reply selection,
+ * safety fallbacks, or model prompts. Fractional results always round up:
+ * 82 -> 73.8 -> 74.
+ */
+export function calibrateEnthusiasmScore(value: unknown): number | null {
+  if (
+    typeof value !== "number" &&
+    (typeof value !== "string" || value.trim().length === 0)
+  ) {
+    return null;
+  }
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const boundedRawScore = Math.max(0, Math.min(100, numeric));
+  return Math.ceil(boundedRawScore * 0.9);
+}
+
+function applyEnthusiasmScoreCalibration(
+  result: Record<string, unknown>,
+): void {
+  if (
+    typeof result.enthusiasm !== "object" ||
+    result.enthusiasm === null ||
+    Array.isArray(result.enthusiasm)
+  ) {
+    return;
+  }
+
+  const enthusiasm = result.enthusiasm as Record<string, unknown>;
+  const calibrated = calibrateEnthusiasmScore(enthusiasm.score);
+  if (calibrated === null) return;
+  result.enthusiasm = { ...enthusiasm, score: calibrated };
+}
+
 // ---------------------------------------------------------------------------
 // ensureNonEmptyAnalysisOutput
 //
@@ -729,7 +769,7 @@ export function postProcessAnalysisResult({
       ? enforceReplySegmentSourceContract(safeRecommendationSegments, ballList)
       : safeRecommendationSegments;
     const segmentRecommendationContent = (contractRecommendationSegments
-          .length > 0
+        .length > 0
       ? contractRecommendationSegments
       : safeRecommendationSegments)
       .map((segment) => segment.reply)
@@ -739,15 +779,14 @@ export function postProcessAnalysisResult({
     // r1-P2a：多球時合併版以段落換行 join 優先（規格 #4）——contract 段
     // 只可能來自 pick 未 remap 的 preferred segments 或 safe pick 自己的
     // replyOptions messages，無 pick 錯配風險；單段維持既有 precedence。
-    const safeRecommendationContent =
-      contractRecommendationSegments.length >= 2
-        ? segmentRecommendationContent
-        : normalizeAiText(
-          normalizedReplies[safeRecommendationPick],
-        ) || segmentRecommendationContent ||
-          (normalizedRecommendationPick === safeRecommendationPick
-            ? normalizeAiText(recommendation.content)
-            : "");
+    const safeRecommendationContent = contractRecommendationSegments.length >= 2
+      ? segmentRecommendationContent
+      : normalizeAiText(
+        normalizedReplies[safeRecommendationPick],
+      ) || segmentRecommendationContent ||
+        (normalizedRecommendationPick === safeRecommendationPick
+          ? normalizeAiText(recommendation.content)
+          : "");
     const fallbackExplanation = buildFallbackRecommendationText(
       safeRecommendationPick,
     );
@@ -780,6 +819,10 @@ export function postProcessAnalysisResult({
   if (!allowedFeatures.includes("health_check")) {
     delete result.healthCheck;
   }
+
+  // Step 6 — calibrate only the finalized user-visible score. This runs after
+  // fallback selection so the 0.9 display adjustment cannot alter AI advice.
+  applyEnthusiasmScoreCalibration(result);
 
   return result;
 }

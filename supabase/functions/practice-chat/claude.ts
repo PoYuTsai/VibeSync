@@ -3,7 +3,7 @@
 import type { ChatMessage } from "./prompt.ts";
 
 export const CLAUDE_HAIKU_MODEL = "claude-haiku-4-5-20251001";
-export const CLAUDE_SONNET_MODEL = "claude-sonnet-4-6";
+export const CLAUDE_SONNET_MODEL = "claude-sonnet-5";
 export const CLAUDE_ENDPOINT = "https://api.anthropic.com/v1/messages";
 
 export interface ClaudeArgs {

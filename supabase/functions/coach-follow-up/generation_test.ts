@@ -120,13 +120,13 @@ Deno.test("T7: styleContext is passed into the Claude prompt", async () => {
   assertStringIncludes(h.claudeCalls[0].prompt, "Preferred voice: 幽默");
 });
 
-Deno.test("T7: tier=starter selects sonnet model in response", async () => {
+Deno.test("T7: tier=starter selects Sonnet 5 in response", async () => {
   const h = makeHarness(async () => claudeWrapped(VALID_CARD));
   const result = await runCoachFollowUp(BASE_INPUT, h.deps);
 
   assertEquals(
     (result.body as Record<string, unknown>).model,
-    "claude-sonnet-4-6",
+    "claude-sonnet-5",
   );
 });
 

@@ -124,6 +124,35 @@ Deno.test("runCoachChat returns card and deducts one credit on success", async (
   assertEquals(harness.events.includes("coach_chat_succeeded"), true);
 });
 
+Deno.test("runCoachChat routes paid to Sonnet 5 and keeps Free on Haiku", async () => {
+  const models: string[] = [];
+
+  for (const tier of ["starter", "free"] as const) {
+    const harness = deps({
+      callClaude: (args) => {
+        models.push(args.model);
+        return Promise.resolve(validClaudeCard());
+      },
+    });
+    const result = await runCoachChat(
+      {
+        userId: `u-${tier}`,
+        request,
+        tier,
+        accountIsTest: true,
+        apiKey: "key",
+      },
+      harness.deps,
+    );
+    assertEquals(result.status, 200);
+  }
+
+  assertEquals(models, [
+    "claude-sonnet-5",
+    "claude-haiku-4-5-20251001",
+  ]);
+});
+
 Deno.test("runCoachChat reports truthful retry stages without model content", async () => {
   const progress: Array<{
     stage: string;

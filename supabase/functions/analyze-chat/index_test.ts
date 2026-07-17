@@ -74,7 +74,7 @@ function selectModel(context: {
   }
 
   if (context.tier === "starter" || context.tier === "essential") {
-    return "claude-sonnet-4-6";
+    return "claude-sonnet-5";
   }
 
   if (
@@ -83,7 +83,7 @@ function selectModel(context: {
     context.hasComplexEmotions ||
     context.isFirstAnalysis
   ) {
-    return "claude-sonnet-4-6";
+    return "claude-sonnet-5";
   }
 
   return "claude-3-5-haiku-20241022";
@@ -101,7 +101,7 @@ Deno.test("selectModel - essential tier always uses Sonnet", () => {
     isFirstAnalysis: false,
     tier: "essential",
   });
-  assertEquals(model, "claude-sonnet-4-6");
+  assertEquals(model, "claude-sonnet-5");
 });
 
 Deno.test("selectModel - free first analysis uses Sonnet 5", () => {
@@ -123,7 +123,7 @@ Deno.test("selectModel - cold enthusiasm uses Sonnet", () => {
     isFirstAnalysis: false,
     tier: "starter",
   });
-  assertEquals(model, "claude-sonnet-4-6");
+  assertEquals(model, "claude-sonnet-5");
 });
 
 Deno.test("selectModel - free long conversation uses Sonnet 5", () => {
@@ -156,11 +156,11 @@ Deno.test("selectModel - complex emotions uses Sonnet", () => {
     isFirstAnalysis: false,
     tier: "starter",
   });
-  assertEquals(model, "claude-sonnet-4-6");
+  assertEquals(model, "claude-sonnet-5");
 });
 
 Deno.test({
-  name: "production routing keeps Free on Sonnet 5 without changing paid cards",
+  name: "production routing uses Sonnet 5 for Free and paid primary paths",
   permissions: { read: true },
   fn: async () => {
     const source = await Deno.readTextFile(
@@ -172,9 +172,52 @@ Deno.test({
     assert(source.includes(
       'context.tier === "starter" || context.tier === "essential"',
     ));
-    assert(source.includes('return "claude-sonnet-4-6";'));
+    const primarySonnet5Returns = source.match(
+      /return "claude-sonnet-5";/g,
+    ) ?? [];
+    assertEquals(primarySonnet5Returns.length, 3);
     assertFalse(source.includes(
       'const model = hasImages\n      ? "claude-sonnet-4-6"',
+    ));
+    assert(source.includes(
+      'const selectedModel = hasImages\n      ? "claude-sonnet-5"',
+    ));
+    assert(source.includes(
+      'const openerModel = imageCount > 0 || effectiveTier !== "free"\n        ? "claude-sonnet-5"',
+    ));
+  },
+});
+
+Deno.test({
+  name: "Sonnet 5 keeps the ordered 4.6 then Haiku fallback chain",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./fallback.ts", import.meta.url),
+    );
+
+    assert(source.includes(
+      '"claude-sonnet-5": "claude-sonnet-4-6"',
+    ));
+    assert(source.includes(
+      '"claude-sonnet-4-6": "claude-haiku-4-5-20251001"',
+    ));
+  },
+});
+
+Deno.test({
+  name:
+    "Free analysis exposes extend and tease while Free Opener stays extend-only",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes('free: ["extend", "tease"]'));
+    assert(source.includes('effectiveTier === "free"\n        ? ["extend"]'));
+    assert(source.includes(
+      "filterOpenerPayloadForAllowedFeatures(\n        parsed,\n        openerAllowedFeatures",
     ));
   },
 });
@@ -845,14 +888,16 @@ Deno.test({
       new URL("./index.ts", import.meta.url),
     );
 
-    for (const term of [
-      "已是伴侶",
-      "男友",
-      "自己的男人",
-      "使用者本人",
-      "第三人",
-      "ambiguity",
-    ]) {
+    for (
+      const term of [
+        "已是伴侶",
+        "男友",
+        "自己的男人",
+        "使用者本人",
+        "第三人",
+        "ambiguity",
+      ]
+    ) {
       assert(source.includes(term), `SYSTEM_PROMPT missing ${term}`);
     }
   },
@@ -942,7 +987,8 @@ Deno.test({
 // 2) repair 上限 1400 < 主呼叫 1800，截斷輸入修完仍超長＝結構上必再截斷 → 502
 // 3) opener_response_invalid 原本不記 stop_reason，截斷不可觀測
 Deno.test({
-  name: "opener 主呼叫與 repair 共用 OPENER_MAX_TOKENS=3000（1800/1400 不得殘留）",
+  name:
+    "opener 主呼叫與 repair 共用 OPENER_MAX_TOKENS=3000（1800/1400 不得殘留）",
   permissions: { read: true },
   fn: async () => {
     const source = await Deno.readTextFile(
@@ -990,7 +1036,9 @@ Deno.test({
       const idx = source.indexOf(logSite);
       assert(idx >= 0, `找不到 ${logSite}`);
       assert(
-        source.slice(idx, idx + 800).includes("stopReason: apiData.stop_reason"),
+        source.slice(idx, idx + 800).includes(
+          "stopReason: apiData.stop_reason",
+        ),
         `${logSite} 必須記 stopReason`,
       );
     }
@@ -1322,8 +1370,7 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "SYSTEM_PROMPT mines callbacks from history instead of forcing them",
+  name: "SYSTEM_PROMPT mines callbacks from history instead of forcing them",
   permissions: { read: true },
   fn: async () => {
     const source = await Deno.readTextFile(
@@ -1352,7 +1399,9 @@ Deno.test({
     assertFalse(
       source.includes("舊版 App fallback：coldRead.messages 的 reply 合併文字"),
     );
-    assertFalse(source.includes("推薦的完整訊息組文字；可用換行表示 2-5 則真人訊息"));
+    assertFalse(
+      source.includes("推薦的完整訊息組文字；可用換行表示 2-5 則真人訊息"),
+    );
     // replies fallback 的合併語意仍須保留（在 1.2 輸出分工，不是在 schema 占位句）
     assert(source.includes("replies：舊版 App fallback"));
   },
@@ -1711,9 +1760,18 @@ Deno.test({
     // 三個迴圈 heuristic mutate `adjusted[index]`，trailing mutate
     // `adjusted[currentIndex]`。guard 必須出現在該 mutation 之前才有效。
     const guarded: Array<{ name: string; mutation: string }> = [
-      { name: "applySpeakerContinuityHeuristics", mutation: "adjusted[index] = {" },
-      { name: "applyGroupedSpeakerHeuristics", mutation: "adjusted[index] = {" },
-      { name: "applySideRunGroupingHeuristics", mutation: "adjusted[index] = {" },
+      {
+        name: "applySpeakerContinuityHeuristics",
+        mutation: "adjusted[index] = {",
+      },
+      {
+        name: "applyGroupedSpeakerHeuristics",
+        mutation: "adjusted[index] = {",
+      },
+      {
+        name: "applySideRunGroupingHeuristics",
+        mutation: "adjusted[index] = {",
+      },
       {
         name: "applyTrailingSpeakerHeuristics",
         mutation: "adjusted[currentIndex] = {",
@@ -1799,13 +1857,18 @@ Deno.test({
     assert(start >= 0, "找不到 applySingleVisibleSpeakerPattern");
     const body = source.slice(start + 1);
     const realBody = body.slice(0, body.indexOf("\nfunction "));
-    const guardAt = realBody.indexOf("adjusted[index].geometryDecisive === true");
+    const guardAt = realBody.indexOf(
+      "adjusted[index].geometryDecisive === true",
+    );
     const overwriteAt = realBody.indexOf("side: targetSide");
     assert(
       guardAt >= 0,
       "前提失效：single-visible 缺 geometryDecisive guard（sibling-path 補洞被移除？）",
     );
-    assert(overwriteAt >= 0, "找不到 single-visible 的 side 覆寫（測試假設失效）");
+    assert(
+      overwriteAt >= 0,
+      "找不到 single-visible 的 side 覆寫（測試假設失效）",
+    );
     assert(
       guardAt < overwriteAt,
       "guard 必須在 side 覆寫之前才有效",
@@ -1922,7 +1985,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "normalize 步驟以 isReadReceiptSideDecisive 設 metaDecisive 並鎖 isFromMe=true",
+  name:
+    "normalize 步驟以 isReadReceiptSideDecisive 設 metaDecisive 並鎖 isFromMe=true",
   permissions: { read: true },
   fn: async () => {
     const source = await Deno.readTextFile(
@@ -2068,7 +2132,8 @@ Deno.test({
 // ---------------------------------------------------------------------------
 
 Deno.test({
-  name: "recognizeOnly 限流：RPC gate 在圖片驗證後、AI 護欄前，且測試帳號 bypass",
+  name:
+    "recognizeOnly 限流：RPC gate 在圖片驗證後、AI 護欄前，且測試帳號 bypass",
   permissions: { read: true },
   fn: async () => {
     const source = await Deno.readTextFile(

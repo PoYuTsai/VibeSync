@@ -552,7 +552,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           const SizedBox(height: 12),
           _buildComparisonHeader(),
           _buildComparisonRow('適合誰', '先試手感', '穩定練習', '深度打磨'),
-          _buildComparisonRow('回覆風格', '延展 1 種', '全部 5 種', '全部 5 種'),
+          _buildComparisonRow(
+            '回覆風格',
+            '延展＋調情 2 種',
+            '全部 5 種',
+            '全部 5 種',
+          ),
           _buildComparisonRow('陪練女孩', '每日 1 位', '開放', '開放'),
           _buildComparisonRow('AI 模型', '經濟型', '高階型', '高階型'),
           _buildComparisonRow('雷達圖', '未開放', '可用', '可用'),

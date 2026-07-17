@@ -6,7 +6,6 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/session_context.dart';
-import '../../data/services/analysis_hint_service.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/services/analysis_fragment_policy.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
@@ -74,8 +73,8 @@ class _ScreenshotRecognitionDialogState
 
   static const _swipeTutorialEntryDelay = Duration(milliseconds: 350);
 
-  // 滑動教學：首次符合條件的 dialog 在進場後延遲播放，forward 一次、零 repeat，
-  // 播完停在原位。已看過仍可透過問號按鈕重播。
+  // 滑動教學：每次 dialog 進場後延遲播放一次（零 repeat），
+  // 播完停在原位。問號按鈕可手動重播。
   late final AnimationController _swipeTutorialController;
   late final Animation<double> _swipeTutorialShift;
   late final Animation<double> _swipeTutorialRightHintOpacity;
@@ -176,7 +175,7 @@ class _ScreenshotRecognitionDialogState
     _swipeTutorialAutoPlayScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      unawaited(_scheduleSwipeTutorialAutoPlay());
+      _scheduleSwipeTutorialAutoPlay();
     });
   }
 
@@ -195,19 +194,9 @@ class _ScreenshotRecognitionDialogState
   bool get _reduceMotion =>
       MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
-  Future<void> _scheduleSwipeTutorialAutoPlay() async {
+  void _scheduleSwipeTutorialAutoPlay() {
     if (_editableMessages.isEmpty || _reduceMotion) return;
-
-    var hasSeenTutorial = false;
-    try {
-      hasSeenTutorial = await AnalysisHintService.hasSeenOcrSwipeTutorial();
-    } catch (_) {
-      // Tutorial persistence is best-effort and must never block OCR import.
-    }
-    if (!mounted ||
-        hasSeenTutorial ||
-        _reduceMotion ||
-        _swipeTutorialAutoPlaySuppressed) {
+    if (!mounted || _reduceMotion || _swipeTutorialAutoPlaySuppressed) {
       return;
     }
 
@@ -250,16 +239,6 @@ class _ScreenshotRecognitionDialogState
       });
     }
     _swipeTutorialController.forward(from: 0);
-    unawaited(_markSwipeTutorialSeenBestEffort());
-  }
-
-  Future<void> _markSwipeTutorialSeenBestEffort() async {
-    try {
-      await AnalysisHintService.markOcrSwipeTutorialSeen();
-    } catch (_) {
-      // A failed hint write may replay the tutorial next time, but must not
-      // interrupt message correction or OCR import.
-    }
   }
 
   void _cancelSwipeTutorialForInteraction() {
