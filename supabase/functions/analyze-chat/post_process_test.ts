@@ -18,14 +18,44 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
 import {
+  calibrateEnthusiasmScore,
   enforceReplySegmentSourceContract,
   extractPartnerBallList,
   postProcessAnalysisResult,
 } from "./post_process.ts";
 
+Deno.test("calibrateEnthusiasmScore applies 0.9 and rounds fractions up", () => {
+  assertEquals(calibrateEnthusiasmScore(82), 74);
+  assertEquals(calibrateEnthusiasmScore(65), 59);
+  assertEquals(calibrateEnthusiasmScore(1), 1);
+  assertEquals(calibrateEnthusiasmScore(0), 0);
+  assertEquals(calibrateEnthusiasmScore(100), 90);
+  assertEquals(calibrateEnthusiasmScore(120), 90);
+  assertEquals(calibrateEnthusiasmScore(-10), 0);
+  assertEquals(calibrateEnthusiasmScore(null), null);
+  assertEquals(calibrateEnthusiasmScore(""), null);
+});
+
+Deno.test("postProcess returns the calibrated enthusiasm score", () => {
+  const input = buildBaseResult();
+  input.enthusiasm = { score: 82, level: "very_hot" };
+
+  const result = postProcessAnalysisResult({
+    result: input,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ESSENTIAL_FEATURES,
+  });
+
+  assertEquals(
+    (result.enthusiasm as Record<string, unknown>).score,
+    74,
+  );
+});
+
 // Mirror of TIER_FEATURES from index.ts. If the tier definition there
 // changes, update this fixture too.
-const FREE_FEATURES = ["extend"];
+const FREE_FEATURES = ["extend", "tease"];
 const ESSENTIAL_FEATURES = [
   "extend",
   "resonate",
@@ -116,7 +146,7 @@ Deno.test("postProcess: Essential tier preserves healthCheck", () => {
 // Parity test 2 — replies filtered to allowedFeatures
 // ---------------------------------------------------------------------------
 
-Deno.test("postProcess: replies are filtered to allowedFeatures (Free → extend only)", () => {
+Deno.test("postProcess: replies are filtered to allowedFeatures (Free → extend + tease)", () => {
   const result = postProcessAnalysisResult({
     result: buildBaseResult(),
     recognizeOnly: false,
@@ -129,11 +159,11 @@ Deno.test("postProcess: replies are filtered to allowedFeatures (Free → extend
 
   assertEquals(
     keys.sort(),
-    ["extend"],
-    "Free tier replies must contain only 'extend'",
+    ["extend", "tease"],
+    "Free tier replies must contain only 'extend' and 'tease'",
   );
   assertFalse("resonate" in replies, "Paid 'resonate' reply must not leak");
-  assertFalse("tease" in replies, "Paid 'tease' reply must not leak");
+  assert("tease" in replies, "Free 'tease' reply must be preserved");
   assertFalse("humor" in replies, "Paid 'humor' reply must not leak");
   assertFalse("coldRead" in replies, "Paid 'coldRead' reply must not leak");
 });
@@ -159,7 +189,7 @@ Deno.test("postProcess: Essential tier preserves all reply keys present in paylo
 // ---------------------------------------------------------------------------
 
 Deno.test("postProcess: finalRecommendation falls back to extend when AI pick is not allowed", () => {
-  // Model picked 'resonate', but Free tier only has 'extend'. Helper must
+  // Model picked 'resonate', but Free tier only has extend + tease. Helper must
   // remap pick to a feature that actually exists in the filtered replies.
   const result = postProcessAnalysisResult({
     result: buildBaseResult(),

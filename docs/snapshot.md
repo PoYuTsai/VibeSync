@@ -29,6 +29,12 @@ Default priority:
 
 Recent commit themes, newest first:
 
+- Build 333 產品校準（2026-07-17）：Free `analyze-chat` 回覆從單一延展改為固定產出延展＋調情兩種，保留共鳴／幽默／冷讀作為付費完整五種差異；Free Opener 仍只有延展。對方這次的投入度在完成回應層統一改為 `ceil(AI 原分 × 0.9)`（例 82 → 74），不改 prompt、AI 理由或回覆選擇。OCR 確認視窗每次開啟都會自動播放一次左右滑動教學；長 OCR 等待以準備／上傳／讀圖／辨識訊息／校對說話者／整理結果狀態切換，不傳輸中間分析內容。原定 Build 332 實際由舊 `main@1c4992be` 建置，未包含本輪功能；第一個完整 binary 改為 Build 333，release preflight 會拒絕 source version 與 run number 不一致的 ref。
+
+- AI 鍵盤恰一次結算（2026-07-17）：extension 以共享 Keychain 分指紋原子保存、綁 user＋文字＋風格的 durable UUID（重試資格約 23 小時，多筆／多帳號在途不互蓋）；`keyboard-reply` 先以 DB claim／lease 序列化模型呼叫，再由原子 RPC 同交易保存結果與扣 1。Server replay window 為 24 小時、每小時清理，input identity 使用 user-bound server-keyed HMAC。Production 已依 DB migration `20260717120000` → 32-byte HMAC secret → JWT-verified Edge v5 順序部署，live contract、DB transaction 與測試帳號 fresh／replay／mismatch smoke 通過且零殘留。發布仍 blocked 於 signed iOS keyboard、非測試 quota／HTTP 並行與 lost-response、公開隱私更新，以及 LINE／Instagram／Messages Full Access 真機矩陣。
+
+- Sonnet 5 主模型統一（2026-07-17）：`analyze-chat` Free／Starter／Essential、付費或圖片 Opener、圖片分析、付費 Coach／Follow-up，以及 Practice 的付費 Claude failover 都以 Sonnet 5 為主；Sonnet 4.6 只保留在 `analyze-chat` 降級鏈與測試相容。其他 Free endpoint 與 Keyboard 仍依既有成本路由使用 Haiku，Practice 仍以 DeepSeek 為主。Sonnet 5 launch token price 只到 2026-08-31，放量前與到期前都要以 `ai_logs` 重審。
+
 - Fable 5 回饋收斂（2026-07-16）：當次互動分數改成投入度語意；Coach 回答層級收合並改為只串流真實系統進度；空白對象／截圖續接與 Opener 三圖流程已修正。「我幫你修」成功固定扣 1，並以 owner-scoped durable requestId、原子 result/charge 與 7 天 live replay 防止新版 App 重複扣費。獨立 review、線上隱私政策、migration、Edge 與 live fresh/replay/mismatch smoke 均完成；同 commit 的 iOS／Android staging build 已成功上傳 Firebase App Distribution，下一關是真機 dogfood。舊 App 無 durable requestId，仍只有固定扣 1、沒有 exactly-once 保證。
 - Analyze-chat 獨立分析紀錄（2026-07-15 起）：主畫面只顯示 current／pending 片段，舊成功案例由對象頁／分析頁右上封存入口開啟；每筆 owner-scoped、自足快照、無 FIFO、手動刪除。`metVia` 與每筆 `sourcePlatform` 分開；未知來源留在「全部」但不露出「未分類」，平台篩選只在至少兩種已知來源時出現。原整段封存改稱「已收起的對話」並降為抽屜次入口。cleanup marker＋tombstone 保護刪除，冷啟動 repair 失敗時禁止覆寫 canonical snapshot。AI request、prompt、quota、billing 不變；client-only，不需 Edge／DB deploy。
 

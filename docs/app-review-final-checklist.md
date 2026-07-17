@@ -1,6 +1,6 @@
 # App Review Final Checklist
 
-最後更新：2026-07-16
+最後更新：2026-07-17
 
 這份清單是送審前最後核對用，不是功能願望清單。
 
@@ -10,11 +10,11 @@
 
 ## 0. Phase 14 目前判定
 
-目前判定：`Repo GO / Submit GO`——**2026-07-04 已送審（build 305）**，現行判定與 H batch 完成紀錄以 `app-review-submission-package.md` §6.3 為準。
+目前判定：`Repo GO / Next Build HOLD`。2026-07-04 的 build 305 已送審是歷史紀錄；2026-07-17 新增的 AI 鍵盤恰一次計費與隱私資料流，其 production backend gate 已完成，仍須完成 signed iOS、真機與 App Store Connect 新一輪 gate。
 
-Repo 端已完成：`b515cad` 已 push、`flutter analyze` PASS、Phase 13 targeted tests 103 tests PASS、Edge live probes / Deno tests 已在 Phase 12 PASS。
+Repo 端目前證據：發布硬化 PR #17 已建立；`flutter analyze` PASS、Flutter 2,251 passed / 4 skipped、Edge contracts 177 passed / 0 failed、admin production build / lint / audit PASS。最終 code review 無剩餘 P0/P1/P2。
 
-送出前仍需人工完成：最新 TestFlight 真機 smoke、RevenueCat / App Store sandbox 訂閱矩陣、App Store Connect Privacy Label / IAP / reviewer account、Supabase live secrets / `ai_logs` dashboard 抽查。
+送出下一個 build 前仍需完成：signed keyboard extension、非測試 quota／HTTP 並行與 lost-response 真機 smoke、公開隱私頁與 App Store Connect Privacy Label 對齊，以及既有 RevenueCat / reviewer / logs gate。Keyboard migration → HMAC secret → JWT-verified Edge → live contract 已完成。
 
 ## 1. 帳號與登入
 
@@ -51,13 +51,14 @@ Repo 端已完成：`b515cad` 已 push、`flutter analyze` PASS、Phase 13 targe
 
 ## 4. 送審與對外資訊
 
-- [x] `https://vibesyncai.app/privacy` 可正常開啟；2026-07-16 已發佈「我幫你修」7 天重播揭露（網站 `9929d5b`）並驗 live 內容
+- [ ] `https://vibesyncai.app/privacy` 可正常開啟，但仍須發佈 AI 鍵盤 24 小時 server replay、共享 Keychain request identity 與不保存原始複製文字的揭露
 - [ ] `https://vibesyncai.app/terms` 可正常開啟
 - [ ] App Store Connect Support URL 使用已上線的 HTTPS 頁面：`https://vibesyncai.app/support`，不使用 `mailto:`
 - [ ] `vibesyncaiapp@gmail.com` 可收信
 - [ ] App Store Connect 的 privacy disclosure 已依目前資料流填寫
 - [ ] Privacy Label 已揭露 Email / User ID / Purchase History / User Content / Photos / Usage Data / Diagnostics
 - [ ] App 內 AI 隱私頁、線上 Privacy Policy 與 App Store Connect 已揭露「我幫你修」暫存 AI 生成潤飾句／理由、生成文字可能反映輸入、不另存原始草稿／完整對話輸入（重播 7 天、每小時清除逾期 live row，備份依 Supabase 週期）
+- [ ] App 內 AI 隱私頁、線上 Privacy Policy 與 App Store Connect 已揭露 AI 鍵盤 request identity／input HMAC、只保存 AI 回覆與風格、24 小時 server replay／每小時清理，以及共享 Keychain 最多約 23 小時的 retry identity
 - [ ] Privacy Label 未勾 tracking、location、contacts 等未使用資料類型
 - [ ] App Review 說明文已更新成目前實際功能與資料流
 - [ ] App Review Information 已填測試帳號、測試步驟、IAP/AI/OCR 說明
@@ -76,7 +77,12 @@ Repo 端已完成：`b515cad` 已 push、`flutter analyze` PASS、Phase 13 targe
 - [ ] 最新 iOS release workflow 綠燈
 - [x] 最新 Edge Function deploy workflow 綠燈（`cdafa244`，run `29450067262`）
 - [ ] TestFlight build 可在 App Store Connect / TestFlight 看到
-- [x] `analyze-chat` 目前維持 `--no-verify-jwt`，未被誤改（v269）
+- [x] `analyze-chat` 目前維持 `--no-verify-jwt`，未被誤改（v274）
+- [x] Production 已精準套用 `20260717120000_keyboard_reply_exactly_once.sql`，且 migration 帳本 version 對齊
+- [x] Supabase 已設定 `KEYBOARD_REPLAY_HMAC_KEY`，再部署 JWT-verified `keyboard-reply` v5
+- [x] Live keyboard health 回 `keyboard-reply-exactly-once-v1`
+- [ ] Signed Archive / IPA 包含 `VibeSyncKeyboard.appex`
+- [ ] 真機 fresh / lost-response replay / pending / mismatch / quota / model-rate 與 LINE／Instagram／Messages Full Access 全過
 
 ## 6. Release Gate
 
@@ -87,3 +93,4 @@ Repo 端已完成：`b515cad` 已 push、`flutter analyze` PASS、Phase 13 targe
 - [ ] OCR 主流程用同一批真實截圖再測仍穩定
 - [ ] Privacy / Terms / support / disclosure 都已對齊
 - [ ] 沒有新的 deploy-only regression
+- [ ] AI 鍵盤 production contract、signed build 與真機矩陣全部綠燈

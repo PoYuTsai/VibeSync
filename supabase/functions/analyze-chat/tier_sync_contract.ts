@@ -56,6 +56,6 @@ export function streamReplyStylesForTier(
   tier: unknown,
 ): readonly StreamStyle[] {
   const normalizedTier = normalizeSubscriptionTier(tier);
-  if (normalizedTier === "free") return ["extend"];
+  if (normalizedTier === "free") return ["extend", "tease"];
   return STREAM_STYLES;
 }

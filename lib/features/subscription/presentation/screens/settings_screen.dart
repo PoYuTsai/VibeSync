@@ -10,6 +10,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../../core/config/environment.dart';
 import '../../../../core/services/revenuecat_service.dart';
+import '../../../../core/services/keyboard_token_bridge.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
@@ -66,6 +67,8 @@ abstract class AccountDeletionActions {
   Future<void> clearLocalStorage();
 
   Future<void> clearLocalSessionAfterDeletion();
+
+  Future<void> purgeKeyboardCredentials();
 }
 
 class DefaultAccountDeletionActions extends AccountDeletionActions {
@@ -84,6 +87,11 @@ class DefaultAccountDeletionActions extends AccountDeletionActions {
   @override
   Future<void> clearLocalSessionAfterDeletion() {
     return SupabaseService.clearLocalSessionAfterDeletion();
+  }
+
+  @override
+  Future<void> purgeKeyboardCredentials() {
+    return KeyboardTokenBridge.purgeAllForAccountDeletion();
   }
 }
 
@@ -1037,6 +1045,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<bool> _tryDeleteAccountLocalCleanup() async {
     try {
       await widget.accountDeletionActions.clearLocalStorage();
+      await widget.accountDeletionActions.purgeKeyboardCredentials();
       await widget.accountDeletionActions.clearLocalSessionAfterDeletion();
       return true;
     } catch (error) {

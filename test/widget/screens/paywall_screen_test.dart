@@ -165,6 +165,7 @@ void main() {
       expect(find.text('穩定練習'), findsOneWidget);
       expect(find.text('深度打磨'), findsOneWidget);
       expect(find.text('雷達圖'), findsOneWidget);
+      expect(find.text('延展＋調情 2 種'), findsOneWidget);
       expect(find.text('可用'), findsNWidgets(4));
       expect(find.text('未開放'), findsNWidgets(5));
       expect(find.text('120 則'), findsOneWidget);

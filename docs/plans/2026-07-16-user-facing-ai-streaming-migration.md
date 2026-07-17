@@ -21,7 +21,7 @@ Eric 本輪選擇 **progress-only**：只顯示伺服器確實走到的階段，
 
 | 流程 | 現況與模型 | 使用者現在看到什麼 | 遷移風險 |
 |---|---|---|---|
-| 分析對話（純文字） | 單一 Claude full stream；Free 多數 Haiku，付費／複雜情境 Sonnet | 固定進度事件後逐段結果；不是 Flash 生成的思考 | 已完成；只需驗證 live flag、遞增到達與 rollback |
+| 分析對話（純文字） | 單一 Claude full stream；Free 與付費主模型皆為 Sonnet 5，失敗依序降級 Sonnet 4.6 → Haiku | 固定進度事件後逐段結果；不是 Flash 生成的思考 | 已完成；只需驗證 live flag、遞增到達與 rollback |
 | 分析對話（圖片／OCR） | 非串流；圖片強制 Sonnet，timeout 最長 120 秒 | 本地等待文案後一次回傳 | 高：vision schema、OCR、成本及長 timeout |
 | 「我幫你修」／`optimize_message` | 非串流，現有 analyze stream gate 明確排除 | 等待後一次回傳 | 中高：付費 entitlement、短內容安全與扣額度 |
 | Coach 1:1／`coach-chat` | 非串流；Free Haiku、付費 Sonnet；每次最長 60 秒，驗證不過最多 3 次 | spinner「教練正在接這句」後一次回傳 | 高：多次生成、clarification 不扣額度、目前無 result replay ledger |

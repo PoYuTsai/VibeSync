@@ -58,7 +58,7 @@ Deno.test("shouldFailPaidTierSync allows already-confirmed paid server tier", ()
 });
 
 Deno.test("streamReplyStylesForTier returns the required style set for each tier", () => {
-  assertEquals(streamReplyStylesForTier("free"), ["extend"]);
+  assertEquals(streamReplyStylesForTier("free"), ["extend", "tease"]);
   assertEquals(streamReplyStylesForTier("starter"), [
     "extend",
     "resonate",

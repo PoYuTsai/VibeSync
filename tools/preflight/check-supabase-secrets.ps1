@@ -2,6 +2,7 @@ param(
   [string]$ProjectRef = "fcmwrmwdoqiqdnbisdpg",
   [string[]]$RequiredSecrets = @(
     "CLAUDE_API_KEY",
+    "KEYBOARD_REPLAY_HMAC_KEY",
     "REVENUECAT_IOS_API_KEY",
     "REVENUECAT_WEBHOOK_SECRET"
   )

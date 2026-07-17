@@ -10,11 +10,12 @@ Scope: public-repo readiness before switching VibeSync to private.
 - Web deploy no longer passes `VERCEL_TOKEN` inline in the shell command.
 - Android staging build no longer stores verbose build logs that include `--dart-define` secret arguments.
 - `auth_diagnostics` keeps anon insert support for login debugging, but now caps field and metadata sizes.
-- `admin-dashboard` dependencies were updated and `npm audit fix` reduced advisories from 11 to 2 moderate findings.
+- `admin-dashboard` dependencies were updated and the original scan reduced advisories from 11 to 2 moderate findings.
+- On 2026-07-17, Next was upgraded to 16.2.10, Supabase JS to 2.110.7, and PostCSS was pinned to 8.5.19. `npm audit --omit=dev` now reports 0 production advisories.
 
-## Remaining Known Item
+## Resolved Follow-up (2026-07-17)
 
-`admin-dashboard` still has 2 moderate npm audit advisories through Next's internal `postcss` dependency. `npm audit fix --force` currently proposes a breaking Next downgrade, so do not force it. Re-check after the next safe Next release.
+The two PostCSS advisories are resolved with a root-level npm override to 8.5.19. Upgrading Supabase JS also removes the old Realtime dependency path through `ws`. Verification: production audit 0 vulnerabilities, ESLint passes, and Next's production build passes.
 
 ## Follow-up Before Private Repo Switch
 

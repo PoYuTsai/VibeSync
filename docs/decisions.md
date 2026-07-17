@@ -212,7 +212,7 @@
 ---
 
 ## ADR #11 — [2026-04-22] AI 模型策略更新（Starter 升 Sonnet）
-**狀態**: ✅ Active（取代 ADR #2）
+**狀態**: 🟡 Partially superseded（Starter / Essential 仍有效；Free analyze-chat 由 ADR #23 取代）
 
 **決定**: Starter 層從 Haiku 升級為 Sonnet
 
@@ -669,18 +669,18 @@
 
 ## ADR #21 — [2026-07-16] 分數只描述對方在當次互動的文字投入
 
-**狀態**: 🟢 Active — Eric 拍板
+**狀態**: 🟡 Partially superseded — 語意仍有效；分數校準由 ADR #26 更新
 
 **背景**: Dogfood 將 4 則友善回覆得到 65 分解讀成「關係健康快速升溫」，因而質疑缺少樣本量約束。現有 AI 規則實際只根據回覆長度、emoji、主動提問與話題延伸，評估對方在這次對話中的投入訊號；它不知道雙方熟識程度，也不是在估計整段關係進度。
 
 **決定**:
 
-1. 不加入樣本量降權，也不因這次回饋調整 0–100 分數或門檻；短對話的分數仍可描述這一輪可觀察到的投入。
+1. （2026-07-17 由 ADR #26 局部取代）仍不加入樣本量降權；但完成回應的顯示分數改為原分九折後向上取整。短對話的分數仍只描述這一輪可觀察到的投入。
 2. 使用者可見名稱統一為「對方這次的投入度」，短名為「本次投入」；四檔為「投入偏低／有在回應／投入明顯／高度投入」。
 3. 顯示分數時明示「只反映這次互動中的文字訊號，不代表關係進度。」不得再由分數直接宣告關係升溫、建議見面或其他關係結論。
 4. 歷次分數可以畫成每次互動投入度的變化，但每個點仍只代表當次互動；GameStage、使用者目標中的「維持熱度」與練習室溫度計是不同概念，不在此決策範圍。
 
-**不動**: AI prompt、分數公式、門檻、quota、既有分析資料與歷史分數。
+**不動（除 ADR #26 的完成分數校準外）**: AI prompt、模型原始評分規則、門檻、quota、既有分析資料與歷史分數。
 
 ## ADR #22 — [2026-07-16] Essential「我幫你修」成功固定扣 1 則
 
@@ -700,3 +700,65 @@
 8. ledger 只允許 AI 產生的 `optimized` 與 `reason` 欄位，DB constraint 拒絕另存原始草稿、完整對話輸入、usage、telemetry 或任何額外欄位；生成文字仍可能重述輸入內容。App 用同一 hash 綁定請求內的草稿重建 `original`。功能獨立同意、App 內 AI 隱私頁與 repo 隱私政策來源已更新；**部署前仍須把新版政策發佈到 `https://vibesyncai.app/privacy` 並核對 App Store Connect 揭露，否則不得上線本功能。**
 
 **部署要求**: 必須先套用 `20260716170000_optimize_message_fixed_charge.sql`，再部署 `analyze-chat`，最後發佈含 request id wire contract 的 App build。這是 quota／Edge 高風險變更，Codex `APPROVED` 前不得宣稱可供 dogfood。
+
+## ADR #23 — [2026-07-16] Free analyze-chat 固定使用 Sonnet 5
+
+**狀態**: 🟡 Partially superseded — Free 固定 Sonnet 5 仍有效；付費路由由 ADR #24 更新
+
+**決定**:
+
+1. Free `analyze-chat` 不再依首次、長度、冷淡或複雜情緒分流，所有分析固定使用 `claude-sonnet-5`。
+2. （2026-07-17 由 ADR #24 取代）Starter / Essential 與其他既有 Sonnet 主路徑已升級為 Sonnet 5；其他 Free AI endpoint 仍以各自實碼路由為準。
+3. 品質優先於舊的 70% Haiku 成本假設，但月/日額度、per-user rate limit 與請求 hard cap 仍是強制上限。
+4. logger 以 Sonnet 5 launch price 計價：input $2 / 1M tokens、output $10 / 1M tokens，同 token mix 為 Haiku 4.5 的 2.5 倍。此價格只到 2026-08-31，到期前必須重新核價。
+5. 放量前以 `ai_logs` 監看 Free 每次成功成本、每日總成本、cache hit 與 Sonnet 5 → 4.6 fallback 比例；不再沿用「Free 100% Haiku」的毛利預估。
+
+**驗證**: `analyze-chat/index_test.ts` 鎖定 Free 路由；`logger_test.ts` 鎖定當前 launch price 與 2.5 倍成本比。
+
+## ADR #24 — [2026-07-17] 既有 Sonnet 主路徑統一升級 Sonnet 5
+
+**狀態**: 🟢 Active — Eric 拍板作為 1.0.1 Build 333 起的 dogfood 基線（Build 332 誤由舊 main 建置）
+
+**決定**:
+
+1. 所有原本以 `claude-sonnet-4-6` 為主模型的 production 路徑改用 `claude-sonnet-5`：Starter／Essential `analyze-chat`、付費或圖片 Opener、圖片分析與 repair、付費 Coach／Follow-up，以及 Practice 的付費 Claude failover。
+2. `analyze-chat` 降級鏈維持 `sonnet-5 → sonnet-4-6 → haiku`；4.6 仍可供 test account 強制模型與歷史成本計算使用，不得誤刪。
+3. 這不是「所有請求一律用 Sonnet 5」：Coach／Follow-up／Practice 的 Free Claude 路徑與 Keyboard 仍維持 Haiku；Practice 的第一供應商仍是 DeepSeek。這些路徑若要升級，必須另案評估成本、延遲與 fallback 預算。
+4. 不修改 prompt、quota、扣費時機、response schema 或 rate limit。Sonnet 5 launch price 只到 2026-08-31，屆期前依 `ai_logs` 的實際 token、cache hit、fallback 與每日總成本重新決定模型策略。
+
+**驗證**: `analyze-chat/index_test.ts` 鎖主路由與降級鏈；Coach／Follow-up／Practice 測試鎖 tier 路由；Edge 全套與 Flutter analyze/test 在提交前執行。
+
+## ADR #25 — [2026-07-17] Free analyze-chat 固定提供延展＋調情雙風格
+
+**狀態**: 🟢 Active — Eric 拍板作為 1.0.1 Build 333 起的產品基線（Build 332 誤由舊 main 建置）
+
+**決定**:
+
+1. Free `analyze-chat` 每次回傳 `extend`（延展）與 `tease`（調情）兩種可比較回覆；共鳴、幽默、冷讀仍為 Starter／Essential 完整五種的升級差異。
+2. 串流 prompt 只要求這兩種，server 後處理也只允許這兩種；不靠 client 隱藏來實現權益。
+3. 分析結果下方繼續顯示完整五種的升級入口，Paywall 對照表明示 Free 有 2 種。
+4. 這個調整不擴大 Free Opener；Opener 仍僅 `extend`，避免把 analyze-chat 的轉換實驗誤帶到另一個產品契約。
+
+## ADR #26 — [2026-07-17] 投入度完成分數統一九折並向上取整
+
+**狀態**: 🟢 Active — Eric 拍板作為 1.0.1 Build 333 起的校準基線（Build 332 誤由舊 main 建置）
+
+**決定**:
+
+1. 對方這次的投入度完成分數改為 `ceil(AI 原分 × 0.9)`，並限制在 0–100；例如 82 轉為 74、100 轉為 90。
+2. 校準只在 server 完成回應後處理執行，不改 prompt、AI 原始推理、風格選擇、安全 fallback 或 quota。
+3. 新分析顯示與存檔都使用校準後分數；既有本地歷史不批次重寫，避免無法還原的資料遷移。
+
+**驗證**: 純函式測試鎖定 82 → 74、65 → 59、1 → 1、0 → 0、100 → 90；三條 analyze 完成路徑共用 `postProcessAnalysisResult`。
+
+## ADR #27 — [2026-07-17] OCR 每次開啟重播滑動教學，長等待顯示狀態串流
+
+**狀態**: 🟢 Active — Eric 拍板作為 1.0.1 Build 333 起的 OCR 等待體驗（Build 332 誤由舊 main 建置）
+
+**決定**:
+
+1. OCR 確認視窗每次開啟 350ms 後，都自動播放一次「右滑→我說、左滑→她說」示範；不再因 device-level seen flag 變成只有首次可見。使用者開始滑動／編輯時立即取消，reduce-motion 維持靜態圖例。
+2. OCR request 仍是單一 `recognizeOnly` HTTP 請求，不傳回中間文字或分析結果。Client progress stream 在長等待時依序切換「AI 讀取圖片」、「辨識訊息內容」、「校對說話者」、「整理辨識結果」，response 到達後取消所有後續 timer。
+3. 這是等待狀態，不是偽造的精確百分比；不改 Edge schema、OCR prompt、quota、timeout 或解析結果。
+
+**根因**: commit `774ff49f` 將原本每次開啟的動畫改為 device first-run only，所以不是動畫程式被刪除，而是看過一次後被永久抑制。

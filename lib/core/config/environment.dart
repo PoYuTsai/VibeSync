@@ -9,7 +9,7 @@ enum Environment { dev, staging, prod }
 ///
 /// 根據編譯時定義的 ENV 環境變數決定配置:
 /// - dev: 本地開發 (localhost Supabase)
-/// - staging: 測試環境 (staging Supabase)
+/// - staging: 測試 UI flags；目前仍連 production Supabase
 /// - prod: 正式環境 (production Supabase)
 ///
 /// 使用方式:
@@ -60,6 +60,7 @@ class AppConfig {
         // Dev 也使用遠端 Supabase (方便測試)
         return 'https://fcmwrmwdoqiqdnbisdpg.supabase.co';
       case Environment.staging:
+        // There is no isolated staging Supabase project today.
         return 'https://fcmwrmwdoqiqdnbisdpg.supabase.co';
       case Environment.prod:
         return const String.fromEnvironment(
@@ -76,6 +77,7 @@ class AppConfig {
         // Dev 也使用遠端 Supabase anon key
         return 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjbXdybXdkb3FpcWRuYmlzZHBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyMDUzMjUsImV4cCI6MjA4Nzc4MTMyNX0.xqorAcT0NUTNxzktd-SgI3ePG8jJdeqCRU730Brzmlg';
       case Environment.staging:
+        // Matches the production project URL above.
         return 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjbXdybXdkb3FpcWRuYmlzZHBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyMDUzMjUsImV4cCI6MjA4Nzc4MTMyNX0.xqorAcT0NUTNxzktd-SgI3ePG8jJdeqCRU730Brzmlg';
       case Environment.prod:
         return const String.fromEnvironment(

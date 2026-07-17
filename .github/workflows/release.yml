@@ -29,6 +29,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify release source and build number
+        shell: bash
+        run: |
+          expected_version="${APP_VERSION}+${GITHUB_RUN_NUMBER}"
+          source_version="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
+          echo "Release source: ${GITHUB_REF_NAME}@${GITHUB_SHA}"
+          echo "Expected pubspec version: ${expected_version}"
+          echo "Actual pubspec version: ${source_version}"
+          if [ "${source_version}" != "${expected_version}" ]; then
+            echo "::error::Release source is stale or the build number was not bumped. Select the merged release ref and set pubspec.yaml to ${expected_version}."
+            exit 1
+          fi
+
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v2
         with:
@@ -46,9 +59,46 @@ jobs:
         env:
           REVENUECAT_IOS_API_KEY: ${{ secrets.REVENUECAT_IOS_API_KEY }}
 
+      - name: Verify production keyboard contract
+        shell: pwsh
+        run: ./tools/preflight/check-keyboard-contract.ps1
+        env:
+          SUPABASE_PROD_ANON_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
+
+  flutter-gate:
+    name: Flutter release gate
+    needs: production-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Install Traditional Chinese visual-test font
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y fonts-noto-cjk
+
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run full test suite serially
+        run: flutter test --concurrency=1
+
   release-ios:
     if: inputs.platform == 'ios' || inputs.platform == 'both'
-    needs: production-preflight
+    needs: [production-preflight, flutter-gate]
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
@@ -86,10 +136,6 @@ jobs:
 
       - name: Generate code
         run: dart run build_runner build --delete-conflicting-outputs
-
-      - name: Run tests
-        run: flutter test || echo "Some tests failed, continuing build..."
-        continue-on-error: true
 
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
@@ -327,7 +373,7 @@ jobs:
 
   release-android:
     if: inputs.platform == 'android' || inputs.platform == 'both'
-    needs: production-preflight
+    needs: [production-preflight, flutter-gate]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -346,10 +392,6 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
-
-      - name: Run tests
-        run: flutter test || echo "Some tests failed, continuing build..."
-        continue-on-error: true
 
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1

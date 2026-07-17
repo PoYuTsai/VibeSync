@@ -35,7 +35,7 @@ Default priority:
 - AI: Claude API. Server env var is `CLAUDE_API_KEY`, not `ANTHROPIC_API_KEY`.
 - Subscription: RevenueCat, monthly + quarterly for Starter and Essential.
 - Local DB: Hive with AES-256 encryption.
-- Models: Free Haiku; Starter/Essential Sonnet; any image input forces Sonnet.
+- Models: analyze-chat Free/paid and paid Coach/Follow-up use Sonnet 5; other Free endpoints generally use Haiku. Image-capable requests use Sonnet 5. Practice stays DeepSeek-first with paid Sonnet 5 failover; analyze-chat alone keeps 4.6 then Haiku as fallback.
 
 ## Workflow
 

@@ -10,8 +10,6 @@ class AnalysisHintService {
       'analysis_edit_message_hint_seen_v2_partner_';
   static const _editMessageGlobalKey =
       'analysis_edit_message_hint_seen_v2_global';
-  static const _ocrSwipeTutorialGlobalKey =
-      'analysis_ocr_swipe_tutorial_seen_v1_global';
 
   static String _editMessageKey(String? partnerId) {
     final trimmedPartnerId = partnerId?.trim();
@@ -33,21 +31,5 @@ class AnalysisHintService {
   static Future<void> markEditMessageSeen({String? partnerId}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_editMessageKey(partnerId), true);
-  }
-
-  /// Whether this device has already auto-played the OCR side-correction
-  /// tutorial.
-  ///
-  /// This flag intentionally does not use the debug-only bypass from
-  /// [hasSeenEditMessage]. The OCR dialog always keeps a replay button, so
-  /// repeatedly auto-playing the motion in debug would hide first-run bugs.
-  static Future<bool> hasSeenOcrSwipeTutorial() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_ocrSwipeTutorialGlobalKey) ?? false;
-  }
-
-  static Future<void> markOcrSwipeTutorialSeen() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_ocrSwipeTutorialGlobalKey, true);
   }
 }

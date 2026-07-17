@@ -31,15 +31,32 @@ export class KeyboardReplyQuotaExceededError extends Error {
   }
 }
 
+export class KeyboardReplyFinalizeError extends Error {
+  constructor(
+    readonly status: 409 | 500 | 503,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 type GenerationDeps = {
   callClaude: (args: ClaudeCallArgs) => Promise<unknown>;
-  deductCredit: (userId: string) => Promise<void>;
+  finalizeReply: (
+    userId: string,
+    reply: string,
+  ) => Promise<{ reply: string; costDeducted: 0 | 1 }>;
 };
 
 export async function runKeyboardReply(
   input: KeyboardGenerationInput,
   deps: GenerationDeps,
-): Promise<{ status: number; body: Record<string, unknown> }> {
+): Promise<{
+  status: number;
+  body: Record<string, unknown>;
+  costDeducted: 0 | 1;
+}> {
   let reply: string | null = null;
   for (
     const message of [
@@ -61,32 +78,53 @@ export async function runKeyboardReply(
     }
   }
   if (reply == null) {
-    return { status: 500, body: { error: "generation_failed" } };
+    return {
+      status: 500,
+      body: { error: "generation_failed" },
+      costDeducted: 0,
+    };
   }
 
-  if (!input.accountIsTest) {
-    try {
-      await deps.deductCredit(input.userId);
-    } catch (error) {
-      if (error instanceof KeyboardReplyQuotaExceededError) {
-        return {
-          status: 429,
-          body: {
-            error: error.reason === "monthly_limit_exceeded"
-              ? "Monthly limit exceeded"
-              : "Daily limit exceeded",
-            code: "QUOTA_EXCEEDED",
-            used: error.used,
-            limit: error.limit,
-            quotaNeeded: 1,
-          },
-        };
-      }
-      return { status: 500, body: { error: "credit_deduct_failed" } };
+  try {
+    const finalized = await deps.finalizeReply(input.userId, reply);
+    return {
+      status: 200,
+      body: { reply: finalized.reply, style: input.style },
+      costDeducted: finalized.costDeducted,
+    };
+  } catch (error) {
+    if (error instanceof KeyboardReplyQuotaExceededError) {
+      return {
+        status: 429,
+        body: {
+          error: error.reason === "monthly_limit_exceeded"
+            ? "Monthly limit exceeded"
+            : "Daily limit exceeded",
+          code: "QUOTA_EXCEEDED",
+          used: error.used,
+          limit: error.limit,
+          quotaNeeded: 1,
+        },
+        costDeducted: 0,
+      };
     }
+    if (error instanceof KeyboardReplyFinalizeError) {
+      return {
+        status: error.status,
+        body: {
+          error: error.code,
+          code: error.code,
+          retryable: error.status === 503,
+        },
+        costDeducted: 0,
+      };
+    }
+    return {
+      status: 500,
+      body: { error: "credit_deduct_failed" },
+      costDeducted: 0,
+    };
   }
-
-  return { status: 200, body: { reply, style: input.style } };
 }
 
 export async function callClaudeAPI(args: ClaudeCallArgs): Promise<unknown> {

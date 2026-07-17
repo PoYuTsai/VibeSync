@@ -1,6 +1,6 @@
 # Launch Readiness Checklist
 
-最後更新：2026-05-23
+最後更新：2026-07-17
 目前目標：iOS / TestFlight / App Review 上線前最後收尾
 
 送審主控台、App Review Notes 草稿、Privacy Label 對照見：
@@ -12,6 +12,8 @@
 目前判定：`Repo GO / Submit HOLD`。
 
 可繼續進入最後人工 gate；不要直接送出，直到最新 TestFlight 真機 smoke、RevenueCat / App Store sandbox、App Store Connect privacy/IAP/reviewer 資訊、Supabase secrets/logs dashboard 都完成。
+
+2026-07-17 新增 AI 鍵盤發布硬閘：production migration、HMAC secret、matching JWT-verified Edge v5 與 live contract 已完成；下一個 build 仍須通過 signed keyboard extension、非測試 quota／HTTP 並行與 lost-response、真機矩陣與新隱私揭露。
 
 ## 1. 核心功能
 
@@ -39,6 +41,14 @@
 - [ ] media bubble / sticker / video bubble 不會破壞 speaker 判斷
 - [ ] 同一批真實截圖抽測仍維持穩定
 
+### AI 鍵盤
+
+- [x] Live contract 回 `keyboard-reply-exactly-once-v1`
+- [x] Production 測試帳號 fresh／replay／mismatch、DB pending／settlement／rollback、RLS／grant／cron 通過且 smoke rows 清為 0
+- [ ] Fresh request、lost-response replay、pending、mismatch、quota、model-rate 行為正確且不重複扣額
+- [ ] Signed Archive / IPA 包含 `VibeSyncKeyboard.appex`
+- [ ] LINE、Instagram、Messages 在 Full Access 開／關時都能正確成功或安全失敗
+
 ## 2. 法務與對外資訊
 
 - [ ] [https://vibesyncai.app/privacy](https://vibesyncai.app/privacy) 內容與目前資料流一致
@@ -53,6 +63,8 @@
 
 - [ ] 最新 Edge Function deploy 綠燈
 - [ ] 最新 iOS release workflow 綠燈
+- [x] 精準套用 `20260717120000_keyboard_reply_exactly_once.sql` 並核對 migration history
+- [x] 依 DB → `KEYBOARD_REPLAY_HMAC_KEY` → JWT-verified `keyboard-reply` v5 順序部署
 - [ ] RevenueCat webhook 正常同步 tier
 - [ ] `sync-subscription` 不再使用 hard-coded fallback key
 - [ ] `revenuecat-webhook` 只保留最小必要 webhook log payload
@@ -73,3 +85,4 @@
 - [ ] 對外法務與 support 資訊一致
 - [ ] 最新部署沒有重新引入 regression
 - [ ] 已完成最後一輪真人 regression
+- [ ] AI 鍵盤 production / signed iOS / privacy gates 全部完成

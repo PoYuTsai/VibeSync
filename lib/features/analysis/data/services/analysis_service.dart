@@ -37,7 +37,56 @@ enum AnalysisProgressStage {
   preparingPayload,
   uploadingRequest,
   awaitingAi,
+  recognizingMessages,
+  resolvingSpeakers,
+  finalizingRecognition,
 }
+
+String analysisProgressStageLabel(AnalysisProgressStage stage) {
+  switch (stage) {
+    case AnalysisProgressStage.preparingPayload:
+      return '準備圖片中';
+    case AnalysisProgressStage.uploadingRequest:
+      return '上傳圖片中';
+    case AnalysisProgressStage.awaitingAi:
+      return 'AI 讀取圖片中';
+    case AnalysisProgressStage.recognizingMessages:
+      return '辨識訊息內容中';
+    case AnalysisProgressStage.resolvingSpeakers:
+      return '校對說話者中';
+    case AnalysisProgressStage.finalizingRecognition:
+      return '整理辨識結果中';
+  }
+}
+
+class AnalysisProgressMilestone {
+  final Duration delay;
+  final AnalysisProgressStage stage;
+
+  const AnalysisProgressMilestone(this.delay, this.stage);
+}
+
+/// recognizeOnly 不傳輸中間分析內容，只在等待同一個 OCR
+/// request 時送出輕量狀態。這些是用戶等待進度，不是伺服器承諾的
+/// 精確百分比；response schema、quota 與 OCR 結果契約都不變。
+const ocrRecognitionProgressMilestones = <AnalysisProgressMilestone>[
+  AnalysisProgressMilestone(
+    Duration(milliseconds: 700),
+    AnalysisProgressStage.awaitingAi,
+  ),
+  AnalysisProgressMilestone(
+    Duration(seconds: 4),
+    AnalysisProgressStage.recognizingMessages,
+  ),
+  AnalysisProgressMilestone(
+    Duration(seconds: 9),
+    AnalysisProgressStage.resolvingSpeakers,
+  ),
+  AnalysisProgressMilestone(
+    Duration(seconds: 15),
+    AnalysisProgressStage.finalizingRecognition,
+  ),
+];
 
 class AnalysisProgressUpdate {
   final AnalysisProgressStage stage;
@@ -1549,16 +1598,28 @@ class AnalysisService {
       final httpClient = _clientFactory();
       try {
         final requestStartTime = DateTime.now();
-        final awaitingAiTimer = Timer(const Duration(milliseconds: 700), () {
-          onProgress?.call(
-            AnalysisProgressUpdate(
-              stage: AnalysisProgressStage.awaitingAi,
-              imageCount: imageCount,
-              elapsed: DateTime.now().difference(requestStartTime),
-              requestBodyBytes: requestBodyBytes,
-            ),
-          );
-        });
+        final progressMilestones = recognizeOnly && hasImages
+            ? ocrRecognitionProgressMilestones
+            : const <AnalysisProgressMilestone>[
+                AnalysisProgressMilestone(
+                  Duration(milliseconds: 700),
+                  AnalysisProgressStage.awaitingAi,
+                ),
+              ];
+        final progressTimers = progressMilestones
+            .map(
+              (milestone) => Timer(milestone.delay, () {
+                onProgress?.call(
+                  AnalysisProgressUpdate(
+                    stage: milestone.stage,
+                    imageCount: imageCount,
+                    elapsed: DateTime.now().difference(requestStartTime),
+                    requestBodyBytes: requestBodyBytes,
+                  ),
+                );
+              }),
+            )
+            .toList(growable: false);
 
         try {
           final httpResponse = await httpClient
@@ -1573,7 +1634,9 @@ class AnalysisService {
               )
               .timeout(timeout);
 
-          awaitingAiTimer.cancel();
+          for (final timer in progressTimers) {
+            timer.cancel();
+          }
 
           final roundTripDuration = DateTime.now().difference(requestStartTime);
           final responseData = _decodeResponseBody(httpResponse);
@@ -1711,7 +1774,9 @@ class AnalysisService {
 
           return AnalysisResult.fromJson(responseData);
         } finally {
-          awaitingAiTimer.cancel();
+          for (final timer in progressTimers) {
+            timer.cancel();
+          }
         }
       } finally {
         httpClient.close();

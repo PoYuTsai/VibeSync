@@ -3,13 +3,15 @@ import { getAdminSession } from "@/lib/server/admin-supabase";
 
 export const dynamic = "force-dynamic";
 
-interface TokenUsageRow {
+interface AiLogRow {
+  id: string;
   created_at: string;
   cost_usd: number | string | null;
   user_id: string | null;
 }
 
 interface RevenueEventRow {
+  id: string;
   event_type: string;
   price_usd: number | string | null;
   event_timestamp: string;
@@ -32,20 +34,72 @@ export async function GET() {
     return NextResponse.json({ error: admin.error }, { status: admin.status });
   }
 
-  const [tokenResult, revenueResult] = await Promise.all([
-    admin.session.supabase
-      .from("token_usage")
-      .select("created_at, cost_usd, user_id")
-      .order("created_at", { ascending: true })
-      .limit(5000),
-    admin.session.supabase
-      .from("revenue_events")
-      .select("event_type, price_usd, event_timestamp")
-      .order("event_timestamp", { ascending: true })
-      .limit(5000),
+  const pageSize = 1000;
+  const now = new Date();
+  const reportStartAt = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1),
+  ).toISOString();
+  const fetchAiLogs = async () => {
+    const rows: AiLogRow[] = [];
+    let lastCreatedAt: string | null = null;
+    let lastId: string | null = null;
+    for (;;) {
+      let query = admin.session.supabase
+        .from("ai_logs")
+        .select("id, created_at, cost_usd, user_id")
+        .gte("created_at", reportStartAt)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(pageSize);
+      if (lastCreatedAt !== null && lastId !== null) {
+        query = query.or(
+          `created_at.gt.${lastCreatedAt},and(created_at.eq.${lastCreatedAt},id.gt.${lastId})`,
+        );
+      }
+      const result = await query;
+      if (result.error) return { data: null, error: result.error };
+      const page = (result.data ?? []) as AiLogRow[];
+      rows.push(...page);
+      if (page.length < pageSize) return { data: rows, error: null };
+      const last = page[page.length - 1];
+      lastCreatedAt = last.created_at;
+      lastId = last.id;
+    }
+  };
+  const fetchRevenueEvents = async () => {
+    const rows: RevenueEventRow[] = [];
+    let lastEventAt: string | null = null;
+    let lastId: string | null = null;
+    for (;;) {
+      let query = admin.session.supabase
+        .from("revenue_events")
+        .select("id, event_type, price_usd, event_timestamp")
+        .gte("event_timestamp", reportStartAt)
+        .order("event_timestamp", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(pageSize);
+      if (lastEventAt !== null && lastId !== null) {
+        query = query.or(
+          `event_timestamp.gt.${lastEventAt},and(event_timestamp.eq.${lastEventAt},id.gt.${lastId})`,
+        );
+      }
+      const result = await query;
+      if (result.error) return { data: null, error: result.error };
+      const page = (result.data ?? []) as RevenueEventRow[];
+      rows.push(...page);
+      if (page.length < pageSize) return { data: rows, error: null };
+      const last = page[page.length - 1];
+      lastEventAt = last.event_timestamp;
+      lastId = last.id;
+    }
+  };
+
+  const [aiLogResult, revenueResult] = await Promise.all([
+    fetchAiLogs(),
+    fetchRevenueEvents(),
   ]);
 
-  const firstError = tokenResult.error ?? revenueResult.error;
+  const firstError = aiLogResult.error ?? revenueResult.error;
   if (firstError) {
     return NextResponse.json({ error: firstError.message }, { status: 500 });
   }
@@ -60,7 +114,7 @@ export async function GET() {
     }
   >();
 
-  for (const item of (tokenResult.data ?? []) as TokenUsageRow[]) {
+  for (const item of (aiLogResult.data ?? []) as AiLogRow[]) {
     const key = monthKey(item.created_at);
     const row = byMonth.get(key) ?? {
       month: key,
@@ -130,6 +184,6 @@ export async function GET() {
             ) / 100
           : 0,
     },
-    source: "token_usage + revenue_events",
+    source: "ai_logs + revenue_events",
   });
 }

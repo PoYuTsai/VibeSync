@@ -9,6 +9,8 @@ const TOKEN_COSTS: Record<string, { input: number; output: number }> = {
   "claude-haiku-4-5-20251001": { input: 0.0008, output: 0.004 },
 };
 
+export const SONNET_5_LAUNCH_PRICE_VALID_THROUGH = "2026-08-31T23:59:59.999Z";
+
 const MAX_STORED_TEXT_LENGTH = 500;
 const MAX_STORED_OBJECT_KEYS = 32;
 const SENSITIVE_KEYS = new Set([
@@ -35,6 +37,8 @@ export interface LogEntry {
   requestType?: string;
   inputTokens: number;
   outputTokens: number;
+  cacheCreationTokens?: number;
+  cacheReadTokens?: number;
   latencyMs: number;
   status: "success" | "failed" | "filtered";
   errorCode?: string;
@@ -49,9 +53,14 @@ function calculateCost(
   model: string,
   inputTokens: number,
   outputTokens: number,
+  cacheCreationTokens = 0,
+  cacheReadTokens = 0,
 ): number {
-  const costs = TOKEN_COSTS[model] || TOKEN_COSTS["claude-haiku-4-5-20251001"];
+  // Unknown/new model IDs must never silently fall back to the cheapest rate.
+  const costs = TOKEN_COSTS[model] || TOKEN_COSTS["claude-sonnet-4-6"];
   return (inputTokens / 1000) * costs.input +
+    (cacheCreationTokens / 1000) * costs.input * 1.25 +
+    (cacheReadTokens / 1000) * costs.input * 0.1 +
     (outputTokens / 1000) * costs.output;
 }
 
@@ -144,6 +153,8 @@ export async function logAiCall(
       entry.model,
       entry.inputTokens,
       entry.outputTokens,
+      entry.cacheCreationTokens ?? 0,
+      entry.cacheReadTokens ?? 0,
     );
 
     const { error } = await supabase.from("ai_logs").insert({

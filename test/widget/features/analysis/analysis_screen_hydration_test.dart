@@ -350,14 +350,15 @@ Map<String, dynamic> _fullRawResponse() {
   };
 }
 
-Map<String, dynamic> _freeSingleReplyRawResponse() {
+Map<String, dynamic> _freeDualReplyRawResponse() {
   final raw = _fullRawResponse();
   raw['replies'] = <String, dynamic>{
-    'extend': 'free tier reply',
+    'extend': 'free extend reply',
+    'tease': 'free tease reply',
   };
   raw['recommendation'] = <String, dynamic>{
     'pick': 'extend',
-    'content': 'free tier reply',
+    'content': 'free extend reply',
     'reason': 'free tier',
     'psychology': 'free tier',
   };
@@ -1422,7 +1423,7 @@ void main() {
       testWidgets(
         'cold repair finishes an interrupted paid refresh in the archive',
         (tester) async {
-          final freeRaw = _freeSingleReplyRawResponse();
+          final freeRaw = _freeDualReplyRawResponse();
           final paidRaw = _paidRawResponse();
           final conv = _conversation(
             lastAnalyzedMessageCount: 1,
@@ -2188,7 +2189,7 @@ void main() {
           AiDataSharingConsent.acceptedKeyForTesting: true,
         });
 
-        final canonicalRaw = _freeSingleReplyRawResponse();
+        final canonicalRaw = _freeDualReplyRawResponse();
         final conversation = _conversation(
           lastAnalyzedMessageCount: 1,
           lastEnthusiasmScore: 72,
@@ -2273,7 +2274,7 @@ void main() {
           AiDataSharingConsent.acceptedKeyForTesting: true,
         });
 
-        final freeRaw = _freeSingleReplyRawResponse();
+        final freeRaw = _freeDualReplyRawResponse();
         final paidRaw = _paidRawResponse();
         final conversationWithPendingOutgoing = _conversation(
           lastAnalysisSnapshotJson: jsonEncode(freeRaw),

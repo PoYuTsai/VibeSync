@@ -15,9 +15,9 @@
 
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
-  runCoachFollowUp,
   type GenerationDeps,
   type GenerationInput,
+  runCoachFollowUp,
 } from "./generation.ts";
 
 // ---------------------------------------------------------------------------
@@ -123,7 +123,7 @@ Deno.test("T8 succeeded: phase + tier + model + latencyMs + costDeducted only", 
   assertEquals(succeeded?.level, "info");
   assertEquals(succeeded?.data.phase, "postDateReflection");
   assertEquals(succeeded?.data.tier, "starter");
-  assertEquals(succeeded?.data.model, "claude-sonnet-4-6");
+  assertEquals(succeeded?.data.model, "claude-sonnet-5");
   assertEquals(typeof succeeded?.data.latencyMs, "number");
   assertEquals(succeeded?.data.costDeducted, 1);
   assertEquals(Object.keys(succeeded!.data).sort(), [
@@ -237,7 +237,11 @@ Deno.test("T8 privacy: prompt content (system rules + phase blocks) NEVER appear
 
   const allLogJson = JSON.stringify(h.logs);
   for (const tok of PROMPT_TOKENS) {
-    assertEquals(allLogJson.includes(tok), false, `prompt token leaked: ${tok}`);
+    assertEquals(
+      allLogJson.includes(tok),
+      false,
+      `prompt token leaked: ${tok}`,
+    );
   }
 });
 

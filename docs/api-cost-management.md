@@ -1,14 +1,20 @@
 # API 成本管理與負載控制
 
+> 2026-07-17 校正：本文的架構與告警策略保留參考；當前模型、額度與單位經濟以 `docs/cost-optimization.md`、`docs/pricing-final.md` 及 `ai_logs` 為準。
+
 ## 成本估算
 
-### Claude API 定價 (2024)
+### Claude API 定價（程式內當前計價）
 
 | 模型 | Input (1M tokens) | Output (1M tokens) |
 |------|-------------------|-------------------|
-| Claude 3.5 Haiku | $0.80 | $4.00 |
-| Claude 3.5 Sonnet | $3.00 | $15.00 |
-| Claude 3 Opus | $15.00 | $75.00 |
+| Claude Haiku 4.5 | $0.80 | $4.00 |
+| Claude Sonnet 5 | $2.00 | $10.00 |
+| Claude Sonnet 4.6 | $3.00 | $15.00 |
+
+> Sonnet 5 為至 2026-08-31 的 launch price，到期前必須重新核價。
+
+`ai_logs.cost_usd` 會把 Anthropic prompt cache creation 依 input 單價 1.25 倍、cache read 依 input 單價 0.1 倍納入；串流路徑必須解析 `message_start`／`message_delta` usage，不能以 0 tokens 記帳。未知模型 ID 以較保守的 Sonnet 4.6 價格估算。
 
 ### 單次分析成本估算
 
@@ -20,22 +26,18 @@
 | **Total** | **~1,200** | |
 
 **單次成本：**
-- Haiku: ~$0.001 (NT$0.03)
-- Sonnet: ~$0.005 (NT$0.15)
+- Haiku 4.5: ~$0.0019
+- Sonnet 5: ~$0.0048
+- Sonnet 4.6: ~$0.0072
 
 ### 月度成本預估
 
 | 方案 | 用戶數 | 使用次數/月 | 模型 | 月成本 |
 |------|--------|------------|------|--------|
-| Free | 5,000 | 25,000 | 100% Haiku | $25 |
-| Pro | 500 | 50,000 | 70/30 | $100 |
-| Unlimited | 100 | 30,000 | 50/50 | $90 |
-| **Total** | **5,600** | **105,000** | - | **~$215/月** |
+| Free | 5,000 | 25,000 | analyze-chat Sonnet 5 | 約 $120，未計 caching / vision / retry |
+| Starter / Essential | 以實際付費用戶為準 | 額度是訊息單位，不等於 API 次數 | analyze-chat Sonnet 5 | 用 `ai_logs` 計算 |
 
-**收入 vs 成本：**
-- 預估月收入：NT$104,400 (~$3,300)
-- API 成本：~$215 (~NT$6,800)
-- **毛利率：~93%** ✅
+舊版 93% 毛利估算已作廢：它把額度單位當成 API 次數，並假設 Free 100% Haiku。現在必須以真實 token、cache hit、fallback 與圖片比例計算。
 
 ---
 
@@ -45,25 +47,12 @@
 
 ```typescript
 function selectModel(context: AnalysisContext): Model {
-  // 強制使用 Haiku 的情況 (70%)
-  const useHaiku =
-    context.messageCount < 10 ||           // 短對話
-    context.previousScore > 60 ||          // 熱度已高，變化小
-    context.userTier === 'free';           // 免費用戶
-
-  // 使用 Sonnet 的情況 (30%)
-  const useSonnet =
-    context.messageCount > 20 ||           // 長對話需要更多理解
-    context.previousScore < 30 ||          // 冷淡需要策略
-    context.isFirstAnalysis ||             // 首次建立基準
-    context.userTier === 'unlimited';      // 付費用戶優先體驗
-
-  if (useSonnet && !useHaiku) {
-    return 'claude-3-5-sonnet-20241022';
-  }
-  return 'claude-3-5-haiku-20241022';
+  if (context.userTier === 'free') return 'claude-sonnet-5';
+  return 'claude-sonnet-5';
 }
 ```
+
+此路由只描述 `analyze-chat`。Coach、Opener、Keyboard 等 endpoint 仍有各自的 tier / image 路由，不得把這段當成全產品共用規則。
 
 ### 策略 2: Prompt 優化
 
@@ -231,27 +220,22 @@ function localQuickAnalysis(messages: Message[]) {
 SELECT
   DATE(created_at) as date,
   COUNT(*) as calls,
-  SUM(CASE WHEN model = 'haiku' THEN 1 ELSE 0 END) as haiku_calls,
-  SUM(CASE WHEN model = 'sonnet' THEN 1 ELSE 0 END) as sonnet_calls
-FROM api_logs
+  COUNT(*) FILTER (WHERE model LIKE '%haiku%') as haiku_calls,
+  COUNT(*) FILTER (WHERE model LIKE '%sonnet%') as sonnet_calls
+FROM ai_logs
 GROUP BY DATE(created_at)
 ORDER BY date DESC;
 
 -- 2. 每日成本估算
 SELECT
   DATE(created_at) as date,
-  SUM(
-    CASE
-      WHEN model = 'haiku' THEN (input_tokens * 0.0000008 + output_tokens * 0.000004)
-      WHEN model = 'sonnet' THEN (input_tokens * 0.000003 + output_tokens * 0.000015)
-    END
-  ) as estimated_cost_usd
-FROM api_logs
+  SUM(cost_usd) as estimated_cost_usd
+FROM ai_logs
 GROUP BY DATE(created_at);
 
 -- 3. 異常用戶偵測 (單日使用超過 50 次)
 SELECT user_id, COUNT(*) as daily_usage
-FROM api_logs
+FROM ai_logs
 WHERE created_at > NOW() - INTERVAL '1 day'
 GROUP BY user_id
 HAVING COUNT(*) > 50;

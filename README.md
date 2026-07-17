@@ -9,6 +9,8 @@
 - **五種回覆風格** — 延展 / 共鳴 / 調情 / 幽默 / 冷讀
 - **截圖上傳** — Claude Vision 自動識別聊天截圖（最多 3 張）
 - **開場救星** — 無聊天記錄也能產開場白（基本 3 則 + 每張截圖 +2 則）
+- **Coach 1:1** — 針對目前對話追問情境、回覆與下一步
+- **AI 鍵盤** — iOS 鍵盤內產生五種快速回覆（目前為 TestFlight 發布候選）
 - **學習專區** — 20 篇繁中翻譯文章 + 實戰練習入口
 - **我的報告** — 5 維雷達圖 + 健康分數卡 + 歷史趨勢（付費限定）
 - **1.8x 黃金法則** — 維持健康對話節奏
@@ -36,9 +38,9 @@
 
 | Tier | 月繳 | 月訊息 | 每日上限 | AI 模型 |
 |------|------|--------|----------|---------|
-| Free | NT$0 | 30 | 15 | Haiku |
-| Starter | NT$590 | 300 | 50 | Sonnet |
-| Essential | NT$1,290 | 800 | 120 | Sonnet |
+| Free | NT$0 | 30 | 15 | 分析 Sonnet 5；其他 Free 端點多為 Haiku |
+| Starter | NT$590 | 300 | 50 | 分析 Sonnet 5 |
+| Essential | NT$1,290 | 800 | 120 | 分析 Sonnet 5 |
 
 詳細見 [docs/pricing-final.md](docs/pricing-final.md)。
 
@@ -47,7 +49,7 @@
 ```bash
 flutter pub get     # 安裝依賴
 flutter run         # 執行開發版本
-flutter test        # 跑測試
+flutter test --concurrency=1  # 跑完整測試（避免共享 Hive/Supabase 狀態互撞）
 ```
 
 ## 專案結構
@@ -82,4 +84,3 @@ Private - All Rights Reserved
 ## 變更記錄
 
 Hotfix / rollback 記錄見 [`CHANGELOG.md`](./CHANGELOG.md)。
-

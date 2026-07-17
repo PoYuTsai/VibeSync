@@ -20,7 +20,18 @@ import {
 } from "../_shared/quota.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import {
+  claimKeyboardReplyRequest,
+  classifyKeyboardReplyReplayPreflight,
+  computeKeyboardReplyInputHash,
+  isStrongKeyboardReplayHmacKey,
+  KEYBOARD_REPLY_COST,
+  keyboardReplyReplayCutoffIso,
+  releaseKeyboardReplyClaim,
+  settleKeyboardReplyRequest,
+} from "./billing.ts";
+import {
   callClaudeAPI,
+  KeyboardReplyFinalizeError,
   KeyboardReplyQuotaExceededError,
   runKeyboardReply,
 } from "./generation.ts";
@@ -28,15 +39,17 @@ import { validateRequest } from "./validate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const KEYBOARD_REPLAY_HMAC_KEY = Deno.env.get("KEYBOARD_REPLAY_HMAC_KEY") ?? "";
 const REVENUECAT_IOS_API_KEY = Deno.env.get("REVENUECAT_IOS_API_KEY");
-const COST = 1;
+const COST = KEYBOARD_REPLY_COST;
 const MAX_BODY_BYTES = 32 * 1024;
 const SUBSCRIPTION_COLUMNS =
   "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at";
+export const KEYBOARD_REPLY_CONTRACT_VERSION = "keyboard-reply-exactly-once-v1";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers":
     "Authorization, Content-Type, x-client-info, apikey",
 };
@@ -133,6 +146,7 @@ async function maybeRefreshTier(
           Authorization: `Bearer ${REVENUECAT_IOS_API_KEY}`,
           "Content-Type": "application/json",
         },
+        signal: AbortSignal.timeout(5000),
       },
     );
     if (!response.ok) return null;
@@ -161,7 +175,28 @@ export async function handleRequest(request: Request): Promise<Response> {
     return new Response("ok", { headers: corsHeaders });
   }
   if (request.method === "GET") {
-    return jsonResponse({ status: "ok", function: "keyboard-reply" });
+    if (
+      !SUPABASE_URL || !SUPABASE_SERVICE_KEY ||
+      !isStrongKeyboardReplayHmacKey(KEYBOARD_REPLAY_HMAC_KEY)
+    ) {
+      return jsonResponse({ status: "unavailable" }, 503);
+    }
+    const healthClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false },
+    });
+    const { data: databaseContractVersion, error } = await healthClient.rpc(
+      "keyboard_reply_contract_version",
+    );
+    if (
+      error || databaseContractVersion !== KEYBOARD_REPLY_CONTRACT_VERSION
+    ) {
+      return jsonResponse({ status: "unavailable" }, 503);
+    }
+    return jsonResponse({
+      status: "ok",
+      function: "keyboard-reply",
+      contractVersion: KEYBOARD_REPLY_CONTRACT_VERSION,
+    });
   }
   if (request.method !== "POST") {
     return jsonResponse({ error: "method_not_allowed" }, 405);
@@ -199,6 +234,80 @@ export async function handleRequest(request: Request): Promise<Response> {
     }, 400);
   }
 
+  let inputHash: string | null = null;
+  if (payload.requestId !== null) {
+    if (!isStrongKeyboardReplayHmacKey(KEYBOARD_REPLAY_HMAC_KEY)) {
+      return jsonResponse({ error: "config_missing" }, 500);
+    }
+    inputHash = await computeKeyboardReplyInputHash({
+      userId: user.id,
+      message: payload.message,
+      style: payload.style,
+      secret: KEYBOARD_REPLAY_HMAC_KEY,
+    });
+    const { data: replayRow, error: replayReadError } = await client
+      .from("keyboard_reply_requests")
+      .select("input_hash, state, lease_expires_at, result_json, created_at")
+      .eq("user_id", user.id)
+      .eq("request_id", payload.requestId)
+      .gte("created_at", keyboardReplyReplayCutoffIso())
+      .maybeSingle();
+    if (replayReadError) {
+      console.error("keyboard_reply_replay_preflight_read_failed");
+      return jsonResponse({
+        error: "KEYBOARD_REPLY_SETTLEMENT_RETRYABLE",
+        code: "KEYBOARD_REPLY_SETTLEMENT_RETRYABLE",
+        retryable: true,
+      }, 503);
+    }
+    const replay = classifyKeyboardReplyReplayPreflight(
+      replayRow,
+      inputHash,
+    );
+    if (replay.kind === "mismatch") {
+      return jsonResponse({
+        error: "KEYBOARD_REPLY_REQUEST_REPLAY_MISMATCH",
+        code: "KEYBOARD_REPLY_REQUEST_REPLAY_MISMATCH",
+      }, 409);
+    }
+    if (replay.kind === "replay") {
+      console.info(JSON.stringify({
+        event: "keyboard_reply_replayed",
+        style: replay.result.style,
+        costDeducted: 0,
+      }));
+      return jsonResponse(replay.result);
+    }
+    if (replay.kind === "pending") {
+      return jsonResponse({
+        error: "KEYBOARD_REPLY_REQUEST_PENDING",
+        code: "KEYBOARD_REPLY_REQUEST_PENDING",
+        retryable: true,
+        retryAfterMs: replay.retryAfterMs,
+      }, 409);
+    }
+  }
+
+  const apiKey = Deno.env.get("CLAUDE_API_KEY");
+  if (!apiKey) return jsonResponse({ error: "config_missing" }, 500);
+  const requestId = payload.requestId;
+  const requestInputHash = inputHash;
+  const requestOwnerToken = requestId === null ? null : crypto.randomUUID();
+
+  const releaseCurrentClaim = async (): Promise<boolean> => {
+    if (
+      requestId === null || requestInputHash === null ||
+      requestOwnerToken === null
+    ) return true;
+    return await releaseKeyboardReplyClaim({
+      rpc: async (fn, params) => await client.rpc(fn, params),
+      userId: user.id,
+      requestId,
+      inputHash: requestInputHash,
+      ownerToken: requestOwnerToken,
+    });
+  };
+
   let sub = await fetchSubscription(client, user.id);
   if (!sub) sub = await selfHealSubscription(client, user.id);
   if (!sub) return jsonResponse({ error: "subscription_unavailable" }, 503);
@@ -231,17 +340,66 @@ export async function handleRequest(request: Request): Promise<Response> {
       });
     }
   }
+  // Keep slow subscription/RevenueCat I/O outside the 45-second lease. Claim
+  // only after entitlement refresh, but before any terminal gate response, so
+  // one concurrent request cannot clear an identity another request owns.
+  if (
+    requestId !== null && requestInputHash !== null &&
+    requestOwnerToken !== null
+  ) {
+    const claim = await claimKeyboardReplyRequest({
+      rpc: async (fn, params) => await client.rpc(fn, params),
+      userId: user.id,
+      requestId,
+      inputHash: requestInputHash,
+      ownerToken: requestOwnerToken,
+    });
+    if (claim.kind === "replay") return jsonResponse(claim.result);
+    if (claim.kind === "pending") {
+      return jsonResponse({
+        error: "KEYBOARD_REPLY_REQUEST_PENDING",
+        code: "KEYBOARD_REPLY_REQUEST_PENDING",
+        retryable: true,
+        retryAfterMs: claim.retryAfterMs,
+      }, 409);
+    }
+    if (claim.kind === "mismatch") {
+      return jsonResponse({
+        error: "KEYBOARD_REPLY_REQUEST_REPLAY_MISMATCH",
+        code: "KEYBOARD_REPLY_REQUEST_REPLAY_MISMATCH",
+      }, 409);
+    }
+    if (claim.kind === "retryable") {
+      return jsonResponse({
+        error: "KEYBOARD_REPLY_CLAIM_RETRYABLE",
+        code: "KEYBOARD_REPLY_CLAIM_RETRYABLE",
+        retryable: true,
+      }, 503);
+    }
+    if (claim.kind === "failed") {
+      console.error("keyboard_reply_claim_failed");
+      return jsonResponse({ error: "KEYBOARD_REPLY_CLAIM_FAILED" }, 500);
+    }
+  }
   if (!gate.ok) {
-    return jsonResponse(
-      buildQuotaExceededPayload({
+    if (!await releaseCurrentClaim()) {
+      return jsonResponse({
+        error: "KEYBOARD_REPLY_CLAIM_RELEASE_RETRYABLE",
+        code: "KEYBOARD_REPLY_CLAIM_RELEASE_RETRYABLE",
+        retryable: true,
+      }, 503);
+    }
+    return jsonResponse({
+      ...buildQuotaExceededPayload({
         sub,
         cost: COST,
         reason: gate.reason,
         monthlyLimit: limits.monthly,
         dailyLimit: limits.daily,
       }),
-      429,
-    );
+      code: "QUOTA_EXCEEDED",
+      safeToClear: true,
+    }, 429);
   }
 
   const rate = await enforceModelRateLimit({
@@ -250,13 +408,57 @@ export async function handleRequest(request: Request): Promise<Response> {
     scope: "keyboard_reply",
     isTestAccount: accountIsTest,
   });
-  if (rate.kind === "limited") return jsonResponse(rate.payload, 429);
+  if (rate.kind === "limited") {
+    if (!await releaseCurrentClaim()) {
+      return jsonResponse({
+        error: "KEYBOARD_REPLY_CLAIM_RELEASE_RETRYABLE",
+        code: "KEYBOARD_REPLY_CLAIM_RELEASE_RETRYABLE",
+        retryable: true,
+      }, 503);
+    }
+    return jsonResponse({ ...rate.payload, safeToClear: true }, 429);
+  }
   if (rate.kind === "failOpen") {
     console.error("keyboard_reply_model_rate_limit_check_failed");
   }
 
-  const apiKey = Deno.env.get("CLAUDE_API_KEY");
-  if (!apiKey) return jsonResponse({ error: "config_missing" }, 500);
+  // Renew immediately before model dispatch. If the rate-limit RPC stalled
+  // past the lease and another owner took over, this invocation must stop
+  // before it can amplify provider cost.
+  if (
+    requestId !== null && requestInputHash !== null &&
+    requestOwnerToken !== null
+  ) {
+    const renewal = await claimKeyboardReplyRequest({
+      rpc: async (fn, params) => await client.rpc(fn, params),
+      userId: user.id,
+      requestId,
+      inputHash: requestInputHash,
+      ownerToken: requestOwnerToken,
+    });
+    if (renewal.kind === "replay") return jsonResponse(renewal.result);
+    if (renewal.kind === "pending") {
+      return jsonResponse({
+        error: "KEYBOARD_REPLY_REQUEST_PENDING",
+        code: "KEYBOARD_REPLY_REQUEST_PENDING",
+        retryable: true,
+        retryAfterMs: renewal.retryAfterMs,
+      }, 409);
+    }
+    if (renewal.kind === "mismatch") {
+      return jsonResponse({
+        error: "KEYBOARD_REPLY_REQUEST_REPLAY_MISMATCH",
+        code: "KEYBOARD_REPLY_REQUEST_REPLAY_MISMATCH",
+      }, 409);
+    }
+    if (renewal.kind !== "claimed") {
+      return jsonResponse({
+        error: "KEYBOARD_REPLY_CLAIM_RENEW_RETRYABLE",
+        code: "KEYBOARD_REPLY_CLAIM_RENEW_RETRYABLE",
+        retryable: true,
+      }, 503);
+    }
+  }
 
   const result = await runKeyboardReply(
     {
@@ -267,7 +469,10 @@ export async function handleRequest(request: Request): Promise<Response> {
     },
     {
       callClaude: callClaudeAPI,
-      deductCredit: async (userId) => {
+      finalizeReply: async (userId, generatedReply) => {
+        if (requestId === null && accountIsTest) {
+          return { reply: generatedReply, costDeducted: 0 as const };
+        }
         let latest = await fetchSubscription(client, userId);
         if (!latest) throw new Error("subscription_unavailable");
         const latestReset = applyResetsIfNeeded(latest, new Date());
@@ -297,6 +502,59 @@ export async function handleRequest(request: Request): Promise<Response> {
             });
           }
         }
+
+        if (
+          requestId !== null && requestInputHash !== null &&
+          requestOwnerToken !== null
+        ) {
+          const settlement = await settleKeyboardReplyRequest({
+            rpc: async (fn, params) => await client.rpc(fn, params),
+            userId,
+            requestId,
+            inputHash: requestInputHash,
+            ownerToken: requestOwnerToken,
+            result: { reply: generatedReply, style: payload.style },
+            monthlyLimit: latestLimits.monthly,
+            dailyLimit: latestLimits.daily,
+            chargeQuota: !accountIsTest,
+          });
+          if (settlement.kind === "settled") {
+            return {
+              reply: settlement.result.reply,
+              costDeducted: settlement.charged ? 1 as const : 0 as const,
+            };
+          }
+          if (settlement.kind === "quota_exceeded") {
+            const monthly = settlement.reason === "monthly_limit_exceeded";
+            throw new KeyboardReplyQuotaExceededError(
+              settlement.reason,
+              monthly
+                ? latest.monthly_messages_used
+                : latest.daily_messages_used,
+              monthly ? latestLimits.monthly : latestLimits.daily,
+            );
+          }
+          if (settlement.kind === "mismatch") {
+            throw new KeyboardReplyFinalizeError(
+              409,
+              "KEYBOARD_REPLY_REQUEST_REPLAY_MISMATCH",
+              "request identity reused for different input",
+            );
+          }
+          if (settlement.kind === "retryable") {
+            throw new KeyboardReplyFinalizeError(
+              503,
+              "KEYBOARD_REPLY_SETTLEMENT_RETRYABLE",
+              settlement.message,
+            );
+          }
+          throw new KeyboardReplyFinalizeError(
+            500,
+            "KEYBOARD_REPLY_SETTLEMENT_FAILED",
+            settlement.message,
+          );
+        }
+
         if (!latestGate.ok) {
           throw new KeyboardReplyQuotaExceededError(
             latestGate.reason,
@@ -310,7 +568,9 @@ export async function handleRequest(request: Request): Promise<Response> {
           p_monthly_limit: latestLimits.monthly,
           p_daily_limit: latestLimits.daily,
         });
-        if (!error) return;
+        if (!error) {
+          return { reply: generatedReply, costDeducted: 1 as const };
+        }
         const reason = classifyQuotaRpcError(error.message);
         if (reason) {
           const monthly = reason === "monthly_limit_exceeded";
@@ -324,12 +584,25 @@ export async function handleRequest(request: Request): Promise<Response> {
       },
     },
   );
+  if (
+    result.status === 429 && result.body.code === "QUOTA_EXCEEDED" &&
+    result.body.safeToClear !== true
+  ) {
+    if (!await releaseCurrentClaim()) {
+      return jsonResponse({
+        error: "KEYBOARD_REPLY_CLAIM_RELEASE_RETRYABLE",
+        code: "KEYBOARD_REPLY_CLAIM_RELEASE_RETRYABLE",
+        retryable: true,
+      }, 503);
+    }
+    result.body.safeToClear = true;
+  }
   if (result.status === 200) {
     console.info(JSON.stringify({
       event: "keyboard_reply_succeeded",
       style: payload.style,
       tier: normalizeTier(sub.tier),
-      costDeducted: accountIsTest ? 0 : 1,
+      costDeducted: result.costDeducted,
     }));
   }
   return jsonResponse(result.body, result.status);

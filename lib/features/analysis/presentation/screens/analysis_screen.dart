@@ -73,6 +73,7 @@ import '../widgets/screenshot_added_feedback_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
 import '../widgets/analysis_usage_summary_line.dart';
 import '../helpers/analysis_usage_copy.dart';
+import '../widgets/analysis_action_widgets.dart';
 import '../widgets/streaming_analysis_loading_widgets.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
@@ -430,10 +431,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   bool _analysisNeedsReplyRefresh(SubscriptionState subscription) {
+    const freeReplyStyles = {'extend', 'tease'};
     if (!subscription.isPremium ||
         _replies == null ||
-        _replies!.length != 1 ||
-        !_replies!.containsKey('extend')) {
+        _replies!.isEmpty ||
+        !_replies!.containsKey('extend') ||
+        !_replies!.keys.every(freeReplyStyles.contains)) {
       return false;
     }
 
@@ -517,9 +520,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         if (_selectedImages.isNotEmpty) {
           return '先辨識截圖';
         }
-        return _hasCompletedCurrentFragment
-            ? '分析新片段'
-            : '重新選擇截圖';
+        return _hasCompletedCurrentFragment ? '分析新片段' : '重新選擇截圖';
     }
   }
 
@@ -2531,14 +2532,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   String _recognizeStageLabel(AnalysisProgressStage stage) {
-    switch (stage) {
-      case AnalysisProgressStage.preparingPayload:
-        return '準備圖片中';
-      case AnalysisProgressStage.uploadingRequest:
-        return '上傳圖片中';
-      case AnalysisProgressStage.awaitingAi:
-        return 'AI 辨識中';
-    }
+    return analysisProgressStageLabel(stage);
   }
 
   int get _totalOriginalImageBytes => _selectedImageMetrics.fold(
@@ -2939,7 +2933,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           ),
                         )
                       : const Icon(Icons.add_photo_alternate),
-                  label: Text(_recognizeButtonLabel),
+                  label: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    child: Text(
+                      _recognizeButtonLabel,
+                      key: ValueKey(_recognizeButtonLabel),
+                    ),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.ctaStart,
                     foregroundColor: Colors.white,
@@ -3096,9 +3096,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     if (partnerId != null && partnerId.isNotEmpty) {
       conv.name =
           ScreenshotRecognitionHelper.resolvePartnerBoundConversationName(
-            currentConversation: conv,
-            expectedPartnerName: _recognitionExpectedPartnerName(conv),
-          );
+        currentConversation: conv,
+        expectedPartnerName: _recognitionExpectedPartnerName(conv),
+      );
     } else if (newName.isNotEmpty &&
         ScreenshotRecognitionHelper.isPlaceholderConversationName(conv.name)) {
       conv.name = newName;
@@ -6249,11 +6249,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _fullErrorMessage == null;
     final isScreenshotOnlyEmptyState =
         showInitialScreenshotSetup && conversation.messages.isEmpty;
+    final showFloatingAnalysisAction = showInitialScreenshotSetup &&
+        analysisFragmentMessages.isNotEmpty &&
+        _selectedImages.isEmpty;
 
     return BrandScaffold(
       // body 自帶 SafeArea（見下方），故關掉鷹架的外層 SafeArea 避免雙層巢套。
       safeArea: false,
       resizeToAvoidBottomInset: true,
+      floatingActionButton: buildAnalysisFloatingOverlay(
+        showStartAction: showFloatingAnalysisAction,
+        isAnalyzing: _isAnalyzing,
+        analysisCompleted: _enthusiasmScore != null,
+        onStart: (_isAnalyzing || _isRecognizing) ? null : _runAnalysis,
+      ),
       title: conversation.name,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
@@ -6649,7 +6658,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                             )
                                           : const Icon(
                                               Icons.add_photo_alternate),
-                                      label: Text(_recognizeButtonLabel),
+                                      label: AnimatedSwitcher(
+                                        duration:
+                                            const Duration(milliseconds: 220),
+                                        child: Text(
+                                          _recognizeButtonLabel,
+                                          key: ValueKey(_recognizeButtonLabel),
+                                        ),
+                                      ),
                                       /*
                                             ? '辨識中…'
                                             : '辨識截圖文字 （${_selectedImages.length} 張）'),
@@ -6833,24 +6849,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       ),
                                     */
                                   const SizedBox(height: 12),
-                                ] else if (conversation
-                                    .messages.isNotEmpty) ...[
-                                  // 沒有截圖時才顯示「開始分析」按鈕
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton.icon(
-                                      onPressed:
-                                          (_isAnalyzing || _isRecognizing)
-                                              ? null
-                                              : _runAnalysis,
-                                      icon: const Icon(Icons.auto_awesome),
-                                      label: const Text('開始分析'),
-                                      style: ElevatedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 14),
-                                      ),
-                                    ),
-                                  ),
                                 ],
                                 const SizedBox(height: 16),
                                 Text(
@@ -7544,9 +7542,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     cardKey: type,
                                     label: ReplyStyleCard.labels[type] ?? type,
                                   ),
-                              // 如果只有 extend，根據用戶 tier 顯示不同提示
-                              if (_replies!.length == 1 &&
-                                  _replies!.containsKey('extend')) ...[
+                              // Free 固定在雙風格後顯示完整版入口；
+                              // 已升級但還在看舊 Free 結果時也要能重新分析。
+                              if ((subscription.isFreeUser &&
+                                      _replies!.isNotEmpty) ||
+                                  _analysisNeedsReplyRefresh(subscription) ||
+                                  (_replies!.length == 1 &&
+                                      _replies!.containsKey('extend'))) ...[
                                 const SizedBox(height: 12),
                                 Builder(
                                   builder: (context) {
@@ -7573,7 +7575,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                               const SizedBox(width: 8),
                                               Expanded(
                                                 child: Text(
-                                                  '升級解鎖共鳴、調情、幽默、冷讀等回覆風格',
+                                                  '你已可比較延展、調情；升級解鎖共鳴、幽默、冷讀等完整 5 種風格',
                                                   style: AppTypography
                                                       .bodyMedium
                                                       .copyWith(
