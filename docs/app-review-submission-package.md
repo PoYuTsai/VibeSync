@@ -142,7 +142,7 @@ VibeSync offers Free, Starter, and Essential plans. Paid plans are auto-renewabl
 
 - [ ] 新帳號登入後可建立第一個對話
 - [ ] 手動貼上 2-5 則聊天訊息可分析
-- [ ] Free 額度內可看到熱度、階段、延展回覆與基礎建議
+- [ ] Free 額度內可看到投入度、階段、延展＋調情兩種回覆與基礎建議
 - [ ] Free 額度用完時導到 Paywall，不顯示 raw error
 - [ ] 學習專區可打開文章，免費文章限制與 Paywall 導流正常
 

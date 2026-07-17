@@ -35,8 +35,8 @@
 | Tier | 月訊息 | 日上限 | AI 模型 |
 |------|--------|--------|---------|
 | Free | 30 | 15 | 分析對話 Sonnet 5；其他 Free endpoint 原則上 Haiku |
-| Starter | 300 | 50 | 分析對話 Sonnet 4.6 |
-| Essential | 800 | 120 | 分析對話 Sonnet 4.6 |
+| Starter | 300 | 50 | 分析對話 Sonnet 5 |
+| Essential | 800 | 120 | 分析對話 Sonnet 5 |
 
 雷達圖限 Starter / Essential 可見，Free 隱藏。
 

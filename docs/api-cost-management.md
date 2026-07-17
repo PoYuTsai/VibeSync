@@ -35,7 +35,7 @@
 | 方案 | 用戶數 | 使用次數/月 | 模型 | 月成本 |
 |------|--------|------------|------|--------|
 | Free | 5,000 | 25,000 | analyze-chat Sonnet 5 | 約 $120，未計 caching / vision / retry |
-| Starter / Essential | 以實際付費用戶為準 | 額度是訊息單位，不等於 API 次數 | analyze-chat Sonnet 4.6 | 用 `ai_logs` 計算 |
+| Starter / Essential | 以實際付費用戶為準 | 額度是訊息單位，不等於 API 次數 | analyze-chat Sonnet 5 | 用 `ai_logs` 計算 |
 
 舊版 93% 毛利估算已作廢：它把額度單位當成 API 次數，並假設 Free 100% Haiku。現在必須以真實 token、cache hit、fallback 與圖片比例計算。
 
@@ -48,7 +48,7 @@
 ```typescript
 function selectModel(context: AnalysisContext): Model {
   if (context.userTier === 'free') return 'claude-sonnet-5';
-  return 'claude-sonnet-4-6';
+  return 'claude-sonnet-5';
 }
 ```
 

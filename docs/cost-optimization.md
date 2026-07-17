@@ -4,13 +4,13 @@
 
 ---
 
-## 模型路由（2026-07-16 起，見 ADR #23）
+## 模型路由（2026-07-17 起，見 ADR #24）
 
 | Tier | 模型 | 成本比重 |
 |------|------|----------|
 | Free 分析對話 | Sonnet 5 (`claude-sonnet-5`) | 中；launch price 到 2026-08-31 |
-| Starter 分析對話 | Sonnet 4.6 (`claude-sonnet-4-6`) | 中高 |
-| Essential 分析對話 | Sonnet 4.6 (`claude-sonnet-4-6`) | 中高 |
+| Starter 分析對話 | Sonnet 5 (`claude-sonnet-5`) | 中；launch price 到 2026-08-31 |
+| Essential 分析對話 | Sonnet 5 (`claude-sonnet-5`) | 中；launch price 到 2026-08-31 |
 | 其他 Free AI endpoint | 原則上 Haiku，以各 function 實碼為準 | 低 |
 | 有圖片（所有層） | 強制 Sonnet（Vision 需要） | 高 |
 

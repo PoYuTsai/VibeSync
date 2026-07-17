@@ -39,8 +39,8 @@
 | Tier | 月繳 | 月訊息 | 每日上限 | AI 模型 |
 |------|------|--------|----------|---------|
 | Free | NT$0 | 30 | 15 | 分析 Sonnet 5；其他 Free 端點多為 Haiku |
-| Starter | NT$590 | 300 | 50 | 分析 Sonnet 4.6 |
-| Essential | NT$1,290 | 800 | 120 | 分析 Sonnet 4.6 |
+| Starter | NT$590 | 300 | 50 | 分析 Sonnet 5 |
+| Essential | NT$1,290 | 800 | 120 | 分析 Sonnet 5 |
 
 詳細見 [docs/pricing-final.md](docs/pricing-final.md)。
 
