@@ -717,7 +717,7 @@
 
 ## ADR #24 — [2026-07-17] 既有 Sonnet 主路徑統一升級 Sonnet 5
 
-**狀態**: 🟢 Active — Eric 拍板作為 1.0.1 Build 332 起的 dogfood 基線
+**狀態**: 🟢 Active — Eric 拍板作為 1.0.1 Build 333 起的 dogfood 基線（Build 332 誤由舊 main 建置）
 
 **決定**:
 
@@ -730,7 +730,7 @@
 
 ## ADR #25 — [2026-07-17] Free analyze-chat 固定提供延展＋調情雙風格
 
-**狀態**: 🟢 Active — Eric 拍板作為 1.0.1 Build 332 起的產品基線
+**狀態**: 🟢 Active — Eric 拍板作為 1.0.1 Build 333 起的產品基線（Build 332 誤由舊 main 建置）
 
 **決定**:
 
@@ -741,7 +741,7 @@
 
 ## ADR #26 — [2026-07-17] 投入度完成分數統一九折並向上取整
 
-**狀態**: 🟢 Active — Eric 拍板作為 1.0.1 Build 332 起的校準基線
+**狀態**: 🟢 Active — Eric 拍板作為 1.0.1 Build 333 起的校準基線（Build 332 誤由舊 main 建置）
 
 **決定**:
 
@@ -753,7 +753,7 @@
 
 ## ADR #27 — [2026-07-17] OCR 每次開啟重播滑動教學，長等待顯示狀態串流
 
-**狀態**: 🟢 Active — Eric 拍板作為 1.0.1 Build 332 起的 OCR 等待體驗
+**狀態**: 🟢 Active — Eric 拍板作為 1.0.1 Build 333 起的 OCR 等待體驗（Build 332 誤由舊 main 建置）
 
 **決定**:
 

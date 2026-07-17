@@ -10,6 +10,20 @@
 
 ## 2026-07
 
+### [2026-07-17] TestFlight Build 332 從舊 main 建置，整輪功能未進 binary
+
+**Symptom**: Build 332 上傳成功且 CI 全綠，但真機看不到同日完成的 OCR 左右滑教學、OCR 等待狀態、浮動分析按鈕與分析中的下滑提示。
+
+**Root Cause**: 21:30 的 `Release to App Stores` workflow 從 `main@1c4992be` 執行；當日功能仍在尚未合併的 `codex/launch-hardening-20260717`。Workflow 直接以 `github.run_number=332` 覆蓋 app build number，沒有驗證所選 ref 的 `pubspec.yaml` 是否也是 `1.0.1+332`，因此「舊程式＋新 build number」仍可成功上傳。另有一個獨立 client bug：長對話開始分析後仍符合浮動 CTA 顯示條件，舊判斷先渲染 disabled CTA，導致 2.1 秒下滑提示永遠被蓋掉。
+
+**Fix**: 第一個完整 binary 改為 Build 333；先讓分析中提示優先於 idle CTA 並補 selector regression test，再合併 release branch 到 `main`。Release preflight 新增 source/version gate，要求所選 ref 的 `pubspec.yaml` 精確等於 `${APP_VERSION}+${GITHUB_RUN_NUMBER}`，不符即在建置與上傳前 fail closed。
+
+**Prevention**: 不能再用「workflow 成功」推論 binary 含預期功能。每次 TestFlight release 必須同時記錄 ref、SHA、archive 版本，且 source version gate 必須先通過；真機回報缺少整批功能時先核對 binary SHA／release ref，再查 UI 個別條件。
+
+**Validation**: GitHub run `29584191044` log 證實 Build 332=`main@1c4992be`；修正後 overlay tests 12/12、OCR／progress／analysis targeted tests 42/42、`flutter analyze` 0 issue、相關 Edge model／entitlement／score tests 78/78。
+
+**相關檔案**: `.github/workflows/release.yml`、`pubspec.yaml`、`lib/features/analysis/presentation/screens/analysis_screen.dart`、`lib/features/analysis/presentation/widgets/analysis_action_widgets.dart`、`test/widget/features/analysis/analysis_action_widgets_test.dart`。
+
 ### [2026-07-16] 讀圖確認卡在正式分析前顯示英文分析摘要
 
 **Symptom**: 使用者選完聊天截圖、尚未按「開始分析」，確認卡就出現英文段落，內容還提到餐廳與 Google Maps，容易誤以為正式分析已提前執行。

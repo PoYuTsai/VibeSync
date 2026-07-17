@@ -2,6 +2,8 @@
 
 狀態：`CODE_REVIEW_APPROVED_WITH_EXTERNAL_GATES`
 
+> **2026-07-17 delivery correction**：本文件審查的是 release branch source，不是 21:30 上傳的 binary。GitHub run `29584191044` 實際從舊 `main@1c4992be` 建出 Build 332，因此沒有包含本文件列出的功能；後續調查另修正「下滑提示被 disabled 浮動 CTA 蓋住」的 client bug。第一個完整候選改為 Build 333，並新增 release source/version fail-closed gate。以下 Build 332 結論只保留為原始審查歷史，不再作為 binary 證據。
+
 ## Scope
 
 - Base：`a80ac2e0`（本 branch 上一個已提交版本）
@@ -56,4 +58,4 @@ Production keyboard gate 已於 2026-07-17 依 DB → Secret → JWT-verified Ed
 
 ## Verdict
 
-`APPROVED FOR BUILD 332`，但 `NOT YET APP REVIEW READY`。Repo 層與 production keyboard backend gate 已收斂；signed iOS、非測試 quota／HTTP 並行與 lost-response、隱私揭露及 iPhone 真機證據仍是送審前硬條件。
+原始 source verdict 為 `APPROVED FOR BUILD 332`；delivery correction 後的有效候選是 `BUILD 333`，仍為 `NOT YET APP REVIEW READY`。Repo 層與 production keyboard backend gate 已收斂；signed iOS、非測試 quota／HTTP 並行與 lost-response、隱私揭露及 iPhone 真機證據仍是送審前硬條件。
