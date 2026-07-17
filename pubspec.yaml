@@ -2,7 +2,7 @@ name: vibesync
 description: "VibeSync - AI 對話教練"
 publish_to: 'none'
 
-version: 1.0.1+221
+version: 1.0.1+332
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
