@@ -18,6 +18,7 @@ void main() {
         isAnalyzing: true,
         analysisCompleted: false,
         onStart: () {},
+        onFollowProgress: () {},
       );
 
       expect(overlay, isA<AnalysisScrollHint>());
@@ -30,9 +31,24 @@ void main() {
         isAnalyzing: false,
         analysisCompleted: false,
         onStart: () {},
+        onFollowProgress: () {},
       );
 
       expect(overlay, isA<FloatingAnalysisActionButton>());
+    });
+
+    test('failed stream keeps a shortcut to the retry area', () {
+      final overlay = buildAnalysisFloatingOverlay(
+        showStartAction: false,
+        isAnalyzing: false,
+        analysisCompleted: false,
+        streamInterrupted: true,
+        onStart: () {},
+        onFollowProgress: () {},
+      );
+
+      expect(overlay, isA<AnalysisScrollHint>());
+      expect((overlay! as AnalysisScrollHint).interrupted, isTrue);
     });
   });
 
@@ -88,52 +104,71 @@ void main() {
   });
 
   group('AnalysisScrollHint', () {
-    testWidgets('moves downward then disappears after about two seconds',
+    testWidgets('stays visible for the full stream and jumps on tap',
         (tester) async {
+      var tapCount = 0;
       await tester.pumpWidget(
-        _wrap(const AnalysisScrollHint(duration: Duration(seconds: 2))),
+        _wrap(AnalysisScrollHint(onPressed: () => tapCount++)),
       );
 
       expect(find.byKey(AnalysisScrollHint.hintKey), findsOneWidget);
-      expect(find.text('往下滑'), findsOneWidget);
+      expect(find.text('跟到最新'), findsOneWidget);
       expect(
-        find.bySemanticsLabel('分析內容會在下方陸續出現，請往下滑'),
+        find.bySemanticsLabel('分析內容會在下方陸續出現，點一下跟到最新進度'),
         findsOneWidget,
       );
-      final initialY =
-          tester.getTopLeft(find.byKey(AnalysisScrollHint.hintKey)).dy;
 
-      await tester.pump(const Duration(seconds: 1));
-      final laterY =
-          tester.getTopLeft(find.byKey(AnalysisScrollHint.hintKey)).dy;
-      expect(laterY, greaterThan(initialY));
-
-      await tester.pump(const Duration(milliseconds: 1100));
+      await tester.tap(find.byKey(AnalysisScrollHint.hintKey));
       await tester.pump();
-      expect(find.byKey(AnalysisScrollHint.hintKey), findsNothing);
+      expect(tapCount, 1);
+
+      await tester.pump(const Duration(seconds: 30));
+      expect(find.byKey(AnalysisScrollHint.hintKey), findsOneWidget);
     });
 
-    testWidgets('respects reduced motion while retaining the timed cue',
+    testWidgets('following and interrupted states use explicit labels',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(const AnalysisScrollHint(isFollowing: true)),
+      );
+      expect(find.text('跟隨進度'), findsOneWidget);
+
+      await tester.pumpWidget(
+        _wrap(const AnalysisScrollHint(interrupted: true)),
+      );
+      await tester.pump();
+      expect(find.text('查看中斷'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('分析中斷，點一下查看保留內容與重試選項'),
+        findsOneWidget,
+      );
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(tester.binding.transientCallbackCount, 0,
+          reason: 'Interrupted state must not keep an invisible ticker alive.');
+      await tester.pump(const Duration(seconds: 5));
+      expect(tester.binding.transientCallbackCount, 0);
+    });
+
+    testWidgets('reduced motion keeps a static persistent action',
         (tester) async {
       await tester.pumpWidget(
         _wrap(
           MediaQuery(
             data: const MediaQueryData(disableAnimations: true),
-            child:
-                const AnalysisScrollHint(duration: Duration(milliseconds: 300)),
+            child: const AnalysisScrollHint(),
           ),
         ),
       );
 
       final initialY =
           tester.getTopLeft(find.byKey(AnalysisScrollHint.hintKey)).dy;
-      await tester.pump(const Duration(milliseconds: 150));
+      await tester.pump(const Duration(seconds: 5));
       final laterY =
           tester.getTopLeft(find.byKey(AnalysisScrollHint.hintKey)).dy;
       expect(laterY, initialY);
-
-      await tester.pump(const Duration(milliseconds: 150));
-      expect(find.byKey(AnalysisScrollHint.hintKey), findsNothing);
+      expect(find.byKey(AnalysisScrollHint.hintKey), findsOneWidget);
     });
   });
 }

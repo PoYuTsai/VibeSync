@@ -82,6 +82,34 @@ import '../../../user_profile/data/providers/partner_style_providers.dart';
 import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
 
+/// Keeps user intent separate from programmatic live-follow movement without
+/// indenting the analysis screen's large child tree.
+class _AnalysisScrollView extends SingleChildScrollView {
+  const _AnalysisScrollView({
+    required this.onUserScrollTowardStart,
+    super.controller,
+    super.padding,
+    super.keyboardDismissBehavior,
+    super.child,
+  }) : super(key: const ValueKey('analysis-primary-scroll'));
+
+  final VoidCallback onUserScrollTowardStart;
+
+  @override
+  Widget build(BuildContext context) {
+    return NotificationListener<ScrollUpdateNotification>(
+      onNotification: (notification) {
+        if (notification.dragDetails != null &&
+            (notification.scrollDelta ?? 0) < 0) {
+          onUserScrollTowardStart();
+        }
+        return false;
+      },
+      child: super.build(context),
+    );
+  }
+}
+
 class AnalysisScreen extends ConsumerStatefulWidget {
   /// `/conversation/:id?coachPrefill=` 的 query param 名。路由（routes.dart）
   /// 與入口（作戰板 nextStep 節點）共用此常數，避免兩端字串走鐘。
@@ -210,6 +238,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // 對話延續功能
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
+  final _analysisProgressEndKey = GlobalKey();
   final _messageFocusNode = FocusNode();
   final _messageInputKey = GlobalKey();
   final _coachChatCardKey = GlobalKey();
@@ -225,6 +254,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // _openCoachQuestion 都整個覆寫（含 null），避免舊預填黏到後續
   // 純 focus 的請求上。
   String? _coachChatPrefill;
+  bool _followLiveAnalysis = false;
+  bool _analysisFollowScrollScheduled = false;
 
   // 首次看到對話 bubble 時提示用戶長按可編輯。
   OverlayEntry? _editMessageCoachMarkEntry;
@@ -550,6 +581,47 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       duration: const Duration(milliseconds: 280),
       curve: Curves.easeOut,
     );
+  }
+
+  Future<void> _jumpToCurrentAnalysis() async {
+    if (!mounted) return;
+    final shouldFollow = _isAnalyzing;
+    if (_followLiveAnalysis != shouldFollow) {
+      setState(() {
+        _followLiveAnalysis = shouldFollow;
+      });
+    }
+    await _scrollToCurrentAnalysisEnd();
+  }
+
+  Future<void> _scrollToCurrentAnalysisEnd() async {
+    if (!mounted || !_scrollController.hasClients) return;
+    await _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _scheduleFollowCurrentAnalysis() {
+    if (!_isAnalyzing ||
+        !_followLiveAnalysis ||
+        _analysisFollowScrollScheduled) {
+      return;
+    }
+    _analysisFollowScrollScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _analysisFollowScrollScheduled = false;
+      if (!mounted || !_isAnalyzing || !_followLiveAnalysis) return;
+      unawaited(_scrollToCurrentAnalysisEnd());
+    });
+  }
+
+  void _stopFollowingForUserScroll() {
+    if (!mounted || !_isAnalyzing || !_followLiveAnalysis) return;
+    setState(() {
+      _followLiveAnalysis = false;
+    });
   }
 
   bool get _hasCompletedCurrentFragment {
@@ -4558,6 +4630,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
       setState(() {
         _isAnalyzing = true;
+        _followLiveAnalysis = false;
         _fullErrorMessage = null;
         _fullErrorRetriesRemaining = 0;
         _quotaExceededInfo = null;
@@ -4615,6 +4688,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     } catch (e) {
       setState(() {
         _isAnalyzing = false;
+        _followLiveAnalysis = false;
         _applyErrorState(
           message: '分析暫時失敗，請稍後再試。',
           action: AnalysisErrorAction.retry,
@@ -4695,6 +4769,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         if (_isStreamingAnalyzeResultStaleForCurrentConversation(next)) {
           setState(() {
             _isAnalyzing = false;
+            _followLiveAnalysis = false;
             _fullErrorMessage = '你剛剛更新了本次片段，這份完整分析先不套用。請重新按「開始分析」。';
             _fullErrorRetriesRemaining = 0;
             _quotaExceededInfo = null;
@@ -4714,6 +4789,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             conv?.messages.length;
         setState(() {
           _isAnalyzing = false;
+          _followLiveAnalysis = false;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
           _quotaExceededInfo = null;
@@ -4756,6 +4832,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case StreamingAnalyzePhase.failedAfterRecommendation:
         setState(() {
           _isAnalyzing = false;
+          _followLiveAnalysis = false;
           _fullErrorMessage = next.fullErrorMessage;
           _fullErrorRetriesRemaining = next.retriesRemaining;
           _quotaExceededInfo = next.quotaExceeded;
@@ -4776,6 +4853,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             code == 'DAILY_LIMIT_EXCEEDED' || code == 'MONTHLY_LIMIT_EXCEEDED';
         setState(() {
           _isAnalyzing = false;
+          _followLiveAnalysis = false;
           _streamProgressLabel = null;
           _streamProgressDetail = null;
           _streamContents = const [];
@@ -4802,6 +4880,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case StreamingAnalyzePhase.idle:
         break;
     }
+    _scheduleFollowCurrentAnalysis();
   }
 
   /// Retry the last failed full analysis. The notifier owns the cached
@@ -6253,6 +6332,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final showFloatingAnalysisAction = showInitialScreenshotSetup &&
         analysisFragmentMessages.isNotEmpty &&
         _selectedImages.isEmpty;
+    final showStreamInterruptedAction =
+        !_isAnalyzing && _enthusiasmScore == null && _fullErrorMessage != null;
 
     return BrandScaffold(
       // body 自帶 SafeArea（見下方），故關掉鷹架的外層 SafeArea 避免雙層巢套。
@@ -6263,6 +6344,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         isAnalyzing: _isAnalyzing,
         analysisCompleted: _enthusiasmScore != null,
         onStart: (_isAnalyzing || _isRecognizing) ? null : _runAnalysis,
+        onFollowProgress: _jumpToCurrentAnalysis,
+        isFollowing: _followLiveAnalysis,
+        streamInterrupted: showStreamInterruptedAction,
       ),
       title: conversation.name,
       leading: IconButton(
@@ -6326,7 +6410,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               children: [
                 _buildRoutePopScopeRegistration(),
                 Expanded(
-                  child: SingleChildScrollView(
+                  child: _AnalysisScrollView(
+                    onUserScrollTowardStart: _stopFollowingForUserScroll,
                     controller: _scrollController,
                     padding: const EdgeInsets.all(16),
                     keyboardDismissBehavior:
@@ -7218,6 +7303,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   : null,
                             ),
                         ],
+
+                        if (_isAnalyzing ||
+                            _fullErrorMessage != null ||
+                            _quotaExceededInfo != null)
+                          SizedBox(
+                            key: _analysisProgressEndKey,
+                            height: 1,
+                          ),
 
                         if (_enthusiasmScore != null) ...[
                           // 實扣顯示常駐行（smoke P2 fix 2026-06-11）：

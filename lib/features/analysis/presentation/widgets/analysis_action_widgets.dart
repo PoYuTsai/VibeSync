@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -16,9 +14,16 @@ Widget? buildAnalysisFloatingOverlay({
   required bool isAnalyzing,
   required bool analysisCompleted,
   required VoidCallback? onStart,
+  required VoidCallback? onFollowProgress,
+  bool isFollowing = false,
+  bool streamInterrupted = false,
 }) {
-  if (isAnalyzing && !analysisCompleted) {
-    return const AnalysisScrollHint();
+  if ((isAnalyzing && !analysisCompleted) || streamInterrupted) {
+    return AnalysisScrollHint(
+      onPressed: onFollowProgress,
+      isFollowing: isFollowing,
+      interrupted: streamInterrupted,
+    );
   }
   if (showStartAction) {
     return FloatingAnalysisActionButton(onPressed: onStart);
@@ -95,17 +100,24 @@ class FloatingAnalysisActionButton extends StatelessWidget {
   }
 }
 
-/// A short, non-interactive cue that tells users where streamed analysis
-/// content will appear after they start a long conversation analysis.
+/// Persistent progress navigation for a streamed analysis.
+///
+/// This is an action rather than a toast: it stays available until the stream
+/// ends, jumps to the latest rendered section, and reports whether live follow
+/// mode is active. If the stream stops after partial content, the same surface
+/// leads to the preserved content and retry card.
 class AnalysisScrollHint extends StatefulWidget {
   static const hintKey = ValueKey('analysis-scroll-hint');
-  static const defaultDuration = Duration(milliseconds: 2100);
 
-  final Duration duration;
+  final VoidCallback? onPressed;
+  final bool isFollowing;
+  final bool interrupted;
 
   const AnalysisScrollHint({
     super.key,
-    this.duration = defaultDuration,
+    this.onPressed,
+    this.isFollowing = false,
+    this.interrupted = false,
   });
 
   @override
@@ -115,11 +127,7 @@ class AnalysisScrollHint extends StatefulWidget {
 class _AnalysisScrollHintState extends State<AnalysisScrollHint>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  late final Animation<double> _opacity;
   late final Animation<Offset> _offset;
-  Timer? _reducedMotionTimer;
-  bool _started = false;
-  bool _visible = true;
   bool _reduceMotion = false;
 
   @override
@@ -127,120 +135,106 @@ class _AnalysisScrollHintState extends State<AnalysisScrollHint>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: widget.duration,
+      duration: const Duration(milliseconds: 850),
     );
-    _opacity = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 0, end: 1),
-        weight: 15,
-      ),
-      TweenSequenceItem(
-        tween: ConstantTween<double>(1),
-        weight: 60,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1, end: 0),
-        weight: 25,
-      ),
-    ]).animate(_controller);
     _offset = Tween<Offset>(
-      begin: const Offset(0, -0.12),
-      end: const Offset(0, 0.18),
+      begin: const Offset(0, -0.08),
+      end: const Offset(0, 0.12),
     ).animate(
       CurvedAnimation(
         parent: _controller,
         curve: Curves.easeInOutCubic,
       ),
     );
-    _controller.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        _hide();
-      }
-    });
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_started) return;
-    _started = true;
-    _reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    if (_reduceMotion) {
-      _reducedMotionTimer = Timer(widget.duration, _hide);
-    } else {
-      _controller.forward();
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    _reduceMotion = reduceMotion;
+    _syncAnimationState();
+  }
+
+  @override
+  void didUpdateWidget(covariant AnalysisScrollHint oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.interrupted != widget.interrupted) {
+      _syncAnimationState();
     }
   }
 
-  void _hide() {
-    if (!mounted || !_visible) return;
-    setState(() => _visible = false);
+  void _syncAnimationState() {
+    if (_reduceMotion || widget.interrupted) {
+      _controller
+        ..stop()
+        ..value = 0;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
   }
 
   @override
   void dispose() {
-    _reducedMotionTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_visible) return const SizedBox.shrink();
+    final label = widget.interrupted
+        ? '查看中斷'
+        : widget.isFollowing
+            ? '跟隨進度'
+            : '跟到最新';
+    final semanticsLabel =
+        widget.interrupted ? '分析中斷，點一下查看保留內容與重試選項' : '分析內容會在下方陸續出現，點一下跟到最新進度';
+    final accent = widget.interrupted ? AppColors.warning : AppColors.ctaStart;
+    final icon = widget.interrupted
+        ? Icons.error_outline_rounded
+        : Icons.keyboard_double_arrow_down_rounded;
+    final animatedIcon = Icon(icon, size: 21, color: accent);
 
-    final hint = Semantics(
-      liveRegion: true,
+    return Semantics(
+      button: true,
       excludeSemantics: true,
-      label: '分析內容會在下方陸續出現，請往下滑',
-      child: IgnorePointer(
-        child: Container(
+      label: semanticsLabel,
+      child: ExcludeSemantics(
+        child: FilledButton.icon(
           key: AnalysisScrollHint.hintKey,
-          width: 72,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppColors.brandInk.withValues(alpha: 0.94),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: AppColors.ctaStart.withValues(alpha: 0.62),
+          onPressed: widget.onPressed,
+          icon: _reduceMotion || widget.interrupted
+              ? animatedIcon
+              : SlideTransition(position: _offset, child: animatedIcon),
+          label: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: Text(
+              label,
+              key: ValueKey(label),
+              maxLines: 1,
+              style: AppTypography.caption.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.34),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
-              ),
-            ],
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.keyboard_double_arrow_down_rounded,
-                size: 22,
-                color: AppColors.ctaStart,
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(124, 50),
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+            backgroundColor: AppColors.brandInk.withValues(alpha: 0.96),
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: AppColors.brandInk.withValues(alpha: 0.82),
+            disabledForegroundColor: Colors.white.withValues(alpha: 0.72),
+            elevation: 9,
+            shadowColor: Colors.black.withValues(alpha: 0.38),
+            shape: StadiumBorder(
+              side: BorderSide(
+                color: accent.withValues(alpha: 0.62),
               ),
-              const SizedBox(height: 2),
-              Text(
-                '往下滑',
-                maxLines: 1,
-                style: AppTypography.caption.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
-      ),
-    );
-
-    if (_reduceMotion) return hint;
-    return SlideTransition(
-      position: _offset,
-      child: FadeTransition(
-        opacity: _opacity,
-        alwaysIncludeSemantics: true,
-        child: hint,
       ),
     );
   }

@@ -21,6 +21,7 @@ import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart'
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_recommendation_preview.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
+import 'package:vibesync/features/analysis/presentation/widgets/analysis_action_widgets.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/streaming_analysis_loading_widgets.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
@@ -989,6 +990,7 @@ void main() {
 
         expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsNothing);
         expect(find.byType(StreamingAnalysisLoader), findsOneWidget);
+        expect(find.byType(AnalysisScrollHint), findsOneWidget);
         expect(find.byType(CoachActionCard), findsNothing);
         expect(find.byType(FullAnalysisPlaceholder), findsNothing);
         expect(find.byType(FullAnalysisRetryCard), findsNothing);
@@ -998,6 +1000,164 @@ void main() {
         expect(recorder.recommendationPreviewCalls, 0,
             reason: 'I-P1-a: must not re-fire analyzeQuick on hydration');
         expect(recorder.fullCalls, 0);
+
+        await tester.pump(const Duration(seconds: 30));
+        expect(find.byType(AnalysisScrollHint), findsOneWidget,
+            reason:
+                'Progress navigation must remain available for the stream.');
+      },
+    );
+
+    testWidgets(
+      'progress action jumps to the live tail, follows new content, and user scroll cancels follow',
+      (tester) async {
+        final extraMessages = List<Message>.generate(
+          24,
+          (index) => Message(
+            id: 'long-$index',
+            content: '這是長對話第 $index 則，讓目前分析位置落在畫面下方。',
+            isFromMe: index.isEven,
+            timestamp: DateTime(2026, 5, 28, 12, index + 1),
+          ),
+        );
+        final conversation = _conversation(extraMessages: extraMessages);
+        const firstContent = AnalysisStreamContent(
+          kind: AnalysisStreamContentKind.decision,
+          title: '下一步策略',
+          body: '先承接情緒，再自然延伸。',
+          rawEvent: {'type': 'analysis.decision'},
+        );
+        final seed = StreamingAnalysisState(
+          phase: StreamingAnalyzePhase.streamingReport,
+          recommendationPreview: _preview(runId: 'run_follow'),
+          analysisRunId: 'run_follow',
+          streamContents: const [firstContent],
+          conversationMessageCount: conversation.messages.length,
+          conversationContentRevision: conversationContentRevision(
+            conversation,
+          ),
+        );
+        final harness = await _pumpMutableAnalysisScreenWithRepo(
+          tester,
+          seed: seed,
+          conversation: conversation,
+        );
+
+        final scrollView = tester.widget<SingleChildScrollView>(
+          find.byKey(const ValueKey('analysis-primary-scroll')),
+        );
+        final controller = scrollView.controller!;
+        expect(controller.position.maxScrollExtent, greaterThan(0));
+
+        tester
+            .widget<FilledButton>(find.byKey(AnalysisScrollHint.hintKey))
+            .onPressed!();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+        expect(find.text('跟隨進度'), findsOneWidget);
+        expect(
+          controller.offset,
+          closeTo(controller.position.maxScrollExtent, 1),
+        );
+
+        harness.notifier.emit(
+          seed.copyWith(
+            streamContents: const [
+              firstContent,
+              AnalysisStreamContent(
+                kind: AnalysisStreamContentKind.reportSection,
+                title: '語意分析',
+                body: '新增一段足以讓串流卡片繼續往下長的完整內容。',
+                rawEvent: {'type': 'analysis.report_section'},
+              ),
+            ],
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+        expect(
+          controller.offset,
+          closeTo(controller.position.maxScrollExtent, 1),
+        );
+
+        harness.notifier.emit(
+          seed.copyWith(
+            streamContents: const [
+              firstContent,
+              AnalysisStreamContent(
+                kind: AnalysisStreamContentKind.reportSection,
+                title: '語意分析',
+                body: '新增一段足以讓串流卡片繼續往下長的完整內容。',
+                rawEvent: {'type': 'analysis.report_section'},
+              ),
+              AnalysisStreamContent(
+                kind: AnalysisStreamContentKind.reportSection,
+                title: '互動節奏',
+                body: '第三段內容進場時，使用者仍可立刻往回滑並中止自動跟隨。',
+                rawEvent: {'type': 'analysis.report_section'},
+              ),
+            ],
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 40));
+
+        final offsetBeforeGesture = controller.offset;
+        final drag =
+            (controller.position as ScrollPositionWithSingleContext).drag(
+          DragStartDetails(globalPosition: const Offset(215, 700)),
+          () {},
+        );
+        drag.update(
+          DragUpdateDetails(
+            delta: const Offset(0, 300),
+            primaryDelta: 300,
+            globalPosition: const Offset(215, 1000),
+          ),
+        );
+        drag.end(
+          DragEndDetails(velocity: Velocity.zero, primaryVelocity: 0),
+        );
+        await tester.pump();
+        expect(controller.offset, lessThan(offsetBeforeGesture));
+        expect(find.text('跟到最新'), findsOneWidget);
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(
+          controller.offset,
+          lessThan(controller.position.maxScrollExtent - 1),
+          reason: 'A real upward review gesture must cancel live follow.',
+        );
+
+        final offsetAfterUserScroll = controller.offset;
+        harness.notifier.emit(
+          seed.copyWith(
+            streamContents: const [
+              firstContent,
+              AnalysisStreamContent(
+                kind: AnalysisStreamContentKind.reportSection,
+                title: '語意分析',
+                body: '新增一段足以讓串流卡片繼續往下長的完整內容。',
+                rawEvent: {'type': 'analysis.report_section'},
+              ),
+              AnalysisStreamContent(
+                kind: AnalysisStreamContentKind.reportSection,
+                title: '互動節奏',
+                body: '第三段內容進場時，使用者仍可立刻往回滑並中止自動跟隨。',
+                rawEvent: {'type': 'analysis.report_section'},
+              ),
+              AnalysisStreamContent(
+                kind: AnalysisStreamContentKind.reportSection,
+                title: '後續建議',
+                body: '解除跟隨後的新內容不應再把使用者強制拉回最下方。',
+                rawEvent: {'type': 'analysis.report_section'},
+              ),
+            ],
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(controller.offset, closeTo(offsetAfterUserScroll, 1));
       },
     );
 
@@ -1069,6 +1229,7 @@ void main() {
         expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsNothing);
         expect(find.byType(CoachActionCard), findsNothing);
         expect(find.byType(FullAnalysisRetryCard), findsOneWidget);
+        expect(find.text('查看中斷'), findsOneWidget);
         expect(find.byType(FullAnalysisPlaceholder), findsNothing);
         expect(find.byType(ImagePickerWidget), findsNothing,
             reason:
