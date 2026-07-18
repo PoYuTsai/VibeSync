@@ -528,15 +528,7 @@ Deno.test("accepted candidates still require independent fact verification", asy
     callClaude: (args) => {
       calls.push("claude-full-review");
       assertEquals(args.maxTokens, 1800);
-      const schema = args.outputJsonSchema as Record<string, unknown>;
-      assertEquals(schema.type, "object");
-      assertEquals(schema.required, ["verdict", "issues", "repairedResult"]);
-      const properties = schema.properties as Record<string, unknown>;
-      assertEquals(
-        (properties.repairedResult as Record<string, unknown>).anyOf !==
-          undefined,
-        true,
-      );
+      assertEquals(args.outputJsonSchema, undefined);
       return Promise.resolve(validHintAdjudication());
     },
     callDeepSeek: (args) => {
@@ -747,13 +739,7 @@ Deno.test("high-risk repair gets one bounded fresh review after the alternate pr
       calls.push("claude");
       claudeCalls += 1;
       assertEquals(args.maxTokens, claudeCalls === 1 ? 1800 : 1200);
-      const schema = args.outputJsonSchema as Record<string, unknown>;
-      assertEquals(
-        schema.required,
-        claudeCalls === 1
-          ? ["verdict", "issues", "repairedResult"]
-          : ["verdict", "issues"],
-      );
+      assertEquals(args.outputJsonSchema, undefined);
       return Promise.resolve(
         claudeCalls === 1
           ? validHintAdjudication({

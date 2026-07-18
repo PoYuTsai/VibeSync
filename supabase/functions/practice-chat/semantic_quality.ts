@@ -531,7 +531,7 @@ export async function adjudicatePracticeCandidate(
     call: (
       messages: ChatMessage[],
       maxTokens: number,
-      outputJsonSchema: Readonly<Record<string, unknown>>,
+      outputJsonSchema: Readonly<Record<string, unknown>> | undefined,
       timeoutMs: number,
     ) => Promise<string>;
   }> = [];
@@ -621,7 +621,9 @@ export async function adjudicatePracticeCandidate(
             trustedGenerationContext: args.trustedGenerationContext,
           }),
           REPAIR_VERIFICATION_MAX_TOKENS,
-          SEMANTIC_FACT_VERIFICATION_JSON_SCHEMA,
+          args.surface === "debrief"
+            ? SEMANTIC_FACT_VERIFICATION_JSON_SCHEMA
+            : undefined,
           timeoutMs,
         );
         parseSemanticFactVerification({ raw });
@@ -643,7 +645,9 @@ export async function adjudicatePracticeCandidate(
         args.surface === "hint"
           ? HINT_ADJUDICATION_MAX_TOKENS
           : DEBRIEF_ADJUDICATION_MAX_TOKENS,
-        semanticAdjudicationJsonSchema(candidateUnderReview),
+        args.surface === "debrief"
+          ? semanticAdjudicationJsonSchema(candidateUnderReview)
+          : undefined,
         timeoutMs,
       );
       const parsed = parseSemanticAdjudication({
