@@ -4,6 +4,8 @@ interface CallOptions {
   allowModelFallback: boolean;
 }
 
+type ClaudeThinking = { type: "adaptive" | "disabled" };
+
 type ClaudeMessageContent =
   | string
   | Array<{
@@ -17,7 +19,7 @@ interface ClaudeRequest {
   max_tokens: number;
   system: string;
   messages: Array<{ role: string; content: ClaudeMessageContent }>;
-  thinking?: { type: "adaptive" | "disabled" };
+  thinking?: ClaudeThinking;
   output_config?: {
     format: {
       type: "json_schema";
@@ -68,6 +70,40 @@ const MODEL_FALLBACK_CHAIN: Record<string, string | null> = {
   "claude-sonnet-4-6": "claude-haiku-4-5-20251001",
   "claude-haiku-4-5-20251001": null,
 };
+
+const SONNET_5_MODEL = "claude-sonnet-5";
+
+function resolveThinkingContract(
+  model: string,
+  callerThinking?: ClaudeThinking,
+): ClaudeThinking | undefined {
+  if (model !== SONNET_5_MODEL) return undefined;
+  return callerThinking ?? { type: "disabled" };
+}
+
+function validateSuccessfulResponse(data: unknown): void {
+  if (typeof data !== "object" || data === null) return;
+
+  const stopReason = (data as { stop_reason?: unknown }).stop_reason;
+  if (stopReason === "refusal") {
+    throw new AiServiceError(
+      "AI declined to generate this response.",
+      "MODEL_REFUSAL",
+      true,
+    );
+  }
+
+  // This helper serves several schemas, including legacy repair paths that can
+  // turn truncated JSON into a superficially valid response. Never let any
+  // max-token response reach quota settlement as a success.
+  if (stopReason === "max_tokens") {
+    throw new AiServiceError(
+      "AI exhausted its output budget before completing the response.",
+      "MAX_TOKENS",
+      true,
+    );
+  }
+}
 
 const LOG_PREFIX = "[analyze-chat:fallback]";
 
@@ -130,12 +166,16 @@ export async function callClaudeWithFallback(
       const timeoutId = setTimeout(() => controller.abort(), opts.timeout);
 
       try {
+        const thinking = resolveThinkingContract(
+          currentModel,
+          request.thinking,
+        );
         const cachedRequest = {
           model: currentModel,
           max_tokens: request.max_tokens,
           system: buildCachedSystemPrompt(request.system),
           messages: request.messages,
-          ...(request.thinking ? { thinking: request.thinking } : {}),
+          ...(thinking ? { thinking } : {}),
           ...(request.output_config
             ? { output_config: request.output_config }
             : {}),
@@ -154,14 +194,9 @@ export async function callClaudeWithFallback(
         });
 
         if (!response.ok) {
-          const errorText = await response.text();
-          let errorMessage = errorText;
-          try {
-            const parsed = JSON.parse(errorText) as { message?: string };
-            errorMessage = parsed.message || errorText;
-          } catch {
-            // Keep the original text when JSON parsing fails.
-          }
+          // Drain the provider body, but never log or expose it. Some upstream
+          // validation errors can echo request details.
+          await response.text().catch(() => "");
 
           if (response.status === 429) {
             throw new AiServiceError(
@@ -180,7 +215,7 @@ export async function callClaudeWithFallback(
           }
 
           throw new AiServiceError(
-            `API Error: ${response.status} - ${errorMessage}`,
+            `API Error: ${response.status}`,
             "API_ERROR",
             false,
           );
@@ -202,6 +237,8 @@ export async function callClaudeWithFallback(
             false,
           );
         }
+
+        validateSuccessfulResponse(data);
 
         return {
           data,
@@ -235,6 +272,36 @@ export async function callClaudeWithFallback(
               false,
               {
                 ...error.metadata,
+                retries: totalRetries,
+                fallbackUsed: currentModel !== originalModel,
+                lastModel: currentModel,
+                lastFailureCode: error.code,
+                timeoutMs: opts.timeout,
+              },
+            );
+          }
+
+          if (
+            error.code === "MAX_TOKENS" || error.code === "MODEL_REFUSAL"
+          ) {
+            const nextModel = opts.allowModelFallback
+              ? MODEL_FALLBACK_CHAIN[currentModel]
+              : null;
+            if (nextModel) {
+              logInfo("falling_back_model", {
+                from: currentModel,
+                to: nextModel,
+                reason: error.code,
+              });
+              currentModel = nextModel;
+              break;
+            }
+
+            throw new AiServiceError(
+              error.message,
+              error.code,
+              false,
+              {
                 retries: totalRetries,
                 fallbackUsed: currentModel !== originalModel,
                 lastModel: currentModel,
