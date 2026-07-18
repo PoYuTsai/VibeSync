@@ -10,6 +10,20 @@
 
 ## 2026-07
 
+### [2026-07-19] Analyze 1.8x 被當字數上限，stream 又把「併」球膨脹成逐句回覆
+
+**Symptom**: quick／full prompt 把投入對等寫成「不超過最後一則訊息 1.8 倍」，對方連發後用「哈哈／嗯嗯」收尾時會錯把最後短句當長度基準；改看整輪後，active stream 又常把同一生活片段的背景、畫面、情緒與玩笑各拆一段，回覆完整但像客服逐條點名，缺少高手感。
+
+**Root Cause**: 1.8x 的參考值被寫成硬字數公式，且錨定最近一則而非當前整輪。更深一層是 stream inventory 雖有 `接／併／略`，segment floor 卻把 `接` 和 `併` 都算成獨立球，還要求 selected style 不得比其他風格短；`併` 名義上是合併，實際上反而強迫多一段。full prompt 另有「連發 4 句通常 ≥3 段」的訊息數推論，同樣把訊息則數誤當球數。
+
+**Fix**: 1.8x 統一改為整輪投入的節奏參考，不是上限、字數公式或目標；先保留自然、具體、有畫面、有張力的語氣，再去贅字。quick 首屏優先取 1–2 顆最高價值球；full／stream 先做語意分群，段數跟獨立 `接` 球走。`併` 只補同一球的背景，不增加 floor、不得獨占 segment；`略` 可用於純承接、重複或不需回覆的細節。新增同一生活片段 few-shot，以及 last-哈哈、多球同事件、真低投入三組合成 smoke corpus 與本機無 Docker runner。
+
+**Prevention**: Prompt review 不能只 grep 1.8 字面；要連同 stream adapter、inventory disposition、segment floor 一起查。品質 smoke 同時要有「不能漏球」與「不能逐句回」兩個方向，並以整輪語意、段落形狀、壞字與壓力語氣檢核，不用字數倍率當 pass/fail。
+
+**Validation**: 現行 App 固定走 stream；quick／full 只保留 rollback 相容，不能再稱為首屏主路徑。調整期用 local Sonnet 5 驗出並修正「併球膨脹」「未提供的第一次養寵物背景」「未來升遷被改成當天／第一天」「低投入 tease 逼對方安撫」等問題。最終固定 active-stream corpus 6 輪中，1.8x／整輪選球／段數／低壓形狀 6/6 通過；人工高手感 clean 4/6，兩個非 selected 備選仍各出現一次「課業」情境誤詞與捏造「我家那隻」的模型變異，故不得宣稱五風格品質全面安全。合成案例使用測試帳號、0 quota charge、未部署。`analyze-chat` Deno 全套 645/645。
+
+**相關檔案**: `supabase/functions/analyze-chat/quick_prompt.ts`、`index.ts`、`stream_prompt.ts`、`ball_inventory.ts`、`tools/voice-benchmark/`、`tools/ocr-golden/bench_auth_proxy.ts`。
+
 ### [2026-07-19] Sonnet 5 付費五風格串流寫滿舊輸出上限而中斷
 
 **Symptom**: Essential 真機分析跑約 42 秒後顯示串流中斷；同時 OCR 左右歸屬教學太快消失，分析頁的下滑提示點一次就消失，讓長對話看起來像停住。

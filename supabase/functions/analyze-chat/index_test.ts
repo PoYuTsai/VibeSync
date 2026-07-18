@@ -387,12 +387,28 @@ Deno.test({
       source.includes("replyOptions.extend.messages 也必須是可複製的自然訊息"),
     );
     assert(source.includes("每張卡都要同時有可執行接法與可複製訊息組"));
-    assert(source.includes("1.8x 是節奏護欄，不是保守無聊的理由"));
-    assert(source.includes("1.8x 不是死板字數公式"));
-    assert(source.includes("投入感比例"));
+    assert(source.includes("投入對等護欄（1.8x 參考）"));
+    assert(source.includes("1.8x 只是避免不對等過度投入的參考值"));
+    assert(source.includes("不是上限、不是字數公式，也不是目標"));
+    assert(source.includes("當前要回覆的那段連續對方訊息"));
+    assert(source.includes("高手感來自選球準"));
+    assert(source.includes("整輪投入決定可用的回覆空間，不是逐句待辦清單"));
+    assert(source.includes("先做語意分群再挑最高價值球"));
+    assert(source.includes("不要各自膨脹成一段"));
+    assert(source.includes("合併只重組對方明說或既有脈絡已知的資訊"));
+    assert(source.includes("不可為了讓句子順而補出"));
+    assert(source.includes("不得改變時間、未來／已發生狀態、因果或主體"));
+    assert(source.includes("不靠自作主張補故事"));
+    assert(source.includes("整輪低投入"));
+    assert(source.includes("五種風格都要低壓"));
+    assert(source.includes("逼對方安撫、自證或內疚"));
     assert(source.includes("多句連續分享：不要只拿最後一條算長度"));
-    assert(source.includes("1.8x 是上限，不是目標"));
-    assert(source.includes("用最少的字接住最值得接的球"));
+    assert(source.includes("只有彼此獨立、略過會明顯像沒聽到的真球才分段"));
+    assert(source.includes("不能因最後一句很短就漏掉前面該接的球"));
+    assert(source.includes("用最少但自然的字接住最值得接的球"));
+    assertFalse(source.includes("1.8x 是上限"));
+    assertFalse(source.includes("在 1.8x 限制內"));
+    assertFalse(source.includes("the 1.8x rule override them"));
     assert(source.includes("自然引用原則"));
     assert(source.includes("personality_observation"));
     assert(source.includes("被妳發現了，我會在飲料櫃前思考人生"));
@@ -625,9 +641,18 @@ Deno.test({
     assert(start !== -1 && end !== -1 && start < end);
     const leanPrompt = source.slice(start, end);
 
-    // 1.8x 長度法則（style context 收尾句引用它，瘦版必須自己定義）
+    // 投入對等護欄必須在瘦版自足定義，不能依賴完整 SYSTEM_PROMPT。
     assert(leanPrompt.includes("1.8x"));
+    assert(leanPrompt.includes("當前要回覆的整輪"));
+    assert(leanPrompt.includes("參考值"));
+    assert(leanPrompt.includes("不是上限"));
+    assert(leanPrompt.includes("不是字數公式"));
+    assert(leanPrompt.includes("不是目標"));
     assert(leanPrompt.includes("寧短勿長"));
+    assert(leanPrompt.includes("不要為了壓字數改題"));
+    assert(leanPrompt.includes("整輪只是節奏背景，不是逐句待辦"));
+    assertFalse(leanPrompt.includes("以對方最近一則訊息的長度為基準"));
+    assertFalse(leanPrompt.includes("不要超過它的 1.8 倍"));
     // 自貶改自嘲
     assert(leanPrompt.includes("避免自貶"));
     assert(leanPrompt.includes("自嘲"));
@@ -1903,22 +1928,36 @@ Deno.test({
 
 Deno.test({
   name:
-    "SYSTEM_PROMPT adds a segment floor backed by real balls, not filler (連發≥4句≥3段＋反水段)",
+    "SYSTEM_PROMPT derives the segment floor from independent balls, not message count",
   permissions: { read: true },
   fn: async () => {
     const prompt = await readAnalyzeSystemPrompt();
 
-    // 下限檢核錨：連發 4 句以上通常 ≥3 段。
-    assert(prompt.includes("段數下限（檢核錨）"));
-    assert(prompt.includes("連發 4 句以上有內容的訊息"));
-    assert(prompt.includes("replySegments 通常要 ≥3 段"));
-    assert(prompt.includes("出 1-2 段多半是盤點時把球吞掉了"));
-    // 例外：多句同屬一球可少於 3 段，但要說明。
-    assert(prompt.includes("才可以少於 3 段"));
-    // 反水段：段數來自盤點真球，嚴禁湊水段應付下限。
-    assert(prompt.includes("下限要靠真球達標，不是硬湊水段"));
+    // 先依語意分群，再由獨立真球數決定段數，不能拿訊息數當公式。
+    assert(prompt.includes("語意分群優先（檢核錨）"));
+    assert(prompt.includes("段數跟獨立真球數走，不跟訊息則數走"));
+    assert(prompt.includes("先把同一事件的背景、畫面、情緒與補充合成一球"));
+    assert(prompt.includes("3 顆以上彼此獨立、略過會像沒聽到的真球"));
+    assert(prompt.includes("replySegments 通常才要 ≥3 段"));
+    assert(prompt.includes("同屬一個情緒或生活片段時可以只出 1-2 段"));
+    assert(prompt.includes("禮貌開場、摘要或承接詞不算獨立真球"));
+    assert(prompt.includes("不得自己占一段"));
+    assert(prompt.includes("同一生活片段的合併正例"));
+    assert(
+      prompt.includes("同一次做蛋糕的背景＋結果畫面＋失落情緒＋同主題玩笑"),
+    );
+    assert(prompt.includes("合成 1-2 段就完整"));
+    assert(prompt.includes("那是逐句點名，不是接球"));
+    assert(prompt.includes("只是開場承接，不值得獨占一段"));
+    assert(prompt.includes("只能使用本輪明說或既有脈絡已知的資訊"));
+    assert(prompt.includes("自行補成「第一次做／第一次養」"));
+    assert(prompt.includes("不能把未來才發生的事改寫成已發生"));
+    assert(prompt.includes("把原本的時間順序壓成另一條時間線"));
+    // 反水段：多球下限仍來自盤點真球，嚴禁湊水段。
+    assert(prompt.includes("多球下限要靠真球達標，不是靠訊息數湊水段"));
     assert(prompt.includes("嚴禁為了湊滿段數生出沒有實質"));
     assert(prompt.includes("寧可少一段紮實，也不要多一段敷衍"));
+    assertFalse(prompt.includes("連發 4 句以上幾乎不可能只有 1-2 顆"));
     // 下限是「至少」不是「最多」——不得退回舊 cap 字樣。
     assertFalse(prompt.includes("最多 3 段"));
   },

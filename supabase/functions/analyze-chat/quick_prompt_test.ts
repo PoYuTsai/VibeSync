@@ -10,15 +10,46 @@ import {
   QUICK_SYSTEM_PROMPT,
 } from "./quick_prompt.ts";
 
-// Why each assertion exists is spelled out — when Haiku quality regresses and
+// Why each assertion exists is spelled out — when Sonnet 5 quality regresses and
 // someone wants to "just add one more rule" to the prompt, these tests are
 // what stops the file from drifting back toward the 162KB SYSTEM_PROMPT.
 
-Deno.test("quick prompt enforces the 1.8x reply length rule", () => {
-  // Core AI rule from CLAUDE.md: reply length ≤ 1.8x of partner's message.
-  // Haiku is faster but less disciplined than Sonnet — the rule must be in
-  // the prompt body, not implied.
-  assertStringIncludes(QUICK_SYSTEM_PROMPT, "1.8");
+Deno.test("quick prompt treats 1.8x as a whole-turn investment reference", () => {
+  // The guardrail must preserve whole-turn reciprocity without becoming a
+  // last-message character cap. Pin both the intended frame and regressions.
+  for (
+    const term of [
+      "當前要回覆的整輪",
+      "參考值",
+      "不是上限",
+      "不是字數公式",
+      "不是目標",
+      "整輪低投入",
+      "高手感",
+      "不是逐句待辦清單",
+      "1–2 顆最高價值球",
+      "不要把背景細節都膨脹成獨立一球",
+      "合併只重組對方明說或既有脈絡已知的內容",
+      "補出「第一次」「新手」「平常都會」等未提供的背景",
+      "不能改變時間、未來／已發生狀態、因果或主體",
+      "不要用「還是我不夠吸引」之類的玩笑逼對方安撫或自證",
+    ]
+  ) {
+    assertStringIncludes(QUICK_SYSTEM_PROMPT, term);
+  }
+  for (
+    const staleFormula of [
+      "最後一則訊息的 1.8 倍",
+      "最後一句約 1.8 倍",
+      "1.8x 是上限",
+      "字數不要超過對方",
+    ]
+  ) {
+    assertFalse(
+      QUICK_SYSTEM_PROMPT.includes(staleFormula),
+      `quick prompt regressed to hard-cap wording: ${staleFormula}`,
+    );
+  }
 });
 
 Deno.test("quick prompt carries the 接住情緒 → 互動感 → 順勢延伸 priority", () => {
@@ -71,7 +102,7 @@ Deno.test("quick prompt forbids manipulation / pressure / dropped consent", () =
 });
 
 Deno.test("quick prompt requires JSON-only output", () => {
-  // Haiku frequently wraps JSON in prose unless told not to. The slim prompt
+  // Models may wrap JSON in prose unless told not to. The slim prompt
   // can't afford a repair round-trip; insist on raw JSON.
   const lower = QUICK_SYSTEM_PROMPT.toLowerCase();
   assertStringIncludes(lower, "json");
@@ -92,8 +123,8 @@ Deno.test("quick prompt mentions every required schema field", () => {
 
 Deno.test("quick prompt is dramatically shorter than the full SYSTEM_PROMPT", () => {
   // Plan target: quick prompt ≤ 20KB (full SYSTEM_PROMPT is ≈ 162KB). Going
-  // over this means Haiku's input becomes large enough that we're paying for
-  // the long context AND running on a small model — the worst of both worlds.
+  // over this means the compact decision path has accumulated full-report
+  // scaffolding and lost its latency/attention advantage.
   assert(
     QUICK_SYSTEM_PROMPT.length < 20_000,
     `quick prompt grew to ${QUICK_SYSTEM_PROMPT.length} chars (cap 20000)`,
@@ -112,11 +143,11 @@ Deno.test("quick prompt does NOT pull in full-only report sections", () => {
   // it stops being a quick prompt.
   const fullOnlyMarkers = [
     "scenarioDetected", // psychology matrix lives in full
-    "replyOptions",     // 5-style fan-out lives in full
-    "healthCheck",      // diagnostic lives in full
-    "dimensions",       // radar lives in full
-    "targetProfile",    // partner profile extraction lives in full
-    "gameStage",        // full report stage label
+    "replyOptions", // 5-style fan-out lives in full
+    "healthCheck", // diagnostic lives in full
+    "dimensions", // radar lives in full
+    "targetProfile", // partner profile extraction lives in full
+    "gameStage", // full report stage label
   ];
   for (const marker of fullOnlyMarkers) {
     assertFalse(

@@ -5,13 +5,14 @@
 //     past the 6-8s target Eric set for above-the-fold guidance.
 //   - JSON-only response with the exact six fields in
 //     QUICK_RESPONSE_SCHEMA_FIELDS. No prose wrapper, no markdown.
-//   - Encodes the non-negotiable product positioning: 1.8x rule, 接住情緒,
-//     no manipulation / pressure / dropped consent.
+//   - Encodes the non-negotiable product positioning: whole-turn investment
+//     balance (1.8x as a reference), 接住情緒, no manipulation / pressure /
+//     dropped consent.
 //   - This is not a "cheap summary." It is the compact decision kernel that
 //     chooses the turn strategy and best reply before full mode expands the
 //     report.
-//   - Stays under 20KB so Haiku's input remains cheap and the small model
-//     keeps attention on the schema constraint, not on prompt scaffolding.
+//   - Stays under 20KB so Sonnet 5 keeps attention on the schema constraint,
+//     not on prompt scaffolding.
 
 // Canonical schema field order. Shared with the response parser and asserted
 // in quick_prompt_test.ts so the prompt and parser cannot drift apart.
@@ -68,9 +69,14 @@ export const QUICK_SYSTEM_PROMPT =
 - 觀察：能點出一個具體、溫柔、有畫面的小觀察時使用。
 
 4. 控制投資比例
-- 1.8x 規則：回覆長度通常不超過對方最後一則訊息的 1.8 倍。
-- 短句優先。不要把所有想法塞進一則訊息。
-- 對方短，你也短；對方丟情緒，你先接；對方設邊界，你先退。
+- 判斷單位是「當前要回覆的整輪」：把對方這段連續訊息的文字、問句、情緒和媒體一起看，不只看最後一則，也不要逐字計算。
+- 投入對等護欄（1.8x 參考）：不要回得比對方整輪投入多太多。1.8x 只是避免不對等過度投入的參考值，不是上限、不是字數公式，也不是目標。
+- 先接準最值得接的球，保留自然、具體、有畫面、有張力、讓對方好接的語氣，再刪掉贅字。高手感來自選球準，不是把句子硬砍短。
+- 整輪投入決定可用的回覆空間，不是逐句待辦清單。完整接住不等於每句都回；通常只取 1–2 顆最高價值球，能把相鄰內容合成一句就合成一句。
+- 合併只重組對方明說或既有脈絡已知的內容；不要為了把球串順，補出「第一次」「新手」「平常都會」等未提供的背景，也不能改變時間、未來／已發生狀態、因果或主體。
+- 整輪低投入，你也短、穩、低壓，不要用「還是我不夠吸引」之類的玩笑逼對方安撫或自證；整輪有多顆球時，不能因最後一句是「哈哈」或「嗯嗯」就漏掉前面的真球，也不要把背景細節都膨脹成獨立一球。
+- 寧短勿長，但不要為了壓字數把自然語氣或完整意思剪成乾巴巴。
+- 對方丟情緒，你先接；對方設邊界，你先退。不要把所有想法塞進一則訊息。
 - 不要連續追問，不要安全但無聊，不要像報告。
 
 5. 如果有用戶草稿

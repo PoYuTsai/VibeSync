@@ -1,0 +1,20 @@
+{
+  "responseMode": "stream",
+  "billingProtocolVersion": 3,
+  "messages": [
+    { "isFromMe": true, "content": "今天不是要去看那隻浪浪，後來有帶回家嗎" },
+    { "isFromMe": false, "content": "有！我最後還是領養牠了" },
+    {
+      "isFromMe": false,
+      "content": "牠一回家就躲進沙發底下，只露兩顆眼睛偷看我"
+    },
+    { "isFromMe": false, "content": "雖然超可愛，但我其實有點怕自己照顧不好" },
+    { "isFromMe": false, "content": "你說牠是不是其實在偷偷觀察我" },
+    { "isFromMe": false, "content": "嗯嗯" }
+  ],
+  "sessionContext": {
+    "meetingContext": "朋友介紹後聊天",
+    "duration": "聊天兩週",
+    "analysisContextNote": "合成 smoke case：檢查多球回覆是否接住畫面、擔心與玩笑提問，不因末句『嗯嗯』漏球。"
+  }
+}
