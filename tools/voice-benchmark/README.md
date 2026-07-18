@@ -62,6 +62,17 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 
 三組案例分別鎖：末句「哈哈」不得蓋掉整輪、多句同事件不得逐句拆段、真低投入不得追問施壓。quality runner 另檢查五風格/done contract、測試帳號零扣款，並掃 selected 與所有備選的時間漂移、未提供背景、低投入壓力、規則洩漏、常見簡體與壞字 `�`。
 
+### Coach 1:1 本機 1.8x quality smoke
+
+直接走工作樹內的 `runCoachChat`、Sonnet 5、schema／安全驗證與 retry，不連 DB；固定使用 test-account 模式，若程式嘗試扣額度會立即失敗。案例與輸出皆為合成文字，但會產生 Claude API 成本。
+
+```powershell
+deno run --env-file=supabase/.env --allow-env --allow-net `
+  tools/voice-benchmark/run_local_coach_1_8x_smoke.ts --runs=2
+```
+
+三組案例鎖定：整輪最後只回「哈哈」仍要挑到高價值球、低投入不得追問／索取安撫／貼負面動機、使用者明確要完整訊息時不得硬砍。輸出含每個樣本的 Claude `attempts`，可觀察品質是否靠額外 retry 換來。
+
 ## blind/（盲測表，2026-06-12——**作廢留檔**，方向重設後不評）
 
 - `blind_sheet.md`：3 case × 甲/乙（舊/新隨機去識別）＋ChatGPT 欄留白——Eric 拿 `chatgpt_paste/` 同輸入餵 free ChatGPT 貼回後評。

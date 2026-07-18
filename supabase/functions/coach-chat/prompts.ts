@@ -14,7 +14,10 @@ export function buildCoachChatPrompt(input: CoachChatRequest): string {
     section("最近對話", formatMessages(input.recentMessages)),
     section("舊對話摘要", input.conversationSummary),
     section("最新分析快照", formatAnalysis(input.analysisSnapshot)),
-    section("近期教練建議結果", formatOutcomeInsights(input.outcomeInsightLines)),
+    section(
+      "近期教練建議結果",
+      formatOutcomeInsights(input.outcomeInsightLines),
+    ),
     section("使用者風格設定", input.effectiveStyleContext),
     section("對方提示", formatPartnerHint(input)),
   ].filter(Boolean).join("\n\n");
@@ -101,7 +104,8 @@ const SYSTEM_PROMPT_BASE =
 - coachAnswer 的 costDeducted 必須是 1，並且要填 rewriteDecision。
 - 不要為了看起來專業而硬改使用者原句。若原句已真實、有分寸、可承擔，就用 keep_original 或 light_edit。
 - 如果原句會讓使用者掉價、越界、焦慮補位、過度承諾或變成情緒勒索，才 rewrite 或 do_not_send。
-- suggestedLine 要守 1.8x 黃金法則：除非使用者明確要長訊息，字數不要超過對方最後一句約 1.8 倍；對方很短時，也要短而有張力。
+- suggestedLine 要守投入對等節奏（1.8x 參考）：看對方當前這一輪投入，不只看最後一句；不要回得比整輪投入多太多而顯得急、黏、用力。1.8x 只是避免不對等過度投入的參考值，不是上限、不是字數公式，也不是目標。整輪是可用的回覆空間，不是逐句待辦；先選 1–2 個最值得接的球，保留自然、有畫面、有張力、讓對方好接的語氣，再刪贅字。高手常常更短，但短是因為選球準，不是因為在數字數。對方整輪很短時，短而低壓；可以輕接或留白，不要為壓字數剪成乾巴巴、不要用玩笑逼對方安撫，也不要把低投入硬轉成需要對方解釋的追問。資訊不足時，不要腦補對方在裝、敷衍、冷淡或故意吊胃口。使用者明確說不要追問或不要逼對方解釋時，suggestedLine 不要出現問句。使用者明確要長訊息時可以放寬。
+- suggestedLine 只能使用對話中已知的事實；時間、狀態、因果與人物經歷要精確，不要為了讓句子更順而擴寫或腦補。例如對方說「這週」，不能改成「這幾週」或「這陣子」。輸出 JSON 前逐字核對來源：時間詞可以省略或照原詞保留，不能換成範圍更寬或更窄的說法。
 - 如果使用者原句有明顯錯字或常見輸入法誤植，suggestedLine 要安靜修正成自然繁中；不要特別說教，也不要照抄明顯錯字。若不確定是不是錯字，保留原意並用較保守的自然表達。
 
 輸出原則：

@@ -95,7 +95,22 @@ Deno.test("Spec 6 smoke: reply polish preserves user's voice instead of over-rew
   assertStringIncludes(prompt, "不要為了看起來專業而硬改使用者原句");
   assertStringIncludes(prompt, "keep_original 或 light_edit");
   assertStringIncludes(prompt, "rewriteDecision");
-  assertStringIncludes(prompt, "1.8x 黃金法則");
+  assertStringIncludes(prompt, "投入對等節奏（1.8x 參考）");
+  assertStringIncludes(prompt, "對方當前這一輪投入");
+  assertStringIncludes(prompt, "不是上限、不是字數公式，也不是目標");
+  assertStringIncludes(prompt, "整輪是可用的回覆空間，不是逐句待辦");
+  assertStringIncludes(prompt, "高手常常更短");
+  assertStringIncludes(prompt, "短而低壓");
+  assertStringIncludes(prompt, "不要用玩笑逼對方安撫");
+  assertStringIncludes(prompt, "不要把低投入硬轉成需要對方解釋的追問");
+  assertStringIncludes(prompt, "資訊不足時，不要腦補對方");
+  assertStringIncludes(prompt, "使用者明確說不要追問或不要逼對方解釋時");
+  assertStringIncludes(prompt, "suggestedLine 只能使用對話中已知的事實");
+  assertStringIncludes(prompt, "不要為了讓句子更順而擴寫或腦補");
+  assertStringIncludes(prompt, "不能換成範圍更寬或更窄的說法");
+  assertEquals(prompt.includes("最後一句約 1.8 倍"), false);
+  assertEquals(prompt.includes("字數不要超過對方"), false);
+  assertEquals(prompt.includes("1.8x 黃金法則"), false);
 });
 
 Deno.test("Spec 6 smoke: flagged profile only allows this conversation", () => {
