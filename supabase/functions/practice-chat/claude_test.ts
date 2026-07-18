@@ -39,6 +39,44 @@ Deno.test("callClaude maps practice messages to the Messages API", async () => {
       { role: "user", content: "user evidence" },
     ]);
     assertEquals(captured.model, "claude-test");
+    assertEquals(captured.temperature, 0.2);
+    assertEquals(captured.thinking, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("callClaude sends a Sonnet 5 compatible request", async () => {
+  const originalFetch = globalThis.fetch;
+  let capturedBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (_input, init) => {
+    const body = (init as { body?: BodyInit } | undefined)?.body;
+    capturedBody = JSON.parse(String(body));
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          content: [
+            { type: "thinking", thinking: "private reasoning" },
+            { type: "text", text: '{"ok":true}' },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+  };
+  try {
+    const result = await callClaude({
+      apiKey: "test-key",
+      model: "claude-sonnet-5",
+      messages: [{ role: "user", content: "hello" }],
+      maxTokens: 100,
+      temperature: 0.45,
+      timeoutMs: 1_000,
+    });
+
+    assertEquals(result, '{"ok":true}');
+    assertEquals(capturedBody?.thinking, { type: "disabled" });
+    assertEquals(capturedBody?.temperature, undefined);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -97,6 +135,38 @@ Deno.test("callClaude rejects max-token truncation before exposing partial text"
       Error,
       "claude_max_tokens",
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("callClaude rejects refusal before exposing partial text", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          stop_reason: "refusal",
+          content: [{ type: "text", text: '{"partial":"unsafe"}' }],
+        }),
+        { status: 200 },
+      ),
+    );
+  try {
+    const error = await assertRejects(
+      () =>
+        callClaude({
+          apiKey: "test-key",
+          model: "claude-sonnet-5",
+          messages: [{ role: "user", content: "hello" }],
+          maxTokens: 100,
+          temperature: 0.2,
+          timeoutMs: 1_000,
+        }),
+      Error,
+    );
+    assertEquals(error.message, "claude_refusal");
+    assertEquals(error.message.includes("unsafe"), false);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -42,6 +42,7 @@ export async function callClaude(args: ClaudeArgs): Promise<string> {
   const timeout = setTimeout(() => controller.abort(), args.timeoutMs);
   try {
     const prompt = claudeRequestMessages(args.messages);
+    const isSonnet5 = args.model === CLAUDE_SONNET_MODEL;
     const response = await fetch(args.endpoint ?? CLAUDE_ENDPOINT, {
       method: "POST",
       headers: {
@@ -52,7 +53,9 @@ export async function callClaude(args: ClaudeArgs): Promise<string> {
       body: JSON.stringify({
         model: args.model,
         max_tokens: args.maxTokens,
-        temperature: args.temperature,
+        ...(isSonnet5
+          ? { thinking: { type: "disabled" } }
+          : { temperature: args.temperature }),
         system: prompt.system,
         messages: prompt.messages,
       }),
@@ -65,6 +68,9 @@ export async function callClaude(args: ClaudeArgs): Promise<string> {
     }
 
     const json = await response.json();
+    if (json?.stop_reason === "refusal") {
+      throw new Error("claude_refusal");
+    }
     if (json?.stop_reason === "max_tokens") {
       throw new Error("claude_max_tokens");
     }
