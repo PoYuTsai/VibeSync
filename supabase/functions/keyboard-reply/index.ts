@@ -657,7 +657,7 @@ async function handleRequestWithinDeadline(
 
 export async function handleRequest(request: Request): Promise<Response> {
   const requestDeadlineAt = performance.now() + KEYBOARD_REQUEST_BUDGET_MS;
-  let timeoutId: number | undefined;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const deadlineResponse = new Promise<Response>((resolve) => {
     timeoutId = setTimeout(() => {
       resolve(jsonResponse({

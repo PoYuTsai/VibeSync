@@ -1,0 +1,20 @@
+{
+  "responseMode": "stream",
+  "billingProtocolVersion": 3,
+  "messages": [
+    { "isFromMe": true, "content": "你不是說今天要跟主管談升遷嗎，結果怎樣" },
+    { "isFromMe": false, "content": "有談成！她說下個月會升我" },
+    {
+      "isFromMe": false,
+      "content": "但我開心不到五分鐘，就被丟一個超難的新專案"
+    },
+    { "isFromMe": false, "content": "我現在一半想慶祝一半想逃跑😂" },
+    { "isFromMe": false, "content": "週末打算去海邊放空，你平常會去哪裡充電" },
+    { "isFromMe": false, "content": "哈哈" }
+  ],
+  "sessionContext": {
+    "meetingContext": "交友軟體配對",
+    "duration": "聊天一週",
+    "analysisContextNote": "合成 smoke case：使用者平常會去河濱騎車；檢查模型是否看整輪投入，不被末句『哈哈』錯誤錨定。"
+  }
+}

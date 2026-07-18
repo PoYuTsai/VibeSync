@@ -70,6 +70,28 @@ const MAX_CARD_GENERATION_ATTEMPTS = 3;
 const FALLBACK_NO_CHARGE = 0;
 const COACH_GENERATION_BUDGET_MS = 75_000;
 const COACH_CLAUDE_ATTEMPT_TIMEOUT_MS = 60_000;
+const UNSOURCED_TIME_RANGE_TERMS = [
+  "這陣子",
+  "最近這陣子",
+  "前陣子",
+  "這幾天",
+  "最近幾天",
+  "這幾週",
+  "最近幾週",
+  "好幾週",
+  "這幾個月",
+  "最近幾個月",
+  "好幾個月",
+  "隔天",
+  "第一天",
+] as const;
+const UNSOURCED_NEGATIVE_MOTIVE_TERMS = [
+  "會裝",
+  "敷衍",
+  "冷淡",
+  "吊胃口",
+  "不想理我",
+] as const;
 
 export async function runCoachChat(
   input: GenerationInput,
@@ -144,10 +166,10 @@ export async function runCoachChat(
       maxAttempts: MAX_CARD_GENERATION_ATTEMPTS,
     });
     try {
-      card = assertClarificationAllowed(
-        parseAndValidateCard(claudeData, request),
-        request,
-      );
+      const candidate = parseAndValidateCard(claudeData, request);
+      assertSuggestedLineGrounded(candidate, request);
+      assertExplicitNoQuestionConstraint(candidate, request);
+      card = assertClarificationAllowed(candidate, request);
       if (attempt > 1) {
         deps.logger.info("coach_chat_retry_succeeded", {
           tier: input.tier,
@@ -159,6 +181,12 @@ export async function runCoachChat(
       const message = getErrorMessage(e);
       lastValidationError = message.startsWith("banned_token")
         ? "banned_token"
+        : message === "temporal_drift"
+        ? "temporal_drift"
+        : message === "motive_drift"
+        ? "motive_drift"
+        : message === "explicit_no_question"
+        ? "explicit_no_question"
         : message === "clarification_forbidden"
         ? "clarification_forbidden"
         : message === "max_tokens"
@@ -309,6 +337,33 @@ function buildAttemptPrompt(
 - 資訊不足可以低信心，但仍要給一個最小安全下一步。
 - 避免輸出被禁止的可見詞彙。`;
   }
+  if (lastValidationError === "temporal_drift") {
+    return `${basePrompt}
+
+上一次 suggestedLine 擴寫了來源沒有的時間範圍，未通過事實校對。
+請重新輸出完整 JSON，並逐字核對 suggestedLine：
+- 時間詞只能照來源原詞保留或直接省略。
+- 不得把「這週」改成「這陣子／這幾週」，也不得新增來源沒有的時間經歷。
+- 只輸出 JSON，不要 markdown，不要前後解釋。`;
+  }
+  if (lastValidationError === "motive_drift") {
+    return `${basePrompt}
+
+上一次 suggestedLine 替對方貼了來源沒有的負面動機標籤，未通過事實校對。
+請重新輸出完整 JSON：
+- 資訊不足時輕接或留白，不得腦補對方在裝、敷衍、冷淡或故意吊胃口。
+- 不要逼對方解釋或安撫使用者。
+- 只輸出 JSON，不要 markdown，不要前後解釋。`;
+  }
+  if (lastValidationError === "explicit_no_question") {
+    return `${basePrompt}
+
+上一次 suggestedLine 違反使用者明確要求的「不要追問／不要逼對方解釋」。
+請重新輸出完整 JSON：
+- suggestedLine 不得出現問句或問號；輕接後收住即可。
+- 不要換句話繼續索取解釋或安撫。
+- 只輸出 JSON，不要 markdown，不要前後解釋。`;
+  }
   return `${basePrompt}
 
 上一次輸出未通過後端驗證：${lastValidationError}
@@ -318,6 +373,54 @@ function buildAttemptPrompt(
 - responseType="clarifyingQuestion" 時：rewriteDecision、rewriteReason、suggestedLine 用 null，needsReflection=true，reflectionQuestion 必填。
 - responseType="coachAnswer" 時：rewriteDecision 必填。
 - 避免輸出被禁止的可見詞彙。`;
+}
+
+function assertSuggestedLineGrounded(
+  card: CoachChatResponseCard,
+  request: CoachChatRequest,
+): void {
+  const suggestedLine = card.suggestedLine?.trim();
+  if (!suggestedLine) return;
+
+  const source = [
+    request.userQuestion,
+    request.rawReplyDraft,
+    ...request.recentMessages.map((message) => message.text),
+    ...request.activeSessionTurns.map((turn) => turn.content),
+    request.conversationSummary,
+    request.analysisSnapshot?.summary,
+    request.analysisSnapshot?.nextStep,
+    ...(request.analysisSnapshot?.keySignals ?? []),
+    request.effectiveStyleContext,
+  ].filter((value): value is string => typeof value === "string").join("\n");
+
+  for (const term of UNSOURCED_TIME_RANGE_TERMS) {
+    if (suggestedLine.includes(term) && !source.includes(term)) {
+      throw new Error("temporal_drift");
+    }
+  }
+  for (const term of UNSOURCED_NEGATIVE_MOTIVE_TERMS) {
+    if (suggestedLine.includes(term) && !source.includes(term)) {
+      throw new Error("motive_drift");
+    }
+  }
+}
+
+function assertExplicitNoQuestionConstraint(
+  card: CoachChatResponseCard,
+  request: CoachChatRequest,
+): void {
+  const suggestedLine = card.suggestedLine?.trim();
+  if (!suggestedLine) return;
+
+  const explicitlyAvoidsQuestions =
+    /(?:不要|別)(?:再|一直|硬)?(?:追問|問)|(?:不要|別)[^。！？]{0,12}逼[^。！？]{0,12}解釋/
+      .test(
+        request.userQuestion,
+      );
+  if (explicitlyAvoidsQuestions && /[?？]/.test(suggestedLine)) {
+    throw new Error("explicit_no_question");
+  }
 }
 
 function parseAndValidateCard(

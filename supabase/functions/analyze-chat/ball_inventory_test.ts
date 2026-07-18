@@ -13,27 +13,64 @@ function inventoryOf(
 ): BallInventory {
   const dispositions = new Map<number, "接" | "併" | "略">();
   let catchableCount = 0;
+  let independentCount = 0;
   for (const [idx, disp] of entries) {
     dispositions.set(idx, disp);
     if (disp === "接" || disp === "併") catchableCount += 1;
+    if (disp === "接") independentCount += 1;
   }
-  return { dispositions, catchableCount };
+  return { dispositions, catchableCount, independentCount };
 }
 
 function seg(sourceIndex: number): Record<string, unknown> {
-  return { sourceIndex, sourceMessage: `m${sourceIndex}`, reply: "r", reason: "x" };
+  return {
+    sourceIndex,
+    sourceMessage: `m${sourceIndex}`,
+    reply: "r",
+    reason: "x",
+  };
 }
 
 Deno.test("parseBallInventory builds disposition map and counts catchable balls", () => {
   const inv = parseBallInventory({
     type: "analysis.inventory",
     balls: [
-      { sourceIndex: 1, sourceMessage: "只喜歡江果先", disposition: "略", reason: "語境不明" },
-      { sourceIndex: 2, sourceMessage: "在比賽", disposition: "併", reason: "與晚餐同片段" },
-      { sourceIndex: 3, sourceMessage: "剛來吃晚餐", disposition: "接", reason: "生活分享" },
-      { sourceIndex: 4, sourceMessage: "[Photo]晚餐照", disposition: "接", reason: "可埋邀約" },
-      { sourceIndex: 5, sourceMessage: "到家了", disposition: "接", reason: "可順勢" },
-      { sourceIndex: 6, sourceMessage: "[Missed call]視訊", disposition: "接", reason: "最高價值" },
+      {
+        sourceIndex: 1,
+        sourceMessage: "只喜歡江果先",
+        disposition: "略",
+        reason: "語境不明",
+      },
+      {
+        sourceIndex: 2,
+        sourceMessage: "在比賽",
+        disposition: "併",
+        reason: "與晚餐同片段",
+      },
+      {
+        sourceIndex: 3,
+        sourceMessage: "剛來吃晚餐",
+        disposition: "接",
+        reason: "生活分享",
+      },
+      {
+        sourceIndex: 4,
+        sourceMessage: "[Photo]晚餐照",
+        disposition: "接",
+        reason: "可埋邀約",
+      },
+      {
+        sourceIndex: 5,
+        sourceMessage: "到家了",
+        disposition: "接",
+        reason: "可順勢",
+      },
+      {
+        sourceIndex: 6,
+        sourceMessage: "[Missed call]視訊",
+        disposition: "接",
+        reason: "最高價值",
+      },
     ],
   });
 
@@ -44,11 +81,15 @@ Deno.test("parseBallInventory builds disposition map and counts catchable balls"
   assertEquals(inv!.dispositions.size, 6);
   // 接 idx 3,4,5,6 ＋ 併 idx 2 ＝ 5 顆可接球。
   assertEquals(inv!.catchableCount, 5);
+  assertEquals(inv!.independentCount, 4);
 });
 
 Deno.test("parseBallInventory returns null for non-inventory events", () => {
   assertEquals(
-    parseBallInventory({ type: "analysis.decision", selectedStyle: "coldRead" }),
+    parseBallInventory({
+      type: "analysis.decision",
+      selectedStyle: "coldRead",
+    }),
     null,
   );
 });
@@ -69,8 +110,18 @@ Deno.test("parseBallInventory returns null when no ball is catchable (all 略) �
   const inv = parseBallInventory({
     type: "analysis.inventory",
     balls: [
-      { sourceIndex: 1, sourceMessage: "[Photo]", disposition: "略", reason: "純貼圖" },
-      { sourceIndex: 2, sourceMessage: "[Sticker]", disposition: "略", reason: "純表情貼" },
+      {
+        sourceIndex: 1,
+        sourceMessage: "[Photo]",
+        disposition: "略",
+        reason: "純貼圖",
+      },
+      {
+        sourceIndex: 2,
+        sourceMessage: "[Sticker]",
+        disposition: "略",
+        reason: "純表情貼",
+      },
     ],
   });
   assertEquals(inv, null);
@@ -94,6 +145,41 @@ Deno.test("parseBallInventory skips malformed entries but keeps valid ones", () 
   assertEquals(inv!.dispositions.get(5), "併");
   assert(!inv!.dispositions.has(3));
   assertEquals(inv!.catchableCount, 2);
+  assertEquals(inv!.independentCount, 1);
+});
+
+Deno.test("parseBallInventory counts duplicate source indices only once", () => {
+  const inv = parseBallInventory({
+    type: "analysis.inventory",
+    balls: [
+      { sourceIndex: 1, disposition: "接" },
+      { sourceIndex: 1, disposition: "接" },
+      { sourceIndex: 2, disposition: "併" },
+      { sourceIndex: 2, disposition: "併" },
+    ],
+  });
+
+  assert(inv !== null);
+  assertEquals(inv.dispositions.size, 2);
+  assertEquals(inv.catchableCount, 2);
+  assertEquals(inv.independentCount, 1);
+});
+
+Deno.test("併 balls enrich context without raising the independent segment floor", () => {
+  const inv = inventoryOf([
+    [1, "接"],
+    [2, "併"],
+    [3, "併"],
+    [4, "併"],
+  ]);
+  assertEquals(validateSelectedSegments(inv, [seg(1)]), { ok: true });
+  const mergedOnly = validateSelectedSegments(inv, [seg(2)]);
+  assert(!mergedOnly.ok);
+  assert(
+    (mergedOnly as { reason: string }).reason.includes(
+      "標「併」的背景獨立成段",
+    ),
+  );
 });
 
 Deno.test("validateSelectedSegments rejects below-floor count (4接, 2段) — failure matrix row1", () => {
@@ -105,11 +191,16 @@ Deno.test("validateSelectedSegments rejects below-floor count (4接, 2段) — f
 
 Deno.test("validateSelectedSegments passes 3 catchable segments (4接, 3段) — failure matrix row2", () => {
   const inv = inventoryOf([[3, "接"], [4, "接"], [5, "接"], [6, "接"]]);
-  assertEquals(validateSelectedSegments(inv, [seg(4), seg(5), seg(6)]), { ok: true });
+  assertEquals(validateSelectedSegments(inv, [seg(4), seg(5), seg(6)]), {
+    ok: true,
+  });
 });
 
 Deno.test("validateSelectedSegments rejects a segment sourced from a 略 ball — failure matrix row3", () => {
-  const inv = inventoryOf([[1, "略"], [3, "接"], [4, "接"], [5, "接"], [6, "接"]]);
+  const inv = inventoryOf([[1, "略"], [3, "接"], [4, "接"], [5, "接"], [
+    6,
+    "接",
+  ]]);
   const result = validateSelectedSegments(inv, [seg(1), seg(4), seg(5)]);
   assert(!result.ok);
   assert((result as { reason: string }).reason.includes("略"));
@@ -120,7 +211,7 @@ Deno.test("validateSelectedSegments floor caps at real ball count (2接, 2段) �
   assertEquals(validateSelectedSegments(inv, [seg(3), seg(5)]), { ok: true });
 });
 
-// Codex adversarial P2：下限必須數「不同的接/併球」，否則重複/盤點外索引可灌水
+// Codex adversarial P2：下限必須數「不同的獨立接球」，否則重複/盤點外索引可灌水
 // 過關卻沒真接到球。下面四個 case 鎖住 INV-H6'。
 
 Deno.test("validateSelectedSegments counts DISTINCT catchable balls — duplicates do not satisfy the floor", () => {

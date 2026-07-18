@@ -19,6 +19,8 @@ Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
   assert(prompt.includes("analysis.report_section"));
   assert(prompt.includes("analysis.done"));
   assert(prompt.includes("Emit exactly 5 `analysis.reply_option` events"));
+  assert(prompt.includes("Low-investment rule for every option"));
+  assert(prompt.includes("no pressure, guilt, or bids for reassurance"));
   assert(
     prompt.includes(
       "Complete all required `analysis.reply_option` events before any metrics, report sections, or done event.",
@@ -50,11 +52,12 @@ Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
     assert(prompt.includes(style));
   }
   assert(prompt.includes("Traditional Chinese"));
+  assert(prompt.includes("Taiwan) only; never Simplified"));
   // v2 few-shot、硬版 compliance floor (b)＋callback (c)＋黑箱後選中風格強化 (b2)
   // 後再放寬，仍鎖上限防 contract 無限膨脹。
   // 2026-07-02 metrics 掛 gameStage（enum 值域必須全列，UI 對話進度卡破冰案）
-  // 再放寬一檔。
-  assert(prompt.length < 5800);
+  // 語意分群加入 接/併 的獨立球定義與對照範例，再放寬一檔。
+  assert(prompt.length < 6200);
 });
 
 Deno.test("stream prompt trims the base prompt before appending contract", () => {
@@ -97,7 +100,13 @@ Deno.test("v2: reply_option spec makes segments first-class, no flat message", (
   assert(prompt.includes("`segments`"));
   assert(prompt.includes("`sourceIndex`"));
   assert(prompt.includes("`sourceMessage`"));
-  assert(prompt.includes("one segment per caught ball"));
+  assert(prompt.includes("one segment per independent ball marked `接`"));
+  assert(prompt.includes("Fold `併` context naturally"));
+  assert(prompt.includes("never create a segment just to acknowledge a `併`"));
+  assert(prompt.includes("Use stated/established facts only; never invent"));
+  assert(prompt.includes('"next month" is not "first day promoted"'));
+  assert(prompt.includes("segment sources must be balls marked `接`"));
+  assert(prompt.includes("may incorporate related `併` context"));
   // D4：模型不寫 flat message，server join 合成。
   assert(prompt.includes("Do not write a flat `message` field"));
   // 舊規格殘骸不得留下：finalResult replySegments 條款與 max 3 cap。
@@ -140,7 +149,9 @@ Deno.test("v2: prompt carries a one-line multi-ball reply_option few-shot", () =
   assert(prompt.includes('{"type":"analysis.reply_option"'));
   assert(prompt.includes('"segments":['));
   // few-shot 必須示範多球（≥2 段），單段範例會被模型當預設形狀。
-  const example = prompt.slice(prompt.indexOf('{"type":"analysis.reply_option"'));
+  const example = prompt.slice(
+    prompt.indexOf('{"type":"analysis.reply_option"'),
+  );
   assertEquals(example.split('"sourceIndex"').length >= 3, true);
 });
 
@@ -193,10 +204,15 @@ Deno.test("compliance(b): prompt declares the server-enforced segment floor and 
   const prompt = buildStreamSystemPrompt("BASE");
 
   assert(prompt.includes("Server-enforced floor"));
-  assert(prompt.includes("min(3,"));
+  assert(prompt.includes("min(3, number of independent balls marked 接)"));
+  assert(
+    prompt.includes(
+      "A `併` line enriches a related segment but does not raise the floor",
+    ),
+  );
   // 明說不足/取略球會被退回重來，模型才知道要上游服從。
   assert(prompt.includes("rejects and forces a retry"));
-  assert(prompt.includes("略 ball"));
+  assert(prompt.includes("from a `略` ball"));
 });
 
 Deno.test("callback(c): prompt tells model not to mark a personal callback 略 for lack of backstory", () => {
@@ -204,24 +220,30 @@ Deno.test("callback(c): prompt tells model not to mark a personal callback 略 f
 
   assert(prompt.includes("inside joke"));
   assert(prompt.includes("play along"));
-  assert(prompt.includes("never mark it 略 just because you lack the backstory"));
+  assert(
+    prompt.includes("never mark it `略` only because you lack the backstory"),
+  );
   // (c) 屬分類原則，須落在 inventory step（decision 之前）。
   assert(
-    prompt.indexOf("never mark it 略 just because you lack the backstory") <
+    prompt.indexOf("never mark it `略` only because you lack the backstory") <
       prompt.indexOf("analysis.decision"),
     "callback principle must live in the inventory step",
   );
-  // 略 只留給真的沒文字鉤的球。
-  assert(prompt.includes("no usable textual hook"));
+  // 略 可用於不需獨立回覆的承接、重複或背景細節，但不能因缺 backstory 略掉 callback。
+  assert(
+    prompt.includes(
+      "acknowledgement, duplicate, or detail that needs no reply",
+    ),
+  );
 });
 
-Deno.test("compliance(b2): prompt forbids writing the selected/lead style more tersely than the others", () => {
+Deno.test("compliance(b2): selected style covers independent balls without matching the longest alternative", () => {
   const prompt = buildStreamSystemPrompt("BASE");
 
   // 黑箱實證：模型把「主打/選中」風格寫最短（coldRead/tease 2 段），非選中
   // 卻到 3 段 → 閘每跑退回選中風格。專打這個系統性偏差。
-  assert(prompt.includes("never write it more tersely than your other styles"));
-  assert(prompt.includes("one sharp segment per ball"));
+  assert(prompt.includes("does not need to match the longest alternative"));
+  assert(prompt.includes("precision beats padding"));
 });
 
 Deno.test("metrics step requires gameStage with client enum values and context rule", () => {

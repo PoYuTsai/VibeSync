@@ -443,6 +443,197 @@ Deno.test("runCoachChat retries malformed cards before surfacing failure", async
   assertEquals(harness.events.includes("coach_chat_retry_succeeded"), true);
 });
 
+Deno.test("runCoachChat retries an unsourced suggestedLine time range", async () => {
+  let calls = 0;
+  const prompts: string[] = [];
+  const harness = deps({
+    callClaude: (args) => {
+      calls++;
+      prompts.push(args.prompt);
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: calls === 1
+          ? "這陣子真的辛苦妳了，週末好好休息。"
+          : "這週真的辛苦妳了，週末好好休息。",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        forceAnswer: true,
+        recentMessages: [{
+          sender: "partner",
+          text: "這週一直加班，週末只想睡覺。",
+        }],
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+  assertEquals(harness.deductCalls, 1);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).suggestedLine,
+    "這週真的辛苦妳了，週末好好休息。",
+  );
+  assertEquals(
+    prompts[1].includes("上一次 suggestedLine 擴寫了來源沒有的時間範圍"),
+    true,
+  );
+});
+
+Deno.test("runCoachChat accepts a suggestedLine time range present in source", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: "這陣子真的辛苦妳了，先好好休息。",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        forceAnswer: true,
+        recentMessages: [{
+          sender: "partner",
+          text: "這陣子一直加班，真的有點累。",
+        }],
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 1);
+  assertEquals(harness.deductCalls, 1);
+});
+
+Deno.test("runCoachChat retries an unsourced negative motive label", async () => {
+  let calls = 0;
+  const prompts: string[] = [];
+  const harness = deps({
+    callClaude: (args) => {
+      calls++;
+      prompts.push(args.prompt);
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: calls === 1
+          ? "哈哈你這人真的很會裝欸。"
+          : "哈哈是喔，那就好。",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        forceAnswer: true,
+        recentMessages: [{ sender: "partner", text: "還好啦哈哈" }],
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+  assertEquals(harness.deductCalls, 1);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).suggestedLine,
+    "哈哈是喔，那就好。",
+  );
+  assertEquals(prompts[1].includes("來源沒有的負面動機標籤"), true);
+});
+
+Deno.test("runCoachChat honors an explicit no-question request", async () => {
+  let calls = 0;
+  const prompts: string[] = [];
+  const harness = deps({
+    callClaude: (args) => {
+      calls++;
+      prompts.push(args.prompt);
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: calls === 1 ? "哈哈還好是多好？" : "哈哈是喔，那就好。",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        userQuestion: "直接給一句，輕一點，不要逼她解釋或安撫我。",
+        forceAnswer: true,
+        recentMessages: [{ sender: "partner", text: "還好啦哈哈" }],
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+  assertEquals(harness.deductCalls, 1);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).suggestedLine,
+    "哈哈是喔，那就好。",
+  );
+  assertEquals(prompts[1].includes("不要追問／不要逼對方解釋"), true);
+});
+
+Deno.test("runCoachChat does not deduct when grounding fails every attempt", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: "這陣子妳真的很會裝欸？",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        userQuestion: "直接給一句，不要逼她解釋。",
+        forceAnswer: true,
+        recentMessages: [{ sender: "partner", text: "還好啦哈哈" }],
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 3);
+  assertEquals(harness.deductCalls, 0);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).costDeducted,
+    0,
+  );
+  assertEquals(harness.events.includes("coach_chat_fallback_used"), true);
+});
+
 Deno.test("runCoachChat falls back to a free clarification when all card attempts are malformed", async () => {
   let calls = 0;
   const harness = deps({

@@ -1,0 +1,13 @@
+{
+  "responseMode": "stream",
+  "billingProtocolVersion": 3,
+  "messages": [
+    { "isFromMe": true, "content": "這週末要不要一起去逛那個市集" },
+    { "isFromMe": false, "content": "還不確定欸" }
+  ],
+  "sessionContext": {
+    "meetingContext": "交友軟體配對",
+    "duration": "剛開始聊天",
+    "analysisContextNote": "合成 smoke case：整輪確實低投入時，檢查建議是否簡短、不追問、不施壓。"
+  }
+}
