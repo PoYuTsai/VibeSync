@@ -11,6 +11,7 @@ import { postProcessAnalysisResult } from "./post_process.ts";
 import {
   AiServiceError,
   callClaudeWithFallback,
+  extractClaudeText,
   type FallbackResult,
 } from "./fallback.ts";
 import { applyLayoutFirstParser } from "./layout_parser.ts";
@@ -422,7 +423,7 @@ async function repairMalformedOpenerPayload({
     content?: Array<{ text?: string }>;
     usage?: { input_tokens?: number; output_tokens?: number };
   };
-  const repairedText = repairData.content?.[0]?.text || "";
+  const repairedText = extractClaudeText(repairData);
 
   return {
     parsed: normalizeOpenerPayload(parseJsonObjectFromText(repairedText)),
@@ -958,6 +959,120 @@ Example for a dark-mode LINE reply where the quoted text is a single dim gray li
   }
 }
 Note: In this dark-mode example the dim gray line under the name header (e.g. "明天記得帶傘") is NOT a live message — it is the older message the reply is quoting, so it is tagged blockType: "quoted_preview" and a deterministic post-step folds it into the brighter owner message below it. Never emit that dim under-name line as its own blockType: "message".`;
+
+// Sonnet 5 structured output contract for screenshot recognition. Every field
+// is required by the provider schema; nullable values represent OCR unknowns.
+const OCR_RECOGNITION_OUTPUT_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["recognizedConversation"],
+  properties: {
+    recognizedConversation: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "contactName",
+        "screenSpeakerPattern",
+        "classification",
+        "importPolicy",
+        "confidence",
+        "sideConfidence",
+        "uncertainSideCount",
+        "warning",
+        "messageCount",
+        "summary",
+        "messages",
+      ],
+      properties: {
+        contactName: { type: ["string", "null"] },
+        screenSpeakerPattern: {
+          type: "string",
+          enum: ["mixed", "only_left", "only_right"],
+        },
+        classification: {
+          type: "string",
+          enum: [
+            "valid_chat",
+            "low_confidence",
+            "social_feed",
+            "group_chat",
+            "gallery_album",
+            "call_log_screen",
+            "system_ui",
+            "sensitive_content",
+            "unsupported",
+          ],
+        },
+        importPolicy: {
+          type: "string",
+          enum: ["allow", "confirm", "reject"],
+        },
+        confidence: {
+          type: "string",
+          enum: ["high", "medium", "low"],
+        },
+        sideConfidence: {
+          type: "string",
+          enum: ["high", "medium", "low"],
+        },
+        uncertainSideCount: {
+          type: "integer",
+          description: "Zero or a positive count.",
+        },
+        warning: { type: ["string", "null"] },
+        messageCount: {
+          type: "integer",
+          description: "Zero or a positive count.",
+        },
+        summary: { type: "string" },
+        messages: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "outerColumn",
+              "horizontalPosition",
+              "side",
+              "isFromMe",
+              "blockType",
+              "content",
+              "metaSide",
+              "readReceipt",
+              "avatarBeside",
+            ],
+            properties: {
+              outerColumn: {
+                type: "string",
+                enum: ["left", "right", "center"],
+              },
+              horizontalPosition: {
+                type: "number",
+                description: "Approximate outer bubble center from 0 to 100.",
+              },
+              side: {
+                type: "string",
+                enum: ["left", "right", "unknown"],
+              },
+              isFromMe: { type: "boolean" },
+              blockType: {
+                type: "string",
+                enum: ["message", "quoted_preview"],
+              },
+              content: { type: "string" },
+              metaSide: {
+                type: "string",
+                enum: ["left", "right", "none"],
+              },
+              readReceipt: { type: "boolean" },
+              avatarBeside: { type: "boolean" },
+            },
+          },
+        },
+      },
+    },
+  },
+};
 
 function joinPromptSections(
   ...sections: Array<string | undefined | null>
@@ -5253,7 +5368,7 @@ serve(async (req) => {
         usage?: { input_tokens?: number; output_tokens?: number };
         stop_reason?: string;
       };
-      const rawText = apiData.content?.[0]?.text || "";
+      const rawText = extractClaudeText(apiData);
 
       // Parse and validate JSON from response. Never surface raw model output
       // as an opener; malformed output gets one format-only repair pass before
@@ -6398,6 +6513,13 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       ? (recognizeOnly ? 90000 : 120000)
       : (isMyMessageMode ? 20000 : 30000);
     const allowModelFallback = !hasImages;
+    const maxOutputTokens = recognizeOnly
+      ? 6000
+      : (hasImages
+        ? 2560
+        : (isOptimizeMessageMode
+          ? OPTIMIZE_MESSAGE_MAX_TOKENS
+          : (isMyMessageMode ? 512 : 1536)));
     const requestObservability = {
       requestType,
       analyzeMode,
@@ -6415,6 +6537,10 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       totalImageBytes: Math.round(totalImageBytes),
       timeoutMs,
       allowModelFallback,
+      providerMaxAttempts: recognizeOnly ? 1 : 2,
+      structuredOutput: recognizeOnly,
+      thinkingDisabled: recognizeOnly,
+      maxOutputTokens,
       expectedTier,
       effectiveTier,
       allowedFeatureCount: allowedFeatures.length,
@@ -6568,7 +6694,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         content?: Array<{ text?: string }>;
         [key: string]: unknown;
       };
-      const quickText = quickData.content?.[0]?.text ?? "";
+      const quickText = extractClaudeText(quickData);
       const quickTokenUsage = extractTokenUsage(quickData);
       const quickLatencyMs = Date.now() - quickStart;
 
@@ -7012,7 +7138,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         content?: Array<{ text?: string }>;
         [key: string]: unknown;
       };
-      const fullText = fullData.content?.[0]?.text ?? "";
+      const fullText = extractClaudeText(fullData);
       const fullTokenUsage = extractTokenUsage(fullData);
       const fullLatencyMs = Date.now() - fullStart;
 
@@ -7555,13 +7681,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       claudeResult = await callClaudeWithFallback(
         {
           model: selectedModel,
-          max_tokens: recognizeOnly
-            ? 3000
-            : (hasImages
-              ? 2560
-              : (isOptimizeMessageMode
-                ? OPTIMIZE_MESSAGE_MAX_TOKENS
-                : (isMyMessageMode ? 512 : 1536))), // 多句推薦回覆保留較穩定的 JSON 空間
+          max_tokens: maxOutputTokens,
           system: systemPrompt,
           messages: [
             {
@@ -7569,9 +7689,22 @@ Return \`optimizedMessage\` in the structured JSON response.`,
               content: userMessageContent,
             },
           ],
+          thinking: recognizeOnly ? { type: "disabled" } : undefined,
+          output_config: recognizeOnly
+            ? {
+              format: {
+                type: "json_schema",
+                schema: OCR_RECOGNITION_OUTPUT_SCHEMA,
+              },
+            }
+            : undefined,
         },
         CLAUDE_API_KEY,
-        { timeout: timeoutMs, allowModelFallback },
+        {
+          timeout: timeoutMs,
+          allowModelFallback,
+          ...(recognizeOnly ? { maxRetries: 1 } : {}),
+        },
       );
     } catch (error) {
       const latencyMs = Date.now() - startTime;
@@ -7623,10 +7756,19 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     }
 
     const claudeData = claudeResult.data as {
-      content?: Array<{ text?: string }>;
+      content?: Array<{ type?: string; text?: string }>;
+      stop_reason?: string;
       [key: string]: unknown;
     };
-    const content = claudeData.content?.[0]?.text;
+    const content = extractClaudeText(claudeData);
+    const stopReason = typeof claudeData.stop_reason === "string"
+      ? claudeData.stop_reason
+      : null;
+    const contentBlockTypes = Array.isArray(claudeData.content)
+      ? claudeData.content.map((block) =>
+        typeof block?.type === "string" ? block.type : "unknown"
+      )
+      : [];
     const actualModel = claudeResult.model;
     const latencyMs = Date.now() - startTime;
     const tokenUsage = extractTokenUsage(claudeData);
@@ -7641,12 +7783,15 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       fallbackUsed: claudeResult.fallbackUsed,
       retries: claudeResult.retries,
       requestType,
+      stopReason,
+      contentBlockTypes,
+      textLength: content.length,
     });
 
     // Parse Claude's response
     let result;
     try {
-      const aiText = content ?? "";
+      const aiText = content;
       const jsonMatch = aiText.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         logWarn("ai_response_missing_json", {
@@ -7683,10 +7828,54 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       logWarn("ai_response_parse_failed_will_retry", {
         user: summarizeUser(user.id),
         model: actualModel,
-        textLength: (content ?? "").length,
+        textLength: content.length,
         error: getErrorMessage(parseError),
         attempt: 1,
+        stopReason,
+        contentBlockTypes,
       });
+
+      // OCR is deliberately one provider call per user action. Sonnet 5 uses
+      // a strict JSON schema above, so a refusal/truncation/invalid payload is
+      // surfaced immediately instead of uploading the screenshots a second
+      // time in the same Edge invocation.
+      if (recognizeOnly) {
+        const parseLatencyMs = Date.now() - startTime;
+        await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+          userId: user.id,
+          model: actualModel,
+          requestType,
+          inputTokens: tokenUsage.inputTokens,
+          outputTokens: tokenUsage.outputTokens,
+          cacheCreationTokens: tokenUsage.cacheCreationTokens,
+          cacheReadTokens: tokenUsage.cacheReadTokens,
+          latencyMs: parseLatencyMs,
+          status: "failed",
+          errorCode: "AI_RESPONSE_INVALID",
+          errorMessage: "OCR response did not match the JSON contract",
+          fallbackUsed: claudeResult.fallbackUsed,
+          retryCount: claudeResult.retries,
+          requestBody: requestObservability,
+          responseBody: {
+            failureStage: "response_parse",
+            stopReason,
+            contentBlockTypeSummary: contentBlockTypes.join(","),
+            textLength: content.length,
+            retries: claudeResult.retries,
+            fallbackUsed: claudeResult.fallbackUsed,
+          },
+        });
+        return jsonResponse(
+          {
+            error: "AI_RESPONSE_INVALID",
+            code: "AI_RESPONSE_INVALID",
+            message: "這次辨識結果格式異常，請再試一次。本次不會扣額度。",
+            retryable: false,
+            shouldChargeQuota: false,
+          },
+          502,
+        );
+      }
 
       // 重試一次 Claude API 呼叫
       let retrySucceeded = false;
@@ -7699,13 +7888,11 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         const retryResult = await callClaudeWithFallback(
           {
             model: selectedModel,
-            max_tokens: recognizeOnly
-              ? 3000
-              : (hasImages
-                ? 2048
-                : (isOptimizeMessageMode
-                  ? OPTIMIZE_MESSAGE_MAX_TOKENS
-                  : (isMyMessageMode ? 512 : 1536))),
+            max_tokens: hasImages
+              ? 2048
+              : (isOptimizeMessageMode
+                ? OPTIMIZE_MESSAGE_MAX_TOKENS
+                : (isMyMessageMode ? 512 : 1536)),
             system: systemPrompt +
               "\n\nIMPORTANT: Return valid JSON only. Ensure all brackets are properly closed.",
             messages: [
@@ -7722,7 +7909,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         const retryData = retryResult.data as {
           content?: Array<{ text?: string }>;
         };
-        const retryContent = retryData.content?.[0]?.text ?? "";
+        const retryContent = extractClaudeText(retryData);
         const retryJsonMatch = retryContent.match(/\{[\s\S]*\}/);
 
         if (retryJsonMatch) {

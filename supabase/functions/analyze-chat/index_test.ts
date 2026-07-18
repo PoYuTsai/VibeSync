@@ -11,10 +11,97 @@ import {
   MAX_TOTAL_IMAGE_BYTES,
   validateOpenerImages,
 } from "./opener_image_validation.ts";
+import { callClaudeWithFallback, extractClaudeText } from "./fallback.ts";
 
 function base64PayloadWithEstimatedBytes(bytes: number): string {
   return "A".repeat(Math.ceil((bytes * 4) / 3));
 }
+
+Deno.test("extractClaudeText skips Sonnet 5 thinking blocks", () => {
+  assertEquals(
+    extractClaudeText({
+      content: [
+        { type: "thinking", thinking: "private reasoning" },
+        { type: "text", text: '{"ok":true}' },
+      ],
+    }),
+    '{"ok":true}',
+  );
+  assertEquals(
+    extractClaudeText({
+      content: [
+        { type: "text", text: "first" },
+        { type: "thinking", thinking: "private reasoning" },
+        { type: "text", text: "second" },
+      ],
+    }),
+    "first\nsecond",
+  );
+  assertEquals(
+    extractClaudeText({ content: [{ type: "thinking", text: "ignore" }] }),
+    "",
+  );
+  assertEquals(extractClaudeText({ content: [{ text: "legacy" }] }), "legacy");
+});
+
+Deno.test("Claude request forwards OCR thinking and structured output", async () => {
+  const originalFetch = globalThis.fetch;
+  const capturedBodies: Array<Record<string, unknown>> = [];
+  globalThis.fetch = async (_input, init) => {
+    const requestInit = init as { body?: BodyInit | null } | undefined;
+    capturedBodies.push(
+      JSON.parse(String(requestInit?.body)) as Record<string, unknown>,
+    );
+    return new Response(
+      JSON.stringify({ content: [{ type: "text", text: '{"ok":true}' }] }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  };
+
+  try {
+    await callClaudeWithFallback(
+      {
+        model: "claude-sonnet-5",
+        max_tokens: 6000,
+        system: "Extract chat text.",
+        messages: [{ role: "user", content: "image placeholder" }],
+        thinking: { type: "disabled" },
+        output_config: {
+          format: {
+            type: "json_schema",
+            schema: {
+              type: "object",
+              properties: { ok: { type: "boolean" } },
+              required: ["ok"],
+              additionalProperties: false,
+            },
+          },
+        },
+      },
+      "test-key",
+      { timeout: 1000, maxRetries: 1, allowModelFallback: false },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assertEquals(capturedBodies.length, 1);
+  const capturedBody = capturedBodies[0];
+  assertEquals(capturedBody.thinking, { type: "disabled" });
+  assertEquals(capturedBody.max_tokens, 6000);
+  assertEquals(
+    (capturedBody.output_config as Record<string, unknown>).format,
+    {
+      type: "json_schema",
+      schema: {
+        type: "object",
+        properties: { ok: { type: "boolean" } },
+        required: ["ok"],
+        additionalProperties: false,
+      },
+    },
+  );
+});
 
 Deno.test({
   name: "every metered non-stream log forwards prompt-cache usage into cost",
@@ -31,7 +118,7 @@ Deno.test({
         )
     );
 
-    assertEquals(meteredBlocks.length, 7);
+    assertEquals(meteredBlocks.length, 8);
     for (const block of meteredBlocks) {
       const usageName = block.match(
         /inputTokens: (quickTokenUsage|fullTokenUsage|tokenUsage)\.inputTokens/,
@@ -1900,8 +1987,8 @@ Deno.test({
 // ── meta 錨點（已讀/時間戳/邊欄頭像）落地接線測試（2026-07）──
 // prompt 規則本體測試在 screenshot_ocr_rules_test.ts；這裡鎖 index.ts 接線：
 // 1) recognize-only 路徑用 meta 錨點版、full-analysis 路徑維持 baseline（輸出形狀不變）
-// 2) recognizeOnly max_tokens 1600→3000（證據欄位讓長圖 JSON 在 1600 會被截斷，
-//    黑箱 B 臂兩張因此爛掉；C 臂實測最長輸出 ~2100 tokens）
+// 2) recognizeOnly 用 Sonnet 5 structured output、關閉 thinking、單次 provider attempt，
+//    並保留 6000 tokens 給最多三張長圖的完整 JSON。
 // 3) readReceipt=true 後處理鎖（metaDecisive）＝geometryDecisive 同款 invariant
 
 Deno.test({
@@ -1965,21 +2052,49 @@ Deno.test({
 });
 
 Deno.test({
-  name: "recognizeOnly max_tokens = 3000（兩個呼叫點，1600 不得殘留）",
+  name: "recognizeOnly uses one bounded Sonnet 5 structured-output call",
   permissions: { read: true },
   fn: async () => {
     const source = await Deno.readTextFile(
       new URL("./index.ts", import.meta.url),
     );
-    const bumped = source.match(/recognizeOnly\s*\n?\s*\?\s*3000/g) ?? [];
-    assertEquals(
-      bumped.length,
-      2,
-      "首呼叫與 parse-failure retry 兩處 recognizeOnly max_tokens 都必須是 3000",
+    assert(
+      /const maxOutputTokens = recognizeOnly\s*\n?\s*\? 6000/.test(source),
+      "OCR 必須保留 6000 output tokens，避免長圖 JSON 被截斷",
     );
-    assertFalse(
-      /recognizeOnly\s*\n?\s*\?\s*1600/.test(source),
-      "recognizeOnly 的 1600 上限不得殘留（證據欄位長圖會被截斷）",
+    assert(
+      source.includes('thinking: recognizeOnly ? { type: "disabled" }'),
+      "OCR 不需要 adaptive thinking，必須把 token 預算留給辨識結果",
+    );
+    assert(
+      source.includes("schema: OCR_RECOGNITION_OUTPUT_SCHEMA"),
+      "OCR 必須用 provider JSON schema 約束輸出",
+    );
+    assert(
+      source.includes("recognizeOnly ? { maxRetries: 1 } : {}"),
+      "OCR 的 Edge provider attempt 必須只有一次",
+    );
+
+    const parseFailureAt = source.indexOf(
+      'logWarn("ai_response_parse_failed_will_retry"',
+    );
+    const ocrExitAt = source.indexOf("if (recognizeOnly) {", parseFailureAt);
+    const legacyRetryAt = source.indexOf(
+      'logInfo("claude_retry_after_parse_failure"',
+      parseFailureAt,
+    );
+    assert(parseFailureAt >= 0 && ocrExitAt > parseFailureAt);
+    assert(
+      legacyRetryAt > ocrExitAt,
+      "OCR parse failure 必須在舊版第二次圖片呼叫之前直接結束",
+    );
+    const ocrExitBody = source.slice(ocrExitAt, legacyRetryAt);
+    assert(ocrExitBody.includes('errorCode: "AI_RESPONSE_INVALID"'));
+    assert(ocrExitBody.includes('code: "AI_RESPONSE_INVALID"'));
+    assert(ocrExitBody.includes("retryable: false"));
+    assert(
+      ocrExitBody.includes('failureStage: "response_parse"'),
+      "OCR parse failure 必須寫入可查的 ai_logs 階段",
     );
   },
 });

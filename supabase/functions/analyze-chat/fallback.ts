@@ -17,6 +17,34 @@ interface ClaudeRequest {
   max_tokens: number;
   system: string;
   messages: Array<{ role: string; content: ClaudeMessageContent }>;
+  thinking?: { type: "adaptive" | "disabled" };
+  output_config?: {
+    format: {
+      type: "json_schema";
+      schema: Record<string, unknown>;
+    };
+  };
+}
+
+/**
+ * Claude can return non-text content blocks before the answer (for example an
+ * adaptive-thinking block on Sonnet 5). Never assume content[0] is text.
+ */
+export function extractClaudeText(data: unknown): string {
+  if (typeof data !== "object" || data === null) return "";
+
+  const content = (data as { content?: unknown }).content;
+  if (!Array.isArray(content)) return "";
+
+  return content
+    .filter((block): block is { type?: unknown; text: string } => {
+      if (typeof block !== "object" || block === null) return false;
+      const candidate = block as { type?: unknown; text?: unknown };
+      return typeof candidate.text === "string" &&
+        (candidate.type === undefined || candidate.type === "text");
+    })
+    .map((block) => block.text)
+    .join("\n");
 }
 
 function buildCachedSystemPrompt(systemPrompt: string) {
@@ -107,6 +135,10 @@ export async function callClaudeWithFallback(
           max_tokens: request.max_tokens,
           system: buildCachedSystemPrompt(request.system),
           messages: request.messages,
+          ...(request.thinking ? { thinking: request.thinking } : {}),
+          ...(request.output_config
+            ? { output_config: request.output_config }
+            : {}),
         };
 
         const response = await fetch("https://api.anthropic.com/v1/messages", {

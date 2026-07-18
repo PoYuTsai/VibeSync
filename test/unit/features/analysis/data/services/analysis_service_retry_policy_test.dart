@@ -1,5 +1,11 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
+import 'package:vibesync/features/conversation/domain/entities/message.dart';
 
 void main() {
   group('AnalysisService.isAutoRetriableAnalysisError', () {
@@ -16,15 +22,23 @@ void main() {
       );
     });
 
-    test('recognizeOnly（免費 OCR）的 TIMEOUT 維持自動重試', () {
-      expect(
-        AnalysisService.isAutoRetriableAnalysisError(
-          code: 'TIMEOUT',
-          hasImages: true,
-          recognizeOnly: true,
-        ),
-        isTrue,
-      );
+    test('recognizeOnly（免費 OCR）所有暫時性錯誤都不在背景自動重送', () {
+      for (final code in [
+        'TIMEOUT',
+        'NETWORK_ERROR',
+        'UNEXPECTED_ERROR',
+        'UPSTREAM_UNAVAILABLE',
+      ]) {
+        expect(
+          AnalysisService.isAutoRetriableAnalysisError(
+            code: code,
+            hasImages: true,
+            recognizeOnly: true,
+          ),
+          isFalse,
+          reason: '$code 應由使用者手動重試，避免同批圖片背景連發',
+        );
+      }
     });
 
     test('無圖路徑的 TIMEOUT 維持自動重試', () {
@@ -73,6 +87,49 @@ void main() {
         ),
         isFalse,
       );
+    });
+
+    test('recognizeOnly 收到 AI_RESPONSE_INVALID 時整個操作只送一次 HTTP', () async {
+      var calls = 0;
+      final service = AnalysisService(
+        clientFactory: () => MockClient((request) async {
+          calls += 1;
+          return http.Response(
+            jsonEncode({
+              'error': 'AI_RESPONSE_INVALID',
+              'code': 'AI_RESPONSE_INVALID',
+              'message': '這次辨識結果格式異常，請再試一次。本次不會扣額度。',
+              'retryable': false,
+              'shouldChargeQuota': false,
+            }),
+            502,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+        accessTokenProvider: () => 'fake-token',
+        expectedTierProvider: () => null,
+        revenueCatAppUserIdProvider: () async => null,
+      );
+
+      await expectLater(
+        () => service.analyzeConversation(
+          const <Message>[],
+          images: [
+            Uint8List.fromList([1, 2, 3])
+          ],
+          recognizeOnly: true,
+        ),
+        throwsA(
+          isA<AnalysisException>()
+              .having((error) => error.code, 'code', 'AI_RESPONSE_INVALID')
+              .having(
+                (error) => error.message,
+                'message',
+                contains('本次不會扣額度'),
+              ),
+        ),
+      );
+      expect(calls, 1, reason: '一次 OCR 點擊不得背景重送圖片');
     });
   });
 }

@@ -1140,6 +1140,13 @@ AnalysisException _mapAnalysisHttpError({
     case 502:
     case 503:
     case 504:
+      if (errorCode == 'AI_RESPONSE_INVALID' && recognizeOnly) {
+        return AnalysisException(
+          '這次辨識結果格式異常，請再試一次。本次不會扣額度。',
+          code: errorCode,
+          suggestedAction: AnalysisErrorAction.retry,
+        );
+      }
       if (errorCode == 'OPTIMIZE_MESSAGE_RESULT_INVALID') {
         return AnalysisException(
           '這次沒有產生可用的潤飾結果，請稍後再試。本次不會扣額度。',
@@ -1245,10 +1252,10 @@ class AnalysisService {
     'OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE',
   };
 
-  /// 圖片完整分析（已扣費路徑）的 TIMEOUT 不自動重試：server Claude timeout
-  /// 120s（parse 失敗再 retry 最壞 +120s）≥ client 120s，client timeout 時
-  /// server 很可能已完成並扣費，自動重打會讓一次操作重複扣 2-3 則。
-  /// recognizeOnly 免費、無圖路徑走 stream 有 run-id 豁免，維持自動重試。
+  /// OCR 辨識一次點擊只送一個 HTTP request，避免大圖在背景重複上傳、
+  /// 疊加 Edge/provider retry，讓畫面已顯示失敗後仍繼續跑數分鐘。
+  /// 圖片完整分析（已扣費路徑）的 TIMEOUT 也不自動重試，避免重複扣費。
+  /// 其他路徑維持既有自動重試策略。
   @visibleForTesting
   static bool isAutoRetriableAnalysisError({
     required String? code,
@@ -1258,7 +1265,10 @@ class AnalysisService {
     if (code == null || !_retriableCodes.contains(code)) {
       return false;
     }
-    if (code == 'TIMEOUT' && hasImages && !recognizeOnly) {
+    if (recognizeOnly) {
+      return false;
+    }
+    if (code == 'TIMEOUT' && hasImages) {
       return false;
     }
     return true;
@@ -1355,7 +1365,10 @@ class AnalysisService {
       );
     }
 
-    const maxRetries = 2;
+    // OCR retries are manual and user-controlled. This is intentionally a
+    // hard attempt cap as well as a retry-policy rule, so even unexpected
+    // transport exceptions cannot start a second upload in the background.
+    final maxRetries = recognizeOnly ? 0 : 2;
     final isOptimizeMessageRequest = !recognizeOnly &&
         (images == null || images.isEmpty) &&
         userDraft != null &&
