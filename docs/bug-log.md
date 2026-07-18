@@ -10,6 +10,16 @@
 
 ## 2026-07
 
+### [2026-07-19] Sonnet 5 付費五風格串流寫滿舊輸出上限而中斷
+
+**Symptom**: Essential 真機分析跑約 42 秒後顯示串流中斷；同時 OCR 左右歸屬教學太快消失，分析頁的下滑提示點一次就消失，讓長對話看起來像停住。
+**Root Cause**: 7/18 上線 Sonnet 5 後，付費五風格仍和 Free 兩風格共用 `3200` output token 上限。當日 8/8 筆非測試 Essential 串流都剛好輸出 3200 並以 `STREAM_MAX_TOKENS` 結束；短 smoke 沒碰到上限，所以未提早發現。這次失敗不是 client 網路 timeout。兩個提示則分別受短暫 timer 與一次性 overlay 控制，沒有跟真實 OCR／stream 狀態綁定。
+**Fix**: 依回覆風格數決定 budget：Free 兩風格維持 3200，付費五風格提高到 6000；ai_logs 寫入真實 120 秒 timeout、3 次 provider attempt 與動態 budget。OCR 教學改為 650ms 後播放 3.6 秒，再留下靜態左右圖例；只有實際跨門檻滑動才視為學會。分析捷徑改為整段串流期間持續存在，點「跟到最新」會跳到目前輸出並自動跟隨，使用者往回滑即停止；失敗後仍可「查看中斷」與重試。
+**Prevention**: 長內容、多風格 model migration 必須跑 production-shaped live contract，不得只用短 smoke；驗證 `analysis.done`、每個核心 reply style、token headroom、quota 與 telemetry。進度提示必須由工作狀態驅動，不能只靠固定秒數消失。
+**Validation**: production `analyze-chat` v285 ACTIVE、`verify_jwt=false`。101 則訊息 Sonnet 5 live smoke 收到五種核心風格、`analysis.done`、0 error，使用 2546/6000（57.6% headroom），測試帳號扣款 0。Analyze Edge 643/643、相關 widget 69/69、OCR widget 28/28、Flutter 全套 2265 passed／4 skipped／0 failed、`flutter analyze` 0 issue；獨立 backend/UI 複查皆 APPROVE，0 blocking/P2。Practice v200／DeepSeek-first 未修改。
+**Known Boundary**: 若連線在收到第一個 server event 前就完全中斷，client 仍可能拿不到 runId 以續接既有結果；這是另一個非阻擋的 lost-response 韌性工作，不是本次 3200-token 中斷的根因。
+**相關檔案**: `supabase/functions/analyze-chat/index.ts`、`stream_budget.ts`、`tools/voice-benchmark/live_contract_smoke.ts`、`lib/features/analysis/presentation/screens/analysis_screen.dart`、`analysis_action_widgets.dart`、`screenshot_recognition_dialog.dart`。
+
 ### [2026-07-18] Sonnet 5 路由分裂、OCR 等待契約與舊模型方案文案
 
 **Symptom**: Free Analyze 已是 Sonnet 5，但付費 Analyze、Opener、Free Coach／Follow-up、Keyboard 等路徑仍可能使用舊模型；兩張截圖曾在真機等待數分鐘後辨識失敗。方案頁同時把 Free 寫成「經濟型」、付費寫成「高階型 AI」，與實際統一路由矛盾。

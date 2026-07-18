@@ -29,6 +29,8 @@ Default priority:
 
 Recent commit themes, newest first:
 
+- Analyze 串流與進度 UX 穩定化（2026-07-19）：Essential 五風格在 Sonnet 5 上沿用舊 `3200` output cap，真機輸出剛好寫滿後被標成 `STREAM_MAX_TOKENS`；Free 兩風格維持 `3200`，付費五風格提高為 `6000`，production `analyze-chat` v285（`verify_jwt=false`）同步記錄 120 秒 timeout／3 次 provider attempt。101 則訊息的 live contract smoke 完成五種核心風格與 `analysis.done`，用量 2546/6000、未扣 quota。App 端分析時「跟到最新」會持續顯示，點擊後跟隨目前串流，使用者往回滑即停止；中斷後保留「查看中斷」。OCR 左右歸屬提示改為延遲 650ms、示範 3.6 秒，之後保留靜態圖例。Practice v200 與 DeepSeek-first 路徑未變。驗證：Analyze Edge 643/643、相關 widget 69/69、OCR widget 28/28、Flutter 全套 2265 passed／4 skipped／0 failed、`flutter analyze` 0 issue，獨立複查 0 blocking/P2。
+
 - Build 334 Sonnet 5 穩定化（2026-07-18）：Build 333 升級 Sonnet 5 後，OCR／文字串流未適配其預設 adaptive thinking；隱藏思考可能吃完共用 output budget，舊 OCR 又只讀第一個 content block，造成長等、空回應與重試風暴。OCR 現在遍歷可見 text blocks、使用 structured output 並限制為單次 provider／client 嘗試；Sonnet 5 文字串流則明確關閉 thinking，4.6／Haiku 行為、Free 兩風格、付費五風格、quota 與扣費均不變。Production `analyze-chat` v277 雙圖 OCR 一次成功（18 則、28.5 秒），v278 付費五風格 stream 一次完成（15 events、32.4 秒、2175/3200 output tokens）；Edge 617/617、Flutter analysis 69/69，兩輪獨立 review 均 0 P0/P1/P2。Build 333 不再作為測試基線，下一個真機候選為 `1.0.1+334`。
 
 - Build 333 產品校準（2026-07-17）：Free `analyze-chat` 回覆從單一延展改為固定產出延展＋調情兩種，保留共鳴／幽默／冷讀作為付費完整五種差異；Free Opener 仍只有延展。對方這次的投入度在完成回應層統一改為 `ceil(AI 原分 × 0.9)`（例 82 → 74），不改 prompt、AI 理由或回覆選擇。OCR 確認視窗每次開啟都會自動播放一次左右滑動教學；長 OCR 等待以準備／上傳／讀圖／辨識訊息／校對說話者／整理結果狀態切換，不傳輸中間分析內容。原定 Build 332 實際由舊 `main@1c4992be` 建置，未包含本輪功能；第一個完整 binary 改為 Build 333，release preflight 會拒絕 source version 與 run number 不一致的 ref。
