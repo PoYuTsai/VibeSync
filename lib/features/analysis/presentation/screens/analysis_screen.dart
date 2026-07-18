@@ -6348,6 +6348,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         isFollowing: _followLiveAnalysis,
         streamInterrupted: showStreamInterruptedAction,
       ),
+      floatingActionButtonLocation: showFloatingAnalysisAction
+          ? const AnalysisSideCenterFabLocation()
+          : FloatingActionButtonLocation.endFloat,
       title: conversation.name,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
