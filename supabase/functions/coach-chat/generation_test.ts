@@ -76,6 +76,7 @@ function deps(opts: {
     attempt?: number;
     maxAttempts?: number;
   }) => void;
+  onWarn?: (event: string, data: Record<string, unknown>) => void;
 }) {
   const events: string[] = [];
   let deductCalls = 0;
@@ -92,7 +93,10 @@ function deps(opts: {
       },
       logger: {
         info: (event: string) => events.push(event),
-        warn: (event: string) => events.push(event),
+        warn: (event: string, data: Record<string, unknown> = {}) => {
+          events.push(event);
+          opts.onWarn?.(event, data);
+        },
       },
       onProgress: opts.onProgress,
       now: () => 1_700_000_000_000,
@@ -859,6 +863,47 @@ Deno.test("runCoachChat rejects a truncated max_tokens response without deductin
     (result.body.card as Record<string, unknown>).costDeducted,
     0,
   );
+});
+
+Deno.test("runCoachChat rejects a schema-shaped refusal without returning a card or deducting", async () => {
+  const warnings: Array<{
+    event: string;
+    data: Record<string, unknown>;
+  }> = [];
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve({
+        ...validClaudeCard(),
+        stop_reason: "refusal",
+      });
+    },
+    onWarn: (event, data) => warnings.push({ event, data }),
+  });
+
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "essential",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 500);
+  assertEquals(result.body.error, "refusal");
+  assertEquals("card" in result.body, false);
+  assertEquals(calls, 1);
+  assertEquals(harness.deductCalls, 0);
+  const invalid = warnings.find((log) =>
+    log.event === "coach_chat_card_invalid"
+  );
+  assertEquals(invalid?.data.errorClass, "refusal");
+  const failed = warnings.find((log) => log.event === "coach_chat_failed");
+  assertEquals(failed?.data.errorClass, "refusal");
 });
 
 Deno.test("coach callClaudeAPI disables thinking only for Sonnet 5", async () => {

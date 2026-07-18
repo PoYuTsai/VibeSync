@@ -145,6 +145,8 @@ export async function runCoachChat(
         ? "clarification_forbidden"
         : message === "max_tokens"
         ? "max_tokens"
+        : message === "refusal"
+        ? "refusal"
         : "schema_invalid";
       deps.logger.warn("coach_chat_card_invalid", {
         tier: input.tier,
@@ -152,6 +154,14 @@ export async function runCoachChat(
         detail: summarizeValidationError(e),
         attempt,
       });
+      if (lastValidationError === "refusal") {
+        deps.logger.warn("coach_chat_failed", {
+          tier: input.tier,
+          errorClass: "refusal",
+          attempt,
+        });
+        return { status: 500, body: { error: "refusal" } };
+      }
       if (attempt === MAX_CARD_GENERATION_ATTEMPTS) {
         deps.logger.warn("coach_chat_fallback_used", {
           tier: input.tier,
@@ -613,6 +623,9 @@ function parseClaudeJSON(
     content?: Array<{ type?: string; text?: string }>;
     stop_reason?: string;
   };
+  if (data.stop_reason === "refusal") {
+    throw new Error("refusal");
+  }
   const rawText = (data.content ?? [])
     .filter((block) => block.type == null || block.type === "text")
     .map((block) => block.text ?? "")

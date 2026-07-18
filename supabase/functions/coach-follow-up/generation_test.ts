@@ -408,6 +408,28 @@ Deno.test("T7: truncated max_tokens response fails without deducting", async () 
   assertEquals(failed?.data.errorClass, "max_tokens");
 });
 
+Deno.test("T7: schema-shaped refusal fails without returning a card or deducting", async () => {
+  const h = makeHarness(() =>
+    Promise.resolve({
+      stop_reason: "refusal",
+      content: [{ type: "text", text: JSON.stringify(VALID_CARD) }],
+    })
+  );
+
+  const result = await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  assertEquals(result.status, 500);
+  assertEquals(result.body.error, "refusal");
+  assertEquals("card" in result.body, false);
+  assertEquals(h.deductCalls.length, 0);
+  const failed = h.logs.find((log) => log.event === "coach_follow_up_failed");
+  assertEquals(failed?.data.errorClass, "refusal");
+  assertEquals(
+    h.logs.some((log) => log.event === "coach_follow_up_succeeded"),
+    false,
+  );
+});
+
 Deno.test("T7: follow-up callClaudeAPI disables thinking only for Sonnet 5", async () => {
   const originalFetch = globalThis.fetch;
   const bodies: Array<Record<string, unknown>> = [];

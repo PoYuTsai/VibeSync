@@ -153,6 +153,8 @@ export async function runCoachFollowUp(
       ? "banned_token"
       : errorMessage === "max_tokens"
       ? "max_tokens"
+      : errorMessage === "refusal"
+      ? "refusal"
       : "schema_invalid";
     deps.logger.warn("coach_follow_up_failed", {
       phase: input.phase,
@@ -264,6 +266,9 @@ function parseClaudeJSON(
     content?: Array<{ type?: string; text?: string }>;
     stop_reason?: string;
   };
+  if (data.stop_reason === "refusal") {
+    throw new Error("refusal");
+  }
   const rawText = (data.content ?? [])
     .filter((block) => block.type == null || block.type === "text")
     .map((block) => block.text ?? "")
