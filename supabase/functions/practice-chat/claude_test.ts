@@ -41,6 +41,51 @@ Deno.test("callClaude maps practice messages to the Messages API", async () => {
     assertEquals(captured.model, "claude-test");
     assertEquals(captured.temperature, 0.2);
     assertEquals(captured.thinking, undefined);
+    assertEquals(captured.output_config, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("callClaude forwards an optional structured output schema", async () => {
+  const originalFetch = globalThis.fetch;
+  let capturedBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (_input, init) => {
+    const body = (init as { body?: BodyInit } | undefined)?.body;
+    capturedBody = JSON.parse(String(body));
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          content: [{ type: "text", text: '{"verdict":"accept"}' }],
+        }),
+        { status: 200 },
+      ),
+    );
+  };
+  const outputJsonSchema = {
+    type: "object",
+    properties: { verdict: { type: "string" } },
+    required: ["verdict"],
+    additionalProperties: false,
+  } as const;
+  try {
+    const result = await callClaude({
+      apiKey: "test-key",
+      model: "claude-sonnet-5",
+      messages: [{ role: "user", content: "return a verdict" }],
+      maxTokens: 100,
+      temperature: 0.2,
+      timeoutMs: 1_000,
+      outputJsonSchema,
+    });
+
+    assertEquals(result, '{"verdict":"accept"}');
+    assertEquals(capturedBody?.output_config, {
+      format: {
+        type: "json_schema",
+        schema: outputJsonSchema,
+      },
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }

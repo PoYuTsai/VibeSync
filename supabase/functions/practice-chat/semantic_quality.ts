@@ -43,6 +43,10 @@ export interface PracticeSemanticAdjudicatorArgs {
   claudeModel: string;
   callDeepSeek: SemanticDeepSeekCaller;
   callClaude?: SemanticClaudeCaller;
+  /** Shared request deadline; every reviewer call is clamped to its remainder. */
+  absoluteDeadlineAtMs?: number;
+  /** Monotonic clock injection for deterministic deadline tests. */
+  monotonicNow?: () => number;
   /** Final deterministic schema/safety/FSM guard; a failure tries next reviewer. */
   validateCandidate?: (candidate: Record<string, unknown>) => void;
 }
@@ -78,6 +82,106 @@ const ISSUE_KINDS = new Set<SemanticIssueKind>([
   "strategy_mismatch",
   "unsafe",
 ]);
+
+const SEMANTIC_ISSUE_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    kind: {
+      type: "string",
+      enum: ["unsupported_fact", "generic", "strategy_mismatch", "unsafe"],
+    },
+  },
+  required: ["kind"],
+  additionalProperties: false,
+} as const;
+
+const FACT_ISSUE_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    kind: { type: "string", enum: ["unsupported_fact", "unsafe"] },
+  },
+  required: ["kind"],
+  additionalProperties: false,
+} as const;
+
+function candidateValueJsonSchema(
+  value: unknown,
+  propertyName?: string,
+): Record<string, unknown> {
+  if (propertyName === "revisedEvidenceQuote") {
+    return { type: ["string", "null"] };
+  }
+  if (value === null) {
+    return { type: "null" };
+  }
+  if (Array.isArray(value)) {
+    return {
+      type: "array",
+      items: value.length > 0
+        ? candidateValueJsonSchema(value[0])
+        : { type: "string" },
+    };
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const properties = Object.fromEntries(
+      Object.entries(record).map(([key, nested]) => [
+        key,
+        candidateValueJsonSchema(nested, key),
+      ]),
+    );
+    return {
+      type: "object",
+      properties,
+      required: Object.keys(record),
+      additionalProperties: false,
+    };
+  }
+  if (typeof value === "boolean") return { type: "boolean" };
+  if (typeof value === "number") {
+    return { type: Number.isInteger(value) ? "integer" : "number" };
+  }
+  return { type: "string" };
+}
+
+function semanticAdjudicationJsonSchema(
+  candidate: Record<string, unknown>,
+): Readonly<Record<string, unknown>> {
+  return {
+    type: "object",
+    properties: {
+      verdict: {
+        type: "string",
+        enum: ["accept", "repair", "reject"],
+      },
+      issues: {
+        type: "array",
+        items: SEMANTIC_ISSUE_JSON_SCHEMA,
+      },
+      repairedResult: {
+        anyOf: [
+          { type: "null" },
+          candidateValueJsonSchema(candidate),
+        ],
+      },
+    },
+    required: ["verdict", "issues", "repairedResult"],
+    additionalProperties: false,
+  };
+}
+
+const SEMANTIC_FACT_VERIFICATION_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    verdict: { type: "string", enum: ["accept", "reject"] },
+    issues: {
+      type: "array",
+      items: FACT_ISSUE_JSON_SCHEMA,
+    },
+  },
+  required: ["verdict", "issues"],
+  additionalProperties: false,
+} as const;
 
 const DEBRIEF_VIBES = new Set(["暖", "中性", "冷"]);
 const DEBRIEF_DATE_CHANCES = new Set(["low", "medium", "high"]);
@@ -120,6 +224,10 @@ function extractJsonObject(raw: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizedReviewerToken(value: unknown): string | null {
+  return typeof value === "string" ? value.trim().toLowerCase() : null;
 }
 
 function assertRequiredKeys(
@@ -192,9 +300,10 @@ function parseIssues(value: unknown): SemanticIssueKind[] {
     if (!isRecord(rawIssue)) {
       throw new Error("semantic_adjudication_invalid_issue");
     }
+    const kind = normalizedReviewerToken(rawIssue.kind);
     if (
-      typeof rawIssue.kind !== "string" ||
-      !ISSUE_KINDS.has(rawIssue.kind as SemanticIssueKind) ||
+      kind === null ||
+      !ISSUE_KINDS.has(kind as SemanticIssueKind) ||
       (Object.hasOwn(rawIssue, "field") &&
         (typeof rawIssue.field !== "string" || rawIssue.field.length > 80)) ||
       (Object.hasOwn(rawIssue, "span") &&
@@ -204,7 +313,7 @@ function parseIssues(value: unknown): SemanticIssueKind[] {
     ) {
       throw new Error("semantic_adjudication_invalid_issue");
     }
-    kinds.push(rawIssue.kind as SemanticIssueKind);
+    kinds.push(kind as SemanticIssueKind);
   }
   return [...new Set(kinds)];
 }
@@ -230,7 +339,7 @@ export function parseSemanticAdjudication(opts: {
     expectedKeys,
     "semantic_adjudication_invalid_schema",
   );
-  const verdict = parsed.verdict;
+  const verdict = normalizedReviewerToken(parsed.verdict);
   if (verdict !== "accept" && verdict !== "repair" && verdict !== "reject") {
     throw new Error("semantic_adjudication_invalid_schema");
   }
@@ -306,19 +415,21 @@ export function parseSemanticFactVerification(opts: {
     ["verdict"],
     "semantic_fact_verification_invalid_schema",
   );
-  if (parsed.verdict !== "accept" && parsed.verdict !== "reject") {
+  const verdict = normalizedReviewerToken(parsed.verdict);
+  if (verdict !== "accept" && verdict !== "reject") {
     throw new Error("semantic_fact_verification_invalid_schema");
   }
   if (parsed.repairedResult !== undefined && parsed.repairedResult !== null) {
     throw new Error("semantic_fact_verification_invalid_schema");
   }
-  if (parsed.verdict === "reject") {
+  if (verdict === "reject") {
     throw new Error("semantic_fact_verification_rejected");
   }
   const explicitHighRiskIssue = Array.isArray(parsed.issues) &&
     parsed.issues.some((issue) =>
       isRecord(issue) &&
-      (issue.kind === "unsupported_fact" || issue.kind === "unsafe")
+      (normalizedReviewerToken(issue.kind) === "unsupported_fact" ||
+        normalizedReviewerToken(issue.kind) === "unsafe")
     );
   if (explicitHighRiskIssue) {
     throw new Error("semantic_fact_verification_rejected");
@@ -417,33 +528,39 @@ export async function adjudicatePracticeCandidate(
 ): Promise<SemanticAdjudicationResult> {
   const reviewers: Array<{
     provider: "deepseek" | "anthropic";
-    call: (messages: ChatMessage[], maxTokens: number) => Promise<string>;
+    call: (
+      messages: ChatMessage[],
+      maxTokens: number,
+      outputJsonSchema: Readonly<Record<string, unknown>>,
+      timeoutMs: number,
+    ) => Promise<string>;
   }> = [];
   if (args.claudeApiKey && args.callClaude) {
     reviewers.push({
       provider: "anthropic",
-      call: (messages, maxTokens) =>
+      call: (messages, maxTokens, outputJsonSchema, timeoutMs) =>
         args.callClaude!({
           apiKey: args.claudeApiKey!,
           model: args.claudeModel,
           messages,
           maxTokens,
           temperature: ADJUDICATION_TEMPERATURE,
-          timeoutMs: ADJUDICATION_TIMEOUT_MS,
+          timeoutMs,
+          outputJsonSchema,
         }),
     });
   }
   if (args.deepSeekApiKey) {
     reviewers.push({
       provider: "deepseek",
-      call: (messages, maxTokens) =>
+      call: (messages, maxTokens, _outputJsonSchema, timeoutMs) =>
         args.callDeepSeek({
           apiKey: args.deepSeekApiKey!,
           messages,
           maxTokens,
           temperature: ADJUDICATION_TEMPERATURE,
           jsonMode: true,
-          timeoutMs: ADJUDICATION_TIMEOUT_MS,
+          timeoutMs,
         }),
     });
   }
@@ -481,6 +598,17 @@ export async function adjudicatePracticeCandidate(
     >
     | undefined;
   for (const reviewer of reviewPlan.slice(0, budget)) {
+    const remainingMs = args.absoluteDeadlineAtMs === undefined
+      ? ADJUDICATION_TIMEOUT_MS
+      : Math.floor(
+        args.absoluteDeadlineAtMs -
+          (args.monotonicNow?.() ?? performance.now()),
+      );
+    if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
+      lastError = new Error("semantic_adjudication_deadline_exceeded");
+      break;
+    }
+    const timeoutMs = Math.min(ADJUDICATION_TIMEOUT_MS, remainingMs);
     providerCalls += 1;
     try {
       if (pendingVerification) {
@@ -493,6 +621,8 @@ export async function adjudicatePracticeCandidate(
             trustedGenerationContext: args.trustedGenerationContext,
           }),
           REPAIR_VERIFICATION_MAX_TOKENS,
+          SEMANTIC_FACT_VERIFICATION_JSON_SCHEMA,
+          timeoutMs,
         );
         parseSemanticFactVerification({ raw });
         args.validateCandidate?.(pendingVerification.candidate);
@@ -513,6 +643,8 @@ export async function adjudicatePracticeCandidate(
         args.surface === "hint"
           ? HINT_ADJUDICATION_MAX_TOKENS
           : DEBRIEF_ADJUDICATION_MAX_TOKENS,
+        semanticAdjudicationJsonSchema(candidateUnderReview),
+        timeoutMs,
       );
       const parsed = parseSemanticAdjudication({
         raw,

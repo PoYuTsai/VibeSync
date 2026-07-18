@@ -10,7 +10,7 @@
 ## [2026-07-11] Beginner／Game Hint＋Debrief generated-only，永久移除成功罐頭
 Status: **CODEX APPROVED（0 P0/P1/P2）／EDGE SHIPPED／TESTFLIGHT REBUILD PENDING**
 
-- **契約**：Hint generation 為 DeepSeek 24s → Claude 18s，semantic call 24s、最多四次 provider call；雙失敗或品質不合格只回 retryable error，絕不落 fallback snapshot、扣費或計次。Beginner＋Game 同一條 production path；client Hint fence 115s。
+- **契約**：Hint generation 為 DeepSeek 24s → Claude 18s，semantic call 24s、最多五次 provider call；Debrief 最多六次，但所有 generation／reviewer 共用 request-entry 85s deadline，低於 client 90s 與 owner 105s。雙失敗或品質不合格只回 retryable error，絕不落 fallback snapshot、扣費或計次。Beginner＋Game 同一條 production path；client Hint fence 115s。2026-07-19 Debrief 根治審查見 `docs/reviews/2026-07-19-practice-debrief-semantic-recovery-codex-review.md`。
 - **高手腦與連動**：共用黃金教練 rubric；模型只產可見三欄，hidden decision 完全由 server 依逐字稿／角色資料／Game ledger 建立。Debrief 無 Hint 後新證據不得推翻；改判必須附她在 Hint 後的逐字回覆。
 - **品質閘**：每個 Hint 回覆、Debrief 可貼句、Game 拆盤五欄逐一 grounding；拒絕既知罐頭、meta 空話、邀約 route 衝突、短句／emoji 洗白。邀約分類區分共同計畫與純自我揭露。
 - **扣費／併發**：generated-only DB CHECK、bounded Debrief ledger、成功 record 同交易計次、normal／legacy／無 requestId owner token fence；replay 不重扣且回最新 usage。

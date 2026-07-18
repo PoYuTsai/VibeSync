@@ -10,6 +10,7 @@ import {
   parseSemanticAdjudication,
   parseSemanticFactVerification,
   type PracticeSemanticAdjudicatorArgs,
+  SemanticAdjudicationError,
 } from "./semantic_quality.ts";
 
 const turns = [
@@ -129,6 +130,26 @@ Deno.test("semantic adjudication accepts issue metadata while preserving require
 
   assertEquals(parsed.repaired, true);
   assertEquals(parsed.issueKinds, ["generic"]);
+});
+
+Deno.test("semantic adjudication normalizes reviewer verdict and issue casing", () => {
+  const repaired = {
+    ...hintCandidate,
+    coaching: "先接住咖啡訊號，再補一個自己的具體偏好。",
+  };
+  const parsed = parseSemanticAdjudication({
+    raw: validHintAdjudication({
+      verdict: " Repair ",
+      issues: [{ kind: "Unsupported_Fact" }],
+      repairedResult: repaired,
+    }),
+    surface: "hint",
+    candidate: hintCandidate,
+    turns,
+  });
+
+  assertEquals(parsed.candidate, repaired);
+  assertEquals(parsed.issueKinds, ["unsupported_fact"]);
 });
 
 Deno.test("semantic adjudication discards fabricated reviewer Hint lineage", () => {
@@ -457,6 +478,12 @@ Deno.test("fact verification accepts only a binary safe verdict", () => {
   );
   assertEquals(
     parseSemanticFactVerification({
+      raw: validFactVerification({ verdict: " Accept " }),
+    }),
+    { verified: true },
+  );
+  assertEquals(
+    parseSemanticFactVerification({
       raw: validFactVerification({
         issues: [{ kind: "generic" }],
       }),
@@ -468,6 +495,16 @@ Deno.test("fact verification accepts only a binary safe verdict", () => {
       parseSemanticFactVerification({
         raw: validFactVerification({
           issues: [{ kind: "unsupported_fact" }],
+        }),
+      }),
+    Error,
+    "semantic_fact_verification_rejected",
+  );
+  assertThrows(
+    () =>
+      parseSemanticFactVerification({
+        raw: validFactVerification({
+          issues: [{ kind: "Unsupported_Fact" }],
         }),
       }),
     Error,
@@ -491,6 +528,15 @@ Deno.test("accepted candidates still require independent fact verification", asy
     callClaude: (args) => {
       calls.push("claude-full-review");
       assertEquals(args.maxTokens, 1800);
+      const schema = args.outputJsonSchema as Record<string, unknown>;
+      assertEquals(schema.type, "object");
+      assertEquals(schema.required, ["verdict", "issues", "repairedResult"]);
+      const properties = schema.properties as Record<string, unknown>;
+      assertEquals(
+        (properties.repairedResult as Record<string, unknown>).anyOf !==
+          undefined,
+        true,
+      );
       return Promise.resolve(validHintAdjudication());
     },
     callDeepSeek: (args) => {
@@ -530,6 +576,10 @@ Deno.test("independent verifier fails closed when a Debrief reverses the promise
       nextFirstLine: "有義氣！等妳確認完再跟我說。",
       inviteDirection: "下週低壓重連",
     },
+    hintAssessment: {
+      verdict: "revised",
+      revisedEvidenceQuote: "她有留下下週再聊的窗口。",
+    },
   };
 
   await assertRejects(
@@ -545,12 +595,32 @@ Deno.test("independent verifier fails closed when a Debrief reverses the promise
         deepSeekApiKey: "deepseek-key",
         claudeApiKey: "claude-key",
         claudeModel: "claude-test",
-        callClaude: () =>
-          Promise.resolve(JSON.stringify({
+        callClaude: (args) => {
+          const envelope = args.outputJsonSchema as Record<string, unknown>;
+          const envelopeProperties = envelope.properties as Record<
+            string,
+            Record<string, unknown>
+          >;
+          const repairedResult = envelopeProperties.repairedResult
+            .anyOf as Record<string, unknown>[];
+          const candidateSchema = repairedResult[1];
+          const candidateProperties = candidateSchema.properties as Record<
+            string,
+            Record<string, unknown>
+          >;
+          assertEquals(candidateProperties.gameBreakdown.type, "object");
+          const hintAssessmentProperties = candidateProperties.hintAssessment
+            .properties as Record<string, Record<string, unknown>>;
+          assertEquals(
+            hintAssessmentProperties.revisedEvidenceQuote.type,
+            ["string", "null"],
+          );
+          return Promise.resolve(JSON.stringify({
             verdict: "accept",
             issues: [],
             repairedResult: null,
-          })),
+          }));
+        },
         callDeepSeek: (args) => {
           const prompt = args.messages.map((message) => message.content).join(
             "\n",
@@ -677,6 +747,13 @@ Deno.test("high-risk repair gets one bounded fresh review after the alternate pr
       calls.push("claude");
       claudeCalls += 1;
       assertEquals(args.maxTokens, claudeCalls === 1 ? 1800 : 1200);
+      const schema = args.outputJsonSchema as Record<string, unknown>;
+      assertEquals(
+        schema.required,
+        claudeCalls === 1
+          ? ["verdict", "issues", "repairedResult"]
+          : ["verdict", "issues"],
+      );
       return Promise.resolve(
         claudeCalls === 1
           ? validHintAdjudication({
@@ -868,6 +945,42 @@ Deno.test("semantic adjudicator fails closed when reviewer budget is exhausted",
     Error,
     "semantic_adjudication_failed",
   );
+});
+
+Deno.test("semantic deadline prevents an unverified candidate from starting the fact verifier", async () => {
+  let deepSeekCalls = 0;
+  const times = [0, 85000];
+  let timeIndex = 0;
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "beginner",
+        candidate: hintCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 2,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        absoluteDeadlineAtMs: 85000,
+        monotonicNow: () => times[timeIndex++] ?? 85000,
+        callClaude: (args) => {
+          assertEquals(args.timeoutMs, 24000);
+          return Promise.resolve(validHintAdjudication());
+        },
+        callDeepSeek: () => {
+          deepSeekCalls += 1;
+          return Promise.resolve(validFactVerification());
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_candidate_unverified:semantic_adjudication_deadline_exceeded",
+  );
+
+  assertEquals(error.providerCalls, 1);
+  assertEquals(deepSeekCalls, 0);
 });
 
 Deno.test("Debrief semantic adjudication does not require Hint strategies", () => {

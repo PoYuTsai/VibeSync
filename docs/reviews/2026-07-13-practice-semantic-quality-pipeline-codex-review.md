@@ -10,7 +10,7 @@ Verdict: **APPROVED（0 P0 / 0 P1 / 0 P2）**
 - 模型只負責可見 `warmUp`、`steady`、`coaching`。Hidden decision、phase、target、invite route 與 rationale 全由 server 依逐字稿、角色資料及 Game ledger 產生，reviewer 回傳的 `strategies` 一律沒有 production 介面可進入 Debrief。
 - Hint 可貼句中的第一人稱事實必須有 user turn 證據；對方、第三人、地點與共同經歷必須受逐字稿或已知角色資料支持。語意 reviewer 後仍有獨立 fact-only verifier，且 verifier 不能改稿。
 - Debrief 收到 applied Hint 時，除非 Hint 後的新回覆出現明確反證，必須承認 Hint 被採用，只評執行與下一步；所有 Game 拆盤欄位、`suggestedLine`、`nextFirstLine` 與 action owner 必須彼此一致。
-- Hint 最多四次 provider 呼叫；DeepSeek generation 24 秒、Claude failover 18 秒、semantic call 24 秒。Flutter Hint fence 115 秒，低於 DB owner 120 秒；不更動 Debrief 90 秒／owner 105 秒契約。
+- 2026-07-19 契約修正：本行原記「Hint 最多四次」低估實作 ceiling；現行 Hint 最多五次 provider call，Flutter fence 115 秒、DB owner 120 秒。Debrief 最多六次，但所有 provider 共用 request-entry 85 秒 deadline，低於 client 90 秒與 owner 105 秒；詳見 `2026-07-19-practice-debrief-semantic-recovery-codex-review.md`。
 
 ## 審查與修正紀錄
 

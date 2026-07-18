@@ -18,9 +18,11 @@ import {
 import { MAX_AI_REPLIES, MAX_HINTS_PER_ROUND } from "./quota_decision.ts";
 import { HINT_QUALITY_SCHEMA_VERSION } from "./hint_prefetch.ts";
 import { DEBRIEF_QUALITY_SCHEMA_VERSION } from "./debrief_card.ts";
-import type {
-  PracticeSemanticAdjudicatorArgs,
-  SemanticAdjudicationResult,
+import {
+  adjudicatePracticeCandidate,
+  type PracticeSemanticAdjudicatorArgs,
+  SemanticAdjudicationError,
+  type SemanticAdjudicationResult,
 } from "./semantic_quality.ts";
 
 const NOW = new Date("2026-06-28T04:00:00.000Z");
@@ -48,6 +50,8 @@ interface FakeOptions {
   deepSeekReplies?: ReadonlyArray<string | Error>;
   claudeReplies?: ReadonlyArray<string | Error>;
   semanticReplies?: ReadonlyArray<SemanticAdjudicationResult | Error>;
+  useRealSemanticAdjudicator?: boolean;
+  monotonicNowValues?: ReadonlyArray<number>;
   env?: Record<string, string | undefined>;
   randomUUID?: string;
 }
@@ -324,6 +328,7 @@ function makeFake(options: FakeOptions = {}) {
   let deepSeekIndex = 0;
   let claudeIndex = 0;
   let semanticIndex = 0;
+  let monotonicNowIndex = 0;
 
   // deno-lint-ignore no-explicit-any
   const client: any = {
@@ -649,6 +654,9 @@ function makeFake(options: FakeOptions = {}) {
     args: PracticeSemanticAdjudicatorArgs,
   ): Promise<SemanticAdjudicationResult> => {
     state.semanticCalls.push(args);
+    if (options.useRealSemanticAdjudicator) {
+      return adjudicatePracticeCandidate(args);
+    }
     const configured = options.semanticReplies?.[semanticIndex];
     semanticIndex++;
     if (configured instanceof Error) return Promise.reject(configured);
@@ -684,6 +692,14 @@ function makeFake(options: FakeOptions = {}) {
         return "";
       },
       now: () => NOW,
+      monotonicNow: options.monotonicNowValues
+        ? () => {
+          const values = options.monotonicNowValues!;
+          const value = values[Math.min(monotonicNowIndex, values.length - 1)];
+          monotonicNowIndex += 1;
+          return value;
+        }
+        : undefined,
       randomUUID: () => options.randomUUID ?? "generation-token-1",
       waitUntil: (task) => state.backgroundTasks.push(task),
       telemetryPersistTimeoutMs: options.aiLogsNeverCompletes ? 5 : undefined,
@@ -3779,6 +3795,91 @@ for (const mode of ["beginner", "game"] as const) {
   });
 }
 
+Deno.test("debrief real adjudicator reserves a verified Claude recovery after malformed reviewer envelopes", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    useRealSemanticAdjudicator: true,
+    monotonicNowValues: [0, 0, 12000, 36000, 60000, 65000, 70000],
+    deepSeekReplies: [
+      validDebriefJson(),
+      '{"unexpected":"deepseek-review-envelope"}',
+      '{"verdict":"accept","issues":[],"repairedResult":null}',
+    ],
+    claudeReplies: [
+      '{"unexpected":"claude-review-envelope"}',
+      validDebriefJson(),
+      '{"verdict":"accept","issues":[]}',
+    ],
+  }, debriefBody({ requestId: "debrief-semantic-envelope-recovery" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json.provider, "anthropic");
+  assertEquals(json.failoverUsed, true);
+  assertEquals(state.deepSeekCalls.length, 3);
+  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(
+    state.semanticCalls.map((call) => call.maxProviderCalls),
+    [2, 2],
+  );
+  assertEquals(state.claudeCalls[0].outputJsonSchema !== undefined, true);
+  assertEquals(state.claudeCalls[1].outputJsonSchema, undefined);
+  assertEquals(state.claudeCalls[2].outputJsonSchema !== undefined, true);
+  assertEquals(
+    state.deepSeekCalls.map((call) => call.timeoutMs),
+    [12000, 24000, 20000],
+  );
+  assertEquals(
+    state.claudeCalls.map((call) => call.timeoutMs),
+    [24000, 24000, 15000],
+  );
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
+});
+
+Deno.test("debrief deadline expires before regeneration without calling Claude or recording", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    deepSeekReplies: [validDebriefJson()],
+    claudeReplies: [validDebriefJson()],
+    monotonicNowValues: [0, 0, 85000],
+    semanticReplies: [
+      new SemanticAdjudicationError(
+        "semantic_adjudication_failed:semantic_adjudication_invalid_schema",
+        2,
+      ),
+    ],
+  }, debriefBody({ requestId: "debrief-semantic-budget-exhausted" }));
+
+  assertEquals(response.status, 503);
+  assertEquals(json.retryable, true);
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 0);
+  assertEquals(state.semanticCalls.length, 1);
+  assertEquals(state.semanticCalls[0].maxProviderCalls, 2);
+  assertEquals(recordDebriefCalls(state).length, 0);
+  assertEquals(releaseDebriefCalls(state).length, 1);
+});
+
+Deno.test("standard debrief omits model-authored Hint assessment from semantic schema", async () => {
+  const { response, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    deepSeekReplies: [validDebriefJson({
+      hintAssessment: {
+        verdict: "revised",
+        revisedEvidenceQuote:
+          "model-controlled shape must not cross the boundary",
+      },
+    })],
+  }, debriefBody({ requestId: "debrief-unassisted-hint-assessment" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(
+    Object.hasOwn(state.semanticCalls[0].candidate, "hintAssessment"),
+    false,
+  );
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
 Deno.test("debrief repairs malformed DeepSeek JSON with Claude", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
@@ -5013,6 +5114,34 @@ Deno.test("Hint sends an unsafe generated candidate through semantic repair befo
   assertEquals(state.semanticCalls.length, 1);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
+});
+
+Deno.test("Hint semantic failure remains fail-closed without post-review regeneration", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      deepSeekReplies: [validHintJson()],
+      claudeReplies: [validHintJson()],
+      semanticReplies: [
+        new SemanticAdjudicationError(
+          "semantic_adjudication_failed:semantic_adjudication_invalid_schema",
+          1,
+        ),
+      ],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "hint-semantic-envelope-recovery",
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json.retryable, true);
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 0);
+  assertEquals(state.semanticCalls.length, 1);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
 });
 
 Deno.test("Game Hint sends duplicate generic questions through semantic repair instead of failing early", async () => {

@@ -137,11 +137,18 @@ const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 1;
 const SERVER_HINT_DECISION_RATIONALE =
   "只依據本場逐字稿與已知角色資料；貼句已依目前關係階段與邀約路線校驗。";
-// Keep the common path at generation + one reviewer. Reserve a third reviewer
-// only when both distinct provider paths fail or a high-risk repair still needs
-// verification; generation failover must not consume that recovery slot.
-const PRACTICE_GENERATION_PROVIDER_CALL_BUDGET = 5;
+// Hint keeps its established cost ceiling. Debrief gets one additional call so
+// a malformed primary reviewer envelope can still fail over to a fresh Claude
+// generation plus the mandatory full review and fact-only verification.
+const HINT_PROVIDER_CALL_BUDGET = 5;
+const DEBRIEF_PROVIDER_CALL_BUDGET = 6;
 const PRACTICE_SEMANTIC_REVIEWER_CALL_BUDGET = 3;
+// Every generated candidate needs a full independent semantic review plus the
+// fact-only verifier before it can be recorded.
+const PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION = 2;
+// The mobile Debrief request times out at 90s and the DB owner fence at 105s.
+// Start at handler entry and leave 5s for record/response plus 20s owner margin.
+const DEBRIEF_REQUEST_DEADLINE_MS = 85000;
 // Sacrifice a little wait time to reduce Game Hint timeout/failover and avoid
 // returning retryable 503s when the model is just slow. There is never a canned
 // fallback.
@@ -160,6 +167,28 @@ function claudeFallbackModelForTier(tier: string | null): string {
 
 function elapsedMilliseconds(startedAt: number): number {
   return Math.max(0, Math.round(performance.now() - startedAt));
+}
+
+function semanticProviderCallsToDebit(
+  reportedCalls: number,
+  allocatedCalls: number,
+): number {
+  return Number.isInteger(reportedCalls) && reportedCalls >= 0 &&
+      reportedCalls <= allocatedCalls
+    ? reportedCalls
+    : allocatedCalls;
+}
+
+function debriefProviderTimeoutMs(
+  maxTimeoutMs: number,
+  absoluteDeadlineAtMs: number,
+  monotonicNow: () => number,
+): number {
+  const remainingMs = Math.floor(absoluteDeadlineAtMs - monotonicNow());
+  if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
+    throw new Error("practice_debrief_deadline_exceeded");
+  }
+  return Math.min(maxTimeoutMs, remainingMs);
 }
 
 function isFreshDebriefGeneration(
@@ -395,6 +424,7 @@ export interface PracticeChatHandlerDeps {
   semanticAdjudicate?: PracticeSemanticAdjudicator;
   getEnv: (name: string) => string | undefined;
   now?: () => Date;
+  monotonicNow?: () => number;
   randomUUID?: () => string;
   /** Production uses EdgeRuntime.waitUntil; tests may inject a collector. */
   waitUntil?: (task: Promise<void>) => void;
@@ -1756,6 +1786,9 @@ export function createPracticeChatHandler(
   deps: PracticeChatHandlerDeps,
 ): (req: Request) => Promise<Response> {
   return async function handleRequest(req: Request): Promise<Response> {
+    const monotonicNow = deps.monotonicNow ?? (() => performance.now());
+    const debriefAbsoluteDeadlineAtMs = monotonicNow() +
+      DEBRIEF_REQUEST_DEADLINE_MS;
     if (req.method === "OPTIONS") {
       return new Response("ok", { headers: corsHeaders });
     }
@@ -2713,7 +2746,7 @@ export function createPracticeChatHandler(
                 0,
                 Math.min(
                   PRACTICE_SEMANTIC_REVIEWER_CALL_BUDGET,
-                  PRACTICE_GENERATION_PROVIDER_CALL_BUDGET - hintAttemptCount,
+                  HINT_PROVIDER_CALL_BUDGET - hintAttemptCount,
                 ),
               ),
               deepSeekApiKey: apiKey,
@@ -3488,7 +3521,6 @@ export function createPracticeChatHandler(
       const debriefAttemptDurationsMs: number[] = [];
       const debriefFailureClasses: PracticeGenerationFailureClass[] = [];
       const debriefFailureCodes: string[] = [];
-      let debriefSemanticAttempted = false;
       let debriefSemanticProviderCalls = 0;
       try {
         let lastError: unknown;
@@ -3575,14 +3607,23 @@ export function createPracticeChatHandler(
             ...candidateCard,
             ...((ledgerAppliedHintTurns?.length ?? 0) > 0
               ? { hintAssessment: canonicalHintAssessment }
-              : Object.hasOwn(rawCandidate, "hintAssessment")
-              ? { hintAssessment: rawCandidate.hintAssessment }
               : {}),
           };
           if (!deps.semanticAdjudicate) {
             throw new Error("semantic_adjudication_unavailable");
           }
-          debriefSemanticAttempted = true;
+          const reservedRecoveryCalls = candidateProvider === "deepseek" &&
+              !!claudeApiKey && !!deps.callClaude
+            ? 1 + PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION
+            : 0;
+          const semanticCallBudget = Math.max(
+            0,
+            Math.min(
+              PRACTICE_SEMANTIC_REVIEWER_CALL_BUDGET,
+              DEBRIEF_PROVIDER_CALL_BUDGET - debriefAttemptCount -
+                debriefSemanticProviderCalls - reservedRecoveryCalls,
+            ),
+          );
           let semantic;
           try {
             semantic = await deps.semanticAdjudicate({
@@ -3602,30 +3643,32 @@ export function createPracticeChatHandler(
                 typedFacts: debriefFactualEvidence.claims,
               }),
               candidateProvider,
-              maxProviderCalls: Math.max(
-                0,
-                Math.min(
-                  PRACTICE_SEMANTIC_REVIEWER_CALL_BUDGET,
-                  PRACTICE_GENERATION_PROVIDER_CALL_BUDGET -
-                    debriefAttemptCount,
-                ),
-              ),
+              maxProviderCalls: semanticCallBudget,
               deepSeekApiKey: apiKey,
               claudeApiKey,
               claudeModel: claudeFallbackModelForTier(sub.tier),
               callDeepSeek: deps.callDeepSeek,
               callClaude: deps.callClaude,
+              absoluteDeadlineAtMs: debriefAbsoluteDeadlineAtMs,
+              monotonicNow,
               validateCandidate: (reviewedCandidate) => {
                 parseDebriefCard(JSON.stringify(reviewedCandidate), {
                   ...generatedDebriefParseOptions,
                 });
               },
             });
-            debriefSemanticProviderCalls += semantic.providerCalls;
+            debriefSemanticProviderCalls += semanticProviderCallsToDebit(
+              semantic.providerCalls,
+              semanticCallBudget,
+            );
           } catch (error) {
-            if (error instanceof SemanticAdjudicationError) {
-              debriefSemanticProviderCalls += error.providerCalls;
-            }
+            debriefSemanticProviderCalls += error instanceof
+                SemanticAdjudicationError
+              ? semanticProviderCallsToDebit(
+                error.providerCalls,
+                semanticCallBudget,
+              )
+              : semanticCallBudget;
             throw error;
           }
           const reviewedCard = parseDebriefCard(
@@ -3650,6 +3693,11 @@ export function createPracticeChatHandler(
             attempt++
           ) {
             const debriefMessages = baseDebriefMessages;
+            const providerTimeoutMs = debriefProviderTimeoutMs(
+              DEBRIEF_TIMEOUT_MS,
+              debriefAbsoluteDeadlineAtMs,
+              monotonicNow,
+            );
             debriefAttemptCount += 1;
             debriefPromptChars = countPromptChars(debriefMessages);
             const attemptStartedAt = performance.now();
@@ -3660,7 +3708,7 @@ export function createPracticeChatHandler(
                 maxTokens: DEBRIEF_MAX_TOKENS,
                 temperature: DEBRIEF_TEMPERATURE,
                 jsonMode: true,
-                timeoutMs: DEBRIEF_TIMEOUT_MS,
+                timeoutMs: providerTimeoutMs,
               });
               debriefCard = await parseGeneratedDebrief(
                 rawCard,
@@ -3715,9 +3763,16 @@ export function createPracticeChatHandler(
         }
 
         if (
-          debriefCard === null && !debriefSemanticAttempted && claudeApiKey &&
-          deps.callClaude
+          debriefCard === null && claudeApiKey && deps.callClaude &&
+          DEBRIEF_PROVIDER_CALL_BUDGET - debriefAttemptCount -
+                debriefSemanticProviderCalls >=
+            1 + PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION
         ) {
+          const providerTimeoutMs = debriefProviderTimeoutMs(
+            DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS,
+            debriefAbsoluteDeadlineAtMs,
+            monotonicNow,
+          );
           const shouldRepair = lastError !== undefined &&
             (debriefLastFailureClass === "visible_text_guard" ||
               debriefLastFailureClass === "invalid_json" ||
@@ -3741,7 +3796,7 @@ export function createPracticeChatHandler(
               messages: debriefMessages,
               maxTokens: DEBRIEF_MAX_TOKENS,
               temperature: DEBRIEF_TEMPERATURE,
-              timeoutMs: DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS,
+              timeoutMs: providerTimeoutMs,
             });
             debriefCard = await parseGeneratedDebrief(
               rawCard,
