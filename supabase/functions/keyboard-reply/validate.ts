@@ -44,8 +44,20 @@ export function validateRequest(value: unknown): KeyboardReplyRequest {
 
 export function parseAndValidateReply(value: unknown): string {
   if (!value || typeof value !== "object") throw new Error("schema_invalid");
-  const envelope = value as { content?: Array<{ text?: string }> };
-  let raw = envelope.content?.[0]?.text?.trim() ?? "";
+  const envelope = value as {
+    content?: Array<{ type?: string; text?: string }>;
+    stop_reason?: string | null;
+  };
+  if (envelope.stop_reason === "max_tokens") throw new Error("max_tokens");
+  if (envelope.stop_reason === "model_context_window_exceeded") {
+    throw new Error("model_context_window_exceeded");
+  }
+  if (envelope.stop_reason === "refusal") throw new Error("model_refusal");
+  let raw = (envelope.content ?? [])
+    .filter((block) => block.type === undefined || block.type === "text")
+    .map((block) => block.text ?? "")
+    .join("")
+    .trim();
   raw = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
 
   let parsed: unknown;

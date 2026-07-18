@@ -58,6 +58,7 @@ Deno.test("keyboard client keeps bounded independent pending identities", () => 
 });
 
 Deno.test("keyboard client clears terminal 429s but retains ambiguous failures", () => {
+  assert(apiSource.includes("request.timeoutInterval = 30"));
   const rateLimitCase = apiSource.indexOf("case 429:");
   const rejectedCase = apiSource.indexOf("case 400..<500:", rateLimitCase);
   assert(rateLimitCase >= 0 && rejectedCase > rateLimitCase);
@@ -74,6 +75,17 @@ Deno.test("keyboard client clears terminal 429s but retains ambiguous failures",
   assert(conflictBranch.includes("KEYBOARD_REPLY_REQUEST_REPLAY_MISMATCH"));
   assert(conflictBranch.includes("request_conflict_unknown"));
   assert(conflictBranch.includes(".requestPending"));
+  const ambiguousServerCase = apiSource.indexOf("default:", rejectedCase);
+  const markPresented = apiSource.indexOf(
+    "func markPresented",
+    ambiguousServerCase,
+  );
+  const ambiguousServerBranch = apiSource.slice(
+    ambiguousServerCase,
+    markPresented,
+  );
+  assert(ambiguousServerBranch.includes('?? "generation_failed"'));
+  assert(!ambiguousServerBranch.includes("pendingStore.clear"));
 
   const insert = controllerSource.indexOf(
     "self.textDocumentProxy.insertText(reply)",

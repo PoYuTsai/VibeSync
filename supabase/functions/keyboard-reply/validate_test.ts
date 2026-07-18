@@ -64,3 +64,37 @@ Deno.test("parseAndValidateReply accepts JSON fence and rejects raw payload", ()
     })
   );
 });
+
+Deno.test("parseAndValidateReply joins Sonnet 5 text blocks", () => {
+  assertEquals(
+    parseAndValidateReply({
+      stop_reason: "end_turn",
+      content: [
+        { type: "text", text: '{"reply":"一起' },
+        { type: "text", text: '去走走吧"}' },
+      ],
+    }),
+    "一起去走走吧",
+  );
+});
+
+Deno.test("parseAndValidateReply rejects incomplete or refused Sonnet 5 output", () => {
+  assertThrows(() =>
+    parseAndValidateReply({
+      stop_reason: "max_tokens",
+      content: [{ type: "text", text: '{"reply":"未完成"}' }],
+    })
+  );
+  assertThrows(() =>
+    parseAndValidateReply({
+      stop_reason: "refusal",
+      content: [{ type: "text", text: '{"reply":"不應使用"}' }],
+    })
+  );
+  assertThrows(() =>
+    parseAndValidateReply({
+      stop_reason: "model_context_window_exceeded",
+      content: [{ type: "text", text: '{"reply":"不完整內容"}' }],
+    })
+  );
+});

@@ -31,6 +31,8 @@ import {
 } from "./billing.ts";
 import {
   callClaudeAPI,
+  KEYBOARD_REQUEST_BUDGET_MS,
+  keyboardGenerationBudgetRemaining,
   KeyboardReplyFinalizeError,
   KeyboardReplyQuotaExceededError,
   runKeyboardReply,
@@ -170,7 +172,10 @@ async function maybeRefreshTier(
   }
 }
 
-export async function handleRequest(request: Request): Promise<Response> {
+async function handleRequestWithinDeadline(
+  request: Request,
+  requestDeadlineAt: number,
+): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -468,13 +473,30 @@ export async function handleRequest(request: Request): Promise<Response> {
       accountIsTest,
     },
     {
+      generationBudgetMs: keyboardGenerationBudgetRemaining(
+        requestDeadlineAt,
+        performance.now(),
+      ),
       callClaude: callClaudeAPI,
       finalizeReply: async (userId, generatedReply) => {
         if (requestId === null && accountIsTest) {
           return { reply: generatedReply, costDeducted: 0 as const };
         }
+        if (performance.now() >= requestDeadlineAt) {
+          throw new KeyboardReplyFinalizeError(
+            503,
+            "KEYBOARD_REPLY_PRESETTLEMENT_RETRYABLE",
+            "request deadline reached before settlement",
+          );
+        }
         let latest = await fetchSubscription(client, userId);
-        if (!latest) throw new Error("subscription_unavailable");
+        if (!latest) {
+          throw new KeyboardReplyFinalizeError(
+            503,
+            "KEYBOARD_REPLY_PRESETTLEMENT_RETRYABLE",
+            "subscription unavailable before settlement",
+          );
+        }
         const latestReset = applyResetsIfNeeded(latest, new Date());
         latest = latestReset.sub;
         if (latestReset.dailyReset || latestReset.monthlyReset) {
@@ -507,6 +529,13 @@ export async function handleRequest(request: Request): Promise<Response> {
           requestId !== null && requestInputHash !== null &&
           requestOwnerToken !== null
         ) {
+          if (performance.now() >= requestDeadlineAt) {
+            throw new KeyboardReplyFinalizeError(
+              503,
+              "KEYBOARD_REPLY_PRESETTLEMENT_RETRYABLE",
+              "request deadline reached before settlement",
+            );
+          }
           const settlement = await settleKeyboardReplyRequest({
             rpc: async (fn, params) => await client.rpc(fn, params),
             userId,
@@ -584,6 +613,24 @@ export async function handleRequest(request: Request): Promise<Response> {
       },
     },
   );
+  // These failures are known to precede settlement, so no reply or quota charge
+  // can have committed. Release only this owner-bound claim, allowing an
+  // immediate same-requestId retry. Settlement failures remain untouched
+  // because their commit outcome may be ambiguous.
+  const safeToReleaseAfterRun =
+    result.status === 500 && result.body.error === "generation_failed" ||
+    result.status === 503 &&
+      result.body.code === "KEYBOARD_REPLY_PRESETTLEMENT_RETRYABLE";
+  if (safeToReleaseAfterRun) {
+    if (!await releaseCurrentClaim()) {
+      return jsonResponse({
+        error: "KEYBOARD_REPLY_CLAIM_RELEASE_RETRYABLE",
+        code: "KEYBOARD_REPLY_CLAIM_RELEASE_RETRYABLE",
+        retryable: true,
+      }, 503);
+    }
+    result.body.retryable = true;
+  }
   if (
     result.status === 429 && result.body.code === "QUOTA_EXCEEDED" &&
     result.body.safeToClear !== true
@@ -606,6 +653,28 @@ export async function handleRequest(request: Request): Promise<Response> {
     }));
   }
   return jsonResponse(result.body, result.status);
+}
+
+export async function handleRequest(request: Request): Promise<Response> {
+  const requestDeadlineAt = performance.now() + KEYBOARD_REQUEST_BUDGET_MS;
+  let timeoutId: number | undefined;
+  const deadlineResponse = new Promise<Response>((resolve) => {
+    timeoutId = setTimeout(() => {
+      resolve(jsonResponse({
+        error: "KEYBOARD_REPLY_REQUEST_TIMEOUT",
+        code: "KEYBOARD_REPLY_REQUEST_TIMEOUT",
+        retryable: true,
+      }, 503));
+    }, Math.max(0, Math.ceil(requestDeadlineAt - performance.now())));
+  });
+  try {
+    return await Promise.race([
+      handleRequestWithinDeadline(request, requestDeadlineAt),
+      deadlineResponse,
+    ]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
 }
 
 if (import.meta.main) serve(handleRequest);

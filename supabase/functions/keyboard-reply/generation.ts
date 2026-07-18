@@ -15,6 +15,28 @@ export interface ClaudeCallArgs {
   timeoutMs: number;
 }
 
+export const KEYBOARD_REPLY_MODEL = "claude-sonnet-5";
+export const KEYBOARD_REQUEST_BUDGET_MS = 24_000;
+export const KEYBOARD_SETTLEMENT_RESERVE_MS = 4_000;
+export const KEYBOARD_GENERATION_BUDGET_MS = 20_000;
+export const KEYBOARD_CLAUDE_ATTEMPT_TIMEOUT_MS = 15_000;
+
+export function keyboardGenerationBudgetRemaining(
+  requestDeadlineAt: number,
+  nowMs: number,
+): number {
+  if (!Number.isFinite(requestDeadlineAt) || !Number.isFinite(nowMs)) return 0;
+  return Math.max(
+    0,
+    Math.min(
+      KEYBOARD_GENERATION_BUDGET_MS,
+      Math.floor(
+        requestDeadlineAt - nowMs - KEYBOARD_SETTLEMENT_RESERVE_MS,
+      ),
+    ),
+  );
+}
+
 export interface KeyboardGenerationInput extends KeyboardReplyRequest {
   userId: string;
   apiKey: string;
@@ -43,6 +65,8 @@ export class KeyboardReplyFinalizeError extends Error {
 
 type GenerationDeps = {
   callClaude: (args: ClaudeCallArgs) => Promise<unknown>;
+  generationBudgetMs?: number;
+  now?: () => number;
   finalizeReply: (
     userId: string,
     reply: string,
@@ -58,22 +82,42 @@ export async function runKeyboardReply(
   costDeducted: 0 | 1;
 }> {
   let reply: string | null = null;
+  const now = deps.now ?? (() => performance.now());
+  const requestedBudget = deps.generationBudgetMs ??
+    KEYBOARD_GENERATION_BUDGET_MS;
+  const generationBudgetMs = Number.isFinite(requestedBudget) &&
+      requestedBudget > 0
+    ? Math.min(KEYBOARD_GENERATION_BUDGET_MS, Math.floor(requestedBudget))
+    : 0;
+  const generationDeadline = now() + generationBudgetMs;
   for (
     const message of [
       buildKeyboardReplyPrompt(input),
       buildRepairPrompt(input),
     ]
   ) {
+    const remainingMs = Math.floor(generationDeadline - now());
+    if (remainingMs <= 0) break;
     try {
       const result = await deps.callClaude({
         apiKey: input.apiKey,
         system: KEYBOARD_REPLY_SYSTEM_PROMPT,
         message,
-        timeoutMs: 8000,
+        timeoutMs: Math.min(
+          KEYBOARD_CLAUDE_ATTEMPT_TIMEOUT_MS,
+          remainingMs,
+        ),
       });
       reply = parseAndValidateReply(result);
       break;
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.message === "model_refusal" ||
+          error.message === "model_context_window_exceeded")
+      ) {
+        break;
+      }
       // One bounded repair attempt. Never log copied text or raw model output.
     }
   }
@@ -139,9 +183,12 @@ export async function callClaudeAPI(args: ClaudeCallArgs): Promise<unknown> {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
+        model: KEYBOARD_REPLY_MODEL,
         max_tokens: 180,
-        temperature: 0.7,
+        // Sonnet 5 defaults to adaptive thinking. Keyboard replies are tiny,
+        // latency-sensitive JSON, so disable thinking explicitly and omit
+        // temperature (non-default sampling can conflict with thinking).
+        thinking: { type: "disabled" },
         system: args.system,
         messages: [{ role: "user", content: args.message }],
       }),

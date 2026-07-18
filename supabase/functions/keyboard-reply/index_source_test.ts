@@ -35,9 +35,45 @@ Deno.test("index preserves auth, replay, claim, quota, and settlement ordering",
       terminalQuotaGate > claim && rateGate > terminalQuotaGate &&
       renewal > rateGate && run > renewal && settle > run,
   );
+  assert(
+    source.includes("handleRequestWithinDeadline(request, requestDeadlineAt)"),
+  );
+  assert(source.includes("Promise.race(["));
+  assert(source.includes("keyboardGenerationBudgetRemaining("));
+  assert(source.includes("generationBudgetMs:"));
+  assert(source.includes("performance.now() >= requestDeadlineAt"));
+  assert(source.includes('"KEYBOARD_REPLY_REQUEST_TIMEOUT"'));
   const release = source.indexOf("if (!await releaseCurrentClaim())", claim);
   const safeToClear = source.indexOf("safeToClear: true", release);
   assert(release > claim && safeToClear > release);
+  const knownGenerationFailure = source.indexOf(
+    'result.status === 500 && result.body.error === "generation_failed"',
+    run,
+  );
+  const generationRelease = source.indexOf(
+    "if (!await releaseCurrentClaim())",
+    knownGenerationFailure,
+  );
+  const knownPreSettlementFailure = source.indexOf(
+    'result.body.code === "KEYBOARD_REPLY_PRESETTLEMENT_RETRYABLE"',
+    run,
+  );
+  const ambiguousSettlement = source.indexOf(
+    '"KEYBOARD_REPLY_SETTLEMENT_RETRYABLE"',
+    run,
+  );
+  assert(
+    knownGenerationFailure > run && generationRelease > knownGenerationFailure,
+  );
+  assert(knownPreSettlementFailure > knownGenerationFailure);
+  assert(
+    ambiguousSettlement > run && ambiguousSettlement < knownGenerationFailure,
+  );
+  assert(
+    !source.slice(run, knownGenerationFailure).includes(
+      "releaseCurrentClaim()",
+    ),
+  );
   assert(source.includes('code: "QUOTA_EXCEEDED"'));
   assert(source.includes("safeToClear: true"));
   assert(source.includes('code: "KEYBOARD_REPLY_REQUEST_PENDING"'));

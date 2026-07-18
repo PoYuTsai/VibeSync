@@ -232,10 +232,10 @@ final class KeyboardAPI {
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
-        // Server may use one bounded format-repair call (2 × 8s). Keep the
-        // client fence outside that window so a valid charged response is not
-        // predictably discarded by the extension.
-        request.timeoutInterval = 20
+        // Server has a 24s request-entry deadline: at most 20s for generation
+        // plus a 4s settlement reserve. Keep this 30s client fence outside the
+        // server path but inside the database's 45s ownership lease.
+        request.timeoutInterval = 30
         request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
