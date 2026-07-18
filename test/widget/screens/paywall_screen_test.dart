@@ -180,8 +180,7 @@ void main() {
       expect(find.text('每日 1 位'), findsOneWidget);
       expect(find.text('開放'), findsNWidgets(2));
       expect(find.text('AI 模型'), findsOneWidget);
-      expect(find.text('經濟型'), findsOneWidget);
-      expect(find.text('高階型'), findsNWidgets(2));
+      expect(find.text('最新模型'), findsNWidgets(3));
       expect(find.textContaining('Haiku'), findsNothing);
       expect(find.textContaining('Sonnet'), findsNothing);
     });
