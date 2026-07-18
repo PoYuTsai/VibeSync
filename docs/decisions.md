@@ -717,7 +717,7 @@
 
 ## ADR #24 — [2026-07-17] 既有 Sonnet 主路徑統一升級 Sonnet 5
 
-**狀態**: 🟢 Active — Eric 拍板作為 1.0.1 Build 333 起的 dogfood 基線（Build 332 誤由舊 main 建置）
+**狀態**: 🟡 Partially superseded — 第 1／2／4 點仍為歷史基線；第 3 點由 ADR #28 取代
 
 **決定**:
 
@@ -762,3 +762,21 @@
 3. 這是等待狀態，不是偽造的精確百分比；不改 Edge schema、OCR prompt、quota、timeout 或解析結果。
 
 **根因**: commit `774ff49f` 將原本每次開啟的動畫改為 device first-run only，所以不是動畫程式被刪除，而是看過一次後被永久抑制。
+
+## ADR #28 — [2026-07-18] 除 Practice 外的客戶可見 Claude 主路徑統一 Sonnet 5
+
+**狀態**: 🟢 Active — supersedes ADR #24 第 3 點；Practice 例外由 Eric 明確確認
+
+**決定**:
+
+1. Free／付費 Analyze、Opener、Coach／Follow-up、Keyboard、OCR／圖片分析，以及 quick／full 相容路徑的 production primary 全部使用 `claude-sonnet-5`。
+2. Sonnet 5 request contract 必須同步處理：預設 thinking 明確關閉（或由特定 OCR contract 明確指定）、可見 text blocks 合併、`refusal`／`max_tokens`／`model_context_window_exceeded` fail closed，並以 request-level deadline 約束 repair／fallback 總等待。
+3. `analyze-chat` 保留 `sonnet-5 → sonnet-4-6 → haiku`，但舊模型只處理 timeout、429、5xx 等真正上游中斷；模型已回覆但截斷、拒答或 context window 不足時不得藉 fallback 改變語意或誤扣額。
+4. Practice 不改主路由，仍是 DeepSeek-first；依 tier 決定的 Claude failover／reviewer 維持既有行為。測試用 forced model、歷史 logger model id 與 OCR benchmark 註解不構成 production primary。
+5. 沒有 durable requestId＋原子 result replay 的一般分析／OCR 不做 client 背景自動重送；只有具該能力的 optimize-message 可沿用同一 requestId 自動重試。
+6. Keyboard 使用 24 秒 request-entry deadline、20 秒 generation budget（含一次 repair）、4 秒 settlement reserve、30 秒 iOS client timeout與 45 秒 DB lease；只有確定 settlement 尚未開始的 failure 才 owner-bound release claim。
+7. Sonnet 5 launch price 只到 2026-08-31。現有 `ai_logs` 尚未涵蓋 Coach／Follow-up／Keyboard token usage，管理端總成本會低估；補齊前不得宣稱成本 dashboard 完整。
+
+**已知邊界**: Coach／Follow-up 尚未具 durable requestId／結果 replay；扣額完成後若 response 遺失，手動重送可能再扣。這是獨立 exactly-once 專案，不以本輪模型切換假裝解決。
+
+**驗證**: Production route source audit；Analyze、Coach／Follow-up、Keyboard、Practice Edge 全套；Flutter full test／analyze；iOS Keyboard 最終仍需 TestFlight 真機驗證 timeout 與 same-request replay。

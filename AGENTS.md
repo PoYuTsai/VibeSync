@@ -35,7 +35,7 @@ Default priority:
 - AI: Claude API. Server env var is `CLAUDE_API_KEY`, not `ANTHROPIC_API_KEY`.
 - Subscription: RevenueCat, monthly + quarterly for Starter and Essential.
 - Local DB: Hive with AES-256 encryption.
-- Models: analyze-chat Free/paid and paid Coach/Follow-up use Sonnet 5; other Free endpoints generally use Haiku. Image-capable requests use Sonnet 5. Practice stays DeepSeek-first with paid Sonnet 5 failover; analyze-chat alone keeps 4.6 then Haiku as fallback.
+- Models: every customer-facing Claude primary path outside Practice uses Sonnet 5: Free/paid Analyze, Opener, Coach/Follow-up, Keyboard, and images. Practice stays DeepSeek-first with its existing tiered Claude failover/reviewer; `analyze-chat` alone keeps 4.6 then Haiku as an outage fallback. Test-only forced models are not production routing.
 
 ## Workflow
 
@@ -67,7 +67,7 @@ Default priority:
 ## Links
 
 - Supabase project: `fcmwrmwdoqiqdnbisdpg`
-- Edge Functions: `analyze-chat`, `coach-chat`, `coach-follow-up`, `submit-feedback`, `sync-subscription`, `revenuecat-webhook`, `delete-account`
+- Edge Functions: `analyze-chat`, `coach-chat`, `coach-follow-up`, `practice-chat`, `keyboard-reply`, `submit-feedback`, `sync-subscription`, `revenuecat-webhook`, `delete-account`
 - Bundle ID: `com.poyutsai.vibesync`
 - Team ID: `TTQHTVG8CC`
 - Test account: `vibesync.test@gmail.com`

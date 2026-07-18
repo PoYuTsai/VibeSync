@@ -95,11 +95,11 @@
 | 練習室續玩同一位角色 | ✗（僅第 1 輪）| ✓ | ✓ |
 | 學習專區（每日上限）| 3 篇/日 | ∞ | ∞ |
 | 對話歷史 | 3 個 | 15 個 | 50 個 |
-| AI 模型 | 分析對話 Sonnet 5¹；其他 Free endpoint 原則上 Haiku | 主要 Claude 路徑 Sonnet 5² | 主要 Claude 路徑 Sonnet 5² |
+| AI 模型 | 客戶可見 Claude 主路徑 Sonnet 5¹；Practice DeepSeek-first² | 客戶可見 Claude 主路徑 Sonnet 5¹；Practice DeepSeek-first² | 客戶可見 Claude 主路徑 Sonnet 5¹；Practice DeepSeek-first² |
 | 有圖片時 | Sonnet 5（強制）| Sonnet 5 | Sonnet 5 |
 
-> ¹ 2026-07-16 起 Free `analyze-chat` 全部固定 Sonnet 5，不再依對話長度或情緒升降模型。這是首次體驗品質投資；月/日額度與 per-user 限流仍為成本上限。Sonnet 5 launch price 到 2026-08-31，到期前必須重審。
-> ² 2026-07-17 起，原本以 Sonnet 4.6 為主模型的付費分析、Opener、Coach／Follow-up 與 Practice Claude failover 升級為 Sonnet 5；`analyze-chat` 保留 Sonnet 4.6 → Haiku 降級鏈。Practice 的第一供應商仍是 DeepSeek，Keyboard 與其他 Free endpoint 不在本次升級範圍。
+> ¹ 2026-07-18 起，Free／付費 Analyze、Opener、Coach／Follow-up、Keyboard 與圖片請求的 Claude production primary 都是 Sonnet 5。`analyze-chat` 只有在 timeout、429 或 5xx 等上游中斷時保留 Sonnet 4.6 → Haiku 降級鏈；截斷、拒答與 context-window stop 不會切舊模型。月／日額度、per-user 限流仍是成本上限。Sonnet 5 launch price 到 2026-08-31，到期前必須重審。
+> ² Practice 不在這次主模型統一範圍：第一供應商維持 DeepSeek，Claude 只保留既有依 tier 決定的 failover／reviewer（付費 Sonnet 5、Free Haiku）。
 >
 > 2026-07-17 起 Free `analyze-chat` 固定回傳 `extend`＋`tease` 兩種；Opener 的 Free 權益不變，仍僅 `extend`。
 > 上表其餘 gating 對照實碼：草稿潤飾
