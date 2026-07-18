@@ -1,5 +1,6 @@
 # .github/workflows/distribute.yml
-# Build & Distribute to Firebase App Distribution (快速迭代測試)
+# Android uses Firebase App Distribution. iOS produces an App Store-signed
+# artifact for verification; installable iOS dogfood builds use TestFlight.
 
 name: Build & Distribute
 
@@ -10,9 +11,6 @@ on:
 
 permissions:
   contents: read
-
-env:
-  APP_VERSION: 1.0.1
 
 jobs:
   flutter-gate:
@@ -92,8 +90,6 @@ jobs:
           REVENUECAT_KEY: appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY
         run: |
           flutter build apk --release \
-            --build-name="$APP_VERSION" \
-            --build-number=${{ github.run_number }} \
             --dart-define=GIT_SHA=$GIT_SHA \
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
@@ -105,6 +101,13 @@ jobs:
           echo "Branch: $GIT_REF" > release-notes.txt
           echo "Commit: $GIT_SHA" >> release-notes.txt
           echo "Environment: production backend" >> release-notes.txt
+
+      - name: Upload APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 7
 
       - name: Debug Firebase config
         run: |
@@ -130,13 +133,6 @@ jobs:
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           file: build/app/outputs/flutter-apk/app-release.apk
           releaseNotesFile: release-notes.txt
-
-      - name: Upload APK as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
-          retention-days: 7
 
   build-ios:
     needs: flutter-gate
@@ -193,8 +189,6 @@ jobs:
         run: |
           rm -rf build/ios/ipa build/ios/archive
           flutter build ipa --release \
-            --build-name="$APP_VERSION" \
-            --build-number=${{ github.run_number }} \
             --dart-define=GIT_SHA=$GIT_SHA \
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
@@ -212,9 +206,12 @@ jobs:
           fi
           version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app_plist")
           build=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$app_plist")
+          pubspec_version=$(awk '/^version:/{print $2; exit}' pubspec.yaml)
+          expected_version=${pubspec_version%%+*}
+          expected_build=${pubspec_version##*+}
           echo "Archived iOS version: ${version} (${build})"
-          if [ "$version" != "$APP_VERSION" ]; then
-            echo "Expected CFBundleShortVersionString=$APP_VERSION, got ${version}"
+          if [ "$version" != "$expected_version" ] || [ "$build" != "$expected_build" ]; then
+            echo "Expected ${expected_version} (${expected_build}), got ${version} (${build})"
             exit 1
           fi
 
@@ -224,19 +221,9 @@ jobs:
           echo "Commit: $GIT_SHA" >> release-notes.txt
           echo "Environment: production backend" >> release-notes.txt
 
-      - name: Upload to Firebase App Distribution
-        env:
-          FIREBASE_IOS_APP_ID: ${{ secrets.FIREBASE_IOS_APP_ID }}
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: |
-          SERVICE_ACCOUNT_PATH="$RUNNER_TEMP/firebase-service-account.json"
-          echo "$FIREBASE_SERVICE_ACCOUNT" > "$SERVICE_ACCOUNT_PATH"
-          npm install -g firebase-tools
-          GOOGLE_APPLICATION_CREDENTIALS="$SERVICE_ACCOUNT_PATH" \
-            firebase appdistribution:distribute build/ios/ipa/*.ipa \
-              --app "$FIREBASE_IOS_APP_ID" \
-              --release-notes-file release-notes.txt
-
+      # This is App Store-signed, so it is intentionally not sent to Firebase
+      # App Distribution (which requires Ad Hoc or Enterprise signing for an
+      # installable tester build). The release workflow owns TestFlight upload.
       - name: Upload IPA as artifact
         uses: actions/upload-artifact@v4
         with:
