@@ -1,5 +1,6 @@
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  callClaudeAPI,
   type ClaudeCallArgs,
   CoachChatQuotaExceededError,
   runCoachChat,
@@ -756,4 +757,142 @@ Deno.test("runCoachChat repairs forced empty-answer card into no-charge conserva
   assertEquals(card.costDeducted, 0);
   assertEquals(harness.deductCalls, 0);
   assertEquals(calls, 1);
+});
+
+Deno.test("runCoachChat reads JSON from a visible text block after Sonnet 5 thinking", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      const visible = validClaudeCard() as {
+        content: Array<{ text: string }>;
+      };
+      return Promise.resolve({
+        stop_reason: "end_turn",
+        content: [
+          { type: "thinking", thinking: "hidden reasoning" },
+          { type: "text", text: visible.content[0].text },
+        ],
+      });
+    },
+  });
+
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "essential",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 1);
+  assertEquals(harness.deductCalls, 1);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).responseType,
+    "coachAnswer",
+  );
+});
+
+Deno.test("runCoachChat accepts a complete valid card even when stop_reason=max_tokens", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve({
+        ...validClaudeCard(),
+        stop_reason: "max_tokens",
+      });
+    },
+  });
+
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "essential",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 1);
+  assertEquals(harness.deductCalls, 1);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).costDeducted,
+    1,
+  );
+});
+
+Deno.test("runCoachChat rejects a truncated max_tokens response without deducting", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve({
+        stop_reason: "max_tokens",
+        content: [{ type: "text", text: '{"responseType":"coachAnswer"' }],
+      });
+    },
+  });
+
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "essential",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 3);
+  assertEquals(harness.deductCalls, 0);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).costDeducted,
+    0,
+  );
+});
+
+Deno.test("coach callClaudeAPI disables thinking only for Sonnet 5", async () => {
+  const originalFetch = globalThis.fetch;
+  const bodies: Array<Record<string, unknown>> = [];
+  globalThis.fetch = ((_input: Request | URL | string, init?: RequestInit) => {
+    bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return Promise.resolve(
+      new Response(JSON.stringify({ content: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  }) as typeof fetch;
+
+  try {
+    await callClaudeAPI({
+      model: "claude-sonnet-5",
+      prompt: "test",
+      maxTokens: 1200,
+      timeoutMs: 1000,
+      apiKey: "key",
+    });
+    await callClaudeAPI({
+      model: "claude-haiku-4-5-20251001",
+      prompt: "test",
+      maxTokens: 1200,
+      timeoutMs: 1000,
+      apiKey: "key",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assertEquals(bodies[0].thinking, { type: "disabled" });
+  assertEquals("thinking" in bodies[1], false);
 });

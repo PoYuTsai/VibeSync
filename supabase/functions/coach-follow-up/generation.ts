@@ -148,8 +148,11 @@ export async function runCoachFollowUp(
     card = validateResponseCard(truncated);
     assertCardSafe(card);
   } catch (e) {
-    const errorClass = getErrorMessage(e).startsWith("banned_token")
+    const errorMessage = getErrorMessage(e);
+    const errorClass = errorMessage.startsWith("banned_token")
       ? "banned_token"
+      : errorMessage === "max_tokens"
+      ? "max_tokens"
       : "schema_invalid";
     deps.logger.warn("coach_follow_up_failed", {
       phase: input.phase,
@@ -257,10 +260,19 @@ function parseClaudeJSON(
   if (!claudeData || typeof claudeData !== "object") {
     throw new Error("schema_invalid: claude returned non-object");
   }
-  const data = claudeData as { content?: Array<{ text?: string }> };
-  const rawText = data.content?.[0]?.text ?? "";
+  const data = claudeData as {
+    content?: Array<{ type?: string; text?: string }>;
+    stop_reason?: string;
+  };
+  const rawText = (data.content ?? [])
+    .filter((block) => block.type == null || block.type === "text")
+    .map((block) => block.text ?? "")
+    .join("");
   const jsonMatch = rawText.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
+    if (data.stop_reason === "max_tokens") {
+      throw new Error("max_tokens");
+    }
     throw new Error("schema_invalid: no JSON found in claude response");
   }
   try {
@@ -271,6 +283,9 @@ function parseClaudeJSON(
     return parsed;
   } catch (e) {
     if (e instanceof Error && e.message.startsWith("schema_invalid")) throw e;
+    if (data.stop_reason === "max_tokens") {
+      throw new Error("max_tokens");
+    }
     throw new Error("schema_invalid: malformed JSON in claude response");
   }
 }
@@ -295,6 +310,9 @@ export async function callClaudeAPI(args: ClaudeCallArgs): Promise<unknown> {
         model: args.model,
         max_tokens: args.maxTokens,
         messages: [{ role: "user", content: args.prompt }],
+        ...(args.model === "claude-sonnet-5"
+          ? { thinking: { type: "disabled" } }
+          : {}),
       }),
       signal: controller.signal,
     });

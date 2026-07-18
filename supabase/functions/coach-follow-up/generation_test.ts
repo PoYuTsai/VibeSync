@@ -16,6 +16,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  callClaudeAPI,
   type ClaudeCallArgs,
   CoachFollowUpQuotaExceededError,
   type GenerationDeps,
@@ -356,4 +357,89 @@ Deno.test("T7: deductCredit monthly quota error → 429 monthly wording", async 
 
   assertEquals(result.status, 429);
   assertEquals(result.body.error, "Monthly limit exceeded");
+});
+
+Deno.test("T7: reads JSON from a visible text block after Sonnet 5 thinking", async () => {
+  const h = makeHarness(() =>
+    Promise.resolve({
+      stop_reason: "end_turn",
+      content: [
+        { type: "thinking", thinking: "hidden reasoning" },
+        { type: "text", text: JSON.stringify(VALID_CARD) },
+      ],
+    })
+  );
+
+  const result = await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  assertEquals(result.status, 200);
+  assertEquals(h.claudeCalls.length, 1);
+  assertEquals(h.deductCalls.length, 1);
+});
+
+Deno.test("T7: complete valid max_tokens card succeeds and deducts", async () => {
+  const h = makeHarness(() =>
+    Promise.resolve({
+      stop_reason: "max_tokens",
+      content: [{ text: JSON.stringify(VALID_CARD) }],
+    })
+  );
+
+  const result = await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  assertEquals(result.status, 200);
+  assertEquals(h.deductCalls.length, 1);
+});
+
+Deno.test("T7: truncated max_tokens response fails without deducting", async () => {
+  const h = makeHarness(() =>
+    Promise.resolve({
+      stop_reason: "max_tokens",
+      content: [{ type: "text", text: '{"headline":"incomplete"' }],
+    })
+  );
+
+  const result = await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  assertEquals(result.status, 500);
+  assertEquals(result.body.error, "max_tokens");
+  assertEquals(h.deductCalls.length, 0);
+  const failed = h.logs.find((log) => log.event === "coach_follow_up_failed");
+  assertEquals(failed?.data.errorClass, "max_tokens");
+});
+
+Deno.test("T7: follow-up callClaudeAPI disables thinking only for Sonnet 5", async () => {
+  const originalFetch = globalThis.fetch;
+  const bodies: Array<Record<string, unknown>> = [];
+  globalThis.fetch = ((_input: Request | URL | string, init?: RequestInit) => {
+    bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return Promise.resolve(
+      new Response(JSON.stringify({ content: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  }) as typeof fetch;
+
+  try {
+    await callClaudeAPI({
+      model: "claude-sonnet-5",
+      prompt: "test",
+      maxTokens: 1024,
+      timeoutMs: 1000,
+      apiKey: "key",
+    });
+    await callClaudeAPI({
+      model: "claude-haiku-4-5-20251001",
+      prompt: "test",
+      maxTokens: 1024,
+      timeoutMs: 1000,
+      apiKey: "key",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assertEquals(bodies[0].thinking, { type: "disabled" });
+  assertEquals("thinking" in bodies[1], false);
 });
