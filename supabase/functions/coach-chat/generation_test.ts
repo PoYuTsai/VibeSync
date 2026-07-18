@@ -77,6 +77,7 @@ function deps(opts: {
     maxAttempts?: number;
   }) => void;
   onWarn?: (event: string, data: Record<string, unknown>) => void;
+  now?: () => number;
 }) {
   const events: string[] = [];
   let deductCalls = 0;
@@ -99,7 +100,7 @@ function deps(opts: {
         },
       },
       onProgress: opts.onProgress,
-      now: () => 1_700_000_000_000,
+      now: opts.now ?? (() => 1_700_000_000_000),
     },
   };
 }
@@ -129,7 +130,7 @@ Deno.test("runCoachChat returns card and deducts one credit on success", async (
   assertEquals(harness.events.includes("coach_chat_succeeded"), true);
 });
 
-Deno.test("runCoachChat routes paid to Sonnet 5 and keeps Free on Haiku", async () => {
+Deno.test("runCoachChat routes paid and Free to Sonnet 5", async () => {
   const models: string[] = [];
 
   for (const tier of ["starter", "free"] as const) {
@@ -154,7 +155,7 @@ Deno.test("runCoachChat routes paid to Sonnet 5 and keeps Free on Haiku", async 
 
   assertEquals(models, [
     "claude-sonnet-5",
-    "claude-haiku-4-5-20251001",
+    "claude-sonnet-5",
   ]);
 });
 
@@ -471,6 +472,39 @@ Deno.test("runCoachChat falls back to a free clarification when all card attempt
   assertEquals(
     (result.body.card as Record<string, unknown>).reflectionQuestion,
     "你說推進，是想邀約、升溫，還是確認她意願？",
+  );
+  assertEquals(harness.events.includes("coach_chat_fallback_used"), true);
+});
+
+Deno.test("runCoachChat shares one 75 second generation budget across retries", async () => {
+  let nowMs = 1_700_000_000_000;
+  const timeouts: number[] = [];
+  const harness = deps({
+    now: () => nowMs,
+    callClaude: (args) => {
+      timeouts.push(args.timeoutMs);
+      nowMs += args.timeoutMs;
+      return Promise.resolve(malformedClaudeCard());
+    },
+  });
+
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(timeouts, [60_000, 15_000]);
+  assertEquals(harness.deductCalls, 0);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).costDeducted,
+    0,
   );
   assertEquals(harness.events.includes("coach_chat_fallback_used"), true);
 });
@@ -904,6 +938,35 @@ Deno.test("runCoachChat rejects a schema-shaped refusal without returning a card
   assertEquals(invalid?.data.errorClass, "refusal");
   const failed = warnings.find((log) => log.event === "coach_chat_failed");
   assertEquals(failed?.data.errorClass, "refusal");
+});
+
+Deno.test("runCoachChat rejects a context-window partial response without deducting", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve({
+        ...validClaudeCard(),
+        stop_reason: "model_context_window_exceeded",
+      });
+    },
+  });
+
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "essential",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 500);
+  assertEquals(result.body.error, "model_context_window_exceeded");
+  assertEquals(calls, 1);
+  assertEquals(harness.deductCalls, 0);
 });
 
 Deno.test("coach callClaudeAPI disables thinking only for Sonnet 5", async () => {

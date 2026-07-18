@@ -68,6 +68,8 @@ export interface GenerationResult {
 
 const MAX_CARD_GENERATION_ATTEMPTS = 3;
 const FALLBACK_NO_CHARGE = 0;
+const COACH_GENERATION_BUDGET_MS = 75_000;
+const COACH_CLAUDE_ATTEMPT_TIMEOUT_MS = 60_000;
 
 export async function runCoachChat(
   input: GenerationInput,
@@ -78,9 +80,7 @@ export async function runCoachChat(
   const request = shouldForceCoachAnswerAfterClarifications(input.request)
     ? { ...input.request, forceAnswer: true }
     : input.request;
-  const model = input.tier === "free"
-    ? "claude-haiku-4-5-20251001"
-    : "claude-sonnet-5";
+  const model = "claude-sonnet-5";
 
   deps.logger.info("coach_chat_invoked", {
     tier: input.tier,
@@ -95,8 +95,20 @@ export async function runCoachChat(
   let card: CoachChatResponseCard | null = null;
   const basePrompt = buildCoachChatPrompt(request);
   let lastValidationError = "schema_invalid";
+  const generationDeadlineAt = startedAt + COACH_GENERATION_BUDGET_MS;
 
   for (let attempt = 1; attempt <= MAX_CARD_GENERATION_ATTEMPTS; attempt++) {
+    const remainingGenerationMs = generationDeadlineAt - now();
+    if (remainingGenerationMs <= 0) {
+      deps.logger.warn("coach_chat_fallback_used", {
+        tier: input.tier,
+        errorClass: "generation_deadline",
+        attempts: attempt - 1,
+      });
+      card = buildFallbackCard(request);
+      break;
+    }
+
     let claudeData: unknown;
     emitProgress(deps, {
       stage: "generating",
@@ -108,7 +120,13 @@ export async function runCoachChat(
         model,
         prompt: buildAttemptPrompt(basePrompt, attempt, lastValidationError),
         maxTokens: 1200,
-        timeoutMs: 60000,
+        timeoutMs: Math.max(
+          1,
+          Math.min(
+            COACH_CLAUDE_ATTEMPT_TIMEOUT_MS,
+            remainingGenerationMs,
+          ),
+        ),
         apiKey: input.apiKey,
       });
     } catch (e) {
@@ -147,6 +165,8 @@ export async function runCoachChat(
         ? "max_tokens"
         : message === "refusal"
         ? "refusal"
+        : message === "model_context_window_exceeded"
+        ? "model_context_window_exceeded"
         : "schema_invalid";
       deps.logger.warn("coach_chat_card_invalid", {
         tier: input.tier,
@@ -154,13 +174,16 @@ export async function runCoachChat(
         detail: summarizeValidationError(e),
         attempt,
       });
-      if (lastValidationError === "refusal") {
+      if (
+        lastValidationError === "refusal" ||
+        lastValidationError === "model_context_window_exceeded"
+      ) {
         deps.logger.warn("coach_chat_failed", {
           tier: input.tier,
-          errorClass: "refusal",
+          errorClass: lastValidationError,
           attempt,
         });
-        return { status: 500, body: { error: "refusal" } };
+        return { status: 500, body: { error: lastValidationError } };
       }
       if (attempt === MAX_CARD_GENERATION_ATTEMPTS) {
         deps.logger.warn("coach_chat_fallback_used", {
@@ -625,6 +648,9 @@ function parseClaudeJSON(
   };
   if (data.stop_reason === "refusal") {
     throw new Error("refusal");
+  }
+  if (data.stop_reason === "model_context_window_exceeded") {
+    throw new Error("model_context_window_exceeded");
   }
   const rawText = (data.content ?? [])
     .filter((block) => block.type == null || block.type === "text")

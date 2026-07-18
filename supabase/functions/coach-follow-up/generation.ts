@@ -100,9 +100,7 @@ export async function runCoachFollowUp(
   const now = deps.now ?? (() => Date.now());
   const startedAt = now();
 
-  const model = input.tier === "free"
-    ? "claude-haiku-4-5-20251001"
-    : "claude-sonnet-5";
+  const model = "claude-sonnet-5";
 
   const prompt = buildCoachFollowUpPrompt(
     input.phase,
@@ -155,6 +153,8 @@ export async function runCoachFollowUp(
       ? "max_tokens"
       : errorMessage === "refusal"
       ? "refusal"
+      : errorMessage === "model_context_window_exceeded"
+      ? "model_context_window_exceeded"
       : "schema_invalid";
     deps.logger.warn("coach_follow_up_failed", {
       phase: input.phase,
@@ -268,6 +268,9 @@ function parseClaudeJSON(
   };
   if (data.stop_reason === "refusal") {
     throw new Error("refusal");
+  }
+  if (data.stop_reason === "model_context_window_exceeded") {
+    throw new Error("model_context_window_exceeded");
   }
   const rawText = (data.content ?? [])
     .filter((block) => block.type == null || block.type === "text")

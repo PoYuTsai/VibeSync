@@ -131,7 +131,7 @@ Deno.test("T7: tier=starter selects Sonnet 5 in response", async () => {
   );
 });
 
-Deno.test("T7: tier=free selects haiku model", async () => {
+Deno.test("T7: tier=free selects Sonnet 5 model", async () => {
   const h = makeHarness(async () => claudeWrapped(VALID_CARD));
   const result = await runCoachFollowUp(
     { ...BASE_INPUT, tier: "free" },
@@ -140,7 +140,7 @@ Deno.test("T7: tier=free selects haiku model", async () => {
 
   assertEquals(
     (result.body as Record<string, unknown>).model,
-    "claude-haiku-4-5-20251001",
+    "claude-sonnet-5",
   );
 });
 
@@ -428,6 +428,22 @@ Deno.test("T7: schema-shaped refusal fails without returning a card or deducting
     h.logs.some((log) => log.event === "coach_follow_up_succeeded"),
     false,
   );
+});
+
+Deno.test("T7: context-window partial response fails without deducting", async () => {
+  const h = makeHarness(() =>
+    Promise.resolve({
+      stop_reason: "model_context_window_exceeded",
+      content: [{ type: "text", text: JSON.stringify(VALID_CARD) }],
+    })
+  );
+
+  const result = await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  assertEquals(result.status, 500);
+  assertEquals(result.body.error, "model_context_window_exceeded");
+  assertEquals("card" in result.body, false);
+  assertEquals(h.deductCalls.length, 0);
 });
 
 Deno.test("T7: follow-up callClaudeAPI disables thinking only for Sonnet 5", async () => {

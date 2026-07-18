@@ -13,7 +13,8 @@ part 'coach_follow_up_result.g.dart';
 ///     and screened by `assertCardSafe` (banned-token validator)
 ///   - [suggestedLine] — optional, can be null
 ///   - [generatedAt] — server-stamped at success-path response
-///   - [modelUsed] — `claude-haiku-4-5-20251001` | `claude-sonnet-5`
+///   - [modelUsed] — current generations use `claude-sonnet-5`; older local
+///     records can still contain the historical Haiku model identifier
 ///
 /// Persistence scope: device-local, NOT synced to Supabase. Account-clear
 /// (deleteAccount → StorageService.clearAll) is wired in B14. Per-partner
