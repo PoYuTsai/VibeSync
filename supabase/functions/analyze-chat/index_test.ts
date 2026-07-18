@@ -173,7 +173,7 @@ function selectModel(context: {
     return "claude-sonnet-5";
   }
 
-  return "claude-3-5-haiku-20241022";
+  return "claude-sonnet-5";
 }
 
 // countMessages 殭屍測試已移除：它測的是本檔內的舊公式複本（逐則 200 字制），
@@ -259,18 +259,60 @@ Deno.test({
     assert(source.includes(
       'context.tier === "starter" || context.tier === "essential"',
     ));
-    const primarySonnet5Returns = source.match(
-      /return "claude-sonnet-5";/g,
-    ) ?? [];
-    assertEquals(primarySonnet5Returns.length, 3);
+    assertFalse(source.includes(
+      'return "claude-haiku-4-5-20251001";\n}',
+    ));
     assertFalse(source.includes(
       'const model = hasImages\n      ? "claude-sonnet-4-6"',
     ));
     assert(source.includes(
-      'const selectedModel = hasImages\n      ? "claude-sonnet-5"',
+      "const selectedModel = (accountIsTest || TEST_MODE) && forceModel",
+    ));
+    assert(source.includes('? model\n      : "claude-sonnet-5";'));
+    assertFalse(source.includes(
+      'if (TEST_MODE) {\n    return "claude-haiku-4-5-20251001";',
     ));
     assert(source.includes(
-      'const openerModel = imageCount > 0 || effectiveTier !== "free"\n        ? "claude-sonnet-5"',
+      'const openerModel = "claude-sonnet-5"',
+    ));
+    assert(source.includes('const quickModel = "claude-sonnet-5"'));
+    assert(source.includes("const quickTimeoutMs = 20_000;"));
+    assert(source.includes(
+      "const quickDeadlineAtMs = requestStartedAtMs + quickTimeoutMs;",
+    ));
+    assert(source.includes(
+      "maxRetries: 1,\n            absoluteDeadlineAtMs: quickDeadlineAtMs,",
+    ));
+  },
+});
+
+Deno.test({
+  name: "legacy Sonnet 5 primary, fallback, and JSON repair share one deadline",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    assert(source.includes("const requestStartedAtMs = Date.now();"));
+    assert(source.includes(
+      "const modelDeadlineAtMs = requestStartedAtMs +\n      (hasImages ? 120_000 : 50_000);",
+    ));
+    assertEquals(
+      source.match(/absoluteDeadlineAtMs: modelDeadlineAtMs/g)?.length,
+      2,
+    );
+    assertEquals(
+      source.match(
+        /maxRetries: 1,\n\s+absoluteDeadlineAtMs: modelDeadlineAtMs/g,
+      )
+        ?.length,
+      2,
+    );
+    assert(source.includes(
+      "const fullDeadlineAtMs = requestStartedAtMs + 50_000;",
+    ));
+    assert(source.includes(
+      "maxRetries: 1,\n            allowModelFallback: true,\n            absoluteDeadlineAtMs: fullDeadlineAtMs,",
     ));
   },
 });
@@ -1060,7 +1102,7 @@ Deno.test({
     assert(source.includes("opener_repair_failed"));
     assert(source.includes("opener_repair_error"));
     assert(source.includes("max_tokens: OPENER_MAX_TOKENS"));
-    assert(source.includes('imageCount > 0 || effectiveTier !== "free"'));
+    assert(source.includes('const openerModel = "claude-sonnet-5"'));
     assert(source.includes("opener_response_invalid"));
     assert(source.includes("本次不會扣額度"));
     assertFalse(source.includes("parsed = { openers: { extend: rawText } }"));
@@ -1079,7 +1121,7 @@ Deno.test({
     assert(source.includes("const OPENER_DEADLINE_MS = 50_000;"));
     const openerBranch = source.indexOf("if (isOpenerMode) {");
     const deadlineStart = source.indexOf(
-      "const openerDeadlineAtMs = Date.now() + OPENER_DEADLINE_MS;",
+      "const openerDeadlineAtMs = requestStartedAtMs + OPENER_DEADLINE_MS;",
       openerBranch,
     );
     const validation = source.indexOf(
@@ -1273,7 +1315,7 @@ Deno.test({
     assert(source.includes("opener_image_validation_failed"));
     assert(
       source.indexOf("const openerImageValidation = validateOpenerImages") <
-        source.indexOf("const openerModel = imageCount > 0"),
+        source.indexOf('const openerModel = "claude-sonnet-5"'),
       "opener image validation must run before model selection / Claude call",
     );
   },
@@ -2156,7 +2198,9 @@ Deno.test({
       "OCR 必須用 provider JSON schema 約束輸出",
     );
     assert(
-      source.includes("recognizeOnly ? { maxRetries: 1 } : {}"),
+      source.includes(
+        "maxRetries: 1,\n          absoluteDeadlineAtMs: modelDeadlineAtMs",
+      ),
       "OCR 的 Edge provider attempt 必須只有一次",
     );
 

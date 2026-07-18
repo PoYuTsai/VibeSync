@@ -58,7 +58,9 @@ void main() {
               timestamp: DateTime(2026, 7, 16),
             ),
           ],
-          images: [Uint8List.fromList([1, 2, 3])],
+          images: [
+            Uint8List.fromList([1, 2, 3])
+          ],
           knownContactName: 'Bruce',
           recognizeOnly: true,
         );
@@ -93,7 +95,9 @@ void main() {
       try {
         await _service(mockClient).analyzeConversation(
           const [],
-          images: [Uint8List.fromList([1, 2, 3])],
+          images: [
+            Uint8List.fromList([1, 2, 3])
+          ],
           recognizeOnly: true,
         );
         fail('expected AnalysisException');
@@ -121,7 +125,9 @@ void main() {
       try {
         await _service(mockClient).analyzeConversation(
           const [],
-          images: [Uint8List.fromList([1, 2, 3])],
+          images: [
+            Uint8List.fromList([1, 2, 3])
+          ],
           recognizeOnly: true,
         );
         fail('expected AnalysisException');
@@ -149,7 +155,9 @@ void main() {
       try {
         await _service(mockClient).analyzeConversation(
           const [],
-          images: [Uint8List.fromList([1, 2, 3])],
+          images: [
+            Uint8List.fromList([1, 2, 3])
+          ],
           recognizeOnly: true,
         );
         fail('expected AnalysisException');
@@ -167,6 +175,7 @@ void main() {
           code: 'OCR_RATE_LIMITED',
           hasImages: true,
           recognizeOnly: true,
+          hasDurableRequestId: false,
         ),
         isFalse,
       );

@@ -45,6 +45,23 @@ const Map<String, dynamic> _fullSuccessBody = {
 
 void main() {
   group('AnalysisService.analyzeQuick', () {
+    test('client timeout leaves room for the Sonnet 5 server deadline', () {
+      expect(
+        kAnalyzeQuickRequestTimeout,
+        greaterThan(const Duration(seconds: 20)),
+      );
+      expect(
+        kAnalyzeTextRequestTimeout,
+        greaterThan(const Duration(seconds: 50)),
+      );
+      expect(
+        kAnalyzeImageRequestTimeout,
+        greaterThan(const Duration(seconds: 120)),
+      );
+      expect(
+          kAnalyzeOcrScreenTimeout, greaterThan(kAnalyzeImageRequestTimeout));
+    });
+
     test('POSTs with responseMode:quick and parses quickResult', () async {
       late http.Request capturedRequest;
       final mockClient = MockClient((request) async {

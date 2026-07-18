@@ -4454,11 +4454,6 @@ function selectModel(context: {
   isFirstAnalysis: boolean;
   tier: string;
 }): string {
-  // 🧪 測試模式：強制使用 Haiku (省錢)
-  if (TEST_MODE) {
-    return "claude-haiku-4-5-20251001";
-  }
-
   // Free 分析固定提供延展＋調情，並使用最新 Sonnet 守住首次體驗品質。
   if (context.tier === "free") {
     return "claude-sonnet-5";
@@ -4480,8 +4475,9 @@ function selectModel(context: {
     return "claude-sonnet-5";
   }
 
-  // 預設使用 Haiku (70%)
-  return "claude-haiku-4-5-20251001";
+  // 未知但已通過訂閱正規化的 tier 也維持 Sonnet 5，避免新增方案時
+  // 靜默降級到舊模型。舊模型只存在於明確的 outage fallback chain。
+  return "claude-sonnet-5";
 }
 
 // CORS headers for all responses
@@ -4505,6 +4501,11 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+
+  // Every downstream provider budget is measured from the start of the
+  // authenticated request, not from the moment the model call finally begins.
+  // This leaves the client time to receive parsing/quota-settlement results.
+  const requestStartedAtMs = Date.now();
 
   try {
     // Verify auth
@@ -5073,7 +5074,7 @@ serve(async (req) => {
 
     // ── Opener mode: generate opening lines ──
     if (isOpenerMode) {
-      const openerDeadlineAtMs = Date.now() + OPENER_DEADLINE_MS;
+      const openerDeadlineAtMs = requestStartedAtMs + OPENER_DEADLINE_MS;
       const openerDeadlineReached = () => Date.now() >= openerDeadlineAtMs;
       const rejectOpenerDeadline = (stage: string) => {
         logWarn("opener_deadline_exceeded", {
@@ -5317,10 +5318,9 @@ serve(async (req) => {
         );
       }
 
-      // Select model based on tier
-      const openerModel = imageCount > 0 || effectiveTier !== "free"
-        ? "claude-sonnet-5"
-        : "claude-haiku-4-5-20251001";
+      // All production Opener tiers use Sonnet 5. Older models are reserved
+      // for the bounded outage fallback chain in fallback.ts.
+      const openerModel = "claude-sonnet-5";
 
       // Build messages for Claude API
       let claudeMessages;
@@ -6553,12 +6553,11 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       );
     }
 
-    // 「我說」模式用 Haiku 省成本（但有圖片時強制 Sonnet）
-    const selectedModel = hasImages
-      ? "claude-sonnet-5"
-      : isMyMessageMode
-      ? "claude-haiku-4-5-20251001"
-      : model;
+    // Production is always Sonnet 5. Explicit old-model forcing remains
+    // available only to test accounts / TEST_MODE benchmark fixtures.
+    const selectedModel = (accountIsTest || TEST_MODE) && forceModel
+      ? model
+      : "claude-sonnet-5";
 
     // 建構 user message content（純文字或 Vision 格式）
     const userMessageContent = hasImages
@@ -6569,6 +6568,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     const timeoutMs = hasImages
       ? (recognizeOnly ? 90000 : 120000)
       : (isMyMessageMode ? 20000 : 30000);
+    // One request-level wall-clock budget covers validation/auth, primary,
+    // outage fallback, and the optional JSON repair call below. Flutter waits
+    // 65s for text and 130s for images, leaving time for parsing and quota
+    // settlement instead of racing the client timeout.
+    const modelDeadlineAtMs = requestStartedAtMs +
+      (hasImages ? 120_000 : 50_000);
     const allowModelFallback = !hasImages;
     const maxOutputTokens = recognizeOnly
       ? 6000
@@ -6634,9 +6639,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     // ------------------------------------------------------------------
     //
     // When `responseMode === "quick"`:
-    //   - force Haiku 4.5 regardless of tier/forceModel
+    //   - force Sonnet 5 regardless of tier/forceModel
     //   - use the slim QUICK_SYSTEM_PROMPT (~3.6 KB) + 400 max_tokens
-    //   - 15s timeout, no model fallback (per plan D6: don't auto-fallback)
+    //   - 20s timeout, no model fallback (per plan D6: don't auto-fallback)
     //   - on Claude success → parse + guardrail + hash + atomic charge + insert
     //     row via AnalysisRunStore.createChargedRun
     //   - on Claude failure / parse failure: return BEFORE the DB call so no
@@ -6647,16 +6652,20 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     // the legacy path defensively — no quota bypass risk since the legacy
     // path always charges).
     if (responseMode === "quick") {
-      const quickModel = "claude-haiku-4-5-20251001";
-      const quickTimeoutMs = 15000;
+      const quickModel = "claude-sonnet-5";
+      // Sonnet 5 is slower than the former Haiku quick path. Keep one bounded
+      // attempt and leave the Flutter client's 25s fence enough room to receive
+      // the atomic charge/result response instead of timing out at the same
+      // instant as the provider deadline.
+      const quickTimeoutMs = 20_000;
+      const quickDeadlineAtMs = requestStartedAtMs + quickTimeoutMs;
       const quickStart = Date.now();
 
       // Codex P2 scope clarification (build 213): vision quick is deliberately
       // OUT OF SCOPE — see docs/plans/2026-05-28-two-stage-analyze.md §Out of
       // Scope. Screenshot/OCR analyze keeps using the legacy single-call path
       // (~18-25s) because:
-      //   - Haiku 4.5 vision quality on tightly-cropped chat screenshots has
-      //     not been calibrated against the Sonnet OCR baseline (28c0965).
+      //   - Vision quality and latency use a separate OCR-calibrated contract.
       //   - Quick path's 15s hard budget is too tight for vision inference.
       //   - The 3-5s "perceived latency" promise applies to manual-text quick;
       //     OCR users already accept the longer wait today.
@@ -6701,12 +6710,14 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             timeout: quickTimeoutMs,
             allowModelFallback: false,
             // Codex P1-1 review fix: callClaudeWithFallback defaults to
-            // maxRetries=2, which would let a flaky upstream burn 2 × 15s = 30s
-            // and torpedo the "perceived 3-5s" promise. Pin to 1 attempt so the
+            // maxRetries=2, which would let a flaky upstream burn two full
+            // attempts and exceed the request's 20s wall-clock budget.
+            // Pin to 1 attempt so the
             // wall-clock hard budget stays at `quickTimeoutMs`. If the upstream
             // fails once, surface the error and let the client retry the whole
             // quick request — D6 forbids auto-fallback to legacy anyway.
             maxRetries: 1,
+            absoluteDeadlineAtMs: quickDeadlineAtMs,
           },
         );
       } catch (error) {
@@ -6861,11 +6872,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         );
       }
 
-      const fullModelForEta = hasImages
-        ? "claude-sonnet-5"
-        : isMyMessageMode
-        ? "claude-haiku-4-5-20251001"
-        : model;
+      const fullModelForEta = "claude-sonnet-5";
       const fullEtaSeconds = estimateFullSeconds({
         model: fullModelForEta,
         hasImages,
@@ -7117,6 +7124,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       const fullUserPrompt = userPrompt;
 
       const fullStart = Date.now();
+      const fullDeadlineAtMs = requestStartedAtMs + 50_000;
       logInfo("full_request_started", {
         user: summarizeUser(user.id),
         analysisRunId: run.id,
@@ -7138,7 +7146,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             messages: [{ role: "user", content: fullUserPrompt }],
           },
           CLAUDE_API_KEY,
-          { timeout: 30000, allowModelFallback: true },
+          {
+            timeout: 30000,
+            maxRetries: 1,
+            allowModelFallback: true,
+            absoluteDeadlineAtMs: fullDeadlineAtMs,
+          },
         );
       } catch (error) {
         // Reservation already consumed — surface to client with remaining
@@ -7773,7 +7786,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         {
           timeout: timeoutMs,
           allowModelFallback,
-          ...(recognizeOnly ? { maxRetries: 1 } : {}),
+          maxRetries: 1,
+          absoluteDeadlineAtMs: modelDeadlineAtMs,
         },
       );
     } catch (error) {
@@ -7973,7 +7987,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             ],
           },
           CLAUDE_API_KEY,
-          { timeout: timeoutMs, allowModelFallback },
+          {
+            timeout: timeoutMs,
+            allowModelFallback,
+            maxRetries: 1,
+            absoluteDeadlineAtMs: modelDeadlineAtMs,
+          },
         );
 
         const retryData = retryResult.data as {

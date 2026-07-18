@@ -4287,9 +4287,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             onTelemetry: _handleRecognizeTelemetry,
             recognizeOnly: true, // 純識別模式：只識別截圖，不扣額度
           ),
-          // 強制 130 秒 timeout (比 API 的 120 秒稍長)
-          Future.delayed(const Duration(seconds: 130), () {
-            throw TimeoutException('辨識超時 (130秒)');
+          // Screen fence also includes local payload preparation, so it must
+          // stay outside AnalysisService's 130-second HTTP fence.
+          Future.delayed(kAnalyzeOcrScreenTimeout, () {
+            throw TimeoutException('辨識超時 (135秒)');
           }),
         ]);
         _debugLog(

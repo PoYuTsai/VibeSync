@@ -91,7 +91,15 @@ function validateSuccessfulResponse(data: unknown): void {
     throw new AiServiceError(
       "AI declined to generate this response.",
       "MODEL_REFUSAL",
-      true,
+      false,
+    );
+  }
+
+  if (stopReason === "model_context_window_exceeded") {
+    throw new AiServiceError(
+      "AI could not complete the response within its context window.",
+      "MODEL_CONTEXT_WINDOW_EXCEEDED",
+      false,
     );
   }
 
@@ -102,7 +110,7 @@ function validateSuccessfulResponse(data: unknown): void {
     throw new AiServiceError(
       "AI exhausted its output budget before completing the response.",
       "MAX_TOKENS",
-      true,
+      false,
     );
   }
 }
@@ -355,37 +363,6 @@ export async function callClaudeWithFallback(
               false,
               {
                 ...error.metadata,
-                retries: totalRetries,
-                fallbackUsed: currentModel !== originalModel,
-                lastModel: currentModel,
-                lastFailureCode: error.code,
-                timeoutMs: opts.timeout,
-              },
-            );
-          }
-
-          if (
-            error.code === "MAX_TOKENS" || error.code === "MODEL_REFUSAL"
-          ) {
-            const nextModel = opts.allowModelFallback
-              ? MODEL_FALLBACK_CHAIN[currentModel]
-              : null;
-            if (nextModel) {
-              throwIfDeadlineExceeded();
-              logInfo("falling_back_model", {
-                from: currentModel,
-                to: nextModel,
-                reason: error.code,
-              });
-              currentModel = nextModel;
-              break;
-            }
-
-            throw new AiServiceError(
-              error.message,
-              error.code,
-              false,
-              {
                 retries: totalRetries,
                 fallbackUsed: currentModel !== originalModel,
                 lastModel: currentModel,

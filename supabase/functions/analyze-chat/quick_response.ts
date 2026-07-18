@@ -6,7 +6,7 @@
 // These three helpers are intentionally pure / side-effect-free so they can be
 // unit-tested without spinning up the Edge runtime. The handler in `index.ts`
 // glues them to:
-//   1. callClaudeWithFallback (Haiku 4.5, 400 max_tokens, 15s timeout, no fallback)
+//   1. callClaudeWithFallback (Sonnet 5, 400 max_tokens, 20s timeout, no fallback)
 //   2. hashConversation (conversation_hash.ts)
 //   3. AnalysisRunStore.createChargedRun (atomic charge + insert via RPC)
 //
@@ -16,13 +16,15 @@
 
 const VALID_CONFIDENCE = new Set(["low", "medium", "high"] as const);
 type Confidence = "low" | "medium" | "high";
-const VALID_REPLY_PICK = new Set([
-  "extend",
-  "resonate",
-  "tease",
-  "humor",
-  "coldRead",
-] as const);
+const VALID_REPLY_PICK = new Set(
+  [
+    "extend",
+    "resonate",
+    "tease",
+    "humor",
+    "coldRead",
+  ] as const,
+);
 export type ReplyPick =
   | "extend"
   | "resonate"
@@ -159,8 +161,14 @@ export interface QuickGuardrailResult {
   safetyFiltered: boolean;
 }
 
-export function applyQuickGuardrails(payload: QuickPayload): QuickGuardrailResult {
-  const surfaces = [payload.recommendedReply, payload.nextStep, payload.shortReason]
+export function applyQuickGuardrails(
+  payload: QuickPayload,
+): QuickGuardrailResult {
+  const surfaces = [
+    payload.recommendedReply,
+    payload.nextStep,
+    payload.shortReason,
+  ]
     .filter((value): value is string => typeof value === "string");
   const combined = surfaces.join(" ");
   const hit = QUICK_BLOCKED_PATTERNS.some((re) => re.test(combined));

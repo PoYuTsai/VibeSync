@@ -10,13 +10,14 @@ import 'package:vibesync/features/conversation/domain/entities/message.dart';
 void main() {
   group('AnalysisService.isAutoRetriableAnalysisError', () {
     test('圖片完整分析（已扣費路徑）的 TIMEOUT 不自動重試', () {
-      // server Claude timeout 120s（parse retry 最壞再 +120s）＞ client 120s，
-      // client timeout 時 server 很可能已完成並扣費；自動重打會重複扣 2-3 則。
+      // server request-level deadline 是 120s、client 是 130s；若本機仍逾時，
+      // server 可能已完成並進入結算，自動重打會造成重複扣額風險。
       expect(
         AnalysisService.isAutoRetriableAnalysisError(
           code: 'TIMEOUT',
           hasImages: true,
           recognizeOnly: false,
+          hasDurableRequestId: false,
         ),
         isFalse,
       );
@@ -34,6 +35,7 @@ void main() {
             code: code,
             hasImages: true,
             recognizeOnly: true,
+            hasDurableRequestId: false,
           ),
           isFalse,
           reason: '$code 應由使用者手動重試，避免同批圖片背景連發',
@@ -41,18 +43,19 @@ void main() {
       }
     });
 
-    test('無圖路徑的 TIMEOUT 維持自動重試', () {
+    test('無圖路徑的 TIMEOUT 也不自動重試，避免結算期間重複扣額', () {
       expect(
         AnalysisService.isAutoRetriableAnalysisError(
           code: 'TIMEOUT',
           hasImages: false,
           recognizeOnly: false,
+          hasDurableRequestId: false,
         ),
-        isTrue,
+        isFalse,
       );
     });
 
-    test('圖片路徑的其他 retriable code 不受影響', () {
+    test('沒有 durable requestId 的其他 transport error 也不自動重送', () {
       for (final code in [
         'NETWORK_ERROR',
         'UNEXPECTED_ERROR',
@@ -63,9 +66,31 @@ void main() {
             code: code,
             hasImages: true,
             recognizeOnly: false,
+            hasDurableRequestId: false,
+          ),
+          isFalse,
+          reason: '$code 必須由使用者手動重試，避免 lost-response 重複扣額',
+        );
+      }
+    });
+
+    test('有 durable requestId 的暫時錯誤可安全沿用同一身份重試', () {
+      for (final code in [
+        'NETWORK_ERROR',
+        'TIMEOUT',
+        'UNEXPECTED_ERROR',
+        'UPSTREAM_UNAVAILABLE',
+        'OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE',
+      ]) {
+        expect(
+          AnalysisService.isAutoRetriableAnalysisError(
+            code: code,
+            hasImages: false,
+            recognizeOnly: false,
+            hasDurableRequestId: true,
           ),
           isTrue,
-          reason: '$code 應維持自動重試',
+          reason: code,
         );
       }
     });
@@ -76,6 +101,7 @@ void main() {
           code: 'QUOTA_EXCEEDED',
           hasImages: false,
           recognizeOnly: false,
+          hasDurableRequestId: false,
         ),
         isFalse,
       );
@@ -84,6 +110,7 @@ void main() {
           code: null,
           hasImages: false,
           recognizeOnly: false,
+          hasDurableRequestId: false,
         ),
         isFalse,
       );

@@ -136,7 +136,7 @@ Deno.test("caller-specified adaptive thinking is not sent to older fallback mode
   ]);
 });
 
-Deno.test("max_tokens without visible text retries through the fallback chain", async () => {
+Deno.test("max_tokens without visible text fails closed on Sonnet 5", async () => {
   const originalFetch = globalThis.fetch;
   const capturedBodies: CapturedBody[] = [];
   globalThis.fetch = (_input, init) => {
@@ -152,22 +152,26 @@ Deno.test("max_tokens without visible text retries through the fallback chain", 
     return Promise.resolve(successResponse());
   };
 
-  let result;
   try {
-    result = await callClaudeWithFallback(baseRequest(), "test-key", {
-      timeout: 1000,
-      maxRetries: 1,
-      allowModelFallback: true,
-    });
+    const error = await assertRejects(
+      () =>
+        callClaudeWithFallback(baseRequest(), "test-key", {
+          timeout: 1000,
+          maxRetries: 1,
+          allowModelFallback: true,
+        }),
+      AiServiceError,
+    );
+    assertEquals(error.code, "MAX_TOKENS");
+    assertEquals(error.retryable, false);
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assertEquals(result?.model, "claude-sonnet-4-6");
-  assertEquals(capturedBodies.length, 2);
+  assertEquals(capturedBodies.length, 1);
 });
 
-Deno.test("max_tokens with visible text also falls back before quota settlement", async () => {
+Deno.test("max_tokens with visible text fails closed before quota settlement", async () => {
   const originalFetch = globalThis.fetch;
   let requestCount = 0;
   globalThis.fetch = () => {
@@ -179,46 +183,79 @@ Deno.test("max_tokens with visible text also falls back before quota settlement"
     );
   };
 
-  let result;
   try {
-    result = await callClaudeWithFallback(baseRequest(), "test-key", {
-      timeout: 1000,
-      maxRetries: 1,
-      allowModelFallback: true,
-    });
+    const error = await assertRejects(
+      () =>
+        callClaudeWithFallback(baseRequest(), "test-key", {
+          timeout: 1000,
+          maxRetries: 1,
+          allowModelFallback: true,
+        }),
+      AiServiceError,
+    );
+    assertEquals(error.code, "MAX_TOKENS");
+    assertEquals(error.retryable, false);
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assertEquals(result?.model, "claude-sonnet-4-6");
-  assertEquals(requestCount, 2);
+  assertEquals(requestCount, 1);
 });
 
-Deno.test("refusal switches directly to the next model", async () => {
+Deno.test("refusal fails closed without switching to an older model", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestCount = 0;
+  globalThis.fetch = () => {
+    requestCount++;
+    return Promise.resolve(successResponse("Cannot comply.", "refusal"));
+  };
+
+  try {
+    const error = await assertRejects(
+      () =>
+        callClaudeWithFallback(baseRequest(), "test-key", {
+          timeout: 1000,
+          maxRetries: 2,
+          allowModelFallback: true,
+        }),
+      AiServiceError,
+    );
+    assertEquals(error.code, "MODEL_REFUSAL");
+    assertEquals(error.retryable, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assertEquals(requestCount, 1);
+});
+
+Deno.test("context-window stop fails closed before quota settlement", async () => {
   const originalFetch = globalThis.fetch;
   let requestCount = 0;
   globalThis.fetch = () => {
     requestCount++;
     return Promise.resolve(
-      requestCount === 1
-        ? successResponse("Cannot comply.", "refusal")
-        : successResponse(),
+      successResponse('{"ok":true}', "model_context_window_exceeded"),
     );
   };
 
-  let result;
   try {
-    result = await callClaudeWithFallback(baseRequest(), "test-key", {
-      timeout: 1000,
-      maxRetries: 2,
-      allowModelFallback: true,
-    });
+    const error = await assertRejects(
+      () =>
+        callClaudeWithFallback(baseRequest(), "test-key", {
+          timeout: 1000,
+          maxRetries: 2,
+          allowModelFallback: true,
+        }),
+      AiServiceError,
+    );
+    assertEquals(error.code, "MODEL_CONTEXT_WINDOW_EXCEEDED");
+    assertEquals(error.retryable, false);
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assertEquals(result?.model, "claude-sonnet-4-6");
-  assertEquals(requestCount, 2);
+  assertEquals(requestCount, 1);
 });
 
 Deno.test("provider 4xx response body never reaches the error", async () => {

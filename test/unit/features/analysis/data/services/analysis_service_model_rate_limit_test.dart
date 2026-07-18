@@ -102,6 +102,7 @@ void main() {
           code: 'MODEL_RATE_LIMITED',
           hasImages: false,
           recognizeOnly: false,
+          hasDurableRequestId: false,
         ),
         isFalse,
       );

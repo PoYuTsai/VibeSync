@@ -88,6 +88,20 @@ const ocrRecognitionProgressMilestones = <AnalysisProgressMilestone>[
   ),
 ];
 
+/// Must stay outside the server's single 20s Sonnet 5 quick-generation fence
+/// so a successful atomic charge/result response is not discarded in transit.
+const kAnalyzeQuickRequestTimeout = Duration(seconds: 25);
+
+/// Client fences must outlive the Edge request-level model budgets (50s text,
+/// 120s image) so parsing and quota settlement can finish before the socket is
+/// closed locally.
+const kAnalyzeTextRequestTimeout = Duration(seconds: 65);
+const kAnalyzeImageRequestTimeout = Duration(seconds: 130);
+
+/// The screen-level OCR fence wraps payload preparation as well as the HTTP
+/// call, so it stays outside [kAnalyzeImageRequestTimeout].
+const kAnalyzeOcrScreenTimeout = Duration(seconds: 135);
+
 class AnalysisProgressUpdate {
   final AnalysisProgressStage stage;
   final int imageCount;
@@ -1252,23 +1266,20 @@ class AnalysisService {
     'OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE',
   };
 
-  /// OCR 辨識一次點擊只送一個 HTTP request，避免大圖在背景重複上傳、
-  /// 疊加 Edge/provider retry，讓畫面已顯示失敗後仍繼續跑數分鐘。
-  /// 圖片完整分析（已扣費路徑）的 TIMEOUT 也不自動重試，避免重複扣費。
-  /// 其他路徑維持既有自動重試策略。
+  /// 只有具 durable requestId／原子結算的路徑可以背景重送。一般分析、
+  /// my_message 與 OCR 都可能在 server 已扣額、response 回程斷線時收到
+  /// NETWORK_ERROR/TIMEOUT；沒有冪等身份時自動重送會重複扣額。
   @visibleForTesting
   static bool isAutoRetriableAnalysisError({
     required String? code,
     required bool hasImages,
     required bool recognizeOnly,
+    required bool hasDurableRequestId,
   }) {
     if (code == null || !_retriableCodes.contains(code)) {
       return false;
     }
-    if (recognizeOnly) {
-      return false;
-    }
-    if (code == 'TIMEOUT' && hasImages) {
+    if (recognizeOnly || !hasDurableRequestId) {
       return false;
     }
     return true;
@@ -1413,12 +1424,14 @@ class AnalysisService {
         );
         lastError = error is Exception ? error : Exception(error.toString());
 
-        if (error is AnalysisException &&
-            !isAutoRetriableAnalysisError(
+        final canAutoRetry = error is AnalysisException &&
+            isAutoRetriableAnalysisError(
               code: error.code,
               hasImages: images != null && images.isNotEmpty,
               recognizeOnly: recognizeOnly,
-            )) {
+              hasDurableRequestId: logicalRequestId != null,
+            );
+        if (!canAutoRetry) {
           rethrow;
         }
 
@@ -1521,9 +1534,8 @@ class AnalysisService {
         }).toList();
       }
 
-      final timeout = hasImages
-          ? const Duration(seconds: 120)
-          : const Duration(seconds: 60);
+      final timeout =
+          hasImages ? kAnalyzeImageRequestTimeout : kAnalyzeTextRequestTimeout;
 
       // 走注入的 provider（預設即 SupabaseService.accessToken），測試才能
       // 不初始化 Supabase 就打到 HTTP 層。
@@ -1851,7 +1863,7 @@ class AnalysisService {
         confirmedOvercharge: confirmedOvercharge,
         entitlementContext: entitlementContext,
       ),
-      timeout: const Duration(seconds: 15),
+      timeout: kAnalyzeQuickRequestTimeout,
     );
     try {
       return AnalysisRecommendationPreview.fromJson(responseData);
@@ -1899,7 +1911,7 @@ class AnalysisService {
         previousAnalyzedCharCount: previousAnalyzedCharCount,
         entitlementContext: entitlementContext,
       ),
-      timeout: const Duration(seconds: 60),
+      timeout: kAnalyzeTextRequestTimeout,
       onErrorResponse: _mapFullModeError,
     );
     return AnalysisResult.fromJson(_extractFullResultPayload(responseData));
