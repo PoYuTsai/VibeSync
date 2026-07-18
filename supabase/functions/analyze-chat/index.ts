@@ -99,6 +99,7 @@ import { QUICK_SYSTEM_PROMPT } from "./quick_prompt.ts";
 import { isStreamingAllowed } from "./stream_gate.ts";
 import { handleStreamAnalysisRequest } from "./stream_handler.ts";
 import { buildStreamSystemPrompt } from "./stream_prompt.ts";
+import { streamAnalyzeMaxTokensForStyleCount } from "./stream_budget.ts";
 import {
   type AnalysisStreamRun,
   AnalysisStreamRunStore,
@@ -4444,7 +4445,7 @@ const STREAM_ANALYZE_ENABLED =
 const STREAM_WHITELIST = Deno.env.get("STREAM_WHITELIST");
 const MAX_STREAM_RETRIES = 2;
 const STREAM_CLAUDE_TIMEOUT_MS = 120000;
-const STREAM_ANALYZE_MAX_TOKENS = 3200;
+const STREAM_PROVIDER_MAX_ATTEMPTS = 3;
 
 // 模型選擇函數 (設計規格 4.9)
 function selectModel(context: {
@@ -7386,6 +7387,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       const streamReplyStyles = streamReplyStylesForTier(effectiveTier).filter(
         (style) => allowedFeatures.includes(style),
       );
+      const streamMaxOutputTokens = streamAnalyzeMaxTokensForStyleCount(
+        streamReplyStyles.length,
+      );
       const conversationHashValue = await hashConversation({
         messages,
         userDraft,
@@ -7467,7 +7471,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       let streamModel = selectedModel;
       // Sonnet 5 enables adaptive thinking by default. This endpoint needs its
       // entire fixed output budget for the user-visible NDJSON contract; hidden
-      // thinking can otherwise consume all 3200 tokens and emit zero text.
+      // thinking can otherwise consume the visible-output budget and emit zero
+      // contract events.
       let streamThinkingDisabled = selectedModel === "claude-sonnet-5";
       const streamStartTime = Date.now();
       let streamTokenUsage = {
@@ -7521,7 +7526,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           const claude = await callClaudeStreaming(
             {
               model: selectedModel,
-              max_tokens: STREAM_ANALYZE_MAX_TOKENS,
+              max_tokens: streamMaxOutputTokens,
               system: buildStreamSystemPrompt(
                 SYSTEM_PROMPT,
                 streamReplyStyles,
@@ -7588,7 +7593,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
               requestType,
               responseMode: "stream",
               serverAiLatencyMs: latencyMs,
-              timeoutMs: 30000,
+              timeoutMs: STREAM_CLAUDE_TIMEOUT_MS,
               model: streamModel,
               shouldChargeQuota: shouldCharge,
               chargedMessageCount: shouldCharge
@@ -7620,7 +7625,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
               responseMode: "stream",
               analysisRunId: streamRun.id,
               thinkingDisabled: streamThinkingDisabled,
-              maxOutputTokens: STREAM_ANALYZE_MAX_TOKENS,
+              timeoutMs: STREAM_CLAUDE_TIMEOUT_MS,
+              providerMaxAttempts: STREAM_PROVIDER_MAX_ATTEMPTS,
+              maxOutputTokens: streamMaxOutputTokens,
             },
             responseBody: {
               streamRunStatus: "done",
@@ -7672,7 +7679,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
               responseMode: "stream",
               analysisRunId: streamRun.id,
               thinkingDisabled: streamThinkingDisabled,
-              maxOutputTokens: STREAM_ANALYZE_MAX_TOKENS,
+              timeoutMs: STREAM_CLAUDE_TIMEOUT_MS,
+              providerMaxAttempts: STREAM_PROVIDER_MAX_ATTEMPTS,
+              maxOutputTokens: streamMaxOutputTokens,
             },
             responseBody: {
               streamRunStatus: "failed",

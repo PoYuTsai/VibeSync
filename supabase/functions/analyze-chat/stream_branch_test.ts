@@ -1,5 +1,6 @@
 import {
   assert,
+  assertEquals,
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
@@ -34,8 +35,9 @@ Deno.test("stream branch is gated and uses the stream ledger", async () => {
   assert(source.includes("buildStreamSystemPrompt("));
   assert(source.includes("streamReplyStyles"));
   assert(source.includes("requiredReplyStyles: streamReplyStyles"));
-  assert(source.includes("const STREAM_ANALYZE_MAX_TOKENS = 3200"));
-  assert(source.includes("max_tokens: STREAM_ANALYZE_MAX_TOKENS"));
+  assert(source.includes("streamAnalyzeMaxTokensForStyleCount("));
+  assert(source.includes("max_tokens: streamMaxOutputTokens"));
+  assert(source.includes("maxOutputTokens: streamMaxOutputTokens"));
   assert(
     source.includes(
       'let streamThinkingDisabled = selectedModel === "claude-sonnet-5"',
@@ -49,7 +51,19 @@ Deno.test("stream branch is gated and uses the stream ledger", async () => {
   );
   assert(source.includes('? { type: "disabled" }'));
   assert(source.includes("const STREAM_CLAUDE_TIMEOUT_MS = 120000"));
+  assert(source.includes("const STREAM_PROVIDER_MAX_ATTEMPTS = 3"));
   assert(source.includes("{ timeout: STREAM_CLAUDE_TIMEOUT_MS }"));
+  assertEquals(
+    streamBranch(source).split("timeoutMs: STREAM_CLAUDE_TIMEOUT_MS").length -
+      1,
+    3,
+  );
+  assertEquals(
+    streamBranch(source).split(
+      "providerMaxAttempts: STREAM_PROVIDER_MAX_ATTEMPTS",
+    ).length - 1,
+    2,
+  );
   assert(source.includes("streamStore.chargeRun({"));
   assert(source.includes("streamStore.markDone({"));
   assert(source.includes("streamStore.markFailed({"));
