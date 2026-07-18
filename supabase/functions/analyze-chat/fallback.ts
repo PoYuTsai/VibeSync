@@ -2,6 +2,8 @@ interface CallOptions {
   timeout: number;
   maxRetries: number;
   allowModelFallback: boolean;
+  /** Absolute wall-clock deadline shared by every attempt and fallback. */
+  absoluteDeadlineAtMs?: number;
 }
 
 type ClaudeThinking = { type: "adaptive" | "disabled" };
@@ -135,6 +137,7 @@ export interface AiServiceErrorMetadata {
   lastModel?: string;
   lastFailureCode?: string;
   timeoutMs?: number;
+  deadlineAtMs?: number;
 }
 
 export class AiServiceError extends Error {
@@ -159,11 +162,75 @@ export async function callClaudeWithFallback(
   let totalRetries = 0;
   const originalModel = request.model;
   let lastFailureCode = "UNEXPECTED_ERROR";
+  const callStartedAtMs = Date.now();
+  const absoluteDeadlineAtMs = Number.isFinite(opts.absoluteDeadlineAtMs)
+    ? Math.floor(opts.absoluteDeadlineAtMs!)
+    : undefined;
+
+  const deadlineExceededError = () => {
+    lastFailureCode = "DEADLINE_EXCEEDED";
+    return new AiServiceError(
+      "AI request exceeded its total deadline.",
+      "DEADLINE_EXCEEDED",
+      false,
+      {
+        retries: totalRetries,
+        fallbackUsed: currentModel !== originalModel,
+        lastModel: currentModel ?? undefined,
+        lastFailureCode,
+        timeoutMs: absoluteDeadlineAtMs === undefined
+          ? undefined
+          : Math.max(0, absoluteDeadlineAtMs - callStartedAtMs),
+        deadlineAtMs: absoluteDeadlineAtMs,
+      },
+    );
+  };
+
+  const throwIfDeadlineExceeded = () => {
+    if (
+      absoluteDeadlineAtMs !== undefined &&
+      Date.now() >= absoluteDeadlineAtMs
+    ) {
+      throw deadlineExceededError();
+    }
+  };
+
+  const waitForRetryDelay = async (delayMs: number) => {
+    if (absoluteDeadlineAtMs === undefined) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      return;
+    }
+
+    const remainingMs = absoluteDeadlineAtMs - Date.now();
+    if (remainingMs <= 0) throw deadlineExceededError();
+    if (delayMs >= remainingMs) {
+      await new Promise((resolve) => setTimeout(resolve, remainingMs));
+      throw deadlineExceededError();
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  };
 
   while (currentModel) {
+    throwIfDeadlineExceeded();
     for (let attempt = 1; attempt <= opts.maxRetries; attempt++) {
+      throwIfDeadlineExceeded();
+      const deadlineRemainingMs = absoluteDeadlineAtMs === undefined
+        ? undefined
+        : absoluteDeadlineAtMs - Date.now();
+      if (deadlineRemainingMs !== undefined && deadlineRemainingMs <= 0) {
+        throw deadlineExceededError();
+      }
+      const attemptBoundedByDeadline = deadlineRemainingMs !== undefined &&
+        deadlineRemainingMs <= opts.timeout;
+      const attemptTimeoutMs = attemptBoundedByDeadline
+        ? Math.max(1, deadlineRemainingMs)
+        : opts.timeout;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), opts.timeout);
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        attemptTimeoutMs,
+      );
 
       try {
         const thinking = resolveThinkingContract(
@@ -239,6 +306,7 @@ export async function callClaudeWithFallback(
         }
 
         validateSuccessfulResponse(data);
+        throwIfDeadlineExceeded();
 
         return {
           data,
@@ -248,6 +316,21 @@ export async function callClaudeWithFallback(
         };
       } catch (error) {
         totalRetries++;
+
+        if (
+          error instanceof AiServiceError &&
+          error.code === "DEADLINE_EXCEEDED"
+        ) {
+          throw error;
+        }
+        if (
+          absoluteDeadlineAtMs !== undefined &&
+          (Date.now() >= absoluteDeadlineAtMs ||
+            (attemptBoundedByDeadline &&
+              error instanceof Error && error.name === "AbortError"))
+        ) {
+          throw deadlineExceededError();
+        }
 
         if (error instanceof Error && error.name === "AbortError") {
           lastFailureCode = "TIMEOUT";
@@ -288,6 +371,7 @@ export async function callClaudeWithFallback(
               ? MODEL_FALLBACK_CHAIN[currentModel]
               : null;
             if (nextModel) {
+              throwIfDeadlineExceeded();
               logInfo("falling_back_model", {
                 from: currentModel,
                 to: nextModel,
@@ -324,6 +408,7 @@ export async function callClaudeWithFallback(
             ? MODEL_FALLBACK_CHAIN[currentModel]
             : null;
           if (nextModel) {
+            throwIfDeadlineExceeded();
             logInfo("falling_back_model", {
               from: currentModel,
               to: nextModel,
@@ -349,7 +434,7 @@ export async function callClaudeWithFallback(
         }
 
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        await waitForRetryDelay(delay);
       } finally {
         clearTimeout(timeoutId);
       }

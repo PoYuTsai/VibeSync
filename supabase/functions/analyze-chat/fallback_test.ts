@@ -245,3 +245,71 @@ Deno.test("provider 4xx response body never reaches the error", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+Deno.test("expired absolute deadline rejects before any provider call", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestCount = 0;
+  globalThis.fetch = () => {
+    requestCount++;
+    return Promise.resolve(successResponse());
+  };
+
+  try {
+    const error = await assertRejects(
+      () =>
+        callClaudeWithFallback(baseRequest(), "test-key", {
+          timeout: 1000,
+          maxRetries: 2,
+          allowModelFallback: true,
+          absoluteDeadlineAtMs: Date.now() - 1,
+        }),
+      AiServiceError,
+    );
+    assertEquals(error.code, "DEADLINE_EXCEEDED");
+    assertEquals(requestCount, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("absolute deadline caps total budget and stops before fallback", async () => {
+  const originalFetch = globalThis.fetch;
+  const capturedBodies: CapturedBody[] = [];
+  globalThis.fetch = (_input, init) => {
+    capturedBodies.push(parseCapturedBody(init));
+    const signal = (init as RequestInit | undefined)?.signal;
+    return new Promise<Response>((_resolve, reject) => {
+      const rejectAbort = () =>
+        reject(new DOMException("aborted", "AbortError"));
+      if (signal?.aborted) {
+        rejectAbort();
+        return;
+      }
+      signal?.addEventListener("abort", rejectAbort, { once: true });
+    });
+  };
+
+  const startedAt = Date.now();
+  try {
+    const error = await assertRejects(
+      () =>
+        callClaudeWithFallback(baseRequest(), "test-key", {
+          timeout: 5000,
+          maxRetries: 2,
+          allowModelFallback: true,
+          absoluteDeadlineAtMs: Date.now() + 30,
+        }),
+      AiServiceError,
+    );
+    const elapsedMs = Date.now() - startedAt;
+
+    assertEquals(error.code, "DEADLINE_EXCEEDED");
+    assertEquals(routingContracts(capturedBodies), [{
+      model: "claude-sonnet-5",
+      thinking: { type: "disabled" },
+    }]);
+    assertEquals(elapsedMs < 1000, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

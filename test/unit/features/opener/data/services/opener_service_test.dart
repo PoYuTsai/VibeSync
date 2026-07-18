@@ -5,6 +5,10 @@ import 'package:vibesync/features/opener/data/services/opener_service.dart';
 
 void main() {
   group('OpenerService', () {
+    test('client timeout leaves room for the server opener deadline', () {
+      expect(kOpenerRequestTimeout, const Duration(seconds: 70));
+    });
+
     test('active screenshot tab payload ignores hidden manual fields', () {
       final input = OpenerGenerationInput.fromActiveTab(
         useScreenshotTab: true,
@@ -111,8 +115,7 @@ void main() {
       );
     });
 
-    test('sends effectiveStyleContext in body when provided (F3-1)',
-        () async {
+    test('sends effectiveStyleContext in body when provided (F3-1)', () async {
       final calls = <Map<String, dynamic>>[];
       final service = OpenerService(
         invoker: (functionName, {required body}) async {

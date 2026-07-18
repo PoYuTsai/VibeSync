@@ -1067,6 +1067,91 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name:
+    "opener uses one 50s absolute deadline for primary, fallback, repair, and pre-charge gate",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("const OPENER_DEADLINE_MS = 50_000;"));
+    const openerBranch = source.indexOf("if (isOpenerMode) {");
+    const deadlineStart = source.indexOf(
+      "const openerDeadlineAtMs = Date.now() + OPENER_DEADLINE_MS;",
+      openerBranch,
+    );
+    const validation = source.indexOf(
+      "const openerImageValidation = validateOpenerImages(images);",
+      openerBranch,
+    );
+    assert(openerBranch >= 0 && deadlineStart > openerBranch);
+    assert(deadlineStart < validation);
+
+    assert(source.includes(
+      "maxRetries: 1,\n            allowModelFallback: true,\n            absoluteDeadlineAtMs: openerDeadlineAtMs,",
+    ));
+    assertFalse(source.includes(
+      "{ timeout: 60000, maxRetries: 2, allowModelFallback: true }",
+    ));
+    assert(source.includes(
+      "repairMalformedOpenerPayload({\n            rawText,\n            apiKey,\n            absoluteDeadlineAtMs: openerDeadlineAtMs,",
+    ));
+    assert(source.includes('apiError.code === "DEADLINE_EXCEEDED"'));
+    assert(source.includes('repairError.code === "DEADLINE_EXCEEDED"'));
+    const deadlineResponseStart = source.indexOf(
+      "const rejectOpenerDeadline = (stage: string) =>",
+      deadlineStart,
+    );
+    const deadlineResponseSource = source.slice(
+      deadlineResponseStart,
+      validation,
+    );
+    assert(deadlineResponseSource.includes(
+      'error: "OPENER_DEADLINE_EXCEEDED"',
+    ));
+    assert(deadlineResponseSource.includes(
+      'code: "OPENER_DEADLINE_EXCEEDED"',
+    ));
+    assert(deadlineResponseSource.includes("shouldChargeQuota: false"));
+    assert(deadlineResponseSource.includes("這次不會新增扣額度"));
+    assert(deadlineResponseSource.includes("}, 504);"));
+
+    const postParseGate = source.indexOf(
+      'return rejectOpenerDeadline("post_parse");',
+      deadlineStart,
+    );
+    const invalidPayloadResponse = source.indexOf(
+      'error: "開場產生格式異常"',
+      deadlineStart,
+    );
+    const postFilterGate = source.indexOf(
+      'return rejectOpenerDeadline("post_filter");',
+      deadlineStart,
+    );
+    const noAllowedStylesResponse = source.indexOf(
+      'error: "AI_RESPONSE_INVALID"',
+      postFilterGate,
+    );
+    assert(postParseGate > deadlineStart);
+    assert(invalidPayloadResponse > postParseGate);
+    assert(postFilterGate > invalidPayloadResponse);
+    assert(noAllowedStylesResponse > postFilterGate);
+
+    const preChargeGate = source.indexOf(
+      'return rejectOpenerDeadline("pre_charge");',
+      deadlineStart,
+    );
+    const chargeCall = source.indexOf(
+      "const chargeOutcome = await chargeOpenerQuota({",
+      deadlineStart,
+    );
+    assert(preChargeGate > deadlineStart);
+    assert(chargeCall > preChargeGate);
+  },
+});
+
 // 2026-07-02 opener 截圖 502 根因修復（黑箱 12 打 3 掛、全 502）：
 // 1) 主呼叫 max_tokens 1800 在內容豐富截圖會頂滿截斷（成功案例輸出 1566–1597
 //    tokens 離上限僅 ~10%＝「偶爾失敗」的機率來源；直打 API 同 prompt 兩輪

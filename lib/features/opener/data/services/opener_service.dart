@@ -5,6 +5,10 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/services/supabase_service.dart';
 
+/// Must stay above the Edge opener pipeline deadline so a server-side timeout
+/// reaches the app before Dart abandons the response.
+const kOpenerRequestTimeout = Duration(seconds: 70);
+
 typedef OpenerInvoker = Future<OpenerInvokeResponse> Function(
   String functionName, {
   required Map<String, dynamic> body,
@@ -453,6 +457,10 @@ Future<OpenerInvokeResponse> _defaultInvoker(
   String fn, {
   required Map<String, dynamic> body,
 }) async {
-  final res = await SupabaseService.invokeFunction(fn, body: body);
+  final res = await SupabaseService.invokeFunction(
+    fn,
+    body: body,
+    timeout: kOpenerRequestTimeout,
+  );
   return OpenerInvokeResponse(status: res.status, data: res.data);
 }

@@ -332,6 +332,7 @@ function parseJsonObjectFromText(text: string): Record<string, unknown> | null {
 // 主呼叫與 repair 共用同一上限：內容豐富截圖輸出可超過 1800（實測成功案例
 // 1566–1597 tokens），repair 上限若低於主呼叫，截斷輸入修完仍超長＝必再截斷。
 const OPENER_MAX_TOKENS = 3000;
+const OPENER_DEADLINE_MS = 50_000;
 
 const OPENER_REPAIR_PROMPT = `你是 VibeSync 開場救星的 JSON 格式修復器。
 
@@ -393,9 +394,11 @@ function buildOpenerRepairPrompt(rawText: string): string {
 async function repairMalformedOpenerPayload({
   rawText,
   apiKey,
+  absoluteDeadlineAtMs,
 }: {
   rawText: string;
   apiKey: string;
+  absoluteDeadlineAtMs: number;
 }): Promise<{
   parsed: Record<string, unknown> | null;
   rawText: string;
@@ -417,7 +420,12 @@ async function repairMalformedOpenerPayload({
       ],
     },
     apiKey,
-    { timeout: 20000, maxRetries: 1, allowModelFallback: false },
+    {
+      timeout: 20000,
+      maxRetries: 1,
+      allowModelFallback: false,
+      absoluteDeadlineAtMs,
+    },
   );
   const repairData = repairResult.data as {
     content?: Array<{ text?: string }>;
@@ -5065,6 +5073,22 @@ serve(async (req) => {
 
     // ── Opener mode: generate opening lines ──
     if (isOpenerMode) {
+      const openerDeadlineAtMs = Date.now() + OPENER_DEADLINE_MS;
+      const openerDeadlineReached = () => Date.now() >= openerDeadlineAtMs;
+      const rejectOpenerDeadline = (stage: string) => {
+        logWarn("opener_deadline_exceeded", {
+          user: summarizeUser(user.id),
+          stage,
+          deadlineMs: OPENER_DEADLINE_MS,
+        });
+        return jsonResponse({
+          error: "OPENER_DEADLINE_EXCEEDED",
+          code: "OPENER_DEADLINE_EXCEEDED",
+          message: "這次開場白生成逾時，請重新生成；這次不會新增扣額度。",
+          shouldChargeQuota: false,
+        }, 504);
+      };
+
       const openerImageValidation = validateOpenerImages(images);
       if (openerImageValidation.error) {
         logWarn("opener_image_validation_failed", {
@@ -5342,9 +5366,21 @@ serve(async (req) => {
             messages: claudeMessages,
           },
           apiKey,
-          { timeout: 60000, maxRetries: 2, allowModelFallback: true },
+          {
+            timeout: 60000,
+            maxRetries: 1,
+            allowModelFallback: true,
+            absoluteDeadlineAtMs: openerDeadlineAtMs,
+          },
         );
       } catch (apiError) {
+        if (
+          (apiError instanceof AiServiceError &&
+            apiError.code === "DEADLINE_EXCEEDED") ||
+          openerDeadlineReached()
+        ) {
+          return rejectOpenerDeadline("primary_or_fallback");
+        }
         const errMsg = getErrorMessage(apiError);
         const errCode = apiError instanceof AiServiceError
           ? apiError.code
@@ -5384,6 +5420,7 @@ serve(async (req) => {
           repairMetadata = await repairMalformedOpenerPayload({
             rawText,
             apiKey,
+            absoluteDeadlineAtMs: openerDeadlineAtMs,
           });
           parsed = repairMetadata.parsed;
           if (parsed) {
@@ -5410,6 +5447,13 @@ serve(async (req) => {
             });
           }
         } catch (repairError) {
+          if (
+            (repairError instanceof AiServiceError &&
+              repairError.code === "DEADLINE_EXCEEDED") ||
+            openerDeadlineReached()
+          ) {
+            return rejectOpenerDeadline("repair");
+          }
           logWarn("opener_repair_error", {
             user: summarizeUser(user.id),
             model: apiResult.model,
@@ -5417,6 +5461,9 @@ serve(async (req) => {
             error: getErrorMessage(repairError),
           });
         }
+      }
+      if (openerDeadlineReached()) {
+        return rejectOpenerDeadline("post_parse");
       }
       if (!parsed) {
         logWarn("opener_response_invalid", {
@@ -5445,6 +5492,9 @@ serve(async (req) => {
         parsed,
         openerAllowedFeatures,
       );
+      if (openerDeadlineReached()) {
+        return rejectOpenerDeadline("post_filter");
+      }
       if (!filteredOpenerPayload) {
         logWarn("opener_response_no_allowed_styles", {
           user: summarizeUser(user.id),
@@ -5474,6 +5524,13 @@ serve(async (req) => {
         : null;
       const aiInsufficientFlag = profileAnalysisObj?.insufficientInfo === true;
       const effectiveOpenerCost = serverEligibleForNoCharge ? 0 : openerCost;
+
+      // The model, fallback chain, and optional repair all share one wall-clock
+      // budget. Re-check immediately before settlement so a response that
+      // finished at the deadline can never create an orphaned quota charge.
+      if (openerDeadlineReached()) {
+        return rejectOpenerDeadline("pre_charge");
+      }
 
       // Deduct quota。Batch C#2：帶 tier 上限讓 increment_usage 鎖內複檢，
       // 兜住 preflight 與扣費之間的並發競態；超限 RAISE 映射 429。
