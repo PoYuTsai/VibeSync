@@ -10,6 +10,20 @@
 
 ## 2026-07
 
+### [2026-07-18] Sonnet 5 路由分裂、OCR 等待契約與舊模型方案文案
+
+**Symptom**: Free Analyze 已是 Sonnet 5，但付費 Analyze、Opener、Free Coach／Follow-up、Keyboard 等路徑仍可能使用舊模型；兩張截圖曾在真機等待數分鐘後辨識失敗。方案頁同時把 Free 寫成「經濟型」、付費寫成「高階型 AI」，與實際統一路由矛盾。
+
+**Root Cause**: 模型選擇散落於各 Edge branch，且部分 Sonnet 5 呼叫沒有一致處理 adaptive thinking、可見 text blocks、terminal stop reason 與整體 deadline。一般分析 client 的 transport retry 沒有以 durable requestId 為前提，server／client fence 也太接近，response 回程與 quota settlement 容易撞 timeout。OCR 狀態動畫本身只是一組本機 timer；它不會新增 provider call，先前那次 provider 失敗沒有足夠線上證據可歸因於動畫。
+
+**Fix**: 除 Practice 外的客戶可見 Claude primary 全部固定 Sonnet 5；Practice 保持 DeepSeek-first。Analyze 的 4.6 → Haiku 僅限 timeout／429／5xx outage；refusal、max_tokens、context-window stop fail closed。OCR 維持一次使用者動作只打一個 provider request，Flutter 圖片 fence 130 秒／screen fence 135 秒；無 durable requestId 的一般分析不再背景重送。Coach 使用 75 秒整體 generation budget；Keyboard 使用 24 秒 request budget、20 秒 generation、4 秒 settlement reserve、30 秒 iOS client timeout與 45 秒 DB lease。方案頁改為三方案皆「最新模型」，付費差異回到額度、5 種風格與完整功能。
+
+**Validation**: Edge 全套 Analyze 641／Coach 82／Follow-up 152／Keyboard 36／Practice 916，全部 0 failed；Flutter full 2,262 passed／4 skipped／0 failed，paywall 20 passed，`flutter analyze` 0 issue。Production `analyze-chat` v283、`coach-chat` v62、`coach-follow-up` v55、`keyboard-reply` v6 已部署，`practice-chat` 維持 v200。Live Opener／Quick／Coach／Follow-up 都回報 `claude-sonnet-5`；stream 16 events、1 recommendation、done、0 error；OCR 1／2／3 張分別約 15.6／22.8／26.2 秒，辨識 8／15／22 則，皆 `valid_chat`、Sonnet 5、0 retry。Keyboard DB contract 與 fresh→same-requestId replay 通過。
+
+**Known Boundary**: Coach／Follow-up 尚無 durable requestId＋結果 replay，response 遺失後手動重試仍可能重複扣額；Coach／Follow-up／Keyboard 尚未寫入完整 Anthropic token usage，成本 dashboard 會低估。這兩項不阻擋 Build 334 dogfood，但不得宣稱 exactly-once 與成本觀測已完整。
+
+**相關檔案**: `supabase/functions/analyze-chat/`、`supabase/functions/coach-chat/generation.ts`、`supabase/functions/coach-follow-up/generation.ts`、`supabase/functions/keyboard-reply/`、`lib/features/analysis/data/services/analysis_service.dart`、`lib/features/subscription/presentation/screens/paywall_screen.dart`。
+
 ### [2026-07-17] TestFlight Build 332 從舊 main 建置，整輪功能未進 binary
 
 **Symptom**: Build 332 上傳成功且 CI 全綠，但真機看不到同日完成的 OCR 左右滑教學、OCR 等待狀態、浮動分析按鈕與分析中的下滑提示。
