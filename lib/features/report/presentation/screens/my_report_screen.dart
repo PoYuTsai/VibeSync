@@ -24,6 +24,7 @@ import '../widgets/heat_trend_chart.dart';
 import '../widgets/conversation_comparison_chart.dart';
 import '../widgets/partner_mindmap_card_list.dart';
 import '../widgets/practice_temperature_chart.dart';
+import '../widgets/report_overview_card.dart';
 import '../widgets/report_subject_selector.dart';
 import '../widgets/stage_distribution_chart.dart';
 
@@ -34,7 +35,6 @@ class MyReportScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final subscription = ref.watch(subscriptionProvider);
     final report = ref.watch(reportDataProvider);
-    final isEmpty = report.totalConversations == 0;
     final partners = ref.watch(partnerListProvider);
     // Stage labels 必須在 build 階段 eager 解析：ListView 的 itemBuilder 在
     // layout 階段執行，callback 裡用 ref.watch 會逸出 build contract。
@@ -42,15 +42,34 @@ class MyReportScreen extends ConsumerWidget {
       for (final p in partners) p.id: _latestStageLabel(ref, p.id),
     };
 
-    // 案2：對象選擇器＋單對象熱度序列（averageScore/scoreDelta 維持
-    // Conversation 邏輯不動，只換 trendPoints 資料源）。
+    // 對象選擇器＋單對象歷史序列。折線、平均與 delta 必須全部來自同一位
+    // 對象的最近七次事件，不能混入 Conversation 全體摘要。
     final subjects = ref.watch(analysisSubjectsProvider);
-    final selectedSubject = ref.watch(selectedReportSubjectProvider) ??
-        (subjects.isEmpty ? null : subjects.first.conversationId);
+    final requestedSubject = ref.watch(selectedReportSubjectProvider);
+    final selectedSubject = requestedSubject != null &&
+            subjects
+                .any((subject) => subject.conversationId == requestedSubject)
+        ? requestedSubject
+        : (subjects.isEmpty ? null : subjects.first.conversationId);
+    final selectedSubjectName = selectedSubject == null
+        ? null
+        : subjects
+            .where((subject) => subject.conversationId == selectedSubject)
+            .firstOrNull
+            ?.name;
     final subjectPoints = selectedSubject == null
         ? const <HeatTrendPoint>[]
         : ref.watch(subjectHeatTrendProvider(selectedSubject));
+    final subjectSummary = HeatTrendSummary.fromPoints(subjectPoints);
     final practicePoints = ref.watch(practiceTemperatureTrendProvider);
+    // 歷史事件與 Conversation 最新快照是兩條合法資料流：只要任一條有資料，
+    // 報告就應顯示。舊邏輯只看 Conversation，會把「只有練習紀錄」或仍保留
+    // analyze 歷史的使用者誤判成全空。
+    final hasConversationReport = report.totalConversations > 0;
+    final hasInteractionHistory = subjects.isNotEmpty;
+    final hasPracticeHistory = practicePoints.isNotEmpty;
+    final hasAnyReport =
+        hasConversationReport || hasInteractionHistory || hasPracticeHistory;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
@@ -59,7 +78,7 @@ class MyReportScreen extends ConsumerWidget {
         const SizedBox(height: 24),
         if (subscription.isFreeUser)
           _lockedReportCard(context)
-        else if (isEmpty)
+        else if (!hasAnyReport)
           ..._emptyStateContents()
         else ...[
           Text(
@@ -70,51 +89,82 @@ class MyReportScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 4),
-          RichText(
-            text: TextSpan(
-              style: AppTypography.headlineLarge.copyWith(
-                color: AppColors.onBackgroundPrimary,
-              ),
-              children: [
-                const TextSpan(text: '最近 '),
-                TextSpan(
-                  text: '七次',
-                  style: TextStyle(color: AppColors.ctaStart),
-                ),
-                const TextSpan(text: ' 的節奏'),
-              ],
+          Text(
+            '把互動變化看懂',
+            style: AppTypography.headlineLarge.copyWith(
+              color: AppColors.onBackgroundPrimary,
+              fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 24),
-          if (subjects.isNotEmpty) ...[
-            ReportSubjectSelector(
-              subjects: subjects,
-              selectedConversationId: selectedSubject,
-              onSelected: (id) =>
-                  ref.read(selectedReportSubjectProvider.notifier).state = id,
+          const SizedBox(height: 8),
+          Text(
+            '真實對話與練習分開計算：先看整體方向，再回到單一對象找原因。',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.76),
+              height: 1.45,
+            ),
+          ),
+          if (hasConversationReport) ...[
+            const SizedBox(height: 20),
+            ReportOverviewCard(
+              averageScore: report.averageScore,
+              scoreDelta: report.scoreDelta,
+              totalConversations: report.totalConversations,
+              stageDistributions: report.stageDistributions,
+            ),
+          ],
+          if (hasConversationReport || hasInteractionHistory) ...[
+            const SizedBox(height: 28),
+            const _ReportStoryHeader(
+              number: '01',
+              title: '看一位對象的變化',
+              body: '切換對象後，只比較同一個人的近期分析，不把不同人的分數混在一起。',
             ),
             const SizedBox(height: 12),
+            if (subjects.isNotEmpty) ...[
+              ReportSubjectSelector(
+                subjects: subjects,
+                selectedConversationId: selectedSubject,
+                onSelected: (id) =>
+                    ref.read(selectedReportSubjectProvider.notifier).state = id,
+              ),
+              const SizedBox(height: 12),
+            ],
+            HeatTrendChart(
+              trendPoints: subjectSummary.points,
+              averageScore: subjectSummary.averageScore,
+              scoreDelta: subjectSummary.scoreDelta,
+              contextLabel: selectedSubjectName,
+              sampleCount: subjectSummary.sampleCount,
+              emptyMessage: '再多分析幾次，就能比較對方每次互動的投入度',
+            ),
           ],
-          HeatTrendChart(
-            // 空狀態拍板：<2 筆畫不出趨勢 → 空清單走引導文案。
-            trendPoints: subjectPoints.length >= 2
-                ? subjectPoints
-                : const <HeatTrendPoint>[],
-            averageScore: report.averageScore,
-            scoreDelta: report.scoreDelta,
-            emptyMessage: '再多分析幾次，就能比較對方每次互動的投入度',
+          const SizedBox(height: 28),
+          _ReportStoryHeader(
+            number:
+                hasConversationReport || hasInteractionHistory ? '02' : '01',
+            title: '看自己的練習成長',
+            body: '練習室量的是你的升溫能力，獨立於真實對話，不拿來猜對方心意。',
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           PracticeTemperatureChart(points: practicePoints),
-          const SizedBox(height: 16),
-          ConversationComparisonChart(
-            comparisons: report.comparisons,
-          ),
-          const SizedBox(height: 16),
-          StageDistributionChart(
-            distributions: report.stageDistributions,
-            totalConversations: report.totalConversations,
-          ),
+          if (hasConversationReport) ...[
+            const SizedBox(height: 28),
+            const _ReportStoryHeader(
+              number: '03',
+              title: '回到整體版圖',
+              body: '最後再比較各段對話的最新訊號，以及目前最常停留的互動階段。',
+            ),
+            const SizedBox(height: 12),
+            ConversationComparisonChart(
+              comparisons: report.comparisons,
+            ),
+            const SizedBox(height: 16),
+            StageDistributionChart(
+              distributions: report.stageDistributions,
+              totalConversations: report.totalConversations,
+            ),
+          ],
         ],
         const SizedBox(height: 32),
         // dogfood 決策 A：作戰板入口全 tier 可見，與上方報告 gating 無關
@@ -207,5 +257,69 @@ class MyReportScreen extends ConsumerWidget {
         ),
       ),
     ];
+  }
+}
+
+class _ReportStoryHeader extends StatelessWidget {
+  const _ReportStoryHeader({
+    required this.number,
+    required this.title,
+    required this.body,
+  });
+
+  final String number;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.ctaStart.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(
+              color: AppColors.ctaStart.withValues(alpha: 0.24),
+            ),
+          ),
+          child: Text(
+            number,
+            style: AppTypography.labelMedium.copyWith(
+              color: AppColors.ctaStart,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: AppTypography.titleLarge.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                body,
+                style: AppTypography.bodySmall.copyWith(
+                  color:
+                      AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
+                  height: 1.45,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }

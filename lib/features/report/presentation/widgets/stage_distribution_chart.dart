@@ -60,8 +60,14 @@ class StageDistributionChart extends StatelessWidget {
                   PieChartData(
                     centerSpaceRadius: 40,
                     sectionsSpace: 2,
+                    startDegreeOffset: -90,
                     sections: _buildSections(),
                   ),
+                  duration:
+                      MediaQuery.maybeOf(context)?.disableAnimations == true
+                          ? Duration.zero
+                          : const Duration(milliseconds: 480),
+                  curve: Curves.easeOutCubic,
                 ),
                 // Center text: total count + "對話"
                 Column(

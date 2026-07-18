@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -12,7 +13,8 @@ import '../../domain/entities/user_profile.dart';
 ///
 /// - empty → prominent CTA。
 /// - filled → compact summary（僅 render 有值欄位）。
-/// - loading / error → `SizedBox.shrink()`，避免報告頁閃爍。
+/// - loading → 與完成態同高的骨架，避免報告內容上下跳動。
+/// - error → 不阻擋下方報告。
 class AboutMeCard extends ConsumerWidget {
   const AboutMeCard({super.key});
 
@@ -21,7 +23,7 @@ class AboutMeCard extends ConsumerWidget {
     final state = ref.watch(userProfileControllerProvider);
 
     return state.when(
-      loading: () => const SizedBox.shrink(),
+      loading: () => const _AboutMeSkeleton(),
       error: (_, __) => const SizedBox.shrink(),
       data: (profile) {
         if (profile == null || profile.isEmpty) {
@@ -38,6 +40,37 @@ class AboutMeCard extends ConsumerWidget {
   }
 }
 
+class _AboutMeSkeleton extends StatelessWidget {
+  const _AboutMeSkeleton();
+
+  static void _noop() {}
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    return Semantics(
+      label: '關於我設定載入中',
+      child: ExcludeSemantics(
+        child: Skeletonizer(
+          enabled: true,
+          ignorePointers: true,
+          effect: reduceMotion
+              ? SolidColorEffect(
+                  color: AppColors.glassBorder.withValues(alpha: 0.78),
+                )
+              : ShimmerEffect(
+                  baseColor: AppColors.glassBorder.withValues(alpha: 0.72),
+                  highlightColor: Colors.white.withValues(alpha: 0.82),
+                  duration: const Duration(milliseconds: 1100),
+                ),
+          child: const _EmptyState(onTap: _noop),
+        ),
+      ),
+    );
+  }
+}
+
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.onTap});
 
@@ -46,50 +79,72 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GlassmorphicContainer(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            children: [
+              _ProfileIcon(icon: Icons.tune_rounded),
+              const SizedBox(width: 10),
+              Text(
+                '關於我',
+                style: AppTypography.titleMedium.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              const _ProfilePill(label: '影響 AI 建議'),
+            ],
+          ),
+          const SizedBox(height: 14),
           Text(
-            '關於我',
-            style: AppTypography.titleMedium.copyWith(
+            '讓 VibeSync 更像你的教練',
+            style: AppTypography.titleLarge.copyWith(
               color: AppColors.glassTextPrimary,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 6),
           Text(
-            '讓 VibeSync 更像你的教練',
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.glassTextPrimary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
             '填一下互動風格與練習目標，AI 會調整建議語氣，不會替你假裝成另一個人。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.glassTextSecondary,
+              height: 1.5,
             ),
           ),
-          const SizedBox(height: 14),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: ElevatedButton(
-              onPressed: onTap,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.ctaStart,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Expanded(
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _ProfilePill(label: '互動風格'),
+                    _ProfilePill(label: '練習目標'),
+                  ],
                 ),
               ),
-              child: const Text('開始設定'),
-            ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                onPressed: onTap,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.ctaStart,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 10,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+                child: const Text('開始設定'),
+              ),
+            ],
           ),
         ],
       ),
@@ -136,12 +191,14 @@ class _FilledState extends StatelessWidget {
     }
 
     return GlassmorphicContainer(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
+              _ProfileIcon(icon: Icons.person_outline_rounded),
+              const SizedBox(width: 10),
               Text(
                 '關於我',
                 style: AppTypography.titleMedium.copyWith(
@@ -165,9 +222,40 @@ class _FilledState extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           ...lines.expand(
             (w) => [w, const SizedBox(height: 4)],
+          ),
+          const SizedBox(height: 6),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.ctaStart.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: AppColors.ctaStart.withValues(alpha: 0.16),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 15,
+                  color: AppColors.ctaStart,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'AI 會參考這些設定調整建議語氣',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.glassTextSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -198,6 +286,51 @@ class _FilledState extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ProfileIcon extends StatelessWidget {
+  const _ProfileIcon({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        color: AppColors.ctaStart.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(11),
+      ),
+      alignment: Alignment.center,
+      child: Icon(icon, size: 18, color: AppColors.ctaStart),
+    );
+  }
+}
+
+class _ProfilePill extends StatelessWidget {
+  const _ProfilePill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.glassBorder.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: AppTypography.bodySmall.copyWith(
+          color: AppColors.glassTextSecondary,
+          fontWeight: FontWeight.w600,
+          fontSize: 11,
+        ),
       ),
     );
   }
