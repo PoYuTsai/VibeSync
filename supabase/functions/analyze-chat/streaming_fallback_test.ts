@@ -56,6 +56,9 @@ Deno.test("parseAnthropicSse ignores non-text events and done sentinel", async (
     'data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{}"}}',
     "",
     "event: content_block_delta",
+    'data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"private reasoning"}}',
+    "",
+    "event: content_block_delta",
     'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}',
     "",
     "data: [DONE]",
@@ -88,16 +91,17 @@ Deno.test("parseAnthropicSse fails on malformed Claude SSE data", async () => {
   assertEquals(error.code, "STREAM_PARSE_ERROR");
 });
 
-Deno.test("callClaudeStreaming sends streaming request with cached system prompt", async () => {
+Deno.test("callClaudeStreaming forwards Sonnet 5 thinking-disabled contract", async () => {
   let capturedInput = "";
   let capturedInit: RequestInit | undefined;
 
   const result = await callClaudeStreaming(
     {
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
       max_tokens: 1536,
       system: "system prompt",
       messages: [{ role: "user", content: "hello" }],
+      thinking: { type: "disabled" },
     },
     "test-api-key",
     {
@@ -122,6 +126,7 @@ Deno.test("callClaudeStreaming sends streaming request with cached system prompt
     model: string;
     max_tokens: number;
     stream: boolean;
+    thinking?: { type: string };
     system: Array<
       { type: string; text: string; cache_control: { type: string } }
     >;
@@ -136,9 +141,10 @@ Deno.test("callClaudeStreaming sends streaming request with cached system prompt
   assertEquals(headers["anthropic-beta"], "prompt-caching-2024-07-31");
   assertEquals(body.stream, true);
   assertEquals(body.system[0].cache_control.type, "ephemeral");
-  assertEquals(body.model, "claude-sonnet-4-6");
+  assertEquals(body.model, "claude-sonnet-5");
+  assertEquals(body.thinking, { type: "disabled" });
   assertEquals(body.messages[0].content, "hello");
-  assertEquals(result.model, "claude-sonnet-4-6");
+  assertEquals(result.model, "claude-sonnet-5");
   assertEquals(await collect(result.textStream), ["first", " second"]);
   assertEquals(result.usage, {
     inputTokens: 120,
@@ -146,6 +152,35 @@ Deno.test("callClaudeStreaming sends streaming request with cached system prompt
     cacheCreationTokens: 80,
     cacheReadTokens: 40,
   });
+});
+
+Deno.test("callClaudeStreaming omits thinking when caller leaves it unset", async () => {
+  const capturedBodies: Array<Record<string, unknown>> = [];
+  const result = await callClaudeStreaming(
+    {
+      model: "claude-sonnet-4-6",
+      max_tokens: 1536,
+      system: "system prompt",
+      messages: [{ role: "user", content: "hello" }],
+    },
+    "test-api-key",
+    {
+      timeout: 5000,
+      fetchImpl: async (_input, init) => {
+        capturedBodies.push(
+          JSON.parse(String(init?.body)) as Record<string, unknown>,
+        );
+        return new Response(
+          streamFromChunks(['data: {"type":"message_stop"}\n\n']),
+          { status: 200 },
+        );
+      },
+    },
+  );
+
+  assertEquals(await collect(result.textStream), []);
+  assertEquals(capturedBodies.length, 1);
+  assertEquals(capturedBodies[0].thinking, undefined);
 });
 
 Deno.test("callClaudeStreaming maps non-ok Anthropic responses", async () => {

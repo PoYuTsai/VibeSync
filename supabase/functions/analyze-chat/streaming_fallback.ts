@@ -16,6 +16,7 @@ export interface ClaudeStreamingRequest {
   max_tokens: number;
   system: string;
   messages: Array<{ role: string; content: ClaudeMessageContent }>;
+  thinking?: { type: "disabled" };
 }
 
 export interface ClaudeStreamingOptions {
@@ -286,6 +287,7 @@ export async function callClaudeStreaming(
         system: buildCachedSystemPrompt(request.system),
         messages: request.messages,
         stream: true,
+        ...(request.thinking ? { thinking: request.thinking } : {}),
       }),
       signal: controller.signal,
     });

@@ -7395,6 +7395,10 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       }
 
       let streamModel = selectedModel;
+      // Sonnet 5 enables adaptive thinking by default. This endpoint needs its
+      // entire fixed output budget for the user-visible NDJSON contract; hidden
+      // thinking can otherwise consume all 3200 tokens and emit zero text.
+      const streamThinkingDisabled = selectedModel === "claude-sonnet-5";
       const streamStartTime = Date.now();
       let streamTokenUsage = {
         inputTokens: 0,
@@ -7435,6 +7439,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         streamReplyStyleCount: streamReplyStyles.length,
         retrying: !!analysisRunId,
         chargedQuota: shouldCharge,
+        thinkingDisabled: streamThinkingDisabled,
       });
 
       return handleStreamAnalysisRequest({
@@ -7452,6 +7457,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
                 streamReplyStyles,
               ),
               messages: [{ role: "user", content: userMessageContent }],
+              thinking: streamThinkingDisabled
+                ? { type: "disabled" }
+                : undefined,
             },
             CLAUDE_API_KEY,
             { timeout: STREAM_CLAUDE_TIMEOUT_MS },
@@ -7540,6 +7548,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
               ...requestObservability,
               responseMode: "stream",
               analysisRunId: streamRun.id,
+              thinkingDisabled: streamThinkingDisabled,
+              maxOutputTokens: STREAM_ANALYZE_MAX_TOKENS,
             },
             responseBody: {
               streamRunStatus: "done",
@@ -7590,6 +7600,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
               ...requestObservability,
               responseMode: "stream",
               analysisRunId: streamRun.id,
+              thinkingDisabled: streamThinkingDisabled,
+              maxOutputTokens: STREAM_ANALYZE_MAX_TOKENS,
             },
             responseBody: {
               streamRunStatus: "failed",

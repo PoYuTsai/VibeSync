@@ -36,6 +36,13 @@ Deno.test("stream branch is gated and uses the stream ledger", async () => {
   assert(source.includes("requiredReplyStyles: streamReplyStyles"));
   assert(source.includes("const STREAM_ANALYZE_MAX_TOKENS = 3200"));
   assert(source.includes("max_tokens: STREAM_ANALYZE_MAX_TOKENS"));
+  assert(
+    source.includes(
+      'const streamThinkingDisabled = selectedModel === "claude-sonnet-5"',
+    ),
+  );
+  assert(source.includes("thinking: streamThinkingDisabled"));
+  assert(source.includes('? { type: "disabled" }'));
   assert(source.includes("const STREAM_CLAUDE_TIMEOUT_MS = 120000"));
   assert(source.includes("{ timeout: STREAM_CLAUDE_TIMEOUT_MS }"));
   assert(source.includes("streamStore.chargeRun({"));
