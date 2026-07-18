@@ -8,6 +8,7 @@ import {
   toRecommendationEvent,
 } from "./reframer.ts";
 import type { StreamStyle } from "./stream_events.ts";
+import { AiStreamingServiceError } from "./streaming_fallback.ts";
 
 export interface ClaudeTextStreamResult {
   model?: string;
@@ -253,6 +254,20 @@ function buildUpstreamError(
   error: unknown,
   chargedContentEmitted: boolean,
 ): StreamOutputEvent {
+  if (error instanceof AiStreamingServiceError) {
+    return buildErrorEvent(
+      error.code,
+      chargedContentEmitted
+        ? "分析串流中斷；已完成的內容會保留，請依提示決定是否重試。"
+        : "AI 分析暫時無法完成，請依提示決定是否重試。",
+      error.retryable,
+      {
+        upstreamCode: error.code,
+        afterContent: chargedContentEmitted,
+      },
+    );
+  }
+
   if (chargedContentEmitted) {
     return buildErrorEvent(
       "STREAM_INTERRUPTED_AFTER_CONTENT",

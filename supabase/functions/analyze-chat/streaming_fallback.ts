@@ -59,6 +59,18 @@ const DEFAULT_OPTIONS: ClaudeStreamingOptions = {
   fetchImpl: fetch,
 };
 
+const SONNET_5_MODEL = "claude-sonnet-5";
+const MODEL_FALLBACK_CHAIN: Readonly<Record<string, string | undefined>> = {
+  [SONNET_5_MODEL]: "claude-sonnet-4-6",
+  "claude-sonnet-4-6": "claude-haiku-4-5-20251001",
+};
+const PRE_STREAM_FALLBACK_CODES = new Set([
+  "NETWORK_ERROR",
+  "RATE_LIMITED",
+  "SERVER_ERROR",
+  "EMPTY_STREAM",
+]);
+
 function buildCachedSystemPrompt(systemPrompt: string) {
   return [
     {
@@ -73,15 +85,111 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
-function parseErrorMessage(errorText: string): string {
-  try {
-    const parsed = JSON.parse(errorText) as {
-      message?: string;
-      error?: { message?: string };
-    };
-    return parsed.error?.message || parsed.message || errorText;
-  } catch {
-    return errorText;
+function resolveThinkingContract(
+  originalModel: string,
+  currentModel: string,
+  callerThinking?: { type: "disabled" },
+): { type: "disabled" } | undefined {
+  // A thinking choice made for the primary model is not portable across the
+  // fallback chain. Sonnet 5 needs the endpoint's fixed visible-output budget,
+  // while 4.6 and Haiku should receive their native request contract.
+  if (currentModel !== originalModel) return undefined;
+  if (callerThinking) return callerThinking;
+  return currentModel === SONNET_5_MODEL ? { type: "disabled" } : undefined;
+}
+
+function preStreamFetchError(
+  error: unknown,
+  signal: AbortSignal,
+  timeoutMs: number,
+): AiStreamingServiceError {
+  if (signal.aborted || isAbortError(error)) {
+    return new AiStreamingServiceError(
+      "Claude streaming request timed out.",
+      "TIMEOUT",
+      true,
+      { timeoutMs },
+    );
+  }
+  return new AiStreamingServiceError(
+    "AI streaming service could not be reached.",
+    "NETWORK_ERROR",
+    true,
+  );
+}
+
+function httpResponseError(response: Response): AiStreamingServiceError {
+  if (response.status === 429) {
+    return new AiStreamingServiceError(
+      "AI rate limited the request. Please try again shortly.",
+      "RATE_LIMITED",
+      true,
+      { status: response.status },
+    );
+  }
+  if (response.status >= 500) {
+    return new AiStreamingServiceError(
+      "AI service is temporarily unavailable.",
+      "SERVER_ERROR",
+      true,
+      { status: response.status },
+    );
+  }
+  return new AiStreamingServiceError(
+    "AI streaming request was rejected.",
+    "API_ERROR",
+    false,
+    { status: response.status },
+  );
+}
+
+function nextFallbackModel(
+  currentModel: string,
+  error: AiStreamingServiceError,
+): string | undefined {
+  if (!PRE_STREAM_FALLBACK_CODES.has(error.code)) return undefined;
+  return MODEL_FALLBACK_CHAIN[currentModel];
+}
+
+function streamProviderFailure(errorType: unknown): AiStreamingServiceError {
+  if (errorType === "overloaded_error") {
+    return new AiStreamingServiceError(
+      "AI streaming service is temporarily overloaded.",
+      "STREAM_OVERLOADED",
+      true,
+    );
+  }
+  return new AiStreamingServiceError(
+    "AI streaming service reported an error.",
+    "STREAM_PROVIDER_ERROR",
+    false,
+  );
+}
+
+function terminalStopFailure(
+  stopReason: unknown,
+): AiStreamingServiceError | undefined {
+  switch (stopReason) {
+    case "max_tokens":
+      return new AiStreamingServiceError(
+        "AI streaming output reached its token limit.",
+        "STREAM_MAX_TOKENS",
+        true,
+      );
+    case "model_context_window_exceeded":
+      return new AiStreamingServiceError(
+        "AI streaming request exceeded the model context window.",
+        "STREAM_CONTEXT_WINDOW_EXCEEDED",
+        false,
+      );
+    case "refusal":
+      return new AiStreamingServiceError(
+        "AI declined to generate this response.",
+        "STREAM_MODEL_REFUSAL",
+        false,
+      );
+    default:
+      return undefined;
   }
 }
 
@@ -89,6 +197,7 @@ function extractStreamEvent(dataLines: string[]): {
   done: boolean;
   text?: string;
   usage?: Partial<ClaudeStreamTokenUsage>;
+  failure?: AiStreamingServiceError;
 } {
   const data = dataLines.join("\n").trim();
   if (!data || data === "[DONE]") {
@@ -97,7 +206,8 @@ function extractStreamEvent(dataLines: string[]): {
 
   let parsed: {
     type?: string;
-    delta?: { type?: string; text?: string };
+    delta?: { type?: string; text?: string; stop_reason?: unknown };
+    error?: { type?: unknown; message?: unknown };
     message?: {
       usage?: {
         input_tokens?: number;
@@ -115,11 +225,9 @@ function extractStreamEvent(dataLines: string[]): {
   };
   try {
     parsed = JSON.parse(data);
-  } catch (error) {
+  } catch {
     throw new AiStreamingServiceError(
-      error instanceof Error
-        ? `Failed to parse Claude stream event: ${error.message}`
-        : "Failed to parse Claude stream event.",
+      "AI streaming response could not be parsed.",
       "STREAM_PARSE_ERROR",
       false,
     );
@@ -133,13 +241,21 @@ function extractStreamEvent(dataLines: string[]): {
     return { done: false, text: parsed.delta.text };
   }
 
+  if (parsed.type === "error") {
+    return {
+      done: false,
+      failure: streamProviderFailure(parsed.error?.type),
+    };
+  }
+
   const rawUsage = parsed.type === "message_start"
     ? parsed.message?.usage
     : parsed.type === "message_delta"
     ? parsed.usage
     : undefined;
+  let usage: Partial<ClaudeStreamTokenUsage> | undefined;
   if (rawUsage) {
-    const usage: Partial<ClaudeStreamTokenUsage> = {};
+    usage = {};
     if (Number.isFinite(rawUsage.input_tokens)) {
       usage.inputTokens = Math.max(0, rawUsage.input_tokens ?? 0);
     }
@@ -158,8 +274,12 @@ function extractStreamEvent(dataLines: string[]): {
         rawUsage.cache_read_input_tokens ?? 0,
       );
     }
-    return { done: false, usage };
   }
+
+  const failure = parsed.type === "message_delta"
+    ? terminalStopFailure(parsed.delta?.stop_reason)
+    : undefined;
+  if (usage || failure) return { done: false, usage, failure };
 
   return { done: false };
 }
@@ -187,10 +307,11 @@ export async function* parseAnthropicSse(
     if (event.done) {
       return;
     }
+    if (event.usage) Object.assign(usage, event.usage);
+    if (event.failure) throw event.failure;
     if (event.text !== undefined) {
       yield event.text;
     }
-    if (event.usage) Object.assign(usage, event.usage);
   }
 
   function normalizeLine(line: string): string {
@@ -248,6 +369,7 @@ async function* cleanupOnStreamEnd(
       yield text;
     }
   } catch (error) {
+    if (error instanceof AiStreamingServiceError) throw error;
     if (isAbortError(error)) {
       throw new AiStreamingServiceError(
         "Claude streaming request timed out.",
@@ -256,7 +378,11 @@ async function* cleanupOnStreamEnd(
         { timeoutMs },
       );
     }
-    throw error;
+    throw new AiStreamingServiceError(
+      "AI streaming connection was interrupted.",
+      "STREAM_CONNECTION_ERROR",
+      true,
+    );
   } finally {
     cleanup();
   }
@@ -268,32 +394,13 @@ export async function callClaudeStreaming(
   options: Partial<ClaudeStreamingOptions> = {},
 ): Promise<StreamingClaudeResult> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), opts.timeout);
+  const originalModel = request.model;
+  let currentModel: string | undefined = originalModel;
+  const deadline = Date.now() + opts.timeout;
 
-  let response: Response;
-  try {
-    response = await opts.fetchImpl("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "prompt-caching-2024-07-31",
-      },
-      body: JSON.stringify({
-        model: request.model,
-        max_tokens: request.max_tokens,
-        system: buildCachedSystemPrompt(request.system),
-        messages: request.messages,
-        stream: true,
-        ...(request.thinking ? { thinking: request.thinking } : {}),
-      }),
-      signal: controller.signal,
-    });
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (isAbortError(error)) {
+  while (currentModel) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
       throw new AiStreamingServiceError(
         "Claude streaming request timed out.",
         "TIMEOUT",
@@ -301,65 +408,101 @@ export async function callClaudeStreaming(
         { timeoutMs: opts.timeout },
       );
     }
-    throw new AiStreamingServiceError(
-      error instanceof Error
-        ? error.message
-        : "Claude streaming request failed.",
-      "NETWORK_ERROR",
-      true,
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), remainingMs);
+    const thinking = resolveThinkingContract(
+      originalModel,
+      currentModel,
+      request.thinking,
     );
-  }
 
-  if (!response.ok) {
-    clearTimeout(timeoutId);
-    const errorText = await response.text();
-    const errorMessage = parseErrorMessage(errorText);
-    if (response.status === 429) {
-      throw new AiStreamingServiceError(
-        "AI rate limited the request. Please try again shortly.",
-        "RATE_LIMITED",
+    let response: Response;
+    try {
+      response = await opts.fetchImpl("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-beta": "prompt-caching-2024-07-31",
+        },
+        body: JSON.stringify({
+          model: currentModel,
+          max_tokens: request.max_tokens,
+          system: buildCachedSystemPrompt(request.system),
+          messages: request.messages,
+          stream: true,
+          ...(thinking ? { thinking } : {}),
+        }),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      clearTimeout(timeoutId);
+      const mapped = preStreamFetchError(
+        error,
+        controller.signal,
+        opts.timeout,
+      );
+      const nextModel = nextFallbackModel(currentModel, mapped);
+      if (nextModel) {
+        currentModel = nextModel;
+        continue;
+      }
+      throw mapped;
+    }
+
+    let preStreamError: AiStreamingServiceError | undefined;
+    if (controller.signal.aborted || Date.now() >= deadline) {
+      preStreamError = preStreamFetchError(
+        new DOMException("aborted", "AbortError"),
+        controller.signal,
+        opts.timeout,
+      );
+    } else if (!response.ok) {
+      preStreamError = httpResponseError(response);
+    } else if (response.status !== 200) {
+      preStreamError = httpResponseError(response);
+    } else if (!response.body) {
+      preStreamError = new AiStreamingServiceError(
+        "Claude streaming response did not include a body.",
+        "EMPTY_STREAM",
         true,
-        { status: response.status },
       );
     }
-    if (response.status >= 500) {
-      throw new AiStreamingServiceError(
-        "AI service is temporarily unavailable.",
-        "SERVER_ERROR",
-        true,
-        { status: response.status },
-      );
+
+    if (preStreamError) {
+      clearTimeout(timeoutId);
+      if (response.body) {
+        await response.body.cancel().catch(() => undefined);
+      }
+      const nextModel = nextFallbackModel(currentModel, preStreamError);
+      if (nextModel) {
+        currentModel = nextModel;
+        continue;
+      }
+      throw preStreamError;
     }
-    throw new AiStreamingServiceError(
-      `API Error: ${response.status} - ${errorMessage}`,
-      "API_ERROR",
-      false,
-      { status: response.status },
-    );
+
+    const usage: ClaudeStreamTokenUsage = {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+    };
+    return {
+      model: currentModel,
+      textStream: cleanupOnStreamEnd(
+        parseAnthropicSse(response.body!, usage),
+        () => clearTimeout(timeoutId),
+        opts.timeout,
+      ),
+      usage,
+    };
   }
 
-  if (!response.body) {
-    clearTimeout(timeoutId);
-    throw new AiStreamingServiceError(
-      "Claude streaming response did not include a body.",
-      "EMPTY_STREAM",
-      false,
-    );
-  }
-
-  const usage: ClaudeStreamTokenUsage = {
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheCreationTokens: 0,
-    cacheReadTokens: 0,
-  };
-  return {
-    model: request.model,
-    textStream: cleanupOnStreamEnd(
-      parseAnthropicSse(response.body, usage),
-      () => clearTimeout(timeoutId),
-      opts.timeout,
-    ),
-    usage,
-  };
+  throw new AiStreamingServiceError(
+    "AI streaming service is temporarily unavailable.",
+    "ALL_MODELS_FAILED",
+    true,
+  );
 }

@@ -8,6 +8,7 @@ import type {
   StreamRecommendationForCharge,
 } from "./reframer.ts";
 import type { StreamStyle } from "./stream_events.ts";
+import { AiStreamingServiceError } from "./streaming_fallback.ts";
 
 function line(value: Record<string, unknown>): string {
   return `${JSON.stringify(value)}\n`;
@@ -325,6 +326,40 @@ Deno.test("stream handler reports pre-recommendation Claude failure without char
   assertEquals(events.at(-1)?.message, "分析暫時無法完成，請稍後重新分析。");
 });
 
+Deno.test("stream handler preserves sanitized upstream code and retryability", async () => {
+  const failedCodes: string[] = [];
+  const response = handleStreamAnalysisRequest(createOptions({
+    callClaude: () =>
+      Promise.resolve({
+        textStream: failingChunks(
+          [],
+          new AiStreamingServiceError(
+            "provider detail must not surface",
+            "STREAM_MODEL_REFUSAL",
+            false,
+          ),
+        ),
+      }),
+    markFailed: (code) => {
+      failedCodes.push(code);
+    },
+  }));
+
+  const events = await collectEvents(response);
+  const terminal = events.at(-1);
+
+  assertEquals(failedCodes, ["STREAM_MODEL_REFUSAL"]);
+  assertEquals(terminal?.type, "analysis.error");
+  assertEquals(terminal?.code, "STREAM_MODEL_REFUSAL");
+  assertEquals(terminal?.recoverable, false);
+  assertEquals(terminal?.upstreamCode, "STREAM_MODEL_REFUSAL");
+  assertEquals(terminal?.afterContent, false);
+  assertEquals(
+    JSON.stringify(terminal).includes("provider detail must not surface"),
+    false,
+  );
+});
+
 Deno.test("stream handler does not leak decision content when decision charge fails", async () => {
   let chargeCalls = 0;
   const failedCodes: string[] = [];
@@ -466,7 +501,10 @@ Deno.test("stream handler does not replay a thin precharged recommendation to th
   );
   // 只有一張推薦卡，且是回填後的全文版——不得有空 message 的瘦卡外流。
   assertEquals(recommendations.length, 1);
-  assertEquals(recommendations[0].message, "吃了什麼好料？\n夜市幫我吃份地瓜球");
+  assertEquals(
+    recommendations[0].message,
+    "吃了什麼好料？\n夜市幫我吃份地瓜球",
+  );
   assertEquals(events.at(-1)?.type, "analysis.done");
 });
 

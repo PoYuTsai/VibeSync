@@ -7398,7 +7398,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       // Sonnet 5 enables adaptive thinking by default. This endpoint needs its
       // entire fixed output budget for the user-visible NDJSON contract; hidden
       // thinking can otherwise consume all 3200 tokens and emit zero text.
-      const streamThinkingDisabled = selectedModel === "claude-sonnet-5";
+      let streamThinkingDisabled = selectedModel === "claude-sonnet-5";
       const streamStartTime = Date.now();
       let streamTokenUsage = {
         inputTokens: 0,
@@ -7465,6 +7465,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             { timeout: STREAM_CLAUDE_TIMEOUT_MS },
           );
           streamModel = claude.model;
+          streamThinkingDisabled = claude.model === "claude-sonnet-5";
           streamTokenUsage = claude.usage;
           streamUsage.model = claude.model;
           return claude;
