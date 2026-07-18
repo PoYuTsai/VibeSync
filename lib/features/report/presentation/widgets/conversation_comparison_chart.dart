@@ -38,7 +38,7 @@ class ConversationComparisonChart extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '只反映這次互動中的文字訊號，不代表關係進度。',
+            '每個對象只取最新一筆；長條越長，代表這次文字投入訊號越多。',
             style: AppTypography.caption.copyWith(
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
               height: 1.4,
@@ -92,57 +92,78 @@ class _ConversationBar extends StatelessWidget {
     final score = comparison.score.clamp(0, 100);
     final barColor = EnthusiasmLevel.fromScore(score).color;
     final fraction = score / 100.0;
+    final animationDuration =
+        MediaQuery.maybeOf(context)?.disableAnimations == true
+            ? Duration.zero
+            : const Duration(milliseconds: 520);
 
-    return Row(
-      children: [
-        // Conversation name (fixed width, left-aligned)
-        SizedBox(
-          width: 72,
-          child: Text(
-            comparison.name,
-            style: AppTypography.bodySmall.copyWith(
-              color: Colors.white.withValues(alpha: 0.92),
+    return Semantics(
+      label: '${comparison.name}，最新投入度 $score 分',
+      child: Row(
+        children: [
+          // Conversation name (fixed width, left-aligned)
+          SizedBox(
+            width: 72,
+            child: Text(
+              comparison.name,
+              style: AppTypography.bodySmall.copyWith(
+                color: Colors.white.withValues(alpha: 0.92),
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
           ),
-        ),
-        const SizedBox(width: 8),
-        // Animated bar
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final barWidth = constraints.maxWidth * fraction;
-              return Align(
-                alignment: Alignment.centerLeft,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 600),
-                  curve: Curves.easeOutCubic,
-                  width: barWidth.clamp(4.0, constraints.maxWidth),
-                  height: 20,
-                  decoration: BoxDecoration(
-                    color: barColor,
-                    borderRadius: BorderRadius.circular(10),
+          const SizedBox(width: 8),
+          // Animated bar
+          Expanded(
+            child: SizedBox(
+              height: 18,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.07),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
-        ),
-        const SizedBox(width: 8),
-        // Score number (fixed width, right-aligned)
-        SizedBox(
-          width: 32,
-          child: Text(
-            '$score',
-            textAlign: TextAlign.right,
-            style: AppTypography.bodySmall.copyWith(
-              color: barColor,
-              fontWeight: FontWeight.bold,
+                  AnimatedFractionallySizedBox(
+                    duration: animationDuration,
+                    curve: Curves.easeOutCubic,
+                    alignment: Alignment.centerLeft,
+                    widthFactor: fraction.clamp(0.04, 1.0).toDouble(),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: barColor,
+                        borderRadius: BorderRadius.circular(999),
+                        boxShadow: [
+                          BoxShadow(
+                            color: barColor.withValues(alpha: 0.22),
+                            blurRadius: 8,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
+          const SizedBox(width: 8),
+          // Score number (fixed width, right-aligned)
+          SizedBox(
+            width: 32,
+            child: Text(
+              '$score',
+              textAlign: TextAlign.right,
+              style: AppTypography.bodySmall.copyWith(
+                color: barColor,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

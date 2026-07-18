@@ -18,6 +18,8 @@ class HeatTrendChart extends StatelessWidget {
   final double averageScore;
   final double scoreDelta;
   final String emptyMessage;
+  final String? contextLabel;
+  final int? sampleCount;
 
   const HeatTrendChart({
     super.key,
@@ -25,6 +27,8 @@ class HeatTrendChart extends StatelessWidget {
     required this.averageScore,
     required this.scoreDelta,
     this.emptyMessage = '尚無數據',
+    this.contextLabel,
+    this.sampleCount,
   });
 
   @override
@@ -45,7 +49,7 @@ class HeatTrendChart extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          trendPoints.isEmpty ? _buildEmptyState() : _buildChart(),
+          trendPoints.length < 2 ? _buildEmptyState() : _buildChart(context),
         ],
       ),
     );
@@ -56,62 +60,83 @@ class HeatTrendChart extends StatelessWidget {
   // ---------------------------------------------------------------------------
 
   Widget _buildHeader() {
-    final now = DateTime.now();
-    final monthLabel = '${now.month} \u6708'; // e.g. "4 月"
+    final count = sampleCount ?? trendPoints.length;
 
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Left: label + average + delta
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '每次互動投入度',
-                style: TextStyle(
-                  fontSize: 12,
-                  color:
-                      AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
+        Row(
+          children: [
+            Text(
+              '每次互動投入度',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
+              ),
+            ),
+            const Spacer(),
+            if (contextLabel != null && contextLabel!.trim().isNotEmpty)
+              Container(
+                constraints: const BoxConstraints(maxWidth: 150),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.ctaStart.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: AppColors.ctaStart.withValues(alpha: 0.22),
+                  ),
+                ),
+                child: Text(
+                  contextLabel!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ctaStart,
+                  ),
                 ),
               ),
-              const SizedBox(height: 4),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Text(
-                    '全部平均 ${averageScore.round()}',
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  _buildDeltaBadge(),
-                ],
-              ),
-            ],
-          ),
+          ],
         ),
-
-        // Right: month pill
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: AppColors.ctaStart,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            monthLabel,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+        const SizedBox(height: 6),
+        if (sampleCount != null && count == 0)
+          const Text(
+            '等待趨勢資料',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
               color: Colors.white,
             ),
+          )
+        else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                '${sampleCount == null ? '全部平均' : '近期平均'} ${averageScore.round()}',
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (sampleCount == null || count >= 2) _buildDeltaBadge(),
+            ],
           ),
-        ),
+        if (count > 0) ...[
+          const SizedBox(height: 4),
+          Text(
+            count >= 7 ? '顯示最近 7 次分析' : '已累積 $count 次分析',
+            style: TextStyle(
+              fontSize: 11,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.62),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -148,15 +173,33 @@ class HeatTrendChart extends StatelessWidget {
 
   Widget _buildEmptyState() {
     return SizedBox(
-      height: 180,
+      height: 150,
       child: Center(
-        child: Text(
-          emptyMessage,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 14,
-            color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: AppColors.ctaStart.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                Icons.show_chart_rounded,
+                color: AppColors.ctaStart.withValues(alpha: 0.88),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              emptyMessage,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -166,7 +209,7 @@ class HeatTrendChart extends StatelessWidget {
   // Chart
   // ---------------------------------------------------------------------------
 
-  Widget _buildChart() {
+  Widget _buildChart(BuildContext context) {
     final sorted = List<HeatTrendPoint>.from(trendPoints)
       ..sort((a, b) => a.date.compareTo(b.date));
 
@@ -196,7 +239,32 @@ class HeatTrendChart extends StatelessWidget {
           borderData: FlBorderData(show: false),
           lineBarsData: [_lineBarData(spots)],
           lineTouchData: _touchData(sorted),
+          extraLinesData: ExtraLinesData(
+            horizontalLines: [
+              HorizontalLine(
+                y: averageScore.clamp(0, 100).toDouble(),
+                color: Colors.white.withValues(alpha: 0.22),
+                strokeWidth: 1,
+                dashArray: [4, 5],
+                label: HorizontalLineLabel(
+                  show: true,
+                  alignment: Alignment.topRight,
+                  padding: const EdgeInsets.only(right: 4, bottom: 3),
+                  style: TextStyle(
+                    color:
+                        AppColors.onBackgroundSecondary.withValues(alpha: 0.58),
+                    fontSize: 9,
+                  ),
+                  labelResolver: (_) => '平均',
+                ),
+              ),
+            ],
+          ),
         ),
+        duration: MediaQuery.maybeOf(context)?.disableAnimations == true
+            ? Duration.zero
+            : const Duration(milliseconds: 480),
+        curve: Curves.easeOutCubic,
       ),
     );
   }
@@ -212,11 +280,12 @@ class HeatTrendChart extends StatelessWidget {
       dotData: FlDotData(
         show: true,
         getDotPainter: (spot, percent, bar, index) {
+          final isLatest = index == spots.length - 1;
           return FlDotCirclePainter(
-            radius: 4,
-            color: Colors.white,
+            radius: isLatest ? 5 : 3.5,
+            color: isLatest ? AppColors.ctaStart : Colors.white,
             strokeWidth: 2,
-            strokeColor: AppColors.ctaStart,
+            strokeColor: isLatest ? Colors.white : AppColors.ctaStart,
           );
         },
       ),
@@ -303,8 +372,11 @@ class HeatTrendChart extends StatelessWidget {
             final idx = spot.spotIndex;
             final point = idx < sorted.length ? sorted[idx] : null;
             final name = point?.conversationName ?? '';
+            final date =
+                point == null ? '' : DateFormat('M/dd').format(point.date);
+            final suffix = name.trim().isEmpty ? date : '$name · $date';
             return LineTooltipItem(
-              '${spot.y.toInt()}\n$name',
+              '${spot.y.toInt()}\n$suffix',
               const TextStyle(
                 color: Colors.white,
                 fontSize: 12,

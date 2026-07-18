@@ -13,6 +13,56 @@ class HeatTrendPoint {
   });
 }
 
+/// 將任一投入度時間序列整理成可讀的「近期趨勢」。
+///
+/// 報告只畫最近 [maxPoints] 次，避免長期資料把手機圖表擠成噪音；delta 是
+/// 最近一次相對前一次，而不是混用全體對話的前後半平均。
+class HeatTrendSummary {
+  final List<HeatTrendPoint> points;
+  final double averageScore;
+  final double scoreDelta;
+
+  const HeatTrendSummary({
+    required this.points,
+    required this.averageScore,
+    required this.scoreDelta,
+  });
+
+  factory HeatTrendSummary.fromPoints(
+    List<HeatTrendPoint> source, {
+    int maxPoints = 7,
+  }) {
+    assert(maxPoints > 0);
+    final sorted = List<HeatTrendPoint>.from(source)
+      ..sort((a, b) => a.date.compareTo(b.date));
+    final recent = sorted.length > maxPoints
+        ? sorted.sublist(sorted.length - maxPoints)
+        : sorted;
+    final immutable = List<HeatTrendPoint>.unmodifiable(recent);
+    if (immutable.isEmpty) {
+      return const HeatTrendSummary(
+        points: [],
+        averageScore: 0,
+        scoreDelta: 0,
+      );
+    }
+    final average = immutable.fold<int>(0, (sum, point) => sum + point.score) /
+        immutable.length;
+    final delta = immutable.length < 2
+        ? 0.0
+        : (immutable.last.score - immutable[immutable.length - 2].score)
+            .toDouble();
+    return HeatTrendSummary(
+      points: immutable,
+      averageScore: average,
+      scoreDelta: delta,
+    );
+  }
+
+  int get sampleCount => points.length;
+  int? get latestScore => points.isEmpty ? null : points.last.score;
+}
+
 /// 對話比較項目
 class ConversationComparison {
   final String name;
