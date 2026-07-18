@@ -444,9 +444,19 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
+      expect(
+        find.byKey(const ValueKey('ocr-swipe-tutorial-static-legend')),
+        findsOneWidget,
+      );
+
       // 第 0 則「在幹嘛」初始她說，右滑改我說。
       await tester.drag(find.text('在幹嘛'), const Offset(400, 0));
       await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('ocr-swipe-tutorial-static-legend')),
+        findsNothing,
+      );
 
       await _tapVisible(tester, find.text('確認本次內容'));
 
@@ -494,10 +504,20 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
+      expect(
+        find.byKey(const ValueKey('ocr-swipe-tutorial-static-legend')),
+        findsOneWidget,
+      );
+
       // 第 0 則「在幹嘛」初始她說，右滑一小段（已過 touch slop 但未過切換門檻）
       // 應彈回、不切換。
       await tester.drag(find.text('在幹嘛'), const Offset(40, 0));
       await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('ocr-swipe-tutorial-static-legend')),
+        findsOneWidget,
+      );
 
       await _tapVisible(tester, find.text('確認本次內容'));
 
@@ -648,7 +668,7 @@ void main() {
       );
     });
 
-    testWidgets('每次開啟進場 350ms 後依序播右滑我說、左滑她說，播完歸零', (tester) async {
+    testWidgets('每次開啟進場 650ms 後播放 3.6 秒雙向示範，播完留下靜態圖例', (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(
         buildDialogHost(
@@ -661,13 +681,13 @@ void main() {
       await tester.pump();
       await tester.pump(); // flush post-frame autoplay scheduling
 
-      // Dialog 先完成進場；350ms 前不可偷跑。
-      await tester.pump(const Duration(milliseconds: 349));
+      // Dialog 先完成進場；650ms 前不可偷跑，讓使用者先看清內容。
+      await tester.pump(const Duration(milliseconds: 649));
       expect(_tutorialShiftX(tester), 0);
 
       // Timer 到點後先走右滑 phase。
       await tester.pump(const Duration(milliseconds: 1));
-      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump(const Duration(seconds: 1));
       expect(_tutorialShiftX(tester), greaterThan(0));
       expect(
         _tutorialHintOpacity(tester, 'ocr-swipe-tutorial-right-hint'),
@@ -678,8 +698,8 @@ void main() {
         0,
       );
 
-      // 後半段切到左滑 phase，方向與文案一起換。
-      await tester.pump(const Duration(milliseconds: 900));
+      // 1.8 秒時仍看得到完整示範；後半段才切到左滑 phase。
+      await tester.pump(const Duration(milliseconds: 1800));
       expect(_tutorialShiftX(tester), lessThan(0));
       expect(
         _tutorialHintOpacity(tester, 'ocr-swipe-tutorial-right-hint'),
@@ -693,6 +713,10 @@ void main() {
       // 一次性：pumpAndSettle 必收斂（零無限 repeat），播完位移歸零。
       await tester.pumpAndSettle();
       expect(_tutorialShiftX(tester), 0);
+      expect(
+        find.byKey(const ValueKey('ocr-swipe-tutorial-static-legend')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('關閉再開仍會自動播，問號也可手動重播', (tester) async {
@@ -707,8 +731,8 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pump();
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 350));
-      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump(const Duration(milliseconds: 650));
+      await tester.pump(const Duration(seconds: 1));
       expect(_tutorialShiftX(tester), greaterThan(0));
       await tester.pumpAndSettle();
 
@@ -717,8 +741,8 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pump();
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 350));
-      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump(const Duration(milliseconds: 650));
+      await tester.pump(const Duration(milliseconds: 400));
       expect(_tutorialShiftX(tester), greaterThan(0));
       await tester.pumpAndSettle();
       expect(find.byTooltip('重播滑動教學'), findsOneWidget);
@@ -727,7 +751,7 @@ void main() {
         find.byKey(const ValueKey('ocr-swipe-tutorial-replay')),
       );
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump(const Duration(milliseconds: 400));
       expect(_tutorialShiftX(tester), greaterThan(0));
       expect(
         _tutorialHintOpacity(tester, 'ocr-swipe-tutorial-right-hint'),
@@ -748,12 +772,16 @@ void main() {
 
       await tester.tap(find.text('Open Dialog'));
       await tester.pump();
-      // 在 350ms timer 仍在途時先真實滑動。
+      // 在 650ms timer 仍在途時先真實滑動。
       await tester.drag(find.text('在幹嘛'), const Offset(40, 0));
       await tester.pumpAndSettle();
       await tester.pump(const Duration(seconds: 2));
 
       expect(_tutorialShiftX(tester), 0);
+      expect(
+        find.byKey(const ValueKey('ocr-swipe-tutorial-static-legend')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('首次進場延遲內一鍵改為對方也會取消自動教學', (tester) async {
@@ -778,7 +806,7 @@ void main() {
       expect(_tutorialShiftX(tester), 0);
     });
 
-    testWidgets('reduce-motion 不自動位移，問號改顯示靜態雙向圖例', (tester) async {
+    testWidgets('reduce-motion 不自動位移，進場直接顯示靜態雙向圖例', (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(
         buildDialogHost(
@@ -792,12 +820,6 @@ void main() {
       await tester.pumpAndSettle();
       await tester.pump(const Duration(seconds: 2));
       expect(_tutorialShiftX(tester), 0);
-
-      await tester.tap(
-        find.byKey(const ValueKey('ocr-swipe-tutorial-replay')),
-      );
-      await tester.pump();
-      expect(_tutorialShiftX(tester), 0);
       expect(
         find.byKey(const ValueKey('ocr-swipe-tutorial-static-legend')),
         findsOneWidget,
@@ -806,7 +828,7 @@ void main() {
       expect(find.text('左滑 → 她說'), findsWidgets);
     });
 
-    testWidgets('350ms 延遲期間關閉 dialog 會取消 autoplay timer', (tester) async {
+    testWidgets('650ms 延遲期間關閉 dialog 會取消 autoplay timer', (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(
         buildDialogHost(
@@ -820,7 +842,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
-      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(seconds: 1));
 
       expect(tester.takeException(), isNull);
       expect(find.byType(ScreenshotRecognitionDialog), findsNothing);

@@ -71,7 +71,7 @@ class _ScreenshotRecognitionDialogState
   String? _editValidationMessage;
   bool _confirmedSamePartner = false;
 
-  static const _swipeTutorialEntryDelay = Duration(milliseconds: 350);
+  static const _swipeTutorialEntryDelay = Duration(milliseconds: 650);
 
   // 滑動教學：每次 dialog 進場後延遲播放一次（零 repeat），
   // 播完停在原位。問號按鈕可手動重播。
@@ -83,6 +83,7 @@ class _ScreenshotRecognitionDialogState
   bool _swipeTutorialAutoPlayScheduled = false;
   bool _swipeTutorialAutoPlaySuppressed = false;
   bool _showStaticSwipeTutorialLegend = false;
+  bool _swipeTutorialLearned = false;
 
   @override
   void initState() {
@@ -100,7 +101,7 @@ class _ScreenshotRecognitionDialogState
 
     _swipeTutorialController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1800),
+      duration: const Duration(milliseconds: 3600),
     );
     // 右去右回、短暫停頓、左去左回各一趟，首尾都是 0。兩側各留一小段
     // 定點時間，讓方向文案與位移可以被看清楚。
@@ -154,6 +155,17 @@ class _ScreenshotRecognitionDialogState
       TweenSequenceItem(tween: ConstantTween(1.0), weight: 38),
       TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 6),
     ]).animate(_swipeTutorialController);
+    _swipeTutorialController.addStatusListener((status) {
+      if (status != AnimationStatus.completed ||
+          !mounted ||
+          _swipeTutorialLearned ||
+          _showStaticSwipeTutorialLegend) {
+        return;
+      }
+      setState(() {
+        _showStaticSwipeTutorialLegend = true;
+      });
+    });
   }
 
   @override
@@ -168,6 +180,9 @@ class _ScreenshotRecognitionDialogState
         _swipeTutorialController
           ..stop()
           ..value = 0;
+      }
+      if (!_swipeTutorialLearned) {
+        _showStaticSwipeTutorialLegend = true;
       }
     }
 
@@ -242,6 +257,25 @@ class _ScreenshotRecognitionDialogState
   }
 
   void _cancelSwipeTutorialForInteraction() {
+    _swipeTutorialAutoPlaySuppressed = true;
+    _swipeTutorialAutoPlayTimer?.cancel();
+    _swipeTutorialAutoPlayTimer = null;
+    if (_swipeTutorialController.isAnimating ||
+        _swipeTutorialController.value != 0) {
+      _swipeTutorialController
+        ..stop()
+        ..value = 0;
+    }
+    final shouldShowLegend = !_swipeTutorialLearned;
+    if (_showStaticSwipeTutorialLegend != shouldShowLegend) {
+      setState(() {
+        _showStaticSwipeTutorialLegend = shouldShowLegend;
+      });
+    }
+  }
+
+  void _completeSwipeTutorialInteraction() {
+    _swipeTutorialLearned = true;
     _swipeTutorialAutoPlaySuppressed = true;
     _swipeTutorialAutoPlayTimer?.cancel();
     _swipeTutorialAutoPlayTimer = null;
@@ -534,6 +568,7 @@ class _ScreenshotRecognitionDialogState
       },
       confirmDismiss: (direction) async {
         // 絕對方向映射，與目前側別無關：右滑一律我說、左滑一律她說。
+        _completeSwipeTutorialInteraction();
         _setMessageSide(index, direction == DismissDirection.startToEnd);
         // 永遠回 false → 不真的移除，泡泡彈回後由 AnimatedAlign 滑到正確側。
         return false;
@@ -558,7 +593,8 @@ class _ScreenshotRecognitionDialogState
   }
 
   /// 第一則泡泡包滑動教學動畫：水平位移跟著 [_swipeTutorialShift]，右／左
-  /// 兩個 phase 各自顯示明確文案；播完位移歸零、提示全透明。
+  /// 兩個 phase 各自顯示明確文案；播完位移歸零，並留下靜態雙向圖例，
+  /// 直到使用者第一次真的滑過切換門檻。
   Widget _buildTutorialBubble(_EditableRecognizedMessage message) {
     return Stack(
       clipBehavior: Clip.none,
