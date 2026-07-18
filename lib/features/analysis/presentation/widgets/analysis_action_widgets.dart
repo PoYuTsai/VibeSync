@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -31,15 +33,51 @@ Widget? buildAnalysisFloatingOverlay({
   return null;
 }
 
+/// Pins the analysis shortcut to the vertical center of the visible body.
+///
+/// Scaffold's default `endFloat` location is bottom-right. That makes a
+/// persistent shortcut look like a second bottom CTA and lets it drift away
+/// from the messages the user is reviewing. This location uses the actual
+/// content bounds, including keyboard and bottom-sheet insets, so the action
+/// stays centered in the currently visible viewport.
+class AnalysisSideCenterFabLocation extends FloatingActionButtonLocation {
+  const AnalysisSideCenterFabLocation({this.edgeInset = 12});
+
+  final double edgeInset;
+
+  @override
+  Offset getOffset(ScaffoldPrelayoutGeometry scaffoldGeometry) {
+    final scaffoldSize = scaffoldGeometry.scaffoldSize;
+    final actionSize = scaffoldGeometry.floatingActionButtonSize;
+    final visibleTop = scaffoldGeometry.contentTop;
+    final keyboardTop = scaffoldSize.height - scaffoldGeometry.minInsets.bottom;
+    final visibleBottom = math.max(
+      visibleTop,
+      math.min(scaffoldGeometry.contentBottom, keyboardTop),
+    );
+    final availableHeight = math.max(0.0, visibleBottom - visibleTop);
+    final x = math.max(
+      0.0,
+      scaffoldSize.width - actionSize.width - edgeInset,
+    );
+    final y =
+        visibleTop + math.max(0.0, availableHeight - actionSize.height) / 2;
+
+    return Offset(x, y);
+  }
+}
+
 /// Keeps the primary analyze action reachable while the user reviews a long
 /// conversation preview.
 ///
-/// The extended pill is deliberate: a circle works for a familiar icon, but
-/// 「開始分析」is a decision and needs a readable label. The button floats over
-/// the scroll viewport, so the user does not have to hunt for the action after
-/// checking a long imported conversation.
-class FloatingAnalysisActionButton extends StatelessWidget {
+/// This compact analysis orb is a shortcut, not a second full-width CTA.
+///
+/// The dark core keeps the warm orange as a signal instead of a large flat
+/// fill. A single entrance scan establishes affordance without leaving a
+/// distracting ticker running over the conversation.
+class FloatingAnalysisActionButton extends StatefulWidget {
   static const buttonKey = ValueKey('floating-analysis-action');
+  static const orbKey = ValueKey('floating-analysis-orb');
 
   final VoidCallback? onPressed;
 
@@ -49,48 +87,189 @@ class FloatingAnalysisActionButton extends StatelessWidget {
   });
 
   @override
+  State<FloatingAnalysisActionButton> createState() =>
+      _FloatingAnalysisActionButtonState();
+}
+
+class _FloatingAnalysisActionButtonState
+    extends State<FloatingAnalysisActionButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  bool? _reduceMotion;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 720),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (_reduceMotion == reduceMotion) return;
+    _reduceMotion = reduceMotion;
+    if (reduceMotion) {
+      _controller
+        ..stop()
+        ..value = 1;
+    } else if (_controller.value == 0) {
+      _controller.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeOutCubic,
-      tween: Tween<double>(begin: 0, end: 1),
-      builder: (context, value, child) => Opacity(
-        opacity: value,
-        child: Transform.scale(
-          alignment: Alignment.bottomRight,
-          scale: 0.92 + (0.08 * value),
-          child: child,
-        ),
-      ),
-      child: Semantics(
-        button: true,
-        label: '使用目前對話開始分析',
-        child: ExcludeSemantics(
-          child: FilledButton.icon(
-            key: buttonKey,
-            onPressed: onPressed,
-            icon: const Icon(Icons.auto_awesome_rounded, size: 19),
-            label: Text(
-              '開始分析',
-              style: AppTypography.titleSmall.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(132, 52),
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              backgroundColor: AppColors.ctaStart,
-              foregroundColor: Colors.white,
-              disabledBackgroundColor:
-                  AppColors.ctaStart.withValues(alpha: 0.46),
-              disabledForegroundColor: Colors.white.withValues(alpha: 0.72),
-              elevation: 9,
-              shadowColor: Colors.black.withValues(alpha: 0.38),
-              shape: StadiumBorder(
-                side: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.22),
+    final enabled = widget.onPressed != null;
+
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: '使用目前對話開始分析',
+      child: ExcludeSemantics(
+        child: SizedBox.square(
+          key: FloatingAnalysisActionButton.orbKey,
+          dimension: 72,
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              final value = _controller.value;
+              final entrance = const Interval(
+                0,
+                0.52,
+                curve: Curves.easeOutCubic,
+              ).transform(value);
+              final scan = const Interval(
+                0.08,
+                1,
+                curve: Curves.easeOutCubic,
+              ).transform(value);
+
+              return Opacity(
+                opacity: 0.18 + (0.82 * entrance),
+                child: Transform.scale(
+                  scale: 0.88 + (0.12 * entrance),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    clipBehavior: Clip.none,
+                    children: [
+                      Transform.scale(
+                        scale: 0.82 + (0.32 * scan),
+                        child: Opacity(
+                          opacity: (1 - scan) * (enabled ? 0.48 : 0.18),
+                          child: Container(
+                            width: 68,
+                            height: 68,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: AppColors.ctaStart,
+                                width: 1.2,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Opacity(
+                        opacity: enabled ? 1 : 0.34,
+                        child: Transform.rotate(
+                          angle: -0.52 * (1 - entrance),
+                          child: Container(
+                            width: 60,
+                            height: 60,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: SweepGradient(
+                                colors: [
+                                  AppColors.ctaStart.withValues(alpha: 0.08),
+                                  AppColors.ctaStart.withValues(alpha: 0.92),
+                                  AppColors.bokehYellow.withValues(alpha: 0.82),
+                                  AppColors.ctaStart.withValues(alpha: 0.08),
+                                ],
+                                stops: const [0, 0.48, 0.67, 1],
+                              ),
+                              boxShadow: enabled
+                                  ? [
+                                      BoxShadow(
+                                        color: AppColors.ctaStart
+                                            .withValues(alpha: 0.24),
+                                        blurRadius: 16,
+                                        spreadRadius: 1,
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                          ),
+                        ),
+                      ),
+                      child!,
+                    ],
+                  ),
                 ),
+              );
+            },
+            child: FilledButton(
+              key: FloatingAnalysisActionButton.buttonKey,
+              onPressed: widget.onPressed,
+              style: FilledButton.styleFrom(
+                fixedSize: const Size.square(52),
+                minimumSize: const Size.square(52),
+                maximumSize: const Size.square(52),
+                padding: EdgeInsets.zero,
+                backgroundColor: AppColors.brandInk,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor:
+                    AppColors.brandInk.withValues(alpha: 0.88),
+                disabledForegroundColor: Colors.white.withValues(alpha: 0.50),
+                elevation: enabled ? 10 : 2,
+                shadowColor: Colors.black.withValues(alpha: 0.52),
+                shape: CircleBorder(
+                  side: BorderSide(
+                    color: enabled
+                        ? Colors.white.withValues(alpha: 0.20)
+                        : Colors.white.withValues(alpha: 0.10),
+                  ),
+                ),
+              ).copyWith(
+                overlayColor: WidgetStatePropertyAll(
+                  AppColors.ctaStart.withValues(alpha: 0.20),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.auto_awesome_rounded,
+                    size: 18,
+                    color: enabled
+                        ? AppColors.bokehYellow
+                        : Colors.white.withValues(alpha: 0.42),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    '開始分析',
+                    maxLines: 1,
+                    style: AppTypography.caption.copyWith(
+                      color: enabled
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.50),
+                      fontSize: 10,
+                      height: 1.05,
+                      letterSpacing: -0.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

@@ -80,6 +80,7 @@ class BrandScaffold extends StatelessWidget {
     this.leading,
     this.bottomNavigationBar,
     this.floatingActionButton,
+    this.floatingActionButtonLocation,
     this.resizeToAvoidBottomInset,
     this.safeArea = true,
   });
@@ -90,6 +91,7 @@ class BrandScaffold extends StatelessWidget {
   final Widget? leading;
   final Widget? bottomNavigationBar;
   final Widget? floatingActionButton;
+  final FloatingActionButtonLocation? floatingActionButtonLocation;
   final bool? resizeToAvoidBottomInset;
   final bool safeArea;
 
@@ -109,6 +111,7 @@ class BrandScaffold extends StatelessWidget {
             : brandAppBar(title: title!, actions: actions, leading: leading),
         bottomNavigationBar: bottomNavigationBar,
         floatingActionButton: floatingActionButton,
+        floatingActionButtonLocation: floatingActionButtonLocation,
         body: content,
       ),
     );
