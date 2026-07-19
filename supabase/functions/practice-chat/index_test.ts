@@ -5258,8 +5258,20 @@ Deno.test("Hint semantic failure remains fail-closed without post-review regener
       claudeReplies: [validHintJson()],
       semanticReplies: [
         new SemanticAdjudicationError(
-          "semantic_adjudication_failed:semantic_adjudication_invalid_schema",
+          "semantic_hint_reject:unsupported_fact.strategy_mismatch:active_consistency_test:noncompliant:noncompliant semantic_adjudication_failed:semantic_adjudication_recovery_active_fact_fields_unchanged",
           1,
+          {
+            issueKinds: ["unsupported_fact", "strategy_mismatch"],
+            hintAssessment: {
+              interactionKind: "active_consistency_test",
+              replyContract: "noncompliant",
+              coachingContract: "noncompliant",
+            },
+          },
+          [
+            "semantic_hint_reject:unsupported_fact.strategy_mismatch:active_consistency_test:noncompliant:noncompliant",
+            "semantic_adjudication_failed:semantic_adjudication_recovery_active_fact_fields_unchanged",
+          ],
         ),
       ],
     },
@@ -5276,6 +5288,14 @@ Deno.test("Hint semantic failure remains fail-closed without post-review regener
   assertEquals(state.semanticCalls.length, 1);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(releaseHintCalls(state).length, 1);
+  const metrics = aiLogInserts(state)[0].values.request_body as Record<
+    string,
+    unknown
+  >;
+  assertEquals(metrics.failureCodes, [
+    "semantic_hint_reject:unsupported_fact.strategy_mismatch:active_consistency_test:noncompliant:noncompliant",
+    "semantic_adjudication_failed:semantic_adjudication_recovery_active_fact_fields_unchanged",
+  ]);
 });
 
 Deno.test("Game Hint sends duplicate generic questions through semantic repair instead of failing early", async () => {

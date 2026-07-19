@@ -3002,6 +3002,10 @@ Deno.test("active mixed verifier recovery must materially rewrite every visible 
       error.hintAssessment,
       ACTIVE_BOTH_NONCOMPLIANT_HINT_ASSESSMENT,
     );
+    assertEquals(error.failureCodes, [
+      "semantic_hint_reject:unsupported_fact.strategy_mismatch:active_consistency_test:noncompliant:noncompliant",
+      "semantic_adjudication_failed:semantic_adjudication_recovery_active_fact_fields_unchanged",
+    ]);
   }
 });
 
@@ -3524,6 +3528,10 @@ Deno.test("Hint verifier recovery stops after a critic repair provider error", a
   ]);
   assertEquals(error.providerCalls, 3);
   assertActiveMixedRejectionDiagnostics(error);
+  assertEquals(error.failureCodes, [
+    "semantic_hint_reject:unsupported_fact.strategy_mismatch:active_consistency_test:noncompliant:noncompliant",
+    "semantic_adjudication_failed:deepseek_recovery_timeout",
+  ]);
 });
 
 Deno.test("Hint verifier recovery stops after the independent verifier errors", async () => {

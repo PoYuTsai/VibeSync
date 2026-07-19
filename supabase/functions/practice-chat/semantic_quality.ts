@@ -4,6 +4,7 @@ import type { ChatMessage } from "./prompt.ts";
 import type { PracticeLearningMode } from "./quota_decision.ts";
 import type { AppliedHintTurn, PracticeTurn } from "./validate.ts";
 import { ACTIVE_CONSISTENCY_TEST_CONTRACT } from "./consistency_prompt.ts";
+import { sanitizePracticeFailureCode } from "./telemetry.ts";
 
 export type PracticeSemanticSurface = "hint" | "debrief";
 
@@ -91,6 +92,7 @@ export class SemanticAdjudicationError extends Error {
   readonly providerCalls: number;
   readonly issueKinds: SemanticIssueKind[];
   readonly hintAssessment?: HintSemanticAssessment;
+  readonly failureCodes: string[];
 
   constructor(
     message: string,
@@ -99,6 +101,7 @@ export class SemanticAdjudicationError extends Error {
       issueKinds?: readonly unknown[];
       hintAssessment?: unknown;
     },
+    failureCodeCandidates: readonly unknown[] = [message],
   ) {
     super(message);
     this.name = "SemanticAdjudicationError";
@@ -109,6 +112,13 @@ export class SemanticAdjudicationError extends Error {
     this.hintAssessment = safeHintSemanticAssessment(
       diagnostics?.hintAssessment,
     );
+    this.failureCodes = [
+      ...new Set(
+        failureCodeCandidates
+          .map(sanitizePracticeFailureCode)
+          .filter((value): value is string => value !== null),
+      ),
+    ].slice(0, 3);
   }
 }
 
@@ -1770,5 +1780,6 @@ export async function adjudicatePracticeCandidate(
         hintAssessment: terminalHintFullReviewRejection.hintAssessment,
       }
       : undefined,
+    diagnosticCode ? [diagnosticCode, failureMessage] : [failureMessage],
   );
 }

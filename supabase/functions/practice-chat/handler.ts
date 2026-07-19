@@ -181,6 +181,21 @@ function elapsedMilliseconds(startedAt: number): number {
   return Math.max(0, Math.round(performance.now() - startedAt));
 }
 
+function appendPracticeFailureCodes(
+  target: string[],
+  error: unknown,
+): void {
+  const codes = error instanceof SemanticAdjudicationError
+    ? error.failureCodes
+    : [sanitizePracticeFailureCode(error)].filter((value): value is string =>
+      value !== null
+    );
+  for (const code of codes) {
+    if (target.length >= 3) break;
+    if (!target.includes(code)) target.push(code);
+  }
+}
+
 function semanticProviderCallsToDebit(
   reportedCalls: number,
   allocatedCalls: number,
@@ -3021,8 +3036,7 @@ export function createPracticeChatHandler(
               const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
               hintAttemptDurationsMs.push(attemptDurationMs);
               hintFailureClasses.push(hintLastFailureClass);
-              const hintFailureCode = sanitizePracticeFailureCode(e);
-              if (hintFailureCode) hintFailureCodes.push(hintFailureCode);
+              appendPracticeFailureCodes(hintFailureCodes, e);
               logWarn("practice_chat_generation_attempt", {
                 user: summarizeUser(user.id),
                 provider: "deepseek",
@@ -3090,8 +3104,7 @@ export function createPracticeChatHandler(
             const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
             hintAttemptDurationsMs.push(attemptDurationMs);
             hintFailureClasses.push(hintLastFailureClass);
-            const hintFailureCode = sanitizePracticeFailureCode(e);
-            if (hintFailureCode) hintFailureCodes.push(hintFailureCode);
+            appendPracticeFailureCodes(hintFailureCodes, e);
             logWarn("practice_chat_generation_attempt", {
               user: summarizeUser(user.id),
               provider: "anthropic",
@@ -3902,10 +3915,7 @@ export function createPracticeChatHandler(
               const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
               debriefAttemptDurationsMs.push(attemptDurationMs);
               debriefFailureClasses.push(debriefLastFailureClass);
-              const debriefFailureCode = sanitizePracticeFailureCode(e);
-              if (debriefFailureCode) {
-                debriefFailureCodes.push(debriefFailureCode);
-              }
+              appendPracticeFailureCodes(debriefFailureCodes, e);
               logWarn("practice_chat_generation_attempt", {
                 user: summarizeUser(user.id),
                 provider: "deepseek",
@@ -3991,10 +4001,7 @@ export function createPracticeChatHandler(
             const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
             debriefAttemptDurationsMs.push(attemptDurationMs);
             debriefFailureClasses.push(debriefLastFailureClass);
-            const debriefFailureCode = sanitizePracticeFailureCode(e);
-            if (debriefFailureCode) {
-              debriefFailureCodes.push(debriefFailureCode);
-            }
+            appendPracticeFailureCodes(debriefFailureCodes, e);
             logWarn("practice_chat_generation_attempt", {
               user: summarizeUser(user.id),
               provider: "anthropic",
