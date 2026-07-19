@@ -156,6 +156,12 @@ Deno.test("classifyPracticeGenerationFailure maps errors to stable buckets", () 
     [new Error("debrief_hint_assessment_evidence_invalid"), "schema_invalid"],
     [
       new Error(
+        "semantic_adjudication_failed:semantic_hint_active_reply_question",
+      ),
+      "semantic_rejected",
+    ],
+    [
+      new Error(
         "semantic_adjudication_failed:semantic_adjudication_candidate_unverified:semantic_fact_verification_rejected:suggestedline:user_fact_unsupported",
       ),
       "semantic_rejected",

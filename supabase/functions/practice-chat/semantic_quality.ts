@@ -40,6 +40,20 @@ export interface HintSemanticAssessment {
   coachingContract: HintCoachingContract;
 }
 
+export type HintActiveReplyField = "warmUp" | "steady";
+
+export class SemanticHintActiveReplyQuestionError extends Error {
+  readonly fields: HintActiveReplyField[];
+
+  constructor(fields: readonly HintActiveReplyField[]) {
+    super("semantic_hint_active_reply_question");
+    this.name = "SemanticHintActiveReplyQuestionError";
+    this.fields = [...new Set(fields)].filter((field) =>
+      field === "warmUp" || field === "steady"
+    );
+  }
+}
+
 export interface SemanticAdjudicationResult {
   candidate: Record<string, unknown>;
   repaired: boolean;
@@ -213,6 +227,8 @@ type HintVerifierRecoveryKind =
 interface SemanticRejectionMetadata {
   issueKinds: SemanticIssueKind[];
   hardGuardFailureCode?: HintHardGuardFailureCode;
+  hardGuardReplyFields?: HintActiveReplyField[];
+  hardGuardReviewProvider?: "deepseek" | "anthropic";
   verifierRecoveryKind?: HintVerifierRecoveryKind;
   verifierHintAssessment?: HintSemanticAssessment;
 }
@@ -220,6 +236,7 @@ interface SemanticRejectionMetadata {
 function hintHardGuardSemanticRejection(
   error: unknown,
   issueKinds: readonly SemanticIssueKind[],
+  reviewProvider: "deepseek" | "anthropic",
 ): SemanticRejectionMetadata | null {
   if (
     !(error instanceof Error) ||
@@ -230,6 +247,11 @@ function hintHardGuardSemanticRejection(
   return {
     issueKinds: [...new Set([...issueKinds, "strategy_mismatch" as const])],
     hardGuardFailureCode: "semantic_hint_active_reply_question",
+    hardGuardReplyFields: error instanceof
+          SemanticHintActiveReplyQuestionError && error.fields.length > 0
+      ? [...error.fields]
+      : ["warmUp", "steady"],
+    hardGuardReviewProvider: reviewProvider,
   };
 }
 
@@ -704,6 +726,21 @@ function assertHintVerifierRecoveryRepair(
   after: Record<string, unknown>,
   repairedAssessment: HintSemanticAssessment | undefined,
 ): void {
+  const fieldChanged = (field: "warmUp" | "steady" | "coaching") =>
+    isMaterialSemanticValueRepair(before[field], after[field]);
+  if (
+    repairedAssessment?.interactionKind === "active_consistency_test" &&
+    rejection.hardGuardFailureCode ===
+      "semantic_hint_active_reply_question" &&
+    (rejection.hardGuardReplyFields ?? ["warmUp", "steady"]).some((field) =>
+      !fieldChanged(field)
+    )
+  ) {
+    throw new Error(
+      "semantic_adjudication_recovery_active_reply_fields_unchanged",
+    );
+  }
+
   const kind = rejection.verifierRecoveryKind;
   if (!kind) return;
   const expectedInteractionKind = kind === "active_contract"
@@ -715,8 +752,6 @@ function assertHintVerifierRecoveryRepair(
     );
   }
 
-  const fieldChanged = (field: "warmUp" | "steady" | "coaching") =>
-    isMaterialSemanticValueRepair(before[field], after[field]);
   if (kind === "ordinary_unsupported_fact") {
     if (
       !fieldChanged("warmUp") || !fieldChanged("steady") ||
@@ -1263,7 +1298,7 @@ export function buildSemanticAdjudicationMessages(opts: {
       opts.priorSemanticRejection.issueKinds.join(",") || "strategy_mismatch"
     }）。${
       pinnedActiveVerifierRecovery
-        ? "前一審與不同 provider 的最終複核已一致判為 active_consistency_test；本輪只修內容，不重開 interactionKind，repair 的 hintAssessment 必須是 active_consistency_test/compliant/compliant，下一個不同 provider 仍會獨立重判；若無法完成就 reject。"
+        ? "兩個不同 provider 已一致判為 active_consistency_test；本輪只修內容，不重開 interactionKind，repair 的 hintAssessment 必須是 active_consistency_test/compliant/compliant，下一個不同 provider 仍會獨立重判；若無法完成就 reject。"
         : "這不是分類真值，你仍須獨立判 interactionKind。"
     }本輪是唯一保留的完整修復機會，不得原樣 accept。若逐字稿與 server context 足以產出安全完整回覆，必須回 repair，repairedResult 必須實際改動候選，hintAssessment 只評修復稿且須符合交付契約；真的無法安全修好才 reject。`
     : "";
@@ -1289,7 +1324,7 @@ export function buildSemanticAdjudicationMessages(opts: {
   ].filter((rule): rule is string => rule !== null).join("；");
   const verifierRecoveryRule =
     opts.priorSemanticRejection?.verifierRecoveryKind === "active_contract"
-      ? `前一個不同 provider 的最終複核把被拒稿判為 active_consistency_test（issueKinds=${
+      ? `前一個不同 provider 的複核把被拒稿判為 active_consistency_test（issueKinds=${
         opts.priorSemanticRejection.issueKinds.join(",")
       }; replyContract=${
         opts.priorSemanticRejection.verifierHintAssessment?.replyContract ??
@@ -1305,7 +1340,19 @@ export function buildSemanticAdjudicationMessages(opts: {
   const priorSemanticHardGuardRule =
     opts.priorSemanticRejection?.hardGuardFailureCode ===
         "semantic_hint_active_reply_question"
-      ? "hardGuardFailureCode=semantic_hint_active_reply_question：前審把目前互動判成 active_consistency_test；只在該判定下，伺服器證實 warmUp／steady 至少一案仍含反問、資訊索取或把回答交回她。這不證明分類，先獨立重判：若是 ordinary／other，依其本來合約完整 repair，不得強套禁問；只有你也判 active_consistency_test 時，兩案才都必須直接回答被核對命題，再用明確 assistant 歸屬回扣具體細節，最後以陳述句收住；零問號、零嗎／呢、零請教、零想聽她看法、零交棒，不可只刪標點保留疑問語氣。未全部做到不算實質修復。"
+      ? pinnedActiveVerifierRecovery
+        ? `hardGuardFailureCode=semantic_hint_active_reply_question：兩個不同 provider 已判定 active_consistency_test，且伺服器再次證實 ${
+          (opts.priorSemanticRejection.hardGuardReplyFields ?? [
+            "warmUp",
+            "steady",
+          ]).join("、")
+        } 仍含反問、資訊索取或把回答交回她；本輪不得重開分類，warmUp、steady 都要完整實改為直接回答被核對命題、以明確 assistant 歸屬回扣具體細節，最後用陳述句收住；零問號、零嗎／呢、零請教、零想聽她看法、零交棒，不可只刪標點保留疑問語氣。`
+        : `hardGuardFailureCode=semantic_hint_active_reply_question：前審把目前互動判成 active_consistency_test；只在該判定下，伺服器證實 ${
+          (opts.priorSemanticRejection.hardGuardReplyFields ?? [
+            "warmUp",
+            "steady",
+          ]).join("、")
+        } 仍含反問、資訊索取或把回答交回她。這不證明分類，先獨立重判：若是 ordinary／other，依其本來合約完整 repair，不得強套禁問；只有你也判 active_consistency_test 時，兩案才都必須直接回答被核對命題，再用明確 assistant 歸屬回扣具體細節，最後以陳述句收住；零問號、零嗎／呢、零請教、零想聽她看法、零交棒，不可只刪標點保留疑問語氣。未全部做到不算實質修復。`
       : "";
   const semanticVerificationRule = semanticVerificationIssueKinds.length > 0
     ? `本輪是不同 provider 的最終完整語意驗證，前一審聲稱已修復 issueKinds=${
@@ -1721,7 +1768,53 @@ export async function adjudicatePracticeCandidate(
         const hardGuardRejection = hintHardGuardSemanticRejection(
           error,
           parsed.issueKinds,
+          reviewer.provider,
         );
+        const priorHardGuardProvider = priorSemanticRejection
+          ?.hardGuardReviewProvider;
+        const repeatedActiveReplyHardGuard = args.surface === "hint" &&
+          hardGuardRejection && parsed.repaired &&
+          priorSemanticRejection?.hardGuardFailureCode ===
+            "semantic_hint_active_reply_question" &&
+          !hintVerifierRecoveryUsed &&
+          hasExactSemanticIssueKinds(priorSemanticRejection.issueKinds, [
+            "strategy_mismatch",
+          ]) &&
+          hasExactSemanticIssueKinds(hardGuardRejection.issueKinds, [
+            "strategy_mismatch",
+          ]) &&
+          priorHardGuardProvider !== undefined &&
+          priorHardGuardProvider !== reviewer.provider &&
+          parsed.hintAssessment?.interactionKind ===
+            "active_consistency_test" &&
+          parsed.hintAssessment.replyContract === "compliant" &&
+          parsed.hintAssessment.coachingContract === "compliant" &&
+          budget - providerCalls >= 2 &&
+          reviewers.some((candidate) =>
+            candidate.provider !== priorHardGuardProvider
+          );
+        if (repeatedActiveReplyHardGuard && hardGuardRejection) {
+          // Two different providers have now classified the interaction as
+          // active, but the dedicated repair still fails the same deterministic
+          // reply guard. Discard that invalid repair, reuse the original
+          // reviewed candidate, and spend the two remaining slots on exactly
+          // one pinned repair plus a different-provider full verifier.
+          priorSemanticRejection = {
+            issueKinds: ["strategy_mismatch"],
+            hardGuardFailureCode: "semantic_hint_active_reply_question",
+            hardGuardReplyFields: hardGuardRejection.hardGuardReplyFields,
+            verifierRecoveryKind: "active_contract",
+            verifierHintAssessment: {
+              interactionKind: "active_consistency_test",
+              replyContract: "noncompliant",
+              coachingContract: "compliant",
+            },
+          };
+          forcedHintRepairProvider = priorHardGuardProvider;
+          hintVerifierRecoveryUsed = true;
+          lastError = error;
+          continue;
+        }
         if (
           args.surface === "hint" && hardGuardRejection &&
           !parsed.repaired && !priorSemanticRejection &&

@@ -291,6 +291,7 @@ export function classifyPracticeGenerationFailure(
 
   if (
     message.includes("semantic_fact_verification_rejected") ||
+    message.includes("semantic_hint_active_reply_question") ||
     message.includes("semantic_adjudication_rejected") ||
     message.includes("semantic_adjudication_fact_rejection")
   ) {

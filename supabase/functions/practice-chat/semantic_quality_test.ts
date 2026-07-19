@@ -11,6 +11,7 @@ import {
   parseSemanticFactVerification,
   type PracticeSemanticAdjudicatorArgs,
   SemanticAdjudicationError,
+  SemanticHintActiveReplyQuestionError,
 } from "./semantic_quality.ts";
 import { parseHintResult } from "./hint.ts";
 
@@ -1284,7 +1285,7 @@ Deno.test("Hint hard-guard metadata cannot freeze an ordinary question into an a
       "Game 心法：她只是在縮小咖啡偏好；照實回答，再自然把普通話題接下去。速約任務：這輪不約，先把字面選項題答清楚。",
   };
   const repaired = {
-    warmUp: "我沒有固定喝哪種，通常看當天心情。妳呢？",
+    warmUp: rejected.warmUp,
     steady: "我是不固定派，當天想喝哪個就點哪個。",
     coaching:
       "Game 心法：她在縮小咖啡偏好；照實說沒有固定，讓回答保持自然。速約任務：這輪不約，先把字面選項題答清楚。",
@@ -4863,7 +4864,7 @@ Deno.test("active consistency hard guard preserves its exact repair obligation a
         ),
         true,
       );
-      assertEquals(prompt.includes("warmUp／steady 至少一案仍含反問"), true);
+      assertEquals(prompt.includes("warmUp、steady 仍含反問"), true);
       assertEquals(prompt.includes("不可只刪標點保留疑問語氣"), true);
       return Promise.resolve(validHintAdjudication({
         verdict: "repair",
@@ -4894,7 +4895,10 @@ Deno.test("active consistency hard guard preserves its exact repair obligation a
     },
     validateCandidate: (candidate) => {
       if (/[?？]/u.test(`${candidate.warmUp}${candidate.steady}`)) {
-        throw new Error("semantic_hint_active_reply_question");
+        throw new SemanticHintActiveReplyQuestionError([
+          "warmUp",
+          "steady",
+        ]);
       }
     },
   });
@@ -4946,13 +4950,175 @@ Deno.test("active consistency hard guard fails closed without repair and verifie
   assertEquals(deepSeekCalls, 0);
 });
 
-Deno.test("active consistency hard guard rejects the sole repair instead of taking another vote", async () => {
+Deno.test("repeated active reply hard guard uses one pinned repair and verifier", async () => {
   const invalidRepair = {
     ...hintCandidate,
     warmUp: "我還不熟，那妳會怎麼看？",
   };
+  const recovered = {
+    ...hintCandidate,
+    warmUp: "我還談不上懂，但妳剛提到動線卡住，我現在開始好奇了。",
+    steady: "我沒有研究過老屋；妳把吧台位置說得很細，讓我開始留意。",
+  };
   const calls: string[] = [];
   let claudeCalls = 0;
+  let deepSeekCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: hintCandidate,
+    candidateProvider: "deepseek",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 4,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      calls.push(`claude:${args.maxTokens}`);
+      claudeCalls += 1;
+      if (claudeCalls === 1) {
+        return Promise.resolve(validHintAdjudication({
+          hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+        }));
+      }
+      const prompt = args.messages.map((message) => message.content).join("\n");
+      assertEquals(prompt.includes("兩個不同 provider 已一致判為"), true);
+      assertEquals(
+        prompt.includes(
+          "hardGuardFailureCode=semantic_hint_active_reply_question",
+        ),
+        true,
+      );
+      assertEquals(prompt.includes("warmUp 仍含反問"), true);
+      assertEquals(prompt.includes("本輪不得重開分類"), true);
+      return Promise.resolve(validHintAdjudication({
+        verdict: "repair",
+        issues: [{ kind: "strategy_mismatch" }],
+        repairedResult: recovered,
+        hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+      }));
+    },
+    callDeepSeek: (args) => {
+      calls.push(`deepseek:${args.maxTokens}`);
+      deepSeekCalls += 1;
+      if (deepSeekCalls === 1) {
+        assertEquals(args.thinking, undefined);
+        return Promise.resolve(validHintAdjudication({
+          verdict: "repair",
+          issues: [{ kind: "strategy_mismatch" }],
+          repairedResult: invalidRepair,
+          hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+        }));
+      }
+      assertEquals(args.thinking, { type: "disabled" });
+      assertEquals(args.maxTokens, 2400);
+      const prompt = args.messages.map((message) => message.content).join("\n");
+      assertEquals(prompt.includes("最終完整語意驗證"), true);
+      return Promise.resolve(validHintAdjudication({
+        hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+      }));
+    },
+    validateCandidate: (candidate) => {
+      if (
+        candidate === hintCandidate ||
+        /[?？]/u.test(String(candidate.warmUp))
+      ) {
+        throw new SemanticHintActiveReplyQuestionError(["warmUp"]);
+      }
+    },
+  });
+
+  assertEquals(calls, [
+    "claude:1800",
+    "deepseek:1800",
+    "claude:1800",
+    "deepseek:2400",
+  ]);
+  assertEquals(result.candidate, recovered);
+  assertEquals(result.providerCalls, 4);
+  assertEquals(result.hintAssessment, ACTIVE_COMPLIANT_HINT_ASSESSMENT);
+});
+
+Deno.test("a repeated active reply repair failure is terminal without a fifth call", async () => {
+  const invalidRepairs = [
+    {
+      ...hintCandidate,
+      warmUp: "我還不熟，那妳會怎麼看？",
+    },
+    {
+      ...hintCandidate,
+      warmUp: "我確實還不懂，不過妳會怎麼調整？",
+      steady: "我現在有點好奇，那妳可以多說一點嗎？",
+    },
+  ];
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  let deepSeekCalls = 0;
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: hintCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 6,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: (args) => {
+          calls.push(`claude:${args.maxTokens}`);
+          claudeCalls += 1;
+          return Promise.resolve(
+            claudeCalls === 1
+              ? validHintAdjudication({
+                hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+              })
+              : validHintAdjudication({
+                verdict: "repair",
+                issues: [{ kind: "strategy_mismatch" }],
+                repairedResult: invalidRepairs[1],
+                hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+              }),
+          );
+        },
+        callDeepSeek: (args) => {
+          calls.push(`deepseek:${args.maxTokens}`);
+          deepSeekCalls += 1;
+          return Promise.resolve(validHintAdjudication({
+            verdict: "repair",
+            issues: [{ kind: "strategy_mismatch" }],
+            repairedResult: invalidRepairs[0],
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          }));
+        },
+        validateCandidate: (candidate) => {
+          if (
+            candidate === hintCandidate ||
+            /[?？]/u.test(String(candidate.warmUp))
+          ) {
+            throw new SemanticHintActiveReplyQuestionError(["warmUp"]);
+          }
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_hint_active_reply_question",
+  );
+
+  assertEquals(calls, ["claude:1800", "deepseek:1800", "claude:1800"]);
+  assertEquals(claudeCalls, 2);
+  assertEquals(deepSeekCalls, 1);
+  assertEquals(error.providerCalls, 3);
+});
+
+Deno.test("active hard guard repair must change every named reply field", async () => {
+  const wrongFieldRepair = {
+    ...hintCandidate,
+    steady: "我現在確實開始留意老屋的空間細節。",
+  };
+  const calls: string[] = [];
   const error = await assertRejects(
     () =>
       adjudicatePracticeCandidate({
@@ -4968,7 +5134,6 @@ Deno.test("active consistency hard guard rejects the sole repair instead of taki
         claudeModel: "claude-test",
         callClaude: (args) => {
           calls.push(`claude:${args.maxTokens}`);
-          claudeCalls += 1;
           return Promise.resolve(validHintAdjudication({
             hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
           }));
@@ -4978,7 +5143,58 @@ Deno.test("active consistency hard guard rejects the sole repair instead of taki
           return Promise.resolve(validHintAdjudication({
             verdict: "repair",
             issues: [{ kind: "strategy_mismatch" }],
-            repairedResult: invalidRepair,
+            repairedResult: wrongFieldRepair,
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          }));
+        },
+        validateCandidate: (candidate) => {
+          if (candidate === hintCandidate) {
+            throw new SemanticHintActiveReplyQuestionError(["warmUp"]);
+          }
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_recovery_active_reply_fields_unchanged",
+  );
+
+  assertEquals(calls, ["claude:1800", "deepseek:1800"]);
+  assertEquals(error.providerCalls, 2);
+});
+
+Deno.test("repeated active hard guard keeps unsafe repairs terminal", async () => {
+  const unsafeRepair = {
+    ...hintCandidate,
+    warmUp: "我還不懂，不然妳直接告訴我答案？",
+  };
+  const calls: string[] = [];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: hintCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: (args) => {
+          calls.push(`claude:${args.maxTokens}`);
+          return Promise.resolve(validHintAdjudication({
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          }));
+        },
+        callDeepSeek: (args) => {
+          calls.push(`deepseek:${args.maxTokens}`);
+          return Promise.resolve(validHintAdjudication({
+            verdict: "repair",
+            issues: [
+              { kind: "strategy_mismatch" },
+              { kind: "unsafe" },
+            ],
+            repairedResult: unsafeRepair,
             hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
           }));
         },
@@ -4987,7 +5203,7 @@ Deno.test("active consistency hard guard rejects the sole repair instead of taki
             candidate === hintCandidate ||
             /[?？]/u.test(String(candidate.warmUp))
           ) {
-            throw new Error("semantic_hint_active_reply_question");
+            throw new SemanticHintActiveReplyQuestionError(["warmUp"]);
           }
         },
       }),
@@ -4996,7 +5212,6 @@ Deno.test("active consistency hard guard rejects the sole repair instead of taki
   );
 
   assertEquals(calls, ["claude:1800", "deepseek:1800"]);
-  assertEquals(claudeCalls, 1);
   assertEquals(error.providerCalls, 2);
 });
 

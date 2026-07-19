@@ -117,6 +117,7 @@ import {
   type PracticeSemanticAdjudicator,
   requireDeliverableHintAssessment,
   SemanticAdjudicationError,
+  SemanticHintActiveReplyQuestionError,
 } from "./semantic_quality.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -217,7 +218,8 @@ function assertReviewedHintSemanticContract(
   if (assessment.interactionKind !== "active_consistency_test") {
     return assessment;
   }
-  for (const reply of replies) {
+  const invalidReplyFields: Array<"warmUp" | "steady"> = [];
+  for (const [replyIndex, reply] of replies.entries()) {
     const surface = reply.text.normalize("NFKC").trim();
     let questionTail = surface;
     for (let index = 0; index < 4; index += 1) {
@@ -322,8 +324,11 @@ function assertReviewedHintSemanticContract(
       ) ||
       hasDirectQuestionOrHandoff
     ) {
-      throw new Error("semantic_hint_active_reply_question");
+      invalidReplyFields.push(replyIndex === 0 ? "warmUp" : "steady");
     }
+  }
+  if (invalidReplyFields.length > 0) {
+    throw new SemanticHintActiveReplyQuestionError(invalidReplyFields);
   }
   return assessment;
 }
