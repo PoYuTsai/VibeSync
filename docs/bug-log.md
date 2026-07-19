@@ -20,7 +20,7 @@
 
 **Prevention**: Prompt、provider schema、parser 必須共用同一 enum helper；任何 model repair 在進入下一份 dynamic schema 前都要驗 exact nested key shape。高風險 AI recovery 必須用真 handler 跑滿 provider ledger，並測 reject 後未改欄位、錯 surface、deadline 在最後 verifier 前到期等對抗案例。
 
-**Validation**: practice-chat Deno **934/934**；真 handler 跑滿 DeepSeek 3＋Claude 3＝6 calls，成功路徑 record 1／release 0；deadline 與失敗路徑皆不 record。三路獨立 review 最終 0 P0/P1/P2。production `practice-chat` v205 ACTIVE；fresh Standard 單次 2/2、Beginner assisted 1/1 與 replay／continuity 全 PASS，deploy 後四筆 test-account telemetry 全 success、0 semantic reject。證據見 `docs/reviews/2026-07-19-practice-debrief-semantic-recovery-codex-review.md`。
+**Validation**: practice-chat Deno **934/934**；真 handler 跑滿 DeepSeek 3＋Claude 3＝6 calls，成功路徑 record 1／release 0；deadline 與失敗路徑皆不 record。三路獨立 review 最終 0 P0/P1/P2。production `practice-chat` v206 ACTIVE；現役版 fresh Standard 單次 2/2、Beginner assisted 1/1 與 replay／continuity 全 PASS，deploy window 後四筆 test-account telemetry 全 success、0 semantic reject。證據見 `docs/reviews/2026-07-19-practice-debrief-semantic-recovery-codex-review.md`。
 
 **相關檔案**: `supabase/functions/practice-chat/semantic_quality.ts`、`handler.ts`、`telemetry.ts` 與對應測試。
 
