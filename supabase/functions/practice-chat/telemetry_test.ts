@@ -166,6 +166,18 @@ Deno.test("classifyPracticeGenerationFailure maps errors to stable buckets", () 
     ],
     [
       new Error(
+        "semantic_adjudication_failed:semantic_adjudication_rejected_not_repaired",
+      ),
+      "semantic_rejected",
+    ],
+    [
+      new Error(
+        "semantic_adjudication_failed:semantic_adjudication_rejected_cosmetic_repair",
+      ),
+      "semantic_rejected",
+    ],
+    [
+      new Error(
         "semantic_adjudication_failed:semantic_adjudication_fact_rejection_field_unchanged",
       ),
       "semantic_rejected",
