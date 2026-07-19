@@ -1086,7 +1086,7 @@ Deno.test("Hint full rejection becomes one changed repair plus an independent ve
     },
   });
 
-  assertEquals(calls, ["claude:1800", "deepseek:1800", "claude:1800"]);
+  assertEquals(calls, ["claude:1800", "deepseek:1800", "claude:2400"]);
   assertEquals(result.candidate, repaired);
   assertEquals(result.repaired, true);
   assertEquals(result.issueKinds, ["strategy_mismatch"]);
@@ -1169,7 +1169,7 @@ Deno.test("Hint rejection metadata cannot freeze an ordinary question into an ac
     },
   });
 
-  assertEquals(calls, ["deepseek:1800", "claude:1800", "deepseek:1800"]);
+  assertEquals(calls, ["deepseek:1800", "claude:1800", "deepseek:2400"]);
   assertEquals(validations, 2);
   assertEquals(result.candidate, repaired);
   assertEquals(result.hintAssessment, ORDINARY_HINT_ASSESSMENT);
@@ -1304,7 +1304,7 @@ Deno.test("Hint recovery verifier rejection is terminal even with extra caller b
     "semantic_adjudication_repair_unverified:semantic_adjudication_rejected",
   );
 
-  assertEquals(calls, ["claude:1800", "deepseek:1800", "claude:1800"]);
+  assertEquals(calls, ["claude:1800", "deepseek:1800", "claude:2400"]);
   assertEquals(error.providerCalls, 3);
 });
 
@@ -2036,7 +2036,7 @@ Deno.test("unsupported-fact repairs require an independent semantic acceptance",
     },
     callDeepSeek: (args) => {
       calls.push("deepseek");
-      assertEquals(args.maxTokens, 1800);
+      assertEquals(args.maxTokens, 2400);
       reviewedPrompts.push(
         args.messages.map((message) => message.content).join("\n"),
       );
@@ -2145,7 +2145,7 @@ Deno.test("direct active consistency repair uses the independent full verifier",
     },
   });
 
-  assertEquals(calls, ["claude:1800", "deepseek:1800"]);
+  assertEquals(calls, ["claude:1800", "deepseek:2400"]);
   assertEquals(validations, 2);
   assertEquals(result.candidate, repaired);
   assertEquals(result.repaired, true);
@@ -2225,7 +2225,7 @@ Deno.test("direct ordinary repair uses the mirrored independent full verifier", 
     },
   });
 
-  assertEquals(calls, ["deepseek:1800", "claude:1800"]);
+  assertEquals(calls, ["deepseek:1800", "claude:2400"]);
   assertEquals(validations, 2);
   assertEquals(result.candidate, repaired);
   assertEquals(result.repaired, true);
@@ -2271,7 +2271,7 @@ Deno.test("Hint full verifier provider failure is terminal", async () => {
         callDeepSeek: (args) => {
           calls.push("deepseek");
           deepSeekCalls += 1;
-          assertEquals(args.maxTokens, 1800);
+          assertEquals(args.maxTokens, 2400);
           return Promise.reject(new Error("deepseek_timeout"));
         },
       }),
@@ -2323,7 +2323,7 @@ Deno.test("a failed first provider cannot make a repair reviewer certify itself"
   assertEquals(calls, [
     "deepseek:1800",
     "claude:1800",
-    "deepseek:1800",
+    "deepseek:2400",
   ]);
   assertEquals(error.providerCalls, 3);
 });
@@ -2423,7 +2423,7 @@ Deno.test("generic-only Hint repairs use the bounded full verifier without anoth
       })),
     callDeepSeek: (args) => {
       deepSeekCalls++;
-      assertEquals(args.maxTokens, 1800);
+      assertEquals(args.maxTokens, 2400);
       const prompt = args.messages.map((message) => message.content).join("\n");
       assertEquals(
         prompt.includes("本輪是不同 provider 的最終完整語意驗證"),

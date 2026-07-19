@@ -100,9 +100,11 @@ class SemanticFullReviewRejectionError extends Error {
   }
 }
 
-// Hint repair and its verification-only full review contain only three visible
-// fields, so 1800 is sufficient. Debrief repeats the full Game breakdown.
+// Hint full review/repair stays at 1800. DeepSeek v4 has exhausted that cap on
+// the independent accept/reject-only pass in production, so only that final
+// verification lane gets 2400; provider call counts and deadlines stay fixed.
 const HINT_ADJUDICATION_MAX_TOKENS = 1800;
+const HINT_FINAL_VERIFICATION_MAX_TOKENS = 2400;
 const DEBRIEF_ADJUDICATION_MAX_TOKENS = 4000;
 const REPAIR_VERIFICATION_MAX_TOKENS = 1200;
 const ADJUDICATION_TEMPERATURE = 0.1;
@@ -1162,7 +1164,7 @@ export async function adjudicatePracticeCandidate(
               candidate: candidateAwaitingVerification.candidate,
               semanticVerificationIssueKinds,
             }),
-            HINT_ADJUDICATION_MAX_TOKENS,
+            HINT_FINAL_VERIFICATION_MAX_TOKENS,
             semanticAdjudicationJsonSchema(
               candidateAwaitingVerification.candidate,
               args.surface,
