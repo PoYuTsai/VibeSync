@@ -541,12 +541,23 @@ Deno.test("semantic adjudication prompt treats transcript and candidate as evide
   assertEquals(prompt.includes("沒有質疑或明顯挑戰"), true);
   assertEquals(prompt.includes("這是普通問答"), true);
   assertEquals(prompt.includes("不得標成小測試"), true);
-  assertEquals(prompt.includes("普通問答的 repair 只可重述"), true);
+  assertEquals(
+    prompt.includes(
+      "在上述 user 已回答偏好，且 assistant 只用選項縮小答案的普通題中",
+    ),
+    true,
+  );
   assertEquals(prompt.includes("不可替 user 或 assistant 補偏好"), true);
   assertEquals(prompt.includes("連否定句也不得提測試／驗證／自證／反打"), true);
-  assertEquals(prompt.includes("各自都必須先誠實表態"), true);
+  assertEquals(
+    prompt.includes("各自都必須直接回答她正在核對的具體命題"),
+    true,
+  );
   assertEquals(prompt.includes("有逐字稿中相關的具體細節時"), true);
-  assertEquals(prompt.includes("沒有時直接回被驗證的 user 原主張"), true);
+  assertEquals(
+    prompt.includes("沒有具體細節時，直接回被驗證的 user 原主張"),
+    true,
+  );
   assertEquals(prompt.includes("不得硬補細節"), true);
   assertEquals(prompt.includes("還談不上懂／沒有研究到能說懂"), true);
   assertEquals(prompt.includes("由最新 assistant 訊號觸發的當下反應"), true);
@@ -573,6 +584,54 @@ Deno.test("semantic adjudication prompt treats transcript and candidate as evide
   assertEquals(prompt.includes("「速約任務：」後明寫「這輪」"), true);
 });
 
+Deno.test("Hint final verifier prompt keeps delivery criteria without repair-action conflicts", () => {
+  const messages = buildSemanticAdjudicationMessages({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: hintCandidate,
+    turns,
+    trustedGenerationContext: "server facts only",
+    semanticVerificationIssueKinds: ["strategy_mismatch"],
+  });
+  const system = messages[0].content;
+  const user = messages[1].content;
+
+  for (
+    const forbidden of [
+      "裁判與修復器",
+      "Hint 完整 repair",
+      "repair 描述 repairedResult",
+      "必須 repair",
+      "repair 的 hintAssessment",
+      "普通問答的 repair",
+      "修復只套用上述結構",
+      "沒有證據就改成",
+    ]
+  ) {
+    assertEquals(system.includes(forbidden), false, forbidden);
+  }
+  for (
+    const required of [
+      "最終裁判，不是改稿者",
+      "candidate_json 已是待交付修復稿",
+      "候選只有在不主張該事實",
+      "各自都必須直接回答她正在核對的具體命題",
+      "不能只說不懂／沒研究",
+      "若她問 user 是否有興趣",
+      "妳剛提到／妳把…",
+      "不得把該細節改寫成 user 原本就知道或觀察到",
+      "命中 active_consistency_test 時，coaching 必須",
+      "明說她正在核對的具體命題",
+      "不得只說看你穩不穩／測你的反應",
+      "本輪不得 repair",
+    ]
+  ) {
+    assertEquals(system.includes(required), true, required);
+  }
+  assertEquals(user.includes("verdict 只可 accept/reject"), true);
+  assertEquals(user.includes("repairedResult 必須是 null"), true);
+});
+
 Deno.test("semantic Hint reviewer exposes the no-detail branch for a bare verification question", () => {
   const messages = buildSemanticAdjudicationMessages({
     surface: "hint",
@@ -595,7 +654,10 @@ Deno.test("semantic Hint reviewer exposes the no-detail branch for a bare verifi
   assertEquals(prompt.includes("妳笑起來很好看。"), true);
   assertEquals(prompt.includes("你是不是都這樣說？"), true);
   assertEquals(prompt.includes("否則直答原主張"), true);
-  assertEquals(prompt.includes("沒有時直接回被驗證的 user 原主張"), true);
+  assertEquals(
+    prompt.includes("沒有具體細節時，直接回被驗證的 user 原主張"),
+    true,
+  );
   assertEquals(prompt.includes("不得硬補細節"), true);
   assertEquals(prompt.includes("我就是覺得妳笑起來很好看"), true);
   assertEquals(prompt.includes("不是每個人我都會這樣說"), false);
@@ -639,6 +701,38 @@ Deno.test("semantic Hint reviewer keeps an answered preference option in ordinar
   assertEquals(prompt.includes("不猜她的隱藏動機"), true);
 });
 
+Deno.test("Hint final verifier scopes preference narrowing without trapping other ordinary follow-ups", () => {
+  const candidate = {
+    warmUp: "入口名字我沒記，但傍晚那段風真的很舒服。",
+    steady: "登山口名稱我不確定；我只記得傍晚走那段很舒服。",
+    coaching:
+      "Game 心法：她在問登山口這個字面細節，照實回答記得與不記得的部分。速約任務：這輪不約，先把她問的細節答清楚。",
+  };
+  const messages = buildSemanticAdjudicationMessages({
+    surface: "hint",
+    practiceMode: "game",
+    candidate,
+    turns: [
+      { role: "user", text: "我週末去了象山，傍晚走那段很舒服。" },
+      { role: "ai", text: "你是從哪個登山口上去的？" },
+    ],
+    trustedGenerationContext: "server facts only",
+    semanticVerificationIssueKinds: ["strategy_mismatch"],
+  });
+  const prompt = messages.map((message) => message.content).join("\n");
+
+  assertEquals(prompt.includes(candidate.warmUp), true);
+  assertEquals(prompt.includes("你是從哪個登山口上去的？"), true);
+  assertEquals(
+    prompt.includes(
+      "在上述 user 已回答偏好，且 assistant 只用選項縮小答案的普通題中",
+    ),
+    true,
+  );
+  assertEquals(prompt.includes("所有普通問答只可重述"), false);
+  assertEquals(prompt.includes("本輪不得 repair"), true);
+});
+
 Deno.test("semantic Hint reviewer rejects the live active-test expert-interview handoff", () => {
   const messages = buildSemanticAdjudicationMessages({
     surface: "hint",
@@ -677,7 +771,7 @@ Deno.test("semantic Hint reviewer rejects the live active-test expert-interview 
   assertEquals(prompt.includes("稱自己的觀察很表面"), true);
   assertEquals(prompt.includes("只說自己看不懂某細節"), true);
   assertEquals(
-    prompt.includes("必須回到 assistant 已說的具體觀察／事實"),
+    prompt.includes("回扣至少一項 assistant 已說的觀察／事實"),
     true,
   );
   assertEquals(prompt.includes("repair 時 issues 至少一個合法 kind"), true);
@@ -2429,7 +2523,7 @@ Deno.test("Hint reserves a fourth call to verify a repair after two reviewer fai
     steady:
       "我沒有研究到能說懂；妳把檯面、動線和吧台位置拆得這麼細，我現在對老屋多了一點興趣。",
     coaching:
-      "Game 心法：她在驗證你是不是真的對老屋有興趣；誠實交代還談不上懂，再回扣她剛說的動線與吧台位置收住。速約任務：這輪不約。",
+      "Game 心法：她在驗證你是不是真的對老屋有興趣、剛才的稱讚是不是有內容；誠實交代還談不上懂，再回扣她剛說的動線與吧台位置收住。速約任務：這輪不約，先讓回答站穩。",
   };
   const calls: string[] = [];
   let claudeCalls = 0;
@@ -2710,10 +2804,12 @@ Deno.test("active consistency hard guard rejection becomes a material repair obl
       "Game 心法：她在驗證你剛才的稱讚；先誠實表態。速約任務：這輪不約。",
   };
   const repaired = {
-    warmUp: "我還談不上懂老屋，但妳提到吧台離門口太近，我確實開始注意了。",
-    steady: "我沒有研究到能說懂；妳把檯面和動線拆開看，剛才的稱讚是認真的。",
+    warmUp:
+      "我對老屋還談不上懂，但妳剛說動線有點卡、吧台離門口太近，我現在是真的開始好奇了。",
+    steady:
+      "我沒有研究到能說懂；妳把檯面、動線和吧台位置拆得這麼細，我現在對老屋多了一點興趣。",
     coaching:
-      "Game 心法：她在驗證你剛才的稱讚；誠實交代不熟，再回扣她說的動線細節收住。速約任務：這輪不約。",
+      "Game 心法：她在驗證你是不是真的對老屋有興趣、剛才的稱讚是不是有內容；誠實交代還談不上懂，再回扣她剛說的動線與吧台位置收住。速約任務：這輪不約，先讓回答站穩。",
   };
   const calls: string[] = [];
   let claudeCalls = 0;
