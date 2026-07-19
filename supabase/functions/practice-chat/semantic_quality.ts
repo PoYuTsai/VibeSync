@@ -173,8 +173,11 @@ interface FactRejectionMetadata {
   reasonCodes: FactReasonCode[];
 }
 
+type HintHardGuardFailureCode = "semantic_hint_active_reply_question";
+
 interface SemanticRejectionMetadata {
   issueKinds: SemanticIssueKind[];
+  hardGuardFailureCode?: HintHardGuardFailureCode;
 }
 
 function hintHardGuardSemanticRejection(
@@ -189,6 +192,7 @@ function hintHardGuardSemanticRejection(
   }
   return {
     issueKinds: [...new Set([...issueKinds, "strategy_mismatch" as const])],
+    hardGuardFailureCode: "semantic_hint_active_reply_question",
   };
 }
 
@@ -999,7 +1003,7 @@ export function buildSemanticAdjudicationMessages(opts: {
     "Debrief 不輸出 strategies。完整 repair 必守原 schema：vibe 只能暖/中性/冷，dateChance 只能 low/medium/high，strengths/watchouts 維持陣列，Game 保留完整 gameBreakdown。所有 visible 文字不得出現 P1-P5、targetVariable、Failure State、temperature/score/band 或內部策略名。若有 applied Hint，除非 Hint 送出後的 assistant 新回覆有明確反證，必須 preserved；visible 欄位要承認採用 Hint，只分析執行與下一步，不得事後打臉。逐子句盤點最新 assistant 的回答、自我揭露、反問、玩笑／小測試、重連／時間窗口與界線；「下週見」「等你踩點報告」「別報雷」這類訊號不得被開頭客套或收尾蓋掉。整張卡跨欄一致：若任一欄承認她有新細節／自我揭露／反問／窗口，其他欄不得說只有基本回應／無延伸／無新素材。suggestedLine/nextFirstLine 永遠是 user 對 assistant 說；追蹤行動承諾的 owner，user 說會做、確認或回報，就不可反轉成等 assistant 做或回報。若診斷問答乒乓／查戶口，兩句要先給內容、感受、立場或小畫面，不得再用資訊題收尾。repair 時回傳完整 Debrief JSON；candidate 原本有 hidden hintAssessment 才保留該欄，不得自行新增。";
   const modeRule = opts.practiceMode === "game"
     ? opts.surface === "hint"
-      ? "Game Hint 高手標準：每個選項要接最新訊號、一次一招、具體可貼；可用回呼、自我揭露、共同畫面、輕鬆反打、回答再問或合階段邀約。coaching 必須逐字保留「Game 心法：」與「速約任務：」兩個標頭；「速約任務：」後明寫「這輪」並給具體任務與理由，整段說清訊號、招式、目的與邀約階梯，不能用口號冒充高手。"
+      ? "Game Hint 高手標準：每個選項要接最新訊號、一次一招、具體可貼；ordinary／other 可用回呼、自我揭露、共同畫面、輕鬆反打、回答再問或合階段邀約；active_consistency_test 一律由小測試契約覆蓋，兩案直接回答並以陳述句收住。coaching 必須逐字保留「Game 心法：」與「速約任務：」兩個標頭；「速約任務：」後明寫「這輪」並給具體任務與理由，整段說清訊號、招式、目的與邀約階梯，不能用口號冒充高手。"
       : "Game Debrief 高手標準：完整保留 gameBreakdown，逐欄接住最新訊號並與整張卡一致；nextFirstLine 要一次一招、具體可貼，不能用口號冒充診斷。"
     : "新手標準：回覆要自然、具體、低壓且可直接貼；不能只稱讚、複誦或丟空泛問題。";
   const priorFactRejectionRule = opts.priorFactRejection
@@ -1015,6 +1019,11 @@ export function buildSemanticAdjudicationMessages(opts: {
       opts.priorSemanticRejection.issueKinds.join(",") || "strategy_mismatch"
     }）。這不是分類真值，你仍須獨立判 interactionKind；但本輪是唯一保留的完整修復機會，不得原樣 accept。若逐字稿與 server context 足以產出安全完整回覆，必須回 repair，repairedResult 必須實際改動候選，hintAssessment 只評修復稿且須符合交付契約；真的無法安全修好才 reject。`
     : "";
+  const priorSemanticHardGuardRule =
+    opts.priorSemanticRejection?.hardGuardFailureCode ===
+        "semantic_hint_active_reply_question"
+      ? "hardGuardFailureCode=semantic_hint_active_reply_question：前審把目前互動判成 active_consistency_test；只在該判定下，伺服器證實 warmUp／steady 至少一案仍含反問、資訊索取或把回答交回她。這不證明分類，先獨立重判：若是 ordinary／other，依其本來合約完整 repair，不得強套禁問；只有你也判 active_consistency_test 時，兩案才都必須直接回答被核對命題，再用明確 assistant 歸屬回扣具體細節，最後以陳述句收住；零問號、零嗎／呢、零請教、零想聽她看法、零交棒，不可只刪標點保留疑問語氣。未全部做到不算實質修復。"
+      : "";
   const semanticVerificationRule = semanticVerificationIssueKinds.length > 0
     ? `本輪是不同 provider 的最終完整語意驗證，前一審聲稱已修復 issueKinds=${
       semanticVerificationIssueKinds.join(",")
@@ -1037,6 +1046,7 @@ export function buildSemanticAdjudicationMessages(opts: {
         "issues 每項只含 kind，kind 只能是 unsupported_fact/generic/strategy_mismatch/unsafe。" +
         priorFactRejectionRule +
         priorSemanticRejectionRule +
+        priorSemanticHardGuardRule +
         modeRule + (opts.surface === "hint" ? hintShape : debriefShape) +
         semanticVerificationRule +
         "只輸出唯一 JSON，不要 markdown、前言或解釋。",

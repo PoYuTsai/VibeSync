@@ -403,11 +403,12 @@ Deno.test("buildHintMessages teaches how to handle consistency tests without usi
   const text = messages.map((m) => m.content).join("\n");
 
   assert(text.includes("小測試"));
-  assert(text.includes("命中後兩案各誠實表態＋收句，禁問"));
-  assert(text.includes("有具體事實則各回扣一項"));
-  assert(text.includes("否則直答原主張"));
-  assert(text.includes("只提大主題/興趣/自己不懂不算有據回扣"));
-  assert(text.includes("禁問"));
+  assert(text.includes("命中優先於給球/再問/邀約"));
+  assert(text.includes("兩案直答"));
+  assert(text.includes("用「妳剛提到/妳把」回扣她細節"));
+  assert(text.includes("零問/索取/交棒"));
+  assert(text.includes("無細節才直答主張"));
+  assert(text.includes("只談主題/興趣/不懂≠回扣"));
   assert(text.includes("勿談測試/自證"));
   assertEquals(text.includes("shit test"), false);
 });
@@ -438,13 +439,16 @@ Deno.test("buildHintMessages recognizes Sylvia's authenticity counter-question i
   });
   const text = messages.map((message) => message.content).join("\n");
 
-  assert(text.includes("已答不固定後問常選A/B＝普通題"));
+  assert(text.includes("已答不固定後問A/B=普通"));
   assert(text.includes("勿談測試/自證"));
   assert(text.includes("反問核對稱讚/主張"));
   assert(text.includes("無「真的」也算"));
-  assert(text.includes("有具體事實則各回扣一項"));
-  assert(text.includes("否則直答原主張"));
-  assert(text.includes("只提大主題/興趣/自己不懂不算有據回扣"));
+  assert(text.includes("命中優先於給球/再問/邀約"));
+  assert(text.includes("兩案直答"));
+  assert(text.includes("用「妳剛提到/妳把」回扣她細節"));
+  assert(text.includes("零問/索取/交棒"));
+  assert(text.includes("無細節才直答主張"));
+  assert(text.includes("只談主題/興趣/不懂≠回扣"));
   const trusted = hintTrustedFactualEvidence({
     profile: sylvia,
     practiceMode: "game",

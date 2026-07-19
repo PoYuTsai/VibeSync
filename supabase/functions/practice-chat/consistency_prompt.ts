@@ -26,7 +26,7 @@ export function formatConsistencyTestTypes(
 
 /** Hint 生成與語意複核共用，避免同一個主動小測試被兩層讀成不同意圖。 */
 export const ACTIVE_CONSISTENCY_TEST_CONTRACT =
-  "小測試：已答不固定後問常選A/B＝普通題，勿談測試/自證。反問核對稱讚/主張，無「真的」也算；命中後兩案各誠實表態＋收句，禁問。有具體事實則各回扣一項；否則直答原主張。只提大主題/興趣/自己不懂不算有據回扣。";
+  "小測試：已答不固定後問A/B=普通，勿談測試/自證；反問核對稱讚/主張，無「真的」也算。命中優先於給球/再問/邀約：兩案直答，各用「妳剛提到/妳把」回扣她細節，零問/索取/交棒；無細節才直答主張。只談主題/興趣/不懂≠回扣。";
 
 function difficultyLine(difficulty: PracticeDifficulty): string {
   if (difficulty === "easy") {

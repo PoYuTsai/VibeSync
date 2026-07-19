@@ -515,7 +515,7 @@ Deno.test("semantic adjudication prompt treats transcript and candidate as evide
   assertEquals(prompt.includes("兩個選項都不得只是問句"), true);
   assertEquals(prompt.includes("小測試："), true);
   assertEquals(
-    prompt.includes("已答不固定後問常選A/B＝普通題"),
+    prompt.includes("已答不固定後問A/B=普通"),
     true,
   );
   assertEquals(
@@ -523,6 +523,24 @@ Deno.test("semantic adjudication prompt treats transcript and candidate as evide
     true,
   );
   assertEquals(prompt.includes("無「真的」也算"), true);
+  assertEquals(
+    prompt.includes("命中優先於給球/再問/邀約"),
+    true,
+  );
+  assertEquals(
+    prompt.includes("兩案直答"),
+    true,
+  );
+  assertEquals(
+    prompt.includes(
+      "ordinary／other 可用回呼、自我揭露、共同畫面、輕鬆反打、回答再問",
+    ),
+    true,
+  );
+  assertEquals(
+    prompt.includes("active_consistency_test 一律由小測試契約覆蓋"),
+    true,
+  );
   assertEquals(prompt.includes("普通互動可再選擇性問一句"), true);
   assertEquals(prompt.includes("命中驗證則兩案完全禁問"), true);
   assertEquals(prompt.includes("hidden hintAssessment"), true);
@@ -619,6 +637,10 @@ Deno.test("Hint final verifier prompt keeps delivery criteria without repair-act
       "不能只說不懂／沒研究",
       "若她問 user 是否有興趣",
       "妳剛提到／妳把…",
+      "命中優先於給球/再問/邀約",
+      "兩案直答",
+      "零問/索取/交棒",
+      "active_consistency_test 一律由小測試契約覆蓋",
       "不得把該細節改寫成 user 原本就知道或觀察到",
       "命中 active_consistency_test 時，coaching 必須",
       "明說她正在核對的具體命題",
@@ -653,7 +675,7 @@ Deno.test("semantic Hint reviewer exposes the no-detail branch for a bare verifi
 
   assertEquals(prompt.includes("妳笑起來很好看。"), true);
   assertEquals(prompt.includes("你是不是都這樣說？"), true);
-  assertEquals(prompt.includes("否則直答原主張"), true);
+  assertEquals(prompt.includes("無細節才直答主張"), true);
   assertEquals(
     prompt.includes("沒有具體細節時，直接回被驗證的 user 原主張"),
     true,
@@ -764,7 +786,7 @@ Deno.test("semantic Hint reviewer rejects the live active-test expert-interview 
   assertEquals(prompt.includes("不得含問號或以嗎／呢收尾"), true);
   assertEquals(prompt.includes("回答責任留在 user"), true);
   assertEquals(
-    prompt.includes("有具體事實則各回扣一項"),
+    prompt.includes("用「妳剛提到/妳把」回扣她細節"),
     true,
   );
   assertEquals(prompt.includes("只重複大主題／興趣"), true);
@@ -1158,6 +1180,12 @@ Deno.test("Hint full rejection becomes one changed repair plus an independent ve
       assertEquals(prompt.includes("不得原樣 accept"), true);
       assertEquals(prompt.includes("repairedResult 必須實際改動候選"), true);
       assertEquals(
+        prompt.includes(
+          "hardGuardFailureCode=semantic_hint_active_reply_question",
+        ),
+        false,
+      );
+      assertEquals(
         prompt.includes("逐字保留「Game 心法：」與「速約任務：」兩個標頭"),
         true,
       );
@@ -1193,18 +1221,19 @@ Deno.test("Hint full rejection becomes one changed repair plus an independent ve
   assertEquals(result.providerCalls, 3);
 });
 
-Deno.test("Hint rejection metadata cannot freeze an ordinary question into an active test", async () => {
+Deno.test("Hint hard-guard metadata cannot freeze an ordinary question into an active test", async () => {
   const ordinaryTurns = [
     { role: "user" as const, text: "我沒有固定喝哪種，通常看當天心情。" },
     { role: "ai" as const, text: "那你比較常點手沖還是拿鐵？" },
   ];
   const rejected = {
-    warmUp: "看心情，手沖和拿鐵都可以。",
+    warmUp: "看心情，手沖和拿鐵都可以。妳呢？",
     steady: "我沒有固定，當天再選。",
-    coaching: "直接回答她的咖啡選項題。",
+    coaching:
+      "Game 心法：她只是在縮小咖啡偏好；照實回答，再自然把普通話題接下去。速約任務：這輪不約，先把字面選項題答清楚。",
   };
   const repaired = {
-    warmUp: "我沒有固定喝哪種，通常看當天心情，手沖或拿鐵都可能。",
+    warmUp: "我沒有固定喝哪種，通常看當天心情。妳呢？",
     steady: "我是不固定派，當天想喝哪個就點哪個。",
     coaching:
       "Game 心法：她在縮小咖啡偏好；照實說沒有固定，讓回答保持自然。速約任務：這輪不約，先把字面選項題答清楚。",
@@ -1228,27 +1257,35 @@ Deno.test("Hint rejection metadata cannot freeze an ordinary question into an ac
       deepSeekCalls += 1;
       if (deepSeekCalls === 1) {
         return Promise.resolve(validHintAdjudication({
-          verdict: "reject",
-          issues: [{ kind: "strategy_mismatch" }],
-          repairedResult: null,
-          hintAssessment: {
-            interactionKind: "active_consistency_test",
-            replyContract: "noncompliant",
-            coachingContract: "noncompliant",
-          },
+          hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
         }));
       }
       const prompt = args.messages.map((message) => message.content).join("\n");
       assertEquals(prompt.includes("最終完整語意驗證"), true);
       assertEquals(prompt.includes("這是普通問答"), true);
       return Promise.resolve(validHintAdjudication({
-        hintAssessment: OTHER_HINT_ASSESSMENT,
+        hintAssessment: ORDINARY_HINT_ASSESSMENT,
       }));
     },
     callClaude: (args) => {
       calls.push(`claude:${args.maxTokens}`);
       const prompt = args.messages.map((message) => message.content).join("\n");
       assertEquals(prompt.includes("這不是分類真值"), true);
+      assertEquals(
+        prompt.includes(
+          "hardGuardFailureCode=semantic_hint_active_reply_question",
+        ),
+        true,
+      );
+      assertEquals(prompt.includes("這不證明分類，先獨立重判"), true);
+      assertEquals(
+        prompt.includes("若是 ordinary／other，依其本來合約完整 repair"),
+        true,
+      );
+      assertEquals(
+        prompt.includes("只有你也判 active_consistency_test 時"),
+        true,
+      );
       return Promise.resolve(validHintAdjudication({
         verdict: "repair",
         issues: [{ kind: "strategy_mismatch" }],
@@ -1264,12 +1301,18 @@ Deno.test("Hint rejection metadata cannot freeze an ordinary question into an ac
         enforceGeneratedQuality: true,
         semanticAdjudicated: true,
       });
+      if (
+        hintAssessment?.interactionKind === "active_consistency_test" &&
+        /[?？]/u.test(`${candidate.warmUp}${candidate.steady}`)
+      ) {
+        throw new Error("semantic_hint_active_reply_question");
+      }
       assertEquals(hintAssessment, ORDINARY_HINT_ASSESSMENT);
     },
   });
 
   assertEquals(calls, ["deepseek:1800", "claude:1800", "deepseek:2400"]);
-  assertEquals(validations, 2);
+  assertEquals(validations, 3);
   assertEquals(result.candidate, repaired);
   assertEquals(result.hintAssessment, ORDINARY_HINT_ASSESSMENT);
   assertEquals(result.provider, "deepseek");
@@ -2740,9 +2783,14 @@ Deno.test("semantic adjudicator uses the alternate reviewer when a repair still 
   assertEquals(result.candidate, hintCandidate);
 });
 
-Deno.test("an active-question reviewer repair does not poison the original candidate", async () => {
+Deno.test("an active-question reviewer repair cannot poison an ordinary question", async () => {
+  const ordinaryQuestionCandidate = {
+    warmUp: "真的不固定，還是看當天心情。妳呢？",
+    steady: "手沖和拿鐵都會喝，當天想喝什麼才決定。",
+    coaching: "她只是在縮小偏好選項；照實回答，再自然把普通話題接下去。",
+  };
   const invalidRepair = {
-    ...hintCandidate,
+    ...ordinaryQuestionCandidate,
     warmUp: "我還不熟，那妳會怎麼看？",
   };
   const calls: string[] = [];
@@ -2750,8 +2798,11 @@ Deno.test("an active-question reviewer repair does not poison the original candi
   const result = await adjudicatePracticeCandidate({
     surface: "hint",
     practiceMode: "game",
-    candidate: hintCandidate,
-    turns,
+    candidate: ordinaryQuestionCandidate,
+    turns: [
+      { role: "user", text: "我沒有固定喝哪種，看心情。" },
+      { role: "ai", text: "那比較常手沖還是拿鐵？" },
+    ],
     trustedGenerationContext: "server facts only",
     maxProviderCalls: 3,
     deepSeekApiKey: "deepseek-key",
@@ -2768,27 +2819,35 @@ Deno.test("an active-question reviewer repair does not poison the original candi
             repairedResult: invalidRepair,
             hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
           })
-          : validFactVerification(),
+          : validFactVerification({
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          }),
       );
     },
     callDeepSeek: () => {
       calls.push("deepseek");
-      return Promise.resolve(validHintAdjudication());
+      return Promise.resolve(validHintAdjudication({
+        hintAssessment: ORDINARY_HINT_ASSESSMENT,
+      }));
     },
-    validateCandidate: (candidate) => {
-      if (String(candidate.warmUp).includes("妳會怎麼看")) {
+    validateCandidate: (candidate, hintAssessment) => {
+      if (
+        hintAssessment?.interactionKind === "active_consistency_test" &&
+        /[?？]/u.test(String(candidate.warmUp))
+      ) {
         throw new Error("semantic_hint_active_reply_question");
       }
     },
   });
 
   assertEquals(calls, ["claude", "deepseek", "claude"]);
-  assertEquals(result.candidate, hintCandidate);
+  assertEquals(result.candidate, ordinaryQuestionCandidate);
   assertEquals(result.repaired, false);
+  assertEquals(result.hintAssessment, ORDINARY_HINT_ASSESSMENT);
   assertEquals(result.providerCalls, 3);
 });
 
-Deno.test("active consistency hard guard rejection becomes a material repair obligation", async () => {
+Deno.test("active consistency hard guard preserves its exact repair obligation after a reviewer failure", async () => {
   const activeTurns = [
     {
       role: "ai" as const,
@@ -2813,6 +2872,7 @@ Deno.test("active consistency hard guard rejection becomes a material repair obl
   };
   const calls: string[] = [];
   let claudeCalls = 0;
+  let deepSeekCalls = 0;
 
   const result = await adjudicatePracticeCandidate({
     surface: "hint",
@@ -2821,7 +2881,7 @@ Deno.test("active consistency hard guard rejection becomes a material repair obl
     candidateProvider: "deepseek",
     turns: activeTurns,
     trustedGenerationContext: "partnerFacts: active consistency test",
-    maxProviderCalls: 3,
+    maxProviderCalls: 4,
     deepSeekApiKey: "deepseek-key",
     claudeApiKey: "claude-key",
     claudeModel: "claude-test",
@@ -2829,22 +2889,8 @@ Deno.test("active consistency hard guard rejection becomes a material repair obl
       calls.push(`claude:${args.maxTokens}`);
       claudeCalls += 1;
       if (claudeCalls === 1) {
-        return Promise.resolve(validHintAdjudication({
-          hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
-        }));
+        return Promise.reject(new Error("claude_invalid_json"));
       }
-      const prompt = args.messages.map((message) => message.content).join("\n");
-      assertEquals(
-        prompt.includes("本輪是不同 provider 的最終完整語意驗證"),
-        true,
-      );
-      assertEquals(prompt.includes("issueKinds=strategy_mismatch"), true);
-      return Promise.resolve(validHintAdjudication({
-        hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
-      }));
-    },
-    callDeepSeek: (args) => {
-      calls.push(`deepseek:${args.maxTokens}`);
       const prompt = args.messages.map((message) => message.content).join("\n");
       assertEquals(prompt.includes(interviewCandidate.warmUp), true);
       assertEquals(
@@ -2852,10 +2898,38 @@ Deno.test("active consistency hard guard rejection becomes a material repair obl
         true,
       );
       assertEquals(prompt.includes("issueKinds=strategy_mismatch"), true);
+      assertEquals(
+        prompt.includes(
+          "hardGuardFailureCode=semantic_hint_active_reply_question",
+        ),
+        true,
+      );
+      assertEquals(prompt.includes("warmUp／steady 至少一案仍含反問"), true);
+      assertEquals(prompt.includes("不可只刪標點保留疑問語氣"), true);
       return Promise.resolve(validHintAdjudication({
         verdict: "repair",
         issues: [{ kind: "strategy_mismatch" }],
         repairedResult: repaired,
+        hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+      }));
+    },
+    callDeepSeek: (args) => {
+      calls.push(`deepseek:${args.maxTokens}`);
+      deepSeekCalls += 1;
+      const prompt = args.messages.map((message) => message.content).join("\n");
+      if (deepSeekCalls === 1) {
+        assertEquals(args.thinking, undefined);
+        return Promise.resolve(validHintAdjudication({
+          hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+        }));
+      }
+      assertEquals(args.thinking, { type: "disabled" });
+      assertEquals(
+        prompt.includes("本輪是不同 provider 的最終完整語意驗證"),
+        true,
+      );
+      assertEquals(prompt.includes("issueKinds=strategy_mismatch"), true);
+      return Promise.resolve(validHintAdjudication({
         hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
       }));
     },
@@ -2869,12 +2943,13 @@ Deno.test("active consistency hard guard rejection becomes a material repair obl
   assertEquals(calls, [
     "claude:1800",
     "deepseek:1800",
-    "claude:2400",
+    "claude:1800",
+    "deepseek:2400",
   ]);
   assertEquals(result.candidate, repaired);
   assertEquals(result.repaired, true);
   assertEquals(result.issueKinds, ["strategy_mismatch"]);
-  assertEquals(result.providerCalls, 3);
+  assertEquals(result.providerCalls, 4);
 });
 
 Deno.test("active consistency hard guard fails closed without repair and verifier budget", async () => {
