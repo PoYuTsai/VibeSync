@@ -2621,59 +2621,105 @@ Deno.test("active fact-only final rejection rewrites all fields before independe
   assertEquals(result.providerCalls, 4);
 });
 
-Deno.test("active fact-only recovery requires compliant delivery contracts", async () => {
-  const repaired = {
+Deno.test("active fact-only recovery unions fact and delivery obligations", async () => {
+  const firstRepair = {
     warmUp: "我目前還談不上懂，但妳剛提到動線，我現在開始留意了。",
     steady: "我沒有研究到能說懂，只是現在對老屋多了一點興趣。",
     coaching: "她在驗證你是不是真的有興趣；誠實回答並具體回扣。",
+  };
+  const recovered = {
+    warmUp: "我沒研究過老屋；妳提到動線有點卡後，我現在才開始留意。",
+    steady: "我還談不上懂，但妳說吧台離門口太近，確實讓我有點好奇。",
+    coaching: "她在驗證你是否真的有興趣；限制主張並回扣她說的動線。",
   };
   for (
     const assessment of [
       ACTIVE_REPLY_NONCOMPLIANT_HINT_ASSESSMENT,
       ACTIVE_COACHING_NONCOMPLIANT_HINT_ASSESSMENT,
+      ACTIVE_BOTH_NONCOMPLIANT_HINT_ASSESSMENT,
     ]
   ) {
     const calls: string[] = [];
-    const error = await assertRejects(
-      () =>
-        adjudicatePracticeCandidate({
-          surface: "hint",
-          practiceMode: "game",
-          candidate: hintCandidate,
-          candidateProvider: "anthropic",
-          turns,
-          trustedGenerationContext: "server facts only",
-          maxProviderCalls: 4,
-          deepSeekApiKey: "deepseek-key",
-          claudeApiKey: "claude-key",
-          claudeModel: "claude-test",
-          callDeepSeek: (args) => {
-            calls.push(`deepseek:${args.maxTokens}`);
-            return Promise.resolve(validHintAdjudication({
-              verdict: "repair",
-              issues: [{ kind: "unsupported_fact" }],
-              repairedResult: repaired,
-              hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
-            }));
-          },
-          callClaude: (args) => {
-            calls.push(`claude:${args.maxTokens}`);
-            return Promise.resolve(validHintAdjudication({
-              verdict: "reject",
-              issues: [{ kind: "unsupported_fact" }],
-              repairedResult: null,
-              hintAssessment: assessment,
-            }));
-          },
-        }),
-      SemanticAdjudicationError,
-      "semantic_adjudication_repair_unverified:semantic_adjudication_rejected",
-    );
+    let deepSeekCalls = 0;
+    let claudeCalls = 0;
+    const result = await adjudicatePracticeCandidate({
+      surface: "hint",
+      practiceMode: "game",
+      candidate: hintCandidate,
+      candidateProvider: "anthropic",
+      turns,
+      trustedGenerationContext: "server facts only",
+      maxProviderCalls: 4,
+      deepSeekApiKey: "deepseek-key",
+      claudeApiKey: "claude-key",
+      claudeModel: "claude-test",
+      callDeepSeek: (args) => {
+        calls.push(`deepseek:${args.maxTokens}`);
+        deepSeekCalls += 1;
+        if (deepSeekCalls === 1) {
+          return Promise.resolve(validHintAdjudication({
+            verdict: "repair",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: firstRepair,
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          }));
+        }
+        assertEquals(args.maxTokens, 2400);
+        assertEquals(args.thinking, { type: "disabled" });
+        const prompt = args.messages.map((message) => message.content).join(
+          "\n",
+        );
+        assertEquals(prompt.includes("issueKinds=unsupported_fact"), true);
+        return Promise.resolve(validHintAdjudication({
+          hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+        }));
+      },
+      callClaude: (args) => {
+        calls.push(`claude:${args.maxTokens}`);
+        claudeCalls += 1;
+        if (claudeCalls === 1) {
+          return Promise.resolve(validHintAdjudication({
+            verdict: "reject",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: null,
+            hintAssessment: assessment,
+          }));
+        }
+        const prompt = args.messages.map((message) => message.content).join(
+          "\n",
+        );
+        assertEquals(
+          prompt.includes("warmUp、steady、coaching 三欄都必須完整實改"),
+          true,
+        );
+        assertEquals(
+          prompt.includes("因 replyContract 不合格") ===
+            (assessment.replyContract === "noncompliant"),
+          true,
+        );
+        assertEquals(
+          prompt.includes("因 coachingContract 不合格") ===
+            (assessment.coachingContract === "noncompliant"),
+          true,
+        );
+        return Promise.resolve(validHintAdjudication({
+          verdict: "repair",
+          issues: [{ kind: "unsupported_fact" }],
+          repairedResult: recovered,
+          hintAssessment: ORDINARY_HINT_ASSESSMENT,
+        }));
+      },
+    });
 
-    assertEquals(calls, ["deepseek:1800", "claude:2400"]);
-    assertEquals(error.providerCalls, 2);
-    assertEquals(error.issueKinds, ["unsupported_fact"]);
-    assertEquals(error.hintAssessment, assessment);
+    assertEquals(calls, [
+      "deepseek:1800",
+      "claude:2400",
+      "claude:1800",
+      "deepseek:2400",
+    ]);
+    assertEquals(result.candidate, recovered);
+    assertEquals(result.hintAssessment, ACTIVE_COMPLIANT_HINT_ASSESSMENT);
+    assertEquals(result.providerCalls, 4);
   }
 });
 
@@ -2872,6 +2918,16 @@ Deno.test("active mixed recovery accepts either rejected delivery contract", asy
           ),
           true,
         );
+        assertEquals(
+          prompt.includes("因 replyContract 不合格") ===
+            (assessment.replyContract === "noncompliant"),
+          true,
+        );
+        assertEquals(
+          prompt.includes("因 coachingContract 不合格") ===
+            (assessment.coachingContract === "noncompliant"),
+          true,
+        );
         return Promise.resolve(validHintAdjudication({
           verdict: "repair",
           issues: [
@@ -2978,6 +3034,8 @@ Deno.test("active fact-generic recovery rewrites every field before independent 
         prompt.includes("有具體細節才回扣，沒有時不得硬補"),
         true,
       );
+      assertEquals(prompt.includes("因 replyContract 不合格"), true);
+      assertEquals(prompt.includes("因 coachingContract 不合格"), true);
       return Promise.resolve(validHintAdjudication({
         verdict: "repair",
         issues: [
@@ -3002,7 +3060,122 @@ Deno.test("active fact-generic recovery rewrites every field before independent 
   assertEquals(result.providerCalls, 4);
 });
 
-Deno.test("active fact-generic recovery requires the exact fully rejected tuple", async () => {
+Deno.test("active fact-generic recovery treats delivery contracts as orthogonal", async () => {
+  const firstRepair = {
+    warmUp: "我目前還談不上懂，但妳剛提到動線，我現在開始留意了。",
+    steady: "我沒有研究到能說懂，只是現在對老屋多了一點興趣。",
+    coaching: "她在驗證你是不是真的有興趣；誠實回答並具體回扣。",
+  };
+  const recovered = {
+    warmUp: "我沒有研究過老屋；妳提到動線有點卡後，我現在才開始留意。",
+    steady: "我還談不上懂，但妳說吧台離門口太近，確實讓我有點好奇。",
+    coaching:
+      "她在驗證你是否真的有興趣；兩案限制既有主張，並具體回扣她說的動線。",
+  };
+  for (
+    const assessment of [
+      ACTIVE_REPLY_NONCOMPLIANT_HINT_ASSESSMENT,
+      ACTIVE_COACHING_NONCOMPLIANT_HINT_ASSESSMENT,
+      ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+    ]
+  ) {
+    const calls: string[] = [];
+    let claudeCalls = 0;
+    let deepSeekCalls = 0;
+    const result = await adjudicatePracticeCandidate({
+      surface: "hint",
+      practiceMode: "game",
+      candidate: hintCandidate,
+      candidateProvider: "deepseek",
+      turns,
+      trustedGenerationContext: "server facts only",
+      maxProviderCalls: 4,
+      deepSeekApiKey: "deepseek-key",
+      claudeApiKey: "claude-key",
+      claudeModel: "claude-test",
+      callClaude: (args) => {
+        calls.push(`claude:${args.maxTokens}`);
+        claudeCalls += 1;
+        if (claudeCalls === 1) {
+          return Promise.resolve(validHintAdjudication({
+            verdict: "repair",
+            issues: [{ kind: "strategy_mismatch" }],
+            repairedResult: firstRepair,
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          }));
+        }
+        const prompt = args.messages.map((message) => message.content).join(
+          "\n",
+        );
+        assertEquals(
+          prompt.includes("issueKinds=unsupported_fact,generic"),
+          true,
+        );
+        return Promise.resolve(validHintAdjudication({
+          hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+        }));
+      },
+      callDeepSeek: (args) => {
+        calls.push(`deepseek:${args.maxTokens}`);
+        deepSeekCalls += 1;
+        assertEquals(args.thinking, { type: "disabled" });
+        if (deepSeekCalls === 1) {
+          return Promise.resolve(validHintAdjudication({
+            verdict: "reject",
+            issues: [
+              { kind: "generic" },
+              { kind: "unsupported_fact" },
+            ],
+            repairedResult: null,
+            hintAssessment: assessment,
+          }));
+        }
+        const prompt = args.messages.map((message) => message.content).join(
+          "\n",
+        );
+        assertEquals(
+          prompt.includes("warmUp、steady、coaching 三欄都必須完整實改"),
+          true,
+        );
+        assertEquals(
+          prompt.includes("有具體細節才回扣，沒有時不得硬補"),
+          true,
+        );
+        assertEquals(
+          prompt.includes("因 replyContract 不合格") ===
+            (assessment.replyContract === "noncompliant"),
+          true,
+        );
+        assertEquals(
+          prompt.includes("因 coachingContract 不合格") ===
+            (assessment.coachingContract === "noncompliant"),
+          true,
+        );
+        return Promise.resolve(validHintAdjudication({
+          verdict: "repair",
+          issues: [
+            { kind: "unsupported_fact" },
+            { kind: "generic" },
+          ],
+          repairedResult: recovered,
+          hintAssessment: ORDINARY_HINT_ASSESSMENT,
+        }));
+      },
+    });
+
+    assertEquals(calls, [
+      "claude:1800",
+      "deepseek:2400",
+      "deepseek:1800",
+      "claude:2400",
+    ]);
+    assertEquals(result.candidate, recovered);
+    assertEquals(result.hintAssessment, ACTIVE_COMPLIANT_HINT_ASSESSMENT);
+    assertEquals(result.providerCalls, 4);
+  }
+});
+
+Deno.test("active recovery rejects unmapped issue sets", async () => {
   const repaired = {
     warmUp: "我目前還談不上懂，但妳剛提到動線，我現在開始留意了。",
     steady: "我沒有研究到能說懂，只是現在對老屋多了一點興趣。",
@@ -3010,37 +3183,26 @@ Deno.test("active fact-generic recovery requires the exact fully rejected tuple"
   };
   const cases = [
     {
+      issues: [{ kind: "unsafe" as const }],
+      expectedKinds: ["unsafe"],
+    },
+    {
+      issues: [
+        { kind: "unsupported_fact" as const },
+        { kind: "unsafe" as const },
+      ],
+      expectedKinds: ["unsupported_fact", "unsafe"],
+    },
+    {
       issues: [{ kind: "generic" as const }],
-      pendingAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
-      assessment: ACTIVE_BOTH_NONCOMPLIANT_HINT_ASSESSMENT,
       expectedKinds: ["generic"],
     },
     {
       issues: [
-        { kind: "unsupported_fact" as const },
+        { kind: "strategy_mismatch" as const },
         { kind: "generic" as const },
       ],
-      pendingAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
-      assessment: ACTIVE_REPLY_NONCOMPLIANT_HINT_ASSESSMENT,
-      expectedKinds: ["unsupported_fact", "generic"],
-    },
-    {
-      issues: [
-        { kind: "unsupported_fact" as const },
-        { kind: "generic" as const },
-      ],
-      pendingAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
-      assessment: ACTIVE_COACHING_NONCOMPLIANT_HINT_ASSESSMENT,
-      expectedKinds: ["unsupported_fact", "generic"],
-    },
-    {
-      issues: [
-        { kind: "unsupported_fact" as const },
-        { kind: "generic" as const },
-      ],
-      pendingAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
-      assessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
-      expectedKinds: ["unsupported_fact", "generic"],
+      expectedKinds: ["generic", "strategy_mismatch"],
     },
   ];
   for (const testCase of cases) {
@@ -3064,7 +3226,7 @@ Deno.test("active fact-generic recovery requires the exact fully rejected tuple"
               verdict: "repair",
               issues: [{ kind: "strategy_mismatch" }],
               repairedResult: repaired,
-              hintAssessment: testCase.pendingAssessment,
+              hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
             }));
           },
           callDeepSeek: (args) => {
@@ -3073,7 +3235,7 @@ Deno.test("active fact-generic recovery requires the exact fully rejected tuple"
               verdict: "reject",
               issues: testCase.issues,
               repairedResult: null,
-              hintAssessment: testCase.assessment,
+              hintAssessment: ACTIVE_BOTH_NONCOMPLIANT_HINT_ASSESSMENT,
             }));
           },
         }),
@@ -3084,60 +3246,75 @@ Deno.test("active fact-generic recovery requires the exact fully rejected tuple"
     assertEquals(calls, ["claude:1800", "deepseek:2400"]);
     assertEquals(error.providerCalls, 2);
     assertEquals(error.issueKinds, testCase.expectedKinds);
-    assertEquals(error.hintAssessment, testCase.assessment);
+    assertEquals(
+      error.hintAssessment,
+      ACTIVE_BOTH_NONCOMPLIANT_HINT_ASSESSMENT,
+    );
   }
 });
 
-Deno.test("active mixed recovery rejects fully compliant delivery contracts", async () => {
+Deno.test("active strategy recovery requires a rejected delivery contract", async () => {
   const repaired = {
     warmUp: "我目前還談不上懂，但妳剛提到動線，我現在開始留意了。",
     steady: "我沒有研究到能說懂，只是現在對老屋多了一點興趣。",
     coaching: "她在驗證你是不是真的有興趣；誠實回答並具體回扣。",
   };
-  const calls: string[] = [];
-  const error = await assertRejects(
-    () =>
-      adjudicatePracticeCandidate({
-        surface: "hint",
-        practiceMode: "game",
-        candidate: hintCandidate,
-        candidateProvider: "deepseek",
-        turns,
-        trustedGenerationContext: "server facts only",
-        maxProviderCalls: 4,
-        deepSeekApiKey: "deepseek-key",
-        claudeApiKey: "claude-key",
-        claudeModel: "claude-test",
-        callClaude: (args) => {
-          calls.push(`claude:${args.maxTokens}`);
-          return Promise.resolve(validHintAdjudication({
-            verdict: "repair",
-            issues: [{ kind: "strategy_mismatch" }],
-            repairedResult: repaired,
-            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
-          }));
-        },
-        callDeepSeek: (args) => {
-          calls.push(`deepseek:${args.maxTokens}`);
-          return Promise.resolve(validHintAdjudication({
-            verdict: "reject",
-            issues: [
-              { kind: "unsupported_fact" },
-              { kind: "strategy_mismatch" },
-            ],
-            repairedResult: null,
-            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
-          }));
-        },
-      }),
-    SemanticAdjudicationError,
-    "semantic_adjudication_repair_unverified:semantic_adjudication_rejected",
-  );
+  const cases = [
+    {
+      issues: [{ kind: "strategy_mismatch" as const }],
+      expectedKinds: ["strategy_mismatch"],
+    },
+    {
+      issues: [
+        { kind: "unsupported_fact" as const },
+        { kind: "strategy_mismatch" as const },
+      ],
+      expectedKinds: ["unsupported_fact", "strategy_mismatch"],
+    },
+  ];
+  for (const testCase of cases) {
+    const calls: string[] = [];
+    const error = await assertRejects(
+      () =>
+        adjudicatePracticeCandidate({
+          surface: "hint",
+          practiceMode: "game",
+          candidate: hintCandidate,
+          candidateProvider: "deepseek",
+          turns,
+          trustedGenerationContext: "server facts only",
+          maxProviderCalls: 4,
+          deepSeekApiKey: "deepseek-key",
+          claudeApiKey: "claude-key",
+          claudeModel: "claude-test",
+          callClaude: (args) => {
+            calls.push(`claude:${args.maxTokens}`);
+            return Promise.resolve(validHintAdjudication({
+              verdict: "repair",
+              issues: [{ kind: "strategy_mismatch" }],
+              repairedResult: repaired,
+              hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+            }));
+          },
+          callDeepSeek: (args) => {
+            calls.push(`deepseek:${args.maxTokens}`);
+            return Promise.resolve(validHintAdjudication({
+              verdict: "reject",
+              issues: testCase.issues,
+              repairedResult: null,
+              hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+            }));
+          },
+        }),
+      SemanticAdjudicationError,
+      "semantic_adjudication_repair_unverified:semantic_adjudication_rejected",
+    );
 
-  assertEquals(calls, ["claude:1800", "deepseek:2400"]);
-  assertEquals(error.providerCalls, 2);
-  assertEquals(error.issueKinds, ["unsupported_fact", "strategy_mismatch"]);
-  assertEquals(error.hintAssessment, ACTIVE_COMPLIANT_HINT_ASSESSMENT);
+    assertEquals(calls, ["claude:1800", "deepseek:2400"]);
+    assertEquals(error.providerCalls, 2);
+    assertEquals(error.issueKinds, testCase.expectedKinds);
+    assertEquals(error.hintAssessment, ACTIVE_COMPLIANT_HINT_ASSESSMENT);
+  }
 });
 
 Deno.test("ordinary unsupported-fact rejection rewrites all fields and keeps natural questions", async () => {

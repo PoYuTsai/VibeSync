@@ -657,35 +657,30 @@ function hintVerifierRecoveryKind(
     rejection.issueKinds,
     ["unsupported_fact", "generic"],
   );
-  const activeUnsupportedFactOnly = hasExactSemanticIssueKinds(
+  const unsupportedFactOnly = hasExactSemanticIssueKinds(
     rejection.issueKinds,
     ["unsupported_fact"],
-  ) && verifierAssessment.replyContract === "compliant" &&
-    verifierAssessment.coachingContract === "compliant";
+  );
   const hasNoncompliantActiveContract =
     verifierAssessment.replyContract === "noncompliant" ||
-    verifierAssessment.coachingContract === "noncompliant";
-  const hasBothNoncompliantActiveContracts =
-    verifierAssessment.replyContract === "noncompliant" &&
     verifierAssessment.coachingContract === "noncompliant";
   const pendingActiveContractsAreCompliant =
     pendingAssessment.replyContract === "compliant" &&
     pendingAssessment.coachingContract === "compliant";
-  // A mixed fact/strategy rejection may name only the reply or coaching
-  // contract. It is still bounded by the exact issue set, while the repair
-  // guard below rewrites every visible field before independent verification.
-  // Production can return a fact+generic verdict while both active delivery
-  // contracts fail. Admit only that exact tuple: unsupported_fact forces all
-  // three visible fields to change, both contract guards cover their owners,
-  // and a different provider must still certify the result. Generic-only,
-  // one-sided contracts, and every superset remain terminal.
-  const recoverableActiveFactAndGeneric = unsupportedFactAndGeneric &&
-    pendingActiveContractsAreCompliant &&
-    hasBothNoncompliantActiveContracts;
-  const recoverableActiveContracts = activeUnsupportedFactOnly ||
-    recoverableActiveFactAndGeneric ||
-    ((strategyOnly || unsupportedFactAndStrategy) &&
-      hasNoncompliantActiveContract);
+  // Semantic issue kinds and delivery contracts are orthogonal evidence. Keep
+  // an exact issue allowlist, then derive field obligations: every allowlisted
+  // fact lane without a strategy issue rewrites all visible fields regardless
+  // of contract flags. Any strategy issue still needs a named noncompliant
+  // contract to identify the strategy repair owner.
+  // Generic-only, generic+strategy, every 3-kind superset, and unsafe remain
+  // terminal because they have no fully mapped repair obligation here.
+  const hasMappedFactObligation = unsupportedFactOnly ||
+    unsupportedFactAndGeneric;
+  const hasMappedStrategyObligation =
+    (strategyOnly || unsupportedFactAndStrategy) &&
+    hasNoncompliantActiveContract;
+  const recoverableActiveContracts = pendingActiveContractsAreCompliant &&
+    (hasMappedFactObligation || hasMappedStrategyObligation);
   if (
     recoverableActiveContracts &&
     pendingAssessment.interactionKind === "active_consistency_test" &&
@@ -1272,12 +1267,26 @@ export function buildSemanticAdjudicationMessages(opts: {
         : "這不是分類真值，你仍須獨立判 interactionKind。"
     }本輪是唯一保留的完整修復機會，不得原樣 accept。若逐字稿與 server context 足以產出安全完整回覆，必須回 repair，repairedResult 必須實際改動候選，hintAssessment 只評修復稿且須符合交付契約；真的無法安全修好才 reject。`
     : "";
-  const activeVerifierRecoveryRequiresFactRewrite =
+  const activeVerifierRecoveryAssessment =
+    opts.priorSemanticRejection?.verifierRecoveryKind === "active_contract"
+      ? opts.priorSemanticRejection.verifierHintAssessment
+      : undefined;
+  const activeVerifierRecoveryObligations = [
     opts.priorSemanticRejection?.verifierRecoveryKind === "active_contract" &&
-    opts.priorSemanticRejection.issueKinds.includes("unsupported_fact");
-  const activeVerifierRecoveryRequiresSpecificRewrite =
+      opts.priorSemanticRejection.issueKinds.includes("unsupported_fact")
+      ? "因同時含 unsupported_fact，warmUp、steady、coaching 三欄都必須完整實改並刪除所有無證據主張；contract=compliant 只代表交付契約合格，不代表該欄事實安全"
+      : null,
+    activeVerifierRecoveryAssessment?.replyContract === "noncompliant"
+      ? "因 replyContract 不合格，warmUp、steady 必須各自完整實改"
+      : null,
+    activeVerifierRecoveryAssessment?.coachingContract === "noncompliant"
+      ? "因 coachingContract 不合格，coaching 必須完整實改"
+      : null,
     opts.priorSemanticRejection?.verifierRecoveryKind === "active_contract" &&
-    opts.priorSemanticRejection.issueKinds.includes("generic");
+      opts.priorSemanticRejection.issueKinds.includes("generic")
+      ? "因同時含 generic，三欄都要依逐字稿寫得具體；有具體細節才回扣，沒有時不得硬補，不能把無證據內容只換成空泛罐頭"
+      : null,
+  ].filter((rule): rule is string => rule !== null).join("；");
   const verifierRecoveryRule =
     opts.priorSemanticRejection?.verifierRecoveryKind === "active_contract"
       ? `前一個不同 provider 的最終複核把被拒稿判為 active_consistency_test（issueKinds=${
@@ -1288,15 +1297,7 @@ export function buildSemanticAdjudicationMessages(opts: {
       }; coachingContract=${
         opts.priorSemanticRejection.verifierHintAssessment
           ?.coachingContract ?? "noncompliant"
-      }）。本輪只修 active_consistency_test 的可見交付內容，不得改判 ordinary/other；repair 時 hintAssessment 固定回 active_consistency_test/compliant/compliant，做不到就 reject。${
-        activeVerifierRecoveryRequiresFactRewrite
-          ? "因同時含 unsupported_fact，warmUp、steady、coaching 三欄都必須完整實改並刪除所有無證據主張；contract=compliant 只代表交付契約合格，不代表該欄事實安全"
-          : "reply 不合格時 warmUp、steady 必須各自完整實改，coaching 不合格時 coaching 必須實改"
-      }${
-        activeVerifierRecoveryRequiresSpecificRewrite
-          ? "；因同時含 generic，三欄都要依逐字稿寫得具體；有具體細節才回扣，沒有時不得硬補，不能把無證據內容只換成空泛罐頭"
-          : ""
-      }；不能只改標點或無關欄位。`
+      }）。本輪只修 active_consistency_test 的可見交付內容，不得改判 ordinary/other；repair 時 hintAssessment 固定回 active_consistency_test/compliant/compliant，做不到就 reject。${activeVerifierRecoveryObligations}；不能只改標點或無關欄位。`
       : opts.priorSemanticRejection?.verifierRecoveryKind ===
           "ordinary_unsupported_fact"
       ? "前兩個不同 provider 都把互動判為 ordinary，但最終複核仍發現 unsupported_fact。依逐字稿獨立重判；若仍是 ordinary，必須完整重寫 warmUp、steady、coaching 三欄，刪除所有無證據偏好、頻率、動機或經歷；可保留回答後的自然問句，不得誤套 active 禁問。若分類不同或無法確定，直接 reject。"
