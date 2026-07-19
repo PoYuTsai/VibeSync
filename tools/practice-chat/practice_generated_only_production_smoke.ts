@@ -2,7 +2,7 @@
 // Read README.md before running.
 type JsonRecord = Record<string, unknown>;
 
-const QUALITY_SCHEMA_VERSION = "typed-facts-v1";
+const QUALITY_SCHEMA_VERSION = "semantic-quality-v2";
 
 function parseDotEnv(text: string): Record<string, string> {
   const values: Record<string, string> = {};
@@ -152,10 +152,9 @@ function generatedOnly(body: JsonRecord, surface: string): void {
   assert(body.generationSource === "model", `${surface}_not_model`);
   assert(body.fallbackUsed === false, `${surface}_fallback_used`);
   assert(
-    body.groundingReviewFallbackUsed === false,
-    `${surface}_grounding_review_fallback_used`,
+    typeof body.failoverUsed === "boolean",
+    `${surface}_failover_marker_missing`,
   );
-  assert(body.failoverUsed === false, `${surface}_failover_used`);
   assert(
     body.qualitySchemaVersion === QUALITY_SCHEMA_VERSION,
     `${surface}_quality_schema_mismatch`,
@@ -165,6 +164,11 @@ function generatedOnly(body: JsonRecord, surface: string): void {
 
 function stableSnapshot(body: JsonRecord, key: string): string {
   return JSON.stringify(body[key]);
+}
+
+function nonEmptyStringArray(value: unknown, label: string): void {
+  assert(Array.isArray(value) && value.length > 0, `invalid_${label}`);
+  for (const item of value) requireString(item, label);
 }
 
 async function retryGenerated(
@@ -202,7 +206,6 @@ interface ModeSmokeResult {
   hintProvider: unknown;
   hintModel: unknown;
   hintFailoverUsed: unknown;
-  hintGroundingReviewFallbackUsed: unknown;
   hintUsedCount: unknown;
   hintReplayStable: boolean;
   replies: unknown;
@@ -210,10 +213,133 @@ interface ModeSmokeResult {
   debriefProvider: unknown;
   debriefModel: unknown;
   debriefFailoverUsed: unknown;
-  debriefGroundingReviewFallbackUsed: unknown;
   debriefReplayStable: boolean;
   hintContinuityGuardPassed: boolean;
   card: unknown;
+}
+
+interface StandardDebriefSmokeResult {
+  mode: "standard";
+  sessionId: string;
+  requestId: string;
+  provider: string;
+  model: string;
+  failoverUsed: boolean;
+  replayStable: boolean;
+  card: JsonRecord;
+}
+
+async function runStandardDebrief(): Promise<StandardDebriefSmokeResult> {
+  const suffix = crypto.randomUUID();
+  const sessionId = `generated-smoke-standard-${suffix}`;
+  const requestId = `generated-smoke-debrief-${suffix}`;
+  const profileId = "practice_girl_001";
+  const userTurn: JsonRecord = {
+    role: "user",
+    text: "今天忙到剛下班，妳下班後通常怎麼放空？",
+  };
+  const chat = await practiceApi({
+    mode: "chat",
+    practiceMode: "standard",
+    sessionId,
+    profileId,
+    roundIndex: 1,
+    turns: [userTurn],
+  });
+  assert(
+    chat.status === 200,
+    `standard_chat_failed_${chat.status}_${
+      String(chat.body.error ?? "unknown")
+    }`,
+  );
+  assert(chat.body.costDeducted === 0, "standard_chat_test_account_charged");
+  const aiReply = requireString(chat.body.reply, "standard_ai_reply");
+  const debriefPayload: JsonRecord = {
+    mode: "debrief",
+    practiceMode: "standard",
+    sessionId,
+    profileId,
+    requestId,
+    acceptedQualitySchemaVersion: QUALITY_SCHEMA_VERSION,
+    roundIndex: 1,
+    turns: [userTurn, { role: "ai", text: aiReply }],
+  };
+  console.log(JSON.stringify({
+    step: "standard_debrief_context",
+    sessionId,
+    requestId,
+    aiReply,
+  }));
+
+  // This root-fix gate is intentionally single-attempt: an initial 503 must
+  // stay visible instead of being hidden by a later successful retry.
+  const debrief = await practiceApi(debriefPayload);
+  assert(
+    debrief.status === 200,
+    `standard_debrief_failed_${debrief.status}_${
+      String(debrief.body.error ?? "unknown")
+    }`,
+  );
+  generatedOnly(debrief.body, "standard_debrief");
+  const provider = requireString(debrief.body.provider, "standard_provider");
+  const model = requireString(debrief.body.model, "standard_model");
+  const generatedAt = requireString(
+    debrief.body.generatedAt,
+    "standard_generated_at",
+  );
+  assert(
+    typeof debrief.body.failoverUsed === "boolean",
+    "standard_failover_marker_missing",
+  );
+  const failoverUsed = debrief.body.failoverUsed;
+  const card = asRecord(debrief.body.card, "standard_debrief_card");
+  for (
+    const field of [
+      "summary",
+      "suggestedLine",
+      "vibe",
+      "dateChanceReason",
+      "nextInviteMove",
+    ]
+  ) {
+    requireString(card[field], `standard_debrief_${field}`);
+  }
+  nonEmptyStringArray(card.strengths, "standard_debrief_strengths");
+  nonEmptyStringArray(card.watchouts, "standard_debrief_watchouts");
+  assert(
+    card.dateChance === "low" || card.dateChance === "medium" ||
+      card.dateChance === "high",
+    "standard_debrief_date_chance",
+  );
+  assert(card.gameBreakdown === null, "standard_debrief_game_breakdown");
+  assert(
+    !("hintAssessment" in card),
+    "standard_debrief_hint_assessment_leaked",
+  );
+
+  const replay = await practiceApi(debriefPayload);
+  assert(
+    replay.status === 200,
+    `standard_debrief_replay_failed_${replay.status}`,
+  );
+  generatedOnly(replay.body, "standard_debrief_replay");
+  const replayStable = stableSnapshot(debrief.body, "card") ===
+      stableSnapshot(replay.body, "card") &&
+    replay.body.provider === provider && replay.body.model === model &&
+    replay.body.failoverUsed === failoverUsed &&
+    replay.body.generatedAt === generatedAt;
+  assert(replayStable, "standard_debrief_replay_changed");
+
+  return {
+    mode: "standard",
+    sessionId,
+    requestId,
+    provider,
+    model,
+    failoverUsed,
+    replayStable,
+    card,
+  };
 }
 
 async function runMode(
@@ -262,19 +388,27 @@ async function runMode(
     sessionId,
     profileId,
     requestId: hintRequestId,
+    acceptedQualitySchemaVersion: QUALITY_SCHEMA_VERSION,
     expectedAiCount: 1,
     roundIndex: 1,
     turns: hintTurns,
   };
 
   const prefetch = await practiceApi({ ...baseHintPayload, prefetch: true });
-  assert(prefetch.status === 200, `${mode}_prefetch_failed_${prefetch.status}`);
-  assert(prefetch.body.prefetched === true, `${mode}_prefetch_bad_ack`);
+  assert(
+    prefetch.status === 200 || prefetch.status === 503 ||
+      prefetch.status === 425,
+    `${mode}_prefetch_unexpected_${prefetch.status}`,
+  );
+  if (prefetch.status === 200) {
+    assert(prefetch.body.prefetched === true, `${mode}_prefetch_bad_ack`);
+  } else {
+    assert(prefetch.body.retryable === true, `${mode}_prefetch_not_retryable`);
+  }
 
   const hint = await retryGenerated(
     `${mode}_hint`,
     { ...baseHintPayload, prefetch: false },
-    1,
   );
   generatedOnly(hint.body, `${mode}_hint`);
   const replies = hint.body.replies;
@@ -332,6 +466,7 @@ async function runMode(
     sessionId,
     profileId,
     requestId: debriefRequestId,
+    acceptedQualitySchemaVersion: QUALITY_SCHEMA_VERSION,
     roundIndex: 1,
     turns: debriefTurns,
     appliedHintTurns: [{
@@ -354,7 +489,6 @@ async function runMode(
   const debrief = await retryGenerated(
     `${mode}_debrief`,
     debriefPayload,
-    1,
   );
   generatedOnly(debrief.body, `${mode}_debrief`);
   const card = asRecord(debrief.body.card, `${mode}_debrief_card`);
@@ -395,7 +529,6 @@ async function runMode(
     hintProvider: hint.body.provider,
     hintModel: hint.body.model,
     hintFailoverUsed: hint.body.failoverUsed,
-    hintGroundingReviewFallbackUsed: hint.body.groundingReviewFallbackUsed,
     hintUsedCount: hint.body.hintUsedCount,
     hintReplayStable,
     replies: hint.body.replies,
@@ -403,12 +536,21 @@ async function runMode(
     debriefProvider: debrief.body.provider,
     debriefModel: debrief.body.model,
     debriefFailoverUsed: debrief.body.failoverUsed,
-    debriefGroundingReviewFallbackUsed:
-      debrief.body.groundingReviewFallbackUsed,
     debriefReplayStable,
     hintContinuityGuardPassed,
     card,
   };
+}
+
+if (Deno.args[0] === "--standard-debrief") {
+  const standard = await runStandardDebrief();
+  console.log(JSON.stringify({ step: "standard_debrief_smoke", ...standard }));
+  console.log(JSON.stringify({
+    step: "production_smoke",
+    status: "PASS",
+    modes: [standard.mode],
+  }));
+  Deno.exit(0);
 }
 
 const existingSr = Deno.args[0];

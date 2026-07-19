@@ -19,9 +19,11 @@ Run these commands from the repository root:
 
 ```powershell
 deno run --allow-read --allow-net tools/practice-chat/practice_generated_only_production_smoke.ts
+deno run --allow-read --allow-net tools/practice-chat/practice_generated_only_production_smoke.ts --standard-debrief
 deno run --allow-env --allow-net tools/practice-chat/practice_hint_provider_probe.ts
 deno run --allow-env --allow-net tools/practice-chat/practice_hint_acceptance_probe.ts
 deno run --allow-env --allow-net tools/practice-chat/practice_debrief_provider_probe.ts
 ```
 
 The production smoke accepts an optional existing SR profile id and an optional mode (`beginner`, `game`, or `both`) as positional arguments.
+`--standard-debrief` creates a fresh Standard session, requires the first Debrief request to succeed without hiding a 503 behind retry, and verifies the replayed card plus provider metadata are stable.
