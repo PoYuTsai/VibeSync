@@ -196,10 +196,15 @@ interface FactRejectionMetadata {
 }
 
 type HintHardGuardFailureCode = "semantic_hint_active_reply_question";
+type HintVerifierRecoveryKind =
+  | "active_contract"
+  | "ordinary_unsupported_fact";
 
 interface SemanticRejectionMetadata {
   issueKinds: SemanticIssueKind[];
   hardGuardFailureCode?: HintHardGuardFailureCode;
+  verifierRecoveryKind?: HintVerifierRecoveryKind;
+  verifierHintAssessment?: HintSemanticAssessment;
 }
 
 function hintHardGuardSemanticRejection(
@@ -454,6 +459,13 @@ function isMaterialSemanticRepair(
   before: Record<string, unknown>,
   after: Record<string, unknown>,
 ): boolean {
+  return isMaterialSemanticValueRepair(before, after);
+}
+
+function isMaterialSemanticValueRepair(
+  before: unknown,
+  after: unknown,
+): boolean {
   return !jsonValuesEqual(
     semanticRepairComparableValue(before),
     semanticRepairComparableValue(after),
@@ -607,6 +619,93 @@ function semanticHintRejectionDiagnosticCode(
     assessment.replyContract,
     assessment.coachingContract,
   ].join(":");
+}
+
+function hasExactSemanticIssueKinds(
+  values: readonly SemanticIssueKind[],
+  expected: readonly SemanticIssueKind[],
+): boolean {
+  const normalized = normalizedSemanticIssueKinds(values);
+  return normalized.length === expected.length &&
+    normalized.every((kind, index) => kind === expected[index]);
+}
+
+function hintVerifierRecoveryKind(
+  pendingAssessment: HintSemanticAssessment | undefined,
+  rejection: SemanticFullReviewRejectionError,
+): HintVerifierRecoveryKind | null {
+  const verifierAssessment = rejection.hintAssessment;
+  if (!pendingAssessment || !verifierAssessment) return null;
+  if (
+    hasExactSemanticIssueKinds(rejection.issueKinds, ["strategy_mismatch"]) &&
+    pendingAssessment.interactionKind === "active_consistency_test" &&
+    verifierAssessment.interactionKind === "active_consistency_test" &&
+    (verifierAssessment.replyContract === "noncompliant" ||
+      verifierAssessment.coachingContract === "noncompliant")
+  ) {
+    return "active_contract";
+  }
+  if (
+    hasExactSemanticIssueKinds(rejection.issueKinds, ["unsupported_fact"]) &&
+    pendingAssessment.interactionKind === "ordinary" &&
+    verifierAssessment.interactionKind === "ordinary"
+  ) {
+    return "ordinary_unsupported_fact";
+  }
+  return null;
+}
+
+function assertHintVerifierRecoveryRepair(
+  rejection: SemanticRejectionMetadata,
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  repairedAssessment: HintSemanticAssessment | undefined,
+): void {
+  const kind = rejection.verifierRecoveryKind;
+  if (!kind) return;
+  const expectedInteractionKind = kind === "active_contract"
+    ? "active_consistency_test"
+    : "ordinary";
+  if (repairedAssessment?.interactionKind !== expectedInteractionKind) {
+    throw new Error(
+      "semantic_adjudication_recovery_interaction_kind_changed",
+    );
+  }
+
+  const fieldChanged = (field: "warmUp" | "steady" | "coaching") =>
+    isMaterialSemanticValueRepair(before[field], after[field]);
+  if (kind === "ordinary_unsupported_fact") {
+    if (
+      !fieldChanged("warmUp") || !fieldChanged("steady") ||
+      !fieldChanged("coaching")
+    ) {
+      throw new Error(
+        "semantic_adjudication_recovery_ordinary_fields_unchanged",
+      );
+    }
+    return;
+  }
+
+  const verifierAssessment = rejection.verifierHintAssessment;
+  if (!verifierAssessment) {
+    throw new Error("semantic_adjudication_recovery_assessment_missing");
+  }
+  if (
+    verifierAssessment.replyContract === "noncompliant" &&
+    (!fieldChanged("warmUp") || !fieldChanged("steady"))
+  ) {
+    throw new Error(
+      "semantic_adjudication_recovery_active_reply_fields_unchanged",
+    );
+  }
+  if (
+    verifierAssessment.coachingContract === "noncompliant" &&
+    !fieldChanged("coaching")
+  ) {
+    throw new Error(
+      "semantic_adjudication_recovery_active_coaching_unchanged",
+    );
+  }
 }
 
 function assertDeliverableHintAssessment(
@@ -1064,7 +1163,9 @@ export function buildSemanticAdjudicationMessages(opts: {
       ? "user 未明說既有興趣時，只說「有興趣」不算接住；「有興趣啊，不然也不會問妳」是無證據自證，「有興趣，就想聽妳的看法」是把球丟回採訪，一律不合格，不得 accept。"
       : "user 未明說既有興趣時，只說「有興趣」不算接住；「有興趣啊，不然也不會問妳」是無證據自證，「有興趣，就想聽妳的看法」是把球丟回採訪，必須以 strategy_mismatch 或 unsupported_fact repair/reject。") +
     "命中驗證時，兩個回覆都不得含問號或以嗎／呢收尾，不保留玩笑反問；回答責任留在 user。" +
-    (verificationOnly ? "" : "修復只套用上述結構，禁止照抄本規則的題材字詞。") +
+    (verificationOnly
+      ? ""
+      : "修復不得照抄與逐字稿無關的示例素材；逐字稿中的被核對命題與具體細節必須保留。") +
     "命中 active_consistency_test 時，coaching 必須用「她在測你…／她在驗證你…」這類肯定句明說她正在核對的具體命題，例如 user 是否真的有興趣、稱讚是否有內容；這類診斷只依逐字稿互動，不算捏造 assistant 的人物事實。此時不得只說看你穩不穩／測你的反應，只寫誠實表態／有據回扣／立場收句等正向任務，不得列舉禁招；禁止建議把球做回她身上、延伸提問、請教，或讓她繼續講專業判斷，即使是否定句也不得出現這些採訪詞。" +
     "遇低能量／收尾／界線訊號就退壓，不開新壓力，不可 soft_invite/direct_invite。";
   const debriefShape =
@@ -1087,6 +1188,19 @@ export function buildSemanticAdjudicationMessages(opts: {
       opts.priorSemanticRejection.issueKinds.join(",") || "strategy_mismatch"
     }）。這不是分類真值，你仍須獨立判 interactionKind；但本輪是唯一保留的完整修復機會，不得原樣 accept。若逐字稿與 server context 足以產出安全完整回覆，必須回 repair，repairedResult 必須實際改動候選，hintAssessment 只評修復稿且須符合交付契約；真的無法安全修好才 reject。`
     : "";
+  const verifierRecoveryRule =
+    opts.priorSemanticRejection?.verifierRecoveryKind === "active_contract"
+      ? `前一個不同 provider 的最終複核把被拒稿判為 active_consistency_test（replyContract=${
+        opts.priorSemanticRejection.verifierHintAssessment?.replyContract ??
+          "noncompliant"
+      }; coachingContract=${
+        opts.priorSemanticRejection.verifierHintAssessment
+          ?.coachingContract ?? "noncompliant"
+      }）。這仍不是分類真值；你要依逐字稿獨立重判，若不同就 reject。若同為 active，reply 不合格時 warmUp、steady 必須各自完整實改，coaching 不合格時 coaching 必須實改；不能只改標點或無關欄位。`
+      : opts.priorSemanticRejection?.verifierRecoveryKind ===
+          "ordinary_unsupported_fact"
+      ? "前兩個不同 provider 都把互動判為 ordinary，但最終複核仍發現 unsupported_fact。依逐字稿獨立重判；若仍是 ordinary，必須完整重寫 warmUp、steady、coaching 三欄，刪除所有無證據偏好、頻率、動機或經歷；可保留回答後的自然問句，不得誤套 active 禁問。若分類不同或無法確定，直接 reject。"
+      : "";
   const priorSemanticHardGuardRule =
     opts.priorSemanticRejection?.hardGuardFailureCode ===
         "semantic_hint_active_reply_question"
@@ -1114,6 +1228,7 @@ export function buildSemanticAdjudicationMessages(opts: {
         "issues 每項只含 kind，kind 只能是 unsupported_fact/generic/strategy_mismatch/unsafe。" +
         priorFactRejectionRule +
         priorSemanticRejectionRule +
+        verifierRecoveryRule +
         priorSemanticHardGuardRule +
         modeRule + (opts.surface === "hint" ? hintShape : debriefShape) +
         semanticVerificationRule +
@@ -1224,12 +1339,17 @@ export async function adjudicatePracticeCandidate(
   }
   let providerCalls = 0;
   let lastError: unknown;
+  let lastStructuredHintRejection:
+    | SemanticFullReviewRejectionError
+    | undefined;
   let candidateUnderReview = args.candidate;
   let priorFactRejection: FactRejectionMetadata | undefined;
   let priorSemanticRejection: SemanticRejectionMetadata | undefined;
   let terminalFactRejection = false;
   let terminalHintAssessmentDisagreement = false;
   let terminalSemanticRejection = false;
+  let hintVerifierRecoveryUsed = false;
+  let forcedHintRepairProvider: "deepseek" | "anthropic" | undefined;
   let pendingVerification:
     | Pick<
       SemanticAdjudicationResult,
@@ -1238,6 +1358,7 @@ export async function adjudicatePracticeCandidate(
       & {
         reviewProvider: "deepseek" | "anthropic";
         semanticVerificationIssueKinds?: SemanticIssueKind[];
+        verifierRecoveryKind?: HintVerifierRecoveryKind;
       }
     | undefined;
   for (const plannedReviewer of reviewPlan.slice(0, budget)) {
@@ -1258,6 +1379,20 @@ export async function adjudicatePracticeCandidate(
       break;
     }
     let reviewer = plannedReviewer;
+    if (!pendingVerification && forcedHintRepairProvider) {
+      const forcedReviewer = reviewers.find((candidate) =>
+        candidate.provider === forcedHintRepairProvider
+      );
+      if (!forcedReviewer) {
+        lastError = new Error(
+          "semantic_adjudication_recovery_reviewer_unavailable",
+        );
+        terminalSemanticRejection = true;
+        break;
+      }
+      reviewer = forcedReviewer;
+      forcedHintRepairProvider = undefined;
+    }
     if (
       pendingVerification &&
       pendingVerification.reviewProvider === reviewer.provider
@@ -1328,7 +1463,10 @@ export async function adjudicatePracticeCandidate(
               !hintAssessmentsEqual(
                 verification.hintAssessment,
                 candidateAwaitingVerification.hintAssessment,
-              ))
+              ) ||
+              (candidateAwaitingVerification.verifierRecoveryKind ===
+                  "ordinary_unsupported_fact" &&
+                verification.hintAssessment.interactionKind !== "ordinary"))
           ) {
             throw new Error("semantic_hint_assessment_disagreement");
           }
@@ -1449,6 +1587,12 @@ export async function adjudicatePracticeCandidate(
             "semantic_adjudication_rejected_cosmetic_repair",
           );
         }
+        assertHintVerifierRecoveryRepair(
+          priorSemanticRejection,
+          candidateUnderReview,
+          parsed.candidate,
+          parsed.hintAssessment,
+        );
       }
       try {
         args.validateCandidate?.(parsed.candidate, parsed.hintAssessment);
@@ -1482,6 +1626,7 @@ export async function adjudicatePracticeCandidate(
         repaired: parsed.repaired,
         hintAssessment: parsed.hintAssessment,
         reviewProvider: reviewer.provider,
+        verifierRecoveryKind: priorSemanticRejection?.verifierRecoveryKind,
         semanticVerificationIssueKinds:
           args.surface === "hint" && parsed.repaired
             ? [
@@ -1502,11 +1647,50 @@ export async function adjudicatePracticeCandidate(
       continue;
     } catch (error) {
       lastError = error;
+      if (error instanceof SemanticFullReviewRejectionError) {
+        // Keep only the parsed enum assessment, never provider prose or the
+        // candidate. If a bounded recovery later times out, its root semantic
+        // defect must remain queryable instead of being replaced by a generic
+        // transport/deadline failure.
+        lastStructuredHintRejection = error;
+      }
       if (pendingVerification?.semanticVerificationIssueKinds?.length) {
-        // This is the terminal independent semantic verifier. A later vote
-        // must never erase its rejection or malformed response, even if a
-        // future caller allocates more than the bounded Hint review budget.
-        terminalSemanticRejection = true;
+        const verifierRejection = error instanceof
+            SemanticFullReviewRejectionError
+          ? error
+          : undefined;
+        const recoveryKind = verifierRejection
+          ? hintVerifierRecoveryKind(
+            pendingVerification.hintAssessment,
+            verifierRejection,
+          )
+          : null;
+        const hasIndependentVerifier = reviewers.some((candidate) =>
+          candidate.provider !== reviewer.provider
+        );
+        if (
+          recoveryKind && verifierRejection && !hintVerifierRecoveryUsed &&
+          budget - providerCalls >= 2 && hasIndependentVerifier
+        ) {
+          // The verifier supplied a narrow, structured defect while exactly
+          // two calls remain. Let that same critic author one material repair,
+          // then require the other provider to certify it. A boolean, not the
+          // caller's budget, prevents any second rewrite loop.
+          candidateUnderReview = pendingVerification.candidate;
+          pendingVerification = undefined;
+          priorFactRejection = undefined;
+          priorSemanticRejection = {
+            issueKinds: verifierRejection.issueKinds,
+            verifierRecoveryKind: recoveryKind,
+            verifierHintAssessment: verifierRejection.hintAssessment,
+          };
+          forcedHintRepairProvider = reviewer.provider;
+          hintVerifierRecoveryUsed = true;
+        } else {
+          // A second rejection, malformed response, unsafe/mixed issue, or an
+          // unverifiable repair remains terminal and can never be voted away.
+          terminalSemanticRejection = true;
+        }
       } else if (
         args.surface === "hint" &&
         error instanceof SemanticFullReviewRejectionError
@@ -1530,11 +1714,7 @@ export async function adjudicatePracticeCandidate(
       }
     }
   }
-  const terminalHintFullReviewRejection =
-    pendingVerification?.semanticVerificationIssueKinds?.length &&
-      lastError instanceof SemanticFullReviewRejectionError
-      ? lastError
-      : undefined;
+  const terminalHintFullReviewRejection = lastStructuredHintRejection;
   if (pendingVerification) {
     const detail = lastError instanceof Error
       ? lastError.message
