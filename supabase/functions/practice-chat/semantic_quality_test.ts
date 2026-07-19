@@ -2754,7 +2754,7 @@ Deno.test("active mixed final rejection rewrites all fields before independent v
         }));
       }
       assertEquals(args.maxTokens, 1800);
-      assertEquals(args.thinking, undefined);
+      assertEquals(args.thinking, { type: "disabled" });
       const prompt = args.messages.map((message) => message.content).join("\n");
       assertEquals(prompt.includes(firstRepair.warmUp), true);
       assertEquals(

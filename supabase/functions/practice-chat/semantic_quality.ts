@@ -1628,6 +1628,10 @@ export async function adjudicatePracticeCandidate(
           : DEBRIEF_ADJUDICATION_MAX_TOKENS,
         semanticAdjudicationJsonSchema(candidateUnderReview, args.surface),
         timeoutMs,
+        reviewer.provider === "deepseek" &&
+          priorSemanticRejection?.verifierRecoveryKind
+          ? { type: "disabled" }
+          : undefined,
       );
       const parsed = parseSemanticAdjudication({
         raw,
