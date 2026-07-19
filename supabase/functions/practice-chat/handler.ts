@@ -142,7 +142,10 @@ const SERVER_HINT_DECISION_RATIONALE =
 // generation plus the mandatory full review and fact-only verification.
 const HINT_PROVIDER_CALL_BUDGET = 5;
 const DEBRIEF_PROVIDER_CALL_BUDGET = 6;
-const PRACTICE_SEMANTIC_REVIEWER_CALL_BUDGET = 3;
+const HINT_SEMANTIC_REVIEWER_CALL_BUDGET = 3;
+// Debrief can spend the otherwise-unused sixth provider call on a mandatory
+// repair + fresh fact verification after a substantive verifier rejection.
+const DEBRIEF_SEMANTIC_REVIEWER_CALL_BUDGET = 4;
 // Every generated candidate needs a full independent semantic review plus the
 // fact-only verifier before it can be recorded.
 const PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION = 2;
@@ -641,6 +644,15 @@ function debriefRetryReason(error: unknown): string {
   }
   if (message.includes("debrief_hint_assessment")) {
     return "已認定 Hint 策略延續，卻又把同一句批成禮貌收尾、沒給球或太保守";
+  }
+  if (
+    message.includes("semantic_fact_verification_rejected") ||
+    message.includes("semantic_adjudication_fact_rejection")
+  ) {
+    return "獨立事實核驗發現無證據事實或人物 owner 錯置；只保留逐字稿／server context 能支持的內容，移除使用者沒說過的第一人稱經歷並修正承諾方向";
+  }
+  if (message.includes("semantic_adjudication_rejected")) {
+    return "獨立語意複核拒絕上一版；重新檢查逐字稿 grounding、欄位品質、策略一致性與安全界線，完整重寫有問題的內容";
   }
   if (message.includes("overlong")) {
     return "欄位太長，若直接裁尾會變成半句";
@@ -2745,7 +2757,7 @@ export function createPracticeChatHandler(
               maxProviderCalls: Math.max(
                 0,
                 Math.min(
-                  PRACTICE_SEMANTIC_REVIEWER_CALL_BUDGET,
+                  HINT_SEMANTIC_REVIEWER_CALL_BUDGET,
                   HINT_PROVIDER_CALL_BUDGET - hintAttemptCount,
                 ),
               ),
@@ -3619,7 +3631,7 @@ export function createPracticeChatHandler(
           const semanticCallBudget = Math.max(
             0,
             Math.min(
-              PRACTICE_SEMANTIC_REVIEWER_CALL_BUDGET,
+              DEBRIEF_SEMANTIC_REVIEWER_CALL_BUDGET,
               DEBRIEF_PROVIDER_CALL_BUDGET - debriefAttemptCount -
                 debriefSemanticProviderCalls - reservedRecoveryCalls,
             ),
@@ -3776,7 +3788,8 @@ export function createPracticeChatHandler(
           const shouldRepair = lastError !== undefined &&
             (debriefLastFailureClass === "visible_text_guard" ||
               debriefLastFailureClass === "invalid_json" ||
-              debriefLastFailureClass === "schema_invalid");
+              debriefLastFailureClass === "schema_invalid" ||
+              debriefLastFailureClass === "semantic_rejected");
           const debriefMessages = shouldRepair
             ? withDebriefRetryInstruction(
               baseDebriefMessages,

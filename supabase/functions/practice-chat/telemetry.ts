@@ -15,6 +15,7 @@ export const PRACTICE_GENERATION_FAILURE_CLASSES = [
   "visible_text_guard",
   "invalid_json",
   "schema_invalid",
+  "semantic_rejected",
   "provider_error",
   "unknown",
 ] as const;
@@ -264,7 +265,7 @@ export function classifyPracticeGenerationFailure(
 
   if (
     message.includes("timeout") || message.includes("timed out") ||
-    message.includes("aborterror")
+    message.includes("aborterror") || message.includes("deadline_exceeded")
   ) {
     return "timeout";
   }
@@ -286,6 +287,14 @@ export function classifyPracticeGenerationFailure(
     message.includes("semantic_adjudication_invalid_json")
   ) {
     return "invalid_json";
+  }
+
+  if (
+    message.includes("semantic_fact_verification_rejected") ||
+    message.includes("semantic_adjudication_rejected") ||
+    message.includes("semantic_adjudication_fact_rejection")
+  ) {
+    return "semantic_rejected";
   }
 
   if (

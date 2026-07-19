@@ -10,6 +10,20 @@
 
 ## 2026-07
 
+### [2026-07-19] AI 練習室 Debrief 語意複核反覆 503
+
+**Symptom**: Essential 使用者在 AI 練習室結束後連續兩次拿不到教練拆解。第一輪 production telemetry 是 Claude reviewer malformed schema；補 provider schema 後，新的 Beginner smoke 又出現兩次 `semantic_fact_verification_rejected`，第三次 client 重送才成功。
+
+**Root Cause**: 問題有兩層。Claude reviewer 原本沒有 provider-level JSON schema；更深層是 fact reject 只驗 verdict、缺 privacy-safe issue contract，且狀態機會對未修改 candidate 再投一票，三個 semantic call 也不夠完成 repair＋fresh verify。另有 prompt/schema/parser enum 漂移、repair 任意 nested key 可進 dynamic schema、semantic reject／deadline telemetry 誤分類。
+
+**Fix**: Claude Debrief reviewer 改用 structured output；fact issue 固定為 surface-specific `kind/field/reasonCode`。Fact reject 後只准「完整 repair → 所有點名欄位實際變更 → fresh fact verify」，不能再用第二票覆蓋；Debrief semantic cap 3→4、總 provider cap 仍為 6，並共用 85 秒 deadline。Repair 遞迴鎖 canonical key shape，Hint 維持 prompt-only；fact／一般 semantic retry diagnosis 與 timeout telemetry 分流。
+
+**Prevention**: Prompt、provider schema、parser 必須共用同一 enum helper；任何 model repair 在進入下一份 dynamic schema 前都要驗 exact nested key shape。高風險 AI recovery 必須用真 handler 跑滿 provider ledger，並測 reject 後未改欄位、錯 surface、deadline 在最後 verifier 前到期等對抗案例。
+
+**Validation**: practice-chat Deno **934/934**；真 handler 跑滿 DeepSeek 3＋Claude 3＝6 calls，成功路徑 record 1／release 0；deadline 與失敗路徑皆不 record。三路獨立 review 最終 0 P0/P1/P2。最終 Edge deploy／live smoke 尚待完成，證據見 `docs/reviews/2026-07-19-practice-debrief-semantic-recovery-codex-review.md`。
+
+**相關檔案**: `supabase/functions/practice-chat/semantic_quality.ts`、`handler.ts`、`telemetry.ts` 與對應測試。
+
 ### [2026-07-19] Analyze 1.8x 被當字數上限，stream 又把「併」球膨脹成逐句回覆
 
 **Symptom**: quick／full prompt 把投入對等寫成「不超過最後一則訊息 1.8 倍」，對方連發後用「哈哈／嗯嗯」收尾時會錯把最後短句當長度基準；改看整輪後，active stream 又常把同一生活片段的背景、畫面、情緒與玩笑各拆一段，回覆完整但像客服逐條點名，缺少高手感。

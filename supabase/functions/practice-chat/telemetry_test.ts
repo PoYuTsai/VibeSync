@@ -132,6 +132,13 @@ Deno.test("countPromptChars returns only the aggregate character count", () => {
 Deno.test("classifyPracticeGenerationFailure maps errors to stable buckets", () => {
   const cases: Array<[unknown, string]> = [
     [new Error("deepseek_timeout"), "timeout"],
+    [
+      new Error(
+        "semantic_adjudication_failed:semantic_adjudication_repair_unverified:semantic_adjudication_deadline_exceeded",
+      ),
+      "timeout",
+    ],
+    [new Error("practice_debrief_deadline_exceeded"), "timeout"],
     [new Error("hint_l4_unsafe"), "visible_text_guard"],
     [new Error("debrief_internal_label_leak"), "visible_text_guard"],
     [new Error("hint_canned_visible_text"), "visible_text_guard"],
@@ -147,6 +154,22 @@ Deno.test("classifyPracticeGenerationFailure maps errors to stable buckets", () 
     [new Error("debrief_game_breakdown_missing_fields"), "schema_invalid"],
     [new Error("debrief_quality_invalid_not_grounded"), "schema_invalid"],
     [new Error("debrief_hint_assessment_evidence_invalid"), "schema_invalid"],
+    [
+      new Error(
+        "semantic_adjudication_failed:semantic_adjudication_candidate_unverified:semantic_fact_verification_rejected:suggestedline:user_fact_unsupported",
+      ),
+      "semantic_rejected",
+    ],
+    [
+      new Error("semantic_adjudication_failed:semantic_adjudication_rejected"),
+      "semantic_rejected",
+    ],
+    [
+      new Error(
+        "semantic_adjudication_failed:semantic_adjudication_fact_rejection_field_unchanged",
+      ),
+      "semantic_rejected",
+    ],
     [
       new Error(
         "semantic_adjudication_failed:semantic_adjudication_invalid_schema",

@@ -211,6 +211,18 @@ Deno.test("prefetch telemetry emits only allowlisted scalar fields", () => {
     }),
     { outcome: "failed", reason: "unknown", practiceMode: "beginner" },
   );
+  assertEquals(
+    buildHintPrefetchTelemetry({
+      outcome: "failed",
+      reason: "semantic_rejected",
+      practiceMode: "beginner",
+    }),
+    {
+      outcome: "failed",
+      reason: "semantic_rejected",
+      practiceMode: "beginner",
+    },
+  );
 });
 
 Deno.test("prefetch ack has no content-bearing fields", () => {

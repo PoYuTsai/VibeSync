@@ -118,6 +118,7 @@ export type HintPrefetchTelemetryReason =
   | "visible_text_guard"
   | "invalid_json"
   | "schema_invalid"
+  | "semantic_rejected"
   | "provider_error"
   | "pending"
   | "unknown";
@@ -137,6 +138,7 @@ const REASONS = new Set<HintPrefetchTelemetryReason>([
   "visible_text_guard",
   "invalid_json",
   "schema_invalid",
+  "semantic_rejected",
   "provider_error",
   "pending",
   "unknown",

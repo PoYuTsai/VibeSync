@@ -55,6 +55,14 @@ function validFactVerification(overrides: Record<string, unknown> = {}) {
   });
 }
 
+function parseDebriefFact(raw: string) {
+  return parseSemanticFactVerification({
+    raw,
+    surface: "debrief",
+    candidate: { suggestedLine: "candidate line" },
+  });
+}
+
 Deno.test("semantic adjudication ignores legacy reviewer-owned Hint strategies", () => {
   const parsed = parseSemanticAdjudication({
     raw: validHintAdjudication(),
@@ -379,7 +387,7 @@ Deno.test("fact verification is a bounded evidence audit, not another free-form 
   });
   const prompt = messages.map((message) => message.content).join("\n");
 
-  assertEquals(prompt.includes("semanticFactVerificationV1"), true);
+  assertEquals(prompt.includes("semanticFactVerificationV2"), true);
   assertEquals(prompt.includes("不是改稿者"), true);
   assertEquals(prompt.includes("不評文風、高手感、空泛或策略"), true);
   assertEquals(prompt.includes("問句的預設前提"), true);
@@ -398,6 +406,42 @@ Deno.test("fact verification is a bounded evidence audit, not another free-form 
   assertEquals(prompt.includes("不可反轉成等 assistant 做或回報"), true);
   assertEquals(prompt.includes("只回 accept/reject"), true);
   assertEquals(prompt.includes("turn-0 [user]"), true);
+  assertEquals(prompt.includes("純評估或建議詞本身不構成"), true);
+  assertEquals(prompt.includes("kind、field、reasonCode"), true);
+  assertEquals(
+    prompt.includes("warmUp|steady|coaching|other"),
+    true,
+  );
+  assertEquals(prompt.includes("summary|strengths"), false);
+  assertEquals(prompt.includes('"field":"warmUp"'), true);
+  assertEquals(prompt.includes('"field":"suggestedLine"'), false);
+  assertEquals(
+    prompt.includes(
+      "user_fact_unsupported|partner_fact_unsupported|world_fact_unsupported|owner_reversal|unsafe",
+    ),
+    true,
+  );
+
+  const debriefPrompt = buildSemanticFactVerificationMessages({
+    surface: "debrief",
+    candidate: {
+      summary: "仍在暖場。",
+      hintAssessment: { verdict: "preserved", revisedEvidenceQuote: null },
+    },
+    turns,
+    appliedHintTurns: [],
+    trustedGenerationContext: "partner facts only",
+  }).map((message) => message.content).join("\n");
+  assertEquals(debriefPrompt.includes('"hintAssessment"'), false);
+  assertEquals(
+    debriefPrompt.includes(
+      "summary|strengths|watchouts|suggestedLine|dateChanceReason|nextInviteMove|other",
+    ),
+    true,
+  );
+  assertEquals(debriefPrompt.includes("warmUp|steady"), false);
+  assertEquals(debriefPrompt.includes("gameBreakdown|other"), false);
+  assertEquals(debriefPrompt.includes('"field":"summary"'), true);
 });
 
 Deno.test("debrief semantic adjudication breaks an identified question-answer loop", () => {
@@ -473,42 +517,111 @@ Deno.test("debrief semantic repair keeps schema enums canonical", () => {
 
 Deno.test("fact verification accepts only a binary safe verdict", () => {
   assertEquals(
-    parseSemanticFactVerification({ raw: validFactVerification() }),
+    parseDebriefFact(validFactVerification()),
     { verified: true },
   );
   assertEquals(
-    parseSemanticFactVerification({
-      raw: validFactVerification({ verdict: " Accept " }),
-    }),
-    { verified: true },
-  );
-  assertEquals(
-    parseSemanticFactVerification({
-      raw: validFactVerification({
-        issues: [{ kind: "generic" }],
-      }),
-    }),
+    parseDebriefFact(validFactVerification({ verdict: " Accept " })),
     { verified: true },
   );
   assertThrows(
     () =>
-      parseSemanticFactVerification({
-        raw: validFactVerification({
-          issues: [{ kind: "unsupported_fact" }],
-        }),
-      }),
+      parseDebriefFact(validFactVerification({
+        verdict: "reject",
+        issues: [{
+          kind: "unsupported_fact",
+          field: "suggestedLine",
+          reasonCode: "owner_reversal",
+        }],
+      })),
     Error,
-    "semantic_fact_verification_rejected",
+    "semantic_fact_verification_rejected:suggestedline:owner_reversal",
   );
   assertThrows(
     () =>
+      parseDebriefFact(validFactVerification({
+        verdict: " Reject ",
+        issues: [{
+          kind: "Unsupported_Fact",
+          field: "SuggestedLine",
+          reasonCode: "Owner_Reversal",
+        }],
+      })),
+    Error,
+    "semantic_fact_verification_rejected:suggestedline:owner_reversal",
+  );
+  assertThrows(
+    () =>
+      parseDebriefFact(
+        validFactVerification({ verdict: "reject", issues: [] }),
+      ),
+    Error,
+    "semantic_fact_verification_invalid_issue",
+  );
+  assertThrows(
+    () =>
+      parseDebriefFact(validFactVerification({
+        verdict: "reject",
+        issues: [{
+          kind: "generic",
+          field: "summary",
+          reasonCode: "world_fact_unsupported",
+        }],
+      })),
+    Error,
+    "semantic_fact_verification_invalid_issue",
+  );
+  assertThrows(
+    () => parseDebriefFact(JSON.stringify({ verdict: "reject" })),
+    Error,
+    "semantic_fact_verification_invalid_schema",
+  );
+  assertThrows(
+    () =>
+      parseDebriefFact(validFactVerification({
+        issues: [{
+          kind: "unsafe",
+          field: "suggestedLine",
+          reasonCode: "unsafe",
+        }],
+      })),
+    Error,
+    "semantic_fact_verification_invalid_issue",
+  );
+});
+
+Deno.test("fact verification rejects fields from the wrong surface", () => {
+  const debriefWithHintField = validFactVerification({
+    verdict: "reject",
+    issues: [{
+      kind: "unsupported_fact",
+      field: "warmUp",
+      reasonCode: "user_fact_unsupported",
+    }],
+  });
+  assertThrows(
+    () => parseDebriefFact(debriefWithHintField),
+    Error,
+    "semantic_fact_verification_invalid_issue",
+  );
+
+  const hintWithDebriefField = validFactVerification({
+    verdict: "reject",
+    issues: [{
+      kind: "unsupported_fact",
+      field: "summary",
+      reasonCode: "partner_fact_unsupported",
+    }],
+  });
+  assertThrows(
+    () =>
       parseSemanticFactVerification({
-        raw: validFactVerification({
-          issues: [{ kind: "Unsupported_Fact" }],
-        }),
+        raw: hintWithDebriefField,
+        surface: "hint",
+        candidate: hintCandidate,
       }),
     Error,
-    "semantic_fact_verification_rejected",
+    "semantic_fact_verification_invalid_issue",
   );
 });
 
@@ -619,15 +732,441 @@ Deno.test("independent verifier fails closed when a Debrief reverses the promise
           );
           assertEquals(prompt.includes(ownerTurns[1].text), true);
           assertEquals(prompt.includes(String(candidate.suggestedLine)), true);
+          assertEquals(
+            prompt.includes(
+              "summary|strengths|watchouts|suggestedLine|dateChanceReason",
+            ),
+            true,
+          );
           return Promise.resolve(JSON.stringify({
             verdict: "reject",
-            issues: [{ kind: "unsupported_fact" }],
+            issues: [{
+              kind: "unsupported_fact",
+              field: "suggestedLine",
+              reasonCode: "owner_reversal",
+            }],
           }));
         },
       }),
     Error,
+    "semantic_fact_verification_rejected:suggestedline:owner_reversal",
+  );
+});
+
+Deno.test("Debrief fact rejection requires a changed repair and fresh verification", async () => {
+  const candidate = {
+    summary: "她回應了咖啡話題。",
+    strengths: ["你有接住她的回覆。"],
+    watchouts: ["不要替自己補經歷。"],
+    suggestedLine: "我也每天靠咖啡醒腦。",
+    vibe: "中性",
+    dateChance: "low",
+    dateChanceReason: "仍在暖場。",
+    nextInviteMove: "先延續咖啡話題。",
+    gameBreakdown: null,
+  };
+  const repaired = {
+    ...candidate,
+    suggestedLine: "這杯咖啡是想醒腦，還是想放空？",
+  };
+  const calls: string[] = [];
+  let deepSeekCalls = 0;
+  let claudeCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "debrief",
+    practiceMode: "standard",
+    candidate,
+    candidateProvider: "anthropic",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 4,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callDeepSeek: (args) => {
+      deepSeekCalls += 1;
+      const prompt = args.messages.map((message) => message.content).join("\n");
+      calls.push(deepSeekCalls === 1 ? "deepseek-full" : "deepseek-fact");
+      if (deepSeekCalls === 1) {
+        assertEquals(prompt.includes("semanticQualityAdjudicationV1"), true);
+        return Promise.resolve(JSON.stringify({
+          verdict: "accept",
+          issues: [],
+          repairedResult: null,
+        }));
+      }
+      assertEquals(prompt.includes("semanticFactVerificationV2"), true);
+      return Promise.resolve(validFactVerification());
+    },
+    callClaude: (args) => {
+      claudeCalls += 1;
+      const prompt = args.messages.map((message) => message.content).join("\n");
+      calls.push(claudeCalls === 1 ? "claude-fact" : "claude-repair");
+      if (claudeCalls === 1) {
+        assertEquals(prompt.includes("semanticFactVerificationV2"), true);
+        const schema = args.outputJsonSchema as Record<string, unknown>;
+        assertEquals(schema.required, ["verdict", "issues"]);
+        const properties = schema.properties as Record<
+          string,
+          Record<string, unknown>
+        >;
+        const issues = properties.issues;
+        const issueItems = issues.items as Record<string, unknown>;
+        const issueProperties = issueItems.properties as Record<
+          string,
+          Record<string, unknown>
+        >;
+        assertEquals(issueProperties.field.enum, [
+          "summary",
+          "strengths",
+          "watchouts",
+          "suggestedLine",
+          "dateChanceReason",
+          "nextInviteMove",
+          "other",
+        ]);
+        return Promise.resolve(validFactVerification({
+          verdict: "reject",
+          issues: [{
+            kind: "unsupported_fact",
+            field: "suggestedLine",
+            reasonCode: "user_fact_unsupported",
+          }],
+        }));
+      }
+      assertEquals(prompt.includes("前一個獨立事實核驗已拒絕"), true);
+      assertEquals(prompt.includes("fields=suggestedLine"), true);
+      assertEquals(prompt.includes("每個具體 field 都要實際變更"), true);
+      return Promise.resolve(JSON.stringify({
+        verdict: "repair",
+        issues: [{ kind: "unsupported_fact" }],
+        repairedResult: repaired,
+      }));
+    },
+  });
+
+  assertEquals(calls, [
+    "deepseek-full",
+    "claude-fact",
+    "claude-repair",
+    "deepseek-fact",
+  ]);
+  assertEquals(result.candidate, repaired);
+  assertEquals(result.repaired, true);
+  assertEquals(result.issueKinds, ["unsupported_fact"]);
+  assertEquals(result.providerCalls, 4);
+  assertEquals(result.provider, "deepseek");
+});
+
+Deno.test("Debrief never lets a second fact vote erase a substantive rejection", async () => {
+  const candidate = {
+    summary: "她回應了咖啡話題。",
+    strengths: ["你有接住她的回覆。"],
+    watchouts: ["保持自然。"],
+    suggestedLine: "我也每天靠咖啡醒腦。",
+    vibe: "中性",
+    dateChance: "low",
+    dateChanceReason: "仍在暖場。",
+    nextInviteMove: "先延續咖啡話題。",
+    gameBreakdown: null,
+  };
+  const calls: string[] = [];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "debrief",
+        practiceMode: "standard",
+        candidate,
+        candidateProvider: "anthropic",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 3,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callDeepSeek: () => {
+          calls.push("deepseek-full");
+          return Promise.resolve(JSON.stringify({
+            verdict: "accept",
+            issues: [],
+            repairedResult: null,
+          }));
+        },
+        callClaude: () => {
+          calls.push("claude-fact");
+          return Promise.resolve(validFactVerification({
+            verdict: "reject",
+            issues: [{
+              kind: "unsupported_fact",
+              field: "suggestedLine",
+              reasonCode: "user_fact_unsupported",
+            }],
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
     "semantic_fact_verification_rejected",
   );
+
+  assertEquals(calls, ["deepseek-full", "claude-fact"]);
+  assertEquals(error.providerCalls, 2);
+});
+
+Deno.test("Debrief rejects a fact-repair label that leaves the candidate unchanged", async () => {
+  const candidate = {
+    summary: "她回應了咖啡話題。",
+    strengths: ["你有接住她的回覆。"],
+    watchouts: ["保持自然。"],
+    suggestedLine: "我也每天靠咖啡醒腦。",
+    vibe: "中性",
+    dateChance: "low",
+    dateChanceReason: "仍在暖場。",
+    nextInviteMove: "先延續咖啡話題。",
+    gameBreakdown: null,
+  };
+  let claudeCalls = 0;
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "debrief",
+        practiceMode: "standard",
+        candidate,
+        candidateProvider: "anthropic",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callDeepSeek: () =>
+          Promise.resolve(JSON.stringify({
+            verdict: "accept",
+            issues: [],
+            repairedResult: null,
+          })),
+        callClaude: () => {
+          claudeCalls += 1;
+          return Promise.resolve(
+            claudeCalls === 1
+              ? validFactVerification({
+                verdict: "reject",
+                issues: [{
+                  kind: "unsupported_fact",
+                  field: "suggestedLine",
+                  reasonCode: "user_fact_unsupported",
+                }],
+              })
+              : JSON.stringify({
+                verdict: "repair",
+                issues: [{ kind: "unsupported_fact" }],
+                repairedResult: candidate,
+              }),
+          );
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_fact_rejection_unchanged_repair",
+  );
+
+  assertEquals(claudeCalls, 2);
+  assertEquals(error.providerCalls, 3);
+});
+
+Deno.test("Debrief repair must change every field named by the fact rejection", async () => {
+  const candidate = {
+    summary: "The exchange stayed on the same topic.",
+    strengths: ["The reply was clear."],
+    watchouts: ["Avoid unsupported assumptions."],
+    suggestedLine: "I also walk there every morning.",
+    vibe: "中性",
+    dateChance: "low",
+    dateChanceReason: "The conversation is still early.",
+    nextInviteMove: "Keep the next message low pressure.",
+    gameBreakdown: null,
+  };
+  let deepSeekCalls = 0;
+  let claudeCalls = 0;
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "debrief",
+        practiceMode: "standard",
+        candidate,
+        candidateProvider: "anthropic",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callDeepSeek: () => {
+          deepSeekCalls += 1;
+          return Promise.resolve(JSON.stringify({
+            verdict: "accept",
+            issues: [],
+            repairedResult: null,
+          }));
+        },
+        callClaude: () => {
+          claudeCalls += 1;
+          return Promise.resolve(
+            claudeCalls === 1
+              ? validFactVerification({
+                verdict: "reject",
+                issues: [{
+                  kind: "unsupported_fact",
+                  field: "suggestedLine",
+                  reasonCode: "user_fact_unsupported",
+                }],
+              })
+              : JSON.stringify({
+                verdict: "repair",
+                issues: [{ kind: "unsupported_fact" }],
+                repairedResult: { ...candidate, vibe: "暖" },
+              }),
+          );
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_fact_rejection_field_unchanged",
+  );
+
+  assertEquals(error.providerCalls, 3);
+  assertEquals(deepSeekCalls, 1);
+  assertEquals(claudeCalls, 2);
+});
+
+Deno.test("DeepSeek repair cannot add an untrusted key before a later schema is built", async () => {
+  const candidate = {
+    summary: "The exchange stayed on topic.",
+    strengths: ["The reply was clear."],
+    watchouts: ["Avoid unsupported assumptions."],
+    suggestedLine: "What part did you enjoy most?",
+    vibe: "中性",
+    dateChance: "low",
+    dateChanceReason: "The conversation is still early.",
+    nextInviteMove: "Keep the next message low pressure.",
+    gameBreakdown: null,
+  };
+  let deepSeekCalls = 0;
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "debrief",
+        practiceMode: "standard",
+        candidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeModel: "claude-test",
+        callDeepSeek: () => {
+          deepSeekCalls += 1;
+          if (deepSeekCalls === 1) {
+            return Promise.resolve(JSON.stringify({
+              verdict: "accept",
+              issues: [],
+              repairedResult: null,
+            }));
+          }
+          if (deepSeekCalls === 2) {
+            return Promise.resolve(validFactVerification({
+              verdict: "reject",
+              issues: [{
+                kind: "unsupported_fact",
+                field: "other",
+                reasonCode: "world_fact_unsupported",
+              }],
+            }));
+          }
+          return Promise.resolve(JSON.stringify({
+            verdict: "repair",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: {
+              ...candidate,
+              private_transcript_fragment: "must never become a schema key",
+            },
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_extra_repair_field",
+  );
+
+  assertEquals(error.providerCalls, 3);
+  assertEquals(deepSeekCalls, 3);
+});
+
+Deno.test("DeepSeek repair cannot add a nested key to Game breakdown", async () => {
+  const candidate = {
+    summary: "The exchange stayed on topic.",
+    strengths: ["The reply was clear."],
+    watchouts: ["Avoid unsupported assumptions."],
+    suggestedLine: "What part did you enjoy most?",
+    vibe: "中性",
+    dateChance: "low",
+    dateChanceReason: "The conversation is still early.",
+    nextInviteMove: "Keep the next message low pressure.",
+    gameBreakdown: {
+      phaseReached: "opening",
+      missedVariable: "reciprocity",
+      failureState: "question loop",
+      nextFirstLine: "What part did you enjoy most?",
+      inviteDirection: "keep building",
+    },
+  };
+  let deepSeekCalls = 0;
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "debrief",
+        practiceMode: "game",
+        candidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeModel: "claude-test",
+        callDeepSeek: () => {
+          deepSeekCalls += 1;
+          if (deepSeekCalls === 1) {
+            return Promise.resolve(JSON.stringify({
+              verdict: "accept",
+              issues: [],
+              repairedResult: null,
+            }));
+          }
+          if (deepSeekCalls === 2) {
+            return Promise.resolve(validFactVerification({
+              verdict: "reject",
+              issues: [{
+                kind: "unsupported_fact",
+                field: "gameBreakdown",
+                reasonCode: "world_fact_unsupported",
+              }],
+            }));
+          }
+          return Promise.resolve(JSON.stringify({
+            verdict: "repair",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: {
+              ...candidate,
+              gameBreakdown: {
+                ...candidate.gameBreakdown,
+                private_transcript_fragment: "must never become a schema key",
+              },
+            },
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_extra_repair_field",
+  );
+
+  assertEquals(error.providerCalls, 3);
+  assertEquals(deepSeekCalls, 3);
 });
 
 Deno.test("semantic adjudicator uses the alternate provider when the first reviewer fails", async () => {
@@ -707,7 +1246,7 @@ Deno.test("unsupported-fact repairs require an independent semantic acceptance",
   assertEquals(calls, ["claude", "deepseek"]);
   assertEquals(reviewedPrompts[0].includes(String(repaired.warmUp)), true);
   assertEquals(
-    reviewedPrompts[0].includes("semanticFactVerificationV1"),
+    reviewedPrompts[0].includes("semanticFactVerificationV2"),
     true,
   );
   assertEquals(result.candidate, repaired);
@@ -967,6 +1506,79 @@ Deno.test("semantic deadline prevents an unverified candidate from starting the 
 
   assertEquals(error.providerCalls, 1);
   assertEquals(deepSeekCalls, 0);
+});
+
+Deno.test("Debrief deadline fails closed after a fact repair but before fresh verification", async () => {
+  const candidate = {
+    summary: "conversation summary",
+    strengths: ["clear response"],
+    watchouts: ["avoid assumptions"],
+    suggestedLine: "I remember you mentioned that shop.",
+    vibe: "warm",
+    dateChance: "medium",
+    dateChanceReason: "the exchange stayed reciprocal",
+    nextInviteMove: "continue with a low-pressure question",
+    gameBreakdown: null,
+  };
+  const repaired = {
+    ...candidate,
+    suggestedLine: "That sounds fun. What did you like most about it?",
+  };
+  const times = [0, 1, 2, 85000];
+  let timeIndex = 0;
+  let deepSeekCalls = 0;
+  let claudeCalls = 0;
+
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "debrief",
+        practiceMode: "standard",
+        candidate,
+        candidateProvider: "anthropic",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        absoluteDeadlineAtMs: 85000,
+        monotonicNow: () => times[timeIndex++] ?? 85000,
+        callDeepSeek: () => {
+          deepSeekCalls += 1;
+          return Promise.resolve(JSON.stringify({
+            verdict: "accept",
+            issues: [],
+            repairedResult: null,
+          }));
+        },
+        callClaude: () => {
+          claudeCalls += 1;
+          return Promise.resolve(
+            claudeCalls === 1
+              ? validFactVerification({
+                verdict: "reject",
+                issues: [{
+                  kind: "unsupported_fact",
+                  field: "suggestedLine",
+                  reasonCode: "user_fact_unsupported",
+                }],
+              })
+              : JSON.stringify({
+                verdict: "repair",
+                issues: [{ kind: "unsupported_fact" }],
+                repairedResult: repaired,
+              }),
+          );
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_repair_unverified:semantic_adjudication_deadline_exceeded",
+  );
+
+  assertEquals(error.providerCalls, 3);
+  assertEquals(deepSeekCalls, 1);
+  assertEquals(claudeCalls, 2);
 });
 
 Deno.test("Debrief semantic adjudication does not require Hint strategies", () => {
