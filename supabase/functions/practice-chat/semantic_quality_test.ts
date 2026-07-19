@@ -513,16 +513,16 @@ Deno.test("semantic adjudication prompt treats transcript and candidate as evide
   assertEquals(prompt.includes("direct invite forbidden"), true);
   assertEquals(prompt.includes("不得輸出 strategies"), true);
   assertEquals(prompt.includes("兩個選項都不得只是問句"), true);
-  assertEquals(prompt.includes("小測試依前文/testStyle"), true);
+  assertEquals(prompt.includes("小測試："), true);
   assertEquals(
-    prompt.includes("已答不固定/看心情後問較常A/B＝普通題"),
+    prompt.includes("已答不固定後問常選A/B＝普通題"),
     true,
   );
   assertEquals(
-    prompt.includes("反問核對剛才稱讚/主張/自我呈現"),
+    prompt.includes("反問核對稱讚/主張"),
     true,
   );
-  assertEquals(prompt.includes("無「真的/確定」也算"), true);
+  assertEquals(prompt.includes("無「真的」也算"), true);
   assertEquals(prompt.includes("普通互動可再選擇性問一句"), true);
   assertEquals(prompt.includes("命中驗證則兩案完全禁問"), true);
   assertEquals(prompt.includes("hidden hintAssessment"), true);
@@ -594,6 +594,7 @@ Deno.test("semantic Hint reviewer exposes the no-detail branch for a bare verifi
 
   assertEquals(prompt.includes("妳笑起來很好看。"), true);
   assertEquals(prompt.includes("你是不是都這樣說？"), true);
+  assertEquals(prompt.includes("否則直答原主張"), true);
   assertEquals(prompt.includes("沒有時直接回被驗證的 user 原主張"), true);
   assertEquals(prompt.includes("不得硬補細節"), true);
   assertEquals(prompt.includes("我就是覺得妳笑起來很好看"), true);
@@ -663,11 +664,22 @@ Deno.test("semantic Hint reviewer rejects the live active-test expert-interview 
 
   assertEquals(prompt.includes("這是常見卡點嗎"), true);
   assertEquals(prompt.includes("你對老屋也有興趣？"), true);
-  assertEquals(prompt.includes("無「真的/確定」也算"), true);
+  assertEquals(prompt.includes("無「真的」也算"), true);
   assertEquals(prompt.includes("老屋改造的通病嗎"), true);
   assertEquals(prompt.includes("延伸提問，讓她繼續講專業判斷"), true);
   assertEquals(prompt.includes("不得含問號或以嗎／呢收尾"), true);
   assertEquals(prompt.includes("回答責任留在 user"), true);
+  assertEquals(
+    prompt.includes("有具體事實則各回扣一項"),
+    true,
+  );
+  assertEquals(prompt.includes("只重複大主題／興趣"), true);
+  assertEquals(prompt.includes("稱自己的觀察很表面"), true);
+  assertEquals(prompt.includes("只說自己看不懂某細節"), true);
+  assertEquals(
+    prompt.includes("必須回到 assistant 已說的具體觀察／事實"),
+    true,
+  );
   assertEquals(prompt.includes("repair 時 issues 至少一個合法 kind"), true);
   assertEquals(prompt.includes("reject 時 issues 至少一個合法 kind"), true);
 });
@@ -704,6 +716,14 @@ Deno.test("fact verification is a bounded evidence audit, not another free-form 
   assertEquals(prompt.includes("純評估或建議詞本身不構成"), true);
   assertEquals(prompt.includes("還談不上懂／沒有研究到能說懂"), true);
   assertEquals(prompt.includes("由最新 assistant 訊號觸發的當下反應"), true);
+  assertEquals(
+    prompt.includes("warmUp、steady 還必須各自回扣至少一項"),
+    true,
+  );
+  assertEquals(prompt.includes("只重複大主題／興趣"), true);
+  assertEquals(prompt.includes("稱自己的觀察很表面"), true);
+  assertEquals(prompt.includes("只說自己看不懂某細節"), true);
+  assertEquals(prompt.includes("沒有相關具體細節時"), true);
   assertEquals(prompt.includes("kind、field、reasonCode"), true);
   assertEquals(
     prompt.includes("warmUp|steady|coaching|other"),
@@ -1322,6 +1342,70 @@ Deno.test("Hint assessment disagreement is terminal and cannot be washed by a th
 
   assertEquals(error.providerCalls, 2);
   assertEquals(calls, ["claude", "deepseek"]);
+});
+
+Deno.test("accepted topic-only active Hint fails closed when the fact verifier enforces callbacks", async () => {
+  const liveTopicOnlyCandidate = {
+    warmUp: "謝謝，聽妳這麼說，我對老屋的觀察還很表面，但被妳勾起了興趣。",
+    steady:
+      "被妳一講，我才發現自己對老屋只有直覺，沒到能看動線的程度，現在好奇了。",
+    coaching:
+      "Game 心法：她在測試你是否真對老屋有興趣還是客套，你需要誠實回應她的稱讚。速約任務：這輪誠實表態、有據回扣、立場收句。",
+  };
+  const activeTurns = [
+    {
+      role: "ai" as const,
+      text: "檯面處理得不錯，但動線有點卡，吧台離門口太近。",
+    },
+    { role: "user" as const, text: "感覺妳對老屋空間的細節很有觀察。" },
+    { role: "ai" as const, text: "做設計的嘛。你對老屋也有興趣？" },
+  ];
+  const calls: string[] = [];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: liveTopicOnlyCandidate,
+        candidateProvider: "deepseek",
+        turns: activeTurns,
+        trustedGenerationContext: "active consistency test",
+        maxProviderCalls: 3,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: (args) => {
+          calls.push(`claude:${args.maxTokens}`);
+          return Promise.resolve(validHintAdjudication({
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          }));
+        },
+        callDeepSeek: (args) => {
+          calls.push(`deepseek:${args.maxTokens}`);
+          const prompt = args.messages.map((message) => message.content).join(
+            "\n",
+          );
+          assertEquals(prompt.includes(liveTopicOnlyCandidate.warmUp), true);
+          assertEquals(
+            prompt.includes("warmUp、steady 還必須各自回扣至少一項"),
+            true,
+          );
+          assertEquals(prompt.includes("稱自己的觀察很表面"), true);
+          return Promise.resolve(validFactVerification({
+            hintAssessment: {
+              interactionKind: "active_consistency_test",
+              replyContract: "noncompliant",
+              coachingContract: "compliant",
+            },
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_hint_assessment_disagreement",
+  );
+
+  assertEquals(calls, ["claude:1800", "deepseek:1200"]);
+  assertEquals(error.providerCalls, 2);
 });
 
 Deno.test("Hint assessment reaches both hard-guard validations", async () => {
@@ -2000,12 +2084,19 @@ Deno.test("direct active consistency repair uses the independent full verifier",
     coaching:
       "Game 心法：她在驗證你是不是真的對老屋有興趣、剛才的稱讚是不是有內容；誠實交代還談不上懂，再回扣她剛說的動線與吧台位置收住。速約任務：這輪不約，先讓回答站穩。",
   };
+  const liveTopicOnlyCandidate = {
+    warmUp: "謝謝，聽妳這麼說，我對老屋的觀察還很表面，但被妳勾起了興趣。",
+    steady:
+      "被妳一講，我才發現自己對老屋只有直覺，沒到能看動線的程度，現在好奇了。",
+    coaching:
+      "Game 心法：她在測試你是否真對老屋有興趣還是客套，你需要誠實回應她的稱讚，不假裝懂或硬說有興趣，才能通過驗證。速約任務：這輪任務是誠實表態、有據回扣、立場收句。",
+  };
   const calls: string[] = [];
   let validations = 0;
   const result = await adjudicatePracticeCandidate({
     surface: "hint",
     practiceMode: "game",
-    candidate: hintCandidate,
+    candidate: liveTopicOnlyCandidate,
     candidateProvider: "deepseek",
     turns: activeTurns,
     trustedGenerationContext: "partnerFacts: active consistency test",
@@ -2015,6 +2106,11 @@ Deno.test("direct active consistency repair uses the independent full verifier",
     claudeModel: "claude-test",
     callClaude: (args) => {
       calls.push(`claude:${args.maxTokens}`);
+      const prompt = args.messages.map((message) => message.content).join("\n");
+      assertEquals(prompt.includes(liveTopicOnlyCandidate.warmUp), true);
+      assertEquals(prompt.includes(liveTopicOnlyCandidate.steady), true);
+      assertEquals(prompt.includes("只重複大主題／興趣"), true);
+      assertEquals(prompt.includes("稱自己的觀察很表面"), true);
       return Promise.resolve(validHintAdjudication({
         verdict: "repair",
         issues: [{ kind: "strategy_mismatch" }],

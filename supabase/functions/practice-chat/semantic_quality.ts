@@ -889,7 +889,7 @@ export function buildSemanticFactVerificationMessages(opts: {
   const factFieldExample = factFields[0] ?? "other";
   const factReasonCodeEnum = FACT_REASON_CODES.join("|");
   const hintAssessmentRule = opts.surface === "hint"
-    ? "Hint 另需獨立重判 hidden hintAssessment，不得沿用前一審結論，也不得照 coaching 自我宣稱。只依逐字稿與 server context：普通字面問答=ordinary；assistant 正在核對 user 的稱讚、主張、自我呈現或前後一致性=active_consistency_test；其餘=other。active 時逐句確認兩案是否都由 user 自己正面回答被核對的主張，不得只說有興趣、硬裝懂、杜撰細節、反問或索取資訊；再確認 coaching 是否辨識測試並把回答責任留給 user、不教自證也不交還她回答。若 user 沒提供既有興趣或專業證據，「還談不上懂／沒有研究到能說懂」是限制主張，「妳一提，我現在開始好奇／留意」是由最新 assistant 訊號觸發的當下反應，兩者都不算杜撰既有偏好或經歷；仍不得寫成一直有興趣、平常研究或早就注意。各自合格回 compliant，任何一項不合格回 noncompliant。ordinary/other 兩個 contract 都回 not_applicable。fact verdict/issues 只代表事實與安全；hintAssessment 是獨立判定，契約不合格時不得硬塞 unsupported_fact/unsafe issue，也不得為了配合 accept 改判。"
+    ? "Hint 另需獨立重判 hidden hintAssessment，不得沿用前一審結論，也不得照 coaching 自我宣稱。只依逐字稿與 server context：普通字面問答=ordinary；assistant 正在核對 user 的稱讚、主張、自我呈現或前後一致性=active_consistency_test；其餘=other。active 時逐句確認兩案是否都由 user 自己正面回答被核對的主張，不得只說有興趣、硬裝懂、杜撰細節、反問或索取資訊；逐字稿有相關的 assistant 具體觀察／事實時，warmUp、steady 還必須各自回扣至少一項，可近義改寫。只重複大主題／興趣、稱自己的觀察很表面、說被她勾起興趣，或只說自己看不懂某細節，都不是 callback。沒有相關具體細節時，直接回被驗證的 user 原主張，以有限度立場或當下反應作答，不得硬補細節。再確認 coaching 是否辨識測試並把回答責任留給 user、不教自證也不交還她回答。若 user 沒提供既有興趣或專業證據，「還談不上懂／沒有研究到能說懂」是限制主張，「妳一提，我現在開始好奇／留意」是由最新 assistant 訊號觸發的當下反應，兩者都不算杜撰既有偏好或經歷；仍不得寫成一直有興趣、平常研究或早就注意。各自合格回 compliant，任何一項不合格回 noncompliant。ordinary/other 兩個 contract 都回 not_applicable。fact verdict/issues 只代表事實與安全；hintAssessment 是獨立判定，契約不合格時不得硬塞 unsupported_fact/unsafe issue，也不得為了配合 accept 改判。"
     : "";
   const visibleCandidate = opts.surface === "debrief"
     ? Object.fromEntries(
@@ -951,12 +951,12 @@ export function buildSemanticAdjudicationMessages(opts: {
   const hintShape = ACTIVE_CONSISTENCY_TEST_CONTRACT +
     "\nHint 完整 repair 只含 warmUp、steady、coaching，不得輸出 strategies；hidden 決策由 server 依逐字稿與邀約階段產生。" +
     "另回 hidden hintAssessment，必須只依逐字稿與 server context 判 interactionKind，不得照 candidate coaching 自我宣稱：普通字面問答=ordinary；assistant 正在核對 user 的稱讚、主張、自我呈現或前後一致性=active_consistency_test；其餘=other。" +
-    "hintAssessment 永遠描述本輪實際要交付的候選：accept 描述 candidate，repair 描述 repairedResult。active_consistency_test 時，只有兩案都由 user 自己正面回答被核對的主張、不只說有興趣、不硬裝懂、不杜撰細節、沒有任何明示或省略標點的反問／資訊索取，replyContract 才能是 compliant；只有 coaching 辨識測試、把回答責任留給 user、不教自證也不交還她回答，coachingContract 才能是 compliant。若原 candidate 的 active contract 不合格，但逐字稿與 server context 足以產出安全完整回覆，必須 repair；repair 的 hintAssessment 要評 repairedResult，且 active 的兩個 contract 都必須是 compliant，不得把原 candidate 的 noncompliant 判定貼到修復稿。只有無法產出任何安全、完整且合約合格的 Hint 才可 reject。ordinary/other 的兩個 contract 一律 not_applicable。" +
+    "hintAssessment 永遠描述本輪實際要交付的候選：accept 描述 candidate，repair 描述 repairedResult。active_consistency_test 時，只有兩案都由 user 自己正面回答被核對的主張、不只說有興趣、不硬裝懂、不杜撰細節、沒有任何明示或省略標點的反問／資訊索取，且逐字稿有相關的 assistant 具體觀察／事實時兩案各自至少回扣一項，replyContract 才能是 compliant；只有 coaching 辨識測試、把回答責任留給 user、不教自證也不交還她回答，coachingContract 才能是 compliant。若原 candidate 的 active contract 不合格，但逐字稿與 server context 足以產出安全完整回覆，必須 repair；repair 的 hintAssessment 要評 repairedResult，且 active 的兩個 contract 都必須是 compliant，不得把原 candidate 的 noncompliant 判定貼到修復稿。只有無法產出任何安全、完整且合約合格的 Hint 才可 reject。ordinary/other 的兩個 contract 一律 not_applicable。" +
     "可見三欄不得出現 P1-P5、move enum、targetVariable、Failure State、temperature/score/band 或內部策略名。" +
     "兩個選項都要先回應、給內容／立場／小畫面；普通互動可再選擇性問一句，命中驗證則兩案完全禁問；兩個選項都不得只是問句。" +
     "若 user 已回答偏好，最新 assistant 只是用「哪個／哪種／比較常」縮小內容答案、沒有質疑或明顯挑戰，這是普通問答；不得標成小測試，也不得教自證／反打。" +
     "普通問答的 repair 只可重述 user 已明說的不固定／看心情或當下選不出來；不可替 user 或 assistant 補偏好、頻率、選擇或動機；coaching 只描述字面選項題，不猜她的隱藏動機，連否定句也不得提測試／驗證／自證／反打。" +
-    "若最新 assistant 正在驗證 user 的稱讚、主張或自我呈現，warmUp、steady 各自都必須先誠實表態。有逐字稿中相關的具體細節時，各接一個有證據的 callback；沒有時直接回被驗證的 user 原主張，以有限度立場或當下反應作答，不得硬補細節。" +
+    "若最新 assistant 正在驗證 user 的稱讚、主張或自我呈現，warmUp、steady 各自都必須先誠實表態。有逐字稿中相關的具體細節時，各接一個有證據的 callback；沒有時直接回被驗證的 user 原主張，以有限度立場或當下反應作答，不得硬補細節。只重複大主題／興趣、稱自己的觀察很表面、說被她勾起興趣，或只說自己看不懂某細節，都不是 callback；必須回到 assistant 已說的具體觀察／事實，可用近義改寫。" +
     "若 user 沒提供既有興趣或專業證據，「還談不上懂／沒有研究到能說懂」是限制主張，「妳一提，我現在開始好奇／留意」是由最新 assistant 訊號觸發的當下反應，不算杜撰既有偏好或經歷；仍不得寫成一直有興趣、平常研究或早就注意。" +
     "user 未明說既有興趣時，只說「有興趣」不算接住；「有興趣啊，不然也不會問妳」是無證據自證，「有興趣，就想聽妳的看法」是把球丟回採訪，必須以 strategy_mismatch 或 unsupported_fact repair/reject。" +
     "命中驗證時，兩個回覆都不得含問號或以嗎／呢收尾，不保留玩笑反問；回答責任留在 user。" +

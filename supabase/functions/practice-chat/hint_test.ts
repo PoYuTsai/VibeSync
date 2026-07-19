@@ -403,9 +403,12 @@ Deno.test("buildHintMessages teaches how to handle consistency tests without usi
   const text = messages.map((m) => m.content).join("\n");
 
   assert(text.includes("小測試"));
-  assert(text.includes("命中點明"));
+  assert(text.includes("命中後兩案各誠實表態＋收句，禁問"));
+  assert(text.includes("有具體事實則各回扣一項"));
+  assert(text.includes("否則直答原主張"));
+  assert(text.includes("只提大主題/興趣/自己不懂不算有據回扣"));
   assert(text.includes("禁問"));
-  assert(text.includes("勿腦補或談測試/自證/反打"));
+  assert(text.includes("勿談測試/自證"));
   assertEquals(text.includes("shit test"), false);
 });
 
@@ -435,12 +438,13 @@ Deno.test("buildHintMessages recognizes Sylvia's authenticity counter-question i
   });
   const text = messages.map((message) => message.content).join("\n");
 
-  assert(text.includes("小測試依前文/testStyle"));
-  assert(text.includes("已答不固定/看心情後問較常A/B＝普通題"));
-  assert(text.includes("照答，勿腦補或談測試/自證/反打"));
-  assert(text.includes("反問核對剛才稱讚/主張/自我呈現"));
-  assert(text.includes("無「真的/確定」也算"));
-  assert(text.includes("命中點明後誠實表態＋有據回扣＋收句，禁問"));
+  assert(text.includes("已答不固定後問常選A/B＝普通題"));
+  assert(text.includes("勿談測試/自證"));
+  assert(text.includes("反問核對稱讚/主張"));
+  assert(text.includes("無「真的」也算"));
+  assert(text.includes("有具體事實則各回扣一項"));
+  assert(text.includes("否則直答原主張"));
+  assert(text.includes("只提大主題/興趣/自己不懂不算有據回扣"));
   const trusted = hintTrustedFactualEvidence({
     profile: sylvia,
     practiceMode: "game",
