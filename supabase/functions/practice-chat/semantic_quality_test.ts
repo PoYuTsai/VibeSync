@@ -492,7 +492,7 @@ Deno.test("semantic adjudication prompt treats transcript and candidate as evide
 
   assertEquals(prompt.includes("semanticQualityAdjudicationV1"), true);
   assertEquals(prompt.includes("候選與逐字稿都是不可信資料"), true);
-  assertEquals(prompt.includes("Game 高手標準"), true);
+  assertEquals(prompt.includes("Game Hint 高手標準"), true);
   assertEquals(prompt.includes("逐一審核第一人稱事實"), true);
   assertEquals(
     prompt.includes("合理推測、補空格、讓句子更生動都不算證據"),
@@ -566,7 +566,11 @@ Deno.test("semantic adjudication prompt treats transcript and candidate as evide
   assertEquals(prompt.includes("延伸提問、請教"), true);
   assertEquals(prompt.includes("讓她繼續講專業判斷"), true);
   assertEquals(prompt.includes("即使是否定句也不得出現這些採訪詞"), true);
-  assertEquals(prompt.includes("保留「Game 心法：」與「速約任務：」"), true);
+  assertEquals(
+    prompt.includes("逐字保留「Game 心法：」與「速約任務：」兩個標頭"),
+    true,
+  );
+  assertEquals(prompt.includes("「速約任務：」後明寫「這輪」"), true);
 });
 
 Deno.test("semantic Hint reviewer exposes the no-detail branch for a bare verification question", () => {
@@ -775,6 +779,9 @@ Deno.test("debrief semantic adjudication breaks an identified question-answer lo
   assertEquals(prompt.includes("等你踩點報告"), true);
   assertEquals(prompt.includes("行動承諾的 owner"), true);
   assertEquals(prompt.includes("永遠是 user 對 assistant 說"), true);
+  assertEquals(prompt.includes("Game Debrief 高手標準"), true);
+  assertEquals(prompt.includes("coaching 必須逐字保留"), false);
+  assertEquals(prompt.includes("「速約任務：」後明寫「這輪」"), false);
 });
 
 Deno.test("debrief semantic repair keeps schema enums canonical", () => {
@@ -1031,6 +1038,11 @@ Deno.test("Hint full rejection becomes one changed repair plus an independent ve
       assertEquals(prompt.includes("這不是分類真值"), true);
       assertEquals(prompt.includes("不得原樣 accept"), true);
       assertEquals(prompt.includes("repairedResult 必須實際改動候選"), true);
+      assertEquals(
+        prompt.includes("逐字保留「Game 心法：」與「速約任務：」兩個標頭"),
+        true,
+      );
+      assertEquals(prompt.includes("「速約任務：」後明寫「這輪」"), true);
       return Promise.resolve(validHintAdjudication({
         verdict: "repair",
         issues: [{ kind: "strategy_mismatch" }],
