@@ -636,12 +636,23 @@ function hintVerifierRecoveryKind(
 ): HintVerifierRecoveryKind | null {
   const verifierAssessment = rejection.hintAssessment;
   if (!pendingAssessment || !verifierAssessment) return null;
+  const strategyOnly = hasExactSemanticIssueKinds(rejection.issueKinds, [
+    "strategy_mismatch",
+  ]);
+  const unsupportedFactAndStrategy = hasExactSemanticIssueKinds(
+    rejection.issueKinds,
+    ["unsupported_fact", "strategy_mismatch"],
+  );
+  const recoverableActiveContracts = strategyOnly
+    ? verifierAssessment.replyContract === "noncompliant" ||
+      verifierAssessment.coachingContract === "noncompliant"
+    : unsupportedFactAndStrategy &&
+      verifierAssessment.replyContract === "noncompliant" &&
+      verifierAssessment.coachingContract === "noncompliant";
   if (
-    hasExactSemanticIssueKinds(rejection.issueKinds, ["strategy_mismatch"]) &&
+    recoverableActiveContracts &&
     pendingAssessment.interactionKind === "active_consistency_test" &&
-    verifierAssessment.interactionKind === "active_consistency_test" &&
-    (verifierAssessment.replyContract === "noncompliant" ||
-      verifierAssessment.coachingContract === "noncompliant")
+    verifierAssessment.interactionKind === "active_consistency_test"
   ) {
     return "active_contract";
   }
@@ -689,6 +700,15 @@ function assertHintVerifierRecoveryRepair(
   const verifierAssessment = rejection.verifierHintAssessment;
   if (!verifierAssessment) {
     throw new Error("semantic_adjudication_recovery_assessment_missing");
+  }
+  if (
+    rejection.issueKinds.includes("unsupported_fact") &&
+    (!fieldChanged("warmUp") || !fieldChanged("steady") ||
+      !fieldChanged("coaching"))
+  ) {
+    throw new Error(
+      "semantic_adjudication_recovery_active_fact_fields_unchanged",
+    );
   }
   if (
     verifierAssessment.replyContract === "noncompliant" &&
@@ -1188,15 +1208,24 @@ export function buildSemanticAdjudicationMessages(opts: {
       opts.priorSemanticRejection.issueKinds.join(",") || "strategy_mismatch"
     }）。這不是分類真值，你仍須獨立判 interactionKind；但本輪是唯一保留的完整修復機會，不得原樣 accept。若逐字稿與 server context 足以產出安全完整回覆，必須回 repair，repairedResult 必須實際改動候選，hintAssessment 只評修復稿且須符合交付契約；真的無法安全修好才 reject。`
     : "";
+  const activeVerifierRecoveryRequiresFactRewrite =
+    opts.priorSemanticRejection?.verifierRecoveryKind === "active_contract" &&
+    opts.priorSemanticRejection.issueKinds.includes("unsupported_fact");
   const verifierRecoveryRule =
     opts.priorSemanticRejection?.verifierRecoveryKind === "active_contract"
-      ? `前一個不同 provider 的最終複核把被拒稿判為 active_consistency_test（replyContract=${
+      ? `前一個不同 provider 的最終複核把被拒稿判為 active_consistency_test（issueKinds=${
+        opts.priorSemanticRejection.issueKinds.join(",")
+      }; replyContract=${
         opts.priorSemanticRejection.verifierHintAssessment?.replyContract ??
           "noncompliant"
       }; coachingContract=${
         opts.priorSemanticRejection.verifierHintAssessment
           ?.coachingContract ?? "noncompliant"
-      }）。這仍不是分類真值；你要依逐字稿獨立重判，若不同就 reject。若同為 active，reply 不合格時 warmUp、steady 必須各自完整實改，coaching 不合格時 coaching 必須實改；不能只改標點或無關欄位。`
+      }）。這仍不是分類真值；你要依逐字稿獨立重判，若不同就 reject。若同為 active，${
+        activeVerifierRecoveryRequiresFactRewrite
+          ? "因同時含 unsupported_fact，warmUp、steady、coaching 三欄都必須完整實改並刪除所有無證據主張"
+          : "reply 不合格時 warmUp、steady 必須各自完整實改，coaching 不合格時 coaching 必須實改"
+      }；不能只改標點或無關欄位。`
       : opts.priorSemanticRejection?.verifierRecoveryKind ===
           "ordinary_unsupported_fact"
       ? "前兩個不同 provider 都把互動判為 ordinary，但最終複核仍發現 unsupported_fact。依逐字稿獨立重判；若仍是 ordinary，必須完整重寫 warmUp、steady、coaching 三欄，刪除所有無證據偏好、頻率、動機或經歷；可保留回答後的自然問句，不得誤套 active 禁問。若分類不同或無法確定，直接 reject。"
