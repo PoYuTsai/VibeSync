@@ -403,9 +403,9 @@ Deno.test("buildHintMessages teaches how to handle consistency tests without usi
   const text = messages.map((m) => m.content).join("\n");
 
   assert(text.includes("小測試"));
-  assert(text.includes("承認"));
-  assert(text.includes("曲解"));
-  assert(text.includes("反打"));
+  assert(text.includes("命中點明"));
+  assert(text.includes("禁問"));
+  assert(text.includes("勿腦補或談測試/自證/反打"));
   assertEquals(text.includes("shit test"), false);
 });
 
@@ -435,12 +435,12 @@ Deno.test("buildHintMessages recognizes Sylvia's authenticity counter-question i
   });
   const text = messages.map((message) => message.content).join("\n");
 
-  assert(text.includes("小測試：看前文/testStyle"));
-  assert(text.includes("答過偏好的單純選項追問不算"));
-  assert(text.includes("同句有質疑/明顯挑戰仍算"));
-  assert(text.includes("有細節回扣，無則回原話勿捏造"));
-  assert(text.includes("未知興趣勿冒認/以問自證"));
-  assert(text.includes("禁分享/採訪"));
+  assert(text.includes("小測試依前文/testStyle"));
+  assert(text.includes("已答不固定/看心情後問較常A/B＝普通題"));
+  assert(text.includes("照答，勿腦補或談測試/自證/反打"));
+  assert(text.includes("反問核對剛才稱讚/主張/自我呈現"));
+  assert(text.includes("無「真的/確定」也算"));
+  assert(text.includes("命中點明後誠實表態＋有據回扣＋收句，禁問"));
   const trusted = hintTrustedFactualEvidence({
     profile: sylvia,
     practiceMode: "game",
@@ -482,30 +482,6 @@ Deno.test("buildHintMessages recognizes Sylvia's authenticity counter-question i
   assert(text.includes("動線有點卡"));
   assert(text.includes("你對老屋也有興趣"));
 
-  assertThrows(
-    () =>
-      parseHintResult(
-        JSON.stringify({
-          warmUp:
-            "設計師的觀察就是不一樣！那間店的紅銅檯面和動線問題，如果給妳改，妳會怎麼調整？",
-          steady: "聽妳分析老屋咖啡店好專業，還有其他觀察嗎？",
-          coaching:
-            "她主動分享專業觀察，顯示對你有基本信任。你可以用請教細節讓她多說。",
-        }),
-        {
-          mode: "game",
-          turns,
-          sharedFactualEvidence: trusted.shared,
-          partnerFactualEvidence: trusted.partner,
-          trustedFactClaims: trusted.claims,
-          enforceGeneratedQuality: true,
-          semanticAdjudicated: true,
-        },
-      ),
-    Error,
-    "hint_quality_invalid_game_contract",
-  );
-
   const recognized = parseHintResult(
     JSON.stringify({
       warmUp: "還不算懂，但妳提到動線卡，我確實開始好奇了。",
@@ -523,7 +499,7 @@ Deno.test("buildHintMessages recognizes Sylvia's authenticity counter-question i
   assert(recognized.coaching.includes("測你是否真有觀察"));
 });
 
-Deno.test("semantic-adjudicated Game Hint cannot relabel an answered preference choice as a test", () => {
+Deno.test("semantic-adjudicated ordinary Game Hint stays literal while intent remains reviewer-owned", () => {
   const turns = [
     { role: "user" as const, text: "妳平常喝咖啡嗎？" },
     { role: "ai" as const, text: "會，假日常去找間安靜的店坐一下。" },
@@ -560,69 +536,6 @@ Deno.test("semantic-adjudicated Game Hint cannot relabel an answered preference 
     parseOptions,
   );
   assert(ordinaryWithNaturalLookWording.coaching.includes("真正比較常喝哪種"));
-
-  const ordinaryWithExplicitNegation = parseHintResult(
-    JSON.stringify({
-      ...replies,
-      coaching:
-        "Game 心法：這不是品味考驗，也不需要自證，也不要幽默反打，無須證明自己；只是她在縮小咖啡偏好，建立熟悉階段直接回答即可。速約任務：這輪不約，先延續咖啡口味。",
-    }),
-    parseOptions,
-  );
-  assert(ordinaryWithExplicitNegation.coaching.includes("不是品味考驗"));
-
-  for (
-    const forbiddenFraming of [
-      "她用手沖或拿鐵其實是在測你的生活品味",
-      "這是她丟來的品味測驗",
-      "她在試探你對咖啡有沒有品味",
-      "她在考你會選哪種咖啡",
-      "她把這當品味考驗，先穩穩自證再幽默反打",
-      "她也不是沒有在試探你，只是問得生活化",
-      "她並非沒有考驗你，只是沒有明說",
-    ]
-  ) {
-    assertThrows(
-      () =>
-        parseHintResult(
-          JSON.stringify({
-            ...replies,
-            coaching:
-              `Game 心法：${forbiddenFraming}，建立熟悉階段直接回答。速約任務：這輪不約，先延續咖啡口味。`,
-          }),
-          parseOptions,
-        ),
-      Error,
-      "hint_quality_invalid_ordinary_question_as_test",
-    );
-  }
-
-  for (
-    const ordinaryNearNeighbor of [
-      "那你自己比較常點手沖還是拿鐵？",
-      "你是不是比較常喝拿鐵？",
-    ]
-  ) {
-    assertThrows(
-      () =>
-        parseHintResult(
-          JSON.stringify({
-            ...replies,
-            coaching:
-              "Game 心法：她其實是在測你的咖啡品味，建立熟悉階段先穩穩自證。速約任務：這輪不約，先輕鬆反打。",
-          }),
-          {
-            ...parseOptions,
-            turns: [
-              ...turns.slice(0, -1),
-              { role: "ai", text: ordinaryNearNeighbor },
-            ],
-          },
-        ),
-      Error,
-      "hint_quality_invalid_ordinary_question_as_test",
-    );
-  }
 
   const choiceShapedChallenge = parseHintResult(
     JSON.stringify({
@@ -4468,6 +4381,16 @@ Deno.test("parseHintResult rejects bossy or template-like pasteable hint replies
       "hint_bossy_pasteable_reply",
     );
   }
+});
+
+Deno.test("parseHintResult preserves a completed answer callback without treating it as a command", () => {
+  const result = parseHintResult(JSON.stringify({
+    warmUp: "妳給我答案後我才懂，這點我記住了。",
+    steady: "我現在只懂一點，但剛才的稱讚是真的。",
+    coaching: "先承認不熟，再回扣她剛才說過的細節。",
+  }));
+
+  assertEquals(result.replies[0].text.includes("答案後我才懂"), true);
 });
 
 Deno.test("parseHintResult rejects command-style schedule grabs but preserves self-disclosure", () => {

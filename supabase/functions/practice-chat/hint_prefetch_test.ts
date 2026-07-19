@@ -6,6 +6,7 @@ import {
   buildHintPrefetchTelemetry,
   decideHintPrefetchReplay,
   HINT_QUALITY_SCHEMA_VERSION,
+  HINT_REVIEW_SCHEMA_VERSION,
   hintPrefetchAck,
   hintRecordPolicy,
   isExplicitModelHintResult,
@@ -22,6 +23,7 @@ const result = {
   generationSource: "model",
   fallbackUsed: false,
   qualitySchemaVersion: HINT_QUALITY_SCHEMA_VERSION,
+  hintReviewSchemaVersion: HINT_REVIEW_SCHEMA_VERSION,
 };
 
 Deno.test("prefetch kill switch is exact true and defaults off", () => {
@@ -163,6 +165,43 @@ Deno.test("replay accepts only explicit model snapshots", () => {
       costDeducted: 0,
     }),
     false,
+  );
+});
+
+Deno.test("semantic-quality-v2 snapshots without review certification are replaced", () => {
+  const uncertified = {
+    replies: result.replies,
+    coaching: result.coaching,
+    generationSource: "model",
+    fallbackUsed: false,
+    qualitySchemaVersion: HINT_QUALITY_SCHEMA_VERSION,
+  };
+
+  assertEquals(isExplicitModelHintResult(uncertified), false);
+  assertEquals(isReplayableModelHintResult(uncertified), false);
+  assertEquals(
+    decideHintPrefetchReplay({
+      requestPrefetch: false,
+      row: {
+        state: "settled",
+        charged: true,
+        result: uncertified,
+        isPrefetch: false,
+      },
+    }),
+    { kind: "legacyReplacementClaim" },
+  );
+  assertEquals(
+    decideHintPrefetchReplay({
+      requestPrefetch: false,
+      row: {
+        state: "prefetched",
+        charged: false,
+        result: uncertified,
+        isPrefetch: true,
+      },
+    }),
+    { kind: "legacyPrefetchDiscard" },
   );
 });
 

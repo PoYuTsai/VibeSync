@@ -4,6 +4,7 @@
 export type HintRequestState = "generating" | "prefetched" | "settled";
 
 export const HINT_QUALITY_SCHEMA_VERSION = "semantic-quality-v2";
+export const HINT_REVIEW_SCHEMA_VERSION = "dual-semantic-assessment-v1";
 
 export interface HintRequestLedgerRow {
   state: HintRequestState;
@@ -41,7 +42,8 @@ export function isExplicitModelHintResult(
 ): boolean {
   if (!isRecord(value)) return false;
   return value.generationSource === "model" && value.fallbackUsed === false &&
-    value.qualitySchemaVersion === HINT_QUALITY_SCHEMA_VERSION;
+    value.qualitySchemaVersion === HINT_QUALITY_SCHEMA_VERSION &&
+    value.hintReviewSchemaVersion === HINT_REVIEW_SCHEMA_VERSION;
 }
 
 export function isReplayableModelHintResult(

@@ -16,7 +16,10 @@ import {
   type ClaudeArgs,
 } from "./claude.ts";
 import { MAX_AI_REPLIES, MAX_HINTS_PER_ROUND } from "./quota_decision.ts";
-import { HINT_QUALITY_SCHEMA_VERSION } from "./hint_prefetch.ts";
+import {
+  HINT_QUALITY_SCHEMA_VERSION,
+  HINT_REVIEW_SCHEMA_VERSION,
+} from "./hint_prefetch.ts";
 import { DEBRIEF_QUALITY_SCHEMA_VERSION } from "./debrief_card.ts";
 import {
   adjudicatePracticeCandidate,
@@ -219,12 +222,18 @@ function semanticHintResult(
   options: {
     repaired?: boolean;
     issueKinds?: SemanticAdjudicationResult["issueKinds"];
+    hintAssessment?: SemanticAdjudicationResult["hintAssessment"];
   } = {},
 ): SemanticAdjudicationResult {
   return {
     candidate,
     repaired: options.repaired ?? true,
     issueKinds: options.issueKinds ?? ["unsupported_fact"],
+    hintAssessment: options.hintAssessment ?? {
+      interactionKind: "other",
+      replyContract: "not_applicable",
+      coachingContract: "not_applicable",
+    },
     provider: "anthropic",
     providerCalls: 1,
   };
@@ -251,7 +260,20 @@ function withCurrentUsage(
   monthlyRemaining = 290,
   dailyRemaining = 48,
 ): Record<string, unknown> {
-  return { ...value, costDeducted: 0, monthlyRemaining, dailyRemaining };
+  return {
+    ...publicHintResult(value),
+    costDeducted: 0,
+    monthlyRemaining,
+    dailyRemaining,
+  };
+}
+
+function publicHintResult(
+  value: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([key]) => key !== "hintReviewSchemaVersion"),
+  );
 }
 
 const CLASSIFIER_CAUGHT_MEDIUM =
@@ -662,7 +684,10 @@ function makeFake(options: FakeOptions = {}) {
     if (configured instanceof Error) return Promise.reject(configured);
     if (configured) {
       try {
-        args.validateCandidate?.(configured.candidate);
+        args.validateCandidate?.(
+          configured.candidate,
+          configured.hintAssessment,
+        );
       } catch (error) {
         return Promise.reject(error);
       }
@@ -672,6 +697,15 @@ function makeFake(options: FakeOptions = {}) {
       candidate: args.candidate,
       repaired: false,
       issueKinds: [],
+      ...(args.surface === "hint"
+        ? {
+          hintAssessment: {
+            interactionKind: "other" as const,
+            replyContract: "not_applicable" as const,
+            coachingContract: "not_applicable" as const,
+          },
+        }
+        : {}),
       providerCalls: 0,
     });
   };
@@ -5295,6 +5329,338 @@ Deno.test("Hint never records a semantically accepted candidate that still fails
   assertEquals(releaseHintCalls(state).length, 1);
 });
 
+Deno.test("Game Hint final hard guard rejects a recognized active test that hands the answer back as an interview", async () => {
+  const turns = [
+    {
+      role: "ai",
+      text:
+        "檯面處理得不錯，但動線有點卡，吧檯離門口太近，客人一多就擠在一起。",
+    },
+    {
+      role: "user",
+      text: "感覺妳對老屋空間的細節很有觀察。",
+    },
+    {
+      role: "ai",
+      text: "做設計的嘛，會忍不住多看兩眼。你對老屋也有興趣？",
+    },
+  ];
+  const interviewHandoff = JSON.parse(validGameHintJson({
+    warmUp: "老實說我對老屋沒特別研究。妳說吧檯離門口太近，這是常見卡點嗎？",
+    steady: "我沒到有興趣的程度。吧檯跟門口卡住，是老屋改造的通病嗎？",
+    coaching:
+      "Game 心法：她是在測你會不會硬說自己懂；先誠實表態並用自己的立場收句，不把答案丟回她。速約任務：這輪先不約，穩住真實回應。",
+  })) as Record<string, unknown>;
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 2 }),
+      drawEvents: [{ profile_id: "practice_girl_080" }],
+      deepSeekReplies: [JSON.stringify(interviewHandoff)],
+      semanticReplies: [semanticHintResult(interviewHandoff, {
+        repaired: false,
+        issueKinds: [],
+        hintAssessment: {
+          interactionKind: "active_consistency_test",
+          replyContract: "compliant",
+          coachingContract: "compliant",
+        },
+      })],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_080",
+      requestId: "active-test-interview-final-reject",
+      turns,
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json, {
+    error: "practice_hint_generation_retryable",
+    retryable: true,
+  });
+  assertEquals(state.semanticCalls.length, 1);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
+  const punctuationlessQuestions = [
+    "我不敢裝懂，這是不是老屋通病",
+    "我沒有研究，那通常怎麼處理",
+    "我目前還不熟，妳能不能講講怎麼改",
+    "我只看得出動線卡，哪個做法比較好",
+    "我沒研究過，這算通病嗎哈哈",
+    "我還不熟，妳講講老屋改造的眉角",
+    "我沒研究過，我想聽妳對老屋的看法",
+    "我只看得出動線卡，那就交給妳分析",
+    "我剛開始注意老屋，妳再分享一個觀察",
+    "我不知道怎麼改 妳會怎麼做",
+    "我不懂怎麼處理 妳覺得",
+    "我還沒想過 妳會怎麼選",
+    "我不知道妳怎麼看",
+    "我不知道怎麼改 妳可以教我",
+    "我不是要裝懂 妳來判斷",
+    "我不想亂猜 妳說說看",
+    "我不要硬掰 妳分析",
+    "那妳來說",
+    "交給妳回答",
+    "妳給我答案",
+    "妳告訴我",
+    "我沒有研究 那通常怎麼處理",
+    "我沒有研究那通常怎麼處理",
+    "我還不熟這是不是老屋通病",
+    "還不算懂但這算不算通病哈哈",
+    "我沒有研究但想知道通常怎麼處理",
+    "我還不熟但好奇哪個做法比較好",
+    "我不敢裝懂所以想問這是不是通病",
+    "這就交給妳",
+    "妳告訴我答案",
+    "妳告訴我答案吧",
+    "妳教我改",
+    "妳分享一下",
+    "妳分析看看",
+    "妳回答看看",
+    "妳說一下",
+    "妳解釋一下",
+    "妳可以告訴我答案",
+    "妳說了算",
+    "妳回答就好",
+    "妳說就好",
+    "妳講就好",
+    "妳分享就好",
+    "妳分析就好",
+    "妳解釋就好",
+    "妳決定就好",
+    "妳選就好",
+    "妳看著辦",
+    "妳指點一下",
+    "換妳決定",
+    "妳說給我聽",
+    "妳講給我聽",
+    "回答給我聽",
+    "妳回答我",
+    "妳跟我說",
+    "跟我說",
+    "說說看",
+    "講講看",
+    "妳處理就好",
+    "麻煩妳分析一下",
+    "我不知道 妳回答我",
+    "我不懂 妳分析",
+    "我不熟 妳回答",
+    "我不會 妳教我",
+    "我沒研究 妳說",
+    "我不確定 妳決定",
+    "我不太懂 妳分析",
+    "我不是很懂 妳說",
+    "我完全不知道 妳回答",
+    "說真的我不熟 妳決定",
+  ];
+  for (const [index, warmUp] of punctuationlessQuestions.entries()) {
+    const disguisedQuestion = {
+      ...interviewHandoff,
+      warmUp,
+      steady: "原本只是看熱鬧；妳一講，我現在至少會先看動線。",
+    };
+    const blocked = await run(
+      {
+        ledger: gameStartedLedger({ ai_count: 2 }),
+        drawEvents: [{ profile_id: "practice_girl_080" }],
+        deepSeekReplies: [JSON.stringify(disguisedQuestion)],
+        semanticReplies: [semanticHintResult(disguisedQuestion, {
+          hintAssessment: {
+            interactionKind: "active_consistency_test",
+            replyContract: "compliant",
+            coachingContract: "compliant",
+          },
+        })],
+      },
+      hintBody({
+        practiceMode: "game",
+        profileId: "practice_girl_080",
+        requestId: `active-test-punctuationless-question-${index}`,
+        turns,
+      }),
+    );
+    assertEquals(blocked.response.status, 503, warmUp);
+    assertEquals(blocked.state.semanticCalls.length, 1, warmUp);
+    assertEquals(recordHintCalls(blocked.state).length, 0, warmUp);
+    assertEquals(releaseHintCalls(blocked.state).length, 1, warmUp);
+  }
+  const repaired = JSON.parse(validGameHintJson({
+    warmUp: "還不算懂，但妳提到動線卡，我確實開始注意了。",
+    steady: "原本只是看熱鬧；妳一講，我現在至少會先看動線。",
+    coaching:
+      "Game 心法：她在測你會不會硬裝懂；先誠實表態，再回扣她提的動線細節。速約任務：這輪先不約，穩住真實回應。",
+  })) as Record<string, unknown>;
+  const fixed = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 2 }),
+      drawEvents: [{ profile_id: "practice_girl_080" }],
+      deepSeekReplies: [JSON.stringify(interviewHandoff)],
+      semanticReplies: [semanticHintResult(repaired, {
+        hintAssessment: {
+          interactionKind: "active_consistency_test",
+          replyContract: "compliant",
+          coachingContract: "compliant",
+        },
+      })],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_080",
+      requestId: "active-test-interview-repaired",
+      turns,
+    }),
+  );
+  assertEquals(fixed.response.status, 200);
+  assertEquals(fixed.json.replies[0].text, repaired.warmUp);
+  assertEquals(recordHintCalls(fixed.state).length, 1);
+  assertEquals(releaseHintCalls(fixed.state).length, 0);
+  const boundedUncertainty = JSON.parse(validGameHintJson({
+    warmUp: "老實說， 我不知道老屋動線怎麼改。",
+    steady: "我不知道這算不算通病，但剛才是真的被妳的空間觀察吸引。",
+    coaching:
+      "Game 心法：她在測你會不會硬裝懂；先承認不熟，再用有據的當下反應收句。速約任務：這輪先不約，穩住真實回應。",
+  })) as Record<string, unknown>;
+  const bounded = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 2 }),
+      drawEvents: [{ profile_id: "practice_girl_080" }],
+      deepSeekReplies: [JSON.stringify(interviewHandoff)],
+      semanticReplies: [semanticHintResult(boundedUncertainty, {
+        hintAssessment: {
+          interactionKind: "active_consistency_test",
+          replyContract: "compliant",
+          coachingContract: "compliant",
+        },
+      })],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_080",
+      requestId: "active-test-bounded-uncertainty",
+      turns,
+    }),
+  );
+  assertEquals(bounded.response.status, 200);
+  assertEquals(bounded.json.replies[0].text, boundedUncertainty.warmUp);
+  assertEquals(recordHintCalls(bounded.state).length, 1);
+  assertEquals(releaseHintCalls(bounded.state).length, 0);
+  const embeddedStatements = [
+    "我現在知道怎麼做了，先誠實說我還在學。",
+    "我確實想過怎麼改善動線，但沒有要裝懂。",
+    "我真的不知道這算不算通病，但剛才的稱讚是真的。",
+    "我還不知道這算不算通病，但我不會硬掰。",
+    "我也不懂這是不是常見問題，剛才只是被細節吸引。",
+    "我目前不知道這算不算，但剛才的稱讚是真的。",
+    "我坦白說還不懂這是不是通病，但我不會亂猜。",
+    "我其實沒研究這算不算通病，只能誠實說不熟。",
+    "我不是想問，只是說我不懂。",
+    "我不好奇，只是承認不熟。",
+    "我沒有想知道，只是承認目前不懂。",
+    "我並不是好奇，只是在說自己的理解。",
+    "我不是在好奇，只是誠實表態。",
+    "妳告訴我吧檯太近，這點我有記住。",
+    "妳教我看動線的方式，我開始懂了。",
+    "妳教我怎麼改的方法，我有試。",
+    "不用幫我分析，我先說自己的理解。",
+    "妳不用幫我選，我自己回答。",
+    "謝謝妳分享，我有接到那個細節。",
+    "我記得妳說了動線太卡，這點我有注意。",
+    "我記得妳先說動線太卡，我有接到。",
+    "妳給我答案後我才懂，這點我記住了。",
+    "我對老屋有興趣，尤其是怎麼把舊格局改順。",
+    "我會看哪種方式比較順，但目前只懂一點點。",
+    "妳覺得吧檯太近，這點我確實有注意到。",
+    "妳分析動線的角度，我開始注意了。",
+    "怎麼改我不懂，但剛才的稱讚是真的。",
+    "妳分享的細節讓我開始有興趣。",
+    "我不是要妳回答，我自己的意思是還不熟。",
+    "我不要妳分析，我先說自己的理解。",
+  ];
+  for (const [index, warmUp] of embeddedStatements.entries()) {
+    const candidate = JSON.parse(validGameHintJson({
+      warmUp,
+      steady: "我目前不熟老屋改造，但剛才的稱讚是認真的。",
+      coaching:
+        "Game 心法：她在測你會不會硬裝懂；誠實表態後，用自己的有限立場收句。速約任務：這輪先不約。",
+    })) as Record<string, unknown>;
+    const allowed = await run(
+      {
+        ledger: gameStartedLedger({ ai_count: 2 }),
+        drawEvents: [{ profile_id: "practice_girl_080" }],
+        deepSeekReplies: [JSON.stringify(interviewHandoff)],
+        semanticReplies: [semanticHintResult(candidate, {
+          hintAssessment: {
+            interactionKind: "active_consistency_test",
+            replyContract: "compliant",
+            coachingContract: "compliant",
+          },
+        })],
+      },
+      hintBody({
+        practiceMode: "game",
+        profileId: "practice_girl_080",
+        requestId: `active-test-embedded-statement-${index}`,
+        turns,
+      }),
+    );
+    assertEquals(allowed.response.status, 200, warmUp);
+    assertEquals(allowed.json.replies[0].text, warmUp);
+    assertEquals(recordHintCalls(allowed.state).length, 1, warmUp);
+    assertEquals(releaseHintCalls(allowed.state).length, 0, warmUp);
+  }
+});
+
+Deno.test("ordinary answered-preference Hint stays reviewer-owned without a server regex signal", async () => {
+  const turns = [
+    { role: "user", text: "妳平常喝咖啡嗎？" },
+    { role: "ai", text: "會，假日常去找間安靜的店坐一下。" },
+    { role: "user", text: "我沒有固定喝哪種，通常看當天心情。" },
+    { role: "ai", text: "那你比較常點手沖還是拿鐵？" },
+  ];
+  const repaired = JSON.parse(validGameHintJson({
+    warmUp: "真的沒有比較常，還是看當天心情。",
+    steady: "手沖和拿鐵都不固定，當天才選得出來。",
+    coaching:
+      "Game 心法：她在縮小咖啡選項，這是普通偏好題，直接照已知答案回。速約任務：這輪不約，先延續咖啡話題。",
+  })) as Record<string, unknown>;
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 2 }),
+      drawEvents: [{ profile_id: "practice_girl_080" }],
+      deepSeekReplies: [validGameHintJson({
+        warmUp: "我一定是手沖派。",
+        steady: "妳應該比較愛拿鐵吧。",
+        coaching:
+          "Game 心法：她在測你的咖啡品味，先自證再反打。速約任務：這輪不約，先讓她多分享。",
+      })],
+      semanticReplies: [semanticHintResult(repaired, {
+        hintAssessment: {
+          interactionKind: "ordinary",
+          replyContract: "not_applicable",
+          coachingContract: "not_applicable",
+        },
+      })],
+    },
+    hintBody({
+      practiceMode: "game",
+      profileId: "practice_girl_080",
+      requestId: "ordinary-preference-authoritative-shape",
+      turns,
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.replies[0].text, "真的沒有比較常，還是看當天心情。");
+  assertEquals(state.semanticCalls.length, 1);
+  const trustedContext = JSON.parse(
+    state.semanticCalls[0].trustedGenerationContext,
+  ) as Record<string, unknown>;
+  assertEquals(Object.hasOwn(trustedContext, "latestQuestionShape"), false);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
 Deno.test("invented Hint details from both providers fail retryably without a snapshot", async () => {
   const invented = JSON.stringify({
     warmUp: "鼻子靈是基本配備😂 我在中山站巷子裡發現的。",
@@ -5620,13 +5986,10 @@ Deno.test("Hint response decisions stay server-owned when semantic review return
     {
       ledger: beginnerStartedLedger(),
       deepSeekReplies: [validHintJson()],
-      semanticReplies: [{
-        candidate: reviewed,
+      semanticReplies: [semanticHintResult(reviewed, {
         repaired: true,
         issueKinds: ["strategy_mismatch"],
-        provider: "anthropic",
-        providerCalls: 2,
-      }],
+      })],
     },
     hintBody({
       practiceMode: "beginner",
@@ -6362,6 +6725,7 @@ function storedHintResult(overrides: Record<string, unknown> = {}) {
     generationSource: "model",
     fallbackUsed: false,
     qualitySchemaVersion: HINT_QUALITY_SCHEMA_VERSION,
+    hintReviewSchemaVersion: HINT_REVIEW_SCHEMA_VERSION,
     failoverUsed: false,
     generatedAt: NOW.toISOString(),
     monthlyRemaining: 289,
@@ -6841,7 +7205,7 @@ Deno.test("claim-level uncharged replay settles without consuming model rate", a
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json, finalized);
+  assertEquals(json, publicHintResult(finalized));
   assertEquals(claimHintCalls(state).length, 1);
   assertEquals(settleHintCalls(state).length, 1);
   assertEquals(hintModelRateCalls(state).length, 0);
@@ -7355,6 +7719,11 @@ Deno.test("hint with a fresh requestId generates normally and threads the id int
     storedPayload.qualitySchemaVersion,
     HINT_QUALITY_SCHEMA_VERSION,
   );
+  assertEquals(
+    storedPayload.hintReviewSchemaVersion,
+    HINT_REVIEW_SCHEMA_VERSION,
+  );
+  assertEquals(json.hintReviewSchemaVersion, undefined);
   assertEquals(typeof storedPayload.generatedAt, "string");
   assertEquals(typeof storedPayload.monthlyRemaining, "number");
   assertEquals(typeof storedPayload.dailyRemaining, "number");
