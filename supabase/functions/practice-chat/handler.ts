@@ -3008,6 +3008,10 @@ export function createPracticeChatHandler(
                 maxTokens: HINT_MAX_TOKENS,
                 temperature: HINT_TEMPERATURE,
                 jsonMode: true,
+                // Hint is a compact, strictly shaped JSON response. DeepSeek
+                // V4's default thinking can consume the entire visible output
+                // budget and return finish_reason=length before JSON closes.
+                thinking: { type: "disabled" },
                 timeoutMs: hintTimeoutMs,
               });
               hintResult = await parseGeneratedHint(rawHint, "deepseek");

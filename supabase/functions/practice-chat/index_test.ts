@@ -3188,6 +3188,8 @@ Deno.test("slow durable telemetry stays off the Hint response path after quota r
 
   assertEquals(response.status, 200);
   assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.deepSeekCalls[0].thinking, { type: "disabled" });
   assertEquals(aiLogInserts(state).length, 1);
   assertEquals(state.backgroundTasks.length, 1);
   assert(
