@@ -210,7 +210,10 @@ function assertReviewedHintSemanticContract(
     const clauses = questionTail.split(/[，,。；;！!：:\n]+/u)
       .map((clause) => clause.trim())
       .filter((clause) => clause.length > 0);
-    const hasDirectQuestionOrHandoff = clauses.some((clause) => {
+    const hasBoundedCuriosityTail = /好奇(?:了|起來(?:了)?)?$/u.test(
+      questionTail.replace(/[\s\p{P}\p{S}]+$/gu, ""),
+    );
+    const hasDirectQuestionOrHandoff = clauses.some((clause, clauseIndex) => {
       const compact = clause.replace(/[\s\p{P}\p{S}]+/gu, "");
       const startsAsDirectQuestion =
         /^(?:(?:那|這|這題|這種情況|這件事|所以|可是|但|不過|一般|通常|到底|要|該))*(?:是不是|是否|能不能|可不可以|要不要|有沒有|會不會|該不該|對不對|行不行|算不算|值不值得|怎麼|怎樣|如何|為什麼|幹嘛|哪(?:個|一|裡|邊|種|項|家|間|天|時|位|些)|什麼|誰|何時|何種|多少|幾(?:個|次|點|天|種|歲|家|間))/u
@@ -229,8 +232,12 @@ function assertReviewedHintSemanticContract(
         /(?:(?:(?:(?:並)?不是|沒有)(?:在|要|想)?|不用|不必|不要|別|不想)(?:再)?(?:問|知道|好奇|請教)|不(?:再)?好奇)/gu,
         "",
       );
+      const informationRequestSurface = hasBoundedCuriosityTail &&
+          clauseIndex === clauses.length - 1
+        ? withoutNegatedRequest.replace(/好奇(?:了|起來(?:了)?)?$/u, "")
+        : withoutNegatedRequest;
       const explicitInformationRequest = /(?:想問|想知道|好奇|請教)/u
-        .test(withoutNegatedRequest);
+        .test(informationRequestSurface);
       const directQuestion = startsAsDirectQuestion ||
         markerIntroducesQuestion || explicitInformationRequest;
       if (directQuestion) return true;
