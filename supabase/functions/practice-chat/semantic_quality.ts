@@ -741,6 +741,27 @@ function assertHintVerifierRecoveryRepair(
   }
 }
 
+function hintVerifierRecoveryVerificationTarget(
+  rejection: SemanticRejectionMetadata,
+  repairedAssessment: HintSemanticAssessment | undefined,
+): HintSemanticAssessment | undefined {
+  if (
+    rejection.verifierRecoveryKind !== "active_contract" ||
+    !repairedAssessment
+  ) {
+    return repairedAssessment;
+  }
+  // The author and its independent verifier already agreed that the transcript
+  // is active. A recovery call only proposes visible edits; this provisional
+  // target keeps deterministic active guards enabled until the other provider
+  // independently proves the repaired candidate on the final call.
+  return {
+    interactionKind: "active_consistency_test",
+    replyContract: "compliant",
+    coachingContract: "compliant",
+  };
+}
+
 function assertDeliverableHintAssessment(
   assessment: HintSemanticAssessment,
 ): void {
@@ -1216,10 +1237,16 @@ export function buildSemanticAdjudicationMessages(opts: {
       "world_fact_unsupported"
     }）。本輪不得原樣 accept；能修時必須回 repair，且上列每個具體 field 都要實際變更、移除無證據事實或修正 owner，不能確定就 reject。`
     : "";
+  const pinnedActiveVerifierRecovery =
+    opts.priorSemanticRejection?.verifierRecoveryKind === "active_contract";
   const priorSemanticRejectionRule = opts.priorSemanticRejection
     ? `前一個完整審查或伺服器交付硬檢已拒絕目前 Hint（issueKinds=${
       opts.priorSemanticRejection.issueKinds.join(",") || "strategy_mismatch"
-    }）。這不是分類真值，你仍須獨立判 interactionKind；但本輪是唯一保留的完整修復機會，不得原樣 accept。若逐字稿與 server context 足以產出安全完整回覆，必須回 repair，repairedResult 必須實際改動候選，hintAssessment 只評修復稿且須符合交付契約；真的無法安全修好才 reject。`
+    }）。${
+      pinnedActiveVerifierRecovery
+        ? "前一審與不同 provider 的最終複核已一致判為 active_consistency_test；本輪只修內容，不重開 interactionKind，repair 的 hintAssessment 必須是 active_consistency_test/compliant/compliant，下一個不同 provider 仍會獨立重判；若無法完成就 reject。"
+        : "這不是分類真值，你仍須獨立判 interactionKind。"
+    }本輪是唯一保留的完整修復機會，不得原樣 accept。若逐字稿與 server context 足以產出安全完整回覆，必須回 repair，repairedResult 必須實際改動候選，hintAssessment 只評修復稿且須符合交付契約；真的無法安全修好才 reject。`
     : "";
   const activeVerifierRecoveryRequiresFactRewrite =
     opts.priorSemanticRejection?.verifierRecoveryKind === "active_contract" &&
@@ -1234,7 +1261,7 @@ export function buildSemanticAdjudicationMessages(opts: {
       }; coachingContract=${
         opts.priorSemanticRejection.verifierHintAssessment
           ?.coachingContract ?? "noncompliant"
-      }）。這仍不是分類真值；你要依逐字稿獨立重判，若不同就 reject。若同為 active，${
+      }）。本輪只修 active_consistency_test 的可見交付內容，不得改判 ordinary/other；repair 時 hintAssessment 固定回 active_consistency_test/compliant/compliant，做不到就 reject。${
         activeVerifierRecoveryRequiresFactRewrite
           ? "因同時含 unsupported_fact，warmUp、steady、coaching 三欄都必須完整實改並刪除所有無證據主張；contract=compliant 只代表交付契約合格，不代表該欄事實安全"
           : "reply 不合格時 warmUp、steady 必須各自完整實改，coaching 不合格時 coaching 必須實改"
@@ -1465,6 +1492,8 @@ export async function adjudicatePracticeCandidate(
     try {
       if (pendingVerification) {
         const candidateAwaitingVerification = pendingVerification;
+        let independentlyVerifiedHintAssessment =
+          candidateAwaitingVerification.hintAssessment;
         const semanticVerificationIssueKinds =
           candidateAwaitingVerification.semanticVerificationIssueKinds;
         if (semanticVerificationIssueKinds?.length) {
@@ -1511,6 +1540,12 @@ export async function adjudicatePracticeCandidate(
                 verification.hintAssessment.interactionKind !== "ordinary"))
           ) {
             throw new Error("semantic_hint_assessment_disagreement");
+          }
+          if (
+            candidateAwaitingVerification.verifierRecoveryKind ===
+              "active_contract"
+          ) {
+            independentlyVerifiedHintAssessment = verification.hintAssessment;
           }
         } else {
           const factFields = factIssueFieldsFor(
@@ -1564,13 +1599,13 @@ export async function adjudicatePracticeCandidate(
         }
         args.validateCandidate?.(
           candidateAwaitingVerification.candidate,
-          candidateAwaitingVerification.hintAssessment,
+          independentlyVerifiedHintAssessment,
         );
         return {
           candidate: candidateAwaitingVerification.candidate,
           repaired: candidateAwaitingVerification.repaired,
           issueKinds: candidateAwaitingVerification.issueKinds,
-          hintAssessment: candidateAwaitingVerification.hintAssessment,
+          hintAssessment: independentlyVerifiedHintAssessment,
           provider: reviewer.provider,
           providerCalls,
         };
@@ -1595,6 +1630,7 @@ export async function adjudicatePracticeCandidate(
         candidate: candidateUnderReview,
         turns: args.turns,
       });
+      let hintAssessmentForVerification = parsed.hintAssessment;
       if (priorFactRejection) {
         if (!parsed.repaired) {
           throw new Error(
@@ -1629,15 +1665,22 @@ export async function adjudicatePracticeCandidate(
             "semantic_adjudication_rejected_cosmetic_repair",
           );
         }
+        hintAssessmentForVerification = hintVerifierRecoveryVerificationTarget(
+          priorSemanticRejection,
+          parsed.hintAssessment,
+        );
         assertHintVerifierRecoveryRepair(
           priorSemanticRejection,
           candidateUnderReview,
           parsed.candidate,
-          parsed.hintAssessment,
+          hintAssessmentForVerification,
         );
       }
       try {
-        args.validateCandidate?.(parsed.candidate, parsed.hintAssessment);
+        args.validateCandidate?.(
+          parsed.candidate,
+          hintAssessmentForVerification,
+        );
       } catch (error) {
         const hardGuardRejection = hintHardGuardSemanticRejection(
           error,
@@ -1666,7 +1709,7 @@ export async function adjudicatePracticeCandidate(
         candidate: parsed.candidate,
         issueKinds: parsed.issueKinds,
         repaired: parsed.repaired,
-        hintAssessment: parsed.hintAssessment,
+        hintAssessment: hintAssessmentForVerification,
         reviewProvider: reviewer.provider,
         verifierRecoveryKind: priorSemanticRejection?.verifierRecoveryKind,
         semanticVerificationIssueKinds:

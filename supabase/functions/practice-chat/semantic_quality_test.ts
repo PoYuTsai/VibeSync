@@ -3108,18 +3108,109 @@ Deno.test("active mixed verifier recovery must materially rewrite every visible 
   }
 });
 
-Deno.test("active verifier recovery fails closed when the repair changes interaction kind", async () => {
+Deno.test("active verifier recovery pins drifting repair metadata until independent verification", async () => {
   const firstRepair = {
     warmUp: "我目前還談不上懂，但妳剛提到動線，我現在開始留意了。",
     steady: "我沒有研究到能說懂，只是現在對老屋多了一點興趣。",
-    coaching: "她在驗證你是不是真的有興趣；誠實回答並具體回扣。",
+    coaching: "她只是順著老屋話題聊天；自然分享你的興趣即可。",
   };
   const reclassifiedRepair = {
-    warmUp: "我沒有固定答案，通常看當天心情。妳呢？",
-    steady: "我會看當下，沒有特別固定的選擇。",
-    coaching: "她只是問普通偏好；照實回答後自然接話。",
+    ...firstRepair,
+    coaching: "她在驗證你是不是真的有興趣；誠實回答並具體回扣。",
   };
   const calls: string[] = [];
+  let claudeCalls = 0;
+  let deepSeekCalls = 0;
+  let recoveryValidations = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: hintCandidate,
+    candidateProvider: "deepseek",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 4,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      calls.push(`claude:${args.maxTokens}`);
+      claudeCalls += 1;
+      return Promise.resolve(
+        claudeCalls === 1
+          ? validHintAdjudication({
+            verdict: "repair",
+            issues: [{ kind: "strategy_mismatch" }],
+            repairedResult: firstRepair,
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          })
+          : validHintAdjudication({
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          }),
+      );
+    },
+    callDeepSeek: (args) => {
+      calls.push(`deepseek:${args.maxTokens}`);
+      deepSeekCalls += 1;
+      if (deepSeekCalls === 1) {
+        return Promise.resolve(validHintAdjudication({
+          verdict: "reject",
+          issues: [{ kind: "strategy_mismatch" }],
+          repairedResult: null,
+          hintAssessment: ACTIVE_COACHING_NONCOMPLIANT_HINT_ASSESSMENT,
+        }));
+      }
+      const prompt = args.messages.map((message) => message.content).join("\n");
+      assertEquals(
+        prompt.includes("本輪只修內容，不重開 interactionKind"),
+        true,
+      );
+      assertEquals(
+        prompt.includes(
+          "hintAssessment 固定回 active_consistency_test/compliant/compliant",
+        ),
+        true,
+      );
+      return Promise.resolve(validHintAdjudication({
+        verdict: "repair",
+        issues: [{ kind: "strategy_mismatch" }],
+        repairedResult: reclassifiedRepair,
+        hintAssessment: ORDINARY_HINT_ASSESSMENT,
+      }));
+    },
+    validateCandidate: (candidate, assessment) => {
+      if (candidate.coaching === reclassifiedRepair.coaching) {
+        recoveryValidations += 1;
+        assertEquals(assessment, ACTIVE_COMPLIANT_HINT_ASSESSMENT);
+      }
+    },
+  });
+
+  assertEquals(calls, [
+    "claude:1800",
+    "deepseek:2400",
+    "deepseek:1800",
+    "claude:2400",
+  ]);
+  assertEquals(recoveryValidations, 2);
+  assertEquals(result.candidate, reclassifiedRepair);
+  assertEquals(result.hintAssessment, ACTIVE_COMPLIANT_HINT_ASSESSMENT);
+  assertEquals(result.provider, "anthropic");
+  assertEquals(result.providerCalls, 4);
+});
+
+Deno.test("active verifier recovery rejects a final verifier classification drift", async () => {
+  const firstRepair = {
+    warmUp: "我目前還談不上懂，但妳剛提到動線，我現在開始留意了。",
+    steady: "我沒有研究到能說懂，只是現在對老屋多了一點興趣。",
+    coaching: "她只是順著老屋話題聊天；自然分享你的興趣即可。",
+  };
+  const reclassifiedRepair = {
+    ...firstRepair,
+    coaching: "她在驗證你是不是真的有興趣；誠實回答並具體回扣。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
   let deepSeekCalls = 0;
   const error = await assertRejects(
     () =>
@@ -3130,18 +3221,25 @@ Deno.test("active verifier recovery fails closed when the repair changes interac
         candidateProvider: "deepseek",
         turns,
         trustedGenerationContext: "server facts only",
-        maxProviderCalls: 4,
+        maxProviderCalls: 6,
         deepSeekApiKey: "deepseek-key",
         claudeApiKey: "claude-key",
         claudeModel: "claude-test",
         callClaude: (args) => {
           calls.push(`claude:${args.maxTokens}`);
-          return Promise.resolve(validHintAdjudication({
-            verdict: "repair",
-            issues: [{ kind: "strategy_mismatch" }],
-            repairedResult: firstRepair,
-            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
-          }));
+          claudeCalls += 1;
+          return Promise.resolve(
+            claudeCalls === 1
+              ? validHintAdjudication({
+                verdict: "repair",
+                issues: [{ kind: "strategy_mismatch" }],
+                repairedResult: firstRepair,
+                hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+              })
+              : validHintAdjudication({
+                hintAssessment: OTHER_HINT_ASSESSMENT,
+              }),
+          );
         },
         callDeepSeek: (args) => {
           calls.push(`deepseek:${args.maxTokens}`);
@@ -3152,7 +3250,7 @@ Deno.test("active verifier recovery fails closed when the repair changes interac
                 verdict: "reject",
                 issues: [{ kind: "strategy_mismatch" }],
                 repairedResult: null,
-                hintAssessment: ACTIVE_REPLY_NONCOMPLIANT_HINT_ASSESSMENT,
+                hintAssessment: ACTIVE_COACHING_NONCOMPLIANT_HINT_ASSESSMENT,
               })
               : validHintAdjudication({
                 verdict: "repair",
@@ -3164,15 +3262,21 @@ Deno.test("active verifier recovery fails closed when the repair changes interac
         },
       }),
     SemanticAdjudicationError,
-    "semantic_adjudication_recovery_interaction_kind_changed",
+    "semantic_adjudication_repair_unverified:semantic_hint_assessment_disagreement",
   );
 
   assertEquals(calls, [
     "claude:1800",
     "deepseek:2400",
     "deepseek:1800",
+    "claude:2400",
   ]);
-  assertEquals(error.providerCalls, 3);
+  assertEquals(error.providerCalls, 4);
+  assertEquals(error.issueKinds, ["strategy_mismatch"]);
+  assertEquals(
+    error.hintAssessment,
+    ACTIVE_COACHING_NONCOMPLIANT_HINT_ASSESSMENT,
+  );
 });
 
 Deno.test("ordinary unsupported-fact recovery cannot hide the defect in an unchanged field", async () => {
