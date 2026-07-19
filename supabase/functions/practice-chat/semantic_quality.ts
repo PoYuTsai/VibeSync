@@ -1124,6 +1124,22 @@ export async function adjudicatePracticeCandidate(
       }
     | undefined;
   for (const plannedReviewer of reviewPlan.slice(0, budget)) {
+    if (
+      args.surface === "hint" && !pendingVerification &&
+      budget - providerCalls < 2
+    ) {
+      // A newly accepted or repaired candidate always needs one independent
+      // verifier. Do not spend the final slot on a result that can only become
+      // pending and then fail as *_unverified.
+      // Preserve a prior provider/parser error when one exists so production
+      // telemetry retains the most specific available cause.
+      if (lastError === undefined) {
+        lastError = new Error(
+          "semantic_adjudication_verification_budget_exhausted",
+        );
+      }
+      break;
+    }
     let reviewer = plannedReviewer;
     if (
       pendingVerification &&
@@ -1343,7 +1359,7 @@ export async function adjudicatePracticeCandidate(
       if (pendingVerification?.semanticVerificationIssueKinds?.length) {
         // This is the terminal independent semantic verifier. A later vote
         // must never erase its rejection or malformed response, even if a
-        // future caller allocates more than today's three-call Hint budget.
+        // future caller allocates more than the bounded Hint review budget.
         terminalSemanticRejection = true;
       } else if (
         args.surface === "hint" &&

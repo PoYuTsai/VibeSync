@@ -5186,6 +5186,7 @@ Deno.test("Beginner and Game Hint semantically repair invented locations before 
             drawEvents: [{ profile_id: "practice_girl_004" }],
           }
           : { ledger: beginnerStartedLedger() }),
+        monotonicNowValues: [1000],
         deepSeekReplies: [JSON.stringify({
           warmUp: "鼻子靈是基本配備😂 我在中山站巷子裡發現的，叫『黑露』。",
           steady: "妳說我鼻子也太靈，店就在中山站附近。",
@@ -5213,7 +5214,11 @@ Deno.test("Beginner and Game Hint semantically repair invented locations before 
     assertEquals(state.deepSeekCalls.length, 1, mode);
     assertEquals(state.claudeCalls.length, 0, mode);
     assertEquals(state.semanticCalls.length, 1, mode);
-    assertEquals(state.semanticCalls[0].maxProviderCalls, 3, mode);
+    // One generation + four semantic calls stays within the five-call Hint
+    // provider ceiling and preserves a final independent verifier slot.
+    assertEquals(state.semanticCalls[0].maxProviderCalls, 4, mode);
+    assertEquals(state.semanticCalls[0].absoluteDeadlineAtMs, 106000, mode);
+    assertEquals(typeof state.semanticCalls[0].monotonicNow, "function", mode);
     assertEquals(recordHintCalls(state).length, 1, mode);
     assertEquals(releaseHintCalls(state).length, 0, mode);
     assertEquals(state.semanticCalls[0].surface, "hint", mode);

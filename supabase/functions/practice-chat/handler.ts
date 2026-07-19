@@ -132,6 +132,10 @@ const DEBRIEF_TIMEOUT_MS = 12000;
 // owner fence deliberately favor a verified result over a fast 503.
 const DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS = 24000;
 const DEBRIEF_IN_FLIGHT_STALE_MS = 105000;
+// The client waits 115s. Bound Hint semantic review from request entry so a
+// rare fourth verifier still leaves 10s to record and return the result instead
+// of finishing after the client has abandoned it.
+const HINT_REQUEST_DEADLINE_MS = 105000;
 const LEGACY_CLIENT_QUALITY_SCHEMA_VERSION = "typed-facts-v1";
 // 2026-07-13 probe: game hint 在 650 tokens 下 DeepSeek 47% finish_reason=length
 // 截斷（JSON 收不完→誤報 provider_error）。提高到 1600 給 Game Hint 完整 JSON 空間。
@@ -140,12 +144,14 @@ const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 1;
 const SERVER_HINT_DECISION_RATIONALE =
   "只依據本場逐字稿與已知角色資料；貼句已依目前關係階段與邀約路線校驗。";
-// Hint keeps its established cost ceiling. Debrief gets one additional call so
-// a malformed primary reviewer envelope can still fail over to a fresh Claude
-// generation plus the mandatory full review and fact-only verification.
+// Hint keeps its established five-call cost ceiling: one generation plus up to
+// four semantic calls. The fourth semantic slot lets a repair produced after
+// two non-terminal reviewer failures still receive its mandatory independent
+// verifier. Debrief gets one additional total call for the same fail-closed
+// recovery shape across its larger result.
 const HINT_PROVIDER_CALL_BUDGET = 5;
 const DEBRIEF_PROVIDER_CALL_BUDGET = 6;
-const HINT_SEMANTIC_REVIEWER_CALL_BUDGET = 3;
+const HINT_SEMANTIC_REVIEWER_CALL_BUDGET = 4;
 // Debrief can spend the otherwise-unused sixth provider call on a mandatory
 // repair + fresh fact verification after a substantive verifier rejection.
 const DEBRIEF_SEMANTIC_REVIEWER_CALL_BUDGET = 4;
@@ -1924,7 +1930,10 @@ export function createPracticeChatHandler(
 ): (req: Request) => Promise<Response> {
   return async function handleRequest(req: Request): Promise<Response> {
     const monotonicNow = deps.monotonicNow ?? (() => performance.now());
-    const debriefAbsoluteDeadlineAtMs = monotonicNow() +
+    const requestStartedAtMs = monotonicNow();
+    const hintAbsoluteDeadlineAtMs = requestStartedAtMs +
+      HINT_REQUEST_DEADLINE_MS;
+    const debriefAbsoluteDeadlineAtMs = requestStartedAtMs +
       DEBRIEF_REQUEST_DEADLINE_MS;
     if (req.method === "OPTIONS") {
       return new Response("ok", { headers: corsHeaders });
@@ -2884,6 +2893,8 @@ export function createPracticeChatHandler(
                 typedFacts: hintFactualEvidence.claims,
               }),
               candidateProvider,
+              absoluteDeadlineAtMs: hintAbsoluteDeadlineAtMs,
+              monotonicNow,
               maxProviderCalls: Math.max(
                 0,
                 Math.min(

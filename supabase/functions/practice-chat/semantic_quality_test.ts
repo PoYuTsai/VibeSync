@@ -2358,7 +2358,8 @@ Deno.test("high-risk repair verifier cannot start another rewrite loop", async (
   );
 });
 
-Deno.test("unsupported-fact repair fails closed without an independent reviewer budget", async () => {
+Deno.test("Hint refuses to start a review without independent verifier budget", async () => {
+  let reviewerCalls = 0;
   await assertRejects(
     () =>
       adjudicatePracticeCandidate({
@@ -2372,25 +2373,172 @@ Deno.test("unsupported-fact repair fails closed without an independent reviewer 
         deepSeekApiKey: "deepseek-key",
         claudeApiKey: "claude-key",
         claudeModel: "claude-test",
-        callClaude: () =>
-          Promise.resolve(validHintAdjudication({
-            verdict: "repair",
-            issues: [{
-              field: "warmUp",
-              kind: "unsupported_fact",
-              span: "invented venue",
-              reason: "not present in evidence",
-            }],
-            repairedResult: {
-              ...hintCandidate,
-              warmUp: "只保留逐字稿裡真的出現過的內容。",
-            },
-          })),
-        callDeepSeek: () => Promise.resolve(validHintAdjudication()),
+        callClaude: () => {
+          reviewerCalls += 1;
+          return Promise.resolve(validHintAdjudication());
+        },
+        callDeepSeek: () => {
+          reviewerCalls += 1;
+          return Promise.resolve(validHintAdjudication());
+        },
       }),
     Error,
-    "semantic_adjudication_repair_unverified",
+    "semantic_adjudication_verification_budget_exhausted",
   );
+  assertEquals(reviewerCalls, 0);
+});
+
+Deno.test("Hint reserves a fourth call to verify a repair after two reviewer failures", async () => {
+  const activeTurns = [
+    {
+      role: "ai" as const,
+      text:
+        "有啊，進去待了一下。檯面處理得不錯，但動線有點卡，吧台離門口太近，客人一多就擠在一起。",
+    },
+    {
+      role: "user" as const,
+      text: "聽到妳提到動線問題，感覺妳對老屋空間的細節很有觀察～😊",
+    },
+    {
+      role: "ai" as const,
+      text: "做設計的嘛，會忍不住多看兩眼。你對老屋也有興趣？",
+    },
+  ];
+  const topicOnlyCandidate = {
+    warmUp: "謝謝，聽妳這麼說，我對老屋的觀察還很表面，但被妳勾起了興趣。",
+    steady:
+      "被妳一講，我才發現自己對老屋只有直覺，沒到能看動線的程度，現在好奇了。",
+    coaching:
+      "Game 心法：她在測試你是否真對老屋有興趣還是客套，你需要誠實回應她的稱讚。速約任務：這輪不約。",
+  };
+  const repaired = {
+    warmUp:
+      "我對老屋還談不上懂，但妳剛說動線有點卡、吧台離門口太近，我現在是真的開始好奇了。",
+    steady:
+      "我沒有研究到能說懂；妳把檯面、動線和吧台位置拆得這麼細，我現在對老屋多了一點興趣。",
+    coaching:
+      "Game 心法：她在驗證你是不是真的對老屋有興趣；誠實交代還談不上懂，再回扣她剛說的動線與吧台位置收住。速約任務：這輪不約。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  let deepSeekCalls = 0;
+  let validations = 0;
+
+  const result = await adjudicatePracticeCandidate({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: topicOnlyCandidate,
+    candidateProvider: "deepseek",
+    turns: activeTurns,
+    trustedGenerationContext: "partnerFacts: active consistency test",
+    maxProviderCalls: 4,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      calls.push(`claude:${args.maxTokens}`);
+      claudeCalls += 1;
+      if (claudeCalls === 1) {
+        return Promise.reject(new Error("claude_invalid_json"));
+      }
+      return Promise.resolve(JSON.stringify({
+        verdict: "repair",
+        issues: [{ kind: "strategy_mismatch" }],
+        repairedResult: repaired,
+        hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+      }));
+    },
+    callDeepSeek: (args) => {
+      calls.push(`deepseek:${args.maxTokens}`);
+      deepSeekCalls += 1;
+      if (deepSeekCalls === 1) {
+        return Promise.reject(new Error("deepseek_timeout"));
+      }
+      const prompt = args.messages.map((message) => message.content).join("\n");
+      assertEquals(
+        prompt.includes("本輪是不同 provider 的最終完整語意驗證"),
+        true,
+      );
+      return Promise.resolve(JSON.stringify({
+        verdict: "accept",
+        issues: [],
+        repairedResult: null,
+        hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+      }));
+    },
+    validateCandidate: (candidate, hintAssessment) => {
+      validations += 1;
+      const parsed = parseHintResult(JSON.stringify(candidate), {
+        mode: "game",
+        turns: activeTurns,
+        enforceGeneratedQuality: true,
+        semanticAdjudicated: true,
+      });
+      assertEquals(parsed.replies.length, 2);
+      assertEquals(hintAssessment, ACTIVE_COMPLIANT_HINT_ASSESSMENT);
+    },
+  });
+
+  assertEquals(calls, [
+    "claude:1800",
+    "deepseek:1800",
+    "claude:1800",
+    "deepseek:2400",
+  ]);
+  assertEquals(result.candidate, repaired);
+  assertEquals(result.repaired, true);
+  assertEquals(result.issueKinds, ["strategy_mismatch"]);
+  assertEquals(result.hintAssessment, ACTIVE_COMPLIANT_HINT_ASSESSMENT);
+  assertEquals(result.provider, "deepseek");
+  assertEquals(result.providerCalls, 4);
+  assertEquals(validations, 2);
+});
+
+Deno.test("Hint preserves the third reviewer error instead of spending an unverifiable fourth slot", async () => {
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  let deepSeekCalls = 0;
+
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: hintCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: (args) => {
+          calls.push(`claude:${args.maxTokens}`);
+          claudeCalls += 1;
+          return Promise.reject(
+            new Error(
+              claudeCalls === 1 ? "claude_timeout" : "claude_invalid_schema",
+            ),
+          );
+        },
+        callDeepSeek: (args) => {
+          calls.push(`deepseek:${args.maxTokens}`);
+          deepSeekCalls += 1;
+          return Promise.reject(new Error("deepseek_timeout"));
+        },
+      }),
+    SemanticAdjudicationError,
+    "claude_invalid_schema",
+  );
+
+  assertEquals(calls, [
+    "claude:1800",
+    "deepseek:1800",
+    "claude:1800",
+  ]);
+  assertEquals(claudeCalls, 2);
+  assertEquals(deepSeekCalls, 1);
+  assertEquals(error.providerCalls, 3);
 });
 
 Deno.test("generic-only Hint repairs use the bounded full verifier without another rewrite", async () => {
