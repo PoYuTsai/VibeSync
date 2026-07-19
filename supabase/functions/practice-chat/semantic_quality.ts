@@ -665,6 +665,7 @@ function hasExactSemanticIssueKinds(
 function hintVerifierRecoveryKind(
   pendingAssessment: HintSemanticAssessment | undefined,
   rejection: SemanticFullReviewRejectionError,
+  rejectionConfirmation = false,
 ): HintVerifierRecoveryKind | null {
   const verifierAssessment = rejection.hintAssessment;
   if (!pendingAssessment || !verifierAssessment) return null;
@@ -701,7 +702,9 @@ function hintVerifierRecoveryKind(
   const hasMappedStrategyObligation =
     (strategyOnly || unsupportedFactAndStrategy) &&
     hasNoncompliantActiveContract;
-  const recoverableActiveContracts = pendingActiveContractsAreCompliant &&
+  const recoverableActiveContracts = (pendingActiveContractsAreCompliant ||
+    (rejectionConfirmation && (hasMappedFactObligation ||
+      hasMappedStrategyObligation))) &&
     (hasMappedFactObligation || hasMappedStrategyObligation);
   if (
     recoverableActiveContracts &&
@@ -1507,6 +1510,7 @@ export async function adjudicatePracticeCandidate(
         reviewProvider: "deepseek" | "anthropic";
         semanticVerificationIssueKinds?: SemanticIssueKind[];
         verifierRecoveryKind?: HintVerifierRecoveryKind;
+        rejectionConfirmation?: boolean;
       }
     | undefined;
   for (const plannedReviewer of reviewPlan.slice(0, budget)) {
@@ -1619,6 +1623,11 @@ export async function adjudicatePracticeCandidate(
                 verification.hintAssessment.interactionKind !== "ordinary"))
           ) {
             throw new Error("semantic_hint_assessment_disagreement");
+          }
+          if (candidateAwaitingVerification.rejectionConfirmation) {
+            throw new Error(
+              "semantic_adjudication_rejection_confirmation_erased",
+            );
           }
           if (
             candidateAwaitingVerification.verifierRecoveryKind ===
@@ -1877,6 +1886,7 @@ export async function adjudicatePracticeCandidate(
           ? hintVerifierRecoveryKind(
             pendingVerification.hintAssessment,
             verifierRejection,
+            pendingVerification.rejectionConfirmation === true,
           )
           : null;
         const hasIndependentVerifier = reviewers.some((candidate) =>
@@ -1909,7 +1919,28 @@ export async function adjudicatePracticeCandidate(
         args.surface === "hint" &&
         error instanceof SemanticFullReviewRejectionError
       ) {
-        if (!priorSemanticRejection && budget - providerCalls >= 2) {
+        if (
+          !priorSemanticRejection && budget - providerCalls >= 3 &&
+          error.hintAssessment &&
+          (error.issueKinds.includes("unsupported_fact") ||
+            error.issueKinds.includes("strategy_mismatch")) &&
+          reviewers.some((candidate) =>
+            candidate.provider !== reviewer.provider
+          )
+        ) {
+          pendingVerification = {
+            candidate: candidateUnderReview,
+            issueKinds: error.issueKinds,
+            repaired: false,
+            hintAssessment: error.hintAssessment,
+            reviewProvider: reviewer.provider,
+            semanticVerificationIssueKinds: error.issueKinds,
+            rejectionConfirmation: true,
+          };
+          lastError = new Error(
+            "semantic_adjudication_rejection_confirmation_pending",
+          );
+        } else if (!priorSemanticRejection && budget - providerCalls >= 2) {
           priorSemanticRejection = { issueKinds: error.issueKinds };
         } else {
           terminalSemanticRejection = true;
