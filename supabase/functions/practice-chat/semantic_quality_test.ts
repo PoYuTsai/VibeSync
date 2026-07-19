@@ -375,9 +375,13 @@ Deno.test("semantic adjudication prompt treats transcript and candidate as evide
   assertEquals(prompt.includes("direct invite forbidden"), true);
   assertEquals(prompt.includes("不得輸出 strategies"), true);
   assertEquals(prompt.includes("兩個選項都不得只是問句"), true);
-  assertEquals(prompt.includes("小測試：依前文/testStyle"), true);
-  assertEquals(prompt.includes("稱讚/主張被丟回驗證"), true);
-  assertEquals(prompt.includes("問號不算"), true);
+  assertEquals(prompt.includes("小測試：看前文/testStyle"), true);
+  assertEquals(prompt.includes("答過偏好的單純選項追問不算"), true);
+  assertEquals(prompt.includes("同句有質疑/明顯挑戰仍算"), true);
+  assertEquals(prompt.includes("只是用「哪個／哪種／比較常」"), true);
+  assertEquals(prompt.includes("沒有質疑或明顯挑戰"), true);
+  assertEquals(prompt.includes("這是普通問答"), true);
+  assertEquals(prompt.includes("不得標成小測試"), true);
   assertEquals(prompt.includes("各自都必須先誠實表態"), true);
   assertEquals(prompt.includes("有逐字稿中相關的具體細節時"), true);
   assertEquals(prompt.includes("沒有時直接回被驗證的 user 原主張"), true);
@@ -416,6 +420,36 @@ Deno.test("semantic Hint reviewer exposes the no-detail branch for a bare verifi
   assertEquals(prompt.includes("不得硬補細節"), true);
   assertEquals(prompt.includes("我就是覺得妳笑起來很好看"), true);
   assertEquals(prompt.includes("不是每個人我都會這樣說"), false);
+});
+
+Deno.test("semantic Hint reviewer keeps an answered preference option in ordinary Q&A", () => {
+  const messages = buildSemanticAdjudicationMessages({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: {
+      warmUp: "真的看當天心情，手沖和拿鐵都不固定。",
+      steady: "我沒有固定派，妳這題要看當天狀態才答得出來。",
+      coaching:
+        "Game 心法：她在縮小咖啡偏好，建立熟悉階段直接回答即可。速約任務：這輪不約，先延續咖啡口味。",
+    },
+    turns: [
+      { role: "user", text: "妳平常喝咖啡嗎？" },
+      { role: "ai", text: "會，假日常去找間安靜的店坐一下。" },
+      { role: "user", text: "我沒有固定喝哪種，通常看當天心情。" },
+      { role: "ai", text: "那你比較常點手沖還是拿鐵？" },
+    ],
+    trustedGenerationContext:
+      "partnerFacts: testStylePropensity=high; testStyleShapes=反問",
+  });
+  const prompt = messages.map((message) => message.content).join("\n");
+
+  assertEquals(prompt.includes("我沒有固定喝哪種，通常看當天心情。"), true);
+  assertEquals(prompt.includes("那你比較常點手沖還是拿鐵？"), true);
+  assertEquals(prompt.includes("只是用「哪個／哪種／比較常」"), true);
+  assertEquals(prompt.includes("沒有質疑或明顯挑戰"), true);
+  assertEquals(prompt.includes("這是普通問答"), true);
+  assertEquals(prompt.includes("不得標成小測試"), true);
+  assertEquals(prompt.includes("不得教自證／反打"), true);
 });
 
 Deno.test("fact verification is a bounded evidence audit, not another free-form rewrite", () => {

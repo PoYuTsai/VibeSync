@@ -1416,6 +1416,47 @@ function looksLikePureQuestion(value: string): boolean {
     !/(?:我|我們|讓我|害我|給妳|給你|哈哈|辛苦|聽起來|原來)/u.test(compact);
 }
 
+function latestAssistantIsPlainAnsweredPreferenceChoice(
+  turns: PracticeTurn[] = [],
+): boolean {
+  const latestAssistant = normalizedPracticeText(latestAssistantText(turns));
+  const latestUser = normalizedPracticeText(
+    [...turns].reverse().find((turn) => turn.role === "user")?.text ?? "",
+  );
+  const asksForPlainContentChoice =
+    /(?:比較常.{0,4}(?:點|喝|吃|看|聽|用|穿|去|玩)|通常(?:會)?(?:點|喝|吃|看|聽|用|穿|去|玩))/u
+      .test(latestAssistant);
+  const userExplicitlySaidPreferenceVaries =
+    /(?:沒有固定|不固定|看(?:當天)?心情|看情況)/u
+      .test(latestUser);
+  const hasObviousChallenge =
+    /(?:(?:自己.{0,12}(?:別人|對象|前任|替你))|(?:(?:別人|對象|前任).{0,12}(?:替你|幫你|決定|選))|主見|敢不敢|會不會.{0,8}(?:沒主見|裝|騙|亂說|改口|反悔)|是不是(?:都|每次|在裝|只會|隨口|亂說|沒主見)|真的|認真|確定|一定|只能|必須|不准|別跟我說|總不能|不是說|剛剛.{0,8}(?:說|不是)|前後不一|自相矛盾|裝(?:懂|熟)|假裝|隨口|罐頭|騙)/u
+      .test(latestAssistant);
+  return asksForPlainContentChoice && userExplicitlySaidPreferenceVaries &&
+    !hasObviousChallenge;
+}
+
+function coachingFramesOrdinaryQuestionAsTest(coaching: string): boolean {
+  const normalized = normalizedPracticeText(coaching);
+  if (
+    /(?:不是|並非)沒有(?:在|要)?[^，。；！]{0,6}(?:小測試|測你|驗證你|試探你|考你|測驗|考驗)/u
+      .test(normalized)
+  ) {
+    return true;
+  }
+  const compact = normalized
+    .replace(
+      /(?:不是|並非|不算|沒有)(?:在|要)?[^，。；！]{0,6}(?:小測試|測你|驗證你|試探你|考你|測驗|考驗)/gu,
+      "",
+    )
+    .replace(
+      /(?:不用|不必|別|不要|不需要|無須|毋須)(?:急著|忙著|刻意|輕鬆|幽默)?(?:自證|反打|證明自己)(?:(?:也|或)(?:不用|不必|別|不要|不需要|無須|毋須)?(?:急著|忙著|刻意|輕鬆|幽默)?(?:自證|反打|證明自己))?/gu,
+      "",
+    );
+  return /(?:小測試|測你|驗證你|試探你|考你|測驗|考驗|自證|反打|證明自己|看你(?:穩不穩|是不是真的|有沒有說真話))/u
+    .test(compact);
+}
+
 function hasSubstantiveHintMove(value: string): boolean {
   const compact = normalizedPracticeText(value);
   if (isGenericPracticeComplimentOrEcho(value)) return false;
@@ -1488,6 +1529,12 @@ function assertGeneratedHintQuality(opts: {
       !/(?:階段|開場|測試|投入|熟悉|安全|窗口|這輪)/u.test(coaching)
     ) {
       throw new Error("hint_quality_invalid_game_contract");
+    }
+    if (
+      latestAssistantIsPlainAnsweredPreferenceChoice(opts.parseOptions.turns) &&
+      coachingFramesOrdinaryQuestionAsTest(opts.coaching)
+    ) {
+      throw new Error("hint_quality_invalid_ordinary_question_as_test");
     }
   }
   // Natural-language truth, grounding, and coaching substance are judged by

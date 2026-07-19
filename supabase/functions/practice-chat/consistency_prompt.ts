@@ -26,7 +26,7 @@ export function formatConsistencyTestTypes(
 
 /** Hint 生成與語意複核共用，避免同一個主動小測試被兩層讀成不同意圖。 */
 export const ACTIVE_CONSISTENCY_TEST_CONTRACT =
-  "小測試：依前文/testStyle；稱讚/主張被丟回驗證，問號不算。兩句先表態；有細節才回扣，沒有就回原主張，勿捏造。未知興趣禁稱有興趣或以問過自證，改說才好奇/還不懂；禁請她分享/反問採訪。吐槽可承認/曲解/反打，勿自證。";
+  "小測試：看前文/testStyle；答過偏好的單純選項追問不算，同句有質疑/明顯挑戰仍算。命中表態；有細節回扣，無則回原話勿捏造。未知興趣勿冒認/以問自證，改說好奇/不懂；禁分享/採訪。承認/曲解/反打，勿自證。";
 
 function difficultyLine(difficulty: PracticeDifficulty): string {
   if (difficulty === "easy") {
