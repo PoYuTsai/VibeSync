@@ -100,8 +100,8 @@ class SemanticFullReviewRejectionError extends Error {
   }
 }
 
-// Hint repair now contains only three visible fields, so 1800 is sufficient.
-// Debrief repeats the full Game breakdown and keeps the larger budget.
+// Hint repair and its verification-only full review contain only three visible
+// fields, so 1800 is sufficient. Debrief repeats the full Game breakdown.
 const HINT_ADJUDICATION_MAX_TOKENS = 1800;
 const DEBRIEF_ADJUDICATION_MAX_TOKENS = 4000;
 const REPAIR_VERIFICATION_MAX_TOKENS = 1200;
@@ -1092,8 +1092,8 @@ export async function adjudicatePracticeCandidate(
   const independentRetry = reviewers.find((reviewer) =>
     reviewer.provider !== boundedRetry?.provider
   );
-  // Try each distinct provider first. Normal full reviews get a short
-  // fact/safety verifier; a recovered full rejection gets a constrained full
+  // Try each distinct provider first. Accepted unchanged candidates get a
+  // short fact/safety verifier; every repaired Hint gets a constrained full
   // semantic verifier so generic/strategy defects cannot be washed out. Both
   // verification paths always force the other provider.
   let retryIndex = 0;
@@ -1162,7 +1162,7 @@ export async function adjudicatePracticeCandidate(
               candidate: candidateAwaitingVerification.candidate,
               semanticVerificationIssueKinds,
             }),
-            REPAIR_VERIFICATION_MAX_TOKENS,
+            HINT_ADJUDICATION_MAX_TOKENS,
             semanticAdjudicationJsonSchema(
               candidateAwaitingVerification.candidate,
               args.surface,
@@ -1318,14 +1318,15 @@ export async function adjudicatePracticeCandidate(
         repaired: parsed.repaired,
         hintAssessment: parsed.hintAssessment,
         reviewProvider: reviewer.provider,
-        semanticVerificationIssueKinds: priorSemanticRejection
-          ? [
-            ...new Set([
-              ...priorSemanticRejection.issueKinds,
-              ...parsed.issueKinds,
-            ]),
-          ]
-          : undefined,
+        semanticVerificationIssueKinds:
+          args.surface === "hint" && parsed.repaired
+            ? [
+              ...new Set([
+                ...(priorSemanticRejection?.issueKinds ?? []),
+                ...parsed.issueKinds,
+              ]),
+            ]
+            : undefined,
       };
       priorFactRejection = undefined;
       priorSemanticRejection = undefined;
