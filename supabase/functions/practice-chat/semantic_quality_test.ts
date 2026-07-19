@@ -1448,6 +1448,104 @@ Deno.test("Hint recovery verifier rejection is terminal even with extra caller b
 
   assertEquals(calls, ["claude:1800", "deepseek:1800", "claude:2400"]);
   assertEquals(error.providerCalls, 3);
+  assertEquals(error.issueKinds, ["generic"]);
+  assertEquals(error.hintAssessment, OTHER_HINT_ASSESSMENT);
+  assertEquals(
+    error.message,
+    "semantic_hint_reject:generic:other:not_applicable:not_applicable " +
+      "semantic_adjudication_failed:semantic_adjudication_repair_unverified:" +
+      "semantic_adjudication_rejected",
+  );
+});
+
+Deno.test("Hint terminal verifier diagnostics stay enum-only, ordered, and bounded", async () => {
+  const repaired = {
+    ...hintCandidate,
+    coaching: "她在核對你的立場；直接回答並回扣她剛提到的具體觀察。",
+  };
+  const finalAssessment = {
+    interactionKind: "active_consistency_test" as const,
+    replyContract: "noncompliant" as const,
+    coachingContract: "noncompliant" as const,
+  };
+  const calls: string[] = [];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: hintCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "active consistency test",
+        maxProviderCalls: 2,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: (args) => {
+          calls.push(`claude:${args.maxTokens}`);
+          return Promise.resolve(validHintAdjudication({
+            verdict: "repair",
+            issues: [{ kind: "strategy_mismatch" }],
+            repairedResult: repaired,
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          }));
+        },
+        callDeepSeek: (args) => {
+          calls.push(`deepseek:${args.maxTokens}`);
+          return Promise.resolve(validHintAdjudication({
+            verdict: "reject",
+            issues: [
+              { kind: "unsafe" },
+              { kind: "strategy_mismatch" },
+              { kind: "generic" },
+              { kind: "unsupported_fact" },
+              { kind: "unsafe" },
+            ],
+            repairedResult: null,
+            hintAssessment: finalAssessment,
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_repair_unverified:semantic_adjudication_rejected",
+  );
+
+  const diagnosticCode = error.message.split(" ")[0];
+  assertEquals(calls, ["claude:1800", "deepseek:2400"]);
+  assertEquals(error.providerCalls, 2);
+  assertEquals(error.issueKinds, [
+    "unsupported_fact",
+    "generic",
+    "strategy_mismatch",
+    "unsafe",
+  ]);
+  assertEquals(error.hintAssessment, finalAssessment);
+  assertEquals(
+    diagnosticCode,
+    "semantic_hint_reject:unsupported_fact.generic.strategy_mismatch.unsafe:" +
+      "active_consistency_test:noncompliant:noncompliant",
+  );
+  assertEquals(diagnosticCode.length, 120);
+});
+
+Deno.test("Semantic adjudication diagnostics discard non-enum values", () => {
+  const error = new SemanticAdjudicationError(
+    "semantic_adjudication_failed:provider_unavailable",
+    1,
+    {
+      issueKinds: ["unsafe", "SECRET reviewer prose", "generic", "unsafe"],
+      hintAssessment: {
+        interactionKind: "active_consistency_test",
+        replyContract: "SECRET free text",
+        coachingContract: "compliant",
+      },
+    },
+  );
+
+  assertEquals(error.issueKinds, ["generic", "unsafe"]);
+  assertEquals(error.hintAssessment, undefined);
+  assertEquals(JSON.stringify(error.issueKinds).includes("SECRET"), false);
 });
 
 Deno.test("Hint assessment disagreement is terminal and cannot be washed by a third vote", async () => {
@@ -2427,6 +2525,9 @@ Deno.test("Hint full verifier provider failure is terminal", async () => {
   assertEquals(calls, ["claude", "deepseek"]);
   assertEquals(deepSeekCalls, 1);
   assertEquals(error.providerCalls, 2);
+  assertEquals(error.issueKinds, []);
+  assertEquals(error.hintAssessment, undefined);
+  assertEquals(error.message.includes("semantic_hint_reject"), false);
 });
 
 Deno.test("a failed first provider cannot make a repair reviewer certify itself", async () => {

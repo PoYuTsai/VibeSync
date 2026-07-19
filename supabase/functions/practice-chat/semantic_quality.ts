@@ -13,6 +13,13 @@ export type SemanticIssueKind =
   | "strategy_mismatch"
   | "unsafe";
 
+const SEMANTIC_ISSUE_KIND_ORDER: readonly SemanticIssueKind[] = [
+  "unsupported_fact",
+  "generic",
+  "strategy_mismatch",
+  "unsafe",
+];
+
 export type HintInteractionKind =
   | "ordinary"
   | "active_consistency_test"
@@ -82,21 +89,41 @@ export type PracticeSemanticAdjudicator = (
 
 export class SemanticAdjudicationError extends Error {
   readonly providerCalls: number;
+  readonly issueKinds: SemanticIssueKind[];
+  readonly hintAssessment?: HintSemanticAssessment;
 
-  constructor(message: string, providerCalls: number) {
+  constructor(
+    message: string,
+    providerCalls: number,
+    diagnostics?: {
+      issueKinds?: readonly unknown[];
+      hintAssessment?: unknown;
+    },
+  ) {
     super(message);
     this.name = "SemanticAdjudicationError";
     this.providerCalls = providerCalls;
+    this.issueKinds = normalizedSemanticIssueKinds(
+      diagnostics?.issueKinds ?? [],
+    );
+    this.hintAssessment = safeHintSemanticAssessment(
+      diagnostics?.hintAssessment,
+    );
   }
 }
 
 class SemanticFullReviewRejectionError extends Error {
   readonly issueKinds: SemanticIssueKind[];
+  readonly hintAssessment?: HintSemanticAssessment;
 
-  constructor(issueKinds: SemanticIssueKind[]) {
+  constructor(
+    issueKinds: SemanticIssueKind[],
+    hintAssessment?: HintSemanticAssessment,
+  ) {
     super("semantic_adjudication_rejected");
     this.name = "SemanticFullReviewRejectionError";
-    this.issueKinds = [...issueKinds];
+    this.issueKinds = normalizedSemanticIssueKinds(issueKinds);
+    this.hintAssessment = hintAssessment;
   }
 }
 
@@ -113,12 +140,7 @@ const ADJUDICATION_TEMPERATURE = 0.1;
 // enough time to finish instead of converting a valid generated Hint into 503.
 const ADJUDICATION_TIMEOUT_MS = 24000;
 
-const ISSUE_KINDS = new Set<SemanticIssueKind>([
-  "unsupported_fact",
-  "generic",
-  "strategy_mismatch",
-  "unsafe",
-]);
+const ISSUE_KINDS = new Set<SemanticIssueKind>(SEMANTIC_ISSUE_KIND_ORDER);
 
 const FACT_ISSUE_FIELDS = [
   "warmUp",
@@ -482,6 +504,19 @@ function normalizedReviewerToken(value: unknown): string | null {
   return typeof value === "string" ? value.trim().toLowerCase() : null;
 }
 
+function normalizedSemanticIssueKinds(
+  values: readonly unknown[],
+): SemanticIssueKind[] {
+  const accepted = new Set<SemanticIssueKind>();
+  for (const value of values) {
+    const token = normalizedReviewerToken(value);
+    if (token !== null && ISSUE_KINDS.has(token as SemanticIssueKind)) {
+      accepted.add(token as SemanticIssueKind);
+    }
+  }
+  return SEMANTIC_ISSUE_KIND_ORDER.filter((kind) => accepted.has(kind));
+}
+
 const HINT_INTERACTION_KINDS = new Set<HintInteractionKind>([
   "ordinary",
   "active_consistency_test",
@@ -540,6 +575,38 @@ function parseHintSemanticAssessment(
     throw new Error("semantic_hint_contract_invalid");
   }
   return assessment;
+}
+
+function safeHintSemanticAssessment(
+  value: unknown,
+): HintSemanticAssessment | undefined {
+  if (value === undefined) return undefined;
+  try {
+    return parseHintSemanticAssessment(
+      value,
+      "semantic_hint_diagnostic_assessment_invalid",
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+function semanticHintRejectionDiagnosticCode(
+  rejection: SemanticFullReviewRejectionError,
+): string | null {
+  const assessment = safeHintSemanticAssessment(rejection.hintAssessment);
+  const issueKinds = normalizedSemanticIssueKinds(rejection.issueKinds);
+  if (!assessment || issueKinds.length === 0) return null;
+  // Enum-only and deliberately capped by construction: even the longest
+  // possible token is exactly 120 ASCII characters, matching telemetry's
+  // machine-code limit without retaining candidate or transcript text.
+  return [
+    "semantic_hint_reject",
+    issueKinds.join("."),
+    assessment.interactionKind,
+    assessment.replyContract,
+    assessment.coachingContract,
+  ].join(":");
 }
 
 function assertDeliverableHintAssessment(
@@ -715,13 +782,14 @@ export function parseSemanticAdjudication(opts: {
     throw new Error("semantic_adjudication_invalid_issue");
   }
   if (verdict === "reject") {
+    let hintAssessment: HintSemanticAssessment | undefined;
     if (opts.surface === "hint") {
-      parseHintSemanticAssessment(
+      hintAssessment = parseHintSemanticAssessment(
         parsed.hintAssessment,
         "semantic_adjudication_invalid_hint_assessment",
       );
     }
-    throw new SemanticFullReviewRejectionError(issueKinds);
+    throw new SemanticFullReviewRejectionError(issueKinds, hintAssessment);
   }
   if (verdict === "accept" && parsed.repairedResult !== null) {
     throw new Error("semantic_adjudication_invalid_schema");
@@ -1462,6 +1530,11 @@ export async function adjudicatePracticeCandidate(
       }
     }
   }
+  const terminalHintFullReviewRejection =
+    pendingVerification?.semanticVerificationIssueKinds?.length &&
+      lastError instanceof SemanticFullReviewRejectionError
+      ? lastError
+      : undefined;
   if (pendingVerification) {
     const detail = lastError instanceof Error
       ? lastError.message
@@ -1473,10 +1546,20 @@ export async function adjudicatePracticeCandidate(
       `${prefix}:${detail}`,
     );
   }
+  const failureMessage = `semantic_adjudication_failed:${
+    lastError instanceof Error ? lastError.message : "provider_unavailable"
+  }`;
+  const diagnosticCode = terminalHintFullReviewRejection
+    ? semanticHintRejectionDiagnosticCode(terminalHintFullReviewRejection)
+    : null;
   throw new SemanticAdjudicationError(
-    `semantic_adjudication_failed:${
-      lastError instanceof Error ? lastError.message : "provider_unavailable"
-    }`,
+    diagnosticCode ? `${diagnosticCode} ${failureMessage}` : failureMessage,
     providerCalls,
+    terminalHintFullReviewRejection
+      ? {
+        issueKinds: terminalHintFullReviewRejection.issueKinds,
+        hintAssessment: terminalHintFullReviewRejection.hintAssessment,
+      }
+      : undefined,
   );
 }

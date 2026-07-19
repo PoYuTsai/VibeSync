@@ -178,6 +178,15 @@ Deno.test("classifyPracticeGenerationFailure maps errors to stable buckets", () 
     ],
     [
       new Error(
+        "semantic_hint_reject:strategy_mismatch:active_consistency_test:" +
+          "noncompliant:compliant " +
+          "semantic_adjudication_failed:semantic_adjudication_repair_unverified:" +
+          "semantic_adjudication_rejected",
+      ),
+      "semantic_rejected",
+    ],
+    [
+      new Error(
         "semantic_adjudication_failed:semantic_adjudication_fact_rejection_field_unchanged",
       ),
       "semantic_rejected",
@@ -256,6 +265,18 @@ Deno.test("practice failure codes keep machine codes and reject free text", () =
     ),
     "semantic_adjudication_failed:semantic_adjudication_invalid_schema",
   );
+  assertEquals(
+    sanitizePracticeFailureCode(
+      new Error(
+        "semantic_hint_reject:strategy_mismatch:active_consistency_test:" +
+          "noncompliant:compliant " +
+          "semantic_adjudication_failed:semantic_adjudication_repair_unverified:" +
+          "semantic_adjudication_rejected",
+      ),
+    ),
+    "semantic_hint_reject:strategy_mismatch:active_consistency_test:" +
+      "noncompliant:compliant",
+  );
   // 只取第一段機器碼，後續自由文字不落盤。
   assertEquals(
     sanitizePracticeFailureCode(
@@ -304,6 +325,7 @@ Deno.test("practice failure codes require a known machine-code prefix", () => {
       "visible_text_guard_x",
       "unsupported_detail_x",
       "semantic_adjudication_failed:semantic_adjudication_invalid_schema",
+      "semantic_hint_reject:generic:other:not_applicable:not_applicable",
     ]
   ) {
     assertEquals(sanitizePracticeFailureCode(new Error(code)), code, code);
