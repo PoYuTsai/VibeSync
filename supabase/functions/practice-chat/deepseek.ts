@@ -12,6 +12,8 @@ export interface DeepSeekArgs {
   maxTokens: number;
   temperature: number;
   jsonMode?: boolean;
+  /** V4 defaults to thinking enabled; latency-sensitive binary checks opt out. */
+  thinking?: { type: "enabled" | "disabled" };
   timeoutMs: number;
   endpoint?: string;
   model?: string;
@@ -35,6 +37,7 @@ export async function callDeepSeek(args: DeepSeekArgs): Promise<string> {
     if (args.jsonMode) {
       body.response_format = { type: "json_object" };
     }
+    if (args.thinking) body.thinking = args.thinking;
 
     const res = await fetch(args.endpoint ?? DEEPSEEK_ENDPOINT, {
       method: "POST",

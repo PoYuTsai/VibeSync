@@ -1042,6 +1042,7 @@ export async function adjudicatePracticeCandidate(
       maxTokens: number,
       outputJsonSchema: Readonly<Record<string, unknown>> | undefined,
       timeoutMs: number,
+      deepSeekThinking?: DeepSeekArgs["thinking"],
     ) => Promise<string>;
   }> = [];
   if (args.claudeApiKey && args.callClaude) {
@@ -1062,7 +1063,13 @@ export async function adjudicatePracticeCandidate(
   if (args.deepSeekApiKey) {
     reviewers.push({
       provider: "deepseek",
-      call: (messages, maxTokens, _outputJsonSchema, timeoutMs) =>
+      call: (
+        messages,
+        maxTokens,
+        _outputJsonSchema,
+        timeoutMs,
+        deepSeekThinking,
+      ) =>
         args.callDeepSeek({
           apiKey: args.deepSeekApiKey!,
           messages,
@@ -1070,6 +1077,7 @@ export async function adjudicatePracticeCandidate(
           temperature: ADJUDICATION_TEMPERATURE,
           jsonMode: true,
           timeoutMs,
+          ...(deepSeekThinking ? { thinking: deepSeekThinking } : {}),
         }),
     });
   }
@@ -1187,6 +1195,11 @@ export async function adjudicatePracticeCandidate(
               true,
             ),
             timeoutMs,
+            // DeepSeek V4 defaults to high-effort thinking. This lane is a
+            // bounded binary verdict over a fully repaired Hint, so preserve
+            // the full prompt/parser while preventing hidden reasoning from
+            // exhausting its token and latency budget.
+            reviewer.provider === "deepseek" ? { type: "disabled" } : undefined,
           );
           const verification = parseSemanticAdjudication({
             raw,

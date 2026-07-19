@@ -970,6 +970,7 @@ Deno.test("accepted candidates still require independent fact verification", asy
     callDeepSeek: (args) => {
       calls.push("deepseek-fact-verification");
       assertEquals(args.maxTokens, 1200);
+      assertEquals(args.thinking, undefined);
       return Promise.resolve(validFactVerification());
     },
   });
@@ -1053,6 +1054,7 @@ Deno.test("Hint full rejection becomes one changed repair plus an independent ve
     },
     callDeepSeek: (args) => {
       calls.push(`deepseek:${args.maxTokens}`);
+      assertEquals(args.thinking, undefined);
       const prompt = args.messages.map((message) => message.content).join("\n");
       assertEquals(prompt.includes("前一個完整審查已拒絕目前 Hint"), true);
       assertEquals(prompt.includes("這不是分類真值"), true);
@@ -2120,6 +2122,7 @@ Deno.test("direct active consistency repair uses the independent full verifier",
     },
     callDeepSeek: (args) => {
       calls.push(`deepseek:${args.maxTokens}`);
+      assertEquals(args.thinking, { type: "disabled" });
       const prompt = args.messages.map((message) => message.content).join("\n");
       assertEquals(
         prompt.includes("本輪是不同 provider 的最終完整語意驗證"),
@@ -2184,6 +2187,7 @@ Deno.test("direct ordinary repair uses the mirrored independent full verifier", 
     claudeModel: "claude-test",
     callDeepSeek: (args) => {
       calls.push(`deepseek:${args.maxTokens}`);
+      assertEquals(args.thinking, undefined);
       return Promise.resolve(validHintAdjudication({
         verdict: "repair",
         issues: [{ kind: "generic" }],
@@ -2272,6 +2276,7 @@ Deno.test("Hint full verifier provider failure is terminal", async () => {
           calls.push("deepseek");
           deepSeekCalls += 1;
           assertEquals(args.maxTokens, 2400);
+          assertEquals(args.thinking, { type: "disabled" });
           return Promise.reject(new Error("deepseek_timeout"));
         },
       }),
@@ -2305,6 +2310,10 @@ Deno.test("a failed first provider cannot make a repair reviewer certify itself"
         claudeModel: "claude-test",
         callDeepSeek: (args) => {
           calls.push(`deepseek:${args.maxTokens}`);
+          assertEquals(
+            args.thinking,
+            calls.length === 1 ? undefined : { type: "disabled" },
+          );
           return Promise.reject(new Error("deepseek_timeout"));
         },
         callClaude: (args) => {
@@ -2452,8 +2461,10 @@ Deno.test("Hint reserves a fourth call to verify a repair after two reviewer fai
       calls.push(`deepseek:${args.maxTokens}`);
       deepSeekCalls += 1;
       if (deepSeekCalls === 1) {
+        assertEquals(args.thinking, undefined);
         return Promise.reject(new Error("deepseek_timeout"));
       }
+      assertEquals(args.thinking, { type: "disabled" });
       const prompt = args.messages.map((message) => message.content).join("\n");
       assertEquals(
         prompt.includes("本輪是不同 provider 的最終完整語意驗證"),
