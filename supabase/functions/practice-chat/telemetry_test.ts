@@ -19,6 +19,7 @@ Deno.test("practice generation telemetry emits the fixed queryable shape", () =>
     failureClass: "schema_invalid",
     fallbackUsed: true,
     failoverUsed: true,
+    semanticProviderCalls: 3.9,
     totalDurationMs: 4567.8,
     promptChars: 9012.7,
   });
@@ -31,6 +32,7 @@ Deno.test("practice generation telemetry emits the fixed queryable shape", () =>
     failureClass: "schema_invalid",
     fallbackUsed: true,
     failoverUsed: true,
+    semanticProviderCalls: 3,
     totalDurationMs: 4567,
     promptChars: 9012,
   });
@@ -51,6 +53,7 @@ Deno.test("practice generation telemetry keeps absent attempt metrics explicit",
       failureClass: null,
       fallbackUsed: false,
       failoverUsed: false,
+      semanticProviderCalls: null,
       totalDurationMs: null,
       promptChars: 2500,
     },
@@ -68,6 +71,7 @@ Deno.test("practice generation telemetry drops extra transcript and response fie
     failureClass: "timeout",
     fallbackUsed: true,
     failoverUsed: true,
+    semanticProviderCalls: 4,
     totalDurationMs: 9001,
     promptChars: 3000,
     transcript: secretTranscript,
@@ -86,6 +90,7 @@ Deno.test("practice generation telemetry drops extra transcript and response fie
     "mode",
     "practiceMode",
     "promptChars",
+    "semanticProviderCalls",
     "totalDurationMs",
   ]);
   assertFalse(serialized.includes(secretTranscript));
@@ -114,6 +119,7 @@ Deno.test("practice generation telemetry normalizes invalid values without echoi
     failureClass: "unknown",
     fallbackUsed: false,
     failoverUsed: false,
+    semanticProviderCalls: null,
     totalDurationMs: null,
     promptChars: 0,
   });

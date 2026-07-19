@@ -599,6 +599,7 @@ async function persistGenerationTelemetryFailOpen(opts: {
   attemptDurationsMs: number[];
   failureClasses: PracticeGenerationFailureClass[];
   failureCodes?: string[];
+  semanticProviderCalls?: number;
   model?: string;
   timeoutMs?: number;
 }): Promise<void> {
@@ -615,6 +616,7 @@ async function persistGenerationTelemetryFailOpen(opts: {
         failureClass: opts.failureClass,
         fallbackUsed: opts.fallbackUsed,
         failoverUsed: opts.failoverUsed,
+        semanticProviderCalls: opts.semanticProviderCalls,
         totalDurationMs: opts.totalDurationMs,
         promptChars: opts.promptChars,
       },
@@ -3169,6 +3171,7 @@ export function createPracticeChatHandler(
           fallbackUsed: false,
           failoverUsed: hintFailoverUsed,
           failureClass,
+          semanticProviderCalls: hintSemanticProviderCalls,
           attemptDurationsMs: hintAttemptDurationsMs,
           failureClasses: hintFailureClasses,
           failureCodes: hintFailureCodes,
@@ -3347,6 +3350,7 @@ export function createPracticeChatHandler(
         fallbackUsed: false,
         failoverUsed: hintFailoverUsed,
         failureClass: null,
+        semanticProviderCalls: hintSemanticProviderCalls,
         attemptDurationsMs: hintAttemptDurationsMs,
         failureClasses: hintFailureClasses,
         failureCodes: hintFailureCodes,
@@ -4062,6 +4066,7 @@ export function createPracticeChatHandler(
           fallbackUsed: false,
           failoverUsed: debriefFailoverUsed,
           failureClass,
+          semanticProviderCalls: debriefSemanticProviderCalls,
           attemptDurationsMs: debriefAttemptDurationsMs,
           failureClasses: debriefFailureClasses,
           failureCodes: debriefFailureCodes,
@@ -4156,6 +4161,7 @@ export function createPracticeChatHandler(
         fallbackUsed: false,
         failoverUsed: debriefFailoverUsed,
         failureClass: null,
+        semanticProviderCalls: debriefSemanticProviderCalls,
         attemptDurationsMs: debriefAttemptDurationsMs,
         failureClasses: debriefFailureClasses,
         failureCodes: debriefFailureCodes,

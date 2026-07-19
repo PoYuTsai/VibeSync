@@ -31,6 +31,7 @@ export interface PracticeGenerationTelemetryInput {
   failureClass?: PracticeGenerationFailureClass | null;
   fallbackUsed?: boolean;
   failoverUsed?: boolean;
+  semanticProviderCalls?: number | null;
   totalDurationMs?: number | null;
   promptChars: number;
 }
@@ -43,6 +44,7 @@ export interface PracticeGenerationTelemetry {
   failureClass: PracticeGenerationFailureClass | null;
   fallbackUsed: boolean;
   failoverUsed: boolean;
+  semanticProviderCalls: number | null;
   totalDurationMs: number | null;
   promptChars: number;
 }
@@ -120,6 +122,7 @@ export function buildPracticeGenerationTelemetry(
     failureClass: normalizeFailureClass(raw.failureClass),
     fallbackUsed: raw.fallbackUsed === true,
     failoverUsed: raw.failoverUsed === true,
+    semanticProviderCalls: normalizeOptionalCount(raw.semanticProviderCalls),
     totalDurationMs: normalizeOptionalCount(raw.totalDurationMs),
     promptChars: normalizeOptionalCount(raw.promptChars) ?? 0,
   };
