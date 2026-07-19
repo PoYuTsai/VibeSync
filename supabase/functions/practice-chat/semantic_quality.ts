@@ -653,15 +653,20 @@ function hintVerifierRecoveryKind(
     rejection.issueKinds,
     ["unsupported_fact", "strategy_mismatch"],
   );
+  const activeUnsupportedFactOnly = hasExactSemanticIssueKinds(
+    rejection.issueKinds,
+    ["unsupported_fact"],
+  ) && verifierAssessment.replyContract === "compliant" &&
+    verifierAssessment.coachingContract === "compliant";
   const hasNoncompliantActiveContract =
     verifierAssessment.replyContract === "noncompliant" ||
     verifierAssessment.coachingContract === "noncompliant";
   // A mixed fact/strategy rejection may name only the reply or coaching
   // contract. It is still bounded by the exact issue set, while the repair
   // guard below rewrites every visible field before independent verification.
-  const recoverableActiveContracts =
-    (strategyOnly || unsupportedFactAndStrategy) &&
-    hasNoncompliantActiveContract;
+  const recoverableActiveContracts = activeUnsupportedFactOnly ||
+    ((strategyOnly || unsupportedFactAndStrategy) &&
+      hasNoncompliantActiveContract);
   if (
     recoverableActiveContracts &&
     pendingAssessment.interactionKind === "active_consistency_test" &&

@@ -2528,6 +2528,155 @@ Deno.test("direct ordinary repair uses the mirrored independent full verifier", 
   assertEquals(result.providerCalls, 2);
 });
 
+Deno.test("active fact-only final rejection rewrites all fields before independent verification", async () => {
+  const activeTurns = [
+    {
+      role: "ai" as const,
+      text: "檯面處理得不錯，但動線有點卡，吧台離門口太近。",
+    },
+    { role: "user" as const, text: "感覺妳很會觀察老屋空間。" },
+    { role: "ai" as const, text: "做設計的嘛。你對老屋也有興趣？" },
+  ];
+  const firstRepair = {
+    warmUp: "我平常就在研究老屋，妳一說我就懂那個動線問題。",
+    steady: "我一直很喜歡老屋，也常注意吧台跟門口的距離。",
+    coaching: "她在驗證你是否真的有興趣；分享你平常研究老屋的經驗。",
+  };
+  const recovered = {
+    warmUp: "我還談不上懂；妳提到吧台離門口太近，我現在才開始留意。",
+    steady: "我沒研究過老屋，但妳說動線有點卡，確實讓我有點好奇。",
+    coaching: "她在驗證你是否真的有興趣；限制主張並回扣她說的動線。",
+  };
+  const calls: string[] = [];
+  let deepSeekCalls = 0;
+  let claudeCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: hintCandidate,
+    candidateProvider: "anthropic",
+    turns: activeTurns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 4,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callDeepSeek: (args) => {
+      calls.push(`deepseek:${args.maxTokens}`);
+      deepSeekCalls += 1;
+      if (deepSeekCalls === 1) {
+        return Promise.resolve(validHintAdjudication({
+          verdict: "repair",
+          issues: [{ kind: "unsupported_fact" }],
+          repairedResult: firstRepair,
+          hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+        }));
+      }
+      assertEquals(args.maxTokens, 2400);
+      assertEquals(args.thinking, { type: "disabled" });
+      return Promise.resolve(validHintAdjudication({
+        hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+      }));
+    },
+    callClaude: (args) => {
+      calls.push(`claude:${args.maxTokens}`);
+      claudeCalls += 1;
+      if (claudeCalls === 1) {
+        return Promise.resolve(validHintAdjudication({
+          verdict: "reject",
+          issues: [{ kind: "unsupported_fact" }],
+          repairedResult: null,
+          hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+        }));
+      }
+      const prompt = args.messages.map((message) => message.content).join("\n");
+      assertEquals(
+        prompt.includes("warmUp、steady、coaching 三欄都必須完整實改"),
+        true,
+      );
+      assertEquals(
+        prompt.includes(
+          "contract=compliant 只代表交付契約合格，不代表該欄事實安全",
+        ),
+        true,
+      );
+      return Promise.resolve(validHintAdjudication({
+        verdict: "repair",
+        issues: [{ kind: "unsupported_fact" }],
+        repairedResult: recovered,
+        hintAssessment: ORDINARY_HINT_ASSESSMENT,
+      }));
+    },
+  });
+
+  assertEquals(calls, [
+    "deepseek:1800",
+    "claude:2400",
+    "claude:1800",
+    "deepseek:2400",
+  ]);
+  assertEquals(result.candidate, recovered);
+  assertEquals(result.hintAssessment, ACTIVE_COMPLIANT_HINT_ASSESSMENT);
+  assertEquals(result.provider, "deepseek");
+  assertEquals(result.providerCalls, 4);
+});
+
+Deno.test("active fact-only recovery requires compliant delivery contracts", async () => {
+  const repaired = {
+    warmUp: "我目前還談不上懂，但妳剛提到動線，我現在開始留意了。",
+    steady: "我沒有研究到能說懂，只是現在對老屋多了一點興趣。",
+    coaching: "她在驗證你是不是真的有興趣；誠實回答並具體回扣。",
+  };
+  for (
+    const assessment of [
+      ACTIVE_REPLY_NONCOMPLIANT_HINT_ASSESSMENT,
+      ACTIVE_COACHING_NONCOMPLIANT_HINT_ASSESSMENT,
+    ]
+  ) {
+    const calls: string[] = [];
+    const error = await assertRejects(
+      () =>
+        adjudicatePracticeCandidate({
+          surface: "hint",
+          practiceMode: "game",
+          candidate: hintCandidate,
+          candidateProvider: "anthropic",
+          turns,
+          trustedGenerationContext: "server facts only",
+          maxProviderCalls: 4,
+          deepSeekApiKey: "deepseek-key",
+          claudeApiKey: "claude-key",
+          claudeModel: "claude-test",
+          callDeepSeek: (args) => {
+            calls.push(`deepseek:${args.maxTokens}`);
+            return Promise.resolve(validHintAdjudication({
+              verdict: "repair",
+              issues: [{ kind: "unsupported_fact" }],
+              repairedResult: repaired,
+              hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+            }));
+          },
+          callClaude: (args) => {
+            calls.push(`claude:${args.maxTokens}`);
+            return Promise.resolve(validHintAdjudication({
+              verdict: "reject",
+              issues: [{ kind: "unsupported_fact" }],
+              repairedResult: null,
+              hintAssessment: assessment,
+            }));
+          },
+        }),
+      SemanticAdjudicationError,
+      "semantic_adjudication_repair_unverified:semantic_adjudication_rejected",
+    );
+
+    assertEquals(calls, ["deepseek:1800", "claude:2400"]);
+    assertEquals(error.providerCalls, 2);
+    assertEquals(error.issueKinds, ["unsupported_fact"]);
+    assertEquals(error.hintAssessment, assessment);
+  }
+});
+
 Deno.test("active mixed final rejection rewrites all fields before independent verification", async () => {
   const activeTurns = [
     {
