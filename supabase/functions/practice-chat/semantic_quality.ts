@@ -177,6 +177,21 @@ interface SemanticRejectionMetadata {
   issueKinds: SemanticIssueKind[];
 }
 
+function hintHardGuardSemanticRejection(
+  error: unknown,
+  issueKinds: readonly SemanticIssueKind[],
+): SemanticRejectionMetadata | null {
+  if (
+    !(error instanceof Error) ||
+    error.message !== "semantic_hint_active_reply_question"
+  ) {
+    return null;
+  }
+  return {
+    issueKinds: [...new Set([...issueKinds, "strategy_mismatch" as const])],
+  };
+}
+
 const SEMANTIC_ISSUE_JSON_SCHEMA = {
   type: "object",
   properties: {
@@ -980,7 +995,7 @@ export function buildSemanticAdjudicationMessages(opts: {
     }）。本輪不得原樣 accept；能修時必須回 repair，且上列每個具體 field 都要實際變更、移除無證據事實或修正 owner，不能確定就 reject。`
     : "";
   const priorSemanticRejectionRule = opts.priorSemanticRejection
-    ? `前一個完整審查已拒絕目前 Hint（issueKinds=${
+    ? `前一個完整審查或伺服器交付硬檢已拒絕目前 Hint（issueKinds=${
       opts.priorSemanticRejection.issueKinds.join(",") || "strategy_mismatch"
     }）。這不是分類真值，你仍須獨立判 interactionKind；但本輪是唯一保留的完整修復機會，不得原樣 accept。若逐字稿與 server context 足以產出安全完整回覆，必須回 repair，repairedResult 必須實際改動候選，hintAssessment 只評修復稿且須符合交付契約；真的無法安全修好才 reject。`
     : "";
@@ -1341,7 +1356,31 @@ export async function adjudicatePracticeCandidate(
           );
         }
       }
-      args.validateCandidate?.(parsed.candidate, parsed.hintAssessment);
+      try {
+        args.validateCandidate?.(parsed.candidate, parsed.hintAssessment);
+      } catch (error) {
+        const hardGuardRejection = hintHardGuardSemanticRejection(
+          error,
+          parsed.issueKinds,
+        );
+        if (
+          args.surface === "hint" && hardGuardRejection &&
+          !parsed.repaired && !priorSemanticRejection &&
+          budget - providerCalls >= 2
+        ) {
+          // The reviewer has now classified the current Hint as an active
+          // consistency test, while the deterministic delivery guard proved
+          // that its replies hand the answer back as questions. Preserve that
+          // exact candidate and defect for one material repair, then require
+          // the normal different-provider full verifier. An invalid reviewer-
+          // authored repair still falls back to reviewing the prior candidate.
+          candidateUnderReview = parsed.candidate;
+          priorSemanticRejection = hardGuardRejection;
+          lastError = error;
+          continue;
+        }
+        throw error;
+      }
 
       pendingVerification = {
         candidate: parsed.candidate,
