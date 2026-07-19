@@ -13,6 +13,7 @@ import {
   GAME_INVITE_ROUTE_LABEL,
   HINT_COACHING_SOFT_CHAR_LIMIT,
   HINT_REPLY_SOFT_CHAR_LIMIT,
+  hintTrustedFactualEvidence,
   MAX_COACHING_LENGTH,
   parseHintResult,
 } from "./hint.ts";
@@ -406,6 +407,103 @@ Deno.test("buildHintMessages teaches how to handle consistency tests without usi
   assert(text.includes("幽默曲解"));
   assert(text.includes("反打"));
   assertEquals(text.includes("shit test"), false);
+});
+
+Deno.test("buildHintMessages recognizes Sylvia's authenticity counter-question instead of turning it into an interview", () => {
+  const sylvia = resolvePracticeProfile({ profileId: "practice_girl_080" });
+  const turns = [
+    {
+      role: "ai" as const,
+      text:
+        "有啊，進去待了一下。檯面處理得不錯，但動線有點卡，吧台離門口太近，客人一多就擠在一起。",
+    },
+    {
+      role: "user" as const,
+      text: "聽到妳提到動線問題，感覺妳對老屋空間的細節很有觀察～😊",
+    },
+    {
+      role: "ai" as const,
+      text: "做設計的嘛，會忍不住多看兩眼。你對老屋也有興趣？",
+    },
+  ];
+  const messages = buildHintMessages({
+    turns,
+    profile: sylvia,
+    practiceMode: "game",
+    temperatureScore: 43,
+    familiarityScore: 20,
+  });
+  const text = messages.map((message) => message.content).join("\n");
+
+  assert(text.includes("小測試：看前後文"));
+  assert(text.includes("她把 user 稱讚/主張丟回驗證"));
+  assert(text.includes("問號本身不是"));
+  assert(text.includes("兩句先誠實表態"));
+  assert(text.includes("禁泛誇或反問採訪"));
+  const trusted = hintTrustedFactualEvidence({
+    profile: sylvia,
+    practiceMode: "game",
+  });
+  const trustedEvidence = trusted.partner.join("\n");
+  assert(trustedEvidence.includes("testStylePropensity: high"));
+  assert(
+    trustedEvidence.includes(
+      "反問：把球丟回去，看對方是否穩、是否有自己的想法",
+    ),
+  );
+  assert(
+    trustedEvidence.includes(
+      "gameTestStyle: 用空間細節測你是真觀察還是泛稱好看；有想法，但別假裝專業",
+    ),
+  );
+  assert(trustedEvidence.includes("punishments: 假裝懂設計；空泛稱讚品味"));
+  for (
+    const leakedLabel of [
+      "testStylePropensity: high",
+      "testStyleShapes: counter_question",
+      "punishments: 假裝懂設計",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        parseHintResult(
+          JSON.stringify({
+            warmUp: "老實說還在門外漢階段，但妳一講我開始好奇了。",
+            steady: "現在有點興趣，至少我開始會注意動線了。",
+            coaching: leakedLabel,
+          }),
+          { mode: "game" },
+        ),
+      Error,
+      "hint_internal_label_leak",
+    );
+  }
+  assert(text.includes("動線有點卡"));
+  assert(text.includes("你對老屋也有興趣"));
+
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp:
+            "設計師的觀察就是不一樣！那間店的紅銅檯面和動線問題，如果給妳改，妳會怎麼調整？",
+          steady: "聽妳分析老屋咖啡店好專業，還有其他觀察嗎？",
+          coaching:
+            "她主動分享專業觀察，顯示對你有基本信任。你可以用請教細節讓她多說。",
+        }),
+        {
+          mode: "game",
+          turns,
+          sharedFactualEvidence: trusted.shared,
+          partnerFactualEvidence: trusted.partner,
+          trustedFactClaims: trusted.claims,
+          enforceGeneratedQuality: true,
+          semanticAdjudicated: true,
+        },
+      ),
+    Error,
+    "hint_quality_invalid_game_contract",
+  );
 });
 
 Deno.test("buildHintMessages adds game coaching anchors only in game mode", () => {

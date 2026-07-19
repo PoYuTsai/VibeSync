@@ -375,6 +375,14 @@ Deno.test("semantic adjudication prompt treats transcript and candidate as evide
   assertEquals(prompt.includes("direct invite forbidden"), true);
   assertEquals(prompt.includes("不得輸出 strategies"), true);
   assertEquals(prompt.includes("兩個選項都不得只是問句"), true);
+  assertEquals(prompt.includes("小測試：看前後文"), true);
+  assertEquals(prompt.includes("她把 user 稱讚/主張丟回驗證"), true);
+  assertEquals(prompt.includes("問號本身不是"), true);
+  assertEquals(
+    prompt.includes("把驗證型反問當成普通分享或採訪機會"),
+    true,
+  );
+  assertEquals(prompt.includes("保留「Game 心法：」與「速約任務：」"), true);
 });
 
 Deno.test("fact verification is a bounded evidence audit, not another free-form rewrite", () => {
