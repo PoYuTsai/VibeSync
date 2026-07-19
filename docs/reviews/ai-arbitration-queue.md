@@ -8,15 +8,15 @@
 ## OPEN（最新在最上）
 
 ## [2026-07-11] Beginner／Game Hint＋Debrief generated-only，永久移除成功罐頭
-Status: **CODEX APPROVED（0 P0/P1/P2）／EDGE FINAL PATCH PENDING／TESTFLIGHT REBUILD PENDING**
+Status: **CODEX APPROVED（0 P0/P1/P2）／EDGE v205 SHIPPED／LIVE SMOKE PASS／TESTFLIGHT REBUILD PENDING**
 
 - **契約**：Hint generation 為 DeepSeek 24s → Claude 18s，semantic call 24s、最多五次 provider call；Debrief 最多六次／semantic 最多四次，所有 generation／reviewer 共用 request-entry 85s deadline，低於 client 90s 與 owner 105s。Fact reject 後只能做「點名欄位實際變更的完整 repair → fresh fact verify」，不可用第二票覆蓋原候選。雙失敗或品質不合格只回 retryable error，絕不落 fallback snapshot、扣費或計次。Beginner＋Game 同一條 production path；client Hint fence 115s。2026-07-19 Debrief 根治審查見 `docs/reviews/2026-07-19-practice-debrief-semantic-recovery-codex-review.md`。
 - **高手腦與連動**：共用黃金教練 rubric；模型只產可見三欄，hidden decision 完全由 server 依逐字稿／角色資料／Game ledger 建立。Debrief 無 Hint 後新證據不得推翻；改判必須附她在 Hint 後的逐字回覆。
 - **品質閘**：每個 Hint 回覆、Debrief 可貼句、Game 拆盤五欄逐一 grounding；拒絕既知罐頭、meta 空話、邀約 route 衝突、短句／emoji 洗白。Fact prompt／Claude schema／parser 共用 surface field enum，repair 遞迴禁止新增 model-authored key；邀約分類區分共同計畫與純自我揭露。
 - **扣費／併發**：generated-only DB CHECK、bounded Debrief ledger、成功 record 同交易計次、normal／legacy／無 requestId owner token fence；replay 不重扣且回最新 usage。
 - **client**：billable HTTP 前保存 requestId；完整 Hint envelope、applied lineage、pending Debrief 跨 crash/restart 按 session 隔離，晚到結果不得污染另一場。
-- **驗證**：最新 practice-chat Deno **934/934**；真 handler 跑滿 DeepSeek 3＋Claude 3＝6 calls 並完成 fact reject→repair→fresh verify。三路高風險 review 0 P0/P1/P2；changed-file check/fmt/lint/diff 全綠。既有 production Hint smoke 仍為 Beginner＋Game 第一次成功、replay stable、`fallbackUsed=false`。
-- **出貨狀態**：前兩階段 Edge 修補已在 production 驗出剩餘 fact-rejection root cause；本次最終 patch 尚待目標式 deploy 與 fresh Standard／Beginner smoke。無新 migration，禁止 `supabase db push`。115s client fence 仍需新 TestFlight build 才到真機。
+- **驗證**：最新 practice-chat Deno **934/934**；真 handler 跑滿 DeepSeek 3＋Claude 3＝6 calls 並完成 fact reject→repair→fresh verify。三路高風險 review 0 P0/P1/P2；changed-file check/fmt/lint/diff 全綠。v205 fresh Standard 單次 gate 連續 2/2 PASS（44.1s／52.5s、首次 200、replay stable）；Beginner assisted Hint→Debrief 1/1 PASS（93.1s、continuity＋雙 replay stable）。
+- **出貨狀態**：`practice-chat` v205 ACTIVE，default JWT verification；deploy 後 2 Standard Debrief＋Beginner Hint／Debrief telemetry 全 success、0 semantic reject。無新 migration，禁止 `supabase db push`。Server-only 修復已生效；115s client fence 仍需新 TestFlight build 才到真機。
 
 ## [2026-07-10] Beginner/Game Hint＋兩路 Debrief 穩定度收斂
 Status: **APPROVED（0 P0 / 0 P1 / 0 P2）** — implementation `bfbebd70`，三路 Codex adversarial review（語境/守門、Debrief DB 併發、client requestId/telemetry）均結案。

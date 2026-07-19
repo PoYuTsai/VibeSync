@@ -4,7 +4,7 @@ Date: 2026-07-19
 
 Scope: `practice-chat` Debrief generation／semantic adjudication／Claude structured output／telemetry／provider-call ledger
 
-Verdict: **CODEX APPROVED（0 P0 / 0 P1 / 0 P2）；最終 Edge deploy 與 live smoke 待完成**
+Verdict: **APPROVED／EDGE v205 SHIPPED／LIVE SMOKE PASS（0 P0 / 0 P1 / 0 P2）**
 
 ## Production evidence
 
@@ -39,7 +39,7 @@ Verdict: **CODEX APPROVED（0 P0 / 0 P1 / 0 P2）；最終 Edge deploy 與 live 
 - Budget／ledger review確認：總上限 6、semantic 上限 4、85／90／105 秒 fences、失敗 release／零 record、成功 first-writer authoritative replay 均成立。
 - 三路 final verdict 均為 **0 P0 / 0 P1 / 0 P2**。
 
-## Validation before final deployment
+## Validation
 
 - `deno test --no-check --allow-env --allow-read supabase/functions/practice-chat`：**934/934 passed**。
 - 真 handler integration 實際走滿 DeepSeek 3＋Claude 3＝6 calls，完成 fact reject → changed repair → fresh verify；成功 record 1、release 0。
@@ -48,6 +48,11 @@ Verdict: **CODEX APPROVED（0 P0 / 0 P1 / 0 P2）；最終 Edge deploy 與 live 
 - Changed files `deno fmt --check`、`deno lint`、`deno check semantic_quality.ts`、smoke tool check、`git diff --check` 全綠。
 - `deno check index.ts` 仍命中既有 `handler.ts:484` 的 Deno 2.9 `setTimeout` handle 型別問題（來源 commit `bfbebd703`），非本 diff 引入；本輪不混入無關修正。
 
-## Deployment gate
+## Deployment evidence
 
-最終修正尚未部署。完成 `practice-chat` 目標式 Edge deploy、fresh Standard 單次 Debrief＋replay smoke、至少一條 Beginner assisted flow 與 production telemetry 抽查前，不宣稱 production safe。
+- `practice-chat` 以 default JWT verification 目標式部署為 production **v205 ACTIVE**；沒有 migration、沒有 `supabase db push`。
+- Fresh Standard 單次 gate 連續兩條 PASS，第一次 request 就回 200，皆為 Claude Sonnet 5 failover 且 replay metadata／card stable：
+  - `generated-smoke-standard-7ba7aa13-de46-4e1c-bfbb-2b87757a0991`（44.1s）
+  - `generated-smoke-standard-60900189-c787-407b-9a11-3e473a4d6ac3`（52.5s）
+- Fresh Beginner assisted flow `generated-smoke-beginner-a761c157-1cb9-4fb7-ac02-3d0e3c12707c` PASS（93.1s）：Hint 由 DeepSeek 首次成功、Hint replay stable；套用 Hint 後 Debrief 由 Claude Sonnet 5 failover 成功，continuity guard 與 Debrief replay 均通過。
+- Deploy 後 test-account `ai_logs` 四筆（2 Standard Debrief、Beginner Hint、Beginner Debrief）全為 `success`、0 `semantic_rejected`。兩次 `deepseek_timeout` 與一次 reviewer `deepseek_max_tokens` 均由同 request bounded recovery 接住；durable row 只有固定 aggregate telemetry，無逐字稿／候選內容。
