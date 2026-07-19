@@ -375,14 +375,47 @@ Deno.test("semantic adjudication prompt treats transcript and candidate as evide
   assertEquals(prompt.includes("direct invite forbidden"), true);
   assertEquals(prompt.includes("不得輸出 strategies"), true);
   assertEquals(prompt.includes("兩個選項都不得只是問句"), true);
-  assertEquals(prompt.includes("小測試：看前後文"), true);
-  assertEquals(prompt.includes("她把 user 稱讚/主張丟回驗證"), true);
-  assertEquals(prompt.includes("問號本身不是"), true);
-  assertEquals(
-    prompt.includes("把驗證型反問當成普通分享或採訪機會"),
-    true,
-  );
+  assertEquals(prompt.includes("小測試：依前文/testStyle"), true);
+  assertEquals(prompt.includes("稱讚/主張被丟回驗證"), true);
+  assertEquals(prompt.includes("問號不算"), true);
+  assertEquals(prompt.includes("各自都必須先誠實表態"), true);
+  assertEquals(prompt.includes("有逐字稿中相關的具體細節時"), true);
+  assertEquals(prompt.includes("沒有時直接回被驗證的 user 原主張"), true);
+  assertEquals(prompt.includes("不得硬補細節"), true);
+  assertEquals(prompt.includes("只說「有興趣」不算接住"), true);
+  assertEquals(prompt.includes("有興趣啊，不然也不會問妳"), true);
+  assertEquals(prompt.includes("有興趣，就想聽妳的看法"), true);
+  assertEquals(prompt.includes("禁止照抄本規則的題材字詞"), true);
+  assertEquals(prompt.includes("吧台靠門"), false);
+  assertEquals(prompt.includes("禁止建議把球做回她身上"), true);
   assertEquals(prompt.includes("保留「Game 心法：」與「速約任務：」"), true);
+});
+
+Deno.test("semantic Hint reviewer exposes the no-detail branch for a bare verification question", () => {
+  const messages = buildSemanticAdjudicationMessages({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: {
+      warmUp: "剛剛那句是認真的，我就是覺得妳笑起來很好看。",
+      steady: "剛剛那句就是我的真實反應。",
+      coaching:
+        "Game 心法：她在確認稱讚是不是罐頭；直接穩穩表態，不防禦也不反問。速約任務：先維持輕鬆互動，不急著邀約。",
+    },
+    turns: [
+      { role: "user", text: "妳笑起來很好看。" },
+      { role: "ai", text: "你是不是都這樣說？" },
+    ],
+    trustedGenerationContext:
+      "partnerFacts: testStyleShapes=反問你是不是對每個人都這樣",
+  });
+  const prompt = messages.map((message) => message.content).join("\n");
+
+  assertEquals(prompt.includes("妳笑起來很好看。"), true);
+  assertEquals(prompt.includes("你是不是都這樣說？"), true);
+  assertEquals(prompt.includes("沒有時直接回被驗證的 user 原主張"), true);
+  assertEquals(prompt.includes("不得硬補細節"), true);
+  assertEquals(prompt.includes("我就是覺得妳笑起來很好看"), true);
+  assertEquals(prompt.includes("不是每個人我都會這樣說"), false);
 });
 
 Deno.test("fact verification is a bounded evidence audit, not another free-form rewrite", () => {

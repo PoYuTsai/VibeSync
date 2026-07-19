@@ -403,8 +403,8 @@ Deno.test("buildHintMessages teaches how to handle consistency tests without usi
   const text = messages.map((m) => m.content).join("\n");
 
   assert(text.includes("小測試"));
-  assert(text.includes("先承認"));
-  assert(text.includes("幽默曲解"));
+  assert(text.includes("承認"));
+  assert(text.includes("曲解"));
   assert(text.includes("反打"));
   assertEquals(text.includes("shit test"), false);
 });
@@ -435,11 +435,12 @@ Deno.test("buildHintMessages recognizes Sylvia's authenticity counter-question i
   });
   const text = messages.map((message) => message.content).join("\n");
 
-  assert(text.includes("小測試：看前後文"));
-  assert(text.includes("她把 user 稱讚/主張丟回驗證"));
-  assert(text.includes("問號本身不是"));
-  assert(text.includes("兩句先誠實表態"));
-  assert(text.includes("禁泛誇或反問採訪"));
+  assert(text.includes("小測試：依前文/testStyle"));
+  assert(text.includes("稱讚/主張被丟回驗證"));
+  assert(text.includes("問號不算"));
+  assert(text.includes("有細節才回扣，沒有就回原主張，勿捏造"));
+  assert(text.includes("未知興趣禁稱有興趣或以問過自證"));
+  assert(text.includes("禁請她分享/反問採訪"));
   const trusted = hintTrustedFactualEvidence({
     profile: sylvia,
     practiceMode: "game",
