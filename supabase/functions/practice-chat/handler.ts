@@ -2915,10 +2915,11 @@ export function createPracticeChatHandler(
           enforceGeneratedQuality: true,
           semanticAdjudicated: true,
         } as const;
-        // Change A/C：把一份候選跑「完整客觀硬 gate」（semanticAdjudicated=false
-        // → 接地／事實／bossy／generic 全開，只跳過主觀 LLM 複審）。過了就是有
-        // 出處、可安全供給的降級候選。失敗且屬 unsupported_detail 時，Change C
-        // 先移除未接地的第三方場地子句再重驗一次；仍不過就回 null（維持 503）。
+        // Change A/C：降級供給候選必須通過與「正式成功路徑相同」的硬內容 gate
+        // （generatedHintParseOptions，semanticAdjudicated=true：bossy／重複／純問句／
+        // game 契約全開）。供給前先做 Change C 淨化：移除逐字稿沒有出處的第三方
+        // 場地／人物子句（owner=world/third_party；使用者自陳事實不碰）。過 gate 才
+        // 供給，否則回 null 維持 503。純 post-parse 邏輯層，不動任何生成 prompt bytes。
         const decisionedHint = (
           parsed: ReturnType<typeof parseHintResult>,
         ): ReturnType<typeof parseHintResult> => ({
@@ -2942,60 +2943,37 @@ export function createPracticeChatHandler(
         const salvageHintCandidate = (
           raw: { warmUp: string; steady: string; coaching: string },
         ): ReturnType<typeof parseHintResult> | null => {
-          const strictParse = (payload: {
-            warmUp: string;
-            steady: string;
-            coaching: string;
-          }) =>
-            parseHintResult(JSON.stringify(payload), {
-              ...generatedHintParseOptions,
-              semanticAdjudicated: false,
-              deferVisibleGuardsToSemantic: false,
-            });
+          const factContext = buildHintFactContext({
+            turns: request.turns,
+            sharedFactualEvidence: hintFactualEvidence.shared,
+            partnerFactualEvidence: hintFactualEvidence.partner,
+            trustedFactClaims: hintFactualEvidence.claims,
+          });
+          const cleaned = {
+            warmUp: stripUnsupportedThirdPartyDetails({
+              text: raw.warmUp,
+              field: "reply",
+              context: factContext,
+            }),
+            steady: stripUnsupportedThirdPartyDetails({
+              text: raw.steady,
+              field: "reply",
+              context: factContext,
+            }),
+            coaching: stripUnsupportedThirdPartyDetails({
+              text: raw.coaching,
+              field: "coaching",
+              context: factContext,
+            }),
+          };
           try {
-            return decisionedHint(strictParse(raw));
-          } catch (strictError) {
-            if (
-              !(strictError instanceof Error) ||
-              !strictError.message.includes("unsupported_detail")
-            ) {
-              return null;
-            }
-            const factContext = buildHintFactContext({
-              turns: request.turns,
-              sharedFactualEvidence: hintFactualEvidence.shared,
-              partnerFactualEvidence: hintFactualEvidence.partner,
-              trustedFactClaims: hintFactualEvidence.claims,
-            });
-            const stripped = {
-              warmUp: stripUnsupportedThirdPartyDetails({
-                text: raw.warmUp,
-                field: "reply",
-                context: factContext,
+            return decisionedHint(
+              parseHintResult(JSON.stringify(cleaned), {
+                ...generatedHintParseOptions,
               }),
-              steady: stripUnsupportedThirdPartyDetails({
-                text: raw.steady,
-                field: "reply",
-                context: factContext,
-              }),
-              coaching: stripUnsupportedThirdPartyDetails({
-                text: raw.coaching,
-                field: "coaching",
-                context: factContext,
-              }),
-            };
-            if (
-              stripped.warmUp === raw.warmUp &&
-              stripped.steady === raw.steady &&
-              stripped.coaching === raw.coaching
-            ) {
-              return null;
-            }
-            try {
-              return decisionedHint(strictParse(stripped));
-            } catch {
-              return null;
-            }
+            );
+          } catch {
+            return null;
           }
         };
         const parseGeneratedHint = async (
@@ -3927,16 +3905,17 @@ export function createPracticeChatHandler(
           enforceGeneratedQuality: true,
           semanticAdjudicated: true,
         } as const;
-        // Change A：用「完整客觀硬 gate」（semanticAdjudicated=false → 接地／事實／
-        // generic／欄位角色全開，只跳過主觀 LLM 複審）驗一份候選；過了就是有出處、
-        // 可安全供給的降級拆解。任何硬 gate 失敗一律回 null，寧可 503。
+        // Change A：降級供給候選必須通過與「正式成功路徑相同」的硬內容 gate
+        // （generatedDebriefParseOptions，semanticAdjudicated=true：canned／欄位角色／
+        // schema 全開）。事實與安全風險已由呼叫端 issueKinds 排除（unsafe／
+        // unsupported_fact 一律不進來），故此處只需確保結構契約與正式成功一致。
+        // 任何硬 gate 失敗一律回 null，寧可 503。
         const salvageDebriefCandidate = (
           raw: Record<string, unknown>,
         ): DebriefCard | null => {
           try {
             return parseDebriefCard(JSON.stringify(raw), {
               ...generatedDebriefParseOptions,
-              semanticAdjudicated: false,
             });
           } catch {
             return null;
