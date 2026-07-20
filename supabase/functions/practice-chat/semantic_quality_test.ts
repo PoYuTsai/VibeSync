@@ -187,13 +187,26 @@ Deno.test("Hint semantic adjudication requires a strict deliverable assessment",
     "semantic_adjudication_invalid_schema",
   );
 
+  assertThrows(
+    () =>
+      parseSemanticAdjudication({
+        raw: validHintAdjudication({
+          hintAssessment: {
+            interactionKind: "active_consistency_test",
+            replyContract: "noncompliant",
+            coachingContract: "compliant",
+          },
+        }),
+        surface: "hint",
+        candidate: hintCandidate,
+        turns,
+      }),
+    Error,
+    "semantic_adjudication_rejected",
+  );
+
   for (
     const hintAssessment of [
-      {
-        interactionKind: "active_consistency_test",
-        replyContract: "noncompliant",
-        coachingContract: "compliant",
-      },
       {
         interactionKind: "active_consistency_test",
         replyContract: "not_applicable",
@@ -1210,12 +1223,6 @@ for (
           },
         }),
       },
-      {
-        label: "contradictory assessment contract",
-        raw: validHintAdjudication({
-          hintAssessment: ACTIVE_REPLY_NONCOMPLIANT_HINT_ASSESSMENT,
-        }),
-      },
     ]
   ) {
     Deno.test(
@@ -1281,6 +1288,76 @@ for (
       },
     );
   }
+}
+
+for (const candidateProvider of ["deepseek", "anthropic"] as const) {
+  Deno.test(
+    `Hint treats ${candidateProvider} active noncompliant accept as structured strategy evidence`,
+    async () => {
+      const independentProvider = candidateProvider === "deepseek"
+        ? "anthropic"
+        : "deepseek";
+      const repaired = {
+        ...hintCandidate,
+        warmUp: "我會直接說清楚自己的立場，不把答案交還給她。",
+        steady: "這題我有自己的答案，也會用陳述句穩穩收住。",
+        coaching: "她正在核對你的立場；直接回答並回扣逐字稿證據。",
+      };
+      const calls: string[] = [];
+      const providerCalls = { deepseek: 0, anthropic: 0 };
+      const respond = (
+        provider: "deepseek" | "anthropic",
+        args: { maxTokens: number; thinking?: unknown },
+      ): Promise<string> => {
+        providerCalls[provider] += 1;
+        calls.push(`${provider}:${args.maxTokens}`);
+        if (provider === independentProvider) {
+          return Promise.resolve(
+            providerCalls[provider] === 1
+              ? validHintAdjudication({
+                hintAssessment: ACTIVE_REPLY_NONCOMPLIANT_HINT_ASSESSMENT,
+              })
+              : validHintAdjudication({
+                hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+              }),
+          );
+        }
+        if (provider === "deepseek") {
+          assertEquals(args.thinking, { type: "disabled" });
+        }
+        return Promise.resolve(validHintAdjudication({
+          verdict: "repair",
+          issues: [{ kind: "strategy_mismatch" }],
+          repairedResult: repaired,
+          hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+        }));
+      };
+
+      const result = await adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: hintCandidate,
+        candidateProvider,
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 3,
+        retryTransientFullReviewerOnce: true,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: (args) => respond("anthropic", args),
+        callDeepSeek: (args) => respond("deepseek", args),
+      });
+
+      assertEquals(calls, [
+        `${independentProvider}:1800`,
+        `${candidateProvider}:1800`,
+        `${independentProvider}:2400`,
+      ]);
+      assertEquals(result.candidate, repaired);
+      assertEquals(result.providerCalls, 3);
+    },
+  );
 }
 
 Deno.test("Hint fails closed when its independent full-review retry also times out", async () => {
@@ -1905,7 +1982,7 @@ Deno.test("Hint full rejection becomes one changed repair plus an independent ve
     },
     callDeepSeek: (args) => {
       calls.push(`deepseek:${args.maxTokens}`);
-      assertEquals(args.thinking, undefined);
+      assertEquals(args.thinking, { type: "disabled" });
       assertEquals(args.temperature, 0.35);
       const prompt = args.messages.map((message) => message.content).join("\n");
       assertEquals(
@@ -4132,7 +4209,7 @@ Deno.test("ordinary unsupported-fact rejection rewrites all fields and keeps nat
         prompt.includes("完整重寫 warmUp、steady、coaching 三欄"),
         true,
       );
-      assertEquals(prompt.includes("可保留回答後的自然問句"), true);
+      assertEquals(prompt.includes("保留一個自然問句"), true);
       return Promise.resolve(validHintAdjudication({
         verdict: "repair",
         issues: [{ kind: "unsupported_fact" }],
@@ -4151,6 +4228,940 @@ Deno.test("ordinary unsupported-fact rejection rewrites all fields and keeps nat
   assertEquals(/[?？]/u.test(String(result.candidate.warmUp)), true);
   assertEquals(result.candidate, recovered);
   assertEquals(result.hintAssessment, ORDINARY_HINT_ASSESSMENT);
+  assertEquals(result.providerCalls, 4);
+});
+
+const missingShopDetailTurns = [
+  {
+    role: "user" as const,
+    text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+  },
+  { role: "ai" as const, text: "哦？在哪啊，我最近也在物色新店。" },
+];
+
+const missingShopRejectedCandidate = {
+  warmUp: "就在公司旁邊那間，花果香很明顯。",
+  steady: "中山站轉角的小店，我還停下來買過。",
+  coaching:
+    "Game 心法：她在追問店家細節；直接補上位置。速約任務：這輪不約，先聊店家。",
+};
+
+const missingShopRecoveredCandidate = {
+  warmUp: "我當時只記得聞起來很香，店名和位置都沒有記住。",
+  steady: "我只確定是路過時聞到很香，其他細節先不亂補。",
+  coaching:
+    "Game 心法：她在追問逐字稿沒有的店名與位置；誠實說沒記，再只接路過與很香。速約任務：這輪不約，避免杜撰店家細節。",
+};
+
+Deno.test("missing shop detail envelope excludes challenges and explicit evidence", () => {
+  const promptFor = (
+    caseTurns: typeof missingShopDetailTurns,
+    trustedGenerationContext = "server facts only",
+  ) =>
+    buildSemanticAdjudicationMessages({
+      surface: "hint",
+      practiceMode: "game",
+      candidate: hintCandidate,
+      turns: caseTurns,
+      trustedGenerationContext,
+    }).map((message) => message.content).join("\n");
+
+  assertEquals(
+    promptFor(missingShopDetailTurns).includes("本輪最高優先交付邊界"),
+    true,
+  );
+  assertEquals(
+    promptFor([
+      { role: "ai", text: "今天想聊一個妳剛好遇到的小發現。" },
+      ...missingShopDetailTurns,
+    ]).includes("本輪最高優先交付邊界"),
+    true,
+  );
+  assertEquals(
+    promptFor([
+      missingShopDetailTurns[0],
+      { role: "ai", text: "你不是說很懂咖啡？那到底哪家、多香？" },
+    ]).includes("本輪最高優先交付邊界"),
+    false,
+  );
+  for (
+    const noDetailOpener of [
+      "剛看到妳 IG 喜歡咖啡，我今天路過一家聞起來超香的店。",
+      "我今天 3 點路過一家聞起來超香的店。",
+      "我今天路過一家聞起來超香的店「但店名沒看」。",
+      "我今天路過一家聞起來很香的店。",
+      "我今天路過一家聞起來真的香的店。",
+      "我今天路過一家聞起來超級香的店。",
+      "我今天路過一家店，聞到一種很香的味道。",
+    ]
+  ) {
+    assertEquals(
+      promptFor([
+        { role: "user", text: noDetailOpener },
+        { role: "ai", text: "哦？哪家啊？" },
+      ]).includes("本輪最高優先交付邊界"),
+      true,
+      noDetailOpener,
+    );
+  }
+  for (
+    const venueNoun of [
+      "店",
+      "咖啡店",
+      "咖啡廳",
+      "咖啡館",
+      "餐廳",
+      "酒吧",
+      "小攤",
+    ]
+  ) {
+    assertEquals(
+      promptFor([
+        { role: "user", text: `我今天路過一間${venueNoun}，聞起來超香。` },
+        { role: "ai", text: "哦？哪家啊？" },
+      ]).includes("本輪最高優先交付邊界"),
+      true,
+      venueNoun,
+    );
+  }
+  for (
+    const detailQuestion of [
+      "哪一家啊？",
+      "叫什麼名字？",
+      "店叫什麼？",
+      "是在什麼地方？",
+      "位置呢？",
+      "聞起來是什麼味道？",
+    ]
+  ) {
+    assertEquals(
+      promptFor([
+        { role: "user", text: "我今天路過一家聞起來超香的店。" },
+        { role: "ai", text: detailQuestion },
+      ]).includes("本輪最高優先交付邊界"),
+      true,
+      detailQuestion,
+    );
+  }
+  for (
+    const supplied of [
+      "我路過中山站那間咖啡店，聞起來很香。",
+      "我路過台北中山區一家聞起來很香的店。",
+      "我路過台北一家聞起來很香的店。",
+      "我路過 Kuro Cafe，聞起來很香。",
+      "我今天經過黑露咖啡店，聞起來很香。",
+      "我今天路過森高砂咖啡店，聞起來很香。",
+    ]
+  ) {
+    assertEquals(
+      promptFor([
+        { role: "user", text: supplied },
+        { role: "ai", text: "哦？哪家啊？" },
+      ]).includes("本輪最高優先交付邊界"),
+      false,
+    );
+  }
+  for (
+    const suppliedRelativeLocation of [
+      "我今天路過公司旁邊一家聞起來很香的店。",
+      "我今天路過轉角一家聞起來很香的店。",
+      "我今天路過巷口一家聞起來很香的店。",
+      "我今天路過家裡旁邊一家聞起來很香的店。",
+    ]
+  ) {
+    assertEquals(
+      promptFor([
+        { role: "user", text: suppliedRelativeLocation },
+        { role: "ai", text: "哦？哪家啊？" },
+      ]).includes("本輪最高優先交付邊界"),
+      false,
+      suppliedRelativeLocation,
+    );
+  }
+  for (const aroma of ["肉桂香", "奶油香", "豆香"]) {
+    const suppliedAroma = `我今天經過一家咖啡店，聞到${aroma}。`;
+    assertEquals(
+      promptFor([
+        { role: "user", text: suppliedAroma },
+        { role: "ai", text: "哦？什麼香？" },
+      ]).includes("本輪最高優先交付邊界"),
+      false,
+      suppliedAroma,
+    );
+  }
+  assertEquals(
+    promptFor([
+      { role: "user", text: "那家店叫黑露，在中山站附近。" },
+      { role: "ai", text: "聽起來不錯。" },
+      { role: "user", text: "我今天又路過剛說的那家店，還是很香。" },
+      { role: "ai", text: "哦？哪家啊？" },
+    ]).includes("本輪最高優先交付邊界"),
+    false,
+  );
+  assertEquals(
+    promptFor([
+      { role: "ai", text: "中山站附近的黑露咖啡店很有名。" },
+      { role: "user", text: "我今天路過一家聞起來很香的店。" },
+      { role: "ai", text: "哦？哪家啊？" },
+    ]).includes("本輪最高優先交付邊界"),
+    true,
+  );
+  assertEquals(
+    promptFor(
+      missingShopDetailTurns,
+      JSON.stringify({
+        typedFacts: [{
+          owner: "world",
+          domain: "venue",
+          relation: "located_at",
+          anchor: "中山站",
+          polarity: "positive",
+        }],
+      }),
+    ).includes("本輪最高優先交付邊界"),
+    true,
+  );
+  assertEquals(
+    promptFor(
+      [
+        {
+          role: "user",
+          text: "我今天又路過之前那家聞起來很香的店。",
+        },
+        { role: "ai", text: "哦？哪家啊？" },
+      ],
+      JSON.stringify({
+        sharedFacts: ["上一輪聊過中山站附近的黑露咖啡店"],
+      }),
+    ).includes("本輪最高優先交付邊界"),
+    false,
+  );
+});
+
+for (const candidateProvider of ["deepseek", "anthropic"] as const) {
+  Deno.test(
+    `accepted missing-shop Hint fact rejection repairs and verifies across providers (${candidateProvider} candidate)`,
+    async () => {
+      const reviewProvider = candidateProvider === "deepseek"
+        ? "anthropic"
+        : "deepseek";
+      const verifierProvider = candidateProvider;
+      const providerCalls = { anthropic: 0, deepseek: 0 };
+      const calls: string[] = [];
+      const handleCall = (
+        provider: "deepseek" | "anthropic",
+        args: {
+          maxTokens: number;
+          messages: Array<{ content: string }>;
+          thinking?: unknown;
+        },
+      ): string => {
+        providerCalls[provider] += 1;
+        const ordinal = providerCalls[provider];
+        const prompt = args.messages.map((message) => message.content).join(
+          "\n",
+        );
+        if (provider === reviewProvider) {
+          if (ordinal === 1) {
+            calls.push(`${provider}:full-accept`);
+            assertEquals(args.maxTokens, 1800);
+            assertEquals(
+              prompt.includes("semanticQualityAdjudicationV1"),
+              true,
+            );
+            return validHintAdjudication({
+              hintAssessment: ORDINARY_HINT_ASSESSMENT,
+            });
+          }
+          calls.push(`${provider}:forced-repair`);
+          assertEquals(ordinal, 2);
+          assertEquals(args.maxTokens, 1800);
+          assertEquals(prompt.includes("前一個獨立事實核驗已拒絕"), true);
+          assertEquals(
+            prompt.includes("前一個獨立完整審查已把互動判為 ordinary"),
+            true,
+          );
+          if (provider === "deepseek") {
+            assertEquals(args.thinking, { type: "disabled" });
+          }
+          return validHintAdjudication({
+            verdict: "repair",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: missingShopRecoveredCandidate,
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          });
+        }
+        if (ordinal === 1) {
+          calls.push(`${provider}:fact-reject`);
+          assertEquals(args.maxTokens, 1200);
+          assertEquals(prompt.includes("semanticFactVerificationV2"), true);
+          return validFactVerification({
+            verdict: "reject",
+            issues: [{
+              kind: "unsupported_fact",
+              field: "warmUp",
+              reasonCode: "world_fact_unsupported",
+            }],
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          });
+        }
+        calls.push(`${provider}:full-verify`);
+        assertEquals(ordinal, 2);
+        assertEquals(args.maxTokens, 2400);
+        assertEquals(prompt.includes("最終完整語意驗證"), true);
+        return validHintAdjudication({
+          hintAssessment: ORDINARY_HINT_ASSESSMENT,
+        });
+      };
+
+      const result = await adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: missingShopRejectedCandidate,
+        candidateProvider,
+        turns: missingShopDetailTurns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: (args) => Promise.resolve(handleCall("anthropic", args)),
+        callDeepSeek: (args) => Promise.resolve(handleCall("deepseek", args)),
+        validateCandidate: (candidate) => {
+          parseHintResult(JSON.stringify(candidate), {
+            mode: "game",
+            turns: missingShopDetailTurns,
+            enforceGeneratedQuality: true,
+            semanticAdjudicated: true,
+          });
+        },
+      });
+
+      assertEquals(calls, [
+        `${reviewProvider}:full-accept`,
+        `${verifierProvider}:fact-reject`,
+        `${reviewProvider}:forced-repair`,
+        `${verifierProvider}:full-verify`,
+      ]);
+      assertEquals(result.candidate, missingShopRecoveredCandidate);
+      assertEquals(result.provider, verifierProvider);
+      assertEquals(result.providerCalls, 4);
+    },
+  );
+}
+
+for (
+  const recoveryCase of [
+    {
+      label: "unrelated remembered venue",
+      turns: missingShopDetailTurns,
+      trustedGenerationContext: JSON.stringify({
+        sharedFacts: ["上一輪聊過中山站附近的黑露咖啡店"],
+      }),
+    },
+    {
+      label: "generic cafe noun and natural name question",
+      turns: [
+        {
+          role: "user" as const,
+          text: "我今天路過一間咖啡廳，聞起來超香。",
+        },
+        { role: "ai" as const, text: "哦？叫什麼名字？" },
+      ],
+      trustedGenerationContext: "server facts only",
+    },
+    {
+      label: "known aroma but missing identity",
+      turns: [
+        {
+          role: "user" as const,
+          text: "我今天路過一家店，聞到肉桂香。",
+        },
+        { role: "ai" as const, text: "哦？哪家啊？" },
+      ],
+      trustedGenerationContext: "server facts only",
+    },
+    {
+      label: "known location but missing aroma",
+      turns: [
+        {
+          role: "user" as const,
+          text: "我今天路過中山站附近一家店，聞起來很香。",
+        },
+        { role: "ai" as const, text: "聞起來是什麼味道？" },
+      ],
+      trustedGenerationContext: "server facts only",
+    },
+  ] as const
+) {
+  Deno.test(
+    `accepted ordinary fact rejection recovers without a lexical topic gate (${recoveryCase.label})`,
+    async () => {
+      const calls: string[] = [];
+      let claudeCalls = 0;
+      let deepSeekCalls = 0;
+      const result = await adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: missingShopRejectedCandidate,
+        candidateProvider: "deepseek",
+        turns: [...recoveryCase.turns],
+        trustedGenerationContext: recoveryCase.trustedGenerationContext,
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: (args) => {
+          claudeCalls += 1;
+          calls.push(
+            claudeCalls === 1 ? "claude:full-accept" : "claude:repair",
+          );
+          if (claudeCalls === 1) {
+            assertEquals(args.maxTokens, 1800);
+            return Promise.resolve(validHintAdjudication({
+              hintAssessment: ORDINARY_HINT_ASSESSMENT,
+            }));
+          }
+          assertEquals(args.maxTokens, 1800);
+          assertEquals(
+            args.messages.some((message) =>
+              message.content.includes("前一個獨立事實核驗已拒絕")
+            ),
+            true,
+          );
+          return Promise.resolve(validHintAdjudication({
+            verdict: "repair",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: missingShopRecoveredCandidate,
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          }));
+        },
+        callDeepSeek: (args) => {
+          deepSeekCalls += 1;
+          calls.push(
+            deepSeekCalls === 1 ? "deepseek:fact-reject" : "deepseek:verify",
+          );
+          assertEquals(args.thinking, { type: "disabled" });
+          if (deepSeekCalls === 1) {
+            assertEquals(args.maxTokens, 1200);
+            return Promise.resolve(validFactVerification({
+              verdict: "reject",
+              issues: [{
+                kind: "unsupported_fact",
+                field: "warmUp",
+                reasonCode: "world_fact_unsupported",
+              }],
+              hintAssessment: ORDINARY_HINT_ASSESSMENT,
+            }));
+          }
+          assertEquals(args.maxTokens, 2400);
+          return Promise.resolve(validHintAdjudication({
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          }));
+        },
+      });
+
+      assertEquals(calls, [
+        "claude:full-accept",
+        "deepseek:fact-reject",
+        "claude:repair",
+        "deepseek:verify",
+      ]);
+      assertEquals(result.candidate, missingShopRecoveredCandidate);
+      assertEquals(result.providerCalls, 4);
+    },
+  );
+}
+
+Deno.test("accepted missing-shop Hint keeps unsafe and mixed fact rejections terminal", async () => {
+  const rejectedIssues = [
+    [{
+      kind: "unsafe",
+      field: "warmUp",
+      reasonCode: "unsafe",
+    }],
+    [{
+      kind: "unsafe",
+      field: "warmUp",
+      reasonCode: "user_fact_unsupported",
+    }],
+    [
+      {
+        kind: "unsupported_fact",
+        field: "warmUp",
+        reasonCode: "world_fact_unsupported",
+      },
+      {
+        kind: "unsafe",
+        field: "coaching",
+        reasonCode: "unsafe",
+      },
+    ],
+  ] as const;
+  for (const issues of rejectedIssues) {
+    const calls: string[] = [];
+    let claudeCalls = 0;
+    let deepSeekCalls = 0;
+    const error = await assertRejects(
+      () =>
+        adjudicatePracticeCandidate({
+          surface: "hint",
+          practiceMode: "game",
+          candidate: missingShopRejectedCandidate,
+          candidateProvider: "deepseek",
+          turns: missingShopDetailTurns,
+          trustedGenerationContext: "server facts only",
+          maxProviderCalls: 4,
+          deepSeekApiKey: "deepseek-key",
+          claudeApiKey: "claude-key",
+          claudeModel: "claude-test",
+          callClaude: () => {
+            claudeCalls += 1;
+            calls.push(`claude:${claudeCalls}`);
+            return Promise.resolve(validHintAdjudication({
+              hintAssessment: ORDINARY_HINT_ASSESSMENT,
+            }));
+          },
+          callDeepSeek: () => {
+            deepSeekCalls += 1;
+            calls.push(`deepseek:${deepSeekCalls}`);
+            return Promise.resolve(validFactVerification({
+              verdict: "reject",
+              issues,
+              hintAssessment: ORDINARY_HINT_ASSESSMENT,
+            }));
+          },
+        }),
+      SemanticAdjudicationError,
+      "semantic_fact_verification_rejected",
+    );
+    assertEquals(calls, ["claude:1", "deepseek:1"]);
+    assertEquals(error.providerCalls, 2);
+  }
+});
+
+Deno.test("accepted missing-shop Hint only opens the narrow fact recovery from an ordinary assessment", async () => {
+  const calls: string[] = [];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: missingShopRejectedCandidate,
+        candidateProvider: "deepseek",
+        turns: missingShopDetailTurns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: () => {
+          calls.push("claude-full");
+          return Promise.resolve(validHintAdjudication({
+            hintAssessment: OTHER_HINT_ASSESSMENT,
+          }));
+        },
+        callDeepSeek: () => {
+          calls.push("deepseek-fact");
+          return Promise.resolve(validFactVerification({
+            verdict: "reject",
+            issues: [{
+              kind: "unsupported_fact",
+              field: "warmUp",
+              reasonCode: "world_fact_unsupported",
+            }],
+            hintAssessment: OTHER_HINT_ASSESSMENT,
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_fact_verification_rejected",
+  );
+  assertEquals(calls, ["claude-full", "deepseek-fact"]);
+  assertEquals(error.providerCalls, 2);
+});
+
+Deno.test("accepted missing-shop Hint needs two calls left for fact repair", async () => {
+  const calls: string[] = [];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: missingShopRejectedCandidate,
+        candidateProvider: "deepseek",
+        turns: missingShopDetailTurns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 3,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: () => {
+          calls.push("claude-full");
+          return Promise.resolve(validHintAdjudication({
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          }));
+        },
+        callDeepSeek: () => {
+          calls.push("deepseek-fact");
+          return Promise.resolve(validFactVerification({
+            verdict: "reject",
+            issues: [{
+              kind: "unsupported_fact",
+              field: "warmUp",
+              reasonCode: "world_fact_unsupported",
+            }],
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_fact_verification_rejected",
+  );
+  assertEquals(calls, ["claude-full", "deepseek-fact"]);
+  assertEquals(error.providerCalls, 2);
+});
+
+for (const pureQuestionStyle of ["direct", "first_person_shell"] as const) {
+  for (const initialVerdict of ["accept", "repair"] as const) {
+    Deno.test(
+      `live missing-detail ${pureQuestionStyle} pure questions recover after reviewer ${initialVerdict}`,
+      async () => {
+        const pureCandidate = {
+          warmUp: pureQuestionStyle === "direct"
+            ? "那家在哪裡？"
+            : "我想知道妳會猜哪裡？",
+          steady: pureQuestionStyle === "direct"
+            ? "妳最近比較想找哪區的店？"
+            : "我也想知道妳最近想找哪家？",
+          coaching:
+            "Game 心法：她在追問店家細節；先接住再延伸。速約任務：這輪不約，先聊咖啡。",
+        };
+        const stillPureRepair = {
+          ...pureCandidate,
+          warmUp: pureQuestionStyle === "direct"
+            ? "那妳會猜是哪一區？"
+            : "我好奇妳會猜是哪一區？",
+          steady: pureQuestionStyle === "direct"
+            ? "妳最近物色到哪家了？"
+            : "我也想知道妳最近物色到哪家？",
+        };
+        const recovered = {
+          warmUp: "我當時只顧著覺得很香，店名和位置真的沒記住。",
+          steady: "我只確定是路過時聞到很香，在哪裡我沒有記下來。",
+          coaching:
+            "Game 心法：她在追問逐字稿沒有的店家位置；誠實說沒記，再只接路過與很香。速約任務：這輪不約，避免為了接話亂補細節。",
+        };
+        const calls: string[] = [];
+        let claudeCalls = 0;
+        const result = await adjudicatePracticeCandidate({
+          surface: "hint",
+          practiceMode: "game",
+          candidate: pureCandidate,
+          candidateProvider: "deepseek",
+          turns: missingShopDetailTurns,
+          trustedGenerationContext: "server facts only",
+          maxProviderCalls: 4,
+          deepSeekApiKey: "deepseek-key",
+          claudeApiKey: "claude-key",
+          claudeModel: "claude-test",
+          callClaude: (args) => {
+            calls.push(`claude:${args.maxTokens}`);
+            claudeCalls += 1;
+            if (claudeCalls === 1) {
+              return Promise.resolve(
+                initialVerdict === "accept"
+                  ? validHintAdjudication({
+                    hintAssessment: ORDINARY_HINT_ASSESSMENT,
+                  })
+                  : validHintAdjudication({
+                    verdict: "repair",
+                    issues: [{ kind: "strategy_mismatch" }],
+                    repairedResult: stillPureRepair,
+                    hintAssessment: ORDINARY_HINT_ASSESSMENT,
+                  }),
+              );
+            }
+            const prompt = args.messages.map((message) => message.content).join(
+              "\n",
+            );
+            assertEquals(
+              prompt.includes(
+                "hardGuardFailureCode=hint_quality_invalid_pure_questions",
+              ),
+              true,
+            );
+            assertEquals(prompt.includes("本輪最高優先交付邊界"), true);
+            return Promise.resolve(validHintAdjudication({
+              verdict: "repair",
+              issues: [{ kind: "strategy_mismatch" }],
+              repairedResult: recovered,
+              hintAssessment: ORDINARY_HINT_ASSESSMENT,
+            }));
+          },
+          callDeepSeek: (args) => {
+            calls.push(`deepseek:${args.maxTokens}`);
+            assertEquals(args.thinking, { type: "disabled" });
+            return Promise.resolve(validHintAdjudication({
+              hintAssessment: ORDINARY_HINT_ASSESSMENT,
+            }));
+          },
+          validateCandidate: (candidate) => {
+            parseHintResult(JSON.stringify(candidate), {
+              mode: "game",
+              turns: missingShopDetailTurns,
+              enforceGeneratedQuality: true,
+              semanticAdjudicated: true,
+            });
+          },
+        });
+
+        assertEquals(calls, [
+          "claude:1800",
+          "claude:1800",
+          "deepseek:2400",
+        ]);
+        assertEquals(result.candidate, recovered);
+        assertEquals(result.providerCalls, 3);
+      },
+    );
+  }
+}
+
+Deno.test("pure-question fact recovery retries unchanged coaching before verification", async () => {
+  const ordinaryQuestionTurns = [
+    { role: "user" as const, text: "我沒有固定喝哪種，通常看當天心情。" },
+    { role: "ai" as const, text: "那你比較常點手沖還是拿鐵？" },
+  ];
+  const pureCandidate = {
+    warmUp: "妳猜我會選哪個？",
+    steady: "妳覺得我比較常點哪種？",
+    coaching:
+      "Game 心法：她知道我每天喝手沖；直接沿用偏好。速約任務：這輪不約，先聊咖啡。",
+  };
+  const stillPureRepair = {
+    ...pureCandidate,
+    warmUp: "我想知道妳會猜哪個？",
+    steady: "我也好奇妳覺得我會選哪種？",
+  };
+  const incompleteRepair = {
+    ...pureCandidate,
+    warmUp: "我沒有固定喝哪種，通常就是看當天心情。",
+    steady: "手沖或拿鐵都可能，我當天再選。",
+  };
+  const recovered = {
+    ...incompleteRepair,
+    coaching:
+      "Game 心法：她只是縮小咖啡選項；照實回答沒有固定偏好。速約任務：這輪不約，先把字面選項題答清楚。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: pureCandidate,
+    candidateProvider: "deepseek",
+    turns: ordinaryQuestionTurns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 4,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      calls.push(`claude:${args.maxTokens}`);
+      claudeCalls += 1;
+      if (claudeCalls === 1) {
+        return Promise.resolve(validHintAdjudication({
+          verdict: "repair",
+          issues: [{ kind: "unsupported_fact" }],
+          repairedResult: stillPureRepair,
+          hintAssessment: ORDINARY_HINT_ASSESSMENT,
+        }));
+      }
+      const prompt = args.messages.map((message) => message.content).join("\n");
+      assertEquals(
+        prompt.includes(
+          "warmUp、steady、coaching 三欄都必須語意實改",
+        ),
+        true,
+      );
+      return Promise.resolve(validHintAdjudication({
+        verdict: "repair",
+        issues: [
+          { kind: "unsupported_fact" },
+          { kind: "strategy_mismatch" },
+        ],
+        repairedResult: claudeCalls === 2 ? incompleteRepair : recovered,
+        hintAssessment: ORDINARY_HINT_ASSESSMENT,
+      }));
+    },
+    callDeepSeek: (args) => {
+      calls.push(`deepseek:${args.maxTokens}`);
+      return Promise.resolve(validHintAdjudication({
+        hintAssessment: ORDINARY_HINT_ASSESSMENT,
+      }));
+    },
+    validateCandidate: (candidate) => {
+      parseHintResult(JSON.stringify(candidate), {
+        mode: "game",
+        turns: ordinaryQuestionTurns,
+        enforceGeneratedQuality: true,
+        semanticAdjudicated: true,
+      });
+    },
+  });
+
+  assertEquals(calls, [
+    "claude:1800",
+    "claude:1800",
+    "claude:1800",
+    "deepseek:2400",
+  ]);
+  assertEquals(result.candidate, recovered);
+  assertEquals(result.providerCalls, 4);
+});
+
+Deno.test("live ordinary fact repair retries the same author before independent verification", async () => {
+  const rejected = {
+    warmUp: "就在公司旁邊那間，花果香很明顯。",
+    steady: "中山站轉角的小店，我還停下來買過。",
+    coaching:
+      "Game 心法：她在追問店家細節；直接補上位置。速約任務：這輪不約，先聊店家。",
+  };
+  const initialDraft = {
+    warmUp: "我路過的是轉角那間，很香。",
+    steady: "公司附近那家，聞起來像花果香。",
+    coaching: "Game 心法：先補細節。速約任務：這輪不約，繼續聊。",
+  };
+  const incompleteRepair = {
+    warmUp: "我只記得路過時很香，位置真的沒記住。",
+    steady: "當時只是經過聞到香味，店名我沒有記下來。",
+    coaching: rejected.coaching,
+  };
+  const recovered = {
+    warmUp: "我只記得路過時很香，位置真的沒記住。",
+    steady: "當時只是經過聞到很香，店名我沒有記下來。",
+    coaching:
+      "Game 心法：她在追問逐字稿沒有的位置；明說沒記，再只接路過與很香。速約任務：這輪不約，避免杜撰店家細節。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: rejected,
+    candidateProvider: "deepseek",
+    turns: missingShopDetailTurns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 4,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      calls.push(`claude:${args.maxTokens}`);
+      claudeCalls += 1;
+      if (claudeCalls === 1) {
+        return Promise.resolve(validHintAdjudication({
+          verdict: "repair",
+          issues: [{ kind: "unsupported_fact" }],
+          repairedResult: initialDraft,
+          hintAssessment: ORDINARY_HINT_ASSESSMENT,
+        }));
+      }
+      const prompt = args.messages.map((message) => message.content).join("\n");
+      assertEquals(prompt.includes("本輪最高優先交付邊界"), true);
+      return Promise.resolve(validHintAdjudication({
+        verdict: "repair",
+        issues: [{ kind: "unsupported_fact" }],
+        repairedResult: claudeCalls === 2 ? incompleteRepair : recovered,
+        // The ordinary recovery lane pins this server-side; repair authors do
+        // not get to kill a safe draft by reclassifying the transcript.
+        hintAssessment: ACTIVE_REPLY_NONCOMPLIANT_HINT_ASSESSMENT,
+      }));
+    },
+    callDeepSeek: (args) => {
+      calls.push(`deepseek:${args.maxTokens}`);
+      assertEquals(args.thinking, { type: "disabled" });
+      return Promise.resolve(validHintAdjudication({
+        hintAssessment: ORDINARY_HINT_ASSESSMENT,
+      }));
+    },
+  });
+
+  assertEquals(calls, [
+    "claude:1800",
+    "claude:1800",
+    "claude:1800",
+    "deepseek:2400",
+  ]);
+  assertEquals(result.candidate, recovered);
+  assertEquals(result.hintAssessment, ORDINARY_HINT_ASSESSMENT);
+  assertEquals(result.providerCalls, 4);
+});
+
+Deno.test("live ordinary final verifier retries a malformed contract once", async () => {
+  const recovered = {
+    warmUp: "我只記得路過時很香，位置真的沒記住。",
+    steady: "當時只是經過聞到很香，店名我沒有記下來。",
+    coaching:
+      "Game 心法：她在追問逐字稿沒有的位置；明說沒記，再只接路過與很香。速約任務：這輪不約，避免杜撰店家細節。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  let deepSeekCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: hintCandidate,
+    candidateProvider: "deepseek",
+    turns: missingShopDetailTurns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 4,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      calls.push(`claude:${args.maxTokens}`);
+      claudeCalls += 1;
+      return Promise.resolve(
+        claudeCalls === 1
+          ? validHintAdjudication({
+            verdict: "reject",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: null,
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          })
+          : validHintAdjudication({
+            verdict: "repair",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: recovered,
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          }),
+      );
+    },
+    callDeepSeek: (args) => {
+      calls.push(`deepseek:${args.maxTokens}`);
+      deepSeekCalls += 1;
+      assertEquals(args.thinking, { type: "disabled" });
+      return Promise.resolve(validHintAdjudication({
+        hintAssessment: deepSeekCalls === 1
+          ? {
+            interactionKind: "ordinary",
+            replyContract: "compliant",
+            coachingContract: "not_applicable",
+          }
+          : ORDINARY_HINT_ASSESSMENT,
+      }));
+    },
+  });
+
+  assertEquals(calls, [
+    "claude:1800",
+    "claude:1800",
+    "deepseek:2400",
+    "deepseek:2400",
+  ]);
+  assertEquals(result.candidate, recovered);
   assertEquals(result.providerCalls, 4);
 });
 
@@ -5990,7 +7001,7 @@ Deno.test("Hint verifier recovery stops after the independent verifier errors", 
   assertActiveMixedRejectionDiagnostics(error);
 });
 
-Deno.test("Hint full verifier provider failure is terminal", async () => {
+Deno.test("Hint full verifier retries once then fails closed", async () => {
   const repaired = {
     ...hintCandidate,
     warmUp: "只保留逐字稿裡真的出現過的咖啡話題。",
@@ -6035,9 +7046,9 @@ Deno.test("Hint full verifier provider failure is terminal", async () => {
     "semantic_adjudication_repair_unverified:deepseek_timeout",
   );
 
-  assertEquals(calls, ["claude", "deepseek"]);
-  assertEquals(deepSeekCalls, 1);
-  assertEquals(error.providerCalls, 2);
+  assertEquals(calls, ["claude", "deepseek", "deepseek"]);
+  assertEquals(deepSeekCalls, 2);
+  assertEquals(error.providerCalls, 3);
   assertEquals(error.issueKinds, []);
   assertEquals(error.hintAssessment, undefined);
   assertEquals(error.message.includes("semantic_hint_reject"), false);
@@ -6658,7 +7669,7 @@ Deno.test("repeated active reply hard guard uses one pinned repair and verifier"
       calls.push(`deepseek:${args.maxTokens}`);
       deepSeekCalls += 1;
       if (deepSeekCalls === 1) {
-        assertEquals(args.thinking, undefined);
+        assertEquals(args.thinking, { type: "disabled" });
         return Promise.resolve(validHintAdjudication({
           verdict: "repair",
           issues: [{ kind: "strategy_mismatch" }],

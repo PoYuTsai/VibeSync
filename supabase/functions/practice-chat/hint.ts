@@ -75,6 +75,16 @@ export type HintTacticalMove =
 
 export type HintReplyType = "warm_up" | "steady";
 
+export class HintPureQuestionError extends Error {
+  readonly fields: Array<"warmUp" | "steady">;
+
+  constructor(fields: readonly ("warmUp" | "steady")[]) {
+    super("hint_quality_invalid_pure_questions");
+    this.name = "HintPureQuestionError";
+    this.fields = [...new Set(fields)];
+  }
+}
+
 export interface HintReply {
   type: HintReplyType;
   label: "升溫回覆" | "穩住回覆";
@@ -1340,6 +1350,7 @@ function rejectBossyPasteableHintReply(
     /(?:不用|不必|別|不要)(?:先)?(?:給我|丟給我)(?:一個|個)?.{0,10}(?:標準答案|答案|片單|推薦|選項)/,
     /(?:不用|不必|別|不要)像?交作業/,
     /(?:不用|不必|別|不要).{0,10}及不及格/,
+    /(?:我|我們)(?:(?:也|就|想|要|會|可以|打算))?(?:先|再)?(?:說|講|交代|丟出|提出|分享|給出|報上)(?:一下)?(?:一個)?(?:我(?:自己)?的|自己(?:的)?)(?:標準答案|答案|選擇|選項|想法|推薦(?:名單)?|片單)/,
   ];
   const guardTarget = softenedRepairPatterns.reduce(
     (current, pattern) => current.replace(pattern, ""),
@@ -1410,10 +1421,744 @@ function requiredString(
   return capped;
 }
 
-function looksLikePureQuestion(value: string): boolean {
-  const compact = normalizedPracticeText(value);
-  return /[?？]/u.test(value) &&
-    !/(?:我|我們|讓我|害我|給妳|給你|哈哈|辛苦|聽起來|原來)/u.test(compact);
+export type HintQuestionComposition =
+  | "definitely_pure"
+  | "definitely_substantive"
+  | "ambiguous";
+
+export function classifyHintQuestionComposition(
+  value: string,
+): HintQuestionComposition {
+  const normalized = value.normalize("NFKC").replace(/\s+/gu, "").trim();
+  if (normalizedPracticeText(normalized).length === 0) {
+    return "definitely_substantive";
+  }
+
+  const interrogative =
+    /(?:哪(?:裡|裏|邊|一帶|家|間|區|個|天|部|杯|一間|一家)?|什麼(?:地方|店|名字|味道)?|怎麼|為什麼|誰|幾(?:點|天|家|間|個|位|次|部|杯)?|是否|是不是|有沒有|要不要|會不會|能不能|可不可以|還是|多(?:香|遠|久)|在(?:哪|什麼地方))/u;
+  const aNotAQuestion = /([\p{Script=Han}]{1,4})不\1/u;
+  const pastExperienceQuestion = /[\p{Script=Han}]{1,4}(?:過沒(?:有)?|了沒)$/u;
+  const partnerBareQuestion =
+    /^(?:妳|你)(?:(?:今天|明天|後天|週末|平常|通常|現在|最近))?(?:有空|喝(?:咖啡|茶|酒|飲料)?|吃過沒|去不去|忙不忙|喜不喜歡.{1,10})$/u;
+  const questionOnlyDirective =
+    /^(?:(?:那)?(?:就|先|再)?(?:(?:請)?(?:妳|你)(?:(?:可以|能|來))?(?:猜(?:猜(?:看)?|看看|一下)?|告訴我|說(?:說(?:看)?|一下|來聽聽)?|講(?:一下|講|講看)?|分享(?:一下)?|想想|看看|選|回答|講來聽聽|覺得|知道)|(?:告訴我(?:答案)?|說說(?:看)?|講講(?:看)?|猜猜(?:看)?|選一個|回答我)|(?:講|說)來聽聽|給我(?:一個)?(?:答案|提示)|(?:換|輪到)(?:妳|你)(?:說|猜|選|推薦|了))|推薦(?:一|幾)?(?:家|間|個)?(?:給我)?(?:一下|吧)?|幫我(?:挑|選|推薦)(?:一|幾)?(?:家|間|個)?(?:吧|一下)?|(?:講|說)(?:一|個)(?:家|間)?(?:妳|你)?(?:喜歡的|的答案|推薦的)?|提示我(?:一下)?|換(?:妳|你)推薦)$/u;
+  const directiveWithObject =
+    /^(?!.*我(?:也|還|都)?(?:記得|知道|確定|同意|喜歡|選))(?:(?:請)?(?:妳|你)(?:告訴我(?!的).{0,12}|說(?:啊|呀)|說說(?:看)?.{0,12}|分享一下.{0,12}|猜看看.{0,12}))$/u;
+  const questionShellPrefix =
+    /^(?:我|我們)(?:(?:也|倒|還|就|真的|其實|只是|有點|蠻|滿|很|好|超|非常|特別)){0,4}(?:(?:想|想要|希望)(?:(?:請問|請教)(?:妳|你)?|(?:請|麻煩)(?:妳|你)(?:幫我)?(?:問|猜|說|告訴我|回答|確認|推薦|選)|(?:妳|你)(?:可以|能)?(?:猜|說|告訴我|回答|推薦|選|幫我(?:問|確認|選))|(?:知道|問(?:問)?|確認(?:一下)?|了解(?:一下)?|弄清楚|搞清楚|弄懂|搞懂|聽(?:聽)?|看(?:看)?|猜(?:猜)?))|在想|好奇|問(?:妳|你)(?:喔|哦)?)/u;
+  const bareMetaQuestionLead =
+    /^(?:(?:先)?讓我(?:先|來)?(?:問清楚|弄清楚|搞清楚|問|確認|請教|打聽|探聽)(?:一下|一件事|個問題|一個問題)?|(?:我|我們)(?:(?:其實|只是|就是|正|也|倒|有點)){0,3}(?:有(?:一)?個問題(?:想|要)(?:問|請教)(?:妳|你)?|(?:想|要|來|正想|就是要)(?:問清楚|弄清楚|搞清楚|問|請問|請教|確認|打聽|探聽)(?:一下|一件事|個問題|一個問題)?))$/u;
+  // Closed token grammar for content-free question preludes. Possession
+  // (「我又有一個問題想問」) and speech acts (「再讓我問一次」) are
+  // separate branches so completed statements such as「我問過朋友」or
+  // 「我有事情要處理」cannot match by sharing one keyword.
+  const lowContentMetaPossessionClause =
+    /^(?:(?:那|其實|只是))?(?:我|我們)?(?:(?:其實|只是))?(?:(?:還|又|另)?有)(?:(?:(?:另)?一?(?:個|件))(?:小)?(?:問題|疑問|事|事情)|(?:一|另)?題|(?:小)?(?:問題|疑問|事|事情))(?:(?:想|要)?(?:再)?(?:問|請教|請益|確認)(?:妳|你)?(?:一下|一次)?)?(?:喔|哦|啊|呀)?$/u;
+  const lowContentMetaActClause =
+    /^(?:那)?(?:(?:冒昧|不好意思|順便|拜託|麻煩))?(?:(?:(?:先|再|最後)?(?:讓|容|允許)我(?:先|再|來)?)|(?:(?:換|輪到)我(?:先|再|來)?)|(?:(?:我|我們)?(?:(?:其實|只是|就是|先|再|來|想|要|正想|正|有點|還|又|能|可以|希望|打算)){0,4})|(?:先|再|最後|來|想))(?:再)?(?:請)?(?:向)?(?:妳|你)?(?:幫我)?(?:問清楚|弄(?:清楚|明白|懂)|搞(?:清楚|明白|懂)|問問看|問問|問|請教|請益|確認|打聽|探聽|猜猜看|猜猜|猜|好奇|麻煩|請求|要求|拜託|知道|了解|回答|解惑|推薦|選|聽聽|聽|看看|看)(?:妳|你)?(?:一下|一次|一個|一題|這點|這件事|個事|(?:一)?件(?:小)?事|(?:一)?個(?:小)?(?:問題|疑問|細節)|(?:妳|你)的答案|答案|說)?(?:喔|哦|啊|呀|啦|囉|吧|好了)?$/u;
+  const lowContentMetaConditionalClause =
+    /^(?:如果)?(?:妳|你)?不介意(?:我|我們)(?:問|請教|確認)(?:一下|一件事|一題)?(?:喔|哦|啊|呀)?$/u;
+  const lowContentMetaIncompleteClause =
+    /^(?:我|我們)(?:(?:其實|只是|還|也|真的|正|有點)){0,3}(?:想|希望|能|可以|要|打算|拜託|麻煩|要求|請求)(?:請|麻煩|向|跟|對)?(?:妳|你)?(?:喔|哦|啊|呀)?$/u;
+  const residualMetaCoreTokens = [
+    "方不方便問",
+    "問得太直接",
+    "確認清楚",
+    "問問看",
+    "猜猜看",
+    "問清楚",
+    "問明白",
+    "弄清楚",
+    "弄明白",
+    "搞清楚",
+    "搞明白",
+    "小問題",
+    "請教",
+    "請益",
+    "請問",
+    "拋個問題",
+    "拋個疑問",
+    "問看看",
+    "一問",
+    "追問",
+    "拋問",
+    "拋",
+    "釐清",
+    "徵詢",
+    "指點",
+    "問明",
+    "打聽",
+    "探聽",
+    "插問",
+    "補問",
+    "多問",
+    "問問",
+    "確認",
+    "好奇",
+    "回答",
+    "解答",
+    "解個惑",
+    "解惑",
+    "推薦",
+    "告訴",
+    "提示",
+    "提出",
+    "正在想",
+    "想知道",
+    "了解",
+    "聽聽",
+    "看看",
+    "猜猜",
+    "問清",
+    "弄懂",
+    "搞懂",
+    "問題",
+    "疑問",
+    "事情",
+    "細節",
+    "問",
+    "猜",
+    "選",
+    "聽",
+    "看",
+    "說",
+  ] as const;
+  const residualMetaScaffoldingTokens = [
+    "妳不介意的話",
+    "你不介意的話",
+    "若妳不介意",
+    "若你不介意",
+    "如果不介意",
+    "若不唐突的話",
+    "不唐突的話",
+    "如果方便",
+    "方便的話",
+    "不介意的話",
+    "不知道方不方便",
+    "不知道",
+    "那就讓我",
+    "請允許我",
+    "請讓我",
+    "先讓我",
+    "再讓我",
+    "允許我",
+    "容許我",
+    "輪到我",
+    "先借我",
+    "借這個機會",
+    "這個機會",
+    "不好意思",
+    "有點冒昧",
+    "冒昧地",
+    "一個小",
+    "一件事情",
+    "一件私事",
+    "一件小事",
+    "一件事",
+    "件事情",
+    "件事",
+    "個事情",
+    "個事",
+    "另一個",
+    "另一件",
+    "一個",
+    "一件",
+    "一題",
+    "一句",
+    "一聲",
+    "一回",
+    "一樁",
+    "一則",
+    "一項",
+    "這一點",
+    "這件事",
+    "妳的答案",
+    "你的答案",
+    "妳的想法",
+    "你的想法",
+    "妳的意見",
+    "你的意見",
+    "簡單的",
+    "簡單",
+    "容易的",
+    "容易",
+    "輕鬆的",
+    "輕鬆",
+    "簡短的",
+    "簡短",
+    "基本的",
+    "基本",
+    "小小的",
+    "不難的",
+    "不難",
+    "私事",
+    "一點",
+    "認真",
+    "讓我",
+    "容我",
+    "換我",
+    "借我",
+    "恕我",
+    "幫我",
+    "冒昧",
+    "唐突",
+    "失禮",
+    "禮貌地",
+    "小心地",
+    "小心",
+    "小聲",
+    "偷偷",
+    "悄悄",
+    "鄭重",
+    "正式",
+    "慎重",
+    "稍微",
+    "多嘴",
+    "鬥膽",
+    "斗膽",
+    "可不可以",
+    "方不方便",
+    "不介意",
+    "最後",
+    "另外",
+    "第二",
+    "還是",
+    "順便",
+    "其實",
+    "只是",
+    "就是",
+    "正好",
+    "超級",
+    "非常",
+    "特別",
+    "真的",
+    "一直",
+    "老早就",
+    "早就",
+    "本來",
+    "原本",
+    "昨晚",
+    "忍不住",
+    "老早",
+    "最近",
+    "今天",
+    "明天",
+    "今晚",
+    "平常",
+    "這週",
+    "下週",
+    "週末",
+    "試著",
+    "願意",
+    "有點",
+    "蠻",
+    "滿",
+    "超",
+    "很",
+    "打算",
+    "希望",
+    "拜託",
+    "麻煩",
+    "方便",
+    "多問",
+    "補問",
+    "好嗎",
+    "好了",
+    "好",
+    "的話",
+    "如果",
+    "我們",
+    "妳",
+    "你",
+    "我",
+    "所以",
+    "不然",
+    "最後",
+    "先",
+    "再",
+    "就",
+    "也",
+    "倒",
+    "還",
+    "又",
+    "另",
+    "多",
+    "補",
+    "有",
+    "想",
+    "要",
+    "能",
+    "可以",
+    "會",
+    "向",
+    "跟",
+    "請",
+    "只",
+    "個",
+    "件",
+    "題",
+    "句",
+    "小",
+    "點",
+    "話",
+    "一下",
+    "一次",
+    "一",
+    "這",
+    "的",
+    "得",
+    "太",
+    "直接",
+    "怕",
+    "但",
+    "若",
+    "那",
+    "來",
+    "正",
+    "喔",
+    "哦",
+    "啊",
+    "呀",
+    "啦",
+    "囉",
+    "吧",
+    "嗎",
+    "呢",
+  ] as const;
+  const productiveResidualMetaCoreTokens = residualMetaCoreTokens.filter(
+    (token) =>
+      ![
+        "推薦",
+        "知道",
+        "了解",
+        "聽聽",
+        "看看",
+        "猜猜",
+        "猜",
+        "選",
+        "聽",
+        "看",
+        "說",
+      ].includes(token),
+  );
+  const residualCourtesyOrIncompletePrefix =
+    /^(?:(?:(?:客氣|委婉|禮貌|小心|慎重|認真|弱弱|小聲|直接|正式|冒昧|唐突)(?:地)?)|厚著臉皮|硬著頭皮|鼓起勇氣|稍微|有點|今天|明天|後天|現在|最近|剛剛|剛才|這次|下次|改天|週末|晚點|準備|打算|正在想)+$/u;
+  const analyzeResidualMetaClause = (
+    input: string,
+  ): { metaOnly: boolean; ambiguousPrefix: boolean } => {
+    let residual = input;
+    let foundMetaCore = false;
+    for (const token of residualMetaCoreTokens) {
+      if (!residual.includes(token)) continue;
+      foundMetaCore = true;
+      residual = residual.replaceAll(token, "");
+    }
+    for (const token of residualMetaScaffoldingTokens) {
+      residual = residual.replaceAll(token, "");
+    }
+    if (foundMetaCore && residual.length === 0) {
+      return { metaOnly: true, ambiguousPrefix: false };
+    }
+
+    // Analyze the material surrounding the final ask-act. Only a closed set of
+    // provable courtesy / incomplete modifiers may be discarded. Any other
+    // non-empty prefix is user content and must survive the pure-question
+    // guard (for example「我今天很開心想問妳住哪」).
+    let lastCoreStart = -1;
+    let lastCoreEnd = -1;
+    for (const token of productiveResidualMetaCoreTokens) {
+      const index = input.lastIndexOf(token);
+      if (index < 0) continue;
+      const end = index + token.length;
+      if (end > lastCoreEnd) {
+        lastCoreStart = index;
+        lastCoreEnd = end;
+      }
+    }
+    if (lastCoreStart < 0) {
+      return { metaOnly: false, ambiguousPrefix: false };
+    }
+    let prefixResidual = input.slice(0, lastCoreStart);
+    let suffixResidual = input.slice(lastCoreEnd);
+    for (const token of residualMetaCoreTokens) {
+      prefixResidual = prefixResidual.replaceAll(token, "");
+      suffixResidual = suffixResidual.replaceAll(token, "");
+    }
+    for (const token of residualMetaScaffoldingTokens) {
+      prefixResidual = prefixResidual.replaceAll(token, "");
+      suffixResidual = suffixResidual.replaceAll(token, "");
+    }
+    if (suffixResidual.length > 0) {
+      return { metaOnly: false, ambiguousPrefix: false };
+    }
+    if (
+      prefixResidual.length === 0 ||
+      residualCourtesyOrIncompletePrefix.test(prefixResidual)
+    ) {
+      return { metaOnly: true, ambiguousPrefix: false };
+    }
+    // Unknown non-empty prefixes cannot be safely separated into courtesy
+    // (「斟酌著」) versus a real proposition (「今天很開心」) with tokens
+    // alone. Keep them ambiguous for the independent semantic reviewer; the
+    // local hard guard must not turn that uncertainty into a first-click fail.
+    return { metaOnly: false, ambiguousPrefix: true };
+  };
+  const isResidualOnlyMetaClause = (input: string): boolean =>
+    analyzeResidualMetaClause(input).metaOnly;
+  const isLowContentMetaClause = (input: string): boolean =>
+    lowContentMetaPossessionClause.test(input) ||
+    lowContentMetaActClause.test(input) ||
+    lowContentMetaConditionalClause.test(input) ||
+    lowContentMetaIncompleteClause.test(input) ||
+    isResidualOnlyMetaClause(input);
+  const isQuestionShell = (input: string): boolean => {
+    if (
+      bareMetaQuestionLead.test(input) || isLowContentMetaClause(input)
+    ) {
+      return true;
+    }
+    const shell = questionShellPrefix.exec(input);
+    return shell !== null &&
+      (shell[0].length === input.length ||
+        /^(?:一下|一件事|這件事|個問題|一個問題|件事|喔|哦|啊|呀)$/u.test(
+          input.slice(shell[0].length),
+        ) ||
+        interrogative.test(input) ||
+        aNotAQuestion.test(input) ||
+        pastExperienceQuestion.test(input) ||
+        /(?:嗎|呢|嘛)$/u.test(input) ||
+        /(?:問(?:妳|你)|(?:妳|你)(?:猜|說說|講講|告訴我|回答|推薦|選))/u
+          .test(input));
+  };
+  const standaloneGuessShell =
+    /^(?:(?:讓|換)我(?:先|來)?猜(?:猜(?:看)?|看|一下)?|我(?:先|來)?猜(?:猜(?:看)?|看|一下)?)$/u;
+  const lowContentClause =
+    /^(?:如果這不算失禮|如果(?:妳|你)願意回答|我只想了解一件事|我想先徵詢妳|我想先徵詢你|我想聽聽妳的意見|我想聽聽你的意見|我有個問題想請妳指點|我有個問題想請你指點|我|我們|換|輪到|那|所以|然後|不然|到底|一下|看看|認真問|順帶一問|突然好奇|講真的|先問一下|先說喔|老實講|說實話|老實說|說真的|坦白說|話說|對了|欸對|好啦|好吧|哈哈+|欸|嗯|喔|哦|啊|嘿)+$/u;
+
+  // Split first, classify second. A question terminator belongs only to its own
+  // clause; it can never be erased by trimming emoji or overturned by an
+  // answer-looking token inside the question (for example「位置在哪裡？」).
+  const rawClauses: Array<{
+    text: string;
+    questionTerminated: boolean;
+  }> = [];
+  let cursor = 0;
+  for (const match of normalized.matchAll(/[，,:：。！!；;?？❓❔]+/gu)) {
+    const index = match.index ?? cursor;
+    rawClauses.push({
+      text: normalized.slice(cursor, index),
+      questionTerminated: /[?？❓❔]/u.test(match[0] ?? ""),
+    });
+    cursor = index + (match[0]?.length ?? 0);
+  }
+  rawClauses.push({
+    text: normalized.slice(cursor),
+    questionTerminated: false,
+  });
+
+  const clauses: Array<{
+    text: string;
+    questionTerminated: boolean;
+  }> = [];
+  for (const rawClause of rawClauses) {
+    const pieces = rawClause.text.split(
+      /(?=(?:但|不過|可是|而且|只是)(?:我|我們))/u,
+    ).filter((piece) => piece.length > 0);
+    for (let index = 0; index < pieces.length; index += 1) {
+      clauses.push({
+        text: pieces[index] ?? "",
+        questionTerminated: rawClause.questionTerminated &&
+          index === pieces.length - 1,
+      });
+    }
+  }
+
+  const stripClausePrefix = (input: string): string => {
+    let result = input;
+    for (let index = 0; index < 4; index += 1) {
+      const stripped = result.replace(
+        /^(?:(?:但|不過|可是|而且|只是)(?=(?:我|我們|店名|位置|地點|地址|哪|在哪|什麼))|(?:順帶一問|突然好奇|講真的|先問一下|先說喔|老實講|說實話|老實說|說真的|坦白說|話說|對了|欸對|好啦|好吧|所以|然後|不然|欸|嗯|喔|哦|啊|嘿|哈哈+)|那(?=(?:我|我們|讓我|換我|妳|你|就)))/u,
+        "",
+      );
+      if (stripped === result) break;
+      result = stripped;
+    }
+    return normalizedPracticeText(result);
+  };
+
+  // These patterns are evaluated only on a clause with no question
+  // terminator. They cover interrogative-looking words used as declarative
+  // indefinites, embedded subjects, or explicit lack-of-knowledge admissions.
+  const declarativeFreeChoice =
+    /^(?:(?:對)?(?:我|我們)(?:來說)?|(?:我|我們)(?:(?:其實|真的|連|基本上|時間上)){1,3})(?:(?:今天|明天|後天|週末|平常|通常|時間上)){0,2}(?:(?:不管|無論|隨便))?(?:(?:在|去|選|挑|跟|和|對|吃|喝|看|約))?(?:去哪(?:裡|裏|邊|一帶|一?(?:家|間|區|個|天|部))?|哪(?:裡|裏|邊|一帶|條路|一?(?:家|間|區|個|天|部|杯))|什麼(?:東西|片|店|地方|類型)?|幾(?:點|天)?|誰|怎麼|在哪(?:裡|裏|邊|一帶)?)[^，,:：。！!?？；;]{0,10}都/u;
+  const declarativeImplicitFreeChoice =
+    /^(?:(?:時間上|週末|平常|通常|今天|明天|後天)(?:我|我們))?(?:去哪(?:裡|裏|邊|一帶|一?(?:家|間|區|個|天|部))?|哪(?:裡|裏|邊|一帶|條路|一?(?:家|間|區|個|天|部|杯))|什麼(?:東西|片|店|地方|類型)?|幾(?:點|天)?|誰|怎麼|在哪(?:裡|裏|邊|一帶)?)[^，,:：。！!?？；;]{0,10}都/u;
+  const declarativeWhAdmission =
+    /^(?:(?:我|我們)[^，,:：。！!?？；;]{0,16}(?:去哪(?:裡|裏|邊|一帶|一?(?:家|間|區|個|天))?|哪(?:裡|裏|邊|一帶|一?(?:家|間|區|個|天))(?:店)?|什麼(?:東西|片|店|地方|類型)?|幾(?:點|天)?|誰|在哪(?:裡|裏|邊|一帶)?)[^，,:：。！!?？；;]{0,14}|(?:去哪(?:裡|裏|邊|一帶|一?(?:家|間|區|個|天))?|哪(?:裡|裏|邊|一帶|一?(?:家|間|區|個|天))(?:店)?|什麼(?:店|地方)?|在哪(?:裡|裏|邊|一帶)?)(?:我|我們)[^，,:：。！!?？；;]{0,12})(?:不(?:知道|確定|記得|清楚)|沒(?:有)?(?:概念|印象|記(?:住)?|記得|看清楚|注意|弄清楚|決定|想好)|忘(?:了)?|想不起來(?:了)?)/u;
+  const declarativeKnowledge =
+    /^(?:(?:今天|剛剛|剛才|當時|那時|後來|現在|目前|至少|確實|真的|大概)){0,3}(?:我|我們)(?:(?:當時|其實|真的|確實|只|還|也|都|完全|根本|大概)){0,4}(?:只?(?:記得|知道|確定)|(?:沒(?:有)?|不(?:太)?|未)(?:記(?:住)?|記得|知道|確定|看(?:清楚)?|注意|留意|決定|想好|選好|搞懂|搞清楚|弄懂|弄清楚)|忘(?:了)?|記不起來(?:了)?|想不起來(?:了)?|想不出來(?:了)?|搞不清楚|聞到|看到|路過|經過)/u;
+  const declarativePolaritySubject =
+    /^(?:我|我們)(?:(?:今天|明天|後天|週末|平常|通常|現在|時間上|到底)){0,2}(?:(?:是不是|有沒有|要不要|會不會|能不能|可不可以|方不方便)|[\p{Script=Han}]{1,4}不[\p{Script=Han}]{1,4})[^，,:：。！!?？；;]{0,16}(?:不重要|無所謂|還?不(?:知道|確定)|(?:(?:還)?要|還?得)(?:先)?(?:看|等|問|確認)|取決於)/u;
+  const declarativeStillStance =
+    /^(?:我|我們)(?:(?:其實|真的|最後|目前|大概)){0,3}還是(?:(?:會|想|比較|要|得)){0,2}(?:喜歡|偏好|選|挑|喝|吃|看|去|來|覺得|認為|決定)/u;
+  const declarativeFew =
+    /^(?:我|我們)(?:有|認識|去過|看過)幾(?:個|家|間|位|天|次|部|杯)[^，,:：。！!?？；;]{2,12}$/u;
+  const declarativeWhResolution =
+    /^(?:(?:為什麼|怎麼(?:選|做|走)?)(?:(?:我|我們))?[^，,:：。！!?？；;]{0,12}(?:說不上來|還?沒決定|還在想|不清楚)|(?:我|我們)[^，,:：。！!?？；;]{0,16}(?:去哪(?:裡|裏|邊|一帶|一?(?:家|間|區|個|天))?|哪(?:裡|裏|邊|一帶|一?(?:家|間|區|個|天))(?:店)?|什麼(?:店|地方)?|在哪(?:裡|裏|邊|一帶)?)[^，,:：。！!?？；;]{0,12}(?:(?:(?:還)?要|得)看|取決於|還在想|還?不確定))/u;
+  const declarativeAdmission =
+    /^(?:(?:我|我們)[^妳你]{0,24}(?:(?:沒(?:有)?|不(?:太)?|未)(?:記(?:住)?|記得|知道|確定|看(?:清楚)?|注意|留意|決定|想好|選好|搞懂|搞清楚|弄懂|弄清楚)|忘(?:了)?|記不起來(?:了)?|想不起來(?:了)?|想不出來(?:了)?|搞不清楚)|(?:店名|位置|地點|地址|路名).{0,8}(?:我|我們)(?:忘(?:了)?|沒(?:有)?(?:記(?:住)?|記得|注意|留意|搞懂|弄清楚)))/u;
+  const declarativeIndefinite =
+    /^(?:我|我們)(?:(?:愛|喜歡|想|要|會|可以|都|就)){0,2}(?:吃|喝|去|看|選|挑|約|找|聊)?(?:去哪(?:裡|邊)?|哪(?:裡|邊|家|間|種|個|天|部|杯)|什麼(?:東西|店|地方|類型)?|誰|幾(?:點|天)?)[^，,:：。！!?？；;]{0,8}(?:都(?:行|可以|好|能|接受|沒差)|就(?:吃|喝|去|看|選|挑|約|找|聊))/u;
+  const declarativeRelativeTimeAnswer =
+    /^(?:答案)?是(?:前幾天|這幾天|那幾天|上週|上個月|昨天|今天|剛剛|之前|最近)$/u;
+  const answerAssertion =
+    /^(?:(?:我|我們)(?:猜|記得|選|想|覺得|認為|回答)(?:是|在)?[\p{Script=Han}a-z0-9]{2,}|(?:答案(?:是)?|應該是|大概是|可能是|就是)[\p{Script=Han}a-z0-9]{2,}|(?:公司|車站|捷運|中山|巷口|轉角|路口|店|位置|地點)[\p{Script=Han}a-z0-9]{2,}(?:那|這)(?:家|間|個))$/u;
+  const isAnswerConfirmation = (input: string): boolean => {
+    const tagged = /^(.*?)(?:對嗎|對吧|沒錯吧|可以嗎|是嗎|是吧|吧)$/u
+      .exec(input);
+    const assertion = tagged?.[1] ?? "";
+    return assertion.length > 0 &&
+      answerAssertion.test(assertion) &&
+      !interrogative.test(assertion) &&
+      !aNotAQuestion.test(assertion) &&
+      !pastExperienceQuestion.test(assertion);
+  };
+  const contextualProposal =
+    /^(?:我|我們)(?:(?:今天|明天|現在|最近|晚點|等等)){0,2}(?:正在|還在|在|要)?(?:加班|上班|忙|開會|趕工|通勤|吃飯|外出)[^嗎呢]{0,12}(?:可以|能不能|要不要)(?:晚點|改天|之後|等等)?(?:聊|說|回|再聊|找(?:妳|你))?(?:嗎|呢)$/u;
+  const firstPersonProposal =
+    /^(?:我|我們)(?:(?:今天|明天|晚點|改天|等等|之後))?(?:會|可以|想|要)?(?:找|約|陪|帶|回|傳|聯絡)(?:妳|你).{0,8}(?:可以嗎|好嗎|行嗎)$/u;
+  const declarativeSituation =
+    /^(?:我|我們)(?:(?:今天|明天|現在|最近|晚點|等等)){0,2}(?:正在|還在|在|要)?[^嗎呢]{0,8}(?:加班|上班|忙|開會|趕工|通勤|吃飯|外出).{0,12}(?:妳|你)呢$/u;
+  const timedAvailabilityHandoff =
+    /^(?:(?:今天|明天|後天|週末)(?:[一二三四五六七八九十\d]{1,3}點)?|[一二三四五六七八九十\d]{1,3}點)(?:我|我們)(?:有空|可以|方便).{0,8}(?:妳|你)呢$/u;
+  const concreteScheduleProposal =
+    /^(?:那)?(?:今天|明天|後天|週末|週[一二三四五六日天])?(?:早上|上午|中午|下午|晚上)?[一二三四五六七八九十\d]{1,3}(?:點|時)(?:半)?(?:我|我們)?(?:可以|方便|行|好)(?:嗎|呢)?$/u;
+  const partnerCallback =
+    /^(?:妳|你)(?:說(?=(?:上次|之前|最近|剛才|那次|妳|你))|告訴我的|分享的|講的|選的).{3,}$/u;
+  const hasDeclarativeEvidence = (input: string): boolean =>
+    declarativeFreeChoice.test(input) ||
+    declarativeImplicitFreeChoice.test(input) ||
+    declarativeWhAdmission.test(input) ||
+    declarativeKnowledge.test(input) ||
+    declarativePolaritySubject.test(input) ||
+    declarativeStillStance.test(input) ||
+    declarativeFew.test(input) ||
+    declarativeWhResolution.test(input) ||
+    declarativeAdmission.test(input) ||
+    declarativeIndefinite.test(input) ||
+    declarativeRelativeTimeAnswer.test(input);
+  const stripLowContentMetaTail = (input: string): string =>
+    input.replace(
+      /(?:一下|一次|一件事|這件事|個事|一個事|個小問題|一個小問題|個問題|一個問題|個疑問|一個疑問)$/u,
+      "",
+    );
+  const hasMetaQuestionGovernor = (input: string): boolean => {
+    const stripped = stripLowContentMetaTail(input);
+    return /(?:問題|疑問)$/u.test(input) ||
+      /(?:正在想|打算請|能請|可以請|想先聽|正好奇|來猜|拜託|麻煩|要求|請求|希望|好奇|問清楚|弄(?:清楚|明白|懂)|搞(?:清楚|明白|懂)|問問|問|請|猜猜|猜|聽聽|聽|看看|看|確認|了解|請教|請益|探聽|打聽|知道|告訴|回答|推薦|選|向|跟|對|想)$/u
+        .test(stripped);
+  };
+
+  // A punctuation-free answer can hand the conversation back to the partner.
+  // Split only after a complete first-person assertion. Meta-question shells
+  // govern the following partner clause and must never use this escape hatch.
+  const wholeCompact = normalizedPracticeText(normalized);
+  const isPartnerQuestionTail = (input: string): boolean =>
+    interrogative.test(input) ||
+    aNotAQuestion.test(input) ||
+    pastExperienceQuestion.test(input) ||
+    /(?:嗎|呢|嘛)$/u.test(input);
+  const classifyFirstPersonHandoff = (
+    input: string,
+  ): HintQuestionComposition | null => {
+    const handoff =
+      /^[^妳你]{0,12}?(?:(?:換|輪到))?(我們|我)((?:忙|累|懂|餓|飽|冷|熱|好|怕|痛|睏|愛|.{2,}?))(妳|你)(.+)$/u
+        .exec(input);
+    if (!handoff) return null;
+    const assertion = handoff[2] ?? "";
+    const ownedAssertion = `${handoff[1] ?? ""}${assertion}`;
+    const partnerTail = `${handoff[3] ?? ""}${handoff[4] ?? ""}`;
+    const assertionHasPayload = assertion.length >= 2 ||
+      /^(?:忙|累|懂|餓|飽|冷|熱|好|怕|痛|睏|愛)$/u.test(assertion);
+    const residualMetaAnalysis = analyzeResidualMetaClause(ownedAssertion);
+    const assertionIsDeclarative = hasDeclarativeEvidence(ownedAssertion) ||
+      (assertionHasPayload &&
+        !isQuestionShell(ownedAssertion) &&
+        !interrogative.test(assertion) &&
+        !aNotAQuestion.test(assertion) &&
+        !pastExperienceQuestion.test(assertion) &&
+        (!hasMetaQuestionGovernor(assertion) ||
+          residualMetaAnalysis.ambiguousPrefix) &&
+        !/(?:跟|和|對|向|給|替|把|被|讓|叫)$/u.test(assertion));
+    if (assertionIsDeclarative && isPartnerQuestionTail(partnerTail)) {
+      return residualMetaAnalysis.ambiguousPrefix
+        ? "ambiguous"
+        : "definitely_substantive";
+    }
+    return null;
+  };
+  if (!/[，,:：。！!；;]/u.test(normalized)) {
+    const handoffComposition = classifyFirstPersonHandoff(wholeCompact);
+    if (handoffComposition) return handoffComposition;
+  }
+  const fieldHandoff =
+    /^((?:店名|位置|地點|地址|路名|哪(?:家|間|裡|裏|邊)|在哪)[^妳你]{2,})(妳|你)(.+)$/u
+      .exec(wholeCompact);
+  if (fieldHandoff) {
+    const ownedAssertion = fieldHandoff[1] ?? "";
+    const partnerTail = `${fieldHandoff[2] ?? ""}${fieldHandoff[3] ?? ""}`;
+    if (
+      hasDeclarativeEvidence(ownedAssertion) &&
+      isPartnerQuestionTail(partnerTail)
+    ) {
+      return "definitely_substantive";
+    }
+  }
+  const genericHandoff = /[，,:：。！!；;]/u.test(normalized)
+    ? null
+    : /^([^妳你]{2,})(妳|你)(.+)$/u.exec(wholeCompact);
+  if (genericHandoff) {
+    const lead = genericHandoff[1] ?? "";
+    const partnerTail = `${genericHandoff[2] ?? ""}${genericHandoff[3] ?? ""}`;
+    const leadMetaAnalysis = analyzeResidualMetaClause(lead);
+    const completedHandoffEvidence =
+      /^(?:(?:最後|再)?問(?:過|到|完|了)?(?:一個)?(?:店員|人|朋友|老闆)(?:就好|了)?|我.{0,12}問過自己.{0,8}(?:選|喜歡|去|喝|吃).+)$/u;
+    if (
+      !leadMetaAnalysis.metaOnly && isPartnerQuestionTail(partnerTail)
+    ) {
+      if (completedHandoffEvidence.test(lead)) {
+        return "definitely_substantive";
+      }
+      if (leadMetaAnalysis.ambiguousPrefix) return "ambiguous";
+      if (!isQuestionShell(lead)) {
+        return hasDeclarativeEvidence(lead)
+          ? "definitely_substantive"
+          : "ambiguous";
+      }
+      // A closed, already-proven meta shell still belongs to the partner
+      // question that follows; let the normal definite-pure path handle it.
+    }
+  }
+
+  let hasQuestionIntent = false;
+  let hasSubstantiveClause = false;
+  let hasPartnerCallbackClause = false;
+  let hasAmbiguousClause = false;
+  let hasUnknownClause = false;
+  let directiveQuestionScope = false;
+  for (const clause of clauses) {
+    const compactClause = stripClausePrefix(clause.text);
+    if (
+      compactClause.length === 0 || lowContentClause.test(compactClause) ||
+      standaloneGuessShell.test(compactClause)
+    ) {
+      if (standaloneGuessShell.test(compactClause)) hasQuestionIntent = true;
+      continue;
+    }
+
+    // A comma/colon can separate a meta prelude from a complete first-person
+    // answer whose final 「妳呢／妳選哪個」 merely hands the turn back. Evaluate
+    // ownership inside each clause before a preceding meta governor can absorb
+    // that answer as part of the question.
+    const ownedHandoffComposition = classifyFirstPersonHandoff(compactClause);
+    if (ownedHandoffComposition) {
+      hasQuestionIntent = true;
+      if (ownedHandoffComposition === "definitely_substantive") {
+        hasSubstantiveClause = true;
+      } else {
+        hasAmbiguousClause = true;
+      }
+      directiveQuestionScope = false;
+      continue;
+    }
+
+    const ownedContrast = /^(?:但|不過|可是)(?:我|我們)/u.test(
+      normalizedPracticeText(clause.text),
+    ) && hasDeclarativeEvidence(compactClause);
+    if (
+      directiveQuestionScope &&
+      !ownedContrast &&
+      (interrogative.test(compactClause) ||
+        aNotAQuestion.test(compactClause) ||
+        pastExperienceQuestion.test(compactClause))
+    ) {
+      hasQuestionIntent = true;
+      directiveQuestionScope = false;
+      continue;
+    }
+    directiveQuestionScope = false;
+
+    // Only independently verified answer forms may override a question
+    // terminator. General declarative evidence is considered after ownership
+    // has been separated, so a partner's "forgot/didn't notice" wording can
+    // never be laundered into the user's answer.
+    const declarativeEvidence = hasDeclarativeEvidence(compactClause);
+    const terminalQuestion = clause.questionTerminated ||
+      /(?:嗎|呢|嘛)$/u.test(compactClause);
+    if (partnerCallback.test(compactClause)) {
+      hasPartnerCallbackClause = true;
+      if (terminalQuestion) hasQuestionIntent = true;
+      continue;
+    }
+    if (
+      isAnswerConfirmation(compactClause) ||
+      contextualProposal.test(compactClause) ||
+      firstPersonProposal.test(compactClause) ||
+      declarativeSituation.test(compactClause) ||
+      timedAvailabilityHandoff.test(compactClause) ||
+      concreteScheduleProposal.test(compactClause) ||
+      (declarativeEvidence && !terminalQuestion)
+    ) {
+      hasSubstantiveClause = true;
+      continue;
+    }
+
+    const residualMetaAnalysis = analyzeResidualMetaClause(compactClause);
+    if (
+      residualMetaAnalysis.ambiguousPrefix &&
+      hasMetaQuestionGovernor(compactClause)
+    ) {
+      hasQuestionIntent = true;
+      hasAmbiguousClause = true;
+      directiveQuestionScope = true;
+      continue;
+    }
+    if (terminalQuestion) {
+      hasQuestionIntent = true;
+      continue;
+    }
+    if (
+      questionOnlyDirective.test(compactClause) ||
+      directiveWithObject.test(compactClause)
+    ) {
+      hasQuestionIntent = true;
+      directiveQuestionScope = true;
+      continue;
+    }
+    if (isQuestionShell(compactClause)) {
+      hasQuestionIntent = true;
+      directiveQuestionScope = true;
+      continue;
+    }
+    if (
+      interrogative.test(compactClause) ||
+      aNotAQuestion.test(compactClause) ||
+      pastExperienceQuestion.test(compactClause) ||
+      partnerBareQuestion.test(compactClause)
+    ) {
+      hasQuestionIntent = true;
+      continue;
+    }
+    hasUnknownClause = true;
+  }
+
+  if (hasSubstantiveClause) return "definitely_substantive";
+  if (hasPartnerCallbackClause && hasQuestionIntent) return "ambiguous";
+  if (hasPartnerCallbackClause) return "definitely_substantive";
+  if (hasQuestionIntent && !hasAmbiguousClause && !hasUnknownClause) {
+    return "definitely_pure";
+  }
+  return hasQuestionIntent ? "ambiguous" : "definitely_substantive";
 }
 
 function hasSubstantiveHintMove(value: string): boolean {
@@ -1475,10 +2220,16 @@ function assertGeneratedHintQuality(opts: {
   ) {
     throw new Error("hint_quality_invalid_duplicate_replies");
   }
-  if (
-    looksLikePureQuestion(opts.warmUp) && looksLikePureQuestion(opts.steady)
-  ) {
-    throw new Error("hint_quality_invalid_pure_questions");
+  const pureQuestionFields = [
+    ...(classifyHintQuestionComposition(opts.warmUp) === "definitely_pure"
+      ? ["warmUp" as const]
+      : []),
+    ...(classifyHintQuestionComposition(opts.steady) === "definitely_pure"
+      ? ["steady" as const]
+      : []),
+  ];
+  if (pureQuestionFields.length === 2) {
+    throw new HintPureQuestionError(pureQuestionFields);
   }
   if (opts.parseOptions.mode === "game") {
     const coaching = normalizedPracticeText(opts.coaching);

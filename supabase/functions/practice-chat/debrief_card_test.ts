@@ -445,6 +445,51 @@ Deno.test("generated Debrief accepts concrete round-level summaries without gene
   );
 });
 
+Deno.test("generated Debrief permits a negated warning about missing shop location", () => {
+  const turns = [
+    {
+      role: "user" as const,
+      text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+    },
+    { role: "ai" as const, text: "哦？在哪啊，我最近也在物色新店。" },
+  ];
+  const safeCard = {
+    summary: "你用咖啡店開場，她有接話並追問店的位置。",
+    strengths: ["你有用咖啡店開場，也帶出路過聞到很香的具體畫面。"],
+    watchouts: ["她問店在哪，你應該先說不記得，不要亂補附近。"],
+    suggestedLine: "我真的沒記住在哪；妳最近物色新店都看哪一區？",
+    vibe: "暖",
+    dateChance: "low",
+    dateChanceReason: "她說最近也在物色新店，但還沒有主動談時間或見面。",
+    nextInviteMove: "下一步先回她沒記住位置，再延伸她最近物色新店的話題。",
+  };
+  const parseOptions = {
+    requireCompleteCard: true,
+    enforceGeneratedQuality: true,
+    turns,
+  };
+  const card = parseDebriefCard(
+    JSON.stringify(safeCard),
+    parseOptions,
+  );
+
+  assertEquals(card.watchouts, [
+    "她問店在哪，你應該先說不記得，不要亂補附近。",
+  ]);
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...safeCard,
+          suggestedLine: "在哪啊，就是公司旁邊那間啦。",
+        }),
+        parseOptions,
+      ),
+    Error,
+    "debrief_quality_invalid_unsupported_detail",
+  );
+});
+
 Deno.test("generated Beginner Debrief rejects partner facts rewritten into the pasteable line", () => {
   assertThrows(
     () =>

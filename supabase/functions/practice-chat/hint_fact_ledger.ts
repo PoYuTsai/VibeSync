@@ -2408,25 +2408,45 @@ function contextualDirectAnswerClaims(input: {
     claims.push({ ...claim, polarity: "positive", provenance });
   };
 
+  const isNonAssertiveCoachingVenueMention = (
+    match: RegExpMatchArray,
+  ): boolean => {
+    if (input.field !== "coaching") return false;
+    const matchStart = match.index ?? 0;
+    const matchEnd = matchStart + (match[0]?.length ?? 0);
+    const clauseStart = Math.max(
+      text.lastIndexOf("，", matchStart - 1),
+      text.lastIndexOf(",", matchStart - 1),
+      text.lastIndexOf("。", matchStart - 1),
+      text.lastIndexOf("；", matchStart - 1),
+      text.lastIndexOf(";", matchStart - 1),
+      text.lastIndexOf("！", matchStart - 1),
+      text.lastIndexOf("？", matchStart - 1),
+      text.lastIndexOf("\n", matchStart - 1),
+    ) + 1;
+    const followingBoundary = text.slice(matchEnd).search(
+      /[，,。；;！？!?\n]/u,
+    );
+    const clauseEnd = followingBoundary < 0
+      ? text.length
+      : matchEnd + followingBoundary;
+    const clause = text.slice(clauseStart, clauseEnd);
+    const placeAt = clause.search(
+      /(?:附近|旁邊|正對面|對面|一帶|巷口|路口|轉角|門口)/u,
+    );
+    if (placeAt < 0) return false;
+    const lead = clause.slice(0, placeAt);
+    return /(?:不要|別|避免|不可|不能|不該|切勿|禁止|勿|沒有(?:說|提|講|寫)|沒(?:說|提|講|寫)|未(?:說|提|講|寫)).{0,24}$/u
+      .test(lead) ||
+      /(?:如果|假如|要是|倘若|若(?:是)?|除非|是否|是不是|可能|也許|或許).{0,24}$/u
+        .test(lead);
+  };
+
   const asksPlace =
     /(?:在哪|哪裡|哪兒|哪間|店名|什麼店|位置|地址|怎麼去)|(?:店|店家|咖啡店|餐廳|酒吧|地方|地點).{0,8}(?:叫什麼|什麼名字)|叫什麼(?:店|餐廳|酒吧)/u
       .test(latest);
   if (asksPlace) {
     const safeDirectAnswers = new Set([
-      "附近",
-      "那附近",
-      "轉角",
-      "轉角那間",
-      "巷口",
-      "巷口那間",
-      "公司",
-      "公司旁邊",
-      "學校",
-      "學校附近",
-      "家裡",
-      "捷運站",
-      "捷運站附近",
-      "車站",
       "憑感覺",
       "不知道",
       "不記得",
@@ -2450,7 +2470,11 @@ function contextualDirectAnswerClaims(input: {
     ];
     for (const pattern of candidatePatterns) {
       for (const match of text.matchAll(pattern)) {
-        const anchor = normalizeAnchor(match[1] ?? "")
+        // Debrief/Hint analysis may warn against inventing a place or describe
+        // a conditional next step. Those clauses are not positive venue facts.
+        // Pasteable replies stay strict and never use this coaching-only escape.
+        if (isNonAssertiveCoachingVenueMention(match)) continue;
+        const baseAnchor = normalizeAnchor(match[1] ?? "")
           // 代名詞只跟著方位動詞一起剝（我在象山→象山）；裸剝「我」會把
           // 「我先站旁邊」變成假 venue candidate。
           .replace(
@@ -2463,10 +2487,25 @@ function contextualDirectAnswerClaims(input: {
             "",
           )
           .replace(/(?:見過|碰過|遇過|認識).*$/u, "")
-          .replace(
-            /(?:附近|旁邊|正對面|對面|一帶|巷口|路口|前面|後面|裡面|門口|前|後|裡)$/u,
-            "",
-          );
+          .trim();
+        // Remove a trailing unnamed-store deictic before stripping a relative
+        // suffix: 「公司附近那間」 must resolve to the evidenced 「公司」,
+        // while an invented 「公司附近那間」 still fails textual support.
+        const anchorWithoutUnnamedVenue = baseAnchor.replace(
+          /(?:那|這)(?:家|間)(?:店)?$/u,
+          "",
+        );
+        const strippedAnchor = anchorWithoutUnnamedVenue.replace(
+          /(?:附近|旁邊|正對面|對面|一帶|巷口|路口|前面|後面|裡面|門口|前|後|裡)$/u,
+          "",
+        );
+        // A relative answer with no named base (「附近」「那附近」) is still
+        // a concrete location claim when the transcript supplied no location.
+        // Keep it visible to the ledger instead of stripping it to <2 chars and
+        // silently treating the invented answer as fact-free.
+        const anchor = strippedAnchor.length >= 2
+          ? strippedAnchor
+          : anchorWithoutUnnamedVenue;
         if (
           anchor.length < 2 || safeDirectAnswers.has(anchor) ||
           /(?:我|妳|你|她|我們|想|努力|回想|記憶|招供|逗|翻|問|找|給|知道|記得|忘)/u

@@ -646,6 +646,105 @@ Deno.test("typed Hint fact ledger preserves negated advice and latest-partner qu
   });
 });
 
+Deno.test("typed Hint fact ledger carries only evidenced relative shop locations", () => {
+  for (
+    const [source, output] of [
+      [
+        "我今天路過公司附近一家聞起來很香的店。",
+        "妳問在哪，就是公司附近那間啦。",
+      ],
+      [
+        "我今天路過學校附近一家聞起來很香的店。",
+        "妳問在哪，就是學校附近那間啦。",
+      ],
+      [
+        "我今天路過轉角那間聞起來很香的店。",
+        "妳問在哪，就是轉角那間啦。",
+      ],
+      [
+        "我今天路過那附近一家聞起來很香的店。",
+        "妳問在哪，就是那附近那間啦。",
+      ],
+    ] as const
+  ) {
+    assertHintFactClaimsSupported({
+      text: output,
+      field: "reply",
+      context: buildHintFactContext({
+        turns: [
+          { role: "user", text: source },
+          { role: "ai", text: "哪裡啊？" },
+        ],
+      }),
+    });
+  }
+
+  const missingContext = buildHintFactContext({
+    turns: [
+      { role: "user", text: "我今天路過一家聞起來很香的店。" },
+      { role: "ai", text: "哪裡啊？" },
+    ],
+  });
+  for (
+    const output of [
+      "妳問在哪，就是公司附近那間啦。",
+      "妳問在哪，就是學校附近那間啦。",
+      "妳問在哪，就是轉角那間啦。",
+      "妳問在哪，就是那附近那間啦。",
+      "不是公司旁邊啦。",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        assertHintFactClaimsSupported({
+          text: output,
+          field: "reply",
+          context: missingContext,
+        }),
+      Error,
+      ERROR,
+    );
+  }
+});
+
+Deno.test("typed Hint fact ledger treats coaching warnings and conditions as non-assertive", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "我今天路過一家聞起來很香的店。" },
+      { role: "ai", text: "哪裡啊？" },
+    ],
+  });
+  for (
+    const coaching of [
+      "她問店在哪，你應該先說不記得，不要亂補附近。",
+      "她在追問位置；你沒有說公司旁邊，別補這個細節。",
+      "如果在附近，可以順勢問她要不要踩點。",
+      "假如是公司旁邊，再接上班路線。",
+      "若在附近，再看她要不要去。",
+      "可能在附近，但你其實不知道。",
+      "也許在公司旁邊，但不能亂猜。",
+      "或許在轉角，但逐字稿沒有證據。",
+    ]
+  ) {
+    assertHintFactClaimsSupported({
+      text: coaching,
+      field: "coaching",
+      context,
+    });
+  }
+
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "她問店在哪，答案就是公司旁邊。",
+        field: "coaching",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+});
+
 Deno.test("typed Hint fact ledger does not parse 台南同鄉 as a venue", () => {
   const claims = extractHintFactClaims({
     text: "台南同鄉欸，世界真小。",
