@@ -4138,6 +4138,77 @@ Deno.test("Game debrief can scrub a second fact rejection and verify at the exac
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
+Deno.test("Game debrief late Claude failover fuses verifier repair and succeeds at exactly seven calls", async () => {
+  const firstRepair = fullyRewrittenGameDebriefCandidate("first");
+  const secondTemplate = fullyRewrittenGameDebriefCandidate("second");
+  const fusedRepair = {
+    ...firstRepair,
+    suggestedLine: secondTemplate.suggestedLine,
+  };
+  const generatedCard = validDebriefJson({
+    gameBreakdown: {
+      phaseReached: "下班話題剛開始延伸。",
+      missedVariable: "尚未確認她的散步習慣。",
+      failureState: "目前還沒有具體邀約窗口。",
+      nextFirstLine: "妳通常會去哪裡散步？",
+      inviteDirection: "先接她想放空，再觀察投入。",
+    },
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger(),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      useRealSemanticAdjudicator: true,
+      deepSeekReplies: [
+        generatedCard,
+        JSON.stringify({
+          verdict: "reject",
+          issues: [{ kind: "unsafe" }],
+          repairedResult: null,
+        }),
+        JSON.stringify({
+          verdict: "repair",
+          issues: [{ kind: "strategy_mismatch" }],
+          repairedResult: firstRepair,
+        }),
+        '{"verdict":"accept","issues":[],"repairedResult":null}',
+      ],
+      claudeReplies: [
+        JSON.stringify({
+          verdict: "repair",
+          issues: [{ kind: "strategy_mismatch" }],
+          repairedResult: firstRepair,
+        }),
+        generatedCard,
+        JSON.stringify({
+          verdict: "repair",
+          issues: [{ kind: "strategy_mismatch" }],
+          repairedResult: fusedRepair,
+        }),
+      ],
+    },
+    debriefBody({
+      requestId: "game-debrief-late-failover-fused-seven-call-success",
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.provider, "anthropic");
+  assertEquals(json.failoverUsed, true);
+  assertEquals(json.card, fusedRepair);
+  assertEquals(
+    state.semanticCalls.map((call) => call.maxProviderCalls),
+    [6, 3],
+  );
+  assertEquals(state.deepSeekCalls.length, 4);
+  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(state.deepSeekCalls.length + state.claudeCalls.length, 7);
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
+});
+
 Deno.test("Game debrief stops at seven calls when the final full verifier rejects", async () => {
   const firstScrub = fullyRewrittenGameDebriefCandidate("first");
   const secondScrub = fullyRewrittenGameDebriefCandidate("second");

@@ -1730,6 +1730,685 @@ for (
   );
 }
 
+Deno.test("Debrief first-pass repair gets one verifier-authored correction and fresh full verification", async () => {
+  const corrected = {
+    ...scrubbedDebriefCandidate,
+    suggestedLine: "路過時只注意到香味，沒記店名也很正常。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  let deepSeekCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "debrief",
+    practiceMode: "game",
+    candidate: fullDebriefCandidate,
+    candidateProvider: "deepseek",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 4,
+    retryTransientFactVerifierOnce: true,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      claudeCalls += 1;
+      if (claudeCalls === 1) {
+        calls.push("claude-first-repair");
+        return Promise.resolve(JSON.stringify({
+          verdict: "repair",
+          issues: [{ kind: "strategy_mismatch" }],
+          repairedResult: scrubbedDebriefCandidate,
+        }));
+      }
+      calls.push("claude-final-accept");
+      assertEquals(args.maxTokens, 2400);
+      return Promise.resolve(JSON.stringify({
+        verdict: "accept",
+        issues: [],
+        repairedResult: null,
+      }));
+    },
+    callDeepSeek: (args) => {
+      deepSeekCalls += 1;
+      if (deepSeekCalls === 1) {
+        calls.push("deepseek-full-reject");
+        return Promise.resolve(JSON.stringify({
+          verdict: "reject",
+          issues: [{ kind: "strategy_mismatch" }],
+          repairedResult: null,
+        }));
+      }
+      calls.push("deepseek-final-repair");
+      const prompt = args.messages.map((message) => message.content).join(
+        "\n",
+      );
+      assertEquals(prompt.includes("完整 verifier 拒絕後的最後一次修復"), true);
+      assertEquals(prompt.includes("已正確且有逐字稿證據的欄位可以保留"), true);
+      return Promise.resolve(JSON.stringify({
+        verdict: "repair",
+        issues: [{ kind: "strategy_mismatch" }],
+        repairedResult: corrected,
+      }));
+    },
+  });
+
+  assertEquals(calls, [
+    "claude-first-repair",
+    "deepseek-full-reject",
+    "deepseek-final-repair",
+    "claude-final-accept",
+  ]);
+  assertEquals(result.candidate, corrected);
+  assertEquals(result.providerCalls, 4);
+  assertEquals(result.provider, "anthropic");
+});
+
+Deno.test("Debrief repair-capable verifier can fuse the final correction and preserve one verification slot", async () => {
+  const corrected = {
+    ...scrubbedDebriefCandidate,
+    suggestedLine: "路過時只注意到香味，沒記店名也很正常。",
+  };
+  const calls: string[] = [];
+  let deepSeekCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "debrief",
+    practiceMode: "game",
+    candidate: fullDebriefCandidate,
+    candidateProvider: "anthropic",
+    turns: [
+      {
+        role: "user",
+        text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+      },
+      { role: "ai", text: "噢這麼會找 哪家啊" },
+      {
+        role: "user",
+        text: "路過而已，很香，但沒進去看店名，具體是哪家我也不知道。",
+      },
+      { role: "ai", text: "那你跟我講這個是在考我通靈喔😂" },
+    ],
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 3,
+    retryTransientFactVerifierOnce: true,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      calls.push("claude-fused-repair");
+      assertEquals(args.maxTokens, 4000);
+      assertEquals(args.temperature, 0.35);
+      const schema = args.outputJsonSchema as Record<string, unknown>;
+      const properties = schema.properties as Record<
+        string,
+        Record<string, unknown>
+      >;
+      assertEquals(properties.verdict.enum, ["accept", "repair", "reject"]);
+      const prompt = args.messages.map((message) => message.content).join(
+        "\n",
+      );
+      assertEquals(prompt.includes("同一回應 repair 完整 Debrief"), true);
+      assertEquals(prompt.includes("考我通靈"), true);
+      assertEquals(prompt.includes("不是改稿者"), false);
+      assertEquals(prompt.includes("所有 fact-bearing 文字都重新寫過"), false);
+      assertEquals(prompt.includes("全卡文字重寫"), false);
+      return Promise.resolve(JSON.stringify({
+        verdict: "repair",
+        issues: [{ kind: "strategy_mismatch" }],
+        repairedResult: corrected,
+      }));
+    },
+    callDeepSeek: (args) => {
+      deepSeekCalls += 1;
+      if (deepSeekCalls === 1) {
+        calls.push("deepseek-first-repair");
+        return Promise.resolve(JSON.stringify({
+          verdict: "repair",
+          issues: [{ kind: "strategy_mismatch" }],
+          repairedResult: scrubbedDebriefCandidate,
+        }));
+      }
+      calls.push("deepseek-final-accept");
+      assertEquals(args.maxTokens, 2400);
+      return Promise.resolve(JSON.stringify({
+        verdict: "accept",
+        issues: [],
+        repairedResult: null,
+      }));
+    },
+  });
+
+  assertEquals(calls, [
+    "deepseek-first-repair",
+    "claude-fused-repair",
+    "deepseek-final-accept",
+  ]);
+  assertEquals(result.candidate, corrected);
+  assertEquals(result.providerCalls, 3);
+  assertEquals(result.provider, "deepseek");
+});
+
+Deno.test("Debrief repair-capable verifier rejects a metadata-only fused rewrite", async () => {
+  const calls: string[] = [];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "debrief",
+        practiceMode: "game",
+        candidate: fullDebriefCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        retryTransientFactVerifierOnce: true,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: () => {
+          calls.push("claude-first-repair");
+          return Promise.resolve(JSON.stringify({
+            verdict: "repair",
+            issues: [{ kind: "strategy_mismatch" }],
+            repairedResult: scrubbedDebriefCandidate,
+          }));
+        },
+        callDeepSeek: () => {
+          calls.push("deepseek-metadata-only-repair");
+          return Promise.resolve(JSON.stringify({
+            verdict: "repair",
+            issues: [{ kind: "strategy_mismatch" }],
+            repairedResult: {
+              ...scrubbedDebriefCandidate,
+              vibe: "暖",
+            },
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_rejected_cosmetic_repair",
+  );
+
+  assertEquals(error.providerCalls, 2);
+  assertEquals(calls, [
+    "claude-first-repair",
+    "deepseek-metadata-only-repair",
+  ]);
+});
+
+for (const field of ["strengths", "watchouts"] as const) {
+  Deno.test(
+    `Debrief fused verifier repair rejects a pure ${field} reorder`,
+    async () => {
+      const calls: string[] = [];
+      const reorderedCandidate = {
+        ...scrubbedDebriefCandidate,
+        [field]: [...scrubbedDebriefCandidate[field]].reverse(),
+      };
+      const error = await assertRejects(
+        () =>
+          adjudicatePracticeCandidate({
+            surface: "debrief",
+            practiceMode: "game",
+            candidate: fullDebriefCandidate,
+            candidateProvider: "deepseek",
+            turns,
+            trustedGenerationContext: "server facts only",
+            maxProviderCalls: 3,
+            retryTransientFactVerifierOnce: true,
+            deepSeekApiKey: "deepseek-key",
+            claudeApiKey: "claude-key",
+            claudeModel: "claude-test",
+            callClaude: () => {
+              calls.push("claude-first-repair");
+              return Promise.resolve(JSON.stringify({
+                verdict: "repair",
+                issues: [{ kind: "strategy_mismatch" }],
+                repairedResult: scrubbedDebriefCandidate,
+              }));
+            },
+            callDeepSeek: () => {
+              calls.push("deepseek-reorder-repair");
+              return Promise.resolve(JSON.stringify({
+                verdict: "repair",
+                issues: [{ kind: "strategy_mismatch" }],
+                repairedResult: reorderedCandidate,
+              }));
+            },
+          }),
+        SemanticAdjudicationError,
+        "semantic_adjudication_rejected_cosmetic_repair",
+      );
+
+      assertEquals(error.providerCalls, 2);
+      assertEquals(calls, [
+        "claude-first-repair",
+        "deepseek-reorder-repair",
+      ]);
+    },
+  );
+
+  Deno.test(
+    `Debrief separate verifier recovery rejects a pure ${field} reorder`,
+    async () => {
+      const calls: string[] = [];
+      let deepSeekCalls = 0;
+      const reorderedCandidate = {
+        ...scrubbedDebriefCandidate,
+        [field]: [...scrubbedDebriefCandidate[field]].reverse(),
+      };
+      const error = await assertRejects(
+        () =>
+          adjudicatePracticeCandidate({
+            surface: "debrief",
+            practiceMode: "game",
+            candidate: fullDebriefCandidate,
+            candidateProvider: "deepseek",
+            turns,
+            trustedGenerationContext: "server facts only",
+            maxProviderCalls: 4,
+            retryTransientFactVerifierOnce: true,
+            deepSeekApiKey: "deepseek-key",
+            claudeApiKey: "claude-key",
+            claudeModel: "claude-test",
+            callClaude: () => {
+              calls.push("claude-first-repair");
+              return Promise.resolve(JSON.stringify({
+                verdict: "repair",
+                issues: [{ kind: "strategy_mismatch" }],
+                repairedResult: scrubbedDebriefCandidate,
+              }));
+            },
+            callDeepSeek: () => {
+              deepSeekCalls += 1;
+              if (deepSeekCalls === 1) {
+                calls.push("deepseek-verifier-reject");
+                return Promise.resolve(JSON.stringify({
+                  verdict: "reject",
+                  issues: [{ kind: "strategy_mismatch" }],
+                  repairedResult: null,
+                }));
+              }
+              calls.push("deepseek-reorder-repair");
+              return Promise.resolve(JSON.stringify({
+                verdict: "repair",
+                issues: [{ kind: "strategy_mismatch" }],
+                repairedResult: reorderedCandidate,
+              }));
+            },
+          }),
+        SemanticAdjudicationError,
+        "semantic_adjudication_rejected_cosmetic_repair",
+      );
+
+      assertEquals(error.providerCalls, 3);
+      assertEquals(calls, [
+        "claude-first-repair",
+        "deepseek-verifier-reject",
+        "deepseek-reorder-repair",
+      ]);
+    },
+  );
+}
+
+Deno.test("Debrief fused verifier repair accepts a genuine list item rewrite after independent verification", async () => {
+  const corrected = {
+    ...scrubbedDebriefCandidate,
+    strengths: [
+      "You answered the latest question without inventing a shop name.",
+      scrubbedDebriefCandidate.strengths[1],
+    ],
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "debrief",
+    practiceMode: "game",
+    candidate: fullDebriefCandidate,
+    candidateProvider: "deepseek",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 3,
+    retryTransientFactVerifierOnce: true,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: () => {
+      claudeCalls += 1;
+      if (claudeCalls === 1) {
+        calls.push("claude-first-repair");
+        return Promise.resolve(JSON.stringify({
+          verdict: "repair",
+          issues: [{ kind: "strategy_mismatch" }],
+          repairedResult: scrubbedDebriefCandidate,
+        }));
+      }
+      calls.push("claude-final-accept");
+      return Promise.resolve(JSON.stringify({
+        verdict: "accept",
+        issues: [],
+        repairedResult: null,
+      }));
+    },
+    callDeepSeek: () => {
+      calls.push("deepseek-fused-repair");
+      return Promise.resolve(JSON.stringify({
+        verdict: "repair",
+        issues: [{ kind: "strategy_mismatch" }],
+        repairedResult: corrected,
+      }));
+    },
+  });
+
+  assertEquals(result.candidate, corrected);
+  assertEquals(result.providerCalls, 3);
+  assertEquals(calls, [
+    "claude-first-repair",
+    "deepseek-fused-repair",
+    "claude-final-accept",
+  ]);
+});
+
+for (
+  const forbiddenCase of [
+    { label: "unsafe", issues: [{ kind: "unsafe" }] },
+    {
+      label: "mixed unsafe",
+      issues: [{ kind: "strategy_mismatch" }, { kind: "unsafe" }],
+    },
+  ] as const
+) {
+  Deno.test(
+    `Debrief repair-capable verifier cannot fuse ${forbiddenCase.label}`,
+    async () => {
+      const calls: string[] = [];
+      const error = await assertRejects(
+        () =>
+          adjudicatePracticeCandidate({
+            surface: "debrief",
+            practiceMode: "game",
+            candidate: fullDebriefCandidate,
+            candidateProvider: "deepseek",
+            turns,
+            trustedGenerationContext: "server facts only",
+            maxProviderCalls: 4,
+            retryTransientFactVerifierOnce: true,
+            deepSeekApiKey: "deepseek-key",
+            claudeApiKey: "claude-key",
+            claudeModel: "claude-test",
+            callClaude: () => {
+              calls.push("claude-first-repair");
+              return Promise.resolve(JSON.stringify({
+                verdict: "repair",
+                issues: [{ kind: "strategy_mismatch" }],
+                repairedResult: scrubbedDebriefCandidate,
+              }));
+            },
+            callDeepSeek: () => {
+              calls.push("deepseek-forbidden-repair");
+              return Promise.resolve(JSON.stringify({
+                verdict: "repair",
+                issues: forbiddenCase.issues,
+                repairedResult: {
+                  ...scrubbedDebriefCandidate,
+                  suggestedLine: "先停在這裡。",
+                },
+              }));
+            },
+          }),
+        SemanticAdjudicationError,
+        "semantic_adjudication_recovery_verifier_attempted_repair",
+      );
+
+      assertEquals(error.providerCalls, 2);
+      assertEquals(calls, [
+        "claude-first-repair",
+        "deepseek-forbidden-repair",
+      ]);
+    },
+  );
+}
+
+Deno.test("Debrief final verifier cannot create a third repaired card", async () => {
+  const corrected = {
+    ...scrubbedDebriefCandidate,
+    suggestedLine: "路過時只注意到香味，沒記店名也很正常。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "debrief",
+        practiceMode: "game",
+        candidate: fullDebriefCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 5,
+        retryTransientFactVerifierOnce: true,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: () => {
+          claudeCalls += 1;
+          if (claudeCalls === 1) {
+            calls.push("claude-first-repair");
+            return Promise.resolve(JSON.stringify({
+              verdict: "repair",
+              issues: [{ kind: "strategy_mismatch" }],
+              repairedResult: scrubbedDebriefCandidate,
+            }));
+          }
+          calls.push("claude-third-repair-attempt");
+          return Promise.resolve(JSON.stringify({
+            verdict: "repair",
+            issues: [{ kind: "generic" }],
+            repairedResult: {
+              ...corrected,
+              summary: "A third rewritten card must never be accepted.",
+            },
+          }));
+        },
+        callDeepSeek: () => {
+          calls.push("deepseek-fused-repair");
+          return Promise.resolve(JSON.stringify({
+            verdict: "repair",
+            issues: [{ kind: "strategy_mismatch" }],
+            repairedResult: corrected,
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_recovery_verifier_attempted_repair",
+  );
+
+  assertEquals(error.providerCalls, 3);
+  assertEquals(calls, [
+    "claude-first-repair",
+    "deepseek-fused-repair",
+    "claude-third-repair-attempt",
+  ]);
+});
+
+Deno.test("Debrief verifier recovery cannot pass a metadata-only rewrite to final verification", async () => {
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  let deepSeekCalls = 0;
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "debrief",
+        practiceMode: "game",
+        candidate: fullDebriefCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        retryTransientFactVerifierOnce: true,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: () => {
+          claudeCalls += 1;
+          calls.push(
+            claudeCalls === 1
+              ? "claude-first-repair"
+              : "claude-unexpected-final",
+          );
+          return Promise.resolve(JSON.stringify({
+            verdict: claudeCalls === 1 ? "repair" : "accept",
+            issues: claudeCalls === 1 ? [{ kind: "strategy_mismatch" }] : [],
+            repairedResult: claudeCalls === 1 ? scrubbedDebriefCandidate : null,
+          }));
+        },
+        callDeepSeek: () => {
+          deepSeekCalls += 1;
+          if (deepSeekCalls === 1) {
+            calls.push("deepseek-full-reject");
+            return Promise.resolve(JSON.stringify({
+              verdict: "reject",
+              issues: [{ kind: "strategy_mismatch" }],
+              repairedResult: null,
+            }));
+          }
+          calls.push("deepseek-metadata-only-repair");
+          return Promise.resolve(JSON.stringify({
+            verdict: "repair",
+            issues: [{ kind: "strategy_mismatch" }],
+            repairedResult: {
+              ...scrubbedDebriefCandidate,
+              vibe: "暖",
+            },
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_rejected_cosmetic_repair",
+  );
+
+  assertEquals(error.providerCalls, 3);
+  assertEquals(calls, [
+    "claude-first-repair",
+    "deepseek-full-reject",
+    "deepseek-metadata-only-repair",
+  ]);
+});
+
+Deno.test("Debrief structured rejection repair gets one final bounded correction", async () => {
+  const corrected = {
+    ...scrubbedDebriefCandidate,
+    nextInviteMove: "先接住她最新的玩笑，再觀察是否願意延伸話題。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  let deepSeekCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "debrief",
+    practiceMode: "game",
+    candidate: fullDebriefCandidate,
+    candidateProvider: "deepseek",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 5,
+    retryTransientFactVerifierOnce: true,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: () => {
+      claudeCalls += 1;
+      if (claudeCalls === 1) {
+        calls.push("claude-initial-reject");
+        return Promise.resolve(JSON.stringify({
+          verdict: "reject",
+          issues: [{ kind: "strategy_mismatch" }],
+          repairedResult: null,
+        }));
+      }
+      if (claudeCalls === 2) {
+        calls.push("claude-first-repair");
+        return Promise.resolve(JSON.stringify({
+          verdict: "repair",
+          issues: [{ kind: "strategy_mismatch" }],
+          repairedResult: scrubbedDebriefCandidate,
+        }));
+      }
+      calls.push("claude-final-accept");
+      return Promise.resolve(JSON.stringify({
+        verdict: "accept",
+        issues: [],
+        repairedResult: null,
+      }));
+    },
+    callDeepSeek: () => {
+      deepSeekCalls += 1;
+      if (deepSeekCalls === 1) {
+        calls.push("deepseek-full-reject");
+        return Promise.resolve(JSON.stringify({
+          verdict: "reject",
+          issues: [{ kind: "generic" }],
+          repairedResult: null,
+        }));
+      }
+      calls.push("deepseek-final-repair");
+      return Promise.resolve(JSON.stringify({
+        verdict: "repair",
+        issues: [{ kind: "generic" }],
+        repairedResult: corrected,
+      }));
+    },
+  });
+
+  assertEquals(calls, [
+    "claude-initial-reject",
+    "claude-first-repair",
+    "deepseek-full-reject",
+    "deepseek-final-repair",
+    "claude-final-accept",
+  ]);
+  assertEquals(result.candidate, corrected);
+  assertEquals(result.providerCalls, 5);
+});
+
+Deno.test("Debrief unsafe verifier rejection cannot unlock a second repair", async () => {
+  const calls: string[] = [];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "debrief",
+        practiceMode: "game",
+        candidate: fullDebriefCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 6,
+        retryTransientFactVerifierOnce: true,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: () => {
+          calls.push("claude-first-repair");
+          return Promise.resolve(JSON.stringify({
+            verdict: "repair",
+            issues: [{ kind: "strategy_mismatch" }],
+            repairedResult: scrubbedDebriefCandidate,
+          }));
+        },
+        callDeepSeek: () => {
+          calls.push("deepseek-unsafe-reject");
+          return Promise.resolve(JSON.stringify({
+            verdict: "reject",
+            issues: [{ kind: "unsafe" }],
+            repairedResult: null,
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_rejected",
+  );
+
+  assertEquals(error.providerCalls, 2);
+  assertEquals(calls, ["claude-first-repair", "deepseek-unsafe-reject"]);
+});
+
 Deno.test("Debrief final full verifier rejection is terminal", async () => {
   const calls: string[] = [];
   let claudeCalls = 0;
@@ -3027,7 +3706,7 @@ for (const finalVerdict of ["accept", "reject"] as const) {
             }
             if (deepSeekCalls === 2) {
               calls.push("deepseek-full-reject");
-              assertEquals(args.maxTokens, 2400);
+              assertEquals(args.maxTokens, 4000);
               return Promise.resolve(JSON.stringify({
                 verdict: "reject",
                 issues: [{ kind: "unsupported_fact" }],
@@ -3125,6 +3804,191 @@ const factLineageSecondScrub = {
   ...rescrubbedDebriefCandidate,
   hintAssessment: pinnedDebriefHintAssessment,
 };
+
+Deno.test("Debrief fact-origin fused repair is told to preserve metadata and can pass final verification", async () => {
+  const calls: string[] = [];
+  let deepSeekCalls = 0;
+  let claudeCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "debrief",
+    practiceMode: "game",
+    candidate: factLineageDebriefCandidate,
+    candidateProvider: "anthropic",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 5,
+    retryTransientFactVerifierOnce: true,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callDeepSeek: (args) => {
+      deepSeekCalls += 1;
+      if (deepSeekCalls === 1) {
+        calls.push("deepseek-full-accept");
+        return Promise.resolve(JSON.stringify({
+          verdict: "accept",
+          issues: [],
+          repairedResult: null,
+        }));
+      }
+      calls.push("deepseek-fused-repair");
+      const prompt = args.messages.map((message) => message.content).join("\n");
+      assertEquals(args.maxTokens, 4000);
+      assertEquals(prompt.includes("本輪候選來自 fact recovery"), true);
+      assertEquals(
+        prompt.includes(
+          `server 固定值=${
+            JSON.stringify({
+              vibe: factLineageFirstScrub.vibe,
+              dateChance: factLineageFirstScrub.dateChance,
+              hintAssessment: factLineageFirstScrub.hintAssessment,
+            })
+          }`,
+        ),
+        true,
+      );
+      return Promise.resolve(JSON.stringify({
+        verdict: "repair",
+        issues: [{ kind: "strategy_mismatch" }],
+        repairedResult: factLineageSecondScrub,
+      }));
+    },
+    callClaude: (args) => {
+      claudeCalls += 1;
+      if (claudeCalls === 1) {
+        calls.push("claude-fact-reject");
+        return Promise.resolve(validFactVerification({
+          verdict: "reject",
+          issues: [{
+            kind: "unsupported_fact",
+            field: "summary",
+            reasonCode: "user_fact_unsupported",
+          }],
+        }));
+      }
+      if (claudeCalls === 2) {
+        calls.push("claude-first-scrub");
+        return Promise.resolve(JSON.stringify({
+          verdict: "repair",
+          issues: [{ kind: "unsupported_fact" }],
+          repairedResult: factLineageFirstScrub,
+        }));
+      }
+      calls.push("claude-final-accept");
+      assertEquals(args.maxTokens, 2400);
+      return Promise.resolve(JSON.stringify({
+        verdict: "accept",
+        issues: [],
+        repairedResult: null,
+      }));
+    },
+  });
+
+  assertEquals(result.candidate, factLineageSecondScrub);
+  assertEquals(result.providerCalls, 5);
+  assertEquals(calls, [
+    "deepseek-full-accept",
+    "claude-fact-reject",
+    "claude-first-scrub",
+    "deepseek-fused-repair",
+    "claude-final-accept",
+  ]);
+});
+
+for (
+  const driftCase of [
+    {
+      label: "vibe",
+      repaired: { ...factLineageSecondScrub, vibe: "暖" },
+    },
+    {
+      label: "dateChance",
+      repaired: { ...factLineageSecondScrub, dateChance: "high" },
+    },
+    {
+      label: "hidden Hint lineage",
+      repaired: {
+        ...factLineageSecondScrub,
+        hintAssessment: {
+          verdict: "revised",
+          revisedEvidenceQuote: "她後來明確改變了回應方向。",
+        },
+      },
+    },
+  ]
+) {
+  Deno.test(
+    `Debrief fused verifier repair cannot drift pinned ${driftCase.label}`,
+    async () => {
+      const calls: string[] = [];
+      let deepSeekCalls = 0;
+      let claudeCalls = 0;
+      const error = await assertRejects(
+        () =>
+          adjudicatePracticeCandidate({
+            surface: "debrief",
+            practiceMode: "game",
+            candidate: factLineageDebriefCandidate,
+            candidateProvider: "anthropic",
+            turns,
+            trustedGenerationContext: "server facts only",
+            maxProviderCalls: 5,
+            retryTransientFactVerifierOnce: true,
+            deepSeekApiKey: "deepseek-key",
+            claudeApiKey: "claude-key",
+            claudeModel: "claude-test",
+            callDeepSeek: () => {
+              deepSeekCalls += 1;
+              if (deepSeekCalls === 1) {
+                calls.push("deepseek-full-accept");
+                return Promise.resolve(JSON.stringify({
+                  verdict: "accept",
+                  issues: [],
+                  repairedResult: null,
+                }));
+              }
+              calls.push("deepseek-fused-repair");
+              return Promise.resolve(JSON.stringify({
+                verdict: "repair",
+                issues: [{ kind: "strategy_mismatch" }],
+                repairedResult: driftCase.repaired,
+              }));
+            },
+            callClaude: () => {
+              claudeCalls += 1;
+              if (claudeCalls === 1) {
+                calls.push("claude-fact-reject");
+                return Promise.resolve(validFactVerification({
+                  verdict: "reject",
+                  issues: [{
+                    kind: "unsupported_fact",
+                    field: "summary",
+                    reasonCode: "user_fact_unsupported",
+                  }],
+                }));
+              }
+              calls.push("claude-first-scrub");
+              return Promise.resolve(JSON.stringify({
+                verdict: "repair",
+                issues: [{ kind: "unsupported_fact" }],
+                repairedResult: factLineageFirstScrub,
+              }));
+            },
+          }),
+        SemanticAdjudicationError,
+        "semantic_adjudication_fact_rejection_field_unchanged",
+      );
+
+      assertEquals(error.providerCalls, 4);
+      assertEquals(calls, [
+        "deepseek-full-accept",
+        "claude-fact-reject",
+        "claude-first-scrub",
+        "deepseek-fused-repair",
+      ]);
+    },
+  );
+}
 
 for (
   const driftCase of [
