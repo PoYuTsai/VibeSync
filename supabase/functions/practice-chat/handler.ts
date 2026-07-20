@@ -67,6 +67,10 @@ import {
   parseHintResult,
 } from "./hint.ts";
 import {
+  buildHintFactContext,
+  stripUnsupportedThirdPartyDetails,
+} from "./hint_fact_ledger.ts";
+import {
   CLAUDE_HAIKU_MODEL,
   CLAUDE_SONNET_MODEL,
   type ClaudeArgs,
@@ -2878,6 +2882,11 @@ export function createPracticeChatHandler(
       const hintFailureClasses: PracticeGenerationFailureClass[] = [];
       const hintFailureCodes: string[] = [];
       let hintSemanticProviderCalls = 0;
+      // Change A：整個 attempt 迴圈保留最佳「通過完整客觀硬 gate」候選。任何一次
+      // 生成通過 parse＋接地/事實硬 gate、卻只被主觀語意複審 reject 的候選都存這裡；
+      // 即時請求在原本要 503 前改供給它（prefetch 一律不供給，維持不落快照鐵則）。
+      let bestGatePassingHint: ReturnType<typeof parseHintResult> | null = null;
+      let hintSalvageUsed = false;
       try {
         let lastError: unknown;
         const baseHintMessages = buildHintMessages({
@@ -2906,6 +2915,89 @@ export function createPracticeChatHandler(
           enforceGeneratedQuality: true,
           semanticAdjudicated: true,
         } as const;
+        // Change A/C：把一份候選跑「完整客觀硬 gate」（semanticAdjudicated=false
+        // → 接地／事實／bossy／generic 全開，只跳過主觀 LLM 複審）。過了就是有
+        // 出處、可安全供給的降級候選。失敗且屬 unsupported_detail 時，Change C
+        // 先移除未接地的第三方場地子句再重驗一次；仍不過就回 null（維持 503）。
+        const decisionedHint = (
+          parsed: ReturnType<typeof parseHintResult>,
+        ): ReturnType<typeof parseHintResult> => ({
+          ...parsed,
+          replies: parsed.replies.map((reply) => ({
+            ...reply,
+            decision: buildHintDecision({
+              turns: request.turns,
+              profile: request.profile,
+              practiceMode: request.practiceMode,
+              temperatureScore: hintTemperatureScore,
+              familiarityScore: hintFamiliarityScore,
+              partnerMood: hintPartnerMood,
+              gameState: ledgerGameState,
+              replyType: reply.type,
+              replyText: reply.text,
+              rationale: SERVER_HINT_DECISION_RATIONALE,
+            }),
+          })) as typeof parsed.replies,
+        });
+        const salvageHintCandidate = (
+          raw: { warmUp: string; steady: string; coaching: string },
+        ): ReturnType<typeof parseHintResult> | null => {
+          const strictParse = (payload: {
+            warmUp: string;
+            steady: string;
+            coaching: string;
+          }) =>
+            parseHintResult(JSON.stringify(payload), {
+              ...generatedHintParseOptions,
+              semanticAdjudicated: false,
+              deferVisibleGuardsToSemantic: false,
+            });
+          try {
+            return decisionedHint(strictParse(raw));
+          } catch (strictError) {
+            if (
+              !(strictError instanceof Error) ||
+              !strictError.message.includes("unsupported_detail")
+            ) {
+              return null;
+            }
+            const factContext = buildHintFactContext({
+              turns: request.turns,
+              sharedFactualEvidence: hintFactualEvidence.shared,
+              partnerFactualEvidence: hintFactualEvidence.partner,
+              trustedFactClaims: hintFactualEvidence.claims,
+            });
+            const stripped = {
+              warmUp: stripUnsupportedThirdPartyDetails({
+                text: raw.warmUp,
+                field: "reply",
+                context: factContext,
+              }),
+              steady: stripUnsupportedThirdPartyDetails({
+                text: raw.steady,
+                field: "reply",
+                context: factContext,
+              }),
+              coaching: stripUnsupportedThirdPartyDetails({
+                text: raw.coaching,
+                field: "coaching",
+                context: factContext,
+              }),
+            };
+            if (
+              stripped.warmUp === raw.warmUp &&
+              stripped.steady === raw.steady &&
+              stripped.coaching === raw.coaching
+            ) {
+              return null;
+            }
+            try {
+              return decisionedHint(strictParse(stripped));
+            } catch {
+              return null;
+            }
+          }
+        };
         const parseGeneratedHint = async (
           rawHint: string,
           candidateProvider: "deepseek" | "anthropic",
@@ -2994,6 +3086,17 @@ export function createPracticeChatHandler(
           } catch (error) {
             if (error instanceof SemanticAdjudicationError) {
               hintSemanticProviderCalls += error.providerCalls;
+              // Change A/B：非安全類語意 reject（不含 unsafe）時，保留這份已過
+              // 完整客觀硬 gate 的候選；unsafe 一律不留，寧可 503。prefetch 不留。
+              if (
+                bestGatePassingHint === null && !requestIsPrefetch &&
+                !error.issueKinds.includes("unsafe")
+              ) {
+                const salvaged = salvageHintCandidate(candidate);
+                if (salvaged) {
+                  bestGatePassingHint = salvaged;
+                }
+              }
             }
             throw error;
           }
@@ -3186,9 +3289,22 @@ export function createPracticeChatHandler(
           }
         }
         if (hintResult === null) {
-          throw lastError instanceof Error
-            ? lastError
-            : new Error("hint_generation_failed");
+          // Change A：生成/語意 budget 燒完仍無成功候選時，即時請求改供給本輪
+          // 保留的最佳客觀-gate 候選（僅主觀複審沒過），避免對系統性主觀 reject
+          // 反覆 503。prefetch 不供給、無保留候選則維持原本 throw→503。
+          if (!requestIsPrefetch && bestGatePassingHint !== null) {
+            hintResult = bestGatePassingHint;
+            hintSalvageUsed = true;
+            logInfo("practice_chat_hint_best_candidate_served", {
+              user: summarizeUser(user.id),
+              practiceMode: request.practiceMode,
+              semanticProviderCalls: hintSemanticProviderCalls,
+            });
+          } else {
+            throw lastError instanceof Error
+              ? lastError
+              : new Error("hint_generation_failed");
+          }
         }
       } catch (e) {
         const failureClass = hintLastFailureClass ??
@@ -3253,6 +3369,7 @@ export function createPracticeChatHandler(
         user: summarizeUser(user.id),
         provider: hintProvider,
         model: hintModel,
+        bestCandidateSalvaged: hintSalvageUsed,
         ...buildPracticeGenerationTelemetry({
           mode: "hint",
           practiceMode: request.practiceMode,
