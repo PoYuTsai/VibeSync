@@ -184,6 +184,201 @@ Deno.test("evaluateGameFsm advances soft invite toward close when maturity is hi
   assertEquals(snapshot.speedInviteDirection, "direct_invite_low_pressure");
 });
 
+Deno.test("evaluateGameFsm does not turn an activity topic into a soft invite", () => {
+  for (
+    const text of [
+      "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
+      "我今天吃飯吃太飽。",
+      "晚點自己去走走。",
+      "妳平常會去咖啡店嗎？",
+      "你平常想不想喝咖啡？",
+      "昨天我們一起喝咖啡，聊得滿開心。",
+      "上次陪妳去咖啡店，妳點了拿鐵。",
+      "我們都喜歡喝咖啡。",
+      "我們喝咖啡的口味差很多。",
+      "我們吃飯時間通常不一樣。",
+      "我跟朋友一起喝咖啡。",
+      "朋友問我要不要一起喝咖啡。",
+      "要不要推薦一家咖啡店？",
+      "我不想約你喝咖啡。",
+      "我沒有要約妳喝咖啡。",
+      "我不會帶妳去咖啡店。",
+      "我們去喝咖啡這件事已經取消了。",
+      "明天你去哪裡吃飯？",
+      "週末你會去看電影嗎？",
+      "昨天一起喝咖啡，下次再說。",
+      "朋友問我，要不要一起喝咖啡？",
+      "她說，改天一起喝咖啡。",
+      "媽媽問我要不要一起喝咖啡。",
+      "室友說週末一起看電影。",
+      "同學問我週末要不要一起喝咖啡。",
+      "昨天我問妳要不要一起喝咖啡？",
+      "上週我問妳，要不要一起喝咖啡？",
+      "昨天一起喝咖啡？下次再說。",
+      "明天一起喝咖啡，取消了。",
+      "明天一起喝咖啡，算了。",
+      "本來週末一起看電影，後來取消了。",
+      "我取消了明天一起吃飯。",
+      "我不是要約你喝咖啡。",
+      "沒有要約妳喝咖啡啦。",
+      "我沒有想約你喝咖啡。",
+      "我沒說要約妳喝咖啡。",
+      "已經取消明天一起喝咖啡。",
+      "要不要不去喝咖啡？",
+      "我不去看電影。",
+      "別喝咖啡。",
+      "好奇你週末會去哪裡吃飯？",
+      "明天去哪裡吃飯？",
+      "明天幾點吃飯？",
+      "你明天幾點吃飯？",
+      "週末會去看電影嗎？",
+      "明天打算去哪裡？",
+      "週末打算做什麼？",
+      "你明天要不要去看醫生？",
+      "今晚要打報告嗎？",
+      "明天找工作嗎？",
+      "今天晚上當班嗎？",
+      "明天會相當忙吧。",
+      "看起來會下雨吧。",
+      "大約幾點下班？",
+      "有什麼意見？",
+      "請妳推薦一家咖啡店。",
+      "我請妳不要生氣。",
+      "想不想看我上次拍的照片？",
+      "要不要看我剛拍的影片？",
+      "要不要我幫你找一間咖啡店？",
+      "要不要跟我說妳去哪家咖啡店？",
+      "想不想告訴我你去哪吃飯？",
+      "我想請你幫我看一下履歷。",
+      "我們去年看的電影你還記得嗎？",
+      "我們剛才一起吃飯不是嗎？",
+      "我們一起看電影的品味很像吧？",
+      "朋友跟我一起去看展，還不錯吧？",
+      "明天他們一起吃飯吧？",
+      "他們都有空去看電影嗎？",
+      "你明晚想不想自己去看電影？",
+      "我們喜歡一起喝咖啡嗎？",
+      "你今晚要不要去睡覺？",
+      "你週末要不要去看牙醫？",
+      "我們剛一起喝完咖啡吧？",
+      "你今晚要不要去洗澡？",
+      "你週末要不要去買菜？",
+      "你明天想不想去跑步？",
+      "你明天要不要去睡？",
+      "你下週想不想去復健？",
+      "你明天要不要去看牙？",
+      "你要不要吃藥？",
+      "你要不要打電話？",
+      "想不想看這篇文章？",
+      "她邀你出去。",
+    ]
+  ) {
+    const snapshot = evaluateGameFsm({
+      turns: [{ role: "user", text }],
+      temperatureScore: 30,
+      familiarityScore: 0,
+      partnerMood: "neutral",
+    });
+
+    assertEquals(snapshot.phase === "P5_CLOSE", false, text);
+    assert(snapshot.hidden.inv < 40, text);
+  }
+});
+
+Deno.test("evaluateGameFsm recognizes explicit and elliptical activity invitations", () => {
+  for (
+    const text of [
+      "改天要不要一起喝咖啡？",
+      "那下次找一間你會想吐槽的咖啡店走走？",
+      "有空可以約個咖啡吧鄰居",
+      "有機會約一杯 桃園或台北",
+      "這間咖啡廳感覺你會喜歡，下次有機會一起去踩點。",
+      "你這個潛水故事聽起來很會玩欸，有機會讓你當一次新手村教練。",
+      "那間展感覺可以欸，下次如果剛好都有空可以去晃一下。",
+      "明天七點信義區吃飯？",
+      "改天喝咖啡？",
+      "有空吃個飯？",
+      "我請妳喝咖啡。",
+      "這週末看電影？",
+      "要不要一起喝一杯？",
+      "哪天一起逛街？",
+      "找個時間吃頓飯？",
+      "改天一起吃拉麵？",
+      "週末要不要去逛市集？",
+      "有空一起喝一杯？",
+      "我們去吃飯吧。",
+      "明天不要喝咖啡，但週六一起去爬山吧。",
+      "我想跟你一起喝咖啡。",
+      "可以一起吃飯。",
+      "不然一起吃飯。",
+      "乾脆一起去看電影。",
+      "我們去吃飯。",
+      "跟我去看電影吧。",
+      "陪我去看展吧。",
+      "改天喝咖啡。",
+      "有空來找我。",
+      "我們週末唱歌吧。",
+      "如果妳有空，我們去喝咖啡。",
+      "等妳忙完，我們去吃飯。",
+      "妳哪天有空跟我說，我們去吃飯。",
+      "取消原本行程，改天一起喝咖啡？",
+      "明天來找我。",
+      "週末碰個面吧。",
+      "見一面吧。",
+      "下次再約。",
+      "下次再聚。",
+      "改天續攤。",
+      "走，去喝咖啡。",
+      "喝咖啡去。",
+      "來我家吃飯吧。",
+      "過來喝咖啡吧。",
+      "昨天沒喝成，但下次一起喝吧。",
+      "改天一起去野餐。",
+      "下次一起騎腳踏車。",
+      "明晚一起去聽演唱會。",
+      "找天去陶藝教室。",
+      "這週一起去游泳吧。",
+      "有空一起健身？",
+      "週末一起去露營。",
+      "我帶你去吃好吃的。",
+      "好想跟你一起喝咖啡。",
+      "好想和你一起吃飯。",
+      "我想找你改天喝咖啡。",
+      "改天到我家。",
+      "週末到我家吃飯。",
+      "有空去我家坐坐。",
+      "不是去看電影，是一起逛書店。",
+      "不是喝咖啡，是一起去吃飯。",
+    ]
+  ) {
+    const snapshot = evaluateGameFsm({
+      turns: [{ role: "user", text }],
+      temperatureScore: 30,
+      familiarityScore: 0,
+      partnerMood: "neutral",
+    });
+
+    assertEquals(snapshot.phase, "P5_CLOSE", text);
+    assertEquals(
+      snapshot.speedInviteDirection,
+      "direct_invite_low_pressure",
+      text,
+    );
+  }
+});
+
+Deno.test("evaluateGameFsm keeps a future invite that references a prior venue", () => {
+  const snapshot = evaluateGameFsm({
+    turns: [{ role: "user", text: "下次去上次那家喝咖啡。" }],
+    temperatureScore: 30,
+    familiarityScore: 0,
+    partnerMood: "neutral",
+  });
+
+  assertEquals(snapshot.phase, "P5_CLOSE");
+  assert(snapshot.hidden.inv >= 40);
+});
+
 Deno.test("applyGameLearningDelta scales game deltas but clamps the amplitude", () => {
   const basePositive = applyLearningClassification({
     heatScore: 50,
@@ -263,6 +458,233 @@ Deno.test("evaluateGameFsm marks fake familiarity and social proof as reality-an
   assert(snapshot.realityFlags.includes("fake_familiarity"));
   assert(snapshot.failureStates.includes("FRAME_OVERREACH"));
   assertEquals(snapshot.spicyLevel, "L0");
+});
+
+Deno.test("evaluateGameFsm does not treat content, venue, or ordinary past references as reality traps", () => {
+  for (
+    const text of [
+      "並不是不打算帶妳看展，只是想閱讀策展介紹。",
+      "我朋友推薦這家咖啡店，聽說甜點不錯。",
+      "同事推薦我去看這個展。",
+      "主管推薦這部電影給我。",
+      "老師推薦我看這篇文章。",
+      "朋友介紹的書店最近在辦講座。",
+      "同事給我一組 LINE 貼圖。",
+      "朋友叫我來找妳推薦的書店。",
+      "老師介紹我認識這位導演。",
+      "上次那家店的咖啡很好喝。",
+      "我上次看過這部電影，結局很有趣。",
+      "妳朋友推薦哪家店？",
+    ]
+  ) {
+    const snapshot = evaluateGameFsm({
+      turns: [{ role: "user", text }],
+      temperatureScore: 35,
+      familiarityScore: 10,
+      partnerMood: "neutral",
+    });
+
+    assertEquals(
+      snapshot.realityFlags.includes("social_proof_attempt"),
+      false,
+      text,
+    );
+    assertEquals(
+      snapshot.realityFlags.includes("fake_familiarity"),
+      false,
+      text,
+    );
+    assertEquals(snapshot.realityFlags.includes("OBVIOUS_TRAP"), false, text);
+  }
+});
+
+Deno.test("evaluateGameFsm blocks unconfirmed referral and familiarity claims", () => {
+  const cases = [
+    {
+      text: "我朋友把妳的 Line 給我，說可以直接來找妳。",
+      flag: "social_proof_attempt" as const,
+    },
+    {
+      text: "陳醫師介紹我來找妳。",
+      flag: "social_proof_attempt" as const,
+    },
+    {
+      text: "朋友介紹我們認識。",
+      flag: "social_proof_attempt" as const,
+    },
+    {
+      text: "我是 Joyce 介紹來認識妳的。",
+      flag: "social_proof_attempt" as const,
+    },
+    {
+      text: "小美把妳的 Line 給我。",
+      flag: "social_proof_attempt" as const,
+    },
+    {
+      text: "我是陳醫師的學生。",
+      flag: "social_proof_attempt" as const,
+    },
+    {
+      text: "我們上次在信義區見過，妳還記得吧。",
+      flag: "fake_familiarity" as const,
+    },
+    {
+      text: "我知道妳住台中。",
+      flag: "fake_familiarity" as const,
+    },
+    {
+      text: "我跟妳同事聊過妳。",
+      flag: "fake_familiarity" as const,
+    },
+  ];
+
+  for (const { text, flag } of cases) {
+    const snapshot = evaluateGameFsm({
+      turns: [{ role: "user", text }],
+      temperatureScore: 35,
+      familiarityScore: 10,
+      partnerMood: "neutral",
+    });
+
+    assert(snapshot.realityFlags.includes(flag), text);
+    assert(snapshot.realityFlags.includes("OBVIOUS_TRAP"), text);
+    assert(snapshot.failureStates.includes("FRAME_OVERREACH"), text);
+    assertEquals(snapshot.spicyLevel, "L0", text);
+  }
+});
+
+Deno.test("evaluateGameFsm accepts only the same fact explicitly confirmed by an earlier partner turn", () => {
+  const cases = [
+    [
+      "對，Joyce 有先跟我說她把我的 Line 給你。",
+      "我是 Joyce 給我 Line 的 Bruce。",
+    ],
+    [
+      "對，我們上次在信義區見過，我記得。",
+      "我們上次在信義區見過，妳還記得吧。",
+    ],
+    ["我住台中，平常在西區上班。", "我記得妳住台中。"],
+    ["我上次說過我喜歡爵士樂。", "妳上次說喜歡爵士樂。"],
+    [
+      "對，Joyce 是我同事，她說有跟你聊過。",
+      "我跟妳同事 Joyce 聊過。",
+    ],
+    ["對，小美有說她把我的 Line 給你。", "小美把妳的 Line 給我。"],
+    ["對，我們上次一起去看展。", "我們上次一起去看展。"],
+    ["對，我知道你是陳醫師的學生。", "我是陳醫師的學生。"],
+    ["對，朋友有跟我說是她介紹我們認識的。", "朋友介紹我們認識。"],
+    ["對，陳醫師有說是他介紹你來找我。", "陳醫師介紹我來找妳。"],
+  ] as const;
+
+  for (const [partnerConfirmation, userReference] of cases) {
+    const snapshot = evaluateGameFsm({
+      turns: [
+        { role: "ai", text: partnerConfirmation },
+        { role: "user", text: userReference },
+      ],
+      temperatureScore: 35,
+      familiarityScore: 10,
+      partnerMood: "neutral",
+    });
+
+    assertEquals(snapshot.realityFlags, [], userReference);
+    assertEquals(
+      snapshot.failureStates.includes("FRAME_OVERREACH"),
+      false,
+      userReference,
+    );
+  }
+});
+
+Deno.test("evaluateGameFsm does not accept denial, questions, or a different fact as grounding", () => {
+  const cases = [
+    [
+      "Joyce 沒有把我的 Line 給你。",
+      "我是 Joyce 給我 Line 的 Bruce。",
+      "social_proof_attempt" as const,
+    ],
+    [
+      "Joyce 有把我的 Line 給你嗎？",
+      "我是 Joyce 給我 Line 的 Bruce。",
+      "social_proof_attempt" as const,
+    ],
+    [
+      "對，Amy 有先跟我說她把我的 Line 給你。",
+      "我是 Joyce 給我 Line 的 Bruce。",
+      "social_proof_attempt" as const,
+    ],
+    [
+      "我住台北。",
+      "我知道妳住台中。",
+      "fake_familiarity" as const,
+    ],
+    [
+      "我們以前見過嗎？",
+      "我們上次在信義區見過，妳還記得吧。",
+      "fake_familiarity" as const,
+    ],
+    [
+      "對吧，我們以前見過嗎？",
+      "我們上次在信義區見過，妳還記得吧。",
+      "fake_familiarity" as const,
+    ],
+    [
+      "我不住台中。",
+      "我知道妳住台中。",
+      "fake_familiarity" as const,
+    ],
+    [
+      "對，我們上次在台中見過。",
+      "我們上次在信義區見過，妳還記得吧。",
+      "fake_familiarity" as const,
+    ],
+    [
+      "對，我介紹 Joyce 給你認識。",
+      "我是 Joyce 介紹來認識妳的。",
+      "social_proof_attempt" as const,
+    ],
+    [
+      "對，你把我的 Line 給 Joyce。",
+      "我是 Joyce 給我 Line 的 Bruce。",
+      "social_proof_attempt" as const,
+    ],
+    [
+      "對，我知道你是陳醫師的助理。",
+      "我是陳醫師的學生。",
+      "social_proof_attempt" as const,
+    ],
+  ] as const;
+
+  for (const [partnerText, userText, flag] of cases) {
+    const snapshot = evaluateGameFsm({
+      turns: [
+        { role: "ai", text: partnerText },
+        { role: "user", text: userText },
+      ],
+      temperatureScore: 35,
+      familiarityScore: 10,
+      partnerMood: "neutral",
+    });
+
+    assert(snapshot.realityFlags.includes(flag), userText);
+    assert(snapshot.realityFlags.includes("OBVIOUS_TRAP"), userText);
+    assert(snapshot.failureStates.includes("FRAME_OVERREACH"), userText);
+  }
+});
+
+Deno.test("evaluateGameFsm does not use a later partner turn to retroactively ground a claim", () => {
+  const snapshot = evaluateGameFsm({
+    turns: [
+      { role: "user", text: "我是 Joyce 給我 Line 的 Bruce。" },
+      { role: "ai", text: "對，Joyce 有先跟我說她把我的 Line 給你。" },
+    ],
+    temperatureScore: 35,
+    familiarityScore: 10,
+    partnerMood: "neutral",
+  });
+
+  assert(snapshot.realityFlags.includes("social_proof_attempt"));
+  assert(snapshot.realityFlags.includes("OBVIOUS_TRAP"));
 });
 
 Deno.test("buildGameStrategy derives distinct SR hooks", () => {

@@ -1,4 +1,5 @@
 import type { InviteStage } from "./invite_maturity.ts";
+import { looksLikeGameSoftInvite } from "./game_invite_classifier.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
 import {
   clampTemperature,
@@ -187,53 +188,402 @@ function looksLikeEngineStall(texts: string[]): boolean {
     );
 }
 
-function looksLikeSoftInvite(text: string): boolean {
+type GroundedRealityFlag = "social_proof_attempt" | "fake_familiarity";
+
+type RealityClaimKind =
+  | "contact_transfer"
+  | "relational_referral"
+  | "authority_source"
+  | "prior_interaction"
+  | "prior_statement"
+  | "partner_network"
+  | "private_knowledge";
+
+interface RealityClaim {
+  flag: GroundedRealityFlag;
+  kind: RealityClaimKind;
+  sourceKeys: string[];
+  channelKeys: string[];
+  eventKeys: string[];
+  detail: string | null;
+}
+
+const THIRD_PARTY_ROLE_TERMS = [
+  "朋友",
+  "同事",
+  "同學",
+  "老師",
+  "教授",
+  "醫師",
+  "醫生",
+  "主管",
+  "老闆",
+  "店員",
+  "家人",
+  "親戚",
+  "室友",
+  "學長",
+  "學姊",
+  "教練",
+] as const;
+
+const CONTACT_CHANNEL_TERMS = [
+  "line",
+  "instagram",
+  "ig",
+  "wechat",
+  "微信",
+  "電話",
+  "手機",
+  "聯絡方式",
+  "帳號",
+] as const;
+
+const INTERACTION_EVENT_TERMS = [
+  "見過",
+  "碰過",
+  "遇過",
+  "看過",
+  "碰面",
+  "認識",
+  "聊過",
+  "說過",
+  "吃過",
+  "喝過",
+  "去過",
+  "經過",
+  "到過",
+  "看展",
+  "看電影",
+  "喝咖啡",
+  "吃飯",
+  "逛街",
+  "散步",
+  "爬山",
+  "唱歌",
+  "旅行",
+] as const;
+
+const CHINESE_PERSON_NAME_PATTERN = String
+  .raw`(?:小[\p{Script=Han}]{1,2}?|阿[\p{Script=Han}]{1,2}?|[陳林黃張李王吳劉蔡楊許鄭謝郭洪曾邱廖賴徐周葉蘇莊呂江何蕭羅高潘簡朱鍾游彭詹胡施沈余盧梁趙顏柯翁魏孫戴范方宋鄧杜傅侯曹薛丁卓馬董唐藍蔣石古紀姚連馮歐程湯][\p{Script=Han}]{1,2}?)`;
+const THIRD_PARTY_SOURCE_PATTERN = String
+  .raw`(?:朋友|同事|同學|老師|教授|醫師|醫生|主管|老闆|店員|家人|親戚|室友|學長|學姊|教練|[\p{Script=Han}]{1,4}(?:醫師|醫生|老師|教授|教練|主管|老闆)|${CHINESE_PERSON_NAME_PATTERN}|[a-z][a-z0-9._-]{1,31})`;
+const CONTACT_CHANNEL_PATTERN = String
+  .raw`(?:line(?!貼圖|貼文|影片|照片|濾鏡|連結|文章)|instagram(?!貼文|影片|照片|濾鏡|連結|文章)|ig(?!貼文|影片|照片|濾鏡|連結|文章)|wechat|微信|電話|手機(?:號碼)?|聯絡方式|帳號)`;
+const PARTNER_RELATION_TARGET_PATTERN = String
+  .raw`(?:妳|你)(?!說的|提的|推薦的|介紹的|寫的|分享的|傳的|貼的|看的|的(?:文章|店|展|電影|朋友|同事|同學|家人))`;
+
+const SOCIAL_CONTACT_TRANSFER_PATTERN = new RegExp(
+  String
+    .raw`(?:${THIRD_PARTY_SOURCE_PATTERN}).{0,12}(?:(?:把|將)?(?:妳|你)?(?:的)?${CONTACT_CHANNEL_PATTERN}(?:給|傳|分享|提供)(?:給)?我|(?:給|傳|分享|提供)(?:給)?我.{0,6}(?:妳|你)?(?:的)?${CONTACT_CHANNEL_PATTERN}|(?:讓|叫|請)我(?:加|聯絡|找)(?:妳|你)|(?:要|拿|取得|拿到)(?:的)?(?:妳|你)?(?:的)?${CONTACT_CHANNEL_PATTERN})|(?:跟|向)(?:${THIRD_PARTY_SOURCE_PATTERN}).{0,4}(?:要|拿|取得|拿到)(?:的)?(?:妳|你)?(?:的)?${CONTACT_CHANNEL_PATTERN}|${CONTACT_CHANNEL_PATTERN}.{0,6}(?:是)?(?:${THIRD_PARTY_SOURCE_PATTERN}).{0,6}(?:給|傳|分享|提供)(?:給)?我的?`,
+  "u",
+);
+
+const SOCIAL_RELATIONAL_REFERRAL_PATTERN = new RegExp(
+  String
+    .raw`(?:${THIRD_PARTY_SOURCE_PATTERN}).{0,10}(?:(?:介紹|推薦|轉介)(?:我|我們)?(?:(?:給|來找|去找|聯絡|加|認識)${PARTNER_RELATION_TARGET_PATTERN}|認識彼此|彼此認識)|(?:叫|請|要)(?:我)?(?:來|去)?(?:找|聯絡|加|認識)${PARTNER_RELATION_TARGET_PATTERN}|(?:說|告訴我).{0,8}(?:可以|應該|要我)(?:來|去)?(?:找|聯絡|加|認識)${PARTNER_RELATION_TARGET_PATTERN})|我是(?:${THIRD_PARTY_SOURCE_PATTERN}).{0,6}(?:介紹|推薦|轉介)(?:我)?(?:來)?(?:(?:找|聯絡|加|認識)${PARTNER_RELATION_TARGET_PATTERN}的?|的(?=$|[，。！!]))`,
+  "u",
+);
+
+const SOCIAL_MUTUAL_INTRODUCTION_PATTERN = new RegExp(
+  String
+    .raw`(?:${THIRD_PARTY_SOURCE_PATTERN}).{0,8}(?:介紹|引薦)(?:我們|我(?:跟|和)${PARTNER_RELATION_TARGET_PATTERN}|${PARTNER_RELATION_TARGET_PATTERN}(?:跟|和)我)(?:彼此)?認識`,
+  "u",
+);
+
+const SOCIAL_AUTHORITY_SOURCE_PATTERN = new RegExp(
+  String
+    .raw`我是([\p{Script=Han}]{1,4}(?:醫師|醫生|老師|教授|教練|主管|老闆)|${CHINESE_PERSON_NAME_PATTERN}|[a-z][a-z0-9._-]{1,31}).{0,4}的(學生|助理|門生|徒弟|學徒|研究生|實習生)`,
+  "u",
+);
+
+const AI_CONTACT_CONFIRMATION_PATTERN = new RegExp(
+  String
+    .raw`(?:(?:把|將)?我的?${CONTACT_CHANNEL_PATTERN}.{0,4}(?:給|傳|分享|提供)(?:給)?(?:妳|你)|(?:給|傳|分享|提供)(?:給)?(?:妳|你).{0,4}我的?${CONTACT_CHANNEL_PATTERN}|(?:妳|你).{0,8}(?:拿到|收到|要到).{0,6}我的?${CONTACT_CHANNEL_PATTERN})`,
+  "u",
+);
+
+const AI_RELATIONAL_CONFIRMATION_PATTERN =
+  /(?:(?:介紹|推薦|轉介)(?:妳|你)(?:來)?(?:找|聯絡|認識|加)?我|(?:介紹|引薦)我們(?:彼此)?認識|(?:叫|請)(?:妳|你)(?:來|去)?(?:找|聯絡|加|認識)我)/u;
+
+const PRIOR_MUTUAL_INTERACTION_PATTERN =
+  /(?:(?:上次|之前|以前|那天).{0,16}(?:我們|我(?:跟|和)(?:妳|你)|(?:妳|你)(?:跟|和)我).{0,12}(?:見過|碰過|遇過|看過|碰面|認識|聊過|說過|吃過|喝過|去過|一起)|(?:我們|我(?:跟|和)(?:妳|你)|(?:妳|你)(?:跟|和)我).{0,12}(?:上次|之前|以前|那天).{0,12}(?:見過|碰過|遇過|看過|碰面|認識|聊過|說過|吃過|喝過|去過|一起)|(?:^|[，。！？!?；;])我(?:見過|碰過|遇過|認識)(?:妳|你)|(?:^|[，。！？!?；;])(?:妳|你)(?:見過|碰過|遇過|認識)我)/u;
+
+const PRIOR_PARTNER_PLACE_PATTERN =
+  /(?:上次|之前|以前|那天).{0,12}(?:經過|去過|到過).{0,8}(?:妳|你)們?(?:診所|公司|店|學校|工作室|辦公室|住處|家)/u;
+
+const PARTNER_NETWORK_PATTERN =
+  /(?:(?:我)?(?:跟|和)(?:妳|你)(?:的)?(?:朋友|同事|同學|家人|親戚|室友).{0,6}(?:聊過|說過|見過|碰過|認識)|我(?:認識|見過|碰過|聊過|問過|找過)(?:妳|你)(?:的)?(?:朋友|同事|同學|家人|親戚|室友)|(?:妳|你)(?:的)?(?:朋友|同事|同學|家人|親戚|室友).{0,8}(?:跟我說|認識我|見過我|碰過我|聊過))/u;
+
+const PRIVATE_KNOWLEDGE_PATTERN =
+  /我(?:知道|記得)(?:妳|你)(?:(?:住|住在|人在|現在在|今天|明天|昨天|每週|常去|工作在|上班在|家在|公司在|學校在|喜歡|討厭|不喜歡|生日|幾歲|電話|line|ig).{0,24}|(?:啊|呀|欸)?[。！!]?$)/u;
+
+function keysIncluded(
+  compact: string,
+  terms: readonly string[],
+): string[] {
+  return terms.filter((term) => compact.includes(term));
+}
+
+function sourceKeysFor(compact: string): string[] {
+  const keys = new Set(keysIncluded(compact, THIRD_PARTY_ROLE_TERMS));
+  for (
+    const match of compact.matchAll(
+      /[\p{Script=Han}]{1,4}(?:醫師|醫生|老師|教授|教練|主管|老闆)/gu,
+    )
+  ) {
+    keys.add(match[0]);
+  }
+  for (
+    const match of compact.matchAll(
+      /([a-z][a-z0-9._-]{1,31})(?=.{0,8}(?:給|傳|分享|提供|介紹|推薦|轉介|要(?:的)?(?:line|instagram|ig|wechat)))/gu,
+    )
+  ) {
+    if (
+      !CONTACT_CHANNEL_TERMS.includes(
+        match[1] as typeof CONTACT_CHANNEL_TERMS[number],
+      )
+    ) {
+      keys.add(match[1]);
+    }
+  }
+  for (
+    const match of compact.matchAll(
+      /(?:朋友|同事|同學|家人|親戚|室友)([a-z][a-z0-9._-]{1,31})/gu,
+    )
+  ) {
+    keys.add(match[1]);
+  }
+  for (
+    const match of compact.matchAll(
+      /([a-z][a-z0-9._-]{1,31})(?=.{0,4}的(?:學生|助理|門生|徒弟|學徒|研究生|實習生))/gu,
+    )
+  ) {
+    keys.add(match[1]);
+  }
+  for (
+    const match of compact.matchAll(
+      new RegExp(
+        String
+          .raw`(${CHINESE_PERSON_NAME_PATTERN})(?=.{0,8}(?:給|傳|分享|提供|介紹|推薦|轉介|要(?:的)?(?:line|instagram|ig|wechat)))`,
+        "gu",
+      ),
+    )
+  ) {
+    keys.add(match[1]);
+  }
+  return [...keys];
+}
+
+function cleanClaimDetail(detail?: string): string | null {
+  const cleaned = (detail ?? "")
+    .replace(/[，。！？!?、；;：:「」『』"'（）()]/gu, "")
+    .replace(/(?:吧|啊|呀|喔|哦|欸|呢)+$/u, "");
+  return cleaned.length >= 2 ? cleaned : null;
+}
+
+function priorInteractionDetailFor(compact: string): string | null {
+  const location = compact.match(
+    /(?:上次|之前|以前|那天).{0,20}?在([\p{Script=Han}a-z0-9._-]{2,16}?)(?=見過|碰過|遇過|碰面|認識|聊過|吃過|喝過)/u,
+  );
+  if (location) return cleanClaimDetail(location[1]);
+  const partnerPlace = compact.match(
+    /(?:經過|去過|到過)((?:妳|你)們?(?:診所|公司|店|學校|工作室|辦公室|住處|家))/u,
+  );
+  return cleanClaimDetail(partnerPlace?.[1]);
+}
+
+function detectRealityClaims(text: string): RealityClaim[] {
   const compact = normalized(text);
-  return includesAny(compact, [
-    "下次",
-    "改天",
-    "有空",
-    "咖啡",
-    "吃飯",
-    "走走",
-    "逛逛",
-    "你會想去",
-    "找一間",
+  const sourceKeys = sourceKeysFor(compact);
+  const channelKeys = keysIncluded(compact, CONTACT_CHANNEL_TERMS);
+  const eventKeys = keysIncluded(compact, INTERACTION_EVENT_TERMS);
+  const claims: RealityClaim[] = [];
+
+  if (SOCIAL_CONTACT_TRANSFER_PATTERN.test(compact)) {
+    claims.push({
+      flag: "social_proof_attempt",
+      kind: "contact_transfer",
+      sourceKeys,
+      channelKeys,
+      eventKeys: [],
+      detail: null,
+    });
+  }
+  if (
+    SOCIAL_RELATIONAL_REFERRAL_PATTERN.test(compact) ||
+    SOCIAL_MUTUAL_INTRODUCTION_PATTERN.test(compact)
+  ) {
+    claims.push({
+      flag: "social_proof_attempt",
+      kind: "relational_referral",
+      sourceKeys,
+      channelKeys: [],
+      eventKeys: [],
+      detail: null,
+    });
+  }
+  const authoritySource = compact.match(SOCIAL_AUTHORITY_SOURCE_PATTERN);
+  if (authoritySource) {
+    claims.push({
+      flag: "social_proof_attempt",
+      kind: "authority_source",
+      sourceKeys: [authoritySource[1]],
+      channelKeys: [],
+      eventKeys: [],
+      detail: authoritySource[2],
+    });
+  }
+
+  const priorStatement = compact.match(
+    /(?:(?:上次|之前|以前|那天).{0,6}(?:妳|你)|(?:妳|你).{0,6}(?:上次|之前|以前|那天)).{0,6}(?:說|提過|告訴我)([^，。！？!?、；;]+)/u,
+  );
+  if (priorStatement) {
+    claims.push({
+      flag: "fake_familiarity",
+      kind: "prior_statement",
+      sourceKeys: [],
+      channelKeys: [],
+      eventKeys: [],
+      detail: cleanClaimDetail(priorStatement[1]),
+    });
+  }
+  if (
+    PRIOR_MUTUAL_INTERACTION_PATTERN.test(compact) ||
+    PRIOR_PARTNER_PLACE_PATTERN.test(compact)
+  ) {
+    claims.push({
+      flag: "fake_familiarity",
+      kind: "prior_interaction",
+      sourceKeys,
+      channelKeys: [],
+      eventKeys,
+      detail: priorInteractionDetailFor(compact),
+    });
+  }
+  if (PARTNER_NETWORK_PATTERN.test(compact)) {
+    claims.push({
+      flag: "fake_familiarity",
+      kind: "partner_network",
+      sourceKeys,
+      channelKeys: [],
+      eventKeys,
+      detail: null,
+    });
+  }
+  const privateKnowledge = compact.match(
+    /我(?:知道|記得)(?:妳|你)(.{0,28})/u,
+  );
+  if (privateKnowledge && PRIVATE_KNOWLEDGE_PATTERN.test(compact)) {
+    claims.push({
+      flag: "fake_familiarity",
+      kind: "private_knowledge",
+      sourceKeys: [],
+      channelKeys,
+      eventKeys: [],
+      detail: cleanClaimDetail(privateKnowledge[1]),
+    });
+  }
+
+  return claims;
+}
+
+function isExplicitAiConfirmation(compact: string): boolean {
+  const hasAffirmativeLead =
+    /^(?:對(?:啊|呀|喔|哦|[，,。！!])|沒錯|是的|確實|當然|記得)/u
+      .test(compact);
+  if (
+    ((/[?？]|(?:嗎|哪位|誰|真的假的|什麼意思)[。！!]?$/u.test(
+      compact,
+    )) && !hasAffirmativeLead) ||
+    /(?:沒有|沒(?:有|把|給|傳|說|見|碰|聊|認識|記得|收到)|不是|不(?:住|在|喜歡|認識|記得|知道|是|會|要)|不曾|從沒|認錯|搞錯|別亂說|不要亂說)/u
+      .test(compact) ||
+    /(?:可能|也許|好像|應該|大概|聽說)/u.test(compact)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function hasSameKey(aiCompact: string, keys: readonly string[]): boolean {
+  const specificKeys = keys.filter((key) =>
+    !THIRD_PARTY_ROLE_TERMS.includes(
+      key as typeof THIRD_PARTY_ROLE_TERMS[number],
+    )
+  );
+  const effectiveKeys = specificKeys.length > 0 ? specificKeys : keys;
+  return effectiveKeys.length === 0 ||
+    effectiveKeys.some((key) => aiCompact.includes(key));
+}
+
+function aiAffirmsDetail(aiCompact: string, detail: string): boolean {
+  if (!aiCompact.includes(detail)) return false;
+  return !includesAny(aiCompact, [
+    `不${detail}`,
+    `沒${detail}`,
+    `沒有${detail}`,
+    `不是${detail}`,
   ]);
 }
 
-function realityFlagsFor(text: string): GameRealityFlag[] {
-  const compact = normalized(text);
-  const flags = new Set<GameRealityFlag>();
-  if (
-    includesAny(compact, [
-      "介紹",
-      "給我你的line",
-      "給的line",
-      "朋友給",
-      "同事給",
-      "同學給",
-      "joyce",
-      "陳醫師",
-    ])
-  ) {
-    flags.add("social_proof_attempt");
+function aiConfirmsClaim(aiText: string, claim: RealityClaim): boolean {
+  const aiCompact = normalized(aiText);
+  if (!isExplicitAiConfirmation(aiCompact)) return false;
+
+  if (claim.kind === "contact_transfer") {
+    return hasSameKey(aiCompact, claim.sourceKeys) &&
+      hasSameKey(aiCompact, claim.channelKeys) &&
+      AI_CONTACT_CONFIRMATION_PATTERN.test(aiCompact);
   }
-  if (
-    includesAny(compact, [
-      "上次",
-      "見過",
-      "你們診所",
-      "你同事",
-      "你朋友",
-      "你家人",
-      "我知道你住哪",
-      "我知道你在哪",
-      "我知道你今天",
-      "我記得你",
-    ])
-  ) {
-    flags.add("fake_familiarity");
+  if (claim.kind === "relational_referral") {
+    return hasSameKey(aiCompact, claim.sourceKeys) &&
+      AI_RELATIONAL_CONFIRMATION_PATTERN.test(aiCompact);
+  }
+  if (claim.kind === "authority_source") {
+    return claim.detail !== null &&
+      hasSameKey(aiCompact, claim.sourceKeys) &&
+      aiCompact.includes(claim.detail) &&
+      /(?:妳|你).{0,12}(?:是|當|做|確實是)?/u.test(aiCompact);
+  }
+  if (claim.kind === "prior_statement") {
+    return claim.detail !== null && aiAffirmsDetail(aiCompact, claim.detail);
+  }
+  if (claim.kind === "private_knowledge") {
+    if (claim.detail !== null) return aiAffirmsDetail(aiCompact, claim.detail);
+    return /我(?:記得|認識)(?:妳|你)/u.test(aiCompact);
+  }
+  if (claim.kind === "prior_interaction") {
+    return (claim.detail === null || aiCompact.includes(claim.detail)) &&
+      claim.eventKeys.length > 0 &&
+      hasSameKey(aiCompact, claim.eventKeys) &&
+      /(?:上次|之前|以前|那天|記得)/u.test(aiCompact) &&
+      /(?:我們|我.{0,8}(?:妳|你)|(?:妳|你).{0,8}我)/u.test(aiCompact);
+  }
+  return hasSameKey(aiCompact, claim.sourceKeys) &&
+    /(?:(?:妳|你).{0,10}(?:認識|見過|碰過|聊過)|(?:認識|見過|碰過|聊過).{0,10}(?:妳|你)|是我的?(?:朋友|同事|同學|家人|親戚|室友))/u
+      .test(aiCompact);
+}
+
+function realityFlagsFor(turns: PracticeTurn[]): GameRealityFlag[] {
+  let latestUserIndex = -1;
+  for (let index = turns.length - 1; index >= 0; index--) {
+    if (turns[index].role === "user") {
+      latestUserIndex = index;
+      break;
+    }
+  }
+  if (latestUserIndex < 0) return [];
+
+  const claims = detectRealityClaims(turns[latestUserIndex].text);
+  const priorAiTexts = turns
+    .slice(0, latestUserIndex)
+    .filter((turn) => turn.role === "ai")
+    .map((turn) => turn.text);
+  const flags = new Set<GameRealityFlag>();
+  for (const claim of claims) {
+    if (!priorAiTexts.some((text) => aiConfirmsClaim(text, claim))) {
+      flags.add(claim.flag);
+    }
   }
   if (flags.size > 0) {
     flags.add("OBVIOUS_TRAP");
@@ -382,9 +732,9 @@ export function evaluateGameFsm(opts: {
   const relationshipStage = opts.relationshipStage ??
     relationshipStageFor(familiarity, temperature).stage;
   const failures = new Set<GameFailureState>();
-  const realityFlags = realityFlagsFor(latest);
+  const realityFlags = realityFlagsFor(opts.turns);
   const pressure = questionPressureScore(texts);
-  const softInvite = looksLikeSoftInvite(latest);
+  const softInvite = looksLikeGameSoftInvite(latest);
   const overEscalated = looksOverEscalated(latest);
   const classification = opts.classification;
 
