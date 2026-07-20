@@ -333,16 +333,43 @@ function assertReviewedHintSemanticContract(
   return assessment;
 }
 
+function practiceProviderTimeoutMs(
+  maxTimeoutMs: number,
+  absoluteDeadlineAtMs: number,
+  monotonicNow: () => number,
+  deadlineErrorCode: string,
+): number {
+  const remainingMs = Math.floor(absoluteDeadlineAtMs - monotonicNow());
+  if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
+    throw new Error(deadlineErrorCode);
+  }
+  return Math.min(maxTimeoutMs, remainingMs);
+}
+
+function hintProviderTimeoutMs(
+  maxTimeoutMs: number,
+  absoluteDeadlineAtMs: number,
+  monotonicNow: () => number,
+): number {
+  return practiceProviderTimeoutMs(
+    maxTimeoutMs,
+    absoluteDeadlineAtMs,
+    monotonicNow,
+    "practice_hint_deadline_exceeded",
+  );
+}
+
 function debriefProviderTimeoutMs(
   maxTimeoutMs: number,
   absoluteDeadlineAtMs: number,
   monotonicNow: () => number,
 ): number {
-  const remainingMs = Math.floor(absoluteDeadlineAtMs - monotonicNow());
-  if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
-    throw new Error("practice_debrief_deadline_exceeded");
-  }
-  return Math.min(maxTimeoutMs, remainingMs);
+  return practiceProviderTimeoutMs(
+    maxTimeoutMs,
+    absoluteDeadlineAtMs,
+    monotonicNow,
+    "practice_debrief_deadline_exceeded",
+  );
 }
 
 function isFreshDebriefGeneration(
@@ -3005,6 +3032,11 @@ export function createPracticeChatHandler(
             attempt++
           ) {
             const hintMessages = baseHintMessages;
+            const providerTimeoutMs = hintProviderTimeoutMs(
+              hintTimeoutMs,
+              hintAbsoluteDeadlineAtMs,
+              monotonicNow,
+            );
             hintAttemptCount += 1;
             hintPromptChars = countPromptChars(hintMessages);
             const attemptStartedAt = performance.now();
@@ -3019,7 +3051,7 @@ export function createPracticeChatHandler(
                 // V4's default thinking can consume the entire visible output
                 // budget and return finish_reason=length before JSON closes.
                 thinking: { type: "disabled" },
-                timeoutMs: hintTimeoutMs,
+                timeoutMs: providerTimeoutMs,
               });
               hintResult = await parseGeneratedHint(rawHint, "deepseek");
               hintLastFailureClass = null;
@@ -3075,6 +3107,11 @@ export function createPracticeChatHandler(
               isHintFormatOrGuardError(lastError)
             ? withHintRetryInstruction(baseHintMessages, lastError)
             : baseHintMessages;
+          const providerTimeoutMs = hintProviderTimeoutMs(
+            HINT_CLAUDE_FAILOVER_TIMEOUT_MS,
+            hintAbsoluteDeadlineAtMs,
+            monotonicNow,
+          );
           hintFailoverUsed = hintAttemptCount > 0;
           hintAttemptCount += 1;
           hintPromptChars = countPromptChars(hintMessages);
@@ -3087,7 +3124,7 @@ export function createPracticeChatHandler(
               messages: hintMessages,
               maxTokens: HINT_MAX_TOKENS,
               temperature: HINT_TEMPERATURE,
-              timeoutMs: HINT_CLAUDE_FAILOVER_TIMEOUT_MS,
+              timeoutMs: providerTimeoutMs,
             });
             hintResult = await parseGeneratedHint(rawHint, "anthropic");
             hintProvider = "anthropic";

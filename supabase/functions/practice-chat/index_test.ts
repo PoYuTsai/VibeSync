@@ -5029,6 +5029,79 @@ Deno.test("beginner hint timeout also fails over to Claude", async () => {
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
+Deno.test("Hint deadline expires before generation without any provider call", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      monotonicNowValues: [0, 105000],
+      deepSeekReplies: [validHintJson()],
+      claudeReplies: [validHintJson()],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "hint-deadline-before-generation",
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json, {
+    error: "practice_hint_generation_retryable",
+    retryable: true,
+  });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 0);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
+});
+
+Deno.test("Hint generation timeouts clamp to the shared request deadline", async () => {
+  const { response, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      monotonicNowValues: [0, 90000, 100000],
+      deepSeekReplies: [new Error("deepseek_timeout")],
+      claudeReplies: [validHintJson()],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "hint-generation-timeout-clamp",
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 15000);
+  assertEquals(state.claudeCalls[0].timeoutMs, 5000);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
+Deno.test("Hint deadline expires before Claude failover without starting it", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      monotonicNowValues: [0, 80000, 105000],
+      deepSeekReplies: [new Error("deepseek_timeout")],
+      claudeReplies: [validHintJson()],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "hint-deadline-before-failover",
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json.retryable, true);
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 24000);
+  assertEquals(state.claudeCalls.length, 0);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
+});
+
 Deno.test("free Hint uses Claude Haiku when DeepSeek is unavailable", async () => {
   const { response, json, state } = await run(
     {

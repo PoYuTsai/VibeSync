@@ -222,6 +222,8 @@ interface FactRejectionMetadata {
 type HintHardGuardFailureCode = "semantic_hint_active_reply_question";
 type HintVerifierRecoveryKind =
   | "active_contract"
+  | "active_disagreement_fact"
+  | "nonactive_fact"
   | "ordinary_unsupported_fact";
 
 interface SemanticRejectionMetadata {
@@ -662,26 +664,55 @@ function hasExactSemanticIssueKinds(
     normalized.every((kind, index) => kind === expected[index]);
 }
 
+function mergedRejectionConfirmationAssessment(
+  pendingAssessment: HintSemanticAssessment | undefined,
+  verifierAssessment: HintSemanticAssessment | undefined,
+): HintSemanticAssessment | undefined {
+  if (
+    pendingAssessment?.interactionKind !== "active_consistency_test" ||
+    verifierAssessment?.interactionKind !== "active_consistency_test"
+  ) {
+    return verifierAssessment;
+  }
+  // Both reviewers inspected the same unchanged candidate. Treat either
+  // reviewer's noncompliant contract as a durable repair obligation so the
+  // confirmation pass cannot erase the first rejection's affected fields.
+  return {
+    interactionKind: "active_consistency_test",
+    replyContract: pendingAssessment.replyContract === "noncompliant" ||
+        verifierAssessment.replyContract === "noncompliant"
+      ? "noncompliant"
+      : "compliant",
+    coachingContract: pendingAssessment.coachingContract === "noncompliant" ||
+        verifierAssessment.coachingContract === "noncompliant"
+      ? "noncompliant"
+      : "compliant",
+  };
+}
+
 function hintVerifierRecoveryKind(
   pendingAssessment: HintSemanticAssessment | undefined,
   rejection: SemanticFullReviewRejectionError,
   rejectionConfirmation = false,
+  combinedIssueKinds: readonly SemanticIssueKind[] = rejection.issueKinds,
+  combinedHintAssessment: HintSemanticAssessment | undefined =
+    rejection.hintAssessment,
 ): HintVerifierRecoveryKind | null {
-  const verifierAssessment = rejection.hintAssessment;
+  const verifierAssessment = combinedHintAssessment;
   if (!pendingAssessment || !verifierAssessment) return null;
-  const strategyOnly = hasExactSemanticIssueKinds(rejection.issueKinds, [
+  const strategyOnly = hasExactSemanticIssueKinds(combinedIssueKinds, [
     "strategy_mismatch",
   ]);
   const unsupportedFactAndStrategy = hasExactSemanticIssueKinds(
-    rejection.issueKinds,
+    combinedIssueKinds,
     ["unsupported_fact", "strategy_mismatch"],
   );
   const unsupportedFactAndGeneric = hasExactSemanticIssueKinds(
-    rejection.issueKinds,
+    combinedIssueKinds,
     ["unsupported_fact", "generic"],
   );
   const unsupportedFactOnly = hasExactSemanticIssueKinds(
-    rejection.issueKinds,
+    combinedIssueKinds,
     ["unsupported_fact"],
   );
   const hasNoncompliantActiveContract =
@@ -699,9 +730,31 @@ function hintVerifierRecoveryKind(
   // terminal because they have no fully mapped repair obligation here.
   const hasMappedFactObligation = unsupportedFactOnly ||
     unsupportedFactAndGeneric;
+  const hasFactDominantRejection = unsupportedFactOnly ||
+    unsupportedFactAndStrategy;
   const hasMappedStrategyObligation =
     (strategyOnly || unsupportedFactAndStrategy) &&
     hasNoncompliantActiveContract;
+  const pendingIsActive = pendingAssessment.interactionKind ===
+    "active_consistency_test";
+  const verifierIsActive = verifierAssessment.interactionKind ===
+    "active_consistency_test";
+  if (rejectionConfirmation && hasFactDominantRejection) {
+    if (pendingIsActive !== verifierIsActive) {
+      // One active vote is never silently discarded. Pin the single repair to
+      // the active reviewer, then require the formerly non-active provider to
+      // independently change its classification on the repaired candidate.
+      return "active_disagreement_fact";
+    }
+    if (!pendingIsActive && !verifierIsActive) {
+      // ordinary and other share the same non-active delivery contract. Their
+      // label disagreement must not block a fully mapped fact rewrite.
+      return pendingAssessment.interactionKind === "ordinary" &&
+          verifierAssessment.interactionKind === "ordinary"
+        ? "ordinary_unsupported_fact"
+        : "nonactive_fact";
+    }
+  }
   const recoverableActiveContracts = (pendingActiveContractsAreCompliant ||
     (rejectionConfirmation && (hasMappedFactObligation ||
       hasMappedStrategyObligation))) &&
@@ -714,7 +767,7 @@ function hintVerifierRecoveryKind(
     return "active_contract";
   }
   if (
-    hasExactSemanticIssueKinds(rejection.issueKinds, ["unsupported_fact"]) &&
+    (unsupportedFactOnly || unsupportedFactAndStrategy) &&
     pendingAssessment.interactionKind === "ordinary" &&
     verifierAssessment.interactionKind === "ordinary"
   ) {
@@ -746,16 +799,23 @@ function assertHintVerifierRecoveryRepair(
 
   const kind = rejection.verifierRecoveryKind;
   if (!kind) return;
-  const expectedInteractionKind = kind === "active_contract"
-    ? "active_consistency_test"
-    : "ordinary";
-  if (repairedAssessment?.interactionKind !== expectedInteractionKind) {
+  const expectsActive = kind === "active_contract" ||
+    kind === "active_disagreement_fact";
+  const interactionKindMatches = expectsActive
+    ? repairedAssessment?.interactionKind === "active_consistency_test"
+    : kind === "ordinary_unsupported_fact"
+    ? repairedAssessment?.interactionKind === "ordinary"
+    : repairedAssessment !== undefined &&
+      repairedAssessment.interactionKind !== "active_consistency_test";
+  if (!interactionKindMatches) {
     throw new Error(
       "semantic_adjudication_recovery_interaction_kind_changed",
     );
   }
 
-  if (kind === "ordinary_unsupported_fact") {
+  if (
+    kind === "ordinary_unsupported_fact" || kind === "nonactive_fact"
+  ) {
     if (
       !fieldChanged("warmUp") || !fieldChanged("steady") ||
       !fieldChanged("coaching")
@@ -803,7 +863,17 @@ function hintVerifierRecoveryVerificationTarget(
   repairedAssessment: HintSemanticAssessment | undefined,
 ): HintSemanticAssessment | undefined {
   if (
-    rejection.verifierRecoveryKind !== "active_contract" ||
+    rejection.verifierRecoveryKind === "active_disagreement_fact" &&
+    repairedAssessment?.interactionKind !== "active_consistency_test"
+  ) {
+    // Unlike the two-active-reviewer lane, this recovery began with a split
+    // classification. The sole active reviewer cannot retract its own active
+    // judgment during repair and have that drift silently pinned away.
+    return repairedAssessment;
+  }
+  if (
+    (rejection.verifierRecoveryKind !== "active_contract" &&
+      rejection.verifierRecoveryKind !== "active_disagreement_fact") ||
     !repairedAssessment
   ) {
     return repairedAssessment;
@@ -1294,24 +1364,29 @@ export function buildSemanticAdjudicationMessages(opts: {
       "world_fact_unsupported"
     }）。本輪不得原樣 accept；能修時必須回 repair，且上列每個具體 field 都要實際變更、移除無證據事實或修正 owner，不能確定就 reject。`
     : "";
+  const activeDisagreementVerifierRecovery =
+    opts.priorSemanticRejection?.verifierRecoveryKind ===
+      "active_disagreement_fact";
   const pinnedActiveVerifierRecovery =
-    opts.priorSemanticRejection?.verifierRecoveryKind === "active_contract";
+    opts.priorSemanticRejection?.verifierRecoveryKind === "active_contract" ||
+    activeDisagreementVerifierRecovery;
   const priorSemanticRejectionRule = opts.priorSemanticRejection
     ? `前一個完整審查或伺服器交付硬檢已拒絕目前 Hint（issueKinds=${
       opts.priorSemanticRejection.issueKinds.join(",") || "strategy_mismatch"
     }）。${
       pinnedActiveVerifierRecovery
-        ? "兩個不同 provider 已一致判為 active_consistency_test；本輪只修內容，不重開 interactionKind，repair 的 hintAssessment 必須是 active_consistency_test/compliant/compliant，下一個不同 provider 仍會獨立重判；若無法完成就 reject。"
+        ? activeDisagreementVerifierRecovery
+          ? "兩個不同 provider 對 interactionKind 有分歧，其中一個判為 active_consistency_test；為避免洗掉主動一致性測試，本輪由該 active reviewer 只修內容並固定回 active_consistency_test/compliant/compliant，下一個原先判非 active 的 provider 必須獨立改判並認證，否則終止；若無法完成就 reject。"
+          : "兩個不同 provider 已一致判為 active_consistency_test；本輪只修內容，不重開 interactionKind，repair 的 hintAssessment 必須是 active_consistency_test/compliant/compliant，下一個不同 provider 仍會獨立重判；若無法完成就 reject。"
         : "這不是分類真值，你仍須獨立判 interactionKind。"
     }本輪是唯一保留的完整修復機會，不得原樣 accept。若逐字稿與 server context 足以產出安全完整回覆，必須回 repair，repairedResult 必須實際改動候選，hintAssessment 只評修復稿且須符合交付契約；真的無法安全修好才 reject。`
     : "";
-  const activeVerifierRecoveryAssessment =
-    opts.priorSemanticRejection?.verifierRecoveryKind === "active_contract"
-      ? opts.priorSemanticRejection.verifierHintAssessment
-      : undefined;
+  const activeVerifierRecoveryAssessment = pinnedActiveVerifierRecovery
+    ? opts.priorSemanticRejection?.verifierHintAssessment
+    : undefined;
   const activeVerifierRecoveryObligations = [
-    opts.priorSemanticRejection?.verifierRecoveryKind === "active_contract" &&
-      opts.priorSemanticRejection.issueKinds.includes("unsupported_fact")
+    pinnedActiveVerifierRecovery &&
+      opts.priorSemanticRejection?.issueKinds.includes("unsupported_fact")
       ? "因同時含 unsupported_fact，warmUp、steady、coaching 三欄都必須完整實改並刪除所有無證據主張；contract=compliant 只代表交付契約合格，不代表該欄事實安全"
       : null,
     activeVerifierRecoveryAssessment?.replyContract === "noncompliant"
@@ -1320,8 +1395,8 @@ export function buildSemanticAdjudicationMessages(opts: {
     activeVerifierRecoveryAssessment?.coachingContract === "noncompliant"
       ? "因 coachingContract 不合格，coaching 必須完整實改"
       : null,
-    opts.priorSemanticRejection?.verifierRecoveryKind === "active_contract" &&
-      opts.priorSemanticRejection.issueKinds.includes("generic")
+    pinnedActiveVerifierRecovery &&
+      opts.priorSemanticRejection?.issueKinds.includes("generic")
       ? "因同時含 generic，三欄都要依逐字稿寫得具體；有具體細節才回扣，沒有時不得硬補，不能把無證據內容只換成空泛罐頭"
       : null,
   ].filter((rule): rule is string => rule !== null).join("；");
@@ -1336,15 +1411,25 @@ export function buildSemanticAdjudicationMessages(opts: {
         opts.priorSemanticRejection.verifierHintAssessment
           ?.coachingContract ?? "noncompliant"
       }）。本輪只修 active_consistency_test 的可見交付內容，不得改判 ordinary/other；repair 時 hintAssessment 固定回 active_consistency_test/compliant/compliant，做不到就 reject。${activeVerifierRecoveryObligations}；不能只改標點或無關欄位。`
+      : activeDisagreementVerifierRecovery
+      ? `前兩個不同 provider 對 interactionKind 分歧，但其中一個判為 active_consistency_test，且拒絕集合含可完整映射的 unsupported_fact（issueKinds=${
+        opts.priorSemanticRejection?.issueKinds.join(",") ?? ""
+      }）。本輪由原 active reviewer 做唯一修復：warmUp、steady、coaching 三欄都要完整實改並刪除無證據主張，hintAssessment 固定回 active_consistency_test/compliant/compliant；不得改判 ordinary/other。下一個原非 active provider 會獨立重判，未確認 active 或未通過合約就終止。${activeVerifierRecoveryObligations}；不能只改標點或無關欄位。`
       : opts.priorSemanticRejection?.verifierRecoveryKind ===
           "ordinary_unsupported_fact"
       ? "前兩個不同 provider 都把互動判為 ordinary，但最終複核仍發現 unsupported_fact。依逐字稿獨立重判；若仍是 ordinary，必須完整重寫 warmUp、steady、coaching 三欄，刪除所有無證據偏好、頻率、動機或經歷；可保留回答後的自然問句，不得誤套 active 禁問。若分類不同或無法確定，直接 reject。"
+      : opts.priorSemanticRejection?.verifierRecoveryKind === "nonactive_fact"
+      ? "前兩個不同 provider 都判為非 active（ordinary／other）但標籤不同，且拒絕集合含可完整映射的 unsupported_fact。本輪依逐字稿獨立重判；只要仍是非 active，就完整重寫 warmUp、steady、coaching 三欄並刪除所有無證據主張。不得改判 active_consistency_test；無法確定就 reject。"
       : "";
   const priorSemanticHardGuardRule =
     opts.priorSemanticRejection?.hardGuardFailureCode ===
         "semantic_hint_active_reply_question"
       ? pinnedActiveVerifierRecovery
-        ? `hardGuardFailureCode=semantic_hint_active_reply_question：兩個不同 provider 已判定 active_consistency_test，且伺服器再次證實 ${
+        ? `hardGuardFailureCode=semantic_hint_active_reply_question：${
+          activeDisagreementVerifierRecovery
+            ? "先前至少一個 provider 判定 active_consistency_test，且本輪已保守固定為 active，"
+            : "兩個不同 provider 已判定 active_consistency_test，"
+        }伺服器再次證實 ${
           (opts.priorSemanticRejection.hardGuardReplyFields ?? [
             "warmUp",
             "steady",
@@ -1620,7 +1705,11 @@ export async function adjudicatePracticeCandidate(
               ) ||
               (candidateAwaitingVerification.verifierRecoveryKind ===
                   "ordinary_unsupported_fact" &&
-                verification.hintAssessment.interactionKind !== "ordinary"))
+                verification.hintAssessment.interactionKind !== "ordinary") ||
+              (candidateAwaitingVerification.verifierRecoveryKind ===
+                  "nonactive_fact" &&
+                verification.hintAssessment.interactionKind ===
+                  "active_consistency_test"))
           ) {
             throw new Error("semantic_hint_assessment_disagreement");
           }
@@ -1631,7 +1720,9 @@ export async function adjudicatePracticeCandidate(
           }
           if (
             candidateAwaitingVerification.verifierRecoveryKind ===
-              "active_contract"
+              "active_contract" ||
+            candidateAwaitingVerification.verifierRecoveryKind ===
+              "active_disagreement_fact"
           ) {
             independentlyVerifiedHintAssessment = verification.hintAssessment;
           }
@@ -1651,6 +1742,12 @@ export async function adjudicatePracticeCandidate(
             REPAIR_VERIFICATION_MAX_TOKENS,
             semanticFactVerificationJsonSchema(factFields, args.surface),
             timeoutMs,
+            // This lane emits only a binary verdict plus bounded enum issues.
+            // DeepSeek V4 thinking can consume the 1,200-token visible budget
+            // before the JSON closes, especially for Game Debrief's larger
+            // candidate. Preserve the verifier prompt and schema, but disable
+            // hidden reasoning just as the final binary verifier does above.
+            reviewer.provider === "deepseek" ? { type: "disabled" } : undefined,
           );
           try {
             parseSemanticFactVerification({
@@ -1781,6 +1878,23 @@ export async function adjudicatePracticeCandidate(
         );
         const priorHardGuardProvider = priorSemanticRejection
           ?.hardGuardReviewProvider;
+        const priorHardGuardReplyFields = priorSemanticRejection
+          ?.hardGuardReplyFields ?? [];
+        const repeatedHardGuardIssueKinds = hardGuardRejection &&
+            priorSemanticRejection
+          ? normalizedSemanticIssueKinds([
+            ...priorSemanticRejection.issueKinds,
+            ...hardGuardRejection.issueKinds,
+          ])
+          : [];
+        const currentHardGuardIssuesAreMapped = hardGuardRejection !== null &&
+          (hasExactSemanticIssueKinds(hardGuardRejection.issueKinds, [
+            "strategy_mismatch",
+          ]) ||
+            hasExactSemanticIssueKinds(hardGuardRejection.issueKinds, [
+              "unsupported_fact",
+              "strategy_mismatch",
+            ]));
         const repeatedActiveReplyHardGuard = args.surface === "hint" &&
           hardGuardRejection && parsed.repaired &&
           priorSemanticRejection?.hardGuardFailureCode ===
@@ -1789,9 +1903,7 @@ export async function adjudicatePracticeCandidate(
           hasExactSemanticIssueKinds(priorSemanticRejection.issueKinds, [
             "strategy_mismatch",
           ]) &&
-          hasExactSemanticIssueKinds(hardGuardRejection.issueKinds, [
-            "strategy_mismatch",
-          ]) &&
+          currentHardGuardIssuesAreMapped &&
           priorHardGuardProvider !== undefined &&
           priorHardGuardProvider !== reviewer.provider &&
           parsed.hintAssessment?.interactionKind ===
@@ -1807,11 +1919,20 @@ export async function adjudicatePracticeCandidate(
           // active, but the dedicated repair still fails the same deterministic
           // reply guard. Discard that invalid repair, reuse the original
           // reviewed candidate, and spend the two remaining slots on exactly
-          // one pinned repair plus a different-provider full verifier.
+          // one pinned repair plus a different-provider full verifier. A
+          // narrow unsupported-fact issue is also mapped here: its repair must
+          // change every visible field, while the deterministic guard still
+          // preserves every named reply obligation. Unknown/generic/unsafe
+          // supersets remain terminal.
           priorSemanticRejection = {
-            issueKinds: ["strategy_mismatch"],
+            issueKinds: repeatedHardGuardIssueKinds,
             hardGuardFailureCode: "semantic_hint_active_reply_question",
-            hardGuardReplyFields: hardGuardRejection.hardGuardReplyFields,
+            hardGuardReplyFields: [
+              ...new Set([
+                ...priorHardGuardReplyFields,
+                ...(hardGuardRejection.hardGuardReplyFields ?? []),
+              ]),
+            ],
             verifierRecoveryKind: "active_contract",
             verifierHintAssessment: {
               interactionKind: "active_consistency_test",
@@ -1882,15 +2003,75 @@ export async function adjudicatePracticeCandidate(
             SemanticFullReviewRejectionError
           ? error
           : undefined;
+        // Two providers rejecting the unchanged candidate form one evidence
+        // envelope. Preserve the canonical union so a repair cannot erase an
+        // obligation reported by the first reviewer. A verifier rejecting an
+        // already-repaired candidate is different: its fresh issue set alone
+        // describes the next (and final) bounded recovery.
+        const recoveryIssueKinds = verifierRejection
+          ? pendingVerification.rejectionConfirmation
+            ? normalizedSemanticIssueKinds([
+              ...pendingVerification.semanticVerificationIssueKinds,
+              ...verifierRejection.issueKinds,
+            ])
+            : verifierRejection.issueKinds
+          : [];
+        const combinedRecoveryHintAssessment = verifierRejection
+          ? pendingVerification.rejectionConfirmation
+            ? mergedRejectionConfirmationAssessment(
+              pendingVerification.hintAssessment,
+              verifierRejection.hintAssessment,
+            )
+            : verifierRejection.hintAssessment
+          : undefined;
         const recoveryKind = verifierRejection
           ? hintVerifierRecoveryKind(
             pendingVerification.hintAssessment,
             verifierRejection,
             pendingVerification.rejectionConfirmation === true,
+            recoveryIssueKinds,
+            combinedRecoveryHintAssessment,
           )
           : null;
+        const activeDisagreementAssessment = recoveryKind ===
+            "active_disagreement_fact"
+          ? pendingVerification.hintAssessment?.interactionKind ===
+              "active_consistency_test"
+            ? pendingVerification.hintAssessment
+            : verifierRejection?.hintAssessment?.interactionKind ===
+                "active_consistency_test"
+            ? verifierRejection.hintAssessment
+            : undefined
+          : undefined;
+        const recoveryHintAssessment = activeDisagreementAssessment ??
+          combinedRecoveryHintAssessment;
+        // For the rejection-confirmation lane, let Claude author the single
+        // material rewrite and reserve the other provider for certification.
+        // If the providers disagree on active-vs-non-active, the provider that
+        // identified active owns the conservative repair; the formerly
+        // non-active provider must then independently change its judgment.
+        // Existing repaired-candidate recovery keeps its rejecting critic as
+        // the repair author.
+        const activeDisagreementRepairProvider = recoveryKind ===
+            "active_disagreement_fact"
+          ? pendingVerification.hintAssessment?.interactionKind ===
+              "active_consistency_test"
+            ? pendingVerification.reviewProvider
+            : verifierRejection?.hintAssessment?.interactionKind ===
+                "active_consistency_test"
+            ? reviewer.provider
+            : undefined
+          : undefined;
+        const recoveryRepairReviewer = pendingVerification
+            .rejectionConfirmation
+          ? reviewers.find((candidate) =>
+            candidate.provider ===
+              (activeDisagreementRepairProvider ?? "anthropic")
+          ) ??
+            reviewer
+          : reviewer;
         const hasIndependentVerifier = reviewers.some((candidate) =>
-          candidate.provider !== reviewer.provider
+          candidate.provider !== recoveryRepairReviewer.provider
         );
         if (
           recoveryKind && verifierRejection && !hintVerifierRecoveryUsed &&
@@ -1904,11 +2085,11 @@ export async function adjudicatePracticeCandidate(
           pendingVerification = undefined;
           priorFactRejection = undefined;
           priorSemanticRejection = {
-            issueKinds: verifierRejection.issueKinds,
+            issueKinds: recoveryIssueKinds,
             verifierRecoveryKind: recoveryKind,
-            verifierHintAssessment: verifierRejection.hintAssessment,
+            verifierHintAssessment: recoveryHintAssessment,
           };
-          forcedHintRepairProvider = reviewer.provider;
+          forcedHintRepairProvider = recoveryRepairReviewer.provider;
           hintVerifierRecoveryUsed = true;
         } else {
           // A second rejection, malformed response, unsafe/mixed issue, or an

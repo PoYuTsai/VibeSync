@@ -1138,7 +1138,7 @@ Deno.test("accepted candidates still require independent fact verification", asy
     callDeepSeek: (args) => {
       calls.push("deepseek-fact-verification");
       assertEquals(args.maxTokens, 1200);
-      assertEquals(args.thinking, undefined);
+      assertEquals(args.thinking, { type: "disabled" });
       return Promise.resolve(validFactVerification());
     },
   });
@@ -1803,6 +1803,7 @@ Deno.test("independent verifier fails closed when a Debrief reverses the promise
           }));
         },
         callDeepSeek: (args) => {
+          assertEquals(args.thinking, { type: "disabled" });
           const prompt = args.messages.map((message) => message.content).join(
             "\n",
           );
@@ -3405,6 +3406,832 @@ Deno.test("ordinary unsupported-fact rejection rewrites all fields and keeps nat
   assertEquals(result.candidate, recovered);
   assertEquals(result.hintAssessment, ORDINARY_HINT_ASSESSMENT);
   assertEquals(result.providerCalls, 4);
+});
+
+Deno.test("ordinary mixed rejection keeps the union and uses Claude for the bounded repair", async () => {
+  const repaired = {
+    warmUp: "妳是問我想去哪裡嗎？我還沒有指定店，先說妳偏好哪一區。",
+    steady: "我還沒決定地點，妳比較想找安靜的還是熱鬧一點的？",
+    coaching: "先承認目前沒有店家資訊，再用她剛問的地點方向縮小選項。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  let deepSeekCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: hintCandidate,
+    candidateProvider: "deepseek",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 4,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      calls.push(`claude:${args.maxTokens}`);
+      claudeCalls += 1;
+      if (claudeCalls === 1) {
+        return Promise.resolve(validHintAdjudication({
+          verdict: "reject",
+          issues: [
+            { kind: "unsupported_fact" },
+            { kind: "strategy_mismatch" },
+          ],
+          repairedResult: null,
+          hintAssessment: ORDINARY_HINT_ASSESSMENT,
+        }));
+      }
+      const prompt = args.messages.map((message) => message.content).join("\n");
+      assertEquals(
+        prompt.includes("issueKinds=unsupported_fact,strategy_mismatch"),
+        true,
+      );
+      return Promise.resolve(validHintAdjudication({
+        verdict: "repair",
+        issues: [
+          { kind: "unsupported_fact" },
+          { kind: "strategy_mismatch" },
+        ],
+        repairedResult: repaired,
+        hintAssessment: ORDINARY_HINT_ASSESSMENT,
+      }));
+    },
+    callDeepSeek: (args) => {
+      calls.push(`deepseek:${args.maxTokens}`);
+      deepSeekCalls += 1;
+      return Promise.resolve(
+        deepSeekCalls === 1
+          ? validHintAdjudication({
+            verdict: "reject",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: null,
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          })
+          : validHintAdjudication({
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          }),
+      );
+    },
+  });
+
+  assertEquals(calls, [
+    "claude:1800",
+    "deepseek:2400",
+    "claude:1800",
+    "deepseek:2400",
+  ]);
+  assertEquals(result.candidate, repaired);
+  assertEquals(result.providerCalls, 4);
+});
+
+Deno.test("ordinary verifier mixed rejection remains recoverable without unsafe", async () => {
+  const repaired = {
+    warmUp: "我還沒有店名，妳先說想去哪一區，我再一起想。",
+    steady: "地點還沒定，妳偏好咖啡店還是散步路線？",
+    coaching: "拿掉沒有來源的店家細節，直接回答目前未定並給真實選項。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  let deepSeekCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: hintCandidate,
+    candidateProvider: "deepseek",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 4,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      calls.push(`claude:${args.maxTokens}`);
+      claudeCalls += 1;
+      return Promise.resolve(
+        claudeCalls === 1
+          ? validHintAdjudication({
+            verdict: "reject",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: null,
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          })
+          : validHintAdjudication({
+            verdict: "repair",
+            issues: [
+              { kind: "unsupported_fact" },
+              { kind: "strategy_mismatch" },
+            ],
+            repairedResult: repaired,
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          }),
+      );
+    },
+    callDeepSeek: (args) => {
+      calls.push(`deepseek:${args.maxTokens}`);
+      deepSeekCalls += 1;
+      return Promise.resolve(
+        deepSeekCalls === 1
+          ? validHintAdjudication({
+            verdict: "reject",
+            issues: [
+              { kind: "unsupported_fact" },
+              { kind: "strategy_mismatch" },
+            ],
+            repairedResult: null,
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          })
+          : validHintAdjudication({
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          }),
+      );
+    },
+  });
+
+  assertEquals(calls, [
+    "claude:1800",
+    "deepseek:2400",
+    "claude:1800",
+    "deepseek:2400",
+  ]);
+  assertEquals(result.candidate, repaired);
+  assertEquals(result.providerCalls, 4);
+});
+
+Deno.test("active mixed rejection confirmation uses Claude repair and independent certification", async () => {
+  const repaired = {
+    warmUp: "我會先選安靜一點的地方，這樣比較能好好聊。",
+    steady: "我偏安靜路線，店還沒定，但不會把選擇全丟回給妳。",
+    coaching: "直接表態偏好並承擔下一步，拿掉沒有逐字稿來源的店家資訊。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  let deepSeekCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: hintCandidate,
+    candidateProvider: "deepseek",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 4,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      calls.push(`claude:${args.maxTokens}`);
+      claudeCalls += 1;
+      return Promise.resolve(
+        claudeCalls === 1
+          ? validHintAdjudication({
+            verdict: "reject",
+            issues: [
+              { kind: "unsupported_fact" },
+              { kind: "strategy_mismatch" },
+            ],
+            repairedResult: null,
+            hintAssessment: ACTIVE_BOTH_NONCOMPLIANT_HINT_ASSESSMENT,
+          })
+          : validHintAdjudication({
+            verdict: "repair",
+            issues: [
+              { kind: "unsupported_fact" },
+              { kind: "strategy_mismatch" },
+            ],
+            repairedResult: repaired,
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          }),
+      );
+    },
+    callDeepSeek: (args) => {
+      calls.push(`deepseek:${args.maxTokens}`);
+      deepSeekCalls += 1;
+      return Promise.resolve(
+        deepSeekCalls === 1
+          ? validHintAdjudication({
+            verdict: "reject",
+            issues: [
+              { kind: "unsupported_fact" },
+              { kind: "strategy_mismatch" },
+            ],
+            repairedResult: null,
+            hintAssessment: ACTIVE_BOTH_NONCOMPLIANT_HINT_ASSESSMENT,
+          })
+          : validHintAdjudication({
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          }),
+      );
+    },
+  });
+
+  assertEquals(calls, [
+    "claude:1800",
+    "deepseek:2400",
+    "claude:1800",
+    "deepseek:2400",
+  ]);
+  assertEquals(result.candidate, repaired);
+  assertEquals(result.hintAssessment, ACTIVE_COMPLIANT_HINT_ASSESSMENT);
+  assertEquals(result.providerCalls, 4);
+});
+
+Deno.test("active rejection confirmation unions complementary contract obligations", async () => {
+  const incompleteRepair = {
+    ...hintCandidate,
+    warmUp: "我偏安靜的地方，店還沒定，但方向我會先拿出來。",
+    steady: "先選安靜路線，具體地點我再整理，不把決定全丟回給妳。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  let deepSeekCalls = 0;
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: hintCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: (args) => {
+          calls.push(`claude:${args.maxTokens}`);
+          claudeCalls += 1;
+          return Promise.resolve(
+            claudeCalls === 1
+              ? validHintAdjudication({
+                verdict: "reject",
+                issues: [{ kind: "strategy_mismatch" }],
+                repairedResult: null,
+                hintAssessment: ACTIVE_COACHING_NONCOMPLIANT_HINT_ASSESSMENT,
+              })
+              : validHintAdjudication({
+                verdict: "repair",
+                issues: [{ kind: "strategy_mismatch" }],
+                repairedResult: incompleteRepair,
+                hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+              }),
+          );
+        },
+        callDeepSeek: (args) => {
+          calls.push(`deepseek:${args.maxTokens}`);
+          deepSeekCalls += 1;
+          return Promise.resolve(
+            deepSeekCalls === 1
+              ? validHintAdjudication({
+                verdict: "reject",
+                issues: [{ kind: "strategy_mismatch" }],
+                repairedResult: null,
+                hintAssessment: ACTIVE_REPLY_NONCOMPLIANT_HINT_ASSESSMENT,
+              })
+              : validHintAdjudication({
+                hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+              }),
+          );
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_recovery_active_coaching_unchanged",
+  );
+
+  assertEquals(calls, [
+    "claude:1800",
+    "deepseek:2400",
+    "claude:1800",
+  ]);
+  assertEquals(error.providerCalls, 3);
+});
+
+Deno.test("active classification disagreement requires the active reviewer repair and former non-active verifier", async () => {
+  const repaired = {
+    warmUp: "我會直接說出自己的選擇，也接住她剛才的小測試。",
+    steady: "這題我有明確答案，會用輕鬆但不閃躲的方式回她。",
+    coaching: "她在確認你有沒有主見；這輪直接表態並以陳述句收住。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  let deepSeekCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: hintCandidate,
+    candidateProvider: "deepseek",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 4,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      calls.push(`claude:${args.maxTokens}`);
+      claudeCalls += 1;
+      if (claudeCalls === 1) {
+        return Promise.resolve(validHintAdjudication({
+          verdict: "reject",
+          issues: [{ kind: "unsupported_fact" }],
+          repairedResult: null,
+          hintAssessment: ACTIVE_REPLY_NONCOMPLIANT_HINT_ASSESSMENT,
+        }));
+      }
+      const prompt = args.messages.map((message) => message.content).join("\n");
+      assertEquals(prompt.includes("對 interactionKind 分歧"), true);
+      return Promise.resolve(validHintAdjudication({
+        verdict: "repair",
+        issues: [{ kind: "unsupported_fact" }],
+        repairedResult: repaired,
+        hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+      }));
+    },
+    callDeepSeek: (args) => {
+      calls.push(`deepseek:${args.maxTokens}`);
+      deepSeekCalls += 1;
+      return Promise.resolve(
+        deepSeekCalls === 1
+          ? validHintAdjudication({
+            verdict: "reject",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: null,
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          })
+          : validHintAdjudication({
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          }),
+      );
+    },
+  });
+
+  assertEquals(calls, [
+    "claude:1800",
+    "deepseek:2400",
+    "claude:1800",
+    "deepseek:2400",
+  ]);
+  assertEquals(result.candidate, repaired);
+  assertEquals(result.hintAssessment, ACTIVE_COMPLIANT_HINT_ASSESSMENT);
+  assertEquals(result.providerCalls, 4);
+});
+
+Deno.test("mirrored active classification disagreement pins DeepSeek as repair author", async () => {
+  const repaired = {
+    warmUp: "我會把答案講清楚，不把她的問題再丟回去。",
+    steady: "我有自己的偏好，也能自然接住她正在確認的事。",
+    coaching: "這輪先展現主見，再用明確陳述完成回應。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  let deepSeekCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: hintCandidate,
+    candidateProvider: "deepseek",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 4,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      calls.push(`claude:${args.maxTokens}`);
+      claudeCalls += 1;
+      return Promise.resolve(
+        claudeCalls === 1
+          ? validHintAdjudication({
+            verdict: "reject",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: null,
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          })
+          : validHintAdjudication({
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          }),
+      );
+    },
+    callDeepSeek: (args) => {
+      calls.push(`deepseek:${args.maxTokens}`);
+      deepSeekCalls += 1;
+      return Promise.resolve(
+        deepSeekCalls === 1
+          ? validHintAdjudication({
+            verdict: "reject",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: null,
+            hintAssessment: ACTIVE_COACHING_NONCOMPLIANT_HINT_ASSESSMENT,
+          })
+          : validHintAdjudication({
+            verdict: "repair",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: repaired,
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          }),
+      );
+    },
+  });
+
+  assertEquals(calls, [
+    "claude:1800",
+    "deepseek:2400",
+    "deepseek:1800",
+    "claude:2400",
+  ]);
+  assertEquals(result.candidate, repaired);
+  assertEquals(result.providerCalls, 4);
+});
+
+Deno.test("active classification disagreement cannot skip a fact field", async () => {
+  const incompleteRepair = {
+    ...hintCandidate,
+    warmUp: "我會直接表態並接住她的小測試。",
+    steady: "這題我有答案，不會再把問題交回去。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: hintCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: (args) => {
+          calls.push(`claude:${args.maxTokens}`);
+          claudeCalls += 1;
+          return Promise.resolve(
+            claudeCalls === 1
+              ? validHintAdjudication({
+                verdict: "reject",
+                issues: [{ kind: "unsupported_fact" }],
+                repairedResult: null,
+                hintAssessment: ACTIVE_REPLY_NONCOMPLIANT_HINT_ASSESSMENT,
+              })
+              : validHintAdjudication({
+                verdict: "repair",
+                issues: [{ kind: "unsupported_fact" }],
+                repairedResult: incompleteRepair,
+                hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+              }),
+          );
+        },
+        callDeepSeek: (args) => {
+          calls.push(`deepseek:${args.maxTokens}`);
+          return Promise.resolve(validHintAdjudication({
+            verdict: "reject",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: null,
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_recovery_active_fact_fields_unchanged",
+  );
+
+  assertEquals(calls, ["claude:1800", "deepseek:2400", "claude:1800"]);
+  assertEquals(error.providerCalls, 3);
+});
+
+Deno.test("active classification disagreement repair cannot retract the active vote", async () => {
+  const repaired = {
+    warmUp: "我會先說清楚自己的選擇。",
+    steady: "這題我有答案，也會自然接住她的核對。",
+    coaching: "這輪移除推測，直接依逐字稿回應。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: hintCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: (args) => {
+          calls.push(`claude:${args.maxTokens}`);
+          claudeCalls += 1;
+          return Promise.resolve(
+            claudeCalls === 1
+              ? validHintAdjudication({
+                verdict: "reject",
+                issues: [{ kind: "unsupported_fact" }],
+                repairedResult: null,
+                hintAssessment: ACTIVE_REPLY_NONCOMPLIANT_HINT_ASSESSMENT,
+              })
+              : validHintAdjudication({
+                verdict: "repair",
+                issues: [{ kind: "unsupported_fact" }],
+                repairedResult: repaired,
+                hintAssessment: ORDINARY_HINT_ASSESSMENT,
+              }),
+          );
+        },
+        callDeepSeek: (args) => {
+          calls.push(`deepseek:${args.maxTokens}`);
+          return Promise.resolve(validHintAdjudication({
+            verdict: "reject",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: null,
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_recovery_interaction_kind_changed",
+  );
+
+  assertEquals(calls, ["claude:1800", "deepseek:2400", "claude:1800"]);
+  assertEquals(error.providerCalls, 3);
+});
+
+Deno.test("active classification disagreement respects the deadline before repair", async () => {
+  const calls: string[] = [];
+  const times = [0, 0, 101];
+  let timeIndex = 0;
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: hintCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        absoluteDeadlineAtMs: 100,
+        monotonicNow: () => times[timeIndex++] ?? 101,
+        callClaude: (args) => {
+          calls.push(`claude:${args.maxTokens}`);
+          return Promise.resolve(validHintAdjudication({
+            verdict: "reject",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: null,
+            hintAssessment: ACTIVE_REPLY_NONCOMPLIANT_HINT_ASSESSMENT,
+          }));
+        },
+        callDeepSeek: (args) => {
+          calls.push(`deepseek:${args.maxTokens}`);
+          return Promise.resolve(validHintAdjudication({
+            verdict: "reject",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: null,
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_deadline_exceeded",
+  );
+
+  assertEquals(calls, ["claude:1800", "deepseek:2400"]);
+  assertEquals(error.providerCalls, 2);
+});
+
+Deno.test("active classification disagreement needs the former non-active provider to change its judgment", async () => {
+  const repaired = {
+    warmUp: "我會先把自己的答案講明白。",
+    steady: "她的核對我接得住，也不會把決定丟回去。",
+    coaching: "這輪直接回應她正在測的命題，再用陳述句收住。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  let deepSeekCalls = 0;
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: hintCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 6,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: (args) => {
+          calls.push(`claude:${args.maxTokens}`);
+          claudeCalls += 1;
+          return Promise.resolve(
+            claudeCalls === 1
+              ? validHintAdjudication({
+                verdict: "reject",
+                issues: [{ kind: "unsupported_fact" }],
+                repairedResult: null,
+                hintAssessment: ACTIVE_REPLY_NONCOMPLIANT_HINT_ASSESSMENT,
+              })
+              : validHintAdjudication({
+                verdict: "repair",
+                issues: [{ kind: "unsupported_fact" }],
+                repairedResult: repaired,
+                hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+              }),
+          );
+        },
+        callDeepSeek: (args) => {
+          calls.push(`deepseek:${args.maxTokens}`);
+          deepSeekCalls += 1;
+          return Promise.resolve(
+            deepSeekCalls === 1
+              ? validHintAdjudication({
+                verdict: "reject",
+                issues: [{ kind: "unsupported_fact" }],
+                repairedResult: null,
+                hintAssessment: ORDINARY_HINT_ASSESSMENT,
+              })
+              : validHintAdjudication({
+                hintAssessment: ORDINARY_HINT_ASSESSMENT,
+              }),
+          );
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_hint_assessment_disagreement",
+  );
+
+  assertEquals(calls, [
+    "claude:1800",
+    "deepseek:2400",
+    "claude:1800",
+    "deepseek:2400",
+  ]);
+  assertEquals(error.providerCalls, 4);
+});
+
+Deno.test("ordinary and other fact rejection disagreement remains non-active", async () => {
+  const repaired = {
+    warmUp: "我會先回應她剛才真的說過的內容。",
+    steady: "再補一個自己的小觀點，讓對話自然延伸。",
+    coaching: "這輪移除推測，只使用逐字稿裡有證據的訊號。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  let deepSeekCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: hintCandidate,
+    candidateProvider: "deepseek",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 4,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      calls.push(`claude:${args.maxTokens}`);
+      claudeCalls += 1;
+      return Promise.resolve(
+        claudeCalls === 1
+          ? validHintAdjudication({
+            verdict: "reject",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: null,
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          })
+          : validHintAdjudication({
+            verdict: "repair",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: repaired,
+            hintAssessment: OTHER_HINT_ASSESSMENT,
+          }),
+      );
+    },
+    callDeepSeek: (args) => {
+      calls.push(`deepseek:${args.maxTokens}`);
+      deepSeekCalls += 1;
+      return Promise.resolve(
+        deepSeekCalls === 1
+          ? validHintAdjudication({
+            verdict: "reject",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: null,
+            hintAssessment: OTHER_HINT_ASSESSMENT,
+          })
+          : validHintAdjudication({
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          }),
+      );
+    },
+  });
+
+  assertEquals(calls, [
+    "claude:1800",
+    "deepseek:2400",
+    "claude:1800",
+    "deepseek:2400",
+  ]);
+  assertEquals(result.candidate, repaired);
+  assertEquals(result.hintAssessment, OTHER_HINT_ASSESSMENT);
+  assertEquals(result.providerCalls, 4);
+});
+
+Deno.test("classification disagreement with unsafe evidence remains terminal", async () => {
+  const calls: string[] = [];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: hintCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: (args) => {
+          calls.push(`claude:${args.maxTokens}`);
+          return Promise.resolve(validHintAdjudication({
+            verdict: "reject",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: null,
+            hintAssessment: ACTIVE_REPLY_NONCOMPLIANT_HINT_ASSESSMENT,
+          }));
+        },
+        callDeepSeek: (args) => {
+          calls.push(`deepseek:${args.maxTokens}`);
+          return Promise.resolve(validHintAdjudication({
+            verdict: "reject",
+            issues: [
+              { kind: "unsupported_fact" },
+              { kind: "unsafe" },
+            ],
+            repairedResult: null,
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_candidate_unverified:semantic_adjudication_rejected",
+  );
+
+  assertEquals(calls, ["claude:1800", "deepseek:2400"]);
+  assertEquals(error.providerCalls, 2);
+  assertEquals(error.issueKinds, ["unsupported_fact", "unsafe"]);
+});
+
+Deno.test("ordinary rejection confirmation keeps unsafe unions terminal", async () => {
+  const calls: string[] = [];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: hintCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: (args) => {
+          calls.push(`claude:${args.maxTokens}`);
+          return Promise.resolve(validHintAdjudication({
+            verdict: "reject",
+            issues: [{ kind: "unsupported_fact" }],
+            repairedResult: null,
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          }));
+        },
+        callDeepSeek: (args) => {
+          calls.push(`deepseek:${args.maxTokens}`);
+          return Promise.resolve(validHintAdjudication({
+            verdict: "reject",
+            issues: [
+              { kind: "unsupported_fact" },
+              { kind: "unsafe" },
+            ],
+            repairedResult: null,
+            hintAssessment: ORDINARY_HINT_ASSESSMENT,
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_candidate_unverified:semantic_adjudication_rejected",
+  );
+
+  assertEquals(calls, ["claude:1800", "deepseek:2400"]);
+  assertEquals(error.providerCalls, 2);
+  assertEquals(error.issueKinds, ["unsupported_fact", "unsafe"]);
 });
 
 Deno.test("active verifier recovery cannot leave either rejected reply unchanged", async () => {
@@ -5038,6 +5865,220 @@ Deno.test("repeated active reply hard guard uses one pinned repair and verifier"
   assertEquals(result.candidate, recovered);
   assertEquals(result.providerCalls, 4);
   assertEquals(result.hintAssessment, ACTIVE_COMPLIANT_HINT_ASSESSMENT);
+});
+
+Deno.test("repeated active reply hard guard preserves mixed fact obligations", async () => {
+  const invalidRepair = {
+    ...hintCandidate,
+    warmUp: "你覺得呢？",
+  };
+  const recovered = {
+    warmUp: "我會先穩穩接住她的試探，再把自己的選擇說清楚。",
+    steady: "這題我有自己的答案，也想看看她接下來怎麼回應。",
+    coaching: "她正在測你的主見；直接表態並保留輕鬆感，不要把決定丟回去。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  let deepSeekCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: hintCandidate,
+    candidateProvider: "deepseek",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 4,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      calls.push(`claude:${args.maxTokens}`);
+      claudeCalls += 1;
+      if (claudeCalls === 1) {
+        return Promise.resolve(validHintAdjudication({
+          hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+        }));
+      }
+      const prompt = args.messages.map((message) => message.content).join("\n");
+      assertEquals(
+        prompt.includes("issueKinds=unsupported_fact,strategy_mismatch"),
+        true,
+      );
+      return Promise.resolve(validHintAdjudication({
+        verdict: "repair",
+        issues: [
+          { kind: "unsupported_fact" },
+          { kind: "strategy_mismatch" },
+        ],
+        repairedResult: recovered,
+        hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+      }));
+    },
+    callDeepSeek: (args) => {
+      calls.push(`deepseek:${args.maxTokens}`);
+      deepSeekCalls += 1;
+      return Promise.resolve(
+        deepSeekCalls === 1
+          ? validHintAdjudication({
+            verdict: "repair",
+            issues: [
+              { kind: "unsupported_fact" },
+              { kind: "strategy_mismatch" },
+            ],
+            repairedResult: invalidRepair,
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          })
+          : validHintAdjudication({
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          }),
+      );
+    },
+    validateCandidate: (candidate) => {
+      if (candidate.warmUp === hintCandidate.warmUp) {
+        throw new SemanticHintActiveReplyQuestionError(["warmUp"]);
+      }
+      if (candidate.warmUp === invalidRepair.warmUp) {
+        throw new SemanticHintActiveReplyQuestionError(["steady"]);
+      }
+    },
+  });
+
+  assertEquals(calls, [
+    "claude:1800",
+    "deepseek:1800",
+    "claude:1800",
+    "deepseek:2400",
+  ]);
+  assertEquals(result.candidate, recovered);
+  assertEquals(result.providerCalls, 4);
+});
+
+Deno.test("repeated mixed hard guard cannot leave coaching unchanged", async () => {
+  const invalidRepair = {
+    ...hintCandidate,
+    warmUp: "你覺得呢？",
+  };
+  const incompleteRepair = {
+    ...hintCandidate,
+    warmUp: "我會先說出自己的選擇。",
+    steady: "這題我有答案，也會維持輕鬆。",
+  };
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: hintCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: (args) => {
+          calls.push(`claude:${args.maxTokens}`);
+          claudeCalls += 1;
+          return Promise.resolve(
+            claudeCalls === 1
+              ? validHintAdjudication({
+                hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+              })
+              : validHintAdjudication({
+                verdict: "repair",
+                issues: [
+                  { kind: "unsupported_fact" },
+                  { kind: "strategy_mismatch" },
+                ],
+                repairedResult: incompleteRepair,
+                hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+              }),
+          );
+        },
+        callDeepSeek: (args) => {
+          calls.push(`deepseek:${args.maxTokens}`);
+          return Promise.resolve(validHintAdjudication({
+            verdict: "repair",
+            issues: [
+              { kind: "unsupported_fact" },
+              { kind: "strategy_mismatch" },
+            ],
+            repairedResult: invalidRepair,
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          }));
+        },
+        validateCandidate: (candidate) => {
+          if (candidate.warmUp === hintCandidate.warmUp) {
+            throw new SemanticHintActiveReplyQuestionError(["warmUp"]);
+          }
+          if (candidate.warmUp === invalidRepair.warmUp) {
+            throw new SemanticHintActiveReplyQuestionError(["steady"]);
+          }
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_recovery_active_fact_fields_unchanged",
+  );
+
+  assertEquals(calls, ["claude:1800", "deepseek:1800", "claude:1800"]);
+  assertEquals(error.providerCalls, 3);
+});
+
+Deno.test("repeated active hard guard keeps generic mixed repairs terminal", async () => {
+  const invalidRepair = {
+    ...hintCandidate,
+    warmUp: "你覺得呢？",
+  };
+  const calls: string[] = [];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: hintCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 4,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: (args) => {
+          calls.push(`claude:${args.maxTokens}`);
+          return Promise.resolve(validHintAdjudication({
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          }));
+        },
+        callDeepSeek: (args) => {
+          calls.push(`deepseek:${args.maxTokens}`);
+          return Promise.resolve(validHintAdjudication({
+            verdict: "repair",
+            issues: [
+              { kind: "unsupported_fact" },
+              { kind: "generic" },
+              { kind: "strategy_mismatch" },
+            ],
+            repairedResult: invalidRepair,
+            hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+          }));
+        },
+        validateCandidate: (candidate) => {
+          if (
+            candidate.warmUp === hintCandidate.warmUp ||
+            candidate.warmUp === invalidRepair.warmUp
+          ) {
+            throw new SemanticHintActiveReplyQuestionError(["warmUp"]);
+          }
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_hint_active_reply_question",
+  );
+
+  assertEquals(calls, ["claude:1800", "deepseek:1800"]);
+  assertEquals(error.providerCalls, 2);
 });
 
 Deno.test("a repeated active reply repair failure is terminal without a fifth call", async () => {
