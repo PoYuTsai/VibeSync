@@ -9818,3 +9818,20 @@ Deno.test("Debrief semantic adjudication does not require Hint strategies", () =
   assertEquals(parsed.candidate, card);
   assertEquals("strategies" in parsed, false);
 });
+
+Deno.test("SemanticAdjudicationError normalizes issueKinds to lowercase so safety exclusion holds (P0#1)", () => {
+  // 出口層安全排除用 error.issueKinds.includes("unsafe" / "unsupported_fact")（小寫）。
+  // 證明無論來源大小寫，issueKinds 在 error 邊界一律被正規化為小寫，故排除永不漏。
+  const error = new SemanticAdjudicationError(
+    "semantic_adjudication_failed:test",
+    0,
+    { issueKinds: ["UNSAFE", "Unsupported_Fact", "GENERIC"] },
+  );
+  assertEquals(error.issueKinds.includes("unsafe"), true);
+  assertEquals(error.issueKinds.includes("unsupported_fact"), true);
+  // 陣列內不得殘留任何大寫 token。
+  assertEquals(
+    error.issueKinds.every((kind) => kind === kind.toLowerCase()),
+    true,
+  );
+});
