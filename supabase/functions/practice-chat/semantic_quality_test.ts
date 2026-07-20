@@ -1152,6 +1152,195 @@ Deno.test("accepted candidates still require independent fact verification", asy
   assertEquals(result.providerCalls, 2);
 });
 
+Deno.test("Debrief retries a transient independent fact-verifier timeout", async () => {
+  const candidate = {
+    summary: "她接住咖啡話題，對話仍在交換細節。",
+    strengths: ["你有誠實回應沒記店名。"],
+    watchouts: ["下一句要接住她猜的味道。"],
+    suggestedLine: "妳猜深焙焦糖，那妳平常也偏愛深焙嗎？",
+    vibe: "中性",
+    dateChance: "medium",
+    dateChanceReason: "她有繼續猜味道，但還沒有見面窗口。",
+    nextInviteMove: "先交換咖啡偏好，再看邀約窗口。",
+    gameBreakdown: {
+      phaseReached: "開場資訊交換",
+      missedVariable: "還缺她的咖啡偏好",
+      failureState: "目前停在她猜味道",
+      nextFirstLine: "妳猜深焙焦糖，那妳平常也偏愛深焙嗎？",
+      inviteDirection: "先交換咖啡偏好，再看邀約窗口",
+    },
+  };
+  const calls: string[] = [];
+  let deepSeekCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "debrief",
+    practiceMode: "game",
+    candidate,
+    candidateProvider: "deepseek",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 3,
+    retryTransientFactVerifierOnce: true,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      calls.push("claude-full-review");
+      assertEquals(args.maxTokens, 4000);
+      return Promise.resolve(JSON.stringify({
+        verdict: "accept",
+        issues: [],
+        repairedResult: null,
+      }));
+    },
+    callDeepSeek: (args) => {
+      calls.push("deepseek-fact-verification");
+      deepSeekCalls += 1;
+      assertEquals(args.maxTokens, 1200);
+      assertEquals(args.thinking, { type: "disabled" });
+      return deepSeekCalls === 1
+        ? Promise.reject(new Error("deepseek_timeout"))
+        : Promise.resolve(validFactVerification());
+    },
+  });
+
+  assertEquals(calls, [
+    "claude-full-review",
+    "deepseek-fact-verification",
+    "deepseek-fact-verification",
+  ]);
+  assertEquals(result.candidate, candidate);
+  assertEquals(result.provider, "deepseek");
+  assertEquals(result.providerCalls, 3);
+});
+
+Deno.test("Debrief cannot self-certify after its independent full reviewer times out", async () => {
+  const calls: string[] = [];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "debrief",
+        practiceMode: "game",
+        candidate: {
+          summary: "她有接住咖啡話題。",
+          suggestedLine: "妳平常也偏愛深焙嗎？",
+        },
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 3,
+        retryTransientFactVerifierOnce: true,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: () => {
+          calls.push("claude-full-timeout");
+          return Promise.reject(new Error("claude_timeout"));
+        },
+        callDeepSeek: () => {
+          calls.push("deepseek-self-full");
+          return Promise.resolve(JSON.stringify({
+            verdict: "accept",
+            issues: [],
+            repairedResult: null,
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+  );
+
+  assertEquals(calls, ["claude-full-timeout"]);
+  assertEquals(error.providerCalls, 1);
+});
+
+Deno.test("Debrief cannot wash out an independent full strategy rejection", async () => {
+  const calls: string[] = [];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "debrief",
+        practiceMode: "game",
+        candidate: {
+          summary: "她有接住咖啡話題。",
+          suggestedLine: "妳平常也偏愛深焙嗎？",
+        },
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 3,
+        retryTransientFactVerifierOnce: true,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: () => {
+          calls.push("claude-full-reject");
+          return Promise.resolve(JSON.stringify({
+            verdict: "reject",
+            issues: [{ kind: "strategy_mismatch" }],
+            repairedResult: null,
+          }));
+        },
+        callDeepSeek: () => {
+          calls.push("deepseek-self-full");
+          return Promise.resolve(JSON.stringify({
+            verdict: "accept",
+            issues: [],
+            repairedResult: null,
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_rejected",
+  );
+
+  assertEquals(calls, ["claude-full-reject"]);
+  assertEquals(error.providerCalls, 1);
+});
+
+Deno.test("Debrief fails closed when its one fact-verifier retry also times out", async () => {
+  const calls: string[] = [];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "debrief",
+        practiceMode: "game",
+        candidate: {
+          summary: "她有接住咖啡話題。",
+          suggestedLine: "妳平常也偏愛深焙嗎？",
+        },
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 3,
+        retryTransientFactVerifierOnce: true,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: () => {
+          calls.push("claude-full-review");
+          return Promise.resolve(JSON.stringify({
+            verdict: "accept",
+            issues: [],
+            repairedResult: null,
+          }));
+        },
+        callDeepSeek: () => {
+          calls.push("deepseek-fact-timeout");
+          return Promise.reject(new Error("deepseek_timeout"));
+        },
+      }),
+    SemanticAdjudicationError,
+    "deepseek_timeout",
+  );
+
+  assertEquals(calls, [
+    "claude-full-review",
+    "deepseek-fact-timeout",
+    "deepseek-fact-timeout",
+  ]);
+  assertEquals(error.providerCalls, 3);
+});
+
 Deno.test("pure information follow-up stays ordinary in both accepted-candidate reviewers", async () => {
   const coffeeTurns = [
     {

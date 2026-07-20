@@ -152,13 +152,15 @@ const SERVER_HINT_DECISION_RATIONALE =
 // Hint keeps its established five-call cost ceiling: one generation plus up to
 // four semantic calls. The fourth semantic slot lets a repair produced after
 // two non-terminal reviewer failures still receive its mandatory independent
-// verifier. Debrief gets one additional total call for the same fail-closed
-// recovery shape across its larger result.
+// verifier. Debrief gets two additional total calls: one for the same repair
+// shape and one to retry a transient independent fact-verifier timeout before
+// discarding an otherwise accepted card and regenerating it from scratch.
 const HINT_PROVIDER_CALL_BUDGET = 5;
-const DEBRIEF_PROVIDER_CALL_BUDGET = 6;
+const DEBRIEF_PROVIDER_CALL_BUDGET = 7;
 const HINT_SEMANTIC_REVIEWER_CALL_BUDGET = 4;
-// Debrief can spend the otherwise-unused sixth provider call on a mandatory
-// repair + fresh fact verification after a substantive verifier rejection.
+// Debrief can spend the extra semantic slots on a mandatory repair + fresh
+// fact verification, or on one transient verifier retry. The handler still
+// reserves one Claude generation plus its two required reviewers.
 const DEBRIEF_SEMANTIC_REVIEWER_CALL_BUDGET = 4;
 // Every generated candidate needs a full independent semantic review plus the
 // fact-only verifier before it can be recorded.
@@ -3874,6 +3876,9 @@ export function createPracticeChatHandler(
               }),
               candidateProvider,
               maxProviderCalls: semanticCallBudget,
+              retryTransientFactVerifierOnce:
+                candidateProvider === "deepseek" &&
+                reservedRecoveryCalls > 0 && semanticCallBudget === 3,
               deepSeekApiKey: apiKey,
               claudeApiKey,
               claudeModel: claudeFallbackModelForTier(sub.tier),

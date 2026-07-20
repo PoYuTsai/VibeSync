@@ -3833,14 +3833,13 @@ for (const mode of ["beginner", "game"] as const) {
   });
 }
 
-Deno.test("debrief real adjudicator reserves a verified Claude recovery after malformed reviewer envelopes", async () => {
+Deno.test("debrief real adjudicator regenerates after a malformed independent reviewer envelope", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
     useRealSemanticAdjudicator: true,
     monotonicNowValues: [0, 0, 12000, 36000, 60000, 65000, 70000],
     deepSeekReplies: [
       validDebriefJson(),
-      '{"unexpected":"deepseek-review-envelope"}',
       '{"verdict":"accept","issues":[],"repairedResult":null}',
     ],
     claudeReplies: [
@@ -3853,29 +3852,35 @@ Deno.test("debrief real adjudicator reserves a verified Claude recovery after ma
   assertEquals(response.status, 200);
   assertEquals(json.provider, "anthropic");
   assertEquals(json.failoverUsed, true);
-  assertEquals(state.deepSeekCalls.length, 3);
+  assertEquals(state.deepSeekCalls.length, 2);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(
     state.semanticCalls.map((call) => call.maxProviderCalls),
-    [2, 2],
+    [3, 4],
+  );
+  assertEquals(
+    state.semanticCalls.map((call) =>
+      call.retryTransientFactVerifierOnce === true
+    ),
+    [true, false],
   );
   assertEquals(state.claudeCalls[0].outputJsonSchema !== undefined, true);
   assertEquals(state.claudeCalls[1].outputJsonSchema, undefined);
   assertEquals(state.claudeCalls[2].outputJsonSchema !== undefined, true);
   assertEquals(
     state.deepSeekCalls.map((call) => call.timeoutMs),
-    [18000, 24000, 20000],
+    [18000, 24000],
   );
   assertEquals(state.deepSeekCalls[0].thinking, { type: "disabled" });
   assertEquals(
     state.claudeCalls.map((call) => call.timeoutMs),
-    [24000, 24000, 15000],
+    [24000, 24000, 20000],
   );
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
-Deno.test("debrief real adjudicator repairs a substantive fact rejection within the six-call ceiling", async () => {
+Deno.test("debrief real adjudicator repairs a substantive fact rejection within the seven-call ceiling", async () => {
   const repaired = JSON.parse(validDebriefJson()) as Record<string, unknown>;
   delete repaired.hintAssessment;
   repaired.gameBreakdown = null;
@@ -3942,8 +3947,8 @@ Deno.test("debrief fact rejection gives Claude grounding guidance instead of a s
 
   assertEquals(response.status, 200);
   assertEquals(state.semanticCalls.map((call) => call.maxProviderCalls), [
-    2,
-    2,
+    3,
+    3,
   ]);
   const retryPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
   assertEquals(retryPrompt.includes("無證據事實或人物 owner 錯置"), true);
@@ -3989,7 +3994,7 @@ Deno.test("debrief deadline expires before regeneration without calling Claude o
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 0);
   assertEquals(state.semanticCalls.length, 1);
-  assertEquals(state.semanticCalls[0].maxProviderCalls, 2);
+  assertEquals(state.semanticCalls[0].maxProviderCalls, 3);
   assertEquals(recordDebriefCalls(state).length, 0);
   assertEquals(releaseDebriefCalls(state).length, 1);
 });
