@@ -281,7 +281,7 @@ const SOCIAL_CONTACT_TRANSFER_PATTERN = new RegExp(
 
 const SOCIAL_RELATIONAL_REFERRAL_PATTERN = new RegExp(
   String
-    .raw`(?:${THIRD_PARTY_SOURCE_PATTERN}).{0,10}(?:(?:介紹|推薦|轉介)(?:我|我們)?(?:(?:給|來找|去找|聯絡|加|認識)${PARTNER_RELATION_TARGET_PATTERN}|認識彼此|彼此認識)|(?:叫|請|要)(?:我)?(?:來|去)?(?:找|聯絡|加|認識)${PARTNER_RELATION_TARGET_PATTERN}|(?:說|告訴我).{0,8}(?:可以|應該|要我)(?:來|去)?(?:找|聯絡|加|認識)${PARTNER_RELATION_TARGET_PATTERN})|我是(?:${THIRD_PARTY_SOURCE_PATTERN}).{0,6}(?:介紹|推薦|轉介)(?:我)?(?:來)?(?:(?:找|聯絡|加|認識)${PARTNER_RELATION_TARGET_PATTERN}的?|的(?=$|[，。！!]))`,
+    .raw`(?:${THIRD_PARTY_SOURCE_PATTERN}).{0,10}(?:(?:介紹|推薦|轉介)(?:我|我們)?(?:(?:給|來找|去找|來認識|聯絡|加|認識)${PARTNER_RELATION_TARGET_PATTERN}|認識彼此|彼此認識)|(?:叫|請|要)(?:我)?(?:來|去)?(?:找|聯絡|加|認識)${PARTNER_RELATION_TARGET_PATTERN}|(?:說|告訴我).{0,8}(?:可以|應該|要我)(?:來|去)?(?:找|聯絡|加|認識)${PARTNER_RELATION_TARGET_PATTERN})|我是(?:${THIRD_PARTY_SOURCE_PATTERN}).{0,6}(?:介紹|推薦|轉介)(?:我)?(?:來)?(?:(?:找|聯絡|加|認識)${PARTNER_RELATION_TARGET_PATTERN}的?|的(?=$|[，。！!]))`,
   "u",
 );
 
@@ -384,7 +384,7 @@ function cleanClaimDetail(detail?: string): string | null {
 
 function priorInteractionDetailFor(compact: string): string | null {
   const location = compact.match(
-    /(?:上次|之前|以前|那天).{0,20}?在([\p{Script=Han}a-z0-9._-]{2,16}?)(?=見過|碰過|遇過|碰面|認識|聊過|吃過|喝過)/u,
+    /(?:上次|之前|以前|那天).{0,20}?在([\p{Script=Han}a-z0-9._-]{2,16}?)(?=見過|碰過|遇過|看過|碰面|認識|聊過|吃過|喝過)/u,
   );
   if (location) return cleanClaimDetail(location[1]);
   const partnerPlace = compact.match(
@@ -560,7 +560,7 @@ function aiConfirmsClaim(aiText: string, claim: RealityClaim): boolean {
       /(?:我們|我.{0,8}(?:妳|你)|(?:妳|你).{0,8}我)/u.test(aiCompact);
   }
   return hasSameKey(aiCompact, claim.sourceKeys) &&
-    /(?:(?:妳|你).{0,10}(?:認識|見過|碰過|聊過)|(?:認識|見過|碰過|聊過).{0,10}(?:妳|你)|是我的?(?:朋友|同事|同學|家人|親戚|室友))/u
+    /(?:(?:妳|你).{0,10}(?:認識|見過|碰過|聊過|說過)|(?:認識|見過|碰過|聊過|說過).{0,10}(?:妳|你)|是我的?(?:朋友|同事|同學|家人|親戚|室友))/u
       .test(aiCompact);
 }
 

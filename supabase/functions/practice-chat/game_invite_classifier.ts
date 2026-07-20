@@ -55,7 +55,7 @@ const ACTIVE_INVITE_CONSTRAINT_PATTERN =
 // legacy regexes above remain for compatibility, while every semantic layer
 // below reuses these two patterns instead of growing another private list.
 const CONCRETE_FUTURE_TIME_PATTERN =
-  /(?:這個週末|這個星期[一二三四五六日天]|下下個(?:星期|禮拜)[一二三四五六日天]|下個月(?:初|中|底|第一個週末)|本月(?:初|中|底|最後一個週[一二三四五六日天])|月底的?(?:星期|禮拜)[一二三四五六日天]|[一二三四五六七八九十]{1,3}月[一二三四五六七八九十廿]{1,3}(?:日|號)|下課後|有空時)/u;
+  /(?:這個週末|這個(?:星期|禮拜)[一二三四五六日天]|下下個(?:星期|禮拜)[一二三四五六日天]|下個月(?:初|中|底|第一個週末)|本月(?:初|中|底|最後一個週[一二三四五六日天])|月底的?(?:星期|禮拜)[一二三四五六日天]|[一二三四五六七八九十]{1,3}月[一二三四五六七八九十廿]{1,3}(?:日|號)|下課後|有空時)/u;
 const LEADING_PLAN_TIME_PATTERN =
   /^(?:下(?:個)?(?:星期|禮拜)(?=一起|我們|咱們|我|妳|你|跟|和|陪|帶|接|載|找|去|來|到)|(?:這|下|本)?週[一二三四五六日天]|(?:這|下|本|這個|下個|下下個)?星期[一二三四五六日天]|(?:這|下|本|這個|下個|下下個)?禮拜[一二三四五六日天]|這個週末|下個月(?:初|中|底|第一個週末)|本月(?:初|中|底|最後一個週[一二三四五六日天])|月底(?:的)?(?:星期|禮拜)[一二三四五六日天]|月底|月初|月中|今天|今晚|明早|明晚|明天|後天|這週末|這週|本週|下週(?:末)?|下下週(?:末|[一二三四五六日天])?|下星期|下禮拜|下個星期|下個禮拜|早上|上午|中午|下午|晚上|晚間|傍晚|午後|週末|晚點|晚一點|有空(?:時)?|下班後|下課後|[一二三四五六七八九十]{1,3}月[一二三四五六七八九十廿]{1,3}(?:日|號))(?:(?:早上|上午|中午|下午|晚上|晚間|傍晚|午後)(?:[零〇一二三四五六七八九十兩\d]{1,3}點(?:半)?)?)?/u;
 const META_SOURCE_PATTERN =
@@ -63,7 +63,7 @@ const META_SOURCE_PATTERN =
 const META_OPERATION_PATTERN =
   /(?:改寫|改得|潤飾|校對|打分|評估|記錄|引用|重述|示範|辨識|怎麼說|怎麼寫|怎麼回|可以說|建議回|寫|記著|抄著|想放|可以用|可以寫|收藏|純粹做)/u;
 const REPORTED_ENVELOPE_PATTERN =
-  /(?:^(?:她|他|同事|朋友|主管|教練|老師|助教|隊長|主持人|男生|男方|阿[\p{Script=Han}]{1,3}|[a-z][a-z.'-]{0,20})(?:在(?:群組|訊息|聊天|錄音)裡)?(?:原本)?(?:跟我)?(?:說|問|提過|傳|提議)|(?:聊天紀錄|截圖|錄音|小說|範例對話|筆記|節目).{0,16}(?:說|問|提議|寫|抄)|(?:引用|重述).{0,12}(?:話|邀請|訊息))/iu;
+  /(?:^(?:她|他|同事|朋友|主管|教練|老師|助教|隊長|主持人|男生|男方|阿[\p{Script=Han}]{1,3}|[a-z][a-z.'-]{0,20}|[\p{Script=Han}]{0,8}(?:老師|助教|教練|領隊|師傅|團長|店員|隊長|志工|策展人)(?:(?:小|阿)[\p{Script=Han}]{1,3})?)(?:在(?:群組|訊息|聊天|錄音)裡)?(?:原本)?(?:跟我)?(?:說|問|提過|傳|提議)|(?:聊天紀錄|截圖|錄音|小說|範例對話|筆記|節目).{0,16}(?:說|問|提議|寫|抄)|(?:引用|重述).{0,12}(?:話|邀請|訊息))/iu;
 const EXPLICIT_NO_INVITE_PATTERN =
   /(?:沒有|沒|不是|不會|不要).{0,8}(?:在)?(?:約|邀|安排(?:見面)?|見面)|(?:沒有|沒)(?:要|打算)(?:約|邀|安排)|(?:不是|不會)(?:在)?約/u;
 const ADMINISTRATIVE_PURPOSE_PATTERN =
@@ -72,6 +72,8 @@ const NON_SOCIAL_PURPOSE_PATTERN =
   /(?:領|取|拿)(?:藥|包裹|貨)|寄件|辦(?:護照|證件|簽證|駕照|文件|手續)|修(?:手機|電腦|車|機車)|看(?:醫生|牙醫)|去(?:醫院|上班|上課|開會|報到|繳費|面試|加油)|買菜|復健|吃藥|工作(?!坊|室)|加班/u;
 const STRUCTURAL_RETRACTION_PATTERN =
   /(?:(?:剛剛|剛才|方才|前面)?(?:那|這)(?:個|段|句|次|趟|件|項)?(?:提議|邀請|邀約|安排|行程|計畫|約[妳你]的話)?.{0,4}(?:不作數|不算數|作廢|請(?:直接)?忽略|先停掉|撤掉|撤銷|取消|收回(?:了)?|先別成行)|(?:那|這)(?:個|段|句|次|趟|件|項)?(?:提議|邀請|邀約|安排|行程|計畫)?我收回(?:了)?|先不要把(?:那|這)?(?:個|次|趟|件|項)?(?:提議|邀請|邀約|安排|行程|計畫|這件事)?排進去|不要安排(?:那|這)?(?:個|次|趟|件|項)?(?:邀請|邀約|安排|行程|計畫|這趟)(?:了)?|整個(?:邀請|邀約|安排|行程|計畫)?拿掉(?:吧)?|請當作我沒(?:有)?提出|當作我沒(?:有)?提出|那句(?:邀請|邀約|約[妳你])?(?:的話)?作廢|我只是隨口說的)(?:了|啦|吧|啊|呀)?$/u;
+const BROAD_RETRACTION_PATTERN =
+  /(?:(?:前面|前述|剛才|剛剛|方才|那|這)(?:的|個|段|句|次|趟|場|件|項)?(?:邀約|邀請|約定|提案|碰面|見面|行程|安排|計畫|約[妳你]的話).{0,8}(?:別算進去|不算(?:了|數)?|撤回|取消|刪掉|請忽略|到此為止|不認(?:了)?|視為無效|不用保留(?:了)?|不要保留(?:了)?|作罷)|(?:那|這)(?:個)?約我不認(?:了)?|(?:我)?(?:正式|決定)?(?:撤回|取消)(?:了)?(?:剛才|剛剛|方才|前面|前述)?(?:的)?(?:邀約|邀請|約定|提案|碰面|見面|行程|安排|計畫)|(?:先)?把(?:前面|前述|剛才|剛剛|方才|那|這)?(?:的|個|段|句|次|趟|場|件|項)?(?:邀約|邀請|約定|提案|碰面|見面|行程|安排|計畫)(?:刪掉|撤回|取消|拿掉)|(?:這次|那次|這趟|那趟)(?:的)?(?:邀約|邀請|約定|提案|碰面|見面|行程|安排|計畫)?(?:就)?(?:不要成行|不成行|就此作罷)|(?:不用|不必|不要|別)(?:再)?(?:安排|保留|排|留著)(?:這|那|前面|前述|剛才|剛剛|方才)?(?:個|次|趟|場|件|項|的)?(?:邀約|邀請|約定|提案|碰面|見面|行程|安排|計畫))(?:了|啦|吧|啊|呀)?$/u;
 const WITHDRAWAL_PLAN_PATTERN =
   /(?:不成行(?:了)?|先不要去|先延後|往後延|暫緩|(?:取消|拿掉|撤掉|撤銷)(?:了)?|先把.{0,24}(?:拿掉|撤掉|撤銷|取消))/u;
 const REPLACEMENT_OPERATOR_PATTERN =
@@ -86,11 +88,11 @@ const DESCRIPTIVE_ACTOR_PATTERN = new RegExp(
   "iu",
 );
 const CONTENT_ARTIFACT_PATTERN =
-  /(?:幕後(?:花絮|紀錄)|(?:語音)?導覽(?:影片)?|座位圖|即時影像|縮時攝影|沖煮示範|示範|電子報|攤商名單|演員訪談|節目單|藏品清單|名單|訪談|清單|新聞|開放時間|介紹(?:片|影片|文章)?|教學(?:片|影片)?|錄音(?:檔)?|官方網站|官網|網站|照片(?:集)?|攻略|宣傳(?:海報|影片)|海報|地圖|評論|評價|精華(?:剪輯|片段)?|剪輯|直播(?:回放)?|回放|轉播|菜單|規則|預告|心得|文章|貼文|短片)(?:檔|集)?$/u;
+  /(?:幕後(?:花絮|紀錄)|(?:語音)?導覽(?:影片)?|座位圖|即時影像|縮時攝影|沖煮示範(?:片|影片)?|示範(?:片|影片)?|電子報|攤商名單|演員訪談|節目單|藏品清單|名單|訪談|清單|新聞|開放時間|介紹(?:片|影片|文章)?|教學(?:片|影片)?|錄音(?:檔)?|官方網站|官網|網站|照片(?:集)?|攻略|宣傳(?:海報|影片)|海報|地圖|評論|評價|精華(?:剪輯|片段)?|剪輯|直播(?:回放)?|回放|轉播|菜單|規則|預告|心得|文章|貼文|短片)(?:檔|集)?$/u;
 const NAV_QUERY_PATTERN =
   /(?:怎麼(?:去|到|走)|哪(?:一)?條路|哪個(?:捷運|車站)?出口|最近的?捷運站是哪個|捷運站是哪個|(?:在)?哪站下車|哪班(?:公車|捷運|車)|哪一路公車|入口在哪|(?:坐|搭)哪|轉車(?:幾次|多久)?|車程(?:要)?多久|(?:去|到).{0,10}(?:多久|多遠)|(?:搭|坐).{0,10}(?:方便|多久|多少錢)|附近.{0,8}(?:停車|停機車)|(?:能|可以|好不好)停(?:車|機車)|路況|交通)/u;
 const COMPLETED_CONDITION_PATTERN =
-  /^(?:(?:等)?[妳你]?(?:忙完|看完|吃完|喝完|做完|寫完|交完|辦完|修完|處理完)[\p{Script=Han}]{0,8}?|(?:今天|明天|後天|今晚|週末|下週)?(?:等)?[\p{Script=Han}]{0,12}?(?:忙完|下班|下課|上完課|開完會|收工|看完|吃完|喝完|做完|寫完|交完|辦完|修完|處理完|結束|完成|收尾|到期)|(?:去|看|吃|喝|辦|修|領|取|寄|買|處理)完[\p{Script=Han}]{1,8}?)(?:了)?(?:之後|以後|後)?(?:就)?(?=(?:我|我們|咱們|妳|你|一起|自己|一個人|要不要|想不想|不然|乾脆|跟|和|去|來|過來|喝|吃|看|逛|玩|碰|見|聚|陪|帶|接|載))/u;
+  /^(?:(?:等)?[妳你]?(?:忙完|看完|吃完|喝完|做完|寫完|交完|辦完|修完|處理完)[\p{Script=Han}]{0,8}?|(?:我|我們|咱們|妳|你)?(?:忙完|看完|吃完|喝完|做完|寫完|交完|辦完|修完|處理完|開完|上完|收拾完)[\p{Script=Han}]{1,12}?|(?:今天|明天|後天|今晚|週末|下週)?(?:等)?[\p{Script=Han}]{0,12}?(?:忙完|下班|下課|上完課|開完會|收工|看完|吃完|喝完|做完|寫完|交完|辦完|修完|處理完|結束|完成|收尾|到期)|(?:去|看|吃|喝|辦|修|領|取|寄|買|處理)完[\p{Script=Han}]{1,8}?)(?:了)?(?:之後|以後|後)?(?:就)?(?=(?:我|我們|咱們|妳|你|一起|自己|一個人|要不要|想不想|不然|乾脆|跟|和|去|來|過來|喝|吃|看|逛|玩|碰|見|聚|陪|帶|接|載))/u;
 
 function stripLeadingCompletedCondition(
   clause: string,
@@ -109,8 +111,9 @@ function stripLeadingCompletedCondition(
 }
 
 function isContentOnly(clause: string): boolean {
-  return /(?:看|聽|讀|閱讀|查|找|研究|瀏覽)/u.test(clause) &&
-    CONTENT_ARTIFACT_PATTERN.test(clause);
+  const candidate = clause.replace(/(?:吧|嗎|呢|啊|呀|啦|喔|哦)+$/u, "");
+  return /(?:看|聽|讀|閱讀|查|找|研究|瀏覽)/u.test(candidate) &&
+    CONTENT_ARTIFACT_PATTERN.test(candidate);
 }
 
 function isNavigationOnlyQuestion(
@@ -660,7 +663,7 @@ function isExtendedNounShorthand(clause: string): boolean {
   );
   if (!noun) return false;
   if (
-    /(?:官網|公告|名額|票價|價格|規則|怎麼|為什麼|哪裡|幾點|有開|開放|營業|休館|訂位|預約)/u
+    /(?:官網|公告|名額|票價|價格|規則|怎麼|為什麼|哪裡|幾點|有開|開放|營業|休館|訂位|預約|課程|介紹|路況|如何|地址|集合)/u
       .test(noun)
   ) {
     return false;
@@ -683,13 +686,32 @@ function isExtendedScheduleShorthand(raw: string): boolean {
       /(?:吧|嗎|好嗎|可以嗎)[?？。.!！]?$/u.test(source)) ||
     !hasAnyFutureTime(source) ||
     ADMINISTRATIVE_PURPOSE_PATTERN.test(source) ||
-    /(?:官網|公告|名額|票價|價格|規則|為什麼|怎麼|哪裡|幾點|有開|開放|營業|休館|訂位|預約)/u
+    /(?:官網|公告|名額|票價|價格|規則|為什麼|怎麼|哪裡|幾點|有開|開放|營業|休館|訂位|預約|課程|介紹|路況|如何|地址|集合)/u
       .test(source)
   ) {
     return false;
   }
+  if (/(?:[我妳你]|一起|跟|和|陪|帶|接|載|找)/u.test(source)) {
+    return false;
+  }
   return /(?:花藝市集|攝影聯展|黑盒子劇場|森林健行|爵士演出|二手書展|法式甜點|湖畔野餐|山城夜遊|手沖咖啡|英式下午茶|不插電音樂會|陶藝體驗|海岸散步)/u
     .test(source);
+}
+
+function isLiveTopicCarryInvite(raw: string): boolean {
+  const parts = compact(raw).split(/[，,：:。.!！?？；;]/u).filter(Boolean);
+  if (parts.length < 2) return false;
+  const tail = parts.at(-1) ?? "";
+  if (!hasAnyFutureTime(tail) || hasExplicitNoInvite(tail)) return false;
+  const invitationTail = stripLeadingPlanTime(tail);
+  if (!/^(?:[妳你])?(?:要|想|會)?一起(?:嗎|吧)?$/u.test(invitationTail)) {
+    return false;
+  }
+  const topic = parts.slice(0, -1).join("，");
+  return /(?:展|博物館|市集|茶館|咖啡|餐廳|早午餐|夕陽|電影|紀錄片|演出|音樂祭|劇場|步道|工坊|夜景)/u
+    .test(topic) &&
+    /(?:不錯|很棒|漂亮|值得|特別|吸引人|熱鬧|有趣|口碑|評價|看來|看起來|聽說|好像)/u
+      .test(topic);
 }
 
 function isWholeMessageMetaInviteWording(raw: string): boolean {
@@ -758,6 +780,7 @@ export function looksLikeGameSoftInvite(raw: string): boolean {
     /(?:沒有|沒|不是|不會).{0,6}(?:在)?(?:約|邀|安排(?:見面)?|見面)[妳你]?(?:了|啦|喔|哦|啊|呀)?[。.!！?？]?$/u
       .test(whole) ||
     STRUCTURAL_RETRACTION_PATTERN.test(whole) ||
+    BROAD_RETRACTION_PATTERN.test(whole) ||
     /(?:剛剛那個提議不作數|那段邀請請直接忽略|先不要把這件事排進去|這趟先停掉|那個計畫我收回了|只是這次先別成行|整個行程拿掉吧|不要安排這趟了|請當作我沒提出|那句邀請作廢|那句話作廢|我只是隨口說的)[。.!！?？]?$/u
       .test(whole)
   ) {
@@ -766,6 +789,7 @@ export function looksLikeGameSoftInvite(raw: string): boolean {
   if (
     TERMINAL_RETRACTION_PATTERN.test(wholeBare) ||
     STRUCTURAL_RETRACTION_PATTERN.test(wholeBare) ||
+    BROAD_RETRACTION_PATTERN.test(wholeBare) ||
     /當作沒聽到$/u.test(wholeBare)
   ) {
     return false;
@@ -813,6 +837,7 @@ export function looksLikeGameSoftInvite(raw: string): boolean {
   ) {
     return false;
   }
+  if (isLiveTopicCarryInvite(raw)) return true;
   if (isExtendedScheduleShorthand(raw)) return true;
   if (
     /[；;](?:至於)?(?:現在)?(?:我們|咱們)[，,]?(?:這|下|本|明|後|週|星期|禮拜|[一二三四五六七八九十]{1,3}月).{0,24}(?:一起|改約).*(?:去|來|到|喝|吃|看|逛|聽|走|散步|碰|見|聚)/u
@@ -1019,7 +1044,8 @@ export function looksLikeGameSoftInvite(raw: string): boolean {
       }
 
       const retraction = TERMINAL_RETRACTION_PATTERN.exec(clause) ??
-        STRUCTURAL_RETRACTION_PATTERN.exec(clause);
+        STRUCTURAL_RETRACTION_PATTERN.exec(clause) ??
+        BROAD_RETRACTION_PATTERN.exec(clause);
       if (retraction?.index !== undefined) {
         const prefix = clause.slice(0, retraction.index);
         const priorProposal = active ||
@@ -1085,8 +1111,20 @@ export function looksLikeGameSoftInvite(raw: string): boolean {
       const hasTreat = /(?:我)?請[妳你](?:喝|吃|看(?:電影|展))/u.test(clause);
       const hasRoleInvite = /有機會.{0,10}讓[妳你]當(?:一次)?/u.test(clause);
       const explicitPhysicalDyad = hasExplicitPhysicalDyadPlan(clause);
+      const partnerQuestionCore = clause
+        .replace(CONCRETE_FUTURE_TIME_PATTERN, "")
+        .replace(CONTEXT_TOKEN_PATTERN, "")
+        .replace(
+          /(?:早上|上午|中午|下午|晚上|晚間|傍晚|午後|[零〇一二三四五六七八九十兩\d]{1,3}點(?:半)?)/gu,
+          "",
+        );
+      const partnerOnlySchedule = unit.question && !hasDyad &&
+        !hasDirectInvite && !hasEscort &&
+        /^[妳你](?:要|想|會|打算|準備)(?:去|來|喝|吃|走|散步|逛|看|玩|爬|跑|打|唱|碰|見|聚|野餐|騎|聽|游泳|健身|露營)/u
+          .test(partnerQuestionCore);
 
       if (
+        partnerOnlySchedule ||
         (isContentOnly(clause) && !explicitPhysicalDyad) ||
         isNavigationOnlyQuestion(
           clause,

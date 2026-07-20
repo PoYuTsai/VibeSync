@@ -687,6 +687,35 @@ Deno.test("evaluateGameFsm does not use a later partner turn to retroactively gr
   assert(snapshot.realityFlags.includes("OBVIOUS_TRAP"));
 });
 
+Deno.test("evaluateGameFsm flags a direct introduced-me referral until it is grounded", () => {
+  const snapshot = evaluateGameFsm({
+    turns: [{ role: "user", text: "老師介紹我來認識妳。" }],
+    temperatureScore: 35,
+    familiarityScore: 10,
+    partnerMood: "neutral",
+  });
+
+  assert(snapshot.realityFlags.includes("social_proof_attempt"));
+  assert(snapshot.realityFlags.includes("OBVIOUS_TRAP"));
+  assert(snapshot.failureStates.includes("FRAME_OVERREACH"));
+});
+
+Deno.test("evaluateGameFsm does not ground a prior interaction at a different place", () => {
+  const snapshot = evaluateGameFsm({
+    turns: [
+      { role: "ai", text: "對啊，我記得上次我們在河濱看過。" },
+      { role: "user", text: "上次我們在老戲院看過。" },
+    ],
+    temperatureScore: 35,
+    familiarityScore: 10,
+    partnerMood: "neutral",
+  });
+
+  assert(snapshot.realityFlags.includes("fake_familiarity"));
+  assert(snapshot.realityFlags.includes("OBVIOUS_TRAP"));
+  assert(snapshot.failureStates.includes("FRAME_OVERREACH"));
+});
+
 Deno.test("buildGameStrategy derives distinct SR hooks", () => {
   const srMia = resolvePracticeProfile({ profileId: "practice_girl_004" });
   const srNora = resolvePracticeProfile({ profileId: "practice_girl_006" });

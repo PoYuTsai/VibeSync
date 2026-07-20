@@ -3342,3 +3342,27 @@ Deno.test("R14 game invite scanner keeps release repairs narrowly scoped", () =>
     assertEquals(looksLikeGameSoftInvite(text), true, text);
   }
 });
+
+Deno.test("R15 fresh audit keeps cancellation, actor, info, and content envelopes closed", () => {
+  const nonInvites = [
+    "我明晚想帶妳去大稻埕散步；不過前面那個邀約別算進去。",
+    "週末我接妳去市集；不必留著前面的計畫。",
+    "下個月中森林健行路況如何？",
+    "妳這個禮拜三下午要去河濱騎腳踏車嗎？",
+    "攝影助教阿禾問我這個禮拜三下午要不要一起去河濱騎腳踏車。",
+    "這週六我們一起讀美術館的電子報吧。",
+  ];
+  for (const text of nonInvites) {
+    assertEquals(looksLikeGameSoftInvite(text), false, text);
+  }
+});
+
+Deno.test("R15 fresh audit preserves completed and topic-carried live invitations", () => {
+  const invites = [
+    "我開完部門會議後就接妳到森林步道健行。",
+    "這場攝影展好像不錯。明晚一起嗎？",
+  ];
+  for (const text of invites) {
+    assertEquals(looksLikeGameSoftInvite(text), true, text);
+  }
+});
