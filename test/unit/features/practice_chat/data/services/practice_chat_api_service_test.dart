@@ -65,6 +65,13 @@ class _CapturedInvoke {
             'watchouts': ['問題略連續'],
             'suggestedLine': '哈哈你今天感覺真的很滿，我先不吵你。',
             'vibe': '自然',
+            'gameBreakdown': {
+              'phaseReached': '建立互動',
+              'missedVariable': '投入感',
+              'failureState': '問題略連續',
+              'nextFirstLine': '先接住她的狀態',
+              'inviteDirection': '等她投入後再看窗口',
+            },
           },
           'costDeducted': 0,
         },
@@ -1075,6 +1082,54 @@ void main() {
       expect(d.gameBreakdown?.failureState, 'too many questions');
       expect(d.gameBreakdown?.nextFirstLine, 'lead with a callback');
       expect(d.gameBreakdown?.inviteDirection, 'soft invite');
+    });
+
+    test('requestDebrief rejects partial or blank Game breakdowns', () async {
+      final complete = <String, dynamic>{
+        'phaseReached': 'value stage',
+        'missedVariable': 'investment',
+        'failureState': 'too many questions',
+        'nextFirstLine': 'lead with a callback',
+        'inviteDirection': 'soft invite',
+      };
+      final malformed = <Map<String, dynamic>>[
+        for (final field in complete.keys)
+          (Map<String, dynamic>.from(complete)..remove(field)),
+        Map<String, dynamic>.from(complete)..['phaseReached'] = '   ',
+      ];
+
+      for (final gameBreakdown in malformed) {
+        final svc = serviceReturning(200, {
+          'generationSource': 'model',
+          'fallbackUsed': false,
+          'qualitySchemaVersion': kPracticeDebriefQualitySchemaVersion,
+          'card': {
+            'summary': 'solid',
+            'strengths': ['hook'],
+            'watchouts': ['too fast'],
+            'suggestedLine': 'next line',
+            'vibe': 'neutral',
+            'gameBreakdown': gameBreakdown,
+          },
+          'costDeducted': 0,
+        });
+
+        await expectLater(
+          svc.requestDebrief(
+            sessionId: 's',
+            profile: profile,
+            turns: turns,
+            practiceMode: PracticeLearningMode.game,
+          ),
+          throwsA(
+            isA<PracticeGenerationFailedException>().having(
+              (e) => e.message,
+              'message',
+              'malformed_debrief',
+            ),
+          ),
+        );
+      }
     });
 
     test('requestDebrief drops gameBreakdown outside game mode', () async {

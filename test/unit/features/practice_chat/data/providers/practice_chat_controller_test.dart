@@ -1451,8 +1451,13 @@ void main() {
               temperatureScore: 30,
               debriefSummary: '具體拆解 ${mode.$1}',
               debriefSuggestedLine: '先接住她今天的安排',
+              debriefGamePhaseReached: mode.$1 == 'game' ? '已進到交換安排' : null,
+              debriefGameMissedVariable: mode.$1 == 'game' ? '還缺她的投入感' : null,
+              debriefGameFailureState: mode.$1 == 'game' ? '目前只停在泛問安排' : null,
               debriefGameNextFirstLine:
                   mode.$1 == 'game' ? '妳今天最期待哪個安排？' : null,
+              debriefGameInviteDirection:
+                  mode.$1 == 'game' ? '先交換安排，再看邀約窗口' : null,
               debriefQualitySchemaVersion: qualityVersion,
             );
 
@@ -1477,6 +1482,28 @@ void main() {
         }
       });
     }
+
+    test('current Game session drops a legacy partial breakdown', () {
+      final current = makeControllerFrom(PracticeSession(
+        id: 'current-game-partial',
+        createdAt: DateTime(2026, 7, 20, 13),
+        aiReplyCount: 1,
+        messages: const [
+          PracticeMessage(role: 'user', text: '早安'),
+          PracticeMessage(role: 'ai', text: '早安，你今天有什麼安排？'),
+        ],
+        profileId: 'practice_girl_004',
+        practiceMode: 'game',
+        temperatureScore: 30,
+        debriefSummary: '具體拆解 game',
+        debriefSuggestedLine: '先接住她今天的安排',
+        debriefGameNextFirstLine: '妳今天最期待哪個安排？',
+        debriefQualitySchemaVersion: kPracticeDebriefQualitySchemaVersion,
+      ));
+
+      expect(current.currentState.debrief, isNotNull);
+      expect(current.currentState.debrief?.gameBreakdown, isNull);
+    });
 
     test('provider 進房自動載入最近未拆解場次，略過已拆解紀錄', () async {
       await repo.save(PracticeSession(

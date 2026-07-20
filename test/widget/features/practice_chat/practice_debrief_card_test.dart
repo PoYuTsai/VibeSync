@@ -33,4 +33,25 @@ void main() {
     expect(find.textContaining('lead with a callback'), findsOneWidget);
     expect(find.textContaining('soft invite'), findsOneWidget);
   });
+
+  testWidgets('PracticeDebriefCard never renders a partial Game breakdown',
+      (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: PracticeDebriefCard(
+            summary: 'solid',
+            strengths: ['hook'],
+            watchouts: ['too fast'],
+            suggestedLine: 'next line',
+            vibe: 'neutral',
+            gameBreakdownPhaseReached: 'value stage',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Game 拆盤'), findsNothing);
+    expect(find.textContaining('value stage'), findsNothing);
+  });
 }

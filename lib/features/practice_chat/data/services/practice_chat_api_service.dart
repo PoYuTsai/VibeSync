@@ -188,6 +188,13 @@ class PracticeGameBreakdown {
       (failureState?.trim().isEmpty ?? true) &&
       (nextFirstLine?.trim().isEmpty ?? true) &&
       (inviteDirection?.trim().isEmpty ?? true);
+
+  bool get isComplete =>
+      (phaseReached?.trim().isNotEmpty ?? false) &&
+      (missedVariable?.trim().isNotEmpty ?? false) &&
+      (failureState?.trim().isNotEmpty ?? false) &&
+      (nextFirstLine?.trim().isNotEmpty ?? false) &&
+      (inviteDirection?.trim().isNotEmpty ?? false);
 }
 
 class PracticeDebrief {
@@ -800,6 +807,15 @@ class PracticeChatApiService {
     if (card is! Map) {
       throw PracticeGenerationFailedException('malformed_debrief');
     }
+    final gameBreakdown = practiceMode == PracticeLearningMode.game
+        ? _parseGameBreakdown(card['gameBreakdown'])
+        : null;
+    if (practiceMode == PracticeLearningMode.game && gameBreakdown == null) {
+      // The server contract requires all five Game fields. Treat a malformed
+      // 200 like any other retryable generated-card failure and keep the same
+      // idempotency key, rather than showing a partial/empty success card.
+      throw PracticeGenerationFailedException('malformed_debrief');
+    }
     final debrief = PracticeDebrief(
       summary: _asString(card['summary']),
       strengths: _asStringList(card['strengths']),
@@ -809,9 +825,7 @@ class PracticeChatApiService {
       dateChance: _asNullableString(card['dateChance']),
       dateChanceReason: _asNullableString(card['dateChanceReason']),
       nextInviteMove: _asNullableString(card['nextInviteMove']),
-      gameBreakdown: practiceMode == PracticeLearningMode.game
-          ? _parseGameBreakdown(card['gameBreakdown'])
-          : null,
+      gameBreakdown: gameBreakdown,
       monthlyRemaining: _asInt(data['monthlyRemaining']),
       dailyRemaining: _asInt(data['dailyRemaining']),
       qualitySchemaVersion: qualitySchemaVersion,
@@ -1156,7 +1170,7 @@ class PracticeChatApiService {
       nextFirstLine: _asNullableString(v['nextFirstLine']),
       inviteDirection: _asNullableString(v['inviteDirection']),
     );
-    return breakdown.isEmpty ? null : breakdown;
+    return breakdown.isComplete ? breakdown : null;
   }
 
   static const Set<String> _validPartnerMoods = {

@@ -1129,7 +1129,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             dateChance: session.debriefDateChance,
             dateChanceReason: session.debriefDateChanceReason,
             nextInviteMove: session.debriefNextInviteMove,
-            gameBreakdown: gameBreakdown.isEmpty ? null : gameBreakdown,
+            // Legacy builds could persist only part of the five-field Game
+            // contract. Never resurrect those rows as a partial success card.
+            gameBreakdown: gameBreakdown.isComplete ? gameBreakdown : null,
             qualitySchemaVersion: session.debriefQualitySchemaVersion,
           )
         : null;

@@ -151,10 +151,10 @@ class PracticeDebriefCard extends StatelessWidget {
       (nextInviteMove?.trim().isNotEmpty ?? false);
 
   bool get _hasGameBreakdown =>
-      (gameBreakdownPhaseReached?.trim().isNotEmpty ?? false) ||
-      (gameBreakdownMissedVariable?.trim().isNotEmpty ?? false) ||
-      (gameBreakdownFailureState?.trim().isNotEmpty ?? false) ||
-      (gameBreakdownNextFirstLine?.trim().isNotEmpty ?? false) ||
+      (gameBreakdownPhaseReached?.trim().isNotEmpty ?? false) &&
+      (gameBreakdownMissedVariable?.trim().isNotEmpty ?? false) &&
+      (gameBreakdownFailureState?.trim().isNotEmpty ?? false) &&
+      (gameBreakdownNextFirstLine?.trim().isNotEmpty ?? false) &&
       (gameBreakdownInviteDirection?.trim().isNotEmpty ?? false);
 }
 
