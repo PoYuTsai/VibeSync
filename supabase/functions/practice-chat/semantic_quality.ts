@@ -84,7 +84,7 @@ export interface PracticeSemanticAdjudicatorArgs {
   maxProviderCalls: number;
   /** Reserve exactly one extra call for a transient Debrief fact-verifier retry. */
   retryTransientFactVerifierOnce?: boolean;
-  /** Retry the same independent Debrief full reviewer once when budget permits. */
+  /** Retry the same independent full reviewer once when budget permits. */
   retryTransientFullReviewerOnce?: boolean;
   deepSeekApiKey?: string;
   claudeApiKey?: string;
@@ -1845,13 +1845,15 @@ export async function adjudicatePracticeCandidate(
       fullReviewerRetryArmed = false;
     }
     if (
-      args.surface === "debrief" && !pendingVerification &&
-      !priorFactRejection && args.candidateProvider !== undefined &&
+      !pendingVerification &&
+      !priorFactRejection && !priorSemanticRejection &&
+      args.candidateProvider !== undefined &&
       reviewer.provider === args.candidateProvider
     ) {
-      // A generated Debrief may never become eligible for a fact-only seal
+      // A generated candidate may never become eligible for a fact-only seal
       // after its independent full reviewer failed and its own provider then
-      // accepted it. Regeneration is the only safe recovery for that path.
+      // accepted it. Retry the exact independent critic when explicitly
+      // enabled; otherwise regeneration is the only safe recovery.
       if (lastError === undefined) {
         lastError = new Error(
           "semantic_adjudication_independent_full_reviewer_required",
@@ -2388,7 +2390,7 @@ export async function adjudicatePracticeCandidate(
         terminalSemanticRejection = true;
       }
       if (
-        args.surface === "debrief" && wasIndependentInitialFullReview &&
+        wasIndependentInitialFullReview &&
         !(error instanceof SemanticFullReviewRejectionError)
       ) {
         if (

@@ -1152,6 +1152,114 @@ Deno.test("accepted candidates still require independent fact verification", asy
   assertEquals(result.providerCalls, 2);
 });
 
+Deno.test("Hint retries the same independent full reviewer before fact verification", async () => {
+  const calls: string[] = [];
+  let claudeCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "hint",
+    practiceMode: "game",
+    candidate: hintCandidate,
+    candidateProvider: "deepseek",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 3,
+    retryTransientFullReviewerOnce: true,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callClaude: (args) => {
+      claudeCalls += 1;
+      calls.push(
+        claudeCalls === 1 ? "claude-full-timeout" : "claude-full-retry",
+      );
+      assertEquals(args.maxTokens, 1800);
+      return claudeCalls === 1
+        ? Promise.reject(new Error("claude_timeout"))
+        : Promise.resolve(validHintAdjudication());
+    },
+    callDeepSeek: (args) => {
+      calls.push("deepseek-fact-verification");
+      assertEquals(args.maxTokens, 1200);
+      assertEquals(args.thinking, { type: "disabled" });
+      return Promise.resolve(validFactVerification());
+    },
+  });
+
+  assertEquals(calls, [
+    "claude-full-timeout",
+    "claude-full-retry",
+    "deepseek-fact-verification",
+  ]);
+  assertEquals(result.candidate, hintCandidate);
+  assertEquals(result.provider, "deepseek");
+  assertEquals(result.providerCalls, 3);
+});
+
+Deno.test("Hint fails closed when its independent full-review retry also times out", async () => {
+  const calls: string[] = [];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: hintCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 3,
+        retryTransientFullReviewerOnce: true,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: () => {
+          calls.push("claude-full-timeout");
+          return Promise.reject(new Error("claude_timeout"));
+        },
+        callDeepSeek: () => {
+          calls.push("deepseek-self-full");
+          return Promise.resolve(validHintAdjudication());
+        },
+      }),
+    SemanticAdjudicationError,
+    "claude_timeout",
+  );
+
+  assertEquals(calls, ["claude-full-timeout", "claude-full-timeout"]);
+  assertEquals(error.providerCalls, 2);
+});
+
+Deno.test("Hint never accepts its generator as the initial full reviewer", async () => {
+  const calls: string[] = [];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "hint",
+        practiceMode: "game",
+        candidate: hintCandidate,
+        candidateProvider: "deepseek",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 3,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callClaude: () => {
+          calls.push("claude-full-timeout");
+          return Promise.reject(new Error("claude_timeout"));
+        },
+        callDeepSeek: () => {
+          calls.push("deepseek-self-full");
+          return Promise.resolve(validHintAdjudication());
+        },
+      }),
+    SemanticAdjudicationError,
+    "claude_timeout",
+  );
+
+  assertEquals(calls, ["claude-full-timeout"]);
+  assertEquals(error.providerCalls, 1);
+});
+
 Deno.test("Debrief retries a transient independent fact-verifier timeout", async () => {
   const candidate = {
     summary: "她接住咖啡話題，對話仍在交換細節。",
@@ -5884,15 +5992,11 @@ Deno.test("a failed first provider cannot make a repair reviewer certify itself"
         },
       }),
     SemanticAdjudicationError,
-    "semantic_adjudication_repair_unverified:deepseek_timeout",
+    "deepseek_timeout",
   );
 
-  assertEquals(calls, [
-    "deepseek:1800",
-    "claude:1800",
-    "deepseek:2400",
-  ]);
-  assertEquals(error.providerCalls, 3);
+  assertEquals(calls, ["deepseek:1800"]);
+  assertEquals(error.providerCalls, 1);
 });
 
 Deno.test("high-risk repair verifier cannot start another rewrite loop", async () => {
@@ -5955,7 +6059,7 @@ Deno.test("Hint refuses to start a review without independent verifier budget", 
   assertEquals(reviewerCalls, 0);
 });
 
-Deno.test("Hint reserves a fourth call to verify a repair after two reviewer failures", async () => {
+Deno.test("Hint reserves a fourth call after the retried independent reviewer rejects", async () => {
   const activeTurns = [
     {
       role: "ai" as const,
@@ -5999,6 +6103,7 @@ Deno.test("Hint reserves a fourth call to verify a repair after two reviewer fai
     turns: activeTurns,
     trustedGenerationContext: "partnerFacts: active consistency test",
     maxProviderCalls: 4,
+    retryTransientFullReviewerOnce: true,
     deepSeekApiKey: "deepseek-key",
     claudeApiKey: "claude-key",
     claudeModel: "claude-test",
@@ -6006,7 +6111,15 @@ Deno.test("Hint reserves a fourth call to verify a repair after two reviewer fai
       calls.push(`claude:${args.maxTokens}`);
       claudeCalls += 1;
       if (claudeCalls === 1) {
-        return Promise.reject(new Error("claude_invalid_json"));
+        return Promise.reject(new Error("claude_timeout"));
+      }
+      if (claudeCalls === 2) {
+        return Promise.resolve(validHintAdjudication({
+          verdict: "reject",
+          issues: [{ kind: "strategy_mismatch" }],
+          repairedResult: null,
+          hintAssessment: ACTIVE_REPLY_NONCOMPLIANT_HINT_ASSESSMENT,
+        }));
       }
       return Promise.resolve(JSON.stringify({
         verdict: "repair",
@@ -6018,10 +6131,6 @@ Deno.test("Hint reserves a fourth call to verify a repair after two reviewer fai
     callDeepSeek: (args) => {
       calls.push(`deepseek:${args.maxTokens}`);
       deepSeekCalls += 1;
-      if (deepSeekCalls === 1) {
-        assertEquals(args.thinking, undefined);
-        return Promise.reject(new Error("deepseek_timeout"));
-      }
       assertEquals(args.thinking, { type: "disabled" });
       const prompt = args.messages.map((message) => message.content).join("\n");
       assertEquals(
@@ -6050,7 +6159,7 @@ Deno.test("Hint reserves a fourth call to verify a repair after two reviewer fai
 
   assertEquals(calls, [
     "claude:1800",
-    "deepseek:1800",
+    "claude:1800",
     "claude:1800",
     "deepseek:2400",
   ]);
@@ -6063,7 +6172,7 @@ Deno.test("Hint reserves a fourth call to verify a repair after two reviewer fai
   assertEquals(validations, 2);
 });
 
-Deno.test("Hint preserves the third reviewer error instead of spending an unverifiable fourth slot", async () => {
+Deno.test("Hint preserves the independent retry error without falling back to its generator", async () => {
   const calls: string[] = [];
   let claudeCalls = 0;
   let deepSeekCalls = 0;
@@ -6078,6 +6187,7 @@ Deno.test("Hint preserves the third reviewer error instead of spending an unveri
         turns,
         trustedGenerationContext: "server facts only",
         maxProviderCalls: 4,
+        retryTransientFullReviewerOnce: true,
         deepSeekApiKey: "deepseek-key",
         claudeApiKey: "claude-key",
         claudeModel: "claude-test",
@@ -6102,12 +6212,11 @@ Deno.test("Hint preserves the third reviewer error instead of spending an unveri
 
   assertEquals(calls, [
     "claude:1800",
-    "deepseek:1800",
     "claude:1800",
   ]);
   assertEquals(claudeCalls, 2);
-  assertEquals(deepSeekCalls, 1);
-  assertEquals(error.providerCalls, 3);
+  assertEquals(deepSeekCalls, 0);
+  assertEquals(error.providerCalls, 2);
 });
 
 Deno.test("generic-only Hint repairs use the bounded full verifier without another rewrite", async () => {
@@ -6300,6 +6409,7 @@ Deno.test("active consistency hard guard preserves its exact repair obligation a
     turns: activeTurns,
     trustedGenerationContext: "partnerFacts: active consistency test",
     maxProviderCalls: 4,
+    retryTransientFullReviewerOnce: true,
     deepSeekApiKey: "deepseek-key",
     claudeApiKey: "claude-key",
     claudeModel: "claude-test",
@@ -6307,7 +6417,12 @@ Deno.test("active consistency hard guard preserves its exact repair obligation a
       calls.push(`claude:${args.maxTokens}`);
       claudeCalls += 1;
       if (claudeCalls === 1) {
-        return Promise.reject(new Error("claude_invalid_json"));
+        return Promise.reject(new Error("claude_timeout"));
+      }
+      if (claudeCalls === 2) {
+        return Promise.resolve(validHintAdjudication({
+          hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
+        }));
       }
       const prompt = args.messages.map((message) => message.content).join("\n");
       assertEquals(prompt.includes(interviewCandidate.warmUp), true);
@@ -6335,12 +6450,6 @@ Deno.test("active consistency hard guard preserves its exact repair obligation a
       calls.push(`deepseek:${args.maxTokens}`);
       deepSeekCalls += 1;
       const prompt = args.messages.map((message) => message.content).join("\n");
-      if (deepSeekCalls === 1) {
-        assertEquals(args.thinking, undefined);
-        return Promise.resolve(validHintAdjudication({
-          hintAssessment: ACTIVE_COMPLIANT_HINT_ASSESSMENT,
-        }));
-      }
       assertEquals(args.thinking, { type: "disabled" });
       assertEquals(
         prompt.includes("本輪是不同 provider 的最終完整語意驗證"),
@@ -6363,7 +6472,7 @@ Deno.test("active consistency hard guard preserves its exact repair obligation a
 
   assertEquals(calls, [
     "claude:1800",
-    "deepseek:1800",
+    "claude:1800",
     "claude:1800",
     "deepseek:2400",
   ]);

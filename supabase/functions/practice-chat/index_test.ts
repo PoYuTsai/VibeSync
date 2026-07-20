@@ -3805,6 +3805,11 @@ for (const mode of ["beginner", "game"] as const) {
     assertEquals(recordDebriefCalls(state).length, 1);
     assertEquals(releaseDebriefCalls(state).length, 0);
     assertEquals(state.semanticCalls[0].surface, "debrief");
+    const telemetry = aiLogInserts(state)[0].values.request_body as Record<
+      string,
+      unknown
+    >;
+    assertEquals(telemetry.semanticProviderCalls, 1);
   });
 
   Deno.test(`${mode} Debrief dual fact transfer fails retryably without a snapshot`, async () => {
@@ -5398,11 +5403,21 @@ Deno.test("Beginner and Game Hint semantically repair invented locations before 
     // One generation + four semantic calls stays within the five-call Hint
     // provider ceiling and preserves a final independent verifier slot.
     assertEquals(state.semanticCalls[0].maxProviderCalls, 4, mode);
+    assertEquals(
+      state.semanticCalls[0].retryTransientFullReviewerOnce,
+      true,
+      mode,
+    );
     assertEquals(state.semanticCalls[0].absoluteDeadlineAtMs, 106000, mode);
     assertEquals(typeof state.semanticCalls[0].monotonicNow, "function", mode);
     assertEquals(recordHintCalls(state).length, 1, mode);
     assertEquals(releaseHintCalls(state).length, 0, mode);
     assertEquals(state.semanticCalls[0].surface, "hint", mode);
+    const telemetry = aiLogInserts(state)[0].values.request_body as Record<
+      string,
+      unknown
+    >;
+    assertEquals(telemetry.semanticProviderCalls, 1, mode);
   }
 });
 

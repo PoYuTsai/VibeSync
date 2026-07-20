@@ -636,7 +636,7 @@ async function persistGenerationTelemetryFailOpen(opts: {
   model?: string;
   timeoutMs?: number;
 }): Promise<void> {
-  let timeoutHandle: number | undefined;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   try {
     const row = buildPracticeAiLogRow({
       userId: opts.userId,
@@ -2957,6 +2957,8 @@ export function createPracticeChatHandler(
                   HINT_PROVIDER_CALL_BUDGET - hintAttemptCount,
                 ),
               ),
+              retryTransientFullReviewerOnce:
+                HINT_PROVIDER_CALL_BUDGET - hintAttemptCount >= 3,
               deepSeekApiKey: apiKey,
               claudeApiKey,
               claudeModel: claudeFallbackModelForTier(sub.tier),
@@ -3244,7 +3246,6 @@ export function createPracticeChatHandler(
         user: summarizeUser(user.id),
         provider: hintProvider,
         model: hintModel,
-        semanticProviderCalls: hintSemanticProviderCalls,
         ...buildPracticeGenerationTelemetry({
           mode: "hint",
           practiceMode: request.practiceMode,
@@ -3253,6 +3254,7 @@ export function createPracticeChatHandler(
           failureClass: null,
           fallbackUsed: false,
           failoverUsed: hintFailoverUsed,
+          semanticProviderCalls: hintSemanticProviderCalls,
           totalDurationMs: hintTotalDurationMs,
           promptChars: hintPromptChars,
         }),
@@ -4137,7 +4139,6 @@ export function createPracticeChatHandler(
         user: summarizeUser(user.id),
         provider: debriefProvider,
         model: debriefModel,
-        semanticProviderCalls: debriefSemanticProviderCalls,
         ...buildPracticeGenerationTelemetry({
           mode: "debrief",
           practiceMode: debriefPracticeMode,
@@ -4146,6 +4147,7 @@ export function createPracticeChatHandler(
           failureClass: null,
           fallbackUsed: false,
           failoverUsed: debriefFailoverUsed,
+          semanticProviderCalls: debriefSemanticProviderCalls,
           totalDurationMs: debriefTotalDurationMs,
           promptChars: debriefPromptChars,
         }),
