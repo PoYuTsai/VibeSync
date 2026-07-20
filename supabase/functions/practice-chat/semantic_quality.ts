@@ -159,6 +159,10 @@ const HINT_FINAL_VERIFICATION_MAX_TOKENS = 2400;
 const DEBRIEF_ADJUDICATION_MAX_TOKENS = 4000;
 const REPAIR_VERIFICATION_MAX_TOKENS = 1200;
 const ADJUDICATION_TEMPERATURE = 0.1;
+// A confirmed Hint rejection needs an actual rewrite, not another near-
+// deterministic copy of the rejected candidate. Keep judging at 0.1, but give
+// the single bounded repair enough variation to replace every mapped field.
+const HINT_REJECTION_REPAIR_TEMPERATURE = 0.35;
 // Production semantic verification regularly completed just beyond 18s.
 // Keep the generation timeout bounded, but give the independent reviewer
 // enough time to finish instead of converting a valid generated Hint into 503.
@@ -234,6 +238,21 @@ interface SemanticRejectionMetadata {
   verifierRecoveryKind?: HintVerifierRecoveryKind;
   verifierHintAssessment?: HintSemanticAssessment;
 }
+
+const CONSERVATIVE_ACTIVE_DELIVERY_ASSESSMENT: HintSemanticAssessment = {
+  interactionKind: "active_consistency_test",
+  replyContract: "compliant",
+  coachingContract: "compliant",
+};
+
+// Keep the full reviewer and the independent fact verifier on the exact same
+// interaction boundary. A literal request for missing details is not evidence
+// of a consistency test; treating it as active used to terminate otherwise
+// valid accepted Hints before the bounded recovery lane could run.
+const HINT_INTERACTION_CLASSIFICATION_RULE =
+  "普通字面問答=ordinary；assistant 明確質疑、挑戰或核對 user 的稱讚、主張、自我呈現或前後一致性=active_consistency_test；其餘=other。" +
+  "assistant 若只是追問 user 剛說的具體資訊，例如「哪家／哪裡／哪個／有多／怎麼／說來聽聽」，且沒有質疑 user 是否說真話、是否真的懂、是否言行一致或前後矛盾，一律是 ordinary，不得只因她要求細節就判 active_consistency_test。" +
+  "active 必須在逐字稿中找到明確的質疑、反差、挑戰或一致性核對語意；沒有這類證據就不可判 active。";
 
 function hintHardGuardSemanticRejection(
   error: unknown,
@@ -346,6 +365,7 @@ function semanticAdjudicationJsonSchema(
   candidate: Record<string, unknown>,
   surface: PracticeSemanticSurface,
   verificationOnly = false,
+  repairOnly = false,
 ): Readonly<Record<string, unknown>> {
   const hintProperties = surface === "hint"
     ? { hintAssessment: HINT_SEMANTIC_ASSESSMENT_JSON_SCHEMA }
@@ -355,21 +375,28 @@ function semanticAdjudicationJsonSchema(
     properties: {
       verdict: {
         type: "string",
-        enum: verificationOnly
+        enum: repairOnly
+          ? ["repair"]
+          : verificationOnly
           ? ["accept", "reject"]
           : ["accept", "repair", "reject"],
       },
       issues: {
         type: "array",
         items: SEMANTIC_ISSUE_JSON_SCHEMA,
+        ...(repairOnly ? { minItems: 1 } : {}),
       },
       repairedResult: {
-        ...(verificationOnly ? { type: "null" } : {
-          anyOf: [
-            { type: "null" },
-            candidateValueJsonSchema(candidate),
-          ],
-        }),
+        ...(repairOnly
+          ? candidateValueJsonSchema(candidate)
+          : verificationOnly
+          ? { type: "null" }
+          : {
+            anyOf: [
+              { type: "null" },
+              candidateValueJsonSchema(candidate),
+            ],
+          }),
       },
       ...hintProperties,
     },
@@ -664,6 +691,29 @@ function hasExactSemanticIssueKinds(
     normalized.every((kind, index) => kind === expected[index]);
 }
 
+function isMappedHintSemanticRepair(
+  rejection: SemanticRejectionMetadata | undefined,
+): boolean {
+  if (!rejection) return false;
+  if (rejection.verifierRecoveryKind || rejection.hardGuardFailureCode) {
+    return true;
+  }
+  // Only these narrow, exhaustively mapped full-review findings have a known
+  // safe rewrite contract. Generic, unsafe, and mixed/unmapped findings must
+  // retain the ordinary accept/repair/reject schema so the next reviewer can
+  // reject rather than being forced to manufacture an unsafe "repair".
+  return hasExactSemanticIssueKinds(rejection.issueKinds, [
+    "unsupported_fact",
+  ]) ||
+    hasExactSemanticIssueKinds(rejection.issueKinds, [
+      "strategy_mismatch",
+    ]) ||
+    hasExactSemanticIssueKinds(rejection.issueKinds, [
+      "unsupported_fact",
+      "strategy_mismatch",
+    ]);
+}
+
 function mergedRejectionConfirmationAssessment(
   pendingAssessment: HintSemanticAssessment | undefined,
   verifierAssessment: HintSemanticAssessment | undefined,
@@ -799,10 +849,10 @@ function assertHintVerifierRecoveryRepair(
 
   const kind = rejection.verifierRecoveryKind;
   if (!kind) return;
-  const expectsActive = kind === "active_contract" ||
-    kind === "active_disagreement_fact";
-  const interactionKindMatches = expectsActive
+  const interactionKindMatches = kind === "active_contract"
     ? repairedAssessment?.interactionKind === "active_consistency_test"
+    : kind === "active_disagreement_fact"
+    ? repairedAssessment !== undefined
     : kind === "ordinary_unsupported_fact"
     ? repairedAssessment?.interactionKind === "ordinary"
     : repairedAssessment !== undefined &&
@@ -863,17 +913,7 @@ function hintVerifierRecoveryVerificationTarget(
   repairedAssessment: HintSemanticAssessment | undefined,
 ): HintSemanticAssessment | undefined {
   if (
-    rejection.verifierRecoveryKind === "active_disagreement_fact" &&
-    repairedAssessment?.interactionKind !== "active_consistency_test"
-  ) {
-    // Unlike the two-active-reviewer lane, this recovery began with a split
-    // classification. The sole active reviewer cannot retract its own active
-    // judgment during repair and have that drift silently pinned away.
-    return repairedAssessment;
-  }
-  if (
-    (rejection.verifierRecoveryKind !== "active_contract" &&
-      rejection.verifierRecoveryKind !== "active_disagreement_fact") ||
+    rejection.verifierRecoveryKind !== "active_contract" ||
     !repairedAssessment
   ) {
     return repairedAssessment;
@@ -1258,7 +1298,9 @@ export function buildSemanticFactVerificationMessages(opts: {
   const factFieldExample = factFields[0] ?? "other";
   const factReasonCodeEnum = FACT_REASON_CODES.join("|");
   const hintAssessmentRule = opts.surface === "hint"
-    ? "Hint 另需獨立重判 hidden hintAssessment，不得沿用前一審結論，也不得照 coaching 自我宣稱。只依逐字稿與 server context：普通字面問答=ordinary；assistant 正在核對 user 的稱讚、主張、自我呈現或前後一致性=active_consistency_test；其餘=other。active 時逐句確認兩案是否都由 user 自己正面回答被核對的主張，不得只說有興趣、硬裝懂、杜撰細節、反問或索取資訊；逐字稿有相關的 assistant 具體觀察／事實時，warmUp、steady 還必須各自回扣至少一項，可近義改寫。只重複大主題／興趣、稱自己的觀察很表面、說被她勾起興趣，或只說自己看不懂某細節，都不是 callback。沒有相關具體細節時，直接回被驗證的 user 原主張，以有限度立場或當下反應作答，不得硬補細節。再確認 coaching 是否辨識測試並把回答責任留給 user、不教自證也不交還她回答。若 user 沒提供既有興趣或專業證據，「還談不上懂／沒有研究到能說懂」是限制主張，「妳一提，我現在開始好奇／留意」是由最新 assistant 訊號觸發的當下反應，兩者都不算杜撰既有偏好或經歷；仍不得寫成一直有興趣、平常研究或早就注意。各自合格回 compliant，任何一項不合格回 noncompliant。ordinary/other 兩個 contract 都回 not_applicable。fact verdict/issues 只代表事實與安全；hintAssessment 是獨立判定，契約不合格時不得硬塞 unsupported_fact/unsafe issue，也不得為了配合 accept 改判。"
+    ? "Hint 另需獨立重判 hidden hintAssessment，不得沿用前一審結論，也不得照 coaching 自我宣稱。只依逐字稿與 server context：" +
+      HINT_INTERACTION_CLASSIFICATION_RULE +
+      "active 時逐句確認兩案是否都由 user 自己正面回答被核對的主張，不得只說有興趣、硬裝懂、杜撰細節、反問或索取資訊；逐字稿有相關的 assistant 具體觀察／事實時，warmUp、steady 還必須各自回扣至少一項，可近義改寫。只重複大主題／興趣、稱自己的觀察很表面、說被她勾起興趣，或只說自己看不懂某細節，都不是 callback。沒有相關具體細節時，直接回被驗證的 user 原主張，以有限度立場或當下反應作答，不得硬補細節。再確認 coaching 是否辨識測試並把回答責任留給 user、不教自證也不交還她回答。若 user 沒提供既有興趣或專業證據，「還談不上懂／沒有研究到能說懂」是限制主張，「妳一提，我現在開始好奇／留意」是由最新 assistant 訊號觸發的當下反應，兩者都不算杜撰既有偏好或經歷；仍不得寫成一直有興趣、平常研究或早就注意。各自合格回 compliant，任何一項不合格回 noncompliant。ordinary/other 兩個 contract 都回 not_applicable。fact verdict/issues 只代表事實與安全；hintAssessment 是獨立判定，契約不合格時不得硬塞 unsupported_fact/unsafe issue，也不得為了配合 accept 改判。"
     : "";
   const visibleCandidate = opts.surface === "debrief"
     ? Object.fromEntries(
@@ -1316,22 +1358,28 @@ export function buildSemanticAdjudicationMessages(opts: {
   priorFactRejection?: FactRejectionMetadata;
   priorSemanticRejection?: SemanticRejectionMetadata;
   semanticVerificationIssueKinds?: SemanticIssueKind[];
+  conservativeActiveDelivery?: boolean;
 }): ChatMessage[] {
   const semanticVerificationIssueKinds = [
     ...new Set(opts.semanticVerificationIssueKinds ?? []),
   ];
   const verificationOnly = semanticVerificationIssueKinds.length > 0;
+  const repairOnly = opts.surface === "hint" && !verificationOnly &&
+    isMappedHintSemanticRepair(opts.priorSemanticRejection);
   const hintShape = ACTIVE_CONSISTENCY_TEST_CONTRACT +
     (verificationOnly
       ? "\nHint 只含 warmUp、steady、coaching，不得輸出 strategies；hidden 決策由 server 依逐字稿與邀約階段產生。"
       : "\nHint 完整 repair 只含 warmUp、steady、coaching，不得輸出 strategies；hidden 決策由 server 依逐字稿與邀約階段產生。") +
-    "另回 hidden hintAssessment，必須只依逐字稿與 server context 判 interactionKind，不得照 candidate coaching 自我宣稱：普通字面問答=ordinary；assistant 正在核對 user 的稱讚、主張、自我呈現或前後一致性=active_consistency_test；其餘=other。" +
+    "另回 hidden hintAssessment，必須只依逐字稿與 server context 判 interactionKind，不得照 candidate coaching 自我宣稱：" +
+    HINT_INTERACTION_CLASSIFICATION_RULE +
     (verificationOnly
       ? "hintAssessment 只描述 candidate_json 這份待交付稿。"
       : "hintAssessment 永遠描述本輪實際要交付的候選：accept 描述 candidate，repair 描述 repairedResult。") +
     "active_consistency_test 時，只有兩案都由 user 自己正面回答被核對的主張、不只說有興趣、不硬裝懂、不杜撰細節、沒有任何明示或省略標點的反問／資訊索取，且逐字稿有相關的 assistant 具體觀察／事實時兩案各自至少回扣一項，replyContract 才能是 compliant；只有 coaching 辨識測試、把回答責任留給 user、不教自證也不交還她回答，coachingContract 才能是 compliant。" +
     (verificationOnly
       ? "candidate_json 已是待交付修復稿；只判這份稿，全部合格才 accept，任一缺陷就 reject，不得改寫。"
+      : repairOnly
+      ? "本輪是已確認且可映射的修復；必須從零產出安全、完整、合約合格的三欄 repair，不得輸出 accept 或 reject。原稿不安全時改用逐字稿已知內容、有限當下反應或誠實缺資料說法；任何無效輸出由伺服器與下一個 provider fail closed。"
       : "若原 candidate 的 active contract 不合格，但逐字稿與 server context 足以產出安全完整回覆，必須 repair；repair 的 hintAssessment 要評 repairedResult，且 active 的兩個 contract 都必須是 compliant，不得把原 candidate 的 noncompliant 判定貼到修復稿。只有無法產出任何安全、完整且合約合格的 Hint 才可 reject。") +
     "ordinary/other 的兩個 contract 一律 not_applicable。" +
     "可見三欄不得出現 P1-P5、move enum、targetVariable、Failure State、temperature/score/band 或內部策略名。" +
@@ -1340,8 +1388,11 @@ export function buildSemanticAdjudicationMessages(opts: {
     "在上述 user 已回答偏好，且 assistant 只用選項縮小答案的普通題中，候選只可重述 user 已明說的不固定／看心情或當下選不出來；不可替 user 或 assistant 補偏好、頻率、選擇或動機；coaching 只描述字面選項題，不猜她的隱藏動機，連否定句也不得提測試／驗證／自證／反打。" +
     "若最新 assistant 正在驗證 user 的稱讚、主張或自我呈現，warmUp、steady 各自都必須直接回答她正在核對的具體命題，不能只說不懂／沒研究；若她問 user 是否有興趣，就以有限度的興趣立場或由她訊號觸發的當下反應正面作答。有逐字稿中相關的具體細節時，兩案各自都要用「妳剛提到／妳把…」等歸屬清楚的說法，回扣至少一項 assistant 已說的觀察／事實；不得把該細節改寫成 user 原本就知道或觀察到。沒有具體細節時，直接回被驗證的 user 原主張，以有限度立場或當下反應作答，不得硬補細節。只重複大主題／興趣、稱自己的觀察很表面、說被她勾起興趣，或只說自己看不懂某細節，都不算直接回答兼 callback；callback 可近義改寫，但必須保留由 assistant 提供的歸屬。" +
     "若 user 沒提供既有興趣或專業證據，「還談不上懂／沒有研究到能說懂」是限制主張，「妳一提，我現在開始好奇／留意」是由最新 assistant 訊號觸發的當下反應，不算杜撰既有偏好或經歷；仍不得寫成一直有興趣、平常研究或早就注意。" +
+    "若 user 只說「路過一家聞起來很香的店」，assistant 問「哪家／多香」，只能重述路過與很香或誠實說不知道／沒記／不亂補；不得補店名、區域、路邊小店、烘焙／花果香、停下來、買過、常去或偏好，再依 ordinary 合約自然接話。" +
     (verificationOnly
       ? "user 未明說既有興趣時，只說「有興趣」不算接住；「有興趣啊，不然也不會問妳」是無證據自證，「有興趣，就想聽妳的看法」是把球丟回採訪，一律不合格，不得 accept。"
+      : repairOnly
+      ? "user 未明說既有興趣時，只說「有興趣」不算接住；「有興趣啊，不然也不會問妳」是無證據自證，「有興趣，就想聽妳的看法」是把球丟回採訪，必須在這份 repair 中改成有證據且直接的完整回應，不得輸出其他 verdict。"
       : "user 未明說既有興趣時，只說「有興趣」不算接住；「有興趣啊，不然也不會問妳」是無證據自證，「有興趣，就想聽妳的看法」是把球丟回採訪，必須以 strategy_mismatch 或 unsupported_fact repair/reject。") +
     "命中驗證時，兩個回覆都不得含問號或以嗎／呢收尾，不保留玩笑反問；回答責任留在 user。" +
     (verificationOnly
@@ -1368,24 +1419,38 @@ export function buildSemanticAdjudicationMessages(opts: {
     opts.priorSemanticRejection?.verifierRecoveryKind ===
       "active_disagreement_fact";
   const pinnedActiveVerifierRecovery =
-    opts.priorSemanticRejection?.verifierRecoveryKind === "active_contract" ||
-    activeDisagreementVerifierRecovery;
+    opts.priorSemanticRejection?.verifierRecoveryKind === "active_contract";
+  const conservativeActiveDeliveryRecovery = pinnedActiveVerifierRecovery ||
+    activeDisagreementVerifierRecovery ||
+    opts.conservativeActiveDelivery === true;
+  const unsupportedFactRepairRule =
+    opts.priorSemanticRejection?.issueKinds.includes("unsupported_fact")
+      ? "unsupported_fact 可用三種安全素材重寫：逐字稿已明示內容、此刻對她最新一句的有限反應、無前提的條件／未來說法。若她追問逐字稿沒有的店名、地點或香氣細節，不得補答案；直接限縮到已知內容並誠實說不知道／沒記／不亂補。輸出前逐欄比較，warmUp、steady、coaching 每欄語意都必須與原稿不同；不要只改標點，也不要因原稿有錯就拒絕一個明明能安全重寫的對話。"
+      : "";
+  const strategyRepairRule =
+    opts.priorSemanticRejection?.issueKinds.includes("strategy_mismatch")
+      ? "strategy_mismatch 也必須在同一份三欄重寫中消失：兩個貼句都先直接回答 assistant 最新問題、各自提供不同但有證據的內容，不得保留原稿的採訪／交棒策略；coaching 只描述字面訊號與本輪具體任務，不猜隱藏動機。"
+      : "";
   const priorSemanticRejectionRule = opts.priorSemanticRejection
     ? `前一個完整審查或伺服器交付硬檢已拒絕目前 Hint（issueKinds=${
       opts.priorSemanticRejection.issueKinds.join(",") || "strategy_mismatch"
     }）。${
-      pinnedActiveVerifierRecovery
-        ? activeDisagreementVerifierRecovery
-          ? "兩個不同 provider 對 interactionKind 有分歧，其中一個判為 active_consistency_test；為避免洗掉主動一致性測試，本輪由該 active reviewer 只修內容並固定回 active_consistency_test/compliant/compliant，下一個原先判非 active 的 provider 必須獨立改判並認證，否則終止；若無法完成就 reject。"
-          : "兩個不同 provider 已一致判為 active_consistency_test；本輪只修內容，不重開 interactionKind，repair 的 hintAssessment 必須是 active_consistency_test/compliant/compliant，下一個不同 provider 仍會獨立重判；若無法完成就 reject。"
+      activeDisagreementVerifierRecovery
+        ? "兩個不同 provider 對 interactionKind 有分歧。本輪由原先判 active 的 provider 重新獨立判定並修內容；不論最後標成 active 或 ordinary/other，warmUp、steady 都必須直接回答且以陳述句收住、完全不反問，coaching 也要實改。下一個原先判非 active 的 provider 必須對修復稿給出相同分類並認證，否則終止。"
+        : pinnedActiveVerifierRecovery
+        ? "兩個不同 provider 已一致判為 active_consistency_test；本輪只修內容，不重開 interactionKind，repair 的 hintAssessment 必須是 active_consistency_test/compliant/compliant，下一個不同 provider 仍會獨立重判；必須完成安全三欄 repair，不得輸出其他 verdict。"
         : "這不是分類真值，你仍須獨立判 interactionKind。"
-    }本輪是唯一保留的完整修復機會，不得原樣 accept。若逐字稿與 server context 足以產出安全完整回覆，必須回 repair，repairedResult 必須實際改動候選，hintAssessment 只評修復稿且須符合交付契約；真的無法安全修好才 reject。`
+    }${unsupportedFactRepairRule}${strategyRepairRule}${
+      repairOnly
+        ? "本輪是唯一保留的完整修復機會，輸出契約只允許 repair，不得 accept/reject。repairedResult 必須從零重寫完整三欄、不得沿用原稿完整句，hintAssessment 只評修復稿；任何不安全、未實改或不合約的輸出都會由伺服器與下一個 provider fail closed。"
+        : "這組缺陷沒有安全、完整的強制改寫映射；請重新獨立審查。只有能同時排除全部缺陷並產生實質安全改稿時才可 repair；若仍有 generic、unsafe 或任何未映射疑慮就必須 reject，不得以 accept 洗掉前一審拒絕。"
+    }`
     : "";
-  const activeVerifierRecoveryAssessment = pinnedActiveVerifierRecovery
+  const activeVerifierRecoveryAssessment = conservativeActiveDeliveryRecovery
     ? opts.priorSemanticRejection?.verifierHintAssessment
     : undefined;
   const activeVerifierRecoveryObligations = [
-    pinnedActiveVerifierRecovery &&
+    conservativeActiveDeliveryRecovery &&
       opts.priorSemanticRejection?.issueKinds.includes("unsupported_fact")
       ? "因同時含 unsupported_fact，warmUp、steady、coaching 三欄都必須完整實改並刪除所有無證據主張；contract=compliant 只代表交付契約合格，不代表該欄事實安全"
       : null,
@@ -1395,7 +1460,7 @@ export function buildSemanticAdjudicationMessages(opts: {
     activeVerifierRecoveryAssessment?.coachingContract === "noncompliant"
       ? "因 coachingContract 不合格，coaching 必須完整實改"
       : null,
-    pinnedActiveVerifierRecovery &&
+    conservativeActiveDeliveryRecovery &&
       opts.priorSemanticRejection?.issueKinds.includes("generic")
       ? "因同時含 generic，三欄都要依逐字稿寫得具體；有具體細節才回扣，沒有時不得硬補，不能把無證據內容只換成空泛罐頭"
       : null,
@@ -1410,16 +1475,16 @@ export function buildSemanticAdjudicationMessages(opts: {
       }; coachingContract=${
         opts.priorSemanticRejection.verifierHintAssessment
           ?.coachingContract ?? "noncompliant"
-      }）。本輪只修 active_consistency_test 的可見交付內容，不得改判 ordinary/other；repair 時 hintAssessment 固定回 active_consistency_test/compliant/compliant，做不到就 reject。${activeVerifierRecoveryObligations}；不能只改標點或無關欄位。`
+      }）。本輪只修 active_consistency_test 的可見交付內容，不得改判 ordinary/other；repair 時 hintAssessment 固定回 active_consistency_test/compliant/compliant，並從逐字稿安全重寫完整三欄，不得輸出其他 verdict。${activeVerifierRecoveryObligations}；不能只改標點或無關欄位。`
       : activeDisagreementVerifierRecovery
       ? `前兩個不同 provider 對 interactionKind 分歧，但其中一個判為 active_consistency_test，且拒絕集合含可完整映射的 unsupported_fact（issueKinds=${
         opts.priorSemanticRejection?.issueKinds.join(",") ?? ""
-      }）。本輪由原 active reviewer 做唯一修復：warmUp、steady、coaching 三欄都要完整實改並刪除無證據主張，hintAssessment 固定回 active_consistency_test/compliant/compliant；不得改判 ordinary/other。下一個原非 active provider 會獨立重判，未確認 active 或未通過合約就終止。${activeVerifierRecoveryObligations}；不能只改標點或無關欄位。`
+      }）。本輪由原 active reviewer 做唯一修復：warmUp、steady、coaching 三欄都要完整實改並刪除無證據主張；重新只依逐字稿判 hintAssessment，可修正成 ordinary/other，但兩句仍一律直接回答、零反問並以陳述句收住。下一個原非 active provider 必須對修復稿回相同分類並認證，否則終止。${activeVerifierRecoveryObligations}；不能只改標點或無關欄位。`
       : opts.priorSemanticRejection?.verifierRecoveryKind ===
           "ordinary_unsupported_fact"
-      ? "前兩個不同 provider 都把互動判為 ordinary，但最終複核仍發現 unsupported_fact。依逐字稿獨立重判；若仍是 ordinary，必須完整重寫 warmUp、steady、coaching 三欄，刪除所有無證據偏好、頻率、動機或經歷；可保留回答後的自然問句，不得誤套 active 禁問。若分類不同或無法確定，直接 reject。"
+      ? "前兩個不同 provider 都把互動判為 ordinary，但最終複核仍發現 unsupported_fact。本輪固定產出 ordinary repair：完整重寫 warmUp、steady、coaching 三欄，刪除所有無證據偏好、頻率、動機或經歷；可保留回答後的自然問句，不得誤套 active 禁問，也不得輸出其他 verdict。"
       : opts.priorSemanticRejection?.verifierRecoveryKind === "nonactive_fact"
-      ? "前兩個不同 provider 都判為非 active（ordinary／other）但標籤不同，且拒絕集合含可完整映射的 unsupported_fact。本輪依逐字稿獨立重判；只要仍是非 active，就完整重寫 warmUp、steady、coaching 三欄並刪除所有無證據主張。不得改判 active_consistency_test；無法確定就 reject。"
+      ? "前兩個不同 provider 都判為非 active（ordinary／other）但標籤不同，且拒絕集合含可完整映射的 unsupported_fact。本輪依逐字稿在 ordinary／other 中選擇證據較明確的分類，完整重寫 warmUp、steady、coaching 三欄並刪除所有無證據主張。不得改判 active_consistency_test，也不得輸出其他 verdict。"
       : "";
   const priorSemanticHardGuardRule =
     opts.priorSemanticRejection?.hardGuardFailureCode ===
@@ -1447,8 +1512,18 @@ export function buildSemanticAdjudicationMessages(opts: {
       semanticVerificationIssueKinds.join(",")
     }。你必須獨立檢查這些缺陷是否實質消失，並重新檢查全部 grounding、安全、互動分類與 Hint 交付契約；只改標點、空白、語助詞或無關欄位不算解決。只可 accept 或 reject，repairedResult 一律 null；本輪不得 repair。若任一舊缺陷仍在、出現新缺陷、分類或 contract 不合格，必須用合法 issue kind reject。前述交付標準只作評分準則，不授權改寫。`
     : "";
+  const conservativeActiveDeliveryRule =
+    opts.conservativeActiveDelivery === true ||
+      activeDisagreementVerifierRecovery
+      ? "本輪有 active/non-active 分歧的保守交付覆寫，優先於前面 ordinary 可問一句的通則：不論最終 interactionKind，warmUp、steady 都必須直接回答並以陳述句收住，零問號、零資訊索取、零交棒；coaching 不得建議追問、請教、採訪、讓她繼續分析或把回答責任交還她。違反時修復輪必須重寫，最終驗證輪必須以 strategy_mismatch reject。"
+      : "";
+  const repairOnlyFinalRule = repairOnly
+    ? "本輪最終輸出契約覆寫前述一般裁判分支：你現在只能回 repair、完整 repairedResult 與修復稿的 hintAssessment；不得以不確定、分類不同、安全疑慮或任何其他理由回 accept/reject。請改用逐字稿最小安全內容完成三欄；伺服器與下一個 provider 會拒絕任何不安全輸出。"
+    : "";
   const verdictRule = semanticVerificationIssueKinds.length > 0
     ? "本輪只可 accept 或 reject，不得 repair；accept 只在整份候選完整合格時使用，否則 reject。"
+    : repairOnly
+    ? "本輪是 rejection recovery，唯一合法 verdict 是 repair；issues 必須保留前述問題集合，repairedResult 必須是完整且三欄語意全新的 Hint。不得 accept/reject，不得沿用任何原稿完整句或只換標點。"
     : "可以 accept、repair 或 reject。能安全修好時優先 repair，repairedResult 必須是原 surface 的完整 JSON；不能確定就 reject，不得放行可疑具體事實。";
   return [
     {
@@ -1467,7 +1542,8 @@ export function buildSemanticAdjudicationMessages(opts: {
         verifierRecoveryRule +
         priorSemanticHardGuardRule +
         modeRule + (opts.surface === "hint" ? hintShape : debriefShape) +
-        semanticVerificationRule +
+        semanticVerificationRule + conservativeActiveDeliveryRule +
+        repairOnlyFinalRule +
         "只輸出唯一 JSON，不要 markdown、前言或解釋。",
     },
     {
@@ -1486,6 +1562,8 @@ export function buildSemanticAdjudicationMessages(opts: {
         (opts.surface === "hint"
           ? semanticVerificationIssueKinds.length > 0
             ? '最終驗證回傳 keys：verdict、issues、repairedResult、hintAssessment。verdict 只可 accept/reject，repairedResult 必須是 null；accept 時 issues=[]，reject 時 issues 至少一個合法 kind。hintAssessment shape：{"interactionKind":"ordinary|active_consistency_test|other","replyContract":"not_applicable|compliant|noncompliant","coachingContract":"not_applicable|compliant|noncompliant"}。不得加入 strategies。'
+            : repairOnly
+            ? '修復回傳 keys：verdict、issues、repairedResult、hintAssessment。verdict 必須是 repair；issues 至少一個合法 kind；repairedResult 必須是完整且三欄語意全新的 Hint，不可為 null；hintAssessment shape：{"interactionKind":"ordinary|active_consistency_test|other","replyContract":"not_applicable|compliant|noncompliant","coachingContract":"not_applicable|compliant|noncompliant"}。不得加入 strategies。'
             : '回傳 keys：verdict、issues、repairedResult、hintAssessment。accept 時 issues=[] 且 repairedResult=null；repair 時 issues 至少一個合法 kind 且 repairedResult=完整 Hint；reject 時 issues 至少一個合法 kind 且 repairedResult=null。hintAssessment shape：{"interactionKind":"ordinary|active_consistency_test|other","replyContract":"not_applicable|compliant|noncompliant","coachingContract":"not_applicable|compliant|noncompliant"}。不得加入 strategies。'
           : "回傳 keys：verdict、issues、repairedResult。accept 時 issues=[] 且 repairedResult=null；repair 時 issues 至少一個合法 kind 且 repairedResult=完整 Debrief；reject 時 issues 至少一個合法 kind 且 repairedResult=null。"),
     },
@@ -1503,18 +1581,26 @@ export async function adjudicatePracticeCandidate(
       outputJsonSchema: Readonly<Record<string, unknown>> | undefined,
       timeoutMs: number,
       deepSeekThinking?: DeepSeekArgs["thinking"],
+      temperature?: number,
     ) => Promise<string>;
   }> = [];
   if (args.claudeApiKey && args.callClaude) {
     reviewers.push({
       provider: "anthropic",
-      call: (messages, maxTokens, outputJsonSchema, timeoutMs) =>
+      call: (
+        messages,
+        maxTokens,
+        outputJsonSchema,
+        timeoutMs,
+        _deepSeekThinking,
+        temperature = ADJUDICATION_TEMPERATURE,
+      ) =>
         args.callClaude!({
           apiKey: args.claudeApiKey!,
           model: args.claudeModel,
           messages,
           maxTokens,
-          temperature: ADJUDICATION_TEMPERATURE,
+          temperature,
           timeoutMs,
           outputJsonSchema,
         }),
@@ -1529,12 +1615,13 @@ export async function adjudicatePracticeCandidate(
         _outputJsonSchema,
         timeoutMs,
         deepSeekThinking,
+        temperature = ADJUDICATION_TEMPERATURE,
       ) =>
         args.callDeepSeek({
           apiKey: args.deepSeekApiKey!,
           messages,
           maxTokens,
-          temperature: ADJUDICATION_TEMPERATURE,
+          temperature,
           jsonMode: true,
           timeoutMs,
           ...(deepSeekThinking ? { thinking: deepSeekThinking } : {}),
@@ -1670,6 +1757,9 @@ export async function adjudicatePracticeCandidate(
               ...args,
               candidate: candidateAwaitingVerification.candidate,
               semanticVerificationIssueKinds,
+              conservativeActiveDelivery:
+                candidateAwaitingVerification.verifierRecoveryKind ===
+                  "active_disagreement_fact",
             }),
             HINT_FINAL_VERIFICATION_MAX_TOKENS,
             semanticAdjudicationJsonSchema(
@@ -1784,7 +1874,10 @@ export async function adjudicatePracticeCandidate(
         }
         args.validateCandidate?.(
           candidateAwaitingVerification.candidate,
-          independentlyVerifiedHintAssessment,
+          candidateAwaitingVerification.verifierRecoveryKind ===
+              "active_disagreement_fact"
+            ? CONSERVATIVE_ACTIVE_DELIVERY_ASSESSMENT
+            : independentlyVerifiedHintAssessment,
         );
         return {
           candidate: candidateAwaitingVerification.candidate,
@@ -1796,6 +1889,8 @@ export async function adjudicatePracticeCandidate(
         };
       }
 
+      const hintRepairOnly = args.surface === "hint" &&
+        isMappedHintSemanticRepair(priorSemanticRejection);
       const raw = await reviewer.call(
         buildSemanticAdjudicationMessages({
           ...args,
@@ -1806,12 +1901,20 @@ export async function adjudicatePracticeCandidate(
         args.surface === "hint"
           ? HINT_ADJUDICATION_MAX_TOKENS
           : DEBRIEF_ADJUDICATION_MAX_TOKENS,
-        semanticAdjudicationJsonSchema(candidateUnderReview, args.surface),
+        semanticAdjudicationJsonSchema(
+          candidateUnderReview,
+          args.surface,
+          false,
+          hintRepairOnly,
+        ),
         timeoutMs,
         reviewer.provider === "deepseek" &&
           priorSemanticRejection?.verifierRecoveryKind
           ? { type: "disabled" }
           : undefined,
+        hintRepairOnly
+          ? HINT_REJECTION_REPAIR_TEMPERATURE
+          : ADJUDICATION_TEMPERATURE,
       );
       const parsed = parseSemanticAdjudication({
         raw,
@@ -1868,7 +1971,10 @@ export async function adjudicatePracticeCandidate(
       try {
         args.validateCandidate?.(
           parsed.candidate,
-          hintAssessmentForVerification,
+          priorSemanticRejection?.verifierRecoveryKind ===
+              "active_disagreement_fact"
+            ? CONSERVATIVE_ACTIVE_DELIVERY_ASSESSMENT
+            : hintAssessmentForVerification,
         );
       } catch (error) {
         const hardGuardRejection = hintHardGuardSemanticRejection(
