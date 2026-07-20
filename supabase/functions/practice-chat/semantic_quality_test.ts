@@ -1195,6 +1195,94 @@ Deno.test("Hint retries the same independent full reviewer before fact verificat
   assertEquals(result.providerCalls, 3);
 });
 
+for (
+  const candidateProvider of ["deepseek", "anthropic"] as const
+) {
+  for (
+    const malformed of [
+      {
+        label: "invalid assessment enum",
+        raw: validHintAdjudication({
+          hintAssessment: {
+            interactionKind: "active",
+            replyContract: "compliant",
+            coachingContract: "compliant",
+          },
+        }),
+      },
+      {
+        label: "contradictory assessment contract",
+        raw: validHintAdjudication({
+          hintAssessment: ACTIVE_REPLY_NONCOMPLIANT_HINT_ASSESSMENT,
+        }),
+      },
+    ]
+  ) {
+    Deno.test(
+      `Hint retries ${candidateProvider} independent full reviewer after ${malformed.label}`,
+      async () => {
+        const calls: string[] = [];
+        let independentCalls = 0;
+        const independentProvider = candidateProvider === "deepseek"
+          ? "anthropic"
+          : "deepseek";
+        const result = await adjudicatePracticeCandidate({
+          surface: "hint",
+          practiceMode: "game",
+          candidate: hintCandidate,
+          candidateProvider,
+          turns,
+          trustedGenerationContext: "server facts only",
+          maxProviderCalls: 3,
+          retryTransientFullReviewerOnce: true,
+          deepSeekApiKey: "deepseek-key",
+          claudeApiKey: "claude-key",
+          claudeModel: "claude-test",
+          callClaude: (args) => {
+            if (independentProvider === "anthropic") {
+              independentCalls += 1;
+              calls.push(`anthropic-full-${independentCalls}`);
+              assertEquals(args.maxTokens, 1800);
+              return Promise.resolve(
+                independentCalls === 1
+                  ? malformed.raw
+                  : validHintAdjudication(),
+              );
+            }
+            calls.push("anthropic-fact-verification");
+            assertEquals(args.maxTokens, 1200);
+            return Promise.resolve(validFactVerification());
+          },
+          callDeepSeek: (args) => {
+            if (independentProvider === "deepseek") {
+              independentCalls += 1;
+              calls.push(`deepseek-full-${independentCalls}`);
+              assertEquals(args.maxTokens, 1800);
+              return Promise.resolve(
+                independentCalls === 1
+                  ? malformed.raw
+                  : validHintAdjudication(),
+              );
+            }
+            calls.push("deepseek-fact-verification");
+            assertEquals(args.maxTokens, 1200);
+            return Promise.resolve(validFactVerification());
+          },
+        });
+
+        assertEquals(calls, [
+          `${independentProvider}-full-1`,
+          `${independentProvider}-full-2`,
+          `${candidateProvider}-fact-verification`,
+        ]);
+        assertEquals(result.candidate, hintCandidate);
+        assertEquals(result.provider, candidateProvider);
+        assertEquals(result.providerCalls, 3);
+      },
+    );
+  }
+}
+
 Deno.test("Hint fails closed when its independent full-review retry also times out", async () => {
   const calls: string[] = [];
   const error = await assertRejects(

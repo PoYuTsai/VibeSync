@@ -1280,6 +1280,8 @@ function isRetryableFullReviewerFailure(
   return message === "semantic_adjudication_invalid_json" ||
     message === "semantic_adjudication_invalid_schema" ||
     message === "semantic_adjudication_invalid_issue" ||
+    message === "semantic_adjudication_invalid_hint_assessment" ||
+    message === "semantic_hint_contract_invalid" ||
     message === "semantic_adjudication_incomplete_repair" ||
     message === "semantic_adjudication_extra_repair_field";
 }
