@@ -1230,6 +1230,7 @@ Deno.test("Debrief cannot self-certify after its independent full reviewer times
         trustedGenerationContext: "server facts only",
         maxProviderCalls: 3,
         retryTransientFactVerifierOnce: true,
+        retryTransientFullReviewerOnce: true,
         deepSeekApiKey: "deepseek-key",
         claudeApiKey: "claude-key",
         claudeModel: "claude-test",
@@ -1269,6 +1270,7 @@ Deno.test("Debrief cannot wash out an independent full strategy rejection", asyn
         trustedGenerationContext: "server facts only",
         maxProviderCalls: 3,
         retryTransientFactVerifierOnce: true,
+        retryTransientFullReviewerOnce: true,
         deepSeekApiKey: "deepseek-key",
         claudeApiKey: "claude-key",
         claudeModel: "claude-test",
@@ -1339,6 +1341,199 @@ Deno.test("Debrief fails closed when its one fact-verifier retry also times out"
     "deepseek-fact-timeout",
   ]);
   assertEquals(error.providerCalls, 3);
+});
+
+Deno.test("Debrief retries the same independent full reviewer before fact verification", async () => {
+  const calls: string[] = [];
+  let deepSeekCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "debrief",
+    practiceMode: "game",
+    candidate: {
+      summary: "她有接住咖啡話題。",
+      suggestedLine: "妳平常也偏愛深焙嗎？",
+    },
+    candidateProvider: "anthropic",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 3,
+    retryTransientFullReviewerOnce: true,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callDeepSeek: (args) => {
+      deepSeekCalls += 1;
+      calls.push(
+        deepSeekCalls === 1 ? "deepseek-full-timeout" : "deepseek-full-retry",
+      );
+      assertEquals(args.maxTokens, 4000);
+      assertEquals(args.thinking, { type: "disabled" });
+      return deepSeekCalls === 1
+        ? Promise.reject(new Error("deepseek_timeout"))
+        : Promise.resolve(JSON.stringify({
+          verdict: "accept",
+          issues: [],
+          repairedResult: null,
+        }));
+    },
+    callClaude: (args) => {
+      calls.push("claude-fact-verification");
+      assertEquals(args.maxTokens, 1200);
+      return Promise.resolve(validFactVerification({
+        hintAssessment: undefined,
+      }));
+    },
+  });
+
+  assertEquals(calls, [
+    "deepseek-full-timeout",
+    "deepseek-full-retry",
+    "claude-fact-verification",
+  ]);
+  assertEquals(result.provider, "anthropic");
+  assertEquals(result.providerCalls, 3);
+});
+
+Deno.test("Debrief fails closed when its independent full-review retry also times out", async () => {
+  const calls: string[] = [];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "debrief",
+        practiceMode: "game",
+        candidate: {
+          summary: "她有接住咖啡話題。",
+          suggestedLine: "妳平常也偏愛深焙嗎？",
+        },
+        candidateProvider: "anthropic",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 3,
+        retryTransientFullReviewerOnce: true,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        callDeepSeek: (args) => {
+          calls.push("deepseek-full-timeout");
+          assertEquals(args.thinking, { type: "disabled" });
+          return Promise.reject(new Error("deepseek_timeout"));
+        },
+        callClaude: () => {
+          calls.push("claude-self-full");
+          return Promise.resolve(JSON.stringify({
+            verdict: "accept",
+            issues: [],
+            repairedResult: null,
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "deepseek_timeout",
+  );
+
+  assertEquals(calls, [
+    "deepseek-full-timeout",
+    "deepseek-full-timeout",
+  ]);
+  assertEquals(error.providerCalls, 2);
+});
+
+Deno.test("Debrief retries an independent full reviewer after a malformed repair envelope", async () => {
+  const candidate = {
+    summary: "她有接住咖啡話題。",
+    suggestedLine: "妳平常也偏愛深焙嗎？",
+  };
+  const calls: string[] = [];
+  let deepSeekCalls = 0;
+  const result = await adjudicatePracticeCandidate({
+    surface: "debrief",
+    practiceMode: "game",
+    candidate,
+    candidateProvider: "anthropic",
+    turns,
+    trustedGenerationContext: "server facts only",
+    maxProviderCalls: 3,
+    retryTransientFullReviewerOnce: true,
+    deepSeekApiKey: "deepseek-key",
+    claudeApiKey: "claude-key",
+    claudeModel: "claude-test",
+    callDeepSeek: () => {
+      deepSeekCalls += 1;
+      calls.push(
+        deepSeekCalls === 1
+          ? "deepseek-malformed-repair"
+          : "deepseek-full-retry",
+      );
+      return Promise.resolve(JSON.stringify(
+        deepSeekCalls === 1
+          ? {
+            verdict: "repair",
+            issues: [{ kind: "generic" }],
+            repairedResult: { ...candidate, privateField: "must be rejected" },
+          }
+          : {
+            verdict: "accept",
+            issues: [],
+            repairedResult: null,
+          },
+      ));
+    },
+    callClaude: () => {
+      calls.push("claude-fact-verification");
+      return Promise.resolve(validFactVerification({
+        hintAssessment: undefined,
+      }));
+    },
+  });
+
+  assertEquals(calls, [
+    "deepseek-malformed-repair",
+    "deepseek-full-retry",
+    "claude-fact-verification",
+  ]);
+  assertEquals(result.candidate, candidate);
+  assertEquals(result.providerCalls, 3);
+});
+
+Deno.test("Debrief full-review retry cannot start after the shared deadline", async () => {
+  const calls: string[] = [];
+  const nowValues = [0, 11];
+  const error = await assertRejects(
+    () =>
+      adjudicatePracticeCandidate({
+        surface: "debrief",
+        practiceMode: "game",
+        candidate: {
+          summary: "她有接住咖啡話題。",
+          suggestedLine: "妳平常也偏愛深焙嗎？",
+        },
+        candidateProvider: "anthropic",
+        turns,
+        trustedGenerationContext: "server facts only",
+        maxProviderCalls: 3,
+        retryTransientFullReviewerOnce: true,
+        deepSeekApiKey: "deepseek-key",
+        claudeApiKey: "claude-key",
+        claudeModel: "claude-test",
+        absoluteDeadlineAtMs: 10,
+        monotonicNow: () => nowValues.shift() ?? 11,
+        callDeepSeek: () => {
+          calls.push("deepseek-full-timeout");
+          return Promise.reject(new Error("deepseek_timeout"));
+        },
+        callClaude: () => {
+          calls.push("claude-fact-verification");
+          return Promise.resolve(validFactVerification({
+            hintAssessment: undefined,
+          }));
+        },
+      }),
+    SemanticAdjudicationError,
+    "semantic_adjudication_deadline_exceeded",
+  );
+
+  assertEquals(calls, ["deepseek-full-timeout"]);
+  assertEquals(error.providerCalls, 1);
 });
 
 Deno.test("pure information follow-up stays ordinary in both accepted-candidate reviewers", async () => {

@@ -3879,6 +3879,8 @@ export function createPracticeChatHandler(
               retryTransientFactVerifierOnce:
                 candidateProvider === "deepseek" &&
                 reservedRecoveryCalls > 0 && semanticCallBudget === 3,
+              retryTransientFullReviewerOnce:
+                candidateProvider === "anthropic" && semanticCallBudget >= 3,
               deepSeekApiKey: apiKey,
               claudeApiKey,
               claudeModel: claudeFallbackModelForTier(sub.tier),

@@ -84,6 +84,8 @@ export interface PracticeSemanticAdjudicatorArgs {
   maxProviderCalls: number;
   /** Reserve exactly one extra call for a transient Debrief fact-verifier retry. */
   retryTransientFactVerifierOnce?: boolean;
+  /** Retry the same independent Debrief full reviewer once when budget permits. */
+  retryTransientFullReviewerOnce?: boolean;
   deepSeekApiKey?: string;
   claudeApiKey?: string;
   claudeModel: string;
@@ -1223,6 +1225,30 @@ function factRejectionMetadata(error: unknown): FactRejectionMetadata | null {
 }
 
 type FactVerifierFailureStage = "provider_call" | "fact_parse" | "validation";
+type FullReviewerFailureStage =
+  | "provider_call"
+  | "semantic_parse"
+  | "validation";
+
+function isRetryableReviewerProviderFailure(
+  error: Error,
+  provider: "deepseek" | "anthropic",
+): boolean {
+  if (error instanceof TypeError || error instanceof SyntaxError) return true;
+  const message = error.message.toLowerCase();
+  const prefix = provider === "deepseek" ? "deepseek" : "claude";
+  if (
+    message === `${prefix}_timeout` ||
+    message === `${prefix}_max_tokens` ||
+    message === `${prefix}_empty_content`
+  ) {
+    return true;
+  }
+  const httpStatus = message.match(new RegExp(`^${prefix}_http_(\\d{3})$`));
+  if (!httpStatus) return false;
+  const status = Number(httpStatus[1]);
+  return status === 408 || status === 429 || status >= 500;
+}
 
 function isRetryableFactVerifierFailure(
   error: unknown,
@@ -1237,19 +1263,25 @@ function isRetryableFactVerifierFailure(
       message === "semantic_fact_verification_invalid_issue";
   }
   if (stage !== "provider_call") return false;
-  if (error instanceof TypeError || error instanceof SyntaxError) return true;
-  const prefix = provider === "deepseek" ? "deepseek" : "claude";
-  if (
-    message === `${prefix}_timeout` ||
-    message === `${prefix}_max_tokens` ||
-    message === `${prefix}_empty_content`
-  ) {
-    return true;
+  return isRetryableReviewerProviderFailure(error, provider);
+}
+
+function isRetryableFullReviewerFailure(
+  error: unknown,
+  stage: FullReviewerFailureStage | undefined,
+  provider: "deepseek" | "anthropic",
+): boolean {
+  if (!(error instanceof Error)) return false;
+  if (stage === "provider_call") {
+    return isRetryableReviewerProviderFailure(error, provider);
   }
-  const httpStatus = message.match(new RegExp(`^${prefix}_http_(\\d{3})$`));
-  if (!httpStatus) return false;
-  const status = Number(httpStatus[1]);
-  return status === 408 || status === 429 || status >= 500;
+  if (stage !== "semantic_parse") return false;
+  const message = error.message.toLowerCase();
+  return message === "semantic_adjudication_invalid_json" ||
+    message === "semantic_adjudication_invalid_schema" ||
+    message === "semantic_adjudication_invalid_issue" ||
+    message === "semantic_adjudication_incomplete_repair" ||
+    message === "semantic_adjudication_extra_repair_field";
 }
 
 export function parseSemanticFactVerification(opts: {
@@ -1713,6 +1745,9 @@ export async function adjudicatePracticeCandidate(
   let factVerifierRetryArmed = false;
   let factVerifierRetryUsed = false;
   let factVerifierRetryProvider: "deepseek" | "anthropic" | undefined;
+  let fullReviewerRetryArmed = false;
+  let fullReviewerRetryUsed = false;
+  let fullReviewerRetryProvider: "deepseek" | "anthropic" | undefined;
   let pendingVerification:
     | Pick<
       SemanticAdjudicationResult,
@@ -1795,6 +1830,20 @@ export async function adjudicatePracticeCandidate(
       reviewer = retryReviewer;
       factVerifierRetryArmed = false;
     }
+    if (fullReviewerRetryArmed) {
+      const retryReviewer = reviewers.find((candidate) =>
+        candidate.provider === fullReviewerRetryProvider
+      );
+      if (!retryReviewer || pendingVerification) {
+        lastError = new Error(
+          "semantic_adjudication_full_reviewer_retry_unavailable",
+        );
+        terminalSemanticRejection = true;
+        break;
+      }
+      reviewer = retryReviewer;
+      fullReviewerRetryArmed = false;
+    }
     if (
       args.surface === "debrief" && !pendingVerification &&
       !priorFactRejection && args.candidateProvider !== undefined &&
@@ -1813,6 +1862,12 @@ export async function adjudicatePracticeCandidate(
     const wasPendingFactVerification = pendingVerification !== undefined &&
       !pendingVerification.semanticVerificationIssueKinds?.length;
     let factVerifierFailureStage: FactVerifierFailureStage | undefined;
+    const wasIndependentInitialFullReview = pendingVerification === undefined &&
+      priorFactRejection === undefined &&
+      priorSemanticRejection === undefined &&
+      args.candidateProvider !== undefined &&
+      reviewer.provider !== args.candidateProvider;
+    let fullReviewerFailureStage: FullReviewerFailureStage | undefined;
     const remainingMs = args.absoluteDeadlineAtMs === undefined
       ? ADJUDICATION_TIMEOUT_MS
       : Math.floor(
@@ -1975,6 +2030,7 @@ export async function adjudicatePracticeCandidate(
 
       const hintRepairOnly = args.surface === "hint" &&
         isMappedHintSemanticRepair(priorSemanticRejection);
+      fullReviewerFailureStage = "provider_call";
       const raw = await reviewer.call(
         buildSemanticAdjudicationMessages({
           ...args,
@@ -1993,13 +2049,15 @@ export async function adjudicatePracticeCandidate(
         ),
         timeoutMs,
         reviewer.provider === "deepseek" &&
-          priorSemanticRejection?.verifierRecoveryKind
+          (args.surface === "debrief" ||
+            priorSemanticRejection?.verifierRecoveryKind)
           ? { type: "disabled" }
           : undefined,
         hintRepairOnly
           ? HINT_REJECTION_REPAIR_TEMPERATURE
           : ADJUDICATION_TEMPERATURE,
       );
+      fullReviewerFailureStage = "semantic_parse";
       const parsed = parseSemanticAdjudication({
         raw,
         surface: args.surface,
@@ -2052,6 +2110,7 @@ export async function adjudicatePracticeCandidate(
           hintAssessmentForVerification,
         );
       }
+      fullReviewerFailureStage = "validation";
       try {
         args.validateCandidate?.(
           parsed.candidate,
@@ -2327,6 +2386,28 @@ export async function adjudicatePracticeCandidate(
         // One call must remain for an independent verifier. If the dedicated
         // repair attempt fails, another full rewrite could never be certified.
         terminalSemanticRejection = true;
+      }
+      if (
+        args.surface === "debrief" && wasIndependentInitialFullReview &&
+        !(error instanceof SemanticFullReviewRejectionError)
+      ) {
+        if (
+          args.retryTransientFullReviewerOnce === true &&
+          !fullReviewerRetryUsed && normalBudget - providerCalls >= 2 &&
+          isRetryableFullReviewerFailure(
+            error,
+            fullReviewerFailureStage,
+            reviewer.provider,
+          )
+        ) {
+          // Retry the exact independent critic, then keep one normal-budget
+          // call for the other provider's mandatory fact verification.
+          fullReviewerRetryUsed = true;
+          fullReviewerRetryArmed = true;
+          fullReviewerRetryProvider = reviewer.provider;
+        } else {
+          terminalSemanticRejection = true;
+        }
       }
       if (args.surface === "debrief" && wasPendingFactVerification) {
         const substantiveFactRejection = factRejectionMetadata(error) !== null;

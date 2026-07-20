@@ -3880,6 +3880,102 @@ Deno.test("debrief real adjudicator regenerates after a malformed independent re
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
+Deno.test("debrief real adjudicator retries a transient fallback full-review timeout", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    useRealSemanticAdjudicator: true,
+    deepSeekReplies: [
+      validDebriefJson(),
+      new Error("deepseek_timeout"),
+      '{"verdict":"accept","issues":[],"repairedResult":null}',
+    ],
+    claudeReplies: [
+      JSON.stringify({
+        verdict: "reject",
+        issues: [{ kind: "strategy_mismatch" }],
+        repairedResult: null,
+      }),
+      validDebriefJson(),
+      '{"verdict":"accept","issues":[]}',
+    ],
+  }, debriefBody({ requestId: "debrief-full-review-timeout-retry" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json.provider, "anthropic");
+  assertEquals(json.failoverUsed, true);
+  assertEquals(state.deepSeekCalls.length, 3);
+  assertEquals(state.claudeCalls.length, 3);
+  assertEquals(
+    state.semanticCalls.map((call) => call.maxProviderCalls),
+    [3, 4],
+  );
+  assertEquals(
+    state.semanticCalls.map((call) =>
+      call.retryTransientFactVerifierOnce === true
+    ),
+    [true, false],
+  );
+  assertEquals(
+    state.semanticCalls.map((call) =>
+      call.retryTransientFullReviewerOnce === true
+    ),
+    [false, true],
+  );
+  assertEquals(state.deepSeekCalls[0].thinking, { type: "disabled" });
+  assertEquals(state.deepSeekCalls[1].thinking, { type: "disabled" });
+  assertEquals(state.deepSeekCalls[2].thinking, { type: "disabled" });
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
+});
+
+Deno.test("debrief full-review retry preserves verification at the exact seven-call ceiling", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    useRealSemanticAdjudicator: true,
+    deepSeekReplies: [
+      validDebriefJson(),
+      JSON.stringify({
+        verdict: "reject",
+        issues: [{
+          kind: "unsupported_fact",
+          field: "suggestedLine",
+          reasonCode: "user_fact_unsupported",
+        }],
+      }),
+      new Error("deepseek_timeout"),
+      '{"verdict":"accept","issues":[],"repairedResult":null}',
+    ],
+    claudeReplies: [
+      '{"verdict":"accept","issues":[],"repairedResult":null}',
+      validDebriefJson(),
+      '{"verdict":"accept","issues":[]}',
+    ],
+  }, debriefBody({ requestId: "debrief-seven-call-full-review-retry" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json.provider, "anthropic");
+  assertEquals(json.failoverUsed, true);
+  assertEquals(state.deepSeekCalls.length + state.claudeCalls.length, 7);
+  assertEquals(
+    state.semanticCalls.map((call) => call.maxProviderCalls),
+    [3, 3],
+  );
+  assertEquals(
+    state.semanticCalls.map((call) =>
+      call.retryTransientFactVerifierOnce === true
+    ),
+    [true, false],
+  );
+  assertEquals(
+    state.semanticCalls.map((call) =>
+      call.retryTransientFullReviewerOnce === true
+    ),
+    [false, true],
+  );
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
+});
+
 Deno.test("debrief real adjudicator repairs a substantive fact rejection within the seven-call ceiling", async () => {
   const repaired = JSON.parse(validDebriefJson()) as Record<string, unknown>;
   delete repaired.hintAssessment;
