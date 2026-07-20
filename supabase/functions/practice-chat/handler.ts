@@ -148,17 +148,14 @@ const LEGACY_CLIENT_QUALITY_SCHEMA_VERSION = "typed-facts-v1";
 const HINT_MAX_TOKENS = 1600;
 const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 1;
+const HINT_CLAUDE_GENERATION_ATTEMPTS = 2;
 const SERVER_HINT_DECISION_RATIONALE =
   "只依據本場逐字稿與已知角色資料；貼句已依目前關係階段與邀約路線校驗。";
-// A normal Hint still uses one generation plus up to four semantic calls. Its
-// eight-call failure ceiling preserves one fresh Claude candidate plus two
-// mandatory reviews after a terminal DeepSeek candidate.
-// Debrief normally stays within seven calls. Its ten-call failure ceiling only
-// permits one additional fresh Claude candidate plus two mandatory reviews
-// after the DeepSeek and first Claude candidates fail. Every candidate remains
-// independently verified before it can be recorded.
-const HINT_PROVIDER_CALL_BUDGET = 8;
-const DEBRIEF_PROVIDER_CALL_BUDGET = 10;
+// Normal success paths keep their existing call depth. The larger failure-only
+// ceilings reserve one final fresh Claude candidate plus its two mandatory
+// reviews after both the DeepSeek and first Claude candidates fail.
+const HINT_PROVIDER_CALL_BUDGET = 11;
+const DEBRIEF_PROVIDER_CALL_BUDGET = 13;
 const HINT_SEMANTIC_REVIEWER_CALL_BUDGET = 4;
 const DEBRIEF_SEMANTIC_REVIEWER_CALL_BUDGET = 6;
 // Every generated candidate needs a full independent semantic review plus the
@@ -2928,12 +2925,18 @@ export function createPracticeChatHandler(
           if (!deps.semanticAdjudicate) {
             throw new Error("semantic_adjudication_unavailable");
           }
+          const futureClaudeCandidateReserve =
+            candidateProvider === "anthropic" &&
+              hintAttemptCount <
+                HINT_GENERATION_ATTEMPTS + HINT_CLAUDE_GENERATION_ATTEMPTS
+              ? 1 + PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION
+              : 0;
           const hintSemanticCallBudget = Math.max(
             0,
             Math.min(
               HINT_SEMANTIC_REVIEWER_CALL_BUDGET,
               HINT_PROVIDER_CALL_BUDGET - hintAttemptCount -
-                hintSemanticProviderCalls,
+                hintSemanticProviderCalls - futureClaudeCandidateReserve,
             ),
           );
           let semantic;
@@ -3105,11 +3108,15 @@ export function createPracticeChatHandler(
           }
         }
 
-        if (
-          hintResult === null && claudeApiKey && deps.callClaude &&
+        for (
+          let claudeAttempt = 1;
+          hintResult === null &&
+          claudeAttempt <= HINT_CLAUDE_GENERATION_ATTEMPTS &&
+          claudeApiKey && deps.callClaude &&
           HINT_PROVIDER_CALL_BUDGET - hintAttemptCount -
                 hintSemanticProviderCalls >=
-            1 + PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION
+            1 + PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION;
+          claudeAttempt++
         ) {
           const hintMessages = lastError !== undefined &&
               isHintFormatOrGuardError(lastError)
@@ -3846,12 +3853,19 @@ export function createPracticeChatHandler(
           if (!deps.semanticAdjudicate) {
             throw new Error("semantic_adjudication_unavailable");
           }
+          const futureClaudeCandidateReserve =
+            candidateProvider === "anthropic" &&
+              debriefAttemptCount <
+                DEBRIEF_GENERATION_ATTEMPTS +
+                  DEBRIEF_CLAUDE_GENERATION_ATTEMPTS
+              ? 1 + PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION
+              : 0;
           const semanticCallBudget = Math.max(
             0,
             Math.min(
               DEBRIEF_SEMANTIC_REVIEWER_CALL_BUDGET,
               DEBRIEF_PROVIDER_CALL_BUDGET - debriefAttemptCount -
-                debriefSemanticProviderCalls,
+                debriefSemanticProviderCalls - futureClaudeCandidateReserve,
             ),
           );
           let semantic;

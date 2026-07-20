@@ -4287,6 +4287,50 @@ Deno.test("Game debrief regenerates after a final verifier rejection and succeed
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
+Deno.test("Debrief reserves a final fresh candidate after two terminal semantic failures", async () => {
+  const firstClaudeCandidate = fullyRewrittenDebriefCandidate("first");
+  const finalCandidate = {
+    ...fullyRewrittenDebriefCandidate("second"),
+    summary: "她分享下班後想散步放空，最後候選只整理本輪可見內容。",
+  };
+  const terminalSemanticError = (providerCalls: number) =>
+    new SemanticAdjudicationError(
+      "semantic_adjudication_failed:semantic_adjudication_rejected",
+      providerCalls,
+      { issueKinds: ["strategy_mismatch"] },
+    );
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({ ai_count: 1, charged: true }),
+      deepSeekReplies: [validDebriefJson()],
+      claudeReplies: [
+        JSON.stringify(firstClaudeCandidate),
+        JSON.stringify(finalCandidate),
+      ],
+      semanticReplies: [
+        terminalSemanticError(4),
+        terminalSemanticError(4),
+        {
+          ...semanticDebriefResult(finalCandidate),
+          providerCalls: 2,
+        },
+      ],
+    },
+    debriefBody({ requestId: "debrief-final-reserved-candidate" }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.card, finalCandidate);
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(
+    state.semanticCalls.map((call) => call.maxProviderCalls),
+    [6, 4, 2],
+  );
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
+});
+
 Deno.test("debrief fact rejection gives Claude grounding guidance instead of a schema diagnosis", async () => {
   const { response, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
@@ -5755,6 +5799,55 @@ Deno.test("Hint semantic failure regenerates through Claude and re-reviews befor
   ]);
 });
 
+Deno.test("Hint reserves a final fresh candidate after two terminal semantic failures", async () => {
+  const firstClaudeCandidate = JSON.parse(validHintJson({
+    warmUp: "我只知道她現在想喝咖啡，先問她是想醒腦還是放空。",
+    steady: "咖啡這題先不猜店名，問她今天想醒腦還是放空。",
+  })) as Record<string, unknown>;
+  const finalCandidate = JSON.parse(validHintJson({
+    warmUp: "突然想喝咖啡，是今天想醒腦還是想放空？",
+    steady: "咖啡念頭收到，妳今天比較需要醒腦還是放空？",
+  })) as Record<string, unknown>;
+  const terminalSemanticError = (providerCalls: number) =>
+    new SemanticAdjudicationError(
+      "semantic_adjudication_failed:semantic_adjudication_rejected",
+      providerCalls,
+      { issueKinds: ["strategy_mismatch"] },
+    );
+  const { response, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      deepSeekReplies: [validHintJson()],
+      claudeReplies: [
+        JSON.stringify(firstClaudeCandidate),
+        JSON.stringify(finalCandidate),
+      ],
+      semanticReplies: [
+        terminalSemanticError(4),
+        terminalSemanticError(2),
+        {
+          ...semanticHintResult(finalCandidate),
+          providerCalls: 2,
+        },
+      ],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "hint-final-reserved-candidate",
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(
+    state.semanticCalls.map((call) => call.maxProviderCalls),
+    [4, 2, 2],
+  );
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
 Deno.test("Game Hint sends duplicate generic questions through semantic repair instead of failing early", async () => {
   const repaired = JSON.parse(validGameHintJson()) as Record<string, unknown>;
   const { response, json, state } = await run(
@@ -6527,7 +6620,7 @@ Deno.test("game hint returns retryable error when both providers return malforme
     retryable: true,
   });
   assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(state.deepSeekCalls[0].timeoutMs, 24000);
   assertEquals(state.claudeCalls[0].timeoutMs, 18000);
   assertEquals(recordHintCalls(state).length, 0);
@@ -6673,7 +6766,7 @@ Deno.test("beginner hint provider failures return retryable error without record
     retryable: true,
   });
   assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(claimHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 1);
   assertEquals(recordHintCalls(state).length, 0);
@@ -6697,7 +6790,7 @@ Deno.test("beginner hint malformed output from both providers never becomes a fa
   assertEquals(json.retryable, true);
   assertEquals("replies" in json, false);
   assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(claimHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 1);
   assertEquals(recordHintCalls(state).length, 0);
@@ -7335,7 +7428,7 @@ for (
       retryable: true,
     });
     assertEquals(state.deepSeekCalls.length, expectedAttempts);
-    assertEquals(state.claudeCalls.length, 1);
+    assertEquals(state.claudeCalls.length, 2);
     assertEquals(recordHintCalls(state).length, 0);
     assertEquals(settleHintCalls(state).length, 0);
     assertEquals(releaseHintCalls(state).length, 1);
@@ -7368,7 +7461,7 @@ Deno.test("Hint prefetch malformed output never records the formal fallback", as
 
   assertEquals(response.status, 503);
   assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(releaseHintCalls(state).length, 1);
 });
