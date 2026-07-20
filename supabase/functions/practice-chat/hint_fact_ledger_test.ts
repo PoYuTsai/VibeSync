@@ -1365,3 +1365,38 @@ Deno.test("stripUnsupportedThirdPartyDetails never touches user or partner facts
   });
   assertEquals(before, text);
 });
+
+Deno.test("stripUnsupportedThirdPartyDetails returns empty when whole text is third-party detail (P1#4)", () => {
+  const context = buildHintFactContext({
+    turns: [{ role: "ai", text: "最近好嗎？" }],
+  });
+  // 整段就是被清光的第三方細節 → 回空字串，讓呼叫端當 salvage 失敗、維持 503。
+  const out = stripUnsupportedThirdPartyDetails({
+    text: "我朋友阿凱說那家店很棒。",
+    field: "reply",
+    context,
+  });
+  assertEquals(out, "");
+});
+
+Deno.test("stripUnsupportedThirdPartyDetails leaves no unsupported third-party residue (P1#3)", () => {
+  const context = buildHintFactContext({
+    turns: [{ role: "ai", text: "最近好嗎？" }],
+  });
+  const out = stripUnsupportedThirdPartyDetails({
+    text: "我朋友阿凱說讚，我同事小美也推，一起吧？",
+    field: "reply",
+    context,
+  });
+  // 非空輸出必須已無第三方未接地殘留。
+  if (out.length > 0) {
+    const residual = collectUnsupportedHintFactClaims({
+      text: out,
+      field: "reply",
+      context,
+    }).filter((claim) =>
+      claim.owner === "world" || claim.owner === "third_party"
+    );
+    assertEquals(residual.length, 0);
+  }
+});

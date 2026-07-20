@@ -2966,6 +2966,14 @@ export function createPracticeChatHandler(
               context: factContext,
             }),
           };
+          // P1#3/P1#4：strip 回空字串代表整段被清光或殘留清不乾淨的第三方幻覺，
+          // 一律當 salvage 失敗、不供給（維持 503），絕不落帶幻覺或殘句的候選。
+          if (
+            cleaned.warmUp.length === 0 || cleaned.steady.length === 0 ||
+            cleaned.coaching.length === 0
+          ) {
+            return null;
+          }
           try {
             return decisionedHint(
               parseHintResult(JSON.stringify(cleaned), {

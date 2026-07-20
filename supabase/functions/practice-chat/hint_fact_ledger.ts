@@ -2754,5 +2754,17 @@ export function stripUnsupportedThirdPartyDetails(input: {
     !anchors.some((anchor) => segment.includes(anchor))
   );
   const rebuilt = kept.join("").trim();
-  return rebuilt.length > 0 ? rebuilt : input.text;
+  // P1#4：整段都是第三方細節被清光 → 回空字串，讓呼叫端當 salvage 失敗（維持 503），
+  // 絕不 fallback 回帶幻覺的原文。
+  if (rebuilt.length === 0) return "";
+  // P1#3：strip 後重跑同一偵測，若仍有第三方未接地殘留（切段沒清乾淨／留下懸空
+  // 連接詞又夾帶錨點），視為清不乾淨，同樣回空字串讓呼叫端 reject。
+  const residual = collectUnsupportedHintFactClaims({
+    text: rebuilt,
+    field: input.field,
+    context: input.context,
+  }).some((claim) =>
+    claim.owner === "world" || claim.owner === "third_party"
+  );
+  return residual ? "" : rebuilt;
 }
