@@ -3880,6 +3880,10 @@ export function createPracticeChatHandler(
       const debriefFailureClasses: PracticeGenerationFailureClass[] = [];
       const debriefFailureCodes: string[] = [];
       let debriefSemanticProviderCalls = 0;
+      // Change A：debrief 迴圈保留最佳「通過完整客觀硬 gate」候選。語意複審對
+      // 非安全類 reject 時存下；budget 燒完仍無成功候選就供給它、不再一律 503。
+      let bestGatePassingDebrief: DebriefCard | null = null;
+      let debriefSalvageUsed = false;
       try {
         let lastError: unknown;
         const baseDebriefMessages = buildDebriefMessages(
@@ -3923,6 +3927,21 @@ export function createPracticeChatHandler(
           enforceGeneratedQuality: true,
           semanticAdjudicated: true,
         } as const;
+        // Change A：用「完整客觀硬 gate」（semanticAdjudicated=false → 接地／事實／
+        // generic／欄位角色全開，只跳過主觀 LLM 複審）驗一份候選；過了就是有出處、
+        // 可安全供給的降級拆解。任何硬 gate 失敗一律回 null，寧可 503。
+        const salvageDebriefCandidate = (
+          raw: Record<string, unknown>,
+        ): DebriefCard | null => {
+          try {
+            return parseDebriefCard(JSON.stringify(raw), {
+              ...generatedDebriefParseOptions,
+              semanticAdjudicated: false,
+            });
+          } catch {
+            return null;
+          }
+        };
         const parseGeneratedDebrief = async (
           rawCard: string,
           candidateProvider: "deepseek" | "anthropic",
@@ -4034,6 +4053,20 @@ export function createPracticeChatHandler(
                 semanticCallBudget,
               )
               : semanticCallBudget;
+            // Change A/B：非安全類語意 reject 時保留這份已過完整客觀硬 gate 的
+            // 候選。unsafe 與 unsupported_fact（誤導使用者理解對方意思的事實）
+            // 屬硬底線，一律不留，寧可 503 也不供給不安全或事實錯誤的拆解。
+            if (
+              error instanceof SemanticAdjudicationError &&
+              bestGatePassingDebrief === null &&
+              !error.issueKinds.includes("unsafe") &&
+              !error.issueKinds.includes("unsupported_fact")
+            ) {
+              const salvaged = salvageDebriefCandidate(candidate);
+              if (salvaged) {
+                bestGatePassingDebrief = salvaged;
+              }
+            }
             throw error;
           }
           const reviewedCard = parseDebriefCard(
@@ -4217,9 +4250,22 @@ export function createPracticeChatHandler(
           }
         }
         if (debriefCard === null) {
-          throw lastError instanceof Error
-            ? lastError
-            : new Error("debrief_generation_failed");
+          // Change A：budget 燒完仍無成功候選時，改供給本輪保留的最佳客觀-gate
+          // 候選（僅主觀複審沒過），避免對系統性主觀 reject 反覆 503。無保留候選
+          // （含 unsafe/unsupported_fact 被硬底線排除）則維持原本 throw→503。
+          if (bestGatePassingDebrief !== null) {
+            debriefCard = bestGatePassingDebrief;
+            debriefSalvageUsed = true;
+            logInfo("practice_chat_debrief_best_candidate_served", {
+              user: summarizeUser(user.id),
+              practiceMode: debriefPracticeMode,
+              semanticProviderCalls: debriefSemanticProviderCalls,
+            });
+          } else {
+            throw lastError instanceof Error
+              ? lastError
+              : new Error("debrief_generation_failed");
+          }
         }
       } catch (e) {
         logWarn("practice_chat_generation_failed", {
@@ -4269,6 +4315,7 @@ export function createPracticeChatHandler(
         user: summarizeUser(user.id),
         provider: debriefProvider,
         model: debriefModel,
+        bestCandidateSalvaged: debriefSalvageUsed,
         ...buildPracticeGenerationTelemetry({
           mode: "debrief",
           practiceMode: debriefPracticeMode,
