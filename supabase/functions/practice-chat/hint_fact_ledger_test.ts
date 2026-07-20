@@ -5,10 +5,12 @@ import {
 import {
   assertHintFactClaimsSupported,
   buildHintFactContext,
+  collectUnsupportedHintFactClaims,
   extractHintFactClaims,
   type HintFactClaim,
   isLikelyProperPlaceAnchor,
   partnerFactClaimsFromProfile,
+  stripUnsupportedThirdPartyDetails,
 } from "./hint_fact_ledger.ts";
 import { resolvePracticeProfile } from "./practice_persona.ts";
 import type { PracticeTurn } from "./validate.ts";
@@ -1306,4 +1308,60 @@ Deno.test("typed asksPlace venue pattern does not misfire on narrative/state cla
     Error,
     ERROR,
   );
+});
+
+Deno.test("collectUnsupportedHintFactClaims mirrors assert without throwing", () => {
+  const context = buildHintFactContext({
+    turns: [{ role: "ai", text: "最近好嗎？" }],
+  });
+  const unsupported = collectUnsupportedHintFactClaims({
+    text: "我朋友阿凱說那家店很棒，一起去看看？",
+    field: "reply",
+    context,
+  });
+  assertEquals(
+    unsupported.some((claim) =>
+      claim.owner === "third_party" && claim.anchor === "阿凱"
+    ),
+    true,
+  );
+  // 已接地內容不得被收進未接地清單。
+  const grounded = collectUnsupportedHintFactClaims({
+    text: "你剛說在忙報告，先不打擾你？",
+    field: "reply",
+    context: buildHintFactContext({
+      turns: [{ role: "ai", text: "我最近在忙報告" }],
+    }),
+  });
+  assertEquals(
+    grounded.some((claim) => claim.owner === "third_party"),
+    false,
+  );
+});
+
+Deno.test("stripUnsupportedThirdPartyDetails removes third-party clause and rejoins", () => {
+  const context = buildHintFactContext({
+    turns: [{ role: "ai", text: "週末想做什麼？" }],
+  });
+  const stripped = stripUnsupportedThirdPartyDetails({
+    text: "我朋友阿凱說那家店很棒，一起去看看？",
+    field: "reply",
+    context,
+  });
+  assertEquals(stripped.includes("阿凱"), false);
+  assertEquals(stripped.length > 0, true);
+});
+
+Deno.test("stripUnsupportedThirdPartyDetails never touches user or partner facts", () => {
+  const context = buildHintFactContext({
+    turns: [{ role: "ai", text: "最近好嗎？" }],
+  });
+  // partner-owned 未接地推測不屬第三方幻覺，安全底線交給 Change B，一律不 strip。
+  const text = "先聊聊你平常喜歡的類型，再看要不要約。";
+  const before = stripUnsupportedThirdPartyDetails({
+    text,
+    field: "reply",
+    context,
+  });
+  assertEquals(before, text);
 });

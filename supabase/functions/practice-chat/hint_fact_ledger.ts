@@ -2628,18 +2628,17 @@ function claimTextuallySupported(
   );
 }
 
-export function assertHintFactClaimsSupported(input: {
+/**
+ * 收集會被 assertHintFactClaimsSupported fail-closed 的未接地 claim，但不 throw。
+ * 完全沿用 assert 的判定順序與條件，只把「會 throw」的 output 收進陣列回傳，
+ * 供 Change C 的 venue/third-party 幻覺 strip 修復定位錨點。判定邏輯若有變動，
+ * assert 與本 collector 必須同步（兩者共用同一個 loop 主體）。
+ */
+export function collectUnsupportedHintFactClaims(input: {
   text: string;
   field: "reply" | "coaching";
   context: HintFactContext;
-  errorCode?: string;
-}): void {
-  const errorCode = input.errorCode ??
-    "hint_quality_invalid_unsupported_detail";
-  const unsupported = (claim: HintFactClaim): Error =>
-    new Error(
-      `${errorCode}:${claim.owner}:${claim.domain}:${claim.relation}`,
-    );
+}): HintFactClaim[] {
   const outputClaimsByKey = new Map<string, HintFactClaim>();
   for (
     const claim of [
@@ -2660,6 +2659,7 @@ export function assertHintFactClaimsSupported(input: {
     setClaimPreferHigh(outputClaimsByKey, claim);
   }
   const outputClaims = [...outputClaimsByKey.values()];
+  const unsupported: HintFactClaim[] = [];
 
   for (const output of outputClaims) {
     // 低信心抽取絕不 fail-closed：只保留供觀測，永不因它 throw。
@@ -2671,7 +2671,7 @@ export function assertHintFactClaimsSupported(input: {
         [output.owner, "world", "shared"],
       ) || claimTextuallySupported(output, input.context);
       if (ALWAYS_REQUIRE_SUPPORT.has(output.domain) && !supportedWorld) {
-        throw unsupported(output);
+        unsupported.push(output);
       }
       continue;
     }
@@ -2684,7 +2684,7 @@ export function assertHintFactClaimsSupported(input: {
       const bothSides = supportedBy(output, input.context.claims, ["user"]) &&
         supportedBy(output, input.context.claims, ["partner"]);
       if (!explicitShared && !bothSides) {
-        throw unsupported(output);
+        unsupported.push(output);
       }
       continue;
     }
@@ -2692,7 +2692,8 @@ export function assertHintFactClaimsSupported(input: {
     const ownOwners: HintFactOwner[] = [output.owner, "shared"];
     if (supportedBy(output, input.context.claims, ownOwners)) continue;
     if (hasConflictingOwnClaim(output, input.context.claims, ownOwners)) {
-      throw unsupported(output);
+      unsupported.push(output);
+      continue;
     }
 
     const oppositeOwner: HintFactOwner = output.owner === "user"
@@ -2702,7 +2703,56 @@ export function assertHintFactClaimsSupported(input: {
       claim.owner === oppositeOwner && sameFactIdentity(output, claim)
     );
     if (oppositeHasSameFact || ALWAYS_REQUIRE_SUPPORT.has(output.domain)) {
-      throw unsupported(output);
+      unsupported.push(output);
     }
   }
+  return unsupported;
+}
+
+export function assertHintFactClaimsSupported(input: {
+  text: string;
+  field: "reply" | "coaching";
+  context: HintFactContext;
+  errorCode?: string;
+}): void {
+  const errorCode = input.errorCode ??
+    "hint_quality_invalid_unsupported_detail";
+  const [claim] = collectUnsupportedHintFactClaims(input);
+  if (claim) {
+    throw new Error(
+      `${errorCode}:${claim.owner}:${claim.domain}:${claim.relation}`,
+    );
+  }
+}
+
+/**
+ * Change C：把逐字稿沒有出處的「第三方／世界實體」(owner=world/third_party，
+ * 例如捏造的店名、場地、他人) 所在的子句移除，再交由呼叫端用完整硬 gate 重驗。
+ * 只移除 world/third_party owner 的未接地 claim；user/partner/shared 自身事實
+ * 屬安全底線範圍（Change B），本函式一律不碰，避免竄改使用者自陳事實。
+ * 這是純 post-parse 文字轉換，不改動任何生成 prompt bytes。
+ */
+export function stripUnsupportedThirdPartyDetails(input: {
+  text: string;
+  field: "reply" | "coaching";
+  context: HintFactContext;
+}): string {
+  const anchors = [
+    ...new Set(
+      collectUnsupportedHintFactClaims(input)
+        .filter((claim) =>
+          claim.owner === "world" || claim.owner === "third_party"
+        )
+        .map((claim) => claim.anchor)
+        .filter((anchor) => anchor.length >= 2),
+    ),
+  ];
+  if (anchors.length === 0) return input.text;
+  // 依中英文子句標點切段（保留分隔符），移除含任一未接地錨點的子句後重組。
+  const segments = input.text.split(/(?<=[。！？，、；：;!?,])/u);
+  const kept = segments.filter((segment) =>
+    !anchors.some((anchor) => segment.includes(anchor))
+  );
+  const rebuilt = kept.join("").trim();
+  return rebuilt.length > 0 ? rebuilt : input.text;
 }
