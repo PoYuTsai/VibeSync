@@ -3067,12 +3067,9 @@ export function createPracticeChatHandler(
           }
         }
 
-        const hintSemanticRetryable = lastError instanceof Error &&
-          lastError.message.includes("semantic_adjudication");
         if (
-          hintResult === null &&
-          (!hintSemanticAttempted || hintSemanticRetryable) &&
-          claudeApiKey && deps.callClaude
+          hintResult === null && !hintSemanticAttempted && claudeApiKey &&
+          deps.callClaude
         ) {
           const hintMessages = lastError !== undefined &&
               isHintFormatOrGuardError(lastError)
