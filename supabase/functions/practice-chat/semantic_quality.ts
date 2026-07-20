@@ -155,18 +155,18 @@ class SemanticFullReviewRejectionError extends Error {
   }
 }
 
-// Hint full review/repair stays at 1800. DeepSeek v4 has exhausted that cap on
-// the independent accept/reject-only pass in production, so only that final
+// Ordinary Hint review/repair stays at 1800. DeepSeek v4 has exhausted that cap
+// on accept/reject-only passes in production, so the shared final semantic
 // verification lane gets 2400; provider call counts and deadlines stay fixed.
 const HINT_ADJUDICATION_MAX_TOKENS = 1800;
-const HINT_FINAL_VERIFICATION_MAX_TOKENS = 2400;
+const SEMANTIC_FINAL_VERIFICATION_MAX_TOKENS = 2400;
 const DEBRIEF_ADJUDICATION_MAX_TOKENS = 4000;
 const REPAIR_VERIFICATION_MAX_TOKENS = 1200;
 const ADJUDICATION_TEMPERATURE = 0.1;
-// A confirmed Hint rejection needs an actual rewrite, not another near-
-// deterministic copy of the rejected candidate. Keep judging at 0.1, but give
-// the single bounded repair enough variation to replace every mapped field.
-const HINT_REJECTION_REPAIR_TEMPERATURE = 0.35;
+// A confirmed rejection needs an actual rewrite, not another near-deterministic
+// copy of the rejected candidate. Keep judging at 0.1, but give each bounded
+// repair enough variation to replace every mapped field.
+const REJECTION_REPAIR_TEMPERATURE = 0.35;
 // Production semantic verification regularly completed just beyond 18s.
 // Keep the generation timeout bounded, but give the independent reviewer
 // enough time to finish instead of converting a valid generated Hint into 503.
@@ -244,6 +244,7 @@ interface SemanticRejectionMetadata {
   hardGuardReviewProvider?: "deepseek" | "anthropic";
   verifierRecoveryKind?: HintVerifierRecoveryKind;
   verifierHintAssessment?: HintSemanticAssessment;
+  debriefFactRecoveryLineage?: boolean;
 }
 
 const CONSERVATIVE_ACTIVE_DELIVERY_ASSESSMENT: HintSemanticAssessment = {
@@ -693,11 +694,67 @@ function hasExactJsonContainerShape(
   return !isRecord(value) && !Array.isArray(value);
 }
 
+function everyFactBearingLeafRewritten(
+  before: unknown,
+  after: unknown,
+): boolean {
+  if (typeof before === "string") {
+    return typeof after === "string" &&
+      isMaterialSemanticValueRepair(before, after);
+  }
+  if (Array.isArray(before)) {
+    if (!Array.isArray(after) || after.length === 0) return false;
+    return before.every((oldItem) =>
+      after.every((newItem) => isMaterialSemanticValueRepair(oldItem, newItem))
+    );
+  }
+  if (isRecord(before)) {
+    if (!isRecord(after)) return false;
+    return Object.keys(before).every((key) =>
+      Object.hasOwn(after, key) &&
+      everyFactBearingLeafRewritten(before[key], after[key])
+    );
+  }
+  return isMaterialSemanticValueRepair(before, after);
+}
+
+function debriefFactBearingFieldsRewritten(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): boolean {
+  return factIssueFieldsFor("debrief", before)
+    .filter((field) => field !== "other")
+    .every((field) =>
+      Object.hasOwn(after, field) &&
+      everyFactBearingLeafRewritten(before[field], after[field])
+    );
+}
+
+function debriefFactRecoveryMetadataPreserved(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): boolean {
+  return ["vibe", "dateChance", "hintAssessment"].every((field) =>
+    Object.hasOwn(before, field) === Object.hasOwn(after, field) &&
+    (!Object.hasOwn(before, field) ||
+      jsonValuesEqual(before[field], after[field]))
+  );
+}
+
 function factRejectionFieldsChanged(
+  surface: PracticeSemanticSurface,
   rejection: FactRejectionMetadata,
   before: Record<string, unknown>,
   after: Record<string, unknown>,
 ): boolean {
+  if (surface === "debrief") {
+    // A field-only patch can replace one hallucination with another, or leave
+    // an unreported sibling behind. Debrief therefore uses a full factual
+    // scrub: every fact-bearing top-level field and every nested/list leaf must
+    // be materially rebuilt before a different provider may verify the card.
+    return debriefFactBearingFieldsRewritten(before, after) &&
+      debriefFactRecoveryMetadataPreserved(before, after);
+  }
   const concreteFields = rejection.fields.filter((field) => field !== "other");
   if (concreteFields.length === 0) {
     return !jsonValuesEqual(before, after);
@@ -846,6 +903,24 @@ function isMappedHintSemanticRepair(
       "unsupported_fact",
       "strategy_mismatch",
     ]);
+}
+
+function isMappedDebriefSemanticRepair(
+  rejection: SemanticRejectionMetadata | undefined,
+): boolean {
+  if (!rejection || rejection.issueKinds.length === 0) return false;
+  return rejection.issueKinds.every((kind) =>
+    kind === "unsupported_fact" || kind === "generic" ||
+    kind === "strategy_mismatch"
+  );
+}
+
+function isMappedDebriefFactScrub(
+  rejection: FactRejectionMetadata | undefined,
+): boolean {
+  return rejection !== undefined && rejection.fields.length > 0 &&
+    !rejection.issueKinds.includes("unsafe") &&
+    !rejection.reasonCodes.includes("unsafe");
 }
 
 function mergedRejectionConfirmationAssessment(
@@ -1649,8 +1724,11 @@ export function buildSemanticAdjudicationMessages(opts: {
     ...new Set(opts.semanticVerificationIssueKinds ?? []),
   ];
   const verificationOnly = semanticVerificationIssueKinds.length > 0;
-  const repairOnly = opts.surface === "hint" && !verificationOnly &&
-    isMappedHintSemanticRepair(opts.priorSemanticRejection);
+  const repairOnly = !verificationOnly &&
+    (opts.surface === "hint"
+      ? isMappedHintSemanticRepair(opts.priorSemanticRejection)
+      : isMappedDebriefSemanticRepair(opts.priorSemanticRejection) ||
+        isMappedDebriefFactScrub(opts.priorFactRejection));
   const hintShape = ACTIVE_CONSISTENCY_TEST_CONTRACT +
     (verificationOnly
       ? "\nHint 只含 warmUp、steady、coaching，不得輸出 strategies；hidden 決策由 server 依逐字稿與邀約階段產生。"
@@ -1700,12 +1778,19 @@ export function buildSemanticAdjudicationMessages(opts: {
     ? "本輪最高優先交付邊界：user 只說路過／經過一家聞起來很香的店，assistant 正追問逐字稿沒有的店名、位置、區域或香氣細節。warmUp、steady 都必須先用陳述句誠實說不知道、沒記或當時只注意到很香，再只重用『路過／經過』與『很香』；不得反問逃避，不得補店名、區域、路邊／巷口／轉角店、公司或捷運站附近、店型、烘焙／花果香、停下來、買過、常去或偏好。這條覆寫留懸念、給球、共同小場景與逐字重用等通則。"
     : "";
   const priorFactRejectionRule = opts.priorFactRejection
-    ? `前一個獨立事實核驗已拒絕當前候選（fields=${
-      opts.priorFactRejection.fields.join(",") || "other"
-    }; reasonCodes=${
-      opts.priorFactRejection.reasonCodes.join(",") ||
-      "world_fact_unsupported"
-    }）。本輪不得原樣 accept；能修時必須回 repair，且上列每個具體 field 都要實際變更、移除無證據事實或修正 owner，不能確定就 reject。`
+    ? opts.surface === "debrief"
+      ? `前一個獨立事實核驗已拒絕當前 Debrief（fields=${
+        opts.priorFactRejection.fields.join(",") || "other"
+      }; reasonCodes=${
+        opts.priorFactRejection.reasonCodes.join(",") ||
+        "world_fact_unsupported"
+      }）。本輪是全卡事實清洗，只能回 repair：summary、strengths 每一點、watchouts 每一點、suggestedLine、dateChanceReason、nextInviteMove，以及 Game 的 gameBreakdown 五個文字欄位都必須從逐字稿與 server context 重新寫過，不能保留原稿任何完整句。逐項修正人物 owner；不得把 assistant/profile 的事實移給 user，不得用另一個無證據的「我曾經／我平常／我會」取代舊錯誤，也不得在未點名欄位新增事實。vibe、dateChance 與 hidden hintAssessment 必須逐值原樣保留；下一個不同 provider 會完整核驗整張修復卡的事實、策略、品質與 Hint continuity。`
+      : `前一個獨立事實核驗已拒絕當前候選（fields=${
+        opts.priorFactRejection.fields.join(",") || "other"
+      }; reasonCodes=${
+        opts.priorFactRejection.reasonCodes.join(",") ||
+        "world_fact_unsupported"
+      }）。本輪不得原樣 accept；能修時必須回 repair，且上列每個具體 field 都要實際變更、移除無證據事實或修正 owner，不能確定就 reject。`
     : "";
   const activeDisagreementVerifierRecovery =
     opts.priorSemanticRejection?.verifierRecoveryKind ===
@@ -1717,26 +1802,40 @@ export function buildSemanticAdjudicationMessages(opts: {
     opts.conservativeActiveDelivery === true;
   const unsupportedFactRepairRule =
     opts.priorSemanticRejection?.issueKinds.includes("unsupported_fact")
-      ? "unsupported_fact 可用三種安全素材重寫：逐字稿已明示內容、此刻對她最新一句的有限反應、無前提的條件／未來說法。若她追問逐字稿沒有的店名、地點或香氣細節，不得補答案；直接限縮到已知內容並誠實說不知道／沒記／不亂補。輸出前逐欄比較，warmUp、steady、coaching 每欄語意都必須與原稿不同；不要只改標點，也不要因原稿有錯就拒絕一個明明能安全重寫的對話。"
+      ? opts.surface === "debrief"
+        ? "unsupported_fact 修復必須做全卡事實清洗：所有分析只寫逐字稿可直接支持的行為或明確標成建議；所有可貼句中的第一人稱既有經歷、偏好、行程與觀察都必須有 user 原話，沒有就改成有限當下反應、無前提問題或未來條件句。每個 fact-bearing 欄位與巢狀文字都要重新寫，不能只換掉被點名的一句。"
+        : "unsupported_fact 可用三種安全素材重寫：逐字稿已明示內容、此刻對她最新一句的有限反應、無前提的條件／未來說法。若她追問逐字稿沒有的店名、地點或香氣細節，不得補答案；直接限縮到已知內容並誠實說不知道／沒記／不亂補。輸出前逐欄比較，warmUp、steady、coaching 每欄語意都必須與原稿不同；不要只改標點，也不要因原稿有錯就拒絕一個明明能安全重寫的對話。"
       : "";
   const strategyRepairRule =
     opts.priorSemanticRejection?.issueKinds.includes("strategy_mismatch")
-      ? "strategy_mismatch 也必須在同一份三欄重寫中消失：兩個貼句都先直接回答 assistant 最新問題、各自提供不同但有證據的內容，不得保留原稿的採訪／交棒策略；coaching 只描述字面訊號與本輪具體任務，不猜隱藏動機。"
+      ? opts.surface === "debrief"
+        ? "strategy_mismatch 必須在同一份全卡重寫中消失：各欄依最新 assistant 訊號、實際 Hint lineage 與邀約階段保持一致；suggestedLine/nextFirstLine 一次一招且 owner 正確，不得保留原稿錯誤策略。"
+        : "strategy_mismatch 也必須在同一份三欄重寫中消失：兩個貼句都先直接回答 assistant 最新問題、各自提供不同但有證據的內容，不得保留原稿的採訪／交棒策略；coaching 只描述字面訊號與本輪具體任務，不猜隱藏動機。"
       : "";
+  const debriefFactRecoveryMetadataRule = opts.surface === "debrief" &&
+      opts.priorSemanticRejection?.debriefFactRecoveryLineage === true
+    ? "本輪仍屬同一條 fact recovery：vibe、dateChance 與 hidden hintAssessment 必須繼續逐值原樣保留，不得因改成 semantic repair 而漂移。"
+    : "";
   const priorSemanticRejectionRule = opts.priorSemanticRejection
-    ? `前一個完整審查或伺服器交付硬檢已拒絕目前 Hint（issueKinds=${
-      opts.priorSemanticRejection.issueKinds.join(",") || "strategy_mismatch"
-    }）。${
-      activeDisagreementVerifierRecovery
-        ? "兩個不同 provider 對 interactionKind 有分歧。本輪由原先判 active 的 provider 重新獨立判定並修內容；不論最後標成 active 或 ordinary/other，warmUp、steady 都必須直接回答且以陳述句收住、完全不反問，coaching 也要實改。下一個原先判非 active 的 provider 必須對修復稿給出相同分類並認證，否則終止。"
-        : pinnedActiveVerifierRecovery
-        ? "兩個不同 provider 已一致判為 active_consistency_test；本輪只修內容，不重開 interactionKind，repair 的 hintAssessment 必須是 active_consistency_test/compliant/compliant，下一個不同 provider 仍會獨立重判；必須完成安全三欄 repair，不得輸出其他 verdict。"
-        : "這不是分類真值，你仍須獨立判 interactionKind。"
-    }${unsupportedFactRepairRule}${strategyRepairRule}${
-      repairOnly
-        ? "本輪是唯一保留的完整修復機會，輸出契約只允許 repair，不得 accept/reject。repairedResult 必須從零重寫完整三欄、不得沿用原稿完整句，hintAssessment 只評修復稿；任何不安全、未實改或不合約的輸出都會由伺服器與下一個 provider fail closed。"
-        : "這組缺陷沒有安全、完整的強制改寫映射；請重新獨立審查。只有能同時排除全部缺陷並產生實質安全改稿時才可 repair；若仍有 generic、unsafe 或任何未映射疑慮就必須 reject，不得以 accept 洗掉前一審拒絕。"
-    }`
+    ? opts.surface === "debrief"
+      ? `前一個獨立完整審查已拒絕目前 Debrief（issueKinds=${
+        opts.priorSemanticRejection.issueKinds.join(",") ||
+        "strategy_mismatch"
+      }）。本輪是唯一保留的全卡修復機會，只能回 repair；不得用 accept 洗掉前一審，也不得再回 reject。repairedResult 必須完整重寫所有 fact-bearing 欄位與每個巢狀／陣列文字，移除前述全部缺陷並維持原 schema、Hint lineage、跨欄一致與安全界線；下一個不同 provider 將做不可改稿的完整驗證。${debriefFactRecoveryMetadataRule}${unsupportedFactRepairRule}${strategyRepairRule}`
+      : `前一個完整審查或伺服器交付硬檢已拒絕目前 Hint（issueKinds=${
+        opts.priorSemanticRejection.issueKinds.join(",") ||
+        "strategy_mismatch"
+      }）。${
+        activeDisagreementVerifierRecovery
+          ? "兩個不同 provider 對 interactionKind 有分歧。本輪由原先判 active 的 provider 重新獨立判定並修內容；不論最後標成 active 或 ordinary/other，warmUp、steady 都必須直接回答且以陳述句收住、完全不反問，coaching 也要實改。下一個原先判非 active 的 provider 必須對修復稿給出相同分類並認證，否則終止。"
+          : pinnedActiveVerifierRecovery
+          ? "兩個不同 provider 已一致判為 active_consistency_test；本輪只修內容，不重開 interactionKind，repair 的 hintAssessment 必須是 active_consistency_test/compliant/compliant，下一個不同 provider 仍會獨立重判；必須完成安全三欄 repair，不得輸出其他 verdict。"
+          : "這不是分類真值，你仍須獨立判 interactionKind。"
+      }${unsupportedFactRepairRule}${strategyRepairRule}${
+        repairOnly
+          ? "本輪是唯一保留的完整修復機會，輸出契約只允許 repair，不得 accept/reject。repairedResult 必須從零重寫完整三欄、不得沿用原稿完整句，hintAssessment 只評修復稿；任何不安全、未實改或不合約的輸出都會由伺服器與下一個 provider fail closed。"
+          : "這組缺陷沒有安全、完整的強制改寫映射；請重新獨立審查。只有能同時排除全部缺陷並產生實質安全改稿時才可 repair；若仍有 generic、unsafe 或任何未映射疑慮就必須 reject，不得以 accept 洗掉前一審拒絕。"
+      }`
     : "";
   const activeVerifierRecoveryAssessment = conservativeActiveDeliveryRecovery
     ? opts.priorSemanticRejection?.verifierHintAssessment
@@ -1822,12 +1921,16 @@ export function buildSemanticAdjudicationMessages(opts: {
       ? "本輪有 active/non-active 分歧的保守交付覆寫，優先於前面 ordinary 可問一句的通則：不論最終 interactionKind，warmUp、steady 都必須直接回答並以陳述句收住，零問號、零資訊索取、零交棒；coaching 不得建議追問、請教、採訪、讓她繼續分析或把回答責任交還她。違反時修復輪必須重寫，最終驗證輪必須以 strategy_mismatch reject。"
       : "";
   const repairOnlyFinalRule = repairOnly
-    ? "本輪最終輸出契約覆寫前述一般裁判分支：你現在只能回 repair、完整 repairedResult 與修復稿的 hintAssessment；不得以不確定、分類不同、安全疑慮或任何其他理由回 accept/reject。請改用逐字稿最小安全內容完成三欄；伺服器與下一個 provider 會拒絕任何不安全輸出。"
+    ? opts.surface === "hint"
+      ? "本輪最終輸出契約覆寫前述一般裁判分支：你現在只能回 repair、完整 repairedResult 與修復稿的 hintAssessment；不得以不確定、分類不同、安全疑慮或任何其他理由回 accept/reject。請改用逐字稿最小安全內容完成三欄；伺服器與下一個 provider 會拒絕任何不安全輸出。"
+      : "本輪最終輸出契約覆寫一般裁判分支：你現在只能回 repair 與完整 repairedResult，不得回 accept/reject。使用逐字稿最小安全證據重建整張卡；任何未完整重寫、無證據或不安全輸出都會由伺服器與下一個 provider fail closed。"
     : "";
   const verdictRule = semanticVerificationIssueKinds.length > 0
     ? "本輪只可 accept 或 reject，不得 repair；accept 只在整份候選完整合格時使用，否則 reject。"
     : repairOnly
-    ? "本輪是 rejection recovery，唯一合法 verdict 是 repair；issues 必須保留前述問題集合，repairedResult 必須是完整且三欄語意全新的 Hint。不得 accept/reject，不得沿用任何原稿完整句或只換標點。"
+    ? opts.surface === "hint"
+      ? "本輪是 rejection recovery，唯一合法 verdict 是 repair；issues 必須保留前述問題集合，repairedResult 必須是完整且三欄語意全新的 Hint。不得 accept/reject，不得沿用任何原稿完整句或只換標點。"
+      : "本輪是 Debrief rejection recovery，唯一合法 verdict 是 repair；issues 必須保留前述問題集合，repairedResult 必須是完整且所有 fact-bearing 文字都重新寫過的 Debrief。不得 accept/reject，不得保留任何原稿完整句或只換標點。"
     : "可以 accept、repair 或 reject。能安全修好時優先 repair，repairedResult 必須是原 surface 的完整 JSON；不能確定就 reject，不得放行可疑具體事實。";
   return [
     {
@@ -1869,6 +1972,8 @@ export function buildSemanticAdjudicationMessages(opts: {
             : repairOnly
             ? '修復回傳 keys：verdict、issues、repairedResult、hintAssessment。verdict 必須是 repair；issues 至少一個合法 kind；repairedResult 必須是完整且三欄語意全新的 Hint，不可為 null；hintAssessment shape：{"interactionKind":"ordinary|active_consistency_test|other","replyContract":"not_applicable|compliant|noncompliant","coachingContract":"not_applicable|compliant|noncompliant"}。不得加入 strategies。'
             : '回傳 keys：verdict、issues、repairedResult、hintAssessment。accept 時 issues=[] 且 repairedResult=null；repair 時 issues 至少一個合法 kind 且 repairedResult=完整 Hint；reject 時 issues 至少一個合法 kind 且 repairedResult=null。hintAssessment shape：{"interactionKind":"ordinary|active_consistency_test|other","replyContract":"not_applicable|compliant|noncompliant","coachingContract":"not_applicable|compliant|noncompliant"}。不得加入 strategies。'
+          : repairOnly
+          ? "修復回傳 keys：verdict、issues、repairedResult。verdict 必須是 repair；issues 至少一個合法 kind；repairedResult 必須是完整且全卡文字重寫的 Debrief，不可為 null。"
           : "回傳 keys：verdict、issues、repairedResult。accept 時 issues=[] 且 repairedResult=null；repair 時 issues 至少一個合法 kind 且 repairedResult=完整 Debrief；reject 時 issues 至少一個合法 kind 且 repairedResult=null。"),
     },
   ];
@@ -1964,9 +2069,10 @@ export async function adjudicatePracticeCandidate(
     reviewer.provider !== boundedRetry?.provider
   );
   // Try each distinct provider first. Accepted unchanged candidates get a
-  // short fact/safety verifier; every repaired Hint gets a constrained full
-  // semantic verifier so generic/strategy defects cannot be washed out. Both
-  // verification paths always force the other provider.
+  // short fact/safety verifier. Every repaired Hint or Debrief gets a
+  // constrained full semantic verifier so generic/strategy defects, factual
+  // drift, and hidden Hint lineage cannot be self-certified by the repair
+  // author. Both verification paths always force the other provider.
   let retryIndex = 0;
   while (boundedRetry && reviewPlan.length < budget) {
     reviewPlan.push(
@@ -1976,7 +2082,7 @@ export async function adjudicatePracticeCandidate(
   }
   let providerCalls = 0;
   let lastError: unknown;
-  let lastStructuredHintRejection:
+  let lastStructuredRejection:
     | SemanticFullReviewRejectionError
     | undefined;
   let candidateUnderReview = args.candidate;
@@ -1986,7 +2092,11 @@ export async function adjudicatePracticeCandidate(
   let terminalHintAssessmentDisagreement = false;
   let terminalSemanticRejection = false;
   let hintVerifierRecoveryUsed = false;
-  let forcedHintRepairProvider: "deepseek" | "anthropic" | undefined;
+  let debriefFullCardRepairAttempts = 0;
+  let debriefFactRecoveryMetadataBaseline:
+    | Record<string, unknown>
+    | undefined;
+  let forcedRepairProvider: "deepseek" | "anthropic" | undefined;
   let factVerifierRetryArmed = false;
   let factVerifierRetryUsed = false;
   let factVerifierRetryProvider: "deepseek" | "anthropic" | undefined;
@@ -2013,15 +2123,25 @@ export async function adjudicatePracticeCandidate(
       & {
         reviewProvider: "deepseek" | "anthropic";
         semanticVerificationIssueKinds?: SemanticIssueKind[];
+        debriefRepairOrigin?:
+          | "initial_review_repair"
+          | "fact_rejection"
+          | "semantic_rejection";
         verifierRecoveryKind?: HintVerifierRecoveryKind;
         rejectionConfirmation?: boolean;
       }
     | undefined;
   for (const plannedReviewer of reviewPlan.slice(0, budget)) {
-    if (providerCalls >= normalBudget && !factVerifierRetryArmed) {
+    const pendingDebriefMandatoryVerification = args.surface === "debrief" &&
+      pendingVerification !== undefined;
+    if (
+      providerCalls >= normalBudget && !factVerifierRetryArmed &&
+      !pendingDebriefMandatoryVerification
+    ) {
       // The opt-in Debrief slot is not a third general reviewer vote. It can
-      // only retry the already-independent fact verifier after a transient
-      // provider/parser failure on an otherwise accepted candidate.
+      // retry the already-independent fact verifier after a transient failure,
+      // or certify a bounded full-card repair that is already pending. It is
+      // never available to author another candidate or collect another vote.
       break;
     }
     if (
@@ -2041,9 +2161,9 @@ export async function adjudicatePracticeCandidate(
       break;
     }
     let reviewer = plannedReviewer;
-    if (!pendingVerification && forcedHintRepairProvider) {
+    if (!pendingVerification && forcedRepairProvider) {
       const forcedReviewer = reviewers.find((candidate) =>
-        candidate.provider === forcedHintRepairProvider
+        candidate.provider === forcedRepairProvider
       );
       if (!forcedReviewer) {
         lastError = new Error(
@@ -2053,7 +2173,7 @@ export async function adjudicatePracticeCandidate(
         break;
       }
       reviewer = forcedReviewer;
-      forcedHintRepairProvider = undefined;
+      forcedRepairProvider = undefined;
     }
     if (
       pendingVerification &&
@@ -2170,6 +2290,12 @@ export async function adjudicatePracticeCandidate(
     }
     const timeoutMs = Math.min(ADJUDICATION_TIMEOUT_MS, remainingMs);
     providerCalls += 1;
+    if (
+      args.surface === "debrief" &&
+      (priorFactRejection || priorSemanticRejection)
+    ) {
+      debriefFullCardRepairAttempts += 1;
+    }
     try {
       if (pendingVerification) {
         const candidateAwaitingVerification = pendingVerification;
@@ -2188,7 +2314,7 @@ export async function adjudicatePracticeCandidate(
                 candidateAwaitingVerification.verifierRecoveryKind ===
                   "active_disagreement_fact",
             }),
-            HINT_FINAL_VERIFICATION_MAX_TOKENS,
+            SEMANTIC_FINAL_VERIFICATION_MAX_TOKENS,
             semanticAdjudicationJsonSchema(
               candidateAwaitingVerification.candidate,
               args.surface,
@@ -2336,15 +2462,20 @@ export async function adjudicatePracticeCandidate(
                   verifierRecoveryKind: "ordinary_unsupported_fact",
                   verifierHintAssessment: ORDINARY_DELIVERY_ASSESSMENT,
                 };
-                forcedHintRepairProvider =
+                forcedRepairProvider =
                   candidateAwaitingVerification.reviewProvider;
                 hintVerifierRecoveryUsed = true;
                 lastError = error;
                 continue;
               }
               if (
-                args.surface === "debrief" && budget - providerCalls >= 2
+                args.surface === "debrief" &&
+                isMappedDebriefFactScrub(rejection) &&
+                debriefFullCardRepairAttempts < 2 &&
+                budget - providerCalls >= 2
               ) {
+                debriefFactRecoveryMetadataBaseline =
+                  candidateAwaitingVerification.candidate;
                 priorFactRejection = rejection;
               } else {
                 terminalFactRejection = true;
@@ -2371,8 +2502,10 @@ export async function adjudicatePracticeCandidate(
         };
       }
 
-      const hintRepairOnly = args.surface === "hint" &&
-        isMappedHintSemanticRepair(priorSemanticRejection);
+      const repairOnly = args.surface === "hint"
+        ? isMappedHintSemanticRepair(priorSemanticRejection)
+        : isMappedDebriefSemanticRepair(priorSemanticRejection) ||
+          isMappedDebriefFactScrub(priorFactRejection);
       fullReviewerFailureStage = "provider_call";
       const raw = await reviewer.call(
         buildSemanticAdjudicationMessages({
@@ -2388,16 +2521,14 @@ export async function adjudicatePracticeCandidate(
           candidateUnderReview,
           args.surface,
           false,
-          hintRepairOnly,
+          repairOnly,
         ),
         timeoutMs,
         reviewer.provider === "deepseek" &&
-          (args.surface === "debrief" || hintRepairOnly)
+          (args.surface === "debrief" || repairOnly)
           ? { type: "disabled" }
           : undefined,
-        hintRepairOnly
-          ? HINT_REJECTION_REPAIR_TEMPERATURE
-          : ADJUDICATION_TEMPERATURE,
+        repairOnly ? REJECTION_REPAIR_TEMPERATURE : ADJUDICATION_TEMPERATURE,
       );
       fullReviewerFailureStage = "semantic_parse";
       const parsed = parseSemanticAdjudication({
@@ -2442,6 +2573,7 @@ export async function adjudicatePracticeCandidate(
         }
         if (
           !factRejectionFieldsChanged(
+            args.surface,
             priorFactRejection,
             candidateUnderReview,
             parsed.candidate,
@@ -2463,16 +2595,42 @@ export async function adjudicatePracticeCandidate(
             "semantic_adjudication_rejected_cosmetic_repair",
           );
         }
-        hintAssessmentForVerification = hintVerifierRecoveryVerificationTarget(
-          priorSemanticRejection,
-          parsed.hintAssessment,
-        );
-        assertHintVerifierRecoveryRepair(
-          priorSemanticRejection,
-          candidateUnderReview,
-          parsed.candidate,
-          hintAssessmentForVerification,
-        );
+        if (args.surface === "hint") {
+          hintAssessmentForVerification =
+            hintVerifierRecoveryVerificationTarget(
+              priorSemanticRejection,
+              parsed.hintAssessment,
+            );
+          assertHintVerifierRecoveryRepair(
+            priorSemanticRejection,
+            candidateUnderReview,
+            parsed.candidate,
+            hintAssessmentForVerification,
+          );
+        } else {
+          if (
+            !debriefFactBearingFieldsRewritten(
+              candidateUnderReview,
+              parsed.candidate,
+            )
+          ) {
+            throw new Error(
+              "semantic_adjudication_rejected_cosmetic_repair",
+            );
+          }
+          if (
+            priorSemanticRejection.debriefFactRecoveryLineage === true &&
+            (!debriefFactRecoveryMetadataBaseline ||
+              !debriefFactRecoveryMetadataPreserved(
+                debriefFactRecoveryMetadataBaseline,
+                parsed.candidate,
+              ))
+          ) {
+            throw new Error(
+              "semantic_adjudication_fact_rejection_field_unchanged",
+            );
+          }
+        }
       }
       fullReviewerFailureStage = "validation";
       try {
@@ -2553,7 +2711,7 @@ export async function adjudicatePracticeCandidate(
               coachingContract: "compliant",
             },
           };
-          forcedHintRepairProvider = priorHardGuardProvider;
+          forcedRepairProvider = priorHardGuardProvider;
           hintVerifierRecoveryUsed = true;
           lastError = error;
           continue;
@@ -2582,7 +2740,7 @@ export async function adjudicatePracticeCandidate(
             // but missed this deterministic delivery defect. Let that critic
             // author the bounded rewrite, then reserve the other provider for
             // the only acceptance vote over the new version.
-            forcedHintRepairProvider = reviewer.provider;
+            forcedRepairProvider = reviewer.provider;
             hintVerifierRecoveryUsed = true;
           }
           lastError = error;
@@ -2591,22 +2749,31 @@ export async function adjudicatePracticeCandidate(
         throw error;
       }
 
+      const debriefRepairOrigin = args.surface === "debrief" && parsed.repaired
+        ? priorFactRejection
+          ? "fact_rejection"
+          : priorSemanticRejection
+          ? "semantic_rejection"
+          : "initial_review_repair"
+        : undefined;
       pendingVerification = {
         candidate: parsed.candidate,
         issueKinds: parsed.issueKinds,
         repaired: parsed.repaired,
         hintAssessment: hintAssessmentForVerification,
         reviewProvider: reviewer.provider,
+        debriefRepairOrigin,
         verifierRecoveryKind: priorSemanticRejection?.verifierRecoveryKind,
-        semanticVerificationIssueKinds:
-          args.surface === "hint" && parsed.repaired
-            ? [
-              ...new Set([
-                ...(priorSemanticRejection?.issueKinds ?? []),
-                ...parsed.issueKinds,
-              ]),
-            ]
-            : undefined,
+        semanticVerificationIssueKinds: parsed.repaired &&
+            (args.surface === "hint" || args.surface === "debrief")
+          ? [
+            ...new Set([
+              ...(priorSemanticRejection?.issueKinds ?? []),
+              ...(priorFactRejection?.issueKinds ?? []),
+              ...parsed.issueKinds,
+            ]),
+          ]
+          : undefined,
       };
       priorFactRejection = undefined;
       priorSemanticRejection = undefined;
@@ -2623,7 +2790,7 @@ export async function adjudicatePracticeCandidate(
         // candidate. If a bounded recovery later times out, its root semantic
         // defect must remain queryable instead of being replaced by a generic
         // transport/deadline failure.
-        lastStructuredHintRejection = error;
+        lastStructuredRejection = error;
       }
       if (pendingVerification?.semanticVerificationIssueKinds?.length) {
         const verifierRejection = error instanceof
@@ -2710,7 +2877,39 @@ export async function adjudicatePracticeCandidate(
         const hasIndependentVerifier = reviewers.some((candidate) =>
           candidate.provider !== recoveryRepairReviewer.provider
         );
-        if (retryableHintFinalVerification) {
+        const recoverableDebriefFactScrub = args.surface === "debrief" &&
+          pendingVerification.debriefRepairOrigin === "fact_rejection" &&
+          verifierRejection !== undefined &&
+          isMappedDebriefSemanticRepair({
+            issueKinds: verifierRejection.issueKinds,
+          }) &&
+          debriefFullCardRepairAttempts < 2 &&
+          budget - providerCalls >= 2 &&
+          reviewers.some((candidate) =>
+            candidate.provider !== reviewer.provider
+          );
+        if (recoverableDebriefFactScrub && verifierRejection) {
+          // A full verifier found a mapped defect in the first factual scrub.
+          // Let that critic author the only second full-card repair, then force
+          // the other provider to certify every semantic and factual surface.
+          // The second verifier's rejection is terminal.
+          candidateUnderReview = pendingVerification.candidate;
+          pendingVerification = undefined;
+          priorFactRejection = undefined;
+          priorSemanticRejection = {
+            issueKinds: verifierRejection.issueKinds,
+            debriefFactRecoveryLineage: true,
+          };
+          forcedRepairProvider = reviewer.provider;
+          lastError = new Error(
+            "semantic_adjudication_debrief_rescrub_pending",
+          );
+        } else if (args.surface === "debrief") {
+          // Initial-review repairs, semantic-rejection repairs, unsafe/mixed
+          // findings, malformed votes, and the second verifier rejection are
+          // terminal. No rewritten Debrief can certify itself.
+          terminalSemanticRejection = true;
+        } else if (retryableHintFinalVerification) {
           // Retry the exact independent verifier once. It is still different
           // from the repair author, and no new candidate is created or accepted
           // on the strength of a malformed/transport-failed vote.
@@ -2733,7 +2932,7 @@ export async function adjudicatePracticeCandidate(
             verifierRecoveryKind: recoveryKind,
             verifierHintAssessment: recoveryHintAssessment,
           };
-          forcedHintRepairProvider = recoveryRepairReviewer.provider;
+          forcedRepairProvider = recoveryRepairReviewer.provider;
           hintVerifierRecoveryUsed = true;
         } else {
           // A second rejection, malformed response, unsafe/mixed issue, or an
@@ -2744,9 +2943,27 @@ export async function adjudicatePracticeCandidate(
         args.surface === "debrief" &&
         error instanceof SemanticFullReviewRejectionError
       ) {
-        // A substantive independent full-review rejection is evidence, not a
-        // provider outage. Never let a same-provider acceptance vote erase it.
-        terminalSemanticRejection = true;
+        const recoverableDebriefRejection = wasIndependentInitialFullReview &&
+          !priorSemanticRejection &&
+          isMappedDebriefSemanticRepair({ issueKinds: error.issueKinds }) &&
+          budget - providerCalls >= 2 &&
+          reviewers.some((candidate) =>
+            candidate.provider !== reviewer.provider
+          );
+        if (recoverableDebriefRejection) {
+          // Preserve the independent critic's typed findings and let that
+          // critic author exactly one full-card rewrite. The other provider
+          // must then certify the repaired card with a no-repair full review.
+          // Unsafe, unmapped, repeated, and final-verifier rejections remain
+          // terminal and can never be voted away.
+          priorSemanticRejection = { issueKinds: error.issueKinds };
+          forcedRepairProvider = reviewer.provider;
+          lastError = new Error(
+            "semantic_adjudication_debrief_repair_pending",
+          );
+        } else {
+          terminalSemanticRejection = true;
+        }
       } else if (
         args.surface === "hint" &&
         error instanceof SemanticFullReviewRejectionError
@@ -2772,7 +2989,7 @@ export async function adjudicatePracticeCandidate(
             verifierRecoveryKind: "ordinary_unsupported_fact",
             verifierHintAssessment: error.hintAssessment,
           };
-          forcedHintRepairProvider = reviewer.provider;
+          forcedRepairProvider = reviewer.provider;
           hintVerifierRecoveryUsed = true;
           lastError = new Error(
             "semantic_adjudication_direct_ordinary_repair_pending",
@@ -2873,13 +3090,15 @@ export async function adjudicatePracticeCandidate(
       if (
         terminalFactRejection || terminalHintAssessmentDisagreement ||
         terminalSemanticRejection ||
-        (priorFactRejection && budget - providerCalls < 2)
+        (priorFactRejection &&
+          (debriefFullCardRepairAttempts >= 2 ||
+            budget - providerCalls < 2))
       ) {
         break;
       }
     }
   }
-  const terminalHintFullReviewRejection = lastStructuredHintRejection;
+  const terminalFullReviewRejection = lastStructuredRejection;
   if (pendingVerification) {
     const detail = lastError instanceof Error
       ? lastError.message
@@ -2894,16 +3113,16 @@ export async function adjudicatePracticeCandidate(
   const failureMessage = `semantic_adjudication_failed:${
     lastError instanceof Error ? lastError.message : "provider_unavailable"
   }`;
-  const diagnosticCode = terminalHintFullReviewRejection
-    ? semanticHintRejectionDiagnosticCode(terminalHintFullReviewRejection)
+  const diagnosticCode = args.surface === "hint" && terminalFullReviewRejection
+    ? semanticHintRejectionDiagnosticCode(terminalFullReviewRejection)
     : null;
   throw new SemanticAdjudicationError(
     diagnosticCode ? `${diagnosticCode} ${failureMessage}` : failureMessage,
     providerCalls,
-    terminalHintFullReviewRejection
+    terminalFullReviewRejection
       ? {
-        issueKinds: terminalHintFullReviewRejection.issueKinds,
-        hintAssessment: terminalHintFullReviewRejection.hintAssessment,
+        issueKinds: terminalFullReviewRejection.issueKinds,
+        hintAssessment: terminalFullReviewRejection.hintAssessment,
       }
       : undefined,
     diagnosticCode ? [diagnosticCode, failureMessage] : [failureMessage],

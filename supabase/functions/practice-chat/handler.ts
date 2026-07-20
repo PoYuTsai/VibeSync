@@ -152,16 +152,14 @@ const SERVER_HINT_DECISION_RATIONALE =
 // Hint keeps its established five-call cost ceiling: one generation plus up to
 // four semantic calls. The fourth semantic slot lets a repair produced after
 // two non-terminal reviewer failures still receive its mandatory independent
-// verifier. Debrief gets two additional total calls: one for the same repair
-// shape and one to retry a transient independent fact-verifier timeout before
-// discarding an otherwise accepted card and regenerating it from scratch.
+// verifier. Debrief keeps the seven-call total ceiling, but may spend up to six
+// semantic calls repairing the current candidate. Claude generation failover
+// remains available only while the calls actually consumed still leave room
+// for the generation plus its two mandatory independent reviews.
 const HINT_PROVIDER_CALL_BUDGET = 5;
 const DEBRIEF_PROVIDER_CALL_BUDGET = 7;
 const HINT_SEMANTIC_REVIEWER_CALL_BUDGET = 4;
-// Debrief can spend the extra semantic slots on a mandatory repair + fresh
-// fact verification, or on one transient verifier retry. The handler still
-// reserves one Claude generation plus its two required reviewers.
-const DEBRIEF_SEMANTIC_REVIEWER_CALL_BUDGET = 4;
+const DEBRIEF_SEMANTIC_REVIEWER_CALL_BUDGET = 6;
 // Every generated candidate needs a full independent semantic review plus the
 // fact-only verifier before it can be recorded.
 const PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION = 2;
@@ -3846,16 +3844,12 @@ export function createPracticeChatHandler(
           if (!deps.semanticAdjudicate) {
             throw new Error("semantic_adjudication_unavailable");
           }
-          const reservedRecoveryCalls = candidateProvider === "deepseek" &&
-              !!claudeApiKey && !!deps.callClaude
-            ? 1 + PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION
-            : 0;
           const semanticCallBudget = Math.max(
             0,
             Math.min(
               DEBRIEF_SEMANTIC_REVIEWER_CALL_BUDGET,
               DEBRIEF_PROVIDER_CALL_BUDGET - debriefAttemptCount -
-                debriefSemanticProviderCalls - reservedRecoveryCalls,
+                debriefSemanticProviderCalls,
             ),
           );
           let semantic;
@@ -3879,8 +3873,7 @@ export function createPracticeChatHandler(
               candidateProvider,
               maxProviderCalls: semanticCallBudget,
               retryTransientFactVerifierOnce:
-                candidateProvider === "deepseek" &&
-                reservedRecoveryCalls > 0 && semanticCallBudget === 3,
+                candidateProvider === "deepseek" && semanticCallBudget >= 3,
               retryTransientFullReviewerOnce:
                 candidateProvider === "anthropic" && semanticCallBudget >= 3,
               deepSeekApiKey: apiKey,
