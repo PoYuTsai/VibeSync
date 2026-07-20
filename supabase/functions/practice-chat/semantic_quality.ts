@@ -1786,12 +1786,8 @@ export async function adjudicatePracticeCandidate(
           priorSemanticRejection?.hardGuardFailureCode ===
             "semantic_hint_active_reply_question" &&
           !hintVerifierRecoveryUsed &&
-          hasExactSemanticIssueKinds(priorSemanticRejection.issueKinds, [
-            "strategy_mismatch",
-          ]) &&
-          hasExactSemanticIssueKinds(hardGuardRejection.issueKinds, [
-            "strategy_mismatch",
-          ]) &&
+          priorSemanticRejection.issueKinds.includes("strategy_mismatch") &&
+          hardGuardRejection.issueKinds.includes("strategy_mismatch") &&
           priorHardGuardProvider !== undefined &&
           priorHardGuardProvider !== reviewer.provider &&
           parsed.hintAssessment?.interactionKind ===
