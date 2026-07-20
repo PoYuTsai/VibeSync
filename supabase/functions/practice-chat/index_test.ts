@@ -3069,6 +3069,8 @@ Deno.test("debrief requestId is threaded through claim and stored response repla
   assertEquals(json.generationSource, "model");
   assertEquals(json.fallbackUsed, false);
   assertEquals(json.qualitySchemaVersion, DEBRIEF_QUALITY_SCHEMA_VERSION);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 18000);
+  assertEquals(state.deepSeekCalls[0].thinking, { type: "disabled" });
   assertEquals(aiLogInserts(state).length, 1);
   const telemetryRow = aiLogInserts(state)[0].values;
   assertEquals(telemetryRow.request_type, "practice_debrief_standard");
@@ -3862,8 +3864,9 @@ Deno.test("debrief real adjudicator reserves a verified Claude recovery after ma
   assertEquals(state.claudeCalls[2].outputJsonSchema !== undefined, true);
   assertEquals(
     state.deepSeekCalls.map((call) => call.timeoutMs),
-    [12000, 24000, 20000],
+    [18000, 24000, 20000],
   );
+  assertEquals(state.deepSeekCalls[0].thinking, { type: "disabled" });
   assertEquals(
     state.claudeCalls.map((call) => call.timeoutMs),
     [24000, 24000, 15000],
@@ -4157,7 +4160,8 @@ Deno.test("debrief returns retryable error and stores no card when both models f
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 1);
   assertEquals(state.deepSeekCalls[0].jsonMode, true);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 18000);
+  assertEquals(state.deepSeekCalls[0].thinking, { type: "disabled" });
   assertEquals(state.claudeCalls[0].timeoutMs, 24000);
   assertEquals(claimDebriefCalls(state).length, 1);
   assertEquals(recordDebriefCalls(state).length, 0);
@@ -4220,7 +4224,8 @@ Deno.test("game debrief Claude failover still returns a complete model breakdown
   assertEquals(json.fallbackUsed, false);
   assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 1);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 12000);
+  assertEquals(state.deepSeekCalls[0].timeoutMs, 18000);
+  assertEquals(state.deepSeekCalls[0].thinking, { type: "disabled" });
   assertEquals(state.claudeCalls[0].timeoutMs, 24000);
   assertEquals(claimDebriefCalls(state).length, 1);
   assertEquals(

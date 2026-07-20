@@ -127,7 +127,11 @@ const CHAT_GENERATION_ATTEMPTS = 2;
 const DEBRIEF_MAX_TOKENS = 1200;
 const DEBRIEF_TEMPERATURE = 0.5;
 const DEBRIEF_GENERATION_ATTEMPTS = 1;
-const DEBRIEF_TIMEOUT_MS = 12000;
+// Production Beginner Debrief has crossed the former 12s ceiling before the
+// larger Game card even reaches semantic review. Keep the request bounded, but
+// give DeepSeek one realistic first-hit window; the 85s request deadline still
+// reserves ample time for Claude generation failover and semantic validation.
+const DEBRIEF_TIMEOUT_MS = 18000;
 // Game Debrief has a larger prompt and five additional grounded fields.
 // Generation is followed by semantic review; the 90s client window and 105s
 // owner fence deliberately favor a verified result over a fast 503.
@@ -3935,6 +3939,10 @@ export function createPracticeChatHandler(
                 temperature: DEBRIEF_TEMPERATURE,
                 jsonMode: true,
                 timeoutMs: providerTimeoutMs,
+                // Debrief is a strict JSON contract. Hidden reasoning consumes
+                // the same latency/output budget and caused avoidable first-hit
+                // timeouts without improving the server-validated card.
+                thinking: { type: "disabled" },
               });
               debriefCard = await parseGeneratedDebrief(
                 rawCard,
