@@ -127,6 +127,7 @@ const CHAT_GENERATION_ATTEMPTS = 2;
 const DEBRIEF_MAX_TOKENS = 1200;
 const DEBRIEF_TEMPERATURE = 0.5;
 const DEBRIEF_GENERATION_ATTEMPTS = 1;
+const DEBRIEF_CLAUDE_GENERATION_ATTEMPTS = 2;
 // Production Beginner Debrief has crossed the former 12s ceiling before the
 // larger Game card even reaches semantic review. Keep the request bounded, but
 // give DeepSeek one realistic first-hit window; the 85s request deadline still
@@ -149,15 +150,15 @@ const HINT_TEMPERATURE = 0.45;
 const HINT_GENERATION_ATTEMPTS = 1;
 const SERVER_HINT_DECISION_RATIONALE =
   "只依據本場逐字稿與已知角色資料；貼句已依目前關係階段與邀約路線校驗。";
-// Hint keeps its established five-call cost ceiling: one generation plus up to
-// four semantic calls. The fourth semantic slot lets a repair produced after
-// two non-terminal reviewer failures still receive its mandatory independent
-// verifier. Debrief keeps the seven-call total ceiling, but may spend up to six
-// semantic calls repairing the current candidate. Claude generation failover
-// remains available only while the calls actually consumed still leave room
-// for the generation plus its two mandatory independent reviews.
-const HINT_PROVIDER_CALL_BUDGET = 5;
-const DEBRIEF_PROVIDER_CALL_BUDGET = 7;
+// A normal Hint still uses one generation plus up to four semantic calls. Its
+// eight-call failure ceiling preserves one fresh Claude candidate plus two
+// mandatory reviews after a terminal DeepSeek candidate.
+// Debrief normally stays within seven calls. Its ten-call failure ceiling only
+// permits one additional fresh Claude candidate plus two mandatory reviews
+// after the DeepSeek and first Claude candidates fail. Every candidate remains
+// independently verified before it can be recorded.
+const HINT_PROVIDER_CALL_BUDGET = 8;
+const DEBRIEF_PROVIDER_CALL_BUDGET = 10;
 const HINT_SEMANTIC_REVIEWER_CALL_BUDGET = 4;
 const DEBRIEF_SEMANTIC_REVIEWER_CALL_BUDGET = 6;
 // Every generated candidate needs a full independent semantic review plus the
@@ -2879,7 +2880,6 @@ export function createPracticeChatHandler(
       const hintAttemptDurationsMs: number[] = [];
       const hintFailureClasses: PracticeGenerationFailureClass[] = [];
       const hintFailureCodes: string[] = [];
-      let hintSemanticAttempted = false;
       let hintSemanticProviderCalls = 0;
       try {
         let lastError: unknown;
@@ -2928,7 +2928,14 @@ export function createPracticeChatHandler(
           if (!deps.semanticAdjudicate) {
             throw new Error("semantic_adjudication_unavailable");
           }
-          hintSemanticAttempted = true;
+          const hintSemanticCallBudget = Math.max(
+            0,
+            Math.min(
+              HINT_SEMANTIC_REVIEWER_CALL_BUDGET,
+              HINT_PROVIDER_CALL_BUDGET - hintAttemptCount -
+                hintSemanticProviderCalls,
+            ),
+          );
           let semantic;
           try {
             semantic = await deps.semanticAdjudicate({
@@ -2948,15 +2955,8 @@ export function createPracticeChatHandler(
               candidateProvider,
               absoluteDeadlineAtMs: hintAbsoluteDeadlineAtMs,
               monotonicNow,
-              maxProviderCalls: Math.max(
-                0,
-                Math.min(
-                  HINT_SEMANTIC_REVIEWER_CALL_BUDGET,
-                  HINT_PROVIDER_CALL_BUDGET - hintAttemptCount,
-                ),
-              ),
-              retryTransientFullReviewerOnce:
-                HINT_PROVIDER_CALL_BUDGET - hintAttemptCount >= 3,
+              maxProviderCalls: hintSemanticCallBudget,
+              retryTransientFullReviewerOnce: hintSemanticCallBudget >= 3,
               deepSeekApiKey: apiKey,
               claudeApiKey,
               claudeModel: claudeFallbackModelForTier(sub.tier),
@@ -3106,8 +3106,10 @@ export function createPracticeChatHandler(
         }
 
         if (
-          hintResult === null && !hintSemanticAttempted && claudeApiKey &&
-          deps.callClaude
+          hintResult === null && claudeApiKey && deps.callClaude &&
+          HINT_PROVIDER_CALL_BUDGET - hintAttemptCount -
+                hintSemanticProviderCalls >=
+            1 + PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION
         ) {
           const hintMessages = lastError !== undefined &&
               isHintFormatOrGuardError(lastError)
@@ -3995,11 +3997,15 @@ export function createPracticeChatHandler(
           }
         }
 
-        if (
-          debriefCard === null && claudeApiKey && deps.callClaude &&
+        for (
+          let claudeAttempt = 1;
+          debriefCard === null &&
+          claudeAttempt <= DEBRIEF_CLAUDE_GENERATION_ATTEMPTS &&
+          claudeApiKey && deps.callClaude &&
           DEBRIEF_PROVIDER_CALL_BUDGET - debriefAttemptCount -
                 debriefSemanticProviderCalls >=
-            1 + PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION
+            1 + PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION;
+          claudeAttempt++
         ) {
           const providerTimeoutMs = debriefProviderTimeoutMs(
             DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS,

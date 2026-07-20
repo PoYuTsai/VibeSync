@@ -3912,7 +3912,7 @@ Deno.test("debrief real adjudicator regenerates after a malformed independent re
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(
     state.semanticCalls.map((call) => call.maxProviderCalls),
-    [6, 4],
+    [6, 6],
   );
   assertEquals(
     state.semanticCalls.map((call) =>
@@ -3959,7 +3959,7 @@ Deno.test("debrief real adjudicator retries a transient fallback full-review tim
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(
     state.semanticCalls.map((call) => call.maxProviderCalls),
-    [6, 4],
+    [6, 6],
   );
   assertEquals(
     state.semanticCalls.map((call) =>
@@ -4003,7 +4003,7 @@ Deno.test("debrief preserves Claude generation and two reviews after three consu
   assertEquals(state.deepSeekCalls.length + state.claudeCalls.length, 7);
   assertEquals(
     state.semanticCalls.map((call) => call.maxProviderCalls),
-    [6, 2],
+    [6, 5],
   );
   assertEquals(
     state.semanticCalls.map((call) =>
@@ -4015,7 +4015,7 @@ Deno.test("debrief preserves Claude generation and two reviews after three consu
     state.semanticCalls.map((call) =>
       call.retryTransientFullReviewerOnce === true
     ),
-    [false, false],
+    [false, true],
   );
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
@@ -4060,7 +4060,7 @@ Deno.test("debrief real adjudicator repairs a substantive fact rejection within 
   assertEquals(json.failoverUsed, true);
   assertEquals(json.card.suggestedLine, repaired.suggestedLine);
   assertEquals(state.semanticCalls.length, 1);
-  assertEquals(state.semanticCalls[0].maxProviderCalls, 5);
+  assertEquals(state.semanticCalls[0].maxProviderCalls, 6);
   assertEquals(state.deepSeekCalls.length, 3);
   assertEquals(state.claudeCalls.length, 3);
   assertEquals(state.claudeCalls[0].outputJsonSchema, undefined);
@@ -4200,7 +4200,7 @@ Deno.test("Game debrief late Claude failover fuses verifier repair and succeeds 
   assertEquals(json.card, fusedRepair);
   assertEquals(
     state.semanticCalls.map((call) => call.maxProviderCalls),
-    [6, 3],
+    [6, 6],
   );
   assertEquals(state.deepSeekCalls.length, 4);
   assertEquals(state.claudeCalls.length, 3);
@@ -4209,9 +4209,13 @@ Deno.test("Game debrief late Claude failover fuses verifier repair and succeeds 
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
-Deno.test("Game debrief stops at seven calls when the final full verifier rejects", async () => {
+Deno.test("Game debrief regenerates after a final verifier rejection and succeeds at exactly ten calls", async () => {
   const firstScrub = fullyRewrittenGameDebriefCandidate("first");
   const secondScrub = fullyRewrittenGameDebriefCandidate("second");
+  const thirdCandidate = {
+    ...fullyRewrittenGameDebriefCandidate("second"),
+    summary: "她分享下班後想散步放空，新的候選只沿著可見內容整理。",
+  };
   const factReject = JSON.stringify({
     verdict: "reject",
     issues: [{
@@ -4247,6 +4251,7 @@ Deno.test("Game debrief stops at seven calls when the final full verifier reject
           issues: [{ kind: "unsupported_fact" }],
           repairedResult: secondScrub,
         }),
+        '{"verdict":"accept","issues":[],"repairedResult":null}',
       ],
       claudeReplies: [
         '{"verdict":"accept","issues":[],"repairedResult":null}',
@@ -4260,25 +4265,26 @@ Deno.test("Game debrief stops at seven calls when the final full verifier reject
           issues: [{ kind: "strategy_mismatch" }],
           repairedResult: null,
         }),
+        JSON.stringify(thirdCandidate),
+        '{"verdict":"accept","issues":[]}',
       ],
     },
     debriefBody({
-      requestId: "game-debrief-final-fact-reject-seven-call-stop",
+      requestId: "game-debrief-final-reject-ten-call-regeneration",
       practiceMode: "game",
       profileId: "practice_girl_004",
     }),
   );
 
-  assertEquals(response.status, 503);
-  assertEquals(json, {
-    error: "practice_debrief_generation_retryable",
-    retryable: true,
-  });
-  assertEquals(state.semanticCalls.length, 1);
-  assertEquals(state.semanticCalls[0].maxProviderCalls, 6);
-  assertEquals(state.deepSeekCalls.length + state.claudeCalls.length, 7);
-  assertEquals(recordDebriefCalls(state).length, 0);
-  assertEquals(releaseDebriefCalls(state).length, 1);
+  assertEquals(response.status, 200);
+  assertEquals(json.card, thirdCandidate);
+  assertEquals(
+    state.semanticCalls.map((call) => call.maxProviderCalls),
+    [6, 2],
+  );
+  assertEquals(state.deepSeekCalls.length + state.claudeCalls.length, 10);
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
 Deno.test("debrief fact rejection gives Claude grounding guidance instead of a schema diagnosis", async () => {
@@ -4298,7 +4304,7 @@ Deno.test("debrief fact rejection gives Claude grounding guidance instead of a s
   assertEquals(response.status, 200);
   assertEquals(state.semanticCalls.map((call) => call.maxProviderCalls), [
     6,
-    3,
+    6,
   ]);
   const retryPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
   assertEquals(retryPrompt.includes("無證據事實或人物 owner 錯置"), true);
@@ -4387,7 +4393,7 @@ Deno.test("debrief repairs malformed DeepSeek JSON with Claude", async () => {
   assertEquals(state.deepSeekCalls[0].maxTokens, 1200);
   assertEquals(state.claudeCalls[0].maxTokens, 1200);
   assertEquals(state.semanticCalls.length, 1);
-  assertEquals(state.semanticCalls[0].maxProviderCalls, 5);
+  assertEquals(state.semanticCalls[0].maxProviderCalls, 6);
   assertEquals(claimDebriefCalls(state).length, 1);
   const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
   assert(repairPrompt.includes("上一版拆解 JSON 被拒絕"));
@@ -4513,7 +4519,7 @@ Deno.test("debrief returns retryable error and stores no card when both models f
     retryable: true,
   });
   assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(state.deepSeekCalls[0].jsonMode, true);
   assertEquals(state.deepSeekCalls[0].timeoutMs, 18000);
   assertEquals(state.deepSeekCalls[0].thinking, { type: "disabled" });
@@ -5695,12 +5701,16 @@ Deno.test("Hint sends an unsafe generated candidate through semantic repair befo
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("Hint semantic failure remains fail-closed without post-review regeneration", async () => {
-  const { response, json, state } = await run(
+Deno.test("Hint semantic failure regenerates through Claude and re-reviews before recording", async () => {
+  const regenerated = JSON.parse(validHintJson({
+    warmUp: "我只記得香味，店名真的沒看清楚。",
+    steady: "沒進去也沒記店名，這次不亂猜。",
+  })) as Record<string, unknown>;
+  const { response, state } = await run(
     {
       ledger: beginnerStartedLedger(),
       deepSeekReplies: [validHintJson()],
-      claudeReplies: [validHintJson()],
+      claudeReplies: [JSON.stringify(regenerated)],
       semanticReplies: [
         new SemanticAdjudicationError(
           "semantic_hint_reject:unsupported_fact.strategy_mismatch:active_consistency_test:noncompliant:noncompliant semantic_adjudication_failed:semantic_adjudication_recovery_active_fact_fields_unchanged",
@@ -5718,6 +5728,7 @@ Deno.test("Hint semantic failure remains fail-closed without post-review regener
             "semantic_adjudication_failed:semantic_adjudication_recovery_active_fact_fields_unchanged",
           ],
         ),
+        semanticHintResult(regenerated),
       ],
     },
     hintBody({
@@ -5726,13 +5737,14 @@ Deno.test("Hint semantic failure remains fail-closed without post-review regener
     }),
   );
 
-  assertEquals(response.status, 503);
-  assertEquals(json.retryable, true);
+  assertEquals(response.status, 200);
   assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 0);
-  assertEquals(state.semanticCalls.length, 1);
-  assertEquals(recordHintCalls(state).length, 0);
-  assertEquals(releaseHintCalls(state).length, 1);
+  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.semanticCalls.length, 2);
+  assertEquals(state.semanticCalls[0].maxProviderCalls, 4);
+  assertEquals(state.semanticCalls[1].maxProviderCalls, 4);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
   const metrics = aiLogInserts(state)[0].values.request_body as Record<
     string,
     unknown
@@ -6712,7 +6724,7 @@ Deno.test("hint repairs a malformed provider result with Claude before recording
   assertEquals(state.deepSeekCalls[0].maxTokens, 1600);
   assertEquals(state.claudeCalls[0].maxTokens, 1600);
   assertEquals(state.semanticCalls.length, 1);
-  assertEquals(state.semanticCalls[0].maxProviderCalls, 3);
+  assertEquals(state.semanticCalls[0].maxProviderCalls, 4);
   assertEquals(claimHintCalls(state).length, 1);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
