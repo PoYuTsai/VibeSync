@@ -78,6 +78,12 @@ Eric/Bruce lead:
 - 標準流程 = **目標式套用**：Supabase MCP `apply_migration` 只打該份 SQL → 功能驗證（含清理測試列）→ **把帳本 version 對齊本地檔名**（MCP 自動產生的 timestamp ≠ 檔名時必須 UPDATE `supabase_migrations.schema_migrations`，否則製造新漂移）。
 - 範例：ADR #19 `20260611120000_adr19_overcharge_confirmations.sql` 即依此流程套用（claimed/replay/mismatch 三態驗證通過）。
 
+## Website Deploy Rule（2026-07-21 Eric 拍板）
+
+- 官網 `https://www.vibesyncai.app/` 由 **Vercel 接 `PoYuTsai/vibesync-web` 的 `main`** 自動部署。官網改動**只准**推這個 repo。
+- `chiang53610-droid/vibesync-web` 是歷史 repo，**已停用**——往那邊推的內容永遠不會上線（2026-07-21 事故根因：完整官網一直更新在 chiang，Vercel 卻接 PoYuTsai，線上停在 4 月初始版）。
+- Vercel Hobby ＋ private repo 只認專案成員的 commit 作者：commit 作者 email **必須**用 `30863767+PoYuTsai@users.noreply.github.com`（Po-Yu Tsai），用其他 email 部署會被 Blocked（deployment 頁會顯示 "commit author did not have contributing access"）。
+
 ## High-Risk Changes Need Codex Review
 
 High-risk includes:
