@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/coach_scope.dart';
 
 class _Recorded {
   final String fn;
@@ -334,6 +335,91 @@ void main() {
       for (final line in lines) {
         expect((line as String).length, lessThanOrEqualTo(120));
       }
+    });
+
+    test('legacy calls omit requestId/scope/lifecyclePhase keys entirely',
+        () async {
+      // Phase E 相容鐵則：不帶新參數的舊呼叫 wire body 必須 byte-identical
+      // ——三鍵是「缺席」而非 null（server schema 是 .strict()）。
+      final calls = <_Recorded>[];
+      final service =
+          CoachChatApiService(invoker: _stub(_ok(), recorder: calls));
+
+      await service.ask(
+        conversationId: 'c-1',
+        partnerId: 'p-1',
+        question: '她這句是什麼意思？',
+        recentMessages: const [],
+        dataQualityFlagged: false,
+      );
+
+      expect(calls.single.body.containsKey('requestId'), isFalse);
+      expect(calls.single.body.containsKey('scope'), isFalse);
+      expect(calls.single.body.containsKey('lifecyclePhase'), isFalse);
+    });
+
+    test('partner scope drives conversationId sentinel and top-level partnerId',
+        () async {
+      final calls = <_Recorded>[];
+      final service =
+          CoachChatApiService(invoker: _stub(_ok(), recorder: calls));
+
+      await service.ask(
+        conversationId: 'ignored-when-scoped',
+        partnerId: null,
+        question: '下一步該怎麼跟進？',
+        recentMessages: const [],
+        dataQualityFlagged: false,
+        scope: const CoachScope.partner('p1'),
+      );
+
+      final body = calls.single.body;
+      expect(body['conversationId'], 'partner:p1');
+      expect(body['scope'], {'type': 'partner', 'partnerId': 'p1'});
+      // server superRefine：頂層 partnerId 非 null 時必等於 scope.partnerId，
+      // 呼叫端沒傳也要由 scope 補齊一致。
+      expect(body['partnerId'], 'p1');
+    });
+
+    test('conversation scope keeps conversationId and sends scope object',
+        () async {
+      final calls = <_Recorded>[];
+      final service =
+          CoachChatApiService(invoker: _stub(_ok(), recorder: calls));
+
+      await service.ask(
+        conversationId: 'c1',
+        partnerId: 'p-1',
+        question: '她這樣回是好事嗎？',
+        recentMessages: const [],
+        dataQualityFlagged: false,
+        scope: const CoachScope.conversation('c1'),
+      );
+
+      final body = calls.single.body;
+      expect(body['conversationId'], 'c1');
+      expect(body['scope'], {'type': 'conversation', 'conversationId': 'c1'});
+      expect(body['partnerId'], 'p-1');
+    });
+
+    test('requestId and lifecyclePhase pass through verbatim', () async {
+      final calls = <_Recorded>[];
+      final service =
+          CoachChatApiService(invoker: _stub(_ok(), recorder: calls));
+
+      await service.ask(
+        conversationId: 'c-1',
+        partnerId: 'p-1',
+        question: '要主動約嗎？',
+        recentMessages: const [],
+        dataQualityFlagged: false,
+        requestId: '4ef1c2aa-9d1b-4c3e-8f6a-2b7d9e0c1a5f',
+        lifecyclePhase: 'prepareInvite',
+      );
+
+      final body = calls.single.body;
+      expect(body['requestId'], '4ef1c2aa-9d1b-4c3e-8f6a-2b7d9e0c1a5f');
+      expect(body['lifecyclePhase'], 'prepareInvite');
     });
   });
 

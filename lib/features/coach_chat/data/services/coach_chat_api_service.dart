@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/config/environment.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../domain/entities/coach_chat_result.dart';
+import '../../domain/entities/coach_scope.dart';
 
 class CoachChatMessage {
   final bool isFromMe;
@@ -198,6 +199,14 @@ class CoachChatApiService {
   final String? Function() _accessTokenProvider;
   final bool _useProgressStreaming;
 
+  /// Phase E 新欄位皆選填、非 null 才進 body（缺席語意，server schema 是
+  /// strict）：
+  /// - [requestId]：UUID，server 端 lowercase 後做冪等鍵。
+  /// - [scope]：非 null 時 wire `conversationId` 改用
+  ///   [CoachScope.wireConversationId]；partner scope 並以 scope.id 覆寫
+  ///   頂層 `partnerId`（server superRefine 要求兩者一致）。
+  /// - [lifecyclePhase]：client 不驗值（server 是真相源）；目前合法值為
+  ///   `chatStalled` / `prepareInvite` / `postDate`。
   Future<CoachChatResult> ask({
     required String conversationId,
     required String? partnerId,
@@ -214,10 +223,20 @@ class CoachChatApiService {
     List<String> outcomeInsightLines = const [],
     required bool dataQualityFlagged,
     CoachChatProgressCallback? onProgress,
+    String? requestId,
+    CoachScope? scope,
+    String? lifecyclePhase,
   }) async {
+    // scope 為真相源：partner scope 頂層 partnerId 一律覆寫成 scope.id，
+    // 呼叫端沒傳也要補齊 superRefine 一致性。
+    final effectivePartnerId =
+        (scope != null && !scope.isConversation) ? scope.id : partnerId;
     final body = <String, dynamic>{
-      'conversationId': conversationId,
-      if (partnerId != null) 'partnerId': partnerId,
+      'conversationId': scope?.wireConversationId ?? conversationId,
+      if (effectivePartnerId != null) 'partnerId': effectivePartnerId,
+      if (requestId != null) 'requestId': requestId,
+      if (scope != null) 'scope': scope.toWireJson(),
+      if (lifecyclePhase != null) 'lifecyclePhase': lifecyclePhase,
       if (sessionId != null && sessionId.trim().isNotEmpty)
         'sessionId': sessionId.trim(),
       'userQuestion': _clampForWire(question.trim(), 240),
