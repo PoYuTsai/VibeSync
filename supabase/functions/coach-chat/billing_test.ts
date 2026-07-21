@@ -4,12 +4,18 @@ import {
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  claimCoachRequest,
+  classifyCoachReplayPreflight,
   COACH_CONTRACT_VERSION,
   coachReplayCutoffIso,
+  type CoachRpc,
   computeCoachInputHash,
   deriveCoachScopeKey,
   isStrongCoachReplayHmacKey,
+  isValidCoachLedgerResult,
   normalizeCoachRequestId,
+  releaseCoachClaim,
+  settleCoachRequest,
 } from "./billing.ts";
 
 const REQUEST_ID = "123e4567-e89b-42d3-a456-426614174000";
@@ -108,4 +114,324 @@ Deno.test("coach HMAC binds every identity-relevant input field", async () => {
   assert(isStrongCoachReplayHmacKey(HMAC_KEY));
   assertFalse(isStrongCoachReplayHmacKey("short-secret"));
   assertFalse(isStrongCoachReplayHmacKey(undefined));
+});
+
+const OWNER_TOKEN = "223e4567-e89b-42d3-a456-426614174000";
+const result = {
+  card: {
+    responseType: "coachAnswer",
+    mode: "replyCraft",
+    headline: "先穩住節奏",
+    answer: "先回一句輕鬆的，不用急著解釋。",
+    userState: "有點焦慮",
+    frictionType: "fearOfMistake",
+    nextStep: "傳出去後先放下手機",
+    boundaryReminder: "不確定時先照顧自己的感受",
+    needsReflection: false,
+    rewriteDecision: "keep_original",
+    costDeducted: 1,
+  },
+  sessionId: "session-1",
+  provider: "claude" as const,
+  model: "claude-sonnet-5",
+  generatedAt: "2026-07-21T12:00:00.000Z",
+};
+
+Deno.test("coach ledger accepts only envelope + card whitelist shape", () => {
+  assert(isValidCoachLedgerResult(result));
+  assertFalse(
+    isValidCoachLedgerResult({ ...result, prompt: "leaked prompt" }),
+  );
+  assertFalse(
+    isValidCoachLedgerResult({
+      ...result,
+      card: { ...result.card, sourceMessage: "私密輸入" },
+    }),
+  );
+  assertFalse(
+    isValidCoachLedgerResult({
+      ...result,
+      card: { ...result.card, costDeducted: 2 },
+    }),
+  );
+  assertFalse(
+    isValidCoachLedgerResult({
+      ...result,
+      card: { ...result.card, responseType: "unknown" },
+    }),
+  );
+  assertFalse(isValidCoachLedgerResult({ ...result, provider: "deepseek" }));
+});
+
+Deno.test("coach replay preflight distinguishes done, pending, and stale lease", () => {
+  const now = new Date("2026-07-21T12:00:00.000Z");
+  assertEquals(
+    classifyCoachReplayPreflight(null, "a".repeat(64), now),
+    { kind: "fresh" },
+  );
+  assertEquals(
+    classifyCoachReplayPreflight(
+      {
+        input_hash: "b".repeat(64),
+        state: "done",
+        lease_expires_at: "2026-07-21T12:01:00.000Z",
+        result_json: result,
+      },
+      "a".repeat(64),
+      now,
+    ),
+    { kind: "mismatch" },
+  );
+  assertEquals(
+    classifyCoachReplayPreflight(
+      {
+        input_hash: "a".repeat(64),
+        state: "done",
+        lease_expires_at: "2026-07-21T12:01:00.000Z",
+        result_json: result,
+      },
+      "a".repeat(64),
+      now,
+    ),
+    { kind: "replay", result },
+  );
+  assertEquals(
+    classifyCoachReplayPreflight(
+      {
+        input_hash: "a".repeat(64),
+        state: "pending",
+        lease_expires_at: "2026-07-21T12:01:30.000Z",
+        result_json: null,
+      },
+      "a".repeat(64),
+      now,
+    ),
+    { kind: "pending", retryAfterMs: 90_000 },
+  );
+  assertEquals(
+    classifyCoachReplayPreflight(
+      {
+        input_hash: "a".repeat(64),
+        state: "pending",
+        lease_expires_at: "2026-07-21T11:59:59.000Z",
+        result_json: null,
+      },
+      "a".repeat(64),
+      now,
+    ),
+    { kind: "fresh" },
+  );
+});
+
+function rpcReturning(
+  response: Awaited<ReturnType<CoachRpc>>,
+  calls: Array<Record<string, unknown>> = [],
+): CoachRpc {
+  return (fn, params) => {
+    calls.push({ fn, params });
+    return Promise.resolve(response);
+  };
+}
+
+const base = {
+  userId: "user-1",
+  requestId: REQUEST_ID,
+  inputHash: "a".repeat(64),
+  ownerToken: OWNER_TOKEN,
+  result,
+  monthlyLimit: 800,
+  dailyLimit: 80,
+  chargeQuota: true,
+};
+
+Deno.test("coach claim serializes generation ownership", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  assertEquals(
+    await claimCoachRequest({
+      ...base,
+      rpc: rpcReturning({ data: { kind: "claimed" }, error: null }, calls),
+    }),
+    { kind: "claimed" },
+  );
+  assertEquals(calls[0], {
+    fn: "claim_coach_request",
+    params: {
+      p_user_id: "user-1",
+      p_request_id: REQUEST_ID,
+      p_input_hash: "a".repeat(64),
+      p_owner_token: OWNER_TOKEN,
+    },
+  });
+  assertEquals(
+    await claimCoachRequest({
+      ...base,
+      rpc: rpcReturning({
+        data: { kind: "pending", retryAfterMs: 1200.2 },
+        error: null,
+      }),
+    }),
+    { kind: "pending", retryAfterMs: 1201 },
+  );
+  assertEquals(
+    await claimCoachRequest({
+      ...base,
+      rpc: rpcReturning({ data: { kind: "replay", result }, error: null }),
+    }),
+    { kind: "replay", result },
+  );
+  assertEquals(
+    await claimCoachRequest({
+      ...base,
+      rpc: rpcReturning({
+        data: null,
+        error: { message: "COACH_REQUEST_REPLAY_MISMATCH" },
+      }),
+    }),
+    { kind: "mismatch" },
+  );
+  assertEquals(
+    await claimCoachRequest({
+      ...base,
+      rpc: rpcReturning({
+        data: null,
+        error: { message: "connection reset" },
+      }),
+    }),
+    { kind: "retryable", message: "connection reset" },
+  );
+  assertEquals(
+    await claimCoachRequest({
+      ...base,
+      rpc: rpcReturning({
+        data: null,
+        error: { message: "permission denied", code: "42501" },
+      }),
+    }),
+    { kind: "failed", message: "permission denied" },
+  );
+});
+
+Deno.test("coach claim release is owner-bound and fail-closed", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  assertEquals(
+    await releaseCoachClaim({
+      ...base,
+      rpc: rpcReturning({ data: true, error: null }, calls),
+    }),
+    true,
+  );
+  assertEquals(calls[0], {
+    fn: "release_coach_claim",
+    params: {
+      p_user_id: "user-1",
+      p_request_id: REQUEST_ID,
+      p_input_hash: "a".repeat(64),
+      p_owner_token: OWNER_TOKEN,
+    },
+  });
+  assertEquals(
+    await releaseCoachClaim({
+      ...base,
+      rpc: rpcReturning({ data: false, error: null }),
+    }),
+    false,
+  );
+  assertEquals(
+    await releaseCoachClaim({
+      ...base,
+      rpc: rpcReturning({ data: null, error: { message: "timeout" } }),
+    }),
+    false,
+  );
+  assertEquals(
+    await releaseCoachClaim({
+      ...base,
+      rpc: () => {
+        throw new Error("network down");
+      },
+    }),
+    false,
+  );
+});
+
+Deno.test("coach settlement stores and charges atomically", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const settled = await settleCoachRequest({
+    ...base,
+    rpc: rpcReturning({ data: { charged: true, result }, error: null }, calls),
+  });
+  assertEquals(settled, { kind: "settled", charged: true, result });
+  assertEquals(calls[0], {
+    fn: "settle_coach_request",
+    params: {
+      p_user_id: "user-1",
+      p_request_id: REQUEST_ID,
+      p_input_hash: "a".repeat(64),
+      p_owner_token: OWNER_TOKEN,
+      p_result_json: result,
+      p_monthly_limit: 800,
+      p_daily_limit: 80,
+      p_charge_quota: true,
+    },
+  });
+});
+
+Deno.test("coach settlement replays and maps quota races", async () => {
+  assertEquals(
+    await settleCoachRequest({
+      ...base,
+      rpc: rpcReturning({ data: { charged: false, result }, error: null }),
+    }),
+    { kind: "settled", charged: false, result },
+  );
+  assertEquals(
+    await settleCoachRequest({
+      ...base,
+      rpc: rpcReturning({
+        data: null,
+        error: { message: "P0001: QUOTA_EXCEEDED_DAILY" },
+      }),
+    }),
+    { kind: "quota_exceeded", reason: "daily_limit_exceeded" },
+  );
+  assertEquals(
+    await settleCoachRequest({
+      ...base,
+      rpc: rpcReturning({
+        data: null,
+        error: { message: "P0001: QUOTA_EXCEEDED_MONTHLY" },
+      }),
+    }),
+    { kind: "quota_exceeded", reason: "monthly_limit_exceeded" },
+  );
+});
+
+Deno.test("coach settlement preserves ambiguous failures for same-id retry", async () => {
+  assertEquals(
+    await settleCoachRequest({
+      ...base,
+      rpc: rpcReturning({ data: null, error: { message: "connection reset" } }),
+    }),
+    { kind: "retryable", message: "connection reset" },
+  );
+  assertEquals(
+    await settleCoachRequest({
+      ...base,
+      rpc: rpcReturning({
+        data: null,
+        error: { message: "COACH_REQUEST_REPLAY_MISMATCH" },
+      }),
+    }),
+    { kind: "mismatch" },
+  );
+  assertEquals(
+    await settleCoachRequest({
+      ...base,
+      rpc: rpcReturning({
+        data: null,
+        error: { message: "COACH_REQUEST_OWNER_MISMATCH" },
+      }),
+    }),
+    { kind: "retryable", message: "coach lease ownership changed" },
+  );
 });
