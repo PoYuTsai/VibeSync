@@ -86,12 +86,17 @@ Deno.test("validateRequest rejects over-length outcomeInsightLines entries", () 
 });
 
 Deno.test("validateRequest accepts optional lifecyclePhase", () => {
-  const parsed = validateRequest({ ...baseRequest, lifecyclePhase: "chatStalled" });
+  const parsed = validateRequest({
+    ...baseRequest,
+    lifecyclePhase: "chatStalled",
+  });
   assertEquals(parsed.lifecyclePhase, "chatStalled");
 });
 
 Deno.test("validateRequest rejects unknown lifecyclePhase value", () => {
-  assertThrows(() => validateRequest({ ...baseRequest, lifecyclePhase: "preDateReminder" }));
+  assertThrows(() =>
+    validateRequest({ ...baseRequest, lifecyclePhase: "preDateReminder" })
+  );
 });
 
 Deno.test("validateRequest accepts optional uuid requestId", () => {
@@ -103,7 +108,9 @@ Deno.test("validateRequest accepts optional uuid requestId", () => {
 });
 
 Deno.test("validateRequest rejects non-uuid requestId", () => {
-  assertThrows(() => validateRequest({ ...baseRequest, requestId: "not-a-uuid" }));
+  assertThrows(() =>
+    validateRequest({ ...baseRequest, requestId: "not-a-uuid" })
+  );
 });
 
 Deno.test("validateRequest accepts conversation scope matching top-level id", () => {
@@ -355,8 +362,7 @@ Deno.test("assertCardSafe rejects raw JSON/code-fence payloads", () => {
   assertThrows(
     () =>
       assertCardSafe({
-        suggestedLine:
-          '{"responseType":"coachAnswer","card":{"answer":"hi"}}',
+        suggestedLine: '{"responseType":"coachAnswer","card":{"answer":"hi"}}',
       }),
     Error,
     "raw_model_payload: suggestedLine",
