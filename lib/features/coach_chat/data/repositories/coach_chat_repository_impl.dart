@@ -21,7 +21,6 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
 
   final Box<UnifiedCoachResult> _unifiedBox;
   final Box<CoachChatResult> _legacyChatBox;
-  // ignore: unused_field — read-bridge source, wired in Task 5.
   final Box<CoachFollowUpResult> _legacyFollowUpBox;
   final int keepPerScope;
 
@@ -29,9 +28,30 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
   // Scope-keyed unified store (Phase D)
   // ---------------------------------------------------------------------------
 
+  /// Merged read (D-5 read-bridge): unified rows plus mapped legacy rows.
+  /// Legacy boxes are only ever read — on id collision the unified row wins.
   @override
   List<UnifiedCoachResult> listByScope(String scopeType, String scopeId) {
-    return _listUnifiedByScope(scopeType, scopeId);
+    final merged = <String, UnifiedCoachResult>{};
+    if (scopeType == 'conversation') {
+      for (final legacy in _legacyChatBox.values) {
+        if (legacy.conversationId != scopeId) continue;
+        final mapped = UnifiedCoachResult.fromCoachChatResult(legacy);
+        merged[mapped.id] = mapped;
+      }
+    } else if (scopeType == 'partner') {
+      final legacy = _legacyFollowUpBox.get(scopeId);
+      if (legacy != null) {
+        final mapped = UnifiedCoachResult.fromFollowUpResult(legacy);
+        merged[mapped.id] = mapped;
+      }
+    }
+    for (final result in _listUnifiedByScope(scopeType, scopeId)) {
+      merged[result.id] = result;
+    }
+    final list = merged.values.toList()
+      ..sort((a, b) => b.generatedAt.compareTo(a.generatedAt));
+    return list;
   }
 
   @override

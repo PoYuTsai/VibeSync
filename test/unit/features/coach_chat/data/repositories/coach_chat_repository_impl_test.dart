@@ -68,6 +68,20 @@ UnifiedCoachResult _unified(
   );
 }
 
+CoachFollowUpResult _followUp(String partnerId, {DateTime? generatedAt}) {
+  return CoachFollowUpResult(
+    partnerId: partnerId,
+    phase: 'warming',
+    headline: '維持輕鬆節奏',
+    observation: '她回覆變快，話題也會延伸。',
+    task: '今天丟一個開放式問題。',
+    suggestedLine: '妳上次說的展覽後來去了嗎？',
+    boundaryReminder: '不要連發三則。',
+    generatedAt: generatedAt ?? DateTime(2026, 5, 7, 11),
+    modelUsed: 'claude-sonnet-5',
+  );
+}
+
 void main() {
   setUpAll(() {
     Hive.init(_testHivePath);
@@ -259,7 +273,18 @@ void main() {
 
       await repo.deleteScope('conversation', 'c-1');
 
-      expect(repo.listByScope('conversation', 'c-1'), isEmpty);
+      // Unified rows for c-1 are gone; the legacy row survives and is still
+      // visible through the read-bridge (deleteScope never touches legacy).
+      expect(
+        unifiedBox.values.where(
+          (r) => r.scopeType == 'conversation' && r.scopeId == 'c-1',
+        ),
+        isEmpty,
+      );
+      expect(
+        repo.listByScope('conversation', 'c-1').map((r) => r.id),
+        ['legacy-1'],
+      );
       expect(repo.listByScope('conversation', 'c-2').single.id, 'u-b');
       expect(repo.listByScope('partner', 'p-9').single.id, 'u-c');
       expect(legacyChatBox.length, 1);
@@ -281,6 +306,104 @@ void main() {
       expect(list.first.earlierResultCount, 2);
       expect(list.first.earlierSummary, contains('問「她是什麼意思？」'));
       expect(legacyFollowUpBox.values, isEmpty);
+    });
+  });
+
+  group('read-bridge merged reads', () {
+    test('conversation scope merges unified + legacy-17 sorted descending',
+        () async {
+      await legacyChatBox.put(
+        'l-1',
+        _result('l-1', generatedAt: DateTime(2026, 5, 7, 10)),
+      );
+      await legacyChatBox.put(
+        'l-2',
+        _result('l-2', generatedAt: DateTime(2026, 5, 7, 12)),
+      );
+      await repo.putUnified(
+        _unified('u-1', generatedAt: DateTime(2026, 5, 7, 11)),
+      );
+      await repo.putUnified(
+        _unified('u-2', generatedAt: DateTime(2026, 5, 7, 13)),
+      );
+
+      final list = repo.listByScope('conversation', 'c-1');
+
+      expect(list.map((r) => r.id), ['u-2', 'l-2', 'u-1', 'l-1']);
+      expect(repo.latestForScope('conversation', 'c-1')?.id, 'u-2');
+    });
+
+    test('id collision keeps the unified row over the legacy one', () async {
+      await legacyChatBox.put(
+        'same-id',
+        _result('same-id', generatedAt: DateTime(2026, 5, 7, 10)),
+      );
+      await repo.putUnified(
+        _unified('same-id', generatedAt: DateTime(2026, 5, 7, 12)),
+      );
+
+      final list = repo.listByScope('conversation', 'c-1');
+
+      expect(list, hasLength(1));
+      expect(list.single.id, 'same-id');
+      expect(list.single.generatedAt, DateTime(2026, 5, 7, 12));
+    });
+
+    test('partner scope merges unified + legacy-16 with mapped fields',
+        () async {
+      await legacyFollowUpBox.put('p-9', _followUp('p-9'));
+      await repo.putUnified(_unified(
+        'u-p',
+        scopeType: 'partner',
+        scopeId: 'p-9',
+        generatedAt: DateTime(2026, 5, 7, 12),
+      ));
+
+      final list = repo.listByScope('partner', 'p-9');
+
+      expect(list.map((r) => r.id), ['u-p', 'legacy-followup-p-9']);
+      final legacy = list.last;
+      expect(legacy.userState, '她回覆變快，話題也會延伸。');
+      expect(legacy.answer, legacy.userState);
+      expect(legacy.nextStep, '今天丟一個開放式問題。');
+      expect(legacy.lifecyclePhase, 'warming');
+      expect(legacy.costDeducted, 0);
+      expect(legacy.scopeType, 'partner');
+      expect(legacy.scopeId, 'p-9');
+    });
+
+    test('other conversations and partners do not leak into a scope',
+        () async {
+      await legacyChatBox.put(
+        'l-other',
+        _result('l-other', conversationId: 'c-2'),
+      );
+      await legacyFollowUpBox.put('p-other', _followUp('p-other'));
+      await repo.putUnified(_unified('u-other', scopeId: 'c-2'));
+      await repo.putUnified(
+          _unified('u-p-other', scopeType: 'partner', scopeId: 'p-other'));
+
+      expect(repo.listByScope('conversation', 'c-1'), isEmpty);
+      expect(repo.listByScope('partner', 'p-9'), isEmpty);
+    });
+
+    test('merged reads never mutate the legacy boxes (Invariant #7)',
+        () async {
+      await legacyChatBox.put('l-1', _result('l-1'));
+      await legacyFollowUpBox.put('p-9', _followUp('p-9'));
+      await repo.putUnified(_unified('u-1'));
+      await repo.putUnified(
+          _unified('u-p', scopeType: 'partner', scopeId: 'p-9'));
+
+      repo.listByScope('conversation', 'c-1');
+      repo.listByScope('partner', 'p-9');
+      repo.latestForScope('conversation', 'c-1');
+      repo.latestForScope('partner', 'p-9');
+
+      expect(legacyChatBox.keys, ['l-1']);
+      expect(legacyChatBox.get('l-1')?.question, '她是什麼意思？');
+      expect(legacyFollowUpBox.keys, ['p-9']);
+      expect(legacyFollowUpBox.get('p-9')?.task, '今天丟一個開放式問題。');
     });
   });
 }
