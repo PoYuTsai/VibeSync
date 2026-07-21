@@ -11,6 +11,11 @@ import {
   coachProgressStreamResponse,
   wantsCoachProgressStream,
 } from "./progress_stream.ts";
+import {
+  COACH_CONTRACT_VERSION,
+  isStrongCoachReplayHmacKey,
+  normalizeCoachRequestId,
+} from "./billing.ts";
 import { validateRequest } from "./validate.ts";
 import {
   applyResetsIfNeeded,
@@ -31,6 +36,7 @@ import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const REVENUECAT_IOS_API_KEY = Deno.env.get("REVENUECAT_IOS_API_KEY");
+const COACH_REPLAY_HMAC_KEY = Deno.env.get("COACH_REPLAY_HMAC_KEY") ?? "";
 
 const COST_PER_GENERATION = 1;
 const PREFLIGHT_QUOTA_COST = COST_PER_GENERATION;
@@ -243,7 +249,28 @@ export async function handleRequest(req: Request): Promise<Response> {
     return new Response("ok", { headers: corsHeaders });
   }
   if (req.method === "GET") {
-    return jsonResponse({ status: "ok", function: "coach-chat" });
+    // F9 fail-closed：帳本 migration 或金鑰不齊時不得自稱 ok——
+    // health 由 DB-owned contract version 背書（同 keyboard 範本）。
+    if (
+      !SUPABASE_URL || !SUPABASE_SERVICE_KEY ||
+      !isStrongCoachReplayHmacKey(COACH_REPLAY_HMAC_KEY)
+    ) {
+      return jsonResponse({ status: "unavailable" }, 503);
+    }
+    const healthClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false },
+    });
+    const { data: databaseContractVersion, error } = await healthClient.rpc(
+      "coach_contract_version",
+    );
+    if (error || databaseContractVersion !== COACH_CONTRACT_VERSION) {
+      return jsonResponse({ status: "unavailable" }, 503);
+    }
+    return jsonResponse({
+      status: "ok",
+      function: "coach-chat",
+      contractVersion: COACH_CONTRACT_VERSION,
+    });
   }
   if (req.method !== "POST") {
     return jsonResponse({ error: "method_not_allowed" }, 405);
@@ -289,6 +316,19 @@ export async function handleRequest(req: Request): Promise<Response> {
     payload = validateRequest(rawBody);
   } catch (e) {
     return jsonResponse({ error: getErrorMessage(e) }, 400);
+  }
+
+  // Phase C：requestId 缺席（null/undefined）＝完全不觸帳本、走今日路徑。
+  const requestId = normalizeCoachRequestId(payload.requestId ?? null);
+  if (
+    requestId !== null && !isStrongCoachReplayHmacKey(COACH_REPLAY_HMAC_KEY)
+  ) {
+    // 金鑰缺/弱時 fail-closed：不打模型不扣費（客戶端可去掉 requestId 重試）。
+    logError("coach_chat_config_missing", {
+      user: summarizeUser(user.id),
+      missing: "COACH_REPLAY_HMAC_KEY",
+    });
+    return jsonResponse({ error: "config_missing" }, 500);
   }
 
   let sub = await fetchSubscription(supabase, user.id);
