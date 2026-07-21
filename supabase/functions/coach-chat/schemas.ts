@@ -106,7 +106,10 @@ export const RequestSchema = z.object({
   lifecyclePhase: LifecyclePhaseEnum.nullable().optional(),
   // 教練統一案 Phase B：Phase C exactly-once 帳本前置欄位（選填）。
   // 本 Phase 只驗 UUID 格式（對齊 ADR #22 keyboard 範本）、不消費。
-  requestId: z.string().uuid().nullable().optional(),
+  // Phase C：帳本 key 前先 lowercase normalize（zod .uuid() 收大小寫混寫）。
+  requestId: z.string().uuid().nullable().optional().transform((value) =>
+    value == null ? value : value.toLowerCase()
+  ),
   // 教練統一案 Phase B：Phase C scopeKey 前置（選填）。缺席＝現行為。
   scope: CoachScopeSchema.nullable().optional(),
 }).strict().superRefine((payload, ctx) => {

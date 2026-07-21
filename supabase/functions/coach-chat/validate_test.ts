@@ -113,6 +113,24 @@ Deno.test("validateRequest rejects non-uuid requestId", () => {
   );
 });
 
+Deno.test("validateRequest normalizes uppercase requestId to lowercase", () => {
+  const parsed = validateRequest({
+    ...baseRequest,
+    requestId: "A3BB189E-8BF9-4888-9912-ACE4E6543002",
+  });
+  assertEquals(parsed.requestId, "a3bb189e-8bf9-4888-9912-ace4e6543002");
+});
+
+Deno.test("validateRequest accepts explicit null requestId", () => {
+  const parsed = validateRequest({ ...baseRequest, requestId: null });
+  assertEquals(parsed.requestId, null);
+});
+
+Deno.test("validateRequest keeps absent requestId undefined", () => {
+  const parsed = validateRequest({ ...baseRequest });
+  assertEquals(parsed.requestId, undefined);
+});
+
 Deno.test("validateRequest accepts conversation scope matching top-level id", () => {
   const parsed = validateRequest({
     ...baseRequest,
