@@ -85,6 +85,15 @@ Deno.test("validateRequest rejects over-length outcomeInsightLines entries", () 
   );
 });
 
+Deno.test("validateRequest accepts optional lifecyclePhase", () => {
+  const parsed = validateRequest({ ...baseRequest, lifecyclePhase: "chatStalled" });
+  assertEquals(parsed.lifecyclePhase, "chatStalled");
+});
+
+Deno.test("validateRequest rejects unknown lifecyclePhase value", () => {
+  assertThrows(() => validateRequest({ ...baseRequest, lifecyclePhase: "preDateReminder" }));
+});
+
 Deno.test("validateRequest rejects images for coach-chat v1", () => {
   assertThrows(
     () => validateRequest({ ...baseRequest, images: ["base64"] }),

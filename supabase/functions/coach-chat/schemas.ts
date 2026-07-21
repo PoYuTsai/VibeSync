@@ -9,6 +9,13 @@ export const CoachChatModeEnum = z.enum([
   "stopSignal",
 ]);
 
+export const LifecyclePhaseEnum = z.enum([
+  "chatStalled",
+  "prepareInvite",
+  "postDate",
+]);
+export type LifecyclePhase = z.infer<typeof LifecyclePhaseEnum>;
+
 export const MessageSenderEnum = z.enum(["me", "partner"]);
 export const SessionTurnRoleEnum = z.enum(["user", "coach"]);
 export const SessionTurnKindEnum = z.enum([
@@ -82,6 +89,8 @@ export const RequestSchema = z.object({
   // 選填，缺席＝現行為（不注入 prompt）。只含統計句，不含對象回覆原文/筆記。
   outcomeInsightLines: z.array(z.string().max(120)).max(6).optional(),
   dataQualityFlagged: z.boolean().default(false),
+  // 教練統一案 Phase B：三情境 framing（選填）。缺席＝現行為。
+  lifecyclePhase: LifecyclePhaseEnum.nullable().optional(),
 }).strict().superRefine((payload, ctx) => {
   if (
     payload.dataQualityFlagged &&
