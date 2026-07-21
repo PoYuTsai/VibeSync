@@ -12,9 +12,18 @@ import {
   wantsCoachProgressStream,
 } from "./progress_stream.ts";
 import {
+  claimCoachRequest,
+  classifyCoachReplayPreflight,
   COACH_CONTRACT_VERSION,
+  type CoachLedgerResult,
+  coachReplayCutoffIso,
+  type CoachReplayRow,
+  computeCoachInputHash,
+  deriveCoachScopeKey,
   isStrongCoachReplayHmacKey,
   normalizeCoachRequestId,
+  releaseCoachClaim,
+  settleCoachRequest,
 } from "./billing.ts";
 import { validateRequest } from "./validate.ts";
 import {
@@ -56,6 +65,19 @@ export function jsonResponse(data: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json", ...corsHeaders },
   });
+}
+
+// settleResult 內拋出的 typed error：由 run wrapper 映射成 HTTP 回應。
+// settlement 失敗絕不 release（commit 結果可能曖昧，同 keyboard 範本）。
+class CoachSettlementHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message?: string,
+  ) {
+    super(message ?? code);
+    this.name = "CoachSettlementHttpError";
+  }
 }
 
 function getErrorMessage(error: unknown): string {
@@ -244,7 +266,11 @@ async function maybeRefreshTierFromRevenueCat(
   }
 }
 
-export async function handleRequest(req: Request): Promise<Response> {
+export async function handleRequest(
+  req: Request,
+  // 測試注入縫：prod 一律走 env（serve 只傳 req）。
+  overrides?: { supabase?: unknown; replayHmacKey?: string },
+): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -282,9 +308,12 @@ export async function handleRequest(req: Request): Promise<Response> {
   }
   const token = authHeader.slice(7);
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-    auth: { persistSession: false },
-  });
+  // deno-lint-ignore no-explicit-any
+  const supabase: any = overrides?.supabase ??
+    createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false },
+    });
+  const replayHmacKey = overrides?.replayHmacKey ?? COACH_REPLAY_HMAC_KEY;
   const { data: { user }, error: userError } = await supabase.auth.getUser(
     token,
   );
@@ -320,9 +349,7 @@ export async function handleRequest(req: Request): Promise<Response> {
 
   // Phase C：requestId 缺席（null/undefined）＝完全不觸帳本、走今日路徑。
   const requestId = normalizeCoachRequestId(payload.requestId ?? null);
-  if (
-    requestId !== null && !isStrongCoachReplayHmacKey(COACH_REPLAY_HMAC_KEY)
-  ) {
+  if (requestId !== null && !isStrongCoachReplayHmacKey(replayHmacKey)) {
     // 金鑰缺/弱時 fail-closed：不打模型不扣費（客戶端可去掉 requestId 重試）。
     logError("coach_chat_config_missing", {
       user: summarizeUser(user.id),
@@ -330,6 +357,91 @@ export async function handleRequest(req: Request): Promise<Response> {
     });
     return jsonResponse({ error: "config_missing" }, 500);
   }
+
+  // Preflight replay：帳本已有同 identity 的結果就直接回放，
+  // 不進訂閱/quota/模型任何一步（F1 斷線重送零重扣）。
+  let requestInputHash: string | null = null;
+  if (requestId !== null) {
+    requestInputHash = await computeCoachInputHash({
+      userId: user.id,
+      userQuestion: payload.userQuestion,
+      sessionId: payload.sessionId ?? null,
+      activeSessionTurns: payload.activeSessionTurns ?? [],
+      forceAnswer: payload.forceAnswer === true,
+      scopeKey: deriveCoachScopeKey({
+        scope: payload.scope ?? null,
+        conversationId: payload.conversationId,
+      }),
+      lifecyclePhase: payload.lifecyclePhase ?? null,
+      secret: replayHmacKey,
+    });
+    const { data: replayRow, error: replayReadError } = await supabase
+      .from("coach_requests")
+      .select("input_hash, state, lease_expires_at, result_json, created_at")
+      .eq("user_id", user.id)
+      .eq("request_id", requestId)
+      .gte("created_at", coachReplayCutoffIso())
+      .maybeSingle();
+    if (replayReadError) {
+      logError("coach_chat_replay_preflight_read_failed", {
+        user: summarizeUser(user.id),
+        error: replayReadError.message,
+      });
+      return jsonResponse({
+        error: "COACH_SETTLEMENT_RETRYABLE",
+        code: "COACH_SETTLEMENT_RETRYABLE",
+        retryable: true,
+      }, 503);
+    }
+    const replay = classifyCoachReplayPreflight(
+      replayRow as CoachReplayRow | null,
+      requestInputHash,
+    );
+    if (replay.kind === "mismatch") {
+      return jsonResponse({
+        error: "COACH_REQUEST_REPLAY_MISMATCH",
+        code: "COACH_REQUEST_REPLAY_MISMATCH",
+      }, 409);
+    }
+    if (replay.kind === "replay") {
+      logInfo("coach_chat_replayed", {
+        user: summarizeUser(user.id),
+        costDeducted: 0,
+      });
+      const replayBody = replay.result as unknown as Record<string, unknown>;
+      // streaming replay：runner 直接回 200 → 天然單一 coach.done。
+      if (wantsCoachProgressStream(req)) {
+        return coachProgressStreamResponse(
+          () => Promise.resolve({ status: 200, body: replayBody }),
+          corsHeaders,
+        );
+      }
+      return jsonResponse(replayBody);
+    }
+    if (replay.kind === "pending") {
+      return jsonResponse({
+        error: "COACH_REQUEST_PENDING",
+        code: "COACH_REQUEST_PENDING",
+        retryable: true,
+        retryAfterMs: replay.retryAfterMs,
+      }, 409);
+    }
+  }
+
+  const requestOwnerToken = requestId === null ? null : crypto.randomUUID();
+  const releaseCurrentClaim = async (): Promise<boolean> => {
+    if (
+      requestId === null || requestInputHash === null ||
+      requestOwnerToken === null
+    ) return true;
+    return await releaseCoachClaim({
+      rpc: async (fn, params) => await supabase.rpc(fn, params),
+      userId: user.id,
+      requestId,
+      inputHash: requestInputHash,
+      ownerToken: requestOwnerToken,
+    });
+  };
 
   let sub = await fetchSubscription(supabase, user.id);
   if (!sub) sub = await selfHealSubscription(supabase, user.id);
@@ -373,6 +485,60 @@ export async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
+  // 慢速訂閱/RevenueCat I/O 留在 90 秒 lease 之外：entitlement 刷新後、
+  // 任何 terminal gate 回應前才正式 claim（keyboard 範本同位），
+  // 一個併發請求才不會清掉另一個請求持有的 identity。
+  if (
+    requestId !== null && requestInputHash !== null &&
+    requestOwnerToken !== null
+  ) {
+    const claim = await claimCoachRequest({
+      rpc: async (fn, params) => await supabase.rpc(fn, params),
+      userId: user.id,
+      requestId,
+      inputHash: requestInputHash,
+      ownerToken: requestOwnerToken,
+    });
+    if (claim.kind === "replay") {
+      const replayBody = claim.result as unknown as Record<string, unknown>;
+      if (wantsCoachProgressStream(req)) {
+        return coachProgressStreamResponse(
+          () => Promise.resolve({ status: 200, body: replayBody }),
+          corsHeaders,
+        );
+      }
+      return jsonResponse(replayBody);
+    }
+    if (claim.kind === "pending") {
+      return jsonResponse({
+        error: "COACH_REQUEST_PENDING",
+        code: "COACH_REQUEST_PENDING",
+        retryable: true,
+        retryAfterMs: claim.retryAfterMs,
+      }, 409);
+    }
+    if (claim.kind === "mismatch") {
+      return jsonResponse({
+        error: "COACH_REQUEST_REPLAY_MISMATCH",
+        code: "COACH_REQUEST_REPLAY_MISMATCH",
+      }, 409);
+    }
+    if (claim.kind === "retryable") {
+      return jsonResponse({
+        error: "COACH_CLAIM_RETRYABLE",
+        code: "COACH_CLAIM_RETRYABLE",
+        retryable: true,
+      }, 503);
+    }
+    if (claim.kind === "failed") {
+      logError("coach_chat_claim_failed", {
+        user: summarizeUser(user.id),
+        error: claim.message,
+      });
+      return jsonResponse({ error: "COACH_CLAIM_FAILED" }, 500);
+    }
+  }
+
   if (!gate.ok) {
     logWarn("coach_chat_quota_exceeded", {
       user: summarizeUser(user.id),
@@ -381,14 +547,25 @@ export async function handleRequest(req: Request): Promise<Response> {
       used: gate.used,
       limit: gate.limit,
     });
+    if (!await releaseCurrentClaim()) {
+      return jsonResponse({
+        error: "COACH_CLAIM_RELEASE_RETRYABLE",
+        code: "COACH_CLAIM_RELEASE_RETRYABLE",
+        retryable: true,
+      }, 503);
+    }
+    const quotaPayload = buildQuotaExceededPayload({
+      sub,
+      cost: COST_PER_GENERATION,
+      reason: gate.reason,
+      monthlyLimit: limits.monthly,
+      dailyLimit: limits.daily,
+    });
+    // requestId 缺席＝今日 429 body byte-for-byte 不變。
     return jsonResponse(
-      buildQuotaExceededPayload({
-        sub,
-        cost: COST_PER_GENERATION,
-        reason: gate.reason,
-        monthlyLimit: limits.monthly,
-        dailyLimit: limits.daily,
-      }),
+      requestId !== null
+        ? { ...quotaPayload, code: "QUOTA_EXCEEDED", safeToClear: true }
+        : quotaPayload,
       429,
     );
   }
@@ -408,7 +585,19 @@ export async function handleRequest(req: Request): Promise<Response> {
       scope: "coach_chat",
       reason: rateVerdict.reason,
     });
-    return jsonResponse(rateVerdict.payload, 429);
+    if (!await releaseCurrentClaim()) {
+      return jsonResponse({
+        error: "COACH_CLAIM_RELEASE_RETRYABLE",
+        code: "COACH_CLAIM_RELEASE_RETRYABLE",
+        retryable: true,
+      }, 503);
+    }
+    return jsonResponse(
+      requestId !== null
+        ? { ...rateVerdict.payload, safeToClear: true }
+        : rateVerdict.payload,
+      429,
+    );
   }
   if (rateVerdict.kind === "failOpen") {
     // fail-open：infra 錯誤（非超限 RAISE）不擋核心流程，必留 telemetry。
@@ -423,6 +612,52 @@ export async function handleRequest(req: Request): Promise<Response> {
   if (!apiKey) {
     logError("coach_chat_config_missing", { user: summarizeUser(user.id) });
     return jsonResponse({ error: "config_missing" }, 500);
+  }
+
+  // 模型派發前 renew claim：若 rate-limit RPC 拖過 lease、擁有權被奪，
+  // 本次呼叫必須在放大 provider cost 之前停下。
+  if (
+    requestId !== null && requestInputHash !== null &&
+    requestOwnerToken !== null
+  ) {
+    const renewal = await claimCoachRequest({
+      rpc: async (fn, params) => await supabase.rpc(fn, params),
+      userId: user.id,
+      requestId,
+      inputHash: requestInputHash,
+      ownerToken: requestOwnerToken,
+    });
+    if (renewal.kind === "replay") {
+      const replayBody = renewal.result as unknown as Record<string, unknown>;
+      if (wantsCoachProgressStream(req)) {
+        return coachProgressStreamResponse(
+          () => Promise.resolve({ status: 200, body: replayBody }),
+          corsHeaders,
+        );
+      }
+      return jsonResponse(replayBody);
+    }
+    if (renewal.kind === "pending") {
+      return jsonResponse({
+        error: "COACH_REQUEST_PENDING",
+        code: "COACH_REQUEST_PENDING",
+        retryable: true,
+        retryAfterMs: renewal.retryAfterMs,
+      }, 409);
+    }
+    if (renewal.kind === "mismatch") {
+      return jsonResponse({
+        error: "COACH_REQUEST_REPLAY_MISMATCH",
+        code: "COACH_REQUEST_REPLAY_MISMATCH",
+      }, 409);
+    }
+    if (renewal.kind !== "claimed") {
+      return jsonResponse({
+        error: "COACH_CLAIM_RENEW_RETRYABLE",
+        code: "COACH_CLAIM_RENEW_RETRYABLE",
+        retryable: true,
+      }, 503);
+    }
   }
 
   const tier = normalizeTier(sub.tier);
@@ -511,17 +746,151 @@ export async function handleRequest(req: Request): Promise<Response> {
             throw new Error("credit_deduct_failed");
           }
         },
+        // Phase C：requestId 帳本路徑注入 settleResult（settle 交易內
+        // 扣費＋存卡取代 deductCredit）；requestId null 不注入＝舊路徑。
+        ...(requestId !== null && requestInputHash !== null &&
+            requestOwnerToken !== null
+          ? {
+            settleResult: async (
+              { body, charge }: {
+                body: Record<string, unknown>;
+                charge: boolean;
+              },
+            ): Promise<{ charged: boolean }> => {
+              let latest = await fetchSubscription(supabase, user.id);
+              if (!latest) {
+                throw new CoachSettlementHttpError(
+                  503,
+                  "COACH_SETTLEMENT_RETRYABLE",
+                  "subscription unavailable before settlement",
+                );
+              }
+              const latestReset = applyResetsIfNeeded(latest, new Date());
+              latest = latestReset.sub;
+              if (latestReset.dailyReset || latestReset.monthlyReset) {
+                await persistResets(supabase, user.id, latestReset);
+              }
+              let latestLimits = resolveLimits(latest.tier);
+              const latestGate = checkQuota({
+                sub: latest,
+                cost: COST_PER_GENERATION,
+                isTestAccount: accountIsTest,
+                monthlyLimit: latestLimits.monthly,
+                dailyLimit: latestLimits.daily,
+              });
+              if (!latestGate.ok) {
+                const refreshed = await maybeRefreshTierFromRevenueCat(
+                  supabase,
+                  user.id,
+                  latest,
+                  latestGate.reason,
+                );
+                if (refreshed) {
+                  latest = refreshed;
+                  latestLimits = resolveLimits(latest.tier);
+                }
+              }
+              const settlement = await settleCoachRequest({
+                rpc: async (fn, params) => await supabase.rpc(fn, params),
+                userId: user.id,
+                requestId,
+                inputHash: requestInputHash,
+                ownerToken: requestOwnerToken,
+                result: body as unknown as CoachLedgerResult,
+                monthlyLimit: latestLimits.monthly,
+                dailyLimit: latestLimits.daily,
+                chargeQuota: charge,
+              });
+              if (settlement.kind === "settled") {
+                return { charged: settlement.charged };
+              }
+              if (settlement.kind === "quota_exceeded") {
+                const monthly = settlement.reason === "monthly_limit_exceeded";
+                throw new CoachChatQuotaExceededError(
+                  settlement.reason,
+                  monthly
+                    ? latest.monthly_messages_used
+                    : latest.daily_messages_used,
+                  monthly ? latestLimits.monthly : latestLimits.daily,
+                );
+              }
+              if (settlement.kind === "mismatch") {
+                throw new CoachSettlementHttpError(
+                  409,
+                  "COACH_REQUEST_REPLAY_MISMATCH",
+                  "request identity reused for different input",
+                );
+              }
+              if (settlement.kind === "retryable") {
+                throw new CoachSettlementHttpError(
+                  503,
+                  "COACH_SETTLEMENT_RETRYABLE",
+                  settlement.message,
+                );
+              }
+              throw new CoachSettlementHttpError(
+                500,
+                "COACH_SETTLEMENT_FAILED",
+                settlement.message,
+              );
+            },
+          }
+          : {}),
         logger: { info: logInfo, warn: logWarn },
         onProgress,
       },
     );
+  const runGenerationWithLedger = async (
+    onProgress?: (update: CoachChatProgressUpdate) => void,
+  ) => {
+    let result;
+    try {
+      result = await runGeneration(onProgress);
+    } catch (e) {
+      if (e instanceof CoachSettlementHttpError) {
+        logWarn("coach_chat_settlement_error", {
+          user: summarizeUser(user.id),
+          code: e.code,
+          error: e.message,
+        });
+        return {
+          status: e.status,
+          body: {
+            error: e.code,
+            code: e.code,
+            ...(e.status === 503 ? { retryable: true } : {}),
+          },
+        };
+      }
+      throw e;
+    }
+    // 已知 settle 前失敗（生成失敗/refusal 等 500，body 無 code）：釋放本
+    // owner 的 claim 讓同 requestId 立即重試。settlement 失敗（帶 code 的
+    // 回應）絕不 release——commit 結果可能曖昧（同 keyboard 範本）。
+    const safeToReleaseAfterRun = requestId !== null &&
+      result.status === 500 && result.body.code === undefined;
+    if (safeToReleaseAfterRun) {
+      if (!await releaseCurrentClaim()) {
+        return {
+          status: 503,
+          body: {
+            error: "COACH_CLAIM_RELEASE_RETRYABLE",
+            code: "COACH_CLAIM_RELEASE_RETRYABLE",
+            retryable: true,
+          },
+        };
+      }
+      return { ...result, body: { ...result.body, retryable: true } };
+    }
+    return result;
+  };
   if (wantsCoachProgressStream(req)) {
-    return coachProgressStreamResponse(runGeneration, corsHeaders);
+    return coachProgressStreamResponse(runGenerationWithLedger, corsHeaders);
   }
-  const result = await runGeneration();
+  const result = await runGenerationWithLedger();
   return jsonResponse(result.body, result.status);
 }
 
 if (import.meta.main) {
-  serve(handleRequest);
+  serve((req) => handleRequest(req));
 }
