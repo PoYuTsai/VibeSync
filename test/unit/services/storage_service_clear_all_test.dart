@@ -514,4 +514,112 @@ void main() {
       isNull,
     );
   });
+
+  test('F11 換用戶零殘留：unified 雙 scope＋legacy 兩箱 clearAll 全清', () async {
+    await Hive.openBox<Conversation>(AppConstants.conversationsBox);
+    await Hive.openBox<Partner>(AppConstants.partnersBox);
+    await Hive.openBox<UserProfile>('user_profile');
+    await Hive.openBox<PartnerStyleOverride>('partner_style_overrides');
+    await Hive.openBox<PartnerDataQualityState>(
+      'partner_data_quality_states',
+    );
+    await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
+    await Hive.openBox<CoachChatResult>('coach_chat_results');
+    await Hive.openBox<UnifiedCoachResult>('unified_coach_results');
+    await Hive.openBox<CoachingOutcomeEvent>(
+      AppConstants.coachingOutcomeEventsBox,
+    );
+    await Hive.openBox<AnalysisHistoryEvent>(
+      AppConstants.analysisHistoryEventsBox,
+    );
+    await Hive.openBox<PracticeSession>('practice_sessions');
+    await Hive.openBox(AppConstants.settingsBox);
+    await Hive.openBox(AppConstants.usageBox);
+
+    // 模擬用戶 A 的完整教練足跡：unified conversation＋partner 雙 scope，
+    // 加上 legacy-17／legacy-16 各一筆。
+    await StorageService.unifiedCoachResultsBox.put(
+      'ua-conv',
+      UnifiedCoachResult(
+        id: 'ua-conv',
+        conversationId: 'c1',
+        partnerId: 'p1',
+        question: '她這句話是真的有興趣嗎？',
+        mode: 'replyCraft',
+        headline: '先接球',
+        answer: '她是在丟觀察。',
+        userState: '你可能急著解釋。',
+        nextStep: '承認一半再反問。',
+        boundaryReminder: '不要放大成考試。',
+        needsReflection: false,
+        generatedAt: DateTime.utc(2026, 7, 21, 12),
+        provider: 'claude',
+        modelUsed: 'claude-sonnet-5',
+        scopeType: 'conversation',
+        scopeId: 'c1',
+      ),
+    );
+    await StorageService.unifiedCoachResultsBox.put(
+      'ua-partner',
+      UnifiedCoachResult(
+        id: 'ua-partner',
+        partnerId: 'p1',
+        question: '接下來怎麼推進？',
+        mode: 'partnerFollowUp',
+        headline: '維持輕鬆節奏',
+        answer: '她回覆變快。',
+        userState: '你可能太急。',
+        nextStep: '丟一個開放式問題。',
+        boundaryReminder: '不要連發三則。',
+        needsReflection: false,
+        generatedAt: DateTime.utc(2026, 7, 21, 13),
+        provider: 'claude',
+        modelUsed: 'claude-sonnet-5',
+        scopeType: 'partner',
+        scopeId: 'p1',
+      ),
+    );
+    await StorageService.coachChatResultsBox.put(
+      'legacy-chat',
+      CoachChatResult(
+        id: 'legacy-chat',
+        conversationId: 'c1',
+        partnerId: 'p1',
+        question: '她這句話是真的有興趣嗎？',
+        mode: 'replyCraft',
+        headline: '先接球',
+        answer: '她是在丟觀察。',
+        userState: '你可能急著解釋。',
+        nextStep: '承認一半再反問。',
+        boundaryReminder: '不要放大成考試。',
+        needsReflection: false,
+        generatedAt: DateTime.utc(2026, 7, 20, 12),
+        provider: 'claude',
+        modelUsed: 'claude-sonnet-4-20250514',
+      ),
+    );
+    await StorageService.coachFollowUpResultsBox.put(
+      'p1',
+      CoachFollowUpResult(
+        partnerId: 'p1',
+        phase: 'warming',
+        headline: '維持輕鬆節奏',
+        observation: '她回覆變快。',
+        task: '丟一個開放式問題。',
+        boundaryReminder: '不要連發三則。',
+        generatedAt: DateTime.utc(2026, 7, 19, 12),
+        modelUsed: 'claude-sonnet-4-20250514',
+      ),
+    );
+    expect(StorageService.unifiedCoachResultsBox.length, 2);
+    expect(StorageService.coachChatResultsBox.isNotEmpty, isTrue);
+    expect(StorageService.coachFollowUpResultsBox.isNotEmpty, isTrue);
+
+    await StorageService.clearAll();
+
+    // 換用戶（F11）：三箱教練紀錄全空＝新用戶零殘留。
+    expect(StorageService.unifiedCoachResultsBox.isEmpty, isTrue);
+    expect(StorageService.coachChatResultsBox.isEmpty, isTrue);
+    expect(StorageService.coachFollowUpResultsBox.isEmpty, isTrue);
+  });
 }
