@@ -29,6 +29,8 @@ Default priority:
 
 Recent commit themes, newest first:
 
+- 教練統一 Phase C–F（2026-07-22）：Coach 1:1 抽出 scope 參數化 `CoachSurface`，對象頁掛同一聰明教練 engine（partner scope 串流／多輪／釐清＋三顆情境 chip＋deep-link focus），client 全路徑送 requestId 接 Phase C ledger replay；live e2e 兩 scope 全過、Codex R2 APPROVED。Phase F 收尾包 SHIPPED：三小債清償（partnerId 切換重置 auto-focus 閂鎖、`openCoachInputRequested` 改名、`CoachOpenCoachIntentEvent` 意圖事件改名）＋舊 coach_follow_up engine 死叢集刪除（7 lib＋7 test 檔＋LEGACY helper）；`flutter analyze` 0 issues、全套測試全綠。durable requestId 持久化仍為獨立案未做（見下方已知債條目）。
+
 - Practice Debrief 語意複核根治（2026-07-19）：production v200 的連續失敗先定位為 Claude reviewer 沒有 provider-level JSON schema；第一階段 deploy 後又由 live Beginner smoke 定位第二層 fact-rejection state bug。最終契約是 surface-specific structured fact schema、reject 後強制點名欄位實際 repair＋fresh verifier、nested key shape 鎖定、Debrief semantic 4／總 provider 6／request-entry 85 秒 deadline。失敗仍 release owner、record 0、不增加 Debrief 次數。practice-chat Deno 934/934、三路高風險 review 0 P0/P1/P2；production v206 已部署，現役版 fresh Standard 單次 2/2、Beginner assisted 1/1 與 replay／continuity 全 PASS，deploy window 後四筆 telemetry 全 success、0 semantic reject。Server-only 已生效，無需新 App build。
 
 - Analyze 串流與進度 UX 穩定化（2026-07-19）：Essential 五風格在 Sonnet 5 上沿用舊 `3200` output cap，真機輸出剛好寫滿後被標成 `STREAM_MAX_TOKENS`；Free 兩風格維持 `3200`，付費五風格提高為 `6000`，production `analyze-chat` v285（`verify_jwt=false`）同步記錄 120 秒 timeout／3 次 provider attempt。101 則訊息的 live contract smoke 完成五種核心風格與 `analysis.done`，用量 2546/6000、未扣 quota。App 端分析時「跟到最新」會持續顯示，點擊後跟隨目前串流，使用者往回滑即停止；中斷後保留「查看中斷」。OCR 左右歸屬提示改為延遲 650ms、示範 3.6 秒，之後保留靜態圖例。Practice v200 與 DeepSeek-first 路徑未變。驗證：Analyze Edge 643/643、相關 widget 69/69、OCR widget 28/28、Flutter 全套 2265 passed／4 skipped／0 failed、`flutter analyze` 0 issue，獨立複查 0 blocking/P2。
