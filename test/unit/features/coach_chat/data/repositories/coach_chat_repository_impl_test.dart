@@ -403,6 +403,79 @@ void main() {
       expect(repo.listByScope('partner', 'p-9'), isEmpty);
     });
 
+    test('同 generatedAt 兩筆排序確定性：次要鍵比 id 升冪（M-1）', () async {
+      final tie = DateTime(2026, 5, 7, 12);
+      await repo.putUnified(_unified('b-tie', generatedAt: tie));
+      await repo.putUnified(_unified('a-tie', generatedAt: tie));
+      await repo.putUnified(
+        _unified('c-new', generatedAt: DateTime(2026, 5, 7, 13)),
+      );
+
+      final first =
+          repo.listByScope('conversation', 'c-1').map((r) => r.id).toList();
+
+      expect(first, ['c-new', 'a-tie', 'b-tie']);
+      // 重複呼叫結果一致（確定性）。
+      expect(
+        repo.listByScope('conversation', 'c-1').map((r) => r.id).toList(),
+        first,
+      );
+    });
+
+    test('unified 與 legacy 同 generatedAt 也照 id 次要鍵排序（M-1）', () async {
+      final tie = DateTime(2026, 5, 7, 12);
+      await legacyChatBox.put('z-legacy', _result('z-legacy', generatedAt: tie));
+      await repo.putUnified(_unified('m-unified', generatedAt: tie));
+
+      expect(
+        repo.listByScope('conversation', 'c-1').map((r) => r.id),
+        ['m-unified', 'z-legacy'],
+      );
+    });
+
+    test('scopeType 白名單以外 debug 直接 assert fail-fast（M-2）', () async {
+      expect(
+        () => repo.listByScope('bogus', 'x'),
+        throwsAssertionError,
+      );
+      await expectLater(
+        repo.deleteScope('bogus', 'x'),
+        throwsAssertionError,
+      );
+      await expectLater(
+        repo.putUnified(_unified('u-bad', scopeType: 'bogus', scopeId: 'x')),
+        throwsAssertionError,
+      );
+    });
+
+    test('釘子：8 unified＋5 legacy-17 同對話 merged 13 筆且不觸 trim（M-3）',
+        () async {
+      for (var i = 0; i < 5; i++) {
+        await legacyChatBox.put(
+          'l-$i',
+          _result(
+            'l-$i',
+            generatedAt: DateTime(2026, 5, 7, 9).add(Duration(minutes: i)),
+          ),
+        );
+      }
+      for (var i = 0; i < 8; i++) {
+        await repo.putUnified(_unified(
+          'u-$i',
+          generatedAt: DateTime(2026, 5, 7, 10).add(Duration(minutes: i)),
+        ));
+      }
+
+      final list = repo.listByScope('conversation', 'c-1');
+
+      // merged 視圖 13 筆全在；legacy 不算進 keepPerScope，unified 8 筆不被 trim。
+      expect(list, hasLength(13));
+      expect(unifiedBox.length, 8);
+      expect(legacyChatBox.length, 5);
+      expect(list.first.earlierResultCount, 0);
+      expect(list.first.earlierSummary, isNull);
+    });
+
     test('merged reads never mutate the legacy boxes (Invariant #7)',
         () async {
       await legacyChatBox.put('l-1', _result('l-1'));

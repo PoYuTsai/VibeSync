@@ -32,6 +32,10 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
   /// Legacy boxes are only ever read — on id collision the unified row wins.
   @override
   List<UnifiedCoachResult> listByScope(String scopeType, String scopeId) {
+    assert(
+      _isKnownScopeType(scopeType),
+      'Unknown scopeType "$scopeType" — must be "conversation" or "partner"',
+    );
     final merged = <String, UnifiedCoachResult>{};
     if (scopeType == 'conversation') {
       for (final legacy in _legacyChatBox.values) {
@@ -49,8 +53,7 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
     for (final result in _listUnifiedByScope(scopeType, scopeId)) {
       merged[result.id] = result;
     }
-    final list = merged.values.toList()
-      ..sort((a, b) => b.generatedAt.compareTo(a.generatedAt));
+    final list = merged.values.toList()..sort(_compareNewestFirst);
     return list;
   }
 
@@ -62,6 +65,11 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
 
   @override
   Future<void> putUnified(UnifiedCoachResult result) async {
+    assert(
+      _isKnownScopeType(result.scopeType),
+      'Unknown scopeType "${result.scopeType}" — '
+      'must be "conversation" or "partner"',
+    );
     final previousLatest = latestForScope(result.scopeType, result.scopeId);
     final resultWithRollup = _carryForwardUnifiedRollup(result, previousLatest);
     await _unifiedBox.put(resultWithRollup.id, resultWithRollup);
@@ -70,6 +78,10 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
 
   @override
   Future<void> deleteScope(String scopeType, String scopeId) async {
+    assert(
+      _isKnownScopeType(scopeType),
+      'Unknown scopeType "$scopeType" — must be "conversation" or "partner"',
+    );
     final ids = _unifiedBox.values
         .where((r) => r.scopeType == scopeType && r.scopeId == scopeId)
         .map((r) => r.id)
@@ -87,8 +99,18 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
     final list = _unifiedBox.values
         .where((r) => r.scopeType == scopeType && r.scopeId == scopeId)
         .toList()
-      ..sort((a, b) => b.generatedAt.compareTo(a.generatedAt));
+      ..sort(_compareNewestFirst);
     return list;
+  }
+
+  static bool _isKnownScopeType(String scopeType) =>
+      scopeType == 'conversation' || scopeType == 'partner';
+
+  /// 排序主鍵 generatedAt 新到舊；同刻以 id 升冪當次要鍵，確保每次讀取
+  /// 順序確定（review M-1 — Dart List.sort 不保證 stable）。
+  static int _compareNewestFirst(UnifiedCoachResult a, UnifiedCoachResult b) {
+    final byGeneratedAt = b.generatedAt.compareTo(a.generatedAt);
+    return byGeneratedAt != 0 ? byGeneratedAt : a.id.compareTo(b.id);
   }
 
   UnifiedCoachResult _carryForwardUnifiedRollup(
