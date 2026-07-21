@@ -30,6 +30,7 @@ import '../../../helpers/memory_coaching_outcome_repository.dart';
 // ── Fixtures ──────────────────────────────────────────────────────────────
 
 const _partnerId = 'p1';
+const _altPartnerId = 'p2';
 
 /// 三情境 chip 的規格三元組（Task 6 拍板；與實作常數字面對齊）。
 const _chipSpecs = [
@@ -38,8 +39,8 @@ const _chipSpecs = [
   (phase: 'postDate', label: '約完會之後', prefill: '剛約完會，接下來要怎麼經營比較好？'),
 ];
 
-Partner _partner() => Partner(
-      id: _partnerId,
+Partner _partner([String id = _partnerId]) => Partner(
+      id: id,
       name: 'Mia',
       ownerUserId: 'u1',
       createdAt: DateTime(2026, 5, 1),
@@ -83,6 +84,10 @@ Future<
     ({
       MemoryCoachChatRepository repo,
       List<Map<String, dynamic>> apiCalls,
+      Future<void> Function({
+        required String partnerId,
+        required bool openCoachInputOnFirstBuild,
+      }) rebuild,
     })> _pump(
   WidgetTester tester, {
   Future<void> Function()? onQuotaExceeded,
@@ -95,39 +100,66 @@ Future<
 
   final repo = MemoryCoachChatRepository();
   final apiCalls = <Map<String, dynamic>>[];
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        coachChatRepositoryProvider.overrideWithValue(repo),
-        coachChatApiServiceProvider.overrideWithValue(
-          CoachChatApiService(invoker: _recordingInvoker(apiCalls)),
-        ),
-        coachingOutcomeRepositoryProvider
-            .overrideWithValue(MemoryCoachingOutcomeRepository()),
-        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        partnerByIdProvider(_partnerId).overrideWith((_) => _partner()),
-        partnerAggregateProvider(_partnerId)
-            .overrideWith((_) => PartnerAggregateView.empty()),
-        dataQualityFlagProvider(_partnerId)
-            .overrideWith((_) => const DataQualityFlag.unflagged()),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: CoachFollowUpSection(
-              partnerId: _partnerId,
-              onQuotaExceeded: onQuotaExceeded,
-              openCoachEntryAnchorKey: openCoachEntryAnchorKey,
-              openCoachInputOnFirstBuild: openCoachInputOnFirstBuild,
-              compactPracticePresentation: compactPracticePresentation,
+  // 同一組 overrides 物件重複餵給 ProviderScope（rebuild 不換 container）；
+  // 兩個 partnerId 都預先掛好 family overrides，供原地切換情境用。
+  final overrides = [
+    coachChatRepositoryProvider.overrideWithValue(repo),
+    coachChatApiServiceProvider.overrideWithValue(
+      CoachChatApiService(invoker: _recordingInvoker(apiCalls)),
+    ),
+    coachingOutcomeRepositoryProvider
+        .overrideWithValue(MemoryCoachingOutcomeRepository()),
+    partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+    for (final id in const [_partnerId, _altPartnerId]) ...[
+      partnerByIdProvider(id).overrideWith((_) => _partner(id)),
+      partnerAggregateProvider(id)
+          .overrideWith((_) => PartnerAggregateView.empty()),
+      dataQualityFlagProvider(id)
+          .overrideWith((_) => const DataQualityFlag.unflagged()),
+    ],
+  ];
+
+  Future<void> pumpTree({
+    required String partnerId,
+    required bool openCoachInput,
+  }) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: overrides,
+        child: MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: CoachFollowUpSection(
+                partnerId: partnerId,
+                onQuotaExceeded: onQuotaExceeded,
+                openCoachEntryAnchorKey: openCoachEntryAnchorKey,
+                openCoachInputOnFirstBuild: openCoachInput,
+                compactPracticePresentation: compactPracticePresentation,
+              ),
             ),
           ),
         ),
       ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  await pumpTree(
+    partnerId: _partnerId,
+    openCoachInput: openCoachInputOnFirstBuild,
+  );
+  return (
+    repo: repo,
+    apiCalls: apiCalls,
+    rebuild: ({
+      required String partnerId,
+      required bool openCoachInputOnFirstBuild,
+    }) =>
+        pumpTree(
+      partnerId: partnerId,
+      openCoachInput: openCoachInputOnFirstBuild,
     ),
   );
-  await tester.pumpAndSettle();
-  return (repo: repo, apiCalls: apiCalls);
 }
 
 CoachSurface _surface(WidgetTester tester) =>
@@ -241,6 +273,27 @@ void main() {
       expect(surface.focusRequestToken, greaterThan(0));
       expect(surface.lifecyclePhase, isNull);
       expect(surface.prefillText, isNull);
+    });
+
+    testWidgets('partnerId 原地切換重置閂鎖 → 新對象 false→true 再次 bump token',
+        (t) async {
+      final pumped = await _pump(t, openCoachInputOnFirstBuild: true);
+
+      // 首幀 auto-focus 已發、閂鎖鎖上。
+      expect(_surface(t).focusRequestToken, 1);
+
+      // 原地切換對象（flag 收回）→ 同對象 false→true transition。
+      await pumped.rebuild(
+        partnerId: _altPartnerId,
+        openCoachInputOnFirstBuild: false,
+      );
+      await pumped.rebuild(
+        partnerId: _altPartnerId,
+        openCoachInputOnFirstBuild: true,
+      );
+
+      // partnerId 切換必須重置閂鎖：新對象的請求要再 bump 一次。
+      expect(_surface(t).focusRequestToken, 2);
     });
   });
 

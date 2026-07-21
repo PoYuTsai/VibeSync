@@ -78,6 +78,11 @@ class _CoachFollowUpSectionState extends State<CoachFollowUpSection> {
   @override
   void didUpdateWidget(covariant CoachFollowUpSection oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.partnerId != oldWidget.partnerId) {
+      // 原地切換對象 → auto-focus 閂鎖歸零，讓新對象的請求能再發一次
+      // （第三層防禦；parent/orchestrator 已各自守衛，此處保持一致性）。
+      _didAutoFocusCoachInput = false;
+    }
     if (widget.openCoachInputOnFirstBuild &&
         !oldWidget.openCoachInputOnFirstBuild) {
       _scheduleAutoFocusIfNeeded();
