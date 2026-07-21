@@ -1,6 +1,6 @@
 // Regression: the mind-map「下一步」node must land the partner-detail
 // background ON the coach follow-up section (not the top hero/heat cards)
-// before the input sheet opens.
+// before the coach input takes focus.
 //
 // These tests encode the real device condition the previous tests missed:
 //   • a tall surface (the old focus tests used 520px, which kept the section
@@ -9,8 +9,14 @@
 //     section far below the built range — exactly when ensureVisible-on-an-
 //     unbuilt-GlobalKey silently no-ops.
 //
-// The second test drives the REAL router (mind map → tap → detail) instead of
-// building PartnerDetailScreen directly, so the route/scroll/sheet timing is
+// Phase E Task 7: the orchestrator no longer opens the legacy input sheet
+// (which charged via the legacy controller while the new UI renders no legacy
+// result card — the user paid and saw nothing). deep-link focusAction=
+// openCoachInput now focuses the CoachSurface input instead, and consent is
+// NOT pre-prompted by the orchestrator (CoachSurface gates it at ask time).
+//
+// The router test drives the REAL router (mind map → tap → detail) instead of
+// building PartnerDetailScreen directly, so the route/scroll/focus timing is
 // faithful rather than short-circuited.
 import 'dart:convert';
 
@@ -20,6 +26,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
+import 'package:vibesync/features/coach_chat/presentation/widgets/coach_surface.dart';
 import 'package:vibesync/features/coach_follow_up/data/providers/coach_follow_up_providers.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/coach_follow_up/domain/repositories/coach_follow_up_repository.dart';
@@ -124,10 +131,31 @@ ScrollableState _listScrollable(WidgetTester t) {
   return t.state<ScrollableState>(find.byType(Scrollable).first);
 }
 
+CoachSurface _surface(WidgetTester t) =>
+    t.widget<CoachSurface>(find.byType(CoachSurface));
+
+TextField _surfaceInput(WidgetTester t) => t.widget<TextField>(
+      find.descendant(
+        of: find.byType(CoachSurface),
+        matching: find.byType(TextField),
+      ),
+    );
+
+/// Task 7 sealed contract: the legacy input sheet must NOT open, and the
+/// orchestrator must NOT pre-prompt the AI data-sharing consent dialog
+/// (consent is gated inside CoachSurface at ask time only).
+void _expectNoLegacySheetNoConsent(WidgetTester t) {
+  expect(find.text('讓教練看一下'), findsNothing,
+      reason: 'legacy input sheet must not open (charged w/o visible result)');
+  expect(find.text('第三方 AI 資料使用同意'), findsNothing,
+      reason: 'orchestrator must not pre-prompt consent');
+}
+
 void main() {
   testWidgets(
       'tall device + many records: background scrolls to coach section, then '
-      'sheet opens', (t) async {
+      'CoachSurface input takes focus (no legacy sheet, no consent)',
+      (t) async {
     await t.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => t.binding.setSurfaceSize(null));
 
@@ -156,15 +184,49 @@ void main() {
     expect(anchorDy, lessThan(844),
         reason: 'coach entry must be on-screen, not below the fold');
 
-    // And the input sheet opened (invariant: AFTER positioning).
-    // Phase E Task 6：頁面本體多了 CoachSurface 輸入框，sheet 開啟改用
-    // sheet 專屬送出鈕斷言（orchestrator 本體 Task 7 改 focus CoachSurface）。
-    expect(find.text('讓教練看一下'), findsOneWidget);
+    // Phase E Task 7: the open-input intent flows through the section's
+    // focus-token mechanism into CoachSurface (invariant: AFTER positioning).
+    expect(_surface(t).focusRequestToken, greaterThan(0),
+        reason: 'openCoachInput intent must bump the section focus token');
+    expect(_surfaceInput(t).focusNode?.hasFocus, isTrue,
+        reason: 'CoachSurface input must hold focus after the deep-link');
+    _expectNoLegacySheetNoConsent(t);
   });
 
   testWidgets(
-      'via real router: mind-map 下一步 lands on coach section + opens sheet',
-      (t) async {
+      'focus=coachFollowUp WITHOUT focusAction: positions on coach section '
+      'but does not focus the input', (t) async {
+    await t.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    await t.pumpWidget(ProviderScope(
+      overrides: _overrides(List.generate(8, (i) => _conv(i))),
+      child: const MaterialApp(
+        home: PartnerDetailScreen(
+          partnerId: 'p1',
+          focusCoachFollowUp: true,
+          // openCoachInputOnFocus defaults to false — scroll-only semantics.
+        ),
+      ),
+    ));
+    await t.pumpAndSettle();
+
+    final offset = _listScrollable(t).position.pixels;
+    expect(offset, greaterThan(100),
+        reason: 'background must still land on the coach section');
+    expect(find.text('或直接問教練一個問題…'), findsOneWidget);
+
+    // Scroll-only deep-link keeps the existing semantics: no focus request.
+    expect(_surface(t).focusRequestToken, 0,
+        reason: 'no focusAction → focus token must stay untouched');
+    expect(_surfaceInput(t).focusNode?.hasFocus, isNot(isTrue),
+        reason: 'no focusAction → the input must not steal focus');
+    _expectNoLegacySheetNoConsent(t);
+  });
+
+  testWidgets(
+      'via real router: mind-map 下一步 lands on coach section + focuses '
+      'CoachSurface input', (t) async {
     await t.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => t.binding.setSurfaceSize(null));
 
@@ -223,8 +285,11 @@ void main() {
     expect(anchor, findsOneWidget);
     expect(t.getTopLeft(anchor).dy, lessThan(844));
 
-    // Phase E Task 6：同上，sheet 開啟改用 sheet 專屬送出鈕斷言。
-    expect(find.text('讓教練看一下'), findsOneWidget,
-        reason: 'sheet opens after positioning');
+    // Phase E Task 7：deep-link 改 focus CoachSurface 輸入框，絕不開舊 sheet。
+    expect(_surface(t).focusRequestToken, greaterThan(0),
+        reason: 'mind-map deep-link must bump the section focus token');
+    expect(_surfaceInput(t).focusNode?.hasFocus, isTrue,
+        reason: 'CoachSurface input must hold focus after positioning');
+    _expectNoLegacySheetNoConsent(t);
   });
 }

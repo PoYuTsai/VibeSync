@@ -40,8 +40,6 @@ import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/presentation/dialogs/conversation_reassign_picker.dart';
 import '../../../analysis/data/providers/analysis_providers.dart';
 import '../../../analysis/domain/entities/analysis_models.dart';
-import '../../../coach_follow_up/data/providers/coach_follow_up_providers.dart';
-import '../../../coach_follow_up/data/services/coach_follow_up_api_service.dart';
 import '../../../coach_follow_up/domain/entities/coach_follow_up_phase.dart';
 import '../../../coach_follow_up/presentation/widgets/coach_follow_up_section.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
@@ -49,7 +47,6 @@ import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/domain/entities/partner_data_quality_state.dart';
 import '../../../user_profile/domain/services/name_candidate_extractor.dart';
 import '../../../user_profile/presentation/widgets/partner_style_entry_card.dart';
-import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../data/providers/partner_write_controller.dart';
 import '../../domain/entities/partner.dart';
 import '../../domain/extensions/partner_aggregates.dart';
@@ -100,6 +97,28 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _coachAnchorKey = GlobalKey();
   final GlobalKey _coachSectionKey = GlobalKey();
+
+  // Phase E Task 7: deep-link focusAction=openCoachInput no longer opens the
+  // legacy input sheet (it charged via the legacy controller while the new UI
+  // renders no legacy result card). The orchestrator instead reports the
+  // intent here after positioning; flipping this flag re-renders the section
+  // with openCoachInputOnFirstBuild=true, whose false→true transition bumps
+  // the CoachSurface focus token (section's existing focus mechanism).
+  bool _openCoachInputRequested = false;
+
+  @override
+  void didUpdateWidget(covariant PartnerDetailScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.partnerId != oldWidget.partnerId) {
+      // New partner → the orchestrator restarts; don't leak a stale intent.
+      _openCoachInputRequested = false;
+    }
+  }
+
+  void _handleOpenCoachInputRequested() {
+    if (!mounted || _openCoachInputRequested) return;
+    setState(() => _openCoachInputRequested = true);
+  }
 
   @override
   void dispose() {
@@ -262,6 +281,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                       onTelemetry: _logCoachFollowUpTelemetry,
                       onQuotaExceeded: () async => context.push('/paywall'),
                       openCoachEntryAnchorKey: _coachAnchorKey,
+                      openCoachInputOnFirstBuild: _openCoachInputRequested,
                     ),
                   ),
                 ),
@@ -338,7 +358,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
               sectionKey: _coachSectionKey,
               openInputAfterFocus: widget.openCoachInputOnFocus,
               partnerId: partnerId,
-              onQuotaExceeded: () async => context.push('/paywall'),
+              onOpenCoachInput: _handleOpenCoachInputRequested,
             ),
         ],
       ),
@@ -555,6 +575,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                       onTelemetry: _logCoachFollowUpTelemetry,
                       onQuotaExceeded: () async => context.push('/paywall'),
                       openCoachEntryAnchorKey: _coachAnchorKey,
+                      openCoachInputOnFirstBuild: _openCoachInputRequested,
                       compactPracticePresentation: !widget.focusCoachFollowUp,
                     ),
                   ),
@@ -621,7 +642,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
               sectionKey: _coachSectionKey,
               openInputAfterFocus: widget.openCoachInputOnFocus,
               partnerId: partnerId,
-              onQuotaExceeded: () async => context.push('/paywall'),
+              onOpenCoachInput: _handleOpenCoachInputRequested,
             ),
         ],
       ),
@@ -872,7 +893,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
 /// lazy body ListView (so it always mounts and runs, unlike a widget pinned at
 /// the off-screen coach section) and owns the only invariant that matters:
 ///
-///   position the coach section into view, THEN open the input sheet.
+///   position the coach section into view, THEN focus the coach input.
 ///
 /// Because the body is a lazy `ListView`, the coach anchor is not laid out
 /// while it sits below the viewport + cacheExtent, so `Scrollable.ensureVisible`
@@ -880,14 +901,22 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
 /// step the [scrollController] down by ~viewport chunks until the anchor (or,
 /// for the with-result layout that has no anchor, the section) is built, then
 /// `ensureVisible` aligns it near the top — no animation, per the spec. Only
-/// after positioning settles do we open the sheet.
-class _CoachFocusOrchestrator extends ConsumerStatefulWidget {
+/// after positioning settles do we hand the open-input intent to the section
+/// (Phase E Task 7 — no legacy sheet, no pre-prompted consent).
+class _CoachFocusOrchestrator extends StatefulWidget {
   final ScrollController scrollController;
   final GlobalKey anchorKey;
   final GlobalKey sectionKey;
   final bool openInputAfterFocus;
   final String partnerId;
-  final Future<void> Function()? onQuotaExceeded;
+
+  /// Phase E Task 7: called (once) after positioning when the deep-link
+  /// carries focusAction=openCoachInput. The parent flips the section's
+  /// openCoachInputOnFirstBuild flag, which bumps the CoachSurface focus
+  /// token. The legacy sheet → consent → generate chain is gone: it charged
+  /// through the legacy controller while the new UI renders no legacy result
+  /// card, and consent is gated inside CoachSurface at ask time.
+  final VoidCallback onOpenCoachInput;
 
   const _CoachFocusOrchestrator({
     required this.scrollController,
@@ -895,16 +924,15 @@ class _CoachFocusOrchestrator extends ConsumerStatefulWidget {
     required this.sectionKey,
     required this.openInputAfterFocus,
     required this.partnerId,
-    this.onQuotaExceeded,
+    required this.onOpenCoachInput,
   });
 
   @override
-  ConsumerState<_CoachFocusOrchestrator> createState() =>
+  State<_CoachFocusOrchestrator> createState() =>
       _CoachFocusOrchestratorState();
 }
 
-class _CoachFocusOrchestratorState
-    extends ConsumerState<_CoachFocusOrchestrator> {
+class _CoachFocusOrchestratorState extends State<_CoachFocusOrchestrator> {
   // Upper bound on convergence frames. Generous: even a long page is a handful
   // of viewport hops. Guards against an unterminated loop if the target never
   // builds (degrades to "open without positioning", never to a hang).
@@ -912,7 +940,6 @@ class _CoachFocusOrchestratorState
 
   bool _started = false;
   bool _opened = false;
-  bool _openingQuotaPaywall = false;
 
   @override
   void initState() {
@@ -952,7 +979,7 @@ class _CoachFocusOrchestratorState
         duration: Duration.zero,
         alignment: 0.08,
       );
-      // Let the aligned offset paint before the sheet covers it.
+      // Let the aligned offset paint before the input grabs focus (keyboard).
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _openIfRequested();
@@ -994,61 +1021,14 @@ class _CoachFocusOrchestratorState
   void _openIfRequested() {
     if (!widget.openInputAfterFocus || _opened) return;
     _opened = true;
-    _open();
-  }
-
-  Future<void> _open() async {
-    if (!mounted) return;
-    final answers = await showCoachFollowUpInputSheet(
-      context: context,
+    // 「開啟教練輸入」意圖事件：沿用既有 stub telemetry 通道（不新增
+    // schema）。意圖時點即記錄——不再有 sheet 送出可等，hasOptionalText
+    // 恆為 false（自由文字只存在於 CoachSurface 輸入框內，絕不外流）。
+    _logCoachFollowUpTelemetry(const CoachFollowUpInvokedEvent(
       phase: CoachFollowUpPhase.openCoach,
-    );
-    if (answers == null || !mounted) return;
-    final consented = await AiDataSharingConsent.ensure(
-      context,
-      featureLabel: 'Coach 跟進',
-    );
-    if (!consented || !mounted) return;
-
-    _logCoachFollowUpTelemetry(CoachFollowUpInvokedEvent(
-      phase: CoachFollowUpPhase.openCoach,
-      hasOptionalText: answers.q3 != null && answers.q3!.isNotEmpty,
+      hasOptionalText: false,
     ));
-
-    final notifier = ref.read(
-      coachFollowUpControllerProvider(widget.partnerId).notifier,
-    );
-    await notifier.generate(
-      phase: CoachFollowUpPhase.openCoach,
-      answers: answers,
-    );
-    if (!mounted) return;
-
-    final error = ref
-        .read(coachFollowUpControllerProvider(widget.partnerId))
-        .whenOrNull(error: (error, _) => error);
-    if (error is QuotaExceededException) {
-      _openQuotaPaywallOnce();
-    }
-  }
-
-  void _openQuotaPaywallOnce() {
-    if (_openingQuotaPaywall) return;
-    _openingQuotaPaywall = true;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) {
-        _openingQuotaPaywall = false;
-        return;
-      }
-      try {
-        await widget.onQuotaExceeded?.call();
-      } finally {
-        if (mounted) {
-          _openingQuotaPaywall = false;
-        }
-      }
-    });
+    widget.onOpenCoachInput();
   }
 
   @override

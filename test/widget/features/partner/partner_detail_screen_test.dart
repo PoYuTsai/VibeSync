@@ -748,7 +748,7 @@ void main() {
   });
 
   testWidgets(
-      'openCoachInputOnFocus opens the coach question sheet immediately',
+      'openCoachInputOnFocus focuses the CoachSurface input (no legacy sheet)',
       (t) async {
     await t.binding.setSurfaceSize(const Size(400, 520));
     addTearDown(() => t.binding.setSurfaceSize(null));
@@ -779,13 +779,19 @@ void main() {
     ));
     await t.pumpAndSettle();
 
-    // Phase E Task 6：頁面新掛 CoachSurface 也有輸入框；orchestrator 目前仍開
-    // 舊 input sheet（Task 7 改為 focus CoachSurface），這裡鎖定 sheet 欄位
-    // （maxLength 120 / maxLines 4）確認 sheet 有開。
+    // Phase E Task 7：orchestrator 不再開舊 input sheet（sheet 專屬欄位
+    // maxLength 120 / maxLines 4 必須缺席），改為 CoachSurface 輸入框取得
+    // focus。
     final sheetFields = t
         .widgetList<TextField>(find.byType(TextField))
         .where((f) => f.maxLength == 120 && f.maxLines == 4);
-    expect(sheetFields, hasLength(1));
+    expect(sheetFields, isEmpty,
+        reason: 'legacy input sheet must not open on deep-link');
+    final focusedFields = t
+        .widgetList<TextField>(find.byType(TextField))
+        .where((f) => f.focusNode?.hasFocus ?? false);
+    expect(focusedFields, hasLength(1),
+        reason: 'the CoachSurface input must take focus instead');
 
     final inputEntry = find.text('或直接問教練一個問題…');
     expect(inputEntry, findsOneWidget);

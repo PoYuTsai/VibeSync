@@ -11,8 +11,8 @@
 // gate 也隨之收斂進 CoachSurface 的 _ask/_forceAnswer，本層不再自彈。
 //
 // 舊 coach_follow_up widgets/controller/api/entity 全數凍結不刪（Phase F
-// 退場）；檔尾保留 orchestrator 仍在用的 legacy helper 與 telemetry 契約
-// （Task 7 改 orchestrator 後一併退場）。
+// 退場）；檔尾的 legacy input-sheet helper 自 Task 7 起零呼叫端（orchestrator
+// 已改走 focus token），telemetry 契約仍由 deep-link 意圖事件沿用。
 
 import 'package:flutter/material.dart';
 
@@ -40,7 +40,8 @@ class CoachFollowUpSection extends StatefulWidget {
   final String partnerId;
 
   /// 凍結參數：薄 wrapper 不再產生舊 telemetry 事件（chip 不再觸發生成）。
-  /// 保留只為掛載介面相容；Task 7 改 orchestrator 後與 legacy 契約一併退場。
+  /// 保留只為掛載介面相容；deep-link 意圖事件由 orchestrator 直接走 stub
+  /// sink，不經此參數（Phase F 退場）。
   final ValueChanged<CoachFollowUpTelemetryEvent>? onTelemetry;
   final Future<void> Function()? onQuotaExceeded;
   final Key? openCoachEntryAnchorKey;
@@ -251,12 +252,14 @@ class _OpenCoachEntry extends StatelessWidget {
   }
 }
 
-// ── Legacy（凍結，Task 7 / Phase F 退場）────────────────────────────────
+// ── Legacy（凍結，Phase F 退場）─────────────────────────────────────────
 //
-// 以下不屬於薄 wrapper 本體：partner_detail_screen 的 _CoachFocusOrchestrator
-// 仍呼叫 showCoachFollowUpInputSheet 與 telemetry 契約（deep-link 舊路徑），
-// Task 7 改 orchestrator 走 focus token 後一併刪除。
+// 以下不屬於薄 wrapper 本體。Task 7 後 lib/ 內 showCoachFollowUpInputSheet
+// 已零呼叫端（orchestrator 改走 focus token）——LEGACY，僅為 Phase F 退場前
+// 的凍結保留，絕不新增呼叫端。telemetry sealed 契約仍在用（deep-link 意圖
+// 事件＋partner_detail 的 stub sink）。
 
+/// LEGACY（零呼叫端，Phase F 退場）：舊 deep-link 路徑的 input sheet 開啟器。
 Future<CoachFollowUpAnswers?> showCoachFollowUpInputSheet({
   required BuildContext context,
   required CoachFollowUpPhase phase,
