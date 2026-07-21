@@ -252,6 +252,35 @@ void main() {
       expect(unified.lifecyclePhase, isNull);
     });
 
+    // Task 4 Minor 1：conversation scope 送出 lifecyclePhase 時，本地卡
+    // 也要保存同值（wire 送了、本地卡不得硬編 null）；不傳維持 null。
+    test('fromCoachChatResult keeps lifecyclePhase when provided', () {
+      final legacy = CoachChatResult(
+        id: 'cc-2',
+        conversationId: 'c-9',
+        question: 'q',
+        mode: 'replyCraft',
+        headline: 'h',
+        answer: 'a',
+        userState: 'u',
+        nextStep: 'n',
+        boundaryReminder: 'b',
+        needsReflection: false,
+        generatedAt: DateTime(2026, 7, 22, 8),
+        provider: 'claude',
+        modelUsed: 'claude-sonnet-5',
+      );
+
+      final unified = UnifiedCoachResult.fromCoachChatResult(
+        legacy,
+        lifecyclePhase: 'warming',
+      );
+      expect(unified.lifecyclePhase, 'warming');
+
+      final withoutPhase = UnifiedCoachResult.fromCoachChatResult(legacy);
+      expect(withoutPhase.lifecyclePhase, isNull);
+    });
+
     test('fromFollowUpResult maps card fields and sets partner scope', () {
       final legacy = CoachFollowUpResult(
         partnerId: 'p-7',

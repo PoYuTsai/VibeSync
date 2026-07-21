@@ -268,7 +268,7 @@ class _MindMapNodeChip extends StatelessWidget {
               children: [
                 Flexible(child: label),
                 const SizedBox(width: 6),
-                // 問教練 affordance，與 CoachChatCard 標頭同 icon 語彙。
+                // 問教練 affordance，與 CoachSurface 標頭同 icon 語彙。
                 Icon(Icons.forum_outlined, size: 14, color: textColor),
               ],
             ),

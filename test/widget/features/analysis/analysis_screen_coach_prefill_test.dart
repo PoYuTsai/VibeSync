@@ -1,5 +1,5 @@
 // 作戰板 nextStep 節點 → Coach 1:1 預填（決策 1/2/3，2026-06-10 拍板）。
-// 覆蓋 AnalysisScreen.coachPrefillQuestion 參數 → 捲動到 CoachChatCard →
+// 覆蓋 AnalysisScreen.coachPrefillQuestion 參數 → 捲動到 CoachSurface →
 // 輸入框預填的整條鏈，以及「絕不 auto-send」quota 安全硬規則。
 import 'dart:convert';
 
@@ -15,7 +15,7 @@ import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/unified_coach_result.dart';
 import 'package:vibesync/features/coach_chat/domain/repositories/coach_chat_repository.dart';
-import 'package:vibesync/features/coach_chat/presentation/widgets/coach_chat_card.dart';
+import 'package:vibesync/features/coach_chat/presentation/widgets/coach_surface.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/conversation/data/repositories/conversation_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
@@ -87,7 +87,7 @@ class _StubConversationRepository extends ConversationRepository {
   Future<void> updateConversation(Conversation c) async {}
 }
 
-/// 含 recommendation 的完整快照——CoachChatCard 渲染條件
+/// 含 recommendation 的完整快照——CoachSurface 渲染條件
 /// （enthusiasm + gameStage + recommendation 齊備）。
 String _analyzedSnapshotJson() => jsonEncode({
       'enthusiasm': {'score': 66},
@@ -184,7 +184,7 @@ void main() {
       // 輸入框已預填（auto-send 會 clear controller，文字留著即未送出）。
       expect(
         find.descendant(
-          of: find.byType(CoachChatCard),
+          of: find.byType(CoachSurface),
           matching: find.widgetWithText(TextField, _prefillQuestion),
         ),
         findsOneWidget,
@@ -202,7 +202,7 @@ void main() {
 
       final field = tester.widget<TextField>(
         find.descendant(
-          of: find.byType(CoachChatCard),
+          of: find.byType(CoachSurface),
           matching: find.byType(TextField),
         ),
       );
@@ -217,7 +217,7 @@ void main() {
         coachPrefillQuestion: _prefillQuestion,
       );
 
-      expect(find.byType(CoachChatCard), findsNothing);
+      expect(find.byType(CoachSurface), findsNothing);
       expect(tester.takeException(), isNull);
     });
   });

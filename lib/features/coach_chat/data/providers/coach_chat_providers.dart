@@ -305,8 +305,12 @@ class CoachChatController
   }) {
     if (scope.isConversation) {
       // 既有 1:1 映射 factory；result.conversationId 就是本 controller 傳給
-      // api 的 scope.id 原值回流，scopeId 仍等於 scope.id。
-      return UnifiedCoachResult.fromCoachChatResult(result);
+      // api 的 scope.id 原值回流，scopeId 仍等於 scope.id。lifecyclePhase
+      // 已隨 wire 送出，本地卡同步保存（Task 4 Minor 1）。
+      return UnifiedCoachResult.fromCoachChatResult(
+        result,
+        lifecyclePhase: lifecyclePhase,
+      );
     }
     return UnifiedCoachResult(
       id: result.id,

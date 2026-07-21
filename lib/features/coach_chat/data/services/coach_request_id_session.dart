@@ -41,6 +41,11 @@ class CoachRequestIdSession {
   /// 會變成同 requestId 不同 hash → REPLAY_MISMATCH（P1 修）。
   /// 必須在 [begin] 之後呼叫；[retire] 或 signature 變更即清。
   String resolveSessionId(String Function() create) {
+    assert(
+      _requestId != null,
+      'resolveSessionId must be called after begin(): the synthetic sessionId '
+      'is bound to the pending requestId lifecycle.',
+    );
     return _sessionId ??= create();
   }
 

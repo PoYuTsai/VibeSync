@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/unified_coach_result.dart';
-import 'package:vibesync/features/coach_chat/presentation/widgets/coach_chat_card.dart';
+import 'package:vibesync/features/coach_chat/presentation/widgets/coach_surface.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
 import 'package:vibesync/features/coaching_memory/domain/entities/coaching_outcome_event.dart';
 

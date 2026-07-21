@@ -66,6 +66,17 @@ void main() {
       expect(session.resolveSessionId(sessions), 's-2');
     });
 
+    test('resolveSessionId 在 begin 之前呼叫觸發 assert（順序契約）', () {
+      final session = CoachRequestIdSession(
+        requestIdFactory: _sequenceFactory(['id-1']),
+      );
+
+      expect(
+        () => session.resolveSessionId(() => 's-1'),
+        throwsA(isA<AssertionError>()),
+      );
+    });
+
     test('resolveSessionId 在 signature 變更（新 intent）時換新', () {
       final session = CoachRequestIdSession(
         requestIdFactory: _sequenceFactory(['id-1', 'id-2']),

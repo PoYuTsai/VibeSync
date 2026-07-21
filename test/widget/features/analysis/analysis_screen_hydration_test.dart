@@ -1267,7 +1267,7 @@ void main() {
           ),
         );
 
-        // The detailed-analysis tree contains widgets (CoachChatCard) that
+        // The detailed-analysis tree contains widgets (CoachSurface) that
         // depend on a live Hive box, which is not initialised in this widget
         // test. Drain the expected Hive build exception so the test framework
         // does not flag it.

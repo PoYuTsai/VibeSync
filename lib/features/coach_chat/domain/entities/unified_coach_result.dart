@@ -145,7 +145,14 @@ class UnifiedCoachResult {
   });
 
   /// Maps a legacy typeId 17 [CoachChatResult] (conversation scope) 1:1.
-  factory UnifiedCoachResult.fromCoachChatResult(CoachChatResult r) {
+  ///
+  /// [lifecyclePhase] is not carried by the legacy record; the live
+  /// conversation-scope mapping passes the phase it just sent on the wire so
+  /// the local card keeps it (legacy row reads leave it null).
+  factory UnifiedCoachResult.fromCoachChatResult(
+    CoachChatResult r, {
+    String? lifecyclePhase,
+  }) {
     return UnifiedCoachResult(
       id: r.id,
       conversationId: r.conversationId,
@@ -174,7 +181,7 @@ class UnifiedCoachResult {
       earlierResultCount: r.earlierResultCount,
       scopeType: CoachScopeType.conversation,
       scopeId: r.conversationId,
-      lifecyclePhase: null,
+      lifecyclePhase: lifecyclePhase,
     );
   }
 

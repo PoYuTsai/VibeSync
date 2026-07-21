@@ -28,7 +28,8 @@ import '../../../../shared/widgets/dimension_radar_chart.dart';
 import '../../../../shared/widgets/coach_action_card.dart';
 import '../../../../shared/widgets/score_hero_card.dart';
 import '../../../coach_chat/data/services/coach_chat_api_service.dart';
-import '../../../coach_chat/presentation/widgets/coach_chat_card.dart';
+import '../../../coach_chat/domain/entities/coach_scope.dart';
+import '../../../coach_chat/presentation/widgets/coach_surface.dart';
 import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
 import '../../../../shared/widgets/coaching_outcome_follow_up_bar.dart';
 import '../../../analysis_history/data/providers/analysis_history_providers.dart';
@@ -241,7 +242,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   final _analysisProgressEndKey = GlobalKey();
   final _messageFocusNode = FocusNode();
   final _messageInputKey = GlobalKey();
-  final _coachChatCardKey = GlobalKey();
+  final _coachSurfaceKey = GlobalKey();
   String? _lastManualAddedMessageId;
   String? _lastManualAddedContent;
   bool? _lastManualAddedIsFromMe;
@@ -663,7 +664,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       });
       await Future.delayed(const Duration(milliseconds: 80));
     }
-    final coachContext = _coachChatCardKey.currentContext;
+    final coachContext = _coachSurfaceKey.currentContext;
     if (!mounted || coachContext == null || !coachContext.mounted) {
       return;
     }
@@ -823,7 +824,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       }
     });
     // 作戰板 nextStep 入口：首幀後捲到 Coach 1:1 並預填問題。
-    // _restorePersistedAnalysis() 是同步的，首幀即含 CoachChatCard；
+    // _restorePersistedAnalysis() 是同步的，首幀即含 CoachSurface；
     // 渲染條件不滿足時 _openCoachQuestion 內部安靜 no-op。
     final prefill = widget.coachPrefillQuestion?.trim();
     if (prefill != null && prefill.isNotEmpty) {
@@ -7261,9 +7262,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             _gameStage != null &&
                             _finalRecommendation != null) ...[
                           KeyedSubtree(
-                            key: _coachChatCardKey,
-                            child: CoachChatCard(
-                              conversationId: widget.conversationId,
+                            key: _coachSurfaceKey,
+                            child: CoachSurface(
+                              scope: CoachScope.conversation(
+                                widget.conversationId,
+                              ),
                               analysisSnapshot:
                                   _buildCoachChatAnalysisSnapshot(),
                               focusRequestToken: _coachChatFocusRequest,
