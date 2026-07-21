@@ -780,3 +780,20 @@
 **已知邊界**: Coach／Follow-up 尚未具 durable requestId／結果 replay；扣額完成後若 response 遺失，手動重送可能再扣。這是獨立 exactly-once 專案，不以本輪模型切換假裝解決。
 
 **驗證**: Production route source audit；Analyze、Coach／Follow-up、Keyboard、Practice Edge 全套；Flutter full test／analyze；iOS Keyboard 最終仍需 TestFlight 真機驗證 timeout 與 same-request replay。
+
+## ADR #29 — [2026-07-21] Coach 1:1 exactly-once 帳本沿用 ADR #22 範本，lease 唯一偏離改 90 秒
+
+**狀態**: 🟢 Active — 教練統一案 Phase C
+
+**決定**:
+
+1. `coach_requests` 帳本與 claim/settle/release/cleanup RPC 結構 1:1 照抄 keyboard（ADR #22）；唯一參數性偏離＝DB lease 45s→**90s**，因 coach 生成含最多 3 次 attempt 重試（75s generation budget），45s lease 會在正常生成中被併發請求奪走。
+2. `result_json` 狀態一致性 CHECK 不用 keyboard 的 `jsonb_build_object` 精確等於（coach card 15 欄位不可行），改**白名單減鍵法**：envelope 五鍵＋card 欄位逐鍵減除後必須等於 `'{}'::jsonb`；同組條件在表 CHECK 與 settle RPC 前置驗證各出現一次。
+3. `requestId` 缺席（null/undefined）＝完全不觸帳本、今日路徑 byte-for-byte 不變；generation 層以選填 `settleResult` dep 注入，未注入即舊 deductCredit 路徑。
+4. settlement 失敗（帶 code 的回應）絕不 release claim——commit 結果可能曖昧；只有已知 settle 前失敗（生成失敗等 500）才 owner-bound release。
+
+**已知邊界**: input_hash canonical 只含 userId/userQuestion/sessionId/activeSessionTurns/forceAnswer/scopeKey/lifecyclePhase；recentMessages 等上下文欄位變動不觸發 mismatch（同題重問視為同 identity，設計取捨）。
+
+**坑**: Postgres `+ -` 優先級高於 `->` 等具名運算子，`x -> 'card' - 'key'` 會解析成 `'card' - 'key'`（42725）；jsonb 取鍵後減鍵必先括號。deno 字串測試抓不到，真 PG 才爆。
+
+**驗證**: deno coach-chat 132 綠；Phase B vs HEAD byte-identity（generation 六 fixture＋handler legacy 429）；prod live smoke 五態（fresh／replay 同 generatedAt／mismatch 409／legacy 200／streaming 恰一 done）；Codex adversarial 審查另記。
