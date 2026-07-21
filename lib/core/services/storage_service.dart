@@ -3,6 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../features/coach_chat/domain/entities/coach_chat_result.dart';
+import '../../features/coach_chat/domain/entities/unified_coach_result.dart';
 import '../../features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import '../../features/analysis_history/domain/entities/analysis_history_event.dart';
 import '../../features/coaching_memory/domain/entities/coaching_outcome_event.dart';
@@ -56,6 +57,7 @@ class StorageService {
     Hive.registerAdapter(PracticeSessionAdapter()); // typeId=23, AI 實戰練習室
     Hive.registerAdapter(AnalysisHistoryEventAdapter()); // typeId=24, 案2 歷史表
     Hive.registerAdapter(AnalysisHistoryKindAdapter()); // typeId=25, 案2 歷史表
+    Hive.registerAdapter(UnifiedCoachResultAdapter()); // typeId=26, 教練統一 Phase D
 
     // Get or create encryption key
     final encryptionKey = await _getEncryptionKey();
@@ -93,6 +95,11 @@ class StorageService {
 
     await Hive.openBox<CoachChatResult>(
       'coach_chat_results',
+      encryptionCipher: HiveAesCipher(encryptionKey),
+    );
+
+    await Hive.openBox<UnifiedCoachResult>(
+      'unified_coach_results',
       encryptionCipher: HiveAesCipher(encryptionKey),
     );
 
@@ -184,6 +191,9 @@ class StorageService {
   static Box<CoachChatResult> get coachChatResultsBox =>
       Hive.box<CoachChatResult>('coach_chat_results');
 
+  static Box<UnifiedCoachResult> get unifiedCoachResultsBox =>
+      Hive.box<UnifiedCoachResult>('unified_coach_results');
+
   static Box<CoachingOutcomeEvent> get coachingOutcomeEventsBox =>
       Hive.box<CoachingOutcomeEvent>(AppConstants.coachingOutcomeEventsBox);
 
@@ -205,8 +215,8 @@ class StorageService {
 
   /// Clear all stored data (conversations, partners, user profile,
   /// partner style overrides, partner data quality states, coach follow-up /
-  /// coach chat results, coaching outcome events, analysis history events,
-  /// practice sessions, settings, usage).
+  /// coach chat results, unified coach results, coaching outcome events,
+  /// analysis history events, practice sessions, settings, usage).
   static Future<void> clearAll() async {
     await conversationsBox.clear();
     await partnersBox.clear();
@@ -215,6 +225,9 @@ class StorageService {
     await partnerDataQualityStatesBox.clear();
     await coachFollowUpResultsBox.clear();
     await coachChatResultsBox.clear();
+    // F11 守門行：同裝置換新用戶時 unified coach 紀錄必須零殘留，
+    // 防前一用戶的教練對話跨用戶外洩。
+    await unifiedCoachResultsBox.clear();
     await coachingOutcomeEventsBox.clear();
     await analysisHistoryEventsBox.clear();
     await clearPracticeRoomState();

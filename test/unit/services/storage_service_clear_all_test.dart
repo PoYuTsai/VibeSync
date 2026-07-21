@@ -4,6 +4,7 @@ import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/core/services/storage_service.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/unified_coach_result.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/coaching_memory/domain/entities/coaching_outcome_event.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
@@ -89,6 +90,9 @@ void main() {
     if (!Hive.isAdapterRegistered(25)) {
       Hive.registerAdapter(AnalysisHistoryKindAdapter());
     }
+    if (!Hive.isAdapterRegistered(26)) {
+      Hive.registerAdapter(UnifiedCoachResultAdapter());
+    }
   });
 
   tearDown(() async {
@@ -99,6 +103,7 @@ void main() {
     await Hive.deleteBoxFromDisk('partner_data_quality_states');
     await Hive.deleteBoxFromDisk('coach_follow_up_results');
     await Hive.deleteBoxFromDisk('coach_chat_results');
+    await Hive.deleteBoxFromDisk('unified_coach_results');
     await Hive.deleteBoxFromDisk(AppConstants.coachingOutcomeEventsBox);
     await Hive.deleteBoxFromDisk(AppConstants.analysisHistoryEventsBox);
     await Hive.deleteBoxFromDisk('practice_sessions');
@@ -120,6 +125,7 @@ void main() {
     );
     await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
     await Hive.openBox<CoachChatResult>('coach_chat_results');
+    await Hive.openBox<UnifiedCoachResult>('unified_coach_results');
     await Hive.openBox<CoachingOutcomeEvent>(
       AppConstants.coachingOutcomeEventsBox,
     );
@@ -160,6 +166,7 @@ void main() {
     );
     await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
     await Hive.openBox<CoachChatResult>('coach_chat_results');
+    await Hive.openBox<UnifiedCoachResult>('unified_coach_results');
     await Hive.openBox<CoachingOutcomeEvent>(
       AppConstants.coachingOutcomeEventsBox,
     );
@@ -195,6 +202,7 @@ void main() {
     );
     await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
     await Hive.openBox<CoachChatResult>('coach_chat_results');
+    await Hive.openBox<UnifiedCoachResult>('unified_coach_results');
     await Hive.openBox<CoachingOutcomeEvent>(
       AppConstants.coachingOutcomeEventsBox,
     );
@@ -229,6 +237,7 @@ void main() {
     );
     await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
     await Hive.openBox<CoachChatResult>('coach_chat_results');
+    await Hive.openBox<UnifiedCoachResult>('unified_coach_results');
     await Hive.openBox<CoachingOutcomeEvent>(
       AppConstants.coachingOutcomeEventsBox,
     );
@@ -269,6 +278,7 @@ void main() {
     );
     await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
     await Hive.openBox<CoachChatResult>('coach_chat_results');
+    await Hive.openBox<UnifiedCoachResult>('unified_coach_results');
     await Hive.openBox<CoachingOutcomeEvent>(
       AppConstants.coachingOutcomeEventsBox,
     );
@@ -306,6 +316,56 @@ void main() {
     expect(StorageService.coachChatResultsBox.isEmpty, isTrue);
   });
 
+  test('clearAll() purges unified_coach_results box', () async {
+    await Hive.openBox<Conversation>(AppConstants.conversationsBox);
+    await Hive.openBox<Partner>(AppConstants.partnersBox);
+    await Hive.openBox<UserProfile>('user_profile');
+    await Hive.openBox<PartnerStyleOverride>('partner_style_overrides');
+    await Hive.openBox<PartnerDataQualityState>(
+      'partner_data_quality_states',
+    );
+    await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
+    await Hive.openBox<CoachChatResult>('coach_chat_results');
+    await Hive.openBox<UnifiedCoachResult>('unified_coach_results');
+    await Hive.openBox<CoachingOutcomeEvent>(
+      AppConstants.coachingOutcomeEventsBox,
+    );
+    await Hive.openBox<AnalysisHistoryEvent>(
+      AppConstants.analysisHistoryEventsBox,
+    );
+    await Hive.openBox<PracticeSession>('practice_sessions');
+    await Hive.openBox(AppConstants.settingsBox);
+    await Hive.openBox(AppConstants.usageBox);
+
+    await StorageService.unifiedCoachResultsBox.put(
+      'u1-1',
+      UnifiedCoachResult(
+        id: 'u1-1',
+        conversationId: 'c1',
+        partnerId: 'p1',
+        question: '她這句話是真的有興趣嗎？',
+        mode: 'replyCraft',
+        headline: '先接球',
+        answer: '她是在丟觀察，不是要你證明自己。',
+        userState: '你可能急著解釋。',
+        nextStep: '承認一半再反問。',
+        suggestedLine: '被妳發現了。妳也是亂逛派嗎？',
+        boundaryReminder: '不要把一句觀察放大成考試。',
+        needsReflection: false,
+        generatedAt: DateTime.utc(2026, 7, 21, 12),
+        provider: 'claude',
+        modelUsed: 'claude-sonnet-4-20250514',
+        scopeType: 'conversation',
+        scopeId: 'c1',
+      ),
+    );
+    expect(StorageService.unifiedCoachResultsBox.isNotEmpty, isTrue);
+
+    await StorageService.clearAll();
+
+    expect(StorageService.unifiedCoachResultsBox.isEmpty, isTrue);
+  });
+
   test('clearAll() purges coaching_outcome_events box', () async {
     await Hive.openBox<Conversation>(AppConstants.conversationsBox);
     await Hive.openBox<Partner>(AppConstants.partnersBox);
@@ -316,6 +376,7 @@ void main() {
     );
     await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
     await Hive.openBox<CoachChatResult>('coach_chat_results');
+    await Hive.openBox<UnifiedCoachResult>('unified_coach_results');
     await Hive.openBox<CoachingOutcomeEvent>(
       AppConstants.coachingOutcomeEventsBox,
     );
@@ -355,6 +416,7 @@ void main() {
     );
     await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
     await Hive.openBox<CoachChatResult>('coach_chat_results');
+    await Hive.openBox<UnifiedCoachResult>('unified_coach_results');
     await Hive.openBox<CoachingOutcomeEvent>(
       AppConstants.coachingOutcomeEventsBox,
     );
@@ -420,6 +482,7 @@ void main() {
     );
     await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
     await Hive.openBox<CoachChatResult>('coach_chat_results');
+    await Hive.openBox<UnifiedCoachResult>('unified_coach_results');
     await Hive.openBox<CoachingOutcomeEvent>(
       AppConstants.coachingOutcomeEventsBox,
     );
