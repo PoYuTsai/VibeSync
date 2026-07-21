@@ -596,7 +596,11 @@ void main() {
         practiceMode: mode.$1,
         debriefSummary: '新版具體摘要 ${mode.$1}',
         debriefSuggestedLine: '新版具體下一句 ${mode.$1}',
+        debriefGamePhaseReached: mode.$1 == 'game' ? '破冰' : null,
+        debriefGameMissedVariable: mode.$1 == 'game' ? '沒接住她的興趣線' : null,
+        debriefGameFailureState: mode.$1 == 'game' ? '話題斷裂' : null,
         debriefGameNextFirstLine: mode.$1 == 'game' ? '新版 Game 具體下一句' : null,
+        debriefGameInviteDirection: mode.$1 == 'game' ? '再觀察一輪' : null,
         debriefQualitySchemaVersion: kPracticeDebriefQualitySchemaVersion,
       ));
 
