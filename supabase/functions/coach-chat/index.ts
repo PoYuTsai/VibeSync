@@ -428,6 +428,15 @@ export async function handleRequest(
     }
   }
 
+  // F3：帳本路徑在 claim 之前就確認模型金鑰在——config 缺失絕不能發生在
+  // claim 之後（那會留 pending claim 卡住同 requestId 90 秒）。
+  // legacy 路徑維持原位的晚檢查，保今日行為不變。
+  const apiKey = Deno.env.get("CLAUDE_API_KEY");
+  if (requestId !== null && !apiKey) {
+    logError("coach_chat_config_missing", { user: summarizeUser(user.id) });
+    return jsonResponse({ error: "config_missing" }, 500);
+  }
+
   const requestOwnerToken = requestId === null ? null : crypto.randomUUID();
   const releaseCurrentClaim = async (): Promise<boolean> => {
     if (
@@ -608,7 +617,6 @@ export async function handleRequest(
     });
   }
 
-  const apiKey = Deno.env.get("CLAUDE_API_KEY");
   if (!apiKey) {
     logError("coach_chat_config_missing", { user: summarizeUser(user.id) });
     return jsonResponse({ error: "config_missing" }, 500);
@@ -756,7 +764,9 @@ export async function handleRequest(
                 body: Record<string, unknown>;
                 charge: boolean;
               },
-            ): Promise<{ charged: boolean }> => {
+            ): Promise<
+              { charged: boolean; body: Record<string, unknown> }
+            > => {
               let latest = await fetchSubscription(supabase, user.id);
               if (!latest) {
                 throw new CoachSettlementHttpError(
@@ -802,7 +812,11 @@ export async function handleRequest(
                 chargeQuota: charge,
               });
               if (settlement.kind === "settled") {
-                return { charged: settlement.charged };
+                return {
+                  charged: settlement.charged,
+                  body: settlement
+                    .result as unknown as Record<string, unknown>,
+                };
               }
               if (settlement.kind === "quota_exceeded") {
                 const monthly = settlement.reason === "monthly_limit_exceeded";
@@ -863,6 +877,27 @@ export async function handleRequest(
         };
       }
       throw e;
+    }
+    // settle 交易內 quota RAISE＝已回滾未 commit：釋放 claim 讓同
+    // requestId 立即重試或換 id，並補 retry metadata（僅帳本路徑）。
+    if (
+      requestId !== null && result.status === 429 &&
+      result.body.code === undefined
+    ) {
+      if (!await releaseCurrentClaim()) {
+        return {
+          status: 503,
+          body: {
+            error: "COACH_CLAIM_RELEASE_RETRYABLE",
+            code: "COACH_CLAIM_RELEASE_RETRYABLE",
+            retryable: true,
+          },
+        };
+      }
+      return {
+        ...result,
+        body: { ...result.body, code: "QUOTA_EXCEEDED", safeToClear: true },
+      };
     }
     // 已知 settle 前失敗（生成失敗/refusal 等 500，body 無 code）：釋放本
     // owner 的 claim 讓同 requestId 立即重試。settlement 失敗（帶 code 的

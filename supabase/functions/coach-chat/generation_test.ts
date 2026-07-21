@@ -74,7 +74,7 @@ function deps(opts: {
   settleResult?: (args: {
     body: Record<string, unknown>;
     charge: boolean;
-  }) => Promise<{ charged: boolean }>;
+  }) => Promise<{ charged: boolean; body: Record<string, unknown> }>;
   onProgress?: (update: {
     stage: string;
     attempt?: number;
@@ -1229,7 +1229,7 @@ const settleInput = {
 
 Deno.test("runCoachChat settles instead of deducting when settleResult injected", async () => {
   const harness = deps({
-    settleResult: () => Promise.resolve({ charged: true }),
+    settleResult: (args) => Promise.resolve({ charged: true, body: args.body }),
   });
   const result = await runCoachChat(settleInput, harness.deps);
   assertEquals(result.status, 200);
@@ -1246,14 +1246,27 @@ Deno.test("runCoachChat settles instead of deducting when settleResult injected"
   assertEquals((result.body.card as Record<string, unknown>).costDeducted, 1);
 });
 
-Deno.test("runCoachChat reflects settle charged=false in costDeducted", async () => {
+Deno.test("runCoachChat returns ledger-authoritative body on settle replay", async () => {
+  // F1：stale lease takeover 後晚到的 settle 拿到先入帳者的卡——
+  // 回應必須逐 byte 等於 ledger result，本地生成丟棄。
+  const ledgerBody = {
+    card: {
+      responseType: "coachAnswer",
+      costDeducted: 1,
+      headline: "先入帳者的卡",
+    },
+    sessionId: null,
+    provider: "claude",
+    model: "claude-sonnet-5",
+    generatedAt: "2026-07-21T10:00:00.000Z",
+  };
   const harness = deps({
-    settleResult: () => Promise.resolve({ charged: false }),
+    settleResult: () => Promise.resolve({ charged: false, body: ledgerBody }),
   });
   const result = await runCoachChat(settleInput, harness.deps);
   assertEquals(result.status, 200);
   assertEquals(harness.deductCalls, 0);
-  assertEquals((result.body.card as Record<string, unknown>).costDeducted, 0);
+  assertEquals(result.body, ledgerBody);
 });
 
 Deno.test("runCoachChat settles clarifyingQuestion with charge=false", async () => {
@@ -1265,7 +1278,8 @@ Deno.test("runCoachChat settles clarifyingQuestion with charge=false", async () 
         reflectionQuestion: "你想要的是安心感，還是想確認她的興趣？",
         rewriteDecision: null,
       })),
-    settleResult: () => Promise.resolve({ charged: false }),
+    settleResult: (args) =>
+      Promise.resolve({ charged: false, body: args.body }),
   });
   const result = await runCoachChat(settleInput, harness.deps);
   assertEquals(result.status, 200);
@@ -1277,7 +1291,8 @@ Deno.test("runCoachChat settles clarifyingQuestion with charge=false", async () 
 
 Deno.test("runCoachChat settles test account with charge=false", async () => {
   const harness = deps({
-    settleResult: () => Promise.resolve({ charged: false }),
+    settleResult: (args) =>
+      Promise.resolve({ charged: false, body: args.body }),
   });
   const result = await runCoachChat(
     { ...settleInput, accountIsTest: true },
@@ -1292,7 +1307,8 @@ Deno.test("runCoachChat settles test account with charge=false", async () => {
 Deno.test("runCoachChat settles no-charge fallback card with charge=false", async () => {
   const harness = deps({
     callClaude: () => Promise.resolve(malformedClaudeCard()),
-    settleResult: () => Promise.resolve({ charged: false }),
+    settleResult: (args) =>
+      Promise.resolve({ charged: false, body: args.body }),
   });
   const result = await runCoachChat(settleInput, harness.deps);
   assertEquals(result.status, 200);
@@ -1305,7 +1321,7 @@ Deno.test("runCoachChat settles no-charge fallback card with charge=false", asyn
 Deno.test("runCoachChat never settles nor deducts when Claude call fails", async () => {
   const harness = deps({
     callClaude: () => Promise.reject(new Error("upstream down")),
-    settleResult: () => Promise.resolve({ charged: true }),
+    settleResult: (args) => Promise.resolve({ charged: true, body: args.body }),
   });
   const result = await runCoachChat(settleInput, harness.deps);
   assertEquals(result.status, 500);

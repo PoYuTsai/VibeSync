@@ -336,46 +336,74 @@ Deno.test("POST hash mismatch on same requestId returns 409", async () => {
   assertEquals((await res.json()).code, "COACH_REQUEST_REPLAY_MISMATCH");
 });
 
+async function withClaudeApiKey(fn: () => Promise<void>) {
+  Deno.env.set("CLAUDE_API_KEY", "test-key");
+  try {
+    await fn();
+  } finally {
+    Deno.env.delete("CLAUDE_API_KEY");
+  }
+}
+
 Deno.test("POST quota gate failure releases owner-bound claim", async () => {
-  const fake = buildLedgerClientFake({
-    sub: freshSubRow({
-      monthly_messages_used: 100000,
-      daily_messages_used: 100000,
-    }),
+  await withClaudeApiKey(async () => {
+    const fake = buildLedgerClientFake({
+      sub: freshSubRow({
+        monthly_messages_used: 100000,
+        daily_messages_used: 100000,
+      }),
+    });
+    const res = await handleRequest(ledgerPostRequest(ledgerBody), {
+      supabase: fake.client,
+      replayHmacKey: STRONG_HMAC_KEY,
+    });
+    assertEquals(res.status, 429);
+    const body = await res.json();
+    assertEquals(body.code, "QUOTA_EXCEEDED");
+    assertEquals(body.safeToClear, true);
+    assertEquals(
+      fake.rpcCalls.map((call) => call.fn),
+      ["claim_coach_request", "release_coach_claim"],
+    );
   });
-  const res = await handleRequest(ledgerPostRequest(ledgerBody), {
-    supabase: fake.client,
-    replayHmacKey: STRONG_HMAC_KEY,
-  });
-  assertEquals(res.status, 429);
-  const body = await res.json();
-  assertEquals(body.code, "QUOTA_EXCEEDED");
-  assertEquals(body.safeToClear, true);
-  assertEquals(
-    fake.rpcCalls.map((call) => call.fn),
-    ["claim_coach_request", "release_coach_claim"],
-  );
 });
 
 Deno.test("POST model rate limited releases owner-bound claim", async () => {
-  const fake = buildLedgerClientFake({
-    rpcHandlers: {
-      increment_model_usage: () => ({
-        data: null,
-        error: { message: "P0001: MODEL_RATE_LIMITED_MINUTE" },
-      }),
-    },
+  await withClaudeApiKey(async () => {
+    const fake = buildLedgerClientFake({
+      rpcHandlers: {
+        increment_model_usage: () => ({
+          data: null,
+          error: { message: "P0001: MODEL_RATE_LIMITED_MINUTE" },
+        }),
+      },
+    });
+    const res = await handleRequest(ledgerPostRequest(ledgerBody), {
+      supabase: fake.client,
+      replayHmacKey: STRONG_HMAC_KEY,
+    });
+    assertEquals(res.status, 429);
+    const body = await res.json();
+    assertEquals(body.safeToClear, true);
+    assertEquals(
+      fake.rpcCalls.map((call) => call.fn),
+      ["claim_coach_request", "increment_model_usage", "release_coach_claim"],
+    );
   });
+});
+
+Deno.test("POST ledger path with missing CLAUDE_API_KEY fails before claim", async () => {
+  // F3：config 缺失絕不能發生在 claim 之後（會留 pending 卡 90 秒）。
+  const fake = buildLedgerClientFake({});
   const res = await handleRequest(ledgerPostRequest(ledgerBody), {
     supabase: fake.client,
     replayHmacKey: STRONG_HMAC_KEY,
   });
-  assertEquals(res.status, 429);
-  const body = await res.json();
-  assertEquals(body.safeToClear, true);
+  assertEquals(res.status, 500);
+  assertEquals((await res.json()).error, "config_missing");
   assertEquals(
-    fake.rpcCalls.map((call) => call.fn),
-    ["claim_coach_request", "increment_model_usage", "release_coach_claim"],
+    fake.rpcCalls.some((call) => call.fn === "claim_coach_request"),
+    false,
   );
 });
 
@@ -458,5 +486,24 @@ Deno.test({
     assert(source.includes('"COACH_CLAIM_RENEW_RETRYABLE"'));
     assert(source.includes('"COACH_CLAIM_RELEASE_RETRYABLE"'));
     assert(source.includes('"COACH_SETTLEMENT_RETRYABLE"'));
+    // F3：帳本路徑的 CLAUDE_API_KEY 守門必須在 claim 之前。
+    const apiKeyGuard = source.indexOf("requestId !== null && !apiKey");
+    assert(apiKeyGuard >= 0 && apiKeyGuard < claim);
+    // F2：settle-time quota 429（無 code）→ release＋QUOTA_EXCEEDED metadata。
+    const settleQuotaRelease = source.indexOf(
+      "result.status === 429 &&",
+    );
+    const settleQuotaMetadata = source.indexOf(
+      'code: "QUOTA_EXCEEDED", safeToClear: true',
+      settleQuotaRelease,
+    );
+    assert(settleQuotaRelease >= 0 && settleQuotaMetadata > settleQuotaRelease);
+    assert(
+      source.slice(settleQuotaRelease, settleQuotaMetadata).includes(
+        "releaseCurrentClaim",
+      ),
+    );
+    // F1：settle 回應必須用 ledger 權威 result。
+    assert(source.includes("body: settlement"));
   },
 });
