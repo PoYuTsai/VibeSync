@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/unified_coach_result.dart';
 import 'package:vibesync/features/coach_chat/presentation/widgets/coach_chat_card.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
 import 'package:vibesync/features/coaching_memory/domain/entities/coaching_outcome_event.dart';
@@ -39,7 +40,8 @@ Widget _wrap(MemoryCoachingOutcomeRepository repo) {
       home: Scaffold(
         body: SingleChildScrollView(
           child: CoachChatResultView(
-            result: _result(),
+            // Phase E：view 改吃 unified 型別；fixture 經 1:1 映射轉入。
+            result: UnifiedCoachResult.fromCoachChatResult(_result()),
             dailyRemaining: 3,
             onFollowUp: () {},
             onForceAnswer: () {},

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/coach_scope.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/unified_coach_result.dart';
 import 'package:vibesync/features/coach_chat/domain/repositories/coach_chat_repository.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
@@ -21,6 +22,14 @@ import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_
 import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
 
 const _generatedAt = '2026-05-07T12:00:00.000Z';
+
+const _conversationScope = CoachScope.conversation('c-1');
+const _partnerScope = CoachScope.partner('p-1');
+
+/// requestId 必須是 v4 UUID（server lowercase 後做冪等鍵）。
+final _uuidV4 = RegExp(
+  r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+);
 
 Message _msg(String content, {bool fromMe = false, DateTime? at}) => Message(
       id: 'm-${content.hashCode}',
@@ -68,6 +77,7 @@ Partner _partner() => Partner(
 
 Map<String, dynamic> _edgeSuccess({
   String headline = '接住她的觀察',
+  String sessionId = 's-1',
 }) {
   return <String, dynamic>{
     'card': <String, dynamic>{
@@ -85,11 +95,11 @@ Map<String, dynamic> _edgeSuccess({
     'provider': 'claude',
     'model': 'claude-sonnet-4-20250514',
     'generatedAt': _generatedAt,
-    'sessionId': 's-1',
+    'sessionId': sessionId,
   };
 }
 
-Map<String, dynamic> _edgeClarification() {
+Map<String, dynamic> _edgeClarification({String sessionId = 's-1'}) {
   return <String, dynamic>{
     'card': <String, dynamic>{
       'responseType': 'clarifyingQuestion',
@@ -110,56 +120,64 @@ Map<String, dynamic> _edgeClarification() {
     'provider': 'claude',
     'model': 'claude-sonnet-4-20250514',
     'generatedAt': _generatedAt,
-    'sessionId': 's-1',
+    'sessionId': sessionId,
   };
 }
 
+/// Phase E controller 只走 unified scope-keyed 路徑；legacy conversation
+/// facade 一律 throw，任何呼叫都代表 controller 走錯路（回歸守門）。
 class _FakeRepo implements CoachChatRepository {
-  final _store = <String, CoachChatResult>{};
+  final _store = <String, UnifiedCoachResult>{};
   int putCalls = 0;
 
-  void seed(CoachChatResult result) => _store[result.id] = result;
+  void seed(CoachChatResult result) =>
+      _store[result.id] = UnifiedCoachResult.fromCoachChatResult(result);
 
   @override
-  List<CoachChatResult> listByConversation(String conversationId) {
+  List<UnifiedCoachResult> listByScope(String scopeType, String scopeId) {
     return _store.values
-        .where((result) => result.conversationId == conversationId)
+        .where((r) => r.scopeType == scopeType && r.scopeId == scopeId)
         .toList()
       ..sort((a, b) => b.generatedAt.compareTo(a.generatedAt));
   }
 
   @override
-  CoachChatResult? latestForConversation(String conversationId) {
-    final list = listByConversation(conversationId);
+  UnifiedCoachResult? latestForScope(String scopeType, String scopeId) {
+    final list = listByScope(scopeType, scopeId);
     return list.isEmpty ? null : list.first;
   }
 
   @override
-  Future<void> put(CoachChatResult result) async {
+  Future<void> putUnified(UnifiedCoachResult result) async {
     putCalls++;
     _store[result.id] = result;
   }
 
   @override
-  Future<void> deleteConversation(String conversationId) async {
-    _store.removeWhere((_, result) => result.conversationId == conversationId);
+  Future<void> deleteScope(String scopeType, String scopeId) async {
+    _store.removeWhere(
+      (_, r) => r.scopeType == scopeType && r.scopeId == scopeId,
+    );
   }
 
   @override
+  List<CoachChatResult> listByConversation(String conversationId) =>
+      throw UnimplementedError('Phase E controller must use listByScope');
+
+  @override
+  CoachChatResult? latestForConversation(String conversationId) =>
+      throw UnimplementedError('Phase E controller must use latestForScope');
+
+  @override
+  Future<void> put(CoachChatResult result) =>
+      throw UnimplementedError('Phase E controller must use putUnified');
+
+  @override
+  Future<void> deleteConversation(String conversationId) =>
+      throw UnimplementedError('Phase E controller must use deleteScope');
+
+  @override
   Future<void> clearAll() async => _store.clear();
-
-  @override
-  List<UnifiedCoachResult> listByScope(String scopeType, String scopeId) =>
-      const [];
-
-  @override
-  UnifiedCoachResult? latestForScope(String scopeType, String scopeId) => null;
-
-  @override
-  Future<void> putUnified(UnifiedCoachResult result) async {}
-
-  @override
-  Future<void> deleteScope(String scopeType, String scopeId) async {}
 }
 
 // digest 回注：controller 讀 coachingOutcomeDigestProvider，底層打 Hive。
@@ -344,7 +362,8 @@ void main() {
       final c = _container(repo: repo, invoker: _invoker());
       addTearDown(c.dispose);
 
-      final result = await c.read(coachChatControllerProvider('c-1').future);
+      final result =
+          await c.read(coachChatControllerProvider(_conversationScope).future);
 
       expect(result?.headline, '舊答案');
     });
@@ -368,20 +387,32 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      await c.read(coachChatControllerProvider('c-1').future);
-      expect(c.read(coachChatHistoryProvider('c-1')), isEmpty);
-      await c.read(coachChatControllerProvider('c-1').notifier).ask(
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      expect(c.read(coachChatHistoryProvider(_conversationScope)), isEmpty);
+      await c.read(coachChatControllerProvider(_conversationScope).notifier).ask(
             question: '她這句話是真的有興趣嗎？',
             analysisSnapshot: _snapshot(),
           );
 
-      final state = c.read(coachChatControllerProvider('c-1'));
+      final state = c.read(coachChatControllerProvider(_conversationScope));
       expect(state.value?.headline, '接住她的觀察');
-      expect(c.read(coachChatHistoryProvider('c-1')).single.headline, '接住她的觀察');
+      // scope 欄位一律由 CoachScope 推導（unified 映射對等驗證）。
+      expect(state.value?.scopeType, CoachScopeType.conversation);
+      expect(state.value?.scopeId, 'c-1');
+      expect(state.value?.conversationId, 'c-1');
+      expect(
+        c.read(coachChatHistoryProvider(_conversationScope)).single.headline,
+        '接住她的觀察',
+      );
       expect(state.value?.frictionType, 'overPolishing');
       expect(repo.putCalls, 1);
       expect(calls.single.fn, 'coach-chat');
       expect(calls.single.body['sessionId'], isA<String>());
+      expect(calls.single.body['scope'], {
+        'type': 'conversation',
+        'conversationId': 'c-1',
+      });
+      expect(calls.single.body['requestId'], matches(_uuidV4));
       expect(
         calls.single.body['effectiveStyleContext'],
         contains('Preferred voice'),
@@ -416,13 +447,13 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      await c.read(coachChatControllerProvider('c-1').future);
-      await c.read(coachChatControllerProvider('c-1').notifier).ask(
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      await c.read(coachChatControllerProvider(_conversationScope).notifier).ask(
             question: '她是什麼意思？',
             analysisSnapshot: _snapshot(),
           );
 
-      final result = c.read(coachChatControllerProvider('c-1')).value;
+      final result = c.read(coachChatControllerProvider(_conversationScope)).value;
       expect(result?.isClarifyingQuestion, isTrue);
       expect(result?.costDeducted, 0);
       expect(repo.putCalls, 1);
@@ -445,8 +476,9 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      await c.read(coachChatControllerProvider('c-1').future);
-      final notifier = c.read(coachChatControllerProvider('c-1').notifier);
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      final notifier =
+          c.read(coachChatControllerProvider(_conversationScope).notifier);
       await notifier.ask(
         question: '她說我很有故事是什麼意思？',
         analysisSnapshot: _snapshot(),
@@ -477,8 +509,9 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      await c.read(coachChatControllerProvider('c-1').future);
-      final notifier = c.read(coachChatControllerProvider('c-1').notifier);
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      final notifier =
+          c.read(coachChatControllerProvider(_conversationScope).notifier);
       await notifier.ask(
         question: '換個新問題',
         analysisSnapshot: _snapshot(),
@@ -502,8 +535,9 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      await c.read(coachChatControllerProvider('c-1').future);
-      final notifier = c.read(coachChatControllerProvider('c-1').notifier);
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      final notifier =
+          c.read(coachChatControllerProvider(_conversationScope).notifier);
       await notifier.ask(
         question: '接著上一題再問',
         analysisSnapshot: _snapshot(),
@@ -530,8 +564,9 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      await c.read(coachChatControllerProvider('c-1').future);
-      final notifier = c.read(coachChatControllerProvider('c-1').notifier);
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      final notifier =
+          c.read(coachChatControllerProvider(_conversationScope).notifier);
       await notifier.ask(
         question: '她是什麼意思？',
         analysisSnapshot: _snapshot(),
@@ -558,8 +593,9 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      await c.read(coachChatControllerProvider('c-1').future);
-      final notifier = c.read(coachChatControllerProvider('c-1').notifier);
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      final notifier =
+          c.read(coachChatControllerProvider(_conversationScope).notifier);
       await notifier.ask(question: 'q1', analysisSnapshot: _snapshot());
       await notifier.ask(question: 'q2', analysisSnapshot: _snapshot());
       await notifier.ask(question: 'q3', analysisSnapshot: _snapshot());
@@ -586,8 +622,8 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      await c.read(coachChatControllerProvider('c-1').future);
-      await c.read(coachChatControllerProvider('c-1').notifier).ask(
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      await c.read(coachChatControllerProvider(_conversationScope).notifier).ask(
             question: '她到底是誰？',
             analysisSnapshot: _snapshot(),
           );
@@ -613,16 +649,19 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      await c.read(coachChatControllerProvider('c-1').future);
-      final askFuture = c.read(coachChatControllerProvider('c-1').notifier).ask(
-            question: '我是不是太急？',
-            analysisSnapshot: _snapshot(),
-          );
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      final askFuture =
+          c.read(coachChatControllerProvider(_conversationScope).notifier).ask(
+                question: '我是不是太急？',
+                analysisSnapshot: _snapshot(),
+              );
 
       await syncStarted.future;
 
       expect(
-          c.read(coachChatControllerProvider('c-1')).value?.headline, '接住她的觀察');
+        c.read(coachChatControllerProvider(_conversationScope)).value?.headline,
+        '接住她的觀察',
+      );
       expect(repo.putCalls, 1);
 
       syncGate.complete();
@@ -646,13 +685,16 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      await c.read(coachChatControllerProvider('c-1').future);
-      await c.read(coachChatControllerProvider('c-1').notifier).ask(
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      await c.read(coachChatControllerProvider(_conversationScope).notifier).ask(
             question: '怎麼辦？',
             analysisSnapshot: _snapshot(),
           );
 
-      expect(c.read(coachChatControllerProvider('c-1')).hasError, isTrue);
+      expect(
+        c.read(coachChatControllerProvider(_conversationScope)).hasError,
+        isTrue,
+      );
       expect(repo.putCalls, 0);
       expect(syncCalls, 0);
     });
@@ -676,16 +718,19 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      await c.read(coachChatControllerProvider('c-1').future);
-      await c.read(coachChatControllerProvider('c-1').notifier).ask(
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      await c.read(coachChatControllerProvider(_conversationScope).notifier).ask(
             question: 'normal follow up question',
             analysisSnapshot: _snapshot(),
           );
 
-      final state = c.read(coachChatControllerProvider('c-1'));
+      final state = c.read(coachChatControllerProvider(_conversationScope));
       expect(state.hasError, isTrue);
       expect(state.valueOrNull?.id, 'old');
-      expect(repo.latestForConversation('c-1')?.id, 'old');
+      expect(
+        repo.latestForScope(CoachScopeType.conversation, 'c-1')?.id,
+        'old',
+      );
       expect(repo.putCalls, 0);
       expect(syncCalls, 0);
     });
@@ -707,8 +752,8 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      await c.read(coachChatControllerProvider('c-1').future);
-      await c.read(coachChatControllerProvider('c-1').notifier).ask(
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      await c.read(coachChatControllerProvider(_conversationScope).notifier).ask(
             question: '這樣推進會太快嗎？',
             analysisSnapshot: _snapshot(),
           );
@@ -747,8 +792,8 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      await c.read(coachChatControllerProvider('c-1').future);
-      await c.read(coachChatControllerProvider('c-1').notifier).ask(
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      await c.read(coachChatControllerProvider(_conversationScope).notifier).ask(
             question: '這樣推進會太快嗎？',
             analysisSnapshot: _snapshot(),
           );
@@ -779,13 +824,196 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      await c.read(coachChatControllerProvider('c-1').future);
-      await c.read(coachChatControllerProvider('c-1').notifier).ask(
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      await c.read(coachChatControllerProvider(_conversationScope).notifier).ask(
             question: '她到底在想什麼？',
             analysisSnapshot: _snapshot(),
           );
 
       expect(calls.single.body.containsKey('outcomeInsightLines'), isFalse);
+    });
+  });
+
+  group('partner scope', () {
+    test('ask without snapshot sends partner wire shape and persists unified',
+        () async {
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: _invoker(calls: calls),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_partnerScope).future);
+      await c.read(coachChatControllerProvider(_partnerScope).notifier).ask(
+            question: '約她之前我該注意什麼？',
+            lifecyclePhase: 'prepareInvite',
+          );
+
+      final body = calls.single.body;
+      expect(body['conversationId'], 'partner:p-1');
+      expect(body['partnerId'], 'p-1');
+      expect(body['scope'], {'type': 'partner', 'partnerId': 'p-1'});
+      expect(body['lifecyclePhase'], 'prepareInvite');
+      expect(body.containsKey('analysisSnapshot'), isFalse);
+      expect(body['recentMessages'], isEmpty);
+      expect(body.containsKey('conversationSummary'), isFalse);
+      // partnerId-only 組裝（styleContext/partnerHint）在 partner scope 照送。
+      expect(body['partnerHint'], {
+        'name': 'Mia',
+        'traits': ['活潑', '慢熟'],
+      });
+
+      final stored = repo.latestForScope(CoachScopeType.partner, 'p-1');
+      expect(stored, isNotNull);
+      expect(stored?.scopeType, CoachScopeType.partner);
+      expect(stored?.scopeId, 'p-1');
+      expect(stored?.partnerId, 'p-1');
+      expect(stored?.conversationId, isNull);
+      expect(stored?.lifecyclePhase, 'prepareInvite');
+      expect(
+        repo.listByScope(CoachScopeType.partner, 'p-1').single.headline,
+        '接住她的觀察',
+      );
+      expect(
+        c.read(coachChatControllerProvider(_partnerScope)).value?.scopeType,
+        CoachScopeType.partner,
+      );
+      expect(
+        c.read(coachChatHistoryProvider(_partnerScope)).single.scopeId,
+        'p-1',
+      );
+    });
+  });
+
+  group('requestId lifecycle', () {
+    test('first send is a fresh UUID echoed to the wire', () async {
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: _invoker(calls: calls),
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      await c.read(coachChatControllerProvider(_conversationScope).notifier).ask(
+            question: '她是什麼意思？',
+            analysisSnapshot: _snapshot(),
+          );
+
+      expect(calls.single.body['requestId'], matches(_uuidV4));
+    });
+
+    test('transient failure retries with the same id; success mints a new one',
+        () async {
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: (fn, {required body}) async {
+          calls.add(_RecordedCall(fn, Map<String, dynamic>.from(body)));
+          return calls.length == 1
+              ? const CoachChatInvokeResponse(
+                  status: 500,
+                  data: {'error': 'transient'},
+                )
+              : CoachChatInvokeResponse(status: 200, data: _edgeSuccess());
+        },
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      final notifier =
+          c.read(coachChatControllerProvider(_conversationScope).notifier);
+      await notifier.ask(question: '同一題', analysisSnapshot: _snapshot());
+      await notifier.ask(question: '同一題', analysisSnapshot: _snapshot());
+      await notifier.ask(question: '下一題', analysisSnapshot: _snapshot());
+
+      expect(calls, hasLength(3));
+      final first = calls[0].body['requestId'] as String;
+      final retry = calls[1].body['requestId'] as String;
+      final next = calls[2].body['requestId'] as String;
+      expect(first, matches(_uuidV4));
+      expect(retry, first, reason: '同 intent 失敗重試必沿用同 requestId');
+      expect(next, isNot(first), reason: '成功落卡後下一問必鑄新 requestId');
+      expect(next, matches(_uuidV4));
+    });
+
+    test('clarification success also retires the id (next turn is new intent)',
+        () async {
+      final repo = _FakeRepo();
+      repo.seed(_storedSessionResult(
+        generatedAt: DateTime.now().subtract(const Duration(hours: 1)),
+      ));
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: (fn, {required body}) async {
+          calls.add(_RecordedCall(fn, Map<String, dynamic>.from(body)));
+          return CoachChatInvokeResponse(
+            status: 200,
+            data: _edgeClarification(sessionId: 's-old'),
+          );
+        },
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      final notifier =
+          c.read(coachChatControllerProvider(_conversationScope).notifier);
+      // 兩輪同 question、同 resume session（'s-old'）＝signature 完全相同：
+      // 若釐清成功沒 retire，第二輪會沿用同 id → 此測試會抓到。
+      await notifier.ask(question: '同一題', analysisSnapshot: _snapshot());
+      await notifier.ask(question: '同一題', analysisSnapshot: _snapshot());
+
+      expect(calls, hasLength(2));
+      expect(
+        calls[1].body['requestId'],
+        isNot(calls[0].body['requestId']),
+        reason: '釐清回應成功也 retire，下一輪追問是新 intent',
+      );
+    });
+
+    test('lifecyclePhase change mints a new id even before any success',
+        () async {
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: (fn, {required body}) async {
+          calls.add(_RecordedCall(fn, Map<String, dynamic>.from(body)));
+          return calls.length == 1
+              ? const CoachChatInvokeResponse(
+                  status: 500,
+                  data: {'error': 'transient'},
+                )
+              : CoachChatInvokeResponse(status: 200, data: _edgeSuccess());
+        },
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_partnerScope).future);
+      final notifier =
+          c.read(coachChatControllerProvider(_partnerScope).notifier);
+      await notifier.ask(question: '同一題', lifecyclePhase: 'prepareInvite');
+      await notifier.ask(question: '同一題', lifecyclePhase: 'postDate');
+
+      expect(calls, hasLength(2));
+      expect(
+        calls[1].body['requestId'],
+        isNot(calls[0].body['requestId']),
+        reason: 'intent（lifecyclePhase）變更必鑄新 requestId',
+      );
     });
   });
 }

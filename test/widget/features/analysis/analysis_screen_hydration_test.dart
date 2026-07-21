@@ -25,6 +25,7 @@ import 'package:vibesync/features/analysis/presentation/widgets/analysis_action_
 import 'package:vibesync/features/analysis/presentation/widgets/streaming_analysis_loading_widgets.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/coach_scope.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/unified_coach_result.dart';
 import 'package:vibesync/features/coach_chat/domain/repositories/coach_chat_repository.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_archive_providers.dart';
@@ -840,7 +841,7 @@ Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
         coachChatRepositoryProvider.overrideWithValue(
           _EmptyCoachChatRepository(),
         ),
-        coachChatHistoryProvider(_conversationId).overrideWithValue(const []),
+        coachChatHistoryProvider(const CoachScope.conversation(_conversationId)).overrideWithValue(const []),
         streamingAnalyzeProvider
             .overrideWith(() => _SeededStreamingAnalyzeNotifier(seed)),
       ],
@@ -891,7 +892,7 @@ Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
         coachChatRepositoryProvider.overrideWithValue(
           _EmptyCoachChatRepository(),
         ),
-        coachChatHistoryProvider(_conversationId).overrideWithValue(const []),
+        coachChatHistoryProvider(const CoachScope.conversation(_conversationId)).overrideWithValue(const []),
         streamingAnalyzeProvider.overrideWith(() {
           notifier = _MutableStreamingAnalyzeNotifier(seed);
           return notifier;
@@ -957,7 +958,7 @@ Future<_HydrationHarness> _pumpAnalysisScreenForPremiumRefresh(
         coachChatRepositoryProvider.overrideWithValue(
           _EmptyCoachChatRepository(),
         ),
-        coachChatHistoryProvider(_conversationId).overrideWithValue(const []),
+        coachChatHistoryProvider(const CoachScope.conversation(_conversationId)).overrideWithValue(const []),
         subscriptionProvider.overrideWith(
           (ref) {
             subscriptionNotifier =

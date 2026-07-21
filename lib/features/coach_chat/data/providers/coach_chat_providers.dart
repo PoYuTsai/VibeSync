@@ -10,9 +10,12 @@ import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/data/providers/partner_style_providers.dart';
 import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../../domain/entities/coach_chat_result.dart';
+import '../../domain/entities/coach_scope.dart';
+import '../../domain/entities/unified_coach_result.dart';
 import '../../domain/repositories/coach_chat_repository.dart';
 import '../repositories/coach_chat_repository_impl.dart';
 import '../services/coach_chat_api_service.dart';
+import '../services/coach_request_id_session.dart';
 
 final coachChatRepositoryProvider = Provider<CoachChatRepository>((ref) {
   return CoachChatRepositoryImpl(
@@ -70,22 +73,23 @@ final coachChatStyleContextResolverProvider =
   };
 });
 
+/// Phase E：scope-keyed 歷史（unified rows，含 read-bridge 合併的 legacy）。
 final coachChatHistoryProvider =
-    Provider.family<List<CoachChatResult>, String>((ref, conversationId) {
+    Provider.family<List<UnifiedCoachResult>, CoachScope>((ref, scope) {
   final repo = ref.watch(coachChatRepositoryProvider);
-  return repo.listByConversation(conversationId);
+  return repo.listByScope(scope.type, scope.id);
 });
 
 final coachChatProgressProvider = StateProvider.autoDispose
-    .family<CoachChatProgressUpdate?, String>((ref, conversationId) => null);
+    .family<CoachChatProgressUpdate?, CoachScope>((ref, scope) => null);
 
 final coachChatControllerProvider = AsyncNotifierProvider.autoDispose
-    .family<CoachChatController, CoachChatResult?, String>(
+    .family<CoachChatController, UnifiedCoachResult?, CoachScope>(
   CoachChatController.new,
 );
 
 class CoachChatController
-    extends AutoDisposeFamilyAsyncNotifier<CoachChatResult?, String> {
+    extends AutoDisposeFamilyAsyncNotifier<UnifiedCoachResult?, CoachScope> {
   static const int maxNoChargeClarificationTurns = 3;
 
   // Hive 舊結果的 session 只在此窗口內視為「本輪延續」；超過即換新
@@ -95,6 +99,9 @@ class CoachChatController
   bool _inFlight = false;
   String? _activeSessionId;
   List<CoachChatSessionTurn> _activeTurns = const [];
+
+  /// 扣費 idempotency：同 intent 失敗重試沿用同 requestId，成功落卡才 retire。
+  final CoachRequestIdSession _requestIdSession = CoachRequestIdSession();
 
   static int countClarificationTurns(List<CoachChatSessionTurn> turns) {
     return turns
@@ -111,32 +118,35 @@ class CoachChatController
   }
 
   @override
-  Future<CoachChatResult?> build(String conversationId) async {
+  Future<UnifiedCoachResult?> build(CoachScope scope) async {
     final repo = ref.read(coachChatRepositoryProvider);
-    return repo.latestForConversation(conversationId);
+    return repo.latestForScope(scope.type, scope.id);
   }
 
   Future<void> ask({
     required String question,
-    required CoachChatAnalysisSnapshot analysisSnapshot,
+    CoachChatAnalysisSnapshot? analysisSnapshot,
     bool forceAnswer = false,
+    String? lifecyclePhase,
   }) async {
     final trimmed = question.trim();
     if (trimmed.isEmpty || _inFlight) return;
     _inFlight = true;
     final keepAliveLink = ref.keepAlive();
     try {
-      final conversationId = arg;
+      final scope = arg;
       final repo = ref.read(coachChatRepositoryProvider);
       final previousResult =
-          state.valueOrNull ?? repo.latestForConversation(conversationId);
+          state.valueOrNull ?? repo.latestForScope(scope.type, scope.id);
       final resumablePrevious =
           previousResult != null && _canResumeSession(previousResult)
               ? previousResult
               : null;
-      final sessionId = _activeSessionId ??
-          resumablePrevious?.sessionId ??
-          'coach-$conversationId-${DateTime.now().microsecondsSinceEpoch}';
+      // resume 到的 session id（可為 null）。requestId signature 必須用它而
+      // 非合成後的 sessionId：合成 id 帶時間戳，失敗重試會重新合成，若進了
+      // signature 就會讓「同 intent 重試沿用同 requestId」失效。
+      final resumedSessionId = _activeSessionId ?? resumablePrevious?.sessionId;
+      final sessionId = resumedSessionId ?? _newSessionId(scope);
       final outboundTurns = _seedTurns(resumablePrevious);
       final effectiveForceAnswer =
           CoachChatController.shouldForceAnswerAfterClarifications(
@@ -144,14 +154,20 @@ class CoachChatController
         forceAnswer: forceAnswer,
       );
       state = const AsyncValue.loading();
-      ref.read(coachChatProgressProvider(conversationId).notifier).state = null;
-      final conversation = ref.read(conversationProvider(conversationId));
-      if (conversation == null) {
-        throw StateError('Conversation not found');
-      }
+      ref.read(coachChatProgressProvider(scope).notifier).state = null;
 
-      final api = ref.read(coachChatApiServiceProvider);
-      final partnerId = conversation.partnerId;
+      Conversation? conversation;
+      final String? partnerId;
+      if (scope.isConversation) {
+        conversation = ref.read(conversationProvider(scope.id));
+        if (conversation == null) {
+          throw StateError('Conversation not found');
+        }
+        partnerId = conversation.partnerId;
+      } else {
+        // partner scope：對象即 scope 本體，不依賴任何 conversation 資料。
+        partnerId = scope.id;
+      }
       final dataQualityFlag = partnerId == null
           ? null
           : ref.read(dataQualityFlagProvider(partnerId));
@@ -169,16 +185,27 @@ class CoachChatController
           ? outcomeDigest.statisticalInsightLines
           : const <String>[];
 
+      // 同 intent＝(question, effectiveForceAnswer, lifecyclePhase, resume
+      // session) 四元組；effectiveForceAnswer 才是 wire 上實際送出的語意
+      // （server ledger 綁 payload，同 id 換 payload 會 REPLAY_MISMATCH）。
+      final requestId = _requestIdSession.begin(
+        '$trimmed|$effectiveForceAnswer|${lifecyclePhase ?? ''}'
+        '|${resumedSessionId ?? ''}',
+      );
+
+      final api = ref.read(coachChatApiServiceProvider);
       final result = await api.ask(
-        conversationId: conversationId,
+        conversationId: scope.id,
         partnerId: partnerId,
         sessionId: sessionId,
         question: trimmed,
         activeSessionTurns: outboundTurns,
         forceAnswer: effectiveForceAnswer,
-        recentMessages: _recentMessages(conversation),
-        conversationSummary: _conversationSummary(conversation),
-        analysisSnapshot: analysisSnapshot,
+        recentMessages:
+            conversation != null ? _recentMessages(conversation) : const [],
+        conversationSummary:
+            conversation != null ? _conversationSummary(conversation) : null,
+        analysisSnapshot: scope.isConversation ? analysisSnapshot : null,
         effectiveStyleContext: _styleContext(
           partnerId: partnerId,
           includePartnerOverride: !flagged,
@@ -189,14 +216,24 @@ class CoachChatController
         ),
         outcomeInsightLines: outcomeInsightLines,
         dataQualityFlagged: flagged,
+        requestId: requestId,
+        scope: scope,
+        lifecyclePhase: lifecyclePhase,
         onProgress: (update) {
-          ref.read(coachChatProgressProvider(conversationId).notifier).state =
-              update;
+          ref.read(coachChatProgressProvider(scope).notifier).state = update;
         },
       );
-      await repo.put(result);
-      ref.invalidate(coachChatHistoryProvider(conversationId));
-      _activeSessionId = result.sessionId ?? sessionId;
+      final unified = _toUnified(
+        result,
+        scope: scope,
+        lifecyclePhase: lifecyclePhase,
+      );
+      await repo.putUnified(unified);
+      // 成功持久化才 retire；失敗（catch）保留 pending id 供同值重試。
+      // 釐清回應也是一次成功落卡：下一輪追問是新 intent，一樣 retire。
+      _requestIdSession.retire();
+      ref.invalidate(coachChatHistoryProvider(scope));
+      _activeSessionId = unified.sessionId ?? sessionId;
       _activeTurns = _capTurns([
         ...outboundTurns,
         CoachChatSessionTurn(
@@ -207,15 +244,15 @@ class CoachChatController
         ),
         CoachChatSessionTurn(
           role: 'coach',
-          kind: result.isClarifyingQuestion ? 'clarification' : 'answer',
-          content: result.isClarifyingQuestion
-              ? (result.reflectionQuestion ?? result.answer)
-              : result.answer,
-          createdAt: result.generatedAt,
+          kind: unified.isClarifyingQuestion ? 'clarification' : 'answer',
+          content: unified.isClarifyingQuestion
+              ? (unified.reflectionQuestion ?? unified.answer)
+              : unified.answer,
+          createdAt: unified.generatedAt,
         ),
       ]);
-      state = AsyncValue.data(result);
-      if (result.costDeducted > 0) {
+      state = AsyncValue.data(unified);
+      if (unified.costDeducted > 0) {
         await _syncUsageSnapshot();
       }
     } catch (e, st) {
@@ -228,24 +265,84 @@ class CoachChatController
   }
 
   Future<void> forceAnswer({
-    required CoachChatAnalysisSnapshot analysisSnapshot,
+    CoachChatAnalysisSnapshot? analysisSnapshot,
+    String? lifecyclePhase,
   }) async {
     final latest = state.valueOrNull ??
-        ref.read(coachChatRepositoryProvider).latestForConversation(arg);
+        ref
+            .read(coachChatRepositoryProvider)
+            .latestForScope(arg.type, arg.id);
+    // legacy follow-up 映射列的 question 是空字串，一樣落到預設句。
+    final previousQuestion = latest?.question.trim();
     await ask(
-      question: latest?.question ?? '請直接給我建議',
+      question: previousQuestion == null || previousQuestion.isEmpty
+          ? '請直接給我建議'
+          : previousQuestion,
       analysisSnapshot: analysisSnapshot,
       forceAnswer: true,
+      lifecyclePhase: lifecyclePhase,
     );
   }
 
-  bool _canResumeSession(CoachChatResult previousResult) {
+  /// 新合成 session id：conversation scope 保留既有 `coach-<id>-<ts>` 形狀
+  /// （語意零變）；partner scope 用 scope.key 避免與同 id 的 conversation
+  /// session 撞名。
+  String _newSessionId(CoachScope scope) {
+    final base = scope.isConversation ? scope.id : scope.key;
+    return 'coach-$base-${DateTime.now().microsecondsSinceEpoch}';
+  }
+
+  /// scope 欄位一律由 [CoachScope] 推導，絕不信 api result 的
+  /// conversationId/partnerId（partner scope 下該兩欄不可靠——Task 3 review）。
+  UnifiedCoachResult _toUnified(
+    CoachChatResult result, {
+    required CoachScope scope,
+    String? lifecyclePhase,
+  }) {
+    if (scope.isConversation) {
+      // 既有 1:1 映射 factory；result.conversationId 就是本 controller 傳給
+      // api 的 scope.id 原值回流，scopeId 仍等於 scope.id。
+      return UnifiedCoachResult.fromCoachChatResult(result);
+    }
+    return UnifiedCoachResult(
+      id: result.id,
+      conversationId: null,
+      partnerId: scope.id,
+      question: result.question,
+      mode: result.mode,
+      headline: result.headline,
+      answer: result.answer,
+      userState: result.userState,
+      nextStep: result.nextStep,
+      suggestedLine: result.suggestedLine,
+      boundaryReminder: result.boundaryReminder,
+      needsReflection: result.needsReflection,
+      reflectionQuestion: result.reflectionQuestion,
+      generatedAt: result.generatedAt,
+      provider: result.provider,
+      modelUsed: result.modelUsed,
+      responseType: result.responseType,
+      sessionId: result.sessionId,
+      userTruth: result.userTruth,
+      rewriteDecision: result.rewriteDecision,
+      rewriteReason: result.rewriteReason,
+      costDeducted: result.costDeducted,
+      frictionType: result.frictionType,
+      earlierSummary: result.earlierSummary,
+      earlierResultCount: result.earlierResultCount,
+      scopeType: CoachScopeType.partner,
+      scopeId: scope.id,
+      lifecyclePhase: lifecyclePhase,
+    );
+  }
+
+  bool _canResumeSession(UnifiedCoachResult previousResult) {
     if (previousResult.sessionId == null) return false;
     return DateTime.now().difference(previousResult.generatedAt) <=
         sessionResumeWindow;
   }
 
-  List<CoachChatSessionTurn> _seedTurns(CoachChatResult? previousResult) {
+  List<CoachChatSessionTurn> _seedTurns(UnifiedCoachResult? previousResult) {
     if (_activeTurns.isNotEmpty) return _activeTurns;
     if (previousResult == null || previousResult.sessionId == null) {
       return const [];

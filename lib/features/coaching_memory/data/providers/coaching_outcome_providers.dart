@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/services/storage_service.dart';
-import '../../../coach_chat/domain/entities/coach_chat_result.dart';
+import '../../../coach_chat/domain/entities/unified_coach_result.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../domain/entities/coaching_outcome_digest.dart';
 import '../../domain/entities/coaching_outcome_event.dart';
@@ -228,7 +228,7 @@ class CoachingOutcomeRecorder {
   }
 
   Future<CoachingOutcomeEvent> recordCoachResultOutcome({
-    required CoachChatResult result,
+    required UnifiedCoachResult result,
     required CoachingUserAction userAction,
     required CoachingOutcomeSignal outcome,
   }) {
@@ -244,7 +244,7 @@ class CoachingOutcomeRecorder {
   /// 只在第一段回報為 sentAsIs / editedAndSent（有發出）時才合法；
   /// 沒有第一段紀錄或第一段是 didNotSend / askedCoach 時回傳 null 不寫入。
   Future<CoachingOutcomeEvent?> recordCoachResultReaction({
-    required CoachChatResult result,
+    required UnifiedCoachResult result,
     required CoachingOutcomeSignal outcome,
   }) {
     return recordAdviceReaction(
@@ -253,7 +253,7 @@ class CoachingOutcomeRecorder {
     );
   }
 
-  CoachingAdviceContext _coachAdviceContext(CoachChatResult result) {
+  CoachingAdviceContext _coachAdviceContext(UnifiedCoachResult result) {
     return CoachingAdviceContext(
       eventId: coachingOutcomeIdForCoachResult(result.id),
       partnerId: result.partnerId,
@@ -296,7 +296,7 @@ class CoachingOutcomeRecorder {
         .trimRight();
   }
 
-  String _coachMoveSummary(CoachChatResult result) {
+  String _coachMoveSummary(UnifiedCoachResult result) {
     final raw = [
       result.nextStep,
       if (result.suggestedLine != null) result.suggestedLine!,

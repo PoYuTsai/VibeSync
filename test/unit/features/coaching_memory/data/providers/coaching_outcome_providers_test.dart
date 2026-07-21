@@ -1,13 +1,16 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/unified_coach_result.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
 import 'package:vibesync/features/coaching_memory/domain/entities/coaching_outcome_event.dart';
 
 import '../../../../../helpers/memory_coaching_outcome_repository.dart';
 import '../../../../../helpers/recording_coaching_outcome_uploader.dart';
 
-CoachChatResult _coachResult({
+// Phase E：recorder 改吃 unified 型別；fixture 沿用 legacy builder 經
+// 1:1 映射轉入（機械調整，語意不變）。
+UnifiedCoachResult _coachResult({
   String id = 'result-1',
   String? partnerId = 'partner-1',
   String conversationId = 'conversation-1',
@@ -15,7 +18,7 @@ CoachChatResult _coachResult({
   String? suggestedLine = '你這句有點突然，但我可以接。',
   String headline = '先穩住節奏',
 }) {
-  return CoachChatResult(
+  return UnifiedCoachResult.fromCoachChatResult(CoachChatResult(
     id: id,
     conversationId: conversationId,
     partnerId: partnerId,
@@ -31,7 +34,7 @@ CoachChatResult _coachResult({
     generatedAt: DateTime.utc(2026, 5, 15, 8),
     provider: 'claude',
     modelUsed: 'claude-sonnet-4-20250514',
-  );
+  ));
 }
 
 CoachingAdviceContext _openerAdvice({String type = 'extend'}) {

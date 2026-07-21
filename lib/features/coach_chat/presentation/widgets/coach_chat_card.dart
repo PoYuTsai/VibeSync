@@ -14,7 +14,8 @@ import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../data/providers/coach_chat_providers.dart';
 import '../../data/services/coach_chat_api_service.dart';
 import '../../domain/entities/coach_chat_mode.dart';
-import '../../domain/entities/coach_chat_result.dart';
+import '../../domain/entities/coach_scope.dart';
+import '../../domain/entities/unified_coach_result.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import 'coach_chat_progress_notice.dart';
@@ -145,13 +146,15 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
     if (mounted) setState(() {});
   }
 
+  /// Phase E：本卡是分析頁 1:1 入口，固定 conversation scope。
+  CoachScope get _scope => CoachScope.conversation(widget.conversationId);
+
   @override
   Widget build(BuildContext context) {
-    final provider = coachChatControllerProvider(widget.conversationId);
+    final provider = coachChatControllerProvider(_scope);
     final state = ref.watch(provider);
-    final progress =
-        ref.watch(coachChatProgressProvider(widget.conversationId));
-    final history = ref.watch(coachChatHistoryProvider(widget.conversationId));
+    final progress = ref.watch(coachChatProgressProvider(_scope));
+    final history = ref.watch(coachChatHistoryProvider(_scope));
     final subscription = ref.watch(subscriptionProvider);
     final conversation = ref.watch(conversationProvider(widget.conversationId));
     final timeline = _mergeCoachHistory(
@@ -171,7 +174,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
     final isClarifying =
         !activeError && (latest?.isClarifyingQuestion ?? false);
 
-    ref.listen<AsyncValue<CoachChatResult?>>(provider, (previous, next) {
+    ref.listen<AsyncValue<UnifiedCoachResult?>>(provider, (previous, next) {
       final error = next.error;
       if (error == null) return;
       if (!context.mounted) return;
@@ -368,11 +371,11 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
     );
   }
 
-  List<CoachChatResult> _mergeCoachHistory({
-    required List<CoachChatResult> history,
-    required CoachChatResult? current,
+  List<UnifiedCoachResult> _mergeCoachHistory({
+    required List<UnifiedCoachResult> history,
+    required UnifiedCoachResult? current,
   }) {
-    final byId = <String, CoachChatResult>{
+    final byId = <String, UnifiedCoachResult>{
       for (final result in history) result.id: result,
     };
     if (current != null) {
@@ -431,9 +434,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
   }
 
   Future<void> _ask() async {
-    if (ref
-        .read(coachChatControllerProvider(widget.conversationId))
-        .isLoading) {
+    if (ref.read(coachChatControllerProvider(_scope)).isLoading) {
       return;
     }
     final question = _controller.text.trim();
@@ -443,9 +444,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
       featureLabel: 'Coach 1:1',
     );
     if (!consented || !mounted) return;
-    if (ref
-        .read(coachChatControllerProvider(widget.conversationId))
-        .isLoading) {
+    if (ref.read(coachChatControllerProvider(_scope)).isLoading) {
       return;
     }
     FocusScope.of(context).unfocus();
@@ -453,7 +452,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
       _lastAskedQuestion = question;
       _controller.clear();
     });
-    ref.read(coachChatControllerProvider(widget.conversationId).notifier).ask(
+    ref.read(coachChatControllerProvider(_scope).notifier).ask(
           question: question,
           analysisSnapshot: widget.analysisSnapshot,
         );
@@ -479,7 +478,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
     );
     if (!consented || !mounted) return;
     await ref
-        .read(coachChatControllerProvider(widget.conversationId).notifier)
+        .read(coachChatControllerProvider(_scope).notifier)
         .forceAnswer(analysisSnapshot: widget.analysisSnapshot);
   }
 
@@ -500,7 +499,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
 }
 
 class _CoachChatThreadView extends StatelessWidget {
-  final List<CoachChatResult> results;
+  final List<UnifiedCoachResult> results;
   final int dailyRemaining;
   final VoidCallback onFollowUp;
   final VoidCallback onForceAnswer;
@@ -569,7 +568,7 @@ class _CoachChatThreadView extends StatelessWidget {
 }
 
 class _EarlierCoachSummaryCard extends StatelessWidget {
-  final CoachChatResult result;
+  final UnifiedCoachResult result;
 
   const _EarlierCoachSummaryCard({required this.result});
 
@@ -624,7 +623,7 @@ class _EarlierCoachSummaryCard extends StatelessWidget {
 }
 
 class _CoachChatHistoryTile extends StatelessWidget {
-  final CoachChatResult result;
+  final UnifiedCoachResult result;
 
   const _CoachChatHistoryTile({required this.result});
 
@@ -744,7 +743,7 @@ class _CoachChatHistoryTile extends StatelessWidget {
 /// 公開僅為了 widget test 直接 pump；production 只在本檔內使用。
 @visibleForTesting
 class CoachChatResultView extends ConsumerWidget {
-  final CoachChatResult result;
+  final UnifiedCoachResult result;
   final String? question;
   final int dailyRemaining;
   final VoidCallback onFollowUp;

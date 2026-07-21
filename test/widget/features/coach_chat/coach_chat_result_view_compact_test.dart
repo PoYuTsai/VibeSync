@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/unified_coach_result.dart';
 import 'package:vibesync/features/coach_chat/presentation/widgets/coach_chat_card.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
 
@@ -67,7 +68,9 @@ Widget _wrap(CoachChatResult result) {
       home: Scaffold(
         body: SingleChildScrollView(
           child: CoachChatResultView(
-            result: result,
+            // Phase E：view 改吃 unified 型別；測試 fixture 沿用 legacy
+            // builder 經 1:1 映射轉入（機械調整，UI 邏輯不變）。
+            result: UnifiedCoachResult.fromCoachChatResult(result),
             dailyRemaining: 3,
             onFollowUp: () {},
             onForceAnswer: () {},
