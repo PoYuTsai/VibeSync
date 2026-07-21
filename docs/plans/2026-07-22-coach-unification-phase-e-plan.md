@@ -165,6 +165,8 @@ CoachSurface({
 
 **Step 2: 分析頁呼叫端改 `CoachSurface(scope: CoachScope.conversation(conversationId), ...)`**，其餘參數照舊。
 
+> **執行偏離註記（2026-07-22，雙審 APPROVED）**：dataQualityFlag／風格 provider 未做 conversation-only gate，改為 partner scope 用 `scope.id` 當 partnerId 照讀（與 controller 端 Task 4 實作鏡像；partner scope 本應顯示風格檔案 chip）。lifecyclePhase 同理雙 scope 都送 wire、conversation 也落卡（`fromCoachChatResult` 加選填參數）。非漏 gate。
+
 **Step 3: 跑測**：`flutter test test/widget/features/coach_chat/ test/unit/features/coach_chat/ --concurrency=1` → 全綠；`flutter analyze` 0 issue（抓漏改的呼叫端）。
 
 **Step 4: Commit** `教練統一 Phase E Task5：CoachChatCard 抽出 scope 參數化 CoachSurface（conversation 對等）`＋push。
