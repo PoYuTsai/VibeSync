@@ -198,25 +198,49 @@ class ConversationRepository {
     await Future.wait(conversationIds.map(_deleteCoachChatForConversation));
   }
 
+  /// legacy-17 與 unified 兩段清理各自獨立 try-catch：任一段失敗不得連坐
+  /// 另一段（review P2-1，否則留下隱私孤兒 rows）。首個錯誤照原 stack trace
+  /// 重拋，維持既有 cleanupError 回報慣例。
   Future<void> _deleteCoachChatForConversation(String conversationId) async {
-    if (Hive.isBoxOpen('coach_chat_results')) {
-      final ids = StorageService.coachChatResultsBox.values
-          .where((result) => result.conversationId == conversationId)
-          .map((result) => result.id)
-          .toList();
-      await Future.wait(ids.map(StorageService.coachChatResultsBox.delete));
+    Object? firstError;
+    StackTrace? firstStackTrace;
+
+    try {
+      if (Hive.isBoxOpen('coach_chat_results')) {
+        final ids = StorageService.coachChatResultsBox.values
+            .where((result) => result.conversationId == conversationId)
+            .map((result) => result.id)
+            .toList();
+        await Future.wait(ids.map(StorageService.coachChatResultsBox.delete));
+      }
+    } catch (error, stackTrace) {
+      firstError = error;
+      firstStackTrace = stackTrace;
     }
+
     // 教練統一 Phase D：unified box 的 conversation-scope rows 也要跟著清，
     // 否則刪對話後留下孤兒教練紀錄（隱私縫）。box 未開時跳過不炸。
-    if (Hive.isBoxOpen('unified_coach_results')) {
-      final unifiedBox = StorageService.unifiedCoachResultsBox;
-      final unifiedIds = unifiedBox.values
-          .where(
-            (r) => r.scopeType == 'conversation' && r.scopeId == conversationId,
-          )
-          .map((r) => r.id)
-          .toList();
-      await Future.wait(unifiedIds.map(unifiedBox.delete));
+    try {
+      if (Hive.isBoxOpen('unified_coach_results')) {
+        final unifiedBox = StorageService.unifiedCoachResultsBox;
+        final unifiedIds = unifiedBox.values
+            .where(
+              (r) =>
+                  r.scopeType == 'conversation' && r.scopeId == conversationId,
+            )
+            .map((r) => r.id)
+            .toList();
+        await Future.wait(unifiedIds.map(unifiedBox.delete));
+      }
+    } catch (error, stackTrace) {
+      if (firstError == null) {
+        firstError = error;
+        firstStackTrace = stackTrace;
+      }
+    }
+
+    if (firstError != null) {
+      Error.throwWithStackTrace(firstError, firstStackTrace!);
     }
   }
 

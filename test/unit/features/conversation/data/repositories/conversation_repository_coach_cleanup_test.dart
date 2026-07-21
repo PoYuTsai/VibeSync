@@ -184,6 +184,43 @@ void main() {
     expect(StorageService.coachChatResultsBox.values, isEmpty);
   });
 
+  test(
+      'legacy-17 清理拋錯時 unified rows 仍被清掉，'
+      '錯誤仍經 cleanupError 回報（review P2-1）', () async {
+    final c1 = _conversation('c1');
+    await StorageService.conversationsBox.put(c1.id, c1);
+
+    final unifiedBox = StorageService.unifiedCoachResultsBox;
+    await unifiedBox.put(
+      'u-c1',
+      _unifiedResult('u-c1', scopeType: 'conversation', scopeId: 'c1'),
+    );
+    await unifiedBox.put(
+      'u-p1',
+      _unifiedResult('u-p1', scopeType: 'partner', scopeId: 'p1'),
+    );
+
+    // 讓 legacy-17 段真的拋錯：把 coach_chat_results 換成 dynamic 型別重開，
+    // isBoxOpen 仍為 true，但 typed accessor 取 Box<CoachChatResult> 會丟
+    // HiveError（型別不符）。
+    await Hive.box<CoachChatResult>('coach_chat_results').close();
+    await Hive.openBox<dynamic>('coach_chat_results');
+
+    final outcome = await repo.deleteConversation('c1');
+
+    expect(outcome.deleted, isTrue);
+    // 錯誤照既有慣例經 cleanupError 浮出，不被吞掉。
+    expect(outcome.cleanupError, isNotNull);
+    // legacy 段失敗不得連坐 unified 清理：c1 rows 必須清空。
+    expect(
+      unifiedBox.values.where(
+        (r) => r.scopeType == 'conversation' && r.scopeId == 'c1',
+      ),
+      isEmpty,
+    );
+    expect(unifiedBox.keys, ['u-p1']);
+  });
+
   test('deleteAll 清掉本人全部對話的 unified conversation rows', () async {
     final c1 = _conversation('c1');
     final c2 = _conversation('c2');
