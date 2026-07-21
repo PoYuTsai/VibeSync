@@ -1,7 +1,7 @@
 # 教練統一案設計文件（問教練一句 × 教練跟進 合併）
 
 > **For Claude:** 本檔為 Phase A 設計鎖定產出＝後續各 Phase 的真相源。各 Phase 開工時另出 bite-sized 實作計畫（superpowers:writing-plans），執行用 superpowers:executing-plans。
-> **狀態**: Phase A — 待 Eric/Bruce 拍板 D-1~D-6
+> **狀態**: Phase A 完成 — D-1~D-6 已於 2026-07-21 由 Eric 拍板（見 §6）；下一步＝Phase B 實作計畫
 > **分支**: `claude/coach-question-followup-integration-5twkr6`
 > **日期**: 2026-07-21
 
@@ -36,7 +36,7 @@
 
 就地擴充 coach-chat 為統一大腦，coach-follow-up 凍結為 legacy 相容 shim（D-1 建議案：port 成本最低、避免第三個部署函式）。
 
-1. **情境折入為加性欄位**（不動 `mode`）：新增選填 `lifecyclePhase?`（`prepareInvite`/`preDateReminder`/`postDateReflection`；`openCoach`＝一般自由首輪）＋ `structuredAnswers?{q1,q2?,q3?}`（形狀沿用 coach-follow-up 的 `answers`，統一端命名 `structuredAnswers` 避免與既有語意混淆）；`prompts.ts` 加情境 framing 段落。
+1. **情境折入為加性欄位**（不動 `mode`）：新增選填 `lifecyclePhase?`（`chatStalled`/`prepareInvite`/`postDate`；缺席＝一般自由首輪 openCoach）；`prompts.ts` 加情境 framing 段落。**不新增 `structuredAnswers`**——固定表單是陽春教練不會追問的補償，統一後由免費釐清輪收集情境（D-4 拍板）；舊表單欄位 `answers` 只活在 legacy shim（coach-follow-up），不進 coach-chat schema。
 2. **scope 判別式**：新增選填 `scope: {type:"conversation",conversationId} | {type:"partner",partnerId}`，同時保留頂層 `conversationId`/`partnerId` 相容舊 client；server 導出 `scopeKey="${type}:${id}"`。**response 契約不變。**
 3. **單一 Hive model**（typeId 26）：read-bridge 遷移（Phase D）。
 4. **單一 rate-limit scope `coach`** ＋ 不變成本 transform。
@@ -73,12 +73,12 @@
 - 驗收：Eric 拍板 D-1~D-6；Codex packet（base ref／檔案清單／高風險焦點）就緒。
 
 ### Phase B — 後端加欄位、行為不變（先鋪路）
-- 目標：coach-chat 看得懂新選填欄位（`requestId`/`scope`/`lifecyclePhase`/`structuredAnswers`），沒人送時行為與今日 byte-for-byte 相同；prompt 加情境段落。
+- 目標：coach-chat 看得懂新選填欄位（`requestId`/`scope`/`lifecyclePhase`），沒人送時行為與今日 byte-for-byte 相同；prompt 加三情境段落（chatStalled/prepareInvite/postDate）。
 - 改檔：`supabase/functions/coach-chat/{schemas,prompts,validate,index}.ts` ＋各 `_test.ts`。
 - 驗收：Deno 測舊 body 仍過、新欄位選填、response byte-identical、情境 prompt 段落形狀；測試帳號 live 舊格式仍 200。可先部署、對現況零影響。
 
 ### Phase C — 扣費只算一次（最敏感、單獨隔離）
-- 目標：新增帳本表 `coach_requests`，複製 keyboard exactly-once（ADR #22 範本）：同 requestId 只生成/扣費一次，斷線重送回放同卡不重扣；釐清不扣；生成失敗不扣；帳本沒裝好 fail-closed 503 不扣。`input_hash`＝server-keyed HMAC over（userQuestion＋sessionId＋activeSessionTurns＋forceAnswer＋scopeKey＋lifecyclePhase/structuredAnswers）。`result_json` 只存卡＋envelope（CHECK 結構檢查、不存來源文字）。requestId 缺席→今日 deduct-on-success 路徑。
+- 目標：新增帳本表 `coach_requests`，複製 keyboard exactly-once（ADR #22 範本）：同 requestId 只生成/扣費一次，斷線重送回放同卡不重扣；釐清不扣；生成失敗不扣；帳本沒裝好 fail-closed 503 不扣。`input_hash`＝server-keyed HMAC over（userQuestion＋sessionId＋activeSessionTurns＋forceAnswer＋scopeKey＋lifecyclePhase）。`result_json` 只存卡＋envelope（CHECK 結構檢查、不存來源文字）。requestId 缺席→今日 deduct-on-success 路徑。
 - 改檔：新 `supabase/migrations/<new>_coach_exactly_once.sql`（範本＝`20260717120000_keyboard_reply_exactly_once.sql`）、`coach-chat/{index,generation,progress_stream}.ts`、重用 increment_usage RPC。
 - 部署順序：先 apply_migration＋對齊 ledger 版本 → 再部署 Edge → 最後才出 App。**絕不 `supabase db push`。**
 - 驗收：Deno 測 claim=claimed/replay/pending/mismatch、settle charge=1 vs 0、release-then-retry、owner mismatch、quota-RAISE→429、contract 缺→503；測試帳號 live 三態 smoke（fresh／斷線重送／mismatch）驗 DB row＋零殘留；串流 replay 只發單一 `coach.done`。**Codex adversarial APPROVED 才可稱 safe。**
@@ -90,7 +90,7 @@
 - 驗收：Flutter unit 測合併/去重/排序、rollup 與今日對等、clearAll 清 unified、換用戶零殘留、刪對象/刪對話清對應 unified rows。Codex APPROVED。
 
 ### Phase E — 前端合體（使用者真正有感）
-- 目標：從 `CoachChatCard` 抽出 scope 參數化的共用 `CoachSurface`（串流渲染／threaded 歷史／釐清・forceAnswer／reflection・outcome）。分析頁掛 `CoachSurface(scope: conversation)`；`CoachFollowUpSection` 變薄 wrapper＝情境 chip row＋openCoach entry 疊在 `CoachSurface(scope: partner)` 上 → 夥伴層首次有 threading/串流/成效。chip 點擊以 `lifecyclePhase`＋`structuredAnswers` 種入；新 client 送 `requestId`（重送保持同值）；「問教練」全指向同一 engine，只差 scope。
+- 目標：從 `CoachChatCard` 抽出 scope 參數化的共用 `CoachSurface`（串流渲染／threaded 歷史／釐清・forceAnswer／reflection・outcome）。分析頁掛 `CoachSurface(scope: conversation)`；`CoachFollowUpSection` 變薄 wrapper＝情境 chip row＋openCoach entry 疊在 `CoachSurface(scope: partner)` 上 → 夥伴層首次有 threading/串流/成效。三顆新 chip（拍板 2026-07-21）＝**「聊天卡住了」（chatStalled）／「想約她出來」（prepareInvite）／「約完會之後」（postDate）**，點擊種入 `lifecyclePhase`＋開場問題 prefill，細節由免費釐清輪收集（無固定表單）；chip 區文案改反映「釐清免費、正式建議才扣 1」（取代「生成會扣 1 則額度」）；新 client 送 `requestId`（重送保持同值）；「問教練」全指向同一 engine，只差 scope。
 - 改檔：`coach_chat_card.dart`、`coach_chat_api_service.dart`（＋requestId）、`coach_chat_providers.dart`、`coach_follow_up_section.dart`、`partner_detail_screen.dart`、`partner_mind_map_screen.dart`、`lib/app/routes.dart`。
 - 驗收：Flutter widget/controller 測雙 scope、夥伴層 threading/串流/forceAnswer、consent gate、deep-link focus/prefill/mind-map redirect、requestId 重送穩定；`flutter test` 全套＋`flutter analyze` 0 issue；雙介面 live end-to-end。
 
@@ -98,14 +98,14 @@
 - 目標：凍結 coach-follow-up，定義「舊 build 汰換完成」觸發點以刪 shim＋清 legacy box，抵達單函式/單模型/單 scope 終態。
 - 產出：更新 `docs/decisions.md`（新 ADR）。
 
-## 6. 待拍板 D-1 ~ D-6（附建議預設）
+## 6. 拍板結果 D-1 ~ D-6（Eric，2026-07-21）
 
-- **D-1** 就地擴充 coach-chat（**建議**）vs 新開 `/coach` slug 強隔離。
-- **D-2** 統一 rate-limit `coach` 數值（**建議**沿用較寬的 10/min、300/day）。
-- **D-3**（billing）partner openCoach 改「釐清免費／正式扣 1」——比現在少扣，需 Eric 明確確認。
-- **D-4** 夥伴層維持精簡 5 欄卡 vs 採用完整教練卡 UI。
-- **D-5** 接受 read-bridge（**建議**，暫時並存 3 model、零觸碰 typeId-17）vs 一次性 copy 大遷移。
-- **D-6**（次要）遷移的舊卡 `costDeducted` 未知（顯示用）→ 選中性 sentinel。
+- **D-1 ✅** 就地擴充 coach-chat（不開新 `/coach` slug）。
+- **D-2 ✅** 統一 rate-limit `coach`＝10/min、300/day。
+- **D-3 ✅** partner openCoach 改「釐清免費／正式建議扣 1」（Eric 明確確認接受少扣）。
+- **D-4 ✅** 採完整教練卡 UI＋**罐頭情境重設計**（Eric 判原三情境不實用——全假設已到約會階段，與用戶實際卡點錯位）。新三情境照追求漏斗：`chatStalled`「聊天卡住了」／`prepareInvite`「想約她出來」／`postDate`「約完會之後」（合併原提醒＋復盤）。固定表單廢除，改由免費釐清輪收集情境 → coach-chat schema **不加** `structuredAnswers`。
+- **D-5 ✅** read-bridge（並存 3 model、零觸碰 typeId-16/17）。
+- **D-6 ✅** 遷移舊卡 `costDeducted` 用中性 sentinel。
 
 ## 7. Codex 審查包（每高風險 Phase 出包）
 
