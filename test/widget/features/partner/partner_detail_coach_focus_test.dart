@@ -19,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_follow_up/data/providers/coach_follow_up_providers.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/coach_follow_up/domain/repositories/coach_follow_up_repository.dart';
@@ -34,6 +35,8 @@ import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_
 import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
+
+import '../../../helpers/memory_coach_chat_repository.dart';
 
 class _FakeCoachFollowUpRepo implements CoachFollowUpRepository {
   final Map<String, CoachFollowUpResult> _store = {};
@@ -104,6 +107,9 @@ List<Override> _overrides(List<Conversation> conversations) => [
       partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
       coachFollowUpRepositoryProvider
           .overrideWithValue(_FakeCoachFollowUpRepo()),
+      // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+      coachChatRepositoryProvider
+          .overrideWithValue(MemoryCoachChatRepository()),
       partnerByIdProvider('p1').overrideWith((_) => _p()),
       partnerAggregateProvider('p1')
           .overrideWith((_) => PartnerAggregateView.empty()),
@@ -151,7 +157,9 @@ void main() {
         reason: 'coach entry must be on-screen, not below the fold');
 
     // And the input sheet opened (invariant: AFTER positioning).
-    expect(find.byType(TextField), findsOneWidget);
+    // Phase E Task 6：頁面本體多了 CoachSurface 輸入框，sheet 開啟改用
+    // sheet 專屬送出鈕斷言（orchestrator 本體 Task 7 改 focus CoachSurface）。
+    expect(find.text('讓教練看一下'), findsOneWidget);
   });
 
   testWidgets(
@@ -215,7 +223,8 @@ void main() {
     expect(anchor, findsOneWidget);
     expect(t.getTopLeft(anchor).dy, lessThan(844));
 
-    expect(find.byType(TextField), findsOneWidget,
+    // Phase E Task 6：同上，sheet 開啟改用 sheet 專屬送出鈕斷言。
+    expect(find.text('讓教練看一下'), findsOneWidget,
         reason: 'sheet opens after positioning');
   });
 }

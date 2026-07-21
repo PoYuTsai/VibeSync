@@ -1,38 +1,42 @@
-// Spec 5 C24 — CoachFollowUpSection widget TDD spec.
+// Phase E Task 6 — CoachFollowUpSection 薄 wrapper widget TDD spec.
 //
-// The section sits between PartnerRadarSummaryCard and the conversations
-// list on partner detail. Two visual states (default / with-result) plus a
-// telemetry callback contract that survives until X25 wires a real SDK.
-//
-// Design choices locked at C24 kickoff (see commit body):
-//   • Insert anchor B — between Style+Radar cluster and conversations list
-//     (preserves existing profile cluster, doesn't reorder shipped widgets).
-//   • 換情境 = local UI flag only — does NOT delete the Hive result. Latest-
-//     only persistence still holds because the next successful generate
-//     overwrites.
-//   • Telemetry = typed sealed callback contract emitted now, wired to a
-//     stub at the screen layer until X25 swaps in the real sink.
-
+// 對象頁教練區改掛 CoachSurface（partner scope）：section 只剩
+// 標題＋三情境 chip＋caption＋openCoach entry＋CoachSurface。chip 點擊
+// 只「種入」lifecyclePhase＋prefill＋focus token（絕無 auto-send）；
+// 舊罐頭卡 engine（input sheet / controller.generate / result card）
+// 全數凍結退場，不再被本 widget 引用。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vibesync/features/coach_follow_up/data/providers/coach_follow_up_providers.dart';
-import 'package:vibesync/features/coach_follow_up/data/services/coach_follow_up_api_service.dart';
-import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_phase.dart';
-import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
-import 'package:vibesync/features/coach_follow_up/domain/repositories/coach_follow_up_repository.dart';
+import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
+import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
+import 'package:vibesync/features/coach_chat/presentation/widgets/coach_surface.dart';
+import 'package:vibesync/features/coach_follow_up/presentation/widgets/coach_follow_up_input_sheet.dart';
 import 'package:vibesync/features/coach_follow_up/presentation/widgets/coach_follow_up_section.dart';
-import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
-import 'package:vibesync/features/conversation/domain/entities/message.dart';
+import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
+import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
+import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
+import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
+import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
+
+import '../../../helpers/memory_coach_chat_repository.dart';
+import '../../../helpers/memory_coaching_outcome_repository.dart';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────
 
 const _partnerId = 'p1';
+
+/// 三情境 chip 的規格三元組（Task 6 拍板；與實作常數字面對齊）。
+const _chipSpecs = [
+  (phase: 'chatStalled', label: '聊天卡住了', prefill: '我們聊天卡住了，接下來該怎麼辦？'),
+  (phase: 'prepareInvite', label: '想約她出來', prefill: '我想約她出來，該怎麼開口比較自然？'),
+  (phase: 'postDate', label: '約完會之後', prefill: '剛約完會，接下來要怎麼經營比較好？'),
+];
 
 Partner _partner() => Partner(
       id: _partnerId,
@@ -42,148 +46,80 @@ Partner _partner() => Partner(
       updatedAt: DateTime(2026, 5, 1),
     );
 
-Message _msg(String content, {bool fromMe = false}) => Message(
-      id: 'm-${content.hashCode}',
-      content: content,
-      isFromMe: fromMe,
-      timestamp: DateTime(2026, 5, 1, 17),
-    );
-
-Conversation _convo({
-  List<Message> messages = const [],
-  int? heat,
-  String? gameStage,
-}) =>
-    Conversation(
-      id: 'c1',
-      name: '對話',
-      messages: List.of(messages),
-      createdAt: DateTime(2026, 5, 1),
-      updatedAt: DateTime(2026, 5, 1, 18),
-      partnerId: _partnerId,
-      ownerUserId: 'u1',
-      lastEnthusiasmScore: heat,
-      currentGameStage: gameStage,
-    );
-
-CoachFollowUpResult _stored({
-  CoachFollowUpPhase phase = CoachFollowUpPhase.prepareInvite,
-  String headline = 'STORED_HEADLINE',
-}) =>
-    CoachFollowUpResult(
-      partnerId: _partnerId,
-      phase: phase.name,
-      headline: headline,
-      observation: 'STORED_OBS',
-      task: 'STORED_TASK',
-      suggestedLine: null,
-      boundaryReminder: 'STORED_BR',
-      generatedAt: DateTime(2026, 5, 1),
-      modelUsed: 'claude-haiku-4-5-20251001',
-    );
-
-// ── Test doubles ──────────────────────────────────────────────────────────
-
-class _FakeRepo implements CoachFollowUpRepository {
-  final Map<String, CoachFollowUpResult> _store = {};
-
-  void seed(CoachFollowUpResult r) => _store[r.partnerId] = r;
-
+class _FakeStyleRepo implements PartnerStyleRepository {
   @override
-  CoachFollowUpResult? get(String id) => _store[id];
-
+  Future<PartnerStyleOverride?> load(String partnerId) async => null;
   @override
-  Future<void> put(CoachFollowUpResult r) async => _store[r.partnerId] = r;
-
+  Future<void> save(PartnerStyleOverride o) async {}
   @override
-  Future<void> delete(String id) async => _store.remove(id);
-
+  Future<void> delete(String partnerId) async {}
   @override
-  Future<void> clearAll() async => _store.clear();
+  Future<void> clearAll() async {}
 }
 
-CoachFollowUpInvoker _stubInvoker({
-  String phase = 'prepareInvite',
-  String headline = 'GEN_HEADLINE',
+/// 記錄每次真正打到 API 的呼叫（auto-send 佐證：必須為 0）。
+CoachChatInvoker _recordingInvoker(
+  List<Map<String, dynamic>> calls, {
+  int status = 429,
+  Map<String, dynamic>? data,
 }) {
   return (String _, {required Map<String, dynamic> body}) async {
-    return CoachFollowUpInvokeResponse(
-      status: 200,
-      data: <String, dynamic>{
-        'phase': phase,
-        'card': <String, dynamic>{
-          'headline': headline,
-          'observation': 'GEN_OBS',
-          'task': 'GEN_TASK',
-          'boundaryReminder': 'GEN_BR',
-        },
-        'model': 'claude-haiku-4-5-20251001',
-        'generatedAt': '2026-05-02T12:00:00.000Z',
-      },
-    );
-  };
-}
-
-CoachFollowUpInvoker _errorInvoker({
-  int status = 500,
-  String error = 'schema_invalid',
-}) {
-  return (String _, {required Map<String, dynamic> body}) async {
-    return CoachFollowUpInvokeResponse(
+    calls.add(body);
+    return CoachChatInvokeResponse(
       status: status,
-      data: <String, dynamic>{'error': error},
-    );
-  };
-}
-
-CoachFollowUpInvoker _quotaInvoker() {
-  return (String _, {required Map<String, dynamic> body}) async {
-    return CoachFollowUpInvokeResponse(
-      status: 429,
-      data: <String, dynamic>{
-        'error': 'Daily limit exceeded',
-        'used': 15,
-        'limit': 15,
-      },
+      data: data ??
+          <String, dynamic>{
+            'error': 'Daily limit exceeded',
+            'used': 15,
+            'limit': 15,
+          },
     );
   };
 }
 
 // ── Pump helper ───────────────────────────────────────────────────────────
 
-Future<void> _pump(
+Future<
+    ({
+      MemoryCoachChatRepository repo,
+      List<Map<String, dynamic>> apiCalls,
+    })> _pump(
   WidgetTester tester, {
-  required _FakeRepo repo,
-  CoachFollowUpInvoker? invoker,
-  Partner? partner,
-  List<Conversation> conversations = const [],
-  DataQualityFlag flag = const DataQualityFlag.unflagged(),
-  ValueChanged<CoachFollowUpTelemetryEvent>? onTelemetry,
   Future<void> Function()? onQuotaExceeded,
   Key? openCoachEntryAnchorKey,
   bool openCoachInputOnFirstBuild = false,
+  bool compactPracticePresentation = false,
 }) async {
+  await tester.binding.setSurfaceSize(const Size(430, 1600));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+
+  final repo = MemoryCoachChatRepository();
+  final apiCalls = <Map<String, dynamic>>[];
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        coachFollowUpRepositoryProvider.overrideWithValue(repo),
-        coachFollowUpApiServiceProvider.overrideWithValue(
-          CoachFollowUpApiService(invoker: invoker ?? _stubInvoker()),
+        coachChatRepositoryProvider.overrideWithValue(repo),
+        coachChatApiServiceProvider.overrideWithValue(
+          CoachChatApiService(invoker: _recordingInvoker(apiCalls)),
         ),
-        partnerByIdProvider(_partnerId).overrideWithValue(partner),
-        conversationsByPartnerProvider(_partnerId)
-            .overrideWithValue(conversations),
-        dataQualityFlagProvider(_partnerId).overrideWithValue(flag),
+        coachingOutcomeRepositoryProvider
+            .overrideWithValue(MemoryCoachingOutcomeRepository()),
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        partnerByIdProvider(_partnerId).overrideWith((_) => _partner()),
+        partnerAggregateProvider(_partnerId)
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider(_partnerId)
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
       ],
       child: MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
             child: CoachFollowUpSection(
               partnerId: _partnerId,
-              onTelemetry: onTelemetry,
               onQuotaExceeded: onQuotaExceeded,
               openCoachEntryAnchorKey: openCoachEntryAnchorKey,
               openCoachInputOnFirstBuild: openCoachInputOnFirstBuild,
+              compactPracticePresentation: compactPracticePresentation,
             ),
           ),
         ),
@@ -191,9 +127,11 @@ Future<void> _pump(
     ),
   );
   await tester.pumpAndSettle();
+  return (repo: repo, apiCalls: apiCalls);
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────
+CoachSurface _surface(WidgetTester tester) =>
+    tester.widget<CoachSurface>(find.byType(CoachSurface));
 
 void main() {
   setUp(() {
@@ -202,448 +140,140 @@ void main() {
     );
   });
 
-  group('CoachFollowUpSection — default state (no stored result)', () {
-    testWidgets('exposes an anchor on the open coach input entry', (t) async {
-      final anchorKey = GlobalKey();
-      await _pump(
-        t,
-        repo: _FakeRepo(),
-        partner: _partner(),
-        openCoachEntryAnchorKey: anchorKey,
-      );
+  group('CoachFollowUpSection — 薄 wrapper 渲染', () {
+    testWidgets('渲染三情境 chip＋openCoach entry＋partner-scope CoachSurface',
+        (t) async {
+      await _pump(t);
 
-      final anchoredEntry = find.byKey(anchorKey);
-      expect(anchoredEntry, findsOneWidget);
+      for (final chip in _chipSpecs) {
+        expect(find.text(chip.label), findsOneWidget);
+      }
+      expect(find.text('或直接問教練一個問題…'), findsOneWidget);
+
+      final surface = _surface(t);
+      expect(surface.scope.isConversation, isFalse);
+      expect(surface.scope.id, _partnerId);
+      // 初始：無 phase、無 prefill、token 起點。
+      expect(surface.lifecyclePhase, isNull);
+      expect(surface.prefillText, isNull);
+    });
+
+    testWidgets('caption＝「釐清免費，正式建議才扣 1 則」；舊扣費文案全滅', (t) async {
+      await _pump(t);
+
+      expect(find.text('釐清免費，正式建議才扣 1 則'), findsOneWidget);
+      expect(find.textContaining('生成會扣 1 則'), findsNothing);
+      expect(find.textContaining('重新生成會再扣 1 則額度'), findsNothing);
+    });
+
+    testWidgets('openCoach entry 支援 anchor key（deep-link 捲動錨點不變）', (t) async {
+      final anchorKey = GlobalKey();
+      await _pump(t, openCoachEntryAnchorKey: anchorKey);
+
       expect(
         find.descendant(
-          of: anchoredEntry,
+          of: find.byKey(anchorKey),
           matching: find.text('或直接問教練一個問題…'),
         ),
         findsOneWidget,
       );
     });
 
-    testWidgets('auto-opens the open coach input sheet on first build',
-        (t) async {
-      await _pump(
-        t,
-        repo: _FakeRepo(),
-        partner: _partner(),
-        openCoachInputOnFirstBuild: true,
-      );
+    testWidgets('compact 練習版仍渲染三 chip＋CoachSurface', (t) async {
+      await _pump(t, compactPracticePresentation: true);
 
-      final fieldFinder = find.byType(TextField);
-      expect(fieldFinder, findsOneWidget);
-      final field = t.widget<TextField>(fieldFinder);
-      expect(field.maxLength, 120);
-      expect(field.maxLines, 4);
+      for (final chip in _chipSpecs) {
+        expect(find.text(chip.label), findsOneWidget);
+      }
+      expect(find.byType(CoachSurface), findsOneWidget);
+    });
+  });
+
+  group('CoachFollowUpSection — chip 種入 CoachSurface', () {
+    testWidgets('點 chip → lifecyclePhase＋prefill＋focus token 遞增，絕無 auto-send',
+        (t) async {
+      final pumped = await _pump(t);
+      final baseToken = _surface(t).focusRequestToken;
+
+      var taps = 0;
+      for (final chip in _chipSpecs) {
+        await t.tap(find.text(chip.label));
+        await t.pumpAndSettle();
+        taps += 1;
+
+        final surface = _surface(t);
+        expect(surface.lifecyclePhase, chip.phase);
+        expect(surface.prefillText, chip.prefill);
+        expect(surface.focusRequestToken, baseToken + taps);
+        // prefill 落在輸入框、等待用戶自行送出。
+        expect(find.widgetWithText(TextField, chip.prefill), findsOneWidget);
+      }
+
+      // 絕無 auto-send：零 API 呼叫、零落卡。
+      expect(pumped.apiCalls, isEmpty);
+      expect(pumped.repo.putUnifiedCalls, 0);
+      expect(find.textContaining('你剛剛問'), findsNothing);
     });
 
-    testWidgets('renders 3 chips + quota caption, no result-card surface',
+    testWidgets('點 openCoach entry → token 遞增、lifecyclePhase null、prefill null',
         (t) async {
-      await _pump(t, repo: _FakeRepo(), partner: _partner());
+      final pumped = await _pump(t);
+      final baseToken = _surface(t).focusRequestToken;
 
-      expect(find.text('準備邀約'), findsOneWidget);
-      expect(find.text('約會前提醒'), findsOneWidget);
-      expect(find.text('約會後復盤'), findsOneWidget);
-      expect(find.text('或直接問教練一個問題…'), findsOneWidget);
-      expect(find.textContaining('生成會扣 1 則額度'), findsOneWidget);
+      // 先種一個 chip，確認 openCoach 會清掉 phase/prefill。
+      await t.tap(find.text('聊天卡住了'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('或直接問教練一個問題…'));
+      await t.pumpAndSettle();
 
-      // With-result state widgets must be absent.
+      final surface = _surface(t);
+      expect(surface.focusRequestToken, baseToken + 2);
+      expect(surface.lifecyclePhase, isNull);
+      expect(surface.prefillText, isNull);
+      expect(pumped.apiCalls, isEmpty);
+    });
+
+    testWidgets('openCoachInputOnFirstBuild → 首幀後自動 bump focus token（無 phase）',
+        (t) async {
+      await _pump(t, openCoachInputOnFirstBuild: true);
+
+      final surface = _surface(t);
+      expect(surface.focusRequestToken, greaterThan(0));
+      expect(surface.lifecyclePhase, isNull);
+      expect(surface.prefillText, isNull);
+    });
+  });
+
+  group('CoachFollowUpSection — 舊 engine 退場', () {
+    testWidgets('點 chip 不再開舊 input sheet／不呼叫舊 generate 流程', (t) async {
+      await _pump(t);
+
+      await t.tap(find.text('想約她出來'));
+      await t.pumpAndSettle();
+
+      expect(find.byType(CoachFollowUpInputSheet), findsNothing);
+      expect(find.text('產生跟進建議'), findsNothing);
+      // 舊 with-result 表面（重新生成／換情境）也不復存在。
       expect(find.text('重新生成'), findsNothing);
       expect(find.text('換情境'), findsNothing);
     });
-
-    testWidgets('shows AI hint line when hint resolver returns a phase',
-        (t) async {
-      // preDateReminder is the only hint phase that fires from a single
-      // keyword in the last 5 messages — keeps the test cheap.
-      await _pump(
-        t,
-        repo: _FakeRepo(),
-        partner: _partner(),
-        conversations: [
-          _convo(messages: [_msg('我們明天見面吧')]),
-        ],
-      );
-
-      expect(find.textContaining('💡'), findsOneWidget);
-    });
-
-    testWidgets('hides AI hint line when resolver returns null', (t) async {
-      await _pump(
-        t,
-        repo: _FakeRepo(),
-        partner: _partner(),
-        conversations: const [],
-      );
-
-      expect(find.textContaining('💡'), findsNothing);
-    });
   });
 
-  group('CoachFollowUpSection — with-result state', () {
-    testWidgets('renders result card + 重新生成 + 換情境 buttons + caption',
-        (t) async {
-      final repo = _FakeRepo()..seed(_stored());
-      await _pump(t, repo: repo, partner: _partner());
-
-      expect(find.text('STORED_HEADLINE'), findsOneWidget);
-      expect(find.text('重新生成'), findsOneWidget);
-      expect(find.text('換情境'), findsOneWidget);
-      expect(find.textContaining('再扣 1 則額度'), findsOneWidget);
-    });
-
-    testWidgets(
-        '重新生成 disabled when answers unknown (hydrated from prior session)',
-        (t) async {
-      final repo = _FakeRepo()..seed(_stored());
-      await _pump(t, repo: repo, partner: _partner());
-
-      final btn = t.widget<OutlinedButton>(
-        find.widgetWithText(OutlinedButton, '重新生成'),
-      );
-      expect(btn.onPressed, isNull);
-    });
-
-    testWidgets('換情境 returns to chip row but does NOT delete the Hive result',
-        (t) async {
-      final repo = _FakeRepo()..seed(_stored());
-      await _pump(t, repo: repo, partner: _partner());
-
-      await t.tap(find.text('換情境'));
-      await t.pumpAndSettle();
-
-      // Default-state surface visible again.
-      expect(find.text('準備邀約'), findsOneWidget);
-      expect(find.text('約會前提醒'), findsOneWidget);
-      // But the repo entry is untouched — latest-only contract still holds.
-      expect(repo.get(_partnerId), isNotNull);
-    });
-  });
-
-  group('CoachFollowUpSection — generate flow', () {
-    testWidgets('chip tap opens the input sheet', (t) async {
-      await _pump(t, repo: _FakeRepo(), partner: _partner());
-
-      await t.tap(find.text('準備邀約'));
-      await t.pumpAndSettle();
-
-      // The sheet's submit button label is unique to the input sheet —
-      // its presence confirms the modal opened.
-      expect(find.text('產生跟進建議'), findsOneWidget);
-    });
-
-    testWidgets('open coach entry opens the open question sheet', (t) async {
-      await _pump(t, repo: _FakeRepo(), partner: _partner());
-
-      await t.tap(find.text('或直接問教練一個問題…'));
-      await t.pumpAndSettle();
-
-      expect(find.text('我有其他問題'), findsOneWidget);
-      expect(find.text('讓教練看一下'), findsOneWidget);
-      expect(find.textContaining('把你現在卡住的點寫下來'), findsOneWidget);
-    });
-
-    testWidgets('submitting the sheet generates + transitions to with-result',
-        (t) async {
-      await _pump(
-        t,
-        repo: _FakeRepo(),
-        partner: _partner(),
-        invoker: _stubInvoker(headline: 'BRAND_NEW'),
-      );
-
-      await t.tap(find.text('準備邀約'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('還沒想好'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('產生跟進建議'));
-      await t.pumpAndSettle();
-
-      expect(find.text('BRAND_NEW'), findsOneWidget);
-      expect(find.text('重新生成'), findsOneWidget);
-      expect(find.text('換情境'), findsOneWidget);
-    });
-
-    testWidgets('submitting open coach question generates an openCoach card',
-        (t) async {
-      await _pump(
-        t,
-        repo: _FakeRepo(),
-        partner: _partner(),
-        invoker: _stubInvoker(headline: 'OPEN_COACH'),
-      );
-
-      await t.tap(find.text('或直接問教練一個問題…'));
-      await t.pumpAndSettle();
-      await t.enterText(find.byType(TextField), '我太有邊界感，不知道怎麼推進');
-      await t.pumpAndSettle();
-      await t.tap(find.text('讓教練看一下'));
-      await t.pumpAndSettle();
-
-      expect(find.text('OPEN_COACH'), findsOneWidget);
-      expect(find.text('我有其他問題'), findsOneWidget);
-    });
-
-    testWidgets('重新生成 enabled after a fresh same-session generate', (t) async {
-      await _pump(t, repo: _FakeRepo(), partner: _partner());
-
-      await t.tap(find.text('準備邀約'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('還沒想好'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('產生跟進建議'));
-      await t.pumpAndSettle();
-
-      final btn = t.widget<OutlinedButton>(
-        find.widgetWithText(OutlinedButton, '重新生成'),
-      );
-      expect(btn.onPressed, isNotNull);
-    });
-
-    testWidgets('shows a low-pressure error message when generation fails',
-        (t) async {
-      await _pump(
-        t,
-        repo: _FakeRepo(),
-        partner: _partner(),
-        invoker: _errorInvoker(),
-      );
-
-      await t.tap(find.text('準備邀約'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('還沒想好'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('產生跟進建議'));
-      await t.pumpAndSettle();
-
-      // 「未扣額度」不得承諾：此例外含 200 但 client parse 失敗（已扣）。
-      expect(find.textContaining('未扣額度'), findsNothing);
-      expect(find.textContaining('這次沒有產生可用建議'), findsOneWidget);
-      expect(find.text('GEN_HEADLINE'), findsNothing);
-    });
-
-    testWidgets('quota exceeded opens the upgrade surface callback', (t) async {
+  group('CoachFollowUpSection — quota → paywall wiring', () {
+    testWidgets('CoachSurface ask 撞 quota → onQuotaExceeded 恰好一次', (t) async {
       var paywallOpenCount = 0;
-      await _pump(
+      final pumped = await _pump(
         t,
-        repo: _FakeRepo(),
-        partner: _partner(),
-        invoker: _quotaInvoker(),
-        onQuotaExceeded: () async {
-          paywallOpenCount += 1;
-        },
+        onQuotaExceeded: () async => paywallOpenCount += 1,
       );
 
-      await t.tap(find.text('準備邀約'));
+      await t.tap(find.text('想約她出來'));
       await t.pumpAndSettle();
-      await t.tap(find.text('還沒想好'));
+      await t.tap(find.byIcon(Icons.arrow_upward_rounded));
       await t.pumpAndSettle();
-      await t.tap(find.text('產生跟進建議'));
-      await t.pump();
-      await t.pump();
 
+      expect(pumped.apiCalls, hasLength(1));
       expect(paywallOpenCount, 1);
-      expect(find.textContaining('額度已用完'), findsOneWidget);
-    });
-
-    testWidgets('monthly quota 429 shows the server monthly copy, not 明天再試',
-        (t) async {
-      await _pump(
-        t,
-        repo: _FakeRepo(),
-        partner: _partner(),
-        invoker: (String _, {required Map<String, dynamic> body}) async {
-          return CoachFollowUpInvokeResponse(
-            status: 429,
-            data: <String, dynamic>{
-              'error': 'Monthly limit exceeded',
-              'message': '本月額度已用完，升級方案可取得更多分析與教練額度。',
-              'used': 300,
-              'limit': 300,
-            },
-          );
-        },
-        onQuotaExceeded: () async {},
-      );
-
-      await t.tap(find.text('準備邀約'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('還沒想好'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('產生跟進建議'));
-      await t.pump();
-      await t.pump();
-
-      expect(find.textContaining('本月額度已用完'), findsOneWidget);
-      expect(find.textContaining('明天再試'), findsNothing);
-    });
-
-    testWidgets(
-        'quota 429 without a display message falls back to neutral copy',
-        (t) async {
-      await _pump(
-        t,
-        repo: _FakeRepo(),
-        partner: _partner(),
-        invoker: _quotaInvoker(),
-        onQuotaExceeded: () async {},
-      );
-
-      await t.tap(find.text('準備邀約'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('還沒想好'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('產生跟進建議'));
-      await t.pump();
-      await t.pump();
-
-      expect(find.textContaining('額度已用完'), findsOneWidget);
-      expect(find.textContaining('明天再試'), findsNothing);
-      expect(find.textContaining('Daily limit exceeded'), findsNothing);
-    });
-  });
-
-  group('CoachFollowUpSection — telemetry contract', () {
-    testWidgets('emits Invoked event after successful sheet submit', (t) async {
-      final events = <CoachFollowUpTelemetryEvent>[];
-      await _pump(
-        t,
-        repo: _FakeRepo(),
-        partner: _partner(),
-        onTelemetry: events.add,
-      );
-
-      await t.tap(find.text('準備邀約'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('還沒想好'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('產生跟進建議'));
-      await t.pumpAndSettle();
-
-      final invoked = events.whereType<CoachFollowUpInvokedEvent>().toList();
-      expect(invoked, hasLength(1));
-      expect(invoked.first.phase, CoachFollowUpPhase.prepareInvite);
-      expect(invoked.first.hasOptionalText, isFalse);
-    });
-
-    testWidgets('open coach Invoked event uses openCoach + optional text',
-        (t) async {
-      final events = <CoachFollowUpTelemetryEvent>[];
-      await _pump(
-        t,
-        repo: _FakeRepo(),
-        partner: _partner(),
-        onTelemetry: events.add,
-      );
-
-      await t.tap(find.text('或直接問教練一個問題…'));
-      await t.pumpAndSettle();
-      await t.enterText(find.byType(TextField), '她回很慢，我該等還是約？');
-      await t.pumpAndSettle();
-      await t.tap(find.text('讓教練看一下'));
-      await t.pumpAndSettle();
-
-      final invoked = events.whereType<CoachFollowUpInvokedEvent>().single;
-      expect(invoked.phase, CoachFollowUpPhase.openCoach);
-      expect(invoked.hasOptionalText, isTrue);
-    });
-
-    testWidgets('Invoked.hasOptionalText true when q3 free-text filled',
-        (t) async {
-      final events = <CoachFollowUpTelemetryEvent>[];
-      await _pump(
-        t,
-        repo: _FakeRepo(),
-        partner: _partner(),
-        onTelemetry: events.add,
-      );
-
-      await t.tap(find.text('準備邀約'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('還沒想好'));
-      await t.pumpAndSettle();
-      await t.enterText(find.byType(TextField), '想練約她吃飯');
-      await t.pumpAndSettle();
-      await t.tap(find.text('產生跟進建議'));
-      await t.pumpAndSettle();
-
-      final invoked = events.whereType<CoachFollowUpInvokedEvent>().single;
-      expect(invoked.hasOptionalText, isTrue);
-    });
-
-    testWidgets('emits Regenerated event on regenerate tap (after gen)',
-        (t) async {
-      final events = <CoachFollowUpTelemetryEvent>[];
-      await _pump(
-        t,
-        repo: _FakeRepo(),
-        partner: _partner(),
-        onTelemetry: events.add,
-      );
-
-      // Establish session-known answers via a fresh generate first.
-      await t.tap(find.text('準備邀約'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('還沒想好'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('產生跟進建議'));
-      await t.pumpAndSettle();
-      events.clear();
-
-      await t.tap(find.text('重新生成'));
-      await t.pumpAndSettle();
-
-      final regen = events.whereType<CoachFollowUpRegeneratedEvent>().toList();
-      expect(regen, hasLength(1));
-      expect(regen.first.phase, CoachFollowUpPhase.prepareInvite);
-    });
-
-    testWidgets('does NOT emit PhaseSwitched on the very first chip tap',
-        (t) async {
-      final events = <CoachFollowUpTelemetryEvent>[];
-      await _pump(
-        t,
-        repo: _FakeRepo(),
-        partner: _partner(),
-        onTelemetry: events.add,
-      );
-
-      await t.tap(find.text('準備邀約'));
-      await t.pumpAndSettle();
-
-      expect(
-        events.whereType<CoachFollowUpPhaseSwitchedEvent>(),
-        isEmpty,
-      );
-    });
-
-    testWidgets(
-        'emits PhaseSwitched(hadResultBefore=true) when stored result phase changes',
-        (t) async {
-      // User has a stored result on prepareInvite, hits 換情境, then taps
-      // 約會前提醒. Switch event fires from the chip tap, not from 換情境.
-      final repo = _FakeRepo()..seed(_stored());
-      final events = <CoachFollowUpTelemetryEvent>[];
-      await _pump(
-        t,
-        repo: repo,
-        partner: _partner(),
-        onTelemetry: events.add,
-      );
-
-      await t.tap(find.text('換情境'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('約會前提醒'));
-      await t.pumpAndSettle();
-
-      final switches =
-          events.whereType<CoachFollowUpPhaseSwitchedEvent>().toList();
-      expect(switches, hasLength(1));
-      expect(switches.first.fromPhase, CoachFollowUpPhase.prepareInvite);
-      expect(switches.first.toPhase, CoachFollowUpPhase.preDateReminder);
-      expect(switches.first.hadResultBefore, isTrue);
     });
   });
 }

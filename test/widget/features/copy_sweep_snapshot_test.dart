@@ -19,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:vibesync/app/main_shell.dart';
+import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_follow_up/data/providers/coach_follow_up_providers.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/coach_follow_up/domain/repositories/coach_follow_up_repository.dart';
@@ -29,6 +30,8 @@ import 'package:vibesync/features/partner/presentation/providers/partner_provide
 import 'package:vibesync/features/partner/presentation/screens/partner_detail_screen.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_list_screen.dart';
 import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
+
+import '../../helpers/memory_coach_chat_repository.dart';
 
 /// Spec 5 C24 — PartnerDetailScreen now mounts CoachFollowUpSection which
 /// reads StorageService.coachFollowUpResultsBox unless overridden.
@@ -154,6 +157,9 @@ void main() {
           // Spec 5 C24 — section reads StorageService unless overridden.
           coachFollowUpRepositoryProvider
               .overrideWithValue(_FakeCoachFollowUpRepo()),
+          // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+          coachChatRepositoryProvider
+              .overrideWithValue(MemoryCoachChatRepository()),
         ],
         child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
       ));

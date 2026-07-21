@@ -1,49 +1,280 @@
-// Spec 5 C24 — CoachFollowUpSection: 教練跟進 entry block on partner detail.
+// Phase E Task 6 — CoachFollowUpSection：對象頁教練區薄 wrapper。
 //
-// Two visual states:
-//   • default — chip row + caption (rendered when no result is stored OR the
-//     user tapped 換情境 to switch context)
-//   • with-result — result card + 重新生成 / 換情境 buttons + caption
+// Spec 5 的罐頭卡 engine（chip → input sheet 表單 → controller.generate →
+// result card）整段退場，改掛統一教練介面 CoachSurface（partner scope，
+// 串流/多輪/釐清/forceAnswer/outcome 全能力）。本 widget 只剩：
+//   標題＋三情境 chip＋caption＋openCoach entry＋CoachSurface。
 //
-// Three design choices (locked at C24 kickoff):
-//   1. Insert anchor B (partner_detail_screen): between Style+Radar cluster
-//      and conversations list — keeps existing profile cluster untouched.
-//   2. 換情境 = local UI flag only (`_showSwitcher`). Does NOT delete the
-//      Hive result. Latest-only persistence still holds because the next
-//      successful generate overwrites.
-//   3. Telemetry = typed sealed callback contract (Invoked / Regenerated /
-//      PhaseSwitched). The screen wires a stub now; X25 will swap in the
-//      real sink without re-touching this widget.
+// chip 點擊「只種入」CoachSurface 的 lifecyclePhase＋prefill＋focus token
+// （focusRequestToken 遞增觸發 didUpdateWidget 的 prefill/focus 機制）——
+// 送出永遠是用戶按鈕行為，絕無 auto-send（quota 安全硬規則）。consent
+// gate 也隨之收斂進 CoachSurface 的 _ask/_forceAnswer，本層不再自彈。
 //
-// State source-of-truth:
-//   • `coachFollowUpControllerProvider` is the live source for loading state
-//     and successful generate transitions (via `ref.listen`). The widget
-//     also reads `coachFollowUpResultProvider` once in `initState` to
-//     hydrate the displayed result on first paint. Subsequent updates
-//     flow through the listen → setState path so the result card never
-//     blinks during a regenerate (the controller resets state to loading,
-//     but `_displayedResult` keeps the previous value pinned until the
-//     new one arrives).
+// 舊 coach_follow_up widgets/controller/api/entity 全數凍結不刪（Phase F
+// 退場）；檔尾保留 orchestrator 仍在用的 legacy helper 與 telemetry 契約
+// （Task 7 改 orchestrator 後一併退場）。
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../shared/widgets/ai_data_sharing_consent.dart';
-import '../../data/providers/coach_follow_up_providers.dart';
+import '../../../coach_chat/domain/entities/coach_scope.dart';
+import '../../../coach_chat/presentation/widgets/coach_surface.dart';
 import '../../data/services/coach_follow_up_api_service.dart';
 import '../../domain/entities/coach_follow_up_phase.dart';
-import '../../domain/entities/coach_follow_up_result.dart';
-import 'coach_follow_up_chip_row.dart';
 import 'coach_follow_up_input_sheet.dart';
-import 'coach_follow_up_result_card.dart';
 
-// ── Telemetry contract ────────────────────────────────────────────────────
+// ── 三情境 chip（Task 6 拍板；phase 字串隨 wire lifecyclePhase 原樣送）──
+
+typedef _CoachEntryChip = ({String phase, String label, String prefill});
+
+const _chips = <_CoachEntryChip>[
+  (phase: 'chatStalled', label: '聊天卡住了', prefill: '我們聊天卡住了，接下來該怎麼辦？'),
+  (phase: 'prepareInvite', label: '想約她出來', prefill: '我想約她出來，該怎麼開口比較自然？'),
+  (phase: 'postDate', label: '約完會之後', prefill: '剛約完會，接下來要怎麼經營比較好？'),
+];
+
+// ── Section widget ────────────────────────────────────────────────────────
+
+class CoachFollowUpSection extends StatefulWidget {
+  final String partnerId;
+
+  /// 凍結參數：薄 wrapper 不再產生舊 telemetry 事件（chip 不再觸發生成）。
+  /// 保留只為掛載介面相容；Task 7 改 orchestrator 後與 legacy 契約一併退場。
+  final ValueChanged<CoachFollowUpTelemetryEvent>? onTelemetry;
+  final Future<void> Function()? onQuotaExceeded;
+  final Key? openCoachEntryAnchorKey;
+  final bool openCoachInputOnFirstBuild;
+  final bool compactPracticePresentation;
+
+  const CoachFollowUpSection({
+    super.key,
+    required this.partnerId,
+    this.onTelemetry,
+    this.onQuotaExceeded,
+    this.openCoachEntryAnchorKey,
+    this.openCoachInputOnFirstBuild = false,
+    this.compactPracticePresentation = false,
+  });
+
+  @override
+  State<CoachFollowUpSection> createState() => _CoachFollowUpSectionState();
+}
+
+class _CoachFollowUpSectionState extends State<CoachFollowUpSection> {
+  String? _pendingPhase;
+  String? _prefill;
+  int _focusToken = 0;
+  bool _openingQuotaPaywall = false;
+  bool _didAutoFocusCoachInput = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleAutoFocusIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(covariant CoachFollowUpSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.openCoachInputOnFirstBuild &&
+        !oldWidget.openCoachInputOnFirstBuild) {
+      _scheduleAutoFocusIfNeeded();
+    }
+  }
+
+  /// 舊行為＝首幀後自動開 input sheet；新行為＝首幀後 bump focus token，
+  /// 讓 CoachSurface 輸入框取得焦點（無 phase、無 prefill）。
+  void _scheduleAutoFocusIfNeeded() {
+    if (!widget.openCoachInputOnFirstBuild || _didAutoFocusCoachInput) return;
+    _didAutoFocusCoachInput = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _onOpenCoachTap();
+    });
+  }
+
+  void _onChipTap(_CoachEntryChip chip) {
+    setState(() {
+      _pendingPhase = chip.phase;
+      _prefill = chip.prefill;
+      _focusToken += 1;
+    });
+  }
+
+  void _onOpenCoachTap() {
+    setState(() {
+      _pendingPhase = null;
+      _prefill = null;
+      _focusToken += 1;
+    });
+  }
+
+  /// paywall 只開一次的防抖（沿用舊 section 行為）；CoachSurface 的
+  /// ref.listen 在 quota 錯誤時同步呼叫，這裡排到 post-frame 再 push。
+  void _handleQuotaExceeded() {
+    if (_openingQuotaPaywall) return;
+    _openingQuotaPaywall = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _openingQuotaPaywall = false;
+        return;
+      }
+      try {
+        await widget.onQuotaExceeded?.call();
+      } finally {
+        if (mounted) {
+          _openingQuotaPaywall = false;
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (widget.compactPracticePresentation)
+          Row(
+            children: [
+              const Icon(
+                Icons.auto_awesome_outlined,
+                size: 18,
+                color: AppColors.ctaStart,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '還沒有素材？先練習一下',
+                style: AppTypography.titleSmall.copyWith(
+                  color: AppColors.onBackgroundPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          )
+        else
+          Text(
+            '教練跟進',
+            style: AppTypography.titleSmall.copyWith(
+              color: AppColors.onBackgroundPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _chips.map((chip) {
+            return ChoiceChip(
+              label: Text(chip.label),
+              selected: _pendingPhase == chip.phase,
+              // showCheckmark: false avoids the dark-bg ghost-checkmark
+              // artifact that bit ProfileChipSection (memory ref).
+              showCheckmark: false,
+              onSelected: (_) => _onChipTap(chip),
+            );
+          }).toList(growable: false),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '釐清免費，正式建議才扣 1 則',
+          style: AppTypography.caption.copyWith(
+            color: AppColors.glassTextSecondary,
+          ),
+        ),
+        if (!widget.compactPracticePresentation) ...[
+          const SizedBox(height: 12),
+          _OpenCoachEntry(
+            key: widget.openCoachEntryAnchorKey,
+            onTap: _onOpenCoachTap,
+          ),
+        ],
+        const SizedBox(height: 12),
+        CoachSurface(
+          scope: CoachScope.partner(widget.partnerId),
+          onQuotaExceeded:
+              widget.onQuotaExceeded == null ? null : _handleQuotaExceeded,
+          focusRequestToken: _focusToken,
+          prefillText: _prefill,
+          lifecyclePhase: _pendingPhase,
+        ),
+      ],
+    );
+  }
+}
+
+class _OpenCoachEntry extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _OpenCoachEntry({
+    super.key,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.12),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.chat_bubble_outline,
+              size: 18,
+              color: AppColors.glassTextSecondary,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '或直接問教練一個問題…',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.glassTextSecondary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Legacy（凍結，Task 7 / Phase F 退場）────────────────────────────────
 //
-// The section emits these events via `onTelemetry`. A real analytics sink
-// is wired by X25; until then the screen handler is a debugPrint stub. The
-// shapes mirror design §7's `coach_follow_up_*` event names.
+// 以下不屬於薄 wrapper 本體：partner_detail_screen 的 _CoachFocusOrchestrator
+// 仍呼叫 showCoachFollowUpInputSheet 與 telemetry 契約（deep-link 舊路徑），
+// Task 7 改 orchestrator 走 focus token 後一併刪除。
+
+Future<CoachFollowUpAnswers?> showCoachFollowUpInputSheet({
+  required BuildContext context,
+  required CoachFollowUpPhase phase,
+}) {
+  return showModalBottomSheet<CoachFollowUpAnswers>(
+    context: context,
+    isScrollControlled: true,
+    builder: (sheetCtx) => Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(sheetCtx).viewInsets.bottom,
+      ),
+      child: CoachFollowUpInputSheet(
+        phase: phase,
+        onSubmit: (a) => Navigator.of(sheetCtx).pop(a),
+      ),
+    ),
+  );
+}
 
 sealed class CoachFollowUpTelemetryEvent {
   const CoachFollowUpTelemetryEvent();
@@ -88,561 +319,4 @@ class CoachFollowUpPhaseSwitchedEvent extends CoachFollowUpTelemetryEvent {
     required this.toPhase,
     required this.hadResultBefore,
   });
-}
-
-// ── Section widget ────────────────────────────────────────────────────────
-
-Future<CoachFollowUpAnswers?> showCoachFollowUpInputSheet({
-  required BuildContext context,
-  required CoachFollowUpPhase phase,
-}) {
-  return showModalBottomSheet<CoachFollowUpAnswers>(
-    context: context,
-    isScrollControlled: true,
-    builder: (sheetCtx) => Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(sheetCtx).viewInsets.bottom,
-      ),
-      child: CoachFollowUpInputSheet(
-        phase: phase,
-        onSubmit: (a) => Navigator.of(sheetCtx).pop(a),
-      ),
-    ),
-  );
-}
-
-class CoachFollowUpSection extends ConsumerStatefulWidget {
-  final String partnerId;
-  final ValueChanged<CoachFollowUpTelemetryEvent>? onTelemetry;
-  final Future<void> Function()? onQuotaExceeded;
-  final Key? openCoachEntryAnchorKey;
-  final bool openCoachInputOnFirstBuild;
-  final bool compactPracticePresentation;
-
-  const CoachFollowUpSection({
-    super.key,
-    required this.partnerId,
-    this.onTelemetry,
-    this.onQuotaExceeded,
-    this.openCoachEntryAnchorKey,
-    this.openCoachInputOnFirstBuild = false,
-    this.compactPracticePresentation = false,
-  });
-
-  @override
-  ConsumerState<CoachFollowUpSection> createState() =>
-      _CoachFollowUpSectionState();
-}
-
-class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
-  CoachFollowUpResult? _displayedResult;
-  bool _showSwitcher = false;
-  CoachFollowUpPhase? _selectedPhase;
-
-  // Cached for regenerate. _lastAnswers stays null when the displayed
-  // result was hydrated from Hive (prior session) — answers from then are
-  // unrecoverable, which is why the regenerate button disables until a
-  // fresh same-session generate fills them in.
-  CoachFollowUpPhase? _lastPhase;
-  CoachFollowUpAnswers? _lastAnswers;
-  DateTime? _lastGeneratedAt;
-  bool _openingQuotaPaywall = false;
-  bool _didAutoOpenCoachInput = false;
-
-  @override
-  void initState() {
-    super.initState();
-    final stored = ref.read(coachFollowUpResultProvider(widget.partnerId));
-    _displayedResult = stored;
-    if (stored != null) {
-      _lastPhase = CoachFollowUpPhase.fromString(stored.phase);
-    }
-    _scheduleAutoOpenCoachInputIfNeeded();
-  }
-
-  @override
-  void didUpdateWidget(covariant CoachFollowUpSection oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.openCoachInputOnFirstBuild &&
-        !oldWidget.openCoachInputOnFirstBuild) {
-      _scheduleAutoOpenCoachInputIfNeeded();
-    }
-  }
-
-  void _scheduleAutoOpenCoachInputIfNeeded() {
-    if (!widget.openCoachInputOnFirstBuild || _didAutoOpenCoachInput) return;
-    _didAutoOpenCoachInput = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _onOpenCoachTap();
-    });
-  }
-
-  void _emit(CoachFollowUpTelemetryEvent event) {
-    widget.onTelemetry?.call(event);
-  }
-
-  void _openQuotaPaywallOnce() {
-    if (_openingQuotaPaywall) return;
-    _openingQuotaPaywall = true;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) {
-        _openingQuotaPaywall = false;
-        return;
-      }
-      try {
-        await widget.onQuotaExceeded?.call();
-      } finally {
-        if (mounted) {
-          _openingQuotaPaywall = false;
-        }
-      }
-    });
-  }
-
-  /// Resolves the "previous" phase for PhaseSwitched. Priority:
-  ///   1. an in-session chip selection (most recent intent)
-  ///   2. the stored result's phase (cross-session intent)
-  ///   3. null — first interaction, no `from`
-  CoachFollowUpPhase? _priorPhase() {
-    if (_selectedPhase != null) return _selectedPhase;
-    final stored = _displayedResult;
-    if (stored != null) {
-      return CoachFollowUpPhase.fromString(stored.phase);
-    }
-    return null;
-  }
-
-  String? _hintTextFor(CoachFollowUpPhase? phase) {
-    if (phase == null) return null;
-    switch (phase) {
-      case CoachFollowUpPhase.prepareInvite:
-        return '看起來還沒邀她見面，可以試「準備邀約」';
-      case CoachFollowUpPhase.preDateReminder:
-        return '看起來最近聊到見面，可以試「約會前提醒」';
-      case CoachFollowUpPhase.postDateReflection:
-        return '剛見完面？來「約會後復盤」回想一下';
-      case CoachFollowUpPhase.openCoach:
-        return null;
-    }
-  }
-
-  Future<void> _onChipTap(CoachFollowUpPhase phase) async {
-    await _openPhase(phase);
-  }
-
-  Future<void> _onOpenCoachTap() async {
-    await _openPhase(CoachFollowUpPhase.openCoach);
-  }
-
-  Future<void> _openPhase(CoachFollowUpPhase phase) async {
-    final prior = _priorPhase();
-    final hadResult = _displayedResult != null;
-    if (prior != null && prior != phase) {
-      _emit(CoachFollowUpPhaseSwitchedEvent(
-        fromPhase: prior,
-        toPhase: phase,
-        hadResultBefore: hadResult,
-      ));
-    }
-    setState(() => _selectedPhase = phase);
-    await _openInputSheet(phase);
-  }
-
-  Future<void> _openInputSheet(CoachFollowUpPhase phase) async {
-    final answers = await showCoachFollowUpInputSheet(
-      context: context,
-      phase: phase,
-    );
-    if (answers == null) return;
-    if (!mounted) return;
-    final consented = await AiDataSharingConsent.ensure(
-      context,
-      featureLabel: 'Coach 跟進',
-    );
-    if (!consented || !mounted) return;
-
-    _emit(CoachFollowUpInvokedEvent(
-      phase: phase,
-      hasOptionalText: answers.q3 != null && answers.q3!.isNotEmpty,
-    ));
-
-    final notifier = ref.read(
-      coachFollowUpControllerProvider(widget.partnerId).notifier,
-    );
-    await notifier.generate(phase: phase, answers: answers);
-
-    if (!mounted) return;
-    setState(() {
-      _lastPhase = phase;
-      _lastAnswers = answers;
-      _lastGeneratedAt = DateTime.now();
-      _showSwitcher = false;
-      _selectedPhase = null;
-    });
-  }
-
-  Future<void> _onRegenerate() async {
-    final phase = _lastPhase;
-    final answers = _lastAnswers;
-    if (phase == null || answers == null) return;
-    final consented = await AiDataSharingConsent.ensure(
-      context,
-      featureLabel: 'Coach 跟進',
-    );
-    if (!consented || !mounted) return;
-    final since = _lastGeneratedAt != null
-        ? DateTime.now().difference(_lastGeneratedAt!)
-        : Duration.zero;
-    _emit(CoachFollowUpRegeneratedEvent(phase: phase, sinceLast: since));
-
-    final notifier = ref.read(
-      coachFollowUpControllerProvider(widget.partnerId).notifier,
-    );
-    // Fire-and-forget: the listen callback updates _displayedResult on
-    // success; controller debounces re-entry while in-flight.
-    notifier.regenerate(phase: phase, answers: answers).then((_) {
-      if (!mounted) return;
-      setState(() => _lastGeneratedAt = DateTime.now());
-    });
-  }
-
-  void _onSwitch() {
-    setState(() {
-      _showSwitcher = true;
-      _selectedPhase = null;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Successful generate transitions from any state (loading / data) end
-    // up here — pin the new result so the result card swaps in atomically.
-    ref.listen<AsyncValue<CoachFollowUpResult?>>(
-      coachFollowUpControllerProvider(widget.partnerId),
-      (prev, next) {
-        next.whenOrNull(
-          data: (v) {
-            if (!mounted) return;
-            if (v == null) return; // initial empty hydrate — already null
-            setState(() => _displayedResult = v);
-          },
-          error: (error, _) {
-            if (error is QuotaExceededException) {
-              _openQuotaPaywallOnce();
-            }
-          },
-        );
-      },
-    );
-
-    final controllerState = ref.watch(
-      coachFollowUpControllerProvider(widget.partnerId),
-    );
-    final hint = ref.watch(coachFollowUpHintProvider(widget.partnerId));
-    final isLoading = controllerState.isLoading;
-    final error = controllerState.whenOrNull(error: (e, _) => e);
-
-    final showWithResult = _displayedResult != null && !_showSwitcher;
-    if (showWithResult) {
-      return _buildWithResult(_displayedResult!, isLoading, error);
-    }
-    return _buildDefault(hint, isLoading, error);
-  }
-
-  Widget _buildDefault(
-    CoachFollowUpPhase? hinted,
-    bool isLoading,
-    Object? error,
-  ) {
-    if (widget.compactPracticePresentation) {
-      return _buildCompactPractice(hinted, isLoading, error);
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '教練跟進',
-          style: AppTypography.titleSmall.copyWith(
-            color: AppColors.onBackgroundPrimary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '想練什麼？選一個情境，教練幫你拆解下一步',
-          style: AppTypography.bodySmall.copyWith(
-            color: AppColors.onBackgroundSecondary,
-            height: 1.35,
-          ),
-        ),
-        const SizedBox(height: 12),
-        CoachFollowUpChipRow(
-          selectedPhase: _selectedPhase,
-          hintedPhase: hinted,
-          hintText: _hintTextFor(hinted),
-          isLoading: isLoading,
-          onPhaseSelected: _onChipTap,
-        ),
-        const SizedBox(height: 12),
-        _OpenCoachEntry(
-          key: widget.openCoachEntryAnchorKey,
-          isLoading: isLoading,
-          onTap: _onOpenCoachTap,
-        ),
-        if (isLoading) ...[
-          const SizedBox(height: 10),
-          _StatusText.loading(),
-        ],
-        if (error != null) ...[
-          const SizedBox(height: 10),
-          _StatusText.error(error),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildCompactPractice(
-    CoachFollowUpPhase? hinted,
-    bool isLoading,
-    Object? error,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(
-              Icons.auto_awesome_outlined,
-              size: 18,
-              color: AppColors.ctaStart,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '還沒有素材？先練習一下',
-              style: AppTypography.titleSmall.copyWith(
-                color: AppColors.onBackgroundPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        CoachFollowUpChipRow(
-          selectedPhase: _selectedPhase,
-          hintedPhase: hinted,
-          hintText: _hintTextFor(hinted),
-          isLoading: isLoading,
-          onPhaseSelected: _onChipTap,
-        ),
-        if (isLoading) ...[
-          const SizedBox(height: 10),
-          _StatusText.loading(),
-        ],
-        if (error != null) ...[
-          const SizedBox(height: 10),
-          _StatusText.error(error),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildWithResult(
-    CoachFollowUpResult result,
-    bool isLoading,
-    Object? error,
-  ) {
-    final canRegenerate =
-        !isLoading && _lastPhase != null && _lastAnswers != null;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '教練跟進',
-          style: AppTypography.titleSmall.copyWith(
-            color: AppColors.onBackgroundPrimary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 12),
-        CoachFollowUpResultCard(result: result),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: canRegenerate ? _onRegenerate : null,
-                child: const Text('重新生成'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: OutlinedButton(
-                onPressed: isLoading ? null : _onSwitch,
-                child: const Text('換情境'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Text(
-          '重新生成會再扣 1 則額度',
-          style: AppTypography.caption.copyWith(
-            color: AppColors.glassTextSecondary,
-          ),
-        ),
-        if (isLoading) ...[
-          const SizedBox(height: 10),
-          _StatusText.loading(),
-        ],
-        if (error != null) ...[
-          const SizedBox(height: 10),
-          _StatusText.error(error),
-        ],
-      ],
-    );
-  }
-}
-
-class _StatusText extends StatelessWidget {
-  final String text;
-  final Color color;
-  final bool isLoading;
-
-  const _StatusText._({
-    required this.text,
-    required this.color,
-    this.isLoading = false,
-  });
-
-  factory _StatusText.loading() => const _StatusText._(
-        text: '正在產生跟進建議…',
-        color: AppColors.ctaStart,
-        isLoading: true,
-      );
-
-  /// server 429 payload 的 message 已分流月/日文案（本月額度已用完… vs
-  /// 今日額度已用完…）；client 不得自行猜週期。只在 message 缺失或是
-  /// raw fallback（非顯示用字串）時退中性文案。
-  static String _quotaCopy(QuotaExceededException error) {
-    final message = error.message.trim();
-    const rawFallbacks = {
-      'quota_exceeded',
-      'Monthly limit exceeded',
-      'Daily limit exceeded',
-    };
-    if (message.isEmpty || rawFallbacks.contains(message)) {
-      return '額度已用完，升級方案可取得更多額度。';
-    }
-    return message;
-  }
-
-  factory _StatusText.error(Object error) {
-    final message = switch (error) {
-      QuotaExceededException() => _quotaCopy(error),
-      // 「未扣額度」不得在此承諾：GenerationFailedException 涵蓋 200 但
-      // client 端 parse/安全檢查失敗（server 已扣）與 5xx（多半未扣但有
-      // 扣後才炸的窗口）。同 coach chat 21d59962 的修法。
-      GenerationFailedException() => '這次沒有產生可用建議，請稍後再試。',
-      // 429＝server per-user 模型限流：顯示 server「稍等再試」文案
-      ApiException(:final status, :final message) when status == 429 => message,
-      ApiException() => '目前無法送出，請稍後再試。',
-      _ => '目前無法產生建議，請稍後再試。',
-    };
-    return _StatusText._(
-      text: message,
-      color: AppColors.error,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final label = Text(
-      text,
-      style: AppTypography.bodyMedium.copyWith(
-        color: color,
-        fontWeight: FontWeight.w600,
-        height: 1.35,
-      ),
-    );
-
-    if (!isLoading) {
-      return label;
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.ctaStart.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.ctaStart.withValues(alpha: 0.32),
-        ),
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(color),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(child: label),
-        ],
-      ),
-    );
-  }
-}
-
-class _OpenCoachEntry extends StatelessWidget {
-  final bool isLoading;
-  final VoidCallback onTap;
-
-  const _OpenCoachEntry({
-    super.key,
-    required this.isLoading,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: isLoading ? null : onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.12),
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.chat_bubble_outline,
-              size: 18,
-              color: AppColors.glassTextSecondary,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                '或直接問教練一個問題…',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.glassTextSecondary,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

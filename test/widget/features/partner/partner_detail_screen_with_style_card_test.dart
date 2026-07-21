@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_follow_up/data/providers/coach_follow_up_providers.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/coach_follow_up/domain/repositories/coach_follow_up_repository.dart';
@@ -18,6 +19,8 @@ import 'package:vibesync/features/user_profile/data/providers/partner_style_prov
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 import 'package:vibesync/features/user_profile/presentation/widgets/partner_style_entry_card.dart';
+
+import '../../../helpers/memory_coach_chat_repository.dart';
 
 /// Spec 5 C24 — minimal fake; PartnerDetailScreen now mounts
 /// CoachFollowUpSection which reads StorageService unless overridden.
@@ -85,6 +88,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         // Spec 3 Task 19 — PartnerDetailScreen now watches dataQualityFlag.
         // Default to unflagged so the banner doesn't render in this test.
         dataQualityFlagProvider('p1')

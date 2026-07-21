@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
+import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_follow_up/data/providers/coach_follow_up_providers.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/coach_follow_up/domain/repositories/coach_follow_up_repository.dart';
@@ -34,6 +35,7 @@ import 'package:vibesync/features/user_profile/domain/entities/partner_style_ove
 
 import '_fakes/recording_conversation_write_controller.dart';
 import '_fakes/recording_partner_write_controller.dart';
+import '../../../helpers/memory_coach_chat_repository.dart';
 
 Partner _p({String? customNote}) => Partner(
       id: 'p1',
@@ -215,6 +217,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => _aggregateWithTags()),
@@ -264,6 +269,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -300,6 +308,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -340,6 +351,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -357,8 +371,13 @@ void main() {
     await t.tap(find.byTooltip('對象設定'));
     await t.pumpAndSettle();
 
-    expect(find.byType(TextField), findsNWidgets(2));
-    await t.enterText(find.byType(TextField).at(0), '  Alicia  ');
+    // Phase E Task 6：頁面本體多了 CoachSurface 輸入框，改鎖定 dialog 內欄位。
+    final dialogFields = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
+    expect(dialogFields, findsNWidgets(2));
+    await t.enterText(dialogFields.at(0), '  Alicia  ');
     await t.tap(find.text('儲存'));
     await t.pumpAndSettle();
 
@@ -379,6 +398,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -413,6 +435,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -429,7 +454,16 @@ void main() {
 
     await t.tap(find.byTooltip('對象設定'));
     await t.pumpAndSettle();
-    await t.enterText(find.byType(TextField).at(0), 'Alicia');
+    // Phase E Task 6：改鎖定 dialog 內欄位（頁面本體有 CoachSurface 輸入框）。
+    await t.enterText(
+      find
+          .descendant(
+            of: find.byType(AlertDialog),
+            matching: find.byType(TextField),
+          )
+          .at(0),
+      'Alicia',
+    );
     await t.tap(find.text('儲存'));
     await t.pumpAndSettle();
 
@@ -445,6 +479,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -461,7 +498,16 @@ void main() {
 
     await t.tap(find.byTooltip('對象設定'));
     await t.pumpAndSettle();
-    await t.enterText(find.byType(TextField).at(1), '  慢熱，喜歡戶外活動  ');
+    // Phase E Task 6：改鎖定 dialog 內欄位（頁面本體有 CoachSurface 輸入框）。
+    await t.enterText(
+      find
+          .descendant(
+            of: find.byType(AlertDialog),
+            matching: find.byType(TextField),
+          )
+          .at(1),
+      '  慢熱，喜歡戶外活動  ',
+    );
     await t.tap(find.text('儲存'));
     await t.pumpAndSettle();
 
@@ -479,6 +525,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1')
             .overrideWith((_) => _p(customNote: '慢熱，喜歡戶外活動')),
         partnerAggregateProvider('p1')
@@ -507,6 +556,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -551,6 +603,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -578,6 +633,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -603,9 +661,10 @@ void main() {
     expect(find.byType(PartnerHeatHeroCard), findsNothing);
     expect(find.byType(PartnerTraitsCard), findsNothing);
     expect(find.text('還沒有素材？先練習一下'), findsOneWidget);
-    expect(find.text('準備邀約'), findsOneWidget);
-    expect(find.text('約會前提醒'), findsOneWidget);
-    expect(find.text('約會後復盤'), findsOneWidget);
+    // Phase E Task 6：三情境 chip 改為 chatStalled/prepareInvite/postDate。
+    expect(find.text('聊天卡住了'), findsOneWidget);
+    expect(find.text('想約她出來'), findsOneWidget);
+    expect(find.text('約完會之後'), findsOneWidget);
 
     await _scrollUntilVisible(t, find.text('關係下一步'));
     expect(find.text('對象作戰板'), findsOneWidget);
@@ -625,6 +684,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -655,6 +717,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -693,6 +758,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -711,11 +779,13 @@ void main() {
     ));
     await t.pumpAndSettle();
 
-    final fieldFinder = find.byType(TextField);
-    expect(fieldFinder, findsOneWidget);
-    final field = t.widget<TextField>(fieldFinder);
-    expect(field.maxLength, 120);
-    expect(field.maxLines, 4);
+    // Phase E Task 6：頁面新掛 CoachSurface 也有輸入框；orchestrator 目前仍開
+    // 舊 input sheet（Task 7 改為 focus CoachSurface），這裡鎖定 sheet 欄位
+    // （maxLength 120 / maxLines 4）確認 sheet 有開。
+    final sheetFields = t
+        .widgetList<TextField>(find.byType(TextField))
+        .where((f) => f.maxLength == 120 && f.maxLines == 4);
+    expect(sheetFields, hasLength(1));
 
     final inputEntry = find.text('或直接問教練一個問題…');
     expect(inputEntry, findsOneWidget);
@@ -739,6 +809,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -763,6 +836,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -793,6 +869,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -831,6 +910,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -886,6 +968,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -961,6 +1046,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -988,6 +1076,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -1032,6 +1123,9 @@ void main() {
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -1085,6 +1179,8 @@ void main() {
           partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
           coachFollowUpRepositoryProvider
               .overrideWithValue(_FakeCoachFollowUpRepo()),
+          coachChatRepositoryProvider
+              .overrideWithValue(MemoryCoachChatRepository()),
           partnerByIdProvider('p1').overrideWith((_) => partner ?? _p()),
           partnerAggregateProvider('p1')
               .overrideWith((_) => PartnerAggregateView.empty()),

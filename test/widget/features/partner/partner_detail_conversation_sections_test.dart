@@ -13,6 +13,7 @@ import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart'
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/analysis_history/domain/repositories/analysis_history_repository.dart';
 import 'package:vibesync/features/analysis_history/data/providers/analysis_history_providers.dart';
+import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_follow_up/data/providers/coach_follow_up_providers.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/coach_follow_up/domain/repositories/coach_follow_up_repository.dart';
@@ -32,6 +33,7 @@ import 'package:vibesync/features/user_profile/data/repositories/partner_style_r
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 
 import '_fakes/recording_conversation_write_controller.dart';
+import '../../../helpers/memory_coach_chat_repository.dart';
 
 Partner _p() => Partner(
       id: 'p1',
@@ -181,6 +183,9 @@ Widget _host(
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
+        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
