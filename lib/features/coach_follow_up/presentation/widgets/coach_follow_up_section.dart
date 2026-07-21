@@ -289,43 +289,10 @@ sealed class CoachFollowUpTelemetryEvent {
   const CoachFollowUpTelemetryEvent();
 }
 
-/// Fires once per successful sheet submit (before the network call kicks
-/// off). `hasOptionalText` is the only free-text-derived signal allowed
-/// out of the section — the q3 body itself NEVER leaves the widget.
-class CoachFollowUpInvokedEvent extends CoachFollowUpTelemetryEvent {
-  final CoachFollowUpPhase phase;
-  final bool hasOptionalText;
-
-  const CoachFollowUpInvokedEvent({
-    required this.phase,
-    required this.hasOptionalText,
-  });
-}
-
-/// Fires when the user taps 重新生成. Only emitted after a same-session
-/// generate (we need the prior answers to regenerate; carrying them across
-/// sessions is out of scope for v1).
-class CoachFollowUpRegeneratedEvent extends CoachFollowUpTelemetryEvent {
-  final CoachFollowUpPhase phase;
-  final Duration sinceLast;
-
-  const CoachFollowUpRegeneratedEvent({
-    required this.phase,
-    required this.sinceLast,
-  });
-}
-
-/// Fires when the user changes their phase choice while a prior phase is
-/// implied — either from a stored result or from a previous in-session
-/// chip selection. NOT emitted on the very first chip tap (no `from`).
-class CoachFollowUpPhaseSwitchedEvent extends CoachFollowUpTelemetryEvent {
-  final CoachFollowUpPhase fromPhase;
-  final CoachFollowUpPhase toPhase;
-  final bool hadResultBefore;
-
-  const CoachFollowUpPhaseSwitchedEvent({
-    required this.fromPhase,
-    required this.toPhase,
-    required this.hadResultBefore,
-  });
+/// deep-link focusAction=openCoachInput 意圖時點記錄（orchestrator 定位完成
+/// 後、翻 parent flag 前發出）。無欄位：phase 恆為 openCoach、自由文字只
+/// 存在於 CoachSurface 輸入框內絕不外流（hasOptionalText 恆 false），
+/// 皆無資訊量。
+class CoachOpenCoachIntentEvent extends CoachFollowUpTelemetryEvent {
+  const CoachOpenCoachIntentEvent();
 }

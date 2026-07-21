@@ -40,7 +40,6 @@ import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/presentation/dialogs/conversation_reassign_picker.dart';
 import '../../../analysis/data/providers/analysis_providers.dart';
 import '../../../analysis/domain/entities/analysis_models.dart';
-import '../../../coach_follow_up/domain/entities/coach_follow_up_phase.dart';
 import '../../../coach_follow_up/presentation/widgets/coach_follow_up_section.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
@@ -1022,12 +1021,9 @@ class _CoachFocusOrchestratorState extends State<_CoachFocusOrchestrator> {
     if (!widget.openInputAfterFocus || _opened) return;
     _opened = true;
     // 「開啟教練輸入」意圖事件：沿用既有 stub telemetry 通道（不新增
-    // schema）。意圖時點即記錄——不再有 sheet 送出可等，hasOptionalText
-    // 恆為 false（自由文字只存在於 CoachSurface 輸入框內，絕不外流）。
-    _logCoachFollowUpTelemetry(const CoachFollowUpInvokedEvent(
-      phase: CoachFollowUpPhase.openCoach,
-      hasOptionalText: false,
-    ));
+    // schema）。意圖時點即記錄——不再有 sheet 送出可等；自由文字只存在
+    // 於 CoachSurface 輸入框內，絕不外流。
+    _logCoachFollowUpTelemetry(const CoachOpenCoachIntentEvent());
     widget.onOpenCoachInput();
   }
 
@@ -1823,22 +1819,8 @@ class _GlowBubble extends StatelessWidget {
 /// the contract is exercised end-to-end without leaking free-text answers.
 void _logCoachFollowUpTelemetry(CoachFollowUpTelemetryEvent event) {
   switch (event) {
-    case CoachFollowUpInvokedEvent(:final phase, :final hasOptionalText):
-      debugPrint(
-        'coach_follow_up_invoked phase=${phase.name} hasOptionalText=$hasOptionalText',
-      );
-    case CoachFollowUpRegeneratedEvent(:final phase, :final sinceLast):
-      debugPrint(
-        'coach_follow_up_regenerated phase=${phase.name} secondsSinceLast=${sinceLast.inSeconds}',
-      );
-    case CoachFollowUpPhaseSwitchedEvent(
-        :final fromPhase,
-        :final toPhase,
-        :final hadResultBefore,
-      ):
-      debugPrint(
-        'coach_follow_up_phase_switched from=${fromPhase.name} to=${toPhase.name} hadResultBefore=$hadResultBefore',
-      );
+    case CoachOpenCoachIntentEvent():
+      debugPrint('coach_open_coach_intent');
   }
 }
 
