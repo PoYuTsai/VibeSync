@@ -86,13 +86,13 @@ Future<
       List<Map<String, dynamic>> apiCalls,
       Future<void> Function({
         required String partnerId,
-        required bool openCoachInputOnFirstBuild,
+        required bool openCoachInputRequested,
       }) rebuild,
     })> _pump(
   WidgetTester tester, {
   Future<void> Function()? onQuotaExceeded,
   Key? openCoachEntryAnchorKey,
-  bool openCoachInputOnFirstBuild = false,
+  bool openCoachInputRequested = false,
   bool compactPracticePresentation = false,
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1600));
@@ -133,7 +133,7 @@ Future<
                 partnerId: partnerId,
                 onQuotaExceeded: onQuotaExceeded,
                 openCoachEntryAnchorKey: openCoachEntryAnchorKey,
-                openCoachInputOnFirstBuild: openCoachInput,
+                openCoachInputRequested: openCoachInput,
                 compactPracticePresentation: compactPracticePresentation,
               ),
             ),
@@ -146,18 +146,18 @@ Future<
 
   await pumpTree(
     partnerId: _partnerId,
-    openCoachInput: openCoachInputOnFirstBuild,
+    openCoachInput: openCoachInputRequested,
   );
   return (
     repo: repo,
     apiCalls: apiCalls,
     rebuild: ({
       required String partnerId,
-      required bool openCoachInputOnFirstBuild,
+      required bool openCoachInputRequested,
     }) =>
         pumpTree(
       partnerId: partnerId,
-      openCoachInput: openCoachInputOnFirstBuild,
+      openCoachInput: openCoachInputRequested,
     ),
   );
 }
@@ -265,9 +265,9 @@ void main() {
       expect(pumped.apiCalls, isEmpty);
     });
 
-    testWidgets('openCoachInputOnFirstBuild → 首幀後自動 bump focus token（無 phase）',
+    testWidgets('openCoachInputRequested → 首幀後自動 bump focus token（無 phase）',
         (t) async {
-      await _pump(t, openCoachInputOnFirstBuild: true);
+      await _pump(t, openCoachInputRequested: true);
 
       final surface = _surface(t);
       expect(surface.focusRequestToken, greaterThan(0));
@@ -277,7 +277,7 @@ void main() {
 
     testWidgets('partnerId 原地切換重置閂鎖 → 新對象 false→true 再次 bump token',
         (t) async {
-      final pumped = await _pump(t, openCoachInputOnFirstBuild: true);
+      final pumped = await _pump(t, openCoachInputRequested: true);
 
       // 首幀 auto-focus 已發、閂鎖鎖上。
       expect(_surface(t).focusRequestToken, 1);
@@ -285,11 +285,11 @@ void main() {
       // 原地切換對象（flag 收回）→ 同對象 false→true transition。
       await pumped.rebuild(
         partnerId: _altPartnerId,
-        openCoachInputOnFirstBuild: false,
+        openCoachInputRequested: false,
       );
       await pumped.rebuild(
         partnerId: _altPartnerId,
-        openCoachInputOnFirstBuild: true,
+        openCoachInputRequested: true,
       );
 
       // partnerId 切換必須重置閂鎖：新對象的請求要再 bump 一次。

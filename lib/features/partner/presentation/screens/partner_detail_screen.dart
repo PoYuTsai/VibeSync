@@ -102,7 +102,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
   // legacy input sheet (it charged via the legacy controller while the new UI
   // renders no legacy result card). The orchestrator instead reports the
   // intent here after positioning; flipping this flag re-renders the section
-  // with openCoachInputOnFirstBuild=true, whose false→true transition bumps
+  // with openCoachInputRequested=true, whose false→true transition bumps
   // the CoachSurface focus token (section's existing focus mechanism).
   bool _openCoachInputRequested = false;
 
@@ -281,7 +281,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                       onTelemetry: _logCoachFollowUpTelemetry,
                       onQuotaExceeded: () async => context.push('/paywall'),
                       openCoachEntryAnchorKey: _coachAnchorKey,
-                      openCoachInputOnFirstBuild: _openCoachInputRequested,
+                      openCoachInputRequested: _openCoachInputRequested,
                     ),
                   ),
                 ),
@@ -575,7 +575,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                       onTelemetry: _logCoachFollowUpTelemetry,
                       onQuotaExceeded: () async => context.push('/paywall'),
                       openCoachEntryAnchorKey: _coachAnchorKey,
-                      openCoachInputOnFirstBuild: _openCoachInputRequested,
+                      openCoachInputRequested: _openCoachInputRequested,
                       compactPracticePresentation: !widget.focusCoachFollowUp,
                     ),
                   ),
@@ -912,7 +912,7 @@ class _CoachFocusOrchestrator extends StatefulWidget {
 
   /// Phase E Task 7: called (once) after positioning when the deep-link
   /// carries focusAction=openCoachInput. The parent flips the section's
-  /// openCoachInputOnFirstBuild flag, which bumps the CoachSurface focus
+  /// openCoachInputRequested flag, which bumps the CoachSurface focus
   /// token. The legacy sheet → consent → generate chain is gone: it charged
   /// through the legacy controller while the new UI renders no legacy result
   /// card, and consent is gated inside CoachSurface at ask time.

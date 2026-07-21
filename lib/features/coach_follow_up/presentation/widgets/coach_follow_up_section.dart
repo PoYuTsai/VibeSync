@@ -45,7 +45,7 @@ class CoachFollowUpSection extends StatefulWidget {
   final ValueChanged<CoachFollowUpTelemetryEvent>? onTelemetry;
   final Future<void> Function()? onQuotaExceeded;
   final Key? openCoachEntryAnchorKey;
-  final bool openCoachInputOnFirstBuild;
+  final bool openCoachInputRequested;
   final bool compactPracticePresentation;
 
   const CoachFollowUpSection({
@@ -54,7 +54,7 @@ class CoachFollowUpSection extends StatefulWidget {
     this.onTelemetry,
     this.onQuotaExceeded,
     this.openCoachEntryAnchorKey,
-    this.openCoachInputOnFirstBuild = false,
+    this.openCoachInputRequested = false,
     this.compactPracticePresentation = false,
   });
 
@@ -83,16 +83,17 @@ class _CoachFollowUpSectionState extends State<CoachFollowUpSection> {
       // （第三層防禦；parent/orchestrator 已各自守衛，此處保持一致性）。
       _didAutoFocusCoachInput = false;
     }
-    if (widget.openCoachInputOnFirstBuild &&
-        !oldWidget.openCoachInputOnFirstBuild) {
+    if (widget.openCoachInputRequested &&
+        !oldWidget.openCoachInputRequested) {
       _scheduleAutoFocusIfNeeded();
     }
   }
 
-  /// 舊行為＝首幀後自動開 input sheet；新行為＝首幀後 bump focus token，
+  /// 舊行為＝自動開 input sheet；新行為＝收到 openCoachInputRequested
+  /// （首幀即帶入、或中途 false→true transition）後 bump focus token，
   /// 讓 CoachSurface 輸入框取得焦點（無 phase、無 prefill）。
   void _scheduleAutoFocusIfNeeded() {
-    if (!widget.openCoachInputOnFirstBuild || _didAutoFocusCoachInput) return;
+    if (!widget.openCoachInputRequested || _didAutoFocusCoachInput) return;
     _didAutoFocusCoachInput = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
