@@ -524,6 +524,159 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "callClaudeStreaming falls back when overloaded_error arrives before any text",
+  async () => {
+    const models: unknown[] = [];
+    let attempt = 0;
+
+    const result = await callClaudeStreaming(
+      streamingRequest(),
+      "test-api-key",
+      {
+        timeout: 5000,
+        fetchImpl: (_input, init) => {
+          const body = JSON.parse(String(init?.body)) as Record<
+            string,
+            unknown
+          >;
+          models.push(body.model);
+          attempt += 1;
+          if (attempt === 1) {
+            return Promise.resolve(
+              new Response(
+                streamFromChunks([
+                  'data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}\n\n',
+                ]),
+                { status: 200 },
+              ),
+            );
+          }
+          return Promise.resolve(successfulStream("recovered"));
+        },
+      },
+    );
+
+    assertEquals(models, ["claude-sonnet-5", "claude-sonnet-4-6"]);
+    assertEquals(result.model, "claude-sonnet-4-6");
+    assertEquals(await collect(result.textStream), ["recovered"]);
+  },
+);
+
+Deno.test(
+  "callClaudeStreaming surfaces overloaded_error after text without fallback",
+  async () => {
+    let calls = 0;
+    const result = await callClaudeStreaming(
+      streamingRequest(),
+      "test-api-key",
+      {
+        timeout: 5000,
+        fetchImpl: () => {
+          calls += 1;
+          return Promise.resolve(
+            new Response(
+              streamFromChunks([
+                'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"partial"}}\n\n',
+                'data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}\n\n',
+              ]),
+              { status: 200 },
+            ),
+          );
+        },
+      },
+    );
+
+    const seen: string[] = [];
+    const error = await assertRejects(
+      async () => {
+        for await (const text of result.textStream) seen.push(text);
+      },
+      AiStreamingServiceError,
+    );
+
+    assertEquals(seen, ["partial"]);
+    assertEquals(calls, 1);
+    assertEquals(error.code, "STREAM_OVERLOADED");
+    assertEquals(error.retryable, true);
+  },
+);
+
+Deno.test(
+  "callClaudeStreaming does not fall back on pre-content provider errors other than overload",
+  async () => {
+    let calls = 0;
+    const error = await assertRejects(
+      () =>
+        callClaudeStreaming(
+          streamingRequest(),
+          "test-api-key",
+          {
+            timeout: 5000,
+            fetchImpl: () => {
+              calls += 1;
+              return Promise.resolve(
+                new Response(
+                  streamFromChunks([
+                    'data: {"type":"error","error":{"type":"api_error","message":"private provider detail"}}\n\n',
+                  ]),
+                  { status: 200 },
+                ),
+              );
+            },
+          },
+        ),
+      AiStreamingServiceError,
+    );
+
+    assertEquals(calls, 1);
+    assertEquals(error.code, "STREAM_PROVIDER_ERROR");
+    assert(!error.message.includes("private provider detail"));
+  },
+);
+
+Deno.test(
+  "callClaudeStreaming exhausts the chain when every model is overloaded pre-content",
+  async () => {
+    const models: unknown[] = [];
+
+    const error = await assertRejects(
+      () =>
+        callClaudeStreaming(
+          streamingRequest(),
+          "test-api-key",
+          {
+            timeout: 5000,
+            fetchImpl: (_input, init) => {
+              const body = JSON.parse(String(init?.body)) as Record<
+                string,
+                unknown
+              >;
+              models.push(body.model);
+              return Promise.resolve(
+                new Response(
+                  streamFromChunks([
+                    'data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}\n\n',
+                  ]),
+                  { status: 200 },
+                ),
+              );
+            },
+          },
+        ),
+      AiStreamingServiceError,
+    );
+
+    assertEquals(models, [
+      "claude-sonnet-5",
+      "claude-sonnet-4-6",
+      "claude-haiku-4-5-20251001",
+    ]);
+    assertEquals(error.code, "STREAM_OVERLOADED");
+    assertEquals(error.retryable, true);
+  },
+);
+
 Deno.test("parseAnthropicSse maps provider SSE errors without leaking detail", async () => {
   const error = await assertRejects(
     () =>

@@ -70,6 +70,10 @@ const PRE_STREAM_FALLBACK_CODES = new Set([
   "SERVER_ERROR",
   "EMPTY_STREAM",
 ]);
+// 只有 client 一個字都還沒收到時才允許的串流中降級：內容已 emit 後降級會重複計費敘事
+const PRE_CONTENT_STREAM_FALLBACK_CODES = new Set([
+  "STREAM_OVERLOADED",
+]);
 
 function buildCachedSystemPrompt(systemPrompt: string) {
   return [
@@ -146,9 +150,19 @@ function httpResponseError(response: Response): AiStreamingServiceError {
 function nextFallbackModel(
   currentModel: string,
   error: AiStreamingServiceError,
+  eligibleCodes: ReadonlySet<string> = PRE_STREAM_FALLBACK_CODES,
 ): string | undefined {
-  if (!PRE_STREAM_FALLBACK_CODES.has(error.code)) return undefined;
+  if (!eligibleCodes.has(error.code)) return undefined;
   return MODEL_FALLBACK_CHAIN[currentModel];
+}
+
+async function* prependFirstChunk(
+  first: IteratorResult<string>,
+  rest: AsyncGenerator<string>,
+): AsyncGenerator<string> {
+  if (first.done) return;
+  yield first.value;
+  yield* rest;
 }
 
 function streamProviderFailure(errorType: unknown): AiStreamingServiceError {
@@ -489,13 +503,35 @@ export async function callClaudeStreaming(
       cacheCreationTokens: 0,
       cacheReadTokens: 0,
     };
+    const textStream = cleanupOnStreamEnd(
+      parseAnthropicSse(response.body!, usage),
+      () => clearTimeout(timeoutId),
+      opts.timeout,
+    );
+
+    // peek 第一個 text chunk：在任何內容外流前，過載仍可安全換模型重跑
+    let firstChunk: IteratorResult<string>;
+    try {
+      firstChunk = await textStream.next();
+    } catch (error) {
+      if (error instanceof AiStreamingServiceError) {
+        const nextModel = nextFallbackModel(
+          currentModel,
+          error,
+          PRE_CONTENT_STREAM_FALLBACK_CODES,
+        );
+        if (nextModel) {
+          await response.body!.cancel().catch(() => undefined);
+          currentModel = nextModel;
+          continue;
+        }
+      }
+      throw error;
+    }
+
     return {
       model: currentModel,
-      textStream: cleanupOnStreamEnd(
-        parseAnthropicSse(response.body!, usage),
-        () => clearTimeout(timeoutId),
-        opts.timeout,
-      ),
+      textStream: prependFirstChunk(firstChunk, textStream),
       usage,
     };
   }
