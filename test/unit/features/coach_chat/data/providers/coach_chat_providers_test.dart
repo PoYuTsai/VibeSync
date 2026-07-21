@@ -577,6 +577,27 @@ void main() {
       expect(calls.last.body['activeSessionTurns'], isNotEmpty);
     });
 
+    test('forceAnswer without a previous question falls back to the default',
+        () async {
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: _invoker(calls: calls),
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      await c
+          .read(coachChatControllerProvider(_conversationScope).notifier)
+          .forceAnswer(analysisSnapshot: _snapshot());
+
+      expect(calls.single.body['userQuestion'], '請直接給我建議');
+      expect(calls.single.body['forceAnswer'], true);
+    });
+
     test('fourth clarification turn is sent as a forced answer', () async {
       final repo = _FakeRepo();
       final calls = <_RecordedCall>[];
@@ -980,6 +1001,85 @@ void main() {
         calls[1].body['requestId'],
         isNot(calls[0].body['requestId']),
         reason: '釐清回應成功也 retire，下一輪追問是新 intent',
+      );
+    });
+
+    test('fresh-session wire sessionId is stable across transient retries',
+        () async {
+      // P1 回歸：server input_hash 含 wire sessionId。fresh session 重試若
+      // 重合成時間戳，會變成同 requestId 不同 hash → REPLAY_MISMATCH 卡死。
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: (fn, {required body}) async {
+          calls.add(_RecordedCall(fn, Map<String, dynamic>.from(body)));
+          return calls.length <= 2
+              ? const CoachChatInvokeResponse(
+                  status: 500,
+                  data: {'error': 'transient'},
+                )
+              : CoachChatInvokeResponse(status: 200, data: _edgeSuccess());
+        },
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      final notifier =
+          c.read(coachChatControllerProvider(_conversationScope).notifier);
+      await notifier.ask(question: '同一題', analysisSnapshot: _snapshot());
+      await notifier.ask(question: '同一題', analysisSnapshot: _snapshot());
+      await notifier.ask(question: '同一題', analysisSnapshot: _snapshot());
+      await notifier.ask(question: '下一題', analysisSnapshot: _snapshot());
+
+      expect(calls, hasLength(4));
+      final first = calls[0].body['sessionId'] as String;
+      expect(
+        calls[1].body['sessionId'],
+        first,
+        reason: '同 intent 失敗重試必沿用同一顆合成 sessionId（input_hash 穩定）',
+      );
+      expect(
+        calls[2].body['sessionId'],
+        first,
+        reason: '第三次（成功那次）重試仍同一顆',
+      );
+      // 成功後 retire＋接手 server 回的 sessionId：下一問換 session。
+      expect(calls[3].body['sessionId'], isNot(first));
+      expect(calls[3].body['sessionId'], 's-1');
+    });
+
+    test('signature change before any success renews the synthetic sessionId',
+        () async {
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: _invoker(
+          response: const CoachChatInvokeResponse(
+            status: 500,
+            data: {'error': 'transient'},
+          ),
+          calls: calls,
+        ),
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      final notifier =
+          c.read(coachChatControllerProvider(_conversationScope).notifier);
+      await notifier.ask(question: '第一題', analysisSnapshot: _snapshot());
+      await notifier.ask(question: '換一題', analysisSnapshot: _snapshot());
+
+      expect(calls, hasLength(2));
+      expect(
+        calls[1].body['sessionId'],
+        isNot(calls[0].body['sessionId']),
+        reason: '新 intent 絕不沿用舊 intent 的合成 session',
       );
     });
 

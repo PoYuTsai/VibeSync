@@ -19,22 +19,35 @@ class CoachRequestIdSession {
 
   String? _signature;
   String? _requestId;
+  String? _sessionId;
 
   static String _newRequestId() => const Uuid().v4();
 
   /// 回傳本次請求要帶的 requestId：無 pending 或 signature 變了就鑄新的；
-  /// 同 signature 重呼（重試場景）沿用同一 id。
+  /// 同 signature 重呼（重試場景）沿用同一 id。鑄新 id 時一併清掉快取的
+  /// 合成 sessionId——新 intent 絕不沿用舊 intent 的合成 session。
   String begin(String signature) {
     if (_requestId == null || _signature != signature) {
       _requestId = _requestIdFactory();
       _signature = signature;
+      _sessionId = null;
     }
     return _requestId!;
   }
 
-  /// 成功落卡後呼叫；下一次 [begin] 是新的一次計費。
+  /// fresh session（無可 resume 的 sessionId）時取「綁定本 pending 請求」的
+  /// 合成 sessionId：首呼以 [create] 合成並快取，同 pending 重呼（重試）
+  /// 沿用同一顆。server input_hash 含 wire sessionId，重試若換 sessionId
+  /// 會變成同 requestId 不同 hash → REPLAY_MISMATCH（P1 修）。
+  /// 必須在 [begin] 之後呼叫；[retire] 或 signature 變更即清。
+  String resolveSessionId(String Function() create) {
+    return _sessionId ??= create();
+  }
+
+  /// 成功落卡後呼叫；下一次 [begin] 是新的一次計費（含新的合成 session）。
   void retire() {
     _requestId = null;
     _signature = null;
+    _sessionId = null;
   }
 }

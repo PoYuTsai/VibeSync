@@ -49,6 +49,35 @@ void main() {
       expect(session.begin('sig-a'), 'id-1');
     });
 
+    test('resolveSessionId 同 pending 沿用同一顆；retire 後換新', () {
+      final session = CoachRequestIdSession(
+        requestIdFactory: _sequenceFactory(['id-1', 'id-2']),
+      );
+      final sessions = _sequenceFactory(['s-1', 's-2']);
+
+      session.begin('sig-a');
+      expect(session.resolveSessionId(sessions), 's-1');
+      // 同 signature 重呼（重試）：requestId 與合成 sessionId 都不變。
+      session.begin('sig-a');
+      expect(session.resolveSessionId(sessions), 's-1');
+
+      session.retire();
+      session.begin('sig-a');
+      expect(session.resolveSessionId(sessions), 's-2');
+    });
+
+    test('resolveSessionId 在 signature 變更（新 intent）時換新', () {
+      final session = CoachRequestIdSession(
+        requestIdFactory: _sequenceFactory(['id-1', 'id-2']),
+      );
+      final sessions = _sequenceFactory(['s-1', 's-2']);
+
+      session.begin('sig-a');
+      expect(session.resolveSessionId(sessions), 's-1');
+      session.begin('sig-b');
+      expect(session.resolveSessionId(sessions), 's-2');
+    });
+
     test('預設 factory 產出 lowercase UUID v4', () {
       final session = CoachRequestIdSession();
       final id = session.begin('sig-a');

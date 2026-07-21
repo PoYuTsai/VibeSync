@@ -146,7 +146,6 @@ class CoachChatController
       // 非合成後的 sessionId：合成 id 帶時間戳，失敗重試會重新合成，若進了
       // signature 就會讓「同 intent 重試沿用同 requestId」失效。
       final resumedSessionId = _activeSessionId ?? resumablePrevious?.sessionId;
-      final sessionId = resumedSessionId ?? _newSessionId(scope);
       final outboundTurns = _seedTurns(resumablePrevious);
       final effectiveForceAnswer =
           CoachChatController.shouldForceAnswerAfterClarifications(
@@ -192,6 +191,11 @@ class CoachChatController
         '$trimmed|$effectiveForceAnswer|${lifecyclePhase ?? ''}'
         '|${resumedSessionId ?? ''}',
       );
+      // fresh session 的合成 sessionId 綁 requestId 生命週期：server
+      // input_hash 含 wire sessionId，重試若重合成時間戳會變成同 requestId
+      // 不同 hash → COACH_REQUEST_REPLAY_MISMATCH 卡死重試（P1 修）。
+      final sessionId = resumedSessionId ??
+          _requestIdSession.resolveSessionId(() => _newSessionId(scope));
 
       final api = ref.read(coachChatApiServiceProvider);
       final result = await api.ask(
