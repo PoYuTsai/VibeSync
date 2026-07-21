@@ -195,21 +195,44 @@ void main() {
     expect(repo.listByConversation('c-2').single.id, 'b');
   });
 
-  test('clearAll wipes the unified store but never the legacy boxes',
+  test('deleteConversation 同步刪 read-bridge legacy-17 rows（Codex P2）',
       () async {
-    await legacyChatBox.put('l-keep', _result('l-keep', conversationId: 'c-3'));
-    await legacyFollowUpBox.put('p-keep', _followUp('p-keep'));
+    // c-1：legacy＋unified 各一筆；c-2 與 partner p-9 當不波及對照組。
+    await legacyChatBox.put('l-1', _result('l-1', conversationId: 'c-1'));
+    await legacyChatBox.put('l-other', _result('l-other', conversationId: 'c-2'));
+    await legacyFollowUpBox.put('p-9', _followUp('p-9'));
     await repo.put(_result('a', conversationId: 'c-1'));
     await repo.put(_result('b', conversationId: 'c-2'));
+
+    await repo.deleteConversation('c-1');
+
+    // facade 刪完再讀必須回空——刪除範圍鏡像讀取範圍。
+    expect(repo.listByConversation('c-1'), isEmpty);
+    expect(
+      legacyChatBox.values.where((r) => r.conversationId == 'c-1'),
+      isEmpty,
+    );
+    // 其他 conversation / partner scope（含 legacy）不波及。
+    expect(repo.listByConversation('c-2').map((r) => r.id), ['b', 'l-other']);
+    expect(legacyChatBox.keys, ['l-other']);
+    expect(legacyFollowUpBox.keys, ['p-9']);
+  });
+
+  test('clearAll 同步清 read-bridge 涵蓋的 legacy boxes，讀路徑全空（Codex P2）',
+      () async {
+    await legacyChatBox.put('l-1', _result('l-1', conversationId: 'c-3'));
+    await legacyFollowUpBox.put('p-9', _followUp('p-9'));
+    await repo.put(_result('a', conversationId: 'c-1'));
+    await repo.putUnified(_unified('u-p', scopeType: 'partner', scopeId: 'p-9'));
 
     await repo.clearAll();
 
     expect(unifiedBox.values, isEmpty);
+    expect(legacyChatBox.values, isEmpty);
+    expect(legacyFollowUpBox.values, isEmpty);
     expect(repo.listByConversation('c-1'), isEmpty);
-    expect(repo.listByConversation('c-2'), isEmpty);
-    // Legacy cleanup is owned by StorageService.clearAll / delete paths only.
-    expect(legacyChatBox.keys, ['l-keep']);
-    expect(legacyFollowUpBox.keys, ['p-keep']);
+    expect(repo.listByConversation('c-3'), isEmpty);
+    expect(repo.listByScope('partner', 'p-9'), isEmpty);
   });
 
   group('scope-keyed unified storage', () {

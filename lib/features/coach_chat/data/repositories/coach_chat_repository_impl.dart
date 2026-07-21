@@ -10,7 +10,11 @@ import '../../domain/repositories/coach_chat_repository.dart';
 /// New writes land only in the unified box (typeId 26). The legacy boxes —
 /// typeId 17 `CoachChatResult` and typeId 16 `CoachFollowUpResult` — are
 /// read-only bridge sources (design D-5): merged at read time, never written,
-/// never migrated, never deleted here.
+/// never migrated. Deletion is the one sanctioned exception: the legacy facade
+/// `deleteConversation` / `clearAll` cascade into the legacy boxes so the
+/// facade's read paths return nothing after a delete (privacy contract,
+/// Codex P2). Scope-keyed `deleteScope` stays unified-only — its callers
+/// (conversation/partner repositories) own their legacy cleanup.
 class CoachChatRepositoryImpl implements CoachChatRepository {
   CoachChatRepositoryImpl(
     this._unifiedBox,
@@ -220,17 +224,40 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
     return putUnified(UnifiedCoachResult.fromCoachChatResult(result));
   }
 
+  /// 隱私 cascade（Codex P2）：facade 的刪除範圍必須精確鏡像它的讀取範圍。
+  /// [listByConversation] 會經 read-bridge 合併 legacy-17 rows，所以這裡除了
+  /// unified conversation-scope rows 外，也同步刪該對話的 legacy-17 rows，
+  /// 刪完再讀必回空。刪除是唯一允許碰 legacy 的操作；新增/更新絕不。
   @override
-  Future<void> deleteConversation(String conversationId) {
-    return deleteScope(CoachScopeType.conversation, conversationId);
+  Future<void> deleteConversation(String conversationId) async {
+    await deleteScope(CoachScopeType.conversation, conversationId);
+    await _deleteLegacyChatRows(conversationId);
   }
 
-  /// Clears the unified store only. Legacy boxes are read-only here —
-  /// their cleanup is owned by `StorageService.clearAll` and the existing
-  /// delete paths (design D-5).
+  /// 隱私 cascade（Codex P2）：本 repo 的讀路徑涵蓋 unified box＋legacy-17
+  /// chat box（conversation scope）＋legacy-16 follow-up box（partner scope），
+  /// clearAll 必須同步清空三者，任何讀路徑清完都不得殘留 rows。
   @override
   Future<void> clearAll() async {
     await _unifiedBox.clear();
+    if (_legacyChatBox.isOpen) {
+      await _legacyChatBox.clear();
+    }
+    if (_legacyFollowUpBox.isOpen) {
+      await _legacyFollowUpBox.clear();
+    }
+  }
+
+  /// 比照 `_deleteCoachChatForConversation` 的守門 pattern：box 未開時跳過
+  /// 不炸。legacy-17 rows 以 `id` 為 key（歷史寫入慣例），照既有刪除路徑
+  /// 以 values → id 蒐集後刪除。
+  Future<void> _deleteLegacyChatRows(String conversationId) async {
+    if (!_legacyChatBox.isOpen) return;
+    final ids = _legacyChatBox.values
+        .where((result) => result.conversationId == conversationId)
+        .map((result) => result.id)
+        .toList(growable: false);
+    await Future.wait(ids.map(_legacyChatBox.delete));
   }
 
   /// 1:1 reverse mapping to the legacy view. `scopeType` / `scopeId` /
