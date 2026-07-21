@@ -23,8 +23,9 @@ import '../services/partner_id_factory.dart';
 /// - [merge] — re-points all conversations of `fromId` to `toId`, appends
 ///   the source partner's `customNote` into the target with a `[from <name>]`
 ///   tag, then deletes the source partner and cascades cleanup of its style
-///   override (Spec 2), data-quality state (Spec 3), and coach follow-up
-///   card (Spec 5). Coaching outcome events and opener drafts are reassigned
+///   override (Spec 2), data-quality state (Spec 3), coach follow-up
+///   card (Spec 5), and Phase D partner-scope unified coach rows.
+///   Coaching outcome events and opener drafts are reassigned
 ///   to the target instead of deleted. The target partner's per-partner state
 ///   is never cloned or overwritten. No-op on same id; throws `ArgumentError`
 ///   if either side is missing (no partial state).
@@ -139,6 +140,7 @@ class PartnerRepository {
     await _styleRepo.delete(fromId);
     await _qualityRepo.delete(fromId);
     await _followUpRepo.delete(fromId);
+    await _deleteUnifiedPartnerRows(fromId);
   }
 
   /// Overwrites the existing row for [partner.id] and bumps `updatedAt` to
@@ -166,6 +168,7 @@ class PartnerRepository {
   ///   - Spec 5 `CoachFollowUpRepository` — last generated follow-up card
   ///   - `CoachingOutcomeRepository` — per-partner outcome events
   ///   - `OpenerResultCacheService` — partner-scoped opener drafts
+  ///   - Phase D `unified_coach_results` — partner-scope unified coach rows
   /// so none of those rows survive a deleted partner. If the guard throws,
   /// no rows are touched (atomic-failure semantics).
   Future<void> delete(String partnerId) async {
@@ -180,6 +183,22 @@ class PartnerRepository {
     await _followUpRepo.delete(partnerId);
     await _outcomeRepo.deleteByPartner(partnerId);
     await _openerDraftCache.deleteDraftsForPartner(partnerId);
+    await _deleteUnifiedPartnerRows(partnerId);
+  }
+
+  /// 教練統一 Phase D：unified box（typeId 26）的 partner-scope rows 跟著
+  /// 刪對象／合併來源一起清，否則留下孤兒教練紀錄（隱私縫）。
+  /// 比照 `_deleteCoachChatForConversation` 的守門 pattern：box 未開時跳過不炸。
+  Future<void> _deleteUnifiedPartnerRows(String partnerId) async {
+    if (!Hive.isBoxOpen('unified_coach_results')) {
+      return;
+    }
+    final unifiedBox = StorageService.unifiedCoachResultsBox;
+    final ids = unifiedBox.values
+        .where((r) => r.scopeType == 'partner' && r.scopeId == partnerId)
+        .map((r) => r.id)
+        .toList(growable: false);
+    await Future.wait(ids.map(unifiedBox.delete));
   }
 
   /// Splits the conversations listed in [matchedConversationIds] off the

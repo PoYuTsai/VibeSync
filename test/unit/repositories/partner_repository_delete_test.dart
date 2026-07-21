@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/core/constants/app_constants.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/unified_coach_result.dart';
 import 'package:vibesync/features/coach_follow_up/data/repositories/coach_follow_up_repository_impl.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/coaching_memory/data/repositories/coaching_outcome_repository_impl.dart';
@@ -25,6 +26,31 @@ Partner _partner(String id) {
     ownerUserId: 'u1',
     createdAt: now,
     updatedAt: now,
+  );
+}
+
+UnifiedCoachResult _unifiedRow(
+  String id, {
+  required String scopeType,
+  required String scopeId,
+}) {
+  return UnifiedCoachResult(
+    id: id,
+    conversationId: scopeType == 'conversation' ? scopeId : null,
+    partnerId: scopeType == 'partner' ? scopeId : null,
+    question: '接下來怎麼推進？',
+    mode: 'partnerFollowUp',
+    headline: '維持輕鬆節奏',
+    answer: '她回覆變快。',
+    userState: '你可能太急。',
+    nextStep: '丟一個開放式問題。',
+    boundaryReminder: '不要連發三則。',
+    needsReflection: false,
+    generatedAt: DateTime(2026, 7, 21, 11),
+    provider: 'claude',
+    modelUsed: 'claude-sonnet-5',
+    scopeType: scopeType,
+    scopeId: scopeId,
   );
 }
 
@@ -107,6 +133,9 @@ void main() {
     if (!Hive.isAdapterRegistered(21)) {
       Hive.registerAdapter(CoachingOutcomeSignalAdapter());
     }
+    if (!Hive.isAdapterRegistered(26)) {
+      Hive.registerAdapter(UnifiedCoachResultAdapter());
+    }
   });
 
   tearDownAll(() async {
@@ -117,6 +146,9 @@ void main() {
     final ts = DateTime.now().microsecondsSinceEpoch;
     // delete() cascades opener drafts, which live in the shared settings box.
     await Hive.openBox(AppConstants.settingsBox);
+    // delete() also cascades unified coach rows (Phase D), which the repo
+    // reaches through the real box name via StorageService.
+    await Hive.openBox<UnifiedCoachResult>('unified_coach_results');
     partnerBox = await Hive.openBox<Partner>('partners_$ts');
     conversationBox = await Hive.openBox<Conversation>('conversations_$ts');
     styleBox = await Hive.openBox<PartnerStyleOverride>('pso_$ts');
@@ -135,6 +167,7 @@ void main() {
 
   tearDown(() async {
     await Hive.deleteBoxFromDisk(AppConstants.settingsBox);
+    await Hive.deleteBoxFromDisk('unified_coach_results');
     await outcomeBox.deleteFromDisk();
     await followUpBox.deleteFromDisk();
     await qualityBox.deleteFromDisk();
@@ -179,5 +212,53 @@ void main() {
       () => repo.delete('p1'),
       throwsA(isA<PartnerHasConversationsException>()),
     );
+  });
+
+  test(
+      'delete 清掉該對象的 unified partner rows，'
+      '其他 partner 與 conversation scope 保留', () async {
+    final p = _partner('p1');
+    await partnerBox.put(p.id, p);
+
+    final unifiedBox =
+        Hive.box<UnifiedCoachResult>('unified_coach_results');
+    await unifiedBox.put(
+      'u-p1-a',
+      _unifiedRow('u-p1-a', scopeType: 'partner', scopeId: 'p1'),
+    );
+    await unifiedBox.put(
+      'u-p1-b',
+      _unifiedRow('u-p1-b', scopeType: 'partner', scopeId: 'p1'),
+    );
+    await unifiedBox.put(
+      'u-p2',
+      _unifiedRow('u-p2', scopeType: 'partner', scopeId: 'p2'),
+    );
+    await unifiedBox.put(
+      'u-c1',
+      _unifiedRow('u-c1', scopeType: 'conversation', scopeId: 'c1'),
+    );
+
+    await repo.delete('p1');
+
+    expect(partnerBox.containsKey('p1'), isFalse);
+    expect(
+      unifiedBox.values.where(
+        (r) => r.scopeType == 'partner' && r.scopeId == 'p1',
+      ),
+      isEmpty,
+    );
+    expect(unifiedBox.keys, containsAll(['u-p2', 'u-c1']));
+    expect(unifiedBox.length, 2);
+  });
+
+  test('unified box 未開時 delete 不炸，其餘 cascade 照舊', () async {
+    final p = _partner('p1');
+    await partnerBox.put(p.id, p);
+    await Hive.box<UnifiedCoachResult>('unified_coach_results').close();
+
+    await repo.delete('p1');
+
+    expect(partnerBox.containsKey('p1'), isFalse);
   });
 }

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/core/constants/app_constants.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/unified_coach_result.dart';
 import 'package:vibesync/features/coach_follow_up/data/repositories/coach_follow_up_repository_impl.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/coaching_memory/data/repositories/coaching_outcome_repository_impl.dart';
@@ -60,6 +61,31 @@ Conversation _convo({
   );
 }
 
+UnifiedCoachResult _unifiedRow(
+  String id, {
+  required String scopeType,
+  required String scopeId,
+}) {
+  return UnifiedCoachResult(
+    id: id,
+    conversationId: scopeType == 'conversation' ? scopeId : null,
+    partnerId: scopeType == 'partner' ? scopeId : null,
+    question: '接下來怎麼推進？',
+    mode: 'partnerFollowUp',
+    headline: '維持輕鬆節奏',
+    answer: '她回覆變快。',
+    userState: '你可能太急。',
+    nextStep: '丟一個開放式問題。',
+    boundaryReminder: '不要連發三則。',
+    needsReflection: false,
+    generatedAt: DateTime(2026, 7, 21, 11),
+    provider: 'claude',
+    modelUsed: 'claude-sonnet-5',
+    scopeType: scopeType,
+    scopeId: scopeId,
+  );
+}
+
 void main() {
   setUpAll(() {
     Hive.init('./.dart_tool/test_hive_partner_repo_merge');
@@ -112,6 +138,9 @@ void main() {
     if (!Hive.isAdapterRegistered(21)) {
       Hive.registerAdapter(CoachingOutcomeSignalAdapter());
     }
+    if (!Hive.isAdapterRegistered(26)) {
+      Hive.registerAdapter(UnifiedCoachResultAdapter());
+    }
   });
 
   tearDownAll(() async {
@@ -122,6 +151,9 @@ void main() {
     final ts = DateTime.now().microsecondsSinceEpoch;
     // merge() reassigns opener drafts, which live in the shared settings box.
     await Hive.openBox(AppConstants.settingsBox);
+    // merge() also cascades the source partner's unified coach rows (Phase D),
+    // reached through the real box name via StorageService.
+    await Hive.openBox<UnifiedCoachResult>('unified_coach_results');
     convoBox = await Hive.openBox<Conversation>('merge_conv_$ts');
     partnerBox = await Hive.openBox<Partner>('merge_partner_$ts');
     styleBox = await Hive.openBox<PartnerStyleOverride>('merge_style_$ts');
@@ -142,6 +174,7 @@ void main() {
 
   tearDown(() async {
     await Hive.deleteBoxFromDisk(AppConstants.settingsBox);
+    await Hive.deleteBoxFromDisk('unified_coach_results');
     await outcomeBox.deleteFromDisk();
     await followUpBox.deleteFromDisk();
     await qualityBox.deleteFromDisk();
@@ -319,6 +352,49 @@ void main() {
         pBState!.confirmsSamePerson(NamePair.canonical('Bob', 'Robert')),
         isTrue,
       );
+    });
+
+    test('merge 清掉來源對象的 unified partner rows，目標與 conversation 保留',
+        () async {
+      await partnerBox.put('p-a', _partner(id: 'p-a'));
+      await partnerBox.put('p-b', _partner(id: 'p-b'));
+
+      final unifiedBox =
+          Hive.box<UnifiedCoachResult>('unified_coach_results');
+      await unifiedBox.put(
+        'u-from',
+        _unifiedRow('u-from', scopeType: 'partner', scopeId: 'p-a'),
+      );
+      await unifiedBox.put(
+        'u-to',
+        _unifiedRow('u-to', scopeType: 'partner', scopeId: 'p-b'),
+      );
+      await unifiedBox.put(
+        'u-c1',
+        _unifiedRow('u-c1', scopeType: 'conversation', scopeId: 'c-1'),
+      );
+
+      await repo.merge(fromId: 'p-a', toId: 'p-b');
+
+      expect(
+        unifiedBox.values.where(
+          (r) => r.scopeType == 'partner' && r.scopeId == 'p-a',
+        ),
+        isEmpty,
+      );
+      expect(unifiedBox.keys, containsAll(['u-to', 'u-c1']));
+      expect(unifiedBox.length, 2);
+    });
+
+    test('unified box 未開時 merge 不炸，其餘 cascade 照舊', () async {
+      await partnerBox.put('p-a', _partner(id: 'p-a'));
+      await partnerBox.put('p-b', _partner(id: 'p-b'));
+      await Hive.box<UnifiedCoachResult>('unified_coach_results').close();
+
+      await repo.merge(fromId: 'p-a', toId: 'p-b');
+
+      expect(partnerBox.containsKey('p-a'), isFalse);
+      expect(partnerBox.containsKey('p-b'), isTrue);
     });
   });
 }
