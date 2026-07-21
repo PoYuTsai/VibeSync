@@ -1,6 +1,7 @@
 // lib/features/conversation/data/repositories/conversation_repository.dart
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:uuid/uuid.dart';
 import '../../../../core/services/storage_service.dart';
@@ -34,15 +35,25 @@ class ConversationDeleteOutcome {
 }
 
 class ConversationRepository {
-  ConversationRepository({MemoryService? memoryService})
-      : _memoryService = memoryService ?? MemoryService();
+  ConversationRepository({
+    MemoryService? memoryService,
+    @visibleForTesting String? Function()? currentUserIdOverride,
+  })  : _memoryService = memoryService ?? MemoryService(),
+        _currentUserIdOverride = currentUserIdOverride;
 
   final _uuid = const Uuid();
   final MemoryService _memoryService;
+
+  /// Test seam only — production callers leave it null and resolve the
+  /// signed-in user through [SupabaseService].
+  final String? Function()? _currentUserIdOverride;
   static const _legacyConversationMigrationLockedKey =
       'legacy_conversation_migration_locked';
 
-  String? get _currentUserId => SupabaseService.currentUser?.id;
+  String? get _currentUserId {
+    final override = _currentUserIdOverride;
+    return override != null ? override() : SupabaseService.currentUser?.id;
+  }
 
   void _lockLegacyConversationsIfNeeded() {
     final settingsBox = StorageService.settingsBox;
@@ -188,14 +199,25 @@ class ConversationRepository {
   }
 
   Future<void> _deleteCoachChatForConversation(String conversationId) async {
-    if (!Hive.isBoxOpen('coach_chat_results')) {
-      return;
+    if (Hive.isBoxOpen('coach_chat_results')) {
+      final ids = StorageService.coachChatResultsBox.values
+          .where((result) => result.conversationId == conversationId)
+          .map((result) => result.id)
+          .toList();
+      await Future.wait(ids.map(StorageService.coachChatResultsBox.delete));
     }
-    final ids = StorageService.coachChatResultsBox.values
-        .where((result) => result.conversationId == conversationId)
-        .map((result) => result.id)
-        .toList();
-    await Future.wait(ids.map(StorageService.coachChatResultsBox.delete));
+    // 教練統一 Phase D：unified box 的 conversation-scope rows 也要跟著清，
+    // 否則刪對話後留下孤兒教練紀錄（隱私縫）。box 未開時跳過不炸。
+    if (Hive.isBoxOpen('unified_coach_results')) {
+      final unifiedBox = StorageService.unifiedCoachResultsBox;
+      final unifiedIds = unifiedBox.values
+          .where(
+            (r) => r.scopeType == 'conversation' && r.scopeId == conversationId,
+          )
+          .map((r) => r.id)
+          .toList();
+      await Future.wait(unifiedIds.map(unifiedBox.delete));
+    }
   }
 
   List<Message> parseMessages(String rawText) {
