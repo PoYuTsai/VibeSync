@@ -91,6 +91,9 @@ export const RequestSchema = z.object({
   dataQualityFlagged: z.boolean().default(false),
   // 教練統一案 Phase B：三情境 framing（選填）。缺席＝現行為。
   lifecyclePhase: LifecyclePhaseEnum.nullable().optional(),
+  // 教練統一案 Phase B：Phase C exactly-once 帳本前置欄位（選填）。
+  // 本 Phase 只驗 UUID 格式（對齊 ADR #22 keyboard 範本）、不消費。
+  requestId: z.string().uuid().nullable().optional(),
 }).strict().superRefine((payload, ctx) => {
   if (
     payload.dataQualityFlagged &&

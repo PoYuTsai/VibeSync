@@ -94,6 +94,18 @@ Deno.test("validateRequest rejects unknown lifecyclePhase value", () => {
   assertThrows(() => validateRequest({ ...baseRequest, lifecyclePhase: "preDateReminder" }));
 });
 
+Deno.test("validateRequest accepts optional uuid requestId", () => {
+  const parsed = validateRequest({
+    ...baseRequest,
+    requestId: "a3bb189e-8bf9-4888-9912-ace4e6543002",
+  });
+  assertEquals(parsed.requestId, "a3bb189e-8bf9-4888-9912-ace4e6543002");
+});
+
+Deno.test("validateRequest rejects non-uuid requestId", () => {
+  assertThrows(() => validateRequest({ ...baseRequest, requestId: "not-a-uuid" }));
+});
+
 Deno.test("validateRequest rejects images for coach-chat v1", () => {
   assertThrows(
     () => validateRequest({ ...baseRequest, images: ["base64"] }),
