@@ -4256,6 +4256,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     setState(() {
       _isRecognizing = true;
       _resetErrorState();
+      // 重新讀圖＝上一輪（若有）已完成的分析結果已失效：清掉它，否則辨識預覽卡
+      // 會因 _enthusiasmScore 仍非 null 而不重現，且 stale 分析會與新辨識並存。
+      _clearDetailedAnalysisStateForStreamingAnalyzePartial();
       _recognizedConversation = null;
       _recognizedWarningMessage = null;
       _hasPendingRecognitionImport = false;
@@ -7116,7 +7119,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           const SizedBox(height: 16),
                         ],
 
-                        if (_recognizedConversation != null &&
+                        // 這張「已讀取 N 則…尚未開始分析」辨識預覽卡只在分析真正
+                        // 尚未開始時出現：分析中（_isAnalyzing）或已完成
+                        // （_enthusiasmScore != null）都必須隱藏，否則會殘留誤導
+                        // 的「尚未開始分析」提示。重新讀圖會清空 _enthusiasmScore
+                        // （見 _recognizeAndAddToConversation），卡片即正確重現。
+                        if (!_isAnalyzing &&
+                            _enthusiasmScore == null &&
+                            _recognizedConversation != null &&
                             _recognizedConversation!.messageCount > 0) ...[
                           _buildRecognizedConversationCard(),
                           const SizedBox(height: 16),
