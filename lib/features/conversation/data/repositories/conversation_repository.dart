@@ -6,6 +6,7 @@ import 'package:hive_ce/hive_ce.dart';
 import 'package:uuid/uuid.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
+import '../../../coach_chat/domain/entities/unified_coach_result.dart';
 import '../services/memory_service.dart';
 import '../../domain/entities/conversation.dart';
 import '../../domain/entities/message.dart';
@@ -226,7 +227,8 @@ class ConversationRepository {
         final unifiedIds = unifiedBox.values
             .where(
               (r) =>
-                  r.scopeType == 'conversation' && r.scopeId == conversationId,
+                  r.scopeType == CoachScopeType.conversation &&
+                  r.scopeId == conversationId,
             )
             .map((r) => r.id)
             .toList();

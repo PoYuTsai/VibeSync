@@ -37,13 +37,13 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
       'Unknown scopeType "$scopeType" — must be "conversation" or "partner"',
     );
     final merged = <String, UnifiedCoachResult>{};
-    if (scopeType == 'conversation') {
+    if (scopeType == CoachScopeType.conversation) {
       for (final legacy in _legacyChatBox.values) {
         if (legacy.conversationId != scopeId) continue;
         final mapped = UnifiedCoachResult.fromCoachChatResult(legacy);
         merged[mapped.id] = mapped;
       }
-    } else if (scopeType == 'partner') {
+    } else if (scopeType == CoachScopeType.partner) {
       final legacy = _legacyFollowUpBox.get(scopeId);
       if (legacy != null) {
         final mapped = UnifiedCoachResult.fromFollowUpResult(legacy);
@@ -104,7 +104,8 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
   }
 
   static bool _isKnownScopeType(String scopeType) =>
-      scopeType == 'conversation' || scopeType == 'partner';
+      scopeType == CoachScopeType.conversation ||
+      scopeType == CoachScopeType.partner;
 
   /// 排序主鍵 generatedAt 新到舊；同刻以 id 升冪當次要鍵，確保每次讀取
   /// 順序確定（review M-1 — Dart List.sort 不保證 stable）。
@@ -203,7 +204,7 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
 
   @override
   List<CoachChatResult> listByConversation(String conversationId) {
-    return listByScope('conversation', conversationId)
+    return listByScope(CoachScopeType.conversation, conversationId)
         .map(_toConversationView)
         .toList(growable: false);
   }
@@ -221,7 +222,7 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
 
   @override
   Future<void> deleteConversation(String conversationId) {
-    return deleteScope('conversation', conversationId);
+    return deleteScope(CoachScopeType.conversation, conversationId);
   }
 
   /// Clears the unified store only. Legacy boxes are read-only here —

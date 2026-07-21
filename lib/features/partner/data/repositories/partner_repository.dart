@@ -1,6 +1,7 @@
 // lib/features/partner/data/repositories/partner_repository.dart
 import 'package:hive_ce/hive_ce.dart';
 import '../../../../core/services/storage_service.dart';
+import '../../../coach_chat/domain/entities/unified_coach_result.dart';
 import '../../../coach_follow_up/data/repositories/coach_follow_up_repository_impl.dart';
 import '../../../coach_follow_up/domain/repositories/coach_follow_up_repository.dart';
 import '../../../coaching_memory/data/repositories/coaching_outcome_repository_impl.dart';
@@ -195,7 +196,9 @@ class PartnerRepository {
     }
     final unifiedBox = StorageService.unifiedCoachResultsBox;
     final ids = unifiedBox.values
-        .where((r) => r.scopeType == 'partner' && r.scopeId == partnerId)
+        .where(
+          (r) => r.scopeType == CoachScopeType.partner && r.scopeId == partnerId,
+        )
         .map((r) => r.id)
         .toList(growable: false);
     await Future.wait(ids.map(unifiedBox.delete));

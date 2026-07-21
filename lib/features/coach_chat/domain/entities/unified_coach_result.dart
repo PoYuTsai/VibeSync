@@ -5,6 +5,17 @@ import 'coach_chat_result.dart';
 
 part 'unified_coach_result.g.dart';
 
+/// [UnifiedCoachResult.scopeType] 的合法值（review P2-2 抽共用常數）。
+///
+/// 這兩個字串是 Hive 持久化值，**絕不可改**；所有讀寫/清理謂詞與
+/// scopeType assert 一律引用此處，不得手寫裸字串（typo 會靜默漏清）。
+class CoachScopeType {
+  const CoachScopeType._();
+
+  static const String conversation = 'conversation';
+  static const String partner = 'partner';
+}
+
 /// Phase D unified coach local result (typeId 26).
 ///
 /// Merges the two legacy coach records — typeId 17 `CoachChatResult`
@@ -161,7 +172,7 @@ class UnifiedCoachResult {
       frictionType: r.frictionType,
       earlierSummary: r.earlierSummary,
       earlierResultCount: r.earlierResultCount,
-      scopeType: 'conversation',
+      scopeType: CoachScopeType.conversation,
       scopeId: r.conversationId,
       lifecyclePhase: null,
     );
@@ -193,7 +204,7 @@ class UnifiedCoachResult {
       provider: 'legacy',
       modelUsed: r.modelUsed,
       costDeducted: 0,
-      scopeType: 'partner',
+      scopeType: CoachScopeType.partner,
       scopeId: r.partnerId,
       lifecyclePhase: r.phase,
     );
