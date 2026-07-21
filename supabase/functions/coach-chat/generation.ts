@@ -111,6 +111,9 @@ export async function runCoachChat(
     hasSessionTurns: request.activeSessionTurns.length > 0,
     forceAnswer: request.forceAnswer,
     dataQualityFlagged: request.dataQualityFlagged,
+    lifecyclePhase: request.lifecyclePhase ?? null,
+    hasRequestId: request.requestId != null,
+    hasScope: request.scope != null,
   });
   emitProgress(deps, { stage: "request" });
 
