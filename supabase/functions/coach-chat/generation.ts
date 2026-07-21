@@ -24,6 +24,13 @@ export interface ClaudeCallArgs {
 export interface GenerationDeps {
   callClaude: (args: ClaudeCallArgs) => Promise<unknown>;
   deductCredit: (input: { userId: string }) => Promise<void>;
+  // Phase C 帳本結算縫：注入時取代 deductCredit（settle 交易內扣費＋存卡）。
+  // 未注入＝舊路徑零改動。quota 超額拋 CoachChatQuotaExceededError；
+  // 其它失敗拋 index 定義的 typed error，由 index 映射 503/500。
+  settleResult?: (args: {
+    body: Record<string, unknown>;
+    charge: boolean;
+  }) => Promise<{ charged: boolean }>;
   logger: GenerationLogger;
   onProgress?: (update: CoachChatProgressUpdate) => void;
   now?: () => number;
@@ -239,10 +246,69 @@ export async function runCoachChat(
 
   const shouldDeduct = card.responseType === "coachAnswer" &&
     card.costDeducted !== FALLBACK_NO_CHARGE;
+  const shouldCharge = shouldDeduct && !input.accountIsTest;
 
   emitProgress(deps, { stage: "finalizing" });
 
-  if (shouldDeduct && !input.accountIsTest) {
+  if (deps.settleResult) {
+    // 帳本路徑：先組完整 200 body（costDeducted 以 shouldCharge 預填），
+    // settle 交易內同時扣費＋存卡；回傳 charged 才是最終扣費真相。
+    const body = {
+      card: { ...card, costDeducted: shouldCharge ? 1 : 0 },
+      sessionId: request.sessionId ?? null,
+      provider: "claude",
+      model,
+      generatedAt: new Date(now()).toISOString(),
+    };
+    let settled: { charged: boolean };
+    try {
+      settled = await deps.settleResult({ body, charge: shouldCharge });
+    } catch (e) {
+      if (e instanceof CoachChatQuotaExceededError) {
+        deps.logger.warn("coach_chat_failed", {
+          tier: input.tier,
+          errorClass: e.reason,
+          used: e.used,
+          limit: e.limit,
+        });
+        return {
+          status: 429,
+          body: {
+            error: e.reason === "monthly_limit_exceeded"
+              ? "Monthly limit exceeded"
+              : "Daily limit exceeded",
+            message: quotaExceededMessage(e.reason),
+            quotaNeeded: 1,
+            used: e.used,
+            limit: e.limit,
+          },
+        };
+      }
+      deps.logger.warn("coach_chat_failed", {
+        tier: input.tier,
+        errorClass: "settlement_failed",
+      });
+      throw e;
+    }
+    deps.logger.info("coach_chat_succeeded", {
+      tier: input.tier,
+      mode: card.mode,
+      responseType: card.responseType,
+      model,
+      provider: "claude",
+      latencyMs: now() - startedAt,
+      costDeducted: settled.charged ? 1 : 0,
+    });
+    return {
+      status: 200,
+      body: {
+        ...body,
+        card: { ...body.card, costDeducted: settled.charged ? 1 : 0 },
+      },
+    };
+  }
+
+  if (shouldCharge) {
     try {
       await deps.deductCredit({ userId: input.userId });
     } catch (e) {
@@ -281,7 +347,7 @@ export async function runCoachChat(
     model,
     provider: "claude",
     latencyMs: now() - startedAt,
-    costDeducted: shouldDeduct && !input.accountIsTest ? 1 : 0,
+    costDeducted: shouldCharge ? 1 : 0,
   });
 
   return {
@@ -289,7 +355,7 @@ export async function runCoachChat(
     body: {
       card: {
         ...card,
-        costDeducted: shouldDeduct && !input.accountIsTest ? 1 : 0,
+        costDeducted: shouldCharge ? 1 : 0,
       },
       sessionId: request.sessionId ?? null,
       provider: "claude",

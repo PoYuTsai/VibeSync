@@ -71,6 +71,10 @@ function partialClaudeAnswer(overrides: Record<string, unknown> = {}) {
 function deps(opts: {
   callClaude?: (args: ClaudeCallArgs) => Promise<unknown>;
   deductCredit?: () => Promise<void>;
+  settleResult?: (args: {
+    body: Record<string, unknown>;
+    charge: boolean;
+  }) => Promise<{ charged: boolean }>;
   onProgress?: (update: {
     stage: string;
     attempt?: number;
@@ -81,8 +85,10 @@ function deps(opts: {
 }) {
   const events: string[] = [];
   let deductCalls = 0;
+  const settleCalls: Array<{ charge: boolean; bodyKeys: string[] }> = [];
   return {
     events,
+    settleCalls,
     get deductCalls() {
       return deductCalls;
     },
@@ -92,6 +98,21 @@ function deps(opts: {
         deductCalls++;
         if (opts.deductCredit) await opts.deductCredit();
       },
+      // 未注入 settleResult＝舊路徑；有注入才掛（Task 5 注入縫）。
+      ...(opts.settleResult
+        ? {
+          settleResult: (args: {
+            body: Record<string, unknown>;
+            charge: boolean;
+          }) => {
+            settleCalls.push({
+              charge: args.charge,
+              bodyKeys: Object.keys(args.body).sort(),
+            });
+            return opts.settleResult!(args);
+          },
+        }
+        : {}),
       logger: {
         info: (event: string) => events.push(event),
         warn: (event: string, data: Record<string, unknown> = {}) => {
@@ -1194,4 +1215,128 @@ Deno.test("coach callClaudeAPI disables thinking only for Sonnet 5", async () =>
 
   assertEquals(bodies[0].thinking, { type: "disabled" });
   assertEquals("thinking" in bodies[1], false);
+});
+
+// ---- Phase C：settleResult 結算縫（未注入＝舊路徑） ----
+
+const settleInput = {
+  userId: "u1",
+  request,
+  tier: "starter" as const,
+  accountIsTest: false,
+  apiKey: "key",
+};
+
+Deno.test("runCoachChat settles instead of deducting when settleResult injected", async () => {
+  const harness = deps({
+    settleResult: () => Promise.resolve({ charged: true }),
+  });
+  const result = await runCoachChat(settleInput, harness.deps);
+  assertEquals(result.status, 200);
+  assertEquals(harness.settleCalls.length, 1);
+  assertEquals(harness.settleCalls[0].charge, true);
+  assertEquals(harness.settleCalls[0].bodyKeys, [
+    "card",
+    "generatedAt",
+    "model",
+    "provider",
+    "sessionId",
+  ]);
+  assertEquals(harness.deductCalls, 0);
+  assertEquals((result.body.card as Record<string, unknown>).costDeducted, 1);
+});
+
+Deno.test("runCoachChat reflects settle charged=false in costDeducted", async () => {
+  const harness = deps({
+    settleResult: () => Promise.resolve({ charged: false }),
+  });
+  const result = await runCoachChat(settleInput, harness.deps);
+  assertEquals(result.status, 200);
+  assertEquals(harness.deductCalls, 0);
+  assertEquals((result.body.card as Record<string, unknown>).costDeducted, 0);
+});
+
+Deno.test("runCoachChat settles clarifyingQuestion with charge=false", async () => {
+  const harness = deps({
+    callClaude: () =>
+      Promise.resolve(validClaudeCard({
+        responseType: "clarifyingQuestion",
+        needsReflection: true,
+        reflectionQuestion: "你想要的是安心感，還是想確認她的興趣？",
+        rewriteDecision: null,
+      })),
+    settleResult: () => Promise.resolve({ charged: false }),
+  });
+  const result = await runCoachChat(settleInput, harness.deps);
+  assertEquals(result.status, 200);
+  assertEquals(harness.settleCalls.length, 1);
+  assertEquals(harness.settleCalls[0].charge, false);
+  assertEquals(harness.deductCalls, 0);
+  assertEquals((result.body.card as Record<string, unknown>).costDeducted, 0);
+});
+
+Deno.test("runCoachChat settles test account with charge=false", async () => {
+  const harness = deps({
+    settleResult: () => Promise.resolve({ charged: false }),
+  });
+  const result = await runCoachChat(
+    { ...settleInput, accountIsTest: true },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(harness.settleCalls.length, 1);
+  assertEquals(harness.settleCalls[0].charge, false);
+  assertEquals(harness.deductCalls, 0);
+});
+
+Deno.test("runCoachChat settles no-charge fallback card with charge=false", async () => {
+  const harness = deps({
+    callClaude: () => Promise.resolve(malformedClaudeCard()),
+    settleResult: () => Promise.resolve({ charged: false }),
+  });
+  const result = await runCoachChat(settleInput, harness.deps);
+  assertEquals(result.status, 200);
+  assertEquals(harness.settleCalls.length, 1);
+  assertEquals(harness.settleCalls[0].charge, false);
+  assertEquals(harness.deductCalls, 0);
+  assertEquals((result.body.card as Record<string, unknown>).costDeducted, 0);
+});
+
+Deno.test("runCoachChat never settles nor deducts when Claude call fails", async () => {
+  const harness = deps({
+    callClaude: () => Promise.reject(new Error("upstream down")),
+    settleResult: () => Promise.resolve({ charged: true }),
+  });
+  const result = await runCoachChat(settleInput, harness.deps);
+  assertEquals(result.status, 500);
+  assertEquals(harness.settleCalls.length, 0);
+  assertEquals(harness.deductCalls, 0);
+});
+
+Deno.test("runCoachChat maps settle quota error to deduct-time 429 shape", async () => {
+  const harness = deps({
+    settleResult: () =>
+      Promise.reject(
+        new CoachChatQuotaExceededError("monthly_limit_exceeded", 200, 200),
+      ),
+  });
+  const result = await runCoachChat(settleInput, harness.deps);
+  assertEquals(result.status, 429);
+  assertEquals(result.body, {
+    error: "Monthly limit exceeded",
+    message: "本月額度已用完，升級方案可取得更多分析與教練額度。",
+    quotaNeeded: 1,
+    used: 200,
+    limit: 200,
+  });
+  assertEquals(harness.deductCalls, 0);
+});
+
+Deno.test("runCoachChat keeps legacy deduct path when settleResult absent", async () => {
+  const harness = deps({});
+  const result = await runCoachChat(settleInput, harness.deps);
+  assertEquals(result.status, 200);
+  assertEquals(harness.settleCalls.length, 0);
+  assertEquals(harness.deductCalls, 1);
+  assertEquals((result.body.card as Record<string, unknown>).costDeducted, 1);
 });
