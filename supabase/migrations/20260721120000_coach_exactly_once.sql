@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS public.coach_requests (
       AND (result_json -> 'card' ->> 'costDeducted') IN ('0', '1')
       -- card 欄位白名單＝現行 ResponseCardSchema 全欄位；多任何一鍵即拒
       -- （防 prompt／來源訊息／原始輸出滲入帳本：設計鐵律 8）。
-      AND (result_json -> 'card'
+      -- 注意：Postgres 的 + - 優先級高於 ->，必須先括號取 card 再減鍵。
+      AND ((result_json -> 'card')
         - 'responseType' - 'mode' - 'headline' - 'answer' - 'userTruth'
         - 'userState' - 'frictionType' - 'nextStep' - 'suggestedLine'
         - 'rewriteDecision' - 'rewriteReason' - 'boundaryReminder'
@@ -299,7 +300,7 @@ BEGIN
      OR jsonb_typeof(p_result_json -> 'card') <> 'object'
      OR (p_result_json -> 'card' ->> 'responseType') NOT IN ('coachAnswer', 'clarifyingQuestion')
      OR (p_result_json -> 'card' ->> 'costDeducted') NOT IN ('0', '1')
-     OR (p_result_json -> 'card'
+     OR ((p_result_json -> 'card')
        - 'responseType' - 'mode' - 'headline' - 'answer' - 'userTruth'
        - 'userState' - 'frictionType' - 'nextStep' - 'suggestedLine'
        - 'rewriteDecision' - 'rewriteReason' - 'boundaryReminder'
