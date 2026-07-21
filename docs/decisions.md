@@ -797,3 +797,17 @@
 **坑**: Postgres `+ -` 優先級高於 `->` 等具名運算子，`x -> 'card' - 'key'` 會解析成 `'card' - 'key'`（42725）；jsonb 取鍵後減鍵必先括號。deno 字串測試抓不到，真 PG 才爆。
 
 **驗證**: deno coach-chat 132 綠；Phase B vs HEAD byte-identity（generation 六 fixture＋handler legacy 429）；prod live smoke 五態（fresh／replay 同 generatedAt／mismatch 409／legacy 200／streaming 恰一 done）；Codex adversarial 審查另記。
+
+---
+
+## ADR #30 — [2026-07-21] Release preflight 不再要求手動 bump pubspec build 號
+
+**狀態**: 🟢 Active
+
+**背景**: 「Release to App Stores」實際打包以 `--build-number=github.run_number` 蓋號，pubspec 的 `+N` 從未被 release 流程讀取；但舊 preflight 要求 pubspec 版本 byte-equal `APP_VERSION+run_number`，導致每次手動觸發前都得先 bump 一個 commit，忘了就紅（run #339 即此因）。Eric 的使用習慣是隨時手動觸發，此檢查只剩絆腳石。
+
+**決定**: preflight 改為只驗 pubspec 版本**前段**（marketing version，如 `1.0.1`）等於 workflow `env.APP_VERSION`；build 號完全交給 run_number（單調遞增，不會倒退或撞號）。pubspec `+N` 自此與 release 無關，任何 main 上的 ref 隨按隨過。
+
+**保留的守門**: 版本前段不一致仍紅——升版時 `release.yml` 的 `APP_VERSION` 與 pubspec 前段必須一起改，防止用舊 ref 誤發新版號（原「stale source」守門的真正價值所在）。
+
+**影響**: TestFlight build 號中間會有空洞（失敗的 run 也吃編號），正常現象非事故。

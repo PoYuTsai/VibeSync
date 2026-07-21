@@ -29,16 +29,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify release source and build number
+      # Build number is stamped from GITHUB_RUN_NUMBER at build time; the
+      # pubspec "+N" suffix is never read by this workflow, so only the
+      # marketing version prefix must match (ADR #30).
+      - name: Verify release source version
         shell: bash
         run: |
-          expected_version="${APP_VERSION}+${GITHUB_RUN_NUMBER}"
           source_version="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
+          source_prefix="${source_version%%+*}"
           echo "Release source: ${GITHUB_REF_NAME}@${GITHUB_SHA}"
-          echo "Expected pubspec version: ${expected_version}"
+          echo "Expected version prefix: ${APP_VERSION} (build number will be ${GITHUB_RUN_NUMBER})"
           echo "Actual pubspec version: ${source_version}"
-          if [ "${source_version}" != "${expected_version}" ]; then
-            echo "::error::Release source is stale or the build number was not bumped. Select the merged release ref and set pubspec.yaml to ${expected_version}."
+          if [ "${source_prefix}" != "${APP_VERSION}" ]; then
+            echo "::error::pubspec version prefix ${source_prefix} does not match workflow APP_VERSION ${APP_VERSION}. Update env.APP_VERSION in release.yml or pubspec.yaml so they agree."
             exit 1
           fi
 
