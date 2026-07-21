@@ -15,7 +15,11 @@ import '../repositories/coach_chat_repository_impl.dart';
 import '../services/coach_chat_api_service.dart';
 
 final coachChatRepositoryProvider = Provider<CoachChatRepository>((ref) {
-  return CoachChatRepositoryImpl(StorageService.coachChatResultsBox);
+  return CoachChatRepositoryImpl(
+    StorageService.unifiedCoachResultsBox,
+    StorageService.coachChatResultsBox,
+    StorageService.coachFollowUpResultsBox,
+  );
 });
 
 final coachChatApiServiceProvider = Provider<CoachChatApiService>((ref) {
