@@ -1,4 +1,4 @@
-import type { CoachChatRequest } from "./schemas.ts";
+import type { CoachChatRequest, LifecyclePhase } from "./schemas.ts";
 import {
   countCoachClarifications,
   MAX_NO_CHARGE_CLARIFICATION_TURNS,
@@ -6,6 +6,7 @@ import {
 
 export function buildCoachChatPrompt(input: CoachChatRequest): string {
   const context = [
+    section("教練情境", formatLifecycleFraming(input.lifecyclePhase)),
     section("使用者問題", input.userQuestion),
     section("使用者原本想怎麼回", input.rawReplyDraft),
     section("本輪教練狀態", formatSessionState(input)),
@@ -124,6 +125,28 @@ const SYSTEM_PROMPT_BASE =
 function section(title: string, value?: string | null): string | null {
   if (value == null || value.trim() === "") return null;
   return `## ${title}\n${value.trim()}`;
+}
+
+const LIFECYCLE_FRAMING: Record<LifecyclePhase, string> = {
+  chatStalled:
+    "使用者目前的卡點：聊天卡住了（對話變冷、已讀不回、或訊息頻率明顯下降）。" +
+    "優先診斷卡住的原因（話題耗盡、壓力過大、時機不對、對方興趣下降），" +
+    "再給可立即使用的重啟策略；避免建議連續追問或帶情緒的質問。",
+  prepareInvite:
+    "使用者目前的卡點：想約她出來（從線上聊天推進到實際邀約）。" +
+    "先評估目前互動熱度是否足以邀約；足夠就給具體的邀約措辭、時機與被婉拒時的備案；" +
+    "不足就先給升溫步驟，明說現在還不是提出邀約的最佳時機。",
+  postDate:
+    "使用者目前的卡點：約會結束之後的下一步。" +
+    "先釐清約會實際狀況與對方反應（若上下文不足，優先用釐清問題收集），" +
+    "再給後續訊息策略（何時傳、傳什麼）與關係推進或修復建議。",
+};
+
+function formatLifecycleFraming(
+  phase: LifecyclePhase | null | undefined,
+): string | null {
+  if (!phase) return null;
+  return LIFECYCLE_FRAMING[phase] ?? null;
 }
 
 function formatOutcomeInsights(

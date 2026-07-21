@@ -286,6 +286,49 @@ Deno.test("buildCoachChatPrompt omits outcome section when absent (缺席＝現�
   assertEquals(prompt.includes("## 近期教練建議結果"), false);
 });
 
+function lifecycleBaseInput() {
+  return {
+    conversationId: "c1",
+    userQuestion: "她到底什麼意思？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [],
+    dataQualityFlagged: false,
+  };
+}
+
+Deno.test("buildCoachChatPrompt omits lifecycle framing when absent", () => {
+  const prompt = buildCoachChatPrompt(lifecycleBaseInput());
+  assertEquals(prompt.includes("教練情境"), false);
+});
+
+Deno.test("buildCoachChatPrompt injects chatStalled framing", () => {
+  const prompt = buildCoachChatPrompt({
+    ...lifecycleBaseInput(),
+    lifecyclePhase: "chatStalled",
+  });
+  assertStringIncludes(prompt, "教練情境");
+  assertStringIncludes(prompt, "聊天卡住");
+});
+
+Deno.test("buildCoachChatPrompt injects prepareInvite framing", () => {
+  const prompt = buildCoachChatPrompt({
+    ...lifecycleBaseInput(),
+    lifecyclePhase: "prepareInvite",
+  });
+  assertStringIncludes(prompt, "邀約");
+  // SYSTEM_PROMPT_BASE 本身含「邀約」，需以 framing 專屬字串確保注入生效。
+  assertStringIncludes(prompt, "想約她出來");
+});
+
+Deno.test("buildCoachChatPrompt injects postDate framing", () => {
+  const prompt = buildCoachChatPrompt({
+    ...lifecycleBaseInput(),
+    lifecyclePhase: "postDate",
+  });
+  assertStringIncludes(prompt, "約會結束");
+});
+
 Deno.test("buildCoachChatPrompt makes force-answer session state explicit", () => {
   const prompt = buildCoachChatPrompt({
     conversationId: "c1",
