@@ -1,5 +1,8 @@
 import 'package:hive_ce/hive_ce.dart';
 
+import '../../../coach_follow_up/domain/entities/coach_follow_up_result.dart';
+import 'coach_chat_result.dart';
+
 part 'unified_coach_result.g.dart';
 
 /// Phase D unified coach local result (typeId 26).
@@ -129,6 +132,72 @@ class UnifiedCoachResult {
     required this.scopeId,
     this.lifecyclePhase,
   });
+
+  /// Maps a legacy typeId 17 [CoachChatResult] (conversation scope) 1:1.
+  factory UnifiedCoachResult.fromCoachChatResult(CoachChatResult r) {
+    return UnifiedCoachResult(
+      id: r.id,
+      conversationId: r.conversationId,
+      partnerId: r.partnerId,
+      question: r.question,
+      mode: r.mode,
+      headline: r.headline,
+      answer: r.answer,
+      userState: r.userState,
+      nextStep: r.nextStep,
+      suggestedLine: r.suggestedLine,
+      boundaryReminder: r.boundaryReminder,
+      needsReflection: r.needsReflection,
+      reflectionQuestion: r.reflectionQuestion,
+      generatedAt: r.generatedAt,
+      provider: r.provider,
+      modelUsed: r.modelUsed,
+      responseType: r.responseType,
+      sessionId: r.sessionId,
+      userTruth: r.userTruth,
+      rewriteDecision: r.rewriteDecision,
+      rewriteReason: r.rewriteReason,
+      costDeducted: r.costDeducted,
+      frictionType: r.frictionType,
+      earlierSummary: r.earlierSummary,
+      earlierResultCount: r.earlierResultCount,
+      scopeType: 'conversation',
+      scopeId: r.conversationId,
+      lifecyclePhase: null,
+    );
+  }
+
+  /// Maps a legacy typeId 16 [CoachFollowUpResult] (partner scope,
+  /// latest-only — one record per partner).
+  ///
+  /// - `observation` fills both [userState] and [answer]; `task` → [nextStep];
+  ///   `phase` → [lifecyclePhase].
+  /// - [id] is the stable synthetic key `legacy-followup-<partnerId>`.
+  /// - [costDeducted] = 0 — decision D-6 neutral sentinel: the legacy record
+  ///   never carried cost, so it must not be counted as a billed attempt.
+  factory UnifiedCoachResult.fromFollowUpResult(CoachFollowUpResult r) {
+    return UnifiedCoachResult(
+      id: 'legacy-followup-${r.partnerId}',
+      conversationId: null,
+      partnerId: r.partnerId,
+      question: '',
+      mode: 'partnerFollowUp',
+      headline: r.headline,
+      answer: r.observation,
+      userState: r.observation,
+      nextStep: r.task,
+      suggestedLine: r.suggestedLine,
+      boundaryReminder: r.boundaryReminder,
+      needsReflection: false,
+      generatedAt: r.generatedAt,
+      provider: 'legacy',
+      modelUsed: r.modelUsed,
+      costDeducted: 0,
+      scopeType: 'partner',
+      scopeId: r.partnerId,
+      lifecyclePhase: r.phase,
+    );
+  }
 
   bool get isClarifyingQuestion => responseType == 'clarifyingQuestion';
 
