@@ -25,6 +25,7 @@ import 'package:vibesync/features/analysis/presentation/widgets/analysis_action_
 import 'package:vibesync/features/analysis/presentation/widgets/streaming_analysis_loading_widgets.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/unified_coach_result.dart';
 import 'package:vibesync/features/coach_chat/domain/repositories/coach_chat_repository.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_archive_providers.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
@@ -200,6 +201,19 @@ class _EmptyCoachChatRepository extends CoachChatRepository {
 
   @override
   Future<void> clearAll() async {}
+
+  @override
+  List<UnifiedCoachResult> listByScope(String scopeType, String scopeId) =>
+      const [];
+
+  @override
+  UnifiedCoachResult? latestForScope(String scopeType, String scopeId) => null;
+
+  @override
+  Future<void> putUnified(UnifiedCoachResult result) async {}
+
+  @override
+  Future<void> deleteScope(String scopeType, String scopeId) async {}
 }
 
 class _NoPartnerRepo implements PartnerRepoView {

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/unified_coach_result.dart';
 import 'package:vibesync/features/coach_chat/domain/repositories/coach_chat_repository.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
 import 'package:vibesync/features/coaching_memory/domain/entities/coaching_outcome_event.dart';
@@ -146,6 +147,19 @@ class _FakeRepo implements CoachChatRepository {
 
   @override
   Future<void> clearAll() async => _store.clear();
+
+  @override
+  List<UnifiedCoachResult> listByScope(String scopeType, String scopeId) =>
+      const [];
+
+  @override
+  UnifiedCoachResult? latestForScope(String scopeType, String scopeId) => null;
+
+  @override
+  Future<void> putUnified(UnifiedCoachResult result) async {}
+
+  @override
+  Future<void> deleteScope(String scopeType, String scopeId) async {}
 }
 
 // digest 回注：controller 讀 coachingOutcomeDigestProvider，底層打 Hive。

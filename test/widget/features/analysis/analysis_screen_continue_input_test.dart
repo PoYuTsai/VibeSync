@@ -17,6 +17,7 @@ import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.
 import 'package:vibesync/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/unified_coach_result.dart';
 import 'package:vibesync/features/coach_chat/domain/repositories/coach_chat_repository.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_write_controller.dart';
@@ -140,6 +141,19 @@ class _StubCoachChatRepository implements CoachChatRepository {
 
   @override
   Future<void> clearAll() async {}
+
+  @override
+  List<UnifiedCoachResult> listByScope(String scopeType, String scopeId) =>
+      const [];
+
+  @override
+  UnifiedCoachResult? latestForScope(String scopeType, String scopeId) => null;
+
+  @override
+  Future<void> putUnified(UnifiedCoachResult result) async {}
+
+  @override
+  Future<void> deleteScope(String scopeType, String scopeId) async {}
 }
 
 Map<String, dynamic> _analysisSnapshotJson({int score = 65}) {

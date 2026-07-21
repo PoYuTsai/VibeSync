@@ -175,16 +175,15 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
   }
 
   // ---------------------------------------------------------------------------
-  // Legacy conversation-keyed interface (redirected to unified in Task 6)
+  // Legacy conversation-keyed interface — thin views over the unified store.
+  // Kept so Phase E ships with zero UI changes.
   // ---------------------------------------------------------------------------
 
   @override
   List<CoachChatResult> listByConversation(String conversationId) {
-    final list = _legacyChatBox.values
-        .where((result) => result.conversationId == conversationId)
-        .toList()
-      ..sort((a, b) => b.generatedAt.compareTo(a.generatedAt));
-    return list;
+    return listByScope('conversation', conversationId)
+        .map(_toConversationView)
+        .toList(growable: false);
   }
 
   @override
@@ -194,77 +193,53 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
   }
 
   @override
-  Future<void> put(CoachChatResult result) async {
-    final previousLatest = latestForConversation(result.conversationId);
-    final resultWithRollup = _carryForwardLegacyRollup(result, previousLatest);
-    await _legacyChatBox.put(resultWithRollup.id, resultWithRollup);
-    await _trimConversation(result.conversationId);
-  }
-
-  CoachChatResult _carryForwardLegacyRollup(
-    CoachChatResult result,
-    CoachChatResult? previousLatest,
-  ) {
-    if (result.earlierSummary?.trim().isNotEmpty == true ||
-        previousLatest == null ||
-        previousLatest.earlierSummary?.trim().isNotEmpty != true) {
-      return result;
-    }
-    return result.copyWith(
-      earlierSummary: previousLatest.earlierSummary,
-      earlierResultCount: previousLatest.earlierResultCount,
-    );
-  }
-
-  Future<void> _trimConversation(String conversationId) async {
-    final list = listByConversation(conversationId);
-    if (list.length <= keepPerScope) return;
-    final keep = list.take(keepPerScope).toList(growable: false);
-    final stale = list.skip(keepPerScope).toList(growable: false);
-    await _rollupStaleLegacyResults(keep.first, keep, stale);
-    await Future.wait(stale.map((result) => _legacyChatBox.delete(result.id)));
-  }
-
-  Future<void> _rollupStaleLegacyResults(
-    CoachChatResult latest,
-    List<CoachChatResult> keep,
-    List<CoachChatResult> stale,
-  ) async {
-    if (stale.isEmpty) return;
-
-    final lines = <String>[
-      for (final result in keep.reversed)
-        if (result.earlierSummary?.trim().isNotEmpty == true)
-          result.earlierSummary!.trim(),
-      for (final result in stale.reversed)
-        _summarizeResult(UnifiedCoachResult.fromCoachChatResult(result)),
-    ].where((line) => line.trim().isNotEmpty).toList(growable: false);
-
-    final summary = _truncateSummary(_dedupeLines(lines).join('\n'));
-    final count = keep.fold<int>(
-          0,
-          (max, result) =>
-              result.earlierResultCount > max ? result.earlierResultCount : max,
-        ) +
-        stale.length;
-    await _legacyChatBox.put(
-      latest.id,
-      latest.copyWith(
-        earlierSummary: summary,
-        earlierResultCount: count,
-      ),
-    );
+  Future<void> put(CoachChatResult result) {
+    return putUnified(UnifiedCoachResult.fromCoachChatResult(result));
   }
 
   @override
-  Future<void> deleteConversation(String conversationId) async {
-    final ids = _legacyChatBox.values
-        .where((result) => result.conversationId == conversationId)
-        .map((result) => result.id)
-        .toList();
-    await Future.wait(ids.map(_legacyChatBox.delete));
+  Future<void> deleteConversation(String conversationId) {
+    return deleteScope('conversation', conversationId);
   }
 
+  /// Clears the unified store only. Legacy boxes are read-only here —
+  /// their cleanup is owned by `StorageService.clearAll` and the existing
+  /// delete paths (design D-5).
   @override
-  Future<void> clearAll() => _legacyChatBox.clear();
+  Future<void> clearAll() async {
+    await _unifiedBox.clear();
+  }
+
+  /// 1:1 reverse mapping to the legacy view. `scopeType` / `scopeId` /
+  /// `lifecyclePhase` are dropped; a null `conversationId` falls back to
+  /// `scopeId` (never happens in practice for conversation scope).
+  CoachChatResult _toConversationView(UnifiedCoachResult result) {
+    return CoachChatResult(
+      id: result.id,
+      conversationId: result.conversationId ?? result.scopeId,
+      partnerId: result.partnerId,
+      question: result.question,
+      mode: result.mode,
+      headline: result.headline,
+      answer: result.answer,
+      userState: result.userState,
+      nextStep: result.nextStep,
+      suggestedLine: result.suggestedLine,
+      boundaryReminder: result.boundaryReminder,
+      needsReflection: result.needsReflection,
+      reflectionQuestion: result.reflectionQuestion,
+      generatedAt: result.generatedAt,
+      provider: result.provider,
+      modelUsed: result.modelUsed,
+      responseType: result.responseType,
+      sessionId: result.sessionId,
+      userTruth: result.userTruth,
+      rewriteDecision: result.rewriteDecision,
+      rewriteReason: result.rewriteReason,
+      costDeducted: result.costDeducted,
+      frictionType: result.frictionType,
+      earlierSummary: result.earlierSummary,
+      earlierResultCount: result.earlierResultCount,
+    );
+  }
 }

@@ -126,6 +126,12 @@ void main() {
     await repo.put(_result('new', generatedAt: DateTime(2026, 5, 7, 12)));
 
     expect(repo.latestForConversation('c-1')?.id, 'new');
+    // Phase D: writes land only in the unified box, never in legacy.
+    expect(unifiedBox.keys, containsAll(['old', 'new']));
+    expect(unifiedBox.get('new')?.scopeType, 'conversation');
+    expect(unifiedBox.get('new')?.scopeId, 'c-1');
+    expect(legacyChatBox.values, isEmpty);
+    expect(legacyFollowUpBox.values, isEmpty);
   });
 
   test('put trims to latest 10 results per conversation', () async {
@@ -141,6 +147,9 @@ void main() {
       list.map((r) => r.id),
       ['r-11', 'r-10', 'r-9', 'r-8', 'r-7', 'r-6', 'r-5', 'r-4', 'r-3', 'r-2'],
     );
+    // Phase D: trim happens in the unified box; legacy stays untouched.
+    expect(unifiedBox.length, 10);
+    expect(legacyChatBox.values, isEmpty);
   });
 
   test('put rolls trimmed coach results into the latest summary', () async {
@@ -186,14 +195,21 @@ void main() {
     expect(repo.listByConversation('c-2').single.id, 'b');
   });
 
-  test('clearAll wipes every result', () async {
+  test('clearAll wipes the unified store but never the legacy boxes',
+      () async {
+    await legacyChatBox.put('l-keep', _result('l-keep', conversationId: 'c-3'));
+    await legacyFollowUpBox.put('p-keep', _followUp('p-keep'));
     await repo.put(_result('a', conversationId: 'c-1'));
     await repo.put(_result('b', conversationId: 'c-2'));
 
     await repo.clearAll();
 
+    expect(unifiedBox.values, isEmpty);
     expect(repo.listByConversation('c-1'), isEmpty);
     expect(repo.listByConversation('c-2'), isEmpty);
+    // Legacy cleanup is owned by StorageService.clearAll / delete paths only.
+    expect(legacyChatBox.keys, ['l-keep']);
+    expect(legacyFollowUpBox.keys, ['p-keep']);
   });
 
   group('scope-keyed unified storage', () {
