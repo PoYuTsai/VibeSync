@@ -16,6 +16,19 @@ export const LifecyclePhaseEnum = z.enum([
 ]);
 export type LifecyclePhase = z.infer<typeof LifecyclePhaseEnum>;
 
+// 教練統一案 Phase B：Phase C 帳本 scopeKey 前置的判別式 scope（選填）。
+export const CoachScopeSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("conversation"),
+    conversationId: z.string().min(1).max(100),
+  }).strict(),
+  z.object({
+    type: z.literal("partner"),
+    partnerId: z.string().min(1).max(100),
+  }).strict(),
+]);
+export type CoachScope = z.infer<typeof CoachScopeSchema>;
+
 export const MessageSenderEnum = z.enum(["me", "partner"]);
 export const SessionTurnRoleEnum = z.enum(["user", "coach"]);
 export const SessionTurnKindEnum = z.enum([
@@ -94,6 +107,8 @@ export const RequestSchema = z.object({
   // 教練統一案 Phase B：Phase C exactly-once 帳本前置欄位（選填）。
   // 本 Phase 只驗 UUID 格式（對齊 ADR #22 keyboard 範本）、不消費。
   requestId: z.string().uuid().nullable().optional(),
+  // 教練統一案 Phase B：Phase C scopeKey 前置（選填）。缺席＝現行為。
+  scope: CoachScopeSchema.nullable().optional(),
 }).strict().superRefine((payload, ctx) => {
   if (
     payload.dataQualityFlagged &&
@@ -104,6 +119,27 @@ export const RequestSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["partnerHint", "traits"],
       message: "partnerHint.traits must be omitted when dataQualityFlagged",
+    });
+  }
+  if (
+    payload.scope?.type === "conversation" &&
+    payload.scope.conversationId !== payload.conversationId
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["scope", "conversationId"],
+      message: "scope_conversation_id_mismatch",
+    });
+  }
+  if (
+    payload.scope?.type === "partner" &&
+    payload.partnerId != null &&
+    payload.scope.partnerId !== payload.partnerId
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["scope", "partnerId"],
+      message: "scope_partner_id_mismatch",
     });
   }
 });

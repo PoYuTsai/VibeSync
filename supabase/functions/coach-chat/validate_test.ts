@@ -106,6 +106,51 @@ Deno.test("validateRequest rejects non-uuid requestId", () => {
   assertThrows(() => validateRequest({ ...baseRequest, requestId: "not-a-uuid" }));
 });
 
+Deno.test("validateRequest accepts conversation scope matching top-level id", () => {
+  const parsed = validateRequest({
+    ...baseRequest,
+    scope: { type: "conversation", conversationId: "c1" },
+  });
+  assertEquals(parsed.scope?.type, "conversation");
+});
+
+Deno.test("validateRequest rejects conversation scope mismatching top-level id", () => {
+  assertThrows(() =>
+    validateRequest({
+      ...baseRequest,
+      scope: { type: "conversation", conversationId: "other" },
+    })
+  );
+});
+
+Deno.test("validateRequest accepts partner scope matching top-level partnerId", () => {
+  const parsed = validateRequest({
+    ...baseRequest,
+    partnerId: "p1",
+    scope: { type: "partner", partnerId: "p1" },
+  });
+  assertEquals(parsed.scope?.type, "partner");
+});
+
+Deno.test("validateRequest rejects partner scope mismatching top-level partnerId", () => {
+  assertThrows(() =>
+    validateRequest({
+      ...baseRequest,
+      partnerId: "p1",
+      scope: { type: "partner", partnerId: "p2" },
+    })
+  );
+});
+
+Deno.test("validateRequest rejects scope with unknown keys", () => {
+  assertThrows(() =>
+    validateRequest({
+      ...baseRequest,
+      scope: { type: "conversation", conversationId: "c1", extra: 1 },
+    })
+  );
+});
+
 Deno.test("validateRequest rejects images for coach-chat v1", () => {
   assertThrows(
     () => validateRequest({ ...baseRequest, images: ["base64"] }),
