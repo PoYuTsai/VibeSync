@@ -4,7 +4,7 @@
 // 標題＋三情境 chip＋caption＋openCoach entry＋CoachSurface。chip 點擊
 // 只「種入」lifecyclePhase＋prefill＋focus token（絕無 auto-send）；
 // 舊罐頭卡 engine（input sheet / controller.generate / result card）
-// 全數凍結退場，不再被本 widget 引用。
+// Phase F 已整包刪除，不再被本 widget 引用。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,7 +12,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
 import 'package:vibesync/features/coach_chat/presentation/widgets/coach_surface.dart';
-import 'package:vibesync/features/coach_follow_up/presentation/widgets/coach_follow_up_input_sheet.dart';
 import 'package:vibesync/features/coach_follow_up/presentation/widgets/coach_follow_up_section.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
@@ -121,7 +120,7 @@ Future<
 
   Future<void> pumpTree({
     required String partnerId,
-    required bool openCoachInput,
+    required bool openCoachInputRequested,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -133,7 +132,7 @@ Future<
                 partnerId: partnerId,
                 onQuotaExceeded: onQuotaExceeded,
                 openCoachEntryAnchorKey: openCoachEntryAnchorKey,
-                openCoachInputRequested: openCoachInput,
+                openCoachInputRequested: openCoachInputRequested,
                 compactPracticePresentation: compactPracticePresentation,
               ),
             ),
@@ -146,7 +145,7 @@ Future<
 
   await pumpTree(
     partnerId: _partnerId,
-    openCoachInput: openCoachInputRequested,
+    openCoachInputRequested: openCoachInputRequested,
   );
   return (
     repo: repo,
@@ -157,7 +156,7 @@ Future<
     }) =>
         pumpTree(
       partnerId: partnerId,
-      openCoachInput: openCoachInputRequested,
+      openCoachInputRequested: openCoachInputRequested,
     ),
   );
 }
@@ -304,7 +303,8 @@ void main() {
       await t.tap(find.text('想約她出來'));
       await t.pumpAndSettle();
 
-      expect(find.byType(CoachFollowUpInputSheet), findsNothing);
+      // 舊 input sheet widget 型別已於 Phase F 刪除（無從 findsByType）；
+      // 以其專屬文案佐證 sheet 表面不存在。
       expect(find.text('產生跟進建議'), findsNothing);
       // 舊 with-result 表面（重新生成／換情境）也不復存在。
       expect(find.text('重新生成'), findsNothing);

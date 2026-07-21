@@ -11,9 +11,6 @@ import 'package:go_router/go_router.dart';
 
 import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
-import 'package:vibesync/features/coach_follow_up/data/providers/coach_follow_up_providers.dart';
-import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
-import 'package:vibesync/features/coach_follow_up/domain/repositories/coach_follow_up_repository.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_write_controller.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/presentation/widgets/new_conversation_sheet.dart';
@@ -131,22 +128,6 @@ PartnerAggregateView _aggregateWithTags() => PartnerAggregateView(
       lastInteraction: DateTime(2026, 4, 21),
     );
 
-/// Spec 5 C24 — minimal in-memory CoachFollowUpRepository for hermetic
-/// widget tests. The real repo reaches StorageService.coachFollowUpResultsBox
-/// which isn't open in test env. PartnerDetailScreen now mounts the
-/// CoachFollowUpSection so every ProviderScope here needs this override.
-class _FakeCoachFollowUpRepo implements CoachFollowUpRepository {
-  final Map<String, CoachFollowUpResult> _store = {};
-  @override
-  CoachFollowUpResult? get(String id) => _store[id];
-  @override
-  Future<void> put(CoachFollowUpResult r) async => _store[r.partnerId] = r;
-  @override
-  Future<void> delete(String id) async => _store.remove(id);
-  @override
-  Future<void> clearAll() async => _store.clear();
-}
-
 class _FakeStyleRepo implements PartnerStyleRepository {
   final Map<String, PartnerStyleOverride> byPartner = {};
   @override
@@ -215,8 +196,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -267,8 +246,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -306,8 +283,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -349,8 +324,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -396,8 +369,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -433,8 +404,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -477,8 +446,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -523,8 +490,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -554,8 +519,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -601,8 +564,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -631,8 +592,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -682,8 +641,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -715,8 +672,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -756,8 +711,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -813,8 +766,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -840,8 +791,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -873,8 +822,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -914,8 +861,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -972,8 +917,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -1050,8 +993,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -1080,8 +1021,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -1127,8 +1066,6 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
@@ -1183,8 +1120,6 @@ void main() {
       return ProviderScope(
         overrides: [
           partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-          coachFollowUpRepositoryProvider
-              .overrideWithValue(_FakeCoachFollowUpRepo()),
           coachChatRepositoryProvider
               .overrideWithValue(MemoryCoachChatRepository()),
           partnerByIdProvider('p1').overrideWith((_) => partner ?? _p()),

@@ -5,9 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
-import 'package:vibesync/features/coach_follow_up/data/providers/coach_follow_up_providers.dart';
-import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
-import 'package:vibesync/features/coach_follow_up/domain/repositories/coach_follow_up_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
@@ -21,20 +18,6 @@ import 'package:vibesync/features/user_profile/domain/entities/partner_style_ove
 import 'package:vibesync/features/user_profile/presentation/widgets/partner_style_entry_card.dart';
 
 import '../../../helpers/memory_coach_chat_repository.dart';
-
-/// Spec 5 C24 — minimal fake; PartnerDetailScreen now mounts
-/// CoachFollowUpSection which reads StorageService unless overridden.
-class _FakeCoachFollowUpRepo implements CoachFollowUpRepository {
-  final Map<String, CoachFollowUpResult> _store = {};
-  @override
-  CoachFollowUpResult? get(String id) => _store[id];
-  @override
-  Future<void> put(CoachFollowUpResult r) async => _store[r.partnerId] = r;
-  @override
-  Future<void> delete(String id) async => _store.remove(id);
-  @override
-  Future<void> clearAll() async => _store.clear();
-}
 
 class _FakeStyleRepo implements PartnerStyleRepository {
   final Map<String, PartnerStyleOverride> byPartner = {};
@@ -86,8 +69,6 @@ void main() {
             .overrideWith((_) => [_conversation()]),
         partnerListProvider.overrideWith((_) => [_p()]),
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),

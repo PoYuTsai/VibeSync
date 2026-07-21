@@ -10,9 +10,10 @@
 // 送出永遠是用戶按鈕行為，絕無 auto-send（quota 安全硬規則）。consent
 // gate 也隨之收斂進 CoachSurface 的 _ask/_forceAnswer，本層不再自彈。
 //
-// 舊 coach_follow_up widgets/controller/api/entity 全數凍結不刪（Phase F
-// 退場）；檔尾的 legacy input-sheet helper 自 Task 7 起零呼叫端（orchestrator
-// 已改走 focus token），telemetry 契約仍由 deep-link 意圖事件沿用。
+// Phase F 已刪除舊 engine 死叢集（providers/api/hint builder/resolver/
+// input sheet/chip row/result card）。保留的只有：result entity（Hive 模型）、
+// repository read-bridge（Phase D）、phase enum（wire format）與本薄 wrapper；
+// telemetry 契約由檔尾 sealed 家族的 deep-link 意圖事件沿用。
 
 import 'package:flutter/material.dart';
 
@@ -20,9 +21,6 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../coach_chat/domain/entities/coach_scope.dart';
 import '../../../coach_chat/presentation/widgets/coach_surface.dart';
-import '../../data/services/coach_follow_up_api_service.dart';
-import '../../domain/entities/coach_follow_up_phase.dart';
-import 'coach_follow_up_input_sheet.dart';
 
 // ── 三情境 chip（Task 6 拍板；phase 字串隨 wire lifecyclePhase 原樣送）──
 
@@ -81,6 +79,8 @@ class _CoachFollowUpSectionState extends State<CoachFollowUpSection> {
     if (widget.partnerId != oldWidget.partnerId) {
       // 原地切換對象 → auto-focus 閂鎖歸零，讓新對象的請求能再發一次
       // （第三層防禦；parent/orchestrator 已各自守衛，此處保持一致性）。
+      // 注意：flag 未收回的 carry-over（true→true）不重發——parent/
+      // orchestrator 負責逐對象收回 flag。
       _didAutoFocusCoachInput = false;
     }
     if (widget.openCoachInputRequested &&
@@ -258,41 +258,15 @@ class _OpenCoachEntry extends StatelessWidget {
   }
 }
 
-// ── Legacy（凍結，Phase F 退場）─────────────────────────────────────────
-//
-// 以下不屬於薄 wrapper 本體。Task 7 後 lib/ 內 showCoachFollowUpInputSheet
-// 已零呼叫端（orchestrator 改走 focus token）——LEGACY，僅為 Phase F 退場前
-// 的凍結保留，絕不新增呼叫端。telemetry sealed 契約仍在用（deep-link 意圖
-// 事件＋partner_detail 的 stub sink）。
-
-/// LEGACY（零呼叫端，Phase F 退場）：舊 deep-link 路徑的 input sheet 開啟器。
-Future<CoachFollowUpAnswers?> showCoachFollowUpInputSheet({
-  required BuildContext context,
-  required CoachFollowUpPhase phase,
-}) {
-  return showModalBottomSheet<CoachFollowUpAnswers>(
-    context: context,
-    isScrollControlled: true,
-    builder: (sheetCtx) => Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(sheetCtx).viewInsets.bottom,
-      ),
-      child: CoachFollowUpInputSheet(
-        phase: phase,
-        onSubmit: (a) => Navigator.of(sheetCtx).pop(a),
-      ),
-    ),
-  );
-}
+// ── Telemetry 契約（sealed 家族，deep-link 意圖事件在用）─────────────────
 
 sealed class CoachFollowUpTelemetryEvent {
   const CoachFollowUpTelemetryEvent();
 }
 
 /// deep-link focusAction=openCoachInput 意圖時點記錄（orchestrator 定位完成
-/// 後、翻 parent flag 前發出）。無欄位：phase 恆為 openCoach、自由文字只
-/// 存在於 CoachSurface 輸入框內絕不外流（hasOptionalText 恆 false），
-/// 皆無資訊量。
+/// 後、翻 parent flag 前發出）。無欄位：phase 恆為 openCoach；用戶自由文字
+/// 只存在於 CoachSurface 輸入框內、絕不隨 telemetry 外流。
 class CoachOpenCoachIntentEvent extends CoachFollowUpTelemetryEvent {
   const CoachOpenCoachIntentEvent();
 }

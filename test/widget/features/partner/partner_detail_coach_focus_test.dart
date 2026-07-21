@@ -27,9 +27,6 @@ import 'package:go_router/go_router.dart';
 
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/presentation/widgets/coach_surface.dart';
-import 'package:vibesync/features/coach_follow_up/data/providers/coach_follow_up_providers.dart';
-import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
-import 'package:vibesync/features/coach_follow_up/domain/repositories/coach_follow_up_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
@@ -44,18 +41,6 @@ import 'package:vibesync/features/user_profile/data/repositories/partner_style_r
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 
 import '../../../helpers/memory_coach_chat_repository.dart';
-
-class _FakeCoachFollowUpRepo implements CoachFollowUpRepository {
-  final Map<String, CoachFollowUpResult> _store = {};
-  @override
-  CoachFollowUpResult? get(String id) => _store[id];
-  @override
-  Future<void> put(CoachFollowUpResult r) async => _store[r.partnerId] = r;
-  @override
-  Future<void> delete(String id) async => _store.remove(id);
-  @override
-  Future<void> clearAll() async => _store.clear();
-}
 
 class _FakeStyleRepo implements PartnerStyleRepository {
   final Map<String, PartnerStyleOverride> byPartner = {};
@@ -112,8 +97,6 @@ Conversation _conv(int i, {String? snapshot}) => Conversation(
 
 List<Override> _overrides(List<Conversation> conversations) => [
       partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-      coachFollowUpRepositoryProvider
-          .overrideWithValue(_FakeCoachFollowUpRepo()),
       // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
       coachChatRepositoryProvider
           .overrideWithValue(MemoryCoachChatRepository()),
