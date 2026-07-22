@@ -105,6 +105,13 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
   // the CoachSurface focus token (section's existing focus mechanism).
   bool _openCoachInputRequested = false;
 
+  // 「詳細特質與趨勢」的展開狀態必須放在這裡而不是 section 自己的 State：
+  // body 是 lazy ListView，section 在清單底部，展開後往上捲會滑出
+  // viewport + cacheExtent 而被回收。若狀態跟著 Element 走，回收即歸零
+  // → 高度暴縮觸發捲動 offset 反覆修正（畫面橫跳），修正期間 tap 都被
+  // 當成停捲動作吃掉，面板收不起來。
+  bool _detailTraitsExpanded = false;
+
   @override
   void didUpdateWidget(covariant PartnerDetailScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -291,6 +298,10 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                 ),
                 const SizedBox(height: 16),
                 _PartnerExpandableDetailSection(
+                  expanded: _detailTraitsExpanded,
+                  onToggle: () => setState(
+                    () => _detailTraitsExpanded = !_detailTraitsExpanded,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1589,19 +1600,18 @@ class _LockedFeatureCard extends StatelessWidget {
   }
 }
 
-class _PartnerExpandableDetailSection extends StatefulWidget {
+// 受控元件：展開狀態由 _PartnerDetailScreenState 持有（見
+// _detailTraitsExpanded 的註解——lazy ListView 回收會清掉本地 State）。
+class _PartnerExpandableDetailSection extends StatelessWidget {
+  final bool expanded;
+  final VoidCallback onToggle;
   final Widget child;
 
-  const _PartnerExpandableDetailSection({required this.child});
-
-  @override
-  State<_PartnerExpandableDetailSection> createState() =>
-      _PartnerExpandableDetailSectionState();
-}
-
-class _PartnerExpandableDetailSectionState
-    extends State<_PartnerExpandableDetailSection> {
-  bool _expanded = false;
+  const _PartnerExpandableDetailSection({
+    required this.expanded,
+    required this.onToggle,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1611,7 +1621,7 @@ class _PartnerExpandableDetailSectionState
         children: [
           InkWell(
             borderRadius: BorderRadius.circular(18),
-            onTap: () => setState(() => _expanded = !_expanded),
+            onTap: onToggle,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: Row(
@@ -1624,7 +1634,7 @@ class _PartnerExpandableDetailSectionState
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Icon(
-                      _expanded ? Icons.insights : Icons.insights_outlined,
+                      expanded ? Icons.insights : Icons.insights_outlined,
                       color: AppColors.onBackgroundPrimary,
                       size: 21,
                     ),
@@ -1654,7 +1664,7 @@ class _PartnerExpandableDetailSectionState
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    _expanded ? '收起' : '展開',
+                    expanded ? '收起' : '展開',
                     style: AppTypography.bodySmall.copyWith(
                       color: AppColors.onBackgroundPrimary,
                       fontWeight: FontWeight.w700,
@@ -1662,7 +1672,7 @@ class _PartnerExpandableDetailSectionState
                   ),
                   const SizedBox(width: 4),
                   Icon(
-                    _expanded
+                    expanded
                         ? Icons.keyboard_arrow_up_rounded
                         : Icons.keyboard_arrow_down_rounded,
                     color: AppColors.onBackgroundSecondary,
@@ -1671,9 +1681,9 @@ class _PartnerExpandableDetailSectionState
               ),
             ),
           ),
-          if (_expanded) ...[
+          if (expanded) ...[
             const SizedBox(height: 14),
-            widget.child,
+            child,
           ],
         ],
       ),
