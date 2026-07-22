@@ -61,15 +61,15 @@ import {
 import {
   buildHintDecision,
   buildHintMessages,
-  HINT_COACHING_SOFT_CHAR_LIMIT,
-  HINT_REPLY_SOFT_CHAR_LIMIT,
+  HINT_TOOL_SCHEMA,
   hintTrustedFactualEvidence,
   parseHintResult,
 } from "./hint.ts";
 import {
-  buildHintFactContext,
-  stripUnsupportedThirdPartyDetails,
-} from "./hint_fact_ledger.ts";
+  runSingleShot,
+  type SingleShotAttemptFailure,
+  SingleShotExhaustedError,
+} from "./single_shot.ts";
 import {
   CLAUDE_HAIKU_MODEL,
   CLAUDE_SONNET_MODEL,
@@ -142,25 +142,20 @@ const DEBRIEF_TIMEOUT_MS = 18000;
 // owner fence deliberately favor a verified result over a fast 503.
 const DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS = 24000;
 const DEBRIEF_IN_FLIGHT_STALE_MS = 105000;
-// The client waits 115s. Bound Hint semantic review from request entry so a
-// rare fourth verifier still leaves 10s to record and return the result instead
-// of finishing after the client has abandoned it.
-const HINT_REQUEST_DEADLINE_MS = 105000;
+// 單發重設計 v2：Sonnet 5 一發（15s）＋Haiku 4.5 補發（15s）＋record/回傳緩衝。
+const HINT_REQUEST_DEADLINE_MS = 35000;
+const HINT_SINGLE_SHOT_TIMEOUT_MS = 15000;
 const LEGACY_CLIENT_QUALITY_SCHEMA_VERSION = "typed-facts-v1";
-// 2026-07-13 probe: game hint 在 650 tokens 下 DeepSeek 47% finish_reason=length
-// 截斷（JSON 收不完→誤報 provider_error）。提高到 1600 給 Game Hint 完整 JSON 空間。
-const HINT_MAX_TOKENS = 1600;
+// 單發 tool_use 只輸出三段可見文字（無 DeepSeek thinking 洩流），500 足夠；
+// 若 ai_logs 出現 max_tokens 截斷聚集再開小案調 500→700，不回加重試層。
+const HINT_MAX_TOKENS = 500;
 const HINT_TEMPERATURE = 0.45;
-const HINT_GENERATION_ATTEMPTS = 1;
-const HINT_CLAUDE_GENERATION_ATTEMPTS = 2;
 const SERVER_HINT_DECISION_RATIONALE =
   "只依據本場逐字稿與已知角色資料；貼句已依目前關係階段與邀約路線校驗。";
 // Normal success paths keep their existing call depth. The larger failure-only
 // ceilings reserve one final fresh Claude candidate plus its two mandatory
 // reviews after both the DeepSeek and first Claude candidates fail.
-const HINT_PROVIDER_CALL_BUDGET = 11;
 const DEBRIEF_PROVIDER_CALL_BUDGET = 13;
-const HINT_SEMANTIC_REVIEWER_CALL_BUDGET = 4;
 const DEBRIEF_SEMANTIC_REVIEWER_CALL_BUDGET = 6;
 // Every generated candidate needs a full independent semantic review plus the
 // fact-only verifier before it can be recorded.
@@ -168,11 +163,6 @@ const PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION = 2;
 // The mobile Debrief request times out at 90s and the DB owner fence at 105s.
 // Start at handler entry and leave 5s for record/response plus 20s owner margin.
 const DEBRIEF_REQUEST_DEADLINE_MS = 85000;
-// Sacrifice a little wait time to reduce Game Hint timeout/failover and avoid
-// returning retryable 503s when the model is just slow. There is never a canned
-// fallback.
-const HINT_TIMEOUT_MS = 24000;
-const HINT_CLAUDE_FAILOVER_TIMEOUT_MS = 18000;
 const TEMPERATURE_JUDGE_MAX_TOKENS = 450;
 const TEMPERATURE_JUDGE_TEMPERATURE = 0.2;
 const DEEPSEEK_TIMEOUT_MS = 30000;
@@ -350,19 +340,6 @@ function practiceProviderTimeoutMs(
     throw new Error(deadlineErrorCode);
   }
   return Math.min(maxTimeoutMs, remainingMs);
-}
-
-function hintProviderTimeoutMs(
-  maxTimeoutMs: number,
-  absoluteDeadlineAtMs: number,
-  monotonicNow: () => number,
-): number {
-  return practiceProviderTimeoutMs(
-    maxTimeoutMs,
-    absoluteDeadlineAtMs,
-    monotonicNow,
-    "practice_hint_deadline_exceeded",
-  );
 }
 
 function debriefProviderTimeoutMs(
@@ -635,6 +612,7 @@ async function persistGenerationTelemetryFailOpen(opts: {
   semanticProviderCalls?: number;
   model?: string;
   timeoutMs?: number;
+  pipeline?: string;
 }): Promise<void> {
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -656,6 +634,7 @@ async function persistGenerationTelemetryFailOpen(opts: {
       attemptDurationsMs: opts.attemptDurationsMs,
       failureClasses: opts.failureClasses,
       failureCodes: opts.failureCodes,
+      pipeline: opts.pipeline,
     });
     const abortController = new AbortController();
     const rawQuery = opts.supabase.from("ai_logs").insert(row);
@@ -747,73 +726,6 @@ function getErrorMessage(e: unknown): string {
  * 格式／驗證類失敗（JSON 壞掉或 hint guard 拒絕）才適合帶「上一版被拒絕」的
  * 重試指令；timeout／上游 5xx 帶這句是誤導（模型根本沒輸出被拒的 JSON）。
  */
-function isHintFormatOrGuardError(e: unknown): boolean {
-  const message = getErrorMessage(e);
-  return message.includes("hint_") ||
-    message.includes("max_tokens") ||
-    message.includes("JSON") ||
-    message.includes("Unexpected token");
-}
-
-function hintRetryReason(e: unknown): string {
-  const message = getErrorMessage(e);
-  if (message.includes("unsupported_detail")) {
-    return "捏造證據未提供的店名、地點、時間、人物或聯絡資訊";
-  }
-  if (message.includes("overlong")) {
-    return "欄位太長，若直接裁尾會變成半句";
-  }
-  if (message.includes("max_tokens")) {
-    return "輸出太長導致 provider 截斷，必須壓短三欄並完整收句";
-  }
-  if (
-    message.includes("hint_quality_invalid") ||
-    message.includes("hint_canned_visible_text")
-  ) {
-    return "內容太空泛、像罐頭，或沒有接到她最新一句的具體素材";
-  }
-  if (message.includes("hint_bossy_pasteable_reply")) {
-    return "可貼回覆太像命令、面試官或叫她交作業";
-  }
-  if (message.includes("hint_l4_unsafe")) {
-    return "可見文字越過安全邊界";
-  }
-  if (message.includes("hint_internal_label_leak")) {
-    return "可見文字露出內部標籤";
-  }
-  if (
-    message.includes("JSON") ||
-    message.includes("Unexpected token") ||
-    message.includes("hint_not_object") ||
-    message.includes("hint_extra_keys") ||
-    message.includes("hint_missing")
-  ) {
-    return "不是合格的唯一 JSON 物件";
-  }
-  return "格式或安全規則不合格";
-}
-
-function withHintRetryInstruction(
-  messages: ChatMessage[],
-  error: unknown,
-): ChatMessage[] {
-  return [
-    ...messages,
-    {
-      role: "user",
-      content:
-        `上一版 Hint JSON 被拒絕：${
-          hintRetryReason(error)
-        }。請重新輸出唯一 JSON，` +
-        'shape 必須仍是 {"warmUp":"...","steady":"...","coaching":"..."}。' +
-        `warmUp、steady 各 ${HINT_REPLY_SOFT_CHAR_LIMIT} 字內，coaching ${HINT_COACHING_SOFT_CHAR_LIMIT} 字內，三欄都要完整收句。` +
-        "warmUp、steady、coaching 三欄各自都要逐字重用她最新一句的具體詞或短語，不能只有其中一欄具體。" +
-        "若她最新句只是在問「在哪／哪家／哪條路」，而逐字稿沒店名或路名：先答沒記店/路名、只記得感覺或香味；不得編店名、路名、地址、地標，也不得兩個回覆都只丟問題。" +
-        "可貼回覆要先接住她最新狀態，再給低壓接球；不要命令、不要面試官語氣、不要內部標籤、不要露骨或私密壓迫。",
-    },
-  ];
-}
-
 function debriefRetryReason(error: unknown): string {
   const message = getErrorMessage(error);
   if (message.includes("debrief_quality_invalid_unsupported_detail")) {
@@ -2866,13 +2778,9 @@ export function createPracticeChatHandler(
       const hintFamiliarityScore = ledger.familiarityScore ?? 0;
       const hintPartnerMood = partnerStateFromLedger(ledger)?.mood ??
         relationshipThreadState?.partnerState?.mood ?? null;
-      const hintGenerationAttempts = HINT_GENERATION_ATTEMPTS;
-      const hintTimeoutMs = HINT_TIMEOUT_MS;
       let hintResult: ReturnType<typeof parseHintResult> | null = null;
-      let hintProvider = apiKey ? "deepseek" : "anthropic";
-      let hintModel = apiKey
-        ? DEEPSEEK_MODEL
-        : claudeFallbackModelForTier(sub.tier);
+      const hintProvider = "anthropic";
+      let hintModel = CLAUDE_SONNET_MODEL;
       let hintFailoverUsed = false;
       const hintGenerationStartedAt = performance.now();
       let hintAttemptCount = 0;
@@ -2881,14 +2789,31 @@ export function createPracticeChatHandler(
       const hintAttemptDurationsMs: number[] = [];
       const hintFailureClasses: PracticeGenerationFailureClass[] = [];
       const hintFailureCodes: string[] = [];
-      let hintSemanticProviderCalls = 0;
-      // Change A：整個 attempt 迴圈保留最佳「通過完整客觀硬 gate」候選。任何一次
-      // 生成通過 parse＋接地/事實硬 gate、卻只被主觀語意複審 reject 的候選都存這裡；
-      // 即時請求在原本要 503 前改供給它（prefetch 一律不供給，維持不落快照鐵則）。
-      let bestGatePassingHint: ReturnType<typeof parseHintResult> | null = null;
-      let hintSalvageUsed = false;
+      const recordHintAttemptFailure = (failure: SingleShotAttemptFailure) => {
+        const failureError = new Error(failure.code);
+        const failureClass = classifyPracticeGenerationFailure(failureError);
+        hintLastFailureClass = failureClass;
+        hintAttemptDurationsMs.push(failure.durationMs);
+        hintAttemptCount = hintAttemptDurationsMs.length;
+        hintFailureClasses.push(failureClass);
+        appendPracticeFailureCodes(hintFailureCodes, failureError);
+        logWarn("practice_chat_generation_attempt", {
+          user: summarizeUser(user.id),
+          provider: "anthropic",
+          model: failure.model,
+          ...buildPracticeGenerationTelemetry({
+            mode: "hint",
+            practiceMode: request.practiceMode,
+            attempt: hintAttemptDurationsMs.length,
+            attemptDurationMs: failure.durationMs,
+            failureClass,
+            fallbackUsed: false,
+            totalDurationMs: null,
+            promptChars: hintPromptChars,
+          }),
+        });
+      };
       try {
-        let lastError: unknown;
         const baseHintMessages = buildHintMessages({
           turns: request.turns,
           profile: request.profile,
@@ -2913,147 +2838,40 @@ export function createPracticeChatHandler(
           partnerFactualEvidence: hintFactualEvidence.partner,
           trustedFactClaims: hintFactualEvidence.claims,
           enforceGeneratedQuality: true,
-          semanticAdjudicated: true,
         } as const;
-        // Change A/C：降級供給候選必須通過與「正式成功路徑相同」的硬內容 gate
-        // （generatedHintParseOptions，semanticAdjudicated=true：bossy／重複／純問句／
-        // game 契約全開）。供給前先做 Change C 淨化：移除逐字稿沒有出處的第三方
-        // 場地／人物子句（owner=world/third_party；使用者自陳事實不碰）。過 gate 才
-        // 供給，否則回 null 維持 503。純 post-parse 邏輯層，不動任何生成 prompt bytes。
-        const decisionedHint = (
-          parsed: ReturnType<typeof parseHintResult>,
-        ): ReturnType<typeof parseHintResult> => ({
-          ...parsed,
-          replies: parsed.replies.map((reply) => ({
-            ...reply,
-            decision: buildHintDecision({
-              turns: request.turns,
-              profile: request.profile,
-              practiceMode: request.practiceMode,
-              temperatureScore: hintTemperatureScore,
-              familiarityScore: hintFamiliarityScore,
-              partnerMood: hintPartnerMood,
-              gameState: ledgerGameState,
-              replyType: reply.type,
-              replyText: reply.text,
-              rationale: SERVER_HINT_DECISION_RATIONALE,
-            }),
-          })) as typeof parsed.replies,
-        });
-        const salvageHintCandidate = (
-          raw: { warmUp: string; steady: string; coaching: string },
-        ): ReturnType<typeof parseHintResult> | null => {
-          const factContext = buildHintFactContext({
-            turns: request.turns,
-            sharedFactualEvidence: hintFactualEvidence.shared,
-            partnerFactualEvidence: hintFactualEvidence.partner,
-            trustedFactClaims: hintFactualEvidence.claims,
-          });
-          const cleaned = {
-            warmUp: stripUnsupportedThirdPartyDetails({
-              text: raw.warmUp,
-              field: "reply",
-              context: factContext,
-            }),
-            steady: stripUnsupportedThirdPartyDetails({
-              text: raw.steady,
-              field: "reply",
-              context: factContext,
-            }),
-            coaching: stripUnsupportedThirdPartyDetails({
-              text: raw.coaching,
-              field: "coaching",
-              context: factContext,
-            }),
-          };
-          // P1#3/P1#4：strip 回空字串代表整段被清光或殘留清不乾淨的第三方幻覺，
-          // 一律當 salvage 失敗、不供給（維持 503），絕不落帶幻覺或殘句的候選。
-          if (
-            cleaned.warmUp.length === 0 || cleaned.steady.length === 0 ||
-            cleaned.coaching.length === 0
-          ) {
-            return null;
-          }
-          try {
-            return decisionedHint(
-              parseHintResult(JSON.stringify(cleaned), {
+        hintPromptChars = countPromptChars(baseHintMessages);
+        if (!claudeApiKey || !deps.callClaude) {
+          throw new Error("claude_unavailable");
+        }
+        const outcome = await runSingleShot<ReturnType<typeof parseHintResult>>(
+          {
+            callClaude: deps.callClaude,
+            apiKey: claudeApiKey,
+            messages: baseHintMessages,
+            forcedTool: {
+              name: "emit_hint",
+              description:
+                "輸出練習室提示：warmUp/steady 兩句可直接貼上的回覆與 coaching 教練講評。",
+              inputSchema: HINT_TOOL_SCHEMA as Record<string, unknown>,
+            },
+            maxTokens: HINT_MAX_TOKENS,
+            temperature: HINT_TEMPERATURE,
+            perCallTimeoutMs: HINT_SINGLE_SHOT_TIMEOUT_MS,
+            deadlineAtMs: hintAbsoluteDeadlineAtMs,
+            now: monotonicNow,
+            models: [CLAUDE_SONNET_MODEL, CLAUDE_HAIKU_MODEL],
+            // 機械守門全套照舊：parseHintResult（結構/長度/守門詞表/接地/事實
+            // ledger/白話 repair）＋server-authored decision 可建構性。丟錯＝該發
+            // 判敗立即進補發，絕不 repair 復活、絕不保留候選原文。
+            validate: (raw) => {
+              const parsed = parseHintResult(raw, {
                 ...generatedHintParseOptions,
-              }),
-            );
-          } catch {
-            return null;
-          }
-        };
-        const parseGeneratedHint = async (
-          rawHint: string,
-          candidateProvider: "deepseek" | "anthropic",
-        ) => {
-          // This candidate is never returned or recorded. Defer visible-text
-          // defects so the semantic reviewer can repair them, then rerun the
-          // normal hard safety/FSM guard on the reviewed result below.
-          const candidateHint = parseHintResult(rawHint, {
-            ...generatedHintParseOptions,
-            deferVisibleGuardsToSemantic: true,
-          });
-          const candidate = {
-            warmUp: candidateHint.replies[0].text,
-            steady: candidateHint.replies[1].text,
-            coaching: candidateHint.coaching,
-          };
-          if (!deps.semanticAdjudicate) {
-            throw new Error("semantic_adjudication_unavailable");
-          }
-          const futureClaudeCandidateReserve =
-            candidateProvider === "anthropic" &&
-              hintAttemptCount <
-                HINT_GENERATION_ATTEMPTS + HINT_CLAUDE_GENERATION_ATTEMPTS
-              ? 1 + PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION
-              : 0;
-          const hintSemanticCallBudget = Math.max(
-            0,
-            Math.min(
-              HINT_SEMANTIC_REVIEWER_CALL_BUDGET,
-              HINT_PROVIDER_CALL_BUDGET - hintAttemptCount -
-                hintSemanticProviderCalls - futureClaudeCandidateReserve,
-            ),
-          );
-          let semantic;
-          try {
-            semantic = await deps.semanticAdjudicate({
-              surface: "hint",
-              practiceMode: request.practiceMode,
-              candidate,
-              turns: request.turns,
-              trustedGenerationContext: JSON.stringify({
-                temperatureScore: hintTemperatureScore,
-                familiarityScore: hintFamiliarityScore,
-                partnerMood: hintPartnerMood,
-                serverInviteRouteEnforcedAfterReview: true,
-                sharedFacts: hintFactualEvidence.shared,
-                partnerFacts: hintFactualEvidence.partner,
-                typedFacts: hintFactualEvidence.claims,
-              }),
-              candidateProvider,
-              absoluteDeadlineAtMs: hintAbsoluteDeadlineAtMs,
-              monotonicNow,
-              maxProviderCalls: hintSemanticCallBudget,
-              retryTransientFullReviewerOnce: hintSemanticCallBudget >= 3,
-              deepSeekApiKey: apiKey,
-              claudeApiKey,
-              claudeModel: claudeFallbackModelForTier(sub.tier),
-              callDeepSeek: deps.callDeepSeek,
-              callClaude: deps.callClaude,
-              validateCandidate: (reviewedCandidate, hintAssessment) => {
-                const hardChecked = parseHintResult(
-                  JSON.stringify(reviewedCandidate),
-                  { ...generatedHintParseOptions },
-                );
-                assertReviewedHintSemanticContract(
-                  hintAssessment,
-                  hardChecked.replies,
-                );
-                for (const reply of hardChecked.replies) {
-                  buildHintDecision({
+              });
+              return {
+                ...parsed,
+                replies: parsed.replies.map((reply) => ({
+                  ...reply,
+                  decision: buildHintDecision({
                     turns: request.turns,
                     profile: request.profile,
                     practiceMode: request.practiceMode,
@@ -3064,235 +2882,42 @@ export function createPracticeChatHandler(
                     replyType: reply.type,
                     replyText: reply.text,
                     rationale: SERVER_HINT_DECISION_RATIONALE,
-                  });
-                }
-              },
-            });
-            hintSemanticProviderCalls += semantic.providerCalls;
-          } catch (error) {
-            if (error instanceof SemanticAdjudicationError) {
-              hintSemanticProviderCalls += error.providerCalls;
-              // Change A/B：非安全類語意 reject（不含 unsafe）時，保留這份已過
-              // 完整客觀硬 gate 的候選；unsafe 一律不留，寧可 503。prefetch 不留。
-              if (
-                bestGatePassingHint === null && !requestIsPrefetch &&
-                !error.issueKinds.includes("unsafe")
-              ) {
-                const salvaged = salvageHintCandidate(candidate);
-                if (salvaged) {
-                  bestGatePassingHint = salvaged;
-                }
-              }
-            }
-            throw error;
-          }
-          const generatedHint = parseHintResult(
-            JSON.stringify(semantic.candidate),
-            { ...generatedHintParseOptions },
-          );
-          const hintAssessment = assertReviewedHintSemanticContract(
-            semantic.hintAssessment,
-            generatedHint.replies,
-          );
-          logInfo("practice_chat_semantic_adjudication", {
-            user: summarizeUser(user.id),
-            surface: "hint",
+                  }),
+                })) as typeof parsed.replies,
+              };
+            },
+          },
+        );
+        for (const failure of outcome.attemptFailures) {
+          recordHintAttemptFailure(failure);
+        }
+        hintResult = outcome.result;
+        hintModel = outcome.model;
+        hintFailoverUsed = outcome.attemptFailures.length > 0;
+        hintAttemptCount = outcome.attemptFailures.length + 1;
+        hintLastFailureClass = null;
+        hintAttemptDurationsMs.push(outcome.durationMs);
+        logInfo("practice_chat_generation_attempt", {
+          user: summarizeUser(user.id),
+          provider: hintProvider,
+          model: hintModel,
+          ...buildPracticeGenerationTelemetry({
+            mode: "hint",
             practiceMode: request.practiceMode,
-            provider: semantic.provider ?? "test",
-            providerCalls: semantic.providerCalls,
-            repaired: semantic.repaired,
-            issueKinds: semantic.issueKinds,
-            hintInteractionKind: hintAssessment.interactionKind,
-          });
-          return {
-            ...generatedHint,
-            replies: generatedHint.replies.map((reply) => ({
-              ...reply,
-              decision: buildHintDecision({
-                turns: request.turns,
-                profile: request.profile,
-                practiceMode: request.practiceMode,
-                temperatureScore: hintTemperatureScore,
-                familiarityScore: hintFamiliarityScore,
-                partnerMood: hintPartnerMood,
-                gameState: ledgerGameState,
-                replyType: reply.type,
-                replyText: reply.text,
-                rationale: SERVER_HINT_DECISION_RATIONALE,
-              }),
-            })) as typeof generatedHint.replies,
-          };
-        };
-        if (apiKey) {
-          for (
-            let attempt = 1;
-            attempt <= hintGenerationAttempts;
-            attempt++
-          ) {
-            const hintMessages = baseHintMessages;
-            const providerTimeoutMs = hintProviderTimeoutMs(
-              hintTimeoutMs,
-              hintAbsoluteDeadlineAtMs,
-              monotonicNow,
-            );
-            hintAttemptCount += 1;
-            hintPromptChars = countPromptChars(hintMessages);
-            const attemptStartedAt = performance.now();
-            try {
-              const rawHint = await deps.callDeepSeek({
-                apiKey,
-                messages: hintMessages,
-                maxTokens: HINT_MAX_TOKENS,
-                temperature: HINT_TEMPERATURE,
-                jsonMode: true,
-                // Hint is a compact, strictly shaped JSON response. DeepSeek
-                // V4's default thinking can consume the entire visible output
-                // budget and return finish_reason=length before JSON closes.
-                thinking: { type: "disabled" },
-                timeoutMs: providerTimeoutMs,
-              });
-              hintResult = await parseGeneratedHint(rawHint, "deepseek");
-              hintLastFailureClass = null;
-              const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
-              hintAttemptDurationsMs.push(attemptDurationMs);
-              logInfo("practice_chat_generation_attempt", {
-                user: summarizeUser(user.id),
-                provider: "deepseek",
-                model: DEEPSEEK_MODEL,
-                ...buildPracticeGenerationTelemetry({
-                  mode: "hint",
-                  practiceMode: request.practiceMode,
-                  attempt: hintAttemptCount,
-                  attemptDurationMs,
-                  failureClass: null,
-                  fallbackUsed: false,
-                  totalDurationMs: null,
-                  promptChars: hintPromptChars,
-                }),
-              });
-              break;
-            } catch (e) {
-              lastError = e;
-              hintLastFailureClass = classifyPracticeGenerationFailure(e);
-              const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
-              hintAttemptDurationsMs.push(attemptDurationMs);
-              hintFailureClasses.push(hintLastFailureClass);
-              appendPracticeFailureCodes(hintFailureCodes, e);
-              logWarn("practice_chat_generation_attempt", {
-                user: summarizeUser(user.id),
-                provider: "deepseek",
-                model: DEEPSEEK_MODEL,
-                ...buildPracticeGenerationTelemetry({
-                  mode: "hint",
-                  practiceMode: request.practiceMode,
-                  attempt: hintAttemptCount,
-                  attemptDurationMs,
-                  failureClass: hintLastFailureClass,
-                  fallbackUsed: false,
-                  totalDurationMs: null,
-                  promptChars: hintPromptChars,
-                }),
-              });
-            }
-          }
-        }
-
-        for (
-          let claudeAttempt = 1;
-          hintResult === null &&
-          claudeAttempt <= HINT_CLAUDE_GENERATION_ATTEMPTS &&
-          claudeApiKey && deps.callClaude &&
-          HINT_PROVIDER_CALL_BUDGET - hintAttemptCount -
-                hintSemanticProviderCalls >=
-            1 + PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION;
-          claudeAttempt++
-        ) {
-          const hintMessages = lastError !== undefined &&
-              isHintFormatOrGuardError(lastError)
-            ? withHintRetryInstruction(baseHintMessages, lastError)
-            : baseHintMessages;
-          const providerTimeoutMs = hintProviderTimeoutMs(
-            HINT_CLAUDE_FAILOVER_TIMEOUT_MS,
-            hintAbsoluteDeadlineAtMs,
-            monotonicNow,
-          );
-          hintFailoverUsed = hintAttemptCount > 0;
-          hintAttemptCount += 1;
-          hintPromptChars = countPromptChars(hintMessages);
-          const attemptStartedAt = performance.now();
-          try {
-            hintModel = claudeFallbackModelForTier(sub.tier);
-            const rawHint = await deps.callClaude({
-              apiKey: claudeApiKey,
-              model: hintModel,
-              messages: hintMessages,
-              maxTokens: HINT_MAX_TOKENS,
-              temperature: HINT_TEMPERATURE,
-              timeoutMs: providerTimeoutMs,
-            });
-            hintResult = await parseGeneratedHint(rawHint, "anthropic");
-            hintProvider = "anthropic";
-            hintLastFailureClass = null;
-            const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
-            hintAttemptDurationsMs.push(attemptDurationMs);
-            logInfo("practice_chat_generation_attempt", {
-              user: summarizeUser(user.id),
-              provider: hintProvider,
-              model: hintModel,
-              ...buildPracticeGenerationTelemetry({
-                mode: "hint",
-                practiceMode: request.practiceMode,
-                attempt: hintAttemptCount,
-                attemptDurationMs,
-                failureClass: null,
-                fallbackUsed: false,
-                totalDurationMs: null,
-                promptChars: hintPromptChars,
-              }),
-            });
-          } catch (e) {
-            lastError = e;
-            hintLastFailureClass = classifyPracticeGenerationFailure(e);
-            const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
-            hintAttemptDurationsMs.push(attemptDurationMs);
-            hintFailureClasses.push(hintLastFailureClass);
-            appendPracticeFailureCodes(hintFailureCodes, e);
-            logWarn("practice_chat_generation_attempt", {
-              user: summarizeUser(user.id),
-              provider: "anthropic",
-              model: hintModel,
-              ...buildPracticeGenerationTelemetry({
-                mode: "hint",
-                practiceMode: request.practiceMode,
-                attempt: hintAttemptCount,
-                attemptDurationMs,
-                failureClass: hintLastFailureClass,
-                fallbackUsed: false,
-                totalDurationMs: null,
-                promptChars: hintPromptChars,
-              }),
-            });
-          }
-        }
-        if (hintResult === null) {
-          // Change A：生成/語意 budget 燒完仍無成功候選時，即時請求改供給本輪
-          // 保留的最佳客觀-gate 候選（僅主觀複審沒過），避免對系統性主觀 reject
-          // 反覆 503。prefetch 不供給、無保留候選則維持原本 throw→503。
-          if (!requestIsPrefetch && bestGatePassingHint !== null) {
-            hintResult = bestGatePassingHint;
-            hintSalvageUsed = true;
-            logInfo("practice_chat_hint_best_candidate_served", {
-              user: summarizeUser(user.id),
-              practiceMode: request.practiceMode,
-              semanticProviderCalls: hintSemanticProviderCalls,
-            });
-          } else {
-            throw lastError instanceof Error
-              ? lastError
-              : new Error("hint_generation_failed");
-          }
-        }
+            attempt: hintAttemptCount,
+            attemptDurationMs: outcome.durationMs,
+            failureClass: null,
+            fallbackUsed: false,
+            totalDurationMs: null,
+            promptChars: hintPromptChars,
+          }),
+        });
       } catch (e) {
+        if (e instanceof SingleShotExhaustedError) {
+          for (const failure of e.attemptFailures) {
+            recordHintAttemptFailure(failure);
+          }
+        }
         const failureClass = hintLastFailureClass ??
           classifyPracticeGenerationFailure(e);
         logWarn("practice_chat_generation_failed", {
@@ -3300,7 +2925,6 @@ export function createPracticeChatHandler(
           mode: "hint",
           personaId: request.profile.personaId,
           difficulty: request.profile.difficulty,
-          semanticProviderCalls: hintSemanticProviderCalls,
           failureClass,
         });
         await releaseHintGeneration({
@@ -3325,11 +2949,11 @@ export function createPracticeChatHandler(
           fallbackUsed: false,
           failoverUsed: hintFailoverUsed,
           failureClass,
-          semanticProviderCalls: hintSemanticProviderCalls,
           attemptDurationsMs: hintAttemptDurationsMs,
           failureClasses: hintFailureClasses,
           failureCodes: hintFailureCodes,
           model: hintModel,
+          pipeline: "single_shot_v2",
         });
         if (requestIsPrefetch) {
           logHintPrefetchTelemetry({
@@ -3355,7 +2979,6 @@ export function createPracticeChatHandler(
         user: summarizeUser(user.id),
         provider: hintProvider,
         model: hintModel,
-        bestCandidateSalvaged: hintSalvageUsed,
         ...buildPracticeGenerationTelemetry({
           mode: "hint",
           practiceMode: request.practiceMode,
@@ -3364,7 +2987,6 @@ export function createPracticeChatHandler(
           failureClass: null,
           fallbackUsed: false,
           failoverUsed: hintFailoverUsed,
-          semanticProviderCalls: hintSemanticProviderCalls,
           totalDurationMs: hintTotalDurationMs,
           promptChars: hintPromptChars,
         }),
@@ -3505,11 +3127,11 @@ export function createPracticeChatHandler(
         fallbackUsed: false,
         failoverUsed: hintFailoverUsed,
         failureClass: null,
-        semanticProviderCalls: hintSemanticProviderCalls,
         attemptDurationsMs: hintAttemptDurationsMs,
         failureClasses: hintFailureClasses,
         failureCodes: hintFailureCodes,
         model: hintModel,
+        pipeline: "single_shot_v2",
       });
 
       logInfo("practice_chat_succeeded", {

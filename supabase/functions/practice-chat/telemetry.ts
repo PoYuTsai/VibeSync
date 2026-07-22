@@ -248,6 +248,8 @@ export function buildPracticeAiLogRow(input: {
   attemptDurationsMs: readonly unknown[];
   failureClasses: readonly unknown[];
   failureCodes?: readonly unknown[];
+  /** 管線世代標記（如 "single_shot_v2"），供 ai_logs 新舊對比查詢。 */
+  pipeline?: string;
 }): PracticeAiLogRow {
   const telemetry = buildPracticeGenerationTelemetry(input.telemetry);
   const attempt = telemetry.attempt ?? 1;
@@ -270,6 +272,9 @@ export function buildPracticeAiLogRow(input: {
       attemptDurationsMs: normalizeCountList(input.attemptDurationsMs),
       failureClasses: normalizeFailureList(input.failureClasses),
       failureCodes,
+      ...(typeof input.pipeline === "string" && input.pipeline.length > 0
+        ? { pipeline: input.pipeline.slice(0, 40) }
+        : {}),
     },
     response_body: null,
     error_message: errorCode === null

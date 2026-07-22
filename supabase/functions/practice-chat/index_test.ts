@@ -268,28 +268,6 @@ function validGameHintJson(overrides: Record<string, string> = {}) {
   });
 }
 
-function semanticHintResult(
-  candidate: Record<string, unknown>,
-  options: {
-    repaired?: boolean;
-    issueKinds?: SemanticAdjudicationResult["issueKinds"];
-    hintAssessment?: SemanticAdjudicationResult["hintAssessment"];
-  } = {},
-): SemanticAdjudicationResult {
-  return {
-    candidate,
-    repaired: options.repaired ?? true,
-    issueKinds: options.issueKinds ?? ["unsupported_fact"],
-    hintAssessment: options.hintAssessment ?? {
-      interactionKind: "other",
-      replyContract: "not_applicable",
-      coachingContract: "not_applicable",
-    },
-    provider: "anthropic",
-    providerCalls: 1,
-  };
-}
-
 function semanticDebriefResult(
   candidate: Record<string, unknown>,
   options: {
@@ -3236,13 +3214,13 @@ Deno.test("slow durable telemetry stays off the Hint response path after quota r
   const { response, state } = await run({
     ledger: beginnerStartedLedger(),
     aiLogsNeverCompletes: true,
-    deepSeekReplies: [validHintJson()],
+    claudeReplies: [validHintJson()],
   }, hintBody({ practiceMode: "beginner", requestId: "hint-slow-log" }));
 
   assertEquals(response.status, 200);
   assertEquals(recordHintCalls(state).length, 1);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.deepSeekCalls[0].thinking, { type: "disabled" });
+  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(aiLogInserts(state).length, 1);
   assertEquals(state.backgroundTasks.length, 1);
   assert(
@@ -5289,71 +5267,6 @@ Deno.test("hint locked game session rejects forged beginner mode before DeepSeek
   assertEquals(recordHintCalls(state).length, 0);
 });
 
-Deno.test("hint game practice mode generates like beginner for SR profile", async () => {
-  const { response, json, state } = await run({
-    ledger: gameStartedLedger({
-      temperature_score: 64,
-      hint_count: 2,
-    }),
-    drawEvents: [{ profile_id: "practice_girl_004" }],
-    deepSeekReplies: [validGameHintJson()],
-    rpc: {
-      record_practice_hint: [{
-        data: [{ new_hint_count: 3, did_charge: true }],
-      }],
-    },
-  }, hintBody({ practiceMode: "game", profileId: "practice_girl_004" }));
-
-  assertEquals(response.status, 200);
-  assertEquals(json.replies.length, 2);
-  assertEquals(json.hintUsedCount, 3);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(claimHintCalls(state).length, 1);
-  assertEquals(recordHintCalls(state).length, 1);
-  const promptText = state.deepSeekCalls[0].messages.map((m) => m.content)
-    .join("\n");
-  assert(promptText.includes("currentTemperatureScore: 64/100"));
-  assert(promptText.includes("gameHint(hidden guidance)"));
-});
-
-Deno.test("game hint repairs common internal labels from provider before recording", async () => {
-  const { response, json, state } = await run({
-    ledger: gameStartedLedger({
-      temperature_score: 74,
-      familiarity_score: 58,
-      hint_count: 1,
-    }),
-    drawEvents: [{ profile_id: "practice_girl_004" }],
-    deepSeekReplies: [
-      validHintJson({
-        coaching:
-          "Game 心法：她主動說想喝咖啡，P4_TENSION 要換成讓她補狀態，不是直接推 Emotion + heat 或 targetVariable: Investment + invite。速約任務：問她想醒腦還是放空，因為先用 speedInviteDirection: soft_invite_probe 和 allowSpicyLevel: L3 留下具體窗口。",
-      }),
-    ],
-    rpc: {
-      record_practice_hint: [{
-        data: [{ new_hint_count: 2, did_charge: true }],
-      }],
-    },
-  }, hintBody({ practiceMode: "game", profileId: "practice_girl_004" }));
-
-  assertEquals(response.status, 200);
-  assertEquals(json.hintUsedCount, 2);
-  const visible = [
-    json.replies[0].text,
-    json.replies[1].text,
-    json.coaching,
-  ].join("\n");
-  assert(visible.includes("張力"));
-  assert(visible.includes("低壓試探邀約"));
-  assert(visible.includes("高張力暗示"));
-  assertEquals(visible.includes("targetVariable"), false);
-  assertEquals(visible.includes("speedInviteDirection"), false);
-  assertEquals(visible.includes("allowSpicyLevel"), false);
-  assertEquals(recordHintCalls(state).length, 1);
-  assertEquals(releaseHintCalls(state).length, 0);
-});
-
 Deno.test("game hint timeout fails over to Claude without exposing canned text", async () => {
   const { response, json, state } = await run(
     {
@@ -5363,15 +5276,15 @@ Deno.test("game hint timeout fails over to Claude without exposing canned text",
         hint_count: 3,
       }),
       drawEvents: [{ profile_id: "practice_girl_004" }],
-      deepSeekReplies: [
-        new Error("deepseek_timeout"),
+      claudeReplies: [
+        new Error("claude_timeout"),
+        validHintJson({
+          warmUp: "調時差辛苦了，妳這趟回來最想先用什麼方式回血？",
+          steady: "等妳時差歸位，我拿一杯咖啡跟妳交換這趟最好笑的故事。",
+          coaching:
+            "Game 心法：她還在調時差，這輪先接低能量再補熟悉感。速約任務：問她這趟回來最想怎麼回血，因為先接住時差再保留咖啡窗口，不追著定時間。",
+        }),
       ],
-      claudeReplies: [validHintJson({
-        warmUp: "調時差辛苦了，妳這趟回來最想先用什麼方式回血？",
-        steady: "等妳時差歸位，我拿一杯咖啡跟妳交換這趟最好笑的故事。",
-        coaching:
-          "Game 心法：她還在調時差，這輪先接低能量再補熟悉感。速約任務：問她這趟回來最想怎麼回血，因為先接住時差再保留咖啡窗口，不追著定時間。",
-      })],
       rpc: {
         record_practice_hint: [{
           data: [{ new_hint_count: 4, did_charge: true }],
@@ -5403,10 +5316,10 @@ Deno.test("game hint timeout fails over to Claude without exposing canned text",
     .join("\n");
   assert(visibleReplies.includes("調時差"));
   assert(visibleReplies.includes("咖啡"));
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 24000);
-  assertEquals(state.claudeCalls[0].timeoutMs, 18000);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
+  assertEquals(state.claudeCalls[1].model, CLAUDE_HAIKU_MODEL);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
 });
@@ -5415,8 +5328,7 @@ Deno.test("beginner hint timeout also fails over to Claude", async () => {
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
-      deepSeekReplies: [new Error("deepseek_timeout")],
-      claudeReplies: [validHintJson()],
+      claudeReplies: [new Error("claude_timeout"), validHintJson()],
       rpc: {
         record_practice_hint: [{
           data: [{ new_hint_count: 1, did_charge: true }],
@@ -5428,10 +5340,10 @@ Deno.test("beginner hint timeout also fails over to Claude", async () => {
 
   assertEquals(response.status, 200);
   assertEquals(json.replies.length, 2);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 24000);
-  assertEquals(state.claudeCalls[0].timeoutMs, 18000);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[0].timeoutMs, 15000);
+  assertEquals(state.claudeCalls[1].timeoutMs, 15000);
   assertEquals(json.generationSource, "model");
   assertEquals(json.fallbackUsed, false);
   assertEquals(json.failoverUsed, true);
@@ -5466,12 +5378,13 @@ Deno.test("Hint deadline expires before generation without any provider call", a
 });
 
 Deno.test("Hint generation timeouts clamp to the shared request deadline", async () => {
+  // anchor=0（死線 35000）；第一發 start=0 全額 15000；第一發敗於 5000；
+  // 第二發 start=28000 剩 7000 → timeout 夾成 7000-1000=6000。
   const { response, state } = await run(
     {
       ledger: beginnerStartedLedger(),
-      monotonicNowValues: [0, 90000, 100000],
-      deepSeekReplies: [new Error("deepseek_timeout")],
-      claudeReplies: [validHintJson()],
+      monotonicNowValues: [0, 0, 5000, 28000, 29000],
+      claudeReplies: [new Error("claude_timeout"), validHintJson()],
     },
     hintBody({
       practiceMode: "beginner",
@@ -5480,21 +5393,22 @@ Deno.test("Hint generation timeouts clamp to the shared request deadline", async
   );
 
   assertEquals(response.status, 200);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 15000);
-  assertEquals(state.claudeCalls[0].timeoutMs, 5000);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[0].timeoutMs, 15000);
+  assertEquals(state.claudeCalls[1].timeoutMs, 6000);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("Hint deadline expires before Claude failover without starting it", async () => {
+Deno.test("Hint deadline expires before the Haiku failover without starting it", async () => {
+  // 第一發 start=0 敗於 20000；第二發 start=33000 剩 2000 < 3000
+  // → deadline_exhausted，不打第二發。
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
-      monotonicNowValues: [0, 80000, 105000],
-      deepSeekReplies: [new Error("deepseek_timeout")],
-      claudeReplies: [validHintJson()],
+      monotonicNowValues: [0, 0, 20000, 33000],
+      claudeReplies: [new Error("claude_timeout"), validHintJson()],
     },
     hintBody({
       practiceMode: "beginner",
@@ -5504,20 +5418,19 @@ Deno.test("Hint deadline expires before Claude failover without starting it", as
 
   assertEquals(response.status, 503);
   assertEquals(json.retryable, true);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 24000);
-  assertEquals(state.claudeCalls.length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(releaseHintCalls(state).length, 1);
 });
 
-Deno.test("free Hint uses Claude Haiku when DeepSeek is unavailable", async () => {
+Deno.test("free Hint first shot is also Sonnet 5 under the single-shot pipeline", async () => {
   const { response, json, state } = await run(
     {
       sub: subscription({ tier: "free" }),
       ledger: beginnerStartedLedger(),
-      env: { DEEPSEEK_API_KEY: undefined },
       claudeReplies: [validHintJson()],
     },
     hintBody({
@@ -5529,9 +5442,9 @@ Deno.test("free Hint uses Claude Haiku when DeepSeek is unavailable", async () =
   assertEquals(response.status, 200);
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 1);
-  assertEquals(state.claudeCalls[0].model, CLAUDE_HAIKU_MODEL);
+  assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
   assertEquals(json.provider, "anthropic");
-  assertEquals(json.model, CLAUDE_HAIKU_MODEL);
+  assertEquals(json.model, CLAUDE_SONNET_MODEL);
   assertEquals(json.generationSource, "model");
   assertEquals(json.failoverUsed, false);
 });
@@ -5563,12 +5476,11 @@ Deno.test("hostile context with both providers down returns retryable error, nev
   assertEquals(releaseHintCalls(state).length, 1);
 });
 
-Deno.test("hint retry after a non-format provider error carries no misleading JSON-rejected instruction", async () => {
+Deno.test("hint failover shot repeats the same prompt without any retry instruction", async () => {
   const { response, state } = await run(
     {
       ledger: beginnerStartedLedger(),
-      deepSeekReplies: [new Error("deepseek_http_502")],
-      claudeReplies: [validHintJson()],
+      claudeReplies: [new Error("claude_http_502"), validHintJson()],
       rpc: {
         record_practice_hint: [{
           data: [{ new_hint_count: 1, did_charge: true }],
@@ -5579,17 +5491,17 @@ Deno.test("hint retry after a non-format provider error carries no misleading JS
   );
 
   assertEquals(response.status, 200);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
-  const retryPrompt = state.claudeCalls[0].messages
+  assertEquals(state.claudeCalls.length, 2);
+  // 單發語意：補發不追加任何 retry-instruction，prompt 與第一發完全相同。
+  assertEquals(state.claudeCalls[1].messages, state.claudeCalls[0].messages);
+  const retryPrompt = state.claudeCalls[1].messages
     .map((message) => message.content)
     .join("\n");
-  // 上游 5xx 不是「上一版 JSON 被拒絕」：重試不得夾帶誤導性的格式指令。
   assertEquals(retryPrompt.includes("上一版 Hint JSON 被拒絕"), false);
   assertEquals(retryPrompt.includes("格式或安全規則不合格"), false);
 });
 
-Deno.test("game hint repairs malformed DeepSeek output through Claude before recording", async () => {
+Deno.test("game hint malformed first shot fails over to Haiku before recording", async () => {
   const { response, json, state } = await run(
     {
       ledger: gameStartedLedger({
@@ -5598,10 +5510,8 @@ Deno.test("game hint repairs malformed DeepSeek output through Claude before rec
         hint_count: 2,
       }),
       drawEvents: [{ profile_id: "practice_girl_004" }],
-      deepSeekReplies: [
-        "not json",
-      ],
       claudeReplies: [
+        "not json",
         validHintJson({
           warmUp: "我先給妳我的版本：舒服的節奏要能讓人笑完還想散步。",
           steady: "我先不急著推，妳剛那個脫口秀點我想聽妳怎麼挑。",
@@ -5636,22 +5546,15 @@ Deno.test("game hint repairs malformed DeepSeek output through Claude before rec
   // LLM 全路徑（handler→parse）也不得放行中文 1.2 原詞「框架」招式語境。
   assertEquals(String(json.coaching).includes("框架"), false);
   assertEquals(String(json.coaching).includes("節奏與主見"), true);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
-  const retryPrompt = state.claudeCalls[0].messages
-    .map((message) => message.content)
-    .join("\n");
-  assert(retryPrompt.includes("上一版 Hint JSON 被拒絕"));
-  assert(retryPrompt.includes("重新輸出唯一 JSON"));
-  assert(retryPrompt.includes("warmUp、steady 各 60 字內"));
-  assert(retryPrompt.includes("coaching 140 字內"));
-  assert(retryPrompt.includes("三欄都要完整收句"));
-  assert(retryPrompt.includes("三欄各自都要逐字重用"));
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
+  assertEquals(state.claudeCalls[1].model, CLAUDE_HAIKU_MODEL);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("Beginner and Game Hint semantically repair invented locations before recording", async () => {
+Deno.test("Beginner and Game Hint kill invented-location shots mechanically before recording", async () => {
   const turns = [
     { role: "user" as const, text: "剛路過一間咖啡店，聞起來很香" },
     { role: "ai" as const, text: "喔你鼻子也太靈，在哪啊" },
@@ -5660,7 +5563,7 @@ Deno.test("Beginner and Game Hint semantically repair invented locations before 
     const invalidCoaching = mode === "game"
       ? "Game 心法：她說鼻子也太靈又問在哪，這輪接住咖啡話題。速約任務：先交換生活感，不硬約。"
       : "她說鼻子也太靈又問在哪，先接住咖啡話題。";
-    const repairedCoaching = mode === "game"
+    const groundedCoaching = mode === "game"
       ? "Game 心法：她問咖啡店在哪，這輪先誠實承認沒記住。速約任務：回答店名沒記住，再問她平常怎麼挑咖啡店，因為先接她的問題比硬約自然。"
       : "她說鼻子也太靈又問在哪，先誠實承認沒記住，再接咖啡香。";
     const { response, json, state } = await run(
@@ -5671,17 +5574,18 @@ Deno.test("Beginner and Game Hint semantically repair invented locations before 
             drawEvents: [{ profile_id: "practice_girl_004" }],
           }
           : { ledger: beginnerStartedLedger() }),
-        monotonicNowValues: [1000],
-        deepSeekReplies: [JSON.stringify({
-          warmUp: "鼻子靈是基本配備😂 我在中山站巷子裡發現的，叫『黑露』。",
-          steady: "妳說我鼻子也太靈，店就在中山站附近。",
-          coaching: invalidCoaching,
-        })],
-        semanticReplies: [semanticHintResult({
-          warmUp: "鼻子靈是基本配備😂 我只顧著聞香，店名真的沒記住。",
-          steady: "妳說我鼻子也太靈，但問在哪我真的答不出來😂",
-          coaching: repairedCoaching,
-        })],
+        claudeReplies: [
+          JSON.stringify({
+            warmUp: "鼻子靈是基本配備😂 我在中山站巷子裡發現的，叫『黑露』。",
+            steady: "妳說我鼻子也太靈，店就在中山站附近。",
+            coaching: invalidCoaching,
+          }),
+          JSON.stringify({
+            warmUp: "鼻子靈是基本配備😂 我只顧著聞香，店名真的沒記住。",
+            steady: "妳說我鼻子也太靈，但問在哪我真的答不出來😂",
+            coaching: groundedCoaching,
+          }),
+        ],
       },
       hintBody({
         practiceMode: mode,
@@ -5692,204 +5596,81 @@ Deno.test("Beginner and Game Hint semantically repair invented locations before 
     );
 
     assertEquals(response.status, 200, mode);
-    assertEquals(json.provider, "deepseek", mode);
-    assertEquals(json.failoverUsed, false, mode);
+    assertEquals(json.provider, "anthropic", mode);
+    // 第一發捏造地名被機械接地 gate 殺掉，第二發 Haiku 全新候選供給。
+    assertEquals(json.failoverUsed, true, mode);
+    assertEquals(json.model, CLAUDE_HAIKU_MODEL, mode);
     assertEquals(JSON.stringify(json).includes("中山站"), false, mode);
     assertEquals(JSON.stringify(json).includes("黑露"), false, mode);
-    assertEquals(state.deepSeekCalls.length, 1, mode);
-    assertEquals(state.claudeCalls.length, 0, mode);
-    assertEquals(state.semanticCalls.length, 1, mode);
-    // One generation + four semantic calls stays within the five-call Hint
-    // provider ceiling and preserves a final independent verifier slot.
-    assertEquals(state.semanticCalls[0].maxProviderCalls, 4, mode);
-    assertEquals(
-      state.semanticCalls[0].retryTransientFullReviewerOnce,
-      true,
-      mode,
-    );
-    assertEquals(state.semanticCalls[0].absoluteDeadlineAtMs, 106000, mode);
-    assertEquals(typeof state.semanticCalls[0].monotonicNow, "function", mode);
+    assertEquals(state.deepSeekCalls.length, 0, mode);
+    assertEquals(state.claudeCalls.length, 2, mode);
+    assertEquals(state.semanticCalls.length, 0, mode);
     assertEquals(recordHintCalls(state).length, 1, mode);
     assertEquals(releaseHintCalls(state).length, 0, mode);
-    assertEquals(state.semanticCalls[0].surface, "hint", mode);
-    const telemetry = aiLogInserts(state)[0].values.request_body as Record<
-      string,
-      unknown
-    >;
-    assertEquals(telemetry.semanticProviderCalls, 1, mode);
   }
 });
 
-Deno.test("Hint sends an unsafe generated candidate through semantic repair before the final hard guard", async () => {
-  const repaired = JSON.parse(validHintJson()) as Record<string, unknown>;
+Deno.test("Hint unsafe first shot is killed by the hard safety guard and Haiku serves clean", async () => {
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
-      deepSeekReplies: [validHintJson({
-        warmUp: "今晚直接上床吧",
-      })],
-      semanticReplies: [semanticHintResult(repaired, {
-        issueKinds: ["unsafe"],
-      })],
+      claudeReplies: [
+        validHintJson({ warmUp: "今晚直接上床吧" }),
+        validHintJson(),
+      ],
     },
     hintBody({
       practiceMode: "beginner",
-      requestId: "unsafe-hint-semantic-repair",
+      requestId: "unsafe-hint-shot-killed",
     }),
   );
 
   assertEquals(response.status, 200);
   assertEquals(JSON.stringify(json).includes("直接上床"), false);
-  assertEquals(state.semanticCalls.length, 1);
-  assertEquals(recordHintCalls(state).length, 1);
-  assertEquals(releaseHintCalls(state).length, 0);
-});
-
-Deno.test("Hint semantic failure regenerates through Claude and re-reviews before recording", async () => {
-  const regenerated = JSON.parse(validHintJson({
-    warmUp: "我只記得香味，店名真的沒看清楚。",
-    steady: "沒進去也沒記店名，這次不亂猜。",
-  })) as Record<string, unknown>;
-  const { response, state } = await run(
-    {
-      ledger: beginnerStartedLedger(),
-      deepSeekReplies: [validHintJson()],
-      claudeReplies: [JSON.stringify(regenerated)],
-      semanticReplies: [
-        new SemanticAdjudicationError(
-          "semantic_hint_reject:unsupported_fact.strategy_mismatch:active_consistency_test:noncompliant:noncompliant semantic_adjudication_failed:semantic_adjudication_recovery_active_fact_fields_unchanged",
-          1,
-          {
-            issueKinds: ["unsupported_fact", "strategy_mismatch"],
-            hintAssessment: {
-              interactionKind: "active_consistency_test",
-              replyContract: "noncompliant",
-              coachingContract: "noncompliant",
-            },
-          },
-          [
-            "semantic_hint_reject:unsupported_fact.strategy_mismatch:active_consistency_test:noncompliant:noncompliant",
-            "semantic_adjudication_failed:semantic_adjudication_recovery_active_fact_fields_unchanged",
-          ],
-        ),
-        semanticHintResult(regenerated),
-      ],
-    },
-    hintBody({
-      practiceMode: "beginner",
-      requestId: "hint-semantic-envelope-recovery",
-    }),
-  );
-
-  assertEquals(response.status, 200);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
-  assertEquals(state.semanticCalls.length, 2);
-  assertEquals(state.semanticCalls[0].maxProviderCalls, 4);
-  assertEquals(state.semanticCalls[1].maxProviderCalls, 4);
-  assertEquals(recordHintCalls(state).length, 1);
-  assertEquals(releaseHintCalls(state).length, 0);
-  const metrics = aiLogInserts(state)[0].values.request_body as Record<
-    string,
-    unknown
-  >;
-  assertEquals(metrics.failureCodes, [
-    "semantic_hint_reject:unsupported_fact.strategy_mismatch:active_consistency_test:noncompliant:noncompliant",
-    "semantic_adjudication_failed:semantic_adjudication_recovery_active_fact_fields_unchanged",
-  ]);
-});
-
-Deno.test("Hint reserves a final fresh candidate after two terminal semantic failures", async () => {
-  const firstClaudeCandidate = JSON.parse(validHintJson({
-    warmUp: "我只知道她現在想喝咖啡，先問她是想醒腦還是放空。",
-    steady: "咖啡這題先不猜店名，問她今天想醒腦還是放空。",
-  })) as Record<string, unknown>;
-  const finalCandidate = JSON.parse(validHintJson({
-    warmUp: "突然想喝咖啡，是今天想醒腦還是想放空？",
-    steady: "咖啡念頭收到，妳今天比較需要醒腦還是放空？",
-  })) as Record<string, unknown>;
-  const terminalSemanticError = (providerCalls: number) =>
-    new SemanticAdjudicationError(
-      "semantic_adjudication_failed:semantic_adjudication_rejected",
-      providerCalls,
-      { issueKinds: ["strategy_mismatch"] },
-    );
-  const { response, state } = await run(
-    {
-      ledger: beginnerStartedLedger(),
-      deepSeekReplies: [validHintJson()],
-      claudeReplies: [
-        JSON.stringify(firstClaudeCandidate),
-        JSON.stringify(finalCandidate),
-      ],
-      semanticReplies: [
-        terminalSemanticError(4),
-        terminalSemanticError(2),
-        {
-          ...semanticHintResult(finalCandidate),
-          providerCalls: 2,
-        },
-      ],
-    },
-    hintBody({
-      practiceMode: "beginner",
-      requestId: "hint-final-reserved-candidate",
-    }),
-  );
-
-  assertEquals(response.status, 200);
-  assertEquals(state.deepSeekCalls.length, 1);
   assertEquals(state.claudeCalls.length, 2);
-  assertEquals(
-    state.semanticCalls.map((call) => call.maxProviderCalls),
-    [4, 2, 2],
-  );
+  assertEquals(state.claudeCalls[1].model, CLAUDE_HAIKU_MODEL);
+  assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("Game Hint sends duplicate generic questions through semantic repair instead of failing early", async () => {
-  const repaired = JSON.parse(validGameHintJson()) as Record<string, unknown>;
+Deno.test("Game Hint duplicate generic questions kill the shot and Haiku serves a fresh candidate", async () => {
   const { response, json, state } = await run(
     {
       ledger: gameStartedLedger(),
       drawEvents: [{ profile_id: "practice_girl_004" }],
-      deepSeekReplies: [validGameHintJson({
-        warmUp: "妳呢？",
-        steady: "妳呢？",
-        coaching: "Game 心法：先聊聊。速約任務：再看看。",
-      })],
-      semanticReplies: [semanticHintResult(repaired, {
-        issueKinds: ["generic"],
-      })],
+      claudeReplies: [
+        validGameHintJson({
+          warmUp: "妳呢？",
+          steady: "妳呢？",
+          coaching: "Game 心法：先聊聊。速約任務：再看看。",
+        }),
+        validGameHintJson(),
+      ],
     },
     hintBody({
       practiceMode: "game",
       profileId: "practice_girl_004",
-      requestId: "generic-game-hint-semantic-repair",
+      requestId: "generic-game-hint-shot-killed",
     }),
   );
 
   assertEquals(response.status, 200);
   assertEquals(json.replies[0].text.includes("咖啡"), true);
   assertEquals(json.replies[1].text.includes("咖啡"), true);
-  assertEquals(state.semanticCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[1].model, CLAUDE_HAIKU_MODEL);
+  assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("Hint never records a semantically accepted candidate that still fails the final hard guard", async () => {
-  const unsafe = JSON.parse(validHintJson({
-    warmUp: "今晚直接上床吧",
-  })) as Record<string, unknown>;
+Deno.test("Hint never records when both shots fail the hard safety guard", async () => {
+  const unsafe = validHintJson({ warmUp: "今晚直接上床吧" });
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
-      deepSeekReplies: [JSON.stringify(unsafe)],
-      semanticReplies: [semanticHintResult(unsafe, {
-        repaired: false,
-        issueKinds: [],
-      })],
+      claudeReplies: [unsafe, unsafe],
     },
     hintBody({
       practiceMode: "beginner",
@@ -5899,347 +5680,10 @@ Deno.test("Hint never records a semantically accepted candidate that still fails
 
   assertEquals(response.status, 503);
   assertEquals(json.retryable, true);
-  assertEquals(state.semanticCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(releaseHintCalls(state).length, 1);
-});
-
-Deno.test("Game Hint final hard guard rejects a recognized active test that hands the answer back as an interview", async () => {
-  const turns = [
-    {
-      role: "ai",
-      text:
-        "檯面處理得不錯，但動線有點卡，吧檯離門口太近，客人一多就擠在一起。",
-    },
-    {
-      role: "user",
-      text: "感覺妳對老屋空間的細節很有觀察。",
-    },
-    {
-      role: "ai",
-      text: "做設計的嘛，會忍不住多看兩眼。你對老屋也有興趣？",
-    },
-  ];
-  const interviewHandoff = JSON.parse(validGameHintJson({
-    warmUp: "老實說我對老屋沒特別研究。妳說吧檯離門口太近，這是常見卡點嗎？",
-    steady: "我沒到有興趣的程度。吧檯跟門口卡住，是老屋改造的通病嗎？",
-    coaching:
-      "Game 心法：她是在測你會不會硬說自己懂；先誠實表態並用自己的立場收句，不把答案丟回她。速約任務：這輪先不約，穩住真實回應。",
-  })) as Record<string, unknown>;
-  const { response, json, state } = await run(
-    {
-      ledger: gameStartedLedger({ ai_count: 2 }),
-      drawEvents: [{ profile_id: "practice_girl_080" }],
-      deepSeekReplies: [JSON.stringify(interviewHandoff)],
-      semanticReplies: [semanticHintResult(interviewHandoff, {
-        repaired: false,
-        issueKinds: [],
-        hintAssessment: {
-          interactionKind: "active_consistency_test",
-          replyContract: "compliant",
-          coachingContract: "compliant",
-        },
-      })],
-    },
-    hintBody({
-      practiceMode: "game",
-      profileId: "practice_girl_080",
-      requestId: "active-test-interview-final-reject",
-      turns,
-    }),
-  );
-
-  assertEquals(response.status, 503);
-  assertEquals(json, {
-    error: "practice_hint_generation_retryable",
-    retryable: true,
-  });
-  assertEquals(state.semanticCalls.length, 1);
-  assertEquals(recordHintCalls(state).length, 0);
-  assertEquals(releaseHintCalls(state).length, 1);
-  const punctuationlessQuestions = [
-    "我不敢裝懂，這是不是老屋通病",
-    "我沒有研究，那通常怎麼處理",
-    "我目前還不熟，妳能不能講講怎麼改",
-    "我只看得出動線卡，哪個做法比較好",
-    "我沒研究過，這算通病嗎哈哈",
-    "我還不熟，妳講講老屋改造的眉角",
-    "我沒研究過，我想聽妳對老屋的看法",
-    "我只看得出動線卡，那就交給妳分析",
-    "我剛開始注意老屋，妳再分享一個觀察",
-    "我不知道怎麼改 妳會怎麼做",
-    "我不懂怎麼處理 妳覺得",
-    "我還沒想過 妳會怎麼選",
-    "我不知道妳怎麼看",
-    "我不知道怎麼改 妳可以教我",
-    "我不是要裝懂 妳來判斷",
-    "我不想亂猜 妳說說看",
-    "我不要硬掰 妳分析",
-    "那妳來說",
-    "交給妳回答",
-    "妳給我答案",
-    "妳告訴我",
-    "我沒有研究 那通常怎麼處理",
-    "我沒有研究那通常怎麼處理",
-    "我還不熟這是不是老屋通病",
-    "還不算懂但這算不算通病哈哈",
-    "我沒有研究但想知道通常怎麼處理",
-    "我還不熟但好奇哪個做法比較好",
-    "我不敢裝懂所以想問這是不是通病",
-    "我開始好奇這是不是老屋通病",
-    "我還不熟，但好奇妳會怎麼調整",
-    "我還不熟，但好奇妳多說一點老屋的細節",
-    "我開始好奇，想聽妳再分享一個觀察",
-    "這就交給妳",
-    "妳告訴我答案",
-    "妳告訴我答案吧",
-    "妳教我改",
-    "妳分享一下",
-    "妳分析看看",
-    "妳回答看看",
-    "妳說一下",
-    "妳解釋一下",
-    "妳可以告訴我答案",
-    "妳說了算",
-    "妳回答就好",
-    "妳說就好",
-    "妳講就好",
-    "妳分享就好",
-    "妳分析就好",
-    "妳解釋就好",
-    "妳決定就好",
-    "妳選就好",
-    "妳看著辦",
-    "妳指點一下",
-    "換妳決定",
-    "妳說給我聽",
-    "妳講給我聽",
-    "回答給我聽",
-    "妳回答我",
-    "妳跟我說",
-    "跟我說",
-    "說說看",
-    "講講看",
-    "妳處理就好",
-    "麻煩妳分析一下",
-    "我不知道 妳回答我",
-    "我不懂 妳分析",
-    "我不熟 妳回答",
-    "我不會 妳教我",
-    "我沒研究 妳說",
-    "我不確定 妳決定",
-    "我不太懂 妳分析",
-    "我不是很懂 妳說",
-    "我完全不知道 妳回答",
-    "說真的我不熟 妳決定",
-  ];
-  for (const [index, warmUp] of punctuationlessQuestions.entries()) {
-    const disguisedQuestion = {
-      ...interviewHandoff,
-      warmUp,
-      steady: "原本只是看熱鬧；妳一講，我現在至少會先看動線。",
-    };
-    const blocked = await run(
-      {
-        ledger: gameStartedLedger({ ai_count: 2 }),
-        drawEvents: [{ profile_id: "practice_girl_080" }],
-        deepSeekReplies: [JSON.stringify(disguisedQuestion)],
-        semanticReplies: [semanticHintResult(disguisedQuestion, {
-          hintAssessment: {
-            interactionKind: "active_consistency_test",
-            replyContract: "compliant",
-            coachingContract: "compliant",
-          },
-        })],
-      },
-      hintBody({
-        practiceMode: "game",
-        profileId: "practice_girl_080",
-        requestId: `active-test-punctuationless-question-${index}`,
-        turns,
-      }),
-    );
-    assertEquals(blocked.response.status, 503, warmUp);
-    assertEquals(blocked.state.semanticCalls.length, 1, warmUp);
-    assertEquals(recordHintCalls(blocked.state).length, 0, warmUp);
-    assertEquals(releaseHintCalls(blocked.state).length, 1, warmUp);
-  }
-  const repaired = JSON.parse(validGameHintJson({
-    warmUp: "還不算懂，但妳提到動線卡，我確實開始注意了。",
-    steady: "原本只是看熱鬧；妳一講，我現在至少會先看動線。",
-    coaching:
-      "Game 心法：她在測你會不會硬裝懂；先誠實表態，再回扣她提的動線細節。速約任務：這輪先不約，穩住真實回應。",
-  })) as Record<string, unknown>;
-  const fixed = await run(
-    {
-      ledger: gameStartedLedger({ ai_count: 2 }),
-      drawEvents: [{ profile_id: "practice_girl_080" }],
-      deepSeekReplies: [JSON.stringify(interviewHandoff)],
-      semanticReplies: [semanticHintResult(repaired, {
-        hintAssessment: {
-          interactionKind: "active_consistency_test",
-          replyContract: "compliant",
-          coachingContract: "compliant",
-        },
-      })],
-    },
-    hintBody({
-      practiceMode: "game",
-      profileId: "practice_girl_080",
-      requestId: "active-test-interview-repaired",
-      turns,
-    }),
-  );
-  assertEquals(fixed.response.status, 200);
-  assertEquals(fixed.json.replies[0].text, repaired.warmUp);
-  assertEquals(recordHintCalls(fixed.state).length, 1);
-  assertEquals(releaseHintCalls(fixed.state).length, 0);
-  const boundedUncertainty = JSON.parse(validGameHintJson({
-    warmUp: "老實說， 我不知道老屋動線怎麼改。",
-    steady: "我不知道這算不算通病，但剛才是真的被妳的空間觀察吸引。",
-    coaching:
-      "Game 心法：她在測你會不會硬裝懂；先承認不熟，再用有據的當下反應收句。速約任務：這輪先不約，穩住真實回應。",
-  })) as Record<string, unknown>;
-  const bounded = await run(
-    {
-      ledger: gameStartedLedger({ ai_count: 2 }),
-      drawEvents: [{ profile_id: "practice_girl_080" }],
-      deepSeekReplies: [JSON.stringify(interviewHandoff)],
-      semanticReplies: [semanticHintResult(boundedUncertainty, {
-        hintAssessment: {
-          interactionKind: "active_consistency_test",
-          replyContract: "compliant",
-          coachingContract: "compliant",
-        },
-      })],
-    },
-    hintBody({
-      practiceMode: "game",
-      profileId: "practice_girl_080",
-      requestId: "active-test-bounded-uncertainty",
-      turns,
-    }),
-  );
-  assertEquals(bounded.response.status, 200);
-  assertEquals(bounded.json.replies[0].text, boundedUncertainty.warmUp);
-  assertEquals(recordHintCalls(bounded.state).length, 1);
-  assertEquals(releaseHintCalls(bounded.state).length, 0);
-  const embeddedStatements = [
-    "我現在知道怎麼做了，先誠實說我還在學。",
-    "我確實想過怎麼改善動線，但沒有要裝懂。",
-    "我真的不知道這算不算通病，但剛才的稱讚是真的。",
-    "我還不知道這算不算通病，但我不會硬掰。",
-    "我也不懂這是不是常見問題，剛才只是被細節吸引。",
-    "我目前不知道這算不算，但剛才的稱讚是真的。",
-    "我坦白說還不懂這是不是通病，但我不會亂猜。",
-    "我其實沒研究這算不算通病，只能誠實說不熟。",
-    "我不是想問，只是說我不懂。",
-    "我不好奇，只是承認不熟。",
-    "我沒有想知道，只是承認目前不懂。",
-    "我並不是好奇，只是在說自己的理解。",
-    "我不是在好奇，只是誠實表態。",
-    "妳告訴我吧檯太近，這點我有記住。",
-    "妳教我看動線的方式，我開始懂了。",
-    "妳教我怎麼改的方法，我有試。",
-    "不用幫我分析，我先說自己的理解。",
-    "妳不用幫我選，我自己回答。",
-    "謝謝妳分享，我有接到那個細節。",
-    "我記得妳說了動線太卡，這點我有注意。",
-    "我記得妳先說動線太卡，我有接到。",
-    "妳給我答案後我才懂，這點我記住了。",
-    "我對老屋有興趣，尤其是怎麼把舊格局改順。",
-    "我會看哪種方式比較順，但目前只懂一點點。",
-    "妳覺得吧檯太近，這點我確實有注意到。",
-    "妳分析動線的角度，我開始注意了。",
-    "怎麼改我不懂，但剛才的稱讚是真的。",
-    "妳分享的細節讓我開始有興趣。",
-    "我對老屋還談不上懂，但妳一提，我現在開始好奇了。",
-    "我還不熟，但現在開始對老屋空間好奇了。",
-    "我不是要妳回答，我自己的意思是還不熟。",
-    "我不要妳分析，我先說自己的理解。",
-  ];
-  for (const [index, warmUp] of embeddedStatements.entries()) {
-    const candidate = JSON.parse(validGameHintJson({
-      warmUp,
-      steady: "我目前不熟老屋改造，但剛才的稱讚是認真的。",
-      coaching:
-        "Game 心法：她在測你會不會硬裝懂；誠實表態後，用自己的有限立場收句。速約任務：這輪先不約。",
-    })) as Record<string, unknown>;
-    const allowed = await run(
-      {
-        ledger: gameStartedLedger({ ai_count: 2 }),
-        drawEvents: [{ profile_id: "practice_girl_080" }],
-        deepSeekReplies: [JSON.stringify(interviewHandoff)],
-        semanticReplies: [semanticHintResult(candidate, {
-          hintAssessment: {
-            interactionKind: "active_consistency_test",
-            replyContract: "compliant",
-            coachingContract: "compliant",
-          },
-        })],
-      },
-      hintBody({
-        practiceMode: "game",
-        profileId: "practice_girl_080",
-        requestId: `active-test-embedded-statement-${index}`,
-        turns,
-      }),
-    );
-    assertEquals(allowed.response.status, 200, warmUp);
-    assertEquals(allowed.json.replies[0].text, warmUp);
-    assertEquals(recordHintCalls(allowed.state).length, 1, warmUp);
-    assertEquals(releaseHintCalls(allowed.state).length, 0, warmUp);
-  }
-});
-
-Deno.test("ordinary answered-preference Hint stays reviewer-owned without a server regex signal", async () => {
-  const turns = [
-    { role: "user", text: "妳平常喝咖啡嗎？" },
-    { role: "ai", text: "會，假日常去找間安靜的店坐一下。" },
-    { role: "user", text: "我沒有固定喝哪種，通常看當天心情。" },
-    { role: "ai", text: "那你比較常點手沖還是拿鐵？" },
-  ];
-  const repaired = JSON.parse(validGameHintJson({
-    warmUp: "真的沒有比較常，還是看當天心情。",
-    steady: "手沖和拿鐵都不固定，當天才選得出來。",
-    coaching:
-      "Game 心法：她在縮小咖啡選項，這是普通偏好題，直接照已知答案回。速約任務：這輪不約，先延續咖啡話題。",
-  })) as Record<string, unknown>;
-  const { response, json, state } = await run(
-    {
-      ledger: gameStartedLedger({ ai_count: 2 }),
-      drawEvents: [{ profile_id: "practice_girl_080" }],
-      deepSeekReplies: [validGameHintJson({
-        warmUp: "我一定是手沖派。",
-        steady: "妳應該比較愛拿鐵吧。",
-        coaching:
-          "Game 心法：她在測你的咖啡品味，先自證再反打。速約任務：這輪不約，先讓她多分享。",
-      })],
-      semanticReplies: [semanticHintResult(repaired, {
-        hintAssessment: {
-          interactionKind: "ordinary",
-          replyContract: "not_applicable",
-          coachingContract: "not_applicable",
-        },
-      })],
-    },
-    hintBody({
-      practiceMode: "game",
-      profileId: "practice_girl_080",
-      requestId: "ordinary-preference-authoritative-shape",
-      turns,
-    }),
-  );
-
-  assertEquals(response.status, 200);
-  assertEquals(json.replies[0].text, "真的沒有比較常，還是看當天心情。");
-  assertEquals(state.semanticCalls.length, 1);
-  const trustedContext = JSON.parse(
-    state.semanticCalls[0].trustedGenerationContext,
-  ) as Record<string, unknown>;
-  assertEquals(Object.hasOwn(trustedContext, "latestQuestionShape"), false);
-  assertEquals(recordHintCalls(state).length, 1);
-  assertEquals(releaseHintCalls(state).length, 0);
 });
 
 Deno.test("invented Hint details from both providers fail retryably without a snapshot", async () => {
@@ -6268,42 +5712,6 @@ Deno.test("invented Hint details from both providers fail retryably without a sn
   assertEquals(json.retryable, true);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(releaseHintCalls(state).length, 1);
-});
-
-Deno.test("Hint retries when provider turns her schedule into the user's schedule", async () => {
-  const { response, json, state } = await run(
-    {
-      ledger: beginnerStartedLedger(),
-      deepSeekReplies: [validHintJson({
-        warmUp: "妳明天七點有空，我明天七點也有空。",
-        steady: "妳說明天七點可以，我也剛好有空。",
-        coaching: "她明天七點有空，直接說你也有空。",
-      })],
-      semanticReplies: [semanticHintResult(JSON.parse(validHintJson({
-        warmUp: "妳明天七點有空，我先確認自己的行程再回妳。",
-        steady: "妳說明天七點可以，我確認好再跟妳說。",
-        coaching: "她說明天七點有空，只承接她已知的時間，不替使用者捏造行程。",
-      })))],
-    },
-    hintBody({
-      practiceMode: "beginner",
-      requestId: "speaker-owned-schedule-repair",
-      turns: [
-        { role: "user", text: "最近工作有點忙" },
-        { role: "ai", text: "我明天七點有空，你呢？" },
-      ],
-    }),
-  );
-
-  assertEquals(response.status, 200, JSON.stringify(json));
-  assertEquals(json.provider, "deepseek");
-  assertEquals(json.failoverUsed, false);
-  assertEquals(json.replies[0].text.includes("先確認自己的行程"), true);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 0);
-  assertEquals(state.semanticCalls.length, 1);
-  assertEquals(recordHintCalls(state).length, 1);
-  assertEquals(releaseHintCalls(state).length, 0);
 });
 
 Deno.test("Beginner and Game reject paraphrased partner facts before recording", async () => {
@@ -6335,8 +5743,7 @@ Deno.test("Beginner and Game reject paraphrased partner facts before recording",
     const { response, json, state } = await run(
       {
         ...setup,
-        deepSeekReplies: [invalidMirror],
-        semanticReplies: [semanticHintResult(JSON.parse(validRepair))],
+        claudeReplies: [invalidMirror, validRepair],
       },
       hintBody({
         practiceMode: mode,
@@ -6347,19 +5754,20 @@ Deno.test("Beginner and Game reject paraphrased partner facts before recording",
     );
 
     assertEquals(response.status, 200, `${mode}:${JSON.stringify(json)}`);
-    assertEquals(json.provider, "deepseek", mode);
-    assertEquals(json.failoverUsed, false, mode);
-    assertEquals(state.deepSeekCalls.length, 1, mode);
-    assertEquals(state.claudeCalls.length, 0, mode);
-    assertEquals(state.semanticCalls.length, 1, mode);
+    assertEquals(json.provider, "anthropic", mode);
+    // 鏡射對方 typed fact 的第一發被機械 gate 殺掉，第二發 Haiku 供給。
+    assertEquals(json.failoverUsed, true, mode);
+    assertEquals(json.model, CLAUDE_HAIKU_MODEL, mode);
+    assertEquals(state.deepSeekCalls.length, 0, mode);
+    assertEquals(state.claudeCalls.length, 2, mode);
+    assertEquals(state.semanticCalls.length, 0, mode);
     assertEquals(recordHintCalls(state).length, 1, mode);
     assertEquals(releaseHintCalls(state).length, 0, mode);
 
     const failed = await run(
       {
         ...setup,
-        deepSeekReplies: [invalidMirror],
-        semanticReplies: [new Error("semantic_adjudication_rejected")],
+        claudeReplies: [invalidMirror, invalidMirror],
       },
       hintBody({
         practiceMode: mode,
@@ -6391,7 +5799,7 @@ Deno.test("Hint factual guard accepts a named place from trusted relationship me
         familiarity_score: 20,
       },
       drawEvents: [{ profile_id: "practice_girl_004" }],
-      deepSeekReplies: [JSON.stringify({
+      claudeReplies: [JSON.stringify({
         warmUp: "鼻子靈是基本配備😂 中山站附近那間店叫黑露。",
         steady: "妳說我鼻子也太靈：就是中山站附近的黑露。",
         coaching:
@@ -6411,14 +5819,14 @@ Deno.test("Hint factual guard accepts a named place from trusted relationship me
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.provider, "deepseek");
+  assertEquals(json.provider, "anthropic");
   assertEquals(json.failoverUsed, false);
   assertEquals(json.replies[0].text.includes("中山站"), true);
   assertEquals(json.replies[1].text.includes("黑露"), true);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 1);
   assertEquals(recordHintCalls(state).length, 1);
-  const prompt = state.deepSeekCalls[0].messages
+  const prompt = state.claudeCalls[0].messages
     .map((message) => message.content)
     .join("\n");
   assert(prompt.includes("她之前說中山站附近那間店叫黑露"));
@@ -6432,7 +5840,7 @@ Deno.test("Game Hint may use generic profile strategy language without treating 
         familiarity_score: 38,
       }),
       drawEvents: [{ profile_id: "practice_girl_063" }],
-      deepSeekReplies: [validGameHintJson({
+      claudeReplies: [validGameHintJson({
         warmUp: "突然想喝咖啡很真實，老屋咖啡那種慢節奏有沒有打中妳？",
         steady: "咖啡念頭收到，我先猜你會選老屋咖啡那種慢節奏，猜錯妳糾正我。",
         coaching:
@@ -6447,24 +5855,26 @@ Deno.test("Game Hint may use generic profile strategy language without treating 
   );
 
   assertEquals(response.status, 200, JSON.stringify(json));
-  assertEquals(json.provider, "deepseek");
+  assertEquals(json.provider, "anthropic");
   assertEquals(json.failoverUsed, false);
   assertEquals(json.replies[0].text.includes("老屋咖啡"), true);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 1);
   assertEquals(recordHintCalls(state).length, 1);
-  const prompt = state.deepSeekCalls[0].messages
+  const prompt = state.claudeCalls[0].messages
     .map((message) => message.content)
     .join("\n");
   assert(prompt.includes("老屋咖啡"));
 });
 
-Deno.test("Hint repairs overlong visible text instead of recording a sliced half sentence", async () => {
+Deno.test("Hint overlong visible text kills the shot instead of recording a sliced half sentence", async () => {
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
-      deepSeekReplies: [validHintJson({ coaching: "咖啡".repeat(161) })],
-      claudeReplies: [validHintJson()],
+      claudeReplies: [
+        validHintJson({ coaching: "咖啡".repeat(161) }),
+        validHintJson(),
+      ],
       rpc: {
         record_practice_hint: [{
           data: [{ new_hint_count: 1, did_charge: true }],
@@ -6475,15 +5885,16 @@ Deno.test("Hint repairs overlong visible text instead of recording a sliced half
   );
 
   assertEquals(response.status, 200);
+  // 超長第一發整發判敗，第二發全新候選供給，絕不裁尾成半句。
   assertEquals(
     json.coaching,
     "她主動說突然想喝咖啡；先用醒腦或放空二選一接她的狀態，再沿她的答案分享。",
   );
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
-  const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
-  assert(repairPrompt.includes("欄位太長，若直接裁尾會變成半句"));
-  assert(repairPrompt.includes("三欄都要完整收句"));
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[1].model, CLAUDE_HAIKU_MODEL);
+  // 補發不夾帶任何 repair 指令。
+  assertEquals(state.claudeCalls[1].messages, state.claudeCalls[0].messages);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
 });
@@ -6511,66 +5922,11 @@ Deno.test("both overlong Hint providers fail retryably without recording a snaps
   assertEquals(releaseHintCalls(state).length, 1);
 });
 
-Deno.test("game hint semantic review repairs invite options above the authoritative route", async () => {
+Deno.test("Hint response decisions stay server-owned under the single-shot pipeline", async () => {
   const { response, json, state } = await run(
     {
-      ledger: gameStartedLedger({
-        temperature_score: 20,
-        familiarity_score: 10,
-      }),
-      drawEvents: [{ profile_id: "practice_girl_004" }],
-      deepSeekReplies: [JSON.stringify({
-        warmUp: "這週六直接一起喝咖啡吧，我找店。",
-        steady: "那就明天下班喝咖啡，我訂位。",
-        coaching:
-          "Game 心法：她突然很想喝咖啡，但現在仍是開場。速約任務：這輪先不約，等窗口。",
-      })],
-      semanticReplies: [semanticHintResult({
-        warmUp: "聽起來這杯咖啡有任務，是想醒腦還是想放空？",
-        steady: "咖啡念頭收到，我先押妳今天比較想放空，猜錯妳糾正我。",
-        coaching:
-          "Game 心法：她主動說很想喝咖啡，但目前仍是開場。速約任務：問她想醒腦還是放空，因為先讓她多投入一輪，再看邀約窗口。",
-      }, { issueKinds: ["strategy_mismatch"] })],
-    },
-    hintBody({
-      practiceMode: "game",
-      profileId: "practice_girl_004",
-      requestId: "game-route-conflict-repair",
-      turns: [
-        { role: "user", text: "今天精神怎樣" },
-        { role: "ai", text: "我今天突然很想喝咖啡" },
-      ],
-    }),
-  );
-
-  assertEquals(response.status, 200);
-  assertEquals(json.provider, "deepseek");
-  assertEquals(json.failoverUsed, false);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 0);
-  assertEquals(state.semanticCalls.length, 1);
-  assertEquals(recordHintCalls(state).length, 1);
-  for (const reply of json.replies) {
-    assertEquals(reply.decision.move, "build_connection");
-    assertEquals(reply.decision.inviteRoute, "build");
-    assertEquals(reply.text.includes("咖啡"), true);
-  }
-});
-
-Deno.test("Hint response decisions stay server-owned when semantic review returns no strategies", async () => {
-  const reviewed = {
-    warmUp: "這杯咖啡有任務感，我先猜你今天需要醒腦。",
-    steady: "咖啡念頭收到，今天先讓自己喘口氣。",
-    coaching: "她主動提咖啡；先接住她的狀態，再補一點自己的立場。",
-  };
-  const { response, json } = await run(
-    {
       ledger: beginnerStartedLedger(),
-      deepSeekReplies: [validHintJson()],
-      semanticReplies: [semanticHintResult(reviewed, {
-        repaired: true,
-        issueKinds: ["strategy_mismatch"],
-      })],
+      claudeReplies: [validHintJson()],
     },
     hintBody({
       practiceMode: "beginner",
@@ -6579,6 +5935,7 @@ Deno.test("Hint response decisions stay server-owned when semantic review return
   );
 
   assertEquals(response.status, 200);
+  assertEquals(state.semanticCalls.length, 0);
   for (const reply of json.replies) {
     assertEquals(
       reply.decision.rationale,
@@ -6588,7 +5945,7 @@ Deno.test("Hint response decisions stay server-owned when semantic review return
   }
 });
 
-Deno.test("game hint returns retryable error when both providers return malformed JSON", async () => {
+Deno.test("game hint returns retryable error when both shots return malformed JSON", async () => {
   const { response, json, state } = await run(
     {
       ledger: gameStartedLedger({
@@ -6597,8 +5954,7 @@ Deno.test("game hint returns retryable error when both providers return malforme
         hint_count: 2,
       }),
       drawEvents: [{ profile_id: "practice_girl_004" }],
-      deepSeekReplies: ["not json"],
-      claudeReplies: ["still not json"],
+      claudeReplies: ["not json", "still not json"],
     },
     hintBody({
       practiceMode: "game",
@@ -6619,10 +5975,10 @@ Deno.test("game hint returns retryable error when both providers return malforme
     error: "practice_hint_generation_retryable",
     retryable: true,
   });
-  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 2);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 24000);
-  assertEquals(state.claudeCalls[0].timeoutMs, 18000);
+  assertEquals(state.claudeCalls[0].timeoutMs, 15000);
+  assertEquals(state.claudeCalls[1].timeoutMs, 15000);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(releaseHintCalls(state).length, 1);
 });
@@ -6751,8 +6107,7 @@ Deno.test("beginner hint provider failures return retryable error without record
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
-      deepSeekReplies: [new Error("deepseek down")],
-      claudeReplies: [new Error("claude down")],
+      claudeReplies: [new Error("claude down"), new Error("claude down")],
     },
     hintBody({
       practiceMode: "beginner",
@@ -6765,7 +6120,7 @@ Deno.test("beginner hint provider failures return retryable error without record
     error: "practice_hint_generation_retryable",
     retryable: true,
   });
-  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 2);
   assertEquals(claimHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 1);
@@ -6773,12 +6128,11 @@ Deno.test("beginner hint provider failures return retryable error without record
   assertEquals(commitCalls(state).length, 0);
 });
 
-Deno.test("beginner hint malformed output from both providers never becomes a fallback", async () => {
+Deno.test("beginner hint malformed output from both shots never becomes a fallback", async () => {
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
-      deepSeekReplies: ["not json"],
-      claudeReplies: ["still not json"],
+      claudeReplies: ["not json", "still not json"],
     },
     hintBody({
       practiceMode: "beginner",
@@ -6789,7 +6143,7 @@ Deno.test("beginner hint malformed output from both providers never becomes a fa
   assertEquals(response.status, 503);
   assertEquals(json.retryable, true);
   assertEquals("replies" in json, false);
-  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 2);
   assertEquals(claimHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 1);
@@ -6797,11 +6151,10 @@ Deno.test("beginner hint malformed output from both providers never becomes a fa
   assertEquals(commitCalls(state).length, 0);
 });
 
-Deno.test("hint repairs a malformed provider result with Claude before recording", async () => {
+Deno.test("hint malformed first shot fails over to Haiku before recording", async () => {
   const { response, json, state } = await run({
     ledger: beginnerStartedLedger(),
-    deepSeekReplies: ["not json"],
-    claudeReplies: [validHintJson()],
+    claudeReplies: ["not json", validHintJson()],
     rpc: {
       record_practice_hint: [{
         data: [{ new_hint_count: 1, did_charge: true }],
@@ -6811,13 +6164,13 @@ Deno.test("hint repairs a malformed provider result with Claude before recording
 
   assertEquals(response.status, 200);
   assertEquals(json.replies.length, 2);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
-  assertEquals(state.deepSeekCalls[0].jsonMode, true);
-  assertEquals(state.deepSeekCalls[0].maxTokens, 1600);
-  assertEquals(state.claudeCalls[0].maxTokens, 1600);
-  assertEquals(state.semanticCalls.length, 1);
-  assertEquals(state.semanticCalls[0].maxProviderCalls, 4);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[0].maxTokens, 500);
+  assertEquals(state.claudeCalls[1].maxTokens, 500);
+  assertEquals(state.claudeCalls[0].forcedTool?.name, "emit_hint");
+  assertEquals(state.claudeCalls[1].forcedTool?.name, "emit_hint");
+  assertEquals(state.semanticCalls.length, 0);
   assertEquals(claimHintCalls(state).length, 1);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
@@ -6825,35 +6178,11 @@ Deno.test("hint repairs a malformed provider result with Claude before recording
     "rpc:prepare_practice_subscription_usage",
     "rpc:claim_practice_hint_generation",
     "rpc:increment_model_usage",
-    "deepseek",
+    "claude",
     "claude",
     "rpc:record_practice_hint",
     "insert:ai_logs",
   ]);
-});
-
-Deno.test("hint sends max-token truncation to Claude with repair guidance", async () => {
-  const { response, json, state } = await run({
-    ledger: gameStartedLedger(),
-    drawEvents: [{ profile_id: "practice_girl_004" }],
-    deepSeekReplies: [new Error("deepseek_max_tokens")],
-    claudeReplies: [validGameHintJson()],
-    rpc: {
-      record_practice_hint: [{
-        data: [{ new_hint_count: 1, did_charge: true }],
-      }],
-    },
-  }, hintBody({ practiceMode: "game", profileId: "practice_girl_004" }));
-
-  assertEquals(response.status, 200);
-  assertEquals(json.replies.length, 2);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
-  const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
-  assert(repairPrompt.includes("provider 截斷"));
-  assert(repairPrompt.includes("在哪／哪家／哪條路"));
-  assert(repairPrompt.includes("不得編店名"));
-  assertEquals(state.claudeCalls[0].maxTokens, 1600);
 });
 
 Deno.test("successful hint uses ledger temperature, records after parse, and returns response contract", async () => {
@@ -6863,7 +6192,7 @@ Deno.test("successful hint uses ledger temperature, records after parse, and ret
         temperature_score: 64,
         hint_count: 2,
       }),
-      deepSeekReplies: [validHintJson()],
+      claudeReplies: [validHintJson()],
       rpc: {
         record_practice_hint: [{
           data: [{ new_hint_count: 3, did_charge: true }],
@@ -6886,19 +6215,21 @@ Deno.test("successful hint uses ledger temperature, records after parse, and ret
   assertEquals(json.hintUsedCount, 3);
   assertEquals(json.monthlyRemaining, 289);
   assertEquals(json.dailyRemaining, 47);
-  assertEquals(json.provider, "deepseek");
-  assertEquals(json.model, DEEPSEEK_MODEL);
+  assertEquals(json.provider, "anthropic");
+  assertEquals(json.model, CLAUDE_SONNET_MODEL);
   assertEquals(json.generationSource, "model");
   assertEquals(json.fallbackUsed, false);
   assertEquals(json.failoverUsed, false);
   assertEquals(json.generatedAt, NOW.toISOString());
 
-  assertEquals(state.deepSeekCalls.length, 1);
-  const hintCall = state.deepSeekCalls[0];
-  assertEquals(hintCall.jsonMode, true);
-  assertEquals(hintCall.maxTokens, 1600);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 1);
+  const hintCall = state.claudeCalls[0];
+  assertEquals(hintCall.model, CLAUDE_SONNET_MODEL);
+  assertEquals(hintCall.maxTokens, 500);
   assertEquals(hintCall.temperature, 0.45);
-  assertEquals(hintCall.timeoutMs, 24000);
+  assertEquals(hintCall.timeoutMs, 15000);
+  assertEquals(hintCall.forcedTool?.name, "emit_hint");
   const promptText = hintCall.messages.map((m) => m.content).join("\n");
   assert(promptText.includes("currentTemperatureScore: 64/100"));
   assertEquals(promptText.includes("currentTemperatureScore: 5/100"), false);
@@ -6932,7 +6263,7 @@ Deno.test("successful hint uses ledger temperature, records after parse, and ret
     "rpc:prepare_practice_subscription_usage",
     "rpc:claim_practice_hint_generation",
     "rpc:increment_model_usage",
-    "deepseek",
+    "claude",
     "rpc:record_practice_hint",
     "insert:ai_logs",
   ]);
@@ -6945,7 +6276,7 @@ Deno.test("successful hint caps invite maturity with ledger partner mood", async
       familiarity_score: 90,
       partner_mood: "guarded",
     }),
-    deepSeekReplies: [validHintJson()],
+    claudeReplies: [validHintJson()],
     rpc: {
       record_practice_hint: [{
         data: [{ new_hint_count: 1, did_charge: true }],
@@ -6954,7 +6285,7 @@ Deno.test("successful hint caps invite maturity with ledger partner mood", async
   }, hintBody({ practiceMode: "beginner" }));
 
   assertEquals(response.status, 200);
-  const promptText = state.deepSeekCalls[0].messages.map((m) => m.content)
+  const promptText = state.claudeCalls[0].messages.map((m) => m.content)
     .join("\n");
   assert(
     promptText.includes(
@@ -6969,7 +6300,7 @@ Deno.test("successful hint caps invite maturity with ledger partner mood", async
 Deno.test("successful hint falls back to normal 難度初始溫度 28 when ledger has no score", async () => {
   const { response, state } = await run({
     ledger: beginnerStartedLedger({ temperature_score: null }),
-    deepSeekReplies: [validHintJson()],
+    claudeReplies: [validHintJson()],
     rpc: {
       record_practice_hint: [{
         data: [{ new_hint_count: 1, did_charge: true }],
@@ -6978,7 +6309,7 @@ Deno.test("successful hint falls back to normal 難度初始溫度 28 when ledge
   }, hintBody({ practiceMode: "beginner", temperatureScore: 88 }));
 
   assertEquals(response.status, 200);
-  const promptText = state.deepSeekCalls[0].messages
+  const promptText = state.claudeCalls[0].messages
     .map((message) => message.content)
     .join("\n");
   assert(promptText.includes("currentTemperatureScore: 28/100"));
@@ -6989,7 +6320,7 @@ Deno.test("successful hint charges false for test accounts and trusts record did
   const { response, json, state } = await run({
     user: { id: "user-1", email: "vibesync.test@gmail.com" },
     ledger: beginnerStartedLedger(),
-    deepSeekReplies: [validHintJson()],
+    claudeReplies: [validHintJson()],
     rpc: {
       record_practice_hint: [{
         data: [{ new_hint_count: 1, did_charge: false }],
@@ -7025,8 +6356,7 @@ Deno.test("game hint timeout followed by Claude success charges exactly once", a
     {
       ledger: gameStartedLedger({ hint_count: 1 }),
       drawEvents: [{ profile_id: "practice_girl_004" }],
-      deepSeekReplies: [new Error("deepseek_timeout")],
-      claudeReplies: [validGameHintJson()],
+      claudeReplies: [new Error("claude_timeout"), validGameHintJson()],
       rpc: {
         record_practice_hint: [{
           data: [{ new_hint_count: 2, did_charge: true }],
@@ -7081,7 +6411,7 @@ Deno.test("legacy zero-cost fallback snapshot is atomically replaced without rec
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger({ hint_count: 1 }),
-      deepSeekReplies: [validHintJson()],
+      claudeReplies: [validHintJson()],
       hintRequest: {
         state: "settled",
         charged: true,
@@ -7101,7 +6431,7 @@ Deno.test("legacy zero-cost fallback snapshot is atomically replaced without rec
   assertEquals(json.generationSource, "model");
   assertEquals(json.fallbackUsed, false);
   assertEquals(json.costDeducted, 1);
-  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 1);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(
     state.rpcCalls.filter((call) =>
@@ -7147,7 +6477,7 @@ Deno.test("settled unversioned model prefetch is replaced at 5/5 without chargin
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger({ hint_count: 5 }),
-      deepSeekReplies: [validHintJson()],
+      claudeReplies: [validHintJson()],
       hintRequest: {
         state: "settled",
         charged: true,
@@ -7198,7 +6528,7 @@ Deno.test("unconsumed legacy prefetch is discarded before normal generated-only 
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger({ hint_count: 0 }),
-      deepSeekReplies: [validHintJson()],
+      claudeReplies: [validHintJson()],
       hintRequest: {
         state: "prefetched",
         charged: false,
@@ -7253,8 +6583,7 @@ Deno.test("failed legacy replacement releases only its sidecar and exact retry c
   });
   const first = await run({
     ledger: beginnerStartedLedger({ hint_count: 5 }),
-    deepSeekReplies: [new Error("deepseek down")],
-    claudeReplies: [new Error("claude down")],
+    claudeReplies: [new Error("claude down"), new Error("claude down")],
     hintRequest: {
       state: "settled",
       charged: true,
@@ -7275,7 +6604,7 @@ Deno.test("failed legacy replacement releases only its sidecar and exact retry c
 
   const retry = await run({
     ledger: beginnerStartedLedger({ hint_count: 5 }),
-    deepSeekReplies: [validHintJson()],
+    claudeReplies: [validHintJson()],
     hintRequest: {
       state: "settled",
       charged: true,
@@ -7338,7 +6667,7 @@ for (
       {
         ...options,
         env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
-        deepSeekReplies: [
+        claudeReplies: [
           mode === "game" ? validGameHintJson() : validHintJson(),
         ],
       },
@@ -7353,7 +6682,8 @@ for (
     assertEquals(response.status, 200);
     assertEquals(json, { prefetched: true });
     assertEquals(Object.keys(json), ["prefetched"]);
-    assertEquals(state.deepSeekCalls.length, 1);
+    assertEquals(state.claudeCalls.length, 1);
+    assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
     assertEquals(hintModelRateCalls(state).length, 1);
     assertEquals(claimHintCalls(state).length, 1);
     assertEquals(claimHintCalls(state)[0].params.p_request_id, requestId);
@@ -7384,32 +6714,31 @@ for (
 }
 
 for (
-  const [name, options, bodyOverrides, expectedAttempts] of [
+  const [name, options, bodyOverrides] of [
     [
       "beginner provider failures",
       {
         ledger: beginnerStartedLedger(),
-        deepSeekReplies: [new Error("deepseek down")],
-        claudeReplies: [new Error("claude down")],
+        claudeReplies: [new Error("claude down"), new Error("claude down")],
       },
       { practiceMode: "beginner" },
-      1,
     ],
     [
       "game timeout",
       {
         ledger: gameStartedLedger(),
         drawEvents: [{ profile_id: "practice_girl_004" }],
-        deepSeekReplies: [new Error("deepseek_timeout")],
-        claudeReplies: [new Error("claude_timeout")],
+        claudeReplies: [
+          new Error("claude_timeout"),
+          new Error("claude_timeout"),
+        ],
       },
       { practiceMode: "game", profileId: "practice_girl_004" },
-      1,
     ],
   ] as const
 ) {
   Deno.test(`Hint prefetch ${name} releases ownership without recording fallback`, async () => {
-    const requestId = `prefetch-failure-${expectedAttempts}`;
+    const requestId = `prefetch-failure-${bodyOverrides.practiceMode}`;
     const { response, json, state } = await run(
       {
         ...options,
@@ -7427,7 +6756,7 @@ for (
       error: "practice_hint_prefetch_failed",
       retryable: true,
     });
-    assertEquals(state.deepSeekCalls.length, expectedAttempts);
+    assertEquals(state.deepSeekCalls.length, 0);
     assertEquals(state.claudeCalls.length, 2);
     assertEquals(recordHintCalls(state).length, 0);
     assertEquals(settleHintCalls(state).length, 0);
@@ -7449,8 +6778,7 @@ Deno.test("Hint prefetch malformed output never records the formal fallback", as
     {
       ledger: beginnerStartedLedger(),
       env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
-      deepSeekReplies: ["not json"],
-      claudeReplies: ["still not json"],
+      claudeReplies: ["not json", "still not json"],
     },
     hintBody({
       practiceMode: "beginner",
@@ -7460,7 +6788,7 @@ Deno.test("Hint prefetch malformed output never records the formal fallback", as
   );
 
   assertEquals(response.status, 503);
-  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 2);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(releaseHintCalls(state).length, 1);
@@ -7835,7 +7163,7 @@ Deno.test("record quota race returns 429 and releases the exact formal owner", a
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
-      deepSeekReplies: [validHintJson()],
+      claudeReplies: [validHintJson()],
       rpc: {
         record_practice_hint: [{ error: "QUOTA_EXCEEDED_MONTHLY" }],
       },
@@ -7870,7 +7198,7 @@ Deno.test("flag-off formal request discards its pending row before fresh generat
         result: null,
       },
       env: { PRACTICE_HINT_PREFETCH_ENABLED: "false" },
-      deepSeekReplies: [validHintJson()],
+      claudeReplies: [validHintJson()],
     },
     hintBody({
       practiceMode: "beginner",
@@ -7882,7 +7210,7 @@ Deno.test("flag-off formal request discards its pending row before fresh generat
   assertEquals(response.status, 200);
   assertEquals(discardHintCalls(state).length, 1);
   assertEquals(claimHintCalls(state).length, 1);
-  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 1);
   assertEquals(recordHintCalls(state).length, 1);
   assert(
     state.events.indexOf("rpc:discard_prefetched_practice_hint") <
@@ -8041,7 +7369,7 @@ Deno.test("stale formal record releases only its token and returns retryable con
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
-      deepSeekReplies: [validHintJson()],
+      claudeReplies: [validHintJson()],
       rpc: {
         record_practice_hint: [{ error: "PRACTICE_HINT_STALE" }],
       },
@@ -8073,7 +7401,7 @@ Deno.test("formal request returns the authoritative first-writer Hint snapshot",
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger({ hint_count: 3 }),
-      deepSeekReplies: [validHintJson({
+      claudeReplies: [validHintJson({
         coaching: "咖啡這輪是 losing worker",
       })],
       rpc: {
@@ -8164,7 +7492,7 @@ Deno.test("legacy fresh Hint receives v1 marker while the RPC stores semantic v2
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
-      deepSeekReplies: [validHintJson()],
+      claudeReplies: [validHintJson()],
     },
     hintBody({
       practiceMode: "beginner",
@@ -8263,7 +7591,7 @@ Deno.test("hint with a fresh requestId generates normally and threads the id int
         last_hint_request_id: "req-old",
         last_hint_result: storedHintResult(),
       }),
-      deepSeekReplies: [validHintJson()],
+      claudeReplies: [validHintJson()],
     },
     hintBody({
       practiceMode: "beginner",
@@ -8276,7 +7604,7 @@ Deno.test("hint with a fresh requestId generates normally and threads the id int
   assertEquals(response.status, 200);
   assertEquals(json.replies.length, 2);
   assertEquals(json.hintUsedCount, 1);
-  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 1);
   assertEquals(claimHintCalls(state).length, 1);
   assertEquals(claimHintCalls(state)[0].params, {
     p_user_id: "user-1",
@@ -8294,8 +7622,8 @@ Deno.test("hint with a fresh requestId generates normally and threads the id int
   assertEquals(Array.isArray(storedPayload.replies), true);
   assertEquals(typeof storedPayload.coaching, "string");
   assertEquals(storedPayload.costDeducted, 1);
-  assertEquals(storedPayload.provider, "deepseek");
-  assertEquals(storedPayload.model, DEEPSEEK_MODEL);
+  assertEquals(storedPayload.provider, "anthropic");
+  assertEquals(storedPayload.model, CLAUDE_SONNET_MODEL);
   assertEquals(
     storedPayload.qualitySchemaVersion,
     HINT_QUALITY_SCHEMA_VERSION,
@@ -8340,7 +7668,7 @@ Deno.test("hint without requestId keeps legacy claim and record params and store
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
-      deepSeekReplies: [validHintJson()],
+      claudeReplies: [validHintJson()],
       rpc: {
         record_practice_hint: [{
           data: [{ new_hint_count: 1, did_charge: true }],
@@ -8395,7 +7723,7 @@ for (
   Deno.test(`record_practice_hint ${rpcError} maps to 403 ${expected}`, async () => {
     const { response, json, state } = await run({
       ledger: beginnerStartedLedger(),
-      deepSeekReplies: [validHintJson()],
+      claudeReplies: [validHintJson()],
       rpc: {
         record_practice_hint: [{ error: rpcError }],
       },
@@ -8403,7 +7731,7 @@ for (
 
     assertEquals(response.status, 403);
     assertEquals(json, { error: expected });
-    assertEquals(state.deepSeekCalls.length, 1);
+    assertEquals(state.claudeCalls.length, 1);
     assertEquals(claimHintCalls(state).length, 1);
     assertEquals(recordHintCalls(state).length, 1);
     assertEquals(releaseHintCalls(state).length, 1);
@@ -8411,3 +7739,213 @@ for (
     assertEquals(learningUpdateCalls(state).length, 0);
   });
 }
+
+// ─── 單發重設計 v2：hint 走 Sonnet 5 單發 tool_use＋Haiku 4.5 補發 ───
+
+Deno.test("hint beginner generates via one Sonnet 5 tool_use shot with zero DeepSeek and zero reviewer calls", async () => {
+  const { response, json, state } = await run({
+    ledger: beginnerStartedLedger(),
+    claudeReplies: [validHintJson()],
+  }, hintBody({ practiceMode: "beginner" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 1);
+  const call = state.claudeCalls[0];
+  assertEquals(call.model, "claude-sonnet-5");
+  assertEquals(call.maxTokens, 500);
+  assertEquals(call.forcedTool?.name, "emit_hint");
+  assertEquals(json.replies.length, 2);
+  assertEquals(json.replies[0].label, "升溫回覆");
+  assertEquals(json.replies[1].label, "穩住回覆");
+  assert(typeof json.replies[0].text === "string");
+  assert(typeof json.coaching === "string" && json.coaching.length > 0);
+  assertEquals(json.provider, "anthropic");
+  assertEquals(json.model, "claude-sonnet-5");
+  assertEquals(json.failoverUsed, false);
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
+Deno.test("hint game generates via the same single-shot path as beginner", async () => {
+  const { response, json, state } = await run({
+    ledger: gameStartedLedger({ temperature_score: 64, hint_count: 2 }),
+    drawEvents: [{ profile_id: "practice_girl_004" }],
+    claudeReplies: [validGameHintJson()],
+  }, hintBody({ practiceMode: "game", profileId: "practice_girl_004" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls[0].model, "claude-sonnet-5");
+  assertEquals(state.claudeCalls[0].forcedTool?.name, "emit_hint");
+  assertEquals(json.replies.length, 2);
+  assertEquals(json.hintUsedCount, 3);
+  const promptText = state.claudeCalls[0].messages.map((m) => m.content)
+    .join("\n");
+  assert(promptText.includes("currentTemperatureScore: 64/100"));
+  assert(promptText.includes("gameHint(hidden guidance)"));
+});
+
+Deno.test("hint first shot failure fails over once to Haiku and keeps the response contract", async () => {
+  const { response, json, state } = await run({
+    ledger: beginnerStartedLedger(),
+    claudeReplies: [new Error("claude_timeout"), validHintJson()],
+  }, hintBody({ practiceMode: "beginner" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[0].model, "claude-sonnet-5");
+  assertEquals(state.claudeCalls[1].model, "claude-haiku-4-5-20251001");
+  assertEquals(json.failoverUsed, true);
+  assertEquals(json.model, "claude-haiku-4-5-20251001");
+  assertEquals(json.replies.length, 2);
+  assertEquals(json.replies[0].type, "warm_up");
+  assertEquals(json.replies[1].type, "steady");
+  assert(typeof json.replies[0].decision === "object");
+  assertEquals(recordHintCalls(state).length, 1);
+});
+
+Deno.test("hint both single shots failing returns 503 with single_shot_v2 telemetry", async () => {
+  const { response, json, state } = await run({
+    ledger: beginnerStartedLedger(),
+    claudeReplies: [new Error("claude_timeout"), new Error("claude_http_529")],
+  }, hintBody({ practiceMode: "beginner" }));
+
+  assertEquals(response.status, 503);
+  assertEquals(json, {
+    error: "practice_hint_generation_retryable",
+    retryable: true,
+  });
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(aiLogInserts(state).length, 1);
+  const row = aiLogInserts(state)[0].values as Record<string, unknown>;
+  assertEquals(row.status, "failed");
+  const requestBody = row.request_body as Record<string, unknown>;
+  assertEquals(requestBody.pipeline, "single_shot_v2");
+  assertEquals(requestBody.failureClasses, ["timeout", "provider_error"]);
+  assertEquals(requestBody.failureCodes, ["claude_timeout", "claude_http_529"]);
+});
+
+Deno.test("hint visible-guard failure kills the shot instead of repairing it and Haiku serves", async () => {
+  const leaky = validHintJson({
+    warmUp: "targetVariable: Investment 這杯咖啡是想醒腦還是放空？",
+  });
+  const { response, json, state } = await run({
+    ledger: beginnerStartedLedger(),
+    claudeReplies: [leaky, validHintJson()],
+  }, hintBody({ practiceMode: "beginner" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[1].model, "claude-haiku-4-5-20251001");
+  const visible = [json.replies[0].text, json.replies[1].text, json.coaching]
+    .join("\n");
+  assertEquals(visible.includes("targetVariable"), false);
+  // 第二發全新候選供給，不是第一發 repair 復活。
+  assertEquals(
+    json.replies[0].text,
+    JSON.parse(validHintJson()).warmUp,
+  );
+});
+
+Deno.test("hint ungrounded shot is rejected by the mechanical grounding gate before serving", async () => {
+  const fabricated = validHintJson({
+    warmUp: "妳週末想去爬山嗎？我知道一條很棒的步道。",
+    steady: "爬山裝備我都有，週六出發如何？",
+    coaching: "她想去戶外走走，直接約爬山最快。",
+  });
+  const { response, state } = await run({
+    ledger: beginnerStartedLedger(),
+    claudeReplies: [fabricated, validHintJson()],
+  }, hintBody({ practiceMode: "beginner" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[1].model, "claude-haiku-4-5-20251001");
+});
+
+Deno.test("game hint single shot still repairs internal jargon into plain visible text", async () => {
+  const { response, json, state } = await run({
+    ledger: gameStartedLedger({
+      temperature_score: 74,
+      familiarity_score: 58,
+      hint_count: 1,
+    }),
+    drawEvents: [{ profile_id: "practice_girl_004" }],
+    claudeReplies: [
+      validHintJson({
+        coaching:
+          "Game 心法：她主動說想喝咖啡，P4_TENSION 要換成讓她補狀態，不是直接推 Emotion + heat 或 targetVariable: Investment + invite。速約任務：問她想醒腦還是放空，因為先用 speedInviteDirection: soft_invite_probe 和 allowSpicyLevel: L3 留下具體窗口。",
+      }),
+    ],
+  }, hintBody({ practiceMode: "game", profileId: "practice_girl_004" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.semanticCalls.length, 0);
+  const visible = [json.replies[0].text, json.replies[1].text, json.coaching]
+    .join("\n");
+  assert(visible.includes("張力"));
+  assert(visible.includes("低壓試探邀約"));
+  assert(visible.includes("高張力暗示"));
+  assertEquals(visible.includes("targetVariable"), false);
+  assertEquals(visible.includes("speedInviteDirection"), false);
+  assertEquals(visible.includes("allowSpicyLevel"), false);
+});
+
+Deno.test("hint prefetch success goes through the same single-shot path and records the snapshot", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+      claudeReplies: [validHintJson()],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "prefetch-single-shot",
+      prefetch: true,
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json, { prefetched: true });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls[0].model, "claude-sonnet-5");
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
+Deno.test("hint prefetch single-shot exhaustion releases ownership and never lands a fallback snapshot", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+      claudeReplies: [
+        new Error("claude_timeout"),
+        new Error("claude_http_500"),
+      ],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "prefetch-single-shot-fail",
+      prefetch: true,
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json, {
+    error: "practice_hint_prefetch_failed",
+    retryable: true,
+  });
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(settleHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
+});

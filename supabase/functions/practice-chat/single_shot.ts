@@ -37,6 +37,8 @@ export interface SingleShotArgs<T> {
 export interface SingleShotOutcome<T> {
   result: T;
   model: string;
+  /** 成功那一發的耗時（telemetry 用）。 */
+  durationMs: number;
   attemptFailures: SingleShotAttemptFailure[];
 }
 
@@ -92,7 +94,12 @@ export async function runSingleShot<T>(
         });
         continue;
       }
-      return { result, model, attemptFailures };
+      return {
+        result,
+        model,
+        durationMs: args.now() - startedAt,
+        attemptFailures,
+      };
     } catch (error) {
       attemptFailures.push({
         model,
