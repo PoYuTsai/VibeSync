@@ -10,6 +10,20 @@
 
 ## 2026-07
 
+### [2026-07-22] 詳細特質與趨勢展開後捲動反覆橫跳、收不起來
+
+**Symptom**: 對象詳情頁「詳細特質與趨勢」摺疊面板點開後，往上拉畫面反覆橫跳，面板完全收不起來，只能左上角上一頁退出（Eric 真機回報）。
+
+**Root Cause**: 詳情頁 body 是 lazy `ListView`（children delegate），面板是 StatefulWidget 且展開狀態 `_expanded` 存在自己的 State、無 key 無 KeepAlive、又位於清單底部。展開後往上捲，面板滑出 viewport + cacheExtent（預設約 250px）被回收，State 銷毀、`_expanded` 歸零 → 重建時內容高度暴縮（traits＋雷達圖約 500px+）→ ListView 反覆做捲動 offset 修正（畫面橫跳）；修正期間每次 tap 都被 gesture arena 當成「停住捲動」吃掉，到不了 InkWell，於是收不起來。
+
+**Fix**: 展開狀態上提到 `_PartnerDetailScreenState`（`_detailTraitsExpanded`），面板改為受控 StatelessWidget（`expanded` + `onToggle`）。回收重建後高度一致，不再觸發 offset 修正。
+
+**Prevention**: lazy ListView／SliverList 內的摺疊、展開、tab 等會改變自身高度的本地 UI state，一律上提到頁面 State 或 provider，不得放在會被回收的子項 State 裡。widget test 要抓這類 bug 必須用貼近真機的小 surface（例如 400x800）；把 surface 撐高到整頁塞進單一 viewport（如 2400）永遠測不到回收路徑。
+
+**Validation**: 新回歸測試 `partner_detail_expandable_recycle_test.dart`（400x800 逼出回收，先紅後綠：捲離回收前確認面板真的離場、捲回斷言仍為「收起」且可實際收合）；partner widget 目錄 157 測全過、`flutter analyze` 0 issue。commit `5a5e406a`。
+
+**相關檔案**: `lib/features/partner/presentation/screens/partner_detail_screen.dart`、`test/widget/features/partner/partner_detail_expandable_recycle_test.dart`。
+
 ### [2026-07-19] AI 練習室 Debrief 語意複核反覆 503
 
 **Symptom**: Essential 使用者在 AI 練習室結束後連續兩次拿不到教練拆解。第一輪 production telemetry 是 Claude reviewer malformed schema；補 provider schema 後，新的 Beginner smoke 又出現兩次 `semantic_fact_verification_rejected`，第三次 client 重送才成功。
