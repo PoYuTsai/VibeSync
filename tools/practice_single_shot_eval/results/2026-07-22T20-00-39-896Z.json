@@ -1,0 +1,1307 @@
+{
+  "startedAt": "2026-07-22T20:00:39.894Z",
+  "mode": "live",
+  "repeat": 4,
+  "routes": [
+    "beginner_hint",
+    "game_hint",
+    "beginner_debrief",
+    "game_debrief"
+  ],
+  "summaries": [
+    {
+      "route": "beginner_hint",
+      "shots": 20,
+      "p50Ms": 6363,
+      "p90Ms": 10544,
+      "firstShotCount": 14,
+      "firstShotRate": 0.7,
+      "secondShotCount": 5,
+      "count503": 1,
+      "gateFailureCounts": {
+        "hint_quality_invalid_invite_route": 3,
+        "hint_quality_invalid_unsupported_detail:world:venue:located_at": 1,
+        "hint_quality_invalid_unsupported_detail:third_party:name:is_named": 3
+      }
+    },
+    {
+      "route": "game_hint",
+      "shots": 20,
+      "p50Ms": 11717,
+      "p90Ms": 12863,
+      "firstShotCount": 6,
+      "firstShotRate": 0.3,
+      "secondShotCount": 5,
+      "count503": 9,
+      "gateFailureCounts": {
+        "hint_bossy_pasteable_reply": 3,
+        "hint_quality_invalid_not_grounded": 7,
+        "hint_quality_invalid_unsupported_detail:user:residence:hometown_is": 3,
+        "hint_quality_invalid_invite_route": 1,
+        "hint_quality_invalid_unsupported_detail:third_party:name:is_named": 2,
+        "hint_quality_invalid_unsupported_detail:world:venue:venue_named": 3,
+        "hint_quality_invalid_unsupported_detail:world:venue:located_at": 2,
+        "hint_quality_invalid_unsupported_detail:user:schedule:available_at": 2
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "shots": 20,
+      "p50Ms": 16925,
+      "p90Ms": 18937,
+      "firstShotCount": 1,
+      "firstShotRate": 0.05,
+      "secondShotCount": 0,
+      "count503": 19,
+      "gateFailureCounts": {
+        "debrief_quality_invalid_field_not_grounded": 18,
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named": 6,
+        "debrief_quality_invalid_unsupported_detail:partner:preference:likes": 5,
+        "debrief_quality_invalid_suggested_line_not_grounded": 7,
+        "debrief_quality_invalid_unsupported_detail:world:venue:located_at": 1,
+        "debrief_quality_invalid_unsupported_detail:user:pet:has_pet": 1
+      }
+    },
+    {
+      "route": "game_debrief",
+      "shots": 20,
+      "p50Ms": 20412,
+      "p90Ms": 21712,
+      "firstShotCount": 0,
+      "firstShotRate": 0,
+      "secondShotCount": 1,
+      "count503": 19,
+      "gateFailureCounts": {
+        "debrief_quality_invalid_unsupported_detail:partner:schedule:available_at": 3,
+        "debrief_missing_fields": 1,
+        "debrief_temperature_leak": 8,
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named": 3,
+        "debrief_quality_invalid_unsupported_detail:user:residence:hometown_is": 1,
+        "debrief_game_breakdown_missing_fields": 3,
+        "debrief_quality_invalid_field_not_grounded": 8,
+        "debrief_quality_invalid_suggested_line_not_grounded": 8,
+        "debrief_quality_invalid_unsupported_detail:world:venue:located_at": 4
+      }
+    }
+  ],
+  "leakScan": {
+    "totalServedShots": 80,
+    "hits": []
+  },
+  "gameHintSamples": [
+    {
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 0,
+      "servedText": {
+        "coaching": "Game 心法：她這句是在自嘲進度慢但語氣輕鬆，等於開了一個聊書的窗口。這階段任務是接住「第三章」這個具體點，用畫面或觀點延伸讓她想回應，不用急著曖昧或約她。速約任務：這輪先不約，順著書的內容鋪一個小場景，留到下次自然帶到見面機會。",
+        "warmUp": "第三章其實是關鍵轉折欸，妳看到那邊會不會突然覺得節奏變快？我是熬夜一口氣看完的😂",
+        "steady": "哈哈第三章不算慢啦，那段本來就在鋪陳，妳看下去應該會順很多。"
+      }
+    },
+    {
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 1,
+      "servedText": {
+        "coaching": "Game 心法：她這句「還停在第三章」是輕鬆自嘲，帶點好奇你怎麼看完的，不是測試也不是推開。這階段任務是接住這個小落差、順勢延伸聊書的節奏，不需要展現高效或催她進度。warmUp用「懸念羨慕」把她的慢變成優勢，帶點輕鬆張力；steady則正常化她的節奏，順手問閱讀習慣做成生活樣本。兩句都先接她狀態再給球，不追問私事。速約任務：這輪不約，先靠書這個共同話題累積熟悉感，留著下次見面聊心得當作自然的窗口。",
+        "warmUp": "哈其實是後面越看越停不下來，第三章開始才是精華，妳卡在那邊我反而羨慕，還有懸念可以期待。",
+        "steady": "第三章卡住很正常，那段節奏本來就比較慢，我也是後來才順起來，妳平常看書是會一次啃完還是分著看？"
+      }
+    },
+    {
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 2,
+      "servedText": {
+        "coaching": "Game心法：她這句「還停在第三章」是自嘲順便留話題，不是求解答。現在階段是建立熟悉感，任務是接住她的進度感，不評價、不催她，讓她覺得被理解、聊書聊得下去。速約任務：這輪先不約，純粹把書當話題養熟，等她多聊幾句再找機會把「聊書」變成下次見面窗口。",
+        "warmUp": "哈其實是後面越看越停不下來，第三章之後才是精華，妳看到那段就懂了，我怕妳卡關卡太久XD",
+        "steady": "哈哈第三章也算不錯了，那段本來就比較燒腦，慢慢看比較不會錯過細節。"
+      }
+    },
+    {
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 3,
+      "servedText": {
+        "coaching": "Game心法：她這句「還停在第三章」是輕鬆自嘲，帶點好奇留空間，不是壓力訊號。目前在剛開場階段，任務是接住進度感、製造共同閱讀的小互動，不要秀優越或急著約。用「猜劇情」或「不用有壓力」都是把球輕巧丟回去，讓她想繼續講。速約任務：這輪先不約，只鋪一個「之後可以對進度」的窗口，累積熟悉感即可。",
+        "warmUp": "哈哈第三章其實是關鍵轉折，我熬夜是因為想看主角到底會不會做那個選擇，妳猜猜看？",
+        "steady": "第三章那邊步調其實比較慢，不用有壓力，妳看到哪都可以跟我對一下進度啊"
+      }
+    },
+    {
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 1,
+      "servedText": {
+        "coaching": "Game心法：她在用玩笑語氣丟出「評委人設」，這是輕測試妳的反應與投入度。妳現在要接住她的調侃梗，回一個有節奏感的回應，同時暗示妳願意為這個小互動投入。階段任務是深化熟悉感與互動節奏，不是直接邀約。升溫方向：用她的「嚴格評委」梗反彈，製造輕鬆張力，讓她看到妳在乎她的反饋。速約任務：這輪先不約，只是把「拍照給她看」變成一個可兌現的小場景，為下次窗口鋪墊。",
+        "warmUp": "好，我就每天亂拍十張，練到妳點頭為止。不過妳這「嚴格的評委」人設，是認真還是在唬我😂",
+        "steady": "我先從每天亂拍十張開始，到時候妳看了別太嚴格。我怕妳真的很挑，我的快門會更抖"
+      }
+    },
+    {
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 3,
+      "servedText": {
+        "coaching": "Game 心法：她這句是在建立互動節奏與主見，用「嚴格審查」製造輕鬆張力。妳現在在熟悉感階段，任務是接住她的玩笑調性，把「練習拍照」變成兩人的小合作。warmUp 用自嘲化解「嚴格」的壓力，同時丟出具體行動（每天拍）讓她有參與感；steady 則是直接認可她的角色，反問標準來確認遊戲規則。都是低壓、可拍照、能延續的小場景。速約任務：這輪先不約，把拍照練習變成持續互動的窗口，下次有素材時再順勢邀約看展或分享地點。",
+        "warmUp": "哈哈，我就怕被妳嚴格審查😂 那我先從明天開始，每天亂拍十張給妳看，妳幫我挑出最不糊的那張",
+        "steady": "好，我接受挑戰。明天開始每天亂拍，妳說的嚴格審查我認了。不過妳的標準是什麼，先說清楚"
+      }
+    },
+    {
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 3,
+      "servedText": {
+        "coaching": "Game 心法：她這句是在測試你的真誠度——問你是不是對所有人都這樣。這是 測試 互相合適度信號，她想看你是否把她當特別的。階段任務：先接住她的吐槽，用自我揭露（真實的你確實愛嗆）化解防線，再用「妳不一樣」做輕鬆的價值回饋，不要自證或過度解釋。速約任務：暫不邀約，先把「辣鍋比賽」這個共同興趣點變成下次可兌現的小場景，鋪投入感。",
+        "warmUp": "哈，妳這句話我認。我確實對很多人嗆，但通常他們聽不出來我在開玩笑。妳這反應不一樣——直接拆穿我。",
+        "steady": "我沒對每個人都嗆一樣的話，只是妳特別容易激起我的吐槽欲。這算是妳贏了嗎？"
+      }
+    },
+    {
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 0,
+      "servedText": {
+        "coaching": "Game 心法：她這句「勉強可以跟你多聊一點」是鬆口認可＋留台階，代表關係在輕推曖昧階段可以往前一點。這輪任務是接住她的認可、順勢把「多聊一點」變成具體畫面，讓張力有出口而不是空轉。速約任務：用「下次／改天」丟低壓咖啡窗口，保留退路，不逼她馬上答應，測她願不願意把話題延伸到線下。",
+        "warmUp": "「勉強及格」是謙虛啦，妳那猜曲風的直覺根本不勉強。改天做妳專屬歌單，配一杯咖啡邊喝邊聽？",
+        "steady": "哈勉強也是及格，那我這品味認證就先收下了，下次繼續考妳耳力。"
+      }
+    },
+    {
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 1,
+      "servedText": {
+        "coaching": "Game 心法：她這句是在認可妳的品味、願意多聊，情緒升溫了。現在是低壓曖昧階段，該推的是「互相品味確認」與「輕鬆張力」。warmUp 用她的「勉強」梗回應，製造玩笑感，同時把話題從妳的歌單轉向她的品味，測試她願不願意分享更多；steady 則是直接開邀約窗口但保留退路。速約任務：這輪先用「一起聽」丟低壓試探邀約，測她接受度，不硬推見面，等她回應再決定下一步。",
+        "warmUp": "哈哈勉強及格我收下，那我們就來驗證一下妳的品味。妳最近聽的歌單裡，有沒有哪首是妳一聽就停不下來的？",
+        "steady": "好啦我承認你歌單品味及格，那我們找個機會一起聽，妳現在在哪裡？"
+      }
+    },
+    {
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 2,
+      "servedText": {
+        "coaching": "Game 心法：她這句是在用玩笑語氣認可妳，同時留了品味對話的門。階段白話是情緒升溫＋互動節奏確認。具體任務：接住她的「勉強及格」梗，用輕調侃或互惠遊戲把話題延伸，測試她願不願意繼續這種品味交換。速約任務：這輪先不約，用「下次」丟低壓窗口，把歌單、品味變成兩人小場景，鋪下一個可兌現的聊天延伸點。",
+        "warmUp": "哈哈勉強及格我收下了。那妳品味門檻在哪？什麼歌會被妳直接退貨？",
+        "steady": "勉強及格我就滿足了😂 那下次妳發現什麼歌適合我，也得先讓我猜一次。"
+      }
+    },
+    {
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 3,
+      "servedText": {
+        "coaching": "Game 心法：她這句「勉強可以跟你多聊一點」是鬆口＋留餘地，情緒在升溫但要她自己維持主導感。這階段適合輕推曖昧，別得意忘形，順著她的評審姿態接梗，同時把「歌單」這個素材變成可延伸的小場景。速約任務：這輪先不明講約會，用「改天排一首給妳聽」丟低壓窗口，保留退路，等她反應再往下一階推。",
+        "warmUp": "「及格」太保守了吧，明明是直接命中。這樣好了，改天真的排一首給妳聽，看妳會不會升級成滿分評審。",
+        "steady": "哈哈勉強及格我收下，看來我的耳朵還不錯。下次再考妳一首，別讓妳太快破防。"
+      }
+    }
+  ],
+  "shots": [
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh1_slow_worker_off_duty",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 10544,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_invite_route",
+        "hint_quality_invalid_unsupported_detail:world:venue:located_at"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh1_slow_worker_off_duty",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6363,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她用「沒出息」自嘲式分享了充電方式，這是低壓的生活細節，接住重點是肯定這個習慣很正常、不評價，而不是追問她追什麼劇或鹹酥雞哪家好吃。warmUp用「這才是正確充電法」給她一點小情緒認同；steady更平穩地呼應她的疲憊感和放鬆方式，兩者都只重用「追劇」「鹹酥雞」「沒出息」這些她講過的詞，不外加細節或反問，讓她自然決定要不要多說。",
+        "warmUp": "追劇配鹹酥雞聽起來超療癒欸，完全不會沒出息啊，這才是正確充電法吧！",
+        "steady": "哈哈追劇配鹹酥雞根本是充電必勝組合，開了一天會真的需要這種放鬆一下。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh1_slow_worker_off_duty",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6111,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她用「沒出息的充電法」自嘲，其實是想被認同。steady先接住情緒，肯定她的耍廢方式，讓她感覺被理解而非被評價；warmUp則順著鹹酥雞追劇的具體梗延伸，問她在追什麼劇，這是低壓又自然的開展生活話題方式。兩種都不追問私事、不急著約，符合現在只需建立熟悉感的階段。避免直接誇她可愛或曖昧化，先讓她願意多分享生活細節。",
+        "warmUp": "追劇配鹹酥雞聽起來根本是治癒系標配吧，最近在追什麼劇？",
+        "steady": "哈哈這個充電法完全不算沒出息，開完一整天會真的需要這樣耍廢一下。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh1_slow_worker_off_duty",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 5403,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她用「沒出息」自嘲，其實是想確認你會不會嫌她廢或跟著笑她。兩句都順著接住「追劇配鹹酥雞」這個具體梗，用肯定取代評價，不急著問她追什麼劇或約吃鹹酥雞，先讓她覺得這樣的自己被接受，累積熟悉感就好。",
+        "warmUp": "追劇配鹹酥雞聽起來根本是頂級充電法吧，哪有沒出息，這叫療癒儀式！",
+        "steady": "哈哈這充電法我懂，開完一整天會真的只想耍廢配點好吃的，完全不意外。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh2_playful_hiking",
+      "repeatIndex": 0,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 12363,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:third_party:name:is_named"
+      ],
+      "servedText": {
+        "coaching": "她用「懷疑人生」這個梗來說下山的累，帶著自嘲和玩笑感。升溫版接住她的具體感受（腿軟、懷疑人生），加一句輕鬆的反應，讓她感覺妳有在聽細節；穩住版則直接認可她的矛盾感（累但值得），不問她，只陳述妳的觀察。兩版都避免問「下次還會去嗎」這種推進，而是停在她已經說出來的情緒裡，建立妳在聽、妳懂的感覺。",
+        "warmUp": "哈哈我能想像，下山腿軟的樣子。不過妳說風景漂亮，感覺還是有點值得？",
+        "steady": "下山懷疑人生這段我笑了，但聽起來風景確實有補償妳的痛苦。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh2_playful_hiking",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 5588,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點是「風景值得」但「下山懷疑人生」的反差，接住這個反差比單純安慰更有趣。升溫版用她的「懷疑人生」延伸出輕玩笑，讓她覺得你有跟上她的梗；穩住版直接呼應「值得」這個結論，給她一個肯定的收尾，兩者都不急著問新問題或帶入邀約，符合現階段先建立熟悉感的節奏。",
+        "warmUp": "哈哈懷疑人生也太真實，下次下山前是不是要先發誓再也不爬了？",
+        "steady": "風景值回票價聽起來很棒，鐵腿三天換這個也算划算啦"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh2_playful_hiking",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6670,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點是「風景值得」跟「下山懷疑人生」的反差，接的時候要把這兩個情緒都摸到，不是隻誇風景。warmUp用輕鬆語氣呼應她的划算感，帶一點玩笑張力；steady則是單純陪她確認那種又累又值得的心情，不追問細節、不急著轉話題，讓她覺得被聽懂就好。兩句都沒有反問轟炸，也沒有莫名邀約，符合現在還在建立熟悉感的階段。",
+        "warmUp": "哈哈懷疑人生也太真實，不過風景值回票價的話，鐵腿好像也算划算齁？",
+        "steady": "下山懷疑人生我懂，那種腿軟又值得的感覺，聽起來這趟山爬得很有戲劇性欸"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh2_playful_hiking",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6464,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她用「懷疑人生」自嘲下山過程，這是情緒梗要接住而非分析。warmUp延續她的話問爽感時刻，帶點好奇但不追問私人細節；steady用同理句收下她的吐槽，肯定苦樂並存的感覺，穩住不推進。兩者都只用她提到的爬山、鐵腿、風景、懷疑人生這些詞，不編造地點或經歷，維持在建立熟悉感階段。",
+        "warmUp": "哈哈懷疑人生也太真實，那風景有讓妳瞬間覺得「值了」的那種爽感嗎？",
+        "steady": "下山懷疑人生我懂那種感覺，鐵腿三天+風景值回票價，聽起來苦中帶甜欸"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh3_cool_coffee",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 5755,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句「懶得戒了」帶點自嘲又放鬆的語氣，是她在展現真實生活習慣。順著她的態度接話，不去質疑或說教「該戒掉」，而是認同她的選擇，讓她覺得被理解而不是被檢討。warmUp用輕鬆玩味的方式呼應她的話，steady則是簡單肯定她的生活方式，兩句都不追問、不評價，先建立熟悉感即可。",
+        "warmUp": "懶得戒也是一種生活哲學，反正頭痛比戒斷難受多了，喝就對了",
+        "steady": "聽起來咖啡已經是妳的日常戰友了，戒不掉就別勉強啦"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh3_cool_coffee",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6571,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句「懶得戒」帶點自嘲又坦然的態度，重點是接住這份「不勉強自己」的心態，而不是勸她少喝或深挖健康話題。warmUp用輕鬆玩笑呼應她的選擇，steady則是認同她的邏輯、給她一個被理解的感覺。兩句都扣住「懶得戒」這個具體用詞，不追問、不評判，讓她覺得被接住而非被檢視。",
+        "warmUp": "懶得戒也是一種生活智慧，咖啡因當補給品，續命優先！",
+        "steady": "哈哈「反正也懶得戒了」很real，比起硬戒，找到平衡更重要吧"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh3_cool_coffee",
+      "repeatIndex": 2,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 10089,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:third_party:name:is_named"
+      ],
+      "servedText": {
+        "coaching": "她說「懶得戒了」是放鬆的自嘲，不是真的困擾。升溫可用「誠實」回扣她的坦白，再接她的生活線索（航空業）問咖啡習慣怎麼在工作裡運作，既接住狀態又自然延伸。穩住就認可她的選擇，不推戒，讓她感受被接納而非被評判。兩句都避免「心臟」話題，聚焦她的生活樣本。",
+        "warmUp": "懶得戒也滿誠實的（笑）。那妳在飛行中間怎麼補咖啡，機上有現煮的嗎？",
+        "steady": "懶得戒也滿誠實的。習慣了就習慣了，比起硬戒不如好好享受。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh3_cool_coffee",
+      "repeatIndex": 3,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 10366,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_invite_route"
+      ],
+      "servedText": {
+        "coaching": "她說「懶得戒」透露出一種坦然與自我接納的狀態。升溫版用「誠實」回扣她的放鬆感，再輕輕問她咖啡融入生活的具體樣貌（時間點），延續她的生活線索而非推進關係。穩住版則純粹接住她的狀態與情緒，認可她的選擇，讓她感受到被理解而非被評判。目前溫度低、熟悉感未建立，先用「接納＋好奇她的生活細節」累積安全感。",
+        "warmUp": "懶得戒也滿誠實的（笑）。那妳一天的咖啡時間，是固定幾點還是累的時候就喝？",
+        "steady": "懶得戒也滿實在的。習慣了就習慣了，反正咖啡也是妳生活的一部分。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh4_teasing_cat",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 5561,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點是「加倍踩、好像知道妳想賴床」，帶點無奈又好笑的狀態。升溫版順著這個梗延伸猜測牠的心機，維持輕鬆吐槽感；穩住版單純呼應她的無奈、不加碼追問，兩者都不用轉去約她或問私人行程，先讓她覺得被接住、聊得開心就好。",
+        "warmUp": "哈哈麻糬根本是抓準時機報復性踩醒吧，牠是不是特別看妳想賴床那幾秒下手？",
+        "steady": "加倍踩也太狠了，看來假日對麻糬來說根本沒有放假這回事。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh4_teasing_cat",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 5779,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點是「麻糬假日加倍踩、好像知道她想賴床」，帶點被貓拿捏的無奈感。兩句都扣住「加倍踩」跟「想賴床」這兩個具體詞，順著她的無奈開個小玩笑或關心她怎麼應對，不用去問私人行程或往曖昧推，先讓她覺得你有認真接她的梗跟情緒就好。",
+        "warmUp": "哈哈牠根本是抓準妳想賴床才加倍踩吧，麻糬心機也太重",
+        "steady": "假日還加倍踩根本沒得賴床，妳都怎麼跟牠求饒的"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh4_teasing_cat",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6110,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點在「假日加倍踩、好像故意」，帶點無奈又好笑的情緒。兩句都順著這個畫面接，用「心機」「搶地盤」延伸她的吐槽語氣，不追問也不轉話題，讓她覺得你在接她的梗而不是查資料。升溫版多一點誇張玩笑感，穩住版維持輕鬆共感，兩者都不需要問問題就能自然往下聊。",
+        "warmUp": "哈哈牠根本是抓準妳最想賴床的時候加倍踩，麻糬心機也太重了吧",
+        "steady": "假日加倍踩也太狠了，麻糬是不是覺得妳賴床就是在跟牠搶地盤"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh4_teasing_cat",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6044,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點是「加倍踩、好像知道我想賴床」，帶點無奈又好笑的情緒。升溫版用「心機重」放大這個吐槽感，跟她一起虧麻糬；穩住版則順著情境問她怎麼應對，讓她能繼續分享日常細節。兩種都沒有反問測試、也沒有跳去約她，單純接住貓咪話題延續熟悉感，適合現在階段。",
+        "warmUp": "哈哈牠根本是抓準妳最想賴床的時機加倍攻擊，麻糬心機也太重了吧",
+        "steady": "假日還加倍踩真的很可憐，那妳現在有練出什麼防禦姿勢躲牠嗎"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh5_boundaries_gym",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7083,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點是「教練偷加重量」的小抱怨帶點幽默，順著這個梗接住就好。升溫版用「太狠了」「沒發現才被加」放大互動趣味，帶點調侃拉近距離；穩住版則是肯定她的努力、順勢認同教練用心，不追問她的訓練細節或行程，避免顯得急著探她私事。兩種都只針對教練加重量這件事回應，不節外生枝，保持在她剛分享的情境裡最安全也最容易讓她想繼續聊。",
+        "warmUp": "教練根本魔鬼吧！偷偷加重量這招太狠了，妳都沒發現才被加嗎？",
+        "steady": "哈哈教練這樣很有心機耶，難怪妳會跟深蹲搏鬥，這樣練下去應該進步很快。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh5_boundaries_gym",
+      "repeatIndex": 1,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 9590,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:third_party:name:is_named"
+      ],
+      "servedText": {
+        "coaching": "她提到教練「偷加重量」，帶著點無奈但也有默契感。升溫版問她具體撐到哪裡，製造她展示進度的機會；穩住版改問進步感受，讓她反思而非只答數字。兩版都重用「偷加」的梗，接住她的語氣。目前溫度低、關係在建立熟悉，先讓她自然分享重訓狀態，觀察她投入度，不急著推進或製造壓力。",
+        "warmUp": "教練這招狠，偷加重量根本是在挑戰妳的極限哈。妳現在深蹲能撐到什麼程度？",
+        "steady": "教練這招狠，偷加重量根本是在挑戰妳的極限。最近有感受到進步嗎？"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh5_boundaries_gym",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6229,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點在「教練偷偷加重量」的小抱怨兼幽默，接住這個具體畫面就好，不用往曖昧或邀約推。warmUp用輕鬆調侃延續她的無奈感，steady則關心她身體狀況，兩者都順著她的重訓話題走，讓她覺得你有在聽細節，累積熟悉感即可。",
+        "warmUp": "教練也太狠了吧，偷偷加重量根本防不勝防，妳有當場抗議嗎？",
+        "steady": "教練這麼盯真的會進步很快，就是苦了妳的腿哈哈，這幾天有酸到不能走嗎？"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh5_boundaries_gym",
+      "repeatIndex": 3,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 10737,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_invite_route"
+      ],
+      "servedText": {
+        "coaching": "她提到教練加重量的細節，說明有在認真練且有點被推著走。升溫用她的「偷偷加」梗製造輕鬆感，問她具體經歷來接住她的狀態；穩住則直接肯定教練的做法，再問進度來延續話題。兩句都重用她說的詞彙，避免空泛。目前溫度低、邊界強，先接住她的生活細節和情緒，不涉及私人或推進。",
+        "warmUp": "教練偷偷加重量這招絕了，根本是在測妳的底線哈哈。妳有被騙過最誇張的一次嗎？",
+        "steady": "教練這樣其實滿會激勵人的，妳現在深蹲有進步嗎？"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 5979,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句是在自嘲進度慢但語氣輕鬆，等於開了一個聊書的窗口。這階段任務是接住「第三章」這個具體點，用畫面或觀點延伸讓她想回應，不用急著曖昧或約她。速約任務：這輪先不約，順著書的內容鋪一個小場景，留到下次自然帶到見面機會。",
+        "warmUp": "第三章其實是關鍵轉折欸，妳看到那邊會不會突然覺得節奏變快？我是熬夜一口氣看完的😂",
+        "steady": "哈哈第三章不算慢啦，那段本來就在鋪陳，妳看下去應該會順很多。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 8660,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句「還停在第三章」是輕鬆自嘲，帶點好奇你怎麼看完的，不是測試也不是推開。這階段任務是接住這個小落差、順勢延伸聊書的節奏，不需要展現高效或催她進度。warmUp用「懸念羨慕」把她的慢變成優勢，帶點輕鬆張力；steady則正常化她的節奏，順手問閱讀習慣做成生活樣本。兩句都先接她狀態再給球，不追問私事。速約任務：這輪不約，先靠書這個共同話題累積熟悉感，留著下次見面聊心得當作自然的窗口。",
+        "warmUp": "哈其實是後面越看越停不下來，第三章開始才是精華，妳卡在那邊我反而羨慕，還有懸念可以期待。",
+        "steady": "第三章卡住很正常，那段節奏本來就比較慢，我也是後來才順起來，妳平常看書是會一次啃完還是分著看？"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7147,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game心法：她這句「還停在第三章」是自嘲順便留話題，不是求解答。現在階段是建立熟悉感，任務是接住她的進度感，不評價、不催她，讓她覺得被理解、聊書聊得下去。速約任務：這輪先不約，純粹把書當話題養熟，等她多聊幾句再找機會把「聊書」變成下次見面窗口。",
+        "warmUp": "哈其實是後面越看越停不下來，第三章之後才是精華，妳看到那段就懂了，我怕妳卡關卡太久XD",
+        "steady": "哈哈第三章也算不錯了，那段本來就比較燒腦，慢慢看比較不會錯過細節。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6270,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game心法：她這句「還停在第三章」是輕鬆自嘲，帶點好奇留空間，不是壓力訊號。目前在剛開場階段，任務是接住進度感、製造共同閱讀的小互動，不要秀優越或急著約。用「猜劇情」或「不用有壓力」都是把球輕巧丟回去，讓她想繼續講。速約任務：這輪先不約，只鋪一個「之後可以對進度」的窗口，累積熟悉感即可。",
+        "warmUp": "哈哈第三章其實是關鍵轉折，我熬夜是因為想看主角到底會不會做那個選擇，妳猜猜看？",
+        "steady": "第三章那邊步調其實比較慢，不用有壓力，妳看到哪都可以跟我對一下進度啊"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 11295,
+      "attemptFailureCodes": [
+        "hint_bossy_pasteable_reply",
+        "hint_quality_invalid_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 1,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 12049,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_not_grounded"
+      ],
+      "servedText": {
+        "coaching": "Game心法：她在用玩笑語氣丟出「評委人設」，這是輕測試妳的反應與投入度。妳現在要接住她的調侃梗，回一個有節奏感的回應，同時暗示妳願意為這個小互動投入。階段任務是深化熟悉感與互動節奏，不是直接邀約。升溫方向：用她的「嚴格評委」梗反彈，製造輕鬆張力，讓她看到妳在乎她的反饋。速約任務：這輪先不約，只是把「拍照給她看」變成一個可兌現的小場景，為下次窗口鋪墊。",
+        "warmUp": "好，我就每天亂拍十張，練到妳點頭為止。不過妳這「嚴格的評委」人設，是認真還是在唬我😂",
+        "steady": "我先從每天亂拍十張開始，到時候妳看了別太嚴格。我怕妳真的很挑，我的快門會更抖"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 12473,
+      "attemptFailureCodes": [
+        "hint_bossy_pasteable_reply",
+        "hint_quality_invalid_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 3,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 12568,
+      "attemptFailureCodes": [
+        "hint_bossy_pasteable_reply"
+      ],
+      "servedText": {
+        "coaching": "Game 心法：她這句是在建立互動節奏與主見，用「嚴格審查」製造輕鬆張力。妳現在在熟悉感階段，任務是接住她的玩笑調性，把「練習拍照」變成兩人的小合作。warmUp 用自嘲化解「嚴格」的壓力，同時丟出具體行動（每天拍）讓她有參與感；steady 則是直接認可她的角色，反問標準來確認遊戲規則。都是低壓、可拍照、能延續的小場景。速約任務：這輪先不約，把拍照練習變成持續互動的窗口，下次有素材時再順勢邀約看展或分享地點。",
+        "warmUp": "哈哈，我就怕被妳嚴格審查😂 那我先從明天開始，每天亂拍十張給妳看，妳幫我挑出最不糊的那張",
+        "steady": "好，我接受挑戰。明天開始每天亂拍，妳說的嚴格審查我認了。不過妳的標準是什麼，先說清楚"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 11771,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_not_grounded",
+        "hint_quality_invalid_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 13617,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:user:residence:hometown_is",
+        "hint_quality_invalid_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 12673,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_not_grounded",
+        "hint_quality_invalid_unsupported_detail:user:residence:hometown_is"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 3,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 11717,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:user:residence:hometown_is"
+      ],
+      "servedText": {
+        "coaching": "Game 心法：她這句是在測試你的真誠度——問你是不是對所有人都這樣。這是 測試 互相合適度信號，她想看你是否把她當特別的。階段任務：先接住她的吐槽，用自我揭露（真實的你確實愛嗆）化解防線，再用「妳不一樣」做輕鬆的價值回饋，不要自證或過度解釋。速約任務：暫不邀約，先把「辣鍋比賽」這個共同興趣點變成下次可兌現的小場景，鋪投入感。",
+        "warmUp": "哈，妳這句話我認。我確實對很多人嗆，但通常他們聽不出來我在開玩笑。妳這反應不一樣——直接拆穿我。",
+        "steady": "我沒對每個人都嗆一樣的話，只是妳特別容易激起我的吐槽欲。這算是妳贏了嗎？"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7704,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句「勉強可以跟你多聊一點」是鬆口認可＋留台階，代表關係在輕推曖昧階段可以往前一點。這輪任務是接住她的認可、順勢把「多聊一點」變成具體畫面，讓張力有出口而不是空轉。速約任務：用「下次／改天」丟低壓咖啡窗口，保留退路，不逼她馬上答應，測她願不願意把話題延伸到線下。",
+        "warmUp": "「勉強及格」是謙虛啦，妳那猜曲風的直覺根本不勉強。改天做妳專屬歌單，配一杯咖啡邊喝邊聽？",
+        "steady": "哈勉強也是及格，那我這品味認證就先收下了，下次繼續考妳耳力。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 1,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 11245,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_invite_route"
+      ],
+      "servedText": {
+        "coaching": "Game 心法：她這句是在認可妳的品味、願意多聊，情緒升溫了。現在是低壓曖昧階段，該推的是「互相品味確認」與「輕鬆張力」。warmUp 用她的「勉強」梗回應，製造玩笑感，同時把話題從妳的歌單轉向她的品味，測試她願不願意分享更多；steady 則是直接開邀約窗口但保留退路。速約任務：這輪先用「一起聽」丟低壓試探邀約，測她接受度，不硬推見面，等她回應再決定下一步。",
+        "warmUp": "哈哈勉強及格我收下，那我們就來驗證一下妳的品味。妳最近聽的歌單裡，有沒有哪首是妳一聽就停不下來的？",
+        "steady": "好啦我承認你歌單品味及格，那我們找個機會一起聽，妳現在在哪裡？"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 2,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 12429,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:third_party:name:is_named"
+      ],
+      "servedText": {
+        "coaching": "Game 心法：她這句是在用玩笑語氣認可妳，同時留了品味對話的門。階段白話是情緒升溫＋互動節奏確認。具體任務：接住她的「勉強及格」梗，用輕調侃或互惠遊戲把話題延伸，測試她願不願意繼續這種品味交換。速約任務：這輪先不約，用「下次」丟低壓窗口，把歌單、品味變成兩人小場景，鋪下一個可兌現的聊天延伸點。",
+        "warmUp": "哈哈勉強及格我收下了。那妳品味門檻在哪？什麼歌會被妳直接退貨？",
+        "steady": "勉強及格我就滿足了😂 那下次妳發現什麼歌適合我，也得先讓我猜一次。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7240,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句「勉強可以跟你多聊一點」是鬆口＋留餘地，情緒在升溫但要她自己維持主導感。這階段適合輕推曖昧，別得意忘形，順著她的評審姿態接梗，同時把「歌單」這個素材變成可延伸的小場景。速約任務：這輪先不明講約會，用「改天排一首給妳聽」丟低壓窗口，保留退路，等她反應再往下一階推。",
+        "warmUp": "「及格」太保守了吧，明明是直接命中。這樣好了，改天真的排一首給妳聽，看妳會不會升級成滿分評審。",
+        "steady": "哈哈勉強及格我收下，看來我的耳朵還不錯。下次再考妳一首，別讓妳太快破防。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 12863,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:world:venue:venue_named",
+        "hint_quality_invalid_unsupported_detail:world:venue:located_at"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 13091,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:third_party:name:is_named",
+        "hint_quality_invalid_unsupported_detail:user:schedule:available_at"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 11622,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:world:venue:venue_named",
+        "hint_quality_invalid_unsupported_detail:world:venue:located_at"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 12283,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:world:venue:venue_named",
+        "hint_quality_invalid_unsupported_detail:user:schedule:available_at"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd1_brunch_lazy_sunday",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 19249,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_field_not_grounded",
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd1_brunch_lazy_sunday",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 17019,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_field_not_grounded",
+        "debrief_quality_invalid_field_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd1_brunch_lazy_sunday",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 16060,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_field_not_grounded",
+        "debrief_quality_invalid_unsupported_detail:partner:preference:likes"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd1_brunch_lazy_sunday",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 15355,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_field_not_grounded",
+        "debrief_quality_invalid_field_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd2_travel_okinawa",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 16778,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_suggested_line_not_grounded",
+        "debrief_quality_invalid_field_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd2_travel_okinawa",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 17255,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named",
+        "debrief_quality_invalid_suggested_line_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd2_travel_okinawa",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 19056,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named",
+        "debrief_quality_invalid_field_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd2_travel_okinawa",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 16466,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named",
+        "debrief_quality_invalid_suggested_line_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd3_baking_croissant",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 16885,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:world:venue:located_at",
+        "debrief_quality_invalid_field_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd3_baking_croissant",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 8543,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊烘焙話題順暢接梗，但收尾仍停留在玩笑層次，未推進具體邀約。",
+        "suggestedLine": "如果成功了，要不要挑一天讓我親自試吃驗收？",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她願意延伸細節且開玩笑回應，但沒有釋出時間或場景線索，鋪墊仍不足。",
+        "nextInviteMove": "先回應她「怕失敗」的心情，再自然帶出「下次試吃」的具體提議，不急著約時間。",
+        "strengths[0]": "用「層次超難」接住可頌細節，展現有在聽她說話",
+        "strengths[1]": "肯定她「不服輸」的自我詮釋，順著她的話延伸而非只附和",
+        "watchouts[0]": "「等妳的成功照」是等待式假窗口，沒有具體時間或場景邀請",
+        "watchouts[1]": "她用「如果失敗就當沒說過」設下小退路測試，你沒接住這個防衛心態"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd3_baking_croissant",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 16925,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_field_not_grounded",
+        "debrief_quality_invalid_field_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd3_baking_croissant",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 14727,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named",
+        "debrief_quality_invalid_unsupported_detail:partner:preference:likes"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd4_movie_late_show",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 17582,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_field_not_grounded",
+        "debrief_quality_invalid_unsupported_detail:partner:preference:likes"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd4_movie_late_show",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 14966,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_field_not_grounded",
+        "debrief_quality_invalid_field_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd4_movie_late_show",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 17254,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_suggested_line_not_grounded",
+        "debrief_quality_invalid_field_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd4_movie_late_show",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 18937,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_field_not_grounded",
+        "debrief_quality_invalid_unsupported_detail:partner:preference:likes"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd5_dog_park_morning",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 17303,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_suggested_line_not_grounded",
+        "debrief_quality_invalid_unsupported_detail:partner:preference:likes"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd5_dog_park_morning",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 18829,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:user:pet:has_pet",
+        "debrief_quality_invalid_suggested_line_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd5_dog_park_morning",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 16710,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named",
+        "debrief_quality_invalid_field_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd5_dog_park_morning",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 18166,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_suggested_line_not_grounded",
+        "debrief_quality_invalid_field_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd1_close_coffee_window",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 19821,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:partner:schedule:available_at",
+        "debrief_quality_invalid_unsupported_detail:partner:schedule:available_at"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd1_close_coffee_window",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 19755,
+      "attemptFailureCodes": [
+        "debrief_missing_fields",
+        "debrief_temperature_leak"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd1_close_coffee_window",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 18457,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:partner:schedule:available_at",
+        "debrief_temperature_leak"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd1_close_coffee_window",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 19280,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named",
+        "debrief_temperature_leak"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd2_stuck_in_test",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 20117,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named",
+        "debrief_quality_invalid_unsupported_detail:user:residence:hometown_is"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd2_stuck_in_test",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 21684,
+      "attemptFailureCodes": [
+        "debrief_game_breakdown_missing_fields",
+        "debrief_quality_invalid_field_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd2_stuck_in_test",
+      "repeatIndex": 2,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 21236,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_suggested_line_not_grounded"
+      ],
+      "servedText": {
+        "summary": "接住她的吐槽節奏，但邀約鋪墊不足，直接問時段反而掉了互動溫度。",
+        "suggestedLine": "「下禮拜我看看有沒有空，到時候妳再看要不要來現身說法。」",
+        "vibe": "中性",
+        "dateChance": "low",
+        "dateChanceReason": "聊得順但邀約沒有具體場景、時間或低壓感，只是問行程。",
+        "nextInviteMove": "先給出妳實際能打的時段和地點，再邀她來看，讓她有真實的選擇感，不是被問卷。",
+        "strengths[0]": "接住她「嘴上見識」的吐槽，用「好啦」和「行動證明」回應，沒被激怒",
+        "strengths[1]": "維持輕鬆語氣，沒有防守或解釋，讓她繼續出招",
+        "watchouts[0]": "問時段太急，她說『排進行程』是測試妳的誠意，不是真的要妳查行程表",
+        "watchouts[1]": "沒有給出具體場景或時間感，直接問『都打哪個時段』像在做問卷",
+        "gameBreakdown.phaseReached": "互動進到她測試妳是否認真，但妳沒有把測試接成邀約承諾。",
+        "gameBreakdown.missedVariable": "沒有給出具體場景（地點、時間、對手等級），直接問她的行程。",
+        "gameBreakdown.failureState": "她說『排進我的行程囉』是在看妳敢不敢真的約，妳卻反問『都打哪個時段』，變成她要配合妳，邀約的主導權掉了。",
+        "gameBreakdown.nextFirstLine": "「下禮拜我看看有沒有空，到時候妳再看要不要來現身說法。」",
+        "gameBreakdown.inviteDirection": "先確認妳實際的時間和地點，用「我這邊有個時段」的方式給她選擇，而不是問她何時有空。"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd2_stuck_in_test",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 21179,
+      "attemptFailureCodes": [
+        "debrief_game_breakdown_missing_fields",
+        "debrief_temperature_leak"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd3_cooled_interview_mode",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 17890,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_suggested_line_not_grounded",
+        "debrief_quality_invalid_suggested_line_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd3_cooled_interview_mode",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 19920,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_suggested_line_not_grounded",
+        "debrief_quality_invalid_suggested_line_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd3_cooled_interview_mode",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 21686,
+      "attemptFailureCodes": [
+        "debrief_game_breakdown_missing_fields",
+        "debrief_temperature_leak"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd3_cooled_interview_mode",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 18805,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_suggested_line_not_grounded",
+        "debrief_temperature_leak"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd4_overpush_then_repair",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 20412,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_field_not_grounded",
+        "debrief_quality_invalid_suggested_line_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd4_overpush_then_repair",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 23568,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_field_not_grounded",
+        "debrief_quality_invalid_field_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd4_overpush_then_repair",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 21383,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_field_not_grounded",
+        "debrief_quality_invalid_suggested_line_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd4_overpush_then_repair",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 21712,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_field_not_grounded",
+        "debrief_quality_invalid_field_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 20377,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:world:venue:located_at",
+        "debrief_temperature_leak"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 21576,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:world:venue:located_at",
+        "debrief_temperature_leak"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 20858,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:world:venue:located_at",
+        "debrief_quality_invalid_unsupported_detail:world:venue:located_at"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 22951,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_field_not_grounded",
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named"
+      ],
+      "servedText": null
+    }
+  ]
+}

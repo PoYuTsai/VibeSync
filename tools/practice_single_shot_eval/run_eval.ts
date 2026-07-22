@@ -71,6 +71,8 @@ interface ShotRecord {
   attemptFailureCodes: string[];
   /** 對使用者可見的 served 文字（洩漏掃描與人工目檢用）。 */
   servedText: Record<string, string> | null;
+  /** 被 gate 打回的候選原文（診斷 false positive 用；只落 JSON 不上 console）。 */
+  rejectedCandidates?: Array<{ code: string; raw: string }>;
 }
 
 interface LeakHit {
@@ -181,6 +183,7 @@ async function runHintShot(opts: {
     relaxSubjectiveQualityRubrics: true,
   } as const;
   const startedAt = performance.now();
+  const rejected: Array<{ code: string; raw: string }> = [];
   try {
     const outcome = await runSingleShot<ReturnType<typeof parseHintResult>>({
       callClaude: opts.caller,
@@ -199,7 +202,17 @@ async function runHintShot(opts: {
       now: () => performance.now(),
       models: [CLAUDE_SONNET_MODEL, CLAUDE_HAIKU_MODEL],
       validate: (raw) => {
-        const parsed = parseHintResult(raw, { ...parseOptions });
+        const parsed = (() => {
+          try {
+            return parseHintResult(raw, { ...parseOptions });
+          } catch (gateError) {
+            rejected.push({
+              code: gateError instanceof Error ? gateError.message : "unknown",
+              raw,
+            });
+            throw gateError;
+          }
+        })();
         return {
           ...parsed,
           replies: parsed.replies.map((reply) => ({
@@ -231,6 +244,7 @@ async function runHintShot(opts: {
       durationMs: Math.round(performance.now() - startedAt),
       attemptFailureCodes: outcome.attemptFailures.map((f) => f.code),
       servedText: hintServedText(outcome.result),
+      ...(rejected.length > 0 ? { rejectedCandidates: rejected } : {}),
     };
   } catch (error) {
     if (!(error instanceof SingleShotExhaustedError)) throw error;
@@ -243,6 +257,7 @@ async function runHintShot(opts: {
       durationMs: Math.round(performance.now() - startedAt),
       attemptFailureCodes: error.attemptFailures.map((f) => f.code),
       servedText: null,
+      ...(rejected.length > 0 ? { rejectedCandidates: rejected } : {}),
     };
   }
 }
@@ -287,6 +302,7 @@ async function runDebriefShot(opts: {
     relaxSubjectiveQualityRubrics: true,
   } as const;
   const startedAt = performance.now();
+  const rejected: Array<{ code: string; raw: string }> = [];
   try {
     const outcome = await runSingleShot<DebriefCard>({
       callClaude: opts.caller,
@@ -306,7 +322,17 @@ async function runDebriefShot(opts: {
       deadlineAtMs: performance.now() + DEBRIEF_REQUEST_DEADLINE_MS,
       now: () => performance.now(),
       models: [CLAUDE_SONNET_MODEL, CLAUDE_HAIKU_MODEL],
-      validate: (raw) => parseDebriefCard(raw, { ...parseOptions }),
+      validate: (raw) => {
+        try {
+          return parseDebriefCard(raw, { ...parseOptions });
+        } catch (gateError) {
+          rejected.push({
+            code: gateError instanceof Error ? gateError.message : "unknown",
+            raw,
+          });
+          throw gateError;
+        }
+      },
     });
     return {
       route: fixture.route,
@@ -319,6 +345,7 @@ async function runDebriefShot(opts: {
       durationMs: Math.round(performance.now() - startedAt),
       attemptFailureCodes: outcome.attemptFailures.map((f) => f.code),
       servedText: debriefServedText(outcome.result),
+      ...(rejected.length > 0 ? { rejectedCandidates: rejected } : {}),
     };
   } catch (error) {
     if (!(error instanceof SingleShotExhaustedError)) throw error;
@@ -331,6 +358,7 @@ async function runDebriefShot(opts: {
       durationMs: Math.round(performance.now() - startedAt),
       attemptFailureCodes: error.attemptFailures.map((f) => f.code),
       servedText: null,
+      ...(rejected.length > 0 ? { rejectedCandidates: rejected } : {}),
     };
   }
 }
