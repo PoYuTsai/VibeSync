@@ -171,19 +171,22 @@ Deno.test("buildHintMessages names exactly the two reply choices and the coachin
   assert(text.includes("唯二"));
 });
 
-Deno.test("buildHintMessages forbids manipulation and sexual pressure patterns", () => {
+Deno.test("buildHintMessages keeps hard safety bans after the PUA-clause removal", () => {
   const text = allPromptText();
 
+  // 硬安全類保留（Eric 拍板 2026-07-22：PUA/情勒字面禁令拆除，安全底線不動）。
   for (
-    const forbidden of [
-      "PUA",
-      "罪惡感",
-      "羞辱",
+    const kept of [
       "性壓力",
       "強迫邀約",
+      "威脅",
     ]
   ) {
-    assert(text.includes(forbidden));
+    assert(text.includes(kept), kept);
+  }
+  // PUA/情勒字面禁令已拆，不得殘留。
+  for (const removed of ["PUA", "罪惡感", "貶低", "打壓"]) {
+    assert(!text.includes(removed), removed);
   }
 });
 

@@ -1223,9 +1223,10 @@ Deno.test("buildChatMessages abstracts raw image filenames before model prompts"
 
 // ── debrief：教練口吻 + JSON 契約 + 逐字稿 ────────────────────────────
 
-Deno.test("debrief system prompt 是教練口吻且禁操控框架", () => {
+Deno.test("debrief system prompt 是教練口吻（PUA 字面禁令已拆，Eric 拍板 2026-07-22）", () => {
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("約會教練"), true);
-  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("PUA"), true); // 明令禁止
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("PUA"), false);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("她是真實主體"), true);
   // JSON 契約欄位
   for (
     const k of ["summary", "strengths", "watchouts", "suggestedLine", "vibe"]
