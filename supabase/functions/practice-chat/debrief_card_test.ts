@@ -8,6 +8,7 @@ import {
 import {
   buildFallbackDebriefCard,
   DATE_CHANCES,
+  DEBRIEF_TOOL_SCHEMA,
   parseDebriefCard,
   VIBES,
 } from "./debrief_card.ts";
@@ -2912,4 +2913,69 @@ Deno.test("buildFallbackDebriefCard treats edited applied Hint as reference, not
   assertEquals(visible.includes("參考提示"), true);
   assertEquals(visible.includes("有照提示"), false);
   assertEquals(visible.includes("照貼"), false);
+});
+
+Deno.test("DEBRIEF_TOOL_SCHEMA matches the parser contract (schema wide, parser strict)", () => {
+  const schema = DEBRIEF_TOOL_SCHEMA as {
+    type: string;
+    properties: Record<string, Record<string, unknown>>;
+    required: string[];
+    additionalProperties: boolean;
+  };
+  assertEquals(schema.type, "object");
+  assertEquals([...schema.required].sort(), [
+    "dateChance",
+    "dateChanceReason",
+    "nextInviteMove",
+    "strengths",
+    "suggestedLine",
+    "summary",
+    "vibe",
+    "watchouts",
+  ]);
+  assertEquals(schema.additionalProperties, false);
+  // Game breakdown 與 hidden hintAssessment 是選填：schema 用選填欄位涵蓋，
+  // 不做兩套 schema；缺欄與否由 parser（allowGameBreakdown／assertHintAssessment）硬 gate。
+  assertEquals("gameBreakdown" in schema.properties, true);
+  assertEquals(schema.required.includes("gameBreakdown"), false);
+  assertEquals("hintAssessment" in schema.properties, true);
+  assertEquals(schema.required.includes("hintAssessment"), false);
+  const breakdown = schema.properties.gameBreakdown as {
+    required: string[];
+  };
+  assertEquals([...breakdown.required].sort(), [
+    "failureState",
+    "inviteDirection",
+    "missedVariable",
+    "nextFirstLine",
+    "phaseReached",
+  ]);
+
+  // 一張過 parser 完整契約的合法卡，必須同時滿足 schema 必填鍵。
+  const legal = {
+    summary: "你說今天忙到剛下班，她接著分享只想散步放空。",
+    strengths: ["你先分享自己剛下班的狀態，讓對話有具體情境。"],
+    watchouts: ["下一步要接住她想散步放空，不要只停在自己的忙碌。"],
+    suggestedLine: "下班後散步很療癒，妳最常走哪一段？",
+    vibe: "中性",
+    dateChance: "medium",
+    dateChanceReason: "她回覆自己剛下班想散步放空，但還沒提時間或見面。",
+    nextInviteMove: "先問她最常去哪裡散步，等她多分享再看邀約窗口。",
+  };
+  const card = parseDebriefCard(JSON.stringify(legal), {
+    requireCompleteCard: true,
+    enforceGeneratedQuality: true,
+    turns: [
+      { role: "user", text: "今天忙到剛下班" },
+      { role: "ai", text: "我也剛下班，只想散步放空" },
+    ],
+  });
+  assertEquals(card.dateChance, "medium");
+  for (const key of schema.required) {
+    assertEquals(key in legal, true, `required key ${key} missing`);
+  }
+  assertEquals(
+    Object.keys(legal).every((key) => key in schema.properties),
+    true,
+  );
 });

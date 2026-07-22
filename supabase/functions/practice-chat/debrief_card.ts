@@ -43,6 +43,113 @@ const GENERATED_DEBRIEF_PROSE_MAX_LENGTH = 120;
 const GENERATED_DEBRIEF_LIST_ITEM_MAX_LENGTH = 100;
 const GENERATED_GAME_BREAKDOWN_MAX_LENGTH = 140;
 
+/**
+ * 單發 tool_use 強制 schema。只管結構（必填鍵＋型別＋寬鬆長度上限）；
+ * parseDebriefCard 仍是硬 gate 權威——schema 寬、parser 嚴，衝突以 parser 為準。
+ * gameBreakdown（Game 模式必填）與 hidden hintAssessment（有套用 Hint 時必填）
+ * 在 schema 層做選填，缺欄由 parser 判敗。
+ */
+export const DEBRIEF_TOOL_SCHEMA: Readonly<Record<string, unknown>> = {
+  type: "object",
+  properties: {
+    summary: {
+      type: "string",
+      description: "本場總結，繁體中文",
+      maxLength: GENERATED_DEBRIEF_PROSE_MAX_LENGTH,
+    },
+    strengths: {
+      type: "array",
+      description: "做得好的點",
+      items: {
+        type: "string",
+        maxLength: GENERATED_DEBRIEF_LIST_ITEM_MAX_LENGTH,
+      },
+      minItems: 1,
+      maxItems: 2,
+    },
+    watchouts: {
+      type: "array",
+      description: "要注意的點",
+      items: {
+        type: "string",
+        maxLength: GENERATED_DEBRIEF_LIST_ITEM_MAX_LENGTH,
+      },
+      minItems: 1,
+      maxItems: 2,
+    },
+    suggestedLine: {
+      type: "string",
+      description: "下一句可直接貼上的建議訊息",
+      maxLength: GENERATED_DEBRIEF_PROSE_MAX_LENGTH,
+    },
+    vibe: { type: "string", enum: VIBES },
+    dateChance: { type: "string", enum: DATE_CHANCES },
+    dateChanceReason: {
+      type: "string",
+      maxLength: GENERATED_DEBRIEF_PROSE_MAX_LENGTH,
+    },
+    nextInviteMove: {
+      type: "string",
+      maxLength: GENERATED_DEBRIEF_PROSE_MAX_LENGTH,
+    },
+    gameBreakdown: {
+      type: "object",
+      description: "Game 模式拆盤（Game 模式必填）",
+      properties: {
+        phaseReached: {
+          type: "string",
+          maxLength: GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
+        },
+        missedVariable: {
+          type: "string",
+          maxLength: GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
+        },
+        failureState: {
+          type: "string",
+          maxLength: GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
+        },
+        nextFirstLine: {
+          type: "string",
+          maxLength: GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
+        },
+        inviteDirection: {
+          type: "string",
+          maxLength: GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
+        },
+      },
+      required: [
+        "phaseReached",
+        "missedVariable",
+        "failureState",
+        "nextFirstLine",
+        "inviteDirection",
+      ],
+      additionalProperties: false,
+    },
+    hintAssessment: {
+      type: "object",
+      description: "hidden-only：有套用 Hint 時必填，server 會移除",
+      properties: {
+        verdict: { type: "string", enum: ["preserved", "revised"] },
+        revisedEvidenceQuote: { type: ["string", "null"] },
+      },
+      required: ["verdict", "revisedEvidenceQuote"],
+      additionalProperties: false,
+    },
+  },
+  required: [
+    "summary",
+    "strengths",
+    "watchouts",
+    "suggestedLine",
+    "vibe",
+    "dateChance",
+    "dateChanceReason",
+    "nextInviteMove",
+  ],
+  additionalProperties: false,
+};
+
 export interface DebriefCard {
   summary: string;
   strengths: string[];
