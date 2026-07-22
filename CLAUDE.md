@@ -35,7 +35,7 @@ Default priority:
 - AI: Claude API. Server env var is `CLAUDE_API_KEY`, not `ANTHROPIC_API_KEY`.
 - Subscription: RevenueCat, monthly + quarterly for Starter and Essential.
 - Local DB: Hive with AES-256 encryption.
-- Models: every customer-facing Claude primary path outside Practice uses Sonnet 5: Free/paid Analyze, Opener, Coach/Follow-up, Keyboard, and images. Practice stays DeepSeek-first with its existing tiered Claude failover/reviewer; `analyze-chat` alone keeps 4.6 then Haiku as an outage fallback. Test-only forced models are not production routing.
+- Models: every customer-facing Claude primary path outside Practice chat uses Sonnet 5: Free/paid Analyze, Opener, Coach/Follow-up, Keyboard, and images. Practice chat itself stays DeepSeek; Practice hint/debrief use a Sonnet 5 single shot with one Haiku 4.5 retry (tool_use forced schema, mechanical gates only — the semantic reviewer layer is removed). `analyze-chat` alone keeps 4.6 then Haiku as an outage fallback. Test-only forced models are not production routing.
 
 ## Workflow
 
