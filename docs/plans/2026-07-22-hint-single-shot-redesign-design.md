@@ -75,6 +75,14 @@ Bruce 分析的三件品質事，處置各不同：
 - 上線後盯 ai_logs：p50/p90、失敗率、`pipeline` 標記對比舊管線。
 - 高風險區（AI prompt/token/cost）：出貨前 Codex review。
 
+## 為什麼不是 DeepSeek 單發（2026-07-22 Bruce 提問，記錄結論）
+
+1. **結構化輸出可靠度**：35% attempt 失敗大宗在 DeepSeek 端（schema 跑歪、length 截斷、空內容、逾時）；reviewer/repair 那套機器當初就是為此而生。DeepSeek 單發＝拆了修補層但失敗率原封不動。Claude tool_use 是 API 層強制 schema，此類失敗結構性歸零——**砍 reviewer 的安全前提**。
+2. **無 reviewer 後品質全押生成模型的指令遵循力**：Sonnet 5 對細規則（只用真的說過的事、不洩內部標籤）遵循度與繁中語感明顯較強；DeepSeek 單發＝「寫歪了沒人擋」。
+3. **速度不是差異點**：兩邊單發都是秒級。DeepSeek 唯一優勢是成本，Eric 已拍板不省。
+
+另記：prefetch 與現場冷路徑必須同一條管線同一顆模型（品質一致性）——本設計兩者同走 Sonnet 單發路徑，prefetch 旗標只影響扣費/存放語意。聊天本體（AI 對象回覆）維持 DeepSeek 不動，hint 模型無須與其同款（hint 只讀已落地的對話文字）。
+
 ## 已知取捨（拍板記錄）
 
 - 移除 LLM reviewer＝接受「機械 gate 擋不住的語感瑕疵」可能偶發流出；以 Sonnet 5 品質＋prompt few-shot＋dogfood 盯場承擔。Eric 拍板：穩定與速度優先。
