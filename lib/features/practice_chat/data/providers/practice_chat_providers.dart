@@ -49,6 +49,11 @@ const Duration kPracticeHintRequestTimeout = Duration(seconds: 115);
 /// client 取 120s 留裕度：只防 loading 卡死，不搶在 server 完成前放棄。
 const Duration kPracticeSendMessageTimeout = Duration(seconds: 120);
 
+/// Hint prefetch 暫時性失敗（網路／timeout／503 retryable）延遲後用**同一
+/// requestId** 重試恰一次。server 端失敗會釋放 latch，同 id 重 claim 是設計
+/// 上的冪等路徑；若首次其實已 settle，preflight 回 opaqueAck 不重複生成。
+const Duration kPracticeHintPrefetchRetryDelay = Duration(seconds: 4);
+
 final RegExp _practiceRawImageFilenamePattern = RegExp(
   r'(?:[A-Za-z]:)?(?:[\\/][^\s\\/]+)*[\\/]?(?:S__\d+\.(?:jpe?g|png|webp|heic)|IMG_\d+\.(?:jpe?g|png|webp|heic)|[^\\/\s]+\.(?:jpe?g|png|webp|heic))',
   caseSensitive: false,
@@ -122,6 +127,22 @@ class _HintPrefetchFlight {
       Completer<_HintPrefetchFlightOutcome>();
 
   Future<_HintPrefetchFlightOutcome> get outcome => completer.future;
+
+  /// 正式 Hint 點擊已對本 flight 表態（formal 正在等 [outcome]）。prefetch
+  /// 失敗重試的延遲視窗看到這個訊號必須立即放棄重試，把派發權讓給 formal。
+  final Completer<void> _formalIntentSignal = Completer<void>();
+
+  bool get formalIntentRequested => _formalIntentSignal.isCompleted;
+  Future<void> get formalIntent => _formalIntentSignal.future;
+
+  void markFormalIntent() {
+    if (!_formalIntentSignal.isCompleted) {
+      _formalIntentSignal.complete();
+    }
+    // formal 的等待鏈會穿透 dependency latch barrier：上游 flight 可能正卡在
+    // 重試延遲，訊號必須一路傳播才能讓 formal 立即接手（鏈有限且無環）。
+    dependency?.markFormalIntent();
+  }
 }
 
 /// 每日翻牌的揭曉狀態。locked＝今天還沒翻牌（不顯示任何對象）；drawing＝抽牌中；
@@ -436,6 +457,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     DateTime? now,
     Duration? hintRequestTimeout,
     Duration? sendMessageTimeout,
+    Duration? hintPrefetchRetryDelay,
   }) : this._(
           api: api,
           repository: repository,
@@ -455,6 +477,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           now: now ?? DateTime.now(),
           hintRequestTimeout: hintRequestTimeout ?? kPracticeHintRequestTimeout,
           sendMessageTimeout: sendMessageTimeout ?? kPracticeSendMessageTimeout,
+          hintPrefetchRetryDelay:
+              hintPrefetchRetryDelay ?? kPracticeHintPrefetchRetryDelay,
         );
 
   PracticeChatController._({
@@ -475,6 +499,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     required DateTime now,
     required Duration hintRequestTimeout,
     required Duration sendMessageTimeout,
+    required Duration hintPrefetchRetryDelay,
   })  : _api = api,
         _repo = repository,
         _draftStore = draftStore,
@@ -486,6 +511,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         _historyRepository = historyRepository,
         _hintRequestTimeout = hintRequestTimeout,
         _sendMessageTimeout = sendMessageTimeout,
+        _hintPrefetchRetryDelay = hintPrefetchRetryDelay,
         super(_initialState(
           initialSession: initialSession,
           draft: _validDraft(draftStore, now),
@@ -510,6 +536,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   final AnalysisHistoryRepository? _historyRepository;
   final Duration _hintRequestTimeout;
   final Duration _sendMessageTimeout;
+  final Duration _hintPrefetchRetryDelay;
   final List<PracticeAppliedHintTurnDto> _appliedHintTurns = [];
   PracticeSuccessfulHintSnapshot? _latestSuccessfulHint;
   bool _latestSuccessfulHintIsDurable = false;
@@ -930,26 +957,86 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     }
 
     var outcome = _HintPrefetchFlightOutcome.readyAfterAck;
-    try {
-      final payload = flight.payload;
-      await _api
-          .prefetchHint(
-            sessionId: flight.pending.sessionId,
-            requestId: flight.pending.requestId,
-            profile: payload.profile,
-            turns: payload.turns,
-            expectedAiCount: flight.pending.aiCount,
-            memorySummary: payload.memorySummary,
-            continuationPartnerState: payload.continuationPartnerState,
-            roundIndex: payload.roundIndex,
-            visiblePracticeThreadId: payload.visiblePracticeThreadId,
-            practiceMode: payload.practiceMode,
-          )
-          .timeout(_hintRequestTimeout);
-    } catch (_) {
-      outcome = _HintPrefetchFlightOutcome.readyAfterPrefetchFailure;
+    var attempts = 0;
+    while (true) {
+      attempts++;
+      try {
+        final payload = flight.payload;
+        await _api
+            .prefetchHint(
+              sessionId: flight.pending.sessionId,
+              requestId: flight.pending.requestId,
+              profile: payload.profile,
+              turns: payload.turns,
+              expectedAiCount: flight.pending.aiCount,
+              memorySummary: payload.memorySummary,
+              continuationPartnerState: payload.continuationPartnerState,
+              roundIndex: payload.roundIndex,
+              visiblePracticeThreadId: payload.visiblePracticeThreadId,
+              practiceMode: payload.practiceMode,
+            )
+            .timeout(_hintRequestTimeout);
+        outcome = _HintPrefetchFlightOutcome.readyAfterAck;
+        break;
+      } catch (error) {
+        outcome = _HintPrefetchFlightOutcome.readyAfterPrefetchFailure;
+        // 暫時性失敗延遲後用同一 requestId 重試**恰一次**。server 失敗已
+        // 釋放 latch，同 id 重 claim 冪等；重試絕不與首發並發（本 loop 全
+        // 程序列）。正式點擊已表態或 flight 已翻頁 → 不重試。
+        final wantRetry = attempts == 1 &&
+            _isRetryableHintPrefetchFailure(error) &&
+            !flight.formalIntentRequested &&
+            stillCurrent();
+        if (!wantRetry) break;
+        final delayElapsed = await _waitHintPrefetchRetryDelay(flight);
+        if (!delayElapsed ||
+            flight.formalIntentRequested ||
+            !stillCurrent()) {
+          break;
+        }
+      }
     }
     _finishHintPrefetchFlight(flight, outcome);
+  }
+
+  /// 重試延遲可被正式點擊訊號提前中止；timer 必定 cancel，絕不留孤兒 timer。
+  /// 回傳 true＝延遲期滿可續行重試；false＝formal 已表態，放棄重試。
+  Future<bool> _waitHintPrefetchRetryDelay(_HintPrefetchFlight flight) async {
+    final waiter = Completer<bool>();
+    final timer = Timer(_hintPrefetchRetryDelay, () {
+      if (!waiter.isCompleted) waiter.complete(true);
+    });
+    unawaited(flight.formalIntent.then((_) {
+      if (!waiter.isCompleted) waiter.complete(false);
+    }));
+    final elapsed = await waiter.future;
+    timer.cancel();
+    return elapsed;
+  }
+
+  /// Prefetch 失敗分類。可重試＝暫時性：timeout、傳輸層網路例外、server 標
+  /// retryable 的 503 body（映射為下列兩個訊息）。終止＝明確拒絕：429／402／
+  /// 403／409（含 prefetch disabled、stale）等 typed 例外——重試只會再吃一次
+  /// 相同拒絕，且部分（quota）有計費語意。
+  static bool _isRetryableHintPrefetchFailure(Object error) {
+    if (error is TimeoutException) return true;
+    if (error is PracticeGenerationFailedException) {
+      return error.message == 'practice_hint_prefetch_failed' ||
+          error.message == 'practice_hint_generation_retryable';
+    }
+    if (error is PracticeApiException ||
+        error is PracticeQuotaExceededException ||
+        error is PracticeHintLimitException ||
+        error is PracticeUpgradeRequiredException ||
+        error is PracticeSessionCompleteException ||
+        error is PracticeModeLockedException ||
+        error is PracticeDrawUpgradeRequiredException ||
+        error is ArgumentError) {
+      return false;
+    }
+    // 其餘未型別化例外（SocketException／ClientException…）視為傳輸層
+    // 網路錯誤 → 可重試。
+    return true;
   }
 
   void _finishHintPrefetchFlight(
@@ -1811,6 +1898,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     final flight = _hintPrefetchFlight?.pending.sessionId == intentSessionId
         ? _hintPrefetchFlight
         : null;
+    // 正式點擊表態：flight（含其 dependency 鏈）若正處於 prefetch 失敗重試
+    // 的延遲視窗，必須立即放棄重試，讓下面的 await flight.outcome 儘快返回。
+    flight?.markFormalIntent();
     state = state.copyWith(
       isHintLoading: true,
       hintFailed: false,

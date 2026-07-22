@@ -313,6 +313,7 @@ void main() {
     PracticeAppliedHintStore? appliedHintStore,
     Duration? hintRequestTimeout,
     Duration? sendMessageTimeout,
+    Duration? hintPrefetchRetryDelay,
   }) {
     final c = PracticeChatController(
       api: api,
@@ -329,6 +330,7 @@ void main() {
       createdAt: DateTime(2026, 6, 26, 13, 0),
       hintRequestTimeout: hintRequestTimeout,
       sendMessageTimeout: sendMessageTimeout,
+      hintPrefetchRetryDelay: hintPrefetchRetryDelay,
     );
     addTearDown(() {
       if (c.mounted) c.dispose();
@@ -368,6 +370,7 @@ void main() {
     PracticeAppliedHintStore? appliedHintStore,
     Duration? hintRequestTimeout,
     Duration? sendMessageTimeout,
+    Duration? hintPrefetchRetryDelay,
   }) async {
     final c = makeController(
       repository: repository,
@@ -376,6 +379,7 @@ void main() {
       appliedHintStore: appliedHintStore,
       hintRequestTimeout: hintRequestTimeout,
       sendMessageTimeout: sendMessageTimeout,
+      hintPrefetchRetryDelay: hintPrefetchRetryDelay,
     );
     await c.drawNewPracticeGirl();
     expect(c.currentState.drawStatus, PracticeDrawStatus.revealed);
@@ -4040,6 +4044,7 @@ void main() {
       PracticeLearningMode mode, {
       PracticeSessionRepository? repository,
       PracticePendingHintStore? pendingHintStore,
+      Duration? hintPrefetchRetryDelay,
     }) async {
       if (mode == PracticeLearningMode.game) {
         api.drawHandler = ({currentProfileId}) async =>
@@ -4048,6 +4053,7 @@ void main() {
       final c = await makeRevealed(
         repository: repository,
         pendingHintStore: pendingHintStore,
+        hintPrefetchRetryDelay: hintPrefetchRetryDelay,
       );
       await c.setPracticeLearningMode(mode);
       return c;
@@ -4253,6 +4259,119 @@ void main() {
       gate.completeError(PracticeGenerationFailedException('prefetch failed'));
       await formalFuture;
 
+      expect(api.hintCallCount, 1);
+      expect(api.lastHintRequestId, prefetchId);
+      expect(c.currentState.hintReplies, hasLength(2));
+    });
+
+    test(
+        'retryable prefetch failure retries exactly once with the same '
+        'requestId', () async {
+      api.prefetchHandler = (turns, {profile}) async =>
+          throw TimeoutException('transient prefetch timeout');
+      final c = await makeAssisted(
+        PracticeLearningMode.beginner,
+        hintPrefetchRetryDelay: Duration.zero,
+      );
+      api.sendHandler = (_, {profile}) async => assistedReply();
+
+      await c.sendMessage('hello');
+      await pumpEventQueue();
+
+      // 恰好重試一次（共兩次呼叫），沿用同一 requestId，且對 UI 完全靜默。
+      expect(api.prefetchHintCallCount, 2);
+      expect(api.prefetchHintRequestIds.toSet(), hasLength(1));
+      expect(api.hintCallCount, 0);
+      expect(c.currentState.errorMessage, isNull);
+      expect(c.currentState.isHintLoading, false);
+
+      // 兩次都失敗後，formal 仍以同一 id 派發（replay 保護不變）。
+      api.hintHandler = (_, {profile}) async => hintResult();
+      await c.requestHint();
+      expect(api.hintCallCount, 1);
+      expect(api.lastHintRequestId, api.prefetchHintRequestIds.first);
+    });
+
+    test('terminal prefetch failures never retry', () async {
+      final terminalErrors = <Object>[
+        PracticeApiException('請求太頻繁，請稍後再試。', status: 429),
+        PracticeHintLimitException(),
+        PracticeApiException('practice_hint_stale', status: 409),
+        PracticeGenerationFailedException('practice_hint_prefetch_disabled'),
+      ];
+      var expectedCalls = 0;
+      for (final error in terminalErrors) {
+        api.prefetchHandler = (turns, {profile}) async => throw error;
+        final c = await makeAssisted(
+          PracticeLearningMode.beginner,
+          hintPrefetchRetryDelay: Duration.zero,
+        );
+        api.sendHandler = (_, {profile}) async => assistedReply();
+
+        await c.sendMessage('hello');
+        await pumpEventQueue();
+
+        expectedCalls++;
+        expect(
+          api.prefetchHintCallCount,
+          expectedCalls,
+          reason: '$error 屬終止類，不得重試',
+        );
+        expect(c.currentState.errorMessage, isNull);
+      }
+    });
+
+    test('same requestId never runs two concurrent prefetch calls', () async {
+      var active = 0;
+      var maxActive = 0;
+      api.prefetchHandler = (turns, {profile}) {
+        active++;
+        if (active > maxActive) maxActive = active;
+        final shouldFail = api.prefetchHintCallCount == 1;
+        return Future<void>.delayed(Duration.zero).then((_) {
+          if (shouldFail) throw TimeoutException('transient');
+        }).whenComplete(() => active--);
+      };
+      final c = await makeAssisted(
+        PracticeLearningMode.beginner,
+        hintPrefetchRetryDelay: Duration.zero,
+      );
+      api.sendHandler = (_, {profile}) async => assistedReply();
+
+      await c.sendMessage('hello');
+      await pumpEventQueue();
+
+      expect(api.prefetchHintCallCount, 2);
+      expect(maxActive, 1);
+      expect(api.prefetchHintRequestIds.toSet(), hasLength(1));
+    });
+
+    test('formal dispatch during retry delay cancels the pending retry',
+        () async {
+      final started = Completer<void>();
+      final gate = Completer<void>();
+      api.prefetchHandler = (turns, {profile}) {
+        if (!started.isCompleted) started.complete();
+        return gate.future;
+      };
+      final c = await makeAssisted(
+        PracticeLearningMode.beginner,
+        hintPrefetchRetryDelay: const Duration(minutes: 1),
+      );
+      api.sendHandler = (_, {profile}) async => assistedReply();
+      api.hintHandler = (_, {profile}) async => hintResult();
+
+      await c.sendMessage('hello');
+      await started.future;
+      final prefetchId = api.lastPrefetchHintRequestId;
+
+      gate.completeError(TimeoutException('transient prefetch timeout'));
+      await pumpEventQueue(); // 進入重試延遲視窗（timer 1 分鐘）。
+
+      await c.requestHint();
+
+      // 正式點擊必須立即中止重試：不多打 prefetch，formal 沿用同 id。
+      expect(api.prefetchHintCallCount, 1);
       expect(api.hintCallCount, 1);
       expect(api.lastHintRequestId, prefetchId);
       expect(c.currentState.hintReplies, hasLength(2));
