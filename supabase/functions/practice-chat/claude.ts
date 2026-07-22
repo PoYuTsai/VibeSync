@@ -58,7 +58,16 @@ export async function callClaude(args: ClaudeArgs): Promise<string> {
         ...(isSonnet5
           ? { thinking: { type: "disabled" } }
           : { temperature: args.temperature }),
-        system: prompt.system,
+        // Prompt caching：同一段 system 文字（byte-for-byte 不變）改包成
+        // content-block 陣列掛 ephemeral cache_control；空 system 維持原樣
+        // （Anthropic 拒絕空 text block）。
+        system: prompt.system
+          ? [{
+            type: "text",
+            text: prompt.system,
+            cache_control: { type: "ephemeral" },
+          }]
+          : prompt.system,
         messages: prompt.messages,
         ...(args.outputJsonSchema
           ? {

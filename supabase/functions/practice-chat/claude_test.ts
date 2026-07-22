@@ -34,7 +34,15 @@ Deno.test("callClaude maps practice messages to the Messages API", async () => {
     });
     const captured = capturedBodies[0];
     assertEquals(result, '{"ok":true}');
-    assertEquals(captured.system, "system contract");
+    // Prompt caching：system 必須是 content-block 陣列，text 與傳入 system
+    // byte-for-byte 相同，且掛 ephemeral cache_control。
+    assertEquals(captured.system, [
+      {
+        type: "text",
+        text: "system contract",
+        cache_control: { type: "ephemeral" },
+      },
+    ]);
     assertEquals(captured.messages, [
       { role: "user", content: "user evidence" },
     ]);
@@ -42,6 +50,73 @@ Deno.test("callClaude maps practice messages to the Messages API", async () => {
     assertEquals(captured.temperature, 0.2);
     assertEquals(captured.thinking, undefined);
     assertEquals(captured.output_config, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("callClaude joins multiple system messages byte-for-byte into one cached block", async () => {
+  const originalFetch = globalThis.fetch;
+  let capturedBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (_input, init) => {
+    const body = (init as { body?: BodyInit } | undefined)?.body;
+    capturedBody = JSON.parse(String(body));
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ content: [{ type: "text", text: "ok" }] }),
+        { status: 200 },
+      ),
+    );
+  };
+  try {
+    await callClaude({
+      apiKey: "test-key",
+      model: "claude-test",
+      messages: [
+        { role: "system", content: "contract A" },
+        { role: "system", content: "contract B" },
+        { role: "user", content: "hello" },
+      ],
+      maxTokens: 100,
+      temperature: 0.2,
+      timeoutMs: 1_000,
+    });
+    assertEquals(capturedBody?.system, [
+      {
+        type: "text",
+        text: "contract A\n\ncontract B",
+        cache_control: { type: "ephemeral" },
+      },
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("callClaude keeps an empty system as-is instead of an empty cached block", async () => {
+  const originalFetch = globalThis.fetch;
+  let capturedBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (_input, init) => {
+    const body = (init as { body?: BodyInit } | undefined)?.body;
+    capturedBody = JSON.parse(String(body));
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ content: [{ type: "text", text: "ok" }] }),
+        { status: 200 },
+      ),
+    );
+  };
+  try {
+    await callClaude({
+      apiKey: "test-key",
+      model: "claude-test",
+      messages: [{ role: "user", content: "hello" }],
+      maxTokens: 100,
+      temperature: 0.2,
+      timeoutMs: 1_000,
+    });
+    // Anthropic 拒絕空 text block；沒有 system 內容時維持原本的空字串行為。
+    assertEquals(capturedBody?.system, "");
   } finally {
     globalThis.fetch = originalFetch;
   }
