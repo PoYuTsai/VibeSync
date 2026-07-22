@@ -21,10 +21,6 @@ import {
   HINT_REVIEW_SCHEMA_VERSION,
 } from "./hint_prefetch.ts";
 import { DEBRIEF_QUALITY_SCHEMA_VERSION } from "./debrief_card.ts";
-import {
-  type PracticeSemanticAdjudicatorArgs,
-  type SemanticAdjudicationResult,
-} from "./semantic_quality.ts";
 
 const NOW = new Date("2026-06-28T04:00:00.000Z");
 const RESET_AT = "2026-06-28T00:00:00.000Z";
@@ -62,7 +58,7 @@ interface FakeState {
   rpcCalls: Array<{ fn: string; params: Record<string, unknown> }>;
   deepSeekCalls: DeepSeekArgs[];
   claudeCalls: ClaudeArgs[];
-  semanticCalls: PracticeSemanticAdjudicatorArgs[];
+  semanticCalls: unknown[];
   events: string[];
   backgroundTasks: Promise<void>[];
   debriefCount: number;
@@ -629,35 +625,14 @@ function makeFake(options: FakeOptions = {}) {
     if (reply instanceof Error) return Promise.reject(reply);
     return Promise.resolve(reply);
   };
-  // reviewer 已拆：dep 仍可注入，但生產碼零呼叫；只記錄以斷言 semanticCalls === 0。
-  const semanticAdjudicate = (
-    args: PracticeSemanticAdjudicatorArgs,
-  ): Promise<SemanticAdjudicationResult> => {
-    state.semanticCalls.push(args);
-    return Promise.resolve({
-      candidate: args.candidate,
-      repaired: false,
-      issueKinds: [],
-      ...(args.surface === "hint"
-        ? {
-          hintAssessment: {
-            interactionKind: "other" as const,
-            replyContract: "not_applicable" as const,
-            coachingContract: "not_applicable" as const,
-          },
-        }
-        : {}),
-      providerCalls: 0,
-    });
-  };
-
+  // reviewer 整層已拆：deps 不再有 semanticAdjudicate；state.semanticCalls
+  // 保留為永遠空陣列，讓「reviewer 零呼叫」斷言持續守住。
   return {
     state,
     handler: createPracticeChatHandler({
       createSupabaseClient: () => client as PracticeSupabaseClient,
       callDeepSeek: deepSeek,
       callClaude: claude,
-      semanticAdjudicate,
       getEnv: (name) => {
         if (Object.hasOwn(options.env ?? {}, name)) return options.env?.[name];
         if (name === "DEEPSEEK_API_KEY") return "deepseek-key";

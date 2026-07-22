@@ -115,13 +115,6 @@ import {
   type PracticeGenerationFailureClass,
   sanitizePracticeFailureCode,
 } from "./telemetry.ts";
-import {
-  type HintSemanticAssessment,
-  type PracticeSemanticAdjudicator,
-  requireDeliverableHintAssessment,
-  SemanticAdjudicationError,
-  SemanticHintActiveReplyQuestionError,
-} from "./semantic_quality.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const CHAT_MAX_TOKENS = 200;
@@ -158,141 +151,13 @@ function appendPracticeFailureCodes(
   target: string[],
   error: unknown,
 ): void {
-  const codes = error instanceof SemanticAdjudicationError
-    ? error.failureCodes
-    : [sanitizePracticeFailureCode(error)].filter((value): value is string =>
-      value !== null
-    );
+  const codes = [sanitizePracticeFailureCode(error)].filter((
+    value,
+  ): value is string => value !== null);
   for (const code of codes) {
     if (target.length >= 3) break;
     if (!target.includes(code)) target.push(code);
   }
-}
-
-function assertReviewedHintSemanticContract(
-  assessmentValue: unknown,
-  replies: readonly { text: string }[],
-): HintSemanticAssessment {
-  if (assessmentValue === undefined) {
-    throw new Error("semantic_hint_assessment_missing");
-  }
-  const assessment = requireDeliverableHintAssessment(assessmentValue);
-  if (assessment.interactionKind !== "active_consistency_test") {
-    return assessment;
-  }
-  const invalidReplyFields: Array<"warmUp" | "steady"> = [];
-  for (const [replyIndex, reply] of replies.entries()) {
-    const surface = reply.text.normalize("NFKC").trim();
-    let questionTail = surface;
-    for (let index = 0; index < 4; index += 1) {
-      const trimmed = questionTail
-        .replace(/[\s\p{P}\p{S}]+$/gu, "")
-        .replace(/(?:哈+|呵+|嘿+|(?:大|苦|偷)?笑)$/gu, "")
-        .trim();
-      if (trimmed === questionTail) break;
-      questionTail = trimmed;
-    }
-    const clauses = questionTail.split(/[，,。；;！!：:\n]+/u)
-      .map((clause) => clause.trim())
-      .filter((clause) => clause.length > 0);
-    const hasBoundedCuriosityTail = /好奇(?:了|起來(?:了)?)?$/u.test(
-      questionTail.replace(/[\s\p{P}\p{S}]+$/gu, ""),
-    );
-    const hasDirectQuestionOrHandoff = clauses.some((clause, clauseIndex) => {
-      const compact = clause.replace(/[\s\p{P}\p{S}]+/gu, "");
-      const startsAsDirectQuestion =
-        /^(?:(?:那|這|這題|這種情況|這件事|所以|可是|但|不過|一般|通常|到底|要|該))*(?:是不是|是否|能不能|可不可以|要不要|有沒有|會不會|該不該|對不對|行不行|算不算|值不值得|怎麼|怎樣|如何|為什麼|幹嘛|哪(?:個|一|裡|邊|種|項|家|間|天|時|位|些)|什麼|誰|何時|何種|多少|幾(?:個|次|點|天|種|歲|家|間))/u
-          .test(compact) &&
-        !/我(?:不懂|不知道|說不上來|不確定|沒研究|還沒想過)(?:但|不過|可是|而|$)/u
-          .test(compact);
-      const boundedUncertainty =
-        /^(?:(?:我|老實說|坦白說|說真的|其實|真的|完全|目前|現在|暫時|還|也))*(?:不知道|不懂|不太懂|不是很懂|不確定|沒想過|沒有想過)/u
-          .test(compact) ||
-        /^(?:(?:我|老實說|坦白說|說真的|其實|真的|完全|目前|現在|暫時|還|也))*(?:沒研究|沒有研究)這(?:是不是|算不算)/u
-          .test(compact);
-      const markerIntroducesQuestion =
-        /(?:那|所以|但|可是|不過|這)(?:(?:那|這|一般|通常|到底|要|該))*(?:是不是|是否|能不能|可不可以|要不要|有沒有|會不會|該不該|對不對|行不行|算不算|值不值得|怎麼|怎樣|如何|為什麼|幹嘛|哪(?:個|一|裡|邊|種|項|家|間|天|時|位|些)|什麼|誰|何時|何種|多少|幾(?:個|次|點|天|種|歲|家|間))/u
-          .test(compact) && !boundedUncertainty;
-      const withoutNegatedRequest = compact.replace(
-        /(?:(?:(?:(?:並)?不是|沒有)(?:在|要|想)?|不用|不必|不要|別|不想)(?:再)?(?:問|知道|好奇|請教)|不(?:再)?好奇)/gu,
-        "",
-      );
-      const informationRequestSurface = hasBoundedCuriosityTail &&
-          clauseIndex === clauses.length - 1
-        ? withoutNegatedRequest.replace(/好奇(?:了|起來(?:了)?)?$/u, "")
-        : withoutNegatedRequest;
-      const explicitInformationRequest = /(?:想問|想知道|好奇|請教)/u
-        .test(informationRequestSurface);
-      const directQuestion = startsAsDirectQuestion ||
-        markerIntroducesQuestion || explicitInformationRequest;
-      if (directQuestion) return true;
-
-      const withoutDirectlyNegatedHandoff = compact.replace(
-        /(?:不用|不必|不要|別|不是要|沒有要|不想(?:要)?)[妳你](?:(?:再|先|多|就|直接|可以|能)?(?:說說(?:看)?|講講|分享|分析|解釋|判斷|回答|告訴我|給我答案|教我)|來(?:說|講|分享|分析|解釋|判斷|回答))/gu,
-        "",
-      );
-      const imperativeCandidates = [withoutDirectlyNegatedHandoff];
-      const admissionThenHandoff = clause.normalize("NFKC").trim().match(
-        /^(?:(?:老實說|坦白說|說真的|其實|真的|目前|現在|暫時)\s*)*(?:我\s*)?(?:(?:其實|真的|完全|目前|現在|暫時|還|也)\s*)*(?:不知道|不太懂|不是很懂|不懂|不熟|不會|沒研究|沒有研究|不確定|沒想過|還沒想過|不想亂猜|不要硬掰|不是要裝懂|不敢裝懂)[^\s]{0,12}\s+(.+)$/u,
-      );
-      if (admissionThenHandoff?.[1]) {
-        imperativeCandidates.push(
-          admissionThenHandoff[1].replace(/[\s\p{P}\p{S}]+/gu, ""),
-        );
-      }
-      const explicitImperativeHandoff = imperativeCandidates.some(
-        (candidate) => {
-          if (
-            /^(?:[妳你])?(?:說來聽聽|說了算|看著辦)(?:吧|啊|啦|嘛|囉|喔|哦)?$/u
-              .test(candidate) ||
-            /^[妳你](?:(?:會怎麼|怎麼看)(?:做|改|選|處理|調整)?|(?:覺得|認為)(?:這)?(?:是不是|算不算|怎麼|如何|哪(?:個|種|一)|什麼)?)$/u
-              .test(candidate)
-          ) {
-            return true;
-          }
-          let core = candidate;
-          for (let index = 0; index < 8; index += 1) {
-            const stripped = core
-              .replace(/(?:吧|啊|啦|嘛|囉|喔|哦|呀)$/u, "")
-              .replace(/(?:(?:就可以|就行|就好)(?:了)?|即可|好不好)$/u, "")
-              .replace(
-                /(?:一下子|一下|看看|看一看|聽聽|給我聽|一個)$/u,
-                "",
-              )
-              .replace(/(?:答案)$/u, "")
-              .replace(
-                /(告訴我)(?:怎麼|如何)(?:改|做|看|選|處理|調整|判斷)?$/u,
-                "$1",
-              )
-              .replace(
-                /(教我)(?:怎麼|如何)?(?:改|做|看|選|處理|調整|判斷)$/u,
-                "$1",
-              );
-            if (stripped === core) break;
-            core = stripped;
-          }
-          return /^(?:那|就|所以|不然)?(?:(?:請|麻煩|可否|能否|能不能|可不可以|好不好)(?:[妳你]|跟我)?|(?:換)?[妳你](?:自己|來|幫我|幫忙|替我|再|先|多|就|直接|可以|能|能不能|可不可以|可否|能否|好不好)?|(?:再|先)?(?:幫我|幫忙|替我)|再|先)?(?:回答我|跟我說|說說(?:看)?|講講(?:看)?|回答|說|講|分享|分析|解釋|判斷|指點|告訴我|教我|給我|決定|選(?:擇)?|解答|處理)$/u
-            .test(core);
-        },
-      );
-      if (explicitImperativeHandoff) return true;
-      return /(?:^[妳你](?:說說(?:看)?|講講)(?!的)|^[妳你](?:再|先|多|就|直接|可以|能|來)(?:說|講|分享|分析|解釋|判斷|回答|教我)|^[妳你](?:能不能|可不可以)(?:說說|講講|說|講|分享|分析|解釋|判斷|回答|教我)?(?:怎麼|如何)?(?:做|改|選|處理|調整)?$|^[妳你](?:會怎麼|怎麼看)(?:做|改|選|處理|調整)?$|^[妳你]給我答案$|^[妳你](?:告訴我|教我|分享|分析|解釋|判斷|回答|說|講)$|^[妳你](?:覺得|認為)(?:$|(?:這)?(?:是不是|算不算|怎麼|如何|哪(?:個|種|一)|什麼))|(?:不知道|不懂|不確定)[妳你](?:(?:會怎麼|怎麼看)(?:做|改|選|處理|調整)?|覺得|認為)|(?:交給|留給)[妳你](?:來)?(?:說|講|分享|分析|解釋|判斷|回答)?|我(?:還|更|倒)?想(?:聽(?:聽)?|知道|請教)[妳你])/u
-        .test(withoutDirectlyNegatedHandoff);
-    });
-    if (
-      /[?？]/u.test(surface) ||
-      /(?:嗎|呢|對吧|是吧|沒錯吧|可以吧|行吧)[\p{P}\p{S}]*$/u.test(
-        questionTail,
-      ) ||
-      hasDirectQuestionOrHandoff
-    ) {
-      invalidReplyFields.push(replyIndex === 0 ? "warmUp" : "steady");
-    }
-  }
-  if (invalidReplyFields.length > 0) {
-    throw new SemanticHintActiveReplyQuestionError(invalidReplyFields);
-  }
-  return assessment;
 }
 
 function isFreshDebriefGeneration(
@@ -525,7 +390,6 @@ export interface PracticeChatHandlerDeps {
   createSupabaseClient: () => PracticeSupabaseClient;
   callDeepSeek: DeepSeekCaller;
   callClaude?: ClaudeCaller;
-  semanticAdjudicate?: PracticeSemanticAdjudicator;
   getEnv: (name: string) => string | undefined;
   now?: () => Date;
   monotonicNow?: () => number;
