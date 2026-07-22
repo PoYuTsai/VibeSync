@@ -39,5 +39,12 @@ practice-chat 的 ai_logs 寫入點：failed attempt 把內部 failure 訊息（
 - 1.2/1.5 碰高風險區（AI token/cost/telemetry）→ Codex review 證據後才宣稱 dogfood safe。
 - 回滾：1.4/1.5 純 server 行為，revert commit 即回現狀；kill switch `PRACTICE_HINT_PREFETCH_ENABLED=false` 不受影響。
 
+## Phase 1 執行結果（2026-07-22 SHIPPED）
+
+- 1.4 `c0335f86`（claude.ts prompt caching）＋ 1.5 `b28e34c1`（ai_logs.error_message 失敗明細）：Deno 1145/1145 綠（934 是舊基準）。
+- 1.2 `62210a9c`＋`b0a1c12b`（prefetch 同 requestId 重試恰一次、正式點擊即取消、dispose 清 timer）＋ 1.3 `1a788e42`（分段進度文案＋秒數）：flutter analyze 0 issue、controller 179/179＋practice widget 合跑 360/360 綠。
+- **Codex 單審 APPROVED（0026ba30..main 五 commit，零 P0/P1/P2）**：查證同 id 冪等重試、timer 清理、system byte-for-byte 單一 cached block、error_message 僅 sanitized 機器碼無逐字稿。Codex sandbox 無法跑 Flutter 測試，以 client agent 本機 360/360 補證。
+- 待辦：Eric 真機 dogfood 體感（冷路徑應變少、等待有分段文案）；下次有流量後用 ai_logs.error_message 分解 schema_invalid 混桶，再決定 Phase 2。
+
 ## Phase 2/3（未開工，等遙測）
 2.1 DeepSeek prefix-cache 稽核、2.2 consume 加入進行中 prefetch（等「點擊撞 generating」頻率數據）、3.1 並行複核（最後手段，Eric 拍板）。
