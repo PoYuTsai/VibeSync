@@ -1,0 +1,1178 @@
+{
+  "startedAt": "2026-07-22T19:07:52.804Z",
+  "mode": "live",
+  "repeat": 4,
+  "routes": [
+    "beginner_hint",
+    "game_hint",
+    "beginner_debrief",
+    "game_debrief"
+  ],
+  "summaries": [
+    {
+      "route": "beginner_hint",
+      "shots": 20,
+      "p50Ms": 7023,
+      "p90Ms": 11196,
+      "firstShotCount": 14,
+      "firstShotRate": 0.7,
+      "secondShotCount": 4,
+      "count503": 2,
+      "gateFailureCounts": {
+        "hint_quality_invalid_unsupported_detail:third_party:name:is_named": 4,
+        "hint_quality_invalid_invite_route": 1,
+        "hint_quality_invalid_unsupported_detail:world:venue:located_at": 1,
+        "hint_quality_invalid_not_grounded": 1,
+        "hint_quality_invalid_unsupported_detail:partner:preference:likes": 1
+      }
+    },
+    {
+      "route": "game_hint",
+      "shots": 20,
+      "p50Ms": 12509,
+      "p90Ms": 16599,
+      "firstShotCount": 0,
+      "firstShotRate": 0,
+      "secondShotCount": 0,
+      "count503": 20,
+      "gateFailureCounts": {
+        "hint_quality_invalid_game_coaching_substance": 13,
+        "hint_quality_invalid_invite_coaching_conflict": 4,
+        "hint_quality_invalid_substantive_move": 2,
+        "hint_quality_invalid_not_grounded": 10,
+        "hint_bossy_pasteable_reply": 1,
+        "hint_quality_invalid_unsupported_detail:user:residence:hometown_is": 3,
+        "hint_quality_invalid_unsupported_detail:world:venue:venue_named": 4,
+        "hint_quality_invalid_unsupported_detail:user:schedule:available_at": 1,
+        "claude_timeout": 1,
+        "hint_quality_invalid_unsupported_detail:world:venue:located_at": 1
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "shots": 20,
+      "p50Ms": 17206,
+      "p90Ms": 18852,
+      "firstShotCount": 1,
+      "firstShotRate": 0.05,
+      "secondShotCount": 0,
+      "count503": 19,
+      "gateFailureCounts": {
+        "debrief_quality_invalid_date_reason_role": 1,
+        "debrief_quality_invalid_strength_substance": 17,
+        "debrief_quality_invalid_unsupported_detail:partner:preference:likes": 1,
+        "debrief_quality_invalid_strength_role": 8,
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named": 2,
+        "debrief_quality_invalid_partner_initiative": 2,
+        "debrief_quality_invalid_unsupported_detail:user:preference:likes": 1,
+        "debrief_quality_invalid_field_not_grounded": 1,
+        "debrief_quality_invalid_watchout_substance": 1,
+        "debrief_quality_invalid_summary_role": 1,
+        "debrief_quality_invalid_watchout_role": 1,
+        "debrief_quality_invalid_suggested_line_not_grounded": 1,
+        "debrief_quality_invalid_unsupported_detail:user:residence:hometown_is": 1
+      }
+    },
+    {
+      "route": "game_debrief",
+      "shots": 20,
+      "p50Ms": 20403,
+      "p90Ms": 21533,
+      "firstShotCount": 0,
+      "firstShotRate": 0,
+      "secondShotCount": 0,
+      "count503": 20,
+      "gateFailureCounts": {
+        "debrief_game_breakdown_missing_fields": 8,
+        "debrief_temperature_leak": 8,
+        "debrief_quality_invalid_strength_role": 3,
+        "debrief_quality_invalid_strength_substance": 8,
+        "debrief_quality_invalid_summary_role": 1,
+        "debrief_quality_invalid_partner_initiative": 10,
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named": 1,
+        "debrief_quality_invalid_unsupported_detail:partner:preference:likes": 1
+      }
+    }
+  ],
+  "leakScan": {
+    "totalServedShots": 80,
+    "hits": []
+  },
+  "gameHintSamples": [],
+  "shots": [
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh1_slow_worker_off_duty",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 9405,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她用「沒出息的充電法」自嘲，其實是想被認同這種放鬆方式很合理。warmUp延伸追劇話題、順勢問劇單，給她一個好接的生活分享球；steady則是先接住她的自嘲，肯定這種充電法沒問題，讓她感覺被理解不被評價。兩句都只用她提到的追劇、鹹酥雞這些詞，不多加猜測她的口味或習慣，避免越界替她補設定。",
+        "warmUp": "追劇配鹹酥雞聽起來根本是完美療癒組合，妳都追什麼劇啊？",
+        "steady": "哈哈這才不是沒出息，開一整天會之後就是需要這種廢廢的充電法啊"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh1_slow_worker_off_duty",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6365,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她自嘲的「沒出息充電法」是情緒缺口，重點是接住並翻轉成正常化，不是評價或深挖。warmUp用肯定她的選擇製造輕鬆共鳴；steady則同理她開會後的疲憊感，兩者都扣住「追劇配鹹酥雞」這個具體梗，不需要問問題或急著約，讓她感覺被理解就好，符合目前熟悉階段的節奏。",
+        "warmUp": "追劇配鹹酥雞聽起來根本完美組合，哪有沒出息，那是療癒儀式吧！",
+        "steady": "哈哈這充電法我懂，開完一整天會腦袋當機真的只想耍廢配美食。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh1_slow_worker_off_duty",
+      "repeatIndex": 2,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 10741,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:third_party:name:is_named"
+      ],
+      "servedText": {
+        "coaching": "她用「沒出息」自嘲，其實是在分享真實的放鬆方式。升溫版貼著她的具體梗（追劇、鹹酥雞）再問下去，延續她的生活線索；穩住版先接住她的狀態感受，消解自嘲，建立被看見的安全感。目前溫度低、她慢熱，先別急著曖昧，重點是讓她感覺你有在聽她說的具體事，而不是敷衍應答。",
+        "warmUp": "追劇配鹹酥雞根本絕配，妳的充電方式超實在欸。那妳最近在追什麼？",
+        "steady": "追劇配鹹酥雞，這充電法我覺得一點都不沒出息，根本是懂生活。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh1_slow_worker_off_duty",
+      "repeatIndex": 3,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 11743,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_invite_route"
+      ],
+      "servedText": {
+        "coaching": "她剛說出自己的充電方式，用「沒出息」來自嘲，其實是在分享生活細節。升溫版重扣「追劇配鹹酥雞」這個具體梗，並反映她放鬆的狀態；穩住版簡單認同並自然帶入你的經驗，都避免問她更多私人問題。目前階段先接住她的生活樣本，讓她感受到你在聽她說，不急著推進。",
+        "warmUp": "追劇配鹹酥雞根本絕配，妳那時候腦袋最放鬆的時刻應該就是這樣吧",
+        "steady": "追劇配鹹酥雞聽起來很舒服，我也常這樣放空"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh2_playful_hiking",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 5924,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她最新一句給了兩個素材：風景漂亮、下山懷疑人生。接住重點是先呼應這個反差感，而不是急著問下一個行程。warmUp用玩笑語氣延伸她的「懷疑人生」，帶點互動感但不追問私事；steady則是穩穩肯定她的感受，讓她覺得被聽懂。兩種都只用她說過的詞，不外加地點或行程猜測，符合目前建立熟悉感階段，不急著推進邀約。",
+        "warmUp": "哈哈懷疑人生也要拍照吧？風景值回票價的話，鐵腿當紀念也划算啦",
+        "steady": "下山懷疑人生我懂，但風景那麼漂亮，感覺這趟還是賺到了齁"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh2_playful_hiking",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10244,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點在「風景值得」跟「下山懷疑人生」的反差，接住這個反差就好，不用急著談約爬山或曖昧。warmUp用提問延續她的情緒體驗，讓她多分享細節；steady用陪伴式回應肯定她的感受，兩種都貼著她的原話走，不無中生有加地點或行程。",
+        "warmUp": "哈哈懷疑人生也太真實，那風景有讓妳瞬間覺得鐵腿都值得嗎？",
+        "steady": "下山那段聽起來超掙扎，不過能看到漂亮風景感覺還是賺到啦"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh2_playful_hiking",
+      "repeatIndex": 2,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 11196,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:world:venue:located_at"
+      ],
+      "servedText": {
+        "coaching": "她用「懷疑人生」這個具體梗來形容下山的狀態，代表有投入感受。升溫版問她當下的真實想法有沒有轉變，看她怎麼接；穩住版直接認同她的感受，再輕輕問她後續態度，都是接住她的狀態而非跳到新話題。兩個都重用她的詞彙，避免敷衍。",
+        "warmUp": "哈哈懷疑人生的時刻最真實，那時候有沒有想過「再也不來」，還是下山後又覺得值得？",
+        "steady": "下山時懷疑人生我能想像，那種腿軟的感受應該滿深刻的。不過既然風景漂亮，感覺妳還是會再去？"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh2_playful_hiking",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7023,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點是「風景值得、但下山很痛苦」的反差自嘲。兩句都接住這個反差：warmUp用輕鬆吐槽帶點玩笑追問她會不會後悔找朋友，讓她多聊細節；steady則單純呼應她的心情、給她一個台階說「有賺到」，不追問也能讓她感覺被聽懂。目前階段先靠共鳴累積熟悉感，不用急著約下一次爬山或深聊私人行程。",
+        "warmUp": "哈哈懷疑人生也太真實，看來風景是唯一救贖，早知道是不是就不跟朋友去了？",
+        "steady": "下山懷疑人生但風景值回票價，聽起來這種鐵腿還是有賺到啦"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh3_cool_coffee",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 9531,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:third_party:name:is_named",
+        "hint_quality_invalid_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh3_cool_coffee",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 10943,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:third_party:name:is_named",
+        "hint_quality_invalid_unsupported_detail:partner:preference:likes"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh3_cool_coffee",
+      "repeatIndex": 2,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 11619,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:third_party:name:is_named"
+      ],
+      "servedText": {
+        "coaching": "她說「懶得戒」透露出接納自己的狀態，不是抗拒而是放鬆。升溫可輕推「舒服感」，用她的詞「懶」和「習慣」呼應，再問具體日常（幾杯是常態），延續生活線索；穩住則單純認可她的狀態和感受，不追問，讓她自己決定要不要展開。兩者都避免評判或建議戒咖啡，只接住她已說的真實。",
+        "warmUp": "懶得戒這點我懂，有些習慣就是舒服，強行改反而難受。妳現在是一天三杯的日常嗎？",
+        "steady": "懶得戒我也理解，習慣了就是一種舒服。忙碌的工作裡，咖啡大概是妳的小確幸。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh3_cool_coffee",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6356,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她用「懶得戒」帶出一種自在態度，不是求安慰，是分享小任性。接住這個狀態就好，別追問咖啡因細節或建議她戒掉。warmUp用同頻的輕鬆語氣呼應她的選擇；steady則肯定她這種「知道自己要什麼」的態度，讓她感覺被理解而非被說教。兩句都不推進私人話題，符合現階段先建立熟悉感的節奏。",
+        "warmUp": "哈哈「懶得戒」這態度我喜歡，反正頭痛比戒斷難受多了，喝就對了！",
+        "steady": "懶得戒也是一種智慧，至少妳知道自己要什麼，不用勉強戒掉喜歡的東西。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh4_teasing_cat",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 5638,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點是「加倍踩、好像知道」，帶點無奈又好笑的情緒。升溫版用「讀空氣」放大這個反差製造輕鬆調侃；穩住版用「精準打擊」呼應她的無奈，不加新話題也不追問，單純陪她一起吐槽麻糬，符合現階段先接情緒、不急著推進的節奏。",
+        "warmUp": "麻糬也太懂心理戰，專挑妳想賴床的時候加倍踩，根本是隻會讀空氣的貓吧",
+        "steady": "哈哈牠這招根本是精準打擊，假日還加倍踩，麻糬完全不放過妳休息的機會"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh4_teasing_cat",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7307,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點是「加倍踩、好像知道」，在講貓的心機感，帶點無奈吐槽。兩句都順著這個梗放大，用「反骨」「抓準弱點」呼應她的用詞，讓她覺得你有聽懂笑點。不用問新問題也不用轉話題，先陪她笑完這個情境，熟悉感會自然堆起來，之後她願意多聊行程或生活時再往下接。",
+        "warmUp": "哈哈牠是不是覺得「你越想賴床我越要踩爆你」，麻糬根本反骨到爆，這智商用在整妳上超浪費！",
+        "steady": "加倍踩也太狠了吧，麻糬根本抓準妳的弱點攻擊，假日睡眠自由完全被牠沒收😂"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh4_teasing_cat",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 8150,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點在「假日加倍踩、像知道妳想賴床」，接住這個梗本身就是加分，不用轉去約見面或聊私人事。warmUp用「智商太高」延伸吐槽貓，帶點調侃感讓她想回嘴；steady問她怎麼應對，順著她的抱怨給她一個好接的球，兩句都不追問行程或邀約，符合現在階段先建立熟悉感的方向。",
+        "warmUp": "哈哈牠根本是抓準妳想賴床才加倍踩吧，這智商是不是有點太高了",
+        "steady": "假日加倍踩也太狠了，麻糬根本是故意的吧，妳都怎麼投降認輸"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh4_teasing_cat",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6420,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句是用「加倍踩」延續貓咪吐槽的梗，重點在接住這個具體畫面、順著她的幽默感放大，不要突然轉話題或問私人問題。warmUp用誇張玩笑放大貓咪心機感，帶點互動感讓她想回；steady則是同理她假日被吵醒的無奈，穩穩接住情緒但不過度升溫。兩者都扣住「加倍踩」這個詞，避免變成通用回覆。",
+        "warmUp": "哈哈麻糬是不是覺得妳越想賴床牠越有動力，根本裝了加倍踩踏模式吧！",
+        "steady": "假日加倍踩醒也太慘，完全沒有放過妳的意思，麻糬心機也太重了吧"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh5_boundaries_gym",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 5589,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點是「教練偷加重量」的無奈＋幽默，接住這個梗就好，不用拉遠或曖昧。warmUp用好奇追問她當下反應，steady則同理她的崩潰感，兩者都扣緊她說的細節，讓她覺得被聽懂、輕鬆延續話題即可，不急著推進關係。",
+        "warmUp": "教練也太狠了吧，偷偷加重量根本防不勝防哈哈，妳有當場發現嗎？",
+        "steady": "哈哈教練這招很壞欸，重量偷偷加真的會崩潰，妳現在扛得住嗎？"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh5_boundaries_gym",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6713,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點在「教練偷加重量」的小抱怨，帶點無奈又好笑的情緒。兩句都直接接住這個梗，用好奇追問她的感受或應對方式，不轉話題也不急著曖昧。steady語氣平穩像朋友閒聊，warmUp多一點關心語氣拉近距離，但都不涉及邀約或私人推進，符合目前階段。",
+        "warmUp": "教練這樣根本魔鬼訓練吧，偷加重量還不讓妳喊累，妳是怎麼撐過去的？",
+        "steady": "哈哈教練很有心機欸，默默加重量這招防不勝防，妳有抓到他規律嗎？"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh5_boundaries_gym",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6466,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點是「教練偷偷加重量」的小抱怨兼小驕傲，順著這個梗接才有溫度。warmUp用誇張語氣呼應她被操的無奈，帶點玩笑拉近距離；steady則多問一句具體重量，讓她有空間分享進度，兩者都不急著談別的，只專注在她剛丟出的健身情境上。",
+        "warmUp": "教練也太狠了吧，這是把妳當成長計畫在操欸，加重量還不先說一聲！",
+        "steady": "哈哈教練這樣很魔鬼耶，偷偷加重量是想逼妳突破嗎？妳現在扛的重量大概到哪了？"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh5_boundaries_gym",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6377,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點是「教練不讓偷懶、偷偷加重量」，帶點無奈又有點小驕傲。接住這個梗最自然，warmUp用「偷襲」玩笑延伸她的情緒；steady把加重量轉成教練對她的肯定，讓她覺得被理解。兩句都不問她隱私、不推進邀約，純粹陪她聊訓練細節，符合現階段先建立熟悉感的方向。",
+        "warmUp": "教練這麼狠喔哈哈，偷偷加重量根本是偷襲，妳有當場抗議嗎？",
+        "steady": "哈哈教練這樣感覺很魔鬼，不過會偷偷加重量代表他覺得妳撐得住，也算一種肯定吧？"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 12714,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_game_coaching_substance",
+        "hint_quality_invalid_game_coaching_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 12094,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_game_coaching_substance",
+        "hint_quality_invalid_game_coaching_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 16599,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_invite_coaching_conflict",
+        "hint_quality_invalid_substantive_move"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 11226,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_invite_coaching_conflict",
+        "hint_quality_invalid_game_coaching_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 11779,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_game_coaching_substance",
+        "hint_quality_invalid_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 12170,
+      "attemptFailureCodes": [
+        "hint_bossy_pasteable_reply",
+        "hint_quality_invalid_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 13786,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_game_coaching_substance",
+        "hint_quality_invalid_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 16160,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_game_coaching_substance",
+        "hint_quality_invalid_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 11736,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:user:residence:hometown_is",
+        "hint_quality_invalid_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 11950,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:user:residence:hometown_is",
+        "hint_quality_invalid_substantive_move"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 14101,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:user:residence:hometown_is",
+        "hint_quality_invalid_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 13679,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_not_grounded",
+        "hint_quality_invalid_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 11470,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_game_coaching_substance",
+        "hint_quality_invalid_game_coaching_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 13671,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_game_coaching_substance",
+        "hint_quality_invalid_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 17810,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_invite_coaching_conflict",
+        "hint_quality_invalid_invite_coaching_conflict"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 13738,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_game_coaching_substance",
+        "hint_quality_invalid_game_coaching_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 10943,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:world:venue:venue_named",
+        "hint_quality_invalid_unsupported_detail:user:schedule:available_at"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 12415,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:world:venue:venue_named",
+        "hint_quality_invalid_unsupported_detail:world:venue:venue_named"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 12509,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_not_grounded",
+        "hint_quality_invalid_unsupported_detail:world:venue:venue_named"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 20061,
+      "attemptFailureCodes": [
+        "claude_timeout",
+        "hint_quality_invalid_unsupported_detail:world:venue:located_at"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd1_brunch_lazy_sunday",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 17269,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_date_reason_role",
+        "debrief_quality_invalid_strength_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd1_brunch_lazy_sunday",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 15811,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:partner:preference:likes",
+        "debrief_quality_invalid_strength_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd1_brunch_lazy_sunday",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 18430,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_strength_substance",
+        "debrief_quality_invalid_strength_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd1_brunch_lazy_sunday",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 17296,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_strength_substance",
+        "debrief_quality_invalid_strength_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd2_travel_okinawa",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 18138,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_strength_substance",
+        "debrief_quality_invalid_strength_role"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd2_travel_okinawa",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 17218,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_strength_substance",
+        "debrief_quality_invalid_strength_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd2_travel_okinawa",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 17729,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named",
+        "debrief_quality_invalid_partner_initiative"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd2_travel_okinawa",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 23111,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_strength_role",
+        "debrief_quality_invalid_strength_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd3_baking_croissant",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 24200,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_strength_substance",
+        "debrief_quality_invalid_strength_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd3_baking_croissant",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 8188,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊可頌話題順暢自然，但尚未深入她的生活或建立邀約基礎",
+        "suggestedLine": "我週末也常自己下廚失敗，下次不如交換一下失敗心得？",
+        "vibe": "中性",
+        "dateChance": "low",
+        "dateChanceReason": "她用玩笑帶過「如果又失敗就當沒說過」，是收回而非延伸，未釋出時間或場景線索",
+        "nextInviteMove": "先分享自己的生活片段拉近距離，累積幾次自然來回後再談具體輕鬆的見面場景",
+        "strengths[0]": "接住「失敗三次」給予正向肯定，未變成說教",
+        "strengths[1]": "順著「拍照留念」延伸出「聞香」的輕鬆玩笑",
+        "watchouts[0]": "全程只問她、沒有分享自己的生活或經驗，互動單向",
+        "watchouts[1]": "「等妳的成功照」是模糊承諾，未落地成具體邀約或下一步"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd3_baking_croissant",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 17206,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_strength_substance",
+        "debrief_quality_invalid_unsupported_detail:user:preference:likes"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd3_baking_croissant",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 16111,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_strength_substance",
+        "debrief_quality_invalid_strength_role"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd4_movie_late_show",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 18690,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_field_not_grounded",
+        "debrief_quality_invalid_watchout_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd4_movie_late_show",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 16779,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_strength_role",
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd4_movie_late_show",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 17011,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_summary_role",
+        "debrief_quality_invalid_strength_role"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd4_movie_late_show",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 18852,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_watchout_role",
+        "debrief_quality_invalid_suggested_line_not_grounded"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd5_dog_park_morning",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 16165,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_strength_substance",
+        "debrief_quality_invalid_strength_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd5_dog_park_morning",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 16767,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_strength_role",
+        "debrief_quality_invalid_strength_role"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd5_dog_park_morning",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 16263,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:user:residence:hometown_is",
+        "debrief_quality_invalid_strength_role"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd5_dog_park_morning",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 17177,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_strength_substance",
+        "debrief_quality_invalid_partner_initiative"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd1_close_coffee_window",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 17627,
+      "attemptFailureCodes": [
+        "debrief_game_breakdown_missing_fields",
+        "debrief_temperature_leak"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd1_close_coffee_window",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 20587,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_strength_role",
+        "debrief_temperature_leak"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd1_close_coffee_window",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 17207,
+      "attemptFailureCodes": [
+        "debrief_game_breakdown_missing_fields",
+        "debrief_temperature_leak"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd1_close_coffee_window",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 15510,
+      "attemptFailureCodes": [
+        "debrief_game_breakdown_missing_fields",
+        "debrief_temperature_leak"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd2_stuck_in_test",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 19999,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_strength_substance",
+        "debrief_quality_invalid_strength_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd2_stuck_in_test",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 20563,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_summary_role",
+        "debrief_quality_invalid_strength_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd2_stuck_in_test",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 20119,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_partner_initiative",
+        "debrief_temperature_leak"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd2_stuck_in_test",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 20996,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_partner_initiative",
+        "debrief_quality_invalid_strength_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd3_cooled_interview_mode",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 20403,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named",
+        "debrief_quality_invalid_strength_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd3_cooled_interview_mode",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 21151,
+      "attemptFailureCodes": [
+        "debrief_game_breakdown_missing_fields",
+        "debrief_temperature_leak"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd3_cooled_interview_mode",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 21042,
+      "attemptFailureCodes": [
+        "debrief_game_breakdown_missing_fields",
+        "debrief_quality_invalid_unsupported_detail:partner:preference:likes"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd3_cooled_interview_mode",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 21533,
+      "attemptFailureCodes": [
+        "debrief_game_breakdown_missing_fields",
+        "debrief_temperature_leak"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd4_overpush_then_repair",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 20578,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_strength_role",
+        "debrief_quality_invalid_partner_initiative"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd4_overpush_then_repair",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 23130,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_partner_initiative",
+        "debrief_quality_invalid_strength_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd4_overpush_then_repair",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 21301,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_partner_initiative",
+        "debrief_temperature_leak"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd4_overpush_then_repair",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 20342,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_strength_substance",
+        "debrief_quality_invalid_partner_initiative"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 0,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 17470,
+      "attemptFailureCodes": [
+        "debrief_game_breakdown_missing_fields",
+        "debrief_quality_invalid_partner_initiative"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 19390,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_partner_initiative",
+        "debrief_quality_invalid_strength_substance"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 19440,
+      "attemptFailureCodes": [
+        "debrief_game_breakdown_missing_fields",
+        "debrief_quality_invalid_strength_role"
+      ],
+      "servedText": null
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 21884,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_partner_initiative",
+        "debrief_quality_invalid_partner_initiative"
+      ],
+      "servedText": null
+    }
+  ]
+}

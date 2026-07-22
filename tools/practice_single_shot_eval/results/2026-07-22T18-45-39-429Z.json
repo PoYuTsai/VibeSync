@@ -1,0 +1,1665 @@
+{
+  "startedAt": "2026-07-22T18:45:39.429Z",
+  "mode": "dry-run",
+  "repeat": 4,
+  "routes": [
+    "beginner_hint",
+    "game_hint",
+    "beginner_debrief",
+    "game_debrief"
+  ],
+  "summaries": [
+    {
+      "route": "beginner_hint",
+      "shots": 20,
+      "p50Ms": 10,
+      "p90Ms": 12,
+      "firstShotCount": 20,
+      "firstShotRate": 1,
+      "secondShotCount": 0,
+      "count503": 0,
+      "gateFailureCounts": {}
+    },
+    {
+      "route": "game_hint",
+      "shots": 20,
+      "p50Ms": 12,
+      "p90Ms": 14,
+      "firstShotCount": 20,
+      "firstShotRate": 1,
+      "secondShotCount": 0,
+      "count503": 0,
+      "gateFailureCounts": {}
+    },
+    {
+      "route": "beginner_debrief",
+      "shots": 20,
+      "p50Ms": 12,
+      "p90Ms": 16,
+      "firstShotCount": 20,
+      "firstShotRate": 1,
+      "secondShotCount": 0,
+      "count503": 0,
+      "gateFailureCounts": {}
+    },
+    {
+      "route": "game_debrief",
+      "shots": 20,
+      "p50Ms": 12,
+      "p90Ms": 14,
+      "firstShotCount": 20,
+      "firstShotRate": 1,
+      "secondShotCount": 0,
+      "count503": 0,
+      "gateFailureCounts": {}
+    }
+  ],
+  "leakScan": {
+    "totalServedShots": 80,
+    "hits": []
+  },
+  "gameHintSamples": [
+    {
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 0,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的效率也太高，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "效率也太高這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說效率也太高我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 1,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的效率也太高，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "效率也太高這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說效率也太高我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 2,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的效率也太高，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "效率也太高這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說效率也太高我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 3,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的效率也太高，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "效率也太高這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說效率也太高我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 0,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的練成了拍給我看，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "練成了拍給我看這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說練成了拍給我看我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 1,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的練成了拍給我看，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "練成了拍給我看這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說練成了拍給我看我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 2,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的練成了拍給我看，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "練成了拍給我看這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說練成了拍給我看我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 3,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的練成了拍給我看，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "練成了拍給我看這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說練成了拍給我看我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 0,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的你是不是對每個女，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "你是不是對每個女這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說你是不是對每個女我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 1,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的你是不是對每個女，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "你是不是對每個女這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說你是不是對每個女我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 2,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的你是不是對每個女，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "你是不是對每個女這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說你是不是對每個女我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 3,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的你是不是對每個女，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "你是不是對每個女這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說你是不是對每個女我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 0,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的好啦我承認你歌單，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "好啦我承認你歌單這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說好啦我承認你歌單我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 1,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的好啦我承認你歌單，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "好啦我承認你歌單這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說好啦我承認你歌單我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 2,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的好啦我承認你歌單，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "好啦我承認你歌單這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說好啦我承認你歌單我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 3,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的好啦我承認你歌單，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "好啦我承認你歌單這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說好啦我承認你歌單我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 0,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的你說的那間唱片行，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "你說的那間唱片行這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說你說的那間唱片行我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 1,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的你說的那間唱片行，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "你說的那間唱片行這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說你說的那間唱片行我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 2,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的你說的那間唱片行，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "你說的那間唱片行這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說你說的那間唱片行我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 3,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的你說的那間唱片行，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "你說的那間唱片行這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說你說的那間唱片行我就放心了，我本來還想裝一下酷。"
+      }
+    }
+  ],
+  "shots": [
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh1_slow_worker_off_duty",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 184,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊很沒出息的那種充，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說很沒出息的那種充我整個有畫面，這段我想聽完整版。",
+        "steady": "很沒出息的那種充被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh1_slow_worker_off_duty",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊很沒出息的那種充，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說很沒出息的那種充我整個有畫面，這段我想聽完整版。",
+        "steady": "很沒出息的那種充被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh1_slow_worker_off_duty",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊很沒出息的那種充，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說很沒出息的那種充我整個有畫面，這段我想聽完整版。",
+        "steady": "很沒出息的那種充被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh1_slow_worker_off_duty",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊很沒出息的那種充，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說很沒出息的那種充我整個有畫面，這段我想聽完整版。",
+        "steady": "很沒出息的那種充被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh2_playful_hiking",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 15,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊山頂的風景是真的，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說山頂的風景是真的我整個有畫面，這段我想聽完整版。",
+        "steady": "山頂的風景是真的被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh2_playful_hiking",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊山頂的風景是真的，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說山頂的風景是真的我整個有畫面，這段我想聽完整版。",
+        "steady": "山頂的風景是真的被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh2_playful_hiking",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊山頂的風景是真的，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說山頂的風景是真的我整個有畫面，這段我想聽完整版。",
+        "steady": "山頂的風景是真的被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh2_playful_hiking",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊山頂的風景是真的，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說山頂的風景是真的我整個有畫面，這段我想聽完整版。",
+        "steady": "山頂的風景是真的被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh3_cool_coffee",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊反正也懶得戒了，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說反正也懶得戒了我整個有畫面，這段我想聽完整版。",
+        "steady": "反正也懶得戒了被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh3_cool_coffee",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊反正也懶得戒了，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說反正也懶得戒了我整個有畫面，這段我想聽完整版。",
+        "steady": "反正也懶得戒了被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh3_cool_coffee",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊反正也懶得戒了，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說反正也懶得戒了我整個有畫面，這段我想聽完整版。",
+        "steady": "反正也懶得戒了被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh3_cool_coffee",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊反正也懶得戒了，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說反正也懶得戒了我整個有畫面，這段我想聽完整版。",
+        "steady": "反正也懶得戒了被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh4_teasing_cat",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 9,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊假日牠會加倍踩，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說假日牠會加倍踩我整個有畫面，這段我想聽完整版。",
+        "steady": "假日牠會加倍踩被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh4_teasing_cat",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊假日牠會加倍踩，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說假日牠會加倍踩我整個有畫面，這段我想聽完整版。",
+        "steady": "假日牠會加倍踩被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh4_teasing_cat",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 9,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊假日牠會加倍踩，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說假日牠會加倍踩我整個有畫面，這段我想聽完整版。",
+        "steady": "假日牠會加倍踩被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh4_teasing_cat",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 9,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊假日牠會加倍踩，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說假日牠會加倍踩我整個有畫面，這段我想聽完整版。",
+        "steady": "假日牠會加倍踩被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh5_boundaries_gym",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 9,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊每次都偷偷加重量，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說每次都偷偷加重量我整個有畫面，這段我想聽完整版。",
+        "steady": "每次都偷偷加重量被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh5_boundaries_gym",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 9,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊每次都偷偷加重量，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說每次都偷偷加重量我整個有畫面，這段我想聽完整版。",
+        "steady": "每次都偷偷加重量被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh5_boundaries_gym",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 9,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊每次都偷偷加重量，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說每次都偷偷加重量我整個有畫面，這段我想聽完整版。",
+        "steady": "每次都偷偷加重量被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh5_boundaries_gym",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她願意聊每次都偷偷加重量，代表話題有接住，你先回應這段感受，再交換一件自己的日常，不用急著推進。",
+        "warmUp": "妳說每次都偷偷加重量我整個有畫面，這段我想聽完整版。",
+        "steady": "每次都偷偷加重量被妳講得雲淡風輕，我反而更好奇後續了。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 24,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的效率也太高，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "效率也太高這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說效率也太高我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的效率也太高，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "效率也太高這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說效率也太高我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的效率也太高，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "效率也太高這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說效率也太高我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的效率也太高，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "效率也太高這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說效率也太高我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的練成了拍給我看，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "練成了拍給我看這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說練成了拍給我看我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的練成了拍給我看，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "練成了拍給我看這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說練成了拍給我看我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的練成了拍給我看，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "練成了拍給我看這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說練成了拍給我看我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的練成了拍給我看，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "練成了拍給我看這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說練成了拍給我看我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 14,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的你是不是對每個女，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "你是不是對每個女這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說你是不是對每個女我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 13,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的你是不是對每個女，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "你是不是對每個女這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說你是不是對每個女我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 14,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的你是不是對每個女，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "你是不是對每個女這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說你是不是對每個女我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的你是不是對每個女，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "你是不是對每個女這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說你是不是對每個女我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 13,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的好啦我承認你歌單，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "好啦我承認你歌單這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說好啦我承認你歌單我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 14,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的好啦我承認你歌單，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "好啦我承認你歌單這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說好啦我承認你歌單我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 13,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的好啦我承認你歌單，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "好啦我承認你歌單這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說好啦我承認你歌單我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的好啦我承認你歌單，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "好啦我承認你歌單這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說好啦我承認你歌單我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 29,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的你說的那間唱片行，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "你說的那間唱片行這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說你說的那間唱片行我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的你說的那間唱片行，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "你說的那間唱片行這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說你說的那間唱片行我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的你說的那間唱片行，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "你說的那間唱片行這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說你說的那間唱片行我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 14,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的你說的那間唱片行，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "你說的那間唱片行這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說你說的那間唱片行我就放心了，我本來還想裝一下酷。"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd1_brunch_lazy_sunday",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 85,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的追到有點睡眠不足，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的追到有點睡眠不足，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊追到有點睡眠不足時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從追到有點睡眠不足延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的追到有點睡眠不足，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到追到有點睡眠不足時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd1_brunch_lazy_sunday",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 18,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的追到有點睡眠不足，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的追到有點睡眠不足，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊追到有點睡眠不足時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從追到有點睡眠不足延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的追到有點睡眠不足，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到追到有點睡眠不足時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd1_brunch_lazy_sunday",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 13,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的追到有點睡眠不足，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的追到有點睡眠不足，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊追到有點睡眠不足時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從追到有點睡眠不足延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的追到有點睡眠不足，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到追到有點睡眠不足時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd1_brunch_lazy_sunday",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 16,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的追到有點睡眠不足，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的追到有點睡眠不足，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊追到有點睡眠不足時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從追到有點睡眠不足延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的追到有點睡眠不足，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到追到有點睡眠不足時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd2_travel_okinawa",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 14,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的口氣不小，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的口氣不小，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊口氣不小時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從口氣不小延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的口氣不小，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到口氣不小時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd2_travel_okinawa",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 15,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的口氣不小，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的口氣不小，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊口氣不小時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從口氣不小延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的口氣不小，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到口氣不小時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd2_travel_okinawa",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 14,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的口氣不小，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的口氣不小，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊口氣不小時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從口氣不小延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的口氣不小，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到口氣不小時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd2_travel_okinawa",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的口氣不小，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的口氣不小，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊口氣不小時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從口氣不小延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的口氣不小，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到口氣不小時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd3_baking_croissant",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的如果又失敗就當作，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的如果又失敗就當作，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊如果又失敗就當作時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從如果又失敗就當作延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的如果又失敗就當作，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到如果又失敗就當作時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd3_baking_croissant",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的如果又失敗就當作，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的如果又失敗就當作，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊如果又失敗就當作時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從如果又失敗就當作延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的如果又失敗就當作，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到如果又失敗就當作時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd3_baking_croissant",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的如果又失敗就當作，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的如果又失敗就當作，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊如果又失敗就當作時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從如果又失敗就當作延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的如果又失敗就當作，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到如果又失敗就當作時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd3_baking_croissant",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的如果又失敗就當作，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的如果又失敗就當作，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊如果又失敗就當作時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從如果又失敗就當作延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的如果又失敗就當作，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到如果又失敗就當作時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd4_movie_late_show",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的再來看預告的節奏，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的再來看預告的節奏，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊再來看預告的節奏時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從再來看預告的節奏延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的再來看預告的節奏，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到再來看預告的節奏時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd4_movie_late_show",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的再來看預告的節奏，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的再來看預告的節奏，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊再來看預告的節奏時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從再來看預告的節奏延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的再來看預告的節奏，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到再來看預告的節奏時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd4_movie_late_show",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 9,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的再來看預告的節奏，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的再來看預告的節奏，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊再來看預告的節奏時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從再來看預告的節奏延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的再來看預告的節奏，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到再來看預告的節奏時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd4_movie_late_show",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的再來看預告的節奏，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的再來看預告的節奏，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊再來看預告的節奏時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從再來看預告的節奏延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的再來看預告的節奏，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到再來看預告的節奏時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd5_dog_park_morning",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 13,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的養狗之後就回不去，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的養狗之後就回不去，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊養狗之後就回不去時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從養狗之後就回不去延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的養狗之後就回不去，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到養狗之後就回不去時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd5_dog_park_morning",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的養狗之後就回不去，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的養狗之後就回不去，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊養狗之後就回不去時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從養狗之後就回不去延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的養狗之後就回不去，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到養狗之後就回不去時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd5_dog_park_morning",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的養狗之後就回不去，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的養狗之後就回不去，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊養狗之後就回不去時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從養狗之後就回不去延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的養狗之後就回不去，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到養狗之後就回不去時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd5_dog_park_morning",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的養狗之後就回不去，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的養狗之後就回不去，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊養狗之後就回不去時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從養狗之後就回不去延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的養狗之後就回不去，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到養狗之後就回不去時，可以先補一句自己的感受，再問她一個具體的問題"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd1_close_coffee_window",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 17,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的聽起來不虧欸，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的聽起來不虧欸，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊聽起來不虧欸時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從聽起來不虧欸延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的聽起來不虧欸，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到聽起來不虧欸時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到聽起來不虧欸時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟聽起來不虧欸時你給的細節不夠",
+        "gameBreakdown.failureState": "聽起來不虧欸之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的聽起來不虧欸，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從聽起來不虧欸延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd1_close_coffee_window",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 15,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的聽起來不虧欸，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的聽起來不虧欸，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊聽起來不虧欸時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從聽起來不虧欸延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的聽起來不虧欸，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到聽起來不虧欸時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到聽起來不虧欸時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟聽起來不虧欸時你給的細節不夠",
+        "gameBreakdown.failureState": "聽起來不虧欸之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的聽起來不虧欸，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從聽起來不虧欸延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd1_close_coffee_window",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 13,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的聽起來不虧欸，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的聽起來不虧欸，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊聽起來不虧欸時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從聽起來不虧欸延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的聽起來不虧欸，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到聽起來不虧欸時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到聽起來不虧欸時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟聽起來不虧欸時你給的細節不夠",
+        "gameBreakdown.failureState": "聽起來不虧欸之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的聽起來不虧欸，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從聽起來不虧欸延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd1_close_coffee_window",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 14,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的聽起來不虧欸，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的聽起來不虧欸，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊聽起來不虧欸時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從聽起來不虧欸延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的聽起來不虧欸，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到聽起來不虧欸時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到聽起來不虧欸時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟聽起來不虧欸時你給的細節不夠",
+        "gameBreakdown.failureState": "聽起來不虧欸之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的聽起來不虧欸，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從聽起來不虧欸延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd2_stuck_in_test",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的看你有沒有本事排，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的看你有沒有本事排，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊看你有沒有本事排時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從看你有沒有本事排延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的看你有沒有本事排，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到看你有沒有本事排時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到看你有沒有本事排時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟看你有沒有本事排時你給的細節不夠",
+        "gameBreakdown.failureState": "看你有沒有本事排之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的看你有沒有本事排，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從看你有沒有本事排延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd2_stuck_in_test",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的看你有沒有本事排，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的看你有沒有本事排，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊看你有沒有本事排時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從看你有沒有本事排延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的看你有沒有本事排，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到看你有沒有本事排時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到看你有沒有本事排時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟看你有沒有本事排時你給的細節不夠",
+        "gameBreakdown.failureState": "看你有沒有本事排之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的看你有沒有本事排，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從看你有沒有本事排延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd2_stuck_in_test",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的看你有沒有本事排，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的看你有沒有本事排，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊看你有沒有本事排時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從看你有沒有本事排延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的看你有沒有本事排，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到看你有沒有本事排時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到看你有沒有本事排時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟看你有沒有本事排時你給的細節不夠",
+        "gameBreakdown.failureState": "看你有沒有本事排之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的看你有沒有本事排，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從看你有沒有本事排延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd2_stuck_in_test",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的看你有沒有本事排，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的看你有沒有本事排，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊看你有沒有本事排時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從看你有沒有本事排延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的看你有沒有本事排，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到看你有沒有本事排時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到看你有沒有本事排時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟看你有沒有本事排時你給的細節不夠",
+        "gameBreakdown.failureState": "看你有沒有本事排之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的看你有沒有本事排，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從看你有沒有本事排延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd3_cooled_interview_mode",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 13,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的不過聊天不用像面，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的不過聊天不用像面，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊不過聊天不用像面時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從不過聊天不用像面延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的不過聊天不用像面，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到不過聊天不用像面時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到不過聊天不用像面時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟不過聊天不用像面時你給的細節不夠",
+        "gameBreakdown.failureState": "不過聊天不用像面之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的不過聊天不用像面，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從不過聊天不用像面延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd3_cooled_interview_mode",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的不過聊天不用像面，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的不過聊天不用像面，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊不過聊天不用像面時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從不過聊天不用像面延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的不過聊天不用像面，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到不過聊天不用像面時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到不過聊天不用像面時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟不過聊天不用像面時你給的細節不夠",
+        "gameBreakdown.failureState": "不過聊天不用像面之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的不過聊天不用像面，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從不過聊天不用像面延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd3_cooled_interview_mode",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的不過聊天不用像面，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的不過聊天不用像面，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊不過聊天不用像面時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從不過聊天不用像面延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的不過聊天不用像面，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到不過聊天不用像面時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到不過聊天不用像面時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟不過聊天不用像面時你給的細節不夠",
+        "gameBreakdown.failureState": "不過聊天不用像面之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的不過聊天不用像面，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從不過聊天不用像面延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd3_cooled_interview_mode",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的不過聊天不用像面，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的不過聊天不用像面，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊不過聊天不用像面時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從不過聊天不用像面延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的不過聊天不用像面，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到不過聊天不用像面時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到不過聊天不用像面時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟不過聊天不用像面時你給的細節不夠",
+        "gameBreakdown.failureState": "不過聊天不用像面之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的不過聊天不用像面，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從不過聊天不用像面延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd4_overpush_then_repair",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的那天的咖啡債先記，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的那天的咖啡債先記，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊那天的咖啡債先記時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從那天的咖啡債先記延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的那天的咖啡債先記，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到那天的咖啡債先記時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到那天的咖啡債先記時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟那天的咖啡債先記時你給的細節不夠",
+        "gameBreakdown.failureState": "那天的咖啡債先記之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的那天的咖啡債先記，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從那天的咖啡債先記延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd4_overpush_then_repair",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的那天的咖啡債先記，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的那天的咖啡債先記，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊那天的咖啡債先記時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從那天的咖啡債先記延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的那天的咖啡債先記，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到那天的咖啡債先記時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到那天的咖啡債先記時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟那天的咖啡債先記時你給的細節不夠",
+        "gameBreakdown.failureState": "那天的咖啡債先記之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的那天的咖啡債先記，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從那天的咖啡債先記延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd4_overpush_then_repair",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 13,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的那天的咖啡債先記，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的那天的咖啡債先記，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊那天的咖啡債先記時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從那天的咖啡債先記延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的那天的咖啡債先記，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到那天的咖啡債先記時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到那天的咖啡債先記時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟那天的咖啡債先記時你給的細節不夠",
+        "gameBreakdown.failureState": "那天的咖啡債先記之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的那天的咖啡債先記，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從那天的咖啡債先記延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd4_overpush_then_repair",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的那天的咖啡債先記，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的那天的咖啡債先記，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊那天的咖啡債先記時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從那天的咖啡債先記延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的那天的咖啡債先記，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到那天的咖啡債先記時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到那天的咖啡債先記時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟那天的咖啡債先記時你給的細節不夠",
+        "gameBreakdown.failureState": "那天的咖啡債先記之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的那天的咖啡債先記，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從那天的咖啡債先記延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 13,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的那說好了，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的那說好了，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊那說好了時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從那說好了延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的那說好了，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到那說好了時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到那說好了時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟那說好了時你給的細節不夠",
+        "gameBreakdown.failureState": "那說好了之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的那說好了，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從那說好了延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的那說好了，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的那說好了，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊那說好了時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從那說好了延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的那說好了，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到那說好了時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到那說好了時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟那說好了時你給的細節不夠",
+        "gameBreakdown.failureState": "那說好了之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的那說好了，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從那說好了延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 13,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的那說好了，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的那說好了，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊那說好了時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從那說好了延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的那說好了，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到那說好了時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到那說好了時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟那說好了時你給的細節不夠",
+        "gameBreakdown.failureState": "那說好了之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的那說好了，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從那說好了延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你有接住她說的那說好了，也分享了自己的版本，整場節奏穩。",
+        "suggestedLine": "我還在想妳說的那說好了，這段沒聽到完整版我不甘心，補個後續給我。",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊那說好了時有來有回，投入是夠的，但見面窗口還沒出現。",
+        "nextInviteMove": "下次可以從那說好了延伸，問她平常的行程節奏，再看她的反應決定要不要提小約。",
+        "strengths[0]": "你接住她的那說好了，還延伸出自己的生活畫面",
+        "watchouts[0]": "下次聊到那說好了時，可以先補一句自己的感受，再問她一個具體的問題",
+        "gameBreakdown.phaseReached": "聊到那說好了時，你們已經走到互相測試的階段",
+        "gameBreakdown.missedVariable": "還缺一點你的生活畫面，她丟那說好了時你給的細節不夠",
+        "gameBreakdown.failureState": "那說好了之後節奏偏硬，差點變成單向問答",
+        "gameBreakdown.nextFirstLine": "我後來又想到妳說的那說好了，越想越不對勁，妳得親自解釋一下。",
+        "gameBreakdown.inviteDirection": "從那說好了延伸聊回她的節奏，等她再開一次時間窗口就順勢提短咖啡"
+      }
+    }
+  ]
+}
