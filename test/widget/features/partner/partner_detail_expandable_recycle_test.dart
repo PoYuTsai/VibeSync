@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
+import 'package:vibesync/features/coach_chat/presentation/widgets/coach_surface.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
@@ -85,8 +86,11 @@ Future<void> _pumpScreen(WidgetTester t) async {
       partnerAggregateProvider('p1').overrideWith((_) => _aggregate()),
       dataQualityFlagProvider('p1')
           .overrideWith((_) => const DataQualityFlag.unflagged()),
+      // 8 段對話把 coach section／摺疊面板推到離頁首夠遠的位置：
+      // 回收發生在 viewport + cacheExtent（預設約 250px）之外，內容太短
+      // 的話 section 一直留在 cache 內，測不到回收路徑。
       conversationsByPartnerProvider('p1')
-          .overrideWith((_) => [_conv('c1')]),
+          .overrideWith((_) => List.generate(8, (i) => _conv('c$i'))),
       partnerListProvider.overrideWith((_) => [_p()]),
     ],
     child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
@@ -133,5 +137,40 @@ void main() {
     await t.tap(find.text('收起'));
     await t.pumpAndSettle();
     expect(find.text('展開'), findsOneWidget);
+  });
+
+  testWidgets('Coach 輸入草稿在捲離回收後仍保留（section 必須保活）', (t) async {
+    await _pumpScreen(t);
+
+    // 捲到 coach section，在輸入框打一段草稿。
+    await _scrollUntilVisible(t, find.byType(CoachSurface));
+    final input = find.descendant(
+      of: find.byType(CoachSurface),
+      matching: find.byType(TextField),
+    );
+    const draft = '她已讀不回三天，我想約她週末爬山該怎麼開口？';
+    await t.enterText(input, draft);
+    await t.pumpAndSettle();
+
+    // 收鍵盤（失焦）——真機上使用者打到一半收起鍵盤再捲動是常態。
+    // EditableText 有焦點時自帶 keep-alive，會遮蔽回收路徑；失焦後
+    // 保活責任回到 section 自己身上。
+    FocusManager.instance.primaryFocus?.unfocus();
+    await t.pumpAndSettle();
+
+    // 捲回頁首，讓 section 離開 viewport + cacheExtent。
+    final scrollable = find.byType(Scrollable).first;
+    for (var i = 0; i < 6; i++) {
+      await t.drag(scrollable, const Offset(0, 600));
+      await t.pumpAndSettle();
+    }
+    expect(find.byType(CoachSurface), findsNothing,
+        reason: '前置條件：section 必須真的離開可視區');
+
+    // 捲回：草稿必須還在。沒保活時 State 連同 TextEditingController 被
+    // 銷毀，草稿清空。
+    await _scrollUntilVisible(t, find.byType(CoachSurface));
+    expect(t.widget<TextField>(input).controller?.text, draft,
+        reason: '草稿存在 CoachSurface 本地 State；lazy ListView 回收即丟失');
   });
 }

@@ -60,7 +60,16 @@ class CoachFollowUpSection extends StatefulWidget {
   State<CoachFollowUpSection> createState() => _CoachFollowUpSectionState();
 }
 
-class _CoachFollowUpSectionState extends State<CoachFollowUpSection> {
+// KeepAlive：section 掛在 partner 詳情頁的 lazy ListView 深處，滑出
+// viewport + cacheExtent 會被回收。使用者可見狀態（CoachSurface 輸入
+// 草稿與 controller、chip 選中高亮、_lastAskedQuestion）都活在這棵子樹
+// 的本地 State，回收即丟失；initState 的 auto-focus 排程也會在重新
+// mount 時重跑。保活整個 section 一併保住 CoachSurface。
+class _CoachFollowUpSectionState extends State<CoachFollowUpSection>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   String? _pendingPhase;
   String? _prefill;
   int _focusToken = 0;
@@ -140,6 +149,7 @@ class _CoachFollowUpSectionState extends State<CoachFollowUpSection> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // AutomaticKeepAliveClientMixin 契約要求。
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

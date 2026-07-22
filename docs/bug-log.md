@@ -22,7 +22,9 @@
 
 **Validation**: 新回歸測試 `partner_detail_expandable_recycle_test.dart`（400x800 逼出回收，先紅後綠：捲離回收前確認面板真的離場、捲回斷言仍為「收起」且可實際收合）；partner widget 目錄 157 測全過、`flutter analyze` 0 issue。commit `5a5e406a`。
 
-**相關檔案**: `lib/features/partner/presentation/screens/partner_detail_screen.dart`、`test/widget/features/partner/partner_detail_expandable_recycle_test.dart`。
+**同類風險收尾**: 同頁 `CoachFollowUpSection` 也是 lazy ListView 內無保活的 stateful 子項——回收會丟 CoachSurface 輸入草稿／chip 高亮並重跑 auto-focus 排程（串流回覆在 provider 不受影響）。修＝section 掛 `AutomaticKeepAliveClientMixin` 整棵子樹保活；回歸測試同檔新增「打草稿→失焦→捲離→捲回草稿仍在」案（注意兩個坑：EditableText 有焦點時自帶 keep-alive、測試假資料太短會讓 section 留在 cacheExtent 內測不到回收，故需先失焦＋8 段對話墊高）。
+
+**相關檔案**: `lib/features/partner/presentation/screens/partner_detail_screen.dart`、`lib/features/coach_follow_up/presentation/widgets/coach_follow_up_section.dart`、`test/widget/features/partner/partner_detail_expandable_recycle_test.dart`。
 
 ### [2026-07-19] AI 練習室 Debrief 語意複核反覆 503
 
