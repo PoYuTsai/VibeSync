@@ -999,18 +999,40 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     _finishHintPrefetchFlight(flight, outcome);
   }
 
-  /// 重試延遲可被正式點擊訊號提前中止；timer 必定 cancel，絕不留孤兒 timer。
-  /// 回傳 true＝延遲期滿可續行重試；false＝formal 已表態，放棄重試。
+  /// 在途的重試延遲 timer／waiter。controller dispose 必須立即收掉
+  /// （鐵則：零孤兒 timer，widget 測試 teardown 不得有 pending timer）。
+  final Set<Timer> _hintPrefetchRetryTimers = {};
+  final Set<Completer<bool>> _hintPrefetchRetryWaiters = {};
+
+  @override
+  void dispose() {
+    for (final timer in _hintPrefetchRetryTimers) {
+      timer.cancel();
+    }
+    _hintPrefetchRetryTimers.clear();
+    for (final waiter in _hintPrefetchRetryWaiters.toList()) {
+      if (!waiter.isCompleted) waiter.complete(false);
+    }
+    _hintPrefetchRetryWaiters.clear();
+    super.dispose();
+  }
+
+  /// 重試延遲可被正式點擊訊號或 dispose 提前中止；timer 必定 cancel，
+  /// 絕不留孤兒 timer。回傳 true＝延遲期滿可續行重試；false＝放棄重試。
   Future<bool> _waitHintPrefetchRetryDelay(_HintPrefetchFlight flight) async {
     final waiter = Completer<bool>();
     final timer = Timer(_hintPrefetchRetryDelay, () {
       if (!waiter.isCompleted) waiter.complete(true);
     });
+    _hintPrefetchRetryTimers.add(timer);
+    _hintPrefetchRetryWaiters.add(waiter);
     unawaited(flight.formalIntent.then((_) {
       if (!waiter.isCompleted) waiter.complete(false);
     }));
     final elapsed = await waiter.future;
     timer.cancel();
+    _hintPrefetchRetryTimers.remove(timer);
+    _hintPrefetchRetryWaiters.remove(waiter);
     return elapsed;
   }
 
