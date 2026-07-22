@@ -166,6 +166,131 @@ Deno.test("callClaude forwards an optional structured output schema", async () =
   }
 });
 
+Deno.test("callClaude with forcedTool sends tools and forced tool_choice", async () => {
+  const originalFetch = globalThis.fetch;
+  let capturedBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (_input, init) => {
+    const body = (init as { body?: BodyInit } | undefined)?.body;
+    capturedBody = JSON.parse(String(body));
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          stop_reason: "tool_use",
+          content: [{
+            type: "tool_use",
+            name: "emit_hint",
+            input: { replies: ["a", "b"], coaching: "c" },
+          }],
+        }),
+        { status: 200 },
+      ),
+    );
+  };
+  const inputSchema = {
+    type: "object",
+    properties: { replies: { type: "array" }, coaching: { type: "string" } },
+    required: ["replies", "coaching"],
+  } as const;
+  try {
+    const result = await callClaude({
+      apiKey: "test-key",
+      model: "claude-sonnet-5",
+      messages: [{ role: "user", content: "hint please" }],
+      maxTokens: 500,
+      temperature: 0.2,
+      timeoutMs: 1_000,
+      forcedTool: {
+        name: "emit_hint",
+        description: "Emit the practice hint payload.",
+        inputSchema,
+      },
+    });
+
+    // 下游 parser 沿用「收字串」契約：tool_use input 序列化回傳。
+    assertEquals(
+      JSON.parse(result),
+      { replies: ["a", "b"], coaching: "c" },
+    );
+    assertEquals(capturedBody?.tools, [
+      {
+        name: "emit_hint",
+        description: "Emit the practice hint payload.",
+        input_schema: inputSchema,
+      },
+    ]);
+    assertEquals(capturedBody?.tool_choice, {
+      type: "tool",
+      name: "emit_hint",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("callClaude with forcedTool rejects a response without a tool_use block", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          content: [{ type: "text", text: "plain text instead of tool" }],
+        }),
+        { status: 200 },
+      ),
+    );
+  try {
+    await assertRejects(
+      () =>
+        callClaude({
+          apiKey: "test-key",
+          model: "claude-sonnet-5",
+          messages: [{ role: "user", content: "hint please" }],
+          maxTokens: 500,
+          temperature: 0.2,
+          timeoutMs: 1_000,
+          forcedTool: {
+            name: "emit_hint",
+            inputSchema: { type: "object" },
+          },
+        }),
+      Error,
+      "claude_no_tool_use",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("callClaude without forcedTool sends no tools and keeps the text path", async () => {
+  const originalFetch = globalThis.fetch;
+  let capturedBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (_input, init) => {
+    const body = (init as { body?: BodyInit } | undefined)?.body;
+    capturedBody = JSON.parse(String(body));
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ content: [{ type: "text", text: "plain" }] }),
+        { status: 200 },
+      ),
+    );
+  };
+  try {
+    const result = await callClaude({
+      apiKey: "test-key",
+      model: "claude-test",
+      messages: [{ role: "user", content: "hello" }],
+      maxTokens: 100,
+      temperature: 0.2,
+      timeoutMs: 1_000,
+    });
+    assertEquals(result, "plain");
+    assertEquals(capturedBody?.tools, undefined);
+    assertEquals(capturedBody?.tool_choice, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 Deno.test("callClaude sends a Sonnet 5 compatible request", async () => {
   const originalFetch = globalThis.fetch;
   let capturedBody: Record<string, unknown> | undefined;

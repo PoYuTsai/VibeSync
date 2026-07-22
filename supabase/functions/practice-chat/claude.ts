@@ -14,6 +14,15 @@ export interface ClaudeArgs {
   timeoutMs: number;
   /** Optional provider-level JSON shape. Product semantics stay in the parser. */
   outputJsonSchema?: Readonly<Record<string, unknown>>;
+  /**
+   * Forced tool_use schema：帶了就強制模型呼叫該 tool，回傳值改為
+   * tool_use input 的 JSON 字串（下游 parser 沿用「收字串」契約）。
+   */
+  forcedTool?: {
+    name: string;
+    description?: string;
+    inputSchema: Readonly<Record<string, unknown>>;
+  };
   endpoint?: string;
   model: string;
 }
@@ -79,6 +88,18 @@ export async function callClaude(args: ClaudeArgs): Promise<string> {
             },
           }
           : {}),
+        ...(args.forcedTool
+          ? {
+            tools: [{
+              name: args.forcedTool.name,
+              ...(args.forcedTool.description
+                ? { description: args.forcedTool.description }
+                : {}),
+              input_schema: args.forcedTool.inputSchema,
+            }],
+            tool_choice: { type: "tool", name: args.forcedTool.name },
+          }
+          : {}),
       }),
       signal: controller.signal,
     });
@@ -96,6 +117,16 @@ export async function callClaude(args: ClaudeArgs): Promise<string> {
       throw new Error("claude_max_tokens");
     }
     const blocks = Array.isArray(json?.content) ? json.content : [];
+    if (args.forcedTool) {
+      const toolBlock = blocks.find((block: unknown) =>
+        typeof block === "object" && block !== null &&
+        (block as { type?: unknown }).type === "tool_use" &&
+        typeof (block as { input?: unknown }).input === "object" &&
+        (block as { input?: unknown }).input !== null
+      );
+      if (!toolBlock) throw new Error("claude_no_tool_use");
+      return JSON.stringify((toolBlock as { input: unknown }).input);
+    }
     const content = blocks
       .filter((block: unknown) =>
         typeof block === "object" && block !== null &&
