@@ -14,6 +14,7 @@ import {
   GAME_INVITE_ROUTE_LABEL,
   HINT_COACHING_SOFT_CHAR_LIMIT,
   HINT_REPLY_SOFT_CHAR_LIMIT,
+  HINT_TOOL_SCHEMA,
   hintTrustedFactualEvidence,
   MAX_COACHING_LENGTH,
   parseHintResult,
@@ -5611,4 +5612,40 @@ Deno.test("generated Hint permits partner-owned residence callbacks after typed 
     );
     assertEquals(result.replies[0].text.includes("妳住台南"), true);
   }
+});
+
+Deno.test("HINT_TOOL_SCHEMA matches the parser contract (schema wide, parser strict)", () => {
+  // parser 權威：top-level 恰三鍵 warmUp/steady/coaching，全字串。
+  const schema = HINT_TOOL_SCHEMA as {
+    type: string;
+    properties: Record<string, { type?: string }>;
+    required: string[];
+    additionalProperties: boolean;
+  };
+  assertEquals(schema.type, "object");
+  assertEquals([...schema.required].sort(), ["coaching", "steady", "warmUp"]);
+  assertEquals(
+    Object.keys(schema.properties).sort(),
+    ["coaching", "steady", "warmUp"],
+  );
+  assertEquals(schema.additionalProperties, false);
+  for (const key of ["warmUp", "steady", "coaching"]) {
+    assertEquals(schema.properties[key].type, "string");
+  }
+
+  // 一個過 parser 的合法 payload 必須同時滿足 schema 必填鍵（防 schema 跟 parser 打架）。
+  const legal = {
+    warmUp: "妳說動線卡，我也有同感，等等想聽妳多講一點。",
+    steady: "動線卡那段我有記住，妳觀察得比我細。",
+    coaching: "她在講老屋動線，先接住她的觀察再分享你的看法。",
+  };
+  const parsed = parseHintResult(JSON.stringify(legal));
+  assertEquals(parsed.replies.length, 2);
+  for (const key of schema.required) {
+    assert(key in legal, `schema required key ${key} missing from legal payload`);
+  }
+  assertEquals(
+    Object.keys(legal).every((key) => key in schema.properties),
+    true,
+  );
 });

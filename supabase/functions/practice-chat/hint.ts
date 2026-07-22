@@ -151,6 +151,34 @@ const GENERATED_COACHING_MAX_LENGTH = 320;
  * complete grounded sentence runs slightly long.
  */
 export const HINT_COACHING_SOFT_CHAR_LIMIT = 140;
+
+/**
+ * 單發 tool_use 強制 schema。只管結構（必填鍵＋型別＋寬鬆長度上限）；
+ * parseHintResult 仍是硬 gate 權威——schema 寬、parser 嚴，衝突以 parser 為準。
+ * Game 與新手共用同一 schema（parser 恰三鍵，Game 差異全在 prompt 與守門）。
+ */
+export const HINT_TOOL_SCHEMA: Readonly<Record<string, unknown>> = {
+  type: "object",
+  properties: {
+    warmUp: {
+      type: "string",
+      description: "升溫回覆：可直接貼上的訊息文字，繁體中文",
+      maxLength: GENERATED_REPLY_MAX_LENGTH,
+    },
+    steady: {
+      type: "string",
+      description: "穩住回覆：可直接貼上的訊息文字，繁體中文",
+      maxLength: GENERATED_REPLY_MAX_LENGTH,
+    },
+    coaching: {
+      type: "string",
+      description: "教練講評：解釋兩種回法的策略，繁體中文",
+      maxLength: GENERATED_COACHING_MAX_LENGTH,
+    },
+  },
+  required: ["warmUp", "steady", "coaching"],
+  additionalProperties: false,
+};
 const HIDDEN_HINT_NO_LEAK_RULE =
   "inviteStage、dateChance、relationshipScore、分數、memorySummary、scene/partnerState、evidence 與 snake_case 都是隱藏資料；不得輸出名稱，一律轉成繁中白話。\n";
 
