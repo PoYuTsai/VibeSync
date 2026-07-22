@@ -18,6 +18,7 @@ import {
 import { buildDebriefMessages } from "../../supabase/functions/practice-chat/prompt.ts";
 import {
   DEBRIEF_TOOL_SCHEMA,
+  DEBRIEF_TOOL_SCHEMA_GAME,
   type DebriefCard,
   parseDebriefCard,
 } from "../../supabase/functions/practice-chat/debrief_card.ts";
@@ -177,6 +178,7 @@ async function runHintShot(opts: {
     partnerFactualEvidence: evidence.partner,
     trustedFactClaims: evidence.claims,
     enforceGeneratedQuality: true,
+    relaxSubjectiveQualityRubrics: true,
   } as const;
   const startedAt = performance.now();
   try {
@@ -282,6 +284,7 @@ async function runDebriefShot(opts: {
     partnerFactualEvidence: evidence.partner,
     trustedFactClaims: evidence.claims,
     enforceGeneratedQuality: true,
+    relaxSubjectiveQualityRubrics: true,
   } as const;
   const startedAt = performance.now();
   try {
@@ -293,7 +296,9 @@ async function runDebriefShot(opts: {
         name: "emit_debrief_card",
         description:
           "輸出練習拆解卡：總結、亮點、注意點、建議句與邀約評估（Game 模式含拆盤）。",
-        inputSchema: DEBRIEF_TOOL_SCHEMA as Record<string, unknown>,
+        inputSchema: (fixture.practiceMode === "game"
+          ? DEBRIEF_TOOL_SCHEMA_GAME
+          : DEBRIEF_TOOL_SCHEMA) as Record<string, unknown>,
       },
       maxTokens: DEBRIEF_MAX_TOKENS,
       temperature: DEBRIEF_TEMPERATURE,

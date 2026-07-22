@@ -161,7 +161,9 @@ export function temperatureBandDebriefInstruction(score: number): string {
     hot:
       "本場收尾時她很投入，拆解要如實反映高投入與明確機會，不得把整場說成毫無進展或失敗。",
   };
-  return `本場收尾升溫指數 ${clamped}/100（${band}）：${guidance[band]}\n` +
+  // 不回顯 band 英文字（frozen/warm…）——隱藏層給了字模型就會抄進可見欄位
+  // （eval 第 1/2 輪 8/20 debrief_temperature_leak 的直接源頭）。
+  return `本場收尾升溫指數 ${clamped}/100：${guidance[band]}\n` +
     "summary、vibe、dateChance 與各評語不得與這個溫度矛盾。\n" +
     "內部規則（違反即整張卡作廢）：所有欄位的文字一律用白話描述她的狀態，" +
     "絕不出現這些內部詞：升溫指數、溫度、score、band、temperature、" +

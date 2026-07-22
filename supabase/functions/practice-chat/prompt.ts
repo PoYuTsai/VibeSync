@@ -531,7 +531,7 @@ function relationshipStageInstruction(
 
 function gameDebriefSkillContract(): string {
   return `gameDebriefSkillContract(hidden guidance; Game only)
-- 七步聊天法：開場/資訊→價值→篩選→張力→收尾；變數識別=Value/Frame/Emotion/Investment/Safety，可見白話。
+- 七步聊天法：開場/資訊→價值→品味門檻→曖昧張力→收尾；變數識別=Value/Frame/Emotion/Investment/Safety，可見白話。
 - 關鍵轉折點引她原話；Failure State 寫具體卡點。
 - 速約窗口＝下一句怎麼把窗口接成行動：先鋪墊 / 低壓邀約 / 明確邀約 / 接住她給的窗口；未成熟修安全。suggestedLine/nextFirstLine＝下次第一句。
 - 卡點=問答乒乓時，下句先給內容／感受／立場／畫面，不得再用工作／偏好資訊題收尾。`;
