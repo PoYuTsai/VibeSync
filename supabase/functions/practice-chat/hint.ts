@@ -132,12 +132,6 @@ interface HintParseOptions {
   enforceGeneratedQuality?: boolean;
   /** Runtime semantic reviewer owns facts/grounding/style; parser keeps hard safety. */
   semanticAdjudicated?: boolean;
-  /**
-   * A generated candidate is never user-visible. Let the semantic reviewer
-   * repair visible safety/style defects, then run the normal hard guard again
-   * on the reviewed result before recording or returning it.
-   */
-  deferVisibleGuardsToSemantic?: boolean;
 }
 
 const MAX_REPLY_LENGTH = 80;
@@ -1435,15 +1429,13 @@ function requiredString(
   if (capped.length === 0) {
     throw new Error(`hint_missing_${field}`);
   }
-  if (options.deferVisibleGuardsToSemantic !== true) {
-    rejectBossyPasteableHintReply(capped, field);
-    rejectInternalLabelLeak(capped);
-    rejectL4UnsafeVisibleText(capped, "hint_l4_unsafe");
-    if (options.enforceGeneratedQuality === true) {
-      rejectKnownCannedPracticeText(capped, "hint_canned_visible_text");
-      if (field !== "coaching" && options.semanticAdjudicated !== true) {
-        rejectGenericPasteablePracticeText(capped, "hint_quality_invalid");
-      }
+  rejectBossyPasteableHintReply(capped, field);
+  rejectInternalLabelLeak(capped);
+  rejectL4UnsafeVisibleText(capped, "hint_l4_unsafe");
+  if (options.enforceGeneratedQuality === true) {
+    rejectKnownCannedPracticeText(capped, "hint_canned_visible_text");
+    if (field !== "coaching" && options.semanticAdjudicated !== true) {
+      rejectGenericPasteablePracticeText(capped, "hint_quality_invalid");
     }
   }
   return capped;
@@ -2241,7 +2233,6 @@ function assertGeneratedHintQuality(opts: {
   parseOptions: HintParseOptions;
 }): void {
   if (opts.parseOptions.enforceGeneratedQuality !== true) return;
-  if (opts.parseOptions.deferVisibleGuardsToSemantic === true) return;
   if (
     normalizedPracticeText(opts.warmUp) ===
       normalizedPracticeText(opts.steady)
