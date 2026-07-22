@@ -64,6 +64,8 @@ export interface PracticeAiLogRow {
     attemptDurationsMs: number[];
     failureClasses: PracticeGenerationFailureClass[];
     failureCodes: string[];
+    /** 管線世代標記；single_shot_v2 起帶，舊 row 沒有此鍵。 */
+    pipeline?: string;
   };
   response_body: null;
   // 失敗列才有值，且只由 sanitizePracticeFailureCode 白名單機器碼與

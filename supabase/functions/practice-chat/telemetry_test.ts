@@ -485,3 +485,28 @@ Deno.test("durable ai_logs row sanitizes failure codes", () => {
   });
   assertEquals(legacyRow.request_body.failureCodes, []);
 });
+
+Deno.test("buildPracticeAiLogRow stamps the pipeline marker into request_body when provided", () => {
+  const base = {
+    userId: "11111111-2222-3333-4444-555555555555",
+    model: "claude-sonnet-5",
+    telemetry: {
+      mode: "hint" as const,
+      practiceMode: "beginner" as const,
+      attempt: 1,
+      attemptDurationMs: null,
+      failureClass: null,
+      fallbackUsed: false,
+      failoverUsed: false,
+      totalDurationMs: 900,
+      promptChars: 100,
+    },
+    attemptDurationsMs: [900],
+    failureClasses: [],
+  };
+  const marked = buildPracticeAiLogRow({ ...base, pipeline: "single_shot_v2" });
+  assertEquals(marked.request_body.pipeline, "single_shot_v2");
+  // 沒帶 pipeline 的舊呼叫端維持原形狀（鍵不存在，不是 null）。
+  const unmarked = buildPracticeAiLogRow(base);
+  assertEquals("pipeline" in unmarked.request_body, false);
+});

@@ -1738,12 +1738,12 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
     }
   }
 
-  /// 0-8s → 8-25s → 25s+ 三段文案；對齊 server 管線的實際階段順序
-  /// （讀 transcript → 生成兩則回法 → 語意複核），但只按時間切換。
+  /// 0-8s → 8-20s → 20s+ 三段文案；對齊單發管線的實際階段順序
+  /// （讀 transcript → 單發生成 → 機械檢查/補發），但只按時間切換。
   String get _hintWaitStageLabel {
     if (_hintWaitElapsedSeconds < 8) return '教練正在讀你們最後幾句…';
-    if (_hintWaitElapsedSeconds < 25) return '正在想兩種回法…';
-    return '正在做品質雙重複核，確保建議可靠…';
+    if (_hintWaitElapsedSeconds < 20) return '正在想兩種回法…';
+    return '快好了，正在做最後檢查…';
   }
 
   @override

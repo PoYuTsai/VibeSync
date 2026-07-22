@@ -125,11 +125,11 @@ void main() {
     expect(find.textContaining('教練正在讀你們最後幾句'), findsNothing);
     expect(find.textContaining('8 秒'), findsOneWidget);
 
-    // 25s：切第三段。
-    await tester.pump(const Duration(seconds: 17));
-    expect(find.textContaining('正在做品質雙重複核'), findsOneWidget);
+    // 20s：切第三段（單發管線；reviewer 已拆，文案不得再稱雙重複核）。
+    await tester.pump(const Duration(seconds: 12));
+    expect(find.textContaining('快好了，正在做最後檢查'), findsOneWidget);
     expect(find.textContaining('正在想兩種回法'), findsNothing);
-    expect(find.textContaining('25 秒'), findsOneWidget);
+    expect(find.textContaining('20 秒'), findsOneWidget);
 
     // 載入結束：進度列消失、timer 必須取消 → pumpAndSettle 必收斂。
     controller.emit(
@@ -137,14 +137,14 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(progressRow, findsNothing);
-    expect(find.textContaining('正在做品質雙重複核'), findsNothing);
+    expect(find.textContaining('快好了，正在做最後檢查'), findsNothing);
   });
 
   testWidgets('等待中重新載入 → 秒數與文案從第一段重新起算', (tester) async {
     final controller = await pumpHintLoading(tester);
 
     await tester.pump(const Duration(seconds: 30));
-    expect(find.textContaining('正在做品質雙重複核'), findsOneWidget);
+    expect(find.textContaining('快好了，正在做最後檢查'), findsOneWidget);
 
     // 結束再重新載入（例如失敗後再點一次）→ 從 0 秒第一段重來。
     controller.emit(controller.currentState.copyWith(isHintLoading: false));
