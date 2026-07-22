@@ -1355,7 +1355,14 @@ function hintStageGuidance(
 }
 
 function parseObject(raw: string): Record<string, unknown> {
-  const parsed = JSON.parse(extractJsonObject(raw));
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(extractJsonObject(raw));
+  } catch {
+    // SyntaxError 原文可能夾模型輸出片段；收斂成機器碼（json_parse →
+    // telemetry 分類 invalid_json），單發管線攤平 error.message 後仍可分類。
+    throw new Error("hint_json_parse_failed");
+  }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error("hint_not_object");
   }

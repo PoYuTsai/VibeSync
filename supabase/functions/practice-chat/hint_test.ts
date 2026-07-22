@@ -5652,3 +5652,11 @@ Deno.test("HINT_TOOL_SCHEMA matches the parser contract (schema wide, parser str
     true,
   );
 });
+
+Deno.test("parseHintResult converts truncated JSON into a classifiable machine code", () => {
+  // 截斷輸出（max_tokens 前科）：不得拋原生 SyntaxError（訊息可能夾模型文字、
+  // 攤平後 telemetry 分類會落 unknown），必須是 json_parse 機器碼。
+  const error = assertThrows(() => parseHintResult('{"warmUp":"寫到一半'));
+  assert(error instanceof Error);
+  assertEquals(error.message, "hint_json_parse_failed");
+});

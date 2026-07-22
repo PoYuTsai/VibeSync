@@ -2,11 +2,11 @@
 // 跑法：deno test supabase/functions/practice-chat/debrief_card_test.ts
 
 import {
+  assert,
   assertEquals,
   assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
-  buildFallbackDebriefCard,
   DATE_CHANCES,
   DEBRIEF_TOOL_SCHEMA,
   parseDebriefCard,
@@ -2228,21 +2228,20 @@ Deno.test("generated Debrief normalizes every visible field to Taiwan Traditiona
       suggestedLine: "这个建议我愿意试试看。",
       vibe: "暖",
       dateChance: "medium",
-      dateChanceReason: "积极回应，细节仍少。",
-      nextInviteMove: "愿意时再尝试推进。",
+      dateChanceReason: "她积极回应，但细节仍少。",
+      nextInviteMove: "愿意时再问她一次再推进。",
       gameBreakdown: {
-        phaseReached: "尝试到推进",
+        phaseReached: "已到尝试推进的阶段",
         missedVariable: "细节还不够",
         failureState: "建议太空泛",
         nextFirstLine: "我愿意听你的建议",
-        inviteDirection: "确认意愿再推进",
+        inviteDirection: "先问她意愿再推进",
       },
     }),
     {
       allowGameBreakdown: true,
       requireCompleteCard: true,
       enforceGeneratedQuality: true,
-      semanticAdjudicated: true,
     },
   );
 
@@ -2250,14 +2249,14 @@ Deno.test("generated Debrief normalizes every visible field to Taiwan Traditiona
   assertEquals(c.strengths, ["你願意嘗試，也注意細節。"]);
   assertEquals(c.watchouts, ["建議別急著推進。"]);
   assertEquals(c.suggestedLine, "這個建議我願意試試看。");
-  assertEquals(c.dateChanceReason, "積極回應，細節仍少。");
-  assertEquals(c.nextInviteMove, "願意時再嘗試推進。");
+  assertEquals(c.dateChanceReason, "她積極回應，但細節仍少。");
+  assertEquals(c.nextInviteMove, "願意時再問她一次再推進。");
   assertEquals(c.gameBreakdown, {
-    phaseReached: "嘗試到推進",
+    phaseReached: "已到嘗試推進的階段",
     missedVariable: "細節還不夠",
     failureState: "建議太空泛",
     nextFirstLine: "我願意聽你的建議",
-    inviteDirection: "確認意願再推進",
+    inviteDirection: "先問她意願再推進",
   });
 });
 
@@ -2564,357 +2563,6 @@ Deno.test("parseDebriefCard 放行既定白話 sentinel「框架掉了」，其�
   );
 });
 
-Deno.test("buildFallbackDebriefCard returns safe standard and game fallback cards", () => {
-  const standard = buildFallbackDebriefCard({ practiceMode: "standard" });
-  const game = buildFallbackDebriefCard({ practiceMode: "game" });
-
-  assertEquals(standard.gameBreakdown, null);
-  assertEquals(typeof standard.summary, "string");
-  assertEquals(typeof standard.suggestedLine, "string");
-  assertEquals(game.gameBreakdown?.phaseReached, "互動建立中");
-  assertEquals(game.gameBreakdown?.failureState, "話題仍偏表面");
-  const visible = [
-    game.summary,
-    game.suggestedLine,
-    game.gameBreakdown?.phaseReached,
-    game.gameBreakdown?.missedVariable,
-    game.gameBreakdown?.failureState,
-    game.gameBreakdown?.nextFirstLine,
-    game.gameBreakdown?.inviteDirection,
-  ].join("\n");
-  assertEquals(visible.includes("P4"), false);
-  assertEquals(visible.includes("targetVariable"), false);
-});
-
-Deno.test("buildFallbackDebriefCard 低溫檔（frozen/cold）→ 冷 vibe 與低機會語氣", () => {
-  for (const score of [18, 35]) {
-    const card = buildFallbackDebriefCard({
-      practiceMode: "standard",
-      temperatureScore: score,
-    });
-    assertEquals(card.vibe, "冷");
-    assertEquals(card.dateChance, "low");
-    assertEquals(card.dateChanceReason.includes("保留"), true);
-    assertEquals(card.nextInviteMove.includes("先不約"), true);
-  }
-});
-
-Deno.test("debrief fallback only mentions dense questions when transcript supports it", () => {
-  const questionHeavy = buildFallbackDebriefCard({
-    turns: [
-      { role: "user", text: "妳住哪？" },
-      { role: "ai", text: "台北" },
-      { role: "user", text: "做什麼工作？" },
-      { role: "ai", text: "你在身家調查嗎" },
-    ],
-  });
-  assertEquals(questionHeavy.summary.includes("問句比較密"), true);
-  assertEquals(questionHeavy.watchouts[0].includes("問句偏密"), true);
-
-  const noQuestions = buildFallbackDebriefCard({
-    turns: [
-      { role: "user", text: "我最近也常忙到只想放空" },
-      { role: "ai", text: "真的 回家只想躺" },
-    ],
-  });
-  assertEquals(noQuestions.summary.includes("問句"), false);
-  assertEquals(noQuestions.watchouts[0].includes("問句"), false);
-  assertEquals(noQuestions.strengths[0], "有分享自己的狀態");
-
-  const gameNoQuestions = buildFallbackDebriefCard({
-    practiceMode: "game",
-    turns: [
-      { role: "user", text: "我最近也常忙到只想放空" },
-      { role: "ai", text: "真的 回家只想躺" },
-    ],
-  });
-  assertEquals(
-    gameNoQuestions.gameBreakdown?.failureState.includes("問"),
-    false,
-  );
-  assertEquals(gameNoQuestions.gameBreakdown?.missedVariable, "承接她的反應");
-});
-
-Deno.test("debrief fallback respects a direct exit boundary before Hint attribution", () => {
-  const appliedHintTurns = [{
-    turnIndex: 0,
-    type: "steady" as const,
-    originalHintText: "妳今天還好嗎？",
-    sentText: "妳今天還好嗎？",
-    exact: true,
-  }];
-  for (const practiceMode of ["beginner", "game"]) {
-    const card = buildFallbackDebriefCard({
-      practiceMode,
-      appliedHintTurns,
-      temperatureScore: 20,
-      turns: [
-        { role: "user", text: "妳今天還好嗎？" },
-        { role: "ai", text: "不要再傳了" },
-      ],
-    });
-    const visible = [
-      card.summary,
-      ...card.strengths,
-      ...card.watchouts,
-      card.suggestedLine,
-      card.dateChanceReason,
-      card.nextInviteMove,
-      ...(card.gameBreakdown ? Object.values(card.gameBreakdown) : []),
-    ].join("\n");
-
-    assertEquals(card.vibe, "冷");
-    assertEquals(card.dateChance, "low");
-    assertEquals(visible.includes("不再打擾"), true);
-    assertEquals(visible.includes("不邀約"), true);
-    assertEquals(visible.includes("哪一種"), false);
-    assertEquals(visible.includes("不要再傳了"), false);
-  }
-});
-
-Deno.test("warm/hot debrief fallback keeps summary aligned with the invite window", () => {
-  for (const temperatureScore of [70, 90]) {
-    const card = buildFallbackDebriefCard({
-      temperatureScore,
-      turns: [
-        { role: "user", text: "妳週末會去哪？" },
-        { role: "ai", text: "可能會逛展" },
-        { role: "user", text: "哪個展？" },
-        { role: "ai", text: "還沒決定欸" },
-      ],
-    });
-    assertEquals(card.summary.includes("持續投入"), true);
-    assertEquals(card.summary.includes("問句比較密"), false);
-    assertEquals(card.watchouts[0].includes("具體、低壓"), true);
-  }
-});
-
-Deno.test("buildFallbackDebriefCard 中溫檔（neutral）→ 維持現行中性罐頭", () => {
-  const neutral = buildFallbackDebriefCard({
-    practiceMode: "standard",
-    temperatureScore: 50,
-  });
-  const omitted = buildFallbackDebriefCard({ practiceMode: "standard" });
-  assertEquals(neutral, omitted);
-  assertEquals(neutral.vibe, "中性");
-  assertEquals(neutral.dateChance, "low");
-});
-
-Deno.test("buildFallbackDebriefCard warm → 暖 vibe + dateChance medium", () => {
-  const card = buildFallbackDebriefCard({
-    practiceMode: "standard",
-    temperatureScore: 70,
-  });
-  assertEquals(card.vibe, "暖");
-  assertEquals(card.dateChance, "medium");
-});
-
-Deno.test("buildFallbackDebriefCard hot → 暖 vibe + dateChance high 與正向語氣", () => {
-  const card = buildFallbackDebriefCard({
-    practiceMode: "standard",
-    temperatureScore: 90,
-  });
-  assertEquals(card.vibe, "暖");
-  assertEquals(card.dateChance, "high");
-  assertEquals(card.dateChanceReason.includes("投入"), true);
-  assertEquals(card.nextInviteMove.includes("先不約"), false);
-});
-
-Deno.test("buildFallbackDebriefCard 溫度缺席或非法 → fail-safe 維持中性不 throw", () => {
-  const omitted = buildFallbackDebriefCard({ practiceMode: "standard" });
-  const nan = buildFallbackDebriefCard({
-    practiceMode: "standard",
-    temperatureScore: Number.NaN,
-  });
-  assertEquals(omitted.vibe, "中性");
-  assertEquals(omitted.dateChance, "low");
-  assertEquals(nan, omitted);
-});
-
-Deno.test("buildFallbackDebriefCard 分檔後可見輸出不含內部詞，dateChance 落在合法值", () => {
-  for (const score of [10, 30, 50, 70, 95, undefined]) {
-    for (const practiceMode of ["standard", "game"]) {
-      const card = buildFallbackDebriefCard({
-        practiceMode,
-        temperatureScore: score,
-      });
-      assertEquals(DATE_CHANCES.includes(card.dateChance), true);
-      assertEquals(VIBES.includes(card.vibe), true);
-      const visible = [
-        card.summary,
-        ...card.strengths,
-        ...card.watchouts,
-        card.suggestedLine,
-        card.dateChanceReason,
-        card.nextInviteMove,
-        ...(card.gameBreakdown ? Object.values(card.gameBreakdown) : []),
-      ].join("\n");
-      for (
-        const banned of [
-          "band",
-          "score",
-          "temperature",
-          "frozen",
-          "warm",
-          "hot",
-          "升溫指數",
-          "篩選",
-          "推拉",
-          "可得性",
-          "框架",
-          "賦格",
-          "DHV",
-        ]
-      ) {
-        assertEquals(
-          visible.includes(banned),
-          false,
-          `visible output leaked "${banned}" at score=${score} mode=${practiceMode}`,
-        );
-      }
-    }
-  }
-});
-
-Deno.test("buildFallbackDebriefCard 高溫＋照提示 → 仍歸功提示且 dateChance high", () => {
-  const card = buildFallbackDebriefCard({
-    practiceMode: "game",
-    temperatureScore: 88,
-    appliedHintTurns: [
-      {
-        turnIndex: 2,
-        type: "steady",
-        originalHintText: "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？",
-        sentText: "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？",
-        exact: true,
-      },
-    ],
-  });
-
-  assertEquals(card.dateChance, "high");
-  assertEquals(card.vibe, "暖");
-  assertEquals(card.summary.includes("照提示"), true);
-});
-
-Deno.test("buildFallbackDebriefCard credits exact applied Hint instead of blaming the user", () => {
-  const card = buildFallbackDebriefCard({
-    practiceMode: "game",
-    appliedHintTurns: [
-      {
-        turnIndex: 2,
-        type: "steady",
-        originalHintText: "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？",
-        sentText: "我對妳剛說的那個點有點好奇，哪個部分最吸引妳？",
-        exact: true,
-      },
-    ],
-  });
-
-  const visible = [
-    card.summary,
-    ...card.strengths,
-    ...card.watchouts,
-    card.suggestedLine,
-    card.dateChanceReason,
-    card.nextInviteMove,
-    card.gameBreakdown?.failureState,
-    card.gameBreakdown?.nextFirstLine,
-    card.gameBreakdown?.inviteDirection,
-  ].join("\n");
-
-  assertEquals(visible.includes("照提示"), true);
-  assertEquals(visible.includes("提示偏保守"), true);
-  assertEquals(visible.includes("問題偏多"), false);
-  assertEquals(visible.includes("盤問"), false);
-});
-
-Deno.test("applied-Hint debrief fallback anchors its next line to the latest safe topic", () => {
-  const appliedHintTurns = [{
-    turnIndex: 0,
-    type: "steady" as const,
-    originalHintText: "我也有點好奇",
-    sentText: "我也有點好奇",
-    exact: true,
-  }];
-  const cases = [
-    { latest: "我最近都喝手沖咖啡", anchor: "咖啡" },
-    { latest: "週末看了兩部電影", anchor: "電影" },
-    { latest: "下個月想去日本旅行", anchor: "旅行" },
-    { latest: "我換了新工作，超開心", anchor: "新工作" },
-    { latest: "我剛看完一部工作題材電影，超好看", anchor: "電影" },
-    { latest: "我在忙著準備演唱會，好期待", anchor: "音樂" },
-    { latest: "最近休息時都在找新餐廳", anchor: "吃的" },
-  ];
-  const lines = cases.map(({ latest, anchor }) => {
-    const card = buildFallbackDebriefCard({
-      practiceMode: "beginner",
-      appliedHintTurns,
-      turns: [
-        { role: "user", text: "我也有點好奇" },
-        { role: "ai", text: latest },
-      ],
-    });
-    assertEquals(card.suggestedLine.includes(anchor), true, card.suggestedLine);
-    assertEquals(card.suggestedLine.includes("放鬆感"), false);
-    assertEquals(card.suggestedLine.includes("真的累了"), false);
-    return card.suggestedLine;
-  });
-  // The two movie phrasings intentionally share one topic-specific line; all
-  // six semantic topics still need distinct, non-generic follow-ups.
-  assertEquals(new Set(lines).size, 6);
-});
-
-Deno.test("applied-Hint topic fallback does not confuse photos or hard work with film or food", () => {
-  const appliedHintTurns = [{
-    turnIndex: 0,
-    type: "steady" as const,
-    originalHintText: "我也有點好奇",
-    sentText: "我也有點好奇",
-    exact: true,
-  }];
-  for (
-    const { latest, forbidden } of [
-      { latest: "我剛拍了很多照片", forbidden: "電影" },
-      { latest: "最近工作真的很吃力", forbidden: "吃的" },
-    ]
-  ) {
-    const card = buildFallbackDebriefCard({
-      practiceMode: "beginner",
-      appliedHintTurns,
-      turns: [
-        { role: "user", text: "我也有點好奇" },
-        { role: "ai", text: latest },
-      ],
-    });
-    assertEquals(card.suggestedLine.includes(forbidden), false, latest);
-  }
-});
-
-Deno.test("buildFallbackDebriefCard treats edited applied Hint as reference, not exact copy", () => {
-  const card = buildFallbackDebriefCard({
-    practiceMode: "game",
-    appliedHintTurns: [
-      {
-        turnIndex: 2,
-        type: "warm_up",
-        originalHintText: "先接住她剛剛說的點",
-        sentText: "我有點好奇妳剛說的點，但先讓我猜一下",
-        exact: false,
-      },
-    ],
-  });
-
-  const visible = [
-    card.summary,
-    ...card.strengths,
-    ...card.watchouts,
-  ].join("\n");
-
-  assertEquals(visible.includes("參考提示"), true);
-  assertEquals(visible.includes("有照提示"), false);
-  assertEquals(visible.includes("照貼"), false);
-});
-
 Deno.test("DEBRIEF_TOOL_SCHEMA matches the parser contract (schema wide, parser strict)", () => {
   const schema = DEBRIEF_TOOL_SCHEMA as {
     type: string;
@@ -2978,4 +2626,10 @@ Deno.test("DEBRIEF_TOOL_SCHEMA matches the parser contract (schema wide, parser 
     Object.keys(legal).every((key) => key in schema.properties),
     true,
   );
+});
+
+Deno.test("parseDebriefCard converts truncated JSON into a classifiable machine code", () => {
+  const error = assertThrows(() => parseDebriefCard('{"summary":"寫到一半'));
+  assert(error instanceof Error);
+  assertEquals(error.message, "debrief_json_parse_failed");
 });

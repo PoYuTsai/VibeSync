@@ -3,7 +3,6 @@ import {
   checkQuota,
   classifyQuotaRpcError,
   isPlainObject,
-  normalizeTier,
   resolveLimits,
   type SubscriptionRow,
   TEST_EMAILS,
@@ -54,8 +53,8 @@ import {
 import { DEEPSEEK_MODEL, type DeepSeekArgs } from "./deepseek.ts";
 import {
   DEBRIEF_QUALITY_SCHEMA_VERSION,
+  DEBRIEF_TOOL_SCHEMA,
   type DebriefCard,
-  parseDebriefCandidateObject,
   parseDebriefCard,
 } from "./debrief_card.ts";
 import {
@@ -130,18 +129,9 @@ const CHAT_TEMPERATURE = 0.9;
 const CHAT_GENERATION_ATTEMPTS = 2;
 const DEBRIEF_MAX_TOKENS = 1200;
 const DEBRIEF_TEMPERATURE = 0.5;
-const DEBRIEF_GENERATION_ATTEMPTS = 1;
-const DEBRIEF_CLAUDE_GENERATION_ATTEMPTS = 2;
-// Production Beginner Debrief has crossed the former 12s ceiling before the
-// larger Game card even reaches semantic review. Keep the request bounded, but
-// give DeepSeek one realistic first-hit window; the 85s request deadline still
-// reserves ample time for Claude generation failover and semantic validation.
-const DEBRIEF_TIMEOUT_MS = 18000;
-// Game Debrief has a larger prompt and five additional grounded fields.
-// Generation is followed by semantic review; the 90s client window and 105s
-// owner fence deliberately favor a verified result over a fast 503.
-const DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS = 24000;
-const DEBRIEF_IN_FLIGHT_STALE_MS = 105000;
+// 新死線 45s＋緩衝；防 crash 的 in-flight 標記不再卡使用者 105 秒。
+// 若觀測到重複生成，一行 revert 回 105000。
+const DEBRIEF_IN_FLIGHT_STALE_MS = 60000;
 // 單發重設計 v2：Sonnet 5 一發（15s）＋Haiku 4.5 補發（15s）＋record/回傳緩衝。
 const HINT_REQUEST_DEADLINE_MS = 35000;
 const HINT_SINGLE_SHOT_TIMEOUT_MS = 15000;
@@ -152,27 +142,13 @@ const HINT_MAX_TOKENS = 500;
 const HINT_TEMPERATURE = 0.45;
 const SERVER_HINT_DECISION_RATIONALE =
   "只依據本場逐字稿與已知角色資料；貼句已依目前關係階段與邀約路線校驗。";
-// Normal success paths keep their existing call depth. The larger failure-only
-// ceilings reserve one final fresh Claude candidate plus its two mandatory
-// reviews after both the DeepSeek and first Claude candidates fail.
-const DEBRIEF_PROVIDER_CALL_BUDGET = 13;
-const DEBRIEF_SEMANTIC_REVIEWER_CALL_BUDGET = 6;
-// Every generated candidate needs a full independent semantic review plus the
-// fact-only verifier before it can be recorded.
-const PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION = 2;
-// The mobile Debrief request times out at 90s and the DB owner fence at 105s.
-// Start at handler entry and leave 5s for record/response plus 20s owner margin.
-const DEBRIEF_REQUEST_DEADLINE_MS = 85000;
+// 單發重設計 v2：Sonnet 5 一發（20s）＋Haiku 4.5 補發（20s）＋record/回傳緩衝。
+const DEBRIEF_REQUEST_DEADLINE_MS = 45000;
+const DEBRIEF_SINGLE_SHOT_TIMEOUT_MS = 20000;
 const TEMPERATURE_JUDGE_MAX_TOKENS = 450;
 const TEMPERATURE_JUDGE_TEMPERATURE = 0.2;
 const DEEPSEEK_TIMEOUT_MS = 30000;
 const TELEMETRY_PERSIST_TIMEOUT_MS = 1500;
-
-function claudeFallbackModelForTier(tier: string | null): string {
-  return normalizeTier(tier) === "free"
-    ? CLAUDE_HAIKU_MODEL
-    : CLAUDE_SONNET_MODEL;
-}
 
 function elapsedMilliseconds(startedAt: number): number {
   return Math.max(0, Math.round(performance.now() - startedAt));
@@ -191,16 +167,6 @@ function appendPracticeFailureCodes(
     if (target.length >= 3) break;
     if (!target.includes(code)) target.push(code);
   }
-}
-
-function semanticProviderCallsToDebit(
-  reportedCalls: number,
-  allocatedCalls: number,
-): number {
-  return Number.isInteger(reportedCalls) && reportedCalls >= 0 &&
-      reportedCalls <= allocatedCalls
-    ? reportedCalls
-    : allocatedCalls;
 }
 
 function assertReviewedHintSemanticContract(
@@ -327,32 +293,6 @@ function assertReviewedHintSemanticContract(
     throw new SemanticHintActiveReplyQuestionError(invalidReplyFields);
   }
   return assessment;
-}
-
-function practiceProviderTimeoutMs(
-  maxTimeoutMs: number,
-  absoluteDeadlineAtMs: number,
-  monotonicNow: () => number,
-  deadlineErrorCode: string,
-): number {
-  const remainingMs = Math.floor(absoluteDeadlineAtMs - monotonicNow());
-  if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
-    throw new Error(deadlineErrorCode);
-  }
-  return Math.min(maxTimeoutMs, remainingMs);
-}
-
-function debriefProviderTimeoutMs(
-  maxTimeoutMs: number,
-  absoluteDeadlineAtMs: number,
-  monotonicNow: () => number,
-): number {
-  return practiceProviderTimeoutMs(
-    maxTimeoutMs,
-    absoluteDeadlineAtMs,
-    monotonicNow,
-    "practice_debrief_deadline_exceeded",
-  );
 }
 
 function isFreshDebriefGeneration(
@@ -726,79 +666,6 @@ function getErrorMessage(e: unknown): string {
  * 格式／驗證類失敗（JSON 壞掉或 hint guard 拒絕）才適合帶「上一版被拒絕」的
  * 重試指令；timeout／上游 5xx 帶這句是誤導（模型根本沒輸出被拒的 JSON）。
  */
-function debriefRetryReason(error: unknown): string {
-  const message = getErrorMessage(error);
-  if (message.includes("debrief_quality_invalid_unsupported_detail")) {
-    return "可貼回覆把她的個人事實錯寫成使用者自己的事實";
-  }
-  if (message.includes("debrief_quality_invalid_suggested_line_not_grounded")) {
-    return "suggestedLine 補了逐字稿沒有的事實；她問劇名、店名或地點但逐字稿沒答案時，不得編名稱，改用不爆雷、還在想怎麼形容或反問偏好來接";
-  }
-  if (message.includes("debrief_hint_assessment_revision_required")) {
-    return "上一版把 exact Hint 當成問題或反轉策略；若她後續有接球/延續且沒有明確拒絕或糾正，hintAssessment 必須 preserved，visible 欄位只能寫下一步，不得檢討 Hint";
-  }
-  if (message.includes("debrief_hint_assessment_missing")) {
-    return "缺少最外層 hidden-only hintAssessment；exact Hint 後續有接球時必須 preserved";
-  }
-  if (message.includes("debrief_hint_assessment")) {
-    return "已認定 Hint 策略延續，卻又把同一句批成禮貌收尾、沒給球或太保守";
-  }
-  if (
-    message.includes("semantic_fact_verification_rejected") ||
-    message.includes("semantic_adjudication_fact_rejection")
-  ) {
-    return "獨立事實核驗發現無證據事實或人物 owner 錯置；只保留逐字稿／server context 能支持的內容，移除使用者沒說過的第一人稱經歷並修正承諾方向";
-  }
-  if (message.includes("semantic_adjudication_rejected")) {
-    return "獨立語意複核拒絕上一版；重新檢查逐字稿 grounding、欄位品質、策略一致性與安全界線，完整重寫有問題的內容";
-  }
-  if (message.includes("overlong")) {
-    return "欄位太長，若直接裁尾會變成半句";
-  }
-  if (
-    message.includes("debrief_quality_invalid") ||
-    message.includes("debrief_canned_visible_text")
-  ) {
-    return "內容太空泛、重複舊提示，或沒有承認提示與逐字稿證據";
-  }
-  const failureClass = classifyPracticeGenerationFailure(error);
-  if (message.includes("game_breakdown_missing")) {
-    return "Game 拆盤五個欄位有缺漏或空白";
-  }
-  if (failureClass === "visible_text_guard") {
-    return "可見文字含內部標籤或越界措辭";
-  }
-  if (failureClass === "invalid_json") {
-    return "不是可解析的單一 JSON 物件";
-  }
-  if (failureClass === "schema_invalid") {
-    return "拆解卡必填欄位缺漏或格式錯誤";
-  }
-  return "上游生成未完成";
-}
-
-function withDebriefRetryInstruction(
-  messages: ChatMessage[],
-  error: unknown,
-  isGame: boolean,
-): ChatMessage[] {
-  const gameReminder = isGame
-    ? " Game 的 gameBreakdown 必須含 phaseReached、missedVariable、failureState、nextFirstLine、inviteDirection 五個非空字串。"
-    : " gameBreakdown 必須維持 null。";
-  return [
-    ...messages,
-    {
-      role: "user",
-      content: `上一版拆解 JSON 被拒絕：${debriefRetryReason(error)}。` +
-        "請重新輸出唯一且完整的 JSON 物件，不要 markdown 或說明文字。" +
-        "summary、strengths、watchouts、suggestedLine、vibe、dateChance、dateChanceReason、nextInviteMove 都必填且不可空白；" +
-        "strengths、watchouts 每點 30 字內，其餘敘述欄位 40 字內；太長要重寫縮句，不得裁掉句尾，所有句子都要完整收尾；" +
-        "vibe 只能是暖／中性／冷，dateChance 只能是 low／medium／high。" +
-        gameReminder,
-    },
-  ];
-}
-
 function isMissingPracticeHintRpc(message: string): boolean {
   const normalized = message.toLowerCase();
   const referencesHintRpc =
@@ -3474,10 +3341,8 @@ export function createPracticeChatHandler(
       }
 
       let debriefCard: DebriefCard | null = null;
-      let debriefProvider = apiKey ? "deepseek" : "anthropic";
-      let debriefModel = apiKey
-        ? DEEPSEEK_MODEL
-        : claudeFallbackModelForTier(sub.tier);
+      const debriefProvider = "anthropic";
+      let debriefModel = CLAUDE_SONNET_MODEL;
       let debriefFailoverUsed = false;
       const debriefPracticeMode = ledger.practiceMode ?? request.practiceMode;
       const debriefGenerationStartedAt = performance.now();
@@ -3487,13 +3352,33 @@ export function createPracticeChatHandler(
       const debriefAttemptDurationsMs: number[] = [];
       const debriefFailureClasses: PracticeGenerationFailureClass[] = [];
       const debriefFailureCodes: string[] = [];
-      let debriefSemanticProviderCalls = 0;
-      // Change A：debrief 迴圈保留最佳「通過完整客觀硬 gate」候選。語意複審對
-      // 非安全類 reject 時存下；budget 燒完仍無成功候選就供給它、不再一律 503。
-      let bestGatePassingDebrief: DebriefCard | null = null;
-      let debriefSalvageUsed = false;
+      const recordDebriefAttemptFailure = (
+        failure: SingleShotAttemptFailure,
+      ) => {
+        const failureError = new Error(failure.code);
+        const failureClass = classifyPracticeGenerationFailure(failureError);
+        debriefLastFailureClass = failureClass;
+        debriefAttemptDurationsMs.push(failure.durationMs);
+        debriefAttemptCount = debriefAttemptDurationsMs.length;
+        debriefFailureClasses.push(failureClass);
+        appendPracticeFailureCodes(debriefFailureCodes, failureError);
+        logWarn("practice_chat_generation_attempt", {
+          user: summarizeUser(user.id),
+          provider: "anthropic",
+          model: failure.model,
+          ...buildPracticeGenerationTelemetry({
+            mode: "debrief",
+            practiceMode: debriefPracticeMode,
+            attempt: debriefAttemptDurationsMs.length,
+            attemptDurationMs: failure.durationMs,
+            failureClass,
+            fallbackUsed: false,
+            totalDurationMs: null,
+            promptChars: debriefPromptChars,
+          }),
+        });
+      };
       try {
-        let lastError: unknown;
         const baseDebriefMessages = buildDebriefMessages(
           request.turns,
           request.profile,
@@ -3533,357 +3418,69 @@ export function createPracticeChatHandler(
           partnerFactualEvidence: debriefFactualEvidence.partner,
           trustedFactClaims: debriefFactualEvidence.claims,
           enforceGeneratedQuality: true,
-          semanticAdjudicated: true,
         } as const;
-        // Change A：降級供給候選必須通過與「正式成功路徑相同」的硬內容 gate
-        // （generatedDebriefParseOptions，semanticAdjudicated=true：canned／欄位角色／
-        // schema 全開）。事實與安全風險已由呼叫端 issueKinds 排除（unsafe／
-        // unsupported_fact 一律不進來），故此處只需確保結構契約與正式成功一致。
-        // 任何硬 gate 失敗一律回 null，寧可 503。
-        const salvageDebriefCandidate = (
-          raw: Record<string, unknown>,
-        ): DebriefCard | null => {
-          try {
-            return parseDebriefCard(JSON.stringify(raw), {
-              ...generatedDebriefParseOptions,
-            });
-          } catch {
-            return null;
-          }
-        };
-        const parseGeneratedDebrief = async (
-          rawCard: string,
-          candidateProvider: "deepseek" | "anthropic",
-        ): Promise<DebriefCard> => {
-          const rawCandidate = parseDebriefCandidateObject(rawCard);
-          const candidateCard = parseDebriefCard(rawCard, {
-            ...generatedDebriefParseOptions,
-            deferHintAssessmentToSemantic: true,
-            deferVisibleGuardsToSemantic: true,
-          });
-          const rawHintAssessment = rawCandidate.hintAssessment;
-          const canonicalHintAssessment = (() => {
-            if (
-              typeof rawHintAssessment === "object" &&
-              rawHintAssessment !== null &&
-              !Array.isArray(rawHintAssessment)
-            ) {
-              const assessment = rawHintAssessment as Record<string, unknown>;
-              if (
-                assessment.verdict === "preserved" &&
-                assessment.revisedEvidenceQuote === null
-              ) {
-                return { verdict: "preserved", revisedEvidenceQuote: null };
-              }
-              if (
-                assessment.verdict === "revised" &&
-                typeof assessment.revisedEvidenceQuote === "string" &&
-                assessment.revisedEvidenceQuote.trim().length > 0 &&
-                assessment.revisedEvidenceQuote.length <= 120
-              ) {
-                return {
-                  verdict: "revised",
-                  revisedEvidenceQuote: assessment.revisedEvidenceQuote.trim(),
-                };
-              }
-            }
-            return { verdict: "preserved", revisedEvidenceQuote: null };
-          })();
-          const candidate: Record<string, unknown> = {
-            ...candidateCard,
-            ...((ledgerAppliedHintTurns?.length ?? 0) > 0
-              ? { hintAssessment: canonicalHintAssessment }
-              : {}),
-          };
-          if (!deps.semanticAdjudicate) {
-            throw new Error("semantic_adjudication_unavailable");
-          }
-          const futureClaudeCandidateReserve =
-            candidateProvider === "anthropic" &&
-              debriefAttemptCount <
-                DEBRIEF_GENERATION_ATTEMPTS +
-                  DEBRIEF_CLAUDE_GENERATION_ATTEMPTS
-              ? 1 + PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION
-              : 0;
-          const semanticCallBudget = Math.max(
-            0,
-            Math.min(
-              DEBRIEF_SEMANTIC_REVIEWER_CALL_BUDGET,
-              DEBRIEF_PROVIDER_CALL_BUDGET - debriefAttemptCount -
-                debriefSemanticProviderCalls - futureClaudeCandidateReserve,
-            ),
-          );
-          let semantic;
-          try {
-            semantic = await deps.semanticAdjudicate({
-              surface: "debrief",
-              practiceMode: debriefPracticeMode,
-              candidate,
-              turns: request.turns,
-              appliedHintTurns: ledgerAppliedHintTurns,
-              trustedGenerationContext: JSON.stringify({
-                temperatureScore: ledger.temperatureScore ??
-                  difficultyStartTemperature,
-                familiarityScore: ledger.familiarityScore ?? 0,
-                partnerMood: partnerStateFromLedger(ledger)?.mood ??
-                  relationshipThreadState?.partnerState?.mood ?? null,
-                sharedFacts: debriefFactualEvidence.shared,
-                partnerFacts: debriefFactualEvidence.partner,
-                typedFacts: debriefFactualEvidence.claims,
-              }),
-              candidateProvider,
-              maxProviderCalls: semanticCallBudget,
-              retryTransientFactVerifierOnce:
-                candidateProvider === "deepseek" && semanticCallBudget >= 3,
-              retryTransientFullReviewerOnce:
-                candidateProvider === "anthropic" && semanticCallBudget >= 3,
-              deepSeekApiKey: apiKey,
-              claudeApiKey,
-              claudeModel: claudeFallbackModelForTier(sub.tier),
-              callDeepSeek: deps.callDeepSeek,
-              callClaude: deps.callClaude,
-              absoluteDeadlineAtMs: debriefAbsoluteDeadlineAtMs,
-              monotonicNow,
-              validateCandidate: (reviewedCandidate) => {
-                parseDebriefCard(JSON.stringify(reviewedCandidate), {
-                  ...generatedDebriefParseOptions,
-                });
-              },
-            });
-            debriefSemanticProviderCalls += semanticProviderCallsToDebit(
-              semantic.providerCalls,
-              semanticCallBudget,
-            );
-          } catch (error) {
-            debriefSemanticProviderCalls += error instanceof
-                SemanticAdjudicationError
-              ? semanticProviderCallsToDebit(
-                error.providerCalls,
-                semanticCallBudget,
-              )
-              : semanticCallBudget;
-            // Change A/B：非安全類語意 reject 時保留這份已過完整客觀硬 gate 的
-            // 候選。unsafe 與 unsupported_fact（誤導使用者理解對方意思的事實）
-            // 屬硬底線，一律不留，寧可 503 也不供給不安全或事實錯誤的拆解。
-            if (
-              error instanceof SemanticAdjudicationError &&
-              bestGatePassingDebrief === null &&
-              !error.issueKinds.includes("unsafe") &&
-              !error.issueKinds.includes("unsupported_fact")
-            ) {
-              const salvaged = salvageDebriefCandidate(candidate);
-              if (salvaged) {
-                bestGatePassingDebrief = salvaged;
-              }
-            }
-            throw error;
-          }
-          const reviewedCard = parseDebriefCard(
-            JSON.stringify(semantic.candidate),
-            { ...generatedDebriefParseOptions },
-          );
-          logInfo("practice_chat_semantic_adjudication", {
-            user: summarizeUser(user.id),
-            surface: "debrief",
+        debriefPromptChars = countPromptChars(baseDebriefMessages);
+        if (!claudeApiKey || !deps.callClaude) {
+          throw new Error("claude_unavailable");
+        }
+        const outcome = await runSingleShot<DebriefCard>({
+          callClaude: deps.callClaude,
+          apiKey: claudeApiKey,
+          messages: baseDebriefMessages,
+          forcedTool: {
+            name: "emit_debrief_card",
+            description:
+              "輸出練習拆解卡：總結、亮點、注意點、建議句與邀約評估（Game 模式含拆盤）。",
+            inputSchema: DEBRIEF_TOOL_SCHEMA as Record<string, unknown>,
+          },
+          maxTokens: DEBRIEF_MAX_TOKENS,
+          temperature: DEBRIEF_TEMPERATURE,
+          perCallTimeoutMs: DEBRIEF_SINGLE_SHOT_TIMEOUT_MS,
+          deadlineAtMs: debriefAbsoluteDeadlineAtMs,
+          now: monotonicNow,
+          models: [CLAUDE_SONNET_MODEL, CLAUDE_HAIKU_MODEL],
+          // 機械守門全套照舊：parseDebriefCard（完整卡契約/守門詞表/接地/
+          // hintAssessment/Game 拆盤）。丟錯＝該發判敗立即進補發，不 repair 復活。
+          validate: (raw) =>
+            parseDebriefCard(raw, { ...generatedDebriefParseOptions }),
+        });
+        for (const failure of outcome.attemptFailures) {
+          recordDebriefAttemptFailure(failure);
+        }
+        debriefCard = outcome.result;
+        debriefModel = outcome.model;
+        debriefFailoverUsed = outcome.attemptFailures.length > 0;
+        debriefAttemptCount = outcome.attemptFailures.length + 1;
+        debriefLastFailureClass = null;
+        debriefAttemptDurationsMs.push(outcome.durationMs);
+        logInfo("practice_chat_generation_attempt", {
+          user: summarizeUser(user.id),
+          provider: debriefProvider,
+          model: debriefModel,
+          ...buildPracticeGenerationTelemetry({
+            mode: "debrief",
             practiceMode: debriefPracticeMode,
-            provider: semantic.provider ?? "test",
-            providerCalls: semantic.providerCalls,
-            repaired: semantic.repaired,
-            issueKinds: semantic.issueKinds,
-          });
-          return reviewedCard;
-        };
-        if (apiKey) {
-          for (
-            let attempt = 1;
-            attempt <= DEBRIEF_GENERATION_ATTEMPTS;
-            attempt++
-          ) {
-            const debriefMessages = baseDebriefMessages;
-            const providerTimeoutMs = debriefProviderTimeoutMs(
-              DEBRIEF_TIMEOUT_MS,
-              debriefAbsoluteDeadlineAtMs,
-              monotonicNow,
-            );
-            debriefAttemptCount += 1;
-            debriefPromptChars = countPromptChars(debriefMessages);
-            const attemptStartedAt = performance.now();
-            try {
-              const rawCard = await deps.callDeepSeek({
-                apiKey,
-                messages: debriefMessages,
-                maxTokens: DEBRIEF_MAX_TOKENS,
-                temperature: DEBRIEF_TEMPERATURE,
-                jsonMode: true,
-                timeoutMs: providerTimeoutMs,
-                // Debrief is a strict JSON contract. Hidden reasoning consumes
-                // the same latency/output budget and caused avoidable first-hit
-                // timeouts without improving the server-validated card.
-                thinking: { type: "disabled" },
-              });
-              debriefCard = await parseGeneratedDebrief(
-                rawCard,
-                "deepseek",
-              );
-              debriefLastFailureClass = null;
-              const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
-              debriefAttemptDurationsMs.push(attemptDurationMs);
-              logInfo("practice_chat_generation_attempt", {
-                user: summarizeUser(user.id),
-                provider: "deepseek",
-                model: DEEPSEEK_MODEL,
-                ...buildPracticeGenerationTelemetry({
-                  mode: "debrief",
-                  practiceMode: debriefPracticeMode,
-                  attempt: debriefAttemptCount,
-                  attemptDurationMs,
-                  failureClass: null,
-                  fallbackUsed: false,
-                  totalDurationMs: null,
-                  promptChars: debriefPromptChars,
-                }),
-              });
-              break;
-            } catch (e) {
-              lastError = e;
-              debriefLastFailureClass = classifyPracticeGenerationFailure(e);
-              const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
-              debriefAttemptDurationsMs.push(attemptDurationMs);
-              debriefFailureClasses.push(debriefLastFailureClass);
-              appendPracticeFailureCodes(debriefFailureCodes, e);
-              logWarn("practice_chat_generation_attempt", {
-                user: summarizeUser(user.id),
-                provider: "deepseek",
-                model: DEEPSEEK_MODEL,
-                ...buildPracticeGenerationTelemetry({
-                  mode: "debrief",
-                  practiceMode: debriefPracticeMode,
-                  attempt: debriefAttemptCount,
-                  attemptDurationMs,
-                  failureClass: debriefLastFailureClass,
-                  fallbackUsed: false,
-                  totalDurationMs: null,
-                  promptChars: debriefPromptChars,
-                }),
-              });
-            }
-          }
-        }
-
-        for (
-          let claudeAttempt = 1;
-          debriefCard === null &&
-          claudeAttempt <= DEBRIEF_CLAUDE_GENERATION_ATTEMPTS &&
-          claudeApiKey && deps.callClaude &&
-          DEBRIEF_PROVIDER_CALL_BUDGET - debriefAttemptCount -
-                debriefSemanticProviderCalls >=
-            1 + PRACTICE_REQUIRED_REVIEWER_CALLS_PER_GENERATION;
-          claudeAttempt++
-        ) {
-          const providerTimeoutMs = debriefProviderTimeoutMs(
-            DEBRIEF_CLAUDE_FAILOVER_TIMEOUT_MS,
-            debriefAbsoluteDeadlineAtMs,
-            monotonicNow,
-          );
-          const shouldRepair = lastError !== undefined &&
-            (debriefLastFailureClass === "visible_text_guard" ||
-              debriefLastFailureClass === "invalid_json" ||
-              debriefLastFailureClass === "schema_invalid" ||
-              debriefLastFailureClass === "semantic_rejected");
-          const debriefMessages = shouldRepair
-            ? withDebriefRetryInstruction(
-              baseDebriefMessages,
-              lastError,
-              debriefPracticeMode === "game",
-            )
-            : baseDebriefMessages;
-          debriefFailoverUsed = debriefAttemptCount > 0;
-          debriefAttemptCount += 1;
-          debriefPromptChars = countPromptChars(debriefMessages);
-          const attemptStartedAt = performance.now();
-          try {
-            debriefModel = claudeFallbackModelForTier(sub.tier);
-            const rawCard = await deps.callClaude({
-              apiKey: claudeApiKey,
-              model: debriefModel,
-              messages: debriefMessages,
-              maxTokens: DEBRIEF_MAX_TOKENS,
-              temperature: DEBRIEF_TEMPERATURE,
-              timeoutMs: providerTimeoutMs,
-            });
-            debriefCard = await parseGeneratedDebrief(
-              rawCard,
-              "anthropic",
-            );
-            debriefProvider = "anthropic";
-            debriefLastFailureClass = null;
-            const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
-            debriefAttemptDurationsMs.push(attemptDurationMs);
-            logInfo("practice_chat_generation_attempt", {
-              user: summarizeUser(user.id),
-              provider: debriefProvider,
-              model: debriefModel,
-              ...buildPracticeGenerationTelemetry({
-                mode: "debrief",
-                practiceMode: debriefPracticeMode,
-                attempt: debriefAttemptCount,
-                attemptDurationMs,
-                failureClass: null,
-                fallbackUsed: false,
-                totalDurationMs: null,
-                promptChars: debriefPromptChars,
-              }),
-            });
-          } catch (e) {
-            lastError = e;
-            debriefLastFailureClass = classifyPracticeGenerationFailure(e);
-            const attemptDurationMs = elapsedMilliseconds(attemptStartedAt);
-            debriefAttemptDurationsMs.push(attemptDurationMs);
-            debriefFailureClasses.push(debriefLastFailureClass);
-            appendPracticeFailureCodes(debriefFailureCodes, e);
-            logWarn("practice_chat_generation_attempt", {
-              user: summarizeUser(user.id),
-              provider: "anthropic",
-              model: debriefModel,
-              ...buildPracticeGenerationTelemetry({
-                mode: "debrief",
-                practiceMode: debriefPracticeMode,
-                attempt: debriefAttemptCount,
-                attemptDurationMs,
-                failureClass: debriefLastFailureClass,
-                fallbackUsed: false,
-                totalDurationMs: null,
-                promptChars: debriefPromptChars,
-              }),
-            });
-          }
-        }
-        if (debriefCard === null) {
-          // Change A：budget 燒完仍無成功候選時，改供給本輪保留的最佳客觀-gate
-          // 候選（僅主觀複審沒過），避免對系統性主觀 reject 反覆 503。無保留候選
-          // （含 unsafe/unsupported_fact 被硬底線排除）則維持原本 throw→503。
-          if (bestGatePassingDebrief !== null) {
-            debriefCard = bestGatePassingDebrief;
-            debriefSalvageUsed = true;
-            logInfo("practice_chat_debrief_best_candidate_served", {
-              user: summarizeUser(user.id),
-              practiceMode: debriefPracticeMode,
-              semanticProviderCalls: debriefSemanticProviderCalls,
-            });
-          } else {
-            throw lastError instanceof Error
-              ? lastError
-              : new Error("debrief_generation_failed");
-          }
-        }
+            attempt: debriefAttemptCount,
+            attemptDurationMs: outcome.durationMs,
+            failureClass: null,
+            fallbackUsed: false,
+            totalDurationMs: null,
+            promptChars: debriefPromptChars,
+          }),
+        });
       } catch (e) {
+        if (e instanceof SingleShotExhaustedError) {
+          for (const failure of e.attemptFailures) {
+            recordDebriefAttemptFailure(failure);
+          }
+        }
         logWarn("practice_chat_generation_failed", {
           user: summarizeUser(user.id),
           mode: "debrief",
           personaId: request.profile.personaId,
           difficulty: request.profile.difficulty,
-          semanticProviderCalls: debriefSemanticProviderCalls,
-          failureClass: classifyPracticeGenerationFailure(e),
+          failureClass: debriefLastFailureClass ??
+            classifyPracticeGenerationFailure(e),
         });
         await releaseDebriefGeneration({
           supabase,
@@ -3905,11 +3502,11 @@ export function createPracticeChatHandler(
           fallbackUsed: false,
           failoverUsed: debriefFailoverUsed,
           failureClass,
-          semanticProviderCalls: debriefSemanticProviderCalls,
           attemptDurationsMs: debriefAttemptDurationsMs,
           failureClasses: debriefFailureClasses,
           failureCodes: debriefFailureCodes,
           model: debriefModel,
+          pipeline: "single_shot_v2",
         });
         return jsonResponse(
           { error: "practice_debrief_generation_retryable", retryable: true },
@@ -3924,7 +3521,6 @@ export function createPracticeChatHandler(
         user: summarizeUser(user.id),
         provider: debriefProvider,
         model: debriefModel,
-        bestCandidateSalvaged: debriefSalvageUsed,
         ...buildPracticeGenerationTelemetry({
           mode: "debrief",
           practiceMode: debriefPracticeMode,
@@ -3933,7 +3529,6 @@ export function createPracticeChatHandler(
           failureClass: null,
           fallbackUsed: false,
           failoverUsed: debriefFailoverUsed,
-          semanticProviderCalls: debriefSemanticProviderCalls,
           totalDurationMs: debriefTotalDurationMs,
           promptChars: debriefPromptChars,
         }),
@@ -4001,11 +3596,11 @@ export function createPracticeChatHandler(
         fallbackUsed: false,
         failoverUsed: debriefFailoverUsed,
         failureClass: null,
-        semanticProviderCalls: debriefSemanticProviderCalls,
         attemptDurationsMs: debriefAttemptDurationsMs,
         failureClasses: debriefFailureClasses,
         failureCodes: debriefFailureCodes,
         model: debriefModel,
+        pipeline: "single_shot_v2",
       });
 
       logInfo("practice_chat_succeeded", {

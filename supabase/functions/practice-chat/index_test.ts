@@ -22,9 +22,7 @@ import {
 } from "./hint_prefetch.ts";
 import { DEBRIEF_QUALITY_SCHEMA_VERSION } from "./debrief_card.ts";
 import {
-  adjudicatePracticeCandidate,
   type PracticeSemanticAdjudicatorArgs,
-  SemanticAdjudicationError,
   type SemanticAdjudicationResult,
 } from "./semantic_quality.ts";
 
@@ -52,8 +50,6 @@ interface FakeOptions {
   rpc?: Record<string, RpcResult[]>;
   deepSeekReplies?: ReadonlyArray<string | Error>;
   claudeReplies?: ReadonlyArray<string | Error>;
-  semanticReplies?: ReadonlyArray<SemanticAdjudicationResult | Error>;
-  useRealSemanticAdjudicator?: boolean;
   monotonicNowValues?: ReadonlyArray<number>;
   env?: Record<string, string | undefined>;
   randomUUID?: string;
@@ -197,57 +193,6 @@ function validDebriefJson(overrides: Record<string, unknown> = {}) {
   });
 }
 
-function fullyRewrittenDebriefCandidate(
-  revision: "first" | "second",
-): Record<string, unknown> {
-  const candidate = JSON.parse(validDebriefJson(
-    revision === "first"
-      ? {
-        summary: "她提到下班後想散步，這輪有接住她想放空的狀態。",
-        strengths: ["你有沿著她的散步話題回應，沒有另開無關話題。"],
-        watchouts: ["下一輪先讓她補充常走的路線，再判斷是否適合邀約。"],
-        suggestedLine: "散步放空聽起來很舒服，妳通常會走多久？",
-        dateChanceReason: "她願意談下班後的休息方式，目前仍沒有具體見面訊號。",
-        nextInviteMove: "先延伸她的散步習慣，等她主動補充後再評估短約。",
-      }
-      : {
-        summary: "她分享想用散步轉換下班心情，對話仍停在生活交換。",
-        strengths: ["你有回到她剛說的放空需求，讓話題保持連續。"],
-        watchouts: ["先別把散步直接推成約會，應再確認她願不願意多聊。"],
-        suggestedLine: "原來妳會靠散步切換心情，最喜歡安靜還是熱鬧的路線？",
-        dateChanceReason:
-          "她提供了可延伸的生活素材，但尚未表達同行或時間窗口。",
-        nextInviteMove: "先問她偏好的散步氛圍，有明確投入後再提出低壓短約。",
-      },
-  )) as Record<string, unknown>;
-  delete candidate.hintAssessment;
-  candidate.gameBreakdown = null;
-  return candidate;
-}
-
-function fullyRewrittenGameDebriefCandidate(
-  revision: "first" | "second",
-): Record<string, unknown> {
-  return {
-    ...fullyRewrittenDebriefCandidate(revision),
-    gameBreakdown: revision === "first"
-      ? {
-        phaseReached: "生活話題已形成一輪來回，仍在熟悉彼此節奏。",
-        missedVariable: "還沒確認她願意延伸哪一種散步情境。",
-        failureState: "目前只有話題素材，尚未形成具體邀約窗口。",
-        nextFirstLine: "妳散步時比較喜歡河邊，還是逛有燈光的街區？",
-        inviteDirection: "先確認她偏好的場景，再看是否適合提出白天短約。",
-      }
-      : {
-        phaseReached: "放空需求已被承接，互動停在生活偏好交換。",
-        missedVariable: "還需要觀察她是否主動補充時間或同行意願。",
-        failureState: "話題能延續，但距離明確邀約仍少一個投入訊號。",
-        nextFirstLine: "聽起來散步是妳的切換儀式，通常會挑什麼時段？",
-        inviteDirection: "等她提供時段與偏好，再給一個容易拒絕的短邀約。",
-      },
-  };
-}
-
 function validHintJson(overrides: Record<string, string> = {}) {
   return JSON.stringify({
     warmUp: "聽起來這杯咖啡有任務，是想醒腦還是想放空？",
@@ -266,22 +211,6 @@ function validGameHintJson(overrides: Record<string, string> = {}) {
       "Game 心法：她主動提到想喝咖啡，現在只有話題還沒有時間窗口。速約任務：問她是想醒腦還是放空，因為先讓她補感受，再看是否出現邀約窗口。",
     ...overrides,
   });
-}
-
-function semanticDebriefResult(
-  candidate: Record<string, unknown>,
-  options: {
-    repaired?: boolean;
-    issueKinds?: SemanticAdjudicationResult["issueKinds"];
-  } = {},
-): SemanticAdjudicationResult {
-  return {
-    candidate,
-    repaired: options.repaired ?? true,
-    issueKinds: options.issueKinds ?? ["unsupported_fact"],
-    provider: "anthropic",
-    providerCalls: 1,
-  };
 }
 
 function withCurrentUsage(
@@ -378,7 +307,6 @@ function makeFake(options: FakeOptions = {}) {
   const rpcByName = new Map<string, number>();
   let deepSeekIndex = 0;
   let claudeIndex = 0;
-  let semanticIndex = 0;
   let monotonicNowIndex = 0;
 
   // deno-lint-ignore no-explicit-any
@@ -701,27 +629,11 @@ function makeFake(options: FakeOptions = {}) {
     if (reply instanceof Error) return Promise.reject(reply);
     return Promise.resolve(reply);
   };
+  // reviewer 已拆：dep 仍可注入，但生產碼零呼叫；只記錄以斷言 semanticCalls === 0。
   const semanticAdjudicate = (
     args: PracticeSemanticAdjudicatorArgs,
   ): Promise<SemanticAdjudicationResult> => {
     state.semanticCalls.push(args);
-    if (options.useRealSemanticAdjudicator) {
-      return adjudicatePracticeCandidate(args);
-    }
-    const configured = options.semanticReplies?.[semanticIndex];
-    semanticIndex++;
-    if (configured instanceof Error) return Promise.reject(configured);
-    if (configured) {
-      try {
-        args.validateCandidate?.(
-          configured.candidate,
-          configured.hintAssessment,
-        );
-      } catch (error) {
-        return Promise.reject(error);
-      }
-      return Promise.resolve(configured);
-    }
     return Promise.resolve({
       candidate: args.candidate,
       repaired: false,
@@ -3055,7 +2967,7 @@ Deno.test("stale retry does not reuse low-stage overstep override after flirt-re
 Deno.test("debrief requestId is threaded through claim and stored response replay", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
-    deepSeekReplies: [validDebriefJson()],
+    claudeReplies: [validDebriefJson()],
   }, debriefBody({ requestId: "debrief-req-1" }));
 
   assertEquals(response.status, 200);
@@ -3088,7 +3000,7 @@ Deno.test("debrief requestId is threaded through claim and stored response repla
     (stored.card as Record<string, unknown>).summary,
     "你說今天忙到剛下班，她接著分享只想散步放空。",
   );
-  assertEquals(stored.provider, "deepseek");
+  assertEquals(stored.provider, "anthropic");
   assertEquals(stored.generationSource, "model");
   assertEquals(stored.fallbackUsed, false);
   assertEquals(
@@ -3098,8 +3010,13 @@ Deno.test("debrief requestId is threaded through claim and stored response repla
   assertEquals(json.generationSource, "model");
   assertEquals(json.fallbackUsed, false);
   assertEquals(json.qualitySchemaVersion, DEBRIEF_QUALITY_SCHEMA_VERSION);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 18000);
-  assertEquals(state.deepSeekCalls[0].thinking, { type: "disabled" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
+  assertEquals(state.claudeCalls[0].timeoutMs, 20000);
+  assertEquals(state.claudeCalls[0].maxTokens, 1200);
+  assertEquals(state.claudeCalls[0].temperature, 0.5);
+  assertEquals(state.claudeCalls[0].forcedTool?.name, "emit_debrief_card");
   assertEquals(aiLogInserts(state).length, 1);
   const telemetryRow = aiLogInserts(state)[0].values;
   assertEquals(telemetryRow.request_type, "practice_debrief_standard");
@@ -3141,7 +3058,7 @@ Deno.test("debrief record returns the first-writer authoritative response", asyn
   };
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
-    deepSeekReplies: [validDebriefJson()],
+    claudeReplies: [validDebriefJson()],
     rpc: {
       record_practice_debrief: [{ data: authoritative }],
     },
@@ -3156,7 +3073,7 @@ Deno.test("legacy debrief client receives v1 marker while the RPC stores semanti
   const { response, json, state } = await run(
     {
       ledger: ledger({ ai_count: 1, charged: true }),
-      deepSeekReplies: [validDebriefJson()],
+      claudeReplies: [validDebriefJson()],
     },
     debriefBody({
       requestId: "legacy-debrief-client",
@@ -3177,7 +3094,7 @@ Deno.test("durable generation telemetry failure is fail-open", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
     aiLogsError: "telemetry table temporarily unavailable",
-    deepSeekReplies: [validDebriefJson()],
+    claudeReplies: [validDebriefJson()],
   }, debriefBody());
 
   assertEquals(response.status, 200);
@@ -3192,7 +3109,7 @@ Deno.test("slow durable telemetry stays off the debrief response path after repl
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
     aiLogsNeverCompletes: true,
-    deepSeekReplies: [validDebriefJson()],
+    claudeReplies: [validDebriefJson()],
   }, debriefBody({ requestId: "debrief-slow-telemetry" }));
 
   assertEquals(response.status, 200);
@@ -3418,7 +3335,7 @@ Deno.test("stale claimed Game debrief retry bypasses a transient unlock lookup f
           }],
         }],
       },
-      deepSeekReplies: [validDebriefJson({
+      claudeReplies: [validDebriefJson({
         gameBreakdown: {
           phaseReached: "下班散步仍在熟悉階段",
           missedVariable: "還缺散步話題的具體畫面",
@@ -3443,7 +3360,7 @@ Deno.test("stale claimed Game debrief retry bypasses a transient unlock lookup f
     false,
   );
   assertEquals(claimDebriefCalls(state).length, 1);
-  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 1);
 });
 
 Deno.test("debrief authoritative claim replay handles the preflight race", async () => {
@@ -3596,7 +3513,7 @@ Deno.test("unversioned model debrief snapshot is invalidated and regenerated und
         fallbackUsed: false,
       },
     }),
-    deepSeekReplies: [validDebriefJson({
+    claudeReplies: [validDebriefJson({
       summary: "新版拆解：你說今天忙到剛下班，她接著分享只想散步放空。",
     })],
   }, debriefBody({ requestId: "legacy-debrief" }));
@@ -3625,7 +3542,7 @@ Deno.test("unversioned model debrief snapshot is invalidated and regenerated und
 Deno.test("debrief record failure releases its fenced owner and exposes no unpersisted card", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
-    deepSeekReplies: [validDebriefJson()],
+    claudeReplies: [validDebriefJson()],
     rpc: {
       record_practice_debrief: [{ error: "database temporarily unavailable" }],
     },
@@ -3678,7 +3595,7 @@ Deno.test("same unfinished debrief request can recover at the cap", async () => 
       last_debrief_request_id: "debrief-pending",
       last_debrief_result: null,
     }),
-    deepSeekReplies: [validDebriefJson({
+    claudeReplies: [validDebriefJson({
       summary: "重試後你仍說自己剛下班，她接著分享只想散步放空。",
     })],
   }, debriefBody({ requestId: "debrief-pending" }));
@@ -3688,20 +3605,20 @@ Deno.test("same unfinished debrief request can recover at the cap", async () => 
     json.card.summary,
     "重試後你仍說自己剛下班，她接著分享只想散步放空。",
   );
-  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 1);
   assertEquals(claimDebriefCalls(state).length, 1);
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
-Deno.test("debrief sends an incomplete DeepSeek card to Claude with repair guidance", async () => {
+Deno.test("debrief incomplete first shot is killed and Haiku serves without repair guidance", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
-    deepSeekReplies: [
+    claudeReplies: [
       JSON.stringify({ summary: "只有摘要", suggestedLine: "下一句" }),
+      validDebriefJson({
+        summary: "修復後你說今天忙到剛下班，她接著分享只想散步放空。",
+      }),
     ],
-    claudeReplies: [validDebriefJson({
-      summary: "修復後你說今天忙到剛下班，她接著分享只想散步放空。",
-    })],
   }, debriefBody());
 
   assertEquals(response.status, 200);
@@ -3709,11 +3626,11 @@ Deno.test("debrief sends an incomplete DeepSeek card to Claude with repair guida
     json.card.summary,
     "修復後你說今天忙到剛下班，她接著分享只想散步放空。",
   );
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
-  const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
-  assert(repairPrompt.includes("拆解卡必填欄位缺漏或格式錯誤"));
-  assert(repairPrompt.includes("strengths、watchouts"));
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[1].model, CLAUDE_HAIKU_MODEL);
+  // 補發不追加任何 repair 指令，prompt 與第一發完全相同。
+  assertEquals(state.claudeCalls[1].messages, state.claudeCalls[0].messages);
   const telemetry = aiLogInserts(state)[0].values;
   assertEquals(telemetry.retry_count, 1);
   assertEquals(telemetry.fallback_used, false);
@@ -3725,7 +3642,7 @@ Deno.test("debrief sends an incomplete DeepSeek card to Claude with repair guida
   assert(/^debrief_/.test(failureCodes[0]), failureCodes[0]);
 });
 
-Deno.test("Game debrief repairs a missing breakdown through Claude failover", async () => {
+Deno.test("Game debrief missing breakdown kills the shot and Haiku serves a complete one", async () => {
   const completeGameCard = JSON.parse(validDebriefJson({
     summary: "Game 修復後你說自己剛下班，她接著分享只想散步放空。",
   }));
@@ -3740,8 +3657,8 @@ Deno.test("Game debrief repairs a missing breakdown through Claude failover", as
     {
       ledger: gameStartedLedger(),
       drawEvents: [{ profile_id: "practice_girl_004" }],
-      deepSeekReplies: [validDebriefJson()],
-      claudeReplies: [JSON.stringify(completeGameCard)],
+      // 第一發缺 gameBreakdown＝該發判敗；第二發 Haiku 給完整拆盤。
+      claudeReplies: [validDebriefJson(), JSON.stringify(completeGameCard)],
     },
     debriefBody({
       practiceMode: "game",
@@ -3758,12 +3675,10 @@ Deno.test("Game debrief repairs a missing breakdown through Claude failover", as
     json.card.gameBreakdown.phaseReached,
     "下班散步仍在熟悉測試階段",
   );
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
-  const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
-  assert(repairPrompt.includes("Game 拆盤五個欄位有缺漏或空白"));
-  assert(repairPrompt.includes("gameBreakdown 必須含"));
-  assert(repairPrompt.includes("不得裁掉句尾"));
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[1].model, CLAUDE_HAIKU_MODEL);
+  assertEquals(json.failoverUsed, true);
 });
 
 for (const mode of ["beginner", "game"] as const) {
@@ -3807,7 +3722,7 @@ for (const mode of ["beginner", "game"] as const) {
     }
     : { ledger: beginnerStartedLedger() };
 
-  Deno.test(`${mode} Debrief semantic review repairs fact transfer before recording`, async () => {
+  Deno.test(`${mode} Debrief kills a fact-transfer shot mechanically before recording`, async () => {
     const bad = mode === "game"
       ? debriefCardWithLine(
         "妳住台南喔，最常去哪一區？",
@@ -3818,27 +3733,23 @@ for (const mode of ["beginner", "game"] as const) {
     const { response, json, state } = await run(
       {
         ...modeOptions,
-        deepSeekReplies: [bad],
-        semanticReplies: [semanticDebriefResult(JSON.parse(good))],
+        claudeReplies: [bad, good],
       },
       body,
     );
 
     assertEquals(response.status, 200);
-    assertEquals(json.provider, "deepseek");
-    assertEquals(json.failoverUsed, false);
+    assertEquals(json.provider, "anthropic");
+    // 把對方 typed fact 搬到使用者身上的第一發被機械 gate 殺掉，
+    // 第二發 Haiku 全新候選供給，不 repair 復活。
+    assertEquals(json.failoverUsed, true);
+    assertEquals(json.model, CLAUDE_HAIKU_MODEL);
     assertEquals(json.qualitySchemaVersion, DEBRIEF_QUALITY_SCHEMA_VERSION);
-    assertEquals(state.deepSeekCalls.length, 1);
-    assertEquals(state.claudeCalls.length, 0);
-    assertEquals(state.semanticCalls.length, 1);
+    assertEquals(state.deepSeekCalls.length, 0);
+    assertEquals(state.claudeCalls.length, 2);
+    assertEquals(state.semanticCalls.length, 0);
     assertEquals(recordDebriefCalls(state).length, 1);
     assertEquals(releaseDebriefCalls(state).length, 0);
-    assertEquals(state.semanticCalls[0].surface, "debrief");
-    const telemetry = aiLogInserts(state)[0].values.request_body as Record<
-      string,
-      unknown
-    >;
-    assertEquals(telemetry.semanticProviderCalls, 1);
   });
 
   Deno.test(`${mode} Debrief dual fact transfer fails retryably without a snapshot`, async () => {
@@ -3851,8 +3762,7 @@ for (const mode of ["beginner", "game"] as const) {
     const { response, json, state } = await run(
       {
         ...modeOptions,
-        deepSeekReplies: [bad],
-        semanticReplies: [new Error("semantic_adjudication_rejected")],
+        claudeReplies: [bad, bad],
       },
       { ...body, requestId: `typed-debrief-dual-${mode}` },
     );
@@ -3862,525 +3772,35 @@ for (const mode of ["beginner", "game"] as const) {
       error: "practice_debrief_generation_retryable",
       retryable: true,
     });
+    assertEquals(state.claudeCalls.length, 2);
     assertEquals(recordDebriefCalls(state).length, 0);
     assertEquals(releaseDebriefCalls(state).length, 1);
   });
 }
 
-Deno.test("debrief real adjudicator regenerates after a malformed independent reviewer envelope", async () => {
+Deno.test("debrief deadline expires before the Haiku failover without starting it", async () => {
+  // anchor=0（死線 45000）；第一發 start=0 敗於 30000；
+  // 第二發 start=43000 剩 2000 < 3000 → deadline_exhausted 不打。
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
-    useRealSemanticAdjudicator: true,
-    monotonicNowValues: [0, 0, 12000, 36000, 60000, 65000, 70000],
-    deepSeekReplies: [
-      validDebriefJson(),
-      '{"verdict":"accept","issues":[],"repairedResult":null}',
-    ],
-    claudeReplies: [
-      '{"unexpected":"claude-review-envelope"}',
-      validDebriefJson(),
-      '{"verdict":"accept","issues":[]}',
-    ],
-  }, debriefBody({ requestId: "debrief-semantic-envelope-recovery" }));
-
-  assertEquals(response.status, 200);
-  assertEquals(json.provider, "anthropic");
-  assertEquals(json.failoverUsed, true);
-  assertEquals(state.deepSeekCalls.length, 2);
-  assertEquals(state.claudeCalls.length, 3);
-  assertEquals(
-    state.semanticCalls.map((call) => call.maxProviderCalls),
-    [6, 6],
-  );
-  assertEquals(
-    state.semanticCalls.map((call) =>
-      call.retryTransientFactVerifierOnce === true
-    ),
-    [true, false],
-  );
-  assertEquals(state.claudeCalls[0].outputJsonSchema !== undefined, true);
-  assertEquals(state.claudeCalls[1].outputJsonSchema, undefined);
-  assertEquals(state.claudeCalls[2].outputJsonSchema !== undefined, true);
-  assertEquals(
-    state.deepSeekCalls.map((call) => call.timeoutMs),
-    [18000, 24000],
-  );
-  assertEquals(state.deepSeekCalls[0].thinking, { type: "disabled" });
-  assertEquals(
-    state.claudeCalls.map((call) => call.timeoutMs),
-    [24000, 24000, 20000],
-  );
-  assertEquals(recordDebriefCalls(state).length, 1);
-  assertEquals(releaseDebriefCalls(state).length, 0);
-});
-
-Deno.test("debrief real adjudicator retries a transient fallback full-review timeout", async () => {
-  const { response, json, state } = await run({
-    ledger: ledger({ ai_count: 1, charged: true }),
-    useRealSemanticAdjudicator: true,
-    deepSeekReplies: [
-      validDebriefJson(),
-      new Error("deepseek_timeout"),
-      '{"verdict":"accept","issues":[],"repairedResult":null}',
-    ],
-    claudeReplies: [
-      '{"unexpected":"deep-candidate-review-envelope"}',
-      validDebriefJson(),
-      '{"verdict":"accept","issues":[]}',
-    ],
-  }, debriefBody({ requestId: "debrief-full-review-timeout-retry" }));
-
-  assertEquals(response.status, 200);
-  assertEquals(json.provider, "anthropic");
-  assertEquals(json.failoverUsed, true);
-  assertEquals(state.deepSeekCalls.length, 3);
-  assertEquals(state.claudeCalls.length, 3);
-  assertEquals(
-    state.semanticCalls.map((call) => call.maxProviderCalls),
-    [6, 6],
-  );
-  assertEquals(
-    state.semanticCalls.map((call) =>
-      call.retryTransientFactVerifierOnce === true
-    ),
-    [true, false],
-  );
-  assertEquals(
-    state.semanticCalls.map((call) =>
-      call.retryTransientFullReviewerOnce === true
-    ),
-    [false, true],
-  );
-  assertEquals(state.deepSeekCalls[0].thinking, { type: "disabled" });
-  assertEquals(state.deepSeekCalls[1].thinking, { type: "disabled" });
-  assertEquals(state.deepSeekCalls[2].thinking, { type: "disabled" });
-  assertEquals(recordDebriefCalls(state).length, 1);
-  assertEquals(releaseDebriefCalls(state).length, 0);
-});
-
-Deno.test("debrief preserves Claude generation and two reviews after three consumed Deep semantic calls", async () => {
-  const { response, json, state } = await run({
-    ledger: ledger({ ai_count: 1, charged: true }),
-    useRealSemanticAdjudicator: true,
-    deepSeekReplies: [
-      validDebriefJson(),
-      new Error("deepseek_timeout"),
-      new Error("deepseek_timeout"),
-      '{"verdict":"accept","issues":[],"repairedResult":null}',
-    ],
-    claudeReplies: [
-      '{"verdict":"accept","issues":[],"repairedResult":null}',
-      validDebriefJson(),
-      '{"verdict":"accept","issues":[]}',
-    ],
-  }, debriefBody({ requestId: "debrief-dynamic-seven-call-failover" }));
-
-  assertEquals(response.status, 200);
-  assertEquals(json.provider, "anthropic");
-  assertEquals(json.failoverUsed, true);
-  assertEquals(state.deepSeekCalls.length + state.claudeCalls.length, 7);
-  assertEquals(
-    state.semanticCalls.map((call) => call.maxProviderCalls),
-    [6, 5],
-  );
-  assertEquals(
-    state.semanticCalls.map((call) =>
-      call.retryTransientFactVerifierOnce === true
-    ),
-    [true, false],
-  );
-  assertEquals(
-    state.semanticCalls.map((call) =>
-      call.retryTransientFullReviewerOnce === true
-    ),
-    [false, true],
-  );
-  assertEquals(recordDebriefCalls(state).length, 1);
-  assertEquals(releaseDebriefCalls(state).length, 0);
-});
-
-Deno.test("debrief real adjudicator repairs a substantive fact rejection within the seven-call ceiling", async () => {
-  const repaired = fullyRewrittenDebriefCandidate("first");
-  const { response, json, state } = await run({
-    ledger: ledger({ ai_count: 1, charged: true }),
-    useRealSemanticAdjudicator: true,
-    deepSeekReplies: [
-      new Error("deepseek_timeout"),
-      '{"verdict":"accept","issues":[],"repairedResult":null}',
-      '{"verdict":"accept","issues":[],"repairedResult":null}',
-    ],
-    claudeReplies: [
-      validDebriefJson({
-        suggestedLine: "我也每天散步放空，妳最常走哪一段？",
-      }),
-      JSON.stringify({
-        verdict: "reject",
-        issues: [{
-          kind: "unsupported_fact",
-          field: "suggestedLine",
-          reasonCode: "user_fact_unsupported",
-        }],
-      }),
-      JSON.stringify({
-        verdict: "repair",
-        issues: [{ kind: "unsupported_fact" }],
-        repairedResult: repaired,
-      }),
-    ],
-  }, debriefBody({ requestId: "debrief-fact-rejection-recovery" }));
-
-  assertEquals(
-    state.semanticCalls[0].candidate.suggestedLine,
-    "我也每天散步放空，妳最常走哪一段？",
-  );
-  assertEquals(response.status, 200);
-  assertEquals(json.provider, "anthropic");
-  assertEquals(json.failoverUsed, true);
-  assertEquals(json.card.suggestedLine, repaired.suggestedLine);
-  assertEquals(state.semanticCalls.length, 1);
-  assertEquals(state.semanticCalls[0].maxProviderCalls, 6);
-  assertEquals(state.deepSeekCalls.length, 3);
-  assertEquals(state.claudeCalls.length, 3);
-  assertEquals(state.claudeCalls[0].outputJsonSchema, undefined);
-  assertEquals(state.claudeCalls[1].outputJsonSchema !== undefined, true);
-  assertEquals(state.claudeCalls[2].outputJsonSchema !== undefined, true);
-  assertEquals(recordDebriefCalls(state).length, 1);
-  assertEquals(releaseDebriefCalls(state).length, 0);
-});
-
-Deno.test("Game debrief can scrub a second fact rejection and verify at the exact seven-call ceiling", async () => {
-  const firstScrub = fullyRewrittenGameDebriefCandidate("first");
-  const secondScrub = fullyRewrittenGameDebriefCandidate("second");
-  const initialGameCard = validDebriefJson({
-    suggestedLine: "我每天都沿河散步，妳通常會走多久？",
-    gameBreakdown: {
-      phaseReached: "下班話題剛開始延伸。",
-      missedVariable: "尚未確認她的散步習慣。",
-      failureState: "把沒有證據的共同散步經驗寫進可貼句。",
-      nextFirstLine: "我也固定走河邊，妳都去哪裡？",
-      inviteDirection: "先接她想放空，再觀察投入。",
-    },
-  });
-  const factReject = JSON.stringify({
-    verdict: "reject",
-    issues: [{
-      kind: "unsupported_fact",
-      field: "suggestedLine",
-      reasonCode: "user_fact_unsupported",
-    }],
-  });
-  const { response, json, state } = await run(
-    {
-      ledger: gameStartedLedger(),
-      drawEvents: [{ profile_id: "practice_girl_004" }],
-      useRealSemanticAdjudicator: true,
-      deepSeekReplies: [
-        initialGameCard,
-        factReject,
-        JSON.stringify({
-          verdict: "reject",
-          issues: [{ kind: "unsupported_fact" }],
-          repairedResult: null,
-        }),
-        JSON.stringify({
-          verdict: "repair",
-          issues: [{ kind: "unsupported_fact" }],
-          repairedResult: secondScrub,
-        }),
-      ],
-      claudeReplies: [
-        '{"verdict":"accept","issues":[],"repairedResult":null}',
-        JSON.stringify({
-          verdict: "repair",
-          issues: [{ kind: "unsupported_fact" }],
-          repairedResult: firstScrub,
-        }),
-        '{"verdict":"accept","issues":[],"repairedResult":null}',
-      ],
-    },
-    debriefBody({
-      requestId: "game-debrief-second-fact-scrub-seven-call-success",
-      practiceMode: "game",
-      profileId: "practice_girl_004",
-    }),
-  );
-
-  assertEquals(response.status, 200);
-  assertEquals(json.provider, "deepseek");
-  assertEquals(json.failoverUsed, false);
-  assertEquals(json.card, secondScrub);
-  assertEquals(state.semanticCalls.length, 1);
-  assertEquals(state.semanticCalls[0].maxProviderCalls, 6);
-  assertEquals(state.deepSeekCalls.length + state.claudeCalls.length, 7);
-  assertEquals(recordDebriefCalls(state).length, 1);
-  assertEquals(releaseDebriefCalls(state).length, 0);
-});
-
-Deno.test("Game debrief late Claude failover fuses verifier repair and succeeds at exactly seven calls", async () => {
-  const firstRepair = fullyRewrittenGameDebriefCandidate("first");
-  const secondTemplate = fullyRewrittenGameDebriefCandidate("second");
-  const fusedRepair = {
-    ...firstRepair,
-    suggestedLine: secondTemplate.suggestedLine,
-  };
-  const generatedCard = validDebriefJson({
-    gameBreakdown: {
-      phaseReached: "下班話題剛開始延伸。",
-      missedVariable: "尚未確認她的散步習慣。",
-      failureState: "目前還沒有具體邀約窗口。",
-      nextFirstLine: "妳通常會去哪裡散步？",
-      inviteDirection: "先接她想放空，再觀察投入。",
-    },
-  });
-  const { response, json, state } = await run(
-    {
-      ledger: gameStartedLedger(),
-      drawEvents: [{ profile_id: "practice_girl_004" }],
-      useRealSemanticAdjudicator: true,
-      deepSeekReplies: [
-        generatedCard,
-        JSON.stringify({
-          verdict: "reject",
-          issues: [{ kind: "unsafe" }],
-          repairedResult: null,
-        }),
-        JSON.stringify({
-          verdict: "repair",
-          issues: [{ kind: "strategy_mismatch" }],
-          repairedResult: firstRepair,
-        }),
-        '{"verdict":"accept","issues":[],"repairedResult":null}',
-      ],
-      claudeReplies: [
-        JSON.stringify({
-          verdict: "repair",
-          issues: [{ kind: "strategy_mismatch" }],
-          repairedResult: firstRepair,
-        }),
-        generatedCard,
-        JSON.stringify({
-          verdict: "repair",
-          issues: [{ kind: "strategy_mismatch" }],
-          repairedResult: fusedRepair,
-        }),
-      ],
-    },
-    debriefBody({
-      requestId: "game-debrief-late-failover-fused-seven-call-success",
-      practiceMode: "game",
-      profileId: "practice_girl_004",
-    }),
-  );
-
-  assertEquals(response.status, 200);
-  assertEquals(json.provider, "anthropic");
-  assertEquals(json.failoverUsed, true);
-  assertEquals(json.card, fusedRepair);
-  assertEquals(
-    state.semanticCalls.map((call) => call.maxProviderCalls),
-    [6, 6],
-  );
-  assertEquals(state.deepSeekCalls.length, 4);
-  assertEquals(state.claudeCalls.length, 3);
-  assertEquals(state.deepSeekCalls.length + state.claudeCalls.length, 7);
-  assertEquals(recordDebriefCalls(state).length, 1);
-  assertEquals(releaseDebriefCalls(state).length, 0);
-});
-
-Deno.test("Game debrief regenerates after a final verifier rejection and succeeds at exactly ten calls", async () => {
-  const firstScrub = fullyRewrittenGameDebriefCandidate("first");
-  const secondScrub = fullyRewrittenGameDebriefCandidate("second");
-  const thirdCandidate = {
-    ...fullyRewrittenGameDebriefCandidate("second"),
-    summary: "她分享下班後想散步放空，新的候選只沿著可見內容整理。",
-  };
-  const factReject = JSON.stringify({
-    verdict: "reject",
-    issues: [{
-      kind: "unsupported_fact",
-      field: "suggestedLine",
-      reasonCode: "user_fact_unsupported",
-    }],
-  });
-  const { response, json, state } = await run(
-    {
-      ledger: gameStartedLedger(),
-      drawEvents: [{ profile_id: "practice_girl_004" }],
-      useRealSemanticAdjudicator: true,
-      deepSeekReplies: [
-        validDebriefJson({
-          suggestedLine: "我每天都沿河散步，妳通常會走多久？",
-          gameBreakdown: {
-            phaseReached: "下班話題剛開始延伸。",
-            missedVariable: "尚未確認她的散步習慣。",
-            failureState: "把沒有證據的共同散步經驗寫進可貼句。",
-            nextFirstLine: "我也固定走河邊，妳都去哪裡？",
-            inviteDirection: "先接她想放空，再觀察投入。",
-          },
-        }),
-        factReject,
-        JSON.stringify({
-          verdict: "reject",
-          issues: [{ kind: "unsupported_fact" }],
-          repairedResult: null,
-        }),
-        JSON.stringify({
-          verdict: "repair",
-          issues: [{ kind: "unsupported_fact" }],
-          repairedResult: secondScrub,
-        }),
-        '{"verdict":"accept","issues":[],"repairedResult":null}',
-      ],
-      claudeReplies: [
-        '{"verdict":"accept","issues":[],"repairedResult":null}',
-        JSON.stringify({
-          verdict: "repair",
-          issues: [{ kind: "unsupported_fact" }],
-          repairedResult: firstScrub,
-        }),
-        JSON.stringify({
-          verdict: "reject",
-          issues: [{ kind: "strategy_mismatch" }],
-          repairedResult: null,
-        }),
-        JSON.stringify(thirdCandidate),
-        '{"verdict":"accept","issues":[]}',
-      ],
-    },
-    debriefBody({
-      requestId: "game-debrief-final-reject-ten-call-regeneration",
-      practiceMode: "game",
-      profileId: "practice_girl_004",
-    }),
-  );
-
-  assertEquals(response.status, 200);
-  assertEquals(json.card, thirdCandidate);
-  assertEquals(
-    state.semanticCalls.map((call) => call.maxProviderCalls),
-    [6, 2],
-  );
-  assertEquals(state.deepSeekCalls.length + state.claudeCalls.length, 10);
-  assertEquals(recordDebriefCalls(state).length, 1);
-  assertEquals(releaseDebriefCalls(state).length, 0);
-});
-
-Deno.test("Debrief reserves a final fresh candidate after two terminal semantic failures", async () => {
-  const firstClaudeCandidate = fullyRewrittenDebriefCandidate("first");
-  const finalCandidate = {
-    ...fullyRewrittenDebriefCandidate("second"),
-    summary: "她分享下班後想散步放空，最後候選只整理本輪可見內容。",
-  };
-  const terminalSemanticError = (providerCalls: number) =>
-    new SemanticAdjudicationError(
-      "semantic_adjudication_failed:semantic_adjudication_rejected",
-      providerCalls,
-      { issueKinds: ["strategy_mismatch"] },
-    );
-  const { response, json, state } = await run(
-    {
-      ledger: ledger({ ai_count: 1, charged: true }),
-      deepSeekReplies: [validDebriefJson()],
-      claudeReplies: [
-        JSON.stringify(firstClaudeCandidate),
-        JSON.stringify(finalCandidate),
-      ],
-      semanticReplies: [
-        terminalSemanticError(4),
-        terminalSemanticError(4),
-        {
-          ...semanticDebriefResult(finalCandidate),
-          providerCalls: 2,
-        },
-      ],
-    },
-    debriefBody({ requestId: "debrief-final-reserved-candidate" }),
-  );
-
-  assertEquals(response.status, 200);
-  assertEquals(json.card, finalCandidate);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 2);
-  assertEquals(
-    state.semanticCalls.map((call) => call.maxProviderCalls),
-    [6, 4, 2],
-  );
-  assertEquals(recordDebriefCalls(state).length, 1);
-  assertEquals(releaseDebriefCalls(state).length, 0);
-});
-
-Deno.test("debrief fact rejection gives Claude grounding guidance instead of a schema diagnosis", async () => {
-  const { response, state } = await run({
-    ledger: ledger({ ai_count: 1, charged: true }),
-    deepSeekReplies: [validDebriefJson()],
-    claudeReplies: [validDebriefJson()],
-    semanticReplies: [
-      new SemanticAdjudicationError(
-        "semantic_adjudication_failed:semantic_adjudication_candidate_unverified:semantic_fact_verification_rejected:suggestedline:user_fact_unsupported",
-        2,
-      ),
-      semanticDebriefResult(JSON.parse(validDebriefJson())),
-    ],
-  }, debriefBody({ requestId: "debrief-fact-rejection-guidance" }));
-
-  assertEquals(response.status, 200);
-  assertEquals(state.semanticCalls.map((call) => call.maxProviderCalls), [
-    6,
-    6,
-  ]);
-  const retryPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
-  assertEquals(retryPrompt.includes("無證據事實或人物 owner 錯置"), true);
-  assertEquals(retryPrompt.includes("必填欄位缺漏或格式錯誤"), false);
-});
-
-Deno.test("debrief full semantic rejection gives Claude quality and strategy guidance", async () => {
-  const { response, state } = await run({
-    ledger: ledger({ ai_count: 1, charged: true }),
-    deepSeekReplies: [validDebriefJson()],
-    claudeReplies: [validDebriefJson()],
-    semanticReplies: [
-      new SemanticAdjudicationError(
-        "semantic_adjudication_failed:semantic_adjudication_rejected",
-        2,
-      ),
-      semanticDebriefResult(JSON.parse(validDebriefJson())),
-    ],
-  }, debriefBody({ requestId: "debrief-semantic-rejection-guidance" }));
-
-  assertEquals(response.status, 200);
-  const retryPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
-  assertEquals(retryPrompt.includes("欄位品質、策略一致性與安全界線"), true);
-  assertEquals(retryPrompt.includes("無證據事實或人物 owner 錯置"), false);
-});
-
-Deno.test("debrief deadline expires before regeneration without calling Claude or recording", async () => {
-  const { response, json, state } = await run({
-    ledger: ledger({ ai_count: 1, charged: true }),
-    deepSeekReplies: [validDebriefJson()],
-    claudeReplies: [validDebriefJson()],
-    monotonicNowValues: [0, 0, 85000],
-    semanticReplies: [
-      new SemanticAdjudicationError(
-        "semantic_adjudication_failed:semantic_adjudication_invalid_schema",
-        2,
-      ),
-    ],
-  }, debriefBody({ requestId: "debrief-semantic-budget-exhausted" }));
+    claudeReplies: [new Error("claude_timeout"), validDebriefJson()],
+    monotonicNowValues: [0, 0, 30000, 43000],
+  }, debriefBody({ requestId: "debrief-deadline-before-failover" }));
 
   assertEquals(response.status, 503);
   assertEquals(json.retryable, true);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 0);
-  assertEquals(state.semanticCalls.length, 1);
-  assertEquals(state.semanticCalls[0].maxProviderCalls, 6);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
+  assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 0);
   assertEquals(releaseDebriefCalls(state).length, 1);
 });
 
-Deno.test("standard debrief omits model-authored Hint assessment from semantic schema", async () => {
-  const { response, state } = await run({
+Deno.test("standard debrief never serves a model-authored Hint assessment", async () => {
+  const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
-    deepSeekReplies: [validDebriefJson({
+    claudeReplies: [validDebriefJson({
       hintAssessment: {
         verdict: "revised",
         revisedEvidenceQuote:
@@ -4390,18 +3810,22 @@ Deno.test("standard debrief omits model-authored Hint assessment from semantic s
   }, debriefBody({ requestId: "debrief-unassisted-hint-assessment" }));
 
   assertEquals(response.status, 200);
+  // 未帶 appliedHintTurns 的拆解，模型自作主張的 hintAssessment 不得外洩。
   assertEquals(
-    Object.hasOwn(state.semanticCalls[0].candidate, "hintAssessment"),
+    Object.hasOwn(json.card as Record<string, unknown>, "hintAssessment"),
+    false,
+  );
+  assertEquals(
+    JSON.stringify(json).includes("model-controlled shape"),
     false,
   );
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
-Deno.test("debrief repairs malformed DeepSeek JSON with Claude", async () => {
+Deno.test("debrief malformed first shot fails over to Haiku before recording", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
-    deepSeekReplies: ["not json"],
-    claudeReplies: [validDebriefJson()],
+    claudeReplies: ["not json", validDebriefJson()],
   }, debriefBody());
 
   assertEquals(response.status, 200);
@@ -4409,61 +3833,54 @@ Deno.test("debrief repairs malformed DeepSeek JSON with Claude", async () => {
     json.card.summary,
     "你說今天忙到剛下班，她接著分享只想散步放空。",
   );
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
-  assertEquals(state.deepSeekCalls[0].jsonMode, true);
-  assertEquals(state.deepSeekCalls[0].maxTokens, 1200);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(state.claudeCalls[0].maxTokens, 1200);
-  assertEquals(state.semanticCalls.length, 1);
-  assertEquals(state.semanticCalls[0].maxProviderCalls, 6);
+  assertEquals(state.claudeCalls[1].maxTokens, 1200);
+  assertEquals(state.claudeCalls[1].model, CLAUDE_HAIKU_MODEL);
+  assertEquals(state.semanticCalls.length, 0);
   assertEquals(claimDebriefCalls(state).length, 1);
-  const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
-  assert(repairPrompt.includes("上一版拆解 JSON 被拒絕"));
-  assert(repairPrompt.includes("不是可解析的單一 JSON 物件"));
+  // 補發不追加任何 retry-instruction。
+  assertEquals(state.claudeCalls[1].messages, state.claudeCalls[0].messages);
 });
 
-Deno.test("Debrief sends unsafe generated prose through semantic repair before the final hard guard", async () => {
-  const unsafe = validDebriefJson({
-    suggestedLine: "今晚直接上床吧",
-  });
-  const repaired = JSON.parse(validDebriefJson()) as Record<string, unknown>;
+Deno.test("Debrief unsafe first shot is killed by the hard safety guard and Haiku serves clean", async () => {
   const { response, json, state } = await run(
     {
       ledger: ledger({ ai_count: 1, charged: true }),
-      deepSeekReplies: [unsafe],
-      semanticReplies: [semanticDebriefResult(repaired, {
-        issueKinds: ["unsafe"],
-      })],
+      claudeReplies: [
+        validDebriefJson({ suggestedLine: "今晚直接上床吧" }),
+        validDebriefJson(),
+      ],
     },
-    debriefBody({ requestId: "unsafe-debrief-semantic-repair" }),
+    debriefBody({ requestId: "unsafe-debrief-shot-killed" }),
   );
 
   assertEquals(response.status, 200);
   assertEquals(JSON.stringify(json.card).includes("直接上床"), false);
-  assertEquals(state.semanticCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[1].model, CLAUDE_HAIKU_MODEL);
+  assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
-Deno.test("Debrief never records a semantically accepted card that still fails the final hard guard", async () => {
-  const unsafe = JSON.parse(validDebriefJson({
+Deno.test("Debrief never records when both shots fail the hard safety guard", async () => {
+  const unsafe = validDebriefJson({
     suggestedLine: "今晚直接上床吧",
-  })) as Record<string, unknown>;
+  });
   const { response, json, state } = await run(
     {
       ledger: ledger({ ai_count: 1, charged: true }),
-      deepSeekReplies: [JSON.stringify(unsafe)],
-      semanticReplies: [semanticDebriefResult(unsafe, {
-        repaired: false,
-        issueKinds: [],
-      })],
+      claudeReplies: [unsafe, unsafe],
     },
     debriefBody({ requestId: "unsafe-debrief-final-hard-reject" }),
   );
 
   assertEquals(response.status, 503);
   assertEquals(json.retryable, true);
-  assertEquals(state.semanticCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 0);
   assertEquals(releaseDebriefCalls(state).length, 1);
 });
@@ -4474,37 +3891,35 @@ Deno.test("generated Debrief preserves a complete sentence beyond the legacy dis
   assert(completeWatchout.length > 40);
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
-    deepSeekReplies: [validDebriefJson({ watchouts: [completeWatchout] })],
+    claudeReplies: [validDebriefJson({ watchouts: [completeWatchout] })],
   }, debriefBody({ requestId: "debrief-complete-over-legacy-cap" }));
 
   assertEquals(response.status, 200);
   assertEquals(json.card.watchouts, [completeWatchout]);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 0);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 1);
   assertEquals(recordDebriefCalls(state).length, 1);
 });
 
-Deno.test("debrief repairs an overlong half-sentence instead of recording a sliced card", async () => {
+Deno.test("debrief overlong half-sentence kills the shot instead of recording a sliced card", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
-    deepSeekReplies: [validDebriefJson({
-      watchouts: ["下班".repeat(51)],
-    })],
-    claudeReplies: [validDebriefJson({
-      watchouts: ["下班後先接住她想散步放空的感受"],
-    })],
+    claudeReplies: [
+      validDebriefJson({ watchouts: ["下班".repeat(51)] }),
+      validDebriefJson({ watchouts: ["下班後先接住她想散步放空的感受"] }),
+    ],
   }, debriefBody({ requestId: "debrief-overlong-repair" }));
 
   assertEquals(response.status, 200);
+  // 超長第一發整發判敗，第二發全新候選供給，絕不裁尾成半句。
   assertEquals(
     json.card.watchouts,
     ["下班後先接住她想散步放空的感受"],
   );
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
-  const repairPrompt = state.claudeCalls[0].messages.at(-1)?.content ?? "";
-  assert(repairPrompt.includes("欄位太長，若直接裁尾會變成半句"));
-  assert(repairPrompt.includes("太長要重寫縮句"));
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[1].model, CLAUDE_HAIKU_MODEL);
+  assertEquals(state.claudeCalls[1].messages, state.claudeCalls[0].messages);
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
@@ -4528,11 +3943,10 @@ Deno.test("both overlong Debrief providers fail retryably without recording a ca
   assertEquals(releaseDebriefCalls(state).length, 1);
 });
 
-Deno.test("debrief returns retryable error and stores no card when both models fail", async () => {
+Deno.test("debrief returns retryable error and stores no card when both shots fail", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
-    deepSeekReplies: ["not json"],
-    claudeReplies: ["["],
+    claudeReplies: ["not json", "still not json"],
   }, debriefBody({ requestId: "debrief-both-invalid" }));
 
   assertEquals(response.status, 503);
@@ -4540,12 +3954,10 @@ Deno.test("debrief returns retryable error and stores no card when both models f
     error: "practice_debrief_generation_retryable",
     retryable: true,
   });
-  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 2);
-  assertEquals(state.deepSeekCalls[0].jsonMode, true);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 18000);
-  assertEquals(state.deepSeekCalls[0].thinking, { type: "disabled" });
-  assertEquals(state.claudeCalls[0].timeoutMs, 24000);
+  assertEquals(state.claudeCalls[0].timeoutMs, 20000);
+  assertEquals(state.claudeCalls[1].timeoutMs, 20000);
   assertEquals(claimDebriefCalls(state).length, 1);
   assertEquals(recordDebriefCalls(state).length, 0);
   assertEquals(releaseDebriefCalls(state).length, 1);
@@ -4578,8 +3990,10 @@ Deno.test("game debrief Claude failover still returns a complete model breakdown
         familiarity_score: 34,
       }),
       drawEvents: [{ profile_id: "practice_girl_004" }],
-      deepSeekReplies: [new Error("deepseek_timeout")],
-      claudeReplies: [JSON.stringify(failoverCard)],
+      claudeReplies: [
+        new Error("claude_timeout"),
+        JSON.stringify(failoverCard),
+      ],
     },
     debriefBody({
       practiceMode: "game",
@@ -4605,11 +4019,12 @@ Deno.test("game debrief Claude failover still returns a complete model breakdown
   assertEquals(json.provider, "anthropic");
   assertEquals(json.failoverUsed, true);
   assertEquals(json.fallbackUsed, false);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 1);
-  assertEquals(state.deepSeekCalls[0].timeoutMs, 18000);
-  assertEquals(state.deepSeekCalls[0].thinking, { type: "disabled" });
-  assertEquals(state.claudeCalls[0].timeoutMs, 24000);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
+  assertEquals(state.claudeCalls[1].model, CLAUDE_HAIKU_MODEL);
+  assertEquals(state.claudeCalls[0].timeoutMs, 20000);
+  assertEquals(state.claudeCalls[1].timeoutMs, 20000);
   assertEquals(claimDebriefCalls(state).length, 1);
   assertEquals(
     (aiLogInserts(state)[0].values.request_body as Record<string, unknown>)
@@ -4665,7 +4080,7 @@ Deno.test("new Debrief dual-provider failure releases without consuming settled 
 Deno.test("new Debrief consumes one settled slot only after record succeeds", async () => {
   const { response, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true, debrief_count: 2 }),
-    deepSeekReplies: [validDebriefJson()],
+    claudeReplies: [validDebriefJson()],
   }, debriefBody({ requestId: "debrief-success-counts" }));
 
   assertEquals(response.status, 200);
@@ -4678,7 +4093,7 @@ Deno.test("new Debrief consumes one settled slot only after record succeeds", as
 Deno.test("Debrief record failure releases and leaves settled count unchanged", async () => {
   const { response, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true, debrief_count: 2 }),
-    deepSeekReplies: [validDebriefJson()],
+    claudeReplies: [validDebriefJson()],
     rpc: {
       record_practice_debrief: [{ error: "database temporarily unavailable" }],
     },
@@ -4715,7 +4130,7 @@ Deno.test("debrief accepts beginner ledger when client omits practiceMode", asyn
         charged: true,
         practice_mode: "beginner",
       }),
-      deepSeekReplies: [validDebriefJson()],
+      claudeReplies: [validDebriefJson()],
     },
     debriefBody({
       memorySummary: "OLDER_DEBRIEF_MEMORY: 她之前說第二輪審查剛過",
@@ -4727,8 +4142,8 @@ Deno.test("debrief accepts beginner ledger when client omits practiceMode", asyn
     json.card.summary,
     "你說今天忙到剛下班，她接著分享只想散步放空。",
   );
-  assertEquals(state.deepSeekCalls.length, 1);
-  const debriefPrompt = state.deepSeekCalls[0].messages
+  assertEquals(state.claudeCalls.length, 1);
+  const debriefPrompt = state.claudeCalls[0].messages
     .map((message) => message.content)
     .join("\n");
   assert(debriefPrompt.includes("本場抽象關係階段：建立熟悉中"));
@@ -4742,7 +4157,7 @@ Deno.test("assisted debrief resolves Hint strategy from the charged server snaps
   const { response, state } = await run(
     {
       ledger: beginnerStartedLedger(),
-      deepSeekReplies: [validDebriefJson({
+      claudeReplies: [validDebriefJson({
         summary: "你有照提示分享散步節奏，沒有連續盤問她。",
         strengths: ["你照提示說下班後散步能切回節奏，她接著回散步很舒服。"],
         watchouts: ["下一步可以接她說散步很舒服，問她最常走哪段。"],
@@ -4802,9 +4217,7 @@ Deno.test("assisted debrief resolves Hint strategy from the charged server snaps
     p_hint_type: "steady",
     p_original_hint_text: hintText,
   });
-  const prompt = state.deepSeekCalls[0].messages.map((message) =>
-    message.content
-  )
+  const prompt = state.claudeCalls[0].messages.map((message) => message.content)
     .join("\n");
   assert(prompt.includes('decision.phase: "建立熟悉中"'));
   assert(prompt.includes('decision.targetVariable: "投入感"'));
@@ -4833,15 +4246,14 @@ Deno.test("assisted Debrief repairs indirect blame of an exact preserved Hint", 
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger({ ai_count: 2 }),
-      deepSeekReplies: [card(
-        "只回『還在賴床喔，那今天先准妳慢慢開機』只是禮貌收尾，沒有給她好接的球。",
-      )],
-      semanticReplies: [semanticDebriefResult(
-        JSON.parse(card(
-          "下一步可以接慢慢開機，再分享你今天第一個起床動作。",
-        )),
-        { issueKinds: ["strategy_mismatch"] },
-      )],
+      // 第一發把照做的 Hint 反咬成「只是禮貌收尾」＝間接怪罪，
+      // 被機械 gate 殺掉；第二發 Haiku 全新候選供給。
+      claudeReplies: [
+        card(
+          "只回『還在賴床喔，那今天先准妳慢慢開機』只是禮貌收尾，沒有給她好接的球。",
+        ),
+        card("下一步可以接慢慢開機，再分享你今天第一個起床動作。"),
+      ],
       rpc: {
         resolve_practice_hint_decision: [{
           data: {
@@ -4870,39 +4282,37 @@ Deno.test("assisted Debrief repairs indirect blame of an exact preserved Hint", 
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.provider, "deepseek");
-  assertEquals(json.failoverUsed, false);
+  assertEquals(json.provider, "anthropic");
+  assertEquals(json.failoverUsed, true);
   assertEquals(json.card.watchouts[0].includes("下一步"), true);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 0);
+  assertEquals(json.card.watchouts[0].includes("禮貌收尾"), false);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
-Deno.test("Debrief missing preserved Hint assessment safely records generated card", async () => {
+Deno.test("assisted Debrief missing Hint assessment kills the shot instead of tolerant canonicalization", async () => {
   const hintText = "還在賴床喔，那今天先准妳慢慢開機。";
-  const invalid = validDebriefJson({
-    hintAssessment: undefined,
-    summary: "你有照提示做，但這句只是禮貌收尾，沒有給球。",
-    strengths: ["你有照提示做，也接住她還在賴床的狀態。"],
-    watchouts: ["下一步可以補一點自己的早晨畫面。"],
-    suggestedLine: "慢慢開機就好，我今天也是靠咖啡把自己叫醒。",
-    dateChanceReason: "她回說慢慢開機了，願意延續賴床話題。",
-    nextInviteMove: "先延續慢慢開機的節奏，再看她是否多投入。",
+  const completeJson = validDebriefJson({
+    summary: "你有照提示做，她後來也回說慢慢開機了。",
+    strengths: ["你照提示回她今天先准妳慢慢開機，她接著說有慢慢開機。"],
+    watchouts: ["下一步可以接慢慢開機，再分享你今天第一個起床動作。"],
+    suggestedLine: "慢慢開機就好，妳今天第一個讓腦袋上線的會是什麼？",
+    dateChanceReason:
+      "她回說慢慢開機了，願意延續賴床話題，但還沒提時間或見面。",
+    nextInviteMove: "先問她慢慢開機後第一件會做什麼，再看她是否多投入。",
   });
-  const repaired = JSON.parse(invalid) as Record<string, unknown>;
-  repaired.summary = "你有照提示接住她賴床，她也回說慢慢開機了。";
-  repaired.hintAssessment = {
-    verdict: "preserved",
-    revisedEvidenceQuote: null,
-  };
+  const invalidCandidate = JSON.parse(completeJson) as Record<string, unknown>;
+  delete invalidCandidate.hintAssessment;
+  const invalid = JSON.stringify(invalidCandidate);
+  const complete = JSON.parse(completeJson) as Record<string, unknown>;
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger({ ai_count: 2 }),
-      deepSeekReplies: [invalid],
-      semanticReplies: [semanticDebriefResult(repaired, {
-        issueKinds: ["strategy_mismatch"],
-      })],
+      // 帶 appliedHintTurns 時缺 hintAssessment＝該發判敗（無寬容補欄），
+      // 第二發帶完整 assessment 才能落帳。
+      claudeReplies: [invalid, JSON.stringify(complete)],
       rpc: {
         resolve_practice_hint_decision: [{
           data: {
@@ -4936,15 +4346,12 @@ Deno.test("Debrief missing preserved Hint assessment safely records generated ca
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.provider, "deepseek");
-  assertEquals(json.failoverUsed, false);
-  assertEquals(json.card.summary.includes("你有照提示"), true);
-  assertEquals(state.deepSeekCalls.length, 1);
-  assertEquals(state.claudeCalls.length, 0);
-  assertEquals(state.semanticCalls[0].candidate.hintAssessment, {
-    verdict: "preserved",
-    revisedEvidenceQuote: null,
-  });
+  assertEquals(json.provider, "anthropic");
+  assertEquals(json.failoverUsed, true);
+  assertEquals(json.model, CLAUDE_HAIKU_MODEL);
+  assertEquals(json.card.summary.includes("照提示"), true);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
@@ -4954,7 +4361,7 @@ Deno.test("assisted debrief drops disconnected Hint lineage and still generates"
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
-      deepSeekReplies: [validDebriefJson({
+      claudeReplies: [validDebriefJson({
         summary: "她說最近想去象山看夜景，你還沒接這個具體話題。",
         strengths: ["你先問她週末會不會爬山，讓她說出象山夜景這個方向。"],
         watchouts: ["下一步要接住象山夜景，不要補成自己已有固定行程。"],
@@ -4990,11 +4397,10 @@ Deno.test("assisted debrief drops disconnected Hint lineage and still generates"
   assertEquals(response.status, 200);
   assertEquals(json.card.summary.includes("象山"), true);
   assertEquals(json.card.summary.includes("夜景"), true);
-  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(state.claudeCalls.length, 1);
   assertEquals(claimDebriefCalls(state).length, 1);
-  const prompt = state.deepSeekCalls[0].messages.map((message) =>
-    message.content
-  ).join("\n");
+  const prompt = state.claudeCalls[0].messages.map((message) => message.content)
+    .join("\n");
   assertEquals(prompt.includes("hintAssistedTurns(hidden evidence)"), false);
 });
 
@@ -5108,7 +4514,7 @@ Deno.test("standard ledger ignores forged assisted appliedHintTurns during debri
   const { response, json, state } = await run(
     {
       ledger: ledger({ ai_count: 1, charged: true }),
-      deepSeekReplies: [validDebriefJson()],
+      claudeReplies: [validDebriefJson()],
     },
     debriefBody({
       practiceMode: "beginner",
@@ -5129,7 +4535,7 @@ Deno.test("standard ledger ignores forged assisted appliedHintTurns during debri
     json.card.summary,
     "你說今天忙到剛下班，她接著分享只想散步放空。",
   );
-  const debriefPrompt = state.deepSeekCalls[0].messages
+  const debriefPrompt = state.claudeCalls[0].messages
     .map((message) => message.content)
     .join("\n");
   assertEquals(debriefPrompt.includes("hintAssistedTurns"), false);
@@ -5145,7 +4551,7 @@ Deno.test("non-game debrief drops provider gameBreakdown", async () => {
         charged: true,
         practice_mode: "beginner",
       }),
-      deepSeekReplies: [
+      claudeReplies: [
         validDebriefJson({
           gameBreakdown: {
             phaseReached: "value stage",
@@ -5177,7 +4583,7 @@ Deno.test("debrief with game ledger sends FSM and SR strategy guidance to provid
         partner_mood: "amused",
       }),
       drawEvents: [{ profile_id: "practice_girl_004" }],
-      deepSeekReplies: [
+      claudeReplies: [
         validDebriefJson({
           summary: "她接住你說的畫面，這輪有維持住測試感。",
           strengths: ["你回覆她的說說看測試，明確說自己不照劇本走。"],
@@ -5209,7 +4615,7 @@ Deno.test("debrief with game ledger sends FSM and SR strategy guidance to provid
   assertEquals(response.status, 200);
   assertEquals(json.card.summary, "她接住你說的畫面，這輪有維持住測試感。");
   assertEquals(json.card.gameBreakdown.phaseReached, "說說看從開場推到測試");
-  const debriefPrompt = state.deepSeekCalls[0].messages
+  const debriefPrompt = state.claudeCalls[0].messages
     .map((message) => message.content)
     .join("\n");
   assert(debriefPrompt.includes("gameDebrief(hidden guidance)"));
@@ -5686,7 +5092,7 @@ Deno.test("Hint never records when both shots fail the hard safety guard", async
   assertEquals(releaseHintCalls(state).length, 1);
 });
 
-Deno.test("invented Hint details from both providers fail retryably without a snapshot", async () => {
+Deno.test("invented Hint details from both shots fail retryably without a snapshot", async () => {
   const invented = JSON.stringify({
     warmUp: "鼻子靈是基本配備😂 我在中山站巷子裡發現的。",
     steady: "妳說我鼻子也太靈，那間咖啡店叫『黑露』。",
@@ -5695,8 +5101,7 @@ Deno.test("invented Hint details from both providers fail retryably without a sn
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger(),
-      deepSeekReplies: [invented],
-      semanticReplies: [new Error("semantic_adjudication_rejected")],
+      claudeReplies: [invented, invented],
     },
     hintBody({
       practiceMode: "beginner",
@@ -5710,6 +5115,7 @@ Deno.test("invented Hint details from both providers fail retryably without a sn
 
   assertEquals(response.status, 503);
   assertEquals(json.retryable, true);
+  assertEquals(state.claudeCalls.length, 2);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(releaseHintCalls(state).length, 1);
 });
@@ -7948,4 +7354,130 @@ Deno.test("hint prefetch single-shot exhaustion releases ownership and never lan
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(settleHintCalls(state).length, 0);
   assertEquals(releaseHintCalls(state).length, 1);
+});
+
+// ─── 單發重設計 v2：debrief 走 Sonnet 5 單發 tool_use＋Haiku 4.5 補發 ───
+
+Deno.test("debrief generates via one Sonnet 5 tool_use shot with zero DeepSeek and zero reviewer calls", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    claudeReplies: [validDebriefJson()],
+  }, debriefBody({ requestId: "debrief-single-shot" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 1);
+  const call = state.claudeCalls[0];
+  assertEquals(call.model, "claude-sonnet-5");
+  assertEquals(call.maxTokens, 1200);
+  assertEquals(call.forcedTool?.name, "emit_debrief_card");
+  assertEquals(
+    json.card.summary,
+    "你說今天忙到剛下班，她接著分享只想散步放空。",
+  );
+  assertEquals(json.provider, "anthropic");
+  assertEquals(json.model, "claude-sonnet-5");
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.generationSource, "model");
+  assertEquals(json.fallbackUsed, false);
+  assertEquals(recordDebriefCalls(state).length, 1);
+});
+
+Deno.test("debrief first shot failure fails over once to Haiku and keeps the card contract", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    claudeReplies: [new Error("claude_timeout"), validDebriefJson()],
+  }, debriefBody({ requestId: "debrief-failover" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[0].model, "claude-sonnet-5");
+  assertEquals(state.claudeCalls[1].model, "claude-haiku-4-5-20251001");
+  assertEquals(json.failoverUsed, true);
+  assertEquals(json.model, "claude-haiku-4-5-20251001");
+  for (
+    const key of [
+      "summary",
+      "strengths",
+      "watchouts",
+      "suggestedLine",
+      "vibe",
+      "dateChance",
+      "dateChanceReason",
+      "nextInviteMove",
+      "gameBreakdown",
+    ]
+  ) {
+    assertEquals(key in (json.card as Record<string, unknown>), true, key);
+  }
+  assertEquals(json.card.gameBreakdown, null);
+});
+
+Deno.test("debrief both single shots failing returns 503 with single_shot_v2 telemetry and release", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    claudeReplies: [new Error("claude_timeout"), new Error("claude_http_529")],
+  }, debriefBody({ requestId: "debrief-exhausted" }));
+
+  assertEquals(response.status, 503);
+  assertEquals(json, {
+    error: "practice_debrief_generation_retryable",
+    retryable: true,
+  });
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(recordDebriefCalls(state).length, 0);
+  assertEquals(releaseDebriefCalls(state).length, 1);
+  assertEquals(aiLogInserts(state).length, 1);
+  const row = aiLogInserts(state)[0].values as Record<string, unknown>;
+  assertEquals(row.status, "failed");
+  const requestBody = row.request_body as Record<string, unknown>;
+  assertEquals(requestBody.pipeline, "single_shot_v2");
+  assertEquals(requestBody.failureClasses, ["timeout", "provider_error"]);
+});
+
+Deno.test("debrief visible-guard failure kills the shot instead of repairing it and Haiku serves", async () => {
+  const leaky = validDebriefJson({
+    summary: "targetVariable: Investment 你說今天忙到剛下班。",
+  });
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    claudeReplies: [leaky, validDebriefJson()],
+  }, debriefBody({ requestId: "debrief-guard" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls[1].model, "claude-haiku-4-5-20251001");
+  assertEquals(
+    JSON.stringify(json.card).includes("targetVariable"),
+    false,
+  );
+});
+
+Deno.test("game debrief single shot keeps the gameBreakdown contract field-for-field", async () => {
+  const breakdown = {
+    phaseReached: "下班散步仍在熟悉階段",
+    missedVariable: "還缺散步話題的具體畫面",
+    failureState: "下班話題仍停在表面，還沒補具體散步畫面。",
+    nextFirstLine: "妳下班後想散步放空，通常最常走哪一段？",
+    inviteDirection: "先問她散步最常走哪段，等她多分享再丟低壓短約。",
+  };
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({ ai_count: 1, charged: true }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      claudeReplies: [validDebriefJson({ gameBreakdown: breakdown })],
+    },
+    debriefBody({
+      requestId: "game-debrief-single-shot",
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.semanticCalls.length, 0);
+  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(json.card.gameBreakdown, breakdown);
 });
