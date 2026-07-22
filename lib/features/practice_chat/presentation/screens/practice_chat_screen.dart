@@ -1690,10 +1690,17 @@ class _HintCoachPanel extends StatefulWidget {
 class _HintCoachPanelState extends State<_HintCoachPanel> {
   late bool _expanded;
 
+  /// 提示等待分段進度（套 analysis_screen 的 stage label＋經過秒數模式）。
+  /// 純時間分段，不假造伺服器進度；timer 只在 isHintLoading 期間存活，
+  /// 載入結束／widget dispose 必取消（鐵則：pumpAndSettle 必收斂）。
+  Timer? _hintWaitTimer;
+  int _hintWaitElapsedSeconds = 0;
+
   @override
   void initState() {
     super.initState();
     _expanded = widget.state.hintReplies.isNotEmpty;
+    _syncHintWaitTimer();
   }
 
   @override
@@ -1705,6 +1712,38 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
     if (receivedNewHint && widget.state.hintReplies.isNotEmpty) {
       _expanded = true;
     }
+    _syncHintWaitTimer();
+  }
+
+  @override
+  void dispose() {
+    _hintWaitTimer?.cancel();
+    super.dispose();
+  }
+
+  void _syncHintWaitTimer() {
+    final loading = widget.state.isHintLoading;
+    if (loading && _hintWaitTimer == null) {
+      // 這裡不 setState：initState 不可 setState，didUpdateWidget 本來就有
+      // 一次 rebuild 要來。
+      _hintWaitElapsedSeconds = 0;
+      _hintWaitTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() => _hintWaitElapsedSeconds++);
+      });
+    } else if (!loading && _hintWaitTimer != null) {
+      _hintWaitTimer!.cancel();
+      _hintWaitTimer = null;
+      _hintWaitElapsedSeconds = 0;
+    }
+  }
+
+  /// 0-8s → 8-25s → 25s+ 三段文案；對齊 server 管線的實際階段順序
+  /// （讀 transcript → 生成兩則回法 → 語意複核），但只按時間切換。
+  String get _hintWaitStageLabel {
+    if (_hintWaitElapsedSeconds < 8) return '教練正在讀你們最後幾句…';
+    if (_hintWaitElapsedSeconds < 25) return '正在想兩種回法…';
+    return '正在做品質雙重複核，確保建議可靠…';
   }
 
   @override
@@ -1794,6 +1833,31 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
               ],
             ],
           ),
+          if (state.isHintLoading) ...[
+            const SizedBox(height: 4),
+            Row(
+              key: const ValueKey('practice-hint-wait-progress'),
+              children: [
+                Icon(
+                  Icons.hourglass_top,
+                  size: 14,
+                  color: AppColors.primaryLight,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '$_hintWaitStageLabel（$_hintWaitElapsedSeconds 秒）',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
           if (isHintLimitReached) ...[
             const SizedBox(height: 4),
             Row(
