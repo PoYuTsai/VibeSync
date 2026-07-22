@@ -148,6 +148,18 @@ export const DEBRIEF_TOOL_SCHEMA: Readonly<Record<string, unknown>> = {
   additionalProperties: false,
 };
 
+/**
+ * Game 模式變體：gameBreakdown 升為 schema 必填（eval 第 1 輪 8/20 漏欄）。
+ * parser 的 allowGameBreakdown 硬 gate 不變，schema 只是把結構要求前移到生成端。
+ */
+export const DEBRIEF_TOOL_SCHEMA_GAME: Readonly<Record<string, unknown>> = {
+  ...DEBRIEF_TOOL_SCHEMA,
+  required: [
+    ...(DEBRIEF_TOOL_SCHEMA.required as string[]),
+    "gameBreakdown",
+  ],
+};
+
 export interface DebriefCard {
   summary: string;
   strengths: string[];
@@ -1326,23 +1338,27 @@ function assertGeneratedDebriefQuality(
     sharedFactualEvidence?: string[];
     partnerFactualEvidence?: string[];
     trustedFactClaims?: HintFactClaim[];
+    relaxSubjectiveQualityRubrics?: boolean;
   },
 ): void {
+  const relaxSubjective = opts.relaxSubjectiveQualityRubrics === true;
   const visibleFields = debriefVisibleFields(card);
   for (const field of visibleFields) {
     rejectKnownCannedPracticeText(field, "debrief_canned_visible_text");
   }
-  assertGeneratedDebriefFieldSubstance(card);
-  assertNoInventedPartnerInitiative(card, opts.turns);
-  rejectGenericPasteablePracticeText(
-    card.suggestedLine,
-    "debrief_quality_invalid_suggested_line",
-  );
-  if (card.gameBreakdown) {
+  if (!relaxSubjective) {
+    assertGeneratedDebriefFieldSubstance(card);
+    assertNoInventedPartnerInitiative(card, opts.turns);
     rejectGenericPasteablePracticeText(
-      card.gameBreakdown.nextFirstLine,
-      "debrief_quality_invalid_next_first_line",
+      card.suggestedLine,
+      "debrief_quality_invalid_suggested_line",
     );
+    if (card.gameBreakdown) {
+      rejectGenericPasteablePracticeText(
+        card.gameBreakdown.nextFirstLine,
+        "debrief_quality_invalid_next_first_line",
+      );
+    }
   }
   const factContext = buildHintFactContext({
     turns: opts.turns,
@@ -1397,7 +1413,7 @@ function assertGeneratedDebriefQuality(
       throw new Error("debrief_quality_invalid_repeated_hint");
     }
   }
-  if (appliedHints.some((hint) => hint.exact)) {
+  if (!relaxSubjective && appliedHints.some((hint) => hint.exact)) {
     const accountability = `${card.summary}\n${card.strengths.join("\n")}`;
     if (
       !/(?:有|已)(?:照|採用|使用)提示|照著提示|提示那句/u.test(accountability)
@@ -1406,7 +1422,9 @@ function assertGeneratedDebriefQuality(
     }
   }
 
-  assertGeneratedDebriefFieldRoles(card);
+  if (!relaxSubjective) {
+    assertGeneratedDebriefFieldRoles(card);
+  }
 
   assertPracticeTextGroundedInTurns({
     visibleText: card.suggestedLine,
@@ -1459,6 +1477,13 @@ export function parseDebriefCard(
     trustedFactClaims?: HintFactClaim[];
     enforceGeneratedQuality?: boolean;
     repairPreservedHintCritique?: boolean;
+    /**
+     * 單發管線 profile（2026-07-23 eval 第 1 輪校正）：放行 reviewer 時代主觀
+     * rubric（substance／role／partner_initiative／hint_accountability／
+     * generic-pasteable）；canned、事實接地（unsupported_detail＋grounding）、
+     * 守門詞表、breakdown 完整性一律照擋。
+     */
+    relaxSubjectiveQualityRubrics?: boolean;
   } = {},
 ): DebriefCard {
   const cleaned = extractJsonObject(raw);

@@ -368,7 +368,7 @@ Deno.test("beginner buildDebriefMessages 注入實際溫度 band 與不矛盾約
   assertEquals(user.includes("不得與這個溫度矛盾"), true);
   assertEquals(
     user.includes(
-      "不得向使用者提及升溫指數、score、band、temperature 或內部評估",
+      "絕不出現這些內部詞：升溫指數、溫度、score、band、temperature",
     ),
     true,
   );
@@ -650,7 +650,9 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // Applied-Hint Debrief intentionally carries the exact Hint plus its
   // server-authored decision so the model cannot contradict its own advice.
   // That high-integrity lineage gets a separate, still-bounded ceiling.
-  if (maxDebriefWithHint > 5700) {
+  // 2026-07-23 單發 v2：band/內部詞明確禁列（temperature.ts＋GAME debrief
+  // prompt 各一行）為固定 bytes，上限 5700→5900。
+  if (maxDebriefWithHint > 5900) {
     failures.push(
       `Debrief+Hint max ${maxDebriefWithHint} at ${maxDebriefWithHintCase}`,
     );

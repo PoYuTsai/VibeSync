@@ -9,6 +9,7 @@ import {
 import {
   DATE_CHANCES,
   DEBRIEF_TOOL_SCHEMA,
+  DEBRIEF_TOOL_SCHEMA_GAME,
   parseDebriefCard,
   VIBES,
 } from "./debrief_card.ts";
@@ -2632,4 +2633,61 @@ Deno.test("parseDebriefCard converts truncated JSON into a classifiable machine 
   const error = assertThrows(() => parseDebriefCard('{"summary":"寫到一半'));
   assert(error instanceof Error);
   assertEquals(error.message, "debrief_json_parse_failed");
+});
+
+
+Deno.test("DEBRIEF_TOOL_SCHEMA_GAME promotes gameBreakdown to required", () => {
+  const required = DEBRIEF_TOOL_SCHEMA_GAME.required as string[];
+  assertEquals(required.includes("gameBreakdown"), true);
+  assertEquals(
+    (DEBRIEF_TOOL_SCHEMA.required as string[]).includes("gameBreakdown"),
+    false,
+  );
+});
+
+Deno.test("relaxSubjectiveQualityRubrics 放行主觀 substance rubric、硬 gate 照擋", () => {
+  const turns = [
+    { role: "user" as const, text: "今天忙到剛下班" },
+    { role: "ai" as const, text: "我也剛下班，只想散步放空" },
+  ];
+  const card = {
+    summary: "你說今天忙到剛下班，她接著分享只想散步放空。",
+    strengths: ["有接到她說想散步的話"],
+    watchouts: ["下一步要接住她想散步放空，不要只停在自己的忙碌。"],
+    suggestedLine: "下班後散步很療癒，妳最常走哪一段？",
+    vibe: "中性",
+    dateChance: "medium",
+    dateChanceReason: "她回覆自己剛下班想散步放空，但還沒提時間或見面。",
+    nextInviteMove: "先問她最常去哪裡散步，等她多分享再看邀約窗口。",
+  };
+  const baseOpts = {
+    requireCompleteCard: true,
+    enforceGeneratedQuality: true,
+    turns,
+  };
+  // 嚴格 profile：strengths 只覆述「接到」＝substance rubric 打回。
+  assertThrows(
+    () => parseDebriefCard(JSON.stringify(card), baseOpts),
+    Error,
+    "debrief_quality_invalid_strength_substance",
+  );
+  // 單發 profile：主觀 rubric 放行，卡照常供給。
+  const relaxed = parseDebriefCard(JSON.stringify(card), {
+    ...baseOpts,
+    relaxSubjectiveQualityRubrics: true,
+  });
+  assertEquals(relaxed.strengths.length, 1);
+  // 硬 gate 不因 relax 而鬆：內部標籤洩漏仍整張打回。
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...card,
+          summary: "targetVariable: Investment 你說今天忙到剛下班。",
+        }),
+        { ...baseOpts, relaxSubjectiveQualityRubrics: true },
+      ),
+    Error,
+    "debrief_internal_label_leak",
+  );
 });

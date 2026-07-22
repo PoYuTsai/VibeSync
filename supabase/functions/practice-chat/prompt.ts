@@ -225,7 +225,8 @@ export const GAME_DEBRIEF_SYSTEM_PROMPT = DEBRIEF_SYSTEM_PROMPT.replace(
     "inviteDirection": "下一步邀約方向或先修什麼（最多 40 字）"
   }`,
 ) +
-  `\nGame 的 gameBreakdown 五欄必填、各帶原話並守欄位角色；禁萬用術語。`;
+  `\nGame 的 gameBreakdown 五欄必填（缺任何一欄整張卡作廢）、各帶原話並守欄位角色；禁萬用術語。` +
+  `\n所有欄位一律白話：絕不出現內部詞（frozen/cold/neutral/warm/hot、band、score、升溫指數、推拉、篩選、賦格、可得性、框架；唯「框架掉了」可用）。`;
 
 const DEBRIEF_PROMPT_FIRST_TURN_COUNT = 2;
 const DEBRIEF_PROMPT_RECENT_TURN_COUNT = 12;

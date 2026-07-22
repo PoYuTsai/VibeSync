@@ -132,6 +132,13 @@ interface HintParseOptions {
   enforceGeneratedQuality?: boolean;
   /** Runtime semantic reviewer owns facts/grounding/style; parser keeps hard safety. */
   semanticAdjudicated?: boolean;
+  /**
+   * 單發管線 profile（2026-07-23 eval 第 1 輪校正）：放行 reviewer 時代主觀
+   * rubric（substantive_move／invite_coaching_conflict／game_coaching_substance／
+   * generic-pasteable）；硬安全、結構、守門詞表、事實接地（fact claims＋
+   * grounding）一律照擋。舊 served 結果從未 enforce 這些主觀 rubric。
+   */
+  relaxSubjectiveQualityRubrics?: boolean;
 }
 
 const MAX_REPLY_LENGTH = 80;
@@ -1441,7 +1448,10 @@ function requiredString(
   rejectL4UnsafeVisibleText(capped, "hint_l4_unsafe");
   if (options.enforceGeneratedQuality === true) {
     rejectKnownCannedPracticeText(capped, "hint_canned_visible_text");
-    if (field !== "coaching" && options.semanticAdjudicated !== true) {
+    if (
+      field !== "coaching" && options.semanticAdjudicated !== true &&
+      options.relaxSubjectiveQualityRubrics !== true
+    ) {
       rejectGenericPasteablePracticeText(capped, "hint_quality_invalid");
     }
   }
@@ -2271,10 +2281,13 @@ function assertGeneratedHintQuality(opts: {
   // the semantic reviewer in production. The visible Game schema above stays
   // deterministic so a mistaken accept cannot bypass the contract entirely.
   if (opts.parseOptions.semanticAdjudicated === true) return;
+  const relaxSubjective =
+    opts.parseOptions.relaxSubjectiveQualityRubrics === true;
   const coachingSaysNoInvite =
     /(?:這輪|現在)?(?:先)?(?:不約|不急著約|不硬約)|(?:先鋪墊|等窗口|先累積(?:投入|熟悉))/u
       .test(opts.coaching);
   if (
+    !relaxSubjective &&
     coachingSaysNoInvite &&
     [opts.warmUp, opts.steady].some((reply) =>
       practiceInviteLevelFor(reply) !== "none"
@@ -2302,9 +2315,11 @@ function assertGeneratedHintQuality(opts: {
       context: factContext,
     });
   }
-  for (const reply of [opts.warmUp, opts.steady]) {
-    if (!hasSubstantiveHintMove(reply)) {
-      throw new Error("hint_quality_invalid_substantive_move");
+  if (!relaxSubjective) {
+    for (const reply of [opts.warmUp, opts.steady]) {
+      if (!hasSubstantiveHintMove(reply)) {
+        throw new Error("hint_quality_invalid_substantive_move");
+      }
     }
   }
   // One grounded coaching sentence must not launder two generic pasteable
@@ -2317,7 +2332,7 @@ function assertGeneratedHintQuality(opts: {
       errorCode: "hint_quality_invalid_not_grounded",
     });
   }
-  if (opts.parseOptions.mode === "game") {
+  if (!relaxSubjective && opts.parseOptions.mode === "game") {
     assertGeneratedGameCoachingSubstance(opts.coaching);
   }
 }

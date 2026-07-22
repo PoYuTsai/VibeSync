@@ -163,7 +163,10 @@ export function temperatureBandDebriefInstruction(score: number): string {
   };
   return `本場收尾升溫指數 ${clamped}/100（${band}）：${guidance[band]}\n` +
     "summary、vibe、dateChance 與各評語不得與這個溫度矛盾。\n" +
-    "內部規則：不得向使用者提及升溫指數、score、band、temperature 或內部評估。";
+    "內部規則（違反即整張卡作廢）：所有欄位的文字一律用白話描述她的狀態，" +
+    "絕不出現這些內部詞：升溫指數、溫度、score、band、temperature、" +
+    "frozen、cold、neutral、warm、hot、dhv、推拉、篩選、賦格、可得性、框架" +
+    "（唯一例外：「框架掉了」可用）。";
 }
 
 export function applyTemperatureDelta(

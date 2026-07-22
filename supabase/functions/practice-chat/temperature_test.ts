@@ -33,7 +33,7 @@ Deno.test("temperatureBandDebriefInstruction 注入 band、含不矛盾與不洩
   assert(low.includes("不得與這個溫度矛盾"));
   assert(
     low.includes(
-      "不得向使用者提及升溫指數、score、band、temperature 或內部評估",
+      "絕不出現這些內部詞：升溫指數、溫度、score、band、temperature",
     ),
   );
 

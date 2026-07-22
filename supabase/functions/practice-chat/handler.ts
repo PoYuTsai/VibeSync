@@ -54,6 +54,7 @@ import { DEEPSEEK_MODEL, type DeepSeekArgs } from "./deepseek.ts";
 import {
   DEBRIEF_QUALITY_SCHEMA_VERSION,
   DEBRIEF_TOOL_SCHEMA,
+  DEBRIEF_TOOL_SCHEMA_GAME,
   type DebriefCard,
   parseDebriefCard,
 } from "./debrief_card.ts";
@@ -2569,6 +2570,7 @@ export function createPracticeChatHandler(
           partnerFactualEvidence: hintFactualEvidence.partner,
           trustedFactClaims: hintFactualEvidence.claims,
           enforceGeneratedQuality: true,
+          relaxSubjectiveQualityRubrics: true,
         } as const;
         hintPromptChars = countPromptChars(baseHintMessages);
         if (!claudeApiKey || !deps.callClaude) {
@@ -3282,6 +3284,7 @@ export function createPracticeChatHandler(
           partnerFactualEvidence: debriefFactualEvidence.partner,
           trustedFactClaims: debriefFactualEvidence.claims,
           enforceGeneratedQuality: true,
+          relaxSubjectiveQualityRubrics: true,
         } as const;
         debriefPromptChars = countPromptChars(baseDebriefMessages);
         if (!claudeApiKey || !deps.callClaude) {
@@ -3295,7 +3298,9 @@ export function createPracticeChatHandler(
             name: "emit_debrief_card",
             description:
               "輸出練習拆解卡：總結、亮點、注意點、建議句與邀約評估（Game 模式含拆盤）。",
-            inputSchema: DEBRIEF_TOOL_SCHEMA as Record<string, unknown>,
+            inputSchema: (debriefPracticeMode === "game"
+              ? DEBRIEF_TOOL_SCHEMA_GAME
+              : DEBRIEF_TOOL_SCHEMA) as Record<string, unknown>,
           },
           maxTokens: DEBRIEF_MAX_TOKENS,
           temperature: DEBRIEF_TEMPERATURE,
