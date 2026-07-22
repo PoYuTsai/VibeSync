@@ -251,9 +251,87 @@ Deno.test("durable ai_logs row keeps only aggregate generation metrics", () => {
   assertEquals(row.request_body.attemptDurationsMs, [9001]);
   assertEquals(row.request_body.failureClasses, ["timeout", "unknown"]);
   assertEquals(row.response_body, null);
-  assertEquals(row.error_message, null);
+  // 失敗列沒帶 failureCodes 時，error_message 退回 error_code 分類，仍非空。
+  assertEquals(row.error_message, "timeout");
   assertFalse(JSON.stringify(row).includes("SECRET_TRANSCRIPT"));
   assertFalse(JSON.stringify(row).includes("SECRET_ERROR"));
+});
+
+Deno.test("failed ai_logs row writes sanitized failure detail into error_message", () => {
+  const row = buildPracticeAiLogRow({
+    userId: "11111111-2222-3333-4444-555555555555",
+    model: "deepseek-v4-flash",
+    telemetry: {
+      mode: "hint",
+      practiceMode: "game",
+      attempt: 2,
+      attemptDurationMs: null,
+      failureClass: "schema_invalid",
+      fallbackUsed: true,
+      failoverUsed: true,
+      totalDurationMs: 9012,
+      promptChars: 4300,
+    },
+    attemptDurationsMs: [9001],
+    failureClasses: ["schema_invalid", "semantic_rejected"],
+    failureCodes: [
+      "hint_missing_field_x",
+      "semantic_adjudication_failed:semantic_adjudication_repair_unverified",
+      "她說今天想去河堤散步 SECRET_TRANSCRIPT",
+    ],
+  });
+  // 只落已通過 sanitizePracticeFailureCode 白名單的內部 marker。
+  assertEquals(
+    row.error_message,
+    "hint_missing_field_x; " +
+      "semantic_adjudication_failed:semantic_adjudication_repair_unverified",
+  );
+  assertFalse(JSON.stringify(row).includes("SECRET_TRANSCRIPT"));
+  assertFalse(JSON.stringify(row).includes("河堤"));
+});
+
+Deno.test("ai_logs error_message stays null on success and is capped at 300 chars", () => {
+  const successRow = buildPracticeAiLogRow({
+    userId: "11111111-2222-3333-4444-555555555555",
+    model: "deepseek-v4-flash",
+    telemetry: {
+      mode: "hint",
+      practiceMode: "standard",
+      attempt: 1,
+      attemptDurationMs: null,
+      failureClass: null,
+      fallbackUsed: false,
+      failoverUsed: false,
+      totalDurationMs: 1200,
+      promptChars: 100,
+    },
+    attemptDurationsMs: [1200],
+    failureClasses: [],
+    failureCodes: [],
+  });
+  assertEquals(successRow.status, "success");
+  assertEquals(successRow.error_message, null);
+
+  const longCode = (prefix: string) => `${prefix}${"x".repeat(118)}`;
+  const cappedRow = buildPracticeAiLogRow({
+    userId: "11111111-2222-3333-4444-555555555555",
+    model: "deepseek-v4-flash",
+    telemetry: {
+      mode: "debrief",
+      practiceMode: "game",
+      attempt: 3,
+      attemptDurationMs: null,
+      failureClass: "schema_invalid",
+      fallbackUsed: true,
+      failoverUsed: false,
+      totalDurationMs: 30000,
+      promptChars: 4300,
+    },
+    attemptDurationsMs: [10000, 10000, 10000],
+    failureClasses: ["schema_invalid", "schema_invalid", "schema_invalid"],
+    failureCodes: [longCode("hint_a"), longCode("hint_b"), longCode("hint_c")],
+  });
+  assertEquals(cappedRow.error_message?.length, 300);
 });
 
 Deno.test("practice failure codes keep machine codes and reject free text", () => {

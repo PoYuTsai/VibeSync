@@ -66,7 +66,9 @@ export interface PracticeAiLogRow {
     failureCodes: string[];
   };
   response_body: null;
-  error_message: null;
+  // 失敗列才有值，且只由 sanitizePracticeFailureCode 白名單機器碼與
+  // failureClass 分類詞組成——絕不含使用者逐字稿或模型輸出。
+  error_message: string | null;
 }
 
 const FAILURE_CLASS_SET = new Set<string>(
@@ -219,6 +221,22 @@ function normalizeFailureCodeList(values: readonly unknown[]): string[] {
     .slice(0, 3);
 }
 
+const ERROR_MESSAGE_MAX_LENGTH = 300;
+
+/**
+ * Failed rows only: build ai_logs.error_message from the already-sanitized
+ * machine codes (charset + known-prefix whitelist), falling back to the
+ * coarse failure class so the column is never empty on a failed row. No raw
+ * error text ever flows through here, so transcripts/model output cannot leak.
+ */
+function buildPracticeErrorMessage(
+  failureCodes: readonly string[],
+  fallbackClass: PracticeGenerationFailureClass,
+): string {
+  const joined = failureCodes.join("; ");
+  return (joined || fallbackClass).slice(0, ERROR_MESSAGE_MAX_LENGTH);
+}
+
 /**
  * Build one durable ai_logs outcome row. DeepSeek usage is not exposed by the
  * current caller, so token fields stay explicit zero rather than fake estimates.
@@ -234,6 +252,8 @@ export function buildPracticeAiLogRow(input: {
   const telemetry = buildPracticeGenerationTelemetry(input.telemetry);
   const attempt = telemetry.attempt ?? 1;
   const failed = telemetry.fallbackUsed || telemetry.failureClass !== null;
+  const failureCodes = normalizeFailureCodeList(input.failureCodes ?? []);
+  const errorCode = failed ? telemetry.failureClass ?? "unknown" : null;
   return {
     user_id: input.userId,
     model: input.model,
@@ -242,17 +262,19 @@ export function buildPracticeAiLogRow(input: {
     output_tokens: 0,
     latency_ms: telemetry.totalDurationMs ?? 0,
     status: failed ? "failed" : "success",
-    error_code: failed ? telemetry.failureClass ?? "unknown" : null,
+    error_code: errorCode,
     fallback_used: telemetry.fallbackUsed,
     retry_count: Math.max(0, attempt - 1),
     request_body: {
       ...telemetry,
       attemptDurationsMs: normalizeCountList(input.attemptDurationsMs),
       failureClasses: normalizeFailureList(input.failureClasses),
-      failureCodes: normalizeFailureCodeList(input.failureCodes ?? []),
+      failureCodes,
     },
     response_body: null,
-    error_message: null,
+    error_message: errorCode === null
+      ? null
+      : buildPracticeErrorMessage(failureCodes, errorCode),
   };
 }
 
