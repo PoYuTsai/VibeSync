@@ -116,6 +116,25 @@ Deno.test("practice invite classifier recognises generic scheduling language", (
   );
 });
 
+Deno.test("practice invite classifier ignores mid-word verbs and rhetorical dare questions", () => {
+  // 第 6 輪 eval FP 樣句（docs/reviews/2026-07-23-fact-gate-round6-judgment.md #1/#2/#4/#5）：
+  // 單字動詞被構詞環境（好看/換來/被打）或反問語氣（還敢跟嗎）切中，全句零邀約語意。
+  for (
+    const line of [
+      "追劇配鹹酥雞聽起來根本是治癒套餐吧，最近在追什麼劇，好看到讓妳暫時忘記開會的當機感嗎？",
+      "懷疑人生也要撐到看風景，這波你算是精神值爆表了哈哈，下次爬山還敢跟嗎？",
+      "哈哈「懶得戒了」這態度我喜歡，反正咖啡因換來的清醒感也算划算吧？",
+      "很嚴格喔？那我可要挑最不糊的那張交作業，被打回票要重拍嗎？",
+    ]
+  ) {
+    assertEquals(practiceInviteLevelFor(line), "none", line);
+  }
+  // 真邀約回歸：構詞守門不得弱化既有偵測（判定表 #7＋一起來構詞例外）。
+  assertEquals(practiceInviteLevelFor("麻辣鍋那家我可以帶妳去試試"), "direct");
+  assertEquals(practiceInviteLevelFor("改天一起去"), "soft");
+  assertEquals(practiceInviteLevelFor("一起來吧"), "direct");
+});
+
 Deno.test("practice invite classifier removes cancelled or negated plans", () => {
   for (
     const line of [
