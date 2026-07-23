@@ -160,6 +160,22 @@ export const DEBRIEF_TOOL_SCHEMA_GAME: Readonly<Record<string, unknown>> = {
   ],
 };
 
+/**
+ * Hint 套用變體：appliedHintTurns 非空時 hintAssessment 升為 schema 必填。
+ * 2026-07-23 真機：hidden 欄位只靠 prompt 教學，Sonnet 首發連兩局整欄漏掉；
+ * 同 gameBreakdown 前例，把條件必填前移到生成端 schema。
+ */
+export function debriefToolSchemaFor(
+  opts: { game: boolean; hintApplied: boolean },
+): Record<string, unknown> {
+  const base = opts.game ? DEBRIEF_TOOL_SCHEMA_GAME : DEBRIEF_TOOL_SCHEMA;
+  if (!opts.hintApplied) return base as Record<string, unknown>;
+  return {
+    ...base,
+    required: [...(base.required as string[]), "hintAssessment"],
+  };
+}
+
 export interface DebriefCard {
   summary: string;
   strengths: string[];
@@ -404,19 +420,20 @@ function authoritativeHintRoute(hint: AppliedHintTurn): HintStrategyRoute {
 function explicitNarrativeRoute(value: string): HintStrategyRoute | null {
   const text = value.normalize("NFKC").replace(/\s+/gu, "");
   if (
-    /(?:先|需要|應該|這輪|現在).{0,10}(?:道歉|降壓|修復|修補安全|停下|退開)|(?:停止|不要|不再).{0,8}(?:推進|邀約|打擾)/u
+    // 「不要急著邀約」是 build（別急）不是 repair（停止）——急著/趕著/馬上族排除。
+    /(?:先|需要|應該|這輪|現在).{0,10}(?:道歉|降壓|修復|修補安全|停下|退開)|(?:停止|不要|不再)(?!急|太快|馬上|趕).{0,8}(?:推進|邀約|打擾)/u
       .test(text)
   ) {
     return "repair";
   }
   if (
-    /(?:先|這輪|現在|目前).{0,12}(?:不約|不急著約|別急著約|不硬約|不適合約|鋪墊|累積|建立|延伸|補足|補感受|補投入|熟悉|安全|穩住)|(?:先不要|先別|暫時不要|不要|別|不急著).{0,4}(?:約她|邀她|約對方|邀對方|問她(?:哪天|何時|什麼時候).{0,6}有空|定.{0,4}時間)|(?:還要|還需|需要)?再.{0,6}(?:累積|建立|延伸|補足|補感受|補投入|穩住)|等.{0,14}(?:再|才).{0,12}(?:約|邀|窗口)|(?:還沒|尚未|未到).{0,10}(?:窗口|時機)|(?:邀約)?窗口(?:還沒|尚未|仍未)(?:開|成熟)|先.{0,14}再.{0,12}(?:約|邀|窗口)/u
+    /(?:先|這輪|現在|目前).{0,12}(?:不約|不急著約|別急著約|不硬約|不適合約|鋪墊|累積|建立|延伸|補足|補感受|補投入|熟悉|安全|穩住)|(?:先不要|先別|暫時不要|不要|別|不急著).{0,4}(?:約她|邀她|約對方|邀對方|邀約|問她(?:哪天|何時|什麼時候).{0,6}有空|定.{0,4}時間)|(?:還要|還需|需要)?再.{0,6}(?:累積|建立|延伸|補足|補感受|補投入|穩住)|等.{0,28}(?:再|才).{0,12}(?:約|邀|窗口)|(?:還沒|尚未|未到).{0,10}(?:窗口|時機)|(?:邀約)?窗口(?:還沒|尚未|仍未)(?:開|成熟)|先.{0,28}再.{0,12}(?:約|邀|窗口)|(?:觀察|看)(?:她|對方).{0,20}(?:再|才).{0,12}(?:約|邀|窗口)/u
       .test(text)
   ) {
     return "build";
   }
   if (
-    /(?:沒有|沒)(?:做|給|丟|推)?(?:出)?(?:直接|明確)?邀約.{0,10}(?:失誤|錯|問題|可惜)|(?:太被動|偏保守|早該).{0,12}(?:直接)?(?:約|邀約)|(?:現在|這輪|下一句|下一步|接下來|應該|可以|建議|不妨|適合|立刻|趁現在).{0,12}(?:直接|明確)?(?:約她|邀她|約對方|邀對方|問她(?:哪天|何時|什麼時候).{0,6}有空|把.{1,12}收成.{0,4}(?:見面|咖啡|邀約)|去(?:喝咖啡|吃飯|散步|看展|逛街))|(?:直接|明確|立刻|趁現在)(?:約|邀約)|(?:約|邀約).{0,8}(?:時機|窗口)(?:已經)?成熟/u
+    /(?:沒有|沒)(?:做|給|丟|推)?(?:出)?(?:直接|明確)?邀約.{0,10}(?:失誤|錯|問題|可惜)|(?:太被動|偏保守|早該).{0,12}(?:直接)?(?:約|邀約)|(?:現在|這輪|下一句|下一步|接下來|應該|可以|建議|不妨|適合|立刻|趁現在).{0,12}(?:直接|明確)?(?:約她|邀她|約對方|邀對方|問她(?:哪天|何時|什麼時候).{0,6}有空|把.{1,12}收成.{0,4}(?:見面|咖啡|邀約)|去(?:喝咖啡|吃飯|散步|看展|逛街))|(?<!升到)(?<!是否)(?<!考慮)(?<!評估)(?:直接|明確|立刻|趁現在)(?:約|邀約)|(?:約|邀約).{0,8}(?:時機|窗口)(?:已經)?成熟/u
       .test(text)
   ) {
     return "direct";
@@ -478,6 +495,18 @@ function cardContradictsHintStrategy(
     inviteLevelContradicts(authoritative, level)
   );
 }
+
+/**
+ * 明確指涉「使用者這句回覆/提示句」的詞面（2026-07-23 契約收斂）。
+ * 排除她方所有格（她的回覆/對方的回答＝在講對方的訊息）；bare「回答」
+ * 不收（「她只回答飲食內容」的回答是動詞）。
+ */
+const HINT_REPLY_REFERENCE_PATTERN =
+  /(?:照提示|照貼|提示那句|原本提示|hint|你的回覆|你這句|這句|剛才那句|剛剛那句|這個回應|這個回答|這樣回|(?<!(?:她|對方)的)(?:回覆|訊息))/iu;
+
+/** 施事毀局句：把/讓＋毀局動詞，把責任歸給使用者送出的那句（＝Hint 句）。 */
+const AGENTIVE_HINT_KILL_PATTERN =
+  /(?:把|讓).{0,12}(?:聊死|停住|停掉|斷|句點|關上|冷場)/u;
 
 const PRESERVED_HINT_CRITIQUE_PATTERN =
   /(?:只(?:回|問|停)|只是.{0,8}(?:禮貌|收尾|附和)|禮貌收尾|停在|沒給球|沒有給.{0,8}(?:球|接球|空間)|球(?:沒有|沒)丟回|(?:沒有|沒)丟回|沒有接|沒接住|很難繼續|查戶口|盤問|偏保守|太保守|太客套|客套|無效|扣分|沒留(?:接點|鉤子)|沒有留(?:接點|鉤子|回應空間)|沒有把話題往前帶|回覆收得太乾淨|互動斷在這裡|像把門關上|收得太死|沒有延伸|缺少鉤子|少了.{0,8}(?:鉤子|接點|溫度|生活感|畫面)|缺乏.{0,8}(?:鉤子|接點|溫度|生活感|畫面)|(?:容易)?冷場|(?:讓人)?接不下去|敷衍|平庸|話題.{0,4}句點|像句點|封閉話題|讓對話停住|把.{0,10}話題聊死|沒有讓對話延續|太乾|收尾感太重|對話沒有出口|沒有留下下一球|很難接下去)/u;
@@ -696,20 +725,51 @@ function partnerTurnContainsInviteEvidence(value: string): boolean {
   const compact = normalizedPracticeText(value);
   return practiceInviteLevelFor(value) !== "none" ||
     /(?:約|邀)[妳你]|要不要.{0,8}一起|(?:跟|和)[妳你].{0,10}(?:見面|碰面|喝咖啡|吃飯|散步|看展|逛街)/u
+      .test(compact) ||
+    // 她自報空檔（我這週六下午剛好有空）＝主動釋出時間窗口
+    // （2026-07-23 gd1 eval：卡片寫「她釋出時間窗口」被誤殺）。
+    /我.{0,10}(?:有空|沒事|有時間|都可以|沒排)/u.test(compact) ||
+    // 她拍板確認（下午可以欸，那說好了）＝接受/敲定邀約
+    // （2026-07-23 gd5 eval 同型誤殺）。
+    /(?:說好了|說定|一言為定|成交)/u.test(compact) ||
+    /(?:週[一二三四五六日末]|星期[一二三四五六日天]|禮拜[一二三四五六日天]|明天|後天|下午|晚上|早上)[^，,。！？!?；;]{0,4}(?:可以|沒問題|ok|行)/iu
       .test(compact);
 }
 
+// 逐子句判定：跨子句黏連（「先聊她的感受，累積默契後再提邀約」的她與邀約
+// 分屬不同子句、不同主詞）曾整批誤殺（2026-07-23 真機 debrief eval）。
 function claimsPartnerInitiatedInvite(value: string): boolean {
+  return value.split(/[，,。！？!?；;\n]+/u).some((clause) =>
+    clauseClaimsPartnerInitiatedInvite(clause)
+  );
+}
+
+function clauseClaimsPartnerInitiatedInvite(value: string): boolean {
   const compact = normalizedPracticeText(value);
   if (
-    /(?:還沒|尚未|沒有|沒|未|不).{0,12}(?:見面|碰面|邀約|約|邀)/u.test(
+    /(?:還沒|尚未|沒有|沒|未|不).{0,24}(?:見面|碰面|邀約|約|邀)/u.test(
       compact,
     )
   ) {
     return false;
   }
+  // 「等她主動釋出時間再考慮邀約」「觀察她是否會問你」「累積到她主動釋出
+  // 線索再考慮邀約」＝未來條件教學句，不是「她邀約過」宣稱
+  // （2026-07-23 真機 debrief eval FP 家族）。
+  if (
+    /(?:等|等到|看|觀察|如果|假如|若|要是|直到|累積到)(?:她|對方)(?:是否|會不會|有沒有)?.{0,20}(?:主動|願意|想|提|問|回|開口)/u
+      .test(compact)
+  ) {
+    return false;
+  }
+  if (
+    /(?:她|對方).{0,20}主動.{0,16}再(?:考慮|談|提|評估|看|開|邀|約)/u
+      .test(compact)
+  ) {
+    return false;
+  }
   // 動詞與邀約詞之間隔著「窗口/機會/時機」＝機會描述或教練指令句（如「順著她給的窗口直接邀約」），非「她邀約過」宣稱
-  return /(?:她|對方).{0,28}(?:主動(?:提(?:了|出)?|說|問|給|丟|發出)?|(?:提(?:了|出)?|說想|說要|問|給|丟|發出|表示想|想|要|願意))(?:(?!窗口|機會|時機).){0,12}(?:見面|碰面|邀約|約你|邀你)/u
+  return /(?:她|對方).{0,28}(?:主動(?:提(?:了|出)?|說|問|給|丟|發出)?|(?:提(?:了|出)?|說想|說要|問|給|丟|發出|表示想|想|要|願意))(?:(?!窗口|機會|時機|的).){0,12}(?:見面|碰面|邀約|約你|邀你)/u
     .test(compact) ||
     // 「邀約窗口/機會/時機」是機會描述不是「她發出過邀約」的宣稱，不觸發本 gate
     /(?:她|對方)的.{0,10}(?:邀約(?!窗口|機會|時機)|見面提議|約見)/u.test(compact);
@@ -813,13 +873,21 @@ function assertGeneratedDebriefFieldRoles(card: DebriefCard): void {
 }
 
 function hasNegativeReplyEvaluation(value: string): boolean {
-  const compact = normalizedPracticeText(value)
+  // 引號內是引述（多半是對方原話），不是拆解卡自己的評價。
+  const compact = normalizedPracticeText(
+    value.replace(/「[^」]*」|『[^』]*』/gu, ""),
+  )
     .replace(
-      /(?:沒有|沒|不會|並不|不)(?:造成|帶來|顯得|讓她感到|給她)?(?:太)?(?:加壓|壓力|壓迫|逼迫|逼人|急|用力|突兀|冒進|油膩|刻意)/gu,
+      /(?:沒有|沒|不會|並不|不)(?:造成|帶來|顯得|讓她感到|給她|連續)?(?:太)?(?:加壓|壓力|壓迫|逼迫|逼人|急|用力|突兀|冒進|油膩|刻意|硬推|硬聊|盤問|查戶口|追問|轟炸)/gu,
       "",
     )
     .replace(
       /(?:沒有|沒|不會|不是|並非)(?:(?:不夠|缺少|欠缺|不足|少了|缺乏)(?:生活感|溫度|鉤子|接點|畫面|具體|有趣|自然|承接|投入|誠意|真誠)|(?:太|過於|偏|顯得|略嫌)?(?:單薄|客套|平淡|乾|冷|硬|制式|普通|尷尬|無聊|敷衍|平庸)|(?:容易)?冷場|(?:讓人)?接不下去)/gu,
+      "",
+    )
+    // 路線進度陳述（還沒有往邀約方向推進）不是對回覆品質的負評。
+    .replace(
+      /(?:還沒|尚未|仍未)(?:有)?(?:往|向)?.{0,10}(?:推進|升溫|邀約|見面|窗口)/gu,
       "",
     );
   const target = compact.match(/(?:這句|回覆|訊息|回答)/u);
@@ -866,23 +934,29 @@ function hintCreditHasUnscopedAdversative(value: string): boolean {
           .test(tail);
       const isForwardCoaching = hasForwardCoachingScope(tail) &&
         !/(?:照提示|照貼|提示那句|原本提示|hint)/iu.test(tail);
-      const describesRouteState =
-        /^(?:(?:目前|現在|這輪|現階段)(?:的)?(?:階段|時機|窗口)?|(?:階段|時機|窗口))(?:還|尚|暫時|仍)?(?:不適合|不急|不到|未到|不宜|先不|先別|還沒|尚未).{0,10}(?:邀約|約|見面|推進|升溫|丟窗口)?$/u
-          .test(tail) ||
-        /^(?:還要|還需|需要)?再(?:累積|建立|延伸|補足|補感受|補投入|穩住).{0,8}$/u
-          .test(tail) ||
-        /^(?:這輪|現在|目前)?先(?:穩住|延續|累積|建立|補足|補感受|補投入).{0,8}$/u
-          .test(tail) ||
-        /^(?:邀約)?窗口(?:還沒|尚未|仍未)(?:開|成熟).{0,4}$/u.test(
-          tail,
-        );
-      if (
-        hasPartnerSubject(tail) || targetsOtherUserTurn ||
-        isForwardCoaching || describesRouteState
-      ) {
+      if (hasPartnerSubject(tail) || targetsOtherUserTurn || isForwardCoaching) {
         continue;
       }
-      return true;
+      // 契約收斂（2026-07-23 真機 debrief 全滅）：轉折尾只有「詞表批評」或
+      // 「明確指涉回覆＋負評」才算翻案；進度/路線/她方觀察等回顧（還沒往
+      // 邀約方向推進、後續沒有新的反問）一律放行——allowlist 措辭窮舉已被
+      // 真 API eval 證明收斂不了，改 kill-list。
+      // 「但整場仍停在資訊交換階段」＝進度陳述非批 Hint（停在/卡在＋
+      // 資訊交換/階段族收口）。
+      const progressState =
+        /(?:停在|卡在|停留在).{0,10}(?:資訊交換|一問一答|資訊|表面|階段|熟悉|認識|鋪墊)/u
+          .test(tail);
+      const critiqued = !progressState &&
+        preservedHintCritiqueMatches(tail).some((match) =>
+          !critiqueIsNegatedPraise(tail, match.index)
+        );
+      if (critiqued) return true;
+      if (
+        HINT_REPLY_REFERENCE_PATTERN.test(tail) &&
+        hasNegativeReplyEvaluation(tail)
+      ) {
+        return true;
+      }
     }
   }
   return false;
@@ -948,79 +1022,16 @@ function preservedCardCritiquesExactHint(
   ) {
     return true;
   }
-  const hasClearScope = (value: string): boolean => {
-    const compact = normalizedPracticeText(value);
-    const forward = hasForwardCoachingScope(value);
-    const partner = hasPartnerSubject(value);
-    const otherUserTurn =
-      /(?:提示前|照貼前|前一(?:句|輪|則)|上一(?:句|輪|則)|前面那句|你後來|後來你|下一輪你|提示後你又)/u
-        .test(compact);
-    const critiqueMatches = preservedHintCritiqueMatches(compact);
-    const explicitPraise = critiqueMatches.length > 0 &&
-      critiqueMatches.every((match) =>
-        critiqueIsNegatedPraise(compact, match.index)
-      );
-    return forward || partner || otherUserTurn || explicitPraise;
-  };
-  const negativeEvaluationFields: Array<{
-    value: string;
-    allowObjectiveGameOutcome?: boolean;
-  }> = [
-    { value: card.summary },
-    ...card.strengths.map((value) => ({ value })),
-    ...card.watchouts.map((value) => ({ value })),
-    { value: card.dateChanceReason },
-    { value: card.nextInviteMove },
-    ...(card.gameBreakdown
-      ? [
-        { value: card.gameBreakdown.phaseReached },
-        {
-          value: card.gameBreakdown.missedVariable,
-          allowObjectiveGameOutcome: true,
-        },
-        {
-          value: card.gameBreakdown.failureState,
-          allowObjectiveGameOutcome: true,
-        },
-      ]
-      : []),
-  ];
-  if (
-    negativeEvaluationFields.some((
-      { value: field, allowObjectiveGameOutcome },
-    ) =>
-      !(allowObjectiveGameOutcome && isObjectiveGameOutcome(field)) &&
-      field.split(/[。！？；;\n]+/u).some((clause) =>
-        hasNegativeReplyEvaluation(clause) && !hasClearScope(clause)
-      )
-    )
-  ) {
-    return true;
-  }
-  if (card.watchouts.some((field) => !hasClearScope(field))) return true;
-  const nextMoveCompact = normalizedPracticeText(card.nextInviteMove);
-  const nextMoveNeedsScope =
-    preservedHintCritiqueMatches(nextMoveCompact).length > 0 ||
-    hasNegativeReplyEvaluation(card.nextInviteMove) ||
-    /(?:照提示|照貼|提示那句|原本提示|hint|你的回覆|你這句|這句|剛才那句|剛剛那句|這個回應)/iu
-      .test(nextMoveCompact);
-  if (nextMoveNeedsScope && !hasClearScope(card.nextInviteMove)) return true;
-  const conditionallyScopedGameFields = card.gameBreakdown
-    ? [card.gameBreakdown.missedVariable, card.gameBreakdown.failureState]
-    : [];
-  if (
-    conditionallyScopedGameFields.some((field) => {
-      const compact = normalizedPracticeText(field);
-      const needsScope = preservedHintCritiqueMatches(compact).length > 0 ||
-        hasNegativeReplyEvaluation(field) ||
-        /(?:照提示|照貼|提示那句|原本提示|hint|你的回覆|你這句|這句|剛才那句|剛剛那句|這個回應)/iu
-          .test(compact);
-      return needsScope && !isObjectiveGameOutcome(field) &&
-        !hasClearScope(field);
-    })
-  ) {
-    return true;
-  }
+  // 契約收斂（2026-07-23 真機 debrief 全滅）：unscoped 批評預設不再視為批
+  // Hint——真 API eval 證明「安全措辭 allowlist」對模型輸出多樣性收斂不了
+  // （六張好卡 0% 過關）。改 kill-list：只有(1)明確指涉這句/回覆/提示、
+  // (2)整句引用 Hint 原文、(3)施事毀局句（把話題聊死）、(4)短裸評價
+  // （太平淡/只停在禮貌收尾＝對回覆的隱式判詞）才算翻案。
+  // 卡文已過 guardVisibleText 繁化（准→準），引用比對兩側都先繁化。
+  const exactHintQuotes = appliedHintTurns
+    .filter((hint) => hint.exact)
+    .map((hint) => normalizedPracticeText(toTraditionalChinese(hint.sentText)))
+    .filter((quote) => quote.length >= 6);
   const critiqueFields: Array<{
     value: string;
     allowObjectiveGameOutcome?: boolean;
@@ -1048,26 +1059,59 @@ function preservedCardCritiquesExactHint(
     if (allowObjectiveGameOutcome && isObjectiveGameOutcome(field)) continue;
     for (const clause of field.split(/[。！？；;\n]+/u)) {
       const compact = normalizedPracticeText(clause);
-      for (const critical of preservedHintCritiqueMatches(compact)) {
-        if (critiqueIsNegatedPraise(compact, critical.index)) continue;
-        const prefix = compact.slice(0, critical.index);
-        const isForwardInstruction =
-          /^(?:下一步|下次|接下來|之後)(?:你|你的回覆|可以|可|要|應該|改成|別|不要)*/u
-            .test(prefix) &&
-          !/(?:照提示|照貼|提示那句|原本提示|剛才那句|hint)/iu.test(
-            prefix,
-          );
+      if (compact.length === 0) continue;
+      const critiques = preservedHintCritiqueMatches(compact).filter((match) =>
+        !critiqueIsNegatedPraise(compact, match.index)
+      );
+      const replyReferenced = HINT_REPLY_REFERENCE_PATTERN.test(compact) ||
+        exactHintQuotes.some((quote) =>
+          normalizedPracticeText(toTraditionalChinese(clause)).includes(quote)
+        );
+      const agentive = AGENTIVE_HINT_KILL_PATTERN.test(compact);
+      if (!replyReferenced && !agentive) {
+        // 短裸評價（太平淡/賴床這輪只停在禮貌收尾）＝對回覆的隱式判詞；
+        // 有主詞（你的生活樣本還沒有出現）/前瞻/指涉他句的回顧一律放行。
         if (
-          isForwardInstruction ||
-          critiqueClearlyTargetsPartner(compact, critical.index) ||
-          critiqueClearlyTargetsAnotherUserTurn(
-            clause,
-            turns,
-            appliedHintTurns,
-          )
+          compact.length <= 12 &&
+          (critiques.length > 0 || hasNegativeReplyEvaluation(clause)) &&
+          !/(?:你|妳)/u.test(compact) &&
+          !hasPartnerSubject(clause) &&
+          !hasForwardCoachingScope(clause) &&
+          !critiqueClearlyTargetsAnotherUserTurn(clause, turns, appliedHintTurns)
+        ) {
+          return true;
+        }
+        continue;
+      }
+      const forwardInstruction =
+        /^(?:下一步|下次|接下來|之後)/u.test(compact) &&
+        !/(?:照提示|照貼|提示那句|原本提示|剛才那句|hint)/iu.test(compact);
+      if (
+        forwardInstruction ||
+        critiqueClearlyTargetsAnotherUserTurn(clause, turns, appliedHintTurns)
+      ) {
+        continue;
+      }
+      for (const critical of critiques) {
+        if (critiqueClearlyTargetsPartner(compact, critical.index)) continue;
+        // 「照提示延伸，但整場仍停在資訊交換階段」＝進度陳述；停在/卡在
+        // 收在進度名詞上不算批 Hint（收尾在禮貌收尾/句點等判詞仍殺）。
+        if (
+          /^(?:停在|卡在|停留在)/u.test(critical.text) &&
+          /(?:停在|卡在|停留在).{0,10}(?:資訊交換|一問一答|資訊|表面|階段|熟悉|認識|鋪墊)/u
+            .test(compact)
         ) {
           continue;
         }
+        return true;
+      }
+      // negEval 只在子句真的點名回覆（這句/回覆…）時才算翻案；只因提及
+      // 「照提示」就咬「缺乏下一步鋪墊」這類進度負評是誤殺。
+      if (
+        /(?:這句|你的回覆|這個回應|這個回答|這樣回|剛才那句|剛剛那句|(?<!(?:她|對方)的)(?:回覆|回答|訊息))/u
+          .test(compact) &&
+        hasNegativeReplyEvaluation(clause) && !hasPartnerSubject(clause)
+      ) {
         return true;
       }
     }
@@ -1330,7 +1374,7 @@ function assertHintAssessment(opts: {
   const quote = assessment.revisedEvidenceQuote;
   const visibleText = debriefVisibleFields(opts.card).join("\n");
   const visiblyReversesHint =
-    /(?:提示|建議)(?:(?:本身|內容|那句|其實|真的|確實|有點|太|很|偏|是)){0,3}(?:錯|不對|不該|太急|偏保守|無效|不好|不合適|不適合|有問題|失準|誤判)/u
+    /(?:提示|建議)(?:(?:本身|內容|那句|其實|真的|確實|有點|完全|根本|實在|太|很|偏|是)){0,3}(?:錯|不對|不該|太急|偏保守|無效|不好|不合適|不適合|有問題|失準|誤判)/u
       .test(normalizedPracticeText(visibleText));
   const strategyContradictsHint = cardContradictsHintStrategy(
     opts.card,
@@ -1343,7 +1387,22 @@ function assertHintAssessment(opts: {
     throw new Error("debrief_hint_assessment_revision_required");
   }
   if (verdict === "preserved") {
-    if (quote !== null) throw new Error("debrief_hint_assessment_invalid");
+    if (quote !== null) {
+      // schema 升必填後模型偏好填「她的原句」而非 null（2026-07-23 eval）：
+      // 引句逐字出自 ai turn＝無害佐證，hidden 欄位 server 會移除，照收；
+      // 其餘非 null 引句仍屬 preserved 矛盾照殺。
+      const quoteText = typeof quote === "string"
+        ? normalizedPracticeText(toTraditionalChinese(quote))
+        : "";
+      const benignEvidence = quoteText.length > 0 &&
+        (opts.turns ?? []).some((turn) =>
+          turn.role === "ai" &&
+          normalizedPracticeText(toTraditionalChinese(turn.text)).includes(
+            quoteText,
+          )
+        );
+      if (!benignEvidence) throw new Error("debrief_hint_assessment_invalid");
+    }
     if (
       opts.skipVisibleConsistency !== true &&
       preservedCardCritiquesExactHint(

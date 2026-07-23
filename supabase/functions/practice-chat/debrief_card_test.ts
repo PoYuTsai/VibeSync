@@ -10,6 +10,7 @@ import {
   DATE_CHANCES,
   DEBRIEF_TOOL_SCHEMA,
   DEBRIEF_TOOL_SCHEMA_GAME,
+  debriefToolSchemaFor,
   parseDebriefCard,
   repairFlattenedGameBreakdown,
   VIBES,
@@ -631,12 +632,8 @@ Deno.test("preserved Debrief cannot indirectly blame an exact Hint in Beginner o
         dateChanceReason: "你的回覆太客套，沒留接點。",
       },
     },
-    {
-      card: {
-        ...generatedQualityCard,
-        watchouts: ["沒有把話題往前帶，也沒有留下回應空間。"],
-      },
-    },
+    // 2026-07-23 契約收斂：「沒有把話題往前帶，也沒有留下回應空間」這類
+    // 無明確指涉的長句對話回顧改為放行（見檔尾真機回歸區），不再列翻案。
     {
       card: {
         ...generatedQualityCard,
@@ -3012,5 +3009,266 @@ Deno.test("generated Debrief still rejects fabricated self-narrative suggested l
       ),
     Error,
     "debrief_quality_invalid_suggested_line_not_grounded",
+  );
+});
+
+// ===== 2026-07-23 真機回歸：exact＋preserved 的「對話狀態回顧」不得整卡打回 =====
+// 來源：ai_logs 8a15dec5（practice_debrief_game 兩請求四發全滅）的 rejectedCandidates raw。
+// 契約澄清：批評對象是「對話/局面」（聊天停在資訊交換、卡在一問一答）＝合法回顧；
+// 批評對象是「這句/回覆/提示那句」仍照殺。
+
+const fieldExactHint = {
+  turnIndex: 4,
+  type: "steady" as const,
+  originalHintText:
+    "有啦，有在練。不過我的菜單沒妳那麼講究，練腿那天也是亂吃😂 妳練腿通常吃爆什麼？",
+  sentText:
+    "有啦，有在練。不過我的菜單沒妳那麼講究，練腿那天也是亂吃😂 妳練腿通常吃爆什麼？",
+  exact: true,
+  hintRequestId: "hint-field-20260723",
+  decision: {
+    phase: "建立熟悉中",
+    targetVariable: "生活樣本",
+    move: "build_connection",
+    inviteRoute: "build",
+    rationale: "先接住她的訓練生活，再看她投入程度。",
+  },
+};
+
+const fieldTurns = [
+  { role: "user" as const, text: "我平常亂吃流派，練腿吃什麼都隨便" },
+  {
+    role: "ai" as const,
+    text: "笑死 你也太廢了吧😂 練腿那天亂吃隔天會超慘",
+  },
+  {
+    role: "user" as const,
+    text: "敵。那妳練腿的日子是不是就得吃得更扎實一點？",
+  },
+  {
+    role: "ai" as const,
+    text: "喔～你懂喔？練腿那天我一定吃爆，不然隔天直接變殘廢😂 等等 你該不會也有在練吧",
+  },
+  {
+    role: "user" as const,
+    text: "有啦，有在練。不過我的菜單沒妳那麼講究，練腿那天也是亂吃😂 妳練腿通常吃爆什麼？",
+  },
+  {
+    role: "ai" as const,
+    text: "白飯配雞胸肉啊 再補個蛋 碳水蛋白質一起來 練完那餐真的不能省 不然腿會抗議😂",
+  },
+];
+
+const fieldSonnetCard = {
+  summary: "聊得順、有接住健身話題，但仍停在資訊交換，尚未推進到邀約",
+  strengths: [
+    "你有照提示做，跟著她的健身邏輯延伸問「練腿吃什麼」，接住她的梗",
+    "用自嘲「亂吃流派」呼應她的玩笑，讓她笑著回「笑死」「太廢了吧」",
+  ],
+  watchouts: [
+    "下一步：她給了具體菜單細節（白飯雞胸蛋）後可以順勢聊感受或畫面，別再問下一題資訊",
+    "整段仍是一問一答的資訊交換，還沒帶進她本人的情緒或你的立場",
+  ],
+  suggestedLine: "白飯配雞胸這麼扎實，妳這樣吃完會不會反而更有精神想出去晃晃？",
+  vibe: "中性",
+  dateChance: "medium",
+  dateChanceReason: "她願意細聊飲食細節、接梗自然，但沒有釋出時間或場景線索",
+  nextInviteMove: "先別邀約，順著飲食話題多聊一輪感受，等她主動提時間或地點再接",
+  gameBreakdown: {
+    phaseReached: "還在開場熟悉階段，聊得算輕鬆但沒往下一層推進",
+    missedVariable: "她的情緒和感受沒被聊到，一直停在飲食資訊上",
+    failureState: "卡在一問一答的資訊乒乓，內容都是「吃什麼」沒有延伸到她的心情或畫面",
+    nextFirstLine: "白飯配雞胸這麼扎實，妳這樣吃完會不會反而更有精神想出去晃晃？",
+    inviteDirection: "先不邀約，順勢聊她練完的感受或放鬆方式，鋪墊夠了再找時間窗口",
+  },
+  hintAssessment: { verdict: "preserved", revisedEvidenceQuote: null },
+};
+
+const fieldHaikuCard = {
+  summary: "照著提示聊，接住她的疲累和訓練邏輯，聊天節奏順暢，但還沒有往邀約方向推進。",
+  strengths: [
+    "你有接住她練完很累的狀態，沒有硬推話題，讓她舒服地分享",
+    "你問的「練腿吃什麼」貼到她的生活細節，她願意延伸說明碳水蛋白質配置",
+  ],
+  watchouts: [
+    "聊天停在資訊交換，還沒有帶出你自己的立場，容易變成問卷式對話",
+    "她最後一句有時間線索（練完那餐很重要），但你沒有接住這個窗口往下推",
+  ],
+  suggestedLine: "「練完不能省這點我同意，所以妳練腿那天根本沒得偷懶，我下次也跟著妳的邏輯來。」",
+  vibe: "中性",
+  dateChance: "medium",
+  dateChanceReason: "聊天舒服但還在熟悉階段，沒有具體場景或時間線索被接住推進。",
+  nextInviteMove: "先不邀約，繼續建立默契；下一步可以聊她練腿的頻率或訓練風格，找到一個可以一起行動的切點。",
+  gameBreakdown: {
+    phaseReached: "開場到資訊交換階段，聊天流暢但還停在她的訓練和飲食習慣，沒有往價值或感受層推進。",
+    missedVariable: "你的立場和感受還沒有進來，聊天是單向接收她的資訊，缺少「我們」的互動感。",
+    failureState: "她最後提到「練完那餐真的不能省」是一個時間線索和生活樣本，但你沒有接住這個窗口往邀約或共同行動的方向推。",
+    nextFirstLine: "「練完不能省這點我同意，所以妳練腿那天根本沒得偷懶，我下次也跟著妳的邏輯來。」",
+    inviteDirection: "先修建立你自己的立場和感受，讓她看到你也有訓練邏輯；之後可以聊一起練或一起吃的可能性。",
+  },
+  hintAssessment: { verdict: "preserved", revisedEvidenceQuote: null },
+};
+
+const fieldParseOptions = {
+  allowGameBreakdown: true,
+  requireCompleteCard: true,
+  turns: fieldTurns,
+  appliedHintTurns: [fieldExactHint],
+  repairPreservedHintCritique: false,
+  enforceGeneratedQuality: true,
+  relaxSubjectiveQualityRubrics: true,
+};
+
+Deno.test("真機回歸 2026-07-23：Sonnet 卡（對話狀態回顧）＋preserved 不觸發 revision_required", () => {
+  const card = parseDebriefCard(
+    JSON.stringify(fieldSonnetCard),
+    { ...fieldParseOptions },
+  );
+  assertEquals(card.summary.includes("停在資訊交換"), true);
+});
+
+Deno.test("真機回歸 2026-07-23：Haiku 卡（照提示＋還沒推進的路線陳述）＋preserved 不觸發 revision_required", () => {
+  const card = parseDebriefCard(
+    JSON.stringify(fieldHaikuCard),
+    { ...fieldParseOptions },
+  );
+  assertEquals(card.watchouts[0].includes("聊天停在資訊交換"), true);
+});
+
+Deno.test("TP guard：對話狀態名詞混搭「這句」批評仍觸發 revision_required", () => {
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...fieldSonnetCard,
+          watchouts: [
+            "下一步：順勢聊感受",
+            "聊天停在資訊交換，這句太客套讓她接不下去",
+          ],
+        }),
+        { ...fieldParseOptions },
+      ),
+    Error,
+    "debrief_hint_assessment_revision_required",
+  );
+});
+
+Deno.test("TP guard：把話題聊死（施事句）仍觸發 revision_required", () => {
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...fieldSonnetCard,
+          gameBreakdown: {
+            ...fieldSonnetCard.gameBreakdown,
+            failureState: "把飲食話題聊死，互動斷在這裡",
+          },
+        }),
+        { ...fieldParseOptions },
+      ),
+    Error,
+    "debrief_hint_assessment_revision_required",
+  );
+});
+
+Deno.test("debriefToolSchemaFor：hint 套用時 hintAssessment 升為 schema 必填", () => {
+  const plain = debriefToolSchemaFor({ game: false, hintApplied: false });
+  const hinted = debriefToolSchemaFor({ game: false, hintApplied: true });
+  const gameHinted = debriefToolSchemaFor({ game: true, hintApplied: true });
+  assertEquals(
+    (plain.required as string[]).includes("hintAssessment"),
+    false,
+  );
+  assertEquals(
+    (hinted.required as string[]).includes("hintAssessment"),
+    true,
+  );
+  assertEquals(
+    (gameHinted.required as string[]).includes("hintAssessment"),
+    true,
+  );
+  assertEquals(
+    (gameHinted.required as string[]).includes("gameBreakdown"),
+    true,
+  );
+});
+
+// 2026-07-23 真 API eval 第二、三輪抓到的 FP 措辭家族——契約固定：
+// 進度陳述/條件教學句/路線語不算翻案或捏造。
+Deno.test("真機回歸 2026-07-23：eval 抓到的 FP 措辭家族全放行", () => {
+  const variants: Array<Partial<typeof fieldSonnetCard>> = [
+    // credit＋但＋進度陳述（整場停在資訊交換）
+    { summary: "你接住健身話題並照提示延伸，但整場仍停在資訊交換階段" },
+    // credit＋但＋缺乏下一步鋪墊（negEval 不得只因「照提示」就咬）
+    { summary: "照提示接住她的訓練節奏，聊天自然流暢，但缺乏下一步鋪墊，投入度停留在舒適分享。" },
+    // 「不要急著邀約」＝build 路線語，不是 repair
+    {
+      nextInviteMove:
+        "先用「你懂喔」拉近距離，再從訓練或飲食習慣找到可以一起做的畫面，不要急著邀約。",
+    },
+    // 「沒有…她主動延伸的邀約訊號」＝否定句，不是她主動邀約過的宣稱
+    {
+      dateChanceReason:
+        "聊天順暢舒服，但只有生活資訊交換，沒有場景畫面、時間線索或她主動延伸的邀約訊號。",
+    },
+    // 「等她主動釋出時間或場景再考慮邀約」＝未來條件教學句
+    {
+      gameBreakdown: {
+        ...fieldSonnetCard.gameBreakdown,
+        inviteDirection: "先別邀約，順著訓練話題多聊幾輪，等她主動釋出時間或場景再考慮邀約",
+      },
+    },
+  ];
+  for (const patch of variants) {
+    const card = parseDebriefCard(
+      JSON.stringify({ ...fieldSonnetCard, ...patch }),
+      { ...fieldParseOptions },
+    );
+    assert(card.summary.length > 0);
+  }
+  // TP guard：credit＋但＋停在「禮貌收尾」（判詞收口）仍翻案。
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...fieldSonnetCard,
+          summary: "你有照提示做，但只停在禮貌收尾。",
+        }),
+        { ...fieldParseOptions },
+      ),
+    Error,
+    "debrief_hint_assessment_revision_required",
+  );
+});
+
+// schema 把 revisedEvidenceQuote 升必填後，模型在 preserved 時傾向填「她的
+// 原句」而非 null（2026-07-23 eval ×2）——引句可在 ai turn 逐字找到＝無害
+// 佐證照收；不是 turn 原文的引句仍屬矛盾照殺。
+Deno.test("preserved＋revisedEvidenceQuote 為 ai turn 原文時視為無害佐證", () => {
+  const card = parseDebriefCard(
+    JSON.stringify({
+      ...fieldSonnetCard,
+      hintAssessment: {
+        verdict: "preserved",
+        revisedEvidenceQuote: "白飯配雞胸肉啊 再補個蛋 碳水蛋白質一起來",
+      },
+    }),
+    { ...fieldParseOptions },
+  );
+  assertEquals(card.summary.length > 0, true);
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...fieldSonnetCard,
+          hintAssessment: {
+            verdict: "preserved",
+            revisedEvidenceQuote: "她說想再見面",
+          },
+        }),
+        { ...fieldParseOptions },
+      ),
+    Error,
+    "debrief_hint_assessment_invalid",
   );
 });

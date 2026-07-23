@@ -53,8 +53,7 @@ import {
 import { DEEPSEEK_MODEL, type DeepSeekArgs } from "./deepseek.ts";
 import {
   DEBRIEF_QUALITY_SCHEMA_VERSION,
-  DEBRIEF_TOOL_SCHEMA,
-  DEBRIEF_TOOL_SCHEMA_GAME,
+  debriefToolSchemaFor,
   type DebriefCard,
   parseDebriefCard,
 } from "./debrief_card.ts";
@@ -3307,9 +3306,12 @@ export function createPracticeChatHandler(
             name: "emit_debrief_card",
             description:
               "輸出練習拆解卡：總結、亮點、注意點、建議句與邀約評估（Game 模式含拆盤）。",
-            inputSchema: (debriefPracticeMode === "game"
-              ? DEBRIEF_TOOL_SCHEMA_GAME
-              : DEBRIEF_TOOL_SCHEMA) as Record<string, unknown>,
+            // 有套用 Hint 時 hintAssessment 升為 schema 必填——hidden 欄位
+            // 只靠 prompt 教學時 Sonnet 首發整欄漏掉（2026-07-23 真機全滅）。
+            inputSchema: debriefToolSchemaFor({
+              game: debriefPracticeMode === "game",
+              hintApplied: (ledgerAppliedHintTurns ?? []).length > 0,
+            }),
           },
           maxTokens: DEBRIEF_MAX_TOKENS,
           temperature: DEBRIEF_TEMPERATURE,
