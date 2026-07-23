@@ -23,15 +23,34 @@ import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
 import '../../../../shared/widgets/coaching_outcome_follow_up_bar.dart';
 import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
 import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
+import '../../../new_topic/presentation/widgets/new_topic_view.dart';
 import '../widgets/opener_generation_progress.dart';
 
+/// `/opener` 頁的兩個模式：開場白（既有 opener body）與新話題。
+/// `?mode=new_topic` 只決定初始 tab；頁內切換不改 route。
+enum OpeningRescueMode { opener, newTopic }
+
 class OpeningRescueScreen extends ConsumerStatefulWidget {
-  const OpeningRescueScreen({super.key, this.partnerId});
+  const OpeningRescueScreen({
+    super.key,
+    this.partnerId,
+    this.initialMode = OpeningRescueMode.opener,
+  });
 
   /// Optional: when entered from a partner-scoped sheet (PartnerDetail / Analysis),
   /// drafts saved here are tagged with this partnerId so the「最近開場草稿」
   /// card knows which person each draft belongs to.
   final String? partnerId;
+
+  /// 初始模式；unknown query 值由 route 層 fallback 成 opener。
+  final OpeningRescueMode initialMode;
+
+  /// Route query `mode` 解析：只認 `new_topic`，其他一律 opener。
+  static OpeningRescueMode modeFromQuery(String? raw) {
+    return raw == 'new_topic'
+        ? OpeningRescueMode.newTopic
+        : OpeningRescueMode.opener;
+  }
 
   /// Builds the `/new` handoff URL used by the「她回覆了，開始分析對話」CTA.
   /// Carries partnerId when the screen was entered from a partner-scoped flow
@@ -194,6 +213,9 @@ class OpenerCardSpec {
 }
 
 class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
+  // 頁內模式切換不清 result/error/requestId、不改 route（§13.1）；
+  // IndexedStack 讓另一模式保持 mounted，in-flight 生成不中斷。
+  late OpeningRescueMode _mode = widget.initialMode;
   int _selectedTab = 0;
   List<Uint8List> _images = [];
 
@@ -700,8 +722,57 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       ),
       safeArea: false,
       body: SafeArea(
-          top: false,
-          child: SingleChildScrollView(
+        top: false,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+              child: BrandSegmentedButton<OpeningRescueMode>(
+                segments: const [
+                  BrandSegment(
+                    value: OpeningRescueMode.opener,
+                    label: '開場白',
+                  ),
+                  BrandSegment(
+                    value: OpeningRescueMode.newTopic,
+                    label: '新話題',
+                  ),
+                ],
+                selected: _mode,
+                // 本地切換不改 route（避免 GoRouter replace 重建）；
+                // IndexedStack 保兩側 state，生成中切換不中斷工作。
+                onChanged: (mode) => setState(() => _mode = mode),
+              ),
+            ),
+            Expanded(
+              child: IndexedStack(
+                index: _mode.index,
+                children: [
+                  _buildOpenerBody(
+                    subscription: subscription,
+                    boundPartnerName: boundPartnerName,
+                    activeInput: activeInput,
+                    hasGeneratedResult: hasGeneratedResult,
+                  ),
+                  NewTopicView(initialPartnerId: widget.partnerId),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 既有 opener body 原樣抽出（§13.1：不動 controllers、request session、
+  /// draft、outcome lifecycle；只換掛載位置）。
+  Widget _buildOpenerBody({
+    required SubscriptionState subscription,
+    required String? boundPartnerName,
+    required OpenerGenerationInput activeInput,
+    required bool hasGeneratedResult,
+  }) {
+    return SingleChildScrollView(
             controller: _scrollController,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             child: Column(
@@ -835,9 +906,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 const SizedBox(height: 40),
               ],
             ),
-          ),
-        ),
-    );
+          );
   }
 
   Widget _buildScreenshotTab() {

@@ -187,8 +187,13 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/opener',
+      // `?mode=new_topic` 只決定初始 tab（unknown 值 fallback opener）；
+      // 頁內切換不改 route。partnerId 與 mode 可同時存在。
       builder: (context, state) => OpeningRescueScreen(
         partnerId: state.uri.queryParameters['partnerId'],
+        initialMode: OpeningRescueScreen.modeFromQuery(
+          state.uri.queryParameters['mode'],
+        ),
       ),
     ),
     GoRoute(

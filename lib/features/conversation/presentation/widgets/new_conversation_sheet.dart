@@ -141,11 +141,11 @@ class NewConversationSheet extends ConsumerWidget {
                 child: Icon(Icons.auto_awesome, color: AppColors.bokehYellow),
               ),
               title: Text(
-                '開場救星',
+                '開場白／新話題',
                 style: TextStyle(color: AppColors.glassTextPrimary),
               ),
               subtitle: Text(
-                '交友軟體不知道怎麼開場？AI 幫你生成開場白',
+                '不知道第一句怎麼開場，或聊天卡住想換話題？AI 幫你想',
                 style: TextStyle(color: AppColors.unselectedText, fontSize: 12),
               ),
               onTap: () {

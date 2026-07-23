@@ -173,7 +173,7 @@ void main() {
   });
 
   testWidgets(
-      'sheet partnerId="p-test" + 開場救星 → opener route carries partnerId',
+      'sheet partnerId="p-test" + 開場白／新話題 → opener route carries partnerId',
       (t) async {
     await t.binding.setSurfaceSize(const Size(400, 900));
     addTearDown(() => t.binding.setSurfaceSize(null));
@@ -186,14 +186,14 @@ void main() {
     await t.tap(find.text('open sheet'));
     await _settle(t);
 
-    await t.tap(find.text('開場救星'));
+    await t.tap(find.text('開場白／新話題'));
     await _settle(t);
 
     expect(find.text('opener:p-test'), findsOneWidget,
         reason: 'opener 入口必須帶上 partnerId — 否則草稿無法綁定對象');
   });
 
-  testWidgets('sheet partnerId=null + 開場救星 → opener route without partnerId',
+  testWidgets('sheet partnerId=null + 開場白／新話題 → opener route without partnerId',
       (t) async {
     await t.binding.setSurfaceSize(const Size(400, 900));
     addTearDown(() => t.binding.setSurfaceSize(null));
@@ -206,7 +206,7 @@ void main() {
     await t.tap(find.text('open sheet'));
     await _settle(t);
 
-    await t.tap(find.text('開場救星'));
+    await t.tap(find.text('開場白／新話題'));
     await _settle(t);
 
     expect(find.text('opener:null'), findsOneWidget,
