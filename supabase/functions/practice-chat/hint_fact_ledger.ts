@@ -86,6 +86,12 @@ export interface HintFactContext {
   latestPartnerText: string;
   /** 全部輸入文本的 compact 正規化（turns＋factual evidence），供實體級模糊比對。 */
   sourceTexts?: readonly string[];
+  /**
+   * 只含她本人的 turn＋partner factual evidence（compact 正規化）。
+   * 供 partner preference/lifestyle callback 詞面支持——絕不含 user 文本，
+   * 免得 user 自陳被移轉成她的喜好。
+   */
+  partnerSourceTexts?: readonly string[];
 }
 
 export function claimConfidence(claim: HintFactClaim): HintFactConfidence {
@@ -124,9 +130,11 @@ const SCHEDULE_DAY =
   "今天|明天|後天|今晚|明晚|明早|週末|(?:這|下|上)?(?:週|禮拜|星期)[一二三四五六日天](?!起)|這週|下週|上週";
 const SCHEDULE_TIME =
   `(?:${SCHEDULE_DAY})(?:早上|中午|下午|晚上)?(?:${NUMBER_TOKEN}點(?:半)?)?|(?:今晚|明晚|明早|早上|中午|下午|晚上)`;
-// 「能」加負向 lookahead：擋「能量/能力」詞中匹配（「她今天能量沒那麼高」≠有空）。
+// 「能」加負向 lookahead：擋「能量/能力」詞中匹配（「她今天能量沒那麼高」≠有空）；
+// 加負向 lookbehind 擋「可能」（真機 gh6：「妳的中午…風格可能不太一樣」被抽成
+// 中午有空——「可能」是推測副詞不是可用性）。
 const SCHEDULE_STATUS =
-  "沒空|不方便|已經有約|有約|有空|可以|能(?![量力耐])|沒事|方便|排得開|休假|下班|忙|有事|有安排|排滿|要開會|要上班|要上課|要看醫生|值班|出差|在公司|在學校|在家裡|在外面";
+  "沒空|不方便|已經有約|有約|有空|可以|(?<!可)能(?![量力耐])|沒事|方便|排得開|休假|下班|忙|有事|有安排|排滿|要開會|要上班|要上課|要看醫生|值班|出差|在公司|在學校|在家裡|在外面";
 const HISTORY_TIME =
   `去年(?:春天|夏天|秋天|冬天|年初|年中|年底)?|前年|大前年|上個月|上週|上星期|上禮拜|昨天|前天|前幾天|疫情前|(?:${NUMBER_TOKEN}|半)(?:個月|週|星期|禮拜|年)前|(?:小學|國中|高中|大學|研究所)(?:時|時候)|${NUMBER_TOKEN}月${NUMBER_TOKEN}(?:日|號)|[0-9]{1,2}[/.\\-][0-9]{1,2}`;
 
@@ -701,6 +709,8 @@ export function isLikelyProperPlaceAnchor(anchor: string): boolean {
   if (/[的了嗎呢吧喔啦欸或與及而且就都很太把讓被用給跟]/u.test(stem)) {
     return false;
   }
+  // 笑聲/狀聲詞黏連（真機 gh5「哈哈地區」）：地名 stem 不含笑聲字。
+  if (/[哈嘿呵嗚嘻]/u.test(stem)) return false;
   if (NON_PLACE_COMPOUND_TAIL.test(anchor)) return false;
   return true;
 }
@@ -1259,7 +1269,13 @@ export function extractHintFactClaims(
     )
   ) {
     const anchor = normalizePreference(match[2] ?? "");
-    if (!anchor) continue;
+    // 「跟妳不同派」「妳是哪一派」：比較詞/疑問詞不是喜好命名（真機 gh6
+    // 曾抽出垃圾錨點「不同」）；「濃苦派還是奶香派」選擇問句是在測她的
+    // 品味、含代名詞的跨主詞長串是黏連誤抽，都不進 claim。
+    if (
+      !anchor || /^(?:不同|同一|哪|什麼|誰)/u.test(anchor) ||
+      /(?:還是|[妳你她])/u.test(anchor)
+    ) continue;
     add({
       owner: ownerAt(
         text,
@@ -1912,7 +1928,14 @@ export function extractHintFactClaims(
 
   for (
     const match of text.matchAll(
-      /(?:店|店家|咖啡店|餐廳|酒吧|那間|這間).{0,8}?(?:(?<![只還就但可也算而])是|叫|名為|稱作)\s*[「『“"]?([^」』”"，,。！？!?；;、的妳你我]{2,30})(?!的)/gu,
+      // gh6 窄修（2026-07-23）：trigger 字後緊接閉引號＝正在引用/評論她的
+      // 原句（「私藏好店」其實是…），不是命名；「是」後接疑問詞（是什麼讓…）
+      // 是反問、「是有」（店是有啦）是存在句、「不是」（而不是店名）是否定、
+      // 「是在＋動詞」（反問你私藏店，是在試探）是進行貌解讀——店名不可能
+      // 以介詞「在」開頭。都不是報名，不進 venue_named。
+      // gap 不得跨句（「約她去店裡。任務是先給…」曾把下一句開頭抽成店名）；
+      // 逗號內的真命名（「妳問店名，是黑-露」）仍要抓。
+      /(?:店|店家|咖啡店|餐廳|酒吧|那間|這間)(?![」』”"])[^。！？!?；;]{0,8}?(?:(?<![只還就但可也算而不])是|叫|名為|稱作)\s*[「『“"]?(?!什麼|哪|誰|怎|有|在)([^」』”"，,。！？!?；;、的妳你我]{2,30})(?!的)/gu,
     )
   ) {
     add({
@@ -1983,10 +2006,17 @@ export function buildHintFactContext(input: {
     ...(input.sharedFactualEvidence ?? []),
     ...(input.partnerFactualEvidence ?? []),
   ].map(supportSourceText).filter((text) => text.length > 0);
+  const partnerSourceTexts = [
+    ...(input.turns ?? []).filter((turn) => turn.role === "ai").map((turn) =>
+      turn.text
+    ),
+    ...(input.partnerFactualEvidence ?? []),
+  ].map(supportSourceText).filter((text) => text.length > 0);
   const trustedContext: HintFactContext = {
     claims: trustedClaims,
     latestPartnerText,
     sourceTexts,
+    partnerSourceTexts,
   };
   const claims: HintFactClaim[] = [...trustedClaims];
   for (const turn of input.turns ?? []) {
@@ -2036,6 +2066,7 @@ export function buildHintFactContext(input: {
     claims: [...deduped.values()],
     latestPartnerText,
     sourceTexts,
+    partnerSourceTexts,
   };
 }
 
@@ -2662,8 +2693,9 @@ function contextualDirectAnswerClaims(input: {
           /(?:我|妳|你|她|我們|想|努力|回想|記憶|招供|逗|翻|問|找|給|知道|記得|忘)/u
             .test(anchor) ||
           // round6 #9：「還沒實際去過欸」這類否定/未然迴避句刻意不報地點，
-          // 語尾助詞形態不得把它當成直接報店名。
-          /(?:不知道|不記得|忘了|沒記住|先確認|查一下|問一下|還沒|沒有|沒去過)/u
+          // 語尾助詞形態不得把它當成直接報店名。真機 gh5 補：賣關子/保密/
+          // 「不用勉強（喔）」也是迴避或緩和語，不是店名。
+          /(?:不知道|不記得|忘了|沒記住|先確認|查一下|問一下|還沒|沒有|沒去過|保密|賣關子|賣個關子|勉強|再說|再告訴)/u
             .test(anchor) ||
           // P1 對抗審：「在X(?=發現|找到…)」pattern 沒限定 X 是地點名詞，
           // 「在聊天過程中發現」「在等妳的時候看到」這種心情/動作句會被
@@ -2906,13 +2938,20 @@ export function collectUnsupportedHintFactClaims(input: {
       output.owner === "partner" &&
       (output.domain === "preference" || output.domain === "lifestyle") &&
       output.anchor.length >= 2 &&
-      input.context.claims.some((claim) =>
+      (input.context.claims.some((claim) =>
         (claim.owner === "partner" || claim.owner === "shared") &&
         (claim.domain === "preference" || claim.domain === "lifestyle") &&
         claim.anchor.length >= 2 &&
         (claim.anchor.includes(output.anchor) ||
           output.anchor.includes(claim.anchor))
-      )
+      ) ||
+        // 真機 gh6（2026-07-23）：她用比喻自陳喜好（「拿鐵就是我的開機鍵」）
+        // 時抽不出 preference 證據，「妳是拿鐵派」callback 被誤殺。錨點逐字
+        // 見於她本人原話（partnerSourceTexts 絕不含 user 文本）即算有出處；
+        // user 自陳移轉冒認照殺。
+        (input.context.partnerSourceTexts ?? []).some((source) =>
+          source.includes(output.anchor)
+        ))
     ) {
       continue;
     }

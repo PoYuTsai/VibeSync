@@ -2048,3 +2048,242 @@ Deno.test("typed round12 跟上/玩笑 stays out of is_named claims", () => {
     true,
   );
 });
+
+// 真機 FP 判定表（2026-07-23 gh6 討推薦）：命名系詞 regex 兩處誤殺——
+// ①引用她原句（「私藏好店」）後接「其實是」評論，trigger 字在引號內＝
+// 評論不是命名，卻抽出假店名「在拋梗接梗」；②「妳那間…是什麼讓妳…」
+// 反問句，疑問詞「什麼讓」被當店名。真命名（那間店叫小巷咖啡）不受影響。
+Deno.test("typed gh6 quoted-trigger and interrogative stay out of venue_named", () => {
+  for (
+    const [text, perspective, provenance] of [
+      [
+        "她這句「私藏好店」其實是在拋梗接梗，順便反問你，是想看你會不會接她的節奏。",
+        "coaching",
+        "generated_coaching",
+      ],
+      [
+        "妳那間最常回購的，是什麼讓妳一喝就回頭？",
+        "reply",
+        "generated_reply",
+      ],
+      // ③存在句「店是有啦」＝there-is，不是命名（anchor 曾誤抽成「有」）。
+      [
+        "私藏店是有啦，不過我怕說出來妳會笑",
+        "reply",
+        "generated_reply",
+      ],
+      // ④否定句「（小店…）而不是店名」＝教學否定，「店名」倆字不是店名。
+      [
+        "給一個真實小場景（老宅小店、層次感）而不是店名，再問她的品味標準。",
+        "coaching",
+        "generated_coaching",
+      ],
+      // ⑤進行貌解讀「反問你私藏店，是在用玩笑試探你」＝評論她的行為，
+      // 店名不可能以介詞「在」開頭。
+      [
+        "她把「開機鍵」梗接回來還反問你私藏店，是在用玩笑試探你會不會認真展示品味。",
+        "coaching",
+        "generated_coaching",
+      ],
+    ] as const
+  ) {
+    assertEquals(
+      extractHintFactClaims({
+        text,
+        perspective,
+        provenance,
+        defaultOwner: "user",
+      }).filter((claim) => claim.relation === "venue_named"),
+      [],
+      text,
+    );
+  }
+  const named = extractHintFactClaims({
+    text: "那間店叫小巷咖啡，超好喝",
+    perspective: "reply",
+    provenance: "generated_reply",
+    defaultOwner: "user",
+  });
+  assertEquals(
+    named.some((claim) =>
+      claim.relation === "venue_named" && claim.anchor.includes("小巷咖啡")
+    ),
+    true,
+  );
+});
+
+// 真機 gh6 第二波（2026-07-23）：callback 教學要求複用她的詞，但她用比喻
+// 自陳喜好（「拿鐵就是我的開機鍵」）時 transcript 端抽不出 preference 證據，
+// 「妳是拿鐵派」被 fail-closed 誤殺。修＝partner preference/lifestyle 支持
+// 加「錨點逐字見於她本人原話」fallback；user 自陳移轉冒認照殺不鬆。
+Deno.test("partner preference callback grounded in her own words is supported", () => {
+  const turns: PracticeTurn[] = [
+    { role: "user", text: "妳週末都怎麼過啊？我最近迷上到處找咖啡廳" },
+    { role: "ai", text: "我喔，大部分睡到中午，起來第一件事就是想喝好的拿鐵" },
+    { role: "user", text: "睡到中午醒來先想拿鐵，妳這開機順序很有態度" },
+    {
+      role: "ai",
+      text: "哈哈拿鐵就是我的開機鍵啊。欸你不是都在找咖啡廳，你口袋有沒有私藏的好店？",
+    },
+  ];
+  const context = buildHintFactContext({ turns });
+  // 她親口說過拿鐵＝開機鍵：說她是拿鐵派＝有據 callback，不得殺。
+  assertEquals(
+    collectUnsupportedHintFactClaims({
+      text: "私藏是有啦，但那種店都低調到差點被我路過忽略，得先確認妳是拿鐵派才夠資格收下這份口袋名單",
+      field: "reply",
+      context,
+    }),
+    [],
+  );
+  // 「跟妳不同派」＝比較詞不是喜好命名，不得抽出錨點「不同」。
+  assertEquals(
+    collectUnsupportedHintFactClaims({
+      text: "先說好我的開機鍵是黑咖啡不是拿鐵，跟妳不同派。妳拿鐵都固定喝哪種豆子還是隨緣？",
+      field: "reply",
+      context,
+    }),
+    [],
+  );
+  // 她沒說過抹茶：捏造喜好照殺（fail-closed 不鬆）。
+  assertEquals(
+    collectUnsupportedHintFactClaims({
+      text: "妳是抹茶派才懂這味道",
+      field: "reply",
+      context,
+    }).some((claim) =>
+      claim.owner === "partner" && claim.domain === "preference" &&
+      claim.anchor === "抹茶"
+    ),
+    true,
+  );
+  // user 自陳（我最近迷上攀岩）不得移轉成她的喜好。
+  const transferContext = buildHintFactContext({
+    turns: [
+      { role: "user", text: "我最近迷上攀岩，每週都去岩館報到" },
+      { role: "ai", text: "是喔，聽起來很操" },
+    ],
+  });
+  assertEquals(
+    collectUnsupportedHintFactClaims({
+      text: "得先確認妳是攀岩派才夠資格聽我的岩點心得",
+      field: "reply",
+      context: transferContext,
+    }).some((claim) =>
+      claim.owner === "partner" && claim.domain === "preference" &&
+      claim.anchor === "攀岩"
+    ),
+    true,
+  );
+});
+
+// 真機 gh6 第三波（2026-07-23）：「妳的拿鐵標準是走濃苦派還是奶香派」＝
+// 選擇問句在測她的品味，控/派 pattern 卻抽出跨主詞垃圾錨點
+// 「更好奇妳的…奶香」判 user 喜好宣稱。含「還是」或代名詞的錨點不進 claim。
+Deno.test("preference fandom pattern skips alternative questions and cross-actor anchors", () => {
+  assertEquals(
+    extractHintFactClaims({
+      text: "有幾間我常跑的，但比起口袋名單，我更好奇妳的拿鐵標準是走濃苦派還是奶香派？",
+      perspective: "reply",
+      provenance: "generated_reply",
+      defaultOwner: "user",
+    }).filter((claim) => claim.domain === "preference"),
+    [],
+  );
+  // 真喜好宣稱不得鬆：我是黑咖啡派。
+  assertEquals(
+    extractHintFactClaims({
+      text: "我是黑咖啡派，早上沒它不行",
+      perspective: "reply",
+      provenance: "generated_reply",
+      defaultOwner: "user",
+    }).some((claim) =>
+      claim.domain === "preference" && claim.anchor === "黑咖啡"
+    ),
+    true,
+  );
+});
+
+// 真機 gh6 第四波（2026-07-23）：①「跟妳的中午開機鍵風格」＝所有格 callback
+// 她自己說過的作息（睡到中午），不是替她宣稱中午有空；②命名系詞 regex 的
+// gap 跨句（「約她去店裡。任務是先給…」）把下一句開頭抽成店名。
+Deno.test("typed gh6 possessive-time callback and cross-clause naming stay out of claims", () => {
+  const turns: PracticeTurn[] = [
+    { role: "user", text: "妳週末都怎麼過啊？我最近迷上到處找咖啡廳" },
+    { role: "ai", text: "我喔，大部分睡到中午，起來第一件事就是想喝好的拿鐵" },
+    { role: "user", text: "睡到中午醒來先想拿鐵，妳這開機順序很有態度" },
+    {
+      role: "ai",
+      text: "哈哈拿鐵就是我的開機鍵啊。欸你不是都在找咖啡廳，你口袋有沒有私藏的好店？",
+    },
+  ];
+  const context = buildHintFactContext({ turns });
+  assertEquals(
+    collectUnsupportedHintFactClaims({
+      text: "私藏是有啦，走的是安靜角落型，跟妳的中午開機鍵風格可能不太一樣，但應該會合拍",
+      field: "reply",
+      context,
+    }),
+    [],
+  );
+  assertEquals(
+    extractHintFactClaims({
+      text: "這階段別急著約她去店裡。任務是先給一點態度，再丟問題回去。",
+      perspective: "coaching",
+      provenance: "generated_coaching",
+      defaultOwner: "unknown",
+    }).filter((claim) => claim.relation === "venue_named"),
+    [],
+  );
+  // 真宣稱不得鬆：替她宣稱中午有空仍要殺；同子句真命名仍要抽。
+  assertEquals(
+    collectUnsupportedHintFactClaims({
+      text: "妳中午有空吧，我記得妳都閒著",
+      field: "reply",
+      context,
+    }).some((claim) => claim.domain === "schedule" && claim.owner === "partner"),
+    true,
+  );
+  assertEquals(
+    extractHintFactClaims({
+      text: "那間店叫小巷咖啡，超好喝",
+      perspective: "reply",
+      provenance: "generated_reply",
+      defaultOwner: "user",
+    }).some((claim) => claim.relation === "venue_named"),
+    true,
+  );
+});
+
+// 真機 gh5 殘軸（2026-07-23）：她問「在哪一區」時，正解迴避語反被抓——
+// ①「哈哈地區先保密啦」笑聲黏連進 stem 仍判專名地點（哈哈地區 conf=high）
+// ②語尾詞店名 pattern 把「不用勉強（喔）」「…先保密（啦）」當店名。
+Deno.test("typed gh5 secrecy escapes and laughter-glued stems stay out of venue claims", () => {
+  const turns: PracticeTurn[] = [
+    { role: "user", text: "我知道一間唱片行超有味道" },
+    { role: "ai", text: "你說的那間唱片行是在哪一區啊" },
+  ];
+  const context = buildHintFactContext({ turns });
+  for (
+    const text of [
+      "哈哈地區先保密啦",
+      "妳最近方便的話，我們找個30分鐘一起去挖歌單，不用勉強喔。",
+    ]
+  ) {
+    assertEquals(
+      collectUnsupportedHintFactClaims({ text, field: "reply", context })
+        .filter((claim) => claim.domain === "venue"),
+      [],
+      text,
+    );
+  }
+  // 真報點不得鬆：她問哪一區時答具體行政區照殺。
+  assertEquals(
+    collectUnsupportedHintFactClaims({
+      text: "在信義區喔",
+      field: "reply",
+      context,
+    }).some((claim) => claim.domain === "venue"),
+    true,
+  );
+});

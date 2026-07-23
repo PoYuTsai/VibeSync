@@ -261,3 +261,81 @@ Deno.test("practice invite classifier ignores counterfactual 差點 plan clauses
   assertEquals(practiceInviteLevelFor("我想直接找妳聊"), "direct");
   assertEquals(practiceInviteLevelFor("週六找妳去吃鍋"), "direct");
 });
+
+Deno.test("practice invite classifier ignores taste-preference questions and epistemic comparisons", () => {
+  // 真機 gh6 FP 樣句（2026-07-23 討推薦局）：品味/習慣問句與推測比較句
+  // 撞上 GENERIC_PROPOSAL 的「動詞…嗎/吧」語尾就單獨判 direct。
+  // 「妳喝拿鐵挑剔嗎」問的是她挑不挑、「跟平常喝的應該不一樣吧」是推測
+  // 感受差異，都沒有把她放進任何行動計畫。
+  for (
+    const line of [
+      "私藏口袋名單還在更新中，比較像是拿鐵愛好者的巡店計畫，妳喝拿鐵挑剔嗎？",
+      "我口袋確實有幾間，但我想先聽妳怎麼喝。睡到中午起來的拿鐵，跟平常喝的應該不一樣吧？",
+      "妳喝咖啡有什麼講究嗎？",
+    ]
+  ) {
+    assertEquals(practiceInviteLevelFor(line), "none", line);
+  }
+  // 真提案不得鬆：語尾同是嗎/吧的真邀約維持原判。
+  assertEquals(practiceInviteLevelFor("明天中午一起喝咖啡吧"), "direct");
+  assertEquals(practiceInviteLevelFor("改天去喝一杯嗎？"), "soft");
+});
+
+Deno.test("practice invite classifier ignores share-content promises and her-intent probes", () => {
+  // 真機 gh6/gh7 FP 樣句（2026-07-23 通解第二波）：「改天整理給妳」是分享
+  // 內容的承諾不是見面；「會有想殺去的候選地嗎」「有偏好嗎」是在測她的
+  // 意向與品味——通解教學句教的收口正是這些，gate 不得反殺。
+  for (
+    const line of [
+      "私藏口袋名單確實有幾間，改天整理給妳當拿鐵補給站，妳平常喝拿鐵有偏好嗎？",
+      "口袋名單是有幾間常回購的，改天整理給妳。妳呢，除了拿鐵開機，選咖啡廳看氣氛還是看甜點？",
+      "最有感那次不是風景多美，是整趟都很隨性，臨時改路線也照樣爽，期待感直接拉滿。妳呢，查機票查久了會有想殺去的候選地嗎？",
+    ]
+  ) {
+    assertEquals(practiceInviteLevelFor(line), "none", line);
+  }
+  // 真邀約不得鬆：帶妳去／約人見面的軟硬邀照舊。
+  assertEquals(practiceInviteLevelFor("改天帶妳去那間店"), "soft");
+  assertEquals(practiceInviteLevelFor("改天約杯咖啡吧"), "soft");
+  assertEquals(practiceInviteLevelFor("下次會想跟我一起去嗎"), "soft");
+});
+
+Deno.test("practice invite classifier ignores 打分數 scoring compounds", () => {
+  // 真機 gh6 FP 樣句（2026-07-23）：「妳打分數會嚴嗎」＝問她評分標準，
+  // 「打」是打分數複合詞首字不是提案動詞。
+  assertEquals(
+    practiceInviteLevelFor(
+      "私藏是有一兩間啦，不過拿鐵這種開機鍵級的，我覺得妳這種每天喝的才夠格當裁判，妳打分數會嚴嗎？",
+    ),
+    "none",
+  );
+  // 真提案不得鬆：打球約戰照算。
+  assertEquals(practiceInviteLevelFor("週末一起打球嗎"), "direct");
+});
+
+Deno.test("practice invite classifier ignores imagination probes about her own plans", () => {
+  // 真機 gh7 FP 樣句（2026-07-23）：「會偷偷想像自己去哪嗎」＝問她的想像，
+  // 不是把她放進行程。
+  assertEquals(
+    practiceInviteLevelFor(
+      "最有感一次是自己一個人上路，完全沒排行程，走到哪算哪，那種不確定感反而最有記憶點。妳查特價機票時，會偷偷想像自己去哪嗎？",
+    ),
+    "none",
+  );
+  // 真提案不得鬆：想像完直接約照算。
+  assertEquals(
+    practiceInviteLevelFor("別只想像了，週六直接一起去吧"),
+    "direct",
+  );
+});
+
+Deno.test("practice invite classifier ignores perception 看到 complements", () => {
+  // 真機 gh1 FP 樣句（2026-07-23）：「妳看到那邊的節奏還順嗎」＝問她讀到
+  // 哪裡的感受，「看到」是感知補語不是提案動詞。
+  assertEquals(
+    practiceInviteLevelFor("哈哈第三章也是蠻關鍵的轉折，不急，妳看到那邊的節奏還順嗎？"),
+    "none",
+  );
+  // 真提案不得鬆：約看電影照算。
+  assertEquals(practiceInviteLevelFor("週六一起去看電影嗎"), "direct");
+});
