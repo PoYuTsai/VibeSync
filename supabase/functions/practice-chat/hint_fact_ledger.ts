@@ -615,11 +615,13 @@ function looksLikePersonName(value: string): boolean {
   if (!/^[\p{Script=Han}·・]{2,4}$/u.test(value)) return false;
   // 語氣詞不入人名（round6 #3）：「神了哈哈」「瘋了哈哈」是口語感嘆不是名字。
   if (/[了哈欸啦喔]/u.test(value)) return false;
+  // 話語單位字尾不入人名（round7 bd2/gd3）：「丟測試句」「丟資訊題」是
+  // 動賓片語的賓語，人名不會以 句/題/梗 收尾。
   return !/^(?:我|妳|你|她|我們|對方|使用者)/u.test(value) &&
     !/^(?:太|很|真|超|好|有點)/u.test(value) &&
     !/(?:本人|自己|生活|時間|空間|機會|答案|回覆|句子|感覺|確認|窗口|咖啡|低壓|邀約|版本|品味|畫面|話題)/u
       .test(value) &&
-    !/(?:別|不要|快|先|再|說|回|鬧|看|聽|問|猜|去|來|住|叫|扯|累|忙|開心)$/u
+    !/(?:別|不要|快|先|再|說|回|鬧|看|聽|問|猜|去|來|住|叫|扯|累|忙|開心|句|題|梗)$/u
       .test(value);
 }
 
@@ -660,7 +662,7 @@ const PLACE_SUFFIX_SPLIT =
 // 常見「碰巧以地名字尾收尾」的抽象/一般複合詞：字尾在這些詞裡不是地點語意。
 // 這是詞彙知識而非逐例黑名單——漏列的代價只是候選落到 low（少殺），不是誤殺。
 const NON_PLACE_COMPOUND_TAIL =
-  /(?:退路|套路|思路|出路|心路|後路|活路|絕路|末路|門路|歪路|岔路|網路|走路|迷路|問路|記路|記得路|不記得路|忘記路|沒記路|上路|帶路|鋪路|領路|網站|誤區|雷區|盲區|禁區|舒適區|安全區|城市|都市|超市|冰山|靠山|火山|爬山|下山|上山)$/u;
+  /(?:退路|套路|思路|出路|心路|後路|活路|絕路|末路|門路|歪路|岔路|網路|走路|迷路|問路|報路|認路|指路|記路|記得路|不記得路|忘記路|沒記路|上路|帶路|鋪路|領路|網站|誤區|雷區|盲區|禁區|舒適區|安全區|城市|都市|超市|冰山|靠山|火山|爬山|下山|上山)$/u;
 
 // 「在X(?=發現|找到…)」asksPlace pattern 的 X 若是敘事階段/心境詞（過程中／
 // 心裡／等妳的時候／剛剛…）而非地點，即使句型是「在X發現」也不是在報地點。
@@ -704,6 +706,10 @@ export function isLikelyProperPlaceAnchor(anchor: string): boolean {
 
 function looksLikeLocationAnchor(value: string): boolean {
   const normalized = normalizePlace(value);
+  // round7 gh5：動賓複合詞（帶路/報路…）字尾碰巧是地名字，不是地點語意；
+  // 與 isLikelyProperPlaceAnchor 共用同一份詞彙知識，coaching 轉述豁免
+  //（venue_named patternIndex 0/1/3）才不會被「帶路」這類引號教學語穿透。
+  if (NON_PLACE_COMPOUND_TAIL.test(normalized)) return false;
   if (Object.values(CITY_ALIASES).includes(normalized)) return true;
   if (
     new Set([

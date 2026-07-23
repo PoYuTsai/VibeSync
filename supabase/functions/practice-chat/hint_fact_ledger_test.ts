@@ -1840,3 +1840,43 @@ Deno.test("round6: 「問她能不能配合」疑問補語不再變 schedule 事
     ERROR,
   );
 });
+
+// round7 判定表（2026-07-23）：動賓片語與動賓「路」複合詞不得誤抽成
+// 高信心捏造事實——「丟測試句/丟資訊題」不是第三方人名（bd2/gd3）、
+// coaching 引號教學語「帶路」與勸戒語「別急著報路名」不是報點（gh5）。
+Deno.test("typed round7 verb-object idioms stay out of high-confidence claims", () => {
+  const turns: PracticeTurn[] = [
+    {
+      role: "user",
+      text: "妳上次說想找回聽實體專輯的儀式感，我知道一間唱片行超有味道",
+    },
+    { role: "ai", text: "被你說得我有點心動，你說的那間唱片行是在哪一區啊" },
+  ];
+  const context = buildHintFactContext({ turns });
+  assertHintFactClaimsSupported({
+    text:
+      "Game 心法：她問「在哪一區」是想確認這件事能不能成真，不是單純要地址。" +
+      "這階段可以直接邀約，但別急著報路名（逐字稿沒給地點就別編）。" +
+      "用「帶路」把資訊需求轉成兩人行程，順勢收成一個具體但輕鬆的邀約。",
+    field: "coaching",
+    context,
+  });
+  for (
+    const analytical of [
+      "她願意玩梗、丟測試句，但只聊歌單，未給場景或時間線索",
+      "沒有給她任何情緒或內容，只丟資訊題，她開始感覺被審問",
+    ]
+  ) {
+    assertEquals(
+      collectUnsupportedHintFactClaims({
+        text: analytical,
+        field: "coaching",
+        context,
+      }).filter((claim) =>
+        claim.owner === "third_party" && claim.domain === "name"
+      ),
+      [],
+      analytical,
+    );
+  }
+});
