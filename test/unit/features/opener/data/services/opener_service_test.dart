@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/opener/data/services/opener_service.dart';
+import 'package:vibesync/features/opener/domain/opener_access.dart';
 
 void main() {
   group('OpenerService', () {
@@ -87,6 +88,123 @@ void main() {
       expect(visible.recommendedPick, 'extend');
       expect(visible.recommendedReason, isNull);
       expect(visible.costUsed, 3);
+    });
+
+    test('free visible result keeps contract v2 humor/tease and the visible '
+        'pick reason', () {
+      const result = OpenerResult(
+        openers: {
+          'extend': '延展句',
+          'humor': '幽默句',
+          'tease': '調情句',
+          'resonate': '共鳴句',
+          'coldRead': '冷讀句',
+        },
+        recommendedPick: 'humor',
+        recommendedReason: '幽默對上她的動態',
+      );
+
+      final visible = result.visibleForAccess(isFreeUser: true);
+
+      expect(visible.openers, {
+        'extend': '延展句',
+        'humor': '幽默句',
+        'tease': '調情句',
+      });
+      expect(visible.recommendedPick, 'humor');
+      expect(visible.recommendedReason, '幽默對上她的動態');
+    });
+
+    test('bestOpenerTypeForAccess falls back by free display order '
+        '(extend → humor → tease)', () {
+      const result = OpenerResult(
+        openers: {
+          'humor': '幽默句',
+          'tease': '調情句',
+          'coldRead': '冷讀句',
+        },
+        recommendedPick: 'coldRead',
+      );
+
+      expect(result.bestOpenerTypeForAccess(isFreeUser: true), 'humor');
+      expect(result.bestOpenerTypeForAccess(isFreeUser: false), 'coldRead');
+    });
+
+    test('always sends openerContractVersion 2 (contract v2)', () async {
+      final calls = <Map<String, dynamic>>[];
+      final service = OpenerService(
+        invoker: (functionName, {required body}) async {
+          calls.add(body);
+          return const OpenerInvokeResponse(
+            status: 200,
+            data: {
+              'openers': {'extend': '嗨！'},
+            },
+          );
+        },
+      );
+
+      await service.generateOpeners(name: 'Grace');
+
+      expect(calls.single['openerContractVersion'], 2);
+    });
+
+    test('parses server access metadata and round-trips through cache json',
+        () async {
+      final service = OpenerService(
+        invoker: (_, {required body}) async {
+          return const OpenerInvokeResponse(
+            status: 200,
+            data: {
+              'openers': {
+                'extend': '延展句',
+                'humor': '幽默句',
+                'tease': '調情句',
+              },
+              'access': {
+                'contractVersion': 2,
+                'servedTier': 'free',
+                'visibleTypes': ['extend', 'humor', 'tease'],
+                'lockedTypes': ['resonate', 'coldRead'],
+              },
+              'usage': {'cost': 3},
+            },
+          );
+        },
+      );
+
+      final result = await service.generateOpeners(name: 'Grace');
+
+      expect(result.access, isNotNull);
+      expect(result.access!.servedTier, 'free');
+      expect(result.access!.servedPaid, isFalse);
+      expect(result.access!.visibleTypes, ['extend', 'humor', 'tease']);
+      expect(result.access!.lockedTypes, ['resonate', 'coldRead']);
+
+      final restored = OpenerResult.fromJson(result.toJson());
+      expect(restored.access!.servedTier, 'free');
+      expect(restored.access!.contractVersion, 2);
+      expect(restored.access!.visibleTypes, ['extend', 'humor', 'tease']);
+    });
+
+    test('malformed or missing access metadata degrades to null, not a parse '
+        'failure', () {
+      expect(OpenerAccess.tryParse(null), isNull);
+      expect(OpenerAccess.tryParse('free'), isNull);
+      expect(OpenerAccess.tryParse({'servedTier': ''}), isNull);
+      expect(
+        OpenerAccess.tryParse({
+          'servedTier': 'essential',
+          'visibleTypes': <String>[],
+        }),
+        isNull,
+      );
+
+      // 舊快取 JSON 沒 access 也能讀（無 Hive migration）。
+      final legacy = OpenerResult.fromJson(const {
+        'openers': {'extend': 'hi'},
+      });
+      expect(legacy.access, isNull);
     });
 
     test('sends requestId in body when provided (charge idempotency)',

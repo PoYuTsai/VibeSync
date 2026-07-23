@@ -435,3 +435,47 @@ Deno.test({
     assert(prompt.includes("不要操控式、油膩的罐頭話術")); // 原 2374 PUA，沿 SYSTEM_PROMPT 前例
   },
 });
+
+// ─── Opener contract v2 completeness（2026-07-24 Free 3 卡）───
+
+Deno.test({
+  name:
+    "opener prompts still demand all five styles; Free projection is server-side only",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await readIndexSource();
+    const prompt = await readOpenerPrompt();
+
+    // Free 3 卡靠 server tier filter 投影，模型永遠產五種——OPENER_PROMPT
+    // 的 schema 與風格任務段不得因 contract v2 縮水或分流。
+    for (
+      const key of [
+        '"extend": "延展風格的開場白"',
+        '"resonate": "共鳴風格的開場白"',
+        '"tease": "調情風格的開場白"',
+        '"humor": "幽默風格的開場白"',
+        '"coldRead": "冷讀風格的開場白"',
+      ]
+    ) {
+      assert(prompt.includes(key), `OPENER_PROMPT schema 缺：${key}`);
+    }
+    assert(prompt.includes("## 五種風格各有任務"));
+    // prompt 不得出現依 tier 少產風格的指令（免費/付費分流是 server 的事）
+    assertFalse(prompt.includes("免費版"), "OPENER_PROMPT 不得含 tier 分流指令");
+    assertFalse(prompt.includes("Free"), "OPENER_PROMPT 不得含 tier 分流指令");
+
+    // completeness gate 走既有 repair：OPENER_REPAIR_PROMPT 必須繼續強制
+    // 五 key 齊全，否則 partial 修復修不回五種、gate 恆 502。
+    const repairPrompt = slicePromptSegment(
+      source,
+      "OPENER_REPAIR_PROMPT",
+      "const OPENER_REPAIR_PROMPT",
+      "function buildOpenerRepairPrompt",
+    );
+    assert(
+      repairPrompt.includes(
+        "openers 必須包含 extend / resonate / tease / humor / coldRead 五個 key。",
+      ),
+    );
+  },
+});

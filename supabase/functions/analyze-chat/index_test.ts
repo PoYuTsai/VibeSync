@@ -336,7 +336,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "Free analysis exposes extend and tease while Free Opener stays extend-only",
+    "Free analysis exposes extend and tease while Free Opener projects v1 single / v2 exact-three",
   permissions: { read: true },
   fn: async () => {
     const source = await Deno.readTextFile(
@@ -344,10 +344,21 @@ Deno.test({
     );
 
     assert(source.includes('free: ["extend", "tease"]'));
-    assert(source.includes('effectiveTier === "free"\n        ? ["extend"]'));
+    // Opener contract v2（2026-07-24）：Free 依 contract version 投影——
+    // v1 舊 App 維持 legacy extend 單卡、v2 恰好 extend/humor/tease 三卡。
+    assert(source.includes("parseOpenerContractVersion("));
+    assert(source.includes("OPENER_CONTRACT_VERSION_INVALID"));
     assert(source.includes(
-      "filterOpenerPayloadForAllowedFeatures(\n        parsed,\n        openerAllowedFeatures",
+      'const openerVisibleTypes = effectiveTier === "free"\n        ? (openerContractVersion >= 2\n          ? OPENER_FREE_V2_TYPES\n          : OPENER_FREE_V1_TYPES)\n        : OPENER_TYPES;',
     ));
+    assert(source.includes(
+      "filterOpenerPayloadForAllowedFeatures(\n        parsed,\n        openerAllowedFeatures,\n        { fallbackOrder: openerVisibleTypes },",
+    ));
+    // tier filter 前的五種 completeness gate＋一次 repair，仍不足→502 不扣
+    assert(source.includes("missingOpenerTypes(parsed)"));
+    assert(source.includes("OPENER_RESPONSE_INCOMPLETE"));
+    // server 權威 access metadata
+    assert(source.includes("access: buildOpenerAccess({"));
   },
 });
 

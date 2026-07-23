@@ -16,6 +16,7 @@ import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../data/providers/opener_providers.dart';
 import '../../data/services/opener_request_session.dart';
+import '../../domain/opener_access.dart';
 import '../../data/services/opener_result_cache_service.dart';
 import '../../data/services/opener_service.dart';
 import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
@@ -87,8 +88,9 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
     return 'opener:$normalized:$type';
   }
 
-  /// Canonical 5-style contract shared with the server's OPENER_TYPES.
-  /// `extend` first so the free tier's only unlocked card leads the list.
+  /// Canonical 5-style labels shared with the server's OPENER_TYPES.
+  /// 展示序不看這張 map：paid 走 canonicalPaidOrder，free 走
+  /// freeUnlockedOrder（三實卡在前）＋ paidOnlyOrder（兩鎖卡在後）。
   static const openerTypeLabels = {
     'extend': '🔄 延展',
     'resonate': '💬 共鳴',
@@ -97,31 +99,52 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
     'coldRead': '🔮 冷讀',
   };
 
-  /// Card list is canonical-style driven, not payload driven: the server
-  /// strips locked styles from free payloads, so missing styles are
-  /// synthesized as locked upsell cards for free users. Paid users never
-  /// see locked cards — a style the sanitizer dropped is simply skipped.
-  /// A free result with no usable opener renders nothing (no orphan upsell).
+  /// Card list is contract-driven, not payload driven（contract v2）：
+  /// Free 依展示序放 extend/humor/tease 實卡（缺句跳過，舊 v1 單卡快取只有
+  /// extend），再固定補 resonate/coldRead 兩張鎖卡升級 CTA；鎖卡 content
+  /// 一律清空——paid-era 草稿降級回看時鎖定內容連 spec 都不進。
+  /// Paid 永遠沒有鎖卡，sanitizer 丟掉的風格直接跳過。
+  /// Free 沒有任何可用實卡時整區不渲染（no orphan upsell）。
   static List<OpenerCardSpec> visibleOpenerCards({
     required Map<String, String> openers,
     required String? recommendedPick,
     required bool isFreeUser,
   }) {
-    final hasAnyContent =
-        openers.values.any((content) => content.trim().isNotEmpty);
-
     final cards = <OpenerCardSpec>[];
-    for (final type in openerTypeLabels.keys) {
-      final content = openers[type]?.trim() ?? '';
-      final isLocked = isFreeUser && type != 'extend';
-      if (content.isEmpty && !(isLocked && hasAnyContent)) continue;
 
+    if (!isFreeUser) {
+      for (final type in OpenerAccessContract.canonicalPaidOrder) {
+        final content = openers[type]?.trim() ?? '';
+        if (content.isEmpty) continue;
+        cards.add(OpenerCardSpec(
+          type: type,
+          content: content,
+          isLocked: false,
+          isRecommended: type == recommendedPick,
+        ));
+      }
+      return cards;
+    }
+
+    for (final type in OpenerAccessContract.freeUnlockedOrder) {
+      final content = openers[type]?.trim() ?? '';
+      if (content.isEmpty) continue;
       cards.add(OpenerCardSpec(
         type: type,
         content: content,
-        isLocked: isLocked,
-        isRecommended:
-            type == recommendedPick && !isLocked && content.isNotEmpty,
+        isLocked: false,
+        isRecommended: type == recommendedPick,
+      ));
+    }
+
+    if (cards.isEmpty) return cards;
+
+    for (final type in OpenerAccessContract.paidOnlyOrder) {
+      cards.add(OpenerCardSpec(
+        type: type,
+        content: '',
+        isLocked: true,
+        isRecommended: false,
       ));
     }
     return cards;
@@ -131,17 +154,20 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
     return ' ・$cardCount 種風格';
   }
 
-  /// The payload shape is the server's authoritative tier decision for the
-  /// request that produced it: locked styles never survive the server-side
-  /// filter for free users, so any non-extend content means the request was
-  /// served as paid. A fresh result that passes this check must render
-  /// unlocked even while the local subscription snapshot is still stale-free
-  /// (RevenueCat hint upgraded the request before the provider refreshed).
-  /// Draft replays deliberately do NOT use this: a paid-era draft viewed by
-  /// a now-free user stays gated by the live subscription.
+  /// Legacy fallback ONLY — fresh results use the server's `access.servedTier`
+  /// as the authoritative tier decision. When access metadata is absent (old
+  /// Edge during rollout / old cache), the strongest safe payload signal is a
+  /// paid-only style with content: contract v2 free payloads legitimately
+  /// carry humor/tease, so "any non-extend content" would misread every free
+  /// v2 result as paid. A result that passes this check renders unlocked even
+  /// while the local subscription snapshot is still stale-free. Draft replays
+  /// deliberately do NOT use this: a paid-era draft viewed by a now-free user
+  /// stays gated by the live subscription.
   static bool resultHasPaidStyles(Map<String, String> openers) {
     return openers.entries.any(
-      (entry) => entry.key != 'extend' && entry.value.trim().isNotEmpty,
+      (entry) =>
+          OpenerAccessContract.paidOnlyOrder.contains(entry.key) &&
+          entry.value.trim().isNotEmpty,
     );
   }
 
@@ -563,7 +589,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       if (mounted) {
         setState(() {
           _result = result;
-          _resultGeneratedPaid =
+          // Fresh result 的 tier 真相源＝server access；舊 Edge 未帶 access
+          // 時才退回 paid-only keys 形狀判斷（§8.4）。
+          _resultGeneratedPaid = result.access?.servedPaid ??
               OpeningRescueScreen.resultHasPaidStyles(result.openers);
           _isGenerating = false;
           _reloadDrafts();
@@ -1130,9 +1158,17 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
         ..._buildOpenerOutcomeBars(openerCards),
 
-        // Recommended reason
+        // Recommended reason：free 只在 pick 落在解鎖三型且真的有句時顯示
+        //（被鎖 pick 的 reason 是替鎖定內容寫的，不得硬套）。
         if (result.recommendedReason != null &&
-            (!isFree || result.recommendedPick == 'extend')) ...[
+            (!isFree ||
+                (result.recommendedPick != null &&
+                    OpenerAccessContract.freeUnlockedTypes
+                        .contains(result.recommendedPick) &&
+                    (result.openers[result.recommendedPick]
+                            ?.trim()
+                            .isNotEmpty ??
+                        false)))) ...[
           const SizedBox(height: 12),
           BrandSurfaceCard(
             padding: const EdgeInsets.all(12),

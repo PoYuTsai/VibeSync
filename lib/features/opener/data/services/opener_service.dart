@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/services/supabase_service.dart';
+import '../../domain/opener_access.dart';
 
 /// Must stay above the Edge opener pipeline deadline so a server-side timeout
 /// reaches the app before Dart abandons the response.
@@ -79,13 +80,7 @@ class OpenerGenerationInput {
 }
 
 class OpenerResult {
-  static const _preferredTypes = [
-    'extend',
-    'resonate',
-    'tease',
-    'humor',
-    'coldRead',
-  ];
+  static const _preferredTypes = OpenerAccessContract.canonicalPaidOrder;
 
   final Map<String, dynamic>? profileAnalysis;
   final Map<String, String> openers;
@@ -99,6 +94,10 @@ class OpenerResult {
   /// 舊快取缺席時 fromJson 自產（冪等斷裂為已拍板接受的邊際成本）。
   final String? requestId;
 
+  /// Server 權威 access metadata（contract v2）。舊快取／舊 Edge 為 null；
+  /// null 時讀取端只能以 paid-only keys 做 legacy fallback 判斷。
+  final OpenerAccess? access;
+
   const OpenerResult({
     this.profileAnalysis,
     required this.openers,
@@ -107,6 +106,7 @@ class OpenerResult {
     this.recommendedReason,
     this.costUsed = 3,
     this.requestId,
+    this.access,
   });
 
   String? get bestOpenerType {
@@ -129,9 +129,24 @@ class OpenerResult {
     return null;
   }
 
+  /// Free 依 contract v2 三型可見；recommendation 不可用時依 access 展示序
+  /// fallback，絕不選 resonate/coldRead 給 Free。
   String? bestOpenerTypeForAccess({required bool isFreeUser}) {
     if (!isFreeUser) return bestOpenerType;
-    return openers['extend']?.trim().isNotEmpty == true ? 'extend' : null;
+
+    final pick = recommendedPick;
+    if (pick != null &&
+        OpenerAccessContract.freeUnlockedTypes.contains(pick) &&
+        (openers[pick]?.trim().isNotEmpty ?? false)) {
+      return pick;
+    }
+
+    for (final type in OpenerAccessContract.freeUnlockedOrder) {
+      if (openers[type]?.trim().isNotEmpty ?? false) {
+        return type;
+      }
+    }
+    return null;
   }
 
   String? get bestOpenerText {
@@ -148,24 +163,39 @@ class OpenerResult {
     return text == null || text.isEmpty ? null : text;
   }
 
+  /// 讀取時依目前權益重新投影（無 Hive migration）：Free 目前可見集合是
+  /// contract v2 的 extend/humor/tease；舊 paid 五卡 JSON 降級 Free 後只留
+  /// 三種、絕不洩漏 resonate/coldRead；舊 Free 單卡 JSON 照讀不補句。
+  /// pick 被鎖時依 Free 展示序 fallback，且不硬套原鎖定內容的 reason。
   OpenerResult visibleForAccess({required bool isFreeUser}) {
     if (!isFreeUser) return this;
 
-    final extend = openers['extend']?.trim();
-    final visibleOpeners = extend == null || extend.isEmpty
-        ? <String, String>{}
-        : <String, String>{'extend': extend};
-    final visibleReason =
-        recommendedPick == 'extend' ? _blankToNull(recommendedReason) : null;
+    final visibleOpeners = <String, String>{};
+    for (final type in OpenerAccessContract.freeUnlockedOrder) {
+      final text = openers[type]?.trim();
+      if (text != null && text.isNotEmpty) {
+        visibleOpeners[type] = text;
+      }
+    }
+
+    final pickVisible =
+        recommendedPick != null && visibleOpeners.containsKey(recommendedPick);
+    final visiblePick = pickVisible
+        ? recommendedPick
+        : OpenerAccessContract.freeUnlockedOrder
+            .where(visibleOpeners.containsKey)
+            .firstOrNull;
+    final visibleReason = pickVisible ? _blankToNull(recommendedReason) : null;
 
     return OpenerResult(
       profileAnalysis: profileAnalysis,
       openers: visibleOpeners,
       pioneerPlan: pioneerPlan,
-      recommendedPick: visibleOpeners.isEmpty ? null : 'extend',
+      recommendedPick: visiblePick,
       recommendedReason: visibleReason,
       costUsed: costUsed,
       requestId: requestId,
+      access: access,
     );
   }
 
@@ -178,6 +208,7 @@ class OpenerResult {
       recommendedReason: recommendedReason,
       costUsed: costUsed,
       requestId: requestId ?? this.requestId,
+      access: access,
     );
   }
 
@@ -190,6 +221,7 @@ class OpenerResult {
       if (recommendedReason != null) 'recommendedReason': recommendedReason,
       'costUsed': costUsed,
       if (requestId != null) 'requestId': requestId,
+      if (access != null) 'access': access!.toJson(),
     };
   }
 
@@ -206,6 +238,7 @@ class OpenerResult {
         final String value when value.trim().isNotEmpty => value.trim(),
         _ => const Uuid().v4(),
       },
+      access: OpenerAccess.tryParse(json['access']),
     );
   }
 
@@ -357,6 +390,9 @@ class OpenerService {
 
     final body = {
       'mode': 'opener',
+      // Contract v2（Free 3 卡）：新 App 一律聲明版本；缺席時 server 以
+      // legacy v1（Free 單卡）投影，避免 Edge 先上線讓舊 App 誤判。
+      'openerContractVersion': OpenerAccessContract.contractVersion,
       if (imageDataList != null) 'images': imageDataList,
       if (profileInfo != null) 'profileInfo': profileInfo,
       if (expectedTier != null && expectedTier.trim().isNotEmpty)
@@ -435,6 +471,8 @@ class OpenerService {
       recommendedPick: recommendation?['pick'] as String?,
       recommendedReason: recommendation?['reason'] as String?,
       costUsed: cost,
+      // Server 權威 tier 判定；形狀壞掉→null，讀取端走 legacy fallback。
+      access: OpenerAccess.tryParse(data['access']),
     );
   }
 

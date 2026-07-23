@@ -39,8 +39,14 @@ import {
   validateOpenerImages,
 } from "./opener_image_validation.ts";
 import {
+  buildOpenerAccess,
   filterOpenerPayloadForAllowedFeatures,
+  missingOpenerTypes,
   normalizeOpenerPayload,
+  OPENER_FREE_V1_TYPES,
+  OPENER_FREE_V2_TYPES,
+  OPENER_TYPES,
+  parseOpenerContractVersion,
 } from "./opener_payload.ts";
 import {
   chargeOpenerQuota,
@@ -4594,6 +4600,7 @@ serve(async (req) => {
       analyzeMode: rawAnalyzeMode,
       recognizeOnly: rawRecognizeOnly,
       mode: rawMode,
+      openerContractVersion: rawOpenerContractVersion,
       profileInfo: rawProfileInfo,
       requestId: rawRequestId,
       previousAnalyzedCount: rawPreviousAnalyzedCount,
@@ -5109,6 +5116,25 @@ serve(async (req) => {
         }, 504);
       };
 
+      // Opener contract v2（Free 3 卡）：只在 opener mode 解析；非法型別在
+      // rate limit、模型與扣費前 400。缺席／1＝v1（舊 App Free 維持單卡）。
+      const openerContractParse = parseOpenerContractVersion(
+        rawOpenerContractVersion,
+      );
+      if (!openerContractParse.ok) {
+        logWarn("opener_contract_version_invalid", {
+          user: summarizeUser(user.id),
+          rawType: typeof rawOpenerContractVersion,
+        });
+        return jsonResponse({
+          error: "OPENER_CONTRACT_VERSION_INVALID",
+          code: "OPENER_CONTRACT_VERSION_INVALID",
+          message: "App 版本資訊異常，請更新 App 後再試。本次不會扣額度。",
+          shouldChargeQuota: false,
+        }, 400);
+      }
+      const openerContractVersion = openerContractParse.version;
+
       const openerImageValidation = validateOpenerImages(images);
       if (openerImageValidation.error) {
         logWarn("opener_image_validation_failed", {
@@ -5502,14 +5528,85 @@ serve(async (req) => {
         }, 502);
       }
 
-      // Free 雙風格只適用於 analyze-chat；Opener 維持原本的
-      // Free=extend 單卡產品契約，避免隨分析調整意外擴大開場白權益。
+      // Completeness gate（contract v2 前置）：tier filter 前先確認模型五種
+      // 都完整。partial 且尚未 repair 過→ 進一次既有 format repair；repair
+      // 後仍不足五種→ 502 不扣（不得偷偷丟掉壞題只投影剩下的）。
+      let openerMissingTypes = missingOpenerTypes(parsed);
+      if (openerMissingTypes.length > 0 && repairMetadata === null) {
+        try {
+          repairMetadata = await repairMalformedOpenerPayload({
+            rawText,
+            apiKey,
+            absoluteDeadlineAtMs: openerDeadlineAtMs,
+          });
+          const repaired = repairMetadata.parsed;
+          if (repaired && missingOpenerTypes(repaired).length === 0) {
+            parsed = repaired;
+            logInfo("opener_response_repaired", {
+              user: summarizeUser(user.id),
+              model: apiResult.model,
+              stopReason: apiData.stop_reason,
+              repairModel: repairMetadata.model,
+              imageCount,
+              reason: "incomplete_openers",
+              missingTypes: openerMissingTypes,
+              originalTextLength: rawText.length,
+              repairedTextLength: repairMetadata.rawText.length,
+              repairInputTokens: repairMetadata.inputTokens,
+              repairOutputTokens: repairMetadata.outputTokens,
+            });
+          }
+        } catch (repairError) {
+          if (
+            (repairError instanceof AiServiceError &&
+              repairError.code === "DEADLINE_EXCEEDED") ||
+            openerDeadlineReached()
+          ) {
+            return rejectOpenerDeadline("completeness_repair");
+          }
+          logWarn("opener_repair_error", {
+            user: summarizeUser(user.id),
+            model: apiResult.model,
+            imageCount,
+            error: getErrorMessage(repairError),
+          });
+        }
+        openerMissingTypes = missingOpenerTypes(parsed);
+      }
+      if (openerDeadlineReached()) {
+        return rejectOpenerDeadline("post_completeness");
+      }
+      if (openerMissingTypes.length > 0) {
+        logWarn("opener_response_incomplete", {
+          user: summarizeUser(user.id),
+          model: apiResult.model,
+          stopReason: apiData.stop_reason,
+          imageCount,
+          missingTypes: openerMissingTypes,
+          repaired: !!repairMetadata,
+        });
+        return jsonResponse({
+          error: "OPENER_RESPONSE_INCOMPLETE",
+          message: "這次 AI 沒有產出完整的五種開場白，請重新生成一次；本次不會扣額度。",
+          shouldChargeQuota: false,
+        }, 502);
+      }
+
+      // Free 權益投影：v1（舊 App）維持 legacy extend 單卡；v2 恰好三種
+      // extend/humor/tease。Paid 不因 contract version 改變五卡權益。
+      // fallbackOrder＝該 tier 的展示序，推薦被鎖時 fallback 用它取首個完整卡。
+      const openerVisibleTypes = effectiveTier === "free"
+        ? (openerContractVersion >= 2
+          ? OPENER_FREE_V2_TYPES
+          : OPENER_FREE_V1_TYPES)
+        : OPENER_TYPES;
       const openerAllowedFeatures = effectiveTier === "free"
-        ? ["extend"]
+        ? [...openerVisibleTypes]
         : allowedFeatures;
       const filteredOpenerPayload = filterOpenerPayloadForAllowedFeatures(
         parsed,
         openerAllowedFeatures,
+        { fallbackOrder: openerVisibleTypes },
       );
       if (openerDeadlineReached()) {
         return rejectOpenerDeadline("post_filter");
@@ -5644,6 +5741,12 @@ serve(async (req) => {
 
       return jsonResponse({
         ...parsed,
+        // Server 權威 access：client 不可只靠「有幾張卡」猜 tier。
+        access: buildOpenerAccess({
+          contractVersion: openerContractVersion,
+          servedTier: effectiveTier,
+          visibleTypes: openerVisibleTypes,
+        }),
         usage: {
           model: apiResult.model,
           inputTokens: apiData.usage?.input_tokens,
