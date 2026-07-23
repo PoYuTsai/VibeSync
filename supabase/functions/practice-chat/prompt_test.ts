@@ -646,7 +646,9 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 逃生話術一行為固定 bytes，上限 4800→4900。
   // 2026-07-23 裁決 (a) 質問型：game hint contract 新增「被質問＝測你穩不穩，
   // 幽默誇大/原話反打、絕不自我解釋」教學一行為固定 bytes，上限 4900→5000。
-  if (maxHint > 5000) {
+  // 2026-07-23 round7：質問反打補「複用她原話字眼」（對齊詞面 grounding gate
+  // 的刻意設計——推模型引用原話），固定 bytes，上限 5000→5050。
+  if (maxHint > 5050) {
     failures.push(`Hint max ${maxHint} at ${maxHintCase}`);
   }
   if (maxDebrief > 4500) {
