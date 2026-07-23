@@ -140,11 +140,16 @@ const INTERNAL_TEMPERATURE_LABELS_LATIN = [
 const LATIN_OBFUSCATION_SEPARATOR =
   "[\\s\\p{P}\\p{S}\\p{C}\\p{M}\\u115f\\u1160\\u2800]*";
 
+// 裸詞「篩選/筛选」已摘除（round7 bd4）：9fd3b8a5 去列字後 debrief 全路徑
+// 注入已不含此詞（probe 實測 0 hit），守門只剩誤殺自然語（「導演+預告的
+// 篩選法」）；hint 路另有 repairChineseJargon 轉譯，不經此表。複合內部詞
+// 「資格篩選」是 1.2 原詞、無自然語用法，保留。若日後任何 debrief 注入
+// 重新引入「篩選」原詞，必須同步回列（鐵則：注入內部詞必同步守門）。
 const INTERNAL_MECHANISM_PHRASES = [
   "升溫指數",
   "升温指数",
-  "篩選",
-  "筛选",
+  "資格篩選",
+  "资格筛选",
   "推拉",
   "可得性",
   "賦格",

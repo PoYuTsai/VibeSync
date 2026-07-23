@@ -61,3 +61,33 @@ Deno.test("裸詞「投入度」不帶分數形＝分析欄合法用法，兩側
     );
   }
 });
+
+// round7 bd4：「篩選」摘除後，自然語（她的挑片標準）不得再誤殺；
+// 內部分數形與其餘機制詞不受影響。
+Deno.test("摘除裸詞「篩選」後自然語放行、其餘機制詞照攔", () => {
+  for (
+    const natural of [
+      "我選片超隨性，反而常被雷到，妳這套「導演+預告」的篩選法我要學起來",
+      "她的篩選標準是導演優先，再看預告節奏",
+    ]
+  ) {
+    assertEquals(
+      hasVisibleTemperatureMechanismLeak(natural),
+      false,
+      `should allow "${natural}"`,
+    );
+  }
+  for (
+    const leak of [
+      "投入度 62/100",
+      "這輪推拉節奏抓得不錯",
+      "她的可得性還沒打開",
+    ]
+  ) {
+    assertEquals(
+      hasVisibleTemperatureMechanismLeak(leak),
+      true,
+      `should reject "${leak}"`,
+    );
+  }
+});
