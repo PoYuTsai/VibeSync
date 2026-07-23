@@ -651,7 +651,11 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 2026-07-23 round11：回應句家族 hint 版收斂（2→3→5 筆過門檻）——
   // visibleGameHintContract 補「callback＝詞面扣回」通則教學一行，
   // 固定 bytes，上限 5050→5150。
-  if (maxHint > 5150) {
+  // 2026-07-23 真機 FP（gh6 討推薦）：game hint contract 補「開放式徵詢＝
+  // 展示舞台：特徵指涉不編名不取代稱＋未來之約（改天/下次帶妳去）也算
+  // 邀約、賣關子收口」教學一行＋build 階梯 advice 寫死禁令（「下次/改天」
+  // 話術留到 soft 階），固定 bytes，上限 5150→5400。
+  if (maxHint > 5400) {
     failures.push(`Hint max ${maxHint} at ${maxHintCase}`);
   }
   if (maxDebrief > 4500) {
