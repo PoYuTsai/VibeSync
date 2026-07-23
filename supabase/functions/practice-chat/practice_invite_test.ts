@@ -339,3 +339,28 @@ Deno.test("practice invite classifier ignores perception 看到 complements", ()
   // 真提案不得鬆：約看電影照算。
   assertEquals(practiceInviteLevelFor("週六一起去看電影嗎"), "direct");
 });
+
+Deno.test("share/imagination stripping keeps trailing real invites in run-on clauses", () => {
+  // Codex P2（2026-07-23）：無標點連寫時剝除不得吞掉後面的真邀約。
+  assertEquals(
+    practiceInviteLevelFor("我把定位傳給妳週六一起去"),
+    "direct",
+  );
+  assertEquals(
+    practiceInviteLevelFor("別只想像了週六直接一起去吧"),
+    "direct",
+  );
+  // 原 FP 修不得回退：分享承諾與想像問句仍是 none。
+  assertEquals(
+    practiceInviteLevelFor(
+      "口袋名單是有幾間常回購的，改天整理給妳。妳呢，除了拿鐵開機，選咖啡廳看氣氛還是看甜點？",
+    ),
+    "none",
+  );
+  assertEquals(
+    practiceInviteLevelFor(
+      "妳查特價機票時，會偷偷想像自己去哪嗎？",
+    ),
+    "none",
+  );
+});
