@@ -158,3 +158,35 @@ Deno.test("practice invite classifier removes cancelled or negated plans", () =>
     "direct",
   );
 });
+
+Deno.test("practice invite classifier ignores degree adverbs, intent questions and embedded complements", () => {
+  // 第 8 輪 eval FP 樣句（docs/reviews/2026-07-23-fact-gate-round8-judgment.md）：
+  // 「一點/一時」程度副詞與慣用語不是報時；「還會(想)再V嗎」問她自己的重複
+  // 意願不是提案；「評估要不要」是疑問補語；「打算」的「打」是複合詞首字；
+  // 「在等妳的◯◯」是擬人等待不是到場等人。
+  for (
+    const line of [
+      "「勉強及格」我收下，但妳都親口承認猜中了，這分數是不是該再加一點？",
+      "懷疑人生這段太真實了哈哈，但聽起來風景有補償妳的痛苦。下次還會想再爬嗎？",
+      "哈哈懷疑人生的樣子一定很狼狽，不過看起來還是值得啦，下次還會再去嗎？",
+      "懷疑人生也要撐到山頂看風景，這波值得！下次爬山找教練陪你評估要不要出發啦哈哈",
+      "哈哈「懶得戒」根本是官方認證咖啡因愛好者宣言，妳這是打算跟咖啡過一輩子了吧？",
+      "那就繼續考驗我吧，我歌單還有好幾首在等妳的評分。妳最近在聽什麼？",
+    ]
+  ) {
+    assertEquals(practiceInviteLevelFor(line), "none", line);
+  }
+  // 真報時/真邀約回歸：假時鐘收窄不得弱化既有偵測。
+  assertEquals(practiceInviteLevelFor("明天下午一點老地方見"), "direct");
+  assertEquals(practiceInviteLevelFor("一點半在咖啡店等妳"), "direct");
+  assertEquals(practiceInviteLevelFor("週六兩點一起去爬山吧"), "direct");
+  assertEquals(
+    practiceInviteLevelFor("要不要哪天我們一起去挖寶？"),
+    "soft",
+  );
+  // 含「一點」的軟邀約仍是 soft（round8 gh4：一點≠時鐘，不得推高成 direct）。
+  assertEquals(
+    practiceInviteLevelFor("妳說勉強可以跟你多聊一點，那改天一起聽新歌？"),
+    "soft",
+  );
+});

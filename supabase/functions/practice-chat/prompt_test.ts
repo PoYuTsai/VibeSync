@@ -661,7 +661,9 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // prompt 各一行）為固定 bytes，上限 5700→5900。
   // 2026-07-23 eval 第 6 輪前修：禁詞清單去列字改寫＋失敗局五欄必填一行，
   // 上限 5900→6000。
-  if (maxDebriefWithHint > 6000) {
+  // 2026-07-23 round8：建議句「扣回原話字眼」教學一行（對齊詞面 grounding
+  // gate——回應句家族 debrief 版收斂），固定 bytes，上限 6000→6100。
+  if (maxDebriefWithHint > 6100) {
     failures.push(
       `Debrief+Hint max ${maxDebriefWithHint} at ${maxDebriefWithHintCase}`,
     );

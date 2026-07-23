@@ -1880,3 +1880,37 @@ Deno.test("typed round7 verb-object idioms stay out of high-confidence claims", 
     );
   }
 });
+
+// round8 判定表（2026-07-23）：裸「丟」比喻賓語與「路」字首複合詞不得誤抽——
+// 「丟球給你接」不是第三方人名（gd2，與格「給」＋字尾「球」雙防）、
+// 「只知道路過會被勾住」的「路過」不是報點（gh5，路(?!過) lookahead＋知道路）。
+Deno.test("typed round8 metaphor objects and 路-initial compounds stay out of high-confidence claims", () => {
+  const turns: PracticeTurn[] = [
+    {
+      role: "user",
+      text: "妳上次說想找回聽實體專輯的儀式感，我知道一間唱片行超有味道",
+    },
+    { role: "ai", text: "被你說得我有點心動，你說的那間唱片行是在哪一區啊" },
+  ];
+  const context = buildHintFactContext({ turns });
+  assertEquals(
+    collectUnsupportedHintFactClaims({
+      text: "她說「用行動證明」是丟球給你接，你沒把這個張力延續下去",
+      field: "coaching",
+      context,
+    }).filter((claim) =>
+      claim.owner === "third_party" && claim.domain === "name"
+    ),
+    [],
+  );
+  assertEquals(
+    collectUnsupportedHintFactClaims({
+      text: "哈哈其實我還沒仔細記地址，只知道路過會被那個黑膠味道勾住。",
+      field: "reply",
+      context,
+    }).filter((claim) =>
+      claim.domain === "venue" && claim.confidence === "high"
+    ),
+    [],
+  );
+});
