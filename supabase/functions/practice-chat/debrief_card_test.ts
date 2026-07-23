@@ -1818,6 +1818,32 @@ Deno.test("generated Debrief cannot launder residence grounding into a partner i
   assertEquals(supported.dateChance, "high");
 });
 
+Deno.test("relaxed subjective rubrics still hard-block invented partner initiative", () => {
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...groundedResidenceCard,
+          summary: "她說住台南，也主動提了見面邀約。",
+          watchouts: ["下一步可以確認台南邀約時間。"],
+          suggestedLine: "台南邀約聽起來不錯，妳想約哪天？",
+          vibe: "暖",
+          dateChance: "high",
+          dateChanceReason: "她主動說想在台南見面。",
+          nextInviteMove: "接住她的台南邀約，問哪天。",
+        }),
+        {
+          requireCompleteCard: true,
+          enforceGeneratedQuality: true,
+          relaxSubjectiveQualityRubrics: true,
+          turns: residenceTurns,
+        },
+      ),
+    Error,
+    "debrief_quality_invalid_partner_initiative",
+  );
+});
+
 Deno.test("generated Debrief fact-checks every analytical field without rejecting partner-owned callbacks", () => {
   const turns = [{ role: "ai" as const, text: "我住台南，最常在中西區活動。" }];
   const base = {

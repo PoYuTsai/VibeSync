@@ -708,9 +708,11 @@ function claimsPartnerInitiatedInvite(value: string): boolean {
   ) {
     return false;
   }
-  return /(?:她|對方).{0,28}(?:主動(?:提(?:了|出)?|說|問|給|丟|發出)?|(?:提(?:了|出)?|說想|說要|問|給|丟|發出|表示想|想|要|願意)).{0,12}(?:見面|碰面|邀約|約你|邀你)/u
+  // 動詞與邀約詞之間隔著「窗口/機會/時機」＝機會描述或教練指令句（如「順著她給的窗口直接邀約」），非「她邀約過」宣稱
+  return /(?:她|對方).{0,28}(?:主動(?:提(?:了|出)?|說|問|給|丟|發出)?|(?:提(?:了|出)?|說想|說要|問|給|丟|發出|表示想|想|要|願意))(?:(?!窗口|機會|時機).){0,12}(?:見面|碰面|邀約|約你|邀你)/u
     .test(compact) ||
-    /(?:她|對方)的.{0,10}(?:邀約|見面提議|約見)/u.test(compact);
+    // 「邀約窗口/機會/時機」是機會描述不是「她發出過邀約」的宣稱，不觸發本 gate
+    /(?:她|對方)的.{0,10}(?:邀約(?!窗口|機會|時機)|見面提議|約見)/u.test(compact);
 }
 
 function assertNoInventedPartnerInitiative(
@@ -1395,9 +1397,9 @@ function assertGeneratedDebriefQuality(
   for (const field of visibleFields) {
     rejectKnownCannedPracticeText(field, "debrief_canned_visible_text");
   }
+  assertNoInventedPartnerInitiative(card, opts.turns);
   if (!relaxSubjective) {
     assertGeneratedDebriefFieldSubstance(card);
-    assertNoInventedPartnerInitiative(card, opts.turns);
     rejectGenericPasteablePracticeText(
       card.suggestedLine,
       "debrief_quality_invalid_suggested_line",
