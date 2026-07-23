@@ -3279,6 +3279,8 @@ Deno.test("TP guard：批評提問/問法/問題視同批 Hint 句", () => {
   for (
     const watchout of [
       "你的提問太像查戶口，讓她接不下去",
+      "你的問句太像查戶口，讓她接不下去",
+      "這個問句偏保守，沒有把話題往前帶",
       "這個問法偏保守，沒有把話題往前帶",
       "這個問題收得太死，互動斷在這裡",
     ]
@@ -3324,7 +3326,7 @@ Deno.test("partner initiative 證據：可以＋後續動作不算拍板", () =>
           ...fieldParseOptions,
           turns: [
             ...fieldTurns.slice(0, -1),
-            { role: "ai" as const, text: "下午可以再看看吧 練完真的好累" },
+            { role: "ai" as const, text: "下午可以再看看吧" },
           ],
         },
       ),

@@ -502,7 +502,7 @@ function cardContradictsHintStrategy(
  * 不收（「她只回答飲食內容」的回答是動詞）。
  */
 const HINT_REPLY_REFERENCE_PATTERN =
-  /(?:照提示|照貼|提示那句|原本提示|hint|你的回覆|你的提問|你的問法|你這句|你這一?問|這句|剛才那句|剛剛那句|這個回應|這個回答|這樣回|這樣問|(?<!(?:她|對方)的)(?:回覆|訊息|提問)|(?<!(?:她|對方)的)這個(?:問法|問題|提問)|(?<!(?:她|對方)的)這一問)/iu;
+  /(?:照提示|照貼|提示那句|原本提示|hint|你的回覆|你的提問|你的問法|你這句|你這一?問|這句|剛才那句|剛剛那句|這個回應|這個回答|這樣回|這樣問|(?<!(?:她|對方)的)(?:回覆|訊息|提問|問句)|(?<!(?:她|對方)的)這個(?:問法|問題|提問|問句)|(?<!(?:她|對方)的)這一問)/iu;
 
 /** 施事毀局句：把/讓＋毀局動詞，把責任歸給使用者送出的那句（＝Hint 句）。 */
 const AGENTIVE_HINT_KILL_PATTERN =
@@ -723,7 +723,7 @@ function assertGeneratedDebriefFieldSubstance(card: DebriefCard): void {
 
 function partnerTurnContainsInviteEvidence(value: string): boolean {
   const compact = normalizedPracticeText(value);
-  return practiceInviteLevelFor(value) !== "none" ||
+  if (
     /(?:約|邀)[妳你]|要不要.{0,8}一起|(?:跟|和)[妳你].{0,10}(?:見面|碰面|喝咖啡|吃飯|散步|看展|逛街)/u
       .test(compact) ||
     // 她自報空檔（我這週六下午剛好有空）＝主動釋出時間窗口
@@ -732,9 +732,21 @@ function partnerTurnContainsInviteEvidence(value: string): boolean {
     // 她拍板確認（下午可以欸，那說好了）＝接受/敲定邀約
     // （2026-07-23 gd5 eval 同型誤殺）。
     /(?:說好了|說定|一言為定|成交)/u.test(compact) ||
-    // 可以後接「再看/先休息/睡」等後續動作＝保留不是拍板（Codex 首審 P2-4）。
+    // 可以後接「再看/先休息」等後續動作＝保留不是拍板（Codex 首審 P2-4）。
     /(?:週[一二三四五六日末]|星期[一二三四五六日天]|禮拜[一二三四五六日天]|明天|後天|下午|晚上|早上)[^，,。！？!?；;]{0,4}(?:可以|沒問題|ok|行)(?!再|先|睡|休|等|忙|慢|考慮|想|看)/iu
-      .test(compact);
+      .test(compact)
+  ) {
+    return true;
+  }
+  // 保留句（可以…再看看/再說）不算拍板；invite classifier 對這型的
+  // generic-proposal 誤判不得背書（Codex 覆審 P2）。
+  if (
+    /(?:可以|行|沒問題)(?:的話)?(?:欸|喔|啊|吧)?再(?:看|想|說|喬|確認|討論)/u
+      .test(compact)
+  ) {
+    return false;
+  }
+  return practiceInviteLevelFor(value) !== "none";
 }
 
 // 逐子句判定：跨子句黏連（「先聊她的感受，累積默契後再提邀約」的她與邀約

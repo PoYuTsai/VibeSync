@@ -79,6 +79,9 @@ const NEGATED_ACTIVITY =
 // 是對她狀態的玩笑推測，不是提案。
 const CONJECTURE_CLAUSE =
   /我(?:猜|賭|敢說)[^，,。！？!?；;]{0,20}(?:吧|嗎)/gu;
+// 回憶句（Codex 覆審 P2：「會想起去日本那次嗎」）：想起＝回憶動詞，
+// 後接的內容是記憶不是提案，整段剝除。
+const MEMORY_RECALL_CLAUSE = /想起[^，,。！？!?；;]{0,16}/gu;
 const INTENT_QUESTION_CLAUSE =
   /(?:還會想?再?|會想?再|還?敢再?|會有想|有沒有(?:很)?想|會不會想|會[^，,。！？!?；;我]{0,4}想|還?有(?:力氣|心情|餘裕|體力)|(?:平常|通常|一般|每次)[^，,。！？!?；;我]{0,8}會(?:這樣)?|也會這樣)(?:被[^我，,。！？!?；;]{0,3})?[^，,。！？!?；;我起]{0,3}?(?:去|爬|來|吃|喝|看|逛|玩|走|打|唱|約)[^，,。！？!?；;我]{0,10}嗎/gu;
 // 第三方主詞邀約（round10 bh2「朋友下次還會約妳嗎」）：子句開頭是朋友/他她
@@ -119,7 +122,8 @@ export function practiceInviteLevelFor(value: string): PracticeInviteLevel {
   const positiveText = compact.replace(NEGATED_PLAN_CLAUSE, "").replace(
     /(?:這輪|現在|今天)?(?:先)?(?:不急著約|不約|不用約|不硬約|別急著約)/gu,
     "",
-  ).replace(INTENT_QUESTION_CLAUSE, "").replace(CONJECTURE_CLAUSE, "").replace(
+  ).replace(INTENT_QUESTION_CLAUSE, "").replace(CONJECTURE_CLAUSE, "")
+    .replace(MEMORY_RECALL_CLAUSE, "").replace(
     THIRD_PARTY_INVITER_CLAUSE,
     "",
   ).replace(SHARE_CONTENT_CLAUSE, "").replace(IMAGINATION_CLAUSE, "");
