@@ -1136,8 +1136,10 @@ export function extractHintFactClaims(
       introduction: false,
     },
     {
+      // round12 bd5「跟上她的玩笑節奏」：「跟上」是跟隨補語非同行介詞、
+      // 「玩笑」的玩不是同行動詞——雙 lookahead 排除。
       pattern:
-        /(?:^|[，,。！？!?；;\s])(?:我|我們)?(?:會|要|想)?(?:跟|和)\s*([\p{Script=Han}A-Za-z·・]{2,20}?)(?=(?:一起)?(?:去|來|吃|喝|看|逛|玩|走|見|碰面|同行))/gu,
+        /(?:^|[，,。！？!?；;\s])(?:我|我們)?(?:會|要|想)?(?:跟(?!上)|和)\s*([\p{Script=Han}A-Za-z·・]{2,20}?)(?=(?:一起)?(?:去|來|吃|喝|看|逛|玩(?!笑)|走|見|碰面|同行))/gu,
       valueIndex: 1,
       introduction: false,
     },

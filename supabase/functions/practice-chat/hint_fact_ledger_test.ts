@@ -2021,3 +2021,30 @@ Deno.test("typed round11 deictic 那區/這站 stays out of located_at claims", 
     true,
   );
 });
+
+// round12 判定表（2026-07-23）：「跟上她的玩笑節奏」——「跟上」是跟隨補語、
+// 「玩笑」的玩不是同行動詞，同行 pattern 卻切出假人名「上她的」conf=high；
+// 真同行人名（跟嘉玲去）不受影響。
+Deno.test("typed round12 跟上/玩笑 stays out of is_named claims", () => {
+  assertEquals(
+    extractHintFactClaims({
+      text: "跟上她的玩笑節奏，「互聞打卡」回應自然不尷尬",
+      perspective: "coaching",
+      provenance: "generated_coaching",
+      defaultOwner: "user",
+    }).filter((claim) => claim.relation === "is_named"),
+    [],
+  );
+  const named = extractHintFactClaims({
+    text: "我會跟嘉玲去看展",
+    perspective: "reply",
+    provenance: "generated_reply",
+    defaultOwner: "user",
+  });
+  assertEquals(
+    named.some((claim) =>
+      claim.relation === "is_named" && claim.anchor === "嘉玲"
+    ),
+    true,
+  );
+});
