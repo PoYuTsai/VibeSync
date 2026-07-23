@@ -242,3 +242,150 @@ Deno.test("grounding gate never treats short, Latin, or emoji text as an automat
     errorCode: "practice_not_grounded",
   });
 });
+
+// ── 裁決 (a) 2026-07-23：grounding 功能句四型分治（round6 判定表根因 2）──
+// 誠實迴避／提案時間／收尾允諾三型豁免詞面比對；回應質問型不豁免。
+// fixture 全部取自 docs/reviews/2026-07-23-fact-gate-round6-judgment.md 的
+// 真實被拒候選句＋eval fixture 逐字稿。
+
+const gh5RecordshopTurns = [
+  {
+    role: "user" as const,
+    text: "妳上次說想找回聽實體專輯的儀式感，我知道一間唱片行超有味道",
+  },
+  { role: "ai" as const, text: "真的假的，現在還有這種店喔" },
+  { role: "user" as const, text: "有，老闆還會手寫推薦卡，整間店都是黑膠的味道" },
+  { role: "ai" as const, text: "手寫推薦卡也太浪漫，我好久沒逛這種店了" },
+  { role: "user" as const, text: "那妳值得去被推薦一次，妳的歌單需要新血" },
+  {
+    role: "ai" as const,
+    text: "被你說得我有點心動，你說的那間唱片行是在哪一區啊",
+  },
+];
+
+const gd2BadmintonTurns = [
+  { role: "user" as const, text: "妳說妳打羽球，都固定跟誰打？" },
+  { role: "ai" as const, text: "同事揪的團，一週一次，強度普通" },
+  { role: "user" as const, text: "那妳算裡面強的還是弱的？" },
+  { role: "ai" as const, text: "中間偏強吧，殺球被我接到會沒面子的那種" },
+  { role: "user" as const, text: "口氣很大喔，我以前系隊的" },
+  { role: "ai" as const, text: "系隊的就了不起嗎，讓你三分也未必會輸" },
+  { role: "user" as const, text: "好啊，那改天讓妳見識一下" },
+  { role: "ai" as const, text: "你們男生每次都嘴上見識，最後都約不出來" },
+  { role: "user" as const, text: "我不是那種人啦" },
+  { role: "ai" as const, text: "是不是那種人要用行動證明，不是用打字" },
+  { role: "user" as const, text: "哈哈好，那先問妳都打哪個時段" },
+  { role: "ai" as const, text: "看你有沒有本事排進我的行程囉" },
+];
+
+const gd5MarketTurns = [
+  {
+    role: "user" as const,
+    text: "妳上次說想逛的那種老物市集，這週末河邊剛好有一場",
+  },
+  { role: "ai" as const, text: "真的假的，我找這種市集找超久" },
+  { role: "user" as const, text: "真的，聽說還有舊底片相機的攤位" },
+  { role: "ai" as const, text: "底片相機！我一直想收一台，但怕被當盤子" },
+  { role: "user" as const, text: "我大學玩過一陣子底片，殺價我可以罩妳" },
+  { role: "ai" as const, text: "喔？那你說說看，怎樣的機況才值得下手" },
+  {
+    role: "user" as const,
+    text: "先看蒙皮和過片順不順，快門聲音一聽就知道有沒有被操過",
+  },
+  { role: "ai" as const, text: "聽起來真的有懂，不是隨便唬我" },
+  { role: "user" as const, text: "唬妳幹嘛，被拆穿多丟臉" },
+  { role: "ai" as const, text: "哈哈也是，那市集是星期六還星期日？" },
+  { role: "user" as const, text: "星期六整天，下午人比較少，逛起來舒服" },
+  { role: "ai" as const, text: "下午可以欸，那說好了，你負責幫我把關殺價" },
+];
+
+const gh3SpicyTurns = [
+  { role: "user" as const, text: "妳說妳吃辣很強，我最近吃到一家麻辣鍋超猛" },
+  { role: "ai" as const, text: "多猛？我可是從小吃辣長大的" },
+  { role: "user" as const, text: "大辣加麻，我上次吃完隔天還在冒煙" },
+  { role: "ai" as const, text: "那你這樣是要跟我比嗎，先說我沒在讓人的" },
+  { role: "user" as const, text: "敢比啊，輸的請飲料，我先說我不會讓妳" },
+  { role: "ai" as const, text: "你少來，你是不是對每個女生都嗆一樣的話啊" },
+];
+
+Deno.test("grounding gate exempts honest-avoidance replies (判定表 #11 gh5)", () => {
+  // 沒去過就說沒去過＋轉話題／邀約是合法解；句子的功能是回應不是複讀。
+  assertPracticeTextGroundedInTurns({
+    visibleText:
+      "地區我一時想不起來，怕講錯帶妳撲空，不如就當作我們的小任務，找一天一起去晃晃找答案？",
+    turns: gh5RecordshopTurns,
+    errorCode: "practice_not_grounded",
+  });
+});
+
+Deno.test("grounding gate exempts time-proposal replies (判定表 #15/#16 gd2)", () => {
+  // 練習室教「提案時間、尋求共識」的形狀；提案句天然引入新時間詞。
+  for (
+    const proposal of [
+      "那週三晚上這場，我直接卡進去，妳留個位置給我？",
+      "「那週三晚上我先卡好，妳排一下，輸了請妳吃東西」",
+    ]
+  ) {
+    assertPracticeTextGroundedInTurns({
+      visibleText: proposal,
+      turns: gd2BadmintonTurns,
+      errorCode: "practice_not_grounded",
+    });
+  }
+});
+
+Deno.test("grounding gate exempts short closing-promise replies (判定表 #26 gd5)", () => {
+  assertPracticeTextGroundedInTurns({
+    visibleText: "好啊一言為定，那我們約幾點碰面？我先抓個時間傳給妳",
+    turns: gd5MarketTurns,
+    errorCode: "practice_not_grounded",
+  });
+});
+
+Deno.test("grounding gate still rejects challenge-response replies (判定表 #6/#8 gh3，裁決不豁免)", () => {
+  // 回應質問型不豁免：gate 保留＝把模型推向「引用她原話反打」的正確技巧。
+  for (
+    const challengeResponse of [
+      "被抓包了嗎哈哈，不過這句真的只對敢應戰的人講，妳算第一個接招的",
+      "哈哈被抓包，不過這句我真的只跟嘴硬又吃得下辣的人講，妳算特別版",
+      "我只對敢嗆我的人這樣",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        assertPracticeTextGroundedInTurns({
+          visibleText: challengeResponse,
+          turns: gh3SpicyTurns,
+          errorCode: "practice_not_grounded",
+        }),
+      Error,
+      "practice_not_grounded",
+    );
+  }
+});
+
+Deno.test("grounding exemptions never cover fabricated self-narrative or generic templates", () => {
+  // 判定表 #22：捏造使用者近況（含時間詞＋句尾問號）不得被提案時間型誤放。
+  assertThrows(
+    () =>
+      assertPracticeTextGroundedInTurns({
+        visibleText:
+          "「我最近也在計畫下個月去日本，想找個地方能邊泡溫泉邊看楓葉——妳有推薦的地方嗎？」",
+        turns: gd5MarketTurns,
+        errorCode: "practice_not_grounded",
+      }),
+    Error,
+    "practice_not_grounded",
+  );
+  // 一般萬用模板照擋（回歸）。
+  assertThrows(
+    () =>
+      assertPracticeTextGroundedInTurns({
+        visibleText: "先接住她的情緒，再自然延伸話題。",
+        turns: gd5MarketTurns,
+        errorCode: "practice_not_grounded",
+      }),
+    Error,
+    "practice_not_grounded",
+  );
+});

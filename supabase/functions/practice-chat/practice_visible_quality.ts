@@ -230,6 +230,60 @@ function evidenceFragments(value: string): Set<string> {
   return result;
 }
 
+// ── 裁決 (a) 2026-07-23（round6 判定表 §5 根因 2）：詞面 n-gram 對「回應句」
+// 有結構性盲區——這些句子的功能是「回應」而非「複讀」，天然零詞面重疊。
+// Eric 裁決四型分治：誠實迴避／提案時間／收尾允諾三型給窄豁免；「回應質問型」
+// 不豁免（gate 保留＝把模型推向引用她原話的幽默反打/曲解技巧，刻意設計）。
+// 鐵則：豁免只跳過本詞面比對；fact-ledger 捏造檢查、洩漏詞表、invite_route
+// 等其他 gate 一律照走。
+
+// 誠實迴避：第一人稱＋否定/未然承認（還沒去過、不知道、想不起來…）。
+// 沒去過就說沒去過＋轉話題/反問/邀約皆合法解（判定表 #11 gh5）。
+const HONEST_AVOIDANCE_ADMISSION_PATTERN =
+  /(?:還沒(?:有)?(?:實際)?(?:去|吃|看|聽|玩|試)過|沒(?:有)?(?:去|吃|看|聽|玩|試)過|沒聽過|不知道|不清楚|不確定|想不起來|記不(?:得|起來)|答不上來|沒背下來|不太熟)/u;
+
+// 提案時間：日級/鐘點級時間錨＋第一人稱＋要求對方配合的動作（妳留/妳排/
+// 妳有空…）。練習室教的是「提案時間、尋求共識」的形狀，用戶貼出前自己換
+// 真時間（判定表 #15/#16 gd2）。刻意不收「下個月/最近」等自陳近況時間詞，
+// 也不把句尾問號當提案訊號——否則「我最近也在計畫下個月去日本…妳有推薦
+// 嗎？」型捏造近況句（判定表 #22）會被誤放。
+const PROPOSAL_TIME_ANCHOR_PATTERN =
+  /(?:[週周][一二三四五六日天末]|星期[一二三四五六日天]|禮拜[一二三四五六日天]|這[週周]|下[週周]|今晚|明晚|明天|後天|[0-9０-９一二三四五六七八九十]+點(?:半)?)/u;
+const PROPOSAL_SECOND_PERSON_COOP_PATTERN =
+  /[你妳][^，。！？!?,;；]{0,4}(?:留|排|挑|選|看看|方便|有空|可以|能不能|要不要|決定)/u;
+
+// 收尾允諾：簡短允諾/確認開頭（好啊/沒問題/一言為定…）＋碰面或時間詞，
+// 且全句短（判定表 #26 gd5「好，週六見」形）。長度上限擋住把允諾當前綴
+// 夾帶長段新敘事的句子。
+const CLOSING_ASSENT_LEAD_PATTERN =
+  /^(?:好(?:啊|呀|哇|喔|哦|的)?|沒問題|成交|說定(?:了)?|一言為定|就這麼(?:說定|辦)|ok)/u;
+const CLOSING_MEET_ANCHOR_PATTERN =
+  /(?:見面|碰面|見|約|時間|[0-9０-９一二三四五六七八九十幾]+點)/u;
+const CLOSING_PROMISE_MAX_COMPACT_LENGTH = 30;
+
+function isHonestAvoidanceResponse(value: string): boolean {
+  return /我/u.test(value) && HONEST_AVOIDANCE_ADMISSION_PATTERN.test(value);
+}
+
+function isTimeProposalResponse(value: string): boolean {
+  return /我/u.test(value) && PROPOSAL_TIME_ANCHOR_PATTERN.test(value) &&
+    PROPOSAL_SECOND_PERSON_COOP_PATTERN.test(value);
+}
+
+function isClosingPromiseResponse(value: string): boolean {
+  const normalized = compact(value);
+  return normalized.length > 0 &&
+    normalized.length <= CLOSING_PROMISE_MAX_COMPACT_LENGTH &&
+    CLOSING_ASSENT_LEAD_PATTERN.test(normalized) &&
+    CLOSING_MEET_ANCHOR_PATTERN.test(normalized);
+}
+
+/** 三型窄豁免的唯一入口；質問型與其他回應句不在此列，照走詞面比對。 */
+function isGroundingExemptResponseShape(value: string): boolean {
+  return isHonestAvoidanceResponse(value) || isTimeProposalResponse(value) ||
+    isClosingPromiseResponse(value);
+}
+
 /**
  * Generated coaching must visibly touch the supplied conversation rather than
  * pass a generic relationship template. This is deliberately lexical and
@@ -268,6 +322,7 @@ export function assertPracticeTextGroundedInTurns(opts: {
   }
   const visible = groundingCompact(opts.visibleText);
   if (![...fragments].some((fragment) => visible.includes(fragment))) {
+    if (isGroundingExemptResponseShape(opts.visibleText)) return;
     throw new Error(opts.errorCode);
   }
 }

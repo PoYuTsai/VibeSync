@@ -5707,3 +5707,73 @@ Deno.test("regression: 引用較早輪次＝有憑有據，不再被 latestOnly 
   );
   assertEquals(result.replies[0].text.includes("燒起來"), true);
 });
+
+// ── 裁決 (a) 2026-07-23：grounding 功能句四型分治（呼叫點回歸）──
+// raw 取自 tools/practice_single_shot_eval/results/2026-07-23T02-43-11-260Z.json
+// gh5 r2（判定表 #11 誠實迴避豁免）與 gh3 r3（#8 質問型不豁免）。
+
+const gh5RecordshopTurns = [
+  {
+    role: "user" as const,
+    text: "妳上次說想找回聽實體專輯的儀式感，我知道一間唱片行超有味道",
+  },
+  { role: "ai" as const, text: "真的假的，現在還有這種店喔" },
+  { role: "user" as const, text: "有，老闆還會手寫推薦卡，整間店都是黑膠的味道" },
+  { role: "ai" as const, text: "手寫推薦卡也太浪漫，我好久沒逛這種店了" },
+  { role: "user" as const, text: "那妳值得去被推薦一次，妳的歌單需要新血" },
+  {
+    role: "ai" as const,
+    text: "被你說得我有點心動，你說的那間唱片行是在哪一區啊",
+  },
+];
+
+const gh3SpicyTurns = [
+  { role: "user" as const, text: "妳說妳吃辣很強，我最近吃到一家麻辣鍋超猛" },
+  { role: "ai" as const, text: "多猛？我可是從小吃辣長大的" },
+  { role: "user" as const, text: "大辣加麻，我上次吃完隔天還在冒煙" },
+  { role: "ai" as const, text: "那你這樣是要跟我比嗎，先說我沒在讓人的" },
+  { role: "user" as const, text: "敢比啊，輸的請飲料，我先說我不會讓妳" },
+  { role: "ai" as const, text: "你少來，你是不是對每個女生都嗆一樣的話啊" },
+];
+
+Deno.test("generated Hint exempts honest-avoidance replies from word-surface grounding (判定表 #11)", () => {
+  const result = parseHintResult(
+    JSON.stringify({
+      warmUp:
+        "哈其實我也是路過知道有這家，確切地址我還真沒背下來😂 不如我們約一天一起去挖黑膠，順便讓老闆幫妳寫張推薦卡？",
+      steady:
+        "地區我一時想不起來，怕講錯帶妳撲空，不如就當作我們的小任務，找一天一起去晃晃找答案？",
+      coaching:
+        "Game心法：她這句「在哪一區」其實是被你說的畫面打動、想確認這件事有沒有下文，不是真的在考地理。現在階段適合明確但低壓的邀約，任務是別硬掰地址（你本來就沒說過），改用「不知道具體位置」誠實接住，同時把懸念轉成兩人一起去找答案的小場景，順勢把窗口收成一起去逛的邀約，但保持可以婉拒的空間。速約任務：這輪直接開出「一起去」的邀請，比停在鋪墊更進一階，收成即可，不用再追問細節。",
+    }),
+    {
+      mode: "game",
+      enforceGeneratedQuality: true,
+      relaxSubjectiveQualityRubrics: true,
+      turns: gh5RecordshopTurns,
+    },
+  );
+  assertEquals(result.replies[1].text.includes("想不起來"), true);
+});
+
+Deno.test("generated Hint still rejects challenge-response replies with zero grounding (判定表 #8，裁決不豁免)", () => {
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "哪有，這句是限量版，只有敢跟我拚辣的人才聽得到，妳現在解鎖了",
+          steady: "哈哈被抓包，不過這句我真的只跟嘴硬又吃得下辣的人講，妳算特別版",
+          coaching:
+            "Game心法：她這句「你是不是對每個女生都嗆一樣的話」是在測試你會不會被拆穿就慫掉，這是輕吐槽型測試。這階段要推的是她對你的熟悉感，任務是接住吐槽、順勢把嗆話包裝成「只對她」的專屬版本，展現不被拆穿也不惱羞的從容。不用自證清白，幽默扛住就過關。速約任務：這輪先不約，用「限量/特別版」這類梗把辣度話題變成兩人小劇場，鋪墊熟悉感，先不開邀約窗口。",
+        }),
+        {
+          mode: "game",
+          enforceGeneratedQuality: true,
+          relaxSubjectiveQualityRubrics: true,
+          turns: gh3SpicyTurns,
+        },
+      ),
+    Error,
+    "hint_quality_invalid_not_grounded",
+  );
+});
