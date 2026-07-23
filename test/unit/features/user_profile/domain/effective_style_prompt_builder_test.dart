@@ -304,6 +304,128 @@ void main() {
     });
   });
 
+  group('EffectiveStylePromptBuilder.buildForNewTopic', () {
+    test('returns null when global and partner settings are empty', () {
+      expect(
+        builder.buildForNewTopic(
+          global: null,
+          partner: null,
+          includePartnerOverride: true,
+        ),
+        isNull,
+      );
+    });
+
+    test('topic seeds＝使用者自己的興趣：可自我揭露、不得聲稱對方也喜歡', () {
+      final context = builder.buildForNewTopic(
+        global: profile(
+          style: InteractionStyle.humorous,
+          seeds: const [TopicSeed.fitness, TopicSeed.coffee],
+        ),
+        partner: null,
+        includePartnerOverride: false,
+      )!;
+
+      expect(context, contains('這是用戶自己的興趣'));
+      expect(context, contains('可以自然分享自身生活畫面'));
+      expect(context, contains('不得聲稱對方也喜歡'));
+      expect(context, contains('自然展現生活感、品味或行動力'));
+      // visible 文字禁 DHV 字面。
+      expect(context, isNot(contains('DHV')));
+    });
+
+    test('contract：不假裝身份、不覆蓋 consent／低壓互動要求', () {
+      final context = builder.buildForNewTopic(
+        global: profile(style: InteractionStyle.gentle),
+        partner: null,
+        includePartnerOverride: false,
+      )!;
+
+      expect(context, contains('不得為了配合對方假裝身份、經歷或興趣'));
+      expect(context, contains('同意與低壓互動要求永遠優先'));
+      expect(context, contains('只調整話題的說法與語氣'));
+    });
+
+    test('flagged partner 停用 override、global 仍生效', () {
+      final flagged = builder.buildForNewTopic(
+        global: profile(style: InteractionStyle.steady),
+        partner: override(style: InteractionStyle.playful),
+        includePartnerOverride: false,
+      )!;
+      expect(flagged, contains('穩重'));
+      expect(flagged, isNot(contains('有玩心')));
+
+      final trusted = builder.buildForNewTopic(
+        global: profile(style: InteractionStyle.steady),
+        partner: override(style: InteractionStyle.playful),
+        includePartnerOverride: true,
+      )!;
+      expect(trusted, contains('有玩心'));
+    });
+
+    test('stays within newTopicMaxChars', () {
+      final context = builder.buildForNewTopic(
+        global: profile(
+          style: InteractionStyle.playful,
+          secondaryStyle: InteractionStyle.humorous,
+          goals: const [
+            PracticeGoal.softInvite,
+            PracticeGoal.buildCloseness,
+            PracticeGoal.humorousReply,
+          ],
+          seeds: const [
+            TopicSeed.fitness,
+            TopicSeed.travel,
+            TopicSeed.coffee,
+            TopicSeed.music,
+            TopicSeed.photography,
+          ],
+          customTopics: '手沖咖啡器材、公路車、黑膠',
+          notes: '週末常跑咖啡廳，喜歡低壓步調' * 6,
+        ),
+        partner: null,
+        includePartnerOverride: false,
+      )!;
+      expect(
+        context.length,
+        lessThanOrEqualTo(EffectiveStylePromptBuilder.newTopicMaxChars),
+      );
+    });
+
+    test('既有三個 builder 方法 snapshot 不因新增 buildForNewTopic 改變', () {
+      final global = profile(
+        style: InteractionStyle.humorous,
+        goals: const [PracticeGoal.explainLess],
+        seeds: const [TopicSeed.coffee],
+      );
+      // 相同輸入下 opener/analysis/coach 三個 slice 的 contract 行不變。
+      expect(
+        builder.buildForOpener(
+          global: global,
+          partner: null,
+          includePartnerOverride: false,
+        ),
+        contains('只用來調整開場白語氣與風格'),
+      );
+      expect(
+        builder.buildForAnalysis(
+          global: global,
+          partner: null,
+          includePartnerOverride: false,
+        ),
+        contains('1.8x 黃金法則優先'),
+      );
+      expect(
+        builder.buildForCoachFollowUp(
+          global: global,
+          partner: null,
+          includePartnerOverride: false,
+        ),
+        contains('僅用來調整教練語氣與任務 framing'),
+      );
+    });
+  });
+
   group('EffectiveStylePromptBuilder.buildForCoachFollowUp', () {
     test('uses only interaction style + practice goals', () {
       final context = builder.buildForCoachFollowUp(
