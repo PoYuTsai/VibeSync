@@ -288,10 +288,14 @@ function isGroundingExemptResponseShape(value: string): boolean {
 // 「賭約/賴帳/認賭服輸」是同一賭局的衍生詞面，語意有出處但 n-gram 天然
 // 不重疊。豁免要求「證據窗有賭局」＋「輸出點名賭局」同時成立；質問型
 // 回應句裁決（不豁免）不受影響——無賭局詞面的回應照走詞面比對。
+// round14 Codex P2-1 收緊：①證據側排除否定/假設語境（我從來不打賭、
+// 要是打賭＝沒有賭局成立）；②輸出側只認「點名賭局成立/兌現」的承諾形
+// （賭約是真的/算數/賴帳/認賭服輸），裸「賭局/打賭」當話題填充詞
+// （用賭局延伸話題）不豁免，模板洗白照擋。
 const TRANSCRIPT_WAGER_EVIDENCE_PATTERN =
-  /(?:敢比|打賭|賭一把|賭一場|輸(?:的|了)(?:人)?請|贏(?:的|了)(?:人)?請)/u;
+  /(?:(?<!不|沒|從來不|從不|很少|要是|如果|假如|萬一)(?:敢比|打賭|賭一把|賭一場)|(?<!不|沒|要是|如果|假如|萬一)(?:輸(?:的|了)(?:人)?請|贏(?:的|了)(?:人)?請))/u;
 const WAGER_DERIVED_REFERENCE_PATTERN =
-  /(?:賭約|打賭|賭局|賴帳|認賭|服輸|願賭)/u;
+  /(?:(?:賭約|打賭|賭局)[^，,。！？!?；;]{0,6}(?:是真的|算數|作數|說好|成立|還在|沒忘)|賴帳|認賭|服輸|願賭)/u;
 
 function isWagerDerivedResponse(
   value: string,
@@ -308,16 +312,23 @@ function isWagerDerivedResponse(
 // 而非複讀，詞面天然零重疊；用戶貼出前會換成自己的真實生活（同提案時間
 // 型的既定哲學）。豁免鎖她的最新 ai 輪；拿「她的事實」開場的句子沒有
 // 第一人稱自介形，照走詞面比對（捏造她的事實另由 fact ledger 把關）。
+// round14 Codex P2-2 收緊：①邀請側移除裸「你呢」（「你呢，覺得她如何」
+// 問的是對第三人的看法）——只認「說/講/聊/分享＋你(自己)」的明確邀請形；
+// ②輸出側不整句免驗：自介槽＝時間詞後 24 字內必須出現具體生活動詞，且
+// 全句不得含教練模板語（接住/延伸話題/情緒…），模板前綴「我最近」不沾光。
 const SELF_DISCLOSURE_INVITE_PATTERN =
-  /(?:說說(?:你|妳)(?:自己)?|(?:你|妳)也可以(?:說說|多說|分享)|換(?:你|妳)(?:說|講|分享)|多(?:說|講|聊)(?:一)?點(?:你|妳)(?:自己)?|(?:你|妳)呢)/u;
+  /(?:說說(?:你|妳)(?:自己)?|(?:你|妳)也可以(?:說說|多說|分享)|換(?:你|妳)(?:說|講|分享)|多(?:說|講|聊)(?:一)?點(?:你|妳)(?:自己)?|分享(?:一下)?(?:你|妳)(?:自己|的))/u;
 const FIRST_PERSON_DISCLOSURE_PATTERN =
-  /我[^，,。！？!?；;]{0,4}(?:週末|平常|假日|下班|放假|最近|通常|其實|自己|以前|習慣)/u;
+  /我[^，,。！？!?；;]{0,4}(?:週末|平常|假日|下班|放假|最近|通常|其實|自己|以前|習慣)[^。！？!?]{0,24}(?:去|吃|喝|逛|找|看|玩|煮|跑|爬|練|睡|買|寫|畫|聽|做|窩|晃|追(?:劇)?|打球|健身|運動)/u;
+const DISCLOSURE_META_COACHING_PATTERN =
+  /(?:接住|延伸(?:話題)?|鋪墊|邀約|低壓|情緒|節奏|窗口|話題|自我揭露|拉近距離)/u;
 
 function isInvitedSelfDisclosureResponse(
   value: string,
   turns: readonly PracticeTurn[],
 ): boolean {
   if (!FIRST_PERSON_DISCLOSURE_PATTERN.test(value)) return false;
+  if (DISCLOSURE_META_COACHING_PATTERN.test(value)) return false;
   const latestPartnerText = [...turns].reverse()
     .find((turn) => turn.role === "ai")?.text ?? "";
   return SELF_DISCLOSURE_INVITE_PATTERN.test(latestPartnerText);

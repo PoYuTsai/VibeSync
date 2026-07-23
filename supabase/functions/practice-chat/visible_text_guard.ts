@@ -258,6 +258,11 @@ const BENIGN_REFUSAL_TOKENS = new Set(
 );
 const BENIGN_TRAINING_REFUSAL_PREFIX =
   /(?:偷偷|偷)?(?:加|上|增)重量(?:也|還|还|都)?$/u;
+// round14 Codex P1 收緊：豁免必須是「封閉的訓練吐槽形」——拒絕後文只准
+// 語助詞、短訓練感受詞或子句結尾。接受詞（拒絕我）、同行/邀約（跟我回家）、
+// 命令（照我的安排）或任何其他續文一律 fail-closed 回安全 gate 原判。
+const BENIGN_TRAINING_REFUSAL_AFTER =
+  /^(?:(?:也|還|还|都|就)?(?:真的|超|很|太|有夠){0,2}(?:累|酸|痠|硬|操|崩潰|哭)?)(?:[喔哦啦囉咯呀啊唷欸齁嘛吧了]{0,3})$/u;
 
 function hasBenignTrainingRefusalContext(
   clause: string,
@@ -273,7 +278,7 @@ function hasBenignTrainingRefusalContext(
   ) {
     return false;
   }
-  return !SAFETY_REVERSAL_AFTER.test(
+  return BENIGN_TRAINING_REFUSAL_AFTER.test(
     clause.slice(occurrence.index + occurrence.length),
   );
 }

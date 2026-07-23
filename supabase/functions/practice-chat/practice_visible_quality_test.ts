@@ -497,3 +497,83 @@ Deno.test("grounding gate exempts first-person disclosure replies to her explici
     "practice_not_grounded",
   );
 });
+
+Deno.test("wager exemption rejects template laundering and negated evidence (round14 Codex P2-1)", () => {
+  // 攻擊①：萬用模板插「賭局」一詞洗白——賭局衍生豁免只認「點名賭局
+  // 成立/兌現」的承諾形，話題填充詞不豁免。
+  assertThrows(
+    () =>
+      assertPracticeTextGroundedInTurns({
+        visibleText: "先接住她的情緒，再用賭局自然延伸話題。",
+        turns: gh3SpicyTurns,
+        errorCode: "practice_not_grounded",
+      }),
+    Error,
+    "practice_not_grounded",
+  );
+  // 攻擊②：否定證據（我從來不打賭）不得當正向賭局證據。
+  const negatedWagerTurns = [
+    { role: "user" as const, text: "妳說妳吃辣很強，要不要來比一場" },
+    { role: "ai" as const, text: "我從來不打賭，比辣可以，賭東西免談" },
+  ];
+  assertThrows(
+    () =>
+      assertPracticeTextGroundedInTurns({
+        visibleText: "賭約是真的，輸了別賴帳",
+        turns: negatedWagerTurns,
+        errorCode: "practice_not_grounded",
+      }),
+    Error,
+    "practice_not_grounded",
+  );
+  // 原 gh3 FP 案例維持放行。
+  assertPracticeTextGroundedInTurns({
+    visibleText: "嗆歸嗆，但賭約是真的，妳要是輸了別想賴帳喔",
+    turns: gh3SpicyTurns,
+    errorCode: "practice_not_grounded",
+  });
+});
+
+Deno.test("self-disclosure exemption rejects bare 你呢 and template laundering (round14 Codex P2-2)", () => {
+  // 攻擊①：裸「你呢」問的是對第三人的看法，不是自我揭露邀請——不得
+  // 觸發第一人稱自介豁免。
+  const opinionTurns = [
+    { role: "user" as const, text: "我同事迷上攀岩，一直拉人入坑" },
+    { role: "ai" as const, text: "你呢，覺得她如何？" },
+  ];
+  assertThrows(
+    () =>
+      assertPracticeTextGroundedInTurns({
+        visibleText: "我平常通常每週都去潛水",
+        turns: opinionTurns,
+        errorCode: "practice_not_grounded",
+      }),
+    Error,
+    "practice_not_grounded",
+  );
+  // 攻擊②：有邀請＋「我最近」前綴的教練模板洗白照擋——豁免只認
+  // 生活自介槽（時間詞＋生活動詞），槽外的模板語不得沾光。
+  assertThrows(
+    () =>
+      assertPracticeTextGroundedInTurns({
+        visibleText: "我最近會先接住她的情緒，再自然延伸話題。",
+        turns: gd3InterviewTurns,
+        errorCode: "practice_not_grounded",
+      }),
+    Error,
+    "practice_not_grounded",
+  );
+  // 原 gd3 FP 案例維持放行。
+  for (
+    const line of [
+      "哈哈被抓包了，那換我自首：我週末通常會找新的店吃東西耶",
+      "哈哈被抓包了，那換我說：我週末如果沒事，會亂晃找新開的店吃飯。",
+    ]
+  ) {
+    assertPracticeTextGroundedInTurns({
+      visibleText: line,
+      turns: gd3InterviewTurns,
+      errorCode: "practice_not_grounded",
+    });
+  }
+});
