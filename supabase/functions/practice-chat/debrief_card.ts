@@ -248,6 +248,55 @@ function guardVisibleText(value: string): string {
   return value;
 }
 
+const GAME_BREAKDOWN_FIELDS = [
+  "phaseReached",
+  "missedVariable",
+  "failureState",
+  "nextFirstLine",
+  "inviteDirection",
+] as const;
+
+/**
+ * eval 第 6 輪根因（2026-07-23）：Sonnet 偶發把 tool_use 的巢狀 gameBreakdown
+ * 寫成 tool-call 拍平語法——gameBreakdown 變成以 `<parameter name="X">` 開頭的
+ * 字串（欄位內容黏在字串裡），其餘欄位逸出到 JSON 頂層。內容其實完整，只是
+ * 序列化形態壞掉；prompt 強調必填已證實無效（對症不對藥）。
+ *
+ * 此 repair 只還原「序列化形態」：逐段抽字串內 `<parameter name="X">` 欄位、
+ * 把逸出頂層的欄位搬回巢狀物件並自頂層移除，再交回既有 gate
+ * （missing_fields／grounding／詞面守門全不變）。抽完仍缺欄照舊
+ * missing_fields reject，絕不填罐頭預設值。
+ */
+export function repairFlattenedGameBreakdown(
+  p: Record<string, unknown>,
+): void {
+  const raw = p.gameBreakdown;
+  if (typeof raw !== "string" || !raw.trimStart().startsWith("<parameter")) {
+    return;
+  }
+  const reparented: Record<string, string> = {};
+  // 值取到下一個 <parameter 段落或字串尾；去掉可能的 </parameter> 尾標與空白。
+  const segmentRe =
+    /<parameter\s+name="([^"]+)"\s*>([\s\S]*?)(?=<parameter\s+name="|$)/g;
+  for (const match of raw.matchAll(segmentRe)) {
+    const name = match[1];
+    if (!(GAME_BREAKDOWN_FIELDS as readonly string[]).includes(name)) continue;
+    const value = match[2].replace(/<\/parameter>\s*$/, "").trim();
+    if (value.length > 0) reparented[name] = value;
+  }
+  // 字串裡連一欄都抽不到 → 不是可辨識的拍平形態，不動它，照舊 reject。
+  if (Object.keys(reparented).length === 0) return;
+  for (const field of GAME_BREAKDOWN_FIELDS) {
+    const escaped = p[field];
+    if (!(field in reparented) && typeof escaped === "string") {
+      reparented[field] = escaped;
+    }
+    // 逸出頂層的欄位搬回巢狀後移除，避免殘留多餘 key。
+    delete p[field];
+  }
+  p.gameBreakdown = reparented;
+}
+
 function parseGameBreakdown(
   value: unknown,
   enforceGeneratedQuality: boolean,
@@ -1494,6 +1543,11 @@ export function parseDebriefCard(
     throw new Error("debrief_not_object");
   }
   const p = parsed as Record<string, unknown>;
+  // 拍平形態 repair 必須在 parseGameBreakdown 之前；只救序列化形態，
+  // 之後所有 gate（missing_fields／grounding／詞面）照原路走。
+  if (opts.allowGameBreakdown === true) {
+    repairFlattenedGameBreakdown(p);
+  }
   const enforceGeneratedQuality = opts.enforceGeneratedQuality === true;
   const summary = guardVisibleText(
     generatedVisibleString(

@@ -11,6 +11,7 @@ import {
   DEBRIEF_TOOL_SCHEMA,
   DEBRIEF_TOOL_SCHEMA_GAME,
   parseDebriefCard,
+  repairFlattenedGameBreakdown,
   VIBES,
 } from "./debrief_card.ts";
 
@@ -2279,6 +2280,103 @@ Deno.test("Game debrief rejects missing, malformed, partial, or blank gameBreakd
       },
     ]
   ) {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({
+            summary: "solid",
+            suggestedLine: "next line",
+            gameBreakdown,
+          }),
+          { allowGameBreakdown: true },
+        ),
+      Error,
+      "debrief_game_breakdown_missing_fields",
+    );
+  }
+});
+
+// eval 第 6 輪根因：Sonnet 偶發把 tool_use 巢狀物件寫成 tool-call 的
+// `<parameter name="X">` 拍平語法——gameBreakdown 變成字串、其餘四欄逸出頂層。
+// repair 只救序列化形態，內容 gate 全不變。fixture 取自
+// tools/practice_single_shot_eval/results/2026-07-23T02-43-11-260Z.json shot 68。
+Deno.test("Game debrief repairs flattened tool-call gameBreakdown string", () => {
+  const c = parseDebriefCard(
+    JSON.stringify({
+      summary: "連續資訊型提問像查戶口，她已明講不舒服",
+      strengths: ["被提醒後立刻道歉，沒有硬凹或反駁"],
+      watchouts: ["連問下班活動、健身房、籍貫家庭，像做問卷不是聊天"],
+      suggestedLine: "健身房挑連鎖的方便啦，妳算自律的吧？",
+      vibe: "冷",
+      dateChance: "low",
+      dateChanceReason: "她直接說像查戶口，明顯是防備狀態",
+      nextInviteMove: "先自我揭露，累積幾輪自在感後再談見面",
+      gameBreakdown:
+        '\n<parameter name="phaseReached">還在互相認識的資訊交換階段',
+      missedVariable: "沒有給出自己的內容或感受，只是一直丟問題",
+      failureState: "問答變成單向盤問，她說『像做戶口調查』",
+      nextFirstLine: "健身房挑連鎖的方便啦，妳算自律的吧？",
+      inviteDirection: "先修聊天方式：多分享自己、少問資訊題",
+    }),
+    { allowGameBreakdown: true },
+  );
+
+  assertEquals(c.gameBreakdown, {
+    phaseReached: "還在互相認識的資訊交換階段",
+    missedVariable: "沒有給出自己的內容或感受，只是一直丟問題",
+    failureState: "問答變成單向盤問，她說『像做戶口調查』",
+    nextFirstLine: "健身房挑連鎖的方便啦，妳算自律的吧？",
+    inviteDirection: "先修聊天方式：多分享自己、少問資訊題",
+  });
+});
+
+Deno.test("repairFlattenedGameBreakdown reparents multi-segment string and strips escaped top-level keys", () => {
+  const p: Record<string, unknown> = {
+    summary: "solid",
+    gameBreakdown:
+      '\n<parameter name="phaseReached">還在認識</parameter>\n<parameter name="missedVariable">沒分享自己</parameter>',
+    failureState: "單向盤問",
+    nextFirstLine: "先丟一個自己的故事",
+    inviteDirection: "暫不邀約",
+  };
+  repairFlattenedGameBreakdown(p);
+  assertEquals(p.gameBreakdown, {
+    phaseReached: "還在認識",
+    missedVariable: "沒分享自己",
+    failureState: "單向盤問",
+    nextFirstLine: "先丟一個自己的故事",
+    inviteDirection: "暫不邀約",
+  });
+  // 逸出頂層的欄位搬回巢狀後必須移除，不得殘留多餘 key。
+  assertEquals("failureState" in p, false);
+  assertEquals("nextFirstLine" in p, false);
+  assertEquals("inviteDirection" in p, false);
+  assertEquals(p.summary, "solid");
+});
+
+Deno.test("flattened gameBreakdown still rejects when fields remain missing after repair", () => {
+  // 頂層只有三欄、字串只含 phaseReached → 抽完仍缺 inviteDirection，
+  // 照舊 missing_fields，絕不填罐頭預設值。
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          summary: "solid",
+          suggestedLine: "next line",
+          gameBreakdown: '\n<parameter name="phaseReached">還在認識',
+          missedVariable: "沒分享自己",
+          failureState: "單向盤問",
+          nextFirstLine: "先丟一個自己的故事",
+        }),
+        { allowGameBreakdown: true },
+      ),
+    Error,
+    "debrief_game_breakdown_missing_fields",
+  );
+});
+
+Deno.test('string gameBreakdown without <parameter prefix (e.g. "null") is not repaired', () => {
+  for (const gameBreakdown of ["null", "not an object"]) {
     assertThrows(
       () =>
         parseDebriefCard(
