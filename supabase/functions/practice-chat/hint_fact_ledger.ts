@@ -1031,11 +1031,19 @@ export function extractHintFactClaims(
       const rawProfession = patternIndex === 1
         ? match[1]
         : match[2] ?? match[1];
-      // 「聊她當教練的成就感」「當教練帶給她的反差」＝指涉職稱衍生話題，
-      // 的/帶給/讓後面不是職稱（2026-07-23 真機 debrief 垃圾錨點）。
-      const profession = normalizeAnchor(
-        (rawProfession ?? "").replace(/(?:的|帶給|讓).*$/u, ""),
+      // 「當教練帶給她的反差」＝職稱衍生話題，帶給/讓後全截；含「的」時
+      // 職稱是尾段 head noun（醫生的助理→助理），尾段不是職稱（教練的
+      // 成就感）就整筆不採信——無條件截前段會把助理升格成醫生
+      // （Codex 首審 P2-3）。
+      const verbTrimmed = (rawProfession ?? "").replace(
+        /(?:帶給|讓).*$/u,
+        "",
       );
+      const possessiveParts = verbTrimmed.split("的");
+      const professionRaw = possessiveParts.length > 1
+        ? possessiveParts[possessiveParts.length - 1]
+        : verbTrimmed;
+      const profession = normalizeAnchor(professionRaw);
       if (!looksLikeProfession(profession)) continue;
       add({
         owner: patternIndex === 3 ? defaultOwner : ownerAt(

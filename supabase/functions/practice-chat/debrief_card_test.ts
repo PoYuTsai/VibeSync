@@ -3272,3 +3272,63 @@ Deno.test("preserved＋revisedEvidenceQuote 為 ai turn 原文時視為無害佐
     "debrief_hint_assessment_invalid",
   );
 });
+
+// Codex 首審 P2-1（2026-07-23）：「你的提問/這個問法/這個問題」是在批 exact
+// Hint（提示句就是那個提問），kill-list 必須涵蓋。
+Deno.test("TP guard：批評提問/問法/問題視同批 Hint 句", () => {
+  for (
+    const watchout of [
+      "你的提問太像查戶口，讓她接不下去",
+      "這個問法偏保守，沒有把話題往前帶",
+      "這個問題收得太死，互動斷在這裡",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({
+            ...fieldSonnetCard,
+            watchouts: ["下一步：順勢聊感受", watchout],
+          }),
+          { ...fieldParseOptions },
+        ),
+      Error,
+      "debrief_hint_assessment_revision_required",
+      watchout,
+    );
+  }
+  // 她方問題不受影響：描述她拋的問題不算批 Hint。
+  const card = parseDebriefCard(
+    JSON.stringify({
+      ...fieldSonnetCard,
+      watchouts: [
+        "下一步：順勢聊感受",
+        "她的問題其實是在測你，下一步別只給資訊",
+      ],
+    }),
+    { ...fieldParseOptions },
+  );
+  assertEquals(card.watchouts.length, 2);
+});
+
+// Codex 首審 P2-4：「下午可以再看看/可以先休息」不是拍板，證據要收句尾確認。
+Deno.test("partner initiative 證據：可以＋後續動作不算拍板", () => {
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...fieldSonnetCard,
+          dateChanceReason: "她主動提了見面邀約，時間也點頭了",
+        }),
+        {
+          ...fieldParseOptions,
+          turns: [
+            ...fieldTurns.slice(0, -1),
+            { role: "ai" as const, text: "下午可以再看看吧 練完真的好累" },
+          ],
+        },
+      ),
+    Error,
+    "debrief_quality_invalid_partner_initiative",
+  );
+});

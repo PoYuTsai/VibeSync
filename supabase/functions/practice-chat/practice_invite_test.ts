@@ -383,8 +383,11 @@ Deno.test("practice invite classifier keeps craving-intent questions at none", (
   ) {
     assertEquals(practiceInviteLevelFor(line), "none", line);
   }
-  // 真提案不得鬆：帶妳去吃仍是邀約。
+  // 真提案不得鬆：帶妳去吃仍是邀約；省略「跟我」的一起邀約不得被意圖剝除吃掉
+  // （Codex 首審 P2-2）。
   assertEquals(practiceInviteLevelFor("週末帶妳去吃鹹酥雞吧"), "direct");
+  assertEquals(practiceInviteLevelFor("下次會想一起去嗎？"), "soft");
+  assertEquals(practiceInviteLevelFor("改天會想一起去看展嗎？"), "soft");
   // 「有空」是邀約窗口語不得鬆。
   assertEquals(practiceInviteLevelFor("週末有空去看展嗎"), "direct");
 });

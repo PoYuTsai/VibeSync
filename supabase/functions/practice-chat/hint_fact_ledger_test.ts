@@ -2399,3 +2399,29 @@ Deno.test("typed gh5 secrecy escapes and laughter-glued stems stay out of venue 
     true,
   );
 });
+
+// Codex 首審 P2-3（2026-07-23）：「她是醫生的助理」職稱是「的」後的 head
+// noun（助理），無條件截前段會把她升格成醫生、讓捏造「她是醫生」變 supported。
+Deno.test("profession 的-短語取尾段 head noun，不升格前段", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "ai", text: "我是醫生的助理啦，每天被病歷追著跑" },
+    ],
+  });
+  assertEquals(
+    collectUnsupportedHintFactClaims({
+      text: "她是醫生，作息應該很緊",
+      field: "coaching",
+      context,
+    }).some((claim) => claim.domain === "profession"),
+    true,
+  );
+  assertEquals(
+    collectUnsupportedHintFactClaims({
+      text: "她是助理，每天跟病歷奮戰",
+      field: "coaching",
+      context,
+    }).filter((claim) => claim.domain === "profession"),
+    [],
+  );
+});
