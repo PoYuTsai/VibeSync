@@ -287,113 +287,11 @@ function isGroundingExemptResponseShape(value: string): boolean {
     isClosingPromiseResponse(value);
 }
 
-// 賭局衍生（round14 gh3）：逐字稿已有明確賭局證據（敢比/輸的請X/打賭）時，
-// 「賭約/賴帳/認賭服輸」是同一賭局的衍生詞面，語意有出處但 n-gram 天然
-// 不重疊。豁免要求「證據窗有賭局」＋「輸出點名賭局」同時成立；質問型
-// 回應句裁決（不豁免）不受影響——無賭局詞面的回應照走詞面比對。
-// round15 Codex P2-1 改 fragment 式（不整段豁免）：
-// ①證據側按「子句」判 scope——賭局詞所在子句含否定（不/沒）或假設
-//（假設/如果/要是/萬一）即非證據（「假設我們打賭，我可沒答應」「我絕對
-// 不會跟你打賭」都不算賭局成立）。
-// ②輸出側不再命中即豁免整段：只有命中承諾形（賭約是真的/算數/賴帳/
-// 認賭服輸）的那個子句視為有證據 fragment；其餘子句照常走 grounding
-//（不足 4 字的感嘆子句不載事實、不要求接地——同 evidenceFragments 的
-// 短文本門檻）。「賭約是真的，先接住她的感受」後段無接地照擋。
-const GROUNDING_CLAUSE_SEPARATOR = /[，,。！？!?；;、\n]+/u;
-const WAGER_EVIDENCE_CLAUSE_PATTERN =
-  /(?:敢比|打賭|賭一把|賭一場|輸(?:的|了)(?:人)?請|贏(?:的|了)(?:人)?請)/u;
-const WAGER_CLAUSE_NON_ASSERTIVE_PATTERN =
-  /(?:[不沒]|假設|如果|要是|萬一|假如)/u;
-const WAGER_DERIVED_REFERENCE_PATTERN =
-  /(?:(?:賭約|打賭|賭局)[^，,。！？!?；;]{0,6}(?:是真的|算數|作數|說好|成立|還在|沒忘)|賴帳|認賭|服輸|願賭)/u;
-const GROUNDING_INTERJECTION_MAX_COMPACT_LENGTH = 4;
-
-function transcriptHasAssertiveWagerEvidence(
-  evidenceTurns: readonly PracticeTurn[],
-): boolean {
-  return evidenceTurns.some((turn) =>
-    turn.text.split(GROUNDING_CLAUSE_SEPARATOR).some((clause) =>
-      WAGER_EVIDENCE_CLAUSE_PATTERN.test(clause) &&
-      !WAGER_CLAUSE_NON_ASSERTIVE_PATTERN.test(clause)
-    )
-  );
-}
-
-function passesWagerFragmentGrounding(
-  value: string,
-  evidenceTurns: readonly PracticeTurn[],
-  fragments: ReadonlySet<string>,
-): boolean {
-  if (!transcriptHasAssertiveWagerEvidence(evidenceTurns)) return false;
-  let coveredClauses = 0;
-  for (const clause of value.split(GROUNDING_CLAUSE_SEPARATOR)) {
-    const compactClause = groundingCompact(clause);
-    if (compactClause.length === 0) continue;
-    if (WAGER_DERIVED_REFERENCE_PATTERN.test(clause)) {
-      coveredClauses++;
-      continue;
-    }
-    if (compactClause.length < GROUNDING_INTERJECTION_MAX_COMPACT_LENGTH) {
-      continue;
-    }
-    if (![...fragments].some((fragment) => compactClause.includes(fragment))) {
-      return false;
-    }
-  }
-  return coveredClauses > 0;
-}
-
-// 自我揭露邀請（round14 gd3，其一 503）：她最新一輪明確邀請自我揭露
-// （說說你自己/換你說/你呢），回應的第一人稱生活自介句功能是「回應邀請」
-// 而非複讀，詞面天然零重疊；用戶貼出前會換成自己的真實生活（同提案時間
-// 型的既定哲學）。豁免鎖她的最新 ai 輪；拿「她的事實」開場的句子沒有
-// 第一人稱自介形，照走詞面比對（捏造她的事實另由 fact ledger 把關）。
-// round14 Codex P2-2 收緊：①邀請側移除裸「你呢」（「你呢，覺得她如何」
-// 問的是對第三人的看法）——只認「說/講/聊/分享＋你(自己)」的明確邀請形；
-// ②round15 改 fragment 式：只豁免命中自介形的那個句子，其餘句子照走
-// grounding；動詞白名單收窄到具體生活動詞（去/吃/煮/逛/晃/爬/跑/騎/游/
-// 聽/玩/追），泛用「看/找/做」出列——「先看她反應…把聊天帶下去」是教練
-// 模板不是生活自介；「去」排除趨向補語（帶下去/回去）。
-const SELF_DISCLOSURE_INVITE_PATTERN =
-  /(?:說說(?:你|妳)(?:自己)?|(?:你|妳)也可以(?:說說|多說|分享)|換(?:你|妳)(?:說|講|分享)|多(?:說|講|聊)(?:一)?點(?:你|妳)(?:自己)?|分享(?:一下)?(?:你|妳)(?:自己|的))/u;
-const FIRST_PERSON_DISCLOSURE_PATTERN =
-  /我[^，,。！？!?；;]{0,4}(?:週末|平常|假日|下班|放假|最近|通常|其實|自己|以前|習慣)[^。！？!?]{0,24}(?:(?<![下回出過上帶])去|吃|煮|逛|晃|爬|跑|騎|游|聽|玩|追)/u;
-const DISCLOSURE_META_COACHING_PATTERN =
-  /(?:接住|延伸(?:話題)?|鋪墊|邀約|低壓|情緒|節奏|窗口|話題|自我揭露|拉近距離)/u;
-// 自介句以句級標點切（。！？；），不切逗號/冒號——「那換我自首：我週末…」
-// 的框架前綴與自介槽是同一句回應，逗號級切割會把跨逗號的自介槽切碎。
-const DISCLOSURE_SENTENCE_SEPARATOR = /[。！？!?；;\n]+/u;
-
-function passesInvitedSelfDisclosureFragmentGrounding(
-  value: string,
-  turns: readonly PracticeTurn[],
-  fragments: ReadonlySet<string>,
-): boolean {
-  const latestPartnerText = [...turns].reverse()
-    .find((turn) => turn.role === "ai")?.text ?? "";
-  if (!SELF_DISCLOSURE_INVITE_PATTERN.test(latestPartnerText)) return false;
-  let coveredSentences = 0;
-  for (const sentence of value.split(DISCLOSURE_SENTENCE_SEPARATOR)) {
-    const compactSentence = groundingCompact(sentence);
-    if (compactSentence.length === 0) continue;
-    if (
-      FIRST_PERSON_DISCLOSURE_PATTERN.test(sentence) &&
-      !DISCLOSURE_META_COACHING_PATTERN.test(sentence)
-    ) {
-      coveredSentences++;
-      continue;
-    }
-    if (compactSentence.length < GROUNDING_INTERJECTION_MAX_COMPACT_LENGTH) {
-      continue;
-    }
-    if (
-      ![...fragments].some((fragment) => compactSentence.includes(fragment))
-    ) {
-      return false;
-    }
-  }
-  return coveredSentences > 0;
-}
+// round14/15 曾在此加「賭局衍生」「自我揭露邀請」兩型 fragment 豁免；
+// Codex 三輪對抗審（session 019f904b）以短子句切割洗白、分隔符繞過與
+// base grounding any-fragment 快速路徑證明詞面豁免不可行，主線停損裁決
+// 全數撤除、回歸 fail-closed。gh3 賭約句/gd3 自介句被攔＝已知接受的 FP，
+// 留待「非可貼上欄位 repair/strip」架構案處理。
 
 /**
  * Generated coaching must visibly touch the supplied conversation rather than
@@ -434,20 +332,6 @@ export function assertPracticeTextGroundedInTurns(opts: {
   const visible = groundingCompact(opts.visibleText);
   if (![...fragments].some((fragment) => visible.includes(fragment))) {
     if (isGroundingExemptResponseShape(opts.visibleText)) return;
-    if (
-      passesWagerFragmentGrounding(opts.visibleText, evidenceTurns, fragments)
-    ) {
-      return;
-    }
-    if (
-      passesInvitedSelfDisclosureFragmentGrounding(
-        opts.visibleText,
-        opts.turns,
-        fragments,
-      )
-    ) {
-      return;
-    }
     throw new Error(opts.errorCode);
   }
 }

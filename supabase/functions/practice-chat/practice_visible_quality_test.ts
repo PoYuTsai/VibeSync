@@ -393,208 +393,49 @@ Deno.test("grounding exemptions never cover fabricated self-narrative or generic
   );
 });
 
-Deno.test("grounding gate exempts wager-derived replies when the transcript holds the wager (round14 gh3)", () => {
-  // 逐字稿有「敢比啊，輸的請飲料」＝賭局已成立；「賭約是真的…別想賴帳」
-  // 是同一賭局的衍生詞面，語意有出處但 n-gram 天然不重疊，不得誤殺。
-  assertPracticeTextGroundedInTurns({
-    visibleText: "嗆歸嗆，但賭約是真的，妳要是輸了別想賴帳喔",
-    turns: gh3SpicyTurns,
-    errorCode: "practice_not_grounded",
-  });
-  // 同句換一個沒有賭局的逐字稿＝捏造賭局，照擋。
+Deno.test("grounding gate fails closed on wager-derived wording — 豁免已撤除 (round16)", () => {
+  // round14/15 曾為 gh3 做「賭局衍生」豁免；Codex 三輪對抗審打穿（短子句
+  // 洗白/分隔符繞過/模板插詞），主線停損裁決撤除、回歸 fail-closed。
+  // 原 gh3 句被攔＝已知接受的 FP——詞面豁免經 Codex 三輪對抗審證明不可行
+  //（session 019f904b），留待非可貼上欄位 repair/strip 架構案。
   assertThrows(
     () =>
       assertPracticeTextGroundedInTurns({
         visibleText: "嗆歸嗆，但賭約是真的，妳要是輸了別想賴帳喔",
-        turns: gd5MarketTurns,
-        errorCode: "practice_not_grounded",
-      }),
-    Error,
-    "practice_not_grounded",
-  );
-  // 有賭局的逐字稿＋不含賭局詞面的萬用模板照擋（豁免不外溢）。
-  assertThrows(
-    () =>
-      assertPracticeTextGroundedInTurns({
-        visibleText: "先接住她的情緒，再自然延伸話題。",
         turns: gh3SpicyTurns,
         errorCode: "practice_not_grounded",
       }),
     Error,
     "practice_not_grounded",
   );
-  // 回應質問型裁決不動搖：無賭局詞面的質問回應仍不豁免。
-  assertThrows(
-    () =>
-      assertPracticeTextGroundedInTurns({
-        visibleText: "我只對敢嗆我的人這樣",
-        turns: gh3SpicyTurns,
-        errorCode: "practice_not_grounded",
-      }),
-    Error,
-    "practice_not_grounded",
-  );
-});
-
-const gd3InterviewTurns = [
-  { role: "user" as const, text: "妳平常下班後都做什麼？" },
-  { role: "ai" as const, text: "看情況，有時候健身，有時候直接回家" },
-  { role: "user" as const, text: "去哪間健身房？" },
-  { role: "ai" as const, text: "住家附近的，連鎖的那種" },
-  { role: "user" as const, text: "妳是哪裡人啊？家裡幾個兄弟姊妹？" },
-  { role: "ai" as const, text: "呃，這個問題有點像在做戶口調查耶" },
-  { role: "user" as const, text: "抱歉抱歉，我只是想多認識妳" },
-  { role: "ai" as const, text: "沒關係，不過聊天不用像面試啦，你也可以說說你自己" },
-];
-
-Deno.test("grounding gate exempts first-person disclosure replies to her explicit invite (round14 gd3)", () => {
-  // 她最新一輪明確邀請自我揭露（你也可以說說你自己）：回應的第一人稱
-  // 自介句功能是「回應邀請」，詞面天然零重疊（round14 gd3 兩發皆此形，
-  // 其一 503）。
+  // Codex 三輪攻擊/洗白 repro 全數維持被擋（防回歸）。
   for (
-    const line of [
-      "哈哈被抓包了，那換我自首：我週末通常會找新的店吃東西耶",
-      "哈哈被抓包了，那換我說：我週末如果沒事，會亂晃找新開的店吃飯。",
+    const attack of [
+      "先接住她的情緒，再用賭局自然延伸話題。",
+      "賭約是真的，先接住她的感受，再自然聊下去。",
+      "賭約是真的，先接，住她，感受",
+      "賭約是真的：先接住她的感受（再自然聊下去）",
+      "賭約是真的，輸了別賴帳",
     ]
   ) {
-    assertPracticeTextGroundedInTurns({
-      visibleText: line,
-      turns: gd3InterviewTurns,
-      errorCode: "practice_not_grounded",
-    });
+    assertThrows(
+      () =>
+        assertPracticeTextGroundedInTurns({
+          visibleText: attack,
+          turns: gh3SpicyTurns,
+          errorCode: "practice_not_grounded",
+        }),
+      Error,
+      "practice_not_grounded",
+      attack,
+    );
   }
-  // 她沒有邀請自我揭露的逐字稿＝同句照擋（豁免鎖她的最新輪）。
-  assertThrows(
-    () =>
-      assertPracticeTextGroundedInTurns({
-        visibleText: "哈哈被抓包了，那換我自首：我週末通常會找新的店吃東西耶",
-        turns: gh3SpicyTurns,
-        errorCode: "practice_not_grounded",
-      }),
-    Error,
-    "practice_not_grounded",
-  );
-  // 有邀請但輸出不是第一人稱自介（拿「她的事實」開場）照擋。
-  assertThrows(
-    () =>
-      assertPracticeTextGroundedInTurns({
-        visibleText: "妳上次說妳每個週末都去衝浪吧，聽起來超厲害",
-        turns: gd3InterviewTurns,
-        errorCode: "practice_not_grounded",
-      }),
-    Error,
-    "practice_not_grounded",
-  );
-  // 有邀請＋萬用模板照擋（豁免不外溢）。
-  assertThrows(
-    () =>
-      assertPracticeTextGroundedInTurns({
-        visibleText: "先接住她的情緒，再自然延伸話題。",
-        turns: gd3InterviewTurns,
-        errorCode: "practice_not_grounded",
-      }),
-    Error,
-    "practice_not_grounded",
-  );
-});
-
-Deno.test("wager exemption rejects template laundering and negated evidence (round14 Codex P2-1)", () => {
-  // 攻擊①：萬用模板插「賭局」一詞洗白——賭局衍生豁免只認「點名賭局
-  // 成立/兌現」的承諾形，話題填充詞不豁免。
-  assertThrows(
-    () =>
-      assertPracticeTextGroundedInTurns({
-        visibleText: "先接住她的情緒，再用賭局自然延伸話題。",
-        turns: gh3SpicyTurns,
-        errorCode: "practice_not_grounded",
-      }),
-    Error,
-    "practice_not_grounded",
-  );
-  // 攻擊②：否定證據（我從來不打賭）不得當正向賭局證據。
-  const negatedWagerTurns = [
-    { role: "user" as const, text: "妳說妳吃辣很強，要不要來比一場" },
-    { role: "ai" as const, text: "我從來不打賭，比辣可以，賭東西免談" },
-  ];
-  assertThrows(
-    () =>
-      assertPracticeTextGroundedInTurns({
-        visibleText: "賭約是真的，輸了別賴帳",
-        turns: negatedWagerTurns,
-        errorCode: "practice_not_grounded",
-      }),
-    Error,
-    "practice_not_grounded",
-  );
-  // 原 gh3 FP 案例維持放行。
-  assertPracticeTextGroundedInTurns({
-    visibleText: "嗆歸嗆，但賭約是真的，妳要是輸了別想賴帳喔",
-    turns: gh3SpicyTurns,
-    errorCode: "practice_not_grounded",
-  });
-});
-
-Deno.test("self-disclosure exemption rejects bare 你呢 and template laundering (round14 Codex P2-2)", () => {
-  // 攻擊①：裸「你呢」問的是對第三人的看法，不是自我揭露邀請——不得
-  // 觸發第一人稱自介豁免。
-  const opinionTurns = [
-    { role: "user" as const, text: "我同事迷上攀岩，一直拉人入坑" },
-    { role: "ai" as const, text: "你呢，覺得她如何？" },
-  ];
-  assertThrows(
-    () =>
-      assertPracticeTextGroundedInTurns({
-        visibleText: "我平常通常每週都去潛水",
-        turns: opinionTurns,
-        errorCode: "practice_not_grounded",
-      }),
-    Error,
-    "practice_not_grounded",
-  );
-  // 攻擊②：有邀請＋「我最近」前綴的教練模板洗白照擋——豁免只認
-  // 生活自介槽（時間詞＋生活動詞），槽外的模板語不得沾光。
-  assertThrows(
-    () =>
-      assertPracticeTextGroundedInTurns({
-        visibleText: "我最近會先接住她的情緒，再自然延伸話題。",
-        turns: gd3InterviewTurns,
-        errorCode: "practice_not_grounded",
-      }),
-    Error,
-    "practice_not_grounded",
-  );
-  // 原 gd3 FP 案例維持放行。
-  for (
-    const line of [
-      "哈哈被抓包了，那換我自首：我週末通常會找新的店吃東西耶",
-      "哈哈被抓包了，那換我說：我週末如果沒事，會亂晃找新開的店吃飯。",
-    ]
-  ) {
-    assertPracticeTextGroundedInTurns({
-      visibleText: line,
-      turns: gd3InterviewTurns,
-      errorCode: "practice_not_grounded",
-    });
-  }
-});
-
-Deno.test("wager exemption is fragment-scoped with clause-level evidence (round15 Codex P2-1)", () => {
-  // Codex repro①：承諾形子句不得豁免整段——其餘子句照走 grounding。
-  assertThrows(
-    () =>
-      assertPracticeTextGroundedInTurns({
-        visibleText: "賭約是真的，先接住她的感受，再自然聊下去。",
-        turns: gh3SpicyTurns,
-        errorCode: "practice_not_grounded",
-      }),
-    Error,
-    "practice_not_grounded",
-  );
-  // Codex repro②：假設/否定子句內的賭局詞不算證據。
+  // 否定/假設證據逐字稿一樣照擋。
   for (
     const nonEvidenceTurnText of [
       "假設我們打賭，我可沒答應喔",
       "我絕對不會跟你打賭",
+      "我從來不打賭，比辣可以，賭東西免談",
     ]
   ) {
     assertThrows(
@@ -611,50 +452,74 @@ Deno.test("wager exemption is fragment-scoped with clause-level evidence (round1
       "practice_not_grounded",
     );
   }
-  // 原 gh3 句維持放行：短感嘆「嗆歸嗆」不足 4 字不載事實，兩個賭局子句
-  // 皆為承諾形 fragment。
-  assertPracticeTextGroundedInTurns({
-    visibleText: "嗆歸嗆，但賭約是真的，妳要是輸了別想賴帳喔",
-    turns: gh3SpicyTurns,
-    errorCode: "practice_not_grounded",
-  });
 });
 
-Deno.test("self-disclosure exemption is fragment-scoped with concrete life verbs (round15 Codex P2-2)", () => {
-  // Codex repro：「看/找/做」等泛用動詞出白名單——「先看她反應…把聊天
-  // 帶下去」是教練模板不是生活自介，照擋。
-  assertThrows(
-    () =>
-      assertPracticeTextGroundedInTurns({
-        visibleText: "我最近會先看她反應，再自然把聊天帶下去。",
-        turns: gd3InterviewTurns,
-        errorCode: "practice_not_grounded",
-      }),
-    Error,
-    "practice_not_grounded",
-  );
-  // fragment 式：只豁免自介句本身，後續句照走 grounding。
-  assertThrows(
-    () =>
-      assertPracticeTextGroundedInTurns({
-        visibleText: "我週末通常會去逛新開的店。妳絕對猜不到我還會調酒。",
-        turns: gd3InterviewTurns,
-        errorCode: "practice_not_grounded",
-      }),
-    Error,
-    "practice_not_grounded",
-  );
-  // 原 gd3 兩句維持放行（單一自介句、具體生活動詞 吃/晃）。
+const gd3InterviewTurns = [
+  { role: "user" as const, text: "妳平常下班後都做什麼？" },
+  { role: "ai" as const, text: "看情況，有時候健身，有時候直接回家" },
+  { role: "user" as const, text: "去哪間健身房？" },
+  { role: "ai" as const, text: "住家附近的，連鎖的那種" },
+  { role: "user" as const, text: "妳是哪裡人啊？家裡幾個兄弟姊妹？" },
+  { role: "ai" as const, text: "呃，這個問題有點像在做戶口調查耶" },
+  { role: "user" as const, text: "抱歉抱歉，我只是想多認識妳" },
+  { role: "ai" as const, text: "沒關係，不過聊天不用像面試啦，你也可以說說你自己" },
+];
+
+Deno.test("grounding gate fails closed on invited self-disclosure wording — 豁免已撤除 (round16)", () => {
+  // round14/15 曾為 gd3 做「自我揭露邀請」豁免；Codex 三輪對抗審打穿
+  //（動詞白名單當 coaching 動詞用/整句豁免洗白），主線停損裁決撤除。
+  // 原 gd3 兩句被攔＝已知接受的 FP——詞面豁免經 Codex 三輪對抗審證明
+  // 不可行（session 019f904b），留待非可貼上欄位 repair/strip 架構案。
   for (
-    const line of [
+    const knownFp of [
       "哈哈被抓包了，那換我自首：我週末通常會找新的店吃東西耶",
       "哈哈被抓包了，那換我說：我週末如果沒事，會亂晃找新開的店吃飯。",
     ]
   ) {
-    assertPracticeTextGroundedInTurns({
-      visibleText: line,
-      turns: gd3InterviewTurns,
-      errorCode: "practice_not_grounded",
-    });
+    assertThrows(
+      () =>
+        assertPracticeTextGroundedInTurns({
+          visibleText: knownFp,
+          turns: gd3InterviewTurns,
+          errorCode: "practice_not_grounded",
+        }),
+      Error,
+      "practice_not_grounded",
+      knownFp,
+    );
   }
+  // Codex 三輪攻擊/洗白 repro 全數維持被擋（防回歸）。
+  for (
+    const attack of [
+      "我最近會先接住她的情緒，再自然延伸話題。",
+      "我最近會先看她反應，再自然把聊天帶下去。",
+      "我週末通常會去逛新開的店。妳絕對猜不到我還會調酒。",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        assertPracticeTextGroundedInTurns({
+          visibleText: attack,
+          turns: gd3InterviewTurns,
+          errorCode: "practice_not_grounded",
+        }),
+      Error,
+      "practice_not_grounded",
+      attack,
+    );
+  }
+  // 裸「你呢」問對第三人看法＋自介句照擋。
+  assertThrows(
+    () =>
+      assertPracticeTextGroundedInTurns({
+        visibleText: "我平常通常每週都去潛水",
+        turns: [
+          { role: "user" as const, text: "我同事迷上攀岩，一直拉人入坑" },
+          { role: "ai" as const, text: "你呢，覺得她如何？" },
+        ],
+        errorCode: "practice_not_grounded",
+      }),
+    Error,
+    "practice_not_grounded",
+  );
 });
