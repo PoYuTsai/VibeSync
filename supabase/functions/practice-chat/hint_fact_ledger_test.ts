@@ -1941,3 +1941,47 @@ Deno.test("typed round9 copula and weekday segmentation stay out of claims", () 
     );
   }
 });
+
+// round10 判定表（2026-07-23）：副詞「一路」不是路名（gh5「不要一路追問」）、
+// 裸「丟」的「丟球」比喻不是第三方人名（gd2「丟球考驗你」）；真路名
+//（民生一路）與真送收語境不受影響。
+Deno.test("typed round10 adverbial 一路 and 丟球 metaphor stay out of claims", () => {
+  for (
+    const [text, banned] of [
+      [
+        "速約任務：把窗口收成30分鐘的短行程邀約，具體但保留她可以拒絕的空間，不要一路追問她要不要去。",
+        (claim: HintFactClaim) =>
+          claim.domain === "venue" && claim.anchor.includes("一路"),
+      ],
+      [
+        "她說「要用行動證明」是丟球考驗你，你卻只問「哪個時段」變回查戶口",
+        (claim: HintFactClaim) =>
+          claim.relation === "is_named" && claim.anchor.includes("球"),
+      ],
+    ] as const
+  ) {
+    assertEquals(
+      extractHintFactClaims({
+        text,
+        perspective: "coaching",
+        provenance: "generated_coaching",
+        defaultOwner: "user",
+      }).filter(banned),
+      [],
+      text,
+    );
+  }
+  // 真路名（專名構詞＋一路）仍要抽得到，不得被副詞排除吃掉。
+  const road = extractHintFactClaims({
+    text: "那間店在民生一路上，靠近捷運站",
+    perspective: "reply",
+    provenance: "generated_reply",
+    defaultOwner: "user",
+  });
+  assertEquals(
+    road.some((claim) =>
+      claim.relation === "located_at" && claim.anchor.includes("民生一路")
+    ),
+    true,
+  );
+});

@@ -207,3 +207,23 @@ Deno.test("practice invite classifier ignores continuation aspect and completed-
   assertEquals(practiceInviteLevelFor("改天一起去"), "soft");
   assertEquals(practiceInviteLevelFor("週六一起去爬山吧"), "direct");
 });
+
+Deno.test("practice invite classifier ignores dare/passive intent questions, third-party inviters and continuation advice", () => {
+  // 第 10 輪 eval FP 樣句（docs/reviews/2026-07-23-fact-gate-round10-judgment.md）：
+  // 「還敢去嗎」敢在動詞前、「還會被拖去嗎」被動（拖她的是朋友）、
+  // 「朋友…約妳嗎」第三方主詞、「繼續喝吧」勸延續、「要不要先簽切結書」玩笑建議。
+  for (
+    const line of [
+      "哈哈懷疑人生的樣子一定很狼狽，不過這樣的故事才值得講啊。下次還敢去嗎？",
+      "風景值回票價就好，鐵腿那種懷疑人生感過幾天就忘了，下次還會被拖去嗎？",
+      "下山懷疑人生我懂，但妳這樣講代表風景有打動妳。朋友下次還會約妳嗎？",
+      "哈哈「懶得戒」這句我信，反正戒斷頭痛比人生選擇還可怕，繼續喝吧",
+      "哈哈懷疑人生也太真實，看來這山頭是拿風景騙妳去的，下次爬山前要不要先簽切結書",
+    ]
+  ) {
+    assertEquals(practiceInviteLevelFor(line), "none", line);
+  }
+  // 含「我」的被動子句不剝：拖她的是我＝真邀約試探；第三方剝除限子句開頭。
+  assertEquals(practiceInviteLevelFor("妳明天要不要出來喝一杯"), "direct");
+  assertEquals(practiceInviteLevelFor("我帶朋友去找妳"), "direct");
+});
