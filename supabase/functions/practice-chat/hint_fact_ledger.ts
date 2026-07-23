@@ -118,12 +118,15 @@ const CHINESE_NUMBER = "零〇一二三四五六七八九十百千兩";
 const NUMBER_TOKEN = `[0-9${CHINESE_NUMBER}]{1,4}`;
 const ANIMAL = "貓|狗|兔|鳥|鸚鵡|倉鼠|天竺鼠|刺蝟|魚|烏龜";
 const RELATIVE = "哥哥|弟弟|姐姐|姊姊|妹妹|姊妹|兄弟|兒子|女兒|小孩|孩子";
+// 「(這|下|上)?週X」複合式必須排在裸「這週/下週/上週」前面：
+// 否則「這週六下午」會被「這週」先吃掉，anchor 粒度對不上候選的「週六下午」。
 const SCHEDULE_DAY =
-  "今天|明天|後天|今晚|明晚|明早|週末|這週|下週|上週|週[一二三四五六日天]|禮拜[一二三四五六日天]|星期[一二三四五六日天]";
+  "今天|明天|後天|今晚|明晚|明早|週末|(?:這|下|上)?(?:週|禮拜|星期)[一二三四五六日天]|這週|下週|上週";
 const SCHEDULE_TIME =
   `(?:${SCHEDULE_DAY})(?:早上|中午|下午|晚上)?(?:${NUMBER_TOKEN}點(?:半)?)?|(?:今晚|明晚|明早|早上|中午|下午|晚上)`;
+// 「能」加負向 lookahead：擋「能量/能力」詞中匹配（「她今天能量沒那麼高」≠有空）。
 const SCHEDULE_STATUS =
-  "沒空|不方便|已經有約|有約|有空|可以|能|沒事|方便|排得開|休假|下班|忙|有事|有安排|排滿|要開會|要上班|要上課|要看醫生|值班|出差|在公司|在學校|在家裡|在外面";
+  "沒空|不方便|已經有約|有約|有空|可以|能(?![量力耐])|沒事|方便|排得開|休假|下班|忙|有事|有安排|排滿|要開會|要上班|要上課|要看醫生|值班|出差|在公司|在學校|在家裡|在外面";
 const HISTORY_TIME =
   `去年(?:春天|夏天|秋天|冬天|年初|年中|年底)?|前年|大前年|上個月|上週|上星期|上禮拜|昨天|前天|前幾天|疫情前|(?:${NUMBER_TOKEN}|半)(?:個月|週|星期|禮拜|年)前|(?:小學|國中|高中|大學|研究所)(?:時|時候)|${NUMBER_TOKEN}月${NUMBER_TOKEN}(?:日|號)|[0-9]{1,2}[/.\\-][0-9]{1,2}`;
 
@@ -296,9 +299,10 @@ function normalizePhone(value: string): string {
 
 function normalizeSchedule(value: string): string {
   let normalized = normalizeBase(value)
-    .replace(/上(?:星期|禮拜)/gu, "上週")
-    .replace(/下(?:星期|禮拜)/gu, "下週")
-    .replace(/這(?:星期|禮拜)/gu, "這週")
+    .replace(/(?:星期|禮拜)/gu, "週")
+    // 「這週六」≡「週六」（同週語境）：剝掉「這」讓兩種說法 anchor 對齊；
+    // 「上週六/下週六」語意不同，不剝。
+    .replace(/這週(?=[一二三四五六日天])/gu, "週")
     .replace(/明晚/gu, "明天晚上")
     .replace(/明早/gu, "明天早上");
   normalized = normalized.replace(
@@ -545,8 +549,22 @@ function isQuestionOrCondition(
   return true;
 }
 
-function polarityAt(text: string, index: number): "positive" | "negative" {
-  const window = localClauseAt(text, index);
+function polarityAt(
+  text: string,
+  index: number,
+  endIndex?: number,
+): "positive" | "negative" {
+  // 中文否定詞只會出現在述語之前（不住／沒有空）。給了 endIndex（述語結束位）
+  // 時，視窗只取子句開頭到述語結束——述語之後的「沒有立即確認」不得回頭翻極性。
+  const separators = /[\n。！？!?；;，,：:]/u;
+  let start = index;
+  while (start > 0 && !separators.test(text[start - 1])) start--;
+  let end = index;
+  while (end < text.length && !separators.test(text[end])) end++;
+  const window = text.slice(
+    start,
+    endIndex === undefined ? end : Math.min(end, Math.max(endIndex, index)),
+  );
   return /(?:不是|並非|沒有|沒在|不同(?:年|歲|名|校|業|鄉|城)|不住|不叫|不念|不讀|不養|不喜歡|不愛|不當|不做)/u
       .test(window)
     ? "negative"
@@ -629,6 +647,7 @@ const THIRD_PARTY_SEND_CONTEXT_LOW_CONFIDENCE_TOKENS = new Set<string>([
   "回妳",
   "萬歲",
   "小測試",
+  "測試",
   "建議",
   "了你素材",
 ]);
@@ -869,6 +888,8 @@ export function extractHintFactClaims(
   const residenceParaphrases: Array<{
     pattern: RegExp;
     relation: "lives_in" | "hometown_is";
+    /** 「X人」句型會吃修飾子句（敢跟我比吃辣的人），X 需具地名形態才夠格 fail-closed。 */
+    placeShapeGuard?: boolean;
   }> = [
     {
       pattern: new RegExp(
@@ -890,6 +911,7 @@ export function extractHintFactClaims(
         "gu",
       ),
       relation: "hometown_is",
+      placeShapeGuard: true,
     },
     {
       pattern: new RegExp(
@@ -901,6 +923,7 @@ export function extractHintFactClaims(
   ];
   for (const config of residenceParaphrases) {
     for (const match of text.matchAll(config.pattern)) {
+      const anchor = normalizePlace(match[2] ?? "");
       add({
         owner: ownerAt(
           text,
@@ -911,9 +934,12 @@ export function extractHintFactClaims(
         ),
         domain: "residence",
         relation: config.relation,
-        anchor: normalizePlace(match[2] ?? ""),
+        anchor,
         polarity: polarityAt(text, match.index ?? 0),
         index: match.index ?? 0,
+        confidence: config.placeShapeGuard && !looksLikeLocationAnchor(anchor)
+          ? "low"
+          : undefined,
       });
     }
   }
@@ -1081,8 +1107,21 @@ export function extractHintFactClaims(
       introduction: true,
     },
     {
+      // 送收語境必須「動詞＋給」成對出現：裸「給」會吃 coaching 慣用語
+      // （給接納感/給認同/給予理解/給地點），裸「發/丟」會詞中匹配
+      // （沙發→發、發現→發）或吃動賓片語（丟的測試）。「給」改必要後，
+      // 「傳給妳」不再回溯切出「給妳」假人名（代詞單字不滿 {2,20}）。
       pattern:
-        /(?:(?:傳|發|送|丟)(?:給)?|轉給|交給|給)\s*([\p{Script=Han}A-Za-z·・]{2,20})(?=[，,。！？!?；;\s]|$)/gu,
+        /(?:傳|發|送|丟|轉|交|寄)給\s*([\p{Script=Han}A-Za-z·・]{2,20})(?=[，,。！？!?；;\s]|$)/gu,
+      valueIndex: 1,
+      introduction: false,
+    },
+    {
+      // 裸送收動詞（不帶「給」）仍是真送收語境（我會傳阿哲）。
+      // 「發」多義太重（沙發/發現）不入列；動詞後常見的補語/趨向詞
+      // 用 lookahead 擋（丟出小測試、傳統、送到…）。
+      pattern:
+        /(?:傳(?!給|統|說|來|開|訊|話|達|遞|真|承)|送(?!給|到|出|來|回|上|貨|禮)|丟(?!給|出|回|下|上|的|了|掉|臉|包|進|在))\s*([\p{Script=Han}A-Za-z·・]{2,20})(?=[，,。！？!?；;\s]|$)/gu,
       valueIndex: 1,
       introduction: false,
     },
@@ -1167,7 +1206,13 @@ export function extractHintFactClaims(
       const actorToken = patternIndex === 3 ? match[2] : match[1];
       const relationText = patternIndex === 3 ? match[3] : match[2];
       const rawPreference = patternIndex === 3 ? match[1] : match[3];
-      const anchor = normalizePreference(rawPreference ?? "");
+      // 所有格式（她喜歡「的」旅行/她的最愛「導演」）是在指涉既有喜好，
+      // 不是新增可驗證主張：剝掉開頭的「的」對齊 profile anchor，並降 low
+      // 不 fail-closed——畸形錨點（的/的場景感）曾整批誤殺。
+      const possessiveReference = /^的/u.test(rawPreference ?? "");
+      const anchor = normalizePreference(
+        (rawPreference ?? "").replace(/^的+/u, ""),
+      );
       if (
         !anchor || /^(?:哪|什麼|誰)/u.test(anchor) ||
         isTransientReactionPreference(anchor)
@@ -1189,6 +1234,7 @@ export function extractHintFactClaims(
         anchor,
         polarity: polarityAt(text, match.index ?? 0),
         index: match.index ?? 0,
+        confidence: possessiveReference ? "low" : undefined,
       });
     }
   }
@@ -1228,7 +1274,7 @@ export function extractHintFactClaims(
       "gu",
     ),
     new RegExp(
-      `(?:^|[，,])(?:我家|家裡)?(?:剛好|目前|現在|也|都)?(?:養(?:了|著)?|有(?!被))\\s*(?:(${NUMBER_TOKEN})\\s*隻)?\\s*(${ANIMAL})`,
+      `(?:^|[，,])((?:我家|家裡))?(?:剛好|目前|現在|也|都)?(?:養(?:了|著)?|有(?!被))\\s*(?:(${NUMBER_TOKEN})\\s*隻)?\\s*(${ANIMAL})`,
       "gu",
     ),
   ];
@@ -1239,10 +1285,18 @@ export function extractHintFactClaims(
         : patternIndex === 1
         ? match[3]
         : undefined;
-      const quantityRaw = patternIndex === 0 ? match[2] : match[1];
+      const quantityRaw = patternIndex === 0 || patternIndex === 2
+        ? match[2]
+        : match[1];
       const animal = normalizeAnchor(
-        patternIndex === 0 ? match[3] : match[2] ?? "",
+        patternIndex === 0 || patternIndex === 2 ? match[3] : match[2] ?? "",
       );
+      // 完全無主詞的「養狗」（引用她原話/附和她的養狗話題）不夠格 fail-closed；
+      // 有「我家/家裡」明示所有權才維持 high。coaching 視角的「你/妳」映到 user
+      // 是教練對學員說話的預設，但寵物句幾乎都在覆述她的狗，一樣降 low。
+      const weakOwnership = (patternIndex === 2 && !match[1]) ||
+        (options.perspective === "coaching" &&
+          actorToken !== undefined && /^(?:妳|你)(?:的)?$/u.test(actorToken));
       const quantity = quantityRaw
         ? chineseNumberValue(quantityRaw) ?? undefined
         : undefined;
@@ -1260,6 +1314,7 @@ export function extractHintFactClaims(
         quantity,
         polarity: polarityAt(text, match.index ?? 0),
         index: match.index ?? 0,
+        confidence: weakOwnership ? "low" : undefined,
       });
     }
   }
@@ -1363,7 +1418,11 @@ export function extractHintFactClaims(
       domain: "schedule",
       relation: busy ? "busy_at" : "available_at",
       anchor: normalizeSchedule(match[2] ?? ""),
-      polarity: polarityAt(text, match.index ?? 0),
+      polarity: polarityAt(
+        text,
+        match.index ?? 0,
+        (match.index ?? 0) + (match[0]?.length ?? 0),
+      ),
       index: match.index ?? 0,
     });
   }
@@ -1375,7 +1434,7 @@ export function extractHintFactClaims(
   }> = [
     {
       pattern: new RegExp(
-        `(${ACTOR_TOKEN})\\s*(${SCHEDULE_TIME})(?:這邊|已經|也|都)?\\s*(${SCHEDULE_STATUS})`,
+        `(${ACTOR_TOKEN})\\s*(${SCHEDULE_TIME})(?:這邊|已經|也|都|剛好|正好|還|真的){0,3}\\s*(${SCHEDULE_STATUS})`,
         "gu",
       ),
       actorIndex: 1,
@@ -1416,7 +1475,11 @@ export function extractHintFactClaims(
             ? "busy_at"
             : "available_at",
         anchor: normalizeSchedule(match[config.timeIndex] ?? ""),
-        polarity: polarityAt(text, match.index ?? 0),
+        polarity: polarityAt(
+          text,
+          match.index ?? 0,
+          (match.index ?? 0) + (match[0]?.length ?? 0),
+        ),
         index: match.index ?? 0,
       });
     }
@@ -1443,7 +1506,11 @@ export function extractHintFactClaims(
       domain: "schedule",
       relation: busy ? "busy_at" : "available_at",
       anchor: normalizeSchedule(match[1] ?? ""),
-      polarity: polarityAt(text, match.index ?? 0),
+      polarity: polarityAt(
+        text,
+        match.index ?? 0,
+        (match.index ?? 0) + (match[0]?.length ?? 0),
+      ),
       index: match.index ?? 0,
     });
   }
@@ -1738,10 +1805,12 @@ export function extractHintFactClaims(
     "爬山",
     "逛夜市",
   ]);
+  // 地名字尾加負向 lookahead：擋「後一字仍是漢字構詞」的詞中切割
+  // （區域→哈哈區、市集→星期六下午市、街道→出街、站著、山頂…）。
   const namedPlacePatterns = [
     /(?:^|[\s，,。！？!?；;：:\p{S}])(?:在|去|到|位於|路過|靠近|就在)?\s*([\p{Script=Han}0-9]{2,40}(?:路|街|大道)[\p{Script=Han}0-9]{0,20}(?:號|樓))/gu,
-    /(?:^|[\s，,。！？!?；;：:\p{S}])(?:在|去|到|位於|路過|靠近|就在)?\s*([\p{Script=Han}A-Za-z0-9·・]{1,24}(?:站|路|街|巷|區|市|縣|鄉|鎮|村|里|町|山|公園|夜市|商圈|碼頭|廣場|大樓|中心|101))/gu,
-    /(?:在|去|到|位於|路過|靠近|說出|說|回答|地點|位置|地址)\s*([\p{Script=Han}A-Za-z0-9·・]{1,24}(?:站|路|街|巷|區|市|縣|鄉|鎮|村|里|町|山|公園|夜市|商圈|碼頭|廣場|大樓|中心|101))/gu,
+    /(?:^|[\s，,。！？!?；;：:\p{S}])(?:在|去|到|位於|路過|靠近|就在)?\s*([\p{Script=Han}A-Za-z0-9·・]{1,24}(?:站(?![著起穩])|路(?![人痴燈線])|街(?![道頭])|巷|區(?![域分別隔])|市(?![集場面況])|縣|鄉(?![下愁])|鎮(?!定)|村|里(?![面頭程])|町|山(?![頂腰腳])|公園|夜市|商圈|碼頭|廣場|大樓|中心|101))/gu,
+    /(?:在|去|到|位於|路過|靠近|說出|說|回答|地點|位置|地址)\s*([\p{Script=Han}A-Za-z0-9·・]{1,24}(?:站(?![著起穩])|路(?![人痴燈線])|街(?![道頭])|巷|區(?![域分別隔])|市(?![集場面況])|縣|鄉(?![下愁])|鎮(?!定)|村|里(?![面頭程])|町|山(?![頂腰腳])|公園|夜市|商圈|碼頭|廣場|大樓|中心|101))/gu,
   ];
   for (const pattern of namedPlacePatterns) {
     for (const match of text.matchAll(pattern)) {
@@ -1978,8 +2047,15 @@ function sameFactIdentity(
   output: HintFactClaim,
   evidence: HintFactClaim,
 ): boolean {
-  if (output.domain !== evidence.domain || output.anchor !== evidence.anchor) {
-    return false;
+  if (output.domain !== evidence.domain) return false;
+  if (output.anchor !== evidence.anchor) {
+    // schedule 粒度容忍（單向）：她說「週六下午有空」，輸出「週六有空」是
+    // 同一件事的較粗說法＝同一 identity；反向（輸出比證據更細）是在加料，
+    // 不算同一 identity。其他 domain 維持嚴格等值。
+    const schedulePrefix = output.domain === "schedule" &&
+      output.anchor.length >= 2 &&
+      evidence.anchor.startsWith(output.anchor);
+    if (!schedulePrefix) return false;
   }
   if (output.quantity !== undefined) {
     return evidence.quantity === output.quantity;
@@ -2193,7 +2269,13 @@ function inferClaimsFromKnownAnchors(input: {
           claims.push({
             ...evidence,
             owner: anchoredOwner,
-            polarity: polarityAt(text, cursor),
+            // endIndex＝錨點結束位：錨點之後的否定（「…有空』後沒有立即
+            // 確認」）修飾的是後續動詞，不得回頭翻本 claim 的極性。
+            polarity: polarityAt(
+              text,
+              cursor,
+              cursor + evidence.anchor.length,
+            ),
             provenance: input.field === "reply"
               ? "generated_reply"
               : "generated_coaching",
@@ -2313,8 +2395,10 @@ function inferCoreferenceClaims(input: {
       domains: ["history"],
     },
     {
+      // 間隙禁含「在」：「我們幾點在展覽附近碰面」是約碰面地點，
+      // 不是「我們都住附近」的同住 commonality。
       pattern:
-        /(?:我們|彼此|雙方).{0,8}(?:都|也)?(?:在)?(?:附近|同一帶|同一區)/u,
+        /(?:我們|彼此|雙方)[^，,。！？!?；;在]{0,8}(?:都|也)?(?:在)?(?:附近|同一帶|同一區)/u,
       domains: ["current_location", "work_location", "residence"],
     },
   ];
@@ -2443,7 +2527,7 @@ function contextualDirectAnswerClaims(input: {
   };
 
   const asksPlace =
-    /(?:在哪|哪裡|哪兒|哪間|店名|什麼店|位置|地址|怎麼去)|(?:店|店家|咖啡店|餐廳|酒吧|地方|地點).{0,8}(?:叫什麼|什麼名字)|叫什麼(?:店|餐廳|酒吧)/u
+    /(?:在哪|哪裡|哪兒|哪間|哪家|店名|什麼店|位置|地址|怎麼去)|(?:店|店家|咖啡店|餐廳|酒吧|地方|地點).{0,8}(?:叫什麼|什麼名字)|叫什麼(?:店|餐廳|酒吧)/u
       .test(latest);
   if (asksPlace) {
     const safeDirectAnswers = new Set([
@@ -2460,7 +2544,7 @@ function contextualDirectAnswerClaims(input: {
     ]);
     const candidatePatterns = [
       /[「『“"（(【《〈〔\[]\s*([^」』”"）)】》〉〕\]]{2,60}?)\s*[」』”"）)】》〉〕\]]/gu,
-      /(?:答案|店名|咖啡店名|餐廳名|酒吧名|店家|地址|地點|位置)(?:是|叫|為|名為|稱作|[：:])\s*([\p{L}\p{N}·・._'’\-–—／/\s]{2,60}?)(?=[，,。！？!?；;]|$)/gu,
+      /(?:答案|店名|咖啡店名|餐廳名|酒吧名|店家|地址|地點|位置)(?:就?是|就?叫|為|名為|稱作|[：:])\s*([\p{L}\p{N}·・._'’\-–—／/\s]{2,60}?)(?=[，,。！？!?；;]|$)/gu,
       /(?:名為|稱作|叫做|那間(?:店)?(?:是|叫)|這間(?:店)?(?:是|叫))\s*([\p{L}\p{N}·・._'’\-–—／/\s]{2,40}?)(?=[，,。！？!?；;]|$)/gu,
       /(?:^|[，,。！？!?；;：:#＃\s\p{S}])([\p{L}\p{N}·・._'’\-–—／/]{2,30}(?:\s+[A-Za-z0-9·・._'’\-–—]+){0,3}?)(?=\s*(?:啦|啊|呀|喔|欸|附近|旁邊|正對面|對面|一帶|巷口|路口|那邊|那家|那間|這家|這間|那裡|[，,](?:妳|你)(?:應該|一定|可能|搞不好|大概)?(?:知道|聽過|去過|記得)))/gu,
       // 她剛問「在哪」，回「我在Ｘ發現/找到…」＝直接報地點。
@@ -2468,7 +2552,7 @@ function contextualDirectAnswerClaims(input: {
       // 完整街道地址（…路/街/大道…號/樓）＝直接報地點。
       /([\p{Script=Han}0-9]{2,40}(?:路|街|大道)[\p{Script=Han}0-9]{0,20}(?:號|樓))/gu,
     ];
-    for (const pattern of candidatePatterns) {
+    for (const [patternIndex, pattern] of candidatePatterns.entries()) {
       for (const match of text.matchAll(pattern)) {
         // Debrief/Hint analysis may warn against inventing a place or describe
         // a conditional next step. Those clauses are not positive venue facts.
@@ -2523,12 +2607,46 @@ function contextualDirectAnswerClaims(input: {
           // 一個可驗證地點。具體店名、地標、地址仍走上面的 HIGH venue fail-closed。
           isUnnamedVenueCarryover(anchor, input.context)
         ) continue;
+        // coaching 的引號/邊界片段常是教學語（『這週/半小時』的具體窗口、
+        // 「老闆推薦卡黑膠味道」壓縮黏連詞）：不具地點形態一律不當成
+        // 「直接報點的答案」。reply 維持嚴格——店名可以是任意詞形。
+        if (
+          input.field === "coaching" &&
+          (patternIndex === 0 || patternIndex === 3) &&
+          !isLikelyProperPlaceAnchor(anchor) &&
+          !looksLikeLocationAnchor(anchor)
+        ) {
+          continue;
+        }
         add({
           owner: "world",
           domain: "venue",
           relation: "venue_named",
           anchor,
         });
+      }
+    }
+    // 她問「在哪」時，回「方位詞／交通耐受描述」也是具體位置宣稱：
+    // 「北邊」「靠近捷運站」「騎車 10 分鐘」逐字稿沒出處就是捏造。
+    // 只掛 reply——coaching 講「約靠近捷運站的店」是建議不是報點。
+    // 氛圍式回應（「我也一直想去」）與賣關子（「我帶路」）不在此列。
+    if (input.field === "reply") {
+      const directionalAnswerPatterns = [
+        /(?:^|[，,。！？!?\s])(?:就)?(?:在)?((?:東|西|南|北)(?:邊|側))(?=[，,。！？!?\s]|$)/gu,
+        /((?:騎車|開車|走路|步行|搭車|坐車|搭捷運|坐捷運)\s*(?:大概|約|差不多)?\s*[0-9零一二三四五六七八九十兩]{1,3}\s*分(?:鐘)?)/gu,
+        /(靠近(?:捷運站|捷運|車站|火車站|高鐵站|公車站))/gu,
+      ];
+      for (const pattern of directionalAnswerPatterns) {
+        for (const match of text.matchAll(pattern)) {
+          const anchor = normalizeAnchor(match[1] ?? "");
+          if (anchor.length < 2) continue;
+          add({
+            owner: "world",
+            domain: "venue",
+            relation: "located_at",
+            anchor,
+          });
+        }
       }
     }
   }
@@ -2548,7 +2666,13 @@ function contextualDirectAnswerClaims(input: {
             /^(?:(?:他|她)?(?:的)?名字(?:是|叫)|(?:他|她)(?:是|叫))/u,
             "",
           )
-          .replace(/^(?:(?:之前|前面|剛才)(?:有)?(?:提過|說過|聊過)的)/u, "");
+          .replace(/^(?:(?:之前|前面|剛才)(?:有)?(?:提過|說過|聊過)的)/u, "")
+          // 她問「傳給誰」時，「我會給阿哲」的送收前綴要剝掉才能對到人名
+          // （送收 pattern 已不吃裸「給」，這裡是 asksPerson 專用的窄路）。
+          .replace(
+            /^(?:我(?:會|想|要|打算|先|就)*)?(?:傳給|發給|送給|丟給|轉給|交給|寄給|傳|給)/u,
+            "",
+          );
         if (
           !looksLikePersonReference(anchor) ||
           /(?:不知道|不記得|確認|問一下|保密)/u.test(anchor)
@@ -2676,6 +2800,10 @@ export function collectUnsupportedHintFactClaims(input: {
       continue;
     }
     if (output.owner === "unknown") continue;
+    // Eric 裁決（2026-07-23）：第一人稱邀約提案語（「我週三晚上有空，要不要…」）
+    // 是合法邀約教學——關係熱度到位時教練本來就該教提案時間。生成側 user
+    // 自身 schedule 一律不 fail-closed。
+    if (output.owner === "user" && output.domain === "schedule") continue;
 
     if (output.owner === "shared") {
       const explicitShared = supportedBy(output, input.context.claims, [
@@ -2691,6 +2819,24 @@ export function collectUnsupportedHintFactClaims(input: {
 
     const ownOwners: HintFactOwner[] = [output.owner, "shared"];
     if (supportedBy(output, input.context.claims, ownOwners)) continue;
+    // 覆述她的喜好時措辭常與 profile/逐字稿的 anchor 差一兩個字
+    // （「旅行」→「旅行興趣」）：partner 自身 preference/lifestyle 與
+    // partner/shared 既有喜好證據呈雙向 substring 即算有出處。只比對
+    // partner/shared 證據——絕不拿 user 的自陳當她的喜好（移轉冒認照殺）。
+    if (
+      output.owner === "partner" &&
+      (output.domain === "preference" || output.domain === "lifestyle") &&
+      output.anchor.length >= 2 &&
+      input.context.claims.some((claim) =>
+        (claim.owner === "partner" || claim.owner === "shared") &&
+        (claim.domain === "preference" || claim.domain === "lifestyle") &&
+        claim.anchor.length >= 2 &&
+        (claim.anchor.includes(output.anchor) ||
+          output.anchor.includes(claim.anchor))
+      )
+    ) {
+      continue;
+    }
     if (hasConflictingOwnClaim(output, input.context.claims, ownOwners)) {
       unsupported.push(output);
       continue;
@@ -2763,8 +2909,6 @@ export function stripUnsupportedThirdPartyDetails(input: {
     text: rebuilt,
     field: input.field,
     context: input.context,
-  }).some((claim) =>
-    claim.owner === "world" || claim.owner === "third_party"
-  );
+  }).some((claim) => claim.owner === "world" || claim.owner === "third_party");
   return residual ? "" : rebuilt;
 }

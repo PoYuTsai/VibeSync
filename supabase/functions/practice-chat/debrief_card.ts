@@ -1388,7 +1388,7 @@ function assertGeneratedDebriefQuality(
     });
   }
   const metaPasteablePattern =
-    /(?:先接住(?:她|對方)|補(?:上|一點)?感受|低壓邀約|邀約窗口|分享(?:你的|自己的)版本|再聽(?:她|對方)的)/u;
+    /(?:先接住(?:她|對方)|補(?:上|一點)?感受|低壓邀約|邀約窗口|分享(?:你的|自己的)版本|再聽(?:她|對方)的|(?:可以|不妨|試著|記得)(?:先)?(?:說|回|傳|問)(?:她)?[：:]|下次(?:可以|試著|記得)(?:先)?(?:說|問|回))/u;
   if (
     metaPasteablePattern.test(card.suggestedLine) ||
     (card.gameBreakdown &&
@@ -1426,27 +1426,23 @@ function assertGeneratedDebriefQuality(
     assertGeneratedDebriefFieldRoles(card);
   }
 
+  // 貼句欄是「下次可傳的第一句」，不必逐字複讀最新句；引用整場任何具體
+  // 細節都算有憑有據（latestOnly 舊制 2026-07-23 判定表 8/11 誤殺）。
   assertPracticeTextGroundedInTurns({
     visibleText: card.suggestedLine,
     turns: opts.turns,
-    latestOnly: true,
     errorCode: "debrief_quality_invalid_suggested_line_not_grounded",
   });
-  for (const analyticalText of debriefAnalyticalFields(card)) {
-    assertPracticeTextGroundedInTurns({
-      visibleText: analyticalText,
-      turns: opts.turns,
-      errorCode: "debrief_quality_invalid_field_not_grounded",
-    });
-  }
+  // 分析欄位（summary/strengths/watchouts…）是後設評語（投入度/單向/缺自
+  // 揭），詞面 n-gram 接地檢查天生不適用（判定表 20/20 全誤殺）——捏造防線
+  // 由 fact ledger（assertHintFactClaimsSupported）與罐頭簽名檢查負責，
+  // 這裡不再做詞面 grounding。gameBreakdown 同理只查可貼的 nextFirstLine。
   if (card.gameBreakdown) {
-    for (const value of Object.values(card.gameBreakdown)) {
-      assertPracticeTextGroundedInTurns({
-        visibleText: value,
-        turns: opts.turns,
-        errorCode: "debrief_quality_invalid_game_breakdown_not_grounded",
-      });
-    }
+    assertPracticeTextGroundedInTurns({
+      visibleText: card.gameBreakdown.nextFirstLine,
+      turns: opts.turns,
+      errorCode: "debrief_quality_invalid_game_breakdown_not_grounded",
+    });
   }
 }
 

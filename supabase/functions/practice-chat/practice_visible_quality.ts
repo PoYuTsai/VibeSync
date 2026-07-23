@@ -243,9 +243,12 @@ export function assertPracticeTextGroundedInTurns(opts: {
   errorCode: string;
 }): void {
   if (!opts.turns || opts.turns.length === 0) return;
+  // 非 latestOnly 的證據窗＝整份逐字稿：這個 gate 擋的是「完全沒碰到這場
+  // 對話」的萬用模板，引用較早輪次一樣是有憑有據（舊的 slice(-8) 會把
+  // 10-16 句 fixture 的前段引用整批誤殺——2026-07-23 判定表）。
   const evidenceTurns = opts.latestOnly
     ? [...opts.turns].reverse().filter((turn) => turn.role === "ai").slice(0, 1)
-    : opts.turns.slice(-8);
+    : opts.turns;
   const fragments = new Set<string>();
   for (const turn of evidenceTurns) {
     for (const fragment of evidenceFragments(turn.text)) {
@@ -253,8 +256,9 @@ export function assertPracticeTextGroundedInTurns(opts: {
     }
   }
   if (fragments.size === 0) {
+    // 對話存在但全是 emoji/標點＝無從驗證，寧可 fail-closed 也不放行
+    // 萬用模板（不限 latestOnly：全窗版一樣適用）。
     if (
-      opts.latestOnly === true &&
       evidenceTurns.some((turn) => turn.text.trim().length > 0) &&
       evidenceTurns.every((turn) => compact(turn.text).length === 0)
     ) {

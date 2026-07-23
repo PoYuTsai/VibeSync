@@ -2735,7 +2735,9 @@ Deno.test("generated Game Hint still rejects invented concrete venues after whic
         },
       ),
     Error,
-    "hint_quality_invalid_not_grounded",
+    // 全窗 grounding 後這型不再靠詞面重疊誤打誤中；
+    // 由 asksPlace（含「哪家」）的 venue fail-closed 正面攔截。
+    "hint_quality_invalid_unsupported_detail",
   );
 });
 
@@ -3169,54 +3171,9 @@ Deno.test("generated Hint rejects unsupported phone, schedule, person, companion
       latest: "你的 IG 帳號是什麼？",
       reply: "妳問 IG，我的是@eric.daily。",
     },
-    {
-      latest: "你明天有安排嗎？",
-      reply: "妳問明天有沒有安排，我明天七點有空。",
-    },
-    {
-      latest: "你明天有安排嗎？",
-      reply: "妳問明天安排，明天七點有空。",
-    },
-    {
-      latest: "你明天有安排嗎？",
-      reply: "妳問明天安排，明天下午沒事。",
-    },
-    {
-      latest: "你明天有安排嗎？",
-      reply: "妳問明天安排，晚上可以。",
-    },
-    {
-      latest: "你明天有安排嗎？",
-      reply: "妳問明天安排，我明天早上都可以。",
-    },
-    {
-      latest: "你明天有安排嗎？",
-      reply: "妳問明天安排，我明早九點有空。",
-    },
-    {
-      latest: "你明天有安排嗎？",
-      reply: "妳問明天安排，我明天下午方便。",
-    },
-    {
-      latest: "你什麼時候有空？",
-      reply: "妳問什麼時候有空，我明天七點有空。",
-    },
-    {
-      latest: "你明天有安排嗎？",
-      reply: "妳問明天安排，我明天七點要開會。",
-    },
-    {
-      latest: "你明天有安排嗎？",
-      reply: "妳問明天安排，我明天下午在公司。",
-    },
-    {
-      latest: "最近在忙什麼？",
-      reply: "妳問最近在忙什麼，我明天下午要看醫生。",
-    },
-    {
-      latest: "最近在忙什麼？",
-      reply: "妳問最近在忙什麼，我明天要上課。",
-    },
+    // user 自身 schedule（「我明天七點有空」「我明天要開會」等答自己行程
+    // 的第一人稱句）已依 Eric 裁決（2026-07-23）整族放行：使用者最清楚
+    // 自己的行程，邀約提案/自陳行程不是可捏造事實，不再 fail-closed。
     {
       latest: "最近在忙什麼？",
       reply: "妳問最近在忙什麼，我在公司。",
@@ -3256,14 +3213,6 @@ Deno.test("generated Hint rejects unsupported phone, schedule, person, companion
     {
       latest: "最近在忙什麼？",
       reply: "妳問最近在忙什麼，我的 IG 是 @ericdating。",
-    },
-    {
-      latest: "最近在忙什麼？",
-      reply: "妳問最近在忙什麼，我明天七點要開會。",
-    },
-    {
-      latest: "最近在忙什麼？",
-      reply: "妳問最近在忙什麼，我明天下午在公司。",
     },
     {
       latest: "週末在幹嘛？",
@@ -3446,10 +3395,8 @@ Deno.test("generated Hint never treats her first-person facts as the user's evid
   for (const mode of ["beginner", "game"] as const) {
     for (
       const testCase of [
-        {
-          latest: "我明天七點有空，你呢？",
-          warmUp: "妳說明天七點有空，我明天七點也有空。",
-        },
+        // 「我明天七點也有空」型 user 自身 schedule 已依 Eric 裁決
+        // （2026-07-23）放行：第一人稱邀約提案語是合法邀約教學。
         {
           latest: "我的電話是0912345678，你的呢？",
           warmUp: "妳給了電話，但我的號碼也是0912345678。",
@@ -5645,7 +5592,10 @@ Deno.test("HINT_TOOL_SCHEMA matches the parser contract (schema wide, parser str
   const parsed = parseHintResult(JSON.stringify(legal));
   assertEquals(parsed.replies.length, 2);
   for (const key of schema.required) {
-    assert(key in legal, `schema required key ${key} missing from legal payload`);
+    assert(
+      key in legal,
+      `schema required key ${key} missing from legal payload`,
+    );
   }
   assertEquals(
     Object.keys(legal).every((key) => key in schema.properties),
@@ -5659,4 +5609,54 @@ Deno.test("parseHintResult converts truncated JSON into a classifiable machine c
   const error = assertThrows(() => parseHintResult('{"warmUp":"寫到一半'));
   assert(error instanceof Error);
   assertEquals(error.message, "hint_json_parse_failed");
+});
+
+Deno.test("regression: 交作業方向敏感——向她示弱放行、指使她交照擋（round4 #9/#11/#13/#15）", () => {
+  const turns = [
+    { role: "user" as const, text: "我平常也拍一點街景。" },
+    { role: "ai" as const, text: "喔？我可是很嚴格的，拍不好會被我笑。" },
+  ];
+  const result = parseHintResult(
+    JSON.stringify({
+      warmUp: "妳都說自己很嚴格了，我還沒交作業就想放棄😂",
+      steady: "那我等等挑一張最不糊的街景交作業，妳手下留情。",
+      coaching:
+        "Game 心法：她這句可能是在立嚴格評審的姿態，順著玩交作業的示弱梗接住她。速約任務：先過這輪測試，等她接住再開低壓窗口。",
+    }),
+    { mode: "game", enforceGeneratedQuality: true, turns },
+  );
+  assertEquals(result.replies[0].text.includes("交作業"), true);
+
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "妳先去交作業，我看看妳的程度。",
+          steady: "先拍一張給我檢查。",
+          coaching:
+            "Game 心法：她這句可能是在測試，先讓她證明自己再繼續。速約任務：這輪先不約，等窗口。",
+        }),
+        { mode: "game", enforceGeneratedQuality: true, turns },
+      ),
+    Error,
+    "hint_bossy_pasteable_reply",
+  );
+});
+
+Deno.test("regression: 引用較早輪次＝有憑有據，不再被 latestOnly 誤殺（round4 #12/#14）", () => {
+  const turns = [
+    { role: "ai" as const, text: "我下班路上隨手拍，天空有燒起來就是賺到。" },
+    { role: "user" as const, text: "這句也太詩意。" },
+    { role: "ai" as const, text: "哈哈普通啦。" },
+  ];
+  const result = parseHintResult(
+    JSON.stringify({
+      warmUp: "妳說的「天空有燒起來就是賺到」我記住了，下次燒天我先想到妳。",
+      steady: "妳下班路上都在哪邊拍？我想看看妳的視角。",
+      coaching:
+        "她在收斂話題，回呼她早前「下班路上隨手拍」的細節把熱度接回來。",
+    }),
+    { mode: "beginner", enforceGeneratedQuality: true, turns },
+  );
+  assertEquals(result.replies[0].text.includes("燒起來"), true);
 });

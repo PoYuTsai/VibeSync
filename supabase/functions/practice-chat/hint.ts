@@ -1201,6 +1201,7 @@ function safeAdvancedGameHintContract(): string {
 - 資格篩選是玩笑品味門檻，不是命令她證明自己；不要說「妳先給我一個標準答案」。共同敘事把最新狀態變兩人小劇場；順勢收尾只用真窗口收成短咖啡、順路散步、小展、宵夜。
 - 可貼回覆必須先接住她最新狀態。萬用解法：訊號判讀 → 單一招式 → 可貼收口；Give-first＝先給一點自己的品味或小場景，讓她低壓接球。
 - 假熟先確認；店名、地點、共同經歷沒出現就別捏造。禁止命令、面試、性壓力與私密施壓。
+- 被問在哪而逐字稿沒位置時：絕不編地址/方位/車程，順勢轉邀約（例「其實我也還沒去過，要不要哪天一起去找？」）；氛圍回應可以，具體地點細節不行。
 ${gameHintFewShotExamples()}
 
 `;
@@ -1400,8 +1401,10 @@ function rejectBossyPasteableHintReply(
     /先(?:給我|丟|說|交)(?:一個|個)?.{0,10}(?:標準答案|答案|片單|推薦|選項)(?!後|時|讓|使|我(?:才|就|有|開始|現在|已經))/,
     /(?:給我|丟給我)(?:一個|個)?.{0,10}(?:標準答案|答案|片單|推薦|選項)(?!後|時|讓|使|我(?:才|就|有|開始|現在|已經))/,
     /我再(?:判斷|看看|決定|評分).{0,14}(?:妳|你).{0,10}(?:標準|及不及格|會不會|是不是)/,
-    /及不及格/,
-    /交作業/,
+    // 方向敏感：bossy＝指使「她」交答案給我；用戶自嘲「我去交作業」是向她
+    // 示弱的玩笑（她立了嚴格評審框架），方向相反不得誤殺。
+    /(?:妳|你)(?:先|再|快|記得|要|得)?(?:去)?交作業|交作業給我/,
+    /(?:妳|你).{0,8}及不及格/,
   ];
   if (bossyPatterns.some((pattern) => pattern.test(guardTarget))) {
     throw new Error("hint_bossy_pasteable_reply");
@@ -2323,12 +2326,14 @@ function assertGeneratedHintQuality(opts: {
     }
   }
   // One grounded coaching sentence must not launder two generic pasteable
-  // replies. Every visible choice independently touches the latest message.
+  // replies. Every visible choice independently touches the supplied
+  // conversation. 視窗＝全逐字稿：這個 gate 的目的是擋萬用模板，不是逼
+  // 逐字複讀最新句——「引用較早輪次」「回應她的質問句」都是有憑有據
+  //（2026-07-23 判定表 not_grounded 10/10 全誤殺，其中最新句限定是主因）。
   for (const visibleText of [opts.warmUp, opts.steady, opts.coaching]) {
     assertPracticeTextGroundedInTurns({
       visibleText,
       turns: opts.parseOptions.turns,
-      latestOnly: true,
       errorCode: "hint_quality_invalid_not_grounded",
     });
   }

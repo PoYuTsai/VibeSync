@@ -30,7 +30,8 @@ Deno.test("typed Hint fact ledger rejects partner facts rewritten as user facts"
     ["我養了兩隻貓。", "兩隻貓我家也有，妳家哪隻最皮？"],
     ["我有一個妹妹。", "妹妹我也有一個，這種吐槽我懂。"],
     ["我叫阿哲。", "阿哲也是我的名字，這也太巧了。"],
-    ["我明天七點有空。", "明天七點我這邊也排得開。"],
+    // 「我明天七點有空」型 user 自身 schedule 已依 Eric 裁決（2026-07-23）
+    // 放行：第一人稱邀約提案語是合法邀約教學，見下方 proposals 測試。
     ["我是社工。", "我不是社工，不過工作忙這點我懂。"],
   ] as const;
 
@@ -154,6 +155,10 @@ Deno.test("typed Hint fact ledger preserves empathy, questions, proposals, and o
       "妳家是不是也有兩隻貓？",
       "如果我也養兩隻貓就太巧了。",
       "我先確認自己的狀況再回妳。",
+      // Eric 裁決（2026-07-23）：第一人稱邀約提案語＝合法邀約教學，
+      // user 自身 schedule 不 fail-closed。
+      "我週三晚上有空，要不要一起去看？",
+      "明天七點我這邊也排得開。",
     ]
   ) {
     assertHintFactClaimsSupported({
@@ -215,8 +220,8 @@ Deno.test("typed Hint fact ledger rejects natural paraphrases, schedule reversal
     ["我住台南。", "我的生活圈就在台南，妳最常去哪？"],
     ["我住台南。", "我目前也以台南為基地。"],
     ["我最愛壽司。", "我也是壽司控，妳最常點什麼？"],
-    ["我明天七點有空。", "我明天七點沒空，不然改八點？"],
-    ["我明天七點有空。", "我明天七點已經有約了，妳八點可以嗎？"],
+    // 「我明天七點沒空，不然改八點？」型 user 自身 schedule 已依 Eric 裁決
+    // （2026-07-23）放行：改約提案是合法邀約教學。
     ["我的 LINE ID 是 alice123。", "加我 alice123，晚點聊。"],
     ["我的 LINE ID 是 alice123。", "搜尋 alice123 就找到我。"],
     ["我的 LINE ID 是 alice123。", "我用 alice123，直接丟訊息。"],
@@ -347,6 +352,15 @@ Deno.test("typed Hint fact ledger resolves the actor nearest the predicate", () 
     }],
   });
   for (const output of outputs) {
+    // user 自身 schedule 依 Eric 裁決（2026-07-23）放行：邀約提案語不 fail-closed。
+    if (/有空，咖啡可以/u.test(output)) {
+      assertHintFactClaimsSupported({
+        text: output,
+        field: "reply",
+        context: partnerContext,
+      });
+      continue;
+    }
     assertThrows(
       () =>
         assertHintFactClaimsSupported({
@@ -422,7 +436,8 @@ Deno.test("typed Hint fact ledger rejects commonality and coreference transfers"
     ["我有一個妹妹。", "原來都有手足，這種吐槽我懂。"],
     ["我去年見過阿哲。", "原來那次我們都在場，阿哲這圈真小。"],
     ["我現在在中山站。", "原來我們就在附近，中山站這邊好碰。"],
-    ["我明天七點有空。", "明天7點那個時段我也行，咖啡可以。"],
+    // 「明天7點那個時段我也行」型 user 自身 schedule 已依 Eric 裁決
+    // （2026-07-23）放行：跟上她的時段提案是合法邀約教學。
     ["我的 LINE ID 是 alice123。", "LINE 同一串，我這邊也收得到。"],
   ] as const;
   for (const [partner, output] of partnerTransfers) {
@@ -1398,5 +1413,233 @@ Deno.test("stripUnsupportedThirdPartyDetails leaves no unsupported third-party r
       claim.owner === "world" || claim.owner === "third_party"
     );
     assertEquals(residual.length, 0);
+  }
+});
+
+// ── 2026-07-23 eval 第 4/5 輪判定表回歸包 ──────────────────────────────
+// FP 樣本（曾被誤殺，必須放行）＋TP 樣本（真捏造，必須照擋）＋FN 補抓。
+
+Deno.test("regression: 送收語境不再吃「給＋抽象詞」與詞中「發」（round4 #1/#3/#4/#7、round5 沙發/傳給妳）", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "我週末大多在家追劇配鹹酥雞。" },
+      { role: "ai", text: "隔天鐵腿才發現爬山有多累哈哈。" },
+    ],
+  });
+  for (
+    const [field, text] of [
+      ["coaching", "順著她的邏輯給認同，再輕輕開一個窗口。"],
+      ["coaching", "給予認同，展現理解，先讓她安心。"],
+      ["coaching", "先給接納感，用自我調侃拉近距離。"],
+      ["reply", "妳怎麼發現的，是隔天鐵腿才知道嗎？"],
+      ["reply", "我週末都窩在家裡沙發還是床上，看妳挑哪個吐槽。"],
+      ["reply", "整理好照片週一傳給妳，先讓妳期待一下。"],
+      ["coaching", "她開玩笑丟測試，接住再丟回她那邊就好。"],
+    ] as const
+  ) {
+    assertHintFactClaimsSupported({ text, field, context });
+  }
+  // TP 對照：真名字送收語境照樣 fail-closed。
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "整理好照片我週一傳給嘉玲。",
+        field: "reply",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+});
+
+Deno.test("regression: 地名字尾不再詞中切割（區域/市集/街道），真地名照抽（round4 #23/#29、round5 gd5）", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "上次說的那間唱片行我還記得。" },
+      { role: "ai", text: "唱片行在哪一區？" },
+    ],
+  });
+  for (
+    const text of [
+      "哈哈區域不算太隱密啦，但我想留著當驚喜。",
+      "這時候答區域反而洩氣，我想帶妳去才好玩。",
+      "星期六下午市集門口見，妳先把時間留給我。",
+      "順著她的話延伸出街道氛圍的畫面感。",
+    ]
+  ) {
+    const claims = extractHintFactClaims({
+      text,
+      perspective: "reply",
+      provenance: "generated_reply",
+      defaultOwner: "user",
+    });
+    assertEquals(
+      claims.filter((claim) =>
+        claim.domain === "venue" &&
+        (claim.confidence ?? "high") === "high"
+      ).length,
+      0,
+      text,
+    );
+  }
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "就西門町那間啊，妳一定知道。",
+        field: "reply",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+});
+
+Deno.test("regression: 「能量」不再被抽成 schedule；「她今天能量沒那麼高」放行（round4 #2）", () => {
+  const context = buildHintFactContext({
+    turns: [{ role: "ai", text: "今天好累，回家只想躺著。" }],
+  });
+  assertHintFactClaimsSupported({
+    text: "這句適合她今天能量沒那麼高時使用，先降成本。",
+    field: "coaching",
+    context,
+  });
+});
+
+Deno.test("regression: schedule 粒度與極性——「這週六下午有空」支持「週六有空」，後綴否定不翻極性（round5 gd1）", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "那要不要找個時間看展？" },
+      { role: "ai", text: "我這週六下午剛好有空喔。" },
+    ],
+  });
+  for (
+    const text of [
+      "她主動說出週六下午有空，這是明確的邀約窗口。",
+      "她說週六有空時，你沒有接住這個訊號。",
+      "她說『這週六下午有空』後沒有立即確認時間，是可惜點。",
+    ]
+  ) {
+    assertHintFactClaimsSupported({ text, field: "coaching", context });
+  }
+  // 對照：她沒說過的日子照擋。
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "她說下週三有空，直接約下週三。",
+        field: "coaching",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+});
+
+Deno.test("regression: 「敢跟我比吃辣的人」不再抽成籍貫 claim（round4 #18）", () => {
+  const claims = extractHintFactClaims({
+    text: "這句話我可是留給敢跟我比吃辣的人限定的。",
+    perspective: "reply",
+    provenance: "generated_reply",
+    defaultOwner: "user",
+  });
+  assertEquals(
+    claims.filter((claim) =>
+      claim.domain === "residence" && (claim.confidence ?? "high") === "high"
+    ).length,
+    0,
+  );
+});
+
+Deno.test("regression: 「我們幾點在展覽附近碰面」不再誤判同住 commonality（round5 gd1 #39）", () => {
+  const context = buildHintFactContext({
+    turns: [{ role: "ai", text: "那個展我也想看！" }],
+  });
+  assertHintFactClaimsSupported({
+    text: "那我們幾點在展覽附近碰面？我先查好路線。",
+    field: "reply",
+    context,
+  });
+});
+
+Deno.test("regression: 無主詞「養狗」附和句不再變 user 有狗（round5 bd5）", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "ai", text: "自從養狗之後每天都被布丁逼著早起散步。" },
+    ],
+  });
+  for (
+    const [field, text] of [
+      ["reply", "哈哈養狗之後回不去我信，布丁根本是鬧鐘。"],
+      ["reply", "我也想試試被狗逼著早起的生活，一起走一圈？"],
+    ] as const
+  ) {
+    assertHintFactClaimsSupported({ text, field, context });
+  }
+});
+
+Deno.test("regression: 她問地點時 coaching 引號教學語不再變 venue claim（round4 #27/#30）", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "那間唱片行超有味道。" },
+      { role: "ai", text: "唱片行在哪一區？" },
+    ],
+  });
+  for (
+    const text of [
+      "Game 心法：她在問細節，先丟出「這週/半小時」的具體窗口再回答。",
+      "Game 心法：用「一起去被推薦」的框架轉邀約，不用急著給答案。".replace(
+        "框架",
+        "方式",
+      ),
+      "Game 心法：老闆推薦卡黑膠味道都是她給過的線索，回呼即可。",
+    ]
+  ) {
+    assertHintFactClaimsSupported({ text, field: "coaching", context });
+  }
+});
+
+Deno.test("regression: 她問地點時「方位詞/交通耐受」直接報點＝捏造照擋（round4 FN #24/#28/#30）", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "那間唱片行超有味道。" },
+      { role: "ai", text: "唱片行在哪一區？" },
+    ],
+  });
+  for (
+    const text of [
+      "北邊，靠近捷運站，我下週可以帶妳去。",
+      "南邊，騎車10分鐘左右就到。",
+      "就在北邊，妳一定找得到。",
+    ]
+  ) {
+    assertThrows(
+      () => assertHintFactClaimsSupported({ text, field: "reply", context }),
+      Error,
+      ERROR,
+      text,
+    );
+  }
+  // 氛圍式回應與賣關子照 Eric 裁決放行。
+  for (
+    const text of [
+      "其實我也還沒去過，要不要哪天一起去找？",
+      "先保密，我帶路比較好玩。",
+    ]
+  ) {
+    assertHintFactClaimsSupported({ text, field: "reply", context });
+  }
+});
+
+Deno.test("regression: 「她喜歡的旅行/場景感」所有格指涉不再 fail-closed（round5 bd2/bd3/bd4）", () => {
+  const context = buildHintFactContext({
+    turns: [{ role: "ai", text: "放假就想到處走走。" }],
+    partnerFactualEvidence: ["她喜歡旅行和美食。"],
+  });
+  for (
+    const text of [
+      "用她喜歡的旅行話題開場，比較不突兀。",
+      "她喜歡的場景感可以拿來當下次的話題。",
+    ]
+  ) {
+    assertHintFactClaimsSupported({ text, field: "coaching", context });
   }
 });

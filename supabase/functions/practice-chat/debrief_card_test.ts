@@ -1529,33 +1529,32 @@ Deno.test("generated Debrief grounds each pasteable line instead of laundering i
   );
 });
 
-Deno.test("Game Debrief cannot launder generic breakdown fields through one grounded line", () => {
-  assertThrows(
-    () =>
-      parseDebriefCard(
-        JSON.stringify({
-          ...generatedQualityCard,
-          gameBreakdown: {
-            phaseReached: "開場到測試",
-            missedVariable: "投入感不足",
-            failureState: "節奏偏保守",
-            nextFirstLine: "賴床醒了再跟我說今天想去哪裡。",
-            inviteDirection: "先補感受再看邀約窗口",
-          },
-        }),
-        {
-          allowGameBreakdown: true,
-          requireCompleteCard: true,
-          enforceGeneratedQuality: true,
-          turns: [
-            { role: "user", text: "早安" },
-            { role: "ai", text: "我還在賴床，腦袋沒開機" },
-          ],
-        },
-      ),
-    Error,
-    "debrief_quality_invalid_field_not_grounded",
+Deno.test("Game Debrief analytical breakdown fields are meta-commentary and skip word-surface grounding", () => {
+  // 2026-07-23 判定表：分析欄位（後設評語）詞面 n-gram 接地 20/20 全誤殺，
+  // 已拍板移除；捏造防線由 fact ledger 與罐頭/術語 gate 負責。
+  // 可貼的 nextFirstLine 仍須接地（見上一個測試）。
+  const card = parseDebriefCard(
+    JSON.stringify({
+      ...generatedQualityCard,
+      gameBreakdown: {
+        phaseReached: "開場到測試",
+        missedVariable: "投入感不足",
+        failureState: "節奏偏保守",
+        nextFirstLine: "賴床醒了再跟我說今天想去哪裡。",
+        inviteDirection: "先補感受再看邀約窗口",
+      },
+    }),
+    {
+      allowGameBreakdown: true,
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      turns: [
+        { role: "user", text: "早安" },
+        { role: "ai", text: "我還在賴床，腦袋沒開機" },
+      ],
+    },
   );
+  assertEquals(card.gameBreakdown?.phaseReached, "開場到測試");
 });
 
 Deno.test("Debrief cannot reverse an applied Hint without visible post-Hint evidence", () => {
@@ -2635,7 +2634,6 @@ Deno.test("parseDebriefCard converts truncated JSON into a classifiable machine 
   assertEquals(error.message, "debrief_json_parse_failed");
 });
 
-
 Deno.test("DEBRIEF_TOOL_SCHEMA_GAME promotes gameBreakdown to required", () => {
   const required = DEBRIEF_TOOL_SCHEMA_GAME.required as string[];
   assertEquals(required.includes("gameBreakdown"), true);
@@ -2690,4 +2688,31 @@ Deno.test("relaxSubjectiveQualityRubrics 放行主觀 substance rubric、硬 gat
     Error,
     "debrief_internal_label_leak",
   );
+});
+
+Deno.test("regression: 「下次見面時，可以說：…」meta 前綴混進貼句欄照擋（round5 #62/#18）", () => {
+  for (
+    const suggestedLine of [
+      "下次見面時，可以說：「妳上次提的那間我查好了」。",
+      "下次可以先說你自己最近在做什麼，或問她的安排。",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({ ...generatedQualityCard, suggestedLine }),
+          {
+            requireCompleteCard: true,
+            enforceGeneratedQuality: true,
+            turns: [
+              { role: "user", text: "早安" },
+              { role: "ai", text: "我還在賴床，腦袋沒開機" },
+            ],
+          },
+        ),
+      Error,
+      "debrief_quality_invalid_meta_line",
+      suggestedLine,
+    );
+  }
 });
