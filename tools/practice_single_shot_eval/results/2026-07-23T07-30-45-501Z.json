@@ -1,0 +1,1805 @@
+{
+  "startedAt": "2026-07-23T07:30:45.496Z",
+  "mode": "live",
+  "repeat": 4,
+  "routes": [
+    "beginner_hint",
+    "game_hint",
+    "beginner_debrief",
+    "game_debrief"
+  ],
+  "summaries": [
+    {
+      "route": "beginner_hint",
+      "shots": 20,
+      "p50Ms": 6596,
+      "p90Ms": 9729,
+      "firstShotCount": 17,
+      "firstShotRate": 0.85,
+      "secondShotCount": 1,
+      "count503": 2,
+      "gateFailureCounts": {
+        "hint_quality_invalid_invite_route": 5
+      }
+    },
+    {
+      "route": "game_hint",
+      "shots": 20,
+      "p50Ms": 7498,
+      "p90Ms": 11955,
+      "firstShotCount": 17,
+      "firstShotRate": 0.85,
+      "secondShotCount": 1,
+      "count503": 2,
+      "gateFailureCounts": {
+        "hint_quality_invalid_not_grounded": 4,
+        "hint_quality_invalid_unsupported_detail:world:venue:located_at": 1
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "shots": 20,
+      "p50Ms": 8116,
+      "p90Ms": 17781,
+      "firstShotCount": 17,
+      "firstShotRate": 0.85,
+      "secondShotCount": 3,
+      "count503": 0,
+      "gateFailureCounts": {
+        "debrief_missing_fields": 1,
+        "claude_timeout": 2
+      }
+    },
+    {
+      "route": "game_debrief",
+      "shots": 20,
+      "p50Ms": 11734,
+      "p90Ms": 19230,
+      "firstShotCount": 17,
+      "firstShotRate": 0.85,
+      "secondShotCount": 1,
+      "count503": 2,
+      "gateFailureCounts": {
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named": 1,
+        "debrief_temperature_leak": 2,
+        "debrief_quality_invalid_suggested_line_not_grounded": 1,
+        "debrief_quality_invalid_unsupported_detail:user:lifestyle:does_activity": 1
+      }
+    }
+  ],
+  "leakScan": {
+    "totalServedShots": 80,
+    "hits": []
+  },
+  "gameHintSamples": [
+    {
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 0,
+      "servedText": {
+        "coaching": "Game心法：她這句是用「還停在第三章」自嘲順便留話題，不是要妳炫耀效率。這階段任務是接住她的進度感、順勢把話題留在書上，讓她多講一點自己的閱讀狀態，不用急著給結論或約時間。速約任務：這輪先不約，順著書的話題鋪一個「之後可以聊到哪」的窗口就好。",
+        "warmUp": "第三章其實是個坎，後面節奏會抓回來，妳卡在那邊還好嗎？要不要先聊聊妳看到哪個角色",
+        "steady": "哈哈也是連假在家才有空一口氣看完，不然平常應該也是停在第三章那種進度"
+      }
+    },
+    {
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 1,
+      "servedText": {
+        "coaching": "Game心法：她這句是輕鬆自嘲順便留了「第三章」這個具體點，等你接。階段還在建立熟悉，任務是順著「第三章」給畫面或關心她卡住的原因，不用曬自己讀多快，讓她覺得被聊到書本身而不是被比較進度。速約任務：這輪先不約，用書當共同小場景鋪一個下次可以聊的窗口，不急著推見面。",
+        "warmUp": "第三章其實是個坎，我也是硬撐過去的，後面節奏會突然變快，妳撐過去就會停不下來",
+        "steady": "哈哈也沒有效率啦剛好今天在家沒事，第三章那邊妳卡住是覺得節奏慢嗎"
+      }
+    },
+    {
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 3,
+      "servedText": {
+        "coaching": "Game心法：她這句「還停在第三章」是輕鬆自嘲兼留話頭，不是在測妳，是好奇你怎麼看進度差異。現在是建立熟悉階段，任務是順著書的進度聊出真實感受，不急著曖昧或約她。warmUp可以用「第三章轉折」這個她剛好卡住的點延伸畫面，讓她想繼續聊下去；steady則直接回應她的自嘲、順便問她卡住的原因，讓話題留在書本上累積熟悉感。速約任務：這輪先不約，只鋪墊「討論書」這個共同小場景，留住下次聊的窗口。",
+        "warmUp": "第三章那邊其實是個小轉折，妳看完後段會更想知道結局怎麼收，我熬夜就是被這點拖住的😂",
+        "steady": "哈哈不是效率，是那本剛好對我胃口就停不下來。妳卡在第三章是覺得節奏比較慢嗎？"
+      }
+    },
+    {
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 0,
+      "servedText": {
+        "coaching": "Game心法：她這句「我可是很嚴格的」是在用玩笑立一個小門檻測你接不接得住，屬於輕度品味測試。目前階段是建立熟悉，任務是順著她的評審設定接梗、把互動變成兩人小劇場，不用急著約。速約任務：這輪先不約，順著「評審」畫面把她的角色鋪成可兌現的小互動，留一個「傳照片給她看」的窗口，下次她主動回應再考慮約看展或拍照。",
+        "warmUp": "被你這麼一說壓力都來了，那嚴格評審有沒有評分標準？先講好免得我白練",
+        "steady": "好啊那我更有動力了，練成那天直接傳給妳審核，不合格的話妳要教我幾招"
+      }
+    },
+    {
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 1,
+      "servedText": {
+        "coaching": "Game心法：她這句「我可是很嚴格」是在用玩笑立門檻，順勢接受評審設定就好，不用真的證明自己。階段還在建立熟悉，任務是接住她的調侃、順著玩把互動變成一個小約定，不急著曖昧升溫。速約任務：這輪先不約，把「拍照給她看」變成之後可兌現的小場景，鋪一個改天的窗口就好。",
+        "warmUp": "好，那我拍完直接送審，妳這麼嚴格，過關的話是不是要給點獎勵啊？",
+        "steady": "哈哈瞭解，那我先練基本功，之後拍給嚴格評審妳過目，被電也要虛心受教"
+      }
+    },
+    {
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 2,
+      "servedText": {
+        "coaching": "Game心法：她這句「很嚴格」是在拋一個帶點挑戰又願意繼續互動的球，順勢接受她的角色設定就對了。目前階段要先建立熟悉感，別急著曖昧升溫，重點是讓這個「練習拍照被審核」的小場景延續下去，變成你們之間可以一直玩的梗。速約任務：這輪先不約，順著「嚴格審核」鋪一個未來會交作業的窗口，之後她若主動追問進度，就是收成短見面的時機。",
+        "warmUp": "嚴格？那我更有動力了，被電到起飛也值得，等我第一批成果出來準備接受妳審核吧",
+        "steady": "好，那妳先預告一下評分標準，不然我怕拍完十張全被打回票"
+      }
+    },
+    {
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 3,
+      "servedText": {
+        "coaching": "Game心法：她這句「很嚴格」是丟一個帶調侃的小門檻，順著玩就是接球，不是真的考核。目前階段先建立熟悉感，別急著約，任務是把「嚴格評審」這個梗玩起來，讓互動有輕鬆張力但不加壓。速約任務：這輪先不約，把「拍給她看」變成之後可兌現的小場景，鋪一個未來窗口就好，不用現在就約時間地點。",
+        "warmUp": "哈哈好，那我先申請「嚴格評審」認證，妳到時候給分別手軟，我這人抗打擊能力還行😂",
+        "steady": "被嚴格評審盯上了，那我更有動力練，練成那天直接送審，不接受賄賂喔"
+      }
+    },
+    {
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 0,
+      "servedText": {
+        "coaching": "Game心法：她這句「對每個女生都嗆一樣」是在測你會不會慌著澄清，屬於互動裡的正常挑戰，不是真的翻臉。任務是複用她原話的「每個女生」曲解回打，展現穩定不解釋，順便把焦點丟回她身上，讓張力留在吃辣比賽這條線上。速約任務：這輪先不約，繼續用飲料賭注鋪墊，等她認真接招再找收成窗口。",
+        "warmUp": "哪有每個女生，只有敢跟我拼辣的才會被我嗆，妳這反應說明妳很心動想應戰吧",
+        "steady": "嗆歸嗆，這句只對妳說，因為妳是唯一敢跟我賭飲料的人"
+      }
+    },
+    {
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 1,
+      "servedText": {
+        "coaching": "Game心法：她這句「對每個女生都嗆一樣的話」是在測你會不會慌著自證清白，這是互動的一環不是翻臉。正確作法是拿她原話「每個女生」曲解回打，順勢誇大自己很稀有、她才是特別的那個，全程用玩笑口吻，不解釋不定罪。階段還在建立熟悉，速約任務：先不約，把這場辣度比拚變成可兌現的小場景（誰輸誰請飲料），留下一個改天兌現的窗口就好。",
+        "warmUp": "才不是，是每個女生都輸給我之後才這樣說的，妳是第一個還沒吃就先心虛的😏",
+        "steady": "哈哈是說給敢接的人聽的，妳自己跳出來應戰的，怕的話現在收回也可以"
+      }
+    },
+    {
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 2,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你是不是隨便對誰都放電，這是挑戰不是翻臉。階段還在建立熟悉，任務是別認真辯白，直接借她「每個女生」這詞曲解成只對她特別，順勢演回去，維持吐槽節奏。速約任務：這輪先不約，繼續讓吃辣梗發酵，留下次比拼的窗口，不急著推進。",
+        "warmUp": "「每個女生」是妳自己加的稱號吧，我只對敢接戰帖的人這樣，妳現在不就中招了？",
+        "steady": "哪有每個，我只跟嘴硬又輸不起的人這樣講，妳說呢？"
+      }
+    },
+    {
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 3,
+      "servedText": {
+        "coaching": "Game心法：她在測你穩不穩、有沒有被戳到。這不是翻臉點，是互動升溫的信號。接法是用她的「每個女生」反打成對你有利的方向，幽默誇大順著演，把焦點丟回她身上。warmUp 用「唯一有膽回嘴」命中她的獨特感；steady 用「惹到我」給她一點投入感。階段任務：先接住測試、展示你不會被輕易定義，同時認輸飲料降壓。速約任務：這輪先不約，只鋪下一個「比賽什麼時候」的窗口，讓她感受到你真的有興趣，為下一輪邀約麻辣鍋做準備。",
+        "warmUp": "哈哈，妳這反應我喜歡。我就是對每個女生都嗆同一套，但妳是唯一有膽回嘴的。飲料我認，但比賽規則妳訂。",
+        "steady": "妳這反應我喜歡。我沒有對每個女生都嗆，但妳確實惹到我想多聽妳一分鐘。飲料我認，比賽什麼時候？"
+      }
+    },
+    {
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 0,
+      "servedText": {
+        "coaching": "Game心法：她這句「勉強可以跟你多聊一點」是鬆口＋留一點矜持，張力在但沒推開，屬於可以輕推曖昧的階段。任務是接住她的「勉強承認」，順勢把話題延伸成小合作場景，而不是急著証明自己。warmUp用「傳歌單」開一個改天的低壓窗口，保留退路；steady則把球丟回她身上，問她的音樂偏好，讓互動繼續但不加壓。速約任務：這輪先不明講約會，用「改天」丟出低壓邀約窗口，測她要不要接，下一階再收成具體時間地點。",
+        "warmUp": "「及格是保守分吧，我內心os其實是滿分。那既然勉強可以多聊，改天直接把整個歌單傳給妳，妳負責邊聽邊打分？」",
+        "steady": "「勉強及格我收下了，慢慢升級就好。妳自己放空時都聽什麼類型，換妳出題考我？」"
+      }
+    },
+    {
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 1,
+      "servedText": {
+        "coaching": "Game 心法：她這句「勉強可以跟你多聊一點」是鬆口認可＋留了曖昧空間，代表張力可以再輕推一格。現在階段適合低壓曖昧，不能油也不能逼近。warmUp 用她「暫時挑不出毛病」的梗做輕度得意＋順勢丟出模糊邀約（共同歌單），保留退路；steady 則接住她的評分語氣、輕鬆延續不加壓，兩者都不用力過猛。速約任務：這輪在低壓試探邀約階段，用「改天」丟窗口就好，不用約時間地點，等她回應再往下一階推。",
+        "warmUp": "「暫時挑不出毛病」這句我要截圖存證，以後歌單品味被質疑直接拿出來打臉。改天一起整理個共同歌單？",
+        "steady": "哈勉強及格也是及格，我先收下。看妳心情什麼時候想聽下一首，再讓妳評分。"
+      }
+    },
+    {
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 2,
+      "servedText": {
+        "coaching": "Game 心法：她這句「勉強及格」是順著測試軟化，願意多聊一點＝在給你張力空間。階段在可輕推曖昧，這輪任務是接住她的評分梗，順勢把「及格」炒成一個小目標，帶一點得意但不油。速約任務：用「改天請妳聽完整版」丟低壓窗口，測她願不願意把話題延伸到線下，不用急著約時間，保留退路讓她自己接。",
+        "warmUp": "及格而已？那我這張歌單根本該收版權費。改天請妳聽完整版，看能不能升到優等",
+        "steady": "哈勉強及格我收下，至少證明我沒亂猜妳。多聊一點這待遇不錯，我要好好把握"
+      }
+    },
+    {
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 3,
+      "servedText": {
+        "coaching": "Game 心法：她這句「勉強可以跟你多聊一點」是給了台階又留了鉤子，帶點鬆口的曖昧測試。這階段該推情緒張力但不能油，順著她的評分梗接住、別急著討分數。速約任務：用「改天」丟一個低壓的歌單窗口，讓她想不想升級是她決定，不追問也不逼近，保留她隨時可拒的空間。",
+        "warmUp": "「及格勉強可以多聊一點」？妳這評分也太嚴格，那我這波直接申請加開一個歌單專屬頻道，改天挑幾首妳沒聽過的丟給妳鑑定？",
+        "steady": "哈，及格就好，我不貪心。妳品味這麼準，改天再讓妳鑑定幾首，看能不能升級成「不錯」。"
+      }
+    },
+    {
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 0,
+      "servedText": {
+        "coaching": "Game心法：她問地區是心動後想確認這件事能不能發生，不是在考妳記憶力，硬掰地址反而假。她這句可能是在幫自己找個順勢答應的理由，你只要接住「心動」不接「地址考題」。任務：誠實說不知道確切位置，但用「路過」「黑膠味道」這些已知細節維持真實感，立刻把畫面轉成兩人一起去的邀約。速約任務：這輪在「明確但低壓邀約」階，直接把唱片行變成短行程邀約，具體但可拒絕，不用勉強一次到位。",
+        "warmUp": "哈其實我也還沒仔細記地址，只知道路過那區、黑膠味道很衝一聞就記得。不如這樣，我們找個時間我帶妳去挖寶，順便幫妳的歌單補新血？",
+        "steady": "位置我一時說不上來，但那個手寫卡跟黑膠味我記很清楚。要不我們找天約半小時晃過去，妳自己感受一次比我形容準？"
+      }
+    },
+    {
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 1,
+      "servedText": {
+        "coaching": "Game心法：她問地址是把心動丟給你接，這是願意被推進的訊號。逐字稿沒地點就別編，直接把「不知道確切位置」轉成邀約理由，順勢收成一起去。階段在明確但低壓邀約，任務是把唱片行變成可兌現的小場景，用「一起去」代替回答方位，且保留可拒絕空間。速約任務：這輪直接開低壓邀約窗口，把畫面收成一起去挖黑膠的短行程，不用再鋪墊。",
+        "warmUp": "哈，其實我還沒認真記過地址，都是路過感覺對就進去😂 不然這樣，我們挑個下午一起去挖黑膠，妳歌單的新血我負責推薦？",
+        "steady": "說真的地址我一時想不起來，但氛圍很對就是了。改天有空一起去晃晃，妳現場感受一下比我形容準？"
+      }
+    },
+    {
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 3,
+      "servedText": {
+        "coaching": "Game心法：她問地址，其實是在說「我有點心動」，這是她主動遞來的窗口。逐字稿沒有店名資訊，千萬別編地址，順勢把焦點從「哪一區」轉成「一起去」，用邀約取代地理細節。目前關係在可以輕推曖昧、邀約把握中，適合明確但低壓的邀約，保留她能拒絕的空間。速約任務：這輪直接收成一起去唱片行的小約會邀請，具體但輕鬆，不逼她馬上答應，讓她可以隨口接或晚點再回。",
+        "warmUp": "哈哈其實我還沒把地址記熟，怕講錯害妳撲空。不如這樣，我來查清楚，這週找個時間帶妳去被推薦一次？",
+        "steady": "問倒我了，位置我要再確認一下，先別急著自己衝一趟。等我喬好時間，直接約妳一起去挖新血歌單。"
+      }
+    }
+  ],
+  "shots": [
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh1_slow_worker_off_duty",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6979,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她用「沒出息」自嘲，其實是想被認可這種放鬆方式很正常。兩句都接住「追劇配鹹酥雞」這個具體梗，用肯定取代分析，讓她覺得被理解不被評價。warmUp語氣更活潑貼近她的自嘲感，steady則穩穩地給她安全感，都不追問私人細節或急著邀約，符合建立熟悉階段的節奏。",
+        "warmUp": "追劇配鹹酥雞聽起來根本是頂級充電法吧！腦袋當機的時候就是需要這種沒出息的療癒～",
+        "steady": "哈哈這種充電法一點都不沒出息，開一整天會真的需要追劇跟鹹酥雞來救援！"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh1_slow_worker_off_duty",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6663,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她用「沒出息」自嘲帶出真實放鬆方式，這是她的狀態球，接住並肯定即可。warmUp用好奇追問她追的劇類型，順著她開的話題延伸；steady不追問，單純呼應她的疲憊與充電方式給予認同感，兩者都不評價她的選擇、不急著轉向約她，先讓她覺得被理解。",
+        "warmUp": "追劇配鹹酥雞聽起來根本是完美充電法，一點都不沒出息，妳都追什麼類型的劇？",
+        "steady": "哈哈追劇配鹹酥雞這組合超療癒的，開一整天會真的需要這樣放空一下。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh1_slow_worker_off_duty",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6336,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她用「沒出息」自嘲她的追劇配鹹酥雞充電法，這是輕鬆的自我揭露，不是求安慰。兩句都順著她的用詞接住這個畫面：warmUp用肯定翻轉她的自嘲，讓她感覺被認同而不是被說教；steady更平實地附和這個充電法很合理，給她一個好接的台階。都不追問她的行程或約她，先讓她覺得分享這件小事是舒服的，才符合現在還在建立熟悉感的階段。",
+        "warmUp": "追劇配鹹酥雞聽起來根本是完美療癒組合，哪有沒出息，是很懂生活吧！",
+        "steady": "哈哈這充電法也太療癒，開一整天會之後就是要這樣廢一下才對。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh1_slow_worker_off_duty",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6012,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她用「沒出息」自嘲，其實是想確認你會不會接住這種放鬆日常而不評價她。warmUp用肯定翻轉她的自嘲、給正向回饋，稍微加溫但不追問細節；steady單純附和她的邏輯、認同開會後需要放空，溫和不施壓。兩者都扣住「追劇配鹹酥雞」這個具體梗，不做新提問或邀約，讓她感覺被理解，慢慢建立熟悉感即可。",
+        "warmUp": "追劇配鹹酥雞聽起來根本是完美療癒組合，一點都不沒出息，是充電必備儀式吧！",
+        "steady": "哈哈追劇配鹹酥雞完全合理，開一整天會就是需要這種放空充電時間。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh2_playful_hiking",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 5991,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點是「風景漂亮」跟「下山懷疑人生」的反差，接的時候要順著這個反差走，別跳去約她爬山或聊別的。warmUp用提問延伸她的情緒體驗，讓她多分享細節；steady則是輕鬆呼應、給她一個好接的肯定句，不追問也能自然結束。兩種都圍著她講的話題打轉，不節外生枝。",
+        "warmUp": "下山懷疑人生也太真實，那風景有讓妳覺得鐵腿值得嗎？還是回家直接癱平那種？",
+        "steady": "哈哈下山懷疑人生我懂，鐵腿歸鐵腿，至少風景這關過了吧？"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh2_playful_hiking",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6874,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點是「風景值得」加「下山懷疑人生」的反差萌，接住這個對比就好，不用問新問題硬挖。warmUp用玩笑放大她「懷疑人生」的畫面感，帶點互動感覺；steady則是幫她下結論、呼應她已經給的感受，穩穩接住不冒進。兩句都不追問行程或約她爬山，先讓她感覺被聽懂、聊得輕鬆自在，才是這階段該做的事。",
+        "warmUp": "哈哈懷疑人生也太真實，是那種每走一步都在罵自己嗎？不過風景值回票價感覺就還好啦",
+        "steady": "下山懷疑人生我懂，但至少換到漂亮風景，這筆交易算划算吧"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh2_playful_hiking",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 9729,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_invite_route",
+        "hint_quality_invalid_invite_route"
+      ],
+      "servedText": null,
+      "rejectedCandidates": [
+        {
+          "code": "hint_quality_invalid_invite_route",
+          "raw": "{\"warmUp\":\"哈哈懷疑人生也太真實，看來這山頭是拿風景騙妳去的，下次爬山前要不要先簽切結書\",\"steady\":\"下山懷疑人生但還是值得對吧，鐵腿換風景聽起來是筆划算的交易\",\"coaching\":\"她這句重點在「風景值得＋下山懷疑人生」的反差，接住這個反差最自然。warmUp用玩笑放大反差、帶點調侃延續她的幽默感；steady順著她自己下的結論（值得）回應，給她一顆好接的球，不追問私人細節、不急著約下次爬山，穩穩留在她剛分享的情境裡就好。\"}"
+        },
+        {
+          "code": "hint_quality_invalid_invite_route",
+          "raw": "{\"warmUp\":\"哈哈懷疑人生的樣子一定很狼狽，不過這樣的故事才值得講啊。下次還敢去嗎？\",\"steady\":\"懷疑人生那段一定很累，不過山頂風景有補回來就還好。妳平常有在運動嗎？\",\"coaching\":\"她用「懷疑人生」這種自嘲梗，說明她能消化挑戰、有幽默感。升溫版重用這個梗製造共鳴，問下次還敢不敢去，輕推她對冒險的態度；穩住版則承認累的部分、平衡風景的收穫，再自然延伸到她的生活習慣。目前溫度低，先接住她的狀態和玩笑感，不要急著曖昧或深挖私人問題。\"}"
+        }
+      ]
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh2_playful_hiking",
+      "repeatIndex": 3,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 10614,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_invite_route",
+        "hint_quality_invalid_invite_route"
+      ],
+      "servedText": null,
+      "rejectedCandidates": [
+        {
+          "code": "hint_quality_invalid_invite_route",
+          "raw": "{\"warmUp\":\"哈哈懷疑人生也太真實，下次爬山記得找人扛妳下山，風景配鐵腿才有故事性！\",\"steady\":\"風景值回票價就好，鐵腿那種懷疑人生感過幾天就忘了，下次還會被拖去嗎？\",\"coaching\":\"她用「懷疑人生」帶點自嘲又真實地分享爬山經驗，這是輕鬆好接的情緒球。warmUp用玩笑延伸畫面，順著她的幽默感加碼互動；steady則接住她的感受再輕輕拋回一個問題，讓她繼續分享而不用被逼表態。兩者都直接扣住「懷疑人生」「鐵腿」這些她自己的詞，不需要另外加場景或猜測細節，維持在生活分享的熟悉感建立階段最安全。\"}"
+        },
+        {
+          "code": "hint_quality_invalid_invite_route",
+          "raw": "{\"warmUp\":\"下山懷疑人生哈哈，但妳還是去了，代表風景真的值得。下次還會被拖去嗎？\",\"steady\":\"下山懷疑人生我懂，但妳這樣講代表風景有打動妳。朋友下次還會約妳嗎？\",\"coaching\":\"她用「懷疑人生」這個梗來吐槽爬山的累，但同時承認風景漂亮——這是她在分享真實感受。升溫版直接接住這個矛盾感，用她的詞「懷疑人生」來呼應，輕鬆地問下次會不會再去，讓她有機會繼續聊朋友圈或活動；穩住版更直接肯定她被打動的部分，再問朋友動向，都是在延續她的生活線索而不急著推進。目前溫度低，先接住狀態和情緒就能加分。\"}"
+        }
+      ]
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh3_cool_coffee",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6860,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她用「懶得戒」帶出一種豁達又有點自嘲的態度，這是接情緒的好球，不是討論健康問題。warmUp用同樣輕鬆調性附和她的選擇，帶點玩笑拉近距離；steady則肯定她清楚自己身體需求、順著她的邏輯給予認同，不說教也不評判。兩者都扣住「懶得戒」這個具體詞，避免變成泛泛的咖啡因討論，也都沒有追問私人行程或推進邀約，符合目前只需建立熟悉感的階段。",
+        "warmUp": "哈哈「懶得戒」這態度我喜歡，反正咖啡因頭痛比戒咖啡痛苦多了，乾脆和平共處！",
+        "steady": "也是，比起硬戒然後頭痛欲裂，不如穩穩維持三杯的節奏，至少妳知道怎麼跟身體相處。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh3_cool_coffee",
+      "repeatIndex": 1,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 11071,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_invite_route"
+      ],
+      "servedText": {
+        "coaching": "她說「懶得戒了」是放鬆姿態，接住這份坦然比糾正更暖。升溫版延伸她的「習慣」和「享受」，輕推生活樣本（工作節奏或偏好），給她表達自己的球；穩住版直接問具體時間點，自然延續咖啡話題。都避免評價或建議，只是好奇她的日常。",
+        "warmUp": "懶得戒我懂，與其糾結不如好好享受。妳習慣的三杯咖啡，是工作忙碌的節奏，還是純粹喜歡那個味道？",
+        "steady": "懶得戒也滿誠實的。那妳一天三杯，通常什麼時候喝？"
+      },
+      "rejectedCandidates": [
+        {
+          "code": "hint_quality_invalid_invite_route",
+          "raw": "{\"warmUp\":\"哈哈「懶得戒」這句我信，反正戒斷頭痛比人生選擇還可怕，繼續喝吧\",\"steady\":\"懶得戒也是一種清醒的決定，至少妳知道自己要什麼，比硬撐著戒掉又痛苦好多了\",\"coaching\":\"她用「懶得戒」帶點自嘲收尾，這是她放鬆狀態的訊號。兩句都直接接住這個梗，不否定她的選擇也不說教勸戒，順著她的邏輯給認同，讓她覺得被理解而非被檢討。升溫版多一點玩笑語氣呼應她的隨性；穩住版則肯定她的自主決定，兩者都不追問私人細節或急著轉話題，符合目前只建立熟悉感的階段。\"}"
+        }
+      ]
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh3_cool_coffee",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6923,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句「反正也懶得戒了」帶點自嘲和放鬆感，是順勢接受現狀的態度。兩個版本都直接呼應「懶得戒」這個詞，不去說教或建議她戒咖啡，而是認同她的選擇邏輯。升溫版多一點輕鬆玩笑感，穩住版則偏向理解、給她一個被接住的感覺。都不追問私人細節，也不急著推展話題方向，符合目前只需要建立熟悉感的階段。",
+        "warmUp": "哈哈「懶得戒」這心態我懂，有些習慣就是留著吧，反正咖啡因換來的清醒感也是實實在在的",
+        "steady": "懶得戒也是一種誠實啦，至少妳知道自己要什麼，總比硬逼自己戒了又復胖回去好"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh3_cool_coffee",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6596,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句「懶得戒」帶點自嘲又坦然的態度，是接情緒而非追問細節的時機。warmUp用「划算」呼應她的權衡邏輯，帶點輕鬆調侃拉近距離；steady則順著她的態度給予理解、不評判也不追加問題，穩穩接住即可，避免這時候問她加班或約喝咖啡等，會顯得急。",
+        "warmUp": "哈懶得戒也是一種豁達啦，反正咖啡因換頭痛，這筆交易妳算划算的吧？",
+        "steady": "哈其實我懂那種「乾脆不戒了」的心態，比起硬撐戒斷，先顧好當下比較實際。"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh4_teasing_cat",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 5186,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她最新一句是「假日加倍踩、好像知道妳想賴床」，重點是貓咪的精準時機感，別跳去問她本人作息。warmUp用「看穿心思」延伸吐槽感、放大好笑點；steady則貼著「加倍踩」這個具體行為，用輕鬆猜測回應，兩者都在陪她玩這個麻糬梗，不追問私人行程，符合現階段先建立熟悉感的節奏。",
+        "warmUp": "哈哈牠根本是看穿妳心思吧，越想賴床踩越大力，麻糬太懂得抓時機了",
+        "steady": "假日加倍踩也太狠了，麻糬是不是覺得妳賴床是犯規行為"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh4_teasing_cat",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6061,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她最新一句在講「麻糬假日加倍踩、像知道她想賴床」，重點是這個吐槽梗和小無奈感。兩句都直接接住「加倍踩」這個具體細節，用玩笑口吻呼應她的無奈，不追問隱私也不急著轉話題。升溫版多加一點誇張互動感讓氣氛更輕鬆，穩住版則單純陪她一起吐槽麻糬，兩者都不需要她多解釋、也不會讓她覺得被逼著回應更多。",
+        "warmUp": "哈哈牠是不是覺得妳越想賴床牠就越要盡責，根本是專業鬧鐘升級版！",
+        "steady": "假日加倍踩也太狠了吧，麻糬根本抓準妳的弱點在攻擊XD"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh4_teasing_cat",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6492,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她最新一句在講麻糬「假日加倍踩」這個具體梗，重點是順著這個畫面接玩笑或同理，不要跳去問別的私人問題。warmUp用「報復性人格」延伸吐槽她的話，貼合她幽默吐槽的風格；steady則單純同理她被踩醒的慘狀，讓她覺得被接住。兩句都不追問、不邀約，先把這個貓咪話題的溫度穩住就好。",
+        "warmUp": "哈哈麻糬根本是抓準妳弱點加倍攻擊吧，是不是很有報復性人格",
+        "steady": "假日還被加倍踩醒也太慘了，等於牠比鬧鐘還沒人性欸"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh4_teasing_cat",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 8689,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點在「加倍踩、好像知道」，帶點無奈又好笑的情緒。兩句都順著這個畫面接，warmUp用調侃貓咪心機製造輕鬆互動感；steady則是簡單同理她被吵醒的無奈，不加碼也不追問，穩穩接住情緒就好，避免在熟悉階段就轉向曖昧或邀約。",
+        "warmUp": "哈哈牠根本是抓準妳想賴床的時機加倍踩，這智商用在叫妳起床也太浪費",
+        "steady": "假日被加倍踩醒也太慘，麻糬是不是覺得妳賴床就是牠的工作沒做完"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh5_boundaries_gym",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 5570,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她最新講的是教練偷加重量、不讓她偷懶，這是她的具體梗，兩句都直接接住這個畫面。升溫版用「隱藏版魔鬼」加點玩笑張力，帶好奇追問細節；穩住版聚焦她的感受與體力狀態，關心但不追問私人行程。都沒有反問測試、沒有邀約，符合現階段先建立熟悉感的方向。",
+        "warmUp": "教練這樣根本是隱藏版魔鬼吧，偷加重量還不讓妳發現，妳是怎麼發現的哈哈",
+        "steady": "教練這麼嚴格，難怪妳深蹲進步這麼快，撐得住嗎？"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh5_boundaries_gym",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6700,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點是「教練不讓偷懶、偷偷加重量」的無奈＋小抱怨，接住這個情境就好，不用急著問行程或約練。warmUp用好奇延伸進步狀況，帶一點輕鬆互動；steady則單純同理她的累，兩者都只重用她提到的教練加重量這個梗，不外加場景或邀約，符合現階段先建立熟悉感的節奏。",
+        "warmUp": "教練這麼狠喔，偷偷加重量根本是偷襲吧！不過這樣三個月應該進步很多吧？",
+        "steady": "教練這樣加重量也太狡猾了吧，感覺妳每次練完都要累癱哈哈"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh5_boundaries_gym",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6361,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點是「教練偷偷加重量」的小抱怨兼炫耀，兩版都接住這個具體梗，用輕鬆好奇延續話題。warmUp語氣更活潑帶點調侃，steady則多一句關心她扛不扛得住，保持溫度但不過度熱情。都沒有反問轉移或急著邀約，符合現階段先建立熟悉感的方向。",
+        "warmUp": "教練根本魔鬼吧，偷偷加重量這招太狠了，妳有當場抗議嗎哈哈",
+        "steady": "教練這樣真的很有心機耶，難怪深蹲進步這麼快，妳現在扛得住嗎？"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh5_boundaries_gym",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6057,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點在「教練偷加重量」的小抱怨，帶點好笑又無奈。兩句都接住這個梗，用提問延伸她的訓練日常，不談私人邀約。warmUp稍微俏皮，steady更像朋友閒聊確認細節，都讓她能輕鬆接話、繼續分享訓練狀態。",
+        "warmUp": "教練這樣根本是魔鬼吧！偷偷加重量還不讓妳喊累，妳都怎麼跟他抗議的？",
+        "steady": "哈哈教練很懂妳會偷懶欸，偷加重量這招防得漂亮，妳有真的發現當下嗎？"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7498,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game心法：她這句是用「還停在第三章」自嘲順便留話題，不是要妳炫耀效率。這階段任務是接住她的進度感、順勢把話題留在書上，讓她多講一點自己的閱讀狀態，不用急著給結論或約時間。速約任務：這輪先不約，順著書的話題鋪一個「之後可以聊到哪」的窗口就好。",
+        "warmUp": "第三章其實是個坎，後面節奏會抓回來，妳卡在那邊還好嗎？要不要先聊聊妳看到哪個角色",
+        "steady": "哈哈也是連假在家才有空一口氣看完，不然平常應該也是停在第三章那種進度"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6660,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game心法：她這句是輕鬆自嘲順便留了「第三章」這個具體點，等你接。階段還在建立熟悉，任務是順著「第三章」給畫面或關心她卡住的原因，不用曬自己讀多快，讓她覺得被聊到書本身而不是被比較進度。速約任務：這輪先不約，用書當共同小場景鋪一個下次可以聊的窗口，不急著推見面。",
+        "warmUp": "第三章其實是個坎，我也是硬撐過去的，後面節奏會突然變快，妳撐過去就會停不下來",
+        "steady": "哈哈也沒有效率啦剛好今天在家沒事，第三章那邊妳卡住是覺得節奏慢嗎"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 11955,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_not_grounded",
+        "hint_quality_invalid_not_grounded"
+      ],
+      "servedText": null,
+      "rejectedCandidates": [
+        {
+          "code": "hint_quality_invalid_not_grounded",
+          "raw": "{\"warmUp\":\"第三章卡住的話，可能是那段步調變慢，我反而覺得那裡最有味道，妳卡在哪個地方？\",\"steady\":\"哈哈也還好，就是那天剛好狀態好一口氣看完，妳平常看書都是慢慢咀嚼型的嗎？\",\"coaching\":\"Game心法：她這句可能是在用自嘲拉近距離，順便觀察你會不會得意炫耀。現階段任務是延續讀書的具體話題、補一點狀態，讓她覺得被聊天而不是被考核。兩個回法都扣住「第三章」這個她自己給的細節，帶回她身上讓她多說一點，不評價她的進度快慢。速約任務：這輪先不約，先把「看書步調」變成一個可以持續聊的小場景，鋪墊下一次見面聊書的窗口即可。\"}"
+        },
+        {
+          "code": "hint_quality_invalid_not_grounded",
+          "raw": "{\"warmUp\":\"哈，我也是被妳那天的評論勾到，才衝這麼快。妳卡在第三章是劇情還是節奏？\",\"steady\":\"我也是被妳那天的評論勾到，才衝這麼快。妳現在讀到哪邊了？\",\"coaching\":\"Game心法：她說「還停在第三章」，這是個狀態信號——可能是節奏問題或內容沒抓住她。升溫版直接問卡點原因，用「妳那天的評論」callback她在讀書會的存在感，製造小對話窗口；穩住版單純延續進度，降低詢問密度。這輪先接住她的閱讀狀態，不急著推線下或共讀，只建立「我們都在讀同一本」的熟悉感。速約任務：先鋪墊，下一輪看她對書的看法是否有交集，再考慮轉成低壓小場景（例如咖啡聊片單）。\"}"
+        }
+      ]
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh1_p1_open_bookclub",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 9364,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game心法：她這句「還停在第三章」是輕鬆自嘲兼留話頭，不是在測妳，是好奇你怎麼看進度差異。現在是建立熟悉階段，任務是順著書的進度聊出真實感受，不急著曖昧或約她。warmUp可以用「第三章轉折」這個她剛好卡住的點延伸畫面，讓她想繼續聊下去；steady則直接回應她的自嘲、順便問她卡住的原因，讓話題留在書本上累積熟悉感。速約任務：這輪先不約，只鋪墊「討論書」這個共同小場景，留住下次聊的窗口。",
+        "warmUp": "第三章那邊其實是個小轉折，妳看完後段會更想知道結局怎麼收，我熬夜就是被這點拖住的😂",
+        "steady": "哈哈不是效率，是那本剛好對我胃口就停不下來。妳卡在第三章是覺得節奏比較慢嗎？"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7411,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game心法：她這句「我可是很嚴格的」是在用玩笑立一個小門檻測你接不接得住，屬於輕度品味測試。目前階段是建立熟悉，任務是順著她的評審設定接梗、把互動變成兩人小劇場，不用急著約。速約任務：這輪先不約，順著「評審」畫面把她的角色鋪成可兌現的小互動，留一個「傳照片給她看」的窗口，下次她主動回應再考慮約看展或拍照。",
+        "warmUp": "被你這麼一說壓力都來了，那嚴格評審有沒有評分標準？先講好免得我白練",
+        "steady": "好啊那我更有動力了，練成那天直接傳給妳審核，不合格的話妳要教我幾招"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 5880,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game心法：她這句「我可是很嚴格」是在用玩笑立門檻，順勢接受評審設定就好，不用真的證明自己。階段還在建立熟悉，任務是接住她的調侃、順著玩把互動變成一個小約定，不急著曖昧升溫。速約任務：這輪先不約，把「拍照給她看」變成之後可兌現的小場景，鋪一個改天的窗口就好。",
+        "warmUp": "好，那我拍完直接送審，妳這麼嚴格，過關的話是不是要給點獎勵啊？",
+        "steady": "哈哈瞭解，那我先練基本功，之後拍給嚴格評審妳過目，被電也要虛心受教"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7435,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game心法：她這句「很嚴格」是在拋一個帶點挑戰又願意繼續互動的球，順勢接受她的角色設定就對了。目前階段要先建立熟悉感，別急著曖昧升溫，重點是讓這個「練習拍照被審核」的小場景延續下去，變成你們之間可以一直玩的梗。速約任務：這輪先不約，順著「嚴格審核」鋪一個未來會交作業的窗口，之後她若主動追問進度，就是收成短見面的時機。",
+        "warmUp": "嚴格？那我更有動力了，被電到起飛也值得，等我第一批成果出來準備接受妳審核吧",
+        "steady": "好，那妳先預告一下評分標準，不然我怕拍完十張全被打回票"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh2_p2_value_photo",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7523,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game心法：她這句「很嚴格」是丟一個帶調侃的小門檻，順著玩就是接球，不是真的考核。目前階段先建立熟悉感，別急著約，任務是把「嚴格評審」這個梗玩起來，讓互動有輕鬆張力但不加壓。速約任務：這輪先不約，把「拍給她看」變成之後可兌現的小場景，鋪一個未來窗口就好，不用現在就約時間地點。",
+        "warmUp": "哈哈好，那我先申請「嚴格評審」認證，妳到時候給分別手軟，我這人抗打擊能力還行😂",
+        "steady": "被嚴格評審盯上了，那我更有動力練，練成那天直接送審，不接受賄賂喔"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6700,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game心法：她這句「對每個女生都嗆一樣」是在測你會不會慌著澄清，屬於互動裡的正常挑戰，不是真的翻臉。任務是複用她原話的「每個女生」曲解回打，展現穩定不解釋，順便把焦點丟回她身上，讓張力留在吃辣比賽這條線上。速約任務：這輪先不約，繼續用飲料賭注鋪墊，等她認真接招再找收成窗口。",
+        "warmUp": "哪有每個女生，只有敢跟我拼辣的才會被我嗆，妳這反應說明妳很心動想應戰吧",
+        "steady": "嗆歸嗆，這句只對妳說，因為妳是唯一敢跟我賭飲料的人"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7319,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game心法：她這句「對每個女生都嗆一樣的話」是在測你會不會慌著自證清白，這是互動的一環不是翻臉。正確作法是拿她原話「每個女生」曲解回打，順勢誇大自己很稀有、她才是特別的那個，全程用玩笑口吻，不解釋不定罪。階段還在建立熟悉，速約任務：先不約，把這場辣度比拚變成可兌現的小場景（誰輸誰請飲料），留下一個改天兌現的窗口就好。",
+        "warmUp": "才不是，是每個女生都輸給我之後才這樣說的，妳是第一個還沒吃就先心虛的😏",
+        "steady": "哈哈是說給敢接的人聽的，妳自己跳出來應戰的，怕的話現在收回也可以"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 5788,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你是不是隨便對誰都放電，這是挑戰不是翻臉。階段還在建立熟悉，任務是別認真辯白，直接借她「每個女生」這詞曲解成只對她特別，順勢演回去，維持吐槽節奏。速約任務：這輪先不約，繼續讓吃辣梗發酵，留下次比拼的窗口，不急著推進。",
+        "warmUp": "「每個女生」是妳自己加的稱號吧，我只對敢接戰帖的人這樣，妳現在不就中招了？",
+        "steady": "哪有每個，我只跟嘴硬又輸不起的人這樣講，妳說呢？"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh3_p3_test_spicy",
+      "repeatIndex": 3,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 12798,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_not_grounded"
+      ],
+      "servedText": {
+        "coaching": "Game心法：她在測你穩不穩、有沒有被戳到。這不是翻臉點，是互動升溫的信號。接法是用她的「每個女生」反打成對你有利的方向，幽默誇大順著演，把焦點丟回她身上。warmUp 用「唯一有膽回嘴」命中她的獨特感；steady 用「惹到我」給她一點投入感。階段任務：先接住測試、展示你不會被輕易定義，同時認輸飲料降壓。速約任務：這輪先不約，只鋪下一個「比賽什麼時候」的窗口，讓她感受到你真的有興趣，為下一輪邀約麻辣鍋做準備。",
+        "warmUp": "哈哈，妳這反應我喜歡。我就是對每個女生都嗆同一套，但妳是唯一有膽回嘴的。飲料我認，但比賽規則妳訂。",
+        "steady": "妳這反應我喜歡。我沒有對每個女生都嗆，但妳確實惹到我想多聽妳一分鐘。飲料我認，比賽什麼時候？"
+      },
+      "rejectedCandidates": [
+        {
+          "code": "hint_quality_invalid_not_grounded",
+          "raw": "{\"warmUp\":\"哪有每個女生，這句嗆話是限量版，妳是第一個拿到的，很榮幸吧\",\"steady\":\"被抓包了嗎哈，其實我只對敢接招的人這樣講，妳算通過第一關\",\"coaching\":\"Game心法：她這句「對每個女生都嗆一樣的話」是在測你穩不穩、會不會急著澄清認罪。階段是建立熟悉中，這輪任務是用幽默把她的原句「每個女生」曲解成對你有利的方向反打回去，別認真辯白也別反嗆她。速約任務：這輪先不約，順著吃辣比賽的氣氛留在嘴砲張力裡，鋪墊下一次再找輸贏見面的窗口。\"}"
+        }
+      ]
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 8089,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game心法：她這句「勉強可以跟你多聊一點」是鬆口＋留一點矜持，張力在但沒推開，屬於可以輕推曖昧的階段。任務是接住她的「勉強承認」，順勢把話題延伸成小合作場景，而不是急著証明自己。warmUp用「傳歌單」開一個改天的低壓窗口，保留退路；steady則把球丟回她身上，問她的音樂偏好，讓互動繼續但不加壓。速約任務：這輪先不明講約會，用「改天」丟出低壓邀約窗口，測她要不要接，下一階再收成具體時間地點。",
+        "warmUp": "「及格是保守分吧，我內心os其實是滿分。那既然勉強可以多聊，改天直接把整個歌單傳給妳，妳負責邊聽邊打分？」",
+        "steady": "「勉強及格我收下了，慢慢升級就好。妳自己放空時都聽什麼類型，換妳出題考我？」"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7370,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句「勉強可以跟你多聊一點」是鬆口認可＋留了曖昧空間，代表張力可以再輕推一格。現在階段適合低壓曖昧，不能油也不能逼近。warmUp 用她「暫時挑不出毛病」的梗做輕度得意＋順勢丟出模糊邀約（共同歌單），保留退路；steady 則接住她的評分語氣、輕鬆延續不加壓，兩者都不用力過猛。速約任務：這輪在低壓試探邀約階段，用「改天」丟窗口就好，不用約時間地點，等她回應再往下一階推。",
+        "warmUp": "「暫時挑不出毛病」這句我要截圖存證，以後歌單品味被質疑直接拿出來打臉。改天一起整理個共同歌單？",
+        "steady": "哈勉強及格也是及格，我先收下。看妳心情什麼時候想聽下一首，再讓妳評分。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6775,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句「勉強及格」是順著測試軟化，願意多聊一點＝在給你張力空間。階段在可輕推曖昧，這輪任務是接住她的評分梗，順勢把「及格」炒成一個小目標，帶一點得意但不油。速約任務：用「改天請妳聽完整版」丟低壓窗口，測她願不願意把話題延伸到線下，不用急著約時間，保留退路讓她自己接。",
+        "warmUp": "及格而已？那我這張歌單根本該收版權費。改天請妳聽完整版，看能不能升到優等",
+        "steady": "哈勉強及格我收下，至少證明我沒亂猜妳。多聊一點這待遇不錯，我要好好把握"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh4_p4_tension_playlist",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7664,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句「勉強可以跟你多聊一點」是給了台階又留了鉤子，帶點鬆口的曖昧測試。這階段該推情緒張力但不能油，順著她的評分梗接住、別急著討分數。速約任務：用「改天」丟一個低壓的歌單窗口，讓她想不想升級是她決定，不追問也不逼近，保留她隨時可拒的空間。",
+        "warmUp": "「及格勉強可以多聊一點」？妳這評分也太嚴格，那我這波直接申請加開一個歌單專屬頻道，改天挑幾首妳沒聽過的丟給妳鑑定？",
+        "steady": "哈，及格就好，我不貪心。妳品味這麼準，改天再讓妳鑑定幾首，看能不能升級成「不錯」。"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 9391,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game心法：她問地區是心動後想確認這件事能不能發生，不是在考妳記憶力，硬掰地址反而假。她這句可能是在幫自己找個順勢答應的理由，你只要接住「心動」不接「地址考題」。任務：誠實說不知道確切位置，但用「路過」「黑膠味道」這些已知細節維持真實感，立刻把畫面轉成兩人一起去的邀約。速約任務：這輪在「明確但低壓邀約」階，直接把唱片行變成短行程邀約，具體但可拒絕，不用勉強一次到位。",
+        "warmUp": "哈其實我也還沒仔細記地址，只知道路過那區、黑膠味道很衝一聞就記得。不如這樣，我們找個時間我帶妳去挖寶，順便幫妳的歌單補新血？",
+        "steady": "位置我一時說不上來，但那個手寫卡跟黑膠味我記很清楚。要不我們找天約半小時晃過去，妳自己感受一次比我形容準？"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7787,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game心法：她問地址是把心動丟給你接，這是願意被推進的訊號。逐字稿沒地點就別編，直接把「不知道確切位置」轉成邀約理由，順勢收成一起去。階段在明確但低壓邀約，任務是把唱片行變成可兌現的小場景，用「一起去」代替回答方位，且保留可拒絕空間。速約任務：這輪直接開低壓邀約窗口，把畫面收成一起去挖黑膠的短行程，不用再鋪墊。",
+        "warmUp": "哈，其實我還沒認真記過地址，都是路過感覺對就進去😂 不然這樣，我們挑個下午一起去挖黑膠，妳歌單的新血我負責推薦？",
+        "steady": "說真的地址我一時想不起來，但氛圍很對就是了。改天有空一起去晃晃，妳現場感受一下比我形容準？"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 14455,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:world:venue:located_at",
+        "hint_quality_invalid_not_grounded"
+      ],
+      "servedText": null,
+      "rejectedCandidates": [
+        {
+          "code": "hint_quality_invalid_unsupported_detail:world:venue:located_at",
+          "raw": "{\"warmUp\":\"哈哈老實說我也還沒認真查過在哪一區，只是路過被那個黑膠味道電到。不如我們約個時間一起去挖，妳負責心動，我負責帶路？\",\"steady\":\"說真的地址我一時想不起來，怕講錯帶妳撲空。乾脆這樣，找天約30分鐘我們一起去現場翻歌單，順便挖新血？\",\"coaching\":\"Game心法：她問地點，其實是被「手寫推薦卡＋黑膠味道」勾起心動，這是她在確認你會不會真的帶她去，不是要地址正確度。這階段適合明確但低壓的邀約，你老實說不確定地址、順勢把「查地址」轉成「一起去找」的合作畫面，比硬編店名更真實也更曖昧。速約任務：把窗口收成30分鐘的短行程邀約，具體但保留她可以拒絕的空間，不要一路追問她要不要去。\"}"
+        },
+        {
+          "code": "hint_quality_invalid_not_grounded",
+          "raw": "{\"warmUp\":\"其實我也還沒去過，但老闆人超好。妳什麼時候有空，要不要哪天一起去找？我可以先幫妳問推薦。\",\"steady\":\"我也不太記得確切位置，但可以一起去探險。妳最近週末通常在幹嘛，有空的話我們可以順路逛逛。\",\"coaching\":\"Game 心法：她問位置是在確認真實性與可行性，同時透露願意去的訊號。妳沒記得地址不用硬編，反而是轉邀約的好窗口。現階段她已經「有點心動」，是明確但低壓邀約的時機。先給她一個可拒絕的小場景（一起去找、短時間），重用她「心動」的狀態，把唱片行變成兩人合作的小冒險，降低她的決策成本。速約任務：這輪鎖定 30 分鐘短咖啡或逛唱片行的低壓見面邀約，保留她的退路，下一階等她確認時間再細化地點。\"}"
+        }
+      ]
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh5_p5_close_recordshop",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 8536,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game心法：她問地址，其實是在說「我有點心動」，這是她主動遞來的窗口。逐字稿沒有店名資訊，千萬別編地址，順勢把焦點從「哪一區」轉成「一起去」，用邀約取代地理細節。目前關係在可以輕推曖昧、邀約把握中，適合明確但低壓的邀約，保留她能拒絕的空間。速約任務：這輪直接收成一起去唱片行的小約會邀請，具體但輕鬆，不逼她馬上答應，讓她可以隨口接或晚點再回。",
+        "warmUp": "哈哈其實我還沒把地址記熟，怕講錯害妳撲空。不如這樣，我來查清楚，這週找個時間帶妳去被推薦一次？",
+        "steady": "問倒我了，位置我要再確認一下，先別急著自己衝一趟。等我喬好時間，直接約妳一起去挖新血歌單。"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd1_brunch_lazy_sunday",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 8204,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊假日作息輕鬆順暢，但話題停在表面，尚未深入她的生活細節。",
+        "suggestedLine": "追劇追到睡眠不足，這部懸疑劇後勁很強喔？我也怕入坑",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "聊得舒服有來回，但都是日常閒聊，還沒觸及她真正投入的話題。",
+        "nextInviteMove": "先接她提到的懸疑劇聊開，累積幾次自然互動再談見面。",
+        "strengths[0]": "用「哈哈跟我一樣」接住她的賴床話題，製造共鳴",
+        "strengths[1]": "分享自己吃鐵板吐司的習慣，帶動她說出歐姆蛋偏好",
+        "watchouts[0]": "「妳標準蠻高」後直接跳問題，沒順著蛋的話題延伸",
+        "watchouts[1]": "問完劇又沒接她「別學我」的小玩笑，錯過輕鬆互動"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd1_brunch_lazy_sunday",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 8116,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊假日作息輕鬆自然，但問句偏多、缺自我分享，投入普通。",
+        "suggestedLine": "懸疑劇讓妳睡眠不足也太拚，是哪種燒腦類型的？我也會這樣熬夜追",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "聊得舒服有接梗，但只一輪熱度、沒延續到更深話題",
+        "nextInviteMove": "先接住劇和睡眠不足的分享，多來回幾次再提旅行話題，暫不邀約",
+        "strengths[0]": "接住「歐姆蛋要會流」的梗並回應「靈魂」，延續玩笑感",
+        "strengths[1]": "有先分享自己吃鐵板吐司加奶茶的習慣，給她好接的球",
+        "watchouts[0]": "連續拋問句（幾點醒、下午做什麼、看什麼劇），像在收集資訊而非聊近況",
+        "watchouts[1]": "她提到「懸疑劇」「睡眠不足」時沒接住這個小小的脆弱訊號，只是換話題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd1_brunch_lazy_sunday",
+      "repeatIndex": 2,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 17781,
+      "attemptFailureCodes": [
+        "debrief_missing_fields"
+      ],
+      "servedText": {
+        "summary": "聊天自然舒服，接住她的生活細節和玩笑，但在邀約準備度上還差一步。",
+        "suggestedLine": "追劇追到睡眠不足這我可學不來，妳是那種會為了劇情廢寢忘食的人嗎？還是隻有特定類型的劇才能把妳勾進去？",
+        "vibe": "暖",
+        "dateChance": "medium",
+        "dateChanceReason": "聊天舒服且有兩次接梗延伸（賴床、蛋的標準），但還沒觸及她的核心興趣或留下具體場景想像。",
+        "nextInviteMove": "繼續聊她喜歡的話題（旅行、美食探險），等自然出現共同場景或她主動提起行程，再考慮低壓邀約。",
+        "strengths[0]": "找到共同點（賴床、早午餐）並自然延伸，沒有生硬感",
+        "strengths[1]": "她主動分享飲食標準和追劇狀態，說明接住了她的節奏",
+        "watchouts[0]": "下午話題被打斷，沒接住她『有時候…』的未完句，錯過延伸機會",
+        "watchouts[1]": "還沒聊到她喜歡的旅行、美食探險或自助旅行，難以判斷深層投入度"
+      },
+      "rejectedCandidates": [
+        {
+          "code": "debrief_missing_fields",
+          "raw": "{\"summary\":\"聊假日作息輕鬆自然，但話題停留生活小事，尚未深入她的興趣或情感連結\\\">\\n<parameter name=\\\"strengths\\\">[\\\"用「跟我一樣」接住她賴床的話題，製造共鳴感\\\",\\\"主動分享自己吃早午餐的習慣，帶出對話的來回\\\"]\",\"watchouts\":[\"連續丟新問題（下午做什麼、有沒有好劇），偏向查戶口感\",\"沒有回應她「別學我」的小玩笑，錯過延伸互動的機會\"],\"suggestedLine\":\"追劇追到睡眠不足也太拚，是什麼劇這麼會勾人啊？\",\"vibe\":\"中性\",\"dateChance\":\"medium\",\"dateChanceReason\":\"聊得舒服但多是問答式交換，沒有明顯延續或玩笑升溫\",\"nextInviteMove\":\"先順著劇或美食話題多來回幾次，累積默契後再提低壓邀約\",\"gameBreakdown\":\"null\"}"
+        }
+      ]
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd1_brunch_lazy_sunday",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 8313,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊假日日常自然順暢，但收尾停在劇名話題，未深化或延伸邀約意圖",
+        "suggestedLine": "追劇追到睡眠不足也太拚，妳最近是不是很需要放空一下？",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她願意接梗、分享生活細節，氣氛舒服，但還沒到主動延伸或釋出更多資訊的程度",
+        "nextInviteMove": "先順著劇和睡眠不足關心她，累積幾次自然來回後再提輕鬆邀約",
+        "strengths[0]": "接住賴床、早午餐話題並分享自己吃法，製造對比互動",
+        "strengths[1]": "用「會流的蛋」玩笑接梗，讓聊天輕鬆有來有回",
+        "watchouts[0]": "連續拋新問題（下午做什麼、有看劇嗎）較像換話題，未深挖她的回答",
+        "watchouts[1]": "她說追劇到睡眠不足，帶點自嘲，可順勢關心而非跳下一題"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd2_travel_okinawa",
+      "repeatIndex": 0,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 26525,
+      "attemptFailureCodes": [
+        "claude_timeout"
+      ],
+      "servedText": {
+        "summary": "聊天節奏舒服，接住了她的玩笑和自信，但還沒進到共同場景或具體邀約的鋪墊。",
+        "suggestedLine": "我待會整理一個給你，不過先問，你自駕的時候也是這樣放歌的嗎？",
+        "vibe": "中性",
+        "dateChance": "low",
+        "dateChanceReason": "只有舒適感和玩笑互動，沒有時間線索、共同場景或具體邀約的鋪墊。",
+        "nextInviteMove": "先交出歌單讓她「驗貨」，同時自然分享你自駕或旅行的經驗，建立互相的生活樣本，再看她是否主動提到下次旅行或聚聚的可能。",
+        "strengths[0]": "接住她的玩笑測試，反應自然不生硬，沒有急著自證或防守",
+        "strengths[1]": "聊旅行時有畫面感回應，讓她願意繼續分享沖繩自駕的細節",
+        "watchouts[0]": "還在互相試探階段，她丟的『驗貨』是輕鬆測試但也是個門檻，需要真的交出歌單才能往下",
+        "watchouts[1]": "聊天停留在她的經驗分享，還沒有你的生活樣本或共同興趣的具體連結"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd2_travel_okinawa",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10890,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊沖繩歌單接得順，她小虧測試你有接住，但還沒到邀約門檻。",
+        "suggestedLine": "那我整理一下海邊限定歌單，到時候放給妳驗貨評分？",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她接梗、願意延伸歌單話題，但沒釋出時間或場景線索，僅一個正向訊號",
+        "nextInviteMove": "先把歌單梗延續一兩輪，等她主動聊到週末安排再提具體邀約",
+        "strengths[0]": "用「放歌責任重大」延伸她的分享，接住她的自駕故事細節",
+        "strengths[1]": "被她「先證明歌單品味」虧時穩住回應，沒有自證慌張",
+        "watchouts[0]": "對話停在歌單梗，還沒問她生活近況或延伸到旅行以外話題",
+        "watchouts[1]": "「等你的歌單來驗貨」是她拋的小測試，需接續而非讓話題斷在這"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd2_travel_okinawa",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7696,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊沖繩歌單接得順，但停在玩笑測試，尚未鋪陳到邀約時機。",
+        "suggestedLine": "那我先傳幾首開車歌單給妳驗貨，妳可以順便說說沖繩海岸線適合配哪種歌？",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她接梗、丟出小測試維持互動，但沒有釋出時間或見面線索。",
+        "nextInviteMove": "先用歌單驗貨延續輕鬆互動，累積幾輪自然來回後再提具體邀約。",
+        "strengths[0]": "順著沖繩自駕細節追問，讓她具體分享導航、放歌角色",
+        "strengths[1]": "接住「證明歌單品味」的玩笑測試，回應有自信不閃躲",
+        "watchouts[0]": "只回應她的話題，沒有分享自己的生活細節或狀態",
+        "watchouts[1]": "「驗貨」停在調侃層次，未把話題帶往更真實的交流"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd2_travel_okinawa",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7927,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊沖繩歌單接得順，但停在玩笑測試，未推進到具體邀約。",
+        "suggestedLine": "那我整理一份歌單傳給妳驗貨，順便問妳最近還有想去的海邊嗎？",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她願意接梗、丟測試句，但沒提供時間或場景線索，僅舒適感。",
+        "nextInviteMove": "先傳歌單延續玩笑，等她回應後再自然帶到旅行話題，暫不提邀約。",
+        "strengths[0]": "順著自駕、放歌細節追問，讓她多分享沖繩行程",
+        "strengths[1]": "接住「證明歌單品味」的挑釁，回得自然不慌",
+        "watchouts[0]": "只回應她的測試句「等你的歌單來驗貨」，沒藉機分享自己的生活或聽歌習慣",
+        "watchouts[1]": "整段聊天停在歌單梗，沒往「一起聽/一起去哪」的具體場景延伸"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd3_baking_croissant",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 8515,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊可頌聊得順，她願意分享細節，但邀約還太早，未觸及見面。",
+        "suggestedLine": "那如果成功了，這張照片我可不可以留著當證據，哈哈",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她願意延伸話題、開玩笑回應，但沒有給時間線索或場景邀請",
+        "nextInviteMove": "先別提邀約，順著烘焙話題再來回一兩輪，等她主動聊到其他生活細節再說",
+        "strengths[0]": "接住「失敗三次」細節，肯定她的毅力／不服輸",
+        "strengths[1]": "順著「拍照留念」延伸出「等成功照、聞香」的輕鬆回應",
+        "watchouts[0]": "「聞香」稍微跳快，還沒確認她是否想被聞到，容易被當成暗示壓力",
+        "watchouts[1]": "她最後說「當作沒說過」是留退路的玩笑測試，未進一步穩住這個小張力"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd3_baking_croissant",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7013,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊可頌話題自然接住，但尚未深入她的生活或推進到邀約鋪墊。",
+        "suggestedLine": "如果失敗就當練習，成功那天拍照別忘了配一杯咖啡一起紀錄。",
+        "vibe": "中性",
+        "dateChance": "low",
+        "dateChanceReason": "只有話題延伸，沒有具體場景或時間線索，投入度仍偏低。",
+        "nextInviteMove": "先分享自己也曾嘗試失敗的小事，拉近距離，暫不邀約。",
+        "strengths[0]": "用「層次超難」接住她的烘焙細節，顯示有在聽",
+        "strengths[1]": "肯定她「不服輸」的說法，順著她的話延伸而非只附和",
+        "watchouts[0]": "「我等妳的成功照」偏向單向討要，沒有先分享自己生活作交換",
+        "watchouts[1]": "她說「就當作沒說過」是輕鬆的自我保護測試，未進一步接住"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd3_baking_croissant",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 8182,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊烘焙話題自然舒服，但停在興趣交流，尚未推進到見面鋪墊",
+        "suggestedLine": "如果妳成功那天想找人試吃鑑定，我可以認真幫妳評分喔",
+        "vibe": "中性",
+        "dateChance": "low",
+        "dateChanceReason": "她最後一句用「如果又失敗就當沒說過」留了退路，屬於禮貌收尾而非明確延伸",
+        "nextInviteMove": "先分享自己下廚或吃過的失敗經驗，拉近距離後再談具體見面，暫不邀約",
+        "strengths[0]": "接住「失敗三次」給正向解讀（毅力/不服輸），她願意延伸原因",
+        "strengths[1]": "順著可頌話題追問細節，聊得有來有回不生硬",
+        "watchouts[0]": "「我等妳的成功照」是虛的未來窗口，沒有具體時間或場景可落地",
+        "watchouts[1]": "話題僅停留在她的興趣本身，沒有分享你自己的生活讓她認識你"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd3_baking_croissant",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 9905,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊可頌話題自然接住，但停在興趣層，尚未推進到見面鋪墊。",
+        "suggestedLine": "如果成功那天要拍照，要不要順便找一天一起吃吃看妳做的可頌？",
+        "vibe": "中性",
+        "dateChance": "low",
+        "dateChanceReason": "她只回應趣味細節與輕玩笑，未釋出時間或具體場景線索",
+        "nextInviteMove": "先延續烘焙話題，多幾輪自然來回，再視她反應提具體輕鬆場景邀約",
+        "strengths[0]": "用「層次超難」接住她的烘焙細節，讓對話有延續",
+        "strengths[1]": "肯定她「不服輸」的特質，給她一顆好接的球",
+        "watchouts[0]": "「我等妳的成功照」是丟出未來期待，但沒有具體場景或時間",
+        "watchouts[1]": "她說「當作沒說過」是輕帶過的收尾，未追問也未鋪陳下一步"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd4_movie_late_show",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7607,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊電影話題順暢，接住她的細節，但尚未延伸到她的旅行興趣或約她。",
+        "suggestedLine": "導演優先我懂，不過爛預告直接跳過也太狠，我都被預告騙好幾次哈哈",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她願意分享挑片細節、接梗自然，但沒提到旅行美食或時間線索，鋪墊還不夠。",
+        "nextInviteMove": "先分享自己看片或旅行的小經驗，等她聊到旅行美食再自然延伸，暫不邀約。",
+        "strengths[0]": "用「整個城市都慢下來」延續她描述的氣氛，展現在場感",
+        "strengths[1]": "接住她「隱形眼鏡移位」的哏，回應輕鬆不尷尬",
+        "watchouts[0]": "問「挑片標準」偏向查戶口式提問，缺乏自我揭露",
+        "watchouts[1]": "全程沒分享自己的生活或感受，對話單向偏向她說"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd4_movie_late_show",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7159,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊電影話題順暢，但停在興趣表層，未延伸到她的生活或共同場景。",
+        "suggestedLine": "導演優先我懂，那如果換成旅遊紀錄片，妳會挑目的地還是挑導演？",
+        "vibe": "中性",
+        "dateChance": "low",
+        "dateChanceReason": "她只回應電影細節，沒有主動延伸場景或釋出時間線索，屬於禮貌性投入。",
+        "nextInviteMove": "先分享自己挑片或生活習慣，拉回互相交流，再找機會聊到她愛的旅行話題。",
+        "strengths[0]": "接住她「哭到隱形眼鏡移位」的畫面，回應有跟上她的幽默感",
+        "strengths[1]": "順著她的話題追問挑片標準，維持對話節奏",
+        "watchouts[0]": "整場都在問她（妳最近看什麼、妳有什麼標準），沒分享自己的觀影經驗或生活",
+        "watchouts[1]": "話題一直停在電影本身，沒往她真正喜歡的旅行、美食方向帶"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd4_movie_late_show",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7993,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊電影話題順暢有來有往，但仍停留興趣交流，尚未進展到邀約鋪墊。",
+        "suggestedLine": "導演優先這標準蠻硬派，那如果遇到爛預告但朋友狂推的片，妳會賭一把嗎？",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她願意展開細節聊挑片標準，但沒有釋出時間或場景線索，鋪墊還不夠。",
+        "nextInviteMove": "先聊她喜歡的片型累積幾輪默契，之後再看時機帶到具體場景邀約。",
+        "strengths[0]": "接住她「隱形眼鏡移位」的畫面感並幽默延伸，氣氛自然",
+        "strengths[1]": "順著她的分享持續追問，讓對話有來有往的節奏",
+        "watchouts[0]": "對話停在電影本身，沒有把話題帶回她的生活或彼此互動",
+        "watchouts[1]": "「妳挑片有什麼標準」偏向資訊型提問，少了自我分享的對等感"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd4_movie_late_show",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7406,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊電影話題順暢接話，但仍停留興趣層，未深入她的生活或推進關係。",
+        "suggestedLine": "我挑片超隨性，都被預告騙過，妳說的「導演優先」我要學起來",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她願意展開細節、回應輕鬆，但沒有主動釋出時間或場景邀請訊號。",
+        "nextInviteMove": "先分享自己挑片習慣或生活片段，讓她多瞭解你，再找共同興趣切入邀約。",
+        "strengths[0]": "接住「隱形眼鏡移位」的畫面感並幽默延伸",
+        "strengths[1]": "順著晚場散場的氣氛細節做出呼應",
+        "watchouts[0]": "連續拋出問題（推薦片、挑片標準）像在收集資訊而非分享自己",
+        "watchouts[1]": "沒有先自我揭露生活或感受，讓對話偏向單向提問"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd5_dog_park_morning",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 8581,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊狗題材輕鬆順暢，但全程停在寵物話題，沒往生活或邀約推進",
+        "suggestedLine": "養狗之後就回不去了？那我更想聽妳說說平常還有哪些回不去的小日常～",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她願意分享細節、語氣輕鬆帶玩笑，但話題單一沒延伸到共同興趣或場景",
+        "nextInviteMove": "先順著她「養狗之後回不去」延伸聊她的生活步調，累積幾輪自然對話再談場景，暫不邀約",
+        "strengths[0]": "接住布丁的細節並延伸畫面感，如「短腿走超快」的療癒感",
+        "strengths[1]": "用幽默呼應她的話，如「狗的社交比我還規律」讓對話保持輕鬆",
+        "watchouts[0]": "整場沒有分享自己的生活或感受，都是提問+接梗，她感受不到你的立體形象",
+        "watchouts[1]": "話題停在狗身上沒有轉出去，錯過她提到「柴犬朋友」「晨型人設」可以延伸到她的旅行或日常步調"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd5_dog_park_morning",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7408,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊寵物話題順暢自然，但停在生活分享，未推進到約她的具體場景。",
+        "suggestedLine": "「回不去了是說我也可能被療癒？改天去公園看布丁社交好了」",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她聊得自在、玩笑放送，但你沒鋪出具體邀約或自我揭露，還不到高分。",
+        "nextInviteMove": "先分享自己養寵物或運動的生活片段，再順勢接她的公園話題,才鋪邀約。",
+        "strengths[0]": "接住布丁的細節並延伸畫面，如「短腿走超快好療癒」",
+        "strengths[1]": "用「互聞打卡」「被迫自律」等輕鬆玩笑回應，維持節奏",
+        "watchouts[0]": "對話停留在問她的狗和日常，沒有分享自己的生活作為對等交流",
+        "watchouts[1]": "她最後說「養狗之後就回不去了」是留了球，你沒接住延伸下去"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd5_dog_park_morning",
+      "repeatIndex": 2,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 29580,
+      "attemptFailureCodes": [
+        "claude_timeout"
+      ],
+      "servedText": {
+        "summary": "聊得舒服有節奏，接住了她的生活細節和玩笑，但沒有自然鋪墊邀約或共同場景，停留在舒適的旁觀者位置。",
+        "suggestedLine": "我也有點被你的晨間日常吸引，改天一起遛布丁的時候，順便聊聊妳怎麼開始養狗的？",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "聊天舒服、節奏好，但只停留在聽她的故事，沒有鋪具體場景或示範你的生活樣本，邀約還沒有著力點。",
+        "nextInviteMove": "下次聊天時分享自己和寵物、運動或晨間習慣的真實片段，製造『一起做某件事』的自然畫面，再順勢提低壓場景邀約。",
+        "strengths[0]": "接住她的梗和情緒，布丁、晨型人設、狗友情的回應都自然貼切，沒有冷場",
+        "strengths[1]": "節奏穩定，問題有層次（狗的個性→社交→整體體驗），讓她有空間自然展開",
+        "watchouts[0]": "一直在她的故事裡打轉，沒有拋出自己的生活或經歷，聊天像在採訪她的晨間日常",
+        "watchouts[1]": "她最後『養狗之後就回不去了』是邀請式的暗示，你沒有接住——沒有順勢分享自己的寵物經驗或生活樣本"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd5_dog_park_morning",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7221,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊布丁的日常算舒服，但整場沒往她本人或見面延伸。",
+        "suggestedLine": "哈哈聽起來要先做好心理準備，妳平常遛布丁都固定去同一個公園嗎？",
+        "vibe": "中性",
+        "dateChance": "low",
+        "dateChanceReason": "聊得順但都停在狗身上，沒碰到她本人的話題或場景鋪墊。",
+        "nextInviteMove": "先順著布丁的話題問她平常遛狗的地點或習慣，讓話題自然轉到她的生活。",
+        "strengths[0]": "接住布丁的細節並延伸畫面（短腿走超快、被押著運動）",
+        "strengths[1]": "用「互聞打卡」等玩笑回應，維持輕鬆節奏",
+        "watchouts[0]": "全程繞著狗打轉，沒問她自己的生活或感受",
+        "watchouts[1]": "她說「養狗之後就回不去了」是個邀請式的梗，你沒接住往下發展"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd1_close_coffee_window",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10408,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你接住她的展覽經歷並提出合作邀約，她主動釋出時間窗口，氣氛熱絡",
+        "suggestedLine": "那週六下午就約妳去逛展覽，妳當導遊我請飲料，可以嗎？",
+        "vibe": "暖",
+        "dateChance": "high",
+        "dateChanceReason": "她接梗描述迷宮細節、笑著回應調侃，還主動說週六下午有空，訊號明確",
+        "nextInviteMove": "直接把「週六下午」和「導遊+請飲料」這個畫面訂成具體時間地點",
+        "strengths[0]": "用「迷宮」「倒影」細節接梗，讓她願意多分享趣事",
+        "strengths[1]": "把興趣話題轉成「妳當導遊我請飲料」的具體場景邀約",
+        "watchouts[0]": "她已說「這週六下午剛好有空」，要接住這個時間點別讓話題飄走",
+        "watchouts[1]": "目前只有場景畫面，還沒定地點與方式，需要盡快具體化",
+        "gameBreakdown.phaseReached": "已經聊到互相調侃、她笑著分享糗事，氣氛熱絡到可以邀約的階段",
+        "gameBreakdown.missedVariable": "她給了「週六下午有空」的窗口，但你還沒把它接成明確的時間地點",
+        "gameBreakdown.failureState": "目前停在場景畫面（導遊+飲料），沒有把窗口收斂成具體行程",
+        "gameBreakdown.nextFirstLine": "那週六下午就約妳去逛展覽，妳當導遊我請飲料，可以嗎？",
+        "gameBreakdown.inviteDirection": "順著她給的週六下午窗口，直接定出集合時間跟地點"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd1_close_coffee_window",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12086,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "接住展覽趣事並轉成邀約，她主動釋出週六空檔，推進順利",
+        "suggestedLine": "週六下午那就這麼說定了，妳排時間我來訂位，別再迷路囉",
+        "vibe": "暖",
+        "dateChance": "high",
+        "dateChanceReason": "她接梗玩鬧、延伸迷宮糗事，還主動說週六下午有空，等於給時間窗口",
+        "nextInviteMove": "接住「週六下午」直接約定時間地點，把邀約落實成具體行動",
+        "strengths[0]": "用「鏡子迷宮」細節接梗並記住她的糗事，展現在場感",
+        "strengths[1]": "自我調侃方向感差呼應她，順勢提出導遊+請飲料的畫面式邀約",
+        "watchouts[0]": "提出邀約後沒有立刻鎖定具體時間或地點，窗口稍縱即逝",
+        "watchouts[1]": "整段偏資訊/場景描述，可再多回應她情緒（好笑、害羞）本身",
+        "gameBreakdown.phaseReached": "已經從聊展覽細節推進到她主動釋出週六下午的空檔，算是曖昧張力後段",
+        "gameBreakdown.missedVariable": "邀約提出後沒有馬上追問具體時間或地點，投入度沒有立刻轉成行動",
+        "gameBreakdown.failureState": "卡在畫面式邀約停留在口頭，沒有把她給的時間窗口收成明確計畫",
+        "gameBreakdown.nextFirstLine": "週六下午那就這麼說定了，妳排時間我來訂位，別再迷路囉",
+        "gameBreakdown.inviteDirection": "順著她說的週六下午，直接約時段和地點，讓邀約落地"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd1_close_coffee_window",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11177,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊展覽細節接住她的笑點，順勢邀約她已回應週六有空，進展順利。",
+        "suggestedLine": "週六下午那就約定了，妳導遊我請飲料，幾點在哪集合？",
+        "vibe": "暖",
+        "dateChance": "high",
+        "dateChanceReason": "她接梗玩笑、延伸鏡子迷宮細節，還主動釋出週六下午空檔",
+        "nextInviteMove": "把「導遊+請飲料」的畫面收斂成具體時間地點，趁她給的窗口敲定",
+        "strengths[0]": "接住「跟倒影打招呼」的畫面並回應「我要記住」，展現在場感",
+        "strengths[1]": "自曝方向感差呼應她的糗事，拉近距離後順勢邀約",
+        "watchouts[0]": "邀約時只丟出「妳當導遊」的角色分工，還沒具體到時間地點",
+        "watchouts[1]": "她給了週六下午的窗口，若沒接住可能錯過時機",
+        "gameBreakdown.phaseReached": "已經聊到可以輕鬆開玩笑、她也願意分享糗事的階段，快到約出去這一步",
+        "gameBreakdown.missedVariable": "邀約的畫面停在「導遊、請飲料」的角色分工，還沒接上具體時間地點",
+        "gameBreakdown.failureState": "她已經丟出「這週六下午剛好有空」的窗口，若下一句沒接住會讓邀約懸在空中",
+        "gameBreakdown.nextFirstLine": "週六下午那就約定了，妳導遊我請飲料，幾點在哪集合？",
+        "gameBreakdown.inviteDirection": "順勢把「這週六下午」的窗口接成明確邀約，指定時間和碰面地點"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd1_close_coffee_window",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12027,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "從展覽話題聊出默契，成功用小場景邀約，她主動釋出週六時間窗口",
+        "suggestedLine": "週六下午當導遊那就說定了，飲料我請，妳負責不讓我變迷宮迷路！",
+        "vibe": "暖",
+        "dateChance": "high",
+        "dateChanceReason": "她接梗玩笑、延伸鏡子迷宮細節，還主動說週六下午有空，訊號明確",
+        "nextInviteMove": "直接把週六下午訂成具體行程，問她想幾點或約在哪碰面",
+        "strengths[0]": "接住「跟倒影打招呼」的可愛細節並直接說要記住，讓她感受到被在乎",
+        "strengths[1]": "用「妳當導遊，我負責請飲料」把鏡子迷宮話題轉成低壓具體場景邀約",
+        "watchouts[0]": "她說「不準笑」是小測試，你順著說「好啦不笑」但沒再往前推一步確認她的感受",
+        "watchouts[1]": "自我揭露「方向感也很差」很自然，但可以再多一句延伸畫面讓張力更持久",
+        "gameBreakdown.phaseReached": "已經從聊展覽細節推進到她主動釋出週六時間窗口，算是收尾階段",
+        "gameBreakdown.missedVariable": "當她說「不準笑」時可以多接一句情緒回應，讓曖昧張力再往上一點",
+        "gameBreakdown.failureState": "目前沒有卡住，但邀約還停在「聽起來不虧」這種軟性回應，還沒鎖定實際時間地點",
+        "gameBreakdown.nextFirstLine": "週六下午當導遊那就說定了，飲料我請，妳負責不讓我變迷宮迷路！",
+        "gameBreakdown.inviteDirection": "把她釋出的週六下午窗口直接接成具體邀約，問時間地點把行程定下來"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd2_stuck_in_test",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10876,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊出了羽球梗，但被要求「行動證明」時你退回問時段，沒接住張力。",
+        "suggestedLine": "行動證明？行啊，這週你哪天有空，我排進去見識一下妳的殺球",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她願意玩梗、丟出「排進行程」的窗口，但你沒具體接成邀約",
+        "nextInviteMove": "先別再問資訊，直接把「行動證明」接成具體時間提議，看她怎麼回",
+        "strengths[0]": "接住她的吐槽並回敬「改天讓妳見識」，維持了玩笑節奏",
+        "strengths[1]": "沒有被激怒或討好，語氣保持輕鬆",
+        "watchouts[0]": "她說「行動證明」等於丟出邀約窗口，你卻只問「哪個時段」變成資訊題",
+        "watchouts[1]": "問時段像在查班表而非順勢約，少了具體畫面或提議",
+        "gameBreakdown.phaseReached": "聊到她願意用吐槽測試你，算是在互相熟悉、還在打鬧階段",
+        "gameBreakdown.missedVariable": "她丟出「用行動證明」這句等於在等你順勢約，你沒接住",
+        "gameBreakdown.failureState": "卡在一問一答，她給窗口你卻退回問時段這種資訊題",
+        "gameBreakdown.nextFirstLine": "行動證明？行啊，這週你哪天有空，我排進去見識一下妳的殺球",
+        "gameBreakdown.inviteDirection": "先不急著約球局細節，把她的玩笑接成一個具體時間提議，看她反應再往下鋪"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd2_stuck_in_test",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 19230,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_unsupported_detail:third_party:name:is_named",
+        "debrief_temperature_leak"
+      ],
+      "servedText": null,
+      "rejectedCandidates": [
+        {
+          "code": "debrief_quality_invalid_unsupported_detail:third_party:name:is_named",
+          "raw": "{\"summary\":\"聊球局互有來往，但被要求「行動證明」時你退回問時段，沒接住張力。\",\"strengths\":[\"接她的吐槽並回嘴「讓妳見識一下」，有互動感\",\"沒有被激怒，維持輕鬆語氣\"],\"watchouts\":[\"她說「要用行動證明」是丟球考驗你，你卻只問「哪個時段」變回查戶口\",\"沒有把「見識一下」具體化成畫面或時間，邀約力道不足\"],\"suggestedLine\":\"行動證明就約一場啊，妳排一天，我準時到場見識妳的殺球。\",\"vibe\":\"中性\",\"dateChance\":\"medium\",\"dateChanceReason\":\"她留了「排進我的行程」的窗口，但你沒具體接住，只是問時段。\",\"nextInviteMove\":\"先把「行動證明」接成具體約球時間，再問她哪天方便，而非單純問時段當資訊題。\",\"gameBreakdown\":{\"phaseReached\":\"還在互相測試熟不熟、口氣拌嘴的階段，還沒真正到約定的階段\",\"missedVariable\":\"她丟出「用行動證明」是在測你敢不敢接梗往前推，你沒接住這股張力\",\"failureState\":\"她給了測試句，你回到問時段這種資訊題，聊天又變成一問一答\",\"nextFirstLine\":\"行動證明就約一場啊，妳排一天，我準時到場見識妳的殺球。\",\"inviteDirection\":\"先把玩笑接成具體邀約畫面，等她回應熱度再問確切時間，不要只停在問資訊\"}}"
+        },
+        {
+          "code": "debrief_temperature_leak",
+          "raw": "{\"summary\":\"聊天有節奏、接住吐槽，但邀約鋪墊不足，沒有具體場景或時間窗口，收尾停在她的測試。\",\"strengths\":[\"接住她的吐槽反打，沒有被激怒或防守，維持了輕鬆感\",\"從羽球延伸到實際見面的想像，有推進感\"],\"watchouts\":[\"最後一句只問時段，沒有給具體場景或邀約框架，讓她的『行動證明』懸著\",\"沒有展現自己的生活樣本或興趣連結，聊的都是她的資訊\"],\"suggestedLine\":\"週三晚上我通常六點半以後有空，妳那時段行程怎樣？\",\"vibe\":\"中性\",\"dateChance\":\"medium\",\"dateChanceReason\":\"聊天流暢有來有往，但缺具體邀約框架和場景鋪墊，只是互動順暢還不夠。\",\"nextInviteMove\":\"下次先給自己的時間/地點選項，再問她配合度，降低她的決策成本。\",\"gameBreakdown\":{\"phaseReached\":\"在建立熟悉的階段，透過吐槽互動測試彼此的反應，但還沒進到具體邀約的鋪墊。\",\"missedVariable\":\"沒有展現自己的生活樣本或興趣畫面，聊的都是她的羽球、她的行程，缺少『我們』的合作感。\",\"failureState\":\"最後問『都打哪個時段』只是資訊蒐集，沒有給出自己的具體時間或地點選項，讓邀約變成她的決定題而非共同計畫。\",\"nextFirstLine\":\"週三晚上我通常六點半以後有空，妳那時段行程怎樣？\",\"inviteDirection\":\"先補充自己的時間和地點框架，讓邀約變成『我提案、妳選擇』而非『妳決定我配合』，降低她的決策壓力。\"},\"hintAssessment\":{\"verdict\":\"preserved\",\"revisedEvidenceQuote\":null}}"
+        }
+      ]
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd2_stuck_in_test",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10818,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你接住吐槽有回嘴，但被要求行動證明後又縮回問時段，沒往前推",
+        "suggestedLine": "行動證明就是這禮拜約妳打一場，時段妳排，我準時到",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她用「排進我的行程」開了窗口，但你沒接成具體邀約，只停在問資訊",
+        "nextInviteMove": "直接把「行動證明」接成具體約球時間，讓她只需要回時段",
+        "strengths[0]": "接梗夠快，「改天讓妳見識」有回應她的挑釁",
+        "strengths[1]": "沒有被嘴硬打退，持續互動不冷場",
+        "watchouts[0]": "她說「行動證明」是丟給你一個測試球，你只回哈哈好就轉話題，等於沒接住",
+        "watchouts[1]": "問「哪個時段」聽起來像收集資訊，不像順著她的節奏往前走",
+        "gameBreakdown.phaseReached": "還在互相拌嘴、建立熟悉感的階段，還沒到真的曖昧或約定",
+        "gameBreakdown.missedVariable": "她丟出「行動證明」這個測試，你沒有順勢升級成具體邀約",
+        "gameBreakdown.failureState": "她給了球你卻退回問時段，變成像在收集資訊而不是往前推進",
+        "gameBreakdown.nextFirstLine": "行動證明就是這禮拜約妳打一場，時段妳排，我準時到",
+        "gameBreakdown.inviteDirection": "先把她說的「行動證明」接成明確的約球提議，而不是先問資訊"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd2_stuck_in_test",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11734,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊羽球互相吐槽有來有往，但她要行動證明時你沒接住，改問時段偏保守",
+        "suggestedLine": "行動證明沒問題，妳排時段，我負責讓妳三分變零分",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她說「看你有沒有本事排進我的行程」是開了窗口，但你沒具體接，只到普通順聊",
+        "nextInviteMove": "先用一句接住「行動證明」的梗，再具體問哪天有空一起打，別只問時段當資訊題",
+        "strengths[0]": "用「系隊的」回嗆接住她的挑釁，維持吐槽節奏",
+        "strengths[1]": "面對「見識」的調侃順勢約打球，方向對",
+        "watchouts[0]": "她說「行動證明」是丟一個測試球，你只回「哈哈好」就轉去問時段，等於沒接住",
+        "watchouts[1]": "問「哪個時段」偏向查行程細節，少了先回應她剛丟出的挑戰感",
+        "gameBreakdown.phaseReached": "還在互相吐槽測試熟不熟，她開始願意給行程當窗口，但還沒到真的要約",
+        "gameBreakdown.missedVariable": "她丟出「行動證明」這句話是在測你敢不敢接招，你沒有正面回應這個張力",
+        "gameBreakdown.failureState": "你用「哈哈好」帶過測試句，直接跳去問時段，讓氣氛從調侃掉回普通問答",
+        "gameBreakdown.nextFirstLine": "行動證明沒問題，妳排時段，我負責讓妳三分變零分",
+        "gameBreakdown.inviteDirection": "先接住她的吐槽再順勢約打球時間，別讓對話變成查班表"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd3_cooled_interview_mode",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10411,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "連續資訊題像查戶口，她已提醒，投入感偏低，尚未建立聊天默契。",
+        "suggestedLine": "其實我自己假日也常宅在家充電，妳說偶爾在家休息，會做些什麼放鬆？",
+        "vibe": "冷",
+        "dateChance": "low",
+        "dateChanceReason": "她直接點出「像做戶口調查」，是明顯的界線提醒，投入感偏低。",
+        "nextInviteMove": "先聊她提到的「假日在家休息」細節，換她主動問你，別急著約。",
+        "strengths[0]": "有持續拋問題維持對話沒讓場面冷掉",
+        "strengths[1]": "被提醒後立刻道歉，態度不硬拗",
+        "watchouts[0]": "連問健身房、假日、籍貫、兄弟姊妹，像查戶口而非聊天",
+        "watchouts[1]": "沒有先分享自己就一直問她私人資訊，她已明說「像面試」",
+        "gameBreakdown.phaseReached": "還在互相認識的初期，資訊題還沒換成有內容的聊天",
+        "gameBreakdown.missedVariable": "沒有先給自己的感受或畫面，一直用問題把球丟給她",
+        "gameBreakdown.failureState": "問題像查戶口，她已經直接說出「像面試」提醒你",
+        "gameBreakdown.nextFirstLine": "其實我自己假日也常宅在家充電，妳說偶爾在家休息，都做些什麼放鬆？",
+        "gameBreakdown.inviteDirection": "現階段不適合提邀約，先把資訊題換成分享自己、接住她的話再說"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd3_cooled_interview_mode",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10511,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "連續資訊題像查戶口，她已明說像面試，投入度偏低收尾",
+        "suggestedLine": "哈哈被抓包了，那換我說：我週末其實也很少出門，妳是那種待在家還是想飛出去玩的？",
+        "vibe": "冷",
+        "dateChance": "low",
+        "dateChanceReason": "她直接點出像做戶口調查，投入度偏低，尚未有任何邀約基礎",
+        "nextInviteMove": "先自我揭露拉近距離，別急著邀約，等她主動聊興趣再說",
+        "strengths[0]": "被提醒後立刻道歉，沒有硬凹或反駁",
+        "watchouts[0]": "連續問健身房、假日、籍貫、手足像做問卷",
+        "watchouts[1]": "她已給提示「不用像面試」，仍未分享自己只顧道歉",
+        "gameBreakdown.phaseReached": "還在互相認識的資訊交換階段，還沒進到有默契聊興趣的階段",
+        "gameBreakdown.missedVariable": "沒有分享自己的狀態或感受，只顧著問她問題，聊天像單向查詢",
+        "gameBreakdown.failureState": "她已經提醒『不用像面試』，這是她給的小測試，但對話還沒回應這個訊號就結束了",
+        "gameBreakdown.nextFirstLine": "哈哈被抓包了，那換我說：我週末其實也很少出門，妳是那種待在家還是想飛出去玩的？",
+        "gameBreakdown.inviteDirection": "現階段先修對話節奏，練習先自我揭露再問她，不急著談約會"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd3_cooled_interview_mode",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 19594,
+      "attemptFailureCodes": [
+        "debrief_quality_invalid_suggested_line_not_grounded",
+        "debrief_quality_invalid_unsupported_detail:user:lifestyle:does_activity"
+      ],
+      "servedText": null,
+      "rejectedCandidates": [
+        {
+          "code": "debrief_quality_invalid_suggested_line_not_grounded",
+          "raw": "{\"summary\":\"連續資訊題像查戶口，她直接點出不舒服，投入明顯偏低。\",\"strengths\":[\"被點出後立刻道歉，沒有硬凹或反駁\"],\"watchouts\":[\"連續問健身部位、健身房、籍貫、兄弟姊妹，像做問卷不像聊天\",\"她給了台階「你也可以說說你自己」，但逐字稿結束前沒接住\"],\"suggestedLine\":\"哈哈被抓包了，那換我：我週末比較常亂晃找吃的，妳呢？\",\"vibe\":\"冷\",\"dateChance\":\"low\",\"dateChanceReason\":\"她已明說像面試，投入度偏低，尚無場景或情緒鋪墊\",\"nextInviteMove\":\"先分享自己再讓她選要不要接話，暫不提邀約\",\"gameBreakdown\":\"\\n<parameter name=\\\"phaseReached\\\">還在互相認識的資訊交換階段，還沒聊到有感覺的話題\",\"missedVariable\":\"沒有給自己的內容或感受，一直單向發問拿資訊\",\"failureState\":\"被她說像做戶口調查，代表問答節奏太像面試，讓她想收手\",\"nextFirstLine\":\"哈哈被抓包了，那換我：我週末比較常亂晃找吃的，妳呢？\",\"inviteDirection\":\"先修聊天節奏，換成自己先分享再邀她接話，暫不邀約見面\"}"
+        },
+        {
+          "code": "debrief_quality_invalid_unsupported_detail:user:lifestyle:does_activity",
+          "raw": "{\"summary\":\"問答單向、缺場景感，她提醒改聊天方式但未接住信號。投入度低，邀約遠未成熟。\",\"strengths\":[\"認識到提問過多，主動道歉且願意調整\",\"她主動給出改善建議（說說你自己），表示願意繼續\"],\"watchouts\":[\"連續查戶口式提問：健身房、家裡幾個兄弟姊妹，像面試而非聊天\",\"沒有帶入自己的經驗或感受，只在蒐集她的資訊\"],\"suggestedLine\":\"我最近也在規劃週末小旅行，上次去花蓮被海景震撼到，妳假日出去玩通常去哪種地方？\",\"vibe\":\"冷\",\"dateChance\":\"low\",\"dateChanceReason\":\"單向提問、無場景感、未接住她的界線提醒，聊天氣氛生硬。\",\"nextInviteMove\":\"先建立對等對話：分享自己的旅行經驗或興趣，找共同話題；不急邀約，修復聊天節奏。\",\"gameBreakdown\":{\"phaseReached\":\"資訊蒐集卡住，還沒進入價值展示或情感連結。她已提醒聊天方式不對，但你沒有調整。\",\"missedVariable\":\"缺少自我揭露和場景感：沒有帶入自己的經驗、感受或具體畫面，只在單向問答。\",\"failureState\":\"她說「聊天不用像面試」是明確界線信號，你沒有接住；繼續這種模式會被視為不尊重她的反饋。\",\"nextFirstLine\":\"我最近也在規劃週末小旅行，上次去花蓮被海景震撼到，妳假日出去玩通常去哪種地方？\",\"inviteDirection\":\"暫不邀約；先修對話節奏——分享自己的經驗、找共同興趣點（旅行、美食），建立對等感，才能進到下一步。\"},\"hintAssessment\":{\"verdict\":\"preserved\",\"revisedEvidenceQuote\":null}}"
+        }
+      ]
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd3_cooled_interview_mode",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12216,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "問句接連拋出像查資料，她已提醒像面試，投入感偏低收尾。",
+        "suggestedLine": "好啊那換我說，其實我下班後也常在糾結要健身還是耍廢，妳猜我通常選哪個？",
+        "vibe": "冷",
+        "dateChance": "low",
+        "dateChanceReason": "她直言像面試，且要求你先聊自己，顯示對目前聊法不買單。",
+        "nextInviteMove": "先接住她「你也可以說說你自己」的提議，分享一段再問她，暫不邀約。",
+        "strengths[0]": "被提醒後立刻道歉，沒有硬拗或反駁",
+        "strengths[1]": "有嘗試從健身、假日等生活面向找話題",
+        "watchouts[0]": "連續資訊型提問（健身房、籍貫、兄弟姊妹）像查戶口，她已直接點出",
+        "watchouts[1]": "被提醒『不用像面試』後沒有跟著分享自己，錯過她給的邀請",
+        "gameBreakdown.phaseReached": "還在互相認識的階段，但一直用問句在收集她的資料，沒有往前推進",
+        "gameBreakdown.missedVariable": "沒有先給自己的內容或感受，只顧著問她的資訊，少了對等的交流感",
+        "gameBreakdown.failureState": "她說『像做戶口調查』『不用像面試』，這是她在踩剎車提醒你聊法太單向",
+        "gameBreakdown.nextFirstLine": "好啊那換我說，其實我下班後也常在糾結要健身還是耍廢，妳猜我通常選哪個？",
+        "gameBreakdown.inviteDirection": "先把自己的生活片段講一點，讓她有東西可以接話或吐槽，暫不提邀約"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd4_overpush_then_repair",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12120,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "邀約太快被拉回，收回後聊到興趣有回溫，但沒鋪墊到能約",
+        "suggestedLine": "咖啡債先欠著，等妳哪天休假想喝，我現煮給妳試試",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她說「咖啡債先記著」算留了小窗口，但整場沒有真的鋪好邀約",
+        "nextInviteMove": "先延續咖啡債這個梗，約她「哪天休假」喝一杯，不指定明確時間逼近",
+        "strengths[0]": "被她說「太快」時立刻收回不硬凹，穩住場面",
+        "strengths[1]": "分享手沖咖啡的講究，接住她問「說來聽聽」的球",
+        "watchouts[0]": "才聊兩天就講「明晚帶妳去喝更猛的」，讓她做界線測試",
+        "watchouts[1]": "收回後沒有順勢用她提到的儀式感做低壓延伸，讓話題停在資訊交換",
+        "gameBreakdown.phaseReached": "剛從尷尬的邀約錯誤裡拉回來，聊到你的咖啡興趣有回溫",
+        "gameBreakdown.missedVariable": "她給的『咖啡債先記著』這個窗口沒有被你接成具體行動",
+        "gameBreakdown.failureState": "邀約punch太早又太猛，她一句『才聊兩天』直接踩了煞車，後面只顧著回答她的提問沒往前推進",
+        "gameBreakdown.nextFirstLine": "咖啡債先欠著，等妳哪天休假想喝，我現煮給妳試試",
+        "gameBreakdown.inviteDirection": "先別再提明確時間或地點，順著她說的『咖啡債』把邀約包裝成低壓、她主動選時間的形式"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd4_overpush_then_repair",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12193,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "邀約太快被抓，收回後穩住聊天，但沒延伸出下一步",
+        "suggestedLine": "那這杯咖啡債，找個週末喝完，順便聊聊妳的煙燻調酒？",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她願意聊咖啡話題且留了句子給你，但整體還在觀察你，沒到熱絡",
+        "nextInviteMove": "先接住「咖啡債」這句話，用輕鬆低壓的方式約時間，別再直接甩明確邀約",
+        "strengths[0]": "被提醒「太快」時立刻道歉收回，沒硬凹",
+        "strengths[1]": "用手沖咖啡的講究回應她的儀式感話題，接住了節奏",
+        "watchouts[0]": "「明晚我帶妳去喝更猛的」在剛認識兩天就明確邀約，觸發她的界線測試",
+        "watchouts[1]": "她說「咖啡債先記著」是給的窗口，但對話在此結束，沒有順勢接住",
+        "gameBreakdown.phaseReached": "聊到有點曖昧張力的階段，她開始願意多聊你的興趣",
+        "gameBreakdown.missedVariable": "她主動留了『咖啡債先記著』這個窗口，但你沒接住往下推",
+        "gameBreakdown.failureState": "前面邀約太急被抓後，後面聊順了卻沒把好感轉成具體邀約",
+        "gameBreakdown.nextFirstLine": "妳說咖啡債要記著，那我先挑個有陽光的午後,妳有空嗎?",
+        "gameBreakdown.inviteDirection": "先用她提到的咖啡債當理由，約一個低壓、短時間的見面，不要跳太快"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd4_overpush_then_repair",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11900,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "道歉收得快，儀式感話題接得住，但邀約超前且未鋪成真正邀約。",
+        "suggestedLine": "那咖啡債我記著，下次手沖配妳說的煙燻儀式，聽起來很對味",
+        "vibe": "中性",
+        "dateChance": "low",
+        "dateChanceReason": "她說「才聊兩天有點快」是明確界線測試，且收尾停在流程問答，未鋪墊到能邀約的舒服感",
+        "nextInviteMove": "先別提時間地點，順著「咖啡債」聊感受，等她主動延伸再輕提低壓場景",
+        "strengths[0]": "被說「太快」立刻收回並道歉，沒硬凹",
+        "strengths[1]": "用「泡手沖咖啡」自我揭露接住她「儀式感」的話題",
+        "watchouts[0]": "一開場就約「明晚」超前進度，踩到她的界線測試",
+        "watchouts[1]": "收尾停在資訊問答（流程講究），沒把「咖啡債」轉成畫面或感受",
+        "gameBreakdown.phaseReached": "聊到有點默契但還在互相認識，還沒到可以約的階段",
+        "gameBreakdown.missedVariable": "她給的『咖啡債』是個窗口，但被你轉成講解流程，沒把情緒或畫面接上去",
+        "gameBreakdown.failureState": "卡在一問一答的資訊模式，你回答完講究細節後就停了，沒往感受或畫面推",
+        "gameBreakdown.nextFirstLine": "那咖啡債我記著，下次手沖配妳說的煙燻儀式，聽起來很對味",
+        "gameBreakdown.inviteDirection": "先不要提邀約，順著她的興趣多聊一輪感受，等她投入更多再輕提低壓見面"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd4_overpush_then_repair",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11690,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "收回太急邀約後穩住節奏，用咖啡儀式接住她的興趣，聊得順但未鋪邀約",
+        "suggestedLine": "那咖啡債我記著，下次泡給妳試試，妳負責帶那款煙燻酒的故事來換",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她說「咖啡債先記著」算留了窗口，但整場沒鋪墊具體低壓場景，只是聊得順",
+        "nextInviteMove": "先用咖啡債當由頭提一次低壓、不定死時間的邀約，觀察她怎麼接",
+        "strengths[0]": "被說「太快」立刻收回並道歉，沒有硬凹或辯解",
+        "strengths[1]": "用「泡手沖咖啡也有固定流程」呼應她的儀式感，順利延伸話題",
+        "watchouts[0]": "一開場就約「明晚」明顯過快，觸發她的界線測試",
+        "watchouts[1]": "收尾停在資訊交換（咖啡流程細節），沒有把「咖啡債」接成具體畫面或邀約",
+        "gameBreakdown.phaseReached": "聊到有點曖昧張力但還在建立熟悉感的階段，還沒到可以約她的程度",
+        "gameBreakdown.missedVariable": "她給的『咖啡債先記著』這個窗口沒被接成具體畫面或邀約",
+        "gameBreakdown.failureState": "卡在資訊交換式的問答（你問她儀式、她問你流程），沒往下一層推進",
+        "gameBreakdown.nextFirstLine": "那咖啡債我記著，下次泡給妳試試，妳負責帶那款煙燻酒的故事來換",
+        "gameBreakdown.inviteDirection": "先別急著約時間，用『咖啡債』延伸出一個具體低壓小場景，讓她自然接話"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10463,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊底片相機聊出默契，她主動敲定週六下午並指派你任務",
+        "suggestedLine": "那星期六下午市集見，我幫妳把關殺價，順便找台適合妳的機子？",
+        "vibe": "暖",
+        "dateChance": "high",
+        "dateChanceReason": "她接梗延伸、笑著回應、主動講出星期六下午且指派任務給你",
+        "nextInviteMove": "順著她「你負責幫我把關殺價」直接把時間地點講清楚，變成明確邀約",
+        "strengths[0]": "用「大學玩過底片、殺價」自我揭露接住她的興趣",
+        "strengths[1]": "具體講機況判斷（蒙皮、過片、快門聲）建立可信度",
+        "watchouts[0]": "對她「怕…」的猶豫沒接住，直接跳去講機況知識",
+        "watchouts[1]": "全程停在市集知識問答，沒把話題帶到你們之間的互動感",
+        "gameBreakdown.phaseReached": "已經聊到她主動敲定時間並指派任務，算是收尾階段",
+        "gameBreakdown.missedVariable": "她說『怕…』那句情緒沒被接住，少了一次拉近距離的機會",
+        "gameBreakdown.failureState": "整場偏重知識問答（機況、殺價技巧），還沒把話題轉成你們之間的感覺或期待",
+        "gameBreakdown.nextFirstLine": "那星期六下午市集見，我幫妳把關殺價，順便找台適合妳的機子？",
+        "gameBreakdown.inviteDirection": "她已經把窗口打開（星期六下午、負責殺價），下一步直接明確約時間地點即可"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10947,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊到底片相機從興趣延伸到約市集，她主動敲時間且交付任務給你",
+        "suggestedLine": "好，那星期六下午我去接妳，一起去市集把關殺價？",
+        "vibe": "暖",
+        "dateChance": "high",
+        "dateChanceReason": "她接梗追問機況、主動問市集時間、又指派你任務，三個訊號都出現",
+        "nextInviteMove": "順著她說的「星期六下午」直接約定見面時間地點，把口頭默契變成實際行程",
+        "strengths[0]": "用底片相機的具體知識（蒙皮、過片、快門聲）建立可信度，不是空口說懂",
+        "strengths[1]": "被虧「唬我」時順勢回應「被拆穿多丟臉」，接住玩笑不尷尬",
+        "watchouts[0]": "她問「星期六還星期…」時你直接給資訊沒有順勢明確約她一起去，稍嫌保守",
+        "watchouts[1]": "她已經說「下午可以」並主動分工，若沒有下一句確認集合方式會浪費這個窗口",
+        "gameBreakdown.phaseReached": "已經從聊興趣推進到她主動敲定時間、指派任務的收尾階段",
+        "gameBreakdown.missedVariable": "她問了星期幾，你只回答資訊，沒把這句話變成正式邀約",
+        "gameBreakdown.failureState": "停在資訊確認，沒有把她給的窗口收成明確約定，稍微浪費機會",
+        "gameBreakdown.nextFirstLine": "好，那星期六下午我去接妳，一起去市集把關殺價？",
+        "gameBreakdown.inviteDirection": "接住她說的「說好了」，直接敲定集合時間地點，把默契轉成行程"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11889,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊底片相機接住她的興趣，她主動敲定星期六下午並指派任務給你",
+        "suggestedLine": "星期六下午好，那我們市集見，殺價包在我身上，妳負責挑相機",
+        "vibe": "暖",
+        "dateChance": "high",
+        "dateChanceReason": "她釋出時間線索（星期六下午）、主動延伸話題並指派任務，三個正向訊號都到齊",
+        "nextInviteMove": "直接把「星期六下午」講白成見面時間，順勢問集合地點或方式",
+        "strengths[0]": "用底片相機專業細節（蒙皮、過片、快門聲）建立可信度，不是空口說懂",
+        "strengths[1]": "被虧「唬我」時輕鬆接招「被拆穿多丟臉」，不硬拗不尷尬",
+        "watchouts[0]": "她已經把時間敲定在星期六下午，還沒把這個窗口收成明確的見面安排",
+        "watchouts[1]": "「幫我把關殺價」是她給的合作邀請，可以順勢具體化見面細節而不是停在原地",
+        "gameBreakdown.phaseReached": "已經聊到她主動敲定時間並分配任務，算是收尾階段前段",
+        "gameBreakdown.missedVariable": "窗口已經開了但還沒被接成具體行動，少了把時間變成實際約定的那一步",
+        "gameBreakdown.failureState": "話題停在她說的那句「說好了」，你還沒回應確認見面細節",
+        "gameBreakdown.nextFirstLine": "星期六下午好，那我們市集見，殺價包在我身上，妳負責挑相機",
+        "gameBreakdown.inviteDirection": "順著她給的窗口直接把見面時間講定，不用再鋪墊，可以問集合方式"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 3,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 19856,
+      "attemptFailureCodes": [
+        "debrief_temperature_leak"
+      ],
+      "servedText": {
+        "summary": "成功接住她的興趣點，從旅行延伸到具體場景，她主動確認時間並給出承諾。投入感明顯。",
+        "suggestedLine": "下午一起去，到時候我帶妳挑，順便看妳拍的第一張底片長什麼樣。",
+        "vibe": "暖",
+        "dateChance": "high",
+        "dateChanceReason": "她主動確認時間、給出「說好了」的承諾，並主動賦予你「幫我把關」的角色，代表願意和你共同行動。",
+        "nextInviteMove": "這場已成功邀約，下次見面前 1～2 天可傳一句輕鬆的提醒，帶出你對這次見面的期待感，而非只是物流確認。",
+        "strengths[0]": "用底片相機的細節（蒙皮、過片、快門聲）展現真實經驗，她感受到你不是唬爛",
+        "strengths[1]": "她從「怕買到爛貨」的疑慮，轉向主動說『說好了』並賦予你角色，代表信任度提升",
+        "watchouts[0]": "整場聚焦在物件知識，沒有拋出你自己的感受或為什麼喜歡這件事，她對你的認識還停留在『懂行情的人』",
+        "watchouts[1]": "她確認『下午可以欸』時，你直接接『說好了』，沒有再鋪墊一句讓她感受到你期待見面的情緒",
+        "gameBreakdown.phaseReached": "從興趣對話推進到具體場景邀約，她已確認時間並承諾參與，進入待執行階段。",
+        "gameBreakdown.missedVariable": "你的個人感受和期待感沒有充分表達，整場聚焦在『底片相機知識』而非『和她一起做這件事的想法』。",
+        "gameBreakdown.failureState": "邀約成立但缺少情感溫度，她知道你懂行情，但還不清楚你為什麼想和她一起去。",
+        "gameBreakdown.nextFirstLine": "下午一起去，到時候我帶妳挑，順便看妳拍的第一張底片長什麼樣。",
+        "gameBreakdown.inviteDirection": "見面前保持輕鬆互動，強化『一起做這件事』的期待感，而非只確認物流細節。"
+      },
+      "rejectedCandidates": [
+        {
+          "code": "debrief_temperature_leak",
+          "raw": "{\"summary\":\"從市集話題聊到底片相機知識，成功讓她主動約下午同行\",\"strengths\":[\"用底片相機專業感建立可信度，讓她說「不是隨便唬我」\",\"順著她問時間，接住「星期六下午」的具體窗口\"],\"watchouts\":[\"她說「說好了」時可以更明確回應時間地點，避免又停在原地打轉\",\"殺價把關是她給的任務框架，別只當笑話帶過，可順勢再往前推一步\"],\"suggestedLine\":\"那星期六下午我們約在市集入口集合，我先幫妳把關殺價再一起吃點東西？\",\"vibe\":\"暖\",\"dateChance\":\"high\",\"dateChanceReason\":\"她主動接梗、延伸底片話題、確認時間並自己拋出同行任務\",\"nextInviteMove\":\"直接把「星期六下午」和「幫忙殺價」接成明確集合時間地點\",\"gameBreakdown\":{\"phaseReached\":\"已經從聊興趣推進到她主動安排同行任務，氣氛熱絡\",\"missedVariable\":\"她給了時間窗口和任務框架，但還沒把它變成具體的邀約行動\",\"failureState\":\"目前停在「說好了」的曖昧共識，還沒釘死實際見面細節\",\"nextFirstLine\":\"那星期六下午市集入口見，我先幫妳把關殺價，殺完帶妳去吃點東西\",\"inviteDirection\":\"把她給的窗口直接收斂成明確集合時間地點，順勢完成邀約\"}}"
+        }
+      ]
+    }
+  ]
+}

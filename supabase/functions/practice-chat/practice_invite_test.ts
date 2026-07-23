@@ -227,3 +227,24 @@ Deno.test("practice invite classifier ignores dare/passive intent questions, thi
   assertEquals(practiceInviteLevelFor("妳明天要不要出來喝一杯"), "direct");
   assertEquals(practiceInviteLevelFor("我帶朋友去找妳"), "direct");
 });
+
+Deno.test("practice invite classifier ignores walking-state, complement 下來/起來 and cross-clause 跟妳 windows", () => {
+  // 第 11 輪 eval FP 樣句（docs/reviews/2026-07-23-fact-gate-round11-judgment.md）：
+  // 「走路還會抖嗎」走路是行走本身、「看下來感覺如何」讀後感補語、
+  // 「先跟妳說一聲，妳要慢慢看」跟妳窗跨逗號湊對。
+  for (
+    const line of [
+      "風景值得但腿真的很誠實哈哈，妳現在走路還會抖嗎？",
+      "哈哈也沒有很效率啦剛好今天在家沒事，妳停在第三章的話，目前那段妳看下來感覺如何？",
+      "第三章其實是關鍵轉折，我怕爆雷先跟妳說一聲，妳要慢慢看，我等妳追上再聊後面～",
+      "這件妳穿看起來如何？",
+    ]
+  ) {
+    assertEquals(practiceInviteLevelFor(line), "none", line);
+  }
+  // 真邀約不得鬆：約起來／出去走走／妳下來（ADDRESSEE_PLAN_CUE 接手）。
+  assertEquals(practiceInviteLevelFor("那就約起來嗎？"), "direct");
+  assertEquals(practiceInviteLevelFor("要不要出去走走嗎"), "direct");
+  assertEquals(practiceInviteLevelFor("我在樓下了，妳下來嗎"), "direct");
+  assertEquals(practiceInviteLevelFor("想跟妳去看那部電影"), "direct");
+});

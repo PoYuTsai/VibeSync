@@ -648,7 +648,10 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 幽默誇大/原話反打、絕不自我解釋」教學一行為固定 bytes，上限 4900→5000。
   // 2026-07-23 round7：質問反打補「複用她原話字眼」（對齊詞面 grounding gate
   // 的刻意設計——推模型引用原話），固定 bytes，上限 5000→5050。
-  if (maxHint > 5050) {
+  // 2026-07-23 round11：回應句家族 hint 版收斂（2→3→5 筆過門檻）——
+  // visibleGameHintContract 補「callback＝詞面扣回」通則教學一行，
+  // 固定 bytes，上限 5050→5150。
+  if (maxHint > 5150) {
     failures.push(`Hint max ${maxHint} at ${maxHintCase}`);
   }
   if (maxDebrief > 4500) {

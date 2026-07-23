@@ -1985,3 +1985,39 @@ Deno.test("typed round10 adverbial 一路 and 丟球 metaphor stay out of claims
     true,
   );
 });
+
+// round11 判定表（2026-07-23）：指示詞＋地點字尾（那區/這站/那條街）是回指
+// 她問過的地點，不是新地名主張（gh5「還沒仔細記那區怎麼走」否認知情句被
+// 判 located_at high 直接殺掉合法候選）；真地名（信義區）不受影響。
+Deno.test("typed round11 deictic 那區/這站 stays out of located_at claims", () => {
+  for (
+    const text of [
+      "哈其實我也是路過發現的，還沒仔細記那區怎麼走，不然這樣，我們找一天我帶妳去挖黑膠，順便讓老闆幫妳寫張推薦卡？",
+      "我們就約這站見",
+      "我還記得那條街的味道",
+    ]
+  ) {
+    assertEquals(
+      extractHintFactClaims({
+        text,
+        perspective: "reply",
+        provenance: "generated_reply",
+        defaultOwner: "user",
+      }).filter((claim) => claim.relation === "located_at"),
+      [],
+      text,
+    );
+  }
+  const named = extractHintFactClaims({
+    text: "那間店在信義區",
+    perspective: "reply",
+    provenance: "generated_reply",
+    defaultOwner: "user",
+  });
+  assertEquals(
+    named.some((claim) =>
+      claim.relation === "located_at" && claim.anchor.includes("信義區")
+    ),
+    true,
+  );
+});

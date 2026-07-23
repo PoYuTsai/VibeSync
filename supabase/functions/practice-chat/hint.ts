@@ -1190,6 +1190,7 @@ function visibleGameHintContract(): string {
   return `visibleGameHintContract:
 - 只輸出 JSON：warmUp、steady、coaching。
 - warmUp/steady 是可貼回覆本身：callback＋一招，不能只把速約方向放在 coaching；可接測試、給品味、造小場景或開邀約窗口，純追問失敗。
+- callback＝詞面扣回：warmUp 和 steady 各自至少複用對話裡的一個具體字眼（她說「還停在第三章」就帶「第三章」）；整句全是逐字稿沒出現的詞＝沒接住她，會被打回。
 - 先讀淺溝通：累→降成本；微測試→先過關；好奇→留懸念；推開→修安全；時間窗→收成。
 - warmUp/steady≤${HINT_REPLY_SOFT_CHAR_LIMIT}字；coaching 以「Game 心法：」開頭，含「她這句可能是在...」、階段白話、具體任務與理由、「速約任務：」，全文≤${HINT_COACHING_SOFT_CHAR_LIMIT}字。
 - 依本輪速約階梯最多推一階；公開、低壓、可拒絕。L4 禁止；hidden labels、代碼與 snake_case 不輸出。
