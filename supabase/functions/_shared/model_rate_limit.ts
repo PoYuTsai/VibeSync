@@ -18,6 +18,8 @@ export const MODEL_RATE_LIMITS = {
   // Codex R1 P2：debrief 也打 DeepSeek（session 內另有 MAX_DEBRIEFS=3，
   // 這裡是跨 session 的 per-user backstop）。
   practice_debrief: { perMinute: 4, perDay: 40 },
+  // 新話題破冰腦力（2026-07-24）：固定扣 3、與 opener 同量級的入口。
+  new_topic: { perMinute: 3, perDay: 30 },
 } as const;
 
 export type ModelRateLimitScope = keyof typeof MODEL_RATE_LIMITS;

@@ -49,6 +49,31 @@ import {
   parseOpenerContractVersion,
 } from "./opener_payload.ts";
 import {
+  claimNewTopicRequest,
+  classifyNewTopicReplayPreflight,
+  computeNewTopicInputHash,
+  isStrongNewTopicReplayHmacKey,
+  newTopicReplayCutoffIso,
+  type NewTopicReplayRow,
+  releaseNewTopicClaim,
+  settleNewTopicRequest,
+} from "./new_topic_billing.ts";
+import {
+  buildNewTopicLedgerResult,
+  hasNewTopicMaterial,
+  normalizeNewTopicModelPayload,
+  sanitizeNewTopicRequest,
+} from "./new_topic_payload.ts";
+import {
+  buildNewTopicRepairPrompt,
+  buildNewTopicUserPrompt,
+  NEW_TOPIC_GENERATION_DEADLINE_MS,
+  NEW_TOPIC_MAX_TOKENS,
+  NEW_TOPIC_PROMPT,
+  NEW_TOPIC_REPAIR_PROMPT,
+  NEW_TOPIC_REQUEST_DEADLINE_MS,
+} from "./new_topic_prompt.ts";
+import {
   chargeOpenerQuota,
   classifyOpenerReplayPreflight,
   computeOpenerInputHash,
@@ -4634,6 +4659,7 @@ serve(async (req) => {
     const recognizeOnly = rawRecognizeOnly === true;
     const isOptimizeMessageRequestShape = !recognizeOnly &&
       rawMode !== "opener" &&
+      rawMode !== "new_topic" &&
       !(Array.isArray(images) && images.length > 0) &&
       typeof rawUserDraft === "string" &&
       rawUserDraft.trim().length > 0 &&
@@ -4715,6 +4741,9 @@ serve(async (req) => {
     }
     const confirmedOvercharge = confirmedParse.value;
     const isOpenerMode = rawMode === "opener";
+    // 新話題 mode（2026-07-24）：自帶 sanitize／claim／fixed-cost-3 gate，
+    // generic analyze 月/日 gate 與 optimize shape 檢查都不得接管。
+    const isNewTopicMode = rawMode === "new_topic";
     if (rawExpectedTier != null && typeof rawExpectedTier !== "string") {
       return jsonResponse({ error: "Invalid expectedTier" }, 400);
     }
@@ -5022,7 +5051,7 @@ serve(async (req) => {
     // enforced by full not calling increment_usage. The full handler
     // validates the run via AnalysisRunStore.validateRunForFull instead.
     if (
-      !recognizeOnly && !isOpenerMode && !accountIsTest &&
+      !recognizeOnly && !isOpenerMode && !isNewTopicMode && !accountIsTest &&
       !isOptimizeMessageRequestShape &&
       responseMode !== "full" &&
       !isStreamRetryMode &&
@@ -5060,7 +5089,7 @@ serve(async (req) => {
 
     // Check daily limit (測試帳號跳過, full mode 跳過 — 同上)
     if (
-      !recognizeOnly && !isOpenerMode && !accountIsTest &&
+      !recognizeOnly && !isOpenerMode && !isNewTopicMode && !accountIsTest &&
       !isOptimizeMessageRequestShape &&
       responseMode !== "full" &&
       !isStreamRetryMode &&
@@ -5096,6 +5125,597 @@ serve(async (req) => {
           dailyRemaining: Math.max(0, dailyLimit - sub.daily_messages_used),
         }, 429);
       }
+    }
+
+    // ── New Topic mode: 破冰腦力（2026-07-24 計畫 §10.5）──
+    // 固定順序：sanitize→material→config→HMAC preflight→claim→quota(3)→
+    // rate limit→renew→generate(45s)→validate/project→settle(5s reserve)。
+    // Handler 永遠只回 settlement 的 stored result，本地候選一律丟棄。
+    if (isNewTopicMode) {
+      const newTopicDeadlineAtMs = requestStartedAtMs +
+        NEW_TOPIC_REQUEST_DEADLINE_MS;
+      const newTopicGenerationDeadlineAtMs = requestStartedAtMs +
+        NEW_TOPIC_GENERATION_DEADLINE_MS;
+
+      // 1. Strict allowlist sanitize＋material readiness：全部發生在 claim、
+      //    rate limit、模型與扣費之前（400/422 路徑扣 0、不佔限流名額）。
+      if (responseMode !== "legacy") {
+        return jsonResponse({
+          error: "NEW_TOPIC_REQUEST_INVALID",
+          code: "NEW_TOPIC_REQUEST_INVALID",
+          message: "新話題暫不支援這種回應模式，請更新 App 後再試。本次不會扣額度。",
+          shouldChargeQuota: false,
+        }, 400);
+      }
+      const newTopicSanitize = sanitizeNewTopicRequest(
+        requestBody as Record<string, unknown>,
+      );
+      if (!newTopicSanitize.ok) {
+        logWarn("new_topic_request_invalid", {
+          user: summarizeUser(user.id),
+          reason: newTopicSanitize.reason,
+        });
+        return jsonResponse({
+          error: "NEW_TOPIC_REQUEST_INVALID",
+          code: "NEW_TOPIC_REQUEST_INVALID",
+          message: "新話題請求格式異常，請更新 App 後再試。本次不會扣額度。",
+          shouldChargeQuota: false,
+        }, 400);
+      }
+      const newTopicRequest = newTopicSanitize.request;
+      if (!hasNewTopicMaterial(newTopicRequest)) {
+        return jsonResponse({
+          error: "NEW_TOPIC_CONTEXT_REQUIRED",
+          code: "NEW_TOPIC_CONTEXT_REQUIRED",
+          message: "請先提供對象作戰板、關於我或目前狀況其中一項，才能生成新話題。本次不會扣額度。",
+          shouldChargeQuota: false,
+        }, 422);
+      }
+
+      // 2. Config：模型金鑰＋new-topic-only HMAC secret。缺 secret 只有
+      //    new_topic fail closed，opener/analyze/OCR 不受影響。config 缺失
+      //    絕不能發生在 claim 之後（會留 pending claim 卡同 requestId）。
+      const newTopicHmacSecret = Deno.env.get("NEW_TOPIC_REPLAY_HMAC_KEY");
+      if (!isStrongNewTopicReplayHmacKey(newTopicHmacSecret)) {
+        logError("new_topic_config_missing", {
+          user: summarizeUser(user.id),
+          missing: "NEW_TOPIC_REPLAY_HMAC_KEY",
+        });
+        return jsonResponse({
+          error: "NEW_TOPIC_REPLAY_NOT_CONFIGURED",
+          code: "NEW_TOPIC_REPLAY_NOT_CONFIGURED",
+          message: "新話題功能暫時無法使用，請稍後再試。本次不會扣額度。",
+          retryable: true,
+          shouldChargeQuota: false,
+        }, 503);
+      }
+      if (!CLAUDE_API_KEY) {
+        logError("new_topic_config_missing", {
+          user: summarizeUser(user.id),
+          missing: "CLAUDE_API_KEY",
+        });
+        return jsonResponse({
+          error: "NEW_TOPIC_REPLAY_NOT_CONFIGURED",
+          code: "NEW_TOPIC_REPLAY_NOT_CONFIGURED",
+          message: "新話題功能暫時無法使用，請稍後再試。本次不會扣額度。",
+          retryable: true,
+          shouldChargeQuota: false,
+        }, 503);
+      }
+
+      // 3. Server-keyed HMAC＋24h replay preflight（ledger read fail-closed）。
+      const newTopicInputHash = await computeNewTopicInputHash({
+        userId: user.id,
+        partnerSummary: newTopicRequest.partnerSummary,
+        effectiveStyleContext: newTopicRequest.effectiveStyleContext,
+        situation: newTopicRequest.situation,
+        secret: newTopicHmacSecret,
+      });
+      const newTopicSuccessBody = (
+        result: Record<string, unknown>,
+      ): Record<string, unknown> => ({
+        // Fresh 與 replay 完全一致：stored result＋常數 usage.cost=3。
+        // charged/replayed 只進 server telemetry，不外露（§5.6）。
+        ...result,
+        usage: { cost: 3 },
+      });
+      {
+        const { data: replayRow, error: replayReadError } = await supabase
+          .from("new_topic_requests")
+          .select("input_hash, state, lease_expires_at, result_json")
+          .eq("user_id", user.id)
+          .eq("request_id", newTopicRequest.requestId)
+          .gte("created_at", newTopicReplayCutoffIso())
+          .maybeSingle();
+        if (replayReadError) {
+          logError("new_topic_replay_preflight_read_failed", {
+            user: summarizeUser(user.id),
+            error: replayReadError.message,
+          });
+          return jsonResponse({
+            error: "NEW_TOPIC_REPLAY_UNAVAILABLE",
+            code: "NEW_TOPIC_REPLAY_UNAVAILABLE",
+            message: "新話題服務暫時無法確認請求狀態，請稍後用同一筆請求重試。",
+            retryable: true,
+            shouldChargeQuota: false,
+          }, 503);
+        }
+        const preflight = classifyNewTopicReplayPreflight(
+          replayRow as NewTopicReplayRow | null,
+          newTopicInputHash,
+        );
+        if (preflight.kind === "mismatch") {
+          return jsonResponse({
+            error: "NEW_TOPIC_REQUEST_REPLAY_MISMATCH",
+            code: "NEW_TOPIC_REQUEST_REPLAY_MISMATCH",
+            message: "這筆請求編號已用於不同內容，請重新生成一次。本次不會扣額度。",
+            shouldChargeQuota: false,
+          }, 409);
+        }
+        if (preflight.kind === "pending") {
+          return jsonResponse({
+            error: "NEW_TOPIC_REQUEST_IN_PROGRESS",
+            code: "NEW_TOPIC_REQUEST_IN_PROGRESS",
+            message: "這筆請求正在生成中，請稍候片刻再用同一筆請求重試。",
+            retryable: true,
+            retryAfterMs: preflight.retryAfterMs,
+          }, 409);
+        }
+        if (preflight.kind === "replay") {
+          logInfo("new_topic_replayed", {
+            user: summarizeUser(user.id),
+            requestId: newTopicRequest.requestId,
+            servedTier: preflight.result.access.servedTier,
+            costDeducted: 0,
+          });
+          return jsonResponse(newTopicSuccessBody(
+            preflight.result as unknown as Record<string, unknown>,
+          ));
+        }
+      }
+
+      // 4. Claim 65s lease（claim 必須發生在 quota 429 終局回應之前，
+      //    才能保證同 identity 併發收斂到單一決策）。
+      const newTopicOwnerToken = crypto.randomUUID();
+      const newTopicRpc = async (fn: string, params: Record<string, unknown>) =>
+        await supabase.rpc(fn, params);
+      const releaseNewTopicCurrentClaim = async (): Promise<boolean> =>
+        await releaseNewTopicClaim({
+          rpc: newTopicRpc,
+          userId: user.id,
+          requestId: newTopicRequest.requestId,
+          inputHash: newTopicInputHash,
+          ownerToken: newTopicOwnerToken,
+        });
+      const newTopicReleaseFailedResponse = () =>
+        jsonResponse({
+          error: "NEW_TOPIC_CLAIM_RELEASE_RETRYABLE",
+          code: "NEW_TOPIC_CLAIM_RELEASE_RETRYABLE",
+          message: "請求狀態暫時無法釋放，請稍後用同一筆請求重試。",
+          retryable: true,
+        }, 503);
+      const handleNewTopicClaimOutcome = (
+        claim: Awaited<ReturnType<typeof claimNewTopicRequest>>,
+      ): Response | null => {
+        if (claim.kind === "claimed") return null;
+        if (claim.kind === "replay") {
+          logInfo("new_topic_replayed", {
+            user: summarizeUser(user.id),
+            requestId: newTopicRequest.requestId,
+            servedTier: claim.result.access.servedTier,
+            costDeducted: 0,
+          });
+          return jsonResponse(newTopicSuccessBody(
+            claim.result as unknown as Record<string, unknown>,
+          ));
+        }
+        if (claim.kind === "pending") {
+          return jsonResponse({
+            error: "NEW_TOPIC_REQUEST_IN_PROGRESS",
+            code: "NEW_TOPIC_REQUEST_IN_PROGRESS",
+            message: "這筆請求正在生成中，請稍候片刻再用同一筆請求重試。",
+            retryable: true,
+            retryAfterMs: claim.retryAfterMs,
+          }, 409);
+        }
+        if (claim.kind === "mismatch") {
+          return jsonResponse({
+            error: "NEW_TOPIC_REQUEST_REPLAY_MISMATCH",
+            code: "NEW_TOPIC_REQUEST_REPLAY_MISMATCH",
+            message: "這筆請求編號已用於不同內容，請重新生成一次。本次不會扣額度。",
+            shouldChargeQuota: false,
+          }, 409);
+        }
+        logError("new_topic_claim_failed", {
+          user: summarizeUser(user.id),
+          kind: claim.kind,
+          error: claim.message,
+        });
+        return jsonResponse({
+          error: "NEW_TOPIC_CLAIM_UNAVAILABLE",
+          code: "NEW_TOPIC_CLAIM_UNAVAILABLE",
+          message: "新話題服務暫時無法受理請求，請稍後用同一筆請求重試。",
+          retryable: true,
+          shouldChargeQuota: false,
+        }, 503);
+      };
+      {
+        const claim = await claimNewTopicRequest({
+          rpc: newTopicRpc,
+          userId: user.id,
+          requestId: newTopicRequest.requestId,
+          inputHash: newTopicInputHash,
+          ownerToken: newTopicOwnerToken,
+        });
+        const claimResponse = handleNewTopicClaimOutcome(claim);
+        if (claimResponse !== null) return claimResponse;
+      }
+
+      // 5. Fixed cost 3 quota gate（Free 只要月/日都剩 ≥3 就不得因 tier 先
+      //    被 paywall 擋）。不足時先試 RevenueCat refresh，再 owner-bound
+      //    release 後回真正 quota 429（絕不留 pending claim 卡 65 秒）。
+      const newTopicCost = 3;
+      if (!accountIsTest) {
+        const newTopicExceedsQuota = () =>
+          sub.monthly_messages_used + newTopicCost > monthlyLimit ||
+          sub.daily_messages_used + newTopicCost > dailyLimit;
+        if (newTopicExceedsQuota()) {
+          const refreshStatus =
+            await maybeRefreshSubscriptionTierFromRevenueCat(
+              "new_topic_quota_exceeded",
+            );
+          if (refreshStatus === "applied") {
+            monthlyLimit = TIER_MONTHLY_LIMITS[normalizeTier(sub.tier)] ||
+              TIER_MONTHLY_LIMITS.free;
+            dailyLimit = TIER_DAILY_LIMITS[normalizeTier(sub.tier)] ||
+              TIER_DAILY_LIMITS.free;
+          }
+        }
+        if (newTopicExceedsQuota()) {
+          if (!await releaseNewTopicCurrentClaim()) {
+            return newTopicReleaseFailedResponse();
+          }
+          const monthlyRemaining = Math.max(
+            0,
+            monthlyLimit - sub.monthly_messages_used,
+          );
+          const dailyRemaining = Math.max(
+            0,
+            dailyLimit - sub.daily_messages_used,
+          );
+          const message = monthlyRemaining < newTopicCost
+            ? "本月額度不足，升級方案可取得更多新話題與分析額度。"
+            : "今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。";
+          logWarn("new_topic_quota_exceeded", {
+            user: summarizeUser(user.id),
+            tier: sub.tier,
+            monthlyRemaining,
+            dailyRemaining,
+          });
+          return jsonResponse({
+            error: "額度不足",
+            message,
+            quotaNeeded: newTopicCost,
+            monthlyRemaining,
+            dailyRemaining,
+            monthlyLimit,
+            dailyLimit,
+            monthlyUsed: sub.monthly_messages_used,
+            dailyUsed: sub.daily_messages_used,
+          }, 429);
+        }
+      }
+
+      // 6. 模型呼叫限流：new_topic 3/分、30/日。quota 429 語義優先於限流。
+      //    MODEL_RATE_LIMITED payload 絕不帶 quota keys、不開 paywall。
+      {
+        const rateVerdict = await enforceModelRateLimit({
+          supabase,
+          userId: user.id,
+          scope: "new_topic",
+          isTestAccount: accountIsTest,
+        });
+        if (rateVerdict.kind === "limited") {
+          logWarn("model_rate_limited", {
+            user: summarizeUser(user.id),
+            scope: "new_topic",
+            reason: rateVerdict.reason,
+          });
+          if (!await releaseNewTopicCurrentClaim()) {
+            return newTopicReleaseFailedResponse();
+          }
+          return jsonResponse(rateVerdict.payload, 429);
+        }
+        if (rateVerdict.kind === "failOpen") {
+          logError("model_rate_limit_check_failed", {
+            user: summarizeUser(user.id),
+            scope: "new_topic",
+            error: rateVerdict.errorMessage,
+          });
+        }
+      }
+
+      // 7. 模型派發前 renew claim：若 gate RPC 拖過 lease、擁有權被奪，
+      //    必須在放大 provider cost 之前停下。
+      {
+        const renewal = await claimNewTopicRequest({
+          rpc: newTopicRpc,
+          userId: user.id,
+          requestId: newTopicRequest.requestId,
+          inputHash: newTopicInputHash,
+          ownerToken: newTopicOwnerToken,
+        });
+        const renewalResponse = handleNewTopicClaimOutcome(renewal);
+        if (renewalResponse !== null) return renewalResponse;
+      }
+
+      // 8. 45 秒 generation deadline 內完成 primary／outage fallback。
+      //    refusal、max_tokens、格式錯誤不走 outage fallback（fallback.ts
+      //    既有分類）；deadline 前提早爆的 DEADLINE_EXCEEDED 也在這裡收。
+      const newTopicUserPrompt = buildNewTopicUserPrompt({
+        partnerSummary: newTopicRequest.partnerSummary,
+        effectiveStyleContext: newTopicRequest.effectiveStyleContext,
+        situation: newTopicRequest.situation,
+      });
+      const rejectNewTopicDeadline = async (
+        stage: string,
+      ): Promise<Response> => {
+        logWarn("new_topic_deadline_exceeded", {
+          user: summarizeUser(user.id),
+          stage,
+        });
+        // 能證明 settle 尚未開始才可 owner-bound release；release 失敗時
+        // 不得假裝已清除（回 retryable，lease 65 秒後自然可接手）。
+        if (!await releaseNewTopicCurrentClaim()) {
+          return newTopicReleaseFailedResponse();
+        }
+        return jsonResponse({
+          error: "NEW_TOPIC_DEADLINE_EXCEEDED",
+          code: "NEW_TOPIC_DEADLINE_EXCEEDED",
+          message: "這次新話題生成逾時，請重新生成一次；本次不會扣額度。",
+          shouldChargeQuota: false,
+        }, 504);
+      };
+
+      let newTopicApiResult: FallbackResult;
+      try {
+        newTopicApiResult = await callClaudeWithFallback(
+          {
+            model: "claude-sonnet-5",
+            max_tokens: NEW_TOPIC_MAX_TOKENS,
+            system: NEW_TOPIC_PROMPT,
+            messages: [{ role: "user", content: newTopicUserPrompt }],
+          },
+          CLAUDE_API_KEY,
+          {
+            timeout: 60000,
+            maxRetries: 1,
+            allowModelFallback: true,
+            absoluteDeadlineAtMs: newTopicGenerationDeadlineAtMs,
+          },
+        );
+      } catch (apiError) {
+        if (
+          (apiError instanceof AiServiceError &&
+            apiError.code === "DEADLINE_EXCEEDED") ||
+          Date.now() >= newTopicGenerationDeadlineAtMs
+        ) {
+          return await rejectNewTopicDeadline("primary_or_fallback");
+        }
+        logWarn("new_topic_api_error", {
+          user: summarizeUser(user.id),
+          error: getErrorMessage(apiError),
+          code: apiError instanceof AiServiceError ? apiError.code : "UNKNOWN",
+        });
+        if (!await releaseNewTopicCurrentClaim()) {
+          return newTopicReleaseFailedResponse();
+        }
+        return jsonResponse({
+          error: "NEW_TOPIC_PROVIDER_UNAVAILABLE",
+          code: "NEW_TOPIC_PROVIDER_UNAVAILABLE",
+          message: "AI 暫時生成失敗，請稍後再試；本次不會扣額度。",
+          retryable: true,
+          shouldChargeQuota: false,
+        }, 503);
+      }
+
+      const newTopicApiData = newTopicApiResult.data as {
+        content?: Array<{ text?: string }>;
+        usage?: { input_tokens?: number; output_tokens?: number };
+        stop_reason?: string;
+      };
+      const newTopicRawText = extractClaudeText(newTopicApiData);
+
+      // 9. 完整性驗證＋最多一次 same-model format repair（禁 model
+      //    fallback、共享 generation deadline）。repair 後仍不合格→502
+      //    release 不扣（絕不丟壞題只投影剩下的）。
+      let newTopicNormalized = normalizeNewTopicModelPayload(
+        parseJsonObjectFromText(newTopicRawText),
+      );
+      let newTopicRepaired = false;
+      if (!newTopicNormalized.ok) {
+        try {
+          const repairResult = await callClaudeWithFallback(
+            {
+              model: newTopicApiResult.model,
+              max_tokens: NEW_TOPIC_MAX_TOKENS,
+              system: NEW_TOPIC_REPAIR_PROMPT,
+              messages: [{
+                role: "user",
+                content: buildNewTopicRepairPrompt(newTopicRawText),
+              }],
+            },
+            CLAUDE_API_KEY,
+            {
+              timeout: 60000,
+              maxRetries: 0,
+              allowModelFallback: false,
+              absoluteDeadlineAtMs: newTopicGenerationDeadlineAtMs,
+            },
+          );
+          const repairedText = extractClaudeText(
+            repairResult.data as { content?: Array<{ text?: string }> },
+          );
+          const repairedNormalized = normalizeNewTopicModelPayload(
+            parseJsonObjectFromText(repairedText),
+          );
+          if (repairedNormalized.ok) {
+            newTopicNormalized = repairedNormalized;
+            newTopicRepaired = true;
+            logInfo("new_topic_response_repaired", {
+              user: summarizeUser(user.id),
+              model: newTopicApiResult.model,
+            });
+          }
+        } catch (repairError) {
+          if (
+            (repairError instanceof AiServiceError &&
+              repairError.code === "DEADLINE_EXCEEDED") ||
+            Date.now() >= newTopicGenerationDeadlineAtMs
+          ) {
+            return await rejectNewTopicDeadline("format_repair");
+          }
+          logWarn("new_topic_repair_error", {
+            user: summarizeUser(user.id),
+            error: getErrorMessage(repairError),
+          });
+        }
+      }
+      if (!newTopicNormalized.ok) {
+        logWarn("new_topic_response_invalid", {
+          user: summarizeUser(user.id),
+          model: newTopicApiResult.model,
+          reason: newTopicNormalized.reason,
+          stopReason: newTopicApiData.stop_reason,
+        });
+        if (!await releaseNewTopicCurrentClaim()) {
+          return newTopicReleaseFailedResponse();
+        }
+        return jsonResponse({
+          error: "NEW_TOPIC_RESPONSE_INVALID",
+          code: "NEW_TOPIC_RESPONSE_INVALID",
+          message: "這次 AI 沒有產出完整的五個新話題，請重新生成一次；本次不會扣額度。",
+          shouldChargeQuota: false,
+        }, 502);
+      }
+
+      // 10. Tier 投影：server 權威 servedTier；Free 只留推薦一題，鎖定四題
+      //     文字不進 ledger、不出 server。
+      const newTopicServedTier = (() => {
+        const tier = normalizeTier(effectiveTier);
+        return tier === "starter" || tier === "essential" ? tier : "free";
+      })();
+      const newTopicLedgerResult = buildNewTopicLedgerResult({
+        topics: newTopicNormalized.topics,
+        recommendationIndex: newTopicNormalized.recommendationIndex,
+        recommendationReason: newTopicNormalized.recommendationReason,
+        servedTier: newTopicServedTier,
+      });
+
+      // 11. Settlement（5 秒 reserve）：deadline 已過且 settle 未開始→504
+      //     release；settle 一旦送出，結果不明絕不 release。
+      if (Date.now() >= newTopicDeadlineAtMs) {
+        return await rejectNewTopicDeadline("pre_settlement");
+      }
+      const settlement = await settleNewTopicRequest({
+        rpc: newTopicRpc,
+        userId: user.id,
+        requestId: newTopicRequest.requestId,
+        inputHash: newTopicInputHash,
+        ownerToken: newTopicOwnerToken,
+        result: newTopicLedgerResult,
+        monthlyLimit,
+        dailyLimit,
+        chargeQuota: !accountIsTest,
+      });
+      if (settlement.kind === "settled") {
+        logInfo("new_topic_generated", {
+          user: summarizeUser(user.id),
+          requestId: newTopicRequest.requestId,
+          model: newTopicApiResult.model,
+          servedTier: newTopicServedTier,
+          charged: settlement.charged,
+          repaired: newTopicRepaired,
+          situation: newTopicRequest.situation,
+          hasPartnerSummary: newTopicRequest.partnerSummary !== null,
+          hasStyleContext: newTopicRequest.effectiveStyleContext !== null,
+          inputTokens: newTopicApiData.usage?.input_tokens,
+          outputTokens: newTopicApiData.usage?.output_tokens,
+          stopReason: newTopicApiData.stop_reason,
+        });
+        // Handler 永遠回 settlement 回傳的 stored result；即使本地候選不同
+        // （late/stale owner race），也丟棄本地結果（設計鐵律 §4-8/9）。
+        return jsonResponse(newTopicSuccessBody(
+          settlement.result as unknown as Record<string, unknown>,
+        ));
+      }
+      if (settlement.kind === "quota_exceeded") {
+        // increment_usage RAISE＝transaction 已回滾（result 未落地），
+        // 可安全 owner-bound release 後回真正 quota 429。
+        if (!await releaseNewTopicCurrentClaim()) {
+          return newTopicReleaseFailedResponse();
+        }
+        const monthlyRemaining = Math.max(
+          0,
+          monthlyLimit - sub.monthly_messages_used,
+        );
+        const dailyRemaining = Math.max(
+          0,
+          dailyLimit - sub.daily_messages_used,
+        );
+        logWarn("new_topic_settle_quota_race", {
+          user: summarizeUser(user.id),
+          reason: settlement.reason,
+        });
+        return jsonResponse({
+          error: "額度不足",
+          message: settlement.reason === "monthly_limit_exceeded"
+            ? "本月額度不足，升級方案可取得更多新話題與分析額度。"
+            : "今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。",
+          quotaNeeded: newTopicCost,
+          monthlyRemaining,
+          dailyRemaining,
+          monthlyLimit,
+          dailyLimit,
+        }, 429);
+      }
+      if (settlement.kind === "mismatch") {
+        return jsonResponse({
+          error: "NEW_TOPIC_REQUEST_REPLAY_MISMATCH",
+          code: "NEW_TOPIC_REQUEST_REPLAY_MISMATCH",
+          message: "這筆請求編號已用於不同內容，請重新生成一次。本次不會扣額度。",
+          shouldChargeQuota: false,
+        }, 409);
+      }
+      if (settlement.kind === "retryable") {
+        // Transport／結果不明：可能已 commit＋已扣一次，絕不 release、
+        // 絕不宣稱「不會扣額度」；client 保留同 requestId 重試讀 ledger。
+        logWarn("new_topic_settlement_pending", {
+          user: summarizeUser(user.id),
+          error: settlement.message,
+        });
+        return jsonResponse({
+          error: "NEW_TOPIC_SETTLEMENT_PENDING",
+          code: "NEW_TOPIC_SETTLEMENT_PENDING",
+          message: "結果正在確認，請用同一筆請求重試。",
+          retryable: true,
+        }, 503);
+      }
+      // settlement.kind === "failed"：RPC 明確 RAISE＝transaction 已回滾，
+      // 可 owner-bound release 後回 500。
+      logError("new_topic_settlement_failed", {
+        user: summarizeUser(user.id),
+        error: settlement.message,
+      });
+      if (!await releaseNewTopicCurrentClaim()) {
+        return newTopicReleaseFailedResponse();
+      }
+      return jsonResponse({
+        error: "NEW_TOPIC_SETTLEMENT_FAILED",
+        code: "NEW_TOPIC_SETTLEMENT_FAILED",
+        message: "新話題結果入帳失敗，請重新生成一次；本次不會扣額度。",
+        shouldChargeQuota: false,
+      }, 500);
     }
 
     // ── Opener mode: generate opening lines ──

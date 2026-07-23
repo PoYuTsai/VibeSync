@@ -2375,15 +2375,16 @@ Deno.test({
     );
 
     // 異常 tier 字串（如 " Starter "、"STARTER"）直接查表會 fallback 成
-    // free 30/15 提早 429；三處查表都必須先過 normalizeTier。
+    // free 30/15 提早 429；四處查表（含 new_topic quota gate 的
+    // RevenueCat refresh 重算）都必須先過 normalizeTier。
     assertEquals(
       source.match(/TIER_MONTHLY_LIMITS\[normalizeTier\(sub\.tier\)\]/g)
         ?.length,
-      3,
+      4,
     );
     assertEquals(
       source.match(/TIER_DAILY_LIMITS\[normalizeTier\(sub\.tier\)\]/g)?.length,
-      3,
+      4,
     );
     assertFalse(source.includes("TIER_MONTHLY_LIMITS[sub.tier]"));
     assertFalse(source.includes("TIER_DAILY_LIMITS[sub.tier]"));

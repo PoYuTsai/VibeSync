@@ -35,6 +35,8 @@ Deno.test("limits match Eric's decision per scope", () => {
     perMinute: 4,
     perDay: 40,
   });
+  // 新話題破冰腦力（2026-07-24 Eric 拍板）：3/min、30/day。
+  assertEquals(MODEL_RATE_LIMITS.new_topic, { perMinute: 3, perDay: 30 });
 });
 
 // ---------------------------------------------------------------------------
