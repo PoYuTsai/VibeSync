@@ -5718,7 +5718,10 @@ const gh5RecordshopTurns = [
     text: "妳上次說想找回聽實體專輯的儀式感，我知道一間唱片行超有味道",
   },
   { role: "ai" as const, text: "真的假的，現在還有這種店喔" },
-  { role: "user" as const, text: "有，老闆還會手寫推薦卡，整間店都是黑膠的味道" },
+  {
+    role: "user" as const,
+    text: "有，老闆還會手寫推薦卡，整間店都是黑膠的味道",
+  },
   { role: "ai" as const, text: "手寫推薦卡也太浪漫，我好久沒逛這種店了" },
   { role: "user" as const, text: "那妳值得去被推薦一次，妳的歌單需要新血" },
   {
@@ -5761,8 +5764,10 @@ Deno.test("generated Hint still rejects challenge-response replies with zero gro
     () =>
       parseHintResult(
         JSON.stringify({
-          warmUp: "哪有，這句是限量版，只有敢跟我拚辣的人才聽得到，妳現在解鎖了",
-          steady: "哈哈被抓包，不過這句我真的只跟嘴硬又吃得下辣的人講，妳算特別版",
+          warmUp:
+            "哪有，這句是限量版，只有敢跟我拚辣的人才聽得到，妳現在解鎖了",
+          steady:
+            "哈哈被抓包，不過這句我真的只跟嘴硬又吃得下辣的人講，妳算特別版",
           coaching:
             "Game心法：她這句「你是不是對每個女生都嗆一樣的話」是在測試你會不會被拆穿就慫掉，這是輕吐槽型測試。這階段要推的是她對你的熟悉感，任務是接住吐槽、順勢把嗆話包裝成「只對她」的專屬版本，展現不被拆穿也不惱羞的從容。不用自證清白，幽默扛住就過關。速約任務：這輪先不約，用「限量/特別版」這類梗把辣度話題變成兩人小劇場，鋪墊熟悉感，先不開邀約窗口。",
         }),

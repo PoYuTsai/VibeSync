@@ -254,7 +254,10 @@ const gh5RecordshopTurns = [
     text: "妳上次說想找回聽實體專輯的儀式感，我知道一間唱片行超有味道",
   },
   { role: "ai" as const, text: "真的假的，現在還有這種店喔" },
-  { role: "user" as const, text: "有，老闆還會手寫推薦卡，整間店都是黑膠的味道" },
+  {
+    role: "user" as const,
+    text: "有，老闆還會手寫推薦卡，整間店都是黑膠的味道",
+  },
   { role: "ai" as const, text: "手寫推薦卡也太浪漫，我好久沒逛這種店了" },
   { role: "user" as const, text: "那妳值得去被推薦一次，妳的歌單需要新血" },
   {

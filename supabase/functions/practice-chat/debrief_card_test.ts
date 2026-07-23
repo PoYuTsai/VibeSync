@@ -2876,7 +2876,8 @@ const gd2ProposalCardBase = {
   ],
   vibe: "中性",
   dateChance: "medium",
-  dateChanceReason: "她願意玩梗、丟出行程窗口，但你沒接成具體邀約，只停在聊得順",
+  dateChanceReason:
+    "她願意玩梗、丟出行程窗口，但你沒接成具體邀約，只停在聊得順",
   nextInviteMove: "先給具體畫面，再順勢提議那天過去，不要只問時段",
 };
 
@@ -2920,12 +2921,14 @@ Deno.test("generated Debrief exempts short closing-promise nextFirstLine from wo
       suggestedLine: "好啊一言為定，我週六下午先訂好碰面時間跟地點傳給妳！",
       vibe: "暖",
       dateChance: "high",
-      dateChanceReason: "她接梗又主動確認時間、還自己說好要一起逛，三個正向訊號都到齊",
+      dateChanceReason:
+        "她接梗又主動確認時間、還自己說好要一起逛，三個正向訊號都到齊",
       nextInviteMove: "趁她給的窗口還熱，直接把星期六下午約定時間地點講死",
       gameBreakdown: {
         phaseReached: "已經從聊興趣推進到她主動敲定星期六下午一起逛市集",
         missedVariable: "窗口出現後還沒把「投入感」轉成明確的碰面時間地點",
-        failureState: "目前只是口頭說好，沒有把行動細節鎖住，容易隨對話結束而淡掉",
+        failureState:
+          "目前只是口頭說好，沒有把行動細節鎖住，容易隨對話結束而淡掉",
         nextFirstLine: "好啊一言為定，那我們約幾點碰面？我先抓個時間傳給妳",
         inviteDirection: "順著她給的窗口直接明確邀約，把市集這件事變成真的行程",
       },
