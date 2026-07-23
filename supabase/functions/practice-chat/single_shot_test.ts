@@ -145,7 +145,10 @@ Deno.test("runSingleShot skips an attempt when under 3s remains before the deadl
   assertEquals(error.attemptFailures[1].model, "claude-haiku-4-5-20251001");
 });
 
-Deno.test("runSingleShot never leaks candidate text into the error object", async () => {
+Deno.test("runSingleShot keeps candidate raw only in the failure record field", async () => {
+  // 契約改版（2026-07-23 真機 gh6 觀測缺口，Eric 拍板）：gate 打回的候選
+  // 原文保留在 attemptFailures[].raw 供 ai_logs.response_body 診斷 TP/FP；
+  // error message／stack 仍然只准機器碼，絕不夾原文。
   const UNSAFE = "UNSAFE_CANDIDATE_RAW_TEXT_SHOULD_NEVER_LEAK";
   const error = await assertRejects(
     () =>
@@ -159,8 +162,26 @@ Deno.test("runSingleShot never leaks candidate text into the error object", asyn
   );
   const serialized = JSON.stringify({
     message: error.message,
-    failures: error.attemptFailures,
     stack: error.stack ?? "",
+    codes: error.attemptFailures.map((failure) => failure.code),
   });
   assertEquals(serialized.includes(UNSAFE), false);
+  // gate 打回帶 raw；transport 失敗（下一發 deadline/HTTP 類）不帶。
+  assertEquals(
+    error.attemptFailures[0].raw,
+    `{"text":"${UNSAFE}"}`,
+  );
+});
+
+Deno.test("runSingleShot omits raw for transport failures", async () => {
+  const error = await assertRejects(
+    () =>
+      runSingleShot(baseArgs({
+        callClaude: () => Promise.reject(new Error("claude_http_500")),
+      })),
+    SingleShotExhaustedError,
+  );
+  for (const failure of error.attemptFailures) {
+    assertEquals(failure.raw, undefined);
+  }
 });

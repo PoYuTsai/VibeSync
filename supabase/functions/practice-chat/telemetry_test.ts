@@ -510,3 +510,89 @@ Deno.test("buildPracticeAiLogRow stamps the pipeline marker into request_body wh
   const unmarked = buildPracticeAiLogRow(base);
   assertEquals("pipeline" in unmarked.request_body, false);
 });
+
+Deno.test("failed ai_logs row carries truncated rejected candidates in response_body", () => {
+  // 真機 gh6 觀測缺口（2026-07-23）：prod 失敗不落被打回候選原文，
+  // TP/FP 只能靠使用者截圖回推。failed row 帶 rejectedCandidates 時寫進
+  // response_body（model＋消毒後 code＋截斷 raw）；沒帶維持 null。
+  const row = buildPracticeAiLogRow({
+    userId: "11111111-2222-3333-4444-555555555555",
+    model: "claude-sonnet-5",
+    telemetry: {
+      mode: "hint",
+      practiceMode: "game",
+      attempt: 2,
+      attemptDurationMs: null,
+      failureClass: "schema_invalid",
+      fallbackUsed: true,
+      failoverUsed: true,
+      totalDurationMs: 9012,
+      promptChars: 4300,
+    },
+    attemptDurationsMs: [9001],
+    failureClasses: ["schema_invalid"],
+    failureCodes: ["hint_quality_invalid_invite_route"],
+    rejectedCandidates: [
+      {
+        model: "claude-sonnet-5",
+        code: "hint_quality_invalid_invite_route",
+        raw: `{"warmUp":"改天帶妳去"}`,
+      },
+      { model: "claude-haiku-4-5", code: "claude_timeout" },
+      { model: "x", code: "y", raw: "z".repeat(5000) },
+    ],
+  });
+  const body = row.response_body as {
+    rejectedCandidates: Array<{ model: string; code: string; raw?: string }>;
+  };
+  assertEquals(body.rejectedCandidates.length, 2); // 無 raw 的 transport 失敗不落
+  assertEquals(body.rejectedCandidates[0], {
+    model: "claude-sonnet-5",
+    code: "hint_quality_invalid_invite_route",
+    raw: `{"warmUp":"改天帶妳去"}`,
+  });
+  assertEquals(body.rejectedCandidates[1].raw?.length, 2000); // 截斷
+  // error_message 消毒鏈不變。
+  assertEquals(row.error_message, "hint_quality_invalid_invite_route");
+
+  // 沒帶候選（或成功列）維持 null。
+  const nullRow = buildPracticeAiLogRow({
+    userId: "11111111-2222-3333-4444-555555555555",
+    model: "claude-sonnet-5",
+    telemetry: {
+      mode: "hint",
+      practiceMode: "game",
+      attempt: 1,
+      attemptDurationMs: 1200,
+      failureClass: null,
+      fallbackUsed: false,
+      failoverUsed: false,
+      totalDurationMs: 1200,
+      promptChars: 4300,
+    },
+    attemptDurationsMs: [1200],
+    failureClasses: [],
+    rejectedCandidates: [],
+  });
+  assertEquals(nullRow.response_body, null);
+  // 成功列即使誤帶候選也不落（只有 failed 需要診斷）。
+  const successRow = buildPracticeAiLogRow({
+    userId: "11111111-2222-3333-4444-555555555555",
+    model: "claude-sonnet-5",
+    telemetry: {
+      mode: "hint",
+      practiceMode: "game",
+      attempt: 1,
+      attemptDurationMs: 1200,
+      failureClass: null,
+      fallbackUsed: false,
+      failoverUsed: false,
+      totalDurationMs: 1200,
+      promptChars: 4300,
+    },
+    attemptDurationsMs: [1200],
+    failureClasses: [],
+    rejectedCandidates: [{ model: "m", code: "c", raw: "leak" }],
+  });
+  assertEquals(successRow.response_body, null);
+});

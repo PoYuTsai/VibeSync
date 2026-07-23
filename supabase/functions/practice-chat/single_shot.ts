@@ -9,7 +9,15 @@ export interface SingleShotAttemptFailure {
   model: string;
   code: string; // "claude_timeout" | "claude_http_5xx" | "gate:<reason>" | "deadline_exhausted" | ...
   durationMs: number;
+  /**
+   * gate 打回的候選原文（截斷），供 ai_logs.response_body 診斷 TP/FP
+   * （2026-07-23 真機 gh6 觀測缺口）。只有 gate 失敗帶；transport 失敗
+   * 沒有候選。錯誤 message 仍只准機器碼，raw 絕不進 message/stack。
+   */
+  raw?: string;
 }
+
+const REJECTED_RAW_MAX_LENGTH = 4000;
 
 export interface SingleShotArgs<T> {
   callClaude: SingleShotClaudeCaller;
@@ -84,13 +92,15 @@ export async function runSingleShot<T>(
       try {
         result = args.validate(raw, model);
       } catch (gateError) {
-        // gate 不過＝該發判敗。只留代碼，候選原文一律丟棄。
+        // gate 不過＝該發判敗。代碼照舊；候選原文截斷保留在 raw 欄
+        // 供失敗觀測（不再一律丟棄——2026-07-23 拍板）。
         attemptFailures.push({
           model,
           code: gateError instanceof Error && gateError.message
             ? gateError.message
             : "gate:unknown",
           durationMs: args.now() - startedAt,
+          raw: raw.slice(0, REJECTED_RAW_MAX_LENGTH),
         });
         continue;
       }

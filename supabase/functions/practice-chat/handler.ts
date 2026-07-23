@@ -418,6 +418,8 @@ async function persistGenerationTelemetryFailOpen(opts: {
   model?: string;
   timeoutMs?: number;
   pipeline?: string;
+  /** gate 打回候選（含 raw）——failed row 落 response_body 診斷 TP/FP。 */
+  rejectedCandidates?: readonly SingleShotAttemptFailure[];
 }): Promise<void> {
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -440,6 +442,7 @@ async function persistGenerationTelemetryFailOpen(opts: {
       failureClasses: opts.failureClasses,
       failureCodes: opts.failureCodes,
       pipeline: opts.pipeline,
+      rejectedCandidates: opts.rejectedCandidates,
     });
     const abortController = new AbortController();
     const rawQuery = opts.supabase.from("ai_logs").insert(row);
@@ -2651,6 +2654,11 @@ export function createPracticeChatHandler(
             recordHintAttemptFailure(failure);
           }
         }
+        const hintRejectedCandidates = e instanceof SingleShotExhaustedError
+          ? e.attemptFailures.filter((failure) =>
+            typeof failure.raw === "string"
+          )
+          : [];
         const failureClass = hintLastFailureClass ??
           classifyPracticeGenerationFailure(e);
         logWarn("practice_chat_generation_failed", {
@@ -2687,6 +2695,7 @@ export function createPracticeChatHandler(
           failureCodes: hintFailureCodes,
           model: hintModel,
           pipeline: "single_shot_v2",
+          rejectedCandidates: hintRejectedCandidates,
         });
         if (requestIsPrefetch) {
           logHintPrefetchTelemetry({
@@ -3343,6 +3352,11 @@ export function createPracticeChatHandler(
             recordDebriefAttemptFailure(failure);
           }
         }
+        const debriefRejectedCandidates = e instanceof SingleShotExhaustedError
+          ? e.attemptFailures.filter((failure) =>
+            typeof failure.raw === "string"
+          )
+          : [];
         logWarn("practice_chat_generation_failed", {
           user: summarizeUser(user.id),
           mode: "debrief",
@@ -3376,6 +3390,7 @@ export function createPracticeChatHandler(
           failureCodes: debriefFailureCodes,
           model: debriefModel,
           pipeline: "single_shot_v2",
+          rejectedCandidates: debriefRejectedCandidates,
         });
         return jsonResponse(
           { error: "practice_debrief_generation_retryable", retryable: true },

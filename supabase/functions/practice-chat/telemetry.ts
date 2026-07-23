@@ -67,10 +67,20 @@ export interface PracticeAiLogRow {
     /** 管線世代標記；single_shot_v2 起帶，舊 row 沒有此鍵。 */
     pipeline?: string;
   };
-  response_body: null;
+  // 失敗列且帶被打回候選時才有值（診斷 gate TP/FP 用，2026-07-23 起）；
+  // 其餘一律 null。
+  response_body:
+    | { rejectedCandidates: PracticeRejectedCandidate[] }
+    | null;
   // 失敗列才有值，且只由 sanitizePracticeFailureCode 白名單機器碼與
   // failureClass 分類詞組成——絕不含使用者逐字稿或模型輸出。
   error_message: string | null;
+}
+
+export interface PracticeRejectedCandidate {
+  model: string;
+  code: string;
+  raw: string;
 }
 
 const FAILURE_CLASS_SET = new Set<string>(
@@ -252,6 +262,16 @@ export function buildPracticeAiLogRow(input: {
   failureCodes?: readonly unknown[];
   /** 管線世代標記（如 "single_shot_v2"），供 ai_logs 新舊對比查詢。 */
   pipeline?: string;
+  /**
+   * 被 gate 打回的候選（真機 gh6 觀測缺口，2026-07-23）：failed row 落進
+   * response_body 供 TP/FP 判定；transport 失敗沒有 raw 不落。error_message
+   * 消毒鏈不經過這裡，不受影響。
+   */
+  rejectedCandidates?: readonly {
+    model?: unknown;
+    code?: unknown;
+    raw?: unknown;
+  }[];
 }): PracticeAiLogRow {
   const telemetry = buildPracticeGenerationTelemetry(input.telemetry);
   const attempt = telemetry.attempt ?? 1;
@@ -278,11 +298,33 @@ export function buildPracticeAiLogRow(input: {
         ? { pipeline: input.pipeline.slice(0, 40) }
         : {}),
     },
-    response_body: null,
+    response_body: failed
+      ? normalizeRejectedCandidates(input.rejectedCandidates ?? [])
+      : null,
     error_message: errorCode === null
       ? null
       : buildPracticeErrorMessage(failureCodes, errorCode),
   };
+}
+
+const REJECTED_CANDIDATE_MAX_COUNT = 4;
+const REJECTED_CANDIDATE_RAW_MAX_LENGTH = 2000;
+
+/** 只留帶 raw 的 gate 打回（transport 失敗沒有候選原文），截斷防巨列。 */
+function normalizeRejectedCandidates(
+  values: readonly { model?: unknown; code?: unknown; raw?: unknown }[],
+): { rejectedCandidates: PracticeRejectedCandidate[] } | null {
+  const candidates: PracticeRejectedCandidate[] = [];
+  for (const value of values) {
+    if (typeof value?.raw !== "string" || value.raw.length === 0) continue;
+    candidates.push({
+      model: typeof value.model === "string" ? value.model.slice(0, 60) : "",
+      code: typeof value.code === "string" ? value.code.slice(0, 160) : "",
+      raw: value.raw.slice(0, REJECTED_CANDIDATE_RAW_MAX_LENGTH),
+    });
+    if (candidates.length >= REJECTED_CANDIDATE_MAX_COUNT) break;
+  }
+  return candidates.length > 0 ? { rejectedCandidates: candidates } : null;
 }
 
 /** Convert raw generation errors into queryable classes without echoing text. */
