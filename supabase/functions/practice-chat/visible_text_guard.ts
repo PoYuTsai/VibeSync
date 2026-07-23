@@ -158,7 +158,19 @@ const INTERNAL_MECHANISM_PHRASES = [
  */
 const DEBRIEF_ALLOWED_SENTINELS = ["框架掉了"];
 
+// 9fd3b8a5 去列字後，temperature.ts 隱藏層標頭改為「投入度 X/100」——全中文、
+// 無英文 band 字，上面兩張表都攔不到；模型照抄注入行等於直送內部溫度分數
+// （鐵則＝注入內部詞必同步擴可見輸出守門）。裸詞「投入度」是分析欄合法
+// 後設評語詞（debrief_card.ts 分析欄），絕不可入表，只攔帶「X/100」分數形
+// 的窄型態。NFKC 後全形數字／斜線已折疊，[\/／] 為雙保險。
+const INTERNAL_SCORE_SHAPE_PATTERN = /投入度[^\d]{0,4}\d{1,3}\s*[\/／]\s*100/u;
+
+function hasVisibleInternalScoreShapeLeak(value: string): boolean {
+  return INTERNAL_SCORE_SHAPE_PATTERN.test(value.normalize("NFKC"));
+}
+
 export function hasVisibleTemperatureMechanismLeak(value: string): boolean {
+  if (hasVisibleInternalScoreShapeLeak(value)) return true;
   const nfkc = value.normalize("NFKC");
   for (const label of INTERNAL_TEMPERATURE_LABELS_LATIN) {
     const obfuscatedLabel = [...label].join(LATIN_OBFUSCATION_SEPARATOR);
@@ -298,6 +310,9 @@ function clauseHasUnsafeAdvice(clause: string): boolean {
 }
 
 export function hasVisibleInternalLabelLeak(value: string): boolean {
+  // 分數形檢查掛這裡讓 chat（handler）/hint 兩側可見輸出同步蓋到；
+  // normalizeVisibleText 會剝掉中文，故用原文另測。
+  if (hasVisibleInternalScoreShapeLeak(value)) return true;
   const normalized = normalizeVisibleText(value);
   return INTERNAL_VISIBLE_LABELS.some((label) => normalized.includes(label));
 }
