@@ -20,6 +20,7 @@ import '../widgets/practice_debrief_card.dart';
 import '../widgets/practice_girl_photo.dart';
 import '../widgets/practice_profile_sheet.dart';
 import '../widgets/practice_temperature_style.dart';
+import '../widgets/practice_wait_progress.dart';
 
 /// AI 實戰練習室主畫面：點入直接進聊天（不選目標）。
 /// 使用者先發訊息，AI 扮演模擬對象回覆；最多 20 則 AI 回覆；
@@ -1337,10 +1338,25 @@ class _BottomBar extends StatelessWidget {
     // 拆解中。
     if (isDebriefing) {
       return _BarContainer(
-        child: BrandPrimaryButton(
-          label: '教練拆解中…',
-          isLoading: true,
-          onPressed: () {},
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            BrandPrimaryButton(
+              label: '教練拆解中…',
+              isLoading: true,
+              onPressed: () {},
+            ),
+            const SizedBox(height: 8),
+            const PracticeWaitProgress(
+              key: ValueKey('practice-debrief-wait-progress'),
+              stages: [
+                PracticeWaitStage(minSeconds: 0, label: '教練正在回顧整局對話…'),
+                PracticeWaitStage(minSeconds: 10, label: '正在整理亮點和可以更好的地方…'),
+                PracticeWaitStage(minSeconds: 25, label: '快好了，正在做最後檢查…'),
+              ],
+            ),
+          ],
         ),
       );
     }
