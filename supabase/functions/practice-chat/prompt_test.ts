@@ -12,7 +12,10 @@ import {
   DEBRIEF_SYSTEM_PROMPT,
 } from "./prompt.ts";
 import { buildHintMessages } from "./hint.ts";
-import { temperatureBandInstruction } from "./temperature.ts";
+import {
+  temperatureBandDebriefInstruction,
+  temperatureBandInstruction,
+} from "./temperature.ts";
 import type { PracticeTurn } from "./validate.ts";
 import { GIRL_PROFILES, resolvePracticeProfile } from "./practice_persona.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
@@ -117,7 +120,7 @@ Deno.test("standard buildChatMessages does not include temperature score", () =>
     buildChatMessages([{ role: "user", text: "嗨" }], defaultProfile)[0]
       .content;
 
-  assertEquals(sys.includes("升溫指數"), false);
+  assertEquals(sys.includes("投入度"), false);
 });
 
 Deno.test("standard buildChatMessages includes no-score invite guidance when continuation context exists", () => {
@@ -159,7 +162,7 @@ Deno.test("beginner buildChatMessages includes temperature score", () => {
     { practiceMode: "beginner", temperatureScore: 30 },
   )[0].content;
 
-  assertEquals(sys.includes("升溫指數 30/100"), true);
+  assertEquals(sys.includes("投入度 30/100"), true);
 });
 
 Deno.test("game buildChatMessages includes game and spicy hidden guidance", () => {
@@ -315,7 +318,7 @@ Deno.test("beginner buildChatMessages：省略 temperatureScore 時 fallback 到
     { practiceMode: "beginner" },
   )[0].content;
 
-  assertEquals(sys.includes("升溫指數 28/100"), true);
+  assertEquals(sys.includes("投入度 28/100"), true);
 });
 
 Deno.test("beginner buildChatMessages：easy 難度省略 temperatureScore 時 fallback 到 35", () => {
@@ -326,7 +329,7 @@ Deno.test("beginner buildChatMessages：easy 難度省略 temperatureScore 時 f
     { practiceMode: "beginner" },
   )[0].content;
 
-  assertEquals(sys.includes("升溫指數 35/100"), true);
+  assertEquals(sys.includes("投入度 35/100"), true);
 });
 
 Deno.test("beginner buildChatMessages：challenge 難度省略 temperatureScore 時 fallback 到 20", () => {
@@ -337,7 +340,7 @@ Deno.test("beginner buildChatMessages：challenge 難度省略 temperatureScore 
     { practiceMode: "beginner" },
   )[0].content;
 
-  assertEquals(sys.includes("升溫指數 20/100"), true);
+  assertEquals(sys.includes("投入度 20/100"), true);
 });
 
 Deno.test("beginner buildDebriefMessages：省略 temperatureScore 與明確傳入難度起始溫度結果一致", () => {
@@ -356,22 +359,20 @@ Deno.test("beginner buildDebriefMessages：省略 temperatureScore 與明確傳�
   assertEquals(omitted, explicit);
 });
 
-Deno.test("beginner buildDebriefMessages 注入實際溫度 band 與不矛盾約束", () => {
+Deno.test("beginner buildDebriefMessages 注入實際溫度分數與不矛盾約束", () => {
   const user = buildDebriefMessages(
     [{ role: "user", text: "嗨" }, { role: "ai", text: "嗯？" }],
     defaultProfile,
     { practiceMode: "beginner", temperatureScore: 15, familiarityScore: 10 },
   )[1].content;
 
-  assertEquals(user.includes("升溫指數 15/100"), true);
-  assertEquals(user.includes("frozen"), true);
-  assertEquals(user.includes("不得與這個溫度矛盾"), true);
+  assertEquals(user.includes("投入度 15/100"), true);
+  assertEquals(user.includes("不得與這個狀態矛盾"), true);
   assertEquals(
-    user.includes(
-      "絕不出現這些內部詞：升溫指數、溫度、score、band、temperature",
-    ),
+    user.includes("絕不出現英文內部標籤（frozen/cold/neutral/warm/hot"),
     true,
   );
+  assertEquals(user.includes("絕不用教練行話或抽象機制詞"), true);
 });
 
 Deno.test("game buildDebriefMessages 注入實際溫度 band", () => {
@@ -381,8 +382,8 @@ Deno.test("game buildDebriefMessages 注入實際溫度 band", () => {
     { practiceMode: "game", temperatureScore: 76, familiarityScore: 66 },
   )[1].content;
 
-  assertEquals(user.includes("升溫指數 76/100"), true);
-  assertEquals(user.includes("不得與這個溫度矛盾"), true);
+  assertEquals(user.includes("投入度 76/100"), true);
+  assertEquals(user.includes("不得與這個狀態矛盾"), true);
 });
 
 Deno.test("standard buildDebriefMessages 不注入溫度 band", () => {
@@ -392,7 +393,7 @@ Deno.test("standard buildDebriefMessages 不注入溫度 band", () => {
     { temperatureScore: 80 },
   )[1].content;
 
-  assertEquals(user.includes("升溫指數"), false);
+  assertEquals(user.includes("投入度"), false);
 });
 
 Deno.test("beginner buildChatMessages includes relationship stage without exposing familiarity score", () => {
@@ -437,7 +438,7 @@ Deno.test("beginner buildChatMessages forbids disclosing internal temperature ev
 
   assertEquals(
     sys.includes(
-      "不得向使用者提及升溫指數、score、band、temperature 或內部評估",
+      "絕不向使用者提及內部評估、分數或英文內部標籤",
     ),
     true,
   );
@@ -1595,6 +1596,26 @@ Deno.test("2026-07-23 修：debrief prompt 與 game 策略行不列中文守門�
       banned.test(compactGameStrategyPrompt(profile)),
       false,
       `compactGameStrategyPrompt ${girl.profileId}`,
+    );
+  }
+});
+
+Deno.test("2026-07-23 修：temperature band instruction 不列中文守門詞（粉紅大象效應第二注入點）", () => {
+  // temperature.ts 的 band instruction 是 b7871ab3 漏掉的第二注入點：
+  // debrief 版逐字列「推拉、篩選、賦格、可得性、框架」，第 6 輪 2 筆
+  // temperature_leak（皆「框架」、皆 Haiku 重試）直接源頭。詞表本身不動。
+  const banned = /框架|篩選|推拉|可得性|賦格|升溫指數/u;
+  // 每個 band 各取一個代表分數（frozen/cold/neutral/warm/hot）＋clamp 邊界。
+  for (const score of [0, 10, 30, 50, 70, 95, 100, 120, Number.NaN]) {
+    assertEquals(
+      banned.test(temperatureBandInstruction(score)),
+      false,
+      `temperatureBandInstruction(${score})`,
+    );
+    assertEquals(
+      banned.test(temperatureBandDebriefInstruction(score)),
+      false,
+      `temperatureBandDebriefInstruction(${score})`,
     );
   }
 });

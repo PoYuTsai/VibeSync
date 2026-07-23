@@ -139,9 +139,10 @@ export function temperatureBandInstruction(score: number): string {
     warm: "她目前有投入感，可以自然調情或提出低壓邀約，但仍要保留退路。",
     hot: "她目前很投入，可以更明確推進邀約或曖昧張力，但不要過度用力。",
   };
-  return `升溫指數 ${clamped}/100（${band}）：${
+  // 不逐字列中文守門詞（粉紅大象效應）：模型看到列字就照抄進可見輸出。
+  return `她的投入度 ${clamped}/100（${band}）：${
     guidance[band]
-  }\n內部規則：不得向使用者提及升溫指數、score、band、temperature 或內部評估。`;
+  }\n內部規則：這段評估只給你看，絕不向使用者提及內部評估、分數或英文內部標籤。`;
 }
 
 /**
@@ -163,12 +164,13 @@ export function temperatureBandDebriefInstruction(score: number): string {
   };
   // 不回顯 band 英文字（frozen/warm…）——隱藏層給了字模型就會抄進可見欄位
   // （eval 第 1/2 輪 8/20 debrief_temperature_leak 的直接源頭）。
-  return `本場收尾升溫指數 ${clamped}/100：${guidance[band]}\n` +
-    "summary、vibe、dateChance 與各評語不得與這個溫度矛盾。\n" +
-    "內部規則（違反即整張卡作廢）：所有欄位的文字一律用白話描述她的狀態，" +
-    "絕不出現這些內部詞：升溫指數、溫度、score、band、temperature、" +
-    "frozen、cold、neutral、warm、hot、dhv、推拉、篩選、賦格、可得性、框架" +
-    "（唯一例外：「框架掉了」可用）。";
+  // 中文守門詞也絕不逐字列出（粉紅大象效應；第 6 輪 2 筆「框架」leak 源頭）：
+  // 比照 prompt.ts GAME_DEBRIEF_SYSTEM_PROMPT（b7871ab3）的去列字寫法。
+  return `本場收尾時她的投入度 ${clamped}/100：${guidance[band]}\n` +
+    "summary、vibe、dateChance 與各評語不得與這個狀態矛盾。\n" +
+    "內部規則（違反即整張卡作廢）：所有欄位一律用白話描述她的狀態，" +
+    "絕不出現英文內部標籤（frozen/cold/neutral/warm/hot、band、score、temperature、dhv），" +
+    "也絕不用教練行話或抽象機制詞，改用具體生活化說法（如「聊天的節奏/氣氛/默契」）。";
 }
 
 export function applyTemperatureDelta(

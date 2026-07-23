@@ -26,21 +26,18 @@ Deno.test("temperatureBandFor maps score ranges", () => {
   assertEquals(temperatureBandFor(95), "hot");
 });
 
-Deno.test("temperatureBandDebriefInstruction 注入 band、含不矛盾與不洩漏規則", () => {
+Deno.test("temperatureBandDebriefInstruction 注入分數、含不矛盾與不洩漏規則", () => {
   const low = temperatureBandDebriefInstruction(15);
-  assert(low.includes("升溫指數 15/100"));
-  assert(low.includes("frozen"));
-  assert(low.includes("不得與這個溫度矛盾"));
+  assert(low.includes("投入度 15/100"));
+  assert(low.includes("不得與這個狀態矛盾"));
   assert(
-    low.includes(
-      "絕不出現這些內部詞：升溫指數、溫度、score、band、temperature",
-    ),
+    low.includes("絕不出現英文內部標籤（frozen/cold/neutral/warm/hot"),
   );
+  assert(low.includes("絕不用教練行話或抽象機制詞"));
 
   const hot = temperatureBandDebriefInstruction(92);
-  assert(hot.includes("升溫指數 92/100"));
-  assert(hot.includes("hot"));
-  assert(hot.includes("不得與這個溫度矛盾"));
+  assert(hot.includes("投入度 92/100"));
+  assert(hot.includes("不得與這個狀態矛盾"));
 });
 
 Deno.test("temperatureBandDebriefInstruction 各檔位語氣方向正確", () => {
