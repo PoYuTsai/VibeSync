@@ -1,0 +1,115 @@
+共 15 發帶被拒候選
+
+═══ beginner_hint bh2_playful_hiking r0 (http_503) recorded=hint_quality_invalid_invite_route,hint_quality_invalid_invite_route
+  ── 候選 c1 recorded_code=hint_quality_invalid_invite_route
+    replay=hint_quality_invalid_invite_route
+  ── 候選 c2 recorded_code=hint_quality_invalid_invite_route
+    replay=hint_quality_invalid_invite_route
+
+═══ beginner_hint bh2_playful_hiking r1 (http_503) recorded=hint_quality_invalid_invite_route,hint_quality_invalid_invite_route
+  ── 候選 c1 recorded_code=hint_quality_invalid_invite_route
+    replay=hint_quality_invalid_invite_route
+  ── 候選 c2 recorded_code=hint_quality_invalid_invite_route
+    replay=hint_quality_invalid_invite_route
+
+═══ beginner_hint bh3_cool_coffee r3 (second_shot) recorded=hint_quality_invalid_invite_route
+  ── 候選 c1 recorded_code=hint_quality_invalid_invite_route
+    replay=hint_quality_invalid_invite_route
+
+═══ game_hint gh2_p2_value_photo r1 (http_503) recorded=hint_quality_invalid_not_grounded,hint_quality_invalid_invite_route
+  ── 候選 c1 recorded_code=hint_quality_invalid_not_grounded
+    replay=hint_quality_invalid_not_grounded
+    [steady]「好啊那就這麼說定了，妳先幫我訂個及格標準，我照著練」
+      → grounding 零詞面重疊（全窗）
+  ── 候選 c2 recorded_code=hint_quality_invalid_invite_route
+    replay=hint_quality_invalid_invite_route
+    [decision:steady] → hint_quality_invalid_invite_route
+
+═══ game_hint gh3_p3_test_spicy r0 (second_shot) recorded=hint_quality_invalid_not_grounded
+  ── 候選 c1 recorded_code=hint_quality_invalid_not_grounded
+    replay=hint_quality_invalid_not_grounded
+    [steady]「被抓包了嗎哈哈，不過這句只對敢嗆我的人講，妳算稀有物種」
+      → grounding 零詞面重疊（全窗）
+
+═══ game_hint gh3_p3_test_spicy r1 (second_shot) recorded=hint_quality_invalid_not_grounded
+  ── 候選 c1 recorded_code=hint_quality_invalid_not_grounded
+    replay=hint_quality_invalid_not_grounded
+    [steady]「哈只對敢接招的人才這樣講話，妳這反應已經很稀有了」
+      → grounding 零詞面重疊（全窗）
+
+═══ game_hint gh4_p4_tension_playlist r0 (second_shot) recorded=hint_quality_invalid_invite_route
+  ── 候選 c1 recorded_code=hint_quality_invalid_invite_route
+    replay=hint_quality_invalid_invite_route
+    [decision:warm_up] → hint_quality_invalid_invite_route
+
+═══ game_hint gh4_p4_tension_playlist r2 (http_503) recorded=hint_quality_invalid_invite_route,hint_quality_invalid_invite_route
+  ── 候選 c1 recorded_code=hint_quality_invalid_invite_route
+    replay=hint_quality_invalid_invite_route
+    [decision:warm_up] → hint_quality_invalid_invite_route
+  ── 候選 c2 recorded_code=hint_quality_invalid_invite_route
+    replay=hint_quality_invalid_invite_route
+    [decision:warm_up] → hint_quality_invalid_invite_route
+    [decision:steady] → hint_quality_invalid_invite_route
+
+═══ game_hint gh5_p5_close_recordshop r1 (second_shot) recorded=hint_quality_invalid_game_contract
+  ── 候選 c1 recorded_code=hint_quality_invalid_game_contract
+    replay=hint_quality_invalid_game_contract
+    [warmUp]「哈哈其實我還沒仔細記地址，只知道路過會被那個黑膠味道勾住。要不要哪天我們一起去挖，順便讓老闆幫妳手寫一張推薦卡？」
+      → unsupported(reply) world:venue:located_at anchor=「只知道路」conf=high
+
+═══ game_hint gh5_p5_close_recordshop r2 (http_503) recorded=hint_quality_invalid_not_grounded,hint_quality_invalid_game_contract
+  ── 候選 c1 recorded_code=hint_quality_invalid_not_grounded
+    replay=hint_quality_invalid_not_grounded
+    [steady]「位置我一時說不準，怕害妳撲空，不如我們找天約個30分鐘，我直接帶妳去比較快！」
+      → grounding 零詞面重疊（全窗）
+  ── 候選 c2 recorded_code=hint_quality_invalid_game_contract
+    replay=hint_quality_invalid_game_contract
+    [steady]「我也是最近才發現的。妳有特別想聽的類型嗎？我們可以一起去挖寶。」
+      → grounding 零詞面重疊（全窗）
+
+═══ game_debrief gd1_close_coffee_window r0 (second_shot) recorded=debrief_quality_invalid_unsupported_detail:world:venue:located_at
+  ── 候選 c1 recorded_code=debrief_quality_invalid_unsupported_detail:world:venue:located_at
+    replay=debrief_quality_invalid_unsupported_detail:world:venue:located_at
+    [suggestedLine]「那週六下午約市區某展場附近，妳挑路線我請飲料？」
+      → unsupported(reply) world:venue:located_at anchor=「週六下午約市區」conf=high
+
+═══ game_debrief gd2_stuck_in_test r1 (http_503) recorded=debrief_quality_invalid_unsupported_detail:third_party:name:is_named,debrief_quality_invalid_suggested_line_not_grounded
+  ── 候選 c1 recorded_code=debrief_quality_invalid_unsupported_detail:third_party:name:is_named
+    replay=debrief_quality_invalid_unsupported_detail:third_party:name:is_named
+    [gameBreakdown.missedVariable]「她說「用行動證明」是丟球給你接，你沒把這個張力延續下去」
+      → unsupported(coaching) third_party:name:is_named anchor=「球給你接」conf=high
+  ── 候選 c2 recorded_code=debrief_quality_invalid_suggested_line_not_grounded
+    replay=debrief_quality_invalid_suggested_line_not_grounded
+    [suggestedLine]「「下週三晚上七點，我們那邊球館，你來試試？」」
+      → grounding 零詞面重疊（全窗）
+    [gameBreakdown.nextFirstLine]「「下週三晚上七點，我們那邊球館，你來試試？」」
+      → grounding 零詞面重疊（全窗）
+
+═══ game_debrief gd2_stuck_in_test r3 (second_shot) recorded=debrief_quality_invalid_game_breakdown_not_grounded
+  ── 候選 c1 recorded_code=debrief_quality_invalid_game_breakdown_not_grounded
+    replay=debrief_quality_invalid_game_breakdown_not_grounded
+    [gameBreakdown.nextFirstLine]「那這週六下午找場地，我們單挑一場如何？」
+      → grounding 零詞面重疊（全窗）
+
+═══ game_debrief gd3_cooled_interview_mode r1 (second_shot) recorded=debrief_quality_invalid_suggested_line_not_grounded
+  ── 候選 c1 recorded_code=debrief_quality_invalid_suggested_line_not_grounded
+    replay=debrief_quality_invalid_suggested_line_not_grounded
+    [suggestedLine]「哈哈被抓包了，換我說，我週末通常是耍廢跟找店吃飯，妳呢？」
+      → grounding 零詞面重疊（全窗）
+    [gameBreakdown.nextFirstLine]「哈哈被抓包了，換我說，我週末通常是耍廢跟找店吃飯，妳呢？」
+      → grounding 零詞面重疊（全窗）
+
+═══ game_debrief gd3_cooled_interview_mode r2 (http_503) recorded=debrief_quality_invalid_suggested_line_not_grounded,debrief_quality_invalid_unsupported_detail:user:lifestyle:does_activity
+  ── 候選 c1 recorded_code=debrief_quality_invalid_suggested_line_not_grounded
+    replay=debrief_quality_invalid_suggested_line_not_grounded
+    [suggestedLine]「「說得也是，那我先說：我週末通常會亂晃找新開的店，妳咧？」」
+      → grounding 零詞面重疊（全窗）
+    [gameBreakdown.nextFirstLine]「「說得也是，那我先說：我週末通常會亂晃找新開的店，妳咧？」」
+      → grounding 零詞面重疊（全窗）
+  ── 候選 c2 recorded_code=debrief_quality_invalid_unsupported_detail:user:lifestyle:does_activity
+    replay=debrief_quality_invalid_unsupported_detail:user:lifestyle:does_activity
+    [suggestedLine]「我最近也在計畫週末小旅行，妳上次去哪裡？我想聽妳的推薦。」
+      → unsupported(reply) user:lifestyle:does_activity anchor=「週末小旅行」conf=high
+    [gameBreakdown.nextFirstLine]「我最近也在計畫週末小旅行，妳上次去哪裡？我想聽妳的推薦。」
+      → unsupported(reply) user:lifestyle:does_activity anchor=「週末小旅行」conf=high
+
