@@ -381,6 +381,8 @@ Deno.test("practice invite classifier keeps craving-intent questions at none", (
       "妳會想起去日本那次嗎？",
       "看到這張會想起去年的旅行嗎？",
       "妳會想起吃那家店的時候嗎？",
+      "妳會想起週六去日本那次嗎？",
+      "妳會想起那次一起去日本嗎？",
       "練腿那天吃到「不能省」也太狠，你是那種吃完會癱在沙發上的人嗎？",
     ]
   ) {
@@ -395,6 +397,7 @@ Deno.test("practice invite classifier keeps craving-intent questions at none", (
   assertEquals(practiceInviteLevelFor("想起上次那家店下次一起去吧"), "soft");
   assertEquals(practiceInviteLevelFor("想起日本週六一起去吧"), "direct");
   assertEquals(practiceInviteLevelFor("剛想起週六一起去吧"), "direct");
+  assertEquals(practiceInviteLevelFor("想起那家店下次一起去嗎"), "soft");
   // 「有空」是邀約窗口語不得鬆。
   assertEquals(practiceInviteLevelFor("週末有空去看展嗎"), "direct");
 });

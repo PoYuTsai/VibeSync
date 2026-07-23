@@ -79,9 +79,14 @@ const NEGATED_ACTIVITY =
 // 是對她狀態的玩笑推測，不是提案。
 const CONJECTURE_CLAUSE =
   /我(?:猜|賭|敢說)[^，,。！？!?；;]{0,20}(?:吧|嗎)/gu;
-// 回憶句（Codex 覆審 P2：「會想起去日本那次嗎」）：想起＝回憶動詞，
-// 後接的內容是記憶不是提案；tempered dot 停在邀約窗口詞前，無標點連寫
-// 的真邀約（想起上次那家店下次一起去吧）不被吞（Codex 三審 P2）。
+// 回憶句（Codex 覆審/三審/四審 P2 疊代）：想起＝回憶動詞。
+// 問句形「(會)想起…嗎」整段剝（回憶內容含過去的週六/一起也照剝），
+// 只在未來提案詞（下次/改天/要不要）前停，保住連寫真邀約
+// 「想起那家店下次一起去嗎」。
+const MEMORY_RECALL_QUESTION_CLAUSE =
+  /(?:會|還會)?想起(?:(?!下次|改天|明天|後天|要不要).){0,20}嗎/gu;
+// 敘述形 tempered dot 停在邀約窗口詞前，無標點連寫的真邀約
+// （想起上次那家店下次一起去吧）不被吞。
 const MEMORY_RECALL_CLAUSE =
   /想起(?:(?!下次|改天|週[一二三四五六日末]|星期[一二三四五六日天]|禮拜[一二三四五六日天]|明天|後天|一起|要不要|約).){0,16}/gu;
 const INTENT_QUESTION_CLAUSE =
@@ -125,6 +130,7 @@ export function practiceInviteLevelFor(value: string): PracticeInviteLevel {
     /(?:這輪|現在|今天)?(?:先)?(?:不急著約|不約|不用約|不硬約|別急著約)/gu,
     "",
   ).replace(INTENT_QUESTION_CLAUSE, "").replace(CONJECTURE_CLAUSE, "")
+    .replace(MEMORY_RECALL_QUESTION_CLAUSE, "")
     .replace(MEMORY_RECALL_CLAUSE, "").replace(
     THIRD_PARTY_INVITER_CLAUSE,
     "",

@@ -721,8 +721,17 @@ function assertGeneratedDebriefFieldSubstance(card: DebriefCard): void {
   }
 }
 
+// 逐子句判定（Codex 四審 P2）：保留句 bail 只吃自己那個子句，
+// 「下午可以再看看吧，我週六有空」後半的真空檔仍要收。
 function partnerTurnContainsInviteEvidence(value: string): boolean {
+  return value.split(/[，,。！？!?；;\n]+/u).some((clause) =>
+    partnerClauseContainsInviteEvidence(clause)
+  );
+}
+
+function partnerClauseContainsInviteEvidence(value: string): boolean {
   const compact = normalizedPracticeText(value);
+  if (compact.length === 0) return false;
   // 硬拍板（約妳/說好了）最優先——「可以欸，那說好了」不受保留句 bail 影響。
   if (
     /(?:約|邀)[妳你]|(?:說好了|說定|一言為定|成交)/u.test(compact)
