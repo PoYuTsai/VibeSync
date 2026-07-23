@@ -202,35 +202,35 @@ async function runHintShot(opts: {
       now: () => performance.now(),
       models: [CLAUDE_SONNET_MODEL, CLAUDE_HAIKU_MODEL],
       validate: (raw) => {
-        const parsed = (() => {
-          try {
-            return parseHintResult(raw, { ...parseOptions });
-          } catch (gateError) {
-            rejected.push({
-              code: gateError instanceof Error ? gateError.message : "unknown",
-              raw,
-            });
-            throw gateError;
-          }
-        })();
-        return {
-          ...parsed,
-          replies: parsed.replies.map((reply) => ({
-            ...reply,
-            decision: buildHintDecision({
-              turns: fixture.turns,
-              profile,
-              practiceMode: fixture.practiceMode,
-              temperatureScore: fixture.temperatureScore,
-              familiarityScore: fixture.familiarityScore,
-              partnerMood: fixture.partnerMood,
-              gameState: fixture.gameState,
-              replyType: reply.type,
-              replyText: reply.text,
-              rationale: SERVER_HINT_DECISION_RATIONALE,
-            }),
-          })) as typeof parsed.replies,
-        };
+        // decision 階段（invite_route/semantic_invite_move）的打回也要進記錄儀，
+        // 故 parse 與 decision 建構包在同一個 try。
+        try {
+          const parsed = parseHintResult(raw, { ...parseOptions });
+          return {
+            ...parsed,
+            replies: parsed.replies.map((reply) => ({
+              ...reply,
+              decision: buildHintDecision({
+                turns: fixture.turns,
+                profile,
+                practiceMode: fixture.practiceMode,
+                temperatureScore: fixture.temperatureScore,
+                familiarityScore: fixture.familiarityScore,
+                partnerMood: fixture.partnerMood,
+                gameState: fixture.gameState,
+                replyType: reply.type,
+                replyText: reply.text,
+                rationale: SERVER_HINT_DECISION_RATIONALE,
+              }),
+            })) as typeof parsed.replies,
+          };
+        } catch (gateError) {
+          rejected.push({
+            code: gateError instanceof Error ? gateError.message : "unknown",
+            raw,
+          });
+          throw gateError;
+        }
       },
     });
     return {
