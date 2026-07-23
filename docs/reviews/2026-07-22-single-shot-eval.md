@@ -1,4 +1,4 @@
-# 單發重設計 v2 四路黑箱 eval 報告（滾動更新；最新狀態見文末「第 3 輪」）
+# 單發重設計 v2 四路黑箱 eval 報告（滾動更新；最新狀態見文末「第 5 輪」）
 
 - 日期：2026-07-23（跑於 hint/debrief 單發切換完成、reviewer 拆除後的 6f12f1d8）
 - 工具：`tools/practice_single_shot_eval/run_eval.ts`（真 Anthropic API，本機直呼生成函式，未碰 prod）
@@ -87,3 +87,67 @@ f302b2ed 已部署：hint 供給率約 95%（新手）／55%（Game），debrief
 - `unsupported_detail:partner:schedule:available_at`（bh2）：候選無任何行程捏造（「下次爬山記得…」被當 schedule claim）——**誤判**。
 
 初步結論：主要殘餘打回是 hint_fact_ledger 的 claim-extraction heuristic 對 Sonnet 5 自然措辭的 false positive，屬「誤判修 bug」而非「放鬆事實接地原則」——修 heuristic 不必動 Eric 的保留裁決，但改 hint_fact_ledger.ts 屬高風險區，修完必重跑 eval＋Codex 審。
+
+## 第 5 輪（2026-07-23；debrief rejectedCandidates 記錄儀首輪到位）
+
+結果 JSON：`results/2026-07-23T01-11-35-559Z.json`
+
+| 路徑 | p50 | p90 | 首發（gate ≥95%） | 503（gate 0） | 判定 |
+|------|-----|-----|------|------|------|
+| 新手 hint | 6.2s | 9.6s | 85% | 2 | ❌（唯一打回＝invite_route×5） |
+| Game hint | 11.5s | 13.0s | 30% | 11 | ❌ |
+| 新手 debrief | 16.7s | 18.4s | 10% | 18 | ❌ |
+| Game debrief | 19.8s | 21.5s | 0% | 20 | ❌ |
+
+詞表洩漏軸持續 0 ✅。
+
+## 第 4＋5 輪被拒樣本全量重放判定（106 筆，非抽樣；本輪最重要產出）
+
+方法：重放腳本直接 import gate 模組（`hint_fact_ledger.ts`／`practice_visible_quality.ts`）以 eval 同款 context 逐筆重跑，拿觸發錨點對照 fixture 判真偽。逐筆判定表＋工具：
+
+- `docs/reviews/2026-07-23-fact-gate-fp-round4-hint.md`（hint 側 30 筆，FP 80%；機制面僅 3/30 錨點＝真捏造本體）
+- `docs/reviews/2026-07-23-fact-gate-fp-round5-debrief.md`（debrief 側 76 筆，FP 74%）
+
+**結論確立：殘餘打回主力＝heuristic false positive，屬「修 bug」非「放鬆事實接地」，不動 Eric 的保留裁決。**
+
+### temperature_leak 懸案已破（gate WAI，修 prompt 不修 gate）
+
+漏詞＝「框架」×10、「篩選」×1，源頭兩個皆實證：
+1. `prompt.ts:229` 禁詞清單本身列字被抄（該行只掛 game debrief；對照組：有此行的 game 20 發洩 9、沒有的新手 18 發洩 2；gd3 還寫出清單裡的合法 sentinel「框架掉了」）。
+2. `game_fsm.ts:1196`「穩定框架」／`:1180`「冷靜篩選測試」／`:1103`「不可得性」等 FSM 策略行經 `prompt.ts:577` 注入。
+唯一語言誤殺 1 筆（「導演＋預告的篩選法」＝她的挑片標準）。
+
+### FP heuristic 根因（檔案:行號詳見兩份判定表）
+
+- `hint_fact_ledger.ts:1085` 送收 pattern 裸「給/發/傳」→「給接納感」「沙發」「傳給妳」抽成假第三方人名（兩輪共 12 筆最大宗，conf=high 硬殺）。
+- `practice_visible_quality.ts:239-269` not_grounded／field_not_grounded＝純詞面 n-gram 且只認最後一句：語意轉述與「引用較早輪次」全誤殺（兩輪 30 筆、FP 100%）。
+- `hint.ts:1404` 裸 `/交作業/` 不分方向（用戶示弱玩笑被當 bossy，4/4 FP）。
+- `hint_fact_ledger.ts:1741-1745,659` 地名字尾詞中切割（「區域」→「哈哈區」；「市集」「街道」）。
+- `hint_fact_ledger.ts:2396,2445,2461-2469` asksPlace 啟動後 coaching 引號片段全變 venue claim。
+- `hint_fact_ledger.ts:887-890`「(我)…X人」籍貫句型（「敢跟我比吃辣的人」）。
+- `hint_fact_ledger.ts:125-126,1370-1394` SCHEDULE_STATUS 含單字「能」（「能量沒那麼高」→有空）。
+- debrief 特有：`:1223` 無主詞「養狗」預設 owner=user；`:121-124` SCHEDULE_DAY 交替序 identity 不匹配（她真說週六有空仍被打）；`:2315-2318`「我們…在…附近」誤觸同住 commonality；likes 所有格「的」捲進錨點。
+
+### ⚠️ False negative 警訊（修 FP 時必須同步補，否則真捏造放行）
+
+venue extractor 對「方位詞＋捷運站／騎車 N 分鐘」型真捏造**全數漏抓**（3 筆），現況是靠別的 FP 垃圾錨點碰巧擋下。
+
+### 真陽性（gate 該擋且擋對的）
+
+捏造地點（西門町／市區／北區捷運站）、替用戶捏造自我揭露（戒咖啡）、breakdown 整包缺（×5，全集中失敗局 gd3/gd4——模型在失敗局傾向省略，prompt 需強調失敗局也要五欄）、meta 句混進貼句欄、overlong。
+
+### eval 工具缺口
+
+`run_eval.ts:206-215` rejected 記錄儀只包 `parseHintResult`；`invite_route`（`hint.ts:839/897`，在 `buildHintDecision`）的打回逸出記錄儀 → 第 5 輪新手 hint 唯一殘餘打回（×5）**原文沒錄到、無法判真偽**。修法＝把 decision 包進同一 try。
+
+### 留給 Eric 的裁決（不動工）
+
+1. 「我週三晚上有空」型第一人稱邀約提案語被 user:schedule slot 封死——政策爭議：邀約教練本來就要能提案時間？
+2. gh5 fixture 死角設計（最新句問地點、fixture 從未給位置，模型只剩捏造或被 asksPlace 誤殺兩條路）——調 fixture 或接受該路必有打回。
+
+## 第 6 輪前修復清單（按風險排序）
+
+1. **prompt 修（低風險）**：`prompt.ts:229` 禁詞清單改為不點名詞彙的寫法；`game_fsm.ts` 策略行機制詞改白話；失敗局 breakdown 五欄必填強調。
+2. **eval 工具修（零 prod 風險）**：`run_eval.ts` 把 `buildHintDecision` 打回納入 rejected 記錄儀。
+3. **heuristic 修（高風險區，修完必重跑 eval＋Codex 審）**：上列 `hint_fact_ledger.ts`／`practice_visible_quality.ts`／`hint.ts:1404` 各根因逐條修；**同步補 FN venue 抽取**（方位詞＋捷運站/騎車 N 分型）。
+4. 修完重跑第 6 輪；三軸全綠 → Batch I Codex 雙審（附本報告全部輪次＋兩份逐筆判定表；另請 Codex 審 relax 清單是否過鬆）→ Eric 真機。
