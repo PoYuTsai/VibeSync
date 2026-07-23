@@ -1411,7 +1411,10 @@ function rejectBossyPasteableHintReply(
     // 方向敏感：bossy＝指使「她」交答案給我；用戶自嘲「我去交作業」是向她
     // 示弱的玩笑（她立了嚴格評審框架），方向相反不得誤殺。
     /(?:妳|你)(?:先|再|快|記得|要|得)?(?:去)?交作業|交作業給我/,
-    /(?:妳|你).{0,8}及不及格/,
+    // round13 gh4：評分對象是「品味/眼光」這種屬性時（我來鑑定妳的品味
+    // 及不及格）＝玩笑品味互測，不是命令她本人接受考核；評她本人/表現
+    //（看妳及不及格）照擋。
+    /(?:妳|你).{0,8}(?<!品味|眼光)及不及格/,
   ];
   if (bossyPatterns.some((pattern) => pattern.test(guardTarget))) {
     throw new Error("hint_bossy_pasteable_reply");

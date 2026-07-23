@@ -284,6 +284,45 @@ function isGroundingExemptResponseShape(value: string): boolean {
     isClosingPromiseResponse(value);
 }
 
+// 賭局衍生（round14 gh3）：逐字稿已有明確賭局證據（敢比/輸的請X/打賭）時，
+// 「賭約/賴帳/認賭服輸」是同一賭局的衍生詞面，語意有出處但 n-gram 天然
+// 不重疊。豁免要求「證據窗有賭局」＋「輸出點名賭局」同時成立；質問型
+// 回應句裁決（不豁免）不受影響——無賭局詞面的回應照走詞面比對。
+const TRANSCRIPT_WAGER_EVIDENCE_PATTERN =
+  /(?:敢比|打賭|賭一把|賭一場|輸(?:的|了)(?:人)?請|贏(?:的|了)(?:人)?請)/u;
+const WAGER_DERIVED_REFERENCE_PATTERN =
+  /(?:賭約|打賭|賭局|賴帳|認賭|服輸|願賭)/u;
+
+function isWagerDerivedResponse(
+  value: string,
+  evidenceTurns: readonly PracticeTurn[],
+): boolean {
+  if (!WAGER_DERIVED_REFERENCE_PATTERN.test(value)) return false;
+  return evidenceTurns.some((turn) =>
+    TRANSCRIPT_WAGER_EVIDENCE_PATTERN.test(turn.text)
+  );
+}
+
+// 自我揭露邀請（round14 gd3，其一 503）：她最新一輪明確邀請自我揭露
+// （說說你自己/換你說/你呢），回應的第一人稱生活自介句功能是「回應邀請」
+// 而非複讀，詞面天然零重疊；用戶貼出前會換成自己的真實生活（同提案時間
+// 型的既定哲學）。豁免鎖她的最新 ai 輪；拿「她的事實」開場的句子沒有
+// 第一人稱自介形，照走詞面比對（捏造她的事實另由 fact ledger 把關）。
+const SELF_DISCLOSURE_INVITE_PATTERN =
+  /(?:說說(?:你|妳)(?:自己)?|(?:你|妳)也可以(?:說說|多說|分享)|換(?:你|妳)(?:說|講|分享)|多(?:說|講|聊)(?:一)?點(?:你|妳)(?:自己)?|(?:你|妳)呢)/u;
+const FIRST_PERSON_DISCLOSURE_PATTERN =
+  /我[^，,。！？!?；;]{0,4}(?:週末|平常|假日|下班|放假|最近|通常|其實|自己|以前|習慣)/u;
+
+function isInvitedSelfDisclosureResponse(
+  value: string,
+  turns: readonly PracticeTurn[],
+): boolean {
+  if (!FIRST_PERSON_DISCLOSURE_PATTERN.test(value)) return false;
+  const latestPartnerText = [...turns].reverse()
+    .find((turn) => turn.role === "ai")?.text ?? "";
+  return SELF_DISCLOSURE_INVITE_PATTERN.test(latestPartnerText);
+}
+
 /**
  * Generated coaching must visibly touch the supplied conversation rather than
  * pass a generic relationship template. This is deliberately lexical and
@@ -323,6 +362,8 @@ export function assertPracticeTextGroundedInTurns(opts: {
   const visible = groundingCompact(opts.visibleText);
   if (![...fragments].some((fragment) => visible.includes(fragment))) {
     if (isGroundingExemptResponseShape(opts.visibleText)) return;
+    if (isWagerDerivedResponse(opts.visibleText, evidenceTurns)) return;
+    if (isInvitedSelfDisclosureResponse(opts.visibleText, opts.turns)) return;
     throw new Error(opts.errorCode);
   }
 }

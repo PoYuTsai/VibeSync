@@ -3,6 +3,7 @@
 
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  hasL4UnsafeVisibleText,
   hasVisibleInternalLabelLeak,
   hasVisibleTemperatureMechanismLeak,
 } from "./visible_text_guard.ts";
@@ -89,5 +90,32 @@ Deno.test("摘除裸詞「篩選」後自然語放行、其餘機制詞照攔", 
       true,
       `should reject "${leak}"`,
     );
+  }
+});
+
+Deno.test("L4 gate：「加重量還不能拒絕」健身情境詞面不誤觸，脅迫語照攔", () => {
+  // round13 bh5 真機 FP：她說「教練都不讓我偷懶，每次都偷偷加重量」，
+  // 候選同理句「偷偷加重量還不能拒絕」描述的是教練加訓練重量的處境，
+  // 撞上 L4 詞面「不能拒絕」被安全 gate 誤殺。豁免窄限「加/上/增重量」
+  // 緊鄰在前的拒絕詞面；其他一切「不能拒絕」語境照攔。
+  assertEquals(
+    hasL4UnsafeVisibleText(
+      "教練這樣根本魔鬼訓練吧，偷偷加重量還不能拒絕，妳都怎麼撐過去的？",
+    ),
+    false,
+  );
+  assertEquals(hasL4UnsafeVisibleText("教練偷加重量都不能拒絕，太狠了吧"), false);
+  // 真脅迫語照攔：主詞是人、或缺健身重量語境，一律不放。
+  for (
+    const unsafe of [
+      "反正妳不能拒絕我",
+      "他說妳不能拒絕他，還偷偷加重量",
+      "跟我出去妳不能拒絕",
+      "偷偷加重量還不能拒絕但可以試試",
+      "偷偷加重量還不能拒絕，順便把她灌醉",
+      "偷偷加重量還不能拒絕或硬上",
+    ]
+  ) {
+    assertEquals(hasL4UnsafeVisibleText(unsafe), true, unsafe);
   }
 });

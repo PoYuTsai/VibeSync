@@ -401,3 +401,53 @@ Deno.test("practice invite classifier keeps craving-intent questions at none", (
   // 「有空」是邀約窗口語不得鬆。
   assertEquals(practiceInviteLevelFor("週末有空去看展嗎"), "direct");
 });
+
+Deno.test("practice invite classifier ignores 堅持 taste-insistence questions", () => {
+  // round13 gh6 第二發 FP 樣句：「妳喝拿鐵有什麼堅持嗎」問的是她的品味
+  // 堅持，跟挑剔/講究同族，不是把她放進行動計畫，卻被 GENERIC_PROPOSAL
+  // 的「喝…嗎」語尾單獨判 direct（P2 build 階段 → invite_route 誤殺）。
+  for (
+    const line of [
+      "私藏是有幾家，不過都還在測試名單，還沒到能昭告天下的程度。妳喝拿鐵有什麼堅持嗎？",
+      "妳喝拿鐵有什麼堅持嗎？",
+      "妳吃鍋物有自己的堅持嗎？",
+    ]
+  ) {
+    assertEquals(practiceInviteLevelFor(line), "none", line);
+  }
+  // 真提案不得鬆：同語尾的真邀約維持原判。
+  assertEquals(practiceInviteLevelFor("明天中午一起喝一杯嗎？"), "direct");
+  assertEquals(practiceInviteLevelFor("改天去喝一杯嗎？"), "soft");
+});
+
+Deno.test("practice invite classifier ignores type-classification questions and quoted-speech complements", () => {
+  // round14 gh1/gh6 FP 樣句：「是…那種嗎」「走什麼風格嗎」「那種舌頭嗎」
+  // 是歸類/屬性問句（問她是哪種人、什麼風格），不是把她放進行動計畫，
+  // 卻被 GENERIC_PROPOSAL 的「動詞…嗎」語尾單獨判 direct。
+  for (
+    const line of [
+      "停在第三章也不算慢啦，我只是今天剛好比較閒才一次翻完，妳平時看書習慣是慢慢咀嚼那種嗎？",
+      "妳平時看書習慣是慢慢咀嚼那種嗎？",
+      "私藏名單當然有，不過我先賣個關子不直接講店名。給妳一個提示：拿鐵控應該會喜歡，妳猜得到是走什麼風格嗎？",
+      "妳猜得到是走什麼風格嗎？",
+      "口袋名單是有幾間，但比起店名，我更愛邊找邊試的過程。妳是拿鐵一喝就知道好壞的那種舌頭嗎？",
+      "妳是拿鐵一喝就知道好壞的那種舌頭嗎？",
+    ]
+  ) {
+    assertEquals(practiceInviteLevelFor(line), "none", line);
+  }
+  // round14 gh4 FP 樣句：引用她原話「跟你多聊一點」後接「聽起來像…」，
+  // 「跟你…」窗跨閉引號抓到「聽起來」的「來」湊成假邀約——引號是
+  // 子句邊界，窗不得跨越。
+  assertEquals(
+    practiceInviteLevelFor(
+      "「勉強可以跟你多聊一點」聽起來像妳其實偷偷還滿滿意的。那我歌單品味過關，妳的呢，也拿一首出來讓我鑑定一下？",
+    ),
+    "none",
+  );
+  // 真提案不得鬆：具體物件/真同行動詞照判。
+  assertEquals(practiceInviteLevelFor("明天中午一起喝一杯嗎"), "direct");
+  assertEquals(practiceInviteLevelFor("這週找時間去那間店嗎"), "direct");
+  assertEquals(practiceInviteLevelFor("改天去喝一杯嗎？"), "soft");
+  assertEquals(practiceInviteLevelFor("我想跟妳去吃那間麻辣鍋"), "direct");
+});

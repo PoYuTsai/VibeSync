@@ -468,7 +468,12 @@ function inviteLevelContradicts(
   actual: PracticeInviteLevel,
 ): boolean {
   if (actual === "none") return false;
-  if (authoritative === "repair" || authoritative === "build") return true;
+  if (authoritative === "repair") return true;
+  // round14 gd6：build 提示是「該輪先鋪墊」；她接住後 debrief 建議下一句
+  // 走低壓軟邀約（改天…如何）是局勢推進的前瞻指引，不是翻案說提示錯。
+  // build 下只有 direct（具體時間地點的硬邀約）才算與提示策略矛盾；
+  // repair 局任何邀約照舊全擋。
+  if (authoritative === "build") return actual === "direct";
   return authoritative === "soft" && actual === "direct";
 }
 

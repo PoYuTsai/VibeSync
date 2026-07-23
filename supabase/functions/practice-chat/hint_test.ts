@@ -5152,6 +5152,30 @@ Deno.test("parseHintResult allows suggestive but non-explicit game wording", () 
   assertEquals(result.coaching.includes("目標變數"), true);
 });
 
+Deno.test("parseHintResult keeps gym weight-training refusal banter out of the L4 gate", () => {
+  // round13 bh5 真機 FP：她說教練偷偷加重量，「偷偷加重量還不能拒絕」是
+  // 描述健身處境的同理句，撞 L4 詞面「不能拒絕」被誤殺。豁免窄限
+  // 「加/上/增重量」緊鄰在前，見 visible_text_guard_test.ts 對照組。
+  const result = parseHintResult(JSON.stringify({
+    warmUp: "教練這樣根本魔鬼訓練吧，偷偷加重量還不能拒絕，妳都怎麼撐過去的？",
+    steady: "教練這麼盯真的很扎實，偷加重量那種驚喜感應該蠻酸的哈哈，妳有跟他抗議過嗎？",
+    coaching: "她這句重點在「教練偷偷加重量、不讓偷懶」，順著這個梗接就好，不用扯到約見面。",
+  }));
+  assert(result.replies[0].text.includes("不能拒絕"));
+
+  // 真脅迫詞面照擋。
+  assertThrows(
+    () =>
+      parseHintResult(JSON.stringify({
+        warmUp: "反正妳不能拒絕我",
+        steady: "先穩住",
+        coaching: "這句是脅迫語，必須擋。",
+      })),
+    Error,
+    "hint_l4_unsafe",
+  );
+});
+
 Deno.test("parseHintResult rejects L4 explicit, coercive, or private-pressure hint text", () => {
   for (
     const raw of [
@@ -5323,6 +5347,36 @@ Deno.test("parseHintResult rejects softened prefix followed by bossy pasteable w
           steady: "不用像交作業，但先給我你的答案，我再決定要不要接。",
           coaching:
             "Game 心法：測試階段先推框架。速約任務：不要讓軟化句包住命令感。",
+        }),
+        { mode: "game" },
+      ),
+    Error,
+    "hint_bossy_pasteable_reply",
+  );
+});
+
+Deno.test("parseHintResult keeps playful taste-appraisal 及不及格 callbacks out of the bossy gate", () => {
+  // round13 gh4 真機 FP：她先立了評分框（「我承認你歌單品味及格」），
+  // 「我來鑑定妳的品味及不及格」是把同一個玩笑評分框丟回去，評的是
+  // 品味這個屬性，不是命令她交作業——不得被「妳…及不及格」詞面誤殺。
+  const result = parseHintResult(
+    JSON.stringify({
+      warmUp: "「勉強及格？那我要更努力升級成滿分歌單製作人，妳等我下一首來洗白。」",
+      steady: "「多聊一點我接受，先說妳最近愛重播哪首，我來鑑定妳的品味及不及格。」",
+      coaching: "Game 心法：接住「及格/多聊」這兩個詞，順勢把互動拉長，把主動權丟回她身上。",
+    }),
+    { mode: "game" },
+  );
+  assert(result.replies[1].text.includes("品味及不及格"));
+
+  // 真 bossy 照擋：評她本人/她的表現及不及格仍是面試官口吻。
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "妳先唱一段給我聽，我看妳及不及格。",
+          steady: "先穩住節奏就好。",
+          coaching: "Game 心法：這句像面試官，應該被擋。",
         }),
         { mode: "game" },
       ),

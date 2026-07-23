@@ -2425,3 +2425,323 @@ Deno.test("profession 的-短語取尾段 head noun，不升格前段", () => {
     [],
   );
 });
+
+Deno.test("regression: 速約任務「不報地區」否定宣言不再變 located_at claim（Codex review gh5 503）", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "有一間唱片行超有味道，老闆會手寫推薦卡，黑膠的味道很濃。" },
+      { role: "ai", text: "被你說得我有點心動，你說的那間唱片行是在哪一區啊" },
+    ],
+  });
+  // gh5 真機第一發（Sonnet）候選：守規賣關子卻被 located_at 誤殺（兩發皆拒→503）。
+  assertHintFactClaimsSupported({
+    text: "位置先賣個關子哈哈，等妳心動夠了我再帶路。不如這樣：這週抓半小時，我帶妳去被老闆推薦一次？",
+    field: "reply",
+    context,
+  });
+  assertHintFactClaimsSupported({
+    text: "哪一區先保密，重點是妳說的心動要兌現。要不要找個30分鐘，我帶妳去現場感受那個黑膠味道？",
+    field: "reply",
+    context,
+  });
+  assertHintFactClaimsSupported({
+    text: "Game 心法：她問地址，其實是心動後想確認這事能不能成真，不是真的要導航。這階段該推「投入感＋邀約」，重點不是給位置，是把「心動」接住並收成具體行動。速約任務：不報地區，用賣關子＋直接開低壓邀約窗（30分鐘短行程），保留她可拒絕的空間，往明確邀約推一階。",
+    field: "coaching",
+    context,
+  });
+  // 否定宣言變體：不得成 claim（round14：夾副詞「別直接報地區」曾繞過豁免）。
+  for (
+    const text of [
+      "先不報地區，吊一下胃口再轉邀約。",
+      "任務：別透露地區，賣關子把窗口開出來。",
+      "Game心法：她問地址其實是心動後想確認真實感。目前在明確但低壓邀約階，別直接報地區，用賣關子保留懸念，把「唱片行、手寫推薦卡」收成一個具體但可拒絕的30分鐘小場景。",
+    ]
+  ) {
+    assertHintFactClaimsSupported({ text, field: "coaching", context });
+  }
+  // 嘴上說不報、實際帶出真地名＝洩漏，照擋。
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "不報南京復興區，妳自己猜猜看。",
+        field: "reply",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+  // gh5 第二發（Haiku）真亂編地名照擋。
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "在南京復興那邊，黑膠味道超濃，就在巷子裡。",
+        field: "reply",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+});
+
+Deno.test("regression: 「那間…是聽人推薦的」迴避句回溯切詞不再變 venue_named（round12 gh5 #10）", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "有一間唱片行超有味道，老闆會手寫推薦卡，黑膠的味道很濃。" },
+      { role: "ai", text: "被你說得我有點心動，你說的那間唱片行是在哪一區啊" },
+    ],
+  });
+  // gh5 round12 #10 第一發（Sonnet）：誠實迴避＋轉邀約，卻被「那間…是聽人推
+  // 薦的」回溯切出「聽人推」當店名誤殺。
+  assertHintFactClaimsSupported({
+    text: "說實話那間我還沒實際去過，是聽人推薦的，怕亂講害妳白跑。不然找天一起去踩點，順路挑張黑膠？",
+    field: "reply",
+    context,
+  });
+  assertHintFactClaimsSupported({
+    text: "哈哈被妳問到地雷了，我其實還沒去過，都是聽朋友說的。那不然這樣，我們一起去挖黑膠、順便讓老闆幫妳寫張推薦卡？",
+    field: "reply",
+    context,
+  });
+  // 真報店名（頂到標點邊界）照抓。
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "那間店叫黑膠小屋，妳去了就知道。",
+        field: "reply",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+  // gh5 round12 #10 第二發（Haiku）真捏造方位照擋。
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "在南邊，靠近捷運站。老實說我也還沒去過，要不要哪天一起去挖寶？",
+        field: "reply",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+});
+
+Deno.test("regression: 「深蹲之路」比喻不再變 located_at claim（round13 bh5）", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "妳說最近開始重訓，練多久了？" },
+      { role: "ai", text: "大概三個月，目前還在跟深蹲搏鬥" },
+      { role: "user", text: "深蹲真的是萬惡之源哈哈" },
+      { role: "ai", text: "而且教練都不讓我偷懶，每次都偷偷加重量" },
+    ],
+  });
+  // round13 bh5 第二發（Haiku）候選：「深蹲之路」是歷程比喻，被地名字尾
+  // pattern 抓成路名誤殺（兩發皆拒其一）。
+  assertHintFactClaimsSupported({
+    text: "教練會偷加重量也太狠了，看來妳真的被盯得很緊，深蹲之路辛苦了。",
+    field: "reply",
+    context,
+  });
+  // 比喻變體：X之路一律是歷程不是路名。
+  assertHintFactClaimsSupported({
+    text: "重訓之路不孤單，妳的教練聽起來很盡責。",
+    field: "reply",
+    context,
+  });
+  // 真地名照擋：逐字稿零地點，報地名＝捏造。
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "約在信義區碰面，練完請妳喝一杯。",
+        field: "reply",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+});
+
+Deno.test("regression: 「我是那種…的人」自我歸類不再變 venue_named claim（round13 gh6）", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "妳週末都怎麼過啊？我最近迷上到處找咖啡廳" },
+      { role: "ai", text: "我喔，大部分睡到中午，起來第一件事就是想喝好的拿鐵" },
+      { role: "user", text: "睡到中午醒來先想拿鐵，妳這開機順序很有態度" },
+      {
+        role: "ai",
+        text: "哈哈拿鐵就是我的開機鍵啊。欸你不是都在找咖啡廳，你口袋有沒有私藏的好店？",
+      },
+    ],
+  });
+  // round13 gh6 第一發（Sonnet）候選：「私藏好店…但我是那種只給…的人」
+  // 被「店…是＋捕獲」venue_named pattern 跨逗號抓成店名「那種只給開機鍵」。
+  assertHintFactClaimsSupported({
+    text: "私藏好店當然有，但我是那種只給「開機鍵」等級的人才透露的，妳這拿鐵咖位算過關😏 先說妳喝拿鐵愛偏甜還是偏濃？",
+    field: "reply",
+    context,
+  });
+  assertHintFactClaimsSupported({
+    text: "好店我有，但我是這種會先考核品味的人，妳先過第一關。",
+    field: "reply",
+    context,
+  });
+  // 真報店名照擋（同 pattern 的真陽性）。
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "我最推的那間店叫黑糖鹿，改天報妳。",
+        field: "reply",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+});
+
+Deno.test("regression: 「幫忙」的忙不再變 schedule 述語、「沒有把…」不翻極性（round13 gd5 503）", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "妳上次說想逛的那種老物市集，這週末河邊剛好有一場" },
+      { role: "ai", text: "真的假的，我找這種市集找超久" },
+      { role: "user", text: "真的，聽說還有舊底片相機的攤位" },
+      { role: "ai", text: "底片相機！我一直想收一台，但怕被當盤子" },
+      { role: "user", text: "我大學玩過一陣子底片，殺價我可以罩妳" },
+      { role: "ai", text: "喔？那你說說看，怎樣的機況才值得下手" },
+      { role: "user", text: "先看蒙皮和過片順不順，快門聲音一聽就知道有沒有被操過" },
+      { role: "ai", text: "聽起來真的有懂，不是隨便唬我" },
+      { role: "user", text: "唬妳幹嘛，被拆穿多丟臉" },
+      { role: "ai", text: "哈哈也是，那市集是星期六還星期日？" },
+      { role: "user", text: "星期六整天，下午人比較少，逛起來舒服" },
+      { role: "ai", text: "下午可以欸，那說好了，你負責幫我把關殺價" },
+    ],
+  });
+  // round13 gd5 兩發皆拒→503。第一發：「她主動確認星期六下午、還分配你
+  // 「幫忙把關殺價」」——「幫忙」的「忙」被 SCHEDULE_STATUS 跨 gap 抓成
+  // busy 述語，湊出 partner:schedule:busy_at「週六下午」捏造 claim。
+  assertHintFactClaimsSupported({
+    text: "她主動確認星期六下午、還分配你「幫忙把關殺價」的任務，等於給了具體行動窗口",
+    field: "coaching",
+    context,
+  });
+  // 第二發：「沒有把她釋出的時間線索（下午可以）立刻轉成…」——「沒有」
+  // 否定的是「轉成確認」這個動作，不是她的「下午可以」；把-字句否定不得
+  // 回頭翻內嵌 claim 的極性。
+  assertHintFactClaimsSupported({
+    text: "沒有把她釋出的時間線索（下午可以）立刻轉成具體日期和地點確認，邀約停留在口頭承諾而非實際行動計畫。",
+    field: "coaching",
+    context,
+  });
+  // 兩發的 pasteable 句（逐字稿確實出現過的時間詞組合）也必須放行。
+  assertHintFactClaimsSupported({
+    text: "好啊那我負責殺價，妳負責找攤位，星期六下午市集見？",
+    field: "reply",
+    context,
+  });
+  // 真捏造時段照擋：逐字稿沒有任何星期天晚上。
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "她說她星期天晚上有約，行程被卡住了",
+        field: "coaching",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+  // 把-字句豁免不外溢：內嵌時段是捏造時照擋。
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "沒有把她釋出的時間線索（星期天晚上可以）轉成具體計畫。",
+        field: "coaching",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+});
+
+Deno.test("regression: 「叫外送」不再變 third_party 人名 claim（round13 gd6）", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "妳限動那個槓片是自己練喔？看起來重量不輕" },
+      { role: "ai", text: "對啊我是健身教練哈哈，那是昨天的腿日" },
+      { role: "user", text: "教練本人喔，難怪姿勢看起來很標準" },
+      { role: "ai", text: "職業病啦，看到人姿勢不對會忍不住想糾正" },
+      { role: "user", text: "那妳今天還有課嗎？聽起來教練的行程都很滿" },
+      { role: "ai", text: "今天剛下課，練完腿整個人像被卡車輾過😂" },
+      { role: "user", text: "敵。那妳練腿的日子是不是就得吃得更扎實一點？" },
+      {
+        role: "ai",
+        text: "喔～你懂喔？練腿那天我一定吃爆，不然隔天直接變殘廢😂 等等 你該不會也有在練吧",
+      },
+      {
+        role: "user",
+        text: "有啦，有在練。不過我的菜單沒妳那麼講究，練腿那天也是亂吃😂 妳練腿通常吃爆什麼？",
+      },
+      {
+        role: "ai",
+        text: "白飯配雞胸肉啊 再補個蛋 碳水蛋白質一起來 練完那餐真的不能省 不然腿會抗議😂",
+      },
+    ],
+  });
+  // round13 gd6 第一發候選 nextFirstLine：「叫外送比較多」——裸送收動詞
+  // pattern 詞中匹配「外送」的「送」，把「比較多」抓成 third_party 人名。
+  assertHintFactClaimsSupported({
+    text: "練完腿還要自己準備這些，妳平常是自己煮還是叫外送比較多？",
+    field: "reply",
+    context,
+  });
+  assertHintFactClaimsSupported({
+    text: "妳都自己煮還是叫外送解決？",
+    field: "reply",
+    context,
+  });
+  // 真送收人名照擋（同 pattern 真陽性：逐字稿零第三方人名）。
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "我先送雅婷，等等再回妳。",
+        field: "reply",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+});
+
+Deno.test("regression: 「一路來回」副詞不再變 located_at claim（round13 gd2）", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "妳說妳打羽球，都固定跟誰打？" },
+      { role: "ai", text: "同事揪的團，一週一次，強度普通" },
+      { role: "user", text: "口氣很大喔，我以前系隊的" },
+      { role: "ai", text: "系隊的就了不起嗎，讓你三分也未必會輸" },
+      { role: "user", text: "好啊，那改天讓妳見識一下" },
+      { role: "ai", text: "看你有沒有本事排進我的行程囉" },
+    ],
+  });
+  // round13 gd2 候選 strengths：「接住羽球梗一路來回」——「一路來回」是
+  // 副詞（全程來回），被地名字尾 pattern 抓成路名「羽球梗一路」誤殺。
+  assertHintFactClaimsSupported({
+    text: "接住羽球梗一路來回，沒被吐槽嚇退",
+    field: "coaching",
+    context,
+  });
+  assertHintFactClaimsSupported({
+    text: "妳們一路來回互嗆，節奏其實很好",
+    field: "coaching",
+    context,
+  });
+  // 真地名照擋：逐字稿零地點。
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "約在民生東路碰面打一場。",
+        field: "reply",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+});

@@ -245,6 +245,39 @@ interface UnsafeOccurrence {
   length: number;
 }
 
+// round13 bh5（安全 gate 詞面豁免，範圍極窄）：「（偷偷）加重量還不能拒絕」
+// 描述教練偷加訓練重量、學員只能照練的健身處境——「不能拒絕」的對象是
+// 訓練重量不是人。豁免僅限拒絕詞面緊跟在「加/上/增重量」之後、且子句
+// 後段無語意反轉；其餘一切「不能拒絕/不准拒絕」語境照攔。此豁免絕不
+// 進入 clauseHasUnsafeAdvice 的否定 scope 共享鏈（它不是否定詞，不得
+// 替後續 pattern 背書）。
+const BENIGN_REFUSAL_TOKENS = new Set(
+  ["不能拒絕", "不能拒绝", "不准拒絕"].map((token) =>
+    normalizeUnsafeText(token)
+  ),
+);
+const BENIGN_TRAINING_REFUSAL_PREFIX =
+  /(?:偷偷|偷)?(?:加|上|增)重量(?:也|還|还|都)?$/u;
+
+function hasBenignTrainingRefusalContext(
+  clause: string,
+  occurrence: UnsafeOccurrence,
+): boolean {
+  const token = clause.slice(
+    occurrence.index,
+    occurrence.index + occurrence.length,
+  );
+  if (!BENIGN_REFUSAL_TOKENS.has(token)) return false;
+  if (
+    !BENIGN_TRAINING_REFUSAL_PREFIX.test(clause.slice(0, occurrence.index))
+  ) {
+    return false;
+  }
+  return !SAFETY_REVERSAL_AFTER.test(
+    clause.slice(occurrence.index + occurrence.length),
+  );
+}
+
 function unsafeOccurrences(clause: string): UnsafeOccurrence[] {
   const keyed = new Map<string, UnsafeOccurrence>();
   for (const pattern of L4_UNSAFE_VISIBLE_PATTERNS) {
@@ -296,8 +329,9 @@ function clauseHasUnsafeAdvice(clause: string): boolean {
   const occurrences = unsafeOccurrences(clause);
   let previousSafe: UnsafeOccurrence | null = null;
   for (const occurrence of occurrences) {
+    const benignWordFace = hasBenignTrainingRefusalContext(clause, occurrence);
     let safe = hasDirectSafetyNegation(clause, occurrence) ||
-      hasExplicitSafetyWarning(clause, occurrence);
+      hasExplicitSafetyWarning(clause, occurrence) || benignWordFace;
     if (!safe && previousSafe) {
       const between = clause.slice(
         previousSafe.index + previousSafe.length,
@@ -309,7 +343,9 @@ function clauseHasUnsafeAdvice(clause: string): boolean {
       safe = sharesNegationScope && !SAFETY_REVERSAL_AFTER.test(after);
     }
     if (!safe) return true;
-    previousSafe = occurrence;
+    // 詞面豁免不是否定詞，不得把 scope 分享給後續 pattern
+    //（「加重量還不能拒絕或硬上」的硬上必須自己過關）。
+    previousSafe = benignWordFace ? null : occurrence;
   }
   return false;
 }
