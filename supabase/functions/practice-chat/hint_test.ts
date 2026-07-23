@@ -159,6 +159,53 @@ Deno.test("warm and steady Hint options carry different invite decisions", () =>
   assertEquals(steady.inviteRoute, "soft");
 });
 
+Deno.test("P5 收尾局 steady 槽放寬允許 direct，其他階仍降一階", () => {
+  // Eric 裁決 (b)：收尾局 base=direct 時，模型自然把明確邀約放 steady 槽，
+  // 不得再被固定降一階打回；速約階梯其他階行為一字不動。
+  const closeOptions = {
+    turns: [
+      { role: "user" as const, text: "妳說的那間咖啡店我也想去" },
+      { role: "ai" as const, text: "那你下次可以帶路啊" },
+    ],
+    profile,
+    practiceMode: "game" as const,
+    temperatureScore: 82,
+    familiarityScore: 78,
+    gameState: {
+      ...initialPersistedGameState(),
+      phase: "P5_CLOSE" as const,
+      lastTargetVariable: "Investment + close",
+      lastSpeedInviteDirection: "direct_invite_low_pressure",
+    },
+    rationale: "收尾局她開了帶路窗口，明確邀約收單。",
+  };
+  const steady = buildHintDecision({
+    ...closeOptions,
+    replyType: "steady",
+    replyText: "這週六下午一起去那間咖啡店吧，我訂位。",
+  });
+  assertEquals(steady.inviteRoute, "direct");
+  assertEquals(steady.move, "direct_invite");
+
+  // 回歸：非收尾局（P4）base=direct 時 steady 仍降一階，direct 邀約照擋。
+  assertThrows(
+    () =>
+      buildHintDecision({
+        ...closeOptions,
+        gameState: {
+          ...initialPersistedGameState(),
+          phase: "P4_TENSION" as const,
+          lastTargetVariable: "Investment",
+          lastSpeedInviteDirection: "direct_invite_low_pressure",
+        },
+        replyType: "steady",
+        replyText: "這週六下午一起去那間咖啡店吧，我訂位。",
+      }),
+    Error,
+    "hint_quality_invalid_invite_route",
+  );
+});
+
 Deno.test("buildHintMessages names exactly the two reply choices and the coaching note", () => {
   const text = allPromptText();
 

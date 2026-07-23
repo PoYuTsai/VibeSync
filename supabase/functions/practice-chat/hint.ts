@@ -824,10 +824,13 @@ export function buildHintDecision(
     });
     const snapshot = effectiveGameFsmSnapshot(freshSnapshot, opts.gameState);
     const baseRoute = gameInviteRouteFor(snapshot.speedInviteDirection);
+    // steady 槽預設比 base 降一階；唯一例外＝P5 收尾局 base=direct 時
+    // steady 允許 direct（Eric 裁決 b）：收尾局模型自然把明確邀約放
+    // steady 槽，不得被固定降階打回。速約階梯其他階一律不動。
     const allowedRoute = opts.replyType === "warm_up"
       ? baseRoute
       : baseRoute === "direct"
-      ? "soft"
+      ? (snapshot.phase === "P5_CLOSE" ? "direct" : "soft")
       : baseRoute === "soft"
       ? "build"
       : baseRoute;
