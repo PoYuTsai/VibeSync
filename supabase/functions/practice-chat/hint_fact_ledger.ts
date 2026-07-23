@@ -279,6 +279,8 @@ function normalizeAnchor(value: string): string {
     .replace(/^[「『“"'（(【《〈#＃]+|[」』”"'）)】》〉]+$/gu, "")
     .replace(/[\s\p{P}\p{S}]/gu, "")
     .replace(/^(?:其實|剛好|平常|最近|目前|真的|有點|也|都)/u, "")
+    // 笑聲黏連（真機 2026-07-23「健身教練哈哈」）：笑聲字不入錨點尾。
+    .replace(/(?:哈|嘿|呵)+$/u, "")
     .replace(/(?:啦|耶|啊|喔|欸|吧)$/u, "");
 }
 
@@ -1029,7 +1031,11 @@ export function extractHintFactClaims(
       const rawProfession = patternIndex === 1
         ? match[1]
         : match[2] ?? match[1];
-      const profession = normalizeAnchor(rawProfession ?? "");
+      // 「聊她當教練的成就感」「當教練帶給她的反差」＝指涉職稱衍生話題，
+      // 的/帶給/讓後面不是職稱（2026-07-23 真機 debrief 垃圾錨點）。
+      const profession = normalizeAnchor(
+        (rawProfession ?? "").replace(/(?:的|帶給|讓).*$/u, ""),
+      );
       if (!looksLikeProfession(profession)) continue;
       add({
         owner: patternIndex === 3 ? defaultOwner : ownerAt(
@@ -1272,9 +1278,12 @@ export function extractHintFactClaims(
     // 「跟妳不同派」「妳是哪一派」：比較詞/疑問詞不是喜好命名（真機 gh6
     // 曾抽出垃圾錨點「不同」）；「濃苦派還是奶香派」選擇問句是在測她的
     // 品味、含代名詞的跨主詞長串是黏連誤抽，都不進 claim。
+    // 「亂吃流派」（真機 debrief 2026-07-23）：流派/學派/幫派的「派」是
+    // 複合名詞尾字，不是粉絲後綴，錨點以流/學/幫/黨結尾即黏連誤抽。
     if (
       !anchor || /^(?:不同|同一|哪|什麼|誰)/u.test(anchor) ||
-      /(?:還是|[妳你她])/u.test(anchor)
+      /(?:還是|[妳你她])/u.test(anchor) ||
+      /(?:流|學|幫|黨)$/u.test(anchor)
     ) continue;
     add({
       owner: ownerAt(
@@ -1873,8 +1882,8 @@ export function extractHintFactClaims(
   // （區域→哈哈區、市集→星期六下午市、街道→出街、站著、山頂…）。
   const namedPlacePatterns = [
     /(?:^|[\s，,。！？!?；;：:\p{S}])(?:在|去|到|位於|路過|靠近|就在)?\s*([\p{Script=Han}0-9]{2,40}(?:路|街|大道)[\p{Script=Han}0-9]{0,20}(?:號|樓))/gu,
-    /(?:^|[\s，,。！？!?；;：:\p{S}])(?:在|去|到|位於|路過|靠近|就在)?\s*([\p{Script=Han}A-Za-z0-9·・]{1,24}(?:站(?![著起穩])|路(?![人痴燈線過])|街(?![道頭])|巷(?![口弄])|區(?![域分別隔])|市(?![集場面況])|縣|鄉(?![下愁])|鎮(?!定)|村|里(?![面頭程])|町|山(?![頂腰腳])|公園|夜市|商圈|碼頭|廣場|大樓|中心|101))/gu,
-    /(?:在|去|到|位於|路過|靠近|說出|說|回答|地點|位置|地址)\s*([\p{Script=Han}A-Za-z0-9·・]{1,24}(?:站(?![著起穩])|路(?![人痴燈線過])|街(?![道頭])|巷(?![口弄])|區(?![域分別隔])|市(?![集場面況])|縣|鄉(?![下愁])|鎮(?!定)|村|里(?![面頭程])|町|山(?![頂腰腳])|公園|夜市|商圈|碼頭|廣場|大樓|中心|101))/gu,
+    /(?:^|[\s，,。！？!?；;：:\p{S}])(?:在|去|到|位於|路過|靠近|就在)?\s*([\p{Script=Han}A-Za-z0-9·・]{1,24}(?:站(?![著起穩])|路(?![人痴燈線過問聊順講談延帶追])|街(?![道頭])|巷(?![口弄])|區(?![域分別隔])|市(?![集場面況])|縣|鄉(?![下愁])|鎮(?!定)|村|里(?![面頭程])|町|山(?![頂腰腳])|公園|夜市|商圈|碼頭|廣場|大樓|中心|101))/gu,
+    /(?:在|去|到|位於|路過|靠近|說出|說|回答|地點|位置|地址)\s*([\p{Script=Han}A-Za-z0-9·・]{1,24}(?:站(?![著起穩])|路(?![人痴燈線過問聊順講談延帶追])|街(?![道頭])|巷(?![口弄])|區(?![域分別隔])|市(?![集場面況])|縣|鄉(?![下愁])|鎮(?!定)|村|里(?![面頭程])|町|山(?![頂腰腳])|公園|夜市|商圈|碼頭|廣場|大樓|中心|101))/gu,
   ];
   for (const pattern of namedPlacePatterns) {
     for (const match of text.matchAll(pattern)) {
@@ -2143,7 +2152,12 @@ function sameFactIdentity(
     const schedulePrefix = output.domain === "schedule" &&
       output.anchor.length >= 2 &&
       evidence.anchor.startsWith(output.anchor);
-    if (!schedulePrefix) return false;
+    // 職稱粗說法單向容忍（2026-07-23）：她說「健身教練」、輸出「教練」＝
+    // 同一件事的較粗說法（中文職稱 head noun 在尾端）；反向是在加料，不放。
+    const professionSuffix = output.domain === "profession" &&
+      output.anchor.length >= 2 &&
+      evidence.anchor.endsWith(output.anchor);
+    if (!schedulePrefix && !professionSuffix) return false;
   }
   if (output.quantity !== undefined) {
     return evidence.quantity === output.quantity;

@@ -364,3 +364,27 @@ Deno.test("share/imagination stripping keeps trailing real invites in run-on cla
     "none",
   );
 });
+
+// 真機 debrief eval（2026-07-23）：「你們教練自己也會嘴饞想吃別的嗎」＝
+// 問她的習慣/慾望（品味測試句），不是提案；「會＋短間隔＋想吃」的意圖問句
+// 曾漏接判成 direct，把 build 局好卡整張打回。
+Deno.test("practice invite classifier keeps craving-intent questions at none", () => {
+  for (
+    const line of [
+      "白飯配雞胸聽起來扎實，你們教練自己也會嘴饞想吃別的嗎？",
+      "妳練完也會嘴饞想吃鹹酥雞嗎？",
+      "教練也會偶爾想吃垃圾食物嗎？",
+      "妳這樣練完腿還有力氣去玩嗎？",
+      "妳這樣練完還有力氣約晚餐犒賞自己嗎？",
+      "練完那餐聽起來像犒賞自己，妳平常小旅行也會這樣放縱吃嗎？",
+      "白飯配雞胸聽起來很扎實，練完那餐我猜妳吃得比誰都香吧？",
+      "練腿那天吃到「不能省」也太狠，你是那種吃完會癱在沙發上的人嗎？",
+    ]
+  ) {
+    assertEquals(practiceInviteLevelFor(line), "none", line);
+  }
+  // 真提案不得鬆：帶妳去吃仍是邀約。
+  assertEquals(practiceInviteLevelFor("週末帶妳去吃鹹酥雞吧"), "direct");
+  // 「有空」是邀約窗口語不得鬆。
+  assertEquals(practiceInviteLevelFor("週末有空去看展嗎"), "direct");
+});

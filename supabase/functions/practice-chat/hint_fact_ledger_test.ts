@@ -2204,6 +2204,118 @@ Deno.test("preference fandom pattern skips alternative questions and cross-actor
   );
 });
 
+// 真機 debrief（2026-07-23）：「用自嘲『亂吃流派』呼應她的玩笑」——
+// 流派/學派/幫派的「派」是複合名詞尾字，不是 X派粉絲後綴；
+// 控/派 pattern 抽出垃圾錨點「亂吃流」判 partner likes，整卡被 grounding 誤殺。
+Deno.test("preference fandom pattern skips compound nouns ending in 流派/學派", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "我平常亂吃流派，練腿吃什麼都隨便" },
+      { role: "ai", text: "笑死 你也太廢了吧 練腿那天亂吃隔天會超慘" },
+      { role: "user", text: "有啦，有在練。練腿那天也是亂吃，妳練腿通常吃爆什麼？" },
+      { role: "ai", text: "白飯配雞胸肉啊 再補個蛋 練完那餐真的不能省" },
+    ],
+  });
+  assertEquals(
+    collectUnsupportedHintFactClaims({
+      text: "用自嘲「亂吃流派」呼應她的玩笑，讓她笑著回「笑死」「太廢了吧」",
+      field: "coaching",
+      context,
+    }).filter((claim) => claim.domain === "preference"),
+    [],
+  );
+  // 真粉絲後綴不得鬆：說她是抹茶控仍要抽 claim。
+  assertEquals(
+    collectUnsupportedHintFactClaims({
+      text: "她根本是抹茶控，下次帶她去吃抹茶",
+      field: "coaching",
+      context,
+    }).some((claim) =>
+      claim.domain === "preference" && claim.anchor === "抹茶"
+    ),
+    true,
+  );
+});
+
+// 真機 debrief eval（2026-07-23）第二批垃圾錨點：①「聊她當教練的成就感」
+// 把「教練的成就感或反差」整串當職稱；②「從槓片一路問到」「飲食一路順著」
+// 的副詞「一路」被街名尾字 pattern 當路名。
+Deno.test("coaching-phrase glue stays out of profession and street anchors", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "妳限動那個槓片是自己練喔？" },
+      { role: "ai", text: "對啊我是健身教練哈哈，那是昨天的腿日" },
+    ],
+  });
+  assertEquals(
+    collectUnsupportedHintFactClaims({
+      text: "先深化聊她當教練的成就感或反差，再找機會帶到下一步",
+      field: "coaching",
+      context,
+    }).filter((claim) => claim.domain === "profession"),
+    [],
+  );
+  for (
+    const text of [
+      "從限動槓片一路問到她職業與生活節奏，話題有連貫感",
+      "從限動槓片一路追問到今天課表，展現對她生活的好奇",
+      "你從她的限動切入，順著職業→課程→飲食一路聊，她願意回應細節",
+    ]
+  ) {
+    assertEquals(
+      collectUnsupportedHintFactClaims({
+        text,
+        field: "coaching",
+        context,
+      }).filter((claim) => claim.domain === "venue"),
+      [],
+      text,
+    );
+  }
+  // 真街名不得鬆：捏造的路名地址仍要殺。
+  assertEquals(
+    collectUnsupportedHintFactClaims({
+      text: "約她去民生一路的那間店",
+      field: "reply",
+      context,
+    }).some((claim) => claim.domain === "venue"),
+    true,
+  );
+});
+
+// 真機 debrief eval（2026-07-23）：她說「我是健身教練」，卡文寫「發現她是
+// 教練」被判 unsupported——職稱粗說法（教練⊂健身教練）與 schedule 粒度容忍
+// 同款，單向放行；反向加料（證據=教練、輸出=健身教練）仍要殺。
+Deno.test("profession coarser restatement is supported one-way", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "妳限動那個槓片是自己練喔？" },
+      { role: "ai", text: "對啊我是健身教練哈哈，那是昨天的腿日" },
+    ],
+  });
+  assertEquals(
+    collectUnsupportedHintFactClaims({
+      text: "從限動細節切入，發現她是教練，順著職業話題聊",
+      field: "coaching",
+      context,
+    }).filter((claim) => claim.domain === "profession"),
+    [],
+  );
+  const coarseContext = buildHintFactContext({
+    turns: [
+      { role: "ai", text: "我是教練啦" },
+    ],
+  });
+  assertEquals(
+    collectUnsupportedHintFactClaims({
+      text: "她是健身教練，作息一定很規律",
+      field: "coaching",
+      context: coarseContext,
+    }).some((claim) => claim.domain === "profession"),
+    true,
+  );
+});
+
 // 真機 gh6 第四波（2026-07-23）：①「跟妳的中午開機鍵風格」＝所有格 callback
 // 她自己說過的作息（睡到中午），不是替她宣稱中午有空；②命名系詞 regex 的
 // gap 跨句（「約她去店裡。任務是先給…」）把下一句開頭抽成店名。
