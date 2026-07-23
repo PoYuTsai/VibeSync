@@ -3334,3 +3334,35 @@ Deno.test("partner initiative 證據：可以＋後續動作不算拍板", () =>
     "debrief_quality_invalid_partner_initiative",
   );
 });
+
+// Codex 三審 P2：「可以」後接的話/語氣詞再＋動作＝保留句，時間 pattern 不得先放行。
+Deno.test("partner initiative 證據：可以＋語氣詞＋再看仍不算拍板", () => {
+  for (
+    const turnText of [
+      "下午可以的話再看看吧",
+      "下午可以欸再看看吧",
+      "下午可以喔再說",
+      "下午可以吧再喬",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({
+            ...fieldSonnetCard,
+            dateChanceReason: "她主動提了見面邀約，時間也點頭了",
+          }),
+          {
+            ...fieldParseOptions,
+            turns: [
+              ...fieldTurns.slice(0, -1),
+              { role: "ai" as const, text: turnText },
+            ],
+          },
+        ),
+      Error,
+      "debrief_quality_invalid_partner_initiative",
+      turnText,
+    );
+  }
+});

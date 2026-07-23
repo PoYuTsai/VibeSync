@@ -723,30 +723,30 @@ function assertGeneratedDebriefFieldSubstance(card: DebriefCard): void {
 
 function partnerTurnContainsInviteEvidence(value: string): boolean {
   const compact = normalizedPracticeText(value);
+  // 硬拍板（約妳/說好了）最優先——「可以欸，那說好了」不受保留句 bail 影響。
   if (
-    /(?:約|邀)[妳你]|要不要.{0,8}一起|(?:跟|和)[妳你].{0,10}(?:見面|碰面|喝咖啡|吃飯|散步|看展|逛街)/u
-      .test(compact) ||
-    // 她自報空檔（我這週六下午剛好有空）＝主動釋出時間窗口
-    // （2026-07-23 gd1 eval：卡片寫「她釋出時間窗口」被誤殺）。
-    /我.{0,10}(?:有空|沒事|有時間|都可以|沒排)/u.test(compact) ||
-    // 她拍板確認（下午可以欸，那說好了）＝接受/敲定邀約
-    // （2026-07-23 gd5 eval 同型誤殺）。
-    /(?:說好了|說定|一言為定|成交)/u.test(compact) ||
-    // 可以後接「再看/先休息」等後續動作＝保留不是拍板（Codex 首審 P2-4）。
-    /(?:週[一二三四五六日末]|星期[一二三四五六日天]|禮拜[一二三四五六日天]|明天|後天|下午|晚上|早上)[^，,。！？!?；;]{0,4}(?:可以|沒問題|ok|行)(?!再|先|睡|休|等|忙|慢|考慮|想|看)/iu
-      .test(compact)
+    /(?:約|邀)[妳你]|(?:說好了|說定|一言為定|成交)/u.test(compact)
   ) {
     return true;
   }
-  // 保留句（可以…再看看/再說）不算拍板；invite classifier 對這型的
-  // generic-proposal 誤判不得背書（Codex 覆審 P2）。
+  // 保留句（可以(的話/欸/喔/吧)…再看看/再說）＝deliberation 不是拍板，
+  // 先於時間 pattern 與 classifier 判掉（Codex 三審 P2：語氣詞插入會讓
+  // lookahead 失效、時間 pattern 先放行）。
   if (
     /(?:可以|行|沒問題)(?:的話)?(?:欸|喔|啊|吧)?再(?:看|想|說|喬|確認|討論)/u
       .test(compact)
   ) {
     return false;
   }
-  return practiceInviteLevelFor(value) !== "none";
+  return /要不要.{0,8}一起|(?:跟|和)[妳你].{0,10}(?:見面|碰面|喝咖啡|吃飯|散步|看展|逛街)/u
+      .test(compact) ||
+    // 她自報空檔（我這週六下午剛好有空）＝主動釋出時間窗口
+    // （2026-07-23 gd1 eval：卡片寫「她釋出時間窗口」被誤殺）。
+    /我.{0,10}(?:有空|沒事|有時間|都可以|沒排)/u.test(compact) ||
+    // 可以後接「再看/先休息」等後續動作＝保留不是拍板（Codex 首審 P2-4）。
+    /(?:週[一二三四五六日末]|星期[一二三四五六日天]|禮拜[一二三四五六日天]|明天|後天|下午|晚上|早上)[^，,。！？!?；;]{0,4}(?:可以|沒問題|ok|行)(?!再|先|睡|休|等|忙|慢|考慮|想|看)/iu
+      .test(compact) ||
+    practiceInviteLevelFor(value) !== "none";
 }
 
 // 逐子句判定：跨子句黏連（「先聊她的感受，累積默契後再提邀約」的她與邀約
