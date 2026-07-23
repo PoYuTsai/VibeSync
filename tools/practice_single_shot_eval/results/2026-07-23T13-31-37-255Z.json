@@ -1,0 +1,132 @@
+{
+  "startedAt": "2026-07-23T13:31:37.255Z",
+  "mode": "live",
+  "repeat": 4,
+  "routes": [
+    "game_debrief"
+  ],
+  "summaries": [
+    {
+      "route": "game_debrief",
+      "shots": 4,
+      "p50Ms": 10931,
+      "p90Ms": 11587,
+      "firstShotCount": 4,
+      "firstShotRate": 1,
+      "secondShotCount": 0,
+      "count503": 0,
+      "gateFailureCounts": {}
+    }
+  ],
+  "leakScan": {
+    "totalServedShots": 4,
+    "hits": []
+  },
+  "gameHintSamples": [],
+  "shots": [
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10931,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "她主動敲定週六下午市集並指派你把關殺價，曖昧氣氛推進順利。",
+        "suggestedLine": "那星期六下午市集見，我負責殺價，妳負責挑相機！",
+        "vibe": "暖",
+        "dateChance": "high",
+        "dateChanceReason": "她主動接梗問機況、笑著回應玩笑，還自己敲定時間並指派任務給你",
+        "nextInviteMove": "直接把「星期六下午」和「負責殺價」接成明確見面邀約",
+        "strengths[0]": "用底片相機專業知識(蒙皮、過片、快門聲)建立可信度而非空口說白話",
+        "strengths[1]": "接住她「怕被唬」的顧慮，用「被拆穿多丟臉」幽默化解防備",
+        "watchouts[0]": "她已給出明確時間窗口(星期六下午)，此時可順勢確認見面而非停在話題上",
+        "watchouts[1]": "整段偏向知識展示，尚未把場景延伸到「兩人一起去」的具體邀約字句",
+        "gameBreakdown.phaseReached": "已經聊到她主動敲定見面時間，氣氛熱絡到她開始分配任務給你",
+        "gameBreakdown.missedVariable": "她給了時間窗口後，你沒有立刻把話題收成明確的見面約定",
+        "gameBreakdown.failureState": "話題卡在市集知識交流，還沒把「一起去」講清楚變成真邀約",
+        "gameBreakdown.nextFirstLine": "那星期六下午市集見，我負責殺價，妳負責挑相機！",
+        "gameBreakdown.inviteDirection": "順著她給的窗口直接講明見面時間地點，不用再鋪墊"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 11587,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊到市集和底片相機專業細節，她主動敲下週六下午行程",
+        "suggestedLine": "那就星期六下午市集見，我負責幫妳把關殺價，你負責挑喜歡的相機",
+        "vibe": "暖",
+        "dateChance": "high",
+        "dateChanceReason": "她接梗延伸底片話題、主動問市集時間、釋出「下午可以」時間窗口，三個訊號都到",
+        "nextInviteMove": "直接把「星期六下午」和「你負責把關殺價」講成具體集合時間地點，順勢定案",
+        "strengths[0]": "接住底片相機話題並秀出實際知識（蒙皮、過片、快門聲）建立信任感",
+        "strengths[1]": "被虧「唬人」時用「被拆穿多丟臉」幽默回應，不尷尬不硬拗",
+        "watchouts[0]": "她已經給出「下午可以」「說好了」的窗口，還沒明確約定見面方式就結束",
+        "watchouts[1]": "她把「把關殺價」的任務丟給你，這是輕度測試，需要確實接住成為兩人默契點",
+        "gameBreakdown.phaseReached": "已經從聊興趣聊到她主動敲定星期六下午的行程，算是收尾前的曖昧鋪墊階段",
+        "gameBreakdown.missedVariable": "她給了時間窗口和任務分工（把關殺價），但你還沒把這個窗口收成具體的邀約行動",
+        "gameBreakdown.failureState": "話題留在「說好了」的口頭默契，沒有進一步確認集合時間或地點，容易停在空氣中",
+        "gameBreakdown.nextFirstLine": "那星期六下午市集門口見，我先幫妳看過幾台底片機再決定",
+        "gameBreakdown.inviteDirection": "順著她給的窗口直接定案見面細節，不用再鋪墊，可以走向明確邀約"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 2,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10349,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊底片相機聊出默契，她主動敲時間並交付任務給你",
+        "suggestedLine": "那星期六下午我們約市集門口，妳負責看中，我負責殺價把關！",
+        "vibe": "暖",
+        "dateChance": "high",
+        "dateChanceReason": "她接梗延伸底片話題、主動問時間、又指派你任務，三個訊號都到",
+        "nextInviteMove": "順著「星期六下午」直接約定集合時間地點，把窗口收成具體行動",
+        "strengths[0]": "用具體知識(蒙皮、過片、快門聲)讓她感受到真材實料",
+        "strengths[1]": "被質疑時不辯解反而幽默回應「唬妳幹嘛」化解張力",
+        "watchouts[0]": "她已丟出「星期六下午」的窗口，還沒明確接成具體集合方式",
+        "watchouts[1]": "話題偏向物件知識，可再多帶一點兩人互動的畫面感",
+        "gameBreakdown.phaseReached": "已經聊到她主動敲時間、還指派任務給你，算是收尾前的曖昧張力階段",
+        "gameBreakdown.missedVariable": "窗口已開但還沒把「星期六下午」轉成具體集合方式，投入感可以再往上推",
+        "gameBreakdown.failureState": "沒有明顯卡點，但話題還停在物件知識，少了一點兩人相處畫面",
+        "gameBreakdown.nextFirstLine": "那星期六下午我們約市集門口，妳負責看中，我負責殺價把關！",
+        "gameBreakdown.inviteDirection": "直接把她給的時間窗口接成低壓明確邀約，敲定碰面細節"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd5_close_weekend_market",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 13764,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "用底片相機專業接住她的興趣，成功讓她主動約下週六市集",
+        "suggestedLine": "好，那星期六下午市集見，我負責幫妳把關殺價，妳負責挑喜歡的機子",
+        "vibe": "暖",
+        "dateChance": "high",
+        "dateChanceReason": "她主動確認時間、延伸話題、還分配你任務「幫我把關殺價」，三個正向訊號都到位",
+        "nextInviteMove": "直接確認見面時間地點，把「星期六下午」鎖成明確約定",
+        "strengths[0]": "分享大學玩底片經驗，具體到蒙皮、過片、快門聲，展現真實懂行",
+        "strengths[1]": "被虧「唬我」時幽默回應「被拆穿多丟臉」，接住她的玩笑",
+        "watchouts[0]": "她問機況判斷時可以再多帶一點個人故事，不只是知識清單",
+        "watchouts[1]": "她主動定了星期六下午，可再確認集合方式讓行程更具體",
+        "gameBreakdown.phaseReached": "已經從聊興趣推進到她主動敲定星期六下午的約定",
+        "gameBreakdown.missedVariable": "當下可以再多一點點曖昧張力，比如開玩笑說要不要順便約晚餐",
+        "gameBreakdown.failureState": "沒有明顯卡點，收尾很順，反而是稍微保守沒把邀約再往前推一步",
+        "gameBreakdown.nextFirstLine": "星期六下午市集見，殺價交給我，妳負責挑喜歡的機子",
+        "gameBreakdown.inviteDirection": "順著她給的窗口直接把時間地點定案，甚至加碼約逛完一起吃點東西"
+      }
+    }
+  ]
+}

@@ -38,7 +38,7 @@ export interface EvalFixture {
   turns: PracticeTurn[];
   /** Game 路徑必填（FSM 持久化狀態）；新手路徑 null。 */
   gameState: PersistedGameState | null;
-  /** 對應 ledgerAppliedHintTurns；本 eval 一律走「本場沒套用提示」。 */
+  /** 對應 ledgerAppliedHintTurns（已含 server 水合的 decision）；空陣列＝本場沒套用提示。 */
   appliedHintTurns: AppliedHintTurn[];
   /** 對應 promptMemorySummary；null＝無長期記憶。 */
   memorySummary: string | null;

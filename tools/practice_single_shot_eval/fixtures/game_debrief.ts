@@ -188,4 +188,66 @@ export const GAME_DEBRIEF_FIXTURES: EvalFixture[] = [
     appliedHintTurns: [],
     memorySummary: null,
   },
+  // 真機 2026-07-23（ai_logs 8a15dec5）：Game hint 照貼後按 debrief 兩請求四發
+  // 全滅。覆蓋「有套用 Hint」路徑：hintAssessment schema 必填＋exact+preserved
+  // 的對話狀態回顧（停在資訊交換/一問一答）不得整卡打回。
+  {
+    id: "gd6_hint_assisted_fitness",
+    route: "game_debrief",
+    practiceMode: "game",
+    profileArgs: { personaId: "playful_extrovert", difficulty: "normal" },
+    temperatureScore: 58,
+    familiarityScore: 32,
+    partnerMood: "comfortable",
+    turns: [
+      { role: "user", text: "妳限動那個槓片是自己練喔？看起來重量不輕" },
+      { role: "ai", text: "對啊我是健身教練哈哈，那是昨天的腿日" },
+      { role: "user", text: "教練本人喔，難怪姿勢看起來很標準" },
+      { role: "ai", text: "職業病啦，看到人姿勢不對會忍不住想糾正" },
+      { role: "user", text: "那妳今天還有課嗎？聽起來教練的行程都很滿" },
+      { role: "ai", text: "今天剛下課，練完腿整個人像被卡車輾過😂" },
+      { role: "user", text: "敵。那妳練腿的日子是不是就得吃得更扎實一點？" },
+      {
+        role: "ai",
+        text: "喔～你懂喔？練腿那天我一定吃爆，不然隔天直接變殘廢😂 等等 你該不會也有在練吧",
+      },
+      {
+        role: "user",
+        text: "有啦，有在練。不過我的菜單沒妳那麼講究，練腿那天也是亂吃😂 妳練腿通常吃爆什麼？",
+      },
+      {
+        role: "ai",
+        text: "白飯配雞胸肉啊 再補個蛋 碳水蛋白質一起來 練完那餐真的不能省 不然腿會抗議😂",
+      },
+    ],
+    gameState: {
+      ...initialPersistedGameState(),
+      phase: "P2_VALUE",
+      pv: 40,
+      fp: 45,
+      inv: 22,
+      safety: 68,
+      turnCount: 10,
+    },
+    appliedHintTurns: [
+      {
+        turnIndex: 8,
+        type: "steady",
+        originalHintText:
+          "有啦，有在練。不過我的菜單沒妳那麼講究，練腿那天也是亂吃😂 妳練腿通常吃爆什麼？",
+        sentText:
+          "有啦，有在練。不過我的菜單沒妳那麼講究，練腿那天也是亂吃😂 妳練腿通常吃爆什麼？",
+        exact: true,
+        hintRequestId: "gd6-hint-1",
+        decision: {
+          phase: "建立熟悉中",
+          targetVariable: "生活樣本",
+          move: "build_connection",
+          inviteRoute: "build",
+          rationale: "先接住她的訓練生活節奏，再看她投入程度。",
+        },
+      },
+    ],
+    memorySummary: null,
+  },
 ];

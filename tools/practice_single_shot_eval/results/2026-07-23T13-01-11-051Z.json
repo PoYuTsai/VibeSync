@@ -1,0 +1,243 @@
+{
+  "startedAt": "2026-07-23T13:01:11.051Z",
+  "mode": "live",
+  "repeat": 8,
+  "routes": [
+    "game_debrief"
+  ],
+  "summaries": [
+    {
+      "route": "game_debrief",
+      "shots": 8,
+      "p50Ms": 12442,
+      "p90Ms": 20613,
+      "firstShotCount": 6,
+      "firstShotRate": 0.75,
+      "secondShotCount": 1,
+      "count503": 1,
+      "gateFailureCounts": {
+        "debrief_hint_assessment_revision_required": 3
+      }
+    }
+  ],
+  "leakScan": {
+    "totalServedShots": 8,
+    "hits": []
+  },
+  "gameHintSamples": [],
+  "shots": [
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd6_hint_assisted_fitness",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12095,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊健身話題自然接得住，但整場停在資訊交換，還沒往情感深聊",
+        "suggestedLine": "白飯配雞胸聽起來超紀律，換我請客都不知道要吃什麼才配得上妳的標準😂",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她願意展開細節分享很自然，但沒有釋出時間或場景線索",
+        "nextInviteMove": "先別邀約，順著飲食話題聊出感受或小玩笑，累積熟悉感再說",
+        "strengths[0]": "照提示接住她練腿的生活節奏，句子自然不生硬",
+        "strengths[1]": "順著她「教練/職業病」的話題延伸，維持對話流暢",
+        "watchouts[0]": "下一步別再用飲食/工作類問題收尾，換成分享感受或畫面",
+        "watchouts[1]": "整場都在問答乒乓，還沒出現情緒連結或小玩笑張力",
+        "gameBreakdown.phaseReached": "還在互相認識、建立熟悉感的階段，還沒進到有曖昧張力的聊天",
+        "gameBreakdown.missedVariable": "還沒讓她多聊點感受或情緒，都是資訊型你問我答",
+        "gameBreakdown.failureState": "卡在問答乒乓，最後一句她給了具體答案但你還沒接住感受面",
+        "gameBreakdown.nextFirstLine": "白飯配雞胸聽起來超紀律，換我請客都不知道要吃什麼才配得上妳的標準😂",
+        "gameBreakdown.inviteDirection": "先不邀約，多聊她的生活小細節、給點輕鬆玩笑，累積默契再說"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd6_hint_assisted_fitness",
+      "repeatIndex": 1,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10954,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊健身話題順利接住她的節奏，但仍停在資訊交換，尚未深入情感連結",
+        "suggestedLine": "白飯配雞胸配蛋，聽起來比我的訓練餐扎實多了，妳這樣吃多久了？",
+        "vibe": "中性",
+        "dateChance": "low",
+        "dateChanceReason": "她只回答菜單細節，沒有反問你或釋出時間場景，仍屬資訊交換階段",
+        "nextInviteMove": "先延伸她的健身生活話題，建立熟悉感，暫不邀約",
+        "strengths[0]": "你有照提示做，用「練腿吃爆什麼」接住她的訓練生活話題",
+        "strengths[1]": "順著她「教練職業病」的梗回應，讓對話有來有往",
+        "watchouts[0]": "下一步：她給了具體菜單細節後，可以先給感受或畫面再問，別只停在資訊題",
+        "watchouts[1]": "整段仍偏問答形式，尚未加入你自己的觀點或小玩笑",
+        "gameBreakdown.phaseReached": "聊到她的健身教練身分與飲食習慣，還在互相認識階段",
+        "gameBreakdown.missedVariable": "少了讓她投入情緒或分享感受的機會，只停在問答",
+        "gameBreakdown.failureState": "對話像資訊乒乓，她給細節但你還沒接回自己的想法或畫面",
+        "gameBreakdown.nextFirstLine": "白飯配雞胸配蛋，聽起來比我的訓練餐扎實多了，妳這樣吃多久了？",
+        "gameBreakdown.inviteDirection": "先聊她的健身或旅行生活細節，累積熟悉感，暫不邀約"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd6_hint_assisted_fitness",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 20613,
+      "attemptFailureCodes": [
+        "debrief_hint_assessment_revision_required",
+        "debrief_hint_assessment_revision_required"
+      ],
+      "servedText": null,
+      "rejectedCandidates": [
+        {
+          "code": "debrief_hint_assessment_revision_required",
+          "raw": "{\"summary\":\"聊健身話題自然接住，但仍在資訊交換階段，尚未深入情感連結\",\"strengths\":[\"你有照提示做，用自嘲接住她的訓練節奏再拋問題\",\"順著她的教練身分延伸提問，讓對話有來有往\"],\"watchouts\":[\"下一步：別再用飲食/資訊題收尾，改丟一個感受或畫面給她接\",\"她只回答飲食細節，還沒有主動聊到她自己的感受或延伸話題\"],\"suggestedLine\":\"白飯雞胸蛋聽起來很硬派，妳這樣練完腿還有力氣去玩嗎？\",\"vibe\":\"中性\",\"dateChance\":\"low\",\"dateChanceReason\":\"她只給了飲食資訊，沒有接梗延伸或釋出時間場景線索\",\"nextInviteMove\":\"先別提邀約，繼續用輕鬆話題累積熟悉感和信任\",\"gameBreakdown\":{\"phaseReached\":\"還在互相認識、聊生活習慣的階段，尚未進入比較深的價值交流\",\"missedVariable\":\"少了把話題帶到她的感受或生活情境的機會，還停在資訊問答\",\"failureState\":\"對話容易變成一問一答的資訊乒乓，缺少情緒或畫面感的內容\",\"nextFirstLine\":\"白飯雞胸蛋聽起來很硬派，妳這樣練完腿還有力氣去玩嗎？\",\"inviteDirection\":\"先別急著約，順著她愛玩的特質聊旅行或假日安排，累積熟悉感\"},\"hintAssessment\":{\"verdict\":\"preserved\",\"revisedEvidenceQuote\":null}}"
+        },
+        {
+          "code": "debrief_hint_assessment_revision_required",
+          "raw": "{\"summary\":\"照著提示接住她的訓練節奏，聊出生活樣本。她有回應但沒有主動延伸，舒服但鋪墊還不夠。\",\"strengths\":[\"你用她的「練腿」梗接住，自然引出飲食細節，沒有生硬資訊題的感覺\",\"她願意展開訓練生活，用「腿會抗議」的玩笑維持輕鬆氣氛，說明聊天有節奏\"],\"watchouts\":[\"她的回答都是被問才說，沒有主動反問你或延伸話題，代表還在觀察階段\",\"下一句如果還是問她的生活細節（課表、訓練計畫），會陷入「你問她答」的模式，容易變成查戶口\"],\"suggestedLine\":\"我也是練腿日狂吃，不過我都在外面吃，妳一般是自己煮還是怎樣？\",\"vibe\":\"中性\",\"dateChance\":\"medium\",\"dateChanceReason\":\"她有接梗、願意聊生活，但沒有釋出時間線索或主動延伸，只有舒適感沒有鋪墊。\",\"nextInviteMove\":\"先別急著邀約。下一步改成分享你的生活樣本（訓練、飲食、週末），讓她看到你的真實片段，才能判斷有沒有合適度。\",\"gameBreakdown\":{\"phaseReached\":\"建立熟悉中。你已經從她的限動切入、確認了職業身份、聊到訓練日的生活節奏，她願意配合但還沒有主動投入。\",\"missedVariable\":\"你的生活樣本還沒有出現。她現在只是在回答你的問題，沒有看到你的真實狀態或品味，無法判斷合適度。\",\"failureState\":\"聊天卡在「你問她答」的資訊交換模式。她很舒服但沒有理由主動靠近，因為還不知道你是誰、你們有什麼共通點。\",\"nextFirstLine\":\"我也是練腿日狂吃，不過我都在外面吃，妳一般是自己煮還是怎樣？\",\"inviteDirection\":\"先建立互相認識。下一步要分享你的訓練或生活細節，讓她看到你也有相似的生活節奏，才能從「舒適」升到「有連結」。\"},\"hintAssessment\":{\"verdict\":\"preserved\",\"revisedEvidenceQuote\":null}}"
+        }
+      ]
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd6_hint_assisted_fitness",
+      "repeatIndex": 3,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12479,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊健身生活聊得順，但話題還停在資訊層，沒推進到更深連結",
+        "suggestedLine": "白飯配雞胸聽起來超紀律，妳每次練完都這麼有儀式感喔？",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她願意展開細節但沒有主動釋出時間或場景線索，只是舒服對答",
+        "nextInviteMove": "先別邀約，多聊她的生活樣貌，等她釋出時間或行程線索再說",
+        "strengths[0]": "你有照提示做，接住她練腿的生活節奏再拋回問題",
+        "strengths[1]": "順著她的職業設定（教練）延伸提問，讓她願意多分享細節",
+        "watchouts[0]": "下一步別再用飲食/資訊題收尾，換成聊感受或畫面",
+        "watchouts[1]": "她回答都很具體但你沒有加自己的觀點或反應，互動偏單向問答",
+        "gameBreakdown.phaseReached": "還在互相認識、建立熟悉感的階段，聊得算順但沒往前推進",
+        "gameBreakdown.missedVariable": "她給的生活細節（吃什麼、練什麼）你沒接出感受或畫面，只停在資訊交換",
+        "gameBreakdown.failureState": "對話變成一問一答，像在做問卷，缺少你自己的反應或情緒帶入",
+        "gameBreakdown.nextFirstLine": "白飯配雞胸聽起來超紀律，妳每次練完都這麼有儀式感喔？",
+        "gameBreakdown.inviteDirection": "先別邀約，多用畫面感回應她的分享，等她主動聊到行程或空檔再順勢接話"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd6_hint_assisted_fitness",
+      "repeatIndex": 4,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 10686,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊健身話題有接住節奏，但仍在資訊交換階段，尚未深入情感連結。",
+        "suggestedLine": "白飯配雞胸聽起來紀律滿分，我大概撐不到一半就投降了😂",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她願意展開細節分享(白飯雞胸蛋)，但沒有釋出時間或場景線索",
+        "nextInviteMove": "先延伸她的健身/飲食話題，建立更多生活連結後再考慮邀約",
+        "strengths[0]": "你有照提示做，用自嘲接住她的訓練生活節奏",
+        "strengths[1]": "順著她的專業話題延伸提問，讓對話自然往下走",
+        "watchouts[0]": "下一步別再用飲食/資訊題收尾，換成分享感受或畫面",
+        "watchouts[1]": "整段偏向一問一答，尚未讓她多聊自己的感覺或想法",
+        "gameBreakdown.phaseReached": "還在互相認識、聊生活細節的階段，還沒到曖昧或深聊感受",
+        "gameBreakdown.missedVariable": "少了讓她多聊自己感覺或想法的空間，一直停在問答資訊",
+        "gameBreakdown.failureState": "對話容易變成一問一答的節奏，缺少情緒或畫面的延伸",
+        "gameBreakdown.nextFirstLine": "白飯配雞胸聽起來紀律滿分，我大概撐不到一半就投降了😂",
+        "gameBreakdown.inviteDirection": "先別提邀約，多聊她對訓練/飲食的感受，讓她多分享一點自己"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd6_hint_assisted_fitness",
+      "repeatIndex": 5,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12971,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "你接住訓練話題並照提示延伸提問，她願意分享但仍是資訊層對話",
+        "suggestedLine": "白飯配雞胸聽起來紀律滿分，我大概撐不到那餐就先投降了😂",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她願意分享訓練細節，但沒有反問或延伸話題，鋪墊還不夠",
+        "nextInviteMove": "先用畫面感回應她的飲食習慣，建立共鳴後再觀察她是否釋出時間線索",
+        "strengths[0]": "照提示用玩笑口吻延伸「練腿吃爆什麼」，順著她的節奏走",
+        "strengths[1]": "從她的職業（教練）自然聊到生活細節，沒有生硬轉題",
+        "watchouts[0]": "下一步先給感受或畫面，別再用飲食/資訊題延續問答",
+        "watchouts[1]": "她只回答具體菜單，還沒出現延伸或反問，投入還沒往上",
+        "gameBreakdown.phaseReached": "還在互相認識、找話題共鳴的階段，還沒到曖昧或深聊",
+        "gameBreakdown.missedVariable": "她給了具體生活細節，但你還沒把話題轉成聊感受或聊你們的共同點",
+        "gameBreakdown.failureState": "容易停在一問一答的資訊模式，像在做問卷調查而非聊天",
+        "gameBreakdown.nextFirstLine": "白飯配雞胸聽起來紀律滿分，我大概撐不到那餐就先投降了😂",
+        "gameBreakdown.inviteDirection": "先別急著約，多聊一兩輪感受或畫面，等她主動釋出時間或行程再順勢邀約"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd6_hint_assisted_fitness",
+      "repeatIndex": 6,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 12442,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊訓練生活順暢，但停在資訊交換，還沒推進到情感或約會鋪墊",
+        "suggestedLine": "哈哈聽起來妳很有紀律，那不練腿的日子妳都亂吃還是照樣養生？",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她願意回答飲食細節、語氣輕鬆帶emoji，但沒有主動延伸話題或給時間線索",
+        "nextInviteMove": "先聊她的旅行或美食偏好，鋪墊出共同畫面後再談約會，現在還太早",
+        "strengths[0]": "你有照提示做，接住她練腿的生活細節再拋問題",
+        "strengths[1]": "從槓片、姿勢一路追問到她下課狀態，展現在場感",
+        "watchouts[0]": "下一步別再用飲食/工作類資訊題收尾，要接她的感受或畫面",
+        "watchouts[1]": "她只是照實回答菜單內容，還沒釋出更多自我揭露，先別急著往邀約推",
+        "gameBreakdown.phaseReached": "還停在互相認識、聊生活習慣的階段，還沒到聊感受或曖昧的程度",
+        "gameBreakdown.missedVariable": "她給了具體的飲食內容，但你還沒接住她背後的感受或態度，只在收資訊",
+        "gameBreakdown.failureState": "一直用問答方式在收集她的生活細節，容易變成像在做問卷",
+        "gameBreakdown.nextFirstLine": "哈哈聽起來妳很有紀律，那不練腿的日子妳都亂吃還是照樣養生？",
+        "gameBreakdown.inviteDirection": "先別提邀約，多聊她的旅行或美食喜好，建立更多共同話題再看時機"
+      }
+    },
+    {
+      "route": "game_debrief",
+      "fixtureId": "gd6_hint_assisted_fitness",
+      "repeatIndex": 7,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 24686,
+      "attemptFailureCodes": [
+        "debrief_hint_assessment_revision_required"
+      ],
+      "servedText": {
+        "summary": "聊天節奏穩定，接住她的訓練生活細節，但還沒有建立更深的連結或時間窗口。",
+        "suggestedLine": "「練完那餐真的不能省」，我現在懂了，所以妳是那種對身體很有紀律的人？",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "聊天舒服但只停留在生活細節，沒有她的時間線索、具體場景邀約或情感投入。",
+        "nextInviteMove": "先不邀約，繼續建立安全感；下一步聊她對「紀律」或「生活品質」的看法，為後續邀約鋪墊。",
+        "strengths[0]": "照著提示接住她的腿部訓練話題，自然延伸到飲食，節奏沒有跳躍",
+        "strengths[1]": "她主動分享練腿餐點細節（白飯、雞胸肉、蛋），願意展開生活樣本",
+        "watchouts[0]": "還在資訊交換階段，沒有聊出她的感受或價值觀，容易陷入問答乒乓",
+        "watchouts[1]": "下一句如果還是問她的訓練細節，會失去升溫的機會",
+        "gameBreakdown.phaseReached": "還在建立熟悉階段，停留在交換生活資訊（訓練、飲食），沒有推進到她的價值觀或情感層面",
+        "gameBreakdown.missedVariable": "沒有探出她對生活的感受或標準；只有「做什麼」，沒有「為什麼這樣做」或「怎麼看待」",
+        "gameBreakdown.failureState": "問答節奏穩定但淺層，容易讓對話停留在禮貌交換，缺乏升溫的情感或價值連結",
+        "gameBreakdown.nextFirstLine": "練完那餐真的不能省，我現在懂了，所以妳是那種對身體很有紀律的人？",
+        "gameBreakdown.inviteDirection": "先聊她的生活態度和價值觀，建立更深的理解，再看她是否釋出時間或興趣線索，才適合邀約"
+      },
+      "rejectedCandidates": [
+        {
+          "code": "debrief_hint_assessment_revision_required",
+          "raw": "{\"summary\":\"聊健身生活順暢，她願意延伸細節，但整場仍偏資訊交換\",\"strengths\":[\"你有照提示做，接住她的訓練生活節奏再延伸提問\",\"從限動細節切入，讓她自然聊到職業與生活習慣\"],\"watchouts\":[\"下一步：別再用飲食/工作資訊題收尾，換成聊你們的感受或畫面\",\"整場都在問答乒乓，還沒放入你自己的觀點或情緒\"],\"suggestedLine\":\"練腿那餐聽起來根本是儀式感，我看了都想跟妳一起吃😂\",\"vibe\":\"中性\",\"dateChance\":\"medium\",\"dateChanceReason\":\"她願意延伸細節分享，但沒有釋出時間或場景邀約線索\",\"nextInviteMove\":\"先聊她小旅行或美食偏好建立畫面感，暫不提邀約\",\"gameBreakdown\":\"\\n<parameter name=\\\"phaseReached\\\">還在互相認識、聊生活習慣的階段，還沒到曖昧或深聊\",\"missedVariable\":\"你一直用問問題推進，但沒有分享自己的感受或看法讓她更了解你\",\"failureState\":\"卡在一問一答的節奏，她給了具體細節，你卻沒有接住情緒只回下一題\",\"nextFirstLine\":\"練腿那餐聽起來根本是儀式感，我看了都想跟妳一起吃😂\",\"inviteDirection\":\"先多聊她的旅行或美食喜好，累積熟悉感，還不適合邀約\",\"hintAssessment\":{\"verdict\":\"preserved\",\"revisedEvidenceQuote\":null}}"
+        }
+      ]
+    }
+  ]
+}

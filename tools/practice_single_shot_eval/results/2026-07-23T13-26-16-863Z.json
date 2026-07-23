@@ -1,0 +1,133 @@
+{
+  "startedAt": "2026-07-23T13:26:16.863Z",
+  "mode": "live",
+  "repeat": 1,
+  "routes": [
+    "beginner_debrief"
+  ],
+  "summaries": [
+    {
+      "route": "beginner_debrief",
+      "shots": 5,
+      "p50Ms": 8218,
+      "p90Ms": 8324,
+      "firstShotCount": 5,
+      "firstShotRate": 1,
+      "secondShotCount": 0,
+      "count503": 0,
+      "gateFailureCounts": {}
+    }
+  ],
+  "leakScan": {
+    "totalServedShots": 5,
+    "hits": []
+  },
+  "gameHintSamples": [],
+  "shots": [
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd1_brunch_lazy_sunday",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 9458,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊假日日常算舒服，但沒接住她的劇透露和玩笑，收得有點快。",
+        "suggestedLine": "追到睡眠不足是有多好看，這部叫什麼名字，我也想被拖下水",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "聊得順、有來回但沒延續玩笑，她投入普通未明顯升溫",
+        "nextInviteMove": "先接住她的追劇話題，聊出共同興趣後再自然帶到約看劇或美食",
+        "strengths[0]": "用「哈哈跟我一樣」接住賴床話題，製造共感",
+        "strengths[1]": "主動分享自己吃什麼，換來她也自然分享歐姆蛋偏好",
+        "watchouts[0]": "她說「別學我」是輕鬆玩笑試探，你沒接就結束對話",
+        "watchouts[1]": "問題偏向換主題查詢（下午做什麼、看劇），少了延伸她說的話"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd2_travel_okinawa",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 8218,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊沖繩歌單接得不錯，但還沒真的交換歌單或約時間，投入普通。",
+        "suggestedLine": "那我整理一下開車歌單，等等傳給妳驗貨，順便妳挑幾首妳的海邊限定給我聽？",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她願意接梗吐槽、延伸歌單話題，但沒釋出時間或場景線索，鋪墊未到。",
+        "nextInviteMove": "先交換歌單建立小互動，之後再自然帶到「找個開車或吃飯的場景聽」。",
+        "strengths[0]": "順著自駕、放歌細節追問，讓她延伸講海邊限定歌單企劃",
+        "strengths[1]": "接住「證明歌單品味」的吐槽測試，用自信回應不閃躲",
+        "watchouts[0]": "她說「等你的歌單來驗貨」是球已丟過來，還沒具體接（該傳歌單或提細節）",
+        "watchouts[1]": "整段停在聊天層面，沒有把話題往「一起聽」或見面場景帶"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd3_baking_croissant",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7834,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊可頌話題自然順暢，她願意延伸細節，但尚未釋出時間或見面線索。",
+        "suggestedLine": "如果成功要拍照留念，那失敗版我也想看，比較有故事性！",
+        "vibe": "中性",
+        "dateChance": "low",
+        "dateChanceReason": "只有話題延伸，沒有場景或時間窗口，離熟悉感還有距離",
+        "nextInviteMove": "先多聊幾次烘焙或旅行話題，等她主動提到週末安排再順勢接話，暫不邀約",
+        "strengths[0]": "接住「失敗三次」的細節並給正向回應，不急著轉話題",
+        "strengths[1]": "用「聞香」延伸她的成功照梗，維持輕鬆互動",
+        "watchouts[0]": "對她「不服輸」的自揭沒有回敬自己的經驗，互動仍偏單向",
+        "watchouts[1]": "最後她用「如果又失敗就當沒說過」帶點自我保護測試，未被明確接住"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd4_movie_late_show",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7980,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊電影話題順暢，但只停在興趣表層，尚未接住她的分享或延伸情緒。",
+        "suggestedLine": "導演優先我懂，那如果換成旅行途中看片，妳會選什麼調性？",
+        "vibe": "中性",
+        "dateChance": "medium",
+        "dateChanceReason": "她願意展開細節像挑片標準，氣氛舒服，但沒有具體場景或時間線索。",
+        "nextInviteMove": "先分享自己的觀影習慣，再自然帶到旅行話題，累積幾輪共鳴後再談見面。",
+        "strengths[0]": "接住「後勁強」的情緒，用「隱形眼鏡移位」幽默回應她的描述",
+        "strengths[1]": "順著她的話題延伸提問，聊天沒有斷掉",
+        "watchouts[0]": "只問她的偏好（挑片標準），沒分享自己的觀點或經驗，變成單向訪問",
+        "watchouts[1]": "話題一直停在電影表層，沒往她感興趣的旅行、美食方向帶"
+      }
+    },
+    {
+      "route": "beginner_debrief",
+      "fixtureId": "bd5_dog_park_morning",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 8324,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "summary": "聊狗題材順暢自然，但整場停在寵物話題，沒往她本人或邀約推進。",
+        "suggestedLine": "被一隻柯基治癒的早晨，那如果換成柴犬那種呢，妳也心動？",
+        "vibe": "中性",
+        "dateChance": "low",
+        "dateChanceReason": "聊得順但停在寵物話題，沒鋪到她的旅行或美食興趣，也沒邀約鋪墊。",
+        "nextInviteMove": "先順著狗狗話題延伸到她的週末安排，累積幾輪後再談具體輕鬆場景。",
+        "strengths[0]": "接住布丁的細節並延伸畫面（急性子、押著遛狗）",
+        "strengths[1]": "用哈哈輕鬆回應，語氣不急不重",
+        "watchouts[0]": "整場只環繞寵物，沒問她本人的生活或感受",
+        "watchouts[1]": "她說「先警告養狗回不去了」是輕微邀請延伸，你沒接住就結束"
+      }
+    }
+  ]
+}

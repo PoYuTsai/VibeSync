@@ -1,0 +1,98 @@
+{
+  "startedAt": "2026-07-23T13:26:49.943Z",
+  "mode": "live",
+  "repeat": 1,
+  "routes": [
+    "beginner_hint"
+  ],
+  "summaries": [
+    {
+      "route": "beginner_hint",
+      "shots": 5,
+      "p50Ms": 5975,
+      "p90Ms": 6794,
+      "firstShotCount": 5,
+      "firstShotRate": 1,
+      "secondShotCount": 0,
+      "count503": 0,
+      "gateFailureCounts": {}
+    }
+  ],
+  "leakScan": {
+    "totalServedShots": 5,
+    "hits": []
+  },
+  "gameHintSamples": [],
+  "shots": [
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh1_slow_worker_off_duty",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 5975,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她用「沒出息的充電法」自嘲，其實是想被認可這種耍廢很正常。steady先幫她卸下自嘲的包袱、給安全感；warmUp則順著追劇話題延伸，問具體劇名讓她有東西可聊，兩者都不急著談別的，只是自然接住她剛丟出的生活細節。",
+        "warmUp": "追劇配鹹酥雞聽起來根本是完美充電法！最近在追什麼劇，好看嗎？",
+        "steady": "哈哈這哪有沒出息，開完一整天會就是要這樣爽爽耍廢才對！"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh2_playful_hiking",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 5235,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句重點是「風景值得」跟「下山懷疑人生」的反差，接住這個反差就好，不用急著約下次爬山。warmUp用好奇追問風景多神，讓她多分享細節；steady用同理她的矛盾心情，讓她覺得被理解。兩句都只用她提到的爬山、鐵腿、懷疑人生這些詞，不多加猜測她的偏好或行程。",
+        "warmUp": "哈哈懷疑人生也太真實，那風景到底多神才值得妳這樣拚下山？",
+        "steady": "邊爬邊懷疑人生但風景還是值得，聽起來是那種苦中帶爽的感覺欸"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh3_cool_coffee",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6794,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她這句「懶得戒」帶點自嘲、放鬆的梗，接住重點是順著她的態度回應，而不是勸她戒或分析利弊。升溫版用「羈絆」幽默放大她的說法，帶點輕鬆調侃；穩住版則單純認同她的選擇，展現不批判、不說教的態度。兩種都不追問、不評價對錯，讓她覺得被接住而非被檢視，符合目前建立熟悉感的階段。",
+        "warmUp": "哈哈「懶得戒」這態度我喜歡，看來咖啡已經升格成人生夥伴了，不是習慣是羈絆吧",
+        "steady": "懶得戒也蠻誠實的，反正頭痛比戒斷難受多了，能撐住就好，不用勉強自己"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh4_teasing_cat",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6864,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她最新一句在講麻糬「假日加倍踩、好像知道她想賴床」，重點是這個貓咪很懂她的吐槽梗。兩句都直接接住這個畫面，用「加倍」「看穿/心機」呼應她的用詞，維持輕鬆吐槽的節奏。升溫版多一點誇張形容製造玩笑感，穩住版單純附和不加碼，都不追問也不轉話題，讓她繼續延伸麻糬的故事。",
+        "warmUp": "哈哈牠根本是抓準妳想賴床的時機加倍報復吧，麻糬心機也太重了",
+        "steady": "假日加倍踩根本是貓咪版的鬧鐘升級，麻糬看穿妳的賴床計畫了"
+      }
+    },
+    {
+      "route": "beginner_hint",
+      "fixtureId": "bh5_boundaries_gym",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 5899,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "她最新一句在講教練偷加重量、不讓她偷懶，這是輕鬆吐槽不是求安慰。兩句都接「偷加重量」這個具體梗，warmUp用好奇追問她怎麼發現的，帶點互動感；steady則幫她轉個角度給小肯定，不追問也能接住。都不涉及邀約或私人問題，符合現在該先陪她聊生活細節、不急著推進的階段。",
+        "warmUp": "教練是魔鬼吧哈哈，偷偷加重量這招太狠了，妳都怎麼發現的？",
+        "steady": "教練這樣操也太狠，不過會偷加重量代表他覺得妳撐得住，算變相稱讚吧"
+      }
+    }
+  ]
+}

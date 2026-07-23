@@ -17,8 +17,7 @@ import {
 } from "../../supabase/functions/practice-chat/hint.ts";
 import { buildDebriefMessages } from "../../supabase/functions/practice-chat/prompt.ts";
 import {
-  DEBRIEF_TOOL_SCHEMA,
-  DEBRIEF_TOOL_SCHEMA_GAME,
+  debriefToolSchemaFor,
   type DebriefCard,
   parseDebriefCard,
 } from "../../supabase/functions/practice-chat/debrief_card.ts";
@@ -317,9 +316,11 @@ async function runDebriefShot(opts: {
         name: "emit_debrief_card",
         description:
           "輸出練習拆解卡：總結、亮點、注意點、建議句與邀約評估（Game 模式含拆盤）。",
-        inputSchema: (fixture.practiceMode === "game"
-          ? DEBRIEF_TOOL_SCHEMA_GAME
-          : DEBRIEF_TOOL_SCHEMA) as Record<string, unknown>,
+        // 鏡像 handler：有套用 Hint 時 hintAssessment 升為 schema 必填。
+        inputSchema: debriefToolSchemaFor({
+          game: fixture.practiceMode === "game",
+          hintApplied: fixture.appliedHintTurns.length > 0,
+        }),
       },
       maxTokens: DEBRIEF_MAX_TOKENS,
       temperature: DEBRIEF_TEMPERATURE,
