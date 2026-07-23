@@ -5,6 +5,7 @@ import {
 import {
   assertHintFactClaimsSupported,
   buildHintFactContext,
+  claimConfidence,
   collectUnsupportedHintFactClaims,
   extractHintFactClaims,
   type HintFactClaim,
@@ -1642,4 +1643,200 @@ Deno.test("regression: 「她喜歡的旅行/場景感」所有格指涉不再 f
   ) {
     assertHintFactClaimsSupported({ text, field: "coaching", context });
   }
+});
+
+Deno.test("round6: coaching 轉述「她問位置是X」不再變 venue claim（#10/#13）", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "那間店我週末想去。" },
+      { role: "ai", text: "那間店位置在哪？" },
+    ],
+  });
+  for (
+    const text of [
+      "她問位置是實際確認，不是拒絕，準備好資訊就能接住。",
+      "她問位置是邀約信號，直接給具體資訊就對了。",
+    ]
+  ) {
+    assertHintFactClaimsSupported({ text, field: "coaching", context });
+  }
+  // TP 回歸：coaching 真報點（地點形態）與 reply 嚴格模式照擋。
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "位置就是永康街那家，直接約。",
+        field: "coaching",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "店名就是藍瓶咖啡，妳一定聽過。",
+        field: "reply",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+});
+
+Deno.test("round6: 她問在哪時「還沒實際去過」迴避句不再被當店名（#9 warmUp）", () => {
+  const context = buildHintFactContext({
+    turns: [
+      { role: "user", text: "上次聽妳說的那間咖啡店。" },
+      { role: "ai", text: "那間咖啡店在哪啊？" },
+    ],
+  });
+  assertHintFactClaimsSupported({
+    text: "我也是聽朋友提的，還沒實際去過欸。",
+    field: "reply",
+    context,
+  });
+  // TP 回歸：真報店名（語尾助詞形態）照擋。
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "藍瓶咖啡欸，妳應該知道。",
+        field: "reply",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+});
+
+Deno.test("round6: 地名字尾切割殘漏三型不再產生假 venue 錨點（#9/#12/#24）", () => {
+  const highVenueAnchors = (text: string) =>
+    extractHintFactClaims({
+      text,
+      perspective: "reply",
+      provenance: "generated_reply",
+      defaultOwner: "user",
+    })
+      .filter((claim) =>
+        claim.domain === "venue" && claimConfidence(claim) === "high"
+      )
+      .map((claim) => claim.anchor);
+  // 「說到區」動詞短語＋字尾、「帶路」複合詞、「巷口」切出「老地方巷」。
+  assertEquals(highVenueAnchors("說到區我還真的答不上來。"), []);
+  assertEquals(highVenueAnchors("不知道確切位置，但可以帶路。"), []);
+  assertEquals(highVenueAnchors("那星期六下午三點，老地方巷口等妳。"), []);
+  // TP 回歸：真地名字尾照收 high。
+  assertEquals(
+    highVenueAnchors("那家店在中山區。").includes("中山區"),
+    true,
+  );
+  assertEquals(
+    highVenueAnchors("就在永康街12巷。").includes("永康街12巷"),
+    true,
+  );
+});
+
+Deno.test("round6: 進行貌「她在＋動詞短語」不再誤判 current_location（#12）", () => {
+  const context = buildHintFactContext({
+    turns: [{ role: "ai", text: "好啦，地點你來想。" }],
+  });
+  assertHintFactClaimsSupported({
+    text: "她在幫你把邀約鋪好路，接住這個節奏就好。",
+    field: "coaching",
+    context,
+  });
+  // TP 回歸：真「她在＋地名」照擋。
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "她現在在台北，直接約市區。",
+        field: "coaching",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+});
+
+Deno.test("round6: 裸「傳」語氣詞不再切出假人名（#3）", () => {
+  const context = buildHintFactContext({
+    turns: [{ role: "ai", text: "被你講到懷疑人生哈哈。" }],
+  });
+  for (
+    const text of [
+      "懷疑人生這三個字太傳神了哈哈，我收下這個評價。",
+      "那句話直接傳瘋了哈哈，被笑一整天。",
+    ]
+  ) {
+    assertHintFactClaimsSupported({ text, field: "reply", context });
+  }
+  // TP 回歸：真送收人名照擋。
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "這張我會傳阿哲，他一定笑翻。",
+        field: "reply",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+});
+
+Deno.test("round6: 第一人稱假設句「怕自己養狗」不再變 user 養寵事實（#14）", () => {
+  const petConfidences = (text: string) =>
+    extractHintFactClaims({
+      text,
+      perspective: "reply",
+      provenance: "generated_reply",
+      defaultOwner: "user",
+    })
+      .filter((claim) => claim.domain === "pet")
+      .map((claim) => claimConfidence(claim));
+  assertEquals(
+    petConfidences("我超怕自己養狗會被牽著跑，妳都怎麼訓練布丁聽話的？"),
+    ["low"],
+  );
+  // TP 回歸：真自陳養寵照樣 high。
+  assertEquals(petConfidences("我養了一隻狗，每天被牠鬧醒。"), ["high"]);
+
+  const context = buildHintFactContext({
+    turns: [{ role: "ai", text: "我養了一隻狗叫布丁。" }],
+  });
+  assertHintFactClaimsSupported({
+    text: "我超怕自己養狗會被牽著跑，妳都怎麼訓練布丁聽話的？",
+    field: "reply",
+    context,
+  });
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "我家也養了一隻狗，改天讓牠們見面。",
+        field: "reply",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
+});
+
+Deno.test("round6: 「問她能不能配合」疑問補語不再變 schedule 事實（#17）", () => {
+  const context = buildHintFactContext({
+    turns: [{ role: "ai", text: "週間比較好排喔。" }],
+  });
+  assertHintFactClaimsSupported({
+    text: "先提一個具體的日期或時段（「下禮拜三晚上」），再問她能不能配合。",
+    field: "coaching",
+    context,
+  });
+  // TP 回歸：時間前置的第三式 schedule 陳述照擋。
+  assertThrows(
+    () =>
+      assertHintFactClaimsSupported({
+        text: "下週三晚上她有空，直接把位子訂下去。",
+        field: "coaching",
+        context,
+      }),
+    Error,
+    ERROR,
+  );
 });

@@ -613,6 +613,8 @@ function looksLikeProfession(value: string): boolean {
 function looksLikePersonName(value: string): boolean {
   if (/^[A-Za-z][A-Za-z0-9._-]{1,19}$/u.test(value)) return true;
   if (!/^[\p{Script=Han}·・]{2,4}$/u.test(value)) return false;
+  // 語氣詞不入人名（round6 #3）：「神了哈哈」「瘋了哈哈」是口語感嘆不是名字。
+  if (/[了哈欸啦喔]/u.test(value)) return false;
   return !/^(?:我|妳|你|她|我們|對方|使用者)/u.test(value) &&
     !/^(?:太|很|真|超|好|有點)/u.test(value) &&
     !/(?:本人|自己|生活|時間|空間|機會|答案|回覆|句子|感覺|確認|窗口|咖啡|低壓|邀約|版本|品味|畫面|話題)/u
@@ -658,7 +660,7 @@ const PLACE_SUFFIX_SPLIT =
 // 常見「碰巧以地名字尾收尾」的抽象/一般複合詞：字尾在這些詞裡不是地點語意。
 // 這是詞彙知識而非逐例黑名單——漏列的代價只是候選落到 low（少殺），不是誤殺。
 const NON_PLACE_COMPOUND_TAIL =
-  /(?:退路|套路|思路|出路|心路|後路|活路|絕路|末路|門路|歪路|岔路|網路|走路|迷路|問路|記路|記得路|不記得路|忘記路|沒記路|上路|網站|誤區|雷區|盲區|禁區|舒適區|安全區|城市|都市|超市|冰山|靠山|火山|爬山|下山|上山)$/u;
+  /(?:退路|套路|思路|出路|心路|後路|活路|絕路|末路|門路|歪路|岔路|網路|走路|迷路|問路|記路|記得路|不記得路|忘記路|沒記路|上路|帶路|鋪路|領路|網站|誤區|雷區|盲區|禁區|舒適區|安全區|城市|都市|超市|冰山|靠山|火山|爬山|下山|上山)$/u;
 
 // 「在X(?=發現|找到…)」asksPlace pattern 的 X 若是敘事階段/心境詞（過程中／
 // 心裡／等妳的時候／剛剛…）而非地點，即使句型是「在X發現」也不是在報地點。
@@ -1121,7 +1123,7 @@ export function extractHintFactClaims(
       // 「發」多義太重（沙發/發現）不入列；動詞後常見的補語/趨向詞
       // 用 lookahead 擋（丟出小測試、傳統、送到…）。
       pattern:
-        /(?:傳(?!給|統|說|來|開|訊|話|達|遞|真|承)|送(?!給|到|出|來|回|上|貨|禮)|丟(?!給|出|回|下|上|的|了|掉|臉|包|進|在))\s*([\p{Script=Han}A-Za-z·・]{2,20})(?=[，,。！？!?；;\s]|$)/gu,
+        /(?:傳(?!給|統|說|來|開|訊|話|達|遞|真|承|神|聞|奇)|送(?!給|到|出|來|回|上|貨|禮)|丟(?!給|出|回|下|上|的|了|掉|臉|包|進|在))\s*([\p{Script=Han}A-Za-z·・]{2,20})(?=[，,。！？!?；;\s]|$)/gu,
       valueIndex: 1,
       introduction: false,
     },
@@ -1294,7 +1296,16 @@ export function extractHintFactClaims(
       // 完全無主詞的「養狗」（引用她原話/附和她的養狗話題）不夠格 fail-closed；
       // 有「我家/家裡」明示所有權才維持 high。coaching 視角的「你/妳」映到 user
       // 是教練對學員說話的預設，但寵物句幾乎都在覆述她的狗，一樣降 low。
+      // round6 #14：前窗（同子句）帶假設/恐懼詞（「我超怕自己養狗會…」）
+      // 是 irrealis 不是養寵自陳，一樣降 low；真自陳（我養了一隻狗）不受影響。
+      const irrealisLead = /(?:怕|如果|要是|假如|想像|哪天|會不會)/u.test(
+        (text
+          .slice(Math.max(0, (match.index ?? 0) - 12), match.index ?? 0)
+          .split(/[\n。！？!?；;，,：:]/u)
+          .pop()) ?? "",
+      );
       const weakOwnership = (patternIndex === 2 && !match[1]) ||
+        irrealisLead ||
         (options.perspective === "coaching" &&
           actorToken !== undefined && /^(?:妳|你)(?:的)?$/u.test(actorToken));
       const quantity = quantityRaw
@@ -1495,6 +1506,24 @@ export function extractHintFactClaims(
     const busy =
       /沒空|不方便|有約|忙|有事|有安排|排滿|要開會|要上班|要上課|要看醫生|值班|出差|在公司|在學校|在家裡|在外面/u
         .test(match[3] ?? "");
+    // round6 #17：時間詞與述語可以跨子句（「（下禮拜三晚上」），再問她能不能
+    // 配合」）——add 只在時間詞位置驗問句，這裡補在述語位置重驗，疑問補語
+    // （問…能不能/可不可以/方不方便）不是可用性事實宣稱。
+    if (
+      isQuestionOrCondition(
+        text,
+        matchGroupIndex(match, 3),
+        ownerAt(
+          text,
+          match.index ?? 0,
+          match[2],
+          options.perspective,
+          defaultOwner,
+        ),
+      )
+    ) {
+      continue;
+    }
     add({
       owner: ownerAt(
         text,
@@ -1714,6 +1743,7 @@ export function extractHintFactClaims(
         `(${ACTOR_TOKEN})(?:現在|目前|剛好|也|都){0,3}在\\s*(${PLACE_VALUE})${VALUE_END}`,
         "gu",
       ),
+      progressiveGuard: true,
     },
     {
       relation: "works_at_location" as const,
@@ -1733,6 +1763,14 @@ export function extractHintFactClaims(
       const rawPlace = "implicit" in config && config.implicit
         ? match[1]
         : match[2];
+      // round6 #12：進行貌「她在＋動詞短語」（在幫你把邀約鋪好路）是進行式
+      // 不是位置宣稱——「在」後接動詞即跳過；真地名（她在台北）不受影響。
+      if (
+        "progressiveGuard" in config && config.progressiveGuard &&
+        /^(?:幫|做|想|等|忙|準備|處理|聊)/u.test(rawPlace ?? "")
+      ) {
+        continue;
+      }
       const anchor = normalizePlace(rawPlace ?? "");
       if (!looksLikeLocationAnchor(anchor)) continue;
       add({
@@ -1809,8 +1847,8 @@ export function extractHintFactClaims(
   // （區域→哈哈區、市集→星期六下午市、街道→出街、站著、山頂…）。
   const namedPlacePatterns = [
     /(?:^|[\s，,。！？!?；;：:\p{S}])(?:在|去|到|位於|路過|靠近|就在)?\s*([\p{Script=Han}0-9]{2,40}(?:路|街|大道)[\p{Script=Han}0-9]{0,20}(?:號|樓))/gu,
-    /(?:^|[\s，,。！？!?；;：:\p{S}])(?:在|去|到|位於|路過|靠近|就在)?\s*([\p{Script=Han}A-Za-z0-9·・]{1,24}(?:站(?![著起穩])|路(?![人痴燈線])|街(?![道頭])|巷|區(?![域分別隔])|市(?![集場面況])|縣|鄉(?![下愁])|鎮(?!定)|村|里(?![面頭程])|町|山(?![頂腰腳])|公園|夜市|商圈|碼頭|廣場|大樓|中心|101))/gu,
-    /(?:在|去|到|位於|路過|靠近|說出|說|回答|地點|位置|地址)\s*([\p{Script=Han}A-Za-z0-9·・]{1,24}(?:站(?![著起穩])|路(?![人痴燈線])|街(?![道頭])|巷|區(?![域分別隔])|市(?![集場面況])|縣|鄉(?![下愁])|鎮(?!定)|村|里(?![面頭程])|町|山(?![頂腰腳])|公園|夜市|商圈|碼頭|廣場|大樓|中心|101))/gu,
+    /(?:^|[\s，,。！？!?；;：:\p{S}])(?:在|去|到|位於|路過|靠近|就在)?\s*([\p{Script=Han}A-Za-z0-9·・]{1,24}(?:站(?![著起穩])|路(?![人痴燈線])|街(?![道頭])|巷(?![口弄])|區(?![域分別隔])|市(?![集場面況])|縣|鄉(?![下愁])|鎮(?!定)|村|里(?![面頭程])|町|山(?![頂腰腳])|公園|夜市|商圈|碼頭|廣場|大樓|中心|101))/gu,
+    /(?:在|去|到|位於|路過|靠近|說出|說|回答|地點|位置|地址)\s*([\p{Script=Han}A-Za-z0-9·・]{1,24}(?:站(?![著起穩])|路(?![人痴燈線])|街(?![道頭])|巷(?![口弄])|區(?![域分別隔])|市(?![集場面況])|縣|鄉(?![下愁])|鎮(?!定)|村|里(?![面頭程])|町|山(?![頂腰腳])|公園|夜市|商圈|碼頭|廣場|大樓|中心|101))/gu,
   ];
   for (const pattern of namedPlacePatterns) {
     for (const match of text.matchAll(pattern)) {
@@ -1821,9 +1859,11 @@ export function extractHintFactClaims(
       ) {
         continue;
       }
+      // round6 #9：「說到/提到」是話題引介動詞不是地點前導——先剝掉再算
+      // 錨點，剝完只剩裸字尾（說到區→區）就不足採信。
       const anchor = normalizePlace(
         (match[1] ?? "").replace(
-          /^(?:那|這)?(?:今天|明天|後天|昨天|前天|上週|這週|下週|改天|下次|之後|回頭|有空)?(?:早上|中午|下午|晚上)?(?:也)?(?:在|到|去)?/u,
+          /^(?:說到|提到|聊到|講到)?(?:那|這)?(?:今天|明天|後天|昨天|前天|上週|這週|下週|改天|下次|之後|回頭|有空)?(?:早上|中午|下午|晚上)?(?:也)?(?:在|到|去)?/u,
           "",
         ),
       );
@@ -1832,7 +1872,7 @@ export function extractHintFactClaims(
         (match.index ?? 0) + (match[0]?.length ?? 0) + 2,
       );
       if (
-        !anchor || genericPlaces.has(anchor) ||
+        anchor.length < 2 || genericPlaces.has(anchor) ||
         anchor.endsWith("同鄉") ||
         /^(?:去|到|在|逛|走|想|要|喝|吃|看|找)/u.test(anchor) ||
         /(?:我|妳|你|她|我們|是|也|家鄉|老家|住處|生活圈)/u.test(anchor) ||
@@ -2250,8 +2290,18 @@ function inferClaimsFromKnownAnchors(input: {
             !looksLikeImplicitUserClaim
         ? "partner"
         : owner;
+      // round6 #14：pet 錨點回填同樣要擋 irrealis 前窗——「我超怕自己養狗
+      // 會…」的「狗」是假設句素材，不是 user 養寵自陳。
+      const irrealisPetLead = evidence.domain === "pet" &&
+        /(?:怕|如果|要是|假如|想像|哪天|會不會)/u.test(
+          (text
+            .slice(Math.max(0, cursor - 12), cursor)
+            .split(/[\n。！？!?；;，,：:]/u)
+            .pop()) ?? "",
+        );
       if (
         !isQuestionOrCondition(text, cursor, anchoredOwner) &&
+        !irrealisPetLead &&
         !isSuppressedQuotedClaim(
           text,
           cursor,
@@ -2594,9 +2644,10 @@ function contextualDirectAnswerClaims(input: {
           anchor.length < 2 || safeDirectAnswers.has(anchor) ||
           /(?:我|妳|你|她|我們|想|努力|回想|記憶|招供|逗|翻|問|找|給|知道|記得|忘)/u
             .test(anchor) ||
-          /(?:不知道|不記得|忘了|沒記住|先確認|查一下|問一下)/u.test(
-            anchor,
-          ) ||
+          // round6 #9：「還沒實際去過欸」這類否定/未然迴避句刻意不報地點，
+          // 語尾助詞形態不得把它當成直接報店名。
+          /(?:不知道|不記得|忘了|沒記住|先確認|查一下|問一下|還沒|沒有|沒去過)/u
+            .test(anchor) ||
           // P1 對抗審：「在X(?=發現|找到…)」pattern 沒限定 X 是地點名詞，
           // 「在聊天過程中發現」「在等妳的時候看到」這種心情/動作句會被
           // 抓成 venue candidate。X 是敘事階段/心境詞而非地點時放行不殺，
@@ -2607,12 +2658,23 @@ function contextualDirectAnswerClaims(input: {
           // 一個可驗證地點。具體店名、地標、地址仍走上面的 HIGH venue fail-closed。
           isUnnamedVenueCarryover(anchor, input.context)
         ) continue;
+        // round6 #10/#13：coaching「(她|他|對方)問位置是X」是轉述教學，
+        // X 是解讀不是報點——即使 X 碰巧帶地名字尾（邀約信「號」）。
+        if (
+          input.field === "coaching" && patternIndex === 1 &&
+          /(?:她|他|對方)(?:剛|剛剛|一直|又)?問\s*$/u.test(
+            text.slice(Math.max(0, (match.index ?? 0) - 8), match.index ?? 0),
+          )
+        ) {
+          continue;
+        }
         // coaching 的引號/邊界片段常是教學語（『這週/半小時』的具體窗口、
-        // 「老闆推薦卡黑膠味道」壓縮黏連詞）：不具地點形態一律不當成
-        // 「直接報點的答案」。reply 維持嚴格——店名可以是任意詞形。
+        // 「老闆推薦卡黑膠味道」壓縮黏連詞），「位置是X」也常是轉述教學
+        // （round6 #10/#13「她問位置是實際確認/邀約信號」）：不具地點形態
+        // 一律不當成「直接報點的答案」。reply 維持嚴格——店名可以是任意詞形。
         if (
           input.field === "coaching" &&
-          (patternIndex === 0 || patternIndex === 3) &&
+          (patternIndex === 0 || patternIndex === 1 || patternIndex === 3) &&
           !isLikelyProperPlaceAnchor(anchor) &&
           !looksLikeLocationAnchor(anchor)
         ) {
