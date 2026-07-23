@@ -811,3 +811,22 @@
 **保留的守門**: 版本前段不一致仍紅——升版時 `release.yml` 的 `APP_VERSION` 與 pubspec 前段必須一起改，防止用舊 ref 誤發新版號（原「stale source」守門的真正價值所在）。
 
 **影響**: TestFlight build 號中間會有空洞（失敗的 run 也吃編號），正常現象非事故。
+
+---
+
+## ADR #31 — [2026-07-24] Opener Free 解鎖三型（contract v2）＋新話題破冰腦力（固定 3 則、exactly-once）
+
+**狀態**: 🟢 Active — 實作完成，待 Codex 審查與部署
+
+**取代**: ADR #7 條目 4「Free 只有延展」的 Opener 部分（analyze 的 Free 兩型維持 2026-07-17 決定不變）。
+
+**決定**:
+
+1. **Opener contract v2**：新 App request 帶 `openerContractVersion: 2`，Free 恰好解鎖 `extend`／`humor`／`tease`、鎖 `resonate`／`coldRead`；缺席／`1` 視為 v1（舊 App Free 維持 legacy `extend` 單卡），非法型別在 rate limit／模型／扣費前 400。模型仍固定產五種，差異只在 server 權益投影；v2 成功前先過五種 completeness gate（一次既有 format repair，仍不全 502 不扣）。response 帶 server 權威 `access` metadata，client 不得只靠卡數猜 tier；舊 cache 讀取時依現行權益重投影，無 Hive migration。
+2. **新話題（`mode: new_topic`）**：素材＝對象作戰板＋關於我＋情境 enum（`went_cold/after_date/stuck/warm_up`，無自由輸入），至少一類非空否則 422 不扣。模型恰好五題（direction/openingLine/whyItWorks/nextMove），恰一題推薦；成功固定扣 3 則。所有 tier 都生成五題，Free 由 server 投影只回最推薦一題（另四題文字不出 server、不入帳本）。限流 scope `new_topic`＝3/分、30/日。
+3. **Exactly-once**：`new_topic_requests` 帳本沿用 ADR #22 範本（claim/lease/settle/replay、server-keyed HMAC `NEW_TOPIC_REPLAY_HMAC_KEY`、24h window）；參數性偏離＝lease 65 秒（45s generation deadline＋5s settlement reserve）、固定 cost 3。settle 同 transaction 扣額＋落結果；transport 結果不明絕不 release；handler 永遠回 settlement stored result。
+4. **成本**: Opener Free 1→3 型不增模型 token 成本（本來就產五種）；New Topic Free 也產五題是為了推薦題真實且付費品質一致。
+
+**坑**: contract version 不入 opener input hash（同輸入跨版本重試仍 dedup）；`MODEL_RATE_LIMITED` 429 永不帶 quota keys（防誤開 paywall）；Free v2 之後「任何 non-extend 內容＝paid」的 client 判定失效，legacy fallback 只能看 paid-only keys（`resonate`/`coldRead`）。
+
+**驗證**: analyze-chat Deno 全套 710 綠＋new_topic payload/billing/prompt/source 41 綠；Flutter opener 97＋new_topic 44＋UI 契約測試綠；部署閘門＝Codex APPROVED 後 apply_migration→設 secret→單獨部署 analyze-chat。
