@@ -577,3 +577,84 @@ Deno.test("self-disclosure exemption rejects bare 你呢 and template laundering
     });
   }
 });
+
+Deno.test("wager exemption is fragment-scoped with clause-level evidence (round15 Codex P2-1)", () => {
+  // Codex repro①：承諾形子句不得豁免整段——其餘子句照走 grounding。
+  assertThrows(
+    () =>
+      assertPracticeTextGroundedInTurns({
+        visibleText: "賭約是真的，先接住她的感受，再自然聊下去。",
+        turns: gh3SpicyTurns,
+        errorCode: "practice_not_grounded",
+      }),
+    Error,
+    "practice_not_grounded",
+  );
+  // Codex repro②：假設/否定子句內的賭局詞不算證據。
+  for (
+    const nonEvidenceTurnText of [
+      "假設我們打賭，我可沒答應喔",
+      "我絕對不會跟你打賭",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        assertPracticeTextGroundedInTurns({
+          visibleText: "賭約是真的，輸了別賴帳",
+          turns: [
+            { role: "user" as const, text: "妳說妳吃辣很強，要不要來比一場" },
+            { role: "ai" as const, text: nonEvidenceTurnText },
+          ],
+          errorCode: "practice_not_grounded",
+        }),
+      Error,
+      "practice_not_grounded",
+    );
+  }
+  // 原 gh3 句維持放行：短感嘆「嗆歸嗆」不足 4 字不載事實，兩個賭局子句
+  // 皆為承諾形 fragment。
+  assertPracticeTextGroundedInTurns({
+    visibleText: "嗆歸嗆，但賭約是真的，妳要是輸了別想賴帳喔",
+    turns: gh3SpicyTurns,
+    errorCode: "practice_not_grounded",
+  });
+});
+
+Deno.test("self-disclosure exemption is fragment-scoped with concrete life verbs (round15 Codex P2-2)", () => {
+  // Codex repro：「看/找/做」等泛用動詞出白名單——「先看她反應…把聊天
+  // 帶下去」是教練模板不是生活自介，照擋。
+  assertThrows(
+    () =>
+      assertPracticeTextGroundedInTurns({
+        visibleText: "我最近會先看她反應，再自然把聊天帶下去。",
+        turns: gd3InterviewTurns,
+        errorCode: "practice_not_grounded",
+      }),
+    Error,
+    "practice_not_grounded",
+  );
+  // fragment 式：只豁免自介句本身，後續句照走 grounding。
+  assertThrows(
+    () =>
+      assertPracticeTextGroundedInTurns({
+        visibleText: "我週末通常會去逛新開的店。妳絕對猜不到我還會調酒。",
+        turns: gd3InterviewTurns,
+        errorCode: "practice_not_grounded",
+      }),
+    Error,
+    "practice_not_grounded",
+  );
+  // 原 gd3 兩句維持放行（單一自介句、具體生活動詞 吃/晃）。
+  for (
+    const line of [
+      "哈哈被抓包了，那換我自首：我週末通常會找新的店吃東西耶",
+      "哈哈被抓包了，那換我說：我週末如果沒事，會亂晃找新開的店吃飯。",
+    ]
+  ) {
+    assertPracticeTextGroundedInTurns({
+      visibleText: line,
+      turns: gd3InterviewTurns,
+      errorCode: "practice_not_grounded",
+    });
+  }
+});

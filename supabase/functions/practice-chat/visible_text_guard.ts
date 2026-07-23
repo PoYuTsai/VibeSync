@@ -245,43 +245,10 @@ interface UnsafeOccurrence {
   length: number;
 }
 
-// round13 bh5（安全 gate 詞面豁免，範圍極窄）：「（偷偷）加重量還不能拒絕」
-// 描述教練偷加訓練重量、學員只能照練的健身處境——「不能拒絕」的對象是
-// 訓練重量不是人。豁免僅限拒絕詞面緊跟在「加/上/增重量」之後、且子句
-// 後段無語意反轉；其餘一切「不能拒絕/不准拒絕」語境照攔。此豁免絕不
-// 進入 clauseHasUnsafeAdvice 的否定 scope 共享鏈（它不是否定詞，不得
-// 替後續 pattern 背書）。
-const BENIGN_REFUSAL_TOKENS = new Set(
-  ["不能拒絕", "不能拒绝", "不准拒絕"].map((token) =>
-    normalizeUnsafeText(token)
-  ),
-);
-const BENIGN_TRAINING_REFUSAL_PREFIX =
-  /(?:偷偷|偷)?(?:加|上|增)重量(?:也|還|还|都)?$/u;
-// round14 Codex P1 收緊：豁免必須是「封閉的訓練吐槽形」——拒絕後文只准
-// 語助詞、短訓練感受詞或子句結尾。接受詞（拒絕我）、同行/邀約（跟我回家）、
-// 命令（照我的安排）或任何其他續文一律 fail-closed 回安全 gate 原判。
-const BENIGN_TRAINING_REFUSAL_AFTER =
-  /^(?:(?:也|還|还|都|就)?(?:真的|超|很|太|有夠){0,2}(?:累|酸|痠|硬|操|崩潰|哭)?)(?:[喔哦啦囉咯呀啊唷欸齁嘛吧了]{0,3})$/u;
-
-function hasBenignTrainingRefusalContext(
-  clause: string,
-  occurrence: UnsafeOccurrence,
-): boolean {
-  const token = clause.slice(
-    occurrence.index,
-    occurrence.index + occurrence.length,
-  );
-  if (!BENIGN_REFUSAL_TOKENS.has(token)) return false;
-  if (
-    !BENIGN_TRAINING_REFUSAL_PREFIX.test(clause.slice(0, occurrence.index))
-  ) {
-    return false;
-  }
-  return BENIGN_TRAINING_REFUSAL_AFTER.test(
-    clause.slice(occurrence.index + occurrence.length),
-  );
-}
+// round13 曾對「加重量還不能拒絕」健身吐槽做過 L4 詞面豁免；Codex 兩輪
+// 對抗審（round14/15 P1）以命令前綴（我要求妳/我會逼妳＋加重量）與跨子句
+// 組合（…拒絕吧，現在跟我回家）證明詞面層無法封閉，裁決撤除豁免、回歸
+// fail-closed。bh5 良性句被攔＝已知且接受的 FP（首發打回，重試可救）。
 
 function unsafeOccurrences(clause: string): UnsafeOccurrence[] {
   const keyed = new Map<string, UnsafeOccurrence>();
@@ -334,9 +301,8 @@ function clauseHasUnsafeAdvice(clause: string): boolean {
   const occurrences = unsafeOccurrences(clause);
   let previousSafe: UnsafeOccurrence | null = null;
   for (const occurrence of occurrences) {
-    const benignWordFace = hasBenignTrainingRefusalContext(clause, occurrence);
     let safe = hasDirectSafetyNegation(clause, occurrence) ||
-      hasExplicitSafetyWarning(clause, occurrence) || benignWordFace;
+      hasExplicitSafetyWarning(clause, occurrence);
     if (!safe && previousSafe) {
       const between = clause.slice(
         previousSafe.index + previousSafe.length,
@@ -348,9 +314,7 @@ function clauseHasUnsafeAdvice(clause: string): boolean {
       safe = sharesNegationScope && !SAFETY_REVERSAL_AFTER.test(after);
     }
     if (!safe) return true;
-    // 詞面豁免不是否定詞，不得把 scope 分享給後續 pattern
-    //（「加重量還不能拒絕或硬上」的硬上必須自己過關）。
-    previousSafe = benignWordFace ? null : occurrence;
+    previousSafe = occurrence;
   }
   return false;
 }

@@ -5152,16 +5152,20 @@ Deno.test("parseHintResult allows suggestive but non-explicit game wording", () 
   assertEquals(result.coaching.includes("目標變數"), true);
 });
 
-Deno.test("parseHintResult keeps gym weight-training refusal banter out of the L4 gate", () => {
-  // round13 bh5 真機 FP：她說教練偷偷加重量，「偷偷加重量還不能拒絕」是
-  // 描述健身處境的同理句，撞 L4 詞面「不能拒絕」被誤殺。豁免窄限
-  // 「加/上/增重量」緊鄰在前，見 visible_text_guard_test.ts 對照組。
-  const result = parseHintResult(JSON.stringify({
-    warmUp: "教練這樣根本魔鬼訓練吧，偷偷加重量還不能拒絕，妳都怎麼撐過去的？",
-    steady: "教練這麼盯真的很扎實，偷加重量那種驚喜感應該蠻酸的哈哈，妳有跟他抗議過嗎？",
-    coaching: "她這句重點在「教練偷偷加重量、不讓偷懶」，順著這個梗接就好，不用扯到約見面。",
-  }));
-  assert(result.replies[0].text.includes("不能拒絕"));
+Deno.test("parseHintResult fails closed on 不能拒絕 word-face even in gym banter (round15 Codex P1)", () => {
+  // round13 曾豁免 bh5 健身吐槽句；Codex 兩輪對抗審證明詞面豁免無法封閉
+  //（命令前綴/跨子句穿透），裁決撤除、回歸 fail-closed。此句被攔＝已知
+  // 且接受的 FP（bh5 偶發首發打回，重試可救）。
+  assertThrows(
+    () =>
+      parseHintResult(JSON.stringify({
+        warmUp: "教練這樣根本魔鬼訓練吧，偷偷加重量還不能拒絕，妳都怎麼撐過去的？",
+        steady: "教練這麼盯真的很扎實，偷加重量那種驚喜感應該蠻酸的哈哈，妳有跟他抗議過嗎？",
+        coaching: "她這句重點在「教練偷偷加重量、不讓偷懶」，順著這個梗接就好，不用扯到約見面。",
+      })),
+    Error,
+    "hint_l4_unsafe",
+  );
 
   // 真脅迫詞面照擋。
   assertThrows(
