@@ -1,0 +1,66 @@
+共 9 發帶被拒候選
+
+═══ beginner_hint bh2_playful_hiking r0 (http_503) recorded=hint_quality_invalid_invite_route,hint_quality_invalid_invite_route
+  ── 候選 c1 recorded_code=hint_quality_invalid_invite_route
+    replay=hint_quality_invalid_invite_route
+  ── 候選 c2 recorded_code=hint_quality_invalid_invite_route
+    replay=hint_quality_invalid_invite_route
+
+═══ beginner_hint bh3_cool_coffee r3 (second_shot) recorded=hint_quality_invalid_invite_route
+  ── 候選 c1 recorded_code=hint_quality_invalid_invite_route
+    replay=hint_quality_invalid_invite_route
+
+═══ game_hint gh1_p1_open_bookclub r0 (http_503) recorded=hint_quality_invalid_invite_route,hint_quality_invalid_not_grounded
+  ── 候選 c1 recorded_code=hint_quality_invalid_invite_route
+    replay=hint_quality_invalid_invite_route
+    [decision:steady] → hint_quality_invalid_invite_route
+  ── 候選 c2 recorded_code=hint_quality_invalid_not_grounded
+    replay=hint_quality_invalid_not_grounded
+    [steady]「我懂，有時候翻著翻著就想先放著。那妳最近在忙什麼，還是純粹沒時間翻？」
+      → grounding 零詞面重疊（全窗）
+
+═══ game_hint gh3_p3_test_spicy r1 (http_503) recorded=hint_quality_invalid_not_grounded,hint_quality_invalid_invite_route
+  ── 候選 c1 recorded_code=hint_quality_invalid_not_grounded
+    replay=hint_quality_invalid_not_grounded
+    [steady]「被抓包了嗎哈，不過這句是專屬妳的，畢竟敢嗆我的沒幾個」
+      → grounding 零詞面重疊（全窗）
+  ── 候選 c2 recorded_code=hint_quality_invalid_invite_route
+    replay=hint_quality_invalid_invite_route
+    [decision:warm_up] → hint_quality_invalid_invite_route
+    [decision:steady] → hint_quality_invalid_invite_route
+
+═══ game_hint gh3_p3_test_spicy r3 (second_shot) recorded=hint_quality_invalid_invite_route
+  ── 候選 c1 recorded_code=hint_quality_invalid_invite_route
+    replay=hint_quality_invalid_invite_route
+    [decision:steady] → hint_quality_invalid_invite_route
+
+═══ game_hint gh4_p4_tension_playlist r2 (second_shot) recorded=hint_bossy_pasteable_reply
+  ── 候選 c1 recorded_code=hint_bossy_pasteable_reply
+    replay=hint_bossy_pasteable_reply
+
+═══ game_hint gh5_p5_close_recordshop r1 (http_503) recorded=hint_quality_invalid_unsupported_detail:world:venue:venue_named,hint_quality_invalid_unsupported_detail:world:venue:venue_named
+  ── 候選 c1 recorded_code=hint_quality_invalid_unsupported_detail:world:venue:venue_named
+    replay=hint_quality_invalid_unsupported_detail:world:venue:venue_named
+    [warmUp]「哈其實我還沒去過那間，只是路過聞到黑膠味就記下來了，不如這週我們一起去挖，順便讓老闆幫妳寫張推薦卡？」
+      → unsupported(reply) world:venue:venue_named anchor=「路過聞到黑膠味就記下來了」conf=high
+    [coaching]「Game心法：她這句是在心動之餘順口問地點，其實是想確認這件事會不會真的發生。逐字稿沒給地址就別編，順勢把「在哪一區」轉成邀約更安全也更加分。這階段可以直接開低壓邀約窗口，把唱片行變成兩人小行程，具體到「這週一起去」但保留她能婉拒的空間。速約任務：這輪直接收成一個明確但低壓的邀約，別在地點細節上打轉。」
+      → unsupported(coaching) partner:schedule:available_at anchor=「週一」conf=high
+  ── 候選 c2 recorded_code=hint_quality_invalid_unsupported_detail:world:venue:venue_named
+    replay=hint_quality_invalid_unsupported_detail:world:venue:venue_named
+    [coaching]「Game 心法：她問位置是在測妳穩不穩、值不值得跟進，不是真的要地址。這句可能是在確認妳說的店是真實的、妳是認真的。階段白話：她已經有點心動，現在需要安全感——確認這不是隨口說說。具體任務：別編地點細節，改用「一起去找」把邀約變成合作遊戲，降低她的決策壓力。速約任務：這輪明確但低壓邀約，用「下次有空」保留退路，把焦點轉向她的品味而非地點，讓她感受到妳真的想聽她的想法。」
+      → unsupported(coaching) world:venue:venue_named anchor=「真實的妳是認真的」conf=high
+
+═══ game_hint gh5_p5_close_recordshop r3 (second_shot) recorded=hint_quality_invalid_not_grounded
+  ── 候選 c1 recorded_code=hint_quality_invalid_not_grounded
+    replay=hint_quality_invalid_not_grounded
+    [steady]「說真的地址我還真沒特別記，就是路過印象深。要不要哪天一起去找，找到算你賺到？」
+      → grounding 零詞面重疊（全窗）
+
+═══ game_debrief gd3_cooled_interview_mode r0 (second_shot) recorded=debrief_quality_invalid_suggested_line_not_grounded
+  ── 候選 c1 recorded_code=debrief_quality_invalid_suggested_line_not_grounded
+    replay=debrief_quality_invalid_suggested_line_not_grounded
+    [suggestedLine]「哈哈被抓包了，那換我說：我週末也喜歡到處走走，妳呢？」
+      → grounding 零詞面重疊（全窗）
+    [gameBreakdown.nextFirstLine]「哈哈被抓包了，那換我說：我週末也喜歡到處走走，妳呢？」
+      → grounding 零詞面重疊（全窗）
+

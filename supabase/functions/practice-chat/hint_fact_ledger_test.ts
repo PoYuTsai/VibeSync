@@ -1914,3 +1914,30 @@ Deno.test("typed round8 metaphor objects and 路-initial compounds stay out of h
     [],
   );
 });
+
+// round9 判定表（2026-07-23）：命名系詞「只是/店是＋形容詞」與「這週一起」
+// 切割不得誤抽 venue_named／schedule（gh5 r1 兩筆）。
+Deno.test("typed round9 copula and weekday segmentation stay out of claims", () => {
+  const turns: PracticeTurn[] = [
+    { role: "user", text: "我知道一間唱片行超有味道" },
+    { role: "ai", text: "被你說得我有點心動，你說的那間唱片行是在哪一區啊" },
+  ];
+  const context = buildHintFactContext({ turns });
+  for (
+    const [text, field] of [
+      ["哈其實我還沒去過那間，只是路過聞到黑膠味就記下來了", "reply"],
+      ["她可能是在確認妳說的店是真實的、妳是認真的。", "coaching"],
+      ["這階段具體到「這週一起去」但保留她能婉拒的空間。", "coaching"],
+    ] as const
+  ) {
+    assertEquals(
+      collectUnsupportedHintFactClaims({ text, field, context })
+        .filter((claim) =>
+          (claim.domain === "venue" && claim.relation === "venue_named") ||
+          claim.anchor === "週一"
+        ),
+      [],
+      text,
+    );
+  }
+});

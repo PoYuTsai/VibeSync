@@ -190,3 +190,20 @@ Deno.test("practice invite classifier ignores degree adverbs, intent questions a
     "soft",
   );
 });
+
+Deno.test("practice invite classifier ignores continuation aspect and completed-state confirmations", () => {
+  // 第 9 輪 eval FP 樣句（docs/reviews/2026-07-23-fact-gate-round9-judgment.md）：
+  // 「V下去」持續貌、「…了吧/了嗎」完成態確認、「還會想去嗎」意圖問句（無「再」）。
+  for (
+    const line of [
+      "哈哈「懶得戒」這態度我喜歡，反正咖啡因換頭痛也不划算，不如就順順地喝下去吧",
+      "妳停在第三章，會想繼續看下去嗎？",
+      "下山懷疑人生我懂，但看到風景那瞬間應該還是覺得爬對了吧？",
+      "哈哈懷疑人生的時候應該有點狼狽，不過那種累到值得的感覺我懂。下次還會想去嗎？",
+    ]
+  ) {
+    assertEquals(practiceInviteLevelFor(line), "none", line);
+  }
+  assertEquals(practiceInviteLevelFor("改天一起去"), "soft");
+  assertEquals(practiceInviteLevelFor("週六一起去爬山吧"), "direct");
+});
