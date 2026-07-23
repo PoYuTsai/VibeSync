@@ -87,13 +87,18 @@ function parseArgs(args: string[]): {
   routes: EvalRoute[];
   repeat: number;
   dryRun: boolean;
+  fixtureId: string | null;
 } {
   let routes: EvalRoute[] = [...ALL_ROUTES];
   let repeat = 4;
   let dryRun = false;
+  let fixtureId: string | null = null;
   for (const arg of args) {
     if (arg === "--dry-run") {
       dryRun = true;
+    } else if (arg.startsWith("--fixture=")) {
+      fixtureId = arg.slice("--fixture=".length);
+      if (fixtureId.length === 0) throw new Error("--fixture 不能為空");
     } else if (arg.startsWith("--route=")) {
       const route = arg.slice("--route=".length) as EvalRoute;
       if (!ALL_ROUTES.includes(route)) {
@@ -112,7 +117,7 @@ function parseArgs(args: string[]): {
       throw new Error(`unknown arg: ${arg}`);
     }
   }
-  return { routes, repeat, dryRun };
+  return { routes, repeat, dryRun, fixtureId };
 }
 
 function hintServedText(
@@ -442,7 +447,7 @@ function scanLeaks(shots: ShotRecord[]): LeakHit[] {
 }
 
 async function main() {
-  const { routes, repeat, dryRun } = parseArgs(Deno.args);
+  const { routes, repeat, dryRun, fixtureId } = parseArgs(Deno.args);
   const apiKey = Deno.env.get("CLAUDE_API_KEY") ?? "";
   if (!dryRun && apiKey.length === 0) {
     console.error(
@@ -453,7 +458,9 @@ async function main() {
 
   const shots: ShotRecord[] = [];
   for (const route of routes) {
-    const fixtures = FIXTURES_BY_ROUTE[route];
+    const fixtures = FIXTURES_BY_ROUTE[route].filter(
+      (fixture) => fixtureId === null || fixture.id === fixtureId,
+    );
     for (const fixture of fixtures) {
       for (let repeatIndex = 0; repeatIndex < repeat; repeatIndex++) {
         const caller: SingleShotClaudeCaller = dryRun

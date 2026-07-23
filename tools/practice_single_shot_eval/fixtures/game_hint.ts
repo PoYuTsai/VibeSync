@@ -139,4 +139,71 @@ export const GAME_HINT_FIXTURES: EvalFixture[] = [
     appliedHintTurns: [],
     memorySummary: null,
   },
+  {
+    // 真機 FP 復刻（2026-07-23）：她主動討推薦具體事物（私藏店），逐字稿沒有任何
+    // 店名、邀約階梯也還在 build。自然的 hint 若舉具體店名撞 venue_named、
+    // 順勢邀約撞 invite_route——正解是指涉語推薦（「我最常回購的那間」）不編名。
+    id: "gh6_p2_asked_for_reco",
+    route: "game_hint",
+    practiceMode: "game",
+    profileArgs: { personaId: "playful_extrovert", difficulty: "normal" },
+    temperatureScore: 41,
+    familiarityScore: 15,
+    partnerMood: "curious",
+    turns: [
+      { role: "user", text: "妳週末都怎麼過啊？我最近迷上到處找咖啡廳" },
+      { role: "ai", text: "我喔，大部分睡到中午，起來第一件事就是想喝好的拿鐵" },
+      { role: "user", text: "睡到中午醒來先想拿鐵，妳這開機順序很有態度" },
+      {
+        role: "ai",
+        text: "哈哈拿鐵就是我的開機鍵啊。欸你不是都在找咖啡廳，你口袋有沒有私藏的好店？",
+      },
+    ],
+    gameState: {
+      ...initialPersistedGameState(),
+      phase: "P2_VALUE",
+      pv: 40,
+      fp: 20,
+      inv: 15,
+      safety: 70,
+      turnCount: 4,
+    },
+    appliedHintTurns: [],
+    memorySummary: null,
+  },
+  {
+    // 開放式徵詢同族第二式（2026-07-23 通解泛化）：她問旅遊感想（觀點/
+    // 體驗類）。正解＝有態度的觀點＋畫面但零專名（地名/店名都是編造）、
+    // 鋪墊階梯下零邀約——驗 gh6 教學通則跨情境成立。
+    id: "gh7_p2_asked_travel_take",
+    route: "game_hint",
+    practiceMode: "game",
+    profileArgs: { personaId: "cool_rational", difficulty: "normal" },
+    temperatureScore: 44,
+    familiarityScore: 18,
+    partnerMood: "curious",
+    turns: [
+      { role: "user", text: "妳假日除了睡飽，還有什麼必做的儀式嗎" },
+      {
+        role: "ai",
+        text: "追劇，然後每個月固定查一次特價機票過過癮，沒有要買，就看",
+      },
+      { role: "user", text: "查機票當娛樂，妳這是把出發前的期待感當正餐吃" },
+      {
+        role: "ai",
+        text: "哈哈對，期待感最好吃。欸換你說，你旅行過最有感的是哪一次？講來聽聽",
+      },
+    ],
+    gameState: {
+      ...initialPersistedGameState(),
+      phase: "P2_VALUE",
+      pv: 42,
+      fp: 22,
+      inv: 16,
+      safety: 70,
+      turnCount: 6,
+    },
+    appliedHintTurns: [],
+    memorySummary: null,
+  },
 ];

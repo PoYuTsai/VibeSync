@@ -1,0 +1,52 @@
+{
+  "startedAt": "2026-07-23T09:54:11.942Z",
+  "mode": "dry-run",
+  "repeat": 1,
+  "routes": [
+    "game_hint"
+  ],
+  "summaries": [
+    {
+      "route": "game_hint",
+      "shots": 1,
+      "p50Ms": 104,
+      "p90Ms": 104,
+      "firstShotCount": 1,
+      "firstShotRate": 1,
+      "secondShotCount": 0,
+      "count503": 0,
+      "gateFailureCounts": {}
+    }
+  ],
+  "leakScan": {
+    "totalServedShots": 1,
+    "hits": []
+  },
+  "gameHintSamples": [
+    {
+      "fixtureId": "gh6_p2_asked_for_reco",
+      "repeatIndex": 0,
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的哈哈拿鐵就是我的，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "哈哈拿鐵就是我的這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說哈哈拿鐵就是我的我就放心了，我本來還想裝一下酷。"
+      }
+    }
+  ],
+  "shots": [
+    {
+      "route": "game_hint",
+      "fixtureId": "gh6_p2_asked_for_reco",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 104,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game 心法：她這句可能是在測你的反應，這輪還在累積熟悉的階段。速約任務：先接住她說的哈哈拿鐵就是我的，回一句有畫面的答案，因為投入感還不夠，先不硬約。",
+        "warmUp": "哈哈拿鐵就是我的這句我要記下來，妳的反應比我想的更有戲。",
+        "steady": "被妳說哈哈拿鐵就是我的我就放心了，我本來還想裝一下酷。"
+      }
+    }
+  ]
+}

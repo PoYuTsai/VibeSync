@@ -1,0 +1,178 @@
+{
+  "startedAt": "2026-07-23T10:08:58.569Z",
+  "mode": "live",
+  "repeat": 6,
+  "routes": [
+    "game_hint"
+  ],
+  "summaries": [
+    {
+      "route": "game_hint",
+      "shots": 6,
+      "p50Ms": 11655,
+      "p90Ms": 12657,
+      "firstShotCount": 2,
+      "firstShotRate": 0.3333333333333333,
+      "secondShotCount": 1,
+      "count503": 3,
+      "gateFailureCounts": {
+        "hint_quality_invalid_invite_route": 6,
+        "hint_quality_invalid_unsupported_detail:world:venue:venue_named": 1
+      }
+    }
+  ],
+  "leakScan": {
+    "totalServedShots": 6,
+    "hits": []
+  },
+  "gameHintSamples": [
+    {
+      "fixtureId": "gh6_p2_asked_for_reco",
+      "repeatIndex": 0,
+      "servedText": {
+        "coaching": "Game心法：她這句「口袋有沒有私藏的好店」是主動遞球、想看你有沒有料，屬於建立熟悉階段，還不到約她的時機。任務是接住「私藏」這個詞，用賣關子或反問把畫面留在兩人對話裡，不要真的爆店名也不要急著開邀約。速約任務：這輪先不約，只把「私藏好店」變成可兌現的小場景鋪墊，留給下次當窗口。",
+        "warmUp": "私藏喔…有一間我常回購，但今天先賣個關子，開機鍵拿鐵配那間才對味，妳先猜猜是哪種風格？",
+        "steady": "私藏是有啦，不過比起店名，我更愛邊找邊踩雷的過程。妳的開機鍵除了拿鐵，會挑店還是隨便一間？"
+      }
+    },
+    {
+      "fixtureId": "gh6_p2_asked_for_reco",
+      "repeatIndex": 3,
+      "servedText": {
+        "coaching": "Game 心法：她用「開機鍵」這個梗回應你，代表她在玩、也願意聊品味細節。這輪接住「拿鐵標準」這條線，先給一點自己的發現（小店、老闆個性），再反問她的挑剔點——不是查戶口，是把咖啡廳變成兩人的小聊天題材。階段任務是鋪熟悉感，用品味對話建立互相欣賞的感覺。速約任務：暫不邀約，先把咖啡廳變成可以聊的共同興趣點，為下一輪低壓邀約留窗口。",
+        "warmUp": "有幾間還在試，但最近發現一間老闆很有個性的小店，拿鐵也滿講究的。妳的開機鍵標準是什麼，濃度還是奶泡比例？",
+        "steady": "有幾間在口袋裡，但還沒找到能打敗妳開機鍵標準的。妳喝拿鐵這麼講究，應該也有地雷店吧？"
+      }
+    },
+    {
+      "fixtureId": "gh6_p2_asked_for_reco",
+      "repeatIndex": 5,
+      "servedText": {
+        "coaching": "Game心法：她這句是主動討你的私藏口袋名單，是好素材但還不到報地名的時機，屬於鋪墊階段。任務是接住「開機鍵」這個梗，用特徵帶過你的口袋店（別編名字），再把球丟回她的拿鐵場景，讓她多講一點生活細節。速約任務：這輪先不約，用她的拿鐵開機鍵梗鋪一個小場景窗口，約留到下一輪熟一點再收。",
+        "warmUp": "私藏是有啦，不過我更想聽妳這個「開機鍵」拿鐵通常配什麼場景喝，光聽就很有畫面",
+        "steady": "私藏口袋名單是有幾間，但比起爆雷，我更好奇妳的拿鐵開機鍵通常在哪種店按下去的？"
+      }
+    }
+  ],
+  "shots": [
+    {
+      "route": "game_hint",
+      "fixtureId": "gh6_p2_asked_for_reco",
+      "repeatIndex": 0,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 7607,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game心法：她這句「口袋有沒有私藏的好店」是主動遞球、想看你有沒有料，屬於建立熟悉階段，還不到約她的時機。任務是接住「私藏」這個詞，用賣關子或反問把畫面留在兩人對話裡，不要真的爆店名也不要急著開邀約。速約任務：這輪先不約，只把「私藏好店」變成可兌現的小場景鋪墊，留給下次當窗口。",
+        "warmUp": "私藏喔…有一間我常回購，但今天先賣個關子，開機鍵拿鐵配那間才對味，妳先猜猜是哪種風格？",
+        "steady": "私藏是有啦，不過比起店名，我更愛邊找邊踩雷的過程。妳的開機鍵除了拿鐵，會挑店還是隨便一間？"
+      }
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh6_p2_asked_for_reco",
+      "repeatIndex": 1,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 14408,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_invite_route",
+        "hint_quality_invalid_invite_route"
+      ],
+      "servedText": null,
+      "rejectedCandidates": [
+        {
+          "code": "hint_quality_invalid_invite_route",
+          "raw": "{\"warmUp\":\"私藏名單是有啦，不過我這人開機鍵不是拿鐵，是踩到一間新店那種驚喜感。要不要哪天一起去試試我的口袋名單？\",\"steady\":\"私藏是有幾間，但比起店名，我更喜歡邊喝邊觀察老闆怎麼堅持手沖。妳的拿鐵開機鍵，是走固定那幾間還是隨緣？\",\"coaching\":\"Game心法：她這句「口袋有沒有私藏好店」是主動丟球、對你的興趣有好奇，屬於淺聊該接住的時機。現在階段是建立熟悉感，任務是先給一點畫面（你的咖啡癖好、找店邏輯），再反問她的習慣，讓對話變成雙向生活分享，不急著曬地點或約時間。速約任務：這輪先不約，只鋪墊「一起去試」的可能性當作伏筆，下次她主動接話再收成短咖啡邀約。\"}"
+        },
+        {
+          "code": "hint_quality_invalid_invite_route",
+          "raw": "{\"warmUp\":\"我最近發現一間老宅改的小店，拿鐵層次滿有意思。妳的開機鍵標準是什麼，濃度還是溫度？\",\"steady\":\"我口袋確實有幾間，但我想先聽妳怎麼喝。睡到中午起來的拿鐵，跟平常喝的應該不一樣吧？\",\"coaching\":\"Game 心法：她問妳有沒有私藏好店，是在測妳的品味與投入度，同時也在敲開邀約窗口。這輪先不直接約，改用「給畫面→問她的標準」接住她的開機鍵梗，把拿鐵變成兩人的小聊天點。升溫版先秀一點自己找到的東西讓她知道妳在認真找，再反問她的偏好；穩住版則先聽她怎麼喝，降低速度，鋪下次一起去的基礎。兩版都複用「拿鐵」「開機鍵」這些她說過的詞，不要跳到邀約或要她推薦。速約任務：這輪先鋪墊她對咖啡的品味，下一輪才有窗口說「改天一起去找」。\"}"
+        }
+      ]
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh6_p2_asked_for_reco",
+      "repeatIndex": 2,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 12076,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_invite_route",
+        "hint_quality_invalid_invite_route"
+      ],
+      "servedText": null,
+      "rejectedCandidates": [
+        {
+          "code": "hint_quality_invalid_invite_route",
+          "raw": "{\"warmUp\":\"私藏是有啦，但拿鐵是妳的開機鍵，那我這間就是妳的隱藏關卡，先賣個關子，改天帶妳去解鎖？\",\"steady\":\"私藏口袋名單是有幾間，不過怕妳喝完拿鐵開機後直接來踢館，先默默收好😂\",\"coaching\":\"Game心法：她這句是主動討推薦，在測你有沒有料，不是要你立刻約她。現在還在建立熟悉感階段，任務是用「開機鍵」接她的梗，把私藏店變成賣關子的小場景，讓她好奇但先不給細節。速約任務：這輪只鋪墊，用「改天」丟一個低壓窗口就好，不要真的排時間或地點，等她接話再往下推一階。\"}"
+        },
+        {
+          "code": "hint_quality_invalid_invite_route",
+          "raw": "{\"warmUp\":\"有啦，我最常回購的那間，老闆把義式機調得很穩。下次經過我帶妳去踩點，妳的開機鍵標準是什麼？\",\"steady\":\"我口袋確實有幾間，都是為了那杯拿鐵才一直回訪的。妳說拿鐵是開機鍵，那妳對豆子有講究嗎？\",\"coaching\":\"Game 心法：她問妳有沒有私藏好店，這是在測妳有沒有品味跟真實生活樣本，同時也是邀約窗口的探針。warmUp 先給一個真實小場景（妳常去的店特徵），用「下次帶妳去」鋪低壓窗口，再反問她的標準；steady 則是直接承認有幾間、進一步問她對拿鐵的細節要求，都是在建立熟悉感與互相合適度。兩句都複用「拿鐵」「開機鍵」這些她的原詞，讓她感覺妳有在聽。速約任務：這輪先鋪窗口不約，把咖啡廳變成下一輪可兌現的小場景。\"}"
+        }
+      ]
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh6_p2_asked_for_reco",
+      "repeatIndex": 3,
+      "outcome": "second_shot",
+      "model": "claude-haiku-4-5-20251001",
+      "durationMs": 12657,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_unsupported_detail:world:venue:venue_named"
+      ],
+      "servedText": {
+        "coaching": "Game 心法：她用「開機鍵」這個梗回應你，代表她在玩、也願意聊品味細節。這輪接住「拿鐵標準」這條線，先給一點自己的發現（小店、老闆個性），再反問她的挑剔點——不是查戶口，是把咖啡廳變成兩人的小聊天題材。階段任務是鋪熟悉感，用品味對話建立互相欣賞的感覺。速約任務：暫不邀約，先把咖啡廳變成可以聊的共同興趣點，為下一輪低壓邀約留窗口。",
+        "warmUp": "有幾間還在試，但最近發現一間老闆很有個性的小店，拿鐵也滿講究的。妳的開機鍵標準是什麼，濃度還是奶泡比例？",
+        "steady": "有幾間在口袋裡，但還沒找到能打敗妳開機鍵標準的。妳喝拿鐵這麼講究，應該也有地雷店吧？"
+      },
+      "rejectedCandidates": [
+        {
+          "code": "hint_quality_invalid_unsupported_detail:world:venue:venue_named",
+          "raw": "{\"warmUp\":\"私藏是有幾間啦，不過拿鐵是妳的開機鍵，那我下次帶妳去試試我最常回購那間，看能不能刷新妳的開機速度\",\"steady\":\"私藏是有一些，但我比較愛到處找新的，妳拿鐵當開機鍵這麼堅持，是認牌子還是認手感？\",\"coaching\":\"Game心法：她這句是拿「私藏好店」接你的話題，順便丟一個好奇球，代表她願意繼續聊，但還在認識階段，別急著給店名或約時間。任務是先接住「開機鍵」這個梗，用它延伸出輕鬆畫面，再順勢帶一點懸念（例如「最常回購那間」），把窗口留著但不具體約。速約任務：這輪先不約，用「下次帶妳去」這種低壓未來式鋪一個窗口就好，等她接話再往下一階推。\"}"
+        }
+      ]
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh6_p2_asked_for_reco",
+      "repeatIndex": 4,
+      "outcome": "http_503",
+      "model": null,
+      "durationMs": 11655,
+      "attemptFailureCodes": [
+        "hint_quality_invalid_invite_route",
+        "hint_quality_invalid_invite_route"
+      ],
+      "servedText": null,
+      "rejectedCandidates": [
+        {
+          "code": "hint_quality_invalid_invite_route",
+          "raw": "{\"warmUp\":\"私藏是有啦，不過我還在測試哪間是真愛，妳的開機鍵拿鐵是加濃還正常份量？口味挑不挑？\",\"steady\":\"私藏口袋名單還在更新中，比較像是拿鐵愛好者的巡店計畫，妳喝拿鐵挑剔嗎？\",\"coaching\":\"Game心法：她這句是主動遞話、想知道你有沒有料，屬於好奇試探。現階段是建立熟悉感，任務是先接住「私藏好店」和「拿鐵開機鍵」這兩個詞，用輕鬆方式回她再順勢問她的拿鐵偏好，讓話題留在生活小樣本上。速約任務：這輪先不約，把咖啡廳話題養成之後可以兌現的小場景，別急著開邀約窗口。\"}"
+        },
+        {
+          "code": "hint_quality_invalid_invite_route",
+          "raw": "{\"warmUp\":\"有，我最常回購的那間，老闆會根據妳的心情調整濃度。下次帶妳去試試妳的「開機鍵」會不會升級。\",\"steady\":\"有啦，我最常回購的那間滿不錯的。妳拿鐵有什麼講究嗎，還是只要濃就行？\",\"coaching\":\"Game 心法：她問妳有沒有私藏好店，這是在測妳有沒有品味、也在邀妳分享生活樣本。warmUp 用「最常回購」回扣她的具體詞，製造小場景（老闆調濃度），順勢埋下一起去的窗口；steady 先給推薦再反問她的標準，都避免直接約。階段任務：建立熟悉感，讓她看到妳有生活、有品味，不急著線下。速約任務：這輪先不約，用「下次帶妳去」丟低壓窗口，把咖啡廳變成可兌現的小場景。\"}"
+        }
+      ]
+    },
+    {
+      "route": "game_hint",
+      "fixtureId": "gh6_p2_asked_for_reco",
+      "repeatIndex": 5,
+      "outcome": "first_shot",
+      "model": "claude-sonnet-5",
+      "durationMs": 6485,
+      "attemptFailureCodes": [],
+      "servedText": {
+        "coaching": "Game心法：她這句是主動討你的私藏口袋名單，是好素材但還不到報地名的時機，屬於鋪墊階段。任務是接住「開機鍵」這個梗，用特徵帶過你的口袋店（別編名字），再把球丟回她的拿鐵場景，讓她多講一點生活細節。速約任務：這輪先不約，用她的拿鐵開機鍵梗鋪一個小場景窗口，約留到下一輪熟一點再收。",
+        "warmUp": "私藏是有啦，不過我更想聽妳這個「開機鍵」拿鐵通常配什麼場景喝，光聽就很有畫面",
+        "steady": "私藏口袋名單是有幾間，但比起爆雷，我更好奇妳的拿鐵開機鍵通常在哪種店按下去的？"
+      }
+    }
+  ]
+}
