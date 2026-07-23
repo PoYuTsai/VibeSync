@@ -5777,3 +5777,36 @@ Deno.test("generated Hint still rejects challenge-response replies with zero gro
     "hint_quality_invalid_not_grounded",
   );
 });
+
+Deno.test("game hint prompt teaches challenge-handling without self-justification and without gate jargon", () => {
+  // 裁決 (a) 2026-07-23：質問型 gate 不豁免，改教高階技巧過關——
+  // 幽默誇大、拿她原話曲解反打（天然引用詞面、grounding 自然過）。
+  const gameText = buildHintMessages(
+    {
+      turns: [
+        { role: "user", text: "敢比啊，輸的請飲料" },
+        { role: "ai", text: "你是不是對每個女生都嗆一樣的話啊" },
+      ],
+      profile,
+      practiceMode: "game",
+      temperatureScore: 55,
+      familiarityScore: 30,
+      partnerMood: "curious",
+    } as Parameters<typeof buildHintMessages>[0],
+  ).map((m) => m.content).join("\n");
+  const teachingLine = gameText
+    .split("\n")
+    .find((line) => line.includes("測你穩不穩"));
+  assert(teachingLine, "missing challenge-handling teaching line");
+  assert(teachingLine.includes("幽默誇大"));
+  assert(teachingLine.includes("原話"));
+  assert(teachingLine.includes("解釋自己"));
+  // 粉紅大象教訓：教學段絕不逐字列出 gate 詞表詞彙。
+  assertEquals(
+    /DHV|篩選|框架|推拉|可得性|資格|賦格|窗口變數|L[0-4]|P[1-5]/.test(
+      teachingLine,
+    ),
+    false,
+    teachingLine,
+  );
+});

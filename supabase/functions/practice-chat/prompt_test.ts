@@ -644,7 +644,9 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   const failures: string[] = [];
   // 2026-07-23 gh5 裁決：game hint contract 新增「被問地點零捏造轉邀約」
   // 逃生話術一行為固定 bytes，上限 4800→4900。
-  if (maxHint > 4900) {
+  // 2026-07-23 裁決 (a) 質問型：game hint contract 新增「被質問＝測你穩不穩，
+  // 幽默誇大/原話反打、絕不自我解釋」教學一行為固定 bytes，上限 4900→5000。
+  if (maxHint > 5000) {
     failures.push(`Hint max ${maxHint} at ${maxHintCase}`);
   }
   if (maxDebrief > 4500) {
