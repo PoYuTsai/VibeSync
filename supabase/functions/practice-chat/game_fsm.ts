@@ -1100,7 +1100,7 @@ const EXPLICIT_SR_GAME_STRATEGIES: Record<
       "穿搭與下班聚會中的社交分寸",
     ],
     testStyle: "用嘴利吐槽與社交情境測你是否穩；接梗可以，炫耀人脈不行",
-    tensionStyle: "用活動現場回呼、快速反打與一點不可得性做張力",
+    tensionStyle: "用活動現場回呼、快速反打與一點若即若離的距離感做張力",
     closeHooks: ["活動後公開場所吃宵夜", "公開地點看夜景", "小型音樂現場"],
     punishments: ["炫耀人脈", "吃醋查勤", "把社交熱絡當成親密綠燈"],
   },
@@ -1177,7 +1177,7 @@ function testStyleFor(profile: PracticeProfile): string {
     return `高頻吐槽測試；常用 ${types}，用幽默反打過關，不要自證。`;
   }
   if (profile.personaId === "cool_rational") {
-    return `冷靜篩選測試；常用 ${types}，用穩定觀點過關，不要油。`;
+    return `冷靜評估測試；常用 ${types}，用穩定觀點過關，不要油。`;
   }
   if (profile.personaId === "clear_boundaries") {
     return `邊界測試；常用 ${types}，用尊重與分寸過關，不要硬推。`;
@@ -1193,7 +1193,7 @@ function tensionStyleFor(profile: PracticeProfile): string {
     return "用節奏、活動畫面和輕調侃做張力；避免黏或說教。";
   }
   if (profile.personaId === "cool_rational") {
-    return "用穩定框架和聰明留白做張力；少誇，多有主見。";
+    return "用穩定步調和聰明留白做張力；少誇，多有主見。";
   }
   if (profile.personaId === "clear_boundaries") {
     return "用安全感與成熟感做張力；任何私密推進都要慢。";

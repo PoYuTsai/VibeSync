@@ -226,7 +226,8 @@ export const GAME_DEBRIEF_SYSTEM_PROMPT = DEBRIEF_SYSTEM_PROMPT.replace(
   }`,
 ) +
   `\nGame 的 gameBreakdown 五欄必填（缺任何一欄整張卡作廢）、各帶原話並守欄位角色；禁萬用術語。` +
-  `\n所有欄位一律白話：絕不出現內部詞（frozen/cold/neutral/warm/hot、band、score、升溫指數、推拉、篩選、賦格、可得性、框架；唯「框架掉了」可用）。`;
+  `\n失敗局（被打槍/冷場）gameBreakdown 五欄一樣必填，絕不整包省略。` +
+  `\n所有欄位一律白話：絕不出現英文內部標籤（frozen/cold/neutral/warm/hot、band、score），也絕不用教練行話或抽象機制詞，改用具體生活化說法（如「聊天的節奏/氣氛/默契」）。`;
 
 const DEBRIEF_PROMPT_FIRST_TURN_COUNT = 2;
 const DEBRIEF_PROMPT_RECENT_TURN_COUNT = 12;
