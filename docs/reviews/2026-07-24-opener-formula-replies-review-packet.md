@@ -203,16 +203,17 @@
 - push／apply migration／deploy analyze-chat／live smoke／TestFlight／
   dogfood-safe 宣稱。
 
-## Open concerns（需 Eric 裁示）
+## Open concerns → Eric 裁示結果（2026-07-24）
 
-1. **P2-3 waiver 決策（唯一 review blocker）**：§11.2/11.3 的 request-level
-   handler 情境沒有可執行測試（index.ts import 即啟動 server 的架構限制，
-   與已部署的 New Topic 本體同級）。選項：(a) waiver 出貨；(b) 另開
-   handler test harness 案。未拍板前不宣稱 review APPROVED。
-2. U+0085 修復（`287e4717`）因兩輪上限未經 Codex 複核（內容＝whitespace
-   集合＋一行 regex，測試齊備）。
-3. Sync 測試對「未來新增 prompt placeholder」無自動防護（residual minor）。
-4. PG smoke（S1–S14）待 migration 授權後於真 PG 執行；執行前四-key ledger
-   相容不得宣稱 DB-verified。
-5. New Topic token 分布 NOT MEASURED；feature Edge 啟用前需授權後跑 ≥20 次
-   black-box sample（§8 evidence gate）。
+Eric 三題全數拍板（「好 我點頭 3題都照你的」）：
+
+1. **P2-3 waiver：核准（選項 a）**——沿用已部署 New Topic 本體同級保證
+   （helper 單元＋source anchors＋編譯期必填）出貨；handler test harness
+   列技術債候選、另案。**Review gate 自此＝APPROVED with waiver**。
+2. U+0085 修復（`287e4717`）不補 Codex 三審：核准。
+3. push／migration／Edge deploy／live smoke：**授權執行**（順序鐵則
+   migration-first；本節下方部署紀錄為準）。
+
+殘餘（非 blocker）：
+- Sync 測試對「未來新增 prompt placeholder」無自動防護（residual minor）。
+- New Topic token 分布於部署後 live smoke 補量測（§8 evidence gate）。
