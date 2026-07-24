@@ -248,3 +248,39 @@ Full Flutter（PASS）：
    paywall 的 route-level 整合流仍以 unit 層覆蓋（見上表說明）。
 3. ~~Telemetry 事件名未逐字對齊~~ → 已補（dafc0bac），§14.1 十二事件
    全數同名並由 source test 錨定。
+
+---
+
+# Deploy 執行紀錄（2026-07-24，Eric 口頭授權「部署」）
+
+依部署閘門順序執行，全部通過：
+
+1. **Migration**：`20260724120000_new_topic_exactly_once.sql` 經 Management
+   API 目標式套用（非 db push），版本已記入
+   `supabase_migrations.schema_migrations`。
+2. **驗證**：`new_topic_contract_version()` → `new-topic-exactly-once-v1`；
+   RLS enabled；cron `cleanup-expired-new-topic-requests` 存在；六個 RPC
+   `has_function_privilege` 矩陣＝anon/authenticated 全 false、service_role
+   true；table SELECT 同（Codex U4 落地）。
+3. **Secret**：`NEW_TOPIC_REPLAY_HMAC_KEY`（openssl rand -base64 32）經
+   Management API 設定（HTTP 201），僅以名稱驗證存在，值未輸出未落地。
+4. **Deploy**：`npx supabase@2.105.0 functions deploy analyze-chat
+   --no-verify-jwt --project-ref fcmwrmwdoqiqdnbisdpg` → Deployed；
+   無 auth POST smoke → 401（function 活著、auth 守門）。
+5. **PG transaction smoke（真 PostgreSQL，測試帳號，12 態全過）**：
+   fresh claim=claimed；同 identity 第二 owner=pending(retryAfterMs)；
+   owner fencing=OWNER_MISMATCH RAISE；hash mismatch=REPLAY_MISMATCH RAISE；
+   settle(charge=true)=charged:true 且 counter 恰 +3；同 identity 再
+   claim=replay 同 body；stale owner settle done row=stored winner
+   charged:false（總扣恰 3）；done row release=false；quota race
+   （limits=3）=QUOTA_EXCEEDED RAISE 後 row 仍 pending/result null/counter
+   不變（同成同敗）；owner-bound release pending=true；invalid result
+   （free 帶 2 題）=invalid p_result_json RAISE；cleanup 可執行；
+   **真並發**雙 connection 同時 claim fresh identity → 恰一 claimed 一
+   pending、row 單一 owner。測試 rows 已刪、counter 歸還為 0。
+6. **Merge**：main fast-forward `b89756e7..c4eb9bed` push；CI
+   「Deploy Edge Function」run 30061959152 → **success**。
+
+**Exactly-once 資料庫語意自此為 verified**（原條件核准項已閉合）。
+剩餘步驟：Eric 手動 dispatch iOS build → Eric/Bruce 真機 dogfood
+（opener v1/v2 三卡、New Topic grounding 六項目檢）。
