@@ -379,12 +379,16 @@ export type NewTopicLedgerResult = {
  * - 推薦 topic 永遠排 client response 第一位。
  * - Free 只存推薦那一題；另外四題文字不進 ledger、不進 response。
  * - Paid 五題全存（推薦在前）。
+ * - formulaTopics（0–2 則 canonical，呼叫端先過 normalizeFormulaReplies）
+ *   原封存入兩種 tier 的 ledger，不參與 topics counts／推薦（公式回覆
+ *   計畫 §7.2）；必填讓「只回 fresh response 不進 ledger」在編譯期就露餡。
  */
 export function buildNewTopicLedgerResult(opts: {
   topics: NewTopicModelTopic[];
   recommendationIndex: number;
   recommendationReason: string | null;
   servedTier: NewTopicServedTier;
+  formulaTopics: NewTopicFormulaReply[];
 }): NewTopicLedgerResult {
   if (opts.topics.length !== NEW_TOPIC_TOPIC_COUNT) {
     throw new Error("buildNewTopicLedgerResult: topics must be exactly 5");
@@ -395,6 +399,9 @@ export function buildNewTopicLedgerResult(opts: {
     opts.recommendationIndex >= NEW_TOPIC_TOPIC_COUNT
   ) {
     throw new Error("buildNewTopicLedgerResult: invalid recommendation index");
+  }
+  if (opts.formulaTopics.length > NEW_TOPIC_FORMULA_MAX_COUNT) {
+    throw new Error("buildNewTopicLedgerResult: formulaTopics must be 0-2");
   }
 
   const withIds: NewTopicLedgerTopic[] = opts.topics.map((topic, index) => ({
@@ -426,6 +433,11 @@ export function buildNewTopicLedgerResult(opts: {
       unlockedCount: isFree ? 1 : NEW_TOPIC_TOPIC_COUNT,
       lockedCount: isFree ? NEW_TOPIC_TOPIC_COUNT - 1 : 0,
     },
+    // 新 Edge row 一律帶（即使空）；Free/Paid 存同一份、不投影。
+    formulaTopics: opts.formulaTopics.map((reply) => ({
+      openingLine: reply.openingLine,
+      whyItWorks: reply.whyItWorks,
+    })),
   };
 }
 

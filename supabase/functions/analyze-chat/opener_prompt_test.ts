@@ -479,3 +479,97 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name:
+    "公式開場（2026-07-24 計畫 §5.1/§6）：prompt 段落＋schema 殿後＋handler 隔離資料流",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    // Prompt：公式段存在、五型不得被取代、共同點需證據、目標長度。
+    assert(source.includes("## 公式開場（額外兩則，不取代上面的五種風格）"));
+    assert(
+      source.includes(
+        "不得刪除、合併、改寫或減少\nextend / resonate / tease / humor / coldRead 五種開場",
+      ),
+    );
+    assert(source.includes("不得把\neffectiveStyleContext 與對方素材自行拼成共同點"));
+    assert(source.includes("openingLine 目標 45–80 個繁中字元；whyItWorks 目標 60–100 個繁中字元"));
+    assert(source.includes("強例只示範結構，不得照抄"));
+
+    // Schema：formulaOpeners 是輸出格式最後一個 key（先完成原契約）。
+    const schemaAt = source.indexOf("## 輸出格式 (JSON)");
+    assert(schemaAt > 0);
+    const formulaKeyAt = source.indexOf('"formulaOpeners": [', schemaAt);
+    const recommendationKeyAt = source.indexOf('"recommendation": {', schemaAt);
+    assert(
+      formulaKeyAt > recommendationKeyAt && recommendationKeyAt > schemaAt,
+      "formulaOpeners 必須在 schema 的 recommendation 之後（殿後）",
+    );
+
+    // Token cap 維持 3000（本案不得預先上修）。
+    assert(source.includes("const OPENER_MAX_TOKENS = 3000;"));
+
+    // Handler：公式只認 primary、base 完整後才 normalize、以最終五句 dedupe。
+    assert(
+      source.includes(
+        "const openerPrimaryFormulaRaw = openerPrimaryParsed?.formulaOpeners;",
+      ),
+    );
+    const incompleteGateAt = source.indexOf('error: "OPENER_RESPONSE_INCOMPLETE"');
+    const formulaNormalizeAt = source.indexOf(
+      "const openerFormulaOutcome = normalizeFormulaRepliesDetailed(",
+    );
+    const tierFilterAt = source.indexOf(
+      "const filteredOpenerPayload = filterOpenerPayloadForAllowedFeatures(",
+    );
+    assert(
+      incompleteGateAt > 0 && formulaNormalizeAt > incompleteGateAt &&
+        tierFilterAt > formulaNormalizeAt,
+      "公式 normalize 必須在 completeness gate 之後、tier filter 之前（用最終五句 dedupe）",
+    );
+
+    // Response：canonical 覆蓋（雙層保險第二層）＋成功一律帶。
+    assert(source.includes("formulaOpeners: openerFormulaOutcome.replies,"));
+
+    // Telemetry 只記數量。
+    assert(source.includes("formulaOpenersCount: openerFormulaOutcome.replies.length,"));
+    assert(source.includes("formulaOpenersDroppedCount: openerFormulaOutcome.droppedCount,"));
+
+    // 內部標籤守門開啟。
+    const openerFormulaBlock = source.slice(formulaNormalizeAt, tierFilterAt);
+    assert(openerFormulaBlock.includes("rejectInternalLabels: true"));
+
+    // Repair prompt 只負責 base：不得出現 formulaOpeners schema。
+    const repairPromptAt = source.indexOf("const OPENER_REPAIR_PROMPT");
+    const repairPromptEnd = source.indexOf("function buildOpenerRepairPrompt");
+    const repairPrompt = source.slice(repairPromptAt, repairPromptEnd);
+    assertFalse(
+      repairPrompt.includes("formulaOpeners"),
+      "OPENER_REPAIR_PROMPT 不得要求公式（repair 只修 base）",
+    );
+  },
+});
+
+Deno.test({
+  name: "公式示範句與 FORMULA_PROMPT_EXAMPLE_LINES 同步（whitespace 不敏感）",
+  permissions: { read: true },
+  fn: async () => {
+    const { FORMULA_PROMPT_EXAMPLE_LINES, formulaDedupeKey } = await import(
+      "./formula_reply.ts"
+    );
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    const sourceKey = formulaDedupeKey(source);
+    for (const line of FORMULA_PROMPT_EXAMPLE_LINES) {
+      assert(
+        sourceKey.includes(formulaDedupeKey(line)),
+        `示範句必須存在於 OPENER_PROMPT（排除集才會生效）：${line}`,
+      );
+    }
+  },
+});

@@ -300,3 +300,49 @@ Deno.test("formula migration：四-key 相容 constraint＋深驗 helper＋v2 ma
   );
   assert(formulaMigrationSource.includes("NOTIFY pgrst, 'reload schema';"));
 });
+
+Deno.test("index：new_topic 公式資料流——只認 primary、base 定案後 normalize、公式進 ledger", () => {
+  const branch = indexSource.slice(
+    indexSource.indexOf("if (isNewTopicMode) {"),
+    indexSource.indexOf("// ── Opener mode: generate opening lines ──"),
+  );
+  // 同一 primary parse 分兩條路；公式只認 primary。
+  assert(
+    branch.includes(
+      "const newTopicPrimaryFormulaRaw = newTopicPrimaryParsed?.formulaTopics;",
+    ),
+  );
+  // 公式 normalize 在 base 502 gate 之後、buildNewTopicLedgerResult 之前，
+  // 用五題 openingLine cross-field dedupe＋內部標籤守門。
+  const invalidGateAt = branch.indexOf('error: "NEW_TOPIC_RESPONSE_INVALID"');
+  const formulaAt = branch.indexOf(
+    "const newTopicFormulaOutcome = normalizeFormulaRepliesDetailed(",
+  );
+  const buildAt = branch.indexOf("buildNewTopicLedgerResult({");
+  assert(
+    invalidGateAt > 0 && formulaAt > invalidGateAt && buildAt > formulaAt,
+    "公式 normalize 必須在 base 定案後、ledger build 前",
+  );
+  const formulaBlock = branch.slice(formulaAt, buildAt);
+  assert(formulaBlock.includes("rejectInternalLabels: true"));
+  assert(
+    formulaBlock.includes("(topic) => topic.openingLine"),
+    "cross-field dedupe 必須用最終五題 openingLine",
+  );
+  // canonical 公式必須進 ledger（不是只掛 fresh response）。
+  assert(
+    branch.includes("formulaTopics: newTopicFormulaOutcome.replies,"),
+    "formulaTopics 必須傳入 buildNewTopicLedgerResult（replay 才有）",
+  );
+  // 公式 telemetry 只記數量。
+  assert(branch.includes("formulaTopicsCount: newTopicFormulaOutcome.replies.length,"));
+  assert(branch.includes("formulaTopicsDroppedCount: newTopicFormulaOutcome.droppedCount,"));
+  // Repair 呼叫仍只修 base：repair 分支內不得出現 formula 相關字。
+  const repairStart = branch.indexOf("NEW_TOPIC_REPAIR_PROMPT");
+  const repairEnd = branch.indexOf("if (!newTopicNormalized.ok) {", repairStart);
+  const repairBlock = branch.slice(repairStart, repairEnd);
+  assertFalse(
+    repairBlock.includes("formula"),
+    "repair 分支不得讀寫 formula（repair 只負責 base）",
+  );
+});

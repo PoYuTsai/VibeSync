@@ -146,3 +146,51 @@ Deno.test("buildNewTopicRepairPrompt：夾帶原文並裁 7000", () => {
 
   assert(buildNewTopicRepairPrompt("   ").includes("(empty)"));
 });
+
+Deno.test("公式新話題（計畫 §5.2）：prompt 段落＋schema 殿後＋內部標籤禁令；repair 不碰公式", () => {
+  assert(NEW_TOPIC_PROMPT.includes("## 公式新話題（額外兩則，不取代五個 topics）"));
+  assert(NEW_TOPIC_PROMPT.includes("也不參與 recommendation.index"));
+  assert(
+    NEW_TOPIC_PROMPT.includes("不能因為\n「關於我」和「對方作戰板」剛好出現相似詞，就自行宣稱共同點"),
+  );
+  // 內部標籤禁令九詞俱全。
+  for (
+    const label of [
+      "對象作戰板",
+      "對方作戰板",
+      "最近熱度",
+      "累計對話",
+      "你的備註",
+      "過往備註",
+      "性格分析",
+      "資料顯示",
+      "系統判斷",
+    ]
+  ) {
+    assert(
+      NEW_TOPIC_PROMPT.includes(label),
+      `內部標籤禁令缺詞：${label}`,
+    );
+  }
+  assert(NEW_TOPIC_PROMPT.includes("不得讓對方知道系統如何記錄或推測她"));
+  assert(
+    NEW_TOPIC_PROMPT.includes("openingLine 目標 45–80 個繁中字元；whyItWorks 目標 60–100 個繁中字元"),
+  );
+
+  // Schema：formulaTopics 殿後（在 recommendation 之後）。
+  const recommendationAt = NEW_TOPIC_PROMPT.indexOf('"recommendation": {');
+  const formulaAt = NEW_TOPIC_PROMPT.indexOf('"formulaTopics": [');
+  assert(
+    formulaAt > recommendationAt && recommendationAt > 0,
+    "formulaTopics 必須在 schema 的 recommendation 之後",
+  );
+  assert(NEW_TOPIC_PROMPT.includes("formulaTopics 必須恰好兩則，放在最後"));
+  // 原五題規格不變。
+  assert(NEW_TOPIC_PROMPT.includes("topics 必須恰好五個；recommendation.index 是 0-4 的整數"));
+
+  // Repair 只修 base：schema 與指令不得出現 formulaTopics。
+  assertFalse(
+    NEW_TOPIC_REPAIR_PROMPT.includes("formulaTopics"),
+    "NEW_TOPIC_REPAIR_PROMPT 不得要求公式（repair 只修 base）",
+  );
+});

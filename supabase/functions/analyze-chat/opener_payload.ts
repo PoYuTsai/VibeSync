@@ -139,8 +139,12 @@ export function normalizeOpenerPayload(
     return null;
   }
 
+  // Raw formulaOpeners 絕不穿透（2026-07-24 公式回覆計畫 §6.2 第一層）：
+  // canonical 公式由 handler 用 normalizeFormulaReplies 另行計算，
+  // response 再明確覆蓋（第二層）。
+  const { formulaOpeners: _rawFormulaOpeners, ...rest } = parsed;
   return {
-    ...parsed,
+    ...rest,
     openers,
   };
 }
@@ -205,8 +209,10 @@ export function filterOpenerPayloadForAllowedFeatures(
   // 內容寫的，硬套會誤導。
   const reason = modelPickVisible ? modelReason : null;
 
+  // 同 normalizeOpenerPayload：raw formulaOpeners 不隨 ...spread 外洩。
+  const { formulaOpeners: _rawFormulaOpeners, ...rest } = parsed;
   const filtered: Record<string, unknown> = {
-    ...parsed,
+    ...rest,
     openers,
     recommendedPick,
     recommendation: reason !== null
