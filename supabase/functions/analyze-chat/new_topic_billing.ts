@@ -7,7 +7,9 @@ import {
   type NewTopicSituation,
 } from "./new_topic_payload.ts";
 
-export const NEW_TOPIC_CONTRACT_VERSION = "new-topic-exactly-once-v1";
+// v2＝ledger result 允許選填 formulaTopics（migration 20260724180000）；
+// DB marker 只有新 constraint／validator 俱全時才回 v2。
+export const NEW_TOPIC_CONTRACT_VERSION = "new-topic-exactly-once-v2";
 export const NEW_TOPIC_REPLAY_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const NEW_TOPIC_REPLAY_HMAC_SECRET_NAME = "NEW_TOPIC_REPLAY_HMAC_KEY";
 

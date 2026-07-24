@@ -15,6 +15,12 @@ const migrationSource = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const formulaMigrationSource = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260724180000_new_topic_formula_topics.sql",
+    import.meta.url,
+  ),
+);
 
 Deno.test("index：new_topic 不被 generic analyze gates／optimize shape 接管", () => {
   assert(indexSource.includes('const isNewTopicMode = rawMode === "new_topic";'));
@@ -194,4 +200,103 @@ Deno.test("migration：settle 固定扣 3、result 白名單、tier 投影一致
   // settle 內 lock subscription row＋quota race 同 transaction 回滾。
   assert(migrationSource.includes("FROM public.subscriptions"));
   assert(migrationSource.includes("FOR UPDATE"));
+});
+
+// ---------------------------------------------------------------------------
+// 20260724180000 formulaTopics additive migration（公式回覆計畫 §7.3）
+// ---------------------------------------------------------------------------
+
+Deno.test("formula migration：additive——只動 constraint／validator／marker，不碰 claim/settle/release/cron/RLS", () => {
+  // 舊 migration 檔本身不得被改：v1 marker 與原三-key constraint 錨點仍在。
+  assert(migrationSource.includes("'new-topic-exactly-once-v1'"));
+  assert(
+    migrationSource.includes("- 'topics' - 'recommendation' - 'access')"),
+    "舊 migration 減鍵法必須維持原樣（不含 formulaTopics）",
+  );
+
+  // 新 migration 不得重定義 claim/settle/release/cleanup，也不得動表資料
+  // 或 cron（marker 函式內的 to_regprocedure 存在性檢查是合法引用）。
+  for (
+    const forbidden of [
+      "CREATE OR REPLACE FUNCTION public.claim_new_topic_request",
+      "CREATE OR REPLACE FUNCTION public.settle_new_topic_request",
+      "CREATE OR REPLACE FUNCTION public.release_new_topic_claim",
+      "CREATE OR REPLACE FUNCTION public.cleanup_expired_new_topic_requests",
+      "cron.schedule",
+      "cron.unschedule",
+      "increment_usage",
+      "CREATE TABLE",
+      "DELETE FROM",
+      "DROP TABLE",
+      "UPDATE public.new_topic_requests",
+    ]
+  ) {
+    assertFalse(
+      formulaMigrationSource.includes(forbidden),
+      `formula migration 不得出現：${forbidden}`,
+    );
+  }
+});
+
+Deno.test("formula migration：四-key 相容 constraint＋深驗 helper＋v2 marker", () => {
+  // constraint 以 DROP＋ADD 重建同名，減鍵法多扣 formulaTopics。
+  assert(
+    formulaMigrationSource.includes(
+      "DROP CONSTRAINT new_topic_requests_result_state_consistency",
+    ),
+  );
+  assert(
+    formulaMigrationSource.includes(
+      "ADD CONSTRAINT new_topic_requests_result_state_consistency",
+    ),
+  );
+  assert(
+    formulaMigrationSource.includes(
+      "- 'formulaTopics') = '{}'::jsonb",
+    ),
+  );
+  // legacy 三-key row 缺席 formulaTopics 仍合法。
+  assert(
+    formulaMigrationSource.includes("NOT (result_json ? 'formulaTopics')"),
+  );
+
+  // 深驗 helper：0–2 則、恰兩鍵、非空、char_length caps 180/300。
+  assert(
+    formulaMigrationSource.includes("validate_new_topic_formula_topics"),
+  );
+  assert(
+    formulaMigrationSource.includes(
+      "jsonb_array_length(p_formula_topics) > 2",
+    ),
+  );
+  assert(
+    formulaMigrationSource.includes("?& ARRAY['openingLine', 'whyItWorks']"),
+  );
+  assert(
+    formulaMigrationSource.includes(
+      "(v_item - 'openingLine' - 'whyItWorks') <> '{}'::jsonb",
+    ),
+  );
+  assert(formulaMigrationSource.includes("char_length(v_opening) > 180"));
+  assert(formulaMigrationSource.includes("char_length(v_why) > 300"));
+
+  // validate_new_topic_result 重建為 legacy/new 相容版。
+  assert(
+    formulaMigrationSource.includes(
+      "CREATE OR REPLACE FUNCTION public.validate_new_topic_result",
+    ),
+  );
+
+  // marker：v2 只在 helper＋constraint＋功能性探針俱全時回；缺件降 v1。
+  assert(formulaMigrationSource.includes("'new-topic-exactly-once-v2'"));
+  assert(formulaMigrationSource.includes("'new-topic-exactly-once-v1'"));
+  assert(formulaMigrationSource.includes("pg_get_constraintdef"));
+
+  // 權限：新 helper 只給 service_role；PostgREST reload。
+  assert(
+    formulaMigrationSource.includes(
+      "GRANT EXECUTE ON FUNCTION public.validate_new_topic_formula_topics(JSONB)",
+    ),
+  );
+  assert(formulaMigrationSource.includes("NOTIFY pgrst, 'reload schema';"));
 });
