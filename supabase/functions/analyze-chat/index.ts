@@ -5171,6 +5171,15 @@ serve(async (req) => {
           shouldChargeQuota: false,
         }, 422);
       }
+      // §14.1 telemetry：合法請求受理（sanitize＋material 過）才記，
+      // 400/422 拒絕不佔 received 計數。
+      logInfo("new_topic_request_received", {
+        user: summarizeUser(user.id),
+        requestId: newTopicRequest.requestId,
+        situation: newTopicRequest.situation,
+        hasPartnerSummary: newTopicRequest.partnerSummary !== null,
+        hasStyleContext: newTopicRequest.effectiveStyleContext !== null,
+      });
 
       // 2. Config：模型金鑰＋new-topic-only HMAC secret。缺 secret 只有
       //    new_topic fail closed，opener/analyze/OCR 不受影響。config 缺失
@@ -5253,6 +5262,12 @@ serve(async (req) => {
           }, 409);
         }
         if (preflight.kind === "pending") {
+          logInfo("new_topic_request_pending", {
+            user: summarizeUser(user.id),
+            requestId: newTopicRequest.requestId,
+            stage: "preflight",
+            retryAfterMs: preflight.retryAfterMs,
+          });
           return jsonResponse({
             error: "NEW_TOPIC_REQUEST_IN_PROGRESS",
             code: "NEW_TOPIC_REQUEST_IN_PROGRESS",
@@ -5262,7 +5277,7 @@ serve(async (req) => {
           }, 409);
         }
         if (preflight.kind === "replay") {
-          logInfo("new_topic_replayed", {
+          logInfo("new_topic_replay_hit", {
             user: summarizeUser(user.id),
             requestId: newTopicRequest.requestId,
             servedTier: preflight.result.access.servedTier,
@@ -5308,7 +5323,7 @@ serve(async (req) => {
       ): Response | null => {
         if (claim.kind === "claimed") return null;
         if (claim.kind === "replay") {
-          logInfo("new_topic_replayed", {
+          logInfo("new_topic_replay_hit", {
             user: summarizeUser(user.id),
             requestId: newTopicRequest.requestId,
             servedTier: claim.result.access.servedTier,
@@ -5319,6 +5334,12 @@ serve(async (req) => {
           ));
         }
         if (claim.kind === "pending") {
+          logInfo("new_topic_request_pending", {
+            user: summarizeUser(user.id),
+            requestId: newTopicRequest.requestId,
+            stage: "claim",
+            retryAfterMs: claim.retryAfterMs,
+          });
           return jsonResponse({
             error: "NEW_TOPIC_REQUEST_IN_PROGRESS",
             code: "NEW_TOPIC_REQUEST_IN_PROGRESS",
@@ -5432,6 +5453,13 @@ serve(async (req) => {
           logWarn("model_rate_limited", {
             user: summarizeUser(user.id),
             scope: "new_topic",
+            reason: rateVerdict.reason,
+          });
+          // §14.1 專名事件；generic model_rate_limited 是全 repo 跨 scope
+          // 查詢慣例，兩者並存（一行雙記，dashboard 各取所需）。
+          logWarn("new_topic_model_rate_limited", {
+            user: summarizeUser(user.id),
+            requestId: newTopicRequest.requestId,
             reason: rateVerdict.reason,
           });
           if (!await releaseNewTopicCurrentClaim()) {
@@ -5642,7 +5670,21 @@ serve(async (req) => {
         chargeQuota: !accountIsTest,
       });
       if (settlement.kind === "settled") {
-        logInfo("new_topic_generated", {
+        // §14.1：settle 落帳成功／被先完成者搶先（stored winner 回放）分流。
+        // 測試帳號 chargeQuota=false 屬正常免扣，不算 replayed。
+        if (settlement.charged || accountIsTest) {
+          logInfo("new_topic_settlement_succeeded", {
+            user: summarizeUser(user.id),
+            requestId: newTopicRequest.requestId,
+            charged: settlement.charged,
+          });
+        } else {
+          logInfo("new_topic_settlement_replayed", {
+            user: summarizeUser(user.id),
+            requestId: newTopicRequest.requestId,
+          });
+        }
+        logInfo("new_topic_success", {
           user: summarizeUser(user.id),
           requestId: newTopicRequest.requestId,
           model: newTopicApiResult.model,

@@ -1,7 +1,10 @@
 // 新話題 integration/migration source-scan 回歸（2026-07-24 計畫 §10.5/§11）。
 // 深層行為由 payload/billing/prompt 單元測試蓋；這裡鎖 index.ts 分支順序、
 // generic gate 排除、settlement 權威與 migration 的 correctness 錨點。
-import { assert } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  assert,
+  assertFalse,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
 const indexSource = await Deno.readTextFile(
   new URL("./index.ts", import.meta.url),
@@ -92,6 +95,46 @@ Deno.test("index：new_topic 契約鐵律錨點", () => {
   // MODEL_RATE_LIMITED 走 verdict payload（無 quota keys），quota 429 帶
   // quotaNeeded: 3。
   assert(branch.includes("quotaNeeded: newTopicCost"));
+});
+
+Deno.test("index：telemetry 事件名逐項對齊計畫 §14.1（Eric 2026-07-24 拍板）", () => {
+  const branch = indexSource.slice(
+    indexSource.indexOf("if (isNewTopicMode) {"),
+    indexSource.indexOf("// ── Opener mode: generate opening lines ──"),
+  );
+  for (
+    const event of [
+      "new_topic_request_received",
+      "new_topic_replay_hit",
+      "new_topic_request_pending",
+      "new_topic_claim_acquired",
+      "new_topic_model_rate_limited",
+      "new_topic_response_repaired",
+      "new_topic_response_invalid",
+      "new_topic_claim_released",
+      "new_topic_settlement_succeeded",
+      "new_topic_settlement_replayed",
+      "new_topic_settlement_pending",
+      "new_topic_success",
+    ]
+  ) {
+    assert(branch.includes(`"${event}"`), `§14.1 事件缺席：${event}`);
+  }
+  // received 只記合法請求（sanitize＋material 過後），400/422 不佔計數。
+  const received = branch.indexOf('"new_topic_request_received"');
+  const configCheck = branch.indexOf("NEW_TOPIC_REPLAY_NOT_CONFIGURED");
+  assert(
+    branch.indexOf("NEW_TOPIC_CONTEXT_REQUIRED") < received &&
+      received < configCheck,
+    "request_received 必須在 material 檢查後、config 檢查前",
+  );
+  // 禁止記錄面（§14.3）：素材原文欄位絕不進 telemetry payload。
+  assertFalse(
+    /log(Info|Warn|Error)\("new_topic_[^"]*",\s*\{[^}]*partnerSummary:/s.test(
+      branch,
+    ),
+    "telemetry 不得帶 raw partnerSummary",
+  );
 });
 
 Deno.test("migration：claim/settle/release/cleanup/contract marker 俱全", () => {
