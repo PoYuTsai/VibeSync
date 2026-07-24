@@ -8,8 +8,9 @@
 
 - Branch：`claude/new-topic-brainstorm-feature-ibh6tz`
 - BASE_SHA：`b89756e7`
-- HEAD_SHA：`<以 push 後最新 commit 為準（含本 packet commit）>`
-- Exact range：`b89756e7..HEAD`
+- HEAD_SHA：`a149232cd9eeb531a50f73abed9eb33ad617a3ea`（code 終點；
+  本 packet 的 reconciliation 更新 commit 為範圍最後一顆、只含文件）
+- Exact range：`b89756e7..a149232c`（＋一顆 docs-only packet commit）
 
 ## Commits
 
@@ -17,7 +18,9 @@
 2. `e2954729` 新增新話題後端契約與原結果重播帳本
 3. `f3b597d5` 新增新話題脈絡建構與前端資料層
 4. `6dccfc1b` 開場救星加入新話題切換與結果介面
-5. `<HEAD>` 更新新話題定價決策與審查文件
+5. `df1079d6` 更新新話題定價決策與審查文件
+6. `a149232c` 補新話題 claim/release telemetry（GLM 審查 I4）
+7. `<本 packet reconciliation 更新，docs-only>`
 
 ## Changed files（依 commit）
 
@@ -156,3 +159,91 @@ Full Flutter（PASS）：
   review 認定必補請點名優先項）。
 - 計畫 §14.1 的 per-event telemetry 名單以現有 logInfo/logWarn 事件
   （`new_topic_generated`/`new_topic_replayed`/…）近似對應，未逐一同名。
+
+---
+
+# Cross-model review reconciliation（2026-07-24，主大腦＝Claude Code）
+
+三方挑戰 gate 執行紀錄。兩個 reviewer 都只讀本 packet（read-only、無 repo
+存取），findings 由主大腦逐項回查 repo／diff／測試證據裁決；不用多數決。
+
+## 執行命令與環境
+
+- Codex：`bash ~/.agents/skills/cross-model-review/scripts/invoke-codex.sh
+  --input docs/reviews/2026-07-24-opener-new-topic-review-packet.md --mode review`
+  （gpt-5.6-sol、read-only/ephemeral/tools-reduced、reasoning xhigh；
+  22,210 tokens）
+- GLM：`bash ~/.agents/skills/cross-model-review/scripts/invoke-glm.sh
+  docs/reviews/2026-07-24-opener-new-topic-review-packet.md review`
+  （glm-5.2、read-only）
+- 完整原文：session scratchpad `codex-review-full.txt`／`glm-review-full.txt`
+- 已知 pipeline 問題：GLM 端收到的 packet 中文出現編碼損毀（mojibake），
+  導致其多項 finding 是誤讀（見下表）；Codex 端讀取正常。invoke-glm.sh 的
+  編碼處理建議另案修。
+
+## Reviewer verdicts（原文結論）
+
+- Codex：「目前不應給無條件 APPROVED……最關鍵的核准條件是：固定 HEAD、
+  補上修復後 full analyze，並讓資料庫 concurrency/security smoke 在
+  release 前全部通過。」
+- GLM：「Not ready for go-live approval. Fix C2（5s lease）、run C3
+  （PG smoke）, then re-review.」
+
+## 逐項裁決
+
+### 已修正（本輪 commit）
+
+| Finding | 裁決 | 處置 |
+|---|---|---|
+| Codex C1／GLM C1：HEAD_SHA 佔位符，range 不可重現 | **TP（packet 缺陷）** | 已釘 `a149232cd9eeb531a50f73abed9eb33ad617a3ea`＋逐 commit SHA；reconciliation commit 為 docs-only 最後一顆 |
+| Codex I2／GLM M5：「full analyze PASS」缺修復後 full-run 證據 | **TP（證據強度）** | 已在最終 tree 重跑 `flutter analyze` → `No issues found!（702.1s，exit 0）` |
+| GLM I4／Codex M1（部分）：claim/release 生命週期零 telemetry | **TP（觀測盲區）** | commit `a149232c` 補 `new_topic_claim_acquired`／`new_topic_claim_released(released)`；deno check＋710 綠 |
+
+### 條件核准項（deploy 閘門硬條件，非 code 缺陷）
+
+| Finding | 裁決 | 處置 |
+|---|---|---|
+| Codex I1／GLM C3：PG transaction smoke 未跑 | **TP（已列 open concern）** | 本機無 docker／PG，無法在不碰 prod 下先跑。維持條件核准：live step 6 全過（含兩並行 transaction 的 claim/settle/rollback/replay）之前**不得**宣稱 exactly-once verified、不得放 dogfood。此為 release gate 硬條件。 |
+| Codex I4／GLM I1：secret 未設＝部署後功能必 503 | **TP（runbook 已涵蓋）** | 部署順序固定 migration→驗 RPC/RLS→設 secret→deploy→smoke；補充：smoke New Topic 前先以不讀值方式確認 secret 存在（`supabase secrets list` 名稱比對）。 |
+| Codex U4：RPC EXECUTE 對 PUBLIC 的預設授權 | **部分 TP** | migration 對全部 6 個 function 都已 `REVOKE ... FROM PUBLIC/anon/authenticated`＋`GRANT ... TO service_role`（SQL 內逐一可查）；live step 6 加驗 `has_function_privilege` 矩陣＋匿名 JWT 實呼。 |
+
+### 假陽性（附證據）
+
+| Finding | 裁決理由（repo 證據） |
+|---|---|
+| GLM C2：「5s lease vs 65s generation」結構性破壞 exactly-once | **FP（mojibake 誤讀）**：SQL 實為 `interval '65 seconds'`（migration＋`new_topic_source_test.ts` 錨定）；65s lease > 45s generation deadline＋5s settlement reserve（50s request deadline），正常路徑不會 takeover |
+| Codex U1：lease 無 fencing，遲到 owner 可覆寫 | **FP（機制存在）**：`settle_new_topic_request` 檢查 `owner_token IS DISTINCT FROM p_owner_token → RAISE OWNER_MISMATCH`；done row 回 stored winner（charged=FALSE）；`release` 要求 user+request+hash+owner 四項全符且 state='pending'。billing_test「owner mismatch → retryable」「release 全 identity 相符才 true」覆蓋。stale owner 的模型成本浪費是 takeover 語意固有、lease 已覆蓋正常時長 |
+| Codex U2／GLM U2：opener 跨 v1/v2 dedup 回錯 shape／cache poisoning | **FP（機制誤解）**：opener ledger（`opener_request_charges`）是**扣費 dedup**、不存 response body——dedup 命中後照常重新打模型並依**本次** request 的 contract version 投影（`opener_charge.ts` 註解「dedup 不是錯誤：呼叫端照常回 200」；charge 呼叫點在生成與投影之後）。client Hive cache 則是 read-time 依現行權益重投影（`visibleForAccess`），不存在 stored-projection 回放路徑。version 不入 hash 正是為了跨版本重試仍 dedup 成功不雙扣 |
+| Codex U3：tier 不入 hash 的 entitlement race | **符合規格**：計畫 §5.6 明文「Replay 時…生成內容與 access servedTier 保持第一次成功版本」。claim 後升降級由 settle 當下 servedTier 投影入帳；同 ID replay 回第一次已扣費版本是拍板語意 |
+| GLM I3：`--no-verify-jwt` 缺內部 auth 稽核 | **FP（既有部署模式）**：analyze-chat 一直以 `--no-verify-jwt` 部署（CLAUDE.md 明載）；handler 第一步 `Authorization` header→`supabase.auth.getUser(token)`，失敗 401——在所有 mode 分支之前，new_topic branch 天然在 auth 之後 |
+| GLM I5：full Deno 依賴 `--allow-env`、CI parity 未證 | **FP**：`.github/workflows/flutter-ci.yml:43` 本來就是 `deno test --allow-env --allow-read`；BASE_SHA 的「失敗」只是本機首輪漏 flag，非 code 問題 |
+| GLM I2／I4（HMAC「≥2 bytes」）／M4（ADR 編號） | **FP（mojibake 誤讀）**：原文分別為「Free 1 題鎖 4／Paid 5 題鎖 0」、「base64 ≥32 random bytes」（`isStrongNewTopicReplayHmacKey` 驗 `atob(key).length >= 32`）、「ADR #31 取代 ADR #7 條目 4」 |
+| GLM M3：HMAC 未 constant-time compare／canonical 未排序 | **FP**：canonical 是固定位置 JSON array（非物件 key，天然 deterministic）；input_hash 是 server-keyed HMAC 輸出、非 secret，比較 timing 不構成 oracle（無 key 無法離線驗證） |
+| GLM U1：cron 前 stale pending row 卡重試 | **FP**：`claim_new_topic_request` 對 lease 過期 row 直接 stale takeover（UPDATE owner_token），不等 cron；cron 只負責 24h retention |
+| GLM U3：rate limit 與 quota 交互＝生成後才拒 | **FP**：quota gate（cost 3）在 claim 後、模型呼叫**前**；settle-time 429 只在極少數 race（transaction 回滾、release、不扣、client 開 paywall——`NewTopicQuotaExceededException` 測試覆蓋） |
+| GLM M1：amend 改 SHA＝歷史髒 | **說明**：amend 前的 7188dac6 從未 push；6dccfc1b 才是首次 push 的版本，無 force-push |
+| GLM M2：packet mojibake | **pipeline 問題**：packet 本體 UTF-8 正常（Codex 讀取無誤）；GLM wrapper 編碼另案修 |
+
+### 留給 Eric 拍板（本輪不硬啃）
+
+| Finding | 現狀與理由 |
+|---|---|
+| Codex I3：route-level UI 整合測試（deep link／consent／paywall／mode switch 保留結果） | repo 既有 opener screen 本來就無 route-level widget harness（現行測試策略以 contract/unit 為主）；倉促建 harness 引入 flaky 風險高。已覆蓋：mode/route 解析 4 測、card widget 2 測、既有 opener 97 測。若 Eric／複審認定 §15.4 為硬 acceptance criteria，開後續案補（建議優先序：deep link→mode switch state→consent cancel） |
+| Codex M1／GLM I4（殘餘）：telemetry 與 §14.1 逐項同名 | Mapping：received→`new_topic_request_invalid`(反向)+claim_acquired、replay_hit→`new_topic_replayed`、request_pending→claim outcome 409 log（現以 response 為準，無獨立事件）、claim_acquired/claim_released→**已補**、model_rate_limited→`model_rate_limited{scope:new_topic}`、response_repaired/invalid→同名、settlement_succeeded→`new_topic_generated`、settlement_replayed→settle 內 charged=false（含於 `new_topic_generated.charged`）、settlement_pending→`new_topic_settlement_pending`、success→`new_topic_generated`。缺口＝`request_received`／`request_pending` 無獨立事件；如需完全同名，開 telemetry 對齊小案 |
+
+## Reconciliation 後測試證據
+
+- `deno check supabase/functions/analyze-chat/index.ts` → PASS
+- `deno test --allow-read supabase/functions/analyze-chat/
+  supabase/functions/_shared/model_rate_limit_test.ts` → 710 綠
+- `flutter analyze`（full，最終 Dart tree）→ `No issues found!`（702.1s）
+
+## 剩餘風險（結論）
+
+1. **PG transaction smoke（唯一 blocker 級殘留）**：exactly-once 的資料庫
+   語意（並行 claim 單 owner、settle +3 原子性、quota race 回滾、takeover
+   fencing、RPC privilege 矩陣）只有 SQL 源碼＋mock 層證據，未經真 PG 驗
+   證。**條件核准**：live step 6 全過前不得宣稱 verified、不得放 dogfood。
+2. Route-level UI 整合測試缺口＝已知接受的債（見上表，Eric 拍板）。
+3. Telemetry 兩個事件名未逐字對齊 §14.1（`request_received`／
+   `request_pending`），觀測面已足以覆蓋高風險路徑。
