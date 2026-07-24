@@ -10,6 +10,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../../shared/widgets/formula_reply_section.dart';
 import '../../../opener/presentation/widgets/opener_generation_progress.dart';
 import '../../../partner/domain/entities/partner.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
@@ -342,6 +343,17 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       );
   }
 
+  /// 公式新話題複製：只複製 openingLine，沿用既有 snackbar 語氣。
+  void _copyFormulaOpeningLine(FormulaReplyEntry entry) {
+    Clipboard.setData(ClipboardData(text: entry.openingLine));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(content: Text('已複製這句話，貼到聊天室送出試試。')),
+      );
+  }
+
   @override
   Widget build(BuildContext context) {
     final validPartnerId = _validatedPartnerId();
@@ -431,7 +443,12 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
             ),
           if (_result != null) ...[
             const SizedBox(height: 24),
-            _buildResults(_result!),
+            NewTopicResultsSection(
+              result: _result!,
+              onCopyIdeaOpeningLine: _copyOpeningLine,
+              onCopyFormulaOpeningLine: _copyFormulaOpeningLine,
+              onUpgrade: _showPaywallAndRefresh,
+            ),
           ],
           const SizedBox(height: 40),
         ],
@@ -569,7 +586,26 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     );
   }
 
-  Widget _buildResults(NewTopicResult result) {
+}
+
+/// 結果區（抽成公開 widget 供 widget test 直接驗證排序與可見性；
+/// 計畫 §10.3）：推薦理由 → 原 topics → 公式新話題 → Free upsell。
+class NewTopicResultsSection extends StatelessWidget {
+  const NewTopicResultsSection({
+    super.key,
+    required this.result,
+    required this.onCopyIdeaOpeningLine,
+    required this.onCopyFormulaOpeningLine,
+    required this.onUpgrade,
+  });
+
+  final NewTopicResult result;
+  final ValueChanged<NewTopicIdea> onCopyIdeaOpeningLine;
+  final ValueChanged<FormulaReplyEntry> onCopyFormulaOpeningLine;
+  final VoidCallback onUpgrade;
+
+  @override
+  Widget build(BuildContext context) {
     final recommendedId = result.recommendation.topicId;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -606,7 +642,25 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           NewTopicIdeaCard(
             idea: idea,
             isRecommended: idea.id == recommendedId,
-            onCopyOpeningLine: () => _copyOpeningLine(idea),
+            onCopyOpeningLine: () => onCopyIdeaOpeningLine(idea),
+          ),
+          const SizedBox(height: 12),
+        ],
+        // 公式新話題（公式回覆計畫 §10.3）：原 topics 之後、Free upsell
+        // 之前——Free 使用者清楚看到公式本來就可用，CTA 只鎖另外四題。
+        // 空清單整區不渲染。
+        if (result.formulaTopics.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          FormulaReplySection(
+            title: '公式新話題',
+            entries: [
+              for (final formula in result.formulaTopics)
+                FormulaReplyEntry(
+                  openingLine: formula.openingLine,
+                  whyItWorks: formula.whyItWorks,
+                ),
+            ],
+            onCopyOpeningLine: onCopyFormulaOpeningLine,
           ),
           const SizedBox(height: 12),
         ],
@@ -644,7 +698,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                   ),
                 ),
                 TextButton(
-                  onPressed: _showPaywallAndRefresh,
+                  onPressed: onUpgrade,
                   style: TextButton.styleFrom(
                     foregroundColor: AppColors.ctaStart,
                   ),

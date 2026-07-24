@@ -21,6 +21,7 @@ import '../../data/services/opener_result_cache_service.dart';
 import '../../data/services/opener_service.dart';
 import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
 import '../../../../shared/widgets/coaching_outcome_follow_up_bar.dart';
+import '../../../../shared/widgets/formula_reply_section.dart';
 import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
 import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../../new_topic/presentation/widgets/new_topic_view.dart';
@@ -1276,6 +1277,24 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           ),
         ],
 
+        // 公式開場（計畫 §10.2）：固定在五風格卡＋outcome bars＋推薦理由
+        // 之後、pioneerPlan 之前；全 tier 可見、不算進「N 種風格」、
+        // 空清單整區不渲染。
+        if (result.formulaOpeners.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          FormulaReplySection(
+            title: '公式開場',
+            entries: [
+              for (final reply in result.formulaOpeners)
+                FormulaReplyEntry(
+                  openingLine: reply.openingLine,
+                  whyItWorks: reply.whyItWorks,
+                ),
+            ],
+            onCopyOpeningLine: _copyFormulaOpeningLine,
+          ),
+        ],
+
         if (result.pioneerPlan != null && result.pioneerPlan!.isNotEmpty) ...[
           const SizedBox(height: 12),
           _buildPioneerPlanCard(result.pioneerPlan!),
@@ -1606,6 +1625,15 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       adviceId: adviceId,
       adviceType: type,
       suggestedMoveSummary: content,
+    );
+  }
+
+  /// 公式開場複製：只複製 openingLine；不掛 outcome/reaction 記錄（拍板
+  /// 不混進五風格 adviceType 指標）。
+  void _copyFormulaOpeningLine(FormulaReplyEntry entry) {
+    Clipboard.setData(ClipboardData(text: entry.openingLine));
+    _showOpenerSnackBar(
+      '已複製這則公式開場。貼到交友軟體送出，她回覆後點下方「她回覆了，開始分析對話」。',
     );
   }
 
