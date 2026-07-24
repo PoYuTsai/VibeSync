@@ -97,7 +97,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
 
     final selected = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: const Color(0xFF1D1030),
+      backgroundColor: AppColors.coachSurfaceRaised,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -133,7 +133,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFF1D1030),
+        backgroundColor: AppColors.coachSurfaceRaised,
         title: Text(
           '更換條件會清除目前結果',
           style: AppTypography.titleMedium.copyWith(color: Colors.white),
@@ -309,9 +309,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       final message = e.toString().replaceFirst('Exception: ', '').trim();
       final hasChinese = RegExp(r'[一-鿿]').hasMatch(message);
       setState(() {
-        _error = hasChinese && message.isNotEmpty
-            ? message
-            : '新話題暫時生成失敗，請稍後再試。';
+        _error =
+            hasChinese && message.isNotEmpty ? message : '新話題暫時生成失敗，請稍後再試。';
         _isGenerating = false;
       });
     }
@@ -346,8 +345,9 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   @override
   Widget build(BuildContext context) {
     final validPartnerId = _validatedPartnerId();
-    final partner =
-        validPartnerId == null ? null : ref.watch(partnerByIdProvider(validPartnerId));
+    final partner = validPartnerId == null
+        ? null
+        : ref.watch(partnerByIdProvider(validPartnerId));
     final hadInvalidInitialPartner =
         _selectedPartnerId != null && validPartnerId == null;
 
@@ -360,7 +360,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           Text(
             '新話題',
             style: AppTypography.bodySmall.copyWith(
-              color: AppColors.ctaStart,
+              color: AppColors.coachAccentBright,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -370,10 +370,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
             style: AppTypography.headlineLarge.copyWith(color: Colors.white),
           ),
           const SizedBox(height: 20),
-
           _buildPartnerCard(partner, hadInvalidInitialPartner),
           const SizedBox(height: 16),
-
           Text(
             '目前狀況（選填）',
             style: AppTypography.bodySmall.copyWith(
@@ -387,6 +385,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
             children: [
               for (final option in NewTopicView.situationOptions)
                 BrandChoiceChip(
+                  tone: BrandVisualTone.coach,
                   label: option.label,
                   selected: _situation == option.value,
                   onTap: () => unawaited(_selectSituation(option.value)),
@@ -394,7 +393,6 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
             ],
           ),
           const SizedBox(height: 16),
-
           Center(
             child: Text(
               _result != null ? '已生成，不會重複扣額度' : '將使用 3 則額度',
@@ -404,7 +402,6 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
             ),
           ),
           const SizedBox(height: 12),
-
           BrandPrimaryButton(
             label: _result != null ? '已生成新話題' : '生成新話題',
             isLoading: _isGenerating,
@@ -414,14 +411,12 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                     : _generate,
           ),
           const SizedBox(height: 16),
-
           if (_isGenerating)
             const Center(
               child: OpenerGenerationProgress(
                 phrases: NewTopicView.progressPhrases,
               ),
             ),
-
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -434,12 +429,10 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                 ),
               ),
             ),
-
           if (_result != null) ...[
             const SizedBox(height: 24),
             _buildResults(_result!),
           ],
-
           const SizedBox(height: 40),
         ],
       ),
@@ -449,6 +442,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   Widget _buildPartnerCard(Partner? partner, bool hadInvalidInitialPartner) {
     if (partner == null) {
       return BrandSurfaceCard(
+        tone: BrandVisualTone.coach,
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -468,7 +462,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
             ),
             const SizedBox(height: 12),
             BrandSecondaryButton(
-              label: ref.watch(partnerListProvider).isEmpty ? '先建立一位對象' : '選擇對象',
+              label:
+                  ref.watch(partnerListProvider).isEmpty ? '先建立一位對象' : '選擇對象',
               onPressed: _isGenerating ? null : _pickPartner,
             ),
           ],
@@ -486,7 +481,9 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     final hasNote = (partner.customNote?.trim().isNotEmpty ?? false);
 
     return BrandSurfaceCard(
-      padding: const EdgeInsets.all(16),
+      tone: BrandVisualTone.coach,
+      elevated: false,
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -504,7 +501,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                 Text(
                   '熱度 ${aggregate.latestHeat}',
                   style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.ctaStart,
+                    color: AppColors.coachAccentBright,
                   ),
                 ),
             ],
@@ -522,8 +519,11 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                       vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.08),
+                      color: AppColors.coachAccent.withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: AppColors.coachAccent.withValues(alpha: 0.20),
+                      ),
                     ),
                     child: Text(
                       chip,
@@ -535,13 +535,15 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
               ],
             ),
           ],
-          const SizedBox(height: 8),
-          Text(
-            hasNote ? '已加入你的備註' : '沒有備註',
-            style: AppTypography.caption.copyWith(
-              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.8),
+          if (hasNote) ...[
+            const SizedBox(height: 8),
+            Text(
+              '已加入你的備註',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.8),
+              ),
             ),
-          ),
+          ],
           if (!partnerContext.hasActionableSignals) ...[
             const SizedBox(height: 4),
             Text(
@@ -551,12 +553,14 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
               ),
             ),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
               onPressed: _isGenerating ? null : _pickPartner,
-              style: TextButton.styleFrom(foregroundColor: AppColors.ctaStart),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.coachAccentBright,
+              ),
               child: const Text('更換對象'),
             ),
           ),
@@ -576,11 +580,25 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         ),
         if (result.recommendation.reason != null) ...[
           const SizedBox(height: 8),
-          Text(
-            'AI 推薦理由：${result.recommendation.reason}',
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.onBackgroundSecondary,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.lightbulb_outline_rounded,
+                size: 18,
+                color: AppColors.coachRecommendation,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'AI 推薦理由：${result.recommendation.reason}',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
         const SizedBox(height: 12),
@@ -595,6 +613,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         // Free：一張完整推薦卡＋compact upsell，不渲染四張空鎖卡（§13.6）。
         if (result.access.isFree)
           BrandSurfaceCard(
+            tone: BrandVisualTone.coach,
             padding: const EdgeInsets.all(16),
             elevated: false,
             child: Row(

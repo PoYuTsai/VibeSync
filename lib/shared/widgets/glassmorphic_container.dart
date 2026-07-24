@@ -10,6 +10,10 @@ class GlassmorphicContainer extends StatelessWidget {
   final EdgeInsetsGeometry? padding;
   final double? width;
   final double? height;
+  final Color? color;
+  final Color? borderColor;
+  final Color? selectedColor;
+  final Color? selectedBorderColor;
 
   const GlassmorphicContainer({
     super.key,
@@ -19,6 +23,10 @@ class GlassmorphicContainer extends StatelessWidget {
     this.padding,
     this.width,
     this.height,
+    this.color,
+    this.borderColor,
+    this.selectedColor,
+    this.selectedBorderColor,
   });
 
   @override
@@ -28,16 +36,18 @@ class GlassmorphicContainer extends StatelessWidget {
     return Container(
       width: width,
       height: height,
-      padding: padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding:
+          padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: isSelected
-            ? AppColors.selectedStart.withValues(alpha: 0.3)
-            : AppColors.glassWhite,
+            ? selectedColor ?? AppColors.selectedStart.withValues(alpha: 0.3)
+            : color ?? AppColors.glassWhite,
         borderRadius: BorderRadius.circular(borderRadius),
         border: Border.all(
           color: isSelected
-              ? AppColors.selectedStart.withValues(alpha: 0.5)
-              : AppColors.glassBorder,
+              ? selectedBorderColor ??
+                  AppColors.selectedStart.withValues(alpha: 0.5)
+              : borderColor ?? AppColors.glassBorder,
           width: 1.5,
         ),
         // 優化：只在選中時使用 boxShadow，減少滾動時的重繪負擔

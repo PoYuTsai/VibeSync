@@ -14,6 +14,7 @@ import 'package:vibesync/features/opener/presentation/screens/opening_rescue_scr
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
 
 class _SeededSubscriptionNotifier extends SubscriptionNotifier {
   _SeededSubscriptionNotifier(SubscriptionState seed) {
@@ -108,6 +109,23 @@ void main() {
   testWidgets('/opener 預設 opener 面板，New Topic 保持 mounted', (t) async {
     await _pump(t, '/opener');
     _expectOpenerActive(t);
+
+    final scaffold = t.widget<BrandScaffold>(find.byType(BrandScaffold));
+    expect(scaffold.tone, BrandVisualTone.coach);
+
+    final segmentedControls = t
+        .widgetList<BrandSegmentedButton<dynamic>>(
+          find.byWidgetPredicate(
+            (widget) => widget is BrandSegmentedButton,
+          ),
+        )
+        .toList();
+    expect(segmentedControls, hasLength(2));
+    expect(
+      segmentedControls
+          .every((control) => control.tone == BrandVisualTone.coach),
+      isTrue,
+    );
   });
 
   testWidgets('?mode=new_topic deep link 直接落在新話題面板', (t) async {
@@ -116,6 +134,16 @@ void main() {
     // 沒有 partner 時顯示選擇對象卡（空 partner list → 建立 CTA）。
     expect(find.text('選擇對象'), findsOneWidget);
     expect(find.text('先建立一位對象'), findsOneWidget);
+    final situationChips = t
+        .widgetList<BrandChoiceChip>(
+          find.byType(BrandChoiceChip),
+        )
+        .toList();
+    expect(situationChips, hasLength(4));
+    expect(
+      situationChips.every((chip) => chip.tone == BrandVisualTone.coach),
+      isTrue,
+    );
     // 沒選對象前生成鍵必須 disabled（不可能送出請求）。
     final button = t.widget<ElevatedButton>(
       find.ancestor(

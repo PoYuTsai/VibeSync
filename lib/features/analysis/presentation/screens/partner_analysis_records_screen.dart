@@ -23,11 +23,11 @@ enum PartnerAnalysisRecordsSheetAction {
   openArchivedConversations,
 }
 
-const _archiveAccent = Color(0xFF9D78F5);
-const _archiveAccentBright = Color(0xFFC68BFF);
-const _archivePink = Color(0xFFFF5DA8);
-const _archivePanel = Color(0xFF15152A);
-const _archivePanelRaised = Color(0xFF24172F);
+const _archiveAccent = AppColors.coachAccent;
+const _archiveAccentBright = AppColors.coachAccentBright;
+const _archivePink = AppColors.coachRecommendation;
+const _archivePanel = AppColors.coachSurface;
+const _archivePanelRaised = AppColors.coachSurfaceRaised;
 
 /// Opens the partner-level archive with the same presentation from both the
 /// partner page and the analyze-chat shortcut.
@@ -292,9 +292,9 @@ class _PartnerAnalysisRecordsScreenState
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFF2A1831),
-              Color(0xFF111329),
-              Color(0xFF090C1B),
+              AppColors.coachBackgroundWarm,
+              AppColors.coachBackgroundMid,
+              AppColors.coachBackgroundInk,
             ],
             stops: [0, 0.46, 1],
           ),

@@ -25,9 +25,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 
 import 'package:vibesync/core/constants/app_constants.dart';
+import 'package:vibesync/core/theme/app_colors.dart';
+import 'package:vibesync/core/theme/app_typography.dart';
+import 'package:vibesync/features/new_topic/domain/entities/new_topic_result.dart';
+import 'package:vibesync/features/new_topic/presentation/widgets/new_topic_idea_card.dart';
 import 'package:vibesync/features/opener/presentation/screens/opening_rescue_screen.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
 
 import 'proof_support.dart';
 
@@ -39,7 +44,10 @@ class _SeededSubscriptionNotifier extends SubscriptionNotifier {
   }
 }
 
-Widget _opener() => ProviderScope(
+Widget _opener({
+  OpeningRescueMode initialMode = OpeningRescueMode.opener,
+}) =>
+    ProviderScope(
       overrides: [
         subscriptionProvider.overrideWith(
           (ref) => _SeededSubscriptionNotifier(
@@ -47,8 +55,66 @@ Widget _opener() => ProviderScope(
           ),
         ),
       ],
-      child: const OpeningRescueScreen(),
+      child: OpeningRescueScreen(initialMode: initialMode),
     );
+
+const _newTopicIdea = NewTopicIdea(
+  id: 'nt_1',
+  direction: '接住她上次提到的旅行',
+  openingLine: '妳上次說想去花東走走，最後有找到那間海邊咖啡店嗎？',
+  whyItWorks: '延續她自己提過的內容，不需要突然另開一個完全無關的話題。',
+  nextMove: '她回覆後先接她最有感的一段，再分享一個短短的相關經驗。',
+);
+
+Widget _newTopicResultCard() => BrandPageBackground(
+      tone: BrandVisualTone.coach,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '新話題建議',
+                  style: AppTypography.titleLarge.copyWith(color: Colors.white),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.lightbulb_outline_rounded,
+                      size: 18,
+                      color: AppColors.coachRecommendation,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'AI 推薦理由：她先前主動提過旅行，從這裡接回去自然又沒有壓力。',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.onBackgroundSecondary,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                NewTopicIdeaCard(
+                  idea: _newTopicIdea,
+                  isRecommended: true,
+                  onCopyOpeningLine: _noop,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+void _noop() {}
 
 void main() {
   setUpAll(() async {
@@ -103,5 +169,23 @@ void main() {
           .writeAsBytesSync(data!.buffer.asUint8List());
     });
     await tester.binding.setSurfaceSize(null);
+  });
+
+  testWidgets('new topic entry capture (real screen, free)', (tester) async {
+    await pumpAndCapture(
+      tester,
+      size: const Size(390, 1180),
+      child: _opener(initialMode: OpeningRescueMode.newTopic),
+      outPath: outPath('new_topic_coach_entry.png'),
+    );
+  });
+
+  testWidgets('new topic recommended result card capture', (tester) async {
+    await pumpAndCapture(
+      tester,
+      size: const Size(390, 844),
+      child: _newTopicResultCard(),
+      outPath: outPath('new_topic_coach_result.png'),
+    );
   });
 }

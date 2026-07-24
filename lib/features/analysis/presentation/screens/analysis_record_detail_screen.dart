@@ -17,11 +17,11 @@ import '../widgets/reply_style_card.dart';
 
 enum _RecordDetailAction { delete }
 
-const _detailAccent = Color(0xFF9D78F5);
-const _detailAccentBright = Color(0xFFC68BFF);
-const _detailPink = Color(0xFFFF5DA8);
-const _detailPanel = Color(0xFF15152A);
-const _detailPanelRaised = Color(0xFF24172F);
+const _detailAccent = AppColors.coachAccent;
+const _detailAccentBright = AppColors.coachAccentBright;
+const _detailPink = AppColors.coachRecommendation;
+const _detailPanel = AppColors.coachSurface;
+const _detailPanelRaised = AppColors.coachSurfaceRaised;
 
 /// Read-only replay of one independent analysis case.
 class AnalysisRecordDetailScreen extends StatefulWidget {
@@ -135,6 +135,7 @@ class _AnalysisRecordDetailScreenState
 
     return BrandScaffold(
       title: title,
+      tone: BrandVisualTone.coach,
       actions: [
         if (_deleting)
           const Padding(

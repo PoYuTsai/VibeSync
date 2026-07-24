@@ -38,6 +38,20 @@ class AppColors {
   static const brandFlameDark = Color(0xFFE85A1E);
   static const brandBlush = Color(0xFFFF2D8B);
 
+  // Coach insight surfaces
+  //
+  // Shared by Analyze Chat records and the Opener / New Topic workflow.
+  // Purple communicates selection and interpretation; pink is reserved for an
+  // AI recommendation. Orange remains the action color (generate/copy/upgrade).
+  static const coachBackgroundWarm = Color(0xFF2A1831);
+  static const coachBackgroundMid = Color(0xFF111329);
+  static const coachBackgroundInk = Color(0xFF090C1B);
+  static const coachSurface = Color(0xFF15152A);
+  static const coachSurfaceRaised = Color(0xFF24172F);
+  static const coachAccent = Color(0xFF9D78F5);
+  static const coachAccentBright = Color(0xFFC68BFF);
+  static const coachRecommendation = Color(0xFFFF5DA8);
+
   static const backgroundGradientStart = brandInk;
   static const backgroundGradientMid = brandSurface;
   static const backgroundGradientEnd = brandSurface2;

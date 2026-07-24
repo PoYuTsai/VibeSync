@@ -557,8 +557,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       // requestId，server 對前一次已扣費 run 去重失效）。載入失敗不擋生成。
       String? effectiveStyleContext;
       try {
-        effectiveStyleContext = await ref
-            .read(openerStyleContextProvider(widget.partnerId).future);
+        effectiveStyleContext =
+            await ref.read(openerStyleContextProvider(widget.partnerId).future);
       } catch (e) {
         debugPrint('OpeningRescueScreen style context failed: $e');
       }
@@ -716,6 +716,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
     return BrandScaffold(
       title: '開場救星',
+      tone: BrandVisualTone.coach,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
         onPressed: () => context.pop(),
@@ -728,6 +729,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
               child: BrandSegmentedButton<OpeningRescueMode>(
+                tone: BrandVisualTone.coach,
                 segments: const [
                   BrandSegment(
                     value: OpeningRescueMode.opener,
@@ -773,140 +775,141 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     required bool hasGeneratedResult,
   }) {
     return SingleChildScrollView(
-            controller: _scrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      controller: _scrollController,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Text(
+            '開場救星',
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.coachAccentBright,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            boundPartnerName != null
+                ? '為 $boundPartnerName 想開場'
+                : 'AI 幫你想第一句開場',
+            style: AppTypography.headlineLarge.copyWith(
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Tab switcher
+          BrandSegmentedButton<int>(
+            tone: BrandVisualTone.coach,
+            segments: const [
+              BrandSegment(value: 0, label: '截圖自介'),
+              BrandSegment(value: 1, label: '手動輸入'),
+            ],
+            selected: _selectedTab,
+            onChanged: (val) => setState(() {
+              _selectedTab = val;
+              _result = null;
+              _error = null;
+              _currentDraftId = null;
+            }),
+          ),
+          const SizedBox(height: 20),
+
+          // Tab content
+          if (_selectedTab == 0) _buildScreenshotTab(),
+          if (_selectedTab == 1) _buildManualTab(),
+
+          if (_drafts.isNotEmpty && _result == null) ...[
+            const SizedBox(height: 16),
+            _buildRecentDraftsCard(),
+          ],
+
+          const SizedBox(height: 16),
+
+          // Cost indicator + 柔性提示
+          // 統一 3 則扣費；附截圖效果通常較好（AI 看到對方一手資訊
+          // 而非用戶口中的二手描述），但不強制 — 用戶可以視情況決定。
+          Center(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header
                 Text(
-                  '開場救星',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.ctaStart,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  boundPartnerName != null
-                      ? '為 $boundPartnerName 想開場'
-                      : 'AI 幫你想第一句開場',
-                  style: AppTypography.headlineLarge.copyWith(
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // Tab switcher
-                BrandSegmentedButton<int>(
-                  segments: const [
-                    BrandSegment(value: 0, label: '截圖自介'),
-                    BrandSegment(value: 1, label: '手動輸入'),
-                  ],
-                  selected: _selectedTab,
-                  onChanged: (val) => setState(() {
-                    _selectedTab = val;
-                    _result = null;
-                    _error = null;
-                    _currentDraftId = null;
-                  }),
-                ),
-                const SizedBox(height: 20),
-
-                // Tab content
-                if (_selectedTab == 0) _buildScreenshotTab(),
-                if (_selectedTab == 1) _buildManualTab(),
-
-                if (_drafts.isNotEmpty && _result == null) ...[
-                  const SizedBox(height: 16),
-                  _buildRecentDraftsCard(),
-                ],
-
-                const SizedBox(height: 16),
-
-                // Cost indicator + 柔性提示
-                // 統一 3 則扣費；附截圖效果通常較好（AI 看到對方一手資訊
-                // 而非用戶口中的二手描述），但不強制 — 用戶可以視情況決定。
-                Center(
-                  child: Column(
-                    children: [
-                      Text(
-                        OpeningRescueScreen.generationQuotaHint(
-                          hasResult: hasGeneratedResult,
-                          estimatedCost: _estimatedCost,
-                        ),
-                        style: AppTypography.caption.copyWith(
-                          color: AppColors.onBackgroundSecondary,
-                        ),
-                      ),
-                      if (activeInput.images == null ||
-                          activeInput.images!.isEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          '附上對方截圖，AI 看到的線索更具體，開場通常更準',
-                          style: AppTypography.caption.copyWith(
-                            color: AppColors.onBackgroundSecondary
-                                .withValues(alpha: 0.72),
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // Generate button
-                BrandPrimaryButton(
-                  label: OpeningRescueScreen.generateButtonText(
+                  OpeningRescueScreen.generationQuotaHint(
                     hasResult: hasGeneratedResult,
+                    estimatedCost: _estimatedCost,
                   ),
-                  isLoading: _isGenerating,
-                  onPressed: OpeningRescueScreen.canStartGeneration(
-                    isGenerating: _isGenerating,
-                    hasResult: hasGeneratedResult,
-                  )
-                      ? _generate
-                      : null,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                  ),
                 ),
-                const SizedBox(height: 16),
-
-                // Loading state：staged 本地進度文案（F3-2 低配版，
-                // 真 streaming 另案）。文案凍結在 _generate 送出的 input，
-                // 不讀 activeInput——生成中切 tab/改輸入不得讓文案漂移。
-                if (_isGenerating)
-                  Center(
-                    child: OpenerGenerationProgress(
-                      phrases: _generationProgressPhrases ??
-                          kOpenerManualProgressPhrases,
+                if (activeInput.images == null ||
+                    activeInput.images!.isEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '附上對方截圖，AI 看到的線索更具體，開場通常更準',
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary
+                          .withValues(alpha: 0.72),
                     ),
+                    textAlign: TextAlign.center,
                   ),
-
-                // Error
-                if (_error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Center(
-                      child: Text(
-                        _error!,
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.error,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-
-                // Results
-                if (_result != null) ...[
-                  const SizedBox(height: 24),
-                  _buildResults(subscription),
                 ],
-
-                const SizedBox(height: 40),
               ],
             ),
-          );
+          ),
+          const SizedBox(height: 12),
+
+          // Generate button
+          BrandPrimaryButton(
+            label: OpeningRescueScreen.generateButtonText(
+              hasResult: hasGeneratedResult,
+            ),
+            isLoading: _isGenerating,
+            onPressed: OpeningRescueScreen.canStartGeneration(
+              isGenerating: _isGenerating,
+              hasResult: hasGeneratedResult,
+            )
+                ? _generate
+                : null,
+          ),
+          const SizedBox(height: 16),
+
+          // Loading state：staged 本地進度文案（F3-2 低配版，
+          // 真 streaming 另案）。文案凍結在 _generate 送出的 input，
+          // 不讀 activeInput——生成中切 tab/改輸入不得讓文案漂移。
+          if (_isGenerating)
+            Center(
+              child: OpenerGenerationProgress(
+                phrases:
+                    _generationProgressPhrases ?? kOpenerManualProgressPhrases,
+              ),
+            ),
+
+          // Error
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Center(
+                child: Text(
+                  _error!,
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.error,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+
+          // Results
+          if (_result != null) ...[
+            const SizedBox(height: 24),
+            _buildResults(subscription),
+          ],
+
+          const SizedBox(height: 40),
+        ],
+      ),
+    );
   }
 
   Widget _buildScreenshotTab() {
@@ -923,6 +926,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         ImagePickerWidget(
           maxImages: 3,
           allowMultiSelect: true,
+          surfaceColor: AppColors.coachSurface,
+          surfaceBorderColor: AppColors.coachAccent.withValues(alpha: 0.28),
+          accentColor: AppColors.coachAccentBright,
           onImagesChanged: (images) => setState(() {
             _images = images;
             _result = null;
@@ -939,6 +945,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     final drafts = _drafts.take(3).toList(growable: false);
 
     return BrandSurfaceCard(
+      tone: BrandVisualTone.coach,
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -948,7 +955,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               const Icon(
                 Icons.history_rounded,
                 size: 18,
-                color: AppColors.ctaStart,
+                color: AppColors.coachAccent,
               ),
               const SizedBox(width: 8),
               Text(
@@ -1011,7 +1018,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                         Text(
                           '已接續',
                           style: AppTypography.caption.copyWith(
-                            color: AppColors.ctaStart,
+                            color: AppColors.coachAccentBright,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -1057,6 +1064,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
   Widget _buildManualTab() {
     return BrandSurfaceCard(
+      tone: BrandVisualTone.coach,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1095,12 +1103,12 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             runSpacing: 8,
             children: _meetingOptions.map((option) {
               return BrandChoiceChip(
+                tone: BrandVisualTone.coach,
                 label: option,
                 selected: _meetingContext == option,
                 onTap: () {
                   setState(() {
-                    _meetingContext =
-                        _meetingContext == option ? null : option;
+                    _meetingContext = _meetingContext == option ? null : option;
                     _result = null;
                     _error = null;
                     _currentDraftId = null;
@@ -1137,9 +1145,12 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       controller: controller,
       maxLines: maxLines,
       inputFormatters: [LengthLimitingTextInputFormatter(maxLength)],
-      cursorColor: AppColors.ctaStart,
+      cursorColor: AppColors.coachAccentBright,
       style: AppTypography.bodyMedium.copyWith(color: Colors.white),
-      decoration: brandInputDecoration(hintText: hintText).copyWith(
+      decoration: brandInputDecoration(
+        hintText: hintText,
+        tone: BrandVisualTone.coach,
+      ).copyWith(
         isDense: isDense,
       ),
     );
@@ -1160,6 +1171,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         // Profile analysis card
         if (result.profileAnalysis != null) ...[
           BrandSurfaceCard(
+            tone: BrandVisualTone.coach,
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1240,11 +1252,16 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                         false)))) ...[
           const SizedBox(height: 12),
           BrandSurfaceCard(
+            tone: BrandVisualTone.coach,
             padding: const EdgeInsets.all(12),
             elevated: false,
             child: Row(
               children: [
-                const Text('💡', style: TextStyle(fontSize: 16)),
+                const Icon(
+                  Icons.lightbulb_outline_rounded,
+                  size: 18,
+                  color: AppColors.coachRecommendation,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -1289,6 +1306,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     final saved = _currentDraftId != null;
 
     return BrandSurfaceCard(
+      tone: BrandVisualTone.coach,
       padding: const EdgeInsets.all(12),
       elevated: false,
       child: Row(
@@ -1297,7 +1315,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           Icon(
             saved ? Icons.bookmark_added_outlined : Icons.info_outline,
             size: 18,
-            color: AppColors.ctaStart,
+            color: AppColors.coachAccent,
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -1318,6 +1336,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
   Widget _buildNextStepCard() {
     return BrandSurfaceCard(
+      tone: BrandVisualTone.coach,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1327,7 +1346,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               const Icon(
                 Icons.route_outlined,
                 size: 18,
-                color: AppColors.ctaStart,
+                color: AppColors.coachAccent,
               ),
               const SizedBox(width: 8),
               Text(
@@ -1403,7 +1422,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         Icon(
           icon,
           size: 18,
-          color: AppColors.ctaStart.withValues(alpha: 0.86),
+          color: AppColors.coachAccentBright.withValues(alpha: 0.90),
         ),
         const SizedBox(width: 10),
         Expanded(
@@ -1421,8 +1440,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               Text(
                 description,
                 style: AppTypography.caption.copyWith(
-                  color: AppColors.onBackgroundSecondary
-                      .withValues(alpha: 0.70),
+                  color:
+                      AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
                   height: 1.35,
                 ),
               ),
@@ -1446,6 +1465,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         .toList();
 
     return BrandSurfaceCard(
+      tone: BrandVisualTone.coach,
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1455,7 +1475,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               const Icon(
                 Icons.flag_outlined,
                 size: 18,
-                color: AppColors.ctaStart,
+                color: AppColors.coachAccent,
               ),
               const SizedBox(width: 8),
               Text(
@@ -1488,7 +1508,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                     child: Text(
                       label,
                       style: AppTypography.caption.copyWith(
-                        color: AppColors.ctaStart,
+                        color: AppColors.coachAccentBright,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -1547,7 +1567,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               child: Text(
                 label,
                 style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.ctaStart.withValues(alpha: 0.86),
+                  color: AppColors.coachAccentBright.withValues(alpha: 0.90),
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -1684,6 +1704,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     return SizedBox(
       width: 280,
       child: BrandSurfaceCard(
+        tone: BrandVisualTone.coach,
+        borderColor: isRecommended
+            ? AppColors.coachRecommendation.withValues(alpha: 0.58)
+            : null,
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1705,15 +1729,20 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                       vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [AppColors.ctaStart, AppColors.ctaEnd],
+                      color: AppColors.coachRecommendation.withValues(
+                        alpha: 0.16,
                       ),
                       borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: AppColors.coachRecommendation.withValues(
+                          alpha: 0.64,
+                        ),
+                      ),
                     ),
                     child: Text(
                       'AI 推薦',
                       style: AppTypography.caption.copyWith(
-                        color: Colors.white,
+                        color: AppColors.coachRecommendation,
                         fontWeight: FontWeight.w600,
                         fontSize: 10,
                       ),

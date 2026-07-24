@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/new_topic/domain/entities/new_topic_result.dart';
 import 'package:vibesync/features/new_topic/presentation/widgets/new_topic_idea_card.dart';
+import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
 
 const _idea = NewTopicIdea(
   id: 'nt_2',
@@ -31,6 +33,25 @@ void main() {
     expect(find.text('接下來怎麼延續'), findsOneWidget);
     expect(find.text('AI 推薦'), findsNothing);
 
+    final card = tester.widget<BrandSurfaceCard>(
+      find.byKey(const ValueKey('new-topic-idea-card-nt_2')),
+    );
+    expect(card.tone, BrandVisualTone.coach);
+    expect(card.borderColor, isNull);
+
+    final openingLine = tester.widget<Container>(
+      find.byKey(const ValueKey('new-topic-opening-line-nt_2')),
+    );
+    final openingDecoration = openingLine.decoration! as BoxDecoration;
+    expect(
+      openingDecoration.color,
+      AppColors.coachBackgroundMid.withValues(alpha: 0.72),
+    );
+    expect(
+      openingDecoration.border!.top.color,
+      AppColors.coachAccent.withValues(alpha: 0.18),
+    );
+
     await tester.tap(find.text('複製'));
     expect(copied, 1);
   });
@@ -43,5 +64,23 @@ void main() {
     )));
 
     expect(find.text('AI 推薦'), findsOneWidget);
+
+    final card = tester.widget<BrandSurfaceCard>(
+      find.byKey(const ValueKey('new-topic-idea-card-nt_2')),
+    );
+    expect(card.tone, BrandVisualTone.coach);
+    expect(
+      card.borderColor,
+      AppColors.coachRecommendation.withValues(alpha: 0.58),
+    );
+
+    final badge = tester.widget<Container>(
+      find.byKey(const ValueKey('new-topic-recommendation-nt_2')),
+    );
+    final badgeDecoration = badge.decoration! as BoxDecoration;
+    expect(
+      badgeDecoration.color,
+      AppColors.coachRecommendation.withValues(alpha: 0.16),
+    );
   });
 }

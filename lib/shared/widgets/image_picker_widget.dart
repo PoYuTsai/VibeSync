@@ -31,6 +31,9 @@ class ImagePickerWidget extends StatefulWidget {
   final Color? helperTextColor;
   final bool allowMultiSelect;
   final ImagePickerFileSelector? fileSelector;
+  final Color? surfaceColor;
+  final Color? surfaceBorderColor;
+  final Color? accentColor;
 
   const ImagePickerWidget({
     super.key,
@@ -41,6 +44,9 @@ class ImagePickerWidget extends StatefulWidget {
     this.helperTextColor,
     this.allowMultiSelect = false,
     this.fileSelector,
+    this.surfaceColor,
+    this.surfaceBorderColor,
+    this.accentColor,
   });
 
   @override
@@ -267,10 +273,13 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const SizedBox(
+                      SizedBox(
                         width: 24,
                         height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: widget.accentColor,
+                        ),
                       ),
                       const SizedBox(height: 6),
                       Text(
@@ -301,6 +310,8 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
             height: 70,
             borderRadius: 12,
             padding: EdgeInsets.zero,
+            color: widget.surfaceColor,
+            borderColor: widget.surfaceBorderColor,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: Image.memory(
@@ -364,12 +375,14 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
         height: 70,
         borderRadius: 12,
         padding: EdgeInsets.zero,
+        color: widget.surfaceColor,
+        borderColor: widget.surfaceBorderColor,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               Icons.add_photo_alternate_outlined,
-              color: AppColors.unselectedText,
+              color: widget.accentColor ?? AppColors.unselectedText,
               size: 28,
             ),
             const SizedBox(height: 2),
@@ -377,7 +390,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
               widget.allowMultiSelect ? '多選' : '選圖',
               style: TextStyle(
                 fontSize: 10,
-                color: AppColors.unselectedText,
+                color: widget.accentColor ?? AppColors.unselectedText,
               ),
             ),
           ],

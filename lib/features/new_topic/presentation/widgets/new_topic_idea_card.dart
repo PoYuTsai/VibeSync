@@ -22,6 +22,11 @@ class NewTopicIdeaCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BrandSurfaceCard(
+      key: ValueKey('new-topic-idea-card-${idea.id}'),
+      tone: BrandVisualTone.coach,
+      borderColor: isRecommended
+          ? AppColors.coachRecommendation.withValues(alpha: 0.58)
+          : null,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -38,21 +43,26 @@ class NewTopicIdeaCard extends StatelessWidget {
               ),
               if (isRecommended)
                 Container(
+                  key: ValueKey('new-topic-recommendation-${idea.id}'),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.ctaStart.withValues(alpha: 0.16),
+                    color: AppColors.coachRecommendation.withValues(
+                      alpha: 0.16,
+                    ),
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(
-                      color: AppColors.ctaStart.withValues(alpha: 0.6),
+                      color: AppColors.coachRecommendation.withValues(
+                        alpha: 0.64,
+                      ),
                     ),
                   ),
                   child: Text(
                     'AI 推薦',
                     style: AppTypography.caption.copyWith(
-                      color: AppColors.ctaStart,
+                      color: AppColors.coachRecommendation,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -63,11 +73,15 @@ class NewTopicIdeaCard extends StatelessWidget {
 
           // 可直接傳的第一句
           Container(
+            key: ValueKey('new-topic-opening-line-${idea.id}'),
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.06),
+              color: AppColors.coachBackgroundMid.withValues(alpha: 0.72),
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppColors.coachAccent.withValues(alpha: 0.18),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -117,7 +131,7 @@ class NewTopicIdeaCard extends StatelessWidget {
         Text(
           title,
           style: AppTypography.bodySmall.copyWith(
-            color: AppColors.ctaStart.withValues(alpha: 0.86),
+            color: AppColors.coachAccentBright.withValues(alpha: 0.92),
             fontWeight: FontWeight.w600,
           ),
         ),

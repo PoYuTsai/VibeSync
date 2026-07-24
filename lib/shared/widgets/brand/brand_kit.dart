@@ -6,38 +6,103 @@
 // 吃同一套質感、不再混雜舊 glass 風。數值刻意與 about_me_screen /
 // profile_chip_section 的已上線版本逐一對齊，確保視覺 byte 級一致。
 //
-// 設計憲法（改任何頁面都必須遵守）：
+// 預設 warm tone 的設計憲法（改任何頁面都必須遵守）：
 //   背景：brandInk → brandSurface → brandSurface2 垂直漸層（stops 0 / .58 / 1）。
 //   卡片：brandSurface 系漸層 @ ~.9，圓角 22–24，white@.10 邊框，黑色柔陰影。
-//   重點色：ctaStart → ctaEnd 橘色（CTA / 焦點 / icon badge），絕不換成紫色主色。
+//   重點色：ctaStart → ctaEnd 橘色（CTA / 焦點 / icon badge）。
 //   文字：卡上白字 + onBackgroundSecondary 次要；hint 一律低對比白。
 //
-// 注意：本檔**不**全域改 GlassmorphicContainer——舊頁文字/圖表對比另案處理。
+// coach tone 是 Analyze Chat / Opener 專用的洞察層級；紫色只負責選取與資訊，
+// 主要動作仍是橘色。本檔不全域改 GlassmorphicContainer。
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 
+/// Visual tone for shared brand primitives.
+///
+/// [warm] preserves the shipped dark-purple/orange brand system. [coach]
+/// reuses the calmer Analyze Chat record palette for interpretation-heavy
+/// flows while leaving orange primary actions untouched.
+enum BrandVisualTone { warm, coach }
+
+extension _BrandVisualToneColors on BrandVisualTone {
+  Color get backgroundStart => this == BrandVisualTone.coach
+      ? AppColors.coachBackgroundWarm
+      : AppColors.brandInk;
+
+  Color get backgroundMid => this == BrandVisualTone.coach
+      ? AppColors.coachBackgroundMid
+      : AppColors.brandSurface;
+
+  Color get backgroundEnd => this == BrandVisualTone.coach
+      ? AppColors.coachBackgroundInk
+      : AppColors.brandSurface2;
+
+  Color get surface => this == BrandVisualTone.coach
+      ? AppColors.coachSurface
+      : AppColors.brandSurface;
+
+  Color get surfaceRaised => this == BrandVisualTone.coach
+      ? AppColors.coachSurfaceRaised
+      : AppColors.brandSurface2;
+
+  Color get selectionStart => this == BrandVisualTone.coach
+      ? AppColors.coachAccent
+      : AppColors.ctaStart;
+
+  Color get selectionEnd => this == BrandVisualTone.coach
+      ? AppColors.coachAccentBright
+      : AppColors.ctaEnd;
+
+  Color get track => this == BrandVisualTone.coach
+      ? AppColors.coachBackgroundInk
+      : AppColors.brandInk;
+
+  Color get choiceIdle => this == BrandVisualTone.coach
+      ? AppColors.coachSurface
+      : const Color(0xFF261735);
+
+  Color get choicePressed => this == BrandVisualTone.coach
+      ? AppColors.coachAccent.withValues(alpha: 0.12)
+      : const Color(0xFF3A2032);
+
+  Color get choiceSelected => this == BrandVisualTone.coach
+      ? AppColors.coachAccent.withValues(alpha: 0.18)
+      : const Color(0xFF4D2630);
+}
+
 /// 全頁暗紫橘漸層背景。對齊 about_me_screen 的靜態 gradient（不含動態 bokeh——
 /// 動態光球只保留在首頁的 [GradientBackground]，避免每頁都跑動畫拖效能）。
 class BrandPageBackground extends StatelessWidget {
-  const BrandPageBackground({super.key, required this.child});
+  const BrandPageBackground({
+    super.key,
+    required this.child,
+    this.tone = BrandVisualTone.warm,
+  });
 
   final Widget child;
+  final BrandVisualTone tone;
 
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+          begin: tone == BrandVisualTone.coach
+              ? Alignment.topLeft
+              : Alignment.topCenter,
+          end: tone == BrandVisualTone.coach
+              ? Alignment.bottomRight
+              : Alignment.bottomCenter,
           colors: [
-            AppColors.brandInk,
-            AppColors.brandSurface,
-            AppColors.brandSurface2,
+            tone.backgroundStart,
+            tone.backgroundMid,
+            tone.backgroundEnd,
           ],
-          stops: [0.0, 0.58, 1.0],
+          stops: tone == BrandVisualTone.coach
+              ? const [0.0, 0.46, 1.0]
+              : const [0.0, 0.58, 1.0],
         ),
       ),
       child: child,
@@ -83,6 +148,7 @@ class BrandScaffold extends StatelessWidget {
     this.floatingActionButtonLocation,
     this.resizeToAvoidBottomInset,
     this.safeArea = true,
+    this.tone = BrandVisualTone.warm,
   });
 
   final Widget body;
@@ -94,15 +160,16 @@ class BrandScaffold extends StatelessWidget {
   final FloatingActionButtonLocation? floatingActionButtonLocation;
   final bool? resizeToAvoidBottomInset;
   final bool safeArea;
+  final BrandVisualTone tone;
 
   @override
   Widget build(BuildContext context) {
     // 有 AppBar（title != null）時 Scaffold 已移除 body 的 top padding，
     // 故只在無 AppBar 時套 top safe area，避免與 AppBar 的 inset 疊加，
     // 並讓未來若改用 extendBodyBehindAppBar 也維持正確。
-    final content =
-        safeArea ? SafeArea(top: title == null, child: body) : body;
+    final content = safeArea ? SafeArea(top: title == null, child: body) : body;
     return BrandPageBackground(
+      tone: tone,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         resizeToAvoidBottomInset: resizeToAvoidBottomInset,
@@ -128,6 +195,8 @@ class BrandSurfaceCard extends StatelessWidget {
     this.elevated = true,
     this.borderRadius = 24,
     this.onTap,
+    this.tone = BrandVisualTone.warm,
+    this.borderColor,
   });
 
   final Widget child;
@@ -135,6 +204,8 @@ class BrandSurfaceCard extends StatelessWidget {
   final bool elevated;
   final double borderRadius;
   final VoidCallback? onTap;
+  final BrandVisualTone tone;
+  final Color? borderColor;
 
   @override
   Widget build(BuildContext context) {
@@ -143,14 +214,18 @@ class BrandSurfaceCard extends StatelessWidget {
         ? BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                AppColors.brandSurface2.withValues(alpha: 0.90),
-                AppColors.brandSurface.withValues(alpha: 0.96),
+                tone.surfaceRaised.withValues(
+                  alpha: tone == BrandVisualTone.coach ? 0.92 : 0.90,
+                ),
+                tone.surface.withValues(alpha: 0.96),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: radius,
-            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+            border: Border.all(
+              color: borderColor ?? Colors.white.withValues(alpha: 0.10),
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.22),
@@ -160,9 +235,13 @@ class BrandSurfaceCard extends StatelessWidget {
             ],
           )
         : BoxDecoration(
-            color: AppColors.brandSurface.withValues(alpha: 0.88),
+            color: tone.surface.withValues(
+              alpha: tone == BrandVisualTone.coach ? 0.96 : 0.88,
+            ),
             borderRadius: radius,
-            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+            border: Border.all(
+              color: borderColor ?? Colors.white.withValues(alpha: 0.10),
+            ),
           );
 
     final card = Container(
@@ -288,12 +367,13 @@ class BrandSectionHeader extends StatelessWidget {
 }
 
 /// 品牌輸入框 decoration。對齊 about_me 的 _fieldDecoration：brandInk@.38 底、
-/// 圓角 18、focus 橘邊。
+/// 圓角 18、focus 使用該 tone 的選取色。
 InputDecoration brandInputDecoration({
   String? hintText,
   String? labelText,
   Widget? prefixIcon,
   Widget? suffixIcon,
+  BrandVisualTone tone = BrandVisualTone.warm,
 }) {
   OutlineInputBorder border(Color color, [double width = 1]) {
     return OutlineInputBorder(
@@ -314,13 +394,13 @@ InputDecoration brandInputDecoration({
       color: AppColors.onBackgroundSecondary.withValues(alpha: 0.80),
     ),
     filled: true,
-    fillColor: AppColors.brandInk.withValues(alpha: 0.38),
+    fillColor: tone.track.withValues(alpha: 0.52),
     counterStyle: AppTypography.caption.copyWith(
       color: AppColors.onBackgroundSecondary.withValues(alpha: 0.62),
     ),
     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     enabledBorder: border(Colors.white.withValues(alpha: 0.12)),
-    focusedBorder: border(AppColors.ctaStart.withValues(alpha: 0.74), 1.3),
+    focusedBorder: border(tone.selectionStart.withValues(alpha: 0.78), 1.3),
     errorBorder: border(AppColors.error.withValues(alpha: 0.80)),
     focusedErrorBorder: border(AppColors.error),
   );
@@ -454,7 +534,8 @@ class BrandSecondaryButton extends StatelessWidget {
   }
 }
 
-/// 品牌 ChoiceChip。對齊 profile_chip_section 的暗紫底 / 橘選中態 pill。
+/// 品牌 ChoiceChip。預設對齊 profile_chip_section 的暗紫底 / 橘選中態 pill；
+/// coach tone 使用紫色選中態。
 /// 此版本獨立可用於任意 chip 群（不限 ProfileChipSection 泛型）。
 class BrandChoiceChip extends StatelessWidget {
   const BrandChoiceChip({
@@ -463,12 +544,14 @@ class BrandChoiceChip extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.trailing,
+    this.tone = BrandVisualTone.warm,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
   final Widget? trailing;
+  final BrandVisualTone tone;
 
   @override
   Widget build(BuildContext context) {
@@ -484,16 +567,16 @@ class BrandChoiceChip extends StatelessWidget {
       onSelected: (_) => onTap(),
       color: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
-          return const Color(0xFF4D2630);
+          return tone.choiceSelected;
         }
         if (states.contains(WidgetState.pressed)) {
-          return const Color(0xFF3A2032);
+          return tone.choicePressed;
         }
-        return const Color(0xFF261735);
+        return tone.choiceIdle;
       }),
-      backgroundColor: const Color(0xFF261735),
-      selectedColor: const Color(0xFF4D2630),
-      disabledColor: const Color(0xFF261735),
+      backgroundColor: tone.choiceIdle,
+      selectedColor: tone.choiceSelected,
+      disabledColor: tone.choiceIdle,
       surfaceTintColor: Colors.transparent,
       labelStyle: AppTypography.bodySmall.copyWith(
         color: selected
@@ -504,7 +587,7 @@ class BrandChoiceChip extends StatelessWidget {
       ),
       side: BorderSide(
         color: selected
-            ? AppColors.ctaStart.withValues(alpha: 0.64)
+            ? tone.selectionStart.withValues(alpha: 0.72)
             : Colors.white.withValues(alpha: 0.16),
       ),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
@@ -515,8 +598,8 @@ class BrandChoiceChip extends StatelessWidget {
   }
 }
 
-/// 暗紫橘分段選擇器（取代淺色 GlassmorphicSegmentedButton）。深色 track、
-/// 橘漸層選中段 + check icon、白字。API 與舊版對齊（value + label）。
+/// 深色分段選擇器（取代淺色 GlassmorphicSegmentedButton）。選中段顏色由 tone
+/// 決定，保留 check icon 與白字。API 與舊版對齊（value + label）。
 class BrandSegment<T> {
   const BrandSegment({required this.value, required this.label});
 
@@ -530,18 +613,20 @@ class BrandSegmentedButton<T> extends StatelessWidget {
     required this.segments,
     required this.selected,
     required this.onChanged,
+    this.tone = BrandVisualTone.warm,
   });
 
   final List<BrandSegment<T>> segments;
   final T selected;
   final ValueChanged<T> onChanged;
+  final BrandVisualTone tone;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppColors.brandInk.withValues(alpha: 0.40),
+        color: tone.track.withValues(alpha: 0.58),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
@@ -556,15 +641,18 @@ class BrandSegmentedButton<T> extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 11),
                 decoration: BoxDecoration(
                   gradient: isSelected
-                      ? const LinearGradient(
-                          colors: [AppColors.ctaStart, AppColors.ctaEnd],
+                      ? LinearGradient(
+                          colors: [
+                            tone.selectionStart,
+                            tone.selectionEnd,
+                          ],
                         )
                       : null,
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
-                            color: AppColors.ctaStart.withValues(alpha: 0.32),
+                            color: tone.selectionStart.withValues(alpha: 0.30),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
@@ -630,7 +718,8 @@ class BrandInfoNote extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: AppColors.ctaStart.withValues(alpha: 0.86)),
+          Icon(icon,
+              size: 18, color: AppColors.ctaStart.withValues(alpha: 0.86)),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
