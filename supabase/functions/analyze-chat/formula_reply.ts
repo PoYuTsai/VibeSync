@@ -112,6 +112,11 @@ function sanitizeFormulaField(
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (trimmed.length === 0) return null;
+  // 空白判定取 JS/Dart trim 聯集：U+0085（NEL）只有 Dart 視為空白，
+  // JS trim 不吃。只含 U+0085/空白的欄位在 Dart 端會變空字串，必須在
+  // canonical 入口就拒絕，避免 fresh/ledger 與 client 顯示分歧（Codex
+  // 二審 U+0085 補洞）。
+  if (trimmed.replace(/\u0085/g, "").trim().length === 0) return null;
   // 超長一律丟整則、不截斷（§3）。
   if ([...trimmed].length > maxCodePoints) return null;
   if (hasVisibleTextLeak(trimmed)) return null;

@@ -463,6 +463,9 @@ function isStoredFormulaText(value: unknown, maxCodePoints: number): boolean {
   if (typeof value !== "string") return false;
   const trimmed = value.trim();
   if (trimmed.length === 0) return false;
+  // JS/Dart trim 聯集判空（U+0085 只有 Dart 視為空白）；與 migration
+  // helper 及 normalizer 同一規則。
+  if (trimmed.replace(/\u0085/g, "").trim().length === 0) return false;
   // cap 對 raw 字串以 code points 計，對齊 PostgreSQL char_length()。
   if ([...value].length > maxCodePoints) return false;
   if (trimmed.includes("```")) return false;

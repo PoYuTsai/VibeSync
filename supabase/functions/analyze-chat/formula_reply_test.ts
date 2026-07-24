@@ -69,6 +69,25 @@ Deno.test("缺欄、非 string、空白、超長 → 丟整則", () => {
   assertEquals(replies, []);
 });
 
+Deno.test("空白判定＝JS/Dart trim 聯集：U+0085（NEL）視同空白（Codex 二審補洞）", () => {
+  // U+0085 只有 Dart trim 視為空白；只含 U+0085 的欄位必須在 canonical
+  // 入口拒絕，否則 client 端會把該則 trim 成空而與 ledger 分歧。
+  assertEquals(
+    normalizeFormulaReplies([
+      { openingLine: "\u0085", whyItWorks: "理由" },
+      { openingLine: "句子", whyItWorks: " \u0085 \u0085 " },
+    ]),
+    [],
+  );
+  // 含實字的欄位不受影響（U+0085 夾在文字中不判空）。
+  assertEquals(
+    normalizeFormulaReplies([
+      { openingLine: "句子\u0085句子", whyItWorks: "理由" },
+    ]).length,
+    1,
+  );
+});
+
 Deno.test("code fence／raw JSON／schema key 洩漏 → 丟整則", () => {
   for (
     const leaked of [
