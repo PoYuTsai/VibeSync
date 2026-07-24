@@ -3633,4 +3633,61 @@ Deno.test("preserved debrief may give build-route guidance after a repair hint (
     Error,
     "debrief_quality_invalid_partner_initiative",
   );
+
+  // Codex 審查反例（2026-07-24 三項照擋）：
+  // 1) 正向後果的 direct 建議不因「會讓…」措辭漏過：repair 局仍矛盾。
+  for (
+    const failureState of [
+      "現在直接邀約會讓關係更進一步，別再等了",
+      "現在直接邀約會讓她覺得有誠意",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({
+            ...mabelHaikuCard,
+            gameBreakdown: { ...mabelHaikuCard.gameBreakdown, failureState },
+          }),
+          mabelParseOptions,
+        ),
+      Error,
+      "debrief_hint_assessment_revision_required",
+      failureState,
+    );
+  }
+  // 2) 混合句型的她方邀約宣稱不因夾著「考慮」漏過。
+  for (
+    const watchout of [
+      "她主動考慮見面後約你，你卻已讀太久",
+      "她表示想在考慮後邀你見面，你沒有把握住",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({
+            ...mabelHaikuCard,
+            watchouts: [mabelHaikuCard.watchouts[0], watchout],
+          }),
+          mabelParseOptions,
+        ),
+      Error,
+      "debrief_quality_invalid_partner_initiative",
+      watchout,
+    );
+  }
+  // 3) 比較句式的實質翻案（包著鋪墊敘事）照擋：preserved 不得放行。
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...mabelCard,
+          nextInviteMove: "比起照提示道歉，最佳策略是先建立吸引力再看邀約時機。",
+        }),
+        mabelParseOptions,
+      ),
+    Error,
+    "debrief_hint_assessment_revision_required",
+  );
 });
