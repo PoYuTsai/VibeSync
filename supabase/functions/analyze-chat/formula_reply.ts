@@ -23,13 +23,28 @@ export const FORMULA_REPLY_CAPS = {
 } as const;
 
 /**
- * Prompt 內示範句（§4-10）：模型逐字照抄範例時整則丟棄，不得把與本次
- * 素材無關的示範內容送給使用者。normalizer 永遠內建排除這組，呼叫端
- * 另外傳本次 base opener/topic 五句。
+ * Prompt 內示範句＋schema placeholder（§4-10；Codex 首審 P2 擴充）：模型
+ * 逐字照抄範例或 JSON schema 佔位文字時整則丟棄，不得把與本次素材無關
+ * 的示範／模板內容送給使用者。normalizer 永遠內建排除這組，呼叫端另外
+ * 傳本次 base opener/topic 五句。
  */
 export const FORMULA_PROMPT_EXAMPLE_LINES: readonly string[] = [
   "妳那張山頂照讓我有點想把週末從沙發救回來。那條是新手也能活著下山的路線嗎？",
   "妳看起來很有趣，平常喜歡做什麼？",
+  "公式開場第一則：具體線索＋我的當下反應＋好接的開口，可直接送出",
+  "公式開場第二則（與第一則抓不同線索或不同開口）",
+  "公式新話題第一則：具體線索＋一小段我＋好接的開口，可直接送出",
+  "公式新話題第二則（與第一則抓不同線索或不同開口）",
+];
+
+/**
+ * whyItWorks 的 schema placeholder：dedupe key 完全相同才丟（教練註解是
+ * 自然語句，只擋逐字照抄，不做模糊比對）。
+ */
+export const FORMULA_PROMPT_PLACEHOLDER_NOTES: readonly string[] = [
+  "一句教練註解",
+  "一句教練註解：這句接了哪個細節、為什麼好回；若自然可補她回後怎麼接",
+  "一句教練註解：為什麼這句現在好接",
 ];
 
 /**
@@ -128,6 +143,9 @@ export function normalizeFormulaRepliesDetailed(
       excludeKeys.add(formulaDedupeKey(line));
     }
   }
+  const placeholderNoteKeys = new Set(
+    FORMULA_PROMPT_PLACEHOLDER_NOTES.map(formulaDedupeKey),
+  );
 
   const replies: FormulaReply[] = [];
   const seenKeys = new Set<string>();
@@ -152,9 +170,12 @@ export function normalizeFormulaRepliesDetailed(
       continue;
     }
 
+    // whyItWorks 逐字照抄 schema placeholder＝模板洩漏，整則丟。
+    if (placeholderNoteKeys.has(formulaDedupeKey(whyItWorks))) continue;
+
     const key = formulaDedupeKey(openingLine);
-    // 與示範句／base opener/topic 重複＝丟公式、原內容不動；兩則公式
-    // 彼此重複只留第一則（§4-6）。
+    // 與示範句／schema placeholder／base opener/topic 重複＝丟公式、
+    // 原內容不動；兩則公式彼此重複只留第一則（§4-6）。
     if (excludeKeys.has(key) || seenKeys.has(key)) continue;
     seenKeys.add(key);
 

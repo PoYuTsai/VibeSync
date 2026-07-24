@@ -555,20 +555,48 @@ Deno.test({
 });
 
 Deno.test({
-  name: "公式示範句與 FORMULA_PROMPT_EXAMPLE_LINES 同步（whitespace 不敏感）",
+  name: "公式示範句/placeholder 與 FORMULA_PROMPT_* 排除集同步（whitespace 不敏感）",
   permissions: { read: true },
   fn: async () => {
-    const { FORMULA_PROMPT_EXAMPLE_LINES, formulaDedupeKey } = await import(
-      "./formula_reply.ts"
-    );
-    const source = await Deno.readTextFile(
+    const {
+      FORMULA_PROMPT_EXAMPLE_LINES,
+      FORMULA_PROMPT_PLACEHOLDER_NOTES,
+      formulaDedupeKey,
+    } = await import("./formula_reply.ts");
+    const indexSource = await Deno.readTextFile(
       new URL("./index.ts", import.meta.url),
     );
-    const sourceKey = formulaDedupeKey(source);
-    for (const line of FORMULA_PROMPT_EXAMPLE_LINES) {
+    const newTopicPromptSource = await Deno.readTextFile(
+      new URL("./new_topic_prompt.ts", import.meta.url),
+    );
+    const sourceKey = formulaDedupeKey(indexSource + newTopicPromptSource);
+    for (
+      const line of [
+        ...FORMULA_PROMPT_EXAMPLE_LINES,
+        ...FORMULA_PROMPT_PLACEHOLDER_NOTES,
+      ]
+    ) {
       assert(
         sourceKey.includes(formulaDedupeKey(line)),
-        `示範句必須存在於 OPENER_PROMPT（排除集才會生效）：${line}`,
+        `排除集字串必須存在於 prompt 源（否則排除集是死碼）：${line}`,
+      );
+    }
+
+    // 反向：兩個 prompt schema 的 openingLine placeholder 都必須被排除集
+    // 涵蓋（模型照抄 schema 不得成為 canonical 公式；Codex 首審 P2）。
+    for (
+      const placeholder of [
+        "公式開場第一則：具體線索＋我的當下反應＋好接的開口，可直接送出",
+        "公式開場第二則（與第一則抓不同線索或不同開口）",
+        "公式新話題第一則：具體線索＋一小段我＋好接的開口，可直接送出",
+        "公式新話題第二則（與第一則抓不同線索或不同開口）",
+      ]
+    ) {
+      assert(
+        FORMULA_PROMPT_EXAMPLE_LINES.some((line) =>
+          formulaDedupeKey(line) === formulaDedupeKey(placeholder)
+        ),
+        `schema placeholder 未入排除集：${placeholder}`,
       );
     }
   },

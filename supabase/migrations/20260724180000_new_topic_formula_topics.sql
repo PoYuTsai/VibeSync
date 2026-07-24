@@ -31,6 +31,13 @@ DECLARE
   v_item JSONB;
   v_opening TEXT;
   v_why TEXT;
+  -- 空白判定對齊 JS String.trim()／Dart trim() 的 whitespace 集合（Codex
+  -- 首審 P2：PG btrim 預設只吃 U+0020，"\t" 或全形空白 U+3000 會被誤判
+  -- 非空）。canonical 寫入端已 JS-trim，此集合只會拒絕更多空白值、不會
+  -- 誤殺任何合法 canonical 字串。topics 欄位維持 v1 部署語意不動。
+  v_js_whitespace CONSTANT TEXT := E' \t\n\r\f' ||
+    U&'\000B\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009' ||
+    U&'\200A\2028\2029\202F\205F\3000\FEFF';
 BEGIN
   IF p_formula_topics IS NULL
      OR jsonb_typeof(p_formula_topics) <> 'array'
@@ -50,9 +57,11 @@ BEGIN
 
     v_opening := v_item ->> 'openingLine';
     v_why := v_item ->> 'whyItWorks';
-    IF v_opening IS NULL OR char_length(btrim(v_opening)) = 0
+    IF v_opening IS NULL
+       OR char_length(btrim(v_opening, v_js_whitespace)) = 0
        OR char_length(v_opening) > 180
-       OR v_why IS NULL OR char_length(btrim(v_why)) = 0
+       OR v_why IS NULL
+       OR char_length(btrim(v_why, v_js_whitespace)) = 0
        OR char_length(v_why) > 300 THEN
       RETURN FALSE;
     END IF;

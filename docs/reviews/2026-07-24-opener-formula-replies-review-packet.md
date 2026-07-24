@@ -10,7 +10,9 @@
 ## Range
 
 - BASE_SHA：`aad497d0`
-- HEAD_SHA：（見下方 commits，最後一顆為準）
+- 首輪審查 range：`aad497d0..2347f166`
+- Codex 首審修復輪後最終 HEAD：見「Cross-model review」節（修復 commit 落地
+  後補記）
 
 ## Commits（一 concern 一顆）
 
@@ -138,9 +140,27 @@
 
 ## Cross-model review
 
-（Task 6 完成後填入）
+### 首輪（range aad497d0..2347f166）
 
-- Claude/Codex peer：
+- Codex peer（read-only headless，cross-model-review wrapper）：
+  **NOT APPROVED**——0 P0/P1、3 P2、1 minor、2 uncertain。
+- GLM adversarial：首呼失敗（`GLM returned no content`，疑 191KB packet
+  超出；重試見二輪）。
+
+### 首輪 reconciliation（primary 逐項回查源碼）
+
+| Finding | 判定 | 處置 |
+|---|---|---|
+| P2-1：`validate_new_topic_formula_topics` 用 PG `btrim` 預設集，`\t`／U+3000 whitespace-only 可過 DB tripwire、卻被 TS replay validator 拒 → replay 斷 | **TP** | 已修：migration 改用對齊 JS/Dart trim 的顯式 whitespace 集合（含 U+000B/U+00A0/U+2000–200A/U+2028/29/202F/205F/3000/FEFF）；只會更嚴、不會誤殺 JS-trimmed canonical；topics 欄位維持 v1 部署語意不動。smoke S4 補 `\t`＋U+3000 拒絕態 |
+| P2-2：prompt JSON schema placeholder（「公式開場第一則：…」等）不在排除集，模型照抄會成 canonical 並進 ledger/replay | **TP** | 已修：四條 openingLine placeholder 加入 `FORMULA_PROMPT_EXAMPLE_LINES`；新增 `FORMULA_PROMPT_PLACEHOLDER_NOTES`（whyItWorks「一句教練註解…」三式，dedupe-key 全等才丟、不誤殺真教練註解）；sync 測試改掃 index.ts＋new_topic_prompt.ts 並反向驗 placeholder 必在排除集 |
+| P2-3：§11.2/11.3 的 request-level 情境（repair 次數、HTTP status、扣費、fresh/replay body）沒有可執行 handler 測試，只有 helper 單元＋source-scan | **Partial TP／accepted risk** | index.ts import 即啟動 server，repo 既有慣例（見 opener_payload.ts 頂註）只支援 source-scan；New Topic 本體（已部署）同樣以 helper 單元＋source anchors 出貨。本案再加兩層：`buildNewTopicLedgerResult.formulaTopics` 必填（漏接 ledger 編譯期失敗）＋分支順序 anchors。handler test harness 是獨立工程，不在本案 scope；列 open concern |
+| Minor：packet 未寫死 review range | **TP** | 已修（本檔 Range 節） |
+| Uncertain：marker 換 v2 讓舊 Edge readiness 失敗 | **FP** | index.ts 全檔無 `new_topic_contract_version()`／`NEW_TOPIC_CONTRACT_VERSION` 任何 runtime 引用（grep 證據）；marker 只供部署 runbook 手動驗證，舊 Edge 不比對 |
+| Uncertain：migration 檔無 BEGIN/COMMIT，transactionality 依 runner | **TP as runbook 條款** | 部署固定走 Management API 目標式 apply（單 query＝單 transaction；前例 20260724120000 同法、禁 `db push`）。已記入部署節 |
+
+### 二輪
+
+- Codex re-review：
 - GLM adversarial：
 - Reconciliation：
 

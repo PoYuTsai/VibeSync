@@ -141,7 +141,17 @@ BEGIN
   IF public.validate_new_topic_result(v_bad) THEN
     RAISE EXCEPTION 'S4 FAIL: 缺欄應拒絕';
   END IF;
-  RAISE NOTICE 'S4 PASS: 缺欄拒絕';
+  -- Codex 首審 P2：whitespace-only（\t 與全形空白 U+3000）必須被 DB 拒絕，
+  -- 空白語意對齊 JS/Dart trim。
+  IF public.validate_new_topic_formula_topics(jsonb_build_array(
+       jsonb_build_object('openingLine', E'\t', 'whyItWorks', '理由')
+     ))
+     OR public.validate_new_topic_formula_topics(jsonb_build_array(
+       jsonb_build_object('openingLine', '句子', 'whyItWorks', U&'\3000')
+     )) THEN
+    RAISE EXCEPTION 'S4 FAIL: whitespace-only 欄位應拒絕';
+  END IF;
+  RAISE NOTICE 'S4 PASS: 缺欄＋whitespace-only 拒絕';
 
   v_bad := v_legacy || jsonb_build_object('formulaTopics', jsonb_build_array(
     jsonb_build_object(
