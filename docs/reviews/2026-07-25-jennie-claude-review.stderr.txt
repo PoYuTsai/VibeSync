@@ -1,0 +1,3 @@
+2026-07-25: Claude Code headless review did not return stdout or stderr.
+Attempts: default fable (two timeouts), explicit sonnet (hung, then stopped).
+Result: unavailable; do not count as review completion.
