@@ -3690,4 +3690,67 @@ Deno.test("preserved debrief may give build-route guidance after a repair hint (
     Error,
     "debrief_hint_assessment_revision_required",
   );
+
+  // Codex R2 邊界（2026-07-24）：
+  // 逗號斷開的負向後果警告仍豁免（不算 direct 建議）。
+  const commaWarningCard = parseDebriefCard(
+    JSON.stringify({
+      ...mabelHaikuCard,
+      gameBreakdown: {
+        ...mabelHaikuCard.gameBreakdown,
+        failureState: "她防備還在；現在直接邀約，會讓她有壓力",
+      },
+    }),
+    mabelParseOptions,
+  );
+  assertEquals(commaWarningCard.gameBreakdown?.failureState.includes("壓力"), true);
+  // 正向後果（含詞表歧義字）與「但值得一試」轉折＝實質 direct 建議照擋。
+  for (
+    const failureState of [
+      "她防備還在，但現在直接邀約會讓彼此距離更近",
+      "現在直接邀約會有壓力但值得一試",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        parseDebriefCard(
+          JSON.stringify({
+            ...mabelHaikuCard,
+            gameBreakdown: { ...mabelHaikuCard.gameBreakdown, failureState },
+          }),
+          mabelParseOptions,
+        ),
+      Error,
+      "debrief_hint_assessment_revision_required",
+      failureState,
+    );
+  }
+  // 門檻敘事＋既成邀約宣稱的混合句：門檻段豁免不得吞掉真宣稱。
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...mabelHaikuCard,
+          watchouts: [
+            mabelHaikuCard.watchouts[0],
+            "她原本要更安心才願意見面而昨天已主動約你",
+          ],
+        }),
+        mabelParseOptions,
+      ),
+    Error,
+    "debrief_quality_invalid_partner_initiative",
+  );
+  // 比較句式讚美提示執行（無替代策略）不算翻案。
+  const praiseCard = parseDebriefCard(
+    JSON.stringify({
+      ...mabelCard,
+      strengths: [
+        "比起提示本身，你照提示道歉的執行更自然",
+        mabelCard.strengths[1],
+      ],
+    }),
+    mabelParseOptions,
+  );
+  assertEquals(praiseCard.strengths.length, 2);
 });
