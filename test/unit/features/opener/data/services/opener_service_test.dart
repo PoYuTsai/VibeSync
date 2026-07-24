@@ -522,6 +522,126 @@ void main() {
     });
   });
 
+  group('OpenerResult.formulaOpeners（2026-07-24 公式回覆計畫 §12）', () {
+    Map<String, dynamic> formulaItem(int n) => {
+          'openingLine': '公式開場$n：抓她一個具體線索加一點我的反應。',
+          'whyItWorks': '因為她只要補一個細節就能回（$n）。',
+        };
+
+    OpenerResult resultWithFormula(int count) => OpenerResult.fromJson({
+          'openers': {
+            'extend': '延展句',
+            'resonate': '共鳴句',
+            'tease': '調情句',
+            'humor': '幽默句',
+            'coldRead': '冷讀句',
+          },
+          'recommendedPick': 'extend',
+          'recommendedReason': '理由',
+          'formulaOpeners': [
+            for (var n = 1; n <= count; n++) formulaItem(n),
+          ],
+        });
+
+    test('fromJson 解析 0／1／2 則', () {
+      for (final count in [0, 1, 2]) {
+        final result = resultWithFormula(count);
+        expect(result.formulaOpeners.length, count);
+        expect(result.openers.length, 5, reason: '原五句不受公式影響');
+      }
+    });
+
+    test('壞 formula 不拖垮 openers（缺欄／非清單／markers／內部標籤）', () {
+      final malformedCases = <dynamic>[
+        'not-a-list',
+        [
+          {'openingLine': '只有一欄'},
+        ],
+        [
+          {'openingLine': '```json 洩漏', 'whyItWorks': '理由'},
+        ],
+        [
+          {'openingLine': '從對象作戰板看到妳喜歡爬山', 'whyItWorks': '理由'},
+        ],
+        [
+          {'openingLine': '🀄' * 181, 'whyItWorks': '理由'},
+        ],
+      ];
+      for (final malformed in malformedCases) {
+        final result = OpenerResult.fromJson({
+          'openers': {'extend': '延展句'},
+          'formulaOpeners': malformed,
+        });
+        expect(result.openers['extend'], '延展句');
+        expect(
+          result.formulaOpeners,
+          isEmpty,
+          reason: '壞公式只丟公式：$malformed',
+        );
+      }
+    });
+
+    test('toJson → fromJson cache round-trip 保留公式', () {
+      final original = resultWithFormula(2);
+      final restored = OpenerResult.fromJson(original.toJson());
+      expect(restored.formulaOpeners.length, 2);
+      expect(
+        restored.formulaOpeners.first.openingLine,
+        original.formulaOpeners.first.openingLine,
+      );
+      expect(
+        restored.formulaOpeners.last.whyItWorks,
+        original.formulaOpeners.last.whyItWorks,
+      );
+    });
+
+    test('visibleForAccess：Free／Paid 都原封保留公式（不做投影）', () {
+      final result = resultWithFormula(2);
+      final freeView = result.visibleForAccess(isFreeUser: true);
+      expect(freeView.formulaOpeners.length, 2);
+      expect(freeView.openers.containsKey('coldRead'), isFalse,
+          reason: '原五風格 Free 投影照舊');
+      final paidView = result.visibleForAccess(isFreeUser: false);
+      expect(paidView.formulaOpeners.length, 2);
+    });
+
+    test('withRequestId 保留公式', () {
+      final result = resultWithFormula(1)
+          .withRequestId('123e4567-e89b-42d3-a456-426614174000');
+      expect(result.formulaOpeners.length, 1);
+    });
+
+    test('舊 cache 無欄位 → 空清單', () {
+      final legacy = OpenerResult.fromJson(const {
+        'openers': {'extend': 'hi'},
+      });
+      expect(legacy.formulaOpeners, isEmpty);
+      // 舊 reader 相容：toJson 一律帶 formulaOpeners 鍵（空陣列）。
+      expect(legacy.toJson()['formulaOpeners'], isEmpty);
+    });
+
+    test('generateOpeners 解析 server canonical formulaOpeners', () async {
+      final service = OpenerService(
+        invoker: (_, {required body}) async {
+          return OpenerInvokeResponse(
+            status: 200,
+            data: {
+              'openers': {'extend': '延展句'},
+              'formulaOpeners': [formulaItem(1), formulaItem(2)],
+              'usage': {'cost': 3},
+            },
+          );
+        },
+      );
+      final result = await service.generateOpeners(name: 'Grace');
+      expect(result.formulaOpeners.length, 2);
+      expect(
+        result.formulaOpeners.first.openingLine,
+        formulaItem(1)['openingLine'],
+      );
+    });
+  });
+
   group('OpenerResult.requestId（批2 outcome adviceId 基底）', () {
     test('toJson/fromJson round-trip 保留 requestId', () {
       const result = OpenerResult(

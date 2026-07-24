@@ -145,6 +145,98 @@ void main() {
     });
   });
 
+  group('NewTopicResult.formulaTopics（2026-07-24 公式回覆計畫 §12）', () {
+    Map<String, dynamic> formulaItem(int n) => {
+          'openingLine': '公式新話題$n：抓她一個具體線索加一點我的反應。',
+          'whyItWorks': '因為她只要補一個細節就能回（$n）。',
+        };
+
+    test('原 result strict valid＋formula valid → 成功且 0/1/2 則都收', () {
+      for (final count in [0, 1, 2]) {
+        final body = _paidBody();
+        body['formulaTopics'] = [
+          for (var n = 1; n <= count; n++) formulaItem(n),
+        ];
+        final result = NewTopicResult.tryParse(body, requestId: _requestId);
+        expect(result, isNotNull, reason: 'formula $count 則應成功');
+        expect(result!.formulaTopics.length, count);
+        if (count > 0) {
+          expect(
+            result.formulaTopics.first.openingLine,
+            formulaItem(1)['openingLine'],
+          );
+        }
+      }
+    });
+
+    test('原 result strict valid＋formula malformed → 成功且空清單', () {
+      final malformedCases = <dynamic>[
+        'not-a-list',
+        {'openingLine': 'x', 'whyItWorks': 'y'},
+        [
+          {'openingLine': '', 'whyItWorks': '理由'},
+        ],
+        [
+          {'openingLine': '句子'},
+        ],
+        [null, 42, 'str'],
+      ];
+      for (final malformed in malformedCases) {
+        final body = _paidBody();
+        body['formulaTopics'] = malformed;
+        final result = NewTopicResult.tryParse(body, requestId: _requestId);
+        expect(result, isNotNull, reason: '壞公式不得拖垮 base：$malformed');
+        expect(result!.formulaTopics, isEmpty);
+      }
+    });
+
+    test('原 result strict invalid＋formula valid → 仍整份失敗', () {
+      final body = _paidBody();
+      (body['topics'] as List).removeLast();
+      body['formulaTopics'] = [formulaItem(1), formulaItem(2)];
+      expect(NewTopicResult.tryParse(body, requestId: _requestId), isNull);
+    });
+
+    test('legacy replay row（無 formulaTopics 鍵）→ 成功且空清單', () {
+      final paid = NewTopicResult.tryParse(_paidBody(), requestId: _requestId);
+      expect(paid, isNotNull);
+      expect(paid!.formulaTopics, isEmpty);
+
+      final free = NewTopicResult.tryParse(_freeBody(), requestId: _requestId);
+      expect(free, isNotNull);
+      expect(free!.formulaTopics, isEmpty);
+    });
+
+    test('Free 也收公式（全 tier 可見，不做投影）', () {
+      final body = _freeBody();
+      body['formulaTopics'] = [formulaItem(1), formulaItem(2)];
+      final result = NewTopicResult.tryParse(body, requestId: _requestId);
+      expect(result, isNotNull);
+      expect(result!.formulaTopics.length, 2);
+      expect(result.access.isFree, isTrue);
+      expect(result.topics.length, 1, reason: '原 Free 1 題不因公式改變');
+    });
+
+    test('client guard：cap 以 runes 計、markers／內部標籤丟該則、最多兩則', () {
+      final body = _paidBody();
+      body['formulaTopics'] = [
+        {'openingLine': '🀄' * 181, 'whyItWorks': '理由'},
+        {'openingLine': '```json 洩漏', 'whyItWorks': '理由'},
+        {'openingLine': '從對象作戰板看到妳喜歡爬山', 'whyItWorks': '理由'},
+        formulaItem(4),
+        formulaItem(5),
+        formulaItem(6),
+      ];
+      final result = NewTopicResult.tryParse(body, requestId: _requestId);
+      expect(result, isNotNull);
+      expect(result!.formulaTopics.length, 2, reason: '壞三則丟、好三則取前兩');
+      expect(
+        result.formulaTopics.map((f) => f.openingLine),
+        [formulaItem(4)['openingLine'], formulaItem(5)['openingLine']],
+      );
+    });
+  });
+
   group('NewTopicService errors', () {
     test('quota 429 → NewTopicQuotaExceededException（開 paywall）', () async {
       final service = NewTopicService(

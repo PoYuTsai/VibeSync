@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/services/supabase_service.dart';
+import '../../../../core/utils/formula_reply_guard.dart';
 import '../../domain/opener_access.dart';
 
 /// Must stay above the Edge opener pipeline deadline so a server-side timeout
@@ -79,6 +80,23 @@ class OpenerGenerationInput {
   }
 }
 
+/// 一則公式開場（2026-07-24 公式回覆計畫 §9.1）：固定結構、內容動態生成，
+/// 全 tier 可見、不參與五風格 counts／推薦／outcome bar。
+class OpenerFormulaReply {
+  const OpenerFormulaReply({
+    required this.openingLine,
+    required this.whyItWorks,
+  });
+
+  final String openingLine;
+  final String whyItWorks;
+
+  Map<String, dynamic> toJson() => {
+        'openingLine': openingLine,
+        'whyItWorks': whyItWorks,
+      };
+}
+
 class OpenerResult {
   static const _preferredTypes = OpenerAccessContract.canonicalPaidOrder;
 
@@ -98,6 +116,10 @@ class OpenerResult {
   /// null 時讀取端只能以 paid-only keys 做 legacy fallback 判斷。
   final OpenerAccess? access;
 
+  /// 公式開場（0–2 則 canonical）。舊 cache／舊 Edge 缺欄＝空清單；
+  /// 全 tier 同一份，不做 Free projection、不算進「N 種風格」。
+  final List<OpenerFormulaReply> formulaOpeners;
+
   const OpenerResult({
     this.profileAnalysis,
     required this.openers,
@@ -107,6 +129,7 @@ class OpenerResult {
     this.costUsed = 3,
     this.requestId,
     this.access,
+    this.formulaOpeners = const [],
   });
 
   String? get bestOpenerType {
@@ -196,6 +219,8 @@ class OpenerResult {
       costUsed: costUsed,
       requestId: requestId,
       access: access,
+      // 公式全 tier 可見：Free 投影只動五風格，公式原封傳遞（§9.1）。
+      formulaOpeners: formulaOpeners,
     );
   }
 
@@ -209,6 +234,7 @@ class OpenerResult {
       costUsed: costUsed,
       requestId: requestId ?? this.requestId,
       access: access,
+      formulaOpeners: formulaOpeners,
     );
   }
 
@@ -222,6 +248,8 @@ class OpenerResult {
       'costUsed': costUsed,
       if (requestId != null) 'requestId': requestId,
       if (access != null) 'access': access!.toJson(),
+      'formulaOpeners':
+          formulaOpeners.map((reply) => reply.toJson()).toList(),
     };
   }
 
@@ -239,6 +267,21 @@ class OpenerResult {
         _ => const Uuid().v4(),
       },
       access: OpenerAccess.tryParse(json['access']),
+      // best-effort：舊 cache 缺欄或形狀壞掉一律空清單，不拖垮原 openers。
+      formulaOpeners: parseFormulaOpeners(json['formulaOpeners']),
+    );
+  }
+
+  /// Cache／transport 雙用途 defense-in-depth 解析（server canonical 是
+  /// 主防線）：壞項只丟該則、最多兩則。
+  static List<OpenerFormulaReply> parseFormulaOpeners(dynamic value) {
+    return List.unmodifiable(
+      parseFormulaReplyList(value).map(
+        (item) => OpenerFormulaReply(
+          openingLine: item.openingLine,
+          whyItWorks: item.whyItWorks,
+        ),
+      ),
     );
   }
 
@@ -473,6 +516,8 @@ class OpenerService {
       costUsed: cost,
       // Server 權威 tier 判定；形狀壞掉→null，讀取端走 legacy fallback。
       access: OpenerAccess.tryParse(data['access']),
+      // 公式 best-effort：壞公式只得空清單，絕不影響原 openers 成功。
+      formulaOpeners: OpenerResult.parseFormulaOpeners(data['formulaOpeners']),
     );
   }
 

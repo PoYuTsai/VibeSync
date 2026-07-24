@@ -6,6 +6,20 @@
 /// client entity；fresh 與 replay 解析成同一份成功結果。
 library;
 
+import '../../../../core/utils/formula_reply_guard.dart';
+
+/// 一則公式新話題（2026-07-24 公式回覆計畫 §9.2）：固定結構、內容動態
+/// 生成，全 tier 可見、不參與五題 counts／推薦。
+class NewTopicFormulaIdea {
+  const NewTopicFormulaIdea({
+    required this.openingLine,
+    required this.whyItWorks,
+  });
+
+  final String openingLine;
+  final String whyItWorks;
+}
+
 class NewTopicIdea {
   const NewTopicIdea({
     required this.id,
@@ -54,6 +68,7 @@ class NewTopicResult {
     required this.access,
     required this.costUsed,
     required this.requestId,
+    this.formulaTopics = const [],
   });
 
   final List<NewTopicIdea> topics;
@@ -61,6 +76,10 @@ class NewTopicResult {
   final NewTopicAccess access;
   final int costUsed;
   final String requestId;
+
+  /// 公式新話題（0–2 則 canonical）。legacy replay row／舊 Edge 缺欄＝
+  /// 空清單；公式壞掉絕不讓 tryParse 變 null（best-effort，§9.2）。
+  final List<NewTopicFormulaIdea> formulaTopics;
 
   NewTopicIdea get recommendedTopic =>
       topics.firstWhere((topic) => topic.id == recommendation.topicId);
@@ -144,12 +163,24 @@ class NewTopicResult {
     final usage = body['usage'];
     final cost = usage is Map ? (usage['cost'] as num?)?.round() ?? 3 : 3;
 
+    // 公式 best-effort（原 result strict parse 全過之後才碰）：缺席／壞掉
+    // 一律空清單，不得讓 tryParse 變 null（§9.2 解析順序）。
+    final formulaTopics = List<NewTopicFormulaIdea>.unmodifiable(
+      parseFormulaReplyList(body['formulaTopics']).map(
+        (item) => NewTopicFormulaIdea(
+          openingLine: item.openingLine,
+          whyItWorks: item.whyItWorks,
+        ),
+      ),
+    );
+
     return NewTopicResult(
       topics: List.unmodifiable(topics),
       recommendation: NewTopicRecommendation(topicId: topicId, reason: reason),
       access: access,
       costUsed: cost,
       requestId: requestId,
+      formulaTopics: formulaTopics,
     );
   }
 
