@@ -3491,3 +3491,146 @@ Deno.test("preserved debrief may suggest a soft next-step invite after a build h
     "debrief_hint_assessment_revision_required",
   );
 });
+
+Deno.test("preserved debrief may give build-route guidance after a repair hint (2026-07-24 Mabel FP)", () => {
+  // 2026-07-24 真機 FP：repair 提示（道歉修復）被照做且對方接受後，Sonnet／
+  // Haiku 兩發拆解卡都給「先別邀約、累積安全感再說」的鋪墊敘事——與 repair
+  // 提示方向一致，卻被 narrativeRoutes(build)≠authoritative(repair) 整卡
+  // 打回，兩發全滅轉生成失敗。repair 後轉鋪墊是局勢推進，不是翻案；
+  // soft/direct 敘事與任何可貼邀約句照舊全擋。
+  const mabelTurns = [
+    { role: "user" as const, text: "我也是 那要約嗎？我想幹你" },
+    {
+      role: "ai" as const,
+      text: "（已讀）\n你會不會太誇張了，才聊幾句就這樣。不約。",
+    },
+    {
+      role: "user" as const,
+      text:
+        "抱歉，我剛剛那句真的太誇張了，換我先跟妳道歉。不約沒關係，妳說待在家耍廢，那耍廢儀式是追劇還是純躺平？",
+    },
+    {
+      role: "ai" as const,
+      text: "沒關係。我通常邊躺邊追劇啦，反正耍廢就要徹底一點哈哈。下午工作卡住，正好不想動。",
+    },
+  ];
+  const mabelRepairHint = {
+    turnIndex: 2,
+    type: "warm_up" as const,
+    originalHintText: mabelTurns[2].text,
+    sentText: mabelTurns[2].text,
+    exact: true,
+    hintRequestId: "mabel-repair-hint-1",
+    decision: {
+      phase: "P3_TEST",
+      targetVariable: "safety + Frame",
+      move: "repair" as const,
+      inviteRoute: "repair" as const,
+      rationale: "只依據本場逐字稿與已知角色資料；貼句已依目前關係階段與邀約路線校驗。",
+    },
+  };
+  const mabelCard = {
+    summary: "失言後有道歉修復，她願意回應但整體仍保持距離感",
+    strengths: [
+      "你有照提示做，先誠懇道歉再換話題，避免場面更僵",
+      "接住她「耍廢」的說法，順勢問細節維持對話",
+    ],
+    watchouts: [
+      "下一步先別急著約時間，她提到下午工作卡住，這是情緒線索先接住",
+      "她只是禮貌回應細節，還沒有主動延伸話題或給時間窗口，先別加碼邀約",
+    ],
+    suggestedLine: "工作卡住真的會讓人只想躺平，妳追劇通常都追什麼類型放鬆？",
+    vibe: "中性",
+    dateChance: "low",
+    dateChanceReason: "她只回應躺平耍廢的細節，沒有接梗延伸也沒釋出時間線索",
+    nextInviteMove: "先聊她下午卡關的心情，累積幾輪自然對話再考慮提邀約",
+    gameBreakdown: {
+      phaseReached: "從失言後的道歉修復，回到普通聊天熟悉階段",
+      missedVariable: "還沒建立起她願意主動分享情緒或延伸話題的默契",
+      failureState: "她提到工作卡住、不想動，這是情緒線索但你還沒接住",
+      nextFirstLine: "工作卡到現在還沒解嗎？這種下午特別容易心累",
+      inviteDirection: "先別提邀約，多陪她聊卡關的心情，建立安全感再說",
+    },
+    hintAssessment: { verdict: "preserved", revisedEvidenceQuote: null },
+  };
+  const mabelParseOptions = {
+    allowGameBreakdown: true,
+    requireCompleteCard: true,
+    enforceGeneratedQuality: true,
+    relaxSubjectiveQualityRubrics: true,
+    turns: mabelTurns,
+    appliedHintTurns: [mabelRepairHint],
+  };
+  const card = parseDebriefCard(JSON.stringify(mabelCard), mabelParseOptions);
+  assertEquals(card.gameBreakdown?.inviteDirection.includes("先別提邀約"), true);
+
+  // repair 局任何可貼邀約句照舊全擋：soft 邀約 suggestedLine 仍整卡打回。
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...mabelCard,
+          suggestedLine: "等妳耍廢充完電，改天約杯咖啡如何？",
+        }),
+        mabelParseOptions,
+      ),
+    Error,
+    "debrief_hint_assessment_revision_required",
+  );
+  // repair 局 direct 敘事照舊是矛盾：不得建議現在直接邀約。
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...mabelCard,
+          nextInviteMove: "現在適合直接約她週末喝咖啡收尾。",
+        }),
+        mabelParseOptions,
+      ),
+    Error,
+    "debrief_hint_assessment_revision_required",
+  );
+
+  // 同事故 Haiku 補發的兩個詞面 FP：
+  // 「現在直接邀約會讓她覺得…」＝後果警告不是 direct 建議；
+  // 「她需要更多安定感才能考慮見面」＝斟酌條件句不是「她邀約過」宣稱。
+  const mabelHaikuCard = {
+    ...mabelCard,
+    summary: "照著提示道歉後接住她的狀態，但後續沒有進一步鋪墊，邀約時機還不成熟。",
+    strengths: [
+      "你有照提示做，及時修復了那句話帶來的冒犯感",
+      "接住她說的『下午工作卡住』，展現了傾聽而不是只想約",
+    ],
+    watchouts: [
+      "她回應變短且沒有反問你，只在分享自己的狀態，防備心還在",
+      "現在邀約會顯得不夠體貼，她需要更多安定感才能考慮見面",
+    ],
+    gameBreakdown: {
+      ...mabelCard.gameBreakdown,
+      failureState:
+        "她回應變短、沒反問，說明防備還在；現在直接邀約會讓她覺得你只想約，不是真的關心她的狀態",
+    },
+  };
+  const haikuCard = parseDebriefCard(
+    JSON.stringify(mabelHaikuCard),
+    mabelParseOptions,
+  );
+  assertEquals(haikuCard.watchouts.length, 2);
+
+  // 真宣稱照擋：她真的發出過見面邀約但逐字稿沒證據，仍整卡打回。
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...mabelHaikuCard,
+          watchouts: [
+            "她回應變短且沒有反問你，只在分享自己的狀態，防備心還在",
+            "她主動提了見面，你卻沒有接住這個窗口",
+          ],
+        }),
+        mabelParseOptions,
+      ),
+    Error,
+    "debrief_quality_invalid_partner_initiative",
+  );
+});

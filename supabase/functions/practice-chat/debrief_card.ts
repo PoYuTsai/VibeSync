@@ -433,7 +433,7 @@ function explicitNarrativeRoute(value: string): HintStrategyRoute | null {
     return "build";
   }
   if (
-    /(?:沒有|沒)(?:做|給|丟|推)?(?:出)?(?:直接|明確)?邀約.{0,10}(?:失誤|錯|問題|可惜)|(?:太被動|偏保守|早該).{0,12}(?:直接)?(?:約|邀約)|(?:現在|這輪|下一句|下一步|接下來|應該|可以|建議|不妨|適合|立刻|趁現在).{0,12}(?:直接|明確)?(?:約她|邀她|約對方|邀對方|問她(?:哪天|何時|什麼時候).{0,6}有空|把.{1,12}收成.{0,4}(?:見面|咖啡|邀約)|去(?:喝咖啡|吃飯|散步|看展|逛街))|(?<!升到)(?<!是否)(?<!考慮)(?<!評估)(?:直接|明確|立刻|趁現在)(?:約|邀約)|(?:約|邀約).{0,8}(?:時機|窗口)(?:已經)?成熟/u
+    /(?:沒有|沒)(?:做|給|丟|推)?(?:出)?(?:直接|明確)?邀約.{0,10}(?:失誤|錯|問題|可惜)|(?:太被動|偏保守|早該).{0,12}(?:直接)?(?:約|邀約)|(?:現在|這輪|下一句|下一步|接下來|應該|可以|建議|不妨|適合|立刻|趁現在).{0,12}(?:直接|明確)?(?:約她|邀她|約對方|邀對方|問她(?:哪天|何時|什麼時候).{0,6}有空|把.{1,12}收成.{0,4}(?:見面|咖啡|邀約)|去(?:喝咖啡|吃飯|散步|看展|逛街))|(?<!升到)(?<!是否)(?<!考慮)(?<!評估)(?:直接|明確|立刻|趁現在)(?:約|邀約)(?!會(?:讓|被|顯得|踩|嚇|太|有))|(?:約|邀約).{0,8}(?:時機|窗口)(?:已經)?成熟/u
       .test(text)
   ) {
     return "direct";
@@ -488,7 +488,15 @@ function cardContradictsHintStrategy(
   const narrativeRoutes = strategyBearingFields(card)
     .map(explicitNarrativeRoute)
     .filter((route): route is HintStrategyRoute => route !== null);
-  if (narrativeRoutes.some((route) => route !== authoritative)) return true;
+  // 2026-07-24 Mabel FP：repair 提示被照做後，拆解卡的前瞻指引自然轉入
+  // 鋪墊敘事（先別約、累積安全感）——與「修復」同向，是局勢推進不是翻案。
+  // repair 局的 soft/direct 敘事與任何可貼邀約句（下方 invite level）照舊全擋。
+  const narrativeContradicts = narrativeRoutes.some((route) => {
+    if (route === authoritative) return false;
+    if (authoritative === "repair" && route === "build") return false;
+    return true;
+  });
+  if (narrativeContradicts) return true;
 
   const pasteableInviteLevels = [
     practiceInviteLevelFor(card.suggestedLine),
@@ -795,8 +803,9 @@ function clauseClaimsPartnerInitiatedInvite(value: string): boolean {
   ) {
     return false;
   }
-  // 動詞與邀約詞之間隔著「窗口/機會/時機」＝機會描述或教練指令句（如「順著她給的窗口直接邀約」），非「她邀約過」宣稱
-  return /(?:她|對方).{0,28}(?:主動(?:提(?:了|出)?|說|問|給|丟|發出)?|(?:提(?:了|出)?|說想|說要|問|給|丟|發出|表示想|想|要|願意))(?:(?!窗口|機會|時機|的).){0,12}(?:見面|碰面|邀約|約你|邀你)/u
+  // 動詞與邀約詞之間隔著「窗口/機會/時機」＝機會描述或教練指令句（如「順著她給的窗口直接邀約」），非「她邀約過」宣稱；
+  // 隔著「考慮」＝斟酌條件句（「她需要更多安定感才能考慮見面」，2026-07-24 Mabel FP），也不是「她邀約過」。
+  return /(?:她|對方).{0,28}(?:主動(?:提(?:了|出)?|說|問|給|丟|發出)?|(?:提(?:了|出)?|說想|說要|問|給|丟|發出|表示想|想|(?<!需)要|願意))(?:(?!窗口|機會|時機|考慮|的).){0,12}(?:見面|碰面|邀約|約你|邀你)/u
     .test(compact) ||
     // 「邀約窗口/機會/時機」是機會描述不是「她發出過邀約」的宣稱，不觸發本 gate
     /(?:她|對方)的.{0,10}(?:邀約(?!窗口|機會|時機)|見面提議|約見)/u.test(compact);
