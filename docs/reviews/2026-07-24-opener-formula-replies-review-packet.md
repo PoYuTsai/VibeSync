@@ -132,6 +132,9 @@
 
 ## Rollout／rollback（§7.4，未授權執行）
 
+0. （Codex 二審採納）正式 apply 前先在可拋棄測試庫演練：完整套用一次＋
+   人為中斷一次，確認失敗時原 constraint／functions 全數回滾（Management
+   API 單 query＝單 transaction 的執行證據）。
 1. Compatibility Edge ref＝`d36be925`（validator 讀 legacy/new、prompt 未
    要求公式）——migration-first 後可安全部署。
 2. Feature Edge ref＝commit 2 之後任一 HEAD。
@@ -160,15 +163,56 @@
 
 ### 二輪
 
-- Codex re-review：
-- GLM adversarial：
-- Reconciliation：
+最終審查 range：**`aad497d0..287e4717`**（＋本檔所在 docs commit）。
+
+- Codex re-review（對修復 diff `2347f166..25941bf8`）：**NOT APPROVED**——
+  P2-1 閉合但抓到新缺口 U+0085（NEL 只有 Dart 視為空白），並主張 P2-3
+  的 accepted-risk 需要需求方（Eric）明示 waiver、非實作方自行接受。
+- GLM adversarial（focused packet：normalizer＋migration＋validators＋
+  handler 節錄＋Dart guard；glm-5.2）：**0 P0/P1、2 P2、1 uncertain**，
+  五項正確性主張逐項判定「正常流程下均成立」。
+  - 註：GLM 前兩呼空回（`GLM returned no content`）根因＝wrapper
+    `max_tokens=8192` 被 reasoning 吃光；已修 wrapper（65536）後成功。
+    此為 host-local infra 修復，不在本 repo。
+
+### 二輪 reconciliation
+
+| Finding | 判定 | 處置 |
+|---|---|---|
+| Codex：U+0085 NEL 空白缺口（Dart trim 吃、JS/PG 不吃） | **TP** | 已修（`287e4717`）：normalizer／TS ledger validator／migration 三層改「JS/Dart trim 聯集」判空；smoke S4 補 U+0085 態；含實字欄位不誤殺（有測試）。Deno 723/723 綠。**因兩輪上限已滿，此修復未再送 Codex 三審**——修復內容單純（whitespace 集合＋一行 regex），證據齊備，殘餘驗證留給 Eric 裁示 |
+| Codex：P2-3 需求方 waiver（request-level handler 測試缺席） | **維持 open，交 Eric 決策** | Codex 主張正確：accepted-risk 應由需求擁有者拍板。選項：(a) waiver——沿用 New Topic 本體同級保證（helper 單元＋source anchors＋編譯期必填）出貨；(b) 另開案建 handler test harness（獨立工程）再收此案。**在 Eric 拍板前，本案不得宣稱 review APPROVED** |
+| Codex minor：sync 測試非完整反向檢查（新增 placeholder 不會被抓） | **TP（殘餘 minor）** | 已知限制：正向（排除集字串必在 prompt 源）＋反向（四條既知 placeholder 必在排除集）都鎖住既有面；「未來新增第五條 placeholder 忘記入排除集」仍靠 review 紀律。單一資料源重構（prompt 由常數插值組裝）會犧牲 prompt 可讀性與既有 source-scan 慣例，判不值得，列 residual |
+| Codex minor：packet 未寫死最終 range | **TP** | 已修（本節） |
+| Codex uncertain：migration transactionality 無執行證據 | **維持 runbook 條款** | 部署當日以 Management API 單 query 套用並先在測試庫演練失敗回滾（部署節新增步驟 0） |
+| Codex uncertain：舊部署 Edge 是否引用 marker | **FP（可最終確認）** | 現行 production Edge＝main 部署（git 可回溯）；全 repo grep 無 runtime 引用；marker 於 20260724120000 引入至今只用於 runbook 手動驗證。部署前可對 prod 舊 revision artifact 再 grep 一次收尾 |
+| GLM P2-1：Dart 不修剪 U+FEFF → 三方空白語意不一致 | **FP（實證推翻）** | Dart 3.11 實測 `"﻿".trim().isEmpty == true`（Dart String.trim 依文件額外修剪 BOM）；`"".trim().isEmpty == true` 同時佐證 U+0085 修復方向正確 |
+| GLM P2-2：droppedCount 把「未檢查項」也算 dropped、註解自相矛盾 | **TP（僅註解語病）** | 行為與計畫 §8 binding 定義完全一致（array 長度−canonical 數、含超過兩則）；已改註解措辭消歧義，行為零變更 |
+| GLM U-1：repair 路徑不重取 formula／repair parsed 是否 strip | **FP／by-design** | 計畫 §6.1 binding：「Repair 回覆即使意外含 formula，也不得採用」——不重取是規格要求；`repairMalformedOpenerPayload` 內部即過 `normalizeOpenerPayload`（strip formulaOpeners），response 再以 canonical 覆蓋（雙層），且有 source-scan 測試鎖 repair 分支不得讀寫 formula |
+
+### 最終狀態
+
+- **0 P0／P1（兩位審查者一致）**；核心契約隔離、ledger 相容、raw 不穿透、
+  grounding 守門、tier/quota 不變：兩位審查者均判正確。
+- **未達 APPROVED**：唯一 blocker＝Codex 主張 §11.2/11.3 request-level
+  測試缺席需 Eric 明示 waiver（或另開 harness 案）；連帶 U+0085 修復
+  （`287e4717`）因兩輪上限未經 Codex 複核。
+- 依計畫 §14：兩輪已滿、仍有 blocker → 停，不宣稱 safe，交 Eric 裁示。
 
 ## 未執行（需 Eric 明示）
 
 - push／apply migration／deploy analyze-chat／live smoke／TestFlight／
   dogfood-safe 宣稱。
 
-## Open concerns
+## Open concerns（需 Eric 裁示）
 
-（review 後填入）
+1. **P2-3 waiver 決策（唯一 review blocker）**：§11.2/11.3 的 request-level
+   handler 情境沒有可執行測試（index.ts import 即啟動 server 的架構限制，
+   與已部署的 New Topic 本體同級）。選項：(a) waiver 出貨；(b) 另開
+   handler test harness 案。未拍板前不宣稱 review APPROVED。
+2. U+0085 修復（`287e4717`）因兩輪上限未經 Codex 複核（內容＝whitespace
+   集合＋一行 regex，測試齊備）。
+3. Sync 測試對「未來新增 prompt placeholder」無自動防護（residual minor）。
+4. PG smoke（S1–S14）待 migration 授權後於真 PG 執行；執行前四-key ledger
+   相容不得宣稱 DB-verified。
+5. New Topic token 分布 NOT MEASURED；feature Edge 啟用前需授權後跑 ≥20 次
+   black-box sample（§8 evidence gate）。

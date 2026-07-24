@@ -73,9 +73,10 @@ export type FormulaNormalizeOptions = {
 export type FormulaNormalizeOutcome = {
   replies: FormulaReply[];
   /**
-   * 本次模型 formula array 中被檢查、但未進 canonical 0–2 結果的項目數
-   *（malformed、over-cap、schema leak、internal label、duplicate、超過
-   * 兩則都算；§8 telemetry 定義）。非 array 輸入＝0。只記總數不記內容。
+   * 進入本次模型 formula array、但未進 canonical 0–2 結果的項目數＝
+   * array 長度 − canonical 數（malformed、over-cap、schema leak、
+   * internal label、duplicate 與「收滿兩則後的其餘項」都算；§8
+   * telemetry 定義）。非 array 輸入＝0。只記總數不記內容。
    */
   droppedCount: number;
 };
