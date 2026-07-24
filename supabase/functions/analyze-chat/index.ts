@@ -5279,14 +5279,23 @@ serve(async (req) => {
       const newTopicOwnerToken = crypto.randomUUID();
       const newTopicRpc = async (fn: string, params: Record<string, unknown>) =>
         await supabase.rpc(fn, params);
-      const releaseNewTopicCurrentClaim = async (): Promise<boolean> =>
-        await releaseNewTopicClaim({
+      const releaseNewTopicCurrentClaim = async (): Promise<boolean> => {
+        const released = await releaseNewTopicClaim({
           rpc: newTopicRpc,
           userId: user.id,
           requestId: newTopicRequest.requestId,
           inputHash: newTopicInputHash,
           ownerToken: newTopicOwnerToken,
         });
+        // GLM review I4：lease/claim 生命週期是最高風險觀測面，release
+        // 成敗都必留 telemetry（失敗＝pending row 留到 lease 過期/takeover）。
+        logInfo("new_topic_claim_released", {
+          user: summarizeUser(user.id),
+          requestId: newTopicRequest.requestId,
+          released,
+        });
+        return released;
+      };
       const newTopicReleaseFailedResponse = () =>
         jsonResponse({
           error: "NEW_TOPIC_CLAIM_RELEASE_RETRYABLE",
@@ -5349,6 +5358,10 @@ serve(async (req) => {
         });
         const claimResponse = handleNewTopicClaimOutcome(claim);
         if (claimResponse !== null) return claimResponse;
+        logInfo("new_topic_claim_acquired", {
+          user: summarizeUser(user.id),
+          requestId: newTopicRequest.requestId,
+        });
       }
 
       // 5. Fixed cost 3 quota gate（Free 只要月/日都剩 ≥3 就不得因 tier 先
