@@ -224,12 +224,12 @@ Full Flutter（PASS）：
 | GLM M1：amend 改 SHA＝歷史髒 | **說明**：amend 前的 7188dac6 從未 push；6dccfc1b 才是首次 push 的版本，無 force-push |
 | GLM M2：packet mojibake | **pipeline 問題**：packet 本體 UTF-8 正常（Codex 讀取無誤）；GLM wrapper 編碼另案修 |
 
-### 留給 Eric 拍板（本輪不硬啃）
+### 原留 Eric 拍板兩項 → 2026-07-24 Eric 拍板「兩個都做」，已完成
 
-| Finding | 現狀與理由 |
+| Finding | 處置（commit） |
 |---|---|
-| Codex I3：route-level UI 整合測試（deep link／consent／paywall／mode switch 保留結果） | repo 既有 opener screen 本來就無 route-level widget harness（現行測試策略以 contract/unit 為主）；倉促建 harness 引入 flaky 風險高。已覆蓋：mode/route 解析 4 測、card widget 2 測、既有 opener 97 測。若 Eric／複審認定 §15.4 為硬 acceptance criteria，開後續案補（建議優先序：deep link→mode switch state→consent cancel） |
-| Codex M1／GLM I4（殘餘）：telemetry 與 §14.1 逐項同名 | Mapping：received→`new_topic_request_invalid`(反向)+claim_acquired、replay_hit→`new_topic_replayed`、request_pending→claim outcome 409 log（現以 response 為準，無獨立事件）、claim_acquired/claim_released→**已補**、model_rate_limited→`model_rate_limited{scope:new_topic}`、response_repaired/invalid→同名、settlement_succeeded→`new_topic_generated`、settlement_replayed→settle 內 charged=false（含於 `new_topic_generated.charged`）、settlement_pending→`new_topic_settlement_pending`、success→`new_topic_generated`。缺口＝`request_received`／`request_pending` 無獨立事件；如需完全同名，開 telemetry 對齊小案 |
+| Codex I3：route-level UI 整合測試 | **DONE**（`aa15642f`）：`test/widget/features/opener/opening_rescue_mode_switch_test.dart` 四測——/opener 預設面板、`?mode=new_topic` deep link（含無對象生成鍵 disabled）、unknown fallback、模式來回切換保留兩側 state（輸入文字＋情境 chip）。Hermetic（Hive 暫存＋providers override）。consent/paywall 整合流仍以 unit/contract 層覆蓋（AiDataSharingConsent 為 static dialog，route-level harness 另涉 dialog pump 與 RevenueCat stub，價值密度低，明列為殘餘非債） |
+| Codex M1／GLM I4（殘餘）：telemetry 與 §14.1 逐項同名 | **DONE**（`dafc0bac`）：補 `new_topic_request_received`（sanitize＋material 過後）、`new_topic_request_pending`（preflight/claim 兩階段）、`new_topic_model_rate_limited`（專名，generic 慣例並存）、`new_topic_settlement_succeeded`／`new_topic_settlement_replayed` 分流、`new_topic_generated`→`new_topic_success`、`new_topic_replayed`→`new_topic_replay_hit`；source test 錨定 §14.1 十二事件名＋§14.3 禁記面。analyze-chat 套件 711 綠 |
 
 ## Reconciliation 後測試證據
 
@@ -244,6 +244,7 @@ Full Flutter（PASS）：
    語意（並行 claim 單 owner、settle +3 原子性、quota race 回滾、takeover
    fencing、RPC privilege 矩陣）只有 SQL 源碼＋mock 層證據，未經真 PG 驗
    證。**條件核准**：live step 6 全過前不得宣稱 verified、不得放 dogfood。
-2. Route-level UI 整合測試缺口＝已知接受的債（見上表，Eric 拍板）。
-3. Telemetry 兩個事件名未逐字對齊 §14.1（`request_received`／
-   `request_pending`），觀測面已足以覆蓋高風險路徑。
+2. ~~Route-level UI 整合測試缺口~~ → 已補（aa15642f）；殘餘＝consent/
+   paywall 的 route-level 整合流仍以 unit 層覆蓋（見上表說明）。
+3. ~~Telemetry 事件名未逐字對齊~~ → 已補（dafc0bac），§14.1 十二事件
+   全數同名並由 source test 錨定。
