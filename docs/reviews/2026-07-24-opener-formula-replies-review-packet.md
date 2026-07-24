@@ -198,10 +198,44 @@
   （`287e4717`）因兩輪上限未經 Codex 複核。
 - 依計畫 §14：兩輪已滿、仍有 blocker → 停，不宣稱 safe，交 Eric 裁示。
 
-## 未執行（需 Eric 明示）
+## 部署執行紀錄（2026-07-24，Eric 授權後執行）
 
-- push／apply migration／deploy analyze-chat／live smoke／TestFlight／
-  dogfood-safe 宣稱。
+依部署閘門順序全數通過：
+
+1. **乾跑演練**：`BEGIN＋整份 migration＋ROLLBACK` 經 Management API 對
+   prod 真資料執行成功（交易內 marker 讀 v2、回滾後仍 v1）——單 query＝
+   單 transaction 的原子性有執行證據（Codex 二審 uncertain 閉合）。
+2. **Migration**：`20260724180000_new_topic_formula_topics.sql` 正式套用
+   （單交易含 `schema_migrations` 版本記錄）。
+3. **驗證**：marker=`new-topic-exactly-once-v2`；RLS enabled；cron 存在；
+   7 筆 legacy rows 通過新 constraint（constraint def 含 formulaTopics）；
+   privilege 矩陣 7 函式 anon/authenticated 全 false、service_role 全 true。
+4. **PG smoke（真 PostgreSQL，測試帳號，S1–S14 全過）**：legacy 三-key
+   合法、四-key 0/1/2 合法（Free/Paid）、三則/缺欄/whitespace-only
+   （\t、U+3000、U+0085）/超長/多鍵/非 array/未知頂層鍵全拒、invalid
+   formula settle RAISE＋quota/result 同交易回滾、legacy 與 new shape
+   fresh settle＋claim replay 同 body、late owner 回 stored winner、
+   marker v2、RLS＋helper privilege 正確。單交易 ROLLBACK 零殘留
+   （rows=7、test counter=0）。
+5. **Deploy**：push `aad497d0..144df84f` → CI「Deploy Edge Function」
+   run 30088982621 → **success**。
+6. **Live smoke（production、測試帳號免扣）**：
+   `tools/new-topic-formula/live_formula_smoke.ts`
+   - Opener v1（無 contractVersion）：200、五卡、不炸。
+   - Opener v2 ×10：全 200、五型完整、formula 0/1/2＝0/0/10、canonical
+     形狀＋無內部標籤全過、outputTokens 1701–1856／3000、avg 34.2s。
+   - New Topic fresh ×10：全 200、五題＋usage.cost=3、formula＝0/0/10、
+     avg 25.2s；同 requestId replay body 與 fresh **完全一致**。
+   - Edge telemetry（function_logs）：`new_topic_success` outputTokens
+     1301–1382／3000、stopReason=end_turn、repaired=false、
+     formulaTopicsCount=2、DroppedCount=0——§8 evidence gate 已閉合
+     （≥20 樣本、無截斷證據，token cap 3000 維持正確）。
+   - smoke 產生的測試 rows 已刪（rows 回 7）。
+
+## 未執行（留待後續）
+
+- iOS build（僅 Eric 手動 dispatch）與真機 dogfood（公式卡目檢：區塊
+  順序、複製、長文、窄螢幕）。
 
 ## Open concerns → Eric 裁示結果（2026-07-24）
 
