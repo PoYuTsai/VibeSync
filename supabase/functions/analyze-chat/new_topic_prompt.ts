@@ -64,9 +64,13 @@ export const NEW_TOPIC_PROMPT = `你是 VibeSync 的聊天教練，幫用戶想�
 不得讓對方知道系統如何記錄或推測她。
 
 went_cold / after_date / stuck / warm_up 的既有節奏規則全部繼續適用。
-openingLine 目標 45–80 個繁中字元；whyItWorks 目標 60–100 個繁中字元。
-whyItWorks 用一句教練話說明為什麼這句現在好接；若自然，可補她回後怎麼
-順著接。
+三個元素是內部檢查表，不是三段都要各自展開成完整句。
+三個元素都必須在 openingLine 裡看得到；各用一小片語即可，合成一則自然訊息；
+最多兩個短句，最多一個問句。壓縮但不可刪掉「我」：保留一個最短的當下反應、
+狀態或感受；刪掉重複態度詞與證明式前綴。
+openingLine 目標 30–50 個繁中字元；若超過 50 字，先刪除重複態度詞與贅語再輸出。
+whyItWorks 目標 25–45 個繁中字元，限一句，只說明為什麼這句現在好接，
+不要重複 openingLine 的字面。
 
 ## 輸出格式
 只輸出一個 JSON object，不要 code fence、不要前後說明：

@@ -497,7 +497,17 @@ Deno.test({
       ),
     );
     assert(source.includes("不得把\neffectiveStyleContext 與對方素材自行拼成共同點"));
-    assert(source.includes("openingLine 目標 45–80 個繁中字元；whyItWorks 目標 60–100 個繁中字元"));
+    assert(
+      source.includes("三個元素是內部檢查表，不是三段都要各自展開成完整句"),
+    );
+    assert(source.includes("三個元素都必須在 openingLine 裡看得到"));
+    assert(source.includes("壓縮但不可刪掉「我」"));
+    assert(source.includes("最多兩個短句，最多一個問句"));
+    assert(source.includes("openingLine 目標 30–50 個繁中字元"));
+    assert(source.includes("若超過 50 字，先刪除重複態度詞與贅語再輸出"));
+    assert(source.includes("whyItWorks 目標 25–45 個繁中字元，限一句"));
+    assertFalse(source.includes("openingLine 目標 45–80 個繁中字元"));
+    assertFalse(source.includes("whyItWorks 目標 60–100 個繁中字元"));
     assert(source.includes("強例只示範結構，不得照抄"));
 
     // Schema：formulaOpeners 是輸出格式最後一個 key（先完成原契約）。

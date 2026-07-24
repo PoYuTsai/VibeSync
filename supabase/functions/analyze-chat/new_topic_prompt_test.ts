@@ -174,8 +174,20 @@ Deno.test("公式新話題（計畫 §5.2）：prompt 段落＋schema 殿後＋�
   }
   assert(NEW_TOPIC_PROMPT.includes("不得讓對方知道系統如何記錄或推測她"));
   assert(
-    NEW_TOPIC_PROMPT.includes("openingLine 目標 45–80 個繁中字元；whyItWorks 目標 60–100 個繁中字元"),
+    NEW_TOPIC_PROMPT.includes(
+      "三個元素是內部檢查表，不是三段都要各自展開成完整句",
+    ),
   );
+  assert(NEW_TOPIC_PROMPT.includes("三個元素都必須在 openingLine 裡看得到"));
+  assert(NEW_TOPIC_PROMPT.includes("壓縮但不可刪掉「我」"));
+  assert(NEW_TOPIC_PROMPT.includes("最多兩個短句，最多一個問句"));
+  assert(NEW_TOPIC_PROMPT.includes("openingLine 目標 30–50 個繁中字元"));
+  assert(
+    NEW_TOPIC_PROMPT.includes("若超過 50 字，先刪除重複態度詞與贅語再輸出"),
+  );
+  assert(NEW_TOPIC_PROMPT.includes("whyItWorks 目標 25–45 個繁中字元，限一句"));
+  assertFalse(NEW_TOPIC_PROMPT.includes("openingLine 目標 45–80 個繁中字元"));
+  assertFalse(NEW_TOPIC_PROMPT.includes("whyItWorks 目標 60–100 個繁中字元"));
 
   // Schema：formulaTopics 殿後（在 recommendation 之後）。
   const recommendationAt = NEW_TOPIC_PROMPT.indexOf('"recommendation": {');

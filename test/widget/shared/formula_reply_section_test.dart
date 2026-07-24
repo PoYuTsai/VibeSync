@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/shared/widgets/formula_reply_section.dart';
 
 Future<List<String>> _mockClipboard(WidgetTester t) async {
@@ -62,14 +63,49 @@ void main() {
       ));
       expect(find.text('公式新話題'), findsOneWidget);
       expect(find.text(FormulaReplySection.subtitle), findsOneWidget);
+      expect(find.text('固定結構'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('formula-reply-section')),
+        findsOneWidget,
+      );
       expect(find.text('為什麼好接'), findsNWidgets(count));
       expect(find.text('可直接傳'), findsNWidgets(count));
-      expect(find.byKey(const ValueKey('formula-reply-card-0')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('formula-reply-card-0')), findsOneWidget);
       expect(
         find.byKey(const ValueKey('formula-reply-card-1')),
         count == 2 ? findsOneWidget : findsNothing,
       );
     }
+  });
+
+  testWidgets('公式區以梅紫群組包住深色扁平卡，和上方一般回覆形成層級', (t) async {
+    await t.pumpWidget(_host(
+      FormulaReplySection(
+        title: '公式開場',
+        entries: [_entry(1), _entry(2)],
+        onCopyOpeningLine: (_) {},
+      ),
+    ));
+
+    final section = t.widget<Container>(
+      find.byKey(const ValueKey('formula-reply-section')),
+    );
+    final sectionDecoration = section.decoration! as BoxDecoration;
+    expect(sectionDecoration.gradient, isA<LinearGradient>());
+    expect(
+      (sectionDecoration.gradient! as LinearGradient).colors,
+      contains(AppColors.coachSurfaceRaised),
+    );
+
+    final card = t.widget<Container>(
+      find.byKey(const ValueKey('formula-reply-card-0')),
+    );
+    final cardDecoration = card.decoration! as BoxDecoration;
+    expect(
+      cardDecoration.color,
+      AppColors.coachBackgroundMid.withValues(alpha: 0.84),
+    );
   });
 
   testWidgets('複製只複製 openingLine（不含教練註解）', (t) async {
@@ -90,6 +126,38 @@ void main() {
     expect(tapped?.openingLine, _entry(2).openingLine);
     expect(copied, [_entry(2).openingLine]);
     expect(copied.single.contains(_entry(2).whyItWorks), isFalse);
+  });
+
+  testWidgets('複製按鈕維持至少 48dp 觸控高度', (t) async {
+    await t.pumpWidget(_host(
+      FormulaReplySection(
+        title: '公式開場',
+        entries: [_entry(1)],
+        onCopyOpeningLine: (_) {},
+      ),
+    ));
+
+    final button = t.widget<TextButton>(find.widgetWithText(TextButton, '複製'));
+    final minimumSize = button.style?.minimumSize?.resolve({});
+    expect(minimumSize, isNotNull);
+    expect(minimumSize!.height, greaterThanOrEqualTo(48));
+  });
+
+  testWidgets('320px＋1.5 倍文字仍不 overflow', (t) async {
+    await t.binding.setSurfaceSize(const Size(320, 700));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+    await t.pumpWidget(_host(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(1.5)),
+        child: FormulaReplySection(
+          title: '公式開場',
+          entries: [_entry(1), _entry(2)],
+          onCopyOpeningLine: (_) {},
+        ),
+      ),
+      width: 320,
+    ));
+    expect(t.takeException(), isNull);
   });
 
   testWidgets('hard-cap 邊界長文＋窄螢幕（320）不 overflow、不 ellipsis', (t) async {
