@@ -1,0 +1,219 @@
+{
+  "schemaVersion": 1,
+  "id": "ebook-4-meeting",
+  "contentVersion": 1,
+  "number": 4,
+  "title": "從聊天走到見面",
+  "subtitle": "把雙方的意願變成一個具體安排",
+  "goal": "把雙方的意願轉成小而具體的見面安排，並安全地處理拒絕、取消與到場。",
+  "access": "premium",
+  "theme": "bridge",
+  "estimatedMinutes": 50,
+  "sourceRefs": [
+    {
+      "document": "five-stage-course",
+      "sections": ["階段 3 轉線下", "階段 4 到場", "第七節 十二週訓練計畫"]
+    },
+    {
+      "document": "field-handbook",
+      "sections": ["第四部 種子與約會提案", "第七部 自評表"]
+    }
+  ],
+  "chapters": [
+    {
+      "id": "ebook-4-chapter-1",
+      "number": "4.1",
+      "title": "時間窗與兩種卡關",
+      "learningGoal": "你是不敢開口，還是開口的方式有問題？",
+      "estimatedMinutes": 9,
+      "sourceRefs": [
+        {
+          "document": "five-stage-course",
+          "sections": ["3.1 兩種不同的卡關", "3.2 時間窗"]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "ebook-4-c1-b1",
+          "text": "「聊得很好但約不出來」其實是兩個完全不同的問題，解法也完全不同。先確認自己是哪一種，否則你會一直練不需要練的東西。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-4-c1-b2",
+          "tone": "goal",
+          "title": "這一章只回答一個問題",
+          "text": "你是不敢開口，還是開口的方式有問題？"
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-4-c1-cmp-1",
+          "title": "兩種卡關",
+          "items": [
+            {
+              "id": "ebook-4-c1-cmp-1-a",
+              "stance": "neutral",
+              "label": "類型 A：心理阻力",
+              "text": "聊了兩週，很愉快，但從來沒提見面。",
+              "note": "這是最可惜的失敗：對方本來可能會答應，但提案從未被提出。解法不是學技巧，是設定規則強迫自己執行。"
+            },
+            {
+              "id": "ebook-4-c1-cmp-1-b",
+              "stance": "neutral",
+              "label": "類型 B：技術問題",
+              "text": "你開口了，但被婉拒或被延後。",
+              "note": "這通常是時機或提案方式的問題——太模糊、太大、或熱度已經過了。解法是把提案改成小而具體。"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "id": "ebook-4-c1-b3",
+          "text": "時間窗：對話會衰減"
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-4-c1-b4",
+          "text": "軟體上的關係沒有共同社交圈支撐，你只是對方手機裡的一個對話框。時間拉長，你的顯著度下降，而對方可能同時在跟其他人聊。所以「聊得夠熟再約」通常不是策略，是拖延——而那個「夠熟」的時點在軟體上多半不會到來。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-4-c1-b5",
+          "tone": "principle",
+          "title": "在熱度最高的時候提出",
+          "text": "實務上這通常落在前三到五天內、對話正好聊到某個具體東西的時候。這是啟發式建議，不是保證公式——輪數本身不會讓對方答應，動能才會。看到動能就用，不要等一個不存在的完美時點。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-4-c1-b6",
+          "tone": "warning",
+          "title": "類型 A 的強制規則",
+          "text": "對話進行到第五輪還沒約，這一輪就約。這條規則的目的不是提高單次成功率，是打破「再熟一點」的無限延後，並且讓你終於產生可以檢討的資料。"
+        },
+        {
+          "type": "dialogue",
+          "id": "ebook-4-c1-dlg-1",
+          "title": "同樣的第六輪，兩種走法",
+          "caption": "左側是類型 A 的典型延後，右側是接在動能上的提案。",
+          "lines": [
+            {
+              "id": "ebook-4-c1-dlg-1-l1",
+              "speaker": "other",
+              "text": "哈哈哈那家真的很誇張，我朋友上次排了一個半小時",
+              "signal": "green",
+              "annotation": "綠燈：她主動加碼，還給了「怎麼去比較好」的細節。這是熱度最高點。"
+            },
+            {
+              "id": "ebook-4-c1-dlg-1-l2",
+              "speaker": "you",
+              "text": "太狠了。那你有推薦別家嗎",
+              "annotation": "類型 A 的典型動作：把最高點換成下一個話題。動能從這裡開始漏。"
+            },
+            {
+              "id": "ebook-4-c1-dlg-1-l3",
+              "speaker": "coach",
+              "text": "同一個位置，改成這樣：「那就平日去。你週四下班大概幾點？」",
+              "annotation": "接在她自己給的建議上（她說平日才有位子），提案變成話題的延伸，而不是突然的邀約。"
+            }
+          ]
+        },
+        {
+          "type": "flipCard",
+          "id": "ebook-4-c1-flip-1",
+          "frontTitle": "「我還沒準備好開口」",
+          "frontText": "他聊了兩週，每天都有回，覺得再多聊幾天關係會更穩，然後對話慢慢就淡掉了。",
+          "backTitle": "他沒有在準備，他在等一個不會來的時點",
+          "backText": "對話的動能是會衰減的資產。等待不會讓對方更想見你，只會讓你在她的收件匣裡變得比較不顯著。",
+          "backPoints": [
+            "類型 A 的問題不是技巧不足，是提案從未被提出。",
+            "解法是規則，不是勇氣：第五輪還沒約，這一輪就約。",
+            "被婉拒是可以檢討的資料；沒開口連資料都沒有。"
+          ]
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-4-c1-quiz-1",
+          "mode": "single",
+          "revision": 1,
+          "scenario": "他和三個人各聊了兩週以上，都聊得很愉快，一次也沒提過見面。他問你他該練什麼。",
+          "question": "他該先練哪一項？",
+          "choices": [
+            {
+              "id": "ebook-4-c1-quiz-1-a",
+              "text": "先練提案的用字，把邀約寫得更漂亮",
+              "isCorrect": false,
+              "feedback": "用字是類型 B 的問題。他的提案數是零，再好的句子也沒有被送出去。"
+            },
+            {
+              "id": "ebook-4-c1-quiz-1-b",
+              "text": "設一條硬規則，強迫自己在第五輪前提出具體邀約",
+              "isCorrect": true,
+              "feedback": "對。這是類型 A：心理阻力型。他需要的是執行規則，不是更多技巧。"
+            },
+            {
+              "id": "ebook-4-c1-quiz-1-c",
+              "text": "先把對話練得更深，等關係更穩再開口",
+              "isCorrect": false,
+              "feedback": "這正是造成問題的想法。對話會衰減，「更熟」的那個點在軟體上通常不會到來。"
+            },
+            {
+              "id": "ebook-4-c1-quiz-1-d",
+              "text": "同時多聊幾個人，提高基數",
+              "isCorrect": false,
+              "feedback": "提高基數對前段瓶頸有用，但他的瓶頸在最後這一步。多聊只會讓同一個問題多發生幾次。"
+            }
+          ],
+          "takeaway": "先分清楚你是沒開口，還是開口方式有問題。沒開口的人不需要更多技巧，需要一條規則。"
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-4-c1-quiz-2",
+          "mode": "multiple",
+          "revision": 1,
+          "question": "下列哪些是「現在適合提出下一步」的訊號？（可多選）",
+          "choices": [
+            {
+              "id": "ebook-4-c1-quiz-2-a",
+              "text": "她開始問你的個人問題",
+              "isCorrect": true,
+              "feedback": "對。投資方向反轉是很強的訊號。"
+            },
+            {
+              "id": "ebook-4-c1-quiz-2-b",
+              "text": "她主動提到週末、有空或想去哪",
+              "isCorrect": true,
+              "feedback": "對，這幾乎是明示。出現就直接提具體安排。"
+            },
+            {
+              "id": "ebook-4-c1-quiz-2-c",
+              "text": "你們已經連續聊了兩個星期",
+              "isCorrect": false,
+              "feedback": "時間長度本身不是訊號，反而是衰減的警訊。動能才是訊號。"
+            },
+            {
+              "id": "ebook-4-c1-quiz-2-d",
+              "text": "她引用了你之前說過的話",
+              "isCorrect": true,
+              "feedback": "對。這表示她在記，也在投入。"
+            }
+          ],
+          "takeaway": "看動能，不看天數。對方主動加碼、追問你、引用你說過的話，就是可以提出下一步的時候。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-4-c1-safety-1",
+          "tone": "safety",
+          "title": "提出邀約時，拒絕的空間要一直在",
+          "text": "「在熱度最高時提出」是關於時機，不是關於施壓。任何提案都必須讓對方能輕鬆說不、輕鬆改時間，而且不需要解釋原因。明確的拒絕就是終點，立刻停止；模糊的回應不算同意。強制規則只約束你自己開口，不約束對方答應。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-4-c1-b7",
+          "tone": "takeaway",
+          "title": "今天只帶走一個動作",
+          "text": "打開你目前最熱的那一段對話，數一下你提過幾次具體的見面安排。如果是零，那你要練的就是開口，不是聊天。"
+        }
+      ]
+    }
+  ]
+}

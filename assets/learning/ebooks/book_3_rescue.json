@@ -1,0 +1,359 @@
+{
+  "schemaVersion": 1,
+  "id": "ebook-3-rescue",
+  "contentVersion": 1,
+  "number": 3,
+  "title": "對話急救室：該救，還是該停",
+  "subtitle": "找出死亡點，決定救、維持還是停",
+  "goal": "找出對話的死亡點，並判斷該救援、換軌還是停止。",
+  "access": "premium",
+  "theme": "firstAid",
+  "estimatedMinutes": 50,
+  "sourceRefs": [
+    {
+      "document": "field-handbook",
+      "sections": ["第三部 對話拆解庫"]
+    },
+    {
+      "document": "five-stage-course",
+      "sections": ["第五節 診斷樹", "第六節 警告區"]
+    }
+  ],
+  "chapters": [
+    {
+      "id": "ebook-3-chapter-1",
+      "number": "3.1",
+      "title": "死亡案例 A–C：查戶口、泛用稱讚、升級棘輪",
+      "learningGoal": "這段對話是在哪一句死掉的？",
+      "estimatedMinutes": 10,
+      "sourceRefs": [
+        {
+          "document": "field-handbook",
+          "sections": ["案例 A 查戶口式死亡", "案例 B 泛用稱讚死亡", "案例 C 升級棘輪死亡"]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "ebook-3-c1-b1",
+          "text": "大部分人不是不懂道理，是看不出自己的對話在哪一句死掉的。這本書拆解十四個案例：六個死亡案例、三個救援案例、三個完整成功弧線，再加兩個種子案例。這一章先看最常見的三種死法。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-3-c1-b2",
+          "tone": "goal",
+          "title": "這一章只回答一個問題",
+          "text": "這段對話是在哪一句死掉的？"
+        },
+        {
+          "type": "heading",
+          "id": "ebook-3-c1-b3",
+          "text": "案例 A：查戶口式死亡（最常見）"
+        },
+        {
+          "type": "dialogue",
+          "id": "ebook-3-c1-dlg-a",
+          "caption": "整段只有 I：他一直在收集資料，什麼都沒給出去。",
+          "lines": [
+            {
+              "id": "ebook-3-c1-dlg-a-l1",
+              "speaker": "you",
+              "text": "嗨，你也住台北？",
+              "annotation": "I（微）事實問句，可回應面接近零。"
+            },
+            {
+              "id": "ebook-3-c1-dlg-a-l2",
+              "speaker": "other",
+              "text": "對啊"
+            },
+            {
+              "id": "ebook-3-c1-dlg-a-l3",
+              "speaker": "you",
+              "text": "你在哪一區",
+              "annotation": "I 又一個事實問句，她在填表格。"
+            },
+            {
+              "id": "ebook-3-c1-dlg-a-l4",
+              "speaker": "other",
+              "text": "中山區"
+            },
+            {
+              "id": "ebook-3-c1-dlg-a-l5",
+              "speaker": "you",
+              "text": "喔喔 我在信義區",
+              "isDeathPoint": true,
+              "annotation": "死亡點。她給了「中山區」這個可延伸的具體資訊，他只回了對稱的事實：沒有 E、沒有 V、沒有任何鉤子。"
+            },
+            {
+              "id": "ebook-3-c1-dlg-a-l6",
+              "speaker": "other",
+              "text": "哈哈",
+              "signal": "yellow",
+              "annotation": "禮貌性填充，這是最後一次黃燈。"
+            },
+            {
+              "id": "ebook-3-c1-dlg-a-l7",
+              "speaker": "you",
+              "text": "你平常假日都在幹嘛",
+              "annotation": "又一個開放式大問題。此時她已經沒有投入的動機。"
+            },
+            {
+              "id": "ebook-3-c1-dlg-a-l8",
+              "speaker": "other",
+              "text": "看情況",
+              "signal": "red"
+            }
+          ]
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-3-c1-cmp-a",
+          "title": "第 5 句怎麼改",
+          "items": [
+            {
+              "id": "ebook-3-c1-cmp-a-weak",
+              "stance": "weak",
+              "label": "原句",
+              "text": "喔喔 我在信義區",
+              "note": "對稱的事實，把她給的具體資訊丟掉了。"
+            },
+            {
+              "id": "ebook-3-c1-cmp-a-strong",
+              "stance": "strong",
+              "label": "改後",
+              "text": "中山區？那你晚上應該有很多不該有的宵夜選擇。我在信義區，附近只有貴的和更貴的",
+              "note": "E↑ 誇張化；V↑ 側面露出生活；而且她可以推薦、可以吐槽、可以反問。"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "id": "ebook-3-c1-b4",
+          "text": "案例 B：泛用稱讚死亡"
+        },
+        {
+          "type": "dialogue",
+          "id": "ebook-3-c1-dlg-b",
+          "caption": "連續三則給予之後直接索取，把整段互動轉成交易請求。",
+          "lines": [
+            {
+              "id": "ebook-3-c1-dlg-b-l1",
+              "speaker": "you",
+              "text": "你真的超漂亮的",
+              "annotation": "R↑↑ V↓ 泛用稱讚。它可以說給任何人，所以不傳遞資訊，只傳遞「我的認可很廉價」。"
+            },
+            {
+              "id": "ebook-3-c1-dlg-b-l2",
+              "speaker": "other",
+              "text": "謝謝哈哈",
+              "signal": "yellow"
+            },
+            {
+              "id": "ebook-3-c1-dlg-b-l3",
+              "speaker": "you",
+              "text": "真的 我很少看到這麼有氣質的",
+              "annotation": "R↑↑↑ V↓↓ 重複同一個動作，效果遞減而且轉為負面。"
+            },
+            {
+              "id": "ebook-3-c1-dlg-b-l4",
+              "speaker": "other",
+              "text": "太誇張了啦"
+            },
+            {
+              "id": "ebook-3-c1-dlg-b-l5",
+              "speaker": "you",
+              "text": "沒有啊 是真的 你有男朋友嗎",
+              "isDeathPoint": true,
+              "annotation": "死亡點。F↓↓ 三次給予之後突然索取，這一句把互動變成請求。"
+            },
+            {
+              "id": "ebook-3-c1-dlg-b-l6",
+              "speaker": "other",
+              "text": "（已讀不回）",
+              "signal": "red"
+            }
+          ]
+        },
+        {
+          "type": "callout",
+          "id": "ebook-3-c1-b5",
+          "tone": "principle",
+          "title": "表達興趣沒有錯，泛用奉承才有",
+          "text": "「把興趣說出來」指的是具體的、有觀察基礎的興趣。「我很少看到這麼有氣質的」不傳遞任何關於你的資訊；「你講你辭掉工作去唸書那段我一直在想，滿佩服的」才是——它具體、自帶證據，而且證明你在聽。"
+        },
+        {
+          "type": "heading",
+          "id": "ebook-3-c1-b6",
+          "text": "案例 C：升級棘輪死亡"
+        },
+        {
+          "type": "dialogue",
+          "id": "ebook-3-c1-dlg-c",
+          "caption": "紅燈之後繼續加壓，撤退句救不回來。",
+          "lines": [
+            {
+              "id": "ebook-3-c1-dlg-c-l1",
+              "speaker": "you",
+              "text": "你笑起來有點壞"
+            },
+            {
+              "id": "ebook-3-c1-dlg-c-l2",
+              "speaker": "other",
+              "text": "哪有",
+              "signal": "yellow",
+              "annotation": "標準黃燈：不是拒絕，也不是接受。"
+            },
+            {
+              "id": "ebook-3-c1-dlg-c-l3",
+              "speaker": "you",
+              "text": "有喔 感覺很會玩",
+              "annotation": "E↑ 加碼一次，此時還可以。"
+            },
+            {
+              "id": "ebook-3-c1-dlg-c-l4",
+              "speaker": "other",
+              "text": "還好啦 我很無聊",
+              "signal": "red",
+              "annotation": "她主動把自己描述得無趣——這是明確的拉開距離，不是謙虛，也不是欲擒故縱。"
+            },
+            {
+              "id": "ebook-3-c1-dlg-c-l5",
+              "speaker": "you",
+              "text": "騙人 這種都最狠",
+              "isDeathPoint": true,
+              "annotation": "死亡點。紅燈之後繼續加壓。"
+            },
+            {
+              "id": "ebook-3-c1-dlg-c-l6",
+              "speaker": "other",
+              "text": "..."
+            },
+            {
+              "id": "ebook-3-c1-dlg-c-l7",
+              "speaker": "you",
+              "text": "開玩笑的啦 你當真了？",
+              "annotation": "棘輪撤退。無效——問題不是她誤會了，是她聽懂了。"
+            }
+          ]
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-3-c1-cmp-c",
+          "title": "第 5 句的正確做法：他退你也退",
+          "items": [
+            {
+              "id": "ebook-3-c1-cmp-c-weak",
+              "stance": "weak",
+              "label": "加壓",
+              "text": "騙人 這種都最狠",
+              "note": "把紅燈當成需要更用力的訊號。"
+            },
+            {
+              "id": "ebook-3-c1-cmp-c-strong",
+              "stance": "strong",
+              "label": "換軌",
+              "text": "好啦那就當你很無聊。無聊的人週末都在幹嘛",
+              "note": "順著她給的方向（F 讓步）＋維持輕度玩笑（E）＋換到安全話題。"
+            }
+          ]
+        },
+        {
+          "type": "callout",
+          "id": "ebook-3-c1-safety-1",
+          "tone": "safety",
+          "title": "紅燈之後不是挑戰，是界線",
+          "text": "當對方主動把自己說得無趣、乖、不會玩，那是禮貌性煞車。順著它換軌，不要拆穿、不要反駁、不要「證明她其實不是這樣」。對方沒有義務為你的判斷提供證據；她給了訊號，你的工作是接受它。持續在紅燈後施壓，短期可能換到一次回覆，長期只會讓對方封鎖你，也會影響你在共同社交圈的名聲。"
+        },
+        {
+          "type": "flipCard",
+          "id": "ebook-3-c1-flip-1",
+          "frontTitle": "三個案例，三種死法",
+          "frontText": "A：他一直在問。B：他一直在誇。C：他一直在加碼。看起來完全不同，共同點是什麼？",
+          "backTitle": "共同點：他沒有在讀對方",
+          "backText": "三段都是照著自己的腳本走，沒有根據對方的回應調整。A 忽略了她給的具體資訊；B 忽略了她「太誇張了啦」的降溫；C 忽略了明確的紅燈。",
+          "backPoints": [
+            "死亡點幾乎都不是「說錯話」，是「沒有接住上一句」。",
+            "修法都一樣：先回應對方剛給的東西，再決定下一步。",
+            "回應性是這一整套裡邊際效益最高、下行風險最低的技能。"
+          ]
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-3-c1-quiz-1",
+          "mode": "single",
+          "revision": 1,
+          "scenario": "她：「今天終於把那個專案交出去了。」你：「恭喜。你之後有什麼計畫嗎？」她：「還沒想。」你：「喔喔，那你平常喜歡做什麼？」",
+          "question": "這段對話的死亡點是哪一句？",
+          "choices": [
+            {
+              "id": "ebook-3-c1-quiz-1-a",
+              "text": "「恭喜。你之後有什麼計畫嗎？」",
+              "isCorrect": true,
+              "feedback": "對。她剛交出一個專案，那裡面有情緒（鬆一口氣、可能還很累）。「恭喜」承認了但不延伸，後半句立刻換成新的事實問句，把開口關掉了。"
+            },
+            {
+              "id": "ebook-3-c1-quiz-1-b",
+              "text": "「還沒想。」",
+              "isCorrect": false,
+              "feedback": "這是結果不是原因。她的短回覆是前一句造成的。"
+            },
+            {
+              "id": "ebook-3-c1-quiz-1-c",
+              "text": "「那你平常喜歡做什麼？」",
+              "isCorrect": false,
+              "feedback": "這一句確實很弱，但對話在上一句就已經死了；這只是在確認死亡。"
+            },
+            {
+              "id": "ebook-3-c1-quiz-1-d",
+              "text": "沒有死亡點，她只是比較安靜",
+              "isCorrect": false,
+              "feedback": "回覆連續收短又沒有主動給任何東西，這是動能已經掉光的訊號，不是文字低能量。"
+            }
+          ],
+          "takeaway": "對方給情緒的時候，往情緒走。「恭喜／辛苦了／不錯欸」都是終結句。"
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-3-c1-quiz-2",
+          "mode": "multiple",
+          "revision": 1,
+          "question": "案例 A 的那段對話裡，哪些標記全程掛零？（可多選）",
+          "choices": [
+            {
+              "id": "ebook-3-c1-quiz-2-a",
+              "text": "V 價值：他沒有露出任何關於自己的具體生活",
+              "isCorrect": true,
+              "feedback": "對。「我在信義區」是資料，不是生活內容。她九句話之後還是不知道他是誰。"
+            },
+            {
+              "id": "ebook-3-c1-quiz-2-b",
+              "text": "E 情緒：整段沒有任何幽默、畫面或共鳴",
+              "isCorrect": true,
+              "feedback": "對。沒有一句讓她想笑或想接。"
+            },
+            {
+              "id": "ebook-3-c1-quiz-2-c",
+              "text": "I 投資：他完全沒有投入",
+              "isCorrect": false,
+              "feedback": "I 指的是對方投入了多少。他其實投入很多——問題是他投入的全是索取型的問句。"
+            },
+            {
+              "id": "ebook-3-c1-quiz-2-d",
+              "text": "R 互惠：他沒有表達過任何具體的興趣",
+              "isCorrect": true,
+              "feedback": "對。他問了很多，但從來沒有讓她知道「我對你哪一點有興趣」。"
+            }
+          ],
+          "takeaway": "整段只有 I，就是查戶口。修法是每次接到資訊：先回應，再給自己的東西，最後才開新口。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-3-c1-b7",
+          "tone": "takeaway",
+          "title": "今天只帶走一個動作",
+          "text": "找一段你最近死掉的對話，只做一件事：圈出對方最後一次主動給你東西的那一句，然後看你回了什麼。那通常就是死亡點。"
+        }
+      ]
+    }
+  ]
+}

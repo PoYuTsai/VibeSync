@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 1,
+  "id": "ebook-1-bottleneck",
+  "contentVersion": 1,
+  "number": 1,
+  "title": "先找到真正卡點",
+  "subtitle": "先修第一個瓶頸，不再亂補話術",
+  "goal": "找到你目前真正卡住的那一段，並先把檔案與開場修好。",
+  "access": "free",
+  "theme": "compass",
+  "estimatedMinutes": 40,
+  "sourceRefs": [
+    {
+      "document": "five-stage-course",
+      "sections": ["第一節", "階段 0", "階段 1", "第五節 診斷樹"]
+    },
+    {
+      "document": "field-handbook",
+      "sections": ["第二部 開場範例庫"]
+    }
+  ],
+  "chapters": [
+    {
+      "id": "ebook-1-chapter-1",
+      "number": "1.1",
+      "title": "六個數字，找出你卡在哪",
+      "learningGoal": "你目前真正的瓶頸在哪一段？",
+      "estimatedMinutes": 8,
+      "sourceRefs": [
+        {
+          "document": "five-stage-course",
+          "sections": ["1.1 收集你自己的數字", "1.2 定位", "1.3 兩個先講清楚的觀念"]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "ebook-1-c1-b1",
+          "text": "你可能已經換過三次主照、背過幾套開場句，還是覺得沒有進展。多數人卡住不是因為不夠努力，是因為修錯了地方——對話上的挫折感最強烈，所以人很自然會以為問題出在對話。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-1-c1-b2",
+          "tone": "goal",
+          "title": "這一章只回答一個問題",
+          "text": "你目前真正的瓶頸在哪一段？"
+        },
+        {
+          "type": "heading",
+          "id": "ebook-1-c1-b3",
+          "text": "先收集六個數字"
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-1-c1-b4",
+          "text": "接下來兩週，什麼做法都不要改，只記錄。憑感覺判斷自己哪裡不好，通常會指向錯的地方。"
+        },
+        {
+          "type": "bulletList",
+          "id": "ebook-1-c1-b5",
+          "ordered": true,
+          "items": [
+            "A 配對數：兩週內配對到幾個。",
+            "B 開場後有回覆：你發了第一則訊息，有回你的幾個。",
+            "C 撐過五輪：一來一往五次以上還活著的幾個。",
+            "D 實際提出見面：你真的開口約的幾個。",
+            "E 對方答應：說好的幾個。",
+            "F 真的到場：實際見到面的幾個。"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-1-c1-b6",
+          "text": "依序往下看，在第一個明顯掉下來的地方停住，那就是你現在的階段：A 很少，問題在檔案；A 還行但 B 偏低，問題在開場；B 還行但 C 偏低，問題在續航；C 還行但 D 很低，是你幾乎沒開口；D 還行但 E 偏低，是提案方式或時機；E 還行但 F 偏低，問題在到場。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-1-c1-b7",
+          "tone": "principle",
+          "title": "這是漏斗，不是一堆獨立技巧",
+          "text": "後段的技術補不了前段的問題。兩週只配對到三個人，就算對話無懈可擊，天花板還是三個。先修最前面掉下來的那一段，幾乎永遠是報酬率最高的動作。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-1-c1-b8",
+          "tone": "info",
+          "title": "失敗的基準率本來就高",
+          "text": "在交友軟體上，大部分配對不會變成對話，大部分對話不會變成見面。這是環境的結構，不是你的人格缺陷。如果你把每次失敗都讀成「我做錯了什麼」，你會開始修沒壞的東西，也更容易在對方明顯沒興趣時繼續施壓。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-1-c1-b9",
+          "tone": "warning",
+          "title": "只看趨勢，不看單週",
+          "text": "樣本太少的時候，結果很容易被偶然波動蓋過去。這種時候你需要的是把數量拉起來，而不是再換一套話術。這六個數字沒有共同的產業基準，你比的是自己的趨勢與最大落差。"
+        },
+        {
+          "type": "dialogue",
+          "id": "ebook-1-c1-dlg-1",
+          "title": "同一份數字，兩種讀法",
+          "caption": "教練與使用者的自我診斷示範。",
+          "lines": [
+            {
+              "id": "ebook-1-c1-dlg-1-l1",
+              "speaker": "coach",
+              "text": "先不要講你覺得自己哪裡不好。把六個數字念一遍。"
+            },
+            {
+              "id": "ebook-1-c1-dlg-1-l2",
+              "speaker": "you",
+              "text": "兩週配對 18 個，有回的 12 個，撐過五輪的 7 個，開口約的 1 個。"
+            },
+            {
+              "id": "ebook-1-c1-dlg-1-l3",
+              "speaker": "coach",
+              "text": "那你不是對話有問題。你的對話撐得住，你只是幾乎沒有開口。",
+              "annotation": "第一個明顯落差在 C→D（7 變成 1），不在 B→C。"
+            },
+            {
+              "id": "ebook-1-c1-dlg-1-l4",
+              "speaker": "you",
+              "text": "我本來以為我要再練聊天。"
+            },
+            {
+              "id": "ebook-1-c1-dlg-1-l5",
+              "speaker": "coach",
+              "text": "再練聊天會讓撐過五輪變成 9 個，開口約的還是 1 個。你要練的是開口。",
+              "annotation": "練錯階段最貴的地方不是沒效，是它讓你覺得自己在進步。"
+            }
+          ]
+        },
+        {
+          "type": "flipCard",
+          "id": "ebook-1-c1-flip-1",
+          "frontTitle": "表面問題",
+          "frontText": "「我聊天不夠有趣，所以約不出來。」",
+          "backTitle": "真正的瓶頸",
+          "backText": "數字顯示對話撐得住（C 不低），真正掉下來的是 D——他從來沒有提出具體見面。這一段練再多聊天技巧都不會動。",
+          "backPoints": [
+            "對話上的挫折感最強，所以最容易被誤認成瓶頸。",
+            "瓶頸看的是哪一段落差最大，不是哪一段最難受。",
+            "先修最前面掉下來的那一段，報酬率最高。"
+          ]
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-1-c1-quiz-1",
+          "mode": "single",
+          "revision": 1,
+          "scenario": "兩週紀錄：配對 24、開場後有回 4、撐過五輪 3、開口約 2、對方答應 2、真的到場 1。",
+          "question": "他目前的第一個瓶頸在哪一段？",
+          "choices": [
+            {
+              "id": "ebook-1-c1-quiz-1-a",
+              "text": "檔案：配對數太少",
+              "isCorrect": false,
+              "feedback": "兩週 24 個配對不算少，這一段沒有明顯卡住。"
+            },
+            {
+              "id": "ebook-1-c1-quiz-1-b",
+              "text": "開場：配對了但很少人回",
+              "isCorrect": true,
+              "feedback": "對。24 個配對只有 4 個回覆，這是第一個明顯掉下來的地方，先修這裡。"
+            },
+            {
+              "id": "ebook-1-c1-quiz-1-c",
+              "text": "續航：回了但幾輪就死",
+              "isCorrect": false,
+              "feedback": "有回的 4 個裡有 3 個撐過五輪，這一段其實還行。"
+            },
+            {
+              "id": "ebook-1-c1-quiz-1-d",
+              "text": "到場：答應了卻沒出現",
+              "isCorrect": false,
+              "feedback": "這一段確實有損耗，但它在更後面。前段的量太小，修後段只能省下零點幾次。"
+            }
+          ],
+          "takeaway": "依序往下找，在第一個明顯落差停下來——那就是你這段時間唯一要練的階段。"
+        },
+        {
+          "type": "heading",
+          "id": "ebook-1-c1-b10",
+          "text": "那我接下來讀哪一本"
+        },
+        {
+          "type": "bulletList",
+          "id": "ebook-1-c1-b11",
+          "items": [
+            "卡在 A 或 B：留在這本，先把檔案與開場修好。",
+            "卡在 C（回了但幾輪就死）：讀《看懂一段對話》。",
+            "對話常常突然死掉，或你不確定該救還是該停：讀《對話急救室》。",
+            "聊得起來但約不出來、答應了卻沒到場：讀《從聊天走到見面》。"
+          ]
+        },
+        {
+          "type": "callout",
+          "id": "ebook-1-c1-b12",
+          "tone": "takeaway",
+          "title": "今天只帶走一個動作",
+          "text": "翻回你的對話列表，先數出這六個數字裡最容易算的兩個：配對數與有回覆數。有了這兩個數字，你已經能排除一半的猜測。"
+        }
+      ]
+    }
+  ]
+}
