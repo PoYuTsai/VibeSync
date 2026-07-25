@@ -21,6 +21,7 @@ import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../follow_up_notification/data/providers/follow_up_notification_service.dart';
 import '../../../follow_up_notification/domain/follow_up_opt_in.dart';
+import '../../../learning/data/providers/ebook_providers.dart';
 import '../../../practice_chat/data/providers/practice_chat_providers.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/subscription_tier_helper.dart';
@@ -706,6 +707,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     ref.invalidate(usageDataProvider);
     ref.invalidate(practiceChatControllerProvider);
     ref.invalidate(recentPracticeSessionsProvider);
+    // 電子書進度是 account scoped（key 綁 account id），登出後必須丟掉
+    // 記憶體中的 snapshot，否則下一個帳號會先看到上一個帳號的完成度。
+    ref.invalidate(ebookProgressControllerProvider);
   }
 
   Future<void> _clearLocalLogoutState() async {

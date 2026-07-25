@@ -17,6 +17,7 @@ import '../../../practice_chat/presentation/widgets/practice_room_entry_card.dar
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/articles_data.dart';
 import '../../data/providers/learning_providers.dart';
+import '../widgets/ebook_shelf_section.dart';
 
 class LearningScreen extends ConsumerWidget {
   const LearningScreen({super.key});
@@ -49,15 +50,25 @@ class LearningScreen extends ConsumerWidget {
           },
         ),
 
-        // Hero 下方：練習專區 header + 免費閱讀提示（首屏外，往下滑才看到）。
+        // Hero 下方第一個區塊：互動電子書書架。
+        // 順序刻意是 練習室 Hero → 電子書 → 短篇文章：教材優先、文章在後。
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16, 28, 16, 0),
+            child: EbookShelfSection(),
+          ),
+        ),
+
+        // 短篇實戰文章 header + 每日免費額度提示。
+        // 額度提示只放在這裡：電子書不消耗文章額度，放在書架上方會誤導。
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 28, 16, 0),
+            padding: const EdgeInsets.fromLTRB(16, 26, 16, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '練習專區',
+                  '短篇實戰文章',
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.ctaStart,
                     fontWeight: FontWeight.w600,
@@ -88,13 +99,14 @@ class LearningScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 24),
 
-                // Free user daily limit notice
+                // Free user daily limit notice（只約束短篇文章）
                 if (subscription.isFreeUser)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 16),
                     child: BrandInfoNote(
                       icon: Icons.info_outline,
-                      text: '今日剩餘 ${readService.remainingReads} 篇免費閱讀',
+                      text: '今日剩餘 ${readService.remainingReads} 篇免費閱讀'
+                          '（電子書不計入）',
                     ),
                   ),
               ],

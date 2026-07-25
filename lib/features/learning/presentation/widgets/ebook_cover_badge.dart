@@ -48,38 +48,49 @@ class EbookCoverBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 書封是固定比例的裝飾元素：讓它隨字級長大（有上限），內層再用
+    // FittedBox 收斂，這樣 2.0 字級下既讀得到書號也不會 overflow。
+    final scale =
+        MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.6);
+    final boxSize = size * scale;
+
     return Semantics(
       label: '第 ${book.number} 冊',
       excludeSemantics: true,
       child: Container(
-        width: size,
-        height: size,
+        width: boxSize,
+        height: boxSize,
+        padding: EdgeInsets.all(boxSize * 0.08),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: ebookThemeGradient(book.theme),
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(size * 0.28),
+          borderRadius: BorderRadius.circular(boxSize * 0.28),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              ebookThemeIcon(book.theme),
-              size: size * 0.34,
-              color: Colors.white,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              '第 ${book.number} 冊',
-              style: AppTypography.caption.copyWith(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                ebookThemeIcon(book.theme),
+                size: size * 0.34,
                 color: Colors.white,
-                fontWeight: FontWeight.w800,
-                fontSize: size * 0.16,
               ),
-            ),
-          ],
+              const SizedBox(height: 2),
+              Text(
+                '第 ${book.number} 冊',
+                textScaler: TextScaler.noScaling,
+                style: AppTypography.caption.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: size * 0.16,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
