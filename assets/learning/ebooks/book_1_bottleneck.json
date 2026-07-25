@@ -200,6 +200,893 @@
           "text": "翻回你的對話列表，先數出這六個數字裡最容易算的兩個：配對數與有回覆數。有了這兩個數字，你已經能排除一半的猜測。"
         }
       ]
+    },
+    {
+      "id": "ebook-1-chapter-2",
+      "number": "1.2",
+      "title": "六張照片，各有一個工作",
+      "learningGoal": "你的六張照片各自在回答什麼問題？",
+      "estimatedMinutes": 8,
+      "sourceRefs": [
+        {
+          "document": "five-stage-course",
+          "sections": ["階段 0.1", "階段 0.2 照片組合", "階段 0.4 底層"]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "ebook-1-c2-b1",
+          "text": "軟體的介面決定了決策方式：使用者在一到兩秒內看照片做判斷，文字說明只在照片通過之後才會被讀。這一階段最少人練，因為它不聰明、沒有技巧感，而且需要你出門拍照——但它的槓桿是整個漏斗裡最大的。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-1-c2-b2",
+          "tone": "goal",
+          "title": "這一章只回答一個問題",
+          "text": "你的六張照片各自在回答什麼問題？"
+        },
+        {
+          "type": "heading",
+          "id": "ebook-1-c2-b3",
+          "text": "六個功能位，不是六張好照片"
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-1-c2-b4",
+          "text": "不要把六張照片當成「六張好看的照片」，要當成六個功能位。同一個功能重複三次，等於你只用了一格。"
+        },
+        {
+          "type": "bulletList",
+          "id": "ebook-1-c2-b5",
+          "ordered": true,
+          "items": [
+            "主照：清楚看到臉、光線好、有表情。常見錯誤是墨鏡、拍太遠、用合照、修圖過度。",
+            "全身：讓對方知道你的體型與穿著品味。完全沒有全身照通常會被預設成在隱瞞。",
+            "社交：你和朋友在一起，顯示你有社交生活。不要放第一張，也不要人多到分不出哪個是你。",
+            "興趣／活動：你在做某件具體的事。擺拍感太重、看得出是為了拍照而做，效果會打折。",
+            "生活感：旅行、寵物、場景。純風景照不算——照片裡要有你。",
+            "彈性：一張有趣、有故事感的。這一格用來放你最希望被問到的東西。"
+          ]
+        },
+        {
+          "type": "checklist",
+          "id": "ebook-1-c2-check-1",
+          "title": "照片健檢",
+          "caption": "只勾選你現在真的做到的項目。這裡只保存勾選狀態，不會上傳任何照片。",
+          "items": [
+            {
+              "id": "ebook-1-c2-check-1-i1",
+              "text": "主照裡我的臉佔畫面足夠大，五官清楚"
+            },
+            {
+              "id": "ebook-1-c2-check-1-i2",
+              "text": "至少有一張全身照"
+            },
+            {
+              "id": "ebook-1-c2-check-1-i3",
+              "text": "至少有一張有其他人，而且看得出哪個是我"
+            },
+            {
+              "id": "ebook-1-c2-check-1-i4",
+              "text": "沒有任何一張是廁所鏡子自拍"
+            },
+            {
+              "id": "ebook-1-c2-check-1-i5",
+              "text": "沒有連續三張同一個場景、同一件衣服"
+            },
+            {
+              "id": "ebook-1-c2-check-1-i6",
+              "text": "至少有一張我在笑"
+            }
+          ]
+        },
+        {
+          "type": "callout",
+          "id": "ebook-1-c2-b6",
+          "tone": "warning",
+          "title": "照片能改善的有上限",
+          "text": "照片拍的是你。長期會影響整體呈現的是健康、儀容、合身的穿著與生活內容，這些是幾個月為單位的週期，所以現在就開始，同時進行後面的階段。不要等到「準備好了」才開始用軟體，那個時點不存在。另外，用真實的照片：本人與照片落差太大，在見面時的成本遠高於配對率的收益。"
+        },
+        {
+          "type": "dialogue",
+          "id": "ebook-1-c2-dlg-1",
+          "title": "同一組照片，兩種看法",
+          "lines": [
+            {
+              "id": "ebook-1-c2-dlg-1-l1",
+              "speaker": "you",
+              "text": "我六張都是精選的，每張我都覺得很好看。"
+            },
+            {
+              "id": "ebook-1-c2-dlg-1-l2",
+              "speaker": "coach",
+              "text": "那我換個問法：這六張裡，有幾張讓對方知道你的身高體型？有幾張看得出你平常在做什麼？",
+              "annotation": "問的不是好不好看，是每一格在回答什麼問題。"
+            },
+            {
+              "id": "ebook-1-c2-dlg-1-l3",
+              "speaker": "you",
+              "text": "……好像六張都是半身、都在室內。"
+            },
+            {
+              "id": "ebook-1-c2-dlg-1-l4",
+              "speaker": "coach",
+              "text": "那你其實只用了一格，剩下五格是空的。先補全身跟一張你在做具體事情的照片，這比重拍主照有用得多。",
+              "annotation": "補空格的報酬率高於把已經有的那一格再優化。"
+            }
+          ]
+        },
+        {
+          "type": "flipCard",
+          "id": "ebook-1-c2-flip-1",
+          "frontTitle": "「我每一張都很好看」",
+          "frontText": "六張都是精心挑過的半身照，光線都很好，表情都很自然。為什麼配對數還是很低？",
+          "backTitle": "六張在回答同一個問題",
+          "backText": "好看是門檻，不是策略。當六張都只回答「我的臉長怎樣」，對方就沒有任何可以想像或開口的材料，也會開始懷疑沒有全身照是有原因的。",
+          "backPoints": [
+            "重複的功能位不會加分，只會浪費格數。",
+            "先補空格（全身、社交、活動、生活感），再回頭優化主照。",
+            "每一格都要能讓對方多知道一件關於你的事。"
+          ]
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-1-c2-quiz-1",
+          "mode": "single",
+          "revision": 1,
+          "scenario": "他的六張照片：三張咖啡廳半身自拍、一張墨鏡海邊遠景、一張純風景、一張和五個朋友的合照（分不出是誰）。",
+          "question": "他最該先補哪一格？",
+          "choices": [
+            {
+              "id": "ebook-1-c2-quiz-1-a",
+              "text": "全身照",
+              "isCorrect": true,
+              "feedback": "對。六張裡沒有一張能看出體型與穿著，這一格完全空著，而空著通常會被解讀成隱瞞。"
+            },
+            {
+              "id": "ebook-1-c2-quiz-1-b",
+              "text": "再多一張咖啡廳自拍，但換衣服",
+              "isCorrect": false,
+              "feedback": "這是同一個功能位的第四次重複，不會增加任何新資訊。"
+            },
+            {
+              "id": "ebook-1-c2-quiz-1-c",
+              "text": "把純風景照換成另一張風景照",
+              "isCorrect": false,
+              "feedback": "純風景照的問題不是拍得不好，是照片裡沒有你。換一張風景還是沒有你。"
+            },
+            {
+              "id": "ebook-1-c2-quiz-1-d",
+              "text": "先不要動照片，去寫更好的開場",
+              "isCorrect": false,
+              "feedback": "他的瓶頸在配對數，也就是照片。後段技術補不了前段問題。"
+            }
+          ],
+          "takeaway": "先找出空著的功能位，再談每一張拍得好不好。"
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-1-c2-quiz-2",
+          "mode": "multiple",
+          "revision": 1,
+          "question": "下列哪些是「功能位重複」的症狀？（可多選）",
+          "choices": [
+            {
+              "id": "ebook-1-c2-quiz-2-a",
+              "text": "連續三張同一個場景、同一件衣服",
+              "isCorrect": true,
+              "feedback": "對。這三張回答的是同一個問題，等於只用了一格。"
+            },
+            {
+              "id": "ebook-1-c2-quiz-2-b",
+              "text": "六張都是室內半身",
+              "isCorrect": true,
+              "feedback": "對。沒有全身、沒有活動、沒有社交，五格都空著。"
+            },
+            {
+              "id": "ebook-1-c2-quiz-2-c",
+              "text": "一張主照、一張全身、一張社交、一張活動",
+              "isCorrect": false,
+              "feedback": "這是四個不同的功能位，正是我們要的分布。"
+            },
+            {
+              "id": "ebook-1-c2-quiz-2-d",
+              "text": "兩張都在講同一個興趣，只是角度不同",
+              "isCorrect": true,
+              "feedback": "對。第二張沒有帶來新資訊，把它換成別的功能位更划算。"
+            }
+          ],
+          "takeaway": "判準很簡單：這一張讓對方多知道了哪一件事？答不出來就是重複。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-1-c2-b7",
+          "tone": "takeaway",
+          "title": "今天只帶走一個動作",
+          "text": "打開你的檔案，替每一張照片寫下它負責的功能位。寫不出來的那幾張，就是你這週要換掉的。"
+        }
+      ]
+    },
+    {
+      "id": "ebook-1-chapter-3",
+      "number": "1.3",
+      "title": "Bio 不是履歷，是一個好接的鉤子",
+      "learningGoal": "你的 bio 給了對方一個能開口的位置嗎？",
+      "estimatedMinutes": 6,
+      "sourceRefs": [
+        {
+          "document": "five-stage-course",
+          "sections": ["階段 0.3 自我說明（Bio）"]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "ebook-1-c3-b1",
+          "text": "Bio 只有兩個功能：過濾，以及給對方一個可以開口的鉤子。它不是履歷，不需要證明你很優秀——證明優秀這件事在文字裡本來就會被打折。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-1-c3-b2",
+          "tone": "goal",
+          "title": "這一章只回答一個問題",
+          "text": "你的 bio 給了對方一個能開口的位置嗎？"
+        },
+        {
+          "type": "bulletList",
+          "id": "ebook-1-c3-b3",
+          "title": "三個常見的失敗",
+          "items": [
+            "太長：沒有人會看完。",
+            "條列自己的優點：因為你有動機誇大，所以說服力天生偏低。",
+            "條列對對方的要求（「不要 xxx 的勿擾」）：它傳遞的是防衛，不是選擇性。"
+          ]
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-1-c3-cmp-1",
+          "title": "同一個人，兩種寫法",
+          "items": [
+            {
+              "id": "ebook-1-c3-cmp-1-weak",
+              "stance": "weak",
+              "label": "弱",
+              "text": "熱愛生活，喜歡旅行和美食，希望找到聊得來的人",
+              "note": "三句都是抽象標籤，可以貼在任何人身上，所以不傳遞任何資訊，也沒有任何可以接的地方。"
+            },
+            {
+              "id": "ebook-1-c3-cmp-1-strong",
+              "stance": "strong",
+              "label": "強",
+              "text": "正在學做菜，目前為止最大的成就是煎蛋不黏鍋。週末通常在爬山或在找新的咖啡店。可以推薦我一家嗎，我的清單快空了",
+              "note": "具體（不是「喜歡美食」而是「煎蛋不黏鍋」）、有自嘲（降低距離感），而且最後一句直接給了對方一個超低成本的開口理由。"
+            }
+          ]
+        },
+        {
+          "type": "bulletList",
+          "id": "ebook-1-c3-b4",
+          "title": "有效的結構",
+          "ordered": true,
+          "items": [
+            "一句具體的生活細節。",
+            "一句幽默或自嘲。",
+            "一個低成本的開口（一個問題、一個小求助、一個可以吐槽的點）。"
+          ]
+        },
+        {
+          "type": "dialogue",
+          "id": "ebook-1-c3-dlg-1",
+          "title": "好 bio 的回報：對方先開口",
+          "lines": [
+            {
+              "id": "ebook-1-c3-dlg-1-l1",
+              "speaker": "other",
+              "text": "我知道一家可以坐三小時沒人趕你的，但你要先跟我保證不會寫在推薦名單上",
+              "signal": "green",
+              "annotation": "她直接接了 bio 最後那句求助。這是 bio 的鉤子在替你工作。"
+            },
+            {
+              "id": "ebook-1-c3-dlg-1-l2",
+              "speaker": "you",
+              "text": "成交。不過如果真的很好我可能會忍不住，這種事我沒有信用可言",
+              "annotation": "E↑ 接住她的玩笑並加碼；V↑ 露出一點自己的個性。"
+            }
+          ]
+        },
+        {
+          "type": "flipCard",
+          "id": "ebook-1-c3-flip-1",
+          "frontTitle": "「我很有上進心，重視真誠」",
+          "frontText": "他覺得這句寫得很誠實，也是他真正的樣子。為什麼沒有人因為這句開口？",
+          "backTitle": "誠實不等於具體",
+          "backText": "「上進心」與「真誠」是形容詞，對方無法從裡面拿到任何畫面，也無法從中找到接話的入口。同樣的意思，用一個具體的行為說出來就完全不同。",
+          "backPoints": [
+            "「重視真誠」→「不太會社交客套，最近在練習」。",
+            "「有上進心」→「這週末大概廢不掉，有個案子要收尾」。",
+            "判準：對方讀完能不能回一句話？回不出來就是形容詞太多。"
+          ]
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-1-c3-quiz-1",
+          "mode": "single",
+          "revision": 1,
+          "scenario": "四個人的 bio 最後一句。",
+          "question": "哪一句提供了最低成本的回應入口？",
+          "choices": [
+            {
+              "id": "ebook-1-c3-quiz-1-a",
+              "text": "希望找到能一起走下去的人",
+              "isCorrect": false,
+              "feedback": "這是願望而不是入口。對方讀完不知道要回什麼。"
+            },
+            {
+              "id": "ebook-1-c3-quiz-1-b",
+              "text": "最近在找一家可以坐很久的咖啡店，目前為止都失敗，有推薦嗎",
+              "isCorrect": true,
+              "feedback": "對。它具體、有一點自嘲，而且回答成本極低——講一家店名就行。"
+            },
+            {
+              "id": "ebook-1-c3-quiz-1-c",
+              "text": "不要問我在幹嘛，我不知道怎麼回",
+              "isCorrect": false,
+              "feedback": "這一句把限制放在前面，傳遞的是防衛感，而且反而讓對方更不敢開口。"
+            },
+            {
+              "id": "ebook-1-c3-quiz-1-d",
+              "text": "工程師，重訓，愛吃",
+              "isCorrect": false,
+              "feedback": "三個標籤都太短也太常見，沒有一個能延伸成一句話。"
+            }
+          ],
+          "takeaway": "Bio 的最後一句最好是一個「三個字就能回」的開口。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-1-c3-b5",
+          "tone": "takeaway",
+          "title": "今天只帶走一個動作",
+          "text": "把你 bio 裡最抽象的那一句，換成一個具體的生活細節。只換一句就好。"
+        }
+      ]
+    },
+    {
+      "id": "ebook-1-chapter-4",
+      "number": "1.4",
+      "title": "She／Me／Us：開場不要像查戶口",
+      "learningGoal": "開場怎麼同時提到對方，又露出你自己？",
+      "estimatedMinutes": 9,
+      "sourceRefs": [
+        {
+          "document": "five-stage-course",
+          "sections": ["階段 1.1", "階段 1.2 三個支柱", "階段 1.3 開場範本", "階段 1.4 資訊缺口"]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "ebook-1-c4-b1",
+          "text": "「嗨」「你好嗎」「在幹嘛」失敗的機制不是它無聊，是它索取資訊但不提供任何材料。對方要單方面產出內容，而且產出的內容無處可去——她回「還好」，然後呢？"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-1-c4-b2",
+          "tone": "goal",
+          "title": "這一章只回答一個問題",
+          "text": "開場怎麼同時提到對方，又露出你自己？"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-1-c4-b3",
+          "tone": "principle",
+          "title": "核心原則",
+          "text": "每則訊息都要同時包含一個鉤子（對方可以回應的東西）和一個開口（對方容易接的位置）。"
+        },
+        {
+          "type": "heading",
+          "id": "ebook-1-c4-b4",
+          "text": "聊她：具體引用，不是稱讚"
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-1-c4-cmp-1",
+          "items": [
+            {
+              "id": "ebook-1-c4-cmp-1-w1",
+              "stance": "weak",
+              "label": "弱",
+              "text": "你好漂亮",
+              "note": "可以發給任何人，因此不傳遞任何資訊。"
+            },
+            {
+              "id": "ebook-1-c4-cmp-1-w2",
+              "stance": "weak",
+              "label": "弱",
+              "text": "你也喜歡爬山？",
+              "note": "只是把她檔案上的類別念一次，沒有觀察也沒有自己。"
+            },
+            {
+              "id": "ebook-1-c4-cmp-1-s1",
+              "stance": "strong",
+              "label": "強",
+              "text": "第三張是在哪座山？看起來比我上個月爬的那個友善多了",
+              "note": "具體引用證明你真的看了她的檔案，這本身就是稀缺訊號；後半句還順手露出你也在爬山。"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "id": "ebook-1-c4-b5",
+          "text": "聊我：狀態＋感受，不是事實"
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-1-c4-b6",
+          "text": "事實是零維的，只能被承認或忽略。感受是多維的，可以被共鳴、調侃、追問。"
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-1-c4-cmp-2",
+          "title": "三組對照",
+          "items": [
+            {
+              "id": "ebook-1-c4-cmp-2-a",
+              "stance": "weak",
+              "label": "事實版",
+              "text": "我在健身　／　我剛下班　／　我去過京都",
+              "note": "三句都只能被回「喔」。"
+            },
+            {
+              "id": "ebook-1-c4-cmp-2-b",
+              "stance": "strong",
+              "label": "狀態＋感受版",
+              "text": "剛練完腿，現在下樓梯像八十歲　／　剛下班，腦袋整個被榨乾但又不想睡　／　京都那間寺廟安靜到有點嚇人",
+              "note": "每一句都有畫面，對方可以笑、可以吐槽、可以講自己的版本。"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-1-c4-b7",
+          "text": "聊我們（Us）只有在真的有共同點時才用。沒有就不要硬找——硬湊的「我們」比不提更明顯。"
+        },
+        {
+          "type": "dialogue",
+          "id": "ebook-1-c4-dlg-1",
+          "title": "開場範本：引用＋狀態感受＋低成本開口",
+          "caption": "她的檔案有做菜的照片。",
+          "lines": [
+            {
+              "id": "ebook-1-c4-dlg-1-l1",
+              "speaker": "you",
+              "text": "看到你會做菜有點嫉妒。我最近的最高成就是把泡麵煮到不會太爛。那道是什麼？",
+              "annotation": "具體引用（做菜）＋E↑（自嘲）＋R↑（輕度興趣，但不油）＋一個三個字就能回的問題。"
+            },
+            {
+              "id": "ebook-1-c4-dlg-1-l2",
+              "speaker": "other",
+              "text": "哈哈那是我唯一會的兩道之一，鹽烤鮭魚",
+              "signal": "green",
+              "annotation": "她笑了、給了資訊，還主動加了「唯一會的兩道」這個可以延伸的細節。"
+            }
+          ]
+        },
+        {
+          "type": "flipCard",
+          "id": "ebook-1-c4-flip-1",
+          "frontTitle": "資訊缺口有劑量",
+          "frontText": "「說話留一半」是有效的機制。但為什麼有人用了之後對方直接不回？",
+          "backTitle": "缺口必須是具體而可被填補的",
+          "backText": "「我主業是做網路的，副業……這個等見面再說」是有效的缺口：對方知道要問什麼。「我這個人很複雜」「你猜」不是缺口，它製造的是負擔，而且把工作全丟給對方。",
+          "backPoints": [
+            "有效：對方能問出一個具體的問題。",
+            "無效：對方只能問「什麼意思」。",
+            "判準：你的留白給了她好奇，還是給了她作業？"
+          ]
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-1-c4-quiz-1",
+          "mode": "multiple",
+          "revision": 1,
+          "scenario": "開場：「你這個是重訓還是有氧派的？我最近被朋友拉去練腿，現在對他有點恨意。」",
+          "question": "這句開場做到了哪幾件事？（可多選）",
+          "choices": [
+            {
+              "id": "ebook-1-c4-quiz-1-a",
+              "text": "給了一個超低成本的開口（二選一）",
+              "isCorrect": true,
+              "feedback": "對。二選一的問題回答門檻極低，比開放式問題容易接。"
+            },
+            {
+              "id": "ebook-1-c4-quiz-1-b",
+              "text": "露出了自己的一小塊（V）",
+              "isCorrect": true,
+              "feedback": "對。「被朋友拉去練腿」順手交代了你也在動，而且沒有自誇。"
+            },
+            {
+              "id": "ebook-1-c4-quiz-1-c",
+              "text": "製造了情緒起伏（E）",
+              "isCorrect": true,
+              "feedback": "對。「對他有點恨意」是誇張化，有畫面也好接。"
+            },
+            {
+              "id": "ebook-1-c4-quiz-1-d",
+              "text": "先建立了共同點（Us）",
+              "isCorrect": false,
+              "feedback": "還沒有。共同點要等她回答之後才成立，這句只是在探。"
+            }
+          ],
+          "takeaway": "好的開場通常是：具體引用她的東西 ＋ 你的一句狀態感受 ＋ 一個好回答的開口。"
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-1-c4-quiz-2",
+          "mode": "single",
+          "revision": 1,
+          "question": "以下哪一句是「有效的資訊缺口」？",
+          "choices": [
+            {
+              "id": "ebook-1-c4-quiz-2-a",
+              "text": "我這個人很複雜，你慢慢就知道了",
+              "isCorrect": false,
+              "feedback": "這不是缺口，是負擔。對方連要問什麼都不知道。"
+            },
+            {
+              "id": "ebook-1-c4-quiz-2-b",
+              "text": "我白天做的事很正常，晚上那個副業比較難解釋，改天再說",
+              "isCorrect": true,
+              "feedback": "對。具體到對方可以問出「什麼副業」，而且留白是可被填補的。"
+            },
+            {
+              "id": "ebook-1-c4-quiz-2-c",
+              "text": "你猜我做什麼的",
+              "isCorrect": false,
+              "feedback": "把工作丟給對方，而且猜錯了她還要負責收尾。"
+            },
+            {
+              "id": "ebook-1-c4-quiz-2-d",
+              "text": "我不太想聊工作",
+              "isCorrect": false,
+              "feedback": "這是關門，不是留白。第一句就設限會讓對話更難開始。"
+            }
+          ],
+          "takeaway": "留白要讓對方問得出具體問題，否則就只是把工作丟過去。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-1-c4-b8",
+          "tone": "takeaway",
+          "title": "今天只帶走一個動作",
+          "text": "挑一個還沒回你的配對，把你原本的開場重寫一次：加一句具體引用，再加一句你自己的狀態感受。"
+        }
+      ]
+    },
+    {
+      "id": "ebook-1-chapter-5",
+      "number": "1.5",
+      "title": "八種檔案的開場實驗室",
+      "learningGoal": "面對八種常見檔案，第一句怎麼寫？",
+      "estimatedMinutes": 10,
+      "sourceRefs": [
+        {
+          "document": "field-handbook",
+          "sections": ["第二部 開場範例庫 類型 1–8", "2.9 開場的三個禁區"]
+        },
+        {
+          "document": "five-stage-course",
+          "sections": ["階段 1.5 練習"]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "ebook-1-c5-b1",
+          "text": "這一章是範例庫，不是話術表。每一組都給弱版、強版與原因；你要帶走的是「為什麼強版比較好接」，不是那句話本身。照抄別人的句子，在對方偏離模板的那一刻你就沒東西可用了。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-1-c5-b2",
+          "tone": "goal",
+          "title": "這一章只回答一個問題",
+          "text": "面對八種常見檔案，第一句怎麼寫？"
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-1-c5-cmp-1",
+          "title": "類型 1：旅行照",
+          "items": [
+            {
+              "id": "ebook-1-c5-cmp-1-w",
+              "stance": "weak",
+              "label": "弱",
+              "text": "你很喜歡旅行喔？",
+              "note": "泛用，可以問任何人，資訊量零。"
+            },
+            {
+              "id": "ebook-1-c5-cmp-1-s",
+              "stance": "strong",
+              "label": "強",
+              "text": "第四張是冰島嗎？那個光看起來不像地球。我一直想去但一直被工作卡住",
+              "note": "V↑（有辨識力、有工作）E↑（具體畫面）。她可以糾正你、可以講那趟、也可以反問你的工作。"
+            }
+          ]
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-1-c5-cmp-2",
+          "title": "類型 2：寵物照",
+          "items": [
+            {
+              "id": "ebook-1-c5-cmp-2-w",
+              "stance": "weak",
+              "label": "弱",
+              "text": "好可愛的貓！我也喜歡貓",
+              "note": "稱讚＋標籤，沒有觀察。"
+            },
+            {
+              "id": "ebook-1-c5-cmp-2-s",
+              "stance": "strong",
+              "label": "強",
+              "text": "牠那個表情看起來完全沒把你當主人。叫什麼名字？",
+              "note": "E↑（觀察＋幽默），開口成本極低（回名字就好），而且幾乎沒有人不想聊自己的寵物。"
+            }
+          ]
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-1-c5-cmp-3",
+          "title": "類型 3：做菜／美食",
+          "items": [
+            {
+              "id": "ebook-1-c5-cmp-3-w",
+              "stance": "weak",
+              "label": "弱",
+              "text": "你會做菜喔，好厲害",
+              "note": "評價式稱讚，沒有你自己。"
+            },
+            {
+              "id": "ebook-1-c5-cmp-3-s",
+              "stance": "strong",
+              "label": "強",
+              "text": "看到你會做菜有點嫉妒。我最近的最高成就是把泡麵煮到不會太爛",
+              "note": "E↑（自嘲）R↑（輕度的興趣表達，但不油）。她通常會笑著糾正或分享。"
+            }
+          ]
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-1-c5-cmp-4",
+          "title": "類型 4：運動／健身",
+          "items": [
+            {
+              "id": "ebook-1-c5-cmp-4-w",
+              "stance": "weak",
+              "label": "弱",
+              "text": "你有在健身喔？很自律欸",
+              "note": "又是評價，而且「自律」這個詞誰都能講。"
+            },
+            {
+              "id": "ebook-1-c5-cmp-4-s",
+              "stance": "strong",
+              "label": "強",
+              "text": "你這個是重訓還是有氧派的？我最近被朋友拉去練腿，現在對他有點恨意",
+              "note": "V↑（有在動）E↑（誇張化）F↑（輕度分類問題，她要選邊）。"
+            }
+          ]
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-1-c5-cmp-5",
+          "title": "類型 5：音樂／演唱會／藝文",
+          "items": [
+            {
+              "id": "ebook-1-c5-cmp-5-w",
+              "stance": "weak",
+              "label": "弱",
+              "text": "你喜歡聽什麼音樂？",
+              "note": "開放式大問題，回答成本高。"
+            },
+            {
+              "id": "ebook-1-c5-cmp-5-s",
+              "stance": "strong",
+              "label": "強",
+              "text": "那張是在哪個場子？我上次去 Live House 站太前面，隔天耳鳴一整天但完全不後悔",
+              "note": "V↑（有文化消費）E↑（有故事感），而且問題很具體。"
+            }
+          ]
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-1-c5-cmp-6",
+          "title": "類型 6：職業感很強的檔案",
+          "items": [
+            {
+              "id": "ebook-1-c5-cmp-6-w",
+              "stance": "weak",
+              "label": "弱",
+              "text": "你看起來好厲害，做什麼的？",
+              "note": "先仰視再索取資訊，兩件事都在扣分。"
+            },
+            {
+              "id": "ebook-1-c5-cmp-6-s",
+              "stance": "strong",
+              "label": "強",
+              "text": "從你的照片猜你的工作猜了三次都不確定。只確定不是那種每天五點下班的",
+              "note": "F↑（你在評估她，但是玩笑式的）E↑（懸念）。她幾乎一定會回答，因為你製造了一個要被解答的謎。"
+            }
+          ]
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-1-c5-cmp-7",
+          "title": "類型 7：檔案資訊極少（最難）",
+          "caption": "只有兩三張照片、沒有 bio。沒有東西可引用時，改用「觀察＋假設」。",
+          "items": [
+            {
+              "id": "ebook-1-c5-cmp-7-w",
+              "stance": "weak",
+              "label": "弱",
+              "text": "嗨　／　可以認識一下嗎？",
+              "note": "零資訊，而且與她收到的其他訊息無法區分。"
+            },
+            {
+              "id": "ebook-1-c5-cmp-7-s",
+              "stance": "strong",
+              "label": "強",
+              "text": "你的照片有一個共同點，全部都在戶外。是真的很愛跑外面還是剛好只有這幾張能看",
+              "note": "照片的共通性是唯一可用的具體觀察；後半句的調侃給了 E，而且二選一超好答。"
+            }
+          ]
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-1-c5-cmp-8",
+          "title": "類型 8：Bio 有笑點",
+          "caption": "她的 bio：「會做菜但只會做三道」。",
+          "items": [
+            {
+              "id": "ebook-1-c5-cmp-8-w",
+              "stance": "neutral",
+              "label": "還可以",
+              "text": "哪三道？",
+              "note": "可以用，但太平——你只是問，沒有接她的梗。"
+            },
+            {
+              "id": "ebook-1-c5-cmp-8-s",
+              "stance": "strong",
+              "label": "強",
+              "text": "哪三道？如果其中一道是泡麵我就沒話說了",
+              "note": "接住她的幽默並加碼（E↑），同時露了個性。這是最好接的一種檔案，一定要接她的梗。"
+            }
+          ]
+        },
+        {
+          "type": "callout",
+          "id": "ebook-1-c5-b3",
+          "tone": "warning",
+          "title": "三個禁區",
+          "text": "一、純稱讚外貌（「你好漂亮」）：零資訊，而且與她收到的其他訊息無法區分。二、純問句無自我（「你在幹嘛」）：索取但不給予。三、過長（三行以上）：投資失衡，第一則就顯得需求感過高。"
+        },
+        {
+          "type": "dialogue",
+          "id": "ebook-1-c5-dlg-1",
+          "title": "資訊極少的檔案：觀察型開場",
+          "lines": [
+            {
+              "id": "ebook-1-c5-dlg-1-l1",
+              "speaker": "you",
+              "text": "你的照片有一個共同點，全部都在戶外。是真的很愛跑外面還是剛好只有這幾張能看",
+              "annotation": "唯一可用的具體觀察＋一個二選一的開口。"
+            },
+            {
+              "id": "ebook-1-c5-dlg-1-l2",
+              "speaker": "other",
+              "text": "哈哈後者。室內的我都太醜",
+              "signal": "green",
+              "annotation": "她接了調侃還自嘲加碼，這是很好的起點。"
+            },
+            {
+              "id": "ebook-1-c5-dlg-1-l3",
+              "speaker": "you",
+              "text": "誠實。那你戶外那幾張是同一天拍的嗎，光看起來很像同一個下午",
+              "annotation": "繼續用觀察推進，而不是換一個新的大問題。"
+            }
+          ]
+        },
+        {
+          "type": "flipCard",
+          "id": "ebook-1-c5-flip-1",
+          "frontTitle": "他想找到「那一句最強的開場」",
+          "frontText": "他花了兩個晚上打磨一句開場，發給二十個人，只有兩個回。他覺得句子還要再改。",
+          "backTitle": "這一階段的練習方式是批量與變體",
+          "backText": "沒有一句話對所有檔案都有效。你要練的是「對任何檔案在 30 秒內生成一個具體的開場」，然後用回覆率決定留哪一種寫法。",
+          "backPoints": [
+            "每週寫十個開場，記錄哪些有回。",
+            "同一類型的檔案，試兩種不同開場，比較回覆率。",
+            "回覆率是唯一指標，不是你覺得哪句比較帥。",
+            "資訊少的檔案回覆率天生偏低，不要在那裡耗時間寫長訊息。"
+          ]
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-1-c5-quiz-1",
+          "mode": "single",
+          "revision": 1,
+          "scenario": "她的檔案只有三張自拍，沒有 bio，看不出興趣。",
+          "question": "這種檔案最合理的開場是？",
+          "choices": [
+            {
+              "id": "ebook-1-c5-quiz-1-a",
+              "text": "寫一段三行的自我介紹，展現誠意",
+              "isCorrect": false,
+              "feedback": "投資失衡。資訊少的檔案回覆率天生偏低，長訊息只會讓需求感更明顯。"
+            },
+            {
+              "id": "ebook-1-c5-quiz-1-b",
+              "text": "用照片的共通性做一個具體觀察，再給一個二選一的開口",
+              "isCorrect": true,
+              "feedback": "對。沒有東西可引用時，照片本身的共通性就是唯一可用的具體材料。"
+            },
+            {
+              "id": "ebook-1-c5-quiz-1-c",
+              "text": "先傳「嗨」，等她回了再想",
+              "isCorrect": false,
+              "feedback": "「嗨」索取回應但不提供材料，而且與她收到的其他訊息無法區分。"
+            },
+            {
+              "id": "ebook-1-c5-quiz-1-d",
+              "text": "稱讚她的自拍很好看",
+              "isCorrect": false,
+              "feedback": "純外貌稱讚零資訊，這是三個禁區的第一個。"
+            }
+          ],
+          "takeaway": "沒有材料時，觀察本身就是材料——但要具體，而且要留一個好答的開口。"
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-1-c5-quiz-2",
+          "mode": "multiple",
+          "revision": 1,
+          "question": "下列哪些落在開場的禁區？（可多選）",
+          "choices": [
+            {
+              "id": "ebook-1-c5-quiz-2-a",
+              "text": "「你好漂亮」",
+              "isCorrect": true,
+              "feedback": "對。純外貌稱讚零資訊，也無法與其他訊息區分。"
+            },
+            {
+              "id": "ebook-1-c5-quiz-2-b",
+              "text": "「你在幹嘛」",
+              "isCorrect": true,
+              "feedback": "對。純問句無自我，索取但不給予。"
+            },
+            {
+              "id": "ebook-1-c5-quiz-2-c",
+              "text": "三行以上的自我介紹",
+              "isCorrect": true,
+              "feedback": "對。第一則就過長會讓投資明顯失衡。"
+            },
+            {
+              "id": "ebook-1-c5-quiz-2-d",
+              "text": "引用她第三張照片的一個細節，再加一句自己的狀態",
+              "isCorrect": false,
+              "feedback": "這正是標準結構：具體引用＋你的狀態感受＋低成本開口。"
+            }
+          ],
+          "takeaway": "禁區的共同點都是同一件事：索取回應卻沒有提供材料。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-1-c5-b4",
+          "tone": "takeaway",
+          "title": "今天只帶走一個動作",
+          "text": "這週寫十個開場、記下哪些有回。不要改句子，先累積可以比較的資料。"
+        }
+      ]
     }
   ]
 }
