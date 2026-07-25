@@ -86,9 +86,11 @@ require_clean_agent_context() {
     return 1
   fi
 
-  if [ -f "$REPO_ROOT/AGENTS.md" ] && [ -f "$REPO_ROOT/CLAUDE.md" ] && ! cmp -s "$REPO_ROOT/AGENTS.md" "$REPO_ROOT/CLAUDE.md"; then
-    echo "❌ Codex review blocked: AGENTS.md and CLAUDE.md are out of sync."
-    echo "Sync both rule files before asking Codex to review."
+  if [ -f "$REPO_ROOT/AGENTS.md" ] && [ -f "$REPO_ROOT/CLAUDE.md" ] \
+    && ! cmp -s "$REPO_ROOT/AGENTS.md" "$REPO_ROOT/CLAUDE.md" \
+    && ! grep -Eq '^[[:space:]]*@AGENTS\.md[[:space:]]*$' "$REPO_ROOT/CLAUDE.md"; then
+    echo "❌ Codex review blocked: CLAUDE.md does not import the current AGENTS.md."
+    echo "Restore the canonical project instruction entry before asking Codex to review."
     return 1
   fi
 }

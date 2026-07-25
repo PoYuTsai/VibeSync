@@ -67,15 +67,16 @@ if [[ -n "${bad_completed}" ]]; then
   errors=$((errors + 1))
 fi
 
-# --- 檢查 4: CLAUDE.md ↔ AGENTS.md 必須同步（Codex 讀後者） ---
-# 若 CLAUDE.md 有 stage 但 AGENTS.md 沒同步 stage 為一致內容，擋
+# --- 檢查 4: CLAUDE.md 必須提供有效的 AGENTS.md 入口 ---
+# 接受舊式逐字同步，或讓 CLAUDE.md 直接 @AGENTS.md，避免維護兩份規則。
 if git diff --cached --name-only | grep -q "^${FILE}$"; then
-  if ! diff -q "${FILE}" "AGENTS.md" > /dev/null 2>&1; then
-    echo "❌ ${FILE} 與 AGENTS.md 內容不一致"
-    echo "   兩檔必須同步（Claude Code 讀 CLAUDE.md，Codex 讀 AGENTS.md）"
-    echo "   執行: cp ${FILE} AGENTS.md && git add AGENTS.md"
+  if ! diff -q "${FILE}" "AGENTS.md" > /dev/null 2>&1 \
+    && ! grep -Eq '^[[:space:]]*@AGENTS\.md[[:space:]]*$' "${FILE}"; then
+    echo "❌ ${FILE} 未引用目前的 AGENTS.md"
+    echo "   請讓 CLAUDE.md 包含 @AGENTS.md，或維持兩檔逐字同步"
     errors=$((errors + 1))
-  elif ! git diff --cached --name-only | grep -q "^AGENTS.md$"; then
+  elif diff -q "${FILE}" "AGENTS.md" > /dev/null 2>&1 \
+    && ! git diff --cached --name-only | grep -q "^AGENTS.md$"; then
     echo "❌ ${FILE} 已 stage，但 AGENTS.md 未 stage（雖內容一致）"
     echo "   執行: git add AGENTS.md"
     errors=$((errors + 1))
@@ -89,4 +90,4 @@ if [[ "${errors}" -gt 0 ]]; then
   exit 1
 fi
 
-echo "✅ ${FILE} ${current_lines}/${LINE_LIMIT} lines — OK (AGENTS.md in sync)"
+echo "✅ ${FILE} ${current_lines}/${LINE_LIMIT} lines — OK (AGENTS.md entry valid)"

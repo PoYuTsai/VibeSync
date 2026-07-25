@@ -1,74 +1,55 @@
-# VibeSync
+# VibeSync Project Context
 
-> AI dating coach app for Traditional Chinese users.
-> Lean always-on entry for Claude/Codex. Durable detail lives in `docs/`.
+> Shared project guidance for Codex and Claude Code. Keep this file lean; load detailed docs only when the task needs them.
 
-## Current Truth
+## Product
 
-At every new session, rotation, or handoff, load only this bootstrap set first:
+- VibeSync is an AI dating coach for Traditional Chinese users.
+- Current stage: TestFlight dogfood and App Review readiness stabilization.
+- Core product: Coach 1:1, Opener, analyze-chat, and Practice.
+- Stack: Flutter, Riverpod, Supabase Auth/Postgres/Edge Functions, RevenueCat, and encrypted Hive.
 
-1. `docs/snapshot.md`
-2. `docs/shared-agent-rules.md`
-3. `git log --oneline -15`
-4. newest `OPEN` item in `docs/reviews/ai-arbitration-queue.md`
-5. latest handoff if one exists
+## Authority And Routing
 
-Trust those files and latest commits over old chat memory, persisted output, or terminal screenshots.
-`CLAUDE.md` and `AGENTS.md` must stay byte-for-byte synchronized and must not contain injected memory blocks.
+- Eric describes the outcome in natural language. The active Codex or Claude host is the primary brain and integration owner.
+- Do not assign permanent “coder” or “reviewer” roles to a provider. Use the global adaptive router and only the workflows callable on the current host.
+- Keep one owner for each implementation phase. Use independent cross-model review only when risk or uncertainty justifies it.
+- Product feel and consequential product/payment/data tradeoffs remain Eric's decision.
 
-## Current Stage
+## Context Loading
 
-VibeSync is in TestFlight dogfood / App Review readiness stabilization. Coach 1:1 is core product.
+- Do not automatically read `docs/snapshot.md`, `docs/shared-agent-rules.md`, review queues, old plans, handoffs, logs, or git history at session start.
+- Start from the current request, `git status`, nearby code, relevant tests, and the smallest useful document section.
+- Read `docs/snapshot.md` only for project-stage orientation or a real handoff.
+- Read `docs/shared-agent-rules.md` only for migration, deployment, high-risk review, or closeout details.
+- Search `docs/reviews/ai-arbitration-queue.md` only when the task concerns an explicitly open review item.
+- Prefer current code, tests, live service evidence, and recent commits over old chat memory or screenshots.
 
-Default priority:
+## Critical Gotchas
 
-1. P0/P1 dogfood bug fixes.
-2. Subscription, quota, RevenueCat, 429, paywall upgrade/downgrade safety.
-3. Opener, analyze-chat, Coach 1:1 quality and UX stability.
-4. App Review / launch readiness.
-5. Workflow tooling such as Discord rotation and Codex review gate.
+- High-risk areas: subscription/paywall/quota/RevenueCat/429, auth/account deletion/Hive, `analyze-chat`, Opener, OCR, Edge schemas, and AI prompt/token/cost behavior.
+- Free users keep core access until quota is actually exhausted. Model limits and format failures are not paywalls.
+- Never run `supabase db push` against production. Use the targeted migration procedure in `docs/shared-agent-rules.md`.
+- `analyze-chat` deployment requires `--no-verify-jwt`.
+- OCR changes stay isolated unless the task explicitly requires a cross-cutting change.
+- Never expose or commit secrets, `.env` contents, customer data, or production credentials.
 
-## Tech Stack
+## Work And Verification
 
-- Frontend: Flutter 3.x, Riverpod, `fl_chart`.
-- Backend: Supabase Auth / Postgres / Edge Functions.
-- AI: Claude API. Server env var is `CLAUDE_API_KEY`, not `ANTHROPIC_API_KEY`.
-- Subscription: RevenueCat, monthly + quarterly for Starter and Essential.
-- Local DB: Hive with AES-256 encryption.
-- Models: every customer-facing Claude primary path outside Practice chat uses Sonnet 5: Free/paid Analyze, Opener, Coach/Follow-up, Keyboard, and images. Practice chat itself stays DeepSeek; Practice hint/debrief use a Sonnet 5 single shot with one Haiku 4.5 retry (tool_use forced schema, mechanical gates only — the semantic reviewer layer is removed). `analyze-chat` alone keeps 4.6 then Haiku as an outage fallback. Test-only forced models are not production routing.
+- Inspect the working tree before editing and preserve unrelated user changes.
+- Keep one commit to one concern and use Traditional Chinese commit messages.
+- Verify with the smallest meaningful command, then broaden in proportion to risk.
+- For material R2/R3 high-risk changes, invoke the configured opposite-frontier reviewer and GLM falsification pass directly through the shared review workflow. Do not ask Eric to carry a Review Packet manually.
+- Treat implemented, verified, committed, pushed, deployed, and dogfood-approved as separate states.
+- Push, deployment, TestFlight submission, production mutation, and other external actions require Eric's explicit authorization.
 
-## Workflow
+## On-Demand References
 
-- One commit = one concern. Use Traditional Chinese commit messages. Commit and push after finished work.
-- Bugs: find root cause, run targeted tests, and write durable history only when needed.
-- High-risk fixes need Codex review evidence before saying dogfood/build is safe.
-- High-risk zones: subscription/paywall/quota/RevenueCat, auth/delete/Hive, `analyze-chat`, opener, OCR, Edge schemas, AI prompt/token/cost behavior.
-- OCR changes stay isolated. `analyze-chat` deploy uses `--no-verify-jwt`.
-- Free users must keep core access until quota is actually exhausted.
-
-## Context Budget
-
-- Keep root always-on files short, synchronized, and near 3.5 KB each.
-- Do not paste long docs, old plans, test logs, `/context` output, or command dumps into agent files or chat.
-- Read docs on demand, then summarize only the needed facts.
-- Slash commands must not auto-inject file or shell output by default.
-- Project skills must be VibeSync-specific. Quarantine generic skills under `.claude/skills.disabled/`.
-- If a fresh session still starts large, inspect global/user skills, plugins, MCP metadata, and hooks before blaming project docs.
-
-## Docs Index
-
-- Current truth: `docs/snapshot.md`, `docs/shared-agent-rules.md`, `docs/reviews/ai-arbitration-queue.md`
-- History and decisions: `docs/bug-log.md`, `docs/decisions.md`, `docs/reviews/`
+- Current stage: `docs/snapshot.md`
+- Operational rules: `docs/shared-agent-rules.md`
+- Product decisions: `docs/decisions.md`
+- Durable bug history: `docs/bug-log.md`
 - Launch: `docs/testflight-regression-checklist.md`, `docs/app-review-final-checklist.md`, `docs/launch-readiness-checklist.md`
-- Integrations: `docs/integrations/revenuecat.md`, `docs/integrations/auth.md`, `docs/pricing-final.md`
-- AI/OCR: `docs/ocr-analysis-maturity-benchmark.md`, `docs/2026-04-05-ocr-rollback-note.md`
-- Harness: `docs/ai-harness/context-management.md`, `tools/cc-rotate/README.md`, `tools/codex-bridge/README.md`
-
-## Links
-
-- Supabase project: `fcmwrmwdoqiqdnbisdpg`
-- Edge Functions: `analyze-chat`, `coach-chat`, `coach-follow-up`, `practice-chat`, `keyboard-reply`, `submit-feedback`, `sync-subscription`, `revenuecat-webhook`, `delete-account`
-- Bundle ID: `com.poyutsai.vibesync`
-- Team ID: `TTQHTVG8CC`
-- Test account: `vibesync.test@gmail.com`
-- Web preview: `https://web-beta-tawny.vercel.app`
+- Integrations: `docs/integrations/`
+- Reviews: `docs/reviews/`
+- Context design: `docs/ai-harness/context-management.md`

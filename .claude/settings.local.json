@@ -1,12 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "mcp__plugin_discord_discord__reply",
       "Bash(mkdir -p ~/.claude/commands)",
       "Read(//home/eric1/.claude/**)"
     ]
   },
   "enabledPlugins": {
-    "discord@claude-plugins-official": true
+    "discord@claude-plugins-official": false
   }
 }

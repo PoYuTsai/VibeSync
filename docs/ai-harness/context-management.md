@@ -6,16 +6,16 @@
 
 ### 1. Always-On
 
-Files loaded by default:
+Canonical project guidance:
 
-- `CLAUDE.md`
 - `AGENTS.md`
+- `CLAUDE.md` imports `AGENTS.md` for Claude Code.
 
 Rules:
 
-- Keep each file near 3.5 KB or less.
-- Keep the two files byte-for-byte synchronized.
-- Store only high-density project identity, workflow rules, context budget rules, and pointers.
+- Keep `AGENTS.md` concise and treat it as the single shared source for Codex and Claude.
+- Keep `CLAUDE.md` as a minimal import plus only genuine Claude-specific host notes, if any.
+- Store only high-density project identity, critical gotchas, context rules, and pointers.
 - Do not paste old plans, long product specs, bug timelines, or command output here.
 
 ### 2. On-Demand
@@ -48,7 +48,7 @@ Rules:
 
 - Archive files do not belong in always-on context.
 - Update archives after completion, not during every small step.
-- If a completed item becomes a durable rule, move the rule into `docs/shared-agent-rules.md` or another active doc.
+- If a completed item becomes a durable rule, place it in the smallest relevant reference or project skill.
 
 ## Skills Policy
 

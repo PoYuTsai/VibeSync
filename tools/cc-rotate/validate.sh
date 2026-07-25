@@ -54,8 +54,9 @@ if grep -q '<claude-mem-context>\|Access .*tokens of past work' AGENTS.md CLAUDE
   blocks+=("$(jq -nc '{code:"B0", msg:"AGENTS.md/CLAUDE.md 含 claude-mem context 污染；先移除污染並確認 claude-mem plugin 已停用"}')")
 fi
 
-if [ -f AGENTS.md ] && [ -f CLAUDE.md ] && ! cmp -s AGENTS.md CLAUDE.md; then
-  blocks+=("$(jq -nc '{code:"B0", msg:"AGENTS.md 與 CLAUDE.md 不同步；先同步後再 rotate"}')")
+if [ -f AGENTS.md ] && [ -f CLAUDE.md ] && ! cmp -s AGENTS.md CLAUDE.md \
+  && ! grep -Eq '^[[:space:]]*@AGENTS\.md[[:space:]]*$' CLAUDE.md; then
+  blocks+=("$(jq -nc '{code:"B0", msg:"CLAUDE.md 未引用目前的 AGENTS.md；先修正專案規則入口後再 rotate"}')")
 fi
 
 # === B1: working tree dirty ===
