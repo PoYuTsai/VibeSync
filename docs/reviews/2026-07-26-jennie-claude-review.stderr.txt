@@ -1,0 +1,1 @@
+Claude mode: review; model: opus; isolation: safe-mode/tools-none/mcp-empty/no-session
