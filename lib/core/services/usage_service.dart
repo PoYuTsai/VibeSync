@@ -200,6 +200,44 @@ class UsageService {
     return null;
   }
 
+  /// 目前帳號是否還有「尚未過期」的付費快照。
+  ///
+  /// 為什麼需要這個 reader：[getLocalUsage] 只回傳 tier 字串，沒有到期資訊，
+  /// 所以「本機快取說是付費」在離線時可以無限期成立。對需要打 Edge Function 的
+  /// 功能無所謂（離線本來就沒功能），但對完全離線可讀的 bundled 內容（互動
+  /// 電子書）就會變成一條零成本的繞道：訂閱到期後開飛航模式即可繼續閱讀。
+  ///
+  /// 這裡讀的是既有的 `last_known_paid_*` 快照（已綁帳號、寫入時就要求到期日在
+  /// 未來），並在讀取時再比一次時間。
+  ///
+  /// 任何不確定都回 `false`（fail closed）：沒有帳號、tier 是 free、沒有到期日、
+  /// 已過期，或 Hive 還沒開（例如 headless 測試）都不算有效授權。
+  static bool hasUnexpiredPaidEntitlement({DateTime? now}) {
+    final currentUserId = _currentUserId;
+    if (currentUserId == null || currentUserId.isEmpty) return false;
+
+    final Box box;
+    try {
+      box = StorageService.usageBox;
+    } catch (_) {
+      // Hive 未初始化時不信任任何快取授權。
+      return false;
+    }
+
+    if ((box.get(_lastKnownPaidUserIdKey) as String?) != currentUserId) {
+      return false;
+    }
+    final tier = SubscriptionTierHelper.normalizeTier(
+      box.get(_lastKnownPaidTierKey) as String?,
+    );
+    if (tier == SubscriptionTierHelper.free) return false;
+
+    final expiresAt = _parseDateTime(box.get(_lastKnownPaidExpiresAtKey));
+    if (expiresAt == null) return false;
+
+    return expiresAt.toUtc().isAfter((now ?? DateTime.now()).toUtc());
+  }
+
   static void _writeLastKnownPaidSnapshot(
     Box box, {
     required String tier,

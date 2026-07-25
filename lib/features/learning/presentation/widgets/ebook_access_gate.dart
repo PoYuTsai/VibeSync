@@ -22,6 +22,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../../core/services/usage_service.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../domain/models/ebook.dart';
 
@@ -32,40 +33,64 @@ class EbookSubscriptionAccess {
     required this.isPremium,
     required this.isResolving,
     required this.hasError,
+    this.hasUnexpiredPaidEntitlement = false,
   });
 
   const EbookSubscriptionAccess.premium()
       : isPremium = true,
         isResolving = false,
-        hasError = false;
+        hasError = false,
+        hasUnexpiredPaidEntitlement = true;
 
   const EbookSubscriptionAccess.free()
       : isPremium = false,
         isResolving = false,
-        hasError = false;
+        hasError = false,
+        hasUnexpiredPaidEntitlement = false;
 
   const EbookSubscriptionAccess.resolving()
       : isPremium = false,
         isResolving = true,
-        hasError = false;
+        hasError = false,
+        hasUnexpiredPaidEntitlement = false;
 
   const EbookSubscriptionAccess.unavailable()
       : isPremium = false,
         isResolving = false,
-        hasError = true;
+        hasError = true,
+        hasUnexpiredPaidEntitlement = false;
+
+  /// 本機快取顯示付費、但訂閱狀態尚未確認（離線或刷新失敗）的狀態。
+  const EbookSubscriptionAccess.cachedPremium({
+    bool unexpired = true,
+  })  : isPremium = true,
+        isResolving = true,
+        hasError = false,
+        hasUnexpiredPaidEntitlement = unexpired;
 
   /// Starter 與 Essential 都算 premium（`SubscriptionState.isPremium`）。
-  factory EbookSubscriptionAccess.fromState(SubscriptionState state) {
+  factory EbookSubscriptionAccess.fromState(
+    SubscriptionState state, {
+    required bool hasUnexpiredPaidEntitlement,
+  }) {
     return EbookSubscriptionAccess(
       isPremium: state.isPremium,
       isResolving: state.isLoading,
       hasError: state.error != null,
+      hasUnexpiredPaidEntitlement: hasUnexpiredPaidEntitlement,
     );
   }
 
   final bool isPremium;
   final bool isResolving;
   final bool hasError;
+
+  /// 本機保存的付費到期日是否仍在未來（見
+  /// `UsageService.hasUnexpiredPaidEntitlement`）。
+  final bool hasUnexpiredPaidEntitlement;
+
+  /// 訂閱狀態是否已經確認（沒有在載入、也沒有錯誤）。
+  bool get isResolved => !isResolving && !hasError;
 }
 
 enum EbookAccessDecision {
@@ -84,22 +109,32 @@ enum EbookAccessDecision {
 
 /// 純函式權限判斷。不讀文章 quota、不讀 tier 字串細節。
 ///
-/// 優先序刻意是「isPremium 先於 isResolving／hasError」：
-/// `SubscriptionState` 啟動時會先用本機快取的 tier 並帶 `isLoading: true`
-/// （見 `buildInitialSubscriptionStateFromUsage`），這是 App 既有的
-/// entitlement 姿態——付費使用者冷啟動時不該先看到降級或 loading。
+/// 快取授權的處理（2026-07-26 Eric 拍板）：
 ///
-/// 代價是：entitlement 已失效但本機仍快取 premium 的使用者，在刷新完成前
-/// 還能開啟付費書。這是刻意接受的既有行為，不是這個功能新增的破洞，而且會
-/// 自我修正——tier 一旦解析成 free，閘門重算即轉為 locked。若要改成
-/// 「未確認即不放行」，那是產品決策，需要 Eric 拍板。
+/// `SubscriptionState` 啟動時會先用本機快取的 tier 並帶 `isLoading: true`
+/// （見 `buildInitialSubscriptionStateFromUsage`），所以付費使用者冷啟動不會
+/// 先看到降級或 loading。這對需要打 Edge Function 的功能沒有風險，因為離線
+/// 本來就沒功能。
+///
+/// 但電子書是 App 第一個「完全離線可讀」的付費內容（四份 JSON 在 App 包裡），
+/// 若無條件信任快取 tier，訂閱到期後開飛航模式就能無限期讀完四本——離線永遠
+/// 不會 resolve，快取就永遠有效。
+///
+/// 所以這裡只在「訂閱狀態已確認」或「本機保存的付費到期日仍在未來」時放行。
+/// 兩者都不成立時當成未確認（resolving／unavailable），不當成免費也不顯示內容。
+///
+/// 注意這不是 DRM：JSON 隨 App bundle 發布，解包即可取得。這道判斷關掉的是
+/// 零成本的繞道，不宣稱能防破解。
 EbookAccessDecision ebookAccessFor(
   Ebook book,
   EbookSubscriptionAccess subscription,
 ) {
   if (book.access == EbookAccess.free) return EbookAccessDecision.allowed;
-  if (subscription.isPremium) return EbookAccessDecision.allowed;
-  // 已知是付費書、且還沒確認成付費：先不下結論。
+  if (subscription.isPremium &&
+      (subscription.isResolved || subscription.hasUnexpiredPaidEntitlement)) {
+    return EbookAccessDecision.allowed;
+  }
+  // 已知是付費書，而且付費身分還沒被確認（或快取授權已過期）：先不下結論。
   if (subscription.isResolving) return EbookAccessDecision.resolving;
   if (subscription.hasError) return EbookAccessDecision.unavailable;
   return EbookAccessDecision.locked;
@@ -109,9 +144,17 @@ EbookAccessDecision ebookAccessFor(
 bool ebookLockedFor(Ebook book, EbookSubscriptionAccess subscription) =>
     ebookAccessFor(book, subscription) != EbookAccessDecision.allowed;
 
+/// 本機付費授權是否未過期。獨立成 provider 方便測試覆寫。
+final ebookPaidEntitlementProvider = Provider<bool>((ref) {
+  return UsageService.hasUnexpiredPaidEntitlement();
+});
+
 final ebookSubscriptionAccessProvider =
     Provider<EbookSubscriptionAccess>((ref) {
-  return EbookSubscriptionAccess.fromState(ref.watch(subscriptionProvider));
+  return EbookSubscriptionAccess.fromState(
+    ref.watch(subscriptionProvider),
+    hasUnexpiredPaidEntitlement: ref.watch(ebookPaidEntitlementProvider),
+  );
 });
 
 /// 共用閘門。[builder] 只有在 [EbookAccessDecision.allowed] 時才會被呼叫。

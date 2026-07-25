@@ -56,27 +56,47 @@ void main() {
       );
     });
 
-    test('已快取 premium 時優先放行（刻意的既有 entitlement 姿態）', () {
-      // App 啟動時 SubscriptionState 會先帶本機快取 tier 且 isLoading=true，
-      // 付費使用者不該先看到 loading 或降級。代價是 entitlement 已失效但本機
-      // 仍快取 premium 者，在刷新完成前還能開啟——這是刻意接受的既有行為，
-      // 且 tier 解析成 free 後閘門會重算成 locked。
-      const premiumWhileResolving = EbookSubscriptionAccess(
-        isPremium: true,
-        isResolving: true,
-        hasError: false,
+    test('快取 premium 且到期日未過 → 放行（付費使用者冷啟動不看 loading）', () {
+      expect(
+        ebookAccessFor(
+          premium,
+          const EbookSubscriptionAccess.cachedPremium(),
+        ),
+        EbookAccessDecision.allowed,
       );
-      const premiumWhileError = EbookSubscriptionAccess(
+    });
+
+    test('快取 premium 但到期日已過且尚未確認 → 不放行（關掉飛航模式繞道）', () {
+      // 這是電子書特有的風險：內容完全離線可讀，離線又永遠不會 resolve。
+      const expiredCache = EbookSubscriptionAccess.cachedPremium(
+        unexpired: false,
+      );
+      expect(
+        ebookAccessFor(premium, expiredCache),
+        EbookAccessDecision.resolving,
+        reason: '不放行，但也不當成免費使用者',
+      );
+
+      // 錯誤狀態下同理，而且要走可重試錯誤而不是 paywall。
+      const expiredCacheWithError = EbookSubscriptionAccess(
         isPremium: true,
         isResolving: false,
         hasError: true,
       );
       expect(
-        ebookAccessFor(premium, premiumWhileResolving),
-        EbookAccessDecision.allowed,
+        ebookAccessFor(premium, expiredCacheWithError),
+        EbookAccessDecision.unavailable,
+      );
+    });
+
+    test('訂閱狀態已確認為付費時，不需要快取授權也放行', () {
+      const resolvedPremiumNoCache = EbookSubscriptionAccess(
+        isPremium: true,
+        isResolving: false,
+        hasError: false,
       );
       expect(
-        ebookAccessFor(premium, premiumWhileError),
+        ebookAccessFor(premium, resolvedPremiumNoCache),
         EbookAccessDecision.allowed,
       );
       // 一旦 tier 解析成 free，同一個判斷立刻轉為 locked。

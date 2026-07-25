@@ -14,7 +14,7 @@
 
 | # | Review focus | Codex | GLM | Primary 裁決 |
 |---|---|---|---|---|
-| 1 | Free 是否可能看到 Books 2–4 | ISSUE P1 | 沒找到反例 | 部分成立 → 見 F1；stale-premium 部分為刻意決策 D1 |
+| 1 | Free 是否可能看到 Books 2–4 | ISSUE P1 | 沒找到反例 | **成立 → 已修（F1、D1）**；D1 的實際風險比 Codex 描述更大 |
 | 2 | loading／error 是否閃出內容或假裝 upsell | ISSUE P1 | 找到反例 P2 | **成立 → 已修（F1）** |
 | 3 | 是否誤扣文章額度 | PASS | 沒找到反例 | PASS |
 | 4 | 帳號 A／B 是否串進度 | ISSUE P1 | 輕微 P3 | **成立 → 已修（F2、F3）** |
@@ -101,24 +101,56 @@ savedState 變成 null 時不會清空，A 的作答會留在 B 的畫面上。
 修法：`savedState` reference 改變時也重跑 restore。
 測試：`ebook_quiz_card_test.dart`「savedState 換人時清掉畫面上的作答」。
 
+## 已改的產品決策
+
+（Eric 2026-07-26 拍板）
+
+### D1 — 快取 premium 的信任邊界（Codex P1）→ **已改（2026-07-26 Eric 拍板）**
+
+Codex 原本的描述是「刷新那幾秒有機會讀到付費內容」。primary 進一步查證後發現
+**真正的問題比 Codex 描述的更大，也和它給的理由不同**：
+
+- `UsageData` 只有 tier 字串，沒有到期資訊（`usage_service.dart` 的
+  `getLocalUsage`），所以「本機快取說是付費」在離線時可以無限期成立。
+- App 其他付費功能都要打 Edge Function，離線等於沒功能，因此快取被信任多久
+  沒有實際風險。
+- **但電子書是 App 第一個完全離線可讀的付費內容**（四份 JSON 在 App 包裡）。
+  於是存在一條零成本繞道：訂閱到期後開飛航模式，可以無限期讀完四本，因為離線
+  永遠不會 resolve。
+
+也就是說 primary 原本「這不是本功能新增的破洞」的判斷是錯的——對電子書而言
+它確實是新的暴露面。
+
+修法（Eric 拍板採用中間解，非二選一）：
+- `UsageService.hasUnexpiredPaidEntitlement()`：讀既有已持久化的
+  `last_known_paid_*` 快照（已綁帳號、寫入時就要求到期日在未來），讀取時再比
+  一次時間。任何不確定（無帳號、tier=free、無到期日、已過期、Hive 未開）
+  一律回 `false`。
+- `ebookAccessFor`：只在「訂閱狀態已確認為付費」或「本機付費到期日仍在未來」
+  時放行；兩者都不成立就當成未確認（resolving／unavailable），不當成免費、
+  也不顯示內容。
+
+效果：
+| 情境 | 修前 | 修後 |
+|---|---|---|
+| 正常付費、冷啟動或網路慢 | 直接讀 | 直接讀（到期日在未來） |
+| 已到期＋飛航模式 | **無限期讀四本** | 鎖住 |
+| 已到期＋有網路 | 幾秒後鎖住 | 幾秒後鎖住 |
+
+付費使用者體感不變（這是原本不想改的唯一理由，已保住）。
+不動 RevenueCat、tier 定義與額度；只讀 App 已存好的資料，且只影響電子書閘門。
+
+已知副作用：訂閱續約後若一直離線到超過舊到期日，會退回「正在確認訂閱狀態」
+直到重新連線。目前不做 grace period，如需要另案。
+
+仍要說清楚：這不是 DRM。JSON 隨 bundle 發布，解包即可取得；這道判斷關掉的是
+零成本繞道，不宣稱防破解。
+
+測試：`ebook_access_gate_test.dart`（三種快取狀態的決策矩陣）、
+`test/unit/core/services/usage_service_paid_entitlement_test.dart`（9 案，含
+邊界時刻、跨帳號、tier=free、壞格式、真實寫入路徑 round-trip）。
+
 ## 不修，但已記錄為刻意決策
-
-### D1 — `isPremium` 優先於 `isResolving`／`hasError`（Codex P1）
-
-Codex 正確指出：本機仍快取 premium 但 entitlement 已失效者，在刷新完成前可以
-開啟付費書，因此「Free 絕對看不到 Books 2–4」不是無條件成立。
-
-不改的理由：
-1. `SubscriptionState` 啟動時就是「先用本機快取 tier ＋ `isLoading: true`」
-   （`buildInitialSubscriptionStateFromUsage`）。把 resolving 排在 isPremium 前面，
-   等於每個付費使用者冷啟動都先看到 loading 或降級，這與 App 既有的 entitlement
-   姿態相反。
-2. 這不是本功能新增的破洞，而是全 App 共用的快取信任模型。
-3. 會自我修正：tier 一旦解析成 free，閘門重算即轉 locked 並導 paywall。
-
-已在 `ebookAccessFor` 的 doc comment 寫明取捨，並加測試把
-`premium+resolving`／`premium+error` → `allowed` 釘成明確決策而不是意外。
-**若 Eric 認為應改成「未確認即不放行」，那是產品決策，我不自行更動。**
 
 ### D2 — `contentVersionSeen` 只記錄、不失效進度（Codex P2）
 
