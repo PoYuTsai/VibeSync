@@ -172,6 +172,884 @@
           "text": "打開你最近一段死掉的對話，只標一件事：你有幾句包含關於你自己的具體資訊。如果少於三分之一，你已經找到問題了。"
         }
       ]
+    },
+    {
+      "id": "ebook-2-chapter-2",
+      "number": "2.2",
+      "title": "對話為什麼死：三個最常見原因",
+      "learningGoal": "你的對話通常死在哪一種模式？",
+      "estimatedMinutes": 9,
+      "sourceRefs": [
+        {
+          "document": "five-stage-course",
+          "sections": ["階段 2.1 對話為什麼死"]
+        },
+        {
+          "document": "field-handbook",
+          "sections": ["案例 A", "案例 E", "案例 F", "死亡原因排行"]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "ebook-2-c2-b1",
+          "text": "續航是大部分人主觀上最痛苦的階段。好消息是死法沒有很多種——三個原因就涵蓋了絕大多數，而且三個的修法方向一致。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-2-c2-b2",
+          "tone": "goal",
+          "title": "這一章只回答一個問題",
+          "text": "你的對話通常死在哪一種模式？"
+        },
+        {
+          "type": "heading",
+          "id": "ebook-2-c2-b3",
+          "text": "死因一：你在查戶口"
+        },
+        {
+          "type": "dialogue",
+          "id": "ebook-2-c2-dlg-1",
+          "caption": "你在收集資料，而且什麼都沒給出去。她在填表格。",
+          "lines": [
+            {
+              "id": "ebook-2-c2-dlg-1-l1",
+              "speaker": "you",
+              "text": "你做什麼工作的？"
+            },
+            {
+              "id": "ebook-2-c2-dlg-1-l2",
+              "speaker": "other",
+              "text": "老師"
+            },
+            {
+              "id": "ebook-2-c2-dlg-1-l3",
+              "speaker": "you",
+              "text": "教什麼？"
+            },
+            {
+              "id": "ebook-2-c2-dlg-1-l4",
+              "speaker": "other",
+              "text": "國小"
+            },
+            {
+              "id": "ebook-2-c2-dlg-1-l5",
+              "speaker": "you",
+              "text": "喔那很辛苦",
+              "isDeathPoint": true,
+              "annotation": "她已經給了兩個可以延伸的具體資訊，你兩次都只回了對稱的評價。"
+            },
+            {
+              "id": "ebook-2-c2-dlg-1-l6",
+              "speaker": "other",
+              "text": "還好",
+              "signal": "red"
+            }
+          ]
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-2-c2-cmp-1",
+          "title": "修正：先回應，再給自己的東西，最後才開新口",
+          "items": [
+            {
+              "id": "ebook-2-c2-cmp-1-w",
+              "stance": "weak",
+              "label": "原句",
+              "text": "喔那很辛苦",
+              "note": "承認了但不延伸，對話無處可去。"
+            },
+            {
+              "id": "ebook-2-c2-cmp-1-s",
+              "stance": "strong",
+              "label": "改後",
+              "text": "國小老師？那你手上應該一直有荒謬故事的庫存。我朋友教小三，上禮拜有小孩認真問他是不是機器人",
+              "note": "先回應她給的資訊（理解）＋給出自己的材料（V／E）＋不必問問題，她自然會開始主動給。"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "id": "ebook-2-c2-b4",
+          "text": "死因二：你只回應事實，不回應情緒"
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-2-c2-cmp-2",
+          "caption": "她說「今天上班快累死」。",
+          "items": [
+            {
+              "id": "ebook-2-c2-cmp-2-w",
+              "stance": "weak",
+              "label": "終結句",
+              "text": "辛苦了",
+              "note": "它承認了但不延伸。對方只能回「嗯」，然後對話結束。"
+            },
+            {
+              "id": "ebook-2-c2-cmp-2-s",
+              "stance": "strong",
+              "label": "往情緒走",
+              "text": "發生什麼事，是人的問題還是事的問題",
+              "note": "同時做到三件事：表示你想知道細節（R↑）、給了一個超好答的框架（降低回答門檻）、而且這個分類本身有點好笑（E↑）。"
+            }
+          ]
+        },
+        {
+          "type": "callout",
+          "id": "ebook-2-c2-b5",
+          "tone": "principle",
+          "title": "通用原則",
+          "text": "情緒是開口，事實是死路。對方給情緒的時候，永遠往情緒走。"
+        },
+        {
+          "type": "heading",
+          "id": "ebook-2-c2-b6",
+          "text": "死因三：你沒有出現在對話裡"
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-2-c2-b7",
+          "text": "有一種對話每一句都不算錯：你問，她答，你接一句「不錯欸」，再問下一個。九則訊息之後，她完全不知道你是誰——所以也沒有理由想見你。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-2-c2-b8",
+          "tone": "info",
+          "title": "通用檢查",
+          "text": "往回滑你的對話，數一數有幾則訊息包含關於你自己的具體資訊。如果少於三分之一，這就是你的問題。"
+        },
+        {
+          "type": "flipCard",
+          "id": "ebook-2-c2-flip-1",
+          "frontTitle": "三個死因，一個共同修法",
+          "frontText": "查戶口、只回事實、自己不出現——看起來是三個不同的毛病。它們的修法其實是同一個動作。",
+          "backTitle": "先回應，再給，最後才問",
+          "backText": "把每一則訊息拆成三段：先回應她剛給的東西（理解），再給出一塊你自己的（V／E），最後才是新的開口——而且很多時候第三段可以省略。",
+          "backPoints": [
+            "只有第三段的訊息＝查戶口。",
+            "只有第一段的訊息＝終結句。",
+            "沒有第二段的對話＝她不知道你是誰。"
+          ]
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-2-c2-quiz-1",
+          "mode": "single",
+          "revision": 1,
+          "scenario": "她：「我上禮拜終於把貓帶去洗澡，牠現在還在生氣。」你：「哈哈貓都這樣。你養多久了？」",
+          "question": "這一句最大的問題是什麼？",
+          "choices": [
+            {
+              "id": "ebook-2-c2-quiz-1-a",
+              "text": "「哈哈貓都這樣」把她的具體故事變成了泛用結論，然後立刻換成新的事實問句",
+              "isCorrect": true,
+              "feedback": "對。她給了一個有畫面的故事，你只回了一句誰都能講的話，接著又要她產出新資訊。"
+            },
+            {
+              "id": "ebook-2-c2-quiz-1-b",
+              "text": "問題太私人了",
+              "isCorrect": false,
+              "feedback": "「養多久」完全不私人，問題不在尺度。"
+            },
+            {
+              "id": "ebook-2-c2-quiz-1-c",
+              "text": "應該要先稱讚她的貓很可愛",
+              "isCorrect": false,
+              "feedback": "泛用稱讚不會救回這一句，它同樣沒有提供任何材料。"
+            },
+            {
+              "id": "ebook-2-c2-quiz-1-d",
+              "text": "回得太快了",
+              "isCorrect": false,
+              "feedback": "速度不是問題，內容才是。刻意延遲回覆只會讓動能更快流失。"
+            }
+          ],
+          "takeaway": "對方給了一個具體故事，就用一個具體回應接住，不要收斂成通則。"
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-2-c2-quiz-2",
+          "mode": "multiple",
+          "revision": 1,
+          "scenario": "同一個情境：她說貓洗完澡還在生氣。",
+          "question": "下列哪些回覆真的接住了她？（可多選）",
+          "choices": [
+            {
+              "id": "ebook-2-c2-quiz-2-a",
+              "text": "「牠報復了嗎。我朋友的貓洗完澡在他枕頭上坐了一整晚，什麼都沒做，就是坐著」",
+              "isCorrect": true,
+              "feedback": "對。接住畫面、加碼一個更荒謬的版本，而且你出現在對話裡了。"
+            },
+            {
+              "id": "ebook-2-c2-quiz-2-b",
+              "text": "「生氣多久了，牠是那種會記仇一週的還是十分鐘就忘的」",
+              "isCorrect": true,
+              "feedback": "對。二選一的框架好答，而且延續她的故事而不是換題。"
+            },
+            {
+              "id": "ebook-2-c2-quiz-2-c",
+              "text": "「哈哈可愛」",
+              "isCorrect": false,
+              "feedback": "這是終結句。它承認了但沒有延伸，也沒有任何關於你的資訊。"
+            },
+            {
+              "id": "ebook-2-c2-quiz-2-d",
+              "text": "「你平常假日都在幹嘛？」",
+              "isCorrect": false,
+              "feedback": "把她的故事丟掉，換一個開放式大問題——這是查戶口的標準動作。"
+            }
+          ],
+          "takeaway": "接住＝延續她剛給的東西。換題＝把她的投入丟掉。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-2-c2-b9",
+          "tone": "takeaway",
+          "title": "今天只帶走一個動作",
+          "text": "今天的每一則回覆，都先寫一句「回應她剛說的」再送出。今天先不要問任何新問題。"
+        }
+      ]
+    },
+    {
+      "id": "ebook-2-chapter-3",
+      "number": "2.3",
+      "title": "回應性：理解、認可、在乎",
+      "learningGoal": "怎麼讓對方覺得你真的在聽？",
+      "estimatedMinutes": 9,
+      "sourceRefs": [
+        {
+          "document": "five-stage-course",
+          "sections": ["階段 2.2 核心技能：回應性", "階段 2.6 訊號讀取"]
+        },
+        {
+          "document": "field-handbook",
+          "sections": ["案例 G 救援：從黃燈拉回"]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "ebook-2-c3-b1",
+          "text": "這是續航階段最重要、也最被話術教材忽略的東西。原因很簡單：它不是招式，是注意力分配——沒辦法背，只能練。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-2-c3-b2",
+          "tone": "goal",
+          "title": "這一章只回答一個問題",
+          "text": "怎麼讓對方覺得你真的在聽？"
+        },
+        {
+          "type": "bulletList",
+          "id": "ebook-2-c3-b3",
+          "title": "對方需要感受到三件事",
+          "ordered": true,
+          "items": [
+            "理解：你聽懂了她實際在說什麼（不是字面，是意思）。",
+            "認可：你覺得她的感受是合理的。",
+            "在乎：你有在注意。"
+          ]
+        },
+        {
+          "type": "callout",
+          "id": "ebook-2-c3-b4",
+          "tone": "principle",
+          "title": "實務判準",
+          "text": "你有沒有引用她三則訊息之前說過的東西？如果從來沒有，你大概沒在聽，你在準備下一句話。這一項的邊際效益極高、幾乎沒有下行風險，而且大部分競爭者做不到。"
+        },
+        {
+          "type": "dialogue",
+          "id": "ebook-2-c3-dlg-1",
+          "title": "回應性怎麼把黃燈救回來",
+          "caption": "她的回覆開始變短。這時候加壓會直接推成紅燈。",
+          "lines": [
+            {
+              "id": "ebook-2-c3-dlg-1-l1",
+              "speaker": "other",
+              "text": "嗯嗯",
+              "signal": "yellow",
+              "annotation": "有回應但不加碼，這是標準黃燈。"
+            },
+            {
+              "id": "ebook-2-c3-dlg-1-l2",
+              "speaker": "you",
+              "text": "突然想到，你上次說你在學陶藝，那個是興趣還是有想做什麼",
+              "annotation": "引用她三則之前說過的事（回應性）＋換到她主動提過的話題（她的高投入區）＋開放但具體的問題。"
+            },
+            {
+              "id": "ebook-2-c3-dlg-1-l3",
+              "speaker": "other",
+              "text": "其實我有在想要不要開個小工作室…",
+              "signal": "green",
+              "annotation": "救回來了，而且比之前更深——她開始講還沒跟別人講的東西。"
+            }
+          ]
+        },
+        {
+          "type": "callout",
+          "id": "ebook-2-c3-b5",
+          "tone": "principle",
+          "title": "黃燈的正確處理是維持＋換軌",
+          "text": "而換軌的最佳目的地是她自己提過的東西——那是她已經證明有投入意願的區域。最常見的執行失誤是把黃燈當成「要更用力」的訊號。"
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-2-c3-cmp-1",
+          "title": "往情緒走，還是往事實走",
+          "items": [
+            {
+              "id": "ebook-2-c3-cmp-1-a",
+              "stance": "weak",
+              "label": "往事實",
+              "text": "她：「我最近搬家搬到快崩潰。」你：「搬到哪一區？」",
+              "note": "她給的是崩潰（情緒），你收下的是地址（事實）。"
+            },
+            {
+              "id": "ebook-2-c3-cmp-1-b",
+              "stance": "strong",
+              "label": "往情緒",
+              "text": "她：「我最近搬家搬到快崩潰。」你：「搬家最崩潰的一定是那些不知道要留還是要丟的東西。你目前最捨不得丟的是什麼」",
+              "note": "先認可感受，再給一個具體又好答的入口。地址之後自然會出現。"
+            }
+          ]
+        },
+        {
+          "type": "flipCard",
+          "id": "ebook-2-c3-flip-1",
+          "frontTitle": "「我每一句都很認真回」",
+          "frontText": "他確實很認真：每次都回長長一段，還會分析她的話。但對話還是越來越冷。",
+          "backTitle": "認真不等於回應性",
+          "backText": "回應性不是投入多少字，是有沒有接住她實際在說的東西。長段分析常常是在講「我怎麼想」，而不是「我聽懂你了」。",
+          "backPoints": [
+            "檢查一：你有沒有引用她三則之前說過的事？",
+            "檢查二：她給情緒的時候，你回的是情緒還是資訊？",
+            "檢查三：她的回覆有沒有變長？那是最直接的回饋。"
+          ]
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-2-c3-quiz-1",
+          "mode": "single",
+          "revision": 1,
+          "scenario": "聊到第八輪，她的回覆從三行變成「哈哈」「嗯嗯」，但沒有結束對話。",
+          "question": "現在最合理的動作是什麼？",
+          "choices": [
+            {
+              "id": "ebook-2-c3-quiz-1-a",
+              "text": "維持節奏，換到她之前主動提過的話題",
+              "isCorrect": true,
+              "feedback": "對。黃燈的處理是維持＋換軌，而最好的換軌目的地是她已經證明有投入的區域。"
+            },
+            {
+              "id": "ebook-2-c3-quiz-1-b",
+              "text": "加大力度，講一個更有趣的故事把熱度拉回來",
+              "isCorrect": false,
+              "feedback": "把黃燈當成「要更用力」是最常見的執行失誤。加壓通常會把黃燈推成紅燈。"
+            },
+            {
+              "id": "ebook-2-c3-quiz-1-c",
+              "text": "問她是不是不想聊了",
+              "isCorrect": false,
+              "feedback": "這會要求她處理你的不安，成本很高，而且通常換來一個客套的結束。"
+            },
+            {
+              "id": "ebook-2-c3-quiz-1-d",
+              "text": "刻意隔一天再回，讓她感覺到你也很忙",
+              "isCorrect": false,
+              "feedback": "延遲不會傳遞「我有生活」，只會讓已經下降的動能再減半。"
+            }
+          ],
+          "takeaway": "黃燈＝維持或換軌，不加壓。換軌就去她自己提過的東西。"
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-2-c3-quiz-2",
+          "mode": "multiple",
+          "revision": 1,
+          "question": "下列哪些是「回應性」的證據？（可多選）",
+          "choices": [
+            {
+              "id": "ebook-2-c3-quiz-2-a",
+              "text": "你引用了她三則以前提過的一件小事",
+              "isCorrect": true,
+              "feedback": "對。這是最直接的證據：你記得，而且你在聽。"
+            },
+            {
+              "id": "ebook-2-c3-quiz-2-b",
+              "text": "她給情緒時，你回的是情緒而不是事實",
+              "isCorrect": true,
+              "feedback": "對。這是理解與認可同時發生的位置。"
+            },
+            {
+              "id": "ebook-2-c3-quiz-2-c",
+              "text": "你每則訊息都比她長兩倍，證明你很投入",
+              "isCorrect": false,
+              "feedback": "長度不是回應性。比對方長太多反而是投資失衡的訊號。"
+            },
+            {
+              "id": "ebook-2-c3-quiz-2-d",
+              "text": "你在她講完一段之後，先確認自己有沒有聽懂她的意思",
+              "isCorrect": true,
+              "feedback": "對。理解指的是聽懂意思，不是複述字面。"
+            }
+          ],
+          "takeaway": "回應性是注意力分配：記得、接住、往情緒走。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-2-c3-b6",
+          "tone": "takeaway",
+          "title": "今天只帶走一個動作",
+          "text": "在今天的每一段對話裡，各引用一次對方三則以前說過的事。只做這一件。"
+        }
+      ]
+    },
+    {
+      "id": "ebook-2-chapter-4",
+      "number": "2.4",
+      "title": "側面價值與互惠",
+      "learningGoal": "怎麼讓對方知道你是誰、也知道你有興趣？",
+      "estimatedMinutes": 9,
+      "sourceRefs": [
+        {
+          "document": "five-stage-course",
+          "sections": ["階段 2.3 側面展示價值", "階段 3.6 互惠"]
+        },
+        {
+          "document": "field-handbook",
+          "sections": ["案例 B 泛用稱讚死亡", "第六部 可以稱讚外貌嗎"]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "ebook-2-c4-b1",
+          "text": "直接說自己的優點會被大幅折價，因為對方知道你有動機誇大。這是資訊問題，不是面子問題——所以解法不是「不要提自己」，是換一種提的方式。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-2-c4-b2",
+          "tone": "goal",
+          "title": "這一章只回答一個問題",
+          "text": "怎麼讓對方知道你是誰、也知道你有興趣？"
+        },
+        {
+          "type": "heading",
+          "id": "ebook-2-c4-b3",
+          "text": "V：讓生活細節在談別的事情時自然出現"
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-2-c4-cmp-1",
+          "items": [
+            {
+              "id": "ebook-2-c4-cmp-1-w1",
+              "stance": "weak",
+              "label": "直接說",
+              "text": "我在科技業工作，收入還不錯　／　我很有上進心",
+              "note": "自帶動機，所以會被打折；而且沒有畫面，對方接不了。"
+            },
+            {
+              "id": "ebook-2-c4-cmp-1-s1",
+              "stance": "strong",
+              "label": "側面露出",
+              "text": "（聊到週末）這週末大概廢不掉，有個案子要收尾　／　（聊到旅行）上次去沖繩是臨時決定的，開會開到一半發現連假快到了",
+              "note": "沒有一句在講自己有多好，但它們洩漏了：有專業工作、有責任、有一定的自由度。而且兩句都能被接。"
+            }
+          ]
+        },
+        {
+          "type": "callout",
+          "id": "ebook-2-c4-b4",
+          "tone": "warning",
+          "title": "一個誠實的前提",
+          "text": "如果你的真實生活細節不足以構成吸引力，那是檔案與生活內容的問題（Book 1 的底層），技術層無法修補，只能延後崩塌的時點。對話裡洩漏的東西必須是真的——見面就是驗證的時刻。"
+        },
+        {
+          "type": "heading",
+          "id": "ebook-2-c4-b5",
+          "text": "R：把興趣說出來，但要具體"
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-2-c4-b6",
+          "text": "有一種很流行的說法是：不能讓對方知道你喜歡她，一旦洩漏就結束了。這是這個領域裡影響最大的錯誤觀念之一。在交友軟體的情境下，你要的是對方願意推進——而長期隱藏興趣最常見的結果是被讀成「他其實沒那麼有意在」，然後她轉向其他對話框。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-2-c4-b7",
+          "tone": "info",
+          "title": "誠實補充反面",
+          "text": "不確定感確實有一些效應，但它提高的是「對方想起你的頻率」，不是「對方願意推進的程度」。早期不需要急著全面表態，但在對方已經開始投入之後還在隱藏興趣，就是明確的錯誤。這是啟發式判斷，不是保證公式。"
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-2-c4-cmp-2",
+          "title": "同樣是表達興趣，差別在具體度",
+          "items": [
+            {
+              "id": "ebook-2-c4-cmp-2-w",
+              "stance": "weak",
+              "label": "泛用，不可驗證",
+              "text": "我很少對人這樣　／　你真的超漂亮的　／　我很少看到這麼有氣質的",
+              "note": "可以說給任何人，所以不傳遞資訊，只傳遞「我的認可很廉價」。"
+            },
+            {
+              "id": "ebook-2-c4-cmp-2-s",
+              "stance": "strong",
+              "label": "具體，自帶證據",
+              "text": "你講你辭掉工作去唸書那段我一直在想，滿佩服的。想當面聽完整版",
+              "note": "具體、有觀察基礎、證明你在聽，而且顯示你的認可有門檻。"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-2-c4-b8",
+          "text": "外貌也可以稱讚，但要具體，而且不是主軸。「你好漂亮」是評價；「你笑起來的樣子跟你講話的語氣完全不一樣，有點反差」是觀察。"
+        },
+        {
+          "type": "dialogue",
+          "id": "ebook-2-c4-dlg-1",
+          "title": "側面露出＋具體互惠",
+          "lines": [
+            {
+              "id": "ebook-2-c4-dlg-1-l1",
+              "speaker": "other",
+              "text": "我上個月才把工作辭了，現在在準備考試",
+              "signal": "green",
+              "annotation": "她主動自我揭露了一件有份量的事（I↑）。"
+            },
+            {
+              "id": "ebook-2-c4-dlg-1-l2",
+              "speaker": "you",
+              "text": "這個決定不小。我自己是連換部門都要想三個月的那種人，所以看到有人真的跳我都會多看兩眼",
+              "annotation": "R↑ 具體表達佩服（有觀察基礎）＋V↑ 側面露出自己的性格，沒有一句自誇。"
+            },
+            {
+              "id": "ebook-2-c4-dlg-1-l3",
+              "speaker": "other",
+              "text": "哈哈其實我也想了半年，只是最後那一天很衝動",
+              "signal": "green",
+              "annotation": "她繼續往深處給。具體的認可會換到更多投入。"
+            }
+          ]
+        },
+        {
+          "type": "flipCard",
+          "id": "ebook-2-c4-flip-1",
+          "frontTitle": "「稱讚會不會讓我變廉價？」",
+          "frontText": "他聽說不能太快稱讚對方，所以刻意冷處理。結果對方投入之後反而慢慢冷掉。",
+          "backTitle": "有問題的從來不是稱讚，是泛用稱讚",
+          "backText": "「你好漂亮」「你好棒」可以說給任何人，所以不傳遞資訊。具體的認可（「你剛剛處理那件事的角度我沒想到」）傳遞的是：我在注意你、我有判斷力、我的認可有內容。",
+          "backPoints": [
+            "具體稱讚不會消耗吸引力，因為它證明你的認可本來就不是隨便給的。",
+            "真正會扣分的是連續三則泛用讚美之後突然索取。",
+            "想要「我的認可有價值」，就用具體的認可，不要用不給認可。"
+          ]
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-2-c4-quiz-1",
+          "mode": "single",
+          "revision": 1,
+          "question": "哪一句是「側面展示」而不是自誇？",
+          "choices": [
+            {
+              "id": "ebook-2-c4-quiz-1-a",
+              "text": "我在外商工作，年薪還可以",
+              "isCorrect": false,
+              "feedback": "直接陳述優點，自帶動機，會被打折，而且沒有可以接的地方。"
+            },
+            {
+              "id": "ebook-2-c4-quiz-1-b",
+              "text": "這週末大概廢不掉，有個案子要收尾",
+              "isCorrect": true,
+              "feedback": "對。沒有一句在講自己多好，但洩漏了有專業工作與責任感，而且對方可以接。"
+            },
+            {
+              "id": "ebook-2-c4-quiz-1-c",
+              "text": "我算是同輩裡比較上進的那種",
+              "isCorrect": false,
+              "feedback": "自我評價，而且用了比較級——這通常會讓對方警戒而不是佩服。"
+            },
+            {
+              "id": "ebook-2-c4-quiz-1-d",
+              "text": "我很少對人這樣",
+              "isCorrect": false,
+              "feedback": "這是泛用的興趣表達，不可驗證，也沒有透露任何關於你的資訊。"
+            }
+          ],
+          "takeaway": "V 要在講別的事情時自然掉出來，不要單獨拿出來宣告。"
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-2-c4-quiz-2",
+          "mode": "multiple",
+          "revision": 1,
+          "question": "關於「把興趣說出來」，下列哪些說法是對的？（可多選）",
+          "choices": [
+            {
+              "id": "ebook-2-c4-quiz-2-a",
+              "text": "興趣要具體、有觀察基礎，例如引用對方講過的一段經歷",
+              "isCorrect": true,
+              "feedback": "對。具體才自帶證據，也才證明你在聽。"
+            },
+            {
+              "id": "ebook-2-c4-quiz-2-b",
+              "text": "對方已經開始投入之後還在隱藏興趣，通常會被讀成不夠有意在",
+              "isCorrect": true,
+              "feedback": "對。那是最常見的失手位置。"
+            },
+            {
+              "id": "ebook-2-c4-quiz-2-c",
+              "text": "連續三則泛用讚美，可以先累積好感再開口索取",
+              "isCorrect": false,
+              "feedback": "這是案例 B 的死法：連續給予之後突然索取，會把互動變成交易請求。"
+            },
+            {
+              "id": "ebook-2-c4-quiz-2-d",
+              "text": "外貌可以稱讚，但要具體，而且不能是主軸",
+              "isCorrect": true,
+              "feedback": "對。「你好漂亮」是評價，「你笑起來跟講話的語氣有反差」是觀察。"
+            }
+          ],
+          "takeaway": "R 是互惠：清楚、具體、不施壓地讓對方知道你對她的哪一點有興趣。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-2-c4-b9",
+          "tone": "takeaway",
+          "title": "今天只帶走一個動作",
+          "text": "找一段你正在聊的對話，把你最想稱讚的那件事改寫成「引用她說過的具體內容＋你的一句感受」。"
+        }
+      ]
+    },
+    {
+      "id": "ebook-2-chapter-5",
+      "number": "2.5",
+      "title": "情緒起伏、玩笑與三燈",
+      "learningGoal": "什麼樣的起伏會加溫，什麼樣的會製造壓力？",
+      "estimatedMinutes": 10,
+      "sourceRefs": [
+        {
+          "document": "five-stage-course",
+          "sections": ["階段 2.4 情緒振幅", "階段 2.5 玩笑框架與安全網", "階段 2.6 訊號讀取"]
+        },
+        {
+          "document": "field-handbook",
+          "sections": ["案例 J 完整弧線", "案例 K 低能量版本", "綠燈檢查"]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "ebook-2-c5-b1",
+          "text": "平鋪直敘的對話不會被記住。你需要一定的起伏——但起伏有兩種，一種讓對方更放鬆，一種讓對方更緊繃，而它們在文字上看起來很像。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-2-c5-b2",
+          "tone": "goal",
+          "title": "這一章只回答一個問題",
+          "text": "什麼樣的起伏會加溫，什麼樣的會製造壓力？"
+        },
+        {
+          "type": "comparison",
+          "id": "ebook-2-c5-cmp-1",
+          "title": "平 vs 有起伏",
+          "items": [
+            {
+              "id": "ebook-2-c5-cmp-1-w",
+              "stance": "weak",
+              "label": "平",
+              "text": "你喜歡吃辣啊，我也是",
+              "note": "確認共同點就結束了，沒有任何張力。"
+            },
+            {
+              "id": "ebook-2-c5-cmp-1-s",
+              "stance": "strong",
+              "label": "有起伏",
+              "text": "你說你能吃辣，但台灣人說的能吃辣通常是加一點點辣椒醬。你的等級是哪一種",
+              "note": "製造了一個輕微的挑戰，她會想要證明或反駁，對話有了張力。"
+            }
+          ]
+        },
+        {
+          "type": "callout",
+          "id": "ebook-2-c5-b3",
+          "tone": "warning",
+          "title": "兩種波動要分清楚",
+          "text": "張力型（幽默、遊戲性挑戰、誇張化）產生興奮，可以用。焦慮型（讓對方不確定自己的地位、忽冷忽熱、間歇性給予認可）產生的是威脅反應，不要用——它篩掉的正是情緒穩定的人。判準只有一個：波動之後，她是變得更放鬆還是更緊繃？"
+        },
+        {
+          "type": "heading",
+          "id": "ebook-2-c5-b4",
+          "text": "玩笑框架真正的功能"
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-2-c5-b5",
+          "text": "用玩笑的框架測試方向（角色設定、誇張的假設、開玩笑的抱怨）是有效工具，但要理解它為什麼有效：它降低的是「對方」的表態成本。在一個玩笑框架裡，她可以順著玩（表示接納）、可以轉移話題（表示還沒到）、也可以直接不接（表示不要）——三種回應她都不必承擔尷尬。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-2-c5-safety-1",
+          "tone": "safety",
+          "title": "不接就是資訊，不是障礙",
+          "text": "玩笑框架的價值在於給對方餘裕，不是保留你自己的退路。她不接的時候，那一次互動已經完成了它的功能——你得到了資訊。退回去，換方向。有一派教法把玩笑框架當成「進可攻退可守」的施壓工具（升級、遇阻、否認、再升級），那是壞設計：它的行為是持續施壓直到突破，而突破本身不是你要的結果。這一類反效果技巧在《對話急救室》有完整拆解。"
+        },
+        {
+          "type": "heading",
+          "id": "ebook-2-c5-b6",
+          "text": "三燈：讀完之後要做什麼"
+        },
+        {
+          "type": "bulletList",
+          "id": "ebook-2-c5-b7",
+          "items": [
+            "綠燈 → 可以自然推進：她主動給超出你問的資訊、問你的個人問題、引用你說過的話、回覆變長變快、主動開新話題。",
+            "黃燈 → 維持或換軌，不加壓：回應對稱但不延伸、接得住玩笑但不加碼、轉移話題但沒有結束。",
+            "紅燈 → 退回或結束：回覆變短變慢、話題轉走不再回來、玩笑完全不接、明確的距離表達。"
+          ]
+        },
+        {
+          "type": "dialogue",
+          "id": "ebook-2-c5-dlg-1",
+          "title": "成功弧線：逐句看動能怎麼累積",
+          "caption": "同一段對話，右側標出每一句在做什麼。",
+          "lines": [
+            {
+              "id": "ebook-2-c5-dlg-1-l1",
+              "speaker": "you",
+              "text": "第三張是在哪座山？看起來比我上個月爬的那個友善多了",
+              "annotation": "V↑（有在爬山）E↑（比較的幽默）＋具體引用。"
+            },
+            {
+              "id": "ebook-2-c5-dlg-1-l2",
+              "speaker": "other",
+              "text": "哈哈那是象山，超級觀光路線",
+              "signal": "green",
+              "annotation": "有笑、有給資訊。"
+            },
+            {
+              "id": "ebook-2-c5-dlg-1-l3",
+              "speaker": "you",
+              "text": "象山還好啦，至少上面有東西看。我上個月那個爬兩小時，登頂只有一個水泥柱和三隻狗",
+              "annotation": "E↑↑（畫面感＋荒謬）V↑（真的有在爬）。注意這一句沒有問句，卻給了大量可回應面。"
+            },
+            {
+              "id": "ebook-2-c5-dlg-1-l4",
+              "speaker": "other",
+              "text": "哈哈哈哈三隻狗是什麼意思",
+              "signal": "green",
+              "annotation": "她主動追問（I↑）。不問問題反而讓她開口，這是很多人不敢做的。"
+            },
+            {
+              "id": "ebook-2-c5-dlg-1-l5",
+              "speaker": "you",
+              "text": "不知道，牠們看起來比我熟門熟路。後來我下山的時候牠們還在，我懷疑那是牠們的地盤",
+              "annotation": "延續同一個梗，不換題。"
+            },
+            {
+              "id": "ebook-2-c5-dlg-1-l6",
+              "speaker": "other",
+              "text": "太好笑了 你常爬嗎",
+              "signal": "green",
+              "annotation": "關鍵轉折：她開始問你的事（I↑↑）。這是投資方向反轉的訊號。"
+            }
+          ]
+        },
+        {
+          "type": "flipCard",
+          "id": "ebook-2-c5-flip-1",
+          "frontTitle": "她一直很短，但沒有紅燈",
+          "frontText": "「叫麻糬哈哈」「真的欸 牠超兇的」「三年了」——每句都很短。他覺得沒興趣，想放棄。",
+          "backTitle": "有些人就是文字低能量",
+          "backText": "判準是有沒有紅燈，不是熱度高低。她全程沒有拉開距離、沒有關閉話題、玩笑都接了——這是穩定的低能量，不是拒絕訊號。正確做法是維持穩定節奏，不加壓也不放棄。",
+          "backPoints": [
+            "誤判成「沒興趣」而自己放棄，是最常見的浪費。",
+            "誤判成「要更用力」而加壓，會把它推成真的紅燈。",
+            "低能量但穩定的對話，照樣可以走到下一步。"
+          ]
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-2-c5-quiz-1",
+          "mode": "single",
+          "revision": 1,
+          "scenario": "你開了一個玩笑式的挑戰，她回：「還好啦，我其實很無聊。」",
+          "question": "這是什麼燈，該怎麼做？",
+          "choices": [
+            {
+              "id": "ebook-2-c5-quiz-1-a",
+              "text": "紅燈：她主動把自己說得無趣，是在關閉這個方向。順著她換軌",
+              "isCorrect": true,
+              "feedback": "對。主動貶低自己是禮貌性煞車，不是欲擒故縱。接受她給的方向，換到安全話題。"
+            },
+            {
+              "id": "ebook-2-c5-quiz-1-b",
+              "text": "黃燈：她在等你再推一下，證明她不無聊",
+              "isCorrect": false,
+              "feedback": "這正是把煞車讀成邀請。在這裡加壓通常直接結束對話。"
+            },
+            {
+              "id": "ebook-2-c5-quiz-1-c",
+              "text": "綠燈：她在自嘲，表示放得開",
+              "isCorrect": false,
+              "feedback": "自嘲與拉開距離的差別在於後面有沒有加碼。她沒有給任何延伸。"
+            },
+            {
+              "id": "ebook-2-c5-quiz-1-d",
+              "text": "先不回，晾她一天讓她重新在意",
+              "isCorrect": false,
+              "feedback": "這會把一個可以換軌救回的黃紅燈直接放到死。延遲不會製造在意。"
+            }
+          ],
+          "takeaway": "對方主動把自己描述得無趣、乖、不會玩，通常是禮貌性煞車。他退你也退。"
+        },
+        {
+          "type": "quiz",
+          "id": "ebook-2-c5-quiz-2",
+          "mode": "multiple",
+          "revision": 1,
+          "question": "下列哪些是綠燈訊號，代表可以自然推進？（可多選）",
+          "choices": [
+            {
+              "id": "ebook-2-c5-quiz-2-a",
+              "text": "她開始問你的個人問題",
+              "isCorrect": true,
+              "feedback": "對。投資方向反轉是最清楚的綠燈之一。"
+            },
+            {
+              "id": "ebook-2-c5-quiz-2-b",
+              "text": "她引用你之前說過的話",
+              "isCorrect": true,
+              "feedback": "對。這表示她在記，也在投入。"
+            },
+            {
+              "id": "ebook-2-c5-quiz-2-c",
+              "text": "她回覆得很快但每次都只有兩個字",
+              "isCorrect": false,
+              "feedback": "速度快但不加碼，比較接近黃燈——維持節奏，不要當成推進許可。"
+            },
+            {
+              "id": "ebook-2-c5-quiz-2-d",
+              "text": "她主動提到週末、有空或想去哪",
+              "isCorrect": true,
+              "feedback": "對，而且這幾乎是明示。出現這一項就可以往下一步走。"
+            }
+          ],
+          "takeaway": "綠燈看的是「她主動加碼」，黃燈看的是「接得住但不往前」。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-2-c5-b8",
+          "tone": "takeaway",
+          "title": "今天只帶走一個動作",
+          "text": "回頭看你最近一段對話，替對方的最後三則回覆各標一個燈號。標完你就知道下一句該推、該維持，還是該收。"
+        }
+      ]
     }
   ]
 }
