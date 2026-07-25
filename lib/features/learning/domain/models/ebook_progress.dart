@@ -61,6 +61,12 @@ class EbookBookProgress {
 
   static const empty = EbookBookProgress();
 
+  /// 使用者上次看到的內容版本。
+  ///
+  /// 刻意只記錄、不用來失效進度：拍板的策略是「純文案修改保留進度；真正改寫
+  /// 一章時改 chapter id 或升 quiz revision」。所以 contentVersion 變動不會清掉
+  /// 已完成章節或 checklist——那由 id／revision 負責。這個欄位留給未來需要
+  /// 明確 migration 時判斷起點。
   final int? contentVersionSeen;
 
   /// 上次讀到哪一章（章節 id，不是 index）。

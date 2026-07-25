@@ -3,6 +3,7 @@
 // 付費閘門：Free 看不到 Books 2–4、loading 不 render premium child、
 // 訂閱錯誤顯示可重試錯誤而不是假裝 Free upsell、unknown book 不導 paywall、
 // 直接 deep link 進付費章節也不會閃出內容。
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/learning/domain/models/ebook.dart';
 import 'package:vibesync/features/learning/presentation/widgets/ebook_access_gate.dart';
@@ -52,6 +53,36 @@ void main() {
       expect(
         ebookLockedFor(premium, const EbookSubscriptionAccess.free()),
         isTrue,
+      );
+    });
+
+    test('已快取 premium 時優先放行（刻意的既有 entitlement 姿態）', () {
+      // App 啟動時 SubscriptionState 會先帶本機快取 tier 且 isLoading=true，
+      // 付費使用者不該先看到 loading 或降級。代價是 entitlement 已失效但本機
+      // 仍快取 premium 者，在刷新完成前還能開啟——這是刻意接受的既有行為，
+      // 且 tier 解析成 free 後閘門會重算成 locked。
+      const premiumWhileResolving = EbookSubscriptionAccess(
+        isPremium: true,
+        isResolving: true,
+        hasError: false,
+      );
+      const premiumWhileError = EbookSubscriptionAccess(
+        isPremium: true,
+        isResolving: false,
+        hasError: true,
+      );
+      expect(
+        ebookAccessFor(premium, premiumWhileResolving),
+        EbookAccessDecision.allowed,
+      );
+      expect(
+        ebookAccessFor(premium, premiumWhileError),
+        EbookAccessDecision.allowed,
+      );
+      // 一旦 tier 解析成 free，同一個判斷立刻轉為 locked。
+      expect(
+        ebookAccessFor(premium, const EbookSubscriptionAccess.free()),
+        EbookAccessDecision.locked,
       );
     });
 
@@ -115,6 +146,28 @@ void main() {
 
     expect(find.text(paywallStubText), findsOneWidget);
     expect(find.text('段落內容。'), findsNothing);
+  });
+
+  testWidgets('從 paywall 返回後不是無盡 loading，而是可操作畫面', (tester) async {
+    final harness = await pumpEbookApp(
+      tester,
+      initialLocation: '/learning/books/$_premiumBook',
+      catalog: buildTestCatalog(),
+      access: const EbookSubscriptionAccess.free(),
+    );
+    await tester.pumpAndSettle();
+
+    // 自動導向 paywall 之後返回。
+    expect(find.text(paywallStubText), findsOneWidget);
+    harness.router.pop();
+    await tester.pumpAndSettle();
+
+    // 不得停在 spinner：要有標題與可按的入口，而且仍然沒有內容。
+    expect(find.text('這本需要訂閱才能閱讀'), findsOneWidget);
+    expect(find.text('看訂閱方案'), findsOneWidget);
+    expect(find.text('回學習頁'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('訂閱測試書'), findsNothing);
   });
 
   testWidgets('訂閱狀態還在確認時只顯示 loading，不導 paywall 也不顯示內容',

@@ -182,6 +182,46 @@ void main() {
     expect(find.textContaining('已完成 1／'), findsOneWidget);
   });
 
+  testWidgets('訂閱還在確認時：不顯示「訂閱解鎖」、不導 paywall', (tester) async {
+    await pumpShelf(
+      tester,
+      catalog: _realCatalog,
+      access: const EbookSubscriptionAccess.resolving(),
+      size: const Size(390, 1600),
+    );
+    await tester.pumpAndSettle();
+
+    // 狀態未確認不得包裝成 Free upsell。
+    expect(find.text('訂閱解鎖'), findsNothing);
+    expect(find.text('已解鎖'), findsNothing);
+    expect(find.text('確認訂閱中'), findsNWidgets(3));
+    expect(find.text('免費'), findsOneWidget);
+
+    await tester.tap(find.text('看懂一段對話'));
+    await tester.pumpAndSettle();
+    // 進書籍目錄（由閘門顯示 loading／重試），不是 paywall。
+    expect(find.text(paywallStubText), findsNothing);
+    expect(find.text('DETAIL_ebook-2-conversation'), findsOneWidget);
+  });
+
+  testWidgets('訂閱無法確認時：同樣不導 paywall，交給閘門重試', (tester) async {
+    await pumpShelf(
+      tester,
+      catalog: _realCatalog,
+      access: const EbookSubscriptionAccess.unavailable(),
+      size: const Size(390, 1600),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('訂閱解鎖'), findsNothing);
+    expect(find.text('確認訂閱中'), findsNWidgets(3));
+
+    await tester.tap(find.text('對話急救室：該救，還是該停'));
+    await tester.pumpAndSettle();
+    expect(find.text(paywallStubText), findsNothing);
+    expect(find.text('DETAIL_ebook-3-rescue'), findsOneWidget);
+  });
+
   testWidgets('內容載入失敗只降級書架區塊', (tester) async {
     await pumpShelf(tester, catalog: null, catalogError: true);
     await tester.pumpAndSettle();

@@ -72,6 +72,10 @@ class EbookCatalogRepository {
 ///
 /// 這裡刻意重述「Book 1 免費、其餘訂閱」的產品拍板：內容資產若被改成 Book 2
 /// 免費，等於付費牆破洞，寧可在載入時就爆掉並由測試擋下，也不要靜默上線。
+///
+/// 章數（四本二十章）刻意不在 runtime 強制：那是內容審稿的不變量，由
+/// `ebook_content_invariants_test.dart` 守。若寫進 runtime，未來合法地新增
+/// 一章就會讓整個學習頁書架掛掉，代價遠大於效益。
 void _validateCatalog(List<Ebook> books) {
   if (books.isEmpty) {
     throw const EbookContentException('電子書 catalog 不得為空');

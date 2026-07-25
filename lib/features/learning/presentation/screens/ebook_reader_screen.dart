@@ -139,12 +139,25 @@ class _EbookReaderBodyState extends ConsumerState<_EbookReaderBody> {
   Future<void> _completeChapter(int index) async {
     if (_saving) return;
     setState(() => _saving = true);
-    // 先確認寫入成功，再翻頁或返回目錄。
-    await ref.read(ebookProgressControllerProvider.notifier).markChapterCompleted(
-          bookId: _book.id,
-          chapterId: _book.chapters[index].id,
-          contentVersion: _book.contentVersion,
-        );
+    try {
+      // 先確認寫入成功，再翻頁或返回目錄。
+      await ref
+          .read(ebookProgressControllerProvider.notifier)
+          .markChapterCompleted(
+            bookId: _book.id,
+            chapterId: _book.chapters[index].id,
+            contentVersion: _book.contentVersion,
+          );
+    } catch (error) {
+      // 寫入失敗不能停在 loading：解除按鈕並讓使用者可以再按一次。
+      debugPrint('[ebook-reader] 完成章節寫入失敗：$error');
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('進度沒有存起來，請再按一次。')),
+      );
+      return;
+    }
     if (!mounted) return;
     setState(() => _saving = false);
 
@@ -327,6 +340,16 @@ class _ChapterPage extends ConsumerWidget {
       buttonLabel = isCompleted ? '下一章' : '完成本章，下一章';
     }
 
+    // 這兩個保存是 best-effort 的本機寫入，不阻擋閱讀；但失敗時要讓使用者
+    // 知道進度沒存起來，而不是讓畫面繼續宣稱「已理解」。
+    void reportSaveFailure(Object error) {
+      debugPrint('[ebook-reader] 互動進度寫入失敗：$error');
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      messenger?.showSnackBar(
+        const SnackBar(content: Text('這一題的作答沒有存起來。')),
+      );
+    }
+
     return ListView(
       // PageStorageKey：換章再回來時保留這一章的捲動位置，也讓測試能定位到
       // 該章自己的 scrollable（一個 PageView 裡有多個垂直清單）。
@@ -356,21 +379,25 @@ class _ChapterPage extends ConsumerWidget {
               block: block,
               progress: progress,
               onQuizSubmitted: (quiz, choiceIds, solved) {
-                controller.recordQuizSubmission(
-                  bookId: book.id,
-                  quizId: quiz.id,
-                  quizRevision: quiz.revision,
-                  choiceIds: choiceIds.toList(growable: false),
-                  solved: solved,
-                );
+                controller
+                    .recordQuizSubmission(
+                      bookId: book.id,
+                      quizId: quiz.id,
+                      quizRevision: quiz.revision,
+                      choiceIds: choiceIds.toList(growable: false),
+                      solved: solved,
+                    )
+                    .catchError(reportSaveFailure);
               },
               onChecklistItemChanged: (checklist, itemId, checked) {
-                controller.setChecklistItem(
-                  bookId: book.id,
-                  blockId: checklist.id,
-                  itemId: itemId,
-                  checked: checked,
-                );
+                controller
+                    .setChecklistItem(
+                      bookId: book.id,
+                      blockId: checklist.id,
+                      itemId: itemId,
+                      checked: checked,
+                    )
+                    .catchError(reportSaveFailure);
               },
             ),
           ),

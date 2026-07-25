@@ -203,6 +203,64 @@ void main() {
     );
   });
 
+  test('帳號切換期間完成的舊寫入不會發布到新帳號的 state', () async {
+    // A 啟動一筆寫入，寫入還沒完成前 auth 切到 B，A 的 Future 才 resolve。
+    // 這筆結果必須被丟掉，否則 B 的畫面會出現 A 的完成度。
+    final owners = StreamController<String?>();
+    addTearDown(owners.close);
+    final container = containerFor(owners.stream);
+
+    owners.add(_ownerA);
+    await container.read(ebookProgressControllerProvider.future);
+
+    final pendingForA = container
+        .read(ebookProgressControllerProvider.notifier)
+        .markChapterCompleted(bookId: _bookOne, chapterId: 'ebook-1-chapter-1');
+
+    owners.add(_ownerB);
+    await container.pump();
+    await container.read(ebookProgressControllerProvider.future);
+    await pendingForA;
+    await container.pump();
+
+    // B 的畫面不得看到 A 的章節；A 的寫入本身仍然落地。
+    expect(
+      container.read(ebookBookProgressProvider(_bookOne)).completedChapterIds,
+      isEmpty,
+      reason: 'A 的 snapshot 不得被發布到 B',
+    );
+    expect(
+      (await repo.load(_ownerA)).bookProgress(_bookOne).completedChapterIds,
+      {'ebook-1-chapter-1'},
+      reason: 'A 的寫入不該因為切帳號而被取消',
+    );
+  });
+
+  test('重建期間不沿用上一個帳號的進度（不吃 AsyncLoading 的 previousValue）',
+      () async {
+    final owners = StreamController<String?>();
+    addTearDown(owners.close);
+    final container = containerFor(owners.stream);
+
+    owners.add(_ownerA);
+    await container.read(ebookProgressControllerProvider.future);
+    await container
+        .read(ebookProgressControllerProvider.notifier)
+        .markChapterCompleted(bookId: _bookOne, chapterId: 'ebook-1-chapter-1');
+    expect(
+      container.read(ebookBookProgressProvider(_bookOne)).completedChapterIds,
+      {'ebook-1-chapter-1'},
+    );
+
+    // 切到 B：在新的 build 完成前，切片必須立刻回空，不能顯示 A 的完成度。
+    owners.add(_ownerB);
+    await container.pump();
+    expect(
+      container.read(ebookBookProgressProvider(_bookOne)).completedChapterIds,
+      isEmpty,
+    );
+  });
+
   test('bookProgress 切片在載入中先給空進度', () {
     final container = containerFor(const Stream<String?>.empty());
     expect(

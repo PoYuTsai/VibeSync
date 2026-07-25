@@ -240,6 +240,56 @@ void main() {
     expect(recorder.submissions, hasLength(1));
   });
 
+  testWidgets('savedState 換人（例如切帳號）時清掉畫面上的作答', (tester) async {
+    // 同一題、同一 revision，但保存狀態從「A 答對」變成 null（B 沒答過）。
+    Widget host(EbookQuizState? saved) => MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: EbookQuizCard(
+                quiz: buildTestQuiz(),
+                savedState: saved,
+                onSubmit: (_, __) {},
+              ),
+            ),
+          ),
+        );
+
+    await tester.pumpWidget(
+      host(const EbookQuizState(
+        quizRevision: 1,
+        selectedChoiceIds: ['quiz-1-b'],
+        solved: true,
+      )),
+    );
+    expect(find.text('答對了'), findsOneWidget);
+
+    await tester.pumpWidget(host(null));
+    await tester.pumpAndSettle();
+
+    expect(find.text('答對了'), findsNothing);
+    expect(find.text('已理解'), findsNothing);
+    expect(find.text('送出答案'), findsOneWidget);
+  });
+
+  testWidgets('「再試一次」只是暫時 UI 狀態，不清除已保存的作答', (tester) async {
+    // 這是刻意的行為：使用者確實答錯過一次，那筆紀錄是事實。
+    final recorder = await pumpQuiz(
+      tester,
+      savedState: const EbookQuizState(
+        quizRevision: 1,
+        selectedChoiceIds: ['quiz-1-a'],
+        solved: false,
+      ),
+    );
+
+    await tester.tap(find.text('再試一次'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('送出答案'), findsOneWidget);
+    // 按重試本身不會產生任何保存呼叫。
+    expect(recorder.submissions, isEmpty);
+  });
+
   testWidgets('no overflow at 2.0 text scale on 320px width', (tester) async {
     await pumpQuiz(
       tester,

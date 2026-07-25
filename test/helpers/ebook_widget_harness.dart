@@ -32,11 +32,13 @@ class EbookHarness {
     required this.container,
     required this.repository,
     required this.ownerUserId,
+    required this.router,
   });
 
   final ProviderContainer container;
   final EbookProgressRepository repository;
   final String? ownerUserId;
+  final GoRouter router;
 
   void setAccess(EbookSubscriptionAccess access) {
     container.read(testSubscriptionAccessProvider.notifier).state = access;
@@ -79,6 +81,14 @@ class InMemoryHiveBox extends Fake implements Box {
     final removed = data.length;
     data.clear();
     return removed;
+  }
+}
+
+/// 寫入一定失敗的 box，用來驗證「寫入失敗不會卡在 loading 或假裝已保存」。
+class FailingHiveBox extends InMemoryHiveBox {
+  @override
+  Future<void> put(dynamic key, dynamic value) async {
+    throw StateError('disk full (test)');
   }
 }
 
@@ -167,6 +177,7 @@ Future<EbookHarness> pumpEbookApp(
     container: container,
     repository: repository,
     ownerUserId: ownerUserId,
+    router: router,
   );
 }
 

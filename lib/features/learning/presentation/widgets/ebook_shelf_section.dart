@@ -45,7 +45,7 @@ class EbookShelfSection extends ConsumerWidget {
                   padding: const EdgeInsets.only(bottom: 10),
                   child: EbookShelfCard(
                     book: book,
-                    locked: ebookLockedFor(book, access),
+                    decision: ebookAccessFor(book, access),
                   ),
                 ),
             ],

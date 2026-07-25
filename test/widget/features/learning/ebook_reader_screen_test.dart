@@ -339,6 +339,30 @@ void main() {
     expect(find.text('章節'), findsOneWidget);
   });
 
+  testWidgets('寫入失敗不會卡在 loading，按鈕可以再按一次', (tester) async {
+    await pumpEbookApp(
+      tester,
+      initialLocation: '/learning/books/$_freeBook/chapters/${_chapter(1)}',
+      catalog: buildTestCatalog(freeChapterCount: 3),
+      progressBox: FailingHiveBox(),
+    );
+    await tester.pumpAndSettle();
+
+    await revealInChapter(tester, find.text('完成本章，下一章'));
+    await tester.tap(find.text('完成本章，下一章'));
+    await tester.pumpAndSettle();
+
+    // 沒有翻頁、沒有假裝完成，而且按鈕回到可按狀態並提示重試。
+    expect(find.text('第 1 ／ 3 章'), findsOneWidget);
+    expect(find.text('完成度 0 ／ 3 章'), findsOneWidget);
+    expect(find.text('進度沒有存起來，請再按一次。'), findsOneWidget);
+
+    final button = tester.widget<ElevatedButton>(
+      find.widgetWithText(ElevatedButton, '完成本章，下一章').first,
+    );
+    expect(button.onPressed, isNotNull, reason: '按鈕必須解除 loading 可以再按');
+  });
+
   testWidgets('付費書的閱讀器同樣受閘門保護', (tester) async {
     await pumpEbookApp(
       tester,

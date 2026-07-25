@@ -9,6 +9,10 @@
 //     再加全題 takeaway；正誤不能只靠綠紅色差。
 //   - retryPolicy=untilCorrect（預設）答錯後可重設再試；答對標示已理解。
 //   - restore 由呼叫端以 quizRevision 驗證過才傳進來，revision 改變即視為未作答。
+//
+// 「再試一次」刻意只是暫時的 UI 狀態，不會回頭清除已保存的作答：那筆紀錄是
+// 事實（使用者確實答錯過一次）。因此如果按了重試但沒有重新提交就離開，
+// 回來時仍會看到上一次的作答與 feedback。
 library;
 
 import 'package:flutter/material.dart';
@@ -53,8 +57,11 @@ class _EbookQuizCardState extends State<EbookQuizCard> {
   void didUpdateWidget(EbookQuizCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     // 換題目（例如 PageView 回收）時重新以保存狀態開場。
+    // 保存狀態本身換人時也要重跑：帳號切換後 savedState 會變成別人的（或 null），
+    // 若不重置就會把上一個帳號的作答留在畫面上。
     if (oldWidget.quiz.id != widget.quiz.id ||
-        oldWidget.quiz.revision != widget.quiz.revision) {
+        oldWidget.quiz.revision != widget.quiz.revision ||
+        !identical(oldWidget.savedState, widget.savedState)) {
       _restoreFromSavedState();
     }
   }

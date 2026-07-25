@@ -274,4 +274,77 @@ void main() {
     final text = rescue!.chapters.map(_chapterText).join('\n');
     expect(text.contains('十四個案例'), isTrue);
   });
+
+  test('照片位數校正為六個功能位', () {
+    final bottleneck = catalog.findBook('ebook-1-bottleneck');
+    expect(bottleneck, isNotNull);
+    final text = bottleneck!.chapters.map(_chapterText).join('\n');
+    expect(text.contains('六個功能位'), isTrue);
+  });
+
+  test('恰好四本、二十章，每本五章', () {
+    expect(catalog.books, hasLength(4));
+    for (final book in catalog.books) {
+      expect(book.chapters, hasLength(5), reason: '${book.id} 章數不是 5');
+    }
+    final totalChapters = catalog.books.fold<int>(
+      0,
+      (sum, book) => sum + book.chapterCount,
+    );
+    expect(totalChapters, 20);
+  });
+
+  test('權限分界：Book 1 免費，Books 2–4 訂閱', () {
+    expect(catalog.books.first.id, 'ebook-1-bottleneck');
+    expect(catalog.books.first.access, EbookAccess.free);
+    for (final book in catalog.books.skip(1)) {
+      expect(book.access, EbookAccess.premium, reason: '${book.id} 應為訂閱內容');
+    }
+  });
+
+  test('Book 1 結尾提供「應讀哪一本」導覽', () {
+    final bottleneck = catalog.findBook('ebook-1-bottleneck')!;
+    final text = bottleneck.chapters.first.blocks
+        .whereType<EbookBulletListBlock>()
+        .expand((block) => block.items)
+        .join('\n');
+    for (final title in const ['看懂一段對話', '對話急救室', '從聊天走到見面']) {
+      expect(text.contains(title), isTrue, reason: '診斷導覽缺少《$title》');
+    }
+  });
+
+  test('Book 4 收錄安全、同意與個資提醒', () {
+    final meeting = catalog.findBook('ebook-4-meeting')!;
+    final safetyText = meeting.chapters
+        .expand((chapter) => chapter.blocks)
+        .whereType<EbookCalloutBlock>()
+        .where((block) => block.tone == EbookCalloutTone.safety)
+        .map((block) => '${block.title ?? ''}\n${block.text}')
+        .join('\n');
+
+    for (final requirement in const [
+      '公開場所',
+      '交通',
+      '朋友',
+      '不推定',
+      '明確',
+      '沉默',
+      '個資',
+      '詐騙',
+    ]) {
+      expect(
+        safetyText.contains(requirement),
+        isTrue,
+        reason: 'Book 4 的安全 callout 缺少「$requirement」相關內容',
+      );
+    }
+  });
+
+  test('每本書都有 checklist 或明確的自評工具（Book 1 與 Book 4）', () {
+    for (final bookId in const ['ebook-1-bottleneck', 'ebook-4-meeting']) {
+      final book = catalog.findBook(bookId)!;
+      final checklists = book.chapters.expand((c) => c.checklists);
+      expect(checklists, isNotEmpty, reason: '$bookId 缺 checklist');
+    }
+  });
 }

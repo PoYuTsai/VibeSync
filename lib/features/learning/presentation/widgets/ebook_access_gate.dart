@@ -83,6 +83,16 @@ enum EbookAccessDecision {
 }
 
 /// 純函式權限判斷。不讀文章 quota、不讀 tier 字串細節。
+///
+/// 優先序刻意是「isPremium 先於 isResolving／hasError」：
+/// `SubscriptionState` 啟動時會先用本機快取的 tier 並帶 `isLoading: true`
+/// （見 `buildInitialSubscriptionStateFromUsage`），這是 App 既有的
+/// entitlement 姿態——付費使用者冷啟動時不該先看到降級或 loading。
+///
+/// 代價是：entitlement 已失效但本機仍快取 premium 的使用者，在刷新完成前
+/// 還能開啟付費書。這是刻意接受的既有行為，不是這個功能新增的破洞，而且會
+/// 自我修正——tier 一旦解析成 free，閘門重算即轉為 locked。若要改成
+/// 「未確認即不放行」，那是產品決策，需要 Eric 拍板。
 EbookAccessDecision ebookAccessFor(
   Ebook book,
   EbookSubscriptionAccess subscription,
@@ -173,7 +183,20 @@ class _EbookAccessGateState extends ConsumerState<EbookAccessGate> {
           });
         }
         // 導航前後都不建立 premium child，避免內容閃現。
-        return const _EbookGateLoading(label: '這本需要訂閱才能閱讀');
+        //
+        // 這裡刻意不是 loading：使用者從 paywall 返回後 `_redirected` 已為
+        // true，不會再自動導航，若顯示 spinner 就會卡在永遠不會結束的
+        // loading 死角。改成可操作的畫面，並保留手動再看方案的入口。
+        return _EbookGateMessage(
+          icon: Icons.workspace_premium_outlined,
+          title: '這本需要訂閱才能閱讀',
+          message: '第一本《先找到真正卡點》永久免費。訂閱後這三本會一次全部開放，'
+              '不需要照順序讀。',
+          primaryLabel: '看訂閱方案',
+          onPrimary: () => context.push('/paywall'),
+          secondaryLabel: '回學習頁',
+          onSecondary: () => context.go('/?tab=learning'),
+        );
     }
   }
 }

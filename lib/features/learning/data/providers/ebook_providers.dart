@@ -48,6 +48,10 @@ final ebookProgressControllerProvider =
 class EbookProgressController extends AsyncNotifier<EbookProgressSnapshot> {
   bool _disposed = false;
 
+  /// 目前這份 state 屬於哪個帳號。寫入完成時要比對，否則在帳號切換的競態下
+  /// 可能把 A 的 snapshot 發布到已經切成 B 的畫面上。
+  String? _currentOwner;
+
   @override
   Future<EbookProgressSnapshot> build() async {
     _disposed = false;
@@ -55,6 +59,7 @@ class EbookProgressController extends AsyncNotifier<EbookProgressSnapshot> {
 
     final owner = await ref.watch(ebookProgressOwnerProvider.future);
     final normalized = owner?.trim() ?? '';
+    _currentOwner = normalized.isEmpty ? null : normalized;
     if (normalized.isEmpty) {
       // 未登入 fail closed：不建立 anonymous 共用進度。
       return EbookProgressSnapshot.empty;
@@ -70,6 +75,7 @@ class EbookProgressController extends AsyncNotifier<EbookProgressSnapshot> {
     final owner = await _ownerOrNull();
     if (owner == null) return;
     _publish(
+      owner,
       await ref.read(ebookProgressRepositoryProvider).markChapterCompleted(
             ownerUserId: owner,
             bookId: bookId,
@@ -87,6 +93,7 @@ class EbookProgressController extends AsyncNotifier<EbookProgressSnapshot> {
     final owner = await _ownerOrNull();
     if (owner == null) return;
     _publish(
+      owner,
       await ref.read(ebookProgressRepositoryProvider).setLastChapter(
             ownerUserId: owner,
             bookId: bookId,
@@ -106,6 +113,7 @@ class EbookProgressController extends AsyncNotifier<EbookProgressSnapshot> {
     final owner = await _ownerOrNull();
     if (owner == null) return;
     _publish(
+      owner,
       await ref.read(ebookProgressRepositoryProvider).recordQuizSubmission(
             ownerUserId: owner,
             bookId: bookId,
@@ -126,6 +134,7 @@ class EbookProgressController extends AsyncNotifier<EbookProgressSnapshot> {
     final owner = await _ownerOrNull();
     if (owner == null) return;
     _publish(
+      owner,
       await ref.read(ebookProgressRepositoryProvider).setChecklistItem(
             ownerUserId: owner,
             bookId: bookId,
@@ -142,17 +151,29 @@ class EbookProgressController extends AsyncNotifier<EbookProgressSnapshot> {
     return normalized.isEmpty ? null : normalized;
   }
 
-  /// Hive 寫入已經完成才會走到這裡。若 provider 中途被 dispose（例如登出
-  /// invalidate），寫入不會被取消，只是不再更新已死的 state。
-  void _publish(EbookProgressSnapshot snapshot) {
+  /// Hive 寫入已經完成才會走到這裡。
+  ///
+  /// 兩道保護：
+  ///   - provider 已被 dispose（例如登出 invalidate）就不再更新已死的 state；
+  ///     寫入本身不會被取消。
+  ///   - 寫入期間帳號換人時丟掉這筆結果，避免 A 的進度被發布到 B 的畫面。
+  void _publish(String writeOwner, EbookProgressSnapshot snapshot) {
     if (_disposed) return;
+    if (_currentOwner != writeOwner) return;
     state = AsyncData(snapshot);
   }
 }
 
-/// 單一本書的進度切片。載入中先給空進度，讓書架不必自己處理 AsyncValue。
+/// 單一本書的進度切片。
+///
+/// 刻意只讀 [AsyncData]：Riverpod 在重建時會把上一次的值掛在 AsyncLoading 的
+/// previousValue 上，若直接用 `.value` 就會在帳號切換的空窗期短暫顯示上一個
+/// 帳號的完成度。寧可先顯示空進度。
 final ebookBookProgressProvider =
     Provider.family<EbookBookProgress, String>((ref, bookId) {
   final snapshot = ref.watch(ebookProgressControllerProvider);
-  return snapshot.value?.bookProgress(bookId) ?? EbookBookProgress.empty;
+  if (snapshot is! AsyncData<EbookProgressSnapshot>) {
+    return EbookBookProgress.empty;
+  }
+  return snapshot.value.bookProgress(bookId);
 });
