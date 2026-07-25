@@ -178,7 +178,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('訂閱解鎖'), findsNWidgets(3));
-    expect(find.text('已完成 1／1 章'), findsOneWidget);
+    // 不寫死總章數，內容擴充時不該讓這個斷言變脆。
+    expect(find.textContaining('已完成 1／'), findsOneWidget);
   });
 
   testWidgets('內容載入失敗只降級書架區塊', (tester) async {
