@@ -30,22 +30,24 @@ Future<QuizRecorder> pumpQuiz(
   Size size = const Size(390, 900),
 }) async {
   final recorder = QuizRecorder();
+  // setSurfaceSize 才會真的改 layout 約束（MediaQueryData.size 單獨改不會）。
+  await tester.binding.setSurfaceSize(size);
+  addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
-    MediaQuery(
-      data: MediaQueryData(
-        size: size,
-        textScaler: TextScaler.linear(textScale),
+    MaterialApp(
+      builder: (context, widget) => MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: TextScaler.linear(textScale)),
+        child: widget!,
       ),
-      child: MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: EbookQuizCard(
-                quiz: quiz ?? buildTestQuiz(),
-                savedState: savedState,
-                onSubmit: recorder.call,
-              ),
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: EbookQuizCard(
+              quiz: quiz ?? buildTestQuiz(),
+              savedState: savedState,
+              onSubmit: recorder.call,
             ),
           ),
         ),

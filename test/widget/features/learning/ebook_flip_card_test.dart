@@ -7,19 +7,26 @@ import 'package:vibesync/features/learning/presentation/widgets/ebook_flip_card.
 
 import '../../../helpers/ebook_test_content.dart';
 
-Widget _host(
+/// 用 setSurfaceSize 真的把畫面縮到指定寬度，MediaQueryData.size 單獨改不會
+/// 影響 layout 約束。
+Future<void> pumpHost(
+  WidgetTester tester,
   Widget child, {
   bool disableAnimations = false,
   double textScale = 1.0,
   Size size = const Size(390, 844),
-}) {
-  return MediaQuery(
-    data: MediaQueryData(
-      size: size,
-      disableAnimations: disableAnimations,
-      textScaler: TextScaler.linear(textScale),
-    ),
-    child: MaterialApp(
+}) async {
+  await tester.binding.setSurfaceSize(size);
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.pumpWidget(
+    MaterialApp(
+      builder: (context, widget) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          disableAnimations: disableAnimations,
+          textScaler: TextScaler.linear(textScale),
+        ),
+        child: widget!,
+      ),
       home: Scaffold(
         body: SingleChildScrollView(
           child: Padding(padding: const EdgeInsets.all(16), child: child),
@@ -32,7 +39,7 @@ Widget _host(
 void main() {
   testWidgets('shows the front face first and flips to the analysis',
       (tester) async {
-    await tester.pumpWidget(_host(EbookFlipCard(block: buildTestFlipCard())));
+    await pumpHost(tester, EbookFlipCard(block: buildTestFlipCard()));
 
     expect(find.text('表面問題'), findsOneWidget);
     expect(find.text('點一下看解析'), findsOneWidget);
@@ -48,7 +55,7 @@ void main() {
   });
 
   testWidgets('flips back to the scenario', (tester) async {
-    await tester.pumpWidget(_host(EbookFlipCard(block: buildTestFlipCard())));
+    await pumpHost(tester, EbookFlipCard(block: buildTestFlipCard()));
 
     await tester.tap(find.text('表面問題'));
     await tester.pumpAndSettle();
@@ -61,11 +68,10 @@ void main() {
 
   testWidgets('reduced motion switches immediately without animating',
       (tester) async {
-    await tester.pumpWidget(
-      _host(
-        EbookFlipCard(block: buildTestFlipCard()),
-        disableAnimations: true,
-      ),
+    await pumpHost(
+      tester,
+      EbookFlipCard(block: buildTestFlipCard()),
+      disableAnimations: true,
     );
 
     await tester.tap(find.text('表面問題'));
@@ -82,7 +88,7 @@ void main() {
 
   testWidgets('exposes a semantics label describing the next action',
       (tester) async {
-    await tester.pumpWidget(_host(EbookFlipCard(block: buildTestFlipCard())));
+    await pumpHost(tester, EbookFlipCard(block: buildTestFlipCard()));
 
     expect(
       find.bySemanticsLabel(RegExp('點兩下顯示解析')),
@@ -100,12 +106,11 @@ void main() {
 
   testWidgets('no overflow at 2.0 text scale on a 320px wide screen',
       (tester) async {
-    await tester.pumpWidget(
-      _host(
-        EbookFlipCard(block: buildTestFlipCard()),
-        textScale: 2.0,
-        size: const Size(320, 900),
-      ),
+    await pumpHost(
+      tester,
+      EbookFlipCard(block: buildTestFlipCard()),
+      textScale: 2.0,
+      size: const Size(320, 900),
     );
     expect(tester.takeException(), isNull);
 

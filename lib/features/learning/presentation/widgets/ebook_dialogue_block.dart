@@ -220,8 +220,11 @@ class _DialogueLineView extends StatelessWidget {
                 crossAxisAlignment:
                     isYou ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
+                  // Wrap 而非 Row：大字級時「對方 + 時間標籤」可能放不進一行。
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 2,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Icon(
                         isCoach
@@ -233,7 +236,6 @@ class _DialogueLineView extends StatelessWidget {
                         color: AppColors.onBackgroundSecondary
                             .withValues(alpha: 0.7),
                       ),
-                      const SizedBox(width: 4),
                       Text(
                         _speakerLabel(line.speaker),
                         style: AppTypography.caption.copyWith(
@@ -242,8 +244,7 @@ class _DialogueLineView extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      if (line.timeLabel != null) ...[
-                        const SizedBox(width: 6),
+                      if (line.timeLabel != null)
                         Text(
                           line.timeLabel!,
                           style: AppTypography.caption.copyWith(
@@ -251,7 +252,6 @@ class _DialogueLineView extends StatelessWidget {
                                 .withValues(alpha: 0.55),
                           ),
                         ),
-                      ],
                     ],
                   ),
                   const SizedBox(height: 4),

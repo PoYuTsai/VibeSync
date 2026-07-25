@@ -9,6 +9,8 @@ import '../features/auth/presentation/screens/login_screen.dart';
 import '../features/conversation/presentation/screens/new_conversation_screen.dart';
 import 'main_shell.dart';
 import '../features/learning/presentation/screens/article_detail_screen.dart';
+import '../features/learning/presentation/screens/ebook_detail_screen.dart';
+import '../features/learning/presentation/screens/ebook_reader_screen.dart';
 import '../features/keyboard/presentation/screens/keyboard_setup_screen.dart';
 import '../features/opener/presentation/screens/opening_rescue_screen.dart';
 import '../features/practice_chat/presentation/screens/practice_chat_screen.dart';
@@ -222,6 +224,22 @@ final router = GoRouter(
       path: '/article/:id',
       builder: (context, state) => ArticleDetailScreen(
         articleId: state.pathParameters['id']!,
+      ),
+    ),
+    // 互動電子書。既有 numeric article id 與 Coach 深連完全不受影響：
+    // 電子書走獨立路徑與獨立 id space，沒有塞進 articles。
+    GoRoute(
+      path: '/learning/books/:bookId',
+      builder: (context, state) => EbookDetailScreen(
+        bookId: state.pathParameters['bookId']!,
+      ),
+    ),
+    GoRoute(
+      // chapterId 只決定初始章節；unknown id 由閱讀器 fallback，不 404。
+      path: '/learning/books/:bookId/chapters/:chapterId',
+      builder: (context, state) => EbookReaderScreen(
+        bookId: state.pathParameters['bookId']!,
+        chapterId: state.pathParameters['chapterId'],
       ),
     ),
   ],

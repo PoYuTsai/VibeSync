@@ -335,7 +335,10 @@ class _ChoiceRow extends StatelessWidget {
                 ),
                 if (revealed) ...[
                   const SizedBox(height: 8),
-                  Row(
+                  // Wrap 而非 Row：大字級（2.0）在 320px 寬時兩個標籤放不進一行。
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 2,
                     children: [
                       Text(
                         verdictLabel,
@@ -346,8 +349,7 @@ class _ChoiceRow extends StatelessWidget {
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      if (isSelected) ...[
-                        const SizedBox(width: 8),
+                      if (isSelected)
                         Text(
                           '· 你的選擇',
                           style: AppTypography.caption.copyWith(
@@ -356,7 +358,6 @@ class _ChoiceRow extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                      ],
                     ],
                   ),
                   const SizedBox(height: 4),

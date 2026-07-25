@@ -20,14 +20,17 @@ Future<List<ChecklistCall>> pumpBlocks(
   Size size = const Size(390, 2400),
 }) async {
   final checklistCalls = <ChecklistCall>[];
+  // setSurfaceSize 才會真的改 layout 約束（MediaQueryData.size 單獨改不會）。
+  await tester.binding.setSurfaceSize(size);
+  addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
-    MediaQuery(
-      data: MediaQueryData(
-        size: size,
-        textScaler: TextScaler.linear(textScale),
+    MaterialApp(
+      builder: (context, widget) => MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: TextScaler.linear(textScale)),
+        child: widget!,
       ),
-      child: MaterialApp(
-        home: Scaffold(
+      home: Scaffold(
           body: SingleChildScrollView(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -55,7 +58,6 @@ Future<List<ChecklistCall>> pumpBlocks(
             ),
           ),
         ),
-      ),
     ),
   );
   return checklistCalls;
