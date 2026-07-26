@@ -24,6 +24,8 @@ class EbookEntryListView extends StatefulWidget {
     super.key,
     required this.block,
     required this.entryBlockBuilder,
+    this.anchorEntryId,
+    this.onAnchorConsumed,
   });
 
   final EbookEntryListBlock block;
@@ -32,12 +34,56 @@ class EbookEntryListView extends StatefulWidget {
   /// callback 一路傳下去）。
   final Widget Function(EbookBlock block) entryBlockBuilder;
 
+  /// 從別章的交叉指涉跳過來時，要自動展開並捲到的那一條。
+  final String? anchorEntryId;
+
+  /// 展開並捲到定位之後回呼一次。
+  final VoidCallback? onAnchorConsumed;
+
   @override
   State<EbookEntryListView> createState() => _EbookEntryListViewState();
 }
 
 class _EbookEntryListViewState extends State<EbookEntryListView> {
   final Set<String> _expanded = <String>{};
+  final Map<String, GlobalKey> _tileKeys = <String, GlobalKey>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _applyAnchor();
+  }
+
+  @override
+  void didUpdateWidget(covariant EbookEntryListView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.anchorEntryId != oldWidget.anchorEntryId) _applyAnchor();
+  }
+
+  /// 目標條目在這個庫裡才處理。條目 id 全域唯一（catalog 載入時驗證），
+  /// 所以同一章的其他庫不會被誤觸。
+  void _applyAnchor() {
+    final anchor = widget.anchorEntryId;
+    if (anchor == null) return;
+    if (!widget.block.entries.any((entry) => entry.id == anchor)) return;
+    _expanded.add(anchor);
+    // 展開之後才有得捲：等這一幀 build 完再 ensureVisible。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final target = _tileKeys[anchor]?.currentContext;
+      if (target != null) {
+        Scrollable.ensureVisible(
+          target,
+          duration: (MediaQuery.maybeDisableAnimationsOf(context) ?? false)
+              ? Duration.zero
+              : const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+          alignment: 0.1,
+        );
+      }
+      widget.onAnchorConsumed?.call();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -74,6 +120,7 @@ class _EbookEntryListViewState extends State<EbookEntryListView> {
         const SizedBox(height: 8),
         for (final entry in widget.block.entries)
           Padding(
+            key: _tileKeys.putIfAbsent(entry.id, GlobalKey.new),
             padding: const EdgeInsets.only(bottom: 8),
             child: _EntryTile(
               entry: entry,

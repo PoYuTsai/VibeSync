@@ -23,8 +23,14 @@ import '../widgets/ebook_access_gate.dart';
 import '../widgets/ebook_cover_badge.dart';
 
 /// 章節閱讀路由。集中在這裡組字串，避免各處拼錯。
-String ebookChapterRoute(String bookId, String chapterId) =>
-    '/learning/books/$bookId/chapters/$chapterId';
+///
+/// [entryId] 是交叉指涉用的定位點：帶著它進閱讀器，目標條目會自動展開並捲到
+/// 畫面上。用 query 而非路徑段，是因為它是可有可無的定位，不是資源身分。
+String ebookChapterRoute(String bookId, String chapterId, {String? entryId}) {
+  final base = '/learning/books/$bookId/chapters/$chapterId';
+  if (entryId == null || entryId.isEmpty) return base;
+  return '$base?entry=${Uri.encodeQueryComponent(entryId)}';
+}
 
 String ebookDetailRoute(String bookId) => '/learning/books/$bookId';
 

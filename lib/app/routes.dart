@@ -240,6 +240,8 @@ final router = GoRouter(
       builder: (context, state) => EbookReaderScreen(
         bookId: state.pathParameters['bookId']!,
         chapterId: state.pathParameters['chapterId'],
+        // 交叉指涉的定位點；不存在的 entry id 由條目庫忽略，不 404。
+        entryId: state.uri.queryParameters['entry'],
       ),
     ),
   ],

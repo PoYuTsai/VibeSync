@@ -20,6 +20,7 @@ Future<List<ChecklistCall>> pumpBlocks(
   Size size = const Size(390, 2400),
   void Function(EbookStageFunnelBlock block, EbookFunnelStage stage)?
       onFunnelTargetTap,
+  void Function(EbookCrossRefBlock block)? onCrossRefTap,
 }) async {
   final checklistCalls = <ChecklistCall>[];
   // setSurfaceSize 才會真的改 layout 約束（MediaQueryData.size 單獨改不會）。
@@ -48,6 +49,7 @@ Future<List<ChecklistCall>> pumpBlocks(
                         onQuizSubmitted: (_, __, ___) {},
                         onFunnelTargetTap: (block, stage) =>
                             onFunnelTargetTap?.call(block, stage),
+                        onCrossRefTap: (block) => onCrossRefTap?.call(block),
                         onChecklistItemChanged: (block, itemId, checked) {
                           checklistCalls.add((
                             blockId: block.id,
@@ -106,6 +108,14 @@ List<EbookBlock> allBlockTypes() => [
       buildTestFlipCard(id: 'flip'),
       buildTestQuiz(id: 'quiz'),
       buildTestChecklist(id: 'check'),
+      const EbookCrossRefBlock(
+        id: 'xref',
+        label: '案例 K · 完整弧線',
+        contextLabel: '《續航 · 讓對話活下去》第 5 章',
+        targetBookId: 'ebook-2-conversation',
+        targetChapterId: 'ebook-2-chapter-5',
+        targetEntryId: 'ebook-2-c5-lib-e11',
+      ),
     ];
 
 void main() {
@@ -125,7 +135,26 @@ void main() {
     expect(find.text('表面問題'), findsOneWidget);
     expect(find.text('情境測驗 · 單選'), findsOneWidget);
     expect(find.text('本週自評'), findsOneWidget);
+    expect(find.text('案例 K · 完整弧線'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('交叉指涉按鈕：說得出目標與所在位置，點了才回報', (tester) async {
+    final taps = <String>[];
+    await pumpBlocks(
+      tester,
+      allBlockTypes(),
+      onCrossRefTap: (block) => taps.add(block.targetEntryId ?? block.id),
+    );
+
+    // 按之前就要看得出會去哪：目標標題與所在的書／章都在按鈕上。
+    expect(find.text('《續航 · 讓對話活下去》第 5 章'), findsOneWidget);
+    expect(taps, isEmpty);
+
+    await tester.tap(find.text('案例 K · 完整弧線'));
+    await tester.pumpAndSettle();
+
+    expect(taps, ['ebook-2-c5-lib-e11']);
   });
 
   testWidgets('safety callout announces itself in words, not just an icon',

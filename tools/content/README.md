@@ -22,15 +22,23 @@ build_ebooks_from_guide.py    # 節點 JSON → 四本電子書 JSON（章節映
 | `.warn` | callout(warning) |
 | `.grad` | callout(principle) |
 | `table.data` | entryList（3 欄以上）或 bulletList（2 欄、或在條目內） |
+| 「見案例 K」「課本 6.1」「見第六節」 | 原句不動，後面補一顆 crossRef 前往按鈕 |
+
+交叉指涉（`link_cross_refs`）是四本都建好之後才跑的一道 pass——案例庫在第 2 本、
+引用它的問答在第 3 本，解目標需要整個 catalog。解不到目標一律中止 build：死連結
+留著比 build 失敗難發現得多。
 
 ## 重跑方式
 
 ```bash
-# 1. 取得原檔（放在 scratchpad 或任何本機路徑），改 parse_partner_guide.py 的 SRC
-python3 tools/content/parse_partner_guide.py     # 產出 bruce_nodes.json
+# 原檔預設讀 Eric 桌面那份；換位置就設 PARTNER_GUIDE_HTML。
+python3 tools/content/parse_partner_guide.py     # 產出 tools/content/bruce_nodes.json
 python3 tools/content/build_ebooks_from_guide.py # 覆寫四份 assets JSON
 flutter test test/unit/features/learning/        # 內容不變量必須全綠
 ```
+
+`bruce_nodes.json` 是中間產物，不進 repo。想試跑而不覆蓋正式檔就設
+`EBOOK_OUT_DIR` 指到別的資料夾，再和 `assets/learning/ebooks/` diff。
 
 ## 章節映射在哪裡改
 

@@ -31,10 +31,20 @@ class EbookBlockRenderer extends StatelessWidget {
     required this.onQuizSubmitted,
     required this.onChecklistItemChanged,
     required this.onFunnelTargetTap,
+    required this.onCrossRefTap,
+    this.anchorEntryId,
+    this.onAnchorConsumed,
   });
 
   final EbookBlock block;
   final EbookBookProgress progress;
+
+  /// 從交叉指涉跳過來時要自動展開的條目 id。
+  final String? anchorEntryId;
+
+  /// 條目庫展開並捲到定位之後回呼，讓呼叫端把 anchor 清掉——否則讀者手動
+  /// 收合再換章回來，它會自己又打開一次。
+  final VoidCallback? onAnchorConsumed;
 
   final void Function(EbookQuizBlock quiz, Set<String> choiceIds, bool solved)
       onQuizSubmitted;
@@ -45,6 +55,9 @@ class EbookBlockRenderer extends StatelessWidget {
   /// 讓編譯器在每個使用處都逼一次。
   final void Function(EbookStageFunnelBlock block, EbookFunnelStage stage)
       onFunnelTargetTap;
+
+  /// 交叉指涉的前往請求。同樣 required：沒接上導覽的按鈕就是死按鈕。
+  final void Function(EbookCrossRefBlock block) onCrossRefTap;
 
   @override
   Widget build(BuildContext context) {
@@ -96,6 +109,8 @@ class EbookBlockRenderer extends StatelessWidget {
       case EbookEntryListBlock():
         return EbookEntryListView(
           block: block,
+          anchorEntryId: anchorEntryId,
+          onAnchorConsumed: onAnchorConsumed,
           // 巢狀 block 走同一個 renderer，quiz／checklist 的 callback 一路傳下去。
           entryBlockBuilder: (child) => EbookBlockRenderer(
             block: child,
@@ -103,7 +118,14 @@ class EbookBlockRenderer extends StatelessWidget {
             onQuizSubmitted: onQuizSubmitted,
             onChecklistItemChanged: onChecklistItemChanged,
             onFunnelTargetTap: onFunnelTargetTap,
+            onCrossRefTap: onCrossRefTap,
           ),
+        );
+
+      case EbookCrossRefBlock():
+        return _CrossRefButton(
+          block: block,
+          onTap: () => onCrossRefTap(block),
         );
 
       case EbookStageFunnelBlock():
@@ -120,6 +142,76 @@ class EbookBlockRenderer extends StatelessWidget {
               onChecklistItemChanged(block, itemId, checked),
         );
     }
+  }
+}
+
+/// 交叉指涉按鈕。整塊可點，不是行內連結——手機上行內連結的觸控面積太小，
+/// 而且按之前看不出會去哪。
+class _CrossRefButton extends StatelessWidget {
+  const _CrossRefButton({required this.block, required this.onTap});
+
+  final EbookCrossRefBlock block;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '前往${block.label}，位於${block.contextLabel}',
+      excludeSemantics: true,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.info.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.info.withValues(alpha: 0.42)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.menu_book_outlined, size: 18, color: AppColors.info),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        block.contextLabel,
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.info,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        block.label,
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.onBackgroundPrimary,
+                          fontWeight: FontWeight.w700,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.arrow_forward_rounded,
+                  size: 18,
+                  color: AppColors.info.withValues(alpha: 0.9),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

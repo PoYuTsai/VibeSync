@@ -2,6 +2,7 @@
 // Run: flutter test test/visual_proof/ebook_library_proof_test.dart
 // Out: build/visual_proof/ebook_library_collapsed.png
 //      build/visual_proof/ebook_library_expanded.png
+//      build/visual_proof/ebook_cross_ref.png
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -74,6 +75,7 @@ void main() {
                         onQuizSubmitted: (_, __, ___) {},
                         onChecklistItemChanged: (_, __, ___) {},
                         onFunnelTargetTap: (_, __) {},
+                        onCrossRefTap: (_) {},
                       ),
                     ),
                   ),
@@ -109,5 +111,76 @@ void main() {
     await tester.binding.setSurfaceSize(Size(390, expanded.ceilToDouble()));
     await tester.pumpAndSettle();
     await shoot('ebook_library_expanded.png');
+  });
+
+  // 交叉指涉按鈕：原文寫「見案例 D 和課本 6.1」的那一條，展開後底部兩顆按鈕。
+  testWidgets('條目底部的前往按鈕', (tester) async {
+    const path = 'assets/learning/ebooks/book_3_rescue.json';
+    final book = parseBookJson(File(path).readAsStringSync(), assetPath: path);
+    final library =
+        book.chapters[3].blocks.whereType<EbookEntryListBlock>().single;
+    final entry = library.entries
+        .firstWhere((entry) => entry.blocks.whereType<EbookCrossRefBlock>()
+            .length >= 2);
+
+    final rootKey = GlobalKey();
+    final contentKey = GlobalKey();
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    Future<void> pumpAt(double height) async {
+      await tester.binding.setSurfaceSize(Size(390, height));
+      await tester.pumpWidget(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(fontFamily: 'AppTC', useMaterial3: true),
+          home: DefaultTextStyle.merge(
+            style: const TextStyle(fontFamily: 'AppTC'),
+            child: RepaintBoundary(
+              key: rootKey,
+              child: Container(
+                color: AppColors.brandInk,
+                child: SingleChildScrollView(
+                  child: KeyedSubtree(
+                    key: contentKey,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: EbookBlockRenderer(
+                        block: EbookEntryListBlock(
+                          id: library.id,
+                          title: library.title,
+                          entries: [entry],
+                        ),
+                        progress: EbookBookProgress.empty,
+                        onQuizSubmitted: (_, __, ___) {},
+                        onChecklistItemChanged: (_, __, ___) {},
+                        onFunnelTargetTap: (_, __) {},
+                        onCrossRefTap: (_) {},
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await pumpAt(2400);
+    await tester.tap(find.text(entry.title));
+    await tester.pumpAndSettle();
+    final height = tester.getSize(find.byKey(contentKey)).height;
+    await tester.binding.setSurfaceSize(Size(390, height.ceilToDouble()));
+    await tester.pumpAndSettle();
+
+    final boundary =
+        tester.renderObject<RenderRepaintBoundary>(find.byKey(rootKey));
+    await tester.runAsync(() async {
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      (File(outPath('ebook_cross_ref.png'))..createSync(recursive: true))
+          .writeAsBytesSync(data!.buffer.asUint8List());
+    });
   });
 }

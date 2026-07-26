@@ -49,6 +49,25 @@ void main() {
     );
   });
 
+  test('交叉指涉的定位點走 query，且 route 真的有讀它', () {
+    expect(
+      ebookChapterRoute(
+        'ebook-2-conversation',
+        'ebook-2-chapter-5',
+        entryId: 'ebook-2-c5-lib-e11',
+      ),
+      '/learning/books/ebook-2-conversation/chapters/ebook-2-chapter-5'
+      '?entry=ebook-2-c5-lib-e11',
+    );
+    // 空定位點不留一個沒有值的 query。
+    expect(
+      ebookChapterRoute('ebook-1-bottleneck', 'ebook-1-chapter-2', entryId: ''),
+      '/learning/books/ebook-1-bottleneck/chapters/ebook-1-chapter-2',
+    );
+    // helper 產了 query 但 route 沒接，等於按鈕永遠落在章首。
+    expect(routesSource.contains("queryParameters['entry']"), isTrue);
+  });
+
   test('電子書沒有佔用 numeric article id space', () {
     // 電子書 id 一律是 `ebook-` 前綴，且不可與任何 article id 相同。
     final articleIds = articles.map((article) => article.id).toSet();

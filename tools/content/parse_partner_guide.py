@@ -4,9 +4,14 @@
 輸出節點：{'h2': idx, 'h2title': str, 'sub': str|None, 'items': [...]}
 item 種類：para / bullets / compare / case / table / warn / grad / details
 """
-import re, json, html as htmlmod
+import re, json, html as htmlmod, os
 
-SRC = '/tmp/claude-1000/-mnt-c-Users-eric1-OneDrive-Desktop-VibeSync/e021b24c-0a05-4f33-bda6-90e59f6fb1e3/scratchpad/bruce-ebook/index.html'
+BASE = os.path.dirname(os.path.abspath(__file__))
+# 原檔不在 repo 裡（是夥伴的檔案）。用 PARTNER_GUIDE_HTML 指過去，
+# 不指就用 Eric 桌面上那份。絕不寫死某個 session 的 scratchpad 路徑。
+SRC = os.environ.get(
+    'PARTNER_GUIDE_HTML',
+    '/mnt/c/Users/eric1/OneDrive/Desktop/bruce5stepsdatingtips.html')
 
 
 def clean(s):
@@ -55,7 +60,9 @@ def parse_items(chunk):
     """依出現順序抽出區塊級元素。"""
     items = []
     pattern = re.compile(
-        r'<div class="case">(?P<case>.*?)</div>\s*(?=<div class="case">|<h|<div class="principles"|<div class="wrap"|$)'
+        # 收尾的 lookahead 少一種容器就會整個案例被吞掉（案例 N 是某個 stage 的
+        # 最後一個案例，收尾接的是 <div class="stage">，2026-07-27 之前直接消失）。
+        r'<div class="case">(?P<case>.*?)</div>\s*(?=<div class="case">|<h|<div class="principles"|<div class="wrap"|<div class="stage"|$)'
         r'|<div class="ws">(?P<ws>.*?)</div>\s*</div>'
         r'|<p class="wswhy">(?P<wswhy>.*?)</p>'
         r'|<div class="warn">(?P<warn>.*?)</div>'
@@ -162,7 +169,7 @@ def parse_table(block):
 
 if __name__ == '__main__':
     nodes = parse()
-    out = '/tmp/claude-1000/-mnt-c-Users-eric1-OneDrive-Desktop-VibeSync/e021b24c-0a05-4f33-bda6-90e59f6fb1e3/scratchpad/bruce_nodes.json'
+    out = os.environ.get('PARTNER_NODES_JSON', f'{BASE}/bruce_nodes.json')
     json.dump(nodes, open(out, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     import collections
     kinds = collections.Counter(i['kind'] for n in nodes for i in n['items'])

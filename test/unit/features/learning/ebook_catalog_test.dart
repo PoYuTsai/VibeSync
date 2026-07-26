@@ -470,6 +470,141 @@ void main() {
       );
     });
 
+    // 交叉指涉大多跨書（案例庫在第 2 本、引用它的問答在第 3 本）。目標若靜默
+    // 失效，讀者按到的是一顆什麼都沒發生的按鈕——比沒有按鈕更糟。
+    Map<String, Object?> crossRef({
+      String bookId = 'b1',
+      String chapterId = 'b1-chapter-1',
+      String? entryId,
+    }) =>
+        <String, Object?>{
+          'type': 'crossRef',
+          'id': 'xref-1',
+          'label': '案例 K',
+          'contextLabel': '《書名》第 1 章',
+          'targetBookId': bookId,
+          'targetChapterId': chapterId,
+          if (entryId != null) 'targetEntryId': entryId,
+        };
+
+    Map<String, Object?> library() => <String, Object?>{
+          'type': 'entryList',
+          'id': 'b1-lib',
+          'entries': [
+            for (var i = 1; i <= 2; i++)
+              <String, Object?>{
+                'id': 'b1-lib-e$i',
+                'title': '案例 $i',
+                'blocks': [
+                  {'type': 'paragraph', 'id': 'b1-lib-e$i-b1', 'text': '內文。'},
+                ],
+              },
+          ],
+        };
+
+    test('交叉指涉的目標書必須存在', () async {
+      expect(
+        loadBooks([
+          _minimalBook(id: 'b1', number: 1, extraBlocks: [crossRef(bookId: '不存在的書')]),
+        ]),
+        throwsA(
+          isA<EbookContentException>().having(
+            (error) => error.message,
+            'message',
+            contains('targetBookId'),
+          ),
+        ),
+      );
+    });
+
+    test('交叉指涉的目標章必須屬於那本書', () async {
+      expect(
+        loadBooks([
+          _minimalBook(
+            id: 'b1',
+            number: 1,
+            extraBlocks: [crossRef(chapterId: 'b1-chapter-9')],
+          ),
+        ]),
+        throwsA(
+          isA<EbookContentException>().having(
+            (error) => error.message,
+            'message',
+            contains('targetChapterId'),
+          ),
+        ),
+      );
+    });
+
+    test('交叉指涉的目標條目必須存在', () async {
+      expect(
+        loadBooks([
+          _minimalBook(
+            id: 'b1',
+            number: 1,
+            extraBlocks: [library(), crossRef(entryId: 'b1-lib-e9')],
+          ),
+        ]),
+        throwsA(
+          isA<EbookContentException>().having(
+            (error) => error.message,
+            'message',
+            contains('targetEntryId'),
+          ),
+        ),
+      );
+    });
+
+    test('交叉指涉的目標條目必須真的在它宣稱的那一章', () async {
+      expect(
+        loadBooks([
+          _minimalBook(id: 'b1', number: 1, extraBlocks: [library()]),
+          _minimalBook(
+            id: 'b2',
+            number: 2,
+            access: 'premium',
+            extraBlocks: [
+              crossRef(
+                bookId: 'b2',
+                chapterId: 'b2-chapter-1',
+                entryId: 'b1-lib-e1',
+              ),
+            ],
+          ),
+        ]),
+        throwsA(
+          isA<EbookContentException>().having(
+            (error) => error.message,
+            'message',
+            contains('不一致'),
+          ),
+        ),
+      );
+    });
+
+    test('目標齊全時載入成功，條目 id 一路帶到 model', () async {
+      final catalog = await loadBooks([
+        _minimalBook(id: 'b1', number: 1, extraBlocks: [library()]),
+        _minimalBook(
+          id: 'b2',
+          number: 2,
+          access: 'premium',
+          extraBlocks: [
+            crossRef(entryId: 'b1-lib-e2'),
+          ],
+        ),
+      ]);
+
+      final block = catalog
+          .findChapter('b2', 'b2-chapter-1')!
+          .blocks
+          .whereType<EbookCrossRefBlock>()
+          .single;
+      expect(block.targetBookId, 'b1');
+      expect(block.targetEntryId, 'b1-lib-e2');
+      expect(block.contextLabel, '《書名》第 1 章');
+    });
+
     test('surfaces a readable error when an asset is missing', () async {
       expect(
         EbookCatalogRepository(

@@ -31,12 +31,16 @@ class EbookReaderScreen extends ConsumerWidget {
     super.key,
     required this.bookId,
     this.chapterId,
+    this.entryId,
   });
 
   final String bookId;
 
   /// 只決定初始章節；頁內換章不改 route。
   final String? chapterId;
+
+  /// 交叉指涉的定位點：目標條目會自動展開並捲到畫面上。找不到就當作沒有。
+  final String? entryId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -59,6 +63,7 @@ class EbookReaderScreen extends ConsumerWidget {
           builder: (context) => _ReaderProgressLoader(
             book: book!,
             routeChapterId: chapterId,
+            anchorEntryId: entryId,
           ),
           // 未訂閱者讀付費書的第一章：只給那一章，其餘章不進 PageView。
           previewBuilder: (context) => _EbookReaderBody(
@@ -77,10 +82,12 @@ class _ReaderProgressLoader extends ConsumerWidget {
   const _ReaderProgressLoader({
     required this.book,
     required this.routeChapterId,
+    this.anchorEntryId,
   });
 
   final Ebook book;
   final String? routeChapterId;
+  final String? anchorEntryId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -96,6 +103,7 @@ class _ReaderProgressLoader extends ConsumerWidget {
           routeChapterId: routeChapterId,
           progress: EbookBookProgress.empty,
         ),
+        anchorEntryId: anchorEntryId,
       ),
       data: (snapshot) => _EbookReaderBody(
         book: book,
@@ -104,6 +112,7 @@ class _ReaderProgressLoader extends ConsumerWidget {
           routeChapterId: routeChapterId,
           progress: snapshot.bookProgress(book.id),
         ),
+        anchorEntryId: anchorEntryId,
       ),
     );
   }
@@ -114,7 +123,11 @@ class _EbookReaderBody extends ConsumerStatefulWidget {
     required this.book,
     required this.initialIndex,
     this.previewOnly = false,
+    this.anchorEntryId,
   });
+
+  /// 交叉指涉的定位點。只消費一次：讀者手動收合之後換章再回來，不該又自己打開。
+  final String? anchorEntryId;
 
   final Ebook book;
   final int initialIndex;
@@ -130,6 +143,7 @@ class _EbookReaderBodyState extends ConsumerState<_EbookReaderBody> {
   late final PageController _pageController =
       PageController(initialPage: widget.initialIndex);
   late int _currentIndex = widget.initialIndex;
+  late String? _anchorEntryId = widget.anchorEntryId;
   bool _saving = false;
 
   @override
@@ -251,6 +265,11 @@ class _EbookReaderBodyState extends ConsumerState<_EbookReaderBody> {
                   isPreview: widget.previewOnly,
                   lockedChapterCount: total - readable,
                   onComplete: () => _completeChapter(index),
+                  anchorEntryId: _anchorEntryId,
+                  onAnchorConsumed: () {
+                    if (_anchorEntryId == null) return;
+                    setState(() => _anchorEntryId = null);
+                  },
                 );
               },
             ),
@@ -358,7 +377,13 @@ class _ChapterPage extends ConsumerWidget {
     required this.onComplete,
     this.isPreview = false,
     this.lockedChapterCount = 0,
+    this.anchorEntryId,
+    this.onAnchorConsumed,
   });
+
+  /// 交叉指涉的定位點與消費回呼。
+  final String? anchorEntryId;
+  final VoidCallback? onAnchorConsumed;
 
   final Ebook book;
   final EbookChapter chapter;
@@ -426,6 +451,15 @@ class _ChapterPage extends ConsumerWidget {
             child: EbookBlockRenderer(
               block: block,
               progress: progress,
+              anchorEntryId: anchorEntryId,
+              onAnchorConsumed: onAnchorConsumed,
+              onCrossRefTap: (crossRef) => _openEbookTarget(
+                context,
+                ref,
+                targetBookId: crossRef.targetBookId,
+                targetChapterId: crossRef.targetChapterId,
+                targetEntryId: crossRef.targetEntryId,
+              ),
               onQuizSubmitted: (quiz, choiceIds, solved) {
                 controller
                     .recordQuizSubmission(
@@ -437,31 +471,12 @@ class _ChapterPage extends ConsumerWidget {
                     )
                     .catchError(reportSaveFailure);
               },
-              onFunnelTargetTap: (_, stage) {
-                // push 而非 go：讀者從診斷跳出去之後，返回鍵要能回到這一章。
-                //
-                // 目標章若在尚未解鎖的書裡，改送到那本書的免費試讀章，讓診斷
-                // 結果一定落在讀得到的地方；權限最終仍由目標頁的
-                // EbookAccessGate 判定，這裡只是選一個較好的落點。
-                final target = ref
-                    .read(ebookCatalogProvider)
-                    .value
-                    ?.findBook(stage.targetBookId);
-                // 只有「已確認未訂閱」才改送試讀章。ebookLockedFor 會把
-                // resolving／unavailable 也算成鎖著，用它會在付費使用者冷啟動
-                // 或離線時，把 route 提前改成第一章——等狀態確認完也回不去
-                // 原本指定的那一章。
-                final locked = target != null &&
-                    ebookAccessFor(
-                          target,
-                          ref.read(ebookSubscriptionAccessProvider),
-                        ) ==
-                        EbookAccessDecision.locked;
-                final chapterId = locked
-                    ? (target.previewChapterId ?? stage.targetChapterId)
-                    : stage.targetChapterId;
-                context.push(ebookChapterRoute(stage.targetBookId, chapterId));
-              },
+              onFunnelTargetTap: (_, stage) => _openEbookTarget(
+                context,
+                ref,
+                targetBookId: stage.targetBookId,
+                targetChapterId: stage.targetChapterId,
+              ),
               onChecklistItemChanged: (checklist, itemId, checked) {
                 controller
                     .setChecklistItem(
@@ -509,6 +524,34 @@ class _ChapterPage extends ConsumerWidget {
       ],
     );
   }
+}
+
+/// 章內跳章（漏斗診斷、交叉指涉）的共用落點決策。
+///
+/// push 而非 go：讀者跳出去之後，返回鍵要能回到原本那一章。
+///
+/// 目標章若在尚未解鎖的書裡，改送到那本書的免費試讀章，讓按鈕一定落在讀得到
+/// 的地方；權限最終仍由目標頁的 EbookAccessGate 判定，這裡只是選一個較好的
+/// 落點。只有「已確認未訂閱」才降級：ebookLockedFor 會把 resolving／
+/// unavailable 也算成鎖著，用它會在付費使用者冷啟動或離線時把 route 提前改成
+/// 第一章，等狀態確認完也回不去原本指定的那一章。
+void _openEbookTarget(
+  BuildContext context,
+  WidgetRef ref, {
+  required String targetBookId,
+  required String targetChapterId,
+  String? targetEntryId,
+}) {
+  final target = ref.read(ebookCatalogProvider).value?.findBook(targetBookId);
+  final locked = target != null &&
+      ebookAccessFor(target, ref.read(ebookSubscriptionAccessProvider)) ==
+          EbookAccessDecision.locked;
+  final chapterId =
+      locked ? (target.previewChapterId ?? targetChapterId) : targetChapterId;
+  // 降到試讀章時，原本的條目定位點不在那一章，一起丟掉才不會留一個永遠不會
+  // 命中的 anchor。
+  final entryId = locked ? null : targetEntryId;
+  context.push(ebookChapterRoute(targetBookId, chapterId, entryId: entryId));
 }
 
 class _ReaderLoading extends StatelessWidget {

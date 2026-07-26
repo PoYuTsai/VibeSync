@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/learning/data/providers/ebook_providers.dart';
 import 'package:vibesync/features/learning/domain/ebook_reading_position.dart';
 import 'package:vibesync/features/learning/domain/models/ebook.dart';
+import 'package:vibesync/features/learning/domain/models/ebook_block.dart';
 import 'package:vibesync/features/learning/domain/models/ebook_progress.dart';
 import 'package:vibesync/features/learning/presentation/widgets/ebook_access_gate.dart';
 
@@ -558,6 +559,117 @@ void main() {
           reason: '$pending 之後沒有回到指定章');
       expect(find.text('免費試讀章'), findsNothing);
     }
+  });
+
+  /// 交叉指涉用的兩本書：免費書第一章有一顆按鈕，指向付費書第二章的某一條。
+  EbookCatalog buildCrossRefCatalog() => EbookCatalog(
+        books: [
+          buildTestEbook(
+            id: _freeBook,
+            number: 1,
+            title: '免費測試書',
+            chapters: [
+              buildTestChapter(
+                id: '$_freeBook-chapter-1',
+                number: '1.1',
+                title: '第 1 章',
+                blocks: [
+                  EbookParagraphBlock(id: 'xref-lead', text: '段落內容。'),
+                  const EbookCrossRefBlock(
+                    id: 'xref-nav',
+                    label: '案例 K · 完整弧線',
+                    contextLabel: '《訂閱測試書》第 2 章',
+                    targetBookId: 'test-book-premium',
+                    targetChapterId: 'test-book-premium-chapter-2',
+                    targetEntryId: 'premium-lib-e2',
+                  ),
+                ],
+              ),
+            ],
+          ),
+          buildTestEbook(
+            id: 'test-book-premium',
+            number: 2,
+            title: '訂閱測試書',
+            access: EbookAccess.premium,
+            chapters: [
+              buildTestChapter(
+                id: 'test-book-premium-chapter-1',
+                number: '2.1',
+                title: '第 1 章',
+              ),
+              buildTestChapter(
+                id: 'test-book-premium-chapter-2',
+                number: '2.2',
+                title: '第 2 章',
+                blocks: [
+                  const EbookEntryListBlock(
+                    id: 'premium-lib',
+                    title: '對話拆解庫',
+                    entries: [
+                      EbookEntry(
+                        id: 'premium-lib-e1',
+                        title: '案例 J · 標準版',
+                        blocks: [
+                          EbookParagraphBlock(
+                              id: 'premium-lib-e1-b1', text: '案例 J 的內文。'),
+                        ],
+                      ),
+                      EbookEntry(
+                        id: 'premium-lib-e2',
+                        title: '案例 K · 完整弧線',
+                        blocks: [
+                          EbookParagraphBlock(
+                              id: 'premium-lib-e2-b1', text: '案例 K 的內文。'),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
+
+  testWidgets('交叉指涉：跳到目標章並自動展開那一條，其他條仍收合', (tester) async {
+    await pumpEbookApp(
+      tester,
+      initialLocation: '/learning/books/$_freeBook/chapters/$_freeBook-chapter-1',
+      catalog: buildCrossRefCatalog(),
+      access: const EbookSubscriptionAccess.premium(),
+      size: const Size(390, 1600),
+    );
+    await tester.pumpAndSettle();
+
+    await revealInChapter(tester, find.text('案例 K · 完整弧線'));
+    await tester.tap(find.text('案例 K · 完整弧線'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('第 2 章'), findsOneWidget);
+    // 讀者一到就看得到被指涉的那一條，不必自己在十幾條裡找字母。
+    expect(find.text('案例 K 的內文。'), findsOneWidget);
+    expect(find.text('案例 J 的內文。'), findsNothing);
+  });
+
+  testWidgets('交叉指涉指向未解鎖的書：落在試讀章，定位點一起丟掉', (tester) async {
+    await pumpEbookApp(
+      tester,
+      initialLocation: '/learning/books/$_freeBook/chapters/$_freeBook-chapter-1',
+      catalog: buildCrossRefCatalog(),
+      access: const EbookSubscriptionAccess.free(),
+      size: const Size(390, 1600),
+    );
+    await tester.pumpAndSettle();
+
+    await revealInChapter(tester, find.text('案例 K · 完整弧線'));
+    await tester.tap(find.text('案例 K · 完整弧線'));
+    await tester.pumpAndSettle();
+
+    expect(find.text(paywallStubText), findsNothing);
+    expect(find.text('免費試讀章'), findsOneWidget);
+    // 目標條目在鎖住的第二章，不該留一個永遠不會命中的 anchor。
+    expect(find.text('案例 K 的內文。'), findsNothing);
   });
 
   testWidgets('試讀模式：只有一頁可讀、橫滑不到第二章、主按鈕導 paywall',

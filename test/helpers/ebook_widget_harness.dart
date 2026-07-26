@@ -143,9 +143,11 @@ Future<EbookHarness> pumpEbookApp(
       ),
       GoRoute(
         path: '/learning/books/:bookId/chapters/:chapterId',
+        // 與 lib/app/routes.dart 對齊：交叉指涉的定位點走 query。
         builder: (context, state) => EbookReaderScreen(
           bookId: state.pathParameters['bookId']!,
           chapterId: state.pathParameters['chapterId'],
+          entryId: state.uri.queryParameters['entry'],
         ),
       ),
     ],

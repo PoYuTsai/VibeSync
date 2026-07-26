@@ -9,8 +9,11 @@
 import json, re, collections, os
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-NODES = json.load(open(f'{BASE}/bruce_nodes.json', encoding='utf-8'))
-OUT = '/mnt/c/Users/eric1/OneDrive/Desktop/VibeSync/assets/learning/ebooks'
+REPO = os.path.dirname(os.path.dirname(BASE))
+NODES = json.load(open(
+    os.environ.get('PARTNER_NODES_JSON', f'{BASE}/bruce_nodes.json'), encoding='utf-8'))
+# 寫進 repo 的 assets；要試跑不覆蓋正式檔就設 EBOOK_OUT_DIR。
+OUT = os.environ.get('EBOOK_OUT_DIR', f'{REPO}/assets/learning/ebooks')
 
 SPEAKER = {'男:': 'you', '女:': 'other'}
 
@@ -431,8 +434,155 @@ def prune(blocks):
     return out
 
 
+# ---------------------------------------------------------------------------
+# 交叉指涉 → crossRef 區塊
+#
+# 原檔到處寫「見案例 K」「課本 6.1」「見第六節」，但案例庫在第 2 本、警告區在
+# 第 3 本，讀者看到那行字沒有任何辦法過去。這裡機械偵測指涉、解析目標，在該
+# 條目（或該區塊）後面補一顆前往按鈕。原文一個字都不改。
+#
+# 解不到目標一律 raise：死連結靜默留著，比整份 build 失敗難發現得多。
+# ---------------------------------------------------------------------------
+
+CN_DIGITS = {'一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
+             '六': 6, '七': 7, '八': 8, '九': 9, '十': 10}
+
+REF_PATTERNS = [
+    ('case', re.compile(r'見案例\s*([A-Z])')),
+    ('rule', re.compile(r'課本\s*(\d+\.\d+)')),
+    ('section', re.compile(r'見第([一二三四五六七八九十]+)節')),
+]
+
+ENTRY_KEYS = ('title', 'summary')
+
+
+def visible_strings(obj, key=None):
+    """走訪一段 JSON，吐出所有會被讀者看到的字串。"""
+    if isinstance(obj, str):
+        if key in VISIBLE_KEYS:
+            yield obj
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from visible_strings(v, k)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from visible_strings(v, key)
+
+
+def build_ref_index(docs):
+    """案例字母／規則編號／節號 → 跳轉目標。"""
+    index = {'case': {}, 'rule': {}, 'section': {}}
+    for doc in docs:
+        for ci, chapter in enumerate(doc['chapters'], start=1):
+            def target(entry_id=None, label=None):
+                return {
+                    'targetBookId': doc['id'],
+                    'targetChapterId': chapter['id'],
+                    'targetEntryId': entry_id,
+                    'label': label,
+                    'bookTitle': doc['title'],
+                    'chapterNumber': ci,
+                    'chapterTitle': chapter['title'],
+                }
+
+            for block in chapter['blocks']:
+                if block['type'] != 'entryList':
+                    continue
+                for entry in block['entries']:
+                    title = entry['title']
+                    m = re.match(r'案例\s*([A-Z])\b', title)
+                    if m:
+                        index['case'][m.group(1)] = target(entry['id'], title)
+                    m = re.match(r'^\W*(\d+)\.(\d+)\b', title)
+                    if m:
+                        index['rule'][f'{m.group(1)}.{m.group(2)}'] = \
+                            target(entry['id'], title)
+                        # 「第六節」= 原檔第 6 節，也就是放 6.x 那一章。
+                        index['section'].setdefault(
+                            int(m.group(1)), target(None, chapter['title']))
+    return index
+
+
+def resolve_ref(kind, raw, index):
+    if kind == 'section':
+        key = CN_DIGITS.get(raw)
+    elif kind == 'case':
+        key = raw
+    else:
+        key = raw
+    hit = index[kind].get(key)
+    if hit is None:
+        raise SystemExit(f'交叉指涉解不到目標：{kind}={raw}')
+    return hit
+
+
+def cross_ref_block(bid, hit, same_book):
+    if same_book:
+        # 不再帶章名：按鈕第二行已經是目標本身的標題，帶了會比跨書那顆長一截。
+        context = f'本書 · 第 {hit["chapterNumber"]} 章'
+    else:
+        context = f'《{hit["bookTitle"]}》第 {hit["chapterNumber"]} 章'
+    block = {
+        'type': 'crossRef',
+        'id': bid,
+        'label': hit['label'],
+        'contextLabel': context,
+        'targetBookId': hit['targetBookId'],
+        'targetChapterId': hit['targetChapterId'],
+    }
+    if hit['targetEntryId']:
+        block['targetEntryId'] = hit['targetEntryId']
+    return block
+
+
+def refs_in(obj, index):
+    """依出現順序解析一段 JSON 裡的所有指涉，同一個目標只取第一次。"""
+    hits = []
+    seen = set()
+    for text in visible_strings(obj):
+        for kind, pattern in REF_PATTERNS:
+            for m in pattern.finditer(text):
+                hit = resolve_ref(kind, m.group(1), index)
+                key = (hit['targetChapterId'], hit['targetEntryId'])
+                if key in seen:
+                    continue
+                seen.add(key)
+                hits.append(hit)
+    return hits
+
+
+def link_cross_refs(docs):
+    index = build_ref_index(docs)
+    count = 0
+    for doc in docs:
+        for chapter in doc['chapters']:
+            linked = []
+            for block in chapter['blocks']:
+                linked.append(block)
+                if block['type'] == 'entryList':
+                    for entry in block['entries']:
+                        # 條目的按鈕放在條目最後面：讀者已經讀完那段才需要它。
+                        hits = [h for h in refs_in(entry, index)
+                                if h['targetEntryId'] != entry['id']]
+                        for n, hit in enumerate(hits, start=1):
+                            entry['blocks'].append(cross_ref_block(
+                                f'{entry["id"]}-xref{n}', hit,
+                                hit['targetBookId'] == doc['id']))
+                            count += 1
+                    continue
+                hits = refs_in(block, index)
+                for n, hit in enumerate(hits, start=1):
+                    linked.append(cross_ref_block(
+                        f'{block["id"]}-xref{n}', hit,
+                        hit['targetBookId'] == doc['id']))
+                    count += 1
+            chapter['blocks'] = linked
+    print(f'交叉指涉按鈕: {count} 顆')
+
+
 def build():
     used = set()
+    docs = []
     for book in BOOKS:
         chapters = []
         for ci, spec in enumerate(book['chapters'], start=1):
@@ -525,8 +675,14 @@ def build():
             }],
             'chapters': chapters,
         }
+        docs.append(doc)
+
+    # 交叉指涉要等四本都建好才解得到目標（案例庫在第 2 本、被引用在第 3 本）。
+    link_cross_refs(docs)
+
+    for doc in docs:
         name = {1: 'book_1_bottleneck', 2: 'book_2_conversation',
-                3: 'book_3_rescue', 4: 'book_4_meeting'}[book['number']]
+                3: 'book_3_rescue', 4: 'book_4_meeting'}[doc['number']]
         path = f'{OUT}/{name}.json'
         with open(path, 'w', encoding='utf-8', newline='\n') as fh:
             json.dump(doc, fh, ensure_ascii=False, indent=2)
@@ -539,9 +695,9 @@ def build():
                 if b['type'] == 'entryList':
                     for e in b['entries']:
                         walk(e['blocks'])
-        for c in chapters:
+        for c in doc['chapters']:
             walk(c['blocks'])
-        print(f"{name}: {len(chapters)} 章, {doc['estimatedMinutes']} 分, {dict(counts)}")
+        print(f"{name}: {len(doc['chapters'])} 章, {doc['estimatedMinutes']} 分, {dict(counts)}")
 
     missing = sorted(set(range(len(NODES))) - used)
     print('未使用的節點:', missing if missing else '無')

@@ -8,7 +8,7 @@
   "goal": "學會用五個標記拆解自己的對話，並停止最常見的三種死法。",
   "access": "premium",
   "theme": "lens",
-  "estimatedMinutes": 27,
+  "estimatedMinutes": 28,
   "sourceRefs": [
     {
       "document": "partner-five-steps-guide",
@@ -300,6 +300,14 @@
           ]
         },
         {
+          "type": "crossRef",
+          "id": "ebook-2-c4-b3-xref1",
+          "label": "警告區：會反效果的流行技巧",
+          "contextLabel": "《避雷 · 該救還是該停》第 2 章",
+          "targetBookId": "ebook-3-rescue",
+          "targetChapterId": "ebook-3-chapter-2"
+        },
+        {
           "type": "paragraph",
           "id": "ebook-2-c4-b4",
           "text": "判準:波動之後,她是變得更放鬆還是更緊繃?"
@@ -395,7 +403,7 @@
       "number": "2.5",
       "title": "對話拆解庫",
       "learningGoal": "一段一段看，對話死在哪一句。",
-      "estimatedMinutes": 15,
+      "estimatedMinutes": 16,
       "sourceRefs": [
         {
           "document": "partner-five-steps-guide",
@@ -665,6 +673,15 @@
                   "id": "ebook-2-c5-lib-e4-fix3",
                   "tone": "fix",
                   "text": "為什麼那個建議是壞的(課本 6.1):\n· 它想傳達的訊號(你有生活)應該由內容傳達,用延遲傳達是低效替代品\n· 對話有動能,動能會衰減。每一個大延遲都讓能量減半\n· 真正讓人反感的是內容不是速度:連發多則、單則過長、索取安慰、追問為什麼沒回\n\n正確規則:看到就回,除非真的在忙。你的稀缺性由你的生活提供,不由計時器提供。"
+                },
+                {
+                  "type": "crossRef",
+                  "id": "ebook-2-c5-lib-e4-xref1",
+                  "label": "⚠ 6.1 回覆時間操作",
+                  "contextLabel": "《避雷 · 該救還是該停》第 2 章",
+                  "targetBookId": "ebook-3-rescue",
+                  "targetChapterId": "ebook-3-chapter-2",
+                  "targetEntryId": "ebook-3-c2-lib-e1"
                 }
               ],
               "summary": "分析:第 1 句是整段對話的最高點——她主動、有情緒、有笑,這是綠燈中的綠燈"
@@ -1207,6 +1224,95 @@
                 }
               ],
               "summary": "關鍵在第 4 輪的克制:拿到綠燈就收,不要因為「感覺還可以再聊一下」而再種一個"
+            },
+            {
+              "id": "ebook-2-c5-lib-e14",
+              "title": "案例 N · 種子田(這個技術的失敗模式)",
+              "blocks": [
+                {
+                  "type": "dialogue",
+                  "id": "ebook-2-c5-lib-e14-dlg1",
+                  "lines": [
+                    {
+                      "id": "ebook-2-c5-lib-e14-dlg1-l1",
+                      "speaker": "coach",
+                      "text": "(第 3 輪)"
+                    },
+                    {
+                      "id": "ebook-2-c5-lib-e14-dlg1-l2",
+                      "speaker": "you",
+                      "text": "那家我一直想去"
+                    },
+                    {
+                      "id": "ebook-2-c5-lib-e14-dlg1-l3",
+                      "speaker": "other",
+                      "text": "對啊聽說不錯",
+                      "annotation": "🟢 綠燈。這裡就該具體化"
+                    },
+                    {
+                      "id": "ebook-2-c5-lib-e14-dlg1-l4",
+                      "speaker": "coach",
+                      "text": "(第 6 輪)"
+                    },
+                    {
+                      "id": "ebook-2-c5-lib-e14-dlg1-l5",
+                      "speaker": "you",
+                      "text": "那個展我也一直想看"
+                    },
+                    {
+                      "id": "ebook-2-c5-lib-e14-dlg1-l6",
+                      "speaker": "other",
+                      "text": "喔喔那個好像不錯",
+                      "annotation": "🟡 熱度已經降了"
+                    },
+                    {
+                      "id": "ebook-2-c5-lib-e14-dlg1-l7",
+                      "speaker": "coach",
+                      "text": "(第 9 輪)"
+                    },
+                    {
+                      "id": "ebook-2-c5-lib-e14-dlg1-l8",
+                      "speaker": "you",
+                      "text": "最近天氣好到想出去走走"
+                    },
+                    {
+                      "id": "ebook-2-c5-lib-e14-dlg1-l9",
+                      "speaker": "other",
+                      "text": "對啊",
+                      "annotation": "🟡🔴"
+                    },
+                    {
+                      "id": "ebook-2-c5-lib-e14-dlg1-l10",
+                      "speaker": "coach",
+                      "text": "(第 13 輪)"
+                    },
+                    {
+                      "id": "ebook-2-c5-lib-e14-dlg1-l11",
+                      "speaker": "you",
+                      "text": "不然我們哪天出來?"
+                    },
+                    {
+                      "id": "ebook-2-c5-lib-e14-dlg1-l12",
+                      "speaker": "other",
+                      "text": "好啊有空的話",
+                      "annotation": "🔴 這不是答應,這是禮貌性結束"
+                    },
+                    {
+                      "id": "ebook-2-c5-lib-e14-dlg1-l13",
+                      "speaker": "coach",
+                      "text": "(無下文)"
+                    }
+                  ]
+                },
+                {
+                  "type": "callout",
+                  "id": "ebook-2-c5-lib-e14-note2",
+                  "tone": "info",
+                  "title": "這段發生了什麼",
+                  "text": "診斷:他在第 3 輪就拿到了綠燈,但沒有收。之後每一個種子的效果都在遞減,因為她已經接過一次而沒有下文——她會判定你其實沒有要約,只是在聊天。到第 13 輪他終於開口時,那個「哪天出來」既沒有對象也沒有時間,而且熱度早就過了。\n\n這個案例要記住的原因:它每一步看起來都不算錯,沒有任何一句冒犯或愚蠢。它只是一直沒有收。而這正是這個技術對「從來不開口」那一類人最危險的地方——它提供了一個看起來很專業的方式來繼續不開口。\n\n硬規則:綠燈之後兩輪內具體化。累計兩個種子沒收,下一輪直接提案。"
+                }
+              ],
+              "summary": "診斷:他在第 3 輪就拿到了綠燈,但沒有收"
             }
           ]
         }

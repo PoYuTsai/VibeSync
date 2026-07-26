@@ -84,6 +84,8 @@ void _validateCatalog(List<Ebook> books) {
   final bookIds = <String>{};
   final blockIds = <String, String>{};
   final chapterIdsByBook = <String, Set<String>>{};
+  // 條目 id → 它所在的「書/章」，給 crossRef 驗證用。
+  final chapterByEntryId = <String, String>{};
 
   for (var index = 0; index < books.length; index++) {
     final book = books[index];
@@ -120,12 +122,24 @@ void _validateCatalog(List<Ebook> books) {
           );
         }
         blockIds[block.id] = '${book.id}/${chapter.id}';
+        if (block is EbookEntryListBlock) {
+          for (final entry in block.entries) {
+            final owner = chapterByEntryId[entry.id];
+            if (owner != null) {
+              throw EbookContentException(
+                '條目 id 全域重複：${entry.id}（已出現於 $owner）',
+              );
+            }
+            chapterByEntryId[entry.id] = '${book.id}/${chapter.id}';
+          }
+        }
       }
     }
     chapterIdsByBook[book.id] = chapterIds;
   }
 
   _validateFunnelTargets(books, chapterIdsByBook);
+  _validateCrossRefTargets(books, chapterIdsByBook, chapterByEntryId);
 }
 
 /// 攤平章節區塊，含條目庫裡的巢狀區塊。
@@ -166,6 +180,51 @@ void _validateFunnelTargets(
               '${stage.targetChapterId} 不屬於 ${stage.targetBookId}',
             );
           }
+        }
+      }
+    }
+  }
+}
+
+/// 交叉指涉的跳轉目標必須真的存在，而且條目要屬於它宣稱的那一章。
+///
+/// 這些按鈕大多是跨書的（案例庫在第 2 本、引用它的問答在第 3 本）。內容改章
+/// 或條目重編號時，若只是靜默失效，讀者會按到一個什麼都沒發生的按鈕——比沒有
+/// 按鈕更糟。寧可載入時就爆掉並被測試擋下。
+void _validateCrossRefTargets(
+  List<Ebook> books,
+  Map<String, Set<String>> chapterIdsByBook,
+  Map<String, String> chapterByEntryId,
+) {
+  for (final book in books) {
+    for (final chapter in book.chapters) {
+      for (final block in _flattenBlocks(chapter.blocks)) {
+        if (block is! EbookCrossRefBlock) continue;
+        final chapters = chapterIdsByBook[block.targetBookId];
+        if (chapters == null) {
+          throw EbookContentException(
+            '交叉指涉 ${block.id} 的 targetBookId=${block.targetBookId} 不存在',
+          );
+        }
+        if (!chapters.contains(block.targetChapterId)) {
+          throw EbookContentException(
+            '交叉指涉 ${block.id} 的 targetChapterId='
+            '${block.targetChapterId} 不屬於 ${block.targetBookId}',
+          );
+        }
+        final entryId = block.targetEntryId;
+        if (entryId == null) continue;
+        final owner = chapterByEntryId[entryId];
+        if (owner == null) {
+          throw EbookContentException(
+            '交叉指涉 ${block.id} 的 targetEntryId=$entryId 不存在',
+          );
+        }
+        if (owner != '${block.targetBookId}/${block.targetChapterId}') {
+          throw EbookContentException(
+            '交叉指涉 ${block.id} 的 targetEntryId=$entryId 實際在 $owner，'
+            '與宣稱的 ${block.targetBookId}/${block.targetChapterId} 不一致',
+          );
         }
       }
     }
@@ -336,6 +395,16 @@ EbookBlock _parseBlock(
         title: _requireString(json, 'title', path),
         intro: _requireString(json, 'intro', path),
         stages: _parseFunnelStages(json, path),
+      );
+
+    case 'crossRef':
+      return EbookCrossRefBlock(
+        id: id,
+        label: _requireString(json, 'label', path),
+        contextLabel: _requireString(json, 'contextLabel', path),
+        targetBookId: _requireString(json, 'targetBookId', path),
+        targetChapterId: _requireString(json, 'targetChapterId', path),
+        targetEntryId: _optionalString(json, 'targetEntryId', path),
       );
 
     case 'checklist':

@@ -325,6 +325,42 @@ class EbookEntryListBlock extends EbookBlock {
   final List<EbookEntry> entries;
 }
 
+/// 交叉指涉的前往按鈕。
+///
+/// 存在理由（2026-07-27）：原文到處寫「見案例 K」「課本 6.1」，但案例庫在
+/// 第 2 本、警告區在第 3 本。純文字指涉等於要讀者退出閱讀器、回書架、開另一
+/// 本、翻到那一章、再從十幾條裡找字母——實務上等於沒有這個指涉。
+///
+/// 為什麼是獨立區塊而不是內文裡的可點文字：inline link 要改所有文字型 block
+/// 的渲染，且行內連結在手機上的觸控面積太小；獨立按鈕還能把目標的標題與所在
+/// 章一起說出來，讀者按之前就知道會去哪。
+///
+/// [label] 與 [contextLabel] 是產生時就組好的顯示字串（與漏斗的 targetLabel
+/// 同一個做法）：renderer 不查 catalog，才能維持不碰 Riverpod。
+/// 目標是否真的存在由 catalog 載入時驗證。
+class EbookCrossRefBlock extends EbookBlock {
+  const EbookCrossRefBlock({
+    required super.id,
+    required this.label,
+    required this.contextLabel,
+    required this.targetBookId,
+    required this.targetChapterId,
+    this.targetEntryId,
+  });
+
+  /// 目標的標題，例如「案例 K · 完整弧線(她比較被動的版本)」。
+  final String label;
+
+  /// 目標的位置，例如「《續航 · 讓對話活下去》第 5 章」。
+  final String contextLabel;
+
+  final String targetBookId;
+  final String targetChapterId;
+
+  /// 指到條目庫的某一條時才有：開啟目標章後要自動展開並捲到那一條。
+  final String? targetEntryId;
+}
+
 class EbookChecklistItem {
   const EbookChecklistItem({
     required this.id,

@@ -87,6 +87,8 @@ List<String> _blockTexts(EbookBlock block) {
       for (final item in block.items) {
         texts.addAll([item.text, item.note]);
       }
+    case EbookCrossRefBlock():
+      texts.addAll([block.label, block.contextLabel]);
   }
   return texts.whereType<String>().toList();
 }
@@ -96,6 +98,10 @@ String _chapterText(EbookChapter chapter) => [
       chapter.learningGoal,
       for (final block in _flatten(chapter.blocks)) ..._blockTexts(block),
     ].join('\n');
+
+/// 原文的交叉指涉寫法。與轉換器（tools/content）的偵測規則對齊。
+final _crossRefPhrase =
+    RegExp(r'見案例\s*[A-Z]|課本\s*\d+\.\d+|見第[一二三四五六七八九十]+節');
 
 /// 出現這些反效果技巧名稱的章節，必須同時有 warning callout，
 /// 確保它們只出現在「為何不要這樣做」的框架裡。
@@ -281,6 +287,92 @@ void main() {
           }
         }
       }
+    }
+  });
+
+  // 原文到處寫「見案例 K」「課本 6.1」，但案例庫在第 2 本、警告區在第 3 本。
+  // 沒有按鈕時那行字等於死巷：讀者得退出閱讀器、回書架、開另一本、翻章、再從
+  // 十幾條裡找字母。
+  test('原文寫「見案例 X／課本 6.x／見第 N 節」的地方都有前往按鈕', () {
+    final missing = <String>[];
+    for (final book in catalog.books) {
+      for (final chapter in book.chapters) {
+        void check(String where, List<EbookBlock> container) {
+          final texts = container.expand(_blockTexts).join('\n');
+          if (!_crossRefPhrase.hasMatch(texts)) return;
+          if (container.whereType<EbookCrossRefBlock>().isNotEmpty) return;
+          missing.add('$where：${_crossRefPhrase.firstMatch(texts)![0]}');
+        }
+
+        // 章層級：條目庫另外逐條檢查（它的按鈕在條目裡，不在章層級），
+        // 否則條目摘要裡的指涉會在這裡誤報。
+        check(
+          '${book.id}/${chapter.id}',
+          chapter.blocks
+              .where((block) => block is! EbookEntryListBlock)
+              .toList(),
+        );
+        for (final list in chapter.entryLists) {
+          for (final entry in list.entries) {
+            check(
+              '${book.id}/${chapter.id}/${entry.id}',
+              [
+                EbookParagraphBlock(id: '${entry.id}-title', text: entry.title),
+                if (entry.summary != null)
+                  EbookParagraphBlock(
+                      id: '${entry.id}-summary', text: entry.summary!),
+                ...entry.blocks,
+              ],
+            );
+          }
+        }
+      }
+    }
+    expect(missing, isEmpty, reason: '這些交叉指涉沒有前往按鈕：$missing');
+  });
+
+  test('每個前往按鈕的目標章與目標條目都真的存在', () {
+    var count = 0;
+    for (final book in catalog.books) {
+      for (final chapter in book.chapters) {
+        for (final block in _flatten(chapter.blocks)) {
+          if (block is! EbookCrossRefBlock) continue;
+          count++;
+          final target =
+              catalog.findChapter(block.targetBookId, block.targetChapterId);
+          expect(target, isNotNull, reason: '${block.id} 的目標章不存在');
+          final entryId = block.targetEntryId;
+          if (entryId == null) continue;
+          expect(
+            target!.entryLists.expand((list) => list.entries).any(
+                  (entry) => entry.id == entryId,
+                ),
+            isTrue,
+            reason: '${block.id} 的目標條目 $entryId 不在目標章裡',
+          );
+        }
+      }
+    }
+    // 內容若被改到一顆按鈕都不剩，上一條測試會空轉而不報錯，所以這裡要求
+    // 這批指涉至少全部在（2026-07-27 是 8 顆）。
+    expect(count, greaterThanOrEqualTo(8));
+  });
+
+  test('對話拆解庫涵蓋案例 A–N（案例 N 曾經被轉換器整條吃掉）', () {
+    final chapter = catalog.findChapter(
+      'ebook-2-conversation',
+      'ebook-2-chapter-5',
+    )!;
+    final titles = chapter.entryLists
+        .expand((list) => list.entries)
+        .map((entry) => entry.title)
+        .toList();
+    for (final letter in 'ABCDEFGHIJKLMN'.split('')) {
+      expect(
+        titles.any((title) => title.startsWith('案例 $letter ')),
+        isTrue,
+        reason: '缺少案例 $letter',
+      );
     }
   });
 

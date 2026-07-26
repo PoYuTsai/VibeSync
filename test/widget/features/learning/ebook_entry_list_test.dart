@@ -31,6 +31,8 @@ Future<List<String>> pumpLibrary(
   EbookEntryListBlock? block,
   double textScale = 1.0,
   Size size = const Size(390, 1400),
+  String? anchorEntryId,
+  VoidCallback? onAnchorConsumed,
 }) async {
   final quizzes = <String>[];
   await tester.binding.setSurfaceSize(size);
@@ -49,9 +51,12 @@ Future<List<String>> pumpLibrary(
             child: EbookBlockRenderer(
               block: block ?? buildLibrary(),
               progress: EbookBookProgress.empty,
+              anchorEntryId: anchorEntryId,
+              onAnchorConsumed: onAnchorConsumed,
               onQuizSubmitted: (quiz, _, __) => quizzes.add(quiz.id),
               onChecklistItemChanged: (_, __, ___) {},
               onFunnelTargetTap: (_, __) {},
+              onCrossRefTap: (_) {},
             ),
           ),
         ),
@@ -144,6 +149,37 @@ void main() {
     await tester.pumpAndSettle();
     await pumpLibrary(tester);
     expect(find.text('案例 1 的完整內文。'), findsNothing);
+  });
+
+  testWidgets('帶定位點進來：那一條自動展開，其他條仍收合', (tester) async {
+    var consumed = 0;
+    await pumpLibrary(
+      tester,
+      anchorEntryId: 'lib-1-e2',
+      onAnchorConsumed: () => consumed++,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('案例 2 的完整內文。'), findsOneWidget);
+    expect(find.text('案例 1 的完整內文。'), findsNothing);
+    expect(find.text('案例 3 的完整內文。'), findsNothing);
+    // 只回報一次，呼叫端才能把 anchor 清掉。
+    expect(consumed, 1);
+  });
+
+  testWidgets('定位點不在這個庫裡：什麼都不展開，也不回報消費', (tester) async {
+    var consumed = 0;
+    await pumpLibrary(
+      tester,
+      anchorEntryId: '別章的條目',
+      onAnchorConsumed: () => consumed++,
+    );
+    await tester.pumpAndSettle();
+
+    for (var i = 1; i <= 3; i++) {
+      expect(find.text('案例 $i 的完整內文。'), findsNothing);
+    }
+    expect(consumed, 0);
   });
 
   testWidgets('320 寬 + 2.0 字級不 overflow', (tester) async {

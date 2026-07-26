@@ -268,6 +268,15 @@
                   "type": "paragraph",
                   "id": "ebook-3-c3-lib-e4-b1",
                   "text": "見案例 K。有些人就是文字低能量,這不代表沒興趣。判準是有沒有紅燈,不是熱度高低。照樣在第五輪提低壓力提案。"
+                },
+                {
+                  "type": "crossRef",
+                  "id": "ebook-3-c3-lib-e4-xref1",
+                  "label": "案例 K · 完整弧線(她比較被動的版本)",
+                  "contextLabel": "《續航 · 讓對話活下去》第 5 章",
+                  "targetBookId": "ebook-2-conversation",
+                  "targetChapterId": "ebook-2-chapter-5",
+                  "targetEntryId": "ebook-2-c5-lib-e11"
                 }
               ],
               "summary": "見案例 K"
@@ -459,6 +468,15 @@
                   "type": "paragraph",
                   "id": "ebook-3-c4-lib-e6-b1",
                   "text": "一次輕度重啟(見案例 H)。只有一次。"
+                },
+                {
+                  "type": "crossRef",
+                  "id": "ebook-3-c4-lib-e6-xref1",
+                  "label": "案例 H · 救援——她已讀不回三天",
+                  "contextLabel": "《續航 · 讓對話活下去》第 5 章",
+                  "targetBookId": "ebook-2-conversation",
+                  "targetChapterId": "ebook-2-chapter-5",
+                  "targetEntryId": "ebook-2-c5-lib-e8"
                 }
               ],
               "summary": "一次輕度重啟(見案例 H)"
@@ -471,6 +489,24 @@
                   "type": "paragraph",
                   "id": "ebook-3-c4-lib-e7-b1",
                   "text": "不要。見案例 D 和課本 6.1。"
+                },
+                {
+                  "type": "crossRef",
+                  "id": "ebook-3-c4-lib-e7-xref1",
+                  "label": "案例 D · 回覆時間操作死亡",
+                  "contextLabel": "《續航 · 讓對話活下去》第 5 章",
+                  "targetBookId": "ebook-2-conversation",
+                  "targetChapterId": "ebook-2-chapter-5",
+                  "targetEntryId": "ebook-2-c5-lib-e4"
+                },
+                {
+                  "type": "crossRef",
+                  "id": "ebook-3-c4-lib-e7-xref2",
+                  "label": "⚠ 6.1 回覆時間操作",
+                  "contextLabel": "本書 · 第 2 章",
+                  "targetBookId": "ebook-3-rescue",
+                  "targetChapterId": "ebook-3-chapter-2",
+                  "targetEntryId": "ebook-3-c2-lib-e1"
                 }
               ],
               "summary": "不要"
@@ -483,6 +519,15 @@
                   "type": "paragraph",
                   "id": "ebook-3-c4-lib-e8-b1",
                   "text": "見案例 C。通常不是——那是禮貌性煞車。順著它,換軌。"
+                },
+                {
+                  "type": "crossRef",
+                  "id": "ebook-3-c4-lib-e8-xref1",
+                  "label": "案例 C · 升級棘輪死亡",
+                  "contextLabel": "《續航 · 讓對話活下去》第 5 章",
+                  "targetBookId": "ebook-2-conversation",
+                  "targetChapterId": "ebook-2-chapter-5",
+                  "targetEntryId": "ebook-2-c5-lib-e3"
                 }
               ],
               "summary": "見案例 C"
@@ -526,6 +571,15 @@
                   "type": "paragraph",
                   "id": "ebook-3-c4-lib-e10-b1",
                   "text": "不行。見案例 N。種子測的是方向,不是結果。只有具體提案會產生約會。如果你發現自己種了三個以上還沒開口,那不是策略,是逃避。"
+                },
+                {
+                  "type": "crossRef",
+                  "id": "ebook-3-c4-lib-e10-xref1",
+                  "label": "案例 N · 種子田(這個技術的失敗模式)",
+                  "contextLabel": "《續航 · 讓對話活下去》第 5 章",
+                  "targetBookId": "ebook-2-conversation",
+                  "targetChapterId": "ebook-2-chapter-5",
+                  "targetEntryId": "ebook-2-c5-lib-e14"
                 }
               ],
               "summary": "不行"
