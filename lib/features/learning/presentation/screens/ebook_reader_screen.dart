@@ -447,11 +447,16 @@ class _ChapterPage extends ConsumerWidget {
                     .read(ebookCatalogProvider)
                     .value
                     ?.findBook(stage.targetBookId);
+                // 只有「已確認未訂閱」才改送試讀章。ebookLockedFor 會把
+                // resolving／unavailable 也算成鎖著，用它會在付費使用者冷啟動
+                // 或離線時，把 route 提前改成第一章——等狀態確認完也回不去
+                // 原本指定的那一章。
                 final locked = target != null &&
-                    ebookLockedFor(
-                      target,
-                      ref.read(ebookSubscriptionAccessProvider),
-                    );
+                    ebookAccessFor(
+                          target,
+                          ref.read(ebookSubscriptionAccessProvider),
+                        ) ==
+                        EbookAccessDecision.locked;
                 final chapterId = locked
                     ? (target.previewChapterId ?? stage.targetChapterId)
                     : stage.targetChapterId;

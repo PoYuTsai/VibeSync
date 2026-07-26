@@ -488,6 +488,78 @@ void main() {
     expect(find.text('免費試讀章'), findsNothing);
   });
 
+  testWidgets('訂閱狀態未確認時漏斗不提前改目標：確認為付費後仍到指定章',
+      (tester) async {
+    // Codex 審查 finding 2.1：用 ebookLockedFor 會把 resolving／unavailable
+    // 也當成鎖著，付費使用者冷啟動或離線點漏斗會被永久改送到第一章。
+    for (final pending in const [
+      EbookSubscriptionAccess.resolving(),
+      EbookSubscriptionAccess.unavailable(),
+      EbookSubscriptionAccess.cachedPremium(unexpired: false),
+    ]) {
+      final catalog = EbookCatalog(
+        books: [
+          buildTestEbook(
+            id: _freeBook,
+            number: 1,
+            title: '免費測試書',
+            chapters: [
+              buildTestChapter(
+                id: '$_freeBook-chapter-1',
+                number: '1.1',
+                title: '第 1 章',
+                blocks: [
+                  buildTestStageFunnel(
+                    id: 'funnel-pending',
+                    targetBookId: 'test-book-premium',
+                    targetChapterId: 'test-book-premium-chapter-2',
+                    stageCount: 2,
+                  ),
+                  buildTestFlipCard(id: 'flip-pending'),
+                ],
+              ),
+            ],
+          ),
+          buildTestEbook(
+            id: 'test-book-premium',
+            number: 2,
+            title: '訂閱測試書',
+            access: EbookAccess.premium,
+            chapterCount: 2,
+          ),
+        ],
+      );
+
+      final harness = await pumpEbookApp(
+        tester,
+        initialLocation:
+            '/learning/books/$_freeBook/chapters/$_freeBook-chapter-1',
+        catalog: catalog,
+        access: pending,
+        size: const Size(390, 1600),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('症狀 1'));
+      await tester.pumpAndSettle();
+      await revealInChapter(tester, find.text('前往目標 1'));
+      await tester.tap(find.text('前往目標 1'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // 未確認期間不得漏出付費內容。
+      expect(find.text('段落內容。'), findsNothing, reason: '$pending 期間漏出內容');
+
+      harness.setAccess(const EbookSubscriptionAccess.premium());
+      await tester.pumpAndSettle();
+
+      // 狀態確認為付費後，應該落在漏斗原本指定的第二章。
+      expect(find.text('第 2 章'), findsOneWidget,
+          reason: '$pending 之後沒有回到指定章');
+      expect(find.text('免費試讀章'), findsNothing);
+    }
+  });
+
   testWidgets('試讀模式：只有一頁可讀、橫滑不到第二章、主按鈕導 paywall',
       (tester) async {
     await pumpEbookApp(
