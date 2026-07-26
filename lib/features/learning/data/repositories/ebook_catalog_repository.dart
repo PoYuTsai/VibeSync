@@ -110,7 +110,9 @@ void _validateCatalog(List<Ebook> books) {
           '電子書 ${book.id} 章節 id 重複：${chapter.id}',
         );
       }
-      for (final block in chapter.blocks) {
+      // 條目裡的 block 也要納入：互動型 block 的 id 就是本機進度的儲存鍵，
+      // 巢狀的一樣會被寫進去，重複就會互相蓋掉。
+      for (final block in _flattenBlocks(chapter.blocks)) {
         final owner = blockIds[block.id];
         if (owner != null) {
           throw EbookContentException(
@@ -124,6 +126,18 @@ void _validateCatalog(List<Ebook> books) {
   }
 
   _validateFunnelTargets(books, chapterIdsByBook);
+}
+
+/// 攤平章節區塊，含條目庫裡的巢狀區塊。
+Iterable<EbookBlock> _flattenBlocks(List<EbookBlock> blocks) sync* {
+  for (final block in blocks) {
+    yield block;
+    if (block is EbookEntryListBlock) {
+      for (final entry in block.entries) {
+        yield* entry.blocks;
+      }
+    }
+  }
 }
 
 /// 漏斗跳章目標必須真的存在。
@@ -240,11 +254,27 @@ EbookChapter _parseChapter(Map<String, Object?> json, String path) {
   );
 }
 
-EbookBlock _parseBlock(Map<String, Object?> json, String path) {
+EbookBlock _parseBlock(
+  Map<String, Object?> json,
+  String path, {
+  bool insideEntry = false,
+}) {
   final type = _requireString(json, 'type', path);
   final id = _requireString(json, 'id', path);
 
   switch (type) {
+    case 'entryList':
+      if (insideEntry) {
+        // 兩層收合在手機上找不回自己在哪，直接擋在 parser。
+        throw EbookContentException('$path 條目庫不得巢狀在條目裡');
+      }
+      return EbookEntryListBlock(
+        id: id,
+        title: _optionalString(json, 'title', path),
+        caption: _optionalString(json, 'caption', path),
+        entries: _parseEntries(json, path),
+      );
+
     case 'heading':
       return EbookHeadingBlock(id: id, text: _requireString(json, 'text', path));
 
@@ -447,6 +477,49 @@ EbookQuizBlock _parseQuiz(Map<String, Object?> json, String path, String id) {
   );
 }
 
+List<EbookEntry> _parseEntries(Map<String, Object?> json, String path) {
+  final raw = _requireList(json, 'entries', path);
+  if (raw.length < 2) {
+    throw EbookContentException('$path.entries 至少要兩條（一條不需要做成列表）');
+  }
+  final entries = <EbookEntry>[];
+  final seen = <String>{};
+  for (var index = 0; index < raw.length; index++) {
+    final entryPath = '$path.entries[$index]';
+    final entry = _requireObjectAt(raw, index, '$path.entries');
+    final id = _requireString(entry, 'id', entryPath);
+    if (!seen.add(id)) {
+      throw EbookContentException('$path.entries 內 id 重複：$id');
+    }
+    final blocksRaw = _requireList(entry, 'blocks', entryPath);
+    if (blocksRaw.isEmpty) {
+      throw EbookContentException('$entryPath.blocks 不得為空');
+    }
+    final blocks = <EbookBlock>[];
+    final seenBlockIds = <String>{};
+    for (var b = 0; b < blocksRaw.length; b++) {
+      final block = _parseBlock(
+        _requireObjectAt(blocksRaw, b, '$entryPath.blocks'),
+        '$entryPath.blocks[$b]',
+        insideEntry: true,
+      );
+      if (!seenBlockIds.add(block.id)) {
+        throw EbookContentException('$entryPath.blocks 內區塊 id 重複：${block.id}');
+      }
+      blocks.add(block);
+    }
+    entries.add(
+      EbookEntry(
+        id: id,
+        title: _requireString(entry, 'title', entryPath),
+        summary: _optionalString(entry, 'summary', entryPath),
+        blocks: blocks,
+      ),
+    );
+  }
+  return entries;
+}
+
 List<EbookFunnelStage> _parseFunnelStages(
   Map<String, Object?> json,
   String path,
@@ -552,6 +625,7 @@ const Map<String, EbookCalloutTone> _calloutToneByName =
   'safety': EbookCalloutTone.safety,
   'warning': EbookCalloutTone.warning,
   'takeaway': EbookCalloutTone.takeaway,
+  'fix': EbookCalloutTone.fix,
 };
 
 const Map<String, EbookComparisonStance> _stanceByName =

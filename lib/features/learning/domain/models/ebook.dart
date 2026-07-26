@@ -65,6 +65,9 @@ class EbookChapter {
   Iterable<EbookStageFunnelBlock> get stageFunnels =>
       blocks.whereType<EbookStageFunnelBlock>();
 
+  Iterable<EbookEntryListBlock> get entryLists =>
+      blocks.whereType<EbookEntryListBlock>();
+
   bool get hasSafetyCallout => blocks.any(
         (block) =>
             block is EbookCalloutBlock &&

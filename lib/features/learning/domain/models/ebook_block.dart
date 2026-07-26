@@ -19,7 +19,7 @@ enum EbookSignal { green, yellow, red }
 
 /// Callout 語意層級。`safety` 是安全／同意／撤退提醒，內容不變量會檢查
 /// 涉及邀約與升級的章節至少有一個。
-enum EbookCalloutTone { info, principle, goal, safety, warning, takeaway }
+enum EbookCalloutTone { info, principle, goal, safety, warning, takeaway, fix }
 
 /// 比較區塊裡每一項的立場。`weak` / `strong` 用於「弱版 vs 強版」對照，
 /// `neutral` 用於單純並列（例如事實版 vs 狀態感受版的說明欄）。
@@ -286,6 +286,43 @@ class EbookStageFunnelBlock extends EbookBlock {
   final String title;
   final String intro;
   final List<EbookFunnelStage> stages;
+}
+
+/// 條目庫的一條。
+///
+/// [summary] 是列表上那一行摘要，[blocks] 是展開後的內容。刻意允許巢狀
+/// block（案例要放對話＋註解＋修正），但 parser 禁止再放 entryList——
+/// 兩層以上的收合在手機上找不回自己在哪。
+class EbookEntry {
+  const EbookEntry({
+    required this.id,
+    required this.title,
+    required this.blocks,
+    this.summary,
+  });
+
+  final String id;
+  final String title;
+  final String? summary;
+  final List<EbookBlock> blocks;
+}
+
+/// 條目庫：列表 → 點開一條 → 才看到內文。
+///
+/// 存在理由（2026-07-27）：教材裡有一半篇幅是「查的」而不是「讀的」——
+/// 開場範例 8 型、對話拆解 13 案例、疑難情境 8 條、FAQ 12 條。這些若攤成
+/// 長捲，單一章節會出現四千字沒有段落標記的牆。
+class EbookEntryListBlock extends EbookBlock {
+  const EbookEntryListBlock({
+    required super.id,
+    required this.entries,
+    this.title,
+    this.caption,
+  });
+
+  final String? title;
+  final String? caption;
+  final List<EbookEntry> entries;
 }
 
 class EbookChecklistItem {

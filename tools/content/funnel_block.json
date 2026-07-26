@@ -1,0 +1,63 @@
+{
+ "type": "stageFunnel",
+ "id": "ebook-1-c1-funnel-1",
+ "title": "你在漏斗的哪一層掉出去？",
+ "intro": "不用算數字。看下面五句話，點選最像你現況的那一層——那就是你現在該練的階段。一次只練一階。",
+ "stages": [
+  {
+   "id": "ebook-1-c1-funnel-1-s0",
+   "number": "0",
+   "stageName": "階段 · 檔案",
+   "symptom": "滑了好一陣子，幾乎配對不到人",
+   "verdictTitle": "你卡在階段 0：檔案",
+   "verdictText": "問題在最前段。照片與自我說明決定了絕大部分的配對結果，文字要等照片過關才會被讀。先不要練開場或聊天，那不會動到這一段。回去重拍照片、改寫 Bio，這裡的槓桿是整條漏斗裡最大的。",
+   "targetBookId": "ebook-1-bottleneck",
+   "targetChapterId": "ebook-1-chapter-2",
+   "targetLabel": "前往 1.2 六張照片，各有一個工作"
+  },
+  {
+   "id": "ebook-1-c1-funnel-1-s1",
+   "number": "1",
+   "stageName": "階段 · 開場",
+   "symptom": "配對到了，但發訊息常常沒下文",
+   "verdictTitle": "你卡在階段 1：開場",
+   "verdictText": "配對不是問題，開場才是。最常見的死因是制式訊息——「嗨」「在幹嘛」向對方索取資訊，卻沒給任何可以接的東西。練「具體引用她檔案裡的東西 ＋ 你自己的一句狀態 ＋ 一個好回的開口」。",
+   "targetBookId": "ebook-1-bottleneck",
+   "targetChapterId": "ebook-1-chapter-4",
+   "targetLabel": "前往 1.4 開場：She／Me／Us"
+  },
+  {
+   "id": "ebook-1-c1-funnel-1-s2",
+   "number": "2",
+   "stageName": "階段 · 續航",
+   "symptom": "有聊起來，但幾輪就死",
+   "verdictTitle": "你卡在階段 2：續航",
+   "verdictText": "開得了頭，卻活不過幾輪。前面兩段已經過關，別回頭重拍照片或磨開場，那是浪費。專心練續航：停止查戶口、回應情緒而不只回應事實、讓自己也出現在對話裡。",
+   "targetBookId": "ebook-2-conversation",
+   "targetChapterId": "ebook-2-chapter-2",
+   "targetLabel": "前往《看懂一段對話》"
+  },
+  {
+   "id": "ebook-1-c1-funnel-1-s3",
+   "number": "3",
+   "stageName": "階段 · 轉線下",
+   "symptom": "聊得很順，但約不出來",
+   "verdictTitle": "你卡在階段 3：轉線下",
+   "verdictText": "對話沒問題，卡在轉線下。聊得起來卻約不出來，通常是根本沒開口，或開口的方式太模糊。先丟一個具體的活動鉤子，再給小而具體的提案，並在熱度最高的那幾天收。",
+   "targetBookId": "ebook-4-meeting",
+   "targetChapterId": "ebook-4-chapter-1",
+   "targetLabel": "前往《從聊天走到見面》"
+  },
+  {
+   "id": "ebook-1-c1-funnel-1-s4",
+   "number": "4",
+   "stageName": "階段 · 到場",
+   "symptom": "約好了，但對方常常沒出現",
+   "verdictTitle": "你卡在階段 4：到場",
+   "verdictText": "答應不等於見到面。約定之後臨時消失的比例比多數人以為的高，而且大半可以靠安排降下來：降低摩擦、中間的聯絡不要斷線、確認但不追問。把到場率穩住，整條漏斗就打通了。",
+   "targetBookId": "ebook-4-meeting",
+   "targetChapterId": "ebook-4-chapter-4",
+   "targetLabel": "前往《從聊天走到見面》"
+  }
+ ]
+}

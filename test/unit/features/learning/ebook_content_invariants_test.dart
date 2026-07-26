@@ -1,15 +1,34 @@
 // test/unit/features/learning/ebook_content_invariants_test.dart
 //
-// 真實 bundled 內容的不變量。這裡守的是教材契約而不是程式行為：
-//   - 每章至少一張翻卡、一題 Quiz、一段對話。
-//   - 涉及邀約／拒絕／升級的章節必須有安全 callout。
-//   - 來源校正（五標記、十四案例、六個功能位）不得回歸。
-//   - 反操弄立場不得被重新包裝成正向技巧。
+// 真實 bundled 內容的不變量。這裡守的是教材契約而不是程式行為。
+//
+// 2026-07-27 內容全面換成夥伴版本（四章約 18,000 字）之後，這份契約跟著換：
+//   - 舊契約要求「每章至少一張翻卡、一題 Quiz、一段對話」。新內容沒有翻卡與
+//     測驗（夥伴回饋：測驗多餘），對話只集中在拆解庫，所以那三條移除。
+//   - 新增的是條目庫契約：一半篇幅是「查的」不是「讀的」，那些內容必須是
+//     entryList（列表→點開），不能攤成長捲。
+//   - 安全／同意 callout 與禁語表：舊內容是我們自己寫的，新內容照夥伴原文，
+//     Eric 2026-07-27 拍板不另外加判斷，所以那兩條移除。
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/learning/domain/models/ebook.dart';
 import 'package:vibesync/features/learning/domain/models/ebook_block.dart';
 
 import '../../../helpers/ebook_test_content.dart';
+
+/// 第一章是診斷章：它的互動是漏斗。
+const _diagnosisChapterId = 'ebook-1-chapter-1';
+
+/// 攤平章節區塊，含條目庫裡的巢狀區塊。
+Iterable<EbookBlock> _flatten(Iterable<EbookBlock> blocks) sync* {
+  for (final block in blocks) {
+    yield block;
+    if (block is EbookEntryListBlock) {
+      for (final entry in block.entries) {
+        yield* _flatten(entry.blocks);
+      }
+    }
+  }
+}
 
 /// 抓出一個區塊裡所有使用者可見的文字，用於內容掃描。
 List<String> _blockTexts(EbookBlock block) {
@@ -58,6 +77,11 @@ List<String> _blockTexts(EbookBlock block) {
           stage.targetLabel,
         ]);
       }
+    case EbookEntryListBlock():
+      texts.addAll([block.title, block.caption]);
+      for (final entry in block.entries) {
+        texts.addAll([entry.title, entry.summary]);
+      }
     case EbookChecklistBlock():
       texts.addAll([block.title, block.caption]);
       for (final item in block.items) {
@@ -70,39 +94,10 @@ List<String> _blockTexts(EbookBlock block) {
 String _chapterText(EbookChapter chapter) => [
       chapter.title,
       chapter.learningGoal,
-      for (final block in chapter.blocks) ..._blockTexts(block),
+      for (final block in _flatten(chapter.blocks)) ..._blockTexts(block),
     ].join('\n');
 
-/// 觸發安全 callout 要求的關鍵詞。對齊施工規格「涉及邀約、拒絕或升級的章節」。
-const _safetyTriggers = <String>[
-  '邀約',
-  '拒絕',
-  '婉拒',
-  '棘輪',
-  '升級',
-  '種子',
-  '取消',
-];
-
-/// 任何章節都不得出現的字串（來源校正與調性硬規則）。
-const _forbiddenPhrases = <String>[
-  '十二個案例',
-  '五個位置',
-  '四大變數',
-  '四個變數',
-  '假定同意',
-  '賦格',
-  '失格',
-  '得寸進尺',
-  '常春藤',
-  '完全無法診斷',
-  '體脂是最大',
-  '幾乎完全可控',
-  '固定上限',
-  '五到八',
-];
-
-/// 出現這些反效果技巧名稱的章節，必須同時有 warning 或 safety callout，
+/// 出現這些反效果技巧名稱的章節，必須同時有 warning callout，
 /// 確保它們只出現在「為何不要這樣做」的框架裡。
 const _manipulationTerms = <String>[
   'Negging',
@@ -111,9 +106,6 @@ const _manipulationTerms = <String>[
   '忽冷忽熱',
   '貶低',
 ];
-
-/// 第一章是診斷章：它的互動是漏斗，不是測驗或示範對話。
-const _diagnosisChapterId = 'ebook-1-chapter-1';
 
 void main() {
   late EbookCatalog catalog;
@@ -133,57 +125,14 @@ void main() {
     }
   });
 
-  test('每章至少一張翻卡並標註來源', () {
+  test('每章都有內容、學習目標與來源', () {
     for (final book in catalog.books) {
       for (final chapter in book.chapters) {
         final where = '${book.id}/${chapter.id}';
-        expect(chapter.flipCards, isNotEmpty, reason: '$where 缺翻卡');
+        expect(chapter.blocks, isNotEmpty, reason: '$where 沒有區塊');
         expect(chapter.sourceRefs, isNotEmpty, reason: '$where 缺 sourceRefs');
         expect(chapter.learningGoal.trim(), isNotEmpty, reason: '$where 缺學習目標');
-      }
-    }
-  });
-
-  test('診斷章用漏斗取代測驗與示範對話', () {
-    final chapter = catalog.findChapter(
-      'ebook-1-bottleneck',
-      _diagnosisChapterId,
-    );
-    expect(chapter, isNotNull);
-    expect(chapter!.stageFunnels, hasLength(1), reason: '診斷章缺漏斗');
-    // 夥伴回饋（2026-07-26）：這一章不要算術型測驗，也不要教練示範對話。
-    expect(chapter.quizzes, isEmpty, reason: '診斷章不應再有 Quiz');
-    expect(chapter.dialogues, isEmpty, reason: '診斷章不應再有示範對話');
-  });
-
-  test('漏斗五層都指向真的存在的章節', () {
-    final funnel = catalog
-        .findChapter('ebook-1-bottleneck', _diagnosisChapterId)!
-        .stageFunnels
-        .single;
-    expect(funnel.stages, hasLength(5), reason: '漏斗應對應五個階段');
-    final numbers = funnel.stages.map((stage) => stage.number).toList();
-    expect(numbers, const ['0', '1', '2', '3', '4']);
-    for (final stage in funnel.stages) {
-      expect(
-        catalog.findChapter(stage.targetBookId, stage.targetChapterId),
-        isNotNull,
-        reason: '${stage.id} 的跳章目標不存在',
-      );
-      expect(stage.symptom.trim(), isNotEmpty);
-      expect(stage.verdictText.trim(), isNotEmpty);
-      expect(stage.targetLabel.trim(), isNotEmpty);
-    }
-  });
-
-  test('測驗收斂：診斷章零題，其餘每章恰好一題情境判斷', () {
-    for (final book in catalog.books) {
-      for (final chapter in book.chapters) {
-        final where = '${book.id}/${chapter.id}';
-        if (chapter.id == _diagnosisChapterId) continue;
-        // 收斂拍板（2026-07-26）：清單型複選題全刪，每章只留一題情境判斷。
-        expect(chapter.quizzes, hasLength(1), reason: '$where 的測驗數不是 1');
-        expect(chapter.dialogues, isNotEmpty, reason: '$where 缺對話');
+        expect(chapter.estimatedMinutes, greaterThan(0), reason: '$where 缺閱讀時間');
       }
     }
   });
@@ -200,14 +149,14 @@ void main() {
     }
   });
 
-  test('所有區塊 id 與章節 id 全域唯一', () {
+  test('所有區塊 id（含條目庫巢狀）與章節 id 全域唯一', () {
     final blockIds = <String>{};
     final chapterIds = <String>{};
     for (final book in catalog.books) {
       for (final chapter in book.chapters) {
         expect(chapterIds.add(chapter.id), isTrue,
             reason: '章節 id 重複：${chapter.id}');
-        for (final block in chapter.blocks) {
+        for (final block in _flatten(chapter.blocks)) {
           expect(blockIds.add(block.id), isTrue,
               reason: '區塊 id 重複：${block.id}');
         }
@@ -215,127 +164,137 @@ void main() {
     }
   });
 
-  test('Quiz 選項不變量：id 唯一、feedback 非空、正解數合法', () {
+  test('診斷章用漏斗，五層都指向真的存在的章節', () {
+    final chapter = catalog.findChapter(
+      'ebook-1-bottleneck',
+      _diagnosisChapterId,
+    );
+    expect(chapter, isNotNull);
+    final funnel = chapter!.stageFunnels.single;
+    expect(funnel.stages, hasLength(5), reason: '漏斗應對應五個階段');
+    expect(funnel.stages.map((s) => s.number).toList(),
+        const ['0', '1', '2', '3', '4']);
+    for (final stage in funnel.stages) {
+      expect(
+        catalog.findChapter(stage.targetBookId, stage.targetChapterId),
+        isNotNull,
+        reason: '${stage.id} 的跳章目標不存在',
+      );
+    }
+    // 夥伴回饋（2026-07-26）：這一章不要算術型測驗，也不要教練示範對話。
+    expect(chapter.quizzes, isEmpty);
+    expect(chapter.dialogues, isEmpty);
+  });
+
+  test('查閱型內容一律是條目庫，不攤成長捲', () {
+    // 這五章是「查的」不是「讀的」：開場範例、對話拆解、反效果技巧、
+    // 疑難情境、常見問題。它們必須是 entryList，否則單章會出現數千字的牆。
+    const libraryChapters = <String, int>{
+      'ebook-1-chapter-5': 8, // 八種檔案類型
+      'ebook-2-chapter-5': 13, // 對話逐句拆解
+      'ebook-3-chapter-2': 6, // 六個反效果技巧
+      'ebook-3-chapter-3': 8, // 疑難情境
+      'ebook-3-chapter-4': 12, // 常見問題
+    };
+    for (final entry in libraryChapters.entries) {
+      final chapter = catalog.books
+          .expand((book) => book.chapters)
+          .firstWhere((chapter) => chapter.id == entry.key);
+      final lists = chapter.entryLists.toList();
+      expect(lists, isNotEmpty, reason: '${entry.key} 應該是條目庫');
+      final biggest = lists
+          .map((list) => list.entries.length)
+          .reduce((a, b) => a > b ? a : b);
+      expect(biggest, greaterThanOrEqualTo(entry.value),
+          reason: '${entry.key} 條目數少於預期');
+    }
+  });
+
+  test('每一條條目都有標題與內容，且不巢狀第二層條目庫', () {
     for (final book in catalog.books) {
       for (final chapter in book.chapters) {
-        for (final quiz in chapter.quizzes) {
-          final ids = quiz.choices.map((choice) => choice.id).toList();
-          expect(ids.toSet(), hasLength(ids.length),
-              reason: '${quiz.id} 選項 id 重複');
-          expect(quiz.choices.length, greaterThanOrEqualTo(2));
-          expect(quiz.revision, greaterThanOrEqualTo(1));
-          expect(quiz.takeaway.trim(), isNotEmpty, reason: '${quiz.id} 缺 takeaway');
-          for (final choice in quiz.choices) {
-            expect(choice.feedback.trim(), isNotEmpty,
-                reason: '${quiz.id}/${choice.id} 缺 feedback');
-            expect(choice.text.trim(), isNotEmpty);
-          }
-          switch (quiz.mode) {
-            case EbookQuizMode.single:
-              expect(quiz.correctChoiceIds, hasLength(1),
-                  reason: '${quiz.id} 單選題正解數不是 1');
-            case EbookQuizMode.multiple:
-              expect(quiz.correctChoiceIds.length, greaterThanOrEqualTo(1),
-                  reason: '${quiz.id} 複選題沒有正解');
-              expect(quiz.correctChoiceIds.length,
-                  lessThan(quiz.choices.length),
-                  reason: '${quiz.id} 複選題全部都是正解');
+        for (final list in chapter.entryLists) {
+          expect(list.entries.length, greaterThanOrEqualTo(2),
+              reason: '${list.id} 只有一條，不需要做成列表');
+          for (final entry in list.entries) {
+            expect(entry.title.trim(), isNotEmpty, reason: '${entry.id} 缺標題');
+            expect(entry.blocks, isNotEmpty, reason: '${entry.id} 沒有內容');
+            expect(
+              entry.blocks.whereType<EbookEntryListBlock>(),
+              isEmpty,
+              reason: '${entry.id} 出現第二層條目庫',
+            );
           }
         }
       }
     }
   });
 
-  test('Checklist 只保存 id 與勾選狀態所需的最小資料', () {
+  test('沒有任何空白文字漏進內容', () {
     for (final book in catalog.books) {
       for (final chapter in book.chapters) {
-        for (final checklist in chapter.checklists) {
-          expect(checklist.items, isNotEmpty);
-          final ids = checklist.items.map((item) => item.id).toList();
-          expect(ids.toSet(), hasLength(ids.length),
-              reason: '${checklist.id} 項目 id 重複');
+        for (final block in _flatten(chapter.blocks)) {
+          for (final text in _blockTexts(block)) {
+            expect(text.trim(), isNotEmpty,
+                reason: '${block.id} 有空字串');
+          }
         }
       }
     }
   });
 
-  test('涉及邀約／拒絕／升級的章節必須有安全 callout', () {
+  test('反效果技巧只出現在否定框架裡，不得被包裝成正向技巧', () {
+    // 框架有三種合法形狀，只認 warning callout 會誤殺：
+    //   1. warning／safety callout（警告區那一章）
+    //   2. 帶死亡點的對話案例（拆解庫：示範它失敗）
+    //   3. 提到它的那一句話本身就在否定它（例如「…→ 不用」）
+    const negations = ['不用', '不要', '別', '反效果', '死亡', '失敗', '崩', '扣分'];
     for (final book in catalog.books) {
       for (final chapter in book.chapters) {
-        final text = _chapterText(chapter);
-        final triggers =
-            _safetyTriggers.where((trigger) => text.contains(trigger)).toList();
-        if (triggers.isEmpty) continue;
-        expect(
-          chapter.hasSafetyCallout,
-          isTrue,
-          reason: '${book.id}/${chapter.id} 命中 $triggers 卻沒有安全 callout',
-        );
-      }
-    }
-  });
-
-  test('反效果技巧只出現在警告框架裡', () {
-    for (final book in catalog.books) {
-      for (final chapter in book.chapters) {
-        final text = _chapterText(chapter);
-        final hits =
-            _manipulationTerms.where((term) => text.contains(term)).toList();
+        final blocks = _flatten(chapter.blocks).toList();
+        final texts = blocks.expand(_blockTexts).toList();
+        final hits = _manipulationTerms
+            .where((term) => texts.any((text) => text.contains(term)))
+            .toList();
         if (hits.isEmpty) continue;
-        final hasWarningFrame = chapter.blocks.any(
+
+        final hasWarningCallout = blocks.any(
           (block) =>
               block is EbookCalloutBlock &&
               (block.tone == EbookCalloutTone.warning ||
                   block.tone == EbookCalloutTone.safety),
         );
-        expect(
-          hasWarningFrame,
-          isTrue,
-          reason: '${book.id}/${chapter.id} 提到 $hits 卻沒有 warning/safety 框架',
+        final hasDeathPoint = blocks.any(
+          (block) =>
+              block is EbookDialogueBlock &&
+              block.lines.any((line) => line.isDeathPoint),
         );
-      }
-    }
-  });
+        if (hasWarningCallout || hasDeathPoint) continue;
 
-  test('來源校正與調性禁語不得回歸', () {
-    for (final book in catalog.books) {
-      for (final chapter in book.chapters) {
-        final text = _chapterText(chapter);
-        for (final phrase in _forbiddenPhrases) {
-          expect(
-            text.contains(phrase),
-            isFalse,
-            reason: '${book.id}/${chapter.id} 出現禁語「$phrase」',
-          );
+        for (final term in hits) {
+          for (final text in texts.where((text) => text.contains(term))) {
+            expect(
+              negations.any(text.contains),
+              isTrue,
+              reason: '${book.id}/${chapter.id} 提到「$term」卻沒有否定框架：$text',
+            );
+          }
         }
       }
     }
   });
 
-  test('五標記與三燈用語一致', () {
-    final markerBook = catalog.findBook('ebook-2-conversation');
-    expect(markerBook, isNotNull);
-    final markerText = markerBook!.chapters.map(_chapterText).join('\n');
-    for (final marker in ['V 價值', 'F 框架', 'E 情緒', 'I 投資', 'R 互惠']) {
-      expect(markerText.contains(marker), isTrue, reason: '缺少標記說明：$marker');
+  test('來源校正：六個功能位與五個變數標記', () {
+    final bottleneck = catalog.findBook('ebook-1-bottleneck')!;
+    expect(
+      bottleneck.chapters.map(_chapterText).join('\n').contains('六個功能位'),
+      isTrue,
+    );
+    final conversation = catalog.findBook('ebook-2-conversation')!;
+    final markerText = conversation.chapters.map(_chapterText).join('\n');
+    for (final marker in const ['價值', '框架', '情緒', '投資', '互惠']) {
+      expect(markerText.contains(marker), isTrue, reason: '缺少變數：$marker');
     }
-    for (final light in ['綠燈', '黃燈', '紅燈']) {
-      expect(markerText.contains(light), isTrue, reason: '缺少燈號說明：$light');
-    }
-  });
-
-  test('案例數校正為十四個', () {
-    final rescue = catalog.findBook('ebook-3-rescue');
-    expect(rescue, isNotNull);
-    final text = rescue!.chapters.map(_chapterText).join('\n');
-    expect(text.contains('十四個案例'), isTrue);
-  });
-
-  test('照片位數校正為六個功能位', () {
-    final bottleneck = catalog.findBook('ebook-1-bottleneck');
-    expect(bottleneck, isNotNull);
-    final text = bottleneck!.chapters.map(_chapterText).join('\n');
-    expect(text.contains('六個功能位'), isTrue);
   });
 
   test('恰好四本、二十章，每本五章', () {
@@ -358,49 +317,22 @@ void main() {
     }
   });
 
-  test('Book 1 結尾提供「應讀哪一本」導覽', () {
-    final bottleneck = catalog.findBook('ebook-1-bottleneck')!;
-    final text = bottleneck.chapters.first.blocks
-        .whereType<EbookBulletListBlock>()
-        .expand((block) => block.items)
-        .join('\n');
-    for (final title in const ['看懂一段對話', '對話急救室', '從聊天走到見面']) {
-      expect(text.contains(title), isTrue, reason: '診斷導覽缺少《$title》');
-    }
-  });
-
-  test('Book 4 收錄安全、同意與個資提醒', () {
-    final meeting = catalog.findBook('ebook-4-meeting')!;
-    final safetyText = meeting.chapters
-        .expand((chapter) => chapter.blocks)
-        .whereType<EbookCalloutBlock>()
-        .where((block) => block.tone == EbookCalloutTone.safety)
-        .map((block) => '${block.title ?? ''}\n${block.text}')
-        .join('\n');
-
-    for (final requirement in const [
-      '公開場所',
-      '交通',
-      '朋友',
-      '不推定',
-      '明確',
-      '沉默',
-      '個資',
-      '詐騙',
-    ]) {
-      expect(
-        safetyText.contains(requirement),
-        isTrue,
-        reason: 'Book 4 的安全 callout 缺少「$requirement」相關內容',
-      );
-    }
-  });
-
-  test('每本書都有 checklist 或明確的自評工具（Book 1 與 Book 4）', () {
-    for (final bookId in const ['ebook-1-bottleneck', 'ebook-4-meeting']) {
-      final book = catalog.findBook(bookId)!;
-      final checklists = book.chapters.expand((c) => c.checklists);
-      expect(checklists, isNotEmpty, reason: '$bookId 缺 checklist');
+  test('每一章的閱讀量都在可讀範圍內（不出現數千字的牆）', () {
+    for (final book in catalog.books) {
+      for (final chapter in book.chapters) {
+        // 條目庫章的總字數可以高，但那是分散在各條裡的；這裡量的是
+        // 「一次攤在畫面上」的量：章層級區塊（不含條目內文）。
+        final flat = chapter.blocks
+            .where((block) => block is! EbookEntryListBlock)
+            .expand(_blockTexts)
+            .join()
+            .length;
+        expect(
+          flat,
+          lessThan(3000),
+          reason: '${book.id}/${chapter.id} 章層級文字 $flat 字，太長',
+        );
+      }
     }
   });
 }

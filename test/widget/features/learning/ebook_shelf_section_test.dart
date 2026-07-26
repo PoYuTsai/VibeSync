@@ -112,10 +112,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('互動電子書'), findsOneWidget);
-    expect(find.text('先找到真正卡點'), findsOneWidget);
-    expect(find.text('看懂一段對話'), findsOneWidget);
-    expect(find.text('對話急救室：該救，還是該停'), findsOneWidget);
-    expect(find.text('從聊天走到見面'), findsOneWidget);
+    expect(find.text('診斷 · 配對開場'), findsOneWidget);
+    expect(find.text('續航 · 讓對話活下去'), findsOneWidget);
+    expect(find.text('避雷 · 該救還是該停'), findsOneWidget);
+    expect(find.text('約會 · 從聊天到到場'), findsOneWidget);
 
     // Free 使用者：Book 1 免費、其餘三本鎖定。
     expect(find.text('免費'), findsOneWidget);
@@ -145,7 +145,7 @@ void main() {
     await pumpShelf(tester, catalog: _realCatalog, size: const Size(390, 1600));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('看懂一段對話'));
+    await tester.tap(find.text('續航 · 讓對話活下去'));
     await tester.pumpAndSettle();
     // 2026-07-26 拍板：鎖定書也進目錄頁，由目錄頁的閘門顯示試讀與鎖定章。
     expect(find.text('DETAIL_ebook-2-conversation'), findsOneWidget);
@@ -156,7 +156,7 @@ void main() {
     await pumpShelf(tester, catalog: _realCatalog, size: const Size(390, 1600));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('先找到真正卡點'));
+    await tester.tap(find.text('診斷 · 配對開場'));
     await tester.pumpAndSettle();
     expect(find.text('DETAIL_ebook-1-bottleneck'), findsOneWidget);
   });
@@ -198,7 +198,7 @@ void main() {
     expect(find.text('確認訂閱中'), findsNWidgets(3));
     expect(find.text('免費'), findsOneWidget);
 
-    await tester.tap(find.text('看懂一段對話'));
+    await tester.tap(find.text('續航 · 讓對話活下去'));
     await tester.pumpAndSettle();
     // 進書籍目錄（由閘門顯示 loading／重試），不是 paywall。
     expect(find.text(paywallStubText), findsNothing);
@@ -217,7 +217,7 @@ void main() {
     expect(find.text('訂閱解鎖'), findsNothing);
     expect(find.text('確認訂閱中'), findsNWidgets(3));
 
-    await tester.tap(find.text('對話急救室：該救，還是該停'));
+    await tester.tap(find.text('避雷 · 該救還是該停'));
     await tester.pumpAndSettle();
     expect(find.text(paywallStubText), findsNothing);
     expect(find.text('DETAIL_ebook-3-rescue'), findsOneWidget);
@@ -228,7 +228,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('電子書內容暫時無法載入'), findsOneWidget);
-    expect(find.text('先找到真正卡點'), findsNothing);
+    expect(find.text('診斷 · 配對開場'), findsNothing);
   });
 
   testWidgets('載入中顯示佔位而不是空白', (tester) async {

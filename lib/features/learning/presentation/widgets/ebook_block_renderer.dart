@@ -18,6 +18,7 @@ import '../../domain/models/ebook_block.dart';
 import '../../domain/models/ebook_progress.dart';
 import 'ebook_checklist_block.dart';
 import 'ebook_dialogue_block.dart';
+import 'ebook_entry_list.dart';
 import 'ebook_flip_card.dart';
 import 'ebook_quiz_card.dart';
 import 'ebook_stage_funnel.dart';
@@ -90,6 +91,19 @@ class EbookBlockRenderer extends StatelessWidget {
           savedState: progress.quizStateFor(block.id, block.revision),
           onSubmit: (choiceIds, solved) =>
               onQuizSubmitted(block, choiceIds, solved),
+        );
+
+      case EbookEntryListBlock():
+        return EbookEntryListView(
+          block: block,
+          // 巢狀 block 走同一個 renderer，quiz／checklist 的 callback 一路傳下去。
+          entryBlockBuilder: (child) => EbookBlockRenderer(
+            block: child,
+            progress: progress,
+            onQuizSubmitted: onQuizSubmitted,
+            onChecklistItemChanged: onChecklistItemChanged,
+            onFunnelTargetTap: onFunnelTargetTap,
+          ),
         );
 
       case EbookStageFunnelBlock():
@@ -193,6 +207,8 @@ class _Callout extends StatelessWidget {
         return Icons.report_problem_outlined;
       case EbookCalloutTone.takeaway:
         return Icons.local_florist_outlined;
+      case EbookCalloutTone.fix:
+        return Icons.build_outlined;
     }
   }
 
@@ -210,6 +226,8 @@ class _Callout extends StatelessWidget {
         return AppColors.warning;
       case EbookCalloutTone.takeaway:
         return AppColors.brandBlush;
+      case EbookCalloutTone.fix:
+        return AppColors.success;
     }
   }
 
@@ -228,6 +246,8 @@ class _Callout extends StatelessWidget {
         return '注意';
       case EbookCalloutTone.takeaway:
         return '今天帶走';
+      case EbookCalloutTone.fix:
+        return '修正';
     }
   }
 
