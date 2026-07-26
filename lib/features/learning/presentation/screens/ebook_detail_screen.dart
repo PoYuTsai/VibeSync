@@ -45,6 +45,11 @@ class EbookDetailScreen extends ConsumerWidget {
         builder: (context) => _EbookDetailBody(
           book: catalog.findBook(bookId)!,
         ),
+        // 未訂閱者看付費書的目錄：可讀第一章，其餘章顯示鎖並導 paywall。
+        previewBuilder: (context) => _EbookDetailBody(
+          book: catalog.findBook(bookId)!,
+          isPreview: true,
+        ),
       ),
     );
   }
@@ -118,9 +123,12 @@ class _DetailContentError extends StatelessWidget {
 }
 
 class _EbookDetailBody extends ConsumerWidget {
-  const _EbookDetailBody({required this.book});
+  const _EbookDetailBody({required this.book, this.isPreview = false});
 
   final Ebook book;
+
+  /// 試讀模式：只有試讀章可點，其餘章導 paywall。
+  final bool isPreview;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -215,18 +223,41 @@ class _EbookDetailBody extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 14),
-          _CompletionCard(
-            completed: completed,
-            total: book.chapterCount,
-          ),
-          const SizedBox(height: 14),
-          BrandPrimaryButton(
-            label: started ? '繼續閱讀' : '開始閱讀',
-            icon: started ? Icons.play_arrow_rounded : Icons.auto_stories,
-            onPressed: () => context.push(
-              ebookChapterRoute(book.id, resumeChapterId),
+          if (isPreview)
+            _PreviewNoticeCard(
+              lockedChapterCount:
+                  book.chapterCount - book.freePreviewChapterCount,
+            )
+          else
+            _CompletionCard(
+              completed: completed,
+              total: book.chapterCount,
             ),
-          ),
+          const SizedBox(height: 14),
+          if (isPreview) ...[
+            BrandPrimaryButton(
+              label: '免費試讀第一章',
+              icon: Icons.auto_stories,
+              onPressed: () => context.push(
+                ebookChapterRoute(
+                  book.id,
+                  book.previewChapterId ?? book.chapters.first.id,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            BrandSecondaryButton(
+              label: '看訂閱方案',
+              onPressed: () => context.push('/paywall'),
+            ),
+          ] else
+            BrandPrimaryButton(
+              label: started ? '繼續閱讀' : '開始閱讀',
+              icon: started ? Icons.play_arrow_rounded : Icons.auto_stories,
+              onPressed: () => context.push(
+                ebookChapterRoute(book.id, resumeChapterId),
+              ),
+            ),
           const SizedBox(height: 24),
           const BrandSectionHeader(
             title: '章節',
@@ -241,7 +272,10 @@ class _EbookDetailBody extends ConsumerWidget {
                 chapter: book.chapters[index],
                 isCompleted:
                     progress.isChapterCompleted(book.chapters[index].id),
-                isResumeTarget: book.chapters[index].id == resumeChapterId,
+                isResumeTarget:
+                    !isPreview && book.chapters[index].id == resumeChapterId,
+                isLocked:
+                    isPreview && !book.isPreviewChapter(book.chapters[index].id),
               ),
             ),
         ],
@@ -340,18 +374,70 @@ class _CompletionCard extends StatelessWidget {
   }
 }
 
+/// 試讀說明卡。取代完成度卡：試讀時顯示「已完成 0 / 5 章」只會讓人以為
+/// 整本都能讀。
+class _PreviewNoticeCard extends StatelessWidget {
+  const _PreviewNoticeCard({required this.lockedChapterCount});
+
+  final int lockedChapterCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return BrandSurfaceCard(
+      elevated: false,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8, top: 1),
+            child: Icon(Icons.auto_stories_outlined,
+                size: 16, color: AppColors.brandBlush),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '免費試讀',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.brandBlush,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '第一章可以直接讀完，其餘 $lockedChapterCount 章訂閱後開放。'
+                  '訂閱後三本付費書會一次全開，不需要照順序讀。',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ChapterRow extends StatelessWidget {
   const _ChapterRow({
     required this.book,
     required this.chapter,
     required this.isCompleted,
     required this.isResumeTarget,
+    this.isLocked = false,
   });
 
   final Ebook book;
   final EbookChapter chapter;
   final bool isCompleted;
   final bool isResumeTarget;
+
+  /// 試讀模式下尚未解鎖的章：點擊導 paywall，不進閱讀器。
+  final bool isLocked;
 
   @override
   Widget build(BuildContext context) {
@@ -362,20 +448,26 @@ class _ChapterRow extends StatelessWidget {
       borderColor: isResumeTarget
           ? AppColors.ctaStart.withValues(alpha: 0.45)
           : null,
-      onTap: () => context.push(ebookChapterRoute(book.id, chapter.id)),
+      onTap: isLocked
+          ? () => context.push('/paywall')
+          : () => context.push(ebookChapterRoute(book.id, chapter.id)),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 2, right: 12),
             child: Icon(
-              isCompleted
-                  ? Icons.check_circle_outline
-                  : Icons.radio_button_unchecked,
+              isLocked
+                  ? Icons.lock_outline
+                  : isCompleted
+                      ? Icons.check_circle_outline
+                      : Icons.radio_button_unchecked,
               size: 20,
-              color: isCompleted
-                  ? AppColors.success
-                  : AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
+              color: isLocked
+                  ? AppColors.brandBlush
+                  : isCompleted
+                      ? AppColors.success
+                      : AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
             ),
           ),
           Expanded(
@@ -411,14 +503,20 @@ class _ChapterRow extends StatelessWidget {
                             .withValues(alpha: 0.62),
                       ),
                     ),
-                    // 完成狀態必須有文字，不能只靠打勾顏色。
+                    // 狀態必須有文字，不能只靠鎖頭或打勾的顏色。
                     Text(
-                      isCompleted ? '已完成' : '未完成',
+                      isLocked
+                          ? '訂閱後解鎖'
+                          : isCompleted
+                              ? '已完成'
+                              : '未完成',
                       style: AppTypography.caption.copyWith(
-                        color: isCompleted
-                            ? AppColors.success
-                            : AppColors.onBackgroundSecondary
-                                .withValues(alpha: 0.62),
+                        color: isLocked
+                            ? AppColors.brandBlush
+                            : isCompleted
+                                ? AppColors.success
+                                : AppColors.onBackgroundSecondary
+                                    .withValues(alpha: 0.62),
                         fontWeight: FontWeight.w700,
                       ),
                     ),

@@ -62,6 +62,9 @@ class EbookChapter {
   Iterable<EbookDialogueBlock> get dialogues =>
       blocks.whereType<EbookDialogueBlock>();
 
+  Iterable<EbookStageFunnelBlock> get stageFunnels =>
+      blocks.whereType<EbookStageFunnelBlock>();
+
   bool get hasSafetyCallout => blocks.any(
         (block) =>
             block is EbookCalloutBlock &&
@@ -105,6 +108,23 @@ class Ebook {
   int get chapterCount => chapters.length;
 
   bool get isFree => access == EbookAccess.free;
+
+  /// 免費試讀章數（2026-07-26 Eric 拍板）：付費書開放第一章，免費書全開。
+  ///
+  /// 這是產品規則而不是內容欄位：寫在 JSON 會讓「哪幾章免費」變成可被內容
+  /// 誤改的付費邊界，寫在這裡則由 domain 測試守住。
+  int get freePreviewChapterCount => isFree ? chapters.length : 1;
+
+  /// 未訂閱者可以讀的試讀章 id。免費書回傳 `null`（整本都不需要試讀概念）。
+  String? get previewChapterId =>
+      isFree || chapters.isEmpty ? null : chapters.first.id;
+
+  /// 這一章在未訂閱狀態下是否可讀。
+  bool isPreviewChapter(String chapterId) {
+    if (isFree) return true;
+    final index = indexOfChapter(chapterId);
+    return index >= 0 && index < freePreviewChapterCount;
+  }
 
   EbookChapter? findChapter(String chapterId) {
     for (final chapter in chapters) {

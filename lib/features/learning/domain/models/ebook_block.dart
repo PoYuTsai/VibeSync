@@ -228,6 +228,66 @@ class EbookQuizBlock extends EbookBlock {
   }
 }
 
+/// 漏斗自我診斷的一層。
+///
+/// 為什麼帶 target id 而不帶 route 字串：JSON 只放語意 key，route 組裝留在
+/// presentation。target 是否真的存在由 catalog 載入時驗證，避免內容改章 id
+/// 之後這裡靜默指向不存在的章節。
+class EbookFunnelStage {
+  const EbookFunnelStage({
+    required this.id,
+    required this.number,
+    required this.stageName,
+    required this.symptom,
+    required this.verdictTitle,
+    required this.verdictText,
+    required this.targetBookId,
+    required this.targetChapterId,
+    required this.targetLabel,
+  });
+
+  final String id;
+
+  /// 顯示用層號（例如 `0`）。刻意不用陣列 index，內容調整順序時才不會錯位。
+  final String number;
+
+  /// 階段名，例如「階段 · 開場」。
+  final String stageName;
+
+  /// 白話症狀敘述，讀者靠這句認自己，不必算任何數字。
+  final String symptom;
+
+  final String verdictTitle;
+  final String verdictText;
+
+  final String targetBookId;
+  final String targetChapterId;
+
+  /// 前往按鈕的文字，例如「前往〈六張照片，各有一個工作〉」。
+  final String targetLabel;
+}
+
+/// 階段漏斗：讀者點選最像自己現況的一層，得到一段判斷與一個跳章入口。
+///
+/// 這個型別存在的理由（2026-07-26 夥伴回饋）：原本第一章要讀者先記錄六個
+/// 數字、再讀一段教練示範對話、再答一題算術型 quiz 才知道自己卡在哪。實測
+/// 「不方便閱讀」。漏斗把同一個診斷收斂成一次點選。
+///
+/// 選擇狀態刻意不持久化（與翻卡同理由）：這是讀者當下的自我定位，不是進度，
+/// 也不該讓舊選擇在幾週後回來誤導人。
+class EbookStageFunnelBlock extends EbookBlock {
+  const EbookStageFunnelBlock({
+    required super.id,
+    required this.title,
+    required this.intro,
+    required this.stages,
+  });
+
+  final String title;
+  final String intro;
+  final List<EbookFunnelStage> stages;
+}
+
 class EbookChecklistItem {
   const EbookChecklistItem({
     required this.id,

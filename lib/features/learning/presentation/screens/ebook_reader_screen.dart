@@ -55,9 +55,16 @@ class EbookReaderScreen extends ConsumerWidget {
         final book = catalog.findBook(bookId);
         return EbookAccessGate(
           book: book,
+          chapterId: chapterId,
           builder: (context) => _ReaderProgressLoader(
             book: book!,
             routeChapterId: chapterId,
+          ),
+          // 未訂閱者讀付費書的第一章：只給那一章，其餘章不進 PageView。
+          previewBuilder: (context) => _EbookReaderBody(
+            book: book!,
+            initialIndex: 0,
+            previewOnly: true,
           ),
         );
       },
@@ -103,10 +110,17 @@ class _ReaderProgressLoader extends ConsumerWidget {
 }
 
 class _EbookReaderBody extends ConsumerStatefulWidget {
-  const _EbookReaderBody({required this.book, required this.initialIndex});
+  const _EbookReaderBody({
+    required this.book,
+    required this.initialIndex,
+    this.previewOnly = false,
+  });
 
   final Ebook book;
   final int initialIndex;
+
+  /// 試讀模式：只放行 [Ebook.freePreviewChapterCount] 章，主按鈕改成看方案。
+  final bool previewOnly;
 
   @override
   ConsumerState<_EbookReaderBody> createState() => _EbookReaderBodyState();
@@ -125,6 +139,11 @@ class _EbookReaderBodyState extends ConsumerState<_EbookReaderBody> {
   }
 
   Ebook get _book => widget.book;
+
+  /// 試讀模式下 PageView 只有試讀章；非試讀時是整本。
+  List<EbookChapter> get _readableChapters => widget.previewOnly
+      ? _book.chapters.take(_book.freePreviewChapterCount).toList(growable: false)
+      : _book.chapters;
 
   void _onPageChanged(int index) {
     setState(() => _currentIndex = index);
@@ -190,10 +209,14 @@ class _EbookReaderBodyState extends ConsumerState<_EbookReaderBody> {
   @override
   Widget build(BuildContext context) {
     final progress = ref.watch(ebookBookProgressProvider(_book.id));
+    final chapters = _readableChapters;
+    // 標題列的分母永遠是整本章數：試讀時顯示「第 1 ／ 5 章」才誠實。
     final total = _book.chapters.length;
+    final readable = chapters.length;
     final completedCount = _book.chapters
         .where((chapter) => progress.isChapterCompleted(chapter.id))
         .length;
+    final safeIndex = _currentIndex.clamp(0, readable - 1);
 
     return BrandScaffold(
       title: _book.title,
@@ -204,26 +227,29 @@ class _EbookReaderBodyState extends ConsumerState<_EbookReaderBody> {
       body: Column(
         children: [
           _ReaderHeader(
-            currentIndex: _currentIndex,
+            currentIndex: safeIndex,
             total: total,
             completedCount: completedCount,
-            chapter: _book.chapters[_currentIndex],
+            chapter: chapters[safeIndex],
+            isPreview: widget.previewOnly,
           ),
           Expanded(
             child: PageView.builder(
               controller: _pageController,
-              itemCount: total,
+              itemCount: readable,
               onPageChanged: _onPageChanged,
               itemBuilder: (context, index) {
-                final chapter = _book.chapters[index];
+                final chapter = chapters[index];
                 return _ChapterPage(
                   book: _book,
                   chapter: chapter,
                   index: index,
-                  isLast: index >= total - 1,
+                  isLast: index >= readable - 1,
                   isCompleted: progress.isChapterCompleted(chapter.id),
                   progress: progress,
                   saving: _saving,
+                  isPreview: widget.previewOnly,
+                  lockedChapterCount: total - readable,
                   onComplete: () => _completeChapter(index),
                 );
               },
@@ -241,12 +267,14 @@ class _ReaderHeader extends StatelessWidget {
     required this.total,
     required this.completedCount,
     required this.chapter,
+    this.isPreview = false,
   });
 
   final int currentIndex;
   final int total;
   final int completedCount;
   final EbookChapter chapter;
+  final bool isPreview;
 
   @override
   Widget build(BuildContext context) {
@@ -268,15 +296,25 @@ class _ReaderHeader extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              // 「完成度」與「閱讀位置」是兩件事，標籤刻意分開。
-              Text(
-                '完成度 $completedCount ／ $total 章',
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.onBackgroundSecondary
-                      .withValues(alpha: 0.78),
-                  fontWeight: FontWeight.w700,
+              // 試讀時不顯示完成度：那個分母會讓人以為整本都能讀。
+              if (isPreview)
+                Text(
+                  '免費試讀章',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.brandBlush,
+                    fontWeight: FontWeight.w800,
+                  ),
+                )
+              else
+                // 「完成度」與「閱讀位置」是兩件事，標籤刻意分開。
+                Text(
+                  '完成度 $completedCount ／ $total 章',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.onBackgroundSecondary
+                        .withValues(alpha: 0.78),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -318,6 +356,8 @@ class _ChapterPage extends ConsumerWidget {
     required this.progress,
     required this.saving,
     required this.onComplete,
+    this.isPreview = false,
+    this.lockedChapterCount = 0,
   });
 
   final Ebook book;
@@ -329,12 +369,20 @@ class _ChapterPage extends ConsumerWidget {
   final bool saving;
   final VoidCallback onComplete;
 
+  /// 試讀模式：章尾的主按鈕改成看訂閱方案，不寫任何完成進度。
+  final bool isPreview;
+  final int lockedChapterCount;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(ebookProgressControllerProvider.notifier);
 
     final String buttonLabel;
-    if (isLast) {
+    if (isPreview) {
+      buttonLabel = lockedChapterCount > 0
+          ? '訂閱後解鎖其餘 $lockedChapterCount 章'
+          : '看訂閱方案';
+    } else if (isLast) {
       buttonLabel = isCompleted ? '回章節目錄' : '完成本書';
     } else {
       buttonLabel = isCompleted ? '下一章' : '完成本章，下一章';
@@ -389,6 +437,26 @@ class _ChapterPage extends ConsumerWidget {
                     )
                     .catchError(reportSaveFailure);
               },
+              onFunnelTargetTap: (_, stage) {
+                // push 而非 go：讀者從診斷跳出去之後，返回鍵要能回到這一章。
+                //
+                // 目標章若在尚未解鎖的書裡，改送到那本書的免費試讀章，讓診斷
+                // 結果一定落在讀得到的地方；權限最終仍由目標頁的
+                // EbookAccessGate 判定，這裡只是選一個較好的落點。
+                final target = ref
+                    .read(ebookCatalogProvider)
+                    .value
+                    ?.findBook(stage.targetBookId);
+                final locked = target != null &&
+                    ebookLockedFor(
+                      target,
+                      ref.read(ebookSubscriptionAccessProvider),
+                    );
+                final chapterId = locked
+                    ? (target.previewChapterId ?? stage.targetChapterId)
+                    : stage.targetChapterId;
+                context.push(ebookChapterRoute(stage.targetBookId, chapterId));
+              },
               onChecklistItemChanged: (checklist, itemId, checked) {
                 controller
                     .setChecklistItem(
@@ -420,12 +488,19 @@ class _ChapterPage extends ConsumerWidget {
               ],
             ),
           ),
-        BrandPrimaryButton(
-          label: buttonLabel,
-          isLoading: saving,
-          icon: isLast ? Icons.flag_outlined : Icons.arrow_forward_rounded,
-          onPressed: saving ? null : onComplete,
-        ),
+        if (isPreview)
+          BrandPrimaryButton(
+            label: buttonLabel,
+            icon: Icons.workspace_premium_outlined,
+            onPressed: () => context.push('/paywall'),
+          )
+        else
+          BrandPrimaryButton(
+            label: buttonLabel,
+            isLoading: saving,
+            icon: isLast ? Icons.flag_outlined : Icons.arrow_forward_rounded,
+            onPressed: saving ? null : onComplete,
+          ),
       ],
     );
   }

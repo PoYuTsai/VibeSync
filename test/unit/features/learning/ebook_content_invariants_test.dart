@@ -47,6 +47,17 @@ List<String> _blockTexts(EbookBlock block) {
       for (final choice in block.choices) {
         texts.addAll([choice.text, choice.feedback]);
       }
+    case EbookStageFunnelBlock():
+      texts.addAll([block.title, block.intro]);
+      for (final stage in block.stages) {
+        texts.addAll([
+          stage.stageName,
+          stage.symptom,
+          stage.verdictTitle,
+          stage.verdictText,
+          stage.targetLabel,
+        ]);
+      }
     case EbookChecklistBlock():
       texts.addAll([block.title, block.caption]);
       for (final item in block.items) {
@@ -101,6 +112,9 @@ const _manipulationTerms = <String>[
   '貶低',
 ];
 
+/// 第一章是診斷章：它的互動是漏斗，不是測驗或示範對話。
+const _diagnosisChapterId = 'ebook-1-chapter-1';
+
 void main() {
   late EbookCatalog catalog;
 
@@ -119,15 +133,57 @@ void main() {
     }
   });
 
-  test('每章至少一張翻卡、一題 Quiz、一段對話，並標註來源', () {
+  test('每章至少一張翻卡並標註來源', () {
     for (final book in catalog.books) {
       for (final chapter in book.chapters) {
         final where = '${book.id}/${chapter.id}';
         expect(chapter.flipCards, isNotEmpty, reason: '$where 缺翻卡');
-        expect(chapter.quizzes, isNotEmpty, reason: '$where 缺 Quiz');
-        expect(chapter.dialogues, isNotEmpty, reason: '$where 缺對話');
         expect(chapter.sourceRefs, isNotEmpty, reason: '$where 缺 sourceRefs');
         expect(chapter.learningGoal.trim(), isNotEmpty, reason: '$where 缺學習目標');
+      }
+    }
+  });
+
+  test('診斷章用漏斗取代測驗與示範對話', () {
+    final chapter = catalog.findChapter(
+      'ebook-1-bottleneck',
+      _diagnosisChapterId,
+    );
+    expect(chapter, isNotNull);
+    expect(chapter!.stageFunnels, hasLength(1), reason: '診斷章缺漏斗');
+    // 夥伴回饋（2026-07-26）：這一章不要算術型測驗，也不要教練示範對話。
+    expect(chapter.quizzes, isEmpty, reason: '診斷章不應再有 Quiz');
+    expect(chapter.dialogues, isEmpty, reason: '診斷章不應再有示範對話');
+  });
+
+  test('漏斗五層都指向真的存在的章節', () {
+    final funnel = catalog
+        .findChapter('ebook-1-bottleneck', _diagnosisChapterId)!
+        .stageFunnels
+        .single;
+    expect(funnel.stages, hasLength(5), reason: '漏斗應對應五個階段');
+    final numbers = funnel.stages.map((stage) => stage.number).toList();
+    expect(numbers, const ['0', '1', '2', '3', '4']);
+    for (final stage in funnel.stages) {
+      expect(
+        catalog.findChapter(stage.targetBookId, stage.targetChapterId),
+        isNotNull,
+        reason: '${stage.id} 的跳章目標不存在',
+      );
+      expect(stage.symptom.trim(), isNotEmpty);
+      expect(stage.verdictText.trim(), isNotEmpty);
+      expect(stage.targetLabel.trim(), isNotEmpty);
+    }
+  });
+
+  test('測驗收斂：診斷章零題，其餘每章恰好一題情境判斷', () {
+    for (final book in catalog.books) {
+      for (final chapter in book.chapters) {
+        final where = '${book.id}/${chapter.id}';
+        if (chapter.id == _diagnosisChapterId) continue;
+        // 收斂拍板（2026-07-26）：清單型複選題全刪，每章只留一題情境判斷。
+        expect(chapter.quizzes, hasLength(1), reason: '$where 的測驗數不是 1');
+        expect(chapter.dialogues, isNotEmpty, reason: '$where 缺對話');
       }
     }
   });

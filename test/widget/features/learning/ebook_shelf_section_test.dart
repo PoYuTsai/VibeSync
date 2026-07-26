@@ -141,14 +141,15 @@ void main() {
     expect(find.text('已解鎖'), findsNWidgets(3));
   });
 
-  testWidgets('點免費書進目錄，點鎖定書只導 paywall', (tester) async {
+  testWidgets('點鎖定書進目錄頁（第一章試讀），不在書架就攔成 paywall', (tester) async {
     await pumpShelf(tester, catalog: _realCatalog, size: const Size(390, 1600));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('看懂一段對話'));
     await tester.pumpAndSettle();
-    expect(find.text(paywallStubText), findsOneWidget);
-    expect(find.text('DETAIL_ebook-2-conversation'), findsNothing);
+    // 2026-07-26 拍板：鎖定書也進目錄頁，由目錄頁的閘門顯示試讀與鎖定章。
+    expect(find.text('DETAIL_ebook-2-conversation'), findsOneWidget);
+    expect(find.text(paywallStubText), findsNothing);
   });
 
   testWidgets('點免費書進入書籍目錄', (tester) async {

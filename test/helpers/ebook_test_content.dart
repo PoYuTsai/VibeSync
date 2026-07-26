@@ -143,6 +143,34 @@ EbookDialogueBlock buildTestDialogue({String id = 'dlg-1'}) {
   );
 }
 
+/// 漏斗 fixture。目標刻意可覆寫，方便驗「跳到另一本書」與「跳到同一本書」。
+EbookStageFunnelBlock buildTestStageFunnel({
+  String id = 'funnel-1',
+  String targetBookId = 'book-1',
+  String targetChapterId = 'book-1-chapter-2',
+  int stageCount = 3,
+}) {
+  return EbookStageFunnelBlock(
+    id: id,
+    title: '你在漏斗的哪一層掉出去？',
+    intro: '不用算數字，點最像你現況的那一層。',
+    stages: [
+      for (var index = 0; index < stageCount; index++)
+        EbookFunnelStage(
+          id: '$id-s$index',
+          number: '$index',
+          stageName: '階段 · 測試 $index',
+          symptom: '症狀 $index',
+          verdictTitle: '你卡在階段 $index',
+          verdictText: '判斷內容 $index。',
+          targetBookId: targetBookId,
+          targetChapterId: targetChapterId,
+          targetLabel: '前往目標 $index',
+        ),
+    ],
+  );
+}
+
 EbookChapter buildTestChapter({
   required String id,
   String number = '1.1',

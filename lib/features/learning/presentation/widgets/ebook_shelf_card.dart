@@ -38,8 +38,6 @@ class EbookShelfCard extends ConsumerWidget {
   /// [EbookAccessGate] 顯示 loading 或可重試錯誤。
   final EbookAccessDecision decision;
 
-  bool get _isLocked => decision == EbookAccessDecision.locked;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final progress = ref.watch(ebookBookProgressProvider(book.id));
@@ -52,11 +50,9 @@ class EbookShelfCard extends ConsumerWidget {
       padding: const EdgeInsets.all(14),
       borderRadius: 20,
       onTap: () {
-        // 只有「已確認是免費使用者」才直接導 paywall。
-        if (_isLocked) {
-          context.push('/paywall');
-          return;
-        }
+        // 鎖著的書也進目錄頁（2026-07-26 Eric 拍板開放第一章試讀）：目錄頁
+        // 的 EbookAccessGate 會走試讀分支，顯示可讀的第一章與其餘章的鎖，
+        // paywall 由那裡的按鈕或鎖定章列進入，不在書架就攔掉。
         context.push(ebookDetailRoute(book.id));
       },
       child: Column(
@@ -151,6 +147,8 @@ class _AccessPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     switch (decision) {
+      // 試讀開放第一章不改變「這本要訂閱」這件事，書架標籤維持訂閱字樣。
+      case EbookAccessDecision.preview:
       case EbookAccessDecision.locked:
         return _pill(
           icon: Icons.lock_outline,

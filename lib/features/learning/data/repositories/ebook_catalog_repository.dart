@@ -83,6 +83,7 @@ void _validateCatalog(List<Ebook> books) {
 
   final bookIds = <String>{};
   final blockIds = <String, String>{};
+  final chapterIdsByBook = <String, Set<String>>{};
 
   for (var index = 0; index < books.length; index++) {
     final book = books[index];
@@ -117,6 +118,41 @@ void _validateCatalog(List<Ebook> books) {
           );
         }
         blockIds[block.id] = '${book.id}/${chapter.id}';
+      }
+    }
+    chapterIdsByBook[book.id] = chapterIds;
+  }
+
+  _validateFunnelTargets(books, chapterIdsByBook);
+}
+
+/// 漏斗跳章目標必須真的存在。
+///
+/// 這個檢查是必要的：漏斗是第一章唯一的診斷入口，目標指到不存在的章節時
+/// 使用者會按到一個死路（或閱讀器 fallback 到第一章，看起來像沒反應）。
+/// 寧可載入時就爆掉並被測試擋下。
+void _validateFunnelTargets(
+  List<Ebook> books,
+  Map<String, Set<String>> chapterIdsByBook,
+) {
+  for (final book in books) {
+    for (final chapter in book.chapters) {
+      for (final funnel in chapter.stageFunnels) {
+        for (final stage in funnel.stages) {
+          final chapters = chapterIdsByBook[stage.targetBookId];
+          if (chapters == null) {
+            throw EbookContentException(
+              '漏斗 ${funnel.id}/${stage.id} 的 targetBookId='
+              '${stage.targetBookId} 不存在',
+            );
+          }
+          if (!chapters.contains(stage.targetChapterId)) {
+            throw EbookContentException(
+              '漏斗 ${funnel.id}/${stage.id} 的 targetChapterId='
+              '${stage.targetChapterId} 不屬於 ${stage.targetBookId}',
+            );
+          }
+        }
       }
     }
   }
@@ -264,6 +300,14 @@ EbookBlock _parseBlock(Map<String, Object?> json, String path) {
     case 'quiz':
       return _parseQuiz(json, path, id);
 
+    case 'stageFunnel':
+      return EbookStageFunnelBlock(
+        id: id,
+        title: _requireString(json, 'title', path),
+        intro: _requireString(json, 'intro', path),
+        stages: _parseFunnelStages(json, path),
+      );
+
     case 'checklist':
       return EbookChecklistBlock(
         id: id,
@@ -401,6 +445,40 @@ EbookQuizBlock _parseQuiz(Map<String, Object?> json, String path, String id) {
     choices: choices,
     takeaway: _requireString(json, 'takeaway', path),
   );
+}
+
+List<EbookFunnelStage> _parseFunnelStages(
+  Map<String, Object?> json,
+  String path,
+) {
+  final raw = _requireList(json, 'stages', path);
+  if (raw.length < 2) {
+    throw EbookContentException('$path.stages 至少要兩層（否則不構成選擇）');
+  }
+  final stages = <EbookFunnelStage>[];
+  final seen = <String>{};
+  for (var index = 0; index < raw.length; index++) {
+    final stagePath = '$path.stages[$index]';
+    final stage = _requireObjectAt(raw, index, '$path.stages');
+    final id = _requireString(stage, 'id', stagePath);
+    if (!seen.add(id)) {
+      throw EbookContentException('$path.stages 內 id 重複：$id');
+    }
+    stages.add(
+      EbookFunnelStage(
+        id: id,
+        number: _requireString(stage, 'number', stagePath),
+        stageName: _requireString(stage, 'stageName', stagePath),
+        symptom: _requireString(stage, 'symptom', stagePath),
+        verdictTitle: _requireString(stage, 'verdictTitle', stagePath),
+        verdictText: _requireString(stage, 'verdictText', stagePath),
+        targetBookId: _requireString(stage, 'targetBookId', stagePath),
+        targetChapterId: _requireString(stage, 'targetChapterId', stagePath),
+        targetLabel: _requireString(stage, 'targetLabel', stagePath),
+      ),
+    );
+  }
+  return stages;
 }
 
 List<EbookChecklistItem> _parseChecklistItems(

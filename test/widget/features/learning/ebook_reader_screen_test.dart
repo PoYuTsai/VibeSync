@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/learning/data/providers/ebook_providers.dart';
 import 'package:vibesync/features/learning/domain/ebook_reading_position.dart';
+import 'package:vibesync/features/learning/domain/models/ebook.dart';
 import 'package:vibesync/features/learning/domain/models/ebook_progress.dart';
 import 'package:vibesync/features/learning/presentation/widgets/ebook_access_gate.dart';
 
@@ -363,11 +364,11 @@ void main() {
     expect(button.onPressed, isNotNull, reason: '按鈕必須解除 loading 可以再按');
   });
 
-  testWidgets('付費書的閱讀器同樣受閘門保護', (tester) async {
+  testWidgets('付費書的閱讀器：未訂閱只放行試讀章，其餘章仍被閘門擋下', (tester) async {
     await pumpEbookApp(
       tester,
       initialLocation:
-          '/learning/books/test-book-premium/chapters/test-book-premium-chapter-1',
+          '/learning/books/test-book-premium/chapters/test-book-premium-chapter-2',
       catalog: buildTestCatalog(),
       access: const EbookSubscriptionAccess.free(),
     );
@@ -375,5 +376,142 @@ void main() {
 
     expect(find.text(paywallStubText), findsOneWidget);
     expect(find.text('閱讀位置'), findsNothing);
+  });
+
+  testWidgets('漏斗跳到未解鎖的書：落在該書的試讀章，不是 paywall', (tester) async {
+    // 免費書第一章放一個漏斗，目標是付費書的第二章（未訂閱讀不到）。
+    final catalog = EbookCatalog(
+      books: [
+        buildTestEbook(
+          id: _freeBook,
+          number: 1,
+          title: '免費測試書',
+          chapters: [
+            buildTestChapter(
+              id: '$_freeBook-chapter-1',
+              number: '1.1',
+              title: '第 1 章',
+              blocks: [
+                buildTestStageFunnel(
+                  id: 'funnel-nav',
+                  targetBookId: 'test-book-premium',
+                  targetChapterId: 'test-book-premium-chapter-2',
+                  stageCount: 2,
+                ),
+                buildTestFlipCard(id: 'flip-nav'),
+              ],
+            ),
+          ],
+        ),
+        buildTestEbook(
+          id: 'test-book-premium',
+          number: 2,
+          title: '訂閱測試書',
+          access: EbookAccess.premium,
+          chapterCount: 2,
+        ),
+      ],
+    );
+
+    await pumpEbookApp(
+      tester,
+      initialLocation: '/learning/books/$_freeBook/chapters/$_freeBook-chapter-1',
+      catalog: catalog,
+      access: const EbookSubscriptionAccess.free(),
+      size: const Size(390, 1600),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('症狀 1'));
+    await tester.pumpAndSettle();
+    await revealInChapter(tester, find.text('前往目標 1'));
+    await tester.tap(find.text('前往目標 1'));
+    await tester.pumpAndSettle();
+
+    // 落在付費書的試讀章，而不是被 paywall 攔掉。
+    expect(find.text(paywallStubText), findsNothing);
+    expect(find.text('免費試讀章'), findsOneWidget);
+    expect(find.text('第 1 章'), findsOneWidget);
+    expect(find.text('第 2 章'), findsNothing);
+  });
+
+  testWidgets('已訂閱時漏斗直接跳到指定章，不降級成試讀章', (tester) async {
+    final catalog = EbookCatalog(
+      books: [
+        buildTestEbook(
+          id: _freeBook,
+          number: 1,
+          title: '免費測試書',
+          chapters: [
+            buildTestChapter(
+              id: '$_freeBook-chapter-1',
+              number: '1.1',
+              title: '第 1 章',
+              blocks: [
+                buildTestStageFunnel(
+                  id: 'funnel-nav-paid',
+                  targetBookId: 'test-book-premium',
+                  targetChapterId: 'test-book-premium-chapter-2',
+                  stageCount: 2,
+                ),
+                buildTestFlipCard(id: 'flip-nav-paid'),
+              ],
+            ),
+          ],
+        ),
+        buildTestEbook(
+          id: 'test-book-premium',
+          number: 2,
+          title: '訂閱測試書',
+          access: EbookAccess.premium,
+          chapterCount: 2,
+        ),
+      ],
+    );
+
+    await pumpEbookApp(
+      tester,
+      initialLocation: '/learning/books/$_freeBook/chapters/$_freeBook-chapter-1',
+      catalog: catalog,
+      access: const EbookSubscriptionAccess.premium(),
+      size: const Size(390, 1600),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('症狀 0'));
+    await tester.pumpAndSettle();
+    await revealInChapter(tester, find.text('前往目標 0'));
+    await tester.tap(find.text('前往目標 0'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('第 2 章'), findsOneWidget);
+    expect(find.text('免費試讀章'), findsNothing);
+  });
+
+  testWidgets('試讀模式：只有一頁可讀、橫滑不到第二章、主按鈕導 paywall',
+      (tester) async {
+    await pumpEbookApp(
+      tester,
+      initialLocation:
+          '/learning/books/test-book-premium/chapters/test-book-premium-chapter-1',
+      catalog: buildTestCatalog(),
+      access: const EbookSubscriptionAccess.free(),
+      size: const Size(390, 1600),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('第 1 章'), findsOneWidget);
+    expect(find.text('免費試讀章'), findsOneWidget);
+    // 分母仍是整本章數，才不會讓人以為這本只有一章。
+    expect(find.text('第 1 ／ 2 章'), findsOneWidget);
+
+    // 往左滑想換章：試讀只有一頁，滑不出第二章。
+    await tester.drag(find.text('段落內容。').first, const Offset(-400, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('第 2 章'), findsNothing);
+
+    await tester.tap(find.text('訂閱後解鎖其餘 1 章'));
+    await tester.pumpAndSettle();
+    expect(find.text(paywallStubText), findsOneWidget);
   });
 }

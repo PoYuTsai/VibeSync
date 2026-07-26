@@ -20,6 +20,7 @@ import 'ebook_checklist_block.dart';
 import 'ebook_dialogue_block.dart';
 import 'ebook_flip_card.dart';
 import 'ebook_quiz_card.dart';
+import 'ebook_stage_funnel.dart';
 
 class EbookBlockRenderer extends StatelessWidget {
   const EbookBlockRenderer({
@@ -28,6 +29,7 @@ class EbookBlockRenderer extends StatelessWidget {
     required this.progress,
     required this.onQuizSubmitted,
     required this.onChecklistItemChanged,
+    required this.onFunnelTargetTap,
   });
 
   final EbookBlock block;
@@ -37,6 +39,11 @@ class EbookBlockRenderer extends StatelessWidget {
       onQuizSubmitted;
   final void Function(EbookChecklistBlock block, String itemId, bool checked)
       onChecklistItemChanged;
+
+  /// 漏斗診斷的跳章請求。required 是刻意的：漏斗沒接上導覽就等於死按鈕，
+  /// 讓編譯器在每個使用處都逼一次。
+  final void Function(EbookStageFunnelBlock block, EbookFunnelStage stage)
+      onFunnelTargetTap;
 
   @override
   Widget build(BuildContext context) {
@@ -83,6 +90,12 @@ class EbookBlockRenderer extends StatelessWidget {
           savedState: progress.quizStateFor(block.id, block.revision),
           onSubmit: (choiceIds, solved) =>
               onQuizSubmitted(block, choiceIds, solved),
+        );
+
+      case EbookStageFunnelBlock():
+        return EbookStageFunnelView(
+          block: block,
+          onOpenTarget: (stage) => onFunnelTargetTap(block, stage),
         );
 
       case EbookChecklistBlock():

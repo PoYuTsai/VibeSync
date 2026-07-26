@@ -18,6 +18,8 @@ Future<List<ChecklistCall>> pumpBlocks(
   EbookBookProgress progress = EbookBookProgress.empty,
   double textScale = 1.0,
   Size size = const Size(390, 2400),
+  void Function(EbookStageFunnelBlock block, EbookFunnelStage stage)?
+      onFunnelTargetTap,
 }) async {
   final checklistCalls = <ChecklistCall>[];
   // setSurfaceSize 才會真的改 layout 約束（MediaQueryData.size 單獨改不會）。
@@ -44,6 +46,8 @@ Future<List<ChecklistCall>> pumpBlocks(
                         block: block,
                         progress: progress,
                         onQuizSubmitted: (_, __, ___) {},
+                        onFunnelTargetTap: (block, stage) =>
+                            onFunnelTargetTap?.call(block, stage),
                         onChecklistItemChanged: (block, itemId, checked) {
                           checklistCalls.add((
                             blockId: block.id,

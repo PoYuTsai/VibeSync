@@ -97,6 +97,9 @@ enum EbookAccessDecision {
   /// 可以建立內容。
   allowed,
 
+  /// 已確認是免費使用者、這本要訂閱，但目標章是免費試讀章 → 只給那一章。
+  preview,
+
   /// 已確認是免費使用者且這本要訂閱 → 導 paywall。
   locked,
 
@@ -141,8 +144,30 @@ EbookAccessDecision ebookAccessFor(
 }
 
 /// 書架用：這本書現在要不要顯示鎖頭。
+///
+/// 刻意用書層級判斷：試讀開放第一章不代表這本書已解鎖，書架仍要顯示鎖頭。
 bool ebookLockedFor(Ebook book, EbookSubscriptionAccess subscription) =>
     ebookAccessFor(book, subscription) != EbookAccessDecision.allowed;
+
+/// 章節層級判斷：付費書鎖著時，第一章仍可免費試讀（2026-07-26 Eric 拍板）。
+///
+/// 只有書層級結論是 [EbookAccessDecision.locked]（＝已確認未訂閱）才降級成
+/// [EbookAccessDecision.preview]。`resolving` 與 `unavailable` 保持原樣：那兩
+/// 個狀態代表「還不知道你是誰」，付費使用者冷啟動或離線時應該等確認或看重試，
+/// 而不是被降級成試讀＋升級提示。
+EbookAccessDecision ebookChapterAccessFor(
+  Ebook book,
+  String? chapterId,
+  EbookSubscriptionAccess subscription,
+) {
+  final decision = ebookAccessFor(book, subscription);
+  if (decision != EbookAccessDecision.locked) return decision;
+  final target = chapterId ?? book.previewChapterId;
+  if (target != null && book.isPreviewChapter(target)) {
+    return EbookAccessDecision.preview;
+  }
+  return EbookAccessDecision.locked;
+}
 
 /// 本機付費授權是否未過期。獨立成 provider 方便測試覆寫。
 final ebookPaidEntitlementProvider = Provider<bool>((ref) {
@@ -163,6 +188,8 @@ class EbookAccessGate extends ConsumerStatefulWidget {
     super.key,
     required this.book,
     required this.builder,
+    this.chapterId,
+    this.previewBuilder,
     this.notFoundTitle = '找不到這本書',
     this.notFoundMessage = '這本電子書可能已經調整或移除了。回學習頁看看其他內容。',
   });
@@ -170,6 +197,13 @@ class EbookAccessGate extends ConsumerStatefulWidget {
   /// `null` 代表 catalog 裡沒有這個 bookId。
   final Ebook? book;
   final WidgetBuilder builder;
+
+  /// 要判斷權限的目標章。`null` 時以這本書的試讀章為準。
+  final String? chapterId;
+
+  /// 試讀畫面。`null` 表示這個呼叫端不支援試讀——此時試讀結論會退回
+  /// [EbookAccessDecision.locked]，寧可導 paywall 也不要漏出整本內容。
+  final WidgetBuilder? previewBuilder;
   final String notFoundTitle;
   final String notFoundMessage;
 
@@ -194,14 +228,23 @@ class _EbookAccessGateState extends ConsumerState<EbookAccessGate> {
       );
     }
 
-    final decision = ebookAccessFor(
+    final rawDecision = ebookChapterAccessFor(
       book,
+      widget.chapterId,
       ref.watch(ebookSubscriptionAccessProvider),
     );
+    // 呼叫端沒給試讀畫面時不得放行：降回 locked 走 paywall。
+    final decision =
+        rawDecision == EbookAccessDecision.preview && widget.previewBuilder == null
+            ? EbookAccessDecision.locked
+            : rawDecision;
 
     switch (decision) {
       case EbookAccessDecision.allowed:
         return widget.builder(context);
+
+      case EbookAccessDecision.preview:
+        return widget.previewBuilder!(context);
 
       case EbookAccessDecision.resolving:
         return const _EbookGateLoading(label: '正在確認你的訂閱狀態…');
