@@ -34,15 +34,16 @@ Future<void> _capture(
   });
 }
 
-/// 這台 WSL 上 `loadProofFonts` 命中的是 NotoSansTC-VF（可變字型），headless
-/// 渲染出來是豆腐字。改先註冊微軟正黑體（靜態 ttc），再讓 loadProofFonts 補
-/// MaterialIcons。
 Future<void> _loadFonts() async {
-  const tcCandidates = [
+  // 本機（WSL）上共用 harness 命中的是可變字型，無頭渲染會變豆腐；有單檔
+  // ttf 就先註冊同名家族覆蓋。先註冊的先贏。
+  //
+  // 但絕不能寫死本機路徑：這些 proof 測試會跟著 release gate 的全套測試在 CI
+  // 上跑，路徑不存在就會讓整條 build 掛掉（2026-07-27 build 353 就是這樣死的）。
+  for (final path in const [
     '/mnt/c/Windows/Fonts/msjh.ttc',
     '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
-  ];
-  for (final path in tcCandidates) {
+  ]) {
     final file = File(path);
     if (!file.existsSync()) continue;
     final bytes = file.readAsBytesSync();
@@ -51,15 +52,8 @@ Future<void> _loadFonts() async {
         .load();
     break;
   }
-  // 只補 MaterialIcons；不呼叫 loadProofFonts，避免 AppTC 家族被重複註冊
-  // （NotoSansTC-VF 疊上來會在無頭渲染留下黃色底線 artifact）。
-  final mi = File(
-    '/home/eric1/flutter/bin/cache/artifacts/material_fonts/'
-    'MaterialIcons-Regular.otf',
-  ).readAsBytesSync();
-  await (FontLoader('MaterialIcons')
-        ..addFont(Future.value(ByteData.view(mi.buffer))))
-      .load();
+  // MaterialIcons 與 TC fallback 一律交給共用 harness 做 SDK／fontconfig 探測。
+  await loadProofFonts();
 }
 
 void main() {
