@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ebook-3-rescue",
-  "contentVersion": 1,
+  "contentVersion": 2,
   "number": 3,
   "title": "對話急救室：該救，還是該停",
   "subtitle": "找出死亡點，決定救、維持還是停",
@@ -12,11 +12,16 @@
   "sourceRefs": [
     {
       "document": "field-handbook",
-      "sections": ["第三部 對話拆解庫"]
+      "sections": [
+        "第三部 對話拆解庫"
+      ]
     },
     {
       "document": "five-stage-course",
-      "sections": ["第五節 診斷樹", "第六節 警告區"]
+      "sections": [
+        "第五節 診斷樹",
+        "第六節 警告區"
+      ]
     }
   ],
   "chapters": [
@@ -29,7 +34,11 @@
       "sourceRefs": [
         {
           "document": "field-handbook",
-          "sections": ["案例 A 查戶口式死亡", "案例 B 泛用稱讚死亡", "案例 C 升級棘輪死亡"]
+          "sections": [
+            "案例 A 查戶口式死亡",
+            "案例 B 泛用稱讚死亡",
+            "案例 C 升級棘輪死亡"
+          ]
         }
       ],
       "blocks": [
@@ -313,40 +322,6 @@
           "takeaway": "對方給情緒的時候，往情緒走。「恭喜／辛苦了／不錯欸」都是終結句。"
         },
         {
-          "type": "quiz",
-          "id": "ebook-3-c1-quiz-2",
-          "mode": "multiple",
-          "revision": 1,
-          "question": "案例 A 的那段對話裡，哪些標記全程掛零？（可多選）",
-          "choices": [
-            {
-              "id": "ebook-3-c1-quiz-2-a",
-              "text": "V 價值：他沒有露出任何關於自己的具體生活",
-              "isCorrect": true,
-              "feedback": "對。「我在信義區」是資料，不是生活內容。她九句話之後還是不知道他是誰。"
-            },
-            {
-              "id": "ebook-3-c1-quiz-2-b",
-              "text": "E 情緒：整段沒有任何幽默、畫面或共鳴",
-              "isCorrect": true,
-              "feedback": "對。沒有一句讓她想笑或想接。"
-            },
-            {
-              "id": "ebook-3-c1-quiz-2-c",
-              "text": "I 投資：他完全沒有投入",
-              "isCorrect": false,
-              "feedback": "I 指的是對方投入了多少。他其實投入很多——問題是他投入的全是索取型的問句。"
-            },
-            {
-              "id": "ebook-3-c1-quiz-2-d",
-              "text": "R 互惠：他沒有表達過任何具體的興趣",
-              "isCorrect": true,
-              "feedback": "對。他問了很多，但從來沒有讓她知道「我對你哪一點有興趣」。"
-            }
-          ],
-          "takeaway": "整段只有 I，就是查戶口。修法是每次接到資訊：先回應，再給自己的東西，最後才開新口。"
-        },
-        {
           "type": "callout",
           "id": "ebook-3-c1-b7",
           "tone": "takeaway",
@@ -364,11 +339,17 @@
       "sourceRefs": [
         {
           "document": "field-handbook",
-          "sections": ["案例 D 回覆時間操作死亡", "案例 E 只回應事實", "案例 F 他消失在對話裡"]
+          "sections": [
+            "案例 D 回覆時間操作死亡",
+            "案例 E 只回應事實",
+            "案例 F 他消失在對話裡"
+          ]
         },
         {
           "document": "five-stage-course",
-          "sections": ["第六節 6.1 回覆時間操作"]
+          "sections": [
+            "第六節 6.1 回覆時間操作"
+          ]
         }
       ],
       "blocks": [
@@ -623,40 +604,6 @@
           "takeaway": "延遲本身可以被內容補償；沒有補償的短回覆才是致命的。"
         },
         {
-          "type": "quiz",
-          "id": "ebook-3-c2-quiz-2",
-          "mode": "multiple",
-          "revision": 1,
-          "question": "下列哪些是「終結句」，會讓對話無處可去？（可多選）",
-          "choices": [
-            {
-              "id": "ebook-3-c2-quiz-2-a",
-              "text": "辛苦了",
-              "isCorrect": true,
-              "feedback": "對。承認情緒但不延伸，對方只能回「嗯」。"
-            },
-            {
-              "id": "ebook-3-c2-quiz-2-b",
-              "text": "那你早點休息",
-              "isCorrect": true,
-              "feedback": "對。它其實是在替對話收尾。"
-            },
-            {
-              "id": "ebook-3-c2-quiz-2-c",
-              "text": "是人的問題還是事的問題",
-              "isCorrect": false,
-              "feedback": "這是開口：往情緒走，而且給了超好答的二選一框架。"
-            },
-            {
-              "id": "ebook-3-c2-quiz-2-d",
-              "text": "不錯欸",
-              "isCorrect": true,
-              "feedback": "對。它承認了但沒有內容，也沒有關於你的資訊。"
-            }
-          ],
-          "takeaway": "終結句的共同特徵：對方讀完只剩下「嗯」可以回。"
-        },
-        {
           "type": "callout",
           "id": "ebook-3-c2-b8",
           "tone": "takeaway",
@@ -674,11 +621,17 @@
       "sourceRefs": [
         {
           "document": "field-handbook",
-          "sections": ["案例 G 從黃燈拉回", "案例 H 已讀不回三天", "案例 I 最近比較忙"]
+          "sections": [
+            "案例 G 從黃燈拉回",
+            "案例 H 已讀不回三天",
+            "案例 I 最近比較忙"
+          ]
         },
         {
           "document": "five-stage-course",
-          "sections": ["階段 3.7 被拒絕之後"]
+          "sections": [
+            "階段 3.7 被拒絕之後"
+          ]
         }
       ],
       "blocks": [
@@ -848,41 +801,6 @@
           "takeaway": "重啟要有具體理由、零質問，而且只做一次。"
         },
         {
-          "type": "quiz",
-          "id": "ebook-3-c3-quiz-2",
-          "mode": "multiple",
-          "revision": 1,
-          "scenario": "她說「最近工作比較忙」，你給了台階並留下一個錨點。一週後她完全沒有動靜。",
-          "question": "接下來哪些做法是合理的？（可多選）",
-          "choices": [
-            {
-              "id": "ebook-3-c3-quiz-2-a",
-              "text": "輕度重啟一次，用一個與之前對話有關、完全無壓力的內容",
-              "isCorrect": true,
-              "feedback": "對。一週後一次低壓重啟是合理的，重點是無壓力且有具體理由。"
-            },
-            {
-              "id": "ebook-3-c3-quiz-2-b",
-              "text": "重啟沒有回應就結束，把時間放到新的對話",
-              "isCorrect": true,
-              "feedback": "對。這是最常見也最正確的結果，而且能讓你的時間回到有機會的地方。"
-            },
-            {
-              "id": "ebook-3-c3-quiz-2-c",
-              "text": "換一個時段再傳三則，提高被看到的機率",
-              "isCorrect": false,
-              "feedback": "連發多則是施壓，不是提高機率。"
-            },
-            {
-              "id": "ebook-3-c3-quiz-2-d",
-              "text": "直接問她是不是不想繼續了，要一個明確答案",
-              "isCorrect": false,
-              "feedback": "她的安靜已經是答案。要一個明確交代只是把成本轉給她。"
-            }
-          ],
-          "takeaway": "收線也是一種完成。救援上限用完就結束，這是尊重也是時間管理。"
-        },
-        {
           "type": "callout",
           "id": "ebook-3-c3-b8",
           "tone": "takeaway",
@@ -900,11 +818,18 @@
       "sourceRefs": [
         {
           "document": "five-stage-course",
-          "sections": ["第五節 診斷樹"]
+          "sections": [
+            "第五節 診斷樹"
+          ]
         },
         {
           "document": "field-handbook",
-          "sections": ["第五部 疑難情境 5.1", "5.4", "5.7", "5.8"]
+          "sections": [
+            "第五部 疑難情境 5.1",
+            "5.4",
+            "5.7",
+            "5.8"
+          ]
         }
       ],
       "blocks": [
@@ -1040,40 +965,6 @@
           "takeaway": "從最常見、最便宜的解釋查起：第一層是「她沒興趣」，那是正常輸出。"
         },
         {
-          "type": "quiz",
-          "id": "ebook-3-c4-quiz-2",
-          "mode": "multiple",
-          "revision": 1,
-          "question": "「見面前她突然變冷」時，哪些做法是合理的？（可多選）",
-          "choices": [
-            {
-              "id": "ebook-3-c4-quiz-2-a",
-              "text": "降低門檻：改成喝個咖啡、一小時就好",
-              "isCorrect": true,
-              "feedback": "對。變冷通常是猶豫，降低承諾感比追問原因有效。"
-            },
-            {
-              "id": "ebook-3-c4-quiz-2-b",
-              "text": "直接放手：「不然先這樣，你之後想去再跟我說」",
-              "isCorrect": true,
-              "feedback": "對。把主動權還給她，門開著但沒有壓力。"
-            },
-            {
-              "id": "ebook-3-c4-quiz-2-c",
-              "text": "追問她是不是有什麼顧慮，把話講清楚",
-              "isCorrect": false,
-              "feedback": "追問原因會確認她的猶豫，而且把情緒工作交給她。"
-            },
-            {
-              "id": "ebook-3-c4-quiz-2-d",
-              "text": "強調你已經訂位、安排好了，讓她比較難改",
-              "isCorrect": false,
-              "feedback": "這是提高她表達意願的成本，不是提高她的意願。你得到的是更難退出、但想法沒變的對象。"
-            }
-          ],
-          "takeaway": "猶豫要用降低門檻處理，不要用提高退出成本處理。"
-        },
-        {
           "type": "callout",
           "id": "ebook-3-c4-b7",
           "tone": "takeaway",
@@ -1091,7 +982,9 @@
       "sourceRefs": [
         {
           "document": "five-stage-course",
-          "sections": ["第六節 警告區 6.1–6.6"]
+          "sections": [
+            "第六節 警告區 6.1–6.6"
+          ]
         }
       ],
       "blocks": [
@@ -1313,40 +1206,6 @@
             }
           ],
           "takeaway": "有問題的從來不是稱讚，是泛用稱讚。要讓認可有價值，就讓它具體，不要讓它稀缺。"
-        },
-        {
-          "type": "quiz",
-          "id": "ebook-3-c5-quiz-2",
-          "mode": "multiple",
-          "revision": 1,
-          "question": "下列哪些做法會提高對方表達真實意願的成本？（可多選）",
-          "choices": [
-            {
-              "id": "ebook-3-c5-quiz-2-a",
-              "text": "先把她可能用來推辭的理由講掉",
-              "isCorrect": true,
-              "feedback": "對。這不改變意願，只讓她更難退出。"
-            },
-            {
-              "id": "ebook-3-c5-quiz-2-b",
-              "text": "遇到黃燈時再升級一次，遇阻就說「開玩笑的」",
-              "isCorrect": true,
-              "feedback": "對。這是棘輪：持續施壓直到突破。"
-            },
-            {
-              "id": "ebook-3-c5-quiz-2-c",
-              "text": "明確說「吃完你要跑我也不會攔你」",
-              "isCorrect": false,
-              "feedback": "這是相反方向：主動把退出做得更容易，同時降低壓力。"
-            },
-            {
-              "id": "ebook-3-c5-quiz-2-d",
-              "text": "提出一個你其實不會執行的篩選標準，讓她來證明自己",
-              "isCorrect": true,
-              "feedback": "對。表演式的篩選把工作丟給對方，而且很容易被識破。"
-            }
-          ],
-          "takeaway": "判準很簡單：這個做法讓對方更容易說出真話，還是更難？"
         },
         {
           "type": "callout",

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ebook-4-meeting",
-  "contentVersion": 1,
+  "contentVersion": 2,
   "number": 4,
   "title": "從聊天走到見面",
   "subtitle": "把雙方的意願變成一個具體安排",
@@ -12,11 +12,18 @@
   "sourceRefs": [
     {
       "document": "five-stage-course",
-      "sections": ["階段 3 轉線下", "階段 4 到場", "第七節 十二週訓練計畫"]
+      "sections": [
+        "階段 3 轉線下",
+        "階段 4 到場",
+        "第七節 十二週訓練計畫"
+      ]
     },
     {
       "document": "field-handbook",
-      "sections": ["第四部 種子與約會提案", "第七部 自評表"]
+      "sections": [
+        "第四部 種子與約會提案",
+        "第七部 自評表"
+      ]
     }
   ],
   "chapters": [
@@ -29,7 +36,10 @@
       "sourceRefs": [
         {
           "document": "five-stage-course",
-          "sections": ["3.1 兩種不同的卡關", "3.2 時間窗"]
+          "sections": [
+            "3.1 兩種不同的卡關",
+            "3.2 時間窗"
+          ]
         }
       ],
       "blocks": [
@@ -166,40 +176,6 @@
           "takeaway": "先分清楚你是沒開口，還是開口方式有問題。沒開口的人不需要更多技巧，需要一條規則。"
         },
         {
-          "type": "quiz",
-          "id": "ebook-4-c1-quiz-2",
-          "mode": "multiple",
-          "revision": 1,
-          "question": "下列哪些是「現在適合提出下一步」的訊號？（可多選）",
-          "choices": [
-            {
-              "id": "ebook-4-c1-quiz-2-a",
-              "text": "她開始問你的個人問題",
-              "isCorrect": true,
-              "feedback": "對。投資方向反轉是很強的訊號。"
-            },
-            {
-              "id": "ebook-4-c1-quiz-2-b",
-              "text": "她主動提到週末、有空或想去哪",
-              "isCorrect": true,
-              "feedback": "對，這幾乎是明示。出現就直接提具體安排。"
-            },
-            {
-              "id": "ebook-4-c1-quiz-2-c",
-              "text": "你們已經連續聊了兩個星期",
-              "isCorrect": false,
-              "feedback": "時間長度本身不是訊號，反而是衰減的警訊。動能才是訊號。"
-            },
-            {
-              "id": "ebook-4-c1-quiz-2-d",
-              "text": "她引用了你之前說過的話",
-              "isCorrect": true,
-              "feedback": "對。這表示她在記，也在投入。"
-            }
-          ],
-          "takeaway": "看動能，不看天數。對方主動加碼、追問你、引用你說過的話，就是可以提出下一步的時候。"
-        },
-        {
           "type": "callout",
           "id": "ebook-4-c1-safety-1",
           "tone": "safety",
@@ -224,11 +200,17 @@
       "sourceRefs": [
         {
           "document": "five-stage-course",
-          "sections": ["階段 3.3 兩段式：種子 → 具體提案"]
+          "sections": [
+            "階段 3.3 兩段式：種子 → 具體提案"
+          ]
         },
         {
           "document": "field-handbook",
-          "sections": ["4.0 種子庫", "案例 M 標準兩段式", "案例 N 種子田"]
+          "sections": [
+            "4.0 種子庫",
+            "案例 M 標準兩段式",
+            "案例 N 種子田"
+          ]
         }
       ],
       "blocks": [
@@ -450,40 +432,6 @@
           "takeaway": "綠燈之後一到兩輪內具體化。種子只有在通往具體提案時才有價值。"
         },
         {
-          "type": "quiz",
-          "id": "ebook-4-c2-quiz-2",
-          "mode": "multiple",
-          "revision": 1,
-          "question": "下列哪些算是「種子」（有具體對象、不指定時間）？（可多選）",
-          "choices": [
-            {
-              "id": "ebook-4-c2-quiz-2-a",
-              "text": "「那個展我看到海報就想去，結果一直拖到快結束」",
-              "isCorrect": true,
-              "feedback": "對。對象具體（那個展），時間模糊，而且她可以接也可以不接。"
-            },
-            {
-              "id": "ebook-4-c2-quiz-2-b",
-              "text": "「我一直在找一家可以坐很久的咖啡店，目前為止都失敗」",
-              "isCorrect": true,
-              "feedback": "對。有具體對象與一點自嘲，還順便把她放在給予者的位置。"
-            },
-            {
-              "id": "ebook-4-c2-quiz-2-c",
-              "text": "「改天一起去啊」",
-              "isCorrect": false,
-              "feedback": "沒有對象，是空話。對方無法想像那會是什麼。"
-            },
-            {
-              "id": "ebook-4-c2-quiz-2-d",
-              "text": "「你什麼時候有空？」",
-              "isCorrect": false,
-              "feedback": "沒有對象，而且把安排的工作丟給她。"
-            }
-          ],
-          "takeaway": "模糊的是時間，不是對象。沒有具體對象的不叫種子，叫空話。"
-        },
-        {
           "type": "callout",
           "id": "ebook-4-c2-b7",
           "tone": "takeaway",
@@ -501,11 +449,17 @@
       "sourceRefs": [
         {
           "document": "five-stage-course",
-          "sections": ["階段 3.3 常見誤解", "階段 3.4 提案結構", "階段 3.5"]
+          "sections": [
+            "階段 3.3 常見誤解",
+            "階段 3.4 提案結構",
+            "階段 3.5"
+          ]
         },
         {
           "document": "field-handbook",
-          "sections": ["4.1–4.7 提案版本與三個禁區"]
+          "sections": [
+            "4.1–4.7 提案版本與三個禁區"
+          ]
         }
       ],
       "blocks": [
@@ -643,41 +597,6 @@
         },
         {
           "type": "quiz",
-          "id": "ebook-4-c3-quiz-1",
-          "mode": "multiple",
-          "revision": 1,
-          "scenario": "提案：「週四下班隨便喝個東西？一小時那種，我七點半到八點之間都可以。」",
-          "question": "這個提案做到了哪些組件？（可多選）",
-          "choices": [
-            {
-              "id": "ebook-4-c3-quiz-1-a",
-              "text": "具體時間",
-              "isCorrect": true,
-              "feedback": "對，而且還給了時段彈性，讓她好接。"
-            },
-            {
-              "id": "ebook-4-c3-quiz-1-b",
-              "text": "低承諾門檻",
-              "isCorrect": true,
-              "feedback": "對。「一小時那種」把承諾寫在句子裡，這是最有效的降門檻方式。"
-            },
-            {
-              "id": "ebook-4-c3-quiz-1-c",
-              "text": "具體地點或活動",
-              "isCorrect": false,
-              "feedback": "「隨便喝個東西」還缺一個具體的店或區域。補上會更好接。"
-            },
-            {
-              "id": "ebook-4-c3-quiz-1-d",
-              "text": "把她可能拒絕的理由先講掉",
-              "isCorrect": false,
-              "feedback": "這句話沒有做這件事——而且那本來就不該做，它只會提高她表達意願的成本。"
-            }
-          ],
-          "takeaway": "四個組件：具體時間、具體地點或活動、具體理由、低承諾門檻。"
-        },
-        {
-          "type": "quiz",
           "id": "ebook-4-c3-quiz-2",
           "mode": "single",
           "revision": 1,
@@ -729,11 +648,18 @@
       "sourceRefs": [
         {
           "document": "five-stage-course",
-          "sections": ["階段 3.7 被拒絕之後", "階段 4 到場"]
+          "sections": [
+            "階段 3.7 被拒絕之後",
+            "階段 4 到場"
+          ]
         },
         {
           "document": "field-handbook",
-          "sections": ["4.5 她之前婉拒過一次", "第五部 5.8 見面前突然變冷", "附錄 見面之後"]
+          "sections": [
+            "4.5 她之前婉拒過一次",
+            "第五部 5.8 見面前突然變冷",
+            "附錄 見面之後"
+          ]
         }
       ],
       "blocks": [
@@ -893,40 +819,6 @@
           "takeaway": "一次取消可以接受並提一次替代；兩次取消就停止投入。"
         },
         {
-          "type": "quiz",
-          "id": "ebook-4-c4-quiz-2",
-          "mode": "multiple",
-          "revision": 1,
-          "question": "第一次見面，下列哪些是應該做到的安全與同意原則？（可多選）",
-          "choices": [
-            {
-              "id": "ebook-4-c4-quiz-2-a",
-              "text": "選公開場所，並保有自己的交通與返家安排",
-              "isCorrect": true,
-              "feedback": "對。這兩項是第一次見面的基本設定，不需要理由。"
-            },
-            {
-              "id": "ebook-4-c4-quiz-2-b",
-              "text": "可以把時間地點告知一位信任的朋友",
-              "isCorrect": true,
-              "feedback": "對。這是低成本、高價值的習慣，對雙方都適用。"
-            },
-            {
-              "id": "ebook-4-c4-quiz-2-c",
-              "text": "對方答應見面，就代表對其他事也有意願",
-              "isCorrect": false,
-              "feedback": "不是。答應見面只代表答應見面；模糊的回應與沉默都不算同意。"
-            },
-            {
-              "id": "ebook-4-c4-quiz-2-d",
-              "text": "轉 Line／IG 之前先想一下要不要給即時位置或住家資訊",
-              "isCorrect": true,
-              "feedback": "對。換聯絡方式很正常，但個資與詐騙風險要先過一遍腦。"
-            }
-          ],
-          "takeaway": "公開場所、自主交通、告知朋友、個資保留、明確同意——五項都是硬規則。"
-        },
-        {
           "type": "callout",
           "id": "ebook-4-c4-b7",
           "tone": "takeaway",
@@ -944,11 +836,16 @@
       "sourceRefs": [
         {
           "document": "five-stage-course",
-          "sections": ["第七節 十二週訓練計畫", "長期主軌"]
+          "sections": [
+            "第七節 十二週訓練計畫",
+            "長期主軌"
+          ]
         },
         {
           "document": "field-handbook",
-          "sections": ["第七部 自評表"]
+          "sections": [
+            "第七部 自評表"
+          ]
         }
       ],
       "blocks": [
@@ -1194,40 +1091,6 @@
             }
           ],
           "takeaway": "數字不動先回診斷樹第二層：你在練的階段，可能不是你卡住的階段。"
-        },
-        {
-          "type": "quiz",
-          "id": "ebook-4-c5-quiz-2",
-          "mode": "multiple",
-          "revision": 1,
-          "question": "關於十二週計畫，下列哪些是對的？（可多選）",
-          "choices": [
-            {
-              "id": "ebook-4-c5-quiz-2-a",
-              "text": "前兩週不改任何做法，只記錄六個數字",
-              "isCorrect": true,
-              "feedback": "對。沒有基準線就無法判斷後面的改變有沒有效。"
-            },
-            {
-              "id": "ebook-4-c5-quiz-2-b",
-              "text": "只看趨勢，不看單週",
-              "isCorrect": true,
-              "feedback": "對。單週波動大部分是雜訊。"
-            },
-            {
-              "id": "ebook-4-c5-quiz-2-c",
-              "text": "健康、生活內容與社交圈要等技巧練好再開始",
-              "isCorrect": false,
-              "feedback": "這些是長期主軌，週期是幾個月，所以現在就要同時開始。"
-            },
-            {
-              "id": "ebook-4-c5-quiz-2-d",
-              "text": "第 9 週起啟動「第五輪還沒約就這一輪約」的強制規則",
-              "isCorrect": true,
-              "feedback": "對。它的目的不是提高單次成功率，是打破心理阻力並產生可檢討的資料。"
-            }
-          ],
-          "takeaway": "一次一個階段、每週記數字、長期主軌同時跑。"
         },
         {
           "type": "callout",
