@@ -1,6 +1,21 @@
 import { assert } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
 const source = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+const genericDeployWorkflow = await Deno.readTextFile(
+  new URL(
+    "../../../.github/workflows/deploy-edge-function.yml",
+    import.meta.url,
+  ),
+);
+const secretPreflight = await Deno.readTextFile(
+  new URL(
+    "../../../tools/preflight/check-supabase-secrets.ps1",
+    import.meta.url,
+  ),
+);
+const supabaseConfig = await Deno.readTextFile(
+  new URL("../../config.toml", import.meta.url),
+);
 
 Deno.test("keyboard assist index is JWT-authenticated and flag-off by default", () => {
   assert(source.includes("client.auth.getUser"));
@@ -33,4 +48,51 @@ Deno.test("keyboard assist index keeps quota, rate, and provider identities dist
   assert(source.includes("KEYBOARD_ASSIST_HMAC_CURRENT_VERSION"));
   assert(source.includes("recordTelemetry"));
   assert(source.includes("keyboard_assist_telemetry"));
+  assert(source.includes('Deno.env.get("CLAUDE_API_KEY")'));
+  assert(!source.includes('Deno.env.get("ANTHROPIC_API_KEY")'));
+  assert(source.includes('Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")'));
+  assert(source.includes('KEYBOARD_ASSIST_MODEL_ID = "claude-sonnet-5"'));
+  assert(
+    source.includes(
+      "KEYBOARD_ASSIST_COMPILER_MODEL === KEYBOARD_ASSIST_MODEL_ID",
+    ),
+  );
+  assert(
+    source.includes(
+      "KEYBOARD_ASSIST_JUDGE_MODEL === KEYBOARD_ASSIST_MODEL_ID",
+    ),
+  );
+});
+
+Deno.test("keyboard assist stays migration-gated and release preflight checks its config", () => {
+  assert(
+    genericDeployWorkflow.includes(
+      "- '!supabase/functions/keyboard-assist/**'",
+    ),
+  );
+  assert(
+    !genericDeployWorkflow.includes(
+      "- '.github/workflows/deploy-edge-function.yml'",
+    ),
+  );
+  const functionConfig = supabaseConfig.match(
+    /\[functions\.keyboard-assist\]([\s\S]*?)(?=\n\[|$)/,
+  )?.[1];
+  assert(
+    functionConfig == null ||
+      !/verify_jwt\s*=\s*false/.test(functionConfig),
+  );
+  for (
+    const secret of [
+      "KEYBOARD_ASSIST_COMPILER_MODEL",
+      "KEYBOARD_ASSIST_HMAC_CURRENT_VERSION",
+      "KEYBOARD_ASSIST_HMAC_KEYS_JSON",
+      "KEYBOARD_ASSIST_JUDGE_MODEL",
+      "KEYBOARD_SCREENSHOT_PIPELINE_VERSION",
+      "KEYBOARD_SCREENSHOT_V1_ALLOWLIST",
+      "KEYBOARD_SCREENSHOT_V1_ENABLED",
+    ]
+  ) {
+    assert(secretPreflight.includes(`"${secret}"`));
+  }
 });

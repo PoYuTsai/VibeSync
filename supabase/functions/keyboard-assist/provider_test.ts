@@ -143,6 +143,57 @@ Deno.test("Anthropic judge is text-only and never receives image base64", async 
   assert(wire.includes("steady"));
 });
 
+Deno.test("Sonnet 5 disables thinking and omits unsupported sampling parameters", async () => {
+  const bodies: Array<Record<string, unknown>> = [];
+  const provider = createAnthropicKeyboardAssistProvider({
+    apiKey: "test-key",
+    compilerModel: "claude-sonnet-5",
+    judgeModel: "claude-sonnet-5",
+    fetchImpl: (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      bodies.push(body);
+      const responseBody = bodies.length === 1 ? compilerJson : {
+        contractVersion: "keyboard-assist-v1",
+        status: "ready",
+      };
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            content: [{ type: "text", text: JSON.stringify(responseBody) }],
+            stop_reason: "end_turn",
+          }),
+          { status: 200 },
+        ),
+      );
+    },
+  });
+
+  await provider.compiler({
+    image: {
+      bytes: new Uint8Array([1, 2, 3]),
+      base64: "AQID",
+      mediaType: "image/png",
+    },
+    speakerOverride: "none",
+    voice: { primary: "steady", secondary: null },
+    signal: new AbortController().signal,
+    pipelineVersion: "compiler-judge-v1",
+  });
+  await provider.judge({
+    conversation: compilerJson as NormalizedKeyboardAssistCompilerOutput,
+    effectiveMySide: "right",
+    voice: { primary: "steady", secondary: null },
+    signal: new AbortController().signal,
+    pipelineVersion: "compiler-judge-v1",
+  });
+
+  assertEquals(bodies.length, 2);
+  for (const body of bodies) {
+    assertEquals(body.temperature, undefined);
+    assertEquals(body.thinking, { type: "disabled" });
+  }
+});
+
 Deno.test("Anthropic structured-output schemas use only supported constraints", async () => {
   const bodies: Array<Record<string, unknown>> = [];
   const provider = createAnthropicKeyboardAssistProvider({

@@ -6,10 +6,12 @@ name: Deploy Edge Function
 on:
   push:
     branches: [main]
+    # Workflow-only edits must never redeploy every Edge function. Validate or
+    # deploy those edits deliberately through workflow_dispatch instead.
     paths:
       - 'supabase/functions/**'
       - '!supabase/functions/keyboard-reply/**'
-      - '.github/workflows/deploy-edge-function.yml'
+      - '!supabase/functions/keyboard-assist/**'
   workflow_dispatch:
 
 permissions:
@@ -62,5 +64,7 @@ jobs:
           # Its exactly-once contract requires the matching DB migration first;
           # follow docs/testflight-keyboard-build-checklist.md for the ordered,
           # migration-gated manual deployment.
+          # keyboard-assist is excluded for the same reason and also requires
+          # its versioned HMAC keyring and dogfood allowlist before deployment.
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

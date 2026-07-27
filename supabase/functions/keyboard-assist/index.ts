@@ -40,11 +40,12 @@ import { createAnthropicKeyboardAssistProvider } from "./provider.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY") ?? "";
 const KEYBOARD_ASSIST_COMPILER_MODEL =
   Deno.env.get("KEYBOARD_ASSIST_COMPILER_MODEL") ?? "";
 const KEYBOARD_ASSIST_JUDGE_MODEL =
   Deno.env.get("KEYBOARD_ASSIST_JUDGE_MODEL") ?? "";
+const KEYBOARD_ASSIST_MODEL_ID = "claude-sonnet-5";
 const KEYBOARD_SCREENSHOT_PIPELINE_VERSION =
   Deno.env.get("KEYBOARD_SCREENSHOT_PIPELINE_VERSION") ??
     "compiler-judge-v1";
@@ -75,11 +76,14 @@ const client = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-const provider = ANTHROPIC_API_KEY &&
-    KEYBOARD_ASSIST_COMPILER_MODEL &&
-    KEYBOARD_ASSIST_JUDGE_MODEL
+// Fail capability negotiation closed on model aliases or accidental
+// whitespace. The Sonnet 5 wire contract intentionally differs from older
+// models, so a configuration typo must not become a provider-time 400.
+const provider = CLAUDE_API_KEY &&
+    KEYBOARD_ASSIST_COMPILER_MODEL === KEYBOARD_ASSIST_MODEL_ID &&
+    KEYBOARD_ASSIST_JUDGE_MODEL === KEYBOARD_ASSIST_MODEL_ID
   ? createAnthropicKeyboardAssistProvider({
-    apiKey: ANTHROPIC_API_KEY,
+    apiKey: CLAUDE_API_KEY,
     compilerModel: KEYBOARD_ASSIST_COMPILER_MODEL,
     judgeModel: KEYBOARD_ASSIST_JUDGE_MODEL,
   })

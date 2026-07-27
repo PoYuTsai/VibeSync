@@ -6,6 +6,7 @@ const migrationSource = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const normalizedMigrationSource = migrationSource.replace(/\s+/g, " ").trim();
 
 Deno.test("keyboard assist migration owns a private versioned replay ledger", () => {
   assert(
@@ -75,4 +76,39 @@ Deno.test("keyboard assist DB health exposes contract and retained HMAC versions
       "WHERE created_at < now() - interval '24 hours';",
     ),
   );
+});
+
+Deno.test("keyboard assist denies every public RPC to untrusted roles", () => {
+  for (
+    const signature of [
+      "public.is_valid_keyboard_assist_result(JSONB)",
+      "public.cleanup_expired_keyboard_assist_requests()",
+      "public.claim_keyboard_assist_request( UUID, UUID, TEXT, SMALLINT, UUID )",
+      "public.renew_keyboard_assist_claim( UUID, UUID, TEXT, UUID )",
+      "public.release_keyboard_assist_claim( UUID, UUID, TEXT, UUID )",
+      "public.settle_keyboard_assist_request( UUID, UUID, TEXT, UUID, JSONB, INTEGER, INTEGER, BOOLEAN )",
+      "public.expire_keyboard_assist_request( UUID, UUID )",
+      "public.keyboard_assist_hmac_key_versions()",
+      "public.keyboard_assist_contract_version()",
+    ]
+  ) {
+    assert(
+      normalizedMigrationSource.includes(
+        `REVOKE EXECUTE ON FUNCTION ${signature} FROM PUBLIC;`,
+      ),
+      `PUBLIC can execute ${signature}`,
+    );
+    assert(
+      normalizedMigrationSource.includes(
+        `REVOKE EXECUTE ON FUNCTION ${signature} FROM anon, authenticated;`,
+      ),
+      `untrusted app roles can execute ${signature}`,
+    );
+    assert(
+      normalizedMigrationSource.includes(
+        `GRANT EXECUTE ON FUNCTION ${signature} TO service_role;`,
+      ),
+      `service_role cannot execute ${signature}`,
+    );
+  }
 });

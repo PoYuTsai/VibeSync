@@ -314,7 +314,12 @@ export function createAnthropicKeyboardAssistProvider(input: {
         {
           model: input.compilerModel,
           max_tokens: 4000,
-          temperature: 0,
+          // Sonnet 5 enables thinking by default and rejects every non-default
+          // sampling parameter. Structured output, grounding, the text-only
+          // judge, and exactly-once replay own consistency for this pipeline.
+          ...(input.compilerModel === "claude-sonnet-5"
+            ? { thinking: { type: "disabled" } }
+            : { temperature: 0 }),
           output_config: {
             format: {
               type: "json_schema",
@@ -352,7 +357,10 @@ export function createAnthropicKeyboardAssistProvider(input: {
         {
           model: input.judgeModel,
           max_tokens: 1200,
-          temperature: 0,
+          // Keep this in lockstep with the compiler's Sonnet 5 wire contract.
+          ...(input.judgeModel === "claude-sonnet-5"
+            ? { thinking: { type: "disabled" } }
+            : { temperature: 0 }),
           output_config: {
             format: {
               type: "json_schema",
