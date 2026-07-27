@@ -11,7 +11,8 @@ import '../../domain/entities/report_models.dart';
 
 /// 案2：練習溫度成長曲線——practice 歷史事件的 temperatureScore 對
 /// createdAt 的全域時間序列（刻意不分對象混排：練習溫度量的是玩家本人
-/// 的開場→升溫能力，跨對象看斜率才是成長曲線）。<2 點顯示引導文案。
+/// 的開場→升溫能力，跨對象看斜率才是成長曲線）。0/1 點分開呈現，
+/// 不用示意動畫冒充真實趨勢。
 class PracticeTemperatureChart extends StatelessWidget {
   final List<HeatTrendPoint> points;
 
@@ -24,8 +25,8 @@ class PracticeTemperatureChart extends StatelessWidget {
       key: const ValueKey('practice-growth-liquid-frame'),
       borderRadius: 24,
       borderWidth: 1,
-      glowRadius: 8,
-      strength: 0.20,
+      glowRadius: 6,
+      strength: 0.12,
       phaseOffset: 0.37,
       duration: const Duration(milliseconds: 9600),
       child: BrandSurfaceCard(
@@ -45,9 +46,12 @@ class PracticeTemperatureChart extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            summary.points.length < 2
-                ? _buildEmptyState()
-                : _buildChart(context, summary),
+            if (summary.points.isEmpty)
+              _buildEmptyState()
+            else if (summary.points.length == 1)
+              _buildSinglePointState(summary.points.single)
+            else
+              _buildChart(context, summary),
           ],
         ),
       ),
@@ -116,22 +120,16 @@ class PracticeTemperatureChart extends StatelessWidget {
             SizedBox(
               width: 42,
               height: 42,
-              child: _LiquidTrendGlow(
-                key: const ValueKey('practice-growth-empty-glow'),
-                points: const [
-                  Offset(0.06, 0.18),
-                  Offset(0.26, 0.48),
-                  Offset(0.45, 0.35),
-                  Offset(0.68, 0.72),
-                  Offset(0.94, 0.82),
-                ],
-                showPath: true,
-                padding: const EdgeInsets.all(4),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryLight.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
+              child: DecoratedBox(
+                key: const ValueKey('practice-growth-empty-state'),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryLight.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.fitness_center_rounded,
+                  size: 20,
+                  color: AppColors.primaryLight.withValues(alpha: 0.82),
                 ),
               ),
             ),
@@ -141,6 +139,53 @@ class PracticeTemperatureChart extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSinglePointState(HeatTrendPoint point) {
+    return SizedBox(
+      height: 130,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              key: const ValueKey('practice-growth-single-point'),
+              width: 18,
+              height: 18,
+              decoration: BoxDecoration(
+                color: AppColors.primaryLight,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primaryLight.withValues(alpha: 0.18),
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 13),
+            Text(
+              '起點 ${point.score} · ${DateFormat('M/dd').format(point.date)}',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              '再完成 1 場新手模式練習，就能形成成長曲線',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
                 color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
               ),
             ),
@@ -160,10 +205,17 @@ class PracticeTemperatureChart extends StatelessWidget {
         FlSpot(xOf(point.date), point.score.toDouble()),
     ];
     final maxX = spots.last.x <= 0 ? 1.0 : spots.last.x;
+    final xPadding = maxX * 0.04;
+    final plotMinX = -xPadding;
+    final plotMaxX = maxX + xPadding;
     final dateFormat = DateFormat('M/dd');
     final bottomInterval = maxX <= 4 ? 1.0 : (maxX / 4).ceilToDouble();
     final normalizedPoints = [
-      for (final spot in spots) Offset(spot.x / maxX, spot.y / 100),
+      for (final spot in spots)
+        Offset(
+          (spot.x - plotMinX) / (plotMaxX - plotMinX),
+          spot.y / 100,
+        ),
     ];
 
     return SizedBox(
@@ -174,8 +226,8 @@ class PracticeTemperatureChart extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(34, 8, 8, 30),
         child: LineChart(
           LineChartData(
-            minX: 0,
-            maxX: maxX,
+            minX: plotMinX,
+            maxX: plotMaxX,
             minY: 0,
             maxY: 100,
             clipData: const FlClipData.all(),
@@ -311,13 +363,11 @@ class _LiquidTrendGlow extends StatefulWidget {
     required this.points,
     required this.child,
     required this.padding,
-    this.showPath = false,
   });
 
   final List<Offset> points;
   final Widget child;
   final EdgeInsets padding;
-  final bool showPath;
 
   @override
   State<_LiquidTrendGlow> createState() => _LiquidTrendGlowState();
@@ -327,7 +377,11 @@ class _LiquidTrendGlowState extends State<_LiquidTrendGlow>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 5200),
+    duration: const Duration(milliseconds: 8000),
+  );
+  late final Animation<double> _progress = CurvedAnimation(
+    parent: _controller,
+    curve: const Interval(0, 0.68, curve: Curves.easeInOutCubic),
   );
   bool? _motionEnabled;
 
@@ -345,7 +399,7 @@ class _LiquidTrendGlowState extends State<_LiquidTrendGlow>
     } else {
       _controller
         ..stop()
-        ..value = 0.68;
+        ..value = 1;
     }
   }
 
@@ -366,10 +420,9 @@ class _LiquidTrendGlowState extends State<_LiquidTrendGlow>
             child: RepaintBoundary(
               child: CustomPaint(
                 painter: _LiquidTrendGlowPainter(
-                  animation: _controller,
+                  animation: _progress,
                   points: widget.points,
                   padding: widget.padding,
-                  showPath: widget.showPath,
                 ),
               ),
             ),
@@ -385,13 +438,11 @@ class _LiquidTrendGlowPainter extends CustomPainter {
     required this.animation,
     required this.points,
     required this.padding,
-    required this.showPath,
   }) : super(repaint: animation);
 
   final Animation<double> animation;
   final List<Offset> points;
   final EdgeInsets padding;
-  final bool showPath;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -412,52 +463,35 @@ class _LiquidTrendGlowPainter extends CustomPainter {
           plot.bottom - (point.dy.clamp(0, 1) * plot.height),
         ),
     ];
-    final path = Path()..moveTo(mapped.first.dx, mapped.first.dy);
-    for (final point in mapped.skip(1)) {
-      path.lineTo(point.dx, point.dy);
-    }
-
-    if (showPath) {
-      final pathShader = const LinearGradient(
-        colors: [
-          AppColors.ctaStart,
-          AppColors.brandBlush,
-          Color(0xFFFFD2B8),
-        ],
-      ).createShader(plot);
-      final glowPaint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 4
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..shader = pathShader
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7);
-      final linePaint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.2
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..shader = pathShader;
-      canvas
-        ..drawPath(path, glowPaint)
-        ..drawPath(path, linePaint);
-    }
-
-    final scaled = animation.value * (mapped.length - 1);
-    final index = scaled.floor().clamp(0, mapped.length - 2);
-    final localProgress = scaled - index;
-    final position = Offset.lerp(
-      mapped[index],
-      mapped[index + 1],
-      localProgress,
-    )!;
+    final position = _positionAt(mapped, animation.value);
+    final tailStart = _positionAt(
+      mapped,
+      math.max(0, animation.value - 0.075),
+    );
     final pulse = 0.86 + (math.sin(animation.value * math.pi * 2) * 0.14);
 
+    canvas.drawLine(
+      tailStart,
+      position,
+      Paint()
+        ..strokeWidth = 5
+        ..strokeCap = StrokeCap.round
+        ..color = AppColors.brandBlush.withValues(alpha: 0.12)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+    );
+    canvas.drawLine(
+      tailStart,
+      position,
+      Paint()
+        ..strokeWidth = 1.6
+        ..strokeCap = StrokeCap.round
+        ..color = const Color(0xFFFFD2B8).withValues(alpha: 0.42),
+    );
     canvas.drawCircle(
       position,
       7 * pulse,
       Paint()
-        ..color = AppColors.brandBlush.withValues(alpha: 0.28)
+        ..color = AppColors.brandBlush.withValues(alpha: 0.20)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
     );
     canvas.drawCircle(
@@ -467,11 +501,17 @@ class _LiquidTrendGlowPainter extends CustomPainter {
     );
   }
 
+  Offset _positionAt(List<Offset> points, double progress) {
+    final scaled = progress.clamp(0.0, 1.0).toDouble() * (points.length - 1);
+    final index = scaled.floor().clamp(0, points.length - 2);
+    final localProgress = scaled - index;
+    return Offset.lerp(points[index], points[index + 1], localProgress)!;
+  }
+
   @override
   bool shouldRepaint(covariant _LiquidTrendGlowPainter oldDelegate) {
     return oldDelegate.points != points ||
-        oldDelegate.padding != padding ||
-        oldDelegate.showPath != showPath;
+        oldDelegate.padding != padding;
   }
 }
 

@@ -49,7 +49,12 @@ class HeatTrendChart extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          trendPoints.length < 2 ? _buildEmptyState() : _buildChart(context),
+          if (trendPoints.isEmpty)
+            _buildEmptyState()
+          else if (trendPoints.length == 1)
+            _buildSinglePointState(context)
+          else
+            _buildChart(context),
         ],
       ),
     );
@@ -205,6 +210,55 @@ class HeatTrendChart extends StatelessWidget {
     );
   }
 
+  Widget _buildSinglePointState(BuildContext context) {
+    final point = trendPoints.single;
+    final date = DateFormat('M/dd').format(point.date);
+    return SizedBox(
+      height: 150,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _OneShotPointRipple(
+              key: ValueKey(
+                'engagement-single-${point.date.microsecondsSinceEpoch}',
+              ),
+              color: AppColors.ctaStart,
+              motionEnabled: TickerMode.valuesOf(context).enabled &&
+                  MediaQuery.maybeOf(context)?.disableAnimations != true,
+              child: Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: AppColors.ctaStart,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              '起點 ${point.score} · $date',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              '再分析 1 次就能形成趨勢',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Chart
   // ---------------------------------------------------------------------------
@@ -224,47 +278,70 @@ class HeatTrendChart extends StatelessWidget {
     ];
     // 全部同一時刻（maxX=0）時 fl_chart 需要 minX<maxX，退 1 天刻度。
     final maxX = spots.last.x <= 0 ? 1.0 : spots.last.x;
+    final xPadding = maxX * 0.04;
+    final plotMinX = -xPadding;
+    final plotMaxX = maxX + xPadding;
+
+    final latestPoint = Offset(
+      (spots.last.x - plotMinX) / (plotMaxX - plotMinX),
+      spots.last.y / 100,
+    );
 
     return SizedBox(
       height: 180,
-      child: LineChart(
-        LineChartData(
-          minX: 0,
-          maxX: maxX,
-          minY: 0,
-          maxY: 100,
-          clipData: const FlClipData.all(),
-          gridData: _gridData(),
-          titlesData: _titlesData(firstDate, maxX),
-          borderData: FlBorderData(show: false),
-          lineBarsData: [_lineBarData(spots)],
-          lineTouchData: _touchData(sorted),
-          extraLinesData: ExtraLinesData(
-            horizontalLines: [
-              HorizontalLine(
-                y: averageScore.clamp(0, 100).toDouble(),
-                color: Colors.white.withValues(alpha: 0.22),
-                strokeWidth: 1,
-                dashArray: [4, 5],
-                label: HorizontalLineLabel(
-                  show: true,
-                  alignment: Alignment.topRight,
-                  padding: const EdgeInsets.only(right: 4, bottom: 3),
-                  style: TextStyle(
-                    color:
-                        AppColors.onBackgroundSecondary.withValues(alpha: 0.58),
-                    fontSize: 9,
+      child: Stack(
+        children: [
+          LineChart(
+            LineChartData(
+              minX: plotMinX,
+              maxX: plotMaxX,
+              minY: 0,
+              maxY: 100,
+              clipData: const FlClipData.all(),
+              gridData: _gridData(),
+              titlesData: _titlesData(firstDate, maxX),
+              borderData: FlBorderData(show: false),
+              lineBarsData: [_lineBarData(spots)],
+              lineTouchData: _touchData(sorted),
+              extraLinesData: ExtraLinesData(
+                horizontalLines: [
+                  HorizontalLine(
+                    y: averageScore.clamp(0, 100).toDouble(),
+                    color: Colors.white.withValues(alpha: 0.22),
+                    strokeWidth: 1,
+                    dashArray: [4, 5],
+                    label: HorizontalLineLabel(
+                      show: true,
+                      alignment: Alignment.topRight,
+                      padding: const EdgeInsets.only(right: 4, bottom: 3),
+                      style: TextStyle(
+                        color: AppColors.onBackgroundSecondary
+                            .withValues(alpha: 0.58),
+                        fontSize: 9,
+                      ),
+                      labelResolver: (_) => '平均',
+                    ),
                   ),
-                  labelResolver: (_) => '平均',
-                ),
+                ],
               ),
-            ],
+            ),
+            duration: MediaQuery.maybeOf(context)?.disableAnimations == true
+                ? Duration.zero
+                : const Duration(milliseconds: 620),
+            curve: Curves.easeOutCubic,
           ),
-        ),
-        duration: MediaQuery.maybeOf(context)?.disableAnimations == true
-            ? Duration.zero
-            : const Duration(milliseconds: 480),
-        curve: Curves.easeOutCubic,
+          Positioned.fill(
+            child: _LatestPointRipple(
+              key: ValueKey(
+                'engagement-latest-${sorted.last.date.microsecondsSinceEpoch}-${sorted.last.score}',
+              ),
+              point: latestPoint,
+              padding: const EdgeInsets.fromLTRB(32, 8, 4, 28),
+              motionEnabled: TickerMode.valuesOf(context).enabled &&
+                  MediaQuery.maybeOf(context)?.disableAnimations != true,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -388,5 +465,190 @@ class HeatTrendChart extends StatelessWidget {
       ),
       handleBuiltInTouches: true,
     );
+  }
+}
+
+class _OneShotPointRipple extends StatefulWidget {
+  const _OneShotPointRipple({
+    super.key,
+    required this.color,
+    required this.motionEnabled,
+    required this.child,
+  });
+
+  final Color color;
+  final bool motionEnabled;
+  final Widget child;
+
+  @override
+  State<_OneShotPointRipple> createState() => _OneShotPointRippleState();
+}
+
+class _OneShotPointRippleState extends State<_OneShotPointRipple>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 820),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.motionEnabled) _controller.forward();
+  }
+
+  @override
+  void didUpdateWidget(covariant _OneShotPointRipple oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.motionEnabled) {
+      _controller
+        ..stop()
+        ..value = 1;
+    } else if (!oldWidget.motionEnabled) {
+      _controller.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              final progress = Curves.easeOutCubic.transform(_controller.value);
+              return Container(
+                width: 16 + (22 * progress),
+                height: 16 + (22 * progress),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: widget.color.withValues(
+                      alpha: 0.28 * (1 - progress),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          widget.child,
+        ],
+      ),
+    );
+  }
+}
+
+class _LatestPointRipple extends StatefulWidget {
+  const _LatestPointRipple({
+    super.key,
+    required this.point,
+    required this.padding,
+    required this.motionEnabled,
+  });
+
+  final Offset point;
+  final EdgeInsets padding;
+  final bool motionEnabled;
+
+  @override
+  State<_LatestPointRipple> createState() => _LatestPointRippleState();
+}
+
+class _LatestPointRippleState extends State<_LatestPointRipple>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 880),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.motionEnabled) _controller.forward();
+  }
+
+  @override
+  void didUpdateWidget(covariant _LatestPointRipple oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.motionEnabled) {
+      _controller
+        ..stop()
+        ..value = 1;
+    } else if (!oldWidget.motionEnabled) {
+      _controller.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: CustomPaint(
+        painter: _LatestPointRipplePainter(
+          animation: _controller,
+          point: widget.point,
+          padding: widget.padding,
+        ),
+      ),
+    );
+  }
+}
+
+class _LatestPointRipplePainter extends CustomPainter {
+  _LatestPointRipplePainter({
+    required this.animation,
+    required this.point,
+    required this.padding,
+  }) : super(repaint: animation);
+
+  final Animation<double> animation;
+  final Offset point;
+  final EdgeInsets padding;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (animation.value <= 0 || animation.value >= 1 || size.isEmpty) return;
+    final plot = Rect.fromLTRB(
+      padding.left,
+      padding.top,
+      size.width - padding.right,
+      size.height - padding.bottom,
+    );
+    if (plot.isEmpty) return;
+    final position = Offset(
+      plot.left + (point.dx.clamp(0, 1) * plot.width),
+      plot.bottom - (point.dy.clamp(0, 1) * plot.height),
+    );
+    final progress = Curves.easeOutCubic.transform(animation.value);
+    canvas.drawCircle(
+      position,
+      5 + (12 * progress),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4
+        ..color = AppColors.ctaStart.withValues(
+          alpha: 0.30 * (1 - progress),
+        ),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _LatestPointRipplePainter oldDelegate) {
+    return oldDelegate.point != point || oldDelegate.padding != padding;
   }
 }

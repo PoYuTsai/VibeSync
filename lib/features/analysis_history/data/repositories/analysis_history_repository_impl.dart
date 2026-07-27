@@ -1,5 +1,6 @@
 import 'package:hive_ce/hive_ce.dart';
 
+import '../../../conversation/domain/entities/conversation.dart';
 import '../../domain/entities/analysis_history_event.dart';
 import '../../domain/repositories/analysis_history_repository.dart';
 
@@ -53,6 +54,42 @@ class AnalysisHistoryRepositoryImpl implements AnalysisHistoryRepository {
   @override
   Future<void> clearAll() async {
     await _box.clear();
+  }
+
+  @override
+  Stream<void> watchChanges() => _box.watch().map((_) {});
+
+  /// Persists the canonical partner scope onto legacy analyze events while the
+  /// source conversation still exists. This must run after Partner migration.
+  Future<int> backfillPartnerIds(Iterable<Conversation> conversations) async {
+    final partnerByConversation = <String, String>{};
+    for (final conversation in conversations) {
+      final conversationId =
+          AnalysisHistoryEvent.normalizeScope(conversation.id);
+      final partnerId =
+          AnalysisHistoryEvent.normalizeScope(conversation.partnerId);
+      if (conversationId != null && partnerId != null) {
+        partnerByConversation[conversationId] = partnerId;
+      }
+    }
+
+    final updates = <dynamic, AnalysisHistoryEvent>{};
+    for (final key in _box.keys) {
+      final event = _box.get(key);
+      if (event == null || event.kind != AnalysisHistoryKind.analyze) {
+        continue;
+      }
+      final conversationId =
+          AnalysisHistoryEvent.normalizeScope(event.conversationId);
+      final partnerId = partnerByConversation[conversationId];
+      final existingPartnerId =
+          AnalysisHistoryEvent.normalizeScope(event.partnerId);
+      if (partnerId != null && partnerId != existingPartnerId) {
+        updates[key] = event.withPartnerId(partnerId);
+      }
+    }
+    if (updates.isNotEmpty) await _box.putAll(updates);
+    return updates.length;
   }
 
   Future<void> _pruneIfNeeded() async {

@@ -7,6 +7,7 @@ void main() {
       id: 'e-1',
       createdAt: DateTime.utc(2026, 7, 6),
       conversationId: ' c-1 ',
+      partnerId: ' p-1 ',
       subjectName: ' 小雲 ',
       enthusiasmScore: 72,
       gameStageLabel: 'premise',
@@ -14,6 +15,7 @@ void main() {
 
     expect(event.kind, AnalysisHistoryKind.analyze);
     expect(event.conversationId, 'c-1'); // trim
+    expect(event.partnerId, 'p-1');
     expect(event.subjectName, '小雲');
     expect(event.enthusiasmScore, 72);
     expect(event.gameStageLabel, 'premise');
@@ -40,6 +42,7 @@ void main() {
     expect(event.familiarityScore, 12);
     expect(event.relationshipStageLabel, '破冰');
     expect(event.conversationId, isNull);
+    expect(event.partnerId, isNull);
     expect(event.enthusiasmScore, isNull);
   });
 
@@ -51,6 +54,24 @@ void main() {
       ),
       throwsArgumentError,
     );
+  });
+
+  test('withPartnerId 保留原事件內容並正規化 scope', () {
+    final original = AnalysisHistoryEvent.analyze(
+      id: 'e-copy',
+      createdAt: DateTime.utc(2026, 7, 6),
+      conversationId: 'c-1',
+      subjectName: '小雲',
+      enthusiasmScore: 72,
+      gameStageLabel: 'premise',
+    );
+
+    final enriched = original.withPartnerId(' p-1 ');
+
+    expect(enriched.id, original.id);
+    expect(enriched.conversationId, original.conversationId);
+    expect(enriched.enthusiasmScore, original.enthusiasmScore);
+    expect(enriched.partnerId, 'p-1');
   });
 
   test('adapter typeId 鎖定 24/25（設計文件拍板，絕不漂移）', () {

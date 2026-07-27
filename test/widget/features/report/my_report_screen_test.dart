@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
+import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/report/data/providers/report_providers.dart';
@@ -17,6 +18,7 @@ import 'package:vibesync/features/report/presentation/screens/my_report_screen.d
 import 'package:vibesync/features/report/presentation/widgets/conversation_comparison_chart.dart';
 import 'package:vibesync/features/report/presentation/widgets/heat_trend_chart.dart';
 import 'package:vibesync/features/report/presentation/widgets/practice_temperature_chart.dart';
+import 'package:vibesync/features/report/presentation/widgets/report_subject_selector.dart';
 import 'package:vibesync/features/report/presentation/widgets/stage_distribution_chart.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
@@ -41,12 +43,12 @@ class _NullUserProfileController extends UserProfileController {
 }
 
 Partner _partner(String id, String name) => Partner(
-  id: id,
-  name: name,
-  createdAt: DateTime(2026, 1, 1),
-  updatedAt: DateTime(2026, 1, 1),
-  ownerUserId: 'u-1',
-);
+      id: id,
+      name: name,
+      createdAt: DateTime(2026, 1, 1),
+      updatedAt: DateTime(2026, 1, 1),
+      ownerUserId: 'u-1',
+    );
 
 const _emptyReport = ReportData(
   trendPoints: [],
@@ -58,24 +60,26 @@ const _emptyReport = ReportData(
 );
 
 ReportData _paidReport() => ReportData(
-  trendPoints: [
-    HeatTrendPoint(
-      date: DateTime(2026, 6, 1),
-      score: 60,
-      conversationName: 'Vivi',
-    ),
-    HeatTrendPoint(
-      date: DateTime(2026, 6, 2),
-      score: 72,
-      conversationName: 'Vivi',
-    ),
-  ],
-  averageScore: 66,
-  scoreDelta: 12,
-  comparisons: const [ConversationComparison(name: 'Vivi', score: 72)],
-  stageDistributions: const [StageDistribution(stageName: '建立男女感', count: 2)],
-  totalConversations: 2,
-);
+      trendPoints: [
+        HeatTrendPoint(
+          date: DateTime(2026, 6, 1),
+          score: 60,
+          conversationName: 'Vivi',
+        ),
+        HeatTrendPoint(
+          date: DateTime(2026, 6, 2),
+          score: 72,
+          conversationName: 'Vivi',
+        ),
+      ],
+      averageScore: 66,
+      scoreDelta: 12,
+      comparisons: const [ConversationComparison(name: 'Vivi', score: 72)],
+      stageDistributions: const [
+        StageDistribution(stageName: '建立男女感', count: 2)
+      ],
+      totalConversations: 2,
+    );
 
 AnalysisHistoryEvent _historyEvent(
   String id,
@@ -83,14 +87,15 @@ AnalysisHistoryEvent _historyEvent(
   String name,
   int score,
   DateTime createdAt,
-) => AnalysisHistoryEvent.analyze(
-  id: id,
-  createdAt: createdAt,
-  conversationId: conversationId,
-  subjectName: name,
-  enthusiasmScore: score,
-  gameStageLabel: 'premise',
-);
+) =>
+    AnalysisHistoryEvent.analyze(
+      id: id,
+      createdAt: createdAt,
+      conversationId: conversationId,
+      subjectName: name,
+      enthusiasmScore: score,
+      gameStageLabel: 'premise',
+    );
 
 Future<void> _pumpReportScreen(
   WidgetTester tester, {
@@ -110,6 +115,7 @@ Future<void> _pumpReportScreen(
         ),
         reportDataProvider.overrideWithValue(report),
         analysisHistoryEventsProvider.overrideWithValue(historyEvents),
+        conversationsProvider.overrideWithValue(const []),
         partnerListProvider.overrideWithValue(partners),
         conversationsByPartnerProvider.overrideWith((ref, id) => const []),
         userProfileControllerProvider.overrideWith(
@@ -192,6 +198,7 @@ void main() {
 
       expect(find.text('安安'), findsWidgets);
       expect(find.text('小雲'), findsWidgets);
+      expect(find.byType(ReportSubjectSelector), findsOneWidget);
       // 預設選最近事件的對象 c-2（安安）→ 圖上是安安的 2 點序列
       final chart = tester.widget<HeatTrendChart>(find.byType(HeatTrendChart));
       expect(chart.trendPoints.map((p) => p.score), [40, 66]);
@@ -215,7 +222,37 @@ void main() {
       expect(chart.trendPoints.map((p) => p.score), [50, 70]);
     });
 
-    testWidgets('所選對象事件 <2 筆 → 引導文案、不畫圖', (tester) async {
+    testWidgets('不同對象同名同日 → chip 仍有唯一標籤', (tester) async {
+      await _pumpReportScreen(
+        tester,
+        subscription: const SubscriptionState(
+          tier: SubscriptionTierHelper.starter,
+        ),
+        report: _paidReport(),
+        partners: [_partner('p1', 'Vivi')],
+        historyEvents: [
+          _historyEvent(
+            'same-1',
+            'c-1',
+            '測試',
+            50,
+            DateTime(2026, 6, 9, 9),
+          ),
+          _historyEvent(
+            'same-2',
+            'c-2',
+            '測試',
+            60,
+            DateTime(2026, 6, 9, 10),
+          ),
+        ],
+      );
+
+      expect(find.text('測試 · 6/9 #1'), findsOneWidget);
+      expect(find.text('測試 · 6/9 #2'), findsOneWidget);
+    });
+
+    testWidgets('所選對象只有 1 筆 → 顯示真實起點與下一步', (tester) async {
       await _pumpReportScreen(
         tester,
         subscription: const SubscriptionState(
@@ -228,7 +265,8 @@ void main() {
         ],
       );
 
-      expect(find.text('再多分析幾次，就能比較對方每次互動的投入度'), findsOneWidget);
+      expect(find.text('起點 50 · 6/01'), findsOneWidget);
+      expect(find.text('再分析 1 次就能形成趨勢'), findsOneWidget);
     });
 
     testWidgets('完全沒有事件（舊用戶未回填）→ 引導文案、既有其他區塊照常', (tester) async {

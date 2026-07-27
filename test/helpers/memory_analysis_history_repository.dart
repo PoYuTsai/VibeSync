@@ -5,6 +5,9 @@ class MemoryAnalysisHistoryRepository implements AnalysisHistoryRepository {
   final events = <AnalysisHistoryEvent>[];
 
   @override
+  Stream<void> watchChanges() => const Stream<void>.empty();
+
+  @override
   Future<void> append(AnalysisHistoryEvent event) async {
     events.add(event);
   }

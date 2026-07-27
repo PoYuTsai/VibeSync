@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
+import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/report/data/providers/report_providers.dart';
 import 'package:vibesync/features/report/domain/entities/report_models.dart';
 import 'package:vibesync/features/report/presentation/screens/my_report_screen.dart';
+import 'package:vibesync/features/report/presentation/widgets/heat_trend_chart.dart';
 import 'package:vibesync/features/report/presentation/widgets/practice_temperature_chart.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
@@ -53,6 +55,7 @@ void main() {
           reportDataProvider.overrideWithValue(_emptyReport),
           analysisHistoryEventsProvider
               .overrideWithValue(const <AnalysisHistoryEvent>[]),
+          conversationsProvider.overrideWithValue(const []),
           partnerListProvider.overrideWithValue(const []),
           conversationsByPartnerProvider.overrideWith((_, __) => const []),
           userProfileControllerProvider
@@ -102,6 +105,46 @@ void main() {
         ),
       ),
       outPath: outPath('liquid_practice_growth.png'),
+    );
+  });
+
+  testWidgets('engagement trend latest ripple', (tester) async {
+    await pumpAndCapture(
+      tester,
+      size: const Size(390, 420),
+      settle: const Duration(milliseconds: 360),
+      child: GradientBackground(
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Padding(
+            padding: const EdgeInsets.all(16),
+            child: HeatTrendChart(
+              trendPoints: [
+                HeatTrendPoint(
+                  date: DateTime(2026, 7, 2),
+                  score: 44,
+                  conversationName: '安安',
+                ),
+                HeatTrendPoint(
+                  date: DateTime(2026, 7, 8),
+                  score: 58,
+                  conversationName: '安安',
+                ),
+                HeatTrendPoint(
+                  date: DateTime(2026, 7, 14),
+                  score: 62,
+                  conversationName: '安安',
+                ),
+              ],
+              averageScore: 54.7,
+              scoreDelta: 4,
+              contextLabel: '安安',
+              sampleCount: 3,
+            ),
+          ),
+        ),
+      ),
+      outPath: outPath('engagement_trend_motion.png'),
     );
   });
 }

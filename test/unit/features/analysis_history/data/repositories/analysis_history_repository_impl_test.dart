@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/analysis_history/data/repositories/analysis_history_repository_impl.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
+import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 
 const _testHivePath = './.dart_tool/test_hive_analysis_history_repo';
 const _testBoxName = 'test_analysis_history_events';
@@ -34,6 +35,15 @@ AnalysisHistoryEvent _practiceEvent(
       profileId: 'practice_girl_001',
       roundIndex: 1,
       temperatureScore: temperature,
+    );
+
+Conversation _conversation(String id, String partnerId) => Conversation(
+      id: id,
+      name: '小雲',
+      messages: const [],
+      createdAt: DateTime.utc(2026, 1),
+      updatedAt: DateTime.utc(2026, 1),
+      partnerId: partnerId,
     );
 
 void main() {
@@ -70,6 +80,29 @@ void main() {
     await repo.append(_analyzeEvent('new', createdAt: DateTime.utc(2026, 5)));
 
     expect(repo.listRecent().map((e) => e.id), ['new', 'old']);
+  });
+
+  test('watchChanges 在 append 後通知報告刷新', () async {
+    final changed = repo.watchChanges().first;
+    await repo.append(_analyzeEvent('watched'));
+
+    await expectLater(changed, completes);
+  });
+
+  test('backfillPartnerIds 將 legacy conversation scope 持久化成 partner scope',
+      () async {
+    await repo.append(_analyzeEvent('legacy', conversationId: 'c-1'));
+
+    expect(
+      await repo.backfillPartnerIds([_conversation('c-1', 'p-1')]),
+      1,
+    );
+    expect(repo.listRecent().single.partnerId, 'p-1');
+    expect(
+      await repo.backfillPartnerIds([_conversation('c-1', 'p-new')]),
+      1,
+    );
+    expect(repo.listRecent().single.partnerId, 'p-new');
   });
 
   test('listByKind 只回該 kind', () async {

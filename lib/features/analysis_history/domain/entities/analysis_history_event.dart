@@ -4,7 +4,8 @@ import 'package:hive_ce/hive_ce.dart';
 part 'analysis_history_event.g.dart';
 
 /// 案2：本機分析事件歷史（analyze 熱度 / practice 溫度共用一張表）。
-/// 本機 only，絕不上傳。append-only，repository 寫入時超過 500 筆刪最舊。
+/// 本機 only，絕不上傳。分數事件 append-only；legacy scope metadata 可回填。
+/// repository 寫入時超過 500 筆刪最舊。
 @HiveType(typeId: 25)
 enum AnalysisHistoryKind {
   @HiveField(0)
@@ -57,6 +58,11 @@ class AnalysisHistoryEvent {
   @HiveField(11)
   final String? relationshipStageLabel;
 
+  /// Canonical person scope for report aggregation. Legacy events can leave
+  /// this null and are resolved through [conversationId] at read time.
+  @HiveField(12)
+  final String? partnerId;
+
   /// Hive rebuild 用寬鬆建構子；寫入路徑一律走 [analyze] / [practice] factory。
   const AnalysisHistoryEvent({
     required this.id,
@@ -71,12 +77,14 @@ class AnalysisHistoryEvent {
     this.temperatureScore,
     this.familiarityScore,
     this.relationshipStageLabel,
+    this.partnerId,
   });
 
   factory AnalysisHistoryEvent.analyze({
     required String id,
     required DateTime createdAt,
     String? conversationId,
+    String? partnerId,
     String? subjectName,
     int? enthusiasmScore,
     String? gameStageLabel,
@@ -86,6 +94,7 @@ class AnalysisHistoryEvent {
       kind: AnalysisHistoryKind.analyze,
       createdAt: createdAt,
       conversationId: _optionalTrim(conversationId),
+      partnerId: _optionalTrim(partnerId),
       subjectName: _optionalTrim(subjectName),
       enthusiasmScore: enthusiasmScore,
       gameStageLabel: _optionalTrim(gameStageLabel),
@@ -114,6 +123,24 @@ class AnalysisHistoryEvent {
   }
 
   static String? normalizeScope(String? value) => _optionalTrim(value);
+
+  AnalysisHistoryEvent withPartnerId(String partnerId) {
+    return AnalysisHistoryEvent(
+      id: id,
+      kind: kind,
+      createdAt: createdAt,
+      conversationId: conversationId,
+      subjectName: subjectName,
+      enthusiasmScore: enthusiasmScore,
+      gameStageLabel: gameStageLabel,
+      profileId: profileId,
+      roundIndex: roundIndex,
+      temperatureScore: temperatureScore,
+      familiarityScore: familiarityScore,
+      relationshipStageLabel: relationshipStageLabel,
+      partnerId: _optionalTrim(partnerId),
+    );
+  }
 
   static String _requireId(String id) {
     final normalized = id.trim();

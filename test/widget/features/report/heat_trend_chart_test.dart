@@ -61,6 +61,20 @@ void main() {
     expect(find.text('6/05'), findsOneWidget);
   });
 
+  testWidgets('單點 → 顯示真實起點與形成趨勢進度', (tester) async {
+    await _pump(tester, [
+      HeatTrendPoint(
+        date: DateTime(2026, 6, 1),
+        score: 62,
+        conversationName: 'A',
+      ),
+    ]);
+
+    expect(find.byType(LineChart), findsNothing);
+    expect(find.text('起點 62 · 6/01'), findsOneWidget);
+    expect(find.text('再分析 1 次就能形成趨勢'), findsOneWidget);
+  });
+
   testWidgets('空清單 → 空狀態不畫圖', (tester) async {
     await _pump(tester, const []);
     expect(find.byType(LineChart), findsNothing);

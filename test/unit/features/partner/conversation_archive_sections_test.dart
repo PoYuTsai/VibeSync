@@ -8,6 +8,9 @@ import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/partner/presentation/utils/conversation_archive_sections.dart';
 
 class _TrackingHistoryRepository implements AnalysisHistoryRepository {
+  @override
+  Stream<void> watchChanges() => const Stream<void>.empty();
+
   _TrackingHistoryRepository(this.events, {this.throwOnList = false});
 
   final List<AnalysisHistoryEvent> events;

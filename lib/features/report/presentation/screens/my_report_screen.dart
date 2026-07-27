@@ -49,14 +49,14 @@ class MyReportScreen extends ConsumerWidget {
     final requestedSubject = ref.watch(selectedReportSubjectProvider);
     final selectedSubject = requestedSubject != null &&
             subjects.any(
-              (subject) => subject.conversationId == requestedSubject,
+              (subject) => subject.subjectId == requestedSubject,
             )
         ? requestedSubject
-        : (subjects.isEmpty ? null : subjects.first.conversationId);
+        : (subjects.isEmpty ? null : subjects.first.subjectId);
     final selectedSubjectName = selectedSubject == null
         ? null
         : subjects
-            .where((subject) => subject.conversationId == selectedSubject)
+            .where((subject) => subject.subjectId == selectedSubject)
             .firstOrNull
             ?.name;
     final subjectPoints = selectedSubject == null
@@ -123,10 +123,10 @@ class MyReportScreen extends ConsumerWidget {
               body: '切換對象後，只比較同一個人的近期分析，不把不同人的分數混在一起。',
             ),
             const SizedBox(height: 12),
-            if (subjects.isNotEmpty) ...[
+            if (subjects.length > 1) ...[
               ReportSubjectSelector(
                 subjects: subjects,
-                selectedConversationId: selectedSubject,
+                selectedSubjectId: selectedSubject,
                 onSelected: (id) =>
                     ref.read(selectedReportSubjectProvider.notifier).state = id,
               ),

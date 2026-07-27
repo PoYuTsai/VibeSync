@@ -15,4 +15,8 @@ abstract class AnalysisHistoryRepository {
   Future<void> append(AnalysisHistoryEvent event);
 
   Future<void> clearAll();
+
+  /// Emits after the underlying local store changes. In-memory/test
+  /// repositories can keep the default empty stream.
+  Stream<void> watchChanges() => const Stream<void>.empty();
 }

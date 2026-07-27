@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
+import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/report/data/providers/report_providers.dart';
 import 'package:vibesync/features/report/domain/entities/report_models.dart';
 import 'package:vibesync/features/report/presentation/screens/my_report_screen.dart';
 import 'package:vibesync/features/report/presentation/widgets/heat_trend_chart.dart';
 import 'package:vibesync/features/report/presentation/widgets/practice_temperature_chart.dart';
+import 'package:vibesync/features/report/presentation/widgets/report_subject_selector.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/features/user_profile/data/providers/user_profile_providers.dart';
@@ -55,6 +57,7 @@ Future<void> _pump(
         subscriptionProvider.overrideWith((ref) => _PaidSubscription()),
         reportDataProvider.overrideWithValue(report),
         analysisHistoryEventsProvider.overrideWithValue(events),
+        conversationsProvider.overrideWithValue(const []),
         partnerListProvider.overrideWithValue(const []),
         userProfileControllerProvider.overrideWith(_NullProfile.new),
       ],
@@ -115,7 +118,8 @@ void main() {
     expect(chart.scoreDelta, 26);
     expect(chart.sampleCount, 2);
     expect(find.text('近期平均 55'), findsOneWidget);
-    expect(find.text('小雲'), findsWidgets);
+    expect(find.text('小雲'), findsOneWidget);
+    expect(find.byType(ReportSubjectSelector), findsNothing);
     expect(find.text('還沒有分析數據'), findsNothing);
   });
 

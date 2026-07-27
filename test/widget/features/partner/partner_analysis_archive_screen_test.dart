@@ -59,6 +59,9 @@ class _MemoryArchiveStore implements ConversationArchiveStore {
 
 class _FakeHistoryRepository implements AnalysisHistoryRepository {
   @override
+  Stream<void> watchChanges() => const Stream<void>.empty();
+
+  @override
   Future<void> append(AnalysisHistoryEvent event) async {}
 
   @override

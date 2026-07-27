@@ -104,14 +104,15 @@ class ReportData {
   });
 }
 
-/// 案2：報告頁對象選擇器項目（來自 analyze 歷史事件的 distinct conversationId）。
+/// 報告頁對象選擇器項目。新事件以 partnerId 聚合；舊事件會先透過
+/// conversationId 對照 partnerId，無法對照時才保留 conversation scope。
 class AnalysisSubject {
-  final String conversationId;
+  final String subjectId;
   final String name;
   final DateTime lastEventAt;
 
   const AnalysisSubject({
-    required this.conversationId,
+    required this.subjectId,
     required this.name,
     required this.lastEventAt,
   });

@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,6 +6,7 @@ import '../../features/coach_chat/domain/entities/coach_chat_result.dart';
 import '../../features/coach_chat/domain/entities/unified_coach_result.dart';
 import '../../features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import '../../features/analysis_history/domain/entities/analysis_history_event.dart';
+import '../../features/analysis_history/data/repositories/analysis_history_repository_impl.dart';
 import '../../features/coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../features/conversation/domain/entities/conversation.dart';
 import '../../features/conversation/domain/entities/conversation_summary.dart';
@@ -139,6 +140,17 @@ class StorageService {
       backupConversationBox: _backupConversationBox,
     );
     await migration.runIfNeeded();
+
+    // History partner backfill must run after Partner migration has populated
+    // Conversation.partnerId. It is best-effort because reports must never
+    // block app startup if a legacy history row cannot be repaired.
+    try {
+      await AnalysisHistoryRepositoryImpl(
+        analysisHistoryEventsBox,
+      ).backfillPartnerIds(conversationsBox.values);
+    } catch (error) {
+      debugPrint('Analysis history partner backfill failed: $error');
+    }
   }
 
   static Future<List<int>> _getEncryptionKey() async {

@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibesync/features/analysis_history/data/repositories/analysis_history_repository_impl.dart';
+import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation_summary.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
@@ -17,15 +19,39 @@ import 'package:vibesync/features/partner/domain/entities/partner.dart';
 void main() {
   setUpAll(() {
     Hive.init('./.dart_tool/test_hive_partner_wire');
-    if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(ConversationAdapter());
-    if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(MessageAdapter());
-    if (!Hive.isAdapterRegistered(2)) Hive.registerAdapter(ConversationSummaryAdapter());
-    if (!Hive.isAdapterRegistered(3)) Hive.registerAdapter(MeetingContextAdapter());
-    if (!Hive.isAdapterRegistered(4)) Hive.registerAdapter(AcquaintanceDurationAdapter());
-    if (!Hive.isAdapterRegistered(5)) Hive.registerAdapter(UserGoalAdapter());
-    if (!Hive.isAdapterRegistered(6)) Hive.registerAdapter(SessionContextAdapter());
-    if (!Hive.isAdapterRegistered(7)) Hive.registerAdapter(UserStyleAdapter());
-    if (!Hive.isAdapterRegistered(8)) Hive.registerAdapter(PartnerAdapter());
+    if (!Hive.isAdapterRegistered(0)) {
+      Hive.registerAdapter(ConversationAdapter());
+    }
+    if (!Hive.isAdapterRegistered(1)) {
+      Hive.registerAdapter(MessageAdapter());
+    }
+    if (!Hive.isAdapterRegistered(2)) {
+      Hive.registerAdapter(ConversationSummaryAdapter());
+    }
+    if (!Hive.isAdapterRegistered(3)) {
+      Hive.registerAdapter(MeetingContextAdapter());
+    }
+    if (!Hive.isAdapterRegistered(4)) {
+      Hive.registerAdapter(AcquaintanceDurationAdapter());
+    }
+    if (!Hive.isAdapterRegistered(5)) {
+      Hive.registerAdapter(UserGoalAdapter());
+    }
+    if (!Hive.isAdapterRegistered(6)) {
+      Hive.registerAdapter(SessionContextAdapter());
+    }
+    if (!Hive.isAdapterRegistered(7)) {
+      Hive.registerAdapter(UserStyleAdapter());
+    }
+    if (!Hive.isAdapterRegistered(8)) {
+      Hive.registerAdapter(PartnerAdapter());
+    }
+    if (!Hive.isAdapterRegistered(24)) {
+      Hive.registerAdapter(AnalysisHistoryEventAdapter());
+    }
+    if (!Hive.isAdapterRegistered(25)) {
+      Hive.registerAdapter(AnalysisHistoryKindAdapter());
+    }
   });
 
   tearDownAll(() async {
@@ -34,15 +60,17 @@ void main() {
 
   test(
       'cold boot with 1 legacy conversation + nil-backup hook → migration '
-      'converges, no throw',
-      () async {
+      'converges, no throw', () async {
     SharedPreferences.setMockInitialValues({});
     final ts = DateTime.now().microsecondsSinceEpoch;
     final convoBox = await Hive.openBox<Conversation>('wire_conv_$ts');
     final partnerBox = await Hive.openBox<Partner>('wire_partner_$ts');
+    final historyBox =
+        await Hive.openBox<AnalysisHistoryEvent>('wire_history_$ts');
     addTearDown(() async {
       await convoBox.deleteFromDisk();
       await partnerBox.deleteFromDisk();
+      await historyBox.deleteFromDisk();
     });
 
     final now = DateTime(2026, 4, 25);
@@ -57,6 +85,16 @@ void main() {
         ownerUserId: 'user-1',
       ),
     );
+    await historyBox.put(
+      'h-1',
+      AnalysisHistoryEvent.analyze(
+        id: 'h-1',
+        createdAt: now,
+        conversationId: 'c-1',
+        subjectName: '糖糖',
+        enthusiasmScore: 62,
+      ),
+    );
 
     final svc = PartnerMigrationService(
       conversationBox: convoBox,
@@ -67,8 +105,15 @@ void main() {
       backupConversationBox: () async {},
     );
     await svc.runIfNeeded();
+    await AnalysisHistoryRepositoryImpl(
+      historyBox,
+    ).backfillPartnerIds(convoBox.values);
 
     expect(partnerBox.length, 1);
     expect(convoBox.get('c-1')!.partnerId, isNotNull);
+    expect(
+      historyBox.get('h-1')!.partnerId,
+      convoBox.get('c-1')!.partnerId,
+    );
   });
 }

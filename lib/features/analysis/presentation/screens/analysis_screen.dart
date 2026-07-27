@@ -2075,6 +2075,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               id: const Uuid().v4(),
               createdAt: DateTime.now(),
               conversationId: widget.conversationId,
+              partnerId: conv.partnerId,
               subjectName: conv.name,
               enthusiasmScore: result.enthusiasmScore,
               gameStageLabel: result.gameStage.current.name,

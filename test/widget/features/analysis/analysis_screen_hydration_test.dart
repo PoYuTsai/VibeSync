@@ -434,6 +434,7 @@ Conversation _conversation({
   int? lastAnalyzedMessageCount,
   int? lastEnthusiasmScore,
   List<Message>? extraMessages,
+  String? partnerId,
 }) {
   return Conversation(
     id: _conversationId,
@@ -452,6 +453,7 @@ Conversation _conversation({
     lastAnalysisSnapshotJson: lastAnalysisSnapshotJson,
     lastAnalyzedMessageCount: lastAnalyzedMessageCount,
     lastEnthusiasmScore: lastEnthusiasmScore,
+    partnerId: partnerId,
   );
 }
 
@@ -841,7 +843,8 @@ Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
         coachChatRepositoryProvider.overrideWithValue(
           _EmptyCoachChatRepository(),
         ),
-        coachChatHistoryProvider(const CoachScope.conversation(_conversationId)).overrideWithValue(const []),
+        coachChatHistoryProvider(const CoachScope.conversation(_conversationId))
+            .overrideWithValue(const []),
         streamingAnalyzeProvider
             .overrideWith(() => _SeededStreamingAnalyzeNotifier(seed)),
       ],
@@ -892,7 +895,8 @@ Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
         coachChatRepositoryProvider.overrideWithValue(
           _EmptyCoachChatRepository(),
         ),
-        coachChatHistoryProvider(const CoachScope.conversation(_conversationId)).overrideWithValue(const []),
+        coachChatHistoryProvider(const CoachScope.conversation(_conversationId))
+            .overrideWithValue(const []),
         streamingAnalyzeProvider.overrideWith(() {
           notifier = _MutableStreamingAnalyzeNotifier(seed);
           return notifier;
@@ -958,7 +962,8 @@ Future<_HydrationHarness> _pumpAnalysisScreenForPremiumRefresh(
         coachChatRepositoryProvider.overrideWithValue(
           _EmptyCoachChatRepository(),
         ),
-        coachChatHistoryProvider(const CoachScope.conversation(_conversationId)).overrideWithValue(const []),
+        coachChatHistoryProvider(const CoachScope.conversation(_conversationId))
+            .overrideWithValue(const []),
         subscriptionProvider.overrideWith(
           (ref) {
             subscriptionNotifier =
@@ -2569,7 +2574,9 @@ void main() {
   group('案2：analyze 歷史事件 hook', () {
     testWidgets('hydrate persist 成功 → 寫入一筆 analyze 歷史事件', (tester) async {
       final raw = _fullRawResponse();
-      final conv = _conversation(); // 無既有 snapshot → 會走 persist
+      final conv = _conversation(
+        partnerId: 'partner-history',
+      ); // 無既有 snapshot → 會走 persist
 
       final harness = await _pumpHydratedAnalysisScreenWithRepo(
         tester,
@@ -2590,6 +2597,7 @@ void main() {
       final event = harness.history.events.single;
       expect(event.kind, AnalysisHistoryKind.analyze);
       expect(event.conversationId, _conversationId);
+      expect(event.partnerId, 'partner-history');
       expect(event.subjectName, '小雲');
       expect(event.enthusiasmScore, 72);
       expect(event.gameStageLabel, 'premise');

@@ -41,7 +41,7 @@ void main() {
     );
   });
 
-  testWidgets('<2 點 → 引導文案、不畫圖', (tester) async {
+  testWidgets('單點 → 顯示真實起點、不播放假路徑', (tester) async {
     await _pump(tester, [
       HeatTrendPoint(
           date: DateTime(2026, 6, 1), score: 28, conversationName: ''),
@@ -49,17 +49,25 @@ void main() {
 
     expect(find.byType(LineChart), findsNothing);
     expect(
-      find.text('多完成幾場新手模式練習，這裡會畫出你的升溫能力成長曲線'),
+      find.text('起點 28 · 6/01'),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('practice-growth-empty-glow')),
+      find.byKey(const ValueKey('practice-growth-single-point')),
       findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('practice-growth-empty-state')),
+      findsNothing,
     );
   });
 
   testWidgets('空清單 → 引導文案', (tester) async {
     await _pump(tester, const []);
     expect(find.byType(LineChart), findsNothing);
+    expect(
+      find.byKey(const ValueKey('practice-growth-empty-state')),
+      findsOneWidget,
+    );
   });
 }

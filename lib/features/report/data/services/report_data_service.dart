@@ -4,6 +4,7 @@ import 'dart:convert';
 
 import '../../../analysis_history/domain/entities/analysis_history_event.dart';
 import '../../../conversation/domain/entities/conversation.dart';
+import '../../../partner/domain/entities/partner.dart';
 import '../../../analysis/domain/entities/game_stage.dart';
 import '../../domain/entities/report_models.dart';
 
@@ -127,40 +128,59 @@ class ReportDataService {
     }
   }
 
-  /// 案2：對象清單——distinct conversationId（取最新 subjectName 快照），
-  /// 按最近事件時間 desc（報告頁 chip 列預設選第一個＝最近分析過的對象）。
-  List<AnalysisSubject> analysisSubjects(List<AnalysisHistoryEvent> events) {
-    final latestByConversation = <String, AnalysisHistoryEvent>{};
+  /// 對象清單。partnerId 是 canonical scope；舊事件沒有 partnerId 時，
+  /// 透過 conversationId 對照現有 Conversation 後再聚合。
+  List<AnalysisSubject> analysisSubjects(
+    List<AnalysisHistoryEvent> events,
+    List<Conversation> conversations,
+    List<Partner> partners,
+  ) {
+    final conversationsById = {
+      for (final conversation in conversations)
+        conversation.id.trim(): conversation,
+    };
+    final latestBySubject = <String, AnalysisHistoryEvent>{};
+    final partnerNames = {
+      for (final partner in partners)
+        if (partner.name.trim().isNotEmpty)
+          partner.id.trim(): partner.name.trim(),
+    };
     for (final event in events) {
       if (event.kind != AnalysisHistoryKind.analyze) continue;
-      final id = AnalysisHistoryEvent.normalizeScope(event.conversationId);
+      final id = _subjectIdFor(event, conversationsById);
       if (id == null) continue;
-      final existing = latestByConversation[id];
+      final existing = latestBySubject[id];
       if (existing == null || event.createdAt.isAfter(existing.createdAt)) {
-        latestByConversation[id] = event;
+        latestBySubject[id] = event;
       }
     }
-    return latestByConversation.entries
+    return latestBySubject.entries
         .map((entry) => AnalysisSubject(
-              conversationId: entry.key,
-              name: entry.value.subjectName ?? '未命名對象',
+              subjectId: entry.key,
+              name:
+                  partnerNames[entry.key] ?? entry.value.subjectName ?? '未命名對象',
               lastEventAt: entry.value.createdAt,
             ))
         .toList()
       ..sort((a, b) => b.lastEventAt.compareTo(a.lastEventAt));
   }
 
-  /// 案2：單對象熱度時間序列（createdAt 升序；enthusiasmScore null 跳過）。
+  /// 單一對象投入度時間序列（createdAt 升序；null 分數跳過）。
   List<HeatTrendPoint> subjectTrendPoints(
     List<AnalysisHistoryEvent> events,
-    String conversationId,
+    String subjectId,
+    List<Conversation> conversations,
   ) {
-    final id = AnalysisHistoryEvent.normalizeScope(conversationId);
+    final id = AnalysisHistoryEvent.normalizeScope(subjectId);
     if (id == null) return const [];
+    final conversationsById = {
+      for (final conversation in conversations)
+        conversation.id.trim(): conversation,
+    };
     return events
         .where((event) =>
             event.kind == AnalysisHistoryKind.analyze &&
-            AnalysisHistoryEvent.normalizeScope(event.conversationId) == id &&
+            _subjectIdFor(event, conversationsById) == id &&
             event.enthusiasmScore != null)
         .map((event) => HeatTrendPoint(
               date: event.createdAt,
@@ -169,6 +189,24 @@ class ReportDataService {
             ))
         .toList()
       ..sort((a, b) => a.date.compareTo(b.date));
+  }
+
+  String? _subjectIdFor(
+    AnalysisHistoryEvent event,
+    Map<String, Conversation> conversationsById,
+  ) {
+    final conversationId =
+        AnalysisHistoryEvent.normalizeScope(event.conversationId);
+    if (conversationId != null) {
+      final currentPartner = AnalysisHistoryEvent.normalizeScope(
+        conversationsById[conversationId]?.partnerId,
+      );
+      if (currentPartner != null) return currentPartner;
+    }
+
+    final persistedPartner =
+        AnalysisHistoryEvent.normalizeScope(event.partnerId);
+    return persistedPartner ?? conversationId;
   }
 
   /// 案2：練習溫度全域時間序列——刻意不分對象混排（練習溫度量的是玩家
