@@ -26,15 +26,26 @@ extension KeyboardContextPurgeScopeWire on KeyboardContextPurgeScope {
 class KeyboardScreenshotPrivacyKeys {
   const KeyboardScreenshotPrivacyKeys._();
 
-  static const consent = 'keyboard_screenshot_ai_202607_v1';
+  static const consent = 'keyboard_screenshot_ai_202607_v2';
   static const consentAcceptedAt =
-      'keyboard_screenshot_ai_accepted_at_202607_v1';
+      'keyboard_screenshot_ai_accepted_at_202607_v2';
   static const latestScreenshotDetection =
-      'keyboard_latest_screenshot_detection_202607_v1';
+      'keyboard_latest_screenshot_detection_202607_v2';
   static const partnerContextSharing =
       'keyboard_partner_context_sharing_202607_v1';
   static const nativeCleanupPendingScope =
       'keyboard_native_privacy_cleanup_pending_scope_202607_v1';
+
+  /// Consent versions whose disclosure no longer describes the shipped
+  /// behaviour. `v1` promised a local preview and a per-upload confirmation;
+  /// a detected screenshot now runs on its own, so that grant can never be
+  /// honoured again. Nothing reads these keys, but a purge still sweeps them so
+  /// no stale grant is left behind on the device.
+  static const retired = <String>[
+    'keyboard_screenshot_ai_202607_v1',
+    'keyboard_screenshot_ai_accepted_at_202607_v1',
+    'keyboard_latest_screenshot_detection_202607_v1',
+  ];
 
   static String scoped(String key, String? ownerUserId) {
     final owner = ownerUserId?.trim();
@@ -138,6 +149,7 @@ class KeyboardPrivacyPurgeService {
       KeyboardScreenshotPrivacyKeys.consentAcceptedAt,
       KeyboardScreenshotPrivacyKeys.latestScreenshotDetection,
       KeyboardScreenshotPrivacyKeys.partnerContextSharing,
+      ...KeyboardScreenshotPrivacyKeys.retired,
     ]) {
       final targets = hasOwner
           ? <String>{key, '$key::$normalizedOwner'}

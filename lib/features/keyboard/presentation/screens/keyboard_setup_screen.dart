@@ -264,7 +264,7 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
   String _screenshotSetupMessage(KeyboardScreenshotSetupResult result) {
     return switch (result) {
       KeyboardScreenshotSetupResult.enabled =>
-        '已啟用「最近截圖」輔助。鍵盤會先在本機預覽，只有你確認後才上傳一張截圖。',
+        '已啟用「最近截圖」輔助。鍵盤開啟時會自動使用最近 3 分鐘的截圖，並在鍵盤上顯示用了哪一張。',
       KeyboardScreenshotSetupResult.signedOut => '請先登入 VibeSync，再回來啟用「最近截圖」輔助。',
       KeyboardScreenshotSetupResult.consentMissing =>
         '截圖 AI 同意已失效，沒有啟用。請重新操作一次。',
@@ -328,8 +328,8 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
               const SizedBox(height: 10),
               Text(
                 enabled
-                    ? '功能啟用後，鍵盤開啟時會在本機尋找最近 3 分鐘的系統截圖；先讓你預覽，只有確認後才上傳一張。'
-                    : '需要獨立的 AI 資料同意與 iOS 相片權限。啟用後，鍵盤開啟時會在本機尋找最近 3 分鐘的系統截圖；先預覽，確認後才上傳一張。',
+                    ? '功能啟用後，鍵盤開啟時會在本機尋找最近 3 分鐘的系統截圖並自動分析一張；鍵盤上會顯示這次用的是哪一張。'
+                    : '需要獨立的 AI 資料同意與 iOS 相片權限。啟用後，鍵盤開啟時會在本機尋找最近 3 分鐘的系統截圖並自動分析一張；鍵盤上會顯示這次用的是哪一張。',
                 style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.onBackgroundSecondary,
                 ),
@@ -569,7 +569,7 @@ class _PrivacyNotice extends StatelessWidget {
             SizedBox(width: 12),
             Expanded(
               child: Text(
-                'VibeSync 只會將你主動點擊「載入」的文字送去產生回覆；「最近截圖」需另行同意，啟用後會在鍵盤開啟時於本機尋找最近 3 分鐘的系統截圖，預覽確認後才上傳一張。不會自動讀取其他聊天紀錄。',
+                'VibeSync 只會將你主動點擊「載入」的文字送去產生回覆；「最近截圖」需另行同意，啟用後會在鍵盤開啟時於本機尋找最近 3 分鐘的系統截圖並自動分析一張，上傳前會裁掉截圖裡 VibeSync 鍵盤自己佔的區塊。不會自動讀取其他聊天紀錄。',
               ),
             ),
           ],

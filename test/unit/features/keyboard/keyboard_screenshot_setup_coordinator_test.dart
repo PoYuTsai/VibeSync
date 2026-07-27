@@ -40,7 +40,7 @@ void main() {
     expect(native.receipts.single.ownerUserId, 'owner-1');
     expect(
       native.receipts.single.version,
-      'keyboard_screenshot_ai_202607_v1',
+      'keyboard_screenshot_ai_202607_v2',
     );
     expect(
       native.receipts.single.acceptedAt.toIso8601String(),

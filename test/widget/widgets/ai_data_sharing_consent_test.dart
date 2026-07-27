@@ -62,6 +62,7 @@ void main() {
     );
     expect(acceptButton.onPressed, isNull);
 
+    await tester.ensureVisible(find.byType(CheckboxListTile));
     await tester.tap(find.byType(CheckboxListTile));
     await tester.pumpAndSettle();
 
@@ -75,8 +76,10 @@ void main() {
     var result = await pumpConsentLauncher(tester);
     expect(result, isNull);
 
+    await tester.ensureVisible(find.byType(CheckboxListTile));
     await tester.tap(find.byType(CheckboxListTile));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('我同意並送出'));
     await tester.tap(find.text('我同意並送出'));
     await tester.pumpAndSettle();
 
@@ -130,8 +133,10 @@ void main() {
     expect(find.textContaining('一張聊天截圖'), findsOneWidget);
     expect(find.textContaining('不會自動讀取其他聊天紀錄'), findsOneWidget);
     expect(find.textContaining('預設關閉'), findsOneWidget);
+    await tester.ensureVisible(find.byType(CheckboxListTile));
     await tester.tap(find.byType(CheckboxListTile));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('我同意並送出'));
     await tester.tap(find.text('我同意並送出'));
     await tester.pumpAndSettle();
 
@@ -231,8 +236,10 @@ void main() {
 
     await tester.tap(find.text('start keyboard consent'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byType(CheckboxListTile));
     await tester.tap(find.byType(CheckboxListTile));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('我同意並送出'));
     await tester.tap(find.text('我同意並送出'));
     await tester.pumpAndSettle();
 
@@ -289,8 +296,10 @@ void main() {
 
     await tester.tap(find.text('start keyboard consent'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byType(CheckboxListTile));
     await tester.tap(find.byType(CheckboxListTile));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('我同意並送出'));
     await tester.tap(find.text('我同意並送出'));
     await tester.pumpAndSettle();
 
@@ -359,8 +368,10 @@ void main() {
 
     await tester.tap(find.text('start keyboard consent'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byType(CheckboxListTile));
     await tester.tap(find.byType(CheckboxListTile));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('我同意並送出'));
     await tester.tap(find.text('我同意並送出'));
     await tester.pumpAndSettle();
 
@@ -501,8 +512,10 @@ void main() {
       AiDataSharingConsent.debugUserIdOverride = () => 'user-a';
 
       await pumpConsentLauncher(tester);
+      await tester.ensureVisible(find.byType(CheckboxListTile));
       await tester.tap(find.byType(CheckboxListTile));
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('我同意並送出'));
       await tester.tap(find.text('我同意並送出'));
       await tester.pumpAndSettle();
 
@@ -566,8 +579,10 @@ void main() {
       // dialog 開著時身份換人（模擬 session 過期／換帳號）
       currentUserId = 'user-b';
 
+      await tester.ensureVisible(find.byType(CheckboxListTile));
       await tester.tap(find.byType(CheckboxListTile));
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('我同意並送出'));
       await tester.tap(find.text('我同意並送出'));
       await tester.pumpAndSettle();
 

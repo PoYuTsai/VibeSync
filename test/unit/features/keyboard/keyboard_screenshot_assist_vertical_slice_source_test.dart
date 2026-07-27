@@ -37,8 +37,22 @@ void main() {
     expect(detectAfterRecovery, greaterThan(recovery));
   });
 
-  test('preview confirmation is a separate user action from detection', () {
+  test('a detected screenshot runs without waiting for a second tap', () {
     final source = coordinator.readAsStringSync();
+
+    // Consent is granted once in the app, so detection now drives generation
+    // directly. The re-read inside confirmPreviewAndGenerate still guarantees
+    // that a capture taken during the hop cannot be uploaded in place of the
+    // one the panel is showing.
+    final detected = source.indexOf('case .success(let screenshot):');
+    final autoPreview = source.indexOf('self.requestLocalPreview()', detected);
+    final autoGenerate = source.indexOf(
+      'self.confirmPreviewAndGenerate()',
+      autoPreview,
+    );
+    expect(detected, greaterThanOrEqualTo(0));
+    expect(autoPreview, greaterThan(detected));
+    expect(autoGenerate, greaterThan(autoPreview));
 
     expect(source, contains('func requestLocalPreview()'));
     expect(source, contains('func confirmPreviewAndGenerate()'));
@@ -107,7 +121,11 @@ void main() {
     expect(insertText, greaterThan(clearPending));
     expect(source, contains('尚未插入：無法安全完成本機清理'));
 
-    expect(view, contains('#selector(confirmScreenshotPreview)'));
+    expect(
+      view,
+      isNot(contains('confirmScreenshotPreview')),
+      reason: 'The per-upload confirmation button no longer exists.',
+    );
     expect(view, contains('#selector(insertScreenshotCandidate(_:))'));
     expect(view, isNot(contains('autoInsertScreenshotCandidate')));
   });

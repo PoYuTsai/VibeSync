@@ -56,7 +56,7 @@ class KeyboardContextConsent {
     required this.partnerContextSharingEnabled,
   });
 
-  static const currentVersion = 'keyboard_screenshot_ai_202607_v1';
+  static const currentVersion = 'keyboard_screenshot_ai_202607_v2';
 
   final String version;
   final DateTime acceptedAt;

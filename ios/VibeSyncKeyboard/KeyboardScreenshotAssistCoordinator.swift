@@ -487,7 +487,7 @@ final class KeyboardScreenshotAssistCoordinator {
             return
         }
         stateMachine.send(.previewRequested)
-        setMessage("這張圖尚未送出；確認無誤後再點「使用這張圖」。")
+        setMessage("找到最近截圖，正在分析…")
     }
 
     func confirmPreviewAndGenerate() {
@@ -1148,9 +1148,14 @@ final class KeyboardScreenshotAssistCoordinator {
                         )
                     )
                 )
-                self.setMessage(
-                    "找到最近截圖；先預覽，確認後才會送出。"
-                )
+                // Consent is granted once in the app, so a detected capture
+                // runs straight away instead of waiting for a second tap. The
+                // panel still shows exactly which image was used, and
+                // `confirmPreviewAndGenerate` keeps re-reading the newest
+                // screenshot so a capture taken during this hop cannot be
+                // uploaded in place of the one on screen.
+                self.requestLocalPreview()
+                self.confirmPreviewAndGenerate()
             case .failure(let error):
                 self.handleScreenshotError(error)
             }

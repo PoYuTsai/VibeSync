@@ -30,8 +30,14 @@ class AiPrivacyDisclosure {
       '使用 AI 鍵盤時，只有你主動載入並送出的文字會傳給 Anthropic 產生回覆；原文不會寫入回覆重播紀錄。\n'
       '裝置的共享 Keychain 會暫存 request ID、使用者 ID 與不含原文的指紋；重試資格約 23 小時，成功後或鍵盤下次啟用時會盡力清理，若未再啟用則實體項目可能延後移除。伺服器重播資料保存 24 小時並每小時清理，因此實際刪除可能接近 25 小時；備份與 PITR 依 Supabase 的獨立保存週期處理。';
 
+  /// 「最近截圖」是預設關閉、需要獨立同意的選用功能，因此單獨成段，
+  /// 不與上面的文字回覆流程混在一起。
+  static const String _keyboardScreenshotParagraph =
+      '若你另行同意並啟用鍵盤的「最近截圖」輔助，鍵盤開啟時會在本機尋找最近 3 分鐘的系統截圖並自動分析一張，不會再逐次詢問。\n'
+      '上傳前會裁掉截圖裡 VibeSync 鍵盤自己佔的區塊，鍵盤上也會一直顯示這次用的是哪一張。後端不保存截圖或 OCR 逐字稿，你可以隨時在「設定 > 鍵盤」撤回同意並清除鍵盤脈絡。';
+
   static const String description =
-      '$_openingLine\n$_vendorLine\n$_consentLine\n\n$_uploadParagraph\n\n$_optimizeReplayParagraph\n\n$_keyboardReplayParagraph';
+      '$_openingLine\n$_vendorLine\n$_consentLine\n\n$_uploadParagraph\n\n$_optimizeReplayParagraph\n\n$_keyboardReplayParagraph\n\n$_keyboardScreenshotParagraph';
 
   /// Onboarding 第 4 頁：只保留「送第三方 AI」與「同意閘」兩句，
   /// 不列廠商名（避免誤解練習室女孩＝DeepSeek）。完整揭露留在設定頁。

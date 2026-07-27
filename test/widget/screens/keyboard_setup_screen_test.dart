@@ -250,8 +250,10 @@ void main() {
     expect(find.textContaining('不會自動讀取其他聊天紀錄'), findsOneWidget);
     expect(setup.calls, 0);
 
+    await tester.ensureVisible(find.byType(CheckboxListTile));
     await tester.tap(find.byType(CheckboxListTile));
     await tester.pump();
+    await tester.ensureVisible(find.text('我同意並送出'));
     await tester.tap(find.text('我同意並送出'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
@@ -259,8 +261,14 @@ void main() {
     expect(setup.calls, 1);
     expect(find.text('「最近截圖」輔助已啟用'), findsOneWidget);
     expect(
-      find.textContaining('只有你確認後才上傳一張截圖'),
+      find.textContaining('自動使用最近 3 分鐘的截圖'),
       findsOneWidget,
+    );
+    expect(
+      find.textContaining('顯示用了哪一張'),
+      findsOneWidget,
+      reason: 'Dropping the per-upload tap must not drop the visibility of '
+          'which capture was used.',
     );
   });
 

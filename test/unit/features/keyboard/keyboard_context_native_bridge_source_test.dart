@@ -58,6 +58,7 @@ void main() {
     expect(source, contains('NSPhotoLibraryUsageDescription'));
     expect(source, contains('另行啟用'));
     expect(source, contains('最近 3 分鐘'));
-    expect(source, contains('先在本機預覽'));
+    expect(source, contains('自動分析'));
+    expect(source, contains('隨時在設定中撤回'));
   });
 }

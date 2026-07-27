@@ -17,7 +17,7 @@ class AiDataSharingConsent {
   static const keyboardPartnerContextSharingKey =
       KeyboardScreenshotPrivacyKeys.partnerContextSharing;
   static const keyboardScreenshotDataDescription =
-      '啟用後，鍵盤開啟時會先在本機尋找最近 3 分鐘的系統截圖。可能傳送：你預覽並確認的一張聊天截圖；截圖內可能有訊息、顯示名稱與頭像。不會自動讀取其他聊天紀錄。';
+      '啟用後，鍵盤開啟時會在本機尋找最近 3 分鐘的系統截圖並自動送出一張，不再逐次詢問。可能傳送：一張聊天截圖，內含訊息、顯示名稱與頭像。上傳前會裁掉鍵盤自己佔的區塊，鍵盤上也會顯示用了哪一張。不會自動讀取其他聊天紀錄。';
   static const keyboardScreenshotPurposeText =
       '用途：只用來辨識這張截圖並產生本次三個回覆選項。為了在斷線後查回同一結果並避免重複扣額，後端最多 24 小時保留鍵控輸入雜湊與產生結果，不保存截圖或 OCR 逐字稿。對象背景分享是另一個預設關閉、可隨時撤回的設定。';
   static const _privacyUrl = 'https://vibesyncai.app/privacy';

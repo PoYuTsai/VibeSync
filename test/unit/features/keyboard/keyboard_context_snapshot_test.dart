@@ -35,7 +35,7 @@ void main() {
       'generatedAt': '2026-07-27T04:00:00.000Z',
       'expiresAt': '2026-07-28T04:00:00.000Z',
       'consent': {
-        'version': 'keyboard_screenshot_ai_202607_v1',
+        'version': 'keyboard_screenshot_ai_202607_v2',
         'acceptedAt': '2026-07-27T03:59:00.000Z',
         'latestScreenshotDetectionEnabled': true,
         'partnerContextSharingEnabled': false,

@@ -25,8 +25,6 @@ final class KeyboardViewController: UIInputViewController {
     private let screenshotPanel = UIStackView()
     private let screenshotStatusLabel = UILabel()
     private let screenshotPreviewImageView = UIImageView()
-    private let screenshotPreviewButton = UIButton(type: .system)
-    private let screenshotConfirmButton = UIButton(type: .system)
     private let screenshotRetryButton = UIButton(type: .system)
     private let screenshotCancelButton = UIButton(type: .system)
     private let screenshotSpeakerRow = UIStackView()
@@ -267,36 +265,6 @@ final class KeyboardViewController: UIInputViewController {
         screenshotPreviewImageView.isHidden = true
         screenshotPanel.addArrangedSubview(screenshotPreviewImageView)
 
-        screenshotPreviewButton.setTitle(
-            "預覽最新截圖",
-            for: .normal
-        )
-        styleScreenshotButton(
-            screenshotPreviewButton,
-            color: primary
-        )
-        screenshotPreviewButton.addTarget(
-            self,
-            action: #selector(showScreenshotPreview),
-            for: .touchUpInside
-        )
-        screenshotPanel.addArrangedSubview(screenshotPreviewButton)
-
-        screenshotConfirmButton.setTitle(
-            "使用這張圖產生回覆",
-            for: .normal
-        )
-        styleScreenshotButton(
-            screenshotConfirmButton,
-            color: flame
-        )
-        screenshotConfirmButton.addTarget(
-            self,
-            action: #selector(confirmScreenshotPreview),
-            for: .touchUpInside
-        )
-        screenshotPanel.addArrangedSubview(screenshotConfirmButton)
-
         screenshotRetryButton.setTitle("再試一次", for: .normal)
         styleScreenshotButton(
             screenshotRetryButton,
@@ -490,21 +458,23 @@ final class KeyboardViewController: UIInputViewController {
                 for: .normal
             )
             screenshotRetryButton.isHidden = false
-        case .screenshotDetected:
-            screenshotPanel.isHidden = false
-            screenshotPreviewButton.isHidden = false
-            screenshotCancelButton.isHidden = false
-        case .localPreview:
+        // Detection and preview are transient now that a detected capture runs
+        // straight away. The image stays on screen so the user always sees
+        // which screenshot was used, but nothing waits for a tap.
+        case .screenshotDetected, .localPreview:
             screenshotPanel.isHidden = false
             screenshotPreviewImageView.image =
                 screenshotCoordinator.previewImage
             screenshotPreviewImageView.isHidden = false
-            screenshotConfirmButton.isHidden = false
             screenshotCancelButton.isHidden = false
         case .preparing,
              .generating,
              .lookingUpStatus:
+            invalidatePendingReply()
             screenshotPanel.isHidden = false
+            screenshotPreviewImageView.image =
+                screenshotCoordinator.previewImage
+            screenshotPreviewImageView.isHidden = false
             screenshotCancelButton.isHidden = false
         case .needsSpeakerConfirmation:
             screenshotPanel.isHidden = false
@@ -556,8 +526,6 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func resetScreenshotControls() {
-        screenshotPreviewButton.isHidden = true
-        screenshotConfirmButton.isHidden = true
         screenshotRetryButton.isHidden = true
         screenshotCancelButton.isHidden = true
         screenshotSpeakerRow.isHidden = true
@@ -777,13 +745,6 @@ final class KeyboardViewController: UIInputViewController {
 
     @objc private func showTyping() { show(.typing) }
     @objc private func showAI() { show(.ai); refreshAvailability() }
-    @objc private func showScreenshotPreview() {
-        screenshotCoordinator.requestLocalPreview()
-    }
-    @objc private func confirmScreenshotPreview() {
-        invalidatePendingReply()
-        screenshotCoordinator.confirmPreviewAndGenerate()
-    }
     @objc private func retryScreenshotAssist() {
         invalidatePendingReply()
         switch screenshotRenderState {

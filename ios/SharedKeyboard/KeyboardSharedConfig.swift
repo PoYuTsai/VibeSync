@@ -6,7 +6,7 @@ enum KeyboardSharedConfig {
     static let keychainService = "flutter_secure_storage_service"
 
     static let keyboardScreenshotConsentVersion =
-        "keyboard_screenshot_ai_202607_v1"
+        "keyboard_screenshot_ai_202607_v2"
     static let keyboardScreenshotConsentReceipt =
         "keyboard_screenshot_consent_receipt_v1"
     static let screenshotAssistCapabilityReceipt =

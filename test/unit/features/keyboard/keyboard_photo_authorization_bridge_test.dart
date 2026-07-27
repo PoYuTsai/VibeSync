@@ -56,7 +56,7 @@ void main() {
   test('publishes an exact owner-bound consent receipt', () async {
     final channel = _FakeChannel({
       'storedOwnerUserId': 'owner-1',
-      'storedVersion': 'keyboard_screenshot_ai_202607_v1',
+      'storedVersion': 'keyboard_screenshot_ai_202607_v2',
     });
     final bridge = MethodChannelKeyboardPhotoAuthorizationBridge(
       channel: channel,
@@ -65,7 +65,7 @@ void main() {
     await bridge.publishScreenshotConsentReceipt(
       KeyboardScreenshotConsentReceipt(
         ownerUserId: 'owner-1',
-        version: 'keyboard_screenshot_ai_202607_v1',
+        version: 'keyboard_screenshot_ai_202607_v2',
         acceptedAt: DateTime.utc(2026, 7, 1),
         updatedAt: DateTime.utc(2026, 7, 27, 12),
       ),
@@ -75,7 +75,7 @@ void main() {
     expect(channel.methods, ['writeScreenshotConsentReceipt']);
     expect(channel.arguments.single, {
       'ownerUserId': 'owner-1',
-      'version': 'keyboard_screenshot_ai_202607_v1',
+      'version': 'keyboard_screenshot_ai_202607_v2',
       'enabled': true,
       'acceptedAt': '2026-07-01T00:00:00.000Z',
       'updatedAt': '2026-07-27T12:00:00.000Z',
@@ -87,7 +87,7 @@ void main() {
     final bridge = MethodChannelKeyboardPhotoAuthorizationBridge(
       channel: _FakeChannel({
         'storedOwnerUserId': 'other-owner',
-        'storedVersion': 'keyboard_screenshot_ai_202607_v1',
+        'storedVersion': 'keyboard_screenshot_ai_202607_v2',
       }),
     );
 
@@ -95,7 +95,7 @@ void main() {
       bridge.publishScreenshotConsentReceipt(
         KeyboardScreenshotConsentReceipt(
           ownerUserId: 'owner-1',
-          version: 'keyboard_screenshot_ai_202607_v1',
+          version: 'keyboard_screenshot_ai_202607_v2',
           acceptedAt: DateTime.utc(2026, 7, 1),
           updatedAt: DateTime.utc(2026, 7, 27),
         ),
@@ -126,7 +126,7 @@ void main() {
     expect(
       await bridge.hasUsableScreenshotConsentReceipt(
         ownerUserId: 'owner-1',
-        version: 'keyboard_screenshot_ai_202607_v1',
+        version: 'keyboard_screenshot_ai_202607_v2',
         acceptedAt: DateTime.utc(2026, 7, 1),
       ),
       isTrue,
@@ -134,7 +134,7 @@ void main() {
     expect(channel.methods, ['verifyScreenshotConsentReceipt']);
     expect(channel.arguments.single, {
       'ownerUserId': 'owner-1',
-      'version': 'keyboard_screenshot_ai_202607_v1',
+      'version': 'keyboard_screenshot_ai_202607_v2',
       'acceptedAt': '2026-07-01T00:00:00.000Z',
     });
   });
@@ -147,7 +147,7 @@ void main() {
     await expectLater(
       bridge.hasUsableScreenshotConsentReceipt(
         ownerUserId: 'owner-1',
-        version: 'keyboard_screenshot_ai_202607_v1',
+        version: 'keyboard_screenshot_ai_202607_v2',
         acceptedAt: DateTime.utc(2026, 7, 1),
       ),
       throwsStateError,
