@@ -115,13 +115,15 @@ final class LatestScreenshotProvider {
                 let latestAllowed = reference.addingTimeInterval(
                     KeyboardSharedConfig.futureClockSkewAllowance
                 )
-                guard let latest = candidates
-                    .filter {
-                        $0.creationDate >= earliest &&
-                            $0.creationDate <= latestAllowed
+                let recentCandidates = candidates.filter { candidate in
+                    candidate.creationDate >= earliest &&
+                        candidate.creationDate <= latestAllowed
+                }
+                guard let latest = recentCandidates.max(
+                    by: { lhs, rhs in
+                        lhs.creationDate < rhs.creationDate
                     }
-                    .max(by: { $0.creationDate < $1.creationDate })
-                else {
+                ) else {
                     completion(.failure(.noRecentScreenshot))
                     return
                 }
