@@ -34,6 +34,15 @@
 - OCR changes stay isolated unless the task explicitly requires a cross-cutting change.
 - Never expose or commit secrets, `.env` contents, customer data, or production credentials.
 
+## Development And Delivery
+
+- Eric develops VibeSync on Windows and tests on a physical iPhone. He has no local Mac or Xcode. Never assume local macOS tooling or ask him to run `xcodebuild`; use Windows-capable checks locally and the repository's GitHub macOS runner for iOS build evidence.
+- For an authorized Change/Fix task that changes runtime code or configuration, choose the delivery path from the branch at task start. On `main`: verify, commit, safely complete any prerequisite targeted migration, pass the Edge pre-push audit, push `main`, then monitor task-relevant Edge delivery and exact-SHA `Build & Distribute`. On a non-`main` task branch: verify, commit, push that branch, run exact-SHA `Build & Distribute`, and leave production migration/Edge delivery pending until landing on `main` is separately authorized. Never push migration-dependent Edge code to `main` before its required migration is verified.
+- Pushing `main` or `develop` automatically starts `Build & Distribute`; monitor that run instead of dispatching a duplicate. On another pushed branch, dispatch `.github/workflows/distribute.yml` for that exact branch/SHA and monitor it.
+- Edge Function and migration operations must follow `docs/shared-agent-rules.md`. Never use `supabase db push`. Do not redeploy an Edge Function twice when the push-triggered workflow already covers it.
+- `Release to App Stores` and TestFlight/App Store submission remain Eric's manual action. Do not trigger `.github/workflows/release.yml`; a generic “ship” or “release” request is not permission to do so.
+- Discussion, inspection, planning, review-only, and documentation-only tasks do not ship product. A mixed task with any runtime code/config change is a Change/Fix task. A current request such as “local only,” “do not push,” or “do not deploy” overrides the standing delivery default.
+
 ## Work And Verification
 
 - Inspect the working tree before editing and preserve unrelated user changes.
@@ -41,7 +50,8 @@
 - Verify with the smallest meaningful command, then broaden in proportion to risk.
 - For material R2/R3 high-risk changes, invoke the configured opposite-frontier reviewer and GLM falsification pass directly through the shared review workflow. Do not ask Eric to carry a Review Packet manually.
 - Treat implemented, verified, committed, pushed, deployed, and dogfood-approved as separate states.
-- Push, deployment, TestFlight submission, production mutation, and other external actions require Eric's explicit authorization.
+- VibeSync runtime Change/Fix tasks have Eric's standing authorization for the delivery steps above, including pushing the branch where the task started (including `main`) and `Build & Distribute` GitHub Actions usage, within the task's original scope. This does not authorize merging/rebasing a non-`main` task branch into `main`. Destructive or ambiguous data changes, expanded product scope, credentials, other paid actions, and App Store release still require current explicit authorization.
+- End every task in plain Traditional Chinese with the outcome, expected behavior, and Eric's next check. For Change/Fix tasks also include: Git commit/branch/push state, Edge/migration state, exact-SHA `Build & Distribute` result and URL, what Eric should test on his iPhone, and anything intentionally not run.
 
 ## On-Demand References
 
