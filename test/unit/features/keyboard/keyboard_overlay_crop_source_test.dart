@@ -74,4 +74,24 @@ void main() {
     expect(source, contains('keyboardVisibleSince = Date()'));
     expect(source, contains('keyboardVisibleSince = nil'));
   });
+
+  test('the trim uses the height at capture time, not at upload time', () {
+    final source = controller.readAsStringSync();
+
+    expect(source, contains('let overlayHeight = heightWhenCaptured(capturedAt)'));
+    final lookup = source.indexOf('private func heightWhenCaptured(');
+    expect(lookup, greaterThanOrEqualTo(0));
+    expect(
+      source.substring(lookup, lookup + 260),
+      contains(r'overlayHeightSamples.last('),
+      reason: 'The panel grows while the request is in flight, so reading the '
+          'current height would trim real conversation out of the upload.',
+    );
+    expect(source, contains('private func recordOverlayHeightSample()'));
+    expect(
+      source,
+      contains('overlayHeightSamples.removeAll()'),
+      reason: 'Samples belong to one keyboard session.',
+    );
+  });
 }

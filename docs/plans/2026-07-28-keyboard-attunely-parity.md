@@ -201,3 +201,41 @@ Edge：`Deploy Keyboard Assist` run `30299835205` 部署 `keyboard-assist` 至 v
   不放一顆假的回饋鈕。
 - **圖中圖／引用預覽的 `origin` 硬擋。** 現況靠 compiler prompt 的「引用預覽不可
   當成新訊息」與 `conversationType` 四分類；硬擋需要 contract 變更，待拍板。
+
+## 2026-07-28 真機第一輪回饋後的修正（Eric 指示）
+
+真機第一次跑通後，Eric 看競品錄影提出三點，全部落地：
+
+### 1. 觸發語意：從「最近三分鐘的截圖」改成「鍵盤開著時截的圖」
+
+原本開鍵盤就會去撈最近三分鐘內的截圖，等於「打開鍵盤」本身就可能扣一次額度，
+而且撈到的可能是使用者根本沒打算分析的圖。改成 `LatestScreenshotProvider` 多一道
+**session floor**：候選必須同時晚於 recency window 與 `keyboardVisibleSince`。
+
+觸發動作因此就是使用者本來就會做的手動截圖（iOS 自己會播存檔動畫），
+和競品觀察到的行為一致。這是**收緊**，不是放寬，所以沿用同意版本 v2，不需要
+再要一次授權。
+
+空面板的文案也從錯誤語氣（「找不到最近三分鐘內的截圖」）改成邀請語氣
+（「截圖這則對話，就會自動分析」）。
+
+### 2. 版面：截圖是主畫面，文字貼上變成可切換的 panel
+
+`Mode` 從 `{ai, typing}` 變成 `{assist, text, typing}`，鍵盤預設開在 `assist`。
+截圖面板不再插在貼上面板中間，而是有自己的 header（風格／文字／ABC）與 utility row。
+兩條路都會扣額度，所以切到 `text` 時會 `suspendForLegacyFlow()`，切回來時重新
+`start()` 並重新掛 library observer。
+
+空狀態借用永遠可見的邀請區塊說明「為什麼不能用」，延續 `f0a66baa` 的原則：
+隱藏面板不可以連原因一起隱藏。
+
+### 3. 裁切用截圖當下的高度，不是上傳當下的高度
+
+`keyboardOverlayFraction` 原本讀 `view.bounds.height` 的即時值。但面板在等截圖時矮、
+出結果後高，等到 capture 進到預處理時鍵盤已經比拍照當下高，於是**裁掉了畫面裡真的
+存在的對話**。`overlayHeightSamples` 記錄每次 layout 的（時間, 高度），裁切改用
+「拍照當下那一筆」。
+
+這很可能就是 2026-07-28 連續五次 `unsupported_conversation` 的原因之一：送上去的圖
+只剩兩三則訊息，compiler 判定不是一對一聊天。同一輪也加了 `rejectDetail` telemetry
+（見 `supabase/functions/keyboard-assist/telemetry.ts`）來區分四種拒絕原因。

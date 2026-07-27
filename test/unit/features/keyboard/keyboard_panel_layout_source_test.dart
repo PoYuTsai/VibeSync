@@ -5,9 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 String _window(String source, int start, int length) =>
     source.substring(start, (start + length).clamp(0, source.length));
 
-/// The panel is one surface with two input sources, not two modes. The
-/// screenshot flow adds an analysis card and self-explaining candidates on top
-/// of the paste flow that already worked, rather than replacing it.
+/// The screenshot flow owns the keyboard's main surface. The older paste flow
+/// still exists — it is the only path when a conversation cannot be
+/// screenshotted — but it lives behind a switch instead of sharing the panel,
+/// because competing for the same half-screen made the screenshot flow read as
+/// one widget among many rather than the product.
 void main() {
   final controller = File(
     'ios/VibeSyncKeyboard/KeyboardViewController.swift',
@@ -55,17 +57,52 @@ void main() {
     );
   });
 
-  test('the paste flow survives alongside the screenshot flow', () {
+  test('the screenshot surface opens first and the paste flow survives', () {
     final source = controller.readAsStringSync();
 
+    // The paste flow is intact, just no longer on the same surface.
     expect(source, contains('#selector(loadClipboard)'));
     expect(source, contains('#selector(generateReply(_:))'));
     expect(source, contains('#selector(insertGeneratedReply)'));
+
+    expect(source, contains('private enum Mode { case assist, text, typing }'));
     expect(
       source,
-      contains('截圖聊天畫面會自動分析；或複製訊息後點「載入」'),
-      reason: 'The empty state teaches both paths without a mode switch.',
+      contains('show(.assist)'),
+      reason: 'The keyboard opens on the screenshot surface, not the panel of '
+          'buttons.',
     );
+    expect(source, contains('#selector(showTextAssist)'));
+    expect(source, contains('#selector(showAssist)'));
+    expect(
+      source,
+      contains('assistPanel.addArrangedSubview(screenshotPanel)'),
+      reason: 'The screenshot panel is the assist surface, not a row wedged '
+          'into the paste panel.',
+    );
+    // Only one flow may be live, because both spend quota.
+    final toText = source.indexOf('func showTextAssist()');
+    expect(toText, greaterThanOrEqualTo(0));
+    expect(
+      _window(source, toText, 220),
+      contains('screenshotCoordinator.suspendForLegacyFlow()'),
+    );
+  });
+
+  test('an empty surface still says what to do, and why it cannot', () {
+    final source = controller.readAsStringSync();
+    final start = source.indexOf('private func renderAssistIdleView(');
+    expect(start, greaterThanOrEqualTo(0));
+    final body = _window(source, start, 1200);
+
+    expect(body, contains('assistIdleTitleText'));
+    expect(
+      body,
+      contains('renderState.message'),
+      reason: 'Hiding the panel must never hide the reason it is hidden.',
+    );
+    expect(body, contains('case .featureUnavailable,'));
+    expect(body, contains('.photoPermissionRequired'));
   });
 
   test('the free second batch is only offered when it exists', () {

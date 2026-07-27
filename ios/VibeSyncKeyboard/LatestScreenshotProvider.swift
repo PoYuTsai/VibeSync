@@ -70,16 +70,19 @@ final class LatestScreenshotProvider {
     private let library: ScreenshotLibrary
     private let now: () -> Date
     private let recencyWindow: TimeInterval
+    private let sessionStartedAt: () -> Date?
 
     init(
         library: ScreenshotLibrary = PhotoKitScreenshotLibrary(),
         now: @escaping () -> Date = Date.init,
         recencyWindow: TimeInterval =
-            KeyboardSharedConfig.screenshotRecencyWindow
+            KeyboardSharedConfig.screenshotRecencyWindow,
+        sessionStartedAt: @escaping () -> Date? = { nil }
     ) {
         self.library = library
         self.now = now
         self.recencyWindow = recencyWindow
+        self.sessionStartedAt = sessionStartedAt
     }
 
     func startObservingLibraryChanges(_ onChange: @escaping () -> Void) {
@@ -122,13 +125,22 @@ final class LatestScreenshotProvider {
         library.fetchRecentScreenshotCandidates(
             limit: 8,
             maximumPixelSize: 960
-        ) { [now, recencyWindow] result in
+        ) { [now, recencyWindow, sessionStartedAt] result in
             switch result {
             case .failure:
                 completion(.failure(.photoLibraryFailed))
             case .success(let candidates):
                 let reference = now()
-                let earliest = reference.addingTimeInterval(-recencyWindow)
+                // Two floors, and the later one wins. The recency window keeps
+                // a keyboard that has been open all afternoon from reaching
+                // back to lunchtime; the session floor is the promise that only
+                // a capture the user took *with this keyboard open* is ever
+                // analysed. Without it, opening the keyboard silently spends a
+                // charge on whatever happened to be in the camera roll.
+                let earliest = max(
+                    reference.addingTimeInterval(-recencyWindow),
+                    sessionStartedAt() ?? .distantPast
+                )
                 let latestAllowed = reference.addingTimeInterval(
                     KeyboardSharedConfig.futureClockSkewAllowance
                 )

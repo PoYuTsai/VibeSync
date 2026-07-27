@@ -396,6 +396,7 @@ final class KeyboardScreenshotAssistCoordinator {
     convenience init(
         documentProvider: @escaping DocumentProvider,
         overlayFractionProvider: @escaping OverlayFractionProvider,
+        sessionStartedAt: @escaping () -> Date?,
         insertText: @escaping (String) -> Void,
         onRender: @escaping (
             KeyboardScreenshotAssistRenderState
@@ -405,7 +406,9 @@ final class KeyboardScreenshotAssistCoordinator {
             network: KeyboardScreenshotAssistAPIAdapter(
                 transport: KeyboardAssistAPI()
             ),
-            screenshotProvider: LatestScreenshotProvider(),
+            screenshotProvider: LatestScreenshotProvider(
+                sessionStartedAt: sessionStartedAt
+            ),
             preprocessor: KeyboardImagePreprocessor(),
             insertionCoordinator: ReplyInsertionCoordinator(
                 insertText: insertText
@@ -2102,9 +2105,12 @@ final class KeyboardScreenshotAssistCoordinator {
                 message: "請在 VibeSync App 內開啟照片權限。"
             )
         case .noRecentScreenshot:
+            // Not an error. Opening the keyboard is not supposed to analyse
+            // anything on its own any more, so the empty panel is an
+            // invitation, not a failure report.
             setState(
                 .idle,
-                message: "找不到最近三分鐘內的截圖。"
+                message: "截圖這則對話，就會自動分析"
             )
         case .photoLibraryFailed:
             setState(

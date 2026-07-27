@@ -1,7 +1,12 @@
 import UIKit
 
 final class KeyboardViewController: UIInputViewController {
-    private enum Mode { case ai, typing }
+    /// `assist` is the product: screenshot in, replies out, nothing else on
+    /// screen. `text` is the older paste-a-message flow, kept because it is the
+    /// only path when the conversation cannot be screenshotted, but it no
+    /// longer shares the surface — competing for the same half-screen made the
+    /// screenshot panel read as one widget among many.
+    private enum Mode { case assist, text, typing }
     private struct PendingLegacyReply {
         let success: KeyboardReplySuccess
         let operationID: UUID
@@ -16,8 +21,12 @@ final class KeyboardViewController: UIInputViewController {
 
     private let api = KeyboardAPI()
     private let rootStack = UIStackView()
+    private let assistPanel = UIStackView()
     private let aiPanel = UIStackView()
     private let typingPanel = UIStackView()
+    private let assistIdleView = UIStackView()
+    private let assistIdleTitle = UILabel()
+    private let assistIdleSubtitle = UILabel()
     private let contextLabel = UILabel()
     private let statusLabel = UILabel()
     private let pasteButton = UIButton(type: .system)
@@ -29,6 +38,7 @@ final class KeyboardViewController: UIInputViewController {
     private let screenshotCancelButton = UIButton(type: .system)
     private let screenshotSpeakerRow = UIStackView()
     private let screenshotCandidateStack = UIStackView()
+    private let screenshotContinuationHint = UILabel()
     private let analysisCard = UIStackView()
     private let analysisCueLabel = UILabel()
     private let analysisStateLabel = UILabel()
@@ -40,11 +50,12 @@ final class KeyboardViewController: UIInputViewController {
     private var pendingLegacyReply: PendingLegacyReply?
     private var activeLegacyOperationID: UUID?
     private var isGenerating = false
-    private var mode: Mode = .ai
+    private var mode: Mode = .assist
     private var deleteTimer: Timer?
     private var lastObservedOwnerUserID: String?
     private var screenshotRenderState: KeyboardAssistState = .boot
     private var keyboardVisibleSince: Date?
+    private var overlayHeightSamples: [(at: Date, height: CGFloat)] = []
     private var statusLineBorrowed = false
     /// nil means "follow whatever the app is set to for this person", which is
     /// what keeps the keyboard and the app one personality rather than two.
@@ -61,6 +72,9 @@ final class KeyboardViewController: UIInputViewController {
             },
             overlayFractionProvider: { [weak self] capturedAt in
                 self?.keyboardOverlayFraction(capturedAt: capturedAt) ?? 0
+            },
+            sessionStartedAt: { [weak self] in
+                self?.keyboardVisibleSince
             },
             insertText: { [weak self] text in
                 self?.textDocumentProxy.insertText(text)
@@ -84,10 +98,36 @@ final class KeyboardViewController: UIInputViewController {
         let screenHeight = (
             view.window?.windowScene?.screen ?? UIScreen.main
         ).bounds.height
-        let overlayHeight = view.bounds.height
+        let overlayHeight = heightWhenCaptured(capturedAt)
         guard screenHeight > 0, overlayHeight > 0 else { return 0 }
         // Clamped so an unexpected geometry reading can never eat the chat.
         return min(overlayHeight / screenHeight, 0.7)
+    }
+
+    /// The panel is short while it waits for a screenshot and tall once results
+    /// are on screen, so by the time a capture reaches preprocessing the
+    /// keyboard is usually taller than it was in the picture. Trimming by
+    /// today's height would eat conversation the shot really did contain — and
+    /// a capture with two messages left in it is exactly what comes back as
+    /// "not a one-to-one chat".
+    private func heightWhenCaptured(_ capturedAt: Date) -> CGFloat {
+        overlayHeightSamples.last(
+            where: { $0.at <= capturedAt }
+        )?.height ?? view.bounds.height
+    }
+
+    /// Remembers how tall the keyboard actually was, and when. Only transitions
+    /// are kept, so this stays a handful of entries per keyboard session.
+    private func recordOverlayHeightSample() {
+        let height = view.bounds.height
+        guard height > 0 else { return }
+        if let last = overlayHeightSamples.last, last.height == height {
+            return
+        }
+        overlayHeightSamples.append((at: Date(), height: height))
+        if overlayHeightSamples.count > 12 {
+            overlayHeightSamples.removeFirst()
+        }
     }
 
     /// UIKit declares `documentIdentifier` as non-optional, but it is genuinely
@@ -112,10 +152,11 @@ final class KeyboardViewController: UIInputViewController {
         super.viewDidLoad()
         view.backgroundColor = ink
         configureRoot()
-        configureAIPanel()
+        configureAssistPanel()
         configureScreenshotAssist()
+        configureAIPanel()
         configureTypingPanel()
-        show(.ai)
+        show(.assist)
         refreshAvailability()
     }
 
@@ -136,6 +177,7 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         keyboardVisibleSince = nil
+        overlayHeightSamples.removeAll()
         invalidatePendingReply()
         screenshotCoordinator.viewDidDisappear()
     }
@@ -158,6 +200,7 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        recordOverlayHeightSample()
         updatePreferredHeight()
     }
 
@@ -174,16 +217,18 @@ final class KeyboardViewController: UIInputViewController {
         ])
     }
 
-    private func configureAIPanel() {
-        aiPanel.axis = .vertical
-        aiPanel.spacing = 7
-        rootStack.addArrangedSubview(aiPanel)
+    /// The screenshot flow's own surface. Everything above the utility row is
+    /// about one screenshot: what we are doing with it, and what you can send.
+    private func configureAssistPanel() {
+        assistPanel.axis = .vertical
+        assistPanel.spacing = 7
+        rootStack.addArrangedSubview(assistPanel)
 
         let header = UIStackView()
         header.axis = .horizontal
         header.spacing = 8
         let mark = UILabel()
-        mark.text = "💜 VibeSync AI"
+        mark.text = "💜 VibeSync"
         mark.textColor = .white
         mark.font = .systemFont(ofSize: 15, weight: .bold)
         header.addArrangedSubview(mark)
@@ -196,6 +241,64 @@ final class KeyboardViewController: UIInputViewController {
         )
         updateVoiceButton()
         header.addArrangedSubview(voiceButton)
+        header.addArrangedSubview(
+            makeButton("文字", action: #selector(showTextAssist))
+        )
+        header.addArrangedSubview(
+            makeButton("ABC", action: #selector(showTyping))
+        )
+        assistPanel.addArrangedSubview(header)
+
+        configureAssistIdleView()
+    }
+
+    /// What the user sees before they have done anything. It has to answer one
+    /// question — what do I do now — because there is no button to press.
+    private func configureAssistIdleView() {
+        assistIdleView.axis = .vertical
+        assistIdleView.spacing = 4
+        assistIdleView.alignment = .center
+        assistIdleView.isLayoutMarginsRelativeArrangement = true
+        assistIdleView.layoutMargins = UIEdgeInsets(
+            top: 18,
+            left: 12,
+            bottom: 18,
+            right: 12
+        )
+
+        assistIdleTitle.text = "截圖這則對話就開始"
+        assistIdleTitle.textColor = .white
+        assistIdleTitle.font = .systemFont(ofSize: 17, weight: .bold)
+        assistIdleTitle.textAlignment = .center
+        assistIdleView.addArrangedSubview(assistIdleTitle)
+
+        assistIdleSubtitle.text = "鍵盤開著時截圖，會自動分析並給你回覆"
+        assistIdleSubtitle.textColor = UIColor.white.withAlphaComponent(0.6)
+        assistIdleSubtitle.font = .systemFont(ofSize: 12)
+        assistIdleSubtitle.textAlignment = .center
+        assistIdleSubtitle.numberOfLines = 2
+        assistIdleView.addArrangedSubview(assistIdleSubtitle)
+
+        assistPanel.addArrangedSubview(assistIdleView)
+    }
+
+    private func configureAIPanel() {
+        aiPanel.axis = .vertical
+        aiPanel.spacing = 7
+        rootStack.addArrangedSubview(aiPanel)
+
+        let header = UIStackView()
+        header.axis = .horizontal
+        header.spacing = 8
+        let mark = UILabel()
+        mark.text = "💜 文字模式"
+        mark.textColor = .white
+        mark.font = .systemFont(ofSize: 15, weight: .bold)
+        header.addArrangedSubview(mark)
+        header.addArrangedSubview(UIView())
+        header.addArrangedSubview(
+            makeButton("截圖", action: #selector(showAssist))
+        )
         header.addArrangedSubview(makeButton("ABC", action: #selector(showTyping)))
         aiPanel.addArrangedSubview(header)
 
@@ -264,7 +367,7 @@ final class KeyboardViewController: UIInputViewController {
         )
         resultButton.isHidden = true
         aiPanel.addArrangedSubview(resultButton)
-        aiPanel.addArrangedSubview(makeUtilityRow(aiToggleTitle: "ABC"))
+        aiPanel.addArrangedSubview(makeUtilityRow())
     }
 
     private func configureScreenshotAssist() {
@@ -328,6 +431,17 @@ final class KeyboardViewController: UIInputViewController {
         screenshotCandidateStack.axis = .vertical
         screenshotCandidateStack.spacing = 7
         screenshotPanel.addArrangedSubview(screenshotCandidateStack)
+
+        // The loop only works if the user knows there is a loop.
+        screenshotContinuationHint.text = "💡 對方回覆後再截一次圖，就能接著聊"
+        screenshotContinuationHint.font = .systemFont(ofSize: 11)
+        screenshotContinuationHint.textColor =
+            UIColor.white.withAlphaComponent(0.55)
+        screenshotContinuationHint.textAlignment = .center
+        screenshotContinuationHint.numberOfLines = 2
+        screenshotContinuationHint.isHidden = true
+        screenshotPanel.addArrangedSubview(screenshotContinuationHint)
+
         screenshotPanel.addArrangedSubview(screenshotSwapButton)
         screenshotPanel.addArrangedSubview(screenshotRetryButton)
 
@@ -346,7 +460,8 @@ final class KeyboardViewController: UIInputViewController {
         )
         screenshotPanel.addArrangedSubview(screenshotCancelButton)
 
-        aiPanel.insertArrangedSubview(screenshotPanel, at: 2)
+        assistPanel.addArrangedSubview(screenshotPanel)
+        assistPanel.addArrangedSubview(makeUtilityRow())
         resetScreenshotControls()
     }
 
@@ -559,10 +674,18 @@ final class KeyboardViewController: UIInputViewController {
             common.addArrangedSubview(makeButton(text, action: #selector(typeCharacter(_:))))
         }
         typingPanel.addArrangedSubview(common)
-        typingPanel.addArrangedSubview(makeUtilityRow(aiToggleTitle: "AI"))
+        typingPanel.addArrangedSubview(
+            makeUtilityRow(
+                toggleTitle: "AI",
+                toggleAction: #selector(showAssist)
+            )
+        )
     }
 
-    private func makeUtilityRow(aiToggleTitle: String) -> UIStackView {
+    private func makeUtilityRow(
+        toggleTitle: String? = nil,
+        toggleAction: Selector? = nil
+    ) -> UIStackView {
         let row = UIStackView()
         row.axis = .horizontal
         row.spacing = 6
@@ -571,7 +694,11 @@ final class KeyboardViewController: UIInputViewController {
         let globe = makeButton("🌐", action: #selector(noop))
         globe.addTarget(self, action: #selector(showInputModeList(_:event:)), for: .allTouchEvents)
         row.addArrangedSubview(globe)
-        row.addArrangedSubview(makeButton(aiToggleTitle, action: aiToggleTitle == "AI" ? #selector(showAI) : #selector(showTyping)))
+        if let toggleTitle, let toggleAction {
+            row.addArrangedSubview(
+                makeButton(toggleTitle, action: toggleAction)
+            )
+        }
         let space = makeButton("空白", action: #selector(insertSpace))
         space.setContentHuggingPriority(.defaultLow, for: .horizontal)
         row.addArrangedSubview(space)
@@ -604,7 +731,8 @@ final class KeyboardViewController: UIInputViewController {
         // panel while the input view changes height, which looks like a
         // one-frame ghost during AI/ABC switching.
         UIView.performWithoutAnimation {
-            aiPanel.isHidden = newMode != .ai
+            assistPanel.isHidden = newMode != .assist
+            aiPanel.isHidden = newMode != .text
             typingPanel.isHidden = newMode != .typing
             view.setNeedsLayout()
             view.layoutIfNeeded()
@@ -645,6 +773,7 @@ final class KeyboardViewController: UIInputViewController {
         screenshotRenderState = renderState.state
         resetScreenshotControls()
         screenshotStatusLabel.text = renderState.message
+        renderAssistIdleView(renderState)
 
         switch renderState.state {
         // These states hide the screenshot panel, which means their own status
@@ -659,14 +788,15 @@ final class KeyboardViewController: UIInputViewController {
             surfaceUnavailableReason(renderState.message)
         case .consentRequired,
              .photoPermissionRequired:
-            screenshotPanel.isHidden = false
+            // The invitation block is already saying exactly this, and saying
+            // it twice on a half-screen panel reads as a bug.
+            screenshotPanel.isHidden = true
+            surfaceUnavailableReason(renderState.message)
         case .idle:
-            screenshotPanel.isHidden = false
-            screenshotRetryButton.setTitle(
-                "重新偵測最新截圖",
-                for: .normal
-            )
-            screenshotRetryButton.isHidden = false
+            // Nothing to detect until the user takes a shot, so the surface is
+            // just the invitation. A button here would only offer to re-run a
+            // search that is already listening.
+            screenshotPanel.isHidden = true
         // Detection and preview are transient now that a detected capture runs
         // straight away. The image stays on screen so the user always sees
         // which screenshot was used, but nothing waits for a tap.
@@ -728,6 +858,7 @@ final class KeyboardViewController: UIInputViewController {
             renderAnalysisCard(presentation)
             renderScreenshotCandidates(presentation.options)
             screenshotCandidateStack.isHidden = false
+            screenshotContinuationHint.isHidden = false
             // Only offered when a second batch is already paid for.
             screenshotSwapButton.isHidden = !presentation.canSwapBatch
             screenshotRetryButton.setTitle("重新分析", for: .normal)
@@ -739,12 +870,47 @@ final class KeyboardViewController: UIInputViewController {
         updatePreferredHeight()
     }
 
+    private static let assistIdleTitleText = "截圖這則對話就開始"
+    private static let assistIdleSubtitleText =
+        "鍵盤開著時截圖，會自動分析並給你回覆"
+
+    /// The screenshot panel hides itself in the states where there is nothing
+    /// to show, and hiding the panel used to hide the reason with it. In this
+    /// layout the invitation block is the one thing that is always on screen,
+    /// so it doubles as the place a blocked feature explains itself.
+    private func renderAssistIdleView(
+        _ renderState: KeyboardScreenshotAssistRenderState
+    ) {
+        switch renderState.state {
+        case .idle:
+            assistIdleView.isHidden = false
+            assistIdleTitle.text = Self.assistIdleTitleText
+            assistIdleSubtitle.text = renderState.message
+                ?? Self.assistIdleSubtitleText
+        case .boot:
+            assistIdleView.isHidden = false
+            assistIdleTitle.text = Self.assistIdleTitleText
+            assistIdleSubtitle.text = Self.assistIdleSubtitleText
+        case .featureUnavailable,
+             .fullAccessRequired,
+             .authRequired,
+             .consentRequired,
+             .photoPermissionRequired:
+            assistIdleView.isHidden = false
+            assistIdleTitle.text = "還不能自動分析截圖"
+            assistIdleSubtitle.text = renderState.message
+                ?? "請開啟 VibeSync App 檢查鍵盤設定"
+        default:
+            assistIdleView.isHidden = true
+        }
+    }
+
     /// Only speaks when there is something to say. Transitions that merely
     /// stand the screenshot flow down — dismissing the keyboard, or handing
     /// over to the paste flow — carry no message and must not overwrite what
     /// the paste flow is telling the user.
     private static let emptyStateStatus =
-        "截圖聊天畫面會自動分析；或複製訊息後點「載入」"
+        "複製對方訊息後點「載入」，或切回截圖模式"
 
     private func surfaceUnavailableReason(_ message: String?) {
         guard let message, !message.isEmpty else { return }
@@ -762,6 +928,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func resetScreenshotControls() {
         analysisCard.isHidden = true
+        screenshotContinuationHint.isHidden = true
         screenshotSwapButton.isHidden = true
         returnStatusLine()
         screenshotRetryButton.isHidden = true
@@ -925,21 +1092,24 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func updatePreferredHeight() {
-        if mode == .typing {
+        switch mode {
+        case .typing:
             preferredContentSize.height = 280
-            return
-        }
-        if !screenshotPanel.isHidden {
+        case .text:
+            preferredContentSize.height = resultButton.isHidden ? 300 : 352
+        case .assist:
             if !screenshotCandidateStack.isHidden {
                 preferredContentSize.height = 620
             } else if !screenshotPreviewImageView.isHidden {
                 preferredContentSize.height = 500
+            } else if screenshotPanel.isHidden {
+                // Just the invitation (or the reason it cannot run). Asking for
+                // half the screen to say one sentence looks broken.
+                preferredContentSize.height = 260
             } else {
                 preferredContentSize.height = 410
             }
-            return
         }
-        preferredContentSize.height = resultButton.isHidden ? 300 : 352
     }
 
     private func message(for error: KeyboardAPIError) -> String {
@@ -965,7 +1135,26 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     @objc private func showTyping() { show(.typing) }
-    @objc private func showAI() { show(.ai); refreshAvailability() }
+
+    /// Coming back to the screenshot surface re-arms detection. The coordinator
+    /// was stood down while the other panels were up, so without this the panel
+    /// would sit on whatever it last rendered and ignore a fresh capture.
+    @objc private func showAssist() {
+        show(.assist)
+        refreshAvailability()
+        screenshotCoordinator.start(hasFullAccess: hasFullAccess)
+        screenshotCoordinator.startObservingLibrary(
+            hasFullAccess: hasFullAccess
+        )
+    }
+
+    /// The paste flow and the screenshot flow both spend quota, so only one of
+    /// them may be live at a time.
+    @objc private func showTextAssist() {
+        screenshotCoordinator.suspendForLegacyFlow()
+        show(.text)
+        refreshAvailability()
+    }
     @objc private func swapCandidateBatch() {
         screenshotCoordinator.swapBatch()
     }
