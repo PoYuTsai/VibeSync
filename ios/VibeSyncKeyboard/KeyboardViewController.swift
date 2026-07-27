@@ -40,6 +40,7 @@ final class KeyboardViewController: UIInputViewController {
     private var deleteTimer: Timer?
     private var lastObservedOwnerUserID: String?
     private var screenshotRenderState: KeyboardAssistState = .boot
+    private var keyboardVisibleSince: Date?
     private lazy var replyInsertionCoordinator =
         ReplyInsertionCoordinator { [weak self] text in
             self?.textDocumentProxy.insertText(text)
@@ -50,6 +51,9 @@ final class KeyboardViewController: UIInputViewController {
                 guard let self else { return nil }
                 return self.currentDocumentIdentifier
             },
+            overlayFractionProvider: { [weak self] capturedAt in
+                self?.keyboardOverlayFraction(capturedAt: capturedAt) ?? 0
+            },
             insertText: { [weak self] text in
                 self?.textDocumentProxy.insertText(text)
             },
@@ -57,6 +61,26 @@ final class KeyboardViewController: UIInputViewController {
                 self?.renderScreenshotAssist(renderState)
             }
         )
+
+    /// A screenshot captured while this keyboard was on screen contains our own
+    /// panel — including the candidates we just produced. Everything below the
+    /// host app's input row is our UI, so it is trimmed before upload. A capture
+    /// taken before the keyboard appeared is left untouched, because there the
+    /// bottom of the image is real conversation.
+    private func keyboardOverlayFraction(capturedAt: Date) -> CGFloat {
+        guard let visibleSince = keyboardVisibleSince,
+              capturedAt >= visibleSince
+        else {
+            return 0
+        }
+        let screenHeight = (
+            view.window?.windowScene?.screen ?? UIScreen.main
+        ).bounds.height
+        let overlayHeight = view.bounds.height
+        guard screenHeight > 0, overlayHeight > 0 else { return 0 }
+        // Clamped so an unexpected geometry reading can never eat the chat.
+        return min(overlayHeight / screenHeight, 0.7)
+    }
 
     /// UIKit declares `documentIdentifier` as non-optional, but it is genuinely
     /// nil until a document is attached to the input session. Reading it
@@ -89,6 +113,7 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        keyboardVisibleSince = Date()
         refreshAvailability()
         refreshScreenshotIdentity()
         screenshotCoordinator.start(hasFullAccess: hasFullAccess)
@@ -96,6 +121,7 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        keyboardVisibleSince = nil
         invalidatePendingReply()
         screenshotCoordinator.viewDidDisappear()
     }

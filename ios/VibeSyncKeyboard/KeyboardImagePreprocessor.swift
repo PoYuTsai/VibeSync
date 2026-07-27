@@ -19,16 +19,63 @@ struct KeyboardImagePreprocessor {
     private let widths = [960, 768, 640]
     private let qualities: [CGFloat] = [0.82, 0.72, 0.62]
 
+    /// The user screenshots while our own keyboard covers the bottom of the
+    /// screen, so the raw capture contains our panel — including the candidate
+    /// replies we produced a moment earlier. Uploading that wastes budget,
+    /// dilutes the chat text once the image is downscaled, and lets the
+    /// compiler transcribe our own suggestions as if they were chat messages.
+    /// Removing the overlay before hashing keeps the upload, its SHA-256 and
+    /// the on-screen preview describing exactly the same bytes.
+    static func croppingBottom(
+        _ image: UIImage,
+        fraction: CGFloat
+    ) -> UIImage {
+        guard fraction > 0.01,
+              fraction < 0.95,
+              image.imageOrientation == .up,
+              let cgImage = image.cgImage
+        else {
+            return image
+        }
+        let pixelHeight = CGFloat(cgImage.height)
+        let keptHeight = (pixelHeight * (1 - fraction)).rounded(.down)
+        guard keptHeight >= 64,
+              let cropped = cgImage.cropping(
+                  to: CGRect(
+                      x: 0,
+                      y: 0,
+                      width: CGFloat(cgImage.width),
+                      height: keptHeight
+                  )
+              )
+        else {
+            return image
+        }
+        return UIImage(
+            cgImage: cropped,
+            scale: image.scale,
+            orientation: .up
+        )
+    }
+
     func prepare(_ source: UIImage) throws -> KeyboardPreparedImage {
+        try prepare(source, croppingBottomFraction: 0)
+    }
+
+    func prepare(
+        _ source: UIImage,
+        croppingBottomFraction fraction: CGFloat
+    ) throws -> KeyboardPreparedImage {
         guard source.size.width > 0,
               source.size.height > 0,
               source.cgImage != nil || source.ciImage != nil
         else {
             throw KeyboardImagePreprocessorError.invalidImage
         }
+        let trimmed = Self.croppingBottom(source, fraction: fraction)
 
         for width in widths {
-            let target = resized(source, maximumWidth: CGFloat(width))
+            let target = resized(trimmed, maximumWidth: CGFloat(width))
             for quality in qualities {
                 // jpegData rasterizes into a fresh container. The resulting
                 // upload carries no original EXIF or GPS metadata.

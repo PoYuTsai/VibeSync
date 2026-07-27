@@ -237,6 +237,19 @@ extension LatestScreenshotProvider: KeyboardScreenshotProviding {}
 
 protocol KeyboardScreenshotPreprocessing {
     func prepare(_ source: UIImage) throws -> KeyboardPreparedImage
+    func prepare(
+        _ source: UIImage,
+        croppingBottomFraction fraction: CGFloat
+    ) throws -> KeyboardPreparedImage
+}
+
+extension KeyboardScreenshotPreprocessing {
+    func prepare(
+        _ source: UIImage,
+        croppingBottomFraction fraction: CGFloat
+    ) throws -> KeyboardPreparedImage {
+        try prepare(source)
+    }
 }
 
 extension KeyboardImagePreprocessor: KeyboardScreenshotPreprocessing {}
@@ -271,6 +284,10 @@ final class KeyboardScreenshotAssistCoordinator {
         (_ ownerUserID: String) throws -> KeyboardContextEnvelope?
     typealias DocumentProvider = () -> UUID?
     typealias WorkScheduler = (@escaping () -> Void) -> Void
+    /// Fraction of the capture that our own keyboard covered when a screenshot
+    /// with this creation date was taken. Zero means the keyboard was not on
+    /// screen and nothing may be trimmed.
+    typealias OverlayFractionProvider = (_ capturedAt: Date) -> CGFloat
 
     private enum NetworkOrigin {
         case post
@@ -285,6 +302,7 @@ final class KeyboardScreenshotAssistCoordinator {
     private let sessionProvider: SessionProvider
     private let contextProvider: ContextProvider
     private let documentProvider: DocumentProvider
+    private let overlayFractionProvider: OverlayFractionProvider
     private let now: () -> Date
     private let makeUUID: () -> UUID
     private let schedulePreprocessing: WorkScheduler
@@ -318,6 +336,7 @@ final class KeyboardScreenshotAssistCoordinator {
         sessionProvider: @escaping SessionProvider,
         contextProvider: @escaping ContextProvider,
         documentProvider: @escaping DocumentProvider,
+        overlayFractionProvider: @escaping OverlayFractionProvider = { _ in 0 },
         now: @escaping () -> Date = Date.init,
         makeUUID: @escaping () -> UUID = UUID.init,
         schedulePreprocessing: @escaping WorkScheduler = { work in
@@ -340,6 +359,7 @@ final class KeyboardScreenshotAssistCoordinator {
         self.sessionProvider = sessionProvider
         self.contextProvider = contextProvider
         self.documentProvider = documentProvider
+        self.overlayFractionProvider = overlayFractionProvider
         self.now = now
         self.makeUUID = makeUUID
         self.schedulePreprocessing = schedulePreprocessing
@@ -349,6 +369,7 @@ final class KeyboardScreenshotAssistCoordinator {
 
     convenience init(
         documentProvider: @escaping DocumentProvider,
+        overlayFractionProvider: @escaping OverlayFractionProvider,
         insertText: @escaping (String) -> Void,
         onRender: @escaping (
             KeyboardScreenshotAssistRenderState
@@ -374,6 +395,7 @@ final class KeyboardScreenshotAssistCoordinator {
                 )
             },
             documentProvider: documentProvider,
+            overlayFractionProvider: overlayFractionProvider,
             onRender: onRender
         )
     }
@@ -447,6 +469,15 @@ final class KeyboardScreenshotAssistCoordinator {
                 )
             }
         }
+    }
+
+    /// The preview must describe the same pixels the upload will carry, so it
+    /// goes through the identical trim.
+    private func trimmedPreview(_ screenshot: LatestScreenshot) -> UIImage {
+        KeyboardImagePreprocessor.croppingBottom(
+            screenshot.thumbnail,
+            fraction: overlayFractionProvider(screenshot.creationDate)
+        )
     }
 
     func requestLocalPreview() {
@@ -760,13 +791,19 @@ final class KeyboardScreenshotAssistCoordinator {
                 )
                 return
             }
+            // The overlay fraction is read on the main thread because it comes
+            // from live keyboard geometry; the worker only sees the value.
+            let overlayFraction = self.overlayFractionProvider(
+                currentScreenshot.creationDate
+            )
             self.schedulePreprocessing { [weak self] in
                 guard let self else { return }
                 let verification: Result<KeyboardPreparedImage, Error>
                 do {
                     verification = .success(
                         try self.preprocessor.prepare(
-                            currentScreenshot.thumbnail
+                            currentScreenshot.thumbnail,
+                            croppingBottomFraction: overlayFraction
                         )
                     )
                 } catch {
@@ -1101,7 +1138,7 @@ final class KeyboardScreenshotAssistCoordinator {
             switch result {
             case .success(let screenshot):
                 self.latestScreenshot = screenshot
-                self.previewImage = screenshot.thumbnail
+                self.previewImage = self.trimmedPreview(screenshot)
                 self.stateMachine.send(
                     .screenshotFound(
                         KeyboardScreenshotSummary(
@@ -1229,12 +1266,16 @@ final class KeyboardScreenshotAssistCoordinator {
         let metadata = recovered.metadata
         let workID = makeUUID()
         preprocessingID = workID
+        let overlayFraction = overlayFractionProvider(screenshot.creationDate)
         schedulePreprocessing { [weak self] in
             guard let self else { return }
             let result: Result<KeyboardPreparedImage, Error>
             do {
                 result = .success(
-                    try self.preprocessor.prepare(screenshot.thumbnail)
+                    try self.preprocessor.prepare(
+                        screenshot.thumbnail,
+                        croppingBottomFraction: overlayFraction
+                    )
                 )
             } catch {
                 result = .failure(error)
@@ -1318,7 +1359,7 @@ final class KeyboardScreenshotAssistCoordinator {
                 }
                 self.context = freshContext
                 self.latestScreenshot = screenshot
-                self.previewImage = screenshot.thumbnail
+                self.previewImage = self.trimmedPreview(screenshot)
                 self.preparedImage = prepared
                 self.presentRecoveredPending(
                     recovered,
@@ -1412,13 +1453,15 @@ final class KeyboardScreenshotAssistCoordinator {
         let expectedLifecycle = lifecycleID
         let expectedContextRevision = freshContext?.revision
         setMessage("正在本機壓縮截圖並移除原始中繼資料…")
+        let overlayFraction = overlayFractionProvider(screenshot.creationDate)
         schedulePreprocessing { [weak self] in
             guard let self else { return }
             let result: Result<KeyboardPreparedImage, Error>
             do {
                 result = .success(
                     try self.preprocessor.prepare(
-                        screenshot.thumbnail
+                        screenshot.thumbnail,
+                        croppingBottomFraction: overlayFraction
                     )
                 )
             } catch {
