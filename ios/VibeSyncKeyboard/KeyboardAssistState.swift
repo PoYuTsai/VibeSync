@@ -179,6 +179,10 @@ struct KeyboardAssistStateMachine {
                         binding: binding,
                         options: ready.options,
                         alternates: ready.alternates,
+                        cue: ready.cue,
+                        turnState: ready.turnState,
+                        uncertainty: ready.uncertainty,
+                        messageCount: ready.source.messageCount,
                         presentedAt: presentedAt
                     )
                 )

@@ -89,7 +89,7 @@ void main() {
     final source = binding.readAsStringSync();
     final start = source.indexOf('func swappingBatch()');
     expect(start, greaterThanOrEqualTo(0));
-    final body = _window(source, start, 400);
+    final body = _window(source, start, 700);
 
     expect(body, contains('binding: binding'));
     expect(body, contains('options: alternates'));

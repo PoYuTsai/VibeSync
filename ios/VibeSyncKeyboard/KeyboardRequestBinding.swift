@@ -144,17 +144,31 @@ struct KeyboardResultsPresentation: Equatable {
     /// The second batch, already paid for by the same request. Empty when the
     /// server predates it, in which case there is nothing to swap to.
     let alternates: [KeyboardAssistOption]
+    /// The read of the conversation that came with this result. Carried here so
+    /// the panel can show what the analysis concluded, not just what to send.
+    let cue: String
+    let turnState: KeyboardAssistTurnState
+    let uncertainty: String?
+    let messageCount: Int
     let presentedAt: Date
 
     init(
         binding: KeyboardRequestBinding,
         options: [KeyboardAssistOption],
         alternates: [KeyboardAssistOption] = [],
+        cue: String = "",
+        turnState: KeyboardAssistTurnState = .replyDue,
+        uncertainty: String? = nil,
+        messageCount: Int = 0,
         presentedAt: Date
     ) {
         self.binding = binding
         self.options = options
         self.alternates = alternates
+        self.cue = cue
+        self.turnState = turnState
+        self.uncertainty = uncertainty
+        self.messageCount = messageCount
         self.presentedAt = presentedAt
     }
 
@@ -168,6 +182,10 @@ struct KeyboardResultsPresentation: Equatable {
             binding: binding,
             options: alternates,
             alternates: options,
+            cue: cue,
+            turnState: turnState,
+            uncertainty: uncertainty,
+            messageCount: messageCount,
             presentedAt: presentedAt
         )
     }

@@ -29,6 +29,12 @@ final class KeyboardViewController: UIInputViewController {
     private let screenshotCancelButton = UIButton(type: .system)
     private let screenshotSpeakerRow = UIStackView()
     private let screenshotCandidateStack = UIStackView()
+    private let analysisCard = UIStackView()
+    private let analysisCueLabel = UILabel()
+    private let analysisStateLabel = UILabel()
+    private let analysisUncertaintyLabel = UILabel()
+    private let screenshotSwapButton = UIButton(type: .system)
+    private let voiceButton = UIButton(type: .system)
     private var styleButtons: [KeyboardReplyStyle: UIButton] = [:]
     private var loadedMessage = ""
     private var pendingLegacyReply: PendingLegacyReply?
@@ -39,6 +45,9 @@ final class KeyboardViewController: UIInputViewController {
     private var lastObservedOwnerUserID: String?
     private var screenshotRenderState: KeyboardAssistState = .boot
     private var keyboardVisibleSince: Date?
+    /// nil means "follow whatever the app is set to for this person", which is
+    /// what keeps the keyboard and the app one personality rather than two.
+    private var voiceOverride: KeyboardVoiceName?
     private lazy var replyInsertionCoordinator =
         ReplyInsertionCoordinator { [weak self] text in
             self?.textDocumentProxy.insertText(text)
@@ -178,6 +187,14 @@ final class KeyboardViewController: UIInputViewController {
         mark.font = .systemFont(ofSize: 15, weight: .bold)
         header.addArrangedSubview(mark)
         header.addArrangedSubview(UIView())
+        styleScreenshotButton(voiceButton, color: surface)
+        voiceButton.addTarget(
+            self,
+            action: #selector(cycleVoice),
+            for: .touchUpInside
+        )
+        updateVoiceButton()
+        header.addArrangedSubview(voiceButton)
         header.addArrangedSubview(makeButton("ABC", action: #selector(showTyping)))
         aiPanel.addArrangedSubview(header)
 
@@ -220,7 +237,7 @@ final class KeyboardViewController: UIInputViewController {
         aiPanel.addArrangedSubview(firstRow)
         aiPanel.addArrangedSubview(secondRow)
 
-        statusLabel.text = "只會送出你主動載入的文字"
+        statusLabel.text = "截圖聊天畫面會自動分析；或複製訊息後點「載入」"
         statusLabel.textColor = UIColor.white.withAlphaComponent(0.65)
         statusLabel.font = .systemFont(ofSize: 12)
         statusLabel.textAlignment = .center
@@ -261,6 +278,8 @@ final class KeyboardViewController: UIInputViewController {
         screenshotStatusLabel.textAlignment = .center
         screenshotPanel.addArrangedSubview(screenshotStatusLabel)
 
+        configureAnalysisCard()
+
         screenshotPreviewImageView.contentMode = .scaleAspectFit
         screenshotPreviewImageView.backgroundColor = surface
         screenshotPreviewImageView.layer.cornerRadius = 10
@@ -282,6 +301,16 @@ final class KeyboardViewController: UIInputViewController {
             for: .touchUpInside
         )
         screenshotPanel.addArrangedSubview(screenshotRetryButton)
+
+        screenshotSwapButton.setTitle("換一批", for: .normal)
+        styleScreenshotButton(screenshotSwapButton, color: primary)
+        screenshotSwapButton.addTarget(
+            self,
+            action: #selector(swapCandidateBatch),
+            for: .touchUpInside
+        )
+        screenshotSwapButton.isHidden = true
+        screenshotPanel.addArrangedSubview(screenshotSwapButton)
 
         screenshotSpeakerRow.axis = .horizontal
         screenshotSpeakerRow.spacing = 7
@@ -319,6 +348,174 @@ final class KeyboardViewController: UIInputViewController {
 
         aiPanel.insertArrangedSubview(screenshotPanel, at: 2)
         resetScreenshotControls()
+    }
+
+    /// The analysis is the part a coach owes the user: what is going on, and
+    /// whether it is even their turn. Deliberately three short lines rather
+    /// than a scrollable essay — the keyboard already eats half the screen.
+    private func configureAnalysisCard() {
+        analysisCard.axis = .vertical
+        analysisCard.spacing = 4
+        analysisCard.isHidden = true
+        analysisCard.isLayoutMarginsRelativeArrangement = true
+        analysisCard.layoutMargins = UIEdgeInsets(
+            top: 9,
+            left: 11,
+            bottom: 9,
+            right: 11
+        )
+        analysisCard.backgroundColor = surface
+        analysisCard.layer.cornerRadius = 10
+        analysisCard.layer.masksToBounds = true
+
+        analysisCueLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        analysisCueLabel.textColor = .white
+        analysisCueLabel.numberOfLines = 3
+        analysisCard.addArrangedSubview(analysisCueLabel)
+
+        analysisStateLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        analysisStateLabel.numberOfLines = 1
+        analysisCard.addArrangedSubview(analysisStateLabel)
+
+        analysisUncertaintyLabel.font = .systemFont(ofSize: 11)
+        analysisUncertaintyLabel.textColor =
+            UIColor.white.withAlphaComponent(0.62)
+        analysisUncertaintyLabel.numberOfLines = 2
+        analysisUncertaintyLabel.isHidden = true
+        analysisCard.addArrangedSubview(analysisUncertaintyLabel)
+
+        screenshotPanel.addArrangedSubview(analysisCard)
+    }
+
+    private func renderAnalysisCard(
+        _ presentation: KeyboardResultsPresentation
+    ) {
+        guard !presentation.cue.isEmpty else {
+            analysisCard.isHidden = true
+            return
+        }
+        analysisCard.isHidden = false
+        analysisCueLabel.text = "💡 \(presentation.cue)"
+        switch presentation.turnState {
+        case .replyDue:
+            analysisStateLabel.text =
+                "● 輪到你回 · 讀到 \(presentation.messageCount) 則"
+            analysisStateLabel.textColor = flame
+        case .optionalFollowUp:
+            analysisStateLabel.text =
+                "○ 她沒在等你回 · 讀到 \(presentation.messageCount) 則"
+            analysisStateLabel.textColor =
+                UIColor.white.withAlphaComponent(0.72)
+        }
+        // Saying what we could not read is cheaper than being confidently wrong.
+        if let uncertainty = presentation.uncertainty,
+           !uncertainty.isEmpty
+        {
+            analysisUncertaintyLabel.text = "⚠︎ \(uncertainty)"
+            analysisUncertaintyLabel.isHidden = false
+        } else {
+            analysisUncertaintyLabel.isHidden = true
+        }
+    }
+
+    private func strategyColor(
+        _ strategy: KeyboardAssistStrategy
+    ) -> UIColor {
+        switch strategy {
+        case .keepPace:
+            return UIColor(red: 78/255, green: 132/255, blue: 230/255, alpha: 1)
+        case .buildConnection:
+            return UIColor(red: 214/255, green: 84/255, blue: 168/255, alpha: 1)
+        case .moveForward:
+            return flame
+        case .clarify:
+            return UIColor(red: 96/255, green: 168/255, blue: 132/255, alpha: 1)
+        case .deescalate:
+            return UIColor(red: 120/255, green: 120/255, blue: 156/255, alpha: 1)
+        }
+    }
+
+    /// Three parts per row: what kind of move this is, the line itself, and why
+    /// it works. The third part is the whole difference between a coach and a
+    /// word picker, and it used to be crammed into the button title.
+    private func makeCandidateRow(
+        _ option: KeyboardAssistOption
+    ) -> UIView {
+        let chip = UILabel()
+        chip.text = strategyTitle(option.strategy)
+        chip.font = .systemFont(ofSize: 11, weight: .semibold)
+        chip.textColor = .white
+        chip.textAlignment = .center
+        chip.backgroundColor = strategyColor(option.strategy)
+        chip.layer.cornerRadius = 7
+        chip.layer.masksToBounds = true
+        chip.setContentHuggingPriority(.required, for: .horizontal)
+        chip.setContentCompressionResistancePriority(
+            .required,
+            for: .horizontal
+        )
+        chip.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            chip.widthAnchor.constraint(equalToConstant: 62),
+            chip.heightAnchor.constraint(equalToConstant: 24),
+        ])
+
+        let bubble = UIButton(type: .system)
+        bubble.accessibilityIdentifier = option.candidateID
+        bubble.setTitle(option.text, for: .normal)
+        styleScreenshotButton(bubble, color: primary)
+        bubble.contentHorizontalAlignment = .leading
+        bubble.contentEdgeInsets = UIEdgeInsets(
+            top: 8,
+            left: 11,
+            bottom: 8,
+            right: 11
+        )
+        bubble.addTarget(
+            self,
+            action: #selector(insertScreenshotCandidate(_:)),
+            for: .touchUpInside
+        )
+
+        let caption = UILabel()
+        caption.text = "\(option.why) · \(option.effect)"
+        caption.font = .systemFont(ofSize: 11)
+        caption.textColor = UIColor.white.withAlphaComponent(0.6)
+        caption.numberOfLines = 2
+
+        let column = UIStackView(arrangedSubviews: [bubble, caption])
+        column.axis = .vertical
+        column.spacing = 2
+
+        let row = UIStackView(arrangedSubviews: [chip, column])
+        row.axis = .horizontal
+        row.alignment = .top
+        row.spacing = 7
+        return row
+    }
+
+    private static let voiceCycle: [KeyboardVoiceName?] = [
+        nil,
+        .steady,
+        .direct,
+        .humorous,
+        .gentle,
+        .playful,
+    ]
+
+    private func voiceTitle(_ voice: KeyboardVoiceName?) -> String {
+        guard let voice else { return "風格：跟隨 App" }
+        switch voice {
+        case .steady: return "風格：穩定"
+        case .direct: return "風格：直接"
+        case .humorous: return "風格：幽默"
+        case .gentle: return "風格：溫柔"
+        case .playful: return "風格：俏皮"
+        }
+    }
+
+    private func updateVoiceButton() {
+        voiceButton.setTitle(voiceTitle(voiceOverride), for: .normal)
     }
 
     private func styleScreenshotButton(
@@ -522,8 +719,13 @@ final class KeyboardViewController: UIInputViewController {
             screenshotCancelButton.isHidden = false
         case .resultsPreview(let presentation):
             screenshotPanel.isHidden = false
+            renderAnalysisCard(presentation)
             renderScreenshotCandidates(presentation.options)
             screenshotCandidateStack.isHidden = false
+            // Only offered when a second batch is already paid for.
+            screenshotSwapButton.isHidden = !presentation.canSwapBatch
+            screenshotRetryButton.setTitle("重新分析", for: .normal)
+            screenshotRetryButton.isHidden = false
             screenshotCancelButton.isHidden = false
         case .inserted:
             screenshotPanel.isHidden = false
@@ -532,6 +734,8 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func resetScreenshotControls() {
+        analysisCard.isHidden = true
+        screenshotSwapButton.isHidden = true
         screenshotRetryButton.isHidden = true
         screenshotCancelButton.isHidden = true
         screenshotSpeakerRow.isHidden = true
@@ -548,26 +752,9 @@ final class KeyboardViewController: UIInputViewController {
         _ options: [KeyboardAssistOption]
     ) {
         for option in options {
-            let button = UIButton(type: .system)
-            button.accessibilityIdentifier = option.candidateID
-            button.setTitle(
-                "\(strategyTitle(option.strategy))\n\(option.text)\n\(option.why) · \(option.effect)",
-                for: .normal
+            screenshotCandidateStack.addArrangedSubview(
+                makeCandidateRow(option)
             )
-            styleScreenshotButton(button, color: primary)
-            button.contentHorizontalAlignment = .leading
-            button.contentEdgeInsets = UIEdgeInsets(
-                top: 9,
-                left: 11,
-                bottom: 9,
-                right: 11
-            )
-            button.addTarget(
-                self,
-                action: #selector(insertScreenshotCandidate(_:)),
-                for: .touchUpInside
-            )
-            screenshotCandidateStack.addArrangedSubview(button)
         }
     }
 
@@ -716,7 +903,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         if !screenshotPanel.isHidden {
             if !screenshotCandidateStack.isHidden {
-                preferredContentSize.height = 570
+                preferredContentSize.height = 620
             } else if !screenshotPreviewImageView.isHidden {
                 preferredContentSize.height = 500
             } else {
@@ -751,6 +938,18 @@ final class KeyboardViewController: UIInputViewController {
 
     @objc private func showTyping() { show(.typing) }
     @objc private func showAI() { show(.ai); refreshAvailability() }
+    @objc private func swapCandidateBatch() {
+        screenshotCoordinator.swapBatch()
+    }
+
+    @objc private func cycleVoice() {
+        let cycle = Self.voiceCycle
+        let index = cycle.firstIndex(of: voiceOverride) ?? 0
+        voiceOverride = cycle[(index + 1) % cycle.count]
+        updateVoiceButton()
+        screenshotCoordinator.setVoiceOverride(voiceOverride)
+    }
+
     @objc private func retryScreenshotAssist() {
         invalidatePendingReply()
         switch screenshotRenderState {

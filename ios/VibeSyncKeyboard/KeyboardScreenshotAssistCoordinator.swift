@@ -349,6 +349,9 @@ final class KeyboardScreenshotAssistCoordinator {
     /// its own candidates being read back out of a screenshot.
     private var priorTurn: KeyboardAssistPriorTurn?
     private var priorTurnDocument: UUID?
+    /// nil keeps the person's app-side voice, which is what makes the keyboard
+    /// and the app feel like one coach instead of two products.
+    private var voiceOverride: KeyboardVoiceName?
 
     init(
         network: KeyboardScreenshotAssistNetworking,
@@ -997,6 +1000,12 @@ final class KeyboardScreenshotAssistCoordinator {
         }
         stateMachine.send(.batchSwapped)
         setMessage("換了一批說法；這批和上一批都算同一次分析。")
+    }
+
+    /// Applies to the next analysis only. Changing it never re-sends anything,
+    /// so it cannot cost a second charge.
+    func setVoiceOverride(_ voice: KeyboardVoiceName?) {
+        voiceOverride = voice
     }
 
     var canSwapBatch: Bool {
@@ -1775,7 +1784,11 @@ final class KeyboardScreenshotAssistCoordinator {
                 data: prepared.jpegData.base64EncodedString()
             ),
             speakerOverride: speakerOverride,
-            voice: KeyboardAssistVoice(
+            voice: voiceOverride.map {
+                // An explicit choice replaces the pair outright; a secondary
+                // voice from the app would otherwise quietly dilute it.
+                KeyboardAssistVoice(primary: $0, secondary: nil)
+            } ?? KeyboardAssistVoice(
                 primary: context?.globalVoice.primary,
                 secondary: context?.globalVoice.secondary
             ),
