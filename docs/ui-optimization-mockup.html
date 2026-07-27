@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VibeSync UI 優化示意圖</title>
+<style>
+  /* ---------------------------------------------------------------------
+     VibeSync UI 優化示意圖 — 2026-07-27
+     所有色票取自 lib/core/theme/app_colors.dart 現值，未新增顏色。
+     這是溝通用示意，不是實作。HTML 模擬 Flutter 樣式。
+     --------------------------------------------------------------------- */
+  :root {
+    /* 品牌色票（現值，本輪不改） */
+    --brand-ink:      #150C24;
+    --brand-surface:  #1F1330;
+    --brand-surface2: #2A1840;
+    --cta-start:      #FF6A2B;
+    --cta-end:        #E85A1E;
+    --brand-blush:    #FF2D8B;
+    --coach-accent:   #9D78F5;
+
+    /* 深色上的文字（正確用法） */
+    --on-bg-primary:   #FFFFFF;
+    --on-bg-secondary: #E0D0E8;
+
+    /* glass tokens — 僅供淺色表面 */
+    --glass-white:      #F5F0F8;
+    --glass-border:     #E8E0F0;
+    --glass-text-pri:   #4A3548;
+    --glass-text-sec:   #6C5A6B;
+    --glass-text-hint:  #8B4557;
+
+    --err: #E57373;
+    --ok:  #4CAF50;
+
+    /* 提案 token */
+    --r-pill: 999px;
+    --r-card: 22px;
+    --r-ctrl: 14px;
+    --r-chip: 12px;
+
+    --s-xs: 4px;  --s-sm: 8px;  --s-md: 12px;
+    --s-lg: 16px; --s-xl: 24px; --s-xxl: 32px;
+
+    --dur-micro: 120ms; --dur-short: 220ms; --dur-long: 420ms;
+    --ease-out: cubic-bezier(.16,1,.3,1);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: #0C0716;
+    color: var(--on-bg-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 "PingFang TC", "Noto Sans CJK TC", "Microsoft JhengHei",
+                 sans-serif;
+    line-height: 1.5;
+    padding: 32px 20px 80px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  /* ---------- page header ---------- */
+  header.doc {
+    border-bottom: 1px solid rgba(255,255,255,.12);
+    padding-bottom: 24px; margin-bottom: 40px;
+  }
+  header.doc h1 { font-size: 30px; font-weight: 800; letter-spacing:-.02em; }
+  header.doc .sub {
+    color: var(--on-bg-secondary); font-size: 14px; margin-top: 8px;
+    max-width: 76ch;
+  }
+  .pillrow { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+  .tag {
+    font-size:12px; padding:5px 12px; border-radius:var(--r-pill);
+    border:1px solid rgba(255,255,255,.16); color:var(--on-bg-secondary);
+    background: rgba(255,255,255,.05);
+  }
+  .tag.warn { border-color: rgba(229,115,115,.5); color:#F3B0B0; }
+  .tag.ok   { border-color: rgba(76,175,80,.45);  color:#A9DDAB; }
+
+  /* ---------- section ---------- */
+  section { margin-bottom: 56px; }
+  .sec-head { display:flex; align-items:baseline; gap:12px; margin-bottom:6px; }
+  .sec-num {
+    font-size:12px; font-weight:800; letter-spacing:.12em;
+    color: var(--cta-start);
+  }
+  .sec-head h2 { font-size:20px; font-weight:800; letter-spacing:-.01em; }
+  .sec-note {
+    font-size:13px; color:var(--on-bg-secondary); margin-bottom:20px;
+    max-width: 82ch;
+  }
+  code.src {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size:11.5px; color:#C9B8D8; background:rgba(255,255,255,.06);
+    padding:2px 6px; border-radius:5px; white-space:nowrap;
+  }
+
+  /* ---------- before / after grid ---------- */
+  .ba {
+    display:grid; grid-template-columns: 1fr 1fr; gap:18px;
+  }
+  @media (max-width: 780px) { .ba { grid-template-columns: 1fr; } }
+
+  .panel {
+    border-radius: var(--r-card);
+    border: 1px solid rgba(255,255,255,.10);
+    background: linear-gradient(140deg,
+                rgba(42,24,64,.90), rgba(31,19,48,.96));
+    padding: 18px;
+    min-width: 0;
+  }
+  .panel.before { border-color: rgba(229,115,115,.30); }
+  .panel.after  { border-color: rgba(76,175,80,.30); }
+
+  .plabel {
+    font-size:11px; font-weight:800; letter-spacing:.1em;
+    text-transform:uppercase; margin-bottom:14px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .panel.before .plabel { color:#F3B0B0; }
+  .panel.after  .plabel { color:#A9DDAB; }
+  .plabel .cnt {
+    font-weight:600; letter-spacing:0; text-transform:none;
+    color: var(--on-bg-secondary); font-size:11.5px;
+  }
+
+  .demo { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  .demo.col { flex-direction:column; align-items:stretch; }
+
+  /* ---------- 1. radius ---------- */
+  .rchip {
+    display:flex; align-items:center; justify-content:center;
+    width:60px; height:44px; font-size:11px; font-weight:700;
+    background: var(--brand-surface2);
+    border:1px solid rgba(255,255,255,.14);
+    color: var(--on-bg-secondary);
+  }
+
+  /* ---------- 2. spacing ---------- */
+  .sbar { display:flex; align-items:flex-end; gap:8px; height:70px; }
+  .sbar div {
+    background: linear-gradient(180deg, var(--cta-start), var(--cta-end));
+    border-radius:4px; width:26px;
+    display:flex; align-items:flex-start; justify-content:center;
+    font-size:9.5px; font-weight:700; color:#2A1206; padding-top:2px;
+  }
+  .sbar.messy div { background: linear-gradient(180deg,#7A6A88,#4A3D57); color:#DDD; }
+
+  /* ---------- 3. elevation ---------- */
+  .elev {
+    padding:14px 16px; border-radius:var(--r-ctrl); font-size:13px;
+    font-weight:700; text-align:center; flex:1; min-width:120px;
+  }
+  .elev.glow {
+    background: linear-gradient(135deg, var(--cta-start), var(--cta-end));
+    box-shadow: 0 9px 18px rgba(255,106,43,.30),
+                0 0 26px rgba(255,45,139,.22);
+  }
+  .elev.glow2 {
+    background: var(--brand-surface2);
+    box-shadow: 0 8px 22px rgba(157,120,245,.34),
+                0 0 18px rgba(255,45,139,.20);
+    border:1px solid rgba(255,255,255,.10);
+  }
+  .elev.lift1 { background:#241738; border:1px solid rgba(255,255,255,.08); }
+  .elev.lift2 { background:#2E1F46; border:1px solid rgba(255,255,255,.10); }
+  .elev.lift3 {
+    background:#392856; border:1px solid rgba(255,255,255,.12);
+    box-shadow: 0 1px 2px rgba(0,0,0,.45);
+  }
+
+  /* ---------- 4. contrast ---------- */
+  .ctile {
+    padding:14px 16px; border-radius:var(--r-ctrl);
+    background: var(--brand-surface); border:1px solid rgba(255,255,255,.08);
+  }
+  .ctile .t { font-size:15px; font-weight:700; }
+  .ctile .s { font-size:12.5px; margin-top:3px; }
+  .bad-pri  { color: var(--glass-text-pri); }
+  .bad-hint { color: var(--glass-text-hint); }
+  .good-pri { color: var(--on-bg-primary); }
+  .good-sec { color: var(--on-bg-secondary); }
+  .ratio {
+    font-family: ui-monospace, Menlo, monospace; font-size:11px;
+    padding:2px 7px; border-radius:var(--r-pill); font-weight:700;
+    margin-left:8px;
+  }
+  .ratio.fail { background:rgba(229,115,115,.20); color:#F3B0B0; }
+  .ratio.pass { background:rgba(76,175,80,.18);  color:#A9DDAB; }
+
+  .island {
+    background: var(--glass-white); border:1px solid var(--glass-border);
+    border-radius: var(--r-card); padding:14px 16px;
+  }
+  .island .t { color: var(--glass-text-pri); font-weight:800; font-size:15px; }
+  .island .s { color: var(--glass-text-sec); font-size:12.5px; margin-top:3px; }
+
+  /* ---------- 5. eight states ---------- */
+  .states { display:grid; grid-template-columns:repeat(2,1fr); gap:9px; }
+  .btn {
+    border-radius: var(--r-pill); padding:11px 14px; font-size:12.5px;
+    font-weight:800; text-align:center; color:#fff;
+    background: linear-gradient(90deg, var(--cta-start), var(--cta-end));
+    border:1px solid transparent; position:relative;
+  }
+  .btn .nm {
+    position:absolute; top:-8px; left:10px; font-size:9px; font-weight:700;
+    letter-spacing:.08em; color:var(--on-bg-secondary);
+    background:#1A1029; padding:0 5px; border-radius:3px;
+  }
+  .btn.hover  { filter:brightness(1.10); }
+  .btn.focus  { outline:3px solid #9BE7FF; outline-offset:2px; }
+  .btn.active { transform:scale(.98); filter:brightness(.94); }
+  .btn.disabled {
+    background: linear-gradient(90deg,#5A5560,#46424D);
+    color: rgba(255,255,255,.70);
+  }
+  .btn.loading { color: transparent; }
+  .btn.loading::after {
+    content:""; position:absolute; inset:0; margin:auto;
+    width:15px; height:15px; border-radius:50%;
+    border:2.4px solid rgba(255,255,255,.35); border-top-color:#fff;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .btn.error   { background:linear-gradient(90deg,#E57373,#C75B5B); }
+  .btn.success { background:linear-gradient(90deg,#4CAF50,#3B9440); }
+  .btn.missing {
+    background: repeating-linear-gradient(45deg,
+      #3A2F49, #3A2F49 6px, #2E2539 6px, #2E2539 12px);
+    color: rgba(255,255,255,.42); border:1px dashed rgba(255,255,255,.22);
+  }
+
+  /* ---------- 6. loading ---------- */
+  .spin-demo {
+    height:120px; display:flex; align-items:center; justify-content:center;
+    background: var(--brand-surface); border-radius: var(--r-ctrl);
+    border:1px solid rgba(255,255,255,.07);
+  }
+  .spinner {
+    width:26px; height:26px; border-radius:50%;
+    border:2.6px solid rgba(255,255,255,.22); border-top-color: var(--cta-start);
+    animation: spin .8s linear infinite;
+  }
+  .skel { display:flex; flex-direction:column; gap:9px; }
+  .skel .row {
+    height:13px; border-radius:6px;
+    background: linear-gradient(90deg,
+      rgba(255,255,255,.06) 25%, rgba(255,255,255,.13) 37%,
+      rgba(255,255,255,.06) 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+  @keyframes shimmer { 0%{background-position:100% 0} 100%{background-position:0 0} }
+  .skel .row.w40 { width:40%; } .skel .row.w70 { width:70%; }
+  .skel .row.tall { height:38px; border-radius:10px; }
+
+  /* ---------- 7. numerals ---------- */
+  .num {
+    font-size:30px; font-weight:800; letter-spacing:.01em;
+  }
+  .num.tab { font-variant-numeric: tabular-nums; font-feature-settings:"tnum" 1; }
+  .num.prop { font-variant-numeric: proportional-nums; font-feature-settings:"pnum" 1; }
+  .numlist { display:flex; flex-direction:column; gap:2px; }
+  .numlist span { display:flex; justify-content:space-between; font-size:13px; }
+  .numlist b { font-weight:700; }
+
+  /* ---------- 8. three-piece ---------- */
+  .state3 {
+    background: var(--brand-surface); border-radius: var(--r-card);
+    border:1px solid rgba(255,255,255,.09);
+    padding:22px 18px; text-align:center;
+  }
+  .state3 .ic {
+    width:42px; height:42px; border-radius:14px; margin:0 auto 10px;
+    display:flex; align-items:center; justify-content:center; font-size:20px;
+    background: linear-gradient(135deg, var(--cta-start), var(--brand-blush));
+  }
+  .state3 .ic.err { background: linear-gradient(135deg,#E57373,#C75B5B); }
+  .state3 .h { font-size:14.5px; font-weight:800; }
+  .state3 .p {
+    font-size:12.5px; color:var(--on-bg-secondary); margin-top:5px;
+    line-height:1.5;
+  }
+  .state3 .cta {
+    margin-top:14px; display:inline-block; padding:9px 20px;
+    border-radius: var(--r-pill); font-size:12.5px; font-weight:800;
+    background: linear-gradient(90deg, var(--cta-start), var(--cta-end));
+  }
+  .adhoc {
+    background: var(--brand-surface); border-radius: var(--r-card);
+    border:1px solid rgba(255,255,255,.09); padding:22px 18px;
+    text-align:center; color: var(--glass-text-hint); font-size:13px;
+  }
+  .adhoc .raw {
+    font-family: ui-monospace, Menlo, monospace; font-size:10.5px;
+    color:#F3B0B0; margin-top:8px; word-break:break-all; text-align:left;
+    background:rgba(229,115,115,.10); padding:8px; border-radius:8px;
+  }
+
+  /* ---------- phone frames ---------- */
+  .phones {
+    display:flex; gap:28px; flex-wrap:wrap; justify-content:center;
+  }
+  .phonewrap { text-align:center; }
+  .phonewrap > .cap {
+    font-size:11px; font-weight:800; letter-spacing:.1em;
+    text-transform:uppercase; margin-bottom:10px;
+  }
+  .phonewrap.before > .cap { color:#F3B0B0; }
+  .phonewrap.after  > .cap { color:#A9DDAB; }
+  .phone {
+    width:390px; height:600px; border-radius:34px; overflow:hidden;
+    position:relative; border:1px solid rgba(255,255,255,.14);
+    background: linear-gradient(180deg,
+      var(--brand-ink) 0%, var(--brand-surface) 58%, var(--brand-surface2) 100%);
+    text-align:left; display:flex; flex-direction:column;
+  }
+  @media (max-width: 460px) { .phone { width:100%; } }
+
+  /* bokeh orbs — only in BEFORE */
+  .orb { position:absolute; border-radius:50%; filter:blur(38px); }
+  .orb.a { width:190px; height:190px; background:var(--brand-blush);
+           opacity:.34; top:-40px; left:-40px; animation:drift1 14s ease-in-out infinite alternate; }
+  .orb.b { width:160px; height:160px; background:var(--cta-start);
+           opacity:.30; top:120px; right:-56px; animation:drift2 18s ease-in-out infinite alternate; }
+  .orb.c { width:180px; height:180px; background:#FFB34D;
+           opacity:.24; bottom:-50px; left:60px; animation:drift1 20s ease-in-out infinite alternate; }
+  @keyframes drift1 { to { transform:translate(26px,22px) scale(1.14); } }
+  @keyframes drift2 { to { transform:translate(-30px,18px) scale(1.10); } }
+
+  .pbar {
+    position:relative; z-index:2; padding:14px 18px 10px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .pbar .brand { font-size:19px; font-weight:800; display:flex; align-items:center; gap:6px; }
+  .pbar .dot { width:7px; height:7px; border-radius:50%; background:var(--cta-start); }
+  .pbar .gear { opacity:.75; font-size:16px; }
+
+  .plist { position:relative; z-index:2; padding:6px 16px; overflow:hidden; flex:1; }
+
+  /* BEFORE tile — bare ListTile, glass text on dark */
+  .tile-before {
+    display:flex; gap:12px; align-items:center; padding:13px 6px;
+    border-bottom:1px solid rgba(255,255,255,.05);
+  }
+  .tile-before .av {
+    width:42px; height:42px; border-radius:50%; flex:none;
+    background:linear-gradient(135deg,#FFD54F,#FFC107);
+    display:flex; align-items:center; justify-content:center;
+    color:#000; font-weight:800; font-size:16px;
+  }
+  .tile-before .nm { font-size:16px; font-weight:600; color:var(--glass-text-pri); }
+  .tile-before .mt { font-size:12px; color:var(--glass-text-hint); margin-top:2px; }
+  .tile-before .sc { margin-left:auto; font-size:13px; font-weight:700; color:var(--glass-text-hint); }
+
+  /* AFTER tile — BrandSurfaceCard, correct on-dark text */
+  .tile-after {
+    display:flex; gap:12px; align-items:center;
+    padding:14px 16px; margin-bottom:10px;
+    border-radius: var(--r-card);
+    background: linear-gradient(140deg, rgba(42,24,64,.90), rgba(31,19,48,.96));
+    border:1px solid rgba(255,255,255,.10);
+    box-shadow: 0 1px 2px rgba(0,0,0,.40);
+  }
+  .tile-after .av {
+    width:42px; height:42px; border-radius:50%; flex:none;
+    background:linear-gradient(135deg,#FFD54F,#FFC107);
+    display:flex; align-items:center; justify-content:center;
+    color:#2A1206; font-weight:800; font-size:16px;
+  }
+  .tile-after .nm { font-size:16px; font-weight:700; color:var(--on-bg-primary); }
+  .tile-after .mt { font-size:12px; color:var(--on-bg-secondary); margin-top:2px; opacity:.86; }
+  .tile-after .sc {
+    margin-left:auto; font-size:15px; font-weight:800;
+    color:var(--on-bg-primary); font-variant-numeric: tabular-nums;
+  }
+
+  .pnav {
+    position:relative; z-index:2; margin-top:auto;
+    background: rgba(21,12,36,.94);
+    border-top:1px solid rgba(255,255,255,.08);
+    display:flex; justify-content:space-evenly; padding:10px 0 14px;
+  }
+  .pnav .it {
+    display:flex; align-items:center; gap:7px; padding:10px 15px;
+    border-radius: var(--r-pill); font-size:12px; font-weight:700;
+    color: rgba(255,255,255,.66);
+  }
+  .pnav .it.on {
+    background: linear-gradient(90deg, var(--cta-start), var(--cta-end));
+    color:#fff;
+  }
+  .pnav .it.on.glow { box-shadow: 0 8px 18px rgba(255,106,43,.28); }
+
+  .annot {
+    margin-top:12px; font-size:11.5px; color:var(--on-bg-secondary);
+    max-width:390px; text-align:left; line-height:1.6;
+  }
+  .annot b { color:#fff; }
+
+  /* ---------- footer note ---------- */
+  .foot {
+    border-top:1px solid rgba(255,255,255,.12); padding-top:22px;
+    font-size:12.5px; color:var(--on-bg-secondary); line-height:1.7;
+  }
+  .foot b { color:#fff; }
+  table.legend { border-collapse:collapse; width:100%; margin-top:12px; font-size:12px; }
+  table.legend td, table.legend th {
+    border:1px solid rgba(255,255,255,.10); padding:7px 10px; text-align:left;
+  }
+  table.legend th { background:rgba(255,255,255,.05); font-weight:700; }
+  .scroller { overflow-x:auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="doc">
+    <h1>VibeSync UI 優化示意圖</h1>
+    <p class="sub">
+      2026-07-27 · 對照基準 <code class="src">lib/core/theme/app_colors.dart</code> 現值 ·
+      畫布 390×844 對齊 <code class="src">test/visual_proof/proof_support.dart:101</code> 的 <code class="src">kPhone</code>。
+      本頁是溝通用示意，不是實作；HTML 模擬 Flutter 樣式。
+      <b>暖紫橘品牌不變</b> — 每一組 After 都使用與 Before 完全相同的色票，只改結構紀律。
+    </p>
+    <div class="pillrow">
+      <span class="tag ok">品牌方向：保留暖色，內部套紀律</span>
+      <span class="tag ok">範圍：地基 + 一致性掃除</span>
+      <span class="tag warn">不含 analysis_screen 拆解</span>
+      <span class="tag warn">不含完整 BrandKit 遷移</span>
+      <span class="tag">標準來源：Nutlope/hallmark（設計規則集）</span>
+    </div>
+  </header>
+
+  <!-- ============ 1. RADIUS ============ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><h2>圓角尺度</h2></div>
+    <p class="sec-note">
+      實測全 <code class="src">lib/</code> 有 <b>20 種</b>不同圓角值並存（999/12/14/8/16/18/20/10/24/22/11/4/99/7/6/28/9/2/15/13）。
+      提案收斂為 4 種，數值取自現有最高使用頻次，因此多數畫面外觀不變。
+    </p>
+    <div class="ba">
+      <div class="panel before">
+        <div class="plabel">Before <span class="cnt">20 種圓角，無 token</span></div>
+        <div class="demo">
+          <div class="rchip" style="border-radius:2px">2</div>
+          <div class="rchip" style="border-radius:6px">6</div>
+          <div class="rchip" style="border-radius:8px">8</div>
+          <div class="rchip" style="border-radius:11px">11</div>
+          <div class="rchip" style="border-radius:12px">12</div>
+          <div class="rchip" style="border-radius:14px">14</div>
+          <div class="rchip" style="border-radius:16px">16</div>
+          <div class="rchip" style="border-radius:18px">18</div>
+          <div class="rchip" style="border-radius:20px">20</div>
+          <div class="rchip" style="border-radius:22px">22</div>
+          <div class="rchip" style="border-radius:24px">24</div>
+          <div class="rchip" style="border-radius:28px">28</div>
+          <div class="rchip" style="border-radius:999px">999</div>
+        </div>
+      </div>
+      <div class="panel after">
+        <div class="plabel">After <span class="cnt">4 種，AppRadius</span></div>
+        <div class="demo">
+          <div class="rchip" style="border-radius:999px">pill<br>999</div>
+          <div class="rchip" style="border-radius:22px">card<br>22</div>
+          <div class="rchip" style="border-radius:14px">ctrl<br>14</div>
+          <div class="rchip" style="border-radius:12px">chip<br>12</div>
+        </div>
+        <p style="font-size:11.5px;color:var(--on-bg-secondary);margin-top:12px">
+          card 22 直接對齊 <code class="src">BrandSurfaceCard</code> 現值；pill 999 已是最高頻（66 次）。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2. SPACING ============ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span><h2>間距尺度</h2></div>
+    <p class="sec-note">
+      <b>546 個</b> <code class="src">EdgeInsets</code> 字面值，7 種卡片內距並存
+      （<code class="src">all(16)</code>×50、<code class="src">all(12)</code>×40、<code class="src">all(14)</code>×30、
+      <code class="src">all(18)</code>×14、<code class="src">all(24)</code>×11、<code class="src">all(20)</code>×10、<code class="src">all(10)</code>×10）。
+      現有分佈本來就聚在 4 的倍數附近，收斂成本低。
+    </p>
+    <div class="ba">
+      <div class="panel before">
+        <div class="plabel">Before <span class="cnt">無尺度，字面值散佈</span></div>
+        <div class="sbar messy">
+          <div style="height:10px">2</div><div style="height:18px">3</div>
+          <div style="height:22px">5</div><div style="height:26px">6</div>
+          <div style="height:32px">7</div><div style="height:38px">9</div>
+          <div style="height:44px">10</div><div style="height:50px">11</div>
+          <div style="height:56px">14</div><div style="height:62px">18</div>
+          <div style="height:68px">22</div>
+        </div>
+      </div>
+      <div class="panel after">
+        <div class="plabel">After <span class="cnt">6 級 4pt scale</span></div>
+        <div class="sbar">
+          <div style="height:12px">4</div><div style="height:24px">8</div>
+          <div style="height:36px">12</div><div style="height:48px">16</div>
+          <div style="height:60px">24</div><div style="height:70px">32</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 3. ELEVATION ============ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><h2>深色層級：發光 → 亮度</h2></div>
+    <p class="sec-note">
+      實測 <b>62 個 <code class="src">BoxShadow</code> 中 28 個是橘/粉發光</b>，54 處 <code class="src">boxShadow:</code> 多為堆疊。
+      hallmark 將 <i>shadow-glow on dark</i> 列為 Major 反模式，其處方是「深色表面用<b>亮度</b>表達層級，每級約 +3% lightness」。
+      這同時是效能修正：發光陰影是全螢幕模糊，滾動時重繪成本高。
+    </p>
+    <div class="ba">
+      <div class="panel before">
+        <div class="plabel">Before <span class="cnt">彩色發光 + 堆疊陰影</span></div>
+        <div class="demo">
+          <div class="elev glow">主要 CTA</div>
+          <div class="elev glow2">選取卡片</div>
+        </div>
+      </div>
+      <div class="panel after">
+        <div class="plabel">After <span class="cnt">亮度階層 + 單一 hairline</span></div>
+        <div class="demo">
+          <div class="elev lift1">層 1</div>
+          <div class="elev lift2">層 2</div>
+          <div class="elev lift3">層 3</div>
+        </div>
+        <p style="font-size:11.5px;color:var(--on-bg-secondary);margin-top:12px">
+          CTA 仍是橘漸層（品牌不變），只是不再外掛光暈。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 4. CONTRAST ============ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">04</span><h2>文字對比：glass token 用錯表面</h2></div>
+    <p class="sec-note">
+      這是全案最重要的一組，也是 2026-06-09 audit Decision #1 的實質內容。
+      關鍵在於<b>區分兩種情況</b> —— 不是所有 glass token 都要改。
+      對比值以 WCAG 公式實算，底色為 <code class="src">brandSurface #1F1330</code>。
+    </p>
+    <div class="ba">
+      <div class="panel before">
+        <div class="plabel">Before <span class="cnt">(b) 真失敗 — 11 檔命中</span></div>
+        <div class="demo col">
+          <div class="ctile">
+            <div class="t bad-pri">小雨<span class="ratio fail">1.59:1</span></div>
+            <div class="s bad-hint">3 天前 · 溫度回升中<span class="ratio fail">2.58:1</span></div>
+          </div>
+        </div>
+        <p style="font-size:11.5px;color:var(--on-bg-secondary);margin-top:12px">
+          代表檔：<code class="src">conversation_tile.dart:74,80,104</code> — 裸 <code class="src">ListTile</code>，
+          無自身表面，卻用 <code class="src">glassTextPrimary</code>／<code class="src">glassTextHint</code>。
+          落在深色漸層上遠低於 4.5:1。
+        </p>
+      </div>
+      <div class="panel after">
+        <div class="plabel">After <span class="cnt">改用 onBackground*</span></div>
+        <div class="demo col">
+          <div class="ctile">
+            <div class="t good-pri">小雨<span class="ratio pass">17.6:1</span></div>
+            <div class="s good-sec">3 天前 · 溫度回升中<span class="ratio pass">12.0:1</span></div>
+          </div>
+        </div>
+        <p style="font-size:11.5px;color:var(--on-bg-secondary);margin-top:12px">
+          色票未新增：<code class="src">onBackgroundPrimary</code> / <code class="src">onBackgroundSecondary</code> 都已存在於 <code class="src">app_colors.dart:74,75</code>。
+        </p>
+      </div>
+    </div>
+
+    <div class="ba" style="margin-top:18px">
+      <div class="panel after" style="grid-column:1 / -1; border-color:rgba(157,120,245,.38)">
+        <div class="plabel" style="color:#C9AEFF">
+          反例 — (a) 合法淺色島，<b>不要改</b>
+        </div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+          <div class="island" style="flex:1;min-width:240px">
+            <div class="t">確定要刪除這段對話？</div>
+            <div class="s">刪除後無法復原，分析紀錄會一併移除。</div>
+          </div>
+          <p style="flex:1.4;min-width:260px;font-size:12px;color:var(--on-bg-secondary);line-height:1.65">
+            <code class="src">BrandAlertDialog</code>（<code class="src">brand_dialog.dart:24,73</code>）<b>刻意</b>用
+            <code class="src">glassWhite</code> 當表面，再配 <code class="src">glassTextPrimary</code> 文字 —
+            深底上浮一張淺色卡，本身自洽、對比合格。<code class="src">GlassmorphicContainer</code>
+            預設 <code class="src">color: glassWhite</code> 同理。
+            <br><br>
+            <b>因此 Phase 3 必須逐檔判定，不能全域取代。</b>
+            這也是本示意圖希望 Codex 重點攻擊的假設之一。
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 5. EIGHT STATES ============ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">05</span><h2>互動 8 態</h2></div>
+    <p class="sec-note">
+      hallmark：「每個互動元件有八個狀態。多數 AI 生成的 UI 只做兩個。」
+      實測 VibeSync：<b>focus 0 個</b>、<b>pressed 2 個</b>。
+      focus 缺席同時是無障礙問題（外接鍵盤、切換控制）。
+    </p>
+    <div class="ba">
+      <div class="panel before">
+        <div class="plabel">Before <span class="cnt">實作 2 / 8</span></div>
+        <div class="states">
+          <div class="btn"><span class="nm">DEFAULT</span>開始分析</div>
+          <div class="btn disabled"><span class="nm">DISABLED</span>開始分析</div>
+          <div class="btn missing"><span class="nm">HOVER</span>未定義</div>
+          <div class="btn missing"><span class="nm">FOCUS</span>未定義</div>
+          <div class="btn missing"><span class="nm">ACTIVE</span>未定義</div>
+          <div class="btn loading"><span class="nm">LOADING</span>載入</div>
+          <div class="btn missing"><span class="nm">ERROR</span>未定義</div>
+          <div class="btn missing"><span class="nm">SUCCESS</span>未定義</div>
+        </div>
+      </div>
+      <div class="panel after">
+        <div class="plabel">After <span class="cnt">8 / 8</span></div>
+        <div class="states">
+          <div class="btn"><span class="nm">DEFAULT</span>開始分析</div>
+          <div class="btn hover"><span class="nm">HOVER</span>開始分析</div>
+          <div class="btn focus"><span class="nm">FOCUS</span>開始分析</div>
+          <div class="btn active"><span class="nm">ACTIVE</span>開始分析</div>
+          <div class="btn disabled"><span class="nm">DISABLED</span>開始分析</div>
+          <div class="btn loading"><span class="nm">LOADING</span>載入</div>
+          <div class="btn error"><span class="nm">ERROR</span>再試一次</div>
+          <div class="btn success"><span class="nm">SUCCESS</span>已完成</div>
+        </div>
+        <p style="font-size:11.5px;color:var(--on-bg-secondary);margin-top:12px">
+          focus ring 2–3px、對比 ≥3:1、<b>不做進出動畫</b>；press <code class="src">scale(0.98)</code>，
+          120ms in / 150ms out。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 6. LOADING ============ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">06</span><h2>載入態</h2></div>
+    <p class="sec-note">
+      <code class="src">skeletonizer: ^2.1.3</code> 已是 <code class="src">pubspec.yaml</code> 的付費依賴，
+      但全 repo <b>只用 1 處</b>（<code class="src">about_me_card.dart:55</code>）；另有 <b>30 個裸
+      <code class="src">CircularProgressIndicator</code></b>。
+      hallmark 的兩條規則：版型已知就用 skeleton；spinner 要 <b>150ms delay-show + 300ms min-duration</b>，
+      避免快動作時閃一下。
+    </p>
+    <div class="ba">
+      <div class="panel before">
+        <div class="plabel">Before <span class="cnt">裸 spinner ×30，會閃</span></div>
+        <div class="spin-demo"><div class="spinner"></div></div>
+      </div>
+      <div class="panel after">
+        <div class="plabel">After <span class="cnt">skeleton，版型不跳動</span></div>
+        <div class="skel" style="padding:14px;background:var(--brand-surface);border-radius:var(--r-ctrl);border:1px solid rgba(255,255,255,.07)">
+          <div class="row w40"></div>
+          <div class="row tall"></div>
+          <div class="row w70"></div>
+          <div class="row w40"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 7. NUMERALS ============ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">07</span><h2>數字：等寬字形</h2></div>
+    <p class="sec-note">
+      全 repo <code class="src">FontFeature.tabularFigures()</code> 使用次數 <b>0</b>。
+      VibeSync 到處顯示投入度分數、練習溫度、額度、計數 —— 比例字形會讓數字在動畫遞增時左右抖動。
+      這是 hallmark 明列的 Major 反模式 <i>missing tabular-nums</i>。
+    </p>
+    <div class="ba">
+      <div class="panel before">
+        <div class="plabel">Before <span class="cnt">比例字形，寬度會跳</span></div>
+        <div class="num prop">投入度 68 → 71 → 74</div>
+        <div class="numlist prop" style="margin-top:14px;font-variant-numeric:proportional-nums">
+          <span><i>本月分析</i><b>111 則</b></span>
+          <span><i>剩餘額度</i><b>18 則</b></span>
+          <span><i>練習場次</i><b>747 場</b></span>
+        </div>
+      </div>
+      <div class="panel after">
+        <div class="plabel">After <span class="cnt">tabular figures，數字對齊</span></div>
+        <div class="num tab">投入度 68 → 71 → 74</div>
+        <div class="numlist tab" style="margin-top:14px;font-variant-numeric:tabular-nums">
+          <span><i>本月分析</i><b>111 則</b></span>
+          <span><i>剩餘額度</i><b>18 則</b></span>
+          <span><i>練習場次</i><b>747 場</b></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 8. THREE-PIECE ============ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">08</span><h2>空 / 錯 / 載入 三件套</h2></div>
+    <p class="sec-note">
+      現況：Empty 在 <b>8 個檔案各自手刻</b>；Error <b>只有一個</b>且是 analysis 專用
+      （<code class="src">analysis_error_widget.dart</code>，192 行，全 repo 品質最好的錯誤態）。
+      提案以它為藍本泛化。hallmark 的空狀態三件套：小圖示 + 一行「為什麼是空的」+ 一個修復動作。
+    </p>
+    <div class="ba">
+      <div class="panel before">
+        <div class="plabel">Before <span class="cnt">各自手刻，會漏原始錯誤</span></div>
+        <div class="demo col">
+          <div class="adhoc">尚無資料</div>
+          <div class="adhoc" style="color:#F3B0B0">
+            發生錯誤
+            <div class="raw">Exception: FormatException: Unexpected character (at character 1)</div>
+          </div>
+        </div>
+        <p style="font-size:11.5px;color:var(--on-bg-secondary);margin-top:12px">
+          對應 audit DATA-01 / DATA-05：永不得把原始 exception 字串顯示給使用者。
+        </p>
+      </div>
+      <div class="panel after">
+        <div class="plabel">After <span class="cnt">3 個共用元件</span></div>
+        <div class="demo col">
+          <div class="state3">
+            <div class="ic">＋</div>
+            <div class="h">還沒有聊天對象</div>
+            <div class="p">加一個對象，教練就能開始記住她的節奏。</div>
+            <span class="cta">新增對象</span>
+          </div>
+          <div class="state3">
+            <div class="ic err">！</div>
+            <div class="h">這次沒讀完整</div>
+            <div class="p">網路中斷了，這次不會扣你的額度。</div>
+            <span class="cta">再試一次</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FULL PAGE ============ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">09</span><h2>全頁示意：首頁對象列表</h2></div>
+    <p class="sec-note">
+      取對比問題最明確的 <code class="src">conversation_tile</code> 所在列表。
+      左右使用<b>完全相同的品牌漸層與橘色 CTA</b> —— 差別只在文字色是否正確、層級是否用亮度表達、
+      背景光球是否常駐動畫。這張圖的目的就是證明「只變乾淨、沒變品牌」。
+    </p>
+    <div class="phones">
+      <div class="phonewrap before">
+        <div class="cap">Before — 現況</div>
+        <div class="phone">
+          <div class="orb a"></div><div class="orb b"></div><div class="orb c"></div>
+          <div class="pbar">
+            <div class="brand">VibeSync<span class="dot"></span></div>
+            <div class="gear">⚙</div>
+          </div>
+          <div class="plist">
+            <div class="tile-before">
+              <div class="av">雨</div>
+              <div><div class="nm">小雨</div><div class="mt">3 天前 · 溫度回升中</div></div>
+              <div class="sc">74</div>
+            </div>
+            <div class="tile-before">
+              <div class="av">安</div>
+              <div><div class="nm">安安</div><div class="mt">昨天 · 剛破冰</div></div>
+              <div class="sc">51</div>
+            </div>
+            <div class="tile-before">
+              <div class="av">Y</div>
+              <div><div class="nm">Yuki</div><div class="mt">1 週前 · 需要跟進</div></div>
+              <div class="sc">8</div>
+            </div>
+          </div>
+          <div class="pnav">
+            <div class="it on glow">🏠 首頁</div>
+            <div class="it">📊</div>
+            <div class="it">📖</div>
+          </div>
+        </div>
+        <p class="annot">
+          <b>問題：</b>對象名 1.59:1、時間 2.58:1（實質不可讀）· 3 顆 bokeh 光球由
+          <b>3 個永久 <code class="src">repeat()</code> controller</b> 常駐驅動 ·
+          分頁膠囊外掛橘色光暈 · 分數用比例字形，動畫時抖動 · 列表無層級，只有分隔線。
+        </p>
+      </div>
+
+      <div class="phonewrap after">
+        <div class="cap">After — 提案</div>
+        <div class="phone">
+          <div class="pbar">
+            <div class="brand">VibeSync<span class="dot"></span></div>
+            <div class="gear">⚙</div>
+          </div>
+          <div class="plist">
+            <div class="tile-after">
+              <div class="av">雨</div>
+              <div><div class="nm">小雨</div><div class="mt">3 天前 · 溫度回升中</div></div>
+              <div class="sc">74</div>
+            </div>
+            <div class="tile-after">
+              <div class="av">安</div>
+              <div><div class="nm">安安</div><div class="mt">昨天 · 剛破冰</div></div>
+              <div class="sc">51</div>
+            </div>
+            <div class="tile-after">
+              <div class="av">Y</div>
+              <div><div class="nm">Yuki</div><div class="mt">1 週前 · 需要跟進</div></div>
+              <div class="sc">8</div>
+            </div>
+          </div>
+          <div class="pnav">
+            <div class="it on">🏠 首頁</div>
+            <div class="it">📊</div>
+            <div class="it">📖</div>
+          </div>
+        </div>
+        <p class="annot">
+          <b>相同：</b>同一組品牌漸層、同一支橘色 CTA、同樣的圓形頭像與分頁形狀。<br>
+          <b>改變：</b>文字改 <code class="src">onBackground*</code>（17.6:1 / 12.0:1）·
+          列改用 <code class="src">BrandSurfaceCard</code>，層級靠亮度而非光暈 ·
+          光球靜態化並只留首頁 · 分數 tabular figures · 間距吃 4pt scale。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FOOTER ============ -->
+  <div class="foot">
+    <p><b>複驗指令</b> —— 本頁每個數字都可獨立驗證：</p>
+    <div class="scroller">
+      <table class="legend">
+        <tr><th>宣稱</th><th>複驗指令（於 repo 根目錄）</th></tr>
+        <tr><td>20 種圓角</td><td><code class="src">grep -rnoE "BorderRadius\.circular\([0-9]+" lib | sed 's/.*circular(//' | sort -n | uniq -c</code></td></tr>
+        <tr><td>546 個 EdgeInsets</td><td><code class="src">grep -rn "EdgeInsets\." lib --include="*.dart" | wc -l</code></td></tr>
+        <tr><td>62 BoxShadow / 28 發光</td><td><code class="src">grep -rn "BoxShadow(" lib --include="*.dart" | wc -l</code></td></tr>
+        <tr><td>focus 0 / pressed 2</td><td><code class="src">grep -rn "WidgetState.focused\|WidgetState.pressed" lib --include="*.dart" | wc -l</code></td></tr>
+        <tr><td>tabular figures 0</td><td><code class="src">grep -rn "FontFeature\|tabular" lib --include="*.dart" | wc -l</code></td></tr>
+        <tr><td>skeletonizer 用 1 處</td><td><code class="src">grep -rln "Skeletonizer" lib --include="*.dart"</code></td></tr>
+        <tr><td>30 個裸 spinner</td><td><code class="src">grep -rn "CircularProgressIndicator" lib --include="*.dart" | wc -l</code></td></tr>
+        <tr><td>Theme.of 僅 18 次</td><td><code class="src">grep -rn "Theme.of(context)" lib --include="*.dart" | wc -l</code></td></tr>
+        <tr><td>230 個裸 SnackBar</td><td><code class="src">grep -rn "SnackBar(" lib --include="*.dart" | wc -l</code></td></tr>
+        <tr><td>3 個常駐 repeat()</td><td><code class="src">grep -rn "\.repeat(" lib/shared/widgets/gradient_background.dart</code></td></tr>
+      </table>
+    </div>
+    <p style="margin-top:16px">
+      <b>本頁不涵蓋：</b>hallmark 的 macrostructure、nav、footer、hover、command palette —
+      這些針對 HTML 落地頁，不適用觸控 App，已在計畫中明列排除。
+      <br>
+      <b>本輪明確不動：</b><code class="src">analysis_screen.dart</code>（8,816 行）拆解、完整 BrandKit 遷移、
+      Coach 1:1 視覺改版、l10n 抽取、換字型。
+    </p>
+  </div>
+
+</div>
+</body>
+</html>
