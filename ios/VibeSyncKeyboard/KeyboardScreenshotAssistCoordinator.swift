@@ -231,6 +231,17 @@ protocol KeyboardScreenshotProviding: AnyObject {
             Result<LatestScreenshot, LatestScreenshotError>
         ) -> Void
     )
+
+    /// Notifies when the photo library changes so a screenshot taken while the
+    /// panel is already showing results can be picked up without the user
+    /// having to dismiss and reopen the keyboard.
+    func startObservingLibraryChanges(_ onChange: @escaping () -> Void)
+    func stopObservingLibraryChanges()
+}
+
+extension KeyboardScreenshotProviding {
+    func startObservingLibraryChanges(_ onChange: @escaping () -> Void) {}
+    func stopObservingLibraryChanges() {}
 }
 
 extension LatestScreenshotProvider: KeyboardScreenshotProviding {}
@@ -326,6 +337,13 @@ final class KeyboardScreenshotAssistCoordinator {
     private var preprocessingID: UUID?
     private var boundOwnerUserID: String?
     private var boundDocumentIdentifier: UUID?
+    /// A run is billed, so reopening the keyboard must not re-analyse the same
+    /// capture in the same chat. A new capture, a different chat, or an
+    /// explicit retry all count as genuinely new work.
+    private var lastAnalyzedAsset: String?
+    private var lastAnalyzedDocument: UUID?
+    private var lastLibraryTriggerAt: Date?
+    private var isObservingLibrary = false
 
     init(
         network: KeyboardScreenshotAssistNetworking,
@@ -950,6 +968,8 @@ final class KeyboardScreenshotAssistCoordinator {
     }
 
     func ownerDidChange() {
+        lastAnalyzedAsset = nil
+        lastAnalyzedDocument = nil
         invalidateAsyncWork()
         stateMachine.send(.ownerChanged)
         clearBoundData()
@@ -957,6 +977,90 @@ final class KeyboardScreenshotAssistCoordinator {
             .authRequired,
             message: "登入帳號已變更，截圖結果已清除。"
         )
+    }
+
+    private func alreadyAnalyzed(_ screenshot: LatestScreenshot) -> Bool {
+        lastAnalyzedAsset == screenshot.assetIdentifier &&
+            lastAnalyzedDocument == boundDocumentIdentifier
+    }
+
+    /// An explicit retry is the user asking for the work again, so the
+    /// already-analysed guard is deliberately dropped for that one run.
+    func startForcingReanalysis(hasFullAccess: Bool) {
+        lastAnalyzedAsset = nil
+        lastAnalyzedDocument = nil
+        start(hasFullAccess: hasFullAccess)
+    }
+
+    /// A screenshot taken while results are already on screen should pick
+    /// itself up, the way it does when the keyboard is first opened. Anything
+    /// mid-flight is left alone so a library notification can never race, or
+    /// duplicate, a request that is already being paid for.
+    func libraryDidChange(hasFullAccess: Bool) {
+        switch stateMachine.state {
+        case .idle,
+             .resultsPreview,
+             .inserted,
+             .recognitionRejected,
+             .failed(_, .terminal),
+             .failed(_, .newRequestAfterUserChange):
+            break
+        default:
+            return
+        }
+        let moment = now()
+        if let previous = lastLibraryTriggerAt,
+           moment.timeIntervalSince(previous) < 1
+        {
+            // PhotoKit reports every library mutation; a burst must not turn
+            // into a burst of capability round trips.
+            return
+        }
+        lastLibraryTriggerAt = moment
+        // PhotoKit reports every mutation, including deletions and edits to
+        // unrelated photos. Restarting unconditionally would wipe the results
+        // the user is reading, so the current capability is reused to peek
+        // first and the run only restarts for a genuinely new capture. An
+        // expired capability simply leaves the panel alone; the retry control
+        // is still there.
+        guard let session = currentBoundSession(),
+              let receipt = capability,
+              let consent = consentProvider.usableConsent(
+                  ownerUserId: session.userId,
+                  now: moment
+              )
+        else {
+            return
+        }
+        let expectedLifecycle = lifecycleID
+        screenshotProvider.fetchLatest(
+            capability: receipt,
+            ownerUserId: session.userId,
+            userAuthorizedDetection: consent.enabled
+        ) { [weak self] result in
+            guard let self,
+                  self.lifecycleID == expectedLifecycle,
+                  case .success(let screenshot) = result,
+                  !self.alreadyAnalyzed(screenshot)
+            else {
+                return
+            }
+            self.start(hasFullAccess: hasFullAccess)
+        }
+    }
+
+    func startObservingLibrary(hasFullAccess: Bool) {
+        guard !isObservingLibrary else { return }
+        isObservingLibrary = true
+        screenshotProvider.startObservingLibraryChanges { [weak self] in
+            self?.libraryDidChange(hasFullAccess: hasFullAccess)
+        }
+    }
+
+    func stopObservingLibrary() {
+        guard isObservingLibrary else { return }
+        isObservingLibrary = false
+        screenshotProvider.stopObservingLibraryChanges()
     }
 
     func screenshotDidChange() {
@@ -974,6 +1078,7 @@ final class KeyboardScreenshotAssistCoordinator {
     }
 
     func viewDidDisappear() {
+        stopObservingLibrary()
         invalidateAsyncWork()
         clearBoundData()
         stateMachine.send(.viewDisappeared)
@@ -1148,6 +1253,18 @@ final class KeyboardScreenshotAssistCoordinator {
                         )
                     )
                 )
+                guard !self.alreadyAnalyzed(screenshot) else {
+                    // Reopening the keyboard, or an unrelated photo library
+                    // change, must never spend a second charge on a capture
+                    // this chat has already seen.
+                    self.setState(
+                        .idle,
+                        message: "這張截圖剛才分析過了；截新的一張就會自動分析。"
+                    )
+                    return
+                }
+                self.lastAnalyzedAsset = screenshot.assetIdentifier
+                self.lastAnalyzedDocument = self.boundDocumentIdentifier
                 // Consent is granted once in the app, so a detected capture
                 // runs straight away instead of waiting for a second tap. The
                 // panel still shows exactly which image was used, and

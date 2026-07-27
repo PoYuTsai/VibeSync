@@ -115,6 +115,12 @@ final class KeyboardViewController: UIInputViewController {
         refreshAvailability()
         refreshScreenshotIdentity()
         screenshotCoordinator.start(hasFullAccess: hasFullAccess)
+        // Attunely's keyboard picks up the next screenshot on its own; ours has
+        // to do the same, otherwise the user must close and reopen the keyboard
+        // between turns.
+        screenshotCoordinator.startObservingLibrary(
+            hasFullAccess: hasFullAccess
+        )
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -752,7 +758,9 @@ final class KeyboardViewController: UIInputViewController {
              .failed(_, .retrySamePayload):
             screenshotCoordinator.retryFailedRequest()
         default:
-            screenshotCoordinator.start(hasFullAccess: hasFullAccess)
+            screenshotCoordinator.startForcingReanalysis(
+                hasFullAccess: hasFullAccess
+            )
         }
     }
     @objc private func cancelScreenshotAssist() {
