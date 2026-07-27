@@ -7,6 +7,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   var window: UIWindow?
   private var flutterEngine: FlutterEngine?
   private var subscriptionManagementChannel: FlutterMethodChannel?
+  private var keyboardContextBridge: KeyboardContextBridge?
 
   func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
     guard let windowScene = scene as? UIWindowScene else { return }
@@ -22,6 +23,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
       for: flutterViewController,
       windowScene: windowScene
     )
+    configureKeyboardContextBridge(for: flutterViewController)
     window?.rootViewController = flutterViewController
     window?.makeKeyAndVisible()
 
@@ -30,6 +32,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     } else if let url = connectionOptions.userActivities.first?.webpageURL {
       AppLinks.shared.handleLink(url: url)
     }
+  }
+
+  private func configureKeyboardContextBridge(
+    for flutterViewController: FlutterViewController
+  ) {
+    keyboardContextBridge = KeyboardContextBridge(
+      binaryMessenger: flutterViewController.binaryMessenger
+    )
   }
 
   func scene(_ scene: UIScene, openURLContexts urlContexts: Set<UIOpenURLContext>) {

@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>啟用「最近截圖」輔助後，VibeSync 鍵盤開啟時會在本機尋找最近三分鐘的系統截圖；只有你預覽確認後才上傳一張。</string>
 	<key>CFBundleDisplayName</key>
 	<string>VibeSync 鍵盤</string>
 	<key>CFBundleExecutable</key>
@@ -36,4 +38,3 @@
 	</dict>
 </dict>
 </plist>
-
