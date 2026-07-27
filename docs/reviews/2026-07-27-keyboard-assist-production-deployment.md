@@ -1,0 +1,124 @@
+# Keyboard Assist Production Deployment — 2026-07-27
+
+Status: **production backend dogfood-ready for `vibesync.test@gmail.com`; iOS artifact not yet rebuilt**
+
+Project ref: `fcmwrmwdoqiqdnbisdpg`
+
+## Source state
+
+- `90df6872` — keyboard screenshot consent and account-cleanup wiring.
+- `c5fc2433` — split the recent-screenshot `filter` and `max` operations to fix the Swift parser failure found by GitHub Actions.
+- `a4935fc6` — add production guards for the exact Claude model contract, secret preflight, migration grants, and generic-deploy exclusion.
+- The two release-guard commits contain the exact ASCII marker `[skip actions]`. They were pushed to `main` without triggering the generic Edge, web, or TestFlight workflows.
+- The worktree was clean before production mutation.
+
+## Migration evidence
+
+Only `20260727130000_keyboard_assist_exactly_once.sql` was pending. It was applied with:
+
+```powershell
+supabase migration up --linked --yes
+```
+
+`supabase db push` and `--include-all` were not used.
+
+Post-migration checks passed:
+
+- Local and remote migration ledgers are aligned.
+- `keyboard_assist_contract_version()` returns `keyboard-assist-v1`.
+- `keyboard_assist_hmac_key_versions()` initially returns an empty array.
+- `public.keyboard_assist_requests` has RLS enabled and zero rows at deployment time.
+- `PUBLIC`, `anon`, and `authenticated` cannot access the replay table or the nine Keyboard Assist RPCs.
+- `service_role` has the required table and RPC privileges.
+- Exactly one active cleanup cron exists at `37 * * * *`.
+
+## Production configuration
+
+The existing `CLAUDE_API_KEY` was preserved. The following configuration names are present; no secret values were printed or persisted in deployment evidence:
+
+- `KEYBOARD_ASSIST_COMPILER_MODEL`
+- `KEYBOARD_ASSIST_JUDGE_MODEL`
+- `KEYBOARD_SCREENSHOT_PIPELINE_VERSION`
+- `KEYBOARD_ASSIST_HMAC_CURRENT_VERSION`
+- `KEYBOARD_ASSIST_HMAC_KEYS_JSON`
+- `KEYBOARD_SCREENSHOT_V1_ALLOWLIST`
+- `KEYBOARD_SCREENSHOT_V1_ENABLED`
+
+The compiler and judge are both pinned to the exact `claude-sonnet-5` model ID. Sonnet 5 thinking is explicitly disabled and non-default sampling parameters are omitted.
+
+The HMAC key was generated from 32 cryptographically random bytes, validated as canonical Base64 in memory, and not written to disk or terminal output.
+
+Deployment began with the feature flag off. After the function gates passed, the allowlist and flag were set together to:
+
+- allowlist: `vibesync.test@gmail.com`
+- enabled: `true`
+
+An empty allowlist was never used while the flag was enabled.
+
+## Edge Function evidence
+
+The new function was deployed independently of the generic workflow:
+
+```powershell
+supabase functions deploy keyboard-assist `
+  --project-ref fcmwrmwdoqiqdnbisdpg `
+  --use-api
+```
+
+`--no-verify-jwt` and `--prune` were not used.
+
+Final live state:
+
+- `keyboard-assist` version `2`
+- status `ACTIVE`
+- `verify_jwt=true`
+- all 13 expected Edge Functions are present and active
+- the 12 pre-existing functions retained their exact versions across the targeted deploy
+- an unauthenticated `GET /functions/v1/keyboard-assist?capability=1` returns `401`
+- the production secret-name preflight passes
+
+An independent read-only production audit repeated the migration-ledger, 13-function inventory, secret-name, RLS, 9/9 RPC-grant, cleanup-cron, and unauthenticated-401 checks. It returned **PASS with no blocker** and made no production changes.
+
+### Validation-harness incident
+
+The first targeted deployment reached production, but an immediate function-list check ran before Supabase propagation completed. The safe fallback deleted only `keyboard-assist`; no existing function changed.
+
+The second deployment also produced a local false negative because Windows PowerShell 5 treated the JSON array as one pipeline object and an interpolated probe URL lacked explicit variable boundaries. The attempted fallback did not match or delete the target for the same parsing reason. Direct per-row iteration and a corrected URL then proved the final live state above. No pre-existing function, migration, or data was rolled back.
+
+## Verification boundary
+
+No reusable password or authenticated test JWT is stored locally or in GitHub, so the deployment agent could not safely perform the authenticated capability check or a real Claude request.
+
+The first authenticated proof must therefore come from the iPhone signed in as `vibesync.test@gmail.com`. That test will validate:
+
+- allowlist propagation and `capability.enabled=true`
+- shared-Keychain authentication from the keyboard extension
+- PhotoKit access and the three-minute screenshot window
+- the Claude compiler/judge request path
+- exact replay, payload-mismatch, speaker-confirmation, and quota behavior
+
+## iOS build state
+
+GitHub Actions run `30276550353` passed Flutter distribution gates, the full Flutter test suite, and Android. Its macOS job found a Swift parser error in `LatestScreenshotProvider.swift`; commit `c5fc2433` fixes that expression and passed independent static review.
+
+Windows cannot run Xcode, so `c5fc2433` is not yet proven by a macOS compile. A new GitHub Actions TestFlight build from current `main` is the required next gate before device testing.
+
+## Device smoke sequence
+
+1. Install the new TestFlight build and open VibeSync once while signed in as `vibesync.test@gmail.com`.
+2. Enable the VibeSync keyboard and Allow Full Access.
+3. Grant the in-app screenshot-AI consent and Photos access.
+4. Take a fresh LINE conversation screenshot, then open that LINE conversation and switch to the VibeSync keyboard within three minutes.
+5. Verify preview, confirmation, optional left/right speaker selection, three distinct reply strategies, and candidate insertion.
+6. Retry the same request to verify replay stability; a changed image under the same request ID must fail safely.
+7. Confirm speaker-selection requests do not consume quota and a completed ready response consumes quota only once.
+
+## Rollback
+
+The first rollback action is:
+
+```text
+KEYBOARD_SCREENSHOT_V1_ENABLED=false
+```
+
+The additive migration, replay ledger, and HMAC key version must remain. Version 1 must be retained until at least 25 hours after its last referenced ledger row. For an urgent provider or privacy incident, disable the function in addition to turning off the flag.
