@@ -27,6 +27,14 @@ void main() {
 
   test('one judge call produces both batches', () {
     final prompt = judgePrompt.readAsStringSync();
+    final provider = File(
+      'supabase/functions/keyboard-assist/provider.ts',
+    ).readAsStringSync();
+
+    // Six self-explaining options need roughly twice the output budget that
+    // three did; a truncated judge is a failed request, not a short one.
+    expect(provider, contains('max_tokens: 2600'));
+    expect(provider, contains('input.judgeTimeoutMs ?? 12_000'));
 
     expect(prompt, contains('兩批各 3 個'));
     expect(prompt, contains('alternates'));

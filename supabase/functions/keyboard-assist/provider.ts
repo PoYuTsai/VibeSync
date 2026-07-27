@@ -385,7 +385,12 @@ export function createAnthropicKeyboardAssistProvider(input: {
       call(
         {
           model: input.judgeModel,
-          max_tokens: 1200,
+          // Two batches of three, each option carrying text, why and effect.
+          // At the contract's per-field maxima that is roughly 2k output
+          // tokens; 1200 was sized for a single batch and would truncate,
+          // which `stop_reason === "max_tokens"` correctly rejects as invalid
+          // output — a failed request rather than a short one.
+          max_tokens: 2600,
           // Keep this in lockstep with the compiler's Sonnet 5 wire contract.
           ...(input.judgeModel === "claude-sonnet-5"
             ? { thinking: { type: "disabled" } }
@@ -408,7 +413,10 @@ export function createAnthropicKeyboardAssistProvider(input: {
           }],
         },
         request.signal,
-        input.judgeTimeoutMs ?? 8_000,
+        // Twice the output needs more wall clock. The judge deadline
+        // (start + 35s) still governs: `phaseSignal` clips this cap to whatever
+        // budget is actually left after the compiler.
+        input.judgeTimeoutMs ?? 12_000,
       ),
   };
 }
