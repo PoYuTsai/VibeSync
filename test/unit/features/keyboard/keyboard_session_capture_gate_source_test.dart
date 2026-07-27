@@ -61,14 +61,29 @@ void main() {
       source.substring(forced, forced + 260),
       contains('includingPreSessionCapture: true'),
     );
-    // The automatic library-notification path must not carry the relaxation.
+    // The automatic library-notification peek is always strict.
     final auto = source.indexOf('func libraryDidChange(hasFullAccess: Bool)');
     expect(
       source.substring(auto, auto + 2400),
-      isNot(contains('ignoringSessionFloor')),
+      contains('ignoringSessionFloor: false'),
     );
-    // And it is consumed, so it cannot leak into the next automatic run.
-    expect(source, contains('includePreSessionCapture = false\n'));
+    // Scoped to one run: every start() that is not the forced one resets it,
+    // so it cannot leak into the next automatic run.
+    expect(
+      source,
+      contains('start(hasFullAccess: hasFullAccess, includingPreSessionCapture: false)'),
+    );
+    expect(
+      source,
+      contains('includePreSessionCapture = includingPreSessionCapture'),
+    );
+    // The pre-spend re-reads belong to the same run and must agree with it,
+    // otherwise a tapped run invalidates itself right before paying.
+    expect(
+      RegExp('ignoringSessionFloor: includePreSessionCapture')
+          .allMatches(source),
+      hasLength(3),
+    );
 
     expect(
       controller.readAsStringSync(),

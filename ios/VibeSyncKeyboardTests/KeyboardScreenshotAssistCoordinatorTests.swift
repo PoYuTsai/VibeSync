@@ -867,15 +867,19 @@ private final class RecordingScreenshotProvider:
         LatestScreenshotError
     >)!
 
+    private(set) var sessionFloorIgnoredOnEachFetch: [Bool] = []
+
     func fetchLatest(
         capability _: KeyboardAssistCapabilityReceipt?,
         ownerUserId _: String,
         userAuthorizedDetection _: Bool,
+        ignoringSessionFloor: Bool,
         completion: @escaping (
             Result<LatestScreenshot, LatestScreenshotError>
         ) -> Void
     ) {
         fetchCount += 1
+        sessionFloorIgnoredOnEachFetch.append(ignoringSessionFloor)
         completion(resultProvider())
     }
 

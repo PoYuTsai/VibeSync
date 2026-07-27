@@ -213,10 +213,14 @@ final class KeyboardScreenshotAssistAPIAdapter:
 }
 
 protocol KeyboardScreenshotProviding: AnyObject {
+    /// `ignoringSessionFloor` belongs in the protocol rather than as a default
+    /// argument on the concrete type: Swift conformance ignores default values,
+    /// so a defaulted parameter here silently breaks the conformance instead.
     func fetchLatest(
         capability: KeyboardAssistCapabilityReceipt?,
         ownerUserId: String,
         userAuthorizedDetection: Bool,
+        ignoringSessionFloor: Bool,
         completion: @escaping (
             Result<LatestScreenshot, LatestScreenshotError>
         ) -> Void
@@ -569,7 +573,10 @@ final class KeyboardScreenshotAssistCoordinator {
         screenshotProvider.fetchLatest(
             capability: receipt,
             ownerUserId: session.userId,
-            userAuthorizedDetection: freshConsent.enabled
+            userAuthorizedDetection: freshConsent.enabled,
+            // Scoped to the run this re-read belongs to: a run the user started
+            // by tapping must not invalidate itself here.
+            ignoringSessionFloor: includePreSessionCapture
         ) { [weak self] result in
             guard let self,
                   self.lifecycleID == expectedLifecycle,
@@ -642,7 +649,8 @@ final class KeyboardScreenshotAssistCoordinator {
         screenshotProvider.fetchLatest(
             capability: receipt,
             ownerUserId: session.userId,
-            userAuthorizedDetection: confirmedConsent.enabled
+            userAuthorizedDetection: confirmedConsent.enabled,
+            ignoringSessionFloor: includePreSessionCapture
         ) { [weak self] result in
             guard let self,
                   self.lifecycleID == expectedLifecycle,
@@ -1135,7 +1143,9 @@ final class KeyboardScreenshotAssistCoordinator {
         screenshotProvider.fetchLatest(
             capability: receipt,
             ownerUserId: session.userId,
-            userAuthorizedDetection: consent.enabled
+            userAuthorizedDetection: consent.enabled,
+            // Automatic. Never reaches back past this keyboard session.
+            ignoringSessionFloor: false
         ) { [weak self] result in
             guard let self,
                   self.lifecycleID == expectedLifecycle,
@@ -1324,15 +1334,11 @@ final class KeyboardScreenshotAssistCoordinator {
         }
         // This is the first point at which the coordinator may touch Photos:
         // capability, consent, and durable pending recovery already succeeded.
-        // The relaxation is consumed here so it can never leak into the next
-        // automatic run.
-        let includingPreSession = includePreSessionCapture
-        includePreSessionCapture = false
         screenshotProvider.fetchLatest(
             capability: receipt,
             ownerUserId: session.userId,
             userAuthorizedDetection: consent.enabled,
-            ignoringSessionFloor: includingPreSession
+            ignoringSessionFloor: includePreSessionCapture
         ) { [weak self] result in
             guard let self,
                   self.lifecycleID == expectedLifecycle,
