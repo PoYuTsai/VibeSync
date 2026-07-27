@@ -45,6 +45,7 @@ final class KeyboardViewController: UIInputViewController {
     private var lastObservedOwnerUserID: String?
     private var screenshotRenderState: KeyboardAssistState = .boot
     private var keyboardVisibleSince: Date?
+    private var statusLineBorrowed = false
     /// nil means "follow whatever the app is set to for this person", which is
     /// what keeps the keyboard and the app one personality rather than two.
     private var voiceOverride: KeyboardVoiceName?
@@ -237,7 +238,7 @@ final class KeyboardViewController: UIInputViewController {
         aiPanel.addArrangedSubview(firstRow)
         aiPanel.addArrangedSubview(secondRow)
 
-        statusLabel.text = "截圖聊天畫面會自動分析；或複製訊息後點「載入」"
+        statusLabel.text = Self.emptyStateStatus
         statusLabel.textColor = UIColor.white.withAlphaComponent(0.65)
         statusLabel.font = .systemFont(ofSize: 12)
         statusLabel.textAlignment = .center
@@ -646,10 +647,16 @@ final class KeyboardViewController: UIInputViewController {
         screenshotStatusLabel.text = renderState.message
 
         switch renderState.state {
+        // These states hide the screenshot panel, which means their own status
+        // label is invisible. Surfacing the reason on the always-visible line
+        // is the difference between "nothing happens when I screenshot" and a
+        // user who knows what to do next.
         case .boot, .featureUnavailable:
             screenshotPanel.isHidden = true
+            surfaceUnavailableReason(renderState.message)
         case .fullAccessRequired, .authRequired:
             screenshotPanel.isHidden = true
+            surfaceUnavailableReason(renderState.message)
         case .consentRequired,
              .photoPermissionRequired:
             screenshotPanel.isHidden = false
@@ -732,9 +739,31 @@ final class KeyboardViewController: UIInputViewController {
         updatePreferredHeight()
     }
 
+    /// Only speaks when there is something to say. Transitions that merely
+    /// stand the screenshot flow down — dismissing the keyboard, or handing
+    /// over to the paste flow — carry no message and must not overwrite what
+    /// the paste flow is telling the user.
+    private static let emptyStateStatus =
+        "截圖聊天畫面會自動分析；或複製訊息後點「載入」"
+
+    private func surfaceUnavailableReason(_ message: String?) {
+        guard let message, !message.isEmpty else { return }
+        statusLabel.text = message
+        statusLineBorrowed = true
+    }
+
+    /// Once the screenshot flow is back on its feet it owns its own status
+    /// label again, so the shared line must stop repeating a stale failure.
+    private func returnStatusLine() {
+        guard statusLineBorrowed else { return }
+        statusLineBorrowed = false
+        statusLabel.text = Self.emptyStateStatus
+    }
+
     private func resetScreenshotControls() {
         analysisCard.isHidden = true
         screenshotSwapButton.isHidden = true
+        returnStatusLine()
         screenshotRetryButton.isHidden = true
         screenshotCancelButton.isHidden = true
         screenshotSpeakerRow.isHidden = true

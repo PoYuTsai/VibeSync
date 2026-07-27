@@ -478,14 +478,17 @@ final class KeyboardScreenshotAssistCoordinator {
             case .failure:
                 self.setState(
                     .featureUnavailable,
-                    message: nil
+                    message: "暫時無法取得截圖分析授權，請確認網路後再開一次鍵盤。"
                 )
             case .success(let receipt):
                 guard receipt.isUsable(
                     ownerUserId: session.userId,
                     now: self.now()
                 ) else {
-                    self.setState(.featureUnavailable, message: nil)
+                    self.setState(
+                        .featureUnavailable,
+                        message: "截圖分析尚未對這個帳號開啟；請開啟 VibeSync App 後再回來。"
+                    )
                     return
                 }
                 self.capability = receipt
