@@ -5,7 +5,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/learning/data/providers/ebook_providers.dart';
+import 'package:vibesync/features/learning/domain/models/ebook.dart';
 import 'package:vibesync/features/learning/presentation/widgets/ebook_access_gate.dart';
+import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
 
 import '../../../helpers/ebook_test_content.dart';
 import '../../../helpers/ebook_widget_harness.dart';
@@ -86,6 +88,77 @@ void main() {
 
     expect(find.text('第 2 ／ 3 章'), findsOneWidget);
     expect(find.text('閱讀位置'), findsOneWidget);
+  });
+
+  // 2026-07-27 夥伴回饋：第 3、4 本沒有試讀章，但目錄要看得到。
+  testWidgets('沒有試讀章的付費書：目錄看得到，每一章都鎖著，CTA 是訂閱後解鎖',
+      (tester) async {
+    final catalog = EbookCatalog(
+      books: [
+        buildTestEbook(id: _freeBook, number: 1, title: '免費測試書'),
+        buildTestEbook(
+          id: 'test-book-premium',
+          number: 2,
+          title: '訂閱測試書',
+          access: EbookAccess.premium,
+        ),
+        buildTestEbook(
+          id: 'test-book-locked',
+          number: 3,
+          title: '無試讀測試書',
+          access: EbookAccess.premium,
+          chapterCount: 2,
+        ),
+      ],
+    );
+
+    await pumpEbookApp(
+      tester,
+      initialLocation: '/learning/books/test-book-locked',
+      catalog: catalog,
+      access: const EbookSubscriptionAccess.free(),
+      size: const Size(390, 1400),
+    );
+    await tester.pumpAndSettle();
+
+    // 目錄仍然看得到，而且沒有被自動彈到 paywall。
+    expect(find.text(paywallStubText), findsNothing);
+    expect(find.text('無試讀測試書'), findsOneWidget);
+    expect(find.text('3.1　第 1 章'), findsOneWidget);
+    expect(find.text('3.2　第 2 章'), findsOneWidget);
+
+    // 免費範圍講清楚，且不得出現試讀入口。
+    // （「訂閱後解鎖」同時是主按鈕與每一列鎖定章的標籤，所以指定 widget 型別。）
+    expect(
+      find.widgetWithText(BrandPrimaryButton, '訂閱後解鎖'),
+      findsOneWidget,
+    );
+    expect(find.text('免費試讀第一章'), findsNothing);
+    expect(find.text('免費試讀'), findsNothing);
+    expect(find.byIcon(Icons.lock_outline), findsNWidgets(3));
+
+    // 章節列點下去是 paywall，不是閱讀器。
+    await tester.tap(find.text('3.1　第 1 章'));
+    await tester.pumpAndSettle();
+    expect(find.text(paywallStubText), findsOneWidget);
+    expect(find.text('閱讀位置'), findsNothing);
+  });
+
+  testWidgets('有試讀章的付費書仍然走試讀分支', (tester) async {
+    await pumpEbookApp(
+      tester,
+      initialLocation: '/learning/books/test-book-premium',
+      catalog: buildTestCatalog(),
+      access: const EbookSubscriptionAccess.free(),
+      size: const Size(390, 1400),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('免費試讀第一章'), findsOneWidget);
+    expect(
+      find.widgetWithText(BrandPrimaryButton, '訂閱後解鎖'),
+      findsNothing,
+    );
   });
 
   testWidgets('直接 deep link 進來時返回鍵回學習頁而不是退出 App', (tester) async {

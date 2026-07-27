@@ -190,6 +190,7 @@ class EbookAccessGate extends ConsumerStatefulWidget {
     required this.builder,
     this.chapterId,
     this.previewBuilder,
+    this.lockedBuilder,
     this.notFoundTitle = '找不到這本書',
     this.notFoundMessage = '這本電子書可能已經調整或移除了。回學習頁看看其他內容。',
   });
@@ -204,6 +205,13 @@ class EbookAccessGate extends ConsumerStatefulWidget {
   /// 試讀畫面。`null` 表示這個呼叫端不支援試讀——此時試讀結論會退回
   /// [EbookAccessDecision.locked]，寧可導 paywall 也不要漏出整本內容。
   final WidgetBuilder? previewBuilder;
+
+  /// 鎖住但仍可瀏覽的畫面（2026-07-27 夥伴回饋：第 3、4 本沒有試讀章，但目錄
+  /// 要看得到）。給了它就不自動導 paywall，由畫面上的按鈕帶過去。
+  ///
+  /// 呼叫端只能在這裡放章節目錄之類的中繼資料——任何章節內文都不得出現，
+  /// 那是付費內容。閱讀器沒有給這個 builder，內文因此永遠走不到這條路。
+  final WidgetBuilder? lockedBuilder;
   final String notFoundTitle;
   final String notFoundMessage;
 
@@ -261,6 +269,9 @@ class _EbookAccessGateState extends ConsumerState<EbookAccessGate> {
         );
 
       case EbookAccessDecision.locked:
+        // 可瀏覽的鎖定畫面（目錄頁）：不自動導 paywall，讓人先看得到內容目錄。
+        final lockedBuilder = widget.lockedBuilder;
+        if (lockedBuilder != null) return lockedBuilder(context);
         if (!_redirected) {
           _redirected = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {

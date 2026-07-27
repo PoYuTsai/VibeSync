@@ -29,11 +29,9 @@ class EbookShelfSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const BrandSectionHeader(
-          title: '互動電子書',
-          subtitle: '四本互動教材。先找到你真正的卡點，再只練那一段。',
-          icon: Icons.menu_book_outlined,
-        ),
+        // 「互動電子書」那一列拿掉（2026-07-27 Eric）：標題卡自己就說得清楚，
+        // 多一列只是佔高度。
+        const _ShelfHero(),
         const SizedBox(height: 12),
         catalog.when(
           loading: () => const _ShelfPlaceholder(),
@@ -52,6 +50,74 @@ class EbookShelfSection extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 書架上方的標題卡。
+///
+/// 2026-07-27 夥伴回饋：原本只有「互動電子書」四個字＋一行說明，看不出這是
+/// 一整套教材。標題與導言直接沿用他原檔的用字（THE FIELD GUIDE／交友軟體
+/// 實戰 · 終極指引），四本書是那份指引拆出來的。
+class _ShelfHero extends StatelessWidget {
+  const _ShelfHero();
+
+  @override
+  Widget build(BuildContext context) {
+    return BrandSurfaceCard(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const BrandIconBadge(icon: Icons.menu_book_outlined, size: 26,
+                  iconSize: 14),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'THE FIELD GUIDE',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.ctaStart,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 2.2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // 標題與品牌點刻意分成兩段：字級大時「·」才不會被換行拆到下一行開頭。
+          Text.rich(
+            TextSpan(
+              children: [
+                const TextSpan(text: '交友軟體實戰'),
+                TextSpan(
+                  text: ' · ',
+                  style: TextStyle(
+                    color: AppColors.brandBlush.withValues(alpha: 0.9),
+                  ),
+                ),
+                const TextSpan(text: '終極指引'),
+              ],
+            ),
+            style: AppTypography.headlineLarge.copyWith(
+              color: AppColors.onBackgroundPrimary,
+              fontWeight: FontWeight.w900,
+              height: 1.2,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '從配對到把她約出來。先診斷你卡在哪一階，只練那一階'
+            '——這是報酬率最高的事。',
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.85),
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -51,10 +51,15 @@ class EbookDetailScreen extends ConsumerWidget {
         builder: (context) => _EbookDetailBody(
           book: catalog.findBook(bookId)!,
         ),
-        // 未訂閱者看付費書的目錄：可讀第一章，其餘章顯示鎖並導 paywall。
+        // 未訂閱者看有試讀章的書：可讀第一章，其餘章顯示鎖並導 paywall。
         previewBuilder: (context) => _EbookDetailBody(
           book: catalog.findBook(bookId)!,
-          isPreview: true,
+          mode: EbookDetailMode.preview,
+        ),
+        // 沒有試讀章的付費書（第 3、4 本）：目錄仍然看得到，每一章都上鎖。
+        lockedBuilder: (context) => _EbookDetailBody(
+          book: catalog.findBook(bookId)!,
+          mode: EbookDetailMode.locked,
         ),
       ),
     );
@@ -128,13 +133,29 @@ class _DetailContentError extends StatelessWidget {
   }
 }
 
+/// 目錄頁的三種模式。
+enum EbookDetailMode {
+  /// 可讀：整本都能點。
+  full,
+
+  /// 有試讀章的付費書：第一章可點，其餘章上鎖。
+  preview,
+
+  /// 沒有試讀章的付費書：目錄看得到，每一章都上鎖。
+  locked,
+}
+
 class _EbookDetailBody extends ConsumerWidget {
-  const _EbookDetailBody({required this.book, this.isPreview = false});
+  const _EbookDetailBody({
+    required this.book,
+    this.mode = EbookDetailMode.full,
+  });
 
   final Ebook book;
+  final EbookDetailMode mode;
 
-  /// 試讀模式：只有試讀章可點，其餘章導 paywall。
-  final bool isPreview;
+  bool get isPreview => mode == EbookDetailMode.preview;
+  bool get isLocked => mode == EbookDetailMode.locked;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -234,13 +255,21 @@ class _EbookDetailBody extends ConsumerWidget {
               lockedChapterCount:
                   book.chapterCount - book.freePreviewChapterCount,
             )
+          else if (isLocked)
+            const _LockedNoticeCard()
           else
             _CompletionCard(
               completed: completed,
               total: book.chapterCount,
             ),
           const SizedBox(height: 14),
-          if (isPreview) ...[
+          if (isLocked)
+            BrandPrimaryButton(
+              label: '訂閱後解鎖',
+              icon: Icons.workspace_premium_outlined,
+              onPressed: () => context.push('/paywall'),
+            )
+          else if (isPreview) ...[
             BrandPrimaryButton(
               label: '免費試讀第一章',
               icon: Icons.auto_stories,
@@ -278,10 +307,11 @@ class _EbookDetailBody extends ConsumerWidget {
                 chapter: book.chapters[index],
                 isCompleted:
                     progress.isChapterCompleted(book.chapters[index].id),
-                isResumeTarget:
-                    !isPreview && book.chapters[index].id == resumeChapterId,
-                isLocked:
-                    isPreview && !book.isPreviewChapter(book.chapters[index].id),
+                isResumeTarget: mode == EbookDetailMode.full &&
+                    book.chapters[index].id == resumeChapterId,
+                isLocked: isLocked ||
+                    (isPreview &&
+                        !book.isPreviewChapter(book.chapters[index].id)),
               ),
             ),
         ],
@@ -382,6 +412,51 @@ class _CompletionCard extends StatelessWidget {
 
 /// 試讀說明卡。取代完成度卡：試讀時顯示「已完成 0 / 5 章」只會讓人以為
 /// 整本都能讀。
+/// 沒有試讀章的付費書：說清楚免費範圍到哪，不讓人以為這本也有第一章可讀。
+class _LockedNoticeCard extends StatelessWidget {
+  const _LockedNoticeCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return BrandSurfaceCard(
+      elevated: false,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8, top: 1),
+            child: Icon(Icons.lock_outline,
+                size: 16, color: AppColors.brandBlush),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '訂閱內容',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.brandBlush,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '這本的每一章都要訂閱才能讀。免費可以讀完第 1 冊，'
+                  '以及第 2 冊的第一章。訂閱後三本付費書會一次全開。',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PreviewNoticeCard extends StatelessWidget {
   const _PreviewNoticeCard({required this.lockedChapterCount});
 

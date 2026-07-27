@@ -13,6 +13,7 @@ import 'package:vibesync/features/learning/data/providers/ebook_providers.dart';
 import 'package:vibesync/features/learning/data/repositories/ebook_progress_repository.dart';
 import 'package:vibesync/features/learning/domain/models/ebook.dart';
 import 'package:vibesync/features/learning/presentation/widgets/ebook_access_gate.dart';
+import 'package:vibesync/features/learning/presentation/widgets/ebook_cover_badge.dart';
 import 'package:vibesync/features/learning/presentation/widgets/ebook_shelf_section.dart';
 
 import '../../../helpers/ebook_test_content.dart';
@@ -111,7 +112,10 @@ void main() {
     await pumpShelf(tester, catalog: _realCatalog, size: const Size(390, 1600));
     await tester.pumpAndSettle();
 
-    expect(find.text('互動電子書'), findsOneWidget);
+    // 書架標題是整套教材的名字（2026-07-27 夥伴回饋），不是「互動電子書」。
+    expect(find.text('THE FIELD GUIDE'), findsOneWidget);
+    expect(find.textContaining('終極指引'), findsOneWidget);
+    expect(find.text('互動電子書'), findsNothing);
     expect(find.text('診斷 · 配對開場'), findsOneWidget);
     expect(find.text('續航 · 讓對話活下去'), findsOneWidget);
     expect(find.text('避雷 · 該救還是該停'), findsOneWidget);
@@ -125,6 +129,32 @@ void main() {
     // 書架區塊本身不得出現文章每日額度用語。
     expect(find.textContaining('免費閱讀'), findsNothing);
     expect(find.textContaining('今日剩餘'), findsNothing);
+  });
+
+  // 2026-07-27 夥伴回饋：書號方塊改成人物照（官網 Blog 卡的做法）。
+  testWidgets('每本書的封面是人物照，書號仍然讀得到', (tester) async {
+    await pumpShelf(tester, catalog: _realCatalog, size: const Size(390, 1600));
+    await tester.pumpAndSettle();
+
+    final assets = tester
+        .widgetList<Image>(find.byType(Image))
+        .map((image) => image.image)
+        .whereType<AssetImage>()
+        .map((image) => image.assetName)
+        .toSet();
+    for (final theme in EbookTheme.values) {
+      expect(
+        assets,
+        contains(ebookCoverPhotoAsset(theme)),
+        reason: '$theme 沒有封面照',
+      );
+    }
+    // 四張照片必須互不相同，否則四本書看起來像同一本。
+    expect(assets.length, greaterThanOrEqualTo(EbookTheme.values.length));
+
+    for (var number = 1; number <= 4; number++) {
+      expect(find.text('第 $number 冊'), findsOneWidget);
+    }
   });
 
   testWidgets('付費使用者四本全部解鎖', (tester) async {
