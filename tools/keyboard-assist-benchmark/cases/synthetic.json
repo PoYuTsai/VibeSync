@@ -1,0 +1,55 @@
+[
+  {
+    "id": "synthetic-line-light",
+    "suite": "synthetic",
+    "imageFile": "../../ocr-golden/synthetic/mid-light.png",
+    "repetitions": 3,
+    "speakerOverride": "none",
+    "voice": {
+      "primary": "steady",
+      "secondary": null
+    },
+    "forbiddenSubstrings": [],
+    "quoteLeakNeedles": [],
+    "quotedPreviewInstances": 0,
+    "expectedStatuses": [
+      "ready",
+      "needs_speaker_confirmation"
+    ]
+  },
+  {
+    "id": "synthetic-line-dark",
+    "suite": "synthetic",
+    "imageFile": "../../ocr-golden/synthetic/mid-dark.png",
+    "repetitions": 3,
+    "speakerOverride": "none",
+    "voice": {
+      "primary": "playful",
+      "secondary": "steady"
+    },
+    "forbiddenSubstrings": [],
+    "quoteLeakNeedles": [],
+    "quotedPreviewInstances": 0,
+    "expectedStatuses": [
+      "ready",
+      "needs_speaker_confirmation"
+    ]
+  },
+  {
+    "id": "synthetic-line-stress",
+    "suite": "synthetic",
+    "imageFile": "../../ocr-golden/synthetic/mid-stress.png",
+    "repetitions": 3,
+    "speakerOverride": "right_is_me",
+    "voice": {
+      "primary": "direct",
+      "secondary": null
+    },
+    "forbiddenSubstrings": [],
+    "quoteLeakNeedles": [],
+    "quotedPreviewInstances": 0,
+    "expectedStatuses": [
+      "ready"
+    ]
+  }
+]

@@ -94,6 +94,11 @@
 - 純文字分析：`p95 < 4s`
 - OCR 匯入後再分析整體體感：`p95 < 12s`
 
+> 以上是成熟度目標，不是 current-HEAD 實測結果。2026-07-27 Keyboard Assist
+> 的 launch gate 與 fresh/cache 分桶方式，以
+> `docs/qa/keyboard-screenshot-assist-acceptance.md` 為準；單次 smoke 不得標成
+> p50／p95。
+
 ## 6. 穩定度目標
 
 - OCR 成功率：`>= 97%`

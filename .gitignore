@@ -73,5 +73,9 @@ tools/ocr-golden/labels/real/
 tools/ocr-golden/results/
 tools/ocr-golden/.env.golden
 
+# Keyboard Assist benchmark：真實截圖／labels／本機結果不進 git
+tools/keyboard-assist-benchmark/results/
+tools/keyboard-assist-benchmark/cases/*.local.json
+
 # voice-benchmark 黑箱驗證跑分輸出（throwaway，留本機供檢視，不入 git）
 tools/voice-benchmark/baselines/verify_*.ndjson

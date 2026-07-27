@@ -64,6 +64,23 @@
 3. CI 的 macOS `flutter build ios --simulator --debug` 必須成功編譯 App 與 extension。
 4. Archive／Validate／TestFlight build 必須包含 `VibeSyncKeyboard.appex`。
 
+### Keyboard Assist 截圖模式（尚未授權部署）
+
+- [ ] client／server feature flags 預設 off；舊 `keyboard-reply` 文字流程仍可 rollback。
+- [ ] signed device 上完成 PhotoKit `.authorized`／`.limited`／`.denied`、
+      iOS 13+、extension memory／jetsam 與 screenshot→asset p50／p95 spike。
+- [ ] Mac/Xcode 執行 `VibeSyncKeyboardTests`；success callback 0 insert、只有 result
+      card tap 可 insert exactly once，wrong document／owner／operation／expired result
+      全部 fail closed。
+- [ ] screenshot 原圖不寫入 App Group；若 PhotoKit 不可行，停在 Eric go／no-go，
+      不得自行加入 raw-image fallback。
+- [ ] keyboard-specific AI consent、Photos 說明、公開 privacy policy 與 App Store
+      Connect data disclosure 已同步。
+- [ ] 新 ledger／HMAC key version／25 小時 retention、image-free GET replay、quota
+      settlement 與 flags 依 `docs/qa/keyboard-screenshot-assist-acceptance.md` 驗證。
+
+Windows source／Deno／Flutter 測試不能勾選以上 native 或 signed-device 項目。
+
 ## Production smoke（缺一不可）
 
 1. Fresh：新 request ID 產生有效回覆，usage 恰好 +1。
