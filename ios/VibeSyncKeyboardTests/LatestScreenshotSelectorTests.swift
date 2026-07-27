@@ -197,6 +197,79 @@ final class LatestScreenshotSelectorTests: XCTestCase {
         wait(for: [finished], timeout: 0.2)
     }
 
+    /// The explicit tap is the only way past the session floor, and it still
+    /// obeys the recency window.
+    func testExplicitTapMayReachACaptureFromBeforeTheSession() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let image = UIImage()
+        let library = FakeScreenshotLibrary(
+            status: .authorized,
+            candidates: [
+                ScreenshotLibraryCandidate(
+                    assetIdentifier: "before-keyboard",
+                    creationDate: now.addingTimeInterval(-40),
+                    thumbnail: image
+                ),
+            ]
+        )
+        let provider = LatestScreenshotProvider(
+            library: library,
+            now: { now },
+            sessionStartedAt: { now.addingTimeInterval(-20) }
+        )
+        let finished = expectation(description: "completion")
+
+        provider.fetchLatest(
+            capability: screenshotCapability(now: now),
+            ownerUserId: "user-a",
+            userAuthorizedDetection: true,
+            ignoringSessionFloor: true
+        ) { result in
+            guard case .success(let screenshot) = result else {
+                return XCTFail("An explicit tap may use the earlier capture")
+            }
+            XCTAssertEqual(screenshot.assetIdentifier, "before-keyboard")
+            finished.fulfill()
+        }
+
+        wait(for: [finished], timeout: 0.2)
+    }
+
+    func testExplicitTapStillObeysTheRecencyWindow() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let image = UIImage()
+        let library = FakeScreenshotLibrary(
+            status: .authorized,
+            candidates: [
+                ScreenshotLibraryCandidate(
+                    assetIdentifier: "yesterday",
+                    creationDate: now.addingTimeInterval(-4000),
+                    thumbnail: image
+                ),
+            ]
+        )
+        let provider = LatestScreenshotProvider(
+            library: library,
+            now: { now },
+            sessionStartedAt: { now.addingTimeInterval(-20) }
+        )
+        let finished = expectation(description: "completion")
+
+        provider.fetchLatest(
+            capability: screenshotCapability(now: now),
+            ownerUserId: "user-a",
+            userAuthorizedDetection: true,
+            ignoringSessionFloor: true
+        ) { result in
+            guard case .failure(.noRecentScreenshot) = result else {
+                return XCTFail("A stale capture is never in scope")
+            }
+            finished.fulfill()
+        }
+
+        wait(for: [finished], timeout: 0.2)
+    }
+
     func testCaptureTakenWhileTheKeyboardIsOpenIsAccepted() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let image = UIImage()

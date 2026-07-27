@@ -27,6 +27,7 @@ final class KeyboardViewController: UIInputViewController {
     private let assistIdleView = UIStackView()
     private let assistIdleTitle = UILabel()
     private let assistIdleSubtitle = UILabel()
+    private let assistPreSessionButton = UIButton(type: .system)
     private let contextLabel = UILabel()
     private let statusLabel = UILabel()
     private let pasteButton = UIButton(type: .system)
@@ -278,6 +279,20 @@ final class KeyboardViewController: UIInputViewController {
         assistIdleSubtitle.textAlignment = .center
         assistIdleSubtitle.numberOfLines = 2
         assistIdleView.addArrangedSubview(assistIdleSubtitle)
+
+        // "Screenshot the chat, then switch keyboards" is a habit, and that
+        // capture is older than this keyboard session. It is not analysed
+        // automatically — that would put a charge behind merely opening the
+        // keyboard — but it must not be a dead end either.
+        assistPreSessionButton.setTitle("分析我剛剛截的圖", for: .normal)
+        styleScreenshotButton(assistPreSessionButton, color: surface)
+        assistPreSessionButton.addTarget(
+            self,
+            action: #selector(retryScreenshotAssist),
+            for: .touchUpInside
+        )
+        assistPreSessionButton.isHidden = true
+        assistIdleView.addArrangedSubview(assistPreSessionButton)
 
         assistPanel.addArrangedSubview(assistIdleView)
     }
@@ -881,12 +896,14 @@ final class KeyboardViewController: UIInputViewController {
     private func renderAssistIdleView(
         _ renderState: KeyboardScreenshotAssistRenderState
     ) {
+        assistPreSessionButton.isHidden = true
         switch renderState.state {
         case .idle:
             assistIdleView.isHidden = false
             assistIdleTitle.text = Self.assistIdleTitleText
             assistIdleSubtitle.text = renderState.message
                 ?? Self.assistIdleSubtitleText
+            assistPreSessionButton.isHidden = false
         case .boot:
             assistIdleView.isHidden = false
             assistIdleTitle.text = Self.assistIdleTitleText
@@ -1104,8 +1121,9 @@ final class KeyboardViewController: UIInputViewController {
                 preferredContentSize.height = 500
             } else if screenshotPanel.isHidden {
                 // Just the invitation (or the reason it cannot run). Asking for
-                // half the screen to say one sentence looks broken.
-                preferredContentSize.height = 260
+                // half the screen to say one sentence looks broken — and a
+                // shorter panel also leaves more conversation in the capture.
+                preferredContentSize.height = 296
             } else {
                 preferredContentSize.height = 410
             }

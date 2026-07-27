@@ -21,15 +21,16 @@ void main() {
     final source = provider.readAsStringSync();
 
     expect(source, contains('sessionStartedAt: @escaping () -> Date?'));
-    final start = source.indexOf('let earliest = max(');
+    final start = source.indexOf('let floor = ignoringSessionFloor');
     expect(
       start,
       greaterThanOrEqualTo(0),
       reason: 'Both floors apply; the later one wins.',
     );
-    final body = source.substring(start, start + 160);
-    expect(body, contains('reference.addingTimeInterval(-recencyWindow)'));
+    final body = source.substring(start, start + 320);
     expect(body, contains('sessionStartedAt() ?? .distantPast'));
+    expect(body, contains('reference.addingTimeInterval(-recencyWindow)'));
+    expect(body, contains('let earliest = max('));
   });
 
   test('the floor is the moment this keyboard became visible', () {
@@ -48,6 +49,32 @@ void main() {
     // viewWillAppear stamps it; viewWillDisappear clears it.
     expect(source, contains('keyboardVisibleSince = Date()'));
     expect(source, contains('keyboardVisibleSince = nil'));
+  });
+
+  test('only an explicit tap may reach past the floor', () {
+    final source = coordinator.readAsStringSync();
+
+    expect(source, contains('private var includePreSessionCapture = false'));
+    final forced = source.indexOf('func startForcingReanalysis(');
+    expect(forced, greaterThanOrEqualTo(0));
+    expect(
+      source.substring(forced, forced + 260),
+      contains('includingPreSessionCapture: true'),
+    );
+    // The automatic library-notification path must not carry the relaxation.
+    final auto = source.indexOf('func libraryDidChange(hasFullAccess: Bool)');
+    expect(
+      source.substring(auto, auto + 2400),
+      isNot(contains('ignoringSessionFloor')),
+    );
+    // And it is consumed, so it cannot leak into the next automatic run.
+    expect(source, contains('includePreSessionCapture = false\n'));
+
+    expect(
+      controller.readAsStringSync(),
+      contains('assistPreSessionButton'),
+      reason: 'The escape hatch has to be reachable while the panel is empty.',
+    );
   });
 
   test('an empty surface is an invitation, not a failure report', () {

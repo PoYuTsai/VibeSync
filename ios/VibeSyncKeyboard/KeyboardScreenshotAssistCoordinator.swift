@@ -344,6 +344,9 @@ final class KeyboardScreenshotAssistCoordinator {
     private var lastAnalyzedDocument: UUID?
     private var lastLibraryTriggerAt: Date?
     private var isObservingLibrary = false
+    /// True for exactly one detection pass, and only when the user asked for it
+    /// by tapping. Automatic runs must stay inside this keyboard session.
+    private var includePreSessionCapture = false
     /// What was offered last time in this exact chat. Carried into the next
     /// request so the model does not repeat itself and so the server can spot
     /// its own candidates being read back out of a screenshot.
@@ -430,6 +433,14 @@ final class KeyboardScreenshotAssistCoordinator {
     }
 
     func start(hasFullAccess: Bool) {
+        start(hasFullAccess: hasFullAccess, includingPreSessionCapture: false)
+    }
+
+    private func start(
+        hasFullAccess: Bool,
+        includingPreSessionCapture: Bool
+    ) {
+        includePreSessionCapture = includingPreSessionCapture
         invalidateAsyncWork()
         clearBoundData()
         setState(.boot, message: nil)
@@ -1071,10 +1082,13 @@ final class KeyboardScreenshotAssistCoordinator {
 
     /// An explicit retry is the user asking for the work again, so the
     /// already-analysed guard is deliberately dropped for that one run.
+    /// The one path that may look at a capture taken before this keyboard came
+    /// up. It exists because "screenshot the chat, then switch keyboards" is a
+    /// habit, and silently ignoring that screenshot is a dead end.
     func startForcingReanalysis(hasFullAccess: Bool) {
         lastAnalyzedAsset = nil
         lastAnalyzedDocument = nil
-        start(hasFullAccess: hasFullAccess)
+        start(hasFullAccess: hasFullAccess, includingPreSessionCapture: true)
     }
 
     /// A screenshot taken while results are already on screen should pick
@@ -1310,10 +1324,15 @@ final class KeyboardScreenshotAssistCoordinator {
         }
         // This is the first point at which the coordinator may touch Photos:
         // capability, consent, and durable pending recovery already succeeded.
+        // The relaxation is consumed here so it can never leak into the next
+        // automatic run.
+        let includingPreSession = includePreSessionCapture
+        includePreSessionCapture = false
         screenshotProvider.fetchLatest(
             capability: receipt,
             ownerUserId: session.userId,
-            userAuthorizedDetection: consent.enabled
+            userAuthorizedDetection: consent.enabled,
+            ignoringSessionFloor: includingPreSession
         ) { [weak self] result in
             guard let self,
                   self.lifecycleID == expectedLifecycle,

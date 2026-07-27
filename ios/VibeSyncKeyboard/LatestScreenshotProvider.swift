@@ -94,10 +94,15 @@ final class LatestScreenshotProvider {
         (library as? ScreenshotLibraryObserving)?.stopObservingChanges()
     }
 
+    /// `ignoringSessionFloor` is for an explicit tap only. Automatic detection
+    /// must never reach back past the moment the keyboard opened, but a user
+    /// who asks for it by name is allowed to analyse the shot they took just
+    /// before switching to this keyboard.
     func fetchLatest(
         capability: KeyboardAssistCapabilityReceipt?,
         ownerUserId: String,
         userAuthorizedDetection: Bool,
+        ignoringSessionFloor: Bool = false,
         completion: @escaping (
             Result<LatestScreenshot, LatestScreenshotError>
         ) -> Void
@@ -137,9 +142,12 @@ final class LatestScreenshotProvider {
                 // a capture the user took *with this keyboard open* is ever
                 // analysed. Without it, opening the keyboard silently spends a
                 // charge on whatever happened to be in the camera roll.
+                let floor = ignoringSessionFloor
+                    ? Date.distantPast
+                    : (sessionStartedAt() ?? .distantPast)
                 let earliest = max(
                     reference.addingTimeInterval(-recencyWindow),
-                    sessionStartedAt() ?? .distantPast
+                    floor
                 )
                 let latestAllowed = reference.addingTimeInterval(
                     KeyboardSharedConfig.futureClockSkewAllowance
