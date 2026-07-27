@@ -61,8 +61,10 @@ struct KeyboardAssistVoice: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         guard container.contains(.primary), container.contains(.secondary) else {
+            let missingKey: CodingKeys =
+                container.contains(.primary) ? .secondary : .primary
             throw DecodingError.keyNotFound(
-                container.contains(.primary) ? .secondary : .primary,
+                missingKey,
                 .init(
                     codingPath: decoder.codingPath,
                     debugDescription: "Nullable voice keys are required"
@@ -416,7 +418,7 @@ struct KeyboardAssistReadyResponse: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         guard container.contains(.uncertainty) else {
             throw DecodingError.keyNotFound(
-                .uncertainty,
+                CodingKeys.uncertainty,
                 .init(
                     codingPath: decoder.codingPath,
                     debugDescription:

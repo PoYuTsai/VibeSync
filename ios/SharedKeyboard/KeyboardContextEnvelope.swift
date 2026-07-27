@@ -32,8 +32,10 @@ struct KeyboardVoice: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         guard container.contains(.primary), container.contains(.secondary) else {
+            let missingKey: CodingKeys =
+                container.contains(.primary) ? .secondary : .primary
             throw DecodingError.keyNotFound(
-                container.contains(.primary) ? .secondary : .primary,
+                missingKey,
                 .init(
                     codingPath: decoder.codingPath,
                     debugDescription: "Voice nullable fields are required"
@@ -79,8 +81,10 @@ struct KeyboardPartnerVoice: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         guard container.contains(.primary), container.contains(.secondary) else {
+            let missingKey: CodingKeys =
+                container.contains(.primary) ? .secondary : .primary
             throw DecodingError.keyNotFound(
-                container.contains(.primary) ? .secondary : .primary,
+                missingKey,
                 .init(
                     codingPath: decoder.codingPath,
                     debugDescription: "Partner voice nullable fields are required"
