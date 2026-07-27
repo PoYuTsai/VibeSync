@@ -37,6 +37,13 @@ Deno.test("prompts declare screenshot-only truth and untrusted evidence", () => 
   assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("只有這一張截圖"));
   assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("不要推測截圖外"));
   assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("voice 只能調整候選措辭"));
+  // Every analysed capture is now taken with our own panel on screen and its
+  // bottom trimmed off, so "few messages visible" is the normal case rather
+  // than evidence that this is not a one-to-one chat.
+  assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes('一對一對話請輸出 "chat"'));
+  assert(
+    KEYBOARD_ASSIST_COMPILER_PROMPT.includes("不要因為訊息很少、畫面被"),
+  );
   assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("不可信資料"));
   assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("兩批各 3 個"));
   // The second batch is what "換一批" serves without a second charge, so it is
