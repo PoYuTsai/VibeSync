@@ -224,7 +224,6 @@ const JUDGE_OUTPUT_SCHEMA = {
     "cue",
     "uncertainty",
     "options",
-    "alternates",
   ],
 } as const;
 

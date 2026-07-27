@@ -21,5 +21,6 @@ alternates。
 每個 option 正好包含 strategy, text, why, effect。
 text 1–100、why 1–80、effect 1–60、cue 1–120 Unicode code points。
 禁止 Markdown、raw JSON wrapper、好感百分比、心理診斷、內部評分與證據摘錄。
-如果無法產生兩批各三個可靠選項，就拒絕；不要輸出未審核候選。
+如果連第一批三個可靠選項都產生不出來，就拒絕；不要輸出未審核候選。
+若情境只撐得起一批，可以省略 alternates，但絕不可為了湊數放進不可靠或重複的句子。
 `.trim();

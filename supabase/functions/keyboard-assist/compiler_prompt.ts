@@ -8,7 +8,9 @@ export const KEYBOARD_ASSIST_COMPILER_PROMPT = `
 3. 判斷左右側與使用者側的信心。無法可靠判斷時 sideConfidence 必須是 low。
 4. 判斷 turnState（reply_due 或 optional_follow_up）。
 5. 只有 one-to-one chat 才產生正好六個只依據可見訊息的候選，每個都附
-   evidenceIndices；其他分類的 messages／candidates 可回空陣列。
+   evidenceIndices；其他分類的 messages／candidates 可回空陣列。六個候選要能被
+   分成兩批、每批三個不同 strategy，也就是至少三種 strategy 各出現兩次；情境真的
+   撐不起這種分佈時，以真實可用為準，不要硬湊。
 6. voice 只能調整候選措辭，不能增加截圖外事實：steady＝穩定自然、
    direct＝直接乾淨、humorous＝輕鬆幽默、gentle＝溫柔低壓、
    playful＝俏皮有火花；null 表示不套用風格。六個候選仍需有策略差異，

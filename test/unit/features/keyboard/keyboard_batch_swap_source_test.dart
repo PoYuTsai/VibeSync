@@ -43,6 +43,22 @@ void main() {
       contains('alternates 要能獨立'),
       reason: 'The second batch is an equal alternative, not leftovers.',
     );
+    // Degrading to one batch beats failing the request outright, so the schema
+    // must not force a second batch the conversation cannot support.
+    final required = provider.substring(provider.indexOf('JUDGE_OUTPUT_SCHEMA'));
+    final requiredBlock = required.substring(
+      required.indexOf('required: ['),
+      required.indexOf('} as const;'),
+    );
+    expect(requiredBlock, contains('"options"'));
+    expect(requiredBlock, isNot(contains('"alternates"')));
+    expect(prompt, contains('可以省略 alternates'));
+    expect(
+      File('supabase/functions/keyboard-assist/compiler_prompt.ts')
+          .readAsStringSync(),
+      contains('至少三種 strategy 各出現兩次'),
+      reason: 'Two distinct batches need enough strategy spread to exist.',
+    );
   });
 
   test('the second batch is held to the first batch standard', () {
