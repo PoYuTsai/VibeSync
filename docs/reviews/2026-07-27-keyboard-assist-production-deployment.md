@@ -170,3 +170,53 @@ To shrink the rollout back to the original cohort, restore
 `KEYBOARD_SCREENSHOT_V1_ALLOWLIST` to `vibesync.test@gmail.com`. For urgent
 containment, set `KEYBOARD_SCREENSHOT_V1_ENABLED=false`. Do not roll back the
 migration or HMAC keyring.
+
+
+## Contract update deployment — 2026-07-28
+
+`keyboard-assist` was redeployed to version `5` for the screenshot assist
+upgrade. Two additive contract changes shipped together:
+
+- Request gains an optional `priorTurn` (`offeredTexts`, `insertedText`). Absent
+  is treated as null, so a keyboard build that predates the field is unaffected.
+  It never introduces facts; it stops the next batch repeating itself and lets
+  the server reject a transcript that contains this keyboard's own previous
+  candidates. That rejection returns `unsupported_conversation` and is therefore
+  never charged.
+- Ready results gain `alternates`, a second batch of three candidates produced
+  by the same judge call. The compiler already generated six candidates and
+  three were discarded; serving both batches makes "換一批" cost no second
+  request and no second charge. Absent `alternates` still validates, so results
+  stored before this change continue to replay.
+
+The replay input hash deliberately still excludes `priorTurn`: a same-payload
+retry is rebuilt from stored pending metadata, which cannot reproduce the hint,
+so hashing it would turn a safe retry into a `409`.
+
+Delivery path repair: `keyboard-assist` is excluded from
+`deploy-edge-function.yml` both by push path and by deploy list, which left the
+only path as a local `supabase` CLI invocation that Eric's Windows host cannot
+run. `.github/workflows/deploy-keyboard-assist.yml` now reproduces the
+checked-in runbook as a manual-dispatch workflow: one function, no
+`--no-verify-jwt`, no `--prune`, gated on `deno test` and the production
+secret-name preflight, verified afterwards. It deploys source only and never
+applies a migration or writes a secret. The push-trigger exclusion is unchanged.
+
+Evidence — `Deploy Keyboard Assist` run `30299835205` (`3123bade`):
+
+- `deno test --allow-read supabase/functions/keyboard-assist`: 68 passed,
+  0 failed.
+- The production secret-name preflight passed; no secret was added or changed.
+- `keyboard-assist` is version `5`, `ACTIVE`.
+- All 13 expected Edge Functions remain present; the other 12 kept their exact
+  versions across the targeted deploy.
+- An unauthenticated `GET /functions/v1/keyboard-assist?capability=1` returns
+  `401`.
+- No migration was applied; the local and remote ledgers remain aligned through
+  `20260727130000`.
+
+The consent version moved to `keyboard_screenshot_ai_202607_v2`. Version 1
+disclosed a local preview and a per-upload confirmation; a detected screenshot
+now runs on its own, which is materially different, so the previous grant cannot
+be honoured and every user is asked again. The retired v1 keys are swept on the
+next privacy purge.
