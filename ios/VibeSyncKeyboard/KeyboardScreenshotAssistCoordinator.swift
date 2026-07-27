@@ -344,6 +344,11 @@ final class KeyboardScreenshotAssistCoordinator {
     private var lastAnalyzedDocument: UUID?
     private var lastLibraryTriggerAt: Date?
     private var isObservingLibrary = false
+    /// What was offered last time in this exact chat. Carried into the next
+    /// request so the model does not repeat itself and so the server can spot
+    /// its own candidates being read back out of a screenshot.
+    private var priorTurn: KeyboardAssistPriorTurn?
+    private var priorTurnDocument: UUID?
 
     init(
         network: KeyboardScreenshotAssistNetworking,
@@ -940,6 +945,7 @@ final class KeyboardScreenshotAssistCoordinator {
                                 candidateID: option.candidateID
                             )
                         )
+                        self.rememberInserted(option.text)
                         self.setMessage(
                             "已插入輸入框；送出前你仍可自行修改。"
                         )
@@ -970,6 +976,8 @@ final class KeyboardScreenshotAssistCoordinator {
     func ownerDidChange() {
         lastAnalyzedAsset = nil
         lastAnalyzedDocument = nil
+        priorTurn = nil
+        priorTurnDocument = nil
         invalidateAsyncWork()
         stateMachine.send(.ownerChanged)
         clearBoundData()
@@ -977,6 +985,48 @@ final class KeyboardScreenshotAssistCoordinator {
             .authRequired,
             message: "登入帳號已變更，截圖結果已清除。"
         )
+    }
+
+    private func rememberOffered(_ texts: [String]) {
+        let candidate = KeyboardAssistPriorTurn(
+            offeredTexts: texts,
+            insertedText: nil
+        )
+        guard candidate.isValid else {
+            // Never ship a payload the server would reject; losing the hint is
+            // strictly better than losing the request.
+            priorTurn = nil
+            priorTurnDocument = nil
+            return
+        }
+        priorTurn = candidate
+        priorTurnDocument = boundDocumentIdentifier
+    }
+
+    private func rememberInserted(_ text: String) {
+        guard let existing = priorTurn,
+              existing.offeredTexts.contains(text)
+        else {
+            return
+        }
+        let updated = KeyboardAssistPriorTurn(
+            offeredTexts: existing.offeredTexts,
+            insertedText: text
+        )
+        guard updated.isValid else { return }
+        priorTurn = updated
+    }
+
+    /// Only the same chat may inherit a prior turn. A different input field is
+    /// a different conversation, and reusing the hint there would both mislead
+    /// the model and risk rejecting an innocent transcript.
+    private func priorTurnForCurrentDocument() -> KeyboardAssistPriorTurn? {
+        guard let document = priorTurnDocument,
+              document == boundDocumentIdentifier
+        else {
+            return nil
+        }
+        return priorTurn
     }
 
     private func alreadyAnalyzed(_ screenshot: LatestScreenshot) -> Bool {
@@ -1708,7 +1758,8 @@ final class KeyboardScreenshotAssistCoordinator {
             voice: KeyboardAssistVoice(
                 primary: context?.globalVoice.primary,
                 secondary: context?.globalVoice.secondary
-            )
+            ),
+            priorTurn: priorTurnForCurrentDocument()
         )
         let authorization = KeyboardAssistSendAuthorization(
             binding: binding,
@@ -1844,6 +1895,7 @@ final class KeyboardScreenshotAssistCoordinator {
         )
         switch (response, stateMachine.state) {
         case (.ready(let ready), .resultsPreview):
+            rememberOffered(ready.options.map(\.text))
             // Keep the durable record until an explicit candidate insertion.
             setMessage(Self.readyMessage(ready))
         case (

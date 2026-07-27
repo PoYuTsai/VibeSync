@@ -93,30 +93,144 @@ struct KeyboardAssistImage: Codable, Equatable {
     let data: String
 }
 
+/// What this keyboard offered on the previous turn in this same chat.
+///
+/// It never introduces facts. `offeredTexts` exists so the next batch does not
+/// repeat lines the user has already seen, and so the server can recognise its
+/// own candidates being read back out of a screenshot. `insertedText` marks the
+/// one line the user actually sent, which is therefore a legitimate part of the
+/// conversation rather than a leak.
+struct KeyboardAssistPriorTurn: Codable, Equatable {
+    let offeredTexts: [String]
+    let insertedText: String?
+
+    enum CodingKeys: String, CodingKey {
+        case offeredTexts
+        case insertedText
+    }
+
+    init(offeredTexts: [String], insertedText: String?) {
+        self.offeredTexts = offeredTexts
+        self.insertedText = insertedText
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        offeredTexts = try container.decode(
+            [String].self,
+            forKey: .offeredTexts
+        )
+        insertedText = try container.decodeIfPresent(
+            String.self,
+            forKey: .insertedText
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(offeredTexts, forKey: .offeredTexts)
+        // The server requires both keys to be present, so nil must travel as an
+        // explicit null rather than an omitted field.
+        try container.encode(insertedText, forKey: .insertedText)
+    }
+
+    var isValid: Bool {
+        guard (1...KeyboardSharedConfig.maximumPriorOfferedTexts)
+            .contains(offeredTexts.count),
+            Set(offeredTexts).count == offeredTexts.count,
+            offeredTexts.allSatisfy(Self.isBounded)
+        else {
+            return false
+        }
+        guard let insertedText else { return true }
+        return Self.isBounded(insertedText) &&
+            offeredTexts.contains(insertedText)
+    }
+
+    private static func isBounded(_ value: String) -> Bool {
+        let count = value.unicodeScalars.count
+        return value.trimmingCharacters(in: .whitespacesAndNewlines) == value &&
+            count >= 1 &&
+            count <= KeyboardSharedConfig.maximumPriorTextLength
+    }
+}
+
 struct KeyboardAssistV1Request: Codable, Equatable {
     let contractVersion: KeyboardAssistContractVersion
     let requestId: UUID
     let image: KeyboardAssistImage
     let speakerOverride: KeyboardSpeakerOverride
     let voice: KeyboardAssistVoice
+    let priorTurn: KeyboardAssistPriorTurn?
+
+    enum CodingKeys: String, CodingKey {
+        case contractVersion
+        case requestId
+        case image
+        case speakerOverride
+        case voice
+        case priorTurn
+    }
 
     init(
         requestId: UUID,
         image: KeyboardAssistImage,
         speakerOverride: KeyboardSpeakerOverride,
-        voice: KeyboardAssistVoice
+        voice: KeyboardAssistVoice,
+        priorTurn: KeyboardAssistPriorTurn? = nil
     ) {
         contractVersion = .v1
         self.requestId = requestId
         self.image = image
         self.speakerOverride = speakerOverride
         self.voice = voice
+        self.priorTurn = priorTurn
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        contractVersion = try container.decode(
+            KeyboardAssistContractVersion.self,
+            forKey: .contractVersion
+        )
+        requestId = try container.decode(UUID.self, forKey: .requestId)
+        image = try container.decode(
+            KeyboardAssistImage.self,
+            forKey: .image
+        )
+        speakerOverride = try container.decode(
+            KeyboardSpeakerOverride.self,
+            forKey: .speakerOverride
+        )
+        voice = try container.decode(
+            KeyboardAssistVoice.self,
+            forKey: .voice
+        )
+        priorTurn = try container.decodeIfPresent(
+            KeyboardAssistPriorTurn.self,
+            forKey: .priorTurn
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(contractVersion, forKey: .contractVersion)
+        try container.encode(requestId, forKey: .requestId)
+        try container.encode(image, forKey: .image)
+        try container.encode(speakerOverride, forKey: .speakerOverride)
+        try container.encode(voice, forKey: .voice)
+        // Additive field: an absent prior turn is omitted entirely so the wire
+        // shape stays identical to the original v1 request.
+        try container.encodeIfPresent(priorTurn, forKey: .priorTurn)
     }
 
     func validate() throws {
         guard voice.secondary == nil ||
                 (voice.primary != nil && voice.primary != voice.secondary)
         else {
+            throw KeyboardAssistContractError.invalidRequest
+        }
+        if let priorTurn, !priorTurn.isValid {
             throw KeyboardAssistContractError.invalidRequest
         }
         guard let decoded = Data(base64Encoded: image.data),

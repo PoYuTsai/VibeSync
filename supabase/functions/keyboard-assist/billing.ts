@@ -119,6 +119,9 @@ export async function computeKeyboardAssistInputHash(input: {
     [input.voice.primary, input.voice.secondary],
     null, // contextSource (v1)
     null, // contextRevision (v1)
+    // Deliberately excludes priorTurn. It is a generation hint, not identity,
+    // and a same-payload retry rebuilt from stored pending metadata has no way
+    // to reproduce it; hashing it would turn a safe retry into a 409.
   ]);
   const rawSecret = Uint8Array.from(
     atob(input.secret),

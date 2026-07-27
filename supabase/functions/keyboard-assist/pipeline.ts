@@ -10,6 +10,7 @@ import {
   isGroundedKeyboardAssistReadyResult,
 } from "./grounding.ts";
 import { normalizeKeyboardAssistCompilerOutput } from "./normalize.ts";
+import { containsOwnPriorCandidates } from "./own_output_leak.ts";
 import type {
   KeyboardAssistCompiler,
   KeyboardAssistImage,
@@ -68,6 +69,7 @@ export async function runKeyboardAssistPipeline(input: {
   image: KeyboardAssistImage;
   speakerOverride: KeyboardAssistSpeakerOverride;
   voice: KeyboardAssistV1Request["voice"];
+  priorTurn: KeyboardAssistV1Request["priorTurn"];
   pipelineVersion: string;
   signal: AbortSignal;
   compiler: KeyboardAssistCompiler;
@@ -101,6 +103,7 @@ export async function runKeyboardAssistPipeline(input: {
       image: input.image,
       speakerOverride: input.speakerOverride,
       voice: input.voice,
+      priorTurn: input.priorTurn,
       signal: phaseSignal(
         input.signal,
         compilerDeadlineAtMs,
@@ -144,6 +147,14 @@ export async function runKeyboardAssistPipeline(input: {
     throw new KeyboardAssistPipelineError(
       "unsupported_conversation",
       "screenshot is not a supported one-to-one chat",
+    );
+  }
+  if (containsOwnPriorCandidates(normalized, input.priorTurn)) {
+    // The transcript is describing our own panel, not the conversation, so it
+    // cannot be judged and must not be charged for.
+    throw new KeyboardAssistPipelineError(
+      "unsupported_conversation",
+      "screenshot transcript contains this keyboard's own prior candidates",
     );
   }
   if (!isGroundedKeyboardAssistCompilerOutput(normalized)) {

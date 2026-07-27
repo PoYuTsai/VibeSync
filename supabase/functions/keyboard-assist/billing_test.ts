@@ -64,6 +64,7 @@ Deno.test("keyboard assist HMAC binds payload but excludes pipeline version", as
     mediaType: "image/png" as const,
     speakerOverride: "none" as const,
     voice: { primary: "steady" as const, secondary: null },
+    priorTurn: null,
     secret: KEY_V1,
   };
   const first = await computeKeyboardAssistInputHash(

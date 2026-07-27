@@ -365,6 +365,7 @@ const dependencies: KeyboardAssistHandlerDependencies = {
       },
       speakerOverride: input.request.speakerOverride,
       voice: input.request.voice,
+      priorTurn: input.request.priorTurn,
       pipelineVersion: KEYBOARD_SCREENSHOT_PIPELINE_VERSION,
       signal: input.signal,
       compiler: provider.compiler,

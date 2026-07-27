@@ -108,6 +108,7 @@ Deno.test("compiler sees the image once; judge receives normalized text only", a
     image,
     speakerOverride: "none",
     voice: { primary: "steady", secondary: null },
+    priorTurn: null,
     pipelineVersion: "compiler-judge-v1",
     signal: new AbortController().signal,
     compiler: (request) => {
@@ -147,6 +148,7 @@ Deno.test("low speaker confidence returns stored no-charge shape without judge",
     image,
     speakerOverride: "none",
     voice: { primary: null, secondary: null },
+    priorTurn: null,
     pipelineVersion: "compiler-judge-v1",
     signal: new AbortController().signal,
     compiler: () => Promise.resolve(compilerOutput("low")),
@@ -174,6 +176,7 @@ Deno.test("speaker override allows low-confidence compiler output to proceed", a
     image,
     speakerOverride: "left_is_me",
     voice: { primary: "steady", secondary: null },
+    priorTurn: null,
     pipelineVersion: "compiler-judge-v1",
     signal: new AbortController().signal,
     compiler: () => Promise.resolve(compilerOutput("low")),
@@ -205,6 +208,7 @@ Deno.test("non-chat and invalid grounding fail before judge with no result", asy
         image,
         speakerOverride: "none",
         voice: { primary: null, secondary: null },
+        priorTurn: null,
         pipelineVersion: "compiler-judge-v1",
         signal: new AbortController().signal,
         compiler: () => Promise.resolve(nonChat),
@@ -225,6 +229,7 @@ Deno.test("non-chat and invalid grounding fail before judge with no result", asy
         image,
         speakerOverride: "none",
         voice: { primary: null, secondary: null },
+        priorTurn: null,
         pipelineVersion: "compiler-judge-v1",
         signal: new AbortController().signal,
         compiler: () => Promise.resolve(ungrounded),
@@ -238,6 +243,102 @@ Deno.test("non-chat and invalid grounding fail before judge with no result", asy
   assertEquals(invalid.code, "provider_invalid_output");
 });
 
+Deno.test("our own prior candidates read back as chat stop before judge", async () => {
+  const leaked = compilerOutput();
+  // The keyboard trims its own panel out of the capture, but a geometry
+  // mismatch can leave a previous candidate behind; that transcript describes
+  // our UI, not the conversation, and must never reach the judge or a charge.
+  leaked.messages = [
+    { index: 0, side: "left" as const, text: "週六有空嗎？" },
+    { index: 1, side: "right" as const, text: "有空，週六下午要不要一起喝杯咖啡？" },
+  ];
+  let judgeCalls = 0;
+  const error = await assertRejects(
+    () =>
+      runKeyboardAssistPipeline({
+        image,
+        speakerOverride: "none",
+        voice: { primary: null, secondary: null },
+        priorTurn: {
+          offeredTexts: [
+            "有空，週六下午要不要一起喝杯咖啡？",
+            "有空，你是想約白天還是晚上？",
+          ],
+          insertedText: null,
+        },
+        pipelineVersion: "compiler-judge-v1",
+        signal: new AbortController().signal,
+        compiler: () => Promise.resolve(leaked),
+        judge: () => {
+          judgeCalls += 1;
+          return Promise.resolve(judged);
+        },
+        renewLease: () => Promise.resolve(true),
+        nowMs: () => 1000,
+        deadlineAtMs: 41_000,
+      }),
+    KeyboardAssistPipelineError,
+  );
+  assertEquals(error.code, "unsupported_conversation");
+  assertEquals(judgeCalls, 0);
+});
+
+Deno.test("a suggestion the user sent is treated as real conversation", async () => {
+  const sent = "有空，週六下午要不要一起喝杯咖啡？";
+  const followUp = compilerOutput();
+  followUp.messages = [
+    { index: 0, side: "left" as const, text: "週六有空嗎？" },
+    { index: 1, side: "right" as const, text: sent },
+  ];
+  const result = await runKeyboardAssistPipeline({
+    image,
+    speakerOverride: "none",
+    voice: { primary: "steady", secondary: null },
+    priorTurn: {
+      offeredTexts: [sent, "有空，你是想約白天還是晚上？"],
+      insertedText: sent,
+    },
+    pipelineVersion: "compiler-judge-v1",
+    signal: new AbortController().signal,
+    compiler: () => Promise.resolve(followUp),
+    judge: () => Promise.resolve(judged),
+    renewLease: () => Promise.resolve(true),
+    nowMs: () => 1000,
+    deadlineAtMs: 41_000,
+  });
+  assertEquals(result.status, "ready");
+});
+
+Deno.test("the prior turn reaches the compiler and never the judge", async () => {
+  const priorTurn = {
+    offeredTexts: ["有空，你是想約白天還是晚上？"],
+    insertedText: null,
+  };
+  let compilerSaw: unknown = "unset";
+  let judgeSaw: unknown = "unset";
+  await runKeyboardAssistPipeline({
+    image,
+    speakerOverride: "none",
+    voice: { primary: "steady", secondary: null },
+    priorTurn,
+    pipelineVersion: "compiler-judge-v1",
+    signal: new AbortController().signal,
+    compiler: (request) => {
+      compilerSaw = (request as { priorTurn: unknown }).priorTurn;
+      return Promise.resolve(compilerOutput());
+    },
+    judge: (request) => {
+      judgeSaw = (request as Record<string, unknown>).priorTurn;
+      return Promise.resolve(judged);
+    },
+    renewLease: () => Promise.resolve(true),
+    nowMs: () => 1000,
+    deadlineAtMs: 41_000,
+  });
+  assertEquals(compilerSaw, priorTurn);
+  assertEquals(judgeSaw, undefined);
+});
+
 Deno.test("lost lease and insufficient judge budget stop the stale worker", async () => {
   const stale = await assertRejects(
     () =>
@@ -245,6 +346,7 @@ Deno.test("lost lease and insufficient judge budget stop the stale worker", asyn
         image,
         speakerOverride: "none",
         voice: { primary: null, secondary: null },
+        priorTurn: null,
         pipelineVersion: "compiler-judge-v1",
         signal: new AbortController().signal,
         compiler: () => Promise.resolve(compilerOutput()),
@@ -263,6 +365,7 @@ Deno.test("lost lease and insufficient judge budget stop the stale worker", asyn
         image,
         speakerOverride: "none",
         voice: { primary: null, secondary: null },
+        priorTurn: null,
         pipelineVersion: "compiler-judge-v1",
         signal: new AbortController().signal,
         compiler: () => Promise.resolve(compilerOutput()),
@@ -283,6 +386,7 @@ Deno.test("provider timeout remains distinct from invalid structured output", as
         image,
         speakerOverride: "none",
         voice: { primary: null, secondary: null },
+        priorTurn: null,
         pipelineVersion: "compiler-judge-v1",
         signal: new AbortController().signal,
         compiler: () =>
@@ -307,6 +411,7 @@ Deno.test("compiler and judge obey their own absolute deadlines", async () => {
         image,
         speakerOverride: "none",
         voice: { primary: null, secondary: null },
+        priorTurn: null,
         pipelineVersion: "compiler-judge-v1",
         signal: new AbortController().signal,
         compiler: () => {
@@ -331,6 +436,7 @@ Deno.test("compiler and judge obey their own absolute deadlines", async () => {
         image,
         speakerOverride: "none",
         voice: { primary: null, secondary: null },
+        priorTurn: null,
         pipelineVersion: "compiler-judge-v1",
         signal: new AbortController().signal,
         compiler: () => Promise.resolve(compilerOutput()),
@@ -359,6 +465,7 @@ Deno.test("judge cannot replace grounded candidates with invented reply text", a
         image,
         speakerOverride: "none",
         voice: { primary: "steady", secondary: null },
+        priorTurn: null,
         pipelineVersion: "compiler-judge-v1",
         signal: new AbortController().signal,
         compiler: () => Promise.resolve(compilerOutput()),
@@ -383,6 +490,7 @@ Deno.test("off-screen compiler facts fail before judge", async () => {
         image,
         speakerOverride: "none",
         voice: { primary: null, secondary: null },
+        priorTurn: null,
         pipelineVersion: "compiler-judge-v1",
         signal: new AbortController().signal,
         compiler: () => Promise.resolve(hallucinated),
@@ -419,6 +527,7 @@ Deno.test("judge cannot invent off-screen facts in why or effect", async () => {
         image,
         speakerOverride: "none",
         voice: { primary: "steady", secondary: null },
+        priorTurn: null,
         pipelineVersion: "compiler-judge-v1",
         signal: new AbortController().signal,
         compiler: () => Promise.resolve(compilerOutput()),

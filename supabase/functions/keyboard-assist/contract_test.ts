@@ -57,6 +57,66 @@ Deno.test("keyboard assist accepts exactly one strict image contract", () => {
   assertEquals(parsed.imageDimensions, { width: 1, height: 1 });
 });
 
+Deno.test("prior turn is additive and defaults to absent", () => {
+  // A keyboard build that predates the field must keep working.
+  assertEquals(validateKeyboardAssistRequest(validRequest()).request.priorTurn, null);
+  assertEquals(
+    validateKeyboardAssistRequest({ ...validRequest(), priorTurn: null })
+      .request.priorTurn,
+    null,
+  );
+
+  const offered = ["那我把八月十五那天空下來", "熱氣球我一直都很想去看看"];
+  const accepted = validateKeyboardAssistRequest({
+    ...validRequest(),
+    priorTurn: { offeredTexts: offered, insertedText: offered[0] },
+  });
+  assertEquals(accepted.request.priorTurn, {
+    offeredTexts: offered,
+    insertedText: offered[0],
+  });
+});
+
+Deno.test("prior turn stays bounded and self-consistent", () => {
+  const offered = ["那我把八月十五那天空下來"];
+  assertValidationCode(
+    { ...validRequest(), priorTurn: { offeredTexts: offered } },
+    "invalid_request",
+  );
+  assertValidationCode(
+    { ...validRequest(), priorTurn: { offeredTexts: [], insertedText: null } },
+    "invalid_request",
+  );
+  assertValidationCode(
+    {
+      ...validRequest(),
+      priorTurn: { offeredTexts: [...offered, ...offered], insertedText: null },
+    },
+    "invalid_request",
+  );
+  assertValidationCode(
+    {
+      ...validRequest(),
+      priorTurn: {
+        offeredTexts: Array.from({ length: 7 }, (_, index) => `候選${index}`),
+        insertedText: null,
+      },
+    },
+    "invalid_request",
+  );
+  assertValidationCode(
+    { ...validRequest(), priorTurn: { offeredTexts: offered, insertedText: "沒提供過的句子" } },
+    "invalid_request",
+  );
+  assertValidationCode(
+    {
+      ...validRequest(),
+      priorTurn: { offeredTexts: ["a".repeat(101)], insertedText: null },
+    },
+    "invalid_request",
+  );
+});
+
 Deno.test("keyboard assist rejects omitted nullable fields and hidden context", () => {
   const missingSecondary = validRequest() as Record<string, unknown>;
   missingSecondary.voice = { primary: "steady" };

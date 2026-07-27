@@ -17,6 +17,7 @@ export type KeyboardAssistCompilerRequest = {
   image: KeyboardAssistImage;
   speakerOverride: KeyboardAssistSpeakerOverride;
   voice: KeyboardAssistV1Request["voice"];
+  priorTurn: KeyboardAssistV1Request["priorTurn"];
   signal: AbortSignal;
   pipelineVersion: string;
 };
@@ -344,6 +345,10 @@ export function createAnthropicKeyboardAssistProvider(input: {
                   contractVersion: "keyboard-assist-compiler-v1",
                   speakerOverride: request.speakerOverride,
                   voice: request.voice,
+                  // Never a source of facts: this only stops the next batch
+                  // from repeating lines the user has already seen.
+                  previouslyOffered: request.priorTurn?.offeredTexts ?? [],
+                  previouslySent: request.priorTurn?.insertedText ?? null,
                 }),
               },
             ],

@@ -45,6 +45,19 @@ export const KEYBOARD_ASSIST_TURN_STATES = [
 export type KeyboardAssistTurnState =
   typeof KEYBOARD_ASSIST_TURN_STATES[number];
 
+export const KEYBOARD_ASSIST_MAX_PRIOR_OFFERED_TEXTS = 6;
+export const KEYBOARD_ASSIST_MAX_PRIOR_TEXT_LENGTH = 100;
+
+/// What the keyboard offered on the previous turn in this same chat. It never
+/// introduces facts: `offeredTexts` exists so the model does not repeat itself
+/// and so a candidate leaking back through the screenshot can be detected,
+/// and `insertedText` marks the one line the user actually sent, which is
+/// therefore a legitimate part of the conversation.
+export type KeyboardAssistPriorTurn = {
+  offeredTexts: string[];
+  insertedText: string | null;
+};
+
 export type KeyboardAssistV1Request = {
   contractVersion: typeof KEYBOARD_ASSIST_CONTRACT_VERSION;
   requestId: string;
@@ -57,6 +70,7 @@ export type KeyboardAssistV1Request = {
     primary: KeyboardAssistVoice | null;
     secondary: KeyboardAssistVoice | null;
   };
+  priorTurn: KeyboardAssistPriorTurn | null;
 };
 
 export type KeyboardAssistReadyResult = {

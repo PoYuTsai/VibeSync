@@ -2,6 +2,8 @@ import {
   isValidKeyboardAssistRequestId,
   KEYBOARD_ASSIST_CONFIDENCES,
   KEYBOARD_ASSIST_CONTRACT_VERSION,
+  KEYBOARD_ASSIST_MAX_PRIOR_OFFERED_TEXTS,
+  KEYBOARD_ASSIST_MAX_PRIOR_TEXT_LENGTH,
   KEYBOARD_ASSIST_MEDIA_TYPES,
   KEYBOARD_ASSIST_SPEAKER_OVERRIDES,
   KEYBOARD_ASSIST_STRATEGIES,
@@ -54,6 +56,20 @@ function hasExactKeys(
   const canonical = [...expected].sort();
   return actual.length === canonical.length &&
     actual.every((key, index) => key === canonical[index]);
+}
+
+/// Same strictness as `hasExactKeys` for everything required, while letting a
+/// named additive field be absent. A keyboard build that predates the field
+/// keeps working; anything unrecognised is still rejected.
+function hasExactKeysAllowingOptional(
+  value: Record<string, unknown>,
+  required: readonly string[],
+  optional: readonly string[],
+): boolean {
+  const actual = Object.keys(value);
+  const allowed = new Set([...required, ...optional]);
+  if (actual.some((key) => !allowed.has(key))) return false;
+  return required.every((key) => actual.includes(key));
 }
 
 function invalid(message: string): never {
@@ -236,13 +252,17 @@ export function validateKeyboardAssistRequest(
 ): ValidatedKeyboardAssistRequest {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, [
-      "contractVersion",
-      "requestId",
-      "image",
-      "speakerOverride",
-      "voice",
-    ])
+    !hasExactKeysAllowingOptional(
+      value,
+      [
+        "contractVersion",
+        "requestId",
+        "image",
+        "speakerOverride",
+        "voice",
+      ],
+      ["priorTurn"],
+    )
   ) return invalid("request must use the exact v1 shape");
   if (value.contractVersion !== KEYBOARD_ASSIST_CONTRACT_VERSION) {
     return invalid("unsupported contractVersion");
@@ -266,6 +286,7 @@ export function validateKeyboardAssistRequest(
   ) return invalid("image must contain one supported mediaType and data");
 
   const voice = parseVoice(value.voice);
+  const priorTurn = parsePriorTurn(value.priorTurn);
   const imageBytes = decodeStrictBase64(value.image.data);
   const mediaType = value.image.mediaType as KeyboardAssistMediaType;
   const imageDimensions = sniffDimensions(imageBytes, mediaType);
@@ -281,10 +302,47 @@ export function validateKeyboardAssistRequest(
         "speakerOverride"
       ],
       voice,
+      priorTurn,
     },
     imageBytes,
     imageDimensions,
   };
+}
+
+function parsePriorTurn(
+  value: unknown,
+): KeyboardAssistV1Request["priorTurn"] {
+  if (value === undefined || value === null) return null;
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["offeredTexts", "insertedText"]) ||
+    !Array.isArray(value.offeredTexts) ||
+    value.offeredTexts.length < 1 ||
+    value.offeredTexts.length > KEYBOARD_ASSIST_MAX_PRIOR_OFFERED_TEXTS
+  ) return invalid("priorTurn must use the exact bounded shape");
+
+  const offeredTexts: string[] = [];
+  for (const text of value.offeredTexts) {
+    if (
+      !hasBoundedText(text, 1, KEYBOARD_ASSIST_MAX_PRIOR_TEXT_LENGTH) ||
+      offeredTexts.includes(text)
+    ) return invalid("priorTurn.offeredTexts must be bounded and unique");
+    offeredTexts.push(text);
+  }
+
+  const insertedText = value.insertedText;
+  if (insertedText === null) return { offeredTexts, insertedText: null };
+  if (
+    !hasBoundedText(
+      insertedText,
+      1,
+      KEYBOARD_ASSIST_MAX_PRIOR_TEXT_LENGTH,
+    ) ||
+    // The inserted line is the one candidate allowed to reappear as a real
+    // message, so it may only name something we actually offered.
+    !offeredTexts.includes(insertedText)
+  ) return invalid("priorTurn.insertedText must be one of offeredTexts");
+  return { offeredTexts, insertedText };
 }
 
 function hasBoundedText(

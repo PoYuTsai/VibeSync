@@ -14,6 +14,11 @@ export const KEYBOARD_ASSIST_COMPILER_PROMPT = `
    playful＝俏皮有火花；null 表示不套用風格。六個候選仍需有策略差異，
    不得只換同義字。
 
+7. previouslyOffered 是上一輪已經給過使用者的句子，previouslySent 是他實際送出
+   的那一句。兩者都只用來避免重複：新的候選不得與 previouslyOffered 語意重複，
+   若 previouslySent 已出現在畫面訊息中，就順著它往下推進而不是重提。兩者都不是
+   事實來源，不得據此推斷截圖外的人、事件或關係。
+
 只輸出單一 JSON object，正好包含：
 conversationType, suggestedMySide, sideConfidence, confidence, turnState, cue,
 uncertainty, messages, candidates。

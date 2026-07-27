@@ -78,6 +78,7 @@ Deno.test("Anthropic compiler sends one image and forwards cancellation", async 
     },
     speakerOverride: "none",
     voice: { primary: "playful", secondary: null },
+    priorTurn: null,
     signal: controller.signal,
     pipelineVersion: "compiler-judge-v1",
   });
@@ -176,6 +177,7 @@ Deno.test("Sonnet 5 disables thinking and omits unsupported sampling parameters"
     },
     speakerOverride: "none",
     voice: { primary: "steady", secondary: null },
+    priorTurn: null,
     signal: new AbortController().signal,
     pipelineVersion: "compiler-judge-v1",
   });
@@ -227,6 +229,7 @@ Deno.test("Anthropic structured-output schemas use only supported constraints", 
     },
     speakerOverride: "none",
     voice: { primary: "steady", secondary: null },
+    priorTurn: null,
     signal: new AbortController().signal,
     pipelineVersion: "compiler-judge-v1",
   });

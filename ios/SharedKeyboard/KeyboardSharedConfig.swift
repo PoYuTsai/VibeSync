@@ -33,6 +33,8 @@ enum KeyboardSharedConfig {
     static let resultsPresentationTTL: TimeInterval = 2 * 60
     static let keyboardAssistPendingTTL: TimeInterval = 23 * 60 * 60
     static let maximumKeyboardAssistPendingCount = 8
+    static let maximumPriorOfferedTexts = 6
+    static let maximumPriorTextLength = 100
     static let maximumImageBytes = 900 * 1_024
     static let maximumImageDimension = 8_192
     static let maximumImagePixels = 20_000_000
