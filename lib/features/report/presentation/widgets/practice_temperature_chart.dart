@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -8,6 +6,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/brand/liquid_motion_frame.dart';
 import '../../domain/entities/report_models.dart';
+import 'trend_flow_overlay.dart';
 
 /// 案2：練習溫度成長曲線——practice 歷史事件的 temperatureScore 對
 /// createdAt 的全域時間序列（刻意不分對象混排：練習溫度量的是玩家本人
@@ -220,10 +219,16 @@ class PracticeTemperatureChart extends StatelessWidget {
 
     return SizedBox(
       height: 160,
-      child: _LiquidTrendGlow(
-        key: const ValueKey('practice-growth-trend-glow'),
+      child: TrendFlowOverlay(
         points: normalizedPoints,
         padding: const EdgeInsets.fromLTRB(34, 8, 8, 30),
+        color: const Color(0xFFD7CEFF),
+        glowColor: AppColors.primaryLight,
+        activeDuration: const Duration(milliseconds: 2600),
+        pauseDuration: const Duration(milliseconds: 5400),
+        coreAlpha: 0.64,
+        glowAlpha: 0.12,
+        painterKey: const ValueKey('practice-growth-trend-glow'),
         child: LineChart(
           LineChartData(
             minX: plotMinX,
@@ -352,197 +357,6 @@ class PracticeTemperatureChart extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-/// 在成長線上移動的小型抵達訊號。每 8 秒只動 2.6 秒，其餘時間完全靜止；
-/// 只重繪 overlay，底下的 fl_chart 不會跟著每幀 rebuild。
-class _LiquidTrendGlow extends StatefulWidget {
-  const _LiquidTrendGlow({
-    super.key,
-    required this.points,
-    required this.child,
-    required this.padding,
-  });
-
-  final List<Offset> points;
-  final Widget child;
-  final EdgeInsets padding;
-
-  @override
-  State<_LiquidTrendGlow> createState() => _LiquidTrendGlowState();
-}
-
-class _LiquidTrendGlowState extends State<_LiquidTrendGlow>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 8000),
-  );
-  late final Animation<double> _activePhase = CurvedAnimation(
-    parent: _controller,
-    curve: const Interval(0, 0.325),
-  );
-  bool? _motionEnabled;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final reduceMotion =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final enabled = TickerMode.valuesOf(context).enabled && !reduceMotion;
-    if (_motionEnabled == enabled) return;
-    _motionEnabled = enabled;
-
-    if (enabled) {
-      _controller.repeat();
-    } else {
-      _controller
-        ..stop()
-        ..value = 1;
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _LiquidTrendGlow oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (_samePoints(oldWidget.points, widget.points)) return;
-    if (_motionEnabled == true) {
-      _controller.repeat();
-    } else {
-      _controller.value = 1;
-    }
-  }
-
-  bool _samePoints(List<Offset> before, List<Offset> after) {
-    if (before.length != after.length) return false;
-    for (var index = 0; index < before.length; index++) {
-      if (before[index] != after[index]) return false;
-    }
-    return true;
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.passthrough,
-      children: [
-        widget.child,
-        Positioned.fill(
-          child: IgnorePointer(
-            child: RepaintBoundary(
-              child: CustomPaint(
-                painter: _LiquidTrendGlowPainter(
-                  animation: _activePhase,
-                  points: widget.points,
-                  padding: widget.padding,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _LiquidTrendGlowPainter extends CustomPainter {
-  _LiquidTrendGlowPainter({
-    required this.animation,
-    required this.points,
-    required this.padding,
-  }) : super(repaint: animation);
-
-  final Animation<double> animation;
-  final List<Offset> points;
-  final EdgeInsets padding;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final raw = animation.value;
-    if (points.length < 2 || raw <= 0 || raw >= 1 || size.isEmpty) return;
-
-    final plot = Rect.fromLTRB(
-      padding.left,
-      padding.top,
-      math.max(padding.left, size.width - padding.right),
-      math.max(padding.top, size.height - padding.bottom),
-    );
-    if (plot.isEmpty) return;
-
-    final mapped = [
-      for (final point in points)
-        Offset(
-          plot.left + (point.dx.clamp(0, 1) * plot.width),
-          plot.bottom - (point.dy.clamp(0, 1) * plot.height),
-        ),
-    ];
-    final pathProgress = const Interval(
-      0,
-      0.78,
-      curve: Curves.easeInOutCubic,
-    ).transform(raw);
-    final fade = 1 -
-        const Interval(
-          0.78,
-          1,
-          curve: Curves.easeOutCubic,
-        ).transform(raw);
-    final position = _positionAt(mapped, pathProgress);
-    final tailStart = _positionAt(
-      mapped,
-      math.max(0, pathProgress - 0.10),
-    );
-    final arrival = ((raw - 0.62) / 0.24).clamp(0.0, 1.0).toDouble();
-    final pulse = 0.90 + (math.sin(arrival * math.pi) * 0.18);
-
-    canvas.drawLine(
-      tailStart,
-      position,
-      Paint()
-        ..strokeWidth = 5
-        ..strokeCap = StrokeCap.round
-        ..color = AppColors.primaryLight.withValues(alpha: 0.11 * fade)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
-    );
-    canvas.drawLine(
-      tailStart,
-      position,
-      Paint()
-        ..strokeWidth = 1.6
-        ..strokeCap = StrokeCap.round
-        ..color = const Color(0xFFD7CEFF).withValues(alpha: 0.40 * fade),
-    );
-    canvas.drawCircle(
-      position,
-      7 * pulse,
-      Paint()
-        ..color = AppColors.primaryLight.withValues(alpha: 0.18 * fade)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
-    );
-    canvas.drawCircle(
-      position,
-      2.8,
-      Paint()..color = const Color(0xFFD7CEFF).withValues(alpha: fade),
-    );
-  }
-
-  Offset _positionAt(List<Offset> points, double progress) {
-    final scaled = progress.clamp(0.0, 1.0).toDouble() * (points.length - 1);
-    final index = scaled.floor().clamp(0, points.length - 2);
-    final localProgress = scaled - index;
-    return Offset.lerp(points[index], points[index + 1], localProgress)!;
-  }
-
-  @override
-  bool shouldRepaint(covariant _LiquidTrendGlowPainter oldDelegate) {
-    return oldDelegate.points != points || oldDelegate.padding != padding;
   }
 }
 

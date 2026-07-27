@@ -1,6 +1,4 @@
 // lib/features/report/presentation/widgets/heat_trend_chart.dart
-import 'dart:math' as math;
-
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -8,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/report_models.dart';
+import 'trend_flow_overlay.dart';
 
 /// Heat score trend line chart widget.
 ///
@@ -291,63 +290,57 @@ class HeatTrendChart extends StatelessWidget {
           spot.y / 100,
         ),
     ];
-    final motionEnabled = TickerMode.valuesOf(context).enabled &&
-        MediaQuery.maybeOf(context)?.disableAnimations != true;
-
     return SizedBox(
       height: 180,
-      child: Stack(
-        children: [
-          LineChart(
-            LineChartData(
-              minX: plotMinX,
-              maxX: plotMaxX,
-              minY: 0,
-              maxY: 100,
-              clipData: const FlClipData.all(),
-              gridData: _gridData(),
-              titlesData: _titlesData(firstDate, maxX),
-              borderData: FlBorderData(show: false),
-              lineBarsData: [_lineBarData(spots)],
-              lineTouchData: _touchData(sorted),
-              extraLinesData: ExtraLinesData(
-                horizontalLines: [
-                  HorizontalLine(
-                    y: averageScore.clamp(0, 100).toDouble(),
-                    color: Colors.white.withValues(alpha: 0.22),
-                    strokeWidth: 1,
-                    dashArray: [4, 5],
-                    label: HorizontalLineLabel(
-                      show: true,
-                      alignment: Alignment.topRight,
-                      padding: const EdgeInsets.only(right: 4, bottom: 3),
-                      style: TextStyle(
-                        color: AppColors.onBackgroundSecondary
-                            .withValues(alpha: 0.58),
-                        fontSize: 9,
-                      ),
-                      labelResolver: (_) => '平均',
+      child: TrendFlowOverlay(
+        points: normalizedPoints,
+        padding: const EdgeInsets.fromLTRB(32, 8, 4, 28),
+        color: const Color(0xFFFFD2B8),
+        glowColor: AppColors.ctaStart,
+        activeDuration: const Duration(milliseconds: 1800),
+        pauseDuration: const Duration(milliseconds: 5700),
+        coreAlpha: 0.76,
+        glowAlpha: 0.13,
+        painterKey: const ValueKey('engagement-trend-signal'),
+        child: LineChart(
+          LineChartData(
+            minX: plotMinX,
+            maxX: plotMaxX,
+            minY: 0,
+            maxY: 100,
+            clipData: const FlClipData.all(),
+            gridData: _gridData(),
+            titlesData: _titlesData(firstDate, maxX),
+            borderData: FlBorderData(show: false),
+            lineBarsData: [_lineBarData(spots)],
+            lineTouchData: _touchData(sorted),
+            extraLinesData: ExtraLinesData(
+              horizontalLines: [
+                HorizontalLine(
+                  y: averageScore.clamp(0, 100).toDouble(),
+                  color: Colors.white.withValues(alpha: 0.22),
+                  strokeWidth: 1,
+                  dashArray: [4, 5],
+                  label: HorizontalLineLabel(
+                    show: true,
+                    alignment: Alignment.topRight,
+                    padding: const EdgeInsets.only(right: 4, bottom: 3),
+                    style: TextStyle(
+                      color: AppColors.onBackgroundSecondary
+                          .withValues(alpha: 0.58),
+                      fontSize: 9,
                     ),
+                    labelResolver: (_) => '平均',
                   ),
-                ],
-              ),
-            ),
-            duration: MediaQuery.maybeOf(context)?.disableAnimations == true
-                ? Duration.zero
-                : const Duration(milliseconds: 700),
-            curve: Curves.easeOutCubic,
-          ),
-          Positioned.fill(
-            child: _EngagementSignalReveal(
-              key: ValueKey(
-                'engagement-signal-${sorted.length}-${sorted.last.date.microsecondsSinceEpoch}-${sorted.last.score}',
-              ),
-              points: normalizedPoints,
-              padding: const EdgeInsets.fromLTRB(32, 8, 4, 28),
-              motionEnabled: motionEnabled,
+                ),
+              ],
             ),
           ),
-        ],
+          duration: MediaQuery.maybeOf(context)?.disableAnimations == true
+              ? Duration.zero
+              : const Duration(milliseconds: 700),
+          curve: Curves.easeOutCubic,
+        ),
       ),
     );
   }
@@ -551,169 +544,5 @@ class _OneShotPointRippleState extends State<_OneShotPointRipple>
         ],
       ),
     );
-  }
-}
-
-/// 將最後一段資料以少量粒子匯聚到最新節點，再擴散一次波紋。
-/// 每輪只有 1.45 秒動作，之後長時間靜止，避免看起來像載入中。
-class _EngagementSignalReveal extends StatefulWidget {
-  const _EngagementSignalReveal({
-    super.key,
-    required this.points,
-    required this.padding,
-    required this.motionEnabled,
-  });
-
-  final List<Offset> points;
-  final EdgeInsets padding;
-  final bool motionEnabled;
-
-  @override
-  State<_EngagementSignalReveal> createState() =>
-      _EngagementSignalRevealState();
-}
-
-class _EngagementSignalRevealState extends State<_EngagementSignalReveal>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 7500),
-  );
-  late final Animation<double> _activePhase = CurvedAnimation(
-    parent: _controller,
-    curve: const Interval(0, 0.194),
-  );
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.motionEnabled) _controller.repeat();
-  }
-
-  @override
-  void didUpdateWidget(covariant _EngagementSignalReveal oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!widget.motionEnabled) {
-      _controller
-        ..stop()
-        ..value = 1;
-    } else if (!oldWidget.motionEnabled) {
-      _controller.repeat();
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: RepaintBoundary(
-        child: CustomPaint(
-          key: const ValueKey('engagement-trend-signal'),
-          painter: _EngagementSignalRevealPainter(
-            animation: _activePhase,
-            points: widget.points,
-            padding: widget.padding,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _EngagementSignalRevealPainter extends CustomPainter {
-  _EngagementSignalRevealPainter({
-    required this.animation,
-    required this.points,
-    required this.padding,
-  }) : super(repaint: animation);
-
-  final Animation<double> animation;
-  final List<Offset> points;
-  final EdgeInsets padding;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final raw = animation.value;
-    if (points.length < 2 || raw <= 0 || raw >= 1 || size.isEmpty) return;
-    final plot = Rect.fromLTRB(
-      padding.left,
-      padding.top,
-      size.width - padding.right,
-      size.height - padding.bottom,
-    );
-    if (plot.isEmpty) return;
-
-    final mapped = [
-      for (final point in points)
-        Offset(
-          plot.left + (point.dx.clamp(0, 1) * plot.width),
-          plot.bottom - (point.dy.clamp(0, 1) * plot.height),
-        ),
-    ];
-    final start = mapped[mapped.length - 2];
-    final end = mapped.last;
-    final direction = end - start;
-    final distance = direction.distance;
-    final normal = distance <= 0.001
-        ? const Offset(0, -1)
-        : Offset(-direction.dy / distance, direction.dx / distance);
-
-    final travel = Curves.easeOutCubic.transform(
-      (raw / 0.68).clamp(0.0, 1.0),
-    );
-    for (var index = 0; index < 5; index++) {
-      final delay = index * 0.055;
-      final progress =
-          ((travel - delay) / (1 - delay)).clamp(0.0, 1.0).toDouble();
-      if (progress <= 0 || progress >= 1) continue;
-
-      final spread = (index - 2) * 3.2;
-      final arc = math.sin(progress * math.pi) * spread;
-      final position = Offset.lerp(start, end, progress)! + (normal * arc);
-      final alpha = 0.34 * (1 - progress);
-      canvas.drawCircle(
-        position,
-        1.2 + ((index % 2) * 0.45),
-        Paint()
-          ..color = AppColors.brandBlush.withValues(alpha: alpha)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.5),
-      );
-    }
-
-    final arrival = ((raw - 0.46) / 0.26).clamp(0.0, 1.0).toDouble();
-    if (arrival > 0 && arrival < 1) {
-      canvas.drawCircle(
-        end,
-        6 + (5 * arrival),
-        Paint()
-          ..color = AppColors.ctaStart.withValues(
-            alpha: 0.16 * math.sin(arrival * math.pi),
-          )
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
-      );
-    }
-
-    final ripple = ((raw - 0.56) / 0.44).clamp(0.0, 1.0).toDouble();
-    if (ripple <= 0 || ripple >= 1) return;
-    canvas.drawCircle(
-      end,
-      5 + (14 * Curves.easeOutCubic.transform(ripple)),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.25
-        ..color = AppColors.ctaStart.withValues(
-          alpha: 0.28 * (1 - ripple),
-        ),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _EngagementSignalRevealPainter oldDelegate) {
-    return oldDelegate.points != points || oldDelegate.padding != padding;
   }
 }
