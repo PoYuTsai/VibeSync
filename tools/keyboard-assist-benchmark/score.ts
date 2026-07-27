@@ -22,7 +22,6 @@ const ALLOWED_STRATEGIES = new Set([
 const ALLOWED_SCOPES = new Set([
   "screenshot_only",
   "screenshot_plus_global_voice",
-  "linked_partner",
 ]);
 const ALLOWED_CONFIDENCE = new Set(["high", "medium", "low"]);
 const ALLOWED_TURN_STATES = new Set(["reply_due", "optional_follow_up"]);
@@ -37,6 +36,15 @@ function unicodeLength(value: string): number {
 
 function normalizedDistinctValue(value: string): string {
   return value.normalize("NFKC").trim().toLocaleLowerCase();
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expected: string[],
+): boolean {
+  const actual = Object.keys(value).toSorted();
+  return actual.length === expected.length &&
+    actual.every((key, index) => key === expected.toSorted()[index]);
 }
 
 function hasMarkdown(value: string): boolean {
@@ -132,6 +140,20 @@ export function validateReadyResult(
 ): string[] {
   const issues = new Set<string>();
   if (!isRecord(value)) return ["invalid_result"];
+  if (
+    !hasExactKeys(value, [
+      "contractVersion",
+      "requestId",
+      "status",
+      "source",
+      "turnState",
+      "cue",
+      "uncertainty",
+      "options",
+    ])
+  ) {
+    issues.add("invalid_ready_shape");
+  }
 
   if (value.contractVersion !== "keyboard-assist-v1") {
     issues.add("invalid_contract_version");
@@ -151,6 +173,16 @@ export function validateReadyResult(
   if (!isRecord(value.source)) {
     issues.add("invalid_source");
   } else {
+    if (
+      !hasExactKeys(value.source, [
+        "scope",
+        "messageCount",
+        "confidence",
+        "sideConfidence",
+      ])
+    ) {
+      issues.add("invalid_source_shape");
+    }
     if (!ALLOWED_SCOPES.has(String(value.source.scope))) {
       issues.add("invalid_source_scope");
     }
@@ -177,6 +209,11 @@ export function validateReadyResult(
       if (!isRecord(option)) {
         issues.add("invalid_option");
         continue;
+      }
+      if (
+        !hasExactKeys(option, ["strategy", "text", "why", "effect"])
+      ) {
+        issues.add("invalid_option_shape");
       }
       const strategy = String(option.strategy);
       if (!ALLOWED_STRATEGIES.has(strategy)) {
@@ -218,6 +255,43 @@ export function validateReadyResult(
     }
   }
 
+  return [...issues].toSorted();
+}
+
+export function validateAssistResult(value: unknown): string[] {
+  if (!isRecord(value)) return ["invalid_result"];
+  if (value.status === "ready") return validateReadyResult(value);
+  if (value.status !== "needs_speaker_confirmation") {
+    return ["unsupported_status"];
+  }
+
+  const issues = new Set<string>();
+  if (
+    !hasExactKeys(value, [
+      "contractVersion",
+      "requestId",
+      "status",
+      "suggestedMySide",
+      "sideConfidence",
+    ])
+  ) {
+    issues.add("invalid_speaker_confirmation_shape");
+  }
+  if (value.contractVersion !== "keyboard-assist-v1") {
+    issues.add("invalid_contract_version");
+  }
+  if (typeof value.requestId !== "string" || value.requestId.trim() === "") {
+    issues.add("invalid_request_id");
+  }
+  if (
+    value.suggestedMySide !== "left" &&
+    value.suggestedMySide !== "right"
+  ) {
+    issues.add("invalid_suggested_side");
+  }
+  if (value.sideConfidence !== "low") {
+    issues.add("invalid_side_confidence");
+  }
   return [...issues].toSorted();
 }
 

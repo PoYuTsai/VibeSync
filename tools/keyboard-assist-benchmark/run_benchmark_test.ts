@@ -61,7 +61,7 @@ Deno.test("validateCaseDefinition rejects hidden context and missing local image
   assert(issues.includes("additional_property:partnerSummary"));
 });
 
-Deno.test("mimeTypeForPath supports only the contract image types", async () => {
+Deno.test("mimeTypeForPath supports only the contract image types", () => {
   assertEquals(mimeTypeForPath("case.jpg"), "image/jpeg");
   assertEquals(mimeTypeForPath("case.PNG"), "image/png");
   assertEquals(mimeTypeForPath("case.webp"), "image/webp");

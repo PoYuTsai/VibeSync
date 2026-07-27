@@ -6,6 +6,7 @@ import {
   aggregateBenchmark,
   latencyPercentile,
   quoteLeakUpperBound95,
+  validateAssistResult,
   validateReadyResult,
 } from "./score.ts";
 
@@ -109,6 +110,77 @@ Deno.test("validateReadyResult rejects duplicate strategies, unsupported facts, 
   assert(issues.includes("strategy_not_distinct"));
   assert(issues.includes("text_not_distinct"));
   assert(issues.includes("unsupported_fact"));
+});
+
+Deno.test("v1 ready result cannot claim linked-partner scope", () => {
+  const result = {
+    contractVersion: "keyboard-assist-v1",
+    requestId: "550e8400-e29b-41d4-a716-446655440000",
+    status: "ready",
+    source: {
+      scope: "linked_partner",
+      messageCount: 4,
+      confidence: "high",
+      sideConfidence: "high",
+    },
+    turnState: "reply_due",
+    cue: "只根據這張截圖。",
+    uncertainty: null,
+    options: [
+      {
+        strategy: "keep_pace",
+        text: "好呀",
+        why: "接住話題",
+        effect: "自然",
+      },
+      {
+        strategy: "build_connection",
+        text: "聽起來不錯耶",
+        why: "增加溫度",
+        effect: "親近",
+      },
+      {
+        strategy: "move_forward",
+        text: "那週日見？",
+        why: "明確推進",
+        effect: "直接",
+      },
+    ],
+  };
+
+  assert(validateReadyResult(result).includes("invalid_source_scope"));
+});
+
+Deno.test("speaker confirmation requires exact no-transcript v1 shape", () => {
+  const valid = {
+    contractVersion: "keyboard-assist-v1",
+    requestId: "550e8400-e29b-41d4-a716-446655440000",
+    status: "needs_speaker_confirmation",
+    suggestedMySide: "right",
+    sideConfidence: "low",
+  };
+  assertEquals(validateAssistResult(valid), []);
+
+  const missingNullable = { ...valid };
+  delete (missingNullable as Record<string, unknown>).suggestedMySide;
+  assert(
+    validateAssistResult(missingNullable).includes(
+      "invalid_speaker_confirmation_shape",
+    ),
+  );
+
+  assert(
+    validateAssistResult({ ...valid, suggestedMySide: null }).includes(
+      "invalid_suggested_side",
+    ),
+  );
+
+  const leaked = { ...valid, transcript: "must never be returned or stored" };
+  assert(
+    validateAssistResult(leaked).includes(
+      "invalid_speaker_confirmation_shape",
+    ),
+  );
 });
 
 Deno.test("aggregateBenchmark keeps ready rate, latency, leak bound, and violations separate", () => {

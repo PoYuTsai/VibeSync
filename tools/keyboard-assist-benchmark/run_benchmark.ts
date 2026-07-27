@@ -8,6 +8,7 @@ import {
 import {
   aggregateBenchmark,
   type BenchmarkRun,
+  validateAssistResult,
   validateReadyResult,
 } from "./score.ts";
 
@@ -303,6 +304,8 @@ async function runOne(
     ? validateReadyResult(response, {
       forbiddenSubstrings: benchmarkCase.forbiddenSubstrings,
     })
+    : status === "needs_speaker_confirmation"
+    ? validateAssistResult(response)
     : [];
   if (
     benchmarkCase.expectedStatuses &&
