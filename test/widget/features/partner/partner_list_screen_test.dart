@@ -12,12 +12,12 @@ import 'package:vibesync/features/partner/presentation/screens/partner_list_scre
 import 'package:vibesync/features/partner/presentation/widgets/partner_list_card.dart';
 
 Partner _p(String id, String name) => Partner(
-      id: id,
-      name: name,
-      createdAt: DateTime(2026, 4, 20),
-      updatedAt: DateTime(2026, 4, 20),
-      ownerUserId: 'u1',
-    );
+  id: id,
+  name: name,
+  createdAt: DateTime(2026, 4, 20),
+  updatedAt: DateTime(2026, 4, 20),
+  ownerUserId: 'u1',
+);
 
 PartnerAggregateView _agg({
   int rounds = 0,
@@ -25,94 +25,104 @@ PartnerAggregateView _agg({
   List<String> interests = const [],
   List<String> traits = const [],
   DateTime? lastInteraction,
-}) =>
-    PartnerAggregateView(
-      unionInterests: interests,
-      unionTraits: traits,
-      unionNotes: null,
-      latestHeat: heat,
-      totalRounds: rounds,
-      totalMessages: 0,
-      lastInteraction: lastInteraction,
-    );
+}) => PartnerAggregateView(
+  unionInterests: interests,
+  unionTraits: traits,
+  unionNotes: null,
+  latestHeat: heat,
+  totalRounds: rounds,
+  totalMessages: 0,
+  lastInteraction: lastInteraction,
+);
 
 Conversation _conv(String id, String partnerId) => Conversation(
-      id: id,
-      name: 'c-$id',
-      ownerUserId: 'u1',
-      createdAt: DateTime(2026, 4, 20),
-      updatedAt: DateTime(2026, 4, 20),
-      messages: const [],
-      partnerId: partnerId,
-    );
+  id: id,
+  name: 'c-$id',
+  ownerUserId: 'u1',
+  createdAt: DateTime(2026, 4, 20),
+  updatedAt: DateTime(2026, 4, 20),
+  messages: const [],
+  partnerId: partnerId,
+);
 
-Widget _screen({
-  required List<Override> overrides,
-}) =>
-    ProviderScope(
-      overrides: overrides,
-      child: const MaterialApp(home: Scaffold(body: PartnerListScreen())),
-    );
+Widget _screen({required List<Override> overrides}) => ProviderScope(
+  overrides: overrides,
+  child: const MaterialApp(
+    home: MediaQuery(
+      data: MediaQueryData(disableAnimations: true),
+      child: Scaffold(body: PartnerListScreen()),
+    ),
+  ),
+);
 
 /// GoRouter harness for the empty-state CTAs (案 3) — the buttons call
 /// context.push, so navigation assertions need real routes to land on.
-Widget _routedScreen({
-  required List<Override> overrides,
-}) =>
-    ProviderScope(
-      overrides: overrides,
-      child: MaterialApp.router(
-        routerConfig: GoRouter(
-          initialLocation: '/',
-          routes: [
-            GoRoute(
-              path: '/',
-              builder: (_, __) => const Scaffold(body: PartnerListScreen()),
-            ),
-            GoRoute(
-              path: '/partner/new',
-              builder: (_, __) =>
-                  const Scaffold(body: Text('partner-new-screen')),
-            ),
-            GoRoute(
-              path: '/practice-collection',
-              builder: (_, __) =>
-                  const Scaffold(body: Text('practice-collection-screen')),
-            ),
-          ],
+Widget _routedScreen({required List<Override> overrides}) => ProviderScope(
+  overrides: overrides,
+  child: MaterialApp.router(
+    routerConfig: GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (_, __) => const MediaQuery(
+            data: MediaQueryData(disableAnimations: true),
+            child: Scaffold(body: PartnerListScreen()),
+          ),
         ),
-      ),
-    );
+        GoRoute(
+          path: '/partner/new',
+          builder: (_, __) => const Scaffold(body: Text('partner-new-screen')),
+        ),
+        GoRoute(
+          path: '/practice-collection',
+          builder: (_, __) =>
+              const Scaffold(body: Text('practice-collection-screen')),
+        ),
+      ],
+    ),
+  ),
+);
 
 void main() {
   testWidgets('empty state renders without partner cards', (t) async {
-    await t.pumpWidget(_screen(overrides: [
-      partnerListProvider.overrideWith((_) => const <Partner>[]),
-    ]));
+    await t.pumpWidget(
+      _screen(
+        overrides: [partnerListProvider.overrideWith((_) => const <Partner>[])],
+      ),
+    );
     await t.pumpAndSettle();
 
     expect(find.byType(PartnerListCard), findsNothing);
   });
 
-  testWidgets('renders one PartnerListCard per partner with premium visuals',
-      (t) async {
-    await t.pumpWidget(_screen(overrides: [
-      partnerListProvider
-          .overrideWith((_) => [_p('a', 'Alice'), _p('b', 'Bob')]),
-      partnerAggregateProvider('a').overrideWith(
-        (_) => _agg(
-          rounds: 3,
-          heat: 70,
-          interests: const ['coffee'],
-          traits: const ['bold'],
-        ),
+  testWidgets('renders one PartnerListCard per partner with premium visuals', (
+    t,
+  ) async {
+    await t.pumpWidget(
+      _screen(
+        overrides: [
+          partnerListProvider.overrideWith(
+            (_) => [_p('a', 'Alice'), _p('b', 'Bob')],
+          ),
+          partnerAggregateProvider('a').overrideWith(
+            (_) => _agg(
+              rounds: 3,
+              heat: 70,
+              interests: const ['coffee'],
+              traits: const ['bold'],
+            ),
+          ),
+          partnerAggregateProvider('b').overrideWith((_) => _agg(rounds: 1)),
+          conversationsByPartnerProvider(
+            'a',
+          ).overrideWith((_) => const <Conversation>[]),
+          conversationsByPartnerProvider(
+            'b',
+          ).overrideWith((_) => const <Conversation>[]),
+        ],
       ),
-      partnerAggregateProvider('b').overrideWith((_) => _agg(rounds: 1)),
-      conversationsByPartnerProvider('a')
-          .overrideWith((_) => const <Conversation>[]),
-      conversationsByPartnerProvider('b')
-          .overrideWith((_) => const <Conversation>[]),
-    ]));
+    );
     await t.pumpAndSettle();
 
     expect(find.text('Alice'), findsOneWidget);
@@ -128,16 +138,23 @@ void main() {
   });
 
   testWidgets('list preserves order from partnerListProvider', (t) async {
-    await t.pumpWidget(_screen(overrides: [
-      partnerListProvider
-          .overrideWith((_) => [_p('z', 'Zoe'), _p('a', 'Alice')]),
-      partnerAggregateProvider('z').overrideWith((_) => _agg()),
-      partnerAggregateProvider('a').overrideWith((_) => _agg()),
-      conversationsByPartnerProvider('z')
-          .overrideWith((_) => const <Conversation>[]),
-      conversationsByPartnerProvider('a')
-          .overrideWith((_) => const <Conversation>[]),
-    ]));
+    await t.pumpWidget(
+      _screen(
+        overrides: [
+          partnerListProvider.overrideWith(
+            (_) => [_p('z', 'Zoe'), _p('a', 'Alice')],
+          ),
+          partnerAggregateProvider('z').overrideWith((_) => _agg()),
+          partnerAggregateProvider('a').overrideWith((_) => _agg()),
+          conversationsByPartnerProvider(
+            'z',
+          ).overrideWith((_) => const <Conversation>[]),
+          conversationsByPartnerProvider(
+            'a',
+          ).overrideWith((_) => const <Conversation>[]),
+        ],
+      ),
+    );
     await t.pumpAndSettle();
 
     final zoe = t.getTopLeft(find.text('Zoe'));
@@ -147,9 +164,13 @@ void main() {
 
   group('empty state CTAs（案 3 冷啟動分流）', () {
     testWidgets('empty state shows both CTAs', (t) async {
-      await t.pumpWidget(_screen(overrides: [
-        partnerListProvider.overrideWith((_) => const <Partner>[]),
-      ]));
+      await t.pumpWidget(
+        _screen(
+          overrides: [
+            partnerListProvider.overrideWith((_) => const <Partner>[]),
+          ],
+        ),
+      );
       await t.pumpAndSettle();
 
       expect(find.text('建立對象卡，開始分析'), findsOneWidget);
@@ -157,12 +178,17 @@ void main() {
     });
 
     testWidgets('CTAs are hidden when a partner exists', (t) async {
-      await t.pumpWidget(_screen(overrides: [
-        partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
-        partnerAggregateProvider('a').overrideWith((_) => _agg()),
-        conversationsByPartnerProvider('a')
-            .overrideWith((_) => const <Conversation>[]),
-      ]));
+      await t.pumpWidget(
+        _screen(
+          overrides: [
+            partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
+            partnerAggregateProvider('a').overrideWith((_) => _agg()),
+            conversationsByPartnerProvider(
+              'a',
+            ).overrideWith((_) => const <Conversation>[]),
+          ],
+        ),
+      );
       await t.pumpAndSettle();
 
       expect(find.text('建立對象卡，開始分析'), findsNothing);
@@ -170,9 +196,13 @@ void main() {
     });
 
     testWidgets('primary CTA pushes /partner/new', (t) async {
-      await t.pumpWidget(_routedScreen(overrides: [
-        partnerListProvider.overrideWith((_) => const <Partner>[]),
-      ]));
+      await t.pumpWidget(
+        _routedScreen(
+          overrides: [
+            partnerListProvider.overrideWith((_) => const <Partner>[]),
+          ],
+        ),
+      );
       await t.pumpAndSettle();
 
       await t.tap(find.text('建立對象卡，開始分析'));
@@ -182,9 +212,13 @@ void main() {
     });
 
     testWidgets('secondary CTA pushes /practice-collection', (t) async {
-      await t.pumpWidget(_routedScreen(overrides: [
-        partnerListProvider.overrideWith((_) => const <Partner>[]),
-      ]));
+      await t.pumpWidget(
+        _routedScreen(
+          overrides: [
+            partnerListProvider.overrideWith((_) => const <Partner>[]),
+          ],
+        ),
+      );
       await t.pumpAndSettle();
 
       await t.tap(find.text('先去練習室熱身'));
@@ -195,51 +229,72 @@ void main() {
   });
 
   group('delete dialog two-mode', () {
-    testWidgets('tapping delete with conversationCount==0 shows confirm dialog',
-        (t) async {
-      await t.pumpWidget(_screen(overrides: [
-        partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
-        partnerAggregateProvider('a').overrideWith((_) => _agg()),
-        conversationsByPartnerProvider('a')
-            .overrideWith((_) => const <Conversation>[]),
-      ]));
-      await t.pumpAndSettle();
+    testWidgets(
+      'tapping delete with conversationCount==0 shows confirm dialog',
+      (t) async {
+        await t.pumpWidget(
+          _screen(
+            overrides: [
+              partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
+              partnerAggregateProvider('a').overrideWith((_) => _agg()),
+              conversationsByPartnerProvider(
+                'a',
+              ).overrideWith((_) => const <Conversation>[]),
+            ],
+          ),
+        );
+        await t.pumpAndSettle();
 
-      await t.tap(find.byIcon(Icons.delete_outline));
-      await t.pumpAndSettle();
+        await t.tap(find.byIcon(Icons.delete_outline));
+        await t.pumpAndSettle();
 
-      expect(find.byType(AlertDialog), findsOneWidget);
-      expect(find.byType(TextButton), findsNWidgets(2));
-    });
+        expect(find.byType(AlertDialog), findsOneWidget);
+        expect(find.byType(TextButton), findsNWidgets(2));
+      },
+    );
 
     testWidgets(
-        'tapping delete with conversationCount>0 shows informational dialog',
-        (t) async {
-      await t.pumpWidget(_screen(overrides: [
-        partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
-        partnerAggregateProvider('a').overrideWith((_) => _agg(rounds: 0)),
-        conversationsByPartnerProvider('a')
-            .overrideWith((_) => [_conv('c1', 'a'), _conv('c2', 'a')]),
-      ]));
-      await t.pumpAndSettle();
+      'tapping delete with conversationCount>0 shows informational dialog',
+      (t) async {
+        await t.pumpWidget(
+          _screen(
+            overrides: [
+              partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
+              partnerAggregateProvider(
+                'a',
+              ).overrideWith((_) => _agg(rounds: 0)),
+              conversationsByPartnerProvider(
+                'a',
+              ).overrideWith((_) => [_conv('c1', 'a'), _conv('c2', 'a')]),
+            ],
+          ),
+        );
+        await t.pumpAndSettle();
 
-      await t.tap(find.byIcon(Icons.delete_outline));
-      await t.pumpAndSettle();
+        await t.tap(find.byIcon(Icons.delete_outline));
+        await t.pumpAndSettle();
 
-      expect(find.byType(AlertDialog), findsOneWidget);
-      expect(find.byType(TextButton), findsOneWidget);
-    });
+        expect(find.byType(AlertDialog), findsOneWidget);
+        expect(find.byType(TextButton), findsOneWidget);
+      },
+    );
 
-    testWidgets('confirm dialog calls controller.delete and shows SnackBar',
-        (t) async {
+    testWidgets('confirm dialog calls controller.delete and shows SnackBar', (
+      t,
+    ) async {
       final fake = _FakePartnerRepo();
-      await t.pumpWidget(_screen(overrides: [
-        partnerRepositoryProvider.overrideWithValue(fake),
-        partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
-        partnerAggregateProvider('a').overrideWith((_) => _agg()),
-        conversationsByPartnerProvider('a')
-            .overrideWith((_) => const <Conversation>[]),
-      ]));
+      await t.pumpWidget(
+        _screen(
+          overrides: [
+            partnerRepositoryProvider.overrideWithValue(fake),
+            partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
+            partnerAggregateProvider('a').overrideWith((_) => _agg()),
+            conversationsByPartnerProvider(
+              'a',
+            ).overrideWith((_) => const <Conversation>[]),
+          ],
+        ),
+      );
       await t.pumpAndSettle();
 
       await t.tap(find.byIcon(Icons.delete_outline));
@@ -252,26 +307,32 @@ void main() {
     });
 
     testWidgets(
-        'confirm dialog surfaces defensive SnackBar when repository blocks delete',
-        (t) async {
-      final throwing = _FakePartnerRepo(throwBlockCount: 4);
-      await t.pumpWidget(_screen(overrides: [
-        partnerRepositoryProvider.overrideWithValue(throwing),
-        partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
-        partnerAggregateProvider('a').overrideWith((_) => _agg()),
-        conversationsByPartnerProvider('a')
-            .overrideWith((_) => const <Conversation>[]),
-      ]));
-      await t.pumpAndSettle();
+      'confirm dialog surfaces defensive SnackBar when repository blocks delete',
+      (t) async {
+        final throwing = _FakePartnerRepo(throwBlockCount: 4);
+        await t.pumpWidget(
+          _screen(
+            overrides: [
+              partnerRepositoryProvider.overrideWithValue(throwing),
+              partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
+              partnerAggregateProvider('a').overrideWith((_) => _agg()),
+              conversationsByPartnerProvider(
+                'a',
+              ).overrideWith((_) => const <Conversation>[]),
+            ],
+          ),
+        );
+        await t.pumpAndSettle();
 
-      await t.tap(find.byIcon(Icons.delete_outline));
-      await t.pumpAndSettle();
-      await t.tap(find.byType(TextButton).last);
-      await t.pumpAndSettle();
+        await t.tap(find.byIcon(Icons.delete_outline));
+        await t.pumpAndSettle();
+        await t.tap(find.byType(TextButton).last);
+        await t.pumpAndSettle();
 
-      expect(find.byType(SnackBar), findsOneWidget);
-      expect(find.textContaining('4'), findsOneWidget);
-    });
+        expect(find.byType(SnackBar), findsOneWidget);
+        expect(find.textContaining('4'), findsOneWidget);
+      },
+    );
   });
 }
 

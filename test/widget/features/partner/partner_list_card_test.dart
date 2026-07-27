@@ -4,14 +4,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_list_card.dart';
+import 'package:vibesync/shared/widgets/brand/liquid_motion_frame.dart';
 
 Partner _p(String id, String name) => Partner(
-      id: id,
-      name: name,
-      createdAt: DateTime(2026, 4, 20),
-      updatedAt: DateTime(2026, 4, 20),
-      ownerUserId: 'u1',
-    );
+  id: id,
+  name: name,
+  createdAt: DateTime(2026, 4, 20),
+  updatedAt: DateTime(2026, 4, 20),
+  ownerUserId: 'u1',
+);
 
 PartnerAggregateView _agg({
   List<String> interests = const [],
@@ -19,29 +20,34 @@ PartnerAggregateView _agg({
   int? heat,
   int rounds = 0,
   DateTime? lastInteraction,
-}) =>
-    PartnerAggregateView(
-      unionInterests: interests,
-      unionTraits: traits,
-      unionNotes: null,
-      latestHeat: heat,
-      totalRounds: rounds,
-      totalMessages: 0,
-      lastInteraction: lastInteraction,
-    );
+}) => PartnerAggregateView(
+  unionInterests: interests,
+  unionTraits: traits,
+  unionNotes: null,
+  latestHeat: heat,
+  totalRounds: rounds,
+  totalMessages: 0,
+  lastInteraction: lastInteraction,
+);
 
 Future<void> _pump(WidgetTester t, Widget child) async {
-  await t.pumpWidget(MaterialApp(
-    home: Scaffold(
-      body: SizedBox(width: 400, child: child),
+  await t.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: SizedBox(width: 400, child: child),
+        ),
+      ),
     ),
-  ));
+  );
   await t.pumpAndSettle();
 }
 
 void main() {
-  testWidgets('renders core visual pieces given Partner + aggregate',
-      (t) async {
+  testWidgets('renders core visual pieces given Partner + aggregate', (
+    t,
+  ) async {
     await _pump(
       t,
       PartnerListCard(
@@ -65,10 +71,16 @@ void main() {
     expect(find.text('本次投入 70'), findsOneWidget);
     expect(find.text('coffee · bold'), findsOneWidget);
     expect(find.byIcon(Icons.delete_outline), findsOneWidget);
+    expect(find.byType(LiquidMotionFrame), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('partner-avatar-liquid-a')),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('avatar fallback keeps names readable across languages',
-      (t) async {
+  testWidgets('avatar fallback keeps names readable across languages', (
+    t,
+  ) async {
     await _pump(
       t,
       Column(
@@ -98,8 +110,9 @@ void main() {
     expect(find.text('TE'), findsOneWidget);
   });
 
-  testWidgets('falls back to a pending-analysis pill when latestHeat is null',
-      (t) async {
+  testWidgets('falls back to a pending-analysis pill when latestHeat is null', (
+    t,
+  ) async {
     await _pump(
       t,
       PartnerListCard(
@@ -114,26 +127,28 @@ void main() {
   });
 
   testWidgets(
-      'shows interleaved interests+traits joined by " · " as preview, capped at 3',
-      (t) async {
-    await _pump(
-      t,
-      PartnerListCard(
-        partner: _p('a', 'Alice'),
-        aggregate: _agg(
-          interests: const ['i0', 'i1', 'i2', 'i3', 'i4'],
-          traits: const ['t0', 't1', 't2', 't3', 't4'],
-          heat: 50,
+    'shows interleaved interests+traits joined by " · " as preview, capped at 3',
+    (t) async {
+      await _pump(
+        t,
+        PartnerListCard(
+          partner: _p('a', 'Alice'),
+          aggregate: _agg(
+            interests: const ['i0', 'i1', 'i2', 'i3', 'i4'],
+            traits: const ['t0', 't1', 't2', 't3', 't4'],
+            heat: 50,
+          ),
+          onTap: () {},
         ),
-        onTap: () {},
-      ),
-    );
+      );
 
-    expect(find.text('i0 · t0 · i1'), findsOneWidget);
-  });
+      expect(find.text('i0 · t0 · i1'), findsOneWidget);
+    },
+  );
 
-  testWidgets('keeps at least one trait when both interests and traits exist',
-      (t) async {
+  testWidgets('keeps at least one trait when both interests and traits exist', (
+    t,
+  ) async {
     await _pump(
       t,
       PartnerListCard(

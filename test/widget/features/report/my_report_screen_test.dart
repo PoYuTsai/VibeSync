@@ -22,6 +22,7 @@ import 'package:vibesync/features/subscription/data/providers/subscription_provi
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/features/user_profile/data/providers/user_profile_providers.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
+import 'package:vibesync/shared/widgets/brand/liquid_motion_frame.dart';
 
 /// Seeded subscription notifier，同 analysis_screen_hydration_test 的
 /// seeded-notifier idiom：constructor body 在 super() 的同步初始化之後執行，
@@ -40,12 +41,12 @@ class _NullUserProfileController extends UserProfileController {
 }
 
 Partner _partner(String id, String name) => Partner(
-      id: id,
-      name: name,
-      createdAt: DateTime(2026, 1, 1),
-      updatedAt: DateTime(2026, 1, 1),
-      ownerUserId: 'u-1',
-    );
+  id: id,
+  name: name,
+  createdAt: DateTime(2026, 1, 1),
+  updatedAt: DateTime(2026, 1, 1),
+  ownerUserId: 'u-1',
+);
 
 const _emptyReport = ReportData(
   trendPoints: [],
@@ -57,26 +58,24 @@ const _emptyReport = ReportData(
 );
 
 ReportData _paidReport() => ReportData(
-      trendPoints: [
-        HeatTrendPoint(
-          date: DateTime(2026, 6, 1),
-          score: 60,
-          conversationName: 'Vivi',
-        ),
-        HeatTrendPoint(
-          date: DateTime(2026, 6, 2),
-          score: 72,
-          conversationName: 'Vivi',
-        ),
-      ],
-      averageScore: 66,
-      scoreDelta: 12,
-      comparisons: const [ConversationComparison(name: 'Vivi', score: 72)],
-      stageDistributions: const [
-        StageDistribution(stageName: '建立男女感', count: 2),
-      ],
-      totalConversations: 2,
-    );
+  trendPoints: [
+    HeatTrendPoint(
+      date: DateTime(2026, 6, 1),
+      score: 60,
+      conversationName: 'Vivi',
+    ),
+    HeatTrendPoint(
+      date: DateTime(2026, 6, 2),
+      score: 72,
+      conversationName: 'Vivi',
+    ),
+  ],
+  averageScore: 66,
+  scoreDelta: 12,
+  comparisons: const [ConversationComparison(name: 'Vivi', score: 72)],
+  stageDistributions: const [StageDistribution(stageName: '建立男女感', count: 2)],
+  totalConversations: 2,
+);
 
 AnalysisHistoryEvent _historyEvent(
   String id,
@@ -84,15 +83,14 @@ AnalysisHistoryEvent _historyEvent(
   String name,
   int score,
   DateTime createdAt,
-) =>
-    AnalysisHistoryEvent.analyze(
-      id: id,
-      createdAt: createdAt,
-      conversationId: conversationId,
-      subjectName: name,
-      enthusiasmScore: score,
-      gameStageLabel: 'premise',
-    );
+) => AnalysisHistoryEvent.analyze(
+  id: id,
+  createdAt: createdAt,
+  conversationId: conversationId,
+  subjectName: name,
+  enthusiasmScore: score,
+  gameStageLabel: 'premise',
+);
 
 Future<void> _pumpReportScreen(
   WidgetTester tester, {
@@ -107,17 +105,22 @@ Future<void> _pumpReportScreen(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        subscriptionProvider
-            .overrideWith((ref) => _SeededSubscriptionNotifier(subscription)),
+        subscriptionProvider.overrideWith(
+          (ref) => _SeededSubscriptionNotifier(subscription),
+        ),
         reportDataProvider.overrideWithValue(report),
         analysisHistoryEventsProvider.overrideWithValue(historyEvents),
         partnerListProvider.overrideWithValue(partners),
         conversationsByPartnerProvider.overrideWith((ref, id) => const []),
-        userProfileControllerProvider
-            .overrideWith(_NullUserProfileController.new),
+        userProfileControllerProvider.overrideWith(
+          _NullUserProfileController.new,
+        ),
       ],
       child: const MaterialApp(
-        home: Scaffold(body: MyReportScreen()),
+        home: MediaQuery(
+          data: MediaQueryData(disableAnimations: true),
+          child: Scaffold(body: MyReportScreen()),
+        ),
       ),
     ),
   );
@@ -129,15 +132,18 @@ void main() {
   testWidgets('決策 A：Free + 1 對象 → 鎖卡與對象作戰板同時 render', (tester) async {
     await _pumpReportScreen(
       tester,
-      subscription: const SubscriptionState(
-        tier: SubscriptionTierHelper.free,
-      ),
+      subscription: const SubscriptionState(tier: SubscriptionTierHelper.free),
       report: _emptyReport,
       partners: [_partner('p1', 'Vivi')],
     );
 
     // 既有 Free gating：鎖卡仍在。
     expect(find.text('我的報告會在 Starter 解鎖'), findsOneWidget);
+    expect(find.byType(LiquidMotionFrame), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('report-upgrade-liquid-frame')),
+      findsOneWidget,
+    );
     // 決策 A：作戰板 section 不受 gating 影響，必須一起出現。
     expect(find.text('對象作戰板'), findsOneWidget);
     expect(find.text('Vivi'), findsOneWidget);
@@ -222,10 +228,7 @@ void main() {
         ],
       );
 
-      expect(
-        find.text('再多分析幾次，就能比較對方每次互動的投入度'),
-        findsOneWidget,
-      );
+      expect(find.text('再多分析幾次，就能比較對方每次互動的投入度'), findsOneWidget);
     });
 
     testWidgets('完全沒有事件（舊用戶未回填）→ 引導文案、既有其他區塊照常', (tester) async {
@@ -239,10 +242,7 @@ void main() {
         historyEvents: const [],
       );
 
-      expect(
-        find.text('再多分析幾次，就能比較對方每次互動的投入度'),
-        findsOneWidget,
-      );
+      expect(find.text('再多分析幾次，就能比較對方每次互動的投入度'), findsOneWidget);
       expect(find.byType(ConversationComparisonChart), findsOneWidget);
       expect(find.byType(StageDistributionChart), findsOneWidget);
     });

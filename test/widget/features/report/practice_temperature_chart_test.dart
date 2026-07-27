@@ -3,12 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/report/domain/entities/report_models.dart';
 import 'package:vibesync/features/report/presentation/widgets/practice_temperature_chart.dart';
+import 'package:vibesync/shared/widgets/brand/liquid_motion_frame.dart';
 
 Future<void> _pump(WidgetTester tester, List<HeatTrendPoint> points) async {
   await tester.pumpWidget(MaterialApp(
     home: Scaffold(
-      body: SingleChildScrollView(
-        child: PracticeTemperatureChart(points: points),
+      body: MediaQuery(
+        data: const MediaQueryData(disableAnimations: true),
+        child: SingleChildScrollView(
+          child: PracticeTemperatureChart(points: points),
+        ),
       ),
     ),
   ));
@@ -18,8 +22,10 @@ Future<void> _pump(WidgetTester tester, List<HeatTrendPoint> points) async {
 void main() {
   testWidgets('≥2 點 → 畫線圖、x 用距首點天數', (tester) async {
     await _pump(tester, [
-      HeatTrendPoint(date: DateTime(2026, 6, 1), score: 28, conversationName: ''),
-      HeatTrendPoint(date: DateTime(2026, 6, 4), score: 45, conversationName: ''),
+      HeatTrendPoint(
+          date: DateTime(2026, 6, 1), score: 28, conversationName: ''),
+      HeatTrendPoint(
+          date: DateTime(2026, 6, 4), score: 45, conversationName: ''),
     ]);
 
     expect(find.text('練習溫度成長'), findsOneWidget);
@@ -28,16 +34,26 @@ void main() {
       chart.data.lineBarsData.single.spots.map((s) => s.x),
       [0.0, 3.0],
     );
+    expect(find.byType(LiquidMotionFrame), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('practice-growth-trend-glow')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('<2 點 → 引導文案、不畫圖', (tester) async {
     await _pump(tester, [
-      HeatTrendPoint(date: DateTime(2026, 6, 1), score: 28, conversationName: ''),
+      HeatTrendPoint(
+          date: DateTime(2026, 6, 1), score: 28, conversationName: ''),
     ]);
 
     expect(find.byType(LineChart), findsNothing);
     expect(
       find.text('多完成幾場新手模式練習，這裡會畫出你的升溫能力成長曲線'),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('practice-growth-empty-glow')),
       findsOneWidget,
     );
   });

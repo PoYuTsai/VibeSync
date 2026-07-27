@@ -14,6 +14,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../../shared/widgets/brand/liquid_motion_frame.dart';
 import '../../../analysis/domain/entities/game_stage.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
@@ -47,8 +48,9 @@ class MyReportScreen extends ConsumerWidget {
     final subjects = ref.watch(analysisSubjectsProvider);
     final requestedSubject = ref.watch(selectedReportSubjectProvider);
     final selectedSubject = requestedSubject != null &&
-            subjects
-                .any((subject) => subject.conversationId == requestedSubject)
+            subjects.any(
+              (subject) => subject.conversationId == requestedSubject,
+            )
         ? requestedSubject
         : (subjects.isEmpty ? null : subjects.first.conversationId);
     final selectedSubjectName = selectedSubject == null
@@ -156,9 +158,7 @@ class MyReportScreen extends ConsumerWidget {
               body: '最後再比較各段對話的最新訊號，以及目前最常停留的互動階段。',
             ),
             const SizedBox(height: 12),
-            ConversationComparisonChart(
-              comparisons: report.comparisons,
-            ),
+            ConversationComparisonChart(comparisons: report.comparisons),
             const SizedBox(height: 16),
             StageDistributionChart(
               distributions: report.stageDistributions,
@@ -192,36 +192,48 @@ class MyReportScreen extends ConsumerWidget {
   }
 
   Widget _lockedReportCard(BuildContext context) {
-    return BrandSurfaceCard(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const BrandIconBadge(
-              icon: Icons.lock_outline, size: 40, iconSize: 22),
-          const SizedBox(height: 12),
-          Text(
-            '我的報告會在 Starter 解鎖',
-            style: AppTypography.titleLarge.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
+    return LiquidMotionFrame(
+      key: const ValueKey('report-upgrade-liquid-frame'),
+      borderRadius: 24,
+      borderWidth: 1,
+      glowRadius: 4,
+      strength: 0.065,
+      duration: const Duration(milliseconds: 8400),
+      child: BrandSurfaceCard(
+        borderColor: Colors.transparent,
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const BrandIconBadge(
+              icon: Icons.lock_outline,
+              size: 40,
+              iconSize: 22,
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '升級後可以看互動雷達圖、歷史趨勢與不同對話的比較，知道自己哪裡正在進步。',
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
-              height: 1.45,
+            const SizedBox(height: 12),
+            Text(
+              '我的報告會在 Starter 解鎖',
+              style: AppTypography.titleLarge.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          BrandPrimaryButton(
-            label: '查看升級方案',
-            icon: Icons.workspace_premium,
-            onPressed: () => context.push('/paywall'),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              '升級後可以看互動雷達圖、歷史趨勢與不同對話的比較，知道自己哪裡正在進步。',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 16),
+            BrandPrimaryButton(
+              label: '查看升級方案',
+              icon: Icons.workspace_premium,
+              onPressed: () => context.push('/paywall'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -311,8 +323,9 @@ class _ReportStoryHeader extends StatelessWidget {
               Text(
                 body,
                 style: AppTypography.bodySmall.copyWith(
-                  color:
-                      AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
+                  color: AppColors.onBackgroundSecondary.withValues(
+                    alpha: 0.70,
+                  ),
                   height: 1.45,
                 ),
               ),

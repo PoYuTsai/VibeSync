@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/liquid_motion_frame.dart';
 import '../../../analysis/domain/entities/enthusiasm_level.dart';
 import '../../domain/entities/partner.dart';
 import '../../domain/extensions/partner_aggregates.dart';
@@ -34,8 +35,9 @@ class PartnerListCard extends StatelessWidget {
 
   List<String> _previewTags(List<String> interests, List<String> traits) {
     final out = <String>[];
-    final maxLen =
-        interests.length > traits.length ? interests.length : traits.length;
+    final maxLen = interests.length > traits.length
+        ? interests.length
+        : traits.length;
     for (var i = 0; i < maxLen && out.length < 3; i++) {
       if (i < interests.length) {
         out.add(interests[i]);
@@ -52,10 +54,9 @@ class PartnerListCard extends StatelessWidget {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return '?';
 
-    final latinWords = RegExp(r'[A-Za-z]+')
-        .allMatches(trimmed)
-        .map((m) => m.group(0)!)
-        .toList();
+    final latinWords = RegExp(
+      r'[A-Za-z]+',
+    ).allMatches(trimmed).map((m) => m.group(0)!).toList();
     if (latinWords.length >= 2) {
       return '${latinWords[0][0]}${latinWords[1][0]}'.toUpperCase();
     }
@@ -81,40 +82,41 @@ class PartnerListCard extends StatelessWidget {
     }
   }
 
+  double _avatarPhase(String id) {
+    var hash = 0;
+    for (final codeUnit in id.codeUnits) {
+      hash = ((hash * 31) + codeUnit) & 0x7fffffff;
+    }
+    return (hash % 1000) / 1000;
+  }
+
   Widget _buildAvatar() {
-    return Container(
-      width: 54,
-      height: 54,
-      decoration: BoxDecoration(
+    return SizedBox.square(
+      dimension: 54,
+      child: LiquidMotionFrame(
+        key: ValueKey('partner-avatar-liquid-${partner.id}'),
         shape: BoxShape.circle,
-        gradient: const LinearGradient(
-          colors: [AppColors.ctaStart, AppColors.brandBlush],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.ctaStart.withValues(alpha: 0.20),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Center(
-        child: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppColors.brandInk.withValues(alpha: 0.90),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-          ),
-          child: Center(
-            child: Text(
-              _avatarLabel(partner.name),
-              style: AppTypography.titleMedium.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
+        borderWidth: 2.8,
+        glowRadius: 10,
+        strength: 0.92,
+        phaseOffset: _avatarPhase(partner.id),
+        duration: const Duration(milliseconds: 6800),
+        child: Center(
+          child: Container(
+            width: 47,
+            height: 47,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.brandInk.withValues(alpha: 0.94),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+            ),
+            child: Center(
+              child: Text(
+                _avatarLabel(partner.name),
+                style: AppTypography.titleMedium.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
           ),
