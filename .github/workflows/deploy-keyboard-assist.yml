@@ -1,0 +1,74 @@
+# .github/workflows/deploy-keyboard-assist.yml
+# Targeted deployment for the keyboard screenshot assist Edge Function.
+#
+# `keyboard-assist` is deliberately excluded from `deploy-edge-function.yml`,
+# both from its push paths and from its deploy list, because its exactly-once
+# contract depends on a matching migration plus a versioned HMAC keyring. That
+# exclusion left the only delivery path as a local `supabase` CLI invocation,
+# which is not available on Eric's Windows host. This workflow reproduces the
+# checked-in runbook exactly, and nothing else: manual trigger only, one
+# function, no `--no-verify-jwt`, no `--prune`.
+#
+# Prerequisite: the function's migration and secrets must already be live. This
+# workflow deploys source only; it never applies a migration or writes a secret.
+
+name: Deploy Keyboard Assist
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-keyboard-assist
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Test keyboard assist function
+        run: deno test --allow-read supabase/functions/keyboard-assist
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: 2.105.0
+
+      - name: Check Production Supabase secrets
+        shell: pwsh
+        run: ./tools/preflight/check-supabase-secrets.ps1 -ProjectRef fcmwrmwdoqiqdnbisdpg
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy keyboard-assist
+        run: |
+          supabase functions deploy keyboard-assist \
+            --project-ref fcmwrmwdoqiqdnbisdpg \
+            --use-api
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Verify live function state
+        run: |
+          set -euo pipefail
+          supabase functions list --project-ref fcmwrmwdoqiqdnbisdpg
+          # An unauthenticated capability probe must still be rejected.
+          status=$(curl -s -o /dev/null -w '%{http_code}' \
+            "https://fcmwrmwdoqiqdnbisdpg.supabase.co/functions/v1/keyboard-assist?capability=1")
+          echo "unauthenticated capability probe: $status"
+          if [ "$status" != "401" ]; then
+            echo "expected 401 for an unauthenticated request"
+            exit 1
+          fi
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
