@@ -276,8 +276,8 @@ class _EbookAccessGateState extends ConsumerState<EbookAccessGate> {
         return _EbookGateMessage(
           icon: Icons.workspace_premium_outlined,
           title: '這本需要訂閱才能閱讀',
-          message: '第一本《診斷 · 配對開場》永久免費。訂閱後這三本會一次全部開放，'
-              '不需要照順序讀。',
+          message: '第一本《診斷 · 配對開場》永久免費，第二本《續航 · 讓對話活下去》'
+              '可以免費試讀第一章。訂閱後這三本會一次全部開放，不需要照順序讀。',
           primaryLabel: '看訂閱方案',
           onPrimary: () => context.push('/paywall'),
           secondaryLabel: '回學習頁',

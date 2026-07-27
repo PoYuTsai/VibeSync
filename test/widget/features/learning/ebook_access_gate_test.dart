@@ -213,6 +213,31 @@ void main() {
       expect(premium.freePreviewChapterCount, 1);
       expect(premium.isPreviewChapter(secondChapter), isFalse);
     });
+
+    test('試讀只有第 2 本：第 3、4 本一章都不開', () {
+      // 2026-07-27 夥伴回饋（Eric 轉達）：免費閱讀＝第一冊全部＋第二冊第一章。
+      for (final number in const [3, 4]) {
+        final book = buildTestEbook(
+          id: 'p$number',
+          number: number,
+          access: EbookAccess.premium,
+        );
+        expect(book.freePreviewChapterCount, 0, reason: '第 $number 本不該有試讀章');
+        expect(book.previewChapterId, isNull);
+        expect(book.isPreviewChapter(book.chapters.first.id), isFalse);
+        for (final chapterId in [book.chapters.first.id, null]) {
+          expect(
+            ebookChapterAccessFor(
+              book,
+              chapterId,
+              const EbookSubscriptionAccess.free(),
+            ),
+            EbookAccessDecision.locked,
+            reason: '第 $number 本的 $chapterId 不該放行',
+          );
+        }
+      }
+    });
   });
 
   testWidgets('Free 使用者可以讀 Book 1', (tester) async {

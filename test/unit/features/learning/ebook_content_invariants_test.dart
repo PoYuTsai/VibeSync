@@ -409,6 +409,18 @@ void main() {
     }
   });
 
+  test('免費閱讀範圍＝第一冊全部＋第二冊第一章', () {
+    // 2026-07-27 夥伴回饋（Eric 轉達）。第 3、4 本一章都不開。
+    final books = catalog.books;
+    expect(books[0].freePreviewChapterCount, books[0].chapterCount);
+    expect(books[1].freePreviewChapterCount, 1);
+    expect(books[1].previewChapterId, books[1].chapters.first.id);
+    for (final book in books.skip(2)) {
+      expect(book.freePreviewChapterCount, 0, reason: '${book.id} 不該有試讀章');
+      expect(book.previewChapterId, isNull, reason: '${book.id} 不該有試讀章');
+    }
+  });
+
   test('每一章的閱讀量都在可讀範圍內（不出現數千字的牆）', () {
     for (final book in catalog.books) {
       for (final chapter in book.chapters) {
