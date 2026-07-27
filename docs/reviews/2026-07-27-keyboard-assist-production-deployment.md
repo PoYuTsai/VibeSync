@@ -1,6 +1,6 @@
 # Keyboard Assist Production Deployment — 2026-07-27
 
-Status: **production backend dogfood-ready for `vibesync.test@gmail.com`; iOS artifact not yet rebuilt**
+Status: **production backend enabled for all authenticated release users; authenticated iPhone proof pending**
 
 Project ref: `fcmwrmwdoqiqdnbisdpg`
 
@@ -122,3 +122,51 @@ KEYBOARD_SCREENSHOT_V1_ENABLED=false
 ```
 
 The additive migration, replay ledger, and HMAC key version must remain. Version 1 must be retained until at least 25 hours after its last referenced ledger row. For an urgent provider or privacy incident, disable the function in addition to turning off the flag.
+
+## Public release rollout — 2026-07-28
+
+Eric explicitly replaced the original single-account dogfood rollout with a
+release rollout for all authenticated users. The allowlist secret name remains
+present for release preflight, while its comma-separated value normalizes to
+zero entries. The checked-in server contract treats a normalized empty list as
+allowing any user who already passed Supabase JWT authentication.
+
+No client code, Edge source, database migration, quota rule, model setting,
+HMAC key, or consent rule changed. Supabase documents production secret updates
+as immediately available without a redeploy. A targeted redeploy of the same
+reviewed `keyboard-assist` source was nevertheless performed after the secret
+update to force fresh runtime instances and remove warm-isolate ambiguity.
+
+Post-rollout evidence:
+
+- `deno test --allow-read supabase/functions/keyboard-assist`: 56 passed,
+  0 failed.
+- The remote allowlist digest exactly matches the intended normalized-empty
+  configuration; the enabled flag digest remains unchanged.
+- The release secret-name preflight still passes.
+- The local and remote migration ledgers remain aligned through
+  `20260727130000`; no migration was applied.
+- `keyboard-assist` is version 4, `ACTIVE`, and `verify_jwt=true`.
+- All 13 expected production Edge Functions remain present.
+- Capability requests with no bearer token and with a malformed bearer token
+  both return `401`.
+- `Release to App Stores` run `30288463267` completed successfully for
+  `bf9c45d5`; the runtime rollout is not embedded in the IPA and did not require
+  another iOS build.
+- Claude Fable and GLM 5.2 independently challenged the rollout. Their
+  warm-isolate, quoting, preflight, workflow, and negative-auth concerns were
+  checked against source and addressed by the exact quoted CLI command,
+  post-change secret-name preflight, targeted runtime redeploy, and two
+  unauthenticated probes.
+
+The remaining positive proof belongs on physical iPhones because no reusable
+user JWT is stored for deployment automation. Eric and a previously
+non-allowlisted partner account must each install the new TestFlight build,
+open VibeSync once while signed in, reopen the keyboard, and complete the
+preview-to-three-candidates flow. A ready result charges the partner account
+normally; speaker-side confirmation remains zero-charge.
+
+To shrink the rollout back to the original cohort, restore
+`KEYBOARD_SCREENSHOT_V1_ALLOWLIST` to `vibesync.test@gmail.com`. For urgent
+containment, set `KEYBOARD_SCREENSHOT_V1_ENABLED=false`. Do not roll back the
+migration or HMAC keyring.
