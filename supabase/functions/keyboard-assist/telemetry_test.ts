@@ -54,6 +54,39 @@ Deno.test("keyboard assist telemetry is scalar allowlist only", () => {
   }
 });
 
+Deno.test("keyboard assist telemetry keeps the rejection detail token", () => {
+  assertEquals(
+    sanitizeKeyboardAssistTelemetry({
+      event: "keyboard_assist_failed",
+      status: "failed",
+      errorCode: "unsupported_conversation",
+      rejectDetail: "group",
+    }),
+    {
+      event: "keyboard_assist_failed",
+      status: "failed",
+      errorCode: "unsupported_conversation",
+      rejectDetail: "group",
+    },
+  );
+});
+
+Deno.test("keyboard assist telemetry drops a rejection detail outside the allowlist", () => {
+  const sanitized = sanitizeKeyboardAssistTelemetry({
+    event: "keyboard_assist_failed",
+    status: "failed",
+    errorCode: "unsupported_conversation",
+    // A free-text reason could carry transcript content, so only the fixed
+    // tokens survive.
+    rejectDetail: "他昨天說要約週末",
+  });
+  assertEquals(sanitized, {
+    event: "keyboard_assist_failed",
+    status: "failed",
+    errorCode: "unsupported_conversation",
+  });
+});
+
 Deno.test("keyboard assist telemetry drops arbitrary objects and non-finite values", () => {
   assertEquals(
     sanitizeKeyboardAssistTelemetry({

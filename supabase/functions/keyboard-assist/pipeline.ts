@@ -24,10 +24,22 @@ export type KeyboardAssistStageTiming = {
   judgeMs?: number;
 };
 
+/// Why a screenshot was turned away, at a granularity that is safe to log.
+/// Every member is a fixed token about our own pipeline's verdict, never
+/// anything read out of the image, so it can travel to telemetry unredacted.
+export type KeyboardAssistRejectDetail =
+  | "group"
+  | "social_feed"
+  | "non_chat"
+  | "own_prior_candidates"
+  | "compiler_schema"
+  | "compiler_grounding";
+
 export class KeyboardAssistPipelineError extends Error {
   constructor(
     public readonly code: KeyboardAssistErrorCode | "stale_owner",
     message: string,
+    public readonly detail?: KeyboardAssistRejectDetail,
   ) {
     super(message);
     this.name = "KeyboardAssistPipelineError";
@@ -141,12 +153,14 @@ export async function runKeyboardAssistPipeline(input: {
     throw new KeyboardAssistPipelineError(
       "provider_invalid_output",
       "compiler output failed schema",
+      "compiler_schema",
     );
   }
   if (normalized.conversationType !== "chat") {
     throw new KeyboardAssistPipelineError(
       "unsupported_conversation",
       "screenshot is not a supported one-to-one chat",
+      normalized.conversationType,
     );
   }
   if (containsOwnPriorCandidates(normalized, input.priorTurn)) {
@@ -155,12 +169,14 @@ export async function runKeyboardAssistPipeline(input: {
     throw new KeyboardAssistPipelineError(
       "unsupported_conversation",
       "screenshot transcript contains this keyboard's own prior candidates",
+      "own_prior_candidates",
     );
   }
   if (!isGroundedKeyboardAssistCompilerOutput(normalized)) {
     throw new KeyboardAssistPipelineError(
       "provider_invalid_output",
       "compiler output failed grounding",
+      "compiler_grounding",
     );
   }
 

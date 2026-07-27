@@ -16,7 +16,10 @@ import {
   type KeyboardAssistLedgerResult,
   type KeyboardAssistRetryDisposition,
 } from "./contract.ts";
-import { KeyboardAssistPipelineError } from "./pipeline.ts";
+import {
+  KeyboardAssistPipelineError,
+  type KeyboardAssistRejectDetail,
+} from "./pipeline.ts";
 import {
   KeyboardAssistValidationError,
   validateKeyboardAssistLedgerResult,
@@ -206,6 +209,7 @@ export function createKeyboardAssistHandler(
       | "needs_speaker_confirmation"
       | undefined;
     let telemetryErrorCode: KeyboardAssistErrorCode | undefined;
+    let telemetryRejectDetail: KeyboardAssistRejectDetail | undefined;
     try {
       if (request.method === "OPTIONS") {
         return new Response("ok", { headers: keyboardAssistCorsHeaders });
@@ -503,6 +507,7 @@ export function createKeyboardAssistHandler(
             );
           }
           telemetryErrorCode = error.code;
+          telemetryRejectDetail = error.detail;
           return await releaseOrLookup(
             error.code === "unsupported_conversation" ? 422 : 503,
             error.code,
@@ -625,6 +630,7 @@ export function createKeyboardAssistHandler(
             pipelineVersion: deps.pipelineVersion,
             status: telemetryStatus ?? "failed",
             errorCode: telemetryErrorCode,
+            rejectDetail: telemetryRejectDetail,
             ...stageTimings,
             totalMs: Math.max(0, Math.round(monotonicNow() - startedAtMs)),
             replay: false,

@@ -240,6 +240,10 @@ Deno.test("non-chat and invalid grounding fail before judge with no result", asy
     KeyboardAssistPipelineError,
   );
   assertEquals(error.code, "unsupported_conversation");
+  // The verdict token must survive to telemetry: "we saw something that is not
+  // a one-to-one chat" and "we saw our own panel quoted back" share an error
+  // code but need opposite fixes.
+  assertEquals(error.detail, "non_chat");
 
   const ungrounded = compilerOutput();
   ungrounded.candidates[0].evidenceIndices = [99];
@@ -261,6 +265,7 @@ Deno.test("non-chat and invalid grounding fail before judge with no result", asy
     KeyboardAssistPipelineError,
   );
   assertEquals(invalid.code, "provider_invalid_output");
+  assertEquals(invalid.detail, "compiler_grounding");
 });
 
 Deno.test("our own prior candidates read back as chat stop before judge", async () => {
@@ -300,6 +305,7 @@ Deno.test("our own prior candidates read back as chat stop before judge", async 
     KeyboardAssistPipelineError,
   );
   assertEquals(error.code, "unsupported_conversation");
+  assertEquals(error.detail, "own_prior_candidates");
   assertEquals(judgeCalls, 0);
 });
 

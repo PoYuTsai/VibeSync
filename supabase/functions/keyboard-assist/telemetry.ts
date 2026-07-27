@@ -26,6 +26,17 @@ const STRING_ENUMS: Record<string, readonly string[]> = {
     "settlement_uncertain",
     "service_unavailable",
   ],
+  // Which of the several ways a screenshot can be turned away actually fired.
+  // `errorCode` alone collapses "not a one-to-one chat" together with "the
+  // transcript is quoting our own panel", which are opposite problems.
+  rejectDetail: [
+    "group",
+    "social_feed",
+    "non_chat",
+    "own_prior_candidates",
+    "compiler_schema",
+    "compiler_grounding",
+  ],
 };
 
 const NUMBER_KEYS = new Set([
