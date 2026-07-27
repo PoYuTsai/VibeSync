@@ -300,8 +300,6 @@ final class KeyboardViewController: UIInputViewController {
             action: #selector(retryScreenshotAssist),
             for: .touchUpInside
         )
-        screenshotPanel.addArrangedSubview(screenshotRetryButton)
-
         screenshotSwapButton.setTitle("換一批", for: .normal)
         styleScreenshotButton(screenshotSwapButton, color: primary)
         screenshotSwapButton.addTarget(
@@ -310,7 +308,6 @@ final class KeyboardViewController: UIInputViewController {
             for: .touchUpInside
         )
         screenshotSwapButton.isHidden = true
-        screenshotPanel.addArrangedSubview(screenshotSwapButton)
 
         screenshotSpeakerRow.axis = .horizontal
         screenshotSpeakerRow.spacing = 7
@@ -330,6 +327,8 @@ final class KeyboardViewController: UIInputViewController {
         screenshotCandidateStack.axis = .vertical
         screenshotCandidateStack.spacing = 7
         screenshotPanel.addArrangedSubview(screenshotCandidateStack)
+        screenshotPanel.addArrangedSubview(screenshotSwapButton)
+        screenshotPanel.addArrangedSubview(screenshotRetryButton)
 
         screenshotCancelButton.setTitle(
             "取消，不送出截圖",
