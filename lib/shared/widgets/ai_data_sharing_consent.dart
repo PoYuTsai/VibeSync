@@ -7,6 +7,18 @@ import '../services/link_launch_service.dart';
 class AiDataSharingConsent {
   static const _acceptedKey = 'ai_data_sharing_consent_20260706_v3';
   static const acceptedKeyForTesting = _acceptedKey;
+  static const keyboardScreenshotConsentKey =
+      'keyboard_screenshot_ai_202607_v1';
+  static const keyboardScreenshotConsentAcceptedAtKey =
+      'keyboard_screenshot_ai_accepted_at_202607_v1';
+  static const keyboardLatestScreenshotDetectionKey =
+      'keyboard_latest_screenshot_detection_202607_v1';
+  static const keyboardPartnerContextSharingKey =
+      'keyboard_partner_context_sharing_202607_v1';
+  static const keyboardScreenshotDataDescription =
+      '可能包含：你在鍵盤中預覽並確認的一張聊天截圖；截圖內可能有訊息、顯示名稱與頭像。不會自動讀取其他聊天紀錄。';
+  static const keyboardScreenshotPurposeText =
+      '用途：只用來辨識這張截圖並產生本次三個回覆選項。對象背景分享是另一個預設關閉、可隨時撤回的設定。';
   static const _privacyUrl = 'https://vibesyncai.app/privacy';
   static const _termsUrl = 'https://vibesyncai.app/terms';
   static const _defaultDestinationLabel = 'Anthropic Claude API';
@@ -37,17 +49,155 @@ class AiDataSharingConsent {
 
   /// 同意是帳號級（5.1.1(i)/5.1.2(i)）：登入時 key 綁 userId，
   /// 換帳號各自重新同意；未登入才 fallback 裝置級 key。
+  static String _scopedKey(String consentKey, String? userId) {
+    if (userId == null || userId.isEmpty) return consentKey;
+    return '$consentKey::$userId';
+  }
+
   static String _effectiveKey(String consentKey) {
     final resolver = debugUserIdOverride;
     final userId =
         resolver != null ? resolver() : SupabaseService.currentUser?.id;
-    if (userId == null || userId.isEmpty) return consentKey;
-    return '$consentKey::$userId';
+    return _scopedKey(consentKey, userId);
   }
 
   static Future<bool> hasAccepted({String consentKey = _acceptedKey}) async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_effectiveKey(consentKey)) == true;
+  }
+
+  static Future<bool> hasKeyboardScreenshotConsent() async {
+    final consentKey = _effectiveKey(keyboardScreenshotConsentKey);
+    final receiptKey = _effectiveKey(
+      keyboardScreenshotConsentAcceptedAtKey,
+    );
+    final prefs = await SharedPreferences.getInstance();
+    if (_effectiveKey(keyboardScreenshotConsentKey) != consentKey ||
+        _effectiveKey(keyboardScreenshotConsentAcceptedAtKey) != receiptKey) {
+      return false;
+    }
+    final accepted = prefs.getBool(consentKey) == true;
+    final acceptedAt = prefs.getString(receiptKey);
+    return accepted &&
+        acceptedAt != null &&
+        DateTime.tryParse(acceptedAt) != null;
+  }
+
+  static Future<DateTime?> keyboardScreenshotConsentAcceptedAt() async {
+    final receiptKey = _effectiveKey(
+      keyboardScreenshotConsentAcceptedAtKey,
+    );
+    final prefs = await SharedPreferences.getInstance();
+    if (_effectiveKey(keyboardScreenshotConsentAcceptedAtKey) != receiptKey) {
+      return null;
+    }
+    final raw = prefs.getString(receiptKey);
+    return raw == null ? null : DateTime.tryParse(raw)?.toUtc();
+  }
+
+  static Future<bool> hasKeyboardLatestScreenshotDetectionEnabled() {
+    return _hasKeyboardCapabilityEnabled(
+      keyboardLatestScreenshotDetectionKey,
+    );
+  }
+
+  static Future<bool> hasKeyboardPartnerContextSharingEnabled() {
+    return _hasKeyboardCapabilityEnabled(keyboardPartnerContextSharingKey);
+  }
+
+  static Future<bool> _hasKeyboardCapabilityEnabled(
+    String capabilityKey,
+  ) async {
+    final consentKey = _effectiveKey(keyboardScreenshotConsentKey);
+    final receiptKey = _effectiveKey(
+      keyboardScreenshotConsentAcceptedAtKey,
+    );
+    final settingKey = _effectiveKey(capabilityKey);
+    final prefs = await SharedPreferences.getInstance();
+    if (_effectiveKey(keyboardScreenshotConsentKey) != consentKey ||
+        _effectiveKey(keyboardScreenshotConsentAcceptedAtKey) != receiptKey ||
+        _effectiveKey(capabilityKey) != settingKey) {
+      return false;
+    }
+    return prefs.getBool(consentKey) == true &&
+        DateTime.tryParse(prefs.getString(receiptKey) ?? '') != null &&
+        prefs.getBool(settingKey) == true;
+  }
+
+  /// Both optional keyboard capabilities fail closed and cannot be enabled
+  /// before the account has accepted the keyboard-specific screenshot consent.
+  static Future<bool> setKeyboardLatestScreenshotDetectionEnabled(
+    bool enabled,
+  ) async {
+    final consentKey = _effectiveKey(keyboardScreenshotConsentKey);
+    final receiptKey = _effectiveKey(
+      keyboardScreenshotConsentAcceptedAtKey,
+    );
+    final settingKey = _effectiveKey(keyboardLatestScreenshotDetectionKey);
+    final prefs = await SharedPreferences.getInstance();
+    if (_effectiveKey(keyboardScreenshotConsentKey) != consentKey ||
+        _effectiveKey(keyboardLatestScreenshotDetectionKey) != settingKey) {
+      return false;
+    }
+    if (enabled &&
+        (prefs.getBool(consentKey) != true ||
+            DateTime.tryParse(prefs.getString(receiptKey) ?? '') == null)) {
+      return false;
+    }
+    final written = await prefs.setBool(settingKey, enabled);
+    if (_effectiveKey(keyboardLatestScreenshotDetectionKey) == settingKey) {
+      return written;
+    }
+    await prefs.remove(settingKey);
+    return false;
+  }
+
+  static Future<bool> setKeyboardPartnerContextSharingEnabled(
+    bool enabled,
+  ) async {
+    final consentKey = _effectiveKey(keyboardScreenshotConsentKey);
+    final receiptKey = _effectiveKey(
+      keyboardScreenshotConsentAcceptedAtKey,
+    );
+    final settingKey = _effectiveKey(keyboardPartnerContextSharingKey);
+    final prefs = await SharedPreferences.getInstance();
+    if (_effectiveKey(keyboardScreenshotConsentKey) != consentKey ||
+        _effectiveKey(keyboardPartnerContextSharingKey) != settingKey) {
+      return false;
+    }
+    if (enabled &&
+        (prefs.getBool(consentKey) != true ||
+            DateTime.tryParse(prefs.getString(receiptKey) ?? '') == null)) {
+      return false;
+    }
+    final written = await prefs.setBool(settingKey, enabled);
+    if (_effectiveKey(keyboardPartnerContextSharingKey) == settingKey) {
+      return written;
+    }
+    await prefs.remove(settingKey);
+    return false;
+  }
+
+  static Future<void> revokeKeyboardScreenshotConsent({
+    String? ownerUserId,
+  }) async {
+    final resolvedOwner = ownerUserId ??
+        (debugUserIdOverride != null
+            ? debugUserIdOverride!()
+            : SupabaseService.currentUser?.id);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(
+      _scopedKey(keyboardScreenshotConsentKey, resolvedOwner),
+    );
+    await prefs.remove(
+      _scopedKey(keyboardScreenshotConsentAcceptedAtKey, resolvedOwner),
+    );
+    await prefs.remove(
+      _scopedKey(keyboardLatestScreenshotDetectionKey, resolvedOwner),
+    );
+    await prefs.remove(
+      _scopedKey(keyboardPartnerContextSharingKey, resolvedOwner),
+    );
   }
 
   static Future<bool> ensure(
@@ -87,6 +237,17 @@ class AiDataSharingConsent {
       return false;
     }
 
+    if (consentKey == keyboardScreenshotConsentKey) {
+      final receiptKey = _effectiveKey(
+        keyboardScreenshotConsentAcceptedAtKey,
+      );
+      await prefs.setString(
+          receiptKey, DateTime.now().toUtc().toIso8601String());
+      if (_effectiveKey(consentKey) != scopedKey) {
+        await prefs.remove(receiptKey);
+        return false;
+      }
+    }
     await prefs.setBool(scopedKey, true);
     return true;
   }

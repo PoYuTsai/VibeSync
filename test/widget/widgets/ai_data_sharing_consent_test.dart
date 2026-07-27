@@ -100,6 +100,50 @@ void main() {
     expect(result, isFalse);
   });
 
+  testWidgets('keyboard screenshot consent persists a timestamped receipt',
+      (tester) async {
+    AiDataSharingConsent.debugUserIdOverride = () => 'user-a';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => AiDataSharingConsent.ensure(
+                context,
+                featureLabel: 'AI 鍵盤截圖回覆',
+                consentKey: AiDataSharingConsent.keyboardScreenshotConsentKey,
+                dataDescription:
+                    AiDataSharingConsent.keyboardScreenshotDataDescription,
+                purposeText: AiDataSharingConsent.keyboardScreenshotPurposeText,
+              ),
+              child: const Text('start keyboard consent'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('start keyboard consent'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('一張聊天截圖'), findsOneWidget);
+    expect(find.textContaining('不會自動讀取其他聊天紀錄'), findsOneWidget);
+    expect(find.textContaining('預設關閉'), findsOneWidget);
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('我同意並送出'));
+    await tester.pumpAndSettle();
+
+    expect(await AiDataSharingConsent.hasKeyboardScreenshotConsent(), isTrue);
+    expect(
+      await AiDataSharingConsent.keyboardScreenshotConsentAcceptedAt(),
+      isNotNull,
+    );
+    expect(
+      await AiDataSharingConsent.hasKeyboardPartnerContextSharingEnabled(),
+      isFalse,
+    );
+  });
+
   // ── 參數化：practice-chat 走 DeepSeek，文案與 key 須與 Claude 路徑分離 ──
 
   testWidgets('custom destinationLabel 顯示於揭露文案（DeepSeek 路徑）', (tester) async {
