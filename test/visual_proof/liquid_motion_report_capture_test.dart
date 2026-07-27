@@ -67,11 +67,11 @@ void main() {
     );
   });
 
-  testWidgets('practice growth liquid signal', (tester) async {
+  testWidgets('practice growth arrival signal', (tester) async {
     await pumpAndCapture(
       tester,
       size: const Size(390, 430),
-      settle: const Duration(milliseconds: 2100),
+      settle: const Duration(milliseconds: 2050),
       child: GradientBackground(
         child: Scaffold(
           backgroundColor: Colors.transparent,
@@ -108,11 +108,11 @@ void main() {
     );
   });
 
-  testWidgets('engagement trend latest ripple', (tester) async {
+  testWidgets('engagement trend signal reveal', (tester) async {
     await pumpAndCapture(
       tester,
       size: const Size(390, 420),
-      settle: const Duration(milliseconds: 360),
+      settle: const Duration(milliseconds: 720),
       child: GradientBackground(
         child: Scaffold(
           backgroundColor: Colors.transparent,

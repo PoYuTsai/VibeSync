@@ -7,16 +7,19 @@ import 'package:vibesync/features/report/presentation/widgets/heat_trend_chart.d
 Future<void> _pump(WidgetTester tester, List<HeatTrendPoint> points) async {
   await tester.pumpWidget(MaterialApp(
     home: Scaffold(
-      body: SingleChildScrollView(
-        child: HeatTrendChart(
-          trendPoints: points,
-          averageScore: 60,
-          scoreDelta: 5,
+      body: MediaQuery(
+        data: const MediaQueryData(disableAnimations: true),
+        child: SingleChildScrollView(
+          child: HeatTrendChart(
+            trendPoints: points,
+            averageScore: 60,
+            scoreDelta: 5,
+          ),
         ),
       ),
     ),
   ));
-  // 鐵則：動畫必收斂（LineChart 首繪無無限動畫，pumpAndSettle 必須過）。
+  // reduced motion 必須完全靜止，pumpAndSettle 要能收斂。
   await tester.pumpAndSettle();
 }
 
@@ -47,6 +50,10 @@ void main() {
     final spots = chart.data.lineBarsData.single.spots;
     expect(spots.map((s) => s.x), [0.0, 1.0, 4.0]); // 點距反映真實間隔
     expect(spots.map((s) => s.y), [50.0, 60.0, 80.0]); // 仍按日期升序
+    expect(
+      find.byKey(const ValueKey('engagement-trend-signal')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('底部標籤是真日期 M/dd', (tester) async {

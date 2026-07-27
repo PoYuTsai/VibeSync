@@ -355,8 +355,8 @@ class PracticeTemperatureChart extends StatelessWidget {
   }
 }
 
-/// 在成長線上移動的小型流光訊號。只重繪 overlay，底下的 fl_chart 不會跟著
-/// 每幀 rebuild；reduced motion / TickerMode 關閉時停在靜態位置。
+/// 在成長線上移動的小型抵達訊號。每 8 秒只動 2.6 秒，其餘時間完全靜止；
+/// 只重繪 overlay，底下的 fl_chart 不會跟著每幀 rebuild。
 class _LiquidTrendGlow extends StatefulWidget {
   const _LiquidTrendGlow({
     super.key,
@@ -379,9 +379,9 @@ class _LiquidTrendGlowState extends State<_LiquidTrendGlow>
     vsync: this,
     duration: const Duration(milliseconds: 8000),
   );
-  late final Animation<double> _progress = CurvedAnimation(
+  late final Animation<double> _activePhase = CurvedAnimation(
     parent: _controller,
-    curve: const Interval(0, 0.68, curve: Curves.easeInOutCubic),
+    curve: const Interval(0, 0.325),
   );
   bool? _motionEnabled;
 
@@ -404,6 +404,25 @@ class _LiquidTrendGlowState extends State<_LiquidTrendGlow>
   }
 
   @override
+  void didUpdateWidget(covariant _LiquidTrendGlow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_samePoints(oldWidget.points, widget.points)) return;
+    if (_motionEnabled == true) {
+      _controller.repeat();
+    } else {
+      _controller.value = 1;
+    }
+  }
+
+  bool _samePoints(List<Offset> before, List<Offset> after) {
+    if (before.length != after.length) return false;
+    for (var index = 0; index < before.length; index++) {
+      if (before[index] != after[index]) return false;
+    }
+    return true;
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
@@ -420,7 +439,7 @@ class _LiquidTrendGlowState extends State<_LiquidTrendGlow>
             child: RepaintBoundary(
               child: CustomPaint(
                 painter: _LiquidTrendGlowPainter(
-                  animation: _progress,
+                  animation: _activePhase,
                   points: widget.points,
                   padding: widget.padding,
                 ),
@@ -446,7 +465,8 @@ class _LiquidTrendGlowPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (points.length < 2 || size.isEmpty) return;
+    final raw = animation.value;
+    if (points.length < 2 || raw <= 0 || raw >= 1 || size.isEmpty) return;
 
     final plot = Rect.fromLTRB(
       padding.left,
@@ -463,12 +483,24 @@ class _LiquidTrendGlowPainter extends CustomPainter {
           plot.bottom - (point.dy.clamp(0, 1) * plot.height),
         ),
     ];
-    final position = _positionAt(mapped, animation.value);
+    final pathProgress = const Interval(
+      0,
+      0.78,
+      curve: Curves.easeInOutCubic,
+    ).transform(raw);
+    final fade = 1 -
+        const Interval(
+          0.78,
+          1,
+          curve: Curves.easeOutCubic,
+        ).transform(raw);
+    final position = _positionAt(mapped, pathProgress);
     final tailStart = _positionAt(
       mapped,
-      math.max(0, animation.value - 0.075),
+      math.max(0, pathProgress - 0.10),
     );
-    final pulse = 0.86 + (math.sin(animation.value * math.pi * 2) * 0.14);
+    final arrival = ((raw - 0.62) / 0.24).clamp(0.0, 1.0).toDouble();
+    final pulse = 0.90 + (math.sin(arrival * math.pi) * 0.18);
 
     canvas.drawLine(
       tailStart,
@@ -476,7 +508,7 @@ class _LiquidTrendGlowPainter extends CustomPainter {
       Paint()
         ..strokeWidth = 5
         ..strokeCap = StrokeCap.round
-        ..color = AppColors.brandBlush.withValues(alpha: 0.12)
+        ..color = AppColors.primaryLight.withValues(alpha: 0.11 * fade)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
     );
     canvas.drawLine(
@@ -485,19 +517,19 @@ class _LiquidTrendGlowPainter extends CustomPainter {
       Paint()
         ..strokeWidth = 1.6
         ..strokeCap = StrokeCap.round
-        ..color = const Color(0xFFFFD2B8).withValues(alpha: 0.42),
+        ..color = const Color(0xFFD7CEFF).withValues(alpha: 0.40 * fade),
     );
     canvas.drawCircle(
       position,
       7 * pulse,
       Paint()
-        ..color = AppColors.brandBlush.withValues(alpha: 0.20)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
+        ..color = AppColors.primaryLight.withValues(alpha: 0.18 * fade)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
     );
     canvas.drawCircle(
       position,
       2.8,
-      Paint()..color = const Color(0xFFFFD2B8),
+      Paint()..color = const Color(0xFFD7CEFF).withValues(alpha: fade),
     );
   }
 
@@ -510,8 +542,7 @@ class _LiquidTrendGlowPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _LiquidTrendGlowPainter oldDelegate) {
-    return oldDelegate.points != points ||
-        oldDelegate.padding != padding;
+    return oldDelegate.points != points || oldDelegate.padding != padding;
   }
 }
 
