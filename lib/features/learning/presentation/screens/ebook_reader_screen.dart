@@ -560,7 +560,7 @@ class _ReaderLoading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const BrandScaffold(
-      title: '互動電子書',
+      title: kEbookCollectionTitle,
       body: Center(
         child: CircularProgressIndicator(
           strokeWidth: 2.6,
@@ -589,7 +589,7 @@ class _ReaderMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BrandScaffold(
-      title: '互動電子書',
+      title: kEbookCollectionTitle,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),

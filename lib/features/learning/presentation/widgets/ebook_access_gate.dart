@@ -306,7 +306,7 @@ class _EbookGateLoading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BrandScaffold(
-      title: '互動電子書',
+      title: kEbookCollectionTitle,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -352,7 +352,7 @@ class _EbookGateMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BrandScaffold(
-      title: '互動電子書',
+      title: kEbookCollectionTitle,
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),

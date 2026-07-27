@@ -11,6 +11,14 @@ library;
 
 import 'ebook_block.dart';
 
+/// 這套教材對使用者的名字（2026-07-27 夥伴回饋，用他原檔的用字）。
+///
+/// 拆成兩個：標題列的字級容不下全名，四個字才不會被截斷；書架標題卡與其他
+/// 有空間的地方用全名。內部程式與註解仍可叫它電子書，那是實作用語。
+const String kEbookCollectionTitle = '終極指引';
+const String kEbookCollectionFullTitle = '交友軟體實戰 · 終極指引';
+const String kEbookCollectionKicker = 'THE FIELD GUIDE';
+
 /// 權限分界。只有 [free] 與 [premium] 兩種，tier 細節留給 subscription。
 enum EbookAccess { free, premium }
 

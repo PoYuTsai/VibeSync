@@ -72,7 +72,7 @@ class _DetailLoading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const BrandScaffold(
-      title: '互動電子書',
+      title: kEbookCollectionTitle,
       body: Center(
         child: CircularProgressIndicator(
           strokeWidth: 2.6,
@@ -91,7 +91,7 @@ class _DetailContentError extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BrandScaffold(
-      title: '互動電子書',
+      title: kEbookCollectionTitle,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -167,7 +167,7 @@ class _EbookDetailBody extends ConsumerWidget {
     final resumeChapterId = resolveResumeChapterId(book, progress);
 
     return BrandScaffold(
-      title: '互動電子書',
+      title: kEbookCollectionTitle,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
         onPressed: () {

@@ -15,6 +15,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../data/providers/ebook_providers.dart';
+import '../../domain/models/ebook.dart';
 import 'ebook_access_gate.dart';
 import 'ebook_shelf_card.dart';
 
@@ -76,7 +77,7 @@ class _ShelfHero extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'THE FIELD GUIDE',
+                  kEbookCollectionKicker,
                   style: AppTypography.caption.copyWith(
                     color: AppColors.ctaStart,
                     fontWeight: FontWeight.w800,

@@ -24,6 +24,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // 標題列講的是這套教材的名字，不再是「互動電子書」（2026-07-27 Eric）。
+    expect(find.text(kEbookCollectionTitle), findsOneWidget);
+    expect(find.text('互動電子書'), findsNothing);
     expect(find.text('免費測試書'), findsOneWidget);
     expect(find.text('3 章'), findsOneWidget);
     expect(find.text('約 30 分鐘'), findsOneWidget);
