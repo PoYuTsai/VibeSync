@@ -49,7 +49,11 @@ GoRouter _router({void Function(String location)? onPush}) {
     routes: [
       GoRoute(
         path: '/',
-        builder: (context, state) => const Scaffold(body: PartnerListScreen()),
+        // Partner avatars animate indefinitely; this suite tests banner wiring.
+        builder: (context, state) => const TickerMode(
+          enabled: false,
+          child: Scaffold(body: PartnerListScreen()),
+        ),
       ),
       GoRoute(
         path: '/partner/:partnerId/merge',
