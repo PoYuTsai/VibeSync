@@ -13,6 +13,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/services/message_calculator.dart';
+import '../../../../core/services/keyboard_privacy_purge_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
@@ -753,8 +754,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(_resetErrorState);
         try {
           await SupabaseService.signOut();
-        } catch (_) {
-          // Ignore sign-out cleanup errors and still route back to login.
+        } catch (error) {
+          // Privacy purge is fail-closed. If the auth session still exists,
+          // do not present a logged-out UI while keyboard data may remain.
+          if (error is KeyboardPrivacyPurgeException ||
+              SupabaseService.isAuthenticated) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('登出前無法清除鍵盤隱私資料，請再試一次。'),
+                ),
+              );
+            }
+            return;
+          }
         }
         if (!mounted) {
           return;

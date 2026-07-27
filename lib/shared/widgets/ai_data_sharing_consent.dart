@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/services/keyboard_privacy_purge_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../services/link_launch_service.dart';
 
@@ -8,17 +9,17 @@ class AiDataSharingConsent {
   static const _acceptedKey = 'ai_data_sharing_consent_20260706_v3';
   static const acceptedKeyForTesting = _acceptedKey;
   static const keyboardScreenshotConsentKey =
-      'keyboard_screenshot_ai_202607_v1';
+      KeyboardScreenshotPrivacyKeys.consent;
   static const keyboardScreenshotConsentAcceptedAtKey =
-      'keyboard_screenshot_ai_accepted_at_202607_v1';
+      KeyboardScreenshotPrivacyKeys.consentAcceptedAt;
   static const keyboardLatestScreenshotDetectionKey =
-      'keyboard_latest_screenshot_detection_202607_v1';
+      KeyboardScreenshotPrivacyKeys.latestScreenshotDetection;
   static const keyboardPartnerContextSharingKey =
-      'keyboard_partner_context_sharing_202607_v1';
+      KeyboardScreenshotPrivacyKeys.partnerContextSharing;
   static const keyboardScreenshotDataDescription =
-      '可能包含：你在鍵盤中預覽並確認的一張聊天截圖；截圖內可能有訊息、顯示名稱與頭像。不會自動讀取其他聊天紀錄。';
+      '啟用後，鍵盤開啟時會先在本機尋找最近 3 分鐘的系統截圖。可能傳送：你預覽並確認的一張聊天截圖；截圖內可能有訊息、顯示名稱與頭像。不會自動讀取其他聊天紀錄。';
   static const keyboardScreenshotPurposeText =
-      '用途：只用來辨識這張截圖並產生本次三個回覆選項。對象背景分享是另一個預設關閉、可隨時撤回的設定。';
+      '用途：只用來辨識這張截圖並產生本次三個回覆選項。為了在斷線後查回同一結果並避免重複扣額，後端最多 24 小時保留鍵控輸入雜湊與產生結果，不保存截圖或 OCR 逐字稿。對象背景分享是另一個預設關閉、可隨時撤回的設定。';
   static const _privacyUrl = 'https://vibesyncai.app/privacy';
   static const _termsUrl = 'https://vibesyncai.app/terms';
   static const _defaultDestinationLabel = 'Anthropic Claude API';
@@ -47,6 +48,22 @@ class AiDataSharingConsent {
   @visibleForTesting
   static String? Function()? debugUserIdOverride;
 
+  /// Storage boundary seam used to deterministically exercise write failures
+  /// and account-switch races in widget tests.
+  @visibleForTesting
+  static Future<bool> Function(
+    SharedPreferences preferences,
+    String key,
+    bool value,
+  )? debugSetConsentBoolOverride;
+
+  @visibleForTesting
+  static Future<bool> Function(
+    SharedPreferences preferences,
+    String key,
+    String value,
+  )? debugSetConsentStringOverride;
+
   /// 同意是帳號級（5.1.1(i)/5.1.2(i)）：登入時 key 綁 userId，
   /// 換帳號各自重新同意；未登入才 fallback 裝置級 key。
   static String _scopedKey(String consentKey, String? userId) {
@@ -59,6 +76,21 @@ class AiDataSharingConsent {
     final userId =
         resolver != null ? resolver() : SupabaseService.currentUser?.id;
     return _scopedKey(consentKey, userId);
+  }
+
+  static String _keyboardReceiptKeyForConsentKey(String scopedConsentKey) {
+    final scopeSuffix =
+        scopedConsentKey.substring(keyboardScreenshotConsentKey.length);
+    return '$keyboardScreenshotConsentAcceptedAtKey$scopeSuffix';
+  }
+
+  static DateTime? _validKeyboardConsentAcceptedAt(String? raw) {
+    if (raw == null) return null;
+    final parsed = DateTime.tryParse(raw)?.toUtc();
+    if (parsed == null || parsed.isAfter(DateTime.now().toUtc())) {
+      return null;
+    }
+    return parsed;
   }
 
   static Future<bool> hasAccepted({String consentKey = _acceptedKey}) async {
@@ -78,9 +110,7 @@ class AiDataSharingConsent {
     }
     final accepted = prefs.getBool(consentKey) == true;
     final acceptedAt = prefs.getString(receiptKey);
-    return accepted &&
-        acceptedAt != null &&
-        DateTime.tryParse(acceptedAt) != null;
+    return accepted && _validKeyboardConsentAcceptedAt(acceptedAt) != null;
   }
 
   static Future<DateTime?> keyboardScreenshotConsentAcceptedAt() async {
@@ -92,7 +122,7 @@ class AiDataSharingConsent {
       return null;
     }
     final raw = prefs.getString(receiptKey);
-    return raw == null ? null : DateTime.tryParse(raw)?.toUtc();
+    return _validKeyboardConsentAcceptedAt(raw);
   }
 
   static Future<bool> hasKeyboardLatestScreenshotDetectionEnabled() {
@@ -120,7 +150,7 @@ class AiDataSharingConsent {
       return false;
     }
     return prefs.getBool(consentKey) == true &&
-        DateTime.tryParse(prefs.getString(receiptKey) ?? '') != null &&
+        _validKeyboardConsentAcceptedAt(prefs.getString(receiptKey)) != null &&
         prefs.getBool(settingKey) == true;
   }
 
@@ -141,7 +171,8 @@ class AiDataSharingConsent {
     }
     if (enabled &&
         (prefs.getBool(consentKey) != true ||
-            DateTime.tryParse(prefs.getString(receiptKey) ?? '') == null)) {
+            _validKeyboardConsentAcceptedAt(prefs.getString(receiptKey)) ==
+                null)) {
       return false;
     }
     final written = await prefs.setBool(settingKey, enabled);
@@ -167,7 +198,8 @@ class AiDataSharingConsent {
     }
     if (enabled &&
         (prefs.getBool(consentKey) != true ||
-            DateTime.tryParse(prefs.getString(receiptKey) ?? '') == null)) {
+            _validKeyboardConsentAcceptedAt(prefs.getString(receiptKey)) ==
+                null)) {
       return false;
     }
     final written = await prefs.setBool(settingKey, enabled);
@@ -180,23 +212,17 @@ class AiDataSharingConsent {
 
   static Future<void> revokeKeyboardScreenshotConsent({
     String? ownerUserId,
+    Future<void> Function()? afterLocalRevocation,
+    KeyboardPrivacyPurgeService? privacyPurgeService,
   }) async {
     final resolvedOwner = ownerUserId ??
         (debugUserIdOverride != null
             ? debugUserIdOverride!()
             : SupabaseService.currentUser?.id);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(
-      _scopedKey(keyboardScreenshotConsentKey, resolvedOwner),
-    );
-    await prefs.remove(
-      _scopedKey(keyboardScreenshotConsentAcceptedAtKey, resolvedOwner),
-    );
-    await prefs.remove(
-      _scopedKey(keyboardLatestScreenshotDetectionKey, resolvedOwner),
-    );
-    await prefs.remove(
-      _scopedKey(keyboardPartnerContextSharingKey, resolvedOwner),
+    await (privacyPurgeService ?? KeyboardPrivacyPurgeService.live).purge(
+      KeyboardContextPurgeScope.consentRevoked,
+      ownerUserId: resolvedOwner,
+      nativeOperation: afterLocalRevocation,
     );
   }
 
@@ -212,7 +238,26 @@ class AiDataSharingConsent {
     // 不得把同意寫到別的帳號 key 或放行本次請求。
     final scopedKey = _effectiveKey(consentKey);
     final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool(scopedKey) == true) return true;
+    if (prefs.getBool(scopedKey) == true) {
+      if (consentKey != keyboardScreenshotConsentKey) {
+        return true;
+      }
+      final existingReceiptKey = _keyboardReceiptKeyForConsentKey(scopedKey);
+      final scopeStillCurrent = _effectiveKey(consentKey) == scopedKey &&
+          _effectiveKey(keyboardScreenshotConsentAcceptedAtKey) ==
+              existingReceiptKey;
+      final acceptedAt = _validKeyboardConsentAcceptedAt(
+        prefs.getString(existingReceiptKey),
+      );
+      if (scopeStillCurrent && acceptedAt != null) {
+        return true;
+      }
+      await prefs.remove(scopedKey);
+      await prefs.remove(existingReceiptKey);
+      if (!scopeStillCurrent) {
+        return false;
+      }
+    }
     if (!context.mounted) return false;
 
     final accepted = await showDialog<bool>(
@@ -237,18 +282,57 @@ class AiDataSharingConsent {
       return false;
     }
 
+    String? receiptKey;
     if (consentKey == keyboardScreenshotConsentKey) {
-      final receiptKey = _effectiveKey(
-        keyboardScreenshotConsentAcceptedAtKey,
-      );
-      await prefs.setString(
-          receiptKey, DateTime.now().toUtc().toIso8601String());
-      if (_effectiveKey(consentKey) != scopedKey) {
+      receiptKey = _keyboardReceiptKeyForConsentKey(scopedKey);
+      if (_effectiveKey(consentKey) != scopedKey ||
+          _effectiveKey(keyboardScreenshotConsentAcceptedAtKey) != receiptKey) {
+        await prefs.remove(scopedKey);
+        await prefs.remove(receiptKey);
+        return false;
+      }
+      final now = DateTime.now().toUtc();
+      final receiptValue = DateTime.fromMillisecondsSinceEpoch(
+        now.millisecondsSinceEpoch,
+        isUtc: true,
+      ).toIso8601String();
+      final receiptWriter = debugSetConsentStringOverride;
+      final receiptWritten = receiptWriter != null
+          ? await receiptWriter(prefs, receiptKey, receiptValue)
+          : await prefs.setString(receiptKey, receiptValue);
+      if (!receiptWritten ||
+          _effectiveKey(consentKey) != scopedKey ||
+          _effectiveKey(keyboardScreenshotConsentAcceptedAtKey) != receiptKey) {
+        await prefs.remove(scopedKey);
         await prefs.remove(receiptKey);
         return false;
       }
     }
-    await prefs.setBool(scopedKey, true);
+    if (_effectiveKey(consentKey) != scopedKey ||
+        (receiptKey != null &&
+            _effectiveKey(keyboardScreenshotConsentAcceptedAtKey) !=
+                receiptKey)) {
+      await prefs.remove(scopedKey);
+      if (receiptKey != null) {
+        await prefs.remove(receiptKey);
+      }
+      return false;
+    }
+    final writer = debugSetConsentBoolOverride;
+    final written = writer != null
+        ? await writer(prefs, scopedKey, true)
+        : await prefs.setBool(scopedKey, true);
+    final scopeStillCurrent = _effectiveKey(consentKey) == scopedKey &&
+        (receiptKey == null ||
+            _effectiveKey(keyboardScreenshotConsentAcceptedAtKey) ==
+                receiptKey);
+    if (!written || !scopeStillCurrent) {
+      await prefs.remove(scopedKey);
+      if (receiptKey != null) {
+        await prefs.remove(receiptKey);
+      }
+      return false;
+    }
     return true;
   }
 }

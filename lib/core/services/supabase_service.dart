@@ -5,6 +5,7 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'keyboard_privacy_purge_service.dart';
 import '../config/environment.dart';
 import 'auth_recovery_helper.dart';
 import 'auth_diagnostics_service.dart';
@@ -186,6 +187,12 @@ class SupabaseService {
 
   /// Sign out
   static Future<void> signOut() async {
+    final ownerUserId = currentUser?.id;
+    await KeyboardPrivacyPurgeService.live.purge(
+      KeyboardContextPurgeScope.logout,
+      ownerUserId: ownerUserId,
+    );
+
     Object? signOutError;
 
     try {

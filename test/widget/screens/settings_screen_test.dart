@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart' show Box;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:vibesync/core/services/keyboard_privacy_purge_service.dart';
+import 'package:vibesync/features/keyboard/data/providers/keyboard_context_sync_provider.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
@@ -155,6 +157,29 @@ class _FakeAccountLogoutActions extends AccountLogoutActions {
   }
 }
 
+class _RecordingKeyboardPrivacyPurgeService
+    extends KeyboardPrivacyPurgeService {
+  _RecordingKeyboardPrivacyPurgeService({this.onPurge});
+
+  final void Function(
+    KeyboardContextPurgeScope scope,
+    String? ownerUserId,
+  )? onPurge;
+  final purgeScopes = <KeyboardContextPurgeScope>[];
+  final ownerUserIds = <String?>[];
+
+  @override
+  Future<void> purge(
+    KeyboardContextPurgeScope scope, {
+    required String? ownerUserId,
+    Future<void> Function()? nativeOperation,
+  }) async {
+    purgeScopes.add(scope);
+    ownerUserIds.add(ownerUserId);
+    onPurge?.call(scope, ownerUserId);
+  }
+}
+
 void main() {
   late GoRouter testRouter;
   late AccountDeletionActions accountDeletionActions;
@@ -209,6 +234,7 @@ void main() {
     Future<void> Function()? refreshUsage,
     AccountDeletionActions? deletionActions,
     AccountLogoutActions? logoutActions,
+    KeyboardPrivacyPurgeService? keyboardPrivacyPurgeService,
     List<Override> extraOverrides = const [],
     Widget? overlay,
   }) async {
@@ -228,6 +254,10 @@ void main() {
         overrides: [
           subscriptionScreenRefreshProvider.overrideWithValue(
             refreshUsage ?? () async {},
+          ),
+          keyboardPrivacyPurgeServiceProvider.overrideWithValue(
+            keyboardPrivacyPurgeService ??
+                _RecordingKeyboardPrivacyPurgeService(),
           ),
           ...extraOverrides,
         ],
@@ -362,6 +392,28 @@ void main() {
       expect(find.text('Login'), findsOneWidget);
     });
 
+    testWidgets('logout delegates once to the centralized account action',
+        (tester) async {
+      final actions = _FakeAccountLogoutActions(authenticated: true);
+      final privacyPurge = _RecordingKeyboardPrivacyPurgeService();
+
+      await pumpSettings(
+        tester,
+        logoutActions: actions,
+        keyboardPrivacyPurgeService: privacyPurge,
+      );
+
+      await tester.ensureVisible(find.byIcon(Icons.logout));
+      await tester.tap(find.byIcon(Icons.logout));
+      await tester.pump();
+      await tester.tap(find.byType(TextButton).last);
+      await tester.pumpAndSettle();
+
+      expect(actions.signOutCalls, 1);
+      expect(privacyPurge.purgeScopes, isEmpty);
+      expect(find.text('Login'), findsOneWidget);
+    });
+
     testWidgets('logout failure while still authenticated keeps practice state',
         (tester) async {
       final actions = _FakeAccountLogoutActions(
@@ -402,6 +454,30 @@ void main() {
       expect(actions.clearUsageSnapshotCalls, 1);
       expect(actions.clearPracticeRoomStateCalls, 1);
       expect(find.text('Login'), findsOneWidget);
+    });
+
+    testWidgets('privacy purge failure stays retryable even if auth expired',
+        (tester) async {
+      final actions = _FakeAccountLogoutActions(
+        signOutError: const KeyboardPrivacyPurgeException(
+          nativeError: 'native purge failed',
+        ),
+        authenticated: false,
+      );
+
+      await pumpSettings(tester, logoutActions: actions);
+
+      await tester.ensureVisible(find.byIcon(Icons.logout));
+      await tester.tap(find.byIcon(Icons.logout));
+      await tester.pump();
+      await tester.tap(find.byType(TextButton).last);
+      await tester.pumpAndSettle();
+
+      expect(actions.signOutCalls, 1);
+      expect(actions.clearUsageSnapshotCalls, 0);
+      expect(actions.clearPracticeRoomStateCalls, 0);
+      expect(find.text('Login'), findsNothing);
+      expect(find.text('登出前無法清除鍵盤隱私資料，請再試一次。'), findsOneWidget);
     });
 
     testWidgets(
@@ -486,6 +562,45 @@ void main() {
 
       expect(find.text('Login'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets(
+        'account deletion purges keyboard context before local session clear',
+        (tester) async {
+      final cleanupEvents = <String>[];
+      final actions = _FakeAccountDeletionActions(
+        onClearLocalSessionAfterDeletion: () async {
+          cleanupEvents.add('session');
+        },
+      );
+      actions.onClearLocalStorage = () async {
+        cleanupEvents.add('storage');
+      };
+      final privacyPurge = _RecordingKeyboardPrivacyPurgeService(
+        onPurge: (_, __) => cleanupEvents.add('keyboard-context'),
+      );
+
+      await pumpSettings(
+        tester,
+        deletionActions: actions,
+        keyboardPrivacyPurgeService: privacyPurge,
+      );
+
+      await tester.ensureVisible(find.byIcon(Icons.delete_forever));
+      await tester.tap(find.byIcon(Icons.delete_forever));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'DELETE');
+      await tester.pump();
+      await tester.tap(find.byType(TextButton).last);
+      await tester.pumpAndSettle();
+
+      expect(actions.confirmations, ['DELETE']);
+      expect(
+        privacyPurge.purgeScopes,
+        [KeyboardContextPurgeScope.accountDeletion],
+      );
+      expect(cleanupEvents, ['keyboard-context', 'storage', 'session']);
+      expect(find.text('Login'), findsOneWidget);
     });
 
     testWidgets('delete account failure keeps local cleanup untouched',

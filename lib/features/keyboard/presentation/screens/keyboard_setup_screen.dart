@@ -1,15 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../onboarding/data/onboarding_service.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../data/providers/keyboard_context_sync_provider.dart';
+import '../../data/services/keyboard_screenshot_setup_coordinator.dart';
 
 typedef OpenKeyboardSettings = Future<bool> Function();
 
-class KeyboardSetupScreen extends StatefulWidget {
+class KeyboardSetupScreen extends ConsumerStatefulWidget {
   const KeyboardSetupScreen({
     super.key,
     this.openSettings = _openIOSSettings,
@@ -27,20 +33,31 @@ class KeyboardSetupScreen extends StatefulWidget {
   }
 
   @override
-  State<KeyboardSetupScreen> createState() => _KeyboardSetupScreenState();
+  ConsumerState<KeyboardSetupScreen> createState() =>
+      _KeyboardSetupScreenState();
 }
 
-class _KeyboardSetupScreenState extends State<KeyboardSetupScreen>
+class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final _controller = PageController();
   late final AnimationController _pulse;
+  late Future<bool> _hasKeyboardScreenshotConsent;
+  late Future<bool> _hasLatestScreenshotDetection;
   int _page = 0;
   bool _openedSettings = false;
+  bool _revokingScreenshotConsent = false;
+  bool _enablingLatestScreenshotDetection = false;
+  bool _nativePrivacyCleanupPending = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _hasKeyboardScreenshotConsent =
+        AiDataSharingConsent.hasKeyboardScreenshotConsent();
+    _hasLatestScreenshotDetection =
+        ref.read(keyboardScreenshotSetupCoordinatorProvider).hasEnabledSetup();
+    unawaited(_restoreNativePrivacyCleanupState());
     _pulse = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -108,6 +125,264 @@ class _KeyboardSetupScreenState extends State<KeyboardSetupScreen>
     if (mounted) context.go('/');
   }
 
+  Future<void> _revokeKeyboardScreenshotConsent() async {
+    if (_revokingScreenshotConsent) return;
+    setState(() => _revokingScreenshotConsent = true);
+    try {
+      if (_nativePrivacyCleanupPending) {
+        await ref
+            .read(keyboardPrivacyPurgeServiceProvider)
+            .retryPendingNativeCleanup();
+      } else {
+        await ref
+            .read(keyboardScreenshotPrivacyCoordinatorProvider)
+            .revokeScreenshotConsent();
+      }
+      final hasConsent =
+          await AiDataSharingConsent.hasKeyboardScreenshotConsent();
+      final hasDetection = await ref
+          .read(keyboardScreenshotSetupCoordinatorProvider)
+          .hasEnabledSetup();
+      if (!mounted) return;
+      setState(() {
+        _hasKeyboardScreenshotConsent = Future<bool>.value(hasConsent);
+        _hasLatestScreenshotDetection = Future<bool>.value(hasDetection);
+        _revokingScreenshotConsent = false;
+        _nativePrivacyCleanupPending = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已撤回截圖 AI 同意並清除鍵盤脈絡。')),
+      );
+    } catch (error) {
+      final service = ref.read(keyboardPrivacyPurgeServiceProvider);
+      var hasConsent = true;
+      var nativeCleanupPending = true;
+      try {
+        hasConsent = await AiDataSharingConsent.hasKeyboardScreenshotConsent();
+      } catch (_) {
+        // Fail closed and keep the cleanup action visible.
+      }
+      try {
+        nativeCleanupPending =
+            await service.pendingNativeCleanupScope() != null;
+      } catch (_) {
+        // An unreadable retry marker must not make the cleanup action vanish.
+      }
+      if (!mounted) return;
+      setState(() {
+        _hasKeyboardScreenshotConsent = Future<bool>.value(hasConsent);
+        _hasLatestScreenshotDetection = Future<bool>.value(false);
+        _revokingScreenshotConsent = false;
+        _nativePrivacyCleanupPending = nativeCleanupPending;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('本機同意已撤回；鍵盤資料清除失敗，請再試一次。')),
+      );
+    }
+  }
+
+  Future<void> _restoreNativePrivacyCleanupState() async {
+    final service = ref.read(keyboardPrivacyPurgeServiceProvider);
+    try {
+      final pendingScope = await service.pendingNativeCleanupScope();
+      if (pendingScope == null || !mounted) return;
+      setState(() {
+        _hasKeyboardScreenshotConsent = Future<bool>.value(false);
+        _hasLatestScreenshotDetection = Future<bool>.value(false);
+        _nativePrivacyCleanupPending = true;
+      });
+
+      await service.retryPendingNativeCleanup();
+      final hasConsent =
+          await AiDataSharingConsent.hasKeyboardScreenshotConsent();
+      final hasDetection = await ref
+          .read(keyboardScreenshotSetupCoordinatorProvider)
+          .hasEnabledSetup();
+      if (!mounted) return;
+      setState(() {
+        _hasKeyboardScreenshotConsent = Future<bool>.value(hasConsent);
+        _hasLatestScreenshotDetection = Future<bool>.value(hasDetection);
+        _nativePrivacyCleanupPending = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _hasKeyboardScreenshotConsent = Future<bool>.value(false);
+        _hasLatestScreenshotDetection = Future<bool>.value(false);
+        _nativePrivacyCleanupPending = true;
+      });
+    }
+  }
+
+  Future<void> _enableLatestScreenshotDetection() async {
+    if (_enablingLatestScreenshotDetection) return;
+    setState(() => _enablingLatestScreenshotDetection = true);
+
+    final consented = await AiDataSharingConsent.ensure(
+      context,
+      featureLabel: 'AI 鍵盤截圖回覆',
+      consentKey: AiDataSharingConsent.keyboardScreenshotConsentKey,
+      dataDescription: AiDataSharingConsent.keyboardScreenshotDataDescription,
+      purposeText: AiDataSharingConsent.keyboardScreenshotPurposeText,
+    );
+    if (!mounted) return;
+    if (!consented) {
+      setState(() => _enablingLatestScreenshotDetection = false);
+      _showScreenshotSetupFeedback(
+        '你尚未同意截圖 AI 資料使用，因此「最近截圖」輔助沒有啟用。',
+      );
+      return;
+    }
+
+    KeyboardScreenshotSetupResult result;
+    try {
+      result = await ref
+          .read(keyboardScreenshotSetupCoordinatorProvider)
+          .enableAfterConsent();
+    } catch (_) {
+      result = KeyboardScreenshotSetupResult.nativeSyncFailed;
+    }
+    if (!mounted) return;
+
+    final setupCoordinator =
+        ref.read(keyboardScreenshotSetupCoordinatorProvider);
+    final hasConsent =
+        await AiDataSharingConsent.hasKeyboardScreenshotConsent();
+    final enabled = await setupCoordinator.hasEnabledSetup();
+    if (!mounted) return;
+    if (result == KeyboardScreenshotSetupResult.enabled && !enabled) {
+      result = KeyboardScreenshotSetupResult.accountChanged;
+    }
+    setState(() {
+      _enablingLatestScreenshotDetection = false;
+      _hasKeyboardScreenshotConsent = Future<bool>.value(hasConsent);
+      _hasLatestScreenshotDetection = Future<bool>.value(enabled);
+    });
+    _showScreenshotSetupFeedback(_screenshotSetupMessage(result));
+  }
+
+  String _screenshotSetupMessage(KeyboardScreenshotSetupResult result) {
+    return switch (result) {
+      KeyboardScreenshotSetupResult.enabled =>
+        '已啟用「最近截圖」輔助。鍵盤會先在本機預覽，只有你確認後才上傳一張截圖。',
+      KeyboardScreenshotSetupResult.signedOut => '請先登入 VibeSync，再回來啟用「最近截圖」輔助。',
+      KeyboardScreenshotSetupResult.consentMissing =>
+        '截圖 AI 同意已失效，沒有啟用。請重新操作一次。',
+      KeyboardScreenshotSetupResult.accountChanged =>
+        '登入帳號在設定途中變更，沒有啟用。請用目前帳號重新操作。',
+      KeyboardScreenshotSetupResult.photoDenied =>
+        '相片權限已拒絕。請到「iPhone 設定 > VibeSync > 相片」允許取用後再試。',
+      KeyboardScreenshotSetupResult.photoRestricted =>
+        '這台 iPhone 的相片存取受系統或家長控制限制，目前無法啟用。',
+      KeyboardScreenshotSetupResult.photoNotDetermined =>
+        'iOS 尚未完成相片授權，沒有啟用。請再試一次。',
+      KeyboardScreenshotSetupResult.localStorageFailed =>
+        '無法儲存「最近截圖」設定，因此沒有啟用。請再試一次。',
+      KeyboardScreenshotSetupResult.nativeSyncFailed =>
+        '無法安全同步鍵盤同意，因此沒有啟用。請再試一次。',
+    };
+  }
+
+  void _showScreenshotSetupFeedback(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Widget _buildLatestScreenshotDetectionSetup() {
+    return FutureBuilder<bool>(
+      future: _hasLatestScreenshotDetection,
+      builder: (context, snapshot) {
+        final enabled = snapshot.data == true;
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.brandSurface2,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: enabled
+                  ? Colors.greenAccent.withValues(alpha: 0.45)
+                  : Colors.white.withValues(alpha: 0.12),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    enabled
+                        ? Icons.verified_user_outlined
+                        : Icons.photo_library_outlined,
+                    color: enabled ? Colors.greenAccent : AppColors.brandFlame,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      enabled ? '「最近截圖」輔助已啟用' : '選用：啟用「最近截圖」AI 輔助',
+                      style: AppTypography.titleMedium,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                enabled
+                    ? '功能啟用後，鍵盤開啟時會在本機尋找最近 3 分鐘的系統截圖；先讓你預覽，只有確認後才上傳一張。'
+                    : '需要獨立的 AI 資料同意與 iOS 相片權限。啟用後，鍵盤開啟時會在本機尋找最近 3 分鐘的系統截圖；先預覽，確認後才上傳一張。',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                ),
+              ),
+              if (!enabled) ...[
+                const SizedBox(height: 16),
+                BrandPrimaryButton(
+                  key: const Key('enable_latest_screenshot_detection'),
+                  label: '同意並設定相片權限',
+                  onPressed: _enablingLatestScreenshotDetection ||
+                          _revokingScreenshotConsent
+                      ? null
+                      : _enableLatestScreenshotDetection,
+                  isLoading: _enablingLatestScreenshotDetection,
+                  icon: Icons.lock_open_outlined,
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildScreenshotConsentRevocation() {
+    return FutureBuilder<bool>(
+      future: _hasKeyboardScreenshotConsent,
+      builder: (context, snapshot) {
+        if (snapshot.data != true && !_nativePrivacyCleanupPending) {
+          return const SizedBox.shrink();
+        }
+        return Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: TextButton.icon(
+            key: const Key('revoke_keyboard_screenshot_consent'),
+            onPressed:
+                _revokingScreenshotConsent || _enablingLatestScreenshotDetection
+                    ? null
+                    : _revokeKeyboardScreenshotConsent,
+            icon: const Icon(Icons.delete_outline),
+            label: Text(
+              _revokingScreenshotConsent
+                  ? '正在清除鍵盤脈絡…'
+                  : _nativePrivacyCleanupPending
+                      ? '重試清除鍵盤資料'
+                      : '撤回截圖 AI 同意並清除鍵盤脈絡',
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _close() {
     if (widget.firstRun) {
       _skipFirstRun();
@@ -169,12 +444,19 @@ class _KeyboardSetupScreenState extends State<KeyboardSetupScreen>
                         child: const _GlobeDemo(),
                       ),
                     ),
-                    const _SetupPage(
+                    _SetupPage(
                       icon: Icons.bolt,
                       title: '三步就有好回覆',
                       description:
-                          '複製對方訊息 → 點「載入」→ 選延展、共鳴、調情、幽默或冷讀。VibeSync 只插入文字，最後由你決定是否送出。',
-                      child: _ThreeStepDemo(),
+                          '貼上文字可以直接產生回覆；也可選擇啟用「最近截圖」輔助。VibeSync 只插入文字，最後由你決定是否送出。',
+                      child: Column(
+                        children: [
+                          const _ThreeStepDemo(),
+                          const SizedBox(height: 20),
+                          _buildLatestScreenshotDetectionSetup(),
+                          _buildScreenshotConsentRevocation(),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -286,7 +568,9 @@ class _PrivacyNotice extends StatelessWidget {
             Icon(Icons.privacy_tip_outlined, color: AppColors.brandFlame),
             SizedBox(width: 12),
             Expanded(
-              child: Text('VibeSync 只會將你主動點擊「載入」的文字送去產生回覆，不會自動讀取或蒐集其他輸入內容。'),
+              child: Text(
+                'VibeSync 只會將你主動點擊「載入」的文字送去產生回覆；「最近截圖」需另行同意，啟用後會在鍵盤開啟時於本機尋找最近 3 分鐘的系統截圖，預覽確認後才上傳一張。不會自動讀取其他聊天紀錄。',
+              ),
             ),
           ],
         ),

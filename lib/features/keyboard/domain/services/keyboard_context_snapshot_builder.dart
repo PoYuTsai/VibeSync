@@ -60,8 +60,9 @@ class KeyboardContextSnapshotBuilder {
       throw ArgumentError.value(
           ownerUserId, 'ownerUserId', 'must not be empty');
     }
-    final generatedAt = _now().toUtc();
+    final generatedAt = canonicalUtcDateTime(_now());
     _validateConsent(consent, generatedAt);
+    _validateVoice(globalVoice, field: 'globalVoice');
 
     final eligible = consent.partnerContextSharingEnabled
         ? partners
@@ -166,6 +167,12 @@ class KeyboardContextSnapshotBuilder {
         !source.hasDataQualityConflict && source.outcomeStats?.isValid == true
             ? source.outcomeStats
             : null;
+    if (!source.hasDataQualityConflict) {
+      _validateVoice(
+        source.effectiveVoice,
+        field: 'partners.effectiveVoice',
+      );
+    }
     final effectiveVoice =
         source.hasDataQualityConflict ? null : source.effectiveVoice;
 
@@ -180,7 +187,7 @@ class KeyboardContextSnapshotBuilder {
       'facts': facts.map((fact) => fact.toJson()).toList(growable: false),
       'outcomeStats': outcomeStats?.toJson(),
       'effectiveVoice': effectiveVoice?.toPartnerJson(),
-      'sourceUpdatedAt': source.sourceUpdatedAt.toUtc().toIso8601String(),
+      'sourceUpdatedAt': canonicalUtcTimestamp(source.sourceUpdatedAt),
     };
     final contextRevision = sha256
         .convert(utf8.encode(canonicalJsonEncode(revisionPayload)))
@@ -210,8 +217,8 @@ class KeyboardContextSnapshotBuilder {
     final revisionPayload = <String, Object?>{
       'schemaVersion': schemaVersion,
       'ownerUserId': owner,
-      'generatedAt': generatedAt.toIso8601String(),
-      'expiresAt': expiresAt.toIso8601String(),
+      'generatedAt': canonicalUtcTimestamp(generatedAt),
+      'expiresAt': canonicalUtcTimestamp(expiresAt),
       'consent': consent.toJson(),
       'globalVoice': globalVoice.toJson(),
       'partners':
@@ -237,9 +244,25 @@ class KeyboardContextSnapshotBuilder {
     KeyboardContextPartnerSource right,
   ) {
     if (left.isPinned != right.isPinned) return left.isPinned ? -1 : 1;
-    final updated = right.sourceUpdatedAt.compareTo(left.sourceUpdatedAt);
+    final updated = canonicalUtcDateTime(
+      right.sourceUpdatedAt,
+    ).compareTo(canonicalUtcDateTime(left.sourceUpdatedAt));
     if (updated != 0) return updated;
     return left.partnerId.compareTo(right.partnerId);
+  }
+
+  static void _validateVoice(
+    KeyboardContextVoice voice, {
+    required String field,
+  }) {
+    if (voice.secondary != null &&
+        (voice.primary == null || voice.primary == voice.secondary)) {
+      throw ArgumentError.value(
+        voice.toPartnerJson(),
+        field,
+        'secondary requires a distinct primary voice',
+      );
+    }
   }
 
   static String _cap(String value, int maxGraphemes) {

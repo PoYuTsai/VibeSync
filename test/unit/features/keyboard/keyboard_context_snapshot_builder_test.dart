@@ -251,6 +251,153 @@ void main() {
       throwsArgumentError,
     );
   });
+
+  test('top-level revision ignores sub-millisecond clock differences', () {
+    KeyboardContextSnapshot build(DateTime clock) {
+      return KeyboardContextSnapshotBuilder(now: () => clock).build(
+        ownerUserId: 'owner-1',
+        consent: _consent(partnerSharing: false),
+        globalVoice: KeyboardContextVoice(
+          primary: KeyboardVoice.steady,
+          secondary: null,
+          sourceUpdatedAt: now,
+        ),
+        partners: const [],
+      );
+    }
+
+    final first = build(DateTime.utc(2026, 7, 27, 4, 0, 0, 123, 111));
+    final sameMillisecond = build(DateTime.utc(2026, 7, 27, 4, 0, 0, 123, 999));
+    final nextMillisecond = build(DateTime.utc(2026, 7, 27, 4, 0, 0, 124));
+
+    expect(first.revision, sameMillisecond.revision);
+    expect(first.generatedAt.microsecond, 0);
+    expect(first.revision, isNot(nextMillisecond.revision));
+  });
+
+  test('partner revision ignores only sub-millisecond source differences', () {
+    KeyboardContextSnapshot build(DateTime sourceUpdatedAt) {
+      return builder.build(
+        ownerUserId: 'owner-1',
+        consent: _consent(partnerSharing: true),
+        globalVoice: KeyboardContextVoice(
+          primary: KeyboardVoice.steady,
+          secondary: null,
+          sourceUpdatedAt: now,
+        ),
+        partners: [
+          _partner(
+            id: 'partner-1',
+            owner: 'owner-1',
+            note: 'note',
+            sourceUpdatedAt: sourceUpdatedAt,
+          ),
+        ],
+      );
+    }
+
+    final first = build(DateTime.utc(2026, 7, 27, 3, 0, 0, 123, 111));
+    final sameMillisecond = build(DateTime.utc(2026, 7, 27, 3, 0, 0, 123, 999));
+    final nextMillisecond = build(DateTime.utc(2026, 7, 27, 3, 0, 0, 124));
+
+    expect(
+      first.partners.single.contextRevision,
+      sameMillisecond.partners.single.contextRevision,
+    );
+    expect(
+      first.partners.single.contextRevision,
+      isNot(nextMillisecond.partners.single.contextRevision),
+    );
+  });
+
+  test('rejects invalid global voice pairs before publishing', () {
+    for (final voice in [
+      KeyboardContextVoice(
+        primary: null,
+        secondary: KeyboardVoice.playful,
+        sourceUpdatedAt: now,
+      ),
+      KeyboardContextVoice(
+        primary: KeyboardVoice.steady,
+        secondary: KeyboardVoice.steady,
+        sourceUpdatedAt: now,
+      ),
+    ]) {
+      expect(
+        () => builder.build(
+          ownerUserId: 'owner-1',
+          consent: _consent(partnerSharing: false),
+          globalVoice: voice,
+          partners: const [],
+        ),
+        throwsArgumentError,
+      );
+    }
+  });
+
+  test('rejects invalid effective voice pairs for available partner context',
+      () {
+    for (final voice in [
+      KeyboardContextVoice(
+        primary: null,
+        secondary: KeyboardVoice.playful,
+        sourceUpdatedAt: now,
+      ),
+      KeyboardContextVoice(
+        primary: KeyboardVoice.playful,
+        secondary: KeyboardVoice.playful,
+        sourceUpdatedAt: now,
+      ),
+    ]) {
+      expect(
+        () => builder.build(
+          ownerUserId: 'owner-1',
+          consent: _consent(partnerSharing: true),
+          globalVoice: KeyboardContextVoice(
+            primary: KeyboardVoice.steady,
+            secondary: null,
+            sourceUpdatedAt: now,
+          ),
+          partners: [
+            _partner(
+              id: 'partner-1',
+              owner: 'owner-1',
+              effectiveVoice: voice,
+            ),
+          ],
+        ),
+        throwsArgumentError,
+      );
+    }
+  });
+
+  test('allows an explicitly unset global and effective voice pair', () {
+    final snapshot = builder.build(
+      ownerUserId: 'owner-1',
+      consent: _consent(partnerSharing: true),
+      globalVoice: KeyboardContextVoice(
+        primary: null,
+        secondary: null,
+        sourceUpdatedAt: now,
+      ),
+      partners: [
+        _partner(
+          id: 'partner-1',
+          owner: 'owner-1',
+          effectiveVoice: KeyboardContextVoice(
+            primary: null,
+            secondary: null,
+            sourceUpdatedAt: now,
+          ),
+        ),
+      ],
+    );
+
+    expect(snapshot.globalVoice.primary, isNull);
+    expect(snapshot.globalVoice.secondary, isNull);
+    expect(snapshot.partners.single.effectiveVoice!.primary, isNull);
+    expect(snapshot.partners.single.effectiveVoice!.secondary, isNull);
+  });
 }
 
 KeyboardContextConsent _consent({required bool partnerSharing}) {
@@ -272,8 +419,11 @@ KeyboardContextPartnerSource _partner({
   String? note,
   List<String> aliases = const ['LINE name'],
   KeyboardOutcomeStats? outcomeStats,
+  DateTime? sourceUpdatedAt,
+  KeyboardContextVoice? effectiveVoice,
 }) {
   final now = DateTime.utc(2026, 7, 27, 4);
+  final updatedAt = sourceUpdatedAt ?? now;
   return KeyboardContextPartnerSource(
     partnerId: id,
     ownerUserId: owner,
@@ -281,12 +431,13 @@ KeyboardContextPartnerSource _partner({
     confirmedAliases: aliases,
     userAuthoredNote: note,
     outcomeStats: outcomeStats,
-    effectiveVoice: KeyboardContextVoice(
-      primary: KeyboardVoice.playful,
-      secondary: KeyboardVoice.steady,
-      sourceUpdatedAt: now,
-    ),
-    sourceUpdatedAt: now,
+    effectiveVoice: effectiveVoice ??
+        KeyboardContextVoice(
+          primary: KeyboardVoice.playful,
+          secondary: KeyboardVoice.steady,
+          sourceUpdatedAt: updatedAt,
+        ),
+    sourceUpdatedAt: updatedAt,
     isAllowlisted: allowlisted,
     isPinned: pinned,
     hasDataQualityConflict: dataQualityFlagged,

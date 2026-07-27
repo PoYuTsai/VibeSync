@@ -1,14 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:vibesync/core/services/keyboard_privacy_purge_service.dart';
+import 'package:vibesync/features/keyboard/data/providers/keyboard_context_sync_provider.dart';
+import 'package:vibesync/features/keyboard/data/services/keyboard_context_bridge.dart';
+import 'package:vibesync/features/keyboard/data/services/keyboard_screenshot_setup_coordinator.dart';
+import 'package:vibesync/features/keyboard/domain/entities/keyboard_context_snapshot.dart';
 import 'package:vibesync/features/keyboard/presentation/screens/keyboard_setup_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/features/onboarding/data/onboarding_service.dart';
+import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 
 void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await OnboardingService.load();
+  });
+
+  tearDown(() {
+    AiDataSharingConsent.debugUserIdOverride = null;
   });
 
   testWidgets('teaches settings permission before globe and quick reply',
@@ -28,7 +39,11 @@ void main() {
         ),
       ],
     );
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
 
     expect(find.text('聊天不用再跳出 App'), findsOneWidget);
     expect(find.text('🔄 延展'), findsOneWidget);
@@ -67,7 +82,11 @@ void main() {
         ),
       ],
     );
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
     router.push('/keyboard');
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
@@ -79,4 +98,327 @@ void main() {
 
     expect(OnboardingService.isKeyboardCompletedSync, isTrue);
   });
+
+  testWidgets('revoking screenshot consent purges native keyboard context',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      '${AiDataSharingConsent.keyboardScreenshotConsentKey}::owner-1': true,
+      '${AiDataSharingConsent.keyboardScreenshotConsentAcceptedAtKey}::owner-1':
+          DateTime.utc(2026, 7, 27).toIso8601String(),
+    });
+    AiDataSharingConsent.debugUserIdOverride = () => 'owner-1';
+    expect(await AiDataSharingConsent.hasKeyboardScreenshotConsent(), isTrue);
+    final bridge = _RecordingKeyboardContextBridge();
+    final router = GoRouter(
+      initialLocation: '/keyboard',
+      routes: [
+        GoRoute(
+          path: '/keyboard',
+          builder: (_, __) => const KeyboardSetupScreen(),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          keyboardContextBridgeProvider.overrideWithValue(bridge),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    for (var step = 0; step < 3; step++) {
+      final label = step == 1 ? '我已完成設定' : '下一步';
+      await tester.tap(find.text(label));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('三步就有好回覆'), findsOneWidget);
+    expect(find.text('撤回截圖 AI 同意並清除鍵盤脈絡'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('撤回截圖 AI 同意並清除鍵盤脈絡'));
+    await tester.pump();
+    await tester.tap(find.text('撤回截圖 AI 同意並清除鍵盤脈絡'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(bridge.purgeScopes, [KeyboardContextPurgeScope.consentRevoked]);
+    expect(await AiDataSharingConsent.hasKeyboardScreenshotConsent(), isFalse);
+  });
+
+  testWidgets(
+      'relaunch retries persisted native cleanup and keeps retry action visible',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      KeyboardScreenshotPrivacyKeys.nativeCleanupPendingScope:
+          KeyboardContextPurgeScope.accountDeletion.wireName,
+    });
+    AiDataSharingConsent.debugUserIdOverride = () => 'owner-1';
+    final channel = _RecordingPrivacyPurgeChannel(
+      error: StateError('native channel unavailable'),
+    );
+    final service = KeyboardPrivacyPurgeService(channel: channel);
+    final router = GoRouter(
+      initialLocation: '/keyboard',
+      routes: [
+        GoRoute(
+          path: '/keyboard',
+          builder: (_, __) => const KeyboardSetupScreen(),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          keyboardPrivacyPurgeServiceProvider.overrideWithValue(service),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(channel.scopes, [KeyboardContextPurgeScope.accountDeletion]);
+
+    for (var page = 0; page < 3; page++) {
+      await tester.drag(
+        find.byType(PageView),
+        const Offset(-500, 0),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    expect(
+      find.byKey(const Key('revoke_keyboard_screenshot_consent')),
+      findsOneWidget,
+    );
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      preferences.getString(
+        KeyboardScreenshotPrivacyKeys.nativeCleanupPendingScope,
+      ),
+      KeyboardContextPurgeScope.accountDeletion.wireName,
+    );
+  });
+
+  testWidgets(
+      'latest screenshot CTA obtains disclosure consent before native setup',
+      (tester) async {
+    AiDataSharingConsent.debugUserIdOverride = () => 'owner-1';
+    final setup = _RecordingScreenshotSetup(
+      KeyboardScreenshotSetupResult.enabled,
+    );
+    final router = GoRouter(
+      initialLocation: '/keyboard',
+      routes: [
+        GoRoute(
+          path: '/keyboard',
+          builder: (_, __) => const KeyboardSetupScreen(),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          keyboardScreenshotSetupCoordinatorProvider.overrideWithValue(setup),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pump();
+
+    for (var step = 0; step < 3; step++) {
+      final label = step == 1 ? '我已完成設定' : '下一步';
+      await tester.tap(find.text(label));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+    final enableButton =
+        find.byKey(const Key('enable_latest_screenshot_detection'));
+    await tester.ensureVisible(enableButton);
+    await tester.pump();
+    await tester.tap(enableButton);
+    await tester.pump();
+
+    expect(find.text('第三方 AI 資料使用同意'), findsOneWidget);
+    expect(find.textContaining('不會自動讀取其他聊天紀錄'), findsOneWidget);
+    expect(setup.calls, 0);
+
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pump();
+    await tester.tap(find.text('我同意並送出'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(setup.calls, 1);
+    expect(find.text('「最近截圖」輔助已啟用'), findsOneWidget);
+    expect(
+      find.textContaining('只有你確認後才上傳一張截圖'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('denied Photos permission leaves screenshot setup disabled',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      '${AiDataSharingConsent.keyboardScreenshotConsentKey}::owner-1': true,
+      '${AiDataSharingConsent.keyboardScreenshotConsentAcceptedAtKey}::owner-1':
+          DateTime.utc(2026, 7, 27).toIso8601String(),
+    });
+    AiDataSharingConsent.debugUserIdOverride = () => 'owner-1';
+    final setup = _RecordingScreenshotSetup(
+      KeyboardScreenshotSetupResult.photoDenied,
+    );
+    final router = GoRouter(
+      initialLocation: '/keyboard',
+      routes: [
+        GoRoute(
+          path: '/keyboard',
+          builder: (_, __) => const KeyboardSetupScreen(),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          keyboardScreenshotSetupCoordinatorProvider.overrideWithValue(setup),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pump();
+
+    for (var step = 0; step < 3; step++) {
+      final label = step == 1 ? '我已完成設定' : '下一步';
+      await tester.tap(find.text(label));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+    final enableButton =
+        find.byKey(const Key('enable_latest_screenshot_detection'));
+    await tester.ensureVisible(enableButton);
+    await tester.tap(enableButton);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(setup.calls, 1);
+    expect(find.textContaining('相片權限已拒絕'), findsOneWidget);
+    expect(enableButton, findsOneWidget);
+    expect(
+      await AiDataSharingConsent.hasKeyboardLatestScreenshotDetectionEnabled(),
+      isFalse,
+    );
+  });
+
+  testWidgets('account change re-reads owner-bound consent instead of true',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      '${AiDataSharingConsent.keyboardScreenshotConsentKey}::owner-1': true,
+      '${AiDataSharingConsent.keyboardScreenshotConsentAcceptedAtKey}::owner-1':
+          DateTime.utc(2026, 7, 27).toIso8601String(),
+    });
+    var owner = 'owner-1';
+    AiDataSharingConsent.debugUserIdOverride = () => owner;
+    final setup = _RecordingScreenshotSetup(
+      KeyboardScreenshotSetupResult.accountChanged,
+      onEnable: () => owner = 'owner-2',
+    );
+    final router = GoRouter(
+      initialLocation: '/keyboard',
+      routes: [
+        GoRoute(
+          path: '/keyboard',
+          builder: (_, __) => const KeyboardSetupScreen(),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          keyboardScreenshotSetupCoordinatorProvider.overrideWithValue(setup),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pump();
+
+    for (var step = 0; step < 3; step++) {
+      final label = step == 1 ? '我已完成設定' : '下一步';
+      await tester.tap(find.text(label));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+    final enableButton =
+        find.byKey(const Key('enable_latest_screenshot_detection'));
+    await tester.ensureVisible(enableButton);
+    await tester.tap(enableButton);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(setup.calls, 1);
+    expect(find.textContaining('登入帳號在設定途中變更'), findsOneWidget);
+    expect(
+      find.byKey(const Key('revoke_keyboard_screenshot_consent')),
+      findsNothing,
+    );
+    expect(enableButton, findsOneWidget);
+  });
+}
+
+class _RecordingKeyboardContextBridge implements KeyboardContextBridge {
+  final purgeScopes = <KeyboardContextPurgeScope>[];
+
+  @override
+  Future<KeyboardContextPublishResult> publish(
+    KeyboardContextSnapshot snapshot,
+  ) async {
+    return KeyboardContextPublishResult(storedRevision: snapshot.revision);
+  }
+
+  @override
+  Future<void> purge(KeyboardContextPurgeScope scope) async {
+    purgeScopes.add(scope);
+  }
+}
+
+class _RecordingPrivacyPurgeChannel implements KeyboardPrivacyPurgeChannel {
+  _RecordingPrivacyPurgeChannel({this.error});
+
+  final Object? error;
+  final scopes = <KeyboardContextPurgeScope>[];
+
+  @override
+  Future<void> invokePurge(KeyboardContextPurgeScope scope) async {
+    scopes.add(scope);
+    final invocationError = error;
+    if (invocationError != null) throw invocationError;
+  }
+}
+
+class _RecordingScreenshotSetup implements KeyboardScreenshotSetupEnabling {
+  _RecordingScreenshotSetup(
+    this.result, {
+    this.onEnable,
+  });
+
+  final KeyboardScreenshotSetupResult result;
+  final void Function()? onEnable;
+  int calls = 0;
+
+  @override
+  Future<KeyboardScreenshotSetupResult> enableAfterConsent() async {
+    calls++;
+    onEnable?.call();
+    return result;
+  }
+
+  @override
+  Future<bool> hasEnabledSetup() async =>
+      calls > 0 && result == KeyboardScreenshotSetupResult.enabled;
 }

@@ -18,6 +18,17 @@ enum KeyboardContextFactKind { userNote }
 
 String _enumName(Enum value) => value.name;
 
+DateTime canonicalUtcDateTime(DateTime value) {
+  return DateTime.fromMillisecondsSinceEpoch(
+    value.toUtc().millisecondsSinceEpoch,
+    isUtc: true,
+  );
+}
+
+String canonicalUtcTimestamp(DateTime value) {
+  return canonicalUtcDateTime(value).toIso8601String();
+}
+
 String canonicalJsonEncode(Object? value) => jsonEncode(_canonicalize(value));
 
 Object? _canonicalize(Object? value) {
@@ -54,7 +65,7 @@ class KeyboardContextConsent {
 
   Map<String, Object?> toJson() => {
         'version': version,
-        'acceptedAt': acceptedAt.toUtc().toIso8601String(),
+        'acceptedAt': canonicalUtcTimestamp(acceptedAt),
         'latestScreenshotDetectionEnabled': latestScreenshotDetectionEnabled,
         'partnerContextSharingEnabled': partnerContextSharingEnabled,
       };
@@ -75,7 +86,7 @@ class KeyboardContextVoice {
   Map<String, Object?> toJson() => {
         'primary': primary == null ? null : _enumName(primary!),
         'secondary': secondary == null ? null : _enumName(secondary!),
-        'sourceUpdatedAt': sourceUpdatedAt.toUtc().toIso8601String(),
+        'sourceUpdatedAt': canonicalUtcTimestamp(sourceUpdatedAt),
       };
 
   Map<String, Object?> toPartnerJson() => {
@@ -101,7 +112,7 @@ class KeyboardContextFact {
           KeyboardContextFactKind.userNote => 'user_note',
         },
         'text': text,
-        'updatedAt': updatedAt.toUtc().toIso8601String(),
+        'updatedAt': canonicalUtcTimestamp(updatedAt),
       };
 }
 
@@ -175,7 +186,7 @@ class KeyboardContextPartner {
         'outcomeStats': outcomeStats?.toJson(),
         'effectiveVoice': effectiveVoice?.toPartnerJson(),
         'contextRevision': contextRevision,
-        'sourceUpdatedAt': sourceUpdatedAt.toUtc().toIso8601String(),
+        'sourceUpdatedAt': canonicalUtcTimestamp(sourceUpdatedAt),
       };
 }
 
@@ -205,8 +216,8 @@ class KeyboardContextSnapshot {
         'schemaVersion': schemaVersion,
         'ownerUserId': ownerUserId,
         'revision': revision,
-        'generatedAt': generatedAt.toUtc().toIso8601String(),
-        'expiresAt': expiresAt.toUtc().toIso8601String(),
+        'generatedAt': canonicalUtcTimestamp(generatedAt),
+        'expiresAt': canonicalUtcTimestamp(expiresAt),
         'consent': consent.toJson(),
         'globalVoice': globalVoice.toJson(),
         'partners':

@@ -11,6 +11,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../../core/config/environment.dart';
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/keyboard_token_bridge.dart';
+import '../../../../core/services/keyboard_privacy_purge_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
@@ -21,6 +22,7 @@ import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../follow_up_notification/data/providers/follow_up_notification_service.dart';
 import '../../../follow_up_notification/domain/follow_up_opt_in.dart';
+import '../../../keyboard/data/providers/keyboard_context_sync_provider.dart';
 import '../../../learning/data/providers/ebook_providers.dart';
 import '../../../learning/presentation/widgets/ebook_access_gate.dart';
 import '../../../practice_chat/data/providers/practice_chat_providers.dart';
@@ -842,6 +844,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } catch (error) {
       if (!context.mounted) return;
 
+      // A privacy-boundary failure must remain retryable even if the auth
+      // session expired independently while native cleanup was in flight.
+      if (error is KeyboardPrivacyPurgeException) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('登出前無法清除鍵盤隱私資料，請再試一次。'),
+          ),
+        );
+        return;
+      }
+
       if (!widget.accountLogoutActions.isAuthenticated) {
         try {
           await _clearLocalLogoutState();
@@ -960,6 +973,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final rootNavigator = Navigator.of(context, rootNavigator: true);
     final router = GoRouter.of(context);
+    final deletionOwnerUserId = SupabaseService.currentUser?.id;
     // 系統返回不得在初始清理 await 期間跳出守門（Codex R3 P1）。
     showDialog(
       context: context,
@@ -988,7 +1002,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     // 遠端帳號已刪除：絕不把「帳號已刪除」回報成刪除失敗；但本機清理
     // 沒完成前也絕不放行到 login——同裝置換帳號不得看到前用戶的 Hive 資料。
-    final cleanupSucceeded = await _tryDeleteAccountLocalCleanup();
+    final cleanupSucceeded = await _tryDeleteAccountLocalCleanup(
+      ownerUserId: deletionOwnerUserId,
+    );
     _dismissBlockingDialog(rootNavigator);
     if (!cleanupSucceeded) {
       if (!context.mounted) return;
@@ -1021,7 +1037,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ? null
                       : () async {
                           setDialogState(() => retrying = true);
-                          final ok = await _tryDeleteAccountLocalCleanup();
+                          final ok = await _tryDeleteAccountLocalCleanup(
+                            ownerUserId: deletionOwnerUserId,
+                          );
                           if (!dialogContext.mounted) return;
                           if (ok) {
                             Navigator.pop(dialogContext);
@@ -1049,8 +1067,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  Future<bool> _tryDeleteAccountLocalCleanup() async {
+  Future<bool> _tryDeleteAccountLocalCleanup({
+    required String? ownerUserId,
+  }) async {
     try {
+      await ref.read(keyboardPrivacyPurgeServiceProvider).purge(
+            KeyboardContextPurgeScope.accountDeletion,
+            ownerUserId: ownerUserId,
+          );
       await widget.accountDeletionActions.clearLocalStorage();
       await widget.accountDeletionActions.purgeKeyboardCredentials();
       await widget.accountDeletionActions.clearLocalSessionAfterDeletion();

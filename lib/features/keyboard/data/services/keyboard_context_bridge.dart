@@ -1,6 +1,10 @@
 import 'package:flutter/services.dart';
 
+import '../../../../core/services/keyboard_privacy_purge_service.dart';
 import '../../domain/entities/keyboard_context_snapshot.dart';
+
+export '../../../../core/services/keyboard_privacy_purge_service.dart'
+    show KeyboardContextPurgeScope;
 
 abstract class KeyboardContextChannel {
   Future<Object?> invoke(String method, [Object? arguments]);
@@ -17,19 +21,6 @@ class FlutterKeyboardContextChannel implements KeyboardContextChannel {
   Future<Object?> invoke(String method, [Object? arguments]) {
     return _channel.invokeMethod<Object?>(method, arguments);
   }
-}
-
-enum KeyboardContextPurgeScope { logout, consentRevoked, accountDeletion }
-
-extension on KeyboardContextPurgeScope {
-  String get wireName => switch (this) {
-        KeyboardContextPurgeScope.logout => 'logout',
-        KeyboardContextPurgeScope.consentRevoked => 'consent_revoked',
-        KeyboardContextPurgeScope.accountDeletion => 'account_deletion',
-      };
-
-  bool get purgePendingReplayIdentity =>
-      this == KeyboardContextPurgeScope.accountDeletion;
 }
 
 class KeyboardContextPublishResult {

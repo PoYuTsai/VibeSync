@@ -35,6 +35,8 @@ void main() {
 
   tearDown(() {
     AiDataSharingConsent.debugUserIdOverride = null;
+    AiDataSharingConsent.debugSetConsentBoolOverride = null;
+    AiDataSharingConsent.debugSetConsentStringOverride = null;
   });
 
   testWidgets('shows the third-party AI disclosure before accepting',
@@ -141,6 +143,241 @@ void main() {
     expect(
       await AiDataSharingConsent.hasKeyboardPartnerContextSharingEnabled(),
       isFalse,
+    );
+  });
+
+  testWidgets(
+      'keyboard consent boolean with a future receipt cannot bypass prompt',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      '${AiDataSharingConsent.keyboardScreenshotConsentKey}::user-a': true,
+      '${AiDataSharingConsent.keyboardScreenshotConsentAcceptedAtKey}::user-a':
+          DateTime.utc(2999, 1, 1).toIso8601String(),
+    });
+    AiDataSharingConsent.debugUserIdOverride = () => 'user-a';
+    bool? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                result = await AiDataSharingConsent.ensure(
+                  context,
+                  featureLabel: 'AI 鍵盤截圖回覆',
+                  consentKey: AiDataSharingConsent.keyboardScreenshotConsentKey,
+                  dataDescription:
+                      AiDataSharingConsent.keyboardScreenshotDataDescription,
+                  purposeText:
+                      AiDataSharingConsent.keyboardScreenshotPurposeText,
+                );
+              },
+              child: const Text('start keyboard consent'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('start keyboard consent'));
+    await tester.pumpAndSettle();
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(result, isNull);
+    expect(find.text('第三方 AI 資料使用同意'), findsOneWidget);
+    expect(
+      prefs.getBool(
+        '${AiDataSharingConsent.keyboardScreenshotConsentKey}::user-a',
+      ),
+      isNull,
+    );
+    expect(
+      prefs.getString(
+        '${AiDataSharingConsent.keyboardScreenshotConsentAcceptedAtKey}::user-a',
+      ),
+      isNull,
+    );
+  });
+
+  testWidgets(
+      'keyboard screenshot consent fails closed when the boolean write fails',
+      (tester) async {
+    AiDataSharingConsent.debugUserIdOverride = () => 'user-a';
+    AiDataSharingConsent.debugSetConsentBoolOverride =
+        (preferences, key, value) async => false;
+    bool? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                result = await AiDataSharingConsent.ensure(
+                  context,
+                  featureLabel: 'AI 鍵盤截圖回覆',
+                  consentKey: AiDataSharingConsent.keyboardScreenshotConsentKey,
+                  dataDescription:
+                      AiDataSharingConsent.keyboardScreenshotDataDescription,
+                  purposeText:
+                      AiDataSharingConsent.keyboardScreenshotPurposeText,
+                );
+              },
+              child: const Text('start keyboard consent'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('start keyboard consent'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('我同意並送出'));
+    await tester.pumpAndSettle();
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(result, isFalse);
+    expect(
+      prefs.getBool(
+        '${AiDataSharingConsent.keyboardScreenshotConsentKey}::user-a',
+      ),
+      isNull,
+    );
+    expect(
+      prefs.getString(
+        '${AiDataSharingConsent.keyboardScreenshotConsentAcceptedAtKey}::user-a',
+      ),
+      isNull,
+    );
+  });
+
+  testWidgets(
+      'account switch during the boolean write removes the stale consent pair',
+      (tester) async {
+    var currentUserId = 'user-a';
+    AiDataSharingConsent.debugUserIdOverride = () => currentUserId;
+    AiDataSharingConsent.debugSetConsentBoolOverride =
+        (preferences, key, value) async {
+      final written = await preferences.setBool(key, value);
+      currentUserId = 'user-b';
+      return written;
+    };
+    bool? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                result = await AiDataSharingConsent.ensure(
+                  context,
+                  featureLabel: 'AI 鍵盤截圖回覆',
+                  consentKey: AiDataSharingConsent.keyboardScreenshotConsentKey,
+                  dataDescription:
+                      AiDataSharingConsent.keyboardScreenshotDataDescription,
+                  purposeText:
+                      AiDataSharingConsent.keyboardScreenshotPurposeText,
+                );
+              },
+              child: const Text('start keyboard consent'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('start keyboard consent'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('我同意並送出'));
+    await tester.pumpAndSettle();
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(result, isFalse);
+    expect(
+      prefs.getBool(
+        '${AiDataSharingConsent.keyboardScreenshotConsentKey}::user-a',
+      ),
+      isNull,
+    );
+    expect(
+      prefs.getString(
+        '${AiDataSharingConsent.keyboardScreenshotConsentAcceptedAtKey}::user-a',
+      ),
+      isNull,
+    );
+    expect(
+      prefs.getBool(
+        '${AiDataSharingConsent.keyboardScreenshotConsentKey}::user-b',
+      ),
+      isNull,
+    );
+  });
+
+  testWidgets(
+      'account switch during receipt write is rejected before boolean write',
+      (tester) async {
+    var currentUserId = 'user-a';
+    var booleanWriteCalls = 0;
+    AiDataSharingConsent.debugUserIdOverride = () => currentUserId;
+    AiDataSharingConsent.debugSetConsentStringOverride =
+        (preferences, key, value) async {
+      final written = await preferences.setString(key, value);
+      currentUserId = 'user-b';
+      return written;
+    };
+    AiDataSharingConsent.debugSetConsentBoolOverride =
+        (preferences, key, value) async {
+      booleanWriteCalls++;
+      return preferences.setBool(key, value);
+    };
+    bool? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                result = await AiDataSharingConsent.ensure(
+                  context,
+                  featureLabel: 'AI 鍵盤截圖回覆',
+                  consentKey: AiDataSharingConsent.keyboardScreenshotConsentKey,
+                  dataDescription:
+                      AiDataSharingConsent.keyboardScreenshotDataDescription,
+                  purposeText:
+                      AiDataSharingConsent.keyboardScreenshotPurposeText,
+                );
+              },
+              child: const Text('start keyboard consent'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('start keyboard consent'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('我同意並送出'));
+    await tester.pumpAndSettle();
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(result, isFalse);
+    expect(booleanWriteCalls, 0);
+    expect(
+      prefs.getBool(
+        '${AiDataSharingConsent.keyboardScreenshotConsentKey}::user-a',
+      ),
+      isNull,
+    );
+    expect(
+      prefs.getString(
+        '${AiDataSharingConsent.keyboardScreenshotConsentAcceptedAtKey}::user-a',
+      ),
+      isNull,
     );
   });
 
