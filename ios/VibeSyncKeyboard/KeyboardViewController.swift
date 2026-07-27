@@ -47,7 +47,8 @@ final class KeyboardViewController: UIInputViewController {
     private lazy var screenshotCoordinator =
         KeyboardScreenshotAssistCoordinator(
             documentProvider: { [weak self] in
-                self?.textDocumentProxy.documentIdentifier
+                guard let self else { return nil }
+                return self.currentDocumentIdentifier
             },
             insertText: { [weak self] text in
                 self?.textDocumentProxy.insertText(text)
@@ -56,6 +57,24 @@ final class KeyboardViewController: UIInputViewController {
                 self?.renderScreenshotAssist(renderState)
             }
         )
+
+    /// UIKit declares `documentIdentifier` as non-optional, but it is genuinely
+    /// nil until a document is attached to the input session. Reading it
+    /// directly makes Swift bridge a nil `NSUUID` into `UUID`, which traps
+    /// (EXC_BREAKPOINT in `UUID._unconditionallyBridgeFromObjectiveC`) and kills
+    /// the extension before the keyboard can appear. Read it through the ObjC
+    /// runtime so an absent identifier stays nil and every binding fails closed.
+    private var currentDocumentIdentifier: UUID? {
+        guard let proxy = textDocumentProxy as? NSObject else { return nil }
+        let selector = Selector(("documentIdentifier"))
+        guard proxy.responds(to: selector),
+              let identifier = proxy.perform(selector)?
+                  .takeUnretainedValue() as? NSUUID
+        else {
+            return nil
+        }
+        return identifier as UUID
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -85,7 +104,7 @@ final class KeyboardViewController: UIInputViewController {
         super.textWillChange(textInput)
         invalidatePendingReply()
         screenshotCoordinator.documentDidChange(
-            to: textDocumentProxy.documentIdentifier
+            to: currentDocumentIdentifier
         )
     }
 
@@ -93,7 +112,7 @@ final class KeyboardViewController: UIInputViewController {
         super.textDidChange(textInput)
         invalidatePendingReply()
         screenshotCoordinator.documentDidChange(
-            to: textDocumentProxy.documentIdentifier
+            to: currentDocumentIdentifier
         )
     }
 
@@ -419,7 +438,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         lastObservedOwnerUserID = ownerUserID
         screenshotCoordinator.documentDidChange(
-            to: textDocumentProxy.documentIdentifier
+            to: currentDocumentIdentifier
         )
     }
 
@@ -618,7 +637,7 @@ final class KeyboardViewController: UIInputViewController {
         invalidatePendingReply()
         let operationID = UUID()
         activeLegacyOperationID = operationID
-        let boundDocumentIdentifier = textDocumentProxy.documentIdentifier
+        let boundDocumentIdentifier = currentDocumentIdentifier
         isGenerating = true
         updateStyleButtons(selected: style)
         statusLabel.text = "正在幫你接住這句話…"
@@ -657,8 +676,10 @@ final class KeyboardViewController: UIInputViewController {
               activeLegacyOperationID == pending.operationID,
               let session = SharedAuth.currentSession(),
               session.userId == pending.ownerUserID,
-              textDocumentProxy.documentIdentifier ==
-                pending.documentIdentifier
+              // An unknown identifier on either side must never count as the
+              // same chat, so a nil document can never unlock an insertion.
+              let boundDocumentIdentifier = pending.documentIdentifier,
+              currentDocumentIdentifier == boundDocumentIdentifier
         else {
             invalidatePendingReply()
             statusLabel.text = "聊天或登入狀態已變更，請重新產生"
