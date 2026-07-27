@@ -367,7 +367,8 @@ export function isGroundedKeyboardAssistReadyResult(
     result.uncertainty !== compiler.uncertainty
   ) return false;
 
-  return result.options.every((option) =>
+  // Both batches are served to the user, so both are held to the same bar.
+  return [...result.options, ...result.alternates].every((option) =>
     compiler.candidates.some((candidate) =>
       candidate.strategy === option.strategy &&
       candidate.text === option.text

@@ -12,6 +12,7 @@ import {
   type KeyboardAssistErrorCode,
   type KeyboardAssistLedgerResult,
   type KeyboardAssistMediaType,
+  type KeyboardAssistOption,
   type KeyboardAssistReadyResult,
   type KeyboardAssistStrategy,
   type KeyboardAssistV1Request,
@@ -371,15 +372,21 @@ function isReadyResult(
   result: Record<string, unknown>,
 ): result is KeyboardAssistReadyResult {
   if (
-    !hasExactKeys(result, [
-      "contractVersion",
-      "status",
-      "source",
-      "turnState",
-      "cue",
-      "uncertainty",
-      "options",
-    ]) ||
+    !hasExactKeysAllowingOptional(
+      result,
+      [
+        "contractVersion",
+        "status",
+        "source",
+        "turnState",
+        "cue",
+        "uncertainty",
+        "options",
+      ],
+      // Additive: a result stored before the second batch existed still
+      // replays, it simply has nothing behind "換一批".
+      ["alternates"],
+    ) ||
     !isRecord(result.source) ||
     !hasExactKeys(result.source, [
       "scope",
@@ -406,12 +413,26 @@ function isReadyResult(
     !isSafeGeneratedText(result.cue, 1, 120) ||
     !(result.uncertainty === null ||
       isSafeGeneratedText(result.uncertainty, 1, 120)) ||
-    !Array.isArray(result.options) ||
-    result.options.length !== 3
+    !isBatchOfThree(result.options)
   ) return false;
+  if (result.alternates !== undefined && !isBatchOfThree(result.alternates)) {
+    return false;
+  }
 
+  if (result.alternates === undefined) return true;
+  // Two batches that share a line would make "換一批" look broken.
+  const shown = new Set(
+    (result.options as KeyboardAssistOption[]).map((option) => option.text),
+  );
+  return (result.alternates as KeyboardAssistOption[]).every(
+    (option) => !shown.has(option.text),
+  );
+}
+
+function isBatchOfThree(value: unknown): value is KeyboardAssistOption[] {
+  if (!Array.isArray(value) || value.length !== 3) return false;
   const strategies = new Set<KeyboardAssistStrategy>();
-  for (const option of result.options) {
+  for (const option of value) {
     if (
       !isRecord(option) ||
       !hasExactKeys(option, ["strategy", "text", "why", "effect"]) ||

@@ -55,6 +55,26 @@ const readyResult = {
       effect: "直接推進安排",
     },
   ],
+  alternates: [
+    {
+      strategy: "clarify" as const,
+      text: "有空，你是想約白天還是晚上？",
+      why: "先確認時間再安排",
+      effect: "降低誤會",
+    },
+    {
+      strategy: "deescalate" as const,
+      text: "我還不確定，確認後再跟你說",
+      why: "保留空間不給壓力",
+      effect: "壓力最低",
+    },
+    {
+      strategy: "keep_pace" as const,
+      text: "有空啊，怎麼了？",
+      why: "把球輕輕丟回去",
+      effect: "節奏最輕",
+    },
+  ],
 };
 
 Deno.test("keyboard assist HMAC binds payload but excludes pipeline version", async () => {

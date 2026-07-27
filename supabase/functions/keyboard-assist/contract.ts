@@ -73,6 +73,13 @@ export type KeyboardAssistV1Request = {
   priorTurn: KeyboardAssistPriorTurn | null;
 };
 
+export type KeyboardAssistOption = {
+  strategy: KeyboardAssistStrategy;
+  text: string;
+  why: string;
+  effect: string;
+};
+
 export type KeyboardAssistReadyResult = {
   contractVersion: typeof KEYBOARD_ASSIST_CONTRACT_VERSION;
   status: "ready";
@@ -85,12 +92,12 @@ export type KeyboardAssistReadyResult = {
   turnState: KeyboardAssistTurnState;
   cue: string;
   uncertainty: string | null;
-  options: Array<{
-    strategy: KeyboardAssistStrategy;
-    text: string;
-    why: string;
-    effect: string;
-  }>;
+  options: KeyboardAssistOption[];
+  /// The second batch behind "換一批". The compiler already produces six
+  /// candidates and the judge used to discard three of them, so serving both
+  /// batches from one call costs a few hundred output tokens instead of a whole
+  /// second pipeline run — and therefore a second charge.
+  alternates: KeyboardAssistOption[];
 };
 
 export type KeyboardAssistSpeakerConfirmationResult = {

@@ -192,6 +192,29 @@ const JUDGE_OUTPUT_SCHEMA = {
         required: ["strategy", "text", "why", "effect"],
       },
     },
+    alternates: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          strategy: {
+            type: "string",
+            enum: [
+              "keep_pace",
+              "build_connection",
+              "move_forward",
+              "clarify",
+              "deescalate",
+            ],
+          },
+          text: { type: "string" },
+          why: { type: "string" },
+          effect: { type: "string" },
+        },
+        required: ["strategy", "text", "why", "effect"],
+      },
+    },
   },
   required: [
     "contractVersion",
@@ -201,6 +224,7 @@ const JUDGE_OUTPUT_SCHEMA = {
     "cue",
     "uncertainty",
     "options",
+    "alternates",
   ],
 } as const;
 

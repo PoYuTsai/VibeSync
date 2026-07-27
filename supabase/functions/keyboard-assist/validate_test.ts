@@ -41,6 +41,26 @@ function readyResult() {
         effect: "直接推進安排",
       },
     ],
+    alternates: [
+      {
+        strategy: "clarify",
+        text: "你是想約白天還是晚上？",
+        why: "資訊不足時先確認",
+        effect: "減少來回誤會",
+      },
+      {
+        strategy: "deescalate",
+        text: "我這幾天有點滿，晚點跟你說",
+        why: "保留空間不給壓力",
+        effect: "壓力最低",
+      },
+      {
+        strategy: "keep_pace",
+        text: "看起來你已經想好了，說來聽聽",
+        why: "把球輕輕丟回去",
+        effect: "節奏最輕",
+      },
+    ],
   };
 }
 
@@ -77,6 +97,45 @@ Deno.test("ledger result excludes request identity, transcript, image, and label
       sideConfidence: "low",
       ocrPreview: "private",
     }),
+  );
+});
+
+Deno.test("the second batch is optional but never sloppy", () => {
+  const base = readyResult();
+  // A result stored before "換一批" existed still replays.
+  const legacy = { ...base } as Record<string, unknown>;
+  delete legacy.alternates;
+  assertEquals(validateKeyboardAssistLedgerResult(legacy), true);
+
+  assertEquals(
+    validateKeyboardAssistLedgerResult({
+      ...base,
+      alternates: base.alternates.slice(0, 2),
+    }),
+    false,
+  );
+  assertEquals(
+    validateKeyboardAssistLedgerResult({
+      ...base,
+      alternates: [
+        base.alternates[0],
+        { ...base.alternates[1], strategy: base.alternates[0].strategy },
+        base.alternates[2],
+      ],
+    }),
+    false,
+  );
+  assertEquals(
+    validateKeyboardAssistLedgerResult({
+      ...base,
+      // Serving a line the user already rejected would make the button useless.
+      alternates: [
+        { ...base.alternates[0], text: base.options[0].text },
+        base.alternates[1],
+        base.alternates[2],
+      ],
+    }),
+    false,
   );
 });
 

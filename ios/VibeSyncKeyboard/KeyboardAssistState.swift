@@ -99,6 +99,9 @@ enum KeyboardAssistEvent: Equatable {
     case contextChanged
     case viewDisappeared
     case candidateInserted(operationID: UUID, candidateID: String)
+    /// Serving the second batch this request already produced. It never leaves
+    /// `resultsPreview`, so no new request and no new charge can follow from it.
+    case batchSwapped
     case reset
 }
 
@@ -175,6 +178,7 @@ struct KeyboardAssistStateMachine {
                     KeyboardResultsPresentation(
                         binding: binding,
                         options: ready.options,
+                        alternates: ready.alternates,
                         presentedAt: presentedAt
                     )
                 )
@@ -217,6 +221,13 @@ struct KeyboardAssistStateMachine {
                 return
             }
             state = .inserted(candidateID)
+        case .batchSwapped:
+            guard case .resultsPreview(let presentation) = state,
+                  presentation.canSwapBatch
+            else {
+                return
+            }
+            state = .resultsPreview(presentation.swappingBatch())
         case .documentChanged,
              .ownerChanged,
              .screenshotChanged,

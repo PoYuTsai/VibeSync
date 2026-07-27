@@ -16,12 +16,17 @@ private struct KeyboardDynamicCodingKey: CodingKey {
 
 private func requireExactKeys(
     from decoder: Decoder,
-    expected: Set<String>
+    expected: Set<String>,
+    optional: Set<String> = []
 ) throws {
     let container = try decoder.container(
         keyedBy: KeyboardDynamicCodingKey.self
     )
-    let actual = Set(container.allKeys.map(\.stringValue))
+    var actual = Set(container.allKeys.map(\.stringValue))
+    // Additive server fields stay opt-in: an older keyboard build never sees
+    // them, and a newer one accepts them without loosening the exact-shape
+    // guarantee for everything else.
+    actual.subtract(optional)
     guard actual == expected else {
         throw DecodingError.dataCorrupted(
             .init(
@@ -485,6 +490,10 @@ struct KeyboardAssistReadyResponse: Codable, Equatable {
     let cue: String
     let uncertainty: String?
     let options: [KeyboardAssistOption]
+    /// The second batch behind "換一批". The compiler already produced six
+    /// candidates, so serving both batches from one call means swapping costs
+    /// no extra request and therefore no second charge.
+    let alternates: [KeyboardAssistOption]
 
     private enum CodingKeys: String, CodingKey {
         case contractVersion
@@ -495,6 +504,7 @@ struct KeyboardAssistReadyResponse: Codable, Equatable {
         case cue
         case uncertainty
         case options
+        case alternates
     }
 
     init(
@@ -504,7 +514,8 @@ struct KeyboardAssistReadyResponse: Codable, Equatable {
         turnState: KeyboardAssistTurnState,
         cue: String,
         uncertainty: String?,
-        options: [KeyboardAssistOption]
+        options: [KeyboardAssistOption],
+        alternates: [KeyboardAssistOption] = []
     ) {
         self.contractVersion = contractVersion
         self.requestId = requestId
@@ -513,6 +524,7 @@ struct KeyboardAssistReadyResponse: Codable, Equatable {
         self.cue = cue
         self.uncertainty = uncertainty
         self.options = options
+        self.alternates = alternates
     }
 
     init(from decoder: Decoder) throws {
@@ -527,7 +539,8 @@ struct KeyboardAssistReadyResponse: Codable, Equatable {
                 "cue",
                 "uncertainty",
                 "options",
-            ])
+            ]),
+            optional: Set(["alternates"])
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         guard container.contains(.uncertainty) else {
@@ -570,6 +583,10 @@ struct KeyboardAssistReadyResponse: Codable, Equatable {
             [KeyboardAssistOption].self,
             forKey: .options
         )
+        alternates = try container.decodeIfPresent(
+            [KeyboardAssistOption].self,
+            forKey: .alternates
+        ) ?? []
         try validate()
     }
 
@@ -584,6 +601,9 @@ struct KeyboardAssistReadyResponse: Codable, Equatable {
         try container.encode(cue, forKey: .cue)
         try container.encode(uncertainty, forKey: .uncertainty)
         try container.encode(options, forKey: .options)
+        if !alternates.isEmpty {
+            try container.encode(alternates, forKey: .alternates)
+        }
     }
 
     func validate() throws {
@@ -602,16 +622,27 @@ struct KeyboardAssistReadyResponse: Codable, Equatable {
                     Self.hasBoundedTrimmedText($0, range: 1...120)
                 } ?? true
               ),
-              options.count == 3,
-              Set(options.map(\.strategy)).count == 3,
-              options.allSatisfy({
-                  Self.hasBoundedTrimmedText($0.text, range: 1...100) &&
-                      Self.hasBoundedTrimmedText($0.why, range: 1...80) &&
-                      Self.hasBoundedTrimmedText($0.effect, range: 1...60)
-              })
+              Self.isBatchOfThree(options),
+              // Absent when the server predates the second batch; present
+              // means it is held to exactly the same bar as the first.
+              alternates.isEmpty || Self.isBatchOfThree(alternates),
+              Set(alternates.map(\.text))
+                  .isDisjoint(with: Set(options.map(\.text)))
         else {
             throw KeyboardAssistContractError.invalidReadyResponse
         }
+    }
+
+    private static func isBatchOfThree(
+        _ batch: [KeyboardAssistOption]
+    ) -> Bool {
+        batch.count == 3 &&
+            Set(batch.map(\.strategy)).count == 3 &&
+            batch.allSatisfy {
+                hasBoundedTrimmedText($0.text, range: 1...100) &&
+                    hasBoundedTrimmedText($0.why, range: 1...80) &&
+                    hasBoundedTrimmedText($0.effect, range: 1...60)
+            }
     }
 
     private static func hasBoundedTrimmedText(

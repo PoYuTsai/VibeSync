@@ -151,6 +151,13 @@ Deno.test("judge explanations cannot add off-screen factual tokens", () => {
       why: "先自然接話",
       effect: "保持低壓",
     }],
+    // Both batches are served to the user, so both are grounded the same way.
+    alternates: [{
+      strategy: "keep_pace",
+      text: compiler.candidates[0].text,
+      why: "先確認再回",
+      effect: "減少誤會",
+    }],
   } satisfies KeyboardAssistReadyResult;
 
   assert(
@@ -179,5 +186,16 @@ Deno.test("judge explanations cannot add off-screen factual tokens", () => {
       compiler,
       { primary: null, secondary: null },
     ),
+  );
+  assertFalse(
+    isGroundedKeyboardAssistReadyResult(
+      {
+        ...ready,
+        alternates: [{ ...ready.alternates[0], why: "承接上次在台北的回憶" }],
+      },
+      compiler,
+      { primary: null, secondary: null },
+    ),
+    "the second batch is not a lower-standard batch",
   );
 });

@@ -44,6 +44,26 @@ const ready: KeyboardAssistLedgerResult = {
       effect: "推進最快",
     },
   ],
+  alternates: [
+    {
+      strategy: "clarify",
+      text: "有空，你是想約白天還是晚上？",
+      why: "先確認時間再安排",
+      effect: "降低誤會",
+    },
+    {
+      strategy: "deescalate",
+      text: "我還不確定，確認後再跟你說",
+      why: "保留空間不給壓力",
+      effect: "壓力最低",
+    },
+    {
+      strategy: "keep_pace",
+      text: "有空啊，怎麼了？",
+      why: "把球輕輕丟回去",
+      effect: "節奏最輕",
+    },
+  ],
 };
 const confirmation: KeyboardAssistLedgerResult = {
   contractVersion: "keyboard-assist-v1",

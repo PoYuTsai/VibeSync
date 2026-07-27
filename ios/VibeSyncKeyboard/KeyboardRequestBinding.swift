@@ -141,5 +141,34 @@ extension KeyboardRequestBinding {
 struct KeyboardResultsPresentation: Equatable {
     let binding: KeyboardRequestBinding
     let options: [KeyboardAssistOption]
+    /// The second batch, already paid for by the same request. Empty when the
+    /// server predates it, in which case there is nothing to swap to.
+    let alternates: [KeyboardAssistOption]
     let presentedAt: Date
+
+    init(
+        binding: KeyboardRequestBinding,
+        options: [KeyboardAssistOption],
+        alternates: [KeyboardAssistOption] = [],
+        presentedAt: Date
+    ) {
+        self.binding = binding
+        self.options = options
+        self.alternates = alternates
+        self.presentedAt = presentedAt
+    }
+
+    /// Swapping serves candidates this request already produced, so it costs
+    /// no second call and no second charge.
+    var canSwapBatch: Bool { !alternates.isEmpty }
+
+    func swappingBatch() -> KeyboardResultsPresentation {
+        guard canSwapBatch else { return self }
+        return KeyboardResultsPresentation(
+            binding: binding,
+            options: alternates,
+            alternates: options,
+            presentedAt: presentedAt
+        )
+    }
 }

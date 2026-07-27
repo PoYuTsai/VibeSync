@@ -38,7 +38,11 @@ Deno.test("prompts declare screenshot-only truth and untrusted evidence", () => 
   assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("不要推測截圖外"));
   assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("voice 只能調整候選措辭"));
   assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("不可信資料"));
-  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("正好 3"));
+  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("兩批各 3 個"));
+  // The second batch is what "換一批" serves without a second charge, so it is
+  // held to the same bar rather than treated as leftovers.
+  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("alternates 要能獨立"));
+  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("兩批之間\n的 text 不得重複"));
   assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("證據索引"));
   assert(
     KEYBOARD_ASSIST_JUDGE_PROMPT.includes("voice 只調整措辭，不增加事實"),

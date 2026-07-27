@@ -987,6 +987,26 @@ final class KeyboardScreenshotAssistCoordinator {
         )
     }
 
+    /// Serves the second batch this request already produced. Deliberately not
+    /// a new request: no network call, no ledger entry, no second charge.
+    func swapBatch() {
+        guard case .resultsPreview(let presentation) = stateMachine.state,
+              presentation.canSwapBatch
+        else {
+            return
+        }
+        stateMachine.send(.batchSwapped)
+        setMessage("換了一批說法；這批和上一批都算同一次分析。")
+    }
+
+    var canSwapBatch: Bool {
+        guard case .resultsPreview(let presentation) = stateMachine.state
+        else {
+            return false
+        }
+        return presentation.canSwapBatch
+    }
+
     private func rememberOffered(_ texts: [String]) {
         let candidate = KeyboardAssistPriorTurn(
             offeredTexts: texts,
@@ -1895,7 +1915,11 @@ final class KeyboardScreenshotAssistCoordinator {
         )
         switch (response, stateMachine.state) {
         case (.ready(let ready), .resultsPreview):
-            rememberOffered(ready.options.map(\.text))
+            // Both batches are shown to the user over the life of this result,
+            // so both can leak back through a later screenshot.
+            rememberOffered(
+                (ready.options + ready.alternates).map(\.text)
+            )
             // Keep the durable record until an explicit candidate insertion.
             setMessage(Self.readyMessage(ready))
         case (
