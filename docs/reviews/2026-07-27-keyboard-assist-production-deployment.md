@@ -220,3 +220,32 @@ disclosed a local preview and a per-upload confirmation; a detected screenshot
 now runs on its own, which is materially different, so the previous grant cannot
 be honoured and every user is asked again. The retired v1 keys are swept on the
 next privacy purge.
+
+
+### Follow-up hardening, same day
+
+Two failure modes surfaced while reviewing the two-batch change and were fixed
+before the final deployment:
+
+- The judge's `max_tokens` was `1200`, sized for a single batch. Six options
+  each carrying `text`, `why` and `effect` reach roughly 2k output tokens at the
+  contract's per-field maxima, and truncation is correctly rejected by
+  `stop_reason === "max_tokens"` — meaning a failed request rather than a short
+  one. Raised to `2600`, with the judge call cap raised from 8s to 12s. The
+  judge deadline (start + 35s) still governs; `phaseSignal` clips the cap to
+  whatever remains after the compiler.
+- Two batches of three distinct strategies require the compiler's six candidates
+  to cover at least three strategies twice over. Forcing `alternates` in the
+  judge schema would have made a conversation that cannot support that either
+  fail outright or pad the second batch with unreliable duplicates. `alternates`
+  is no longer a required schema field; the prompts ask for it, allow omitting
+  it when the situation genuinely cannot support it, and forbid padding. Both
+  the server and the client already treat an absent second batch as valid.
+
+Final live state — `Deploy Keyboard Assist` run `30301101211` (`6563ad68`):
+
+- `deno test --allow-read supabase/functions/keyboard-assist`: 68 passed,
+  0 failed.
+- `keyboard-assist` is version `6`, `ACTIVE`.
+- The unauthenticated capability probe returns `401`.
+- No migration was applied and no secret was added or changed.
