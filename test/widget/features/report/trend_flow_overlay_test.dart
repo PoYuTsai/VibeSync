@@ -19,8 +19,7 @@ Widget _subject({bool disableAnimations = false}) {
             padding: const EdgeInsets.all(12),
             color: Colors.orange,
             glowColor: Colors.deepOrange,
-            activeDuration: const Duration(milliseconds: 200),
-            pauseDuration: const Duration(seconds: 5),
+            flowDuration: const Duration(milliseconds: 200),
             painterKey: const ValueKey('flow-painter'),
             child: const ColoredBox(color: Colors.black),
           ),
@@ -31,13 +30,13 @@ Widget _subject({bool disableAnimations = false}) {
 }
 
 void main() {
-  testWidgets('資料流完成後進入長停頓，不持續逐幀重繪', (tester) async {
+  testWidgets('流動虛線持續逐幀前進', (tester) async {
     await tester.pumpWidget(_subject());
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.byKey(const ValueKey('flow-painter')), findsOneWidget);
-    expect(tester.binding.hasScheduledFrame, isFalse);
+    expect(tester.binding.hasScheduledFrame, isTrue);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

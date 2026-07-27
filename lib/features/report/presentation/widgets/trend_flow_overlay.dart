@@ -1,11 +1,9 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-/// 在既有趨勢線上疊一段會流動的短亮帶。
+/// 在既有趨勢線上疊一層持續往前流動的高對比虛線。
 ///
-/// 動畫完成後以 [Timer] 長時間停頓，不會在靜止期間持續逐幀重繪。
 /// 系統開啟 reduced motion 或所在頁面的 TickerMode 關閉時完全靜止。
 class TrendFlowOverlay extends StatefulWidget {
   const TrendFlowOverlay({
@@ -14,28 +12,29 @@ class TrendFlowOverlay extends StatefulWidget {
     required this.padding,
     required this.color,
     required this.glowColor,
-    required this.activeDuration,
-    required this.pauseDuration,
+    required this.flowDuration,
     required this.child,
     this.painterKey,
     this.coreAlpha = 0.68,
     this.glowAlpha = 0.14,
-    this.tailFraction = 0.18,
+    this.dashLength = 12,
+    this.gapLength = 8,
   })  : assert(coreAlpha >= 0 && coreAlpha <= 1),
         assert(glowAlpha >= 0 && glowAlpha <= 1),
-        assert(tailFraction > 0 && tailFraction < 1);
+        assert(dashLength > 0),
+        assert(gapLength > 0);
 
   final List<Offset> points;
   final EdgeInsets padding;
   final Color color;
   final Color glowColor;
-  final Duration activeDuration;
-  final Duration pauseDuration;
+  final Duration flowDuration;
   final Widget child;
   final Key? painterKey;
   final double coreAlpha;
   final double glowAlpha;
-  final double tailFraction;
+  final double dashLength;
+  final double gapLength;
 
   @override
   State<TrendFlowOverlay> createState() => _TrendFlowOverlayState();
@@ -45,10 +44,9 @@ class _TrendFlowOverlayState extends State<TrendFlowOverlay>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: widget.activeDuration,
-  )..addStatusListener(_handleStatus);
+    duration: widget.flowDuration,
+  );
 
-  Timer? _pauseTimer;
   bool? _motionEnabled;
 
   @override
@@ -61,40 +59,24 @@ class _TrendFlowOverlayState extends State<TrendFlowOverlay>
     _motionEnabled = enabled;
 
     if (enabled) {
-      _playNow();
+      _controller.repeat();
     } else {
-      _pauseTimer?.cancel();
       _controller
         ..stop()
-        ..value = 1;
+        ..value = 0;
     }
   }
 
   @override
   void didUpdateWidget(covariant TrendFlowOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.activeDuration != widget.activeDuration) {
-      _controller.duration = widget.activeDuration;
+    if (oldWidget.flowDuration != widget.flowDuration) {
+      _controller.duration = widget.flowDuration;
     }
     if (!_samePoints(oldWidget.points, widget.points) &&
         _motionEnabled == true) {
-      _playNow();
+      _controller.repeat();
     }
-  }
-
-  void _handleStatus(AnimationStatus status) {
-    if (status != AnimationStatus.completed || _motionEnabled != true) return;
-    _pauseTimer?.cancel();
-    _pauseTimer = Timer(widget.pauseDuration, () {
-      if (mounted && _motionEnabled == true) {
-        _controller.forward(from: 0);
-      }
-    });
-  }
-
-  void _playNow() {
-    _pauseTimer?.cancel();
-    _controller.forward(from: 0);
   }
 
   bool _samePoints(List<Offset> before, List<Offset> after) {
@@ -107,10 +89,7 @@ class _TrendFlowOverlayState extends State<TrendFlowOverlay>
 
   @override
   void dispose() {
-    _pauseTimer?.cancel();
-    _controller
-      ..removeStatusListener(_handleStatus)
-      ..dispose();
+    _controller.dispose();
     super.dispose();
   }
 
@@ -133,7 +112,8 @@ class _TrendFlowOverlayState extends State<TrendFlowOverlay>
                   glowColor: widget.glowColor,
                   coreAlpha: widget.coreAlpha,
                   glowAlpha: widget.glowAlpha,
-                  tailFraction: widget.tailFraction,
+                  dashLength: widget.dashLength,
+                  gapLength: widget.gapLength,
                 ),
               ),
             ),
@@ -153,7 +133,8 @@ class _TrendFlowPainter extends CustomPainter {
     required this.glowColor,
     required this.coreAlpha,
     required this.glowAlpha,
-    required this.tailFraction,
+    required this.dashLength,
+    required this.gapLength,
   }) : super(repaint: animation);
 
   final Animation<double> animation;
@@ -163,7 +144,8 @@ class _TrendFlowPainter extends CustomPainter {
   final Color glowColor;
   final double coreAlpha;
   final double glowAlpha;
-  final double tailFraction;
+  final double dashLength;
+  final double gapLength;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -190,48 +172,36 @@ class _TrendFlowPainter extends CustomPainter {
     if (metrics.isEmpty || metrics.first.length <= 0) return;
 
     final metric = metrics.first;
-    final progress = Curves.easeInOutCubic.transform(raw);
-    final headDistance = metric.length * progress;
-    final tailLength = metric.length * tailFraction;
-    final tailStart = math.max(0.0, headDistance - tailLength);
-    if (headDistance <= tailStart) return;
-
-    final fullTail = metric.extractPath(tailStart, headDistance);
-    final midTail = metric.extractPath(
-      tailStart + ((headDistance - tailStart) * 0.42),
-      headDistance,
-    );
-    final brightTip = metric.extractPath(
-      tailStart + ((headDistance - tailStart) * 0.78),
-      headDistance,
-    );
+    final patternLength = dashLength + gapLength;
+    final phase = raw * patternLength;
+    final dashedPath = Path();
+    var distance = -patternLength + phase;
+    while (distance < metric.length) {
+      final start = math.max(0.0, distance);
+      final end = math.min(metric.length, distance + dashLength);
+      if (end > start) {
+        dashedPath.addPath(metric.extractPath(start, end), Offset.zero);
+      }
+      distance += patternLength;
+    }
 
     canvas.save();
     canvas.clipRect(plot.inflate(7));
     canvas.drawPath(
-      fullTail,
+      dashedPath,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 7
+        ..strokeWidth = 6
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
         ..color = glowColor.withValues(alpha: glowAlpha)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
     );
     canvas.drawPath(
-      midTail,
+      dashedPath,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.2
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..color = color.withValues(alpha: coreAlpha * 0.46),
-    );
-    canvas.drawPath(
-      brightTip,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.2
+        ..strokeWidth = 2.25
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
         ..color = color.withValues(alpha: coreAlpha),
@@ -274,6 +244,7 @@ class _TrendFlowPainter extends CustomPainter {
         oldDelegate.glowColor != glowColor ||
         oldDelegate.coreAlpha != coreAlpha ||
         oldDelegate.glowAlpha != glowAlpha ||
-        oldDelegate.tailFraction != tailFraction;
+        oldDelegate.dashLength != dashLength ||
+        oldDelegate.gapLength != gapLength;
   }
 }

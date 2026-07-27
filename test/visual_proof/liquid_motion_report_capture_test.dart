@@ -67,7 +67,7 @@ void main() {
     );
   });
 
-  testWidgets('practice growth arrival signal', (tester) async {
+  testWidgets('practice growth flowing dashes', (tester) async {
     await pumpAndCapture(
       tester,
       size: const Size(390, 430),
@@ -108,7 +108,7 @@ void main() {
     );
   });
 
-  testWidgets('engagement trend signal reveal', (tester) async {
+  testWidgets('engagement trend flowing dashes', (tester) async {
     await pumpAndCapture(
       tester,
       size: const Size(390, 420),

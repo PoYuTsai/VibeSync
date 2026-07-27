@@ -221,13 +221,14 @@ class PracticeTemperatureChart extends StatelessWidget {
       height: 160,
       child: TrendFlowOverlay(
         points: normalizedPoints,
-        padding: const EdgeInsets.fromLTRB(34, 8, 8, 30),
+        padding: const EdgeInsets.fromLTRB(34, 5, 8, 33),
         color: const Color(0xFFD7CEFF),
         glowColor: AppColors.primaryLight,
-        activeDuration: const Duration(milliseconds: 2600),
-        pauseDuration: const Duration(milliseconds: 5400),
-        coreAlpha: 0.64,
-        glowAlpha: 0.12,
+        flowDuration: const Duration(milliseconds: 1150),
+        coreAlpha: 0.72,
+        glowAlpha: 0.13,
+        dashLength: 11,
+        gapLength: 9,
         painterKey: const ValueKey('practice-growth-trend-glow'),
         child: LineChart(
           LineChartData(

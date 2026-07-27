@@ -294,13 +294,14 @@ class HeatTrendChart extends StatelessWidget {
       height: 180,
       child: TrendFlowOverlay(
         points: normalizedPoints,
-        padding: const EdgeInsets.fromLTRB(32, 8, 4, 28),
+        padding: const EdgeInsets.fromLTRB(32, 5, 4, 31),
         color: const Color(0xFFFFD2B8),
         glowColor: AppColors.ctaStart,
-        activeDuration: const Duration(milliseconds: 1800),
-        pauseDuration: const Duration(milliseconds: 5700),
-        coreAlpha: 0.76,
-        glowAlpha: 0.13,
+        flowDuration: const Duration(milliseconds: 900),
+        coreAlpha: 0.82,
+        glowAlpha: 0.15,
+        dashLength: 12,
+        gapLength: 8,
         painterKey: const ValueKey('engagement-trend-signal'),
         child: LineChart(
           LineChartData(
