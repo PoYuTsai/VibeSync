@@ -47,6 +47,7 @@ final class KeyboardViewController: UIInputViewController {
     private let analysisStateLabel = UILabel()
     private let analysisUncertaintyLabel = UILabel()
     private let screenshotSwapButton = UIButton(type: .system)
+    private let screenshotActionRow = UIStackView()
     private let voiceButton = UIButton(type: .system)
     private var styleButtons: [KeyboardReplyStyle: UIButton] = [:]
     private var loadedMessage = ""
@@ -247,10 +248,13 @@ final class KeyboardViewController: UIInputViewController {
         header.addArrangedSubview(
             makeButton("文字", action: #selector(showTextAssist))
         )
-        // ABC lives in the utility row, not here. The header is for the two
-        // paths that are the product; a latin-only fallback keyboard competing
-        // for that space reads as a third feature when it is really a floor —
-        // the thing that still works before 完整取用 is granted.
+        // ABC sits here as an outline, not in a row of its own. It is the floor
+        // — the thing that still works before 完整取用 — so it must be reachable,
+        // but a full-width key made it read as a third product path and cost a
+        // whole row of the surface the suggestions are competing for.
+        header.addArrangedSubview(
+            makeFloorButton("ABC", action: #selector(showTyping))
+        )
         assistPanel.addArrangedSubview(header)
 
         configureAssistIdleView()
@@ -316,6 +320,9 @@ final class KeyboardViewController: UIInputViewController {
         header.addArrangedSubview(UIView())
         header.addArrangedSubview(
             makeButton("截圖", action: #selector(showAssist))
+        )
+        header.addArrangedSubview(
+            makeFloorButton("ABC", action: #selector(showTyping))
         )
         aiPanel.addArrangedSubview(header)
 
@@ -384,12 +391,9 @@ final class KeyboardViewController: UIInputViewController {
         )
         resultButton.isHidden = true
         aiPanel.addArrangedSubview(resultButton)
-        aiPanel.addArrangedSubview(
-            makeUtilityRow(
-                toggleTitle: "ABC",
-                toggleAction: #selector(showTyping)
-            )
-        )
+        // No utility row. 空白／換行／⌫ cannot type a word between them, so
+        // editing always meant switching keyboards anyway; they only ever cost
+        // a row. ABC is in the header and the globe is the system's.
     }
 
     private func configureScreenshotAssist() {
@@ -495,31 +499,38 @@ final class KeyboardViewController: UIInputViewController {
         screenshotContinuationHint.isHidden = true
         screenshotPanel.addArrangedSubview(screenshotContinuationHint)
 
-        screenshotPanel.addArrangedSubview(screenshotSwapButton)
         screenshotPanel.addArrangedSubview(screenshotRetryButton)
 
-        screenshotCancelButton.setTitle(
-            "取消，不送出截圖",
-            for: .normal
-        )
+        // Cancelling is the escape hatch, not the thing the user came for, so it
+        // shares the row it used to sit below. Full width made it read like a
+        // peer of 換一批 and cost the suggestions a row of their own.
+        screenshotCancelButton.setTitle("✕", for: .normal)
+        screenshotCancelButton.accessibilityLabel = "取消，不送出截圖"
         styleScreenshotButton(
             screenshotCancelButton,
             color: surface
         )
+        screenshotCancelButton.widthAnchor.constraint(
+            equalToConstant: 44
+        ).isActive = true
         screenshotCancelButton.addTarget(
             self,
             action: #selector(cancelScreenshotAssist),
             for: .touchUpInside
         )
-        screenshotPanel.addArrangedSubview(screenshotCancelButton)
+        screenshotActionRow.axis = .horizontal
+        screenshotActionRow.spacing = 7
+        screenshotSwapButton.setContentHuggingPriority(
+            .defaultLow,
+            for: .horizontal
+        )
+        screenshotActionRow.addArrangedSubview(screenshotSwapButton)
+        screenshotActionRow.addArrangedSubview(screenshotCancelButton)
+        screenshotActionRow.isHidden = true
+        screenshotPanel.addArrangedSubview(screenshotActionRow)
 
         assistPanel.addArrangedSubview(screenshotPanel)
-        assistPanel.addArrangedSubview(
-            makeUtilityRow(
-                toggleTitle: "ABC",
-                toggleAction: #selector(showTyping)
-            )
-        )
+        // No utility row here either; see configureAIPanel.
         resetScreenshotControls()
     }
 
@@ -749,9 +760,15 @@ final class KeyboardViewController: UIInputViewController {
         row.spacing = 6
         row.distribution = .fillProportionally
 
-        let globe = makeButton("🌐", action: #selector(noop))
-        globe.addTarget(self, action: #selector(showInputModeList(_:event:)), for: .allTouchEvents)
-        row.addArrangedSubview(globe)
+        // iOS draws its own globe under third-party keyboards on most devices,
+        // and `needsInputModeSwitchKey` is how it says whether it did. Drawing a
+        // second one unconditionally cost a slot in every row for a key the
+        // system was already providing an inch below it.
+        if needsInputModeSwitchKey {
+            let globe = makeButton("🌐", action: #selector(noop))
+            globe.addTarget(self, action: #selector(showInputModeList(_:event:)), for: .allTouchEvents)
+            row.addArrangedSubview(globe)
+        }
         if let toggleTitle, let toggleAction {
             row.addArrangedSubview(
                 makeButton(toggleTitle, action: toggleAction)
@@ -766,6 +783,30 @@ final class KeyboardViewController: UIInputViewController {
         backspace.addTarget(self, action: #selector(stopDeleting), for: [.touchUpInside, .touchUpOutside, .touchCancel])
         row.addArrangedSubview(backspace)
         return row
+    }
+
+    /// Guideline 4.4.1 requires a keyboard extension to type characters and to
+    /// keep working before 完整取用 is granted, and the latin panel is the only
+    /// thing here that does either. It is a floor, not a feature, so it gets the
+    /// weight of a floor: a quiet outline in the header instead of a full-width
+    /// key in a row of its own.
+    private func makeFloorButton(_ title: String, action: Selector) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setTitle(title, for: .normal)
+        button.setTitleColor(UIColor.white.withAlphaComponent(0.7), for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 11, weight: .medium)
+        button.backgroundColor = .clear
+        button.layer.cornerRadius = 7
+        button.layer.borderWidth = 1
+        button.layer.borderColor = UIColor.white.withAlphaComponent(0.22).cgColor
+        button.contentEdgeInsets = UIEdgeInsets(
+            top: 5,
+            left: 8,
+            bottom: 5,
+            right: 8
+        )
+        button.addTarget(self, action: action, for: .touchUpInside)
+        return button
     }
 
     private func makeButton(_ title: String, action: Selector) -> UIButton {
@@ -924,6 +965,10 @@ final class KeyboardViewController: UIInputViewController {
         case .inserted:
             screenshotPanel.isHidden = false
         }
+        // A stack view still occupies its spacing when every child is hidden, so
+        // the shared row has to be told to disappear with them.
+        screenshotActionRow.isHidden =
+            screenshotSwapButton.isHidden && screenshotCancelButton.isHidden
         updatePreferredHeight()
     }
 
@@ -1016,6 +1061,7 @@ final class KeyboardViewController: UIInputViewController {
         returnStatusLine()
         screenshotRetryButton.isHidden = true
         screenshotCancelButton.isHidden = true
+        screenshotActionRow.isHidden = true
         screenshotSpeakerRow.isHidden = true
         screenshotCandidateStack.isHidden = true
         screenshotPreviewImageView.isHidden = true
