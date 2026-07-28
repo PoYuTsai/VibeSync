@@ -36,6 +36,8 @@ const STRING_ENUMS: Record<string, readonly string[]> = {
     "own_prior_candidates",
     "compiler_schema",
     "compiler_grounding",
+    "compiler_grounding_cue",
+    "compiler_grounding_candidate",
   ],
 };
 

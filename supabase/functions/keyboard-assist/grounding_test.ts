@@ -248,3 +248,37 @@ Deno.test("citations still have to point at real messages", () => {
 
   assertFalse(isGroundedKeyboardAssistCompilerOutput(value));
 });
+
+Deno.test("a one-batch result is checked, not crashed on", () => {
+  // "換一批" is optional by contract. Spreading a missing second batch used to
+  // throw, so a legitimately degraded result surfaced as a generic 503.
+  const compiler = compilerWithCandidate("可以啊，你想怎麼安排？");
+  const { alternates: _dropped, ...oneBatch } = {
+    contractVersion: "keyboard-assist-v1",
+    status: "ready",
+    source: {
+      scope: "screenshot_only",
+      messageCount: 1,
+      confidence: "high",
+      sideConfidence: "high",
+    },
+    turnState: "reply_due",
+    cue: compiler.cue,
+    uncertainty: null,
+    options: [{
+      strategy: "keep_pace",
+      text: compiler.candidates[0].text,
+      why: "先自然接話",
+      effect: "保持低壓",
+    }],
+    alternates: [],
+  } satisfies KeyboardAssistReadyResult;
+
+  assert(
+    isGroundedKeyboardAssistReadyResult(
+      oneBatch as KeyboardAssistReadyResult,
+      compiler,
+      { primary: null, secondary: null },
+    ),
+  );
+});

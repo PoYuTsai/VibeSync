@@ -6,8 +6,9 @@ import {
   type KeyboardAssistV1Request,
 } from "./contract.ts";
 import {
-  isGroundedKeyboardAssistCompilerOutput,
+  isGroundedKeyboardAssistCandidate,
   isGroundedKeyboardAssistReadyResult,
+  keyboardAssistCompilerGroundingFailure,
 } from "./grounding.ts";
 import { normalizeKeyboardAssistCompilerOutput } from "./normalize.ts";
 import { containsOwnPriorCandidates } from "./own_output_leak.ts";
@@ -33,7 +34,12 @@ export type KeyboardAssistRejectDetail =
   | "non_chat"
   | "own_prior_candidates"
   | "compiler_schema"
-  | "compiler_grounding";
+  | "compiler_grounding"
+  | "compiler_grounding_cue"
+  | "compiler_grounding_candidate";
+
+/// Deliberately factual-token free, so it can never itself fail grounding.
+export const KEYBOARD_ASSIST_UNGROUNDED_CUE_FALLBACK = "先看看這幾則訊息再回";
 
 export class KeyboardAssistPipelineError extends Error {
   constructor(
@@ -172,12 +178,39 @@ export async function runKeyboardAssistPipeline(input: {
       "own_prior_candidates",
     );
   }
-  if (!isGroundedKeyboardAssistCompilerOutput(normalized)) {
-    throw new KeyboardAssistPipelineError(
-      "provider_invalid_output",
-      "compiler output failed grounding",
-      "compiler_grounding",
+  // The commentary and the replies are not the same risk. `cue` and
+  // `uncertainty` are things we show; a candidate is text the user is about to
+  // send to a real person, so an invented date there is the actual harm this
+  // gate exists to prevent. Losing a line of commentary is a far better outcome
+  // than a screenshot that can never be analysed — which is what a single hard
+  // gate produced in practice, repeatedly, on ordinary conversations.
+  // Re-checked after each repair, because more than one field can be off.
+  let groundingFailure = keyboardAssistCompilerGroundingFailure(normalized);
+  if (groundingFailure === "cue") {
+    // Commentary we render, not text anyone sends. Saying nothing about the
+    // situation is honest; refusing the whole screenshot over it is not.
+    normalized.cue = KEYBOARD_ASSIST_UNGROUNDED_CUE_FALLBACK;
+    groundingFailure = keyboardAssistCompilerGroundingFailure(normalized);
+  }
+  if (groundingFailure === "uncertainty") {
+    normalized.uncertainty = null;
+    groundingFailure = keyboardAssistCompilerGroundingFailure(normalized);
+  }
+  if (groundingFailure === "candidate") {
+    // Drop only the replies that reach outside the screenshot and keep serving
+    // the rest. One good batch beats a screenshot that can never be analysed;
+    // below a full batch there is nothing worth charging for.
+    const grounded = normalized.candidates.filter((candidate) =>
+      isGroundedKeyboardAssistCandidate(candidate, normalized)
     );
+    if (grounded.length < 3) {
+      throw new KeyboardAssistPipelineError(
+        "provider_invalid_output",
+        "compiler output failed grounding",
+        "compiler_grounding_candidate",
+      );
+    }
+    normalized.candidates = grounded;
   }
 
   if (

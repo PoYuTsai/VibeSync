@@ -245,8 +245,12 @@ Deno.test("non-chat and invalid grounding fail before judge with no result", asy
   // code but need opposite fixes.
   assertEquals(error.detail, "non_chat");
 
+  // Four of six unusable leaves fewer than a full batch, so there is nothing
+  // worth charging for and the request still fails outright.
   const ungrounded = compilerOutput();
-  ungrounded.candidates[0].evidenceIndices = [99];
+  for (const index of [0, 1, 2, 3]) {
+    ungrounded.candidates[index].evidenceIndices = [99];
+  }
   const invalid = await assertRejects(
     () =>
       runKeyboardAssistPipeline({
@@ -265,7 +269,7 @@ Deno.test("non-chat and invalid grounding fail before judge with no result", asy
     KeyboardAssistPipelineError,
   );
   assertEquals(invalid.code, "provider_invalid_output");
-  assertEquals(invalid.detail, "compiler_grounding");
+  assertEquals(invalid.detail, "compiler_grounding_candidate");
 });
 
 Deno.test("our own prior candidates read back as chat stop before judge", async () => {
@@ -505,9 +509,54 @@ Deno.test("judge cannot replace grounded candidates with invented reply text", a
   assertEquals(error.code, "provider_invalid_output");
 });
 
-Deno.test("off-screen compiler facts fail before judge", async () => {
+Deno.test("off-screen compiler facts never reach the judge", async () => {
+  // One bad apple is dropped, not fatal: the other five are perfectly usable
+  // and refusing the whole screenshot teaches the user the feature is broken.
   const hallucinated = compilerOutput();
   hallucinated.candidates[0].text = "上次在台北那家店很好玩";
+  let judgedCandidates: string[] = [];
+
+  await runKeyboardAssistPipeline({
+    image,
+    speakerOverride: "none",
+    voice: { primary: "steady", secondary: null },
+    priorTurn: null,
+    pipelineVersion: "compiler-judge-v1",
+    signal: new AbortController().signal,
+    compiler: () => Promise.resolve(hallucinated),
+    judge: (judgeInput) => {
+      const surviving = judgeInput.conversation.candidates;
+      judgedCandidates = surviving.map((candidate) => candidate.text);
+      // A real judge picks from what it was handed, so the fake does too.
+      // Five survivors cannot fill two batches of three, which is exactly the
+      // documented degrade-to-one-batch path: `alternates` is omitted.
+      const { alternates: _dropped, ...oneBatch } = judged;
+      return Promise.resolve({
+        ...oneBatch,
+        options: judged.options.map((option, index) => ({
+          ...option,
+          strategy: surviving[index].strategy,
+          text: surviving[index].text,
+        })),
+      });
+    },
+    renewLease: () => Promise.resolve(true),
+    nowMs: () => 1000,
+    deadlineAtMs: 41_000,
+  });
+
+  assertEquals(judgedCandidates.length, 5);
+  assert(
+    !judgedCandidates.includes("上次在台北那家店很好玩"),
+    "the invented reply must never be offered to the judge",
+  );
+});
+
+Deno.test("a screenshot with too few usable replies still fails", async () => {
+  const mostlyInvented = compilerOutput();
+  for (const index of [0, 1, 2, 3]) {
+    mostlyInvented.candidates[index].text = "上次在台北那家店很好玩";
+  }
   let judgeCalls = 0;
 
   const error = await assertRejects(
@@ -519,7 +568,7 @@ Deno.test("off-screen compiler facts fail before judge", async () => {
         priorTurn: null,
         pipelineVersion: "compiler-judge-v1",
         signal: new AbortController().signal,
-        compiler: () => Promise.resolve(hallucinated),
+        compiler: () => Promise.resolve(mostlyInvented),
         judge: () => {
           judgeCalls++;
           return Promise.resolve(judged);
@@ -532,6 +581,7 @@ Deno.test("off-screen compiler facts fail before judge", async () => {
   );
 
   assertEquals(error.code, "provider_invalid_output");
+  assertEquals(error.detail, "compiler_grounding_candidate");
   assertEquals(judgeCalls, 0);
 });
 

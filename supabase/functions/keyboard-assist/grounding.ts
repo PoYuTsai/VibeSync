@@ -320,6 +320,54 @@ function hasOnlyGroundedFactualTokens(
   );
 }
 
+/// Which part of the compiler output failed grounding. The three fields are not
+/// equally dangerous: `cue` and `uncertainty` are commentary we render, while a
+/// candidate is text the user is about to send to a real person. Naming the
+/// field is what lets the pipeline drop the former and still refuse the latter.
+export type KeyboardAssistGroundingFailure =
+  | "cue"
+  | "uncertainty"
+  | "candidate";
+
+export function keyboardAssistCompilerGroundingFailure(
+  value: NormalizedKeyboardAssistCompilerOutput,
+): KeyboardAssistGroundingFailure | null {
+  const allVisibleMessages = value.messages.map((message) => message.text).join(
+    "\n",
+  );
+  if (!hasOnlyGroundedFactualTokens(value.cue, allVisibleMessages)) {
+    return "cue";
+  }
+  if (
+    value.uncertainty !== null &&
+    !hasOnlyGroundedFactualTokens(value.uncertainty, allVisibleMessages)
+  ) {
+    return "uncertainty";
+  }
+  return value.candidates.every((candidate) =>
+      isGroundedKeyboardAssistCandidate(candidate, value)
+    )
+    ? null
+    : "candidate";
+}
+
+export function isGroundedKeyboardAssistCandidate(
+  candidate: NormalizedKeyboardAssistCompilerOutput["candidates"][number],
+  value: NormalizedKeyboardAssistCompilerOutput,
+): boolean {
+  const messagesByIndex = new Map(
+    value.messages.map((message) => [message.index, message.text]),
+  );
+  const allVisibleMessages = value.messages.map((message) => message.text).join(
+    "\n",
+  );
+  if (
+    candidate.evidenceIndices.length < 1 ||
+    candidate.evidenceIndices.some((index) => !messagesByIndex.has(index))
+  ) return false;
+  return hasOnlyGroundedFactualTokens(candidate.text, allVisibleMessages);
+}
+
 export function isGroundedKeyboardAssistCompilerOutput(
   value: NormalizedKeyboardAssistCompilerOutput,
 ): boolean {
@@ -372,8 +420,11 @@ export function isGroundedKeyboardAssistReadyResult(
     result.uncertainty !== compiler.uncertainty
   ) return false;
 
-  // Both batches are served to the user, so both are held to the same bar.
-  return [...result.options, ...result.alternates].every((option) =>
+  // Both batches are served to the user, so both are held to the same bar —
+  // but the second batch is optional. Spreading it unguarded turned the
+  // documented degrade-to-one-batch result into a TypeError, which the handler
+  // could only report as a generic 503.
+  return [...result.options, ...(result.alternates ?? [])].every((option) =>
     compiler.candidates.some((candidate) =>
       candidate.strategy === option.strategy &&
       candidate.text === option.text
