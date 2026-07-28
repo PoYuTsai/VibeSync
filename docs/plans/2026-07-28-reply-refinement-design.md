@@ -89,13 +89,13 @@ v1 經兩位獨立審查（Codex／Claude，各自回原始碼核對）後**未�
 
 **為什麼不是「每句前 2 次免費」**：per-sentence 計數只能由 client 宣告輪次，server 無從驗證。改機 client 永遠宣告「第 1 輪」即可無限免費呼叫模型。per-user-per-day 計數由 server 自己數，偽造不了。
 
-- 免費額度 `REFINE_FREE_DAILY = 10`（Edge 常數，可調）。
-- 計數沿用 `increment_model_usage`（`20260703170000_model_call_rate_limit.sql`）的 `(user_id, scope)` 複合鍵，新增 scope 字串 `refine_free`。**該表的 scope 是自由 text（只有 `char_length BETWEEN 1 AND 32` 的 CHECK，沒有值白名單），上限權威在 Edge，因此新增 scope 不需要 migration。**
-- 語意調整：超過額度時**不是拒絕**，而是轉為扣 1 則走既有 `optimize_message` 帳本。因此呼叫端要把該 scope 的 daily RAISE 解讀為「免費額度用完」而非「節流」，**不得回傳 429**。
+- 免費額度 `REFINE_FREE_DAILY = 10`（Eric 拍板 2026-07-29；Edge 常數，可調）。
+- **Eric 拍板 2026-07-29：開獨立的免費額度表，不沿用節流表。** 曾評估沿用 `increment_model_usage` 的 `(user_id, scope)` 複合鍵加一個 `refine_free` scope（零 migration），但那要把「超限就 RAISE 拒絕」的節流語意當成「超限就改為扣費」的額度語意用，兩者相反；為了省一次 migration 而讓一張表同時代表兩件事，日後改任一邊都會踩到對方。
+- 語意：超過額度時**不是拒絕**，而是轉為扣 1 則走既有 `optimize_message` 帳本。
 - **免費那幾次不寫 optimize ledger、不佔 quota，但仍受 §2.12 的 `analyze` 節流保護。**
 - 扣費那幾次完全沿用現有 `OPTIMIZE_MESSAGE_COST = 1` 與 `settle_optimize_message_request`，不新增計費路徑。
 
-> **P1 修正**：v1 主張「不需要任何 migration」。若 `refine_free` 沿用既有節流表則仍成立；若實作時改用獨立的免費額度表（語意較乾淨、不必把節流表當額度帳本用），P1 即不成立。**兩條路都可接受，但必須在實作計畫裡明確二選一，不得默認。**
+> **P1 正式失效**：v1 主張「不需要任何 migration」。採獨立額度表後 P1 不再成立，本案需要一次 targeted migration，走 `docs/shared-agent-rules.md` 的程序，**絕不 `supabase db push`**。這是明示的取捨，不是遺漏。
 
 ### 2.3 粒度：只微調單句（D-6）
 
@@ -242,7 +242,7 @@ v1 的「同一類指令用滿 3 次 → 問要不要記進關於我」定義不
 
 ## 6. 建議實作順序
 
-0. **（獨立前置，建議先落地）** 補 `checkAiOutput` 對沒有 `replies` 形狀的輸出守門。這是既有漏洞，不依賴本功能。
+0. ~~補 `checkAiOutput` 對沒有 `replies` 形狀的輸出守門。~~ **已完成並部署，見 §8。**
 1. 抽出共用 optimize 執行路徑（純重構、行為不變，可單獨先落地）。
 2. 拆除 Essential 閘門（server＋client＋付費 CTA 文案）。
 3. Server：`refineInstruction` 驗證＋`refine_reply` requestType＋JSON 指令注入＋hash 相容＋observability。
@@ -253,8 +253,14 @@ v1 的「同一類指令用滿 3 次 → 問要不要記進關於我」定義不
 
 ---
 
-## 7. 待實作階段決定（不阻擋本設計）
+## 7. 已拍板（2026-07-29）
 
-- §2.2 的免費額度計數走既有節流表（零 migration）還是獨立表（語意乾淨）——**必須明確二選一**。
-- `REFINE_FREE_DAILY` 的實際數字（暫定 10）。
-- refine 輸出的字元上限實際值。
+三題全數收斂，實作計畫見 `2026-07-29-reply-refinement-phase1-implementation.md`。
+
+- 免費額度計數：**獨立表**（§2.2）。本案因此需要一次 targeted migration。
+- `REFINE_FREE_DAILY = 10`。
+- refine 輸出上限：`max(300, 輸入字數 + 100)`。固定上限會讓本來就長的來源訊息永遠失敗；用相對上限只擋「越調越長」，不擋「本來就長」。超過視為無效結果（不截斷、不扣費），**只作用於 `refine_reply`，`optimize_message` 行為不變**。
+
+## 8. 前置工作完成紀錄
+
+- **§6 步驟 0（補 `checkAiOutput` 的輸出守門）已於 2026-07-29 獨立落地並部署**：`d964595c` → `34c40f67` → `8b90cb3c`，`Deploy Edge Function` 成功。經 Codex 對抗式審查抓出 7 個誤擋、複驗全數成立並修正入測；另補上引號抽除（引述別人的威脅不算自己在威脅）。實作階段**不必再做這一步**。
