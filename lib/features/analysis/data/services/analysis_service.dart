@@ -1354,6 +1354,7 @@ class AnalysisService {
     String? effectiveStyleContext,
     String? knownContactName,
     String? userDraft,
+    String? refineInstruction,
     String? requestId,
     String? analyzeMode,
     bool recognizeOnly = false,
@@ -1409,6 +1410,7 @@ class AnalysisService {
           effectiveStyleContext: effectiveStyleContext,
           knownContactName: knownContactName,
           userDraft: userDraft,
+          refineInstruction: refineInstruction,
           requestId: logicalRequestId,
           analyzeMode: analyzeMode,
           recognizeOnly: recognizeOnly,
@@ -1498,6 +1500,7 @@ class AnalysisService {
     String? effectiveStyleContext,
     String? knownContactName,
     String? userDraft,
+    String? refineInstruction,
     String? requestId,
     String? analyzeMode,
     required bool recognizeOnly,
@@ -1508,6 +1511,11 @@ class AnalysisService {
     AnalysisTelemetryCallback? onTelemetry,
   }) async {
     final hasUserDraft = userDraft != null && userDraft.trim().isNotEmpty;
+    // 空字串等同沒帶：只有非空指令才能進 payload，否則 server 端 input hash
+    // 會與同一份草稿的純潤飾請求分岔，舊請求就 replay 不回來。
+    final trimmedRefineInstruction = refineInstruction?.trim();
+    final hasRefineInstruction = trimmedRefineInstruction != null &&
+        trimmedRefineInstruction.isNotEmpty;
     final hasImages = images != null && images.isNotEmpty;
 
     try {
@@ -1587,6 +1595,7 @@ class AnalysisService {
         if (knownContactName != null && knownContactName.trim().isNotEmpty)
           'knownContactName': knownContactName.trim(),
         if (hasUserDraft) 'userDraft': userDraft.trim(),
+        if (hasRefineInstruction) 'refineInstruction': trimmedRefineInstruction,
         if (requestId != null) 'requestId': requestId,
         if (analyzeMode != null) 'analyzeMode': analyzeMode,
         if (recognizeOnly) 'recognizeOnly': true,

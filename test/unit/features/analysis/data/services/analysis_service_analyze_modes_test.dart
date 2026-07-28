@@ -542,6 +542,57 @@ void main() {
       );
     });
 
+    test('refineInstruction：非空才進 payload，空白與未帶都不得出現這個鍵', () async {
+      final bodies = <Map<String, dynamic>>[];
+      Future<http.Response> handler(http.Request request) async {
+        bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return http.Response(
+          jsonEncode({
+            ..._fullSuccessBody,
+            'optimizedMessage': {
+              'original': '要不要喝咖啡',
+              'optimized': '這週要不要一起喝杯咖啡？',
+              'improvements': ['更自然'],
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      final service = AnalysisService(
+        clientFactory: () => MockClient(handler),
+        accessTokenProvider: () => 'fake-token',
+        expectedTierProvider: () => 'essential',
+        revenueCatAppUserIdProvider: () async => r'$RCAnonymousID:optimize',
+      );
+
+      await service.analyzeConversation(
+        [_msg('最近有空嗎？')],
+        userDraft: '要不要喝咖啡',
+        refineInstruction: '  短一點  ',
+        requestId: requestId,
+      );
+      await service.analyzeConversation(
+        [_msg('最近有空嗎？')],
+        userDraft: '要不要喝咖啡',
+        refineInstruction: '   ',
+        requestId: requestId,
+      );
+      await service.analyzeConversation(
+        [_msg('最近有空嗎？')],
+        userDraft: '要不要喝咖啡',
+        requestId: requestId,
+      );
+
+      expect(bodies[0]['refineInstruction'], '短一點');
+      // 沒有指令的請求必須與拆分前 byte-identical，否則 server 端 input hash
+      // 分岔，既有的潤飾 replay 會全部失效。
+      expect(bodies[1].containsKey('refineInstruction'), isFalse);
+      expect(bodies[2].containsKey('refineInstruction'), isFalse);
+      expect(bodies[1], equals(bodies[2]));
+    });
+
     test('maps fixed-cost monthly 429 with quotaNeeded one', () async {
       final service = AnalysisService(
         clientFactory: () => MockClient((request) async {
