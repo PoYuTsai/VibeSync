@@ -87,7 +87,6 @@ Deno.test("keyboard assist stays migration-gated and release preflight checks it
       "KEYBOARD_ASSIST_COMPILER_MODEL",
       "KEYBOARD_ASSIST_HMAC_CURRENT_VERSION",
       "KEYBOARD_ASSIST_HMAC_KEYS_JSON",
-      "KEYBOARD_ASSIST_JUDGE_MODEL",
       "KEYBOARD_SCREENSHOT_PIPELINE_VERSION",
       "KEYBOARD_SCREENSHOT_V1_ALLOWLIST",
       "KEYBOARD_SCREENSHOT_V1_ENABLED",
@@ -95,4 +94,8 @@ Deno.test("keyboard assist stays migration-gated and release preflight checks it
   ) {
     assert(secretPreflight.includes(`"${secret}"`));
   }
+  // The judge stage is gone. Keeping its model in the required list makes
+  // preflight fail on a healthy project and tempts whoever hits it to re-create
+  // a secret nothing reads.
+  assert(!secretPreflight.includes("KEYBOARD_ASSIST_JUDGE_MODEL"));
 });
