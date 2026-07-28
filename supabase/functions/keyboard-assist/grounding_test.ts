@@ -35,10 +35,12 @@ Deno.test("compiler grounding rejects off-screen factual tokens", () => {
   for (
     const candidate of [
       "那就 7 月 27 日見",
-      "我可以帶 2 個朋友",
-      "我可以帶２個朋友",
       "那就下午三點見",
       "那就 14:30 見",
+      "那就 8 點見",
+      "那就 8 點半見",
+      "一個人大概 500 元",
+      "一個人大概 500 塊",
       "細節在 https://example.com/menu",
       "你可以找 @kevin_chen",
       "我問 Kevin 看看",
@@ -123,6 +125,27 @@ Deno.test("separate visible numbers do not authorize an invented compound date",
       ),
     ),
   );
+});
+
+Deno.test("a bare count is not a claim the way a price or a clock time is", () => {
+  // Refusing every digit refused the whole batch whenever one line wrote
+  // "那 4 道菜" instead of "那幾道菜", which is what happened on 2026-07-28.
+  // Dates, clock times and money stay gated above; a count does not.
+  for (
+    const candidate of [
+      "我可以帶 2 個朋友",
+      "我可以帶２個朋友",
+      "那 4 道菜看起來都不錯",
+      "先訂 4 個人的位子好了",
+    ]
+  ) {
+    assert(
+      isGroundedKeyboardAssistCompilerOutput(
+        compilerWithCandidate(candidate),
+      ),
+      candidate,
+    );
+  }
 });
 
 Deno.test("compiler grounding keeps generic natural replies usable", () => {

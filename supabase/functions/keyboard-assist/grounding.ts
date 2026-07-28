@@ -293,7 +293,25 @@ function factualTokens(value: string): Map<string, FactualTokenClass> {
     /(?:凌晨|早上|上午|中午|下午|傍晚|晚上)\s*(?:\d{1,2}|[一二三四五六七八九十]{1,3})\s*(?:點|時)(?:半|[一二三四五六七八九十\d]{1,3}分)?/gu,
     "time",
   );
-  addMatches(tokens, normalized, /\d+(?:[.,]\d+)*/gu, "number");
+  // A bare clock time is as much of an appointment as 下午三點 is. It used to be
+  // caught only because every digit was, so it has to be named now that they
+  // are not.
+  addMatches(
+    tokens,
+    normalized,
+    /\d{1,2}\s*(?:點|時)(?:半|\s*\d{1,2}\s*分)?/gu,
+    "time",
+  );
+  // Refusing every digit cost far more ordinary replies than it caught claims:
+  // one candidate writing 那 4 道菜 instead of 那幾道菜 killed all three lines.
+  // Money is the part worth keeping — an invented price is a claim the user
+  // sends to a real person. A count is not, and dates and times are gated above.
+  addMatches(
+    tokens,
+    normalized,
+    /(?:nt\$|\$)\s*\d+(?:[.,]\d+)*|\d+(?:[.,]\d+)*\s*(?:元|塊)/gu,
+    "number",
+  );
   addMatches(
     tokens,
     normalized,
