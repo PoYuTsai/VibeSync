@@ -10,6 +10,9 @@ export const KEYBOARD_ASSIST_COMPILER_PROMPT = `
    只要可見的部分是有人在用訊息往來，就是 chat 或 group。
    chat 與 group 都要照樣產出候選，分類只是描述畫面，不是通過與否。
 2. 只轉錄畫面可見且可辨識的訊息，去除系統列；引用預覽不可當成新訊息。
+   置頂訊息、公告橫幅、通知橫幅也都是介面元素，不是訊息：LINE 常把它壓在對話
+   上方，內容往往只是一串網址或一段公告。**不要轉錄它，也不要因為它出現就把
+   畫面判成 social_feed 或 non_chat**；分類只看底下真正的訊息往來。
 3. 判斷左右側。主流聊天 app（LINE、Messenger、Instagram、WhatsApp、Telegram、
    交友軟體）都把**使用者自己的訊息放在右側**，對方放在左側，這是版面慣例而不是
    推理題：**預設 suggestedMySide 就是 "right"**。只有在畫面有明確反證時才回
