@@ -1,5 +1,9 @@
 # Review Packet — 回覆風格微調（設計審查，無 code 變更）
 
+> **狀態：已結案（2026-07-28）。** 審查結果見 `2026-07-28-reply-refinement-review-results.md`。
+> 裁決為 v1 未通過 gate（兩個 blocker）；設計已重寫為 v2。
+> **本檔保留為當時的審查提問記錄，其中 F3 與 F13 兩條事實已證實有誤**，詳見結果文件的「v1 文件的事實錯誤」一節，請勿再引用本檔的事實表。
+
 > 2026-07-28。審查標的：`../plans/2026-07-28-reply-refinement-design.md`
 > 白話版（產品面，非本次審查標的）：`../plans/2026-07-28-reply-refinement-plain.md`
 > **本 packet 沒有任何 runtime code 變更**，請審查的是設計本身的正確性與風險，不是 diff。
