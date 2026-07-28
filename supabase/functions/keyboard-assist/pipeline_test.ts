@@ -337,17 +337,18 @@ Deno.test("an invented reply is refused rather than served", async () => {
   // With one batch there is no slack: one unusable reply already leaves fewer
   // than three, so there is nothing worth charging for.
   const mostlyInvented = compilerOutput();
-  mostlyInvented.candidates[0].text = "上次在台北那家店很好玩";
+  mostlyInvented.candidates[0].text = "那就 14:30 在老地方見";
 
   const error = await assertRejects(
     () => run({ compiler: () => Promise.resolve(mostlyInvented) }),
     KeyboardAssistPipelineError,
   );
   assertEquals(error.code, "provider_invalid_output");
-  // Names the rule, not just "something was ungrounded": 上次 claims a shared
-  // past. Three real screenshots died on this token in a row with no way to
-  // tell which of nine rules had fired.
-  assertEquals(error.detail, "compiler_grounding_history");
+  // Names the rule, not just "something was ungrounded": an invented clock
+  // time is one of the five things that still make the recipient act on
+  // something false, and a nameless rejection is what made three real
+  // screenshots in a row impossible to diagnose.
+  assertEquals(error.detail, "compiler_grounding_time");
 
   const uncited = compilerOutput();
   uncited.candidates[0].evidenceIndices = [99];
@@ -405,7 +406,7 @@ Deno.test("an invented explanation is replaced, never served", async () => {
   // never carry a fact from outside the screenshot to the user — but throwing
   // the whole screenshot away over a sentence of colour is the wrong price.
   const invented = compilerOutput();
-  invented.candidates[0].why = "承接上次在台北的共同回憶";
+  invented.candidates[0].why = "承接 14:30 那個約定";
   invented.candidates[1].effect = "方便 7/27 推進";
 
   const result = await run({
@@ -415,7 +416,7 @@ Deno.test("an invented explanation is replaced, never served", async () => {
 
   if (result.status !== "ready") throw new Error("expected a ready result");
   const wire = JSON.stringify(result);
-  assert(!wire.includes("上次在台北"), "off-screen fact reached the user");
+  assert(!wire.includes("14:30"), "off-screen fact reached the user");
   assert(!wire.includes("方便 7/27 推進"), "off-screen fact reached the user");
   // The replies themselves are untouched; only the explanations changed.
   assertEquals(
@@ -426,7 +427,7 @@ Deno.test("an invented explanation is replaced, never served", async () => {
 
 Deno.test("an ungrounded cue is swapped for a factless line, not a failure", async () => {
   const invented = compilerOutput();
-  invented.cue = "你們上次在台北聊過這件事";
+  invented.cue = "你們約好 7 月 27 日碰面";
 
   const result = await run({ compiler: () => Promise.resolve(invented) });
 

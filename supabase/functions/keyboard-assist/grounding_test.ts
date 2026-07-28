@@ -43,18 +43,6 @@ Deno.test("compiler grounding rejects off-screen factual tokens", () => {
       "一個人大概 500 塊",
       "細節在 https://example.com/menu",
       "你可以找 @kevin_chen",
-      "我問 Kevin 看看",
-      "我問王小明看看",
-      "我跟王小明一起去",
-      "我和 Alice 聊聊",
-      "我約 王小明",
-      "上次在台北那家店很好玩",
-      "要不要去海底撈火鍋店？",
-      "要不要去鼎泰豐？",
-      "上次那件事真的很好玩",
-      "你說過你很喜歡",
-      "我們聊過這件事",
-      "還記得那天嗎？",
     ]
   ) {
     assertFalse(
@@ -96,15 +84,6 @@ Deno.test("compiler grounding accepts the same factual token in cited OCR", () =
       ["下午三點有空嗎？", "下午三點可以"],
       ["網址是 https://example.com/menu", "我看一下 https://example.com/menu"],
       ["請找 @kevin_chen", "好，我找 @kevin_chen"],
-      ["Kevin 也會去", "那我問 Kevin 看看"],
-      ["王小明也會去", "我問王小明看看"],
-      ["我會跟王小明一起去", "好，我跟王小明一起去"],
-      ["我剛和 Alice 聊過", "那我和 Alice 聊聊"],
-      ["我現在住台北", "台北我可以"],
-      ["想吃海底撈火鍋店", "要不要去海底撈火鍋店？"],
-      ["想吃鼎泰豐", "要不要去鼎泰豐？"],
-      ["上次那件事很好笑", "上次那件事真的很好玩"],
-      ["你說過你喜歡看展", "你說過你很喜歡"],
     ]
   ) {
     assert(
@@ -146,6 +125,47 @@ Deno.test("a bare count is not a claim the way a price or a clock time is", () =
       candidate,
     );
   }
+});
+
+Deno.test("names, places and shared-past wording are no longer refusals", () => {
+  // Gated until 2026-07-28, when the cost became clear: a batch is exactly
+  // three replies, so one over-eager whitelist hit takes all three. Naming the
+  // wrong restaurant is embarrassing; it does not make anyone act on a false
+  // address, account, time or price, which is what the remaining classes cover.
+  for (
+    const candidate of [
+      "我問 Kevin 看看",
+      "我問王小明看看",
+      "我和 Alice 聊聊",
+      "上次在台北那家店很好玩",
+      "要不要去海底撈火鍋店？",
+      "要不要去鼎泰豐？",
+      "上次那件事真的很好玩",
+      "你說過你很喜歡",
+      "還記得那天嗎？",
+    ]
+  ) {
+    assert(
+      isGroundedKeyboardAssistCompilerOutput(
+        compilerWithCandidate(candidate),
+      ),
+      candidate,
+    );
+  }
+});
+
+Deno.test("a Thai screenshot answered in Chinese can still be grounded", () => {
+  // Evidence is matched literally against the model's own transcript, so any
+  // Chinese rendering of a Thai place or dish could never match. That made a
+  // whole class of real screenshots impossible to serve, not merely risky.
+  assert(
+    isGroundedKeyboardAssistCompilerOutput(
+      compilerWithCandidate(
+        "那家泰式餐廳看起來不錯，改天一起去",
+        "ร้านนี้อร่อยมาก แนะนำให้จองโต๊ะก่อนนะคะ",
+      ),
+    ),
+  );
 });
 
 Deno.test("compiler grounding keeps generic natural replies usable", () => {
