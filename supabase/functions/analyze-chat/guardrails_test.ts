@@ -183,6 +183,34 @@ Deno.test("checkAiOutput - 補上原本漏擋的自然中文說法", () => {
   }
 });
 
+/**
+ * 這條路上最需要幫忙的人，正是要回覆威脅訊息的那一個。
+ * 他的回覆一定會引述對方講過的話——那是求助，不是威脅。
+ */
+Deno.test("checkAiOutput - 引述對方的威脅來設界線不得被攔", () => {
+  const quoting = [
+    "你說「你不回我我就去死」，這種話讓我壓力很大，請不要再說。",
+    "你傳的『沒有你我活不下去』我看了很不舒服，我們先冷靜一下。",
+    "你說“再不理我我就把照片傳出去”，這已經不是我能接受的了。",
+  ];
+
+  for (const text of quoting) {
+    const guarded = checkAiOutput(optimizeResult(text));
+
+    assertEquals(optimizedTextOf(guarded), text, `不該被攔：${text}`);
+    assertFalse(hasOutboundSafetyWarning(guarded), `不該被攔：${text}`);
+  }
+});
+
+Deno.test("checkAiOutput - 引號外的脅迫仍然攔得住", () => {
+  const guarded = checkAiOutput(
+    optimizeResult("你說「我們慢慢來」，但你不回我我就去死。"),
+  );
+
+  assertEquals(optimizedTextOf(guarded), "");
+  assert(hasOutboundSafetyWarning(guarded));
+});
+
 Deno.test("checkAiOutput - warnings 不是陣列時不得拋錯", () => {
   const result = {
     optimizedMessage: { original: "x", optimized: "你如果不回我我就去死。" },

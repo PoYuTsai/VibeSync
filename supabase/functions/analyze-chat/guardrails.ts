@@ -125,6 +125,26 @@ export interface AnalysisResult {
 }
 
 /**
+ * 引號內的文字是在**引述別人說過的話**，不是這則訊息本身的行為。
+ *
+ * 這條路上最需要幫忙的使用者，正是那個要回覆「你不回我我就去死」的人；
+ * 他的回覆會長成「你說『你不回我我就去死』，這種話讓我壓力很大」。若照字面
+ * 掃描，我們會攔掉受威脅那一方的求助，把守門用在完全相反的方向。
+ *
+ * 代價是：模型若把脅迫包在引號裡就不會被攔。可接受——這條路的文字是我們
+ * 自己的模型產的，不是刻意規避的輸入；而且包進引號本身就是在歸屬給別人。
+ */
+function stripQuotedSpans(text: string): string {
+  return text
+    .replace(/「[^」]*」/g, "「」")
+    .replace(/『[^』]*』/g, "『』")
+    .replace(/"[^"]*"/g, '""')
+    // 彎引號用碼位寫，避免編輯器把它正規化成直引號而讓這條靜默失效。
+    .replace(/“[^”]*”/g, "“”")
+    .replace(/‘[^’]*’/g, "‘’");
+}
+
+/**
  * 草稿潤飾／回覆微調的輸出是 `optimizedMessage`，沒有 `replies`，
  * 以往會在 checkAiOutput 開頭直接返回，等於完全沒有輸出守門。
  *
@@ -144,9 +164,10 @@ function checkOptimizedMessage(result: AnalysisResult): AnalysisResult {
   if (typeof optimized !== "string" || optimized.trim().length === 0) {
     return result;
   }
+  const scannable = stripQuotedSpans(optimized);
 
   for (const pattern of OUTBOUND_COERCION_PATTERNS) {
-    if (pattern.test(optimized)) {
+    if (pattern.test(scannable)) {
       return {
         ...result,
         optimizedMessage: {
