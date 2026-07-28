@@ -26,19 +26,19 @@ const ready: KeyboardAssistLedgerResult = {
   uncertainty: null,
   options: [
     {
-      strategy: "keep_pace",
+      strategy: "extend",
       text: "有啊，你有什麼想法？",
       why: "先接住對方的問題",
       effect: "自然延續",
     },
     {
-      strategy: "build_connection",
+      strategy: "flirt",
       text: "有空，聽起來你已經有計畫了 😄",
       why: "接住邀約感並增加溫度",
       effect: "互動感較高",
     },
     {
-      strategy: "move_forward",
+      strategy: "humor",
       text: "有空，週六下午要不要一起喝杯咖啡？",
       why: "直接把邀約變成安排",
       effect: "推進最快",
@@ -46,19 +46,19 @@ const ready: KeyboardAssistLedgerResult = {
   ],
   alternates: [
     {
-      strategy: "clarify",
+      strategy: "extend",
       text: "有空，你是想約白天還是晚上？",
       why: "先確認時間再安排",
       effect: "降低誤會",
     },
     {
-      strategy: "deescalate",
+      strategy: "flirt",
       text: "我還不確定，確認後再跟你說",
       why: "保留空間不給壓力",
       effect: "壓力最低",
     },
     {
-      strategy: "keep_pace",
+      strategy: "humor",
       text: "有空啊，怎麼了？",
       why: "把球輕輕丟回去",
       effect: "節奏最輕",

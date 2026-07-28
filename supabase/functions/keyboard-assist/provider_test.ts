@@ -21,15 +21,8 @@ const compilerJson = {
   cue: "對方在問時間。",
   uncertainty: null,
   messages: [{ index: 0, side: "left", text: "週六有空嗎" }],
-  candidates: Array.from({ length: 6 }, (_, index) => ({
-    strategy: [
-      "keep_pace",
-      "build_connection",
-      "move_forward",
-      "clarify",
-      "deescalate",
-      "keep_pace",
-    ][index],
+  candidates: ["extend", "flirt", "humor"].map((strategy, index) => ({
+    strategy,
     text: `候選 ${index + 1}`,
     evidenceIndices: [0],
   })),
@@ -53,18 +46,16 @@ Deno.test("prompts declare screenshot-only truth and untrusted evidence", () => 
   assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("群組一定要判成 group"));
   assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("標題帶人數"));
   assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("不可信資料"));
-  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("兩批各 3 個"));
-  // The second batch is what "換一批" serves without a second charge, so it is
-  // held to the same bar rather than treated as leftovers.
-  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("alternates 要能獨立"));
-  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("兩批之間\n的 text 不得重複"));
+  // One visible batch, one line per angle.
+  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("選出 3 個放進 options"));
+  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("不要輸出 alternates"));
   assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("證據索引"));
   assert(
     KEYBOARD_ASSIST_JUDGE_PROMPT.includes("voice 只調整措辭，不增加事實"),
   );
-  assert(
-    KEYBOARD_ASSIST_JUDGE_PROMPT.includes("clarify＝在資訊不足時先確認"),
-  );
+  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("extend＝延展"));
+  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("flirt＝調情"));
+  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("humor＝幽默"));
 });
 
 Deno.test("Anthropic compiler sends one image and forwards cancellation", async () => {

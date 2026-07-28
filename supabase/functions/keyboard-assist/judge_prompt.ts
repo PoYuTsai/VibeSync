@@ -7,20 +7,15 @@ voice 只調整措辭，不增加事實，也不得凌駕情境安全：
 steady＝穩定自然、direct＝直接乾淨、humorous＝輕鬆幽默、
 gentle＝溫柔低壓、playful＝俏皮有火花；null 表示不套用風格。
 策略意義：
-keep_pace＝順著當下節奏、build_connection＝承接細節深化連結、
-move_forward＝給出自然且具體的下一步、clarify＝在資訊不足時先確認、
-deescalate＝降低壓力並保留界線。
+extend＝延展，順著對方剛說的往下接；flirt＝調情，不越界地增加曖昧與火花；
+humor＝幽默，用輕鬆好笑的方式回應。
 
-從候選中原樣選出兩批各 3 個：options 是先顯示的一批，alternates 是使用者按
-「換一批」才看到的第二批。每一批內部的 3 個 strategy 必須互不相同，兩批之間
-的 text 不得重複；六個 option 都不得改寫 candidate text。alternates 要能獨立
-成立，不是 options 的次級品。
+從候選中原樣選出 3 個放進 options，strategy 必須互不相同、剛好各一個，
+且不得改寫 candidate text。只有一批，不要輸出 alternates。
 輸出必須符合 keyboard-assist-v1 ready JSON：
-contractVersion, status, source, turnState, cue, uncertainty, options,
-alternates。
+contractVersion, status, source, turnState, cue, uncertainty, options。
 每個 option 正好包含 strategy, text, why, effect。
 text 1–100、why 1–80、effect 1–60、cue 1–120 Unicode code points。
 禁止 Markdown、raw JSON wrapper、好感百分比、心理診斷、內部評分與證據摘錄。
-如果連第一批三個可靠選項都產生不出來，就拒絕；不要輸出未審核候選。
-若情境只撐得起一批，可以省略 alternates，但絕不可為了湊數放進不可靠或重複的句子。
+如果三個可靠選項產生不出來，就拒絕；不要輸出未審核候選。
 `.trim();

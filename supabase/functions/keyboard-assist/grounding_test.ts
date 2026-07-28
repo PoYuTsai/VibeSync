@@ -23,7 +23,7 @@ function compilerWithCandidate(
     uncertainty: null,
     messages: [{ index: 0, side: "left", text: messageText }],
     candidates: [{
-      strategy: "keep_pace",
+      strategy: "extend",
       text: candidateText,
       evidenceIndices: [0],
     }],
@@ -146,14 +146,14 @@ Deno.test("judge explanations cannot add off-screen factual tokens", () => {
     cue: compiler.cue,
     uncertainty: null,
     options: [{
-      strategy: "keep_pace",
+      strategy: "extend",
       text: compiler.candidates[0].text,
       why: "先自然接話",
       effect: "保持低壓",
     }],
     // Both batches are served to the user, so both are grounded the same way.
     alternates: [{
-      strategy: "keep_pace",
+      strategy: "extend",
       text: compiler.candidates[0].text,
       why: "先確認再回",
       effect: "減少誤會",
@@ -220,7 +220,7 @@ Deno.test("a fact agreed earlier in the same screenshot is still grounded", () =
       { index: 3, side: "left", text: "週日好像不行，週六可以" },
     ],
     candidates: [{
-      strategy: "move_forward",
+      strategy: "humor",
       text: "那就 8/9 週六吧",
       evidenceIndices: [3],
     }],
@@ -240,7 +240,7 @@ Deno.test("citations still have to point at real messages", () => {
     uncertainty: null,
     messages: [{ index: 0, side: "left", text: "嗨" }],
     candidates: [{
-      strategy: "keep_pace",
+      strategy: "extend",
       text: "嗨嗨",
       evidenceIndices: [7],
     }],
@@ -266,7 +266,7 @@ Deno.test("a one-batch result is checked, not crashed on", () => {
     cue: compiler.cue,
     uncertainty: null,
     options: [{
-      strategy: "keep_pace",
+      strategy: "extend",
       text: compiler.candidates[0].text,
       why: "先自然接話",
       effect: "保持低壓",

@@ -23,19 +23,19 @@ function readyResult() {
     uncertainty: null,
     options: [
       {
-        strategy: "keep_pace",
+        strategy: "extend",
         text: "可以啊，我確認一下行程再跟你說",
         why: "先保留確認空間",
         effect: "低壓且保留空間",
       },
       {
-        strategy: "build_connection",
+        strategy: "flirt",
         text: "你連週末都看好了，我要認真考慮一下了 😄",
         why: "接住畫面內的週末",
         effect: "提高互動溫度",
       },
       {
-        strategy: "move_forward",
+        strategy: "humor",
         text: "我確認好再跟你說；你比較偏好哪一天？",
         why: "把安排變成可回答問題",
         effect: "直接推進安排",
@@ -43,19 +43,19 @@ function readyResult() {
     ],
     alternates: [
       {
-        strategy: "clarify",
+        strategy: "extend",
         text: "你是想約白天還是晚上？",
         why: "資訊不足時先確認",
         effect: "減少來回誤會",
       },
       {
-        strategy: "deescalate",
+        strategy: "flirt",
         text: "我這幾天有點滿，晚點跟你說",
         why: "保留空間不給壓力",
         effect: "壓力最低",
       },
       {
-        strategy: "keep_pace",
+        strategy: "humor",
         text: "看起來你已經想好了，說來聽聽",
         why: "把球輕輕丟回去",
         effect: "節奏最輕",
@@ -141,7 +141,7 @@ Deno.test("the second batch is optional but never sloppy", () => {
 
 Deno.test("ready result requires three distinct bounded strategies", () => {
   const result = readyResult();
-  result.options[2].strategy = "keep_pace";
+  result.options[2].strategy = "extend";
   assertFalse(validateKeyboardAssistLedgerResult(result));
 
   const long = readyResult();

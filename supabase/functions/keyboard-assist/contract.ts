@@ -29,12 +29,12 @@ export const KEYBOARD_ASSIST_CONFIDENCES = ["high", "medium", "low"] as const;
 export type KeyboardAssistConfidence =
   typeof KEYBOARD_ASSIST_CONFIDENCES[number];
 
+/// One visible batch, one line per angle. Three named angles beat five generic
+/// ones: the user is choosing a tone, not auditing a taxonomy.
 export const KEYBOARD_ASSIST_STRATEGIES = [
-  "keep_pace",
-  "build_connection",
-  "move_forward",
-  "clarify",
-  "deescalate",
+  "extend",
+  "flirt",
+  "humor",
 ] as const;
 export type KeyboardAssistStrategy = typeof KEYBOARD_ASSIST_STRATEGIES[number];
 
@@ -97,7 +97,9 @@ export type KeyboardAssistReadyResult = {
   /// candidates and the judge used to discard three of them, so serving both
   /// batches from one call costs a few hundred output tokens instead of a whole
   /// second pipeline run — and therefore a second charge.
-  alternates: KeyboardAssistOption[];
+  /// Optional by contract: results stored before a second batch existed still
+  /// replay, and a one-batch result is the normal shape now.
+  alternates?: KeyboardAssistOption[];
 };
 
 export type KeyboardAssistSpeakerConfirmationResult = {

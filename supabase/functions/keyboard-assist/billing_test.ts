@@ -37,19 +37,19 @@ const readyResult = {
   uncertainty: null,
   options: [
     {
-      strategy: "keep_pace" as const,
+      strategy: "extend" as const,
       text: "好啊，那你比較想去哪裡？",
       why: "接住畫面中的邀約",
       effect: "自然延續",
     },
     {
-      strategy: "build_connection" as const,
+      strategy: "flirt" as const,
       text: "你這樣講，我開始有點期待了 😄",
       why: "回應對方的正向語氣",
       effect: "增加互動溫度",
     },
     {
-      strategy: "move_forward" as const,
+      strategy: "humor" as const,
       text: "那就週六？我下午比較方便",
       why: "把邀約落到時間",
       effect: "直接推進安排",
@@ -57,19 +57,19 @@ const readyResult = {
   ],
   alternates: [
     {
-      strategy: "clarify" as const,
+      strategy: "extend" as const,
       text: "有空，你是想約白天還是晚上？",
       why: "先確認時間再安排",
       effect: "降低誤會",
     },
     {
-      strategy: "deescalate" as const,
+      strategy: "flirt" as const,
       text: "我還不確定，確認後再跟你說",
       why: "保留空間不給壓力",
       effect: "壓力最低",
     },
     {
-      strategy: "keep_pace" as const,
+      strategy: "humor" as const,
       text: "有空啊，怎麼了？",
       why: "把球輕輕丟回去",
       effect: "節奏最輕",

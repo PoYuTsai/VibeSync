@@ -552,11 +552,11 @@ final class KeyboardViewController: UIInputViewController {
         _ strategy: KeyboardAssistStrategy
     ) -> UIColor {
         switch strategy {
-        case .keepPace:
+        case .extend, .keepPace:
             return UIColor(red: 78/255, green: 132/255, blue: 230/255, alpha: 1)
-        case .buildConnection:
+        case .flirt, .buildConnection:
             return UIColor(red: 214/255, green: 84/255, blue: 168/255, alpha: 1)
-        case .moveForward:
+        case .humor, .moveForward:
             return flame
         case .clarify:
             return UIColor(red: 96/255, green: 168/255, blue: 132/255, alpha: 1)
@@ -974,6 +974,14 @@ final class KeyboardViewController: UIInputViewController {
         _ strategy: KeyboardAssistStrategy
     ) -> String {
         switch strategy {
+        case .extend:
+            return "延展"
+        case .flirt:
+            return "調情"
+        case .humor:
+            return "幽默"
+        // Retired taxonomy; still labelled so an older server cannot leave a
+        // row with a blank chip.
         case .keepPace:
             return "順著聊"
         case .buildConnection:

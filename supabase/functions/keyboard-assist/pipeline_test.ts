@@ -30,33 +30,18 @@ function compilerOutput(sideConfidence: "high" | "low" = "high") {
     ],
     candidates: [
       {
-        strategy: "keep_pace" as const,
+        strategy: "extend" as const,
         text: "有啊，你有什麼想法？",
         evidenceIndices: [0],
       },
       {
-        strategy: "build_connection" as const,
+        strategy: "flirt" as const,
         text: "有空，聽起來你已經有計畫了 😄",
         evidenceIndices: [0],
       },
       {
-        strategy: "move_forward" as const,
-        text: "有空，週六下午要不要一起喝杯咖啡？",
-        evidenceIndices: [0],
-      },
-      {
-        strategy: "clarify" as const,
+        strategy: "humor" as const,
         text: "有空，你是想約白天還是晚上？",
-        evidenceIndices: [0],
-      },
-      {
-        strategy: "deescalate" as const,
-        text: "我還不確定，確認後再跟你說",
-        evidenceIndices: [0],
-      },
-      {
-        strategy: "keep_pace" as const,
-        text: "有空啊，怎麼了？",
         evidenceIndices: [0],
       },
     ],
@@ -77,40 +62,20 @@ const judged = {
   uncertainty: null,
   options: [
     {
-      strategy: "keep_pace" as const,
+      strategy: "extend" as const,
       text: "有啊，你有什麼想法？",
       why: "先接住對方的問題",
       effect: "自然延續",
     },
     {
-      strategy: "build_connection" as const,
+      strategy: "flirt" as const,
       text: "有空，聽起來你已經有計畫了 😄",
       why: "接住邀約感並增加溫度",
       effect: "互動感較高",
     },
     {
-      strategy: "move_forward" as const,
-      text: "有空，週六下午要不要一起喝杯咖啡？",
-      why: "直接把邀約變成安排",
-      effect: "推進最快",
-    },
-  ],
-  alternates: [
-    {
-      strategy: "clarify" as const,
+      strategy: "humor" as const,
       text: "有空，你是想約白天還是晚上？",
-      why: "先確認時間再安排",
-      effect: "降低誤會",
-    },
-    {
-      strategy: "deescalate" as const,
-      text: "我還不確定，確認後再跟你說",
-      why: "保留空間不給壓力",
-      effect: "壓力最低",
-    },
-    {
-      strategy: "keep_pace" as const,
-      text: "有空啊，怎麼了？",
       why: "把球輕輕丟回去",
       effect: "節奏最輕",
     },
@@ -245,12 +210,10 @@ Deno.test("non-chat and invalid grounding fail before judge with no result", asy
   // code but need opposite fixes.
   assertEquals(error.detail, "non_chat");
 
-  // Four of six unusable leaves fewer than a full batch, so there is nothing
-  // worth charging for and the request still fails outright.
+  // With a single batch there is no slack: one unusable reply already leaves
+  // fewer than three, so there is nothing worth charging for.
   const ungrounded = compilerOutput();
-  for (const index of [0, 1, 2, 3]) {
-    ungrounded.candidates[index].evidenceIndices = [99];
-  }
+  ungrounded.candidates[0].evidenceIndices = [99];
   const invalid = await assertRejects(
     () =>
       runKeyboardAssistPipeline({
@@ -509,54 +472,9 @@ Deno.test("judge cannot replace grounded candidates with invented reply text", a
   assertEquals(error.code, "provider_invalid_output");
 });
 
-Deno.test("off-screen compiler facts never reach the judge", async () => {
-  // One bad apple is dropped, not fatal: the other five are perfectly usable
-  // and refusing the whole screenshot teaches the user the feature is broken.
-  const hallucinated = compilerOutput();
-  hallucinated.candidates[0].text = "上次在台北那家店很好玩";
-  let judgedCandidates: string[] = [];
-
-  await runKeyboardAssistPipeline({
-    image,
-    speakerOverride: "none",
-    voice: { primary: "steady", secondary: null },
-    priorTurn: null,
-    pipelineVersion: "compiler-judge-v1",
-    signal: new AbortController().signal,
-    compiler: () => Promise.resolve(hallucinated),
-    judge: (judgeInput) => {
-      const surviving = judgeInput.conversation.candidates;
-      judgedCandidates = surviving.map((candidate) => candidate.text);
-      // A real judge picks from what it was handed, so the fake does too.
-      // Five survivors cannot fill two batches of three, which is exactly the
-      // documented degrade-to-one-batch path: `alternates` is omitted.
-      const { alternates: _dropped, ...oneBatch } = judged;
-      return Promise.resolve({
-        ...oneBatch,
-        options: judged.options.map((option, index) => ({
-          ...option,
-          strategy: surviving[index].strategy,
-          text: surviving[index].text,
-        })),
-      });
-    },
-    renewLease: () => Promise.resolve(true),
-    nowMs: () => 1000,
-    deadlineAtMs: 41_000,
-  });
-
-  assertEquals(judgedCandidates.length, 5);
-  assert(
-    !judgedCandidates.includes("上次在台北那家店很好玩"),
-    "the invented reply must never be offered to the judge",
-  );
-});
-
-Deno.test("a screenshot with too few usable replies still fails", async () => {
+Deno.test("an invented reply never reaches the judge", async () => {
   const mostlyInvented = compilerOutput();
-  for (const index of [0, 1, 2, 3]) {
-    mostlyInvented.candidates[index].text = "上次在台北那家店很好玩";
-  }
+  mostlyInvented.candidates[0].text = "上次在台北那家店很好玩";
   let judgeCalls = 0;
 
   const error = await assertRejects(

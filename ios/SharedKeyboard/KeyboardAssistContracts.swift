@@ -320,6 +320,11 @@ enum KeyboardAssistStrategy:
     Equatable,
     Hashable
 {
+    case extend
+    case flirt
+    case humor
+    // Retired taxonomy. Kept decodable so a build that predates a server-side
+    // rename still renders its panel instead of failing the whole response.
     case keepPace = "keep_pace"
     case buildConnection = "build_connection"
     case moveForward = "move_forward"

@@ -80,12 +80,12 @@ export function normalizeKeyboardAssistCompilerOutput(
     !Array.isArray(value.messages) ||
     value.messages.length > 40 ||
     !Array.isArray(value.candidates) ||
-    value.candidates.length > 6
+    value.candidates.length > 3
   ) return null;
   const isChat = value.conversationType === "chat";
   if (
     isChat &&
-    (value.messages.length < 1 || value.candidates.length !== 6)
+    (value.messages.length < 1 || value.candidates.length !== 3)
   ) return null;
 
   const messages: NormalizedKeyboardAssistCompilerOutput["messages"] = [];

@@ -99,13 +99,7 @@ const COMPILER_OUTPUT_SCHEMA = {
         properties: {
           strategy: {
             type: "string",
-            enum: [
-              "keep_pace",
-              "build_connection",
-              "move_forward",
-              "clarify",
-              "deescalate",
-            ],
+            enum: ["extend", "flirt", "humor"],
           },
           text: { type: "string" },
           evidenceIndices: {
@@ -177,13 +171,7 @@ const JUDGE_OUTPUT_SCHEMA = {
         properties: {
           strategy: {
             type: "string",
-            enum: [
-              "keep_pace",
-              "build_connection",
-              "move_forward",
-              "clarify",
-              "deescalate",
-            ],
+            enum: ["extend", "flirt", "humor"],
           },
           text: { type: "string" },
           why: { type: "string" },
@@ -200,13 +188,7 @@ const JUDGE_OUTPUT_SCHEMA = {
         properties: {
           strategy: {
             type: "string",
-            enum: [
-              "keep_pace",
-              "build_connection",
-              "move_forward",
-              "clarify",
-              "deescalate",
-            ],
+            enum: ["extend", "flirt", "humor"],
           },
           text: { type: "string" },
           why: { type: "string" },
