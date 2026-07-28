@@ -2135,7 +2135,15 @@ final class KeyboardScreenshotAssistCoordinator {
             stateMachine = KeyboardAssistStateMachine(
                 state: .recognitionRejected
             )
-            setMessage("這張圖不像可安全辨識的雙人對話，本次未產生回覆。")
+            // Names the situation the user can see and act on. The old wording
+            // ("不像可安全辨識的雙人對話") described side detection, which is not
+            // what this verdict is about, and sent the reader looking for a
+            // problem with who is on the left — a screenshot of a screenshot
+            // got read as "it cannot tell which side I am".
+            setMessage(
+                "這張不像可以直接回覆的聊天畫面（例如貼文、網頁，"
+                    + "或畫面主體是另一張截圖）。回到聊天視窗重截一次就可以。"
+            )
         case .replayMismatch, .invalidRequest, .invalidResponse:
             failCurrentOperation(
                 policy: .terminal,
