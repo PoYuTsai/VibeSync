@@ -139,6 +139,62 @@ Deno.test("checkAiOutput - 正當設界線的訊息不得被攔", () => {
   }
 });
 
+/**
+ * 2026-07-28 Codex 對抗式審查實測出的七個誤擋，全部已修並鎖在這裡。
+ * 最嚴重的是後兩條：「我知道你住哪區比較方便」是完全正常的約會訊息，
+ * 原本會被當成宣告掌握行蹤攔掉。
+ */
+Deno.test("checkAiOutput - Codex 審查抓到的誤擋反例不得再現", () => {
+  const regressions = [
+    // 「去死心」被「去死」吃到
+    "你如果不想再見，我就去死心，不再打擾你。",
+    // 「不想活在怨恨裡」被「不想活」吃到
+    "你離開我之後，我不想活在怨恨裡，祝福你。",
+    // 「你不想／你不希望」被當成條件式威脅引子
+    "你不想讓大家看到的照片，我不會傳出去。",
+    "你不希望公開的對話，我會替你保密。",
+    // 「知道你住哪」是正常約地點，不是宣告掌握行蹤
+    "我知道你住哪區比較方便，下次約中間點。",
+    "我已經知道你家在哪附近了，所以挑你方便的餐廳。",
+  ];
+
+  for (const text of regressions) {
+    const guarded = checkAiOutput(optimizeResult(text));
+
+    assertEquals(optimizedTextOf(guarded), text, `不該被攔：${text}`);
+    assertFalse(hasOutboundSafetyWarning(guarded), `不該被攔：${text}`);
+  }
+});
+
+/** 同樣來自 Codex 審查：模型真的寫得出來、原本卻漏擋的說法。 */
+Deno.test("checkAiOutput - 補上原本漏擋的自然中文說法", () => {
+  const shouldBlock = [
+    "你若不回我，我就自殺。",
+    "你不回我我就死給你看啦。",
+    "再不理我，我就把私密照外流。",
+    "我查到你的地址了。",
+  ];
+
+  for (const text of shouldBlock) {
+    const guarded = checkAiOutput(optimizeResult(text));
+
+    assertEquals(optimizedTextOf(guarded), "", `該被攔：${text}`);
+    assert(hasOutboundSafetyWarning(guarded), `該被攔：${text}`);
+  }
+});
+
+Deno.test("checkAiOutput - warnings 不是陣列時不得拋錯", () => {
+  const result = {
+    optimizedMessage: { original: "x", optimized: "你如果不回我我就去死。" },
+    warnings: { unexpected: true },
+  } as unknown as AnalysisResult;
+
+  const guarded = checkAiOutput(result);
+
+  assertEquals(optimizedTextOf(guarded), "");
+  assert(hasOutboundSafetyWarning(guarded));
+});
+
 Deno.test("hasOutboundSafetyWarning - 沒有 warnings 陣列時回 false", () => {
   assertFalse(hasOutboundSafetyWarning({}));
   assertFalse(hasOutboundSafetyWarning(null));
