@@ -5,6 +5,7 @@ import {
   type AnalysisResult as GuardrailAnalysisResult,
   checkAiOutput,
   checkInput,
+  hasOutboundSafetyWarning,
   SAFETY_RULES,
 } from "./guardrails.ts";
 import { postProcessAnalysisResult } from "./post_process.ts";
@@ -9126,6 +9127,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         user: summarizeUser(user.id),
         model: actualModel,
         requestId: optimizeRequestId,
+        // 安全守門攔下 vs 模型輸出格式壞掉，兩者都走這條「不扣費」路徑，
+        // 但要能分辨——否則沒辦法知道守門到底有沒有在動。
+        safetyBlocked: hasOutboundSafetyWarning(result),
         violationCount: optimizeClientShapeViolations.length,
         violationPaths: optimizeClientShapeViolations
           .slice(0, 8)

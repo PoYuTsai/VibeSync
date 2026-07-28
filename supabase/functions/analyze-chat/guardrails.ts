@@ -80,6 +80,38 @@ export function getSafeReplies(level: string): Record<string, string> {
   return SAFE_REPLIES[level] || SAFE_REPLIES.warm;
 }
 
+/**
+ * 使用者會原樣送出的訊息用的樣式，與 BLOCKED_PATTERNS 刻意分開。
+ *
+ * BLOCKED_PATTERNS 擋的是「教練建議」的措辭（「不要放棄，一直約她」），
+ * 拿去掃第一人稱訊息會大量誤傷：「我不是要逼你答應」「你這樣讓我覺得被
+ * 騷擾」「我不想死纏爛打」都是正當、甚至正是在設界線的句子，擋掉等於幫
+ * 施壓的一方消音。所以這裡只擋句構明確的脅迫，不擋單一詞彙。
+ */
+const OUTBOUND_COERCION_PATTERNS = [
+  // 條件式威脅：你不 X 我就 Y
+  /你(要是|如果)?不[^。！？\n]{0,16}我就[^。！？\n]{0,16}(去死|自殺|傷害|報復)/,
+  // 以自傷作為籌碼
+  /(沒有你|你不理我|你離開我)[^。！？\n]{0,12}我(就)?(去死|自殺|活不下去|不想活)/,
+  // 威脅散布私密內容。必須有條件式脅迫的引子，否則「我不會把照片傳出去，
+  // 你放心」這種安撫句會被誤擋；中文動賓順序兩種都要涵蓋。
+  /(你不|再不|不然|否則)[^。！？\n]{0,20}((照片|影片|截圖|對話)[^。！？\n]{0,8}(公開|散布|傳出去|讓大家看|讓大家知道)|(公開|散布|傳出去|讓大家看|讓大家知道)[^。！？\n]{0,8}(照片|影片|截圖|對話))/,
+  // 宣告掌握行蹤
+  /我(已經)?(知道|查到|查得到)[^。！？\n]{0,10}你(住|家|在)[^。！？\n]{0,6}(哪|地址)/,
+];
+
+/** 被 outbound 守門攔下時掛在 warnings 上的型別，供呼叫端做觀測。 */
+export const OUTBOUND_SAFETY_WARNING_TYPE = "safety_filter_outbound";
+
+export function hasOutboundSafetyWarning(result: unknown): boolean {
+  const warnings = (result as { warnings?: unknown })?.warnings;
+  if (!Array.isArray(warnings)) return false;
+  return warnings.some(
+    (warning) =>
+      (warning as { type?: unknown })?.type === OUTBOUND_SAFETY_WARNING_TYPE,
+  );
+}
+
 // 分析結果介面
 export interface AnalysisResult {
   enthusiasm: { score: number; level: string };
@@ -88,10 +120,53 @@ export interface AnalysisResult {
   [key: string]: unknown;
 }
 
+/**
+ * 草稿潤飾／回覆微調的輸出是 `optimizedMessage`，沒有 `replies`，
+ * 以往會在 checkAiOutput 開頭直接返回，等於完全沒有輸出守門。
+ *
+ * 攔下時不塞罐頭文字——那對「幫我改這句話」毫無意義。改成清空 optimized，
+ * 讓呼叫端既有的 `hasUsableOptimizedMessage` 判為無效結果：不寫 ledger、
+ * 不扣額度、回可讀的錯誤。
+ */
+function checkOptimizedMessage(result: AnalysisResult): AnalysisResult {
+  const optimizedMessage = result.optimizedMessage;
+  if (
+    !optimizedMessage || typeof optimizedMessage !== "object" ||
+    Array.isArray(optimizedMessage)
+  ) {
+    return result;
+  }
+  const optimized = (optimizedMessage as Record<string, unknown>).optimized;
+  if (typeof optimized !== "string" || optimized.trim().length === 0) {
+    return result;
+  }
+
+  for (const pattern of OUTBOUND_COERCION_PATTERNS) {
+    if (pattern.test(optimized)) {
+      return {
+        ...result,
+        optimizedMessage: {
+          ...(optimizedMessage as Record<string, unknown>),
+          optimized: "",
+        },
+        warnings: [
+          ...(result.warnings || []),
+          {
+            type: OUTBOUND_SAFETY_WARNING_TYPE,
+            message: "這次的結果因安全考量未提供",
+          },
+        ],
+      };
+    }
+  }
+
+  return result;
+}
+
 // 檢查 AI 輸出是否安全
 export function checkAiOutput(result: AnalysisResult): AnalysisResult {
   if (!result?.replies) {
-    return result;
+    return result ? checkOptimizedMessage(result) : result;
   }
 
   const allReplies = Object.values(result.replies).join(" ");
