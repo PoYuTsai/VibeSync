@@ -159,7 +159,14 @@ Deno.test("ready result rejects markdown and pseudo-psychology markers", () => {
   percentage.options[0].why = "對方好感度 87%";
   assertFalse(validateKeyboardAssistLedgerResult(percentage));
 
-  const fullwidthPercentage = readyResult();
-  fullwidthPercentage.options[0].why = "互動成功率％";
-  assertFalse(validateKeyboardAssistLedgerResult(fullwidthPercentage));
+  const otherScoreWords = readyResult();
+  otherScoreWords.options[0].why = "你們的契合度很高";
+  assertFalse(validateKeyboardAssistLedgerResult(otherScoreWords));
+
+  // A percent sign is not itself the thing we refuse. Rejecting every one of
+  // them killed whole batches over a discount or a battery level — silently,
+  // and only after the model had already answered.
+  const ordinaryPercentage = readyResult();
+  ordinaryPercentage.options[0].text = "那家今天全館 8 折，等於打了 80% 欸";
+  assert(validateKeyboardAssistLedgerResult(ordinaryPercentage));
 });

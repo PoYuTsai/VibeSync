@@ -3,6 +3,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { KEYBOARD_ASSIST_STRATEGIES } from "./contract.ts";
+import { KEYBOARD_ASSIST_DISALLOWED_CONTENT_TOKENS } from "./validate.ts";
 
 const migrationSource = await Deno.readTextFile(
   new URL(
@@ -11,6 +12,26 @@ const migrationSource = await Deno.readTextFile(
   ),
 );
 const normalizedMigrationSource = migrationSource.replace(/\s+/g, " ").trim();
+
+/// The last migration to define the validator is the one Postgres is running.
+const liveValidatorSource = (() => {
+  const migrationsDir = new URL("../../migrations/", import.meta.url);
+  const names = [...Deno.readDirSync(migrationsDir)]
+    .filter((entry) => entry.isFile && entry.name.endsWith(".sql"))
+    .map((entry) => entry.name)
+    .sort();
+  let definition: string | null = null;
+  for (const name of names) {
+    const source = Deno.readTextFileSync(new URL(name, migrationsDir));
+    if (source.includes("FUNCTION public.is_valid_keyboard_assist_result")) {
+      definition = source;
+    }
+  }
+  if (definition === null) {
+    throw new Error("no migration defines the settlement validator");
+  }
+  return definition;
+})();
 
 Deno.test("keyboard assist migration owns a private versioned replay ledger", () => {
   assert(
@@ -39,7 +60,6 @@ Deno.test("keyboard assist migration owns a private versioned replay ledger", ()
   assert(migrationSource.includes("COUNT(DISTINCT"));
   assert(migrationSource.includes("好感度"));
   assert(migrationSource.includes("心理診斷"));
-  assert(migrationSource.includes("|[%％]"));
 });
 
 Deno.test("keyboard assist migration owns claim, renew, release, settle, and expiry", () => {
@@ -124,22 +144,7 @@ Deno.test("the settlement validator knows the strategies we actually ship", () =
   // result was rejected at settlement and surfaced as a bare
   // `service_unavailable` after the model had already been paid for. The Deno
   // suite stayed green throughout because it only ever exercised validate.ts.
-  const migrationsDir = new URL("../../migrations/", import.meta.url);
-  const names = [...Deno.readDirSync(migrationsDir)]
-    .filter((entry) => entry.isFile && entry.name.endsWith(".sql"))
-    .map((entry) => entry.name)
-    .sort();
-
-  // The last migration to define the function is the one Postgres is running.
-  let definition: string | null = null;
-  for (const name of names) {
-    const source = Deno.readTextFileSync(new URL(name, migrationsDir));
-    if (source.includes("FUNCTION public.is_valid_keyboard_assist_result")) {
-      definition = source;
-    }
-  }
-  assert(definition !== null, "no migration defines the settlement validator");
-
+  const definition = liveValidatorSource;
   const anchor = "option ->> 'strategy' NOT IN (";
   const at = definition.indexOf(anchor);
   assert(at >= 0, "the validator no longer gates on strategy");
@@ -150,5 +155,23 @@ Deno.test("the settlement validator knows the strategies we actually ship", () =
   assertEquals(
     [...list.matchAll(/'([a-z_]+)'/g)].map((match) => match[1]).sort(),
     [...KEYBOARD_ASSIST_STRATEGIES].sort(),
+  );
+});
+
+Deno.test("the settlement validator refuses the same words validate.ts does", () => {
+  // Two copies of one rule. When they last drifted the database rejected every
+  // valid result at settlement while the Deno suite stayed green, because the
+  // suite only exercised validate.ts. Compare them instead of trusting a
+  // hand-copied literal.
+  const anchor = "IF p_result::TEXT ~ '";
+  const at = liveValidatorSource.indexOf(anchor);
+  assert(at >= 0, "the validator no longer carries a content backstop");
+  const pattern = liveValidatorSource.slice(
+    at + anchor.length,
+    liveValidatorSource.indexOf("'", at + anchor.length),
+  );
+  assertEquals(
+    pattern.split("|").filter((token) => token !== "```").sort(),
+    [...KEYBOARD_ASSIST_DISALLOWED_CONTENT_TOKENS].sort(),
   );
 });

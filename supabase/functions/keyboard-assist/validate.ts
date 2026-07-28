@@ -356,8 +356,33 @@ function hasBoundedText(
   return length >= min && length <= max;
 }
 
-const DISALLOWED_GENERATED_PATTERN =
-  /```|(?:^|\s)[#>*_]{1,3}|(?:^|\n)\s*[-+]\s|[%％]|好感度|心理診斷|依附型態|人格分析/u;
+/// The pseudo-science framing this product refuses to ship, named word by word.
+/// A bare `%` was on this list until 2026-07-28 and rejected the whole batch for
+/// any percent sign at all — a discount, a battery level, a chance of rain — and
+/// silently, because this gate runs after the model has already answered. What
+/// it was actually there to stop is a compatibility score, so the score words
+/// are gated instead and every one of them is already unshippable on its own.
+///
+/// `is_valid_keyboard_assist_result` in the migrations carries the same list and
+/// is the gate that decides whether a result can be stored and charged. Change
+/// one and the other has to move in the same commit: when they last drifted,
+/// every valid result was rejected at settlement while the Deno suite stayed
+/// green, because the suite only ever exercised this file.
+export const KEYBOARD_ASSIST_DISALLOWED_CONTENT_TOKENS = [
+  "好感度",
+  "契合度",
+  "匹配度",
+  "速配",
+  "心理診斷",
+  "依附型態",
+  "人格分析",
+] as const;
+
+const DISALLOWED_GENERATED_PATTERN = new RegExp(
+  "```|(?:^|\\s)[#>*_]{1,3}|(?:^|\\n)\\s*[-+]\\s|" +
+    KEYBOARD_ASSIST_DISALLOWED_CONTENT_TOKENS.join("|"),
+  "u",
+);
 
 function isSafeGeneratedText(
   value: unknown,
