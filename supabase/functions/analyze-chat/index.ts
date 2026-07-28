@@ -84,6 +84,10 @@ import {
 } from "./opener_charge.ts";
 import { buildQuotaUsageMetadata, deriveRequestType } from "./quota_usage.ts";
 import {
+  exceedsRefineOutputLimit,
+  refineMaxOutputChars,
+} from "./refine_output.ts";
+import {
   classifyRefineFreeConsumption,
   projectRefineFreeAllowance,
   REFINE_FREE_DAILY_LIMIT,
@@ -9194,11 +9198,20 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     const optimizeClientShapeViolations = isOptimizeMessageMode
       ? findClientShapeViolations(result)
       : [];
+    // 只作用於微調。草稿潤飾的輸出長度行為一個字不改。
+    const refineOutputTooLong = isRefineReplyMode &&
+      hasUsableOptimizedMessage(result) &&
+      exceedsRefineOutputLimit({
+        sourceDraft: userDraft ?? "",
+        optimized: (result.optimizedMessage as Record<string, unknown>)
+          .optimized as string,
+      });
     if (
       isOptimizeMessageMode &&
       (
         !hasUsableOptimizedMessage(result) ||
-        optimizeClientShapeViolations.length > 0
+        optimizeClientShapeViolations.length > 0 ||
+        refineOutputTooLong
       )
     ) {
       logWarn("optimize_message_result_invalid_no_charge", {
@@ -9212,6 +9225,11 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         violationPaths: optimizeClientShapeViolations
           .slice(0, 8)
           .map((violation) => violation.path),
+        // 「越調越長」是可預期的模型行為，不是格式壞掉，必須分得出來。
+        refineOutputTooLong,
+        refineMaxOutputChars: isRefineReplyMode
+          ? refineMaxOutputChars(userDraft ?? "")
+          : null,
       });
       return jsonResponse({
         error: "OPTIMIZE_MESSAGE_RESULT_INVALID",
