@@ -247,9 +247,10 @@ final class KeyboardViewController: UIInputViewController {
         header.addArrangedSubview(
             makeButton("文字", action: #selector(showTextAssist))
         )
-        header.addArrangedSubview(
-            makeButton("ABC", action: #selector(showTyping))
-        )
+        // ABC lives in the utility row, not here. The header is for the two
+        // paths that are the product; a latin-only fallback keyboard competing
+        // for that space reads as a third feature when it is really a floor —
+        // the thing that still works before 完整取用 is granted.
         assistPanel.addArrangedSubview(header)
 
         configureAssistIdleView()
@@ -316,7 +317,6 @@ final class KeyboardViewController: UIInputViewController {
         header.addArrangedSubview(
             makeButton("截圖", action: #selector(showAssist))
         )
-        header.addArrangedSubview(makeButton("ABC", action: #selector(showTyping)))
         aiPanel.addArrangedSubview(header)
 
         let contextRow = UIStackView()
@@ -384,7 +384,12 @@ final class KeyboardViewController: UIInputViewController {
         )
         resultButton.isHidden = true
         aiPanel.addArrangedSubview(resultButton)
-        aiPanel.addArrangedSubview(makeUtilityRow())
+        aiPanel.addArrangedSubview(
+            makeUtilityRow(
+                toggleTitle: "ABC",
+                toggleAction: #selector(showTyping)
+            )
+        )
     }
 
     private func configureScreenshotAssist() {
@@ -509,7 +514,12 @@ final class KeyboardViewController: UIInputViewController {
         screenshotPanel.addArrangedSubview(screenshotCancelButton)
 
         assistPanel.addArrangedSubview(screenshotPanel)
-        assistPanel.addArrangedSubview(makeUtilityRow())
+        assistPanel.addArrangedSubview(
+            makeUtilityRow(
+                toggleTitle: "ABC",
+                toggleAction: #selector(showTyping)
+            )
+        )
         resetScreenshotControls()
     }
 
