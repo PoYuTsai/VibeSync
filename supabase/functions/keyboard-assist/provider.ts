@@ -272,6 +272,12 @@ function combinedSignal(parent: AbortSignal, timeoutMs: number): AbortSignal {
   return AbortSignal.any([parent, AbortSignal.timeout(timeoutMs)]);
 }
 
+/// Per-call wall clock for each stage. These are caps on one HTTP call, not
+/// the request budget: `phaseSignal` still clips them to whatever the phase
+/// deadlines allow, so raising one can never overrun `REQUEST_DEADLINE_MS`.
+export const KEYBOARD_ASSIST_COMPILER_TIMEOUT_MS = 24_000;
+export const KEYBOARD_ASSIST_JUDGE_TIMEOUT_MS = 18_000;
+
 export function createAnthropicKeyboardAssistProvider(input: {
   apiKey: string;
   compilerModel: string;
@@ -378,7 +384,7 @@ export function createAnthropicKeyboardAssistProvider(input: {
           }],
         },
         request.signal,
-        input.compilerTimeoutMs ?? 24_000,
+        input.compilerTimeoutMs ?? KEYBOARD_ASSIST_COMPILER_TIMEOUT_MS,
       ),
     judge: (request) =>
       call(
@@ -412,10 +418,14 @@ export function createAnthropicKeyboardAssistProvider(input: {
           }],
         },
         request.signal,
-        // Twice the output needs more wall clock. The judge deadline
-        // (start + 35s) still governs: `phaseSignal` clips this cap to whatever
-        // budget is actually left after the compiler.
-        input.judgeTimeoutMs ?? 12_000,
+        // Twice the output needs more wall clock. 12s was measured against a
+        // single batch of three; six options with a `why` and an `effect` each
+        // came in at 13.1s on a real screenshot and got cut off right at the
+        // finish line — the whole request failed after the model had already
+        // done all the work. The judge deadline (start + 35s) still governs:
+        // `phaseSignal` clips this cap to whatever budget is actually left
+        // after the compiler, so raising it cannot overrun the 40s request.
+        input.judgeTimeoutMs ?? KEYBOARD_ASSIST_JUDGE_TIMEOUT_MS,
       ),
   };
 }

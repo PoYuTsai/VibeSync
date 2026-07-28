@@ -5,6 +5,8 @@ import {
 import { KEYBOARD_ASSIST_COMPILER_PROMPT } from "./compiler_prompt.ts";
 import { KEYBOARD_ASSIST_JUDGE_PROMPT } from "./judge_prompt.ts";
 import {
+  KEYBOARD_ASSIST_COMPILER_TIMEOUT_MS,
+  KEYBOARD_ASSIST_JUDGE_TIMEOUT_MS,
   createAnthropicKeyboardAssistProvider,
   type KeyboardAssistJudgeRequest,
 } from "./provider.ts";
@@ -293,4 +295,18 @@ Deno.test("Anthropic structured-output schemas use only supported constraints", 
   assert(compilerWire.includes('"anyOf":[{"type":"string"},{"type":"null"}]'));
   assert(judgeWire.includes('"const":"keyboard-assist-v1"'));
   assert(judgeWire.includes('"const":"ready"'));
+});
+
+Deno.test("the judge cap leaves room for six explained options", () => {
+  // 12s was sized for one batch of three. A real screenshot produced a 13.1s
+  // judge call, which was aborted right after the model had finished the work
+  // and failed the whole request. Anything under the observed cost is a cap
+  // that throws away work it already paid for.
+  assert(KEYBOARD_ASSIST_JUDGE_TIMEOUT_MS >= 15_000);
+  // Both stage caps must still fit inside the judge phase deadline
+  // (start + 35s) that the handler enforces.
+  assert(
+    KEYBOARD_ASSIST_COMPILER_TIMEOUT_MS + KEYBOARD_ASSIST_JUDGE_TIMEOUT_MS
+      <= 42_000,
+  );
 });
