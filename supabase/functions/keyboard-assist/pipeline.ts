@@ -6,10 +6,12 @@ import {
   type KeyboardAssistSpeakerOverride,
   type KeyboardAssistV1Request,
 } from "./contract.ts";
+import type { FactualTokenClass } from "./grounding.ts";
 import {
   hasOnlyGroundedFactualTokens,
   isGroundedKeyboardAssistCandidate,
   keyboardAssistCompilerGroundingFailure,
+  ungroundedCandidateTokenClass,
 } from "./grounding.ts";
 import type { NormalizedKeyboardAssistCompilerOutput } from "./normalize.ts";
 import { normalizeKeyboardAssistCompilerOutput } from "./normalize.ts";
@@ -20,6 +22,15 @@ import type {
   KeyboardAssistProviderFailure,
 } from "./provider.ts";
 import { KeyboardAssistProviderError } from "./provider.ts";
+
+/// `candidate` is the unclassified fallback and `citation` means the reply
+/// pointed at a message index that does not exist; the rest name the token
+/// class that had no support on screen. Derived from FACTUAL_TOKEN_CLASSES so
+/// adding a rule cannot leave the telemetry allowlist behind — an unlisted
+/// token is dropped silently, which is how a diagnosable failure becomes a
+/// blank one.
+export type KeyboardAssistGroundingRejectDetail =
+  `compiler_grounding_${FactualTokenClass | "citation" | "candidate"}`;
 
 export type KeyboardAssistStageTiming = {
   compilerMs?: number;
@@ -34,7 +45,10 @@ export type KeyboardAssistRejectDetail =
   | "own_prior_candidates"
   | "compiler_schema"
   | "compiler_strategy_collision"
-  | "compiler_grounding_candidate"
+  // Which grounding rule refused the batch. One bucket for all of them made an
+  // invented price and an over-eager filler-word regex look identical in
+  // telemetry, and the second one is what actually kept firing.
+  | KeyboardAssistGroundingRejectDetail
   // A model call that fails carries its own reason. Without it,
   // "service_unavailable" is the whole story for a request that had already
   // spent fourteen seconds of model time, which is no story at all.
@@ -253,10 +267,13 @@ export async function runKeyboardAssistPipeline(input: {
       isGroundedKeyboardAssistCandidate(candidate, normalized)
     );
     if (grounded.length < 3) {
+      const tokenClass = ungroundedCandidateTokenClass(normalized);
       throw new KeyboardAssistPipelineError(
         "provider_invalid_output",
         "compiler output failed grounding",
-        "compiler_grounding_candidate",
+        tokenClass === null
+          ? "compiler_grounding_candidate"
+          : `compiler_grounding_${tokenClass}` as const,
       );
     }
     normalized.candidates = grounded;

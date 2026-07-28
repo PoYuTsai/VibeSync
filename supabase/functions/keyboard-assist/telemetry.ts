@@ -1,3 +1,12 @@
+import { FACTUAL_TOKEN_CLASSES } from "./grounding.ts";
+
+/// Derived, never retyped: the pipeline's grounding tokens and this allowlist
+/// were two places to state the same list, and a token missing from the second
+/// one is dropped without a word.
+const GROUNDING_REJECT_DETAILS = ["candidate", "citation"].concat(
+  FACTUAL_TOKEN_CLASSES,
+).map((tokenClass) => `compiler_grounding_${tokenClass}`);
+
 const STRING_ENUMS: Record<string, readonly string[]> = {
   event: [
     "keyboard_assist_succeeded",
@@ -35,7 +44,7 @@ const STRING_ENUMS: Record<string, readonly string[]> = {
     "own_prior_candidates",
     "compiler_schema",
     "compiler_strategy_collision",
-    "compiler_grounding_candidate",
+    ...GROUNDING_REJECT_DETAILS,
     // Why the model call itself failed. Fixed tokens only — a status code and
     // a stop reason carry no transcript.
     "http_400",

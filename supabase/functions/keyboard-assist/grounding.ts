@@ -1,6 +1,14 @@
 import type { NormalizedKeyboardAssistCompilerOutput } from "./normalize.ts";
 
-const RELATIVE_DATE_TOKENS = [
+/// Deliberately absent from the gate below. "改天再約" and "下次帶你去" invent
+/// nothing: they point at a future that has not happened, so there is no fact
+/// to contradict. Requiring the screenshot to contain the word "下次" before a
+/// reply may say it is not a safety property, it is a vocabulary ban — and it
+/// is the one that killed three consecutive real screenshots on 2026-07-28,
+/// because a batch is exactly three replies and losing one loses all three.
+/// A *specific* future is still a fact and stays gated: "下週六" contains 週六,
+/// which the weekday pattern picks up.
+export const UNGATED_RELATIVE_DATE_TOKENS = [
   "今天",
   "明天",
   "後天",
@@ -35,6 +43,9 @@ const RELATIVE_DATE_TOKENS = [
   "下次",
 ] as const;
 
+/// Gated, unlike the relative dates above: these assert a shared past. A reply
+/// opening "還記得上次你說的那家店嗎" when no such exchange is on screen makes the
+/// user look like they are talking to someone else.
 const HISTORY_REFERENCE_TOKENS = [
   "上次",
   "之前",
@@ -206,64 +217,96 @@ function compactFactualText(value: string): string {
   return normalizeFactualText(value).replace(/\s+/gu, "");
 }
 
+/// Which rule claimed a token. Fixed vocabulary, never text from the image, so
+/// it is safe to put in telemetry — and without it a grounding rejection says
+/// only "a candidate was ungrounded", which is not enough to tell an invented
+/// price from an over-eager regex.
+export const FACTUAL_TOKEN_CLASSES = [
+  "date",
+  "time",
+  "number",
+  "link",
+  "handle",
+  "place",
+  "venue",
+  "person",
+  "history",
+] as const;
+
+export type FactualTokenClass = typeof FACTUAL_TOKEN_CLASSES[number];
+
 function addMatches(
-  tokens: Set<string>,
+  tokens: Map<string, FactualTokenClass>,
   value: string,
   pattern: RegExp,
+  tokenClass: FactualTokenClass,
   group = 0,
 ): void {
   for (const match of value.matchAll(pattern)) {
     const token = match[group];
-    if (token) tokens.add(compactFactualText(token));
+    if (!token) continue;
+    const compact = compactFactualText(token);
+    if (!tokens.has(compact)) tokens.set(compact, tokenClass);
   }
 }
 
-function factualTokens(value: string): Set<string> {
-  const tokens = new Set<string>();
+function factualTokens(value: string): Map<string, FactualTokenClass> {
+  const tokens = new Map<string, FactualTokenClass>();
+  const add = (token: string, tokenClass: FactualTokenClass) => {
+    const compact = compactFactualText(token);
+    if (!tokens.has(compact)) tokens.set(compact, tokenClass);
+  };
   const normalized = normalizeFactualText(value);
 
   addMatches(
     tokens,
     normalized,
     /\d{1,4}\s*(?:[./-]|年)\s*\d{1,2}(?:\s*(?:[./-]|月)\s*\d{1,2}\s*(?:日|號)?)?/gu,
+    "date",
   );
   addMatches(
     tokens,
     normalized,
     /\d{1,2}\s*月\s*\d{1,2}\s*(?:日|號)?/gu,
+    "date",
   );
   addMatches(
     tokens,
     normalized,
     /[一二三四五六七八九十廿卅]{1,4}月[一二三四五六七八九十廿卅]{1,4}(?:日|號)/gu,
+    "date",
   );
-  addMatches(tokens, normalized, /(?:星期|禮拜|週|周)[一二三四五六日天]/gu);
-  for (const token of RELATIVE_DATE_TOKENS) {
-    if (normalized.includes(token)) tokens.add(compactFactualText(token));
-  }
+  addMatches(
+    tokens,
+    normalized,
+    /(?:星期|禮拜|週|周)[一二三四五六日天]/gu,
+    "date",
+  );
   for (const token of HISTORY_REFERENCE_TOKENS) {
-    if (normalized.includes(token)) tokens.add(compactFactualText(token));
+    if (normalized.includes(token)) add(token, "history");
   }
 
-  addMatches(tokens, normalized, /\d{1,2}\s*[:：]\s*\d{2}/gu);
+  addMatches(tokens, normalized, /\d{1,2}\s*[:：]\s*\d{2}/gu, "time");
   addMatches(
     tokens,
     normalized,
     /(?:凌晨|早上|上午|中午|下午|傍晚|晚上)\s*(?:\d{1,2}|[一二三四五六七八九十]{1,3})\s*(?:點|時)(?:半|[一二三四五六七八九十\d]{1,3}分)?/gu,
+    "time",
   );
-  addMatches(tokens, normalized, /\d+(?:[.,]\d+)*/gu);
+  addMatches(tokens, normalized, /\d+(?:[.,]\d+)*/gu, "number");
   addMatches(
     tokens,
     normalized,
     /(?:https?:\/\/|www\.)[^\s<>"'，。！？、]+/gu,
+    "link",
   );
-  addMatches(tokens, normalized, /@[a-z0-9_.-]+/gu);
+  addMatches(tokens, normalized, /@[a-z0-9_.-]+/gu, "handle");
 
   for (const place of COMMON_PLACE_TOKENS) {
-    if (normalized.includes(place)) tokens.add(compactFactualText(place));
+    if (normalized.includes(place)) add(place, "place");
   }
   for (const venue of COMMON_VENUE_TOKENS) {
-    if (normalized.includes(venue)) tokens.add(compactFactualText(venue));
+    if (normalized.includes(venue)) add(venue, "venue");
   }
 
   const originalCase = value.normalize("NFKC");
@@ -276,7 +319,7 @@ function factualTokens(value: string): Set<string> {
     if (
       token && !LATIN_NON_NAME_WORDS.has(token.toLocaleLowerCase("en-US"))
     ) {
-      tokens.add(compactFactualText(token));
+      add(token, "person");
     }
   }
 
@@ -287,7 +330,7 @@ function factualTokens(value: string): Set<string> {
       CHINESE_TITLED_NAME_PATTERN,
     ]
   ) {
-    addMatches(tokens, value, pattern, 1);
+    addMatches(tokens, value, pattern, "person", 1);
   }
 
   for (const match of value.matchAll(VENUE_PATTERN)) {
@@ -299,21 +342,31 @@ function factualTokens(value: string): Set<string> {
       venue.length >= 2 && !GENERIC_VENUE_PATTERN.test(venue) &&
       !GENERIC_VENUE_CATEGORIES.has(compactVenue)
     ) {
-      tokens.add(compactVenue);
+      add(compactVenue, "venue");
     }
   }
 
   return tokens;
 }
 
+/// The class of the first token the evidence cannot account for, or null when
+/// everything the text asserts is on screen.
+export function ungroundedFactualTokenClass(
+  generated: string,
+  evidence: string,
+): FactualTokenClass | null {
+  const compactEvidence = compactFactualText(evidence);
+  for (const [token, tokenClass] of factualTokens(generated)) {
+    if (!compactEvidence.includes(token)) return tokenClass;
+  }
+  return null;
+}
+
 export function hasOnlyGroundedFactualTokens(
   generated: string,
   evidence: string,
 ): boolean {
-  const compactEvidence = compactFactualText(evidence);
-  return [...factualTokens(generated)].every((token) =>
-    compactEvidence.includes(token)
-  );
+  return ungroundedFactualTokenClass(generated, evidence) === null;
 }
 
 /// Which part of the compiler output failed grounding. The three fields are not
@@ -362,6 +415,32 @@ export function isGroundedKeyboardAssistCandidate(
     candidate.evidenceIndices.some((index) => !messagesByIndex.has(index))
   ) return false;
   return hasOnlyGroundedFactualTokens(candidate.text, allVisibleMessages);
+}
+
+/// Why the batch is about to be refused, at the granularity telemetry can
+/// carry. `citation` means the candidate pointed at a message index that does
+/// not exist, which is a different bug from asserting a fact off screen.
+export function ungroundedCandidateTokenClass(
+  value: NormalizedKeyboardAssistCompilerOutput,
+): FactualTokenClass | "citation" | null {
+  const messagesByIndex = new Set(
+    value.messages.map((message) => message.index),
+  );
+  const allVisibleMessages = value.messages.map((message) => message.text).join(
+    "\n",
+  );
+  for (const candidate of value.candidates) {
+    if (
+      candidate.evidenceIndices.length < 1 ||
+      candidate.evidenceIndices.some((index) => !messagesByIndex.has(index))
+    ) return "citation";
+    const tokenClass = ungroundedFactualTokenClass(
+      candidate.text,
+      allVisibleMessages,
+    );
+    if (tokenClass !== null) return tokenClass;
+  }
+  return null;
 }
 
 export function isGroundedKeyboardAssistCompilerOutput(

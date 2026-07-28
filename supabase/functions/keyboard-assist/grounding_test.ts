@@ -2,7 +2,10 @@ import {
   assert,
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { isGroundedKeyboardAssistCompilerOutput } from "./grounding.ts";
+import {
+  isGroundedKeyboardAssistCompilerOutput,
+  UNGATED_RELATIVE_DATE_TOKENS,
+} from "./grounding.ts";
 import type { NormalizedKeyboardAssistCompilerOutput } from "./normalize.ts";
 
 function compilerWithCandidate(
@@ -31,10 +34,6 @@ function compilerWithCandidate(
 Deno.test("compiler grounding rejects off-screen factual tokens", () => {
   for (
     const candidate of [
-      "那我們明天見",
-      "那我們下個月見",
-      "下次再一起去",
-      "大後天有空嗎？",
       "那就 7 月 27 日見",
       "我可以帶 2 個朋友",
       "我可以帶２個朋友",
@@ -63,6 +62,25 @@ Deno.test("compiler grounding rejects off-screen factual tokens", () => {
       candidate,
     );
   }
+});
+
+Deno.test("a reply may say 明天 without the screenshot saying it first", () => {
+  // Suggesting a future is not asserting a fact, and every one of these words
+  // was a hard refusal of the whole batch until 2026-07-28. A specific future
+  // is still a fact: "下週六" carries 週六 and stays refused below.
+  for (const token of UNGATED_RELATIVE_DATE_TOKENS) {
+    assert(
+      isGroundedKeyboardAssistCompilerOutput(
+        compilerWithCandidate(`${token}再一起去`),
+      ),
+      token,
+    );
+  }
+  assertFalse(
+    isGroundedKeyboardAssistCompilerOutput(
+      compilerWithCandidate("下週六再一起去"),
+    ),
+  );
 });
 
 Deno.test("compiler grounding accepts the same factual token in cited OCR", () => {

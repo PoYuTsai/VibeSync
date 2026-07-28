@@ -344,7 +344,10 @@ Deno.test("an invented reply is refused rather than served", async () => {
     KeyboardAssistPipelineError,
   );
   assertEquals(error.code, "provider_invalid_output");
-  assertEquals(error.detail, "compiler_grounding_candidate");
+  // Names the rule, not just "something was ungrounded": 上次 claims a shared
+  // past. Three real screenshots died on this token in a row with no way to
+  // tell which of nine rules had fired.
+  assertEquals(error.detail, "compiler_grounding_history");
 
   const uncited = compilerOutput();
   uncited.candidates[0].evidenceIndices = [99];
@@ -352,7 +355,32 @@ Deno.test("an invented reply is refused rather than served", async () => {
     () => run({ compiler: () => Promise.resolve(uncited) }),
     KeyboardAssistPipelineError,
   );
-  assertEquals(invalid.detail, "compiler_grounding_candidate");
+  assertEquals(invalid.detail, "compiler_grounding_citation");
+});
+
+Deno.test("suggesting a future is not an invented fact", async () => {
+  // The batch is exactly three replies and the gate needs all three, so one
+  // banned filler word cost the user the whole screenshot. This is what was
+  // actually firing in production on 2026-07-28, not an invented price.
+  const suggestion = compilerOutput();
+  suggestion.candidates[0].text = "下次再一起去";
+  suggestion.candidates[1].text = "改天也帶我去";
+
+  const result = await run({
+    compiler: () => Promise.resolve(suggestion),
+  });
+
+  if (result.status !== "ready") throw new Error("expected a ready result");
+  assertEquals(result.options[0].text, "下次再一起去");
+
+  // A *specific* future is still a fact the screenshot has to support.
+  const specific = compilerOutput();
+  specific.candidates[0].text = "那就 7 月 27 日見";
+  const refused = await assertRejects(
+    () => run({ compiler: () => Promise.resolve(specific) }),
+    KeyboardAssistPipelineError,
+  );
+  assertEquals(refused.detail, "compiler_grounding_date");
 });
 
 Deno.test("a batch missing one of the three angles says so by name", async () => {
@@ -378,7 +406,7 @@ Deno.test("an invented explanation is replaced, never served", async () => {
   // the whole screenshot away over a sentence of colour is the wrong price.
   const invented = compilerOutput();
   invented.candidates[0].why = "承接上次在台北的共同回憶";
-  invented.candidates[1].effect = "方便明天推進";
+  invented.candidates[1].effect = "方便 7/27 推進";
 
   const result = await run({
     voice: { primary: "steady", secondary: null },
@@ -388,7 +416,7 @@ Deno.test("an invented explanation is replaced, never served", async () => {
   if (result.status !== "ready") throw new Error("expected a ready result");
   const wire = JSON.stringify(result);
   assert(!wire.includes("上次在台北"), "off-screen fact reached the user");
-  assert(!wire.includes("方便明天推進"), "off-screen fact reached the user");
+  assert(!wire.includes("方便 7/27 推進"), "off-screen fact reached the user");
   // The replies themselves are untouched; only the explanations changed.
   assertEquals(
     result.options.map((option) => option.text),
