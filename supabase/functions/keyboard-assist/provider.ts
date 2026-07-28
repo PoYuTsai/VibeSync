@@ -24,10 +24,56 @@ export type KeyboardAssistCompiler = (
   request: KeyboardAssistCompilerRequest,
 ) => Promise<unknown>;
 
+/// Why the model call failed, as a fixed token that is safe to log. The
+/// message carries the same thing in prose, but nothing logs the message —
+/// which is how "service_unavailable" ended up being everything we knew about
+/// a request that had already spent fourteen seconds of model time.
+export type KeyboardAssistProviderFailure =
+  | "http_400"
+  | "http_401"
+  | "http_403"
+  | "http_404"
+  | "http_408"
+  | "http_413"
+  | "http_429"
+  | "http_500"
+  | "http_502"
+  | "http_503"
+  | "http_504"
+  | "http_529"
+  | "http_other"
+  | "fetch_failed"
+  | "response_not_json"
+  | "stopped_max_tokens"
+  | "stopped_refusal"
+  | "stopped_other";
+
+const OBSERVED_HTTP_STATUSES = new Set([
+  400,
+  401,
+  403,
+  404,
+  408,
+  413,
+  429,
+  500,
+  502,
+  503,
+  504,
+  529,
+]);
+
+function httpFailureToken(status: number): KeyboardAssistProviderFailure {
+  return OBSERVED_HTTP_STATUSES.has(status)
+    ? `http_${status}` as KeyboardAssistProviderFailure
+    : "http_other";
+}
+
 export class KeyboardAssistProviderError extends Error {
   constructor(
     public readonly kind: "timeout" | "invalid_output" | "unavailable",
     message: string,
+    public readonly failure?: KeyboardAssistProviderFailure,
   ) {
     super(message);
     this.name = "KeyboardAssistProviderError";
@@ -131,6 +177,11 @@ function parseJsonObjectFromAnthropicEnvelope(value: unknown): unknown {
     throw new KeyboardAssistProviderError(
       "invalid_output",
       `provider stopped with ${envelope.stop_reason}`,
+      envelope.stop_reason === "refusal"
+        ? "stopped_refusal"
+        : envelope.stop_reason === "max_tokens"
+        ? "stopped_max_tokens"
+        : "stopped_other",
     );
   }
   let raw = (envelope.content ?? [])
@@ -204,9 +255,13 @@ export function createAnthropicKeyboardAssistProvider(input: {
           "provider request timed out",
         );
       }
+      // Deno's fetch resolves when the response headers arrive, so a
+      // non-streaming call that fails here failed *after* the model had
+      // already spent its time — a reset connection, not a rejected request.
       throw new KeyboardAssistProviderError(
         "unavailable",
         error instanceof Error ? error.message : String(error),
+        "fetch_failed",
       );
     }
     if (!response.ok) {
@@ -215,6 +270,7 @@ export function createAnthropicKeyboardAssistProvider(input: {
           ? "timeout"
           : "unavailable",
         `provider returned HTTP ${response.status}`,
+        httpFailureToken(response.status),
       );
     }
     const envelope = await response.json().catch(() => null);

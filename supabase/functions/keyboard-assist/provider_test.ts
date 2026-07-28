@@ -1,11 +1,13 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { KEYBOARD_ASSIST_COMPILER_PROMPT } from "./compiler_prompt.ts";
 import {
   createAnthropicKeyboardAssistProvider,
   KEYBOARD_ASSIST_COMPILER_TIMEOUT_MS,
+  KeyboardAssistProviderError,
 } from "./provider.ts";
 
 const PIPELINE_VERSION = "compiler-only-v1";
@@ -269,6 +271,68 @@ Deno.test("Anthropic structured-output schema uses only supported constraints", 
       '"required":["strategy","text","why","effect","evidenceIndices"]',
     ),
   );
+});
+
+Deno.test("a failed model call says why, in a token safe to log", async () => {
+  // "service_unavailable" was the whole story for a request that had already
+  // spent fourteen seconds of model time. A status code carries no transcript,
+  // so there is no reason for it not to reach telemetry.
+  const cases: Array<[number, string]> = [
+    [401, "http_401"],
+    [429, "http_429"],
+    [529, "http_529"],
+    [418, "http_other"],
+  ];
+  for (const [status, expected] of cases) {
+    const provider = createAnthropicKeyboardAssistProvider({
+      apiKey: "test-key",
+      compilerModel: "vision-model",
+      fetchImpl: () => Promise.resolve(new Response("nope", { status })),
+    });
+    const error = await assertRejects(
+      () =>
+        provider.compiler({
+          image: {
+            bytes: new Uint8Array([1]),
+            base64: "AQ==",
+            mediaType: "image/png",
+          },
+          speakerOverride: "none",
+          voice: { primary: null, secondary: null },
+          priorTurn: null,
+          signal: new AbortController().signal,
+          pipelineVersion: PIPELINE_VERSION,
+        }),
+      KeyboardAssistProviderError,
+    );
+    assertEquals(error.failure, expected);
+  }
+
+  // Deno's fetch resolves once headers arrive, so a throw here means the
+  // connection died after the model had already spent its time — a different
+  // problem from a rejected request, and previously indistinguishable.
+  const dropped = createAnthropicKeyboardAssistProvider({
+    apiKey: "test-key",
+    compilerModel: "vision-model",
+    fetchImpl: () => Promise.reject(new TypeError("connection reset")),
+  });
+  const error = await assertRejects(
+    () =>
+      dropped.compiler({
+        image: {
+          bytes: new Uint8Array([1]),
+          base64: "AQ==",
+          mediaType: "image/png",
+        },
+        speakerOverride: "none",
+        voice: { primary: null, secondary: null },
+        priorTurn: null,
+        signal: new AbortController().signal,
+        pipelineVersion: PIPELINE_VERSION,
+      }),
+    KeyboardAssistProviderError,
+  );
+  assertEquals(error.failure, "fetch_failed");
 });
 
 Deno.test("the single call's cap fits inside the request deadline", () => {

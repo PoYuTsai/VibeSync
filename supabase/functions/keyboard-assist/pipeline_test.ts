@@ -280,6 +280,25 @@ Deno.test("provider timeout remains distinct from invalid structured output", as
     KeyboardAssistPipelineError,
   );
   assertEquals(timeout.code, "provider_timeout");
+
+  // The reason the model call failed has to survive the hop into the pipeline,
+  // otherwise telemetry is back to a bare "service_unavailable".
+  const unavailable = await assertRejects(
+    () =>
+      run({
+        compiler: () =>
+          Promise.reject(
+            new KeyboardAssistProviderError(
+              "unavailable",
+              "provider returned HTTP 429",
+              "http_429",
+            ),
+          ),
+      }),
+    KeyboardAssistPipelineError,
+  );
+  assertEquals(unavailable.code, "service_unavailable");
+  assertEquals(unavailable.detail, "http_429");
 });
 
 Deno.test("the compiler obeys its own absolute deadline", async () => {

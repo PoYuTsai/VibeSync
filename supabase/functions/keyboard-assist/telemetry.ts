@@ -36,6 +36,26 @@ const STRING_ENUMS: Record<string, readonly string[]> = {
     "compiler_schema",
     "compiler_strategy_collision",
     "compiler_grounding_candidate",
+    // Why the model call itself failed. Fixed tokens only — a status code and
+    // a stop reason carry no transcript.
+    "http_400",
+    "http_401",
+    "http_403",
+    "http_404",
+    "http_408",
+    "http_413",
+    "http_429",
+    "http_500",
+    "http_502",
+    "http_503",
+    "http_504",
+    "http_529",
+    "http_other",
+    "fetch_failed",
+    "response_not_json",
+    "stopped_max_tokens",
+    "stopped_refusal",
+    "stopped_other",
   ],
 };
 

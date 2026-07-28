@@ -17,6 +17,7 @@ import { containsOwnPriorCandidates } from "./own_output_leak.ts";
 import type {
   KeyboardAssistCompiler,
   KeyboardAssistImage,
+  KeyboardAssistProviderFailure,
 } from "./provider.ts";
 import { KeyboardAssistProviderError } from "./provider.ts";
 
@@ -33,7 +34,11 @@ export type KeyboardAssistRejectDetail =
   | "own_prior_candidates"
   | "compiler_schema"
   | "compiler_strategy_collision"
-  | "compiler_grounding_candidate";
+  | "compiler_grounding_candidate"
+  // A model call that fails carries its own reason. Without it,
+  // "service_unavailable" is the whole story for a request that had already
+  // spent fourteen seconds of model time, which is no story at all.
+  | KeyboardAssistProviderFailure;
 
 /// Deliberately factual-token free, so it can never itself fail grounding.
 export const KEYBOARD_ASSIST_UNGROUNDED_CUE_FALLBACK = "先看看這幾則訊息再回";
@@ -84,6 +89,7 @@ function mapProviderError(
         ? "service_unavailable"
         : "provider_invalid_output",
       `${stage}: ${error.message}`,
+      error.failure,
     );
   }
   return new KeyboardAssistPipelineError(
