@@ -60,6 +60,97 @@ Deno.test("optimize-message hash binds draft, context, and messages", async () =
   assert(first !== changedContext);
 });
 
+// 這兩條金值是 2026-07-29 加入 refineInstruction 之前跑出來的實際值。
+// 沒帶指令的請求，input hash 必須與當天 byte-identical，否則部署當下 7 天窗內
+// 所有未結算的 pending 都會變成 OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH，
+// 使用者拿不回已經付過錢的結果。shape 測試擋不住正規化行為被改動，所以這裡
+// 鎖的是寫死的 64 位十六進位值。
+const LEGACY_GOLDEN_FULL_INPUT = {
+  messages: [
+    { isFromMe: false, content: "嗨，週末有空嗎？" },
+    { isFromMe: true, content: "看情況欸" },
+  ],
+  userDraft: "要不要一起去看展",
+  sessionContext: {
+    meetingContext: "交友軟體",
+    duration: "兩週",
+    goal: "約出來",
+  },
+  conversationSummary: "剛認識兩週",
+  partnerSummary: "喜歡藝術",
+  effectiveStyleContext: "幽默但不油",
+  knownContactName: "小美",
+  forceModel: "sonnet",
+};
+const LEGACY_GOLDEN_FULL_HASH =
+  "66d9503058876cad226f63c85e5ea9b4684993d3672c9858202d0a2c06202116";
+
+const LEGACY_GOLDEN_MINIMAL_INPUT = {
+  messages: [{ isFromMe: false, content: "嗨" }],
+  userDraft: "想約妳喝咖啡",
+};
+const LEGACY_GOLDEN_MINIMAL_HASH =
+  "674b89adabece76464345f7ba2c335d6aa4db77e8ae438e28d607e845500f2b6";
+
+Deno.test("沒有指令的請求 hash 與 2026-07-28 完全相同", async () => {
+  assertEquals(
+    await computeOptimizeMessageInputHash(LEGACY_GOLDEN_FULL_INPUT),
+    LEGACY_GOLDEN_FULL_HASH,
+  );
+  assertEquals(
+    await computeOptimizeMessageInputHash(LEGACY_GOLDEN_MINIMAL_INPUT),
+    LEGACY_GOLDEN_MINIMAL_HASH,
+  );
+});
+
+Deno.test("微調指令進 hash，空白指令等同沒帶", async () => {
+  const withInstruction = await computeOptimizeMessageInputHash({
+    ...LEGACY_GOLDEN_FULL_INPUT,
+    refineInstruction: "再幽默一點",
+  });
+  const sameInstruction = await computeOptimizeMessageInputHash({
+    ...LEGACY_GOLDEN_FULL_INPUT,
+    refineInstruction: "  再幽默一點  ",
+  });
+  const otherInstruction = await computeOptimizeMessageInputHash({
+    ...LEGACY_GOLDEN_FULL_INPUT,
+    refineInstruction: "再短一點",
+  });
+
+  assertEquals(withInstruction, sameInstruction);
+  assert(withInstruction !== LEGACY_GOLDEN_FULL_HASH);
+  assert(withInstruction !== otherInstruction);
+
+  // 空字串／純空白／null／undefined 一律不得改變舊請求的 hash。
+  for (const blank of ["", "   ", null, undefined]) {
+    assertEquals(
+      await computeOptimizeMessageInputHash({
+        ...LEGACY_GOLDEN_FULL_INPUT,
+        refineInstruction: blank,
+      }),
+      LEGACY_GOLDEN_FULL_HASH,
+    );
+  }
+});
+
+Deno.test("舊 client 的未結算 pending 在新版 server 仍命中 replay", async () => {
+  // 舊 client 送出時，server 以 8 元素算出 input hash 寫進帳本。
+  const storedRow = {
+    input_hash: LEGACY_GOLDEN_FULL_HASH,
+    result_json: { optimizedMessage: { optimized: "要不要一起去看展？" } },
+  };
+
+  // 新版 server 收到同一筆（沒帶指令的）重送請求。
+  const recomputed = await computeOptimizeMessageInputHash(
+    LEGACY_GOLDEN_FULL_INPUT,
+  );
+
+  assertEquals(
+    classifyOptimizeMessageReplayPreflight(storedRow, recomputed),
+    { kind: "replay", result: storedRow.result_json },
+  );
+});
+
 Deno.test("optimize-message replay preflight returns cached result or mismatch", () => {
   const result = { optimizedMessage: { optimized: "要不要一起喝咖啡？" } };
   assertEquals(

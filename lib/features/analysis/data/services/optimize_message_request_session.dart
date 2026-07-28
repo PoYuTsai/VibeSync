@@ -300,11 +300,14 @@ class OptimizeMessageRequestIdSession {
     String? partnerSummary,
     String? effectiveStyleContext,
     String? knownContactName,
+    String? refineInstruction,
   }) {
     String? normalizedOptional(String? value) {
       final trimmed = value?.trim();
       return trimmed == null || trimmed.isEmpty ? null : trimmed;
     }
+
+    final normalizedRefineInstruction = normalizedOptional(refineInstruction);
 
     return jsonEncode([
       messages.map((message) {
@@ -336,6 +339,9 @@ class OptimizeMessageRequestIdSession {
       normalizedOptional(partnerSummary),
       normalizedOptional(effectiveStyleContext),
       normalizedOptional(knownContactName),
+      // 只有非空才 append。無條件放進來會讓陣列永遠是 8 元素，舊 pending 的
+      // fingerprint digest 立刻全變，7 天窗內未結算的請求全部對不回去。
+      if (normalizedRefineInstruction != null) normalizedRefineInstruction,
     ]);
   }
 }

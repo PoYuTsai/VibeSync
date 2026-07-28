@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/analysis/data/services/optimize_message_request_session.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
+import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 
 const _ownerA = '11111111-1111-4111-8111-111111111111';
 const _ownerB = '22222222-2222-4222-8222-222222222222';
@@ -161,6 +162,127 @@ void main() {
       );
 
       expect(sameWire, first);
+    });
+
+    // 這兩條金值是 2026-07-29 加入 refineInstruction 之前跑出來的實際值。
+    // 沒帶指令的請求，fingerprint 必須與當天 byte-identical，否則部署當下
+    // 7 天窗內所有未結算的 pending 都會變成 replay mismatch，使用者拿不回
+    // 已經付過錢的結果。shape 測試擋不住 normalizedOptional 之類的正規化
+    // 行為被改動，所以這裡鎖的是寫死的 64 位十六進位值。
+    test('legacy fingerprint digest is byte-identical to 2026-07-28', () {
+      const legacyFullDigest =
+          '46e0acc79337ce3605b7a064852c8707ddec66fc43855660225ccb21b6358f3f';
+      const legacyMinimalDigest =
+          '6bf6a2fd087afe8d35f635143bf802ffc76056558448964f6ceff253a62e338d';
+
+      final full = OptimizeMessageRequestIdSession.fingerprintFor(
+        messages: [
+          Message(
+            id: '1',
+            content: '嗨，週末有空嗎？',
+            isFromMe: false,
+            timestamp: DateTime.utc(2026, 7, 16),
+            quotedReplyPreview: '前一句',
+            quotedReplyPreviewIsFromMe: true,
+          ),
+          Message(
+            id: '2',
+            content: '看情況欸',
+            isFromMe: true,
+            timestamp: DateTime.utc(2026, 7, 16),
+          ),
+        ],
+        userDraft: '要不要一起去看展',
+        sessionContext: SessionContext(
+          meetingContext: MeetingContext.datingApp,
+          duration: AcquaintanceDuration.fewWeeks,
+          goal: UserGoal.dateInvite,
+          analysisContextNote: '她剛換工作',
+        ),
+        conversationSummary: '剛認識兩週',
+        partnerSummary: '喜歡藝術',
+        effectiveStyleContext: '幽默但不油',
+        knownContactName: '小美',
+      );
+      final minimal = OptimizeMessageRequestIdSession.fingerprintFor(
+        messages: [_message('嗨')],
+        userDraft: '想約妳喝咖啡',
+      );
+
+      expect(
+        OptimizeMessageRequestIdSession.digestFingerprint(full),
+        legacyFullDigest,
+      );
+      expect(
+        OptimizeMessageRequestIdSession.digestFingerprint(minimal),
+        legacyMinimalDigest,
+      );
+    });
+
+    test('refine instruction only joins the fingerprint when non-empty', () {
+      List<Message> messages() => [_message('嗨')];
+
+      final legacy = OptimizeMessageRequestIdSession.fingerprintFor(
+        messages: messages(),
+        userDraft: '想約妳喝咖啡',
+      );
+      final withInstruction = OptimizeMessageRequestIdSession.fingerprintFor(
+        messages: messages(),
+        userDraft: '想約妳喝咖啡',
+        refineInstruction: '再幽默一點',
+      );
+      final sameInstruction = OptimizeMessageRequestIdSession.fingerprintFor(
+        messages: messages(),
+        userDraft: '想約妳喝咖啡',
+        refineInstruction: '  再幽默一點  ',
+      );
+      final otherInstruction = OptimizeMessageRequestIdSession.fingerprintFor(
+        messages: messages(),
+        userDraft: '想約妳喝咖啡',
+        refineInstruction: '再短一點',
+      );
+
+      expect(withInstruction, sameInstruction);
+      expect(withInstruction, isNot(legacy));
+      expect(withInstruction, isNot(otherInstruction));
+
+      // 空字串／純空白／null 一律不得改變舊請求的 fingerprint。
+      for (final blank in <String?>[null, '', '   ']) {
+        expect(
+          OptimizeMessageRequestIdSession.fingerprintFor(
+            messages: messages(),
+            userDraft: '想約妳喝咖啡',
+            refineInstruction: blank,
+          ),
+          legacy,
+        );
+      }
+    });
+
+    test('legacy pending still matches after refine support lands', () async {
+      // 舊版存下的 pending 是以「沒有指令」的 fingerprint 建的；升級後同一筆
+      // 重送必須找回同一個 requestId，而不是鑄一顆新的（＝重複計費）。
+      final session = OptimizeMessageRequestIdSession();
+      final legacyFingerprint =
+          OptimizeMessageRequestIdSession.fingerprintFor(
+        messages: [_message('嗨')],
+        userDraft: '想約妳喝咖啡',
+      );
+
+      final pending = await session.beginAttempt(
+        ownerUserId: _ownerA,
+        fingerprint: legacyFingerprint,
+      );
+      final restored = await session.findPending(
+        ownerUserId: _ownerA,
+        fingerprint: OptimizeMessageRequestIdSession.fingerprintFor(
+          messages: [_message('嗨')],
+          userDraft: '想約妳喝咖啡',
+          refineInstruction: null,
+        ),
+      );
+
+      expect(restored?.requestId, pending.requestId);
     });
 
     test('success and explicit reset rotate the next attempt', () async {

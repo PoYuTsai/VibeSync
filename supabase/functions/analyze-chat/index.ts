@@ -6937,6 +6937,9 @@ ${recentText}`;
           effectiveStyleContext,
           knownContactName,
           forceModel: typeof forceModel === "string" ? forceModel : null,
+          // 指令必須綁進冪等鍵，否則同一句草稿的兩種不同微調會共用同一顆
+          // request id 的帳本列，第二次會 replay 出第一次的結果。
+          refineInstruction: refineInstruction ?? null,
         });
         const { data: replayRow, error: replayReadError } = await supabase
           .from("optimize_message_requests")
