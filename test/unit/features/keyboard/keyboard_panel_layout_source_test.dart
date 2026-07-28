@@ -5,6 +5,15 @@ import 'package:flutter_test/flutter_test.dart';
 String _window(String source, int start, int length) =>
     source.substring(start, (start + length).clamp(0, source.length));
 
+/// A fixed-length window silently drops assertions as soon as the function
+/// grows, so slice to the next declaration instead.
+String _functionBody(String source, String signature) {
+  final start = source.indexOf(signature);
+  if (start < 0) return '';
+  final end = source.indexOf('\n    private func ', start + signature.length);
+  return source.substring(start, end < 0 ? source.length : end);
+}
+
 /// The screenshot flow owns the keyboard's main surface. The older paste flow
 /// still exists — it is the only path when a conversation cannot be
 /// screenshotted — but it lives behind a switch instead of sharing the panel,
@@ -105,20 +114,68 @@ void main() {
     expect(body, contains('.photoPermissionRequired'));
   });
 
-  test('the free second batch is only offered when it exists', () {
+  test('another batch is always one tap away', () {
     final source = controller.readAsStringSync();
 
-    expect(
-      source,
-      contains('screenshotSwapButton.isHidden = !presentation.canSwapBatch'),
-    );
-    expect(source, contains('#selector(swapCandidateBatch)'));
-    final action = source.indexOf('func swapCandidateBatch()');
+    expect(source, contains('#selector(requestNewCandidateBatch)'));
+    final action = source.indexOf('func requestNewCandidateBatch()');
     expect(action, greaterThanOrEqualTo(0));
     expect(
       _window(source, action, 140),
-      contains('screenshotCoordinator.swapBatch()'),
+      contains('screenshotCoordinator.requestNewBatch()'),
     );
+  });
+
+  test('the capture and what we say about it read as a conversation', () {
+    final source = controller.readAsStringSync();
+
+    // Thumbnail on the left where the other person's messages sit, our status
+    // answering from the right — a centered caption over a full-width image
+    // read as a loading screen, not a reply being written.
+    final row = source.indexOf('screenshotProgressRow.axis = .horizontal');
+    expect(row, greaterThanOrEqualTo(0));
+    final body = _window(source, row, 420);
+    expect(
+      body.indexOf('addArrangedSubview(screenshotPreviewImageView)'),
+      lessThan(body.indexOf('addArrangedSubview(screenshotStatusBubble)')),
+      reason: 'The capture leads; the bubble answers it.',
+    );
+    expect(
+      source,
+      contains('screenshotPanel.addArrangedSubview(screenshotProgressRow)'),
+    );
+    // An empty bubble is a grey rectangle with nothing in it.
+    expect(
+      source,
+      contains(
+        'screenshotStatusBubble.isHidden = (renderState.message ?? "").isEmpty',
+      ),
+    );
+  });
+
+  test('the capture animates in once and never repeats', () {
+    final source = controller.readAsStringSync();
+    final body = _functionBody(source, 'private func showCapture(');
+    expect(body, isNot(isEmpty));
+
+    expect(
+      body,
+      contains('guard isNewCapture, image != nil else { return }'),
+      reason: 'Re-rendering the same capture must not re-animate it; every '
+          'render state change calls through here.',
+    );
+    // An input view that never settles never stops redrawing.
+    expect(body, isNot(contains('repeat')));
+    expect(body, isNot(contains('autoreverse')));
+
+    // Reset runs before every render, so a half-finished transform must not
+    // survive into the next capture.
+    final reset = _functionBody(
+      source,
+      'private func resetScreenshotControls()',
+    );
+    expect(reset, contains('screenshotPreviewImageView.transform = .identity'));
+    expect(reset, contains('screenshotPreviewImageView.alpha = 1'));
   });
 
   test('an explicit voice replaces the pair instead of diluting it', () {

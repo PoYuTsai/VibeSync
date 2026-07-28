@@ -30,22 +30,12 @@ const STRING_ENUMS: Record<string, readonly string[]> = {
   // `errorCode` alone collapses "not a one-to-one chat" together with "the
   // transcript is quoting our own panel", which are opposite problems.
   rejectDetail: [
-    "group",
     "social_feed",
     "non_chat",
     "own_prior_candidates",
     "compiler_schema",
-    "compiler_grounding",
-    "compiler_grounding_cue",
+    "compiler_strategy_collision",
     "compiler_grounding_candidate",
-    "judge_schema",
-    "judge_not_ready",
-    "judge_drift_source",
-    "judge_drift_turn_state",
-    "judge_drift_cue",
-    "judge_drift_uncertainty",
-    "judge_drift_option_not_from_compiler",
-    "judge_drift_explanation",
   ],
 };
 
@@ -54,7 +44,6 @@ const NUMBER_KEYS = new Set([
   "preprocessMs",
   "uploadMs",
   "compilerMs",
-  "judgeMs",
   "settlementMs",
   "totalMs",
   "attemptCount",

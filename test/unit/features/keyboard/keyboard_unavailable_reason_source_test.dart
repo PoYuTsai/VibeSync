@@ -5,6 +5,15 @@ import 'package:flutter_test/flutter_test.dart';
 String _window(String source, int start, int length) =>
     source.substring(start, (start + length).clamp(0, source.length));
 
+/// A fixed-length window silently drops branches as soon as the function grows,
+/// so slice to the next declaration instead.
+String _functionBody(String source, String signature) {
+  final start = source.indexOf(signature);
+  if (start < 0) return '';
+  final end = source.indexOf('\n    private func ', start + signature.length);
+  return source.substring(start, end < 0 ? source.length : end);
+}
+
 /// The states that hide the screenshot panel also hide the panel's own status
 /// label, so a real user experienced "I screenshot and nothing happens" with no
 /// explanation anywhere. Whatever reason those states carry has to reach the
@@ -19,9 +28,9 @@ void main() {
 
   test('a hidden panel still explains itself', () {
     final source = controller.readAsStringSync();
-    final start = source.indexOf('private func renderScreenshotAssist(');
-    expect(start, greaterThanOrEqualTo(0));
-    final body = _window(source, start, 900);
+    expect(source.indexOf('private func renderScreenshotAssist('),
+        greaterThanOrEqualTo(0));
+    final body = _functionBody(source, 'private func renderScreenshotAssist(');
 
     expect(
       RegExp('surfaceUnavailableReason').allMatches(body).length,

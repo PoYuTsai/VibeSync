@@ -42,7 +42,9 @@ Deno.test("keyboard assist index keeps quota, rate, and provider identities dist
   assert(source.includes("createAnthropicKeyboardAssistProvider"));
   assert(source.includes("runKeyboardAssistPipeline"));
   assert(source.includes("KEYBOARD_ASSIST_COMPILER_MODEL"));
-  assert(source.includes("KEYBOARD_ASSIST_JUDGE_MODEL"));
+  // One call, so one model to negotiate. A leftover judge-model requirement
+  // would fail capability negotiation closed over a stage that no longer runs.
+  assert(!source.includes("KEYBOARD_ASSIST_JUDGE_MODEL"));
   assert(source.includes("KEYBOARD_SCREENSHOT_PIPELINE_VERSION"));
   assert(source.includes("KEYBOARD_ASSIST_HMAC_KEYS_JSON"));
   assert(source.includes("KEYBOARD_ASSIST_HMAC_CURRENT_VERSION"));
@@ -57,11 +59,9 @@ Deno.test("keyboard assist index keeps quota, rate, and provider identities dist
       "KEYBOARD_ASSIST_COMPILER_MODEL === KEYBOARD_ASSIST_MODEL_ID",
     ),
   );
-  assert(
-    source.includes(
-      "KEYBOARD_ASSIST_JUDGE_MODEL === KEYBOARD_ASSIST_MODEL_ID",
-    ),
-  );
+  // The stored result's ledger key carries the pipeline that produced it, so a
+  // two-stage result cannot be replayed as a one-stage one.
+  assert(source.includes('"compiler-only-v1"'));
 });
 
 Deno.test("keyboard assist stays migration-gated and release preflight checks its config", () => {

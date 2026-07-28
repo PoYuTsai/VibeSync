@@ -8,11 +8,12 @@ Deno.test("keyboard assist telemetry is scalar allowlist only", () => {
   const sanitized = sanitizeKeyboardAssistTelemetry({
     event: "keyboard_assist_succeeded",
     contractVersion: "keyboard-assist-v1",
-    pipelineVersion: "compiler-judge-v1",
+    pipelineVersion: "compiler-only-v1",
     cohort: "internal",
     imageBytesBucket: "250-500K",
     dimensionClass: "phone",
     compilerMs: 8000,
+    // The second stage is gone; a stray reading from it must not survive.
     judgeMs: 3000,
     totalMs: 12000,
     status: "ready",
@@ -28,12 +29,11 @@ Deno.test("keyboard assist telemetry is scalar allowlist only", () => {
   assertEquals(sanitized, {
     event: "keyboard_assist_succeeded",
     contractVersion: "keyboard-assist-v1",
-    pipelineVersion: "compiler-judge-v1",
+    pipelineVersion: "compiler-only-v1",
     cohort: "internal",
     imageBytesBucket: "250-500K",
     dimensionClass: "phone",
     compilerMs: 8000,
-    judgeMs: 3000,
     totalMs: 12000,
     status: "ready",
     replay: false,
@@ -60,13 +60,13 @@ Deno.test("keyboard assist telemetry keeps the rejection detail token", () => {
       event: "keyboard_assist_failed",
       status: "failed",
       errorCode: "unsupported_conversation",
-      rejectDetail: "group",
+      rejectDetail: "own_prior_candidates",
     }),
     {
       event: "keyboard_assist_failed",
       status: "failed",
       errorCode: "unsupported_conversation",
-      rejectDetail: "group",
+      rejectDetail: "own_prior_candidates",
     },
   );
 });

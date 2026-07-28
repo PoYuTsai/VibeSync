@@ -4,6 +4,7 @@ import {
   assertRejects,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  KEYBOARD_ASSIST_UNGROUNDED_CUE_FALLBACK,
   KeyboardAssistPipelineError,
   runKeyboardAssistPipeline,
 } from "./pipeline.ts";
@@ -14,6 +15,8 @@ const image = {
   base64: "AQID",
   mediaType: "image/png" as const,
 };
+
+const PIPELINE_VERSION = "compiler-only-v1";
 
 function compilerOutput(sideConfidence: "high" | "low" = "high") {
   return {
@@ -32,70 +35,54 @@ function compilerOutput(sideConfidence: "high" | "low" = "high") {
       {
         strategy: "extend" as const,
         text: "有啊，你有什麼想法？",
+        why: "先接住對方的問題",
+        effect: "自然延續",
         evidenceIndices: [0],
       },
       {
         strategy: "flirt" as const,
         text: "有空，聽起來你已經有計畫了 😄",
+        why: "接住邀約感並增加溫度",
+        effect: "互動感較高",
         evidenceIndices: [0],
       },
       {
         strategy: "humor" as const,
         text: "有空，你是想約白天還是晚上？",
+        why: "把球輕輕丟回去",
+        effect: "節奏最輕",
         evidenceIndices: [0],
       },
     ],
   };
 }
 
-const judged = {
-  contractVersion: "keyboard-assist-v1" as const,
-  status: "ready" as const,
-  source: {
-    scope: "screenshot_plus_global_voice" as const,
-    messageCount: 2,
-    confidence: "high" as const,
-    sideConfidence: "high" as const,
-  },
-  turnState: "reply_due" as const,
-  cue: "對方剛問你週六是否有空。",
-  uncertainty: null,
-  options: [
-    {
-      strategy: "extend" as const,
-      text: "有啊，你有什麼想法？",
-      why: "先接住對方的問題",
-      effect: "自然延續",
-    },
-    {
-      strategy: "flirt" as const,
-      text: "有空，聽起來你已經有計畫了 😄",
-      why: "接住邀約感並增加溫度",
-      effect: "互動感較高",
-    },
-    {
-      strategy: "humor" as const,
-      text: "有空，你是想約白天還是晚上？",
-      why: "把球輕輕丟回去",
-      effect: "節奏最輕",
-    },
-  ],
-};
+function run(
+  overrides: Partial<Parameters<typeof runKeyboardAssistPipeline>[0]> = {},
+) {
+  return runKeyboardAssistPipeline({
+    image,
+    speakerOverride: "none",
+    voice: { primary: null, secondary: null },
+    priorTurn: null,
+    pipelineVersion: PIPELINE_VERSION,
+    signal: new AbortController().signal,
+    compiler: () => Promise.resolve(compilerOutput()),
+    renewLease: () => Promise.resolve(true),
+    nowMs: () => 1000,
+    deadlineAtMs: 41_000,
+    ...overrides,
+  });
+}
 
-Deno.test("compiler sees the image once; judge receives normalized text only", async () => {
+Deno.test("one model call produces the whole served result", async () => {
   let compilerCalls = 0;
-  let judgeCalls = 0;
-  let judgePayload = "";
   const renewStages: string[] = [];
   const stageTimings: Record<string, number> = {};
   let nowMs = 1000;
-  const result = await runKeyboardAssistPipeline({
-    image,
-    speakerOverride: "none",
+
+  const result = await run({
     voice: { primary: "steady", secondary: null },
-    priorTurn: null,
-    pipelineVersion: "compiler-judge-v1",
-    signal: new AbortController().signal,
     compiler: (request) => {
       compilerCalls++;
       nowMs += 320;
@@ -103,154 +90,124 @@ Deno.test("compiler sees the image once; judge receives normalized text only", a
       assertEquals(request.voice, { primary: "steady", secondary: null });
       return Promise.resolve(compilerOutput());
     },
-    judge: (request) => {
-      judgeCalls++;
-      nowMs += 90;
-      judgePayload = JSON.stringify(request);
-      return Promise.resolve(judged);
-    },
     renewLease: (stage) => {
       renewStages.push(stage);
       return Promise.resolve(true);
     },
     recordStageTiming: (timing) => Object.assign(stageTimings, timing),
     nowMs: () => nowMs,
-    deadlineAtMs: 41_000,
   });
-  assertEquals(result, judged);
-  assertEquals(compilerCalls, 1);
-  assertEquals(judgeCalls, 1);
-  assertEquals(renewStages, ["after_compiler", "after_judge"]);
-  assert(!judgePayload.includes("AQID"));
-  assert(!judgePayload.includes('"bytes"'));
-  assert(judgePayload.includes("週六有空嗎"));
-  assertEquals(stageTimings, { compilerMs: 320, judgeMs: 90 });
-});
 
-Deno.test("low speaker confidence returns stored no-charge shape without judge", async () => {
-  let judgeCalls = 0;
-  const result = await runKeyboardAssistPipeline({
-    image,
-    speakerOverride: "none",
-    voice: { primary: null, secondary: null },
-    priorTurn: null,
-    pipelineVersion: "compiler-judge-v1",
-    signal: new AbortController().signal,
-    compiler: () => Promise.resolve(compilerOutput("low")),
-    judge: () => {
-      judgeCalls++;
-      return Promise.resolve(judged);
-    },
-    renewLease: () => Promise.resolve(true),
-    nowMs: () => 1000,
-    deadlineAtMs: 41_000,
-  });
+  assertEquals(compilerCalls, 1);
+  assertEquals(renewStages, ["after_compiler"]);
+  assertEquals(stageTimings, { compilerMs: 320 });
   assertEquals(result, {
     contractVersion: "keyboard-assist-v1",
-    status: "needs_speaker_confirmation",
-    suggestedMySide: "right",
-    sideConfidence: "low",
-  });
-  assertEquals(judgeCalls, 0);
-  assert(!JSON.stringify(result).includes("messages"));
-});
-
-Deno.test("speaker override allows low-confidence compiler output to proceed", async () => {
-  let judgeCalls = 0;
-  await runKeyboardAssistPipeline({
-    image,
-    speakerOverride: "left_is_me",
-    voice: { primary: "steady", secondary: null },
-    priorTurn: null,
-    pipelineVersion: "compiler-judge-v1",
-    signal: new AbortController().signal,
-    compiler: () => Promise.resolve(compilerOutput("low")),
-    judge: () => {
-      judgeCalls++;
-      return Promise.resolve({
-        ...judged,
-        source: { ...judged.source, sideConfidence: "low" as const },
-      });
+    status: "ready",
+    source: {
+      scope: "screenshot_plus_global_voice",
+      messageCount: 2,
+      confidence: "high",
+      sideConfidence: "high",
     },
-    renewLease: () => Promise.resolve(true),
-    nowMs: () => 1000,
-    deadlineAtMs: 41_000,
+    turnState: "reply_due",
+    cue: "對方剛問你週六是否有空。",
+    uncertainty: null,
+    options: [
+      {
+        strategy: "extend",
+        text: "有啊，你有什麼想法？",
+        why: "先接住對方的問題",
+        effect: "自然延續",
+      },
+      {
+        strategy: "flirt",
+        text: "有空，聽起來你已經有計畫了 😄",
+        why: "接住邀約感並增加溫度",
+        effect: "互動感較高",
+      },
+      {
+        strategy: "humor",
+        text: "有空，你是想約白天還是晚上？",
+        why: "把球輕輕丟回去",
+        effect: "節奏最輕",
+      },
+    ],
   });
-  assertEquals(judgeCalls, 1);
+  // The transcript is working material, not something the user asked for.
+  assert(!JSON.stringify(result).includes("evidenceIndices"));
 });
 
-Deno.test("non-chat and invalid grounding fail before judge with no result", async () => {
-  const nonChat = {
-    ...compilerOutput(),
-    conversationType: "non_chat" as const,
-    cue: "行程公告：明天下午 3 點開會",
-    messages: [],
-    candidates: [],
-  };
-  const error = await assertRejects(
-    () =>
-      runKeyboardAssistPipeline({
-        image,
-        speakerOverride: "none",
-        voice: { primary: null, secondary: null },
-        priorTurn: null,
-        pipelineVersion: "compiler-judge-v1",
-        signal: new AbortController().signal,
-        compiler: () => Promise.resolve(nonChat),
-        judge: () => Promise.resolve(judged),
-        renewLease: () => Promise.resolve(true),
-        nowMs: () => 1000,
-        deadlineAtMs: 41_000,
-      }),
-    KeyboardAssistPipelineError,
-  );
-  assertEquals(error.code, "unsupported_conversation");
-  // The verdict token must survive to telemetry: "we saw something that is not
-  // a one-to-one chat" and "we saw our own panel quoted back" share an error
-  // code but need opposite fixes.
-  assertEquals(error.detail, "non_chat");
+Deno.test("an unsure read on which side is me no longer stops the reply", async () => {
+  // Every mainstream chat app puts the user on the right, so a low-confidence
+  // read is a reason to keep going, not a question to interrupt with. Stopping
+  // here made an ordinary screenshot dead-end after the work was already paid
+  // for.
+  const result = await run({
+    compiler: () => Promise.resolve(compilerOutput("low")),
+  });
 
-  // With a single batch there is no slack: one unusable reply already leaves
-  // fewer than three, so there is nothing worth charging for.
-  const ungrounded = compilerOutput();
-  ungrounded.candidates[0].evidenceIndices = [99];
-  const invalid = await assertRejects(
-    () =>
-      runKeyboardAssistPipeline({
-        image,
-        speakerOverride: "none",
-        voice: { primary: null, secondary: null },
-        priorTurn: null,
-        pipelineVersion: "compiler-judge-v1",
-        signal: new AbortController().signal,
-        compiler: () => Promise.resolve(ungrounded),
-        judge: () => Promise.resolve(judged),
-        renewLease: () => Promise.resolve(true),
-        nowMs: () => 1000,
-        deadlineAtMs: 41_000,
-      }),
-    KeyboardAssistPipelineError,
-  );
-  assertEquals(invalid.code, "provider_invalid_output");
-  assertEquals(invalid.detail, "compiler_grounding_candidate");
+  assertEquals(result.status, "ready");
+  if (result.status !== "ready") throw new Error("expected a ready result");
+  assertEquals(result.source.sideConfidence, "low");
+  assertEquals(result.options.length, 3);
 });
 
-Deno.test("our own prior candidates read back as chat stop before judge", async () => {
+Deno.test("a group chat is served like any other conversation", async () => {
+  // A misfired group verdict was the single most common way a real two-person
+  // screenshot died, and the user had no way to argue with it.
+  const result = await run({
+    compiler: () =>
+      Promise.resolve({
+        ...compilerOutput(),
+        conversationType: "group" as const,
+      }),
+  });
+
+  assertEquals(result.status, "ready");
+});
+
+Deno.test("a screen with nothing to reply to is still refused, and says which", async () => {
+  for (const conversationType of ["social_feed", "non_chat"] as const) {
+    const error = await assertRejects(
+      () =>
+        run({
+          compiler: () =>
+            Promise.resolve({
+              ...compilerOutput(),
+              conversationType,
+              cue: "行程公告",
+              messages: [],
+              candidates: [],
+            }),
+        }),
+      KeyboardAssistPipelineError,
+    );
+    assertEquals(error.code, "unsupported_conversation");
+    // The verdict token must survive to telemetry: "there is no conversation
+    // here" and "we saw our own panel quoted back" share an error code but need
+    // opposite fixes.
+    assertEquals(error.detail, conversationType);
+  }
+});
+
+Deno.test("our own prior candidates read back as chat stop before a charge", async () => {
   const leaked = compilerOutput();
   // The keyboard trims its own panel out of the capture, but a geometry
   // mismatch can leave a previous candidate behind; that transcript describes
-  // our UI, not the conversation, and must never reach the judge or a charge.
+  // our UI, not the conversation.
   leaked.messages = [
     { index: 0, side: "left" as const, text: "週六有空嗎？" },
-    { index: 1, side: "right" as const, text: "有空，週六下午要不要一起喝杯咖啡？" },
+    {
+      index: 1,
+      side: "right" as const,
+      text: "有空，週六下午要不要一起喝杯咖啡？",
+    },
   ];
-  let judgeCalls = 0;
+
   const error = await assertRejects(
     () =>
-      runKeyboardAssistPipeline({
-        image,
-        speakerOverride: "none",
-        voice: { primary: null, secondary: null },
+      run({
         priorTurn: {
           offeredTexts: [
             "有空，週六下午要不要一起喝杯咖啡？",
@@ -258,22 +215,12 @@ Deno.test("our own prior candidates read back as chat stop before judge", async 
           ],
           insertedText: null,
         },
-        pipelineVersion: "compiler-judge-v1",
-        signal: new AbortController().signal,
         compiler: () => Promise.resolve(leaked),
-        judge: () => {
-          judgeCalls += 1;
-          return Promise.resolve(judged);
-        },
-        renewLease: () => Promise.resolve(true),
-        nowMs: () => 1000,
-        deadlineAtMs: 41_000,
       }),
     KeyboardAssistPipelineError,
   );
   assertEquals(error.code, "unsupported_conversation");
   assertEquals(error.detail, "own_prior_candidates");
-  assertEquals(judgeCalls, 0);
 });
 
 Deno.test("a suggestion the user sent is treated as real conversation", async () => {
@@ -283,253 +230,140 @@ Deno.test("a suggestion the user sent is treated as real conversation", async ()
     { index: 0, side: "left" as const, text: "週六有空嗎？" },
     { index: 1, side: "right" as const, text: sent },
   ];
-  const result = await runKeyboardAssistPipeline({
-    image,
-    speakerOverride: "none",
-    voice: { primary: "steady", secondary: null },
+
+  const result = await run({
     priorTurn: {
       offeredTexts: [sent, "有空，你是想約白天還是晚上？"],
       insertedText: sent,
     },
-    pipelineVersion: "compiler-judge-v1",
-    signal: new AbortController().signal,
     compiler: () => Promise.resolve(followUp),
-    judge: () => Promise.resolve(judged),
-    renewLease: () => Promise.resolve(true),
-    nowMs: () => 1000,
-    deadlineAtMs: 41_000,
   });
   assertEquals(result.status, "ready");
 });
 
-Deno.test("the prior turn reaches the compiler and never the judge", async () => {
+Deno.test("the prior turn reaches the compiler, which is what dedupes a new batch", async () => {
+  // "換一批" is the same call again with what the user has already seen, so the
+  // dedupe list has to arrive at the only stage there is.
   const priorTurn = {
     offeredTexts: ["有空，你是想約白天還是晚上？"],
     insertedText: null,
   };
   let compilerSaw: unknown = "unset";
-  let judgeSaw: unknown = "unset";
-  await runKeyboardAssistPipeline({
-    image,
-    speakerOverride: "none",
-    voice: { primary: "steady", secondary: null },
+
+  await run({
     priorTurn,
-    pipelineVersion: "compiler-judge-v1",
-    signal: new AbortController().signal,
     compiler: (request) => {
-      compilerSaw = (request as { priorTurn: unknown }).priorTurn;
+      compilerSaw = request.priorTurn;
       return Promise.resolve(compilerOutput());
     },
-    judge: (request) => {
-      judgeSaw = (request as Record<string, unknown>).priorTurn;
-      return Promise.resolve(judged);
-    },
-    renewLease: () => Promise.resolve(true),
-    nowMs: () => 1000,
-    deadlineAtMs: 41_000,
   });
   assertEquals(compilerSaw, priorTurn);
-  assertEquals(judgeSaw, undefined);
 });
 
-Deno.test("lost lease and insufficient judge budget stop the stale worker", async () => {
+Deno.test("a lost lease stops the stale worker before it returns a result", async () => {
   const stale = await assertRejects(
-    () =>
-      runKeyboardAssistPipeline({
-        image,
-        speakerOverride: "none",
-        voice: { primary: null, secondary: null },
-        priorTurn: null,
-        pipelineVersion: "compiler-judge-v1",
-        signal: new AbortController().signal,
-        compiler: () => Promise.resolve(compilerOutput()),
-        judge: () => Promise.resolve(judged),
-        renewLease: () => Promise.resolve(false),
-        nowMs: () => 1000,
-        deadlineAtMs: 41_000,
-      }),
+    () => run({ renewLease: () => Promise.resolve(false) }),
     KeyboardAssistPipelineError,
   );
   assertEquals(stale.code, "stale_owner");
-
-  const deadline = await assertRejects(
-    () =>
-      runKeyboardAssistPipeline({
-        image,
-        speakerOverride: "none",
-        voice: { primary: null, secondary: null },
-        priorTurn: null,
-        pipelineVersion: "compiler-judge-v1",
-        signal: new AbortController().signal,
-        compiler: () => Promise.resolve(compilerOutput()),
-        judge: () => Promise.resolve(judged),
-        renewLease: () => Promise.resolve(true),
-        nowMs: () => 37_500,
-        deadlineAtMs: 41_000,
-      }),
-    KeyboardAssistPipelineError,
-  );
-  assertEquals(deadline.code, "provider_timeout");
 });
 
 Deno.test("provider timeout remains distinct from invalid structured output", async () => {
   const timeout = await assertRejects(
     () =>
-      runKeyboardAssistPipeline({
-        image,
-        speakerOverride: "none",
-        voice: { primary: null, secondary: null },
-        priorTurn: null,
-        pipelineVersion: "compiler-judge-v1",
-        signal: new AbortController().signal,
+      run({
         compiler: () =>
           Promise.reject(
             new KeyboardAssistProviderError("timeout", "upstream timeout"),
           ),
-        judge: () => Promise.resolve(judged),
-        renewLease: () => Promise.resolve(true),
-        nowMs: () => 1000,
-        deadlineAtMs: 41_000,
       }),
     KeyboardAssistPipelineError,
   );
   assertEquals(timeout.code, "provider_timeout");
 });
 
-Deno.test("compiler and judge obey their own absolute deadlines", async () => {
+Deno.test("the compiler obeys its own absolute deadline", async () => {
   let compilerCalls = 0;
-  const compilerFence = await assertRejects(
+  const beforeStart = await assertRejects(
     () =>
-      runKeyboardAssistPipeline({
-        image,
-        speakerOverride: "none",
-        voice: { primary: null, secondary: null },
-        priorTurn: null,
-        pipelineVersion: "compiler-judge-v1",
-        signal: new AbortController().signal,
+      run({
         compiler: () => {
           compilerCalls++;
           return Promise.resolve(compilerOutput());
         },
-        judge: () => Promise.resolve(judged),
-        renewLease: () => Promise.resolve(true),
-        nowMs: () => 1000,
         compilerDeadlineAtMs: 999,
-        judgeDeadlineAtMs: 36_000,
-        deadlineAtMs: 41_000,
       }),
     KeyboardAssistPipelineError,
   );
-  assertEquals(compilerFence.code, "provider_timeout");
+  assertEquals(beforeStart.code, "provider_timeout");
   assertEquals(compilerCalls, 0);
 
-  const judgeFence = await assertRejects(
+  let nowMs = 1000;
+  const overran = await assertRejects(
     () =>
-      runKeyboardAssistPipeline({
-        image,
-        speakerOverride: "none",
-        voice: { primary: null, secondary: null },
-        priorTurn: null,
-        pipelineVersion: "compiler-judge-v1",
-        signal: new AbortController().signal,
-        compiler: () => Promise.resolve(compilerOutput()),
-        judge: () => Promise.resolve(judged),
-        renewLease: () => Promise.resolve(true),
-        nowMs: () => 32_500,
+      run({
+        compiler: () => {
+          nowMs = 36_000;
+          return Promise.resolve(compilerOutput());
+        },
+        nowMs: () => nowMs,
         compilerDeadlineAtMs: 35_000,
-        judgeDeadlineAtMs: 36_000,
-        deadlineAtMs: 41_000,
       }),
     KeyboardAssistPipelineError,
   );
-  assertEquals(judgeFence.code, "provider_timeout");
+  assertEquals(overran.code, "provider_timeout");
 });
 
-Deno.test("judge cannot replace grounded candidates with invented reply text", async () => {
-  const invented = {
-    ...judged,
-    options: judged.options.map((option, index) =>
-      index === 0 ? { ...option, text: "我記得你上次說你住台北" } : option
-    ),
-  };
-  const error = await assertRejects(
-    () =>
-      runKeyboardAssistPipeline({
-        image,
-        speakerOverride: "none",
-        voice: { primary: "steady", secondary: null },
-        priorTurn: null,
-        pipelineVersion: "compiler-judge-v1",
-        signal: new AbortController().signal,
-        compiler: () => Promise.resolve(compilerOutput()),
-        judge: () => Promise.resolve(invented),
-        renewLease: () => Promise.resolve(true),
-        nowMs: () => 1000,
-        deadlineAtMs: 41_000,
-      }),
-    KeyboardAssistPipelineError,
-  );
-  assertEquals(error.code, "provider_invalid_output");
-});
-
-Deno.test("an invented reply never reaches the judge", async () => {
+Deno.test("an invented reply is refused rather than served", async () => {
+  // With one batch there is no slack: one unusable reply already leaves fewer
+  // than three, so there is nothing worth charging for.
   const mostlyInvented = compilerOutput();
   mostlyInvented.candidates[0].text = "上次在台北那家店很好玩";
-  let judgeCalls = 0;
 
   const error = await assertRejects(
-    () =>
-      runKeyboardAssistPipeline({
-        image,
-        speakerOverride: "none",
-        voice: { primary: null, secondary: null },
-        priorTurn: null,
-        pipelineVersion: "compiler-judge-v1",
-        signal: new AbortController().signal,
-        compiler: () => Promise.resolve(mostlyInvented),
-        judge: () => {
-          judgeCalls++;
-          return Promise.resolve(judged);
-        },
-        renewLease: () => Promise.resolve(true),
-        nowMs: () => 1000,
-        deadlineAtMs: 41_000,
-      }),
+    () => run({ compiler: () => Promise.resolve(mostlyInvented) }),
     KeyboardAssistPipelineError,
   );
-
   assertEquals(error.code, "provider_invalid_output");
   assertEquals(error.detail, "compiler_grounding_candidate");
-  assertEquals(judgeCalls, 0);
+
+  const uncited = compilerOutput();
+  uncited.candidates[0].evidenceIndices = [99];
+  const invalid = await assertRejects(
+    () => run({ compiler: () => Promise.resolve(uncited) }),
+    KeyboardAssistPipelineError,
+  );
+  assertEquals(invalid.detail, "compiler_grounding_candidate");
+});
+
+Deno.test("a batch missing one of the three angles says so by name", async () => {
+  // The final validator would reject this anyway, but as a nameless 503. The
+  // token is what turns "it failed again" into a diagnosable row.
+  const collided = compilerOutput();
+  collided.candidates[1] = {
+    ...collided.candidates[1],
+    strategy: "extend" as const,
+  };
+
+  const error = await assertRejects(
+    () => run({ compiler: () => Promise.resolve(collided) }),
+    KeyboardAssistPipelineError,
+  );
+  assertEquals(error.code, "provider_invalid_output");
+  assertEquals(error.detail, "compiler_strategy_collision");
 });
 
 Deno.test("an invented explanation is replaced, never served", async () => {
   // The explanation is our commentary on a reply, not the reply. It still must
   // never carry a fact from outside the screenshot to the user — but throwing
   // the whole screenshot away over a sentence of colour is the wrong price.
-  const inventedExplanation = {
-    ...judged,
-    options: judged.options.map((option, index) =>
-      index === 0
-        ? { ...option, why: "承接上次在台北的共同回憶" }
-        : index === 1
-        ? { ...option, effect: "方便明天推進" }
-        : option
-    ),
-  };
+  const invented = compilerOutput();
+  invented.candidates[0].why = "承接上次在台北的共同回憶";
+  invented.candidates[1].effect = "方便明天推進";
 
-  const result = await runKeyboardAssistPipeline({
-    image,
-    speakerOverride: "none",
+  const result = await run({
     voice: { primary: "steady", secondary: null },
-    priorTurn: null,
-    pipelineVersion: "compiler-judge-v1",
-    signal: new AbortController().signal,
-    compiler: () => Promise.resolve(compilerOutput()),
-    judge: () => Promise.resolve(inventedExplanation),
-    renewLease: () => Promise.resolve(true),
-    nowMs: () => 1000,
-    deadlineAtMs: 41_000,
+    compiler: () => Promise.resolve(invented),
   });
 
   if (result.status !== "ready") throw new Error("expected a ready result");
@@ -539,6 +373,17 @@ Deno.test("an invented explanation is replaced, never served", async () => {
   // The replies themselves are untouched; only the explanations changed.
   assertEquals(
     result.options.map((option) => option.text),
-    judged.options.map((option) => option.text),
+    compilerOutput().candidates.map((candidate) => candidate.text),
   );
+});
+
+Deno.test("an ungrounded cue is swapped for a factless line, not a failure", async () => {
+  const invented = compilerOutput();
+  invented.cue = "你們上次在台北聊過這件事";
+
+  const result = await run({ compiler: () => Promise.resolve(invented) });
+
+  if (result.status !== "ready") throw new Error("expected a ready result");
+  assertEquals(result.cue, KEYBOARD_ASSIST_UNGROUNDED_CUE_FALLBACK);
+  assertEquals(result.options.length, 3);
 });

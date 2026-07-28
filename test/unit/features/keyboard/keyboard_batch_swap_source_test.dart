@@ -2,24 +2,27 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// One visible batch of three, one line per angle — 延展 / 調情 / 幽默 — and no
-/// "換一批". Six options across two batches cost twice the judge output for a
-/// choice nobody was asking to make, and every extra constraint (two batches,
-/// distinct strategies within each, no overlap between them) was another way
-/// for an ordinary screenshot to be refused.
-///
-/// The second-batch machinery is left in place but dormant: `alternates` is
-/// still optional in the contract and the client still knows how to swap, so
-/// bringing it back is a server decision rather than a new build.
+/// One visible batch of three, one line per angle — 延展 / 調情 / 幽默 — and
+/// "換一批" means generating another three, not revealing three that were held
+/// back. Producing six per request cost every screenshot the output for three
+/// lines most users never asked for, and capped the feature at exactly one
+/// retry; each extra cross-batch constraint was another way for an ordinary
+/// screenshot to be refused outright.
 /// Reading a bounded window after an anchor, without falling off the end of a
 /// short file.
 String _window(String source, int start, int length) =>
     source.substring(start, (start + length).clamp(0, source.length));
 
+/// A fixed-length window silently drops assertions as soon as the function
+/// grows, so slice to the next declaration instead.
+String _functionBody(String source, String signature) {
+  final start = source.indexOf(signature);
+  if (start < 0) return '';
+  final end = source.indexOf('\n    private func ', start + signature.length);
+  return source.substring(start, end < 0 ? source.length : end);
+}
+
 void main() {
-  final judgePrompt = File(
-    'supabase/functions/keyboard-assist/judge_prompt.ts',
-  );
   final compilerPrompt = File(
     'supabase/functions/keyboard-assist/compiler_prompt.ts',
   );
@@ -28,9 +31,6 @@ void main() {
   final serverValidate = File(
     'supabase/functions/keyboard-assist/validate.ts',
   );
-  final grounding = File('supabase/functions/keyboard-assist/grounding.ts');
-  final contracts = File('ios/SharedKeyboard/KeyboardAssistContracts.swift');
-  final binding = File('ios/VibeSyncKeyboard/KeyboardRequestBinding.swift');
   final state = File('ios/VibeSyncKeyboard/KeyboardAssistState.swift');
   final controller = File(
     'ios/VibeSyncKeyboard/KeyboardViewController.swift',
@@ -62,106 +62,111 @@ void main() {
     }
   });
 
-  test('one batch of three, and the judge is told not to build a second', () {
-    expect(
-      compilerPrompt.readAsStringSync(),
-      contains('正好三個'),
-    );
+  test('one call produces exactly one batch of three', () {
+    expect(compilerPrompt.readAsStringSync(), contains('正好三個'));
     expect(
       normalize.readAsStringSync(),
       contains('value.candidates.length !== 3'),
     );
-    final prompt = judgePrompt.readAsStringSync();
-    expect(prompt, contains('選出 3 個放進 options'));
-    expect(prompt, contains('不要輸出 alternates'));
-
-    // A judge that cannot be truncated still needs headroom for three
-    // explained options.
-    final provider = File(
-      'supabase/functions/keyboard-assist/provider.ts',
-    ).readAsStringSync();
-    expect(provider, contains('max_tokens: 2600'));
-    final requiredBlock = provider.substring(
-      provider.indexOf('required: [', provider.indexOf('JUDGE_OUTPUT_SCHEMA')),
-      provider.indexOf('} as const;', provider.indexOf('JUDGE_OUTPUT_SCHEMA')),
-    );
-    expect(requiredBlock, contains('"options"'));
-    expect(requiredBlock, isNot(contains('"alternates"')));
-  });
-
-  test('a missing second batch is a shape, not a crash', () {
-    expect(
-      contract.readAsStringSync(),
-      contains('alternates?: KeyboardAssistOption[];'),
-    );
-    expect(
-      grounding.readAsStringSync(),
-      contains('[...result.options, ...(result.alternates ?? [])].every('),
-      reason: 'Anything served is grounded, and an absent batch is not an '
-          'error to throw on.',
-    );
     final validate = serverValidate.readAsStringSync();
     expect(validate, contains('function isBatchOfThree('));
     expect(validate, contains('return strategies.size === 3;'));
-    expect(
-      contracts.readAsStringSync(),
-      contains('alternates.isEmpty || Self.isBatchOfThree(alternates)'),
-    );
   });
 
-  test('the dormant swap can never become a second billed request', () {
+  test('"換一批" is another analysis, not a reserve batch', () {
     final source = coordinator.readAsStringSync();
-    final start = source.indexOf('func swapBatch()');
-    expect(start, greaterThanOrEqualTo(0));
-    final body = _window(source, start, 420);
+    final body = _functionBody(source, 'func requestNewBatch()');
+    expect(body, isNot(isEmpty));
 
-    expect(body, contains('stateMachine.send(.batchSwapped)'));
-    for (final forbidden in [
-      'network.',
-      'prepareAndSubmit',
-      'fetchLatest',
-      'start(hasFullAccess',
-    ]) {
-      expect(
-        body,
-        isNot(contains(forbidden)),
-        reason: '"換一批" must serve candidates this request already produced.',
-      );
-    }
-
-    final machine = state.readAsStringSync();
-    final swap = machine.indexOf('case .batchSwapped:');
-    expect(swap, greaterThanOrEqualTo(0));
-    final transition = _window(machine, swap, 320);
-    expect(transition, contains('case .resultsPreview(let presentation) = state'));
-    expect(transition, contains('presentation.canSwapBatch'));
-    expect(
-      transition,
-      contains('state = .resultsPreview(presentation.swappingBatch())'),
-    );
-  });
-
-  test('swapping is reversible and keeps the same request identity', () {
-    final source = binding.readAsStringSync();
-    final start = source.indexOf('func swappingBatch()');
-    expect(start, greaterThanOrEqualTo(0));
-    final body = _window(source, start, 700);
-
-    expect(body, contains('binding: binding'));
-    expect(body, contains('options: alternates'));
-    expect(body, contains('alternates: options'));
+    // Regenerating is the whole point: it goes back through the same submit
+    // path every other generation uses.
+    expect(body, contains('prepareAndSubmit'));
     expect(
       body,
-      contains('presentedAt: presentedAt'),
-      reason: 'Swapping must not extend the safe insertion window.',
+      contains('rememberOffered(presentation.options.map(\\.text))'),
+      reason: 'Without the lines already on screen, a new batch has no reason '
+          'to differ from the one it replaces.',
+    );
+    // A newer screenshot while the result sat on screen means the user has
+    // moved on; re-rolling the old capture would answer a stale conversation.
+    expect(body, contains('screenshotProvider.fetchLatest('));
+    expect(body, contains('self.screenshotDidChange()'));
+    // The re-roll must stay bound to the capture that produced the result.
+    expect(
+      body,
+      contains(
+        'presentation.binding.assetIdentifier ==\n'
+        '                selectedScreenshot.assetIdentifier',
+      ),
+    );
+
+    // Nothing is held back any more, so nothing decides whether the button is
+    // available except having a result to re-roll.
+    expect(source, isNot(contains('canSwapBatch')));
+    expect(source, isNot(contains('alternates')));
+  });
+
+  test('a re-roll starts a real generation, not an in-place swap', () {
+    // Submitting re-seeds the state machine, so a generation can start from a
+    // result without `generationStarted` needing its own `.resultsPreview`
+    // case. What keeps the re-roll honest is the asset check above, not a
+    // transition guard.
+    final source = coordinator.readAsStringSync();
+    final submit = source.indexOf('private func submitPreparedImage(');
+    expect(submit, greaterThanOrEqualTo(0));
+    final body = source.substring(submit);
+    final seed = body.indexOf('stateMachine = KeyboardAssistStateMachine(');
+    expect(seed, greaterThanOrEqualTo(0));
+    expect(
+      body.indexOf('stateMachine.send(.generationStarted(binding))'),
+      greaterThan(seed),
+    );
+
+    // The old in-place swap is gone; there is no held-back batch to swap to.
+    final machine = state.readAsStringSync();
+    expect(machine, isNot(contains('batchSwapped')));
+    expect(machine, isNot(contains('alternates')));
+  });
+
+  test('the button is offered whenever there is a result to re-roll', () {
+    final swift = controller.readAsStringSync();
+    expect(
+      swift,
+      contains(
+        'screenshotSwapButton.isHidden =\n'
+        '                !screenshotCoordinator.canRequestNewBatch',
+      ),
+    );
+    expect(swift, contains('#selector(requestNewCandidateBatch)'));
+
+    final source = coordinator.readAsStringSync();
+    final start = source.indexOf('var canRequestNewBatch: Bool {');
+    expect(start, greaterThanOrEqualTo(0));
+    final body = _window(source, start, 200);
+    expect(body, contains('case .resultsPreview = stateMachine.state'));
+    expect(
+      body,
+      contains('latestScreenshot != nil'),
+      reason: 'Offering a re-roll with no capture to re-roll is a dead button.',
     );
   });
 
   test('everything offered counts as offered for leak detection', () {
+    final source = coordinator.readAsStringSync();
     expect(
-      coordinator.readAsStringSync(),
-      contains('(ready.options + ready.alternates).map(\\.text)'),
+      source,
+      contains('rememberOffered(ready.options.map(\\.text))'),
       reason: 'Anything shown to the user can leak back through a screenshot.',
+    );
+    // Repeated re-rolls have to diverge from every batch the user has seen in
+    // this chat, not just the one immediately before.
+    final body = _functionBody(source, 'private func rememberOffered(');
+    expect(body, contains('priorTurnForCurrentDocument()?.offeredTexts'));
+    expect(
+      body,
+      contains('KeyboardSharedConfig.maximumPriorOfferedTexts'),
+      reason: 'An over-long list is rejected wholesale by the contract, which '
+          'would silently drop the dedupe hint entirely.',
     );
   });
 }

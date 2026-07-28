@@ -160,9 +160,6 @@ function fakeDependencies() {
     runPipeline: (input) => {
       calls.push("pipeline");
       input.recordStageTiming({ compilerMs: 300 });
-      if (pipelineResult.status === "ready") {
-        input.recordStageTiming({ judgeMs: 150 });
-      }
       monotonicMs += 500;
       return Promise.resolve(pipelineResult);
     },
@@ -172,7 +169,7 @@ function fakeDependencies() {
       currentVersion: 1,
       keys: new Map([[1, KEY]]),
     },
-    pipelineVersion: "compiler-judge-v1",
+    pipelineVersion: "compiler-only-v1",
     now: () => new Date("2026-07-27T12:00:00.000Z"),
     monotonicNow: () => monotonicMs,
     randomUuid: () => "223e4567-e89b-42d3-a456-426614174000",
@@ -266,7 +263,7 @@ Deno.test("capability negotiation happens before any screenshot or ledger lookup
   assertEquals(await responseJson(response), {
     contractVersion: "keyboard-assist-v1",
     enabled: false,
-    pipelineVersion: "compiler-judge-v1",
+    pipelineVersion: "compiler-only-v1",
   });
   assertEquals(response.headers.get("cache-control"), "no-store");
   assertEquals(fake.calls, ["auth"]);
@@ -426,10 +423,9 @@ Deno.test("ready settles once with quota; speaker confirmation settles zero", as
   assertEquals(readyFake.telemetryRecords, [{
     event: "keyboard_assist_succeeded",
     contractVersion: "keyboard-assist-v1",
-    pipelineVersion: "compiler-judge-v1",
+    pipelineVersion: "compiler-only-v1",
     status: "ready",
     compilerMs: 300,
-    judgeMs: 150,
     totalMs: 500,
     replay: false,
   }]);
@@ -461,7 +457,7 @@ Deno.test("ready settles once with quota; speaker confirmation settles zero", as
   assertEquals(confirmFake.telemetryRecords, [{
     event: "keyboard_assist_succeeded",
     contractVersion: "keyboard-assist-v1",
-    pipelineVersion: "compiler-judge-v1",
+    pipelineVersion: "compiler-only-v1",
     status: "needs_speaker_confirmation",
     compilerMs: 300,
     totalMs: 500,

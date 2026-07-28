@@ -3,14 +3,12 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { KEYBOARD_ASSIST_COMPILER_PROMPT } from "./compiler_prompt.ts";
-import { KEYBOARD_ASSIST_JUDGE_PROMPT } from "./judge_prompt.ts";
 import {
-  KEYBOARD_ASSIST_COMPILER_TIMEOUT_MS,
-  KEYBOARD_ASSIST_JUDGE_TIMEOUT_MS,
   createAnthropicKeyboardAssistProvider,
-  type KeyboardAssistJudgeRequest,
+  KEYBOARD_ASSIST_COMPILER_TIMEOUT_MS,
 } from "./provider.ts";
-import type { NormalizedKeyboardAssistCompilerOutput } from "./normalize.ts";
+
+const PIPELINE_VERSION = "compiler-only-v1";
 
 const compilerJson = {
   conversationType: "chat",
@@ -24,38 +22,65 @@ const compilerJson = {
   candidates: ["extend", "flirt", "humor"].map((strategy, index) => ({
     strategy,
     text: `候選 ${index + 1}`,
+    why: "順著對方的問題接",
+    effect: "保持自然",
     evidenceIndices: [0],
   })),
 };
 
-Deno.test("prompts declare screenshot-only truth and untrusted evidence", () => {
+Deno.test("the prompt declares screenshot-only truth and untrusted evidence", () => {
   assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("只有這一張截圖"));
   assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("不要推測截圖外"));
   assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("voice 只能調整候選措辭"));
+  assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("不可信資料"));
   // Every analysed capture is now taken with our own panel on screen and its
   // bottom trimmed off, so "few messages visible" is the normal case rather
-  // than evidence that this is not a one-to-one chat.
-  assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes('一對一對話請輸出 "chat"'));
+  // than evidence that this is not a conversation.
   assert(
     KEYBOARD_ASSIST_COMPILER_PROMPT.includes(
       "不要因為訊息很少或畫面被截斷就改判 non_chat",
     ),
   );
-  // Loosening the "few messages" rule must not loosen group detection: a group
-  // is decided by evidence of people, not by how much of the chat is visible.
-  assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("群組一定要判成 group"));
-  assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("標題帶人數"));
-  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("不可信資料"));
-  // One visible batch, one line per angle.
-  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("選出 3 個放進 options"));
-  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("不要輸出 alternates"));
-  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("證據索引"));
+});
+
+Deno.test("one call now owns the whole result, explanations included", () => {
+  // The judge's only remaining contribution was `why` and `effect`; it could
+  // neither rewrite a reply nor add one. Asking for them here is what let the
+  // second model call go away.
+  assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("正好三個"));
+  assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("extend＝延展"));
+  assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("flirt＝調情"));
+  assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("humor＝幽默"));
   assert(
-    KEYBOARD_ASSIST_JUDGE_PROMPT.includes("voice 只調整措辭，不增加事實"),
+    KEYBOARD_ASSIST_COMPILER_PROMPT.includes("每個候選還要附上 why 與 effect"),
   );
-  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("extend＝延展"));
-  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("flirt＝調情"));
-  assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("humor＝幽默"));
+  assert(
+    KEYBOARD_ASSIST_COMPILER_PROMPT.includes(
+      "candidate 正好包含 strategy, text, why, effect, evidenceIndices",
+    ),
+  );
+});
+
+Deno.test("a group is described, not turned away, and the side has a default", () => {
+  // Both of these were hard stops that killed ordinary screenshots: a misfired
+  // group verdict, and an unsure read on which side is the user.
+  assert(
+    KEYBOARD_ASSIST_COMPILER_PROMPT.includes(
+      "chat 與 group 都要照樣產出候選",
+    ),
+  );
+  assert(
+    KEYBOARD_ASSIST_COMPILER_PROMPT.includes(
+      '預設 suggestedMySide 就是 "right"',
+    ),
+  );
+  assert(
+    KEYBOARD_ASSIST_COMPILER_PROMPT.includes("無論高低都要照常產出候選"),
+  );
+  // A manual correction still wins: it is the only way a user can argue with
+  // the layout guess, and it used to be applied at the removed judge stage.
+  assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("speakerOverride"));
+  assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("以使用者說的為準"));
 });
 
 Deno.test("Anthropic compiler sends one image and forwards cancellation", async () => {
@@ -64,7 +89,6 @@ Deno.test("Anthropic compiler sends one image and forwards cancellation", async 
   const provider = createAnthropicKeyboardAssistProvider({
     apiKey: "test-key",
     compilerModel: "vision-model",
-    judgeModel: "judge-model",
     fetchImpl: (_input, init) => {
       bodies.push(JSON.parse(String(init?.body)));
       signals.push(init?.signal as AbortSignal);
@@ -90,7 +114,7 @@ Deno.test("Anthropic compiler sends one image and forwards cancellation", async 
     voice: { primary: "playful", secondary: null },
     priorTurn: null,
     signal: controller.signal,
-    pipelineVersion: "compiler-judge-v1",
+    pipelineVersion: PIPELINE_VERSION,
   });
   assertEquals(result, compilerJson);
   assertEquals(bodies[0].model, "vision-model");
@@ -107,24 +131,19 @@ Deno.test("Anthropic compiler sends one image and forwards cancellation", async 
   assertEquals(signals[0].aborted, false);
 });
 
-Deno.test("Anthropic judge is text-only and never receives image base64", async () => {
+Deno.test("the previous batch travels with the request so a new one can differ", async () => {
+  // "換一批" is this same call again. Without the lines the user has already
+  // seen, a second run has no way to avoid repeating itself.
   const bodies: Array<Record<string, unknown>> = [];
   const provider = createAnthropicKeyboardAssistProvider({
     apiKey: "test-key",
     compilerModel: "vision-model",
-    judgeModel: "judge-model",
     fetchImpl: (_input, init) => {
       bodies.push(JSON.parse(String(init?.body)));
       return Promise.resolve(
         new Response(
           JSON.stringify({
-            content: [{
-              type: "text",
-              text: JSON.stringify({
-                contractVersion: "keyboard-assist-v1",
-                status: "ready",
-              }),
-            }],
+            content: [{ type: "text", text: JSON.stringify(compilerJson) }],
             stop_reason: "end_turn",
           }),
           { status: 200 },
@@ -132,26 +151,23 @@ Deno.test("Anthropic judge is text-only and never receives image base64", async 
       );
     },
   });
-  const request: KeyboardAssistJudgeRequest = {
-    conversation: compilerJson as NormalizedKeyboardAssistCompilerOutput,
-    effectiveMySide: "right",
-    voice: { primary: "steady", secondary: null },
+
+  await provider.compiler({
+    image: {
+      bytes: new Uint8Array([1, 2, 3]),
+      base64: "AQID",
+      mediaType: "image/png",
+    },
+    speakerOverride: "right_is_me",
+    voice: { primary: null, secondary: null },
+    priorTurn: { offeredTexts: ["上一批給過的句子"], insertedText: null },
     signal: new AbortController().signal,
-    pipelineVersion: "compiler-judge-v1",
-  };
-  await provider.judge(request);
-  assertEquals(bodies[0].model, "judge-model");
-  assertEquals(
-    (bodies[0].output_config as {
-      format: { type: string };
-    }).format.type,
-    "json_schema",
-  );
+    pipelineVersion: PIPELINE_VERSION,
+  });
+
   const wire = JSON.stringify(bodies[0]);
-  assert(!wire.includes('"type":"image"'));
-  assert(!wire.includes("AQID"));
-  assert(wire.includes("週六有空嗎"));
-  assert(wire.includes("steady"));
+  assert(wire.includes("上一批給過的句子"));
+  assert(wire.includes("right_is_me"));
 });
 
 Deno.test("Sonnet 5 disables thinking and omits unsupported sampling parameters", async () => {
@@ -159,18 +175,12 @@ Deno.test("Sonnet 5 disables thinking and omits unsupported sampling parameters"
   const provider = createAnthropicKeyboardAssistProvider({
     apiKey: "test-key",
     compilerModel: "claude-sonnet-5",
-    judgeModel: "claude-sonnet-5",
     fetchImpl: (_input, init) => {
-      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      bodies.push(body);
-      const responseBody = bodies.length === 1 ? compilerJson : {
-        contractVersion: "keyboard-assist-v1",
-        status: "ready",
-      };
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
       return Promise.resolve(
         new Response(
           JSON.stringify({
-            content: [{ type: "text", text: JSON.stringify(responseBody) }],
+            content: [{ type: "text", text: JSON.stringify(compilerJson) }],
             stop_reason: "end_turn",
           }),
           { status: 200 },
@@ -189,40 +199,25 @@ Deno.test("Sonnet 5 disables thinking and omits unsupported sampling parameters"
     voice: { primary: "steady", secondary: null },
     priorTurn: null,
     signal: new AbortController().signal,
-    pipelineVersion: "compiler-judge-v1",
-  });
-  await provider.judge({
-    conversation: compilerJson as NormalizedKeyboardAssistCompilerOutput,
-    effectiveMySide: "right",
-    voice: { primary: "steady", secondary: null },
-    signal: new AbortController().signal,
-    pipelineVersion: "compiler-judge-v1",
+    pipelineVersion: PIPELINE_VERSION,
   });
 
-  assertEquals(bodies.length, 2);
-  for (const body of bodies) {
-    assertEquals(body.temperature, undefined);
-    assertEquals(body.thinking, { type: "disabled" });
-  }
+  assertEquals(bodies.length, 1);
+  assertEquals(bodies[0].temperature, undefined);
+  assertEquals(bodies[0].thinking, { type: "disabled" });
 });
 
-Deno.test("Anthropic structured-output schemas use only supported constraints", async () => {
+Deno.test("Anthropic structured-output schema uses only supported constraints", async () => {
   const bodies: Array<Record<string, unknown>> = [];
   const provider = createAnthropicKeyboardAssistProvider({
     apiKey: "test-key",
     compilerModel: "vision-model",
-    judgeModel: "judge-model",
     fetchImpl: (_input, init) => {
-      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      bodies.push(body);
-      const responseBody = body.model === "vision-model" ? compilerJson : {
-        contractVersion: "keyboard-assist-v1",
-        status: "ready",
-      };
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
       return Promise.resolve(
         new Response(
           JSON.stringify({
-            content: [{ type: "text", text: JSON.stringify(responseBody) }],
+            content: [{ type: "text", text: JSON.stringify(compilerJson) }],
             stop_reason: "end_turn",
           }),
           { status: 200 },
@@ -241,63 +236,45 @@ Deno.test("Anthropic structured-output schemas use only supported constraints", 
     voice: { primary: "steady", secondary: null },
     priorTurn: null,
     signal: new AbortController().signal,
-    pipelineVersion: "compiler-judge-v1",
-  });
-  await provider.judge({
-    conversation: compilerJson as NormalizedKeyboardAssistCompilerOutput,
-    effectiveMySide: "right",
-    voice: { primary: "steady", secondary: null },
-    signal: new AbortController().signal,
-    pipelineVersion: "compiler-judge-v1",
+    pipelineVersion: PIPELINE_VERSION,
   });
 
-  assertEquals(bodies.length, 2);
-  for (const body of bodies) {
-    const schema = (body.output_config as {
-      format: { schema: Record<string, unknown> };
-    }).format.schema;
-    const wire = JSON.stringify(schema);
-    for (
-      const unsupported of [
-        "minimum",
-        "maximum",
-        "minLength",
-        "maxLength",
-        "minItems",
-        "maxItems",
-      ]
-    ) {
-      assert(
-        !wire.includes(`"${unsupported}"`),
-        `schema must not send unsupported Anthropic keyword ${unsupported}`,
-      );
-    }
-    assert(wire.includes('"required"'));
-    assert(wire.includes('"additionalProperties":false'));
-    assert(wire.includes('"enum"') || wire.includes('"const"'));
+  assertEquals(bodies.length, 1);
+  const schema = (bodies[0].output_config as {
+    format: { schema: Record<string, unknown> };
+  }).format.schema;
+  const wire = JSON.stringify(schema);
+  for (
+    const unsupported of [
+      "minimum",
+      "maximum",
+      "minLength",
+      "maxLength",
+      "minItems",
+      "maxItems",
+    ]
+  ) {
+    assert(
+      !wire.includes(`"${unsupported}"`),
+      `schema must not send unsupported Anthropic keyword ${unsupported}`,
+    );
   }
-
-  const compilerWire = JSON.stringify(
-    (bodies[0].output_config as { format: { schema: unknown } }).format.schema,
+  assert(wire.includes('"required"'));
+  assert(wire.includes('"additionalProperties":false'));
+  assert(wire.includes('"enum"'));
+  assert(wire.includes('"anyOf":[{"type":"string"},{"type":"null"}]'));
+  // The explanations are part of this call's contract now, not a second one's.
+  assert(
+    wire.includes(
+      '"required":["strategy","text","why","effect","evidenceIndices"]',
+    ),
   );
-  const judgeWire = JSON.stringify(
-    (bodies[1].output_config as { format: { schema: unknown } }).format.schema,
-  );
-  assert(compilerWire.includes('"anyOf":[{"type":"string"},{"type":"null"}]'));
-  assert(judgeWire.includes('"const":"keyboard-assist-v1"'));
-  assert(judgeWire.includes('"const":"ready"'));
 });
 
-Deno.test("the judge cap leaves room for six explained options", () => {
-  // 12s was sized for one batch of three. A real screenshot produced a 13.1s
-  // judge call, which was aborted right after the model had finished the work
-  // and failed the whole request. Anything under the observed cost is a cap
-  // that throws away work it already paid for.
-  assert(KEYBOARD_ASSIST_JUDGE_TIMEOUT_MS >= 15_000);
-  // Both stage caps must still fit inside the judge phase deadline
-  // (start + 35s) that the handler enforces.
-  assert(
-    KEYBOARD_ASSIST_COMPILER_TIMEOUT_MS + KEYBOARD_ASSIST_JUDGE_TIMEOUT_MS
-      <= 42_000,
-  );
+Deno.test("the single call's cap fits inside the request deadline", () => {
+  // The one call now writes the transcript, the read, three replies and their
+  // explanations, so it inherits the budget both stages used to share. It must
+  // still fit inside the handler's compiler phase deadline (start + 35s).
+  assert(KEYBOARD_ASSIST_COMPILER_TIMEOUT_MS >= 24_000);
+  assert(KEYBOARD_ASSIST_COMPILER_TIMEOUT_MS <= 35_000);
 });

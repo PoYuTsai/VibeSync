@@ -141,9 +141,6 @@ extension KeyboardRequestBinding {
 struct KeyboardResultsPresentation: Equatable {
     let binding: KeyboardRequestBinding
     let options: [KeyboardAssistOption]
-    /// The second batch, already paid for by the same request. Empty when the
-    /// server predates it, in which case there is nothing to swap to.
-    let alternates: [KeyboardAssistOption]
     /// The read of the conversation that came with this result. Carried here so
     /// the panel can show what the analysis concluded, not just what to send.
     let cue: String
@@ -155,7 +152,6 @@ struct KeyboardResultsPresentation: Equatable {
     init(
         binding: KeyboardRequestBinding,
         options: [KeyboardAssistOption],
-        alternates: [KeyboardAssistOption] = [],
         cue: String = "",
         turnState: KeyboardAssistTurnState = .replyDue,
         uncertainty: String? = nil,
@@ -164,29 +160,10 @@ struct KeyboardResultsPresentation: Equatable {
     ) {
         self.binding = binding
         self.options = options
-        self.alternates = alternates
         self.cue = cue
         self.turnState = turnState
         self.uncertainty = uncertainty
         self.messageCount = messageCount
         self.presentedAt = presentedAt
-    }
-
-    /// Swapping serves candidates this request already produced, so it costs
-    /// no second call and no second charge.
-    var canSwapBatch: Bool { !alternates.isEmpty }
-
-    func swappingBatch() -> KeyboardResultsPresentation {
-        guard canSwapBatch else { return self }
-        return KeyboardResultsPresentation(
-            binding: binding,
-            options: alternates,
-            alternates: options,
-            cue: cue,
-            turnState: turnState,
-            uncertainty: uncertainty,
-            messageCount: messageCount,
-            presentedAt: presentedAt
-        )
     }
 }

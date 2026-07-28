@@ -4,8 +4,6 @@ import type {
   KeyboardAssistV1Request,
 } from "./contract.ts";
 import { KEYBOARD_ASSIST_COMPILER_PROMPT } from "./compiler_prompt.ts";
-import { KEYBOARD_ASSIST_JUDGE_PROMPT } from "./judge_prompt.ts";
-import type { NormalizedKeyboardAssistCompilerOutput } from "./normalize.ts";
 
 export type KeyboardAssistImage = {
   bytes: Uint8Array;
@@ -22,20 +20,8 @@ export type KeyboardAssistCompilerRequest = {
   pipelineVersion: string;
 };
 
-export type KeyboardAssistJudgeRequest = {
-  conversation: NormalizedKeyboardAssistCompilerOutput;
-  effectiveMySide: "left" | "right";
-  voice: KeyboardAssistV1Request["voice"];
-  signal: AbortSignal;
-  pipelineVersion: string;
-};
-
 export type KeyboardAssistCompiler = (
   request: KeyboardAssistCompilerRequest,
-) => Promise<unknown>;
-
-export type KeyboardAssistJudge = (
-  request: KeyboardAssistJudgeRequest,
 ) => Promise<unknown>;
 
 export class KeyboardAssistProviderError extends Error {
@@ -102,12 +88,14 @@ const COMPILER_OUTPUT_SCHEMA = {
             enum: ["extend", "flirt", "humor"],
           },
           text: { type: "string" },
+          why: { type: "string" },
+          effect: { type: "string" },
           evidenceIndices: {
             type: "array",
             items: { type: "integer" },
           },
         },
-        required: ["strategy", "text", "evidenceIndices"],
+        required: ["strategy", "text", "why", "effect", "evidenceIndices"],
       },
     },
   },
@@ -121,91 +109,6 @@ const COMPILER_OUTPUT_SCHEMA = {
     "uncertainty",
     "messages",
     "candidates",
-  ],
-} as const;
-
-const JUDGE_OUTPUT_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    contractVersion: { type: "string", const: "keyboard-assist-v1" },
-    status: { type: "string", const: "ready" },
-    source: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        scope: {
-          type: "string",
-          enum: ["screenshot_only", "screenshot_plus_global_voice"],
-        },
-        messageCount: { type: "integer" },
-        confidence: { type: "string", enum: ["high", "medium", "low"] },
-        sideConfidence: {
-          type: "string",
-          enum: ["high", "medium", "low"],
-        },
-      },
-      required: [
-        "scope",
-        "messageCount",
-        "confidence",
-        "sideConfidence",
-      ],
-    },
-    turnState: {
-      type: "string",
-      enum: ["reply_due", "optional_follow_up"],
-    },
-    cue: { type: "string" },
-    uncertainty: {
-      anyOf: [
-        { type: "string" },
-        { type: "null" },
-      ],
-    },
-    options: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          strategy: {
-            type: "string",
-            enum: ["extend", "flirt", "humor"],
-          },
-          text: { type: "string" },
-          why: { type: "string" },
-          effect: { type: "string" },
-        },
-        required: ["strategy", "text", "why", "effect"],
-      },
-    },
-    alternates: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          strategy: {
-            type: "string",
-            enum: ["extend", "flirt", "humor"],
-          },
-          text: { type: "string" },
-          why: { type: "string" },
-          effect: { type: "string" },
-        },
-        required: ["strategy", "text", "why", "effect"],
-      },
-    },
-  },
-  required: [
-    "contractVersion",
-    "status",
-    "source",
-    "turnState",
-    "cue",
-    "uncertainty",
-    "options",
   ],
 } as const;
 
@@ -254,24 +157,22 @@ function combinedSignal(parent: AbortSignal, timeoutMs: number): AbortSignal {
   return AbortSignal.any([parent, AbortSignal.timeout(timeoutMs)]);
 }
 
-/// Per-call wall clock for each stage. These are caps on one HTTP call, not
-/// the request budget: `phaseSignal` still clips them to whatever the phase
-/// deadlines allow, so raising one can never overrun `REQUEST_DEADLINE_MS`.
-export const KEYBOARD_ASSIST_COMPILER_TIMEOUT_MS = 24_000;
-export const KEYBOARD_ASSIST_JUDGE_TIMEOUT_MS = 18_000;
+/// Per-call wall clock. This is a cap on one HTTP call, not the request
+/// budget: `phaseSignal` still clips it to whatever the phase deadline allows,
+/// so raising it can never overrun `REQUEST_DEADLINE_MS`. The single call now
+/// also writes each candidate's `why` and `effect`, which the removed judge
+/// used to spend a second call on.
+export const KEYBOARD_ASSIST_COMPILER_TIMEOUT_MS = 30_000;
 
 export function createAnthropicKeyboardAssistProvider(input: {
   apiKey: string;
   compilerModel: string;
-  judgeModel: string;
   fetchImpl?: FetchLike;
   compilerTimeoutMs?: number;
-  judgeTimeoutMs?: number;
 }): {
   compiler: KeyboardAssistCompiler;
-  judge: KeyboardAssistJudge;
 } {
-  if (!input.apiKey || !input.compilerModel || !input.judgeModel) {
+  if (!input.apiKey || !input.compilerModel) {
     throw new Error("keyboard assist provider config is incomplete");
   }
   const fetchImpl = input.fetchImpl ?? fetch;
@@ -327,8 +228,8 @@ export function createAnthropicKeyboardAssistProvider(input: {
           model: input.compilerModel,
           max_tokens: 4000,
           // Sonnet 5 enables thinking by default and rejects every non-default
-          // sampling parameter. Structured output, grounding, the text-only
-          // judge, and exactly-once replay own consistency for this pipeline.
+          // sampling parameter. Structured output, grounding and exactly-once
+          // replay own consistency for this pipeline.
           ...(input.compilerModel === "claude-sonnet-5"
             ? { thinking: { type: "disabled" } }
             : { temperature: 0 }),
@@ -367,47 +268,6 @@ export function createAnthropicKeyboardAssistProvider(input: {
         },
         request.signal,
         input.compilerTimeoutMs ?? KEYBOARD_ASSIST_COMPILER_TIMEOUT_MS,
-      ),
-    judge: (request) =>
-      call(
-        {
-          model: input.judgeModel,
-          // Two batches of three, each option carrying text, why and effect.
-          // At the contract's per-field maxima that is roughly 2k output
-          // tokens; 1200 was sized for a single batch and would truncate,
-          // which `stop_reason === "max_tokens"` correctly rejects as invalid
-          // output — a failed request rather than a short one.
-          max_tokens: 2600,
-          // Keep this in lockstep with the compiler's Sonnet 5 wire contract.
-          ...(input.judgeModel === "claude-sonnet-5"
-            ? { thinking: { type: "disabled" } }
-            : { temperature: 0 }),
-          output_config: {
-            format: {
-              type: "json_schema",
-              schema: JUDGE_OUTPUT_SCHEMA,
-            },
-          },
-          system: KEYBOARD_ASSIST_JUDGE_PROMPT,
-          messages: [{
-            role: "user",
-            content: JSON.stringify({
-              contractVersion: "keyboard-assist-judge-v1",
-              conversation: request.conversation,
-              effectiveMySide: request.effectiveMySide,
-              voice: request.voice,
-            }),
-          }],
-        },
-        request.signal,
-        // Twice the output needs more wall clock. 12s was measured against a
-        // single batch of three; six options with a `why` and an `effect` each
-        // came in at 13.1s on a real screenshot and got cut off right at the
-        // finish line — the whole request failed after the model had already
-        // done all the work. The judge deadline (start + 35s) still governs:
-        // `phaseSignal` clips this cap to whatever budget is actually left
-        // after the compiler, so raising it cannot overrun the 40s request.
-        input.judgeTimeoutMs ?? KEYBOARD_ASSIST_JUDGE_TIMEOUT_MS,
       ),
   };
 }

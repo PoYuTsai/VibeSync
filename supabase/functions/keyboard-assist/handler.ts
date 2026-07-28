@@ -99,14 +99,9 @@ export type KeyboardAssistHandlerDependencies = {
     imageBytes: Uint8Array;
     signal: AbortSignal;
     compilerDeadlineAtMs: number;
-    judgeDeadlineAtMs: number;
     deadlineAtMs: number;
-    renewLease: (
-      stage: "after_compiler" | "after_judge",
-    ) => Promise<boolean>;
-    recordStageTiming: (
-      timing: { compilerMs?: number; judgeMs?: number },
-    ) => void;
+    renewLease: (stage: "after_compiler") => Promise<boolean>;
+    recordStageTiming: (timing: { compilerMs?: number }) => void;
   }): Promise<KeyboardAssistLedgerResult>;
   recordTelemetry?(
     record: Record<string, string | number | boolean>,
@@ -199,10 +194,12 @@ export function createKeyboardAssistHandler(
     const statusLookup = isStatusLookupRequest(request);
     const monotonicNow = deps.monotonicNow ?? (() => performance.now());
     const startedAtMs = monotonicNow();
-    const compilerDeadlineAtMs = startedAtMs + 27_000;
-    const judgeDeadlineAtMs = startedAtMs + 35_000;
+    // One model call now owns the whole budget, so it gets the whole budget
+    // minus the settlement it still has to write. Splitting 27s/35s was there
+    // to leave a second stage room to run.
+    const compilerDeadlineAtMs = startedAtMs + 35_000;
     const requestDeadlineAtMs = startedAtMs + REQUEST_DEADLINE_MS;
-    const stageTimings: { compilerMs?: number; judgeMs?: number } = {};
+    const stageTimings: { compilerMs?: number } = {};
     let pipelineAttempted = false;
     let telemetryStatus:
       | "ready"
@@ -485,7 +482,6 @@ export function createKeyboardAssistHandler(
             AbortSignal.timeout(Math.max(1, Math.ceil(remainingMs))),
           ]),
           compilerDeadlineAtMs,
-          judgeDeadlineAtMs,
           deadlineAtMs: requestDeadlineAtMs,
           renewLease: () => deps.ledger.renew(identity),
           recordStageTiming: (timing) => Object.assign(stageTimings, timing),

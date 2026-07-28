@@ -34,6 +34,8 @@ final class KeyboardViewController: UIInputViewController {
     private let resultButton = UIButton(type: .system)
     private let screenshotPanel = UIStackView()
     private let screenshotStatusLabel = UILabel()
+    private let screenshotStatusBubble = UIStackView()
+    private let screenshotProgressRow = UIStackView()
     private let screenshotPreviewImageView = UIImageView()
     private let screenshotRetryButton = UIButton(type: .system)
     private let screenshotCancelButton = UIButton(type: .system)
@@ -390,24 +392,55 @@ final class KeyboardViewController: UIInputViewController {
         screenshotPanel.spacing = 7
         screenshotPanel.isHidden = true
 
+        // Laid out like the conversation it came from: the capture sits on the
+        // left where the other person's messages are, and what we have to say
+        // about it answers from the right.
         screenshotStatusLabel.textColor =
-            UIColor.white.withAlphaComponent(0.78)
-        screenshotStatusLabel.font = .systemFont(ofSize: 12)
+            UIColor.white.withAlphaComponent(0.85)
+        screenshotStatusLabel.font = .systemFont(ofSize: 13)
         screenshotStatusLabel.numberOfLines = 4
-        screenshotStatusLabel.textAlignment = .center
-        screenshotPanel.addArrangedSubview(screenshotStatusLabel)
+        screenshotStatusLabel.textAlignment = .left
+
+        screenshotStatusBubble.axis = .vertical
+        screenshotStatusBubble.isLayoutMarginsRelativeArrangement = true
+        screenshotStatusBubble.layoutMargins = UIEdgeInsets(
+            top: 10,
+            left: 13,
+            bottom: 10,
+            right: 13
+        )
+        screenshotStatusBubble.backgroundColor = surface
+        screenshotStatusBubble.layer.cornerRadius = 15
+        screenshotStatusBubble.layer.masksToBounds = true
+        screenshotStatusBubble.addArrangedSubview(screenshotStatusLabel)
+
+        screenshotPreviewImageView.contentMode = .scaleAspectFill
+        screenshotPreviewImageView.backgroundColor = surface
+        screenshotPreviewImageView.layer.cornerRadius = 8
+        screenshotPreviewImageView.layer.masksToBounds = true
+        screenshotPreviewImageView.setContentHuggingPriority(
+            .required,
+            for: .horizontal
+        )
+        NSLayoutConstraint.activate([
+            screenshotPreviewImageView.widthAnchor.constraint(
+                equalToConstant: 104
+            ),
+            screenshotPreviewImageView.heightAnchor.constraint(
+                equalToConstant: 150
+            ),
+        ])
+        screenshotPreviewImageView.isHidden = true
+
+        screenshotProgressRow.axis = .horizontal
+        screenshotProgressRow.alignment = .top
+        screenshotProgressRow.spacing = 8
+        screenshotProgressRow.addArrangedSubview(screenshotPreviewImageView)
+        screenshotProgressRow.addArrangedSubview(UIView())
+        screenshotProgressRow.addArrangedSubview(screenshotStatusBubble)
+        screenshotPanel.addArrangedSubview(screenshotProgressRow)
 
         configureAnalysisCard()
-
-        screenshotPreviewImageView.contentMode = .scaleAspectFit
-        screenshotPreviewImageView.backgroundColor = surface
-        screenshotPreviewImageView.layer.cornerRadius = 10
-        screenshotPreviewImageView.layer.masksToBounds = true
-        screenshotPreviewImageView.heightAnchor.constraint(
-            equalToConstant: 112
-        ).isActive = true
-        screenshotPreviewImageView.isHidden = true
-        screenshotPanel.addArrangedSubview(screenshotPreviewImageView)
 
         screenshotRetryButton.setTitle("再試一次", for: .normal)
         styleScreenshotButton(
@@ -423,7 +456,7 @@ final class KeyboardViewController: UIInputViewController {
         styleScreenshotButton(screenshotSwapButton, color: primary)
         screenshotSwapButton.addTarget(
             self,
-            action: #selector(swapCandidateBatch),
+            action: #selector(requestNewCandidateBatch),
             for: .touchUpInside
         )
         screenshotSwapButton.isHidden = true
@@ -788,6 +821,7 @@ final class KeyboardViewController: UIInputViewController {
         screenshotRenderState = renderState.state
         resetScreenshotControls()
         screenshotStatusLabel.text = renderState.message
+        screenshotStatusBubble.isHidden = (renderState.message ?? "").isEmpty
         renderAssistIdleView(renderState)
 
         switch renderState.state {
@@ -817,18 +851,14 @@ final class KeyboardViewController: UIInputViewController {
         // which screenshot was used, but nothing waits for a tap.
         case .screenshotDetected, .localPreview:
             screenshotPanel.isHidden = false
-            screenshotPreviewImageView.image =
-                screenshotCoordinator.previewImage
-            screenshotPreviewImageView.isHidden = false
+            showCapture(screenshotCoordinator.previewImage)
             screenshotCancelButton.isHidden = false
         case .preparing,
              .generating,
              .lookingUpStatus:
             invalidatePendingReply()
             screenshotPanel.isHidden = false
-            screenshotPreviewImageView.image =
-                screenshotCoordinator.previewImage
-            screenshotPreviewImageView.isHidden = false
+            showCapture(screenshotCoordinator.previewImage)
             screenshotCancelButton.isHidden = false
         case .needsSpeakerConfirmation:
             screenshotPanel.isHidden = false
@@ -874,8 +904,10 @@ final class KeyboardViewController: UIInputViewController {
             renderScreenshotCandidates(presentation.options)
             screenshotCandidateStack.isHidden = false
             screenshotContinuationHint.isHidden = false
-            // Only offered when a second batch is already paid for.
-            screenshotSwapButton.isHidden = !presentation.canSwapBatch
+            // Always offered: a new batch is this screenshot analysed again,
+            // not a reserve batch that may or may not have been produced.
+            screenshotSwapButton.isHidden =
+                !screenshotCoordinator.canRequestNewBatch
             screenshotRetryButton.setTitle("重新分析", for: .normal)
             screenshotRetryButton.isHidden = false
             screenshotCancelButton.isHidden = false
@@ -883,6 +915,30 @@ final class KeyboardViewController: UIInputViewController {
             screenshotPanel.isHidden = false
         }
         updatePreferredHeight()
+    }
+
+    /// The capture arrives where the other person's messages live, with one
+    /// short move so it reads as "this is what I looked at" rather than a panel
+    /// that silently swapped contents. One-shot, no repeat: an input view that
+    /// never settles is an input view that never stops redrawing.
+    private func showCapture(_ image: UIImage?) {
+        let isNewCapture = screenshotPreviewImageView.image !== image
+        screenshotPreviewImageView.image = image
+        screenshotPreviewImageView.isHidden = image == nil
+        guard isNewCapture, image != nil else { return }
+        screenshotPreviewImageView.transform = CGAffineTransform(
+            translationX: -18,
+            y: 8
+        ).scaledBy(x: 0.88, y: 0.88)
+        screenshotPreviewImageView.alpha = 0
+        UIView.animate(
+            withDuration: 0.26,
+            delay: 0,
+            options: [.curveEaseOut, .beginFromCurrentState]
+        ) { [weak self] in
+            self?.screenshotPreviewImageView.transform = .identity
+            self?.screenshotPreviewImageView.alpha = 1
+        }
     }
 
     private static let assistIdleTitleText = "截圖這則對話就開始"
@@ -954,6 +1010,8 @@ final class KeyboardViewController: UIInputViewController {
         screenshotCandidateStack.isHidden = true
         screenshotPreviewImageView.isHidden = true
         screenshotPreviewImageView.image = nil
+        screenshotPreviewImageView.transform = .identity
+        screenshotPreviewImageView.alpha = 1
         for view in screenshotCandidateStack.arrangedSubviews {
             screenshotCandidateStack.removeArrangedSubview(view)
             view.removeFromSuperview()
@@ -1181,8 +1239,8 @@ final class KeyboardViewController: UIInputViewController {
         show(.text)
         refreshAvailability()
     }
-    @objc private func swapCandidateBatch() {
-        screenshotCoordinator.swapBatch()
+    @objc private func requestNewCandidateBatch() {
+        screenshotCoordinator.requestNewBatch()
     }
 
     @objc private func cycleVoice() {

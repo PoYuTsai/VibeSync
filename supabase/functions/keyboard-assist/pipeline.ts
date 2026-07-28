@@ -10,7 +10,6 @@ import {
   hasOnlyGroundedFactualTokens,
   isGroundedKeyboardAssistCandidate,
   keyboardAssistCompilerGroundingFailure,
-  keyboardAssistReadyResultDrift,
 } from "./grounding.ts";
 import type { NormalizedKeyboardAssistCompilerOutput } from "./normalize.ts";
 import { normalizeKeyboardAssistCompilerOutput } from "./normalize.ts";
@@ -18,36 +17,23 @@ import { containsOwnPriorCandidates } from "./own_output_leak.ts";
 import type {
   KeyboardAssistCompiler,
   KeyboardAssistImage,
-  KeyboardAssistJudge,
 } from "./provider.ts";
 import { KeyboardAssistProviderError } from "./provider.ts";
-import { validateKeyboardAssistLedgerResult } from "./validate.ts";
 
 export type KeyboardAssistStageTiming = {
   compilerMs?: number;
-  judgeMs?: number;
 };
 
 /// Why a screenshot was turned away, at a granularity that is safe to log.
 /// Every member is a fixed token about our own pipeline's verdict, never
 /// anything read out of the image, so it can travel to telemetry unredacted.
 export type KeyboardAssistRejectDetail =
-  | "group"
   | "social_feed"
   | "non_chat"
   | "own_prior_candidates"
   | "compiler_schema"
-  | "compiler_grounding"
-  | "compiler_grounding_cue"
-  | "compiler_grounding_candidate"
-  | "judge_schema"
-  | "judge_not_ready"
-  | "judge_drift_source"
-  | "judge_drift_turn_state"
-  | "judge_drift_cue"
-  | "judge_drift_uncertainty"
-  | "judge_drift_option_not_from_compiler"
-  | "judge_drift_explanation";
+  | "compiler_strategy_collision"
+  | "compiler_grounding_candidate";
 
 /// Deliberately factual-token free, so it can never itself fail grounding.
 export const KEYBOARD_ASSIST_UNGROUNDED_CUE_FALLBACK = "先看看這幾則訊息再回";
@@ -55,7 +41,7 @@ const KEYBOARD_ASSIST_UNGROUNDED_WHY_FALLBACK = "依畫面上的訊息接話";
 const KEYBOARD_ASSIST_UNGROUNDED_EFFECT_FALLBACK = "保持自然";
 
 /// `why` and `effect` are our commentary on a reply, not the reply. If the
-/// judge reached outside the screenshot to explain itself, the explanation is
+/// model reached outside the screenshot to explain itself, the explanation is
 /// what is wrong — replacing it costs the user a sentence of colour, whereas
 /// rejecting costs them the whole screenshot.
 function repairExplanations(
@@ -88,7 +74,7 @@ export class KeyboardAssistPipelineError extends Error {
 
 function mapProviderError(
   error: unknown,
-  stage: "compiler" | "judge",
+  stage: "compiler",
 ): KeyboardAssistPipelineError {
   if (error instanceof KeyboardAssistProviderError) {
     return new KeyboardAssistPipelineError(
@@ -117,6 +103,12 @@ function phaseSignal(
   ]);
 }
 
+/// One model call produces the whole result: the transcript, the read on the
+/// conversation, and three replies that already carry their own `why` and
+/// `effect`. A second model used to re-pick those same three lines verbatim —
+/// it could not rewrite them and could not add to them, so all it contributed
+/// was the commentary, at the price of doubling the latency and adding six more
+/// ways for an ordinary screenshot to be thrown away after the work was done.
 export async function runKeyboardAssistPipeline(input: {
   image: KeyboardAssistImage;
   speakerOverride: KeyboardAssistSpeakerOverride;
@@ -125,19 +117,14 @@ export async function runKeyboardAssistPipeline(input: {
   pipelineVersion: string;
   signal: AbortSignal;
   compiler: KeyboardAssistCompiler;
-  judge: KeyboardAssistJudge;
-  renewLease: (
-    stage: "after_compiler" | "after_judge",
-  ) => Promise<boolean>;
+  renewLease: (stage: "after_compiler") => Promise<boolean>;
   recordStageTiming?: (timing: KeyboardAssistStageTiming) => void;
   nowMs: () => number;
   compilerDeadlineAtMs?: number;
-  judgeDeadlineAtMs?: number;
   deadlineAtMs: number;
 }): Promise<KeyboardAssistLedgerResult> {
   const compilerDeadlineAtMs = input.compilerDeadlineAtMs ??
     input.deadlineAtMs;
-  const judgeDeadlineAtMs = input.judgeDeadlineAtMs ?? input.deadlineAtMs;
   if (
     input.signal.aborted || input.nowMs() >= compilerDeadlineAtMs ||
     compilerDeadlineAtMs > input.deadlineAtMs
@@ -196,16 +183,38 @@ export async function runKeyboardAssistPipeline(input: {
       "compiler_schema",
     );
   }
-  if (normalized.conversationType !== "chat") {
+  // A group chat is a conversation the user is about to reply in, so it is
+  // served like any other. Turning one away was the single most common way an
+  // ordinary two-person screenshot died: the classifier only has to be wrong
+  // once, and the user has no way to argue with it. Only a feed post and a
+  // screen that is not a conversation at all have nothing to reply to.
+  if (
+    normalized.conversationType === "social_feed" ||
+    normalized.conversationType === "non_chat"
+  ) {
     throw new KeyboardAssistPipelineError(
       "unsupported_conversation",
-      "screenshot is not a supported one-to-one chat",
+      "screenshot is not a conversation",
       normalized.conversationType,
+    );
+  }
+  // The three angles are the product, and the final validator rejects a batch
+  // that does not carry one of each. Catching it here is the difference between
+  // a nameless 503 and a telemetry row that says which contract the model broke
+  // — the whole reason a screenshot failing seven times was so hard to diagnose.
+  if (
+    new Set(normalized.candidates.map((candidate) => candidate.strategy))
+      .size !== normalized.candidates.length
+  ) {
+    throw new KeyboardAssistPipelineError(
+      "provider_invalid_output",
+      "compiler returned repeated strategies",
+      "compiler_strategy_collision",
     );
   }
   if (containsOwnPriorCandidates(normalized, input.priorTurn)) {
     // The transcript is describing our own panel, not the conversation, so it
-    // cannot be judged and must not be charged for.
+    // cannot be served and must not be charged for.
     throw new KeyboardAssistPipelineError(
       "unsupported_conversation",
       "screenshot transcript contains this keyboard's own prior candidates",
@@ -247,99 +256,20 @@ export async function runKeyboardAssistPipeline(input: {
     normalized.candidates = grounded;
   }
 
-  if (
-    normalized.sideConfidence === "low" &&
-    input.speakerOverride === "none"
-  ) {
-    return {
-      contractVersion: KEYBOARD_ASSIST_CONTRACT_VERSION,
-      status: "needs_speaker_confirmation",
-      suggestedMySide: normalized.suggestedMySide,
-      sideConfidence: "low",
-    };
-  }
-
   if (!await input.renewLease("after_compiler")) {
     throw new KeyboardAssistPipelineError(
       "stale_owner",
       "request lease ownership changed after compiler",
     );
   }
-  // The judge call has an 8-second cap and needs at least four seconds of
-  // useful budget. The provider implementation applies the tighter call cap.
-  if (
-    input.signal.aborted ||
-    judgeDeadlineAtMs - input.nowMs() < 4_000 ||
-    judgeDeadlineAtMs > input.deadlineAtMs
-  ) {
-    throw new KeyboardAssistPipelineError(
-      "provider_timeout",
-      "insufficient deadline budget to start judge",
-    );
-  }
 
-  const effectiveMySide = input.speakerOverride === "left_is_me"
-    ? "left"
-    : input.speakerOverride === "right_is_me"
-    ? "right"
-    : normalized.suggestedMySide;
-  let rawJudged: unknown;
-  const judgeStartedAtMs = input.nowMs();
-  try {
-    rawJudged = await input.judge({
-      conversation: normalized,
-      effectiveMySide,
-      voice: input.voice,
-      signal: phaseSignal(input.signal, judgeDeadlineAtMs, input.nowMs()),
-      pipelineVersion: input.pipelineVersion,
-    });
-  } catch (error) {
-    input.recordStageTiming?.({
-      judgeMs: Math.max(0, Math.round(input.nowMs() - judgeStartedAtMs)),
-    });
-    if (input.signal.aborted || error instanceof DOMException) {
-      throw new KeyboardAssistPipelineError(
-        "provider_timeout",
-        "judge was aborted",
-      );
-    }
-    throw mapProviderError(error, "judge");
-  }
-  input.recordStageTiming?.({
-    judgeMs: Math.max(0, Math.round(input.nowMs() - judgeStartedAtMs)),
-  });
-  if (input.signal.aborted || input.nowMs() >= judgeDeadlineAtMs) {
-    throw new KeyboardAssistPipelineError(
-      "provider_timeout",
-      "judge exceeded its absolute deadline",
-    );
-  }
-  if (!validateKeyboardAssistLedgerResult(rawJudged)) {
-    throw new KeyboardAssistPipelineError(
-      "provider_invalid_output",
-      "judge output failed final schema",
-      "judge_schema",
-    );
-  }
-  if (rawJudged.status !== "ready") {
-    throw new KeyboardAssistPipelineError(
-      "provider_invalid_output",
-      "judge may only return a ready result",
-      "judge_not_ready",
-    );
-  }
-  // Most of a judge result is not the judge's own work: `source`, `turnState`,
-  // `cue` and `uncertainty` are the compiler's values copied forward, and the
-  // compiler's copy has already passed grounding. Treating a paraphrase of one
-  // of them as grounds to throw the whole request away punishes the user for a
-  // difference that has no effect on what they send. Take the compiler's
-  // version instead — that is the value we would have insisted on anyway.
-  const judgedResult = {
-    ...rawJudged,
+  return {
+    contractVersion: KEYBOARD_ASSIST_CONTRACT_VERSION,
+    status: "ready",
     source: {
       scope: input.voice.primary === null
-        ? "screenshot_only" as const
-        : "screenshot_plus_global_voice" as const,
+        ? "screenshot_only"
+        : "screenshot_plus_global_voice",
       messageCount: normalized.messages.length,
       confidence: normalized.confidence,
       sideConfidence: normalized.sideConfidence,
@@ -347,37 +277,14 @@ export async function runKeyboardAssistPipeline(input: {
     turnState: normalized.turnState,
     cue: normalized.cue,
     uncertainty: normalized.uncertainty,
-    options: repairExplanations(rawJudged.options, normalized),
-    ...(rawJudged.alternates === undefined ? {} : {
-      alternates: repairExplanations(rawJudged.alternates, normalized),
-    }),
+    options: repairExplanations(
+      normalized.candidates.map((candidate) => ({
+        strategy: candidate.strategy,
+        text: candidate.text,
+        why: candidate.why,
+        effect: candidate.effect,
+      })),
+      normalized,
+    ),
   };
-  // What survives the repair is the judge's actual output: the reply text the
-  // user is about to send. That still has to come from the compiler verbatim.
-  const drift = keyboardAssistReadyResultDrift(
-    judgedResult,
-    normalized,
-    input.voice,
-  );
-  if (drift) {
-    throw new KeyboardAssistPipelineError(
-      "provider_invalid_output",
-      `judge output drifted from compiler evidence: ${drift}`,
-      `judge_drift_${drift}` as KeyboardAssistRejectDetail,
-    );
-  }
-  if (!validateKeyboardAssistLedgerResult(judgedResult)) {
-    throw new KeyboardAssistPipelineError(
-      "provider_invalid_output",
-      "repaired judge output failed final schema",
-      "judge_schema",
-    );
-  }
-  if (!await input.renewLease("after_judge")) {
-    throw new KeyboardAssistPipelineError(
-      "stale_owner",
-      "request lease ownership changed after judge",
-    );
-  }
-  return judgedResult;
 }

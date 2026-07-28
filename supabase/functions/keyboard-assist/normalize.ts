@@ -23,6 +23,8 @@ export type NormalizedKeyboardAssistCompilerOutput = {
   candidates: Array<{
     strategy: KeyboardAssistStrategy;
     text: string;
+    why: string;
+    effect: string;
     evidenceIndices: number[];
   }>;
 };
@@ -82,9 +84,13 @@ export function normalizeKeyboardAssistCompilerOutput(
     !Array.isArray(value.candidates) ||
     value.candidates.length > 3
   ) return null;
-  const isChat = value.conversationType === "chat";
+  // A group chat is still a conversation the user is about to reply in, so it
+  // owes the same three candidates a one-to-one chat does. Only the classes
+  // with nothing to reply to may come back empty.
+  const isConversation = value.conversationType === "chat" ||
+    value.conversationType === "group";
   if (
-    isChat &&
+    isConversation &&
     (value.messages.length < 1 || value.candidates.length !== 3)
   ) return null;
 
@@ -116,12 +122,16 @@ export function normalizeKeyboardAssistCompilerOutput(
       !hasExactKeys(candidate, [
         "strategy",
         "text",
+        "why",
+        "effect",
         "evidenceIndices",
       ]) ||
       !KEYBOARD_ASSIST_STRATEGIES.includes(
         candidate.strategy as KeyboardAssistStrategy,
       ) ||
       !boundedText(candidate.text, 100) ||
+      !boundedText(candidate.why, 80) ||
+      !boundedText(candidate.effect, 60) ||
       !Array.isArray(candidate.evidenceIndices) ||
       candidate.evidenceIndices.length < 1 ||
       candidate.evidenceIndices.length > 8 ||
@@ -132,6 +142,8 @@ export function normalizeKeyboardAssistCompilerOutput(
     candidates.push({
       strategy: candidate.strategy as KeyboardAssistStrategy,
       text: candidate.text,
+      why: candidate.why as string,
+      effect: candidate.effect as string,
       evidenceIndices: [...new Set(candidate.evidenceIndices as number[])],
     });
   }

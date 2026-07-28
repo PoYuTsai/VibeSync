@@ -78,11 +78,13 @@ void main() {
       contains('includePreSessionCapture = includingPreSessionCapture'),
     );
     // The pre-spend re-reads belong to the same run and must agree with it,
-    // otherwise a tapped run invalidates itself right before paying.
+    // otherwise a tapped run invalidates itself right before paying. "換一批"
+    // is one of them: it re-reads before spending, inside the run the user
+    // started by tapping.
     expect(
       RegExp('ignoringSessionFloor: includePreSessionCapture')
           .allMatches(source),
-      hasLength(3),
+      hasLength(4),
     );
 
     expect(

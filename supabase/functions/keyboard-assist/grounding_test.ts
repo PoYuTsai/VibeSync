@@ -2,11 +2,7 @@ import {
   assert,
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import {
-  isGroundedKeyboardAssistCompilerOutput,
-  isGroundedKeyboardAssistReadyResult,
-} from "./grounding.ts";
-import type { KeyboardAssistReadyResult } from "./contract.ts";
+import { isGroundedKeyboardAssistCompilerOutput } from "./grounding.ts";
 import type { NormalizedKeyboardAssistCompilerOutput } from "./normalize.ts";
 
 function compilerWithCandidate(
@@ -25,6 +21,8 @@ function compilerWithCandidate(
     candidates: [{
       strategy: "extend",
       text: candidateText,
+      why: "順著對方的話接",
+      effect: "保持自然",
       evidenceIndices: [0],
     }],
   };
@@ -131,75 +129,6 @@ Deno.test("compiler grounding keeps generic natural replies usable", () => {
   }
 });
 
-Deno.test("judge explanations cannot add off-screen factual tokens", () => {
-  const compiler = compilerWithCandidate("可以啊，你想怎麼安排？");
-  const ready = {
-    contractVersion: "keyboard-assist-v1",
-    status: "ready",
-    source: {
-      scope: "screenshot_only",
-      messageCount: 1,
-      confidence: "high",
-      sideConfidence: "high",
-    },
-    turnState: "reply_due",
-    cue: compiler.cue,
-    uncertainty: null,
-    options: [{
-      strategy: "extend",
-      text: compiler.candidates[0].text,
-      why: "先自然接話",
-      effect: "保持低壓",
-    }],
-    // Both batches are served to the user, so both are grounded the same way.
-    alternates: [{
-      strategy: "extend",
-      text: compiler.candidates[0].text,
-      why: "先確認再回",
-      effect: "減少誤會",
-    }],
-  } satisfies KeyboardAssistReadyResult;
-
-  assert(
-    isGroundedKeyboardAssistReadyResult(
-      ready,
-      compiler,
-      { primary: null, secondary: null },
-    ),
-  );
-  assertFalse(
-    isGroundedKeyboardAssistReadyResult(
-      {
-        ...ready,
-        options: [{ ...ready.options[0], why: "承接上次在台北的回憶" }],
-      },
-      compiler,
-      { primary: null, secondary: null },
-    ),
-  );
-  assertFalse(
-    isGroundedKeyboardAssistReadyResult(
-      {
-        ...ready,
-        options: [{ ...ready.options[0], effect: "方便明天推進" }],
-      },
-      compiler,
-      { primary: null, secondary: null },
-    ),
-  );
-  assertFalse(
-    isGroundedKeyboardAssistReadyResult(
-      {
-        ...ready,
-        alternates: [{ ...ready.alternates[0], why: "承接上次在台北的回憶" }],
-      },
-      compiler,
-      { primary: null, secondary: null },
-    ),
-    "the second batch is not a lower-standard batch",
-  );
-});
-
 Deno.test("a fact agreed earlier in the same screenshot is still grounded", () => {
   // Real conversations spread their facts around: the newest message says
   // "Saturday works", but the date it refers to was agreed three messages
@@ -214,7 +143,11 @@ Deno.test("a fact agreed earlier in the same screenshot is still grounded", () =
     cue: "對方說週六可以。",
     uncertainty: null,
     messages: [
-      { index: 0, side: "right", text: "好 等你回來 姪女 8/11 開學 8/2~8/11 找一天" },
+      {
+        index: 0,
+        side: "right",
+        text: "好 等你回來 姪女 8/11 開學 8/2~8/11 找一天",
+      },
       { index: 1, side: "left", text: "好的 沒問題" },
       { index: 2, side: "right", text: "8/9" },
       { index: 3, side: "left", text: "週日好像不行，週六可以" },
@@ -222,6 +155,8 @@ Deno.test("a fact agreed earlier in the same screenshot is still grounded", () =
     candidates: [{
       strategy: "humor",
       text: "那就 8/9 週六吧",
+      why: "對方說週六可以",
+      effect: "把日子定下來",
       evidenceIndices: [3],
     }],
   };
@@ -242,43 +177,11 @@ Deno.test("citations still have to point at real messages", () => {
     candidates: [{
       strategy: "extend",
       text: "嗨嗨",
+      why: "對方剛打招呼",
+      effect: "先把話接起來",
       evidenceIndices: [7],
     }],
   };
 
   assertFalse(isGroundedKeyboardAssistCompilerOutput(value));
-});
-
-Deno.test("a one-batch result is checked, not crashed on", () => {
-  // "換一批" is optional by contract. Spreading a missing second batch used to
-  // throw, so a legitimately degraded result surfaced as a generic 503.
-  const compiler = compilerWithCandidate("可以啊，你想怎麼安排？");
-  const { alternates: _dropped, ...oneBatch } = {
-    contractVersion: "keyboard-assist-v1",
-    status: "ready",
-    source: {
-      scope: "screenshot_only",
-      messageCount: 1,
-      confidence: "high",
-      sideConfidence: "high",
-    },
-    turnState: "reply_due",
-    cue: compiler.cue,
-    uncertainty: null,
-    options: [{
-      strategy: "extend",
-      text: compiler.candidates[0].text,
-      why: "先自然接話",
-      effect: "保持低壓",
-    }],
-    alternates: [],
-  } satisfies KeyboardAssistReadyResult;
-
-  assert(
-    isGroundedKeyboardAssistReadyResult(
-      oneBatch as KeyboardAssistReadyResult,
-      compiler,
-      { primary: null, secondary: null },
-    ),
-  );
 });

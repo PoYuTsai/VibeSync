@@ -60,7 +60,10 @@ void main() {
     final source = coordinator.readAsStringSync();
     final start = source.indexOf('private func rememberOffered(');
     expect(start, greaterThanOrEqualTo(0));
-    final body = source.substring(start, start + 600);
+    // Slice to the next declaration: a fixed length silently drops the guard
+    // as soon as the function grows.
+    final end = source.indexOf('\n    private func ', start + 30);
+    final body = source.substring(start, end < 0 ? source.length : end);
 
     expect(body, contains('guard candidate.isValid else'));
     expect(body, contains('priorTurn = nil'));

@@ -338,6 +338,7 @@ final class KeyboardScreenshotAssistCoordinator {
     private var insertionCheckID: UUID?
     private var speakerChoiceCheckID: UUID?
     private var previewConfirmationCheckID: UUID?
+    private var newBatchCheckID: UUID?
     private var preprocessingID: UUID?
     private var boundOwnerUserID: String?
     private var boundDocumentIdentifier: UUID?
@@ -1015,16 +1016,89 @@ final class KeyboardScreenshotAssistCoordinator {
         )
     }
 
-    /// Serves the second batch this request already produced. Deliberately not
-    /// a new request: no network call, no ledger entry, no second charge.
-    func swapBatch() {
-        guard case .resultsPreview(let presentation) = stateMachine.state,
-              presentation.canSwapBatch
+    /// "換一批" analyses this same screenshot again. Holding a second batch
+    /// back from the first call meant every screenshot paid to generate three
+    /// lines most users never asked for, and capped the feature at exactly one
+    /// retry. Regenerating has no cap and no wasted work — the lines already on
+    /// screen travel with the request so the new batch has to differ.
+    func requestNewBatch() {
+        let previewConfirmedAt = now()
+        guard newBatchCheckID == nil,
+              preprocessingID == nil,
+              case .resultsPreview(let presentation) = stateMachine.state,
+              let session = currentBoundSession(),
+              let receipt = capability,
+              let selectedScreenshot = latestScreenshot,
+              let documentIdentifier = boundDocumentIdentifier,
+              documentProvider() == documentIdentifier,
+              presentation.binding.ownerUserID == session.userId,
+              presentation.binding.assetIdentifier ==
+                selectedScreenshot.assetIdentifier,
+              let freshConsent = consentProvider.usableConsent(
+                  ownerUserId: session.userId,
+                  now: previewConfirmedAt
+              )
         else {
+            invalidateForChangedInput(
+                event: .contextChanged,
+                message: "聊天室或偏好已變更，請重新分析。"
+            )
             return
         }
-        stateMachine.send(.batchSwapped)
-        setMessage("換了一批說法；這批和上一批都算同一次分析。")
+        let freshContext = optionalContext(for: session.userId)
+        guard freshContext?.revision == presentation.binding.contextRevision
+        else {
+            contextDidChange()
+            setMessage("偏好脈絡已更新，請重新分析。")
+            return
+        }
+        context = freshContext
+        // What is on screen is exactly what the next batch must not repeat.
+        rememberOffered(presentation.options.map(\.text))
+
+        let checkID = makeUUID()
+        newBatchCheckID = checkID
+        let expectedLifecycle = lifecycleID
+        setMessage("正在重新想三個說法…")
+        // The same re-read every other generation path does: if a newer
+        // screenshot appeared while the result was on screen, re-rolling the
+        // old one would analyse a conversation the user has already left.
+        screenshotProvider.fetchLatest(
+            capability: receipt,
+            ownerUserId: session.userId,
+            userAuthorizedDetection: freshConsent.enabled,
+            ignoringSessionFloor: includePreSessionCapture
+        ) { [weak self] result in
+            guard let self,
+                  self.lifecycleID == expectedLifecycle,
+                  self.newBatchCheckID == checkID,
+                  self.currentIdentityMatches(
+                    ownerUserID: session.userId,
+                    documentIdentifier: documentIdentifier
+                  )
+            else {
+                return
+            }
+            self.newBatchCheckID = nil
+            guard case .success(let currentScreenshot) = result,
+                  currentScreenshot.assetIdentifier ==
+                    selectedScreenshot.assetIdentifier,
+                  currentScreenshot.creationDate ==
+                    selectedScreenshot.creationDate
+            else {
+                self.screenshotDidChange()
+                self.setMessage("偵測到更新的截圖，請重新預覽。")
+                return
+            }
+            self.prepareAndSubmit(
+                screenshot: currentScreenshot,
+                session: session,
+                receipt: receipt,
+                documentIdentifier: documentIdentifier,
+                speakerOverride: .none,
+                previewConfirmedAt: previewConfirmedAt
+            )
+        }
     }
 
     /// Applies to the next analysis only. Changing it never re-sends anything,
@@ -1033,17 +1107,28 @@ final class KeyboardScreenshotAssistCoordinator {
         voiceOverride = voice
     }
 
-    var canSwapBatch: Bool {
-        guard case .resultsPreview(let presentation) = stateMachine.state
-        else {
-            return false
-        }
-        return presentation.canSwapBatch
+    /// A result on screen can always be re-rolled, because re-rolling is just
+    /// another analysis of the same capture.
+    var canRequestNewBatch: Bool {
+        guard case .resultsPreview = stateMachine.state else { return false }
+        return latestScreenshot != nil
     }
 
+    /// Everything this keyboard has shown in this chat, newest first. A re-roll
+    /// is a fresh generation, so this list is the only thing stopping it from
+    /// handing back the batch it just replaced. Capped by the contract; when it
+    /// overflows the oldest lines are the ones the user is least likely to
+    /// still have on screen.
     private func rememberOffered(_ texts: [String]) {
+        var merged: [String] = []
+        for text in texts + (priorTurnForCurrentDocument()?.offeredTexts ?? [])
+        where !merged.contains(text) {
+            merged.append(text)
+        }
         let candidate = KeyboardAssistPriorTurn(
-            offeredTexts: texts,
+            offeredTexts: Array(
+                merged.prefix(KeyboardSharedConfig.maximumPriorOfferedTexts)
+            ),
             insertedText: nil
         )
         guard candidate.isValid else {
@@ -1959,11 +2044,9 @@ final class KeyboardScreenshotAssistCoordinator {
         )
         switch (response, stateMachine.state) {
         case (.ready(let ready), .resultsPreview):
-            // Both batches are shown to the user over the life of this result,
-            // so both can leak back through a later screenshot.
-            rememberOffered(
-                (ready.options + ready.alternates).map(\.text)
-            )
+            // Everything shown to the user can leak back through a later
+            // screenshot, and is also what the next "換一批" must not repeat.
+            rememberOffered(ready.options.map(\.text))
             // Keep the durable record until an explicit candidate insertion.
             setMessage(Self.readyMessage(ready))
         case (
@@ -2227,6 +2310,7 @@ final class KeyboardScreenshotAssistCoordinator {
         insertionCheckID = nil
         speakerChoiceCheckID = nil
         previewConfirmationCheckID = nil
+        newBatchCheckID = nil
         preprocessingID = nil
     }
 

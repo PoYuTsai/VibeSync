@@ -43,12 +43,12 @@ const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY") ?? "";
 const KEYBOARD_ASSIST_COMPILER_MODEL =
   Deno.env.get("KEYBOARD_ASSIST_COMPILER_MODEL") ?? "";
-const KEYBOARD_ASSIST_JUDGE_MODEL =
-  Deno.env.get("KEYBOARD_ASSIST_JUDGE_MODEL") ?? "";
 const KEYBOARD_ASSIST_MODEL_ID = "claude-sonnet-5";
+// One call, not two. The version is part of the ledger key, so a stored result
+// from the two-stage pipeline stays distinguishable from this one on replay.
 const KEYBOARD_SCREENSHOT_PIPELINE_VERSION =
   Deno.env.get("KEYBOARD_SCREENSHOT_PIPELINE_VERSION") ??
-    "compiler-judge-v1";
+    "compiler-only-v1";
 const KEYBOARD_SCREENSHOT_V1_ENABLED =
   Deno.env.get("KEYBOARD_SCREENSHOT_V1_ENABLED") === "true";
 const KEYBOARD_SCREENSHOT_V1_ALLOWLIST = new Set(
@@ -80,12 +80,10 @@ const client = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
 // whitespace. The Sonnet 5 wire contract intentionally differs from older
 // models, so a configuration typo must not become a provider-time 400.
 const provider = CLAUDE_API_KEY &&
-    KEYBOARD_ASSIST_COMPILER_MODEL === KEYBOARD_ASSIST_MODEL_ID &&
-    KEYBOARD_ASSIST_JUDGE_MODEL === KEYBOARD_ASSIST_MODEL_ID
+    KEYBOARD_ASSIST_COMPILER_MODEL === KEYBOARD_ASSIST_MODEL_ID
   ? createAnthropicKeyboardAssistProvider({
     apiKey: CLAUDE_API_KEY,
     compilerModel: KEYBOARD_ASSIST_COMPILER_MODEL,
-    judgeModel: KEYBOARD_ASSIST_JUDGE_MODEL,
   })
   : null;
 
@@ -369,12 +367,10 @@ const dependencies: KeyboardAssistHandlerDependencies = {
       pipelineVersion: KEYBOARD_SCREENSHOT_PIPELINE_VERSION,
       signal: input.signal,
       compiler: provider.compiler,
-      judge: provider.judge,
       renewLease: input.renewLease,
       recordStageTiming: input.recordStageTiming,
       nowMs: () => performance.now(),
       compilerDeadlineAtMs: input.compilerDeadlineAtMs,
-      judgeDeadlineAtMs: input.judgeDeadlineAtMs,
       deadlineAtMs: input.deadlineAtMs,
     });
   },
