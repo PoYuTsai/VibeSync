@@ -1524,7 +1524,7 @@ final class KeyboardScreenshotAssistCoordinator {
                     self.setState(
                         .failed(nil, .lookupSameRequest),
                         message:
-                            "無法重新驗證原截圖；已保留同一筆 requestId。"
+                            "沒辦法重新確認原本那張截圖；這一筆會照原樣查，不會多扣。"
                     )
                     return
                 }
@@ -2012,7 +2012,7 @@ final class KeyboardScreenshotAssistCoordinator {
         case .requestPending:
             failCurrentOperation(
                 policy: .lookupSameRequest,
-                message: "結果仍在處理；稍後只會查詢同一筆 requestId。"
+                message: "還在產生中，稍等一下再看結果；不會多扣一次。"
             )
         case .server(_, let disposition, _):
             let policy = retryPolicy(for: disposition)
@@ -2098,18 +2098,21 @@ final class KeyboardScreenshotAssistCoordinator {
         }
     }
 
+    /// These are read by someone mid-conversation who just wants a reply, not
+    /// by whoever wrote the retry contract. Say what happened and what they can
+    /// do; "payload" and "requestId" belong in the logs.
     private func message(
         for policy: KeyboardAssistRetryPolicy
     ) -> String {
         switch policy {
         case .lookupSameRequest:
-            return "結果狀態不確定；只能查詢同一筆 requestId。"
+            return "結果還沒確認，正在查同一筆；額度不會重複計算。"
         case .retrySamePayload:
-            return "可安全重送同一筆 payload；不會換 requestId。"
+            return "這次沒送成功，可以再試一次；不會多扣一次。"
         case .newRequestAfterUserChange:
-            return "請重新確認截圖後建立新請求。"
+            return "這張截圖已經過期了，重新截一次再試。"
         case .terminal:
-            return "本次請求已停止，不會自動重送。"
+            return "這次停在這裡，不會自己重送。"
         }
     }
 
