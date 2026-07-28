@@ -2,52 +2,80 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+const _runnerPath =
+    'lib/features/analysis/data/services/optimize_request_runner.dart';
+const _screenPath =
+    'lib/features/analysis/presentation/screens/analysis_screen.dart';
+
 void main() {
+  test('共用 runner 的 exactly-once 順序：先找回、再判資格、才鑄身分', () {
+    final source = File(_runnerPath).readAsStringSync();
+    final methodStart = source.indexOf('Future<OptimizeRunOutcome<T>> run<T>(');
+    expect(methodStart, greaterThanOrEqualTo(0));
+    final method = source.substring(methodStart);
+
+    final findPending = method.indexOf('_session.findPending(');
+    final entitlementPolicy = method.indexOf('canSendOptimizeMessageRequest(');
+    final beginAttempt = method.indexOf('_session.beginAttempt(');
+    final apiCall = method.indexOf('await send(pending)');
+    expect(findPending, greaterThanOrEqualTo(0));
+    expect(entitlementPolicy, greaterThan(findPending));
+    expect(beginAttempt, greaterThan(entitlementPolicy));
+    expect(apiCall, greaterThan(beginAttempt));
+
+    // 被伺服器否認的身分必須清掉，否則之後每次重試都送同一個死 requestId。
+    final resetCall = method.indexOf('_session.reset(pending)');
+    expect(resetCall, greaterThan(apiCall));
+    expect(
+      source.indexOf("'INVALID_OPTIMIZE_MESSAGE_REQUEST_ID',"),
+      greaterThanOrEqualTo(0),
+    );
+    expect(
+      source.indexOf("'OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH',"),
+      greaterThanOrEqualTo(0),
+    );
+
+    // runner 不得自己收尾；收尾是呼叫端在畫面畫出付費結果後的責任。
+    expect(source.contains('_session.markSuccess'), isFalse);
+  });
+
   test('草稿潤飾跨手動重試沿用 requestId，成功後才結束請求', () {
-    final source = File(
-      'lib/features/analysis/presentation/screens/analysis_screen.dart',
-    ).readAsStringSync();
+    final source = File(_screenPath).readAsStringSync();
     final methodStart = source.indexOf('Future<void> _optimizeMessage()');
     final methodEnd = source.indexOf('// ===== 分析輔助方法', methodStart);
     expect(methodStart, greaterThanOrEqualTo(0));
     expect(methodEnd, greaterThan(methodStart));
     final method = source.substring(methodStart, methodEnd);
 
-    final beginAttempt =
-        method.indexOf('await _optimizeRequestSession.beginAttempt');
-    final findPending =
-        method.indexOf('await _optimizeRequestSession.findPending');
-    final entitlementPolicy = method.indexOf('canSendOptimizeMessageRequest(');
-    final apiCall = method.indexOf('analysisService.analyzeConversation');
-    final requestIdWire = method.indexOf('requestId: pending.requestId');
-    final success =
-        method.indexOf('_optimizeRequestSession.markSuccess(pending)');
-    expect(findPending, inInclusiveRange(0, entitlementPolicy - 1));
-    expect(entitlementPolicy, inInclusiveRange(0, beginAttempt - 1));
-    expect(beginAttempt, inInclusiveRange(0, apiCall - 1));
+    final runnerCall = method.indexOf('_optimizeRequestRunner.run<AnalysisResult>(');
+    final apiCall = method.indexOf('analysisService.analyzeConversation(');
+    final requestIdWire = method.indexOf('requestId: pending.requestId,');
+    final presented =
+        method.indexOf('_clearOptimizePendingAfterVisibleFrame(pending)');
+    expect(runnerCall, greaterThanOrEqualTo(0));
+    expect(apiCall, greaterThan(runnerCall));
     expect(requestIdWire, greaterThan(apiCall));
-    expect(success, greaterThan(requestIdWire));
+    expect(presented, greaterThan(requestIdWire));
 
-    expect(method, contains("e.code == 'INVALID_OPTIMIZE_MESSAGE_REQUEST_ID'"));
-    expect(
-      method,
-      contains("e.code == 'OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH'"),
-    );
-    expect(method, contains('_optimizeRequestSession.reset(optimizePending)'));
-    expect(method, contains('ModalRoute.of(context)?.isCurrent != true'));
-    expect(
-      source,
-      contains('HiveOptimizeMessagePendingRequestStore('),
-    );
+    // markSuccess 只能發生在畫面確實呈現付費結果之後。
+    final clearStart =
+        source.indexOf('Future<void> _clearOptimizePendingAfterVisibleFrame(');
+    expect(clearStart, greaterThanOrEqualTo(0));
+    final clearBody = source.substring(clearStart, clearStart + 1200);
+    final routeGuard = clearBody.indexOf('ModalRoute.of(context)?.isCurrent !=');
+    final markSuccess =
+        clearBody.indexOf('_optimizeRequestSession.markSuccess(pending);');
+    expect(routeGuard, greaterThanOrEqualTo(0));
+    expect(markSuccess, greaterThan(routeGuard));
+
+    expect(source, contains('HiveOptimizeMessagePendingRequestStore('));
     expect(source, contains('() => StorageService.settingsBox'));
     expect(source, contains('恢復已付結果'));
     expect(source, contains('新的潤飾仍需 Essential'));
   });
 
   test('草稿潤飾在操作前明示成功固定使用一則', () {
-    final source = File(
-      'lib/features/analysis/presentation/screens/analysis_screen.dart',
-    ).readAsStringSync();
+    final source = File(_screenPath).readAsStringSync();
     expect(source, contains('成功完成使用 1 則'));
   });
 }

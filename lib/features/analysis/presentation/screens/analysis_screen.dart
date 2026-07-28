@@ -62,6 +62,7 @@ import '../../data/services/analysis_hint_service.dart';
 import '../../data/services/analysis_service.dart';
 import '../../data/services/analysis_telemetry_guardrail_helper.dart';
 import '../../data/services/optimize_message_request_session.dart';
+import '../../data/services/optimize_request_runner.dart';
 import '../../domain/coach/coach_action_policy.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/analysis_record.dart';
@@ -201,6 +202,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     store: HiveOptimizeMessagePendingRequestStore(
       () => StorageService.settingsBox,
     ),
+  );
+  late final _optimizeRequestRunner = OptimizeRequestRunner(
+    session: _optimizeRequestSession,
   );
   OptimizedMessage? _optimizedMessage;
   OptimizeMessagePendingRequest? _optimizePendingAwaitingPresentation;
@@ -4925,7 +4929,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return;
     }
 
-    OptimizeMessagePendingRequest? optimizePending;
     try {
       final analysisContext = await _buildSummaryAwareAnalysisContext(
         conversation: conversation,
@@ -4949,15 +4952,58 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         effectiveStyleContext: effectiveStyleContext,
         knownContactName: knownContactName,
       );
-      final existingPending = await _optimizeRequestSession.findPending(
-        ownerUserId: ownerUserId,
-        fingerprint: optimizeFingerprint,
+      final outcome = await _optimizeRequestRunner.run<AnalysisResult>(
+        input: OptimizeRunInput(
+          ownerUserId: ownerUserId,
+          fingerprint: optimizeFingerprint,
+          isEssential: ref.read(subscriptionProvider).isEssential,
+        ),
+        onReadyToSend: () async {
+          if (!mounted) return false;
+          final consented = await AiDataSharingConsent.ensure(
+            context,
+            featureLabel: '草稿潤飾',
+            consentKey: AiDataSharingConsent.optimizeReplayConsentKey,
+            dataDescription: AiDataSharingConsent.optimizeReplayDataDescription,
+            purposeText: AiDataSharingConsent.optimizeReplayPurposeText,
+          );
+          if (!consented || !mounted) return false;
+
+          _dismissKeyboard();
+          setState(() {
+            _isOptimizing = true;
+            _optimizedMessage = null;
+            _polishRunKey = null;
+            _lastAnalysisTelemetry = null;
+          });
+          return true;
+        },
+        send: (pending) async {
+          final analysisService = AnalysisService();
+          final result = await analysisService.analyzeConversation(
+            analysisContext.requestMessages,
+            sessionContext: conversation.sessionContext,
+            conversationSummary: analysisContext.conversationSummary,
+            partnerSummary: partnerSummary,
+            effectiveStyleContext: effectiveStyleContext,
+            knownContactName: knownContactName,
+            userDraft: draft,
+            requestId: pending.requestId,
+            onTelemetry: _handleAnalysisTelemetry,
+          );
+          if (result.optimizedMessage == null ||
+              result.optimizedMessage!.optimized.trim().isEmpty) {
+            throw AnalysisException(
+              '這次沒有產生可用的優化結果，請稍後再試。',
+              code: 'OPTIMIZE_MESSAGE_RESULT_INVALID',
+              suggestedAction: AnalysisErrorAction.wait,
+            );
+          }
+          return result;
+        },
       );
-      if (!mounted) return;
-      if (!canSendOptimizeMessageRequest(
-        isEssential: ref.read(subscriptionProvider).isEssential,
-        pending: existingPending,
-      )) {
+
+      if (outcome.status == OptimizeRunStatus.notEntitled) {
         if (!mounted) return;
         _showFloatingSnackBar(
           '新的草稿潤飾需要 Essential；若是恢復已付結果，請貼回同一份草稿。',
@@ -4965,53 +5011,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         await _showPaywall(context);
         return;
       }
-
-      final consented = await AiDataSharingConsent.ensure(
-        context,
-        featureLabel: '草稿潤飾',
-        consentKey: AiDataSharingConsent.optimizeReplayConsentKey,
-        dataDescription: AiDataSharingConsent.optimizeReplayDataDescription,
-        purposeText: AiDataSharingConsent.optimizeReplayPurposeText,
-      );
-      if (!consented || !mounted) return;
-
-      _dismissKeyboard();
-      setState(() {
-        _isOptimizing = true;
-        _optimizedMessage = null;
-        _polishRunKey = null;
-        _lastAnalysisTelemetry = null;
-      });
-
-      final pending = existingPending ??
-          await _optimizeRequestSession.beginAttempt(
-            ownerUserId: ownerUserId,
-            fingerprint: optimizeFingerprint,
-          );
-      optimizePending = pending;
-
-      final analysisService = AnalysisService();
-      final result = await analysisService.analyzeConversation(
-        analysisContext.requestMessages,
-        sessionContext: conversation.sessionContext,
-        conversationSummary: analysisContext.conversationSummary,
-        partnerSummary: partnerSummary,
-        effectiveStyleContext: effectiveStyleContext,
-        knownContactName: knownContactName,
-        userDraft: draft,
-        requestId: pending.requestId,
-        onTelemetry: _handleAnalysisTelemetry,
-      );
-      if (result.optimizedMessage == null ||
-          result.optimizedMessage!.optimized.trim().isEmpty) {
-        throw AnalysisException(
-          '這次沒有產生可用的優化結果，請稍後再試。',
-          code: 'OPTIMIZE_MESSAGE_RESULT_INVALID',
-          suggestedAction: AnalysisErrorAction.wait,
-        );
-      }
+      // cancelled：使用者拒絕同意或畫面已離開，什麼都沒送出也沒鑄身分。
+      if (!outcome.isSuccess) return;
       if (!mounted) return;
 
+      final pending = outcome.pending!;
+      final result = outcome.result!;
       setState(() {
         _isOptimizing = false;
         _optimizedMessage = result.optimizedMessage;
@@ -5043,17 +5048,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _showFloatingSnackBar(_monthlyQuotaExceededMessage(e));
       await _showPaywall(context);
     } on AnalysisException catch (e) {
-      if (e.code == 'INVALID_OPTIMIZE_MESSAGE_REQUEST_ID' ||
-          e.code == 'OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH') {
-        if (optimizePending != null) {
-          try {
-            await _optimizeRequestSession.reset(optimizePending);
-          } catch (_) {
-            // A stale encrypted snapshot is replay-safe; the next attempt can
-            // surface a storage error without sending another billable call.
-          }
-        }
-      }
+      // 身分被伺服器否認時的 reset 由 OptimizeRequestRunner 負責，這裡只顯示文案。
       if (!mounted) return;
       setState(() {
         _isOptimizing = false;
