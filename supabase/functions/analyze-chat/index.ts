@@ -83,6 +83,14 @@ import {
   OPENER_REPLAY_LIMIT,
 } from "./opener_charge.ts";
 import { buildQuotaUsageMetadata, deriveRequestType } from "./quota_usage.ts";
+import {
+  classifyRefineFreeConsumption,
+  projectRefineFreeAllowance,
+  REFINE_FREE_DAILY_LIMIT,
+  type RefineFreeProjection,
+  shouldChargeAfterRefineConsumption,
+  utcDayString,
+} from "./refine_allowance.ts";
 import { validateRefineInstruction } from "./refine_instruction.ts";
 import {
   buildRefineUserSection,
@@ -7077,11 +7085,34 @@ ${recentText}`;
     const estimatedMessageCount = recognizeOnly
       ? 0
       : billing.chargedMessageCount;
+    // 微調免費額度的「投影」：純讀取，不授權。權威在拿到有效結果之後才呼叫
+    // consume_refine_free_allowance（見 refine_allowance.ts 的說明）。讀失敗
+    // 一律樂觀當免費，最壞只是多打一次模型；授權那一段仍然說了算，不可能
+    // 因為投影樂觀而多扣錢。測試帳號本來就豁免，不去動它的免費計數。
+    let refineFreeProjection: RefineFreeProjection | null = null;
+    if (isRefineReplyMode && !accountIsTest && optimizeReplayResult === null) {
+      const { data: allowanceRow, error: allowanceReadError } = await supabase
+        .from("refine_free_allowance")
+        .select("day_utc, used_count")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (allowanceReadError) {
+        logWarn("refine_free_allowance_read_failed", {
+          user: summarizeUser(user.id),
+          error: allowanceReadError.message,
+        });
+      }
+      refineFreeProjection = projectRefineFreeAllowance({
+        row: allowanceReadError ? null : allowanceRow,
+        todayUtc: utcDayString(new Date()),
+      });
+    }
     const quotaUsage = buildQuotaUsageMetadata({
       requestType,
       recognizeOnly,
       accountIsTest,
       estimatedMessageCount,
+      refineIsFree: refineFreeProjection?.willBeFree ?? false,
     });
     let projectedMonthlyUsage = sub.monthly_messages_used +
       quotaUsage.chargedMessageCount;
@@ -7542,6 +7573,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       recognizeOnly,
       hasUserDraft:
         !!(userDraft && typeof userDraft === "string" && userDraft.trim()),
+      // 只記「有沒有帶指令」與「打模型前剩幾次免費」，指令文字絕不進 ai_logs。
+      hasRefineInstruction: isRefineReplyMode,
+      refineFreeRemainingBefore: refineFreeProjection?.remaining ?? null,
       imageCount: hasImages ? images.length : 0,
       totalImageBytes: Math.round(totalImageBytes),
       timeoutMs,
@@ -9250,6 +9284,56 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       },
     });
 
+    // 免費額度的權威授權。位置很重要：必須在所有「結果無效就不扣費」的檢查
+    // 之後，計數才不會被一次失敗的生成吃掉；replay 早在上面就返回，走不到
+    // 這裡，所以重試同一顆 requestId 不會重複消耗免費次數。
+    //
+    // 已知且有界的取捨：授權成功之後若結算走的是 retryable/failed，這一次的
+    // 免費額度已經花掉但使用者沒拿到結果，重試會再花一次。結算失敗本身很
+    // 罕見，且上限是每天 10 次裡的幾次；額度表沒有退款函式，硬做一個等於在
+    // 帳本之外再開一條可被競態利用的寫入路徑。
+    let refineFreeGranted: boolean | null = null;
+    let refineFreeRemaining: number | null = refineFreeProjection?.remaining ??
+      null;
+    if (isRefineReplyMode && !accountIsTest) {
+      const { data: allowanceData, error: allowanceError } = await supabase.rpc(
+        "consume_refine_free_allowance",
+        {
+          p_user_id: user.id,
+          p_daily_limit: REFINE_FREE_DAILY_LIMIT,
+        },
+      );
+      const consumption = classifyRefineFreeConsumption(
+        allowanceData,
+        allowanceError,
+      );
+      if (consumption.kind === "unavailable") {
+        // 不扣費。分不出「額度已扣但回應中斷」與「完全沒扣到」時，改為扣錢
+        // 的風險是使用者同時被吃掉一次免費額度又被扣 1 則。
+        logError("refine_free_allowance_consume_failed", {
+          user: summarizeUser(user.id),
+          requestId: optimizeRequestId,
+          error: consumption.message,
+        });
+      } else {
+        refineFreeRemaining = consumption.remaining;
+      }
+      const refineShouldCharge = shouldChargeAfterRefineConsumption(
+        consumption,
+      );
+      refineFreeGranted = !refineShouldCharge;
+      quotaUsage.shouldChargeQuota = refineShouldCharge;
+      quotaUsage.quotaReason = refineShouldCharge
+        ? "refine_reply_fixed_1"
+        : "refine_free_daily";
+      quotaUsage.chargedMessageCount = refineShouldCharge
+        ? OPTIMIZE_MESSAGE_COST
+        : 0;
+      quotaUsage.estimatedMessageCount = refineShouldCharge
+        ? OPTIMIZE_MESSAGE_COST
+        : 0;
+    }
+
     // Current optimize clients settle the validated result and fixed one-unit
     // charge atomically. Legacy clients without requestId fall through to the
     // generic increment_usage path, still with the fixed quota metadata.
@@ -9373,9 +9457,14 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       optimizeSettledDailyUsed = settlement.dailyUsed;
       quotaUsage.shouldChargeQuota = false;
       quotaUsage.quotaReason = settlement.charged
-        ? "optimize_message_fixed_1"
+        ? (isRefineReplyMode
+          ? "refine_reply_fixed_1"
+          : "optimize_message_fixed_1")
         : accountIsTest
         ? "test_account_waived"
+        // 微調的免費輪次是刻意帶 chargeQuota:false 進帳本的，不是冪等重播。
+        : refineFreeGranted === true
+        ? "refine_free_daily"
         : "optimize_message_idempotent_replay";
     }
 
@@ -9461,6 +9550,10 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       shouldChargeQuota: reportedShouldCharge,
       quotaReason: quotaUsage.quotaReason,
       quotaUnit: quotaUsage.quotaUnit,
+      // 面板要顯示「今天還剩幾次免費微調」。非微調請求恆為 null，client 才
+      // 不會把別的請求的剩餘數誤記進微調面板。
+      refineFreeRemaining: isRefineReplyMode ? refineFreeRemaining : null,
+      refineFreeDailyLimit: isRefineReplyMode ? REFINE_FREE_DAILY_LIMIT : null,
     };
 
     result.telemetry = {
@@ -9508,6 +9601,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       chargedMessageCount: legacyReportedCharge,
       estimatedMessageCount: quotaUsage.estimatedMessageCount,
       quotaReason: quotaUsage.quotaReason,
+      refineFreeGranted,
+      refineFreeRemaining,
     };
 
     // Phase 1 量測閘：把原始 vision 觀測快照掛在回應頂層（sibling，不進

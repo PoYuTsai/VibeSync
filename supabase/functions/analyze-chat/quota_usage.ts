@@ -34,11 +34,15 @@ export function buildQuotaUsageMetadata({
   recognizeOnly,
   accountIsTest,
   estimatedMessageCount,
+  refineIsFree = false,
 }: {
   requestType: string;
   recognizeOnly: boolean;
   accountIsTest: boolean;
   estimatedMessageCount: number;
+  /// 只對 `refine_reply` 有意義：這次是否落在今天的免費額度內。
+  /// 預設 false，其餘 requestType 的行為與今日一字不差。
+  refineIsFree?: boolean;
 }) {
   if (recognizeOnly) {
     return {
@@ -51,7 +55,12 @@ export function buildQuotaUsageMetadata({
   }
 
   if (accountIsTest) {
-    const waivedEstimate = requestType === "optimize_message"
+    // 微調也是固定 1 則的定價，估算不得落回按訊息數算——測試帳號雖然不扣，
+    // estimatedMessageCount 會被 client 拿去顯示「這次要用幾則」。
+    // 免費額度內則估 0，顯示才不會嚇到人。
+    const waivedEstimate = requestType === "refine_reply"
+      ? (refineIsFree ? 0 : OPTIMIZE_MESSAGE_COST)
+      : requestType === "optimize_message"
       ? OPTIMIZE_MESSAGE_COST
       : estimatedMessageCount;
     return {
@@ -61,6 +70,25 @@ export function buildQuotaUsageMetadata({
       chargedMessageCount: 0,
       estimatedMessageCount: waivedEstimate,
     };
+  }
+
+  if (requestType === "refine_reply") {
+    // 額度用完不是拒絕，是轉為扣 1 則走既有 optimize_message 帳本。
+    return refineIsFree
+      ? {
+        shouldChargeQuota: false,
+        quotaReason: "refine_free_daily",
+        quotaUnit: "messages",
+        chargedMessageCount: 0,
+        estimatedMessageCount: 0,
+      }
+      : {
+        shouldChargeQuota: true,
+        quotaReason: "refine_reply_fixed_1",
+        quotaUnit: "messages",
+        chargedMessageCount: OPTIMIZE_MESSAGE_COST,
+        estimatedMessageCount: OPTIMIZE_MESSAGE_COST,
+      };
   }
 
   if (requestType === "optimize_message") {
