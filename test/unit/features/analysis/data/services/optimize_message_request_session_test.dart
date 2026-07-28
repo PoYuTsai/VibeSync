@@ -23,18 +23,8 @@ class _FailingSaveStore extends InMemoryOptimizeMessagePendingRequestStore {
 
 void main() {
   group('OptimizeMessageRequestIdSession', () {
-    test('downgraded account may replay paid pending but cannot start fresh',
-        () async {
+    test('付費結果在方案變動後仍可用同一個 requestId 取回', () async {
       final session = OptimizeMessageRequestIdSession();
-      expect(
-        canSendOptimizeMessageRequest(isEssential: false, pending: null),
-        isFalse,
-      );
-      expect(
-        canSendOptimizeMessageRequest(isEssential: true, pending: null),
-        isTrue,
-      );
-
       final paidButResponseLost = await session.beginAttempt(
         ownerUserId: _ownerA,
         fingerprint: 'charged-response-lost',
@@ -44,13 +34,6 @@ void main() {
         fingerprint: 'charged-response-lost',
       );
       expect(restoredAfterDowngrade?.requestId, paidButResponseLost.requestId);
-      expect(
-        canSendOptimizeMessageRequest(
-          isEssential: false,
-          pending: restoredAfterDowngrade,
-        ),
-        isTrue,
-      );
     });
 
     test('same payload retry reuses its UUID until success', () async {

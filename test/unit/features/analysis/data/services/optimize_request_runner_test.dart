@@ -43,10 +43,9 @@ class _RecordingSession extends OptimizeMessageRequestIdSession {
   }
 }
 
-OptimizeRunInput _input({bool isEssential = true}) => OptimizeRunInput(
+OptimizeRunInput _input() => const OptimizeRunInput(
       ownerUserId: _owner,
       fingerprint: _fingerprint,
-      isEssential: isEssential,
     );
 
 void main() {
@@ -81,25 +80,25 @@ void main() {
     expect(session.markSuccessCalls, isEmpty);
   });
 
-  test('非 Essential 且沒有既存 pending：不送出、不 beginAttempt', () async {
+  test('沒有方案閘門：任何用戶都能直接鑄身分並送出', () async {
     final session = _RecordingSession();
     final runner = OptimizeRequestRunner(session: session);
     var sendCalls = 0;
 
     final outcome = await runner.run<String>(
-      input: _input(isEssential: false),
+      input: _input(),
       send: (pending) async {
         sendCalls++;
         return 'optimized';
       },
     );
 
-    expect(outcome.status, OptimizeRunStatus.notEntitled);
-    expect(sendCalls, 0);
-    expect(session.begunRequestIds, isEmpty);
+    expect(outcome.isSuccess, isTrue);
+    expect(sendCalls, 1);
+    expect(session.begunRequestIds, hasLength(1));
   });
 
-  test('非 Essential 但有既存 pending：可以取回已付結果', () async {
+  test('既存 pending：重試沿用同一身分取回已付結果', () async {
     final session = _RecordingSession();
     final runner = OptimizeRequestRunner(session: session);
 
@@ -113,7 +112,7 @@ void main() {
     final paidRequestId = session.lastBegun!.requestId;
 
     final recovered = await runner.run<String>(
-      input: _input(isEssential: false),
+      input: _input(),
       send: (pending) async {
         expect(pending.requestId, paidRequestId);
         return 'optimized';

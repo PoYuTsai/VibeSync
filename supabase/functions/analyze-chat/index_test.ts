@@ -17,6 +17,22 @@ function base64PayloadWithEstimatedBytes(bytes: number): string {
   return "A".repeat(Math.ceil((bytes * 4) / 3));
 }
 
+Deno.test({
+  name: "付費邊界：草稿潤飾／回覆微調全方案開放，「我說」維持 Essential",
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    // 拆牆是對外可見的商業變更，退回去必須讓測試紅掉而不是靜靜生效。
+    assertFalse(source.includes("feature_gate_optimize_message"));
+    assertFalse(source.includes("草稿潤飾功能僅限 Essential 方案"));
+    // 同一段 403 原本由兩個功能共用，拆錯就會把「我說」也一起免費開放。
+    assert(source.includes('"feature_gate_my_message"'));
+    assert(source.includes("「我說」分析功能僅限 Essential 方案"));
+  },
+});
+
 Deno.test("extractClaudeText skips Sonnet 5 thinking blocks", () => {
   assertEquals(
     extractClaudeText({

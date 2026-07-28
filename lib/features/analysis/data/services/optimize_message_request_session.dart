@@ -9,12 +9,6 @@ import '../../../conversation/domain/entities/session_context.dart';
 
 const _optimizeMessageReplayWindow = Duration(days: 7);
 
-bool canSendOptimizeMessageRequest({
-  required bool isEssential,
-  required OptimizeMessagePendingRequest? pending,
-}) =>
-    isEssential || pending != null;
-
 /// Durable identity for one user-visible optimize-message action.
 ///
 /// Only an input digest and UUID are stored. Conversation text and the draft

@@ -12,10 +12,6 @@ enum OptimizeRunStatus {
   /// paid result is actually on screen.
   success,
 
-  /// No existing paid attempt to recover and the account cannot start a new
-  /// one. Nothing was minted and nothing was sent.
-  notEntitled,
-
   /// The caller's pre-send gate declined (unmounted screen, consent refused).
   cancelled,
 }
@@ -24,19 +20,14 @@ class OptimizeRunInput {
   const OptimizeRunInput({
     required this.ownerUserId,
     required this.fingerprint,
-    required this.isEssential,
   });
 
   final String ownerUserId;
   final String fingerprint;
-  final bool isEssential;
 }
 
 class OptimizeRunOutcome<T> {
   const OptimizeRunOutcome._(this.status, this.pending, this.result);
-
-  const OptimizeRunOutcome.notEntitled(OptimizeMessagePendingRequest? pending)
-      : this._(OptimizeRunStatus.notEntitled, pending, null);
 
   const OptimizeRunOutcome.cancelled()
       : this._(OptimizeRunStatus.cancelled, null, null);
@@ -61,9 +52,12 @@ class OptimizeRunOutcome<T> {
 ///
 /// Every entry point (draft polisher, reply refinement) goes through here.
 /// Duplicating this ordering duplicates the chance of double-charging a user:
-/// `findPending` must precede the entitlement decision so a downgraded account
-/// can still recover a result it already paid for, and `beginAttempt` must not
-/// mint an identity for an action that will never be sent.
+/// `findPending` must precede everything so an interrupted attempt is recovered
+/// instead of paid for twice, and `beginAttempt` must not mint an identity for
+/// an action that will never be sent.
+///
+/// There is no tier gate here. Draft polish and reply refinement are open to
+/// every plan and metered by quota alone.
 class OptimizeRequestRunner {
   OptimizeRequestRunner({required OptimizeMessageRequestIdSession session})
       : _session = session;
@@ -86,13 +80,6 @@ class OptimizeRequestRunner {
       ownerUserId: input.ownerUserId,
       fingerprint: input.fingerprint,
     );
-    if (!canSendOptimizeMessageRequest(
-      isEssential: input.isEssential,
-      pending: existingPending,
-    )) {
-      return OptimizeRunOutcome<T>.notEntitled(existingPending);
-    }
-
     if (onReadyToSend != null && !await onReadyToSend()) {
       return const OptimizeRunOutcome.cancelled();
     }

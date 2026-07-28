@@ -4956,7 +4956,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         input: OptimizeRunInput(
           ownerUserId: ownerUserId,
           fingerprint: optimizeFingerprint,
-          isEssential: ref.read(subscriptionProvider).isEssential,
         ),
         onReadyToSend: () async {
           if (!mounted) return false;
@@ -5003,14 +5002,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         },
       );
 
-      if (outcome.status == OptimizeRunStatus.notEntitled) {
-        if (!mounted) return;
-        _showFloatingSnackBar(
-          '新的草稿潤飾需要 Essential；若是恢復已付結果，請貼回同一份草稿。',
-        );
-        await _showPaywall(context);
-        return;
-      }
       // cancelled：使用者拒絕同意或畫面已離開，什麼都沒送出也沒鑄身分。
       if (!outcome.isSuccess) return;
       if (!mounted) return;
@@ -7868,44 +7859,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     height: 1.35,
                                   ),
                                 ),
-                                if (!subscription.isEssential) ...[
-                                  const SizedBox(height: 12),
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.ctaStart
-                                          .withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: AppColors.ctaStart
-                                            .withValues(alpha: 0.3),
-                                      ),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        const Icon(
-                                          Icons.lock_outline,
-                                          color: AppColors.ctaStart,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            '草稿潤飾器是 Essential 功能。若先前已扣額度但沒看到結果，展開後貼回同一草稿可免費恢復。',
-                                            style: AppTypography.bodyMedium
-                                                .copyWith(
-                                              color: AppColors.ctaStart,
-                                            ),
-                                          ),
-                                        ),
-                                        TextButton(
-                                          onPressed: () =>
-                                              _showPaywall(context),
-                                          child: const Text('查看方案'),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
                                 if (_showOptimizeInput) ...[
                                   const SizedBox(height: 12),
                                   TextField(
@@ -7914,9 +7867,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         color: AppColors.onBackgroundPrimary),
                                     decoration: InputDecoration(
                                       hintText: '貼上你原本想傳的訊息…',
-                                      helperText: subscription.isEssential
-                                          ? '這裡只修草稿；成功完成使用 1 則。想討論下一步，請用「問教練」。'
-                                          : '只供恢復已付但未顯示的結果：請貼回同一份草稿；新的潤飾仍需 Essential。',
+                                      helperText:
+                                          '這裡只修草稿；成功完成使用 1 則。想討論下一步，請用「問教練」。',
                                       hintStyle:
                                           AppTypography.bodyMedium.copyWith(
                                         color: AppColors.onBackgroundSecondary
@@ -7981,15 +7933,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                               child: CircularProgressIndicator(
                                                   strokeWidth: 2),
                                             )
-                                          : Icon(subscription.isEssential
-                                              ? Icons.auto_fix_high
-                                              : Icons.restore_rounded),
+                                          : const Icon(Icons.auto_fix_high),
                                       label: Text(
-                                        _isOptimizing
-                                            ? '優化中…'
-                                            : subscription.isEssential
-                                                ? '優化這段草稿'
-                                                : '恢復已付結果',
+                                        _isOptimizing ? '優化中…' : '優化這段草稿',
                                       ),
                                     ),
                                   ),

@@ -7188,23 +7188,17 @@ ${recentText}`;
         );
       }
     }
-    if (
-      (
-        isMyMessageMode ||
-        (isOptimizeMessageMode && optimizeReplayResult === null)
-      ) && effectiveTier !== "essential"
-    ) {
+    // Only "my_message" is still an Essential-gated feature. The optimize
+    // (draft polish) gate was removed on purpose: optimize_message and
+    // refine_reply are open to every tier and metered by quota instead.
+    if (isMyMessageMode && effectiveTier !== "essential") {
       const refreshStatus = await maybeRefreshSubscriptionTierFromRevenueCat(
-        isMyMessageMode
-          ? "feature_gate_my_message"
-          : "feature_gate_optimize_message",
+        "feature_gate_my_message",
       );
       const refreshed = refreshStatus === "applied";
       if (!(refreshed && effectiveTier === "essential")) {
         return jsonResponse({
-          error: isMyMessageMode
-            ? "「我說」分析功能僅限 Essential 方案"
-            : "草稿潤飾功能僅限 Essential 方案",
+          error: "「我說」分析功能僅限 Essential 方案",
           code: "FEATURE_NOT_AVAILABLE",
           requiredTier: "essential",
         }, 403);
@@ -7212,9 +7206,10 @@ ${recentText}`;
     }
 
     // A known replay is an already-paid result. It still passed auth, payload
-    // hash, hard caps, and client-shape validation above, but intentionally
-    // bypasses the current Essential gate so a later downgrade cannot strand
-    // it. Fresh optimize requests remain Essential-only.
+    // hash, hard caps, and client-shape validation above. It used to also
+    // bypass an Essential gate here; that gate no longer exists for optimize,
+    // so this block now only handles usage sync and returning the stored
+    // result without re-charging.
     if (isOptimizeMessageMode && optimizeReplayResult !== null) {
       let replayMonthlyUsed = sub.monthly_messages_used;
       let replayDailyUsed = sub.daily_messages_used;

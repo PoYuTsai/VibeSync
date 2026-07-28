@@ -8,19 +8,17 @@ const _screenPath =
     'lib/features/analysis/presentation/screens/analysis_screen.dart';
 
 void main() {
-  test('共用 runner 的 exactly-once 順序：先找回、再判資格、才鑄身分', () {
+  test('共用 runner 的 exactly-once 順序：先找回、才鑄身分、才送出', () {
     final source = File(_runnerPath).readAsStringSync();
     final methodStart = source.indexOf('Future<OptimizeRunOutcome<T>> run<T>(');
     expect(methodStart, greaterThanOrEqualTo(0));
     final method = source.substring(methodStart);
 
     final findPending = method.indexOf('_session.findPending(');
-    final entitlementPolicy = method.indexOf('canSendOptimizeMessageRequest(');
     final beginAttempt = method.indexOf('_session.beginAttempt(');
     final apiCall = method.indexOf('await send(pending)');
     expect(findPending, greaterThanOrEqualTo(0));
-    expect(entitlementPolicy, greaterThan(findPending));
-    expect(beginAttempt, greaterThan(entitlementPolicy));
+    expect(beginAttempt, greaterThan(findPending));
     expect(apiCall, greaterThan(beginAttempt));
 
     // 被伺服器否認的身分必須清掉，否則之後每次重試都送同一個死 requestId。
@@ -70,8 +68,14 @@ void main() {
 
     expect(source, contains('HiveOptimizeMessagePendingRequestStore('));
     expect(source, contains('() => StorageService.settingsBox'));
-    expect(source, contains('恢復已付結果'));
-    expect(source, contains('新的潤飾仍需 Essential'));
+  });
+
+  test('草稿潤飾已對全方案開放：畫面不得再出現付費閘門文案', () {
+    final source = File(_screenPath).readAsStringSync();
+    expect(source.contains('草稿潤飾器是 Essential 功能'), isFalse);
+    expect(source.contains('新的潤飾仍需 Essential'), isFalse);
+    expect(source.contains('新的草稿潤飾需要 Essential'), isFalse);
+    expect(source.contains('恢復已付結果'), isFalse);
   });
 
   test('草稿潤飾在操作前明示成功固定使用一則', () {
