@@ -1,4 +1,7 @@
-import { assert } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
 const apiSource = await Deno.readTextFile(
   new URL("../../../ios/VibeSyncKeyboard/KeyboardAPI.swift", import.meta.url),
@@ -87,13 +90,31 @@ Deno.test("keyboard client clears terminal 429s but retains ambiguous failures",
   assert(ambiguousServerBranch.includes('?? "generation_failed"'));
   assert(!ambiguousServerBranch.includes("pendingStore.clear"));
 
-  const insert = controllerSource.indexOf(
-    "self.textDocumentProxy.insertText(reply)",
+  // The property is "a reply is only marked presented once it actually landed
+  // in the text field". Insertion moved behind replyInsertionCoordinator and
+  // this scan kept looking for the inlined call it replaced, so it failed on a
+  // refactor that had in fact made the guarantee stronger: marking is now
+  // conditional on the outcome, not merely sequenced after the attempt.
+  const insertReply = controllerSource.indexOf(
+    "@objc private func insertGeneratedReply()",
   );
-  const clear = controllerSource.indexOf(
-    "self.api.markPresented(requestId: success.requestId)",
+  assert(insertReply >= 0, "insertGeneratedReply is gone");
+  const nextFunc = controllerSource.indexOf(
+    "\n    private func ",
+    insertReply,
   );
-  assert(insert >= 0 && clear > insert);
+  const body = controllerSource.slice(insertReply, nextFunc);
+  const attempted = body.indexOf("replyInsertionCoordinator.insertLegacy(");
+  const confirmed = body.indexOf("if outcome == .inserted {", attempted);
+  const marked = body.indexOf("api.markPresented(", confirmed);
+  assert(attempted >= 0, "the reply no longer goes through the coordinator");
+  assert(confirmed > attempted, "presentation is not gated on the outcome");
+  assert(marked > confirmed, "markPresented escaped the inserted branch");
+  assertEquals(
+    body.split("api.markPresented(").length - 1,
+    1,
+    "a second markPresented can mark an insertion that never happened",
+  );
 });
 
 Deno.test("keyboard UI prevents a second billable request while one is active", () => {
