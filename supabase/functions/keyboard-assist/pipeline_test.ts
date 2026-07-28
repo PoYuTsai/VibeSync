@@ -585,7 +585,10 @@ Deno.test("a screenshot with too few usable replies still fails", async () => {
   assertEquals(judgeCalls, 0);
 });
 
-Deno.test("judge cannot invent off-screen facts in why or effect", async () => {
+Deno.test("an invented explanation is replaced, never served", async () => {
+  // The explanation is our commentary on a reply, not the reply. It still must
+  // never carry a fact from outside the screenshot to the user — but throwing
+  // the whole screenshot away over a sentence of colour is the wrong price.
   const inventedExplanation = {
     ...judged,
     options: judged.options.map((option, index) =>
@@ -597,23 +600,27 @@ Deno.test("judge cannot invent off-screen facts in why or effect", async () => {
     ),
   };
 
-  const error = await assertRejects(
-    () =>
-      runKeyboardAssistPipeline({
-        image,
-        speakerOverride: "none",
-        voice: { primary: "steady", secondary: null },
-        priorTurn: null,
-        pipelineVersion: "compiler-judge-v1",
-        signal: new AbortController().signal,
-        compiler: () => Promise.resolve(compilerOutput()),
-        judge: () => Promise.resolve(inventedExplanation),
-        renewLease: () => Promise.resolve(true),
-        nowMs: () => 1000,
-        deadlineAtMs: 41_000,
-      }),
-    KeyboardAssistPipelineError,
-  );
+  const result = await runKeyboardAssistPipeline({
+    image,
+    speakerOverride: "none",
+    voice: { primary: "steady", secondary: null },
+    priorTurn: null,
+    pipelineVersion: "compiler-judge-v1",
+    signal: new AbortController().signal,
+    compiler: () => Promise.resolve(compilerOutput()),
+    judge: () => Promise.resolve(inventedExplanation),
+    renewLease: () => Promise.resolve(true),
+    nowMs: () => 1000,
+    deadlineAtMs: 41_000,
+  });
 
-  assertEquals(error.code, "provider_invalid_output");
+  if (result.status !== "ready") throw new Error("expected a ready result");
+  const wire = JSON.stringify(result);
+  assert(!wire.includes("上次在台北"), "off-screen fact reached the user");
+  assert(!wire.includes("方便明天推進"), "off-screen fact reached the user");
+  // The replies themselves are untouched; only the explanations changed.
+  assertEquals(
+    result.options.map((option) => option.text),
+    judged.options.map((option) => option.text),
+  );
 });

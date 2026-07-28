@@ -2,14 +2,17 @@ import {
   KEYBOARD_ASSIST_CONTRACT_VERSION,
   type KeyboardAssistErrorCode,
   type KeyboardAssistLedgerResult,
+  type KeyboardAssistOption,
   type KeyboardAssistSpeakerOverride,
   type KeyboardAssistV1Request,
 } from "./contract.ts";
 import {
+  hasOnlyGroundedFactualTokens,
   isGroundedKeyboardAssistCandidate,
-  isGroundedKeyboardAssistReadyResult,
   keyboardAssistCompilerGroundingFailure,
+  keyboardAssistReadyResultDrift,
 } from "./grounding.ts";
+import type { NormalizedKeyboardAssistCompilerOutput } from "./normalize.ts";
 import { normalizeKeyboardAssistCompilerOutput } from "./normalize.ts";
 import { containsOwnPriorCandidates } from "./own_output_leak.ts";
 import type {
@@ -36,10 +39,41 @@ export type KeyboardAssistRejectDetail =
   | "compiler_schema"
   | "compiler_grounding"
   | "compiler_grounding_cue"
-  | "compiler_grounding_candidate";
+  | "compiler_grounding_candidate"
+  | "judge_schema"
+  | "judge_not_ready"
+  | "judge_drift_source"
+  | "judge_drift_turn_state"
+  | "judge_drift_cue"
+  | "judge_drift_uncertainty"
+  | "judge_drift_option_not_from_compiler"
+  | "judge_drift_explanation";
 
 /// Deliberately factual-token free, so it can never itself fail grounding.
 export const KEYBOARD_ASSIST_UNGROUNDED_CUE_FALLBACK = "先看看這幾則訊息再回";
+const KEYBOARD_ASSIST_UNGROUNDED_WHY_FALLBACK = "依畫面上的訊息接話";
+const KEYBOARD_ASSIST_UNGROUNDED_EFFECT_FALLBACK = "保持自然";
+
+/// `why` and `effect` are our commentary on a reply, not the reply. If the
+/// judge reached outside the screenshot to explain itself, the explanation is
+/// what is wrong — replacing it costs the user a sentence of colour, whereas
+/// rejecting costs them the whole screenshot.
+function repairExplanations(
+  options: readonly KeyboardAssistOption[],
+  compiler: NormalizedKeyboardAssistCompilerOutput,
+): KeyboardAssistOption[] {
+  const allVisibleMessages = compiler.messages.map((message) => message.text)
+    .join("\n");
+  return options.map((option) => ({
+    ...option,
+    why: hasOnlyGroundedFactualTokens(option.why, allVisibleMessages)
+      ? option.why
+      : KEYBOARD_ASSIST_UNGROUNDED_WHY_FALLBACK,
+    effect: hasOnlyGroundedFactualTokens(option.effect, allVisibleMessages)
+      ? option.effect
+      : KEYBOARD_ASSIST_UNGROUNDED_EFFECT_FALLBACK,
+  }));
+}
 
 export class KeyboardAssistPipelineError extends Error {
   constructor(
@@ -284,24 +318,59 @@ export async function runKeyboardAssistPipeline(input: {
     throw new KeyboardAssistPipelineError(
       "provider_invalid_output",
       "judge output failed final schema",
+      "judge_schema",
     );
   }
   if (rawJudged.status !== "ready") {
     throw new KeyboardAssistPipelineError(
       "provider_invalid_output",
       "judge may only return a ready result",
+      "judge_not_ready",
     );
   }
-  if (
-    !isGroundedKeyboardAssistReadyResult(
-      rawJudged,
-      normalized,
-      input.voice,
-    )
-  ) {
+  // Most of a judge result is not the judge's own work: `source`, `turnState`,
+  // `cue` and `uncertainty` are the compiler's values copied forward, and the
+  // compiler's copy has already passed grounding. Treating a paraphrase of one
+  // of them as grounds to throw the whole request away punishes the user for a
+  // difference that has no effect on what they send. Take the compiler's
+  // version instead — that is the value we would have insisted on anyway.
+  const judgedResult = {
+    ...rawJudged,
+    source: {
+      scope: input.voice.primary === null
+        ? "screenshot_only" as const
+        : "screenshot_plus_global_voice" as const,
+      messageCount: normalized.messages.length,
+      confidence: normalized.confidence,
+      sideConfidence: normalized.sideConfidence,
+    },
+    turnState: normalized.turnState,
+    cue: normalized.cue,
+    uncertainty: normalized.uncertainty,
+    options: repairExplanations(rawJudged.options, normalized),
+    ...(rawJudged.alternates === undefined ? {} : {
+      alternates: repairExplanations(rawJudged.alternates, normalized),
+    }),
+  };
+  // What survives the repair is the judge's actual output: the reply text the
+  // user is about to send. That still has to come from the compiler verbatim.
+  const drift = keyboardAssistReadyResultDrift(
+    judgedResult,
+    normalized,
+    input.voice,
+  );
+  if (drift) {
     throw new KeyboardAssistPipelineError(
       "provider_invalid_output",
-      "judge output drifted from compiler evidence",
+      `judge output drifted from compiler evidence: ${drift}`,
+      `judge_drift_${drift}` as KeyboardAssistRejectDetail,
+    );
+  }
+  if (!validateKeyboardAssistLedgerResult(judgedResult)) {
+    throw new KeyboardAssistPipelineError(
+      "provider_invalid_output",
+      "repaired judge output failed final schema",
+      "judge_schema",
     );
   }
   if (!await input.renewLease("after_judge")) {
@@ -310,5 +379,5 @@ export async function runKeyboardAssistPipeline(input: {
       "request lease ownership changed after judge",
     );
   }
-  return rawJudged;
+  return judgedResult;
 }

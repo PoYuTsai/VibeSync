@@ -310,7 +310,7 @@ function factualTokens(value: string): Set<string> {
   return tokens;
 }
 
-function hasOnlyGroundedFactualTokens(
+export function hasOnlyGroundedFactualTokens(
   generated: string,
   evidence: string,
 ): boolean {
@@ -398,6 +398,54 @@ export function isGroundedKeyboardAssistCompilerOutput(
     ) return false;
     return hasOnlyGroundedFactualTokens(candidate.text, allVisibleMessages);
   });
+}
+
+/// Where a judge result parted company with the compiler it was given. Same
+/// motive as the compiler-side breakdown: "the judge drifted" is true of five
+/// unrelated defects, and picking the wrong one costs a deploy each time.
+export type KeyboardAssistReadyDrift =
+  | "source"
+  | "turn_state"
+  | "cue"
+  | "uncertainty"
+  | "option_not_from_compiler"
+  | "explanation";
+
+export function keyboardAssistReadyResultDrift(
+  result: KeyboardAssistReadyResult,
+  compiler: NormalizedKeyboardAssistCompilerOutput,
+  voice: KeyboardAssistV1Request["voice"],
+): KeyboardAssistReadyDrift | null {
+  const allVisibleMessages = compiler.messages.map((message) => message.text)
+    .join("\n");
+  const expectedScope = voice.primary === null
+    ? "screenshot_only"
+    : "screenshot_plus_global_voice";
+  if (
+    result.source.scope !== expectedScope ||
+    result.source.messageCount !== compiler.messages.length ||
+    result.source.confidence !== compiler.confidence ||
+    result.source.sideConfidence !== compiler.sideConfidence
+  ) return "source";
+  if (result.turnState !== compiler.turnState) return "turn_state";
+  if (result.cue !== compiler.cue) return "cue";
+  if (result.uncertainty !== compiler.uncertainty) return "uncertainty";
+
+  const served = [...result.options, ...(result.alternates ?? [])];
+  if (
+    !served.every((option) =>
+      compiler.candidates.some((candidate) =>
+        candidate.strategy === option.strategy &&
+        candidate.text === option.text
+      )
+    )
+  ) return "option_not_from_compiler";
+  return served.every((option) =>
+      hasOnlyGroundedFactualTokens(option.why, allVisibleMessages) &&
+      hasOnlyGroundedFactualTokens(option.effect, allVisibleMessages)
+    )
+    ? null
+    : "explanation";
 }
 
 export function isGroundedKeyboardAssistReadyResult(
