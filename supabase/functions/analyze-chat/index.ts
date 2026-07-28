@@ -85,6 +85,10 @@ import {
 import { buildQuotaUsageMetadata, deriveRequestType } from "./quota_usage.ts";
 import { validateRefineInstruction } from "./refine_instruction.ts";
 import {
+  buildRefineUserSection,
+  REFINE_REPLY_SYSTEM_PROMPT,
+} from "./refine_prompt.ts";
+import {
   buildOptimizeMessageLedgerResult,
   classifyOptimizeMessageReplayPreflight,
   computeOptimizeMessageInputHash,
@@ -7375,9 +7379,11 @@ ${recentText}`;
 
     const systemPrompt = recognizeOnly
       ? OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT
-      : (isOptimizeMessageMode
-        ? OPTIMIZE_MESSAGE_PROMPT
-        : (isMyMessageMode ? MY_MESSAGE_PROMPT : SYSTEM_PROMPT));
+      : (isRefineReplyMode
+        ? REFINE_REPLY_SYSTEM_PROMPT
+        : (isOptimizeMessageMode
+          ? OPTIMIZE_MESSAGE_PROMPT
+          : (isMyMessageMode ? MY_MESSAGE_PROMPT : SYSTEM_PROMPT)));
 
     // 組合用戶訊息
     if (sessionContext) {
@@ -7462,9 +7468,17 @@ ${recentText}`;
       !isMyMessageMode && userDraft && typeof userDraft === "string" &&
       userDraft.trim()
     ) {
-      userPrompt = joinPromptSections(
-        userPrompt,
-        `## User Draft To Optimize
+      userPrompt = isRefineReplyMode
+        ? joinPromptSections(
+          userPrompt,
+          buildRefineUserSection({
+            draft: userDraft.trim(),
+            instruction: refineInstruction!,
+          }),
+        )
+        : joinPromptSections(
+          userPrompt,
+          `## User Draft To Optimize
 "${userDraft.trim()}"
 
 Optimization contract:
@@ -7480,7 +7494,7 @@ Optimization contract:
 - If the draft contains desire, intimacy, meetup, or short-term intent, preserve the direction while lowering pressure and keeping consent/exit room clear.
 
 Return \`optimizedMessage\` in the structured JSON response.`,
-      );
+        );
     }
 
     // Production is always Sonnet 5. Explicit old-model forcing remains
