@@ -5,11 +5,14 @@ export function deriveRequestType({
   hasImages,
   isMyMessageMode,
   hasUserDraft,
+  hasRefineInstruction = false,
 }: {
   recognizeOnly: boolean;
   hasImages: boolean;
   isMyMessageMode: boolean;
   hasUserDraft: boolean;
+  /// 預設 false，讓沒有帶指令的舊 client 分類與今日完全相同。
+  hasRefineInstruction?: boolean;
 }): string {
   if (recognizeOnly) {
     return "recognize_only";
@@ -21,7 +24,7 @@ export function deriveRequestType({
     return "my_message";
   }
   if (hasUserDraft) {
-    return "optimize_message";
+    return hasRefineInstruction ? "refine_reply" : "optimize_message";
   }
   return "analyze";
 }

@@ -105,6 +105,55 @@ Deno.test("quota usage: optimize-message is fixed at one regardless of context e
   );
 });
 
+Deno.test("deriveRequestType - 有草稿且有指令是 refine_reply", () => {
+  assertEquals(
+    deriveRequestType({
+      recognizeOnly: false,
+      hasImages: false,
+      isMyMessageMode: false,
+      hasUserDraft: true,
+      hasRefineInstruction: true,
+    }),
+    "refine_reply",
+  );
+});
+
+Deno.test("deriveRequestType - 有草稿沒指令仍是 optimize_message", () => {
+  assertEquals(
+    deriveRequestType({
+      recognizeOnly: false,
+      hasImages: false,
+      isMyMessageMode: false,
+      hasUserDraft: true,
+      hasRefineInstruction: false,
+    }),
+    "optimize_message",
+  );
+});
+
+Deno.test("deriveRequestType - 指令不能把截圖辨識或我說模式改判成微調", () => {
+  assertEquals(
+    deriveRequestType({
+      recognizeOnly: true,
+      hasImages: false,
+      isMyMessageMode: false,
+      hasUserDraft: true,
+      hasRefineInstruction: true,
+    }),
+    "recognize_only",
+  );
+  assertEquals(
+    deriveRequestType({
+      recognizeOnly: false,
+      hasImages: false,
+      isMyMessageMode: true,
+      hasUserDraft: true,
+      hasRefineInstruction: true,
+    }),
+    "my_message",
+  );
+});
+
 Deno.test("quota usage: optimize-message remains free for test accounts", () => {
   assertEquals(
     buildQuotaUsageMetadata({

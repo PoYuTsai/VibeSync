@@ -83,6 +83,7 @@ import {
   OPENER_REPLAY_LIMIT,
 } from "./opener_charge.ts";
 import { buildQuotaUsageMetadata, deriveRequestType } from "./quota_usage.ts";
+import { validateRefineInstruction } from "./refine_instruction.ts";
 import {
   buildOptimizeMessageLedgerResult,
   classifyOptimizeMessageReplayPreflight,
@@ -4673,6 +4674,7 @@ serve(async (req) => {
       effectiveStyleContext: rawEffectiveStyleContext,
       knownContactName: rawKnownContactName,
       userDraft: rawUserDraft,
+      refineInstruction: rawRefineInstruction,
       forceModel: rawForceModel,
       analyzeMode: rawAnalyzeMode,
       recognizeOnly: rawRecognizeOnly,
@@ -4709,6 +4711,9 @@ serve(async (req) => {
       return jsonResponse({ error: "Invalid recognizeOnly" }, 400);
     }
     const recognizeOnly = rawRecognizeOnly === true;
+    // 涵蓋草稿潤飾與回覆微調兩者：微調一定帶非空 userDraft、沒有圖、不是 opener／
+    // new_topic／my_message，所以這個形狀判斷不必為微調加寬。下游的月/日額度
+    // early gate 用的就是它，改動這裡等於同時改動計費邊界。
     const isOptimizeMessageRequestShape = !recognizeOnly &&
       rawMode !== "opener" &&
       rawMode !== "new_topic" &&
@@ -6600,6 +6605,23 @@ serve(async (req) => {
       }, 400);
     }
 
+    // 回覆微調的入口守門：在任何模型呼叫與額度動作之前，所以每一種失敗都是 0 扣費。
+    const refineValidation = validateRefineInstruction({
+      rawRefineInstruction,
+      userDraft,
+    });
+    if (refineValidation.kind === "error") {
+      return jsonResponse({
+        error: refineValidation.error,
+        code: refineValidation.code,
+        message: refineValidation.message,
+        shouldChargeQuota: false,
+      }, 400);
+    }
+    const refineInstruction = refineValidation.kind === "ok"
+      ? refineValidation.instruction
+      : undefined;
+
     const sessionContextValidation = sanitizeSessionContext(rawSessionContext);
     if (sessionContextValidation.error) {
       return jsonResponse({ error: sessionContextValidation.error }, 400);
@@ -6872,8 +6894,13 @@ ${recentText}`;
       isMyMessageMode,
       hasUserDraft:
         !!(userDraft && typeof userDraft === "string" && userDraft.trim()),
+      hasRefineInstruction: refineInstruction !== undefined,
     });
-    const isOptimizeMessageMode = requestType === "optimize_message";
+    const isRefineReplyMode = requestType === "refine_reply";
+    // 微調沿用潤飾那條 exactly-once 帳本與回應形狀，只是多一個指令與不同的
+    // 計費分支，因此這個旗標必須同時涵蓋兩種 requestType。
+    const isOptimizeMessageMode = requestType === "optimize_message" ||
+      isRefineReplyMode;
     let optimizeRequestId: string | null = null;
     let optimizeInputHash: string | null = null;
     let optimizeReplayResult: Record<string, unknown> | null = null;
