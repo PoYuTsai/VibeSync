@@ -336,14 +336,19 @@ export function isGroundedKeyboardAssistCompilerOutput(
   ) return false;
 
   return value.candidates.every((candidate) => {
+    // The citation contract still has to hold: a candidate must point at real
+    // messages. But the safety property is "no fact from outside this
+    // screenshot", so the tokens are checked against everything visible rather
+    // than only the messages this candidate happened to cite. Checking against
+    // the citation alone rejects an ordinary reply that answers the newest
+    // message using a date agreed three messages earlier — a real conversation
+    // spreads its facts around, and that rejection is a hard failure the user
+    // can only escape by giving up.
     if (
       candidate.evidenceIndices.length < 1 ||
       candidate.evidenceIndices.some((index) => !messagesByIndex.has(index))
     ) return false;
-    const citedEvidence = candidate.evidenceIndices.map((index) =>
-      messagesByIndex.get(index) ?? ""
-    ).join("\n");
-    return hasOnlyGroundedFactualTokens(candidate.text, citedEvidence);
+    return hasOnlyGroundedFactualTokens(candidate.text, allVisibleMessages);
   });
 }
 

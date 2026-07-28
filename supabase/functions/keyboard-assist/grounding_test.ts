@@ -199,3 +199,52 @@ Deno.test("judge explanations cannot add off-screen factual tokens", () => {
     "the second batch is not a lower-standard batch",
   );
 });
+
+Deno.test("a fact agreed earlier in the same screenshot is still grounded", () => {
+  // Real conversations spread their facts around: the newest message says
+  // "Saturday works", but the date it refers to was agreed three messages
+  // earlier. Citing only the message being answered must not make an ordinary
+  // reply look invented.
+  const value: NormalizedKeyboardAssistCompilerOutput = {
+    conversationType: "chat",
+    suggestedMySide: "right",
+    sideConfidence: "high",
+    confidence: "high",
+    turnState: "reply_due",
+    cue: "對方說週六可以。",
+    uncertainty: null,
+    messages: [
+      { index: 0, side: "right", text: "好 等你回來 姪女 8/11 開學 8/2~8/11 找一天" },
+      { index: 1, side: "left", text: "好的 沒問題" },
+      { index: 2, side: "right", text: "8/9" },
+      { index: 3, side: "left", text: "週日好像不行，週六可以" },
+    ],
+    candidates: [{
+      strategy: "move_forward",
+      text: "那就 8/9 週六吧",
+      evidenceIndices: [3],
+    }],
+  };
+
+  assert(isGroundedKeyboardAssistCompilerOutput(value));
+});
+
+Deno.test("citations still have to point at real messages", () => {
+  const value: NormalizedKeyboardAssistCompilerOutput = {
+    conversationType: "chat",
+    suggestedMySide: "right",
+    sideConfidence: "high",
+    confidence: "high",
+    turnState: "reply_due",
+    cue: "對方剛打招呼。",
+    uncertainty: null,
+    messages: [{ index: 0, side: "left", text: "嗨" }],
+    candidates: [{
+      strategy: "keep_pace",
+      text: "嗨嗨",
+      evidenceIndices: [7],
+    }],
+  };
+
+  assertFalse(isGroundedKeyboardAssistCompilerOutput(value));
+});

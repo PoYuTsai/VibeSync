@@ -42,8 +42,14 @@ Deno.test("prompts declare screenshot-only truth and untrusted evidence", () => 
   // than evidence that this is not a one-to-one chat.
   assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes('一對一對話請輸出 "chat"'));
   assert(
-    KEYBOARD_ASSIST_COMPILER_PROMPT.includes("不要因為訊息很少、畫面被"),
+    KEYBOARD_ASSIST_COMPILER_PROMPT.includes(
+      "不要因為訊息很少或畫面被截斷就改判 non_chat",
+    ),
   );
+  // Loosening the "few messages" rule must not loosen group detection: a group
+  // is decided by evidence of people, not by how much of the chat is visible.
+  assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("群組一定要判成 group"));
+  assert(KEYBOARD_ASSIST_COMPILER_PROMPT.includes("標題帶人數"));
   assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("不可信資料"));
   assert(KEYBOARD_ASSIST_JUDGE_PROMPT.includes("兩批各 3 個"));
   // The second batch is what "換一批" serves without a second charge, so it is
