@@ -152,6 +152,13 @@ class _ReplyRefineSheetState extends State<ReplyRefineSheet> {
   late int _freeDailyLimit = widget.freeDailyLimit;
   DateTime? _lastSubmitAt;
 
+  /// 上一次送出失敗過，因此 [_freeRemaining] 不再可信。
+  ///
+  /// server 有一條真實路徑會先授權免費額度、之後結算才失敗（額度表沒有退款
+  /// 函式，這是已知取捨）。此時畫面上的「今天還有 N 次免費」已經是舊的，繼續
+  /// 顯示它等於在扣費前給出錯誤的揭露：使用者以為下一次免費，實際會扣 1 則。
+  bool _freeRemainingStale = false;
+
   @override
   void initState() {
     super.initState();
@@ -180,6 +187,9 @@ class _ReplyRefineSheetState extends State<ReplyRefineSheet> {
   _RefineVersion get _selected => _versions[_selectedIndex];
 
   String get _quotaLine {
+    if (_freeRemainingStale) {
+      return '免費次數待確認，下一次微調可能會使用 1 則。';
+    }
     final remaining = _freeRemaining;
     if (remaining == null) {
       return '今天前 $_freeDailyLimit 次微調免費。';
@@ -237,6 +247,7 @@ class _ReplyRefineSheetState extends State<ReplyRefineSheet> {
         }
         if (outcome.freeRemaining != null) {
           _freeRemaining = outcome.freeRemaining;
+          _freeRemainingStale = false;
         }
         if (outcome.freeDailyLimit != null) {
           _freeDailyLimit = outcome.freeDailyLimit!;
@@ -247,6 +258,9 @@ class _ReplyRefineSheetState extends State<ReplyRefineSheet> {
       setState(() {
         _inFlight = false;
         _errorText = _messageFor(error);
+        // 失敗不代表沒扣到免費額度：server 可能已授權、結算才失敗。餘額改標
+        // 成待確認，下一次的權威回應會覆蓋它。
+        _freeRemainingStale = true;
       });
     }
   }

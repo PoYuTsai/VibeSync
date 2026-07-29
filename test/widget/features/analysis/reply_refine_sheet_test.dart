@@ -131,6 +131,54 @@ void main() {
     expect(find.byKey(const ValueKey('reply-refine-version-1')), findsNothing);
   });
 
+  testWidgets('失敗之後不得繼續宣稱還有 N 次免費', (tester) async {
+    // server 有一條真路徑是「免費額度已授權、結算才失敗」，額度表沒有退款
+    // 函式。此時畫面上的剩餘次數已經過期，繼續顯示它等於在扣費前給錯誤揭露。
+    await pumpSheet(
+      tester,
+      freeRemaining: 1,
+      onRefine: ({required currentText, required instruction}) async {
+        throw Exception('boom');
+      },
+    );
+
+    expect(find.text('今天還有 1 次免費微調。'), findsOneWidget);
+
+    await tester.tap(_quick('短一點'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('今天還有 1 次免費微調。'), findsNothing);
+    expect(find.text('免費次數待確認，下一次微調可能會使用 1 則。'), findsOneWidget);
+  });
+
+  testWidgets('失敗後再調成功，權威餘額要把待確認狀態蓋回去', (tester) async {
+    var calls = 0;
+    await pumpSheet(
+      tester,
+      freeRemaining: 3,
+      onRefine: ({required currentText, required instruction}) async {
+        calls += 1;
+        if (calls == 1) throw Exception('boom');
+        return const ReplyRefineOutcome(
+          refinedText: '喝杯咖啡？',
+          requestId: 'req-2',
+          freeRemaining: 2,
+          chargedQuota: false,
+        );
+      },
+    );
+
+    await tester.tap(_quick('短一點'));
+    await tester.pumpAndSettle();
+    expect(find.text('免費次數待確認，下一次微調可能會使用 1 則。'), findsOneWidget);
+
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 700)));
+    await tester.tap(_quick('短一點'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('今天還有 2 次免費微調。'), findsOneWidget);
+  });
+
   testWidgets('自由指令長度上限與 server 對齊', (tester) async {
     await pumpSheet(
       tester,
