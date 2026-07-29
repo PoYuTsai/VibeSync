@@ -94,6 +94,27 @@ void main() {
     );
   });
 
+  test('先存得回來，才清掉付費身分', () {
+    // 面板是可下滑關閉的 route：使用者可能在等待中就關掉它，結果回來時根本
+    // 沒被看到。本機暫存是唯一還能把已付費結果接回來的東西，所以順序必須是
+    // 「存檔成功 → markSuccess」。反過來寫且存檔失敗，requestId 就永久消失，
+    // 下一次只能鑄新的再扣一次。
+    final methodStart = source.indexOf('Future<void> _refineReply(');
+    final methodEnd = source.indexOf('Future<void> _recordRefineCopy(');
+    expect(methodStart, greaterThanOrEqualTo(0));
+    expect(methodEnd, greaterThan(methodStart));
+    final method = source.substring(methodStart, methodEnd);
+
+    final save = method.indexOf('_refineDraftStore.save(');
+    final mark = method.indexOf('_markRefinePendingAfterVisibleFrame(');
+    expect(save, greaterThanOrEqualTo(0));
+    expect(mark, greaterThan(save), reason: 'markSuccess 不得早於本機暫存寫入');
+
+    // 存檔失敗時必須跳過 markSuccess，讓 pending 留著走 replay。
+    expect(method.substring(save, mark), contains('restorable = true'));
+    expect(method.substring(mark - 60, mark), contains('if (restorable)'));
+  });
+
   test('免費剩餘次數只信 server 回來的數字', () {
     expect(source, contains("usage['refineFreeRemaining']"));
     // client 不自己遞減：面板顯示的次數和真正扣費的帳本必須是同一本。

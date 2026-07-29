@@ -5207,9 +5207,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         if (freeRemaining is num) {
           _refineFreeRemaining = freeRemaining.round();
         }
-        unawaited(_markRefinePendingAfterVisibleFrame(pending));
         final refinedText = result.optimizedMessage!.optimized.trim();
-        // 存檔失敗只是下次接不回來，不能讓已經產出的結果因此看不到。
+        // 順序不能反：先把已付費結果落到本機暫存，成功了才清掉付費身分。
+        //
+        // 面板是可下滑關閉的 route，使用者可能在等待中就把它關掉，結果回來時
+        // 根本沒被看到；此時本機暫存是唯一還能把它接回來的東西。若先
+        // markSuccess 再存檔而存檔失敗，requestId 就永久消失，下一次只能鑄一顆
+        // 新的再扣一次錢。存檔失敗時保留 pending，同一份輸入的下一次送出會走
+        // replay 拿回同一個結果，不重複扣費。
+        var restorable = false;
         try {
           await _refineDraftStore.save(
             ownerUserId: ownerUserId,
@@ -5217,7 +5223,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             refinedText: refinedText,
             requestId: pending.requestId,
           );
+          restorable = true;
         } catch (_) {}
+        if (restorable) {
+          unawaited(_markRefinePendingAfterVisibleFrame(pending));
+        }
         return ReplyRefineOutcome(
           refinedText: refinedText,
           requestId: pending.requestId,
