@@ -55,6 +55,16 @@ Deno.test("allowance table is unreachable from client roles", () => {
     !/GRANT\s+(ALL|INSERT|UPDATE|DELETE)[^;]*refine_free_allowance[^;]*(anon|authenticated)/i
       .test(migrationSource),
   );
+  // GRANT SELECT 不會收回 Supabase default privileges 已經給 service_role 的
+  // DML；生產實測收緊前 ACL 是 arwdDxtm。必須有明確的 REVOKE 才是唯讀。
+  for (const table of ["refine_free_allowance", "refine_free_claims"]) {
+    assert(
+      migrationSource.includes(
+        `REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER\n  ON TABLE public.${table} FROM service_role;`,
+      ),
+      `${table} must revoke service_role DML explicitly`,
+    );
+  }
 });
 
 Deno.test("the live allowance function still locks the row it increments", () => {

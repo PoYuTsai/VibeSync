@@ -40,6 +40,15 @@ ALTER TABLE public.refine_free_allowance ENABLE ROW LEVEL SECURITY;
 -- directly -- a client-visible counter is a client-forgeable counter.
 REVOKE ALL ON TABLE public.refine_free_allowance FROM PUBLIC;
 REVOKE ALL ON TABLE public.refine_free_allowance FROM anon, authenticated;
+-- Supabase's default privileges already hand service_role full DML on new
+-- public tables, and GRANT only ever adds -- so granting SELECT does NOT make
+-- this read-only. The REVOKE is what does. Verified on production: before it
+-- the ACL read service_role=arwdDxtm, after it service_role=rm.
+-- Every write goes through consume_refine_free_allowance, which is SECURITY
+-- DEFINER and runs as the owner, so this costs the Edge Function nothing while
+-- making a stray direct write impossible.
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+  ON TABLE public.refine_free_allowance FROM service_role;
 GRANT SELECT ON TABLE public.refine_free_allowance TO service_role;
 
 -- One row per settled free claim, so a retried requestId cannot spend a second
@@ -78,6 +87,10 @@ ALTER TABLE public.refine_free_claims ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON TABLE public.refine_free_claims FROM PUBLIC;
 REVOKE ALL ON TABLE public.refine_free_claims FROM anon, authenticated;
+-- Same reason as the allowance table above: GRANT cannot take away what
+-- Supabase's default privileges already gave service_role.
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+  ON TABLE public.refine_free_claims FROM service_role;
 GRANT SELECT ON TABLE public.refine_free_claims TO service_role;
 
 CREATE OR REPLACE FUNCTION public.cleanup_expired_refine_free_claims()
