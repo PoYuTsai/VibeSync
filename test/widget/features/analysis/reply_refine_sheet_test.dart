@@ -17,6 +17,8 @@ void main() {
     required ReplyRefineRequest onRefine,
     int? freeRemaining,
     String originalText = '這週要不要一起喝杯咖啡？',
+    String? restoredText,
+    String? restoredRequestId,
   }) async {
     await tester.binding.setSurfaceSize(const Size(420, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -26,6 +28,8 @@ void main() {
           originalText: originalText,
           onRefine: onRefine,
           freeRemaining: freeRemaining,
+          restoredText: restoredText,
+          restoredRequestId: restoredRequestId,
         ),
       ),
     );
@@ -144,6 +148,37 @@ void main() {
       expect(instruction.contains('撩'), isFalse);
       expect(instruction.contains('直接'), isFalse);
     }
+  });
+
+  testWidgets('接回 24 小時內的上一版：直接從那一版繼續調', (tester) async {
+    final seenTexts = <String>[];
+    await pumpSheet(
+      tester,
+      restoredText: '上次調到一半的版本',
+      restoredRequestId: 'req-restored',
+      onRefine: ({required currentText, required instruction}) async {
+        seenTexts.add(currentText);
+        return const ReplyRefineOutcome(refinedText: '再調過的');
+      },
+    );
+
+    // 目前版本卡與版本列都標著同一個標籤。
+    expect(find.text('上次調過的'), findsWidgets);
+    expect(find.byKey(const ValueKey('reply-refine-version-1')), findsOneWidget);
+    await tester.tap(_quick('短一點'));
+    await tester.pumpAndSettle();
+    expect(seenTexts, ['上次調到一半的版本']);
+  });
+
+  testWidgets('暫存的版本和原句一樣時不多堆一層', (tester) async {
+    await pumpSheet(
+      tester,
+      originalText: '原句',
+      restoredText: '  原句  ',
+      onRefine: ({required currentText, required instruction}) async => null,
+    );
+
+    expect(find.byKey(const ValueKey('reply-refine-version-1')), findsNothing);
   });
 
   testWidgets('採用版本會把選中的那一版與其 requestId 一起帶回去', (tester) async {

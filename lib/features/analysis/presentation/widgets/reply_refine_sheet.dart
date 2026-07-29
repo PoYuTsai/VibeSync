@@ -81,6 +81,8 @@ Future<ReplyRefineSheetResult?> showReplyRefineSheet(
   required ReplyRefineRequest onRefine,
   int? freeRemaining,
   int freeDailyLimit = kRefineFreeDailyLimit,
+  String? restoredText,
+  String? restoredRequestId,
 }) {
   return showModalBottomSheet<ReplyRefineSheetResult>(
     context: context,
@@ -91,6 +93,8 @@ Future<ReplyRefineSheetResult?> showReplyRefineSheet(
       onRefine: onRefine,
       freeRemaining: freeRemaining,
       freeDailyLimit: freeDailyLimit,
+      restoredText: restoredText,
+      restoredRequestId: restoredRequestId,
     ),
   );
 }
@@ -102,6 +106,8 @@ class ReplyRefineSheet extends StatefulWidget {
     required this.onRefine,
     this.freeRemaining,
     this.freeDailyLimit = kRefineFreeDailyLimit,
+    this.restoredText,
+    this.restoredRequestId,
   });
 
   final String originalText;
@@ -110,6 +116,10 @@ class ReplyRefineSheet extends StatefulWidget {
   /// 已知的今日剩餘免費次數；null 代表今天還沒問過 server。
   final int? freeRemaining;
   final int freeDailyLimit;
+
+  /// 24 小時內對同一則回覆調過的最後一版。有的話直接接著調，不用重來。
+  final String? restoredText;
+  final String? restoredRequestId;
 
   @override
   State<ReplyRefineSheet> createState() => _ReplyRefineSheetState();
@@ -146,6 +156,19 @@ class _ReplyRefineSheetState extends State<ReplyRefineSheet> {
   void initState() {
     super.initState();
     _freeRemaining = widget.freeRemaining;
+    final restored = widget.restoredText?.trim();
+    if (restored != null &&
+        restored.isNotEmpty &&
+        restored != _versions.first.text) {
+      _versions.add(
+        _RefineVersion(
+          label: '上次調過的',
+          text: restored,
+          requestId: widget.restoredRequestId,
+        ),
+      );
+      _selectedIndex = _versions.length - 1;
+    }
   }
 
   @override

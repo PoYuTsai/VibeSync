@@ -63,6 +63,7 @@ import '../../data/services/analysis_service.dart';
 import '../../data/services/analysis_telemetry_guardrail_helper.dart';
 import '../../data/services/optimize_message_request_session.dart';
 import '../../data/services/optimize_request_runner.dart';
+import '../../data/services/reply_refine_draft_store.dart';
 import '../../domain/coach/coach_action_policy.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/analysis_record.dart';
@@ -206,6 +207,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   );
   late final _optimizeRequestRunner = OptimizeRequestRunner(
     session: _optimizeRequestSession,
+  );
+
+  /// 微調的最後一版留在本機加密暫存 24 小時，離開畫面再回來還接得上。
+  final _refineDraftStore = HiveReplyRefineDraftStore(
+    () => StorageService.settingsBox,
   );
   OptimizedMessage? _optimizedMessage;
   OptimizeMessagePendingRequest? _optimizePendingAwaitingPresentation;
@@ -5115,9 +5121,23 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             ? null
             : conversation.name.trim();
 
+    // 讀失敗就當作沒有草稿：這只是方便用的快取，不能為了它擋住面板。
+    ReplyRefineDraft? restored;
+    try {
+      restored = await _refineDraftStore.loadFor(
+        ownerUserId: ownerUserId,
+        originText: origin,
+      );
+    } catch (_) {
+      restored = null;
+    }
+    if (!mounted) return;
+
     final sheetResult = await showReplyRefineSheet(
       context,
       originalText: origin,
+      restoredText: restored?.refinedText,
+      restoredRequestId: restored?.requestId,
       freeRemaining: _refineFreeRemaining,
       onRefine: ({required currentText, required instruction}) async {
         final fingerprint = OptimizeMessageRequestIdSession.fingerprintFor(
@@ -5188,8 +5208,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _refineFreeRemaining = freeRemaining.round();
         }
         unawaited(_markRefinePendingAfterVisibleFrame(pending));
+        final refinedText = result.optimizedMessage!.optimized.trim();
+        // 存檔失敗只是下次接不回來，不能讓已經產出的結果因此看不到。
+        try {
+          await _refineDraftStore.save(
+            ownerUserId: ownerUserId,
+            originText: origin,
+            refinedText: refinedText,
+            requestId: pending.requestId,
+          );
+        } catch (_) {}
         return ReplyRefineOutcome(
-          refinedText: result.optimizedMessage!.optimized.trim(),
+          refinedText: refinedText,
           requestId: pending.requestId,
           freeRemaining: freeRemaining is num ? freeRemaining.round() : null,
           freeDailyLimit:
