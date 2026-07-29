@@ -14,7 +14,13 @@
 -- subsequent auth write queues behind it -- a stalled sign-up/login pile-up.
 -- Fail fast instead: if the lock is not free within 5s, this migration errors
 -- out and gets retried at a quieter moment.
-SET lock_timeout = '5s';
+--
+-- SET LOCAL, not SET: a plain SET survives COMMIT and stays on the connection,
+-- so a pooled runner would hand the next migration an inherited 5s ceiling it
+-- never asked for. LOCAL scopes it to this transaction, which is also the
+-- scope the lock itself lives in. This file must therefore be applied inside a
+-- transaction -- outside one, SET LOCAL warns and does nothing.
+SET LOCAL lock_timeout = '5s';
 
 CREATE TABLE IF NOT EXISTS public.refine_free_allowance (
   user_id    UUID        NOT NULL PRIMARY KEY
@@ -208,9 +214,10 @@ BEGIN
   -- only place in this function that needs true wall-clock time.
   v_today := (clock_timestamp() AT TIME ZONE 'utc')::date;
 
-  -- Only reachable if the row vanished between the insert and the lock, i.e.
-  -- the account was deleted mid-request. Fail loudly rather than returning a
-  -- grant computed from NULL.
+  -- Now that the parent row is pinned with FOR KEY SHARE, account deletion can
+  -- no longer cascade this row away mid-call, so this guard only fires if
+  -- something deleted the allowance row directly. Kept anyway: failing loudly
+  -- beats returning a grant computed from NULL.
   IF NOT FOUND THEN
     RAISE EXCEPTION
       'consume_refine_free_allowance: allowance row missing for %', p_user_id;

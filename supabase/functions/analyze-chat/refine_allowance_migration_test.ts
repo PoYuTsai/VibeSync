@@ -197,8 +197,11 @@ Deno.test("先鎖父列再鎖子列，避免與刪帳號互相卡死", () => {
 Deno.test("建外鍵不得無限等待 auth.users 的寫入鎖", () => {
   // 建 FK 會在 auth.users 上拿 SHARE ROW EXCLUSIVE，與一般寫入衝突且等待
   // 無上限；一旦排進佇列，後續登入/註冊會全部塞在它後面。寧可快速失敗改時間重跑。
-  assert(migrationSource.includes("SET lock_timeout = '5s';"));
-  const timeout = migrationSource.indexOf("SET lock_timeout");
+  // LOCAL：一般 SET 會活過 COMMIT 留在連線上，pooled runner 會讓下一支
+  // migration 莫名其妙繼承 5 秒上限。
+  assert(migrationSource.includes("SET LOCAL lock_timeout = '5s';"));
+  assert(!/^SET lock_timeout/m.test(migrationSource));
+  const timeout = migrationSource.indexOf("SET LOCAL lock_timeout");
   const firstFk = migrationSource.indexOf("REFERENCES auth.users(id)");
   assert(timeout >= 0 && firstFk > timeout, "lock_timeout must precede the FK");
 });
