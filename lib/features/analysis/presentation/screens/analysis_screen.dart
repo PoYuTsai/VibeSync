@@ -5086,7 +5086,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   ///
   /// 微調對象一律是**單一則回覆**，不是整組合併後的文字：整組的「短一點」語意
   /// 不清，而且多輪迭代很快就會撞到 server 的 userDraft 長度上限。
-  Future<void> _refineReply({required String originText}) async {
+  Future<void> _refineReply({
+    required String originText,
+    required String originCardKey,
+  }) async {
     final origin = originText.trim();
     if (origin.isEmpty) return;
 
@@ -5198,8 +5201,51 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     if (!mounted || sheetResult == null || !sheetResult.isRefined) return;
     await Clipboard.setData(ClipboardData(text: sheetResult.adoptedText));
+    unawaited(
+      _recordRefineCopy(
+        originCardKey: originCardKey,
+        requestId: sheetResult.requestId,
+        copiedText: sheetResult.adoptedText,
+      ),
+    );
     if (!mounted) return;
     _showFloatingSnackBar('已複製這個版本，發出後記得回來回報結果');
+  }
+
+  /// 微調後複製要記成**獨立事件**，不能落回原卡的 adviceId。
+  ///
+  /// 原卡的 adviceId 是決定論的（`analyze:對話:runKey:cardKey`），覆寫它污染的
+  /// 不只是統計：outcome digest 會回注 coach prompt，教練會以為你送出的是原句。
+  /// 事件 key 用 `refine:<原卡 adviceId>:<requestId>`——requestId 是這一輪微調的
+  /// 冪等鍵，重複複製同一版不會多記一筆。
+  Future<void> _recordRefineCopy({
+    required String originCardKey,
+    required String? requestId,
+    required String copiedText,
+  }) async {
+    final originAdviceId = _analyzeAdviceId(originCardKey);
+    // 沒有穩定的冪等鍵就不記：寧可少一筆樣本，也不要記出無法去重的髒資料。
+    if (originAdviceId == null || requestId == null || requestId.isEmpty) {
+      return;
+    }
+    final eventId = 'refine:$originAdviceId:$requestId';
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    try {
+      await ref.read(coachingOutcomeRecorderProvider).recordAdviceCopied(
+            CoachingAdviceContext(
+              eventId: eventId,
+              partnerId: conversation?.partnerId,
+              conversationId: widget.conversationId,
+              source: CoachingOutcomeSource.analyze,
+              adviceId: eventId,
+              // 來源卡別留在 adviceType，不動 outcome schema。
+              adviceType: 'refine:$originCardKey',
+              suggestedMoveSummary: copiedText,
+            ),
+          );
+    } catch (_) {
+      // 記錄失敗不擋複製主流程。
+    }
   }
 
   /// 微調的結果畫在面板裡，而面板是蓋在本頁上的 route，所以不能沿用
@@ -5770,7 +5816,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   /// 每一顆「再調一下」都只綁一則回覆——整組合併後的文字不給微調。
-  Widget _buildRefineButton(String replyText) {
+  Widget _buildRefineButton(String replyText, {required String originCardKey}) {
     final text = replyText.trim();
     if (text.isEmpty) return const SizedBox.shrink();
     return Padding(
@@ -5780,7 +5826,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         height: 34,
         child: TextButton.icon(
           key: ValueKey('refine-reply-${text.hashCode}'),
-          onPressed: () => unawaited(_refineReply(originText: text)),
+          onPressed: () => unawaited(
+            _refineReply(originText: text, originCardKey: originCardKey),
+          ),
           icon: const Icon(Icons.tune_rounded, size: 16),
           label: Text('再調一下', style: AppTypography.labelMedium),
         ),
@@ -5832,7 +5880,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             label: const Text('複製推薦回覆'),
           ),
         ),
-        _buildRefineButton(content),
+        _buildRefineButton(content, originCardKey: 'final'),
       ];
     }
 
@@ -5879,7 +5927,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                     label: const Text('複製這句', style: TextStyle(fontSize: 13)),
                   ),
                 ),
-                _buildRefineButton(replyText),
+                _buildRefineButton(replyText, originCardKey: 'final'),
               ],
             ],
           ),
@@ -6007,7 +6055,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   ),
                 ),
               ),
-              _buildRefineButton(reply),
+              _buildRefineButton(reply, originCardKey: 'final'),
             ],
           ),
         ),
@@ -8197,6 +8245,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   ),
                                   _buildRefineButton(
                                     _optimizedMessage!.optimized,
+                                    originCardKey: 'polish',
                                   ),
                                   _buildAnalysisOutcomeBar(
                                     cardKey: 'polish',
@@ -8483,7 +8532,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           ),
         );
       },
-      onRefine: (text) => unawaited(_refineReply(originText: text)),
+      onRefine: (text) => unawaited(
+        _refineReply(originText: text, originCardKey: type),
+      ),
     );
   }
 

@@ -12,11 +12,17 @@ void main() {
 
   test('三個入口都接上「再調一下」', () {
     // AI 推薦回覆：單段、舊 ①② 段落、結構化分段三種渲染路徑都要有。
-    expect(source, contains('_buildRefineButton(content)'));
-    expect(source, contains('_buildRefineButton(replyText)'));
-    expect(source, contains('_buildRefineButton(reply)'));
-    // 五張風格卡。
-    expect(source, contains('onRefine: (text) => unawaited(_refineReply('));
+    expect(source, contains("_buildRefineButton(content, originCardKey: 'final')"));
+    expect(
+      source,
+      contains("_buildRefineButton(replyText, originCardKey: 'final')"),
+    );
+    expect(source, contains("_buildRefineButton(reply, originCardKey: 'final')"));
+    // 五張風格卡：來源卡別就是風格 type。
+    expect(
+      source,
+      contains('_refineReply(originText: text, originCardKey: type)'),
+    );
     // 草稿潤飾結果可以續調：複製草稿與 polish 追蹤列之間要有微調按鈕。
     final copyDraftAt = source.indexOf("label: const Text('複製草稿')");
     final polishOutcomeBarAt = source.indexOf("cardKey: 'polish',", copyDraftAt);
@@ -38,9 +44,7 @@ void main() {
   });
 
   test('微調每一輪都走共用 runner，指令同時進 fingerprint 與 payload', () {
-    final methodStart = source.indexOf(
-      'Future<void> _refineReply({required String originText}) async {',
-    );
+    final methodStart = source.indexOf('Future<void> _refineReply(');
     expect(methodStart, greaterThanOrEqualTo(0));
     final method = source.substring(methodStart, methodStart + 5000);
 
@@ -62,6 +66,31 @@ void main() {
     expect(
       method.substring(send, send + 900),
       contains('requestId: pending.requestId'),
+    );
+  });
+
+  test('微調後複製記成獨立事件，不覆寫原卡的 adviceId', () {
+    final methodStart = source.indexOf('Future<void> _recordRefineCopy(');
+    expect(methodStart, greaterThanOrEqualTo(0));
+    final method = source.substring(methodStart, methodStart + 1600);
+
+    // 事件 key 帶原卡 adviceId 與這一輪的 requestId（冪等鍵）。
+    expect(method, contains(r"'refine:$originAdviceId:$requestId'"));
+    expect(method, contains(r"adviceType: 'refine:$originCardKey'"));
+    // eventId 與 adviceId 都用微調自己的 key，絕不落回原卡。
+    expect(method, contains('eventId: eventId'));
+    expect(method, contains('adviceId: eventId'));
+    // 沒有穩定冪等鍵就不記。
+    expect(method, contains('requestId.isEmpty'));
+
+    // 採用微調版本後不得再走原卡的複製記錄，否則 suggestedMoveSummary 會被
+    // 覆寫成微調後的句子，digest 回注 coach prompt 時就會說錯話。
+    final refineStart = source.indexOf('Future<void> _refineReply(');
+    final refineEnd = source.indexOf('Future<void> _recordRefineCopy(');
+    expect(refineEnd, greaterThan(refineStart));
+    expect(
+      source.substring(refineStart, refineEnd).contains('_recordAnalysisCopy('),
+      isFalse,
     );
   });
 
