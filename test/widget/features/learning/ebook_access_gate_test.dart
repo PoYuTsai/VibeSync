@@ -87,6 +87,7 @@ void main() {
       // 錯誤狀態下同理，而且要走可重試錯誤而不是 paywall。
       const expiredCacheWithError = EbookSubscriptionAccess(
         isPremium: true,
+        isEssential: false,
         isResolving: false,
         hasError: true,
       );
@@ -99,6 +100,7 @@ void main() {
     test('訂閱狀態已確認為付費時，不需要快取授權也放行', () {
       const resolvedPremiumNoCache = EbookSubscriptionAccess(
         isPremium: true,
+        isEssential: false,
         isResolving: false,
         hasError: false,
       );
@@ -117,6 +119,7 @@ void main() {
       // SubscriptionState.isPremium 已涵蓋兩個 tier，這裡確認切片沒有再細分。
       const starterOrEssential = EbookSubscriptionAccess(
         isPremium: true,
+        isEssential: false,
         isResolving: false,
         hasError: false,
       );

@@ -70,10 +70,14 @@ class EbookCatalogRepository {
 
 /// Catalog 層級不變量。
 ///
-/// 這裡刻意重述「Book 1 免費、其餘訂閱」的產品拍板：內容資產若被改成 Book 2
-/// 免費，等於付費牆破洞，寧可在載入時就爆掉並由測試擋下，也不要靜默上線。
+/// 這裡刻意重述兩個單元各自的權限拍板：內容資產若把某本改成免費，等於付費牆
+/// 破洞，寧可在載入時就爆掉並由測試擋下，也不要靜默上線。
 ///
-/// 章數（四本二十章）刻意不在 runtime 強制：那是內容審稿的不變量，由
+/// 2026-07-30：權限從「看位置」改成「看單元＋單元內位置」。舊寫法是
+/// `index == 0 ? free : premium`，那條規則寫死了「全域第一本免費」——一旦
+/// 新增第二個單元，成為獎賞的第一本就會被要求是免費書，付費牆直接破洞。
+///
+/// 章數刻意不在 runtime 強制：那是內容審稿的不變量，由
 /// `ebook_content_invariants_test.dart` 守。若寫進 runtime，未來合法地新增
 /// 一章就會讓整個學習頁書架掛掉，代價遠大於效益。
 void _validateCatalog(List<Ebook> books) {
@@ -86,22 +90,43 @@ void _validateCatalog(List<Ebook> books) {
   final chapterIdsByBook = <String, Set<String>>{};
   // 條目 id → 它所在的「書/章」，給 crossRef 驗證用。
   final chapterByEntryId = <String, String>{};
+  // 單元 → 該單元目前數到第幾本，用來驗「單元內書號從 1 連號」。
+  final countByUnit = <EbookUnit, int>{};
+  // 單元必須在資產陣列裡連續出現，否則書架分組會把同一單元切成兩段。
+  final closedUnits = <EbookUnit>{};
+  EbookUnit? previousUnit;
 
   for (var index = 0; index < books.length; index++) {
     final book = books[index];
     if (!bookIds.add(book.id)) {
       throw EbookContentException('電子書 id 重複：${book.id}');
     }
-    if (book.number != index + 1) {
+
+    if (book.unit != previousUnit) {
+      if (!closedUnits.add(book.unit)) {
+        throw EbookContentException(
+          '電子書 ${book.id} 讓單元 ${book.unit.name} 在資產順序裡出現第二段；'
+          '同一單元必須連續排列',
+        );
+      }
+      previousUnit = book.unit;
+    }
+
+    final numberInUnit = (countByUnit[book.unit] ?? 0) + 1;
+    countByUnit[book.unit] = numberInUnit;
+    if (book.number != numberInUnit) {
       throw EbookContentException(
-        '電子書 ${book.id} 的 number=${book.number} 與資產順序 ${index + 1} 不一致',
+        '電子書 ${book.id} 的 number=${book.number} 與它在單元 '
+        '${book.unit.name} 內的順序 $numberInUnit 不一致',
       );
     }
-    final expectedAccess = index == 0 ? EbookAccess.free : EbookAccess.premium;
+
+    final expectedAccess = _expectedAccessFor(book.unit, numberInUnit);
     if (book.access != expectedAccess) {
       throw EbookContentException(
         '電子書 ${book.id} 的 access=${book.access.name} 違反權限拍板'
-        '（第一本免費、其餘訂閱）',
+        '（單元 ${book.unit.name} 第 $numberInUnit 本應為 '
+        '${expectedAccess.name}）',
       );
     }
 
@@ -140,6 +165,21 @@ void _validateCatalog(List<Ebook> books) {
 
   _validateFunnelTargets(books, chapterIdsByBook);
   _validateCrossRefTargets(books, chapterIdsByBook, chapterByEntryId);
+}
+
+/// 各單元的權限拍板。
+///
+/// 這是付費邊界，刻意不寫進 JSON：寫在內容檔等於讓文案改動就能改權限。
+///   - 終極指引：第 1 本免費（流程層的入口），其餘 Starter/Essential 皆可。
+///   - 成為獎賞：全部 Essential 專屬。內容尺度較重，2026-07-30 Eric 拍板
+///     不給任何免費入口，也不試讀。
+EbookAccess _expectedAccessFor(EbookUnit unit, int numberInUnit) {
+  switch (unit) {
+    case EbookUnit.ultimateGuide:
+      return numberInUnit == 1 ? EbookAccess.free : EbookAccess.premium;
+    case EbookUnit.becomeThePrize:
+      return EbookAccess.essential;
+  }
 }
 
 /// 攤平章節區塊，含條目庫裡的巢狀區塊。
@@ -272,6 +312,7 @@ Ebook parseBookJson(String raw, {required String assetPath}) {
     id: _requireString(decoded, 'id', path),
     contentVersion: _requireInt(decoded, 'contentVersion', path, min: 1),
     number: _requireInt(decoded, 'number', path, min: 1),
+    unit: _requireEnum(decoded, 'unit', path, _unitByName),
     title: _requireString(decoded, 'title', path),
     subtitle: _requireString(decoded, 'subtitle', path),
     goal: _requireString(decoded, 'goal', path),
@@ -677,6 +718,12 @@ List<EbookSourceRef> _parseSourceRefs(Map<String, Object?> json, String path) {
 const Map<String, EbookAccess> _accessByName = <String, EbookAccess>{
   'free': EbookAccess.free,
   'premium': EbookAccess.premium,
+  'essential': EbookAccess.essential,
+};
+
+const Map<String, EbookUnit> _unitByName = <String, EbookUnit>{
+  'ultimateGuide': EbookUnit.ultimateGuide,
+  'becomeThePrize': EbookUnit.becomeThePrize,
 };
 
 const Map<String, EbookTheme> _themeByName = <String, EbookTheme>{

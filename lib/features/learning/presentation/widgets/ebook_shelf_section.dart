@@ -37,17 +37,62 @@ class EbookShelfSection extends ConsumerWidget {
         catalog.when(
           loading: () => const _ShelfPlaceholder(),
           error: (error, _) => const _ShelfError(),
-          data: (catalog) => Column(
-            children: [
-              for (final book in catalog.books)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: EbookShelfCard(
-                    book: book,
-                    decision: ebookAccessFor(book, access),
-                  ),
-                ),
-            ],
+          data: (catalog) {
+            final sections = catalog.unitSections;
+            return Column(
+              children: [
+                for (final section in sections) ...[
+                  // 只有一個單元時不加分隔標題：那就是舊行為，不要為了
+                  // 未來的第二單元先讓現在的書架多一列。
+                  if (sections.length > 1) ...[
+                    _UnitDivider(unit: section.unit),
+                    const SizedBox(height: 10),
+                  ],
+                  for (final book in section.books)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: EbookShelfCard(
+                        book: book,
+                        decision: ebookAccessFor(book, access),
+                      ),
+                    ),
+                ],
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+/// 單元分隔列。書架上有兩個以上單元時才出現。
+class _UnitDivider extends StatelessWidget {
+  const _UnitDivider({required this.unit});
+
+  final EbookUnit unit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(
+          unit.kicker,
+          style: AppTypography.caption.copyWith(
+            color: AppColors.ctaStart,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            unit.fullTitle,
+            style: AppTypography.titleSmall.copyWith(
+              color: AppColors.onBackgroundPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],

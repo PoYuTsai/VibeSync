@@ -199,6 +199,7 @@ EbookChapter buildTestChapter({
 Ebook buildTestEbook({
   required String id,
   int number = 1,
+  EbookUnit unit = EbookUnit.ultimateGuide,
   String title = '測試書',
   EbookAccess access = EbookAccess.free,
   EbookTheme theme = EbookTheme.compass,
@@ -210,6 +211,7 @@ Ebook buildTestEbook({
     id: id,
     contentVersion: 1,
     number: number,
+    unit: unit,
     title: title,
     subtitle: '測試副標',
     goal: '測試目標。',

@@ -3,15 +3,18 @@
 // 電子書付費閘門。
 //
 // 硬規則：
-//   - Book 1（access == free）永不鎖。
-//   - Books 2–4 只有在訂閱狀態「已確認且為付費」時才建立 child——
+//   - access == free 的書永不鎖（終極指引第 1 本）。
+//   - access == premium 只有在訂閱狀態「已確認且為付費」時才建立 child——
 //     這是防止付費內容在 post-frame redirect 之前閃現的關鍵。
+//   - access == essential 只認 Essential。**不得照抄 isPremium**：那個 bool
+//     是 `isStarter || isEssential`，照抄會讓 Starter 讀到整個「成為獎賞」
+//     單元。這條由 `ebook_essential_unit_test.dart` 守。
 //   - 訂閱狀態還在確認 → 只顯示 loading，不導 paywall、也不顯示內容。
 //   - 訂閱狀態無法確認（error）→ 顯示可重試錯誤，不把技術錯誤包裝成 Free upsell。
 //   - Catalog 找不到這本書 → 顯示「找不到這本書」，不導 paywall。
 //   - 完全不讀文章 daily quota；電子書不消耗文章額度。
 //
-// 注意：四份 JSON 隨 App bundle 發布，這不是 server-side DRM。這道閘門保護
+// 注意：內容 JSON 隨 App bundle 發布，這不是 server-side DRM。這道閘門保護
 // 正常 App 體驗，不宣稱能防止解包資產。
 library;
 
@@ -31,31 +34,45 @@ import '../../domain/models/ebook.dart';
 class EbookSubscriptionAccess {
   const EbookSubscriptionAccess({
     required this.isPremium,
+    required this.isEssential,
     required this.isResolving,
     required this.hasError,
     this.hasUnexpiredPaidEntitlement = false,
   });
 
+  /// Starter：付費，但看不到 Essential 專屬單元。
   const EbookSubscriptionAccess.premium()
       : isPremium = true,
+        isEssential = false,
+        isResolving = false,
+        hasError = false,
+        hasUnexpiredPaidEntitlement = true;
+
+  /// Essential：所有單元全開。
+  const EbookSubscriptionAccess.essential()
+      : isPremium = true,
+        isEssential = true,
         isResolving = false,
         hasError = false,
         hasUnexpiredPaidEntitlement = true;
 
   const EbookSubscriptionAccess.free()
       : isPremium = false,
+        isEssential = false,
         isResolving = false,
         hasError = false,
         hasUnexpiredPaidEntitlement = false;
 
   const EbookSubscriptionAccess.resolving()
       : isPremium = false,
+        isEssential = false,
         isResolving = true,
         hasError = false,
         hasUnexpiredPaidEntitlement = false;
 
   const EbookSubscriptionAccess.unavailable()
       : isPremium = false,
+        isEssential = false,
         isResolving = false,
         hasError = true,
         hasUnexpiredPaidEntitlement = false;
@@ -63,18 +80,22 @@ class EbookSubscriptionAccess {
   /// 本機快取顯示付費、但訂閱狀態尚未確認（離線或刷新失敗）的狀態。
   const EbookSubscriptionAccess.cachedPremium({
     bool unexpired = true,
+    bool essential = false,
   })  : isPremium = true,
+        isEssential = essential,
         isResolving = true,
         hasError = false,
         hasUnexpiredPaidEntitlement = unexpired;
 
-  /// Starter 與 Essential 都算 premium（`SubscriptionState.isPremium`）。
+  /// Starter 與 Essential 都算 premium（`SubscriptionState.isPremium`）；
+  /// [isEssential] 另外拉出來，給 Essential 專屬單元用。
   factory EbookSubscriptionAccess.fromState(
     SubscriptionState state, {
     required bool hasUnexpiredPaidEntitlement,
   }) {
     return EbookSubscriptionAccess(
       isPremium: state.isPremium,
+      isEssential: state.isEssential,
       isResolving: state.isLoading,
       hasError: state.error != null,
       hasUnexpiredPaidEntitlement: hasUnexpiredPaidEntitlement,
@@ -82,6 +103,10 @@ class EbookSubscriptionAccess {
   }
 
   final bool isPremium;
+
+  /// 是否為 Essential。Starter 為 false——`isPremium` 對 Starter 也是 true，
+  /// 只看它會讓 Essential 專屬單元對 Starter 破洞。
+  final bool isEssential;
   final bool isResolving;
   final bool hasError;
 
@@ -133,7 +158,13 @@ EbookAccessDecision ebookAccessFor(
   EbookSubscriptionAccess subscription,
 ) {
   if (book.access == EbookAccess.free) return EbookAccessDecision.allowed;
-  if (subscription.isPremium &&
+
+  // Essential 專屬單元只認 Essential。這裡刻意不用 `isPremium`——它對 Starter
+  // 也是 true（`isStarter || isEssential`），照抄就會讓 Starter 讀到整個
+  // 「成為獎賞」單元，付費邊界當場破洞。
+  final meetsTier =
+      book.isEssentialOnly ? subscription.isEssential : subscription.isPremium;
+  if (meetsTier &&
       (subscription.isResolved || subscription.hasUnexpiredPaidEntitlement)) {
     return EbookAccessDecision.allowed;
   }
@@ -286,10 +317,16 @@ class _EbookAccessGateState extends ConsumerState<EbookAccessGate> {
         // loading 死角。改成可操作的畫面，並保留手動再看方案的入口。
         return _EbookGateMessage(
           icon: Icons.workspace_premium_outlined,
-          title: '這本需要訂閱才能閱讀',
-          message: '第一本《診斷 · 配對開場》永久免費，第二本《續航 · 讓對話活下去》'
-              '可以免費試讀第一章。訂閱後這三本會一次全部開放，不需要照順序讀。',
-          primaryLabel: '看訂閱方案',
+          title: book.isEssentialOnly ? '這個單元只在 Essential' : '這本需要訂閱才能閱讀',
+          // Essential 專屬單元一定要講清楚「Starter 也看不到」。Starter 使用者
+          // 已經付過錢，看到泛用的「請訂閱」會覺得被騙。
+          message: book.isEssentialOnly
+              ? '《成為獎賞：魅力進階課》整個單元只開放給 Essential，'
+                  '不提供試讀。Starter 方案讀得到《終極指引》，但讀不到這個單元。'
+                  '升級 Essential 後三本會一次全部開放。'
+              : '第一本《診斷 · 配對開場》永久免費，第二本《續航 · 讓對話活下去》'
+                  '可以免費試讀第一章。訂閱後這三本會一次全部開放，不需要照順序讀。',
+          primaryLabel: book.isEssentialOnly ? '看 Essential 方案' : '看訂閱方案',
           onPrimary: () => context.push('/paywall'),
           secondaryLabel: '回學習頁',
           onSecondary: () => context.go('/?tab=learning'),

@@ -16,6 +16,7 @@ Map<String, Object?> _minimalBook({
   required String id,
   required int number,
   String access = 'free',
+  String unit = 'ultimateGuide',
   List<Map<String, Object?>>? extraBlocks,
   List<Map<String, Object?>>? chapters,
 }) {
@@ -24,6 +25,7 @@ Map<String, Object?> _minimalBook({
     'id': id,
     'contentVersion': 1,
     'number': number,
+    'unit': unit,
     'title': '書名',
     'subtitle': '副標',
     'goal': '目標。',

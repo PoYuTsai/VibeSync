@@ -3,6 +3,7 @@
   "id": "ebook-3-rescue",
   "contentVersion": 3,
   "number": 3,
+  "unit": "ultimateGuide",
   "title": "避雷 · 該救還是該停",
   "subtitle": "診斷樹、反效果技巧與疑難情境",
   "goal": "沒進展的時候知道要查哪一層，並避開會反效果的流行技巧。",
