@@ -52,7 +52,10 @@ extension EbookUnitDisplay on EbookUnit {
 enum EbookAccess { free, premium, essential }
 
 /// 書封主題 key。JSON 只放語意 key，icon 與配色在 presentation 查表。
-enum EbookTheme { compass, lens, firstAid, bridge }
+///
+/// 2026-07-30 新增 [core]：成為獎賞單元若沿用終極指引的四個 key，兩個單元的
+/// 書封會長得一模一樣，書架上分不出這是流程線還是內功線。
+enum EbookTheme { compass, lens, firstAid, bridge, core }
 
 /// 教材出處，讓內容可回溯到兩份來源教材的哪一節。
 class EbookSourceRef {

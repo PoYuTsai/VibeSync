@@ -39,12 +39,13 @@ class EbookCatalogRepository {
   })  : _bundle = bundle,
         assetPaths = assetPaths ?? productionAssetPaths;
 
-  /// production 內容資產。順序即書架顯示順序，也是書號 1–4 的順序。
+  /// production 內容資產。順序即書架顯示順序；同一單元必須連續出現。
   static const List<String> productionAssetPaths = <String>[
     'assets/learning/ebooks/book_1_bottleneck.json',
     'assets/learning/ebooks/book_2_conversation.json',
     'assets/learning/ebooks/book_3_rescue.json',
     'assets/learning/ebooks/book_4_meeting.json',
+    'assets/learning/ebooks/book_5_core.json',
   ];
 
   final AssetBundle? _bundle;
@@ -731,6 +732,7 @@ const Map<String, EbookTheme> _themeByName = <String, EbookTheme>{
   'lens': EbookTheme.lens,
   'firstAid': EbookTheme.firstAid,
   'bridge': EbookTheme.bridge,
+  'core': EbookTheme.core,
 };
 
 const Map<String, EbookCalloutTone> _calloutToneByName =

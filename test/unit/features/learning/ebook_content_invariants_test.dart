@@ -389,28 +389,41 @@ void main() {
     }
   });
 
-  test('恰好四本、二十章，每本五章', () {
-    expect(catalog.books, hasLength(4));
-    for (final book in catalog.books) {
+  test('單元構成：終極指引四本各五章，成為獎賞第一冊七章', () {
+    final guide = catalog.books
+        .where((book) => book.unit == EbookUnit.ultimateGuide)
+        .toList();
+    final prize = catalog.books
+        .where((book) => book.unit == EbookUnit.becomeThePrize)
+        .toList();
+
+    expect(guide, hasLength(4));
+    for (final book in guide) {
       expect(book.chapters, hasLength(5), reason: '${book.id} 章數不是 5');
     }
-    final totalChapters = catalog.books.fold<int>(
-      0,
-      (sum, book) => sum + book.chapterCount,
-    );
-    expect(totalChapters, 20);
+
+    // 成為獎賞規劃三冊；第 2、3 冊尚未上線，寫死目前狀態，加冊時更新。
+    expect(prize.map((book) => book.id), ['ebook-5-core']);
+    expect(prize.single.chapters, hasLength(7));
   });
 
-  test('權限分界：Book 1 免費，Books 2–4 訂閱', () {
+  test('權限分界：Book 1 免費，Books 2–4 訂閱，成為獎賞全 Essential', () {
     expect(catalog.books.first.id, 'ebook-1-bottleneck');
     expect(catalog.books.first.access, EbookAccess.free);
     for (final book in catalog.books.skip(1)) {
-      expect(book.access, EbookAccess.premium, reason: '${book.id} 應為訂閱內容');
+      expect(
+        book.access,
+        book.unit == EbookUnit.becomeThePrize
+            ? EbookAccess.essential
+            : EbookAccess.premium,
+        reason: '${book.id} 權限級別不對',
+      );
     }
   });
 
   test('免費閱讀範圍＝第一冊全部＋第二冊第一章', () {
-    // 2026-07-27 夥伴回饋（Eric 轉達）。第 3、4 本一章都不開。
+    // 2026-07-27 夥伴回饋（Eric 轉達）。第 3、4 本一章都不開；
+    // 成為獎賞（Essential 專屬）也一章都不試讀（2026-07-30 拍板）。
     final books = catalog.books;
     expect(books[0].freePreviewChapterCount, books[0].chapterCount);
     expect(books[1].freePreviewChapterCount, 1);

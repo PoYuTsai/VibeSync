@@ -322,16 +322,19 @@ void main() {
   });
 
   group('production 資產', () {
-    test('現有四冊全部宣告為終極指引單元', () async {
+    test('終極指引四冊之外，成為獎賞第一冊已上線且為 Essential 專屬', () async {
       TestWidgetsFlutterBinding.ensureInitialized();
       final catalog = await EbookCatalogRepository().load();
+      expect(catalog.unitSections, hasLength(2));
       expect(
-        catalog.books.every((b) => b.unit == EbookUnit.ultimateGuide),
+        catalog.unitSections[0].books
+            .every((b) => b.unit == EbookUnit.ultimateGuide),
         isTrue,
       );
-      expect(catalog.unitSections, hasLength(1));
-      // 成為獎賞的內容還沒上線；這條會在新單元加入時自然變動，屆時要一併更新。
-      expect(catalog.books.any((b) => b.isEssentialOnly), isFalse);
+      final prize = catalog.unitSections[1].books;
+      expect(prize.map((b) => b.id), ['ebook-5-core']);
+      expect(prize.every((b) => b.isEssentialOnly), isTrue);
+      expect(prize.every((b) => b.freePreviewChapterCount == 0), isTrue);
     });
   });
 }

@@ -88,7 +88,17 @@ class EbookShelfCard extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              _AccessPill(book: book, decision: decision),
+              // pill 給上限寬：標籤最長的「Essential 解鎖」在窄幕＋大字級下
+              // 改成整顆等比縮小，不把書名欄擠爆。正常字體下 120 綽綽有餘，
+              // FittedBox 不會動它。
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 120),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: _AccessPill(book: book, decision: decision),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -146,13 +156,19 @@ class _AccessPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // pill 是狀態徽章：字級夾住，極端字級下「Essential 解鎖」才不會把
+    // 書名那欄整個擠掉。
+    final scaler = MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.4);
     switch (decision) {
       // 試讀開放第一章不改變「這本要訂閱」這件事，書架標籤維持訂閱字樣。
       case EbookAccessDecision.preview:
       case EbookAccessDecision.locked:
+        // Essential 專屬書要標出級別：Starter 已經付過錢，看到泛用的
+        // 「訂閱解鎖」會以為壞掉了。文案分流與目錄頁閘門一致。
         return _pill(
+          scaler: scaler,
           icon: Icons.lock_outline,
-          label: '訂閱解鎖',
+          label: book.isEssentialOnly ? 'Essential 解鎖' : '訂閱解鎖',
           color: AppColors.brandBlush,
         );
 
@@ -160,6 +176,7 @@ class _AccessPill extends StatelessWidget {
       case EbookAccessDecision.unavailable:
         // 中性標籤：狀態未確認時不宣稱這本要訂閱，也不宣稱已解鎖。
         return _pill(
+          scaler: scaler,
           icon: Icons.sync_outlined,
           label: '確認訂閱中',
           color: AppColors.info,
@@ -168,12 +185,14 @@ class _AccessPill extends StatelessWidget {
       case EbookAccessDecision.allowed:
         if (book.isFree) {
           return _pill(
+            scaler: scaler,
             icon: Icons.lock_open_outlined,
             label: '免費',
             color: AppColors.success,
           );
         }
         return _pill(
+          scaler: scaler,
           icon: Icons.workspace_premium_outlined,
           label: '已解鎖',
           color: AppColors.ctaStart,
@@ -185,6 +204,7 @@ class _AccessPill extends StatelessWidget {
     required IconData icon,
     required String label,
     required Color color,
+    required TextScaler scaler,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
@@ -200,6 +220,7 @@ class _AccessPill extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             label,
+            textScaler: scaler,
             style: AppTypography.caption.copyWith(
               color: color,
               fontWeight: FontWeight.w800,

@@ -108,23 +108,27 @@ void main() {
     _realCatalog = await loadProductionCatalog();
   });
 
-  testWidgets('顯示四本書並標出免費與鎖定', (tester) async {
-    await pumpShelf(tester, catalog: _realCatalog, size: const Size(390, 1600));
+  testWidgets('顯示兩單元五本書並標出免費與鎖定', (tester) async {
+    await pumpShelf(tester, catalog: _realCatalog, size: const Size(390, 2000));
     await tester.pumpAndSettle();
 
     // 書架標題是整套教材的名字（2026-07-27 夥伴回饋），不是「互動電子書」。
-    expect(find.text('THE FIELD GUIDE'), findsOneWidget);
-    expect(find.textContaining('終極指引'), findsOneWidget);
+    // THE FIELD GUIDE 出現兩次：標題卡＋單元分隔列（兩個單元以上才顯示）。
+    expect(find.text('THE FIELD GUIDE'), findsNWidgets(2));
+    expect(find.text('THE PRIZE'), findsOneWidget);
+    expect(find.textContaining('成為獎賞'), findsOneWidget);
     expect(find.text('互動電子書'), findsNothing);
     expect(find.text('診斷 · 配對開場'), findsOneWidget);
     expect(find.text('續航 · 讓對話活下去'), findsOneWidget);
     expect(find.text('避雷 · 該救還是該停'), findsOneWidget);
     expect(find.text('約會 · 從聊天到到場'), findsOneWidget);
+    expect(find.text('內核 · 吸引怎麼發生'), findsOneWidget);
 
-    // Free 使用者：Book 1 免費、其餘三本鎖定。
+    // Free 使用者：Book 1 免費、三本訂閱鎖定、成為獎賞標 Essential。
     expect(find.text('免費'), findsOneWidget);
     expect(find.text('訂閱解鎖'), findsNWidgets(3));
-    expect(find.byIcon(Icons.lock_outline), findsNWidgets(3));
+    expect(find.text('Essential 解鎖'), findsOneWidget);
+    expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
 
     // 書架區塊本身不得出現文章每日額度用語。
     expect(find.textContaining('免費閱讀'), findsNothing);
@@ -133,7 +137,7 @@ void main() {
 
   // 2026-07-27 夥伴回饋：書號方塊改成人物照（官網 Blog 卡的做法）。
   testWidgets('每本書的封面是人物照，書號仍然讀得到', (tester) async {
-    await pumpShelf(tester, catalog: _realCatalog, size: const Size(390, 1600));
+    await pumpShelf(tester, catalog: _realCatalog, size: const Size(390, 2000));
     await tester.pumpAndSettle();
 
     final assets = tester
@@ -149,26 +153,45 @@ void main() {
         reason: '$theme 沒有封面照',
       );
     }
-    // 四張照片必須互不相同，否則四本書看起來像同一本。
+    // 每個主題的照片必須互不相同，否則書看起來像同一本。
     expect(assets.length, greaterThanOrEqualTo(EbookTheme.values.length));
 
-    for (var number = 1; number <= 4; number++) {
+    // 書號在單元內從 1 起算：「第 1 冊」在兩個單元各出現一次。
+    expect(find.text('第 1 冊'), findsNWidgets(2));
+    for (var number = 2; number <= 4; number++) {
       expect(find.text('第 $number 冊'), findsOneWidget);
     }
   });
 
-  testWidgets('付費使用者四本全部解鎖', (tester) async {
+  testWidgets('Starter：終極指引全解鎖，成為獎賞仍標 Essential', (tester) async {
     await pumpShelf(
       tester,
       catalog: _realCatalog,
       access: const EbookSubscriptionAccess.premium(),
-      size: const Size(390, 1600),
+      size: const Size(390, 2000),
     );
     await tester.pumpAndSettle();
 
     expect(find.text('訂閱解鎖'), findsNothing);
     expect(find.text('免費'), findsOneWidget);
     expect(find.text('已解鎖'), findsNWidgets(3));
+    // Starter 已付費，Essential 專屬書不得顯示泛用的「訂閱解鎖」。
+    expect(find.text('Essential 解鎖'), findsOneWidget);
+  });
+
+  testWidgets('Essential：兩單元全部解鎖', (tester) async {
+    await pumpShelf(
+      tester,
+      catalog: _realCatalog,
+      access: const EbookSubscriptionAccess.essential(),
+      size: const Size(390, 2000),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('訂閱解鎖'), findsNothing);
+    expect(find.text('Essential 解鎖'), findsNothing);
+    expect(find.text('免費'), findsOneWidget);
+    expect(find.text('已解鎖'), findsNWidgets(4));
   });
 
   testWidgets('點鎖定書進目錄頁（第一章試讀），不在書架就攔成 paywall', (tester) async {
@@ -209,6 +232,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('訂閱解鎖'), findsNWidgets(3));
+    expect(find.text('Essential 解鎖'), findsOneWidget);
     // 不寫死總章數，內容擴充時不該讓這個斷言變脆。
     expect(find.textContaining('已完成 1／'), findsOneWidget);
   });
@@ -225,7 +249,7 @@ void main() {
     // 狀態未確認不得包裝成 Free upsell。
     expect(find.text('訂閱解鎖'), findsNothing);
     expect(find.text('已解鎖'), findsNothing);
-    expect(find.text('確認訂閱中'), findsNWidgets(3));
+    expect(find.text('確認訂閱中'), findsNWidgets(4));
     expect(find.text('免費'), findsOneWidget);
 
     await tester.tap(find.text('續航 · 讓對話活下去'));
@@ -245,7 +269,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('訂閱解鎖'), findsNothing);
-    expect(find.text('確認訂閱中'), findsNWidgets(3));
+    expect(find.text('確認訂閱中'), findsNWidgets(4));
 
     await tester.tap(find.text('避雷 · 該救還是該停'));
     await tester.pumpAndSettle();

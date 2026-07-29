@@ -25,6 +25,8 @@ IconData ebookThemeIcon(EbookTheme theme) {
       return Icons.medical_services_outlined;
     case EbookTheme.bridge:
       return Icons.route_outlined;
+    case EbookTheme.core:
+      return Icons.workspace_premium_outlined;
   }
 }
 
@@ -38,6 +40,10 @@ List<Color> ebookThemeGradient(EbookTheme theme) {
       return const [AppColors.hot, AppColors.brandBlush];
     case EbookTheme.bridge:
       return const [AppColors.cold, AppColors.coachAccent];
+    // 成為獎賞單元用金色系：終極指引四本是橘粉／紫／紅粉／藍紫，
+    // 內功線整單元走金—焰橙，書架上一眼分得出兩條線。
+    case EbookTheme.core:
+      return const [AppColors.bokehYellow, AppColors.brandFlame];
   }
 }
 
@@ -56,6 +62,8 @@ String ebookCoverPhotoAsset(EbookTheme theme) {
       return '$base/practice_girl_061.jpg';
     case EbookTheme.bridge:
       return '$base/practice_girl_083.jpg';
+    case EbookTheme.core:
+      return '$base/practice_girl_022.jpg';
   }
 }
 

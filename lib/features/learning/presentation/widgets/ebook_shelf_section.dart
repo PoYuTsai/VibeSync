@@ -74,14 +74,23 @@ class _UnitDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 分隔列是導覽裝飾：kicker 夾住字級並允許截斷，極端字級下寧可
+    // 短掉英文標語，也不能把整列擠爆。
+    final kickerScaler =
+        MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.4);
     return Row(
       children: [
-        Text(
-          unit.kicker,
-          style: AppTypography.caption.copyWith(
-            color: AppColors.ctaStart,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.2,
+        Flexible(
+          child: Text(
+            unit.kicker,
+            textScaler: kickerScaler,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.ctaStart,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
           ),
         ),
         const SizedBox(width: 8),
