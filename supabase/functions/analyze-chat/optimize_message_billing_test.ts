@@ -514,22 +514,33 @@ Deno.test("optimize-message replay preflight read failure returns retryable 503 
   assert(branch.includes("}, 503)"));
 });
 
-Deno.test("already-paid optimize replay bypasses later downgrade while fresh request remains Essential-only", () => {
+Deno.test("optimize replay returns after the tier gate and no tier can block an optimize request", () => {
   const featureGate = requiredIndex(
     indexSource,
-    "isMyMessageMode ||\n        (isOptimizeMessageMode && optimizeReplayResult === null)",
+    'if (isMyMessageMode && effectiveTier !== "essential") {',
   );
   const replayReturn = requiredIndex(
     indexSource,
-    "isOptimizeMessageMode && optimizeReplayResult !== null",
+    "if (isOptimizeMessageMode && optimizeReplayResult !== null) {",
     featureGate,
   );
-  assert(featureGate < replayReturn);
   assert(
+    featureGate < replayReturn,
+    "replay return must stay after the tier gate so ordering stays reviewable",
+  );
+  // The optimize gate was removed on purpose (draft polish and reply
+  // refinement are quota-metered, not tier-gated). A second tier 403 anywhere
+  // in the handler means someone walled optimize back up.
+  assertEquals(
+    indexSource.split('effectiveTier !== "essential"').length - 1,
+    1,
+    "the only tier 403 left must be the my_message one",
+  );
+  assertFalse(
     indexSource.slice(featureGate, replayReturn).includes(
-      'effectiveTier !== "essential"',
+      "isOptimizeMessageMode",
     ),
-    "fresh optimize must remain Essential-gated",
+    "nothing between the tier gate and the replay return may branch on optimize",
   );
 });
 
