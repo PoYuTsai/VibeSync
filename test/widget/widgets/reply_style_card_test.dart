@@ -46,4 +46,73 @@ void main() {
     expect(reply.maxLines, isNull);
     expect(reply.overflow, isNot(TextOverflow.ellipsis));
   });
+
+  testWidgets('再調一下只掛在單一則訊息上，整組複製不給微調', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(420, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final refined = <String>[];
+    final copied = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ReplyStyleCard(
+            type: 'extend',
+            content: '第一句\n第二句',
+            option: const ReplyOption(
+              approach: '順勢接話',
+              messages: [
+                ReplySegment(
+                  label: 'a',
+                  sourceMessage: '她說了什麼',
+                  reply: '第一句',
+                  reason: '',
+                ),
+                ReplySegment(
+                  label: 'b',
+                  sourceMessage: '',
+                  reply: '第二句',
+                  reason: '',
+                ),
+              ],
+            ),
+            isRecommended: false,
+            onCopy: (text, _) => copied.add(text),
+            onRefine: refined.add,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('reply-style-refine-0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('reply-style-refine-1')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('reply-style-refine-1')));
+    await tester.pumpAndSettle();
+    expect(refined, ['第二句']);
+
+    // 整組合併的文字只能複製，不能拿去微調。
+    await tester.tap(find.text('複製整組'));
+    await tester.pumpAndSettle();
+    expect(copied, ['第一句\n第二句']);
+    expect(refined, ['第二句']);
+  });
+
+  testWidgets('沒給 onRefine 就不出現微調按鈕', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ReplyStyleCard(
+            type: 'extend',
+            content: '只有一句',
+            option: const ReplyOption(approach: '', messages: []),
+            isRecommended: false,
+            onCopy: (_, __) {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('reply-style-refine-0')), findsNothing);
+  });
 }

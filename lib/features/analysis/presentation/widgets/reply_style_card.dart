@@ -13,6 +13,10 @@ class ReplyStyleCard extends StatelessWidget {
   final bool isRecommended;
   final void Function(String text, String snackBarMessage) onCopy;
 
+  /// 「再調一下」。只掛在單一則訊息上——整組合併後的文字不給微調：整組的
+  /// 「短一點」語意不清，多輪迭代也很快會撞到 server 的 userDraft 長度上限。
+  final void Function(String text)? onRefine;
+
   const ReplyStyleCard({
     super.key,
     required this.type,
@@ -20,6 +24,7 @@ class ReplyStyleCard extends StatelessWidget {
     required this.option,
     required this.isRecommended,
     required this.onCopy,
+    this.onRefine,
   });
 
   static const labels = {
@@ -144,6 +149,7 @@ class ReplyStyleCard extends StatelessWidget {
                         index: i,
                         total: messages.length,
                         onCopy: onCopy,
+                        onRefine: onRefine,
                       ),
                       if (i != visibleMessages.length - 1)
                         const SizedBox(height: 6),
@@ -244,12 +250,14 @@ class _ReplyOptionMessageRow extends StatelessWidget {
   final int index;
   final int total;
   final void Function(String text, String snackBarMessage) onCopy;
+  final void Function(String text)? onRefine;
 
   const _ReplyOptionMessageRow({
     required this.segment,
     required this.index,
     required this.total,
     required this.onCopy,
+    this.onRefine,
   });
 
   @override
@@ -308,6 +316,22 @@ class _ReplyOptionMessageRow extends StatelessWidget {
               size: 15,
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.8),
             ),
+            if (onRefine != null && reply.isNotEmpty) ...[
+              const SizedBox(width: 2),
+              IconButton(
+                key: ValueKey('reply-style-refine-$index'),
+                onPressed: () => onRefine!(reply),
+                icon: const Icon(Icons.tune_rounded, size: 15),
+                color: AppColors.ctaStart,
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 28,
+                  minHeight: 28,
+                ),
+                tooltip: '再調一下',
+              ),
+            ],
           ],
         ),
       ),

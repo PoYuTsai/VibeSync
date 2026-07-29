@@ -71,6 +71,7 @@ import '../../domain/services/analysis_fragment_policy.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
 import '../screens/partner_analysis_records_screen.dart';
 import '../widgets/analysis_platform_picker.dart';
+import '../widgets/reply_refine_sheet.dart';
 import '../widgets/reply_style_card.dart';
 import '../widgets/screenshot_added_feedback_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
@@ -240,6 +241,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   /// 潤飾稿獨立 runKey（_optimizeMessage 不走 _applyAnalysisResult 漏斗）。
   String? _polishRunKey;
+
+  /// 今日剩餘免費微調次數。真相源在 server，這裡只記住最近一次回應帶回來的
+  /// 數字，好讓下一次開面板時能在動手前就顯示；沒問過就是 null（不猜）。
+  int? _refineFreeRemaining;
 
   // 對話延續功能
   final _messageController = TextEditingController();
@@ -5073,6 +5078,145 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
   }
 
+  /// 「再調一下」：把一則已經產出的回覆就地再修一次，可以連續迭代。
+  ///
+  /// 每一輪都走 `_optimizeRequestRunner`，與草稿潤飾共用同一條 exactly-once
+  /// 帳本。指令有進 fingerprint，所以同一句話的兩種不同指令不會共用同一顆
+  /// requestId 而 replay 出上一輪的結果。
+  ///
+  /// 微調對象一律是**單一則回覆**，不是整組合併後的文字：整組的「短一點」語意
+  /// 不清，而且多輪迭代很快就會撞到 server 的 userDraft 長度上限。
+  Future<void> _refineReply({required String originText}) async {
+    final origin = originText.trim();
+    if (origin.isEmpty) return;
+
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    if (conversation == null) return;
+    final ownerUserId = SupabaseService.currentUser?.id;
+    if (ownerUserId == null || ownerUserId.isEmpty) {
+      _showFloatingSnackBar('登入狀態已失效，請重新登入後再試。本次不會扣額度。');
+      return;
+    }
+
+    final analysisContext = await _buildSummaryAwareAnalysisContext(
+      conversation: conversation,
+      baseMessages: conversation.messages,
+    );
+    if (!mounted) return;
+    final partnerSummary = _resolvePartnerSummary(conversation);
+    final effectiveStyleContext = _resolveEffectiveStyleContext(conversation);
+    final knownContactName =
+        ScreenshotRecognitionHelper.isPlaceholderConversationName(
+      conversation.name,
+    )
+            ? null
+            : conversation.name.trim();
+
+    final sheetResult = await showReplyRefineSheet(
+      context,
+      originalText: origin,
+      freeRemaining: _refineFreeRemaining,
+      onRefine: ({required currentText, required instruction}) async {
+        final fingerprint = OptimizeMessageRequestIdSession.fingerprintFor(
+          messages: analysisContext.requestMessages,
+          userDraft: currentText,
+          sessionContext: conversation.sessionContext,
+          conversationSummary: analysisContext.conversationSummary,
+          partnerSummary: partnerSummary,
+          effectiveStyleContext: effectiveStyleContext,
+          knownContactName: knownContactName,
+          refineInstruction: instruction,
+        );
+        final outcome = await _optimizeRequestRunner.run<AnalysisResult>(
+          input: OptimizeRunInput(
+            ownerUserId: ownerUserId,
+            fingerprint: fingerprint,
+          ),
+          onReadyToSend: () async {
+            if (!mounted) return false;
+            return AiDataSharingConsent.ensure(
+              context,
+              featureLabel: '回覆微調',
+              consentKey: AiDataSharingConsent.optimizeReplayConsentKey,
+              dataDescription:
+                  AiDataSharingConsent.optimizeReplayDataDescription,
+              purposeText: AiDataSharingConsent.optimizeReplayPurposeText,
+            );
+          },
+          send: (pending) async {
+            final result = await AnalysisService().analyzeConversation(
+              analysisContext.requestMessages,
+              sessionContext: conversation.sessionContext,
+              conversationSummary: analysisContext.conversationSummary,
+              partnerSummary: partnerSummary,
+              effectiveStyleContext: effectiveStyleContext,
+              knownContactName: knownContactName,
+              userDraft: currentText,
+              refineInstruction: instruction,
+              requestId: pending.requestId,
+              onTelemetry: _handleAnalysisTelemetry,
+            );
+            final refined = result.optimizedMessage?.optimized.trim();
+            if (refined == null || refined.isEmpty) {
+              throw AnalysisException(
+                '這次沒有調出可用的版本，請再試一次。',
+                code: 'OPTIMIZE_MESSAGE_RESULT_INVALID',
+                suggestedAction: AnalysisErrorAction.wait,
+              );
+            }
+            return result;
+          },
+        );
+        if (!outcome.isSuccess) return null;
+
+        final pending = outcome.pending!;
+        final result = outcome.result!;
+        _syncSubscriptionUsageFromResult(
+          result,
+          showChargeToast: false,
+          chargeActionLabel: '微調',
+        );
+        final usage = result.rawResponse?['usage'];
+        final freeRemaining =
+            usage is Map ? usage['refineFreeRemaining'] : null;
+        final freeDailyLimit =
+            usage is Map ? usage['refineFreeDailyLimit'] : null;
+        if (freeRemaining is num) {
+          _refineFreeRemaining = freeRemaining.round();
+        }
+        unawaited(_markRefinePendingAfterVisibleFrame(pending));
+        return ReplyRefineOutcome(
+          refinedText: result.optimizedMessage!.optimized.trim(),
+          requestId: pending.requestId,
+          freeRemaining: freeRemaining is num ? freeRemaining.round() : null,
+          freeDailyLimit:
+              freeDailyLimit is num ? freeDailyLimit.round() : null,
+          chargedQuota: usage is Map && usage['shouldChargeQuota'] == true,
+        );
+      },
+    );
+
+    if (!mounted || sheetResult == null || !sheetResult.isRefined) return;
+    await Clipboard.setData(ClipboardData(text: sheetResult.adoptedText));
+    if (!mounted) return;
+    _showFloatingSnackBar('已複製這個版本，發出後記得回來回報結果');
+  }
+
+  /// 微調的結果畫在面板裡，而面板是蓋在本頁上的 route，所以不能沿用
+  /// `_clearOptimizePendingAfterVisibleFrame` 的 `ModalRoute.isCurrent`
+  /// 條件——那個條件在面板開著時恆為 false，付費身分會永遠清不掉。
+  Future<void> _markRefinePendingAfterVisibleFrame(
+    OptimizeMessagePendingRequest pending,
+  ) async {
+    // 面板拿到結果後重建的那一幀。
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted ||
+        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+      return;
+    }
+    await _optimizeRequestSession.markSuccess(pending);
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
@@ -5625,6 +5769,25 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
+  /// 每一顆「再調一下」都只綁一則回覆——整組合併後的文字不給微調。
+  Widget _buildRefineButton(String replyText) {
+    final text = replyText.trim();
+    if (text.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: SizedBox(
+        width: double.infinity,
+        height: 34,
+        child: TextButton.icon(
+          key: ValueKey('refine-reply-${text.hashCode}'),
+          onPressed: () => unawaited(_refineReply(originText: text)),
+          icon: const Icon(Icons.tune_rounded, size: 16),
+          label: Text('再調一下', style: AppTypography.labelMedium),
+        ),
+      ),
+    );
+  }
+
   void _copyRecommendationText(String text, String label) {
     Clipboard.setData(ClipboardData(text: text));
     unawaited(_recordAnalysisCopy(cardKey: 'final', copiedText: text));
@@ -5669,6 +5832,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             label: const Text('複製推薦回覆'),
           ),
         ),
+        _buildRefineButton(content),
       ];
     }
 
@@ -5715,6 +5879,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                     label: const Text('複製這句', style: TextStyle(fontSize: 13)),
                   ),
                 ),
+                _buildRefineButton(replyText),
               ],
             ],
           ),
@@ -5842,6 +6007,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   ),
                 ),
               ),
+              _buildRefineButton(reply),
             ],
           ),
         ),
@@ -8029,6 +8195,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       label: const Text('複製草稿'),
                                     ),
                                   ),
+                                  _buildRefineButton(
+                                    _optimizedMessage!.optimized,
+                                  ),
                                   _buildAnalysisOutcomeBar(
                                     cardKey: 'polish',
                                     label: '潤飾草稿',
@@ -8314,6 +8483,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           ),
         );
       },
+      onRefine: (text) => unawaited(_refineReply(originText: text)),
     );
   }
 
