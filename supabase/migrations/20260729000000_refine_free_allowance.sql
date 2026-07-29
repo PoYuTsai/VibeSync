@@ -28,24 +28,70 @@ REVOKE ALL ON TABLE public.refine_free_allowance FROM PUBLIC;
 REVOKE ALL ON TABLE public.refine_free_allowance FROM anon, authenticated;
 GRANT SELECT ON TABLE public.refine_free_allowance TO service_role;
 
+-- One row per settled free claim, so a retried requestId cannot spend a second
+-- free slot.
+--
+-- The allowance counter alone is not idempotent: two concurrent requests that
+-- carry the SAME requestId both pass the replay preflight (no ledger row
+-- exists yet), both reach the model, and both call the consume function. The
+-- optimize ledger de-duplicates the money, but nothing de-duplicated the free
+-- counter -- the user silently lost a slot. This table is the missing key.
+--
+-- Rows are pruned on the same 7-day window as optimize_message_requests: past
+-- that window the request can no longer be replayed anyway, so a claim row for
+-- it can never be consulted again.
+CREATE TABLE IF NOT EXISTS public.refine_free_claims (
+  user_id    UUID        NOT NULL
+                         REFERENCES auth.users(id) ON DELETE CASCADE,
+  request_id UUID        NOT NULL,
+  day_utc    DATE        NOT NULL,
+  granted    BOOLEAN     NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, request_id)
+);
+
+CREATE INDEX IF NOT EXISTS refine_free_claims_created_at_idx
+  ON public.refine_free_claims (created_at);
+
+COMMENT ON TABLE public.refine_free_claims IS
+  '回覆微調免費額度的冪等鍵。同一 requestId 重試（含並行重試）只能花掉一次免費次數。';
+
+ALTER TABLE public.refine_free_claims ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON TABLE public.refine_free_claims FROM PUBLIC;
+REVOKE ALL ON TABLE public.refine_free_claims FROM anon, authenticated;
+GRANT SELECT ON TABLE public.refine_free_claims TO service_role;
+
 -- Atomically claim one free refinement for today.
 --
 -- Returns {granted, used, remaining}. granted=false is NOT an error: the caller
 -- falls back to charging one message through the existing optimize_message
 -- ledger. The row lock is what stops two concurrent requests from both taking
 -- the last free slot; without it a double-tap would spend one slot twice.
+--
+-- p_request_id makes the call idempotent. It is nullable so a client that
+-- predates the durable identity still gets the old behaviour rather than an
+-- exception; every current caller passes one.
+-- Adding a defaulted third parameter creates a NEW overload; it does not
+-- replace the two-argument version. If both existed, a two-argument call would
+-- fail with "function is not unique" -- so drop the old signature first. It is
+-- a no-op on a database that never had it.
+DROP FUNCTION IF EXISTS public.consume_refine_free_allowance(UUID, INTEGER);
+
 CREATE OR REPLACE FUNCTION public.consume_refine_free_allowance(
   p_user_id     UUID,
-  p_daily_limit INTEGER
+  p_daily_limit INTEGER,
+  p_request_id  UUID DEFAULT NULL
 ) RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_today DATE := (now() AT TIME ZONE 'utc')::date;
-  v_used  INTEGER;
-  v_day   DATE;
+  v_today   DATE := (now() AT TIME ZONE 'utc')::date;
+  v_used    INTEGER;
+  v_day     DATE;
+  v_claimed BOOLEAN;
 BEGIN
   IF p_user_id IS NULL THEN
     RAISE EXCEPTION 'consume_refine_free_allowance: p_user_id is required';
@@ -61,6 +107,10 @@ BEGIN
   -- FOR UPDATE serialises concurrent callers for this user. A second caller
   -- blocks here until the first has committed its increment, so it observes
   -- the updated count rather than the stale one it would have read.
+  --
+  -- Taking this lock BEFORE the claim lookup is what makes the idempotency
+  -- work under concurrency: the duplicate requestId waits here and therefore
+  -- reads a claim row that is already committed.
   SELECT used_count, day_utc INTO v_used, v_day
   FROM public.refine_free_allowance
   WHERE user_id = p_user_id
@@ -81,7 +131,37 @@ BEGIN
     v_used := 0;
   END IF;
 
+  IF p_request_id IS NOT NULL THEN
+    -- Scoped to this user on purpose. A table-wide sweep here would run under
+    -- the per-user allowance lock and could deadlock against another user's
+    -- sweep touching the same pages; per-user is already serialised by the
+    -- lock we hold, and the table is at most a handful of rows per user per
+    -- day (account deletion is covered by the ON DELETE CASCADE).
+    DELETE FROM public.refine_free_claims
+    WHERE user_id = p_user_id
+      AND created_at < now() - interval '7 days';
+
+    SELECT granted INTO v_claimed
+    FROM public.refine_free_claims
+    WHERE user_id = p_user_id AND request_id = p_request_id;
+
+    -- Replay of a settled verdict. Return it verbatim without touching the
+    -- counter: this requestId has already had whatever it was going to get.
+    IF FOUND THEN
+      RETURN jsonb_build_object(
+        'granted', v_claimed,
+        'used', v_used,
+        'remaining', GREATEST(0, p_daily_limit - v_used)
+      );
+    END IF;
+  END IF;
+
   IF v_used >= p_daily_limit THEN
+    IF p_request_id IS NOT NULL THEN
+      INSERT INTO public.refine_free_claims
+        (user_id, request_id, day_utc, granted)
+      VALUES (p_user_id, p_request_id, v_today, false);
+    END IF;
     RETURN jsonb_build_object(
       'granted', false, 'used', v_used, 'remaining', 0
     );
@@ -91,6 +171,12 @@ BEGIN
   SET used_count = v_used + 1, updated_at = now()
   WHERE user_id = p_user_id;
 
+  IF p_request_id IS NOT NULL THEN
+    INSERT INTO public.refine_free_claims
+      (user_id, request_id, day_utc, granted)
+    VALUES (p_user_id, p_request_id, v_today, true);
+  END IF;
+
   RETURN jsonb_build_object(
     'granted', true,
     'used', v_used + 1,
@@ -99,9 +185,14 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.consume_refine_free_allowance(UUID, INTEGER)
+REVOKE EXECUTE ON FUNCTION
+  public.consume_refine_free_allowance(UUID, INTEGER, UUID)
   FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.consume_refine_free_allowance(UUID, INTEGER)
+REVOKE EXECUTE ON FUNCTION
+  public.consume_refine_free_allowance(UUID, INTEGER, UUID)
   FROM anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.consume_refine_free_allowance(UUID, INTEGER)
+GRANT EXECUTE ON FUNCTION
+  public.consume_refine_free_allowance(UUID, INTEGER, UUID)
   TO service_role;
+
+NOTIFY pgrst, 'reload schema';

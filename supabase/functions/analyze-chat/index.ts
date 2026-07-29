@@ -92,7 +92,7 @@ import {
   projectRefineFreeAllowance,
   REFINE_FREE_DAILY_LIMIT,
   type RefineFreeProjection,
-  shouldChargeAfterRefineConsumption,
+  refineQuotaOutcomeFor,
   utcDayString,
 } from "./refine_allowance.ts";
 import { validateRefineInstruction } from "./refine_instruction.ts";
@@ -9314,6 +9314,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         {
           p_user_id: user.id,
           p_daily_limit: REFINE_FREE_DAILY_LIMIT,
+          // 冪等鍵。同一 requestId 的並行重試都會走到這裡（ledger 尚未寫入，
+          // replay preflight 兩邊都看不到），少了這個參數免費次數會被扣兩次。
+          p_request_id: optimizeRequestId,
         },
       );
       const consumption = classifyRefineFreeConsumption(
@@ -9331,14 +9334,11 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       } else {
         refineFreeRemaining = consumption.remaining;
       }
-      const refineShouldCharge = shouldChargeAfterRefineConsumption(
-        consumption,
-      );
-      refineFreeGranted = !refineShouldCharge;
+      const refineOutcome = refineQuotaOutcomeFor(consumption);
+      const refineShouldCharge = refineOutcome.shouldCharge;
+      refineFreeGranted = refineOutcome.granted;
       quotaUsage.shouldChargeQuota = refineShouldCharge;
-      quotaUsage.quotaReason = refineShouldCharge
-        ? "refine_reply_fixed_1"
-        : "refine_free_daily";
+      quotaUsage.quotaReason = refineOutcome.quotaReason;
       quotaUsage.chargedMessageCount = refineShouldCharge
         ? OPTIMIZE_MESSAGE_COST
         : 0;

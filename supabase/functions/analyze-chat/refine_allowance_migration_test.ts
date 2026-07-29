@@ -78,12 +78,12 @@ Deno.test("the live allowance function stays callable by the Edge Function", () 
   // explicit grant is what keeps analyze-chat able to call this at all.
   assert(
     liveFunctionSource.includes(
-      "GRANT EXECUTE ON FUNCTION public.consume_refine_free_allowance(UUID, INTEGER)\n  TO service_role",
+      "GRANT EXECUTE ON FUNCTION\n  public.consume_refine_free_allowance(UUID, INTEGER, UUID)\n  TO service_role",
     ),
   );
   assert(
     liveFunctionSource.includes(
-      "REVOKE EXECUTE ON FUNCTION public.consume_refine_free_allowance(UUID, INTEGER)\n  FROM anon, authenticated",
+      "REVOKE EXECUTE ON FUNCTION\n  public.consume_refine_free_allowance(UUID, INTEGER, UUID)\n  FROM anon, authenticated",
     ),
   );
 });
@@ -107,4 +107,43 @@ Deno.test("exhausting the allowance refuses rather than raising", () => {
 
 Deno.test("the day window is UTC, matching every other daily counter", () => {
   assert(liveFunctionSource.includes("(now() AT TIME ZONE 'utc')::date"));
+});
+
+Deno.test("同一 requestId 的免費授權是冪等的", () => {
+  // 併發的同 requestId 重試會兩邊都通過 replay preflight（ledger 還沒寫），
+  // 兩邊都打模型、兩邊都呼叫這支函式。ledger 只結算一次，免費計數卻會被扣
+  // 兩次——這張表就是補上那把缺席的鑰匙。
+  assert(
+    migrationSource.includes(
+      "CREATE TABLE IF NOT EXISTS public.refine_free_claims",
+    ),
+  );
+  assert(migrationSource.includes("PRIMARY KEY (user_id, request_id)"));
+  assert(liveFunctionSource.includes("p_request_id  UUID DEFAULT NULL"));
+
+  // 順序是這條的全部：必須先拿到 allowance 的 row lock，重複的 requestId 才
+  // 會在鎖上等到前一筆 claim 已經 commit。反過來寫兩邊都會查到「沒有 claim」。
+  const lock = liveFunctionSource.indexOf(
+    "WHERE user_id = p_user_id\n  FOR UPDATE;",
+  );
+  const claimLookup = liveFunctionSource.indexOf(
+    "SELECT granted INTO v_claimed",
+  );
+  assert(lock >= 0, "allowance row lock missing");
+  assert(claimLookup > lock, "claim lookup must happen under the row lock");
+
+  // 已結算的判決原樣回傳，不得再動計數。
+  assert(liveFunctionSource.includes("'granted', v_claimed"));
+});
+
+Deno.test("claims 表同樣對 client 角色完全關閉", () => {
+  assert(
+    migrationSource.includes(
+      "REVOKE ALL ON TABLE public.refine_free_claims FROM anon, authenticated",
+    ),
+  );
+  assert(
+    !/GRANT\s+(ALL|INSERT|UPDATE|DELETE)[^;]*refine_free_claims[^;]*(anon|authenticated)/i
+      .test(migrationSource),
+  );
 });
