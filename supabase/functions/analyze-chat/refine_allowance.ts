@@ -104,3 +104,31 @@ export function shouldChargeAfterRefineConsumption(
 ): boolean {
   return consumption.kind === "exhausted";
 }
+
+export type RefineQuotaOutcome = {
+  shouldCharge: boolean;
+  /// true=真的拿到免費授權；false=額度用完改扣費；null=RPC 故障，白送但
+  /// **不是**授權。三態分開才看得出白送了幾次。
+  granted: boolean | null;
+  quotaReason: string;
+};
+
+/// `unavailable` 與 `granted` 都不扣費，但它們不是同一件事。混成同一個 true
+/// 會讓 telemetry 把 RPC 故障記成正常的每日免費，故障率就永遠是 0。
+export function refineQuotaOutcomeFor(
+  consumption: RefineFreeConsumption,
+): RefineQuotaOutcome {
+  const shouldCharge = shouldChargeAfterRefineConsumption(consumption);
+  if (consumption.kind === "unavailable") {
+    return {
+      shouldCharge,
+      granted: null,
+      quotaReason: "refine_free_allowance_unavailable",
+    };
+  }
+  return {
+    shouldCharge,
+    granted: !shouldCharge,
+    quotaReason: shouldCharge ? "refine_reply_fixed_1" : "refine_free_daily",
+  };
+}

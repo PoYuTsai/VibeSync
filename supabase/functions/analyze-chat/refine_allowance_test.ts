@@ -7,6 +7,7 @@ import {
   classifyRefineFreeConsumption,
   projectRefineFreeAllowance,
   REFINE_FREE_DAILY_LIMIT,
+  refineQuotaOutcomeFor,
   shouldChargeAfterRefineConsumption,
   utcDayString,
 } from "./refine_allowance.ts";
@@ -202,4 +203,30 @@ Deno.test("免費旗標不得外溢到其他 requestType", () => {
       requestType,
     );
   }
+});
+
+Deno.test("RPC 故障不得被記成拿到了免費授權", () => {
+  // 三態必須分得開，否則 telemetry 上「白送」與「正常免費」長得一模一樣，
+  // 額度函式壞掉多久都不會有人發現。
+  assertEquals(
+    refineQuotaOutcomeFor({ kind: "granted", used: 3, remaining: 7 }),
+    { shouldCharge: false, granted: true, quotaReason: "refine_free_daily" },
+  );
+  assertEquals(
+    refineQuotaOutcomeFor({ kind: "exhausted", used: 10, remaining: 0 }),
+    {
+      shouldCharge: true,
+      granted: false,
+      quotaReason: "refine_reply_fixed_1",
+    },
+  );
+  assertEquals(
+    refineQuotaOutcomeFor({ kind: "unavailable", message: "rpc down" }),
+    {
+      // 仍然不扣費——錢的方向不變，只有觀測分得開。
+      shouldCharge: false,
+      granted: null,
+      quotaReason: "refine_free_allowance_unavailable",
+    },
+  );
 });
