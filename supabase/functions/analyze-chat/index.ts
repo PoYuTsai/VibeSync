@@ -6939,6 +6939,19 @@ ${recentText}`;
         ? rawRequestId
         : null;
 
+      // Draft polish tolerates a missing requestId for old clients. Reply
+      // refinement has none -- it never shipped without one -- so a refine
+      // request without a durable identity is rejected instead of being run
+      // with no idempotency at all. Without it the free-allowance claim has no
+      // key, and concurrent retries would each take a slot.
+      if (isRefineReplyMode && optimizeRequestId === null) {
+        return jsonResponse({
+          error: "INVALID_OPTIMIZE_MESSAGE_REQUEST_ID",
+          code: "INVALID_OPTIMIZE_MESSAGE_REQUEST_ID",
+          message: "這次微調請求無法安全重送，請重新操作。本次不會扣額度。",
+        }, 400);
+      }
+
       if (optimizeRequestId !== null && userDraft) {
         optimizeInputHash = await computeOptimizeMessageInputHash({
           messages,
@@ -9302,9 +9315,10 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     // 這裡，所以重試同一顆 requestId 不會重複消耗免費次數。
     //
     // 已知且有界的取捨：授權成功之後若結算走的是 retryable/failed，這一次的
-    // 免費額度已經花掉但使用者沒拿到結果，重試會再花一次。結算失敗本身很
-    // 罕見，且上限是每天 10 次裡的幾次；額度表沒有退款函式，硬做一個等於在
-    // 帳本之外再開一條可被競態利用的寫入路徑。
+    // 免費額度已經花掉但使用者沒拿到結果。**沿用同一顆 requestId 重試不會再
+    // 花一次**（refine_free_claims 是冪等鍵）；真正白白花掉的是使用者改了輸入
+    // 因而換了 requestId 的那種重試。額度表沒有退款函式，硬做一個等於在帳本
+    // 之外再開一條可被競態利用的寫入路徑。
     let refineFreeGranted: boolean | null = null;
     let refineFreeRemaining: number | null = refineFreeProjection?.remaining ??
       null;

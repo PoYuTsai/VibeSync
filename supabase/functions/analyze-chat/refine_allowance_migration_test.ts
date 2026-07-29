@@ -119,7 +119,15 @@ Deno.test("同一 requestId 的免費授權是冪等的", () => {
     ),
   );
   assert(migrationSource.includes("PRIMARY KEY (user_id, request_id)"));
-  assert(liveFunctionSource.includes("p_request_id  UUID DEFAULT NULL"));
+  // 沒有 DEFAULT：可為 NULL 的冪等鍵等於留一條完全沒有去重的靜默路徑，
+  // 而這支函式從未部署過，沒有舊呼叫端需要體恤。
+  assert(liveFunctionSource.includes("p_request_id  UUID\n) RETURNS JSONB"));
+  assert(!liveFunctionSource.includes("p_request_id  UUID DEFAULT"));
+  assert(
+    liveFunctionSource.includes(
+      "RAISE EXCEPTION 'consume_refine_free_allowance: p_request_id is required'",
+    ),
+  );
 
   // 順序是這條的全部：必須先拿到 allowance 的 row lock，重複的 requestId 才
   // 會在鎖上等到前一筆 claim 已經 commit。反過來寫兩邊都會查到「沒有 claim」。
@@ -146,4 +154,20 @@ Deno.test("claims 表同樣對 client 角色完全關閉", () => {
     !/GRANT\s+(ALL|INSERT|UPDATE|DELETE)[^;]*refine_free_claims[^;]*(anon|authenticated)/i
       .test(migrationSource),
   );
+});
+
+Deno.test("日界要在拿到鎖之後才判定", () => {
+  // 23:59:59 進來的呼叫可能在鎖上等到跨日。若沿用進入函式時算的日期，它會
+  // 把贏家已經滾好的 day_utc 當成「不對」，把計數滾回昨天並歸零——等於白送
+  // 一整輪十次。拿到鎖之後再讀一次時鐘就沒有這個窗。
+  const lock = liveFunctionSource.indexOf(
+    "WHERE user_id = p_user_id\n  FOR UPDATE;",
+  );
+  const reread = liveFunctionSource.indexOf(
+    "v_today := (now() AT TIME ZONE 'utc')::date;",
+  );
+  const rollover = liveFunctionSource.indexOf("IF v_day <> v_today THEN");
+  assert(lock >= 0);
+  assert(reread > lock, "day must be re-derived after the row lock");
+  assert(rollover > reread, "rollover check must use the re-derived day");
 });

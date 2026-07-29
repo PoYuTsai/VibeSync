@@ -69,25 +69,30 @@ GRANT SELECT ON TABLE public.refine_free_claims TO service_role;
 -- ledger. The row lock is what stops two concurrent requests from both taking
 -- the last free slot; without it a double-tap would spend one slot twice.
 --
--- p_request_id makes the call idempotent. It is nullable so a client that
--- predates the durable identity still gets the old behaviour rather than an
--- exception; every current caller passes one.
--- Adding a defaulted third parameter creates a NEW overload; it does not
--- replace the two-argument version. If both existed, a two-argument call would
--- fail with "function is not unique" -- so drop the old signature first. It is
--- a no-op on a database that never had it.
+-- p_request_id is the idempotency key and is REQUIRED. It carries no default:
+-- a nullable one would leave a silent path with no de-duplication at all, and
+-- this function has no legacy caller to be gentle with -- it has never been
+-- deployed. The Edge Function rejects a refine request without a requestId
+-- before it gets here; this RAISE is the second lock on the same door.
+--
+-- Adding a third parameter creates a NEW overload rather than replacing the
+-- two-argument version, and a two-argument call against both would fail with
+-- "function is not unique" -- so drop the old signature first. No-op on a
+-- database that never had it.
 DROP FUNCTION IF EXISTS public.consume_refine_free_allowance(UUID, INTEGER);
 
 CREATE OR REPLACE FUNCTION public.consume_refine_free_allowance(
   p_user_id     UUID,
   p_daily_limit INTEGER,
-  p_request_id  UUID DEFAULT NULL
+  p_request_id  UUID
 ) RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
+  -- Re-derived after the row lock; see the comment at the lock. This initial
+  -- value only seeds the pre-lock INSERT of a missing row.
   v_today   DATE := (now() AT TIME ZONE 'utc')::date;
   v_used    INTEGER;
   v_day     DATE;
@@ -98,6 +103,9 @@ BEGIN
   END IF;
   IF p_daily_limit IS NULL OR p_daily_limit < 0 THEN
     RAISE EXCEPTION 'consume_refine_free_allowance: invalid p_daily_limit';
+  END IF;
+  IF p_request_id IS NULL THEN
+    RAISE EXCEPTION 'consume_refine_free_allowance: p_request_id is required';
   END IF;
 
   INSERT INTO public.refine_free_allowance (user_id, day_utc, used_count)
@@ -116,6 +124,13 @@ BEGIN
   WHERE user_id = p_user_id
   FOR UPDATE;
 
+  -- Re-derive the day AFTER the lock. A caller that entered at 23:59:59 can
+  -- wait on this lock until after midnight; with the entry-time value it would
+  -- then see the winner's already-rolled day_utc as "wrong", roll the counter
+  -- BACK to yesterday and reset used_count to 0 -- handing out a fresh ten free
+  -- slots. Reading the clock once the row is ours removes the window entirely.
+  v_today := (now() AT TIME ZONE 'utc')::date;
+
   -- Only reachable if the row vanished between the insert and the lock, i.e.
   -- the account was deleted mid-request. Fail loudly rather than returning a
   -- grant computed from NULL.
@@ -131,37 +146,33 @@ BEGIN
     v_used := 0;
   END IF;
 
-  IF p_request_id IS NOT NULL THEN
-    -- Scoped to this user on purpose. A table-wide sweep here would run under
-    -- the per-user allowance lock and could deadlock against another user's
-    -- sweep touching the same pages; per-user is already serialised by the
-    -- lock we hold, and the table is at most a handful of rows per user per
-    -- day (account deletion is covered by the ON DELETE CASCADE).
-    DELETE FROM public.refine_free_claims
-    WHERE user_id = p_user_id
-      AND created_at < now() - interval '7 days';
+  -- Scoped to this user on purpose. A table-wide sweep here would run under
+  -- the per-user allowance lock and could deadlock against another user's sweep
+  -- touching the same pages; per-user is already serialised by the lock we
+  -- hold, and the table is at most a handful of rows per user per day (account
+  -- deletion is covered by the ON DELETE CASCADE).
+  DELETE FROM public.refine_free_claims
+  WHERE user_id = p_user_id
+    AND created_at < now() - interval '7 days';
 
-    SELECT granted INTO v_claimed
-    FROM public.refine_free_claims
-    WHERE user_id = p_user_id AND request_id = p_request_id;
+  SELECT granted INTO v_claimed
+  FROM public.refine_free_claims
+  WHERE user_id = p_user_id AND request_id = p_request_id;
 
-    -- Replay of a settled verdict. Return it verbatim without touching the
-    -- counter: this requestId has already had whatever it was going to get.
-    IF FOUND THEN
-      RETURN jsonb_build_object(
-        'granted', v_claimed,
-        'used', v_used,
-        'remaining', GREATEST(0, p_daily_limit - v_used)
-      );
-    END IF;
+  -- Replay of a settled verdict. Return it verbatim without touching the
+  -- counter: this requestId has already had whatever it was going to get.
+  IF FOUND THEN
+    RETURN jsonb_build_object(
+      'granted', v_claimed,
+      'used', v_used,
+      'remaining', GREATEST(0, p_daily_limit - v_used)
+    );
   END IF;
 
   IF v_used >= p_daily_limit THEN
-    IF p_request_id IS NOT NULL THEN
-      INSERT INTO public.refine_free_claims
-        (user_id, request_id, day_utc, granted)
-      VALUES (p_user_id, p_request_id, v_today, false);
-    END IF;
+    INSERT INTO public.refine_free_claims
+      (user_id, request_id, day_utc, granted)
+    VALUES (p_user_id, p_request_id, v_today, false);
     RETURN jsonb_build_object(
       'granted', false, 'used', v_used, 'remaining', 0
     );
@@ -171,11 +182,9 @@ BEGIN
   SET used_count = v_used + 1, updated_at = now()
   WHERE user_id = p_user_id;
 
-  IF p_request_id IS NOT NULL THEN
-    INSERT INTO public.refine_free_claims
-      (user_id, request_id, day_utc, granted)
-    VALUES (p_user_id, p_request_id, v_today, true);
-  END IF;
+  INSERT INTO public.refine_free_claims
+    (user_id, request_id, day_utc, granted)
+  VALUES (p_user_id, p_request_id, v_today, true);
 
   RETURN jsonb_build_object(
     'granted', true,
