@@ -593,6 +593,89 @@ void main() {
       expect(bodies[1], equals(bodies[2]));
     });
 
+    test('錯誤文案依入口切換：微調不得說成草稿潤飾', () async {
+      AnalysisService serviceFor(int status, String code) => AnalysisService(
+            clientFactory: () => MockClient((request) async {
+              return http.Response(
+                jsonEncode({'error': code, 'code': code}),
+                status,
+                headers: {'content-type': 'application/json'},
+              );
+            }),
+            accessTokenProvider: () => 'fake-token',
+            expectedTierProvider: () => 'essential',
+            revenueCatAppUserIdProvider: () async => r'$RCAnonymousID:optimize',
+          );
+
+      Future<String> messageFor(
+        int status,
+        String code, {
+        String? refineInstruction,
+      }) async {
+        try {
+          await serviceFor(status, code).analyzeConversation(
+            [_msg('最近有空嗎？')],
+            userDraft: '要不要喝咖啡',
+            refineInstruction: refineInstruction,
+            requestId: requestId,
+          );
+        } on AnalysisException catch (error) {
+          return error.message;
+        }
+        fail('expected $code to throw');
+      }
+
+      // preflight mismatch 是 400、settlement race mismatch 是 409，兩條都要切。
+      const cases = <List<Object>>[
+        [400, 'INVALID_OPTIMIZE_MESSAGE_REQUEST_ID'],
+        [400, 'OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH'],
+        [409, 'OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH'],
+        [500, 'OPTIMIZE_MESSAGE_REPLAY_INVALID'],
+        [500, 'OPTIMIZE_MESSAGE_SETTLEMENT_FAILED'],
+        // 同一個 code 兩個狀態碼（帳本快照 500、結果無效 502），都要保住
+        // 「不扣額度」這句。
+        [500, 'OPTIMIZE_MESSAGE_RESULT_INVALID'],
+        [502, 'OPTIMIZE_MESSAGE_RESULT_INVALID'],
+      ];
+
+      for (final testCase in cases) {
+        final status = testCase[0] as int;
+        final code = testCase[1] as String;
+        final refined = await messageFor(
+          status,
+          code,
+          refineInstruction: '短一點',
+        );
+        final polished = await messageFor(status, code);
+
+        expect(
+          refined,
+          isNot(contains('草稿潤飾')),
+          reason: '$code($status) 從微調入口不得說草稿潤飾',
+        );
+        expect(
+          refined,
+          contains('本次不會扣額度'),
+          reason: '$code($status) 必須維持不扣費保證',
+        );
+        expect(
+          polished,
+          isNot(contains('回覆微調')),
+          reason: '$code($status) 從潤飾入口不得說回覆微調',
+        );
+      }
+
+      // 泛用失敗分支同樣要跟著入口走。
+      expect(
+        await messageFor(503, 'UPSTREAM_UNAVAILABLE', refineInstruction: '短一點'),
+        contains('回覆微調'),
+      );
+      expect(
+        await messageFor(503, 'UPSTREAM_UNAVAILABLE'),
+        contains('訊息優化'),
+      );
+    });
+
     test('maps fixed-cost monthly 429 with quotaNeeded one', () async {
       final service = AnalysisService(
         clientFactory: () => MockClient((request) async {

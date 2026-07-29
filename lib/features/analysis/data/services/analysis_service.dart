@@ -888,6 +888,17 @@ AnalysisException? _quotaExceptionFrom429(Map<String, dynamic> data) {
   );
 }
 
+/// 走 optimize-message 那條計費流程的功能名稱。
+///
+/// server 端錯誤碼是穩定契約、訊息寫死「草稿潤飾」，兩個入口共用同一條
+/// exactly-once 流程，所以名稱只能在 client 依當前入口切換。
+String _optimizeFeatureLabel({required bool hasRefineInstruction}) =>
+    hasRefineInstruction ? '回覆微調' : '草稿潤飾';
+
+/// 泛用失敗（500/502/timeout 等）用的動作名稱，草稿潤飾沿用既有「訊息優化」。
+String _optimizeFlowLabel({required bool hasRefineInstruction}) =>
+    hasRefineInstruction ? '回覆微調' : '訊息優化';
+
 AnalysisException _mapAnalysisHttpError({
   required int statusCode,
   required String? errorCode,
@@ -895,9 +906,14 @@ AnalysisException _mapAnalysisHttpError({
   required bool hasImages,
   required bool recognizeOnly,
   required bool hasUserDraft,
+  required bool hasRefineInstruction,
 }) {
   final normalizedMessage = rawMessage.trim();
   final lowerMessage = normalizedMessage.toLowerCase();
+  final featureLabel =
+      _optimizeFeatureLabel(hasRefineInstruction: hasRefineInstruction);
+  final flowLabel =
+      _optimizeFlowLabel(hasRefineInstruction: hasRefineInstruction);
 
   String recognitionUnsupportedMessage() {
     if (normalizedMessage.isEmpty) {
@@ -927,7 +943,7 @@ AnalysisException _mapAnalysisHttpError({
         case 'INVALID_OPTIMIZE_MESSAGE_REQUEST_ID':
         case 'OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH':
           return AnalysisException(
-            '這次草稿潤飾請求無法安全重送，請重新操作。本次不會扣額度。',
+            '這次$featureLabel請求無法安全重送，請重新操作。本次不會扣額度。',
             code: errorCode,
             suggestedAction: AnalysisErrorAction.retry,
           );
@@ -1076,7 +1092,9 @@ AnalysisException _mapAnalysisHttpError({
     case 409:
       if (errorCode == 'OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH') {
         return AnalysisException(
-          '這次草稿和先前的重試不一致，請重新操作。本次不會扣額度。',
+          hasRefineInstruction
+              ? '這次微調內容和先前的重試不一致，請重新操作。本次不會扣額度。'
+              : '這次草稿和先前的重試不一致，請重新操作。本次不會扣額度。',
           code: errorCode,
           suggestedAction: AnalysisErrorAction.retry,
         );
@@ -1130,12 +1148,23 @@ AnalysisException _mapAnalysisHttpError({
         suggestedAction: AnalysisErrorAction.wait,
       );
     case 500:
+      // 帳本快照不合法時 server 回 500（其他無效結果路徑回 502），兩邊都是
+      // 不扣費，文案不能因為狀態碼不同就把保證漏掉。
+      if (errorCode == 'OPTIMIZE_MESSAGE_RESULT_INVALID') {
+        return AnalysisException(
+          hasRefineInstruction
+              ? '這次沒有產生可用的微調結果，請稍後再試。本次不會扣額度。'
+              : '這次沒有產生可用的潤飾結果，請稍後再試。本次不會扣額度。',
+          code: errorCode,
+          suggestedAction: AnalysisErrorAction.wait,
+        );
+      }
       if (errorCode == 'OPTIMIZE_MESSAGE_REPLAY_INVALID' ||
           errorCode == 'OPTIMIZE_MESSAGE_SETTLEMENT_FAILED') {
         return AnalysisException(
           errorCode == 'OPTIMIZE_MESSAGE_REPLAY_INVALID'
-              ? '草稿潤飾結果暫時無法恢復，請重新操作。本次不會扣額度。'
-              : '草稿潤飾額度確認失敗，請稍後再試。本次不會扣額度。',
+              ? '$featureLabel結果暫時無法恢復，請重新操作。本次不會扣額度。'
+              : '$featureLabel額度確認失敗，請稍後再試。本次不會扣額度。',
           code: errorCode,
           suggestedAction: AnalysisErrorAction.wait,
         );
@@ -1146,7 +1175,7 @@ AnalysisException _mapAnalysisHttpError({
                 ? '截圖辨識暫時失敗，請稍後再試。'
                 : '圖片分析暫時失敗，請稍後再試。'
             : hasUserDraft
-                ? '訊息優化暫時失敗，請稍後再試。'
+                ? '$flowLabel暫時失敗，請稍後再試。'
                 : '分析暫時失敗，請稍後再試。',
         code: errorCode ?? 'UNKNOWN_HTTP_ERROR',
         suggestedAction: AnalysisErrorAction.retry,
@@ -1163,7 +1192,9 @@ AnalysisException _mapAnalysisHttpError({
       }
       if (errorCode == 'OPTIMIZE_MESSAGE_RESULT_INVALID') {
         return AnalysisException(
-          '這次沒有產生可用的潤飾結果，請稍後再試。本次不會扣額度。',
+          hasRefineInstruction
+              ? '這次沒有產生可用的微調結果，請稍後再試。本次不會扣額度。'
+              : '這次沒有產生可用的潤飾結果，請稍後再試。本次不會扣額度。',
           code: errorCode,
           suggestedAction: AnalysisErrorAction.wait,
         );
@@ -1182,7 +1213,7 @@ AnalysisException _mapAnalysisHttpError({
                 ? '截圖辨識服務目前較忙，請稍後再試。'
                 : '圖片分析服務目前較忙，請稍後再試。'
             : hasUserDraft
-                ? '訊息優化服務目前較忙，請稍後再試。'
+                ? '$flowLabel服務目前較忙，請稍後再試。'
                 : '分析服務目前較忙，請稍後再試。',
         code: errorCode ?? 'UPSTREAM_UNAVAILABLE',
         suggestedAction: AnalysisErrorAction.wait,
@@ -1194,7 +1225,7 @@ AnalysisException _mapAnalysisHttpError({
                 ? '截圖辨識暫時失敗，請稍後再試。'
                 : '圖片分析暫時失敗，請稍後再試。'
             : hasUserDraft
-                ? '訊息優化暫時失敗，請稍後再試。'
+                ? '$flowLabel暫時失敗，請稍後再試。'
                 : '分析暫時失敗，請稍後再試。',
         code: errorCode ?? 'UNKNOWN_HTTP_ERROR',
         suggestedAction: AnalysisErrorAction.retry,
@@ -1207,8 +1238,11 @@ AnalysisException _mapUnexpectedAnalysisError(
   required bool hasImages,
   required bool recognizeOnly,
   required bool hasUserDraft,
+  required bool hasRefineInstruction,
 }) {
   final errorMessage = error.toString();
+  final flowLabel =
+      _optimizeFlowLabel(hasRefineInstruction: hasRefineInstruction);
 
   if (errorMessage.contains('Unauthorized') || errorMessage.contains('401')) {
     return AnalysisException(
@@ -1234,7 +1268,7 @@ AnalysisException _mapUnexpectedAnalysisError(
               ? '截圖辨識花太久了，請稍後再試。'
               : '圖片分析花太久了，請稍後再試。'
           : hasUserDraft
-              ? '訊息優化花太久了，請稍後再試。'
+              ? '$flowLabel花太久了，請稍後再試。'
               : '分析花太久了，請稍後再試。',
       code: 'TIMEOUT',
       suggestedAction: AnalysisErrorAction.wait,
@@ -1247,7 +1281,7 @@ AnalysisException _mapUnexpectedAnalysisError(
             ? '截圖辨識暫時失敗，請稍後再試。'
             : '圖片分析暫時失敗，請稍後再試。'
         : hasUserDraft
-            ? '訊息優化暫時失敗，請稍後再試。'
+            ? '$flowLabel暫時失敗，請稍後再試。'
             : '分析暫時失敗，請稍後再試。',
     code: 'UNEXPECTED_ERROR',
     suggestedAction: AnalysisErrorAction.retry,
@@ -1803,6 +1837,7 @@ class AnalysisService {
               hasImages: hasImages,
               recognizeOnly: recognizeOnly,
               hasUserDraft: hasUserDraft,
+              hasRefineInstruction: hasRefineInstruction,
             );
           }
 
@@ -1822,7 +1857,7 @@ class AnalysisService {
                 ? '截圖辨識花太久了，請稍後再試。'
                 : '圖片分析花太久了，請稍後再試。'
             : hasUserDraft
-                ? '訊息優化花太久了，請稍後再試。'
+                ? '${_optimizeFlowLabel(hasRefineInstruction: hasRefineInstruction)}花太久了，請稍後再試。'
                 : '分析花太久了，請稍後再試。',
         code: 'TIMEOUT',
         suggestedAction: AnalysisErrorAction.wait,
@@ -1837,6 +1872,7 @@ class AnalysisService {
         hasImages: hasImages,
         recognizeOnly: recognizeOnly,
         hasUserDraft: hasUserDraft,
+        hasRefineInstruction: hasRefineInstruction,
       );
     }
   }
@@ -2004,6 +2040,8 @@ class AnalysisService {
           hasImages: false,
           recognizeOnly: false,
           hasUserDraft: false,
+          // 推薦串流沒有草稿／微調入口。
+          hasRefineInstruction: false,
         );
       }
 
