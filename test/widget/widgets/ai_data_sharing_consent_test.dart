@@ -490,9 +490,45 @@ void main() {
     await tester.tap(find.text('start'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('不另存原始草稿或完整對話輸入'), findsOneWidget);
+    expect(find.textContaining('不另存原始草稿、微調指令或完整對話輸入'), findsOneWidget);
     expect(find.textContaining('可用重播資料保留 7 天'), findsOneWidget);
     expect(find.textContaining('生成文字仍可能重述或反映'), findsOneWidget);
+    expect(find.textContaining('備份副本依 Supabase'), findsOneWidget);
+  });
+
+  testWidgets('同一把 key 的揭露必須同時涵蓋潤飾與微調兩個入口', (tester) async {
+    // 兩個入口共用 optimizeReplayConsentKey，所以任一入口看到的文案都必須
+    // 對兩者都成立。只說「草稿潤飾」的話，從微調進來的人會看到名不符實的
+    // 用途說明——這和 server 錯誤碼寫死「草稿潤飾」是同一類問題。
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                await AiDataSharingConsent.ensure(
+                  context,
+                  featureLabel: '回覆微調',
+                  consentKey: AiDataSharingConsent.optimizeReplayConsentKey,
+                  dataDescription:
+                      AiDataSharingConsent.optimizeReplayDataDescription,
+                  purposeText: AiDataSharingConsent.optimizeReplayPurposeText,
+                );
+              },
+              child: const Text('start'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('start'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('草稿潤飾或回覆微調'), findsOneWidget);
+    expect(find.textContaining('你輸入的微調指令'), findsOneWidget);
+    // 保留期與備份週期兩個入口一致，不得因為換入口就消失。
+    expect(find.textContaining('可用重播資料保留 7 天'), findsOneWidget);
     expect(find.textContaining('備份副本依 Supabase'), findsOneWidget);
   });
 
