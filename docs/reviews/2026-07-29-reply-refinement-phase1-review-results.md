@@ -97,3 +97,74 @@ Codex 提的兩條「不確定項」中，一條回原始碼**證偽**，一條�
 | 兩側 golden hash | client fingerprint 與 server input hash 皆與 2026-07-28 byte-identical |
 
 **尚未執行**：真機 dogfood（Task 15 Step 3）、生產 migration、push。
+
+---
+
+# 附錄：生產 migration 上線前的 R3 閘門（兩輪）
+
+日期：2026-07-29，上線 SHA `b3b06f25`
+
+`docs/shared-agent-rules.md` 要求 schema/billing/quota migration 視為 R3，
+生產操作前須過 opposite-frontier ＋ GLM 挑戰閘門。以下是實際結果。
+
+## 第一輪
+
+- **GLM**：判定五項檢查全數通過、無阻礙問題。
+- **Codex**：1 Critical、3 Important、4 Uncertain。
+
+**兩邊在同一條上結論相反，且 GLM 錯了。** Codex 指出 `now()` 就是
+`transaction_timestamp()`，整個交易期間凍結，因此前一輪「拿到鎖後重讀日期」的
+修法是空的；GLM 卻把同一段判為 Correct。本機實測定案：等鎖 3 秒後 `now()` 差
+0 秒、`clock_timestamp()` 差 3 秒。**以實測為準，改用 `clock_timestamp()`。**
+
+這一條也暴露我自己的測試缺陷：上一版契約測試只斷言那行的**位置**，不斷言
+**語意**，所以放它過了——正是該檔案自己註解警告過的「Match the statement, not
+the words」。新版測試明文禁止 `now()` 出現在該位置。
+
+| 來源 | 等級 | 問題 | 修法 |
+|---|---|---|---|
+| Codex | Critical | 建 FK 在 `auth.users` 拿 SHARE ROW EXCLUSIVE，等待無上限，排進佇列後續 auth 寫入全部塞後面 | `SET LOCAL lock_timeout = '5s'` 快速失敗 |
+| Codex | Important | `now()` 凍結，日界重讀是 no-op | 改 `clock_timestamp()` |
+| Codex | Important | 先鎖子列、後因 FK 要父列，與刪帳號順序相反會 40P01 死鎖 | 進場先對 `auth.users` 取 `FOR KEY SHARE` |
+| Codex | Important | claims 只在呼叫者自己回來時才清，流失帳號的列永不清理 | 補 cleanup 函式＋pg_cron 每小時（第 23 分） |
+
+## 第二輪
+
+- **Codex**：無 Critical。1 Important（`SET lock_timeout` 會活過 COMMIT 留在
+  連線上，pooled runner 會讓下一支 migration 繼承 5 秒上限）→ 改 `SET LOCAL`，
+  本機實測交易內 5s、交易後回 0。
+
+四項 Uncertain 全部以證據收斂：
+
+| Uncertain | 結論 |
+|---|---|
+| `search_path` 劫持 | **證偽**。`anon`/`authenticated`/`service_role` 對 public schema 都沒有 CREATE。 |
+| 函式 owner 能否讀 `auth.users` | **成立可用**。生產以真實使用者實跑一次並 ROLLBACK，回 `{granted:true, used:1, remaining:9}`，事後兩表皆 0 列。 |
+| `service_role` 能否直接寫表 | **Codex 對、我原本的註解錯**。Supabase default privileges 早已給滿 DML，`GRANT` 只加不減；生產實測收緊前 ACL＝`arwdDxtm`。已補明確 `REVOKE`，收緊後＝`rm`。 |
+| claim 保留期是否早於 replay 窗 | **證偽**。Edge preflight 以 `.gte("created_at", cutoff)` 在查詢當下就擋掉超過 7 天的 replay，不依賴 cron 是否已刪。 |
+
+## 生產套用與驗證
+
+單一交易套用（含帳本列），逐項驗證：
+
+| 檢查 | 結果 |
+|---|---|
+| migration 帳本版本 | `20260729000000`，與檔名一致 |
+| 兩張表 RLS | 皆 `true` |
+| 函式簽章 | `consume_refine_free_allowance(uuid, integer, uuid)` 唯一一個；舊兩參數 overload 不存在 |
+| 函式執行權 | 只有 `postgres` 與 `service_role`；無 anon/authenticated |
+| 表權限 | `service_role=rm`（唯讀），寫入僅能經 SECURITY DEFINER 函式 |
+| pg_cron | `cleanup-expired-refine-free-claims`，`23 * * * *`，active，全庫恰一筆 |
+| `lock_timeout` 殘留 | `0`，未外洩到連線 |
+| PostgREST schema cache | 以 anon 呼叫新 RPC 得 `42501 permission denied`（**不是** 404），證明函式已被解析且權限邊界正確 |
+
+## 交付
+
+| 項目 | 結果 |
+|---|---|
+| `main` | `8b90cb3c..b3b06f25`（fast-forward，無 merge commit） |
+| Deploy Edge Function | 首次失敗＝`esm.sh` 回 522（CDN 逾時，非本專案程式碼），重跑一次成功 |
+| analyze-chat | version 306、ACTIVE、`verify_jwt: false` |
+| Build & Distribute | success（`build-ios` 產出 App Store 簽章驗證 artifact，**不上 TestFlight**） |
+| Deploy Web to Vercel | success |
+| 可安裝的 TestFlight build | **未做**，`release.yml` 是 Eric 的手動動作 |
