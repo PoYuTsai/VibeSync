@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -16,6 +17,11 @@ import '../../data/services/coach_chat_api_service.dart';
 import '../../domain/entities/coach_chat_mode.dart';
 import '../../domain/entities/coach_scope.dart';
 import '../../domain/entities/unified_coach_result.dart';
+import '../../../learning/domain/dating_knowledge_links.dart';
+import '../../../learning/domain/models/learning_link_target.dart';
+import '../../../learning/presentation/screens/ebook_detail_screen.dart'
+    show ebookChapterRoute;
+import '../../../learning/presentation/widgets/knowledge_library_link_row.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import 'coach_chat_progress_notice.dart';
@@ -115,6 +121,9 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   String? _lastAskedQuestion;
+
+  /// 最後一次點到的快捷問句 chip；決定知識庫入口連到哪一章。
+  String? _lastTappedChip;
 
   static const _chips = <String>[
     '她是什麼意思？',
@@ -264,7 +273,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
                 .map(
                   (chip) => ActionChip(
                     label: Text(chip),
-                    onPressed: () => _fillSuggestedQuestion(chip),
+                    onPressed: () => _onSuggestedChipTap(chip),
                     visualDensity: VisualDensity.compact,
                     backgroundColor: Colors.white.withValues(alpha: 0.55),
                     labelStyle: AppTypography.caption.copyWith(
@@ -277,6 +286,16 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
                 )
                 .toList(),
           ),
+          // Dating Knowledge Library：點了快捷問句才出現。沒有問句就沒有
+          // 情境，寧可不給入口，也不連一章不相干的內容。
+          if (_knowledgeLink != null) ...[
+            const SizedBox(height: 10),
+            KnowledgeLibraryLinkRow(
+              key: const Key('coach_surface_knowledge_link'),
+              label: '看這一題的完整原理',
+              onTap: _onKnowledgeLinkTap,
+            ),
+          ],
           const SizedBox(height: 12),
           TextField(
             controller: _controller,
@@ -286,6 +305,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
             maxLines: 3,
             textInputAction: TextInputAction.done,
             onSubmitted: canSubmit ? (_) => _ask() : null,
+            onChanged: _handleQuestionChanged,
             inputFormatters: [LengthLimitingTextInputFormatter(240)],
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.glassTextPrimary,
@@ -479,6 +499,38 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
   void _fillSuggestedQuestion(String question) {
     _controller.text = question;
     _controller.selection = TextSelection.collapsed(offset: question.length);
+  }
+
+  /// 只有「點快捷 chip」會記錄知識庫情境；didUpdateWidget 帶進來的 prefill
+  /// 是完整句子（例如對象頁三情境 chip 的 prefill），不是 chip 文案，
+  /// 查表本來就會落空，所以刻意不走這條路徑。
+  void _onSuggestedChipTap(String chip) {
+    _fillSuggestedQuestion(chip);
+    setState(() => _lastTappedChip = chip);
+  }
+
+  /// 使用者把問句改成別的東西之後，入口就不再是「這一題」的原理了。
+  /// 刻意不每次按鍵都 setState：只有從「還停在該 chip」跨到「已經不是」
+  /// 的那一次才重建，之後 `_lastTappedChip` 已是 null 就直接短路。
+  void _handleQuestionChanged(String value) {
+    if (_lastTappedChip == null) return;
+    if (value.trim() == _lastTappedChip) return;
+    setState(() => _lastTappedChip = null);
+  }
+
+  LearningLinkTarget? get _knowledgeLink =>
+      DatingKnowledgeLinks.forCoachQuestion(_lastTappedChip);
+
+  void _onKnowledgeLinkTap() {
+    final target = _knowledgeLink;
+    if (target == null) return;
+    context.push(
+      ebookChapterRoute(
+        target.bookId,
+        target.chapterId,
+        entryId: target.entryId,
+      ),
+    );
   }
 
   Future<void> _retryLastQuestion() async {

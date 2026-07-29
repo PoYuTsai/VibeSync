@@ -16,11 +16,17 @@
 // telemetry 契約由檔尾 sealed 家族的 deep-link 意圖事件沿用。
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../coach_chat/domain/entities/coach_scope.dart';
 import '../../../coach_chat/presentation/widgets/coach_surface.dart';
+import '../../../learning/domain/dating_knowledge_links.dart';
+import '../../../learning/domain/models/learning_link_target.dart';
+import '../../../learning/presentation/screens/ebook_detail_screen.dart'
+    show ebookChapterRoute;
+import '../../../learning/presentation/widgets/knowledge_library_link_row.dart';
 
 // ── 三情境 chip（Task 6 拍板；phase 字串隨 wire lifecyclePhase 原樣送）──
 
@@ -126,6 +132,22 @@ class _CoachFollowUpSectionState extends State<CoachFollowUpSection>
     });
   }
 
+  /// 目前選中情境對應的 Dating Knowledge Library 章節；沒選或查無對應時為 null。
+  LearningLinkTarget? get _knowledgeLink =>
+      DatingKnowledgeLinks.forFollowUpPhase(_pendingPhase);
+
+  void _onKnowledgeLinkTap() {
+    final target = _knowledgeLink;
+    if (target == null) return;
+    context.push(
+      ebookChapterRoute(
+        target.bookId,
+        target.chapterId,
+        entryId: target.entryId,
+      ),
+    );
+  }
+
   /// paywall 只開一次的防抖（沿用舊 section 行為）；CoachSurface 的
   /// ref.listen 在 quota 錯誤時同步呼叫，這裡排到 post-frame 再 push。
   void _handleQuotaExceeded() {
@@ -201,6 +223,16 @@ class _CoachFollowUpSectionState extends State<CoachFollowUpSection>
             color: AppColors.glassTextSecondary,
           ),
         ),
+        // Dating Knowledge Library：選了情境才出現，因為沒有情境就無從得知
+        // 該連哪一章——寧可不給入口，也不連一章不相干的內容。
+        if (_knowledgeLink != null) ...[
+          const SizedBox(height: 8),
+          KnowledgeLibraryLinkRow(
+            key: const Key('coach_follow_up_knowledge_link'),
+            label: '看這一段的完整原理',
+            onTap: _onKnowledgeLinkTap,
+          ),
+        ],
         if (!widget.compactPracticePresentation) ...[
           const SizedBox(height: 12),
           _OpenCoachEntry(

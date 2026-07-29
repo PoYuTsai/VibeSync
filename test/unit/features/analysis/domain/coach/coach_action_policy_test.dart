@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/domain/coach/coach_action_card_data.dart';
 import 'package:vibesync/features/analysis/domain/coach/coach_action_policy.dart';
 import 'package:vibesync/features/analysis/domain/coach/coach_action_type.dart';
+import 'package:vibesync/features/analysis/domain/coach/learning_link_resolver.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
@@ -88,7 +89,10 @@ void main() {
       );
       expect(card.actionLabel, '互動品質觀察');
       expect(card.suggestedLine, isNull);
-      expect(card.learningLink, '18');
+      expect(
+        card.learningLink,
+        LearningLinkResolver.resolve(CoachActionType.fitCheck),
+      );
     });
 
     test(
@@ -146,7 +150,10 @@ void main() {
       expect(card.avoidLabel, '節奏提醒');
       expect(card.avoid, contains('別只連問清單題'));
       expect(card.suggestedLine, isNull);
-      expect(card.learningLink, '14');
+      expect(
+        card.learningLink,
+        LearningLinkResolver.resolve(CoachActionType.extendTopicStoryFrame),
+      );
     });
 
     test('should prefer usable AI coachActionHint over generic fallback', () {
@@ -181,7 +188,10 @@ void main() {
       expect(card.task, contains('接劇名'));
       expect(card.avoidLabel, '節奏提醒');
       expect(card.avoid, contains('不要連問清單題'));
-      expect(card.learningLink, '14');
+      expect(
+        card.learningLink,
+        LearningLinkResolver.resolve(CoachActionType.extendTopicStoryFrame),
+      );
     });
 
     test('should keep hard brake label only for pressure-reduction actions',
@@ -296,7 +306,10 @@ void main() {
       );
       expect(card.actionLabel, '模糊邀約');
       expect(card.suggestedLine, '剛好我也想去，週六下午有空嗎？');
-      expect(card.learningLink, '21');
+      expect(
+        card.learningLink,
+        LearningLinkResolver.resolve(CoachActionType.softInvite),
+      );
     });
 
     test('should not pick softInvite on veryHot heat without meeting signal',
@@ -418,7 +431,10 @@ void main() {
         isDataQualityFlagged: false,
       );
       expect(card.actionLabel, '故事框架');
-      expect(card.learningLink, '14');
+      expect(
+        card.learningLink,
+        LearningLinkResolver.resolve(CoachActionType.extendTopicStoryFrame),
+      );
       expect(card.suggestedLine, '聽起來最近壓力大，是哪一塊？');
     });
 
@@ -442,7 +458,10 @@ void main() {
         isDataQualityFlagged: false,
       );
       expect(card.actionLabel, '輕量表達偏好');
-      expect(card.learningLink, '2');
+      expect(
+        card.learningLink,
+        LearningLinkResolver.resolve(CoachActionType.preferenceSignal),
+      );
     });
 
     test('should pick challenge copy when challengeSignal is detected', () {
@@ -470,7 +489,10 @@ void main() {
       expect(card.whyNow, contains('互動測試'));
       expect(card.task, contains('把球自然丟回去'));
       expect(card.avoid, contains('別急著自證'));
-      expect(card.learningLink, '11');
+      expect(
+        card.learningLink,
+        LearningLinkResolver.resolve(CoachActionType.emotionalResonance),
+      );
     });
 
     test('should pick emotionalResonance when subtext has explicit emotion',
@@ -567,7 +589,10 @@ void main() {
         isDataQualityFlagged: false,
       );
       expect(card.actionLabel, '回得剛剛好');
-      expect(card.learningLink, '12');
+      expect(
+        card.learningLink,
+        LearningLinkResolver.resolve(CoachActionType.rightSizeReply),
+      );
     });
 
     test(
@@ -766,7 +791,10 @@ void main() {
         isDataQualityFlagged: false,
       );
       expect(card.actionLabel, '降低壓力');
-      expect(card.learningLink, '10');
+      expect(
+        card.learningLink,
+        LearningLinkResolver.resolve(CoachActionType.lowerPressureReply),
+      );
     });
 
     test(
@@ -789,7 +817,10 @@ void main() {
         isDataQualityFlagged: false,
       );
       expect(card.actionLabel, '輕鬆幽默');
-      expect(card.learningLink, '3');
+      expect(
+        card.learningLink,
+        LearningLinkResolver.resolve(CoachActionType.playfulReply),
+      );
     });
 
     test('should restrict actionType to safe set when partner is flagged', () {

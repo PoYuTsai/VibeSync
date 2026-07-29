@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/domain/coach/coach_action_card_data.dart';
+import 'package:vibesync/features/learning/domain/models/learning_link_target.dart';
 import 'package:vibesync/shared/widgets/coach_action_card.dart';
 
 void main() {
   group('CoachActionCard', () {
     testWidgets('should render all 6 field rows when learningLink is non-null',
         (tester) async {
-      String? tappedId;
+      LearningLinkTarget? tappedTarget;
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -19,9 +20,12 @@ void main() {
                 suggestedLine: '聽起來最近壓力大，是哪一塊？',
                 avoid: '別只丟一個開放式問句',
                 avoidLabel: '節奏提醒',
-                learningLink: '14',
+                learningLink: LearningLinkTarget(
+                  bookId: 'ebook-2-conversation',
+                  chapterId: 'ebook-2-chapter-3',
+                ),
               ),
-              onLearningLinkTap: (id) => tappedId = id,
+              onLearningLinkTap: (target) => tappedTarget = target,
             ),
           ),
         ),
@@ -37,7 +41,7 @@ void main() {
       expect(find.text('試試這樣回'), findsOneWidget);
       expect(find.textContaining('聽起來最近壓力大'), findsOneWidget);
       expect(find.text('看 3 分鐘教學'), findsOneWidget);
-      expect(tappedId, isNull);
+      expect(tappedTarget, isNull);
     });
 
     testWidgets('should hide suggestedLine row when suggestedLine is null',
@@ -52,7 +56,10 @@ void main() {
                 task: '觀察這次的節奏',
                 suggestedLine: null,
                 avoid: '不要急著貼標籤',
-                learningLink: '18',
+                learningLink: LearningLinkTarget(
+                  bookId: 'ebook-3-rescue',
+                  chapterId: 'ebook-3-chapter-1',
+                ),
               ),
             ),
           ),
@@ -112,9 +119,9 @@ void main() {
     });
 
     testWidgets(
-        'should fire onLearningLinkTap with articleId when CTA is tapped',
+        'should fire onLearningLinkTap with the ebook target when CTA is tapped',
         (tester) async {
-      String? tappedId;
+      LearningLinkTarget? tappedTarget;
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -125,9 +132,12 @@ void main() {
                 task: '用故事框架展開',
                 suggestedLine: null,
                 avoid: '別只丟問句',
-                learningLink: '14',
+                learningLink: LearningLinkTarget(
+                  bookId: 'ebook-2-conversation',
+                  chapterId: 'ebook-2-chapter-3',
+                ),
               ),
-              onLearningLinkTap: (id) => tappedId = id,
+              onLearningLinkTap: (target) => tappedTarget = target,
             ),
           ),
         ),
@@ -136,7 +146,13 @@ void main() {
       await tester.tap(find.byKey(const Key('coach_action_learning_cta')));
       await tester.pump();
 
-      expect(tappedId, '14');
+      expect(
+        tappedTarget,
+        const LearningLinkTarget(
+          bookId: 'ebook-2-conversation',
+          chapterId: 'ebook-2-chapter-3',
+        ),
+      );
     });
   });
 }

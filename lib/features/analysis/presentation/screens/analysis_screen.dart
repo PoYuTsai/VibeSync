@@ -80,6 +80,8 @@ import '../widgets/analysis_usage_summary_line.dart';
 import '../helpers/analysis_usage_copy.dart';
 import '../widgets/analysis_action_widgets.dart';
 import '../widgets/streaming_analysis_loading_widgets.dart';
+import '../../../learning/presentation/screens/ebook_detail_screen.dart'
+    show ebookChapterRoute;
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
@@ -7448,9 +7450,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
                                 return CoachActionCard(
                                   data: cardData,
-                                  onLearningLinkTap: (articleId) {
+                                  onLearningLinkTap: (target) {
                                     _clearAnalysisSnackBarsBeforePush();
-                                    context.push('/article/$articleId');
+                                    context.push(
+                                      ebookChapterRoute(
+                                        target.bookId,
+                                        target.chapterId,
+                                        entryId: target.entryId,
+                                      ),
+                                    );
                                   },
                                 );
                               },

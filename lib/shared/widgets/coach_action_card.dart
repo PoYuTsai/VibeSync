@@ -3,11 +3,16 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../features/analysis/domain/coach/coach_action_card_data.dart';
+import '../../features/learning/domain/models/learning_link_target.dart';
+import '../../features/learning/presentation/widgets/knowledge_library_link_row.dart';
 import 'warm_theme_widgets.dart';
 
 class CoachActionCard extends StatelessWidget {
   final CoachActionCardData data;
-  final ValueChanged<String>? onLearningLinkTap;
+
+  /// 點「看 3 分鐘教學」時回拋 Dating Knowledge Library 的深連目標；
+  /// 導頁留在畫面層（分析頁 push 前要先收 SnackBar）。
+  final ValueChanged<LearningLinkTarget>? onLearningLinkTap;
 
   const CoachActionCard({
     super.key,
@@ -97,27 +102,10 @@ class CoachActionCard extends StatelessWidget {
           ],
           if (data.learningLink != null) ...[
             const SizedBox(height: 10),
-            InkWell(
+            KnowledgeLibraryLinkRow(
               key: const Key('coach_action_learning_cta'),
+              label: '看 3 分鐘教學',
               onTap: () => onLearningLinkTap?.call(data.learningLink!),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '看 3 分鐘教學',
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.ctaStart,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  const Icon(
-                    Icons.arrow_forward,
-                    size: 14,
-                    color: AppColors.ctaStart,
-                  ),
-                ],
-              ),
             ),
           ],
         ],

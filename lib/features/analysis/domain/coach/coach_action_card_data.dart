@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../../../learning/domain/models/learning_link_target.dart';
+
 /// 教練動作卡 view model（transient，不入 Hive）。
 @immutable
 class CoachActionCardData {
@@ -19,7 +21,10 @@ class CoachActionCardData {
   final String avoid;
   final String avoidLabel;
   final String? suggestedLine;
-  final String? learningLink;
+
+  /// Dating Knowledge Library 的深連目標；null 表示這個動作沒有對應章節，
+  /// 卡片隱藏「看 3 分鐘教學」CTA。
+  final LearningLinkTarget? learningLink;
 
   @override
   bool operator ==(Object other) {

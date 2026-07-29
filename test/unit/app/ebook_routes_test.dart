@@ -82,16 +82,29 @@ void main() {
     }
   });
 
-  test('Coach learning link 仍然全部指向存在的 article id', () {
+  // 2026-07-30：Coach 深連目標從 numeric article id 改成電子書章節
+  // （Dating Knowledge Library）。這裡只確認「不再指向文章」；章節是否
+  // 真實存在由 test/unit/features/learning/dating_knowledge_links_test.dart
+  // 對 JSON 資產逐筆比對。
+  test('Coach learning link 已經不再指向 article id', () {
     final articleIds = articles.map((article) => article.id).toSet();
     for (final type in CoachActionType.values) {
-      final id = LearningLinkResolver.resolve(type);
-      if (id == null) continue;
+      final target = LearningLinkResolver.resolve(type);
+      if (target == null) continue;
       expect(
-        articleIds.contains(id),
+        target.bookId.startsWith('ebook-'),
         isTrue,
-        reason: 'CoachActionType.$type 指向不存在的 article id $id',
+        reason: 'CoachActionType.$type 的 bookId 不是電子書 id',
+      );
+      expect(
+        articleIds.contains(target.bookId),
+        isFalse,
+        reason: 'CoachActionType.$type 撞到了 article id space',
       );
     }
+  });
+
+  test('/article/:id 路由本身沒被順手刪掉（學習頁文章列表還在用）', () {
+    expect(routesSource.contains("path: '/article/:id'"), isTrue);
   });
 }

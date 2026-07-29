@@ -14,6 +14,7 @@ import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_servic
 import 'package:vibesync/features/coach_chat/presentation/widgets/coach_surface.dart';
 import 'package:vibesync/features/coach_follow_up/presentation/widgets/coach_follow_up_section.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
+import 'package:vibesync/features/learning/domain/dating_knowledge_links.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
@@ -327,6 +328,114 @@ void main() {
 
       expect(pumped.apiCalls, hasLength(1));
       expect(paywallOpenCount, 1);
+    });
+  });
+
+  group('CoachFollowUpSection — Dating Knowledge Library 入口', () {
+    const linkKey = Key('coach_follow_up_knowledge_link');
+
+    testWidgets('沒選情境時不出現——沒有情境就無從得知該連哪一章', (t) async {
+      await _pump(t);
+      expect(find.byKey(linkKey), findsNothing);
+    });
+
+    testWidgets('每個情境 chip 都能叫出入口，且都有對應章節', (t) async {
+      await _pump(t);
+
+      for (final chip in _chipSpecs) {
+        await t.tap(find.text(chip.label));
+        await t.pumpAndSettle();
+
+        expect(
+          find.byKey(linkKey),
+          findsOneWidget,
+          reason: '點了「${chip.label}」之後應該出現知識庫入口',
+        );
+        expect(
+          DatingKnowledgeLinks.forFollowUpPhase(chip.phase),
+          isNotNull,
+          reason: 'phase ${chip.phase} 沒有對應章節，入口會連不到東西',
+        );
+      }
+    });
+
+    testWidgets('入口不搶 chip 的工作：點了之後仍然沒有 auto-send', (t) async {
+      final pumped = await _pump(t);
+
+      await t.tap(find.text('聊天卡住了'));
+      await t.pumpAndSettle();
+      expect(find.byKey(linkKey), findsOneWidget);
+
+      // chip 原本的職責（種入 phase／prefill）沒有被入口列改掉。
+      expect(_surface(t).lifecyclePhase, 'chatStalled');
+      expect(pumped.apiCalls, isEmpty);
+    });
+
+    testWidgets('點 openCoach entry 清掉情境後，入口跟著收起來', (t) async {
+      await _pump(t);
+
+      await t.tap(find.text('聊天卡住了'));
+      await t.pumpAndSettle();
+      expect(find.byKey(linkKey), findsOneWidget);
+
+      await t.tap(find.text('或直接問教練一個問題…'));
+      await t.pumpAndSettle();
+
+      // phase 被清成 null → 沒有情境 → 入口必須消失，不能留著連到上一個章節。
+      expect(_surface(t).lifecyclePhase, isNull);
+      expect(find.byKey(linkKey), findsNothing);
+    });
+  });
+
+  // CoachSurface 在這棵樹裡被渲染，快捷問句的入口一併在這裡驗。
+  group('CoachSurface — Dating Knowledge Library 入口', () {
+    const linkKey = Key('coach_surface_knowledge_link');
+
+    testWidgets('沒點快捷問句時不出現', (t) async {
+      await _pump(t);
+      expect(find.byKey(linkKey), findsNothing);
+    });
+
+    testWidgets('每個快捷問句都能叫出入口，且都有對應章節', (t) async {
+      await _pump(t);
+
+      for (final question in DatingKnowledgeLinks.coachQuestionTable.keys) {
+        await t.tap(find.text(question));
+        await t.pumpAndSettle();
+
+        expect(
+          find.byKey(linkKey),
+          findsOneWidget,
+          reason: '點了「$question」之後應該出現知識庫入口',
+        );
+      }
+    });
+
+    testWidgets('把問句改掉之後入口收起來——標籤說「這一題」就不能指著上一題', (t) async {
+      await _pump(t);
+
+      await t.tap(find.text('這局值不值得？'));
+      await t.pumpAndSettle();
+      expect(find.byKey(linkKey), findsOneWidget);
+
+      await t.enterText(
+        find.widgetWithText(TextField, '這局值不值得？'),
+        '她說她很忙是什麼意思',
+      );
+      await t.pumpAndSettle();
+
+      expect(find.byKey(linkKey), findsNothing);
+    });
+
+    testWidgets('對象頁 chip 種入的 prefill 不算快捷問句，不該叫出入口', (t) async {
+      await _pump(t);
+
+      // 這條 prefill 是完整句子而不是 chip 文案，查表本來就會落空；
+      // 若哪天被誤接成同一條路徑，這裡會紅。
+      await t.tap(find.text('聊天卡住了'));
+      await t.pumpAndSettle();
+
+      expect(find.byKey(linkKey), findsNothing);
     });
   });
 }
