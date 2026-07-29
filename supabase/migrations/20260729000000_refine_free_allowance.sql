@@ -8,6 +8,14 @@
 -- Day boundary is UTC, matching every other daily window in this project
 -- (increment_model_usage, OCR rate limit, practice hint quota).
 
+-- Creating a foreign key takes SHARE ROW EXCLUSIVE on auth.users, which
+-- conflicts with the ROW EXCLUSIVE that ordinary INSERT/UPDATE/DELETE holds.
+-- The wait is unbounded, and once this migration is queued for that lock every
+-- subsequent auth write queues behind it -- a stalled sign-up/login pile-up.
+-- Fail fast instead: if the lock is not free within 5s, this migration errors
+-- out and gets retried at a quieter moment.
+SET lock_timeout = '5s';
+
 CREATE TABLE IF NOT EXISTS public.refine_free_allowance (
   user_id    UUID        NOT NULL PRIMARY KEY
                          REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -39,7 +47,11 @@ GRANT SELECT ON TABLE public.refine_free_allowance TO service_role;
 --
 -- Rows are pruned on the same 7-day window as optimize_message_requests: past
 -- that window the request can no longer be replayed anyway, so a claim row for
--- it can never be consulted again.
+-- it can never be consulted again. Pruning happens two ways: opportunistically
+-- for the calling user inside the function, and on an hourly pg_cron sweep for
+-- everyone else -- a user who refines a few times and then churns would
+-- otherwise keep their last rows forever, since the in-function prune only
+-- ever runs for users who come back.
 CREATE TABLE IF NOT EXISTS public.refine_free_claims (
   user_id    UUID        NOT NULL
                          REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -61,6 +73,53 @@ ALTER TABLE public.refine_free_claims ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.refine_free_claims FROM PUBLIC;
 REVOKE ALL ON TABLE public.refine_free_claims FROM anon, authenticated;
 GRANT SELECT ON TABLE public.refine_free_claims TO service_role;
+
+CREATE OR REPLACE FUNCTION public.cleanup_expired_refine_free_claims()
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_deleted INTEGER;
+BEGIN
+  DELETE FROM public.refine_free_claims
+  WHERE created_at < now() - interval '7 days';
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+  RETURN v_deleted;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION
+  public.cleanup_expired_refine_free_claims() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION
+  public.cleanup_expired_refine_free_claims() FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION
+  public.cleanup_expired_refine_free_claims() TO service_role;
+
+-- Same hourly cadence and failure stance as the other replay-retention jobs:
+-- fail the migration rather than silently shipping a retention promise that
+-- nothing enforces. Minute 23 keeps it clear of the existing sweeps.
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+DO $schedule$
+DECLARE
+  v_job_id BIGINT;
+BEGIN
+  FOR v_job_id IN
+    SELECT jobid FROM cron.job
+    WHERE jobname = 'cleanup-expired-refine-free-claims'
+  LOOP
+    PERFORM cron.unschedule(v_job_id);
+  END LOOP;
+
+  PERFORM cron.schedule(
+    'cleanup-expired-refine-free-claims',
+    '23 * * * *',
+    'SELECT public.cleanup_expired_refine_free_claims();'
+  );
+END;
+$schedule$;
 
 -- Atomically claim one free refinement for today.
 --
@@ -108,6 +167,19 @@ BEGIN
     RAISE EXCEPTION 'consume_refine_free_allowance: p_request_id is required';
   END IF;
 
+  -- Take the parent row's FK lock FIRST, in the same order account deletion
+  -- does (parent, then cascade to children). Without this the orders invert:
+  -- we would lock the allowance child row here and only reach for the parent
+  -- later, when inserting a claim triggers its FK check -- while a concurrent
+  -- DELETE FROM auth.users holds the parent and waits for our child. That
+  -- cycle deadlocks (40P01) and kills either the refine call or the account
+  -- deletion. FOR KEY SHARE is the weakest lock that blocks the delete.
+  PERFORM 1 FROM auth.users WHERE id = p_user_id FOR KEY SHARE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION
+      'consume_refine_free_allowance: no such user %', p_user_id;
+  END IF;
+
   INSERT INTO public.refine_free_allowance (user_id, day_utc, used_count)
   VALUES (p_user_id, v_today, 0)
   ON CONFLICT (user_id) DO NOTHING;
@@ -128,8 +200,13 @@ BEGIN
   -- wait on this lock until after midnight; with the entry-time value it would
   -- then see the winner's already-rolled day_utc as "wrong", roll the counter
   -- BACK to yesterday and reset used_count to 0 -- handing out a fresh ten free
-  -- slots. Reading the clock once the row is ours removes the window entirely.
-  v_today := (now() AT TIME ZONE 'utc')::date;
+  -- slots.
+  --
+  -- clock_timestamp(), NOT now(): now() is transaction_timestamp() and is
+  -- frozen for the whole transaction, so re-reading it after a lock wait
+  -- returns the same instant we entered with and fixes nothing. This is the
+  -- only place in this function that needs true wall-clock time.
+  v_today := (clock_timestamp() AT TIME ZONE 'utc')::date;
 
   -- Only reachable if the row vanished between the insert and the lock, i.e.
   -- the account was deleted mid-request. Fail loudly rather than returning a

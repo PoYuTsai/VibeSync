@@ -164,10 +164,53 @@ Deno.test("日界要在拿到鎖之後才判定", () => {
     "WHERE user_id = p_user_id\n  FOR UPDATE;",
   );
   const reread = liveFunctionSource.indexOf(
-    "v_today := (now() AT TIME ZONE 'utc')::date;",
+    "v_today := (clock_timestamp() AT TIME ZONE 'utc')::date;",
   );
   const rollover = liveFunctionSource.indexOf("IF v_day <> v_today THEN");
   assert(lock >= 0);
   assert(reread > lock, "day must be re-derived after the row lock");
   assert(rollover > reread, "rollover check must use the re-derived day");
+
+  // 必須是 clock_timestamp()，不能是 now()。now() 就是 transaction_timestamp()，
+  // 整個交易期間凍結，在鎖上等再久都回同一個瞬間——用它「重讀」等於沒讀。
+  // 本機實測：等鎖 3 秒後 now() 差 0 秒、clock_timestamp() 差 3 秒。
+  assert(
+    !liveFunctionSource.includes("v_today := (now() AT TIME ZONE 'utc')::date;"),
+    "now() is frozen per transaction; re-deriving with it is a no-op",
+  );
+});
+
+Deno.test("先鎖父列再鎖子列，避免與刪帳號互相卡死", () => {
+  // 刪帳號是先鎖 auth.users 再 cascade 到子表。函式若先鎖子列、稍後插入
+  // claim 才因 FK 去要父列，兩邊順序相反就會 40P01 死鎖，打死微調或打死
+  // 帳號刪除。FOR KEY SHARE 是能擋住刪除的最弱鎖。
+  const parentLock = liveFunctionSource.indexOf(
+    "PERFORM 1 FROM auth.users WHERE id = p_user_id FOR KEY SHARE;",
+  );
+  const childLock = liveFunctionSource.indexOf(
+    "WHERE user_id = p_user_id\n  FOR UPDATE;",
+  );
+  assert(parentLock >= 0, "parent FK lock missing");
+  assert(childLock > parentLock, "parent must be locked before the child row");
+});
+
+Deno.test("建外鍵不得無限等待 auth.users 的寫入鎖", () => {
+  // 建 FK 會在 auth.users 上拿 SHARE ROW EXCLUSIVE，與一般寫入衝突且等待
+  // 無上限；一旦排進佇列，後續登入/註冊會全部塞在它後面。寧可快速失敗改時間重跑。
+  assert(migrationSource.includes("SET lock_timeout = '5s';"));
+  const timeout = migrationSource.indexOf("SET lock_timeout");
+  const firstFk = migrationSource.indexOf("REFERENCES auth.users(id)");
+  assert(timeout >= 0 && firstFk > timeout, "lock_timeout must precede the FK");
+});
+
+Deno.test("claims 有排程清理，不只靠使用者自己再來一次", () => {
+  // 函式內的清理只掃呼叫者自己。用過幾次就流失的帳號，那批列永遠不會被清，
+  // 「保留 7 天」就成了沒人執行的承諾。照本專案既有 replay 表的做法排 pg_cron。
+  assert(
+    migrationSource.includes(
+      "CREATE OR REPLACE FUNCTION public.cleanup_expired_refine_free_claims()",
+    ),
+  );
+  assert(migrationSource.includes("CREATE EXTENSION IF NOT EXISTS pg_cron;"));
+  assert(migrationSource.includes("'cleanup-expired-refine-free-claims',"));
 });
