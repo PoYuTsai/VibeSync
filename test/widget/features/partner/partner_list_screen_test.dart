@@ -9,6 +9,7 @@ import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_list_screen.dart';
+import 'package:vibesync/features/partner/presentation/widgets/home_coach_presence.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_list_card.dart';
 
 Partner _p(String id, String name) => Partner(
@@ -44,6 +45,22 @@ Conversation _conv(String id, String partnerId) => Conversation(
   messages: const [],
   partnerId: partnerId,
 );
+
+List<Override> _partnerOverrides(int count) {
+  final partners = [
+    for (var i = 0; i < count; i++) _p('p$i', 'Person ${i + 1}'),
+  ];
+
+  return [
+    partnerListProvider.overrideWith((_) => partners),
+    for (final partner in partners) ...[
+      partnerAggregateProvider(partner.id).overrideWith((_) => _agg()),
+      conversationsByPartnerProvider(
+        partner.id,
+      ).overrideWith((_) => const <Conversation>[]),
+    ],
+  ];
+}
 
 Widget _screen({required List<Override> overrides}) => ProviderScope(
   overrides: overrides,
@@ -135,6 +152,50 @@ void main() {
     expect(find.text('待分析'), findsOneWidget);
     expect(find.text('coffee · bold'), findsOneWidget);
     expect(find.byIcon(Icons.delete_outline), findsNWidgets(2));
+  });
+
+  for (final count in [1, 2]) {
+    testWidgets(
+      '$count partner cards keep Sydney anchored above the bottom padding',
+      (t) async {
+        await t.binding.setSurfaceSize(const Size(390, 844));
+        addTearDown(() => t.binding.setSurfaceSize(null));
+
+        await t.pumpWidget(_screen(overrides: _partnerOverrides(count)));
+        await t.pumpAndSettle();
+
+        final scaffoldBottom = t.getRect(find.byType(Scaffold)).bottom;
+        final coachBottom = t.getRect(find.byType(HomeCoachPresence)).bottom;
+
+        expect(coachBottom, closeTo(scaffoldBottom - 32, 1));
+      },
+    );
+  }
+
+  testWidgets('five partner cards stay continuous before the coach footer', (
+    t,
+  ) async {
+    await t.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    await t.pumpWidget(_screen(overrides: _partnerOverrides(5)));
+    await t.pumpAndSettle();
+
+    final fifthCardBottom = t
+        .getRect(find.widgetWithText(PartnerListCard, 'Person 5'))
+        .bottom;
+
+    expect(fifthCardBottom, lessThanOrEqualTo(844));
+    expect(find.byType(HomeCoachPresence), findsNothing);
+
+    await t.drag(find.byType(Scrollable), const Offset(0, -500));
+    await t.pumpAndSettle();
+
+    expect(find.byType(HomeCoachPresence), findsOneWidget);
+    expect(
+      t.getRect(find.byType(HomeCoachPresence)).bottom,
+      lessThanOrEqualTo(844),
+    );
   });
 
   testWidgets('list preserves order from partnerListProvider', (t) async {

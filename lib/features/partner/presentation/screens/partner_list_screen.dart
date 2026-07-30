@@ -108,54 +108,80 @@ class PartnerListScreen extends ConsumerWidget {
     final showBanner = dupPair != null && dismissedAsync.value == false;
 
     final bannerCount = showBanner ? 1 : 0;
-    final coachIndex = partners.length + bannerCount;
+    final listItemCount = partners.length + bannerCount;
+    // Five rows fill a typical phone body. Start Sydney on the next viewport
+    // so a partial head or hand never peeks out beneath the bottom navigation.
+    final startsCoachOnNextViewport = listItemCount >= 5;
+    final coachFooter = Padding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPadding),
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: HomeCoachPresence(pose: coachPose),
+      ),
+    );
 
-    return ListView.builder(
-      padding: EdgeInsets.fromLTRB(16, 8, 16, bottomPadding),
-      itemCount: coachIndex + 1,
-      itemBuilder: (context, i) {
-        if (i == coachIndex) {
-          return HomeCoachPresence(pose: coachPose);
-        }
-        if (showBanner && i == 0) {
-          return SameNameDedupeBanner(
-            partnerName: dupPair.newer.name,
-            onMergeTap: () => _onMergeDuplicate(context, ref, uid!, dupPair),
-            onDismissTap: () async {
-              await PartnerBannerService.markDismissed(uid!);
-              try {
-                // Guard against widget disposal during the await above —
-                // sign-out / nav-away invalidates ref before this lands.
-                ref.invalidate(partnerDedupeBannerDismissedProvider(uid));
-              } catch (e, st) {
-                // Widget disposed; invalidation is moot, but keep a breadcrumb
-                // in debug logs so real dismiss failures are not silent.
-                debugPrint(
-                  'PartnerListScreen banner dismiss invalidation skipped: '
-                  '$e\n$st',
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          sliver: SliverList.builder(
+            itemCount: listItemCount,
+            itemBuilder: (context, i) {
+              if (showBanner && i == 0) {
+                return SameNameDedupeBanner(
+                  partnerName: dupPair.newer.name,
+                  onMergeTap: () =>
+                      _onMergeDuplicate(context, ref, uid!, dupPair),
+                  onDismissTap: () async {
+                    await PartnerBannerService.markDismissed(uid!);
+                    try {
+                      // Guard against widget disposal during the await above —
+                      // sign-out / nav-away invalidates ref before this lands.
+                      ref.invalidate(partnerDedupeBannerDismissedProvider(uid));
+                    } catch (e, st) {
+                      // Widget disposed; invalidation is moot, but keep a breadcrumb
+                      // in debug logs so real dismiss failures are not silent.
+                      debugPrint(
+                        'PartnerListScreen banner dismiss invalidation skipped: '
+                        '$e\n$st',
+                      );
+                    }
+                  },
                 );
               }
+              final pIndex = showBanner ? i - 1 : i;
+              final p = partners[pIndex];
+              final agg = ref.watch(partnerAggregateProvider(p.id));
+              // Codex P1.2 — count real conversation rows, not aggregate.totalRounds
+              // (zero-round conversations would otherwise be invisible to the
+              // delete dialog and let the user fall straight into the repo throw).
+              final convCount = ref
+                  .watch(conversationsByPartnerProvider(p.id))
+                  .length;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: PartnerListCard(
+                  partner: p,
+                  aggregate: agg,
+                  onTap: () => context.push('/partner/${p.id}'),
+                  onDelete: () => _onDelete(context, ref, p, convCount),
+                ),
+              );
             },
-          );
-        }
-        final pIndex = showBanner ? i - 1 : i;
-        final p = partners[pIndex];
-        final agg = ref.watch(partnerAggregateProvider(p.id));
-        // Codex P1.2 — count real conversation rows, not aggregate.totalRounds
-        // (zero-round conversations would otherwise be invisible to the
-        // delete dialog and let the user fall straight into the repo throw).
-        final convCount =
-            ref.watch(conversationsByPartnerProvider(p.id)).length;
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 5),
-          child: PartnerListCard(
-            partner: p,
-            aggregate: agg,
-            onTap: () => context.push('/partner/${p.id}'),
-            onDelete: () => _onDelete(context, ref, p, convCount),
           ),
-        );
-      },
+        ),
+        if (startsCoachOnNextViewport) ...[
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: SizedBox.shrink(),
+          ),
+          SliverToBoxAdapter(child: coachFooter),
+        ] else
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: coachFooter,
+          ),
+      ],
     );
   }
 
