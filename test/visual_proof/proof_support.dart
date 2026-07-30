@@ -106,6 +106,7 @@ Future<void> pumpAndCapture(
   required String outPath,
   Size size = kPhone,
   Duration settle = const Duration(milliseconds: 1500),
+  Duration rasterDecodeWait = Duration.zero,
 }) async {
   await tester.binding.setSurfaceSize(size);
   final rootKey = GlobalKey();
@@ -120,6 +121,10 @@ Future<void> pumpAndCapture(
     ),
   );
   await tester.pump(settle); // advance any repeating animation to a still frame
+  if (rasterDecodeWait > Duration.zero) {
+    await tester.runAsync(() => Future<void>.delayed(rasterDecodeWait));
+    await tester.pump();
+  }
   final boundary = tester.renderObject<RenderRepaintBoundary>(
     find.byKey(rootKey),
   );

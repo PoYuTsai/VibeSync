@@ -27,6 +27,7 @@ import '../../data/repositories/partner_repository.dart';
 import '../../data/services/partner_banner_service.dart';
 import '../../domain/entities/partner.dart';
 import '../providers/partner_providers.dart';
+import '../widgets/home_coach_presence.dart';
 import '../widgets/partner_list_card.dart';
 import '../widgets/same_name_dedupe_banner.dart';
 
@@ -34,58 +35,64 @@ class PartnerListScreen extends ConsumerWidget {
   const PartnerListScreen({
     super.key,
     this.bottomPadding = 32,
+    this.coachPose = HomeCoachPose.greeting,
   });
 
   final double bottomPadding;
+  final HomeCoachPose coachPose;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final partners = ref.watch(partnerListProvider);
     if (partners.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '先建立第一張對象卡',
-                style: AppTypography.titleMedium.copyWith(
-                  color: AppColors.textPrimary,
+      return ListView(
+        padding: EdgeInsets.fromLTRB(24, 24, 24, bottomPadding),
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '先建立第一張對象卡',
+                  style: AppTypography.titleMedium.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'VibeSync 會記得你和每個對象，幫你看懂互動，陪你練下一步',
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.onBackgroundSecondary,
+                const SizedBox(height: 12),
+                Text(
+                  'VibeSync 會記得你和每個對象，幫你看懂互動，陪你練下一步',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '一個人一張卡，不同日期、IG、LINE 或交友軟體的聊天，都整理在同一張卡裡',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.onBackgroundSecondary,
+                const SizedBox(height: 8),
+                Text(
+                  '一個人一張卡，不同日期、IG、LINE 或交友軟體的聊天，都整理在同一張卡裡',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
-              ),
-              // 案 3 冷啟動分流：空狀態直接給兩條路——建卡分析（與
-              // shell FAB 同路）或先去練習室熱身。有 partner 後不再顯示。
-              const SizedBox(height: 24),
-              BrandPrimaryButton(
-                label: '建立對象卡，開始分析',
-                onPressed: () => context.push('/partner/new'),
-              ),
-              const SizedBox(height: 12),
-              BrandSecondaryButton(
-                label: '先去練習室熱身',
-                onPressed: () => context.push('/practice-collection'),
-              ),
-            ],
+                // 案 3 冷啟動分流：空狀態直接給兩條路——建卡分析（與
+                // shell FAB 同路）或先去練習室熱身。有 partner 後不再顯示。
+                const SizedBox(height: 24),
+                BrandPrimaryButton(
+                  label: '建立對象卡，開始分析',
+                  onPressed: () => context.push('/partner/new'),
+                ),
+                const SizedBox(height: 12),
+                BrandSecondaryButton(
+                  label: '先去練習室熱身',
+                  onPressed: () => context.push('/practice-collection'),
+                ),
+              ],
+            ),
           ),
-        ),
+          HomeCoachPresence(pose: coachPose, height: 340),
+        ],
       );
     }
 
@@ -100,11 +107,16 @@ class PartnerListScreen extends ConsumerWidget {
         : ref.watch(partnerDedupeBannerDismissedProvider(uid));
     final showBanner = dupPair != null && dismissedAsync.value == false;
 
+    final bannerCount = showBanner ? 1 : 0;
+    final coachIndex = partners.length + bannerCount;
+
     return ListView.builder(
       padding: EdgeInsets.fromLTRB(16, 8, 16, bottomPadding),
-      // +1 for the banner slot when shown.
-      itemCount: partners.length + (showBanner ? 1 : 0),
+      itemCount: coachIndex + 1,
       itemBuilder: (context, i) {
+        if (i == coachIndex) {
+          return HomeCoachPresence(pose: coachPose);
+        }
         if (showBanner && i == 0) {
           return SameNameDedupeBanner(
             partnerName: dupPair.newer.name,

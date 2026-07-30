@@ -1,4 +1,6 @@
 // lib/app/main_shell.dart
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +9,7 @@ import '../core/theme/app_colors.dart';
 import '../core/theme/app_typography.dart';
 import '../shared/widgets/warm_theme_widgets.dart';
 import '../features/partner/presentation/screens/partner_list_screen.dart';
+import '../features/partner/presentation/widgets/home_coach_presence.dart';
 import '../features/report/presentation/screens/my_report_screen.dart';
 import '../features/learning/presentation/screens/learning_screen.dart';
 
@@ -53,7 +56,12 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
+  static const _coachPoseChangeProbability = 0.4;
+
+  final Random _coachRandom = Random();
   late int _currentIndex = _normalizeTabIndex(widget.initialTabIndex);
+  late HomeCoachPose _coachPose =
+      HomeCoachPose.values[_coachRandom.nextInt(HomeCoachPose.values.length)];
 
   @override
   void didUpdateWidget(covariant MainShell oldWidget) {
@@ -61,7 +69,7 @@ class _MainShellState extends State<MainShell> {
     final nextIndex = _normalizeTabIndex(widget.initialTabIndex);
     final routeTabChanged = oldWidget.routeTab != widget.routeTab;
     if (routeTabChanged && _currentIndex != nextIndex) {
-      setState(() => _currentIndex = nextIndex);
+      setState(() => _updateCurrentTab(nextIndex));
     }
   }
 
@@ -100,10 +108,13 @@ class _MainShellState extends State<MainShell> {
         ),
         body: IndexedStack(
           index: _currentIndex,
-          children: const [
-            PartnerListScreen(bottomPadding: 32.0 + homeFabReservedHeight),
-            MyReportScreen(),
-            LearningScreen(),
+          children: [
+            PartnerListScreen(
+              bottomPadding: 32,
+              coachPose: _coachPose,
+            ),
+            const MyReportScreen(),
+            const LearningScreen(),
           ],
         ),
         floatingActionButton: _currentIndex == 0 ? const HomeFab() : null,
@@ -218,9 +229,24 @@ class _MainShellState extends State<MainShell> {
   void _selectTab(int index) {
     final nextIndex = _normalizeTabIndex(index);
     if (_currentIndex != nextIndex) {
-      setState(() => _currentIndex = nextIndex);
+      setState(() => _updateCurrentTab(nextIndex));
     }
     context.go('/?tab=${MainShell.tabRouteFromIndex(nextIndex)}');
+  }
+
+  void _updateCurrentTab(int nextIndex) {
+    if (nextIndex == 0) {
+      _maybeChangeCoachPose();
+    }
+    _currentIndex = nextIndex;
+  }
+
+  void _maybeChangeCoachPose() {
+    if (_coachRandom.nextDouble() >= _coachPoseChangeProbability) return;
+
+    final step = 1 + _coachRandom.nextInt(HomeCoachPose.values.length - 1);
+    final nextIndex = (_coachPose.index + step) % HomeCoachPose.values.length;
+    _coachPose = HomeCoachPose.values[nextIndex];
   }
 }
 
