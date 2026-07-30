@@ -365,7 +365,10 @@ void main() {
     expect(button.onPressed, isNotNull, reason: '按鈕必須解除 loading 可以再按');
   });
 
-  testWidgets('付費書的閱讀器：未訂閱只放行試讀章，其餘章仍被閘門擋下', (tester) async {
+  testWidgets('付費書的閱讀器：未訂閱深連鎖定章，落到可瀏覽的書籍目錄而不是 paywall',
+      (tester) async {
+    // 2026-07-30 Eric 拍板：深連撞鎖定章「看得到目錄就好」，付費決定留給
+    // 使用者在目錄頁自己按，不自動蓋 paywall。
     await pumpEbookApp(
       tester,
       initialLocation:
@@ -375,7 +378,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text(paywallStubText), findsOneWidget);
+    expect(find.text(paywallStubText), findsNothing);
+    expect(find.text('訂閱測試書'), findsOneWidget);
+    // 目錄可看，內文仍然不可看。
     expect(find.text('閱讀位置'), findsNothing);
   });
 

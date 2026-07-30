@@ -299,8 +299,9 @@ void main() {
     expect(find.text('第 2 章'), findsNothing);
   });
 
-  testWidgets('Free 使用者 deep link 進付費書第二章：全擋，內容不閃現',
+  testWidgets('Free 使用者 deep link 進付費書第二章：內容不閃現，落到書籍目錄',
       (tester) async {
+    // 2026-07-30 Eric 拍板：鎖定章深連「看得到目錄就好」，不自動蓋 paywall。
     await pumpEbookApp(
       tester,
       initialLocation:
@@ -309,21 +310,20 @@ void main() {
       access: const EbookSubscriptionAccess.free(),
     );
 
-    // 逐帧檢查：從第一帧到導航完成，都不能出現任何章節內容。
+    // 逐帧檢查：從第一帧到轉址完成，都不能出現任何章節內容。
     for (var frame = 0; frame < 6; frame++) {
-      expect(find.text('第 2 章'), findsNothing);
-      expect(find.text('第 1 章'), findsNothing);
       expect(find.text('段落內容。'), findsNothing);
       await tester.pump(const Duration(milliseconds: 16));
     }
     await tester.pumpAndSettle();
 
-    expect(find.text(paywallStubText), findsOneWidget);
+    expect(find.text(paywallStubText), findsNothing);
+    expect(find.text('訂閱測試書'), findsOneWidget);
     expect(find.text('段落內容。'), findsNothing);
   });
 
-  testWidgets('從 paywall 返回後不是無盡 loading，而是可操作畫面', (tester) async {
-    final harness = await pumpEbookApp(
+  testWidgets('鎖定章深連的落點目錄可操作：有訂閱入口、無 spinner、無內文', (tester) async {
+    await pumpEbookApp(
       tester,
       initialLocation:
           '/learning/books/$_premiumBook/chapters/$_premiumLockedChapter',
@@ -332,15 +332,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 自動導向 paywall 之後返回。
-    expect(find.text(paywallStubText), findsOneWidget);
-    harness.router.pop();
-    await tester.pumpAndSettle();
-
-    // 不得停在 spinner：要有標題與可按的入口，而且仍然沒有內容。
-    expect(find.text('這本需要訂閱才能閱讀'), findsOneWidget);
-    expect(find.text('看訂閱方案'), findsOneWidget);
-    expect(find.text('回學習頁'), findsOneWidget);
+    // 不得停在 spinner：目錄要能看、付費入口要能按，而且仍然沒有內容。
+    expect(find.text('訂閱測試書'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.text('段落內容。'), findsNothing);
   });
@@ -369,7 +362,7 @@ void main() {
     expect(find.text(paywallStubText), findsNothing);
   });
 
-  testWidgets('確認後是 Free，鎖定章才導 paywall', (tester) async {
+  testWidgets('確認後是 Free，鎖定章落到書籍目錄而不是 paywall', (tester) async {
     final harness = await pumpEbookApp(
       tester,
       initialLocation:
@@ -384,7 +377,8 @@ void main() {
     harness.setAccess(const EbookSubscriptionAccess.free());
     await tester.pumpAndSettle();
 
-    expect(find.text(paywallStubText), findsOneWidget);
+    expect(find.text(paywallStubText), findsNothing);
+    expect(find.text('訂閱測試書'), findsOneWidget);
     expect(find.text('段落內容。'), findsNothing);
   });
 

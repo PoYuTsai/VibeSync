@@ -71,6 +71,10 @@ class EbookReaderScreen extends ConsumerWidget {
             initialIndex: 0,
             previewOnly: true,
           ),
+          // 深連到鎖定章不彈 paywall，改落到可瀏覽的書籍目錄
+          // （2026-07-30 Eric 拍板：看得到目錄就好，付費決定留給使用者按）。
+          // 目錄頁自帶鎖定版畫面與訂閱入口；這裡只轉址，不渲染任何章節內文。
+          lockedBuilder: (context) => _RedirectToBookDetail(bookId: book!.id),
         );
       },
     );
@@ -552,6 +556,33 @@ void _openEbookTarget(
   // 命中的 anchor。
   final entryId = locked ? null : targetEntryId;
   context.push(ebookChapterRoute(targetBookId, chapterId, entryId: entryId));
+}
+
+/// 鎖定章深連的落點轉址：以 `go` 整段換到書籍目錄，back 不會再彈回鎖定閱讀器。
+///
+/// 只轉址、不渲染內文，滿足 [EbookAccessGate.lockedBuilder] 的內容約束；
+/// 轉址完成前的一幀顯示與載入相同的畫面，避免閃黑。
+class _RedirectToBookDetail extends StatefulWidget {
+  const _RedirectToBookDetail({required this.bookId});
+
+  final String bookId;
+
+  @override
+  State<_RedirectToBookDetail> createState() => _RedirectToBookDetailState();
+}
+
+class _RedirectToBookDetailState extends State<_RedirectToBookDetail> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.go(ebookDetailRoute(widget.bookId));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const _ReaderLoading();
 }
 
 class _ReaderLoading extends StatelessWidget {
