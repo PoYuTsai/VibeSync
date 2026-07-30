@@ -27,7 +27,28 @@ const String kEbookCollectionKicker = 'THE FIELD GUIDE';
 ///   - [becomeThePrize] 是內功層（懂原理，變成不用照著做的人），Essential 專屬。
 enum EbookUnit { ultimateGuide, becomeThePrize }
 
+/// 章節內文的排版語言。
+///
+/// 2026-07-31 夥伴回饋《成為獎賞》「不易閱讀」。量到的來源是有框線元件的密度：
+/// 終極指引四冊每章 1.0–3.6 個，成為獎賞三冊每章 4.5–4.7 個，而且 callout
+/// 從四冊合計 9 個跳到三冊 34 個。同樣的文字量，滿版外框愈多就愈難掃讀。
+///
+///   - [framed]：callout 與 comparison 都是「底色＋整圈外框」。終極指引沿用，
+///     Eric 2026-07-31 拍板那個單元不動。
+///   - [spine]：改成左側色條，不上底色也不畫外框。安全與警告 tone 例外——
+///     那兩個是內容紅線的視覺守門，必須比周圍更重，維持整框。
+///
+/// 綁在單元而不是每本書的 JSON 欄位：這是產品層的排版決策，不該讓內容檔
+/// 可以逐本改掉，也才不會新增一本書就漏掉宣告。
+enum EbookReadingLayout { framed, spine }
+
 extension EbookUnitDisplay on EbookUnit {
+  /// 這個單元的章節內文排版。
+  EbookReadingLayout get readingLayout => switch (this) {
+        EbookUnit.ultimateGuide => EbookReadingLayout.framed,
+        EbookUnit.becomeThePrize => EbookReadingLayout.spine,
+      };
+
   String get title => switch (this) {
         EbookUnit.ultimateGuide => kEbookCollectionTitle,
         EbookUnit.becomeThePrize => '成為獎賞',
@@ -153,6 +174,9 @@ class Ebook {
   final List<EbookChapter> chapters;
 
   int get chapterCount => chapters.length;
+
+  /// 這本的章節內文排版，跟著單元走。
+  EbookReadingLayout get readingLayout => unit.readingLayout;
 
   bool get isFree => access == EbookAccess.free;
 

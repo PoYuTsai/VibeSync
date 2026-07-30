@@ -4,6 +4,7 @@
 // callout 安全提醒有語意標籤、checklist 只回報 id + bool。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/learning/domain/models/ebook.dart';
 import 'package:vibesync/features/learning/domain/models/ebook_block.dart';
 import 'package:vibesync/features/learning/domain/models/ebook_progress.dart';
 import 'package:vibesync/features/learning/presentation/widgets/ebook_block_renderer.dart';
@@ -16,6 +17,7 @@ Future<List<ChecklistCall>> pumpBlocks(
   WidgetTester tester,
   List<EbookBlock> blocks, {
   EbookBookProgress progress = EbookBookProgress.empty,
+  EbookReadingLayout layout = EbookReadingLayout.framed,
   double textScale = 1.0,
   Size size = const Size(390, 2400),
   void Function(EbookStageFunnelBlock block, EbookFunnelStage stage)?
@@ -46,6 +48,7 @@ Future<List<ChecklistCall>> pumpBlocks(
                       child: EbookBlockRenderer(
                         block: block,
                         progress: progress,
+                        layout: layout,
                         onQuizSubmitted: (_, __, ___) {},
                         onFunnelTargetTap: (block, stage) =>
                             onFunnelTargetTap?.call(block, stage),
@@ -283,5 +286,156 @@ void main() {
       size: const Size(320, 6000),
     );
     expect(tester.takeException(), isNull);
+  });
+
+  // 2026-07-31 夥伴回饋《成為獎賞》不易閱讀。成因是有框線元件密度：三冊每章
+  // 4.5–4.7 個，終極指引四冊只有 1.0–3.6。spine 排版把 callout 與 comparison
+  // 從整框降成左側色條，只有 warning／safety 例外。
+  group('spine 排版', () {
+    /// 包住某段文字、最靠近它且帶 [BoxDecoration] 的 Container 的裝飾。
+    BoxDecoration decorationWrapping(WidgetTester tester, String text) {
+      final containers = tester.widgetList<Container>(
+        find.ancestor(of: find.text(text), matching: find.byType(Container)),
+      );
+      return containers
+          .firstWhere((container) => container.decoration is BoxDecoration)
+          .decoration! as BoxDecoration;
+    }
+
+    bool isLeftOnlyBorder(BoxDecoration decoration) {
+      final border = decoration.border;
+      if (border is! Border) return false;
+      return border.left.width > 0 &&
+          border.top == BorderSide.none &&
+          border.right == BorderSide.none &&
+          border.bottom == BorderSide.none;
+    }
+
+    testWidgets('一般 tone 的 callout 只剩左側色條，沒有底色也沒有整圈外框',
+        (tester) async {
+      await pumpBlocks(
+        tester,
+        const [
+          EbookCalloutBlock(
+            id: 'co-principle',
+            tone: EbookCalloutTone.principle,
+            title: '本冊的第一原理',
+            text: '你在哪一塊下功夫，就只拿得到那一塊的分數。',
+          ),
+        ],
+        layout: EbookReadingLayout.spine,
+      );
+
+      final decoration =
+          decorationWrapping(tester, '你在哪一塊下功夫，就只拿得到那一塊的分數。');
+      expect(decoration.color, isNull, reason: 'spine 不上底色');
+      expect(isLeftOnlyBorder(decoration), isTrue, reason: '只有左邊有線');
+    });
+
+    testWidgets('warning 與 safety 在 spine 下維持整框（內容紅線的視覺守門）',
+        (tester) async {
+      for (final tone in [EbookCalloutTone.warning, EbookCalloutTone.safety]) {
+        await pumpBlocks(
+          tester,
+          [
+            EbookCalloutBlock(
+              id: 'co-${tone.name}',
+              tone: tone,
+              text: '這一段有風險。',
+            ),
+          ],
+          layout: EbookReadingLayout.spine,
+        );
+
+        final decoration = decorationWrapping(tester, '這一段有風險。');
+        expect(decoration.color, isNotNull, reason: '$tone 仍要上底色');
+        expect(isLeftOnlyBorder(decoration), isFalse, reason: '$tone 仍是整框');
+      }
+    });
+
+    testWidgets('spine 下每個 tone 的文字標籤都還在（不能只靠顏色分辨）',
+        (tester) async {
+      await pumpBlocks(
+        tester,
+        [
+          for (final tone in EbookCalloutTone.values)
+            EbookCalloutBlock(id: 'co-${tone.name}', tone: tone, text: '內文'),
+        ],
+        layout: EbookReadingLayout.spine,
+        size: const Size(390, 4000),
+      );
+
+      for (final label in const [
+        '補充',
+        '原理',
+        '本章目標',
+        '安全與界線',
+        '注意',
+        '今天帶走',
+        '修正',
+      ]) {
+        expect(find.text(label), findsOneWidget, reason: '缺少 tone 標籤：$label');
+      }
+    });
+
+    testWidgets('comparison 每一項在 spine 下只剩左側色條', (tester) async {
+      await pumpBlocks(
+        tester,
+        const [
+          EbookComparisonBlock(
+            id: 'cmp',
+            items: [
+              EbookComparisonItem(
+                id: 'cmp-weak',
+                label: '弱',
+                text: '在嗎',
+                stance: EbookComparisonStance.weak,
+              ),
+              EbookComparisonItem(
+                id: 'cmp-strong',
+                label: '強',
+                text: '你那張照片是在哪拍的',
+                stance: EbookComparisonStance.strong,
+              ),
+            ],
+          ),
+        ],
+        layout: EbookReadingLayout.spine,
+      );
+
+      for (final text in ['在嗎', '你那張照片是在哪拍的']) {
+        final decoration = decorationWrapping(tester, text);
+        expect(decoration.color, isNull);
+        expect(isLeftOnlyBorder(decoration), isTrue);
+      }
+    });
+
+    testWidgets('framed（終極指引）維持原本的整框外觀', (tester) async {
+      await pumpBlocks(
+        tester,
+        const [
+          EbookCalloutBlock(
+            id: 'co-principle',
+            tone: EbookCalloutTone.principle,
+            text: '整框的內文。',
+          ),
+        ],
+      );
+
+      final decoration = decorationWrapping(tester, '整框的內文。');
+      expect(decoration.color, isNotNull);
+      expect(isLeftOnlyBorder(decoration), isFalse);
+    });
+
+    testWidgets('spine + 320px + 2.0 text scale 不 overflow', (tester) async {
+      await pumpBlocks(
+        tester,
+        allBlockTypes(),
+        layout: EbookReadingLayout.spine,
+        textScale: 2.0,
+        size: const Size(320, 6000),
+      );
+      expect(tester.takeException(), isNull);
+    });
   });
 }

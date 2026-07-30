@@ -703,4 +703,112 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(paywallStubText), findsOneWidget);
   });
+
+  // 2026-07-31 夥伴回饋《成為獎賞》不易閱讀。章節列只給新單元：Eric 拍板
+  // 終極指引維持原樣。
+  group('章節列（成為獎賞單元）', () {
+    const prizeBook = 'test-book-prize';
+    String prizeChapter(int index) => '$prizeBook-chapter-$index';
+
+    EbookCatalog prizeCatalog({int chapterCount = 4}) => EbookCatalog(
+          books: [
+            buildTestEbook(
+              id: prizeBook,
+              number: 1,
+              unit: EbookUnit.becomeThePrize,
+              title: '成為獎賞測試書',
+              // 這組測試驗排版，不驗權限：排版跟著單元走，與 access 無關。
+              access: EbookAccess.free,
+              theme: EbookTheme.core,
+              chapterCount: chapterCount,
+            ),
+          ],
+        );
+
+    Finder chip(int index) =>
+        find.byKey(ValueKey<String>('ebook-chapter-chip-$index'));
+
+    testWidgets('章節列出現，點第 3 章直接跳過去', (tester) async {
+      await pumpEbookApp(
+        tester,
+        initialLocation:
+            '/learning/books/$prizeBook/chapters/${prizeChapter(1)}',
+        catalog: prizeCatalog(),
+      );
+      await tester.pumpAndSettle();
+
+      expect(chip(0), findsOneWidget);
+      expect(chip(3), findsOneWidget);
+      expect(find.text('第 1 ／ 4 章'), findsOneWidget);
+
+      await tester.tap(chip(2));
+      await tester.pumpAndSettle();
+
+      expect(find.text('第 3 ／ 4 章'), findsOneWidget);
+      expect(find.text('第 3 章'), findsOneWidget);
+    });
+
+    testWidgets('跳章不會把章節標記成已完成', (tester) async {
+      final harness = await pumpEbookApp(
+        tester,
+        initialLocation:
+            '/learning/books/$prizeBook/chapters/${prizeChapter(1)}',
+        catalog: prizeCatalog(),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(chip(2));
+      await tester.pumpAndSettle();
+
+      expect(find.text('完成度 0 ／ 4 章'), findsOneWidget);
+      // 換章仍要更新續讀位置，否則下次進來會回到第一章。
+      expect(
+        harness.container
+            .read(ebookProgressControllerProvider)
+            .value!
+            .bookProgress(prizeBook)
+            .lastChapterId,
+        prizeChapter(3),
+      );
+    });
+
+    testWidgets('有章節列時不再重複印「閱讀位置」那一行', (tester) async {
+      await pumpEbookApp(
+        tester,
+        initialLocation:
+            '/learning/books/$prizeBook/chapters/${prizeChapter(1)}',
+        catalog: prizeCatalog(),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('閱讀位置'), findsNothing);
+    });
+
+    testWidgets('終極指引沒有章節列，維持原本的閱讀位置標籤', (tester) async {
+      await pumpEbookApp(
+        tester,
+        initialLocation: '/learning/books/$_freeBook/chapters/${_chapter(1)}',
+        catalog: buildTestCatalog(freeChapterCount: 3),
+      );
+      await tester.pumpAndSettle();
+
+      expect(chip(0), findsNothing);
+      expect(find.text('閱讀位置'), findsOneWidget);
+    });
+
+    testWidgets('2.0 字級下章節列橫捲，不 overflow', (tester) async {
+      await pumpEbookApp(
+        tester,
+        initialLocation:
+            '/learning/books/$prizeBook/chapters/${prizeChapter(1)}',
+        catalog: prizeCatalog(chapterCount: 7),
+        textScale: 2.0,
+        size: const Size(320, 1600),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(chip(6), findsOneWidget);
+    });
+  });
 }

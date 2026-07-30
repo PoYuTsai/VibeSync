@@ -339,5 +339,23 @@ void main() {
       expect(prize.every((b) => b.isEssentialOnly), isTrue);
       expect(prize.every((b) => b.freePreviewChapterCount == 0), isTrue);
     });
+
+    // 2026-07-31 Eric 拍板：夥伴回饋的排版改善只動新單元，終極指引不動。
+    // 這一條擋的是「順手把 spine 套到全部」——那是他明確否決過的。
+    test('排版只有成為獎賞是 spine，終極指引維持 framed', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final catalog = await EbookCatalogRepository().load();
+      final guide = catalog.unitSections[0].books;
+      final prize = catalog.unitSections[1].books;
+
+      expect(
+        guide.map((b) => b.readingLayout),
+        everyElement(EbookReadingLayout.framed),
+      );
+      expect(
+        prize.map((b) => b.readingLayout),
+        everyElement(EbookReadingLayout.spine),
+      );
+    });
   });
 }

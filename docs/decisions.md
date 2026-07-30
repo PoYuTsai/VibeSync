@@ -830,3 +830,23 @@
 **坑**: contract version 不入 opener input hash（同輸入跨版本重試仍 dedup）；`MODEL_RATE_LIMITED` 429 永不帶 quota keys（防誤開 paywall）；Free v2 之後「任何 non-extend 內容＝paid」的 client 判定失效，legacy fallback 只能看 paid-only keys（`resonate`/`coldRead`）。
 
 **驗證**: analyze-chat Deno 全套 710 綠＋new_topic payload/billing/prompt/source 41 綠；Flutter opener 97＋new_topic 44＋UI 契約測試綠；部署閘門＝Codex APPROVED 後 apply_migration→設 secret→單獨部署 analyze-chat。
+
+---
+
+## ADR #32 — [2026-07-31] 章節排版分兩套：成為獎賞走 spine，終極指引維持 framed
+
+**狀態**: 🟢 Active — 實作完成，待真機 dogfood
+
+**背景**: 夥伴 2026-07-31 回饋《成為獎賞》「跟終極指引最初版一樣不易閱讀」，並另做了一份單檔 HTML 版（`github.com/chiang53610-droid/chris-lesson-`，`2393b3d`）。量到的成因不是文字量而是有框線元件密度：終極指引四冊每章 1.0／2.0／3.2／3.6 個，成為獎賞三冊 4.7／4.5／2.8；callout 從四冊合計 9 個跳到三冊 34 個。夥伴自己那版把重點做成 `border-left` 色條而不是整框，同一屏的框線量差好幾倍。2026-07-26 那輪（`1d0c8736`／`30570d5d`／`ddfabe79`）刻意留下「卡片密度」與「章節導覽」兩刀等他看過新版再決定——這次的回饋就是那兩刀的觸發條件。
+
+**決定**:
+
+1. **排版綁單元，不綁書、不進內容 JSON**：新增 `EbookReadingLayout{framed, spine}`，由 `EbookUnit.readingLayout` 決定。`ultimateGuide` → `framed`（Eric 2026-07-31 拍板：終極指引不動），`becomeThePrize` → `spine`。寫在 domain 而不是內容檔，內容誤改不會換掉整本排版，新增書也不會漏宣告。
+2. **spine 的視覺**：callout 與 comparison 從「10% 底色＋整圈外框＋18 圓角」改成左側 3px 色條、不上底色、不畫外框；tone 的文字 kicker 一律保留，圖示在 spine 下省略（色條已經在講 tone）。
+3. **`warning` 與 `safety` 在 spine 下維持整框**：內容不變量測試要求含守門詞的章節必須有這兩型 callout，把它們降到跟「原理」「今天帶走」同重，等於只剩測試層還在守紅線。
+4. **章節列只給 spine 單元**：閱讀器頂部加橫捲、可點跳的章號列，跳章不寫完成度、但仍更新續讀位置；有章節列時移除重複的「閱讀位置」那一行。終極指引維持原本的三行 header。
+5. **內容一個字不改**：Eric 拍板 2026-07-26 收斂過的內容維持原狀，這一刀只動排版。
+
+**效果**: 成為獎賞三冊的有框線元件密度從每章 4.7／4.5／2.8 降到 2.3／2.0／1.3，回到終極指引的區間內。
+
+**驗證**: `flutter analyze lib test` 0 issue；學習模組 237 綠（新增 12 條：spine 只剩左側色條、warning／safety 仍整框、七種 tone 文字標籤都在、spine 下 320px + 2.0 字級不 overflow、章節列點跳／不誤記完成／終極指引沒有章節列）；`ebook_essential_unit_test` 新增一條擋「順手把 spine 套到全部」；視覺證據 `test/visual_proof/ebook_reading_layout_proof_test.dart`（正式 widget + 正式 JSON，輸出 `build/visual_proof/ebook_layout_*.png`）。

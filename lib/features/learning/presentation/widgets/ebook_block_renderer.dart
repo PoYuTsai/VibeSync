@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../domain/models/ebook.dart';
 import '../../domain/models/ebook_block.dart';
 import '../../domain/models/ebook_progress.dart';
 import 'ebook_checklist_block.dart';
@@ -32,12 +33,17 @@ class EbookBlockRenderer extends StatelessWidget {
     required this.onChecklistItemChanged,
     required this.onFunnelTargetTap,
     required this.onCrossRefTap,
+    this.layout = EbookReadingLayout.framed,
     this.anchorEntryId,
     this.onAnchorConsumed,
   });
 
   final EbookBlock block;
   final EbookBookProgress progress;
+
+  /// 這本書的排版語言。預設 [EbookReadingLayout.framed]：新增呼叫點忘了傳時
+  /// 落在既有外觀，不會讓某本書突然換一種樣子。
+  final EbookReadingLayout layout;
 
   /// 從交叉指涉跳過來時要自動展開的條目 id。
   final String? anchorEntryId;
@@ -87,10 +93,10 @@ class EbookBlockRenderer extends StatelessWidget {
         return _BulletList(block: block);
 
       case EbookCalloutBlock():
-        return _Callout(block: block);
+        return _Callout(block: block, layout: layout);
 
       case EbookComparisonBlock():
-        return _Comparison(block: block);
+        return _Comparison(block: block, layout: layout);
 
       case EbookDialogueBlock():
         return EbookDialogueBlockView(block: block);
@@ -115,6 +121,7 @@ class EbookBlockRenderer extends StatelessWidget {
           entryBlockBuilder: (child) => EbookBlockRenderer(
             block: child,
             progress: progress,
+            layout: layout,
             onQuizSubmitted: onQuizSubmitted,
             onChecklistItemChanged: onChecklistItemChanged,
             onFunnelTargetTap: onFunnelTargetTap,
@@ -281,9 +288,18 @@ class _BulletList extends StatelessWidget {
 }
 
 class _Callout extends StatelessWidget {
-  const _Callout({required this.block});
+  const _Callout({required this.block, required this.layout});
 
   final EbookCalloutBlock block;
+  final EbookReadingLayout layout;
+
+  /// 內容紅線的視覺守門：這兩個 tone 在任何排版下都維持整框。
+  ///
+  /// 內容不變量測試會要求含守門詞的章節必須有 warning／safety callout；把它們
+  /// 降成跟原理、今天帶走一樣的左側色條，等於讓「這裡有風險」跟一般重點在畫面
+  /// 上同重，守門就只剩測試層還在守。
+  static bool _mustStayFramed(EbookCalloutTone tone) =>
+      tone == EbookCalloutTone.warning || tone == EbookCalloutTone.safety;
 
   static IconData _iconFor(EbookCalloutTone tone) {
     switch (tone) {
@@ -346,6 +362,68 @@ class _Callout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = _accentFor(block.tone);
+    final spine =
+        layout == EbookReadingLayout.spine && !_mustStayFramed(block.tone);
+
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            // 左側色條已經在講 tone，圖示再講一次是重複的裝飾；文字 kicker
+            // 一律保留，安全提醒本來就不能只靠圖示。
+            if (!spine) ...[
+              Icon(_iconFor(block.tone), size: 16, color: accent),
+              const SizedBox(width: 6),
+            ],
+            Expanded(
+              child: Text(
+                _kickerFor(block.tone),
+                style: AppTypography.caption.copyWith(
+                  color: accent,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: spine ? 1.2 : null,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (block.title != null) ...[
+          SizedBox(height: spine ? 4 : 8),
+          Text(
+            block.title!,
+            style: AppTypography.titleSmall.copyWith(
+              color: AppColors.onBackgroundPrimary,
+              fontWeight: FontWeight.w800,
+              height: 1.3,
+            ),
+          ),
+        ],
+        const SizedBox(height: 6),
+        Text(
+          block.text,
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.onBackgroundSecondary,
+            height: 1.55,
+          ),
+        ),
+      ],
+    );
+
+    if (spine) {
+      return Container(
+        width: double.infinity,
+        // 只有左邊有線。上下留白比整框版小：沒有外框要撐開，靠留白分段就夠。
+        padding: const EdgeInsets.fromLTRB(14, 2, 0, 2),
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(color: accent.withValues(alpha: 0.85), width: 3),
+          ),
+        ),
+        child: body,
+      );
+    }
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -354,53 +432,16 @@ class _Callout extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: accent.withValues(alpha: 0.42)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(_iconFor(block.tone), size: 16, color: accent),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  _kickerFor(block.tone),
-                  style: AppTypography.caption.copyWith(
-                    color: accent,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (block.title != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              block.title!,
-              style: AppTypography.titleSmall.copyWith(
-                color: AppColors.onBackgroundPrimary,
-                fontWeight: FontWeight.w800,
-                height: 1.3,
-              ),
-            ),
-          ],
-          const SizedBox(height: 6),
-          Text(
-            block.text,
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.onBackgroundSecondary,
-              height: 1.55,
-            ),
-          ),
-        ],
-      ),
+      child: body,
     );
   }
 }
 
 class _Comparison extends StatelessWidget {
-  const _Comparison({required this.block});
+  const _Comparison({required this.block, required this.layout});
 
   final EbookComparisonBlock block;
+  final EbookReadingLayout layout;
 
   static IconData _iconFor(EbookComparisonStance stance) {
     switch (stance) {
@@ -441,17 +482,31 @@ class _Comparison extends StatelessWidget {
         ],
         for (final item in block.items)
           Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+            padding: EdgeInsets.only(
+              bottom: layout == EbookReadingLayout.spine ? 14 : 10,
+            ),
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.04),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: _accentFor(item.stance).withValues(alpha: 0.40),
-                ),
-              ),
+              padding: layout == EbookReadingLayout.spine
+                  ? const EdgeInsets.fromLTRB(14, 0, 0, 0)
+                  : const EdgeInsets.all(14),
+              decoration: layout == EbookReadingLayout.spine
+                  ? BoxDecoration(
+                      border: Border(
+                        left: BorderSide(
+                          color: _accentFor(item.stance)
+                              .withValues(alpha: 0.85),
+                          width: 3,
+                        ),
+                      ),
+                    )
+                  : BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: _accentFor(item.stance).withValues(alpha: 0.40),
+                      ),
+                    ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

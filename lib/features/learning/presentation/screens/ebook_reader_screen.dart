@@ -216,6 +216,21 @@ class _EbookReaderBodyState extends ConsumerState<_EbookReaderBody> {
     _leaveReader();
   }
 
+  /// 章節列點擊：直接換章，不寫完成度（跳過去不等於讀完）。
+  void _jumpToChapter(int index) {
+    if (index == _currentIndex) return;
+    final reducedMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (reducedMotion) {
+      _pageController.jumpToPage(index);
+      return;
+    }
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   void _leaveReader() {
     if (context.canPop()) {
       context.pop();
@@ -247,8 +262,14 @@ class _EbookReaderBodyState extends ConsumerState<_EbookReaderBody> {
           _ReaderHeader(
             currentIndex: safeIndex,
             total: total,
+            readable: readable,
             completedCount: completedCount,
             chapter: chapters[safeIndex],
+            layout: _book.readingLayout,
+            completedFlags: _book.chapters
+                .map((chapter) => progress.isChapterCompleted(chapter.id))
+                .toList(growable: false),
+            onJumpToChapter: _jumpToChapter,
             isPreview: widget.previewOnly,
           ),
           Expanded(
@@ -284,29 +305,113 @@ class _EbookReaderBodyState extends ConsumerState<_EbookReaderBody> {
   }
 }
 
-class _ReaderHeader extends StatelessWidget {
+class _ReaderHeader extends StatefulWidget {
   const _ReaderHeader({
     required this.currentIndex,
     required this.total,
+    required this.readable,
     required this.completedCount,
     required this.chapter,
+    required this.layout,
+    required this.completedFlags,
+    required this.onJumpToChapter,
     this.isPreview = false,
   });
 
   final int currentIndex;
   final int total;
+
+  /// 目前這個閱讀器實際能翻到的章數。試讀時小於 [total]。
+  final int readable;
   final int completedCount;
   final EbookChapter chapter;
+  final EbookReadingLayout layout;
+
+  /// 整本每一章是否已完成，index 對齊 `book.chapters`。
+  final List<bool> completedFlags;
+  final void Function(int index) onJumpToChapter;
   final bool isPreview;
 
   @override
+  State<_ReaderHeader> createState() => _ReaderHeaderState();
+}
+
+class _ReaderHeaderState extends State<_ReaderHeader> {
+  final ScrollController _stripController = ScrollController();
+  late List<GlobalKey> _chipKeys = _buildChipKeys(widget.total);
+
+  static List<GlobalKey> _buildChipKeys(int total) =>
+      List<GlobalKey>.generate(total, (_) => GlobalKey(), growable: false);
+
+  /// 章節列只在新單元出現；舊單元不建列也就不必捲。
+  bool get _showsStrip =>
+      widget.layout == EbookReadingLayout.spine && widget.total > 1;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_showsStrip) _scheduleRevealCurrentChip();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReaderHeader oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.total != oldWidget.total) {
+      _chipKeys = _buildChipKeys(widget.total);
+    }
+    // 橫滑換章時把章節列捲到目前這一章：2.0 字級下七顆放不進一屏，不自動捲
+    // 就會出現「現在讀第 6 章但列上看到的是 1、2、3」。
+    if (_showsStrip && widget.currentIndex != oldWidget.currentIndex) {
+      _scheduleRevealCurrentChip();
+    }
+  }
+
+  @override
+  void dispose() {
+    _stripController.dispose();
+    super.dispose();
+  }
+
+  void _scheduleRevealCurrentChip() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_stripController.hasClients) return;
+      final index = widget.currentIndex;
+      if (index < 0 || index >= _chipKeys.length) return;
+      final chipContext = _chipKeys[index].currentContext;
+      if (chipContext == null) return;
+      Scrollable.ensureVisible(
+        chipContext,
+        alignment: 0.5,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final total = widget.total;
+    final currentIndex = widget.currentIndex;
+    final isPreview = widget.isPreview;
+    final completedCount = widget.completedCount;
     final positionRatio = total <= 0 ? 0.0 : (currentIndex + 1) / total;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_showsStrip) ...[
+            _ChapterStrip(
+              controller: _stripController,
+              chipKeys: _chipKeys,
+              total: total,
+              readable: widget.readable,
+              currentIndex: currentIndex,
+              completedFlags: widget.completedFlags,
+              onJumpToChapter: widget.onJumpToChapter,
+            ),
+            const SizedBox(height: 10),
+          ],
           // Wrap 而非 Row：大字級時兩個標籤放不進一行，換行比裁字好。
           Wrap(
             spacing: 10,
@@ -356,15 +461,158 @@ class _ReaderHeader extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            '閱讀位置',
-            style: AppTypography.caption.copyWith(
-              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.55),
+          // 有章節列時這行是重複的：列上已經標出目前這一章。省一行給內文。
+          if (!_showsStrip) ...[
+            const SizedBox(height: 4),
+            Text(
+              '閱讀位置',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.55),
+              ),
             ),
-          ),
+          ],
         ],
       ),
+    );
+  }
+}
+
+/// 可點跳的章節列。
+///
+/// 橫向捲動而不是換行：章數多或大字級時換行會把閱讀區一路往下推，橫捲則
+/// 永遠只占一行。試讀時鎖住的章仍然顯示但不可點——看得到整本有幾章是誠實的，
+/// 假裝不存在才會讓人以為書就這麼短。
+class _ChapterStrip extends StatelessWidget {
+  const _ChapterStrip({
+    required this.controller,
+    required this.chipKeys,
+    required this.total,
+    required this.readable,
+    required this.currentIndex,
+    required this.completedFlags,
+    required this.onJumpToChapter,
+  });
+
+  final ScrollController controller;
+  final List<GlobalKey> chipKeys;
+  final int total;
+  final int readable;
+  final int currentIndex;
+  final List<bool> completedFlags;
+  final void Function(int index) onJumpToChapter;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      controller: controller,
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var index = 0; index < total; index++)
+            Padding(
+              key: index < chipKeys.length ? chipKeys[index] : null,
+              padding: EdgeInsets.only(right: index == total - 1 ? 0 : 6),
+              child: _ChapterChip(
+                key: ValueKey<String>('ebook-chapter-chip-$index'),
+                index: index,
+                isCurrent: index == currentIndex,
+                isCompleted:
+                    index < completedFlags.length && completedFlags[index],
+                isReachable: index < readable,
+                onTap: () => onJumpToChapter(index),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChapterChip extends StatelessWidget {
+  const _ChapterChip({
+    super.key,
+    required this.index,
+    required this.isCurrent,
+    required this.isCompleted,
+    required this.isReachable,
+    required this.onTap,
+  });
+
+  final int index;
+  final bool isCurrent;
+  final bool isCompleted;
+  final bool isReachable;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color background;
+    final Color foreground;
+    final Color border;
+    if (isCurrent) {
+      background = AppColors.ctaStart;
+      foreground = AppColors.brandInk;
+      border = AppColors.ctaStart;
+    } else if (!isReachable) {
+      background = Colors.transparent;
+      foreground = AppColors.onBackgroundSecondary.withValues(alpha: 0.38);
+      border = AppColors.onBackgroundSecondary.withValues(alpha: 0.20);
+    } else if (isCompleted) {
+      background = AppColors.success.withValues(alpha: 0.16);
+      foreground = AppColors.success;
+      border = AppColors.success.withValues(alpha: 0.55);
+    } else {
+      background = Colors.transparent;
+      foreground = AppColors.onBackgroundSecondary.withValues(alpha: 0.85);
+      border = AppColors.onBackgroundSecondary.withValues(alpha: 0.32);
+    }
+
+    // 狀態不能只靠顏色：讀螢幕的人要聽得到「已完成」「目前閱讀中」「尚未解鎖」。
+    final String stateLabel;
+    if (isCurrent) {
+      stateLabel = '目前閱讀中';
+    } else if (!isReachable) {
+      stateLabel = '尚未解鎖';
+    } else if (isCompleted) {
+      stateLabel = '已完成';
+    } else {
+      stateLabel = '前往';
+    }
+
+    final chip = Container(
+      constraints: const BoxConstraints(minWidth: 34),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: border),
+      ),
+      child: Text(
+        '${index + 1}',
+        textAlign: TextAlign.center,
+        style: AppTypography.caption.copyWith(
+          color: foreground,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+
+    return Semantics(
+      button: isReachable && !isCurrent,
+      selected: isCurrent,
+      label: '第 ${index + 1} 章，$stateLabel',
+      excludeSemantics: true,
+      child: isReachable && !isCurrent
+          ? Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: onTap,
+                child: chip,
+              ),
+            )
+          : chip,
     );
   }
 }
@@ -455,6 +703,7 @@ class _ChapterPage extends ConsumerWidget {
             child: EbookBlockRenderer(
               block: block,
               progress: progress,
+              layout: book.readingLayout,
               anchorEntryId: anchorEntryId,
               onAnchorConsumed: onAnchorConsumed,
               onCrossRefTap: (crossRef) => _openEbookTarget(
