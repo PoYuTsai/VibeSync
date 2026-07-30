@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 enum HomeCoachPose {
@@ -9,6 +11,11 @@ enum HomeCoachPose {
   const HomeCoachPose(this.assetPath);
 
   final String assetPath;
+
+  HomeCoachPose differentPose(Random random) {
+    final step = 1 + random.nextInt(values.length - 1);
+    return values[(index + step) % values.length];
+  }
 }
 
 class HomeCoachPresence extends StatelessWidget {
@@ -29,31 +36,49 @@ class HomeCoachPresence extends StatelessWidget {
 
     return SizedBox(
       height: resolvedHeight,
-      child: Semantics(
-        image: true,
-        label: 'VibeSync Coach Sydney，欣欣',
-        child: ShaderMask(
-          blendMode: BlendMode.dstIn,
-          shaderCallback: (bounds) => const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.transparent,
-              Colors.white,
-              Colors.white,
-              Colors.transparent,
-            ],
-            stops: [0, 0.1, 0.92, 1],
-          ).createShader(bounds),
-          child: Image.asset(
-            pose.assetPath,
-            key: ValueKey('home-coach-pose-${pose.name}'),
-            width: double.infinity,
-            height: resolvedHeight,
-            fit: BoxFit.cover,
-            alignment: const Alignment(0, -0.1),
-            filterQuality: FilterQuality.medium,
-            excludeFromSemantics: true,
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: FractionallySizedBox(
+          widthFactor: 0.74,
+          heightFactor: 1,
+          child: Semantics(
+            image: true,
+            label: 'VibeSync Coach Sydney，欣欣',
+            child: ShaderMask(
+              blendMode: BlendMode.dstIn,
+              shaderCallback: (bounds) => const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.white,
+                  Colors.white,
+                  Colors.transparent,
+                ],
+                stops: [0, 0.1, 0.92, 1],
+              ).createShader(bounds),
+              child: ShaderMask(
+                blendMode: BlendMode.dstIn,
+                shaderCallback: (bounds) => const LinearGradient(
+                  colors: [
+                    Colors.transparent,
+                    Colors.white,
+                    Colors.white,
+                  ],
+                  stops: [0, 0.16, 1],
+                ).createShader(bounds),
+                child: Image.asset(
+                  pose.assetPath,
+                  key: ValueKey('home-coach-pose-${pose.name}'),
+                  width: double.infinity,
+                  height: resolvedHeight,
+                  fit: BoxFit.cover,
+                  alignment: const Alignment(-1, -0.1),
+                  filterQuality: FilterQuality.medium,
+                  excludeFromSemantics: true,
+                ),
+              ),
+            ),
           ),
         ),
       ),

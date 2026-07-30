@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,6 +18,16 @@ Widget _subject(HomeCoachPose pose) {
 }
 
 void main() {
+  test('differentPose always selects another gesture', () {
+    final random = Random(42);
+
+    for (final pose in HomeCoachPose.values) {
+      for (var i = 0; i < 100; i++) {
+        expect(pose.differentPose(random), isNot(pose));
+      }
+    }
+  });
+
   testWidgets('renders the requested Sydney pose asset', (tester) async {
     for (final pose in HomeCoachPose.values) {
       await tester.pumpWidget(_subject(pose));
@@ -43,6 +55,23 @@ void main() {
       const ValueKey('home-coach-pose-greeting'),
     );
     expect(tester.renderObject<RenderImage>(image).image, isNotNull);
+  });
+
+  testWidgets('anchors Sydney on the right side of the home canvas', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_subject(HomeCoachPose.greeting));
+
+    final presenceRect = tester.getRect(find.byType(HomeCoachPresence));
+    final imageRect = tester.getRect(
+      find.byKey(const ValueKey('home-coach-pose-greeting')),
+    );
+
+    expect(imageRect.right, closeTo(presenceRect.right, 0.01));
+    expect(
+      imageRect.left,
+      greaterThan(presenceRect.left + presenceRect.width * 0.2),
+    );
   });
 
   testWidgets('switches pose immediately without an animation widget', (

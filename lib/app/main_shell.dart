@@ -56,8 +56,6 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  static const _coachPoseChangeProbability = 0.4;
-
   final Random _coachRandom = Random();
   late int _currentIndex = _normalizeTabIndex(widget.initialTabIndex);
   late HomeCoachPose _coachPose =
@@ -236,17 +234,13 @@ class _MainShellState extends State<MainShell> {
 
   void _updateCurrentTab(int nextIndex) {
     if (nextIndex == 0) {
-      _maybeChangeCoachPose();
+      _changeCoachPose();
     }
     _currentIndex = nextIndex;
   }
 
-  void _maybeChangeCoachPose() {
-    if (_coachRandom.nextDouble() >= _coachPoseChangeProbability) return;
-
-    final step = 1 + _coachRandom.nextInt(HomeCoachPose.values.length - 1);
-    final nextIndex = (_coachPose.index + step) % HomeCoachPose.values.length;
-    _coachPose = HomeCoachPose.values[nextIndex];
+  void _changeCoachPose() {
+    _coachPose = _coachPose.differentPose(_coachRandom);
   }
 }
 
