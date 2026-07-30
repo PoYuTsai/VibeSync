@@ -28,19 +28,31 @@ class HomeCoachPresence extends StatelessWidget {
   final HomeCoachPose pose;
   final double? height;
 
+  // The encouragement pose has the widest source canvas (1122 × 1402).
+  // Reserve enough horizontal room for it, then render every pose at the same
+  // canvas height so switching gestures never changes Sydney's visual scale.
+  static const _widestPoseAspectRatio = 1122 / 1402;
+
   @override
   Widget build(BuildContext context) {
     final viewportHeight = MediaQuery.sizeOf(context).height;
+    final viewportWidth = MediaQuery.sizeOf(context).width;
     final resolvedHeight =
         height ?? (viewportHeight * 0.55).clamp(420.0, 480.0);
+    final availableWidth = max(0.0, viewportWidth - 32);
+    final canvasHeight = min(
+      resolvedHeight,
+      availableWidth / _widestPoseAspectRatio,
+    );
+    final canvasWidth = canvasHeight * _widestPoseAspectRatio;
 
     return SizedBox(
       height: resolvedHeight,
       child: Align(
-        alignment: Alignment.centerRight,
-        child: FractionallySizedBox(
-          widthFactor: 0.74,
-          heightFactor: 1,
+        alignment: Alignment.bottomRight,
+        child: SizedBox(
+          width: canvasWidth,
+          height: canvasHeight,
           child: Semantics(
             image: true,
             label: 'VibeSync Coach Sydney，欣欣',
@@ -60,9 +72,9 @@ class HomeCoachPresence extends StatelessWidget {
               child: Image.asset(
                 pose.assetPath,
                 key: ValueKey('home-coach-pose-${pose.name}'),
-                width: double.infinity,
-                height: resolvedHeight,
-                fit: BoxFit.contain,
+                width: canvasWidth,
+                height: canvasHeight,
+                fit: BoxFit.fitHeight,
                 alignment: Alignment.bottomRight,
                 filterQuality: FilterQuality.medium,
                 excludeFromSemantics: true,

@@ -37,7 +37,7 @@ void main() {
       final provider = image.image as AssetImage;
 
       expect(provider.assetName, pose.assetPath);
-      expect(image.fit, BoxFit.contain);
+      expect(image.fit, BoxFit.fitHeight);
       expect(image.alignment, Alignment.bottomRight);
       expect(
         find.byKey(ValueKey('home-coach-pose-${pose.name}')),
@@ -57,6 +57,23 @@ void main() {
       const ValueKey('home-coach-pose-greeting'),
     );
     expect(tester.renderObject<RenderImage>(image).image, isNotNull);
+  });
+
+  testWidgets('keeps every Sydney pose at the same display size', (
+    tester,
+  ) async {
+    Size? referenceSize;
+
+    for (final pose in HomeCoachPose.values) {
+      await tester.pumpWidget(_subject(pose));
+      await tester.pump();
+
+      final image = find.byKey(ValueKey('home-coach-pose-${pose.name}'));
+      final size = tester.getSize(image);
+      referenceSize ??= size;
+
+      expect(size, referenceSize);
+    }
   });
 
   testWidgets('anchors Sydney on the right side of the home canvas', (
