@@ -115,8 +115,8 @@ void main() {
     // 封面是 Image.asset：不先在真 async 下解碼，截圖會是空白框。
     final context = tester.element(find.byType(EbookShelfSection));
     await tester.runAsync(() async {
-      for (final theme in EbookTheme.values) {
-        await precacheImage(AssetImage(ebookCoverPhotoAsset(theme)), context);
+      for (final book in catalog.books) {
+        await precacheImage(AssetImage(ebookCoverPhotoAsset(book)), context);
       }
     });
     await tester.pumpAndSettle();

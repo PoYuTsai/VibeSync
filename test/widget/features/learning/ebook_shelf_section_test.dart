@@ -141,6 +141,7 @@ void main() {
   testWidgets('每本書的封面是人物照，書號仍然讀得到', (tester) async {
     await pumpShelf(tester, catalog: _realCatalog, size: const Size(390, 2000));
     await tester.pumpAndSettle();
+    final catalog = _realCatalog!;
 
     final assets = tester
         .widgetList<Image>(find.byType(Image))
@@ -148,15 +149,29 @@ void main() {
         .whereType<AssetImage>()
         .map((image) => image.assetName)
         .toSet();
-    for (final theme in EbookTheme.values) {
+    for (final book in catalog.books) {
       expect(
         assets,
-        contains(ebookCoverPhotoAsset(theme)),
-        reason: '$theme 沒有封面照',
+        contains(ebookCoverPhotoAsset(book)),
+        reason: '${book.id} 沒有封面照',
       );
     }
-    // 每個主題的照片必須互不相同，否則書看起來像同一本。
-    expect(assets.length, greaterThanOrEqualTo(EbookTheme.values.length));
+    final coverAssets =
+        catalog.books.map(ebookCoverPhotoAsset).toList(growable: false);
+    final ultimateAssets = catalog.books
+        .where((book) => book.unit == EbookUnit.ultimateGuide)
+        .map(ebookCoverPhotoAsset)
+        .toSet();
+    final prizeAssets = catalog.books
+        .where((book) => book.unit == EbookUnit.becomeThePrize)
+        .map(ebookCoverPhotoAsset)
+        .toSet();
+
+    // 七本書各自使用不同女孩；新單元三張也不能重用終極指引四張。
+    expect(coverAssets.toSet(), hasLength(coverAssets.length));
+    expect(prizeAssets, hasLength(3));
+    expect(prizeAssets.intersection(ultimateAssets), isEmpty);
+    expect(assets.length, greaterThanOrEqualTo(catalog.books.length));
 
     // 書號在單元內從 1 起算：「第 1～3 冊」在兩個單元各出現一次。
     expect(find.text('第 1 冊'), findsNWidgets(2));

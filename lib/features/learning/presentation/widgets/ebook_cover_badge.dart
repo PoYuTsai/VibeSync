@@ -47,11 +47,23 @@ List<Color> ebookThemeGradient(EbookTheme theme) {
   }
 }
 
-/// 每本書的封面照。沿用練習室的圖庫，不新增資產。
+/// 每本書的封面照。
 ///
-/// 選圖標準：正面清楚、單人、衣著日常，並且和該冊主題有一點呼應
-/// （書店／相機／辦公室／店裡）。要換圖只改這裡的編號。
-String ebookCoverPhotoAsset(EbookTheme theme) {
+/// 終極指引沿用練習室圖庫；成為獎賞三冊使用各自的專屬封面，不能因共用
+/// [EbookTheme.core] 而落到同一張照片。
+String ebookCoverPhotoAsset(Ebook book) {
+  if (book.unit == EbookUnit.becomeThePrize) {
+    return switch (book.number) {
+      1 => 'assets/images/ebook_prize_book_1.jpg',
+      2 => 'assets/images/ebook_prize_book_2.jpg',
+      3 => 'assets/images/ebook_prize_book_3.jpg',
+      _ => _ebookThemePhotoAsset(book.theme),
+    };
+  }
+  return _ebookThemePhotoAsset(book.theme);
+}
+
+String _ebookThemePhotoAsset(EbookTheme theme) {
   const base = 'assets/images/practice_girls';
   switch (theme) {
     case EbookTheme.compass:
@@ -81,8 +93,7 @@ class EbookCoverBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     // 書封是固定比例的裝飾元素：讓它隨字級長大（有上限），內層再用
     // FittedBox 收斂，這樣 2.0 字級下既讀得到書號也不會 overflow。
-    final scale =
-        MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.6);
+    final scale = MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.6);
     final boxSize = size * scale;
 
     final accent = ebookThemeGradient(book.theme).first;
@@ -115,7 +126,7 @@ class EbookCoverBadge extends StatelessWidget {
                 ),
               ),
               Image.asset(
-                ebookCoverPhotoAsset(book.theme),
+                ebookCoverPhotoAsset(book),
                 fit: BoxFit.cover,
                 // 直式照片裁成方形：臉在偏上，對齊要往上挪才不會只剩下巴。
                 alignment: const Alignment(0, -0.45),
