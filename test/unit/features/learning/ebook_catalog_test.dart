@@ -623,8 +623,8 @@ void main() {
       );
     });
 
-    test('production catalog declares exactly five assets', () {
-      expect(EbookCatalogRepository.productionAssetPaths, hasLength(5));
+    test('production catalog declares exactly seven assets', () {
+      expect(EbookCatalogRepository.productionAssetPaths, hasLength(7));
       expect(EbookCatalogRepository().assetPaths,
           EbookCatalogRepository.productionAssetPaths);
     });
@@ -632,21 +632,24 @@ void main() {
     test('real bundled assets parse and satisfy catalog invariants', () async {
       final catalog = await loadProductionCatalog();
 
-      expect(catalog.books, hasLength(5));
+      expect(catalog.books, hasLength(7));
       expect(catalog.books.first.access, EbookAccess.free);
       expect(
         catalog.books.skip(1).take(3).map((book) => book.access),
         everyElement(EbookAccess.premium),
       );
-      expect(catalog.books.last.access, EbookAccess.essential);
+      expect(
+        catalog.books.skip(4).map((book) => book.access),
+        everyElement(EbookAccess.essential),
+      );
       // 書號在單元內從 1 起算：終極指引 1–4，成為獎賞從 1 重新開始。
       expect(
         catalog.books.map((book) => book.number),
-        [1, 2, 3, 4, 1],
+        [1, 2, 3, 4, 1, 2, 3],
       );
       expect(
         catalog.books.map((book) => book.id).toSet(),
-        hasLength(5),
+        hasLength(7),
       );
     });
   });

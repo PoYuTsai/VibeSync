@@ -402,9 +402,14 @@ void main() {
       expect(book.chapters, hasLength(5), reason: '${book.id} 章數不是 5');
     }
 
-    // 成為獎賞規劃三冊；第 2、3 冊尚未上線，寫死目前狀態，加冊時更新。
-    expect(prize.map((book) => book.id), ['ebook-5-core']);
-    expect(prize.single.chapters, hasLength(7));
+    // 成為獎賞三冊全數上線（2026-07-30），寫死目前狀態，加冊時更新。
+    expect(
+      prize.map((book) => book.id),
+      ['ebook-5-core', 'ebook-6-frames', 'ebook-7-chat'],
+    );
+    expect(prize[0].chapters, hasLength(7));
+    expect(prize[1].chapters, hasLength(6));
+    expect(prize[2].chapters, hasLength(6));
   });
 
   test('權限分界：Book 1 免費，Books 2–4 訂閱，成為獎賞全 Essential', () {

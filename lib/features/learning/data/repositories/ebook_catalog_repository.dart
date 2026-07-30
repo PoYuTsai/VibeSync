@@ -46,6 +46,8 @@ class EbookCatalogRepository {
     'assets/learning/ebooks/book_3_rescue.json',
     'assets/learning/ebooks/book_4_meeting.json',
     'assets/learning/ebooks/book_5_core.json',
+    'assets/learning/ebooks/book_6_frames.json',
+    'assets/learning/ebooks/book_7_chat.json',
   ];
 
   final AssetBundle? _bundle;

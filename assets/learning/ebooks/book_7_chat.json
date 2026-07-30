@@ -1,0 +1,529 @@
+{
+  "schemaVersion": 1,
+  "id": "ebook-7-chat",
+  "contentVersion": 1,
+  "number": 3,
+  "unit": "becomeThePrize",
+  "title": "進階聊天 · 讀懂反應再出手",
+  "subtitle": "一套模型看懂她的狀態，一套樣本讓她看懂你",
+  "goal": "把聊天從憑感覺變成有儀表板：判讀她的反應等級，選對動作，該推進時不猶豫。",
+  "access": "essential",
+  "theme": "core",
+  "estimatedMinutes": 21,
+  "sourceRefs": [
+    {
+      "document": "advanced-chat",
+      "sections": ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
+    },
+    {
+      "document": "social-intuition",
+      "sections": ["01"]
+    },
+    {
+      "document": "transformation-2-social",
+      "sections": ["06"]
+    },
+    {
+      "document": "core-method",
+      "sections": ["op-02"]
+    }
+  ],
+  "chapters": [
+    {
+      "id": "ebook-7-chapter-1",
+      "number": "3.1",
+      "title": "先看儀表板，再決定怎麼聊",
+      "learningGoal": "把「該說什麼」的問題換成「她現在是哪種狀態」，動作永遠跟著判讀走。",
+      "estimatedMinutes": 3,
+      "sourceRefs": [
+        {
+          "document": "advanced-chat",
+          "sections": ["01", "03"]
+        },
+        {
+          "document": "social-intuition",
+          "sections": ["01"]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "ebook-7-c1-b1",
+          "text": "大部分聊天教學想給你一句萬用開場白。問題是，同一句話丟給不同狀態的人，效果完全相反：她對你有興趣時，你怎麼聊都對；她沒興趣時，再漂亮的句子都是打擾。所以聊天沒有萬用句，只有一件事——先判斷狀態，再選動作。這一冊給你的，就是那塊儀表板。"
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-7-c1-b2",
+          "text": "儀表板上只有三個刻度。她對你的回應，永遠落在三種之一：積極——有情緒、會主動開話題、開你玩笑、回得快而長；普通——有回，但平淡得像同事交接，偶爾丟一句試探；消極——幾個字打發、已讀很久才回，或聊著聊著就「我去洗澡了」。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-7-c1-b3",
+          "tone": "principle",
+          "title": "刻度的意思",
+          "text": "反應等級＝她目前認定你的價值。積極＝已經看到，普通＝還不確定，消極＝還沒看到。判讀錯了，後面的每個動作都會錯。"
+        },
+        {
+          "type": "stageFunnel",
+          "id": "ebook-7-c1-funnel",
+          "title": "她現在是哪一種？",
+          "intro": "對照最近一段對話，找到你所在的那一層，直接跳到對應章節。",
+          "stages": [
+            {
+              "id": "ebook-7-c1-funnel-s1",
+              "number": "1",
+              "stageName": "消極",
+              "symptom": "幾個字打發、已讀很久才回、話題永遠是你在開",
+              "verdictTitle": "先止損",
+              "verdictText": "她還沒看到你的價值，這時候做的每個「多一點」都在扣分。",
+              "targetBookId": "ebook-7-chat",
+              "targetChapterId": "ebook-7-chapter-2",
+              "targetLabel": "第 3.2 章：消極反應先止損"
+            },
+            {
+              "id": "ebook-7-c1-funnel-s2",
+              "number": "2",
+              "stageName": "普通",
+              "symptom": "有聊但平淡，開始出現「你是不是都這樣」之類的試探",
+              "verdictTitle": "測試是機會",
+              "verdictText": "她在確認你，這是唯一能用一句話翻盤的階段。",
+              "targetBookId": "ebook-7-chat",
+              "targetChapterId": "ebook-7-chapter-3",
+              "targetLabel": "第 3.3 章：把測試接好"
+            },
+            {
+              "id": "ebook-7-c1-funnel-s3",
+              "number": "3",
+              "stageName": "積極",
+              "symptom": "有情緒、主動提問、回得快而長、開你玩笑",
+              "verdictTitle": "別再培養感情了",
+              "verdictText": "窗口開著的時候不走進去，它會自己關上。",
+              "targetBookId": "ebook-7-chat",
+              "targetChapterId": "ebook-7-chapter-6",
+              "targetLabel": "第 3.6 章：推進與邀約"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-7-c1-b4",
+          "text": "儀表板背後有一組更底層的東西：任何關係都由三個要素組成——邏輯（認識多久、什麼身分、一起經歷過什麼）、情緒（此刻跟你聊得開不開心）、推進（關係有沒有實際往前走）。訊息能直接影響的只有情緒；情緒開了，才輪得到推進；邏輯只能靠時間累積。把這個順序想清楚，你就不會再試圖用講道理讓一個人喜歡你。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-7-c1-b5",
+          "tone": "takeaway",
+          "title": "本冊的路線",
+          "text": "接下來兩章講消極與普通的打法，然後講你的訊息該長什麼樣（前提與樣本）、怎麼讀她的訊號，最後一章講推進。判斷，永遠走在動作前面。"
+        }
+      ]
+    },
+    {
+      "id": "ebook-7-chapter-2",
+      "number": "3.2",
+      "title": "消極反應：先止損",
+      "learningGoal": "認出四種越做越扣分的本能動作，把消極期的目標從「加分」改成「不再扣分」。",
+      "estimatedMinutes": 3,
+      "sourceRefs": [
+        {
+          "document": "advanced-chat",
+          "sections": ["03", "04"]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "ebook-7-c2-b1",
+          "text": "最難受的就是這個狀態：她回幾個字，或者已讀不回。這時候的本能是「多做點什麼」——多聊幾句、多關心一點、乾脆約出來當面聊。但殘酷的事實是：在她還沒看到你的價值之前，你的每一個索取動作，都在替自己降價。"
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-7-c2-b2",
+          "text": "想像路邊的推銷員。你對香水沒興趣，他越熱情你越想走；他追問「先生你為什麼不理我」，你直接封鎖這條路線。此刻的你，在她眼裡就是那個推銷員——問題不在香水好不好，在對方根本還沒有想買的念頭。"
+        },
+        {
+          "type": "checklist",
+          "id": "ebook-7-c2-stoploss",
+          "title": "消極期的四條止損線",
+          "caption": "誠實地勾：最近一週你踩了哪幾條？",
+          "items": [
+            {
+              "id": "ebook-7-c2-stoploss-i1",
+              "text": "不追問問題",
+              "note": "每個問題都是在要她投資。她還沒看到價值，沒有理由投。"
+            },
+            {
+              "id": "ebook-7-c2-stoploss-i2",
+              "text": "不邀約",
+              "note": "見面是最大的投資。時機錯了，只是在累積被拒絕的次數。"
+            },
+            {
+              "id": "ebook-7-c2-stoploss-i3",
+              "text": "不報流水帳",
+              "note": "「我剛下班好累」——她對你沒興趣時，你的日常只是雜訊。"
+            },
+            {
+              "id": "ebook-7-c2-stoploss-i4",
+              "text": "不證明自己",
+              "note": "「我剛談成一個案子」——向下證明這個動作本身就是低位，說得越多掉得越快。"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-7-c2-b3",
+          "text": "那能做什麼？第一，話變短。輸出越少，錯誤越少，句點是你的朋友。第二，價值改走側面：把生活過好、動態發好，她會自己去看——印象的改變，常常發生在對話之外。第三，真的要開話題，用好奇心開：丟一件她會想追問的事，而不是查勤式的「在幹嘛」。然後，耐心。消極變普通需要時間，而且通常不是被你「聊」回來的。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-7-c2-b4",
+          "tone": "takeaway",
+          "title": "消極期只有一個任務",
+          "text": "不再扣分。加分的機會，在下一個狀態才會出現——而你要做的是撐到那裡，不是衝過去。"
+        }
+      ]
+    },
+    {
+      "id": "ebook-7-chapter-3",
+      "number": "3.3",
+      "title": "普通反應：測試是機會",
+      "learningGoal": "把試探從威脅讀成邀請，會用三種方式把測試接成加分題。",
+      "estimatedMinutes": 4,
+      "sourceRefs": [
+        {
+          "document": "advanced-chat",
+          "sections": ["04"]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "ebook-7-c3-b1",
+          "text": "普通反應的意思是：她願意聊，但還不確定你。這個階段有個標誌性現象——測試。「你是不是對每個人都這樣說」「你也太閒了吧」「你這年紀不小了欸」。聽起來像刁難，其實是好消息：不確定，才需要確認；完全沒興趣的人，連測試都懶得給你。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-7-c3-b2",
+          "tone": "principle",
+          "title": "測試的潛台詞",
+          "text": "「你真的像你表現出來的那樣嗎？」這是整段關係裡，你唯一能用一句話改變她判斷的時刻。"
+        },
+        {
+          "type": "dialogue",
+          "id": "ebook-7-c3-fail",
+          "title": "一個沒過的測試",
+          "caption": "注意問題不在態度好壞，在方向：他開始向她證明自己。",
+          "lines": [
+            {
+              "id": "ebook-7-c3-fail-l1",
+              "speaker": "other",
+              "text": "你是不是常常這樣跟女生聊天？"
+            },
+            {
+              "id": "ebook-7-c3-fail-l2",
+              "speaker": "you",
+              "text": "沒有沒有，真的，你是我第一個這樣聊的，我平常不太主動的……",
+              "isDeathPoint": true,
+              "annotation": "解釋＝證明＝告訴她你在低位。她不會記得你解釋了什麼，只會記得你急了。"
+            },
+            {
+              "id": "ebook-7-c3-fail-l3",
+              "speaker": "other",
+              "text": "哈哈，好喔。",
+              "signal": "red",
+              "annotation": "溫度下降。測試沒過，不會有第二題。"
+            }
+          ]
+        },
+        {
+          "type": "entryList",
+          "id": "ebook-7-c3-passes",
+          "title": "三種過法，難度遞增",
+          "caption": "共同前提：情緒不動。只要你急了，說什麼都是輸。",
+          "entries": [
+            {
+              "id": "ebook-7-c3-passes-e1",
+              "title": "承認，不解釋",
+              "summary": "「對啊。」然後換話題",
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "id": "ebook-7-c3-passes-e1-b1",
+                  "text": "她說你老，你說「對啊，我很老」。句點，聊下一件事。承認的姿態本身就是答案：這件事動搖不了你。注意是承認，不是自嘲——不要接著補一句「所以你不喜歡也正常啦」。"
+                }
+              ]
+            },
+            {
+              "id": "ebook-7-c3-passes-e2",
+              "title": "忽略，直接轉場",
+              "summary": "當它沒發生",
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "id": "ebook-7-c3-passes-e2-b1",
+                  "text": "完全不接，直接聊別的：「你週末都在幹嘛？」潛台詞很清楚——這種等級的問題，不值得我停下來。適合那些你懶得玩的測試。"
+                }
+              ]
+            },
+            {
+              "id": "ebook-7-c3-passes-e3",
+              "title": "接住，加工，丟回去",
+              "summary": "把測試變成遊戲",
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "id": "ebook-7-c3-passes-e3-b1",
+                  "text": "把她丟來的話當材料，加一層誇張再還給她。「你也太老了吧」→「對啊，老到可以幫你把人生規劃寫好了，要不要看第一章？」測試變成你們的遊戲，她的試探變成你的舞台——這是最高分的過法，也最需要練。"
+                },
+                {
+                  "type": "crossRef",
+                  "id": "ebook-7-c3-passes-e3-ref",
+                  "label": "這其實就是推拉的變形",
+                  "contextLabel": "第 2.5 章",
+                  "targetBookId": "ebook-6-frames",
+                  "targetChapterId": "ebook-6-chapter-5"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-7-c3-b3",
+          "text": "兩個提醒。第一，不是每個問題都是測試——「你做什麼工作」多半只是想認識你，全部當測試接，你會變成一個很難聊的人。第二，永遠不要對抗：她說你老，你回「你也不年輕啊」——那不是框架，是自尊破防，而且她看得出來。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-7-c3-b4",
+          "tone": "takeaway",
+          "title": "一半靠穩，一半靠玩",
+          "text": "情緒不動，測試就過了一半；剩下那一半，是讓它變好玩。"
+        }
+      ]
+    },
+    {
+      "id": "ebook-7-chapter-4",
+      "number": "3.4",
+      "title": "訊息要有前提，也要有樣本",
+      "learningGoal": "發出去的每則訊息帶著兩件東西：她知道這是什麼交流（前提），她多認識你一點（樣本）。",
+      "estimatedMinutes": 4,
+      "sourceRefs": [
+        {
+          "document": "advanced-chat",
+          "sections": ["05", "07"]
+        },
+        {
+          "document": "core-method",
+          "sections": ["op-02"]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "ebook-7-c4-b1",
+          "text": "每段交流都有一個默認前提：同事聊工作，店員聊商品，老同學聊近況。那你和她的聊天呢？很多人聊了三個月的「吃了嗎」「在幹嘛」，前提始終是「網友互相打卡」。她不知道你想幹嘛——只知道時間被你耗掉了。你的訊息裡要有一條看得見的線：這是一個男生和一個女生的交流。"
+        },
+        {
+          "type": "bulletList",
+          "id": "ebook-7-c4-premises",
+          "title": "放前提的三種力量，由重到輕",
+          "ordered": true,
+          "items": [
+            "直白的欣賞——「我覺得妳蠻可愛的」。力量最重，她已經積極時才用；再加碼就成了壓力（「錯過妳我會難過一整天」是需求感警報）。",
+            "誇大成玩笑——「妳眼睛好看到我差點睜不開」。因為像開玩笑，她不確定你是不是認真的，壓力小很多。",
+            "帶一點推——「這件衣服普普，但穿在妳身上莫名好看」。力量最輕、張力最大，也最耐用。"
+          ]
+        },
+        {
+          "type": "crossRef",
+          "id": "ebook-7-c4-ref-needy",
+          "label": "力量超載＝需求感，複習判準",
+          "contextLabel": "第 1.2 章",
+          "targetBookId": "ebook-5-core",
+          "targetChapterId": "ebook-5-chapter-2"
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-7-c4-b2",
+          "text": "前提解決「為什麼聊」，樣本解決「你是誰」。她不會記得你說過哪句話，只會記得你給她的感覺——而感覺來自樣本：個性樣本（你有明確的喜歡與討厭，說得出立場），和生活樣本（隻言片語裡露出來的生活切面）。"
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-7-c4-b3",
+          "text": "隻言片語是什麼意思？你約她：「週三見面？」她說週三要上班。你回：「啊對，你們週三要上班——那週五好了。」一句話，你的時間自由度自己走漏出去了。這比任何自我介紹都有效，因為結論是她自己推理出來的——人最相信自己推理出來的東西。"
+        },
+        {
+          "type": "flipCard",
+          "id": "ebook-7-c4-flip",
+          "frontTitle": "想一想",
+          "frontText": "為什麼不能把自己一次講完？",
+          "backTitle": "神祕感不是裝深沉",
+          "backText": "人只對「差一點就看懂」的東西有好奇心。說七分，留三分——她來追問的那三分，就是投資。",
+          "backPoints": [
+            "講完＝句號，留白＝問號",
+            "她問，你才說；順序反了，同一句話的價值就反了",
+            "留白底下要真的有料，空的留白叫已讀不回"
+          ]
+        },
+        {
+          "type": "callout",
+          "id": "ebook-7-c4-b4",
+          "tone": "takeaway",
+          "title": "發送前的兩格檢查",
+          "text": "這則訊息有前提嗎（她知道這是什麼交流）？有樣本嗎（她多認識了你哪一點）？兩個都沒有的訊息，多半可以不用發。"
+        }
+      ]
+    },
+    {
+      "id": "ebook-7-chapter-5",
+      "number": "3.5",
+      "title": "讀訊號：行為比字面誠實",
+      "learningGoal": "用行為、情緒、字面三個訊號源交叉判讀，模糊地帶看得懂，明確拒絕不硬闖。",
+      "estimatedMinutes": 4,
+      "sourceRefs": [
+        {
+          "document": "transformation-2-social",
+          "sections": ["06"]
+        },
+        {
+          "document": "advanced-chat",
+          "sections": ["03"]
+        },
+        {
+          "document": "social-intuition",
+          "sections": ["01"]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "ebook-7-c5-b1",
+          "text": "她的每一則訊息，其實同時給了你三個訊號源：字面（她說了什麼）、情緒（她怎麼說的）、行為（她實際做了什麼）。大多數男生只讀第一個——偏偏那是三個裡最不可靠的。"
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-7-c5-b2",
+          "text": "她心情差，丟來一句「你不要理我」。字面是走開；情緒是委屈；行為是——她還在回你。三個訊號打架時，字面最先出局：人會修飾語言，很難修飾情緒，幾乎無法長期修飾行為。"
+        },
+        {
+          "type": "entryList",
+          "id": "ebook-7-c5-signals",
+          "title": "三色訊號，逐條核對",
+          "caption": "重點不是單一訊號，是它們的組合與變化方向。",
+          "entries": [
+            {
+              "id": "ebook-7-c5-signals-e1",
+              "title": "綠——情緒開了",
+              "summary": "回得快而長、主動開話題、開你玩笑",
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "id": "ebook-7-c5-signals-e1-b1",
+                  "text": "表情符號變多、開始反問你的事、接你的梗還會加碼。最強的一個訊號是：她開始向你解釋自己——「我不是那種人啦」。證明的方向反轉了，這在上一章叫立場，在她身上叫投資。"
+                }
+              ]
+            },
+            {
+              "id": "ebook-7-c5-signals-e2",
+              "title": "黃——還不確定",
+              "summary": "有回但平，測試開始出現",
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "id": "ebook-7-c5-signals-e2-b1",
+                  "text": "不接梗、回覆有禮但沒溫度、偶爾丟一句試探。這是第 3.3 章的主場：把測試接好，黃就有機會轉綠。"
+                }
+              ]
+            },
+            {
+              "id": "ebook-7-c5-signals-e3",
+              "title": "紅——關著",
+              "summary": "字數斷崖、永遠你開話題",
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "id": "ebook-7-c5-signals-e3-b1",
+                  "text": "回覆字數斷崖式下跌、話題永遠是你在開、只在她無聊的時段想到你。退回第 3.2 章：止損，等狀態變了再說。"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "callout",
+          "id": "ebook-7-c5-b3",
+          "tone": "safety",
+          "title": "這套只用在模糊地帶",
+          "text": "明確說出口的「不要」「別再傳了」不是訊號題，是答案，照做。把清楚的拒絕當成測試硬闖，讀訊號就從能力變成騷擾——這條線在哪裡，比上面所有技巧都重要。"
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-7-c5-b4",
+          "text": "最常見的模糊題：「先從朋友開始吧。」字面在踩剎車。這時候看行為：如果她照樣答應出來、聊天情緒也好，門沒有關，這是節奏問題，急不得但不用撤；如果行為同時也在退——變慢、變短、變難約——那字面就是真心話。字面永遠要拿行為對照著讀，單獨讀哪一個都會誤判。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-7-c5-b5",
+          "tone": "takeaway",
+          "title": "判讀順位",
+          "text": "行為 > 情緒 > 字面。三個一致最好；不一致的時候，相信排在前面的。"
+        }
+      ]
+    },
+    {
+      "id": "ebook-7-chapter-6",
+      "number": "3.6",
+      "title": "反應積極就推進：邀約的結構",
+      "learningGoal": "積極訊號一出現就會推進：模糊邀約起手、具體化收口、被拒不說服、把拒絕接成下一次。",
+      "estimatedMinutes": 3,
+      "sourceRefs": [
+        {
+          "document": "advanced-chat",
+          "sections": ["04", "06", "08", "09"]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "ebook-7-c6-b1",
+          "text": "整冊都在說「不要急」，最後一章要講反面：太多人死在不推進。她已經積極了，你還在「培養感情」，想再聊熟一點——但興趣是有時效的。情緒窗口開著的時候你不走進去，它會自己關上，而且通常不會再開。聊天的兩大死法：不熟就約，和熟了不約。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-7-c6-b2",
+          "tone": "principle",
+          "title": "推進的判準只有一個",
+          "text": "她的反應等級，而不是你們聊了幾天。積極就推；還沒積極，回去把前幾章做完。"
+        },
+        {
+          "type": "bulletList",
+          "id": "ebook-7-c6-ladder",
+          "title": "邀約三步，一步比一步具體",
+          "ordered": true,
+          "items": [
+            "模糊邀約起手——「改天約妳喝咖啡」。投資最小，只是探方向；她說好，就有了共識。",
+            "具體化收口——「妳週五晚上有空嗎？」把「改天」變成日期時間地點。模糊邀約不落地，等於沒約。",
+            "當天簡短確認——「晚上七點老地方見」。是告知，不是「妳還來嗎」——問句會把你的不安傳染給她。"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-7-c6-b3",
+          "text": "還有一個好用的變形：假定式推進。把見面說成已經成立的前提——「跟妳吃飯肯定得分兩桌，妳吃辣我怕死辣」。她笑著反駁的那一瞬間，「見面」已經變成你們共同的假設，比「要不要出來」好推得多。"
+        },
+        {
+          "type": "paragraph",
+          "id": "ebook-7-c6-b4",
+          "text": "被拒絕怎麼辦？先說不能做的：邏輯說服。「兩個小時就好」「不會耽誤妳多久」——這是推銷員的語言，只會讓她慶幸自己拒絕了。理由可信就換時間；氣氛不對就先退出邀約話題，回去閒聊把情緒拉回來，改天再推。另外要防一個東西叫拒絕階梯：每次被拒你都只回「好喔」，拒絕你就變成一種零成本的習慣。所以被拒時輕輕掛一個價：「放我鴿子欸，下次奶茶妳請。」——她笑著答應的同時，這次的拒絕已經變成下一次的約。"
+        },
+        {
+          "type": "callout",
+          "id": "ebook-7-c6-b5",
+          "tone": "takeaway",
+          "title": "三冊的終點",
+          "text": "聊天的終點不在聊天裡。儀表板讀對、樣本給夠、訊號轉綠，就把關係帶到現實去——內核、框架、聊天，這三冊所有的東西，最終都是為了那裡準備的。"
+        }
+      ]
+    }
+  ]
+}

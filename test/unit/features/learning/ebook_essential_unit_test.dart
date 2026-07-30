@@ -322,7 +322,7 @@ void main() {
   });
 
   group('production 資產', () {
-    test('終極指引四冊之外，成為獎賞第一冊已上線且為 Essential 專屬', () async {
+    test('終極指引四冊之外，成為獎賞三冊已上線且為 Essential 專屬', () async {
       TestWidgetsFlutterBinding.ensureInitialized();
       final catalog = await EbookCatalogRepository().load();
       expect(catalog.unitSections, hasLength(2));
@@ -332,7 +332,10 @@ void main() {
         isTrue,
       );
       final prize = catalog.unitSections[1].books;
-      expect(prize.map((b) => b.id), ['ebook-5-core']);
+      expect(
+        prize.map((b) => b.id),
+        ['ebook-5-core', 'ebook-6-frames', 'ebook-7-chat'],
+      );
       expect(prize.every((b) => b.isEssentialOnly), isTrue);
       expect(prize.every((b) => b.freePreviewChapterCount == 0), isTrue);
     });
