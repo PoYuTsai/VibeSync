@@ -37,6 +37,8 @@ void main() {
       final provider = image.image as AssetImage;
 
       expect(provider.assetName, pose.assetPath);
+      expect(image.fit, BoxFit.contain);
+      expect(image.alignment, Alignment.bottomRight);
       expect(
         find.byKey(ValueKey('home-coach-pose-${pose.name}')),
         findsOneWidget,

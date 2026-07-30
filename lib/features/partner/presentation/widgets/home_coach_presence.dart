@@ -3,10 +3,10 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 enum HomeCoachPose {
-  greeting('assets/images/coach/sydney_greeting.jpg'),
-  thinking('assets/images/coach/sydney_thinking.jpg'),
-  tip('assets/images/coach/sydney_tip.jpg'),
-  encouragement('assets/images/coach/sydney_encouragement.jpg');
+  greeting('assets/images/coach/sydney_greeting.png'),
+  thinking('assets/images/coach/sydney_thinking.png'),
+  tip('assets/images/coach/sydney_tip.png'),
+  encouragement('assets/images/coach/sydney_encouragement.png');
 
   const HomeCoachPose(this.assetPath);
 
@@ -57,26 +57,15 @@ class HomeCoachPresence extends StatelessWidget {
                 ],
                 stops: [0, 0.1, 0.92, 1],
               ).createShader(bounds),
-              child: ShaderMask(
-                blendMode: BlendMode.dstIn,
-                shaderCallback: (bounds) => const LinearGradient(
-                  colors: [
-                    Colors.transparent,
-                    Colors.white,
-                    Colors.white,
-                  ],
-                  stops: [0, 0.16, 1],
-                ).createShader(bounds),
-                child: Image.asset(
-                  pose.assetPath,
-                  key: ValueKey('home-coach-pose-${pose.name}'),
-                  width: double.infinity,
-                  height: resolvedHeight,
-                  fit: BoxFit.cover,
-                  alignment: const Alignment(-1, -0.1),
-                  filterQuality: FilterQuality.medium,
-                  excludeFromSemantics: true,
-                ),
+              child: Image.asset(
+                pose.assetPath,
+                key: ValueKey('home-coach-pose-${pose.name}'),
+                width: double.infinity,
+                height: resolvedHeight,
+                fit: BoxFit.contain,
+                alignment: Alignment.bottomRight,
+                filterQuality: FilterQuality.medium,
+                excludeFromSemantics: true,
               ),
             ),
           ),
