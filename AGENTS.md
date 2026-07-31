@@ -11,9 +11,7 @@
 
 ## Authority And Routing
 
-- Eric describes the outcome in natural language. The active Codex or Claude host is the primary brain and integration owner.
-- Do not assign permanent “coder” or “reviewer” roles to a provider. Use the global adaptive router and only the workflows callable on the current host.
-- Keep one owner for each implementation phase. Use independent cross-model review only when risk or uncertainty justifies it.
+- Global authority and routing rules apply; this file records only project-specific deltas.
 - Product feel and consequential product/payment/data tradeoffs remain Eric's decision.
 
 ## Context Loading
@@ -32,7 +30,6 @@
 - Never run `supabase db push` against production. Use the targeted migration procedure in `docs/shared-agent-rules.md`.
 - `analyze-chat` deployment requires `--no-verify-jwt`.
 - OCR changes stay isolated unless the task explicitly requires a cross-cutting change.
-- Never expose or commit secrets, `.env` contents, customer data, or production credentials.
 
 ## Development And Delivery
 
@@ -45,11 +42,10 @@
 
 ## Work And Verification
 
-- Inspect the working tree before editing and preserve unrelated user changes.
 - Keep one commit to one concern and use Traditional Chinese commit messages.
 - Verify with the smallest meaningful command, then broaden in proportion to risk.
-- For material R2/R3 high-risk changes, invoke the configured opposite-frontier reviewer and GLM falsification pass directly through the shared review workflow. Do not ask Eric to carry a Review Packet manually.
-- Treat implemented, verified, committed, pushed, deployed, and dogfood-approved as separate states.
+- For material R2/R3 review, invoke the configured reviewers directly through the shared review workflow; do not ask Eric to carry a Review Packet manually.
+- Beyond the global state ladder, dogfood-approved is a further separate state.
 - VibeSync runtime Change/Fix tasks have Eric's standing authorization for the delivery steps above, including pushing the branch where the task started (including `main`) and `Build & Distribute` GitHub Actions usage, within the task's original scope. This does not authorize merging/rebasing a non-`main` task branch into `main`. Destructive or ambiguous data changes, expanded product scope, credentials, other paid actions, and App Store release still require current explicit authorization.
 - End every task in plain Traditional Chinese with the outcome, expected behavior, and Eric's next check. For Change/Fix tasks also include: Git commit/branch/push state, Edge/migration state, exact-SHA `Build & Distribute` result and URL, what Eric should test on his iPhone, and anything intentionally not run.
 
