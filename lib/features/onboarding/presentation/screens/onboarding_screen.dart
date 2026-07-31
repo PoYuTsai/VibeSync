@@ -35,6 +35,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       'title': '不知道怎麼回她？',
       'description': '貼上對話或截圖，AI 幫你分析她的心理狀態\n教你最適合的回覆方式',
       'imagePath': 'welcome',
+      // 2026-08-01 轉化診斷 Tier 1：第一印象用品牌教練 Sydney，不用罐頭 icon。
+      'heroImage': 'assets/images/coach/sydney_greeting.png',
     },
     {
       'title': '即時看懂她的訊號',
@@ -145,6 +147,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       title: page['title']!,
                       description: page['description']!,
                       imagePath: page['imagePath']!,
+                      heroImageAsset: page['heroImage'],
                     );
                   },
                 ),
@@ -215,31 +218,21 @@ class _OnboardingBranchingPage extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Brand icon hero — 與 OnboardingPage 同款橘暈圓盤。
-                Container(
-                  width: 200,
-                  height: 200,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AppColors.ctaStart.withValues(alpha: 0.22),
-                        AppColors.brandBlush.withValues(alpha: 0.18),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.10),
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.forum_outlined,
-                    size: 80,
-                    color: AppColors.ctaStart,
+                // 2026-08-01 轉化診斷 Tier 1：分流頁 hero 改品牌教練 Sydney
+                // （鼓勵姿勢），與第 1 頁的 greeting 前後呼應。
+                Semantics(
+                  image: true,
+                  label: 'VibeSync Coach Sydney，欣欣',
+                  child: Image.asset(
+                    'assets/images/coach/sydney_encouragement.png',
+                    key: const ValueKey('onboarding-branch-hero-image'),
+                    height: 220,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.medium,
+                    excludeFromSemantics: true,
                   ),
                 ),
-                const SizedBox(height: 48),
+                const SizedBox(height: 40),
                 Text(
                   '你現在有正在聊的對象嗎？',
                   style: AppTypography.headlineMedium.copyWith(
