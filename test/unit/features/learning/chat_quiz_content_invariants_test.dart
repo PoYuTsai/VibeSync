@@ -13,6 +13,7 @@
 //     這裡守的是它的內容側前提：取材第 5–7 冊的關卡，access 必須宣告 essential。
 //   - 這裡只守「內容寫成什麼樣」。
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/learning/domain/chat_quiz_access.dart';
 import 'package:vibesync/features/learning/domain/models/chat_quiz.dart';
 import 'package:vibesync/features/learning/domain/models/ebook.dart';
 
@@ -76,22 +77,6 @@ const _holdBackTerms = <String>['先不', '不推', '收手', '再等', '不約'
 
 bool _containsAny(String text, List<String> terms) =>
     terms.any(text.contains);
-
-/// 一關的權限＝它所有題目來源書當中最高的那一層。
-///
-/// Task 4 會把這段換成 `chat_quiz_access.dart` 的共用純函式；在那之前先在
-/// 測試裡推導，讓內容守門不必等權限模組完成。
-EbookAccess _deriveAccess(ChatQuizLevel level, EbookCatalog books) {
-  var highest = EbookAccess.free;
-  for (final question in level.questions) {
-    final source = question.source;
-    if (source == null) continue;
-    final book = books.findBook(source.bookId);
-    if (book == null) continue; // 目標不存在由深連那組測試負責報錯。
-    if (book.access.index > highest.index) highest = book.access;
-  }
-  return highest;
-}
 
 void main() {
   late ChatQuizCatalog catalog;
@@ -197,7 +182,7 @@ void main() {
       for (final level in levels) {
         expect(
           level.access,
-          _deriveAccess(level, books),
+          accessForLevel(level, books),
           reason: '${level.id} 宣告的 access 與它的取材對不上',
         );
       }
