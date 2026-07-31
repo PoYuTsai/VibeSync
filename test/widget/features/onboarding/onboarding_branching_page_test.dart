@@ -7,6 +7,7 @@
 //   - 底部「下一步」在分流頁隱藏（分流按鈕在頁內）；「略過」行為不變。
 // 用無 redirect 的 stub GoRouter 驗證真實導流落點＋SharedPreferences 寫入。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -36,7 +37,9 @@ GoRouter _stubRouter() => GoRouter(
     );
 
 Future<void> _pumpOnboarding(WidgetTester tester) async {
-  await tester.pumpWidget(MaterialApp.router(routerConfig: _stubRouter()));
+  await tester.pumpWidget(ProviderScope(
+    child: MaterialApp.router(routerConfig: _stubRouter()),
+  ));
   await tester.pumpAndSettle();
 }
 

@@ -6,6 +6,7 @@
 // 避免誤解練習室女孩＝DeepSeek；完整廠商揭露留在設定頁 AI 隱私頁。
 // 此頁是靜態揭露非同意，「略過」行為不受影響。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/onboarding/presentation/screens/onboarding_screen.dart';
 
@@ -18,7 +19,9 @@ Future<void> _swipeToNextPage(WidgetTester tester) async {
 
 void main() {
   Future<void> pumpOnboarding(WidgetTester tester) async {
-    await tester.pumpWidget(const MaterialApp(home: OnboardingScreen()));
+    await tester.pumpWidget(const ProviderScope(
+      child: MaterialApp(home: OnboardingScreen()),
+    ));
     await tester.pumpAndSettle();
   }
 

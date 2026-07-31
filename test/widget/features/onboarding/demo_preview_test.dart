@@ -3,6 +3,7 @@
 // 轉化診斷 Tier 1-1：DemoConversation 示範卡接進 onboarding。
 // 第 2 頁＝訊號示範（對話泡泡＋投入度）、第 3 頁＝五種風格示範回覆。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/onboarding/data/demo_conversation.dart';
 import 'package:vibesync/features/onboarding/presentation/screens/onboarding_screen.dart';
@@ -43,7 +44,9 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const MaterialApp(home: OnboardingScreen()));
+    await tester.pumpWidget(const ProviderScope(
+      child: MaterialApp(home: OnboardingScreen()),
+    ));
 
     // 第 1 頁沒有示範卡。
     expect(find.byType(DemoSignalPreview), findsNothing);

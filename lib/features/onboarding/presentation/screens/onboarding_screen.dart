@@ -11,23 +11,26 @@
 // （有對象 → /partner/new；還沒 → /practice-collection），原「開始使用」
 // 完成 CTA 移除，分流頁的動作按鈕在頁內、底部「下一步」隱藏。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/ai_privacy_disclosure.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../user_profile/data/providers/user_profile_providers.dart';
+import '../../../user_profile/domain/entities/user_profile.dart';
 import '../../data/onboarding_service.dart';
 import '../widgets/demo_analysis_preview.dart';
 import '../widgets/onboarding_page.dart';
 
-class OnboardingScreen extends StatefulWidget {
+class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
   @override
-  State<OnboardingScreen> createState() => _OnboardingScreenState();
+  ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends State<OnboardingScreen> {
+class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final _pageController = PageController();
   int _currentPage = 0;
 
@@ -89,11 +92,34 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   /// 分流頁按鈕：完成 onboarding 後先 go('/') 再 push 目的地，
   /// back 鍵可退回首頁 tab 0，不卡死（設計檔案 3）。
-  Future<void> _completeOnboardingTo(String route) async {
+  Future<void> _completeOnboardingTo(
+    String route, {
+    required bool hasPartner,
+  }) async {
+    await _seedProfileFromBranchAnswer(hasPartner: hasPartner);
     await OnboardingService.markCompleted();
     if (mounted) {
       context.go('/');
       context.push(route);
+    }
+  }
+
+  /// 轉化診斷 Tier 1-3：分流答案是全流程唯一的個人化訊號，過去只拿來
+  /// 導頁就丟掉。轉寫進「關於我」notes（使用者真的說過的話、在關於我頁
+  /// 看得到改得掉），餵 effective style prompt，讓第一次 AI 呼叫不再
+  /// 完全 generic。只在 profile 全空時種、失敗靜默放過，絕不擋導頁。
+  Future<void> _seedProfileFromBranchAnswer({required bool hasPartner}) async {
+    try {
+      final existing = await ref.read(userProfileControllerProvider.future);
+      if (existing != null && !existing.isEmpty) return;
+      await ref.read(userProfileControllerProvider.notifier).save(
+            UserProfile.create(
+              notes: hasPartner ? '目前有正在聊的對象' : '還沒有固定聊天對象，想先透過練習提升',
+              updatedAt: DateTime.now(),
+            ),
+          );
+    } catch (_) {
+      // best-effort：種子失敗不影響 onboarding 完成與導頁。
     }
   }
 
@@ -137,10 +163,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   itemBuilder: (context, index) {
                     if (index == _pages.length) {
                       return _OnboardingBranchingPage(
-                        onHasPartner: () =>
-                            _completeOnboardingTo('/partner/new'),
-                        onNoPartner: () =>
-                            _completeOnboardingTo('/practice-collection'),
+                        onHasPartner: () => _completeOnboardingTo(
+                          '/partner/new',
+                          hasPartner: true,
+                        ),
+                        onNoPartner: () => _completeOnboardingTo(
+                          '/practice-collection',
+                          hasPartner: false,
+                        ),
                       );
                     }
                     final page = _pages[index];
