@@ -56,7 +56,6 @@ supabase/.env.local
 
 # Local Claude Code / MCP config (per-machine, not project state)
 .claude/*
-!.claude/settings.local.json
 !.claude/commands/
 !.claude/commands/round.md
 .claude/skills.disabled/
