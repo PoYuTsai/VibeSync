@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -11,9 +14,50 @@ import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_list_screen.dart';
+import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/shared/widgets/warm_theme_widgets.dart';
 
 import 'proof_support.dart';
+
+/// 同 onboarding_conversion proof：先載微軟正黑當 AppTC，單靠 loadProofFonts
+/// 的 fc-match 路徑在部分環境會整頁豆腐字。絕不寫死單一本機路徑。
+Future<void> _loadFonts() async {
+  for (final path in const [
+    '/mnt/c/Windows/Fonts/msjh.ttc',
+    '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+  ]) {
+    final file = File(path);
+    if (!file.existsSync()) continue;
+    final bytes = file.readAsBytesSync();
+    await (FontLoader('AppTC')
+          ..addFont(Future.value(ByteData.view(bytes.buffer))))
+        .load();
+    break;
+  }
+  await loadProofFonts();
+}
+
+/// Tier 2 批 1：首頁掛了 HomeQuotaStrip，proof 一律用 seeded 免費態
+/// （7/30 已用）＋no-op 刷新，額度小條在截圖裡可見且不打網路。
+class _SeededSubscriptionNotifier extends SubscriptionNotifier {
+  _SeededSubscriptionNotifier(SubscriptionState seed) {
+    state = seed;
+  }
+}
+
+List<Override> _subscriptionOverrides() => [
+      subscriptionProvider.overrideWith(
+        (_) => _SeededSubscriptionNotifier(
+          const SubscriptionState(
+            tier: SubscriptionTierHelper.free,
+            monthlyMessagesUsed: 7,
+            monthlyLimit: 30,
+          ),
+        ),
+      ),
+      subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+    ];
 
 Partner _p(String id, String name) => Partner(
       id: id,
@@ -164,7 +208,7 @@ class _ProofTab extends StatelessWidget {
 }
 
 void main() {
-  setUpAll(loadProofFonts);
+  setUpAll(_loadFonts);
 
   testWidgets('prod partner home', (tester) async {
     final partners = [
@@ -180,6 +224,7 @@ void main() {
       tester,
       child: ProviderScope(
         overrides: [
+          ..._subscriptionOverrides(),
           authConversationScopeProvider.overrideWith(
             (_) => Stream.value('u-proof'),
           ),
@@ -222,6 +267,26 @@ void main() {
         child: const _PartnerHomeProof(),
       ),
       outPath: outPath('prod_partner_home.png'),
+    );
+  });
+
+  testWidgets('prod partner home — empty state with quota strip and entries',
+      (tester) async {
+    await pumpAndCapture(
+      tester,
+      child: ProviderScope(
+        overrides: [
+          ..._subscriptionOverrides(),
+          authConversationScopeProvider.overrideWith(
+            (_) => Stream.value('u-proof'),
+          ),
+          partnerListProvider.overrideWith((_) => const <Partner>[]),
+        ],
+        child: const _PartnerHomeProof(),
+      ),
+      // 空態有 Sydney PNG，要留真 async 時間 decode，否則截圖是空框。
+      rasterDecodeWait: const Duration(milliseconds: 600),
+      outPath: outPath('prod_partner_home_empty.png'),
     );
   });
 }
