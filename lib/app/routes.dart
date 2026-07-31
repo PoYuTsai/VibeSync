@@ -9,6 +9,8 @@ import '../features/auth/presentation/screens/login_screen.dart';
 import '../features/conversation/presentation/screens/new_conversation_screen.dart';
 import 'main_shell.dart';
 import '../features/learning/presentation/screens/article_detail_screen.dart';
+import '../features/learning/presentation/screens/chat_quiz_map_screen.dart';
+import '../features/learning/presentation/screens/chat_quiz_player_screen.dart';
 import '../features/learning/presentation/screens/ebook_detail_screen.dart';
 import '../features/learning/presentation/screens/ebook_reader_screen.dart';
 import '../features/keyboard/presentation/screens/keyboard_setup_screen.dart';
@@ -244,8 +246,27 @@ final router = GoRouter(
         entryId: state.uri.queryParameters['entry'],
       ),
     ),
+    ...chatQuizRoutes,
   ],
 );
+
+/// 聊天測驗的路由。獨立路徑與獨立 id space，與電子書、文章都不相干。
+///
+/// 抽成獨立常數是為了讓 `chat_quiz_routes_test.dart` 驗得到：整個 [router]
+/// 的初始化會碰 SupabaseService，unit test 起不來。
+final chatQuizRoutes = <RouteBase>[
+  GoRoute(
+    path: '/learning/quiz',
+    builder: (context, state) => const ChatQuizMapScreen(),
+  ),
+  GoRoute(
+    // 不存在的 levelId 由答題器顯示「找不到這一關」，不 404。
+    path: '/learning/quiz/levels/:levelId',
+    builder: (context, state) => ChatQuizPlayerScreen(
+      levelId: state.pathParameters['levelId']!,
+    ),
+  ),
+];
 
 class _GoRouterRefreshStream extends ChangeNotifier {
   _GoRouterRefreshStream(Stream<dynamic> stream) {

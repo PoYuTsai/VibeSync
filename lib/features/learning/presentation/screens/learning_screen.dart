@@ -17,6 +17,7 @@ import '../../../practice_chat/presentation/widgets/practice_room_entry_card.dar
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/articles_data.dart';
 import '../../data/providers/learning_providers.dart';
+import '../widgets/chat_quiz_section.dart';
 import '../widgets/ebook_shelf_section.dart';
 
 class LearningScreen extends ConsumerWidget {
@@ -50,11 +51,22 @@ class LearningScreen extends ConsumerWidget {
           },
         ),
 
-        // Hero 下方第一個區塊：互動電子書書架。
-        // 順序刻意是 練習室 Hero → 電子書 → 短篇文章：教材優先、文章在後。
+        // Hero 下方第一個區塊：聊天測驗。
+        //
+        // 順序刻意是 練習室 Hero → 聊天測驗 → 電子書 → 短篇文章
+        // （2026-07-31 §11 決定 1）。之前是「教材優先、文章在後」，測驗插在
+        // 電子書之前的理由是：電子書是讀的，測驗是練的，練的東西放前面。
         const SliverToBoxAdapter(
           child: Padding(
             padding: EdgeInsets.fromLTRB(16, 28, 16, 0),
+            child: ChatQuizSection(),
+          ),
+        ),
+
+        // 互動電子書書架。
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16, 26, 16, 0),
             child: EbookShelfSection(),
           ),
         ),

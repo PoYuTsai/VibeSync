@@ -1,7 +1,9 @@
 // test/widget/features/learning/learning_screen_ebook_hierarchy_test.dart
 //
 // 學習頁階層回歸：
-//   Practice Hero → 互動電子書 → 短篇實戰文章 → 24 篇文章 grid。
+//   Practice Hero → 聊天測驗 → 互動電子書 → 短篇實戰文章 → 24 篇文章 grid。
+//
+// 2026-07-31 起測驗插在電子書之前（§11 決定 1）：電子書是讀的，測驗是練的。
 //
 // 重點是 quota 提示只出現在文章區（電子書不消耗文章額度），
 // 以及既有 24 篇文章與 article id 沒有被電子書改動。
@@ -9,17 +11,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/learning/data/articles_data.dart';
+import 'package:vibesync/features/learning/data/providers/chat_quiz_providers.dart';
 import 'package:vibesync/features/learning/data/providers/ebook_providers.dart';
 import 'package:vibesync/features/learning/data/providers/learning_providers.dart';
+import 'package:vibesync/features/learning/data/repositories/chat_quiz_progress_repository.dart';
 import 'package:vibesync/features/learning/data/repositories/ebook_progress_repository.dart';
 import 'package:vibesync/features/learning/data/services/article_read_service.dart';
+import 'package:vibesync/features/learning/domain/models/chat_quiz.dart';
 import 'package:vibesync/features/learning/domain/models/ebook.dart';
 import 'package:vibesync/features/learning/presentation/screens/learning_screen.dart';
 import 'package:vibesync/features/learning/presentation/widgets/ebook_access_gate.dart';
+import 'package:vibesync/features/learning/presentation/widgets/chat_quiz_section.dart';
 import 'package:vibesync/features/learning/presentation/widgets/ebook_shelf_section.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 
+import '../../../helpers/chat_quiz_test_content.dart';
 import '../../../helpers/ebook_test_content.dart';
 import '../../../helpers/ebook_widget_harness.dart';
 
@@ -47,11 +54,13 @@ class _FakeReadService extends ArticleReadService {
 /// isolate（compute），那在 `testWidgets` 的 fake async 下永遠不會完成——
 /// 在測試主體裡 await 它會直接卡死。
 EbookCatalog? _catalog;
+ChatQuizCatalog? _quizCatalog;
 
 Future<void> pumpLearningScreen(
   WidgetTester tester, {
   required String tier,
   EbookSubscriptionAccess access = const EbookSubscriptionAccess.free(),
+  Object? quizCatalogError,
 }) async {
   await tester.binding.setSurfaceSize(const Size(390, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -66,6 +75,16 @@ Future<void> pumpLearningScreen(
         ),
         articleReadServiceProvider.overrideWithValue(_FakeReadService()),
         ebookCatalogProvider.overrideWith((ref) async => catalog),
+        if (quizCatalogError != null)
+          chatQuizCatalogProvider
+              .overrideWith((ref) async => throw quizCatalogError)
+        else
+          chatQuizCatalogProvider.overrideWith((ref) async => _quizCatalog!),
+        chatQuizProgressOwnerProvider
+            .overrideWith((ref) => Stream<String?>.value('learning-owner')),
+        chatQuizProgressRepositoryProvider.overrideWithValue(
+          ChatQuizProgressRepository(box: InMemoryHiveBox()),
+        ),
         ebookSubscriptionAccessProvider.overrideWith((ref) => access),
         ebookProgressOwnerProvider
             .overrideWith((ref) => Stream<String?>.value('learning-owner')),
@@ -83,21 +102,53 @@ Future<void> pumpLearningScreen(
 void main() {
   setUpAll(() async {
     _catalog = await loadProductionCatalog();
+    _quizCatalog = await loadProductionChatQuizCatalog();
   });
 
-  testWidgets('電子書區塊在短篇文章區之前', (tester) async {
+  testWidgets('三段順序：練習室 → 測驗 → 電子書 → 短篇文章', (tester) async {
     await pumpLearningScreen(tester, tier: SubscriptionTierHelper.free);
 
+    expect(find.byType(ChatQuizSection), findsOneWidget);
     expect(find.byType(EbookShelfSection), findsOneWidget);
 
+    // 測驗與電子書都在首屏之後，兩者的相對位置直接比 y。
+    final quizY = tester.getTopLeft(find.byType(ChatQuizSection)).dy;
     final shelfY = tester.getTopLeft(find.byType(EbookShelfSection)).dy;
+    expect(quizY, lessThan(shelfY), reason: '聊天測驗必須在電子書之前');
+
     await tester.scrollUntilVisible(find.text('短篇實戰文章'), 300);
     await tester.pumpAndSettle();
-    final articlesY = tester.getTopLeft(find.text('短篇實戰文章')).dy;
+    expect(find.text('短篇實戰文章'), findsOneWidget);
+  });
 
-    // 捲動後書架已經在畫面上方（或捲出畫面），文章標題在它之後才出現。
-    expect(shelfY, isNotNull);
-    expect(articlesY, isNotNull);
+  testWidgets('測驗區塊只有入口卡，第 2 期的東西都不出現', (tester) async {
+    await pumpLearningScreen(tester, tier: SubscriptionTierHelper.free);
+
+    expect(find.text('聊天測驗'), findsOneWidget);
+    expect(find.text('全部關卡 →'), findsOneWidget);
+    expect(find.text('4 關 · 31 題'), findsOneWidget);
+
+    // 第 2 期才做的東西，第 1 期一個都不畫。
+    expect(find.textContaining('今日'), findsNothing);
+    expect(find.textContaining('連續'), findsNothing);
+    expect(find.textContaining('準確率'), findsNothing);
+    expect(find.textContaining('錯題'), findsNothing);
+    // 付費入口只在關卡地圖出現一次，學習頁區塊不放。
+    expect(find.text('看訂閱方案'), findsNothing);
+  });
+
+  testWidgets('測驗內容解析失敗時，電子書與文章列表仍然渲染得出來', (tester) async {
+    await pumpLearningScreen(
+      tester,
+      tier: SubscriptionTierHelper.free,
+      quizCatalogError: StateError('quiz boom'),
+    );
+
+    expect(find.text('聊天測驗暫時讀不到，其他內容不受影響。'), findsOneWidget);
+    expect(find.byType(EbookShelfSection), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('短篇實戰文章'), 300);
+    await tester.pumpAndSettle();
     expect(find.text('短篇實戰文章'), findsOneWidget);
   });
 
