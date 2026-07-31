@@ -17,6 +17,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../data/onboarding_service.dart';
+import '../widgets/demo_analysis_preview.dart';
 import '../widgets/onboarding_page.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -143,11 +144,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       );
                     }
                     final page = _pages[index];
+                    // 轉化診斷 Tier 1-1：第 2、3 頁掛零 API 示範卡，
+                    // 讓「投入度」「五種風格」用演的不是用講的。
+                    final demo = switch (page['imagePath']) {
+                      'analyze' => const DemoSignalPreview(),
+                      'reply' => const DemoStylesPreview(),
+                      _ => null,
+                    };
                     return OnboardingPage(
                       title: page['title']!,
                       description: page['description']!,
                       imagePath: page['imagePath']!,
                       heroImageAsset: page['heroImage'],
+                      customContent: demo,
                     );
                   },
                 ),
