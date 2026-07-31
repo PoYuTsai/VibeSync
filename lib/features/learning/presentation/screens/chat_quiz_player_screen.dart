@@ -28,6 +28,7 @@ import '../../domain/models/chat_quiz_progress.dart';
 import '../widgets/chat_quiz_gate_message.dart';
 import '../widgets/chat_quiz_question_card.dart';
 import '../widgets/ebook_access_gate.dart';
+import 'chat_quiz_result_screen.dart';
 
 class ChatQuizPlayerScreen extends ConsumerWidget {
   const ChatQuizPlayerScreen({super.key, required this.levelId});
@@ -293,28 +294,31 @@ class _ChatQuizPlayerBodyState extends ConsumerState<ChatQuizPlayerBody> {
     );
   }
 
-  /// 跑完之後的畫面。
-  ///
-  /// Task 8 會把這裡換成正式結果頁（過關動效、答錯題列表、再跑一次）。
-  /// 在那之前先給一個可離開的最小畫面，不讓流程斷在最後一題。
+  /// 跑完之後的結果頁。
   Widget _buildFinished(BuildContext context) {
-    final level = widget.level;
-    final correctCount = level.questions
-        .where((q) => q.isCorrectChoice(_picks[q.id] ?? ''))
-        .length;
-    final passed = level.isPassing(correctCount);
-
-    return ChatQuizGateScaffold(
-      title: '${level.number} ${level.title}',
-      onClose: () => context.go('/learning/quiz'),
-      child: ChatQuizGateMessage(
-        icon: passed ? Icons.emoji_events_outlined : Icons.refresh_outlined,
-        title: passed ? '過關' : '再跑一次',
-        message: '$correctCount / ${level.questionCount} 題答對。',
-        primaryLabel: '回關卡地圖',
-        onPrimary: () => context.go('/learning/quiz'),
-      ),
+    return ChatQuizResultScreen(
+      level: widget.level,
+      picks: Map<String, String>.unmodifiable(_picks),
+      onRetry: _retry,
+      onBackToMap: () => context.go('/learning/quiz'),
+      onReadSource: (source) => _openSource(context, source),
     );
+  }
+
+  /// 再跑一次：清掉這一關的作答，從第一題重新開始。
+  ///
+  /// 刻意不動已保存的最佳成績——重試不扣任何東西，也不該把拿到的東西收回去。
+  void _retry() {
+    final questionIds =
+        widget.level.questions.map((question) => question.id).toList();
+    ref.read(chatQuizProgressControllerProvider.notifier)
+        .clearAnswers(questionIds);
+    setState(() {
+      _picks.clear();
+      _submitted.clear();
+      _index = 0;
+      _finished = false;
+    });
   }
 }
 

@@ -199,7 +199,7 @@ void main() {
     }
 
     expect(find.text('過關'), findsOneWidget);
-    expect(find.text('3 / 3 題答對。'), findsOneWidget);
+    expect(find.text('3 / 3 題答對'), findsOneWidget);
 
     final progress = await harness.repository.load(_ownerUserId);
     expect(progress.resultFor(_levelId)?.correctCount, 3);
