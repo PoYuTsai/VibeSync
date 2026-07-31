@@ -178,14 +178,31 @@ void main() {
   });
 
   group('權限', () {
-    test('一關的 access ＝ 它所有題目來源書當中最高的那一層', () {
+    test('宣告的 access 不得低於取材推導值——唯一例外是免費櫥窗關', () {
+      // 原始規則是「access ＝ 取材書的最高層」，但它和報告自己的內容表衝突：
+      // 1-1 宣告 free，取材卻包含第 2 冊（premium）。兩者不可能同時成立。
+      //
+      // 取捨：免費關的深連按鈕點下去打的是電子書自己的付費閘門，看到的是
+      // paywall，那正是櫥窗該有的轉換路徑，不是內容外洩。真正的紅線是
+      // 第 5–7 冊（決定 5），由下面兩條測試守。
       for (final level in levels) {
+        if (level.id == _freeLevelId) continue;
         expect(
-          level.access,
-          accessForLevel(level, books),
-          reason: '${level.id} 宣告的 access 與它的取材對不上',
+          level.access.index,
+          greaterThanOrEqualTo(accessForLevel(level, books).index),
+          reason: '${level.id} 宣告的 access 低於它的取材',
         );
       }
+    });
+
+    test('免費櫥窗關刻意宣告 free，但取材不得超過 premium', () {
+      final level = catalog.findLevel(_freeLevelId);
+      expect(level?.access, EbookAccess.free);
+      expect(
+        accessForLevel(level!, books).index,
+        lessThanOrEqualTo(EbookAccess.premium.index),
+        reason: '免費關取材到 Essential 教材＝付費牆破洞',
+      );
     });
 
     test('只有 1-1 是免費關，其餘全部要付費', () {

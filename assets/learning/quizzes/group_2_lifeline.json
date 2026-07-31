@@ -1,0 +1,539 @@
+{
+  "schemaVersion": 1,
+  "id": "quiz-group-2",
+  "number": 2,
+  "key": "lifeline",
+  "title": "救對話",
+  "subtitle": "看懂它死在哪一句",
+  "stageLabel": "升溫",
+  "levels": [
+    {
+      "id": "quiz-level-2-1",
+      "number": "2-1",
+      "title": "對話死在哪",
+      "goal": "認出三個死因：查戶口、只回事實、你沒出現在對話裡。",
+      "access": "premium",
+      "passRatio": 0.8,
+      "questions": [
+        {
+          "id": "q-2-1-01",
+          "type": "signalRead",
+          "revision": 1,
+          "scenario": "你：你平常喜歡做什麼？\n她：看電影、跑步之類的\n你：跑步不錯，都跑多遠\n她：五公里吧\n你：那你都在哪跑\n她：河濱",
+          "question": "這段對話正在往哪個方向走？",
+          "choices": [
+            {
+              "id": "q-2-1-01-a",
+              "text": "查戶口——整段只有你在索取，她會越回越短",
+              "correct": true,
+              "feedback": "對。每一句單看都不算錯，但累積起來只有單向索取：沒有你的資訊、沒有起伏、沒有共鳴。她的回覆長度已經在告訴你了。"
+            },
+            {
+              "id": "q-2-1-01-b",
+              "text": "還算順——她每一題都有回，可以繼續問下去",
+              "correct": false,
+              "feedback": "「有回」是最低標準。她的回覆從六個字掉到三個字，那是黃燈往紅燈滑。"
+            },
+            {
+              "id": "q-2-1-01-c",
+              "text": "她沒興趣——可以結束了",
+              "correct": false,
+              "feedback": "這裡看不出她沒興趣，只看得出這段對話沒有給她任何值得回的東西。問題在你這一側，還救得回來。"
+            }
+          ],
+          "takeaway": "死因一是查戶口。判準很簡單：她的回覆越來越短，而你還在問下一題。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-2"
+          }
+        },
+        {
+          "id": "q-2-1-02",
+          "type": "pickReply",
+          "revision": 1,
+          "scenario": "承上：她說「河濱」",
+          "question": "這一句你會怎麼回？",
+          "choices": [
+            {
+              "id": "q-2-1-02-a",
+              "text": "河濱喔。我上次在那邊跑到一半被一群鵝擋路，認真僵持了三十秒",
+              "correct": true,
+              "feedback": "對。同一個話題，但你出現了：有畫面、有點好笑，而且她可以接。這一句同時補上了缺的自我揭露與起伏。"
+            },
+            {
+              "id": "q-2-1-02-b",
+              "text": "不錯欸，那你看電影喜歡什麼類型",
+              "correct": false,
+              "feedback": "換下一題就是繼續查戶口。話題換了，模式沒換。"
+            },
+            {
+              "id": "q-2-1-02-c",
+              "text": "河濱哪一段？我也常跑",
+              "correct": false,
+              "feedback": "「我也常跑」有一點你自己，但後面又接一個問句，整體還是問卷。"
+            },
+            {
+              "id": "q-2-1-02-d",
+              "text": "五公里很厲害欸",
+              "correct": false,
+              "feedback": "泛用稱讚，沒有資訊也沒有開口，她只能回「還好啦」。"
+            }
+          ],
+          "takeaway": "修查戶口不是換話題，是在同一個話題裡把自己放進去。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-2"
+          }
+        },
+        {
+          "id": "q-2-1-03",
+          "type": "pickReply",
+          "revision": 1,
+          "scenario": "她（晚上）：剛剛跟房東吵完，我快氣死",
+          "question": "這一則你會怎麼回？",
+          "choices": [
+            {
+              "id": "q-2-1-03-a",
+              "text": "他到底講了什麼，我需要完整版",
+              "correct": true,
+              "feedback": "對。往情緒走，而且表現出你想聽細節——這是回應性最便宜也最有效的一種。"
+            },
+            {
+              "id": "q-2-1-03-b",
+              "text": "租屋處理起來真的很麻煩，你合約還多久",
+              "correct": false,
+              "feedback": "她給情緒，你回事實。這是死因二的標準長相。"
+            },
+            {
+              "id": "q-2-1-03-c",
+              "text": "別氣了啦",
+              "correct": false,
+              "feedback": "安撫是終結句，它讓她沒有東西可以接。"
+            },
+            {
+              "id": "q-2-1-03-d",
+              "text": "要不要我幫你查一下租賃條例",
+              "correct": false,
+              "feedback": "她要的是有人聽，不是解決方案。太快跳到解法，情緒的開口會直接關上。"
+            }
+          ],
+          "takeaway": "她給情緒的時候，先跟情緒走；解法留到她問你的時候。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-2"
+          }
+        },
+        {
+          "id": "q-2-1-04",
+          "type": "pickReply",
+          "revision": 1,
+          "scenario": "你往回滑，發現最近九則訊息裡，關於你自己的具體資訊一則都沒有。",
+          "question": "下一則你該做什麼？",
+          "choices": [
+            {
+              "id": "q-2-1-04-a",
+              "text": "在回答她的問題時，順便帶一個你自己的具體細節",
+              "correct": true,
+              "feedback": "對。側面價值的重點是「在談別的事情時自然出現」，而不是另外開一段自我介紹。"
+            },
+            {
+              "id": "q-2-1-04-b",
+              "text": "傳一段自我介紹，把工作和興趣講清楚",
+              "correct": false,
+              "feedback": "直接說自己的優點會被大幅折價，因為對方知道你有動機誇大。"
+            },
+            {
+              "id": "q-2-1-04-c",
+              "text": "繼續問她的事，等她主動問你",
+              "correct": false,
+              "feedback": "她不會去問一個她一無所知的人。等待只會讓對話繼續空轉。"
+            },
+            {
+              "id": "q-2-1-04-d",
+              "text": "傳一張自己的照片",
+              "correct": false,
+              "feedback": "這不會解決「她不知道你是誰」，只會讓話題更難接。"
+            }
+          ],
+          "takeaway": "檢查法：往回滑，數你有幾則訊息含有關於自己的具體資訊。少於三分之一，那就是你的問題。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-3"
+          }
+        },
+        {
+          "id": "q-2-1-05",
+          "type": "pickReply",
+          "revision": 1,
+          "scenario": "你們聊到週末的安排。",
+          "question": "哪一句比較有效？",
+          "choices": [
+            {
+              "id": "q-2-1-05-a",
+              "text": "這週末大概廢不掉，有個案子要收尾",
+              "correct": true,
+              "feedback": "對。同樣一件事，讓它在談別的事情時自然出現，對方會自己得出結論——那個結論比你自己講的可信得多。"
+            },
+            {
+              "id": "q-2-1-05-b",
+              "text": "我在科技業工作，收入還不錯",
+              "correct": false,
+              "feedback": "直接宣告的優點會被折價。這是資訊經濟學問題，不是面子問題。"
+            },
+            {
+              "id": "q-2-1-05-c",
+              "text": "我很有上進心，週末也都在忙",
+              "correct": false,
+              "feedback": "自評形容詞是最容易被打折的一種資訊。"
+            },
+            {
+              "id": "q-2-1-05-d",
+              "text": "沒什麼安排，看你",
+              "correct": false,
+              "feedback": "零資訊，而且把整段對話的方向也一起交出去了。"
+            }
+          ],
+          "takeaway": "你的價值要從細節裡漏出來，不是宣告出來。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-3"
+          }
+        },
+        {
+          "id": "q-2-1-06",
+          "type": "pickReply",
+          "revision": 1,
+          "scenario": "三則訊息之前，她提過她下週要考一個證照。現在你們在聊別的。",
+          "question": "接下來哪一步最有效？",
+          "choices": [
+            {
+              "id": "q-2-1-06-a",
+              "text": "「對了，你下週不是要考證照嗎，準備得怎樣」",
+              "correct": true,
+              "feedback": "對。引用她之前說過的東西，是回應性最直接的證據——邊際效益極高、幾乎沒有下行風險，而且大部分競爭者做不到。"
+            },
+            {
+              "id": "q-2-1-06-b",
+              "text": "「你最近在忙什麼」",
+              "correct": false,
+              "feedback": "你其實已經知道答案。問一個你已經被告知的問題，等於承認你沒在聽。"
+            },
+            {
+              "id": "q-2-1-06-c",
+              "text": "什麼都不做，等她自己再提一次",
+              "correct": false,
+              "feedback": "她提過一次就不會再提第二次。錯過的是一個免費的加分點。"
+            },
+            {
+              "id": "q-2-1-06-d",
+              "text": "「加油！相信你一定沒問題」",
+              "correct": false,
+              "feedback": "空的鼓勵不需要記得任何事，所以它也證明不了你有在聽。"
+            }
+          ],
+          "takeaway": "你有沒有引用她三則訊息之前說過的東西？沒有的話，你大概沒在聽，你在準備下一句。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-3"
+          }
+        },
+        {
+          "id": "q-2-1-07",
+          "type": "signalRead",
+          "revision": 1,
+          "scenario": "你把自己的事放進對話之後，她回：哈哈哈鵝真的很兇欸，我上次在動物園也被追過",
+          "question": "這則回覆是什麼燈？",
+          "choices": [
+            {
+              "id": "q-2-1-07-a",
+              "text": "🟢 綠燈——她加碼了，而且自己補了一段經驗",
+              "correct": true,
+              "feedback": "對。她笑了、接住了，還自己補了一段親身經驗。這是死因修好之後最典型的反應。"
+            },
+            {
+              "id": "q-2-1-07-b",
+              "text": "🟡 黃燈——她只是禮貌地接話",
+              "correct": false,
+              "feedback": "禮貌接話不會自己補一段親身經驗。她給的超出你問的。"
+            },
+            {
+              "id": "q-2-1-07-c",
+              "text": "🔴 紅燈——她轉到動物園，離開了原本的話題",
+              "correct": false,
+              "feedback": "她是往外延伸，不是轉走不回來。轉移的判準是「離開之後不再回來」，而她正在加碼。"
+            }
+          ],
+          "takeaway": "對話活過來的訊號很明確：她開始給你沒問的東西。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-4"
+          }
+        }
+      ]
+    },
+    {
+      "id": "quiz-level-2-2",
+      "number": "2-2",
+      "title": "情緒是開口",
+      "goal": "認出對話的最高點，並且用內容而不是時間差去接住它。",
+      "access": "premium",
+      "passRatio": 0.8,
+      "questions": [
+        {
+          "id": "q-2-2-01",
+          "type": "signalRead",
+          "revision": 1,
+          "scenario": "她（晚上 10:00）：哈哈哈那個真的很扯",
+          "question": "這一則在整段對話裡是什麼位置？",
+          "choices": [
+            {
+              "id": "q-2-2-01-a",
+              "text": "🟢 這是整段的最高點——主動、有情緒、有笑",
+              "correct": true,
+              "feedback": "對。綠燈中的綠燈。這種時候唯一該做的事，是趁動能還在的時候接住它。"
+            },
+            {
+              "id": "q-2-2-01-b",
+              "text": "🟡 只是隨口笑一下，沒什麼特別",
+              "correct": false,
+              "feedback": "主動、情緒、笑同時出現，那不是隨口。把它讀成普通，就會用普通的方式回，然後把它歸零。"
+            },
+            {
+              "id": "q-2-2-01-c",
+              "text": "🟢 綠燈——但先晾一下比較有神秘感",
+              "correct": false,
+              "feedback": "燈讀對了，做法錯了。對話有動能，而動能會衰減。"
+            }
+          ],
+          "takeaway": "對話有最高點。認出它，比多學十句話術有用。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-5"
+          }
+        },
+        {
+          "id": "q-2-2-02",
+          "type": "pickReply",
+          "revision": 1,
+          "scenario": "承上：她晚上 10:00 傳來那一則，你正好看到。",
+          "question": "你會怎麼做？",
+          "choices": [
+            {
+              "id": "q-2-2-02-a",
+              "text": "現在就回，而且回一則有內容的",
+              "correct": true,
+              "feedback": "對。看到就回，除非真的在忙。你的稀缺性由你的生活提供，不由計時器提供。"
+            },
+            {
+              "id": "q-2-2-02-b",
+              "text": "等到明天下午再回「對啊」",
+              "correct": false,
+              "feedback": "這是最常見的自傷型死亡：十幾個小時的延遲加兩個字，把整段的最高點歸零。"
+            },
+            {
+              "id": "q-2-2-02-c",
+              "text": "她隔多久你就隔多久，不要讓她覺得你太閒",
+              "correct": false,
+              "feedback": "這個建議想傳達的訊號（你有生活）應該由內容傳達，用延遲傳達是低效替代品。"
+            },
+            {
+              "id": "q-2-2-02-d",
+              "text": "現在回，但只回一個貼圖",
+              "correct": false,
+              "feedback": "速度對了，內容空了。動能要靠內容接住。"
+            }
+          ],
+          "takeaway": "真正讓人反感的是內容，不是速度。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-5"
+          }
+        },
+        {
+          "id": "q-2-2-03",
+          "type": "pickReply",
+          "revision": 1,
+          "scenario": "她：我超能吃辣的",
+          "question": "這一句你會怎麼回？",
+          "choices": [
+            {
+              "id": "q-2-2-03-a",
+              "text": "你說你能吃辣，但台灣人說的能吃辣通常是加一點點辣椒醬。你的等級是哪一種",
+              "correct": true,
+              "feedback": "對。輕度的意見不同加上誇張化，製造了起伏，而且她有很多種方式可以接。"
+            },
+            {
+              "id": "q-2-2-03-b",
+              "text": "你喜歡吃辣啊，我也是",
+              "correct": false,
+              "feedback": "平鋪直敘的對話不會被記住。同意本身不產生任何起伏。"
+            },
+            {
+              "id": "q-2-2-03-c",
+              "text": "那你敢吃麻辣鍋大辣嗎",
+              "correct": false,
+              "feedback": "方向對但太窄，她只能回敢或不敢，對話沒有空間。"
+            },
+            {
+              "id": "q-2-2-03-d",
+              "text": "好強喔",
+              "correct": false,
+              "feedback": "稱讚句沒有開口，她只能回「還好啦」。"
+            }
+          ],
+          "takeaway": "有效的起伏來自幽默、輕度的意見不同、玩笑式的挑戰與誇張化。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-4"
+          }
+        },
+        {
+          "id": "q-2-2-04",
+          "type": "pickReply",
+          "revision": 1,
+          "scenario": "你開了一個玩笑式的角色設定，她沒有接，直接換了話題。",
+          "question": "這時候該做什麼？",
+          "choices": [
+            {
+              "id": "q-2-2-04-a",
+              "text": "退回去換一個方向，也不解釋剛剛那個玩笑",
+              "correct": true,
+              "feedback": "對。她不接的時候那是資訊，不是障礙。玩笑框架的價值就在於她可以不接而不尷尬——你去追問就把那個價值毀了。"
+            },
+            {
+              "id": "q-2-2-04-b",
+              "text": "再開一個更誇張的，把氣氛拉回來",
+              "correct": false,
+              "feedback": "這是加壓。她剛剛用最低的成本告訴你「還沒到」，加碼會直接推成紅燈。"
+            },
+            {
+              "id": "q-2-2-04-c",
+              "text": "解釋一下剛剛那個玩笑的意思",
+              "correct": false,
+              "feedback": "解釋玩笑會讓兩個人都尷尬，而且問題不是她沒聽懂。"
+            },
+            {
+              "id": "q-2-2-04-d",
+              "text": "問她「你是不是不喜歡我這樣講話」",
+              "correct": false,
+              "feedback": "索取解釋，把你的不安丟給她處理。"
+            }
+          ],
+          "takeaway": "玩笑框架的價值是讓她能低成本表態。她不接就是資訊，退回去換方向。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-4"
+          }
+        },
+        {
+          "id": "q-2-2-05",
+          "type": "pickReply",
+          "revision": 1,
+          "scenario": "她：我今天面試完整個人是空的",
+          "question": "這一則你會怎麼回？",
+          "choices": [
+            {
+              "id": "q-2-2-05-a",
+              "text": "空到什麼程度，是想睡覺的空還是想吃一整份炸雞的空",
+              "correct": true,
+              "feedback": "對。往情緒走、給一個好答的二選一，而且分類本身有點好笑——三件事一次做到。"
+            },
+            {
+              "id": "q-2-2-05-b",
+              "text": "面試順利嗎",
+              "correct": false,
+              "feedback": "她給情緒，你回進度查核。開口就這樣被關上了。"
+            },
+            {
+              "id": "q-2-2-05-c",
+              "text": "辛苦了，早點休息",
+              "correct": false,
+              "feedback": "終結句。承認了但不延伸，對話無處可去。"
+            },
+            {
+              "id": "q-2-2-05-d",
+              "text": "我上次面試完也是，整個人廢掉",
+              "correct": false,
+              "feedback": "有共鳴、也有你自己，但沒有留開口給她——她只能回「對啊」。"
+            }
+          ],
+          "takeaway": "往情緒走，同時把回答門檻壓到最低。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-5"
+          }
+        },
+        {
+          "id": "q-2-2-06",
+          "type": "pickReply",
+          "revision": 1,
+          "scenario": "她問：你平常假日都在幹嘛？",
+          "question": "這一則你會怎麼回？",
+          "choices": [
+            {
+              "id": "q-2-2-06-a",
+              "text": "上禮拜立志早起去爬山，結果爬到一半在便利商店吃了兩顆茶葉蛋就回家了",
+              "correct": true,
+              "feedback": "對。具體、有畫面、自帶一點自嘲的起伏，而且她可以吐槽、可以接、可以問你去了哪座山。"
+            },
+            {
+              "id": "q-2-2-06-b",
+              "text": "就運動、看電影，還有跟朋友吃飯",
+              "correct": false,
+              "feedback": "三個類別、零個畫面。這種答案對誰都成立，所以她記不住。"
+            },
+            {
+              "id": "q-2-2-06-c",
+              "text": "看情況欸，你呢",
+              "correct": false,
+              "feedback": "把球丟回去等於什麼都沒說。她問你，是給你機會，不是要你反問。"
+            },
+            {
+              "id": "q-2-2-06-d",
+              "text": "我假日通常都在加班，滿無聊的",
+              "correct": false,
+              "feedback": "誠實，但把自己關掉了。主動把自己講得無聊會關閉方向——那是紅燈的做法，你不必對自己用。"
+            }
+          ],
+          "takeaway": "她問你的時候，是最便宜的一次露臉機會。給畫面，不要給類別。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-3"
+          }
+        },
+        {
+          "id": "q-2-2-07",
+          "type": "signalRead",
+          "revision": 1,
+          "scenario": "你講了茶葉蛋那段之後，她回：哈哈哈你這樣算爬山嗎？那我上次在陽明山也只走到停車場",
+          "question": "這則回覆是什麼燈？",
+          "choices": [
+            {
+              "id": "q-2-2-07-a",
+              "text": "🟢 綠燈——她接住玩笑，還加碼了自己的版本",
+              "correct": true,
+              "feedback": "對。接住、加碼、自我揭露一次到齊。這種時候可以開始往「一起去做某件事」的方向走。"
+            },
+            {
+              "id": "q-2-2-07-b",
+              "text": "🟡 黃燈——她只是禮貌地接玩笑",
+              "correct": false,
+              "feedback": "接得住但不加碼才是黃燈。她主動補了自己的糗事，那是加碼。"
+            },
+            {
+              "id": "q-2-2-07-c",
+              "text": "🟢 綠燈——所以要立刻追問她常不常去陽明山",
+              "correct": false,
+              "feedback": "燈讀對了，但立刻切回問句會把剛出現的起伏壓平。"
+            }
+          ],
+          "takeaway": "她開始貢獻自己的糗事，代表她願意在這段對話裡露臉。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-4"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,617 @@
+{
+  "schemaVersion": 1,
+  "id": "quiz-group-1",
+  "number": 1,
+  "key": "signal",
+  "title": "讀燈",
+  "subtitle": "她現在是什麼狀態",
+  "stageLabel": "破冰",
+  "levels": [
+    {
+      "id": "quiz-level-1-1",
+      "number": "1-1",
+      "title": "她現在是哪一種",
+      "goal": "把「我該說什麼」換成「她現在是哪一種狀態」。",
+      "access": "free",
+      "passRatio": 0.8,
+      "questions": [
+        {
+          "id": "q-1-1-01",
+          "type": "signalRead",
+          "revision": 1,
+          "scenario": "她（晚上 10:07）：哈哈哈那個真的很扯，我上次也遇過一模一樣的",
+          "question": "這則回覆是什麼燈？",
+          "choices": [
+            {
+              "id": "q-1-1-01-a",
+              "text": "🟢 綠燈——她主動給了超出你問的東西",
+              "correct": true,
+              "feedback": "對。她不只接話，還自己加了一段你沒問的經驗。這是綠燈最標準的長相：主動給超出你問的資訊。"
+            },
+            {
+              "id": "q-1-1-01-b",
+              "text": "🟡 黃燈——她只是禮貌地接住",
+              "correct": false,
+              "feedback": "禮貌接住是「哈哈對啊」就沒了。她主動補了自己的經驗，那是加碼，不是接住。"
+            },
+            {
+              "id": "q-1-1-01-c",
+              "text": "🔴 紅燈——她在轉移話題",
+              "correct": false,
+              "feedback": "轉移話題是離開你起的頭。她留在同一個話題裡，而且往裡面加東西。"
+            }
+          ],
+          "takeaway": "綠燈的判準不是熱情程度，是「她有沒有給超出你問的東西」。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-4"
+          }
+        },
+        {
+          "id": "q-1-1-02",
+          "type": "signalRead",
+          "revision": 1,
+          "scenario": "你：你說你在學陶藝，是興趣還是有想做什麼\n她（隔天中午）：就興趣啊哈哈",
+          "question": "這則回覆是什麼燈？",
+          "choices": [
+            {
+              "id": "q-1-1-02-a",
+              "text": "🟡 黃燈——接得住但不延伸",
+              "correct": true,
+              "feedback": "對。她回答了、也沒有冷掉，但沒有把任何新東西放進來。這是黃燈的標準長相：對稱回應、不加碼。"
+            },
+            {
+              "id": "q-1-1-02-b",
+              "text": "🟢 綠燈——她有回，而且還笑了",
+              "correct": false,
+              "feedback": "「哈哈」是潤滑，不是資訊。綠燈要看她有沒有主動給你沒問的東西。"
+            },
+            {
+              "id": "q-1-1-02-c",
+              "text": "🔴 紅燈——她在敷衍你",
+              "correct": false,
+              "feedback": "紅燈是回覆變短變慢、話題轉走不回來、明確拉開距離。隔天回一句完整的話，還沒到那裡。"
+            }
+          ],
+          "takeaway": "黃燈不是壞消息，是「維持，不加壓」的訊號。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-4"
+          }
+        },
+        {
+          "id": "q-1-1-03",
+          "type": "pickReply",
+          "revision": 1,
+          "scenario": "她（晚上 11:20）：今天上班快累死",
+          "question": "這一則你會怎麼回？",
+          "choices": [
+            {
+              "id": "q-1-1-03-a",
+              "text": "發生什麼事，是人的問題還是事的問題",
+              "correct": true,
+              "feedback": "對。往情緒走，而且給了一個超好答的二選一——她累的時候，回覆門檻越低越好。"
+            },
+            {
+              "id": "q-1-1-03-b",
+              "text": "辛苦了",
+              "correct": false,
+              "feedback": "這是終結句。它承認了但不延伸，對話無處可去。"
+            },
+            {
+              "id": "q-1-1-03-c",
+              "text": "那你早點休息",
+              "correct": false,
+              "feedback": "這是關心，但它把對話收掉了。她給的是開口，你回的是句點。"
+            },
+            {
+              "id": "q-1-1-03-d",
+              "text": "你都幾點下班？",
+              "correct": false,
+              "feedback": "她給情緒，你回事實查核。情緒的開口被換成問卷，熱度會直接掉。"
+            }
+          ],
+          "takeaway": "情緒是開口，事實是死路。對方給情緒的時候，永遠往情緒走。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-5"
+          }
+        },
+        {
+          "id": "q-1-1-04",
+          "type": "signalRead",
+          "revision": 1,
+          "scenario": "你：感覺你很會玩\n她：還好啦，我很無聊",
+          "question": "她這句話是什麼燈？",
+          "choices": [
+            {
+              "id": "q-1-1-04-a",
+              "text": "🔴 紅燈——她在關掉這個方向",
+              "correct": true,
+              "feedback": "對。當對方主動把自己描述得無趣、乖、無聊，那是禮貌性的煞車，不是謙虛。"
+            },
+            {
+              "id": "q-1-1-04-b",
+              "text": "🟡 黃燈——只是謙虛，可以再推一下",
+              "correct": false,
+              "feedback": "「哪有」才是黃燈。主動貶低自己是明確的拉開距離動作，再推就是加壓。"
+            },
+            {
+              "id": "q-1-1-04-c",
+              "text": "🟢 綠燈——她在等你反駁",
+              "correct": false,
+              "feedback": "這正是最貴的誤讀。把它當成邀請去反駁（「騙人，這種都最狠」），對話就死在那一句。"
+            }
+          ],
+          "takeaway": "對方主動把自己講得無聊，是在關閉這個方向。接受她給的方向，換軌。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-5"
+          }
+        },
+        {
+          "id": "q-1-1-05",
+          "type": "pickReply",
+          "revision": 1,
+          "scenario": "承上：她說「還好啦，我很無聊」",
+          "question": "這時候該送出哪一句？",
+          "choices": [
+            {
+              "id": "q-1-1-05-a",
+              "text": "好啦那就當你很無聊。無聊的人週末都在幹嘛",
+              "correct": true,
+              "feedback": "對。順著她的框架讓步、玩笑維持住，然後換到安全話題。這叫「她退你也退」。"
+            },
+            {
+              "id": "q-1-1-05-b",
+              "text": "騙人，這種都最狠",
+              "correct": false,
+              "feedback": "紅燈之後繼續加壓就是死亡。她不是誤會了，她是聽懂了。"
+            },
+            {
+              "id": "q-1-1-05-c",
+              "text": "開玩笑的啦，你當真了？",
+              "correct": false,
+              "feedback": "這是撤退，但問題不在她誤會，所以撤退救不回來，只會再尷尬一次。"
+            },
+            {
+              "id": "q-1-1-05-d",
+              "text": "那你平常都做什麼？",
+              "correct": false,
+              "feedback": "換軌方向對，但太生硬——前一句的玩笑就這樣掉在地上，變成查戶口。"
+            }
+          ],
+          "takeaway": "她退你也退。紅燈的正確處理是換軌，不是解釋，也不是加壓。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-5"
+          }
+        },
+        {
+          "id": "q-1-1-06",
+          "type": "signalRead",
+          "revision": 1,
+          "scenario": "你：你也住台北？\n她：對啊\n你：你在哪一區\n她：中山區",
+          "question": "「中山區」這則是什麼燈？",
+          "choices": [
+            {
+              "id": "q-1-1-06-a",
+              "text": "🟡 黃燈——她答了，但沒有多給",
+              "correct": true,
+              "feedback": "對。對稱回應、不延伸，就是黃燈。它同時也是一個可以延伸的具體資訊——黃燈的意思是「輪到你給料」，不是「她沒興趣」。"
+            },
+            {
+              "id": "q-1-1-06-b",
+              "text": "🔴 紅燈——三個字就是敷衍",
+              "correct": false,
+              "feedback": "短不等於紅。她仍然在回、也給了具體地點；判準是有沒有紅燈，不是熱度高低。"
+            },
+            {
+              "id": "q-1-1-06-c",
+              "text": "🟢 綠燈——她願意講住哪就是有興趣",
+              "correct": false,
+              "feedback": "她只回答了你問的。綠燈要看她有沒有給超出你問的東西。"
+            }
+          ],
+          "takeaway": "黃燈的意思是「輪到你給料了」。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-5"
+          }
+        },
+        {
+          "id": "q-1-1-07",
+          "type": "pickReply",
+          "revision": 1,
+          "scenario": "承上：她說「中山區」",
+          "question": "這一句你會怎麼回？",
+          "choices": [
+            {
+              "id": "q-1-1-07-a",
+              "text": "中山區？那你晚上應該有很多不該有的宵夜選擇。我在信義區，附近只有貴的和更貴的",
+              "correct": true,
+              "feedback": "對。誇張化製造起伏、順便側面講了自己，而且她可以推薦、可以吐槽、可以反問——開口留得很大。"
+            },
+            {
+              "id": "q-1-1-07-b",
+              "text": "喔喔，我在信義區",
+              "correct": false,
+              "feedback": "對稱事實換對稱事實。整段只剩單向索取，對話沒有任何前進。"
+            },
+            {
+              "id": "q-1-1-07-c",
+              "text": "中山區不錯欸，那你平常假日都在幹嘛",
+              "correct": false,
+              "feedback": "稱讚一句就換下一題，這是查戶口的標準節奏。她會越回越短。"
+            },
+            {
+              "id": "q-1-1-07-d",
+              "text": "好巧，我朋友也住那",
+              "correct": false,
+              "feedback": "資訊是別人的，不是你的。她還是不知道你是誰。"
+            }
+          ],
+          "takeaway": "每一則訊息都該同時做兩件事：接住她給的，和露出一點你自己。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-5"
+          }
+        },
+        {
+          "id": "q-1-1-08",
+          "type": "signalRead",
+          "revision": 1,
+          "scenario": "你：你真的超漂亮的\n她：謝謝哈哈",
+          "question": "「謝謝哈哈」是什麼燈？",
+          "choices": [
+            {
+              "id": "q-1-1-08-a",
+              "text": "🟡 黃燈——禮貌接住，沒有加碼",
+              "correct": true,
+              "feedback": "對。這是標準的社交回收：她接住了，但沒有給你任何新東西。把它當成綠燈再補一句稱讚，就會滑進紅燈。"
+            },
+            {
+              "id": "q-1-1-08-b",
+              "text": "🟢 綠燈——她道謝就是收下了",
+              "correct": false,
+              "feedback": "收下不等於加碼。泛用讚美換來的道謝，是最容易被誤讀成綠燈的黃燈。"
+            },
+            {
+              "id": "q-1-1-08-c",
+              "text": "🔴 紅燈——她覺得你很油",
+              "correct": false,
+              "feedback": "還沒到。真正把它推成紅燈的，是接下來再補一句「真的，我很少看到這麼有氣質的」。"
+            }
+          ],
+          "takeaway": "泛用讚美不是表達興趣，是低成本奉承——它不傳遞任何關於你的資訊。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-5"
+          }
+        },
+        {
+          "id": "q-1-1-09",
+          "type": "pickReply",
+          "revision": 1,
+          "scenario": "她的檔案上寫著「去年辭掉工作跑去唸書」。你們還沒說過話。",
+          "question": "開場你會送出哪一則？",
+          "choices": [
+            {
+              "id": "q-1-1-09-a",
+              "text": "你辭掉工作去唸書那段我看了滿久的——最難的是決定的那天，還是跟家人講的那天？",
+              "correct": true,
+              "feedback": "對。具體、自帶證據（證明你真的看了）、而且給她一個好答的二選一。你的認可有門檻，這比讚美有力。"
+            },
+            {
+              "id": "q-1-1-09-b",
+              "text": "你真的很有氣質欸",
+              "correct": false,
+              "feedback": "泛用讚美對誰都成立，所以它不傳遞任何關於你的資訊，也不會產生互惠。"
+            },
+            {
+              "id": "q-1-1-09-c",
+              "text": "哈囉，可以認識一下嗎",
+              "correct": false,
+              "feedback": "零資訊開場。在一個她同時有幾十個對話串的地方，這一則不會被記得。"
+            },
+            {
+              "id": "q-1-1-09-d",
+              "text": "唸書辛苦嗎？在哪唸？",
+              "correct": false,
+              "feedback": "兩個問句疊在一起就是查戶口的開場，而且完全沒有你自己。"
+            }
+          ],
+          "takeaway": "具體的觀察勝過任何形容詞。開場要讓她看得出「這一則只可能是寫給我的」。",
+          "source": {
+            "bookId": "ebook-1-bottleneck",
+            "chapterId": "ebook-1-chapter-4"
+          }
+        },
+        {
+          "id": "q-1-1-10",
+          "type": "signalRead",
+          "revision": 1,
+          "scenario": "你們昨晚聊得很好。她今天下午才回：抱歉昨天太累直接睡著了😂 你說的那家店在哪",
+          "question": "這則回覆是什麼燈？",
+          "choices": [
+            {
+              "id": "q-1-1-10-a",
+              "text": "🟢 綠燈——她主動把話題接回來了",
+              "correct": true,
+              "feedback": "對。她解釋了，還自己把上一個話題撿回來繼續問。在交友軟體上隔幾小時甚至隔天回是常態，判準是內容不是速度。"
+            },
+            {
+              "id": "q-1-1-10-b",
+              "text": "🟡 黃燈——隔了一整天，熱度已經掉了",
+              "correct": false,
+              "feedback": "用時間差判斷熱度是最常見的誤讀。她回來的內容，比很多人的秒回還積極。"
+            },
+            {
+              "id": "q-1-1-10-c",
+              "text": "🔴 紅燈——她在找藉口",
+              "correct": false,
+              "feedback": "她如果想結束，最省力的做法是不回。主動解釋加追問，方向剛好相反。"
+            }
+          ],
+          "takeaway": "在交友軟體上，回覆速度是雜訊，內容才是訊號。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-4"
+          }
+        }
+      ]
+    },
+    {
+      "id": "quiz-level-1-2",
+      "number": "1-2",
+      "title": "消極期先止損",
+      "goal": "認出三種拒絕訊號，並且在該停的時候停。",
+      "access": "premium",
+      "passRatio": 0.8,
+      "questions": [
+        {
+          "id": "q-1-2-01",
+          "type": "signalRead",
+          "revision": 1,
+          "scenario": "你提了週末去喝咖啡。她（隔天）：最近工作比較忙欸",
+          "question": "這句話該怎麼讀？",
+          "choices": [
+            {
+              "id": "q-1-2-01-a",
+              "text": "🔴 偏紅——這通常是委婉拒絕，但還不是最終答案",
+              "correct": true,
+              "feedback": "對。「最近比較忙」多半是委婉拒絕，但不總是。正確做法是給台階、不追問，然後把主動權交還給她。"
+            },
+            {
+              "id": "q-1-2-01-b",
+              "text": "🟢 綠燈——她只是真的忙，過幾天再約就好",
+              "correct": false,
+              "feedback": "有可能，但把它預設成綠燈的人，通常會在三天後再約一次，然後把偏紅推成全紅。"
+            },
+            {
+              "id": "q-1-2-01-c",
+              "text": "🔴 紅燈——她已經明確拒絕，直接結束",
+              "correct": false,
+              "feedback": "還沒到那裡。明確拒絕會講得比這個清楚。這一句要做的是給台階，不是自己先結束。"
+            }
+          ],
+          "takeaway": "「最近比較忙」是要你先退一步的訊號，不是要你換個時間再問一次。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-5"
+          }
+        },
+        {
+          "id": "q-1-2-02",
+          "type": "pickReply",
+          "revision": 1,
+          "scenario": "承上：她說「最近工作比較忙欸」",
+          "question": "這時候該送出哪一句？",
+          "choices": [
+            {
+              "id": "q-1-2-02-a",
+              "text": "那先不吵你。忙完跟我說，我把那間店留著",
+              "correct": true,
+              "feedback": "對。給台階、不索取解釋、把門留著，而且主動權交還給她。這一句之後你就不動了。"
+            },
+            {
+              "id": "q-1-2-02-b",
+              "text": "那你大概忙到什麼時候？我再問你一次",
+              "correct": false,
+              "feedback": "這是把委婉拒絕當成行程問題，等於要她再拒絕一次，而且這次得講得更難聽。"
+            },
+            {
+              "id": "q-1-2-02-c",
+              "text": "好吧，那就算了",
+              "correct": false,
+              "feedback": "帶情緒的收手不是收手，是在討一個挽留。"
+            },
+            {
+              "id": "q-1-2-02-d",
+              "text": "忙也要吃飯啊，就一小時而已",
+              "correct": false,
+              "feedback": "她已經給了台階，這是把台階抽掉。降低門檻要用在她猶豫的時候，不是用在她已經退開的時候。"
+            }
+          ],
+          "takeaway": "對方退一步的時候，你也退一步——而且不要求解釋。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-5"
+          }
+        },
+        {
+          "id": "q-1-2-03",
+          "type": "signalRead",
+          "revision": 1,
+          "scenario": "她（隔天）：不好意思，我想我們可能不太適合，祝你順利",
+          "question": "這則訊息是什麼燈？",
+          "choices": [
+            {
+              "id": "q-1-2-03-a",
+              "text": "🔴 紅燈——這不是要你判讀的訊號，這是答案",
+              "correct": true,
+              "feedback": "對。這種話沒有隱藏含義，也沒有救援空間。這一題唯一該做的動作在下一題。"
+            },
+            {
+              "id": "q-1-2-03-b",
+              "text": "🟡 黃燈——她只是還不夠了解你",
+              "correct": false,
+              "feedback": "把明確拒絕讀成「不夠了解」，接下來的每一步都會變成騷擾。"
+            },
+            {
+              "id": "q-1-2-03-c",
+              "text": "🔴 偏紅——先冷一陣子再重啟一次",
+              "correct": false,
+              "feedback": "重啟只用在她沒有回應的時候。她已經明確講了，重啟就是不接受答案。"
+            }
+          ],
+          "takeaway": "有些訊息不是訊號，是答案。",
+          "source": {
+            "bookId": "ebook-3-rescue",
+            "chapterId": "ebook-3-chapter-1"
+          }
+        },
+        {
+          "id": "q-1-2-04",
+          "type": "pickReply",
+          "revision": 1,
+          "scenario": "承上：她說「我想我們可能不太適合，祝你順利」",
+          "question": "這時候該做什麼？",
+          "choices": [
+            {
+              "id": "q-1-2-04-a",
+              "text": "回一句「了解，也祝你順利」，然後結束，不再傳訊息",
+              "correct": true,
+              "feedback": "對。這是真的拒絕，該停了。回一句得體的話然後停手，不是失敗，那是唯一正確的動作。"
+            },
+            {
+              "id": "q-1-2-04-b",
+              "text": "問她是哪裡不適合，說你可以改",
+              "correct": false,
+              "feedback": "索取解釋是把成本轉嫁給已經拒絕你的人。她沒有義務教你，你也不該用「我可以改」延長這一段。"
+            },
+            {
+              "id": "q-1-2-04-c",
+              "text": "說「好，那之後改變想法隨時找我」",
+              "correct": false,
+              "feedback": "聽起來體貼，但它留了一個要她處理的尾巴。她要的是結束，不是待辦事項。"
+            },
+            {
+              "id": "q-1-2-04-d",
+              "text": "先不回，過兩週再傳一則輕鬆的訊息重啟",
+              "correct": false,
+              "feedback": "明確拒絕之後的重啟不是「有點可惜」，是有點恐怖。重啟只用在沒有回應，不是用在已經收到答案。"
+            }
+          ],
+          "takeaway": "收到明確拒絕就停手。這是紅燈，而紅燈是最常見、也最正確的診斷結果。",
+          "source": {
+            "bookId": "ebook-3-rescue",
+            "chapterId": "ebook-3-chapter-1"
+          }
+        },
+        {
+          "id": "q-1-2-05",
+          "type": "signalRead",
+          "revision": 1,
+          "scenario": "你們最後一次對話還算正常。你傳了一則之後，三天沒有任何回應。",
+          "question": "這個狀況怎麼讀？",
+          "choices": [
+            {
+              "id": "q-1-2-05-a",
+              "text": "🔴 偏紅——可以輕度重啟一次，只有一次",
+              "correct": true,
+              "feedback": "對。沒有回應不等於明確拒絕，所以還有一次無壓力重啟的空間。但規則是只做一次，沒回就結束。"
+            },
+            {
+              "id": "q-1-2-05-b",
+              "text": "🟡 黃燈——她只是忙，再等等就好",
+              "correct": false,
+              "feedback": "三天無回應已經不是黃燈。黃燈是她還在回，只是不加碼。"
+            },
+            {
+              "id": "q-1-2-05-c",
+              "text": "🔴 紅燈——直接結束，不要再傳",
+              "correct": false,
+              "feedback": "也不必這麼早收。跟明確拒絕不同，沉默還留著一次低成本的重啟。"
+            }
+          ],
+          "takeaway": "沉默給你一次重啟；明確的拒絕連一次都沒有。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-5"
+          }
+        },
+        {
+          "id": "q-1-2-06",
+          "type": "pickReply",
+          "revision": 1,
+          "scenario": "承上：三天沒有回應，你決定用掉那一次重啟。",
+          "question": "這一則你會傳什麼？",
+          "choices": [
+            {
+              "id": "q-1-2-06-a",
+              "text": "剛剛路過那家你說過的店，隊排到轉角，你到底是怎麼吃到的",
+              "correct": true,
+              "feedback": "對。有具體理由、證明你記得她說過的事、沒有質問也沒有索取解釋，而且她可以輕鬆回、也可以繼續不回而不尷尬。"
+            },
+            {
+              "id": "q-1-2-06-b",
+              "text": "在嗎？",
+              "correct": false,
+              "feedback": "無來由、零資訊，而且把「要不要解釋」的壓力丟回給她。"
+            },
+            {
+              "id": "q-1-2-06-c",
+              "text": "是不是我哪裡讓你不舒服了？",
+              "correct": false,
+              "feedback": "索取安慰。它要求對方處理你的情緒，而她連回都還沒回。"
+            },
+            {
+              "id": "q-1-2-06-d",
+              "text": "把上一則一模一樣的話再傳一次",
+              "correct": false,
+              "feedback": "重傳等於提醒她「你沒回我」，那是質問的另一種寫法。"
+            }
+          ],
+          "takeaway": "重啟只做一次，而且不能帶任何要她解釋的東西。",
+          "source": {
+            "bookId": "ebook-2-conversation",
+            "chapterId": "ebook-2-chapter-5"
+          }
+        },
+        {
+          "id": "q-1-2-07",
+          "type": "signalRead",
+          "revision": 1,
+          "scenario": "你們聊得很順，但你已經提過兩次見面，她都笑著帶過，沒有拒絕也沒有答應。",
+          "question": "這個狀況該怎麼讀？",
+          "choices": [
+            {
+              "id": "q-1-2-07-a",
+              "text": "🔴 偏紅——兩次提案沒進展就收，把時間放到新的對話",
+              "correct": true,
+              "feedback": "對。有一部分使用者主要就是在使用聊天功能，這跟你的技術無關，也修不動。兩次提案是合理的停損點。"
+            },
+            {
+              "id": "q-1-2-07-b",
+              "text": "🟢 綠燈——聊得順就是有機會，再多聊一陣子",
+              "correct": false,
+              "feedback": "聊得順只證明對話品質，不證明她想見面。超過兩週的對話，見面率會大幅下降。"
+            },
+            {
+              "id": "q-1-2-07-c",
+              "text": "🔴 紅燈——她在耍你，直接封鎖",
+              "correct": false,
+              "feedback": "她沒有做錯任何事。停損是收回自己的時間，不是判對方有罪。"
+            }
+          ],
+          "takeaway": "停損不是失敗，是把時間搬到還有機會的地方。",
+          "source": {
+            "bookId": "ebook-3-rescue",
+            "chapterId": "ebook-3-chapter-3"
+          }
+        }
+      ]
+    }
+  ]
+}
