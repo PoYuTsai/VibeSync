@@ -10,7 +10,10 @@ import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.d
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_list_screen.dart';
 import 'package:vibesync/features/partner/presentation/widgets/home_coach_presence.dart';
+import 'package:vibesync/features/partner/presentation/widgets/home_feature_entries.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_list_card.dart';
+import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
+import 'package:vibesync/features/subscription/presentation/widgets/home_quota_strip.dart';
 
 Partner _p(String id, String name) => Partner(
   id: id,
@@ -46,6 +49,21 @@ Conversation _conv(String id, String partnerId) => Conversation(
   partnerId: partnerId,
 );
 
+/// Seeded subscription notifier（my_report_screen_test idiom）：首頁掛了
+/// HomeQuotaStrip 後，測試一律用 seeded 訂閱態＋no-op 刷新保持封閉。
+class _SeededSubscriptionNotifier extends SubscriptionNotifier {
+  _SeededSubscriptionNotifier(SubscriptionState seed) {
+    state = seed;
+  }
+}
+
+List<Override> _subscriptionOverrides({
+  SubscriptionState seed = const SubscriptionState(),
+}) => [
+  subscriptionProvider.overrideWith((_) => _SeededSubscriptionNotifier(seed)),
+  subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+];
+
 List<Override> _partnerOverrides(int count) {
   final partners = [
     for (var i = 0; i < count; i++) _p('p$i', 'Person ${i + 1}'),
@@ -63,7 +81,7 @@ List<Override> _partnerOverrides(int count) {
 }
 
 Widget _screen({required List<Override> overrides}) => ProviderScope(
-  overrides: overrides,
+  overrides: [..._subscriptionOverrides(), ...overrides],
   child: const MaterialApp(
     home: MediaQuery(
       data: MediaQueryData(disableAnimations: true),
@@ -75,7 +93,7 @@ Widget _screen({required List<Override> overrides}) => ProviderScope(
 /// GoRouter harness for the empty-state CTAs (案 3) — the buttons call
 /// context.push, so navigation assertions need real routes to land on.
 Widget _routedScreen({required List<Override> overrides}) => ProviderScope(
-  overrides: overrides,
+  overrides: [..._subscriptionOverrides(), ...overrides],
   child: MaterialApp.router(
     routerConfig: GoRouter(
       initialLocation: '/',
@@ -164,6 +182,12 @@ void main() {
         await t.pumpWidget(_screen(overrides: _partnerOverrides(count)));
         await t.pumpAndSettle();
 
+        // Tier 2 批 1 加了頂部額度小條＋入口列後，2 張卡的內容可能略超出
+        // 視窗；不再保證免捲動貼底，改守「捲到底後 Sydney 恰好收在
+        // bottom padding 之上、絕不從底部導航下露出」。
+        await t.drag(find.byType(Scrollable), const Offset(0, -300));
+        await t.pumpAndSettle();
+
         final scaffoldBottom = t.getRect(find.byType(Scaffold)).bottom;
         final coachBottom = t.getRect(find.byType(HomeCoachPresence)).bottom;
 
@@ -221,6 +245,32 @@ void main() {
     final zoe = t.getTopLeft(find.text('Zoe'));
     final alice = t.getTopLeft(find.text('Alice'));
     expect(zoe.dy < alice.dy, isTrue, reason: 'Zoe must render above Alice');
+  });
+
+  group('首頁頂部掛載（Tier 2 批 1：額度小條＋功能入口列）', () {
+    testWidgets('empty state 掛上 QuotaStrip 與 FeatureEntries，CTA 保留', (t) async {
+      await t.pumpWidget(
+        _screen(
+          overrides: [
+            partnerListProvider.overrideWith((_) => const <Partner>[]),
+          ],
+        ),
+      );
+      await t.pumpAndSettle();
+
+      expect(find.byType(HomeQuotaStrip), findsOneWidget);
+      expect(find.byType(HomeFeatureEntries), findsOneWidget);
+      expect(find.text('建立對象卡，開始分析'), findsOneWidget);
+    });
+
+    testWidgets('非空 state 也掛上兩個新 widget', (t) async {
+      await t.pumpWidget(_screen(overrides: _partnerOverrides(2)));
+      await t.pumpAndSettle();
+
+      expect(find.byType(HomeQuotaStrip), findsOneWidget);
+      expect(find.byType(HomeFeatureEntries), findsOneWidget);
+      expect(find.byType(PartnerListCard), findsNWidgets(2));
+    });
   });
 
   group('empty state CTAs（案 3 冷啟動分流）', () {

@@ -21,6 +21,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
+import '../../../subscription/presentation/widgets/home_quota_strip.dart';
 import '../../data/providers/partner_banner_providers.dart';
 import '../../data/providers/partner_write_controller.dart';
 import '../../data/repositories/partner_repository.dart';
@@ -28,6 +29,7 @@ import '../../data/services/partner_banner_service.dart';
 import '../../domain/entities/partner.dart';
 import '../providers/partner_providers.dart';
 import '../widgets/home_coach_presence.dart';
+import '../widgets/home_feature_entries.dart';
 import '../widgets/partner_list_card.dart';
 import '../widgets/same_name_dedupe_banner.dart';
 
@@ -48,6 +50,10 @@ class PartnerListScreen extends ConsumerWidget {
       return ListView(
         padding: EdgeInsets.fromLTRB(24, 24, 24, bottomPadding),
         children: [
+          // Tier 2 批 1：額度小條＋功能入口列，空／非空兩態都掛。
+          const HomeQuotaStrip(),
+          const HomeFeatureEntries(),
+          const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Column(
@@ -122,6 +128,14 @@ class PartnerListScreen extends ConsumerWidget {
 
     return CustomScrollView(
       slivers: [
+        // Tier 2 批 1：頂部掛額度小條＋功能入口列。用 SliverToBoxAdapter
+        // 而非塞進 SliverList，banner／partner 的 index 算法完全不動。
+        const SliverPadding(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+          sliver: SliverToBoxAdapter(
+            child: Column(children: [HomeQuotaStrip(), HomeFeatureEntries()]),
+          ),
+        ),
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           sliver: SliverList.builder(
