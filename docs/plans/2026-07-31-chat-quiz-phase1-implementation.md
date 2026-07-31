@@ -138,7 +138,7 @@
 - Create: `lib/features/learning/domain/models/chat_quiz.dart`
 - Create: `lib/features/learning/data/repositories/chat_quiz_catalog_repository.dart`
 - Test: `test/unit/features/learning/chat_quiz_catalog_test.dart`
-- Modify: `pubspec.yaml`（`assets:` 加 `- assets/learning/quizzes/`）
+- ~~Modify: `pubspec.yaml`~~ → **移到 Task 5**。`flutter build` 對「宣告了但不存在的 asset 目錄」是硬錯誤（`unable to find directory entry in pubspec.yaml`），而目錄要到 Task 5 才有檔案。放在 Task 1 會讓 Task 1–4 這四個 commit 都是不可 build 的狀態。`flutter test` 不受影響，所以 Task 1–4 的測試照跑。
 
 **Step 1: 先寫失敗測試**
 
@@ -307,6 +307,7 @@ ChatQuizGate gateFor(EbookAccess required, EbookSubscriptionAccess sub);
 **Files:**
 - Create: `assets/learning/quizzes/group_1_signal.json`
 - Create: `assets/learning/quizzes/group_2_lifeline.json`
+- Modify: `pubspec.yaml`（`assets:` 加 `- assets/learning/quizzes/`；從 Task 1 移過來，見該節說明）
 
 | 關 | 題數 | 權限 | 題型 | 取材 |
 |---|---|---|---|---|
