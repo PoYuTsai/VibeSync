@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,8 +15,15 @@ import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_list_screen.dart';
+import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
+import 'package:vibesync/features/follow_up_notification/data/follow_up_opt_in_store.dart';
+import 'package:vibesync/features/follow_up_notification/data/providers/follow_up_notification_service.dart';
+import 'package:vibesync/features/follow_up_notification/domain/follow_up_opt_in.dart';
+import 'package:vibesync/features/report/data/providers/report_providers.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/features/user_profile/data/providers/user_profile_providers.dart';
+import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 import 'package:vibesync/shared/widgets/warm_theme_widgets.dart';
 
 import 'proof_support.dart';
@@ -46,6 +54,19 @@ class _SeededSubscriptionNotifier extends SubscriptionNotifier {
   }
 }
 
+class _NullUserProfileController extends UserProfileController {
+  @override
+  Future<UserProfile?> build() async => null;
+}
+
+class _FakeOptInStore implements FollowUpOptInStore {
+  @override
+  FollowUpOptIn read() => FollowUpOptIn.unknown;
+
+  @override
+  Future<void> write(FollowUpOptIn value) async {}
+}
+
 List<Override> _subscriptionOverrides() => [
       subscriptionProvider.overrideWith(
         (_) => _SeededSubscriptionNotifier(
@@ -57,6 +78,12 @@ List<Override> _subscriptionOverrides() => [
         ),
       ),
       subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+      // 批 2 起步清單卡的訊號 seed：proof 呈現「一項未完成都沒有勾」態。
+      userProfileControllerProvider
+          .overrideWith(_NullUserProfileController.new),
+      analysisHistoryEventsProvider
+          .overrideWithValue(const <AnalysisHistoryEvent>[]),
+      followUpOptInStoreProvider.overrideWithValue(_FakeOptInStore()),
     ];
 
 Partner _p(String id, String name) => Partner(
@@ -211,6 +238,8 @@ void main() {
   setUpAll(_loadFonts);
 
   testWidgets('prod partner home', (tester) async {
+    // 起步清單卡含「設定 AI 鍵盤」項僅 iOS 顯示，proof 以 iOS 呈現全貌。
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     final partners = [
       _p('amy', 'Amy'),
       _p('jenny', 'Jenny'),
@@ -268,10 +297,12 @@ void main() {
       ),
       outPath: outPath('prod_partner_home.png'),
     );
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('prod partner home — empty state with quota strip and entries',
       (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     await pumpAndCapture(
       tester,
       child: ProviderScope(
@@ -288,5 +319,6 @@ void main() {
       rasterDecodeWait: const Duration(milliseconds: 600),
       outPath: outPath('prod_partner_home_empty.png'),
     );
+    debugDefaultTargetPlatformOverride = null;
   });
 }

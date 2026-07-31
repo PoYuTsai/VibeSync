@@ -1,8 +1,9 @@
-// Visual proof for the 2026-08-01 onboarding conversion Tier 1 batch:
+// Visual proof for the onboarding conversion batches (Tier 1 + Tier 2 批 2):
 // page 1 Sydney greeting hero / page 2 demo signal card / page 3 demo styles
-// card / page 4 privacy (unchanged shield icon) / page 5 branching page with
-// Sydney encouragement. Renders the REAL OnboardingScreen and flings through
-// all five pages so the batch can be eyeballed without waiting for a build.
+// card / page 4 questionnaire (批 2) / page 5 privacy / page 6 branching page
+// with Sydney encouragement. Renders the REAL OnboardingScreen and steps
+// through all six pages so the batch can be eyeballed without waiting for a
+// build.
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -41,7 +42,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('onboarding tier1 batch — all five pages', (tester) async {
+  testWidgets('onboarding conversion — all six pages', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -82,15 +83,16 @@ void main() {
     }
 
     await settleAndDecode();
-    await capture('onboarding_tier1_page1.png');
+    await capture('onboarding_page1.png');
 
     const pageMarkers = {
       2: '即時看懂她的訊號',
       3: '五種風格，選最對的那句',
-      4: 'AI 與你的隱私',
-      5: '你現在有正在聊的對象嗎？',
+      4: '30 秒，讓建議更像你',
+      5: 'AI 與你的隱私',
+      6: '你現在有正在聊的對象嗎？',
     };
-    for (var page = 2; page <= 5; page++) {
+    for (var page = 2; page <= 6; page++) {
       // 用真實使用者路徑（「下一步」按鈕）翻頁；390 寬畫布上 fling 的
       // 手勢競技場行為與 800 寬預設畫布不同，不可靠。
       await tester.tap(find.text('下一步'));
@@ -101,7 +103,7 @@ void main() {
         findsOneWidget,
         reason: '應該已翻到第 $page 頁',
       );
-      await capture('onboarding_tier1_page$page.png');
+      await capture('onboarding_page$page.png');
     }
   });
 }
