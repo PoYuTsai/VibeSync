@@ -452,6 +452,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         onUsageSynced,
     void Function(String profileId)? onProfileUnlocked,
     AnalysisHistoryRepository? historyRepository,
+    FunnelTracker? funnelTracker,
     PracticeSession? initialSession,
     String? sessionId,
     DateTime? createdAt,
@@ -472,6 +473,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           onUsageSynced: onUsageSynced,
           onProfileUnlocked: onProfileUnlocked,
           historyRepository: historyRepository,
+          funnelTracker: funnelTracker,
           initialSession: initialSession,
           sessionId: sessionId,
           createdAt: createdAt,
@@ -494,6 +496,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         onUsageSynced,
     required void Function(String profileId)? onProfileUnlocked,
     required AnalysisHistoryRepository? historyRepository,
+    FunnelTracker? funnelTracker,
     required PracticeSession? initialSession,
     required String? sessionId,
     required DateTime? createdAt,
@@ -510,6 +513,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         _onUsageSynced = onUsageSynced,
         _onProfileUnlocked = onProfileUnlocked,
         _historyRepository = historyRepository,
+        _funnelTracker = funnelTracker ?? FunnelTracker(),
         _hintRequestTimeout = hintRequestTimeout,
         _sendMessageTimeout = sendMessageTimeout,
         _hintPrefetchRetryDelay = hintPrefetchRetryDelay,
@@ -535,6 +539,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       required int dailyRemaining})? _onUsageSynced;
   final void Function(String profileId)? _onProfileUnlocked;
   final AnalysisHistoryRepository? _historyRepository;
+  final FunnelTracker _funnelTracker;
   final Duration _hintRequestTimeout;
   final Duration _sendMessageTimeout;
   final Duration _hintPrefetchRetryDelay;
@@ -2231,7 +2236,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       await _clearAppliedHintTurnsForSession(requestSessionId);
       // Tier 2 批 1.5：首局練習完成漏斗事件（once-flag 去重，best-effort，
       // 不分模式——標準模式收操也算完成第一局）。
-      unawaited(FunnelTracker().trackOnce('first_practice_completed'));
+      unawaited(_funnelTracker.trackOnce('first_practice_completed'));
       final girl = completedState.girl;
       if (girl != null) {
         await _recordPracticeHistoryEvent(completedState, girl.profileId);
@@ -2707,6 +2712,7 @@ final practiceChatControllerProvider = StateNotifierProvider.autoDispose<
       ref.read(practiceCollectionProvider.notifier).add(profileId);
     },
     historyRepository: historyRepository,
+    funnelTracker: ref.read(funnelTrackerProvider),
   );
 });
 

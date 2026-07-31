@@ -116,22 +116,22 @@ Deno.test("questionnaire_submit accepts style_set bool and goals_count in range"
   }
 });
 
+// 鍵級對齊鎖（Grok 審查 F5）：整張 event → property keys map 與字典逐字鎖死。
+// client 端 funnel_tracker_test.dart 有同一張表的對等測試；任一側單邊改動
+// 都會讓該側測試轉紅（鍵盤案白名單漂移的防回歸網）。
 Deno.test("dictionary stays aligned with docs/integrations/funnel-events-v1.md", () => {
-  assertEquals(
-    Object.keys(FUNNEL_EVENT_PROPS).sort(),
-    [
-      "checklist_item_done",
-      "coach_entry_tap",
-      "first_analysis_completed",
-      "first_practice_completed",
-      "keyboard_setup_completed",
-      "keyboard_setup_shown",
-      "onboarding_branch_answer",
-      "onboarding_page_view",
-      "onboarding_questionnaire_submit",
-      "onboarding_skip",
-      "opener_entry_tap",
-      "quota_strip_tap",
-    ],
-  );
+  assertEquals(FUNNEL_EVENT_PROPS, {
+    onboarding_page_view: ["page_index"],
+    onboarding_skip: ["page_index"],
+    onboarding_branch_answer: ["has_partner"],
+    onboarding_questionnaire_submit: ["style_set", "goals_count"],
+    quota_strip_tap: [],
+    opener_entry_tap: [],
+    coach_entry_tap: ["has_partner"],
+    first_analysis_completed: [],
+    first_practice_completed: [],
+    keyboard_setup_shown: [],
+    keyboard_setup_completed: [],
+    checklist_item_done: ["item"],
+  });
 });

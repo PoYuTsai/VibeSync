@@ -75,13 +75,21 @@ class FunnelTracker {
 
   /// 本機 once-flag 去重版（first_* 類事件用）。attempt-once 語意：
   /// 旗標在出手前就落，失敗不補送，避免重試風暴。
+  /// [onceKey] 讓同事件不同維度各自去重（如 checklist 逐項）。
   Future<void> trackOnce(
     String event, {
     Map<String, Object?> properties = const {},
+    String? onceKey,
   }) async {
+    // 先驗白名單再落 once-flag（GLM 審查 F6：否則 typo 事件會把旗標
+    // 燒掉，真事件永遠送不出且無聲無息）。
+    if (!eventProps.containsKey(event)) {
+      debugPrint('[FunnelTracker] unknown once event dropped: $event');
+      return;
+    }
     try {
       final prefs = await SharedPreferences.getInstance();
-      final key = 'funnel_once_$event';
+      final key = 'funnel_once_${onceKey ?? event}';
       if (prefs.getBool(key) ?? false) return;
       await prefs.setBool(key, true);
     } catch (e) {

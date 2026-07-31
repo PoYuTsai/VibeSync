@@ -67,6 +67,32 @@ void main() {
     await tracker.track('quota_strip_tap');
   });
 
+  test('鍵級白名單與字典逐字鎖死（Grok F5：防單邊漂移）', () {
+    expect(FunnelTracker.eventProps, {
+      'onboarding_page_view': ['page_index'],
+      'onboarding_skip': ['page_index'],
+      'onboarding_branch_answer': ['has_partner'],
+      'onboarding_questionnaire_submit': ['style_set', 'goals_count'],
+      'quota_strip_tap': <String>[],
+      'opener_entry_tap': <String>[],
+      'coach_entry_tap': ['has_partner'],
+      'first_analysis_completed': <String>[],
+      'first_practice_completed': <String>[],
+      'keyboard_setup_shown': <String>[],
+      'keyboard_setup_completed': <String>[],
+      'checklist_item_done': ['item'],
+    });
+  });
+
+  test('trackOnce：字典外事件不落 once-flag（GLM F6）', () async {
+    final tracker = FunnelTracker(invoker: (fn, {required body}) async => 200);
+
+    await tracker.trackOnce('not_in_dict');
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('funnel_once_not_in_dict'), isNull);
+  });
+
   test('trackOnce：同事件只送一次，跨 instance 也擋', () async {
     var calls = 0;
     FunnelTracker build() => FunnelTracker(

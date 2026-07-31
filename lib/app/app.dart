@@ -99,7 +99,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         _keyboardOnboardingPending = false;
         return;
       }
-      unawaited(FunnelTracker().track('keyboard_setup_shown'));
+      unawaited(
+        ref.read(funnelTrackerProvider).track('keyboard_setup_shown'),
+      );
       router.push('/settings/keyboard?firstRun=1').whenComplete(() {
         _keyboardOnboardingPending = false;
       });
