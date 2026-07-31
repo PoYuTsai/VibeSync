@@ -5,6 +5,7 @@
 //   2. 訂閱狀態還在確認時**不得出現付費文案**——那個 bug 的外觀是「一開 App
 //      就被推銷」，不是任何錯誤。
 //   3. 付費入口只出現一次。同一個功能出現三次升級提示，讀起來就是在推銷。
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/learning/data/repositories/chat_quiz_progress_repository.dart';
 import 'package:vibesync/features/learning/domain/models/chat_quiz.dart';
@@ -217,5 +218,39 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('關卡載入失敗'), findsOneWidget);
+  });
+
+  testWidgets('從別的頁 push 進來時，畫面上有回上一頁的入口', (tester) async {
+    final harness = await pumpChatQuizApp(
+      tester,
+      initialLocation: '/',
+      catalog: _catalog(),
+      access: const EbookSubscriptionAccess.free(),
+      mapBuilder: (_, __) => const ChatQuizMapScreen(),
+    );
+    await tester.pumpAndSettle();
+
+    harness.router.push('/learning/quiz');
+    await tester.pumpAndSettle();
+    expect(find.text('判讀訓練場'), findsOneWidget);
+
+    // 回上一頁的入口：AppBar 左上角的返回鍵。
+    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    expect(find.text('HOME_STUB'), findsOneWidget);
+  });
+
+  testWidgets('deep link 直接進來也有出口：返回鍵退回學習頁', (tester) async {
+    // 沒有可 pop 的 route 時，AppBar 的 automaticallyImplyLeading 不會給返回鍵。
+    // 這一條就是那個死角的守門。
+    final harness = await _pump(tester);
+
+    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    expect(harness.location, startsWith('/'));
+    expect(find.text('判讀訓練場'), findsNothing);
   });
 }

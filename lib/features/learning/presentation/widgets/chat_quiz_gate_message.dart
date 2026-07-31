@@ -8,39 +8,47 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 
 /// 測驗頁共用外框。
+///
+/// 返回鍵**一律顯式提供**，不靠 AppBar 的 `automaticallyImplyLeading`：
+/// 那個只有在有東西可 pop 時才出現，deep link 或 tab 直接切進來時整頁就沒有
+/// 出口了。同一套寫法見 `ebook_detail_screen.dart` / `ebook_reader_screen.dart`。
 class ChatQuizGateScaffold extends StatelessWidget {
   const ChatQuizGateScaffold({
     super.key,
     required this.title,
     required this.child,
-    this.onClose,
+    this.fallbackLocation = '/?tab=learning',
   });
 
   final String title;
   final Widget child;
 
-  /// 右上角的關閉鍵。`null` 時用系統返回。
-  final VoidCallback? onClose;
+  /// 沒有可 pop 的 route 時退回哪裡（deep link 進來的情況）。
+  /// 答題器與結果頁退回關卡地圖，關卡地圖退回學習頁。
+  final String fallbackLocation;
 
   @override
   Widget build(BuildContext context) {
     return BrandScaffold(
       title: title,
-      actions: [
-        if (onClose != null)
-          IconButton(
-            onPressed: onClose,
-            icon: const Icon(Icons.close),
-            tooltip: '離開',
-            color: AppColors.onBackgroundSecondary,
-          ),
-      ],
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back),
+        tooltip: '返回',
+        onPressed: () {
+          if (context.canPop()) {
+            context.pop();
+          } else {
+            context.go(fallbackLocation);
+          }
+        },
+      ),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
         child: child,

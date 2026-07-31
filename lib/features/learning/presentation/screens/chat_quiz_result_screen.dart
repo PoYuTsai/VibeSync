@@ -99,7 +99,7 @@ class _ChatQuizResultScreenState extends State<ChatQuizResultScreen>
 
     return ChatQuizGateScaffold(
       title: '${level.number} ${level.title}',
-      onClose: widget.onBackToMap,
+      fallbackLocation: '/learning/quiz',
       child: ListView(
         padding: EdgeInsets.zero,
         children: [

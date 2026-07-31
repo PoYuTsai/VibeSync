@@ -187,7 +187,7 @@ class _ChatQuizPlayerBodyState extends ConsumerState<ChatQuizPlayerBody> {
 
     return ChatQuizGateScaffold(
       title: '${level.number} ${level.title}',
-      onClose: () => context.go('/learning/quiz'),
+      fallbackLocation: '/learning/quiz',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
