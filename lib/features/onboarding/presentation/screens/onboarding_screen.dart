@@ -10,10 +10,13 @@
 // 2026-07-06 案 3 冷啟動分流：第 5 頁新增 _OnboardingBranchingPage 分流頁
 // （有對象 → /partner/new；還沒 → /practice-collection），原「開始使用」
 // 完成 CTA 移除，分流頁的動作按鈕在頁內、底部「下一步」隱藏。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/ai_privacy_disclosure.dart';
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
@@ -80,6 +83,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   void _skipOnboarding() {
+    unawaited(
+      ref
+          .read(funnelTrackerProvider)
+          .track('onboarding_skip', properties: {'page_index': _currentPage}),
+    );
     _completeOnboarding();
   }
 
@@ -96,6 +104,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     String route, {
     required bool hasPartner,
   }) async {
+    unawaited(
+      ref.read(funnelTrackerProvider).track(
+        'onboarding_branch_answer',
+        properties: {'has_partner': hasPartner},
+      ),
+    );
     await _seedProfileFromBranchAnswer(hasPartner: hasPartner);
     await OnboardingService.markCompleted();
     if (mounted) {
@@ -156,6 +170,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   // +1：第 5 頁是冷啟動分流頁（案 3）。
                   itemCount: _pages.length + 1,
                   onPageChanged: (page) {
+                    unawaited(
+                      ref.read(funnelTrackerProvider).track(
+                        'onboarding_page_view',
+                        properties: {'page_index': page},
+                      ),
+                    );
                     setState(() {
                       _currentPage = page;
                     });

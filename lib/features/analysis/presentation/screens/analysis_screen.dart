@@ -12,6 +12,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/services/message_calculator.dart';
 import '../../../../core/services/keyboard_privacy_purge_service.dart';
 import '../../../../core/services/storage_service.dart';
@@ -2114,6 +2115,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     } catch (e) {
       debugPrint('AnalysisHistory analyze append failed: $e');
     }
+
+    // Tier 2 批 1.5：首次分析完成漏斗事件（once-flag 去重，best-effort）。
+    unawaited(
+      ref.read(funnelTrackerProvider).trackOnce('first_analysis_completed'),
+    );
 
     // 案4：48h 跟進提醒 — 綁 partner 的分析完成後，首次詢問軟卡並排程。
     // best-effort：失敗只 debugPrint，絕不影響分析呈現與快照持久化。

@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:vibesync/core/services/funnel_tracker.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/features/subscription/presentation/widgets/home_quota_strip.dart';
@@ -18,6 +19,18 @@ import 'package:vibesync/features/subscription/presentation/widgets/home_quota_s
 class _SeededSubscriptionNotifier extends SubscriptionNotifier {
   _SeededSubscriptionNotifier(SubscriptionState seed) {
     state = seed;
+  }
+}
+
+class _SpyFunnelTracker extends FunnelTracker {
+  final events = <String>[];
+
+  @override
+  Future<void> track(
+    String event, {
+    Map<String, Object?> properties = const {},
+  }) async {
+    events.add(event);
   }
 }
 
@@ -38,6 +51,7 @@ GoRouter _stubRouter() => GoRouter(
 Future<int> _pumpStrip(
   WidgetTester tester, {
   required SubscriptionState subscription,
+  _SpyFunnelTracker? tracker,
 }) async {
   var refreshCalls = 0;
   await tester.pumpWidget(
@@ -49,6 +63,8 @@ Future<int> _pumpStrip(
         subscriptionScreenRefreshProvider.overrideWithValue(() async {
           refreshCalls++;
         }),
+        if (tracker != null)
+          funnelTrackerProvider.overrideWithValue(tracker),
       ],
       child: MaterialApp.router(routerConfig: _stubRouter()),
     ),
@@ -124,5 +140,23 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('paywall-screen'), findsOneWidget);
+  });
+
+  testWidgets('點擊觸發 quota_strip_tap 埋點一次', (tester) async {
+    final tracker = _SpyFunnelTracker();
+    await _pumpStrip(
+      tester,
+      subscription: const SubscriptionState(
+        tier: SubscriptionTierHelper.free,
+        monthlyMessagesUsed: 7,
+        monthlyLimit: 30,
+      ),
+      tracker: tracker,
+    );
+
+    await tester.tap(find.text('本月免費額度還剩 23 則'));
+    await tester.pumpAndSettle();
+
+    expect(tracker.events, ['quota_strip_tap']);
   });
 }

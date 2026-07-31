@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../analysis_history/data/providers/analysis_history_providers.dart';
 import '../../../analysis_history/domain/entities/analysis_history_event.dart';
@@ -2228,6 +2229,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         );
       }
       await _clearAppliedHintTurnsForSession(requestSessionId);
+      // Tier 2 批 1.5：首局練習完成漏斗事件（once-flag 去重，best-effort，
+      // 不分模式——標準模式收操也算完成第一局）。
+      unawaited(FunnelTracker().trackOnce('first_practice_completed'));
       final girl = completedState.girl;
       if (girl != null) {
         await _recordPracticeHistoryEvent(completedState, girl.profileId);

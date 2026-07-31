@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../data/providers/subscription_providers.dart';
@@ -100,7 +103,10 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
         child: InkWell(
           key: urgent ? HomeQuotaStrip.urgentKey : HomeQuotaStrip.normalKey,
           borderRadius: BorderRadius.circular(12),
-          onTap: () => _openExplainSheet(context, subscription.monthlyLimit),
+          onTap: () {
+            unawaited(ref.read(funnelTrackerProvider).track('quota_strip_tap'));
+            _openExplainSheet(context, subscription.monthlyLimit);
+          },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/app_theme.dart';
+import '../core/services/funnel_tracker.dart';
 import '../core/services/keyboard_token_bridge.dart';
 import '../core/services/supabase_service.dart';
 import '../features/follow_up_notification/data/providers/follow_up_notification_service.dart';
@@ -98,6 +99,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         _keyboardOnboardingPending = false;
         return;
       }
+      unawaited(FunnelTracker().track('keyboard_setup_shown'));
       router.push('/settings/keyboard?firstRun=1').whenComplete(() {
         _keyboardOnboardingPending = false;
       });

@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/routes.dart';
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../providers/partner_providers.dart';
@@ -29,7 +32,12 @@ class HomeFeatureEntries extends ConsumerWidget {
               icon: Icons.forum_rounded,
               title: '開場救援',
               subtitle: '第一句不知道說什麼',
-              onTap: () => context.push('/opener'),
+              onTap: () {
+                unawaited(
+                  ref.read(funnelTrackerProvider).track('opener_entry_tap'),
+                );
+                context.push('/opener');
+              },
             ),
           ),
           const SizedBox(width: 12),
@@ -41,6 +49,12 @@ class HomeFeatureEntries extends ConsumerWidget {
               subtitle: '聊到一半卡住了',
               onTap: () {
                 final partners = ref.read(partnerListProvider);
+                unawaited(
+                  ref.read(funnelTrackerProvider).track(
+                    'coach_entry_tap',
+                    properties: {'has_partner': partners.isNotEmpty},
+                  ),
+                );
                 if (partners.isEmpty) {
                   context.push('/partner/new');
                 } else {

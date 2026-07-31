@@ -9,10 +9,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:vibesync/core/services/funnel_tracker.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_detail_screen.dart';
 import 'package:vibesync/features/partner/presentation/widgets/home_feature_entries.dart';
+
+class _SpyFunnelTracker extends FunnelTracker {
+  final events = <(String, Map<String, Object?>)>[];
+
+  @override
+  Future<void> track(
+    String event, {
+    Map<String, Object?> properties = const {},
+  }) async {
+    events.add((event, properties));
+  }
+}
 
 Partner _partner(String id, String name) => Partner(
       id: id,
@@ -53,10 +66,14 @@ GoRouter _stubRouter() => GoRouter(
 Future<void> _pumpEntries(
   WidgetTester tester, {
   required List<Partner> partners,
+  _SpyFunnelTracker? tracker,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [partnerListProvider.overrideWithValue(partners)],
+      overrides: [
+        partnerListProvider.overrideWithValue(partners),
+        if (tracker != null) funnelTrackerProvider.overrideWithValue(tracker),
+      ],
       child: MaterialApp.router(routerConfig: _stubRouter()),
     ),
   );
@@ -98,5 +115,31 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('partner-new-screen'), findsOneWidget);
+  });
+
+  testWidgets('兩入口各觸發對應埋點一次', (tester) async {
+    final tracker = _SpyFunnelTracker();
+    await _pumpEntries(
+      tester,
+      partners: [_partner('p-1', '小美')],
+      tracker: tracker,
+    );
+
+    await tester.tap(find.text('開場救援'));
+    await tester.pumpAndSettle();
+
+    expect(tracker.events.map((e) => e.$1).toList(), ['opener_entry_tap']);
+    expect(tracker.events.single.$2, isEmpty);
+  });
+
+  testWidgets('問教練埋點帶 has_partner', (tester) async {
+    final tracker = _SpyFunnelTracker();
+    await _pumpEntries(tester, partners: [], tracker: tracker);
+
+    await tester.tap(find.text('問教練'));
+    await tester.pumpAndSettle();
+
+    expect(tracker.events.map((e) => e.$1).toList(), ['coach_entry_tap']);
+    expect(tracker.events.single.$2, {'has_partner': false});
   });
 }

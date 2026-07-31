@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
@@ -110,6 +111,10 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
 
   Future<void> _finishFirstRun() async {
     if (widget.firstRun) {
+      // 走完四頁才算 completed；「略過」不打，否則鍵盤採用漏斗失真。
+      unawaited(
+        ref.read(funnelTrackerProvider).track('keyboard_setup_completed'),
+      );
       await OnboardingService.markKeyboardCompleted();
     }
     if (!mounted) return;
