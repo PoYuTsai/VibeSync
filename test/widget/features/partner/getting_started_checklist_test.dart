@@ -5,7 +5,6 @@
 // - 非 iOS 隱藏鍵盤項；全完成整卡 SizedBox.shrink()。
 // - 未完成項點擊導航正確；打勾項發 checklist_item_done once 埋點。
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
