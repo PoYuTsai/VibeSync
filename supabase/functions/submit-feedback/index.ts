@@ -11,6 +11,7 @@ import {
   truncateOptionalStringToMax,
 } from "./feedback_utils.ts";
 import { buildOutcomeRow } from "./outcome_utils.ts";
+import { buildFunnelRow } from "./funnel_utils.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -200,6 +201,25 @@ serve(async (req) => {
       if (upsertError) {
         console.error("Outcome upsert error:", upsertError);
         return jsonResponse({ error: "Failed to save outcome" }, 500);
+      }
+
+      return jsonResponse({ success: true });
+    }
+
+    // Tier 2 批 1.5：去識別化漏斗埋點。與 feedback 流程互斥，提前 return。
+    if (body.kind === "funnel") {
+      const built = buildFunnelRow(user.id, body.event);
+      if (!built.ok) {
+        return jsonResponse({ error: built.error }, 400);
+      }
+
+      const { error: insertError } = await supabase
+        .from("funnel_events")
+        .insert(built.row);
+
+      if (insertError) {
+        console.error("Funnel insert error:", insertError);
+        return jsonResponse({ error: "Failed to save funnel event" }, 500);
       }
 
       return jsonResponse({ success: true });
