@@ -28,6 +28,7 @@ import '../../data/repositories/partner_repository.dart';
 import '../../data/services/partner_banner_service.dart';
 import '../../domain/entities/partner.dart';
 import '../providers/partner_providers.dart';
+import '../widgets/getting_started_checklist.dart';
 import '../widgets/home_coach_presence.dart';
 import '../widgets/home_feature_entries.dart';
 import '../widgets/partner_list_card.dart';
@@ -51,7 +52,9 @@ class PartnerListScreen extends ConsumerWidget {
         padding: EdgeInsets.fromLTRB(24, 24, 24, bottomPadding),
         children: [
           // Tier 2 批 1：額度小條＋功能入口列，空／非空兩態都掛。
+          // 批 2：起步清單卡插在 QuotaStrip 之下、入口列之上。
           const HomeQuotaStrip(),
+          const GettingStartedChecklist(),
           const HomeFeatureEntries(),
           const SizedBox(height: 12),
           Padding(
@@ -133,7 +136,13 @@ class PartnerListScreen extends ConsumerWidget {
         const SliverPadding(
           padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
           sliver: SliverToBoxAdapter(
-            child: Column(children: [HomeQuotaStrip(), HomeFeatureEntries()]),
+            child: Column(
+              children: [
+                HomeQuotaStrip(),
+                GettingStartedChecklist(),
+                HomeFeatureEntries(),
+              ],
+            ),
           ),
         ),
         SliverPadding(

@@ -12,8 +12,15 @@ import 'package:vibesync/features/partner/presentation/screens/partner_list_scre
 import 'package:vibesync/features/partner/presentation/widgets/home_coach_presence.dart';
 import 'package:vibesync/features/partner/presentation/widgets/home_feature_entries.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_list_card.dart';
+import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
+import 'package:vibesync/features/follow_up_notification/data/follow_up_opt_in_store.dart';
+import 'package:vibesync/features/follow_up_notification/data/providers/follow_up_notification_service.dart';
+import 'package:vibesync/features/follow_up_notification/domain/follow_up_opt_in.dart';
+import 'package:vibesync/features/report/data/providers/report_providers.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/presentation/widgets/home_quota_strip.dart';
+import 'package:vibesync/features/user_profile/data/providers/user_profile_providers.dart';
+import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
 Partner _p(String id, String name) => Partner(
   id: id,
@@ -57,11 +64,31 @@ class _SeededSubscriptionNotifier extends SubscriptionNotifier {
   }
 }
 
+class _NullUserProfileController extends UserProfileController {
+  @override
+  Future<UserProfile?> build() async => null;
+}
+
+class _FakeOptInStore implements FollowUpOptInStore {
+  @override
+  FollowUpOptIn read() => FollowUpOptIn.unknown;
+
+  @override
+  Future<void> write(FollowUpOptIn value) async {}
+}
+
+/// 首頁掛了 QuotaStrip＋起步清單後，測試一律 seed 這批訊號 provider
+/// 保持封閉（不碰 Supabase／Hive）。
 List<Override> _subscriptionOverrides({
   SubscriptionState seed = const SubscriptionState(),
 }) => [
   subscriptionProvider.overrideWith((_) => _SeededSubscriptionNotifier(seed)),
   subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+  userProfileControllerProvider.overrideWith(_NullUserProfileController.new),
+  analysisHistoryEventsProvider.overrideWithValue(
+    const <AnalysisHistoryEvent>[],
+  ),
+  followUpOptInStoreProvider.overrideWithValue(_FakeOptInStore()),
 ];
 
 List<Override> _partnerOverrides(int count) {
@@ -205,15 +232,15 @@ void main() {
     await t.pumpWidget(_screen(overrides: _partnerOverrides(5)));
     await t.pumpAndSettle();
 
-    final fifthCardBottom = t
-        .getRect(find.widgetWithText(PartnerListCard, 'Person 5'))
-        .bottom;
-
-    expect(fifthCardBottom, lessThanOrEqualTo(844));
+    // Tier 2 頂部頭部（額度小條＋清單卡＋入口列）佔掉首屏空間後，
+    // 第 5 張卡落到摺疊線下屬預期；守的是「Sydney 只在捲動後出現、
+    // 且絕不從底部導航下露出」。
     expect(find.byType(HomeCoachPresence), findsNothing);
 
-    await t.drag(find.byType(Scrollable), const Offset(0, -500));
+    await t.drag(find.byType(Scrollable), const Offset(0, -700));
     await t.pumpAndSettle();
+
+    expect(find.widgetWithText(PartnerListCard, 'Person 5'), findsOneWidget);
 
     expect(find.byType(HomeCoachPresence), findsOneWidget);
     expect(
