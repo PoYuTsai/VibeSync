@@ -8,6 +8,7 @@ import '../core/services/keyboard_token_bridge.dart';
 import '../core/services/supabase_service.dart';
 import '../features/follow_up_notification/data/providers/follow_up_notification_service.dart';
 import '../features/onboarding/data/onboarding_service.dart';
+import '../features/onboarding/domain/keyboard_onboarding_gate.dart';
 import '../features/splash/presentation/screens/splash_screen.dart';
 import 'routes.dart';
 
@@ -72,12 +73,19 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   /// Shows the keyboard setup once after the normal app onboarding and login.
   /// It is intentionally outside the router redirect so dismissing it never
   /// blocks the core app or deep links.
+  /// 觸發條件抽在 [shouldScheduleKeyboardOnboarding]（iOS 限定＋
+  /// 主 onboarding 同 session 剛完成則延到下次啟動，Tier 1-4）。
   void _scheduleKeyboardOnboarding() {
-    if (!_splashComplete ||
-        !SupabaseService.isAuthenticated ||
-        !OnboardingService.isCompletedSync ||
-        OnboardingService.isKeyboardCompletedSync ||
-        _keyboardOnboardingPending) {
+    if (!shouldScheduleKeyboardOnboarding(
+      platform: defaultTargetPlatform,
+      splashComplete: _splashComplete,
+      isAuthenticated: SupabaseService.isAuthenticated,
+      onboardingCompleted: OnboardingService.isCompletedSync,
+      onboardingCompletedThisSession:
+          OnboardingService.completedThisSessionSync,
+      keyboardOnboardingCompleted: OnboardingService.isKeyboardCompletedSync,
+      alreadyPending: _keyboardOnboardingPending,
+    )) {
       return;
     }
 

@@ -12,8 +12,15 @@ class OnboardingService {
   static bool _completedCache = false;
   static bool _keyboardCompletedCache = false;
 
+  // 本次 session 內才完成主 onboarding（未持久化，重啟即清）。
+  // 鍵盤設定閘門靠它把首次自動 push 延到下次啟動（Tier 1-4）。
+  static bool _completedThisSession = false;
+
   /// Synchronous completion state for the router redirect.
   static bool get isCompletedSync => _completedCache;
+
+  /// 主 onboarding 是否在本次 session 內剛完成。
+  static bool get completedThisSessionSync => _completedThisSession;
 
   /// First-run keyboard setup is a separate, optional onboarding. It must not
   /// become part of the core app onboarding gate because users can dismiss it
@@ -41,12 +48,14 @@ class OnboardingService {
     // Flip the cache synchronously so the redirect fired by the immediate
     // post-completion context.go('/') already observes completion.
     _completedCache = true;
+    _completedThisSession = true;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_key, true);
   }
 
   static Future<void> reset() async {
     _completedCache = false;
+    _completedThisSession = false;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_key);
   }
