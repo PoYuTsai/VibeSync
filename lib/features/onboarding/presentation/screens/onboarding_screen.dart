@@ -25,6 +25,7 @@ import '../../../user_profile/domain/entities/user_profile.dart';
 import '../../data/onboarding_service.dart';
 import '../widgets/demo_analysis_preview.dart';
 import '../widgets/onboarding_page.dart';
+import '../widgets/onboarding_questionnaire_page.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -36,6 +37,14 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final _pageController = PageController();
   int _currentPage = 0;
+
+  // Tier 2 批 2：問卷選擇存在 parent state，本頁不寫 Hive，
+  // 統一由分流頁的合併種子一次寫入。
+  InteractionStyle? _questionnaireStyle;
+  List<PracticeGoal> _questionnaireGoals = const [];
+
+  /// 問卷插在示範頁（index 2）之後、隱私頁之前。
+  static const _questionnairePageIndex = 3;
 
   final _pages = [
     {
@@ -66,6 +75,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       'imagePath': 'privacy',
     },
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // 第 0 頁不會觸發 onPageChanged，漏斗第一格要在這裡補
+    // （GLM 審查 F5：否則第一頁就跳出的流失測不見）。
+    unawaited(
+      ref
+          .read(funnelTrackerProvider)
+          .track('onboarding_page_view', properties: {'page_index': 0}),
+    );
+  }
 
   @override
   void dispose() {
@@ -110,7 +131,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         properties: {'has_partner': hasPartner},
       ),
     );
-    await _seedProfileFromBranchAnswer(hasPartner: hasPartner);
+    unawaited(
+      ref.read(funnelTrackerProvider).track(
+        'onboarding_questionnaire_submit',
+        properties: {
+          'style_set': _questionnaireStyle != null,
+          'goals_count': _questionnaireGoals.length,
+        },
+      ),
+    );
+    await _seedProfileFromOnboardingAnswers(hasPartner: hasPartner);
     await OnboardingService.markCompleted();
     if (mounted) {
       context.go('/');
@@ -118,16 +148,20 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     }
   }
 
-  /// 轉化診斷 Tier 1-3：分流答案是全流程唯一的個人化訊號，過去只拿來
-  /// 導頁就丟掉。轉寫進「關於我」notes（使用者真的說過的話、在關於我頁
-  /// 看得到改得掉），餵 effective style prompt，讓第一次 AI 呼叫不再
-  /// 完全 generic。只在 profile 全空時種、失敗靜默放過，絕不擋導頁。
-  Future<void> _seedProfileFromBranchAnswer({required bool hasPartner}) async {
+  /// 合併式種子（Tier 2 批 2 改造 Tier 1-3）：問卷選擇（風格＋目標）與
+  /// 分流答案（轉寫進 notes）一次寫入，避免問卷先建 profile 後分流種子
+  /// 因「非空就跳過」而永遠種不進 notes。仍只在 profile 全空時種、
+  /// 失敗靜默放過，絕不擋導頁。
+  Future<void> _seedProfileFromOnboardingAnswers({
+    required bool hasPartner,
+  }) async {
     try {
       final existing = await ref.read(userProfileControllerProvider.future);
       if (existing != null && !existing.isEmpty) return;
       await ref.read(userProfileControllerProvider.notifier).save(
             UserProfile.create(
+              interactionStyle: _questionnaireStyle,
+              practiceGoals: List.of(_questionnaireGoals),
               notes: hasPartner ? '目前有正在聊的對象' : '還沒有固定聊天對象，想先透過練習提升',
               updatedAt: DateTime.now(),
             ),
@@ -167,8 +201,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               Expanded(
                 child: PageView.builder(
                   controller: _pageController,
-                  // +1：第 5 頁是冷啟動分流頁（案 3）。
-                  itemCount: _pages.length + 1,
+                  // +2：第 4 頁問卷（批 2）＋最後一頁冷啟動分流頁（案 3）。
+                  itemCount: _pages.length + 2,
                   onPageChanged: (page) {
                     unawaited(
                       ref.read(funnelTrackerProvider).track(
@@ -181,7 +215,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     });
                   },
                   itemBuilder: (context, index) {
-                    if (index == _pages.length) {
+                    if (index == _questionnairePageIndex) {
+                      return OnboardingQuestionnairePage(
+                        selectedStyle: _questionnaireStyle,
+                        selectedGoals: _questionnaireGoals,
+                        onStyleChanged: (style) =>
+                            setState(() => _questionnaireStyle = style),
+                        onGoalsChanged: (goals) =>
+                            setState(() => _questionnaireGoals = goals),
+                      );
+                    }
+                    if (index == _pages.length + 1) {
                       return _OnboardingBranchingPage(
                         onHasPartner: () => _completeOnboardingTo(
                           '/partner/new',
@@ -193,7 +237,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                         ),
                       );
                     }
-                    final page = _pages[index];
+                    // 問卷插頁後，index 3 之後的靜態頁往前挪一格。
+                    final page = _pages[
+                        index < _questionnairePageIndex ? index : index - 1];
                     // 轉化診斷 Tier 1-1：第 2、3 頁掛零 API 示範卡，
                     // 讓「投入度」「五種風格」用演的不是用講的。
                     final demo = switch (page['imagePath']) {
@@ -218,7 +264,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: List.generate(
-                    _pages.length + 1,
+                    _pages.length + 2,
                     (index) => AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -237,7 +283,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
               // Next button — hidden on the branching page (its own CTAs
               // live inside the page body).
-              if (_currentPage < _pages.length)
+              if (_currentPage < _pages.length + 1)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
                   child: BrandPrimaryButton(

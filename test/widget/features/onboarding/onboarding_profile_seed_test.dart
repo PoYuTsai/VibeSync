@@ -74,7 +74,7 @@ Future<void> _pumpToBranchingPage(
     ),
   );
   await tester.pumpAndSettle();
-  for (var i = 0; i < 4; i++) {
+  for (var i = 0; i < 5; i++) {
     await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
     await tester.pumpAndSettle();
   }
@@ -135,6 +135,46 @@ void main() {
     expect(find.text('practice-collection-screen'), findsOneWidget);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool('onboarding_completed'), isTrue);
+  });
+
+  testWidgets('問卷有選＋答「有」→ 一筆合併種子帶 style/goals/notes（批 2）', (tester) async {
+    final repo = _FakeRepo();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          userProfileRepositoryProvider.overrideWithValue(repo),
+          authUserProfileScopeProvider
+              .overrideWith((ref) => Stream.value(_uid)),
+        ],
+        child: MaterialApp.router(routerConfig: _stubRouter()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 滑 3 次到問卷頁（index 3），選風格＋一個目標。
+    for (var i = 0; i < 3; i++) {
+      await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('30 秒，讓建議更像你'), findsOneWidget);
+    await tester.tap(find.text('幽默'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('自然邀約'));
+    await tester.pumpAndSettle();
+
+    // 再滑 2 次到分流頁，答「有」。
+    for (var i = 0; i < 2; i++) {
+      await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.text('有，幫我分析對話'));
+    await tester.pumpAndSettle();
+
+    expect(repo.saveCount, 1);
+    final saved = repo.byOwner[_uid]!;
+    expect(saved.interactionStyle, InteractionStyle.humorous);
+    expect(saved.practiceGoals, [PracticeGoal.softInvite]);
+    expect(saved.notes, '目前有正在聊的對象');
   });
 
   testWidgets('「略過」→ 不種任何種子', (tester) async {
