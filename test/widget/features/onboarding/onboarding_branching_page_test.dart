@@ -41,7 +41,9 @@ Future<void> _pumpOnboarding(WidgetTester tester) async {
 }
 
 Future<void> _swipeToNextPage(WidgetTester tester) async {
-  await tester.drag(find.byType(PageView), const Offset(-400, 0));
+  // fling（帶速度）等同真人滑動手勢；原本的 drag(-400) 在 800 寬測試視窗
+  // 剛好踩在 50% 換頁閾值邊界，頁面內容一變就翻車，不是穩定的換頁模擬。
+  await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
   await tester.pumpAndSettle();
 }
 
