@@ -90,7 +90,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('第 2 ／ 3 章'), findsOneWidget);
-    expect(find.text('閱讀位置'), findsOneWidget);
   });
 
   // 2026-07-27 夥伴回饋：第 3、4 本沒有試讀章，但目錄要看得到。

@@ -5,7 +5,9 @@
 // 約束：
 //   - route 上的 chapterId 只決定初始章節；unknown chapter 依序 fallback 到
 //     保存的 lastChapterId 再到第一章，不 crash、不空白。
-//   - 「閱讀位置」與「完成度」是兩個不同標籤，不混為一談。
+//   - 「閱讀位置」與「完成度」是兩件不同的事，標籤不混為一談。
+//   - 章節列（可點跳的章號）兩個單元都有——導覽不該因書而異；只有章節內文
+//     的色條排版分單元（見 EbookReadingLayout）。
 //   - 完成本章要 await 寫入成功才翻頁／返回，避免使用者看到未保存的進度。
 //   - 橫滑換章不阻斷章節內的垂直捲動（PageView + 內層 ListView）。
 //   - premium 內容一定在 EbookAccessGate 之後才建立。
@@ -265,7 +267,6 @@ class _EbookReaderBodyState extends ConsumerState<_EbookReaderBody> {
             readable: readable,
             completedCount: completedCount,
             chapter: chapters[safeIndex],
-            layout: _book.readingLayout,
             completedFlags: _book.chapters
                 .map((chapter) => progress.isChapterCompleted(chapter.id))
                 .toList(growable: false),
@@ -312,7 +313,6 @@ class _ReaderHeader extends StatefulWidget {
     required this.readable,
     required this.completedCount,
     required this.chapter,
-    required this.layout,
     required this.completedFlags,
     required this.onJumpToChapter,
     this.isPreview = false,
@@ -325,7 +325,6 @@ class _ReaderHeader extends StatefulWidget {
   final int readable;
   final int completedCount;
   final EbookChapter chapter;
-  final EbookReadingLayout layout;
 
   /// 整本每一章是否已完成，index 對齊 `book.chapters`。
   final List<bool> completedFlags;
@@ -343,9 +342,10 @@ class _ReaderHeaderState extends State<_ReaderHeader> {
   static List<GlobalKey> _buildChipKeys(int total) =>
       List<GlobalKey>.generate(total, (_) => GlobalKey(), growable: false);
 
-  /// 章節列只在新單元出現；舊單元不建列也就不必捲。
-  bool get _showsStrip =>
-      widget.layout == EbookReadingLayout.spine && widget.total > 1;
+  /// 章節列是導覽而不是排版，所以兩個單元都有——只給新單元會讓同一個閱讀器
+  /// 在不同書之間長得不一樣（Eric 2026-07-31）。內文的色條排版仍然只給
+  /// 成為獎賞，那是內容密度問題，跟導覽無關。
+  bool get _showsStrip => widget.total > 1;
 
   @override
   void initState() {

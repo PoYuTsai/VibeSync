@@ -2,7 +2,7 @@
 //
 // 閱讀器：route chapterId 只決定初始章節、unknown id fallback、
 // 完成本章 await 寫入後才翻頁、最末章完成回目錄、續讀、
-// 「閱讀位置」與「完成度」是兩個標籤、直接 deep link 的返回行為。
+// 「閱讀位置」與「完成度」是兩個標籤、直接 deep link 的返回行為、章節列。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/learning/data/providers/ebook_providers.dart';
@@ -124,7 +124,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('第 2 ／ 3 章'), findsOneWidget);
-    expect(find.text('閱讀位置'), findsOneWidget);
     expect(find.text('完成度 0 ／ 3 章'), findsOneWidget);
     expect(find.text('第 2 章'), findsOneWidget);
 
@@ -380,8 +379,11 @@ void main() {
 
     expect(find.text(paywallStubText), findsNothing);
     expect(find.text('訂閱測試書'), findsOneWidget);
-    // 目錄可看，內文仍然不可看。
-    expect(find.text('閱讀位置'), findsNothing);
+    // 目錄可看，內文仍然不可看：章節列只存在於閱讀器。
+    expect(
+      find.byKey(const ValueKey<String>('ebook-chapter-chip-0')),
+      findsNothing,
+    );
   });
 
   testWidgets('漏斗跳到未解鎖的書：落在該書的試讀章，不是 paywall', (tester) async {
@@ -704,9 +706,9 @@ void main() {
     expect(find.text(paywallStubText), findsOneWidget);
   });
 
-  // 2026-07-31 夥伴回饋《成為獎賞》不易閱讀。章節列只給新單元：Eric 拍板
-  // 終極指引維持原樣。
-  group('章節列（成為獎賞單元）', () {
+  // 2026-07-31 夥伴回饋《成為獎賞》不易閱讀。內文色條排版只給新單元，
+  // 但章節列是導覽，Eric 拍板兩個單元都要有才一致。
+  group('章節列', () {
     const prizeBook = 'test-book-prize';
     String prizeChapter(int index) => '$prizeBook-chapter-$index';
 
@@ -772,7 +774,7 @@ void main() {
       );
     });
 
-    testWidgets('有章節列時不再重複印「閱讀位置」那一行', (tester) async {
+    testWidgets('章節列不再重複印「閱讀位置」那一行', (tester) async {
       await pumpEbookApp(
         tester,
         initialLocation:
@@ -784,11 +786,30 @@ void main() {
       expect(find.text('閱讀位置'), findsNothing);
     });
 
-    testWidgets('終極指引沒有章節列，維持原本的閱讀位置標籤', (tester) async {
+    // Eric 2026-07-31：章節列是導覽，兩個單元都要有，不然同一個閱讀器在
+    // 不同書之間長得不一樣。只有內文色條排版才分單元。
+    testWidgets('終極指引也有章節列，而且點得動', (tester) async {
       await pumpEbookApp(
         tester,
         initialLocation: '/learning/books/$_freeBook/chapters/${_chapter(1)}',
         catalog: buildTestCatalog(freeChapterCount: 3),
+      );
+      await tester.pumpAndSettle();
+
+      expect(chip(0), findsOneWidget);
+      expect(chip(2), findsOneWidget);
+      expect(find.text('閱讀位置'), findsNothing);
+
+      await tester.tap(chip(2));
+      await tester.pumpAndSettle();
+      expect(find.text('第 3 ／ 3 章'), findsOneWidget);
+    });
+
+    testWidgets('只有一章的書不長章節列（一顆按鈕沒有導覽價值）', (tester) async {
+      await pumpEbookApp(
+        tester,
+        initialLocation: '/learning/books/$_freeBook/chapters/${_chapter(1)}',
+        catalog: buildTestCatalog(freeChapterCount: 1),
       );
       await tester.pumpAndSettle();
 

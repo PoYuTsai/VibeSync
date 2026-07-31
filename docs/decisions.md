@@ -844,9 +844,9 @@
 1. **排版綁單元，不綁書、不進內容 JSON**：新增 `EbookReadingLayout{framed, spine}`，由 `EbookUnit.readingLayout` 決定。`ultimateGuide` → `framed`（Eric 2026-07-31 拍板：終極指引不動），`becomeThePrize` → `spine`。寫在 domain 而不是內容檔，內容誤改不會換掉整本排版，新增書也不會漏宣告。
 2. **spine 的視覺**：callout 與 comparison 從「10% 底色＋整圈外框＋18 圓角」改成左側 3px 色條、不上底色、不畫外框；tone 的文字 kicker 一律保留，圖示在 spine 下省略（色條已經在講 tone）。
 3. **`warning` 與 `safety` 在 spine 下維持整框**：內容不變量測試要求含守門詞的章節必須有這兩型 callout，把它們降到跟「原理」「今天帶走」同重，等於只剩測試層還在守紅線。
-4. **章節列只給 spine 單元**：閱讀器頂部加橫捲、可點跳的章號列，跳章不寫完成度、但仍更新續讀位置；有章節列時移除重複的「閱讀位置」那一行。終極指引維持原本的三行 header。
+4. **章節列兩個單元都有**：閱讀器頂部加橫捲、可點跳的章號列（已完成／目前／未解鎖三態），跳章不寫完成度、但仍更新續讀位置；有章節列時移除重複的「閱讀位置」那一行。**導覽不分單元**——Eric 2026-07-31：只給新單元會讓同一個閱讀器在不同書之間長得不一樣。分單元的只有內文色條排版，那是內容密度問題。只有一章的書不長章節列。
 5. **內容一個字不改**：Eric 拍板 2026-07-26 收斂過的內容維持原狀，這一刀只動排版。
 
 **效果**: 成為獎賞三冊的有框線元件密度從每章 4.7／4.5／2.8 降到 2.3／2.0／1.3，回到終極指引的區間內。
 
-**驗證**: `flutter analyze lib test` 0 issue；學習模組 237 綠（新增 12 條：spine 只剩左側色條、warning／safety 仍整框、七種 tone 文字標籤都在、spine 下 320px + 2.0 字級不 overflow、章節列點跳／不誤記完成／終極指引沒有章節列）；`ebook_essential_unit_test` 新增一條擋「順手把 spine 套到全部」；視覺證據 `test/visual_proof/ebook_reading_layout_proof_test.dart`（正式 widget + 正式 JSON，輸出 `build/visual_proof/ebook_layout_*.png`）。
+**驗證**: `flutter analyze lib test` 0 issue；學習模組 238 綠（新增 13 條：spine 只剩左側色條、warning／safety 仍整框、七種 tone 文字標籤都在、spine 下 320px + 2.0 字級不 overflow、章節列點跳／不誤記完成／兩個單元都有／單章書不長列）；`ebook_essential_unit_test` 新增一條擋「順手把 spine 套到全部」；視覺證據 `test/visual_proof/ebook_reading_layout_proof_test.dart`（正式 widget + 正式 JSON，輸出 `build/visual_proof/ebook_layout_*.png`）。
