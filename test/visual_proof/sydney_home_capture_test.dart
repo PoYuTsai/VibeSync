@@ -15,6 +15,7 @@ import 'package:vibesync/features/partner/presentation/screens/partner_list_scre
 import 'package:vibesync/features/partner/presentation/widgets/home_coach_presence.dart';
 import 'package:vibesync/shared/widgets/warm_theme_widgets.dart';
 
+import '../helpers/home_screen_overrides.dart';
 import 'proof_support.dart';
 
 Partner _partner(String id, String name) => Partner(
@@ -142,6 +143,7 @@ void main() {
       tester,
       child: ProviderScope(
         overrides: [
+          ...homeScreenSignalOverrides(),
           authConversationScopeProvider.overrideWith(
             (_) => Stream.value('u-sydney-proof'),
           ),

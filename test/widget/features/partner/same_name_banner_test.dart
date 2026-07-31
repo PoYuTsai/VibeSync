@@ -27,6 +27,7 @@ import 'package:vibesync/features/partner/presentation/providers/partner_provide
 import 'package:vibesync/features/partner/presentation/screens/partner_list_screen.dart';
 
 import '_fakes/recording_partner_write_controller.dart';
+import '../../../helpers/home_screen_overrides.dart';
 
 const _uid = 'u1';
 
@@ -75,6 +76,7 @@ List<Override> _baseOverrides({
   bool? dismissedSeed, // null = real PartnerBannerService path
 }) {
   return [
+    ...homeScreenSignalOverrides(),
     authConversationScopeProvider.overrideWith((ref) => _scopeStream()),
     partnerListProvider.overrideWith((_) => partners),
     for (final p in partners)
@@ -155,6 +157,7 @@ void main() {
 
     await t.pumpWidget(ProviderScope(
       overrides: [
+        ...homeScreenSignalOverrides(),
         authConversationScopeProvider.overrideWith((ref) => _scopeStream()),
         partnerListProvider.overrideWith(
           (_) => [

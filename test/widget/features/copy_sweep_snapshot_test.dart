@@ -29,6 +29,7 @@ import 'package:vibesync/features/partner/presentation/screens/partner_list_scre
 import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
 
 import '../../helpers/memory_coach_chat_repository.dart';
+import '../../helpers/home_screen_overrides.dart';
 
 Partner _p(String id, String name) => Partner(
       id: id,
@@ -87,6 +88,7 @@ void main() {
     (t) async {
       await t.pumpWidget(ProviderScope(
         overrides: [
+          ...homeScreenSignalOverrides(),
           partnerListProvider.overrideWith((_) => const <Partner>[]),
         ],
         child: const MaterialApp(home: Scaffold(body: PartnerListScreen())),
