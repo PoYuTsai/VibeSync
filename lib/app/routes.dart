@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../core/services/supabase_service.dart';
 import '../features/analysis/presentation/screens/analysis_screen.dart';
 import '../features/auth/presentation/screens/login_screen.dart';
+import '../features/coach_chat/presentation/screens/global_coach_screen.dart';
 import '../features/conversation/presentation/screens/new_conversation_screen.dart';
 import 'main_shell.dart';
 import '../features/learning/presentation/screens/article_detail_screen.dart';
@@ -188,6 +189,11 @@ final router = GoRouter(
     GoRoute(
       path: '/paywall',
       builder: (context, state) => const PaywallScreen(),
+    ),
+    // 批 A：首頁「問教練」卡直達的全域教練頁（不綁對象）。
+    GoRoute(
+      path: '/coach',
+      builder: (context, state) => const GlobalCoachScreen(),
     ),
     GoRoute(
       path: '/opener',
