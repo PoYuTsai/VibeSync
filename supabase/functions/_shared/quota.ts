@@ -29,9 +29,10 @@ export const TIER_DAILY_LIMITS: Record<string, number> = {
 
 export const TEST_EMAILS = ["vibesync.test@gmail.com"];
 
-// 批 B 訪客模式：匿名帳號總量 3 則、不按月重置（monthly counter 即終身計數，
+// 批 B 訪客模式：匿名帳號總量制、不按月重置（monthly counter 即終身計數，
 // 呼叫端以 noResetResult 跳過重置）。
-export const GUEST_TOTAL_LIMIT = 3;
+// 2026-08-01 Eric 拍板：3 → 30（對齊 free 月額度；3 則連一次完整分析都不夠）。
+export const GUEST_TOTAL_LIMIT = 30;
 
 /** JWT `is_anonymous` claim 的單源判定（getUser 回傳的 user 物件）。 */
 export function isAnonymousAuthUser(
@@ -255,7 +256,7 @@ export function quotaExceededMessage(
   reason: "monthly_limit_exceeded" | "daily_limit_exceeded",
   anonymous = false,
 ): string {
-  // 訪客只有一池 3 則，訊息不分日/月，導註冊而非升級。
+  // 訪客只有一池總量，訊息不分日/月，導註冊而非升級（註冊＝每月重置）。
   if (anonymous) {
     return "訪客額度已用完，免費註冊即可解鎖每月 30 則額度。";
   }

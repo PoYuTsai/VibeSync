@@ -165,7 +165,7 @@ void main() {
   });
 
   group('批 B 訪客模式', () {
-    testWidgets('訪客顯示「訪客額度剩 N 則」（3 則總量採計）', (tester) async {
+    testWidgets('訪客顯示「訪客額度剩 N 則」（30 則總量採計）', (tester) async {
       await _pumpStrip(
         tester,
         subscription: const SubscriptionState(
@@ -175,7 +175,7 @@ void main() {
         ),
       );
 
-      expect(find.text('訪客額度剩 2 則'), findsOneWidget);
+      expect(find.text('訪客額度剩 29 則'), findsOneWidget);
       expect(find.textContaining('本月免費額度'), findsNothing);
     });
 

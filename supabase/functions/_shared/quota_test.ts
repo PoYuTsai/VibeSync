@@ -536,8 +536,8 @@ Deno.test("isAnonymousAuthUser: true only for is_anonymous === true", () => {
   assertEquals(isAnonymousAuthUser(undefined), false);
 });
 
-Deno.test("resolveLimits: anonymous overrides EVERY tier to guest 3/3", () => {
-  assertEquals(GUEST_TOTAL_LIMIT, 3);
+Deno.test("resolveLimits: anonymous overrides EVERY tier to guest 30/30", () => {
+  assertEquals(GUEST_TOTAL_LIMIT, 30);
   for (const tier of ["free", "starter", "essential", "mystery", null]) {
     assertEquals(resolveLimits(tier, { anonymous: true }), {
       monthly: GUEST_TOTAL_LIMIT,
@@ -567,7 +567,7 @@ Deno.test("noResetResult: passes sub through untouched with both reset flags fal
 
 Deno.test("buildQuotaExceededPayload: anonymous adds guest flag + register copy, keeps legacy keys", () => {
   const payload = buildQuotaExceededPayload({
-    sub: { ...baseSub(), monthly_messages_used: 3, daily_messages_used: 3 },
+    sub: { ...baseSub(), monthly_messages_used: 30, daily_messages_used: 30 },
     cost: 1,
     reason: "monthly_limit_exceeded",
     monthlyLimit: GUEST_TOTAL_LIMIT,
@@ -579,10 +579,10 @@ Deno.test("buildQuotaExceededPayload: anonymous adds guest flag + register copy,
     error: "Monthly limit exceeded",
     guest: true,
     quotaNeeded: 1,
-    used: 3,
-    limit: 3,
-    monthlyLimit: 3,
-    dailyLimit: 3,
+    used: 30,
+    limit: 30,
+    monthlyLimit: 30,
+    dailyLimit: 30,
     monthlyRemaining: 0,
     dailyRemaining: 0,
   });

@@ -376,24 +376,24 @@ void main() {
     expect(tier, SubscriptionTierHelper.starter);
   });
   group('批 B 訪客模式：SubscriptionState 訪客額度鏡射', () {
-    test('isGuest 時 remaining 以訪客總量 3 計，raw limit 不變', () {
+    test('isGuest 時 remaining 以訪客總量 30 計，raw limit 不變', () {
       const state = SubscriptionState(
         tier: SubscriptionTierHelper.free,
-        monthlyMessagesUsed: 2,
-        dailyMessagesUsed: 2,
+        monthlyMessagesUsed: 29,
+        dailyMessagesUsed: 29,
         isGuest: true,
       );
       expect(state.monthlyLimit, 30);
-      expect(state.effectiveMonthlyLimit, 3);
-      expect(state.effectiveDailyLimit, 3);
+      expect(state.effectiveMonthlyLimit, 30);
+      expect(state.effectiveDailyLimit, 30);
       expect(state.monthlyRemaining, 1);
       expect(state.dailyRemaining, 1);
     });
 
-    test('isGuest 用量超過 3 時 remaining clamp 到 0', () {
+    test('isGuest 用量超過 30 時 remaining clamp 到 0', () {
       const state = SubscriptionState(
-        monthlyMessagesUsed: 5,
-        dailyMessagesUsed: 5,
+        monthlyMessagesUsed: 32,
+        dailyMessagesUsed: 32,
         isGuest: true,
       );
       expect(state.monthlyRemaining, 0);
@@ -425,7 +425,7 @@ void main() {
         isGuest: true,
       );
       expect(state.isGuest, isTrue);
-      expect(state.monthlyRemaining, 2);
+      expect(state.monthlyRemaining, 29);
     });
   });
 }
