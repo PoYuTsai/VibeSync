@@ -36,6 +36,9 @@ class FunnelTracker {
     'keyboard_setup_shown': [],
     'keyboard_setup_completed': [],
     'checklist_item_done': ['item'],
+    'guest_mode_enter': [],
+    'guest_register_view': ['source'],
+    'guest_register_success': ['method'],
   };
 
   final FunnelUploadInvoker _invoke;

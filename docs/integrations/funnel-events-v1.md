@@ -34,12 +34,16 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 | `keyboard_setup_shown` | — | app.dart 鍵盤設定 push 點 |
 | `keyboard_setup_completed` | — | markKeyboardCompleted |
 | `checklist_item_done` | `item` (enum: `profile` / `first_action` / `follow_up` / `keyboard`) | 批 2 起步清單 |
+| `guest_mode_enter` | — | 登入頁「先逛逛，不用註冊」點擊（批 B 訪客模式） |
+| `guest_register_view` | `source` (enum: `quota_strip` / `quota_exhausted` / `follow_up` / `settings` / `paywall` / `unknown`) | RegisterScreen 進頁 |
+| `guest_register_success` | `method` (enum: `apple` / `google` / `email`) | 轉正成功（email＝確認信已送出） |
 
 值域限制（server 端強制）：
 
 - `page_index`：0–20 的整數。
 - `goals_count`：0–5 的整數。
 - `item`：上表 enum 之一，其他值剝除整鍵。
+- `source` / `method`：上表 enum 之一，其他值剝除整鍵。
 - bool 鍵只收 true/false。
 - 任何 string 值長度上限 40 字元，超長截斷。
 

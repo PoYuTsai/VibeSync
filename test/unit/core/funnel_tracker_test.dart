@@ -81,6 +81,9 @@ void main() {
       'keyboard_setup_shown': <String>[],
       'keyboard_setup_completed': <String>[],
       'checklist_item_done': ['item'],
+      'guest_mode_enter': <String>[],
+      'guest_register_view': ['source'],
+      'guest_register_success': ['method'],
     });
   });
 
