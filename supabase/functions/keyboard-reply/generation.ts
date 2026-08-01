@@ -41,7 +41,6 @@ export interface KeyboardGenerationInput extends KeyboardReplyRequest {
   userId: string;
   apiKey: string;
   accountIsTest: boolean;
-  /** 批 B 訪客模式：匿名帳號 429 body 帶 guest 標記。 */
 }
 
 export class KeyboardReplyQuotaExceededError extends Error {

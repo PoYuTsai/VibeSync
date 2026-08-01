@@ -40,7 +40,6 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 - `page_index`：0–20 的整數。
 - `goals_count`：0–5 的整數。
 - `item`：上表 enum 之一，其他值剝除整鍵。
-- `source` / `method`：上表 enum 之一，其他值剝除整鍵。
 - bool 鍵只收 true/false。
 - 任何 string 值長度上限 40 字元，超長截斷。
 
