@@ -4,6 +4,11 @@
 > 與 Tier 2 拍板時劃出的兩個另案（全域教練 (b)、訪客模式）。
 > 報告 Tier 3 #9（報告分頁上鎖）、#10（付費牆感官）**不在本設計**——等漏斗數據（≥2026-08-08）再排。
 
+> **批 A 狀態（2026-08-01）：SHIPPED**——d4b2a90a..2867ba0a 共 8 commit 上 main 已 push。
+> 跨模型審查＝Grok 4.5 主審＋GLM 5.2 證偽（Codex 額度空窗至 8/5），雙 APPROVED_WITH_FINDINGS；
+> P1「prompt byte-for-byte 鎖」以批 A 前基線對拍實證證偽，審修批＝Edge global 拒對象綁定欄位
+> ＋legacy 哨兵 id 隔離測＋splash 下界測試。待 Bruce 真機 dogfood 三項（見批 A 實作計畫 Task 9）。
+
 ## 拍板紀錄（Eric 2026-08-01）
 
 - Splash＝縮短到約 2 秒（不做「只有首次播完整版」、不做邊播邊初始化、不維持 3.5 秒）。
