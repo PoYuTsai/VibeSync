@@ -88,6 +88,14 @@ final followUpOptInStoreProvider = Provider<FollowUpOptInStore>(
   (ref) => HiveFollowUpOptInStore(StorageService.settingsBox),
 );
 
+/// opt-in 的 reactive 露出：首頁起步清單等跨頁 UI watch 這個，
+/// 設定頁 toggle 寫入後即時更新（stale 打勾 bug 修）。
+final followUpOptInValueProvider = StreamProvider<FollowUpOptIn>((ref) async* {
+  final store = ref.watch(followUpOptInStoreProvider);
+  yield store.read();
+  yield* store.changes();
+});
+
 final followUpNotificationServiceProvider =
     Provider<FollowUpNotificationService>(
   (ref) => FollowUpNotificationService(

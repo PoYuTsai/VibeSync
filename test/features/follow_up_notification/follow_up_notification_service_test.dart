@@ -7,7 +7,7 @@ import 'package:vibesync/features/follow_up_notification/domain/notification_id.
 import 'fake_notification_gateway.dart';
 
 /// 記憶體 opt-in store，避免測試碰真 Hive。
-class InMemoryOptInStore implements FollowUpOptInStore {
+class InMemoryOptInStore extends FollowUpOptInStore {
   FollowUpOptIn value;
   InMemoryOptInStore([this.value = FollowUpOptIn.unknown]);
   @override

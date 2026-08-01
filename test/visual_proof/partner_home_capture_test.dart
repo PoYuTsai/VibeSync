@@ -59,7 +59,7 @@ class _NullUserProfileController extends UserProfileController {
   Future<UserProfile?> build() async => null;
 }
 
-class _FakeOptInStore implements FollowUpOptInStore {
+class _FakeOptInStore extends FollowUpOptInStore {
   @override
   FollowUpOptIn read() => FollowUpOptIn.unknown;
 

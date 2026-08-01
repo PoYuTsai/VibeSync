@@ -5,6 +5,8 @@
 // - 非 iOS 隱藏鍵盤項；全完成整卡 SizedBox.shrink()。
 // - 未完成項點擊導航正確；打勾項發 checklist_item_done once 埋點。
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -30,9 +32,10 @@ class _SeededProfileController extends UserProfileController {
   Future<UserProfile?> build() async => _profile;
 }
 
-class _FakeOptInStore implements FollowUpOptInStore {
+class _FakeOptInStore extends FollowUpOptInStore {
   _FakeOptInStore(this.state);
   FollowUpOptIn state;
+  final _changes = StreamController<FollowUpOptIn>.broadcast();
 
   @override
   FollowUpOptIn read() => state;
@@ -40,7 +43,11 @@ class _FakeOptInStore implements FollowUpOptInStore {
   @override
   Future<void> write(FollowUpOptIn value) async {
     state = value;
+    _changes.add(value);
   }
+
+  @override
+  Stream<FollowUpOptIn> changes() => _changes.stream;
 }
 
 AnalysisHistoryEvent _analyzeEvent() => AnalysisHistoryEvent.analyze(
@@ -79,7 +86,7 @@ GoRouter _stubRouter() => GoRouter(
       ],
     );
 
-Future<void> _pump(
+Future<_FakeOptInStore> _pump(
   WidgetTester tester, {
   UserProfile? profile,
   List<AnalysisHistoryEvent> historyEvents = const [],
@@ -87,6 +94,7 @@ Future<void> _pump(
   List<Partner> partners = const [],
   FunnelTracker? tracker,
 }) async {
+  final optInStore = _FakeOptInStore(optIn);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -94,7 +102,7 @@ Future<void> _pump(
           () => _SeededProfileController(profile),
         ),
         analysisHistoryEventsProvider.overrideWithValue(historyEvents),
-        followUpOptInStoreProvider.overrideWithValue(_FakeOptInStore(optIn)),
+        followUpOptInStoreProvider.overrideWithValue(optInStore),
         partnerListProvider.overrideWithValue(partners),
         if (tracker != null) funnelTrackerProvider.overrideWithValue(tracker),
       ],
@@ -102,6 +110,7 @@ Future<void> _pump(
     ),
   );
   await tester.pumpAndSettle();
+  return optInStore;
 }
 
 void main() {
@@ -195,4 +204,24 @@ void main() {
 
     expect(find.text('partner-new-screen'), findsOneWidget);
   }, variant: iosVariant);
+
+  testWidgets('設定頁開啟提醒後回首頁：清單即時打勾、全完成整卡即時消失（stale bug 回歸鎖）',
+      (tester) async {
+    final store = await _pump(
+      tester,
+      profile: UserProfile.create(
+        interactionStyle: InteractionStyle.humorous,
+        updatedAt: DateTime(2026, 7, 1),
+      ),
+      historyEvents: [_analyzeEvent()],
+    );
+    expect(find.byKey(const Key('checklist_done_follow_up')), findsNothing);
+
+    // 模擬設定頁 toggle 寫入（本 widget 不重掛）——必須即時反映。
+    await store.write(FollowUpOptIn.granted);
+    await tester.pumpAndSettle();
+
+    // Android variant：無鍵盤項，三項全完成 → 整卡消失。
+    expect(find.byKey(GettingStartedChecklist.cardKey), findsNothing);
+  }, variant: androidVariant);
 }

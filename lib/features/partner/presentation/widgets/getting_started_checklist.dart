@@ -34,8 +34,13 @@ class GettingStartedChecklist extends ConsumerWidget {
     final firstActionDone =
         historyEvents.isNotEmpty || practicePoints.isNotEmpty;
 
-    final followUpDone =
-        ref.watch(followUpOptInStoreProvider).read() == FollowUpOptIn.granted;
+    final followUpDone = ref.watch(followUpOptInValueProvider).maybeWhen(
+          data: (value) => value == FollowUpOptIn.granted,
+          // StreamProvider 首幀 loading：同步 read 兜底，不閃「未完成」假態。
+          orElse: () =>
+              ref.read(followUpOptInStoreProvider).read() ==
+              FollowUpOptIn.granted,
+        );
 
     // 鍵盤僅 iOS（foundation 顯式 import——CI dart2js 教訓）。
     final showKeyboardItem = defaultTargetPlatform == TargetPlatform.iOS;

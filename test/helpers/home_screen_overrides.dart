@@ -25,7 +25,7 @@ class NullUserProfileController extends UserProfileController {
   Future<UserProfile?> build() async => null;
 }
 
-class FakeFollowUpOptInStore implements FollowUpOptInStore {
+class FakeFollowUpOptInStore extends FollowUpOptInStore {
   FakeFollowUpOptInStore([this.state = FollowUpOptIn.unknown]);
   FollowUpOptIn state;
 

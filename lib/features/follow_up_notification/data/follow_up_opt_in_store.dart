@@ -6,11 +6,16 @@ import '../domain/follow_up_opt_in.dart';
 abstract class FollowUpOptInStore {
   FollowUpOptIn read();
   Future<void> write(FollowUpOptIn value);
+
+  /// 值變更通知（跨頁 reactive UI 用；預設空 stream，fake 可不管）。
+  /// 2026-08-01 Eric 回報：設定頁開啟提醒後回首頁，起步清單打勾不更新
+  /// ——read() 非 reactive、pop 不觸發 rebuild，重開 app 才對。
+  Stream<FollowUpOptIn> changes() => const Stream.empty();
 }
 
 /// 存於現有 settings box，key `followUpOptIn`，存 enum name 字串。
 /// 讀不到／無法解析時退回 [FollowUpOptIn.unknown]（fail-open 到「還沒問過」）。
-class HiveFollowUpOptInStore implements FollowUpOptInStore {
+class HiveFollowUpOptInStore extends FollowUpOptInStore {
   static const String storageKey = 'followUpOptIn';
   final Box _box;
 
@@ -27,4 +32,8 @@ class HiveFollowUpOptInStore implements FollowUpOptInStore {
 
   @override
   Future<void> write(FollowUpOptIn value) => _box.put(storageKey, value.name);
+
+  @override
+  Stream<FollowUpOptIn> changes() =>
+      _box.watch(key: storageKey).map((_) => read());
 }
