@@ -196,6 +196,7 @@ function freshSubRow(overrides: Record<string, unknown> = {}) {
 function buildLedgerClientFake(opts: {
   replayRow?: Record<string, unknown> | null;
   sub?: Record<string, unknown>;
+  user?: Record<string, unknown>;
   rpcHandlers?: Record<
     string,
     (params: Record<string, unknown>) => {
@@ -221,7 +222,9 @@ function buildLedgerClientFake(opts: {
     auth: {
       getUser: (_token: string) =>
         Promise.resolve({
-          data: { user: { id: "user-1", email: "u@example.com" } },
+          data: {
+            user: opts.user ?? { id: "user-1", email: "u@example.com" },
+          },
           error: null,
         }),
     },
@@ -506,4 +509,54 @@ Deno.test({
     // F1：settle 回應必須用 ledger 權威 result。
     assert(source.includes("body: settlement"));
   },
+});
+
+// ---------------------------------------------------------------------------
+// 批 B 訪客模式：匿名帳號額度 3 則總量、免重置、guest 429
+// ---------------------------------------------------------------------------
+
+const guestUser = { id: "user-1", email: null, is_anonymous: true };
+
+Deno.test("POST guest at 3 used gets guest 429（free tier 同值不觸發＝訪客上限生效）", async () => {
+  await withClaudeApiKey(async () => {
+    const fake = buildLedgerClientFake({
+      user: guestUser,
+      sub: freshSubRow({
+        monthly_messages_used: 3,
+        daily_messages_used: 3,
+      }),
+    });
+    const res = await handleRequest(ledgerPostRequest(ledgerBody), {
+      supabase: fake.client,
+      replayHmacKey: STRONG_HMAC_KEY,
+    });
+    assertEquals(res.status, 429);
+    const body = await res.json();
+    assertEquals(body.guest, true);
+    assertEquals(body.limit, 3);
+    assertEquals(body.monthlyLimit, 3);
+    assert(String(body.message).includes("訪客"));
+    assertEquals(body.code, "QUOTA_EXCEEDED");
+  });
+});
+
+Deno.test("POST guest with stale reset timestamps STILL 429s（跨月不歸零＝總量制）", async () => {
+  await withClaudeApiKey(async () => {
+    const fake = buildLedgerClientFake({
+      user: guestUser,
+      sub: freshSubRow({
+        monthly_messages_used: 3,
+        daily_messages_used: 3,
+        daily_reset_at: "2020-01-01T00:00:00.000Z",
+        monthly_reset_at: "2020-01-01T00:00:00.000Z",
+      }),
+    });
+    const res = await handleRequest(ledgerPostRequest(ledgerBody), {
+      supabase: fake.client,
+      replayHmacKey: STRONG_HMAC_KEY,
+    });
+    assertEquals(res.status, 429);
+    const body = await res.json();
+    assertEquals(body.guest, true);
+  });
 });
