@@ -228,9 +228,11 @@ class CoachChatApiService {
     String? lifecyclePhase,
   }) async {
     // scope 為真相源：partner scope 頂層 partnerId 一律覆寫成 scope.id，
-    // 呼叫端沒傳也要補齊 superRefine 一致性。
-    final effectivePartnerId =
-        (scope != null && !scope.isConversation) ? scope.id : partnerId;
+    // 呼叫端沒傳也要補齊 superRefine 一致性。global scope 的 id 是哨兵值
+    // 'me' 不是 partnerId，頂層一律不帶。
+    final effectivePartnerId = scope != null && scope.isGlobal
+        ? null
+        : (scope != null && !scope.isConversation) ? scope.id : partnerId;
     final body = <String, dynamic>{
       'conversationId': scope?.wireConversationId ?? conversationId,
       if (effectivePartnerId != null) 'partnerId': effectivePartnerId,

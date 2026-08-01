@@ -163,6 +163,9 @@ class CoachChatController
           throw StateError('Conversation not found');
         }
         partnerId = conversation.partnerId;
+      } else if (scope.isGlobal) {
+        // global scope：不綁對象，scope.id 是哨兵值 'me' 不是 partnerId。
+        partnerId = null;
       } else {
         // partner scope：對象即 scope 本體，不依賴任何 conversation 資料。
         partnerId = scope.id;
@@ -212,7 +215,8 @@ class CoachChatController
         analysisSnapshot: scope.isConversation ? analysisSnapshot : null,
         effectiveStyleContext: _styleContext(
           partnerId: partnerId,
-          includePartnerOverride: !flagged,
+          // global 沒有對象可覆寫，明確傳 false（不靠 partnerId null 隱含）。
+          includePartnerOverride: scope.isGlobal ? false : !flagged,
         ),
         partnerHint: _partnerHint(
           partnerId: partnerId,
@@ -312,10 +316,11 @@ class CoachChatController
         lifecyclePhase: lifecyclePhase,
       );
     }
+    // global 紀錄兩個外鍵皆 null（scope.id 'me' 不是 partnerId）。
     return UnifiedCoachResult(
       id: result.id,
       conversationId: null,
-      partnerId: scope.id,
+      partnerId: scope.isGlobal ? null : scope.id,
       question: result.question,
       mode: result.mode,
       headline: result.headline,
@@ -338,7 +343,7 @@ class CoachChatController
       frictionType: result.frictionType,
       earlierSummary: result.earlierSummary,
       earlierResultCount: result.earlierResultCount,
-      scopeType: CoachScopeType.partner,
+      scopeType: scope.isGlobal ? CoachScopeType.global : CoachScopeType.partner,
       scopeId: scope.id,
       lifecyclePhase: lifecyclePhase,
     );

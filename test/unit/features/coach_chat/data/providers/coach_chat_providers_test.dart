@@ -287,6 +287,7 @@ ProviderContainer _container({
   String? styleContext = '- Preferred voice: 幽默；回覆要輕鬆、有留白',
   Future<void> Function()? usageSync,
   List<CoachingOutcomeEvent> outcomeEvents = const [],
+  CoachChatStyleContextResolver? styleContextResolver,
 }) {
   return ProviderContainer(overrides: [
     coachChatRepositoryProvider.overrideWithValue(repo),
@@ -299,14 +300,17 @@ ProviderContainer _container({
     partnerByIdProvider('p-1').overrideWithValue(partner),
     partnerAggregateProvider('p-1').overrideWithValue(aggregate),
     dataQualityFlagProvider('p-1').overrideWithValue(flag),
-    coachChatStyleContextResolverProvider.overrideWithValue(({
-      required String? partnerId,
-      required bool includePartnerOverride,
-    }) {
-      if (partnerId != 'p-1') return null;
-      if (includePartnerOverride == flag.isFlagged) return null;
-      return styleContext;
-    }),
+    coachChatStyleContextResolverProvider.overrideWithValue(
+      styleContextResolver ??
+          ({
+            required String? partnerId,
+            required bool includePartnerOverride,
+          }) {
+            if (partnerId != 'p-1') return null;
+            if (includePartnerOverride == flag.isFlagged) return null;
+            return styleContext;
+          },
+    ),
   ]);
 }
 
@@ -905,6 +909,69 @@ void main() {
       expect(
         c.read(coachChatHistoryProvider(_partnerScope)).single.scopeId,
         'p-1',
+      );
+    });
+  });
+
+  group('global scope（批 A）', () {
+    test('ask sends global wire shape：無 partnerId/partnerHint，styleContext 以 '
+        'partnerId null＋includePartnerOverride false 解析', () async {
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final resolverArgs =
+          <({String? partnerId, bool includePartnerOverride})>[];
+      final c = _container(
+        repo: repo,
+        invoker: _invoker(calls: calls),
+        partner: _partner(),
+        styleContextResolver: ({
+          required String? partnerId,
+          required bool includePartnerOverride,
+        }) {
+          resolverArgs.add((
+            partnerId: partnerId,
+            includePartnerOverride: includePartnerOverride,
+          ));
+          return '- Preferred voice: 幽默';
+        },
+      );
+      addTearDown(c.dispose);
+
+      const scope = CoachScope.global();
+      await c.read(coachChatControllerProvider(scope).future);
+      // 傳 analysisSnapshot 也不得外送——global 不綁任何對話分析。
+      await c.read(coachChatControllerProvider(scope).notifier).ask(
+            question: '不知道怎麼開啟話題，給我一點方向？',
+            analysisSnapshot: _snapshot(),
+          );
+
+      final body = calls.single.body;
+      expect(body['conversationId'], 'global:me');
+      expect(body.containsKey('partnerId'), isFalse);
+      expect(body['scope'], {'type': 'global'});
+      expect(body.containsKey('partnerHint'), isFalse);
+      expect(body.containsKey('conversationSummary'), isFalse);
+      expect(body['recentMessages'], isEmpty);
+      expect(body.containsKey('analysisSnapshot'), isFalse);
+      expect(body['effectiveStyleContext'], '- Preferred voice: 幽默');
+      expect(
+        resolverArgs.single,
+        (partnerId: null, includePartnerOverride: false),
+      );
+
+      final stored = repo.latestForScope(CoachScopeType.global, 'me');
+      expect(stored, isNotNull);
+      expect(stored?.scopeType, CoachScopeType.global);
+      expect(stored?.scopeId, 'me');
+      expect(stored?.partnerId, isNull);
+      expect(stored?.conversationId, isNull);
+      expect(
+        c.read(coachChatControllerProvider(scope)).value?.scopeType,
+        CoachScopeType.global,
+      );
+      expect(
+        c.read(coachChatHistoryProvider(scope)).single.scopeId,
+        'me',
       );
     });
   });

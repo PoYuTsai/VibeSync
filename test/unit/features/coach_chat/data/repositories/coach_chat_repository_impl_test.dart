@@ -48,7 +48,9 @@ UnifiedCoachResult _unified(
   return UnifiedCoachResult(
     id: id,
     conversationId: scopeType == 'conversation' ? scopeId : null,
-    partnerId: scopeType == 'partner' ? scopeId : 'p-1',
+    partnerId: scopeType == 'partner'
+        ? scopeId
+        : (scopeType == 'global' ? null : 'p-1'),
     question: '她是什麼意思？',
     mode: 'replyCraft',
     headline: '接住再反問',
@@ -516,6 +518,41 @@ void main() {
       expect(legacyChatBox.get('l-1')?.question, '她是什麼意思？');
       expect(legacyFollowUpBox.keys, ['p-9']);
       expect(legacyFollowUpBox.get('p-9')?.task, '今天丟一個開放式問題。');
+    });
+  });
+
+  group('global scope（批 A）', () {
+    test('putUnified/listByScope global 存讀，legacy boxes 不參與 merge',
+        () async {
+      await repo.putUnified(
+        _unified('g-1', scopeType: 'global', scopeId: 'me'),
+      );
+
+      final list = repo.listByScope(CoachScopeType.global, 'me');
+      expect(list.single.id, 'g-1');
+      expect(list.single.partnerId, isNull);
+      expect(list.single.conversationId, isNull);
+      expect(repo.latestForScope(CoachScopeType.global, 'me')?.id, 'g-1');
+      expect(legacyChatBox.isEmpty, isTrue);
+      expect(legacyFollowUpBox.isEmpty, isTrue);
+    });
+
+    test('clearAll 連 global 紀錄一起清（隱私 cascade）', () async {
+      await repo.putUnified(
+        _unified('g-1', scopeType: 'global', scopeId: 'me'),
+      );
+      await repo.clearAll();
+      expect(repo.listByScope(CoachScopeType.global, 'me'), isEmpty);
+    });
+
+    test('deleteScope 只刪 global，不動其他 scope', () async {
+      await repo.putUnified(
+        _unified('g-1', scopeType: 'global', scopeId: 'me'),
+      );
+      await repo.putUnified(_unified('u-1'));
+      await repo.deleteScope(CoachScopeType.global, 'me');
+      expect(repo.listByScope(CoachScopeType.global, 'me'), isEmpty);
+      expect(repo.listByScope('conversation', 'c-1').single.id, 'u-1');
     });
   });
 }

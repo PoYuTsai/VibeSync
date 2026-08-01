@@ -38,7 +38,7 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
   List<UnifiedCoachResult> listByScope(String scopeType, String scopeId) {
     assert(
       _isKnownScopeType(scopeType),
-      'Unknown scopeType "$scopeType" — must be "conversation" or "partner"',
+      'Unknown scopeType "$scopeType" — must be "conversation"、"partner" or "global"',
     );
     final merged = <String, UnifiedCoachResult>{};
     if (scopeType == CoachScopeType.conversation) {
@@ -72,7 +72,7 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
     assert(
       _isKnownScopeType(result.scopeType),
       'Unknown scopeType "${result.scopeType}" — '
-      'must be "conversation" or "partner"',
+      'must be "conversation"、"partner" or "global"',
     );
     final previousLatest = latestForScope(result.scopeType, result.scopeId);
     final resultWithRollup = _carryForwardUnifiedRollup(result, previousLatest);
@@ -84,7 +84,7 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
   Future<void> deleteScope(String scopeType, String scopeId) async {
     assert(
       _isKnownScopeType(scopeType),
-      'Unknown scopeType "$scopeType" — must be "conversation" or "partner"',
+      'Unknown scopeType "$scopeType" — must be "conversation"、"partner" or "global"',
     );
     final ids = _unifiedBox.values
         .where((r) => r.scopeType == scopeType && r.scopeId == scopeId)
@@ -109,7 +109,8 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
 
   static bool _isKnownScopeType(String scopeType) =>
       scopeType == CoachScopeType.conversation ||
-      scopeType == CoachScopeType.partner;
+      scopeType == CoachScopeType.partner ||
+      scopeType == CoachScopeType.global;
 
   /// 排序主鍵 generatedAt 新到舊；同刻以 id 升冪當次要鍵，確保每次讀取
   /// 順序確定（review M-1 — Dart List.sort 不保證 stable）。

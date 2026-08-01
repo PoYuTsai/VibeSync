@@ -441,9 +441,10 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
 
     // partner scope 的對象即 scope 本體；dataQualityFlag/風格 provider 都是
     // partnerId-keyed，雙 scope 同一條讀取路徑（與 controller 對齊）。
+    // global scope 不綁對象（scope.id 'me' 不是 partnerId），一律 null。
     final partnerId = widget.scope.isConversation
         ? conversation?.partnerId
-        : widget.scope.id;
+        : (widget.scope.isGlobal ? null : widget.scope.id);
     if (partnerId != null) {
       final flag = ref.watch(dataQualityFlagProvider(partnerId));
       final flagged = flag.isFlagged;
