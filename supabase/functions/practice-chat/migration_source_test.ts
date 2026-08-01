@@ -940,3 +940,27 @@ Deno.test("prepare_practice_subscription_usage 還原無條件歸零、簽名與
   // 簽名零改動（不得出現第二參數）
   assert(!removeGuestSkipMigration.includes("p_skip_reset"));
 });
+
+// ── 批 3 贈抽表：一人一列＋RLS service-role only ────────────────────────────
+const drawBonusMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260802100000_practice_draw_bonuses.sql",
+    import.meta.url,
+  ),
+);
+
+Deno.test("practice_draw_bonuses：PK user_id（終身一次）＋RLS 開啟零 policy", () => {
+  assert(
+    drawBonusMigration.includes(
+      "CREATE TABLE IF NOT EXISTS public.practice_draw_bonuses",
+    ),
+  );
+  assert(drawBonusMigration.includes("user_id     UUID        PRIMARY KEY"));
+  assert(drawBonusMigration.includes("ON DELETE CASCADE"));
+  assert(
+    drawBonusMigration.includes(
+      "ALTER TABLE public.practice_draw_bonuses ENABLE ROW LEVEL SECURITY",
+    ),
+  );
+  assert(!drawBonusMigration.includes("CREATE POLICY"));
+});

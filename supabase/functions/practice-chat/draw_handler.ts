@@ -46,6 +46,7 @@ export interface PostgrestResult<T> {
 }
 export interface DrawFilterBuilder extends PromiseLike<PostgrestResult<Row[]>> {
   eq(column: string, value: unknown): DrawFilterBuilder;
+  is(column: string, value: unknown): DrawFilterBuilder;
   maybeSingle(): PromiseLike<PostgrestResult<Row>>;
 }
 export interface DrawSupabaseClient {
@@ -147,9 +148,30 @@ export async function handleDrawProfile(
   const tier = normalizeTier(sub.tier);
   const accountIsTest = TEST_EMAILS.includes(userEmail ?? "");
   const limits = resolveLimits(tier);
-  const freeAllowance = drawAllowanceForTier(tier);
+  const tierAllowance = drawAllowanceForTier(tier);
   const allowPaidExtra = paidExtraDrawAllowedForTier(tier);
   const window = taipeiNoonResetWindow(now);
+
+  // 起步清單一次性贈抽：未消耗者本窗免費額度 +1（懶消耗——抽出 cost=0 且免費數
+  // 超過 tier 額度那次才標記，見 20260802100000 migration 註解）。查詢失敗
+  // fail-closed 視為無贈抽，絕不因 bonus 壞掉而擋住正常抽卡路徑。
+  let bonusAvailable = false;
+  {
+    const { data: bonusRow, error: bonusError } = await supabase
+      .from("practice_draw_bonuses")
+      .select("consumed_at")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (bonusError) {
+      logWarn("practice_draw_bonus_fetch_error", {
+        user: summarizeUser(userId),
+        error: bonusError.message,
+      });
+    } else if (bonusRow && bonusRow.consumed_at == null) {
+      bonusAvailable = true;
+    }
+  }
+  const freeAllowance = tierAllowance + (bonusAvailable ? 1 : 0);
 
   // ── 3. 查已抽 profiles：全歷史（永久去重）＋本窗（池抽滿降級用）──────────
   // 表是 per-user 抽卡事件（每窗抽數個位數），全撈無效能疑慮。reset_window_start_at
@@ -271,6 +293,26 @@ export async function handleDrawProfile(
         drawnCount: permanentExcluded.size,
         catalogSize: request.catalogSize ?? "legacy",
       });
+    }
+
+    // 贈抽懶消耗：本次 cost=0 且本窗免費數「超過 tier 額度」＝這一抽動用了贈抽。
+    // WHERE consumed_at IS NULL 天然冪等（replay/併發重標無害）；標記失敗只 log
+    // ——最壞情況下窗再 +1 一次，風險封頂一抽，不值得為它把成功回應改失敗。
+    if (
+      bonusAvailable && receipt.cost_messages === 0 &&
+      receipt.free_used > tierAllowance
+    ) {
+      const { error: consumeError } = await supabase
+        .from("practice_draw_bonuses")
+        .update({ consumed_at: now.toISOString() })
+        .eq("user_id", userId)
+        .is("consumed_at", null);
+      if (consumeError) {
+        logWarn("practice_draw_bonus_consume_error", {
+          user: summarizeUser(userId),
+          error: consumeError.message,
+        });
+      }
     }
 
     // idempotent replay 時 RPC 回的是「原本抽到的」profile_id；一律以它反查同一位，

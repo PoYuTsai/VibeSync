@@ -866,16 +866,18 @@ class _RarityFilterChip extends StatelessWidget {
   }
 }
 
-class _CollectionCard extends StatelessWidget {
+class _CollectionCard extends ConsumerWidget {
   const _CollectionCard({required this.profile, required this.unlocked});
 
   final PracticeGirlProfile profile;
   final bool unlocked;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final rarity = profile.rarity;
     final color = practiceRarityColor(rarity);
+    // 批 3：free 每日免費抽已移除，「每日」字樣只對付費 tier 為真。
+    final isPremium = ref.watch(subscriptionProvider).isPremium;
 
     return GestureDetector(
       key: ValueKey('collection-card-${profile.profileId}'),
@@ -890,7 +892,9 @@ class _CollectionCard extends StatelessWidget {
         }
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
-          ..showSnackBar(const SnackBar(content: Text('每日翻牌有機會遇到她')));
+          ..showSnackBar(SnackBar(
+            content: Text(isPremium ? '每日翻牌有機會遇到她' : '翻牌有機會遇到她'),
+          ));
       },
       child: Container(
         padding: const EdgeInsets.all(10),
@@ -958,7 +962,9 @@ class _CollectionCard extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              unlocked ? profile.professionLabel : '每日翻牌解鎖',
+              unlocked
+                  ? profile.professionLabel
+                  : (isPremium ? '每日翻牌解鎖' : '翻牌解鎖'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: AppTypography.caption.copyWith(

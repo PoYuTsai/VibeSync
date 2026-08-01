@@ -886,3 +886,22 @@
 5. **已知取捨**: 已發出的 TestFlight build（378/379）仍有「先逛逛」按鈕，旗標關閉後點擊會失敗——內測階段接受，正式上架 build 不含該入口。
 
 **驗證**: Deno 2375 綠（含新 source 鎖：analyze-chat 無 anonymous 殘留、migration 還原斷言）；Dart analyze 0 issue＋全套綠；prod 收尾（旗標／刪帳號／migration）見部署紀錄。
+
+---
+
+## ADR #35 — [2026-08-02] 抽卡獎勵改造：free 每日抽移除，改起步清單一次性贈抽（A 案）
+
+**狀態**: 🟢 Active
+
+**背景**: 承 ADR #34（訪客拆除）同一輪討論：Bruce 主張免費額度製造稀缺。Eric 拍板 A 案——free 的每日免費翻牌 1 次砍掉；改為「起步清單全完成 → 一次性贈抽」，全 tier 皆可領一次；**starter 每日 3／essential 每日 5 保留**（訂閱權益），付費加抽（5 則/次）不動。
+
+**決定**:
+
+1. Server 真相源：`PRACTICE_DRAW_FREE_ALLOWANCE.free = 0`；新表 `practice_draw_bonuses`（migration 20260802100000，一人一列＝終身一次、RLS service-role only）。grant 走 practice-chat 新 mode `grant_onboarding_draw_bonus`（upsert ignoreDuplicates 冪等）。
+2. **懶消耗**：Edge 對未消耗贈抽把免費額度 +1；抽出 cost=0 且本窗免費數「超過 tier 額度」那次才標 `consumed_at`（tier 額度夠用時不動贈抽，對用戶最有利）。標記失敗只 log——自癒且風險封頂一抽。查詢失敗 fail-closed 無贈抽，絕不擋正常抽卡。
+3. Grant 由 client 在起步清單全完成時 best-effort 觸發（清單訊號在本機、server 不驗證）；濫用面封頂每帳號一抽，接受。Android 完成該平台可見項（2 項）即送；老用戶一視同仁補領。
+4. UI：清單全完成 → 卡片變身「🎉 起步完成！送你一次免費抽卡」領獎卡（`OnboardingDrawRewardCard`），CTA 導 /practice-collection；贈抽消耗後永久消失。回溯通知與練習室導覽一石二鳥。
+5. 文案誠實化：「每日翻牌／每日登入解鎖新女孩」等字樣改 tier-aware——free 顯示無「每日」版本，付費 tier 維持原文。
+6. 原每日抽規格文件（2026-06-26-practice-card-draw-design.md）的 Free 1/日條目由本 ADR 取代。
+
+**驗證**: practice-chat Deno 1074 綠（含贈抽六條新測）；practice widget 184 綠；checklist 領獎卡兩態入測；Codex 雙審見部署紀錄。

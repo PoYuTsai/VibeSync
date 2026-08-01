@@ -834,6 +834,20 @@ class PracticeChatApiService {
     return debrief;
   }
 
+  /// 起步清單一次性贈抽 grant（冪等，可重呼）。回傳 consumed：贈抽是否已用掉，
+  /// 供首頁領獎卡決定顯示。失敗直接丟例外，由呼叫端 best-effort 吞掉。
+  Future<bool> grantOnboardingDrawBonus() async {
+    final response = await _invoke(
+      _functionName,
+      body: const {'mode': 'grant_onboarding_draw_bonus'},
+    );
+    final data = response.data;
+    if (response.status != 200 || data is! Map || data['granted'] != true) {
+      throw PracticeGenerationFailedException('bonus_grant_failed');
+    }
+    return data['consumed'] == true;
+  }
+
   /// 每日翻牌：server 選一位新對象並原子扣費（免費額度／付費額外）。
   /// [requestId] 是 client 產的冪等 key；[currentProfileId] 帶上目前這位以便排除
   /// （換一位不換回自己）。402 → upgrade required；429 → quota exceeded。

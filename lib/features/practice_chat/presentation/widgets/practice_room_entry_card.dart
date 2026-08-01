@@ -1,10 +1,12 @@
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 
 const String kPracticeRoomEntryHeroAsset =
     'assets/images/practice_girls/practice_girl_038.jpg';
@@ -277,11 +279,13 @@ class _NewBadge extends StatelessWidget {
   }
 }
 
-class _DailyRewardEyebrow extends StatelessWidget {
+class _DailyRewardEyebrow extends ConsumerWidget {
   const _DailyRewardEyebrow();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 批 3：free 每日免費抽已移除，「每日」字樣只對付費 tier 為真。
+    final isPremium = ref.watch(subscriptionProvider).isPremium;
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -305,7 +309,7 @@ class _DailyRewardEyebrow extends StatelessWidget {
                 size: 15, color: Colors.white),
             const SizedBox(width: 7),
             Text(
-              '每日登入解鎖新女孩',
+              isPremium ? '每日登入解鎖新女孩' : '翻牌解鎖新女孩',
               style: AppTypography.bodySmall.copyWith(
                 color: Colors.white,
                 fontWeight: FontWeight.w900,

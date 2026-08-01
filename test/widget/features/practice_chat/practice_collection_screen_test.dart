@@ -374,14 +374,14 @@ void main() {
       );
     });
 
-    testWidgets('點鎖卡 → SnackBar「每日翻牌有機會遇到她」', (tester) async {
+    testWidgets('點鎖卡 → SnackBar「翻牌有機會遇到她」（free 無每日字樣）', (tester) async {
       await pumpCollection(tester);
 
       await tester
           .tap(find.byKey(const ValueKey('collection-card-practice_girl_001')));
       await tester.pump();
 
-      expect(find.text('每日翻牌有機會遇到她'), findsOneWidget);
+      expect(find.text('翻牌有機會遇到她'), findsOneWidget);
     });
 
     testWidgets('連點鎖卡不堆疊 SnackBar：一輪生命週期後全部消失', (tester) async {
@@ -410,19 +410,19 @@ void main() {
       var seenDuringLifecycle = false;
       for (var i = 0; i < 14; i++) {
         await tester.pump(const Duration(milliseconds: 500));
-        if (find.text('每日翻牌有機會遇到她').evaluate().isNotEmpty) {
+        if (find.text('翻牌有機會遇到她').evaluate().isNotEmpty) {
           seenDuringLifecycle = true;
         }
       }
       // sanity：這段期間至少出現過一條（確認 tap 有命中、snackbar 有播）。
       expect(seenDuringLifecycle, isTrue);
-      expect(find.text('每日翻牌有機會遇到她'), findsNothing);
+      expect(find.text('翻牌有機會遇到她'), findsNothing);
 
       // 佇列若殘留會跨頁持續輪播（root messenger 不隨本頁 dispose）：
       // 再推 10s 仍必須全空，證明沒有殘留條目排隊中。
       for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 500));
-        expect(find.text('每日翻牌有機會遇到她'), findsNothing);
+        expect(find.text('翻牌有機會遇到她'), findsNothing);
       }
     });
 

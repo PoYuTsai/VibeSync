@@ -4,8 +4,8 @@
 // tier 正規化單一真實來源），再把結果傳給 claim_practice_profile_draw RPC。RPC 不重
 // 算 tier 邏輯，避免 DB 與 Edge 兩處數字漂移（RPC 僅做原子扣費/idempotent）。
 //
-// 規則（見 docs/superpowers/specs/2026-06-26-practice-card-draw-design.md）：
-//   每日免費翻牌：Free 1 / Starter 3 / Essential 5。
+// 規則（2026-08-02 批 3 更新，見 docs/plans/2026-08-01-remove-guest-checklist-draw-reward.md）：
+//   每日免費翻牌：Free 0（改由起步清單一次性贈抽）/ Starter 3 / Essential 5。
 //   免費用完：Free 不開放額外（導升級）；Starter/Essential 每次額外扣 5 則一般 quota。
 //   重置點：Asia/Taipei 中午 12:00（UTC+8 無 DST → 對應 04:00 UTC）。
 
@@ -14,14 +14,14 @@ import { normalizeTier } from "../_shared/quota.ts";
 /** 額外翻牌固定成本（鎖死 5，與 ledger CHECK cost_messages IN (0,5) 一致）。 */
 export const PRACTICE_DRAW_EXTRA_COST = 5;
 
-/** 每日免費翻牌額度（依 tier）。 */
+/** 每日免費翻牌額度（依 tier）。free=0：免費用戶的抽卡只剩起步清單一次性贈抽。 */
 export const PRACTICE_DRAW_FREE_ALLOWANCE = {
-  free: 1,
+  free: 0,
   starter: 3,
   essential: 5,
 } as const;
 
-/** 該 tier 每日免費翻牌次數。未知/缺 tier 一律 normalizeTier→free（fail-closed 到 1）。 */
+/** 該 tier 每日免費翻牌次數。未知/缺 tier 一律 normalizeTier→free（fail-closed 到 0）。 */
 export function drawAllowanceForTier(tier: string | null | undefined): number {
   return PRACTICE_DRAW_FREE_ALLOWANCE[normalizeTier(tier)];
 }

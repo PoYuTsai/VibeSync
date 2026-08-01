@@ -1671,6 +1671,43 @@ export function createPracticeChatHandler(
       return jsonResponse({ error: "invalid_request_body" }, 400);
     }
 
+    if (
+      isPlainObject(rawBody) && rawBody.mode === "grant_onboarding_draw_bonus"
+    ) {
+      // 起步清單全完成 → 一次性贈抽 grant（批 3，A 案）。冪等：一人一列
+      // （PK user_id）＋ignoreDuplicates，client best-effort 重呼無害。
+      // 清單完成訊號在 client 本機、server 不驗證——濫用面封頂每帳號一抽（拍板）。
+      const { error: grantError } = await supabase
+        .from("practice_draw_bonuses")
+        .upsert(
+          { user_id: user.id, source: "getting_started" },
+          { onConflict: "user_id", ignoreDuplicates: true },
+        );
+      if (grantError) {
+        logWarn("practice_draw_bonus_grant_error", {
+          user: summarizeUser(user.id),
+          error: grantError.message,
+        });
+        return jsonResponse({ error: "bonus_grant_failed" }, 500);
+      }
+      const { data: bonusRow, error: bonusReadError } = await supabase
+        .from("practice_draw_bonuses")
+        .select("consumed_at")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (bonusReadError || !bonusRow) {
+        logWarn("practice_draw_bonus_grant_error", {
+          user: summarizeUser(user.id),
+          error: bonusReadError?.message ?? "missing row after grant",
+        });
+        return jsonResponse({ error: "bonus_grant_failed" }, 500);
+      }
+      return jsonResponse({
+        granted: true,
+        consumed: bonusRow.consumed_at != null,
+      });
+    }
+
     if (isPlainObject(rawBody) && rawBody.mode === "draw_profile") {
       let drawRequest;
       try {

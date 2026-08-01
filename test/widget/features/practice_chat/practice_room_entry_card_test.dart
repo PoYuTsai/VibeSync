@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_room_entry_card.dart';
@@ -11,9 +12,11 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: SizedBox.expand(child: PracticeRoomEntryCard()),
+      const ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox.expand(child: PracticeRoomEntryCard()),
+          ),
         ),
       ),
     );
@@ -29,7 +32,7 @@ void main() {
         findsOneWidget);
     expect(find.byKey(const ValueKey('practice-room-entry-glass-panel')),
         findsOneWidget);
-    expect(find.text('每日登入解鎖新女孩'), findsOneWidget);
+    expect(find.text('翻牌解鎖新女孩'), findsOneWidget);
     expect(find.text('AI 實戰練習室'), findsOneWidget);
     expect(find.text('NEW'), findsOneWidget);
     expect(find.text('跟陪練女孩直接聊天，\n練你的真實反應。'), findsOneWidget);
@@ -60,7 +63,9 @@ void main() {
       ],
     );
 
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpWidget(
+      ProviderScope(child: MaterialApp.router(routerConfig: router)),
+    );
     await tester.pump();
 
     await tester.tap(find.byKey(

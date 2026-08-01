@@ -170,6 +170,55 @@ void main() {
     expect(find.text('partner-new-screen'), findsOneWidget);
   }, variant: iosVariant);
 
+  testWidgets('全完成＋贈抽未消耗 → 變身領獎卡（不再直接消失）', (tester) async {
+    OnboardingService.keyboardCompletedListenable.value = true;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          userProfileControllerProvider.overrideWith(
+            () => _SeededProfileController(UserProfile.create(
+              interactionStyle: InteractionStyle.humorous,
+              updatedAt: DateTime(2026, 7, 1),
+            )),
+          ),
+          analysisHistoryEventsProvider.overrideWithValue([_analyzeEvent()]),
+          partnerListProvider.overrideWithValue(const []),
+          onboardingDrawBonusConsumedProvider.overrideWith((ref) async => false),
+        ],
+        child: MaterialApp.router(routerConfig: _stubRouter()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(GettingStartedChecklist.cardKey), findsNothing);
+    expect(find.byKey(OnboardingDrawRewardCard.cardKey), findsOneWidget);
+    expect(find.text('去抽卡'), findsOneWidget);
+  }, variant: iosVariant);
+
+  testWidgets('全完成＋贈抽已消耗 → 整卡消失', (tester) async {
+    OnboardingService.keyboardCompletedListenable.value = true;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          userProfileControllerProvider.overrideWith(
+            () => _SeededProfileController(UserProfile.create(
+              interactionStyle: InteractionStyle.humorous,
+              updatedAt: DateTime(2026, 7, 1),
+            )),
+          ),
+          analysisHistoryEventsProvider.overrideWithValue([_analyzeEvent()]),
+          partnerListProvider.overrideWithValue(const []),
+          onboardingDrawBonusConsumedProvider.overrideWith((ref) async => true),
+        ],
+        child: MaterialApp.router(routerConfig: _stubRouter()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(GettingStartedChecklist.cardKey), findsNothing);
+    expect(find.byKey(OnboardingDrawRewardCard.cardKey), findsNothing);
+  }, variant: iosVariant);
+
   testWidgets('鍵盤引導走完寫旗標後：清單鍵盤項即時打勾（stale bug 回歸鎖）', (tester) async {
     await _pump(tester);
     expect(find.byKey(const Key('checklist_done_keyboard')), findsNothing);

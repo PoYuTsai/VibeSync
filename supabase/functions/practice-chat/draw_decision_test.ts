@@ -11,16 +11,16 @@ import {
 
 // ── 免費額度 ───────────────────────────────────────────────────────────
 
-Deno.test("免費額度：free=1 / starter=3 / essential=5", () => {
-  assertEquals(drawAllowanceForTier("free"), 1);
+Deno.test("免費額度：free=0（起步贈抽制）/ starter=3 / essential=5", () => {
+  assertEquals(drawAllowanceForTier("free"), 0);
   assertEquals(drawAllowanceForTier("starter"), 3);
   assertEquals(drawAllowanceForTier("essential"), 5);
 });
 
-Deno.test("免費額度：未知/缺 tier → normalizeTier→free（fail-closed=1）", () => {
-  assertEquals(drawAllowanceForTier("pro"), 1);
-  assertEquals(drawAllowanceForTier(null), 1);
-  assertEquals(drawAllowanceForTier(undefined), 1);
+Deno.test("免費額度：未知/缺 tier → normalizeTier→free（fail-closed=0）", () => {
+  assertEquals(drawAllowanceForTier("pro"), 0);
+  assertEquals(drawAllowanceForTier(null), 0);
+  assertEquals(drawAllowanceForTier(undefined), 0);
 });
 
 Deno.test("付費額外：free 不可、starter/essential 可，未知→free 不可", () => {

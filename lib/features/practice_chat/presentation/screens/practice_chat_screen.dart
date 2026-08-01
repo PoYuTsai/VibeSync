@@ -347,6 +347,8 @@ class _PracticeLockedEntry extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final upgradeLocked = state.drawUpgradeRequired;
     final quotaLocked = state.drawQuotaExceeded;
+    // 批 3：free 每日免費抽已移除，「每日」字樣只對付費 tier 為真。
+    final isPremium = ref.watch(subscriptionProvider).isPremium;
     return Center(
       child: SingleChildScrollView(
         key: const ValueKey('practice-locked-entry'),
@@ -361,7 +363,7 @@ class _PracticeLockedEntry extends ConsumerWidget {
             ),
             const SizedBox(height: 20),
             Text(
-              '每日登入解鎖新女孩',
+              isPremium ? '每日登入解鎖新女孩' : '翻牌解鎖新女孩',
               textAlign: TextAlign.center,
               style: AppTypography.titleLarge.copyWith(
                 color: AppColors.onBackgroundPrimary,

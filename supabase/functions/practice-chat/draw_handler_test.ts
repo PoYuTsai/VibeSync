@@ -38,6 +38,9 @@ interface MockOpts {
   /** 完整 draw events 列（含 reset_window_start_at）；優先於 drawn。 */
   drawnRows?: Array<Record<string, unknown>>;
   drawnError?: string;
+  /** 起步贈抽列（null/缺席＝無列）。 */
+  bonus?: { consumed_at: string | null } | null;
+  bonusError?: string;
   rpc: Array<{ data?: unknown; error?: string }>;
 }
 
@@ -48,15 +51,55 @@ function mockClient(
   rpcCalls: Array<Record<string, unknown>>;
   prepareCalls: Array<Record<string, unknown>>;
   subscriptionUpdates: Array<Record<string, unknown>>;
+  bonusUpdates: Array<Record<string, unknown>>;
 } {
   const rpcCalls: Array<Record<string, unknown>> = [];
   const prepareCalls: Array<Record<string, unknown>> = [];
   const subscriptionUpdates: Array<Record<string, unknown>> = [];
+  const bonusUpdates: Array<Record<string, unknown>> = [];
   let rpcIdx = 0;
 
   // deno-lint-ignore no-explicit-any
   const client: any = {
     from(table: string) {
+      if (table === "practice_draw_bonuses") {
+        return {
+          select(_cols: string) {
+            // deno-lint-ignore no-explicit-any
+            const builder: any = {
+              eq(_c: string, _v: unknown) {
+                return builder;
+              },
+              maybeSingle() {
+                return Promise.resolve(
+                  opts.bonusError
+                    ? { data: null, error: { message: opts.bonusError } }
+                    : { data: opts.bonus ?? null, error: null },
+                );
+              },
+            };
+            return builder;
+          },
+          update(values: Record<string, unknown>) {
+            bonusUpdates.push(values);
+            // deno-lint-ignore no-explicit-any
+            const builder: any = {
+              eq(_c: string, _v: unknown) {
+                return builder;
+              },
+              is(_c: string, _v: unknown) {
+                return builder;
+              },
+              // deno-lint-ignore no-explicit-any
+              then(onF: any, onR: any) {
+                return Promise.resolve({ data: null, error: null })
+                  .then(onF, onR);
+              },
+            };
+            return builder;
+          },
+        };
+      }
       return {
         select(_cols: string) {
           // builder 同時是 thenable（events 直接 await）與有 maybeSingle（subscriptions）。
@@ -132,6 +175,7 @@ function mockClient(
     rpcCalls,
     prepareCalls,
     subscriptionUpdates,
+    bonusUpdates,
   };
 }
 
@@ -164,9 +208,8 @@ async function run(
   request = req(),
   email: string | null = "user@example.com",
 ) {
-  const { client, rpcCalls, prepareCalls, subscriptionUpdates } = mockClient(
-    opts,
-  );
+  const { client, rpcCalls, prepareCalls, subscriptionUpdates, bonusUpdates } =
+    mockClient(opts);
   const result = await handleDrawProfile({
     supabase: client,
     userId: "u-1",
@@ -181,6 +224,7 @@ async function run(
     rpcCalls,
     prepareCalls,
     subscriptionUpdates,
+    bonusUpdates,
   };
 }
 
@@ -216,11 +260,12 @@ Deno.test("draw prepares subscription resets through the DB row lock", async () 
   assertEquals(subscriptionUpdates, []);
 });
 
-// ── Free 第一抽 → cost 0 ───────────────────────────────────────────────
-Deno.test("Free 第一抽：cost 0，回 profile + draw receipt + usage", async () => {
-  const { result, body, rpcCalls } = await run({
+// ── Free（贈抽制）────────────────────────────────────────────────────────
+Deno.test("Free 持未消耗贈抽：allowance 0+1、cost 0 抽成功並標記消耗", async () => {
+  const { result, body, rpcCalls, bonusUpdates } = await run({
     sub: sub("free", 3, 5),
     drawn: [],
+    bonus: { consumed_at: null },
     rpc: [{
       data: receipt({
         profile_id: "practice_girl_007",
@@ -238,11 +283,69 @@ Deno.test("Free 第一抽：cost 0，回 profile + draw receipt + usage", async 
   assertEquals(body.draw.extraCostMessages, 0);
   assertEquals(body.usage.dailyUsed, 3);
   assertEquals(body.usage.dailyLimit, 15);
-  // Free：傳給 RPC 的額度/付費旗標正確
+  // Free＋贈抽：傳給 RPC 的額度/付費旗標正確
   assertEquals(rpcCalls[0].p_free_allowance, 1);
   assertEquals(rpcCalls[0].p_allow_paid_extra, false);
   assertEquals(rpcCalls[0].p_extra_cost, 5);
   assertEquals(rpcCalls[0].p_charge_quota, true);
+  // 抽成功且 free_used(1) > tierAllowance(0) → 贈抽標記消耗恰一次。
+  assertEquals(bonusUpdates.length, 1);
+});
+
+Deno.test("Free 無贈抽：p_free_allowance 0（每日免費已移除）", async () => {
+  const { rpcCalls, bonusUpdates } = await run({
+    sub: sub("free", 0, 0),
+    drawn: [],
+    rpc: [{ data: receipt({ free_allowance: 0, free_used: 0 }) }],
+  });
+  assertEquals(rpcCalls[0].p_free_allowance, 0);
+  assertEquals(bonusUpdates.length, 0);
+});
+
+Deno.test("Free 贈抽已消耗：不再 +1，p_free_allowance 0", async () => {
+  const { rpcCalls, bonusUpdates } = await run({
+    sub: sub("free", 0, 0),
+    drawn: [],
+    bonus: { consumed_at: "2026-08-02T00:00:00.000Z" },
+    rpc: [{ data: receipt({ free_allowance: 0, free_used: 0 }) }],
+  });
+  assertEquals(rpcCalls[0].p_free_allowance, 0);
+  assertEquals(bonusUpdates.length, 0);
+});
+
+Deno.test("Starter 持贈抽：allowance 3+1；tier 額度內的抽不消耗贈抽", async () => {
+  const { rpcCalls, bonusUpdates } = await run({
+    sub: sub("starter", 0, 0),
+    drawn: [],
+    bonus: { consumed_at: null },
+    rpc: [{ data: receipt({ free_allowance: 4, free_used: 2 }) }],
+  });
+  assertEquals(rpcCalls[0].p_free_allowance, 4);
+  // free_used(2) <= tierAllowance(3) → 贈抽保留。
+  assertEquals(bonusUpdates.length, 0);
+});
+
+Deno.test("Starter 持贈抽：第 4 次 cost 0 抽（超過 tier 額度）才消耗贈抽", async () => {
+  const { bonusUpdates } = await run({
+    sub: sub("starter", 0, 0),
+    drawn: [],
+    bonus: { consumed_at: null },
+    rpc: [{ data: receipt({ free_allowance: 4, free_used: 4 }) }],
+  });
+  assertEquals(bonusUpdates.length, 1);
+});
+
+Deno.test("贈抽查詢失敗：fail-closed 無贈抽、抽卡照常（不 500）", async () => {
+  const { value } = await captureWarnings(() =>
+    run({
+      sub: sub("free", 0, 0),
+      drawn: [],
+      bonusError: "boom",
+      rpc: [{ data: receipt({ free_allowance: 0, free_used: 0 }) }],
+    })
+  );
+  assertEquals(value.result.status, 200);
+  assertEquals(value.rpcCalls[0].p_free_allowance, 0);
 });
 
 // ── Free 第二抽 → 402 升級 ─────────────────────────────────────────────
@@ -254,7 +357,8 @@ Deno.test("Free 免費用完：RPC RAISE upgrade → 402 practice_draw_upgrade_r
   });
   assertEquals(result.status, 402);
   assertEquals(body.error, "practice_draw_upgrade_required");
-  assertEquals(body.draw.freeAllowance, 1);
+  // free 每日額度已移除（無贈抽時 allowance 0）。
+  assertEquals(body.draw.freeAllowance, 0);
   assertEquals(body.draw.freeRemaining, 0);
   // 402＝該 tier 不可付費額外抽 → 絕不宣傳加抽價格。
   assertEquals(body.draw.extraCostMessages, 0);

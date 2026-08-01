@@ -8,7 +8,9 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../onboarding/data/onboarding_service.dart';
+import '../../../practice_chat/data/providers/practice_chat_providers.dart';
 import '../../../report/data/providers/report_providers.dart';
 import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../providers/partner_providers.dart';
@@ -98,7 +100,10 @@ class GettingStartedChecklist extends ConsumerWidget {
       );
     }
 
-    if (items.every((i) => i.done)) return const SizedBox.shrink();
+    // 全完成 → 變身一次性贈抽領獎卡（贈抽消耗後才永久消失）。
+    if (items.every((i) => i.done)) {
+      return const OnboardingDrawRewardCard();
+    }
 
     final doneCount = items.where((i) => i.done).length;
 
@@ -136,6 +141,76 @@ class GettingStartedChecklist extends ConsumerWidget {
             ),
             const SizedBox(height: 4),
             for (final item in items) _ChecklistRow(item: item),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 起步清單全完成的一次性贈抽狀態。呼叫即 grant（server 冪等），回傳
+/// consumed：true=已用掉。autoDispose：離開首頁重進會重查（抽完回來卡片即消失）。
+final onboardingDrawBonusConsumedProvider =
+    FutureProvider.autoDispose<bool>((ref) {
+  return ref.watch(practiceChatApiServiceProvider).grantOnboardingDrawBonus();
+});
+
+/// 起步清單全完成 → 領獎卡：送一次免費抽卡＋導練習室圖鑑（功能導覽一石二鳥）。
+/// 贈抽已消耗（或狀態拿不到）→ 整卡消失，不擋首頁。
+class OnboardingDrawRewardCard extends ConsumerWidget {
+  const OnboardingDrawRewardCard({super.key});
+
+  static const cardKey = Key('onboarding_draw_reward_card');
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final consumed = ref.watch(onboardingDrawBonusConsumedProvider);
+    final showCard = consumed.maybeWhen(
+      data: (used) => !used,
+      // loading/error 一律不佔版面：best-effort，網路恢復後自然出現。
+      orElse: () => false,
+    );
+    if (!showCard) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        key: OnboardingDrawRewardCard.cardKey,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          color: AppColors.brandFlame.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.brandFlame.withValues(alpha: 0.45)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '🎉 起步完成！送你一次免費抽卡',
+              style: AppTypography.titleSmall.copyWith(
+                color: AppColors.onBackgroundPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '到 AI 練習室翻一張角色卡，馬上開始實戰演練。',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.onBackgroundSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            BrandPrimaryButton(
+              label: '去抽卡',
+              onPressed: () {
+                unawaited(
+                  context.push('/practice-collection').whenComplete(() {
+                    // 抽完回首頁重查消耗狀態，卡片即時消失。
+                    ref.invalidate(onboardingDrawBonusConsumedProvider);
+                  }),
+                );
+              },
+            ),
           ],
         ),
       ),
