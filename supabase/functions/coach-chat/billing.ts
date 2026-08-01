@@ -40,6 +40,11 @@ export function deriveCoachScopeKey(input: {
   if (input.scope?.type === "partner") {
     return `partner:${input.scope.partnerId}`;
   }
+  // 批 A：global scope 帳本 key 固定 "global"——scopeKey 每 user 帳本已隔離，
+  // 不需再帶 id。
+  if (input.scope?.type === "global") {
+    return "global";
+  }
   if (typeof input.conversationId === "string" && input.conversationId !== "") {
     return `conversation:${input.conversationId}`;
   }

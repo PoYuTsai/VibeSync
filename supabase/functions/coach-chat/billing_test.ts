@@ -17,6 +17,7 @@ import {
   releaseCoachClaim,
   settleCoachRequest,
 } from "./billing.ts";
+import { RequestSchema } from "./schemas.ts";
 
 const REQUEST_ID = "123e4567-e89b-42d3-a456-426614174000";
 const HMAC_KEY = btoa("0123456789abcdef0123456789abcdef");
@@ -68,6 +69,67 @@ Deno.test("coach scope key prefers explicit scope then conversation fallback", (
   assertEquals(
     deriveCoachScopeKey({ scope: null, conversationId: null }),
     "none",
+  );
+  // 批 A：global scope 帳本 key 固定 "global"（per-user 帳本已隔離，不帶 id）。
+  assertEquals(
+    deriveCoachScopeKey({
+      scope: { type: "global" },
+      conversationId: "global:me",
+    }),
+    "global",
+  );
+});
+
+Deno.test("request schema accepts global scope shape and rejects mismatches", () => {
+  const base = {
+    conversationId: "global:me",
+    userQuestion: "不知道怎麼開啟話題？",
+    scope: { type: "global" },
+  };
+  const ok = RequestSchema.safeParse(base);
+  assert(ok.success);
+
+  // global 合成 conversationId 必須是 'global:me'。
+  const badConversation = RequestSchema.safeParse({
+    ...base,
+    conversationId: "conv-1",
+  });
+  assertFalse(badConversation.success);
+  assert(
+    !badConversation.success &&
+      badConversation.error.issues.some(
+        (issue) => issue.message === "scope_global_shape_mismatch",
+      ),
+  );
+
+  // global 頂層 partnerId 必須為空。
+  const badPartner = RequestSchema.safeParse({
+    ...base,
+    partnerId: "p-1",
+  });
+  assertFalse(badPartner.success);
+  assert(
+    !badPartner.success &&
+      badPartner.error.issues.some(
+        (issue) => issue.message === "scope_global_shape_mismatch",
+      ),
+  );
+
+  // 既有兩型不回歸。
+  assert(
+    RequestSchema.safeParse({
+      conversationId: "conv-1",
+      userQuestion: "她是什麼意思？",
+      scope: { type: "conversation", conversationId: "conv-1" },
+    }).success,
+  );
+  assert(
+    RequestSchema.safeParse({
+      conversationId: "partner:p-1",
+      partnerId: "p-1",
+      userQuestion: "約她之前我該注意什麼？",
+      scope: { type: "partner", partnerId: "p-1" },
+    }).success,
   );
 });
 

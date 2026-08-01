@@ -17,6 +17,7 @@ export const LifecyclePhaseEnum = z.enum([
 export type LifecyclePhase = z.infer<typeof LifecyclePhaseEnum>;
 
 // 教練統一案 Phase B：Phase C 帳本 scopeKey 前置的判別式 scope（選填）。
+// 批 A（2026-08-01）：加 global（全域教練，不綁對象；無 id 欄——一人一串）。
 export const CoachScopeSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("conversation"),
@@ -25,6 +26,9 @@ export const CoachScopeSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("partner"),
     partnerId: z.string().min(1).max(100),
+  }).strict(),
+  z.object({
+    type: z.literal("global"),
   }).strict(),
 ]);
 export type CoachScope = z.infer<typeof CoachScopeSchema>;
@@ -143,6 +147,18 @@ export const RequestSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["scope", "partnerId"],
       message: "scope_partner_id_mismatch",
+    });
+  }
+  // 批 A：global scope 的合成 conversationId 固定 'global:me'，且不綁對象
+  // （頂層 partnerId 必須為空）——形狀不符一律拒收，不得靜默當 partner。
+  if (
+    payload.scope?.type === "global" &&
+    (payload.conversationId !== "global:me" || payload.partnerId != null)
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["scope"],
+      message: "scope_global_shape_mismatch",
     });
   }
 });
