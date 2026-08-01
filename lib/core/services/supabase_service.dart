@@ -95,6 +95,9 @@ class SupabaseService {
 
   static bool get isAuthenticated => currentUser != null;
 
+  /// 批 B 訪客模式：目前 session 是否為匿名（訪客）帳號。
+  static bool get isGuestUser => currentUser?.isAnonymous ?? false;
+
   static bool get isPasswordRecoveryInProgress => _passwordRecoveryInProgress;
 
   static Stream<AuthState> get authStateChanges {
@@ -103,6 +106,11 @@ class SupabaseService {
           'SupabaseService not initialized. Call initialize() first.');
     }
     return _client.auth.onAuthStateChange;
+  }
+
+  /// 批 B 訪客模式：匿名登入（先逛逛，不用註冊）。
+  static Future<AuthResponse> signInAnonymously() async {
+    return await client.auth.signInAnonymously();
   }
 
   /// Sign in with email and password
@@ -253,6 +261,28 @@ class SupabaseService {
   /// Uses google_sign_in package for native UX (shows existing accounts)
   static Future<AuthResponse> signInWithGoogle() async {
     return await _socialAuth.signInWithGoogle();
+  }
+
+  /// 批 B 訪客轉正：把 Apple identity 連結到匿名帳號（uid 不變）。
+  static Future<AuthResponse> linkWithApple() async {
+    return await _socialAuth.linkWithApple();
+  }
+
+  /// 批 B 訪客轉正：把 Google identity 連結到匿名帳號（uid 不變）。
+  static Future<AuthResponse> linkWithGoogle() async {
+    return await _socialAuth.linkWithGoogle();
+  }
+
+  /// 批 B 訪客轉正：email＋密碼。updateUser 會寄確認信；點擊連結前
+  /// 帳號仍是匿名（訪客額度不變），介面需明講。
+  static Future<UserResponse> registerGuestWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    return await client.auth.updateUser(
+      UserAttributes(email: email, password: password),
+      emailRedirectTo: AppConfig.authRedirectUri,
+    );
   }
 
   /// Ensure subscription record exists for user

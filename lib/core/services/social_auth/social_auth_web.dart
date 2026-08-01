@@ -18,6 +18,17 @@ class SocialAuthServiceImpl implements SocialAuthService {
   Future<AuthResponse> signInWithGoogle() {
     throw const AuthException('Google Sign In is not supported on Web');
   }
+
+  @override
+  Future<AuthResponse> linkWithApple() {
+    throw const AuthException('Apple identity linking is not supported on Web');
+  }
+
+  @override
+  Future<AuthResponse> linkWithGoogle() {
+    throw const AuthException(
+        'Google identity linking is not supported on Web');
+  }
 }
 
 /// 取得社群登入服務實例

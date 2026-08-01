@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/services/auth_diagnostics_service.dart';
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -559,6 +560,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  Future<void> _continueAsGuest() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _noticeMessage = null;
+    });
+
+    try {
+      unawaited(ref.read(funnelTrackerProvider).track('guest_mode_enter'));
+      final response = await SupabaseService.signInAnonymously();
+      if (response.user != null) {
+        await _handleSuccessfulLogin(response.user!);
+      }
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      _setError(
+        _mapAuthError(
+          e,
+          isSignUp: false,
+          fallbackMessage: '訪客模式啟動失敗，請再試一次。',
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      _setError('訪客模式啟動失敗，請再試一次。');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   Future<void> _submit() async {
     if (_isPasswordRecoveryMode) {
       await _completePasswordRecovery();
@@ -888,6 +921,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         },
                         child: Text(
                           _isSignUp ? '已經有帳號了？登入' : '還沒有帳號？建立帳號',
+                          style: AppTypography.bodyMedium.copyWith(
+                            color: AppColors.onBackgroundSecondary,
+                          ),
+                        ),
+                      ),
+                    if (!_isPasswordRecoveryMode)
+                      TextButton(
+                        key: const Key('login_guest_mode_button'),
+                        onPressed: _isLoading ? null : _continueAsGuest,
+                        child: Text(
+                          '先逛逛，不用註冊',
                           style: AppTypography.bodyMedium.copyWith(
                             color: AppColors.onBackgroundSecondary,
                           ),
