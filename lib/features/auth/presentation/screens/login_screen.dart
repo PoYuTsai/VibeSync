@@ -568,9 +568,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
 
     try {
-      unawaited(ref.read(funnelTrackerProvider).track('guest_mode_enter'));
       final response = await SupabaseService.signInAnonymously();
       if (response.user != null) {
+        // 埋點須在匿名 session 建立後才送：submit-feedback 會 getUser(token)，
+        // 登入前只有 anon key 必 401 落空。
+        unawaited(ref.read(funnelTrackerProvider).track('guest_mode_enter'));
         await _handleSuccessfulLogin(response.user!);
       } else {
         if (!mounted) return;
