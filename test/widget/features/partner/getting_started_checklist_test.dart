@@ -16,9 +16,17 @@ import 'package:vibesync/features/partner/presentation/providers/partner_provide
 import 'package:vibesync/features/onboarding/data/onboarding_service.dart';
 import 'package:vibesync/features/partner/presentation/widgets/getting_started_checklist.dart';
 import 'package:vibesync/features/report/data/providers/report_providers.dart';
+import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/user_profile/data/providers/user_profile_providers.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
+
+class _SeededSubscriptionNotifier extends SubscriptionNotifier {
+  _SeededSubscriptionNotifier(SubscriptionState seed) {
+    state = seed;
+  }
+}
 
 class _SeededProfileController extends UserProfileController {
   _SeededProfileController(this._profile);
@@ -192,6 +200,38 @@ void main() {
 
     expect(find.byKey(GettingStartedChecklist.cardKey), findsNothing);
     expect(find.byKey(OnboardingDrawRewardCard.cardKey), findsOneWidget);
+    expect(find.text('去抽卡'), findsOneWidget);
+    // free 文案：獎勵＝馬上能抽的那張。
+    expect(find.text('🎉 起步完成！送你一次免費抽卡'), findsOneWidget);
+  }, variant: iosVariant);
+
+  testWidgets('付費 tier 領獎卡文案：獎勵＝疊在每日額度後的 +1', (tester) async {
+    OnboardingService.keyboardCompletedListenable.value = true;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          userProfileControllerProvider.overrideWith(
+            () => _SeededProfileController(UserProfile.create(
+              interactionStyle: InteractionStyle.humorous,
+              updatedAt: DateTime(2026, 7, 1),
+            )),
+          ),
+          analysisHistoryEventsProvider.overrideWithValue([_analyzeEvent()]),
+          partnerListProvider.overrideWithValue(const []),
+          onboardingDrawBonusConsumedProvider.overrideWith((ref) async => false),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(const SubscriptionState(
+              tier: SubscriptionTierHelper.essential,
+            )),
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: _stubRouter()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('🎉 起步完成！加送你 1 次翻牌機會'), findsOneWidget);
+    expect(find.textContaining('每日免費次數用完後'), findsOneWidget);
     expect(find.text('去抽卡'), findsOneWidget);
   }, variant: iosVariant);
 

@@ -4,14 +4,17 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/services/funnel_tracker.dart';
+import '../../../../core/services/supabase_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../onboarding/data/onboarding_service.dart';
 import '../../../practice_chat/data/providers/practice_chat_providers.dart';
 import '../../../report/data/providers/report_providers.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../providers/partner_providers.dart';
 
@@ -155,6 +158,27 @@ final onboardingDrawBonusConsumedProvider =
   return ref.watch(practiceChatApiServiceProvider).grantOnboardingDrawBonus();
 });
 
+const _drawRewardDismissedKeyPrefix = 'onboarding_draw_reward_dismissed_v1_';
+
+/// 領獎卡一次性收起旗標（per-uid 本機）。卡片與贈抽消耗刻意脫鉤（Eric 拍板
+/// 2026-08-02 丙案）：點過「去抽卡」回首頁即永久收起；付費 tier 的贈抽仍以
+/// 懶消耗默默留在額度裡自動兌現。重裝/換機時退回看 server consumed
+///（free 抽過＝consumed 亦會收，付費最壞情況＝再看到一次卡片，無害）。
+final onboardingDrawRewardDismissedProvider =
+    FutureProvider.autoDispose<bool>((ref) async {
+  final uid = SupabaseService.currentUser?.id;
+  if (uid == null) return false;
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getBool('$_drawRewardDismissedKeyPrefix$uid') ?? false;
+});
+
+Future<void> _markDrawRewardDismissed() async {
+  final uid = SupabaseService.currentUser?.id;
+  if (uid == null) return;
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool('$_drawRewardDismissedKeyPrefix$uid', true);
+}
+
 /// 起步清單全完成 → 領獎卡：送一次免費抽卡＋導練習室圖鑑（功能導覽一石二鳥）。
 /// 贈抽已消耗（或狀態拿不到）→ 整卡消失，不擋首頁。
 class OnboardingDrawRewardCard extends ConsumerWidget {
@@ -164,6 +188,11 @@ class OnboardingDrawRewardCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 丙案：抽過一次回首頁即永久收起（本機旗標），與贈抽消耗脫鉤。
+    final dismissed =
+        ref.watch(onboardingDrawRewardDismissedProvider).valueOrNull ?? false;
+    if (dismissed) return const SizedBox.shrink();
+
     final consumed = ref.watch(onboardingDrawBonusConsumedProvider);
     // 已消耗 → 永久消失；loading 一幀不佔版面；error 必須給「重試」出口
     //（Codex P2：provider 停在 error 不會自己重跑，藏卡＝把可領的獎藏死）。
@@ -171,6 +200,9 @@ class OnboardingDrawRewardCard extends ConsumerWidget {
       return const SizedBox.shrink();
     }
     final isError = consumed.hasError;
+    // 分身份文案：free 的獎勵是「馬上能抽的那張」；付費的獎勵是「疊在每日
+    // 額度後的 +1」，領卡當下講清楚，之後兌現無感（懶消耗自動生效）。
+    final isPremium = ref.watch(subscriptionProvider).isPremium;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -186,7 +218,7 @@ class OnboardingDrawRewardCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '🎉 起步完成！送你一次免費抽卡',
+              isPremium ? '🎉 起步完成！加送你 1 次翻牌機會' : '🎉 起步完成！送你一次免費抽卡',
               style: AppTypography.titleSmall.copyWith(
                 color: AppColors.onBackgroundPrimary,
                 fontWeight: FontWeight.w700,
@@ -196,7 +228,9 @@ class OnboardingDrawRewardCard extends ConsumerWidget {
             Text(
               isError
                   ? '獎勵狀態載入失敗，點一下重試。'
-                  : '到 AI 練習室翻一張角色卡，馬上開始實戰演練。',
+                  : isPremium
+                      ? '已加進你的翻牌額度——每日免費次數用完後，還能多翻一張。'
+                      : '到 AI 練習室翻一張角色卡，馬上開始實戰演練。',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.onBackgroundSecondary,
               ),
@@ -210,8 +244,11 @@ class OnboardingDrawRewardCard extends ConsumerWidget {
                   return;
                 }
                 unawaited(
-                  context.push('/practice-collection').whenComplete(() {
-                    // 抽完回首頁重查消耗狀態，卡片即時消失。
+                  context.push('/practice-collection').whenComplete(() async {
+                    // 回首頁即永久收起（丙案）；贈抽本身不受影響。
+                    await _markDrawRewardDismissed();
+                    if (!context.mounted) return;
+                    ref.invalidate(onboardingDrawRewardDismissedProvider);
                     ref.invalidate(onboardingDrawBonusConsumedProvider);
                   }),
                 );

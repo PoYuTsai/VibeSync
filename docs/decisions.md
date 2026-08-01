@@ -900,7 +900,7 @@
 1. Server 真相源：`PRACTICE_DRAW_FREE_ALLOWANCE.free = 0`；新表 `practice_draw_bonuses`（migration 20260802100000，一人一列＝終身一次、RLS service-role only）。grant 走 practice-chat 新 mode `grant_onboarding_draw_bonus`（upsert ignoreDuplicates 冪等）。
 2. **懶消耗**：Edge 對未消耗贈抽把免費額度 +1；抽出 cost=0 且本窗免費數「超過 tier 額度」那次才標 `consumed_at`（tier 額度夠用時不動贈抽，對用戶最有利）。標記失敗只 log——自癒且風險封頂一抽。查詢失敗 fail-closed 無贈抽，絕不擋正常抽卡。
 3. Grant 由 client 在起步清單全完成時 best-effort 觸發（清單訊號在本機、server 不驗證）；濫用面封頂每帳號一抽，接受。Android 完成該平台可見項（2 項）即送；老用戶一視同仁補領。
-4. UI：清單全完成 → 卡片變身「🎉 起步完成！送你一次免費抽卡」領獎卡（`OnboardingDrawRewardCard`），CTA 導 /practice-collection；贈抽消耗後永久消失。回溯通知與練習室導覽一石二鳥。
+4. UI：清單全完成 → 卡片變身領獎卡（`OnboardingDrawRewardCard`），CTA 導 /practice-collection。**2026-08-02 丙案補訂（Eric 真機 dogfood 後拍板）**：卡片收起與贈抽消耗脫鉤——點過「去抽卡」回首頁即以 per-uid 本機旗標永久收起（全 tier 行為一致，不再需要抽滿 tier 額度＋1 才消失）；贈抽本身維持懶消耗，付費 tier 的 +1 默默留在額度裡自動兌現。文案分身份：free「送你一次免費抽卡」／付費「加送你 1 次翻牌機會＋已加進你的翻牌額度」。已否決：付費首抽即消耗（獎勵變假）、首頁常駐練習室入口（學習頁大卡已是常駐入口，等 funnel 數據再議）。
 5. 文案誠實化：「每日翻牌／每日登入解鎖新女孩」等字樣改 tier-aware——free 顯示無「每日」版本，付費 tier 維持原文。
 6. 原每日抽規格文件（2026-06-26-practice-card-draw-design.md）的 Free 1/日條目由本 ADR 取代。
 
