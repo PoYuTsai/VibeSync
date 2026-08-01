@@ -9,6 +9,13 @@
 > P1「prompt byte-for-byte 鎖」以批 A 前基線對拍實證證偽，審修批＝Edge global 拒對象綁定欄位
 > ＋legacy 哨兵 id 隔離測＋splash 下界測試。待 Bruce 真機 dogfood 三項（見批 A 實作計畫 Task 9）。
 
+> **批 B 狀態（2026-08-01）：IMPLEMENTED（本地，待 R3 雙審）**——實作計畫
+> `docs/plans/2026-08-01-guest-mode-impl.md`。與規格的一個偏差：原估「可能一條
+> migration」→ 實際需要一條（`20260801120000_practice_prepare_guest_skip_reset.sql`，
+> practice 的重置在 SQL `prepare_practice_subscription_usage` 內，TS 側跳過蓋不到）；
+> 其餘依規格。訪客 429 帶 `guest: true`；「點訂閱付費→導註冊」由 redirect matrix
+> 集中攔截（訪客 /paywall → /register）。
+
 ## 拍板紀錄（Eric 2026-08-01）
 
 - Splash＝縮短到約 2 秒（不做「只有首次播完整版」、不做邊播邊初始化、不維持 3.5 秒）。
