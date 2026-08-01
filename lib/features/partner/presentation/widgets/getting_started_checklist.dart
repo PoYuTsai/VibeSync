@@ -8,14 +8,13 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../follow_up_notification/data/providers/follow_up_notification_service.dart';
-import '../../../follow_up_notification/domain/follow_up_opt_in.dart';
 import '../../../onboarding/data/onboarding_service.dart';
 import '../../../report/data/providers/report_providers.dart';
 import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../providers/partner_providers.dart';
 
-/// Tier 2 批 2：首頁起步清單卡（四項訊號驅動，全完成整卡消失不留殘骸）。
+/// Tier 2 批 2：首頁起步清單卡（訊號驅動，全完成整卡消失不留殘骸）。
+/// 2026-08-01 起縮為三項（iOS）／兩項（Android）：跟進提醒項移除（功能仍在設定頁）。
 ///
 /// 訊號全部讀既有 provider／service，本卡不寫任何狀態；
 /// 每項首次變成完成時打一發 `checklist_item_done`（per-item once-flag）。
@@ -34,14 +33,6 @@ class GettingStartedChecklist extends ConsumerWidget {
     final firstActionDone =
         historyEvents.isNotEmpty || practicePoints.isNotEmpty;
 
-    final followUpDone = ref.watch(followUpOptInValueProvider).maybeWhen(
-          data: (value) => value == FollowUpOptIn.granted,
-          // StreamProvider 首幀 loading：同步 read 兜底，不閃「未完成」假態。
-          orElse: () =>
-              ref.read(followUpOptInStoreProvider).read() ==
-              FollowUpOptIn.granted,
-        );
-
     // 鍵盤僅 iOS（foundation 顯式 import——CI dart2js 教訓）。
     final showKeyboardItem = defaultTargetPlatform == TargetPlatform.iOS;
 
@@ -54,7 +45,6 @@ class GettingStartedChecklist extends ConsumerWidget {
         ref,
         profileDone: profileDone,
         firstActionDone: firstActionDone,
-        followUpDone: followUpDone,
         showKeyboardItem: showKeyboardItem,
         keyboardDone: keyboardDone,
       ),
@@ -66,7 +56,6 @@ class GettingStartedChecklist extends ConsumerWidget {
     WidgetRef ref, {
     required bool profileDone,
     required bool firstActionDone,
-    required bool followUpDone,
     required bool showKeyboardItem,
     required bool keyboardDone,
   }) {
@@ -87,12 +76,6 @@ class GettingStartedChecklist extends ConsumerWidget {
             partners.isEmpty ? '/partner/new' : '/partner/${partners.first.id}',
           );
         },
-      ),
-      _ChecklistItem(
-        id: 'follow_up',
-        label: '開啟跟進提醒',
-        done: followUpDone,
-        onTap: () => context.push('/settings'),
       ),
       if (showKeyboardItem)
         _ChecklistItem(

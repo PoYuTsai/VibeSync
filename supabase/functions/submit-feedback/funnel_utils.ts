@@ -12,7 +12,6 @@ const STRING_VALUE_MAX = 40;
 const CHECKLIST_ITEMS = new Set([
   "profile",
   "first_action",
-  "follow_up",
   "keyboard",
 ]);
 

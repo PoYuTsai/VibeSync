@@ -33,7 +33,7 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 | `first_practice_completed` | — | endPractice hook（本機 once-flag 去重） |
 | `keyboard_setup_shown` | — | app.dart 鍵盤設定 push 點 |
 | `keyboard_setup_completed` | — | markKeyboardCompleted |
-| `checklist_item_done` | `item` (enum: `profile` / `first_action` / `follow_up` / `keyboard`) | 批 2 起步清單 |
+| `checklist_item_done` | `item` (enum: `profile` / `first_action` / `keyboard`) | 起步清單（2026-08-01 起三項：跟進提醒項移除） |
 
 值域限制（server 端強制）：
 
