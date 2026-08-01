@@ -7,13 +7,16 @@ part 'unified_coach_result.g.dart';
 
 /// [UnifiedCoachResult.scopeType] 的合法值（review P2-2 抽共用常數）。
 ///
-/// 這兩個字串是 Hive 持久化值，**絕不可改**；所有讀寫/清理謂詞與
+/// 這些字串是 Hive 持久化值，**絕不可改**；所有讀寫/清理謂詞與
 /// scopeType assert 一律引用此處，不得手寫裸字串（typo 會靜默漏清）。
 class CoachScopeType {
   const CoachScopeType._();
 
   static const String conversation = 'conversation';
   static const String partner = 'partner';
+
+  /// 全域教練（不綁對象），2026-08-01 批 A 新增；同為 Hive 持久化值不可改。
+  static const String global = 'global';
 }
 
 /// Phase D unified coach local result (typeId 26).

@@ -17,19 +17,33 @@ class CoachScope {
 
   const CoachScope.partner(this.id) : type = CoachScopeType.partner;
 
+  /// 全域教練（不綁對象）。id 固定哨兵值——一個使用者恰一條全域對話串。
+  const CoachScope.global()
+      : type = CoachScopeType.global,
+        id = 'me';
+
   bool get isConversation => type == CoachScopeType.conversation;
+
+  bool get isGlobal => type == CoachScopeType.global;
 
   /// 本機索引/family key 用的複合鍵，如 `conversation:c1`／`partner:p1`。
   String get key => '$type:$id';
 
   /// 舊 wire 欄位 `conversationId` 的相容映射：conversation scope 送原 id；
-  /// partner scope 送 `partner:<id>` 合成 id（server 端 Phase C 已認得）。
-  String get wireConversationId => isConversation ? id : 'partner:$id';
+  /// partner scope 送 `partner:<id>` 合成 id（server 端 Phase C 已認得）；
+  /// global scope 送 `global:me` 合成 id。
+  String get wireConversationId {
+    if (isConversation) return id;
+    if (isGlobal) return 'global:me';
+    return 'partner:$id';
+  }
 
-  /// 新 wire 的結構化 scope 物件。
-  Map<String, dynamic> toWireJson() => isConversation
-      ? {'type': 'conversation', 'conversationId': id}
-      : {'type': 'partner', 'partnerId': id};
+  /// 新 wire 的結構化 scope 物件。global 無 id 欄——server 端一人一串。
+  Map<String, dynamic> toWireJson() {
+    if (isConversation) return {'type': 'conversation', 'conversationId': id};
+    if (isGlobal) return {'type': 'global'};
+    return {'type': 'partner', 'partnerId': id};
+  }
 
   @override
   bool operator ==(Object other) =>
