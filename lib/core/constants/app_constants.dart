@@ -16,6 +16,10 @@ class AppConstants {
 
   // Subscription Tiers (訊息制)
   static const freeMonthlyLimit = 30;
+
+  /// 批 B 訪客模式：匿名帳號總量 3 則（不重置）。鏡射 Edge
+  /// `_shared/quota.ts` 的 GUEST_TOTAL_LIMIT，真相源在 server。
+  static const guestTotalLimit = 3;
   static const starterMonthlyLimit = 300;
   static const essentialMonthlyLimit = 800;
 

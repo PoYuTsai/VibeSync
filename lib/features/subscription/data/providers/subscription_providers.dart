@@ -87,11 +87,15 @@ String resolveStartupSubscriptionTier({
 }
 
 @visibleForTesting
-SubscriptionState buildInitialSubscriptionStateFromUsage(UsageData usage) {
+SubscriptionState buildInitialSubscriptionStateFromUsage(
+  UsageData usage, {
+  bool isGuest = false,
+}) {
   final tier = SubscriptionTierHelper.normalizeTier(usage.tier);
   final limits = SubscriptionTierHelper.limitsFor(tier);
   return SubscriptionState(
     tier: tier,
+    isGuest: isGuest,
     monthlyMessagesUsed: usage.monthlyUsed.clamp(0, limits.monthly),
     dailyMessagesUsed: usage.dailyUsed.clamp(0, limits.daily),
     monthlyLimit: limits.monthly,
@@ -134,6 +138,10 @@ class SubscriptionState {
   final DateTime? renewsAt;
   final String? activeProductId;
 
+  /// 批 B 訪客模式：匿名（訪客）帳號。remaining getter 以訪客總量 3 計；
+  /// raw monthlyLimit/dailyLimit 保持 tier 值不動（單一資料流不分岔）。
+  final bool isGuest;
+
   const SubscriptionState({
     this.tier = SubscriptionTierHelper.free,
     this.monthlyMessagesUsed = 0,
@@ -149,6 +157,7 @@ class SubscriptionState {
     this.pendingDowngradeEffectiveAt,
     this.renewsAt,
     this.activeProductId,
+    this.isGuest = false,
   });
 
   bool get isFreeUser => tier == SubscriptionTierHelper.free;
@@ -156,10 +165,16 @@ class SubscriptionState {
   bool get isEssential => tier == SubscriptionTierHelper.essential;
   bool get isPremium => isStarter || isEssential;
 
-  int get monthlyRemaining =>
-      (monthlyLimit - monthlyMessagesUsed).clamp(0, monthlyLimit);
+  /// 訪客帳號 server 端鎖 3 則總量；client 顯示同步採計。
+  int get effectiveMonthlyLimit =>
+      isGuest ? AppConstants.guestTotalLimit : monthlyLimit;
+  int get effectiveDailyLimit =>
+      isGuest ? AppConstants.guestTotalLimit : dailyLimit;
+
+  int get monthlyRemaining => (effectiveMonthlyLimit - monthlyMessagesUsed)
+      .clamp(0, effectiveMonthlyLimit);
   int get dailyRemaining =>
-      (dailyLimit - dailyMessagesUsed).clamp(0, dailyLimit);
+      (effectiveDailyLimit - dailyMessagesUsed).clamp(0, effectiveDailyLimit);
   bool get hasPendingDowngrade =>
       pendingDowngradeToTier != null && pendingDowngradeEffectiveAt != null;
 
@@ -395,6 +410,7 @@ class SubscriptionState {
 
   SubscriptionState copyWith({
     String? tier,
+    bool? isGuest,
     int? monthlyMessagesUsed,
     int? dailyMessagesUsed,
     int? monthlyLimit,
@@ -411,6 +427,7 @@ class SubscriptionState {
   }) {
     return SubscriptionState(
       tier: tier ?? this.tier,
+      isGuest: isGuest ?? this.isGuest,
       monthlyMessagesUsed: monthlyMessagesUsed ?? this.monthlyMessagesUsed,
       dailyMessagesUsed: dailyMessagesUsed ?? this.dailyMessagesUsed,
       monthlyLimit: monthlyLimit ?? this.monthlyLimit,
@@ -492,15 +509,17 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   }
 
   static SubscriptionState _initialStateFromUsageSnapshot() {
+    final isGuest = SupabaseService.isGuestUser;
     try {
       return buildInitialSubscriptionStateFromUsage(
         UsageService().getLocalUsage(),
+        isGuest: isGuest,
       );
     } catch (error) {
       debugPrint(
         '[subscription] Failed to hydrate cached subscription snapshot: $error',
       );
-      return const SubscriptionState(isLoading: true);
+      return SubscriptionState(isLoading: true, isGuest: isGuest);
     }
   }
 

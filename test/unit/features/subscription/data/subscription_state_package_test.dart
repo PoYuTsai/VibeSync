@@ -375,4 +375,57 @@ void main() {
 
     expect(tier, SubscriptionTierHelper.starter);
   });
+  group('批 B 訪客模式：SubscriptionState 訪客額度鏡射', () {
+    test('isGuest 時 remaining 以訪客總量 3 計，raw limit 不變', () {
+      const state = SubscriptionState(
+        tier: SubscriptionTierHelper.free,
+        monthlyMessagesUsed: 2,
+        dailyMessagesUsed: 2,
+        isGuest: true,
+      );
+      expect(state.monthlyLimit, 30);
+      expect(state.effectiveMonthlyLimit, 3);
+      expect(state.effectiveDailyLimit, 3);
+      expect(state.monthlyRemaining, 1);
+      expect(state.dailyRemaining, 1);
+    });
+
+    test('isGuest 用量超過 3 時 remaining clamp 到 0', () {
+      const state = SubscriptionState(
+        monthlyMessagesUsed: 5,
+        dailyMessagesUsed: 5,
+        isGuest: true,
+      );
+      expect(state.monthlyRemaining, 0);
+      expect(state.dailyRemaining, 0);
+    });
+
+    test('非訪客行為回歸鎖：effective limit＝raw limit', () {
+      const state = SubscriptionState(monthlyMessagesUsed: 5);
+      expect(state.isGuest, isFalse);
+      expect(state.effectiveMonthlyLimit, 30);
+      expect(state.monthlyRemaining, 25);
+    });
+
+    test('copyWith 保留 isGuest', () {
+      const state = SubscriptionState(isGuest: true);
+      expect(state.copyWith(monthlyMessagesUsed: 1).isGuest, isTrue);
+    });
+
+    test('buildInitialSubscriptionStateFromUsage 可帶 isGuest', () {
+      final state = buildInitialSubscriptionStateFromUsage(
+        UsageData(
+          monthlyUsed: 1,
+          monthlyLimit: 30,
+          dailyUsed: 1,
+          dailyLimit: 15,
+          dailyResetAt: DateTime.utc(2026, 8, 1),
+          tier: SubscriptionTierHelper.free,
+        ),
+        isGuest: true,
+      );
+      expect(state.isGuest, isTrue);
+      expect(state.monthlyRemaining, 2);
+    });
+  });
 }
