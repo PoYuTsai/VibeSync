@@ -850,3 +850,20 @@
 **效果**: 成為獎賞三冊的有框線元件密度從每章 4.7／4.5／2.8 降到 2.3／2.0／1.3，回到終極指引的區間內。
 
 **驗證**: `flutter analyze lib test` 0 issue；學習模組 238 綠（新增 13 條：spine 只剩左側色條、warning／safety 仍整框、七種 tone 文字標籤都在、spine 下 320px + 2.0 字級不 overflow、章節列點跳／不誤記完成／兩個單元都有／單章書不長列）；`ebook_essential_unit_test` 新增一條擋「順手把 spine 套到全部」；視覺證據 `test/visual_proof/ebook_reading_layout_proof_test.dart`（正式 widget + 正式 JSON，輸出 `build/visual_proof/ebook_layout_*.png`）。
+
+---
+
+## ADR #33 — [2026-08-01] 訪客額度 3→30 並綁裝置（Keychain 訪客 session 復活）
+
+**狀態**: 🟢 Active — 實作完成，待真機 dogfood
+
+**背景**: Eric 真機 dogfood 批 B 後拍板：訪客 3 則連一次截圖分析（扣 5 則）都不夠，體驗不到產品就撞註冊卡；同時「刪 app 重裝」會拿到全新匿名帳號、無限重領額度。
+
+**決定**:
+
+1. **訪客總量 3→30**（對齊 free 月額度）。總量制不變：不按月重置、單池不分日/月、429 導註冊。單源 `_shared/quota.ts` `GUEST_TOTAL_LIMIT`，client `AppConstants.guestTotalLimit` 只是鏡像。
+2. **註冊沿用剩餘額度**：本來就成立（linking 保同 uid＋同 subscriptions row），不需改動；註冊後 `is_anonymous=false`、月重置恢復，「註冊解鎖每月 30 則」文案仍準確。
+3. **綁裝置走純 client Keychain，不上傳 device id**（避免動 App Store 隱私申報）：`GuestSessionVault` 把匿名 refresh token 鏡存 `flutter_secure_storage`（iOS 刪 app 重裝仍在）；點「先逛逛」先 `setSession` 復活舊訪客帳號（同額度同紀錄），失敗才開新匿名帳號。匿名 token 每次換發跟寫；出現非匿名 session 即清 vault。
+4. **已知接受風險**：(a) 訪客「登出」會 revoke token，等於棄帳號重來可重領 30 則——有「無法再找回」警語擋著，與 free 換 email 開新帳的摩擦相當，不另擋；(b) Android secure storage 不跨重裝存活，綁定實質只保 iOS（現階段目標機）；(c) crash 恰卡在 token 換發與跟寫之間會令 vault 一代 stale → 復活失敗退回新帳號（機率極低，等同舊行為）。
+
+**驗證**: `_shared` Deno 46 綠；subscription/quota strip client 測試 29 綠；`guest_session_vault_test` 6 綠；analyze 0 issue。E2E 綁裝置行為（刪 app 重裝→額度不重置）留真機 dogfood。

@@ -9,6 +9,7 @@ import 'keyboard_privacy_purge_service.dart';
 import '../config/environment.dart';
 import 'auth_recovery_helper.dart';
 import 'auth_diagnostics_service.dart';
+import 'guest_session_vault.dart';
 import 'revenuecat_service.dart';
 import 'social_auth/social_auth_service.dart';
 
@@ -70,6 +71,7 @@ class SupabaseService {
       event: authState.event,
       currentState: _passwordRecoveryInProgress,
     );
+    _syncGuestSessionVault(authState.session);
     if (authState.event == AuthChangeEvent.passwordRecovery) {
       unawaited(
         AuthDiagnosticsService.log(
@@ -108,9 +110,48 @@ class SupabaseService {
     return _client.auth.onAuthStateChange;
   }
 
+  /// 訪客額度綁裝置：訪客 refresh token 的 Keychain 鏡存。
+  static GuestSessionVault guestSessionVault = GuestSessionVault();
+
+  /// 匿名 session 建立/換發 → 鏡存最新 refresh token；非匿名 session 出現
+  /// （linking 完成或登入既有帳號）→ 清 vault。無 session（登出）不動：
+  /// 綁裝置＝登出/重裝後重進訪客要回到同一帳號。
+  static void _syncGuestSessionVault(Session? session) {
+    if (session == null) return;
+    final refreshToken = session.refreshToken;
+    if (session.user.isAnonymous) {
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        unawaited(guestSessionVault.save(refreshToken));
+      }
+    } else {
+      unawaited(guestSessionVault.clear());
+    }
+  }
+
   /// 批 B 訪客模式：匿名登入（先逛逛，不用註冊）。
   static Future<AuthResponse> signInAnonymously() async {
     return await client.auth.signInAnonymously();
+  }
+
+  /// 訪客入口（綁裝置版）：先試復活本機 Keychain 裡的舊訪客 session
+  /// （同帳號＝同剩餘額度），復活失敗（token 已換發失效、帳號被清）
+  /// 才開新匿名帳號。
+  static Future<AuthResponse> signInAsGuest() async {
+    final stored = await guestSessionVault.read();
+    if (stored != null && stored.isNotEmpty) {
+      try {
+        final restored = await client.auth.setSession(stored);
+        if (restored.user != null) {
+          return restored;
+        }
+      } catch (e) {
+        debugPrint('[SupabaseService] guest session restore failed, '
+            'falling back to fresh anonymous sign-in: $e');
+      }
+      // 復活失敗＝token 已死，清掉避免每次都白試一輪。
+      await guestSessionVault.clear();
+    }
+    return await signInAnonymously();
   }
 
   /// Sign in with email and password
@@ -230,6 +271,8 @@ class SupabaseService {
   }
 
   static Future<void> clearLocalSessionAfterDeletion() async {
+    // 帳號已從 server 刪除，vault 內 token（若有）已死，直接清。
+    await guestSessionVault.clear();
     try {
       await client.auth.signOut();
     } catch (error) {

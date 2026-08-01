@@ -568,7 +568,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
 
     try {
-      final response = await SupabaseService.signInAnonymously();
+      final response = await SupabaseService.signInAsGuest();
       if (response.user != null) {
         // 埋點須在匿名 session 建立後才送：submit-feedback 會 getUser(token)，
         // 登入前只有 anon key 必 401 落空。
