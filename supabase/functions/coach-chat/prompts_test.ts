@@ -356,3 +356,71 @@ Deno.test("buildCoachChatPrompt makes force-answer session state explicit", () =
   assertStringIncludes(prompt, "不要再問 clarifyingQuestion");
   assertStringIncludes(prompt, "低信心");
 });
+
+// ── 批 A：global scope prompt 變體 ──────────────────────────────────────
+
+Deno.test("buildCoachChatPrompt injects global framing and keeps style context", () => {
+  const prompt = buildCoachChatPrompt({
+    conversationId: "global:me",
+    userQuestion: "不知道怎麼開啟話題，給我一點方向？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [],
+    dataQualityFlagged: false,
+    scope: { type: "global" },
+    effectiveStyleContext: "- Preferred voice: 幽默",
+  });
+
+  assertStringIncludes(prompt, "本次是全域教練對話");
+  assertStringIncludes(prompt, "提醒他到該對象頁的「跟進」區問");
+  // 「使用者風格設定」管線 scope 無關，global 照舊注入。
+  assertStringIncludes(prompt, "使用者風格設定");
+  assertStringIncludes(prompt, "- Preferred voice: 幽默");
+});
+
+Deno.test("buildCoachChatPrompt keeps conversation/partner output byte-identical (global 回歸鎖)", () => {
+  const conversationBase = {
+    conversationId: "c1",
+    userQuestion: "她是什麼意思？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [{ sender: "partner" as const, text: "你感覺很有故事" }],
+    dataQualityFlagged: false,
+  };
+  // scope 欄位對 conversation/partner 的 prompt 輸出必須是 no-op（加 global
+  // 分支前 prompt 從不讀 scope；此鎖保證既有兩型 byte-for-byte 不變）。
+  assertEquals(
+    buildCoachChatPrompt({
+      ...conversationBase,
+      scope: { type: "conversation", conversationId: "c1" },
+    }),
+    buildCoachChatPrompt(conversationBase),
+  );
+
+  const partnerBase = {
+    conversationId: "partner:p1",
+    partnerId: "p1",
+    userQuestion: "約她之前我該注意什麼？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [],
+    dataQualityFlagged: false,
+    partnerHint: { name: "Mia", traits: ["活潑"] },
+  };
+  assertEquals(
+    buildCoachChatPrompt({
+      ...partnerBase,
+      scope: { type: "partner", partnerId: "p1" },
+    }),
+    buildCoachChatPrompt(partnerBase),
+  );
+
+  assertEquals(
+    buildCoachChatPrompt(conversationBase).includes("本次是全域教練對話"),
+    false,
+  );
+  assertEquals(
+    buildCoachChatPrompt(partnerBase).includes("本次是全域教練對話"),
+    false,
+  );
+});

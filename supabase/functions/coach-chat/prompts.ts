@@ -6,6 +6,7 @@ import {
 
 export function buildCoachChatPrompt(input: CoachChatRequest): string {
   const context = [
+    section("全域教練模式", formatGlobalFraming(input.scope)),
     section("教練情境", formatLifecycleFraming(input.lifecyclePhase)),
     section("使用者問題", input.userQuestion),
     section("使用者原本想怎麼回", input.rawReplyDraft),
@@ -139,6 +140,17 @@ const LIFECYCLE_FRAMING: Record<LifecyclePhase, string> = {
     "先釐清約會實際狀況與對方反應（若上下文不足，優先用釐清問題收集），" +
     "再給後續訊息策略（何時傳、傳什麼）與關係推進或修復建議。",
 };
+
+// 批 A：global scope（不綁對象）的全域指引段。conversation/partner scope
+// 一律回 null——既有兩型 prompt 輸出 byte-for-byte 不變（prompts_test 回歸鎖）。
+function formatGlobalFraming(
+  scope: CoachChatRequest["scope"],
+): string | null {
+  if (scope?.type !== "global") return null;
+  return "本次是全域教練對話：使用者沒有綁定特定對象，問題偏通用（開場、判讀、推進、心態）。" +
+    "直接給可執行的建議。若使用者明確在問某個特定對象的具體對話，" +
+    "提醒他到該對象頁的「跟進」區問，那裡你能看到完整上下文。";
+}
 
 function formatLifecycleFraming(
   phase: LifecyclePhase | null | undefined,
