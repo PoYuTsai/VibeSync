@@ -225,6 +225,16 @@ void main() {
             body: Center(child: Text('Paywall')),
           ),
         ),
+        GoRoute(
+          path: '/register',
+          builder: (context, state) => Scaffold(
+            body: Center(
+              child: Text(
+                'Register(${state.uri.queryParameters['source'] ?? ''})',
+              ),
+            ),
+          ),
+        ),
       ],
     );
   });
@@ -896,6 +906,59 @@ void main() {
 
       await tester.pump(const Duration(seconds: 5));
       await tester.pump(const Duration(seconds: 1));
+    });
+  });
+
+  group('批 B 訪客模式', () {
+    Override guestSubscription() => subscriptionProvider.overrideWith((ref) {
+          final notifier = _StubSubscriptionNotifier();
+          notifier.seedState(const SubscriptionState(isGuest: true));
+          return notifier;
+        });
+
+    testWidgets('訪客帳號區出現「註冊帳號」入口，點擊導 /register（source=settings）',
+        (tester) async {
+      await pumpSettings(tester, extraOverrides: [guestSubscription()]);
+
+      expect(find.text('註冊帳號'), findsOneWidget);
+
+      await tester.tap(find.text('註冊帳號'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Register(settings)'), findsOneWidget);
+    });
+
+    testWidgets('訪客開跟進提醒 toggle → 導 /register（source=follow_up），開關維持關',
+        (tester) async {
+      await pumpSettings(tester, extraOverrides: [guestSubscription()]);
+
+      final toggle = find.widgetWithText(SwitchListTile, '48 小時後跟進提醒');
+      final fallbackSwitch = find.byType(Switch);
+      if (toggle.evaluate().isNotEmpty) {
+        await tester.dragUntilVisible(
+          toggle,
+          find.byType(ListView),
+          const Offset(0, -200),
+        );
+        await tester.tap(toggle);
+      } else {
+        await tester.dragUntilVisible(
+          fallbackSwitch.first,
+          find.byType(ListView),
+          const Offset(0, -200),
+        );
+        await tester.tap(fallbackSwitch.first);
+      }
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Register(follow_up)'), findsOneWidget);
+    });
+
+    testWidgets('非訪客無「註冊帳號」入口（回歸鎖）', (tester) async {
+      await pumpSettings(tester);
+      expect(find.text('註冊帳號'), findsNothing);
     });
   });
 }

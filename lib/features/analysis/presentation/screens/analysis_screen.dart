@@ -2281,6 +2281,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Future<void> _maybeScheduleFollowUpNotification(Conversation conv) async {
     final partnerId = conv.partnerId;
     if (partnerId == null || partnerId.isEmpty) return;
+    // 批 B 訪客模式：訪客不彈軟卡也不排通知（提醒唯一入口＝設定頁 toggle，
+    // 該處導免費註冊）。opt-in 旗標不動，轉正後首次分析照常問。
+    if (ref.read(subscriptionProvider).isGuest) return;
     try {
       final service = ref.read(followUpNotificationServiceProvider);
       final displayName = _partnerDisplayName(partnerId);
