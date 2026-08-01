@@ -7,7 +7,7 @@
 **Goal**：登入頁一鍵「先逛逛，不用註冊」→ Supabase 匿名帳號真用核心功能（訪客額度 3 則總量、不重置）→ 三處觸發導 `/register` → identity linking 轉正（uid 不變、資料零搬移）。
 
 **架構決定（盤點後定案）**：
-- **免 migration**。重置是各 Edge function TS 側 `applyResetsIfNeeded`＋CAS 寫回（SQL `check_and_reset_usage` 無 live 呼叫者）。匿名帳號：Edge 端一律**跳過重置**＋限額 `{monthly: 3, daily: 3}`，monthly counter 即成終身計數；並發防護沿用 `increment_usage` 4-arg RAISE，SQL 零改動。
+- **一條 migration**（實作中發現，取代原「免 migration」估計）：TS 側重置（`applyResetsIfNeeded`＋CAS 寫回）匿名一律跳過＋限額 `{monthly: 3, daily: 3}`；但 practice 路徑的重置在 SQL `prepare_practice_subscription_usage` 內（且被 `settle_prefetched_practice_hint` SQL 內部再呼叫），TS 跳過蓋不到 → `20260801120000_practice_prepare_guest_skip_reset.sql` 讓該 RPC 查 `auth.users.is_anonymous` 匿名跳過歸零，簽名零改動。並發防護沿用 `increment_usage` 4-arg RAISE。
 - 訪客判定單源：JWT/user `is_anonymous`（server `user.is_anonymous`、client `User.isAnonymous`，gotrue 2.18.0 已支援）。
 - 「點訂閱付費 → 導註冊」**在 redirect matrix 集中攔截**（訪客 `/paywall` → `/register`），30+ 個 paywall push 點零散改動全免。
 - 轉正三路：Apple＝`linkIdentityWithIdToken`（原生 idToken，鏡射現有 signInWithApple）；Google＝`getLinkIdentityUrl`＋FlutterWebAuth2＋`getSessionFromUrl`（鏡射現有 signInWithGoogle）；email＝`updateUser(email+password)` 寄確認信，點連結前仍是訪客（介面明講）。
@@ -177,7 +177,9 @@
 2. 審修後：Edge pre-push audit → push main（自動帶上本地既有 docs commit acd7c2a8）→ 盯 push-triggered Edge deploy＋`Build & Distribute`（Android）。
 3. Prod auth 設定（Supabase Management API＋PAT，ref=fcmwrmwdoqiqdnbisdpg）：
    `PATCH /v1/projects/{ref}/config/auth` body `{"external_anonymous_users_enabled": true, "security_manual_linking_enabled": true}`，PATCH 後 GET 回讀驗證。
-4. **不做**：iOS build dispatch（Eric 手動）、App Store 送審、`supabase db push`（本批無 migration）。
+4. **Migration 交付**：`20260801120000_practice_prepare_guest_skip_reset.sql` 走定向套用（Management API＋PAT，絕不 `supabase db push`），套用後核對遠端帳本版本＝檔名、驗 RPC 行為，**先於 push main**（規則：migration-dependent Edge code 不得先上）。
+5. **不做**：iOS build dispatch（Eric 手動）、App Store 送審、`supabase db push`。
+6. **審計註記（雙審後補）**：`opener_charge.ts`／`new_topic_billing.ts` grep 證實無獨立 429/limits 建構（全由 index.ts 傳入，已鎖訪客值），故無 diff；`_handleSuccessfulLogin` 只用 `user.id`，email-null 安全；keyboard-assist 429 維持自有 shape（`quota_exhausted`＋message，不帶 `guest` 鍵）＝刻意例外，client 鍵盤訊號 keys 不動。
 
 **Dogfood 腳本（Eric/Bruce，批 A＋B 一顆 build）**：刪 app 裝新版 → 先逛逛 → onboarding → 用核心功能到 3 則用完 → 撞註冊卡（非付費牆）→ 註冊（Apple 或 email）→ 確認訪客期間對象卡／分析／關於我都在、額度變 30/月。
 

@@ -160,6 +160,13 @@ class UsageService {
   static String? get _currentUserId =>
       debugCurrentUserIdOverride ?? SupabaseService.currentUser?.id;
 
+  /// 批 B 訪客模式：測試 seam＋單源判定。
+  @visibleForTesting
+  static bool? debugIsGuestOverride;
+
+  static bool get isGuestAccount =>
+      debugIsGuestOverride ?? SupabaseService.isGuestUser;
+
   static void _resetSnapshotIfAccountChanged() {
     final currentUserId = _currentUserId;
     if (currentUserId == null) return;
@@ -327,6 +334,9 @@ class UsageService {
     final box = StorageService.usageBox;
     _resetSnapshotIfAccountChanged();
     final now = DateTime.now();
+    // 批 B 訪客模式：訪客額度總量制、永不重置——本地鏡像同步跳過日/月歸零，
+    // 否則跨窗口 UI 會顯示還有額度而 server 照樣 429（Grok 審修 P2）。
+    final skipResets = isGuestAccount;
 
     // Check if daily reset needed
     final dailyResetAtStr = box.get(_dailyResetAtKey) as String?;
@@ -335,7 +345,7 @@ class UsageService {
 
     if (dailyResetAtStr != null) {
       dailyResetAt = DateTime.parse(dailyResetAtStr);
-      if (now.isAfter(dailyResetAt)) {
+      if (!skipResets && now.isAfter(dailyResetAt)) {
         // Reset daily usage
         dailyUsed = 0;
         dailyResetAt = _getNextMidnight();
@@ -356,8 +366,9 @@ class UsageService {
 
     if (monthlyResetAtStr != null) {
       final monthlyResetAt = DateTime.parse(monthlyResetAtStr);
-      if (now.month != monthlyResetAt.month ||
-          now.year != monthlyResetAt.year) {
+      if (!skipResets &&
+          (now.month != monthlyResetAt.month ||
+              now.year != monthlyResetAt.year)) {
         // Reset monthly usage
         monthlyUsed = 0;
         box.put(_monthlyUsedKey, 0);

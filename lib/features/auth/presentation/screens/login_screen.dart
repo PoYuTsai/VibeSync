@@ -572,6 +572,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final response = await SupabaseService.signInAnonymously();
       if (response.user != null) {
         await _handleSuccessfulLogin(response.user!);
+      } else {
+        if (!mounted) return;
+        _setError('訪客模式啟動失敗，請再試一次。');
       }
     } on AuthException catch (e) {
       if (!mounted) return;

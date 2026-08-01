@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -93,11 +95,15 @@ SubscriptionState buildInitialSubscriptionStateFromUsage(
 }) {
   final tier = SubscriptionTierHelper.normalizeTier(usage.tier);
   final limits = SubscriptionTierHelper.limitsFor(tier);
+  // 訪客 clamp 到訪客總量（GLM 審修 P2：髒快照不得顯示超過 3 的 used）。
+  final monthlyCap =
+      isGuest ? AppConstants.guestTotalLimit : limits.monthly;
+  final dailyCap = isGuest ? AppConstants.guestTotalLimit : limits.daily;
   return SubscriptionState(
     tier: tier,
     isGuest: isGuest,
-    monthlyMessagesUsed: usage.monthlyUsed.clamp(0, limits.monthly),
-    dailyMessagesUsed: usage.dailyUsed.clamp(0, limits.daily),
+    monthlyMessagesUsed: usage.monthlyUsed.clamp(0, monthlyCap),
+    dailyMessagesUsed: usage.dailyUsed.clamp(0, dailyCap),
     monthlyLimit: limits.monthly,
     dailyLimit: limits.daily,
     isLoading: true,
@@ -506,6 +512,26 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
   SubscriptionNotifier() : super(_initialStateFromUsageSnapshot()) {
     _initialize();
+    // 批 B 訪客模式：isGuest 跟著 auth 狀態走——email 確認 deep link（userUpdated）
+    // 或任何 refresh 路徑重建 state 掉回預設 false 時，這裡都會校正回來。
+    try {
+      _authGuestSync = SupabaseService.authStateChanges.listen((_) {
+        final isGuest = SupabaseService.isGuestUser;
+        if (mounted && state.isGuest != isGuest) {
+          state = state.copyWith(isGuest: isGuest);
+        }
+      });
+    } catch (_) {
+      // 測試環境 SupabaseService 未初始化：略過同步，isGuest 由 seed 決定。
+    }
+  }
+
+  StreamSubscription<AuthState>? _authGuestSync;
+
+  @override
+  void dispose() {
+    _authGuestSync?.cancel();
+    super.dispose();
   }
 
   static SubscriptionState _initialStateFromUsageSnapshot() {

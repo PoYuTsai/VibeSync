@@ -2570,6 +2570,18 @@ Deno.test({
     if ((guestTernary?.length ?? 0) < 4) {
       throw new Error("expected 4 guest-aware monthlyLimit sites");
     }
+    // dailyLimit 同樣不得殘留裸型（GLM 審修 P2：只鎖 monthly 會漏 daily 回歸）
+    const bareDaily =
+      /dailyLimit = TIER_DAILY_LIMITS\[normalizeTier\(sub\.tier\)\]/;
+    if (bareDaily.test(source)) {
+      throw new Error("bare dailyLimit expression without guest override");
+    }
+    const guestDailyTernary = source.match(
+      /dailyLimit = anonymous \? GUEST_TOTAL_LIMIT/g,
+    );
+    if ((guestDailyTernary?.length ?? 0) < 4) {
+      throw new Error("expected 4 guest-aware dailyLimit sites");
+    }
     // 所有 429 payload 都帶 anonymous（buildQuotaExceededPayload 呼叫數＝anonymous 數）
     const payloadCalls =
       source.match(/buildQuotaExceededPayload\(\{/g)?.length ?? 0;

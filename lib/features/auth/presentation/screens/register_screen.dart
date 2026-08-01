@@ -94,6 +94,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   bool _isIdentityTakenError(AuthException e) {
+    // 先比對結構化 error code（GoTrue 文案會變，code 穩定），message 當 fallback。
+    final code = (e.code ?? '').toLowerCase();
+    if (code == 'identity_already_exists' ||
+        code == 'email_exists' ||
+        code == 'user_already_exists') {
+      return true;
+    }
     final message = e.message.toLowerCase();
     return message.contains('identity is already linked') ||
         message.contains('identity_already_exists') ||
@@ -138,6 +145,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       final response = await link();
       if (response.user != null) {
         await _handleLinkSuccess(method);
+      } else {
+        if (!mounted) return;
+        _setError('註冊沒有完成，請再試一次。');
       }
     } on AuthException catch (e) {
       if (_isCancellationError(e)) return;
@@ -184,7 +194,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       if (!mounted) return;
       setState(() {
         _emailConfirmationSent = true;
-        _isLoading = false;
       });
     } on AuthException catch (e) {
       if (!mounted) return;
@@ -197,6 +206,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     } catch (_) {
       if (!mounted) return;
       _setError('註冊失敗，請再試一次。');
+    } finally {
+      if (mounted && _isLoading) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 

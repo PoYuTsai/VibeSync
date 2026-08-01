@@ -144,4 +144,39 @@ void main() {
     expect(usage.monthlyLimit, essentialLimits.monthly);
     expect(usage.dailyLimit, essentialLimits.daily);
   });
+
+  test('批 B 訪客：本地快照跨日/月不歸零（總量制鏡像）', () {
+    UsageService.debugIsGuestOverride = true;
+    addTearDown(() => UsageService.debugIsGuestOverride = null);
+
+    final box = StorageService.usageBox;
+    box.put('monthly_used', 3);
+    box.put('daily_used', 3);
+    // 過期的 reset 時戳：一般帳號會被歸零，訪客必須保留。
+    box.put('monthly_reset_at', DateTime(2020, 1, 1).toIso8601String());
+    box.put('daily_reset_at', DateTime(2020, 1, 2).toIso8601String());
+
+    final usage = UsageService().getLocalUsage();
+
+    expect(usage.monthlyUsed, 3);
+    expect(usage.dailyUsed, 3);
+    expect(box.get('monthly_used'), 3);
+    expect(box.get('daily_used'), 3);
+  });
+
+  test('批 B 回歸鎖：非訪客過期時戳照常歸零', () {
+    UsageService.debugIsGuestOverride = false;
+    addTearDown(() => UsageService.debugIsGuestOverride = null);
+
+    final box = StorageService.usageBox;
+    box.put('monthly_used', 7);
+    box.put('daily_used', 5);
+    box.put('monthly_reset_at', DateTime(2020, 1, 1).toIso8601String());
+    box.put('daily_reset_at', DateTime(2020, 1, 2).toIso8601String());
+
+    final usage = UsageService().getLocalUsage();
+
+    expect(usage.monthlyUsed, 0);
+    expect(usage.dailyUsed, 0);
+  });
 }
