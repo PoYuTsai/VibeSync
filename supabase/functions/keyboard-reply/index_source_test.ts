@@ -93,3 +93,16 @@ Deno.test("health checks the database-owned exactly-once capability", async () =
   );
   assert(source.includes("contractVersion: KEYBOARD_REPLY_CONTRACT_VERSION"));
 });
+
+Deno.test("批 B：keyboard-reply 訪客接線（免重置＋訪客 limits＋guest 429）", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./index.ts", import.meta.url),
+  );
+  assert(source.includes("isAnonymousAuthUser(user)"));
+  assert(source.includes("? noResetResult(sub)"));
+  assert(source.includes("? noResetResult(latest)"));
+  // resolveLimits 全部帶 anonymous（不得殘留裸呼叫）
+  assert(!source.includes("resolveLimits(sub.tier);"));
+  assert(!source.includes("resolveLimits(latest.tier);"));
+  assert(source.includes("resolveLimits(sub.tier, { anonymous })"));
+});

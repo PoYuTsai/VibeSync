@@ -7,7 +7,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import {
   applyResetsIfNeeded,
   checkQuota,
+  isAnonymousAuthUser,
   isPlainObject,
+  noResetResult,
   normalizeTier,
   parseRevenueCatSubscriber,
   quotaExceededMessage,
@@ -210,14 +212,18 @@ async function quotaCheck(
   if (!sub) {
     return { kind: "unavailable", message: "subscription unavailable" };
   }
-  const reset = applyResetsIfNeeded(sub, new Date());
+  // 批 B 訪客模式：匿名帳號 3 則總量、永不重置，limits 一律鎖訪客值。
+  const anonymous = user.isAnonymous === true;
+  const reset = anonymous
+    ? noResetResult(sub)
+    : applyResetsIfNeeded(sub, new Date());
   sub = reset.sub;
   if (reset.dailyReset || reset.monthlyReset) {
     await persistResets(user.id, reset);
   }
   const isTestAccount = user.email != null &&
     TEST_EMAILS.includes(user.email.toLowerCase());
-  let limits = resolveLimits(sub.tier);
+  let limits = resolveLimits(sub.tier, { anonymous });
   let gate = checkQuota({
     sub,
     cost: 1,
@@ -229,7 +235,7 @@ async function quotaCheck(
     const refreshed = await maybeRefreshTier(user.id, sub);
     if (refreshed) {
       sub = refreshed;
-      limits = resolveLimits(sub.tier);
+      limits = resolveLimits(sub.tier, { anonymous });
       gate = checkQuota({
         sub,
         cost: 1,
@@ -242,7 +248,7 @@ async function quotaCheck(
   if (!gate.ok) {
     return {
       kind: "limited",
-      message: quotaExceededMessage(gate.reason),
+      message: quotaExceededMessage(gate.reason, anonymous),
     };
   }
   return {
@@ -286,6 +292,7 @@ const dependencies: KeyboardAssistHandlerDependencies = {
     return {
       id: data.user.id,
       email: data.user.email ?? null,
+      isAnonymous: isAnonymousAuthUser(data.user),
     };
   },
   ledger: {

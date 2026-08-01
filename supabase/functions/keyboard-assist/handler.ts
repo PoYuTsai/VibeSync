@@ -40,6 +40,8 @@ export const keyboardAssistCorsHeaders = {
 export type KeyboardAssistUser = {
   id: string;
   email: string | null;
+  /** 批 B 訪客模式：JWT is_anonymous（訪客 3 則總量、免重置）。 */
+  isAnonymous?: boolean;
 };
 
 type LedgerIdentity = {
