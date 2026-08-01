@@ -2536,3 +2536,48 @@ Deno.test({
     );
   },
 });
+
+// ── 批 B 訪客模式：analyze-chat 訪客接線 source 鎖 ──────────────────────────
+Deno.test({
+  name: "批 B：訪客 3 則總量接線（免重置＋limits 鎖 3/3＋guest 429）",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    // 匿名判定單源，緊跟 accountIsTest 之後
+    if (!source.includes("const anonymous = isAnonymousAuthUser(user);")) {
+      throw new Error("missing anonymous derivation");
+    }
+    // 兩段 CAS reset 都必須被匿名短路（訪客永不歸零）
+    if (!source.includes("if (!anonymous && !sameUtcDay(now, dailyResetAt))")) {
+      throw new Error("daily reset not guest-gated");
+    }
+    if (
+      !source.includes("if (!anonymous && !sameUtcMonth(now, monthlyResetAt))")
+    ) {
+      throw new Error("monthly reset not guest-gated");
+    }
+    // limits 表達式不得殘留未鎖訪客的裸型（每一組都要帶 anonymous 三元）
+    const bareMonthly =
+      /monthlyLimit = TIER_MONTHLY_LIMITS\[normalizeTier\(sub\.tier\)\]/;
+    if (bareMonthly.test(source)) {
+      throw new Error("bare monthlyLimit expression without guest override");
+    }
+    const guestTernary = source.match(
+      /monthlyLimit = anonymous \? GUEST_TOTAL_LIMIT/g,
+    );
+    if ((guestTernary?.length ?? 0) < 4) {
+      throw new Error("expected 4 guest-aware monthlyLimit sites");
+    }
+    // 所有 429 payload 都帶 anonymous（buildQuotaExceededPayload 呼叫數＝anonymous 數）
+    const payloadCalls =
+      source.match(/buildQuotaExceededPayload\(\{/g)?.length ?? 0;
+    const payloadAnon = source.match(/^\s+anonymous,$/gm)?.length ?? 0;
+    if (payloadAnon < payloadCalls) {
+      throw new Error(
+        `buildQuotaExceededPayload sites missing anonymous: ${payloadAnon}/${payloadCalls}`,
+      );
+    }
+  },
+});
