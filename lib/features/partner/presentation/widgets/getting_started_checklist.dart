@@ -165,12 +165,12 @@ class OnboardingDrawRewardCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final consumed = ref.watch(onboardingDrawBonusConsumedProvider);
-    final showCard = consumed.maybeWhen(
-      data: (used) => !used,
-      // loading/error 一律不佔版面：best-effort，網路恢復後自然出現。
-      orElse: () => false,
-    );
-    if (!showCard) return const SizedBox.shrink();
+    // 已消耗 → 永久消失；loading 一幀不佔版面；error 必須給「重試」出口
+    //（Codex P2：provider 停在 error 不會自己重跑，藏卡＝把可領的獎藏死）。
+    if (consumed.valueOrNull == true || consumed.isLoading) {
+      return const SizedBox.shrink();
+    }
+    final isError = consumed.hasError;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -194,15 +194,21 @@ class OnboardingDrawRewardCard extends ConsumerWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              '到 AI 練習室翻一張角色卡，馬上開始實戰演練。',
+              isError
+                  ? '獎勵狀態載入失敗，點一下重試。'
+                  : '到 AI 練習室翻一張角色卡，馬上開始實戰演練。',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.onBackgroundSecondary,
               ),
             ),
             const SizedBox(height: 12),
             BrandPrimaryButton(
-              label: '去抽卡',
+              label: isError ? '重試' : '去抽卡',
               onPressed: () {
+                if (isError) {
+                  ref.invalidate(onboardingDrawBonusConsumedProvider);
+                  return;
+                }
                 unawaited(
                   context.push('/practice-collection').whenComplete(() {
                     // 抽完回首頁重查消耗狀態，卡片即時消失。

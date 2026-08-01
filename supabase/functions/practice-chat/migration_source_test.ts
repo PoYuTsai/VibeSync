@@ -964,3 +964,49 @@ Deno.test("practice_draw_bonuses：PK user_id（終身一次）＋RLS 開啟零 
   );
   assert(!drawBonusMigration.includes("CREATE POLICY"));
 });
+
+// ── 審修（Codex P1/P2）：贈抽判定/消耗原子化進 claim RPC ────────────────────
+const bonusAtomicMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260802120000_claim_draw_bonus_atomic.sql",
+    import.meta.url,
+  ),
+);
+
+Deno.test("claim RPC：贈抽列 FOR UPDATE＋懶消耗同交易＋replay 不消耗", () => {
+  assert(
+    bonusAtomicMigration.includes(
+      "CREATE OR REPLACE FUNCTION public.claim_practice_profile_draw",
+    ),
+  );
+  // 贈抽列必須鎖（跨窗雙花根治）。
+  assert(
+    bonusAtomicMigration.includes("FROM public.practice_draw_bonuses AS b"),
+  );
+  // 語句形式計數（排除註解裡的字樣）：subscriptions 一次＋bonuses 一次
+  //（replay 路徑只讀不鎖）。
+  const lockCount =
+    bonusAtomicMigration.split("\n  FOR UPDATE;").length - 1;
+  assert(lockCount === 2, `expected 2 FOR UPDATE statements, got ${lockCount}`);
+  // 消耗條件：cost=0 且寫入前免費數已達 tier 額度。
+  assert(
+    bonusAtomicMigration.includes(
+      "IF v_cost = 0 AND v_bonus_available AND v_free_used >= p_free_allowance",
+    ),
+  );
+  assert(
+    bonusAtomicMigration.includes(
+      "WHERE user_id = p_user_id AND consumed_at IS NULL",
+    ),
+  );
+  // 兩條 replay 路徑都在消耗邏輯前 return（原始碼順序鎖）。
+  const consumeIdx = bonusAtomicMigration.indexOf("-- ── 6b.");
+  const replay1Idx = bonusAtomicMigration.indexOf("'idempotent_replay', TRUE");
+  const replay2Idx = bonusAtomicMigration.lastIndexOf(
+    "'idempotent_replay', TRUE",
+  );
+  assert(replay1Idx > -1 && replay2Idx > replay1Idx);
+  assert(consumeIdx > replay2Idx, "consume block must come after both replays");
+  // 簽名零改動。
+  assert(bonusAtomicMigration.includes("p_charge_quota           BOOLEAN DEFAULT TRUE"));
+});
