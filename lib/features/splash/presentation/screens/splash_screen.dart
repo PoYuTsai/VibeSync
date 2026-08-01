@@ -56,10 +56,10 @@ class _SplashScreenState extends State<SplashScreen>
       duration: const Duration(seconds: 10),
     )..repeat(reverse: true);
 
-    // ── 主標題入場（1.6 秒）──
+    // ── 主標題入場（0.9 秒）──
     _titleController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1600),
+      duration: const Duration(milliseconds: 900),
     );
 
     _titleOpacity = Tween<double>(begin: 0, end: 1).animate(
@@ -83,10 +83,10 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
 
-    // ── Shimmer（1 秒，延遲 1.8 秒）──
+    // ── Shimmer（0.6 秒，延遲 1 秒）──
     _shimmerController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1000),
+      duration: const Duration(milliseconds: 600),
     );
 
     _shimmerPosition = Tween<double>(begin: -0.6, end: 1.2).animate(
@@ -96,10 +96,10 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
 
-    // ── 副標題（1.2 秒，延遲 1 秒）──
+    // ── 副標題（0.7 秒，延遲 0.55 秒）──
     _subtitleController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 700),
     );
 
     _subtitleOpacity = Tween<double>(begin: 0, end: 1).animate(
@@ -116,7 +116,7 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
 
-    // ── 底部圓點（延遲 2 秒出現）──
+    // ── 底部圓點（延遲 1.2 秒出現）──
     _dotController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
@@ -137,24 +137,24 @@ class _SplashScreenState extends State<SplashScreen>
     // 標題入場
     _titleController.forward();
 
-    // 1 秒後副標題入場
-    await Future.delayed(const Duration(seconds: 1));
+    // 0.55 秒後副標題入場
+    await Future.delayed(const Duration(milliseconds: 550));
     if (!mounted) return;
     _subtitleController.forward();
 
-    // 1.8 秒後 shimmer
-    await Future.delayed(const Duration(milliseconds: 800));
+    // 1 秒後 shimmer
+    await Future.delayed(const Duration(milliseconds: 450));
     if (!mounted) return;
     _shimmerController.forward();
 
-    // 2 秒後底部圓點
+    // 1.2 秒後底部圓點
     await Future.delayed(const Duration(milliseconds: 200));
     if (!mounted) return;
     _dotController.forward();
     _dotPulseController.repeat(reverse: true);
 
-    // 3.5 秒後完成 splash，進入 app
-    await Future.delayed(const Duration(milliseconds: 1500));
+    // 2 秒後完成 splash，進入 app
+    await Future.delayed(const Duration(milliseconds: 800));
     if (mounted) {
       widget.onComplete();
     }
