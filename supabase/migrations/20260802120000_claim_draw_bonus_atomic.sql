@@ -103,6 +103,36 @@ BEGIN
     RAISE EXCEPTION 'PRACTICE_DRAW_NO_SUBSCRIPTION';
   END IF;
 
+  -- ── 2a. 鎖後二次 replay 檢查（Codex 二輪 P2：併發同 requestId 的後到者從
+  --     訂閱鎖醒來時，先到者的 event 可能已 commit——不先回放，會在下方
+  --     402/429 判定被錯擋，破壞冪等。回放不消耗贈抽。）────────────────────
+  SELECT * INTO v_existing
+  FROM public.practice_profile_draw_events
+  WHERE user_id = p_user_id AND request_id = p_request_id;
+
+  IF FOUND THEN
+    SELECT count(*) INTO v_free_used
+    FROM public.practice_profile_draw_events
+    WHERE user_id = p_user_id
+      AND reset_window_start_at = p_reset_window_start_at
+      AND cost_messages = 0;
+    SELECT (b.consumed_at IS NULL) INTO v_bonus_available
+    FROM public.practice_draw_bonuses AS b
+    WHERE b.user_id = p_user_id;
+    v_allowance := p_free_allowance +
+      (CASE WHEN COALESCE(v_bonus_available, FALSE) THEN 1 ELSE 0 END);
+    RETURN jsonb_build_object(
+      'profile_id', v_existing.profile_id,
+      'cost_messages', v_existing.cost_messages,
+      'free_allowance', v_allowance,
+      'free_used', v_free_used,
+      'free_remaining', GREATEST(0, v_allowance - v_free_used),
+      'daily_messages_used', v_sub.daily_messages_used,
+      'monthly_messages_used', v_sub.monthly_messages_used,
+      'idempotent_replay', TRUE
+    );
+  END IF;
+
   -- ── 2b. 鎖贈抽列（Codex P1 根治：判定與消耗同交易串行）────────────────────
   v_bonus_available := FALSE;
   SELECT (b.consumed_at IS NULL) INTO v_bonus_available
