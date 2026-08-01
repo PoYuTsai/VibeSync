@@ -481,3 +481,31 @@ Deno.test("T7: follow-up callClaudeAPI disables thinking only for Sonnet 5", asy
   assertEquals(bodies[0].thinking, { type: "disabled" });
   assertEquals("thinking" in bodies[1], false);
 });
+
+Deno.test("批 B：anonymous input 的 quota 429 帶 guest 標記＋訪客文案", async () => {
+  const h = makeHarness(async () => claudeWrapped(VALID_CARD));
+  h.deps.deductCredit = () =>
+    Promise.reject(
+      new CoachFollowUpQuotaExceededError("monthly_limit_exceeded", 3, 3),
+    );
+
+  const result = await runCoachFollowUp(
+    { ...BASE_INPUT, anonymous: true },
+    h.deps,
+  );
+
+  assertEquals(result.status, 429);
+  assertEquals(result.body.guest, true);
+  assertEquals(String(result.body.message).includes("訪客"), true);
+  assertEquals(result.body.limit, 3);
+});
+
+Deno.test("批 B：非匿名 429 body 無 guest 鍵（回歸鎖）", async () => {
+  const h = makeHarness(async () => claudeWrapped(VALID_CARD));
+  h.deps.deductCredit = () =>
+    Promise.reject(
+      new CoachFollowUpQuotaExceededError("monthly_limit_exceeded", 300, 300),
+    );
+  const result = await runCoachFollowUp(BASE_INPUT, h.deps);
+  assertEquals("guest" in result.body, false);
+});

@@ -81,6 +81,8 @@ export interface GenerationInput {
   styleContext?: CoachFollowUpRequest["styleContext"];
   tier: "free" | "starter" | "essential";
   accountIsTest: boolean;
+  /** 批 B 訪客模式：匿名帳號 429 body 帶 guest 標記＋註冊文案。 */
+  anonymous?: boolean;
   apiKey: string;
 }
 
@@ -187,7 +189,8 @@ export async function runCoachFollowUp(
             error: e.reason === "monthly_limit_exceeded"
               ? "Monthly limit exceeded"
               : "Daily limit exceeded",
-            message: quotaExceededMessage(e.reason),
+            ...(input.anonymous ? { guest: true } : {}),
+            message: quotaExceededMessage(e.reason, input.anonymous ?? false),
             quotaNeeded: 1,
             used: e.used,
             limit: e.limit,

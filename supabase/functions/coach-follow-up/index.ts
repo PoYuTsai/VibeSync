@@ -27,7 +27,9 @@ import {
   buildQuotaExceededPayload,
   checkQuota,
   classifyQuotaRpcError,
+  isAnonymousAuthUser,
   isPlainObject,
+  noResetResult,
   normalizeTier,
   parseRevenueCatSubscriber,
   resolveLimits,
@@ -362,7 +364,11 @@ export async function handleRequest(req: Request): Promise<Response> {
   }
 
   // ── Daily / monthly resets ──
-  const resetResult = applyResetsIfNeeded(sub, new Date());
+  // 批 B 訪客模式：匿名帳號 3 則總量、永不重置，limits 一律鎖訪客值。
+  const anonymous = isAnonymousAuthUser(user);
+  const resetResult = anonymous
+    ? noResetResult(sub)
+    : applyResetsIfNeeded(sub, new Date());
   sub = resetResult.sub;
   if (resetResult.dailyReset || resetResult.monthlyReset) {
     await persistResets(supabase, user.id, resetResult);
@@ -370,7 +376,7 @@ export async function handleRequest(req: Request): Promise<Response> {
 
   // ── Tier resolution + cap check ──
   const accountIsTest = TEST_EMAILS.includes(user.email || "");
-  let limits = resolveLimits(sub.tier);
+  let limits = resolveLimits(sub.tier, { anonymous });
 
   let gate = checkQuota({
     sub,
@@ -391,7 +397,7 @@ export async function handleRequest(req: Request): Promise<Response> {
     );
     if (refreshed) {
       sub = refreshed;
-      limits = resolveLimits(sub.tier);
+      limits = resolveLimits(sub.tier, { anonymous });
       gate = checkQuota({
         sub,
         cost: COST_PER_GENERATION,
@@ -417,6 +423,7 @@ export async function handleRequest(req: Request): Promise<Response> {
         reason: gate.reason,
         monthlyLimit: limits.monthly,
         dailyLimit: limits.daily,
+        anonymous,
       }),
       429,
     );
@@ -467,6 +474,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       styleContext: payload.styleContext,
       tier,
       accountIsTest,
+      anonymous,
       apiKey,
     },
     {
@@ -479,13 +487,15 @@ export async function handleRequest(req: Request): Promise<Response> {
         let latestSub = await fetchSubscription(supabase, userId);
         if (!latestSub) throw new Error("No subscription found");
 
-        const latestReset = applyResetsIfNeeded(latestSub, new Date());
+        const latestReset = anonymous
+          ? noResetResult(latestSub)
+          : applyResetsIfNeeded(latestSub, new Date());
         latestSub = latestReset.sub;
         if (latestReset.dailyReset || latestReset.monthlyReset) {
           await persistResets(supabase, userId, latestReset);
         }
 
-        let latestLimits = resolveLimits(latestSub.tier);
+        let latestLimits = resolveLimits(latestSub.tier, { anonymous });
         let deductGate = checkQuota({
           sub: latestSub,
           cost: COST_PER_GENERATION,
@@ -502,7 +512,7 @@ export async function handleRequest(req: Request): Promise<Response> {
           );
           if (refreshed) {
             latestSub = refreshed;
-            latestLimits = resolveLimits(latestSub.tier);
+            latestLimits = resolveLimits(latestSub.tier, { anonymous });
             deductGate = checkQuota({
               sub: latestSub,
               cost: COST_PER_GENERATION,
