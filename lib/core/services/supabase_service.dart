@@ -114,18 +114,15 @@ class SupabaseService {
   static GuestSessionVault guestSessionVault = GuestSessionVault();
 
   /// 匿名 session 建立/換發 → 鏡存最新 refresh token；非匿名 session 出現
-  /// （linking 完成或登入既有帳號）→ 清 vault。無 session（登出）不動：
-  /// 綁裝置＝登出/重裝後重進訪客要回到同一帳號。
+  /// （linking 完成或登入既有帳號）→ 清 vault。無 session（登出）不動 vault
+  /// （token 反正已被 revoke，見 GuestSessionVault 類註解）。
+  /// vault 內部已串行化，unawaited 不會造成寫入亂序。
   static void _syncGuestSessionVault(Session? session) {
     if (session == null) return;
-    final refreshToken = session.refreshToken;
-    if (session.user.isAnonymous) {
-      if (refreshToken != null && refreshToken.isNotEmpty) {
-        unawaited(guestSessionVault.save(refreshToken));
-      }
-    } else {
-      unawaited(guestSessionVault.clear());
-    }
+    unawaited(guestSessionVault.syncAuthSession(
+      isAnonymous: session.user.isAnonymous,
+      refreshToken: session.refreshToken,
+    ));
   }
 
   /// 批 B 訪客模式：匿名登入（先逛逛，不用註冊）。
@@ -134,24 +131,16 @@ class SupabaseService {
   }
 
   /// 訪客入口（綁裝置版）：先試復活本機 Keychain 裡的舊訪客 session
-  /// （同帳號＝同剩餘額度），復活失敗（token 已換發失效、帳號被清）
-  /// 才開新匿名帳號。
-  static Future<AuthResponse> signInAsGuest() async {
-    final stored = await guestSessionVault.read();
-    if (stored != null && stored.isNotEmpty) {
-      try {
-        final restored = await client.auth.setSession(stored);
-        if (restored.user != null) {
-          return restored;
-        }
-      } catch (e) {
-        debugPrint('[SupabaseService] guest session restore failed, '
-            'falling back to fresh anonymous sign-in: $e');
-      }
-      // 復活失敗＝token 已死，清掉避免每次都白試一輪。
-      await guestSessionVault.clear();
-    }
-    return await signInAnonymously();
+  /// （同帳號＝同剩餘額度），token 真死（4xx）才開新匿名帳號；
+  /// 網路類錯誤外拋讓使用者重試（保 vault）。邏輯在 GuestSignInFlow
+  /// （可單元測試），此處只接線。
+  static Future<AuthResponse> signInAsGuest() {
+    return GuestSignInFlow(
+      vault: guestSessionVault,
+      restoreSession: (token) => client.auth.setSession(token),
+      freshSignIn: () => client.auth.signInAnonymously(),
+      discardSession: () => client.auth.signOut(),
+    ).signIn();
   }
 
   /// Sign in with email and password

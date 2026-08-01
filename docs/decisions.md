@@ -864,6 +864,7 @@
 1. **訪客總量 3→30**（對齊 free 月額度）。總量制不變：不按月重置、單池不分日/月、429 導註冊。單源 `_shared/quota.ts` `GUEST_TOTAL_LIMIT`，client `AppConstants.guestTotalLimit` 只是鏡像。
 2. **註冊沿用剩餘額度**：本來就成立（linking 保同 uid＋同 subscriptions row），不需改動；註冊後 `is_anonymous=false`、月重置恢復，「註冊解鎖每月 30 則」文案仍準確。
 3. **綁裝置走純 client Keychain，不上傳 device id**（避免動 App Store 隱私申報）：`GuestSessionVault` 把匿名 refresh token 鏡存 `flutter_secure_storage`（iOS 刪 app 重裝仍在）；點「先逛逛」先 `setSession` 復活舊訪客帳號（同額度同紀錄），失敗才開新匿名帳號。匿名 token 每次換發跟寫；出現非匿名 session 即清 vault。
-4. **已知接受風險**：(a) 訪客「登出」會 revoke token，等於棄帳號重來可重領 30 則——有「無法再找回」警語擋著，與 free 換 email 開新帳的摩擦相當，不另擋；(b) Android secure storage 不跨重裝存活，綁定實質只保 iOS（現階段目標機）；(c) crash 恰卡在 token 換發與跟寫之間會令 vault 一代 stale → 復活失敗退回新帳號（機率極低，等同舊行為）。
+4. **已知接受風險**：(a) 訪客「登出」會 revoke token，等於棄帳號重來可重領 30 則——有「無法再找回」警語擋著，與 free 換 email 開新帳的摩擦相當，不另擋；(b) Android secure storage 不跨重裝存活，綁定實質只保 iOS（現階段目標機）；(c) crash 恰卡在 token 換發與跟寫之間會令 vault 一代 stale → 復活失敗退回新帳號（機率極低，等同舊行為）；(d) GLM P2-5：linking 完成到 vault 清除之間被 kill，殘留舊匿名 token 重裝後觸發 GoTrue reuse detection，理論上可波及已轉正帳號的 token family——vault 寫入串行化後殘窗僅毫秒級，接受。
+5. **雙審審修（Grok 主審＋GLM 證偽，皆 APPROVED_WITH_FINDINGS）**：F1/P2-2 vault 寫入串行化（op 佇列，杜絕舊 token 慢寫超車）；F2/P2-1 復活到非匿名帳號→退出＋清 vault＋開新匿名帳（「先逛逛」絕不悄悄進正式帳）；GLM P1 只有 4xx AuthException 才視為 token 死亡（清 vault 開新帳），retryable／5xx／非 Auth 例外一律外拋保 vault，網路瞬斷不再永久擊穿綁定；F3/P2-4 vault 註解對齊登出真實語意；F4 clear 失敗仍歸零去重快取；F5/P2-3 狀態機抽成 GuestSignInFlow 補 17 條單元測試。
 
 **驗證**: `_shared` Deno 46 綠；subscription/quota strip client 測試 29 綠；`guest_session_vault_test` 6 綠；analyze 0 issue。E2E 綁裝置行為（刪 app 重裝→額度不重置）留真機 dogfood。
