@@ -1,4 +1,5 @@
 // lib/features/onboarding/data/onboarding_service.dart
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class OnboardingService {
@@ -10,7 +11,11 @@ class OnboardingService {
   // [isCompletedSync]. Primed by [load] at startup; kept in sync by
   // [markCompleted] / [reset].
   static bool _completedCache = false;
-  static bool _keyboardCompletedCache = false;
+
+  // 鍵盤旗標用 ValueNotifier：起步清單在設定流程 pop 回首頁時要即時亮勾，
+  // 純靜態快取 UI 監聽不到變化。
+  static final ValueNotifier<bool> keyboardCompletedListenable =
+      ValueNotifier<bool>(false);
 
   // 本次 session 內才完成主 onboarding（未持久化，重啟即清）。
   // 鍵盤設定閘門靠它把首次自動 push 延到下次啟動（Tier 1-4）。
@@ -25,7 +30,7 @@ class OnboardingService {
   /// First-run keyboard setup is a separate, optional onboarding. It must not
   /// become part of the core app onboarding gate because users can dismiss it
   /// and continue using VibeSync without enabling the extension.
-  static bool get isKeyboardCompletedSync => _keyboardCompletedCache;
+  static bool get isKeyboardCompletedSync => keyboardCompletedListenable.value;
 
   /// Loads the persisted flag into the in-memory cache. Must run during app
   /// startup before the router first evaluates redirects, otherwise a returning
@@ -33,14 +38,14 @@ class OnboardingService {
   static Future<bool> load() async {
     final prefs = await SharedPreferences.getInstance();
     _completedCache = prefs.getBool(_key) ?? false;
-    _keyboardCompletedCache = prefs.getBool(_keyboardKey) ?? false;
+    keyboardCompletedListenable.value = prefs.getBool(_keyboardKey) ?? false;
     return _completedCache;
   }
 
   static Future<bool> isCompleted() async {
     final prefs = await SharedPreferences.getInstance();
     _completedCache = prefs.getBool(_key) ?? false;
-    _keyboardCompletedCache = prefs.getBool(_keyboardKey) ?? false;
+    keyboardCompletedListenable.value = prefs.getBool(_keyboardKey) ?? false;
     return _completedCache;
   }
 
@@ -61,13 +66,13 @@ class OnboardingService {
   }
 
   static Future<void> markKeyboardCompleted() async {
-    _keyboardCompletedCache = true;
+    keyboardCompletedListenable.value = true;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyboardKey, true);
   }
 
   static Future<void> resetKeyboard() async {
-    _keyboardCompletedCache = false;
+    keyboardCompletedListenable.value = false;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyboardKey);
   }

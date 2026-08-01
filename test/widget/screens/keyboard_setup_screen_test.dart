@@ -99,6 +99,52 @@ void main() {
     expect(OnboardingService.isKeyboardCompletedSync, isTrue);
   });
 
+  testWidgets('non-first-run walkthrough also marks keyboard completed',
+      (tester) async {
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(path: '/', builder: (_, __) => const SizedBox.shrink()),
+        GoRoute(
+          path: '/keyboard',
+          builder: (_, __) => KeyboardSetupScreen(
+            openSettings: () async => true,
+          ),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    router.push('/keyboard');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(OnboardingService.isKeyboardCompletedSync, isFalse);
+    // 非 firstRun 沒有「稍後設定」。
+    expect(find.text('稍後設定'), findsNothing);
+
+    // 走完四頁按「完成」——起步清單入口（非 firstRun）也必須寫旗標（勾勾 bug 回歸鎖）。
+    await tester.tap(find.text('下一步'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('我已完成設定'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('下一步'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('完成'));
+    // pop 轉場收完、setup screen dispose 後 pulse 動畫停止，可安全 settle。
+    await tester.pumpAndSettle();
+
+    expect(OnboardingService.isKeyboardCompletedSync, isTrue);
+    // 非 firstRun 完成後 pop 回前一頁。
+    expect(find.text('三步就有好回覆'), findsNothing);
+  });
+
   testWidgets('revoking screenshot consent purges native keyboard context',
       (tester) async {
     SharedPreferences.setMockInitialValues({

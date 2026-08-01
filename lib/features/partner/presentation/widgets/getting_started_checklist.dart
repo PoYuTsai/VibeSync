@@ -44,8 +44,32 @@ class GettingStartedChecklist extends ConsumerWidget {
 
     // 鍵盤僅 iOS（foundation 顯式 import——CI dart2js 教訓）。
     final showKeyboardItem = defaultTargetPlatform == TargetPlatform.iOS;
-    final keyboardDone = OnboardingService.isKeyboardCompletedSync;
 
+    // 鍵盤完成態走 ValueListenable：設定流程 pop 回首頁時本 widget 不重掛，
+    // 靜態同步讀會 stale（比照 follow_up 的 stale bug 教訓）。
+    return ValueListenableBuilder<bool>(
+      valueListenable: OnboardingService.keyboardCompletedListenable,
+      builder: (context, keyboardDone, _) => _buildCard(
+        context,
+        ref,
+        profileDone: profileDone,
+        firstActionDone: firstActionDone,
+        followUpDone: followUpDone,
+        showKeyboardItem: showKeyboardItem,
+        keyboardDone: keyboardDone,
+      ),
+    );
+  }
+
+  Widget _buildCard(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool profileDone,
+    required bool firstActionDone,
+    required bool followUpDone,
+    required bool showKeyboardItem,
+    required bool keyboardDone,
+  }) {
     final items = <_ChecklistItem>[
       _ChecklistItem(
         id: 'profile',

@@ -115,8 +115,10 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
       unawaited(
         ref.read(funnelTrackerProvider).track('keyboard_setup_completed'),
       );
-      await OnboardingService.markKeyboardCompleted();
     }
+    // 旗標不分入口：起步清單／設定頁（非 firstRun）走完四頁也要寫，
+    // 否則清單的鍵盤項永遠亮不了勾。
+    await OnboardingService.markKeyboardCompleted();
     if (!mounted) return;
     if (widget.firstRun) {
       context.go('/');

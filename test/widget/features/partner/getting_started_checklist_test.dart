@@ -18,6 +18,7 @@ import 'package:vibesync/features/follow_up_notification/data/providers/follow_u
 import 'package:vibesync/features/follow_up_notification/domain/follow_up_opt_in.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
+import 'package:vibesync/features/onboarding/data/onboarding_service.dart';
 import 'package:vibesync/features/partner/presentation/widgets/getting_started_checklist.dart';
 import 'package:vibesync/features/report/data/providers/report_providers.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
@@ -116,6 +117,8 @@ Future<_FakeOptInStore> _pump(
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    // 靜態 ValueNotifier 會跨測試殘留，逐測歸零。
+    OnboardingService.keyboardCompletedListenable.value = false;
   });
 
   final iosVariant = TargetPlatformVariant.only(TargetPlatform.iOS);
@@ -224,4 +227,15 @@ void main() {
     // Android variant：無鍵盤項，三項全完成 → 整卡消失。
     expect(find.byKey(GettingStartedChecklist.cardKey), findsNothing);
   }, variant: androidVariant);
+
+  testWidgets('鍵盤引導走完寫旗標後：清單鍵盤項即時打勾（stale bug 回歸鎖）', (tester) async {
+    await _pump(tester);
+    expect(find.byKey(const Key('checklist_done_keyboard')), findsNothing);
+
+    // 模擬設定流程走完寫旗標（本 widget 不重掛）——必須即時反映。
+    await OnboardingService.markKeyboardCompleted();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('checklist_done_keyboard')), findsOneWidget);
+  }, variant: iosVariant);
 }
