@@ -72,8 +72,6 @@ export interface DrawHandlerArgs {
   supabase: DrawSupabaseClient;
   userId: string;
   userEmail: string | null;
-  /** 批 B 訪客模式：匿名帳號 limits 鎖 3/3＋guest 429。 */
-  isAnonymous?: boolean;
   request: PracticeDrawRequest;
   now: Date;
 }
@@ -120,7 +118,6 @@ export async function handleDrawProfile(
   args: DrawHandlerArgs,
 ): Promise<DrawHandlerResult> {
   const { supabase, userId, userEmail, request, now } = args;
-  const anonymous = args.isAnonymous === true;
 
   // ── 1. DB row lock 內 reset 並讀權威訂閱計數 ───────────────────────────
   const { data: preparedSubData, error: subError } = await supabase.rpc(
@@ -149,7 +146,7 @@ export async function handleDrawProfile(
   // ── 2. tier → 免費額度 / 是否可付費額外 / 限額 / 測試帳號 / reset window ─────
   const tier = normalizeTier(sub.tier);
   const accountIsTest = TEST_EMAILS.includes(userEmail ?? "");
-  const limits = resolveLimits(tier, { anonymous });
+  const limits = resolveLimits(tier);
   const freeAllowance = drawAllowanceForTier(tier);
   const allowPaidExtra = paidExtraDrawAllowedForTier(tier);
   const window = taipeiNoonResetWindow(now);
@@ -241,7 +238,6 @@ export async function handleDrawProfile(
         allowPaidExtra,
         sub,
         limits,
-        anonymous,
         nextResetAt: window.nextResetAt,
         userId,
       });
@@ -306,7 +302,6 @@ function mapDrawRpcError(
     allowPaidExtra: boolean;
     sub: SubscriptionRow;
     limits: { monthly: number; daily: number };
-    anonymous: boolean;
     nextResetAt: string;
     userId: string;
   },
@@ -338,7 +333,6 @@ function mapDrawRpcError(
         reason: "monthly_limit_exceeded",
         monthlyLimit: ctx.limits.monthly,
         dailyLimit: ctx.limits.daily,
-        anonymous: ctx.anonymous,
       }),
     };
   }
@@ -351,7 +345,6 @@ function mapDrawRpcError(
         reason: "daily_limit_exceeded",
         monthlyLimit: ctx.limits.monthly,
         dailyLimit: ctx.limits.daily,
-        anonymous: ctx.anonymous,
       }),
     };
   }

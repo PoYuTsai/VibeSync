@@ -31,9 +31,7 @@ import {
   buildQuotaExceededPayload,
   checkQuota,
   classifyQuotaRpcError,
-  isAnonymousAuthUser,
   isPlainObject,
-  noResetResult,
   normalizeTier,
   parseRevenueCatSubscriber,
   type ResetResult,
@@ -458,12 +456,7 @@ export async function handleRequest(
   if (!sub) sub = await selfHealSubscription(supabase, user.id);
   if (!sub) return jsonResponse({ error: "No subscription found" }, 403);
 
-  // 批 B 訪客模式：匿名帳號 3 則總量、永不重置（noResetResult 讓 counters
-  // 保持終身累計），limits 一律鎖訪客值。
-  const anonymous = isAnonymousAuthUser(user);
-  const resetResult = anonymous
-    ? noResetResult(sub)
-    : applyResetsIfNeeded(sub, new Date());
+  const resetResult = applyResetsIfNeeded(sub, new Date());
   sub = resetResult.sub;
   if (resetResult.dailyReset || resetResult.monthlyReset) {
     await persistResets(supabase, user.id, resetResult);
@@ -472,7 +465,7 @@ export async function handleRequest(
   const accountIsTest = TEST_EMAILS.includes(user.email || "");
   // D1 拍板：checkQuota preflight 恆跑。釐清仍不扣費，但額度歸零者直接 429。
   // 已知取捨：有額度者偽造 turns 可多蹭免費釐清（不做 server ledger）。
-  let limits = resolveLimits(sub.tier, { anonymous });
+  let limits = resolveLimits(sub.tier);
   let gate = checkQuota({
     sub,
     cost: PREFLIGHT_QUOTA_COST,
@@ -490,7 +483,7 @@ export async function handleRequest(
     );
     if (refreshed) {
       sub = refreshed;
-      limits = resolveLimits(sub.tier, { anonymous });
+      limits = resolveLimits(sub.tier);
       gate = checkQuota({
         sub,
         cost: PREFLIGHT_QUOTA_COST,
@@ -576,7 +569,6 @@ export async function handleRequest(
       reason: gate.reason,
       monthlyLimit: limits.monthly,
       dailyLimit: limits.daily,
-      anonymous,
     });
     // requestId 缺席＝今日 429 body byte-for-byte 不變。
     return jsonResponse(
@@ -686,7 +678,6 @@ export async function handleRequest(
         request: payload,
         tier,
         accountIsTest,
-        anonymous,
         apiKey,
       },
       {
@@ -695,15 +686,13 @@ export async function handleRequest(
           let latestSub = await fetchSubscription(supabase, userId);
           if (!latestSub) throw new Error("No subscription found");
 
-          const latestReset = anonymous
-            ? noResetResult(latestSub)
-            : applyResetsIfNeeded(latestSub, new Date());
+          const latestReset = applyResetsIfNeeded(latestSub, new Date());
           latestSub = latestReset.sub;
           if (latestReset.dailyReset || latestReset.monthlyReset) {
             await persistResets(supabase, userId, latestReset);
           }
 
-          let latestLimits = resolveLimits(latestSub.tier, { anonymous });
+          let latestLimits = resolveLimits(latestSub.tier);
           let deductGate = checkQuota({
             sub: latestSub,
             cost: COST_PER_GENERATION,
@@ -720,7 +709,7 @@ export async function handleRequest(
             );
             if (refreshed) {
               latestSub = refreshed;
-              latestLimits = resolveLimits(latestSub.tier, { anonymous });
+              latestLimits = resolveLimits(latestSub.tier);
               deductGate = checkQuota({
                 sub: latestSub,
                 cost: COST_PER_GENERATION,
@@ -786,14 +775,12 @@ export async function handleRequest(
                   "subscription unavailable before settlement",
                 );
               }
-              const latestReset = anonymous
-                ? noResetResult(latest)
-                : applyResetsIfNeeded(latest, new Date());
+              const latestReset = applyResetsIfNeeded(latest, new Date());
               latest = latestReset.sub;
               if (latestReset.dailyReset || latestReset.monthlyReset) {
                 await persistResets(supabase, user.id, latestReset);
               }
-              let latestLimits = resolveLimits(latest.tier, { anonymous });
+              let latestLimits = resolveLimits(latest.tier);
               const latestGate = checkQuota({
                 sub: latest,
                 cost: COST_PER_GENERATION,
@@ -810,7 +797,7 @@ export async function handleRequest(
                 );
                 if (refreshed) {
                   latest = refreshed;
-                  latestLimits = resolveLimits(latest.tier, { anonymous });
+                  latestLimits = resolveLimits(latest.tier);
                 }
               }
               const settlement = await settleCoachRequest({

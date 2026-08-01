@@ -2537,59 +2537,26 @@ Deno.test({
   },
 });
 
-// ── 批 B 訪客模式：analyze-chat 訪客接線 source 鎖 ──────────────────────────
+// ── 訪客模式移除：analyze-chat 不得殘留匿名分支 source 鎖 ───────────────────
 Deno.test({
-  name: "批 B：訪客 3 則總量接線（免重置＋limits 鎖 3/3＋guest 429）",
+  name: "訪客拆除：index.ts 無任何 anonymous/guest 殘留",
   permissions: { read: true },
   fn: async () => {
     const source = await Deno.readTextFile(
       new URL("./index.ts", import.meta.url),
     );
-    // 匿名判定單源，緊跟 accountIsTest 之後
-    if (!source.includes("const anonymous = isAnonymousAuthUser(user);")) {
-      throw new Error("missing anonymous derivation");
+    if (/anonymous/i.test(source)) {
+      throw new Error("anonymous branch residue found");
     }
-    // 兩段 CAS reset 都必須被匿名短路（訪客永不歸零）
-    if (!source.includes("if (!anonymous && !sameUtcDay(now, dailyResetAt))")) {
-      throw new Error("daily reset not guest-gated");
+    if (source.includes("GUEST_TOTAL_LIMIT")) {
+      throw new Error("GUEST_TOTAL_LIMIT residue found");
     }
-    if (
-      !source.includes("if (!anonymous && !sameUtcMonth(now, monthlyResetAt))")
-    ) {
-      throw new Error("monthly reset not guest-gated");
+    // reset 閘還原為無條件（拿掉 !anonymous && 之後語意必須保留）
+    if (!source.includes("if (!sameUtcDay(now, dailyResetAt))")) {
+      throw new Error("daily reset gate missing");
     }
-    // limits 表達式不得殘留未鎖訪客的裸型（每一組都要帶 anonymous 三元）
-    const bareMonthly =
-      /monthlyLimit = TIER_MONTHLY_LIMITS\[normalizeTier\(sub\.tier\)\]/;
-    if (bareMonthly.test(source)) {
-      throw new Error("bare monthlyLimit expression without guest override");
-    }
-    const guestTernary = source.match(
-      /monthlyLimit = anonymous \? GUEST_TOTAL_LIMIT/g,
-    );
-    if ((guestTernary?.length ?? 0) < 4) {
-      throw new Error("expected 4 guest-aware monthlyLimit sites");
-    }
-    // dailyLimit 同樣不得殘留裸型（GLM 審修 P2：只鎖 monthly 會漏 daily 回歸）
-    const bareDaily =
-      /dailyLimit = TIER_DAILY_LIMITS\[normalizeTier\(sub\.tier\)\]/;
-    if (bareDaily.test(source)) {
-      throw new Error("bare dailyLimit expression without guest override");
-    }
-    const guestDailyTernary = source.match(
-      /dailyLimit = anonymous \? GUEST_TOTAL_LIMIT/g,
-    );
-    if ((guestDailyTernary?.length ?? 0) < 4) {
-      throw new Error("expected 4 guest-aware dailyLimit sites");
-    }
-    // 所有 429 payload 都帶 anonymous（buildQuotaExceededPayload 呼叫數＝anonymous 數）
-    const payloadCalls =
-      source.match(/buildQuotaExceededPayload\(\{/g)?.length ?? 0;
-    const payloadAnon = source.match(/^\s+anonymous,$/gm)?.length ?? 0;
-    if (payloadAnon < payloadCalls) {
-      throw new Error(
-        `buildQuotaExceededPayload sites missing anonymous: ${payloadAnon}/${payloadCalls}`,
-      );
+    if (!source.includes("if (!sameUtcMonth(now, monthlyResetAt))")) {
+      throw new Error("monthly reset gate missing");
     }
   },
 });

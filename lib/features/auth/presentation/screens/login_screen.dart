@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/services/auth_diagnostics_service.dart';
-import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -560,43 +559,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
-  Future<void> _continueAsGuest() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-      _noticeMessage = null;
-    });
-
-    try {
-      final response = await SupabaseService.signInAsGuest();
-      if (response.user != null) {
-        // 埋點須在匿名 session 建立後才送：submit-feedback 會 getUser(token)，
-        // 登入前只有 anon key 必 401 落空。
-        unawaited(ref.read(funnelTrackerProvider).track('guest_mode_enter'));
-        await _handleSuccessfulLogin(response.user!);
-      } else {
-        if (!mounted) return;
-        _setError('訪客模式啟動失敗，請再試一次。');
-      }
-    } on AuthException catch (e) {
-      if (!mounted) return;
-      _setError(
-        _mapAuthError(
-          e,
-          isSignUp: false,
-          fallbackMessage: '訪客模式啟動失敗，請再試一次。',
-        ),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      _setError('訪客模式啟動失敗，請再試一次。');
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
   Future<void> _submit() async {
     if (_isPasswordRecoveryMode) {
       await _completePasswordRecovery();
@@ -931,15 +893,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         ),
                       ),
-                    if (!_isPasswordRecoveryMode) ...[
-                      const SizedBox(height: 8),
-                      BrandSecondaryButton(
-                        key: const Key('login_guest_mode_button'),
-                        label: '先逛逛，不用註冊',
-                        icon: Icons.explore_outlined,
-                        onPressed: _isLoading ? null : _continueAsGuest,
-                      ),
-                    ],
                     const SizedBox(height: 24),
                     _buildLegalDisclaimer(),
                   ],

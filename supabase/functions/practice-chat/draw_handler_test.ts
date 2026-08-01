@@ -163,7 +163,6 @@ async function run(
   opts: MockOpts,
   request = req(),
   email: string | null = "user@example.com",
-  isAnonymous = false,
 ) {
   const { client, rpcCalls, prepareCalls, subscriptionUpdates } = mockClient(
     opts,
@@ -172,7 +171,6 @@ async function run(
     supabase: client,
     userId: "u-1",
     userEmail: email,
-    isAnonymous,
     request,
     now: NOW,
   });
@@ -590,21 +588,3 @@ Deno.test("duplicate telemetry：idempotent replay 與池滿退避的歷史重�
   );
 });
 
-Deno.test("批 B 訪客：limits 一律鎖 3/3 傳給 claim RPC，429 帶 guest 標記", async () => {
-  const { result, body, rpcCalls } = await run(
-    {
-      sub: sub("starter", 49, 100),
-      drawn: ["a", "b", "c"],
-      rpc: [{ error: "PRACTICE_DRAW_QUOTA_EXCEEDED_MONTHLY" }],
-    },
-    req(),
-    null,
-    true,
-  );
-  assertEquals(result.status, 429);
-  assertEquals(body.guest, true);
-  assertEquals(body.monthlyLimit, 3);
-  // mockClient 的 rpcCalls 直接記 params 物件（claim RPC 專用通道）。
-  assertEquals(rpcCalls[0]?.p_monthly_limit, 3);
-  assertEquals(rpcCalls[0]?.p_daily_limit, 3);
-});

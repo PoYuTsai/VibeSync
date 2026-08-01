@@ -855,7 +855,7 @@
 
 ## ADR #33 — [2026-08-01] 訪客額度 3→30 並綁裝置（Keychain 訪客 session 復活）
 
-**狀態**: 🟢 Active — 實作完成，待真機 dogfood
+**狀態**: ⚫ Superseded by ADR #34 — 訪客模式已整個移除
 
 **背景**: Eric 真機 dogfood 批 B 後拍板：訪客 3 則連一次截圖分析（扣 5 則）都不夠，體驗不到產品就撞註冊卡；同時「刪 app 重裝」會拿到全新匿名帳號、無限重領額度。
 
@@ -868,3 +868,21 @@
 5. **雙審審修（Grok 主審＋GLM 證偽，皆 APPROVED_WITH_FINDINGS）**：F1/P2-2 vault 寫入串行化（op 佇列，杜絕舊 token 慢寫超車）；F2/P2-1 復活到非匿名帳號→退出＋清 vault＋開新匿名帳（「先逛逛」絕不悄悄進正式帳）；GLM P1 只有 4xx AuthException 才視為 token 死亡（清 vault 開新帳），retryable／5xx／非 Auth 例外一律外拋保 vault，網路瞬斷不再永久擊穿綁定；F3/P2-4 vault 註解對齊登出真實語意；F4 clear 失敗仍歸零去重快取；F5/P2-3 狀態機抽成 GuestSignInFlow 補 17 條單元測試。
 
 **驗證**: `_shared` Deno 46 綠；subscription/quota strip client 測試 29 綠；`guest_session_vault_test` 6 綠；analyze 0 issue。E2E 綁裝置行為（刪 app 重裝→額度不重置）留真機 dogfood。
+
+---
+
+## ADR #34 — [2026-08-01] 移除訪客模式（推翻 ADR #33／批 B）
+
+**狀態**: 🟢 Active
+
+**背景**: 批 B 訪客模式上線當天，Eric/Bruce 內測討論訪客額度與註冊誘因（送 10 則、C1/C2 等方案）後，Bruce 定調「免費額度是製造稀缺的工具，不付錢的再多送也不會付；Apple 登入幾秒就能註冊，不需要訪客模式降門檻」。Eric 拍板整個移除，相關額度討論全部作廢。
+
+**決定**:
+
+1. **client 入口與訪客 UI 全拆**：登入頁「先逛逛」、`/register` 路由與 RegisterScreen、GuestSessionVault／GuestSignInFlow、identity linking（linkWithApple/Google、registerGuestWithEmail）、SubscriptionState.isGuest 與所有訪客文案分支、funnel 三事件（guest_mode_enter／guest_register_view／guest_register_success）。
+2. **server 匿名分支全拆**：`_shared/quota.ts` 的 GUEST_TOTAL_LIMIT／isAnonymousAuthUser／noResetResult 與六支 Edge function 的 anonymous 路徑；`prepare_practice_subscription_usage` 以 migration 20260801150000 還原無條件歸零。
+3. **auth 設定關閉**：`enable_anonymous_sign_ins=false`、`enable_manual_linking=false`（config.toml＋prod Management API）；prod 既有匿名測試帳號刪除（Eric 授權，內測階段僅 Eric/Bruce 資料）。
+4. **不可回退的殘留**：`20260801130000` 的 `public.users.email DROP NOT NULL` 保留不回收（歷史 row email 可為 NULL，加回 NOT NULL 會炸；且欄位寬鬆無害）。
+5. **已知取捨**: 已發出的 TestFlight build（378/379）仍有「先逛逛」按鈕，旗標關閉後點擊會失敗——內測階段接受，正式上架 build 不含該入口。
+
+**驗證**: Deno 2375 綠（含新 source 鎖：analyze-chat 無 anonymous 殘留、migration 還原斷言）；Dart analyze 0 issue＋全套綠；prod 收尾（旗標／刪帳號／migration）見部署紀錄。

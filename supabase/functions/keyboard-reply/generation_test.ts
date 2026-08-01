@@ -212,30 +212,4 @@ Deno.test("Keyboard Sonnet 5 request disables thinking and omits sampling", asyn
   assertEquals("top_k" in body, false);
 });
 
-Deno.test("批 B：anonymous input 的 quota 429 帶 guest 標記；非匿名無 guest 鍵", async () => {
-  const guestResult = await runKeyboardReply({ ...input, anonymous: true }, {
-    callClaude: () =>
-      Promise.resolve({
-        content: [{ text: '{"reply":"辛苦了，先去吃點好吃的補血？"}' }],
-      }),
-    finalizeReply: () =>
-      Promise.reject(
-        new KeyboardReplyQuotaExceededError("monthly_limit_exceeded", 3, 3),
-      ),
-  });
-  assertEquals(guestResult.status, 429);
-  assertEquals(guestResult.body.guest, true);
-  assertEquals(guestResult.body.limit, 3);
 
-  const normalResult = await runKeyboardReply(input, {
-    callClaude: () =>
-      Promise.resolve({
-        content: [{ text: '{"reply":"辛苦了，先去吃點好吃的補血？"}' }],
-      }),
-    finalizeReply: () =>
-      Promise.reject(
-        new KeyboardReplyQuotaExceededError("daily_limit_exceeded", 5, 5),
-      ),
-  });
-  assertEquals("guest" in normalResult.body, false);
-});

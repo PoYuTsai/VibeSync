@@ -9,9 +9,7 @@ import {
   buildQuotaExceededPayload,
   checkQuota,
   classifyQuotaRpcError,
-  isAnonymousAuthUser,
   isPlainObject,
-  noResetResult,
   normalizeTier,
   parseRevenueCatSubscriber,
   type ResetResult,
@@ -319,16 +317,12 @@ async function handleRequestWithinDeadline(
   if (!sub) sub = await selfHealSubscription(client, user.id);
   if (!sub) return jsonResponse({ error: "subscription_unavailable" }, 503);
 
-  // 批 B 訪客模式：匿名帳號 3 則總量、永不重置，limits 一律鎖訪客值。
-  const anonymous = isAnonymousAuthUser(user);
-  const reset = anonymous
-    ? noResetResult(sub)
-    : applyResetsIfNeeded(sub, new Date());
+  const reset = applyResetsIfNeeded(sub, new Date());
   sub = reset.sub;
   if (reset.dailyReset || reset.monthlyReset) {
     await persistResets(client, user.id, reset);
   }
-  let limits = resolveLimits(sub.tier, { anonymous });
+  let limits = resolveLimits(sub.tier);
   const accountIsTest = TEST_EMAILS.includes(user.email ?? "");
   let gate = checkQuota({
     sub,
@@ -341,7 +335,7 @@ async function handleRequestWithinDeadline(
     const refreshed = await maybeRefreshTier(client, user.id, sub);
     if (refreshed) {
       sub = refreshed;
-      limits = resolveLimits(sub.tier, { anonymous });
+      limits = resolveLimits(sub.tier);
       gate = checkQuota({
         sub,
         cost: COST,
@@ -407,7 +401,6 @@ async function handleRequestWithinDeadline(
         reason: gate.reason,
         monthlyLimit: limits.monthly,
         dailyLimit: limits.daily,
-        anonymous,
       }),
       code: "QUOTA_EXCEEDED",
       safeToClear: true,
@@ -478,7 +471,6 @@ async function handleRequestWithinDeadline(
       userId: user.id,
       apiKey,
       accountIsTest,
-      anonymous,
     },
     {
       generationBudgetMs: keyboardGenerationBudgetRemaining(
@@ -505,14 +497,12 @@ async function handleRequestWithinDeadline(
             "subscription unavailable before settlement",
           );
         }
-        const latestReset = anonymous
-          ? noResetResult(latest)
-          : applyResetsIfNeeded(latest, new Date());
+        const latestReset = applyResetsIfNeeded(latest, new Date());
         latest = latestReset.sub;
         if (latestReset.dailyReset || latestReset.monthlyReset) {
           await persistResets(client, userId, latestReset);
         }
-        let latestLimits = resolveLimits(latest.tier, { anonymous });
+        let latestLimits = resolveLimits(latest.tier);
         let latestGate = checkQuota({
           sub: latest,
           cost: COST,
@@ -524,7 +514,7 @@ async function handleRequestWithinDeadline(
           const refreshed = await maybeRefreshTier(client, userId, latest);
           if (refreshed) {
             latest = refreshed;
-            latestLimits = resolveLimits(latest.tier, { anonymous });
+            latestLimits = resolveLimits(latest.tier);
             latestGate = checkQuota({
               sub: latest,
               cost: COST,

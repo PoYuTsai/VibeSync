@@ -80,64 +80,6 @@ class SocialAuthServiceImpl implements SocialAuthService {
     return AuthResponse(session: sessionResponse.session);
   }
 
-  @override
-  Future<AuthResponse> linkWithApple() async {
-    // 鏡射 signInWithApple 的 nonce＋idToken 流程，改走 linkIdentityWithIdToken
-    // —— 匿名帳號補上 Apple identity，uid 不變（訪客轉正零資料搬移）。
-    final rawNonce = _generateRandomString(32);
-    final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
-
-    final credential = await SignInWithApple.getAppleIDCredential(
-      scopes: [
-        AppleIDAuthorizationScopes.email,
-        AppleIDAuthorizationScopes.fullName,
-      ],
-      nonce: hashedNonce,
-    );
-
-    final idToken = credential.identityToken;
-    if (idToken == null) {
-      throw const AuthException('Apple linking failed: No identity token');
-    }
-
-    return await Supabase.instance.client.auth.linkIdentityWithIdToken(
-      provider: OAuthProvider.apple,
-      idToken: idToken,
-      nonce: rawNonce,
-    );
-  }
-
-  @override
-  Future<AuthResponse> linkWithGoogle() async {
-    // 鏡射 signInWithGoogle 的 web-flow，改走 getLinkIdentityUrl（GoTrue
-    // /user/identities/authorize）——callback 回來的 session 仍是同一 uid。
-    final authUrl = await Supabase.instance.client.auth.getLinkIdentityUrl(
-      OAuthProvider.google,
-      redirectTo: AppConfig.authRedirectUri,
-    );
-
-    final result = await FlutterWebAuth2.authenticate(
-      url: authUrl.url,
-      callbackUrlScheme: _callbackScheme,
-      options: const FlutterWebAuth2Options(
-        preferEphemeral: false,
-      ),
-    );
-
-    final callbackUri = Uri.parse(result);
-    if (callbackUri.scheme != _callbackScheme ||
-        callbackUri.host != _callbackHost) {
-      throw const AuthException('Google linking failed: Invalid callback URL');
-    }
-
-    final sessionResponse =
-        await Supabase.instance.client.auth.getSessionFromUrl(
-      callbackUri,
-    );
-
-    return AuthResponse(session: sessionResponse.session);
-  }
-
   /// Generate a random string for nonce
   String _generateRandomString(int length) {
     const charset =

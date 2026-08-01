@@ -27,7 +27,6 @@ import '../features/partner/presentation/screens/add_partner_screen.dart';
 import '../features/partner/presentation/screens/partner_detail_screen.dart';
 import '../features/partner/presentation/screens/partner_analysis_archive_screen.dart';
 import '../features/partner/presentation/screens/partner_merge_picker_screen.dart';
-import '../features/auth/presentation/screens/register_screen.dart';
 import '../features/partner/presentation/screens/partner_mind_map_screen.dart';
 import '../features/subscription/presentation/screens/settings_screen.dart';
 import '../features/user_profile/presentation/screens/about_me_screen.dart';
@@ -47,12 +46,10 @@ String? resolveAppRedirect({
   required bool isLoggedIn,
   required bool isOnboardingCompleted,
   required bool isPasswordRecovery,
-  required bool isAnonymous,
   required String matchedLocation,
 }) {
   final isLoginRoute = matchedLocation == '/login';
   final isOnboardingRoute = matchedLocation == '/onboarding';
-  final isRegisterRoute = matchedLocation == '/register';
 
   // Unauthenticated: only /login is reachable. (Auth gate — unchanged.)
   if (!isLoggedIn) {
@@ -76,15 +73,6 @@ String? resolveAppRedirect({
     return '/';
   }
 
-  // 批 B 訪客模式：訪客點訂閱＝集中攔截（30+ 個 /paywall push 點免逐一改）；
-  // 一般登入者誤入 /register 彈回主殼。
-  if (isAnonymous && matchedLocation == '/paywall') {
-    return '/register?source=paywall';
-  }
-  if (!isAnonymous && isRegisterRoute) {
-    return '/';
-  }
-
   return null;
 }
 
@@ -101,7 +89,6 @@ final router = GoRouter(
     isLoggedIn: SupabaseService.isAuthenticated,
     isOnboardingCompleted: OnboardingService.isCompletedSync,
     isPasswordRecovery: SupabaseService.isPasswordRecoveryInProgress,
-    isAnonymous: SupabaseService.isGuestUser,
     matchedLocation: state.matchedLocation,
   ),
   routes: [
@@ -112,12 +99,6 @@ final router = GoRouter(
     GoRoute(
       path: '/onboarding',
       builder: (context, state) => const OnboardingScreen(),
-    ),
-    GoRoute(
-      path: '/register',
-      builder: (context, state) => RegisterScreen(
-        source: state.uri.queryParameters['source'],
-      ),
     ),
     GoRoute(
       path: '/',

@@ -178,47 +178,4 @@ void main() {
     });
   });
 
-  group('批 B 訪客模式：QuotaExceededUpgradeCard 訪客變體', () {
-    testWidgets('isGuest：註冊文案＋「免費註冊」CTA，絕無升級字樣', (tester) async {
-      var tapped = 0;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: QuotaExceededUpgradeCard(
-              isMonthly: true,
-              remaining: 0,
-              quotaNeeded: 1,
-              isGuest: true,
-              onViewPlans: () => tapped++,
-            ),
-          ),
-        ),
-      );
-
-      expect(find.textContaining('訪客額度已用完'), findsOneWidget);
-      expect(find.textContaining('免費註冊解鎖每月 30 則'), findsOneWidget);
-      expect(find.text('免費註冊'), findsOneWidget);
-      expect(find.textContaining('升級至 Starter'), findsNothing);
-      expect(find.text('查看方案'), findsNothing);
-
-      await tester.tap(find.text('免費註冊'));
-      expect(tapped, 1);
-    });
-
-    testWidgets('非訪客回歸鎖：查看方案 CTA 不變', (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: QuotaExceededUpgradeCard(
-              isMonthly: true,
-              remaining: 0,
-              quotaNeeded: 1,
-            ),
-          ),
-        ),
-      );
-      expect(find.text('查看方案'), findsOneWidget);
-      expect(find.text('免費註冊'), findsNothing);
-    });
-  });
 }

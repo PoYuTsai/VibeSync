@@ -42,7 +42,6 @@ export interface KeyboardGenerationInput extends KeyboardReplyRequest {
   apiKey: string;
   accountIsTest: boolean;
   /** 批 B 訪客模式：匿名帳號 429 body 帶 guest 標記。 */
-  anonymous?: boolean;
 }
 
 export class KeyboardReplyQuotaExceededError extends Error {
@@ -146,7 +145,6 @@ export async function runKeyboardReply(
           error: error.reason === "monthly_limit_exceeded"
             ? "Monthly limit exceeded"
             : "Daily limit exceeded",
-          ...(input.anonymous ? { guest: true } : {}),
           code: "QUOTA_EXCEEDED",
           used: error.used,
           limit: error.limit,

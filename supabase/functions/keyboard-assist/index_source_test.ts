@@ -100,14 +100,3 @@ Deno.test("keyboard assist stays migration-gated and release preflight checks it
   assert(!secretPreflight.includes("KEYBOARD_ASSIST_JUDGE_MODEL"));
 });
 
-Deno.test("批 B：keyboard-assist 訪客接線（免重置＋訪客 limits＋訪客文案）", async () => {
-  const source = await Deno.readTextFile(
-    new URL("./index.ts", import.meta.url),
-  );
-  assert(source.includes("user.isAnonymous === true"));
-  assert(source.includes("? noResetResult(sub)"));
-  assert(!source.includes("resolveLimits(sub.tier);"));
-  assert(source.includes("resolveLimits(sub.tier, { anonymous })"));
-  assert(source.includes("quotaExceededMessage(gate.reason, anonymous)"));
-  assert(source.includes("isAnonymousAuthUser(data.user)"));
-});

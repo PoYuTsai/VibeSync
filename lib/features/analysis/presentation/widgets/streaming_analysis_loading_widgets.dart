@@ -217,23 +217,15 @@ class QuotaExceededUpgradeCard extends StatelessWidget {
   final int? quotaNeeded;
   final VoidCallback? onViewPlans;
 
-  /// 批 B 訪客模式：訪客 429 導免費註冊而非升級（CTA 由 caller 接 /register）。
-  final bool isGuest;
-
   const QuotaExceededUpgradeCard({
     super.key,
     required this.isMonthly,
     this.remaining,
     this.quotaNeeded,
     this.onViewPlans,
-    this.isGuest = false,
   });
 
   String get _headline {
-    if (isGuest) {
-      return '訪客額度已用完。免費註冊解鎖每月 30 則額度，'
-          '目前的紀錄全部保留。';
-    }
     final hasNumbers = remaining != null && quotaNeeded != null;
     if (isMonthly) {
       return hasNumbers
@@ -319,7 +311,7 @@ class QuotaExceededUpgradeCard extends StatelessWidget {
               ),
             ),
             child: Text(
-              isGuest ? '免費註冊' : '查看方案',
+              '查看方案',
               style: AppTypography.bodyMedium.copyWith(
                 fontWeight: FontWeight.w800,
               ),

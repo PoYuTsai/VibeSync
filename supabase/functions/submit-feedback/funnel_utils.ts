@@ -16,22 +16,6 @@ const CHECKLIST_ITEMS = new Set([
   "keyboard",
 ]);
 
-// 批 B 訪客模式：註冊觸發來源與轉正方式（enum 外值剝除整鍵）。
-const GUEST_REGISTER_SOURCES = new Set([
-  "quota_strip",
-  "quota_exhausted",
-  "follow_up",
-  "settings",
-  "paywall",
-  "unknown",
-]);
-
-const GUEST_REGISTER_METHODS = new Set([
-  "apple",
-  "google",
-  "email",
-]);
-
 type PropSpec = { kind: "int"; max: number } | { kind: "bool" } | {
   kind: "enum";
   values: Set<string>;
@@ -43,8 +27,6 @@ const PROP_SPECS: Record<string, PropSpec> = {
   has_partner: { kind: "bool" },
   style_set: { kind: "bool" },
   item: { kind: "enum", values: CHECKLIST_ITEMS },
-  source: { kind: "enum", values: GUEST_REGISTER_SOURCES },
-  method: { kind: "enum", values: GUEST_REGISTER_METHODS },
 };
 
 /** event → 允許的 properties 鍵。字典外 event 一律 400。 */
@@ -61,9 +43,6 @@ export const FUNNEL_EVENT_PROPS: Record<string, readonly string[]> = {
   keyboard_setup_shown: [],
   keyboard_setup_completed: [],
   checklist_item_done: ["item"],
-  guest_mode_enter: [],
-  guest_register_view: ["source"],
-  guest_register_success: ["method"],
 };
 
 export interface FunnelRow {

@@ -29,18 +29,6 @@ export const TIER_DAILY_LIMITS: Record<string, number> = {
 
 export const TEST_EMAILS = ["vibesync.test@gmail.com"];
 
-// 批 B 訪客模式：匿名帳號總量制、不按月重置（monthly counter 即終身計數，
-// 呼叫端以 noResetResult 跳過重置）。
-// 2026-08-01 Eric 拍板：3 → 30（對齊 free 月額度；3 則連一次完整分析都不夠）。
-export const GUEST_TOTAL_LIMIT = 30;
-
-/** JWT `is_anonymous` claim 的單源判定（getUser 回傳的 user 物件）。 */
-export function isAnonymousAuthUser(
-  user: { is_anonymous?: boolean | null } | null | undefined,
-): boolean {
-  return user?.is_anonymous === true;
-}
-
 // ---------------------------------------------------------------------------
 // Type discriminator + tier helpers
 // ---------------------------------------------------------------------------
@@ -74,12 +62,7 @@ export function tierRank(value: TierName): number {
 
 export function resolveLimits(
   tier: string | null | undefined,
-  opts?: { anonymous?: boolean },
 ): { monthly: number; daily: number } {
-  // 匿名帳號不可能有付費 tier；即使 tier 欄位異常也一律鎖訪客額度（防禦性一致）。
-  if (opts?.anonymous) {
-    return { monthly: GUEST_TOTAL_LIMIT, daily: GUEST_TOTAL_LIMIT };
-  }
   const t = normalizeTier(tier);
   return { monthly: TIER_MONTHLY_LIMITS[t], daily: TIER_DAILY_LIMITS[t] };
 }
@@ -170,20 +153,6 @@ export function applyResetsIfNeeded(
   };
 }
 
-/**
- * 批 B 訪客模式：匿名帳號一律用這個取代 applyResetsIfNeeded——counters 永不
- * 歸零，monthly_messages_used 即成終身計數（3 則總量、不按月重置）。
- */
-export function noResetResult(sub: SubscriptionRow): ResetResult {
-  return {
-    sub,
-    dailyReset: false,
-    monthlyReset: false,
-    previousDailyResetAt: sub.daily_reset_at,
-    previousMonthlyResetAt: sub.monthly_reset_at,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Quota check
 // ---------------------------------------------------------------------------
@@ -254,12 +223,7 @@ export function classifyQuotaRpcError(
 
 export function quotaExceededMessage(
   reason: "monthly_limit_exceeded" | "daily_limit_exceeded",
-  anonymous = false,
 ): string {
-  // 訪客只有一池總量，訊息不分日/月，導註冊而非升級（註冊＝每月重置）。
-  if (anonymous) {
-    return "訪客額度已用完，免費註冊即可解鎖每月 30 則額度。";
-  }
   return reason === "monthly_limit_exceeded"
     ? "本月額度已用完，升級方案可取得更多分析與教練額度。"
     : "今日額度已用完，每天早上 8 點恢復；也可以升級取得更多額度。";
@@ -271,7 +235,6 @@ export function buildQuotaExceededPayload(opts: {
   reason: "monthly_limit_exceeded" | "daily_limit_exceeded";
   monthlyLimit: number;
   dailyLimit: number;
-  anonymous?: boolean;
 }) {
   const monthlyRemaining = Math.max(
     0,
@@ -285,9 +248,7 @@ export function buildQuotaExceededPayload(opts: {
 
   return {
     error: isMonthly ? "Monthly limit exceeded" : "Daily limit exceeded",
-    // 訪客 429 多帶 guest: true 供 client 導註冊；非訪客 payload 逐鍵不變。
-    ...(opts.anonymous ? { guest: true } : {}),
-    message: quotaExceededMessage(opts.reason, opts.anonymous ?? false),
+    message: quotaExceededMessage(opts.reason),
     quotaNeeded: opts.cost,
     used: isMonthly
       ? opts.sub.monthly_messages_used

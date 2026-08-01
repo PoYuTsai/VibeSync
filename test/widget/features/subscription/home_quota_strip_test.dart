@@ -45,10 +45,6 @@ GoRouter _stubRouter() => GoRouter(
           path: '/paywall',
           builder: (_, __) => const Scaffold(body: Text('paywall-screen')),
         ),
-        GoRoute(
-          path: '/register',
-          builder: (_, __) => const Scaffold(body: Text('register-screen')),
-        ),
       ],
     );
 
@@ -164,57 +160,4 @@ void main() {
     expect(tracker.events, ['quota_strip_tap']);
   });
 
-  group('批 B 訪客模式', () {
-    testWidgets('訪客顯示「訪客額度剩 N 則」（30 則總量採計）', (tester) async {
-      await _pumpStrip(
-        tester,
-        subscription: const SubscriptionState(
-          tier: SubscriptionTierHelper.free,
-          monthlyMessagesUsed: 1,
-          isGuest: true,
-        ),
-      );
-
-      expect(find.text('訪客額度剩 29 則'), findsOneWidget);
-      expect(find.textContaining('本月免費額度'), findsNothing);
-    });
-
-    testWidgets('訪客點小條 → 說明 sheet 是註冊文案，CTA 導 /register', (tester) async {
-      await _pumpStrip(
-        tester,
-        subscription: const SubscriptionState(
-          tier: SubscriptionTierHelper.free,
-          monthlyMessagesUsed: 0,
-          isGuest: true,
-        ),
-      );
-
-      await tester.tap(find.byType(HomeQuotaStrip));
-      await tester.pumpAndSettle();
-
-      expect(find.text('訪客額度怎麼算？'), findsOneWidget);
-      expect(find.textContaining('免費註冊即可解鎖每月 30 則'), findsOneWidget);
-
-      await tester.tap(find.text('免費註冊'));
-      await tester.pumpAndSettle();
-      expect(find.text('register-screen'), findsOneWidget);
-    });
-
-    testWidgets('非訪客文案與 CTA 回歸鎖', (tester) async {
-      await _pumpStrip(
-        tester,
-        subscription: const SubscriptionState(
-          tier: SubscriptionTierHelper.free,
-          monthlyMessagesUsed: 5,
-        ),
-      );
-
-      expect(find.text('本月免費額度還剩 25 則'), findsOneWidget);
-
-      await tester.tap(find.byType(HomeQuotaStrip));
-      await tester.pumpAndSettle();
-      expect(find.text('免費額度怎麼算？'), findsOneWidget);
-      expect(find.text('看訂閱方案'), findsOneWidget);
-    });
-  });
 }

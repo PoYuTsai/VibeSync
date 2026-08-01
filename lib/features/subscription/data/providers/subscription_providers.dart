@@ -89,21 +89,13 @@ String resolveStartupSubscriptionTier({
 }
 
 @visibleForTesting
-SubscriptionState buildInitialSubscriptionStateFromUsage(
-  UsageData usage, {
-  bool isGuest = false,
-}) {
+SubscriptionState buildInitialSubscriptionStateFromUsage(UsageData usage) {
   final tier = SubscriptionTierHelper.normalizeTier(usage.tier);
   final limits = SubscriptionTierHelper.limitsFor(tier);
-  // 訪客 clamp 到訪客總量（GLM 審修 P2：髒快照不得顯示超過 3 的 used）。
-  final monthlyCap =
-      isGuest ? AppConstants.guestTotalLimit : limits.monthly;
-  final dailyCap = isGuest ? AppConstants.guestTotalLimit : limits.daily;
   return SubscriptionState(
     tier: tier,
-    isGuest: isGuest,
-    monthlyMessagesUsed: usage.monthlyUsed.clamp(0, monthlyCap),
-    dailyMessagesUsed: usage.dailyUsed.clamp(0, dailyCap),
+    monthlyMessagesUsed: usage.monthlyUsed.clamp(0, limits.monthly),
+    dailyMessagesUsed: usage.dailyUsed.clamp(0, limits.daily),
     monthlyLimit: limits.monthly,
     dailyLimit: limits.daily,
     isLoading: true,
@@ -144,10 +136,6 @@ class SubscriptionState {
   final DateTime? renewsAt;
   final String? activeProductId;
 
-  /// 批 B 訪客模式：匿名（訪客）帳號。remaining getter 以訪客總量 3 計；
-  /// raw monthlyLimit/dailyLimit 保持 tier 值不動（單一資料流不分岔）。
-  final bool isGuest;
-
   const SubscriptionState({
     this.tier = SubscriptionTierHelper.free,
     this.monthlyMessagesUsed = 0,
@@ -163,7 +151,6 @@ class SubscriptionState {
     this.pendingDowngradeEffectiveAt,
     this.renewsAt,
     this.activeProductId,
-    this.isGuest = false,
   });
 
   bool get isFreeUser => tier == SubscriptionTierHelper.free;
@@ -171,11 +158,8 @@ class SubscriptionState {
   bool get isEssential => tier == SubscriptionTierHelper.essential;
   bool get isPremium => isStarter || isEssential;
 
-  /// 訪客帳號 server 端鎖 3 則總量；client 顯示同步採計。
-  int get effectiveMonthlyLimit =>
-      isGuest ? AppConstants.guestTotalLimit : monthlyLimit;
-  int get effectiveDailyLimit =>
-      isGuest ? AppConstants.guestTotalLimit : dailyLimit;
+  int get effectiveMonthlyLimit => monthlyLimit;
+  int get effectiveDailyLimit => dailyLimit;
 
   int get monthlyRemaining => (effectiveMonthlyLimit - monthlyMessagesUsed)
       .clamp(0, effectiveMonthlyLimit);
@@ -416,7 +400,6 @@ class SubscriptionState {
 
   SubscriptionState copyWith({
     String? tier,
-    bool? isGuest,
     int? monthlyMessagesUsed,
     int? dailyMessagesUsed,
     int? monthlyLimit,
@@ -433,7 +416,6 @@ class SubscriptionState {
   }) {
     return SubscriptionState(
       tier: tier ?? this.tier,
-      isGuest: isGuest ?? this.isGuest,
       monthlyMessagesUsed: monthlyMessagesUsed ?? this.monthlyMessagesUsed,
       dailyMessagesUsed: dailyMessagesUsed ?? this.dailyMessagesUsed,
       monthlyLimit: monthlyLimit ?? this.monthlyLimit,
@@ -512,40 +494,18 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
   SubscriptionNotifier() : super(_initialStateFromUsageSnapshot()) {
     _initialize();
-    // 批 B 訪客模式：isGuest 跟著 auth 狀態走——email 確認 deep link（userUpdated）
-    // 或任何 refresh 路徑重建 state 掉回預設 false 時，這裡都會校正回來。
-    try {
-      _authGuestSync = SupabaseService.authStateChanges.listen((_) {
-        final isGuest = SupabaseService.isGuestUser;
-        if (mounted && state.isGuest != isGuest) {
-          state = state.copyWith(isGuest: isGuest);
-        }
-      });
-    } catch (_) {
-      // 測試環境 SupabaseService 未初始化：略過同步，isGuest 由 seed 決定。
-    }
-  }
-
-  StreamSubscription<AuthState>? _authGuestSync;
-
-  @override
-  void dispose() {
-    _authGuestSync?.cancel();
-    super.dispose();
   }
 
   static SubscriptionState _initialStateFromUsageSnapshot() {
-    final isGuest = SupabaseService.isGuestUser;
     try {
       return buildInitialSubscriptionStateFromUsage(
         UsageService().getLocalUsage(),
-        isGuest: isGuest,
       );
     } catch (error) {
       debugPrint(
         '[subscription] Failed to hydrate cached subscription snapshot: $error',
       );
-      return SubscriptionState(isLoading: true, isGuest: isGuest);
+      return const SubscriptionState(isLoading: true);
     }
   }
 

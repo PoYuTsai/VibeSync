@@ -129,8 +129,6 @@ import { buildServerGuardrails } from "./server_guardrails.ts";
 import {
   buildQuotaExceededPayload,
   classifyQuotaRpcError,
-  GUEST_TOTAL_LIMIT,
-  isAnonymousAuthUser,
   sameUtcDay,
   sameUtcMonth,
   TEST_EMAILS,
@@ -4648,8 +4646,6 @@ serve(async (req) => {
 
     // 測試帳號：不檢查額度、不扣額度
     const accountIsTest = TEST_EMAILS.includes(user.email || "");
-    // 批 B 訪客模式：匿名帳號 3 則總量、永不重置，limits 一律鎖訪客值。
-    const anonymous = isAnonymousAuthUser(user);
 
     // Parse request early so recognizeOnly can bypass quota checks.
     const contentLengthHeader = req.headers.get("content-length");
@@ -4894,7 +4890,7 @@ serve(async (req) => {
     const dailyResetAt = sub.daily_reset_at
       ? new Date(sub.daily_reset_at)
       : new Date(0);
-    if (!anonymous && !sameUtcDay(now, dailyResetAt)) {
+    if (!sameUtcDay(now, dailyResetAt)) {
       let dailyResetQuery = supabase
         .from("subscriptions")
         .update({ daily_messages_used: 0, daily_reset_at: now.toISOString() })
@@ -4911,7 +4907,7 @@ serve(async (req) => {
     const monthlyResetAt = sub.monthly_reset_at
       ? new Date(sub.monthly_reset_at)
       : new Date(0);
-    if (!anonymous && !sameUtcMonth(now, monthlyResetAt)) {
+    if (!sameUtcMonth(now, monthlyResetAt)) {
       let monthlyResetQuery = supabase
         .from("subscriptions")
         .update({
@@ -5041,11 +5037,9 @@ serve(async (req) => {
 
           effectiveTier = accountIsTest ? "essential" : sub.tier;
           allowedFeatures = TIER_FEATURES[effectiveTier] || TIER_FEATURES.free;
-          monthlyLimit = anonymous ? GUEST_TOTAL_LIMIT
-            : TIER_MONTHLY_LIMITS[normalizeTier(sub.tier)] ||
+          monthlyLimit = TIER_MONTHLY_LIMITS[normalizeTier(sub.tier)] ||
               TIER_MONTHLY_LIMITS.free;
-          dailyLimit = anonymous ? GUEST_TOTAL_LIMIT
-            : TIER_DAILY_LIMITS[normalizeTier(sub.tier)] ||
+          dailyLimit = TIER_DAILY_LIMITS[normalizeTier(sub.tier)] ||
               TIER_DAILY_LIMITS.free;
 
           if (refreshedError) {
@@ -5085,11 +5079,9 @@ serve(async (req) => {
       }
     };
 
-    let monthlyLimit = anonymous ? GUEST_TOTAL_LIMIT
-      : TIER_MONTHLY_LIMITS[normalizeTier(sub.tier)] ||
+    let monthlyLimit = TIER_MONTHLY_LIMITS[normalizeTier(sub.tier)] ||
         TIER_MONTHLY_LIMITS.free;
-    let dailyLimit = anonymous ? GUEST_TOTAL_LIMIT
-      : TIER_DAILY_LIMITS[normalizeTier(sub.tier)] ||
+    let dailyLimit = TIER_DAILY_LIMITS[normalizeTier(sub.tier)] ||
         TIER_DAILY_LIMITS.free;
     if (
       !recognizeOnly && !accountIsTest &&
@@ -5480,11 +5472,9 @@ serve(async (req) => {
               "new_topic_quota_exceeded",
             );
           if (refreshStatus === "applied") {
-            monthlyLimit = anonymous ? GUEST_TOTAL_LIMIT
-              : TIER_MONTHLY_LIMITS[normalizeTier(sub.tier)] ||
+            monthlyLimit = TIER_MONTHLY_LIMITS[normalizeTier(sub.tier)] ||
                 TIER_MONTHLY_LIMITS.free;
-            dailyLimit = anonymous ? GUEST_TOTAL_LIMIT
-              : TIER_DAILY_LIMITS[normalizeTier(sub.tier)] ||
+            dailyLimit = TIER_DAILY_LIMITS[normalizeTier(sub.tier)] ||
                 TIER_DAILY_LIMITS.free;
           }
         }
@@ -6069,11 +6059,9 @@ serve(async (req) => {
             );
           const refreshed = refreshStatus === "applied";
           if (refreshed) {
-            monthlyLimit = anonymous ? GUEST_TOTAL_LIMIT
-              : TIER_MONTHLY_LIMITS[normalizeTier(sub.tier)] ||
+            monthlyLimit = TIER_MONTHLY_LIMITS[normalizeTier(sub.tier)] ||
                 TIER_MONTHLY_LIMITS.free;
-            dailyLimit = anonymous ? GUEST_TOTAL_LIMIT
-              : TIER_DAILY_LIMITS[normalizeTier(sub.tier)] ||
+            dailyLimit = TIER_DAILY_LIMITS[normalizeTier(sub.tier)] ||
                 TIER_DAILY_LIMITS.free;
           }
         }
@@ -6485,7 +6473,6 @@ serve(async (req) => {
               reason: chargeOutcome.reason,
               monthlyLimit,
               dailyLimit,
-              anonymous,
             }),
             429,
           );
@@ -7176,7 +7163,6 @@ ${recentText}`;
             reason: "monthly_limit_exceeded",
             monthlyLimit,
             dailyLimit,
-            anonymous,
           }),
           429,
         );
@@ -7210,7 +7196,6 @@ ${recentText}`;
             reason: "daily_limit_exceeded",
             monthlyLimit,
             dailyLimit,
-            anonymous,
           }),
           429,
         );
@@ -9438,7 +9423,6 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             reason: settlement.reason,
             monthlyLimit,
             dailyLimit,
-            anonymous,
           }),
           429,
         );
@@ -9543,7 +9527,6 @@ Return \`optimizedMessage\` in the structured JSON response.`,
               reason: quotaReason,
               monthlyLimit,
               dailyLimit,
-              anonymous,
             }),
             429,
           );

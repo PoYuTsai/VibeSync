@@ -9,7 +9,6 @@ import 'keyboard_privacy_purge_service.dart';
 import '../config/environment.dart';
 import 'auth_recovery_helper.dart';
 import 'auth_diagnostics_service.dart';
-import 'guest_session_vault.dart';
 import 'revenuecat_service.dart';
 import 'social_auth/social_auth_service.dart';
 
@@ -71,7 +70,6 @@ class SupabaseService {
       event: authState.event,
       currentState: _passwordRecoveryInProgress,
     );
-    _syncGuestSessionVault(authState.session);
     if (authState.event == AuthChangeEvent.passwordRecovery) {
       unawaited(
         AuthDiagnosticsService.log(
@@ -97,9 +95,6 @@ class SupabaseService {
 
   static bool get isAuthenticated => currentUser != null;
 
-  /// 批 B 訪客模式：目前 session 是否為匿名（訪客）帳號。
-  static bool get isGuestUser => currentUser?.isAnonymous ?? false;
-
   static bool get isPasswordRecoveryInProgress => _passwordRecoveryInProgress;
 
   static Stream<AuthState> get authStateChanges {
@@ -110,38 +105,6 @@ class SupabaseService {
     return _client.auth.onAuthStateChange;
   }
 
-  /// 訪客額度綁裝置：訪客 refresh token 的 Keychain 鏡存。
-  static GuestSessionVault guestSessionVault = GuestSessionVault();
-
-  /// 匿名 session 建立/換發 → 鏡存最新 refresh token；非匿名 session 出現
-  /// （linking 完成或登入既有帳號）→ 清 vault。無 session（登出）不動 vault
-  /// （token 反正已被 revoke，見 GuestSessionVault 類註解）。
-  /// vault 內部已串行化，unawaited 不會造成寫入亂序。
-  static void _syncGuestSessionVault(Session? session) {
-    if (session == null) return;
-    unawaited(guestSessionVault.syncAuthSession(
-      isAnonymous: session.user.isAnonymous,
-      refreshToken: session.refreshToken,
-    ));
-  }
-
-  /// 批 B 訪客模式：匿名登入（先逛逛，不用註冊）。
-  static Future<AuthResponse> signInAnonymously() async {
-    return await client.auth.signInAnonymously();
-  }
-
-  /// 訪客入口（綁裝置版）：先試復活本機 Keychain 裡的舊訪客 session
-  /// （同帳號＝同剩餘額度），token 真死（4xx）才開新匿名帳號；
-  /// 網路類錯誤外拋讓使用者重試（保 vault）。邏輯在 GuestSignInFlow
-  /// （可單元測試），此處只接線。
-  static Future<AuthResponse> signInAsGuest() {
-    return GuestSignInFlow(
-      vault: guestSessionVault,
-      restoreSession: (token) => client.auth.setSession(token),
-      freshSignIn: () => client.auth.signInAnonymously(),
-      discardSession: () => client.auth.signOut(),
-    ).signIn();
-  }
 
   /// Sign in with email and password
   static Future<AuthResponse> signInWithEmail({
@@ -260,8 +223,6 @@ class SupabaseService {
   }
 
   static Future<void> clearLocalSessionAfterDeletion() async {
-    // 帳號已從 server 刪除，vault 內 token（若有）已死，直接清。
-    await guestSessionVault.clear();
     try {
       await client.auth.signOut();
     } catch (error) {
@@ -293,28 +254,6 @@ class SupabaseService {
   /// Uses google_sign_in package for native UX (shows existing accounts)
   static Future<AuthResponse> signInWithGoogle() async {
     return await _socialAuth.signInWithGoogle();
-  }
-
-  /// 批 B 訪客轉正：把 Apple identity 連結到匿名帳號（uid 不變）。
-  static Future<AuthResponse> linkWithApple() async {
-    return await _socialAuth.linkWithApple();
-  }
-
-  /// 批 B 訪客轉正：把 Google identity 連結到匿名帳號（uid 不變）。
-  static Future<AuthResponse> linkWithGoogle() async {
-    return await _socialAuth.linkWithGoogle();
-  }
-
-  /// 批 B 訪客轉正：email＋密碼。updateUser 會寄確認信；點擊連結前
-  /// 帳號仍是匿名（訪客額度不變），介面需明講。
-  static Future<UserResponse> registerGuestWithEmail({
-    required String email,
-    required String password,
-  }) async {
-    return await client.auth.updateUser(
-      UserAttributes(email: email, password: password),
-      emailRedirectTo: AppConfig.authRedirectUri,
-    );
   }
 
   /// Ensure subscription record exists for user

@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/constants/app_constants.dart';
 import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
@@ -40,11 +39,7 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
     }
   }
 
-  void _openExplainSheet(
-    BuildContext context,
-    int monthlyLimit, {
-    bool isGuest = false,
-  }) {
+  void _openExplainSheet(BuildContext context, int monthlyLimit) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.brandSurface,
@@ -58,9 +53,9 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                isGuest ? '訪客額度怎麼算？' : '免費額度怎麼算？',
-                style: const TextStyle(
+              const Text(
+                '免費額度怎麼算？',
+                style: TextStyle(
                   color: AppColors.onBackgroundPrimary,
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
@@ -68,13 +63,8 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
               ),
               const SizedBox(height: 12),
               Text(
-                isGuest
-                    ? '訪客共有 $monthlyLimit 則 AI 額度，聊天分析、開場救援、'
-                        '教練與練習共用，用完不再補充。免費註冊即可解鎖每月 '
-                        '${AppConstants.freeMonthlyLimit} 則額度，'
-                        '訪客期間的紀錄全部保留。'
-                    : '免費方案每月共 $monthlyLimit 則 AI 額度，聊天分析、開場救援、'
-                        '教練與練習共用，每月自動重置。升級後額度大幅提升。',
+                '免費方案每月共 $monthlyLimit 則 AI 額度，聊天分析、開場救援、'
+                '教練與練習共用，每月自動重置。升級後額度大幅提升。',
                 style: const TextStyle(
                   color: AppColors.onBackgroundSecondary,
                   fontSize: 14,
@@ -83,12 +73,10 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
               ),
               const SizedBox(height: 20),
               BrandPrimaryButton(
-                label: isGuest ? '免費註冊' : '看訂閱方案',
+                label: '看訂閱方案',
                 onPressed: () {
                   Navigator.of(sheetContext).pop();
-                  context.push(
-                    isGuest ? '/register?source=quota_strip' : '/paywall',
-                  );
+                  context.push('/paywall');
                 },
               ),
             ],
@@ -104,7 +92,7 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
     if (!subscription.isFreeUser) return const SizedBox.shrink();
 
     final remaining = subscription.monthlyRemaining;
-    final urgent = subscription.isGuest ? remaining <= 1 : remaining <= 3;
+    final urgent = remaining <= 3;
     final accent =
         urgent ? AppColors.ctaStart : AppColors.onBackgroundSecondary;
 
@@ -117,11 +105,7 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
           borderRadius: BorderRadius.circular(12),
           onTap: () {
             unawaited(ref.read(funnelTrackerProvider).track('quota_strip_tap'));
-            _openExplainSheet(
-              context,
-              subscription.effectiveMonthlyLimit,
-              isGuest: subscription.isGuest,
-            );
+            _openExplainSheet(context, subscription.effectiveMonthlyLimit);
           },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -142,9 +126,7 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    subscription.isGuest
-                        ? '訪客額度剩 $remaining 則'
-                        : '本月免費額度還剩 $remaining 則',
+                    '本月免費額度還剩 $remaining 則',
                     style: TextStyle(
                       color: urgent
                           ? AppColors.ctaStart
