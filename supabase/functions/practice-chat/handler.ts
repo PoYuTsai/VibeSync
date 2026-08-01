@@ -2,6 +2,7 @@ import {
   buildQuotaExceededPayload,
   checkQuota,
   classifyQuotaRpcError,
+  isAnonymousAuthUser,
   isPlainObject,
   resolveLimits,
   type SubscriptionRow,
@@ -374,7 +375,11 @@ export type ClaudeCaller = (args: ClaudeArgs) => Promise<string>;
 export interface PracticeSupabaseClient {
   auth: {
     getUser(token: string): Promise<{
-      data: { user: { id: string; email?: string | null } | null };
+      data: {
+        user:
+          | { id: string; email?: string | null; is_anonymous?: boolean | null }
+          | null;
+      };
       error: { message: string } | null;
     }>;
   };
@@ -1678,6 +1683,7 @@ export function createPracticeChatHandler(
         supabase: supabase as unknown as DrawSupabaseClient,
         userId: user.id,
         userEmail: user.email ?? null,
+        isAnonymous: isAnonymousAuthUser(user),
         request: drawRequest,
         now: deps.now?.() ?? new Date(),
       });
@@ -1757,7 +1763,10 @@ export function createPracticeChatHandler(
     }
 
     const accountIsTest = TEST_EMAILS.includes(user.email || "");
-    const limits = resolveLimits(sub.tier);
+    // 批 B 訪客模式：匿名帳號 limits 鎖 3/3；重置由 prepare RPC 內
+    // is_anonymous 分支跳過（migration 20260801*_guest_skip_reset）。
+    const anonymous = isAnonymousAuthUser(user);
+    const limits = resolveLimits(sub.tier, { anonymous });
     const responsePayloadWithCurrentUsage = (
       snapshot: Record<string, unknown>,
       deductedThisCall = 0,
@@ -1931,6 +1940,7 @@ export function createPracticeChatHandler(
             reason: quotaGate.reason,
             monthlyLimit: limits.monthly,
             dailyLimit: limits.daily,
+            anonymous,
           }),
           429,
         );
@@ -1992,6 +2002,7 @@ export function createPracticeChatHandler(
             reason,
             monthlyLimit: limits.monthly,
             dailyLimit: limits.daily,
+            anonymous,
           }),
           429,
         );
@@ -3552,6 +3563,7 @@ export function createPracticeChatHandler(
             reason: quotaGate.reason,
             monthlyLimit: limits.monthly,
             dailyLimit: limits.daily,
+            anonymous,
           }),
           429,
         );

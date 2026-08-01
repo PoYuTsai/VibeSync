@@ -914,3 +914,35 @@ Deno.test("relationship thread upsert RPC persists summary without raw transcrip
     false,
   );
 });
+
+// ── 批 B 訪客模式：prepare RPC 匿名跳過歸零 ────────────────────────────────
+const guestSkipResetMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260801120000_practice_prepare_guest_skip_reset.sql",
+    import.meta.url,
+  ),
+);
+
+Deno.test("批 B：prepare_practice_subscription_usage 匿名跳過歸零、簽名與鎖不變", () => {
+  assert(
+    guestSkipResetMigration.includes(
+      "CREATE OR REPLACE FUNCTION public.prepare_practice_subscription_usage",
+    ),
+  );
+  // 匿名判定必須 schema-qualified 查 auth.users 且 COALESCE 防 NULL
+  assert(
+    guestSkipResetMigration.includes(
+      "SELECT COALESCE(u.is_anonymous, FALSE) INTO v_is_anonymous",
+    ),
+  );
+  assert(guestSkipResetMigration.includes("FROM auth.users AS u"));
+  // 兩段歸零都包在非匿名分支內
+  assert(guestSkipResetMigration.includes("IF NOT v_is_anonymous THEN"));
+  // row lock 與 fail-closed 語意保留
+  assert(guestSkipResetMigration.includes("FOR UPDATE"));
+  assert(
+    guestSkipResetMigration.includes("PRACTICE_SUBSCRIPTION_NOT_FOUND"),
+  );
+  // 簽名零改動（不得出現第二參數）
+  assert(!guestSkipResetMigration.includes("p_skip_reset"));
+});
