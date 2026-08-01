@@ -929,17 +929,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         ),
                       ),
-                    if (!_isPasswordRecoveryMode)
-                      TextButton(
+                    if (!_isPasswordRecoveryMode) ...[
+                      const SizedBox(height: 8),
+                      BrandSecondaryButton(
                         key: const Key('login_guest_mode_button'),
+                        label: '先逛逛，不用註冊',
+                        icon: Icons.explore_outlined,
                         onPressed: _isLoading ? null : _continueAsGuest,
-                        child: Text(
-                          '先逛逛，不用註冊',
-                          style: AppTypography.bodyMedium.copyWith(
-                            color: AppColors.onBackgroundSecondary,
-                          ),
-                        ),
                       ),
+                    ],
                     const SizedBox(height: 24),
                     _buildLegalDisclaimer(),
                   ],
