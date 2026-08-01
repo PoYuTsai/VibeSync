@@ -180,11 +180,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   /// 開→requestSoftOptIn（向系統要權限，授權成功才維持開）；
   /// 關→disableAll（cancelAll + opt-in=denied）。
   Future<void> _onFollowUpReminderToggled(bool value) async {
-    // 批 B 訪客模式：跟進提醒＝強制註冊觸發點。開啟動作導免費註冊，
-    // opt-in 狀態不動（轉正後再開）。
+    // 批 B 訪客模式：跟進提醒＝強制註冊觸發點。先彈說明（否則用戶一頭霧水
+    // 為何被丟到註冊頁），點「免費註冊」才導頁；opt-in 狀態不動（轉正後再開）。
     if (value && ref.read(subscriptionProvider).isGuest) {
       setState(() => _followUpReminderOn = false);
-      unawaited(context.push('/register?source=follow_up'));
+      _showGuestFollowUpExplainSheet();
       return;
     }
     final service = ref.read(followUpNotificationServiceProvider);
@@ -209,6 +209,59 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       debugPrint('FollowUp reminder toggle failed: $e');
       if (mounted) setState(() {});
     }
+  }
+
+  /// 訪客開跟進提醒的說明 sheet（比照額度小條的說明 sheet 樣式）。
+  void _showGuestFollowUpExplainSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.brandSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '跟進提醒需要帳號',
+                style: AppTypography.titleMedium.copyWith(
+                  color: AppColors.onBackgroundPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '跟進提醒會在對的時間點提醒你回訊，需要帳號記住你的對象與進度。'
+                '免費註冊即可開啟，訪客期間的紀錄與剩餘額度全部保留。',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                  height: 1.6,
+                ),
+              ),
+              const SizedBox(height: 20),
+              BrandPrimaryButton(
+                label: '免費註冊',
+                onPressed: () {
+                  Navigator.of(sheetContext).pop();
+                  context.push('/register?source=follow_up');
+                },
+              ),
+              const SizedBox(height: 4),
+              Center(
+                child: TextButton(
+                  onPressed: () => Navigator.of(sheetContext).pop(),
+                  child: const Text('先不用'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _refreshSubscriptionOnEntry() async {
