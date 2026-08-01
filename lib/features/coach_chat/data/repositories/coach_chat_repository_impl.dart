@@ -238,6 +238,8 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
   /// 隱私 cascade（Codex P2）：本 repo 的讀路徑涵蓋 unified box＋legacy-17
   /// chat box（conversation scope）＋legacy-16 follow-up box（partner scope），
   /// clearAll 必須同步清空三者，任何讀路徑清完都不得殘留 rows。
+  /// unified box 整箱 clear——global scope（批 A）天然涵蓋；重構時不得改成
+  /// 按 scopeType 逐型清理（新增 scope 會靜默漏清）。
   @override
   Future<void> clearAll() async {
     await _unifiedBox.clear();

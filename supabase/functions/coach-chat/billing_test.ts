@@ -115,6 +115,25 @@ Deno.test("request schema accepts global scope shape and rejects mismatches", ()
       ),
   );
 
+  // global 不得夾帶任何對象綁定欄位（review Grok Imp-3／GLM P2-1：防舊/壞
+  // client 把對象隱私掛進全域串）。
+  for (
+    const extra of [
+      { partnerHint: { name: "Mia" } },
+      { conversationSummary: "上週聊過旅行" },
+      { analysisSnapshot: { heatScore: 68 } },
+    ]
+  ) {
+    const smuggled = RequestSchema.safeParse({ ...base, ...extra });
+    assertFalse(smuggled.success);
+    assert(
+      !smuggled.success &&
+        smuggled.error.issues.some(
+          (issue) => issue.message === "scope_global_shape_mismatch",
+        ),
+    );
+  }
+
   // 既有兩型不回歸。
   assert(
     RequestSchema.safeParse({

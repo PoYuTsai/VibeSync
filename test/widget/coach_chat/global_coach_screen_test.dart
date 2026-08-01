@@ -16,12 +16,8 @@ import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcom
 import '../../helpers/memory_coach_chat_repository.dart';
 import '../../helpers/memory_coaching_outcome_repository.dart';
 
-/// 引導問句 chips（計畫拍板三句；與實作常數字面對齊）。
-const _guideQuestions = [
-  '不知道怎麼開啟話題，給我一點方向？',
-  '對方回得很短，我該怎麼判斷？',
-  '怎麼把聊天推進到約出來？',
-];
+/// 引導問句直接引實作常數（review Grok Minor-3：防測試與文案漂移）。
+const _guideQuestions = GlobalCoachScreen.guideQuestions;
 
 CoachChatInvoker _recordingInvoker(List<Map<String, dynamic>> calls) {
   return (String _, {required Map<String, dynamic> body}) async {

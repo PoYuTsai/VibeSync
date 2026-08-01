@@ -537,6 +537,20 @@ void main() {
       expect(legacyFollowUpBox.isEmpty, isTrue);
     });
 
+    test('legacy rows 撞哨兵 id "me" 也不得混進 global merge（review Grok Imp-2）',
+        () async {
+      // 惡意/巧合情境：legacy-16 key='me'＋legacy-17 conversationId='me'。
+      // global 分支不走任何 read-bridge，兩者都不得出現在 global 歷史。
+      await legacyFollowUpBox.put('me', _followUp('me'));
+      await legacyChatBox.put('l-me', _result('l-me', conversationId: 'me'));
+      await repo.putUnified(
+        _unified('g-1', scopeType: 'global', scopeId: 'me'),
+      );
+
+      final list = repo.listByScope(CoachScopeType.global, 'me');
+      expect(list.map((r) => r.id), ['g-1']);
+    });
+
     test('clearAll 連 global 紀錄一起清（隱私 cascade）', () async {
       await repo.putUnified(
         _unified('g-1', scopeType: 'global', scopeId: 'me'),

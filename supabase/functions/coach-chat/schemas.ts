@@ -149,11 +149,18 @@ export const RequestSchema = z.object({
       message: "scope_partner_id_mismatch",
     });
   }
-  // 批 A：global scope 的合成 conversationId 固定 'global:me'，且不綁對象
-  // （頂層 partnerId 必須為空）——形狀不符一律拒收，不得靜默當 partner。
+  // 批 A：global scope 的合成 conversationId 固定 'global:me'，且不綁對象——
+  // 頂層 partnerId 與所有對象綁定欄位（partnerHint/conversationSummary/
+  // analysisSnapshot）都必須缺席，否則對象隱私會混進「不綁對象」串、prompt
+  // 也會同時出現全域框架與對象上下文（review Grok Imp-3／GLM P2-1）。
+  // 形狀不符一律拒收，不得靜默當 partner。
   if (
     payload.scope?.type === "global" &&
-    (payload.conversationId !== "global:me" || payload.partnerId != null)
+    (payload.conversationId !== "global:me" ||
+      payload.partnerId != null ||
+      payload.partnerHint != null ||
+      payload.conversationSummary != null ||
+      payload.analysisSnapshot != null)
   ) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
