@@ -18,11 +18,13 @@ String? redirect({
   required bool isOnboardingCompleted,
   required String matchedLocation,
   bool isPasswordRecovery = false,
+  bool isAnonymous = false,
 }) =>
     resolveAppRedirect(
       isLoggedIn: isLoggedIn,
       isOnboardingCompleted: isOnboardingCompleted,
       isPasswordRecovery: isPasswordRecovery,
+      isAnonymous: isAnonymous,
       matchedLocation: matchedLocation,
     );
 
@@ -150,6 +152,95 @@ void main() {
           matchedLocation: '/partner/abc',
         ),
         isNull,
+      );
+    });
+  });
+
+  group('resolveAppRedirect — 批 B 訪客模式（匿名軸）', () {
+    test('訪客點訂閱：/paywall 被攔到 /register（帶 source）', () {
+      expect(
+        redirect(
+          isLoggedIn: true,
+          isOnboardingCompleted: true,
+          isAnonymous: true,
+          matchedLocation: '/paywall',
+        ),
+        '/register?source=paywall',
+      );
+    });
+
+    test('訪客可停留 /register', () {
+      expect(
+        redirect(
+          isLoggedIn: true,
+          isOnboardingCompleted: true,
+          isAnonymous: true,
+          matchedLocation: '/register',
+        ),
+        isNull,
+      );
+    });
+
+    test('訪客其餘深路由行為與一般登入者相同', () {
+      expect(
+        redirect(
+          isLoggedIn: true,
+          isOnboardingCompleted: true,
+          isAnonymous: true,
+          matchedLocation: '/partner/abc',
+        ),
+        isNull,
+      );
+      expect(
+        redirect(
+          isLoggedIn: true,
+          isOnboardingCompleted: true,
+          isAnonymous: true,
+          matchedLocation: '/login',
+        ),
+        '/',
+      );
+    });
+
+    test('訪客 onboarding 未完成仍先進 /onboarding（含 /paywall）', () {
+      expect(
+        redirect(
+          isLoggedIn: true,
+          isOnboardingCompleted: false,
+          isAnonymous: true,
+          matchedLocation: '/paywall',
+        ),
+        '/onboarding',
+      );
+    });
+
+    test('一般登入者誤入 /register 彈回主殼（回歸鎖：/paywall 不受影響）', () {
+      expect(
+        redirect(
+          isLoggedIn: true,
+          isOnboardingCompleted: true,
+          matchedLocation: '/register',
+        ),
+        '/',
+      );
+      expect(
+        redirect(
+          isLoggedIn: true,
+          isOnboardingCompleted: true,
+          matchedLocation: '/paywall',
+        ),
+        isNull,
+      );
+    });
+
+    test('未登入 /register 由既有通則導回 /login', () {
+      expect(
+        redirect(
+          isLoggedIn: false,
+          isOnboardingCompleted: false,
+          matchedLocation: '/register',
+        ),
+        '/login',
       );
     });
   });

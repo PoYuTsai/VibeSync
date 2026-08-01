@@ -24,6 +24,7 @@ GoRouter _gatedRouter({
         isLoggedIn: isLoggedIn,
         isOnboardingCompleted: isOnboardingCompleted,
         isPasswordRecovery: isPasswordRecovery,
+        isAnonymous: false,
         matchedLocation: state.matchedLocation,
       ),
       routes: [
