@@ -1,9 +1,9 @@
 // test/widget/features/partner/home_feature_entries_test.dart
 //
-// 首頁功能入口列（onboarding 轉化 Tier 2 批 1）：
+// 首頁功能入口列（onboarding 轉化 Tier 2 批 1；批 A 改導全域教練）：
 // - 開場救援 → /opener。
-// - 問教練＋有對象 → 最近互動對象（partners.first）的 coach 跟進 deep link。
-// - 問教練＋沒對象 → /partner/new 建卡。
+// - 問教練 → /coach 全域教練頁（不分有無對象；埋點字典零改動，
+//   coach_entry_tap 照舊帶 has_partner）。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -45,6 +45,10 @@ GoRouter _stubRouter() => GoRouter(
         GoRoute(
           path: '/opener',
           builder: (_, __) => const Scaffold(body: Text('opener-screen')),
+        ),
+        GoRoute(
+          path: '/coach',
+          builder: (_, __) => const Scaffold(body: Text('global-coach-screen')),
         ),
         // literal '/partner/new' 必須排在 '/partner/:partnerId' 前（同 routes.dart）。
         GoRoute(
@@ -90,8 +94,7 @@ void main() {
     expect(find.text('opener-screen'), findsOneWidget);
   });
 
-  testWidgets('問教練＋有對象 → 最近對象的 coach 跟進 deep link', (tester) async {
-    // partnerListProvider 已按最後互動時間降冪，first＝最近互動對象。
+  testWidgets('問教練＋有對象 → /coach 全域教練頁', (tester) async {
     await _pumpEntries(
       tester,
       partners: [_partner('p-recent', '最近的'), _partner('p-old', '老的')],
@@ -100,21 +103,16 @@ void main() {
     await tester.tap(find.text('問教練'));
     await tester.pumpAndSettle();
 
-    expect(
-      find.text(
-        'partner-detail-p-recent-${PartnerDetailScreen.coachFollowUpFocusValue}',
-      ),
-      findsOneWidget,
-    );
+    expect(find.text('global-coach-screen'), findsOneWidget);
   });
 
-  testWidgets('問教練＋沒對象 → /partner/new', (tester) async {
+  testWidgets('問教練＋沒對象 → 一樣導 /coach（不再先建卡）', (tester) async {
     await _pumpEntries(tester, partners: []);
 
     await tester.tap(find.text('問教練'));
     await tester.pumpAndSettle();
 
-    expect(find.text('partner-new-screen'), findsOneWidget);
+    expect(find.text('global-coach-screen'), findsOneWidget);
   });
 
   testWidgets('兩入口各觸發對應埋點一次', (tester) async {

@@ -4,16 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../app/routes.dart';
 import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../providers/partner_providers.dart';
 
-/// 首頁功能入口列（onboarding 轉化 Tier 2 批 1）：開場救援＋問教練。
+/// 首頁功能入口列（onboarding 轉化 Tier 2 批 1；批 A 改導全域教練）：
+/// 開場救援＋問教練。
 ///
-/// 問教練走導航版：有對象 → 最近互動對象（partnerListProvider 已按最後互動
-/// 降冪，first 即最近）的 coach 跟進區；沒對象 → 先建卡。
+/// 問教練一律導 /coach 全域教練頁（不分有無對象）；埋點字典零改動，
+/// coach_entry_tap 照舊帶 has_partner。
 class HomeFeatureEntries extends ConsumerWidget {
   const HomeFeatureEntries({super.key});
 
@@ -55,11 +55,7 @@ class HomeFeatureEntries extends ConsumerWidget {
                     properties: {'has_partner': partners.isNotEmpty},
                   ),
                 );
-                if (partners.isEmpty) {
-                  context.push('/partner/new');
-                } else {
-                  context.push(followUpDeepLink(partners.first.id));
-                }
+                context.push('/coach');
               },
             ),
           ),
