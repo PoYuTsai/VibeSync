@@ -439,6 +439,16 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                             onPressed: _openSettings,
                             icon: Icons.open_in_new,
                           ),
+                          const SizedBox(height: 12),
+                          // 實測 iOS 狀態列的「◀ 返回 App」提示會消失，
+                          // 不可靠——明講用 App 切換器回來。
+                          Text(
+                            '開好後從畫面底部上滑並停頓（App 切換器），切回 VibeSync 繼續。',
+                            textAlign: TextAlign.center,
+                            style: AppTypography.bodySmall.copyWith(
+                              color: AppColors.onBackgroundSecondary,
+                            ),
+                          ),
                         ],
                       ),
                     ),
