@@ -370,6 +370,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   Future<void> _handleCoachChatQuotaExceeded() async {
     if (!mounted) return;
+    // 批 B 訪客模式：訪客導免費註冊（不靠 matrix 兜底，文案才一致）。
+    if (ref.read(subscriptionProvider).isGuest) {
+      _showFloatingSnackBar('訪客額度已用完，免費註冊解鎖每月 30 則額度。');
+      if (!mounted) return;
+      unawaited(context.push('/register?source=quota_exhausted'));
+      return;
+    }
     _showFloatingSnackBar('教練額度已用完，帶你去升級方案。');
     await _showPaywall(context);
   }
@@ -7572,12 +7579,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           // Quota 429 分流：額度不足不是技術失敗，渲染升級卡
                           // 而非「無法再重試」（smoke P1 fix 2026-06-11）。
                           if (_quotaExceededInfo != null)
-                            QuotaExceededUpgradeCard(
-                              isMonthly: _quotaExceededInfo!.isMonthly,
-                              remaining: _quotaExceededInfo!.remaining,
-                              quotaNeeded: _quotaExceededInfo!.quotaNeeded,
-                              onViewPlans: () => _showPaywall(context),
-                            )
+                            Builder(builder: (context) {
+                              // 批 B 訪客模式：訪客撞額度＝導免費註冊（非付費牆）。
+                              final isGuest =
+                                  ref.watch(subscriptionProvider).isGuest;
+                              return QuotaExceededUpgradeCard(
+                                isMonthly: _quotaExceededInfo!.isMonthly,
+                                remaining: _quotaExceededInfo!.remaining,
+                                quotaNeeded: _quotaExceededInfo!.quotaNeeded,
+                                isGuest: isGuest,
+                                onViewPlans: isGuest
+                                    ? () => context
+                                        .push('/register?source=quota_exhausted')
+                                    : () => _showPaywall(context),
+                              );
+                            })
                           else
                             FullAnalysisRetryCard(
                               retriesRemaining: _fullErrorRetriesRemaining,
