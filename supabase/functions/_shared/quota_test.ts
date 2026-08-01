@@ -20,7 +20,10 @@ import {
   buildQuotaExceededPayload,
   checkQuota,
   classifyQuotaRpcError,
+  GUEST_TOTAL_LIMIT,
+  isAnonymousAuthUser,
   isPlainObject,
+  noResetResult,
   normalizeTier,
   parseRevenueCatSubscriber,
   quotaExceededMessage,
@@ -519,4 +522,97 @@ Deno.test("applyResetsIfNeeded previous timestamps preserve null (never reset)",
   const result = applyResetsIfNeeded(sub, new Date("2026-07-01T02:00:00Z"));
   assertEquals(result.previousDailyResetAt, null);
   assertEquals(result.previousMonthlyResetAt, null);
+});
+
+// ---------------------------------------------------------------------------
+// 批 B 訪客模式 — 匿名帳號原語（3 則總量、免重置、guest 429）
+// ---------------------------------------------------------------------------
+
+Deno.test("isAnonymousAuthUser: true only for is_anonymous === true", () => {
+  assertEquals(isAnonymousAuthUser({ is_anonymous: true }), true);
+  assertEquals(isAnonymousAuthUser({ is_anonymous: false }), false);
+  assertEquals(isAnonymousAuthUser({}), false);
+  assertEquals(isAnonymousAuthUser(null), false);
+  assertEquals(isAnonymousAuthUser(undefined), false);
+});
+
+Deno.test("resolveLimits: anonymous overrides EVERY tier to guest 3/3", () => {
+  assertEquals(GUEST_TOTAL_LIMIT, 3);
+  for (const tier of ["free", "starter", "essential", "mystery", null]) {
+    assertEquals(resolveLimits(tier, { anonymous: true }), {
+      monthly: GUEST_TOTAL_LIMIT,
+      daily: GUEST_TOTAL_LIMIT,
+    });
+  }
+});
+
+Deno.test("resolveLimits: anonymous false / absent keeps existing tier limits (regression lock)", () => {
+  assertEquals(resolveLimits("free", { anonymous: false }), {
+    monthly: 30,
+    daily: 15,
+  });
+  assertEquals(resolveLimits("starter"), { monthly: 300, daily: 50 });
+  assertEquals(resolveLimits("essential"), { monthly: 800, daily: 120 });
+});
+
+Deno.test("noResetResult: passes sub through untouched with both reset flags false", () => {
+  const sub = baseSub();
+  const r = noResetResult(sub);
+  assertEquals(r.sub, sub);
+  assertEquals(r.dailyReset, false);
+  assertEquals(r.monthlyReset, false);
+  assertEquals(r.previousDailyResetAt, sub.daily_reset_at);
+  assertEquals(r.previousMonthlyResetAt, sub.monthly_reset_at);
+});
+
+Deno.test("buildQuotaExceededPayload: anonymous adds guest flag + register copy, keeps legacy keys", () => {
+  const payload = buildQuotaExceededPayload({
+    sub: { ...baseSub(), monthly_messages_used: 3, daily_messages_used: 3 },
+    cost: 1,
+    reason: "monthly_limit_exceeded",
+    monthlyLimit: GUEST_TOTAL_LIMIT,
+    dailyLimit: GUEST_TOTAL_LIMIT,
+    anonymous: true,
+  });
+
+  assertObjectMatch(payload, {
+    error: "Monthly limit exceeded",
+    guest: true,
+    quotaNeeded: 1,
+    used: 3,
+    limit: 3,
+    monthlyLimit: 3,
+    dailyLimit: 3,
+    monthlyRemaining: 0,
+    dailyRemaining: 0,
+  });
+  assertEquals(payload.message, quotaExceededMessage("monthly_limit_exceeded", true));
+});
+
+Deno.test("buildQuotaExceededPayload: non-anonymous payload has NO guest key and identical legacy shape", () => {
+  const payload = buildQuotaExceededPayload({
+    sub: { ...baseSub(), monthly_messages_used: 30, daily_messages_used: 8 },
+    cost: 5,
+    reason: "monthly_limit_exceeded",
+    monthlyLimit: 30,
+    dailyLimit: 15,
+  });
+  assertEquals("guest" in payload, false);
+  assertEquals(
+    payload.message,
+    "本月額度已用完，升級方案可取得更多分析與教練額度。",
+  );
+});
+
+Deno.test("quotaExceededMessage: guest copy is reason-independent (single pool)", () => {
+  const monthly = quotaExceededMessage("monthly_limit_exceeded", true);
+  const daily = quotaExceededMessage("daily_limit_exceeded", true);
+  assertEquals(monthly, daily);
+  assertEquals(monthly.includes("訪客"), true);
+  assertEquals(monthly.includes("註冊"), true);
+  // 非訪客文案回歸鎖
+  assertEquals(
+    quotaExceededMessage("daily_limit_exceeded"),
+    "今日額度已用完，每天早上 8 點恢復；也可以升級取得更多額度。",
+  );
 });
