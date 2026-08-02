@@ -23,14 +23,15 @@ import '../../../helpers/ebook_test_content.dart';
 /// 唯一的免費出口。整份內容裡只有這一關是 free。
 const _freeLevelId = 'quiz-level-1-1';
 
-/// 免費入門關固定 10 題（它是櫥窗，密度不能比別關低）；其餘關卡 6–8 題。
-const _freeLevelQuestionCount = 10;
-const _minQuestionsPerLevel = 6;
-const _maxQuestionsPerLevel = 8;
+/// 每一關固定 15 題。
+///
+/// 原本的規則是「免費櫥窗關 10 題、付費關 6–8 題」，前提是櫥窗要比內頁密。
+/// 內容重做（2026-08-02）推翻了它：四關等量，付費關不再比免費關短。
+const _questionsPerLevel = 15;
 
-/// 第 1 期的規模：4 關、31 題。
+/// 重做後的規模：4 關、60 題。
 const _expectedLevelCount = 4;
-const _expectedQuestionCount = 31;
+const _expectedQuestionCount = 60;
 
 /// 題型難度階梯。第一題與最後一題刻意收在簡單題，中間才給難的。
 int _difficulty(ChatQuizQuestionType type) => switch (type) {
@@ -92,7 +93,7 @@ void main() {
   });
 
   group('結構', () {
-    test('第 1 期規模：兩群、四關、31 題', () {
+    test('重做後規模：兩群、四關、60 題', () {
       expect(catalog.groups, hasLength(2));
       expect(levels, hasLength(_expectedLevelCount));
       expect(questions, hasLength(_expectedQuestionCount));
@@ -131,20 +132,12 @@ void main() {
       expect(ids.toSet(), hasLength(ids.length));
     });
 
-    test('每關 6–8 題，唯一例外是免費關的 10 題', () {
+    test('每一關固定 15 題', () {
       for (final level in levels) {
-        if (level.id == _freeLevelId) {
-          expect(
-            level.questionCount,
-            _freeLevelQuestionCount,
-            reason: '免費關是櫥窗，題數固定 10',
-          );
-          continue;
-        }
         expect(
           level.questionCount,
-          inInclusiveRange(_minQuestionsPerLevel, _maxQuestionsPerLevel),
-          reason: '${level.id} 的題數 ${level.questionCount} 不在 6–8 之間',
+          _questionsPerLevel,
+          reason: '${level.id} 的題數是 ${level.questionCount}，四關必須等量',
         );
       }
     });

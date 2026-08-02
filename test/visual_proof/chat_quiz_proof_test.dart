@@ -173,14 +173,14 @@ void main() {
       size: const Size(390, 900),
     );
 
-    expect(find.text('第 1 題 / 共 10 題'), findsOneWidget);
+    expect(find.text('第 1 題 / 共 15 題'), findsOneWidget);
     expect(find.text('這則回覆是什麼燈？'), findsOneWidget);
     expect(find.text('送出答案'), findsOneWidget);
     // 送出前不得有任何正解線索——這張圖就是那條規則的證據。
     expect(find.text('正確'), findsNothing);
     expect(find.text('不是這個'), findsNothing);
 
-    await tester.tap(find.textContaining('綠燈——她主動給了超出你問的東西'));
+    await tester.tap(find.textContaining('綠燈——她主動給了超出你問的'));
     await tester.pumpAndSettle();
     await capture(tester, rootKey, 'chat_quiz_player_before_submit.png');
   });
@@ -193,7 +193,7 @@ void main() {
       size: const Size(390, 1400),
     );
 
-    await tester.tap(find.textContaining('黃燈——她只是禮貌地接住'));
+    await tester.tap(find.textContaining('黃燈——她有回答'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('送出答案'));
     await tester.pumpAndSettle();
@@ -214,10 +214,10 @@ void main() {
       size: const Size(390, 900),
     );
 
-    await _playLevel(tester, correctRatio: 1.0);
+    await _playLevel(tester, catalog: catalog, correctRatio: 1.0);
 
     expect(find.text('過關'), findsOneWidget);
-    expect(find.text('10 / 10 題答對'), findsOneWidget);
+    expect(find.text('15 / 15 題答對'), findsOneWidget);
 
     await capture(tester, rootKey, 'chat_quiz_result_passed.png');
   });
@@ -230,10 +230,10 @@ void main() {
       size: const Size(390, 1600),
     );
 
-    await _playLevel(tester, correctRatio: 0.5);
+    await _playLevel(tester, catalog: catalog, correctRatio: 0.5);
 
     expect(find.text('再跑一次'), findsWidgets);
-    expect(find.text('5 / 10 題答對'), findsOneWidget);
+    expect(find.text('8 / 15 題答對'), findsOneWidget);
     expect(find.text('這幾題再看一次'), findsOneWidget);
     // 沒過的畫面上不得出現「失敗」，也不得出現任何額度或付費文案。
     expect(find.textContaining('失敗'), findsNothing);
@@ -246,19 +246,32 @@ void main() {
 /// 把 1-1 跑完。[correctRatio] 決定前幾題答對，其餘刻意答錯。
 Future<void> _playLevel(
   WidgetTester tester, {
+  required ChatQuizCatalog catalog,
   required double correctRatio,
 }) async {
-  const total = 10;
+  // 正解位置刻意分散在各個選項（不然規律會被背下來），所以這裡從內容裡查
+  // 每一題正解排第幾個，不能寫死「第一個就是正解」。
+  final questions = catalog.findLevel('quiz-level-1-1')!.questions;
+  final total = questions.length;
   final correctCount = (total * correctRatio).round();
 
   for (var index = 0; index < total; index++) {
     final card = find.byType(ChatQuizPlayerBody);
     expect(card, findsOneWidget, reason: '第 ${index + 1} 題沒有渲染出來');
 
-    // 正解一律是每題的第一個選項（內容檔就是這樣寫的）；答錯時挑第二個。
+    final question = questions[index];
+    final correctIndex =
+        question.choices.indexWhere((choice) => choice.isCorrect);
+    final target = index < correctCount
+        ? correctIndex
+        : (correctIndex + 1) % question.choices.length;
+
     final choices = find.byType(InkWell);
-    await tester.tap(choices.at(index < correctCount ? 0 : 1));
+    await tester.ensureVisible(choices.at(target));
     await tester.pumpAndSettle();
+    await tester.tap(choices.at(target));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('送出答案'), 200);
     await tester.tap(find.text('送出答案'));
     await tester.pumpAndSettle();
 
