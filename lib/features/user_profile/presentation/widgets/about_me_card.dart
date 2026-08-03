@@ -28,12 +28,12 @@ class AboutMeCard extends ConsumerWidget {
       data: (profile) {
         if (profile == null || profile.isEmpty) {
           return _EmptyState(
-            onTap: () => context.push('/profile/about-me'),
+            onTap: () => context.push('/profile/about-me?source=card'),
           );
         }
         return _FilledState(
           profile: profile,
-          onTap: () => context.push('/profile/about-me'),
+          onTap: () => context.push('/profile/about-me?source=card'),
         );
       },
     );

@@ -316,7 +316,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     icon: Icons.person_outline,
                     title: '關於我',
                     trailing: '教練怎麼認識你',
-                    onTap: () => context.push('/profile/about-me'),
+                    onTap: () => context.push('/profile/about-me?source=settings'),
                   ),
                 ],
               ),

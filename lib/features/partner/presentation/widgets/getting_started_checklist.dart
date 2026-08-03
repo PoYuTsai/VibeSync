@@ -69,7 +69,7 @@ class GettingStartedChecklist extends ConsumerWidget {
         id: 'profile',
         label: '填 30 秒關於我',
         done: profileDone,
-        onTap: () => context.push('/profile/about-me'),
+        onTap: () => context.push('/profile/about-me?source=checklist'),
       ),
       _ChecklistItem(
         id: 'first_action',

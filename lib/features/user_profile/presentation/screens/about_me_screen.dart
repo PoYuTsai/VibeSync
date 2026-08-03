@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../data/providers/user_profile_providers.dart';
@@ -12,7 +15,11 @@ import '../style_pair_draft.dart';
 import '../widgets/profile_chip_section.dart';
 
 class AboutMeScreen extends ConsumerStatefulWidget {
-  const AboutMeScreen({super.key});
+  const AboutMeScreen({super.key, this.source});
+
+  /// 從哪個入口進來（checklist／card／settings）。用於 about_me_opened
+  /// 追蹤事件；不在白名單內的值會在 server 端被剝除，不影響事件本身送出。
+  final String? source;
 
   @override
   ConsumerState<AboutMeScreen> createState() => _AboutMeScreenState();
@@ -26,6 +33,19 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
   final TextEditingController _notesController = TextEditingController();
   UserProfile? _initialProfile;
   bool _hydrated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(
+      ref.read(funnelTrackerProvider).track(
+        'about_me_opened',
+        properties: {
+          if (widget.source != null) 'source': widget.source,
+        },
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -166,6 +186,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
       messenger.showSnackBar(
         const SnackBar(content: Text('已清除關於我設定')),
       );
+      unawaited(ref.read(funnelTrackerProvider).track('about_me_cleared'));
       popIfPossible();
       return;
     }
@@ -191,6 +212,18 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
 
     messenger.showSnackBar(
       const SnackBar(content: Text('已更新關於我')),
+    );
+    unawaited(
+      ref.read(funnelTrackerProvider).track(
+        'about_me_saved',
+        properties: {
+          'has_style': _draftPair.primary != null,
+          'goals_count': _draftGoals.length,
+          'seeds_count': _draftSeeds.length,
+          'has_notes': _notesController.text.trim().isNotEmpty,
+          'has_custom_topics': _customController.text.trim().isNotEmpty,
+        },
+      ),
     );
     popIfPossible();
   }

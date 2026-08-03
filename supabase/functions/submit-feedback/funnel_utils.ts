@@ -7,12 +7,19 @@
 
 const PAGE_INDEX_MAX = 20;
 const GOALS_COUNT_MAX = 5;
+const SEEDS_COUNT_MAX = 5;
 const STRING_VALUE_MAX = 40;
 
 const CHECKLIST_ITEMS = new Set([
   "profile",
   "first_action",
   "keyboard",
+]);
+
+const ABOUT_ME_SOURCES = new Set([
+  "checklist",
+  "card",
+  "settings",
 ]);
 
 type PropSpec = { kind: "int"; max: number } | { kind: "bool" } | {
@@ -23,9 +30,14 @@ type PropSpec = { kind: "int"; max: number } | { kind: "bool" } | {
 const PROP_SPECS: Record<string, PropSpec> = {
   page_index: { kind: "int", max: PAGE_INDEX_MAX },
   goals_count: { kind: "int", max: GOALS_COUNT_MAX },
+  seeds_count: { kind: "int", max: SEEDS_COUNT_MAX },
   has_partner: { kind: "bool" },
   style_set: { kind: "bool" },
+  has_style: { kind: "bool" },
+  has_notes: { kind: "bool" },
+  has_custom_topics: { kind: "bool" },
   item: { kind: "enum", values: CHECKLIST_ITEMS },
+  source: { kind: "enum", values: ABOUT_ME_SOURCES },
 };
 
 /** event → 允許的 properties 鍵。字典外 event 一律 400。 */
@@ -42,6 +54,15 @@ export const FUNNEL_EVENT_PROPS: Record<string, readonly string[]> = {
   keyboard_setup_shown: [],
   keyboard_setup_completed: [],
   checklist_item_done: ["item"],
+  about_me_opened: ["source"],
+  about_me_saved: [
+    "has_style",
+    "goals_count",
+    "seeds_count",
+    "has_notes",
+    "has_custom_topics",
+  ],
+  about_me_cleared: [],
 };
 
 export interface FunnelRow {

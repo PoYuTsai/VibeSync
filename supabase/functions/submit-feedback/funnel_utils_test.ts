@@ -116,6 +116,61 @@ Deno.test("questionnaire_submit accepts style_set bool and goals_count in range"
   }
 });
 
+Deno.test("about_me_opened accepts known source enum, drops unknown source", () => {
+  const known = buildFunnelRow("u", {
+    event: "about_me_opened",
+    properties: { source: "checklist" },
+  });
+  assert(known.ok);
+  if (known.ok) assertEquals(known.row.properties, { source: "checklist" });
+
+  const unknown = buildFunnelRow("u", {
+    event: "about_me_opened",
+    properties: { source: "made_up" },
+  });
+  assert(unknown.ok);
+  if (unknown.ok) assertEquals(unknown.row.properties, {});
+});
+
+Deno.test("about_me_saved accepts has_style/goals_count/seeds_count/has_notes/has_custom_topics", () => {
+  const result = buildFunnelRow("u", {
+    event: "about_me_saved",
+    properties: {
+      has_style: true,
+      goals_count: 3,
+      seeds_count: 5,
+      has_notes: false,
+      has_custom_topics: true,
+    },
+  });
+  assert(result.ok);
+  if (!result.ok) return;
+  assertEquals(result.row.properties, {
+    has_style: true,
+    goals_count: 3,
+    seeds_count: 5,
+    has_notes: false,
+    has_custom_topics: true,
+  });
+
+  const outOfRange = buildFunnelRow("u", {
+    event: "about_me_saved",
+    properties: { seeds_count: 6 },
+  });
+  assert(outOfRange.ok);
+  if (outOfRange.ok) assertEquals(outOfRange.row.properties, {});
+});
+
+Deno.test("about_me_cleared carries no properties", () => {
+  const result = buildFunnelRow("u", {
+    event: "about_me_cleared",
+    properties: { anything: "stripped" },
+  });
+  assert(result.ok);
+  if (!result.ok) return;
+  assertEquals(result.row.properties, {});
+});
+
 // 鍵級對齊鎖（Grok 審查 F5）：整張 event → property keys map 與字典逐字鎖死。
 // client 端 funnel_tracker_test.dart 有同一張表的對等測試；任一側單邊改動
 // 都會讓該側測試轉紅（鍵盤案白名單漂移的防回歸網）。
@@ -133,5 +188,14 @@ Deno.test("dictionary stays aligned with docs/integrations/funnel-events-v1.md",
     keyboard_setup_shown: [],
     keyboard_setup_completed: [],
     checklist_item_done: ["item"],
+    about_me_opened: ["source"],
+    about_me_saved: [
+      "has_style",
+      "goals_count",
+      "seeds_count",
+      "has_notes",
+      "has_custom_topics",
+    ],
+    about_me_cleared: [],
   });
 });

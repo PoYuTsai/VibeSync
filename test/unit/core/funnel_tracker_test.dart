@@ -81,6 +81,15 @@ void main() {
       'keyboard_setup_shown': <String>[],
       'keyboard_setup_completed': <String>[],
       'checklist_item_done': ['item'],
+      'about_me_opened': ['source'],
+      'about_me_saved': [
+        'has_style',
+        'goals_count',
+        'seeds_count',
+        'has_notes',
+        'has_custom_topics',
+      ],
+      'about_me_cleared': <String>[],
     });
   });
 

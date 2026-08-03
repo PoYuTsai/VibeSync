@@ -36,6 +36,15 @@ class FunnelTracker {
     'keyboard_setup_shown': [],
     'keyboard_setup_completed': [],
     'checklist_item_done': ['item'],
+    'about_me_opened': ['source'],
+    'about_me_saved': [
+      'has_style',
+      'goals_count',
+      'seeds_count',
+      'has_notes',
+      'has_custom_topics',
+    ],
+    'about_me_cleared': [],
   };
 
   final FunnelUploadInvoker _invoke;

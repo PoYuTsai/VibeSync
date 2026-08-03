@@ -220,7 +220,9 @@ final router = GoRouter(
     // 'about-me' isn't matched as a conversationId by the parametric route.
     GoRoute(
       path: '/profile/about-me',
-      builder: (context, state) => const AboutMeScreen(),
+      builder: (context, state) => AboutMeScreen(
+        source: state.uri.queryParameters['source'],
+      ),
     ),
     GoRoute(
       path: '/profile/:id',

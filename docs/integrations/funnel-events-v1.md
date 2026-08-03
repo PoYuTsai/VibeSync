@@ -34,12 +34,17 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 | `keyboard_setup_shown` | — | app.dart 鍵盤設定 push 點 |
 | `keyboard_setup_completed` | — | markKeyboardCompleted |
 | `checklist_item_done` | `item` (enum: `profile` / `first_action` / `keyboard`) | 起步清單（2026-08-01 起三項：跟進提醒項移除） |
+| `about_me_opened` | `source` (enum: `checklist` / `card` / `settings`) | AboutMeScreen.initState |
+| `about_me_saved` | `has_style` (bool), `goals_count` (int), `seeds_count` (int), `has_notes` (bool), `has_custom_topics` (bool) | AboutMeScreen 儲存成功後 |
+| `about_me_cleared` | — | AboutMeScreen 清除成功後 |
 
 值域限制（server 端強制）：
 
 - `page_index`：0–20 的整數。
 - `goals_count`：0–5 的整數。
+- `seeds_count`：0–5 的整數。
 - `item`：上表 enum 之一，其他值剝除整鍵。
+- `source`：上表 enum 之一，其他值剝除整鍵。
 - bool 鍵只收 true/false。
 - 任何 string 值長度上限 40 字元，超長截斷。
 
