@@ -725,6 +725,18 @@ export function postProcessAnalysisResult({
     result.replies = filteredReplies;
   }
 
+  // Step 2b — 2026-08 關於我重新定位案 批3：stretchLevels 比照 replies 做同一
+  // 層 tier 過濾，鎖定風格的延伸標記不隨其他欄位外洩。
+  if (result?.stretchLevels) {
+    const filteredStretchLevels: Record<string, string> = {};
+    for (const [key, value] of Object.entries(result.stretchLevels)) {
+      if (allowedFeatures.includes(key)) {
+        filteredStretchLevels[key] = value as string;
+      }
+    }
+    result.stretchLevels = filteredStretchLevels;
+  }
+
   // Step 3 — finalRecommendation normalization w/ safe fallbacks.
   if (result?.finalRecommendation) {
     const recommendation = result.finalRecommendation as Record<

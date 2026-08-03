@@ -53,11 +53,18 @@ Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
   }
   assert(prompt.includes("Traditional Chinese"));
   assert(prompt.includes("Taiwan) only; never Simplified"));
+  assert(prompt.includes("`stretchLevel`"));
+  assert(prompt.includes("within"));
+  assert(prompt.includes("`stretch`"));
+  assert(prompt.includes("too big a jump"));
   // v2 few-shot、硬版 compliance floor (b)＋callback (c)＋黑箱後選中風格強化 (b2)
   // 後再放寬，仍鎖上限防 contract 無限膨脹。
   // 2026-07-02 metrics 掛 gameStage（enum 值域必須全列，UI 對話進度卡破冰案）
   // 語意分群加入 接/併 的獨立球定義與對照範例，再放寬一檔。
-  assert(prompt.length < 6200);
+  // 2026-08 關於我重新定位案 批3：reply_option 新增必填 stretchLevel
+  // （within/stretch/far），與 Task 11 的 coachFollowUpMaxChars 500→900
+  // 同一批次拍板的刻意放寬，非無意義膨脹。
+  assert(prompt.length < 6500);
 });
 
 Deno.test("stream prompt trims the base prompt before appending contract", () => {

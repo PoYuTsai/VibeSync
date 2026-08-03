@@ -1984,6 +1984,13 @@ qualificationSignal 代表「她主動投入這段互動」，不是「她在證
     "humor": "妳這行程根本熱血女主角，我今天最大的運動是走去便利商店",
     "coldRead": "我猜妳看比賽不是背景播放派，是會真的喊出聲的那種"
   },
+  "stretchLevels": {
+    "extend": "within" | "stretch" | "far",
+    "resonate": "within" | "stretch" | "far",
+    "tease": "within" | "stretch" | "far",
+    "humor": "within" | "stretch" | "far",
+    "coldRead": "within" | "stretch" | "far"
+  },
   "replyOptions": {
     "extend": {
       "approach": "接法：先接她的 F1 興奮，再順到夜市行程，不逐條查戶口",
@@ -2060,6 +2067,10 @@ qualificationSignal 代表「她主動投入這段互動」，不是「她在證
   "strategy": "這回合的工作判斷，例如：先接生活分享，不急著邀約",
   "reminder": "一個最容易踩的提醒，例如：別連問三題"
 }
+
+每個 stretchLevels 對應同名 replies/replyOptions 相對使用者舒適區的延伸程度；
+within=他現在就寫得出來／stretch=比他平常大膽一步但做得到／far=差距太大這次先不推；
+五個 key 裡至少一個要是 stretch。當使用者沒有提供舒適區資訊時，全部回傳 "within"。
 
 ## 完整輸出範例（voice few-shot）
 

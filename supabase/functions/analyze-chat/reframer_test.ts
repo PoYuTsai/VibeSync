@@ -406,6 +406,9 @@ Deno.test("reframer assembles a legacy-compatible final result", async () => {
     replies.tease,
     "Then I will slow down before I get a speeding ticket.",
   );
+  const stretchLevels = finalResult.stretchLevels as Record<string, unknown>;
+  assertEquals(stretchLevels.resonate, "within");
+  assertEquals(stretchLevels.tease, "within");
   assertEquals(finalRecommendation.pick, "resonate");
   assertEquals(
     gameStage.nextStep,
@@ -414,6 +417,59 @@ Deno.test("reframer assembles a legacy-compatible final result", async () => {
   assertEquals(enthusiasm.score, 25);
   assertEquals(topicDepth.current, "boundary");
   assertEquals(finalResult.strategy, "Back off and rebuild trust.");
+});
+
+Deno.test("reframer passes through stretchLevel, falls back to within on invalid value", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.decision",
+    selectedStyle: "resonate",
+    nextStepBody: "Acknowledge the pressure and slow the pace.",
+  }));
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "resonate",
+    message: "I understand. We can go at your pace.",
+    reason: "Respect the boundary.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.reply_option",
+    style: "tease",
+    message: "Then I will slow down before I get a speeding ticket.",
+    reason: "Light joke.",
+    stretchLevel: "stretch",
+  }));
+  reframer.pushText(line({
+    type: "analysis.reply_option",
+    style: "humor",
+    message: "I would rather race you to the finish line.",
+    reason: "Playful escalation.",
+    stretchLevel: "not-a-real-level",
+  }));
+  reframer.pushText(line({ type: "analysis.done" }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done);
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const stretchLevels = finalResult.stretchLevels as Record<string, unknown>;
+  // resonate 帶回 recommendation 事件（沒帶 stretchLevel）→ fallback within。
+  assertEquals(stretchLevels.resonate, "within");
+  // tease 帶合法值 → 原樣保留。
+  assertEquals(stretchLevels.tease, "stretch");
+  // humor 帶不合法值 → fallback within，不整包拒絕。
+  assertEquals(stretchLevels.humor, "within");
 });
 
 Deno.test("reframer emits synthetic done when model omits done event", async () => {

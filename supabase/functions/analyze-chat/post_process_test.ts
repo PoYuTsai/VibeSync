@@ -184,6 +184,31 @@ Deno.test("postProcess: Essential tier preserves all reply keys present in paylo
   assert("coldRead" in replies);
 });
 
+Deno.test("postProcess: stretchLevels filtered to allowedFeatures like replies (Free → extend + tease)", () => {
+  const raw = buildBaseResult();
+  raw.stretchLevels = {
+    extend: "within",
+    resonate: "stretch",
+    tease: "far",
+    humor: "stretch",
+    coldRead: "within",
+  };
+
+  const result = postProcessAnalysisResult({
+    result: raw,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: FREE_FEATURES,
+  });
+
+  const stretchLevels = result.stretchLevels as Record<string, string>;
+  assertEquals(Object.keys(stretchLevels).sort(), ["extend", "tease"]);
+  assertEquals(stretchLevels.extend, "within");
+  assertEquals(stretchLevels.tease, "far");
+  assertFalse("resonate" in stretchLevels, "Paid stretchLevel must not leak");
+  assertFalse("humor" in stretchLevels, "Paid stretchLevel must not leak");
+});
+
 // ---------------------------------------------------------------------------
 // Parity test 3 — finalRecommendation normalize / fallback
 // ---------------------------------------------------------------------------

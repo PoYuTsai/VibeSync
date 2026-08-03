@@ -16,6 +16,14 @@ import {
   validateRecommendationEvent,
   validateThinRecommendationEvent,
 } from "./stream_recommendation_guardrail.ts";
+import { type StretchLevel, STRETCH_LEVELS } from "./opener_payload.ts";
+
+function normalizeStretchLevel(value: unknown): StretchLevel {
+  return typeof value === "string" &&
+      (STRETCH_LEVELS as readonly string[]).includes(value)
+    ? value as StretchLevel
+    : "within";
+}
 
 export type StreamOutputEvent =
   | StreamEvent
@@ -665,6 +673,7 @@ function createLegacyAnalysisAssembler() {
     },
     replies: {},
     replyOptions: {},
+    stretchLevels: {},
     finalRecommendation: {
       pick: "",
       content: "",
@@ -691,9 +700,13 @@ function createLegacyAnalysisAssembler() {
     quotedContext: string,
     markFinal: boolean,
     segments?: readonly Record<string, unknown>[],
+    stretchLevel?: StretchLevel,
   ) => {
     const replies = ensureRecord(result, "replies");
     replies[style] = message;
+
+    const stretchLevels = ensureRecord(result, "stretchLevels");
+    stretchLevels[style] = stretchLevel ?? "within";
 
     const replyOptions = ensureRecord(result, "replyOptions");
     replyOptions[style] = {
@@ -735,6 +748,7 @@ function createLegacyAnalysisAssembler() {
           true,
           // bind 回填的 enriched recommendation 帶原始段落陣列。
           replySegmentsFrom(event.replySegments ?? event.segments),
+          normalizeStretchLevel(event.stretchLevel),
         );
         return;
       }
@@ -760,6 +774,7 @@ function createLegacyAnalysisAssembler() {
           stringField(event.quotedContext ?? event.sourceMessage),
           event.isSelected === true,
           segments,
+          normalizeStretchLevel(event.stretchLevel),
         );
         return;
       }
