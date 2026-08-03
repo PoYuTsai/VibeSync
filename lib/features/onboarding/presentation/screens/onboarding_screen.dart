@@ -140,7 +140,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         },
       ),
     );
-    await _seedProfileFromOnboardingAnswers(hasPartner: hasPartner);
+    await _seedProfileFromOnboardingAnswers();
     await OnboardingService.markCompleted();
     if (mounted) {
       context.go('/');
@@ -148,13 +148,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     }
   }
 
-  /// 合併式種子（Tier 2 批 2 改造 Tier 1-3）：問卷選擇（風格＋目標）與
-  /// 分流答案（轉寫進 notes）一次寫入，避免問卷先建 profile 後分流種子
-  /// 因「非空就跳過」而永遠種不進 notes。仍只在 profile 全空時種、
-  /// 失敗靜默放過，絕不擋導頁。
-  Future<void> _seedProfileFromOnboardingAnswers({
-    required bool hasPartner,
-  }) async {
+  /// 只種問卷（風格＋目標）：分流頁的「有沒有對象」不再轉寫進 notes——
+  /// 那 100 字要留給用戶自己的真實自述，「有沒有對象」已經有
+  /// onboarding_branch_answer funnel event 記錄，不需要佔用 profile
+  /// （2026-08-03「關於我」重新定位 report）。問卷全略過就不建任何資料。
+  /// 仍只在 profile 全空時種、失敗靜默放過、絕不擋導頁。
+  Future<void> _seedProfileFromOnboardingAnswers() async {
+    if (_questionnaireStyle == null && _questionnaireGoals.isEmpty) return;
     try {
       final existing = await ref.read(userProfileControllerProvider.future);
       if (existing != null && !existing.isEmpty) return;
@@ -162,7 +162,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             UserProfile.create(
               interactionStyle: _questionnaireStyle,
               practiceGoals: List.of(_questionnaireGoals),
-              notes: hasPartner ? '目前有正在聊的對象' : '還沒有固定聊天對象，想先透過練習提升',
               updatedAt: DateTime.now(),
             ),
           );

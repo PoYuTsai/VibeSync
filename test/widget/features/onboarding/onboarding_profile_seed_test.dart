@@ -1,8 +1,9 @@
 // test/widget/features/onboarding/onboarding_profile_seed_test.dart
 //
-// 轉化診斷 Tier 1-3：分流頁答案是 onboarding 全流程唯一的個人化訊號，
-// 過去只拿來導頁就丟掉。現在轉寫進「關於我」notes（誠實轉寫、關於我頁
-// 看得到改得掉），餵 effective style prompt，讓第一次 AI 呼叫不再 generic。
+// 「關於我」重新定位（2026-08-03 report）：分流頁答案（有沒有對象）不再
+// 轉寫進 notes——那格 100 字要留給用戶自己的真實自述，「有沒有對象」已經
+// 有 onboarding_branch_answer funnel event 記錄，不需要佔用 profile。
+// 只有問卷（風格/目標）真的有選才建 profile；純分流頁答案不建任何資料。
 // 鐵則：只在 profile 全空時種、失敗靜默放過、絕不擋導頁。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -85,7 +86,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('答「有」→ notes 種下有對象轉寫並照常導頁', (tester) async {
+  testWidgets('問卷全略過＋答「有」→ 不建任何 profile，照常導頁', (tester) async {
     final repo = _FakeRepo();
     await _pumpToBranchingPage(tester, repo: repo);
 
@@ -93,10 +94,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('partner-new-screen'), findsOneWidget);
-    expect(repo.byOwner[_uid]?.notes, '目前有正在聊的對象');
+    expect(repo.saveCount, 0);
+    expect(repo.byOwner[_uid], isNull);
   });
 
-  testWidgets('答「還沒」→ notes 種下練習轉寫並照常導頁', (tester) async {
+  testWidgets('問卷全略過＋答「還沒」→ 不建任何 profile，照常導頁', (tester) async {
     final repo = _FakeRepo();
     await _pumpToBranchingPage(tester, repo: repo);
 
@@ -104,10 +106,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('practice-collection-screen'), findsOneWidget);
-    expect(repo.byOwner[_uid]?.notes, '還沒有固定聊天對象，想先透過練習提升');
+    expect(repo.saveCount, 0);
+    expect(repo.byOwner[_uid], isNull);
   });
 
-  testWidgets('已有非空 profile → 絕不覆蓋', (tester) async {
+  testWidgets('已有非空 profile → 絕不覆蓋（即使問卷有選）', (tester) async {
     final repo = _FakeRepo();
     final existing = UserProfile.create(
       interactionStyle: InteractionStyle.humorous,
@@ -115,8 +118,28 @@ void main() {
       updatedAt: DateTime.utc(2026, 7, 1),
     );
     repo.byOwner[_uid] = existing;
-    await _pumpToBranchingPage(tester, repo: repo);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          userProfileRepositoryProvider.overrideWithValue(repo),
+          authUserProfileScopeProvider
+              .overrideWith((ref) => Stream.value(_uid)),
+        ],
+        child: MaterialApp.router(routerConfig: _stubRouter()),
+      ),
+    );
+    await tester.pumpAndSettle();
 
+    for (var i = 0; i < 3; i++) {
+      await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.text('幽默'));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 2; i++) {
+      await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
+      await tester.pumpAndSettle();
+    }
     await tester.tap(find.text('有，幫我分析對話'));
     await tester.pumpAndSettle();
 
@@ -125,10 +148,30 @@ void main() {
     expect(repo.byOwner[_uid]?.notes, '使用者自己寫的');
   });
 
-  testWidgets('種子寫入失敗 → 靜默放過，onboarding 照常完成', (tester) async {
+  testWidgets('問卷有選＋種子寫入失敗 → 靜默放過，onboarding 照常完成', (tester) async {
     final repo = _FakeRepo()..throwOnSave = true;
-    await _pumpToBranchingPage(tester, repo: repo);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          userProfileRepositoryProvider.overrideWithValue(repo),
+          authUserProfileScopeProvider
+              .overrideWith((ref) => Stream.value(_uid)),
+        ],
+        child: MaterialApp.router(routerConfig: _stubRouter()),
+      ),
+    );
+    await tester.pumpAndSettle();
 
+    for (var i = 0; i < 3; i++) {
+      await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.text('幽默'));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 2; i++) {
+      await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
+      await tester.pumpAndSettle();
+    }
     await tester.tap(find.text('還沒，先去練習'));
     await tester.pumpAndSettle();
 
@@ -137,7 +180,7 @@ void main() {
     expect(prefs.getBool('onboarding_completed'), isTrue);
   });
 
-  testWidgets('問卷有選＋答「有」→ 一筆合併種子帶 style/goals/notes（批 2）', (tester) async {
+  testWidgets('問卷有選＋答「有」→ 一筆合併種子帶 style/goals，notes 不寫入', (tester) async {
     final repo = _FakeRepo();
     await tester.pumpWidget(
       ProviderScope(
@@ -174,7 +217,7 @@ void main() {
     final saved = repo.byOwner[_uid]!;
     expect(saved.interactionStyle, InteractionStyle.humorous);
     expect(saved.practiceGoals, [PracticeGoal.softInvite]);
-    expect(saved.notes, '目前有正在聊的對象');
+    expect(saved.notes, isNull);
   });
 
   testWidgets('「略過」→ 不種任何種子', (tester) async {
