@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../user_profile/domain/services/reply_stretch_classifier.dart';
 import '../../domain/entities/analysis_models.dart';
 
 class ReplyStyleCard extends StatelessWidget {
@@ -17,6 +18,11 @@ class ReplyStyleCard extends StatelessWidget {
   /// 「短一點」語意不清，多輪迭代也很快會撞到 server 的 userDraft 長度上限。
   final void Function(String text)? onRefine;
 
+  /// 這則回覆相對於用戶舒適區風格的延伸程度（ReplyStretchClassifier v1，
+  /// 「關於我」重新定位 report 批 1 #2）。null＝沒填舒適區風格，不顯示提示；
+  /// within/far 也不顯示——只鼓勵 stretch，不對其他兩檔下評價。
+  final ReplyStretchLevel? stretchLevel;
+
   const ReplyStyleCard({
     super.key,
     required this.type,
@@ -25,6 +31,7 @@ class ReplyStyleCard extends StatelessWidget {
     required this.isRecommended,
     required this.onCopy,
     this.onRefine,
+    this.stretchLevel,
   });
 
   static const labels = {
@@ -110,6 +117,15 @@ class ReplyStyleCard extends StatelessWidget {
                 if (isRecommended) _RecommendedBadge(),
               ],
             ),
+            if (stretchLevel == ReplyStretchLevel.stretch) ...[
+              const SizedBox(height: 4),
+              Text(
+                '這則比你平常大膽一點，可以試試',
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.ctaStart,
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
             Expanded(
               child: SingleChildScrollView(

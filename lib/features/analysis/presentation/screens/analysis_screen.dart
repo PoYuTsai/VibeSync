@@ -89,6 +89,7 @@ import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/data/providers/partner_style_providers.dart';
 import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
+import '../../../user_profile/domain/services/reply_stretch_classifier.dart';
 
 /// Keeps user intent separate from programmatic live-follow movement without
 /// indenting the analysis screen's large child tree.
@@ -8572,11 +8573,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     ReplyOption? option,
     bool isRecommended = false,
   }) {
+    final comfortStyle =
+        ref.read(userProfileControllerProvider).valueOrNull?.interactionStyle;
+    final stretchLevel = const ReplyStretchClassifier().classifyByTypeString(
+      comfortStyle: comfortStyle,
+      type: type,
+    );
     return ReplyStyleCard(
       type: type,
       content: content,
       option: option,
       isRecommended: isRecommended,
+      stretchLevel: stretchLevel,
       onCopy: (text, message) {
         unawaited(_recordAnalysisCopy(cardKey: type, copiedText: text));
         ScaffoldMessenger.of(context).showSnackBar(

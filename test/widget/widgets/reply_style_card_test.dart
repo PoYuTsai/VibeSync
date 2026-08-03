@@ -2,8 +2,45 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/reply_style_card.dart';
+import 'package:vibesync/features/user_profile/domain/services/reply_stretch_classifier.dart';
 
 void main() {
+  const _stretchHint = '這則比你平常大膽一點，可以試試';
+
+  Widget _wrap(ReplyStretchLevel? level) => MaterialApp(
+        home: Scaffold(
+          body: ReplyStyleCard(
+            type: 'tease',
+            content: '一句回覆',
+            option: const ReplyOption(approach: '', messages: []),
+            isRecommended: false,
+            onCopy: (_, __) {},
+            stretchLevel: level,
+          ),
+        ),
+      );
+
+  testWidgets('stretch → 顯示「比你平常大膽一點」提示', (tester) async {
+    await tester.pumpWidget(_wrap(ReplyStretchLevel.stretch));
+    expect(find.text(_stretchHint), findsOneWidget);
+  });
+
+  testWidgets('within → 不顯示延伸提示', (tester) async {
+    await tester.pumpWidget(_wrap(ReplyStretchLevel.within));
+    expect(find.text(_stretchHint), findsNothing);
+  });
+
+  testWidgets('far → 不顯示延伸提示', (tester) async {
+    await tester.pumpWidget(_wrap(ReplyStretchLevel.far));
+    expect(find.text(_stretchHint), findsNothing);
+  });
+
+  testWidgets('沒有 stretchLevel（例如用戶沒填舒適區風格）→ 不顯示提示',
+      (tester) async {
+    await tester.pumpWidget(_wrap(null));
+    expect(find.text(_stretchHint), findsNothing);
+  });
+
   testWidgets('shows long approach and message text without ellipsis',
       (tester) async {
     const longApproach = '接住她對義美產品的認同感，順到騎車行程，再輕微稱讚她的眼光，讓整段回覆保持生活感與自然延伸';
