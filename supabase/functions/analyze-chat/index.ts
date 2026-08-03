@@ -393,6 +393,8 @@ const OPENER_REPAIR_PROMPT = `你是 VibeSync 開場救星的 JSON 格式修復�
 - 若原文已有可用開場白，保留其語氣但整理進指定欄位。
 - openers 必須包含 extend / resonate / tease / humor / coldRead 五個 key。
 - 每個 opener 必須是可直接傳出的繁體中文短句，不能是 JSON、Markdown、解釋文字或空字串。
+- stretchLevels 對應同名 opener 相對使用者舒適區的延伸程度（within/stretch/far）；
+  沒有舒適區資訊時全部回傳 "within"。
 - 請只輸出 JSON object，不要 code fence，不要前後說明。
 
 必要 schema：
@@ -417,6 +419,13 @@ const OPENER_REPAIR_PROMPT = `你是 VibeSync 開場救星的 JSON 格式修復�
     "tease": "調情風格的開場白",
     "humor": "幽默風格的開場白",
     "coldRead": "冷讀風格的開場白"
+  },
+  "stretchLevels": {
+    "extend": "within" | "stretch" | "far",
+    "resonate": "within" | "stretch" | "far",
+    "tease": "within" | "stretch" | "far",
+    "humor": "within" | "stretch" | "far",
+    "coldRead": "within" | "stretch" | "far"
   },
   "pioneerPlan": {
     "ifCold": "她冷回時下一步",
@@ -2585,6 +2594,13 @@ whyItWorks 目標 25–45 個繁中字元，限一句。
     "humor": "幽默風格的開場白",
     "coldRead": "冷讀風格的開場白"
   },
+  "stretchLevels": {
+    "extend": "within" | "stretch" | "far",
+    "resonate": "within" | "stretch" | "far",
+    "tease": "within" | "stretch" | "far",
+    "humor": "within" | "stretch" | "far",
+    "coldRead": "within" | "stretch" | "far"
+  },
   "pioneerPlan": {
     "ifCold": "她只回嗯嗯/哈哈/喔時，下一句怎麼低壓補救",
     "ifShortPositive": "她短回但有接時，下一句怎麼延伸",
@@ -2608,6 +2624,9 @@ whyItWorks 目標 25–45 個繁中字元，限一句。
 }
 
 formulaOpeners 必須恰好兩則，放在最後；先完成前面的原有欄位。
+每個 stretchLevels 對應同名 opener 相對使用者舒適區的延伸程度；within=他現在就寫得出來／
+stretch=比他平常大膽一步但做得到／far=差距太大這次先不推；五個 key 裡至少一個要是 stretch。
+當使用者沒有提供舒適區資訊時，全部回傳 "within"。
 Return valid JSON only.`;
 
 // 訊息計算：ADR #19 起由 billing.ts 的 resolveBilling 全權負責

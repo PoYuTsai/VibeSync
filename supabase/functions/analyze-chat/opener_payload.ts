@@ -28,6 +28,31 @@ function isOpenerType(value: string): value is OpenerType {
   return (OPENER_TYPES as readonly string[]).includes(value);
 }
 
+// 2026-08 關於我重新定位案 批3：stretchLevels 取代批1的本地規則，改由 AI
+// 自判每個 opener 相對使用者舒適區的延伸程度。缺欄或值不合法一律 fallback
+// 為 "within"——絕不因為這個新欄位整包拒絕重試（避免變成新的 503 來源）。
+export const STRETCH_LEVELS = ["within", "stretch", "far"] as const;
+export type StretchLevel = typeof STRETCH_LEVELS[number];
+
+function isStretchLevel(value: unknown): value is StretchLevel {
+  return typeof value === "string" &&
+    (STRETCH_LEVELS as readonly string[]).includes(value);
+}
+
+export function normalizeStretchLevels(
+  parsed: Record<string, unknown>,
+): Record<OpenerType, StretchLevel> {
+  const raw = isPlainObject(parsed.stretchLevels)
+    ? parsed.stretchLevels
+    : {};
+  const result = {} as Record<OpenerType, StretchLevel>;
+  for (const type of OPENER_TYPES) {
+    const value = raw[type];
+    result[type] = isStretchLevel(value) ? value : "within";
+  }
+  return result;
+}
+
 /**
  * `openerContractVersion` 解析：缺席／null／1 → v1；整數 >= 2 → 以目前支援
  * 的 v2 處理；字串、浮點、0、負數→ invalid（呼叫端須在 rate limit、模型與
@@ -146,6 +171,7 @@ export function normalizeOpenerPayload(
   return {
     ...rest,
     openers,
+    stretchLevels: normalizeStretchLevels(parsed),
   };
 }
 
@@ -161,12 +187,15 @@ export function filterOpenerPayloadForAllowedFeatures(
   );
   const rawOpeners = isPlainObject(parsed.openers) ? parsed.openers : {};
   const openers: Record<string, string> = {};
+  const allStretchLevels = normalizeStretchLevels(parsed);
+  const stretchLevels: Record<string, StretchLevel> = {};
 
   for (const type of OPENER_TYPES) {
     if (!allowedOpenerTypes.has(type)) continue;
     const opener = sanitizeOpenerText(rawOpeners[type]);
     if (opener) {
       openers[type] = opener;
+      stretchLevels[type] = allStretchLevels[type];
     }
   }
 
@@ -214,6 +243,7 @@ export function filterOpenerPayloadForAllowedFeatures(
   const filtered: Record<string, unknown> = {
     ...rest,
     openers,
+    stretchLevels,
     recommendedPick,
     recommendation: reason !== null
       ? { pick: recommendedPick, reason }

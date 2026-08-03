@@ -8,6 +8,7 @@ import {
   filterOpenerPayloadForAllowedFeatures,
   missingOpenerTypes,
   normalizeOpenerPayload,
+  normalizeStretchLevels,
   OPENER_FREE_V1_TYPES,
   OPENER_FREE_V2_LOCKED_TYPES,
   OPENER_FREE_V2_TYPES,
@@ -50,6 +51,89 @@ Deno.test("normalizeOpenerPayload 全空 openers 回 null，合法句保留", ()
   });
   assertEquals(normalized?.openers, { extend: "延展句", tease: "調情句" });
   assertEquals(normalized?.other, "keep");
+});
+
+Deno.test("normalizeOpenerPayload 附帶 stretchLevels（缺欄 fallback within）", () => {
+  const normalized = normalizeOpenerPayload({
+    openers: { extend: "延展句" },
+    stretchLevels: { extend: "stretch" },
+  });
+  assertEquals(normalized?.stretchLevels, {
+    extend: "stretch",
+    resonate: "within",
+    tease: "within",
+    humor: "within",
+    coldRead: "within",
+  });
+});
+
+Deno.test("normalizeStretchLevels：五個 key 都合法值時原樣保留", () => {
+  const levels = normalizeStretchLevels({
+    stretchLevels: {
+      extend: "within",
+      resonate: "stretch",
+      tease: "far",
+      humor: "stretch",
+      coldRead: "within",
+    },
+  });
+  assertEquals(levels, {
+    extend: "within",
+    resonate: "stretch",
+    tease: "far",
+    humor: "stretch",
+    coldRead: "within",
+  });
+});
+
+Deno.test("normalizeStretchLevels：缺一個 key → fallback 該 key 為 within，不整包拒絕", () => {
+  const levels = normalizeStretchLevels({
+    stretchLevels: {
+      extend: "stretch",
+      resonate: "far",
+      tease: "stretch",
+      humor: "far",
+      // coldRead 缺席
+    },
+  });
+  assertEquals(levels.coldRead, "within");
+  assertEquals(levels.extend, "stretch");
+});
+
+Deno.test("normalizeStretchLevels：值不合法字串 → fallback within；整包缺席 → 全部 within", () => {
+  const levels = normalizeStretchLevels({
+    stretchLevels: {
+      extend: "way-too-far",
+      resonate: 42,
+      tease: null,
+    },
+  });
+  assertEquals(levels, {
+    extend: "within",
+    resonate: "within",
+    tease: "within",
+    humor: "within",
+    coldRead: "within",
+  });
+
+  assertEquals(normalizeStretchLevels({}), {
+    extend: "within",
+    resonate: "within",
+    tease: "within",
+    humor: "within",
+    coldRead: "within",
+  });
+});
+
+Deno.test("filterOpener stretchLevels 只留 allowed 風格對應的 key", () => {
+  const filtered = filterOpenerPayloadForAllowedFeatures(
+    {
+      openers: { extend: "延展句", tease: "調情句" },
+      stretchLevels: { extend: "stretch", tease: "far", humor: "within" },
+    },
+    ["extend"],
+  );
+  assertEquals(filtered?.stretchLevels, { extend: "stretch" });
 });
 
 Deno.test("filterOpener 只留 allowed 風格，全被過濾時回 null", () => {
