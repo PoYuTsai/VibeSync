@@ -28,6 +28,7 @@
 //   I6. returned enthusiasm.score is the calibrated 0–90 client score
 
 import { getSafeReplies } from "./guardrails.ts";
+import { normalizeStretchLevels } from "./opener_payload.ts";
 
 // ---------------------------------------------------------------------------
 // Text normalization primitives
@@ -725,17 +726,18 @@ export function postProcessAnalysisResult({
     result.replies = filteredReplies;
   }
 
-  // Step 2b — 2026-08 關於我重新定位案 批3：stretchLevels 比照 replies 做同一
-  // 層 tier 過濾，鎖定風格的延伸標記不隨其他欄位外洩。
-  if (result?.stretchLevels) {
-    const filteredStretchLevels: Record<string, string> = {};
-    for (const [key, value] of Object.entries(result.stretchLevels)) {
-      if (allowedFeatures.includes(key)) {
-        filteredStretchLevels[key] = value as string;
-      }
+  // Step 2b — 2026-08 關於我重新定位案 批3：stretchLevels 先用跟 openers／
+  // streaming 同一個 normalizeStretchLevels（單一事實來源）補齊全部五種
+  // 風格＋值域白名單（缺欄或不合法值 fallback within，不整包拒絕），
+  // 再比照 replies 做 tier 過濾，鎖定風格的延伸標記不外洩。
+  const normalizedStretchLevels = normalizeStretchLevels(result);
+  const filteredStretchLevels: Record<string, string> = {};
+  for (const [key, value] of Object.entries(normalizedStretchLevels)) {
+    if (allowedFeatures.includes(key)) {
+      filteredStretchLevels[key] = value;
     }
-    result.stretchLevels = filteredStretchLevels;
   }
+  result.stretchLevels = filteredStretchLevels;
 
   // Step 3 — finalRecommendation normalization w/ safe fallbacks.
   if (result?.finalRecommendation) {

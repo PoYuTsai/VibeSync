@@ -209,6 +209,42 @@ Deno.test("postProcess: stretchLevels filtered to allowedFeatures like replies (
   assertFalse("humor" in stretchLevels, "Paid stretchLevel must not leak");
 });
 
+Deno.test("postProcess: stretchLevels missing entirely or holding illegal values fallback to within (single-source normalizeStretchLevels, not a third parallel impl)", () => {
+  // Case A: AI omitted stretchLevels entirely — must not just leave the
+  // field absent; every allowed style falls back to "within".
+  const missing = postProcessAnalysisResult({
+    result: buildBaseResult(),
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ESSENTIAL_FEATURES,
+  });
+  const missingLevels = missing.stretchLevels as Record<string, string>;
+  assertEquals(missingLevels.extend, "within");
+  assertEquals(missingLevels.resonate, "within");
+  assertEquals(missingLevels.humor, "within");
+
+  // Case B: AI gave illegal values for some keys — those fall back to
+  // "within" rather than leaking a garbage string or dropping the key.
+  const raw = buildBaseResult();
+  raw.stretchLevels = {
+    extend: "stretch",
+    resonate: "way-too-far",
+    tease: 42,
+  };
+  const result = postProcessAnalysisResult({
+    result: raw,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ESSENTIAL_FEATURES,
+  });
+  const levels = result.stretchLevels as Record<string, string>;
+  assertEquals(levels.extend, "stretch");
+  assertEquals(levels.resonate, "within");
+  assertEquals(levels.tease, "within");
+  assertEquals(levels.humor, "within");
+  assertEquals(levels.coldRead, "within");
+});
+
 // ---------------------------------------------------------------------------
 // Parity test 3 — finalRecommendation normalize / fallback
 // ---------------------------------------------------------------------------
