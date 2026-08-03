@@ -52,13 +52,13 @@ void main() {
     await tester.pumpWidget(_harness(initial: null));
     await tester.pumpAndSettle();
     expect(find.text('關於我'), findsOneWidget);
-    expect(find.text('讓 VibeSync 更像你的教練'), findsOneWidget);
-    expect(find.textContaining('填一下互動風格'), findsOneWidget);
+    expect(find.text('讓教練真的懂你'), findsOneWidget);
+    expect(find.textContaining('填一下你卡在哪'), findsOneWidget);
     expect(find.text('開始設定'), findsOneWidget);
 
     final title = tester.widget<Text>(find.text('關於我'));
-    final subtitle = tester.widget<Text>(find.text('讓 VibeSync 更像你的教練'));
-    final body = tester.widget<Text>(find.textContaining('填一下互動風格'));
+    final subtitle = tester.widget<Text>(find.text('讓教練真的懂你'));
+    final body = tester.widget<Text>(find.textContaining('填一下你卡在哪'));
     expect(title.style?.color, AppColors.glassTextPrimary);
     expect(subtitle.style?.color, AppColors.glassTextPrimary);
     expect(body.style?.color, AppColors.glassTextSecondary);
@@ -105,8 +105,21 @@ void main() {
     await tester.pumpWidget(_harness(initial: profile));
     await tester.pumpAndSettle();
     expect(find.textContaining('直接'), findsOneWidget);
-    expect(find.textContaining('練習目標'), findsNothing);
+    expect(find.textContaining('卡在哪'), findsNothing);
+    expect(find.textContaining('想達成什麼'), findsNothing);
     expect(find.textContaining('常聊話題'), findsNothing);
+  });
+
+  testWidgets('stuckPoints filled renders 卡在哪 summary line', (tester) async {
+    final profile = UserProfile.create(
+      stuckPoints: const [StuckPoint.fadesOut, StuckPoint.leftOnRead],
+      updatedAt: DateTime.utc(2026, 8, 4),
+    );
+    await tester.pumpWidget(_harness(initial: profile));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('卡在哪'), findsOneWidget);
+    expect(find.textContaining('聊一聊就冷掉，不知道怎麼接下去、一直被已讀不回'),
+        findsOneWidget);
   });
 
   testWidgets('tap 開始設定 navigates to /profile/about-me', (tester) async {

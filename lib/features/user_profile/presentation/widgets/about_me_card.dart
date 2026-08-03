@@ -100,7 +100,7 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            '讓 VibeSync 更像你的教練',
+            '讓教練真的懂你',
             style: AppTypography.titleLarge.copyWith(
               color: AppColors.glassTextPrimary,
               fontWeight: FontWeight.w800,
@@ -108,7 +108,7 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '填一下互動風格與練習目標，AI 會調整建議語氣，不會替你假裝成另一個人。',
+            '填一下你卡在哪、想達成什麼，AI 會幫你抓方向、推你一步，不會照你現在的樣子模仿你。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.glassTextSecondary,
               height: 1.5,
@@ -122,8 +122,8 @@ class _EmptyState extends StatelessWidget {
                   spacing: 6,
                   runSpacing: 6,
                   children: [
-                    _ProfilePill(label: '互動風格'),
-                    _ProfilePill(label: '練習目標'),
+                    _ProfilePill(label: '我現在卡在哪'),
+                    _ProfilePill(label: '我想達成什麼'),
                   ],
                 ),
               ),
@@ -171,9 +171,15 @@ class _FilledState extends StatelessWidget {
             : '以$primary為主、${_interactionStyleLabel(profile.secondaryStyle!)}為輔',
       ));
     }
+    if (profile.stuckPoints.isNotEmpty) {
+      lines.add(_summaryLine(
+        '卡在哪',
+        profile.stuckPoints.map(_stuckPointLabel).join('、'),
+      ));
+    }
     if (profile.practiceGoals.isNotEmpty) {
       lines.add(_summaryLine(
-        '練習目標',
+        '想達成什麼',
         profile.practiceGoals.map(_practiceGoalLabel).join('、'),
       ));
     }
@@ -247,7 +253,7 @@ class _FilledState extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'AI 會參考這些設定調整建議語氣',
+                    'AI 會參考這些設定幫你抓方向、推你一步',
                     style: AppTypography.bodySmall.copyWith(
                       color: AppColors.glassTextSecondary,
                       fontWeight: FontWeight.w600,
@@ -342,6 +348,14 @@ String _interactionStyleLabel(InteractionStyle s) => switch (s) {
       InteractionStyle.humorous => '幽默',
       InteractionStyle.gentle => '溫柔',
       InteractionStyle.playful => '俏皮',
+    };
+
+String _stuckPointLabel(StuckPoint s) => switch (s) {
+      StuckPoint.fadesOut => '聊一聊就冷掉，不知道怎麼接下去',
+      StuckPoint.dontKnowHowToAsk => '不知道怎麼開口約',
+      StuckPoint.anxiousWontSend => '會緊張、怕講錯話不敢傳',
+      StuckPoint.overExplains => '話太多、一直在解釋自己',
+      StuckPoint.leftOnRead => '一直被已讀不回',
     };
 
 String _practiceGoalLabel(PracticeGoal g) => switch (g) {
