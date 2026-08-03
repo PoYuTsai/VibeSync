@@ -19,7 +19,10 @@ import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
+import 'package:vibesync/features/user_profile/data/providers/user_profile_providers.dart';
+import 'package:vibesync/features/user_profile/data/repositories/user_profile_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
+import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
 const _generatedAt = '2026-05-07T12:00:00.000Z';
 
@@ -180,6 +183,22 @@ class _FakeRepo implements CoachChatRepository {
   Future<void> clearAll() async => _store.clear();
 }
 
+/// 讓 profile 何時 resolve 可控——驗證 ask() 是否等 profile 載入完才組
+/// effectiveStyleContext（2026-08-03 REPLAY_MISMATCH 邊界修復）。
+class _DelayedProfileRepo implements UserProfileRepository {
+  _DelayedProfileRepo(this._future);
+  final Future<UserProfile?> _future;
+
+  @override
+  Future<UserProfile?> load(String ownerUserId) => _future;
+
+  @override
+  Future<void> save(UserProfile profile, String ownerUserId) async {}
+
+  @override
+  Future<void> clear(String ownerUserId) async {}
+}
+
 // digest 回注：controller 讀 coachingOutcomeDigestProvider，底層打 Hive。
 // 測試一律 override repository 成純記憶體 fake，預設空事件＝現行為（不注入）。
 class _FakeOutcomeRepo implements CoachingOutcomeRepository {
@@ -305,7 +324,7 @@ ProviderContainer _container({
           ({
             required String? partnerId,
             required bool includePartnerOverride,
-          }) {
+          }) async {
             if (partnerId != 'p-1') return null;
             if (includePartnerOverride == flag.isFlagged) return null;
             return styleContext;
@@ -927,7 +946,7 @@ void main() {
         styleContextResolver: ({
           required String? partnerId,
           required bool includePartnerOverride,
-        }) {
+        }) async {
           resolverArgs.add((
             partnerId: partnerId,
             includePartnerOverride: includePartnerOverride,
@@ -973,6 +992,55 @@ void main() {
         c.read(coachChatHistoryProvider(scope)).single.scopeId,
         'me',
       );
+    });
+  });
+
+  group('profile 非同步載入（2026-08-03 REPLAY_MISMATCH 邊界修復）', () {
+    test(
+        'profile 還在載入時呼叫 ask()，要等 profile resolve 完才送出，'
+        'effectiveStyleContext 帶正確值而非缺席', () async {
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final profileCompleter = Completer<UserProfile?>();
+
+      final c = ProviderContainer(overrides: [
+        coachChatRepositoryProvider.overrideWithValue(repo),
+        coachingOutcomeRepositoryProvider
+            .overrideWithValue(_FakeOutcomeRepo(const [])),
+        coachChatApiServiceProvider.overrideWithValue(
+          CoachChatApiService(invoker: _invoker(calls: calls)),
+        ),
+        coachChatUsageSyncProvider.overrideWithValue(() async {}),
+        userProfileRepositoryProvider
+            .overrideWithValue(_DelayedProfileRepo(profileCompleter.future)),
+        authUserProfileScopeProvider
+            .overrideWith((ref) => Stream.value('u-1')),
+      ]);
+      addTearDown(c.dispose);
+
+      const scope = CoachScope.global();
+      await c.read(coachChatControllerProvider(scope).future);
+
+      final askFuture = c
+          .read(coachChatControllerProvider(scope).notifier)
+          .ask(question: '不知道怎麼約她');
+
+      // profile 還沒 resolve 前，styleContext 尚未定案，request 不該送出——
+      // 這正是舊版 sync valueOrNull 讀法會出包的地方：舊版此刻已經送出
+      // effectiveStyleContext 缺席的請求。
+      await Future<void>.delayed(Duration.zero);
+      expect(calls, isEmpty);
+
+      profileCompleter.complete(
+        UserProfile.create(
+          interactionStyle: InteractionStyle.humorous,
+          updatedAt: DateTime(2026, 5, 5),
+        ),
+      );
+      await askFuture;
+
+      expect(calls, hasLength(1));
+      expect(calls.single.body['effectiveStyleContext'], contains('幽默'));
     });
   });
 

@@ -448,10 +448,12 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
     if (partnerId != null) {
       final flag = ref.watch(dataQualityFlagProvider(partnerId));
       final flagged = flag.isFlagged;
+      // FutureProvider（2026-08-03 REPLAY_MISMATCH 修）：這裡只是顯示用的來源
+      // 標籤，載入中先當沒有風格，resolve 後這個 ConsumerWidget 會自動重繪。
       final styleContext = ref.watch(coachChatStyleContextProvider((
         partnerId: partnerId,
         includePartnerOverride: !flagged,
-      )));
+      ))).valueOrNull;
       if (styleContext != null && styleContext.trim().isNotEmpty) {
         sources.add('你的風格');
       }

@@ -40,16 +40,26 @@ typedef CoachChatStyleContextArgs = ({
   bool includePartnerOverride,
 });
 
-typedef CoachChatStyleContextResolver = String? Function({
+typedef CoachChatStyleContextResolver = Future<String?> Function({
   required String? partnerId,
   required bool includePartnerOverride,
 });
 
+/// Future-based on purpose (mirrors `openerStyleContextProvider`, Codex R1
+/// P2): a sync `valueOrNull` read sends no style while the profile is still
+/// loading, then flips once it resolves. `ask()`'s requestId signature
+/// doesn't include effectiveStyleContext, so a same-requestId retry with a
+/// flipped style value changes the wire payload without minting a new
+/// requestId — the server's payload-hash replay check would then reject it
+/// as COACH_REQUEST_REPLAY_MISMATCH (2026-08-03 fix).
 final coachChatStyleContextProvider =
-    Provider.family<String?, CoachChatStyleContextArgs>((ref, args) {
-  final global = ref.watch(userProfileControllerProvider).valueOrNull;
+    FutureProvider.family<String?, CoachChatStyleContextArgs>((
+  ref,
+  args,
+) async {
+  final global = await ref.watch(userProfileControllerProvider.future);
   final partner = args.partnerId != null && args.includePartnerOverride
-      ? ref.watch(partnerStyleOverrideProvider(args.partnerId!)).valueOrNull
+      ? await ref.watch(partnerStyleOverrideProvider(args.partnerId!).future)
       : null;
   return ref.watch(effectiveStylePromptBuilderProvider).buildForCoachFollowUp(
         global: global,
@@ -68,7 +78,7 @@ final coachChatStyleContextResolverProvider =
       coachChatStyleContextProvider((
         partnerId: partnerId,
         includePartnerOverride: includePartnerOverride,
-      )),
+      )).future,
     );
   };
 });
@@ -200,6 +210,16 @@ class CoachChatController
       final sessionId = resumedSessionId ??
           _requestIdSession.resolveSessionId(() => _newSessionId(scope));
 
+      // await，不用 valueOrNull sync 讀：profile 還在載入時 sync 讀會送出
+      // 缺席的 styleContext，之後同 requestId 重試若 profile 補上會讓 wire
+      // payload 變了但 requestId 沒變，撞上 server 的 payload-hash 重放檢查
+      // （COACH_REQUEST_REPLAY_MISMATCH，2026-08-03 修，鏡像 openerStyleContextProvider）。
+      final effectiveStyleContext = await _styleContext(
+        partnerId: partnerId,
+        // global 沒有對象可覆寫，明確傳 false（不靠 partnerId null 隱含）。
+        includePartnerOverride: scope.isGlobal ? false : !flagged,
+      );
+
       final api = ref.read(coachChatApiServiceProvider);
       final result = await api.ask(
         conversationId: scope.id,
@@ -213,11 +233,7 @@ class CoachChatController
         conversationSummary:
             conversation != null ? _conversationSummary(conversation) : null,
         analysisSnapshot: scope.isConversation ? analysisSnapshot : null,
-        effectiveStyleContext: _styleContext(
-          partnerId: partnerId,
-          // global 沒有對象可覆寫，明確傳 false（不靠 partnerId null 隱含）。
-          includePartnerOverride: scope.isGlobal ? false : !flagged,
-        ),
+        effectiveStyleContext: effectiveStyleContext,
         partnerHint: _partnerHint(
           partnerId: partnerId,
           dataQualityFlagged: flagged,
@@ -412,7 +428,7 @@ class CoachChatController
     return text.length <= 500 ? text : '${text.substring(0, 499).trimRight()}…';
   }
 
-  String? _styleContext({
+  Future<String?> _styleContext({
     required String? partnerId,
     required bool includePartnerOverride,
   }) {
