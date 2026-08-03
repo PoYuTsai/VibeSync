@@ -219,9 +219,13 @@ Deno.test("postProcess: stretchLevels missing entirely or holding illegal values
     allowedFeatures: ESSENTIAL_FEATURES,
   });
   const missingLevels = missing.stretchLevels as Record<string, string>;
-  assertEquals(missingLevels.extend, "within");
-  assertEquals(missingLevels.resonate, "within");
-  assertEquals(missingLevels.humor, "within");
+  assertEquals(missingLevels, {
+    extend: "within",
+    resonate: "within",
+    tease: "within",
+    humor: "within",
+    coldRead: "within",
+  });
 
   // Case B: AI gave illegal values for some keys — those fall back to
   // "within" rather than leaking a garbage string or dropping the key.

@@ -70,7 +70,7 @@ void main() {
       expect(context, contains('使用者目前的舒適區：幽默'));
       expect(context, contains('不要因為舒適區而收斂任何一種'));
       expect(context, contains('Practice focus: 想找到聊得來的對象'));
-      expect(context, contains('更短、更有留白'));
+      expect(context, contains('不要急著篩選或設限'));
       expect(context, contains('Topic seeds: 健身、咖啡、日劇'));
       expect(context, contains('Notes: 我慢熟，希望不要太快邀約'));
       expect(context, contains('1.8x 黃金法則優先'));
@@ -176,7 +176,8 @@ void main() {
       )!;
 
       expect(context, contains('使用者目前的舒適區：以溫柔為主、有玩心為輔'));
-      expect(context, contains('不要因為舒適區而收斂任何一種'));
+      expect(context, contains('這張建議可以明顯超出他的舒適區'));
+      expect(context, isNot(contains('五種回覆風格')));
     });
   });
 

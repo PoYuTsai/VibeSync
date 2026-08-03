@@ -187,8 +187,11 @@ class EffectiveStylePromptBuilder {
     );
     final lines = <String>[];
 
-    final voiceLine = _voiceLine(effective);
-    if (voiceLine != null) lines.add(voiceLine);
+    final comfortLine = _comfortZoneLine(effective);
+    if (comfortLine != null) {
+      lines.add(comfortLine);
+      lines.add(_singleCardStretchInstruction);
+    }
 
     if (effective.stuckPoints.isNotEmpty) {
       lines.add(
@@ -216,13 +219,15 @@ class EffectiveStylePromptBuilder {
     return _truncate(lines.join('\n'), coachFollowUpMaxChars);
   }
 
-  /// Voice line for the (主, 副) style pair.
+  /// Comfort-zone description for the (主, 副) style pair.
   ///
   /// 2026-08 關於我重新定位案 批3：指令風格從「模仿模板」反轉成「舒適區標尺」——
-  /// 這是使用者現在寫得出來的範圍，不是要 AI 收斂成那個樣子；五種回覆風格仍要
-  /// 全力發揮，至少一種要明顯超出舒適區。這一版**刻意**打破舊版
-  /// 「主-only byte-for-byte identical to pre-pair format」鎖，見批3設計文件。
-  static String? _voiceLine(EffectiveStyle effective) {
+  /// 這是使用者現在寫得出來的範圍，不是要 AI 收斂成那個樣子。這一版**刻意**
+  /// 打破舊版「主-only byte-for-byte identical to pre-pair format」鎖，
+  /// 見批3設計文件。只描述舒適區，不含 stretch 指令——後者依 caller 是
+  /// 「五選一回覆」還是「單張建議卡」而不同，見 [_voiceLine]／
+  /// [_singleCardStretchInstruction]。
+  static String? _comfortZoneLine(EffectiveStyle effective) {
     final style = effective.interactionStyle;
     if (style == null) return null;
     final secondary = effective.secondaryStyle;
@@ -230,9 +235,25 @@ class EffectiveStylePromptBuilder {
         ? _styleLabel(style)
         : '以${_styleLabel(style)}為主、${_styleLabel(secondary)}為輔';
     return '- 使用者目前的舒適區：$comfortDesc。這不是你要模仿的模板，'
-        '是他現在寫得出來的範圍。\n'
-        '- 五種回覆風格請照常全力發揮，不要因為舒適區而收斂任何一種；'
-        '至少一種要明顯超出他的舒適區。';
+        '是他現在寫得出來的範圍。';
+  }
+
+  /// [buildForAnalysis]／[buildForOpener]／[buildForNewTopic] 專用：這三個
+  /// slice 都輸出五種平行風格，stretch 指令要求至少一種明顯超出舒適區。
+  static const String _fiveStyleStretchInstruction =
+      '- 五種回覆風格請照常全力發揮，不要因為舒適區而收斂任何一種；'
+      '至少一種要明顯超出他的舒適區。';
+
+  /// [buildForCoachFollowUp] 專用：Coach 1:1 只產一張結構化建議卡，沒有
+  /// 「五種風格」這回事——套用 [_fiveStyleStretchInstruction] 會是指著不存在
+  /// 的輸出格式下指令。這張卡本身可以超出舒適區，但不需要五選一的收斂提醒。
+  static const String _singleCardStretchInstruction =
+      '- 這張建議可以明顯超出他的舒適區，不需要收斂成他習慣的樣子。';
+
+  static String? _voiceLine(EffectiveStyle effective) {
+    final comfortLine = _comfortZoneLine(effective);
+    if (comfortLine == null) return null;
+    return '$comfortLine\n$_fiveStyleStretchInstruction';
   }
 
   static String _styleLabel(InteractionStyle style) {
@@ -284,7 +305,7 @@ class EffectiveStylePromptBuilder {
       case PracticeGoal.buildCloseness:
         return '多用情緒與小故事建立連結，不只交換資訊。';
       case PracticeGoal.findCompatiblePartner:
-        return '回覆更短、更有留白，避免長篇說明。';
+        return '保持開放、不預設對方要符合單一條件；重點是找到聊得來的感覺，不要急著篩選或設限。';
     }
   }
 
