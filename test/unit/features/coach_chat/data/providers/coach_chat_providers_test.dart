@@ -184,13 +184,27 @@ class _FakeRepo implements CoachChatRepository {
 }
 
 /// 讓 profile 何時 resolve 可控——驗證 ask() 是否等 profile 載入完才組
-/// effectiveStyleContext（2026-08-03 REPLAY_MISMATCH 邊界修復）。
+/// effectiveStyleContext（2026-08-03 冷啟動風格完整性修復）。
 class _DelayedProfileRepo implements UserProfileRepository {
   _DelayedProfileRepo(this._future);
   final Future<UserProfile?> _future;
 
   @override
   Future<UserProfile?> load(String ownerUserId) => _future;
+
+  @override
+  Future<void> save(UserProfile profile, String ownerUserId) async {}
+
+  @override
+  Future<void> clear(String ownerUserId) async {}
+}
+
+/// profile 載入失敗——驗證 ask() 退回無風格繼續送出，不因加分項擋死請求
+/// （Codex cross-review P2 finding）。
+class _ThrowingProfileRepo implements UserProfileRepository {
+  @override
+  Future<UserProfile?> load(String ownerUserId) =>
+      Future.error(Exception('profile box unavailable'));
 
   @override
   Future<void> save(UserProfile profile, String ownerUserId) async {}
@@ -995,7 +1009,14 @@ void main() {
     });
   });
 
-  group('profile 非同步載入（2026-08-03 REPLAY_MISMATCH 邊界修復）', () {
+  // 2026-08-03 修復：ask() 原本同步 valueOrNull 讀 profile，冷啟動時 profile
+  // 還沒載入完就會漏帶 effectiveStyleContext。改成 await 後續兩組測試鎖住：
+  // (a) 正常情況下等 profile resolve 完才送出、風格不缺席；(b) profile 載入
+  // 失敗要退回無風格繼續送出，不能讓風格這種加分項擋死整個 Coach 請求
+  // （Codex cross-review P2 finding；REPLAY_MISMATCH 的原始因果宣稱已被
+  // Codex 讀 server 端 computeCoachInputHash 反證——server hash 不含
+  // effectiveStyleContext，這裡修的是「冷啟動漏風格」，不是重放檢查）。
+  group('profile 非同步載入（2026-08-03 冷啟動風格完整性修復）', () {
     test(
         'profile 還在載入時呼叫 ask()，要等 profile resolve 完才送出，'
         'effectiveStyleContext 帶正確值而非缺席', () async {
@@ -1041,6 +1062,40 @@ void main() {
 
       expect(calls, hasLength(1));
       expect(calls.single.body['effectiveStyleContext'], contains('幽默'));
+    });
+
+    test('profile 載入失敗（Hive/repo 炸掉）→ 退回無風格，Coach 請求照常送出',
+        () async {
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+
+      final c = ProviderContainer(overrides: [
+        coachChatRepositoryProvider.overrideWithValue(repo),
+        coachingOutcomeRepositoryProvider
+            .overrideWithValue(_FakeOutcomeRepo(const [])),
+        coachChatApiServiceProvider.overrideWithValue(
+          CoachChatApiService(invoker: _invoker(calls: calls)),
+        ),
+        coachChatUsageSyncProvider.overrideWithValue(() async {}),
+        userProfileRepositoryProvider.overrideWithValue(_ThrowingProfileRepo()),
+        authUserProfileScopeProvider
+            .overrideWith((ref) => Stream.value('u-1')),
+      ]);
+      addTearDown(c.dispose);
+
+      const scope = CoachScope.global();
+      await c.read(coachChatControllerProvider(scope).future);
+
+      await c
+          .read(coachChatControllerProvider(scope).notifier)
+          .ask(question: '不知道怎麼約她');
+
+      expect(calls, hasLength(1));
+      expect(calls.single.body.containsKey('effectiveStyleContext'), isFalse);
+      expect(
+        c.read(coachChatControllerProvider(scope)).hasError,
+        isFalse,
+      );
     });
   });
 

@@ -448,8 +448,8 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
     if (partnerId != null) {
       final flag = ref.watch(dataQualityFlagProvider(partnerId));
       final flagged = flag.isFlagged;
-      // FutureProvider（2026-08-03 REPLAY_MISMATCH 修）：這裡只是顯示用的來源
-      // 標籤，載入中先當沒有風格，resolve 後這個 ConsumerWidget 會自動重繪。
+      // FutureProvider（2026-08-03 冷啟動風格完整性修）：這裡只是顯示用的
+      // 來源標籤，載入中先當沒有風格，resolve 後這個 ConsumerWidget 會自動重繪。
       final styleContext = ref.watch(coachChatStyleContextProvider((
         partnerId: partnerId,
         includePartnerOverride: !flagged,

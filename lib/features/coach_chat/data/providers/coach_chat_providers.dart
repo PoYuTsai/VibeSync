@@ -45,13 +45,17 @@ typedef CoachChatStyleContextResolver = Future<String?> Function({
   required bool includePartnerOverride,
 });
 
-/// Future-based on purpose (mirrors `openerStyleContextProvider`, Codex R1
-/// P2): a sync `valueOrNull` read sends no style while the profile is still
-/// loading, then flips once it resolves. `ask()`'s requestId signature
-/// doesn't include effectiveStyleContext, so a same-requestId retry with a
-/// flipped style value changes the wire payload without minting a new
-/// requestId — the server's payload-hash replay check would then reject it
-/// as COACH_REQUEST_REPLAY_MISMATCH (2026-08-03 fix).
+/// Future-based on purpose (structurally mirrors `openerStyleContextProvider`,
+/// 2026-08-03 fix): a sync `valueOrNull` read sends no style on a cold-start
+/// Coach turn while the profile is still loading, silently dropping the
+/// user's personalization for that request. Awaiting the profile future
+/// guarantees the first request already carries the resolved style.
+///
+/// Not a replay/idempotency fix: `computeCoachInputHash` (server
+/// billing.ts) does not include `effectiveStyleContext`, so a changed style
+/// value on retry cannot trigger `COACH_REQUEST_REPLAY_MISMATCH` (confirmed
+/// by cross-model review reading the server code — an earlier draft of this
+/// comment claimed otherwise; that claim was refuted).
 final coachChatStyleContextProvider =
     FutureProvider.family<String?, CoachChatStyleContextArgs>((
   ref,
@@ -210,10 +214,10 @@ class CoachChatController
       final sessionId = resumedSessionId ??
           _requestIdSession.resolveSessionId(() => _newSessionId(scope));
 
-      // await，不用 valueOrNull sync 讀：profile 還在載入時 sync 讀會送出
-      // 缺席的 styleContext，之後同 requestId 重試若 profile 補上會讓 wire
-      // payload 變了但 requestId 沒變，撞上 server 的 payload-hash 重放檢查
-      // （COACH_REQUEST_REPLAY_MISMATCH，2026-08-03 修，鏡像 openerStyleContextProvider）。
+      // await，不用 valueOrNull sync 讀：profile 還在載入時 sync 讀會讓冷啟動
+      // 第一次 Coach 請求漏帶使用者風格（2026-08-03 修）。不是重放/計費
+      // 問題——server 的 computeCoachInputHash 不含 effectiveStyleContext，
+      // 風格值改變不會觸發 COACH_REQUEST_REPLAY_MISMATCH（cross-review 已核）。
       final effectiveStyleContext = await _styleContext(
         partnerId: partnerId,
         // global 沒有對象可覆寫，明確傳 false（不靠 partnerId null 隱含）。
@@ -431,11 +435,18 @@ class CoachChatController
   Future<String?> _styleContext({
     required String? partnerId,
     required bool includePartnerOverride,
-  }) {
-    return ref.read(coachChatStyleContextResolverProvider)(
-      partnerId: partnerId,
-      includePartnerOverride: includePartnerOverride,
-    );
+  }) async {
+    try {
+      return await ref.read(coachChatStyleContextResolverProvider)(
+        partnerId: partnerId,
+        includePartnerOverride: includePartnerOverride,
+      );
+    } catch (_) {
+      // profile/partner-style 載入失敗（Hive/repo 炸掉）就退回無風格，不擋
+      // 整個 Coach 請求——風格是個人化加分項，不是必要輸入（Codex
+      // cross-review P2 finding）。
+      return null;
+    }
   }
 
   CoachChatPartnerHint? _partnerHint({
