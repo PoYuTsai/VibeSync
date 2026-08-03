@@ -54,7 +54,18 @@ void main() {
     expect(find.text('先啟用 VibeSync 鍵盤'), findsOneWidget);
     expect(find.textContaining('只會將你主動點擊「載入」的文字'), findsOneWidget);
 
-    await tester.tap(find.text('前往 iPhone 設定'));
+    // 圖文路徑導引（2026-08-03）：文字路徑「設定 > VibeSync > 鍵盤」使用者
+    // 實測會迷路，補一段圖文導引標出完整巢狀路徑跟最終畫面長怎樣。
+    expect(find.text('一般'), findsOneWidget);
+    expect(find.text('鍵盤（Keyboards）'), findsOneWidget);
+    // AppBar 標題也是「VibeSync AI 鍵盤」，路徑麵包屑那顆是第二個。
+    expect(find.text('VibeSync AI 鍵盤'), findsNWidgets(2));
+    expect(find.text('允許完整取用'), findsOneWidget);
+
+    final openSettingsButton = find.text('前往 iPhone 設定');
+    await tester.ensureVisible(openSettingsButton);
+    await tester.pump();
+    await tester.tap(openSettingsButton);
     await tester.pump();
     expect(settingsOpened, 1);
 

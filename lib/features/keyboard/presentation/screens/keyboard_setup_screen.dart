@@ -433,6 +433,8 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                       child: Column(
                         children: [
                           const _PrivacyNotice(),
+                          const SizedBox(height: 16),
+                          const _FullAccessPathGuide(),
                           const SizedBox(height: 20),
                           BrandPrimaryButton(
                             label: '前往 iPhone 設定',
@@ -592,6 +594,146 @@ class _PrivacyNotice extends StatelessWidget {
           ],
         ),
       );
+}
+
+/// 圖文路徑導引（2026-08-03）：純文字「到 iPhone 設定開啟...」實測會讓
+/// 使用者迷路——iOS 沒有公開 API 能直接跳到「一般 > 鍵盤 > 鍵盤 >
+/// VibeSync AI 鍵盤」這一層，「前往 iPhone 設定」只能開到 App 自己的設定
+/// 頁，中間要使用者自己走三層。這裡把完整巢狀路徑畫成麵包屑，並用淺色
+/// 卡片模擬最終畫面長怎樣，讓使用者到了 iOS 設定裡能認得出「找到了」。
+class _FullAccessPathGuide extends StatelessWidget {
+  const _FullAccessPathGuide();
+
+  static const _steps = [
+    (label: '設定 App', icon: Icons.settings),
+    (label: '一般', icon: Icons.tune),
+    (label: '鍵盤', icon: Icons.keyboard_outlined),
+    (label: '鍵盤（Keyboards）', icon: Icons.list_alt),
+    (label: 'VibeSync AI 鍵盤', icon: Icons.smart_toy_outlined),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.brandSurface2,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '找不到「允許完整取用」？照這條路徑走：',
+            style: AppTypography.labelLarge
+                .copyWith(color: AppColors.onBackgroundSecondary),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (var i = 0; i < _steps.length; i++) ...[
+                _PathChip(
+                  label: _steps[i].label,
+                  icon: _steps[i].icon,
+                ),
+                if (i != _steps.length - 1)
+                  Icon(
+                    Icons.chevron_right,
+                    size: 18,
+                    color: AppColors.onBackgroundSecondary
+                        .withValues(alpha: 0.6),
+                  ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 16),
+          const _FullAccessTogglePreview(),
+        ],
+      ),
+    );
+  }
+}
+
+class _PathChip extends StatelessWidget {
+  const _PathChip({required this.label, required this.icon});
+
+  final String label;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: AppColors.brandFlame),
+          const SizedBox(width: 6),
+          Text(label, style: AppTypography.labelMedium),
+        ],
+      ),
+    );
+  }
+}
+
+/// 模擬使用者最終會看到的那個畫面（淺色，仿 iOS 設定介面），讓使用者
+/// 到了那一層能立刻認出「就是這個」，並提示要撥到右邊（開）。
+class _FullAccessTogglePreview extends StatelessWidget {
+  const _FullAccessTogglePreview();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.keyboard_alt_outlined, color: Colors.black87),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              '允許完整取用',
+              style: TextStyle(
+                color: Colors.black87,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Container(
+            width: 44,
+            height: 26,
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              color: Colors.greenAccent.shade400,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Align(
+              alignment: Alignment.centerRight,
+              child: CircleAvatar(radius: 11, backgroundColor: Colors.white),
+            ),
+          ),
+          const SizedBox(width: 6),
+          const Icon(Icons.arrow_back, size: 16, color: Colors.black45),
+          const SizedBox(width: 2),
+          Text(
+            '撥到這邊',
+            style: AppTypography.caption.copyWith(color: Colors.black45),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _StylePreview extends StatelessWidget {
