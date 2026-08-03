@@ -124,7 +124,7 @@ void main() {
 
     await tester.tap(find.widgetWithText(ChoiceChip, '幽默'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ChoiceChip, '自然邀約'));
+    await tester.tap(find.widgetWithText(ChoiceChip, '想約得出來'));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('partner-style-notes-field')),

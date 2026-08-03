@@ -36,7 +36,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('讓 VibeSync 更像你的教練'), findsOneWidget);
+    expect(find.text('讓教練真的懂你'), findsOneWidget);
     expect(find.bySemanticsLabel('關於我設定載入中'), findsOneWidget);
     expect(tester.getSize(find.byType(AboutMeCard)).height, greaterThan(150));
   });
