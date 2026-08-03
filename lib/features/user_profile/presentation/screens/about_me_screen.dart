@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -56,6 +58,46 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
       _draftSeeds.isEmpty &&
       _customController.text.trim().isEmpty &&
       _notesController.text.trim().isEmpty;
+
+  /// 草稿是否偏離最後儲存過的內容（新用戶＝偏離全空基準）。返回鍵保護用。
+  bool get _isDirty {
+    final base = _initialProfile;
+    return _draftPair.primary != base?.interactionStyle ||
+        _draftPair.secondary != base?.secondaryStyle ||
+        !setEquals(_draftGoals, (base?.practiceGoals ?? const []).toSet()) ||
+        !setEquals(_draftSeeds, (base?.topicSeeds ?? const []).toSet()) ||
+        _customController.text.trim() != (base?.customTopics ?? '').trim() ||
+        _notesController.text.trim() != (base?.notes ?? '').trim();
+  }
+
+  Future<bool> _confirmDiscardDraft() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('放棄變更？'),
+        content: const Text('你還沒儲存，離開就會遺失剛剛的修改。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('繼續編輯'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('放棄變更'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  Future<void> _handlePopAttempt(bool didPop, Object? result) async {
+    if (didPop) return;
+    final discard = await _confirmDiscardDraft();
+    if (discard && mounted) {
+      Navigator.of(context).pop();
+    }
+  }
 
   String get _primaryLabel {
     final hasExisting = _initialProfile != null && !_initialProfile!.isEmpty;
@@ -191,123 +233,140 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
   }
 
   Widget _buildScaffold(BuildContext context) {
-    return _AboutMeBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: _buildAppBar(),
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const _AboutMeIntroCard(),
-                const SizedBox(height: 14),
-                ProfileChipSection<InteractionStyle>(
-                  title: '互動風格',
-                  subtitle: '先點主風格，再點副風格（可只選主）。',
-                  options: InteractionStyle.values,
-                  labelOf: _interactionStyleLabel,
-                  isSelected: _draftPair.contains,
-                  badgeOf: _draftPair.badgeOf,
-                  onTap: (s) => setState(() {
-                    _draftPair = _draftPair.tap(s);
-                  }),
-                ),
-                const SizedBox(height: 14),
-                ProfileChipSection<PracticeGoal>(
-                  title: '練習目標',
-                  subtitle: '最多 3 個，AI 會在合適時機提醒。',
-                  options: PracticeGoal.values,
-                  labelOf: _practiceGoalLabel,
-                  isSelected: _draftGoals.contains,
-                  onTap: _toggleGoal,
-                ),
-                const SizedBox(height: 14),
-                ProfileChipSection<TopicSeed>(
-                  title: '常聊話題',
-                  subtitle: '最多 5 個，幫 AI 發想話題。',
-                  options: TopicSeed.values,
-                  labelOf: _topicSeedLabel,
-                  isSelected: _draftSeeds.contains,
-                  onTap: _toggleSeed,
-                ),
-                const SizedBox(height: 14),
-                _ProfileInputSection(
-                  title: '想聊但沒在上面的話題',
-                  child: TextField(
-                    key: const Key('about-me-custom-topics'),
-                    controller: _customController,
-                    maxLength: UserProfile.maxCustomTopicsLength,
-                    onChanged: (_) => setState(() {}),
-                    cursorColor: AppColors.ctaStart,
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: Colors.white,
-                    ),
-                    decoration: _fieldDecoration('例如：日劇、週末探店'),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _ProfileInputSection(
-                  title: '想讓 AI 知道的事',
-                  subtitle: '例如：「我慢熟、希望不要太快邀約」。',
-                  child: TextField(
-                    key: const Key('about-me-notes'),
-                    controller: _notesController,
-                    maxLength: UserProfile.maxNotesLength,
-                    maxLines: 3,
-                    onChanged: (_) => setState(() {}),
-                    cursorColor: AppColors.ctaStart,
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: Colors.white,
-                      height: 1.35,
-                    ),
-                    decoration: _fieldDecoration('寫一句你希望 AI 記住的事'),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                const _PrivacyNote(),
-                const SizedBox(height: 20),
-                Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.ctaStart, AppColors.ctaEnd],
-                    ),
-                    borderRadius: BorderRadius.circular(999),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.ctaStart.withValues(alpha: 0.30),
-                        blurRadius: 18,
-                        offset: const Offset(0, 9),
-                      ),
-                    ],
-                  ),
-                  child: ElevatedButton(
-                    onPressed: _onPrimaryTap,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(999),
+    return PopScope(
+      canPop: !_isDirty,
+      onPopInvokedWithResult: _handlePopAttempt,
+      child: _AboutMeBackground(
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: _buildAppBar(),
+          body: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _AboutMeIntroCard(),
+                  if (_initialProfile != null && !_initialProfile!.isEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '最後更新：${_formatUpdatedAt(_initialProfile!.updatedAt)}',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.onBackgroundSecondary
+                            .withValues(alpha: 0.6),
                       ),
                     ),
-                    child: Text(
-                      _primaryLabel,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
+                  ],
+                  const SizedBox(height: 14),
+                  ProfileChipSection<InteractionStyle>(
+                    title: '互動風格',
+                    subtitle: '先點主風格，再點副風格（可只選主）。',
+                    options: InteractionStyle.values,
+                    labelOf: _interactionStyleLabel,
+                    isSelected: _draftPair.contains,
+                    badgeOf: _draftPair.badgeOf,
+                    onTap: (s) => setState(() {
+                      _draftPair = _draftPair.tap(s);
+                    }),
+                  ),
+                  const SizedBox(height: 14),
+                  ProfileChipSection<PracticeGoal>(
+                    title: '練習目標',
+                    subtitle: '最多 3 個，AI 會在合適時機提醒。',
+                    options: PracticeGoal.values,
+                    labelOf: _practiceGoalLabel,
+                    isSelected: _draftGoals.contains,
+                    onTap: _toggleGoal,
+                  ),
+                  const SizedBox(height: 14),
+                  ProfileChipSection<TopicSeed>(
+                    title: '常聊話題',
+                    subtitle: '最多 5 個，幫 AI 發想話題。',
+                    options: TopicSeed.values,
+                    labelOf: _topicSeedLabel,
+                    isSelected: _draftSeeds.contains,
+                    onTap: _toggleSeed,
+                  ),
+                  const SizedBox(height: 14),
+                  _ProfileInputSection(
+                    title: '想聊但沒在上面的話題',
+                    child: TextField(
+                      key: const Key('about-me-custom-topics'),
+                      controller: _customController,
+                      maxLength: UserProfile.maxCustomTopicsLength,
+                      onChanged: (_) => setState(() {}),
+                      cursorColor: AppColors.ctaStart,
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: Colors.white,
+                      ),
+                      decoration: _fieldDecoration('例如：日劇、週末探店'),
                     ),
                   ),
-                ),
-                const SizedBox(height: 32),
-              ],
+                  const SizedBox(height: 14),
+                  _ProfileInputSection(
+                    title: '想讓 AI 知道的事',
+                    subtitle: '例如：「我慢熟、希望不要太快邀約」。',
+                    child: TextField(
+                      key: const Key('about-me-notes'),
+                      controller: _notesController,
+                      maxLength: UserProfile.maxNotesLength,
+                      maxLines: 3,
+                      onChanged: (_) => setState(() {}),
+                      cursorColor: AppColors.ctaStart,
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: Colors.white,
+                        height: 1.35,
+                      ),
+                      decoration: _fieldDecoration('寫一句你希望 AI 記住的事'),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const _PrivacyNote(),
+                  const SizedBox(height: 20),
+                  Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppColors.ctaStart, AppColors.ctaEnd],
+                      ),
+                      borderRadius: BorderRadius.circular(999),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.ctaStart.withValues(alpha: 0.30),
+                          blurRadius: 18,
+                          offset: const Offset(0, 9),
+                        ),
+                      ],
+                    ),
+                    child: ElevatedButton(
+                      onPressed: _onPrimaryTap,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                      child: Text(
+                        _primaryLabel,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
+
+  String _formatUpdatedAt(DateTime dt) =>
+      DateFormat('yyyy/M/d HH:mm').format(dt.toLocal());
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(

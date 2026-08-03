@@ -310,6 +310,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ],
               ),
               _buildSection(
+                title: '個人化',
+                children: [
+                  _buildTile(
+                    icon: Icons.person_outline,
+                    title: '關於我',
+                    trailing: '教練怎麼認識你',
+                    onTap: () => context.push('/profile/about-me'),
+                  ),
+                ],
+              ),
+              _buildSection(
                 title: '通知',
                 children: [
                   _buildSwitchTile(

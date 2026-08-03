@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
 import '_harness.dart';
@@ -166,6 +167,27 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.text('儲存失敗，請再試一次'), findsOneWidget);
     expect(find.textContaining('Exception'), findsNothing);
+  });
+
+  testWidgets('新用戶（沒有 profile）不顯示最後更新時間', (tester) async {
+    await tester.pumpWidget(aboutMeHarness(repo: FakeUserProfileRepo()));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('最後更新'), findsNothing);
+  });
+
+  testWidgets('已有 profile → 顯示最後更新時間', (tester) async {
+    final updatedAt = DateTime.utc(2026, 4, 30, 8);
+    final repo = FakeUserProfileRepo(
+      initial: UserProfile.create(
+        interactionStyle: InteractionStyle.gentle,
+        updatedAt: updatedAt,
+      ),
+    );
+    await tester.pumpWidget(aboutMeHarness(repo: repo));
+    await tester.pumpAndSettle();
+
+    final expected = DateFormat('yyyy/M/d HH:mm').format(updatedAt.toLocal());
+    expect(find.text('最後更新：$expected'), findsOneWidget);
   });
 
   testWidgets('bottom privacy note 這些設定只用來讓建議更貼近你的語氣 renders',

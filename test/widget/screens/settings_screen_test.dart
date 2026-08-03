@@ -225,6 +225,12 @@ void main() {
             body: Center(child: Text('Paywall')),
           ),
         ),
+        GoRoute(
+          path: '/profile/about-me',
+          builder: (context, state) => const Scaffold(
+            body: Center(child: Text('AboutMe')),
+          ),
+        ),
       ],
     );
   });
@@ -313,6 +319,16 @@ void main() {
       expect(find.text('15/15'), findsNWidgets(2));
     });
 
+    testWidgets('點「關於我」導去 /profile/about-me', (tester) async {
+      await pumpSettings(tester);
+
+      expect(find.text('關於我'), findsOneWidget);
+      await tester.tap(find.text('關於我'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('AboutMe'), findsOneWidget);
+    });
+
     testWidgets('shows clear plan and account rows', (tester) async {
       await pumpSettings(tester);
 
@@ -381,6 +397,7 @@ void main() {
       await pumpSettings(tester, logoutActions: actions);
 
       await tester.ensureVisible(find.byIcon(Icons.logout));
+      await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.logout));
       await tester.pump();
       await tester.tap(find.byType(TextButton).last);
@@ -404,6 +421,7 @@ void main() {
       );
 
       await tester.ensureVisible(find.byIcon(Icons.logout));
+      await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.logout));
       await tester.pump();
       await tester.tap(find.byType(TextButton).last);
@@ -424,6 +442,7 @@ void main() {
       await pumpSettings(tester, logoutActions: actions);
 
       await tester.ensureVisible(find.byIcon(Icons.logout));
+      await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.logout));
       await tester.pump();
       await tester.tap(find.byType(TextButton).last);
@@ -445,6 +464,7 @@ void main() {
       await pumpSettings(tester, logoutActions: actions);
 
       await tester.ensureVisible(find.byIcon(Icons.logout));
+      await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.logout));
       await tester.pump();
       await tester.tap(find.byType(TextButton).last);
@@ -468,6 +488,7 @@ void main() {
       await pumpSettings(tester, logoutActions: actions);
 
       await tester.ensureVisible(find.byIcon(Icons.logout));
+      await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.logout));
       await tester.pump();
       await tester.tap(find.byType(TextButton).last);
@@ -492,6 +513,7 @@ void main() {
       await pumpSettings(tester, logoutActions: actions);
 
       await tester.ensureVisible(find.byIcon(Icons.logout));
+      await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.logout));
       await tester.pump();
       await tester.tap(find.byType(TextButton).last);
