@@ -12,6 +12,7 @@ void main() {
     InteractionStyle? secondaryStyle,
     List<PracticeGoal> goals = const [],
     List<TopicSeed> seeds = const [],
+    List<StuckPoint> stuckPoints = const [],
     String? customTopics,
     String? notes,
   }) =>
@@ -20,6 +21,7 @@ void main() {
         secondaryStyle: secondaryStyle,
         practiceGoals: goals,
         topicSeeds: seeds,
+        stuckPoints: stuckPoints,
         customTopics: customTopics,
         notes: notes,
         updatedAt: now,
@@ -67,7 +69,7 @@ void main() {
 
       expect(context, contains('使用者目前的舒適區：幽默'));
       expect(context, contains('不要因為舒適區而收斂任何一種'));
-      expect(context, contains('Practice focus: 減少解釋'));
+      expect(context, contains('Practice focus: 想找到聊得來的對象'));
       expect(context, contains('更短、更有留白'));
       expect(context, contains('Topic seeds: 健身、咖啡、日劇'));
       expect(context, contains('Notes: 我慢熟，希望不要太快邀約'));
@@ -91,7 +93,7 @@ void main() {
       )!;
 
       expect(context, contains('使用者目前的舒適區：直接'));
-      expect(context, contains('模糊邀約'));
+      expect(context, contains('想約得出來'));
       expect(context, contains('這位對象喜歡乾脆一點'));
       expect(context, isNot(contains('全域備註')));
       expect(context, isNot(contains('溫柔')));
@@ -113,10 +115,10 @@ void main() {
       )!;
 
       expect(context, contains('使用者目前的舒適區：溫柔'));
-      expect(context, contains('降低焦慮'));
+      expect(context, contains('想先能自在聊天'));
       expect(context, contains('全域低壓'));
       expect(context, isNot(contains('疑似混入的對象備註')));
-      expect(context, isNot(contains('模糊邀約')));
+      expect(context, isNot(contains('想約得出來')));
     });
   });
 
@@ -204,7 +206,7 @@ void main() {
       )!;
 
       expect(context, contains('使用者目前的舒適區：幽默'));
-      expect(context, contains('Practice focus: 減少解釋'));
+      expect(context, contains('Practice focus: 想找到聊得來的對象'));
       expect(context, contains('Topic seeds: 健身、咖啡、日劇'));
       expect(context, contains('Notes: 我慢熟，開場不要太衝'));
       // opener 專用 contract：只調語氣，對方線索與安全優先。
@@ -420,23 +422,39 @@ void main() {
   });
 
   group('EffectiveStylePromptBuilder.buildForCoachFollowUp', () {
-    test('uses only interaction style + practice goals', () {
+    test('includes stuck points and boundary notes', () {
+      final context = builder.buildForCoachFollowUp(
+        global: profile(
+          style: InteractionStyle.steady,
+          stuckPoints: const [StuckPoint.fadesOut],
+          notes: '不要太快邀約',
+        ),
+        partner: null,
+        includePartnerOverride: false,
+      );
+      expect(context, contains('話題卡住'));
+      expect(context, contains('不要太快邀約'));
+    });
+
+    test('uses interaction style + practice goals + notes, but not topics',
+        () {
       final context = builder.buildForCoachFollowUp(
         global: profile(
           style: InteractionStyle.playful,
           goals: const [PracticeGoal.humorousReply],
           seeds: const [TopicSeed.travel],
           customTopics: '爵士酒吧',
-          notes: '不要把這段 notes 送給 Spec 5',
+          notes: '這段 notes 現在批3 拍板要送給 Spec 5',
         ),
         partner: null,
         includePartnerOverride: true,
       )!;
 
       expect(context, contains('使用者目前的舒適區：有玩心'));
-      expect(context, contains('幽默回應'));
+      expect(context, contains('想讓對話更幽默、有來有往'));
+      // topics 仍不進 Coach 1:1（只有 stuckPoints/goals/notes 三段）。
       expect(context, isNot(contains('爵士酒吧')));
-      expect(context, isNot(contains('不要把這段 notes 送給 Spec 5')));
+      expect(context, contains('這段 notes 現在批3 拍板要送給 Spec 5'));
       expect(context, contains('教練語氣與任務 framing'));
     });
 

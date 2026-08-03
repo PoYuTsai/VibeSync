@@ -8,7 +8,7 @@ import 'resolve_effective_style.dart';
 /// settings into prompt text.
 class EffectiveStylePromptBuilder {
   static const int analysisMaxChars = 900;
-  static const int coachFollowUpMaxChars = 500;
+  static const int coachFollowUpMaxChars = 900;
 
   /// Under the server-side effectiveStyleContext cap (1200) with headroom.
   static const int openerMaxChars = 900;
@@ -172,8 +172,10 @@ class EffectiveStylePromptBuilder {
 
   /// Lightweight slice for Spec 5 coach-follow-up.
   ///
-  /// Deliberately excludes notes/topics so the follow-up coach stays focused on
-  /// interaction tone + practice goal, not broad long-term memory.
+  /// 2026-08 關於我重新定位案 批3：補讀 stuckPoints（現在卡住的處境）與
+  /// notes（使用者邊界）——先前故意不讀是為了避免長期人格推斷，這次拍板
+  /// 補上是因為處境與邊界屬於「現在」而非長期人格。Topics 仍不進來，
+  /// 因為那是話題素材不是語氣/處境設定。
   String? buildForCoachFollowUp({
     required UserProfile? global,
     required PartnerStyleOverride? partner,
@@ -188,11 +190,23 @@ class EffectiveStylePromptBuilder {
     final voiceLine = _voiceLine(effective);
     if (voiceLine != null) lines.add(voiceLine);
 
+    if (effective.stuckPoints.isNotEmpty) {
+      lines.add(
+        '- Stuck points: ${effective.stuckPoints.map(_stuckPointLabel).join('、')}；'
+        '這是使用者現在卡住的處境，回答時要接住這個情境，不要給通用建議。',
+      );
+    }
+
     if (effective.practiceGoals.isNotEmpty) {
       lines.add(
         '- Practice focus: ${effective.practiceGoals.map(_goalLabel).join('、')}；'
         '${effective.practiceGoals.map(_goalPrompt).join(' ')}',
       );
+    }
+
+    final notes = effective.notes?.trim();
+    if (notes != null && notes.isNotEmpty) {
+      lines.add('- Boundary: $notes；這是使用者的邊界，任何建議都不能違反。');
     }
 
     if (lines.isEmpty) return null;
@@ -236,18 +250,26 @@ class EffectiveStylePromptBuilder {
     }
   }
 
+  static String _stuckPointLabel(StuckPoint s) => switch (s) {
+        StuckPoint.fadesOut => '話題卡住接不下去',
+        StuckPoint.dontKnowHowToAsk => '不知道怎麼開口約',
+        StuckPoint.anxiousWontSend => '緊張不敢傳',
+        StuckPoint.overExplains => '容易解釋太多',
+        StuckPoint.leftOnRead => '已讀不回',
+      };
+
   static String _goalLabel(PracticeGoal goal) {
     switch (goal) {
       case PracticeGoal.softInvite:
-        return '模糊邀約';
+        return '想約得出來';
       case PracticeGoal.comfortableChat:
-        return '降低焦慮';
+        return '想先能自在聊天';
       case PracticeGoal.humorousReply:
-        return '幽默回應';
+        return '想讓對話更幽默、有來有往';
       case PracticeGoal.buildCloseness:
-        return '建立連結';
+        return '想培養穩定的親近感';
       case PracticeGoal.findCompatiblePartner:
-        return '減少解釋';
+        return '想找到聊得來的對象';
     }
   }
 
