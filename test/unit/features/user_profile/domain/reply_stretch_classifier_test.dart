@@ -198,4 +198,60 @@ void main() {
       );
     });
   });
+
+  group('resolve（後端 stretchLevels 優先，本地規則 fallback）', () {
+    test('後端有給合法值時優先使用，不落地方規則', () {
+      // 本地規則對 gentle+humor 會判 far，後端若給 within 要能覆蓋。
+      expect(
+        classifier.resolve(
+          type: 'humor',
+          backendStretchLevels: const {'humor': 'within'},
+          comfortStyle: InteractionStyle.gentle,
+        ),
+        ReplyStretchLevel.within,
+      );
+    });
+
+    test('後端缺這個 type 的 key → fallback 本地規則', () {
+      expect(
+        classifier.resolve(
+          type: 'humor',
+          backendStretchLevels: const {'extend': 'within'},
+          comfortStyle: InteractionStyle.gentle,
+        ),
+        classifier.classifyByTypeString(
+          comfortStyle: InteractionStyle.gentle,
+          type: 'humor',
+        ),
+      );
+    });
+
+    test('後端整包是 null（部署空窗期）→ fallback 本地規則', () {
+      expect(
+        classifier.resolve(
+          type: 'extend',
+          backendStretchLevels: null,
+          comfortStyle: InteractionStyle.direct,
+        ),
+        classifier.classifyByTypeString(
+          comfortStyle: InteractionStyle.direct,
+          type: 'extend',
+        ),
+      );
+    });
+
+    test('後端值不是合法字串 → fallback 本地規則', () {
+      expect(
+        classifier.resolve(
+          type: 'tease',
+          backendStretchLevels: const {'tease': 'way-too-far'},
+          comfortStyle: InteractionStyle.steady,
+        ),
+        classifier.classifyByTypeString(
+          comfortStyle: InteractionStyle.steady,
+          type: 'tease',
+        ),
+      );
+    });
+  });
 }

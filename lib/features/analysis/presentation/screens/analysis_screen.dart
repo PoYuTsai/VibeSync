@@ -166,6 +166,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Map<String, int>? _dimensionScores;
   String? _strategy;
   Map<String, String>? _replies;
+  Map<String, String>? _stretchLevels;
   Map<String, ReplyOption>? _replyOptions;
   TopicDepth? _topicDepth;
   HealthCheck? _healthCheck;
@@ -948,6 +949,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _dimensionScores = result.dimensionScores;
           _strategy = result.strategy;
           _replies = result.replies;
+          _stretchLevels = result.stretchLevels;
           _replyOptions = result.replyOptions;
           _topicDepth = result.topicDepth;
           _healthCheck = result.healthCheck;
@@ -1954,6 +1956,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _dimensionScores = result.dimensionScores;
     _strategy = result.strategy;
     _replies = result.replies;
+    _stretchLevels = result.stretchLevels;
     _replyOptions = result.replyOptions;
     _topicDepth = result.topicDepth;
     _healthCheck = result.healthCheck;
@@ -4847,6 +4850,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _dimensionScores = result.dimensionScores;
           _strategy = result.strategy;
           _replies = result.replies;
+          _stretchLevels = result.stretchLevels;
           _replyOptions = result.replyOptions;
           _topicDepth = result.topicDepth;
           _healthCheck = result.healthCheck;
@@ -8582,9 +8586,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }) {
     final comfortStyle =
         ref.read(userProfileControllerProvider).valueOrNull?.interactionStyle;
-    final stretchLevel = const ReplyStretchClassifier().classifyByTypeString(
-      comfortStyle: comfortStyle,
+    final stretchLevel = const ReplyStretchClassifier().resolve(
       type: type,
+      backendStretchLevels: _stretchLevels,
+      comfortStyle: comfortStyle,
     );
     return ReplyStyleCard(
       type: type,

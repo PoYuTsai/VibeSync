@@ -3,6 +3,43 @@ import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart'
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 
 void main() {
+  group('AnalysisResult.fromJson stretchLevels', () {
+    test('合法值全數保留', () {
+      final result = AnalysisResult.fromJson({
+        'replies': {'extend': '延展句'},
+        'stretchLevels': {
+          'extend': 'within',
+          'resonate': 'stretch',
+          'tease': 'far',
+        },
+      });
+      expect(result.stretchLevels, {
+        'extend': 'within',
+        'resonate': 'stretch',
+        'tease': 'far',
+      });
+    });
+
+    test('不合法值被剔除，其餘合法值保留', () {
+      final result = AnalysisResult.fromJson({
+        'replies': {'extend': '延展句'},
+        'stretchLevels': {
+          'extend': 'within',
+          'humor': 'way-too-far',
+          'coldRead': 42,
+        },
+      });
+      expect(result.stretchLevels, {'extend': 'within'});
+    });
+
+    test('缺席時回傳空 map，不是 null', () {
+      final result = AnalysisResult.fromJson({
+        'replies': {'extend': '延展句'},
+      });
+      expect(result.stretchLevels, isEmpty);
+    });
+  });
+
   group('TopicDepthLevel', () {
     test('label returns correct Chinese label for each level', () {
       expect(TopicDepthLevel.event.label, '事件層');

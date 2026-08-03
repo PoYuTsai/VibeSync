@@ -437,6 +437,21 @@ String _normalizeReplyTextValue(dynamic value) {
       .join('\n');
 }
 
+const _validStretchLevels = {'within', 'stretch', 'far'};
+
+Map<String, String> _normalizeStretchLevelsMap(
+  Map<String, dynamic>? stretchLevelsData,
+) {
+  if (stretchLevelsData == null) return {};
+  final normalized = <String, String>{};
+  stretchLevelsData.forEach((key, value) {
+    if (value is String && _validStretchLevels.contains(value)) {
+      normalized[key] = value;
+    }
+  });
+  return normalized;
+}
+
 Map<String, String> _normalizeRepliesMap(Map<String, dynamic>? repliesData) {
   if (repliesData == null) {
     return {};
@@ -846,6 +861,10 @@ class AnalysisResult {
   final HealthCheck? healthCheck; // null for Free users
   final Map<String, String> replies;
   final Map<String, ReplyOption> replyOptions;
+  /// 每種回覆風格相對使用者舒適區的延伸程度（within/stretch/far），
+  /// 後端 AI 自判（2026-08 關於我重新定位案 批3）。缺席或值不合法時該
+  /// key 不存在——呼叫端應 fallback 到 ReplyStretchClassifier 本地規則。
+  final Map<String, String> stretchLevels;
   final FinalRecommendation recommendation;
   final String? reminder;
   final bool shouldGiveUp; // 冰點放棄建議
@@ -871,6 +890,7 @@ class AnalysisResult {
     this.healthCheck,
     required this.replies,
     required this.replyOptions,
+    this.stretchLevels = const {},
     required this.recommendation,
     this.reminder,
     this.shouldGiveUp = false,
@@ -975,6 +995,9 @@ class AnalysisResult {
       healthCheck: healthCheck,
       replies: mergedReplies,
       replyOptions: normalizedReplyOptions,
+      stretchLevels: _normalizeStretchLevelsMap(
+        json['stretchLevels'] as Map<String, dynamic>?,
+      ),
       recommendation: recommendation,
       reminder: json['reminder'] as String?,
       shouldGiveUp: shouldGiveUp,
