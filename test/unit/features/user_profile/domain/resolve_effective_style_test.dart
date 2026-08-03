@@ -71,6 +71,21 @@ void main() {
       expect(r.notes, isNull);
     });
 
+    test('stuckPoints always comes from global, partner has no override field',
+        () {
+      final global = UserProfile.create(
+        stuckPoints: [StuckPoint.fadesOut, StuckPoint.leftOnRead],
+        updatedAt: DateTime.utc(2026),
+      );
+      final effective = resolveEffectiveStyle(global: global, partner: null);
+      expect(effective.stuckPoints, [StuckPoint.fadesOut, StuckPoint.leftOnRead]);
+    });
+
+    test('stuckPoints empty when global is null', () {
+      final effective = resolveEffectiveStyle(global: null, partner: null);
+      expect(effective.stuckPoints, isEmpty);
+    });
+
     test('handles global=null + partner with values', () {
       final partner = PartnerStyleOverride.create(
         partnerId: 'p1',

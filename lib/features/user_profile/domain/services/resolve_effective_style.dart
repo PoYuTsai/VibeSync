@@ -33,5 +33,6 @@ EffectiveStyle resolveEffectiveStyle({
         ? partner!.practiceGoals
         : (global?.practiceGoals ?? const []),
     notes: partner?.notes ?? global?.notes,
+    stuckPoints: global?.stuckPoints ?? const [],
   );
 }

@@ -19,10 +19,15 @@ class EffectiveStyle {
   final List<PracticeGoal> practiceGoals;
   final String? notes;
 
+  /// 我現在卡在哪 — global only, never merged with a partner override
+  /// (there is no per-partner concept of "現在卡在哪").
+  final List<StuckPoint> stuckPoints;
+
   const EffectiveStyle({
     this.interactionStyle,
     this.secondaryStyle,
     this.practiceGoals = const [],
     this.notes,
+    this.stuckPoints = const [],
   });
 }
