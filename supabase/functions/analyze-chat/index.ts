@@ -669,8 +669,6 @@ interface SessionContextInput {
   meetingContext?: string;
   duration?: string;
   goal?: string;
-  userStyle?: string;
-  userInterests?: string;
   targetDescription?: string;
   analysisContextNote?: string;
 }
@@ -4481,8 +4479,6 @@ function sanitizeSessionContext(
       "meetingContext",
       "duration",
       "goal",
-      "userStyle",
-      "userInterests",
       "targetDescription",
       "analysisContextNote",
     ] as const
@@ -6823,8 +6819,6 @@ serve(async (req) => {
 - 認識場景：${sessionContext.meetingContext || "未知"}
 - 認識時長：${sessionContext.duration || "未知"}
 - 用戶目標：${sessionContext.goal || "約出來"}
-- 用戶風格：${sessionContext.userStyle || "未提供"}
-- 用戶興趣：${sessionContext.userInterests || "未提供"}
 - 對方特質：${sessionContext.targetDescription || "未提供"}
 - 本次補充背景：${sessionContext.analysisContextNote || "未提供"}
 `;
@@ -7468,8 +7462,6 @@ ${recentText}`;
         `- Meeting context: ${sessionContext.meetingContext || "unknown"}`,
         `- Duration: ${sessionContext.duration || "unknown"}`,
         `- Goal: ${sessionContext.goal || "not provided"}`,
-        `- User style: ${sessionContext.userStyle || "not provided"}`,
-        `- User interests: ${sessionContext.userInterests || "not provided"}`,
         `- Target description: ${
           sessionContext.targetDescription || "not provided"
         }`,
