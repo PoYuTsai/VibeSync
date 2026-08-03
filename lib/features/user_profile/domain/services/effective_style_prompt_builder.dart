@@ -273,13 +273,13 @@ class EffectiveStylePromptBuilder {
     switch (goal) {
       case PracticeGoal.softInvite:
         return '模糊邀約';
-      case PracticeGoal.reduceAnxiety:
+      case PracticeGoal.comfortableChat:
         return '降低焦慮';
       case PracticeGoal.humorousReply:
         return '幽默回應';
       case PracticeGoal.buildCloseness:
         return '建立連結';
-      case PracticeGoal.explainLess:
+      case PracticeGoal.findCompatiblePartner:
         return '減少解釋';
     }
   }
@@ -288,13 +288,13 @@ class EffectiveStylePromptBuilder {
     switch (goal) {
       case PracticeGoal.softInvite:
         return '更早給清楚但低壓的邀約方向。';
-      case PracticeGoal.reduceAnxiety:
+      case PracticeGoal.comfortableChat:
         return '避免連續確認、追問或把對方反應綁到自我價值。';
       case PracticeGoal.humorousReply:
         return '優先給自然、短、好接的幽默。';
       case PracticeGoal.buildCloseness:
         return '多用情緒與小故事建立連結，不只交換資訊。';
-      case PracticeGoal.explainLess:
+      case PracticeGoal.findCompatiblePartner:
         return '回覆更短、更有留白，避免長篇說明。';
     }
   }

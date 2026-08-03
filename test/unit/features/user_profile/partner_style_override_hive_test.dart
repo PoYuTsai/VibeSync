@@ -37,7 +37,7 @@ void main() {
       interactionStyle: InteractionStyle.humorous,
       practiceGoals: const [
         PracticeGoal.softInvite,
-        PracticeGoal.reduceAnxiety,
+        PracticeGoal.comfortableChat,
       ],
       notes: '對方慢熟',
       updatedAt: DateTime.utc(2026, 5, 1, 12, 0),

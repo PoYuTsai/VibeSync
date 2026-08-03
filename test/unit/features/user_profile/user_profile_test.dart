@@ -36,7 +36,7 @@ void main() {
         () => UserProfile.create(
           practiceGoals: const [
             PracticeGoal.softInvite,
-            PracticeGoal.reduceAnxiety,
+            PracticeGoal.comfortableChat,
             PracticeGoal.humorousReply,
             PracticeGoal.buildCloseness,
           ],

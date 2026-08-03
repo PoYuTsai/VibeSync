@@ -32,7 +32,7 @@ void main() {
       interactionStyle: InteractionStyle.gentle,
       practiceGoals: const [
         PracticeGoal.softInvite,
-        PracticeGoal.reduceAnxiety,
+        PracticeGoal.comfortableChat,
       ],
       topicSeeds: const [
         TopicSeed.coffee,

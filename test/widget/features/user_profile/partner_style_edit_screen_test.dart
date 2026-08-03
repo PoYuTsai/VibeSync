@@ -197,7 +197,7 @@ void main() {
       final global = UserProfile.create(
         practiceGoals: const [
           PracticeGoal.softInvite,
-          PracticeGoal.reduceAnxiety,
+          PracticeGoal.comfortableChat,
         ],
         updatedAt: DateTime.utc(2026, 5, 1),
       );
@@ -205,7 +205,7 @@ void main() {
         _harness(partnerId: 'p1', partner: _alice(), globalProfile: global),
       );
       await tester.pumpAndSettle();
-      expect(find.text('（沿用全域：自然邀約、降低焦慮）'), findsOneWidget);
+      expect(find.text('（沿用全域：想約得出來、想先能自在聊天，不要那麼緊繃）'), findsOneWidget);
     });
 
     testWidgets(
@@ -226,20 +226,20 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(ChoiceChip, '自然邀約'));
+      await tester.tap(find.widgetWithText(ChoiceChip, '想約得出來'));
       await tester.pumpAndSettle();
       expect(
         tester
-            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '自然邀約'))
+            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '想約得出來'))
             .selected,
         isTrue,
       );
 
-      await tester.tap(find.widgetWithText(ChoiceChip, '自然邀約'));
+      await tester.tap(find.widgetWithText(ChoiceChip, '想約得出來'));
       await tester.pumpAndSettle();
       expect(
         tester
-            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '自然邀約'))
+            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '想約得出來'))
             .selected,
         isFalse,
       );
@@ -255,17 +255,17 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      for (final label in const ['自然邀約', '降低焦慮', '幽默回覆']) {
+      for (final label in const ['想約得出來', '想先能自在聊天，不要那麼緊繃', '想讓對話更幽默、有來有往']) {
         await tester.tap(find.widgetWithText(ChoiceChip, label));
         await tester.pumpAndSettle();
       }
-      await tester.tap(find.widgetWithText(ChoiceChip, '培養親近'));
+      await tester.tap(find.widgetWithText(ChoiceChip, '想培養穩定的親近感'));
       await tester.pumpAndSettle();
 
       expect(find.text('最多選 3 個'), findsOneWidget);
       expect(
         tester
-            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '培養親近'))
+            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '想培養穩定的親近感'))
             .selected,
         isFalse,
       );
@@ -281,7 +281,7 @@ void main() {
       // No goals → no reset (and no style override → also no reset there).
       expect(find.text('沿用全域'), findsNothing);
 
-      await tester.tap(find.widgetWithText(ChoiceChip, '自然邀約'));
+      await tester.tap(find.widgetWithText(ChoiceChip, '想約得出來'));
       await tester.pumpAndSettle();
       // Goals reset link appears (style still null → only one reset link).
       expect(find.text('沿用全域'), findsOneWidget);
@@ -293,7 +293,7 @@ void main() {
         partnerId: 'p1',
         practiceGoals: const [
           PracticeGoal.softInvite,
-          PracticeGoal.reduceAnxiety,
+          PracticeGoal.comfortableChat,
         ],
         updatedAt: DateTime.utc(2026, 5, 1),
       );
@@ -311,13 +311,13 @@ void main() {
       expect(find.text('沿用全域'), findsNothing);
       expect(
         tester
-            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '自然邀約'))
+            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '想約得出來'))
             .selected,
         isFalse,
       );
       expect(
         tester
-            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '降低焦慮'))
+            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '想先能自在聊天，不要那麼緊繃'))
             .selected,
         isFalse,
       );

@@ -28,11 +28,11 @@ void main() {
       (tester) async {
     await tester.pumpWidget(aboutMeHarness(repo: FakeUserProfileRepo()));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ChoiceChip, '自然邀約'));
-    await tester.tap(find.widgetWithText(ChoiceChip, '降低焦慮'));
-    await tester.tap(find.widgetWithText(ChoiceChip, '幽默回覆'));
+    await tester.tap(find.widgetWithText(ChoiceChip, '想約得出來'));
+    await tester.tap(find.widgetWithText(ChoiceChip, '想先能自在聊天，不要那麼緊繃'));
+    await tester.tap(find.widgetWithText(ChoiceChip, '想讓對話更幽默、有來有往'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ChoiceChip, '培養親近'));
+    await tester.tap(find.widgetWithText(ChoiceChip, '想培養穩定的親近感'));
     await tester.pump();
     expect(find.text('最多選 3 個'), findsOneWidget);
   });
@@ -89,7 +89,7 @@ void main() {
         tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '溫柔'));
     expect(styleChip.selected, isTrue);
     final goalChip =
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '自然邀約'));
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '想約得出來'));
     expect(goalChip.selected, isTrue);
     expect(find.text('日劇'), findsOneWidget);
     expect(find.text('慢熟'), findsOneWidget);

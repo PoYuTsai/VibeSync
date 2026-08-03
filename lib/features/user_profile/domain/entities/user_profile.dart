@@ -19,10 +19,10 @@ enum InteractionStyle {
 @HiveType(typeId: 11)
 enum PracticeGoal {
   @HiveField(0) softInvite,
-  @HiveField(1) reduceAnxiety,
+  @HiveField(1) comfortableChat,
   @HiveField(2) humorousReply,
   @HiveField(3) buildCloseness,
-  @HiveField(4) explainLess,
+  @HiveField(4) findCompatiblePartner,
 }
 
 /// 常聊話題 — multi select, max 5.

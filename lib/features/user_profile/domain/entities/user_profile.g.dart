@@ -124,13 +124,13 @@ class PracticeGoalAdapter extends TypeAdapter<PracticeGoal> {
       case 0:
         return PracticeGoal.softInvite;
       case 1:
-        return PracticeGoal.reduceAnxiety;
+        return PracticeGoal.comfortableChat;
       case 2:
         return PracticeGoal.humorousReply;
       case 3:
         return PracticeGoal.buildCloseness;
       case 4:
-        return PracticeGoal.explainLess;
+        return PracticeGoal.findCompatiblePartner;
       default:
         return PracticeGoal.softInvite;
     }
@@ -141,13 +141,13 @@ class PracticeGoalAdapter extends TypeAdapter<PracticeGoal> {
     switch (obj) {
       case PracticeGoal.softInvite:
         writer.writeByte(0);
-      case PracticeGoal.reduceAnxiety:
+      case PracticeGoal.comfortableChat:
         writer.writeByte(1);
       case PracticeGoal.humorousReply:
         writer.writeByte(2);
       case PracticeGoal.buildCloseness:
         writer.writeByte(3);
-      case PracticeGoal.explainLess:
+      case PracticeGoal.findCompatiblePartner:
         writer.writeByte(4);
     }
   }

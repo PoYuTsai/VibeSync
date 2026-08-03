@@ -202,7 +202,7 @@ void main() {
     expect(find.text('30 秒，讓建議更像你'), findsOneWidget);
     await tester.tap(find.text('幽默'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('自然邀約'));
+    await tester.tap(find.text('想約得出來'));
     await tester.pumpAndSettle();
 
     // 再滑 2 次到分流頁，答「有」。

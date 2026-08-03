@@ -28,7 +28,7 @@ class _ProofProfile extends UserProfileController {
         secondaryStyle: InteractionStyle.humorous,
         practiceGoals: const [
           PracticeGoal.softInvite,
-          PracticeGoal.explainLess,
+          PracticeGoal.findCompatiblePartner,
         ],
         topicSeeds: const [TopicSeed.coffee, TopicSeed.travel, TopicSeed.pets],
         updatedAt: DateTime(2026, 7, 19),

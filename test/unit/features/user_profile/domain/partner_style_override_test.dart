@@ -28,7 +28,7 @@ void main() {
           partnerId: 'p1',
           practiceGoals: const [
             PracticeGoal.softInvite,
-            PracticeGoal.reduceAnxiety,
+            PracticeGoal.comfortableChat,
             PracticeGoal.humorousReply,
             PracticeGoal.buildCloseness,
           ],
@@ -108,7 +108,7 @@ void main() {
         updatedAt: ts,
       );
       expect(
-        () => ov.practiceGoals.add(PracticeGoal.reduceAnxiety),
+        () => ov.practiceGoals.add(PracticeGoal.comfortableChat),
         throwsUnsupportedError,
       );
     });

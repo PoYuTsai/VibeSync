@@ -70,7 +70,7 @@ void main() {
       interactionStyle: InteractionStyle.gentle,
       practiceGoals: const [
         PracticeGoal.softInvite,
-        PracticeGoal.reduceAnxiety,
+        PracticeGoal.comfortableChat,
       ],
       topicSeeds: const [TopicSeed.coffee, TopicSeed.travel, TopicSeed.movies],
       updatedAt: DateTime.utc(2026, 4, 30),
@@ -78,8 +78,8 @@ void main() {
     await tester.pumpWidget(_harness(initial: profile));
     await tester.pumpAndSettle();
     expect(find.textContaining('溫柔'), findsOneWidget);
-    expect(find.textContaining('自然邀約'), findsOneWidget);
-    expect(find.textContaining('降低焦慮'), findsOneWidget);
+    expect(find.textContaining('想約得出來'), findsOneWidget);
+    expect(find.textContaining('想先能自在聊天，不要那麼緊繃'), findsOneWidget);
     expect(find.textContaining('咖啡'), findsOneWidget);
     expect(find.text('編輯'), findsOneWidget);
     expect(find.text('開始設定'), findsNothing);

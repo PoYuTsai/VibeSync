@@ -35,11 +35,11 @@ void main() {
     test('overrides practiceGoals when partner has any', () {
       final partner = PartnerStyleOverride.create(
         partnerId: 'p1',
-        practiceGoals: const [PracticeGoal.reduceAnxiety],
+        practiceGoals: const [PracticeGoal.comfortableChat],
         updatedAt: ts,
       );
       final r = resolveEffectiveStyle(global: globalStyle, partner: partner);
-      expect(r.practiceGoals, [PracticeGoal.reduceAnxiety]);
+      expect(r.practiceGoals, [PracticeGoal.comfortableChat]);
     });
 
     test('falls back to global goals when partner goals are empty', () {

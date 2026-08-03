@@ -454,7 +454,7 @@ void main() {
           psychology: '',
         ),
         messages: const [],
-        practiceGoals: const [PracticeGoal.explainLess],
+        practiceGoals: const [PracticeGoal.findCompatiblePartner],
         isDataQualityFlagged: false,
       );
       expect(card.actionLabel, '輕量表達偏好');
@@ -869,7 +869,7 @@ void main() {
             isDataQualityFlagged: true,
           );
       final cardA = runWith(const [PracticeGoal.softInvite]);
-      final cardB = runWith(const [PracticeGoal.reduceAnxiety]);
+      final cardB = runWith(const [PracticeGoal.comfortableChat]);
       expect(
         cardA.actionLabel,
         cardB.actionLabel,
@@ -945,7 +945,7 @@ void main() {
           'heatScore': 50,
           'gameStage':
               const GameStageInfo(current: GameStage.premise, nextStep: ''),
-          'practiceGoals': const [PracticeGoal.explainLess],
+          'practiceGoals': const [PracticeGoal.findCompatiblePartner],
         },
         // fitCheck (default fallback)
         {

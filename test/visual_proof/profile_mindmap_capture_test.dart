@@ -63,7 +63,7 @@ void main() {
                 secondaryStyle: InteractionStyle.humorous,
                 practiceGoals: const [
                   PracticeGoal.softInvite,
-                  PracticeGoal.reduceAnxiety,
+                  PracticeGoal.comfortableChat,
                 ],
                 topicSeeds: const [
                   TopicSeed.coffee,

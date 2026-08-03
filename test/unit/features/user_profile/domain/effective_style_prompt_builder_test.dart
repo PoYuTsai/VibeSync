@@ -56,7 +56,7 @@ void main() {
       final context = builder.buildForAnalysis(
         global: profile(
           style: InteractionStyle.humorous,
-          goals: const [PracticeGoal.explainLess],
+          goals: const [PracticeGoal.findCompatiblePartner],
           seeds: const [TopicSeed.fitness, TopicSeed.coffee],
           customTopics: '日劇',
           notes: '我慢熟，希望不要太快邀約',
@@ -79,7 +79,7 @@ void main() {
       final context = builder.buildForAnalysis(
         global: profile(
           style: InteractionStyle.gentle,
-          goals: const [PracticeGoal.reduceAnxiety],
+          goals: const [PracticeGoal.comfortableChat],
           notes: '全域備註',
         ),
         partner: override(
@@ -101,7 +101,7 @@ void main() {
       final context = builder.buildForAnalysis(
         global: profile(
           style: InteractionStyle.gentle,
-          goals: const [PracticeGoal.reduceAnxiety],
+          goals: const [PracticeGoal.comfortableChat],
           notes: '全域低壓',
         ),
         partner: override(
@@ -201,7 +201,7 @@ void main() {
       final context = builder.buildForOpener(
         global: profile(
           style: InteractionStyle.humorous,
-          goals: const [PracticeGoal.explainLess],
+          goals: const [PracticeGoal.findCompatiblePartner],
           seeds: const [TopicSeed.fitness, TopicSeed.coffee],
           customTopics: '日劇',
           notes: '我慢熟，開場不要太衝',
@@ -282,7 +282,7 @@ void main() {
           secondaryStyle: InteractionStyle.playful,
           goals: const [
             PracticeGoal.softInvite,
-            PracticeGoal.reduceAnxiety,
+            PracticeGoal.comfortableChat,
             PracticeGoal.buildCloseness,
           ],
           seeds: const [
@@ -395,7 +395,7 @@ void main() {
     test('既有三個 builder 方法 snapshot 不因新增 buildForNewTopic 改變', () {
       final global = profile(
         style: InteractionStyle.humorous,
-        goals: const [PracticeGoal.explainLess],
+        goals: const [PracticeGoal.findCompatiblePartner],
         seeds: const [TopicSeed.coffee],
       );
       // 相同輸入下 opener/analysis/coach 三個 slice 的 contract 行不變。
@@ -451,7 +451,7 @@ void main() {
       final humorous = builder.buildForAnalysis(
         global: profile(
           style: InteractionStyle.humorous,
-          goals: const [PracticeGoal.explainLess],
+          goals: const [PracticeGoal.findCompatiblePartner],
         ),
         partner: null,
         includePartnerOverride: true,
@@ -467,7 +467,7 @@ void main() {
       final gentle = builder.buildForAnalysis(
         global: profile(
           style: InteractionStyle.gentle,
-          goals: const [PracticeGoal.reduceAnxiety],
+          goals: const [PracticeGoal.comfortableChat],
         ),
         partner: null,
         includePartnerOverride: true,

@@ -345,11 +345,11 @@ String _interactionStyleLabel(InteractionStyle s) => switch (s) {
     };
 
 String _practiceGoalLabel(PracticeGoal g) => switch (g) {
-      PracticeGoal.softInvite => '自然邀約',
-      PracticeGoal.reduceAnxiety => '降低焦慮',
-      PracticeGoal.humorousReply => '幽默回覆',
-      PracticeGoal.buildCloseness => '培養親近',
-      PracticeGoal.explainLess => '減少解釋',
+      PracticeGoal.softInvite => '想約得出來',
+      PracticeGoal.comfortableChat => '想先能自在聊天，不要那麼緊繃',
+      PracticeGoal.humorousReply => '想讓對話更幽默、有來有往',
+      PracticeGoal.buildCloseness => '想培養穩定的親近感',
+      PracticeGoal.findCompatiblePartner => '想找到聊得來的對象、不設限交往',
     };
 
 String _topicSeedLabel(TopicSeed t) => switch (t) {

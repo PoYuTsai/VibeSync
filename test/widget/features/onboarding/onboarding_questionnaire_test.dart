@@ -41,7 +41,7 @@ void main() {
     for (final label in ['穩重', '直接', '幽默', '溫柔', '俏皮']) {
       expect(find.text(label), findsOneWidget);
     }
-    for (final label in ['自然邀約', '降低焦慮', '幽默回覆', '培養親近', '減少解釋']) {
+    for (final label in ['想約得出來', '想先能自在聊天，不要那麼緊繃', '想讓對話更幽默、有來有往', '想培養穩定的親近感', '想找到聊得來的對象、不設限交往']) {
       expect(find.text(label), findsOneWidget);
     }
   });
@@ -69,14 +69,14 @@ void main() {
     List<PracticeGoal>? changed;
     await _pump(
       tester,
-      goals: const [PracticeGoal.softInvite, PracticeGoal.reduceAnxiety],
+      goals: const [PracticeGoal.softInvite, PracticeGoal.comfortableChat],
       onGoalsChanged: (g) => changed = g,
     );
 
-    await tester.tap(find.text('幽默回覆'));
+    await tester.tap(find.text('想讓對話更幽默、有來有往'));
     expect(changed, isNull);
 
-    await tester.tap(find.text('自然邀約'));
-    expect(changed, [PracticeGoal.reduceAnxiety]);
+    await tester.tap(find.text('想約得出來'));
+    expect(changed, [PracticeGoal.comfortableChat]);
   });
 }
