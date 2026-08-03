@@ -18,10 +18,33 @@ void main() {
       (tester) async {
     await tester.pumpWidget(aboutMeHarness(repo: FakeUserProfileRepo()));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '溫柔'));
     await tester.tap(find.widgetWithText(ChoiceChip, '溫柔'));
     await tester.pumpAndSettle();
     expect(find.text('儲存'), findsOneWidget);
     expect(find.text('略過'), findsNothing);
+  });
+
+  testWidgets('A1（我現在卡在哪）與 A2（我想達成什麼）兩區塊都渲染，舊練習目標區塊已移除',
+      (tester) async {
+    await tester.pumpWidget(aboutMeHarness(repo: FakeUserProfileRepo()));
+    await tester.pumpAndSettle();
+    expect(find.text('我現在卡在哪'), findsOneWidget);
+    expect(find.text('我想達成什麼'), findsOneWidget);
+    expect(find.text('練習目標'), findsNothing);
+  });
+
+  testWidgets('cannot select 3rd stuck point — shows 最多選 2 個 toast',
+      (tester) async {
+    await tester.pumpWidget(aboutMeHarness(repo: FakeUserProfileRepo()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, '聊一聊就冷掉，不知道怎麼接下去'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, '不知道怎麼開口約'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(ChoiceChip, '會緊張、怕講錯話不敢傳'));
+    await tester.pump();
+    expect(find.text('最多選 2 個'), findsOneWidget);
   });
 
   testWidgets('cannot select 4th practice goal — shows 最多選 3 個 toast',
@@ -107,6 +130,7 @@ void main() {
     await tester.pumpWidget(aboutMeHarness(repo: repo));
     await tester.pumpAndSettle();
     // Tap the same chip again to deselect
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '溫柔'));
     await tester.tap(find.widgetWithText(ChoiceChip, '溫柔'));
     await tester.pumpAndSettle();
     expect(find.text('清除設定'), findsOneWidget);
@@ -117,6 +141,7 @@ void main() {
     final repo = FakeUserProfileRepo();
     await tester.pumpWidget(aboutMeHarness(repo: repo));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '直接'));
     await tester.tap(find.widgetWithText(ChoiceChip, '直接'));
     await tester.pumpAndSettle();
     final saveBtn = find.widgetWithText(ElevatedButton, '儲存');
@@ -140,6 +165,7 @@ void main() {
     );
     await tester.pumpWidget(aboutMeHarness(repo: repo));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '溫柔'));
     await tester.tap(find.widgetWithText(ChoiceChip, '溫柔'));
     await tester.pumpAndSettle();
     final clearBtn = find.widgetWithText(ElevatedButton, '清除設定');
@@ -157,6 +183,7 @@ void main() {
     final repo = FakeUserProfileRepo()..throwOnSave = true;
     await tester.pumpWidget(aboutMeHarness(repo: repo));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '直接'));
     await tester.tap(find.widgetWithText(ChoiceChip, '直接'));
     await tester.pumpAndSettle();
     final saveBtn = find.widgetWithText(ElevatedButton, '儲存');

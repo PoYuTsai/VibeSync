@@ -53,6 +53,7 @@ void main() {
   testWidgets('改了東西按返回鍵 → 跳確認，選「繼續編輯」留在頁面', (tester) async {
     await _pumpWithBackStack(tester, repo: FakeUserProfileRepo());
 
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '溫柔'));
     await tester.tap(find.widgetWithText(ChoiceChip, '溫柔'));
     await tester.pumpAndSettle();
 
@@ -73,6 +74,7 @@ void main() {
   testWidgets('改了東西按返回鍵 → 跳確認，選「放棄變更」真的離開', (tester) async {
     await _pumpWithBackStack(tester, repo: FakeUserProfileRepo());
 
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '溫柔'));
     await tester.tap(find.widgetWithText(ChoiceChip, '溫柔'));
     await tester.pumpAndSettle();
 

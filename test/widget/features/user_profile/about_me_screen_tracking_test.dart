@@ -91,8 +91,10 @@ void main() {
       source: 'card',
     );
 
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '直接'));
     await tester.tap(find.widgetWithText(ChoiceChip, '直接'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '想約得出來'));
     await tester.tap(find.widgetWithText(ChoiceChip, '想約得出來'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.widgetWithText(ChoiceChip, '咖啡'));
@@ -132,6 +134,7 @@ void main() {
     );
     await _pump(tester, repo: repo, events: events, source: 'settings');
 
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '溫柔'));
     await tester.tap(find.widgetWithText(ChoiceChip, '溫柔'));
     await tester.pumpAndSettle();
     final clearBtn = find.widgetWithText(ElevatedButton, '清除設定');

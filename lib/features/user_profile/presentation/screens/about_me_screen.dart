@@ -27,6 +27,7 @@ class AboutMeScreen extends ConsumerStatefulWidget {
 
 class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
   StylePairDraft _draftPair = StylePairDraft.empty;
+  final Set<StuckPoint> _draftStuckPoints = <StuckPoint>{};
   final Set<PracticeGoal> _draftGoals = <PracticeGoal>{};
   final Set<TopicSeed> _draftSeeds = <TopicSeed>{};
   final TextEditingController _customController = TextEditingController();
@@ -61,6 +62,9 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
       primary: profile.interactionStyle,
       secondary: profile.secondaryStyle,
     );
+    _draftStuckPoints
+      ..clear()
+      ..addAll(profile.stuckPoints);
     _draftGoals
       ..clear()
       ..addAll(profile.practiceGoals);
@@ -74,6 +78,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
 
   bool get _isDraftEmpty =>
       _draftPair.primary == null &&
+      _draftStuckPoints.isEmpty &&
       _draftGoals.isEmpty &&
       _draftSeeds.isEmpty &&
       _customController.text.trim().isEmpty &&
@@ -84,6 +89,8 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
     final base = _initialProfile;
     return _draftPair.primary != base?.interactionStyle ||
         _draftPair.secondary != base?.secondaryStyle ||
+        !setEquals(
+            _draftStuckPoints, (base?.stuckPoints ?? const []).toSet()) ||
         !setEquals(_draftGoals, (base?.practiceGoals ?? const []).toSet()) ||
         !setEquals(_draftSeeds, (base?.topicSeeds ?? const []).toSet()) ||
         _customController.text.trim() != (base?.customTopics ?? '').trim() ||
@@ -124,6 +131,23 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
     if (!hasExisting && _isDraftEmpty) return '略過';
     if (hasExisting && _isDraftEmpty) return '清除設定';
     return '儲存';
+  }
+
+  void _toggleStuckPoint(StuckPoint s) {
+    if (_draftStuckPoints.contains(s)) {
+      setState(() => _draftStuckPoints.remove(s));
+      return;
+    }
+    if (_draftStuckPoints.length >= UserProfile.maxStuckPoints) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('最多選 2 個'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+      return;
+    }
+    setState(() => _draftStuckPoints.add(s));
   }
 
   void _toggleGoal(PracticeGoal g) {
@@ -198,6 +222,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
         secondaryStyle: _draftPair.secondary,
         practiceGoals: _draftGoals.toList(),
         topicSeeds: _draftSeeds.toList(),
+        stuckPoints: _draftStuckPoints.toList(),
         customTopics: _customController.text,
         notes: _notesController.text,
         updatedAt: DateTime.now().toUtc(),
@@ -291,9 +316,28 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
                     ),
                   ],
                   const SizedBox(height: 14),
+                  ProfileChipSection<StuckPoint>(
+                    title: '我現在卡在哪',
+                    subtitle: '最多 2 個，教練會盯著這裡幫你推一把。',
+                    options: StuckPoint.values,
+                    labelOf: _stuckPointLabel,
+                    isSelected: _draftStuckPoints.contains,
+                    onTap: _toggleStuckPoint,
+                  ),
+                  const SizedBox(height: 14),
+                  ProfileChipSection<PracticeGoal>(
+                    title: '我想達成什麼',
+                    subtitle: '最多 3 個，這是教練幫你的主要方向。',
+                    options: PracticeGoal.values,
+                    labelOf: _practiceGoalLabel,
+                    isSelected: _draftGoals.contains,
+                    onTap: _toggleGoal,
+                  ),
+                  const SizedBox(height: 14),
                   ProfileChipSection<InteractionStyle>(
                     title: '互動風格',
-                    subtitle: '先點主風格，再點副風格（可只選主）。',
+                    subtitle: '先點主風格，再點副風格（可只選主）。'
+                        '這是你現在的舒適區，不是要 AI 模仿——是讓它知道哪些建議對你來說是往前一步。',
                     options: InteractionStyle.values,
                     labelOf: _interactionStyleLabel,
                     isSelected: _draftPair.contains,
@@ -301,15 +345,6 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
                     onTap: (s) => setState(() {
                       _draftPair = _draftPair.tap(s);
                     }),
-                  ),
-                  const SizedBox(height: 14),
-                  ProfileChipSection<PracticeGoal>(
-                    title: '練習目標',
-                    subtitle: '最多 3 個，AI 會在合適時機提醒。',
-                    options: PracticeGoal.values,
-                    labelOf: _practiceGoalLabel,
-                    isSelected: _draftGoals.contains,
-                    onTap: _toggleGoal,
                   ),
                   const SizedBox(height: 14),
                   ProfileChipSection<TopicSeed>(
@@ -338,7 +373,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
                   const SizedBox(height: 14),
                   _ProfileInputSection(
                     title: '想讓 AI 知道的事',
-                    subtitle: '例如：「我慢熟、希望不要太快邀約」。',
+                    subtitle: '有什麼是你不想做的？例如「不要太快邀約」「不要開黃腔」。',
                     child: TextField(
                       key: const Key('about-me-notes'),
                       controller: _notesController,
@@ -520,7 +555,7 @@ class _AboutMeIntroCard extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Text(
-                '讓建議更像你',
+                '讓教練真的懂你',
                 style: AppTypography.titleMedium.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.w800,
@@ -530,7 +565,7 @@ class _AboutMeIntroCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'AI 會用這些設定調整你的回覆語氣、練習方向和跟進建議；不會替你假裝成另一個人。',
+            'AI 會用這些設定了解你的處境，幫你往前推一步；不會照你現在的樣子模仿你。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
               height: 1.45,
@@ -633,6 +668,14 @@ String _interactionStyleLabel(InteractionStyle s) => switch (s) {
       InteractionStyle.humorous => '幽默',
       InteractionStyle.gentle => '溫柔',
       InteractionStyle.playful => '俏皮',
+    };
+
+String _stuckPointLabel(StuckPoint s) => switch (s) {
+      StuckPoint.fadesOut => '聊一聊就冷掉，不知道怎麼接下去',
+      StuckPoint.dontKnowHowToAsk => '不知道怎麼開口約',
+      StuckPoint.anxiousWontSend => '會緊張、怕講錯話不敢傳',
+      StuckPoint.overExplains => '話太多、一直在解釋自己',
+      StuckPoint.leftOnRead => '一直被已讀不回',
     };
 
 String _practiceGoalLabel(PracticeGoal g) => switch (g) {
