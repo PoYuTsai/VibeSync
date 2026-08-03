@@ -267,6 +267,7 @@ class CoachActionPolicy {
     required FinalRecommendation finalRecommendation,
     required List<Message> messages,
     required List<PracticeGoal> practiceGoals,
+    required List<StuckPoint> stuckPoints,
     required bool isDataQualityFlagged,
     CoachActionHint? coachActionHint,
     PsychologyAnalysis? psychology,
@@ -277,6 +278,7 @@ class CoachActionPolicy {
       finalRecommendation: finalRecommendation,
       messages: messages,
       practiceGoals: practiceGoals,
+      stuckPoints: stuckPoints,
       isDataQualityFlagged: isDataQualityFlagged,
       coachActionHint: coachActionHint,
       psychology: psychology,
@@ -290,6 +292,7 @@ class CoachActionPolicy {
     required FinalRecommendation finalRecommendation,
     required List<Message> messages,
     required List<PracticeGoal> practiceGoals,
+    required List<StuckPoint> stuckPoints,
     required bool isDataQualityFlagged,
     CoachActionHint? coachActionHint,
     PsychologyAnalysis? psychology,
@@ -313,10 +316,10 @@ class CoachActionPolicy {
       if (_payloadSuggestsMeeting(gameStage.nextStep)) {
         return _buildPausePursuit(heatScore: heatScore);
       }
-      // tie-breaker: reduceAnxiety practice goal → keep on pausePursuit even
-      // without a meeting-keyword nextStep, since the user already opted in
-      // to "step back from pressure".
-      if (practiceGoals.contains(PracticeGoal.reduceAnxiety)) {
+      // tie-breaker: anxiousWontSend stuck point → keep on pausePursuit even
+      // without a meeting-keyword nextStep, since the user already flagged
+      // this as their current situation.
+      if (stuckPoints.contains(StuckPoint.anxiousWontSend)) {
         return _buildPausePursuit(heatScore: heatScore);
       }
       return _buildLowerPressureReply(
@@ -363,7 +366,7 @@ class CoachActionPolicy {
           finalRecommendation: finalRecommendation,
         );
       }
-      if (practiceGoals.contains(PracticeGoal.explainLess)) {
+      if (stuckPoints.contains(StuckPoint.overExplains)) {
         return _buildPreferenceSignal(heatScore: heatScore);
       }
       return _buildExtendTopicStoryFrame(

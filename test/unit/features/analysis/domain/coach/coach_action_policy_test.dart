@@ -85,6 +85,7 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
       );
       expect(card.actionLabel, '互動品質觀察');
@@ -139,6 +140,7 @@ void main() {
         ),
         messages: messages,
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
       );
 
@@ -171,6 +173,7 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
         coachActionHint: const CoachActionHint(
           catchablePoint: '在家追劇 / 絕命毒師',
@@ -210,6 +213,7 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
       );
 
@@ -232,6 +236,7 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
         coachActionHint: const CoachActionHint(
           catchablePoint: '訊號太少，沒有明確可接球點',
@@ -262,6 +267,7 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: true,
       );
       // Positive assertion pins the flagged code path — without it the
@@ -302,6 +308,7 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
       );
       expect(card.actionLabel, '模糊邀約');
@@ -329,6 +336,7 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [PracticeGoal.softInvite],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
       );
 
@@ -357,6 +365,7 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
       );
       expect(card.actionLabel, '暫停追問');
@@ -380,6 +389,7 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
       );
       expect(
@@ -406,13 +416,14 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
       );
       expect(card.actionLabel, '暫停追問');
     });
 
     test(
-        'should pick extendTopicStoryFrame when heat is warm-hot and stage is mid-game without explainLess goal',
+        'should pick extendTopicStoryFrame when heat is warm-hot and stage is mid-game without overExplains stuck point',
         () {
       final card = CoachActionPolicy.evaluate(
         heatScore: 50,
@@ -428,6 +439,7 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
       );
       expect(card.actionLabel, '故事框架');
@@ -439,7 +451,7 @@ void main() {
     });
 
     test(
-        'should switch to preferenceSignal when explainLess practice goal is set',
+        'should switch to preferenceSignal when overExplains stuck point is set',
         () {
       final card = CoachActionPolicy.evaluate(
         heatScore: 50,
@@ -454,7 +466,8 @@ void main() {
           psychology: '',
         ),
         messages: const [],
-        practiceGoals: const [PracticeGoal.findCompatiblePartner],
+        practiceGoals: const [],
+        stuckPoints: const [StuckPoint.overExplains],
         isDataQualityFlagged: false,
       );
       expect(card.actionLabel, '輕量表達偏好');
@@ -462,6 +475,29 @@ void main() {
         card.learningLink,
         LearningLinkResolver.resolve(CoachActionType.preferenceSignal),
       );
+    });
+
+    test(
+        'should pick pausePursuit when cold heat and anxiousWontSend stuck point is set',
+        () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 25,
+        gameStage: const GameStageInfo(
+          current: GameStage.opening,
+          nextStep: '',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '',
+          reason: '',
+          psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [],
+        stuckPoints: const [StuckPoint.anxiousWontSend],
+        isDataQualityFlagged: false,
+      );
+      expect(card.actionLabel, '暫停追問');
     });
 
     test('should pick challenge copy when challengeSignal is detected', () {
@@ -479,6 +515,7 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
         psychology: const PsychologyAnalysis(
           subtext: '',
@@ -509,6 +546,7 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
         psychology: const PsychologyAnalysis(subtext: '她其實有點不安，想先被理解和安撫一下'),
       );
@@ -530,6 +568,7 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
         psychology: const PsychologyAnalysis(subtext: '她想了解你是不是有趣、有生活感'),
       );
@@ -551,6 +590,7 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
         psychology: const PsychologyAnalysis(subtext: '嗯'),
       );
@@ -586,6 +626,7 @@ void main() {
         ),
         messages: messages,
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
       );
       expect(card.actionLabel, '回得剛剛好');
@@ -631,6 +672,7 @@ void main() {
         ),
         messages: messages,
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
       );
 
@@ -685,6 +727,7 @@ void main() {
         ),
         messages: messages,
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
       );
 
@@ -732,6 +775,7 @@ void main() {
         ),
         messages: messages,
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
       );
 
@@ -766,6 +810,7 @@ void main() {
         ),
         messages: messages,
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
       );
       expect(card.actionLabel, isNot('回得剛剛好'));
@@ -788,6 +833,7 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
       );
       expect(card.actionLabel, '降低壓力');
@@ -814,6 +860,7 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [PracticeGoal.humorousReply],
+        stuckPoints: const [],
         isDataQualityFlagged: false,
       );
       expect(card.actionLabel, '輕鬆幽默');
@@ -838,6 +885,7 @@ void main() {
         ),
         messages: const [],
         practiceGoals: const [],
+        stuckPoints: const [],
         isDataQualityFlagged: true,
       );
       expect(card.actionLabel, isNot('模糊邀約'));
@@ -866,6 +914,7 @@ void main() {
             ),
             messages: const [],
             practiceGoals: goals,
+            stuckPoints: const [],
             isDataQualityFlagged: true,
           );
       final cardA = runWith(const [PracticeGoal.softInvite]);
@@ -945,7 +994,7 @@ void main() {
           'heatScore': 50,
           'gameStage':
               const GameStageInfo(current: GameStage.premise, nextStep: ''),
-          'practiceGoals': const [PracticeGoal.findCompatiblePartner],
+          'stuckPoints': const [StuckPoint.overExplains],
         },
         // fitCheck (default fallback)
         {
@@ -971,6 +1020,7 @@ void main() {
           messages: (t['messages'] as List<Message>?) ?? const [],
           practiceGoals:
               (t['practiceGoals'] as List<PracticeGoal>?) ?? const [],
+          stuckPoints: (t['stuckPoints'] as List<StuckPoint>?) ?? const [],
           isDataQualityFlagged: false,
           psychology: t['psychology'] as PsychologyAnalysis?,
         );

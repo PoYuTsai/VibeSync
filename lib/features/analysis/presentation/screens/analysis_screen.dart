@@ -7442,6 +7442,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                             effectiveStyleProvider(partnerId))
                                         .practiceGoals
                                     : const <PracticeGoal>[];
+                                final stuckPoints = partnerId != null
+                                    ? ref
+                                        .watch(
+                                            effectiveStyleProvider(partnerId))
+                                        .stuckPoints
+                                    : const <StuckPoint>[];
 
                                 final cardData = CoachActionPolicy.evaluate(
                                   heatScore: _enthusiasmScore!,
@@ -7450,6 +7456,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   messages: conversation?.messages ??
                                       const <Message>[],
                                   practiceGoals: practiceGoals,
+                                  stuckPoints: stuckPoints,
                                   isDataQualityFlagged: flagged,
                                   coachActionHint: _coachActionHint,
                                   psychology: _psychology,
