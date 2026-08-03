@@ -16,6 +16,7 @@ void main() {
       Hive.registerAdapter(InteractionStyleAdapter());
       Hive.registerAdapter(PracticeGoalAdapter());
       Hive.registerAdapter(TopicSeedAdapter());
+      Hive.registerAdapter(StuckPointAdapter());
     }
     box = await Hive.openBox<UserProfile>(
         'test_user_profile_${DateTime.now().microsecondsSinceEpoch}');
@@ -81,6 +82,18 @@ void main() {
 
     expect(restored.interactionStyle, InteractionStyle.steady);
     expect(restored.secondaryStyle, InteractionStyle.humorous);
+  });
+
+  test('stuckPoints survives Hive round-trip', () async {
+    final original = UserProfile.create(
+      stuckPoints: const [StuckPoint.leftOnRead],
+      updatedAt: DateTime.utc(2026, 8, 4),
+    );
+
+    await box.put('me', original);
+    final restored = box.get('me')!;
+
+    expect(restored.stuckPoints, [StuckPoint.leftOnRead]);
   });
 
   test('legacy 6-field binary (pre style pair) reads secondaryStyle=null',

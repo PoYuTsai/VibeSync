@@ -63,6 +63,24 @@ void main() {
       );
     });
 
+    test('stuckPoints exceeds max throws', () {
+      expect(
+        () => UserProfile.create(
+          stuckPoints: StuckPoint.values.take(3).toList(),
+          updatedAt: DateTime.utc(2026),
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('isEmpty is false when only stuckPoints set', () {
+      final p = UserProfile.create(
+        stuckPoints: [StuckPoint.fadesOut],
+        updatedAt: DateTime.utc(2026),
+      );
+      expect(p.isEmpty, isFalse);
+    });
+
     test('customTopics > 60 chars throws', () {
       expect(
         () => UserProfile.create(

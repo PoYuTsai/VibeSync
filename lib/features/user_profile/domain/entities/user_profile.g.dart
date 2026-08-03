@@ -24,6 +24,8 @@ class UserProfileAdapter extends TypeAdapter<UserProfile> {
           : (fields[1] as List).cast<PracticeGoal>(),
       topicSeeds:
           fields[2] == null ? const [] : (fields[2] as List).cast<TopicSeed>(),
+      stuckPoints:
+          fields[7] == null ? const [] : (fields[7] as List).cast<StuckPoint>(),
       customTopics: fields[3] as String?,
       notes: fields[4] as String?,
       updatedAt: fields[5] as DateTime,
@@ -33,7 +35,7 @@ class UserProfileAdapter extends TypeAdapter<UserProfile> {
   @override
   void write(BinaryWriter writer, UserProfile obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(8)
       ..writeByte(0)
       ..write(obj.interactionStyle)
       ..writeByte(1)
@@ -47,7 +49,9 @@ class UserProfileAdapter extends TypeAdapter<UserProfile> {
       ..writeByte(5)
       ..write(obj.updatedAt)
       ..writeByte(6)
-      ..write(obj.secondaryStyle);
+      ..write(obj.secondaryStyle)
+      ..writeByte(7)
+      ..write(obj.stuckPoints);
   }
 
   @override
@@ -224,6 +228,55 @@ class TopicSeedAdapter extends TypeAdapter<TopicSeed> {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is TopicSeedAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
+class StuckPointAdapter extends TypeAdapter<StuckPoint> {
+  @override
+  final typeId = 27;
+
+  @override
+  StuckPoint read(BinaryReader reader) {
+    switch (reader.readByte()) {
+      case 0:
+        return StuckPoint.fadesOut;
+      case 1:
+        return StuckPoint.dontKnowHowToAsk;
+      case 2:
+        return StuckPoint.anxiousWontSend;
+      case 3:
+        return StuckPoint.overExplains;
+      case 4:
+        return StuckPoint.leftOnRead;
+      default:
+        return StuckPoint.fadesOut;
+    }
+  }
+
+  @override
+  void write(BinaryWriter writer, StuckPoint obj) {
+    switch (obj) {
+      case StuckPoint.fadesOut:
+        writer.writeByte(0);
+      case StuckPoint.dontKnowHowToAsk:
+        writer.writeByte(1);
+      case StuckPoint.anxiousWontSend:
+        writer.writeByte(2);
+      case StuckPoint.overExplains:
+        writer.writeByte(3);
+      case StuckPoint.leftOnRead:
+        writer.writeByte(4);
+    }
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is StuckPointAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }

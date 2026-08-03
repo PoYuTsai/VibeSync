@@ -40,6 +40,19 @@ enum TopicSeed {
   @HiveField(9) workLife,
 }
 
+/// 我現在卡在哪 — multi select, max 2（2026-08 關於我重新定位案 批2 新增）。
+/// anxiousWontSend／overExplains 承接舊 PracticeGoal.reduceAnxiety／
+/// explainLess 的語意（那兩個 PracticeGoal 成員已重新定義成別的概念，
+/// 見批3 前置的 PracticeGoal 改造）。
+@HiveType(typeId: 27)
+enum StuckPoint {
+  @HiveField(0) fadesOut, // 聊一聊就冷掉，不知道怎麼接下去
+  @HiveField(1) dontKnowHowToAsk, // 不知道怎麼開口約
+  @HiveField(2) anxiousWontSend, // 會緊張、怕講錯話不敢傳
+  @HiveField(3) overExplains, // 話太多、一直在解釋自己
+  @HiveField(4) leftOnRead, // 一直被已讀不回
+}
+
 @immutable
 @HiveType(typeId: 9)
 class UserProfile {
@@ -47,6 +60,7 @@ class UserProfile {
   static const int maxTopicSeeds = 5;
   static const int maxCustomTopicsLength = 60;
   static const int maxNotesLength = 100;
+  static const int maxStuckPoints = 2;
 
   @HiveField(0)
   final InteractionStyle? interactionStyle;
@@ -66,6 +80,9 @@ class UserProfile {
   @HiveField(6)
   final InteractionStyle? secondaryStyle;
 
+  @HiveField(7)
+  final List<StuckPoint> stuckPoints;
+
   /// Public raw constructor — used by Hive codegen and trusted call sites.
   /// Callers from UI / controller MUST use [UserProfile.create] instead so
   /// trimming + bounds are enforced. Permissive on purpose so generated
@@ -77,6 +94,7 @@ class UserProfile {
     this.secondaryStyle,
     this.practiceGoals = const [],
     this.topicSeeds = const [],
+    this.stuckPoints = const [],
     this.customTopics,
     this.notes,
     required this.updatedAt,
@@ -90,6 +108,7 @@ class UserProfile {
     InteractionStyle? secondaryStyle,
     List<PracticeGoal> practiceGoals = const [],
     List<TopicSeed> topicSeeds = const [],
+    List<StuckPoint> stuckPoints = const [],
     String? customTopics,
     String? notes,
     required DateTime updatedAt,
@@ -106,6 +125,9 @@ class UserProfile {
     if (topicSeeds.length > maxTopicSeeds) {
       throw ArgumentError('topicSeeds exceeds max $maxTopicSeeds');
     }
+    if (stuckPoints.length > maxStuckPoints) {
+      throw ArgumentError('stuckPoints exceeds max $maxStuckPoints');
+    }
     final ct = customTopics?.trim();
     if (ct != null && ct.length > maxCustomTopicsLength) {
       throw ArgumentError('customTopics exceeds $maxCustomTopicsLength chars');
@@ -119,6 +141,7 @@ class UserProfile {
       secondaryStyle: secondaryStyle,
       practiceGoals: List.unmodifiable(practiceGoals),
       topicSeeds: List.unmodifiable(topicSeeds),
+      stuckPoints: List.unmodifiable(stuckPoints),
       customTopics: (ct == null || ct.isEmpty) ? null : ct,
       notes: (n == null || n.isEmpty) ? null : n,
       updatedAt: updatedAt,
@@ -130,6 +153,7 @@ class UserProfile {
       secondaryStyle == null &&
       practiceGoals.isEmpty &&
       topicSeeds.isEmpty &&
+      stuckPoints.isEmpty &&
       customTopics == null &&
       notes == null;
 }
