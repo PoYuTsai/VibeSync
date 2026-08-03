@@ -11,7 +11,9 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../data/providers/user_profile_providers.dart';
 import '../../domain/entities/user_profile.dart';
+import '../../domain/services/growth_preview_builder.dart';
 import '../style_pair_draft.dart';
+import '../widgets/growth_preview_sheet.dart';
 import '../widgets/profile_chip_section.dart';
 
 class AboutMeScreen extends ConsumerStatefulWidget {
@@ -250,6 +252,14 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
         },
       ),
     );
+    if (mounted && !_isDraftEmpty) {
+      final preview = const GrowthPreviewBuilder().build(
+        stuckPoints: _draftStuckPoints.toList(),
+        goals: _draftGoals.toList(),
+        comfortStyle: _draftPair.primary,
+      );
+      await showGrowthPreviewSheet(context, preview);
+    }
     popIfPossible();
   }
 

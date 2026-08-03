@@ -178,6 +178,56 @@ void main() {
     expect(repo.byOwner[FakeUserProfileRepo.testUid], isNull);
   });
 
+  testWidgets('successful save with non-empty draft shows growth preview sheet',
+      (tester) async {
+    final repo = FakeUserProfileRepo();
+    await tester.pumpWidget(aboutMeHarness(repo: repo));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '直接'));
+    await tester.tap(find.widgetWithText(ChoiceChip, '直接'));
+    await tester.pumpAndSettle();
+    final saveBtn = find.widgetWithText(ElevatedButton, '儲存');
+    await tester.ensureVisible(saveBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(saveBtn);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.textContaining('教練知道你平常偏直接'), findsOneWidget);
+  });
+
+  testWidgets('清除設定不觸發成長框架預覽 sheet', (tester) async {
+    final repo = FakeUserProfileRepo(
+      initial: UserProfile.create(
+        interactionStyle: InteractionStyle.gentle,
+        updatedAt: DateTime.utc(2026, 4, 30),
+      ),
+    );
+    await tester.pumpWidget(aboutMeHarness(repo: repo));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '溫柔'));
+    await tester.tap(find.widgetWithText(ChoiceChip, '溫柔'));
+    await tester.pumpAndSettle();
+    final clearBtn = find.widgetWithText(ElevatedButton, '清除設定');
+    await tester.ensureVisible(clearBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(clearBtn);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('好，我知道了'), findsNothing);
+  });
+
+  testWidgets('略過不觸發成長框架預覽 sheet', (tester) async {
+    await tester.pumpWidget(aboutMeHarness(repo: FakeUserProfileRepo()));
+    await tester.pumpAndSettle();
+    final skipBtn = find.widgetWithText(ElevatedButton, '略過');
+    await tester.ensureVisible(skipBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(skipBtn);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('好，我知道了'), findsNothing);
+  });
+
   testWidgets('save failure shows 儲存失敗，請再試一次 (no raw exception)',
       (tester) async {
     final repo = FakeUserProfileRepo()..throwOnSave = true;
