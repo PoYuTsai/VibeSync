@@ -65,8 +65,8 @@ void main() {
         includePartnerOverride: true,
       )!;
 
-      expect(context, contains('Preferred voice: 幽默'));
-      expect(context, contains('輕鬆'));
+      expect(context, contains('使用者目前的舒適區：幽默'));
+      expect(context, contains('不要因為舒適區而收斂任何一種'));
       expect(context, contains('Practice focus: 減少解釋'));
       expect(context, contains('更短、更有留白'));
       expect(context, contains('Topic seeds: 健身、咖啡、日劇'));
@@ -90,7 +90,7 @@ void main() {
         includePartnerOverride: true,
       )!;
 
-      expect(context, contains('Preferred voice: 直接'));
+      expect(context, contains('使用者目前的舒適區：直接'));
       expect(context, contains('模糊邀約'));
       expect(context, contains('這位對象喜歡乾脆一點'));
       expect(context, isNot(contains('全域備註')));
@@ -112,7 +112,7 @@ void main() {
         includePartnerOverride: false,
       )!;
 
-      expect(context, contains('Preferred voice: 溫柔'));
+      expect(context, contains('使用者目前的舒適區：溫柔'));
       expect(context, contains('降低焦慮'));
       expect(context, contains('全域低壓'));
       expect(context, isNot(contains('疑似混入的對象備註')));
@@ -121,23 +121,19 @@ void main() {
   });
 
   group('EffectiveStylePromptBuilder style pair', () {
-    test('主-only output is byte-for-byte identical to pre-pair format', () {
-      // 最重要回歸保險：所有舊用戶（無副風格）的 prompt 必須一字不差。
+    test('comfort-zone framing never collapses to a template instruction', () {
       final context = builder.buildForAnalysis(
         global: profile(style: InteractionStyle.humorous),
         partner: null,
         includePartnerOverride: true,
       );
 
-      expect(
-        context,
-        '- Preferred voice: 幽默；回覆要輕鬆、有畫面感，可以自然幽默但不要硬講笑話\n'
-        '- Contract: 這些設定只調整語氣、練習方向和跟進建議；不要替用戶假裝成另一個人。'
-        '當前對話、同意與安全、1.8x 黃金法則優先。',
-      );
+      expect(context, isNot(contains('Preferred voice')));
+      expect(context, contains('這不是你要模仿的模板'));
+      expect(context, contains('不要因為舒適區而收斂任何一種'));
     });
 
-    test('主+副 leads with pair framing, full 主 prompt, 點綴 副 prompt', () {
+    test('主+副 comfort-zone pair description renders as 以X為主、Y為輔', () {
       final context = builder.buildForAnalysis(
         global: profile(
           style: InteractionStyle.steady,
@@ -147,12 +143,9 @@ void main() {
         includePartnerOverride: true,
       )!;
 
-      expect(context, contains('Preferred voice: 以穩重為主、幽默為輔'));
-      expect(context, contains('回覆乾淨穩定，不急著推進，也不要過度解釋'));
-      expect(context, contains('點綴'));
-      expect(context, contains('不要蓋過主基調'));
-      // 副風格絕不用全力描述（防 LLM 把兩風格平均掉）。
-      expect(context, isNot(contains('可以自然幽默但不要硬講笑話')));
+      expect(context, contains('使用者目前的舒適區：以穩重為主、幽默為輔'));
+      expect(context, contains('不要因為舒適區而收斂任何一種'));
+      expect(context, contains('至少一種要明顯超出他的舒適區'));
     });
 
     test('partner 主-only pair beats global 主+副 atomically in prompt', () {
@@ -165,12 +158,12 @@ void main() {
         includePartnerOverride: true,
       )!;
 
-      expect(context, contains('Preferred voice: 直接'));
+      expect(context, contains('使用者目前的舒適區：直接'));
       expect(context, isNot(contains('為輔')));
       expect(context, isNot(contains('幽默')));
     });
 
-    test('buildForCoachFollowUp carries the same pair voice line', () {
+    test('buildForCoachFollowUp carries the same pair comfort-zone line', () {
       final context = builder.buildForCoachFollowUp(
         global: profile(
           style: InteractionStyle.gentle,
@@ -180,8 +173,8 @@ void main() {
         includePartnerOverride: true,
       )!;
 
-      expect(context, contains('Preferred voice: 以溫柔為主、有玩心為輔'));
-      expect(context, contains('不要蓋過主基調'));
+      expect(context, contains('使用者目前的舒適區：以溫柔為主、有玩心為輔'));
+      expect(context, contains('不要因為舒適區而收斂任何一種'));
     });
   });
 
@@ -210,7 +203,7 @@ void main() {
         includePartnerOverride: true,
       )!;
 
-      expect(context, contains('Preferred voice: 幽默'));
+      expect(context, contains('使用者目前的舒適區：幽默'));
       expect(context, contains('Practice focus: 減少解釋'));
       expect(context, contains('Topic seeds: 健身、咖啡、日劇'));
       expect(context, contains('Notes: 我慢熟，開場不要太衝'));
@@ -244,7 +237,7 @@ void main() {
         ),
         includePartnerOverride: true,
       )!;
-      expect(trusted, contains('Preferred voice: 直接'));
+      expect(trusted, contains('使用者目前的舒適區：直接'));
       expect(trusted, contains('對這位直接一點'));
       expect(trusted, isNot(contains('全域備註')));
 
@@ -256,7 +249,7 @@ void main() {
         ),
         includePartnerOverride: false,
       )!;
-      expect(flagged, contains('Preferred voice: 溫柔'));
+      expect(flagged, contains('使用者目前的舒適區：溫柔'));
       expect(flagged, contains('全域備註'));
       expect(flagged, isNot(contains('疑似混入的對象備註')));
     });
@@ -271,8 +264,8 @@ void main() {
         includePartnerOverride: true,
       )!;
 
-      expect(context, contains('Preferred voice: 以穩重為主、有玩心為輔'));
-      expect(context, contains('不要蓋過主基調'));
+      expect(context, contains('使用者目前的舒適區：以穩重為主、有玩心為輔'));
+      expect(context, contains('不要因為舒適區而收斂任何一種'));
     });
 
     test('stays within the opener max length', () {
@@ -440,14 +433,16 @@ void main() {
         includePartnerOverride: true,
       )!;
 
-      expect(context, contains('Preferred voice: 有玩心'));
+      expect(context, contains('使用者目前的舒適區：有玩心'));
       expect(context, contains('幽默回應'));
       expect(context, isNot(contains('爵士酒吧')));
       expect(context, isNot(contains('不要把這段 notes 送給 Spec 5')));
       expect(context, contains('教練語氣與任務 framing'));
     });
 
-    test('captures the A/B-visible style differences we promised users', () {
+    test(
+        'comfort-zone description differs per style but the stretch '
+        'instruction is universal', () {
       final humorous = builder.buildForAnalysis(
         global: profile(
           style: InteractionStyle.humorous,
@@ -473,12 +468,13 @@ void main() {
         includePartnerOverride: true,
       )!;
 
-      expect(humorous, contains('輕鬆'));
-      expect(humorous, contains('留白'));
-      expect(direct, contains('清楚'));
-      expect(direct, contains('低壓的邀約方向'));
-      expect(gentle, contains('低壓'));
-      expect(gentle, contains('不催促、不追問'));
+      expect(humorous, contains('使用者目前的舒適區：幽默'));
+      expect(direct, contains('使用者目前的舒適區：直接'));
+      expect(gentle, contains('使用者目前的舒適區：溫柔'));
+      for (final context in [humorous, direct, gentle]) {
+        expect(context, contains('不要因為舒適區而收斂任何一種'));
+        expect(context, contains('至少一種要明顯超出他的舒適區'));
+      }
     });
   });
 }

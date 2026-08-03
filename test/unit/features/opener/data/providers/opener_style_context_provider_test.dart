@@ -91,7 +91,7 @@ void main() {
 
       final context =
           (await c.read(openerStyleContextProvider(null).future))!;
-      expect(context, contains('Preferred voice: 幽默'));
+      expect(context, contains('使用者目前的舒適區：幽默'));
       expect(context, contains('只用來調整開場白語氣'));
     });
 
@@ -105,7 +105,7 @@ void main() {
 
       final context =
           (await c.read(openerStyleContextProvider('  ').future))!;
-      expect(context, contains('Preferred voice: 穩重'));
+      expect(context, contains('使用者目前的舒適區：穩重'));
     });
 
     test('trusted partner override wins over global', () async {
@@ -123,7 +123,7 @@ void main() {
 
       final context =
           (await c.read(openerStyleContextProvider('p1').future))!;
-      expect(context, contains('Preferred voice: 直接'));
+      expect(context, contains('使用者目前的舒適區：直接'));
       expect(context, isNot(contains('溫柔')));
     });
 
@@ -142,7 +142,7 @@ void main() {
 
       final context =
           (await c.read(openerStyleContextProvider('p1').future))!;
-      expect(context, contains('Preferred voice: 溫柔'));
+      expect(context, contains('使用者目前的舒適區：溫柔'));
       expect(context, isNot(contains('直接')));
     });
 

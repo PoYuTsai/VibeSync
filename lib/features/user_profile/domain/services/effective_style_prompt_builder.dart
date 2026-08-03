@@ -204,21 +204,21 @@ class EffectiveStylePromptBuilder {
 
   /// Voice line for the (主, 副) style pair.
   ///
-  /// 主-only output is **byte-for-byte identical** to the pre-pair format —
-  /// that is the regression guarantee for every existing user (snapshot
-  /// tested). 主+副 leads with the pair framing, then full 主 prompt, then
-  /// the deliberately down-weighted 副 prompt so the LLM doesn't average the
-  /// two styles into mush.
+  /// 2026-08 關於我重新定位案 批3：指令風格從「模仿模板」反轉成「舒適區標尺」——
+  /// 這是使用者現在寫得出來的範圍，不是要 AI 收斂成那個樣子；五種回覆風格仍要
+  /// 全力發揮，至少一種要明顯超出舒適區。這一版**刻意**打破舊版
+  /// 「主-only byte-for-byte identical to pre-pair format」鎖，見批3設計文件。
   static String? _voiceLine(EffectiveStyle effective) {
     final style = effective.interactionStyle;
     if (style == null) return null;
     final secondary = effective.secondaryStyle;
-    if (secondary == null) {
-      return '- Preferred voice: ${_styleLabel(style)}；${_stylePrompt(style)}';
-    }
-    return '- Preferred voice: 以${_styleLabel(style)}為主、'
-        '${_styleLabel(secondary)}為輔；${_stylePrompt(style)}。'
-        '${_secondaryStylePrompt(secondary)}';
+    final comfortDesc = secondary == null
+        ? _styleLabel(style)
+        : '以${_styleLabel(style)}為主、${_styleLabel(secondary)}為輔';
+    return '- 使用者目前的舒適區：$comfortDesc。這不是你要模仿的模板，'
+        '是他現在寫得出來的範圍。\n'
+        '- 五種回覆風格請照常全力發揮，不要因為舒適區而收斂任何一種；'
+        '至少一種要明顯超出他的舒適區。';
   }
 
   static String _styleLabel(InteractionStyle style) {
@@ -233,39 +233,6 @@ class EffectiveStylePromptBuilder {
         return '溫柔';
       case InteractionStyle.playful:
         return '有玩心';
-    }
-  }
-
-  static String _stylePrompt(InteractionStyle style) {
-    switch (style) {
-      case InteractionStyle.steady:
-        return '回覆乾淨穩定，不急著推進，也不要過度解釋';
-      case InteractionStyle.direct:
-        return '可以更清楚表達意圖，適合給明確但低壓的邀約方向';
-      case InteractionStyle.humorous:
-        return '回覆要輕鬆、有畫面感，可以自然幽默但不要硬講笑話';
-      case InteractionStyle.gentle:
-        return '語氣低壓溫和，先安住情緒，不催促、不追問';
-      case InteractionStyle.playful:
-        return '可以保留曖昧張力與玩心，但尊重對方反應和邊界';
-    }
-  }
-
-  /// Down-weighted 副風格 prompt — 點綴 wording on purpose, never reusing the
-  /// full-strength [_stylePrompt], so the 副 colors the voice without the LLM
-  /// averaging it against the 主基調.
-  static String _secondaryStylePrompt(InteractionStyle style) {
-    switch (style) {
-      case InteractionStyle.steady:
-        return '偶爾點綴一點穩定的底氣讓回覆收得住，不要蓋過主基調';
-      case InteractionStyle.direct:
-        return '偶爾點綴一句更清楚的意圖表達，不要蓋過主基調';
-      case InteractionStyle.humorous:
-        return '偶爾點綴一點輕鬆幽默調味，不要蓋過主基調';
-      case InteractionStyle.gentle:
-        return '在情緒處點綴一點溫柔緩衝，不要蓋過主基調';
-      case InteractionStyle.playful:
-        return '偶爾點綴一點玩心與曖昧張力，不要蓋過主基調';
     }
   }
 
