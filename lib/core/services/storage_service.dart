@@ -9,11 +9,7 @@ import '../../features/analysis_history/domain/entities/analysis_history_event.d
 import '../../features/analysis_history/data/repositories/analysis_history_repository_impl.dart';
 import '../../features/coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../features/conversation/domain/entities/conversation.dart';
-import '../../features/conversation/domain/entities/conversation_summary.dart';
-import '../../features/conversation/domain/entities/message.dart';
-import '../../features/conversation/domain/entities/session_context.dart';
 import '../../features/practice_chat/data/repositories/practice_draw_draft_store.dart';
-import '../../features/practice_chat/domain/entities/practice_message.dart';
 import '../../features/practice_chat/domain/entities/practice_session.dart';
 import '../../features/partner/data/repositories/partner_repository.dart';
 import '../../features/partner/data/services/partner_migration_service.dart';
@@ -21,6 +17,7 @@ import '../../features/partner/domain/entities/partner.dart';
 import '../../features/user_profile/domain/entities/partner_data_quality_state.dart';
 import '../../features/user_profile/domain/entities/partner_style_override.dart';
 import '../../features/user_profile/domain/entities/user_profile.dart';
+import '../../hive_registrar.g.dart';
 import '../constants/app_constants.dart';
 import 'conversation_box_backup.dart';
 
@@ -31,34 +28,11 @@ class StorageService {
   static Future<void> initialize() async {
     await Hive.initFlutter();
 
-    // Register adapters
-    Hive.registerAdapter(ConversationAdapter());
-    Hive.registerAdapter(MessageAdapter());
-    Hive.registerAdapter(SessionContextAdapter());
-    Hive.registerAdapter(MeetingContextAdapter());
-    Hive.registerAdapter(AcquaintanceDurationAdapter());
-    Hive.registerAdapter(UserGoalAdapter());
-    Hive.registerAdapter(UserStyleAdapter());
-    Hive.registerAdapter(ConversationSummaryAdapter()); // v2.0: Memory feature
-    Hive.registerAdapter(PartnerAdapter()); // A1: Partner Entity Refactor
-    Hive.registerAdapter(UserProfileAdapter()); // typeId=9, Spec 1 About Me
-    Hive.registerAdapter(InteractionStyleAdapter()); // typeId=10
-    Hive.registerAdapter(PracticeGoalAdapter()); // typeId=11
-    Hive.registerAdapter(TopicSeedAdapter()); // typeId=12
-    Hive.registerAdapter(PartnerStyleOverrideAdapter()); // typeId=13, Spec 2
-    Hive.registerAdapter(PartnerDataQualityStateAdapter()); // typeId=14, Spec 3
-    Hive.registerAdapter(NamePairAdapter()); // typeId=15, Spec 3
-    Hive.registerAdapter(CoachFollowUpResultAdapter()); // typeId=16, Spec 5
-    Hive.registerAdapter(CoachChatResultAdapter()); // typeId=17, Spec 6A
-    Hive.registerAdapter(CoachingOutcomeEventAdapter()); // typeId=18
-    Hive.registerAdapter(CoachingOutcomeSourceAdapter()); // typeId=19
-    Hive.registerAdapter(CoachingUserActionAdapter()); // typeId=20
-    Hive.registerAdapter(CoachingOutcomeSignalAdapter()); // typeId=21
-    Hive.registerAdapter(PracticeMessageAdapter()); // typeId=22, AI 實戰練習室
-    Hive.registerAdapter(PracticeSessionAdapter()); // typeId=23, AI 實戰練習室
-    Hive.registerAdapter(AnalysisHistoryEventAdapter()); // typeId=24, 案2 歷史表
-    Hive.registerAdapter(AnalysisHistoryKindAdapter()); // typeId=25, 案2 歷史表
-    Hive.registerAdapter(UnifiedCoachResultAdapter()); // typeId=26, 教練統一 Phase D
+    // Register adapters. Routed through the generated HiveRegistrar so every
+    // @HiveType stays covered — a hand-maintained list here previously
+    // drifted out of sync and missed StuckPointAdapter (typeId=27), which
+    // threw HiveError whenever About Me saved a non-empty stuckPoints list.
+    Hive.registerAdapters();
 
     // Get or create encryption key
     final encryptionKey = await _getEncryptionKey();
