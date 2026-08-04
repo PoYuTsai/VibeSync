@@ -1344,6 +1344,99 @@ void main() {
     );
   });
 
+  // 2026-08-04: reason/psychology 在串流組裝路徑上會被回填成同一個字串
+  // （reframer.ts absorbReply 的 psychology: reason），AI 推薦回覆卡因此
+  // 曾出現「📝」「🧠」兩行逐字相同的重複內容。UI 端補上比照
+  // analysis_record_detail_screen.dart 的既有防呆：psychology == reason
+  // 時不顯示第二行。
+  group('AnalysisScreen final recommendation duplicate reason/psychology', () {
+    testWidgets(
+      'psychology equals reason → 🧠 line is hidden, only 📝 renders',
+      (tester) async {
+        final full = AnalysisResult(
+          enthusiasmScore: _full().enthusiasmScore,
+          strategy: _full().strategy,
+          gameStage: _full().gameStage,
+          psychology: _full().psychology,
+          topicDepth: _full().topicDepth,
+          replies: _full().replies,
+          replyOptions: _full().replyOptions,
+          recommendation: const FinalRecommendation(
+            pick: 'tease',
+            content: 'c',
+            reason: '順著她主動分享的內容延伸，回覆壓力比較低。',
+            psychology: '順著她主動分享的內容延伸，回覆壓力比較低。',
+          ),
+          reminder: _full().reminder,
+        );
+
+        await _pumpHydratedAnalysisScreen(
+          tester,
+          seed: StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.done,
+            recommendationPreview: _preview(runId: 'run_dup'),
+            full: full,
+            analysisRunId: 'run_dup',
+          ),
+        );
+        // ignore: avoid_dynamic_calls
+        tester.takeException();
+
+        expect(
+          find.text('📝 順著她主動分享的內容延伸，回覆壓力比較低。'),
+          findsOneWidget,
+        );
+        expect(
+          find.text('🧠 順著她主動分享的內容延伸，回覆壓力比較低。'),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'psychology differs from reason → both 📝 and 🧠 render',
+      (tester) async {
+        final full = AnalysisResult(
+          enthusiasmScore: _full().enthusiasmScore,
+          strategy: _full().strategy,
+          gameStage: _full().gameStage,
+          psychology: _full().psychology,
+          topicDepth: _full().topicDepth,
+          replies: _full().replies,
+          replyOptions: _full().replyOptions,
+          recommendation: const FinalRecommendation(
+            pick: 'tease',
+            content: 'c',
+            reason: '順著她主動分享的內容延伸，回覆壓力比較低。',
+            psychology: '讓她感覺你真的有在聽，而不是急著換話題。',
+          ),
+          reminder: _full().reminder,
+        );
+
+        await _pumpHydratedAnalysisScreen(
+          tester,
+          seed: StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.done,
+            recommendationPreview: _preview(runId: 'run_distinct'),
+            full: full,
+            analysisRunId: 'run_distinct',
+          ),
+        );
+        // ignore: avoid_dynamic_calls
+        tester.takeException();
+
+        expect(
+          find.text('📝 順著她主動分享的內容延伸，回覆壓力比較低。'),
+          findsOneWidget,
+        );
+        expect(
+          find.text('🧠 讓她感覺你真的有在聽，而不是急著換話題。'),
+          findsOneWidget,
+        );
+      },
+    );
+  });
+
   // Codex round-2 P1: when a conversation already has a persisted detailed
   // analysis (`lastAnalysisSnapshotJson`), `_restorePersistedAnalysis()` seeds
   // `_enthusiasmScore` and the rest of the detailed-analysis local mirrors in

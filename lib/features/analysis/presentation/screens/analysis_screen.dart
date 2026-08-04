@@ -7523,11 +7523,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   '📝 ${_finalRecommendation!.reason}',
                                   style: AppTypography.bodyMedium,
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '🧠 ${_finalRecommendation!.psychology}',
-                                  style: AppTypography.caption,
-                                ),
+                                if (_finalRecommendation!.psychology
+                                        .isNotEmpty &&
+                                    _finalRecommendation!.psychology !=
+                                        _finalRecommendation!.reason) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '🧠 ${_finalRecommendation!.psychology}',
+                                    style: AppTypography.caption,
+                                  ),
+                                ],
                                 _buildAnalysisOutcomeBar(
                                   cardKey: 'final',
                                   label: 'AI 推薦回覆',
