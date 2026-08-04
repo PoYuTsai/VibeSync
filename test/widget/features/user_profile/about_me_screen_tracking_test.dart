@@ -91,9 +91,6 @@ void main() {
       source: 'card',
     );
 
-    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '直接'));
-    await tester.tap(find.widgetWithText(ChoiceChip, '直接'));
-    await tester.pumpAndSettle();
     await tester.ensureVisible(find.widgetWithText(ChoiceChip, '想約得出來'));
     await tester.tap(find.widgetWithText(ChoiceChip, '想約得出來'));
     await tester.pumpAndSettle();
@@ -116,7 +113,7 @@ void main() {
     final saved = events.where((e) => e.event == 'about_me_saved').toList();
     expect(saved, hasLength(1));
     expect(saved.single.properties, {
-      'has_style': true,
+      'has_style': false,
       'goals_count': 1,
       'seeds_count': 1,
       'has_notes': true,
@@ -128,14 +125,13 @@ void main() {
     final events = <_RecordedEvent>[];
     final repo = FakeUserProfileRepo(
       initial: UserProfile.create(
-        interactionStyle: InteractionStyle.gentle,
+        notes: '慢熟',
         updatedAt: DateTime.utc(2026, 4, 30),
       ),
     );
     await _pump(tester, repo: repo, events: events, source: 'settings');
 
-    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '溫柔'));
-    await tester.tap(find.widgetWithText(ChoiceChip, '溫柔'));
+    await tester.enterText(find.byKey(const Key('about-me-notes')), '');
     await tester.pumpAndSettle();
     final clearBtn = find.widgetWithText(ElevatedButton, '清除設定');
     await tester.ensureVisible(clearBtn);

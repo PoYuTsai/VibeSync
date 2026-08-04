@@ -53,8 +53,7 @@ void main() {
   testWidgets('改了東西按返回鍵 → 跳確認，選「繼續編輯」留在頁面', (tester) async {
     await _pumpWithBackStack(tester, repo: FakeUserProfileRepo());
 
-    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '溫柔'));
-    await tester.tap(find.widgetWithText(ChoiceChip, '溫柔'));
+    await tester.tap(find.widgetWithText(ChoiceChip, '聊一聊就冷掉，不知道怎麼接下去'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.arrow_back));
@@ -66,16 +65,16 @@ void main() {
 
     expect(find.text('放棄變更？'), findsNothing);
     expect(find.text('open-about-me'), findsNothing);
-    final chip =
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '溫柔'));
+    final chip = tester.widget<ChoiceChip>(
+      find.widgetWithText(ChoiceChip, '聊一聊就冷掉，不知道怎麼接下去'),
+    );
     expect(chip.selected, isTrue);
   });
 
   testWidgets('改了東西按返回鍵 → 跳確認，選「放棄變更」真的離開', (tester) async {
     await _pumpWithBackStack(tester, repo: FakeUserProfileRepo());
 
-    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '溫柔'));
-    await tester.tap(find.widgetWithText(ChoiceChip, '溫柔'));
+    await tester.tap(find.widgetWithText(ChoiceChip, '聊一聊就冷掉，不知道怎麼接下去'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.arrow_back));

@@ -344,19 +344,6 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
                     onTap: _toggleGoal,
                   ),
                   const SizedBox(height: 14),
-                  ProfileChipSection<InteractionStyle>(
-                    title: '互動風格',
-                    subtitle: '先點主風格，再點副風格（可只選主）。'
-                        '這是你現在的舒適區，不是要 AI 模仿——是讓它知道哪些建議對你來說是往前一步。',
-                    options: InteractionStyle.values,
-                    labelOf: _interactionStyleLabel,
-                    isSelected: _draftPair.contains,
-                    badgeOf: _draftPair.badgeOf,
-                    onTap: (s) => setState(() {
-                      _draftPair = _draftPair.tap(s);
-                    }),
-                  ),
-                  const SizedBox(height: 14),
                   ProfileChipSection<TopicSeed>(
                     title: '常聊話題',
                     subtitle: '最多 5 個，幫 AI 發想話題。',
@@ -671,14 +658,6 @@ class _PrivacyNote extends StatelessWidget {
     );
   }
 }
-
-String _interactionStyleLabel(InteractionStyle s) => switch (s) {
-      InteractionStyle.steady => '穩重',
-      InteractionStyle.direct => '直接',
-      InteractionStyle.humorous => '幽默',
-      InteractionStyle.gentle => '溫柔',
-      InteractionStyle.playful => '俏皮',
-    };
 
 String _stuckPointLabel(StuckPoint s) => switch (s) {
       StuckPoint.fadesOut => '聊一聊就冷掉，不知道怎麼接下去',

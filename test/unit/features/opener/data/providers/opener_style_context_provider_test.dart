@@ -28,6 +28,9 @@ class _FakeUserProfileRepo implements UserProfileRepository {
   Future<void> clear(String uid) async => byOwner.remove(uid);
 }
 
+// 2026-08-04 拍板：關於我只用來增加 Coach 1:1 對使用者的了解，不再影響開場白
+// 的實際輸出內容。openerStyleContextProvider（buildForOpener 的薄封裝）因此
+// 恆定回傳 null，不論全域 About Me 或對象風格覆寫設定了什麼。
 void main() {
   late Directory tmp;
   late Box<PartnerStyleOverride> box;
@@ -76,39 +79,25 @@ void main() {
         ),
       ]);
 
-  group('openerStyleContextProvider', () {
-    // Codex R1 P2：不做任何預熱（settle）——provider 必須自己 await 依賴，
-    // cold entry 首發就要拿得到風格；否則「首發 null、重試 resolve」會讓
-    // fingerprint 漂移、requestId 換新、server 去重失效（雙扣風險）。
-    test('cold read resolves global-only context without pre-warming',
-        () async {
+  group('openerStyleContextProvider is permanently off', () {
+    test('returns null even with a populated global profile', () async {
       userRepo.byOwner[uid] = UserProfile.create(
         interactionStyle: InteractionStyle.humorous,
+        practiceGoals: const [PracticeGoal.findCompatiblePartner],
+        topicSeeds: const [TopicSeed.coffee],
+        notes: '我慢熟，開場不要太衝',
         updatedAt: ts,
       );
       final c = makeContainer();
       addTearDown(c.dispose);
 
-      final context =
-          (await c.read(openerStyleContextProvider(null).future))!;
-      expect(context, contains('使用者目前的舒適區：幽默'));
-      expect(context, contains('只用來調整開場白語氣'));
-    });
-
-    test('blank partnerId is treated as no partner', () async {
-      userRepo.byOwner[uid] = UserProfile.create(
-        interactionStyle: InteractionStyle.steady,
-        updatedAt: ts,
+      expect(
+        await c.read(openerStyleContextProvider(null).future),
+        isNull,
       );
-      final c = makeContainer();
-      addTearDown(c.dispose);
-
-      final context =
-          (await c.read(openerStyleContextProvider('  ').future))!;
-      expect(context, contains('使用者目前的舒適區：穩重'));
     });
 
-    test('trusted partner override wins over global', () async {
+    test('returns null even with a trusted partner override', () async {
       userRepo.byOwner[uid] = UserProfile.create(
         interactionStyle: InteractionStyle.gentle,
         updatedAt: ts,
@@ -121,13 +110,14 @@ void main() {
       final c = makeContainer();
       addTearDown(c.dispose);
 
-      final context =
-          (await c.read(openerStyleContextProvider('p1').future))!;
-      expect(context, contains('使用者目前的舒適區：直接'));
-      expect(context, isNot(contains('溫柔')));
+      expect(
+        await c.read(openerStyleContextProvider('p1').future),
+        isNull,
+      );
     });
 
-    test('flagged partner suspends override, keeps global (Spec 3)', () async {
+    test('returns null when a flagged partner suspends the override too',
+        () async {
       userRepo.byOwner[uid] = UserProfile.create(
         interactionStyle: InteractionStyle.gentle,
         updatedAt: ts,
@@ -140,10 +130,10 @@ void main() {
       final c = makeContainer(partnerFlagged: true);
       addTearDown(c.dispose);
 
-      final context =
-          (await c.read(openerStyleContextProvider('p1').future))!;
-      expect(context, contains('使用者目前的舒適區：溫柔'));
-      expect(context, isNot(contains('直接')));
+      expect(
+        await c.read(openerStyleContextProvider('p1').future),
+        isNull,
+      );
     });
 
     test('returns null when nothing is configured', () async {

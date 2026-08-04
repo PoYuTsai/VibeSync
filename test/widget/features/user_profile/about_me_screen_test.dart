@@ -14,12 +14,11 @@ void main() {
     expect(find.text('清除設定'), findsNothing);
   });
 
-  testWidgets('selecting interaction style flips primary button to 儲存',
+  testWidgets('selecting a stuck point flips primary button to 儲存',
       (tester) async {
     await tester.pumpWidget(aboutMeHarness(repo: FakeUserProfileRepo()));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '溫柔'));
-    await tester.tap(find.widgetWithText(ChoiceChip, '溫柔'));
+    await tester.tap(find.widgetWithText(ChoiceChip, '聊一聊就冷掉，不知道怎麼接下去'));
     await tester.pumpAndSettle();
     expect(find.text('儲存'), findsOneWidget);
     expect(find.text('略過'), findsNothing);
@@ -97,7 +96,6 @@ void main() {
   testWidgets('existing profile pre-fills all fields', (tester) async {
     final repo = FakeUserProfileRepo(
       initial: UserProfile.create(
-        interactionStyle: InteractionStyle.gentle,
         practiceGoals: const [PracticeGoal.softInvite],
         topicSeeds: const [TopicSeed.coffee, TopicSeed.travel],
         customTopics: '日劇',
@@ -108,9 +106,6 @@ void main() {
     await tester.pumpWidget(aboutMeHarness(repo: repo));
     await tester.pumpAndSettle();
 
-    final styleChip =
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '溫柔'));
-    expect(styleChip.selected, isTrue);
     final goalChip =
         tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '想約得出來'));
     expect(goalChip.selected, isTrue);
@@ -123,15 +118,13 @@ void main() {
       (tester) async {
     final repo = FakeUserProfileRepo(
       initial: UserProfile.create(
-        interactionStyle: InteractionStyle.gentle,
+        notes: '慢熟',
         updatedAt: DateTime.utc(2026, 4, 30),
       ),
     );
     await tester.pumpWidget(aboutMeHarness(repo: repo));
     await tester.pumpAndSettle();
-    // Tap the same chip again to deselect
-    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '溫柔'));
-    await tester.tap(find.widgetWithText(ChoiceChip, '溫柔'));
+    await tester.enterText(find.byKey(const Key('about-me-notes')), '');
     await tester.pumpAndSettle();
     expect(find.text('清除設定'), findsOneWidget);
   });
@@ -141,8 +134,8 @@ void main() {
     final repo = FakeUserProfileRepo();
     await tester.pumpWidget(aboutMeHarness(repo: repo));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '直接'));
-    await tester.tap(find.widgetWithText(ChoiceChip, '直接'));
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '咖啡'));
+    await tester.tap(find.widgetWithText(ChoiceChip, '咖啡'));
     await tester.pumpAndSettle();
     final saveBtn = find.widgetWithText(ElevatedButton, '儲存');
     await tester.ensureVisible(saveBtn);
@@ -151,22 +144,21 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.text('已更新關於我'), findsOneWidget);
-    expect(repo.byOwner[FakeUserProfileRepo.testUid]?.interactionStyle,
-        InteractionStyle.direct);
+    expect(repo.byOwner[FakeUserProfileRepo.testUid]?.topicSeeds,
+        contains(TopicSeed.coffee));
   });
 
   testWidgets('successful clear pops back and shows snackbar 已清除關於我設定',
       (tester) async {
     final repo = FakeUserProfileRepo(
       initial: UserProfile.create(
-        interactionStyle: InteractionStyle.gentle,
+        notes: '慢熟',
         updatedAt: DateTime.utc(2026, 4, 30),
       ),
     );
     await tester.pumpWidget(aboutMeHarness(repo: repo));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '溫柔'));
-    await tester.tap(find.widgetWithText(ChoiceChip, '溫柔'));
+    await tester.enterText(find.byKey(const Key('about-me-notes')), '');
     await tester.pumpAndSettle();
     final clearBtn = find.widgetWithText(ElevatedButton, '清除設定');
     await tester.ensureVisible(clearBtn);
@@ -183,8 +175,7 @@ void main() {
     final repo = FakeUserProfileRepo();
     await tester.pumpWidget(aboutMeHarness(repo: repo));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '直接'));
-    await tester.tap(find.widgetWithText(ChoiceChip, '直接'));
+    await tester.tap(find.widgetWithText(ChoiceChip, '想約得出來'));
     await tester.pumpAndSettle();
     final saveBtn = find.widgetWithText(ElevatedButton, '儲存');
     await tester.ensureVisible(saveBtn);
@@ -192,20 +183,19 @@ void main() {
     await tester.tap(saveBtn);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
-    expect(find.textContaining('教練知道你平常偏直接'), findsOneWidget);
+    expect(find.textContaining('你想約得出來'), findsOneWidget);
   });
 
   testWidgets('清除設定不觸發成長框架預覽 sheet', (tester) async {
     final repo = FakeUserProfileRepo(
       initial: UserProfile.create(
-        interactionStyle: InteractionStyle.gentle,
+        notes: '慢熟',
         updatedAt: DateTime.utc(2026, 4, 30),
       ),
     );
     await tester.pumpWidget(aboutMeHarness(repo: repo));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '溫柔'));
-    await tester.tap(find.widgetWithText(ChoiceChip, '溫柔'));
+    await tester.enterText(find.byKey(const Key('about-me-notes')), '');
     await tester.pumpAndSettle();
     final clearBtn = find.widgetWithText(ElevatedButton, '清除設定');
     await tester.ensureVisible(clearBtn);
@@ -233,8 +223,8 @@ void main() {
     final repo = FakeUserProfileRepo()..throwOnSave = true;
     await tester.pumpWidget(aboutMeHarness(repo: repo));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '直接'));
-    await tester.tap(find.widgetWithText(ChoiceChip, '直接'));
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '咖啡'));
+    await tester.tap(find.widgetWithText(ChoiceChip, '咖啡'));
     await tester.pumpAndSettle();
     final saveBtn = find.widgetWithText(ElevatedButton, '儲存');
     await tester.ensureVisible(saveBtn);

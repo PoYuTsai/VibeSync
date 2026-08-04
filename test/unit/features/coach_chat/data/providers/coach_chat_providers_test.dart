@@ -1054,14 +1054,17 @@ void main() {
 
       profileCompleter.complete(
         UserProfile.create(
-          interactionStyle: InteractionStyle.humorous,
+          stuckPoints: const [StuckPoint.fadesOut],
           updatedAt: DateTime(2026, 5, 5),
         ),
       );
       await askFuture;
 
       expect(calls, hasLength(1));
-      expect(calls.single.body['effectiveStyleContext'], contains('幽默'));
+      expect(
+        calls.single.body['effectiveStyleContext'],
+        contains('話題卡住'),
+      );
     });
 
     test('profile 載入失敗（Hive/repo 炸掉）→ 退回無風格，Coach 請求照常送出',
