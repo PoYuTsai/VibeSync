@@ -12,6 +12,7 @@ import {
   type PracticeLearningMode,
 } from "./quota_decision.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
+import type { AcquaintanceOrigin } from "./acquaintance_origin.ts";
 import {
   buildConsistencyTestPrompt,
   formatConsistencyTestTypes,
@@ -142,6 +143,31 @@ function gameModePrompt(opts: {
   }${socialGameNpcResponseContract()}${
     gameStateEvidencePrompt(opts.gameState)
   }\n${strategy}`;
+}
+
+// 認識管道（server 唯一真相源）：她本來就知道這個人是從哪來的，開場戒心與可帶到
+// 的話題才有依據。刻意放在現實錨定「之後」並明講優先順序——管道本身是既定事實，
+// 但介紹人、共同回憶、當天細節這些仍然未驗證，使用者不能用一句聲稱把它們升級。
+function acquaintanceOriginPrompt(
+  origin?: AcquaintanceOrigin | null,
+): string {
+  if (!origin) return "";
+  return `\n\n你們是怎麼認識的（hidden guidance，不要照背這段，也不要說出「設定」兩個字）：
+- ${origin.sharedFact}
+- ${origin.stancePrompt}
+- 這件事是既定背景，你本來就知道，不需要對方證明；但${origin.unverifiedGuard}
+- 如果對方講的認識過程跟這裡對不上（說成別的場合、或說你們早就很熟、已經見過幾次），以這裡為準：你會覺得怪，自然反問、確認或吐槽，不會順著他改口。
+- 認識管道只決定你們的起點與你的戒心，不會自動讓你答應邀約；約不約得出來仍然照你原本的門檻走。
+- 還在最前面幾句時，你的回覆要讓對方感覺得出你們是從這個管道認識的（帶到一個具體的點就好），但不要一次把整段來龍去脈複述完。`;
+}
+
+function debriefAcquaintanceOriginLine(
+  origin?: AcquaintanceOrigin | null,
+): string {
+  if (!origin) return "";
+  // 具體既定事實走 hintTrustedFactualEvidence 的 shared 證據，這裡只留評分尺度，
+  // 免得 Game debrief 的 12 秒預算被重複敘述吃掉。
+  return `本場認識管道：${origin.label}。${origin.debriefStandard}\n\n`;
 }
 
 function sceneContextPrompt(
@@ -452,6 +478,7 @@ export function buildChatMessages(
     familiarityScore?: number;
     partnerState?: PartnerState | null;
     sceneContext?: PracticeSceneContext | null;
+    acquaintanceOrigin?: AcquaintanceOrigin | null;
     memorySummary?: string | null;
     gameState?: PersistedGameState | null;
   } = {},
@@ -496,8 +523,10 @@ export function buildChatMessages(
     {
       role: "system",
       content: `${CHAT_SYSTEM_PROMPT}${buildProfilePrompt(profile)}${
-        sceneContextPrompt(options.sceneContext)
-      }${memorySummaryPrompt(options.memorySummary)}${
+        acquaintanceOriginPrompt(options.acquaintanceOrigin)
+      }${sceneContextPrompt(options.sceneContext)}${
+        memorySummaryPrompt(options.memorySummary)
+      }${
         safePartnerStatePrompt(options.partnerState)
       }${
         options.partnerState ? `\n${LEGACY_PARTNER_STATE_NO_LEAK_MARKER}` : ""
@@ -725,6 +754,7 @@ export function buildDebriefMessages(
     familiarityScore?: number;
     partnerState?: PartnerState | null;
     sceneContext?: PracticeSceneContext | null;
+    acquaintanceOrigin?: AcquaintanceOrigin | null;
     memorySummary?: string | null;
     gameState?: PersistedGameState | null;
     appliedHintTurns?: AppliedHintTurn[];
@@ -792,6 +822,7 @@ export function buildDebriefMessages(
       content: `本場模擬對象：${profile.personaLabel}\n` +
         `本場難度：${profile.difficultyLabel}\n` +
         `${profile.difficultyDebriefStandard}\n\n` +
+        debriefAcquaintanceOriginLine(options.acquaintanceOrigin) +
         debriefSceneContextLine(options.sceneContext) +
         debriefMemorySummaryPrompt(options.memorySummary) +
         "\n\n" +

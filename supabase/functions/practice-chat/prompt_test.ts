@@ -11,7 +11,11 @@ import {
   CHAT_SYSTEM_PROMPT,
   DEBRIEF_SYSTEM_PROMPT,
 } from "./prompt.ts";
-import { buildHintMessages } from "./hint.ts";
+import { buildHintMessages, hintTrustedFactualEvidence } from "./hint.ts";
+import {
+  ACQUAINTANCE_ORIGINS,
+  getAcquaintanceOrigin,
+} from "./acquaintance_origin.ts";
 import {
   temperatureBandDebriefInstruction,
   temperatureBandInstruction,
@@ -29,6 +33,17 @@ const dinnerScene: PracticeSceneContext = {
   promptLine: "妳剛跟朋友吃完飯，在回家的路上，回覆可以比白天放鬆一點。",
   replyTempo: "normal",
 };
+
+// prompt 預算測試用最長的認識管道當上界：新增更長的管道時測試會自己抓到，
+// 不需要人工重挑 worst case。
+const longestHintOrigin = [...ACQUAINTANCE_ORIGINS].sort((a, b) =>
+  (b.label.length + b.sharedFact.length + b.hintFocus.length) -
+  (a.label.length + a.sharedFact.length + a.hintFocus.length)
+)[0];
+const longestDebriefOrigin = [...ACQUAINTANCE_ORIGINS].sort((a, b) =>
+  (b.label.length + b.debriefStandard.length) -
+  (a.label.length + a.debriefStandard.length)
+)[0];
 
 function hasLoneSurrogate(value: string): boolean {
   for (let index = 0; index < value.length; index++) {
@@ -510,15 +525,19 @@ Deno.test("Game Debrief prompt stays compact enough for its 12-second budget", (
     temperatureScore: 60,
     familiarityScore: 50,
     partnerState: { mood: "amused", innerThought: "" },
+    acquaintanceOrigin: longestDebriefOrigin,
   }).reduce((total, message) => total + message.content.length, 0);
   const beginnerLength = buildDebriefMessages(turns, profile, {
     practiceMode: "beginner",
     temperatureScore: 60,
     familiarityScore: 50,
     partnerState: { mood: "amused", innerThought: "" },
+    acquaintanceOrigin: longestDebriefOrigin,
   }).reduce((total, message) => total + message.content.length, 0);
 
-  assert(gameLength <= 4500, `Game Debrief prompt is too long: ${gameLength}`);
+  // 2026-08-04：每場注入認識管道評分尺度一行（最長管道 ≤70 bytes），
+  // 上限 4500→4570。
+  assert(gameLength <= 4570, `Game Debrief prompt is too long: ${gameLength}`);
   assert(gameLength <= beginnerLength + 2400);
 });
 
@@ -589,6 +608,7 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
         familiarityScore: 20,
         partnerMood: "neutral",
         memorySummary: maxMemorySummary,
+        acquaintanceOrigin: longestHintOrigin,
       }).reduce((total, message) => total + message.content.length, 0);
       const debriefLength = buildDebriefMessages(turns, profile, {
         practiceMode: "game",
@@ -596,6 +616,7 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
         familiarityScore: 20,
         partnerState: { mood: "neutral", innerThought: "" },
         memorySummary: maxMemorySummary,
+        acquaintanceOrigin: longestDebriefOrigin,
       }).reduce((total, message) => total + message.content.length, 0);
       const debriefWithHintMessages = buildDebriefMessages(turns, profile, {
         practiceMode: "game",
@@ -603,6 +624,7 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
         familiarityScore: 20,
         partnerState: { mood: "neutral", innerThought: "" },
         memorySummary: maxMemorySummary,
+        acquaintanceOrigin: longestDebriefOrigin,
         appliedHintTurns,
       });
       const debriefWithHintLength = debriefWithHintMessages.reduce(
@@ -655,10 +677,13 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 展示舞台：特徵指涉不編名不取代稱＋未來之約（改天/下次帶妳去）也算
   // 邀約、賣關子收口」教學一行＋build 階梯 advice 寫死禁令（「下次/改天」
   // 話術留到 soft 階），固定 bytes，上限 5150→5400。
-  if (maxHint > 5400) {
+  // 2026-08-04 認識管道：Hint 每場多一段 origin 證據（label/originContext/
+  // originFocus，最長管道 ≤150 bytes），上限 5400→5550；Debrief 多一行評分
+  // 尺度（≤70 bytes），上限 4500→4570。
+  if (maxHint > 5550) {
     failures.push(`Hint max ${maxHint} at ${maxHintCase}`);
   }
-  if (maxDebrief > 4500) {
+  if (maxDebrief > 4570) {
     failures.push(`Debrief max ${maxDebrief} at ${maxDebriefCase}`);
   }
   // Applied-Hint Debrief intentionally carries the exact Hint plus its
@@ -670,7 +695,8 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 上限 5900→6000。
   // 2026-07-23 round8：建議句「扣回原話字眼」教學一行（對齊詞面 grounding
   // gate——回應句家族 debrief 版收斂），固定 bytes，上限 6000→6100。
-  if (maxDebriefWithHint > 6100) {
+  // 2026-08-04 認識管道：同上一行評分尺度（≤70 bytes），上限 6100→6170。
+  if (maxDebriefWithHint > 6170) {
     failures.push(
       `Debrief+Hint max ${maxDebriefWithHint} at ${maxDebriefWithHintCase}`,
     );
@@ -1036,6 +1062,80 @@ Deno.test("buildChatMessages injects scene context as hidden life-state guidance
   assertEquals(sys.includes("剛跟朋友吃完飯，在回家的路上"), true);
   assertEquals(sys.includes("不要直接說出 sceneContext"), true);
   assertEquals(sys.includes("如果對方問「在幹嘛」"), true);
+});
+
+Deno.test("buildChatMessages injects the acquaintance origin as established background", () => {
+  const origin = getAcquaintanceOrigin("friend_intro");
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨 妳好" }],
+    defaultProfile,
+    { acquaintanceOrigin: origin },
+  )[0].content;
+
+  assertEquals(sys.includes("你們是怎麼認識的"), true);
+  assertEquals(sys.includes(origin.sharedFact), true);
+  assertEquals(sys.includes(origin.stancePrompt), true);
+  // 管道本身既定，但介紹人/共同回憶這類細節仍要維持未驗證。
+  assertEquals(sys.includes(origin.unverifiedGuard), true);
+  assertEquals(sys.includes("以這裡為準"), true);
+  // 認識管道不得變成繞過人設邀約門檻的捷徑。
+  assertEquals(sys.includes("不會自動讓你答應邀約"), true);
+  // 現實錨定仍在，且認識管道段落排在它之後（後段權重較高）。
+  const anchorIndex = sys.indexOf("認知邊界 / 現實錨定");
+  const originIndex = sys.indexOf("你們是怎麼認識的");
+  assertEquals(anchorIndex >= 0 && originIndex > anchorIndex, true);
+});
+
+Deno.test("buildChatMessages omits the acquaintance origin block when none is supplied", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨 妳好" }],
+    defaultProfile,
+  )[0].content;
+
+  assertEquals(sys.includes("你們是怎麼認識的"), false);
+  assertEquals(sys.includes("acquaintanceOrigin"), false);
+});
+
+Deno.test("buildDebriefMessages grades against the acquaintance origin without leaking labels", () => {
+  const origin = getAcquaintanceOrigin("ig_cold_dm");
+  const msg = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "？" }],
+    defaultProfile,
+    { acquaintanceOrigin: origin },
+  )[1].content;
+
+  assertEquals(msg.includes(`本場認識管道：${origin.label}`), true);
+  assertEquals(msg.includes(origin.debriefStandard), true);
+  assertEquals(msg.includes("acquaintanceOrigin"), false);
+});
+
+Deno.test("buildHintMessages carries the acquaintance origin as trusted shared evidence", () => {
+  const origin = getAcquaintanceOrigin("street_approach");
+  const hintUser = buildHintMessages({
+    turns: [
+      { role: "user", text: "嗨 我是那天在路上跟妳講話的人" },
+      { role: "ai", text: "喔" },
+    ],
+    profile: defaultProfile,
+    practiceMode: "beginner",
+    temperatureScore: 28,
+    familiarityScore: 0,
+    acquaintanceOrigin: origin,
+  })[1].content;
+
+  assertEquals(hintUser.includes(`acquaintanceOrigin: ${origin.label}`), true);
+  assertEquals(hintUser.includes(origin.sharedFact), true);
+  assertEquals(hintUser.includes(origin.hintFocus), true);
+
+  const evidence = hintTrustedFactualEvidence({
+    profile: defaultProfile,
+    practiceMode: "beginner",
+    acquaintanceOrigin: origin,
+  });
+  assertEquals(
+    evidence.shared.some((line) => line.includes(origin.sharedFact)),
+    true,
+  );
 });
 
 Deno.test("buildChatMessages injects memorySummary as hidden evidence", () => {

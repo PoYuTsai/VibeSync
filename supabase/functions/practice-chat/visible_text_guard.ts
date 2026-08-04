@@ -16,6 +16,11 @@ const INTERNAL_VISIBLE_LABELS = [
   "innerthought",
   "sceneprompt",
   "replytempo",
+  // 認識管道注入標籤（hint evidence）；鐵則＝注入內部詞必同步擴可見輸出守門。
+  // 用複合詞避免誤殺自然英文（"origin" 會命中 original 這類無害字）。
+  "acquaintanceorigin",
+  "origincontext",
+  "originfocus",
   "inviteguidance",
   "softinvite",
   "directinvite",

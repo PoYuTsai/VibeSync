@@ -48,6 +48,37 @@ Deno.test("internal label gate（chat/hint 側）攔「投入度 X/100」分數�
   }
 });
 
+// 認識管道注入 hint prompt 三個標籤（acquaintanceOrigin/originContext/
+// originFocus），鐵則＝注入內部詞必同步擴可見輸出守門。
+Deno.test("internal label gate 攔認識管道注入標籤，但不誤殺自然英文", () => {
+  for (
+    const leak of [
+      "acquaintanceOrigin: 朋友介紹",
+      "originContext：你們是朋友介紹認識的",
+      "origin focus 是先降戒心",
+    ]
+  ) {
+    assertEquals(
+      hasVisibleInternalLabelLeak(leak),
+      true,
+      `should reject "${leak}"`,
+    );
+  }
+  for (
+    const safe of [
+      "這是我原本的想法",
+      "the original plan was coffee",
+      "妳說的那個 origin story 很有趣",
+    ]
+  ) {
+    assertEquals(
+      hasVisibleInternalLabelLeak(safe),
+      false,
+      `should allow "${safe}"`,
+    );
+  }
+});
+
 Deno.test("裸詞「投入度」不帶分數形＝分析欄合法用法，兩側 gate 皆放行", () => {
   for (const safe of SCORE_SHAPE_SAFE) {
     assertEquals(

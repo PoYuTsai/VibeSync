@@ -13,6 +13,7 @@ import {
   inviteMaturityFromLearningScores,
 } from "./invite_maturity.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
+import type { AcquaintanceOrigin } from "./acquaintance_origin.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
 import {
   clipUtf16Safe,
@@ -1123,12 +1124,18 @@ export function hintTrustedFactualEvidence(opts: {
   profile: PracticeProfile;
   practiceMode?: PracticeLearningMode;
   sceneContext?: PracticeSceneContext | null;
+  acquaintanceOrigin?: AcquaintanceOrigin | null;
   memorySummary?: string | null;
 }): { shared: string[]; partner: string[]; claims: HintFactClaim[] } {
   return {
-    shared: [opts.memorySummary ?? ""].filter((value) =>
-      value.trim().length > 0
-    ),
+    // 認識管道是 server 給的既定共同背景（不是使用者聲稱），故列為 shared 可信
+    // 事實：提示/拆解卡引用「你們是在哪認識的」時不該被當成捏造。
+    shared: [
+      opts.memorySummary ?? "",
+      opts.acquaintanceOrigin
+        ? `${opts.acquaintanceOrigin.label}：${opts.acquaintanceOrigin.sharedFact}`
+        : "",
+    ].filter((value) => value.trim().length > 0),
     partner: [
       opts.sceneContext?.statusLine ?? "",
       opts.sceneContext?.promptLine ?? "",
@@ -1281,6 +1288,7 @@ export function buildHintMessages(opts: {
   familiarityScore?: number;
   partnerMood?: PartnerMood | null;
   sceneContext?: PracticeSceneContext | null;
+  acquaintanceOrigin?: AcquaintanceOrigin | null;
   memorySummary?: string | null;
   gameState?: PersistedGameState | null;
 }): ChatMessage[] {
@@ -1305,6 +1313,11 @@ export function buildHintMessages(opts: {
   });
   const sceneEvidence = opts.sceneContext
     ? `sceneStatus: ${opts.sceneContext.statusLine}\nscenePrompt: ${opts.sceneContext.promptLine}\nreplyTempo: ${opts.sceneContext.replyTempo}\n\n`
+    : "";
+  // 認識管道＝server 既定共同背景（可安全引用），originFocus 是這個管道下最容易
+  // 加分的方向；標籤同步進 visible_text_guard 的內部詞表，避免被抄進可見回覆。
+  const originEvidence = opts.acquaintanceOrigin
+    ? `acquaintanceOrigin: ${opts.acquaintanceOrigin.label}\noriginContext: ${opts.acquaintanceOrigin.sharedFact}\noriginFocus: ${opts.acquaintanceOrigin.hintFocus}\n\n`
     : "";
   // Hint 有完整生成與雙語意覆核預算；長期記憶仍只留完整句摘要。
   const memoryEvidence = opts.memorySummary?.trim()
@@ -1344,6 +1357,7 @@ export function buildHintMessages(opts: {
         `目前關係階段：${stage.label}\n` +
         `升溫回覆不是永遠更曖昧；請選目前階段最容易加分的方向。\n` +
         `目前最容易加分：${stageGuidance}\n\n` +
+        originEvidence +
         sceneEvidence +
         memoryEvidence +
         inviteEvidence +
