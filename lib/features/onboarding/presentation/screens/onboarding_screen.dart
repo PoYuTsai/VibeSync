@@ -40,7 +40,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   // Tier 2 批 2：問卷選擇存在 parent state，本頁不寫 Hive，
   // 統一由分流頁的合併種子一次寫入。
-  InteractionStyle? _questionnaireStyle;
+  // 2026-08-04 拍板：問卷不再問互動風格（那條線已整條移除，關於我頁也拿掉
+  // 對應區塊），只留練習目標。
   List<PracticeGoal> _questionnaireGoals = const [];
 
   /// 問卷插在示範頁（index 2）之後、隱私頁之前。
@@ -135,7 +136,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       ref.read(funnelTrackerProvider).track(
         'onboarding_questionnaire_submit',
         properties: {
-          'style_set': _questionnaireStyle != null,
           'goals_count': _questionnaireGoals.length,
         },
       ),
@@ -154,13 +154,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   /// （2026-08-03「關於我」重新定位 report）。問卷全略過就不建任何資料。
   /// 仍只在 profile 全空時種、失敗靜默放過、絕不擋導頁。
   Future<void> _seedProfileFromOnboardingAnswers() async {
-    if (_questionnaireStyle == null && _questionnaireGoals.isEmpty) return;
+    if (_questionnaireGoals.isEmpty) return;
     try {
       final existing = await ref.read(userProfileControllerProvider.future);
       if (existing != null && !existing.isEmpty) return;
       await ref.read(userProfileControllerProvider.notifier).save(
             UserProfile.create(
-              interactionStyle: _questionnaireStyle,
               practiceGoals: List.of(_questionnaireGoals),
               updatedAt: DateTime.now(),
             ),
@@ -216,10 +215,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   itemBuilder: (context, index) {
                     if (index == _questionnairePageIndex) {
                       return OnboardingQuestionnairePage(
-                        selectedStyle: _questionnaireStyle,
                         selectedGoals: _questionnaireGoals,
-                        onStyleChanged: (style) =>
-                            setState(() => _questionnaireStyle = style),
                         onGoalsChanged: (goals) =>
                             setState(() => _questionnaireGoals = goals),
                       );

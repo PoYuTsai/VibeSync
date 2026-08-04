@@ -13,26 +13,14 @@ import '../../../user_profile/domain/entities/user_profile.dart';
 class OnboardingQuestionnairePage extends StatelessWidget {
   const OnboardingQuestionnairePage({
     super.key,
-    required this.selectedStyle,
     required this.selectedGoals,
-    required this.onStyleChanged,
     required this.onGoalsChanged,
   });
 
   static const maxGoals = 2;
 
-  final InteractionStyle? selectedStyle;
   final List<PracticeGoal> selectedGoals;
-  final ValueChanged<InteractionStyle?> onStyleChanged;
   final ValueChanged<List<PracticeGoal>> onGoalsChanged;
-
-  static String styleLabel(InteractionStyle s) => switch (s) {
-        InteractionStyle.steady => '穩重',
-        InteractionStyle.direct => '直接',
-        InteractionStyle.humorous => '幽默',
-        InteractionStyle.gentle => '溫柔',
-        InteractionStyle.playful => '俏皮',
-      };
 
   static String goalLabel(PracticeGoal g) => switch (g) {
         PracticeGoal.softInvite => '想約得出來',
@@ -41,10 +29,6 @@ class OnboardingQuestionnairePage extends StatelessWidget {
         PracticeGoal.buildCloseness => '想培養穩定的親近感',
         PracticeGoal.findCompatiblePartner => '想找到聊得來的對象、不設限交往',
       };
-
-  void _toggleStyle(InteractionStyle style) {
-    onStyleChanged(selectedStyle == style ? null : style);
-  }
 
   void _toggleGoal(PracticeGoal goal) {
     if (selectedGoals.contains(goal)) {
@@ -83,21 +67,6 @@ class OnboardingQuestionnairePage extends StatelessWidget {
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.onBackgroundSecondary,
                   ),
-                ),
-                const SizedBox(height: 28),
-                _sectionTitle('你平常聊天的風格是？'),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    for (final style in InteractionStyle.values)
-                      _chip(
-                        label: styleLabel(style),
-                        selected: selectedStyle == style,
-                        onTap: () => _toggleStyle(style),
-                      ),
-                  ],
                 ),
                 const SizedBox(height: 28),
                 _sectionTitle('你最想練的是？（最多 2 個）'),

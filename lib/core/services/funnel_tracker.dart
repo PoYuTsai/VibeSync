@@ -27,7 +27,7 @@ class FunnelTracker {
     'onboarding_page_view': ['page_index'],
     'onboarding_skip': ['page_index'],
     'onboarding_branch_answer': ['has_partner'],
-    'onboarding_questionnaire_submit': ['style_set', 'goals_count'],
+    'onboarding_questionnaire_submit': ['goals_count'],
     'quota_strip_tap': [],
     'opener_entry_tap': [],
     'coach_entry_tap': ['has_partner'],

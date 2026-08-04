@@ -25,7 +25,7 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 | `onboarding_page_view` | `page_index` (int) | OnboardingScreen.onPageChanged |
 | `onboarding_skip` | `page_index` (int) | _skipOnboarding |
 | `onboarding_branch_answer` | `has_partner` (bool) | _completeOnboardingTo |
-| `onboarding_questionnaire_submit` | `style_set` (bool), `goals_count` (int) | 批 2 問卷頁 |
+| `onboarding_questionnaire_submit` | `goals_count` (int) | 批 2 問卷頁（2026-08-04 拿掉互動風格題後 style_set 移除） |
 | `quota_strip_tap` | — | HomeQuotaStrip |
 | `opener_entry_tap` | — | HomeFeatureEntries |
 | `coach_entry_tap` | `has_partner` (bool) | HomeFeatureEntries |

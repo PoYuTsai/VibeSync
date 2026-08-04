@@ -97,22 +97,22 @@ Deno.test("buildFunnelRow omits invalid clientTs instead of failing", () => {
   assertEquals(result.row.client_ts, undefined);
 });
 
-Deno.test("questionnaire_submit accepts style_set bool and goals_count in range", () => {
+Deno.test("questionnaire_submit accepts goals_count in range, drops out-of-range value", () => {
   const result = buildFunnelRow("u", {
     event: "onboarding_questionnaire_submit",
-    properties: { style_set: true, goals_count: 2 },
+    properties: { goals_count: 2 },
   });
   assert(result.ok);
   if (!result.ok) return;
-  assertEquals(result.row.properties, { style_set: true, goals_count: 2 });
+  assertEquals(result.row.properties, { goals_count: 2 });
 
   const outOfRange = buildFunnelRow("u", {
     event: "onboarding_questionnaire_submit",
-    properties: { style_set: false, goals_count: 9 },
+    properties: { goals_count: 9 },
   });
   assert(outOfRange.ok);
   if (outOfRange.ok) {
-    assertEquals(outOfRange.row.properties, { style_set: false });
+    assertEquals(outOfRange.row.properties, {});
   }
 });
 
@@ -179,7 +179,7 @@ Deno.test("dictionary stays aligned with docs/integrations/funnel-events-v1.md",
     onboarding_page_view: ["page_index"],
     onboarding_skip: ["page_index"],
     onboarding_branch_answer: ["has_partner"],
-    onboarding_questionnaire_submit: ["style_set", "goals_count"],
+    onboarding_questionnaire_submit: ["goals_count"],
     quota_strip_tap: [],
     opener_entry_tap: [],
     coach_entry_tap: ["has_partner"],

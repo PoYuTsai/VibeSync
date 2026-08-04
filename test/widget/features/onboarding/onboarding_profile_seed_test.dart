@@ -134,7 +134,7 @@ void main() {
       await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
       await tester.pumpAndSettle();
     }
-    await tester.tap(find.text('幽默'));
+    await tester.tap(find.text('想約得出來'));
     await tester.pumpAndSettle();
     for (var i = 0; i < 2; i++) {
       await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
@@ -166,7 +166,7 @@ void main() {
       await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
       await tester.pumpAndSettle();
     }
-    await tester.tap(find.text('幽默'));
+    await tester.tap(find.text('想約得出來'));
     await tester.pumpAndSettle();
     for (var i = 0; i < 2; i++) {
       await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
@@ -180,7 +180,7 @@ void main() {
     expect(prefs.getBool('onboarding_completed'), isTrue);
   });
 
-  testWidgets('問卷有選＋答「有」→ 一筆合併種子帶 style/goals，notes 不寫入', (tester) async {
+  testWidgets('問卷有選＋答「有」→ 一筆合併種子帶 goals，notes 不寫入', (tester) async {
     final repo = _FakeRepo();
     await tester.pumpWidget(
       ProviderScope(
@@ -194,14 +194,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 滑 3 次到問卷頁（index 3），選風格＋一個目標。
+    // 滑 3 次到問卷頁（index 3），選一個目標。
     for (var i = 0; i < 3; i++) {
       await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
       await tester.pumpAndSettle();
     }
     expect(find.text('30 秒，讓建議更像你'), findsOneWidget);
-    await tester.tap(find.text('幽默'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('想約得出來'));
     await tester.pumpAndSettle();
 
@@ -215,7 +213,7 @@ void main() {
 
     expect(repo.saveCount, 1);
     final saved = repo.byOwner[_uid]!;
-    expect(saved.interactionStyle, InteractionStyle.humorous);
+    expect(saved.interactionStyle, isNull);
     expect(saved.practiceGoals, [PracticeGoal.softInvite]);
     expect(saved.notes, isNull);
   });
