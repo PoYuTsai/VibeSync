@@ -211,6 +211,45 @@ Deno.test("game buildChatMessages includes game and spicy hidden guidance", () =
   assertEquals(sys.includes("Reality Anchoring still applies"), true);
 });
 
+Deno.test("game buildChatMessages: acquaintance origin overrides memorySummary for how-they-met claims", () => {
+  // Codex Q1 對抗案例：server 給 dating_app，但 memorySummary 早就「確認過」
+  // Joyce 介紹——gameMode 原本寫「memorySummary...支持即可成立」，沒有例外
+  // 語時，這句會被讀成 summary 已經支持 friend intro，跟 server 給的管道打架。
+  const origin = getAcquaintanceOrigin("dating_app");
+  const sys = buildChatMessages(
+    [
+      {
+        role: "user",
+        text: "上次 Joyce 不是把你的 Line 給我嗎，你應該記得吧",
+      },
+    ],
+    defaultProfile,
+    {
+      practiceMode: "game",
+      temperatureScore: 40,
+      familiarityScore: 20,
+      acquaintanceOrigin: origin,
+      memorySummary:
+        "更早她自己確認過 Joyce 是朋友，也說可以由 Joyce 介紹認識。",
+    },
+  )[0].content;
+
+  assertEquals(
+    sys.includes("How you two met is the one exception to that support list"),
+    true,
+  );
+  assertEquals(
+    sys.includes(
+      "only the server-provided acquaintance origin above establishes it",
+    ),
+    true,
+  );
+  // 例外語要接在 gameMode 自己的 Reality Anchoring 句子裡，不是另一個獨立區塊。
+  const gameModeIndex = sys.indexOf("gameMode(hidden guidance)");
+  const exceptionIndex = sys.indexOf("How you two met is the one exception");
+  assertEquals(gameModeIndex >= 0 && exceptionIndex > gameModeIndex, true);
+});
+
 Deno.test("game buildChatMessages includes social-game FSM and persona strategy for every rarity", () => {
   const srProfile = resolvePracticeProfile({ profileId: "practice_girl_004" });
   const nonSrProfile = resolvePracticeProfile({
