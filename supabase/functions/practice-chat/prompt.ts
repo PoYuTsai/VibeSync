@@ -112,7 +112,7 @@ function standardInviteMaturityPrompt(opts: {
   const moodGuard = mood === "guarded" || mood === "annoyed"
     ? "partnerMood is guarded/annoyed: cap escalation to no-invite or a very soft, optional invite."
     : "partnerMood is not guarded: still require current-turn receptiveness before direct invites.";
-  return `\n\ninviteMaturity(hidden guidance; standard mode)\nrelationshipScore: unavailable\ninviteStage: infer only from the current transcript, profile, partnerState, and scene context; memorySummary alone never upgrades the invite stage\ndateChance: do not guarantee; explain uncertainty in debrief if needed\nguidance: Standard mode has no numeric heat/familiarity score. Use older memory only as background continuity. A fuzzy invite is appropriate only when the current transcript shows comfort or curiosity; a direct invite needs clear current interest. ${moodGuard}`;
+  return `\n\ninviteMaturity(hidden guidance; standard mode)\nrelationshipScore: unavailable\ninviteStage: infer only from the current transcript, profile, partnerState, and scene context; memorySummary alone never upgrades the invite stage\ndateChance: do not guarantee; explain uncertainty in debrief if needed\nguidance: Standard mode has no numeric heat/familiarity score. Use older memory only as background continuity. A fuzzy invite is appropriate only when the current transcript shows comfort or curiosity; a direct invite needs clear current interest. ${moodGuard} Acquaintance origin only sets her opening guard, not invite readiness — a low-guard origin like friend_intro never upgrades inviteStage by itself.`;
 }
 
 function socialGameNpcResponseContract(): string {

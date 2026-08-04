@@ -155,6 +155,12 @@ Deno.test("standard buildChatMessages includes no-score invite guidance when con
   assertEquals(sys.includes("relationshipScore: unavailable"), true);
   assertEquals(sys.includes("memorySummary alone never upgrades"), true);
   assertEquals(sys.includes("cap escalation"), true);
+  assertEquals(
+    sys.includes(
+      "Acquaintance origin only sets her opening guard, not invite readiness",
+    ),
+    true,
+  );
 });
 
 Deno.test("standard buildChatMessages includes no-score invite guidance without memory", () => {
@@ -168,6 +174,12 @@ Deno.test("standard buildChatMessages includes no-score invite guidance without 
   );
   assertEquals(sys.includes("relationshipScore: unavailable"), true);
   assertEquals(sys.includes("memorySummary alone never upgrades"), true);
+  assertEquals(
+    sys.includes(
+      "Acquaintance origin only sets her opening guard, not invite readiness",
+    ),
+    true,
+  );
 });
 
 Deno.test("beginner buildChatMessages includes temperature score", () => {
@@ -1084,6 +1096,25 @@ Deno.test("buildChatMessages injects the acquaintance origin as established back
   const anchorIndex = sys.indexOf("認知邊界 / 現實錨定");
   const originIndex = sys.indexOf("你們是怎麼認識的");
   assertEquals(anchorIndex >= 0 && originIndex > anchorIndex, true);
+});
+
+Deno.test("standard buildChatMessages' invite guidance excludes a low-guard acquaintance origin from invite readiness", () => {
+  const origin = getAcquaintanceOrigin("friend_intro");
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    defaultProfile,
+    { acquaintanceOrigin: origin },
+  )[0].content;
+
+  const originIndex = sys.indexOf("你們是怎麼認識的");
+  const inviteIndex = sys.indexOf("inviteMaturity(hidden guidance");
+  const exclusionIndex = sys.indexOf(
+    "Acquaintance origin only sets her opening guard, not invite readiness",
+  );
+  // 排除語落在 inviteMaturity 區塊本身（模型讀到的最後一段），跟認識管道
+  // bullet 5 分屬兩處提醒——即使前段被模型忽略，決策當下這裡還有一次。
+  assertEquals(originIndex >= 0 && inviteIndex > originIndex, true);
+  assertEquals(exclusionIndex > inviteIndex, true);
 });
 
 Deno.test("buildChatMessages omits the acquaintance origin block when none is supplied", () => {
