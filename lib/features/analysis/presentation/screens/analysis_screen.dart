@@ -6458,21 +6458,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   const SizedBox(width: 8),
                   Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                     decoration: BoxDecoration(
-                      color: AppColors.ctaStart.withValues(alpha: 0.1),
+                      color: AppColors.ctaStart,
                       borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: AppColors.ctaStart.withValues(alpha: 0.22),
-                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           _showDetailedAnalysis ? '收起' : '展開',
-                          style: AppTypography.caption.copyWith(
-                            color: AppColors.ctaStart,
+                          style: AppTypography.bodySmall.copyWith(
+                            color: Colors.white,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -6481,8 +6478,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           _showDetailedAnalysis
                               ? Icons.expand_less
                               : Icons.expand_more,
-                          color: AppColors.ctaStart,
-                          size: 18,
+                          color: Colors.white,
+                          size: 20,
                         ),
                       ],
                     ),
@@ -7538,76 +7535,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           const SizedBox(height: 16),
                         ],
 
-                        if (_enthusiasmScore != null &&
-                            _gameStage != null &&
-                            _finalRecommendation != null) ...[
-                          KeyedSubtree(
-                            key: _coachSurfaceKey,
-                            child: CoachSurface(
-                              scope: CoachScope.conversation(
-                                widget.conversationId,
-                              ),
-                              analysisSnapshot:
-                                  _buildCoachChatAnalysisSnapshot(),
-                              focusRequestToken: _coachChatFocusRequest,
-                              prefillText: _coachChatPrefill,
-                              onReturnToAnalysis: _returnToAnalysisOverview,
-                              onQuotaExceeded: () {
-                                unawaited(_handleCoachChatQuotaExceeded());
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-
-                        if (_isAnalyzing && _enthusiasmScore == null) ...[
-                          Center(
-                            child: StreamingAnalysisLoader(
-                              label: _streamProgressLabel,
-                              detail: _streamProgressDetail,
-                            ),
-                          ),
-                        ],
-
-                        if ((_isAnalyzing || _fullErrorMessage != null) &&
-                            _streamContents.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          _buildStreamingContentCard(),
-                        ],
-
-                        // gate 含 _quotaExceededInfo：fresh-start quota 429
-                        // （failedBeforeRecommendation）只設 quota state、
-                        // 不設 _fullErrorMessage（Codex 雙審 r1-P2a）。
-                        if (_fullErrorMessage != null ||
-                            _quotaExceededInfo != null) ...[
-                          const SizedBox(height: 12),
-                          // Quota 429 分流：額度不足不是技術失敗，渲染升級卡
-                          // 而非「無法再重試」（smoke P1 fix 2026-06-11）。
-                          if (_quotaExceededInfo != null)
-                            QuotaExceededUpgradeCard(
-                              isMonthly: _quotaExceededInfo!.isMonthly,
-                              remaining: _quotaExceededInfo!.remaining,
-                              quotaNeeded: _quotaExceededInfo!.quotaNeeded,
-                              onViewPlans: () => _showPaywall(context),
-                            )
-                          else
-                            FullAnalysisRetryCard(
-                              retriesRemaining: _fullErrorRetriesRemaining,
-                              errorMessage: _fullErrorMessage,
-                              onRetry: _fullErrorRetriesRemaining > 0
-                                  ? _retryFullAnalysis
-                                  : null,
-                            ),
-                        ],
-
-                        if (_isAnalyzing ||
-                            _fullErrorMessage != null ||
-                            _quotaExceededInfo != null)
-                          SizedBox(
-                            key: _analysisProgressEndKey,
-                            height: 1,
-                          ),
-
                         if (_enthusiasmScore != null) ...[
                           // 實扣顯示常駐行（smoke P2 fix 2026-06-11）：
                           // 隨快照持久化，回看也顯示；SnackBar 保留即時感知。
@@ -8096,6 +8023,77 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             ],
                           ],
                         ],
+
+                        if (_enthusiasmScore != null &&
+                            _gameStage != null &&
+                            _finalRecommendation != null) ...[
+                          KeyedSubtree(
+                            key: _coachSurfaceKey,
+                            child: CoachSurface(
+                              scope: CoachScope.conversation(
+                                widget.conversationId,
+                              ),
+                              analysisSnapshot:
+                                  _buildCoachChatAnalysisSnapshot(),
+                              focusRequestToken: _coachChatFocusRequest,
+                              prefillText: _coachChatPrefill,
+                              onReturnToAnalysis: _returnToAnalysisOverview,
+                              onQuotaExceeded: () {
+                                unawaited(_handleCoachChatQuotaExceeded());
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+
+                        if (_isAnalyzing && _enthusiasmScore == null) ...[
+                          Center(
+                            child: StreamingAnalysisLoader(
+                              label: _streamProgressLabel,
+                              detail: _streamProgressDetail,
+                            ),
+                          ),
+                        ],
+
+                        if ((_isAnalyzing || _fullErrorMessage != null) &&
+                            _streamContents.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          _buildStreamingContentCard(),
+                        ],
+
+                        // gate 含 _quotaExceededInfo：fresh-start quota 429
+                        // （failedBeforeRecommendation）只設 quota state、
+                        // 不設 _fullErrorMessage（Codex 雙審 r1-P2a）。
+                        if (_fullErrorMessage != null ||
+                            _quotaExceededInfo != null) ...[
+                          const SizedBox(height: 12),
+                          // Quota 429 分流：額度不足不是技術失敗，渲染升級卡
+                          // 而非「無法再重試」（smoke P1 fix 2026-06-11）。
+                          if (_quotaExceededInfo != null)
+                            QuotaExceededUpgradeCard(
+                              isMonthly: _quotaExceededInfo!.isMonthly,
+                              remaining: _quotaExceededInfo!.remaining,
+                              quotaNeeded: _quotaExceededInfo!.quotaNeeded,
+                              onViewPlans: () => _showPaywall(context),
+                            )
+                          else
+                            FullAnalysisRetryCard(
+                              retriesRemaining: _fullErrorRetriesRemaining,
+                              errorMessage: _fullErrorMessage,
+                              onRetry: _fullErrorRetriesRemaining > 0
+                                  ? _retryFullAnalysis
+                                  : null,
+                            ),
+                        ],
+
+                        if (_isAnalyzing ||
+                            _fullErrorMessage != null ||
+                            _quotaExceededInfo != null)
+                          SizedBox(
+                            key: _analysisProgressEndKey,
+                            height: 1,
+                          ),
+
 
                         // 草稿潤飾功能：使用者已有方向時才用；判斷/策略交給 Coach 1:1。
                         if (_enthusiasmScore != null) ...[
