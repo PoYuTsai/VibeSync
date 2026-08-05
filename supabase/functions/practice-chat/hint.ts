@@ -2368,14 +2368,59 @@ function assertNoPasteableFactClaimsSupported(opts: {
 }
 
 /**
+ * 「本輪沒有可貼句」這個**狀態宣告**本身必須有逐字稿證據。
+ *
+ * fact ledger 擋不住它：那是照可貼句與 coaching 校準的，套到這種短的狀態句會
+ * 誤判（實測「對話已被封鎖，無法再傳送訊息」被判成
+ * unsupported_detail:third_party:name:is_named）。但放著不管，模型就能在她根本
+ * 沒有封鎖的局說「她已經封鎖你了」——那是憑空捏造對話狀態，屬甲類紅線，而且
+ * 會直接吃掉使用者這一次的提示。
+ *
+ * 改用對症的證據：她最新那句有沒有真的畫出逐客令／敵意界線。複用既有且調校
+ * 保守的 latestAssistantShowsHostility（2026-08-06 W3，Codex 首審 P1）。
+ */
+function assertNoPasteableStateIsGrounded(options: HintParseOptions): void {
+  if (options.enforceGeneratedQuality !== true) return;
+  const turns = options.turns ?? [];
+  let latestAssistant = "";
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    if (turns[index].role === "ai") {
+      latestAssistant = turns[index].text;
+      break;
+    }
+  }
+  if (!latestAssistantShowsHostility(latestAssistant)) {
+    throw new Error("hint_no_pasteable_unsupported_state");
+  }
+}
+
+/**
  * 整句被括號包住＝旁白／舞台指示，不是可以貼給對方的訊息。
  *
  * 這不是文風判斷，是形狀判斷：使用者按下「貼上」時會把括號一起貼出去。模型
  * 會寫出這種東西，幾乎都是因為它認為本輪沒有可貼句（她已封鎖／要求停止聯絡），
  * 只是把話填進了可貼欄位。
+ *
+ * 判定＝整串恰好是**一組**配對括號。用括號深度掃描而不是 regex：巢狀的
+ * 「（微笑（點頭））」regex 會漏掉（Codex 首審 P2），而「（笑）那我先不吵妳（真的）」
+ * 這種前後都有括號、中間有真內容的句子不能算旁白。
  */
 export function isStageDirectionText(value: string): boolean {
-  return /^[（(][^（()）]*[)）]$/u.test(value.trim());
+  const trimmed = value.trim();
+  if (trimmed.length < 2) return false;
+  const OPEN = "（(";
+  const CLOSE = "）)";
+  if (!OPEN.includes(trimmed[0])) return false;
+  let depth = 0;
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    if (OPEN.includes(char)) depth += 1;
+    else if (CLOSE.includes(char)) depth -= 1;
+    if (depth < 0) return false;
+    // 深度在結尾之前歸零＝這組括號已經收掉，後面還有字＝不是單一組旁白。
+    if (depth === 0 && index !== trimmed.length - 1) return false;
+  }
+  return depth === 0;
 }
 
 /** 旁白轉「本輪沒有可貼句」說明時，去掉外層括號（括號是形狀不是內容）。 */
@@ -2549,6 +2594,7 @@ export function parseHintResult(
     );
     // 多餘鍵一律忽略而不是打回：我們只讀白名單欄位，沒讀到的鍵不可能被畫到
     // 畫面上，為了它把一份好內容轉成 503 是純虧（2026-08-06 W3 乙類）。
+    assertNoPasteableStateIsGrounded(options);
     assertNoPasteableFactClaimsSupported({
       texts: [coachingOnly],
       parseOptions: options,
@@ -2588,6 +2634,7 @@ export function parseHintResult(
       throw new Error("hint_no_pasteable_unsupported_client");
     }
     const reason = stripStageDirectionMarkers(warmUp);
+    assertNoPasteableStateIsGrounded(options);
     assertNoPasteableFactClaimsSupported({
       texts: [coaching],
       parseOptions: options,

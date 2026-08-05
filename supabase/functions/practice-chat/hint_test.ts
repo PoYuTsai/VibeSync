@@ -16,6 +16,7 @@ import {
   HINT_REPLY_SOFT_CHAR_LIMIT,
   HINT_TOOL_SCHEMA,
   hintTrustedFactualEvidence,
+  isStageDirectionText,
   MAX_COACHING_LENGTH,
   parseHintResult,
   salvageHintCandidate,
@@ -6356,4 +6357,71 @@ Deno.test("W3 無可貼句：coaching 捏造事實照樣被打回（兩條路徑
     Error,
     "unsupported_detail",
   );
+});
+
+// ── Codex 首審 P1：「沒有可貼句」這個狀態宣告本身也要有證據 ──
+// 沒有這道，模型可以在她根本沒封鎖的局說「她已經封鎖你了」，憑空捏造對話狀態，
+// 而且直接吃掉使用者這一次的提示。fact ledger 擋不住（對這種短狀態句會誤判）。
+Deno.test("W3 無可貼句：她沒有畫逐客令時，不准宣稱沒有可貼句", () => {
+  const friendlyTurns = [
+    { role: "user" as const, text: "妳今天下班了嗎" },
+    { role: "ai" as const, text: "剛下班，正在等公車回家～" },
+  ];
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          noPasteableReason: "她已經封鎖你了，這輪沒有可送出的訊息。",
+          coaching: "她已經把界線畫死，這裡要學的是收手。",
+        }),
+        {
+          ...w3BaseOptions,
+          turns: friendlyTurns,
+          allowNoPasteableReply: true,
+        },
+      ),
+    Error,
+    "hint_no_pasteable_unsupported_state",
+  );
+  // 旁白句轉換路徑同樣要擋，否則換個欄位就繞過去了。
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "（對話已被封鎖，無法再傳送訊息）",
+          steady: "（對話已被封鎖，無法再傳送訊息）",
+          coaching: "她已經把界線畫死，這裡要學的是收手。",
+        }),
+        {
+          ...w3BaseOptions,
+          turns: friendlyTurns,
+          allowNoPasteableReply: true,
+        },
+      ),
+    Error,
+    "hint_no_pasteable_unsupported_state",
+  );
+});
+
+// ── Codex 首審 P2：旁白判定改用括號深度掃描 ──
+Deno.test("W3 旁白判定：巢狀括號算旁白，前後有括號但中間有真內容的不算", () => {
+  for (
+    const stageDirection of [
+      "（微笑（點頭））",
+      "(對話已結束)",
+      "（她沒有回應）",
+    ]
+  ) {
+    assertEquals(isStageDirectionText(stageDirection), true, stageDirection);
+  }
+  for (
+    const pasteable of [
+      "（笑）那我先不吵妳（真的）",
+      "好啊（笑）",
+      "（笑）好啊",
+      "那我先不吵妳了。",
+    ]
+  ) {
+    assertEquals(isStageDirectionText(pasteable), false, pasteable);
+  }
 });
