@@ -2124,16 +2124,14 @@ Deno.test("partner preference callback grounded in her own words is supported", 
     { role: "user", text: "睡到中午醒來先想拿鐵，妳這開機順序很有態度" },
     {
       role: "ai",
-      text:
-        "哈哈拿鐵就是我的開機鍵啊。欸你不是都在找咖啡廳，你口袋有沒有私藏的好店？",
+      text: "哈哈拿鐵就是我的開機鍵啊。欸你不是都在找咖啡廳，你口袋有沒有私藏的好店？",
     },
   ];
   const context = buildHintFactContext({ turns });
   // 她親口說過拿鐵＝開機鍵：說她是拿鐵派＝有據 callback，不得殺。
   assertEquals(
     collectUnsupportedHintFactClaims({
-      text:
-        "私藏是有啦，但那種店都低調到差點被我路過忽略，得先確認妳是拿鐵派才夠資格收下這份口袋名單",
+      text: "私藏是有啦，但那種店都低調到差點被我路過忽略，得先確認妳是拿鐵派才夠資格收下這份口袋名單",
       field: "reply",
       context,
     }),
@@ -2142,8 +2140,7 @@ Deno.test("partner preference callback grounded in her own words is supported", 
   // 「跟妳不同派」＝比較詞不是喜好命名，不得抽出錨點「不同」。
   assertEquals(
     collectUnsupportedHintFactClaims({
-      text:
-        "先說好我的開機鍵是黑咖啡不是拿鐵，跟妳不同派。妳拿鐵都固定喝哪種豆子還是隨緣？",
+      text: "先說好我的開機鍵是黑咖啡不是拿鐵，跟妳不同派。妳拿鐵都固定喝哪種豆子還是隨緣？",
       field: "reply",
       context,
     }),
@@ -2187,8 +2184,7 @@ Deno.test("partner preference callback grounded in her own words is supported", 
 Deno.test("preference fandom pattern skips alternative questions and cross-actor anchors", () => {
   assertEquals(
     extractHintFactClaims({
-      text:
-        "有幾間我常跑的，但比起口袋名單，我更好奇妳的拿鐵標準是走濃苦派還是奶香派？",
+      text: "有幾間我常跑的，但比起口袋名單，我更好奇妳的拿鐵標準是走濃苦派還是奶香派？",
       perspective: "reply",
       provenance: "generated_reply",
       defaultOwner: "user",
@@ -2217,10 +2213,7 @@ Deno.test("preference fandom pattern skips compound nouns ending in 流派/學�
     turns: [
       { role: "user", text: "我平常亂吃流派，練腿吃什麼都隨便" },
       { role: "ai", text: "笑死 你也太廢了吧 練腿那天亂吃隔天會超慘" },
-      {
-        role: "user",
-        text: "有啦，有在練。練腿那天也是亂吃，妳練腿通常吃爆什麼？",
-      },
+      { role: "user", text: "有啦，有在練。練腿那天也是亂吃，妳練腿通常吃爆什麼？" },
       { role: "ai", text: "白飯配雞胸肉啊 再補個蛋 練完那餐真的不能省" },
     ],
   });
@@ -2334,15 +2327,13 @@ Deno.test("typed gh6 possessive-time callback and cross-clause naming stay out o
     { role: "user", text: "睡到中午醒來先想拿鐵，妳這開機順序很有態度" },
     {
       role: "ai",
-      text:
-        "哈哈拿鐵就是我的開機鍵啊。欸你不是都在找咖啡廳，你口袋有沒有私藏的好店？",
+      text: "哈哈拿鐵就是我的開機鍵啊。欸你不是都在找咖啡廳，你口袋有沒有私藏的好店？",
     },
   ];
   const context = buildHintFactContext({ turns });
   assertEquals(
     collectUnsupportedHintFactClaims({
-      text:
-        "私藏是有啦，走的是安靜角落型，跟妳的中午開機鍵風格可能不太一樣，但應該會合拍",
+      text: "私藏是有啦，走的是安靜角落型，跟妳的中午開機鍵風格可能不太一樣，但應該會合拍",
       field: "reply",
       context,
     }),
@@ -2363,9 +2354,7 @@ Deno.test("typed gh6 possessive-time callback and cross-clause naming stay out o
       text: "妳中午有空吧，我記得妳都閒著",
       field: "reply",
       context,
-    }).some((claim) =>
-      claim.domain === "schedule" && claim.owner === "partner"
-    ),
+    }).some((claim) => claim.domain === "schedule" && claim.owner === "partner"),
     true,
   );
   assertEquals(
@@ -2441,29 +2430,23 @@ Deno.test("profession 的-短語取尾段 head noun，不升格前段", () => {
 Deno.test("regression: 速約任務「不報地區」否定宣言不再變 located_at claim（Codex review gh5 503）", () => {
   const context = buildHintFactContext({
     turns: [
-      {
-        role: "user",
-        text: "有一間唱片行超有味道，老闆會手寫推薦卡，黑膠的味道很濃。",
-      },
+      { role: "user", text: "有一間唱片行超有味道，老闆會手寫推薦卡，黑膠的味道很濃。" },
       { role: "ai", text: "被你說得我有點心動，你說的那間唱片行是在哪一區啊" },
     ],
   });
   // gh5 真機第一發（Sonnet）候選：守規賣關子卻被 located_at 誤殺（兩發皆拒→503）。
   assertHintFactClaimsSupported({
-    text:
-      "位置先賣個關子哈哈，等妳心動夠了我再帶路。不如這樣：這週抓半小時，我帶妳去被老闆推薦一次？",
+    text: "位置先賣個關子哈哈，等妳心動夠了我再帶路。不如這樣：這週抓半小時，我帶妳去被老闆推薦一次？",
     field: "reply",
     context,
   });
   assertHintFactClaimsSupported({
-    text:
-      "哪一區先保密，重點是妳說的心動要兌現。要不要找個30分鐘，我帶妳去現場感受那個黑膠味道？",
+    text: "哪一區先保密，重點是妳說的心動要兌現。要不要找個30分鐘，我帶妳去現場感受那個黑膠味道？",
     field: "reply",
     context,
   });
   assertHintFactClaimsSupported({
-    text:
-      "Game 心法：她問地址，其實是心動後想確認這事能不能成真，不是真的要導航。這階段該推「投入感＋邀約」，重點不是給位置，是把「心動」接住並收成具體行動。速約任務：不報地區，用賣關子＋直接開低壓邀約窗（30分鐘短行程），保留她可拒絕的空間，往明確邀約推一階。",
+    text: "Game 心法：她問地址，其實是心動後想確認這事能不能成真，不是真的要導航。這階段該推「投入感＋邀約」，重點不是給位置，是把「心動」接住並收成具體行動。速約任務：不報地區，用賣關子＋直接開低壓邀約窗（30分鐘短行程），保留她可拒絕的空間，往明確邀約推一階。",
     field: "coaching",
     context,
   });
@@ -2504,24 +2487,19 @@ Deno.test("regression: 速約任務「不報地區」否定宣言不再變 locat
 Deno.test("regression: 「那間…是聽人推薦的」迴避句回溯切詞不再變 venue_named（round12 gh5 #10）", () => {
   const context = buildHintFactContext({
     turns: [
-      {
-        role: "user",
-        text: "有一間唱片行超有味道，老闆會手寫推薦卡，黑膠的味道很濃。",
-      },
+      { role: "user", text: "有一間唱片行超有味道，老闆會手寫推薦卡，黑膠的味道很濃。" },
       { role: "ai", text: "被你說得我有點心動，你說的那間唱片行是在哪一區啊" },
     ],
   });
   // gh5 round12 #10 第一發（Sonnet）：誠實迴避＋轉邀約，卻被「那間…是聽人推
   // 薦的」回溯切出「聽人推」當店名誤殺。
   assertHintFactClaimsSupported({
-    text:
-      "說實話那間我還沒實際去過，是聽人推薦的，怕亂講害妳白跑。不然找天一起去踩點，順路挑張黑膠？",
+    text: "說實話那間我還沒實際去過，是聽人推薦的，怕亂講害妳白跑。不然找天一起去踩點，順路挑張黑膠？",
     field: "reply",
     context,
   });
   assertHintFactClaimsSupported({
-    text:
-      "哈哈被妳問到地雷了，我其實還沒去過，都是聽朋友說的。那不然這樣，我們一起去挖黑膠、順便讓老闆幫妳寫張推薦卡？",
+    text: "哈哈被妳問到地雷了，我其實還沒去過，都是聽朋友說的。那不然這樣，我們一起去挖黑膠、順便讓老闆幫妳寫張推薦卡？",
     field: "reply",
     context,
   });
@@ -2588,23 +2566,18 @@ Deno.test("regression: 「我是那種…的人」自我歸類不再變 venue_na
   const context = buildHintFactContext({
     turns: [
       { role: "user", text: "妳週末都怎麼過啊？我最近迷上到處找咖啡廳" },
-      {
-        role: "ai",
-        text: "我喔，大部分睡到中午，起來第一件事就是想喝好的拿鐵",
-      },
+      { role: "ai", text: "我喔，大部分睡到中午，起來第一件事就是想喝好的拿鐵" },
       { role: "user", text: "睡到中午醒來先想拿鐵，妳這開機順序很有態度" },
       {
         role: "ai",
-        text:
-          "哈哈拿鐵就是我的開機鍵啊。欸你不是都在找咖啡廳，你口袋有沒有私藏的好店？",
+        text: "哈哈拿鐵就是我的開機鍵啊。欸你不是都在找咖啡廳，你口袋有沒有私藏的好店？",
       },
     ],
   });
   // round13 gh6 第一發（Sonnet）候選：「私藏好店…但我是那種只給…的人」
   // 被「店…是＋捕獲」venue_named pattern 跨逗號抓成店名「那種只給開機鍵」。
   assertHintFactClaimsSupported({
-    text:
-      "私藏好店當然有，但我是那種只給「開機鍵」等級的人才透露的，妳這拿鐵咖位算過關😏 先說妳喝拿鐵愛偏甜還是偏濃？",
+    text: "私藏好店當然有，但我是那種只給「開機鍵」等級的人才透露的，妳這拿鐵咖位算過關😏 先說妳喝拿鐵愛偏甜還是偏濃？",
     field: "reply",
     context,
   });
@@ -2629,19 +2602,13 @@ Deno.test("regression: 「我是那種…的人」自我歸類不再變 venue_na
 Deno.test("regression: 「幫忙」的忙不再變 schedule 述語、「沒有把…」不翻極性（round13 gd5 503）", () => {
   const context = buildHintFactContext({
     turns: [
-      {
-        role: "user",
-        text: "妳上次說想逛的那種老物市集，這週末河邊剛好有一場",
-      },
+      { role: "user", text: "妳上次說想逛的那種老物市集，這週末河邊剛好有一場" },
       { role: "ai", text: "真的假的，我找這種市集找超久" },
       { role: "user", text: "真的，聽說還有舊底片相機的攤位" },
       { role: "ai", text: "底片相機！我一直想收一台，但怕被當盤子" },
       { role: "user", text: "我大學玩過一陣子底片，殺價我可以罩妳" },
       { role: "ai", text: "喔？那你說說看，怎樣的機況才值得下手" },
-      {
-        role: "user",
-        text: "先看蒙皮和過片順不順，快門聲音一聽就知道有沒有被操過",
-      },
+      { role: "user", text: "先看蒙皮和過片順不順，快門聲音一聽就知道有沒有被操過" },
       { role: "ai", text: "聽起來真的有懂，不是隨便唬我" },
       { role: "user", text: "唬妳幹嘛，被拆穿多丟臉" },
       { role: "ai", text: "哈哈也是，那市集是星期六還星期日？" },
@@ -2653,8 +2620,7 @@ Deno.test("regression: 「幫忙」的忙不再變 schedule 述語、「沒有�
   // 「幫忙把關殺價」」——「幫忙」的「忙」被 SCHEDULE_STATUS 跨 gap 抓成
   // busy 述語，湊出 partner:schedule:busy_at「週六下午」捏造 claim。
   assertHintFactClaimsSupported({
-    text:
-      "她主動確認星期六下午、還分配你「幫忙把關殺價」的任務，等於給了具體行動窗口",
+    text: "她主動確認星期六下午、還分配你「幫忙把關殺價」的任務，等於給了具體行動窗口",
     field: "coaching",
     context,
   });
@@ -2662,8 +2628,7 @@ Deno.test("regression: 「幫忙」的忙不再變 schedule 述語、「沒有�
   // 否定的是「轉成確認」這個動作，不是她的「下午可以」；把-字句否定不得
   // 回頭翻內嵌 claim 的極性。
   assertHintFactClaimsSupported({
-    text:
-      "沒有把她釋出的時間線索（下午可以）立刻轉成具體日期和地點確認，邀約停留在口頭承諾而非實際行動計畫。",
+    text: "沒有把她釋出的時間線索（下午可以）立刻轉成具體日期和地點確認，邀約停留在口頭承諾而非實際行動計畫。",
     field: "coaching",
     context,
   });
@@ -2709,18 +2674,15 @@ Deno.test("regression: 「叫外送」不再變 third_party 人名 claim（round
       { role: "user", text: "敵。那妳練腿的日子是不是就得吃得更扎實一點？" },
       {
         role: "ai",
-        text:
-          "喔～你懂喔？練腿那天我一定吃爆，不然隔天直接變殘廢😂 等等 你該不會也有在練吧",
+        text: "喔～你懂喔？練腿那天我一定吃爆，不然隔天直接變殘廢😂 等等 你該不會也有在練吧",
       },
       {
         role: "user",
-        text:
-          "有啦，有在練。不過我的菜單沒妳那麼講究，練腿那天也是亂吃😂 妳練腿通常吃爆什麼？",
+        text: "有啦，有在練。不過我的菜單沒妳那麼講究，練腿那天也是亂吃😂 妳練腿通常吃爆什麼？",
       },
       {
         role: "ai",
-        text:
-          "白飯配雞胸肉啊 再補個蛋 碳水蛋白質一起來 練完那餐真的不能省 不然腿會抗議😂",
+        text: "白飯配雞胸肉啊 再補個蛋 碳水蛋白質一起來 練完那餐真的不能省 不然腿會抗議😂",
       },
     ],
   });
@@ -2800,7 +2762,9 @@ Deno.test("認識管道 sharedFact 的泛稱場所詞不會被抽成具體 venue
     assertEquals(
       claims.filter((claim) => claim.relation === "venue_named"),
       [],
-      `${origin.id} sharedFact 被抽成具體場所宣稱：${JSON.stringify(claims)}`,
+      `${origin.id} sharedFact 被抽成具體場所宣稱：${
+        JSON.stringify(claims)
+      }`,
     );
   }
 });

@@ -406,10 +406,7 @@ Deno.test("永久去重：eligible 判斷與 catalogSize 切池取交集（排�
   const legacyAll = new Set(
     GIRL_PROFILES.slice(0, LEGACY_CATALOG_SIZE).map((g) => g.profileId),
   );
-  assertEquals(
-    hasEligibleDrawCandidate({ excludedProfileIds: legacyAll }),
-    false,
-  );
+  assertEquals(hasEligibleDrawCandidate({ excludedProfileIds: legacyAll }), false);
   assert(
     hasEligibleDrawCandidate({
       excludedProfileIds: legacyAll,

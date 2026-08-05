@@ -3,7 +3,10 @@ import {
   assertRejects,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import type { ClaudeArgs } from "./claude.ts";
-import { runSingleShot, SingleShotExhaustedError } from "./single_shot.ts";
+import {
+  runSingleShot,
+  SingleShotExhaustedError,
+} from "./single_shot.ts";
 
 const MODELS: [string, string] = [
   "claude-sonnet-5",
@@ -15,9 +18,7 @@ const FORCED_TOOL = {
   inputSchema: { type: "object" } as Record<string, unknown>,
 };
 
-function baseArgs(
-  overrides: Partial<Parameters<typeof runSingleShot>[0]> = {},
-) {
+function baseArgs(overrides: Partial<Parameters<typeof runSingleShot>[0]> = {}) {
   return {
     callClaude: (_args: ClaudeArgs) => Promise.resolve('{"ok":true}'),
     apiKey: "test-key",

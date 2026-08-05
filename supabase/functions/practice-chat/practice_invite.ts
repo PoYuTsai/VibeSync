@@ -83,7 +83,8 @@ const NEGATED_ACTIVITY =
 // 修飾窗與語尾都排「我」，「會想再跟我去嗎」仍算邀約。
 // 臆測句（真機 debrief 2026-07-23「我猜妳吃得比誰都香吧」）：我猜/我賭…吧
 // 是對她狀態的玩笑推測，不是提案。
-const CONJECTURE_CLAUSE = /我(?:猜|賭|敢說)[^，,。！？!?；;]{0,20}(?:吧|嗎)/gu;
+const CONJECTURE_CLAUSE =
+  /我(?:猜|賭|敢說)[^，,。！？!?；;]{0,20}(?:吧|嗎)/gu;
 // 回憶句（Codex 覆審/三審/四審 P2 疊代）：想起＝回憶動詞。
 // 問句形「(會)想起…嗎」整段剝（回憶內容含過去的週六/一起也照剝），
 // 只在未來提案詞（下次/改天/要不要）前停，保住連寫真邀約
@@ -137,9 +138,9 @@ export function practiceInviteLevelFor(value: string): PracticeInviteLevel {
   ).replace(INTENT_QUESTION_CLAUSE, "").replace(CONJECTURE_CLAUSE, "")
     .replace(MEMORY_RECALL_QUESTION_CLAUSE, "")
     .replace(MEMORY_RECALL_CLAUSE, "").replace(
-      THIRD_PARTY_INVITER_CLAUSE,
-      "",
-    ).replace(SHARE_CONTENT_CLAUSE, "").replace(IMAGINATION_CLAUSE, "");
+    THIRD_PARTY_INVITER_CLAUSE,
+    "",
+  ).replace(SHARE_CONTENT_CLAUSE, "").replace(IMAGINATION_CLAUSE, "");
   const hasConcreteTime = CONCRETE_TIME.test(positiveText);
   const hasSoftTime = SOFT_TIME.test(positiveText);
   const hasImplicitArrival = (IMPLICIT_ARRIVAL_CUE.test(positiveText) ||
