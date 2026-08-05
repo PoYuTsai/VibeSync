@@ -1745,6 +1745,55 @@ void main() {
       expect(result.qualitySchemaVersion, kPracticeHintQualitySchemaVersion);
     });
 
+    // ── 2026-08-06 W3：live 回應這條路徑漏掉了 W1 的新形狀 ──
+    // W1 只改了 domain 的 fromJson（快照還原用）；requestHint 走的是
+    // _parseHintResult，它硬要求恰兩句也沒讀 noPasteableReason，會把 server
+    // 端出的合法形狀判成 malformed_hint——client 宣告了能力卻畫不出來。
+    test('W3：live 回應接得住「本輪沒有可貼句」', () async {
+      final body = okHintBody()
+        ..['replies'] = <dynamic>[]
+        ..['noPasteableReason'] = '她已經封鎖你，這輪沒有可送出的訊息。';
+      final svc = serviceReturning(200, body);
+
+      final result = await svc.requestHint(
+        sessionId: 'session-1',
+        profile: profile,
+        turns: turns,
+      );
+
+      expect(result.replies, isEmpty);
+      expect(result.noPasteableReason, '她已經封鎖你，這輪沒有可送出的訊息。');
+    });
+
+    test('W3：live 回應接得住 salvage 去重後只剩一句', () async {
+      final body = okHintBody();
+      body['replies'] = [(body['replies']! as List<dynamic>).first];
+      final svc = serviceReturning(200, body);
+
+      final result = await svc.requestHint(
+        sessionId: 'session-1',
+        profile: profile,
+        turns: turns,
+      );
+
+      expect(result.replies, hasLength(1));
+      expect(result.noPasteableReason, isNull);
+    });
+
+    test('W3：空 replies 又沒有 noPasteableReason＝靜默空畫面，照樣判失敗', () async {
+      final body = okHintBody()..['replies'] = <dynamic>[];
+      final svc = serviceReturning(200, body);
+
+      await expectLater(
+        () => svc.requestHint(
+          sessionId: 'session-1',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(isA<PracticeGenerationFailedException>()),
+      );
+    });
+
     test('parses and preserves distinct complete per-reply decisions',
         () async {
       final body = okHintBody();

@@ -177,11 +177,14 @@ class PracticeHintResult {
     final costDeducted = raw['costDeducted'];
     final hintUsedCount = raw['hintUsedCount'];
     final qualitySchemaVersion = _nonEmptyString(raw['qualitySchemaVersion']);
-    // 恰兩句是常態；唯一的例外是「本輪沒有可貼句」，而那必須有原因說明——
-    // 空 replies 又沒有原因＝靜默給空畫面，一律判失敗。
-    final expectedReplyCount = noPasteableReason != null ? 0 : 2;
-    if (rawReplies is! List ||
-        rawReplies.length != expectedReplyCount ||
+    // 兩句是常態；例外有二：「本輪沒有可貼句」（必須有原因說明——空 replies 又
+    // 沒有原因＝靜默給空畫面，一律判失敗），以及 salvage 去重後只剩一句
+    //（2026-08-06 W3：一句仍是可用建議，不該因為數量不是 2 就整份丟掉）。
+    final repliesCountIsValid = rawReplies is List &&
+        (noPasteableReason != null
+            ? rawReplies.isEmpty
+            : rawReplies.length == 1 || rawReplies.length == 2);
+    if (!repliesCountIsValid ||
         coaching == null ||
         costDeducted is! int ||
         costDeducted < 0 ||

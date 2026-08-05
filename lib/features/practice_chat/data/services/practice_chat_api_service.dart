@@ -342,7 +342,13 @@ class PracticeQuotaExceededException implements Exception {
 
 class PracticeGenerationFailedException implements Exception {
   final String message;
-  PracticeGenerationFailedException(this.message);
+
+  /// server 對「重按一次有沒有用」的判斷：`transport`（連線／模型沒回，重試會好）
+  /// 或 `content`（模型有輸出但救不起來，重試多半一樣）。舊 server 不帶此鍵＝null，
+  /// 文案回退到既有的通用句（2026-08-06 W3 Task 3.3）。
+  final String? failureReason;
+
+  PracticeGenerationFailedException(this.message, {this.failureReason});
   @override
   String toString() => 'PracticeGenerationFailedException: $message';
 }
@@ -964,10 +970,18 @@ class PracticeChatApiService {
     }
     final rawReplies = data['replies'];
     final coaching = data['coaching'];
-    if (rawReplies is! List ||
-        rawReplies.length != 2 ||
-        coaching is! String ||
-        coaching.trim().isEmpty) {
+    final noPasteableReason = _asNullableString(data['noPasteableReason']);
+    // 可貼句數量的合法範圍（2026-08-06 W3；W1 只做了 domain 層的 fromJson，
+    // live 回應這條路徑漏掉，會把 server 端出的合法形狀判成 malformed_hint）：
+    //   - 有 noPasteableReason ＝「本輪沒有可貼句」，replies 必須是空的；
+    //     空 replies 又沒有說明＝靜默給空畫面，照樣判失敗。
+    //   - 沒有 reason 時常態是兩句；salvage 去重後可能只剩一句，一句仍是可用的
+    //     建議，不該因為數量不是 2 就整份丟掉。
+    final repliesAreValid = rawReplies is List &&
+        (noPasteableReason != null
+            ? rawReplies.isEmpty
+            : rawReplies.length == 1 || rawReplies.length == 2);
+    if (!repliesAreValid || coaching is! String || coaching.trim().isEmpty) {
       throw PracticeGenerationFailedException('malformed_hint');
     }
 
@@ -981,6 +995,7 @@ class PracticeChatApiService {
     return PracticeHintResult(
       replies: replies,
       coaching: coaching.trim(),
+      noPasteableReason: noPasteableReason,
       costDeducted: _asInt(data['costDeducted']) ?? 0,
       hintUsedCount: _asInt(data['hintUsedCount']) ?? 0,
       monthlyRemaining: _asInt(data['monthlyRemaining']),
@@ -1157,10 +1172,15 @@ class PracticeChatApiService {
         if (response.status >= 500) {
           final data = response.data is Map ? response.data as Map : const {};
           final error = data['error'];
+          final failureReason = data['failureReason'];
           throw PracticeGenerationFailedException(
             error is String && error.trim().isNotEmpty
                 ? error.trim()
                 : 'practice_generation_failed_${response.status}',
+            failureReason:
+                failureReason is String && failureReason.trim().isNotEmpty
+                    ? failureReason.trim()
+                    : null,
           );
         }
         final data = response.data is Map ? response.data as Map : const {};

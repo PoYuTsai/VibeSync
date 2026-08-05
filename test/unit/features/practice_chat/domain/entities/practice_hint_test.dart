@@ -32,10 +32,29 @@ void main() {
       expect(result, isNull);
     });
 
-    test('一般情形仍必須恰好兩句', () {
+    // 2026-08-06 W3（Eric 拍板「零 503」）推翻了 W1 的「一般情形恰好兩句」：
+    // salvage 對「兩句寫成同一句」去重後只剩一句，那一句仍是可用的建議，不該
+    // 因為數量不是 2 就整份丟掉。零句仍然只有「本輪沒有可貼句」一種合法解釋。
+    test('salvage 去重後只剩一句仍是合法結果', () {
       final result = PracticeHintResult.fromJson({
         'replies': <dynamic>[
           {'type': 'warm_up', 'label': '升溫回覆', 'text': '哈哈那我先不吵妳。'},
+        ],
+        'coaching': '教練說明',
+        'costDeducted': 1,
+        'hintUsedCount': 3,
+      });
+      expect(result, isNotNull);
+      expect(result!.replies.length, 1);
+      expect(result.noPasteableReason, isNull);
+    });
+
+    test('三句以上不是任何合法形狀', () {
+      final result = PracticeHintResult.fromJson({
+        'replies': <dynamic>[
+          {'type': 'warm_up', 'label': '升溫回覆', 'text': '哈哈那我先不吵妳。'},
+          {'type': 'steady', 'label': '穩住回覆', 'text': '那我等妳有空再說。'},
+          {'type': 'steady', 'label': '穩住回覆', 'text': '多出來的第三句。'},
         ],
         'coaching': '教練說明',
         'costDeducted': 1,
