@@ -3,10 +3,13 @@
 // buildAcquaintanceOrigin — 同一個 profileId+threadId 永遠算出同一個管道，
 // client 靠這份鏡像獨立算出跟 server 一致的值，不必為了顯示多打一次 API。
 //
-// 絕不自建分歧：陣列內容、順序、FNV-1a 演算法、seed 組法（profileId|threadId|
-// acquaintance-origin）、campus 資格限制，全部逐字對照 server 檔案；server 改
-// 這份清單時，這裡必須同批改，否則 client 顯示的認識場合會跟 AI 對話裡帶出的
-// 場景不一致。
+// 絕不自建分歧：id、順序、FNV-1a 演算法、seed 組法（profileId|threadId|
+// acquaintance-origin）、campus 資格限制，全部逐字對照 server 檔案，這樣選中
+// 的管道（哪一筆）才會跟 AI 對話裡帶出的場景一致；server 改這份清單時，這裡
+// 必須同批改。sharedFact 的「文字內容」是唯一例外——server 版本是寫給 AI 人設
+// 看的（第二人稱「你」＝她本人），client 版本是寫給真人使用者看的（第二人稱
+// 「你」＝使用者），兩邊視角相反，逐字複製會讓某些管道（如 ig_cold_dm）讀起來
+// 角色顛倒；只要傳達的事實一致，這裡的用字可以跟 server 不同。
 library;
 
 /// 單一認識管道的顯示內容（只保留 client 用得到的欄位；server 端還有
@@ -68,10 +71,14 @@ const List<_OriginConfig> _origins = [
     label: '街頭搭訕',
     sharedFact: '對方那天在路上直接跟你搭話，聊沒幾句就要了聯絡方式，你半推半就給了。',
   ),
+  // sharedFact 刻意不逐字對照 server：server 版本是寫給 AI 人設看的（「你」=
+  // 她本人，私訊的人是使用者），直接搬來給真人使用者看會變成「她主動私訊你」，
+  // 讀起來不合常理（女生很少主動冷私訊陌生男生）。這裡改成對真人讀者的口吻，
+  // 講的是同一件事——使用者才是那個主動私訊的人——只是敘述視角換成讀者本人。
   _OriginConfig(
     id: 'ig_cold_dm',
     label: 'IG 陌生私訊',
-    sharedFact: '對方是在 IG 直接私訊你的陌生人，你們沒有共同朋友，你只大概看過他的頭貼和版面。',
+    sharedFact: '你們沒有共同朋友。你是在 IG 限動上看到她、好奇之下才私訊她的，這是你們第一次真正搭上話，之前你就只在她的頁面上看過大頭貼和版面。',
   ),
   _OriginConfig(
     id: 'nightclub',
