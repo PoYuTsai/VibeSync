@@ -36,14 +36,16 @@ const dinnerScene: PracticeSceneContext = {
 
 // prompt 預算測試用最長的認識管道當上界：新增更長的管道時測試會自己抓到，
 // 不需要人工重挑 worst case。
-const longestHintOrigin = [...ACQUAINTANCE_ORIGINS].sort((a, b) =>
-  (b.label.length + b.sharedFact.length + b.hintFocus.length) -
-  (a.label.length + a.sharedFact.length + a.hintFocus.length)
-)[0];
-const longestDebriefOrigin = [...ACQUAINTANCE_ORIGINS].sort((a, b) =>
-  (b.label.length + b.debriefStandard.length) -
-  (a.label.length + a.debriefStandard.length)
-)[0];
+const longestHintOrigin =
+  [...ACQUAINTANCE_ORIGINS].sort((a, b) =>
+    (b.label.length + b.sharedFact.length + b.hintFocus.length) -
+    (a.label.length + a.sharedFact.length + a.hintFocus.length)
+  )[0];
+const longestDebriefOrigin =
+  [...ACQUAINTANCE_ORIGINS].sort((a, b) =>
+    (b.label.length + b.debriefStandard.length) -
+    (a.label.length + a.debriefStandard.length)
+  )[0];
 
 function hasLoneSurrogate(value: string): boolean {
   for (let index = 0; index < value.length; index++) {

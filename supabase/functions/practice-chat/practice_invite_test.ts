@@ -333,7 +333,9 @@ Deno.test("practice invite classifier ignores perception 看到 complements", ()
   // 真機 gh1 FP 樣句（2026-07-23）：「妳看到那邊的節奏還順嗎」＝問她讀到
   // 哪裡的感受，「看到」是感知補語不是提案動詞。
   assertEquals(
-    practiceInviteLevelFor("哈哈第三章也是蠻關鍵的轉折，不急，妳看到那邊的節奏還順嗎？"),
+    practiceInviteLevelFor(
+      "哈哈第三章也是蠻關鍵的轉折，不急，妳看到那邊的節奏還順嗎？",
+    ),
     "none",
   );
   // 真提案不得鬆：約看電影照算。

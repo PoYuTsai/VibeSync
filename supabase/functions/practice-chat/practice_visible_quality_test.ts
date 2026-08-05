@@ -462,7 +462,10 @@ const gd3InterviewTurns = [
   { role: "user" as const, text: "妳是哪裡人啊？家裡幾個兄弟姊妹？" },
   { role: "ai" as const, text: "呃，這個問題有點像在做戶口調查耶" },
   { role: "user" as const, text: "抱歉抱歉，我只是想多認識妳" },
-  { role: "ai" as const, text: "沒關係，不過聊天不用像面試啦，你也可以說說你自己" },
+  {
+    role: "ai" as const,
+    text: "沒關係，不過聊天不用像面試啦，你也可以說說你自己",
+  },
 ];
 
 Deno.test("grounding gate fails closed on invited self-disclosure wording — 豁免已撤除 (round16)", () => {

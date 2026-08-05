@@ -3,6 +3,7 @@ import { PRACTICE_COACHING_RUBRIC } from "./coaching_rubric.ts";
 import {
   assertPracticeTextGroundedInTurns,
   isGenericPracticeComplimentOrEcho,
+  isLexicalGroundingFailureCode,
   normalizedPracticeText,
   rejectGenericPasteablePracticeText,
   rejectKnownCannedPracticeText,
@@ -2389,7 +2390,7 @@ function assertGeneratedHintQuality(opts: {
  * 候選順序＝attemptFailures 順序（主模型在前）。
  */
 export function salvageHintCandidate<T>(opts: {
-  failures: readonly { model: string; raw?: string }[];
+  failures: readonly { model: string; code?: string; raw?: string }[];
   /**
    * 呼叫端自己的解析closure（必須自行帶 skipLexicalGrounding）。刻意收 callback
    * 而不是 parseOptions：hint 的 validate 在 parseHintResult 之後還要補上
@@ -2399,6 +2400,8 @@ export function salvageHintCandidate<T>(opts: {
 }): { result: T; model: string } | null {
   for (const failure of opts.failures) {
     if (typeof failure.raw !== "string" || failure.raw.length === 0) continue;
+    // 只原諒字面 grounding 這道 gate（見 isLexicalGroundingFailureCode）。
+    if (!isLexicalGroundingFailureCode(failure.code)) continue;
     try {
       const result = opts.parse(failure.raw);
       return { result, model: failure.model };

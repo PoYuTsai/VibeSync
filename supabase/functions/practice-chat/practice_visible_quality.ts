@@ -339,3 +339,15 @@ export function assertPracticeTextGroundedInTurns(opts: {
 export function normalizedPracticeText(value: string): string {
   return compact(value);
 }
+
+/**
+ * salvage 只原諒「我們決定要原諒的那道 gate」＝字面 grounding。
+ *
+ * 其他 gate 目前都是 deterministic（同一份 raw 重跑必然再敗），所以非 grounding
+ * 敗因本來就救不起來——但那是「碰巧安全」。一旦未來某道 gate 變成非決定性（依
+ * 時間、外部狀態或隨機性），salvage 會默默把它放行。故明確以敗因碼收斂，不倚賴
+ * determinism（Codex 二審建議）。
+ */
+export function isLexicalGroundingFailureCode(code?: string): boolean {
+  return typeof code === "string" && code.includes("not_grounded");
+}

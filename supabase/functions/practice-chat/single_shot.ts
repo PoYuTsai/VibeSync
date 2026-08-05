@@ -71,7 +71,11 @@ export async function runSingleShot<T>(
     const startedAt = args.now();
     const remainingMs = args.deadlineAtMs - startedAt;
     if (remainingMs < MIN_ATTEMPT_BUDGET_MS) {
-      attemptFailures.push({ model, code: "deadline_exhausted", durationMs: 0 });
+      attemptFailures.push({
+        model,
+        code: "deadline_exhausted",
+        durationMs: 0,
+      });
       continue;
     }
     const timeoutMs = Math.min(

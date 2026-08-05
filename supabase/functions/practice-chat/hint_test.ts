@@ -5962,10 +5962,15 @@ Deno.test("salvageHintCandidate：優先主模型；全部救不起來回 null",
       skipLexicalGrounding: true,
       turns: salvageEmojiTurns,
     });
+  const grounded = "hint_quality_invalid_not_grounded";
   const salvaged = salvageHintCandidate({
     failures: [
-      { model: "claude-sonnet-5", raw: salvageHintJson() },
-      { model: "claude-haiku-4-5-20251001", raw: salvageHintJson() },
+      { model: "claude-sonnet-5", code: grounded, raw: salvageHintJson() },
+      {
+        model: "claude-haiku-4-5-20251001",
+        code: grounded,
+        raw: salvageHintJson(),
+      },
     ],
     parse,
   });
@@ -5974,9 +5979,26 @@ Deno.test("salvageHintCandidate：優先主模型；全部救不起來回 null",
   assertEquals(
     salvageHintCandidate({
       failures: [
-        { model: "claude-sonnet-5" },
-        { model: "claude-haiku-4-5-20251001", raw: "這根本不是 JSON" },
+        { model: "claude-sonnet-5", code: "claude_timeout" },
+        {
+          model: "claude-haiku-4-5-20251001",
+          code: grounded,
+          raw: "這根本不是 JSON",
+        },
       ],
+      parse,
+    }),
+    null,
+  );
+
+  // 敗因不是 grounding → 即使 raw 解得開也不搶救（不倚賴其他 gate 的 determinism）
+  assertEquals(
+    salvageHintCandidate({
+      failures: [{
+        model: "claude-sonnet-5",
+        code: "hint_quality_invalid_substantive_move",
+        raw: salvageHintJson(),
+      }],
       parse,
     }),
     null,

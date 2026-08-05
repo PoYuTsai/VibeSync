@@ -10,6 +10,7 @@ import type { AppliedHintTurn, PracticeTurn } from "./validate.ts";
 import {
   assertPracticeTextGroundedInTurns,
   isGenericPracticeComplimentOrEcho,
+  isLexicalGroundingFailureCode,
   normalizedPracticeText,
   rejectGenericPasteablePracticeText,
   rejectKnownCannedPracticeText,
@@ -1820,11 +1821,12 @@ export function parseDebriefCard(
  * 候選順序＝attemptFailures 順序（主模型在前），故優先採用 Sonnet 的候選。
  */
 export function salvageDebriefCandidate(opts: {
-  failures: readonly { model: string; raw?: string }[];
+  failures: readonly { model: string; code?: string; raw?: string }[];
   parseOptions: Parameters<typeof parseDebriefCard>[1];
 }): { card: DebriefCard; model: string } | null {
   for (const failure of opts.failures) {
     if (typeof failure.raw !== "string" || failure.raw.length === 0) continue;
+    if (!isLexicalGroundingFailureCode(failure.code)) continue;
     try {
       const card = parseDebriefCard(failure.raw, {
         ...opts.parseOptions,

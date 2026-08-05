@@ -3907,12 +3907,14 @@ Deno.test("salvageDebriefCandidate：優先採用主模型候選（attemptFailur
     failures: [
       {
         model: "claude-sonnet-5",
+        code: "debrief_quality_invalid_suggested_line_not_grounded",
         raw: salvageGreetingCard(
           "嗨～剛看到你資料上有健身教練，平常帶課會很累嗎？",
         ),
       },
       {
         model: "claude-haiku-4-5-20251001",
+        code: "debrief_quality_invalid_suggested_line_not_grounded",
         raw: salvageGreetingCard("最近在忙什麼？還是剛下課放鬆中？"),
       },
     ],
@@ -3936,10 +3938,12 @@ Deno.test("salvageDebriefCandidate：主模型候選違反不可退讓守門時�
       // Sonnet 這張踩 L4，不可搶救
       {
         model: "claude-sonnet-5",
+        code: "debrief_quality_invalid_suggested_line_not_grounded",
         raw: salvageGreetingCard("偷偷加重量還不能拒絕吧，現在跟我回家"),
       },
       {
         model: "claude-haiku-4-5-20251001",
+        code: "debrief_quality_invalid_suggested_line_not_grounded",
         raw: salvageGreetingCard("最近在忙什麼？還是剛下課放鬆中？"),
       },
     ],
@@ -3964,8 +3968,8 @@ Deno.test("salvageDebriefCandidate：沒有 raw（傳輸層失敗）或全部搶
   assertEquals(
     salvageDebriefCandidate({
       failures: [
-        { model: "claude-sonnet-5" },
-        { model: "claude-haiku-4-5-20251001" },
+        { model: "claude-sonnet-5", code: "claude_timeout" },
+        { model: "claude-haiku-4-5-20251001", code: "claude_timeout" },
       ],
       parseOptions,
     }),
@@ -3977,6 +3981,7 @@ Deno.test("salvageDebriefCandidate：沒有 raw（傳輸層失敗）或全部搶
       failures: [
         {
           model: "claude-sonnet-5",
+          code: "debrief_quality_invalid_suggested_line_not_grounded",
           raw: salvageGreetingCard("偷偷加重量還不能拒絕吧，現在跟我回家"),
         },
         { model: "claude-haiku-4-5-20251001", raw: "這根本不是 JSON" },
@@ -3984,5 +3989,45 @@ Deno.test("salvageDebriefCandidate：沒有 raw（傳輸層失敗）或全部搶
       parseOptions,
     }),
     null,
+  );
+});
+
+// Codex 二審 #4：salvage 只該原諒「我們決定要原諒的那道 gate」。目前其他 gate
+// 都是 deterministic（同一份 raw 重跑必然再敗），所以非 grounding 敗因本來就救
+// 不起來；但這是「碰巧安全」，一旦未來某道 gate 變成非決定性（依時間/外部狀態），
+// salvage 就會默默把它放行。故明確以敗因碼收斂，不倚賴 determinism。
+Deno.test("salvage 只收 grounding 敗因：其他敗因即使 raw 解得開也不搶救", () => {
+  const parseOptions = {
+    requireCompleteCard: true,
+    enforceGeneratedQuality: true,
+    relaxSubjectiveQualityRubrics: true,
+    turns: salvageGreetingTurns,
+  };
+  const goodRaw = salvageGreetingCard(
+    "嗨～剛看到你資料上有健身教練，平常帶課會很累嗎？",
+  );
+  // 敗因是別的 gate → 不得搶救
+  assertEquals(
+    salvageDebriefCandidate({
+      failures: [{
+        model: "claude-sonnet-5",
+        code: "debrief_quality_invalid_hint_accountability",
+        raw: goodRaw,
+      }],
+      parseOptions,
+    }),
+    null,
+  );
+  // 敗因是 grounding → 照常搶救
+  assertEquals(
+    salvageDebriefCandidate({
+      failures: [{
+        model: "claude-sonnet-5",
+        code: "debrief_quality_invalid_suggested_line_not_grounded",
+        raw: goodRaw,
+      }],
+      parseOptions,
+    })?.model,
+    "claude-sonnet-5",
   );
 });

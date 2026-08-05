@@ -532,9 +532,7 @@ export function buildChatMessages(
         acquaintanceOriginPrompt(options.acquaintanceOrigin)
       }${sceneContextPrompt(options.sceneContext)}${
         memorySummaryPrompt(options.memorySummary)
-      }${
-        safePartnerStatePrompt(options.partnerState)
-      }${
+      }${safePartnerStatePrompt(options.partnerState)}${
         options.partnerState ? `\n${LEGACY_PARTNER_STATE_NO_LEAK_MARKER}` : ""
       }${
         gameModePrompt({
