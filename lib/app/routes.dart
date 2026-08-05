@@ -30,7 +30,6 @@ import '../features/partner/presentation/screens/partner_merge_picker_screen.dar
 import '../features/partner/presentation/screens/partner_mind_map_screen.dart';
 import '../features/subscription/presentation/screens/settings_screen.dart';
 import '../features/user_profile/presentation/screens/about_me_screen.dart';
-import '../features/user_profile/presentation/screens/partner_style_edit_screen.dart';
 
 final _routerRefreshListenable =
     _GoRouterRefreshStream(SupabaseService.authStateChanges);
@@ -162,12 +161,6 @@ final router = GoRouter(
     GoRoute(
       path: '/partner/:partnerId/analysis-archive',
       builder: (context, state) => PartnerAnalysisArchiveScreen(
-        partnerId: state.pathParameters['partnerId']!,
-      ),
-    ),
-    GoRoute(
-      path: '/partner/:partnerId/my-style',
-      builder: (context, state) => PartnerStyleEditScreen(
         partnerId: state.pathParameters['partnerId']!,
       ),
     ),

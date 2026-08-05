@@ -45,7 +45,6 @@ import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/domain/entities/partner_data_quality_state.dart';
 import '../../../user_profile/domain/services/name_candidate_extractor.dart';
-import '../../../user_profile/presentation/widgets/partner_style_entry_card.dart';
 import '../../data/providers/partner_write_controller.dart';
 import '../../domain/entities/partner.dart';
 import '../../domain/extensions/partner_aggregates.dart';
@@ -288,11 +287,6 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                       openCoachInputRequested: _openCoachInputRequested,
                     ),
                   ),
-                ),
-                const SizedBox(height: 14),
-                PartnerStyleEntryCard(
-                  partnerId: partnerId,
-                  partnerName: partner.name,
                 ),
                 const SizedBox(height: 16),
                 _PartnerExpandableDetailSection(

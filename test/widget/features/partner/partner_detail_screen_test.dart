@@ -228,9 +228,8 @@ void main() {
 
   testWidgets('tile delete confirm calls ConversationWriteController.delete',
       (t) async {
-    // Tile lives below the new PartnerStyleEntryCard — give the surface
-    // enough height so ListView's cache extent reaches the tile (matches
-    // the reassign-tile tests' convention below).
+    // Give the surface enough height so ListView's cache extent reaches the
+    // tile (matches the reassign-tile tests' convention below).
     await t.binding.setSurfaceSize(const Size(400, 1200));
     addTearDown(() => t.binding.setSurfaceSize(null));
 
