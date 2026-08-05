@@ -4031,3 +4031,41 @@ Deno.test("salvage 只收 grounding 敗因：其他敗因即使 raw 解得開也
     "claude-sonnet-5",
   );
 });
+
+// ── 槓桿一（2026-08-05）：隱藏記帳欄位不該毀掉一張使用者看得到的好卡 ──
+// hintAssessment 是內部欄位，DebriefCard 型別裡根本沒有它（驗證完就丟掉）。
+// 但它驗不過時整張卡會被打回 → 兩發都這樣就 503。真實資料（single_shot_v2 起
+// 21 筆失敗中的 3 筆）確實是這個原因。
+// 生產刻意關閉 repairPreservedHintCritique（偏好「重生成優於修補」），這個偏好
+// 在前兩發成立；但重生成已經用盡時，寧可修補也不要讓使用者拿不到卡。
+// 故 salvage 才打開它，前兩發維持不變。
+Deno.test("salvage：hintAssessment 缺失的候選可被修補後端出", () => {
+  const { hintAssessment: _hidden, ...cardWithoutAssessment } =
+    generatedQualityCard;
+  const turns = [
+    { role: "user" as const, text: "早安" },
+    { role: "ai" as const, text: "我還在賴床，腦袋沒開機" },
+    { role: "user" as const, text: appliedExactHint.sentText },
+    { role: "ai" as const, text: "哈哈我真的還在賴床，慢慢開機中" },
+  ];
+  const salvaged = salvageDebriefCandidate({
+    failures: [{
+      model: "claude-sonnet-5",
+      code: "debrief_hint_assessment_missing",
+      raw: JSON.stringify(cardWithoutAssessment),
+    }],
+    parseOptions: {
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      relaxSubjectiveQualityRubrics: true,
+      turns,
+      appliedHintTurns: [appliedExactHint],
+    },
+  });
+  assertEquals(salvaged?.model, "claude-sonnet-5");
+  // 修補後的卡不得洩漏隱藏欄位
+  assertEquals(
+    JSON.stringify(salvaged?.card).includes("hintAssessment"),
+    false,
+  );
+});

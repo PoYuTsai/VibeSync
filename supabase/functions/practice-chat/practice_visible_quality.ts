@@ -341,13 +341,29 @@ export function normalizedPracticeText(value: string): string {
 }
 
 /**
- * salvage 只原諒「我們決定要原諒的那道 gate」＝字面 grounding。
+ * salvage 只原諒「我們明確決定要原諒的那幾道 gate」，白名單制。
  *
- * 其他 gate 目前都是 deterministic（同一份 raw 重跑必然再敗），所以非 grounding
- * 敗因本來就救不起來——但那是「碰巧安全」。一旦未來某道 gate 變成非決定性（依
- * 時間、外部狀態或隨機性），salvage 會默默把它放行。故明確以敗因碼收斂，不倚賴
+ * 其他 gate 目前都是 deterministic（同一份 raw 重跑必然再敗），所以未列名的敗因
+ * 本來就救不起來——但那是「碰巧安全」。一旦未來某道 gate 變成非決定性（依時間、
+ * 外部狀態或隨機性），salvage 會默默把它放行。故明確以敗因碼收斂，不倚賴
  * determinism（Codex 二審建議）。
+ *
+ * 名單只有兩類：
+ * 1. 字面 grounding——它擋的是「萬用模板」，是偏好不是否決權；寒暄局/emoji 局
+ *    下正確答案必然通不過詞面比對。
+ * 2. hintAssessment 隱藏記帳——DebriefCard 型別裡根本沒有這個欄位（驗證完就
+ *    丟掉），內部記帳不該毀掉一張使用者看得到的好卡；salvage 會開既有的
+ *    repairPreservedHintCritique 修補它。
+ *
+ * 捏造類（fact ledger unsupported_detail）、安全類（L4）、罐頭簽名一律不入名單。
  */
-export function isLexicalGroundingFailureCode(code?: string): boolean {
-  return typeof code === "string" && code.includes("not_grounded");
+const SALVAGEABLE_FAILURE_CODE_PARTS = [
+  "not_grounded",
+  "debrief_hint_assessment_missing",
+  "debrief_hint_assessment_revision_required",
+] as const;
+
+export function isSalvageableFailureCode(code?: string): boolean {
+  return typeof code === "string" &&
+    SALVAGEABLE_FAILURE_CODE_PARTS.some((part) => code.includes(part));
 }

@@ -10,7 +10,7 @@ import type { AppliedHintTurn, PracticeTurn } from "./validate.ts";
 import {
   assertPracticeTextGroundedInTurns,
   isGenericPracticeComplimentOrEcho,
-  isLexicalGroundingFailureCode,
+  isSalvageableFailureCode,
   normalizedPracticeText,
   rejectGenericPasteablePracticeText,
   rejectKnownCannedPracticeText,
@@ -1826,11 +1826,14 @@ export function salvageDebriefCandidate(opts: {
 }): { card: DebriefCard; model: string } | null {
   for (const failure of opts.failures) {
     if (typeof failure.raw !== "string" || failure.raw.length === 0) continue;
-    if (!isLexicalGroundingFailureCode(failure.code)) continue;
+    if (!isSalvageableFailureCode(failure.code)) continue;
     try {
       const card = parseDebriefCard(failure.raw, {
         ...opts.parseOptions,
         skipLexicalGrounding: true,
+        // 重生成已用盡：hintAssessment 這類隱藏記帳改用既有修補路徑補上預設值，
+        // 而不是讓使用者拿不到卡（前兩發仍維持 false＝偏好重生成）。
+        repairPreservedHintCritique: true,
       });
       return { card, model: failure.model };
     } catch {

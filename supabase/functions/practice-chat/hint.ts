@@ -3,7 +3,7 @@ import { PRACTICE_COACHING_RUBRIC } from "./coaching_rubric.ts";
 import {
   assertPracticeTextGroundedInTurns,
   isGenericPracticeComplimentOrEcho,
-  isLexicalGroundingFailureCode,
+  isSalvageableFailureCode,
   normalizedPracticeText,
   rejectGenericPasteablePracticeText,
   rejectKnownCannedPracticeText,
@@ -2400,8 +2400,8 @@ export function salvageHintCandidate<T>(opts: {
 }): { result: T; model: string } | null {
   for (const failure of opts.failures) {
     if (typeof failure.raw !== "string" || failure.raw.length === 0) continue;
-    // 只原諒字面 grounding 這道 gate（見 isLexicalGroundingFailureCode）。
-    if (!isLexicalGroundingFailureCode(failure.code)) continue;
+    // 只原諒字面 grounding 這道 gate（見 isSalvageableFailureCode）。
+    if (!isSalvageableFailureCode(failure.code)) continue;
     try {
       const result = opts.parse(failure.raw);
       return { result, model: failure.model };
