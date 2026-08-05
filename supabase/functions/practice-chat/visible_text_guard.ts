@@ -160,6 +160,10 @@ const INTERNAL_MECHANISM_PHRASES = [
   "賦格",
   "赋格",
   "框架",
+  // 2026-08-04 Codex Q5：認識管道是純中文隱藏標籤，debrief 生成文字若照抄
+  // 這個詞，此表要攔到（鐵則：注入內部詞必同步擴可見輸出守門）。
+  "認識管道",
+  "认识管道",
 ];
 
 /**
@@ -324,12 +328,26 @@ function clauseHasUnsafeAdvice(clause: string): boolean {
   return false;
 }
 
+// 2026-08-04 Codex Q5：INTERNAL_VISIBLE_LABELS 只認英文複合詞
+// （hasVisibleInternalLabelLeak 剝掉中文後比對），若模型在 chat/hint 原樣
+// 講出中文標籤「認識管道」，該表攔不到。這裡只放認識管道專屬的中文標籤，
+// 不整包借用 INTERNAL_MECHANISM_PHRASES——那份清單的「框架/推拉」等詞在
+// chat/hint 側有既定白話 sentinel 與 1.2 jargon 翻譯白名單，整包借用會
+// 誤殺既有放行案例。
+const ACQUAINTANCE_ORIGIN_CHINESE_LABELS = ["認識管道", "认识管道"];
+
 export function hasVisibleInternalLabelLeak(value: string): boolean {
   // 分數形檢查掛這裡讓 chat（handler）/hint 兩側可見輸出同步蓋到；
   // normalizeVisibleText 會剝掉中文，故用原文另測。
   if (hasVisibleInternalScoreShapeLeak(value)) return true;
   const normalized = normalizeVisibleText(value);
-  return INTERNAL_VISIBLE_LABELS.some((label) => normalized.includes(label));
+  if (INTERNAL_VISIBLE_LABELS.some((label) => normalized.includes(label))) {
+    return true;
+  }
+  const unsafeNormalized = normalizeUnsafeText(value);
+  return ACQUAINTANCE_ORIGIN_CHINESE_LABELS.some((label) =>
+    unsafeNormalized.includes(normalizeUnsafeText(label))
+  );
 }
 
 export function hasL4UnsafeVisibleText(value: string): boolean {

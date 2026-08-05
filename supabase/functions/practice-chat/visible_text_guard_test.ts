@@ -79,6 +79,46 @@ Deno.test("internal label gate 攔認識管道注入標籤，但不誤殺自然�
   }
 });
 
+// Codex Q5（2026-08-04）：前一顆測試只驗證英文標籤形（acquaintanceOrigin:
+// ...），沒驗證模型原樣講出中文標籤「認識管道」——normalizeVisibleText 會把
+// 中文剝光，該表本來攔不到，chat/hint/debrief 三側都要補。
+Deno.test("兩側 gate 都攔中文標籤「認識管道」原樣洩漏，但不誤殺自然語", () => {
+  for (
+    const leak of [
+      "我們的認識管道是朋友介紹",
+      "根據認識管道設定，妳應該要...",
+    ]
+  ) {
+    assertEquals(
+      hasVisibleInternalLabelLeak(leak),
+      true,
+      `internal label gate should reject "${leak}"`,
+    );
+    assertEquals(
+      hasVisibleTemperatureMechanismLeak(leak),
+      true,
+      `temperature gate should reject "${leak}"`,
+    );
+  }
+  for (
+    const safe of [
+      "你們是怎麼認識的啊",
+      "我很好奇你們認識的過程",
+    ]
+  ) {
+    assertEquals(
+      hasVisibleInternalLabelLeak(safe),
+      false,
+      `internal label gate should allow "${safe}"`,
+    );
+    assertEquals(
+      hasVisibleTemperatureMechanismLeak(safe),
+      false,
+      `temperature gate should allow "${safe}"`,
+    );
+  }
+});
+
 Deno.test("裸詞「投入度」不帶分數形＝分析欄合法用法，兩側 gate 皆放行", () => {
   for (const safe of SCORE_SHAPE_SAFE) {
     assertEquals(
