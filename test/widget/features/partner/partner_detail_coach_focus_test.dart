@@ -159,13 +159,13 @@ void main() {
     expect(offset, greaterThan(100),
         reason: 'background must leave the top hero/heat cards');
 
-    // The coach entry is laid out and visible inside the viewport.
-    final anchor = find.text('或直接問教練一個問題…');
+    // The coach section is laid out and visible inside the viewport.
+    final anchor = find.byType(CoachSurface);
     expect(anchor, findsOneWidget);
     final anchorDy = t.getTopLeft(anchor).dy;
     expect(anchorDy, greaterThan(0));
     expect(anchorDy, lessThan(844),
-        reason: 'coach entry must be on-screen, not below the fold');
+        reason: 'coach section must be on-screen, not below the fold');
 
     // Phase E Task 7: the open-input intent flows through the section's
     // focus-token mechanism into CoachSurface (invariant: AFTER positioning).
@@ -197,7 +197,7 @@ void main() {
     final offset = _listScrollable(t).position.pixels;
     expect(offset, greaterThan(100),
         reason: 'background must still land on the coach section');
-    expect(find.text('或直接問教練一個問題…'), findsOneWidget);
+    expect(find.byType(CoachSurface), findsOneWidget);
 
     // Scroll-only deep-link keeps the existing semantics: no focus request.
     expect(_surface(t).focusRequestToken, 0,
@@ -264,7 +264,7 @@ void main() {
     expect(offset, greaterThan(100),
         reason: 'detail must land on the coach section, not the hero cards');
 
-    final anchor = find.text('或直接問教練一個問題…');
+    final anchor = find.byType(CoachSurface);
     expect(anchor, findsOneWidget);
     expect(t.getTopLeft(anchor).dy, lessThan(844));
 

@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
+import 'package:vibesync/features/coach_follow_up/presentation/widgets/coach_follow_up_section.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_write_controller.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/presentation/widgets/new_conversation_sheet.dart';
@@ -664,8 +665,7 @@ void main() {
     expect(sheet.partnerId, 'p1');
   });
 
-  testWidgets('focusCoachFollowUp scrolls to the open coach input entry',
-      (t) async {
+  testWidgets('focusCoachFollowUp scrolls to the coach section', (t) async {
     await t.binding.setSurfaceSize(const Size(400, 520));
     addTearDown(() => t.binding.setSurfaceSize(null));
 
@@ -692,13 +692,15 @@ void main() {
     ));
     await t.pumpAndSettle();
 
-    final inputEntry = find.text('或直接問教練一個問題…');
-    expect(inputEntry, findsOneWidget);
+    // 關於我殘留清理拿掉了獨立的「或直接問教練一個問題」入口按鈕，section
+    // 本身就是唯一的滾動目標，不再需要精準對到輸入行。
+    final section = find.byType(CoachFollowUpSection);
+    expect(section, findsOneWidget);
     expect(
-      t.getTopLeft(inputEntry).dy,
+      t.getTopLeft(section).dy,
       lessThan(140),
-      reason: 'Mind map focus should land on the input affordance, not the '
-          'top of the whole CoachFollowUp card.',
+      reason: 'Mind map focus should land on the coach section, not leave '
+          'it scrolled out of view.',
     );
   });
 
@@ -740,19 +742,21 @@ void main() {
         .where((f) => f.maxLength == 120 && f.maxLines == 4);
     expect(sheetFields, isEmpty,
         reason: 'legacy input sheet must not open on deep-link');
-    final focusedFields = t
-        .widgetList<TextField>(find.byType(TextField))
-        .where((f) => f.focusNode?.hasFocus ?? false);
-    expect(focusedFields, hasLength(1),
+    final focusedField = find.byWidgetPredicate(
+      (w) => w is TextField && (w.focusNode?.hasFocus ?? false),
+    );
+    expect(focusedField, findsOneWidget,
         reason: 'the CoachSurface input must take focus instead');
-
-    final inputEntry = find.text('或直接問教練一個問題…');
-    expect(inputEntry, findsOneWidget);
+    // CoachSurface renders its own content (history/knowledge entry) above
+    // the input, so the focused field sits lower than the removed compact
+    // entry button did — the meaningful check is that it's still on-screen
+    // (not scrolled past the 520px surface) rather than a specific offset.
     expect(
-      t.getTopLeft(inputEntry).dy,
-      lessThan(260),
+      t.getTopLeft(focusedField).dy,
+      lessThan(520),
       reason: 'Mind map open action should leave the underlying page at the '
-          'coach input area, not at the top hero cards.',
+          'coach input area, not scrolled off-screen or stuck at the top '
+          'hero cards.',
     );
   });
 
