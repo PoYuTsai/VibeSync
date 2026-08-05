@@ -53,9 +53,10 @@ import {
 import { DEEPSEEK_MODEL, type DeepSeekArgs } from "./deepseek.ts";
 import {
   DEBRIEF_QUALITY_SCHEMA_VERSION,
-  debriefToolSchemaFor,
   type DebriefCard,
+  debriefToolSchemaFor,
   parseDebriefCard,
+  salvageDebriefCandidate,
 } from "./debrief_card.ts";
 import {
   buildHintDecision,
@@ -414,6 +415,8 @@ async function persistGenerationTelemetryFailOpen(opts: {
   promptChars: number;
   fallbackUsed: boolean;
   failoverUsed?: boolean;
+  /** 兩發全被 gate 打回後靠 salvage 端出＝仍是成功，但要跟「一次過」分得開。 */
+  salvageUsed?: boolean;
   failureClass: PracticeGenerationFailureClass | null;
   attemptDurationsMs: number[];
   failureClasses: PracticeGenerationFailureClass[];
@@ -438,6 +441,7 @@ async function persistGenerationTelemetryFailOpen(opts: {
         failureClass: opts.failureClass,
         fallbackUsed: opts.fallbackUsed,
         failoverUsed: opts.failoverUsed,
+        salvageUsed: opts.salvageUsed,
         semanticProviderCalls: opts.semanticProviderCalls,
         totalDurationMs: opts.totalDurationMs,
         promptChars: opts.promptChars,
@@ -3271,6 +3275,14 @@ export function createPracticeChatHandler(
       const debriefProvider = "anthropic";
       let debriefModel = CLAUDE_SONNET_MODEL;
       let debriefFailoverUsed = false;
+      // 兩發都被 gate 打回後靠 salvage 端出的卡；telemetry 要能跟「一次過」分開，
+      // 否則守門誤殺率會變成看不見的品質債（salvage 率長期偏高＝該回頭修 gate）。
+      let debriefSalvageUsed = false;
+      // salvage 在 catch 裡要用同一份解析設定，但它宣告在 try 內；hoist 一個
+      // 參照出來。還沒建好就失敗（例如 claude_unavailable）時為 null＝不搶救。
+      let debriefParseOptionsForSalvage:
+        | Parameters<typeof parseDebriefCard>[1]
+        | null = null;
       const debriefPracticeMode = ledger.practiceMode ?? request.practiceMode;
       const debriefGenerationStartedAt = performance.now();
       let debriefAttemptCount = 0;
@@ -3350,6 +3362,7 @@ export function createPracticeChatHandler(
           enforceGeneratedQuality: true,
           relaxSubjectiveQualityRubrics: true,
         } as const;
+        debriefParseOptionsForSalvage = generatedDebriefParseOptions;
         debriefPromptChars = countPromptChars(baseDebriefMessages);
         if (!claudeApiKey || !deps.callClaude) {
           throw new Error("claude_unavailable");
@@ -3415,45 +3428,73 @@ export function createPracticeChatHandler(
             typeof failure.raw === "string"
           )
           : [];
-        logWarn("practice_chat_generation_failed", {
-          user: summarizeUser(user.id),
-          mode: "debrief",
-          personaId: request.profile.personaId,
-          difficulty: request.profile.difficulty,
-          failureClass: debriefLastFailureClass ??
-            classifyPracticeGenerationFailure(e),
-        });
-        await releaseDebriefGeneration({
-          supabase,
-          userId: user.id,
-          sessionId: request.sessionId,
-          requestId: request.requestId,
-          generationToken: debriefGenerationToken,
-        });
-        const failureClass = debriefLastFailureClass ??
-          classifyPracticeGenerationFailure(e);
-        scheduleGenerationTelemetry(deps, {
-          supabase,
-          userId: user.id,
-          mode: "debrief",
-          practiceMode: debriefPracticeMode,
-          attempt: Math.max(1, debriefAttemptCount),
-          totalDurationMs: elapsedMilliseconds(debriefGenerationStartedAt),
-          promptChars: debriefPromptChars,
-          fallbackUsed: false,
-          failoverUsed: debriefFailoverUsed,
-          failureClass,
-          attemptDurationsMs: debriefAttemptDurationsMs,
-          failureClasses: debriefFailureClasses,
-          failureCodes: debriefFailureCodes,
-          model: debriefModel,
-          pipeline: "single_shot_v2",
-          rejectedCandidates: debriefRejectedCandidates,
-        });
-        return jsonResponse(
-          { error: "practice_debrief_generation_retryable", retryable: true },
-          503,
-        );
+        // Salvage：兩發都沒過 gate 時端出最佳候選，而不是讓使用者拿到 503
+        //（Eric 2026-08-05：正常一定要有輸出）。只放掉字面 grounding，安全/
+        // 洩漏/罐頭/捏造等不可退讓守門照跑；救不起來才落回下面的 503。
+        // 必須排在 releaseDebriefGeneration 之前——成功搶救要繼續走成功路徑，
+        // 不能先把 generation token 釋放掉。
+        const salvagedDebrief =
+          e instanceof SingleShotExhaustedError && debriefParseOptionsForSalvage
+            ? salvageDebriefCandidate({
+              failures: e.attemptFailures,
+              parseOptions: debriefParseOptionsForSalvage,
+            })
+            : null;
+        if (salvagedDebrief) {
+          debriefCard = salvagedDebrief.card;
+          debriefModel = salvagedDebrief.model;
+          debriefSalvageUsed = true;
+          debriefFailoverUsed = true;
+          debriefAttemptCount = Math.max(1, debriefAttemptCount);
+          debriefLastFailureClass = null;
+          logInfo("practice_chat_generation_salvaged", {
+            user: summarizeUser(user.id),
+            mode: "debrief",
+            practiceMode: debriefPracticeMode,
+            model: debriefModel,
+            failureCodes: debriefFailureCodes,
+          });
+        } else {
+          logWarn("practice_chat_generation_failed", {
+            user: summarizeUser(user.id),
+            mode: "debrief",
+            personaId: request.profile.personaId,
+            difficulty: request.profile.difficulty,
+            failureClass: debriefLastFailureClass ??
+              classifyPracticeGenerationFailure(e),
+          });
+          await releaseDebriefGeneration({
+            supabase,
+            userId: user.id,
+            sessionId: request.sessionId,
+            requestId: request.requestId,
+            generationToken: debriefGenerationToken,
+          });
+          const failureClass = debriefLastFailureClass ??
+            classifyPracticeGenerationFailure(e);
+          scheduleGenerationTelemetry(deps, {
+            supabase,
+            userId: user.id,
+            mode: "debrief",
+            practiceMode: debriefPracticeMode,
+            attempt: Math.max(1, debriefAttemptCount),
+            totalDurationMs: elapsedMilliseconds(debriefGenerationStartedAt),
+            promptChars: debriefPromptChars,
+            fallbackUsed: false,
+            failoverUsed: debriefFailoverUsed,
+            failureClass,
+            attemptDurationsMs: debriefAttemptDurationsMs,
+            failureClasses: debriefFailureClasses,
+            failureCodes: debriefFailureCodes,
+            model: debriefModel,
+            pipeline: "single_shot_v2",
+            rejectedCandidates: debriefRejectedCandidates,
+          });
+          return jsonResponse(
+            { error: "practice_debrief_generation_retryable", retryable: true },
+            503,
+          );
+        }
       }
 
       const debriefTotalDurationMs = elapsedMilliseconds(
@@ -3471,6 +3512,7 @@ export function createPracticeChatHandler(
           failureClass: null,
           fallbackUsed: false,
           failoverUsed: debriefFailoverUsed,
+          salvageUsed: debriefSalvageUsed,
           totalDurationMs: debriefTotalDurationMs,
           promptChars: debriefPromptChars,
         }),
@@ -3537,6 +3579,7 @@ export function createPracticeChatHandler(
         promptChars: debriefPromptChars,
         fallbackUsed: false,
         failoverUsed: debriefFailoverUsed,
+        salvageUsed: debriefSalvageUsed,
         failureClass: null,
         attemptDurationsMs: debriefAttemptDurationsMs,
         failureClasses: debriefFailureClasses,

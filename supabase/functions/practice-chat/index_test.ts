@@ -7516,3 +7516,52 @@ Deno.test("game debrief single shot keeps the gameBreakdown contract field-for-f
   assertEquals(state.claudeCalls.length, 1);
   assertEquals(json.card.gameBreakdown, breakdown);
 });
+
+// ── 2026-08-05 salvage 整合回歸：寒暄局不再拿到 503 ──
+// 真實事故（ai_logs practice_debrief_standard 08-05 13:44:47/13:45:19）：逐字稿
+// 只有「你好」「嗨～你好」，錨點集合只剩 {你好, 嗨你好}，唯一能通過詞面比對的
+// 建議句是複讀「你好」，兩顆模型都不會產出 → 兩發全滅 → 503「拆解卡生成失敗，
+// 可以再按一次」，而再按也不會好（非隨機失敗）。
+// 裁決：hint/debrief × 新手/一般/Game 正常一定要有輸出，故改由 salvage 端出。
+Deno.test("寒暄局 debrief：兩發都沒過 grounding 時 salvage 端出卡片而不是 503", async () => {
+  const greetingCard = JSON.stringify({
+    summary: "對話僅止於打招呼，尚未展開任何話題，無法判斷互動品質。",
+    strengths: ["有主動開口打招呼，禮貌開場"],
+    watchouts: ["未接續任何話題，對話停在寒暄無法留下記憶點"],
+    suggestedLine: "嗨～剛看到你資料上有健身教練，平常帶課會很累嗎？",
+    vibe: "中性",
+    dateChance: "low",
+    dateChanceReason: "她只回了「嗨～你好」，未釋出任何延伸或時間線索。",
+    nextInviteMove: "先從她的背景聊起，建立輕鬆話題後再觀察熱度。",
+    hintAssessment: { verdict: "preserved", revisedEvidenceQuote: null },
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({ ai_count: 1, charged: true }),
+      claudeReplies: [greetingCard, greetingCard],
+    },
+    debriefBody({
+      requestId: "debrief-greeting-salvage",
+      turns: [
+        { role: "user", text: "你好" },
+        { role: "ai", text: "嗨～你好" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(
+    (json as { card: { suggestedLine: string } }).card.suggestedLine,
+    "嗨～剛看到你資料上有健身教練，平常帶課會很累嗎？",
+  );
+  // 搶救成功＝不得釋放 generation token，且卡片要照常入帳
+  assertEquals(releaseDebriefCalls(state).length, 0);
+  assertEquals(recordDebriefCalls(state).length, 1);
+  // telemetry：status 仍是 success，但要標記得出來是搶救來的
+  const telemetry = aiLogInserts(state)[0].values;
+  assertEquals(telemetry.status, "success");
+  assertEquals(
+    (telemetry.request_body as Record<string, unknown>).salvageUsed,
+    true,
+  );
+});

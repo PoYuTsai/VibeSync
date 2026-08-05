@@ -19,6 +19,7 @@ Deno.test("practice generation telemetry emits the fixed queryable shape", () =>
     failureClass: "schema_invalid",
     fallbackUsed: true,
     failoverUsed: true,
+    salvageUsed: false,
     semanticProviderCalls: 3.9,
     totalDurationMs: 4567.8,
     promptChars: 9012.7,
@@ -32,6 +33,7 @@ Deno.test("practice generation telemetry emits the fixed queryable shape", () =>
     failureClass: "schema_invalid",
     fallbackUsed: true,
     failoverUsed: true,
+    salvageUsed: false,
     semanticProviderCalls: 3,
     totalDurationMs: 4567,
     promptChars: 9012,
@@ -53,6 +55,7 @@ Deno.test("practice generation telemetry keeps absent attempt metrics explicit",
       failureClass: null,
       fallbackUsed: false,
       failoverUsed: false,
+      salvageUsed: false,
       semanticProviderCalls: null,
       totalDurationMs: null,
       promptChars: 2500,
@@ -71,6 +74,7 @@ Deno.test("practice generation telemetry drops extra transcript and response fie
     failureClass: "timeout",
     fallbackUsed: true,
     failoverUsed: true,
+    salvageUsed: false,
     semanticProviderCalls: 4,
     totalDurationMs: 9001,
     promptChars: 3000,
@@ -90,6 +94,7 @@ Deno.test("practice generation telemetry drops extra transcript and response fie
     "mode",
     "practiceMode",
     "promptChars",
+    "salvageUsed",
     "semanticProviderCalls",
     "totalDurationMs",
   ]);
@@ -119,6 +124,7 @@ Deno.test("practice generation telemetry normalizes invalid values without echoi
     failureClass: "unknown",
     fallbackUsed: false,
     failoverUsed: false,
+    salvageUsed: false,
     semanticProviderCalls: null,
     totalDurationMs: null,
     promptChars: 0,
@@ -595,4 +601,60 @@ Deno.test("failed ai_logs row carries truncated rejected candidates in response_
     rejectedCandidates: [{ model: "m", code: "c", raw: "leak" }],
   });
   assertEquals(successRow.response_body, null);
+});
+
+// ── 2026-08-05：salvage 端出的結果必須在 ai_logs 可辨識 ──
+// 兩發都被 gate 打回、靠 salvage 搶救回來的卡，status 仍是 success（使用者確實
+// 拿到輸出），但必須跟「一次過」分得開：salvage 率長期偏高＝守門誤殺仍嚴重，
+// 該回頭修 gate 而不是靠搶救掩蓋。
+Deno.test("salvage 端出的結果：status 記 success，但 request_body 標記 salvageUsed", () => {
+  const row = buildPracticeAiLogRow({
+    userId: "00000000-0000-0000-0000-000000000001",
+    model: "claude-sonnet-5",
+    telemetry: {
+      mode: "debrief",
+      practiceMode: "standard",
+      attempt: 2,
+      failureClass: null,
+      failoverUsed: true,
+      salvageUsed: true,
+      totalDurationMs: 18792,
+      promptChars: 1802,
+    },
+    attemptDurationsMs: [8922, 9286],
+    failureClasses: ["schema_invalid", "schema_invalid"],
+    failureCodes: ["debrief_quality_invalid_suggested_line_not_grounded"],
+  });
+  assertEquals(row.status, "success");
+  assertEquals(row.error_code, null);
+  assertEquals(
+    (row.request_body as unknown as Record<string, unknown>).salvageUsed,
+    true,
+  );
+  // 搶救原因要留著，才知道是哪道 gate 在誤殺
+  assertEquals(
+    (row.request_body as unknown as Record<string, unknown>).failureCodes,
+    ["debrief_quality_invalid_suggested_line_not_grounded"],
+  );
+});
+
+Deno.test("一次過的結果：salvageUsed 為 false", () => {
+  const row = buildPracticeAiLogRow({
+    userId: "00000000-0000-0000-0000-000000000001",
+    model: "claude-sonnet-5",
+    telemetry: {
+      mode: "hint",
+      practiceMode: "game",
+      attempt: 1,
+      failureClass: null,
+      promptChars: 900,
+    },
+    attemptDurationsMs: [1200],
+    failureClasses: [],
+  });
+  assertEquals(row.status, "success");
+  assertEquals(
+    (row.request_body as unknown as Record<string, unknown>).salvageUsed,
+    false,
+  );
 });

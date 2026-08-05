@@ -31,6 +31,12 @@ export interface PracticeGenerationTelemetryInput {
   failureClass?: PracticeGenerationFailureClass | null;
   fallbackUsed?: boolean;
   failoverUsed?: boolean;
+  /**
+   * 兩發都被 gate 打回後靠 salvage 搶救出來的結果。status 仍記 success（使用者
+   * 確實拿到輸出），但必須跟「一次過」分得開：salvage 率長期偏高＝守門誤殺仍
+   * 嚴重，該回頭修 gate 而不是靠搶救掩蓋（2026-08-05）。
+   */
+  salvageUsed?: boolean;
   semanticProviderCalls?: number | null;
   totalDurationMs?: number | null;
   promptChars: number;
@@ -44,6 +50,7 @@ export interface PracticeGenerationTelemetry {
   failureClass: PracticeGenerationFailureClass | null;
   fallbackUsed: boolean;
   failoverUsed: boolean;
+  salvageUsed: boolean;
   semanticProviderCalls: number | null;
   totalDurationMs: number | null;
   promptChars: number;
@@ -136,6 +143,7 @@ export function buildPracticeGenerationTelemetry(
     failureClass: normalizeFailureClass(raw.failureClass),
     fallbackUsed: raw.fallbackUsed === true,
     failoverUsed: raw.failoverUsed === true,
+    salvageUsed: raw.salvageUsed === true,
     semanticProviderCalls: normalizeOptionalCount(raw.semanticProviderCalls),
     totalDurationMs: normalizeOptionalCount(raw.totalDurationMs),
     promptChars: normalizeOptionalCount(raw.promptChars) ?? 0,
