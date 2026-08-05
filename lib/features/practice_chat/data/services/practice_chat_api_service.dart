@@ -710,6 +710,10 @@ class PracticeChatApiService {
       'mode': 'hint',
       'sessionId': sessionId,
       'acceptedQualitySchemaVersion': kPracticeHintQualitySchemaVersion,
+      // 能力宣告：這個 build 認得「本輪沒有可貼句」的回應形狀（空 replies ＋
+      // noPasteableReason）。server 缺席一律 fail-closed 回舊契約，所以舊 build
+      // 不會收到自己畫不出來的 payload（比照 catalogSize 的做法）。
+      'acceptsNoPasteableHint': true,
       if (normalizedRequestId != null && normalizedRequestId.isNotEmpty)
         'requestId': normalizedRequestId,
       if (expectedAiCount != null) 'expectedAiCount': expectedAiCount,

@@ -119,8 +119,14 @@ class PracticeHintReply {
 }
 
 class PracticeHintResult {
+  /// 可直接貼上的兩個選項。她已封鎖／明確要求停止聯絡時為空，此時
+  /// [noPasteableReason] 必有值——「本輪沒有可貼句」是合法結果不是失敗
+  /// （2026-08-06；先前硬性要求兩句，導致她封鎖的局必然 503）。
   final List<PracticeHintReply> replies;
   final String coaching;
+
+  /// 非空＝本輪不給可貼句，這是原因說明。UI 要用小字呈現，避免被誤複製。
+  final String? noPasteableReason;
   final int costDeducted;
   final int hintUsedCount;
   final int? monthlyRemaining;
@@ -130,12 +136,16 @@ class PracticeHintResult {
   const PracticeHintResult({
     required this.replies,
     required this.coaching,
+    this.noPasteableReason,
     required this.costDeducted,
     required this.hintUsedCount,
     this.monthlyRemaining,
     this.dailyRemaining,
     this.qualitySchemaVersion,
   });
+
+  /// 本輪有沒有可以直接貼出去的選項。
+  bool get hasPasteableReplies => replies.isNotEmpty;
 
   bool get hasCurrentQualitySchema =>
       qualitySchemaVersion == kPracticeHintQualitySchemaVersion;
@@ -149,6 +159,8 @@ class PracticeHintResult {
         'replies':
             replies.map((reply) => reply.toJson()).toList(growable: false),
         'coaching': coaching.trim(),
+        if (noPasteableReason != null)
+          'noPasteableReason': noPasteableReason!.trim(),
         'costDeducted': costDeducted,
         'hintUsedCount': hintUsedCount,
         if (monthlyRemaining != null) 'monthlyRemaining': monthlyRemaining,
@@ -161,11 +173,15 @@ class PracticeHintResult {
     if (raw is! Map) return null;
     final rawReplies = raw['replies'];
     final coaching = _nonEmptyString(raw['coaching']);
+    final noPasteableReason = _nonEmptyString(raw['noPasteableReason']);
     final costDeducted = raw['costDeducted'];
     final hintUsedCount = raw['hintUsedCount'];
     final qualitySchemaVersion = _nonEmptyString(raw['qualitySchemaVersion']);
+    // 恰兩句是常態；唯一的例外是「本輪沒有可貼句」，而那必須有原因說明——
+    // 空 replies 又沒有原因＝靜默給空畫面，一律判失敗。
+    final expectedReplyCount = noPasteableReason != null ? 0 : 2;
     if (rawReplies is! List ||
-        rawReplies.length != 2 ||
+        rawReplies.length != expectedReplyCount ||
         coaching == null ||
         costDeducted is! int ||
         costDeducted < 0 ||
@@ -189,6 +205,7 @@ class PracticeHintResult {
     return PracticeHintResult(
       replies: replies,
       coaching: coaching,
+      noPasteableReason: noPasteableReason,
       costDeducted: costDeducted,
       hintUsedCount: hintUsedCount,
       monthlyRemaining: monthlyRemaining,

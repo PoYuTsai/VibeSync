@@ -183,6 +183,8 @@ class PracticeChatState {
   final bool hintFailed; // 生成失敗；面板保留可重試入口，不顯示假內容
   final bool hasRetiredHintForCurrentTurn; // 舊快照只可同 id 替換一次
   final List<PracticeHintReply> hintReplies;
+  /// 非空＝本輪沒有可貼句（她已封鎖／要求停止聯絡），這是原因說明。
+  final String? hintNoPasteableReason;
   final String? hintCoaching;
   final int hintUsedCount;
   final bool hintLimitReached;
@@ -257,6 +259,7 @@ class PracticeChatState {
     this.hintFailed = false,
     this.hasRetiredHintForCurrentTurn = false,
     this.hintReplies = const [],
+    this.hintNoPasteableReason,
     this.hintCoaching,
     this.hintUsedCount = 0,
     this.hintLimitReached = false,
@@ -353,6 +356,7 @@ class PracticeChatState {
     bool? hintFailed,
     bool? hasRetiredHintForCurrentTurn,
     List<PracticeHintReply>? hintReplies,
+    Object? hintNoPasteableReason = _sentinel,
     int? hintUsedCount,
     bool? hintLimitReached,
     Object? debrief = _sentinel,
@@ -422,6 +426,9 @@ class PracticeChatState {
       hasRetiredHintForCurrentTurn:
           hasRetiredHintForCurrentTurn ?? this.hasRetiredHintForCurrentTurn,
       hintReplies: hintReplies ?? this.hintReplies,
+      hintNoPasteableReason: identical(hintNoPasteableReason, _sentinel)
+          ? this.hintNoPasteableReason
+          : hintNoPasteableReason as String?,
       hintCoaching: identical(hintCoaching, _sentinel)
           ? this.hintCoaching
           : hintCoaching as String?,
@@ -614,6 +621,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       isHintLoading: false,
       hintFailed: false,
       hintReplies: result.replies,
+      hintNoPasteableReason: result.noPasteableReason,
       hintCoaching: result.coaching,
       hasRetiredHintForCurrentTurn: false,
       hintUsedCount: result.hintUsedCount,

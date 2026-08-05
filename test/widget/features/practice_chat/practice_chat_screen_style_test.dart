@@ -1725,6 +1725,61 @@ void main() {
     expect(find.text('結束練習'), findsNothing);
   });
 
+  // ── W1（2026-08-06）：她已封鎖時沒有可貼句，是合法結果不是失敗 ──
+  // 真實事故：模型判斷「沒有任何可貼句能送出」是對的，但契約硬要兩句可貼回覆，
+  // 於是判 duplicate_replies → 503。UI 要能畫出這個狀態，而且說明用小字並與
+  // 可貼句按鈕明確區隔——它是說明不是話術，不該被複製貼出去。
+  testWidgets('hint panel renders the no-pasteable notice instead of buttons',
+      (tester) async {
+    const reason = '她已經明確要求停止聯絡並封鎖了你，這輪沒有任何適合送出的訊息。';
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 20,
+      messages: const [
+        PracticeMessage(role: 'user', text: '妳不回我是什麼意思'),
+        PracticeMessage(role: 'ai', text: '我說了不要再傳訊息給我'),
+      ],
+      aiReplyCount: 1,
+      hintReplies: const [],
+      hintNoPasteableReason: reason,
+      hintCoaching: '她已經把界線畫死，再傳任何訊息都只會讓情況更糟。',
+      hintUsedCount: 1,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('practice-hint-panel')), findsOneWidget);
+    // 沒有可貼句＝不得畫出任何「套用」按鈕
+    expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsNothing);
+    expect(find.text('套用'), findsNothing);
+    // 有原因說明時自動展開，說明本身要看得到
+    expect(find.byKey(const ValueKey('practice-hint-no-pasteable')),
+        findsOneWidget);
+    expect(find.textContaining('沒有任何適合送出的訊息'), findsOneWidget);
+  });
+
   testWidgets('hint panel can fill the composer with a suggested reply',
       (tester) async {
     const suggestedReply = '我也想聽你多講一點。';

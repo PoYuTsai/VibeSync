@@ -2051,6 +2051,9 @@ void main() {
         'mode': 'hint',
         'sessionId': 'session-1',
         'acceptedQualitySchemaVersion': kPracticeHintQualitySchemaVersion,
+        // 能力宣告：這個 build 認得「本輪沒有可貼句」的形狀（2026-08-06 W1）。
+        // server 缺席一律 fail-closed，所以舊 build 不會收到自己畫不出來的 payload。
+        'acceptsNoPasteableHint': true,
         'requestId': 'hint-prefetch-1',
         'expectedAiCount': 3,
         'prefetch': true,

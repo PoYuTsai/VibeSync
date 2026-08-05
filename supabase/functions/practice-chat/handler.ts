@@ -2616,6 +2616,7 @@ export function createPracticeChatHandler(
       };
       try {
         const baseHintMessages = buildHintMessages({
+          allowNoPasteableReply: request.acceptsNoPasteableHint === true,
           turns: request.turns,
           profile: request.profile,
           practiceMode: request.practiceMode,
@@ -2642,6 +2643,9 @@ export function createPracticeChatHandler(
           trustedFactClaims: hintFactualEvidence.claims,
           enforceGeneratedQuality: true,
           relaxSubjectiveQualityRubrics: true,
+          // client 能力宣告；缺席＝舊 build，維持舊契約（server 也不會教模型
+          // 輸出那個形狀，見 buildHintMessages）。
+          allowNoPasteableReply: request.acceptsNoPasteableHint === true,
         } as const;
         hintParseCandidate = (raw, override) => {
           const parsed = parseHintResult(raw, {

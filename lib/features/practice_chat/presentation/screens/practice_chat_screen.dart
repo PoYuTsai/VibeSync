@@ -1761,7 +1761,8 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
   @override
   void initState() {
     super.initState();
-    _expanded = widget.state.hintReplies.isNotEmpty;
+    _expanded = widget.state.hintReplies.isNotEmpty ||
+        (widget.state.hintNoPasteableReason?.trim().isNotEmpty ?? false);
     _syncHintWaitTimer();
   }
 
@@ -1816,7 +1817,11 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
     final isHintLimitReached =
         state.hintLimitReached || hintUsedCount >= kMaxPracticeHintsPerRound;
     final canRequest = state.canRequestHint && !isHintLimitReached;
+    final noPasteableReason = state.hintNoPasteableReason?.trim();
+    final hasNoPasteableNotice =
+        noPasteableReason != null && noPasteableReason.isNotEmpty;
     final hasHint = state.hintReplies.isNotEmpty ||
+        hasNoPasteableNotice ||
         (state.hintCoaching != null && state.hintCoaching!.trim().isNotEmpty);
     final isGameMode = state.learningMode == PracticeLearningMode.game;
     final hintTitle = isGameMode ? 'Game Hint' : 'Hint';
@@ -1982,7 +1987,9 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    '已產生 ${state.hintReplies.length} 則提示',
+                    hasNoPasteableNotice
+                        ? '這輪沒有可以送出的訊息'
+                        : '已產生 ${state.hintReplies.length} 則提示',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppTypography.caption.copyWith(
@@ -2006,6 +2013,36 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
               ),
               if (i != state.hintReplies.length - 1) const SizedBox(height: 6),
             ],
+          ],
+          // 她已封鎖／要求停止聯絡：沒有可貼句是合法結果，不是失敗。刻意用
+          // 小字並與可貼句按鈕明確區隔——它是說明不是話術，不該被複製貼出去
+          //（Eric 2026-08-05 指示）。
+          if (_expanded && hasNoPasteableNotice) ...[
+            const SizedBox(height: 8),
+            Row(
+              key: const ValueKey('practice-hint-no-pasteable'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.block_outlined,
+                  size: 14,
+                  color: AppColors.onBackgroundSecondary
+                      .withValues(alpha: 0.75),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    noPasteableReason,
+                    style: AppTypography.caption.copyWith(
+                      fontSize: 11,
+                      color: AppColors.onBackgroundSecondary
+                          .withValues(alpha: 0.85),
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
           if (_expanded &&
               state.hintCoaching != null &&

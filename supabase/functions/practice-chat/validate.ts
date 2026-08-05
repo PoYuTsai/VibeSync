@@ -100,6 +100,12 @@ export interface PracticeChatRequest {
    * a formal request from a prefetch-aware client; true is background prefetch.
    */
   prefetch?: boolean;
+  /**
+   * client 能力宣告：這個 build 認得「本輪沒有可貼句」的回應形狀
+   *（空 replies ＋ noPasteableReason）。缺席／非法一律靜默視為 false，
+   * 走舊契約——絕不 throw 400，那會鎖死已裝機的舊 client（比照 catalogSize）。
+   */
+  acceptsNoPasteableHint?: boolean;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -350,6 +356,8 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     requestId = raw.requestId;
   }
 
+  const acceptsNoPasteableHint = raw.acceptsNoPasteableHint === true;
+
   let prefetch: boolean | undefined;
   if (raw.prefetch !== undefined) {
     if (typeof raw.prefetch !== "boolean") {
@@ -456,6 +464,7 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     requestId,
     expectedAiCount,
     prefetch,
+    acceptsNoPasteableHint,
   };
 }
 
