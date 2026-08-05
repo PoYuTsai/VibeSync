@@ -7565,3 +7565,47 @@ Deno.test("寒暄局 debrief：兩發都沒過 grounding 時 salvage 端出卡�
     true,
   );
 });
+
+// ── 2026-08-05 salvage 整合回歸：hint 也「正常一定要有輸出」 ──
+// grounding 的證據窗是整份逐字稿、兩種 role 都算，所以她只回一個 emoji 時，
+// 一句自然回應她表情的 hint 會因為沒有複讀「我說」的原話而被判不接地——這道
+// gate 在逼 hint 引用自己而不是回應她。前兩發照擋（既有裁決不動），兩發都沒過
+// 才由 salvage 端出，且必須保留 server-authored decision（走同一條解析路徑）。
+Deno.test("她只回 emoji 時：hint 兩發都沒過 grounding 則 salvage 端出而不是 503", async () => {
+  const emojiHint = JSON.stringify({
+    warmUp: "哈哈這什麼表情，是懶得打字還是在等我先開話題？",
+    steady: "看來今天話不多，那我先講：我剛也累到只想耍廢。",
+    coaching: "她只丟表情＝訊號很淡，先用輕鬆的方式把球接回來，別急著追問。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      claudeReplies: [emojiHint, emojiHint],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "hint-emoji-salvage",
+      turns: [
+        { role: "user", text: "妳今天下班了嗎？看妳限動在健身房" },
+        { role: "ai", text: "🙂" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.replies.length, 2);
+  assertEquals(
+    json.replies[0].text,
+    "哈哈這什麼表情，是懶得打字還是在等我先開話題？",
+  );
+  // 走同一條解析路徑＝server-authored decision 不得遺失
+  assertEquals(typeof json.replies[0].decision.inviteRoute, "string");
+  // 搶救成功＝不得釋放 generation token
+  assertEquals(releaseHintCalls(state).length, 0);
+  const telemetry = aiLogInserts(state)[0].values;
+  assertEquals(telemetry.status, "success");
+  assertEquals(
+    (telemetry.request_body as Record<string, unknown>).salvageUsed,
+    true,
+  );
+});

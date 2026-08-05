@@ -18,6 +18,7 @@ import {
   hintTrustedFactualEvidence,
   MAX_COACHING_LENGTH,
   parseHintResult,
+  salvageHintCandidate,
 } from "./hint.ts";
 import { resolvePracticeProfile } from "./practice_persona.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
@@ -5159,9 +5160,12 @@ Deno.test("parseHintResult fails closed on 不能拒絕 word-face even in gym ba
   assertThrows(
     () =>
       parseHintResult(JSON.stringify({
-        warmUp: "教練這樣根本魔鬼訓練吧，偷偷加重量還不能拒絕，妳都怎麼撐過去的？",
-        steady: "教練這麼盯真的很扎實，偷加重量那種驚喜感應該蠻酸的哈哈，妳有跟他抗議過嗎？",
-        coaching: "她這句重點在「教練偷偷加重量、不讓偷懶」，順著這個梗接就好，不用扯到約見面。",
+        warmUp:
+          "教練這樣根本魔鬼訓練吧，偷偷加重量還不能拒絕，妳都怎麼撐過去的？",
+        steady:
+          "教練這麼盯真的很扎實，偷加重量那種驚喜感應該蠻酸的哈哈，妳有跟他抗議過嗎？",
+        coaching:
+          "她這句重點在「教練偷偷加重量、不讓偷懶」，順著這個梗接就好，不用扯到約見面。",
       })),
     Error,
     "hint_l4_unsafe",
@@ -5365,9 +5369,12 @@ Deno.test("parseHintResult keeps playful taste-appraisal 及不及格 callbacks 
   // 品味這個屬性，不是命令她交作業——不得被「妳…及不及格」詞面誤殺。
   const result = parseHintResult(
     JSON.stringify({
-      warmUp: "「勉強及格？那我要更努力升級成滿分歌單製作人，妳等我下一首來洗白。」",
-      steady: "「多聊一點我接受，先說妳最近愛重播哪首，我來鑑定妳的品味及不及格。」",
-      coaching: "Game 心法：接住「及格/多聊」這兩個詞，順勢把互動拉長，把主動權丟回她身上。",
+      warmUp:
+        "「勉強及格？那我要更努力升級成滿分歌單製作人，妳等我下一首來洗白。」",
+      steady:
+        "「多聊一點我接受，先說妳最近愛重播哪首，我來鑑定妳的品味及不及格。」",
+      coaching:
+        "Game 心法：接住「及格/多聊」這兩個詞，順勢把互動拉長，把主動權丟回她身上。",
     }),
     { mode: "game" },
   );
@@ -5871,5 +5878,107 @@ Deno.test("game hint prompt teaches challenge-handling without self-justificatio
     ),
     false,
     teachingLine,
+  );
+});
+
+// ── 2026-08-05 salvage：hint 也必須「正常一定要有輸出」 ──
+// grounding 的證據窗是整份逐字稿、兩種 role 都算，所以她只回一個 emoji 時，
+// 一句自然回應她表情的 hint 會因為「沒有複讀使用者自己的原話」而被判不接地——
+// 這道 gate 實際上在逼 hint 引用「我說」而不是回應「她說」，方向是反的。
+// 裁決（Eric 2026-08-05）：hint/debrief × 新手/一般/Game 正常一定要有輸出。
+// 前兩發照擋（既有裁決不動），兩發都沒過才由 salvage 端出最佳候選。
+
+const salvageEmojiTurns = [
+  { role: "user" as const, text: "妳今天下班了嗎？看妳限動在健身房" },
+  { role: "ai" as const, text: "🙂" },
+];
+
+function salvageHintJson() {
+  return JSON.stringify({
+    warmUp: "哈哈這什麼表情，是懶得打字還是在等我先開話題？",
+    steady: "看來今天話不多，那我先講：我剛也累到只想耍廢。",
+    coaching: "她只丟表情＝訊號很淡，先用輕鬆的方式把球接回來，別急著追問。",
+  });
+}
+
+Deno.test("salvage：她只回 emoji 時，回應她表情的 hint 解得出來", () => {
+  const result = parseHintResult(salvageHintJson(), {
+    mode: "beginner",
+    enforceGeneratedQuality: true,
+    relaxSubjectiveQualityRubrics: true,
+    skipLexicalGrounding: true,
+    turns: salvageEmojiTurns,
+  });
+  assertEquals(
+    result.replies[0].text,
+    "哈哈這什麼表情，是懶得打字還是在等我先開話題？",
+  );
+});
+
+Deno.test("沒開 skipLexicalGrounding：hint 前兩發守門行為完全不變", () => {
+  assertThrows(
+    () =>
+      parseHintResult(salvageHintJson(), {
+        mode: "beginner",
+        enforceGeneratedQuality: true,
+        relaxSubjectiveQualityRubrics: true,
+        turns: salvageEmojiTurns,
+      }),
+    Error,
+    "hint_quality_invalid_not_grounded",
+  );
+});
+
+Deno.test("salvage 不放掉 L4：露骨候選照樣打回", () => {
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "偷偷加重量還不能拒絕吧，現在跟我回家",
+          steady: "看來今天話不多，那我先講：我剛也累到只想耍廢。",
+          coaching: "她只丟表情＝訊號很淡，先用輕鬆的方式把球接回來。",
+        }),
+        {
+          mode: "beginner",
+          enforceGeneratedQuality: true,
+          relaxSubjectiveQualityRubrics: true,
+          skipLexicalGrounding: true,
+          turns: salvageEmojiTurns,
+        },
+      ),
+    Error,
+  );
+});
+
+// salvage 收 parse callback 而不是 parseOptions：hint 的 validate 在 parse 之後
+// 還會補上 server-authored decision，salvage 必須走同一條路徑，否則搶救出來的
+// 結果會少掉 decision（呼叫端與 salvage 各寫一份＝必然漂移）。
+Deno.test("salvageHintCandidate：優先主模型；全部救不起來回 null", () => {
+  const parse = (raw: string) =>
+    parseHintResult(raw, {
+      mode: "beginner",
+      enforceGeneratedQuality: true,
+      relaxSubjectiveQualityRubrics: true,
+      skipLexicalGrounding: true,
+      turns: salvageEmojiTurns,
+    });
+  const salvaged = salvageHintCandidate({
+    failures: [
+      { model: "claude-sonnet-5", raw: salvageHintJson() },
+      { model: "claude-haiku-4-5-20251001", raw: salvageHintJson() },
+    ],
+    parse,
+  });
+  assertEquals(salvaged?.model, "claude-sonnet-5");
+
+  assertEquals(
+    salvageHintCandidate({
+      failures: [
+        { model: "claude-sonnet-5" },
+        { model: "claude-haiku-4-5-20251001", raw: "這根本不是 JSON" },
+      ],
+      parse,
+    }),
+    null,
   );
 });

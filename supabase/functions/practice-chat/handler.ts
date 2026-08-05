@@ -64,6 +64,7 @@ import {
   HINT_TOOL_SCHEMA,
   hintTrustedFactualEvidence,
   parseHintResult,
+  salvageHintCandidate,
 } from "./hint.ts";
 import {
   runSingleShot,
@@ -2571,6 +2572,17 @@ export function createPracticeChatHandler(
       const hintProvider = "anthropic";
       let hintModel = CLAUDE_SONNET_MODEL;
       let hintFailoverUsed = false;
+      // 兩發都被 gate 打回後靠 salvage 端出的結果；telemetry 要能跟「一次過」分開。
+      let hintSalvageUsed = false;
+      // validate 與 salvage 共用同一條解析路徑（含 server-authored decision），
+      // 兩邊各寫一份必然漂移。宣告在 try 外才進得了 catch；還沒建好就失敗
+      //（例如 claude_unavailable）時為 null＝不搶救。
+      let hintParseCandidate:
+        | ((
+          raw: string,
+          override?: { skipLexicalGrounding?: boolean },
+        ) => ReturnType<typeof parseHintResult>)
+        | null = null;
       const hintGenerationStartedAt = performance.now();
       let hintAttemptCount = 0;
       let hintPromptChars = 0;
@@ -2631,6 +2643,30 @@ export function createPracticeChatHandler(
           enforceGeneratedQuality: true,
           relaxSubjectiveQualityRubrics: true,
         } as const;
+        hintParseCandidate = (raw, override) => {
+          const parsed = parseHintResult(raw, {
+            ...generatedHintParseOptions,
+            ...override,
+          });
+          return {
+            ...parsed,
+            replies: parsed.replies.map((reply) => ({
+              ...reply,
+              decision: buildHintDecision({
+                turns: request.turns,
+                profile: request.profile,
+                practiceMode: request.practiceMode,
+                temperatureScore: hintTemperatureScore,
+                familiarityScore: hintFamiliarityScore,
+                partnerMood: hintPartnerMood,
+                gameState: ledgerGameState,
+                replyType: reply.type,
+                replyText: reply.text,
+                rationale: SERVER_HINT_DECISION_RATIONALE,
+              }),
+            })) as typeof parsed.replies,
+          };
+        };
         hintPromptChars = countPromptChars(baseHintMessages);
         if (!claudeApiKey || !deps.callClaude) {
           throw new Error("claude_unavailable");
@@ -2655,29 +2691,7 @@ export function createPracticeChatHandler(
             // 機械守門全套照舊：parseHintResult（結構/長度/守門詞表/接地/事實
             // ledger/白話 repair）＋server-authored decision 可建構性。丟錯＝該發
             // 判敗立即進補發，絕不 repair 復活、絕不保留候選原文。
-            validate: (raw) => {
-              const parsed = parseHintResult(raw, {
-                ...generatedHintParseOptions,
-              });
-              return {
-                ...parsed,
-                replies: parsed.replies.map((reply) => ({
-                  ...reply,
-                  decision: buildHintDecision({
-                    turns: request.turns,
-                    profile: request.profile,
-                    practiceMode: request.practiceMode,
-                    temperatureScore: hintTemperatureScore,
-                    familiarityScore: hintFamiliarityScore,
-                    partnerMood: hintPartnerMood,
-                    gameState: ledgerGameState,
-                    replyType: reply.type,
-                    replyText: reply.text,
-                    rationale: SERVER_HINT_DECISION_RATIONALE,
-                  }),
-                })) as typeof parsed.replies,
-              };
-            },
+            validate: (raw) => hintParseCandidate!(raw),
           },
         );
         for (const failure of outcome.attemptFailures) {
@@ -2715,59 +2729,87 @@ export function createPracticeChatHandler(
             typeof failure.raw === "string"
           )
           : [];
-        const failureClass = hintLastFailureClass ??
-          classifyPracticeGenerationFailure(e);
-        logWarn("practice_chat_generation_failed", {
-          user: summarizeUser(user.id),
-          mode: "hint",
-          personaId: request.profile.personaId,
-          difficulty: request.profile.difficulty,
-          failureClass,
-        });
-        await releaseHintGeneration({
-          supabase,
-          userId: user.id,
-          sessionId: request.sessionId,
-          requestId: hintRequestId,
-          generationToken: hintGenerationToken,
-          legacyReplacement: hintLegacyReplacementClaimed,
-        });
-        const failureDurationMs = elapsedMilliseconds(
-          hintGenerationStartedAt,
-        );
-        scheduleGenerationTelemetry(deps, {
-          supabase,
-          userId: user.id,
-          mode: "hint",
-          practiceMode: request.practiceMode,
-          attempt: Math.max(1, hintAttemptCount),
-          totalDurationMs: failureDurationMs,
-          promptChars: hintPromptChars,
-          fallbackUsed: false,
-          failoverUsed: hintFailoverUsed,
-          failureClass,
-          attemptDurationsMs: hintAttemptDurationsMs,
-          failureClasses: hintFailureClasses,
-          failureCodes: hintFailureCodes,
-          model: hintModel,
-          pipeline: "single_shot_v2",
-          rejectedCandidates: hintRejectedCandidates,
-        });
-        if (requestIsPrefetch) {
-          logHintPrefetchTelemetry({
-            outcome: "failed",
-            reason: prefetchFailureReason(hintLastFailureClass),
+        // Salvage：兩發都沒過 gate 時端出最佳候選，而不是讓使用者拿到 503
+        //（Eric 2026-08-05：正常一定要有輸出）。走 hintParseCandidate 同一條
+        // 路徑以保留 server-authored decision；只放掉字面 grounding，硬安全/
+        // 守門詞表/結構/fact claims 照跑。必須排在 releaseHintGeneration 之前。
+        const salvagedHint =
+          e instanceof SingleShotExhaustedError && hintParseCandidate
+            ? salvageHintCandidate({
+              failures: e.attemptFailures,
+              parse: (raw) =>
+                hintParseCandidate!(raw, { skipLexicalGrounding: true }),
+            })
+            : null;
+        if (salvagedHint) {
+          hintResult = salvagedHint.result;
+          hintModel = salvagedHint.model;
+          hintSalvageUsed = true;
+          hintFailoverUsed = true;
+          hintAttemptCount = Math.max(1, hintAttemptCount);
+          hintLastFailureClass = null;
+          logInfo("practice_chat_generation_salvaged", {
+            user: summarizeUser(user.id),
+            mode: "hint",
             practiceMode: request.practiceMode,
+            model: hintModel,
+            failureCodes: hintFailureCodes,
           });
+        } else {
+          const failureClass = hintLastFailureClass ??
+            classifyPracticeGenerationFailure(e);
+          logWarn("practice_chat_generation_failed", {
+            user: summarizeUser(user.id),
+            mode: "hint",
+            personaId: request.profile.personaId,
+            difficulty: request.profile.difficulty,
+            failureClass,
+          });
+          await releaseHintGeneration({
+            supabase,
+            userId: user.id,
+            sessionId: request.sessionId,
+            requestId: hintRequestId,
+            generationToken: hintGenerationToken,
+            legacyReplacement: hintLegacyReplacementClaimed,
+          });
+          const failureDurationMs = elapsedMilliseconds(
+            hintGenerationStartedAt,
+          );
+          scheduleGenerationTelemetry(deps, {
+            supabase,
+            userId: user.id,
+            mode: "hint",
+            practiceMode: request.practiceMode,
+            attempt: Math.max(1, hintAttemptCount),
+            totalDurationMs: failureDurationMs,
+            promptChars: hintPromptChars,
+            fallbackUsed: false,
+            failoverUsed: hintFailoverUsed,
+            failureClass,
+            attemptDurationsMs: hintAttemptDurationsMs,
+            failureClasses: hintFailureClasses,
+            failureCodes: hintFailureCodes,
+            model: hintModel,
+            pipeline: "single_shot_v2",
+            rejectedCandidates: hintRejectedCandidates,
+          });
+          if (requestIsPrefetch) {
+            logHintPrefetchTelemetry({
+              outcome: "failed",
+              reason: prefetchFailureReason(hintLastFailureClass),
+              practiceMode: request.practiceMode,
+            });
+            return jsonResponse(
+              { error: "practice_hint_prefetch_failed", retryable: true },
+              503,
+            );
+          }
           return jsonResponse(
-            { error: "practice_hint_prefetch_failed", retryable: true },
+            { error: "practice_hint_generation_retryable", retryable: true },
             503,
           );
         }
-        return jsonResponse(
-          { error: "practice_hint_generation_retryable", retryable: true },
-          503,
-        );
       }
 
       const hintTotalDurationMs = elapsedMilliseconds(
@@ -2785,6 +2827,7 @@ export function createPracticeChatHandler(
           failureClass: null,
           fallbackUsed: false,
           failoverUsed: hintFailoverUsed,
+          salvageUsed: hintSalvageUsed,
           totalDurationMs: hintTotalDurationMs,
           promptChars: hintPromptChars,
         }),
@@ -2924,6 +2967,7 @@ export function createPracticeChatHandler(
         promptChars: hintPromptChars,
         fallbackUsed: false,
         failoverUsed: hintFailoverUsed,
+        salvageUsed: hintSalvageUsed,
         failureClass: null,
         attemptDurationsMs: hintAttemptDurationsMs,
         failureClasses: hintFailureClasses,

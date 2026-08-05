@@ -140,6 +140,18 @@ interface HintParseOptions {
    * grounding）一律照擋。舊 served 結果從未 enforce 這些主觀 rubric。
    */
   relaxSubjectiveQualityRubrics?: boolean;
+  /**
+   * 只有 salvage pass 可以開。跳過字面 n-gram grounding，其餘守門照跑。
+   *
+   * grounding 是偏好不是否決權：前兩發（Sonnet→Haiku）照擋，兩發都沒過時由
+   * salvage 端出最佳候選，而不是讓使用者拿到 503（2026-08-05 Eric 拍板：
+   * hint/debrief × 新手/一般/Game 正常一定要有輸出）。
+   *
+   * 這個 gate 對 hint 有結構性盲區：證據窗是整份逐字稿、兩種 role 都算，所以
+   * 她只回一個 emoji 時，一句自然回應她表情的 hint 會因為沒有複讀「我說」的
+   * 原話而被判不接地——等於逼 hint 引用自己而不是回應她。
+   */
+  skipLexicalGrounding?: boolean;
 }
 
 const MAX_REPLY_LENGTH = 80;
@@ -2354,16 +2366,47 @@ function assertGeneratedHintQuality(opts: {
   // conversation. 視窗＝全逐字稿：這個 gate 的目的是擋萬用模板，不是逼
   // 逐字複讀最新句——「引用較早輪次」「回應她的質問句」都是有憑有據
   //（2026-07-23 判定表 not_grounded 10/10 全誤殺，其中最新句限定是主因）。
-  for (const visibleText of [opts.warmUp, opts.steady, opts.coaching]) {
-    assertPracticeTextGroundedInTurns({
-      visibleText,
-      turns: opts.parseOptions.turns,
-      errorCode: "hint_quality_invalid_not_grounded",
-    });
+  if (opts.parseOptions.skipLexicalGrounding !== true) {
+    for (const visibleText of [opts.warmUp, opts.steady, opts.coaching]) {
+      assertPracticeTextGroundedInTurns({
+        visibleText,
+        turns: opts.parseOptions.turns,
+        errorCode: "hint_quality_invalid_not_grounded",
+      });
+    }
   }
   if (!relaxSubjective && opts.parseOptions.mode === "game") {
     assertGeneratedGameCoachingSubstance(opts.coaching);
   }
+}
+
+/**
+ * Salvage pass：兩發（Sonnet→Haiku）都被 gate 打回時，從候選原文裡搶救一組可以
+ * 端出的 hint，而不是讓使用者拿到 503。
+ *
+ * 只放掉字面 grounding；硬安全（L4）、守門詞表、結構、fact claims 等不可退讓
+ * 守門一律照跑，全部候選都救不起來才回 null（→ 503）。
+ * 候選順序＝attemptFailures 順序（主模型在前）。
+ */
+export function salvageHintCandidate<T>(opts: {
+  failures: readonly { model: string; raw?: string }[];
+  /**
+   * 呼叫端自己的解析closure（必須自行帶 skipLexicalGrounding）。刻意收 callback
+   * 而不是 parseOptions：hint 的 validate 在 parseHintResult 之後還要補上
+   * server-authored decision，salvage 必須走同一條路徑，否則兩邊各寫一份必然漂移。
+   */
+  parse: (raw: string) => T;
+}): { result: T; model: string } | null {
+  for (const failure of opts.failures) {
+    if (typeof failure.raw !== "string" || failure.raw.length === 0) continue;
+    try {
+      const result = opts.parse(failure.raw);
+      return { result, model: failure.model };
+    } catch {
+      continue; // 這組救不了（踩到不可退讓守門或格式壞掉），換下一組
+    }
+  }
+  return null;
 }
 
 export function parseHintResult(
