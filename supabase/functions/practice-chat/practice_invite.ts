@@ -95,6 +95,17 @@ const MEMORY_RECALL_QUESTION_CLAUSE =
 // （想起上次那家店下次一起去吧）不被吞。
 const MEMORY_RECALL_CLAUSE =
   /想起(?:(?!下次|改天|週[一二三四五六日末]|星期[一二三四五六日天]|禮拜[一二三四五六日天]|明天|後天|一起|要不要|約).){0,16}/gu;
+// 「妳去過演唱會嗎」「妳吃過那家店嗎」＝問她的**過去經驗**；「妳喜歡演唱會嗎」
+// ＝問偏好。兩者都不是提案，但 GENERIC_PROPOSAL 只看「活動動詞…嗎」，會把它們
+// 判成最強的 direct 邀約（2026-08-06 生產實例：一筆真 503，兩發都是
+// 「妳有去過他的現場嗎？」這類句子）。
+//
+// tempered dot 停在真邀約的窗口詞前，所以「上次沒去成，下次一起去吧」這種
+// 前半回顧、後半提案的句子不會被整段吞掉。
+const EXPERIENCE_QUESTION_CLAUSE =
+  /(?:去|來|吃|喝|看|逛|玩|走|爬|打|唱)過(?:(?!下次|改天|明天|後天|週[一二三四五六日末]|要不要|一起|約).){0,16}(?:嗎|沒有|了沒)[?？]?/gu;
+const PREFERENCE_QUESTION_CLAUSE =
+  /(?:喜歡|愛|討厭|習慣)(?:(?!下次|改天|明天|後天|週[一二三四五六日末]|要不要|一起|約).){0,16}嗎[?？]?/gu;
 const INTENT_QUESTION_CLAUSE =
   /(?:還會想?再?|會想?再|還?敢再?|會有想|有沒有(?:很)?想|會不會想|會[^，,。！？!?；;我]{0,4}想|還?有(?:力氣|心情|餘裕|體力)|(?:平常|通常|一般|每次)[^，,。！？!?；;我]{0,8}會(?:這樣)?|也會這樣)(?:被[^我，,。！？!?；;]{0,3})?[^，,。！？!?；;我起]{0,3}?(?:去|爬|來|吃|喝|看|逛|玩|走|打|唱|約)[^，,。！？!?；;我]{0,10}嗎/gu;
 // 第三方主詞邀約（round10 bh2「朋友下次還會約妳嗎」）：子句開頭是朋友/他她
@@ -140,7 +151,9 @@ export function practiceInviteLevelFor(value: string): PracticeInviteLevel {
     .replace(MEMORY_RECALL_CLAUSE, "").replace(
     THIRD_PARTY_INVITER_CLAUSE,
     "",
-  ).replace(SHARE_CONTENT_CLAUSE, "").replace(IMAGINATION_CLAUSE, "");
+  ).replace(SHARE_CONTENT_CLAUSE, "").replace(IMAGINATION_CLAUSE, "")
+    .replace(EXPERIENCE_QUESTION_CLAUSE, "")
+    .replace(PREFERENCE_QUESTION_CLAUSE, "");
   const hasConcreteTime = CONCRETE_TIME.test(positiveText);
   const hasSoftTime = SOFT_TIME.test(positiveText);
   const hasImplicitArrival = (IMPLICIT_ARRIVAL_CUE.test(positiveText) ||

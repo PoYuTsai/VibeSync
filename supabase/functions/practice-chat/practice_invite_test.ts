@@ -451,3 +451,42 @@ Deno.test("practice invite classifier ignores type-classification questions and 
   assertEquals(practiceInviteLevelFor("改天去喝一杯嗎？"), "soft");
   assertEquals(practiceInviteLevelFor("我想跟妳去吃那間麻辣鍋"), "direct");
 });
+
+// ── 2026-08-06 生產實例：問過去經驗被判成直接邀約 ──
+// 真實案例：一筆 503，兩發的可貼句都是「妳有去過他的現場嗎？」這類。
+// GENERIC_PROPOSAL 是「活動動詞…嗎？」就算提案，分不出「要不要去…嗎」（提案）
+// 與「妳去過…嗎」（問她的過去經驗）。連「妳喜歡演唱會嗎」都因為「唱」中招。
+Deno.test("問過去經驗／問偏好不是邀約", () => {
+  for (
+    const line of [
+      "妳有去過他的現場嗎？",
+      "妳去過演唱會嗎？",
+      "妳最近有看過演唱會嗎？",
+      "妳有看過那部電影嗎？",
+      "妳吃過那家店嗎？",
+      "妳有去過台南嗎？",
+      "妳喜歡演唱會嗎？",
+      "妳習慣一個人看電影嗎？",
+      "那間店妳吃過了沒？",
+    ]
+  ) {
+    assertEquals(practiceInviteLevelFor(line), "none", line);
+  }
+});
+
+// 剝除子句停在真邀約的窗口詞前，前半回顧、後半提案的句子不得被整段吞掉。
+Deno.test("問過去經驗剝除不得吃掉同句的真邀約", () => {
+  for (
+    const line of [
+      "我們週六去看演唱會吧",
+      "上次沒去成，下次一起去吧",
+      "妳去過那間店嗎？改天一起去",
+    ]
+  ) {
+    assertEquals(
+      practiceInviteLevelFor(line) === "none",
+      false,
+      line,
+    );
+  }
+});
