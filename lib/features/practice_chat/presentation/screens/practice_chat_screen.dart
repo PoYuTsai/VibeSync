@@ -1031,6 +1031,19 @@ class _PracticeProfileHero extends StatelessWidget {
       ...girl.interestTags.take(2),
       ...girl.lifestyleTags.take(1),
     ];
+    // 認識場合要在送出第一句話「之前」就看得到——它決定開場該用什麼語氣切入
+    // （街頭搭訕跟 IG 冷私訊的破冰方式完全不同），事後才在 profile sheet 看到
+    // 等於練習當下缺了關鍵資訊。算法與 practice_profile_sheet.dart 用同一顆
+    // practiceAcquaintanceOriginFor，threadId 組法也一致，保證跟開聊後看到的
+    // 是同一個管道。
+    final origin = practiceAcquaintanceOriginFor(
+      profileId: girl.profileId,
+      professionId: girl.professionId,
+      threadId: practiceThreadIdFor(
+        sessionId: state.sessionId,
+        visiblePracticeThreadId: state.visiblePracticeThreadId,
+      ),
+    );
     // 鍵盤開啟時資訊卡被壓縮：拖動卡片（即使內容未超出可視高度）也要收鍵盤，
     // 讓使用者能立刻回看完整資料。
     return NotificationListener<ScrollStartNotification>(
@@ -1086,6 +1099,27 @@ class _PracticeProfileHero extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [for (final t in tags) _HeroTag(label: t)],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.route_outlined,
+                  size: 16,
+                  color: AppColors.glassTextSecondary.withValues(alpha: 0.75),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    origin.sharedFact,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.glassTextSecondary,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 14),
             Text(
