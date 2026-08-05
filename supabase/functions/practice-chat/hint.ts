@@ -2334,6 +2334,40 @@ function assertGeneratedGameCoachingSubstance(coaching: string): void {
 }
 
 /**
+ * 「本輪沒有可貼句」這條路徑跳過所有可貼句專屬守門，但捏造事實是甲類紅線，
+ * 不能跟著一起跳掉——沒有可貼句時 coaching 就是使用者唯一看得到的教練內容，
+ * 在那裡編造她沒說過的事，傷害跟編在可貼句裡一樣大（2026-08-06 W3 補洞：
+ * W1 與旁白句轉換兩條路徑原本都漏了這道）。
+ *
+ * 只驗 coaching，**不驗 noPasteableReason**：fact ledger 是照可貼句與 coaching
+ * 校準的，套到這個短的狀態說明句會誤判——實測「對話已被封鎖，無法再傳送訊息」
+ * 會被判成 unsupported_detail:third_party:name:is_named。把沒校準過的守門套上
+ * 新欄位只會製造假 503，正是本案要消滅的東西。reason 仍然過 requiredString 的
+ * L4／內部標籤外洩／罐頭三道，而且在旁白句路徑它本來就是模型自己的可貼欄內容。
+ */
+function assertNoPasteableFactClaimsSupported(opts: {
+  texts: readonly string[];
+  parseOptions: HintParseOptions;
+}): void {
+  if (opts.parseOptions.enforceGeneratedQuality !== true) return;
+  if (opts.parseOptions.semanticAdjudicated === true) return;
+  const factContext = buildHintFactContext({
+    turns: opts.parseOptions.turns,
+    factualEvidence: opts.parseOptions.factualEvidence,
+    sharedFactualEvidence: opts.parseOptions.sharedFactualEvidence,
+    partnerFactualEvidence: opts.parseOptions.partnerFactualEvidence,
+    trustedFactClaims: opts.parseOptions.trustedFactClaims,
+  });
+  for (const text of opts.texts) {
+    assertHintFactClaimsSupported({
+      text,
+      field: "coaching",
+      context: factContext,
+    });
+  }
+}
+
+/**
  * 整句被括號包住＝旁白／舞台指示，不是可以貼給對方的訊息。
  *
  * 這不是文風判斷，是形狀判斷：使用者按下「貼上」時會把括號一起貼出去。模型
@@ -2515,6 +2549,10 @@ export function parseHintResult(
     );
     // 多餘鍵一律忽略而不是打回：我們只讀白名單欄位，沒讀到的鍵不可能被畫到
     // 畫面上，為了它把一份好內容轉成 503 是純虧（2026-08-06 W3 乙類）。
+    assertNoPasteableFactClaimsSupported({
+      texts: [coachingOnly],
+      parseOptions: options,
+    });
     return { replies: [], coaching: coachingOnly, noPasteableReason: reason };
   }
 
@@ -2549,11 +2587,12 @@ export function parseHintResult(
       // 舊 client 畫不出「本輪沒有可貼句」，照鐵則 fail-closed。
       throw new Error("hint_no_pasteable_unsupported_client");
     }
-    return {
-      replies: [],
-      coaching,
-      noPasteableReason: stripStageDirectionMarkers(warmUp),
-    };
+    const reason = stripStageDirectionMarkers(warmUp);
+    assertNoPasteableFactClaimsSupported({
+      texts: [coaching],
+      parseOptions: options,
+    });
+    return { replies: [], coaching, noPasteableReason: reason };
   }
   if (
     (warmUpIsStageDirection || steadyIsStageDirection) &&

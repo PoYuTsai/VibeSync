@@ -6324,3 +6324,36 @@ Deno.test("W3 甲類守門在 degradeStructuralDefects 下一樣擋", () => {
     );
   }
 });
+
+// 「本輪沒有可貼句」跳過的是**可貼句專屬**守門；捏造事實是甲類紅線，不能跟著
+// 一起跳掉——沒有可貼句時 coaching 就是使用者唯一看得到的教練內容。
+Deno.test("W3 無可貼句：coaching 捏造事實照樣被打回（兩條路徑都要）", () => {
+  const fabricated = "你們上週在信義區那間叫黑露的店見過面，這次別再追了。";
+  // 路徑一：模型自己用 noPasteableReason（W1）
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          noPasteableReason: "她已經封鎖你，這輪沒有可送出的訊息。",
+          coaching: fabricated,
+        }),
+        { ...w3BaseOptions, allowNoPasteableReply: true },
+      ),
+    Error,
+    "unsupported_detail",
+  );
+  // 路徑二：模型把旁白句填進可貼欄，由 server 轉成「沒有可貼句」（W3）
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "（對話已被封鎖，無法再傳送訊息）",
+          steady: "（對話已被封鎖，無法再傳送訊息）",
+          coaching: fabricated,
+        }),
+        { ...w3BaseOptions, allowNoPasteableReply: true },
+      ),
+    Error,
+    "unsupported_detail",
+  );
+});
