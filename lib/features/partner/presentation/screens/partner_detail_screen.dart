@@ -94,7 +94,6 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
   // before it is built. That orchestration, plus the "position before open"
   // invariant, lives in [_CoachFocusOrchestrator].
   final ScrollController _scrollController = ScrollController();
-  final GlobalKey _coachAnchorKey = GlobalKey();
   final GlobalKey _coachSectionKey = GlobalKey();
 
   // Phase E Task 7: deep-link focusAction=openCoachInput no longer opens the
@@ -286,7 +285,6 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                       partnerId: partnerId,
                       onTelemetry: _logCoachFollowUpTelemetry,
                       onQuotaExceeded: () async => context.push('/paywall'),
-                      openCoachEntryAnchorKey: _coachAnchorKey,
                       openCoachInputRequested: _openCoachInputRequested,
                     ),
                   ),
@@ -364,7 +362,6 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
           if (widget.focusCoachFollowUp)
             _CoachFocusOrchestrator(
               scrollController: _scrollController,
-              anchorKey: _coachAnchorKey,
               sectionKey: _coachSectionKey,
               openInputAfterFocus: widget.openCoachInputOnFocus,
               partnerId: partnerId,
@@ -584,7 +581,6 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                       partnerId: partnerId,
                       onTelemetry: _logCoachFollowUpTelemetry,
                       onQuotaExceeded: () async => context.push('/paywall'),
-                      openCoachEntryAnchorKey: _coachAnchorKey,
                       openCoachInputRequested: _openCoachInputRequested,
                       compactPracticePresentation: !widget.focusCoachFollowUp,
                     ),
@@ -648,7 +644,6 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
           if (widget.focusCoachFollowUp)
             _CoachFocusOrchestrator(
               scrollController: _scrollController,
-              anchorKey: _coachAnchorKey,
               sectionKey: _coachSectionKey,
               openInputAfterFocus: widget.openCoachInputOnFocus,
               partnerId: partnerId,
@@ -915,7 +910,6 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
 /// (Phase E Task 7 — no legacy sheet, no pre-prompted consent).
 class _CoachFocusOrchestrator extends StatefulWidget {
   final ScrollController scrollController;
-  final GlobalKey anchorKey;
   final GlobalKey sectionKey;
   final bool openInputAfterFocus;
   final String partnerId;
@@ -930,7 +924,6 @@ class _CoachFocusOrchestrator extends StatefulWidget {
 
   const _CoachFocusOrchestrator({
     required this.scrollController,
-    required this.anchorKey,
     required this.sectionKey,
     required this.openInputAfterFocus,
     required this.partnerId,
@@ -979,10 +972,7 @@ class _CoachFocusOrchestratorState extends State<_CoachFocusOrchestrator> {
   void _step(int step) {
     if (!mounted) return;
 
-    // Prefer the precise input row; fall back to the whole section (the
-    // with-result layout renders no open-coach entry, so the anchor is absent).
-    final target =
-        widget.anchorKey.currentContext ?? widget.sectionKey.currentContext;
+    final target = widget.sectionKey.currentContext;
     if (target != null) {
       Scrollable.ensureVisible(
         target,

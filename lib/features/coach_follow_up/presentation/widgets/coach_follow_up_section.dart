@@ -48,7 +48,6 @@ class CoachFollowUpSection extends StatefulWidget {
   /// sink，不經此參數（Phase F 退場）。
   final ValueChanged<CoachFollowUpTelemetryEvent>? onTelemetry;
   final Future<void> Function()? onQuotaExceeded;
-  final Key? openCoachEntryAnchorKey;
   final bool openCoachInputRequested;
   final bool compactPracticePresentation;
 
@@ -57,7 +56,6 @@ class CoachFollowUpSection extends StatefulWidget {
     required this.partnerId,
     this.onTelemetry,
     this.onQuotaExceeded,
-    this.openCoachEntryAnchorKey,
     this.openCoachInputRequested = false,
     this.compactPracticePresentation = false,
   });
@@ -233,13 +231,6 @@ class _CoachFollowUpSectionState extends State<CoachFollowUpSection>
             onTap: _onKnowledgeLinkTap,
           ),
         ],
-        if (!widget.compactPracticePresentation) ...[
-          const SizedBox(height: 12),
-          _OpenCoachEntry(
-            key: widget.openCoachEntryAnchorKey,
-            onTap: _onOpenCoachTap,
-          ),
-        ],
         const SizedBox(height: 12),
         CoachSurface(
           scope: CoachScope.partner(widget.partnerId),
@@ -250,52 +241,6 @@ class _CoachFollowUpSectionState extends State<CoachFollowUpSection>
           lifecyclePhase: _pendingPhase,
         ),
       ],
-    );
-  }
-}
-
-class _OpenCoachEntry extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _OpenCoachEntry({
-    super.key,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.12),
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.chat_bubble_outline,
-              size: 18,
-              color: AppColors.glassTextSecondary,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                '或直接問教練一個問題…',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.glassTextSecondary,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

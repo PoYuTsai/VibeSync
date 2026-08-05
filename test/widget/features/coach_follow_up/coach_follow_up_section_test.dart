@@ -91,7 +91,6 @@ Future<
     })> _pump(
   WidgetTester tester, {
   Future<void> Function()? onQuotaExceeded,
-  Key? openCoachEntryAnchorKey,
   bool openCoachInputRequested = false,
   bool compactPracticePresentation = false,
 }) async {
@@ -132,7 +131,6 @@ Future<
               child: CoachFollowUpSection(
                 partnerId: partnerId,
                 onQuotaExceeded: onQuotaExceeded,
-                openCoachEntryAnchorKey: openCoachEntryAnchorKey,
                 openCoachInputRequested: openCoachInputRequested,
                 compactPracticePresentation: compactPracticePresentation,
               ),
@@ -173,14 +171,12 @@ void main() {
   });
 
   group('CoachFollowUpSection — 薄 wrapper 渲染', () {
-    testWidgets('渲染三情境 chip＋openCoach entry＋partner-scope CoachSurface',
-        (t) async {
+    testWidgets('渲染三情境 chip＋partner-scope CoachSurface', (t) async {
       await _pump(t);
 
       for (final chip in _chipSpecs) {
         expect(find.text(chip.label), findsOneWidget);
       }
-      expect(find.text('或直接問教練一個問題…'), findsOneWidget);
 
       final surface = _surface(t);
       expect(surface.scope.isConversation, isFalse);
@@ -196,19 +192,6 @@ void main() {
       expect(find.text('釐清免費，正式建議才扣 1 則'), findsOneWidget);
       expect(find.textContaining('生成會扣 1 則'), findsNothing);
       expect(find.textContaining('重新生成會再扣 1 則額度'), findsNothing);
-    });
-
-    testWidgets('openCoach entry 支援 anchor key（deep-link 捲動錨點不變）', (t) async {
-      final anchorKey = GlobalKey();
-      await _pump(t, openCoachEntryAnchorKey: anchorKey);
-
-      expect(
-        find.descendant(
-          of: find.byKey(anchorKey),
-          matching: find.text('或直接問教練一個問題…'),
-        ),
-        findsOneWidget,
-      );
     });
 
     testWidgets('compact 練習版仍渲染三 chip＋CoachSurface', (t) async {
@@ -245,24 +228,6 @@ void main() {
       expect(pumped.apiCalls, isEmpty);
       expect(pumped.repo.putUnifiedCalls, 0);
       expect(find.textContaining('你剛剛問'), findsNothing);
-    });
-
-    testWidgets('點 openCoach entry → token 遞增、lifecyclePhase null、prefill null',
-        (t) async {
-      final pumped = await _pump(t);
-      final baseToken = _surface(t).focusRequestToken;
-
-      // 先種一個 chip，確認 openCoach 會清掉 phase/prefill。
-      await t.tap(find.text('聊天卡住了'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('或直接問教練一個問題…'));
-      await t.pumpAndSettle();
-
-      final surface = _surface(t);
-      expect(surface.focusRequestToken, baseToken + 2);
-      expect(surface.lifecyclePhase, isNull);
-      expect(surface.prefillText, isNull);
-      expect(pumped.apiCalls, isEmpty);
     });
 
     testWidgets('openCoachInputRequested → 首幀後自動 bump focus token（無 phase）',
@@ -371,20 +336,6 @@ void main() {
       expect(pumped.apiCalls, isEmpty);
     });
 
-    testWidgets('點 openCoach entry 清掉情境後，入口跟著收起來', (t) async {
-      await _pump(t);
-
-      await t.tap(find.text('聊天卡住了'));
-      await t.pumpAndSettle();
-      expect(find.byKey(linkKey), findsOneWidget);
-
-      await t.tap(find.text('或直接問教練一個問題…'));
-      await t.pumpAndSettle();
-
-      // phase 被清成 null → 沒有情境 → 入口必須消失，不能留著連到上一個章節。
-      expect(_surface(t).lifecyclePhase, isNull);
-      expect(find.byKey(linkKey), findsNothing);
-    });
   });
 
   // CoachSurface 在這棵樹裡被渲染，快捷問句的入口一併在這裡驗。

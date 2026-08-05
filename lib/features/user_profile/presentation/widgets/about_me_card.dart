@@ -162,15 +162,6 @@ class _FilledState extends StatelessWidget {
   Widget build(BuildContext context) {
     final lines = <Widget>[];
 
-    if (profile.interactionStyle != null) {
-      final primary = _interactionStyleLabel(profile.interactionStyle!);
-      lines.add(_summaryLine(
-        '互動風格',
-        profile.secondaryStyle == null
-            ? primary
-            : '以$primary為主、${_interactionStyleLabel(profile.secondaryStyle!)}為輔',
-      ));
-    }
     if (profile.stuckPoints.isNotEmpty) {
       lines.add(_summaryLine(
         '卡在哪',
@@ -341,14 +332,6 @@ class _ProfilePill extends StatelessWidget {
     );
   }
 }
-
-String _interactionStyleLabel(InteractionStyle s) => switch (s) {
-      InteractionStyle.steady => '穩重',
-      InteractionStyle.direct => '直接',
-      InteractionStyle.humorous => '幽默',
-      InteractionStyle.gentle => '溫柔',
-      InteractionStyle.playful => '俏皮',
-    };
 
 String _stuckPointLabel(StuckPoint s) => switch (s) {
       StuckPoint.fadesOut => '聊一聊就冷掉，不知道怎麼接下去',

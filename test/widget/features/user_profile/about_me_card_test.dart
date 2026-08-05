@@ -67,7 +67,6 @@ void main() {
   testWidgets('filled profile shows summary lines for filled fields only',
       (tester) async {
     final profile = UserProfile.create(
-      interactionStyle: InteractionStyle.gentle,
       practiceGoals: const [
         PracticeGoal.softInvite,
         PracticeGoal.comfortableChat,
@@ -77,7 +76,6 @@ void main() {
     );
     await tester.pumpWidget(_harness(initial: profile));
     await tester.pumpAndSettle();
-    expect(find.textContaining('溫柔'), findsOneWidget);
     expect(find.textContaining('想約得出來'), findsOneWidget);
     expect(find.textContaining('想先能自在聊天，不要那麼緊繃'), findsOneWidget);
     expect(find.textContaining('咖啡'), findsOneWidget);
@@ -85,26 +83,14 @@ void main() {
     expect(find.text('開始設定'), findsNothing);
   });
 
-  testWidgets('style pair (主+副) summary line shows 以X為主、Y為輔',
-      (tester) async {
-    final profile = UserProfile.create(
-      interactionStyle: InteractionStyle.steady,
-      secondaryStyle: InteractionStyle.humorous,
-      updatedAt: DateTime.utc(2026, 6, 10),
-    );
-    await tester.pumpWidget(_harness(initial: profile));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('以穩重為主、幽默為輔'), findsOneWidget);
-  });
-
   testWidgets('partial profile only renders filled fields', (tester) async {
     final profile = UserProfile.create(
-      interactionStyle: InteractionStyle.direct,
+      notes: '喜歡直接一點的講法',
       updatedAt: DateTime.utc(2026, 4, 30),
     );
     await tester.pumpWidget(_harness(initial: profile));
     await tester.pumpAndSettle();
-    expect(find.textContaining('直接'), findsOneWidget);
+    expect(find.textContaining('喜歡直接一點的講法'), findsOneWidget);
     expect(find.textContaining('卡在哪'), findsNothing);
     expect(find.textContaining('想達成什麼'), findsNothing);
     expect(find.textContaining('常聊話題'), findsNothing);
