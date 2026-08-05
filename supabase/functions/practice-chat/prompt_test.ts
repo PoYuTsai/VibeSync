@@ -207,7 +207,7 @@ Deno.test("game buildChatMessages includes game and spicy hidden guidance", () =
   )[0].content;
 
   assertEquals(sys.includes("gameMode(hidden guidance)"), true);
-  assertEquals(sys.includes("spicyGameMode(hidden guidance)"), true);
+  assertEquals(sys.includes("tensionLadder(hidden guidance)"), true);
   assertEquals(sys.includes("Value / Frame / Emotion / Investment"), true);
   assertEquals(sys.includes("L4 forbidden"), true);
   assertEquals(sys.includes("Reality Anchoring still applies"), true);
@@ -273,7 +273,7 @@ Deno.test("game buildChatMessages: acquaintance origin overrides memorySummary f
     exceptionIndex,
   );
   assertEquals(
-    betweenAnchoringAndException.includes("spicyGameMode(hidden guidance)"),
+    betweenAnchoringAndException.includes("tensionLadder(hidden guidance)"),
     false,
   );
 });
@@ -444,12 +444,15 @@ Deno.test("standard and beginner buildChatMessages do not include game high-skil
 
   for (const sys of [standard, beginner]) {
     assertEquals(sys.includes("gameMode(hidden guidance)"), false);
-    assertEquals(sys.includes("spicyGameMode(hidden guidance)"), false);
     assertEquals(
       sys.includes("Value / Frame / Emotion / Investment"),
       false,
     );
-    assertEquals(sys.includes("L4 forbidden"), false);
+    // 2026-08-06 Eric 拍板：張力階梯下放到三種模式。它描述的是「她是個有分寸
+    // 的真人」，不是 Game 的賣點；獨佔在 Game 等於說標準模式的女生沒有分寸感。
+    // Game 真正的差異是五階段 FSM／失敗狀態診斷／微廢測／速約／拆盤，不受影響。
+    assertEquals(sys.includes("tensionLadder(hidden guidance)"), true);
+    assertEquals(sys.includes("L4 forbidden"), true);
   }
 });
 
@@ -1937,4 +1940,56 @@ Deno.test("認識管道段要給小模型一個具體的糾正示範句", () => 
   )[0].content;
   // 抽象規則對 flash 模型效果差，要給形狀。
   assertEquals(sys.includes("你記錯"), true);
+});
+
+// ── 2026-08-06：張力階梯下放到三種模式 ──
+// 產品定義（Eric）：性暗示／性張力是練習室的必要成分，但要看溫度計、整體互動、
+// 她是否被勾住；真正的高手把暗示藏在字裡行間，不會露骨。這正是既有 Spicy
+// Ladder 在描述的東西，先前卻只存在於 Game。
+// 限制：標準模式沒有溫度／熟悉度分數（isAssistedPracticeMode 只認 beginner|game），
+// 故標準走質化版（讀當下逐字稿自行判斷），照抄 standardInviteMaturityPrompt 範式。
+Deno.test("張力階梯：新手模式用與 Game 相同的算法算出同一階", () => {
+  const opts = {
+    temperatureScore: 78,
+    familiarityScore: 70,
+    partnerState: {
+      mood: "comfortable" as const,
+      innerThought: "他滿有趣的。",
+    },
+  };
+  const beginner =
+    buildChatMessages([{ role: "user", text: "嗨" }], defaultProfile, {
+      ...opts,
+      practiceMode: "beginner",
+    })[0].content;
+  const game =
+    buildChatMessages([{ role: "user", text: "嗨" }], defaultProfile, {
+      ...opts,
+      practiceMode: "game",
+    })[0].content;
+  assertEquals(beginner.includes("allowSpicyLevel: L3"), true);
+  assertEquals(game.includes("allowSpicyLevel: L3"), true);
+});
+
+Deno.test("張力階梯：新手模式她 annoyed 時降到 L0", () => {
+  const sys =
+    buildChatMessages([{ role: "user", text: "嗨" }], defaultProfile, {
+      practiceMode: "beginner",
+      temperatureScore: 80,
+      familiarityScore: 70,
+      partnerState: { mood: "annoyed", innerThought: "他有點煩。" },
+    })[0].content;
+  assertEquals(sys.includes("allowSpicyLevel: L0"), true);
+});
+
+Deno.test("張力階梯：標準模式沒有分數，不得出現數字階數", () => {
+  const sys =
+    buildChatMessages([{ role: "user", text: "嗨" }], defaultProfile, {
+      practiceMode: "standard",
+    })[0].content;
+  assertEquals(sys.includes("tensionLadder(hidden guidance)"), true);
+  assertEquals(sys.includes("L4 forbidden"), true);
+  // 標準模式沒有 temperatureScore／familiarityScore，硬給數字階數＝憑空捏造
+  assertEquals(/allowSpicyLevel: L[0-3]/.test(sys), false);
+  assertEquals(sys.includes("no numeric"), true);
 });

@@ -1426,7 +1426,7 @@ void main() {
       find.byKey(const ValueKey('practice-temperature-meter')),
       findsOneWidget,
     );
-    expect(find.text('Game｜SR 限定，技巧拉滿練速約'), findsOneWidget);
+    expect(find.text('Game｜她會考你、會給診斷，目標是速約'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1483,7 +1483,7 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.textContaining('抽到 SR 角色卡解鎖 Game'), findsNothing);
-    expect(find.textContaining('像真實聊天一樣練反應'), findsOneWidget);
+    expect(find.textContaining('她照真實反應，沒有教學鷹架'), findsOneWidget);
   });
 
   testWidgets('repeated taps on locked Game restart one hint, never queue',

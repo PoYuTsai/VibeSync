@@ -135,7 +135,7 @@ void main() {
     );
     await pumpScreen(tester, controller);
 
-    expect(find.text('真實交友軟體體感，會已讀、會變短'), findsOneWidget);
+    expect(find.text('真實體感，會已讀、會變短'), findsOneWidget);
   });
 
   testWidgets('點選挑戰 chip → 副標切換成挑戰文案', (tester) async {
@@ -151,6 +151,6 @@ void main() {
     expect(controller.currentState.difficultyPreference,
         PracticeDifficultyPreference.challenge);
     expect(find.text('高標準對象，不救場、會句點你'), findsOneWidget);
-    expect(find.text('真實交友軟體體感，會已讀、會變短'), findsNothing);
+    expect(find.text('真實體感，會已讀、會變短'), findsNothing);
   });
 }

@@ -659,7 +659,7 @@ function speedInviteDirectionFor(opts: {
   return "no_invite_build_investment";
 }
 
-function spicyLevelFor(opts: {
+export function spicyLevelFor(opts: {
   temperatureScore: number;
   familiarityScore: number;
   partnerMood?: PartnerMood | null;

@@ -555,7 +555,7 @@ class _DifficultyChips extends ConsumerWidget {
 
   static const _options = <(PracticeDifficultyPreference, String, String)>[
     (PracticeDifficultyPreference.easy, '輕鬆', '她今天心情不錯，願意給你空間'),
-    (PracticeDifficultyPreference.normal, '一般', '真實交友軟體體感，會已讀、會變短'),
+    (PracticeDifficultyPreference.normal, '一般', '真實體感，會已讀、會變短'),
     (PracticeDifficultyPreference.challenge, '挑戰', '高標準對象，不救場、會句點你'),
     (PracticeDifficultyPreference.random, '隨機', '每場隨機抽一檔難度'),
   ];
@@ -701,7 +701,7 @@ class _LearningModeToggleState extends State<_LearningModeToggle> {
         icon: Icons.chat_bubble_outline,
         title: '標準',
         badge: '真人感',
-        summary: '像真實聊天一樣練反應',
+        summary: '她照真實反應，沒有教學鷹架',
         accent: Color(0xFFBCA7FF),
       ),
       const _LearningModeDescriptor(
@@ -709,7 +709,7 @@ class _LearningModeToggleState extends State<_LearningModeToggle> {
         icon: Icons.school_outlined,
         title: '新手',
         badge: '有提示',
-        summary: 'AI 給提示，穩穩升溫',
+        summary: 'AI 給提示，看著溫度計升溫',
         accent: AppColors.info,
       ),
       _LearningModeDescriptor(
@@ -717,7 +717,9 @@ class _LearningModeToggleState extends State<_LearningModeToggle> {
         icon: Icons.sports_esports_outlined,
         title: 'Game',
         badge: gameAvailable ? 'SR速約' : 'SR解鎖',
-        summary: gameAvailable ? 'SR 限定，技巧拉滿練速約' : '抽到 SR 角色卡解鎖 Game',
+        summary: gameAvailable
+            ? '她會考你、會給診斷，目標是速約'
+            : '抽到 SR 角色卡解鎖 Game',
         accent: AppColors.ctaStart,
       ),
     ];
