@@ -11,6 +11,7 @@ import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/providers/practice_chat_providers.dart';
 import '../../data/repositories/practice_session_repository.dart';
+import '../../domain/entities/practice_acquaintance_origin.dart';
 import '../../domain/entities/practice_hint.dart';
 import '../../domain/entities/practice_learning_mode.dart';
 import '../../domain/entities/practice_message.dart';
@@ -492,7 +493,14 @@ class _PracticeProfileBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => showPracticeProfileSheet(context, girl),
+        onTap: () => showPracticeProfileSheet(
+          context,
+          girl,
+          threadId: practiceThreadIdFor(
+            sessionId: state.sessionId,
+            visiblePracticeThreadId: state.visiblePracticeThreadId,
+          ),
+        ),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 2),
           child: Row(

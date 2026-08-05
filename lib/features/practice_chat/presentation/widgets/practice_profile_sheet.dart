@@ -2,28 +2,34 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../domain/entities/practice_acquaintance_origin.dart';
 import '../../domain/entities/practice_girl_profile.dart';
 import 'practice_girl_photo.dart';
 
 /// 對象 profile bottom sheet：只展示 server catalog 已知（AI 人設也知道）的資訊，
-/// 絕不新增 client-only 欄位，避免 UI 與 AI 人設說兩套。
+/// 絕不新增 client-only 欄位，避免 UI 與 AI 人設說兩套。認識場合是唯一例外——
+/// 它不在 catalog 裡，是 [practiceAcquaintanceOriginFor] 鏡像 server
+/// buildAcquaintanceOrigin 現場算出來的，同一份 threadId 保證跟 AI 對話裡帶出
+/// 的場景一致，仍然符合「client 不說一套 AI 不知道的話」的原則。
 Future<void> showPracticeProfileSheet(
   BuildContext context,
-  PracticeGirlProfile girl,
-) {
+  PracticeGirlProfile girl, {
+  required String threadId,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: AppColors.brandInk,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (_) => _PracticeProfileSheet(girl: girl),
+    builder: (_) => _PracticeProfileSheet(girl: girl, threadId: threadId),
   );
 }
 
 class _PracticeProfileSheet extends StatelessWidget {
-  const _PracticeProfileSheet({required this.girl});
+  const _PracticeProfileSheet({required this.girl, required this.threadId});
 
   final PracticeGirlProfile girl;
+  final String threadId;
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +38,11 @@ class _PracticeProfileSheet extends StatelessWidget {
       ...girl.interestTags,
       ...girl.lifestyleTags,
     ];
+    final origin = practiceAcquaintanceOriginFor(
+      profileId: girl.profileId,
+      professionId: girl.professionId,
+      threadId: threadId,
+    );
     return SafeArea(
       child: ConstrainedBox(
         constraints: BoxConstraints(
@@ -92,6 +103,29 @@ class _PracticeProfileSheet extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [for (final t in tags) _SheetTag(label: t)],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.route_outlined,
+                    size: 16,
+                    color:
+                        AppColors.onBackgroundSecondary.withValues(alpha: 0.75),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      origin.sharedFact,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.onBackgroundSecondary
+                            .withValues(alpha: 0.85),
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 18),
               Container(
