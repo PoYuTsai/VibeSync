@@ -183,6 +183,7 @@ class PracticeChatState {
   final bool hintFailed; // 生成失敗；面板保留可重試入口，不顯示假內容
   final bool hasRetiredHintForCurrentTurn; // 舊快照只可同 id 替換一次
   final List<PracticeHintReply> hintReplies;
+
   /// 非空＝本輪沒有可貼句（她已封鎖／要求停止聯絡），這是原因說明。
   final String? hintNoPasteableReason;
   final String? hintCoaching;
@@ -1003,9 +1004,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             stillCurrent();
         if (!wantRetry) break;
         final delayElapsed = await _waitHintPrefetchRetryDelay(flight);
-        if (!delayElapsed ||
-            flight.formalIntentRequested ||
-            !stillCurrent()) {
+        if (!delayElapsed || flight.formalIntentRequested || !stillCurrent()) {
           break;
         }
       }
@@ -2160,7 +2159,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       state = state.copyWith(
         isHintLoading: false,
         hintFailed: true,
-        errorMessage: _hintGenerationErrorMessage(e.message),
+        errorMessage: _hintGenerationErrorMessage(
+          e.message,
+          failureReason: e.failureReason,
+        ),
       );
     } on TimeoutException {
       // client 逾時：不 rotate requestId，重試沿用同 id——server 若已完成
@@ -2300,7 +2302,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         ended: true,
         debriefFailed: true,
         debriefRetryable: true,
-        errorMessage: _debriefGenerationErrorMessage(e.message),
+        errorMessage: _debriefGenerationErrorMessage(
+          e.message,
+          failureReason: e.failureReason,
+        ),
       );
     } catch (_) {
       if (_isStaleDebrief(generation, requestSessionId)) return;
@@ -2556,6 +2561,11 @@ const _hintStaleConversationMessage = '對話進度已往前，請先送出一�
 const _debriefGenericErrorMessage = '拆解卡生成失敗，可以再按一次。';
 const _debriefServiceUnavailableMessage = '拆解服務暫時無法使用，請稍後再試。';
 
+// 2026-08-06 W3 Task 3.3：server 判定「重按也一樣」時不再引導無效重試。
+// 這裡刻意不端任何保底提示／保底拆解——假的教練建議比誠實說產不出來更糟。
+const _hintContentFailureMessage = '這一輪的提示產不出來，再按一次多半也一樣。先用自己的話回一句，或直接看教練拆解。';
+const _debriefContentFailureMessage = '這一局的拆解卡這次產不出來，再按一次多半也一樣。';
+
 /// 409 practice_mode_locked 共用文案（chat / hint 兩路徑同文案）。
 const _practiceModeLockedMessage = '這位陪練女孩這一輪已用另一種模式進行中，請切回原本的模式繼續';
 
@@ -2577,12 +2587,14 @@ String _hintApiErrorMessage(String code) {
   }
 }
 
-String _hintGenerationErrorMessage(String code) {
+String _hintGenerationErrorMessage(String code, {String? failureReason}) {
   switch (code) {
     case 'practice_hint_not_ready':
       return '提示服務正在更新中，請稍後再試。';
     default:
-      return _hintGenericErrorMessage;
+      return failureReason == 'content'
+          ? _hintContentFailureMessage
+          : _hintGenericErrorMessage;
   }
 }
 
@@ -2597,13 +2609,15 @@ String _debriefApiErrorMessage(String code) {
   }
 }
 
-String _debriefGenerationErrorMessage(String code) {
+String _debriefGenerationErrorMessage(String code, {String? failureReason}) {
   switch (code) {
     case 'practice_learning_not_ready':
     case 'config_missing':
       return _debriefServiceUnavailableMessage;
     default:
-      return _debriefGenericErrorMessage;
+      return failureReason == 'content'
+          ? _debriefContentFailureMessage
+          : _debriefGenericErrorMessage;
   }
 }
 

@@ -3370,6 +3370,69 @@ void main() {
       expect(c.currentState.messages.map((m) => m.role), ['user', 'ai']);
     });
 
+    // ── 2026-08-06 W3 Task 3.3：503 文案要能區分「值得重試」與「重試無效」──
+    // 舊文案一律講「再試一次」，但兩種失敗的正確反應相反。server 帶
+    // failureReason（transport/content）；舊 server 不帶＝回退通用句。
+    test('requestHint：server 判定 content 時不再引導無效重試', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+      api.hintHandler =
+          (_, {profile}) async => throw PracticeGenerationFailedException(
+                'practice_hint_generation_retryable',
+                failureReason: 'content',
+              );
+
+      await c.requestHint();
+
+      expect(c.currentState.hintFailed, true);
+      expect(
+        c.currentState.errorMessage,
+        '這一輪的提示產不出來，再按一次多半也一樣。先用自己的話回一句，或直接看教練拆解。',
+      );
+      // 誠實終止＝不端保底提示。假的教練建議比說產不出來更糟。
+      expect(c.currentState.hintReplies, isEmpty);
+    });
+
+    test('requestHint：transport 與舊 server（沒帶 failureReason）維持引導重試', () async {
+      for (final failureReason in [null, 'transport']) {
+        final c = await makeRevealed();
+        await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+        api.sendHandler = (_, {profile}) async => reply(
+              cost: 0,
+              temperature: const PracticeTemperature(
+                score: 30,
+                delta: 0,
+                band: 'cold',
+                reason: '維持',
+              ),
+            );
+        await c.sendMessage('hello');
+        api.hintHandler =
+            (_, {profile}) async => throw PracticeGenerationFailedException(
+                  'practice_hint_generation_retryable',
+                  failureReason: failureReason,
+                );
+
+        await c.requestHint();
+
+        expect(
+          c.currentState.errorMessage,
+          '提示暫時產生失敗，等一下再試。',
+          reason: 'failureReason=$failureReason',
+        );
+      }
+    });
+
     test('requestHint 帶 requestId：5xx 失敗重試沿用同 id、成功才 rotate', () async {
       final c = await makeRevealed();
       await c.setPracticeLearningMode(PracticeLearningMode.beginner);
