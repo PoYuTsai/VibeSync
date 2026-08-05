@@ -6482,3 +6482,31 @@ Deno.test("W3 旁白判定：巢狀括號算旁白，前後有括號但中間有
     assertEquals(isStageDirectionText(pasteable), false, pasteable);
   }
 });
+
+// ── 2026-08-06 生產漏網（部署後 20:25 UTC 一筆真 503）──
+// 邀約階梯這道守門住在 buildHintDecision，跑在 parseHintResult **之後**，
+// 所以 parse 的 salvagePass 管不到它。兩份候選都在、也都可搶救，卻卡在這裡打成
+// 503。教訓：黑名單只在「所有守門都吃得到那個旗標」時才成立——salvage 路徑上的
+// 每一段程式都要檢查過，不能只看 parse。
+Deno.test("邀約階梯：最後一發不得自己造出 503，且不得謊報邀約強度", () => {
+  const overStrongForStage = "咖啡收到，明晚七點妳出門就好。";
+  const base = {
+    turns: [{ role: "ai" as const, text: "我今天突然很想喝咖啡" }],
+    profile,
+    practiceMode: "game" as const,
+    temperatureScore: 20,
+    familiarityScore: 10,
+    replyType: "warm_up" as const,
+    replyText: overStrongForStage,
+    rationale: "現在仍在開場，先累積熟悉。",
+  };
+  // 前兩發照擋（既有裁決不動）
+  assertThrows(
+    () => buildHintDecision(base),
+    Error,
+    "hint_quality_invalid_invite_route",
+  );
+  // 最後一發放行，但 inviteRoute 要照這句話**實際的**強度標，不能謊報成安全的
+  const salvaged = buildHintDecision({ ...base, salvagePass: true });
+  assertEquals(salvaged.inviteRoute, "direct");
+});

@@ -857,6 +857,16 @@ export function buildHintDecision(
     replyType: HintReplyType;
     replyText: string;
     tacticalMove?: HintTacticalMove;
+    /**
+     * salvage pass（2026-08-06）。這個函式跑在 parseHintResult **之後**，所以
+     * parse 那邊的 salvagePass 管不到它——生產實例：部署後仍有一筆
+     * hint_quality_invalid_invite_route 打成 503，兩份候選都在、也都可搶救，
+     * 卡在這裡。
+     *
+     * 邀約階梯不在紅線內（紅線＝露骨／內部洩漏／罐頭），最後一發不得因此擋人。
+     * 不 throw 之後 inviteRoute 仍照**這句話實際的邀約強度**標註，不會謊報。
+     */
+    salvagePass?: boolean;
   },
 ): PracticeHintDecision {
   const temperatureScore = clampTemperature(opts.temperatureScore);
@@ -897,6 +907,7 @@ export function buildHintDecision(
       : baseRoute;
     const actualLevel = practiceInviteLevelFor(opts.replyText);
     if (
+      opts.salvagePass !== true &&
       practiceInviteLevelRank(actualLevel) >
         practiceInviteLevelRank(allowedInviteLevelForRoute(allowedRoute))
     ) {
@@ -955,6 +966,7 @@ export function buildHintDecision(
     : baseRoute;
   const actualLevel = practiceInviteLevelFor(opts.replyText);
   if (
+    opts.salvagePass !== true &&
     practiceInviteLevelRank(actualLevel) >
       practiceInviteLevelRank(allowedInviteLevelForRoute(allowedRoute))
   ) {

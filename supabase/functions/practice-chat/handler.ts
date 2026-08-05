@@ -2672,6 +2672,9 @@ export function createPracticeChatHandler(
                 replyType: reply.type,
                 replyText: reply.text,
                 rationale: SERVER_HINT_DECISION_RATIONALE,
+                // 這個 builder 跑在 parseHintResult 之後，parse 的 salvagePass
+                // 管不到它——最後一發要一起讓路，否則邀約階梯會自己造出 503。
+                salvagePass: override?.salvagePass === true,
               }),
             })) as typeof parsed.replies,
           };
