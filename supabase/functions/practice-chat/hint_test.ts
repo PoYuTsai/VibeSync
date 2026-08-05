@@ -5677,7 +5677,11 @@ Deno.test("generated Hint permits partner-owned residence callbacks after typed 
 });
 
 Deno.test("HINT_TOOL_SCHEMA matches the parser contract (schema wide, parser strict)", () => {
-  // parser 權威：top-level 恰三鍵 warmUp/steady/coaching，全字串。
+  // parser 權威：兩種合法形狀——
+  //   (a) warmUp/steady/coaching 三鍵（一般情形）
+  //   (b) noPasteableReason/coaching 兩鍵（她已封鎖／要求停止聯絡）
+  // JSON schema 表達不了「條件式必填」，故 required 只保留 coaching，
+  // 由 warmUp/steady 的 description 承載條件、parser 嚴格把關（2026-08-06）。
   const schema = HINT_TOOL_SCHEMA as {
     type: string;
     properties: Record<string, { type?: string }>;
@@ -5685,14 +5689,22 @@ Deno.test("HINT_TOOL_SCHEMA matches the parser contract (schema wide, parser str
     additionalProperties: boolean;
   };
   assertEquals(schema.type, "object");
-  assertEquals([...schema.required].sort(), ["coaching", "steady", "warmUp"]);
+  assertEquals([...schema.required].sort(), ["coaching"]);
   assertEquals(
     Object.keys(schema.properties).sort(),
-    ["coaching", "steady", "warmUp"],
+    ["coaching", "noPasteableReason", "steady", "warmUp"],
   );
   assertEquals(schema.additionalProperties, false);
   for (const key of ["warmUp", "steady", "coaching"]) {
     assertEquals(schema.properties[key].type, "string");
+  }
+  // 條件式必填必須寫在 description 裡，否則模型會無故省略可貼句
+  for (const key of ["warmUp", "steady"]) {
+    assert(
+      (schema.properties[key] as { description?: string }).description
+        ?.includes("noPasteableReason"),
+      `${key} description 必須說明何時才可省略`,
+    );
   }
 
   // 一個過 parser 的合法 payload 必須同時滿足 schema 必填鍵（防 schema 跟 parser 打架）。
@@ -6003,4 +6015,171 @@ Deno.test("salvageHintCandidate：優先主模型；全部救不起來回 null",
     }),
     null,
   );
+});
+
+// ── W1（2026-08-06）：「本輪沒有可貼句」是合法結果，不是失敗 ──
+// 真實事故：她封鎖使用者後，模型兩個欄位都寫「（對話已結束，無法再傳訊息）」，
+// coaching 寫「這不是溝通技巧能補救的情況」——模型判斷完全正確，但契約硬性要求
+// 兩句「不同」的可貼回覆，於是判 duplicate_replies → 兩發全滅 → 503。
+// 裁決（Eric）：她封鎖時系統要能誠實表達，永遠不要 503。
+const blockedTurns = [
+  { role: "user" as const, text: "妳不回我是什麼意思" },
+  { role: "ai" as const, text: "我說了不要再傳訊息給我，我把你封鎖了" },
+];
+
+Deno.test("無可貼句：她已封鎖時，模型可以誠實說沒有可貼句", () => {
+  const result = parseHintResult(
+    JSON.stringify({
+      noPasteableReason:
+        "她已經明確要求停止聯絡並封鎖了你，這輪沒有任何適合送出的訊息。",
+      coaching:
+        "她已經把界線畫死，再傳任何訊息都只會讓情況更糟。這裡要學的是收手，不是換句話術。",
+    }),
+    {
+      mode: "beginner",
+      enforceGeneratedQuality: true,
+      relaxSubjectiveQualityRubrics: true,
+      allowNoPasteableReply: true,
+      turns: blockedTurns,
+    },
+  );
+  assertEquals(result.replies.length, 0);
+  assertEquals(
+    result.noPasteableReason,
+    "她已經明確要求停止聯絡並封鎖了你，這輪沒有任何適合送出的訊息。",
+  );
+});
+
+Deno.test("無可貼句：沒有 noPasteableReason 時，兩句可貼回覆仍是必填", () => {
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({ coaching: "她已經把界線畫死，這裡要學的是收手。" }),
+        {
+          mode: "beginner",
+          enforceGeneratedQuality: true,
+          turns: blockedTurns,
+        },
+      ),
+    Error,
+  );
+});
+
+Deno.test("無可貼句：不得同時給 noPasteableReason 與可貼句（語意矛盾）", () => {
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "那我先不吵妳了，等妳想聊再說。",
+          steady: "好，我不鬧了。",
+          noPasteableReason: "她已經封鎖你了。",
+          coaching: "她已經把界線畫死。",
+        }),
+        {
+          mode: "beginner",
+          enforceGeneratedQuality: true,
+          turns: blockedTurns,
+        },
+      ),
+    Error,
+  );
+});
+
+Deno.test("無可貼句：安全守門照跑，露骨的 reason 一樣被打回", () => {
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          noPasteableReason: "偷偷加重量還不能拒絕吧，現在跟我回家",
+          coaching: "她已經把界線畫死，這裡要學的是收手。",
+        }),
+        {
+          mode: "beginner",
+          enforceGeneratedQuality: true,
+          allowNoPasteableReply: true,
+          turns: blockedTurns,
+        },
+      ),
+    Error,
+    "hint_l4_unsafe",
+  );
+});
+
+Deno.test("hint prompt 要教她什麼時候該用 noPasteableReason", () => {
+  for (const practiceMode of ["beginner", "game"] as const) {
+    const sys = buildHintMessages({
+      turns: blockedTurns,
+      profile,
+      practiceMode,
+      temperatureScore: 20,
+      familiarityScore: 10,
+      allowNoPasteableReply: true,
+    })[0].content;
+    assertEquals(
+      sys.includes("noPasteableReason"),
+      true,
+      `${practiceMode} 的 hint prompt 沒教 noPasteableReason`,
+    );
+  }
+});
+
+// ── W1 相容性（專案鐵則：新輸出形狀必配 client 能力宣告，缺席 fail-closed）──
+// Edge 一 push 就部署，但 client 要等手動出 build，中間舊 client 會收到
+// replies: []。比照 catalog 60→100 的做法：client 沒宣告就維持舊契約。
+// 關鍵：prompt 也要同步條件化，否則會教模型輸出一個 parser 會拒的形狀＝製造失敗。
+Deno.test("舊 client（未宣告能力）：noPasteableReason 一律拒收，維持舊契約", () => {
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          noPasteableReason: "她已經封鎖你了。",
+          coaching: "她已經把界線畫死，這裡要學的是收手。",
+        }),
+        {
+          mode: "beginner",
+          enforceGeneratedQuality: true,
+          turns: blockedTurns,
+        },
+      ),
+    Error,
+  );
+});
+
+Deno.test("舊 client（未宣告能力）：hint prompt 不得教 noPasteableReason", () => {
+  const sys = buildHintMessages({
+    turns: blockedTurns,
+    profile,
+    practiceMode: "beginner",
+    temperatureScore: 20,
+    familiarityScore: 10,
+  })[0].content;
+  assertEquals(sys.includes("noPasteableReason"), false);
+});
+
+Deno.test("新 client（已宣告能力）：prompt 有教、parser 收得下", () => {
+  const sys = buildHintMessages({
+    turns: blockedTurns,
+    profile,
+    practiceMode: "beginner",
+    temperatureScore: 20,
+    familiarityScore: 10,
+    allowNoPasteableReply: true,
+  })[0].content;
+  assertEquals(sys.includes("noPasteableReason"), true);
+
+  const result = parseHintResult(
+    JSON.stringify({
+      noPasteableReason:
+        "她已經明確要求停止聯絡並封鎖了你，這輪沒有任何適合送出的訊息。",
+      coaching:
+        "她已經把界線畫死，再傳任何訊息都只會讓情況更糟。這裡要學的是收手。",
+    }),
+    {
+      mode: "beginner",
+      enforceGeneratedQuality: true,
+      allowNoPasteableReply: true,
+      turns: blockedTurns,
+    },
+  );
+  assertEquals(result.replies.length, 0);
 });

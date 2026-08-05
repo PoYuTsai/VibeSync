@@ -96,8 +96,15 @@ export interface HintReply {
 }
 
 export interface PracticeHintResult {
-  replies: [HintReply, HintReply];
+  /**
+   * 可直接貼上的兩個選項。她已封鎖／明確要求停止聯絡時為空陣列，此時
+   * [noPasteableReason] 必有值——「本輪沒有可貼句」是合法結果不是失敗
+   * （2026-08-06：先前硬性要求兩句不同回覆，導致她封鎖的局必然 503）。
+   */
+  replies: HintReply[];
   coaching: string;
+  /** 非空＝本輪不給可貼句，這是原因說明。 */
+  noPasteableReason?: string;
 }
 
 export interface PracticeHintDecision {
@@ -153,6 +160,14 @@ interface HintParseOptions {
    * 原話而被判不接地——等於逼 hint 引用自己而不是回應她。
    */
   skipLexicalGrounding?: boolean;
+  /**
+   * client 能力宣告：這台 client 看得懂「本輪沒有可貼句」的回應形狀嗎？
+   *
+   * 專案鐵則（catalog 60→100 的教訓）：新的 server 輸出形狀必配 client 能力
+   * 宣告，缺席一律 fail-closed 回舊行為。Edge 一 push 就部署，client 卻要等
+   * 手動出 build，中間舊 client 收到 replies: [] 會沒有東西可畫。
+   */
+  allowNoPasteableReply?: boolean;
 }
 
 const MAX_REPLY_LENGTH = 80;
@@ -177,12 +192,14 @@ export const HINT_TOOL_SCHEMA: Readonly<Record<string, unknown>> = {
   properties: {
     warmUp: {
       type: "string",
-      description: "升溫回覆：可直接貼上的訊息文字，繁體中文",
+      description:
+        "升溫回覆：可直接貼上的訊息文字，繁體中文。除非填了 noPasteableReason，否則必填。",
       maxLength: GENERATED_REPLY_MAX_LENGTH,
     },
     steady: {
       type: "string",
-      description: "穩住回覆：可直接貼上的訊息文字，繁體中文",
+      description:
+        "穩住回覆：可直接貼上的訊息文字，繁體中文。除非填了 noPasteableReason，否則必填。",
       maxLength: GENERATED_REPLY_MAX_LENGTH,
     },
     coaching: {
@@ -190,8 +207,14 @@ export const HINT_TOOL_SCHEMA: Readonly<Record<string, unknown>> = {
       description: "教練講評：解釋兩種回法的策略，繁體中文",
       maxLength: GENERATED_COACHING_MAX_LENGTH,
     },
+    noPasteableReason: {
+      type: ["string", "null"],
+      description:
+        "只有在對方已封鎖你、或已明確要求停止聯絡時才填：說明本輪為什麼沒有任何適合送出的訊息。填了這欄就不要填 warmUp/steady。",
+      maxLength: GENERATED_REPLY_MAX_LENGTH,
+    },
   },
-  required: ["warmUp", "steady", "coaching"],
+  required: ["coaching"],
   additionalProperties: false,
 };
 const HIDDEN_HINT_NO_LEAK_RULE =
@@ -1294,6 +1317,8 @@ function gameHintEvidence(opts: {
 }
 
 export function buildHintMessages(opts: {
+  /** client 能力宣告；未宣告時不得教模型輸出 parser 會拒的形狀。 */
+  allowNoPasteableReply?: boolean;
   turns: PracticeTurn[];
   profile: PracticeProfile;
   practiceMode?: PracticeLearningMode;
@@ -1350,6 +1375,14 @@ export function buildHintMessages(opts: {
           ? "你是 VibeSync Game 回覆提示教練。可直接拆技巧，但只輸出繁中 JSON，不要 markdown 或多餘文字。\n"
           : "你是 VibeSync 新手回覆提示教練。只輸出繁中 JSON，不要 markdown 或多餘文字。\n") +
         'JSON shape 必須是 {"warmUp":"...","steady":"...","coaching":"..."}。\n' +
+        // 她已封鎖／明確要求停止聯絡時，硬擠兩句可貼回覆會被守門打回並轉 503
+        //（2026-08-05 真實事故：模型自己判斷「沒有任何可貼句能送出」是對的，
+        // 是系統接不住）。給它一條誠實的出口。
+        (opts.allowNoPasteableReply === true
+          ? "例外：如果她已經封鎖你、或已明確要求停止聯絡，這時沒有任何訊息適合送出，" +
+            '就改輸出 {"noPasteableReason":"為什麼這輪沒有可貼句","coaching":"..."}，' +
+            "不要填 warmUp/steady，也不要硬湊一句話術。這種局面要教的是收手與理解界線，不是換句話再試。\n"
+          : "") +
         (opts.practiceMode === "game"
           ? ""
           : `warmUp/steady≤${HINT_REPLY_SOFT_CHAR_LIMIT}字，coaching≤${HINT_COACHING_SOFT_CHAR_LIMIT}字；完整收句。\n`) +
@@ -1450,7 +1483,7 @@ function rejectBossyPasteableHintReply(
 
 function requiredString(
   value: unknown,
-  field: "warmUp" | "steady" | "coaching",
+  field: "warmUp" | "steady" | "coaching" | "noPasteableReason",
   maxLength: number,
   options: HintParseOptions = {},
 ): string {
@@ -1483,13 +1516,16 @@ function requiredString(
   if (capped.length === 0) {
     throw new Error(`hint_missing_${field}`);
   }
-  rejectBossyPasteableHintReply(capped, field);
+  if (field !== "noPasteableReason") {
+    rejectBossyPasteableHintReply(capped, field);
+  }
   rejectInternalLabelLeak(capped);
   rejectL4UnsafeVisibleText(capped, "hint_l4_unsafe");
   if (options.enforceGeneratedQuality === true) {
     rejectKnownCannedPracticeText(capped, "hint_canned_visible_text");
     if (
-      field !== "coaching" && options.semanticAdjudicated !== true &&
+      field !== "coaching" && field !== "noPasteableReason" &&
+      options.semanticAdjudicated !== true &&
       options.relaxSubjectiveQualityRubrics !== true
     ) {
       rejectGenericPasteablePracticeText(capped, "hint_quality_invalid");
@@ -2417,6 +2453,42 @@ export function parseHintResult(
   options: HintParseOptions = {},
 ): PracticeHintResult {
   const parsed = parseObject(raw);
+
+  // 「本輪沒有可貼句」分支：她已封鎖／明確要求停止聯絡時，硬擠兩句可貼回覆
+  // 只會被 duplicate_replies 之類的守門打回並轉 503（2026-08-05 真實事故）。
+  // 這條路徑跳過所有「可貼句」專屬守門，但安全守門（洩漏／L4／罐頭）照跑，
+  // 而且 coaching 仍是必填——沒有可貼句時，教練說明才是使用者唯一的收穫。
+  const noPasteableRaw = options.allowNoPasteableReply === true
+    ? parsed.noPasteableReason
+    : undefined;
+  if (noPasteableRaw !== undefined && noPasteableRaw !== null) {
+    if (parsed.warmUp !== undefined || parsed.steady !== undefined) {
+      // 同時給「沒有可貼句」與可貼句＝自相矛盾，不猜哪個是真的。
+      throw new Error("hint_no_pasteable_conflict");
+    }
+    const reason = requiredString(
+      noPasteableRaw,
+      "noPasteableReason",
+      GENERATED_REPLY_MAX_LENGTH,
+      options,
+    );
+    const coachingOnly = requiredString(
+      parsed.coaching,
+      "coaching",
+      MAX_COACHING_LENGTH,
+      options,
+    );
+    const noPasteableKeys = Object.keys(parsed).sort();
+    const expectedNoPasteable = ["coaching", "noPasteableReason"];
+    if (
+      noPasteableKeys.length !== expectedNoPasteable.length ||
+      noPasteableKeys.some((key, index) => key !== expectedNoPasteable[index])
+    ) {
+      throw new Error("hint_extra_keys");
+    }
+    return { replies: [], coaching: coachingOnly, noPasteableReason: reason };
+  }
+
   const warmUp = requiredString(
     parsed.warmUp,
     "warmUp",

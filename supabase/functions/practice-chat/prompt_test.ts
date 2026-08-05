@@ -812,7 +812,10 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 2026-08-04 認識管道：Hint 每場多一段 origin 證據（label/originContext/
   // originFocus，最長管道 ≤150 bytes），上限 5400→5550；Debrief 多一行評分
   // 尺度（≤70 bytes），上限 4500→4570。
-  if (maxHint > 5550) {
+  // 2026-08-06 W1「無可貼句」：hint prompt 每場多一段例外教學（她已封鎖／
+  // 明確要求停止聯絡時改輸出 noPasteableReason，不硬湊話術），固定 +103 bytes，
+  // 上限 5550→5660。換掉的是「她封鎖後必然 503」這個整類失敗。
+  if (maxHint > 5660) {
     failures.push(`Hint max ${maxHint} at ${maxHintCase}`);
   }
   if (maxDebrief > 4570) {
