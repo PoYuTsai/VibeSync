@@ -36,14 +36,16 @@ const dinnerScene: PracticeSceneContext = {
 
 // prompt 預算測試用最長的認識管道當上界：新增更長的管道時測試會自己抓到，
 // 不需要人工重挑 worst case。
-const longestHintOrigin = [...ACQUAINTANCE_ORIGINS].sort((a, b) =>
-  (b.label.length + b.sharedFact.length + b.hintFocus.length) -
-  (a.label.length + a.sharedFact.length + a.hintFocus.length)
-)[0];
-const longestDebriefOrigin = [...ACQUAINTANCE_ORIGINS].sort((a, b) =>
-  (b.label.length + b.debriefStandard.length) -
-  (a.label.length + a.debriefStandard.length)
-)[0];
+const longestHintOrigin =
+  [...ACQUAINTANCE_ORIGINS].sort((a, b) =>
+    (b.label.length + b.sharedFact.length + b.hintFocus.length) -
+    (a.label.length + a.sharedFact.length + a.hintFocus.length)
+  )[0];
+const longestDebriefOrigin =
+  [...ACQUAINTANCE_ORIGINS].sort((a, b) =>
+    (b.label.length + b.debriefStandard.length) -
+    (a.label.length + a.debriefStandard.length)
+  )[0];
 
 function hasLoneSurrogate(value: string): boolean {
   for (let index = 0; index < value.length; index++) {
@@ -1877,4 +1879,62 @@ Deno.test("2026-07-23 修：temperature band instruction 不列中文守門詞�
       `temperatureBandDebriefInstruction(${score})`,
     );
   }
+});
+
+// ── 2026-08-05：認識管道 vs 頂端現實錨定的指令衝突（新手/一般模式缺調解句）──
+// 實測事故：認識管道是「朋友介紹」，使用者卻說成搭訕，模型回「好像是…我有點
+// 忘了」含糊帶過，而不是照設定糾正他。成因是 prompt 自相矛盾：
+//   頂端「現實錨定（高優先）」：不要為了配合對方而發明共同朋友、介紹人…
+//   77% 處「認識管道」：這件事是既定背景，你本來就知道，不需要對方證明
+// 調解這個衝突的例外句原本只存在於 Game 模式（gameModePrompt 內），新手/一般
+// 完全沒有，模型收到的是一組互相打架的指令 → 典型輸出就是含糊其辭。
+// 女生走 deepseek-v4-flash（小模型），prompt 又長（一般 4042 字 / Game 8952 字），
+// 關鍵指令原本埋在 77% 處，更難壓過頂端那條。
+Deno.test("認識管道例外調解句在三種模式都要有（不只 Game）", () => {
+  const origin = ACQUAINTANCE_ORIGINS[0];
+  for (const practiceMode of ["standard", "beginner", "game"] as const) {
+    const sys = buildChatMessages(
+      [{ role: "user", text: "剛剛搭訕你有點突然，不好意思" }],
+      defaultProfile,
+      {
+        practiceMode,
+        temperatureScore: 45,
+        familiarityScore: 30,
+        acquaintanceOrigin: origin,
+      },
+    )[0].content;
+    assertEquals(
+      sys.includes("你們是怎麼認識的"),
+      true,
+      `${practiceMode} 缺認識管道段`,
+    );
+    // 頂端現實錨定那段必須自己就講清楚例外，不能等到 77% 處才調解。
+    const anchorIndex = sys.indexOf("不要為了配合對方而發明共同朋友");
+    const carveOutIndex = sys.indexOf("認識管道是唯一例外");
+    assert(anchorIndex >= 0, `${practiceMode} 找不到現實錨定段`);
+    assert(
+      carveOutIndex >= 0,
+      `${practiceMode} 頂端現實錨定段沒有認識管道例外豁免`,
+    );
+    assert(
+      carveOutIndex < sys.indexOf("你們是怎麼認識的"),
+      `${practiceMode} 例外豁免要在頂端就出現，不能只在後段`,
+    );
+  }
+});
+
+Deno.test("認識管道段要給小模型一個具體的糾正示範句", () => {
+  const origin = ACQUAINTANCE_ORIGINS[0];
+  const sys = buildChatMessages(
+    [{ role: "user", text: "剛剛搭訕你有點突然" }],
+    defaultProfile,
+    {
+      practiceMode: "standard",
+      temperatureScore: 45,
+      familiarityScore: 30,
+      acquaintanceOrigin: origin,
+    },
+  )[0].content;
+  // 抽象規則對 flash 模型效果差，要給形狀。
+  assertEquals(sys.includes("你記錯"), true);
 });

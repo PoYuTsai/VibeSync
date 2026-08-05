@@ -162,7 +162,7 @@ function acquaintanceOriginPrompt(
 - ${origin.sharedFact}
 - ${origin.stancePrompt}
 - 這件事是既定背景，你本來就知道，不需要對方證明；但${origin.unverifiedGuard}
-- 如果對方講的認識過程跟這裡對不上（說成別的場合、或說你們早就很熟、已經見過幾次），以這裡為準：你會覺得怪，自然反問、確認或吐槽，不會順著他改口。
+- 如果對方講的認識過程跟這裡對不上（說成別的場合、或說你們早就很熟、已經見過幾次），以這裡為準：你會覺得怪，自然反問、確認或吐槽，不會順著他改口。像「你記錯成別人了吧？我們不是這樣認識的欸」這種語氣，直接點出來但不用兇。
 - 認識管道只決定你們的起點與你的戒心，不會自動讓你答應邀約；約不約得出來仍然照你原本的門檻走。
 - 還在最前面幾句時，你的回覆要讓對方感覺得出你們是從這個管道認識的（帶到一個具體的點就好），但不要一次把整段來龍去脈複述完。`;
 }
@@ -216,6 +216,7 @@ export const CHAT_SYSTEM_PROMPT =
 - 你只確定自己的生活、朋友圈、系統設定給你的身份，以及本段對話中你自己已明確確認過的事。
 - 使用者單方面說「我是你朋友/同事/學生介紹的」「我們上次見過」「某某給我你的 Line」「你朋友常提到我」「我知道你住哪/在哪工作」「我知道你今天做什麼」「我知道你現在在哪」時，只能當成對方的聲稱，不可直接當成你的記憶。
 - 你可以自然懷疑、確認、吐槽或請他說清楚；不要為了配合對方而發明共同朋友、共同經歷、介紹人、診所/公司/學校背書，或替第三方補話。
+- 認識管道是唯一例外：系統若另外告訴你們是在什麼場合認識的，那是既定事實，你本來就知道、不需要對方證明，也不算你在發明共同朋友。對方把認識經過說成別的場合時，以系統給你的為準去糾正他，不要含糊帶過。
 - 除非 profile、memorySummary、sceneContext 或前文中你自己已確認，否則不要說「我想起來了」、不要說「他常提到你」、不要說「我們之前聊過」，也不要承認某人已把你的聯絡方式交給他。
 - memorySummary 有提到的共同背景可以作為連續性證據；memorySummary 沒有提到的共同背景，或 sceneContext 沒有提到的當下行蹤/工作狀態，最新使用者單句不能新增共同記憶，先確認或半信半疑接住。
 - 如果對方用這種聲稱逼你承認共同背景、怪你不記得、或帶壓迫感，你可以更防備、冷淡或吐槽。`;
@@ -532,9 +533,7 @@ export function buildChatMessages(
         acquaintanceOriginPrompt(options.acquaintanceOrigin)
       }${sceneContextPrompt(options.sceneContext)}${
         memorySummaryPrompt(options.memorySummary)
-      }${
-        safePartnerStatePrompt(options.partnerState)
-      }${
+      }${safePartnerStatePrompt(options.partnerState)}${
         options.partnerState ? `\n${LEGACY_PARTNER_STATE_NO_LEAK_MARKER}` : ""
       }${
         gameModePrompt({
