@@ -6010,7 +6010,8 @@ Deno.test("salvageHintCandidate：優先主模型；全部救不起來回 null",
     null,
   );
 
-  // 敗因不是 grounding → 即使 raw 解得開也不搶救（不倚賴其他 gate 的 determinism）
+  // 2026-08-06 Eric 拍板翻成黑名單，推翻了原本的「敗因不是 grounding 就不搶救」：
+  // 非紅線敗因照常搶救，只有紅線不救。
   assertEquals(
     salvageHintCandidate({
       failures: [{
@@ -6019,9 +6020,29 @@ Deno.test("salvageHintCandidate：優先主模型；全部救不起來回 null",
         raw: salvageHintJson(),
       }],
       parse,
-    }),
-    null,
+    })?.model,
+    "claude-sonnet-5",
   );
+  for (
+    const redLine of [
+      "hint_l4_unsafe",
+      "hint_internal_label_leak",
+      "hint_canned_visible_text",
+    ]
+  ) {
+    assertEquals(
+      salvageHintCandidate({
+        failures: [{
+          model: "claude-sonnet-5",
+          code: redLine,
+          raw: salvageHintJson(),
+        }],
+        parse,
+      }),
+      null,
+      redLine,
+    );
+  }
 });
 
 // ── W1（2026-08-06）：「本輪沒有可貼句」是合法結果，不是失敗 ──

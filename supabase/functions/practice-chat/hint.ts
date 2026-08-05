@@ -180,6 +180,17 @@ interface HintParseOptions {
    * 才降級端出（2026-08-06 W3）。
    */
   degradeStructuralDefects?: boolean;
+  /**
+   * salvage pass 的**總開關**（2026-08-06 Eric 拍板把白名單翻成黑名單）。
+   *
+   * 開了就等於宣告「這是最後一發，不端出去使用者就會拿到 503」。此時除了紅線
+   * （露骨／內部洩漏／罐頭，見 practice_visible_quality.ts 的
+   * NEVER_SALVAGEABLE_FAILURE_CODE_PARTS）以外，所有 gate 一律讓路——包含
+   * 主觀品質、結構格式、字面 grounding，以及捏造事實（Eric 拍板不留在紅線）。
+   *
+   * 前兩發完全不受影響：該擋照擋，retry 仍有機會產出乾淨的內容。
+   */
+  salvagePass?: boolean;
 }
 
 const MAX_REPLY_LENGTH = 80;
@@ -1534,7 +1545,8 @@ function requiredString(
   if (capped.length === 0) {
     throw new Error(`hint_missing_${field}`);
   }
-  if (field !== "noPasteableReason") {
+  if (field !== "noPasteableReason" && options.salvagePass !== true) {
+    // 命令口吻不在紅線內（紅線＝露骨／內部洩漏／罐頭）。最後一發讓路。
     rejectBossyPasteableHintReply(capped, field);
   }
   rejectInternalLabelLeak(capped);
@@ -1544,7 +1556,8 @@ function requiredString(
     if (
       field !== "coaching" && field !== "noPasteableReason" &&
       options.semanticAdjudicated !== true &&
-      options.relaxSubjectiveQualityRubrics !== true
+      options.relaxSubjectiveQualityRubrics !== true &&
+      options.salvagePass !== true
     ) {
       rejectGenericPasteablePracticeText(capped, "hint_quality_invalid");
     }
@@ -2355,6 +2368,8 @@ function assertNoPasteableFactClaimsSupported(opts: {
 }): void {
   if (opts.parseOptions.enforceGeneratedQuality !== true) return;
   if (opts.parseOptions.semanticAdjudicated === true) return;
+  // 捏造事實已由 Eric 拍板移出紅線（2026-08-06）：前兩發照擋，最後一發讓路。
+  if (opts.parseOptions.salvagePass === true) return;
   const factContext = buildHintFactContext({
     turns: opts.parseOptions.turns,
     factualEvidence: opts.parseOptions.factualEvidence,
@@ -2383,8 +2398,7 @@ function assertNoPasteableFactClaimsSupported(opts: {
  * 改用對症的證據：她最新那句有沒有真的畫出逐客令／敵意界線。複用既有且調校
  * 保守的 latestAssistantShowsHostility（2026-08-06 W3，Codex 首審 P1）。
  */
-function assertNoPasteableStateIsGrounded(options: HintParseOptions): void {
-  if (options.enforceGeneratedQuality !== true) return;
+function resolveNoPasteableReason(options: HintParseOptions): string {
   const turns = options.turns ?? [];
   let latestAssistant = "";
   for (let index = turns.length - 1; index >= 0; index -= 1) {
@@ -2393,7 +2407,22 @@ function assertNoPasteableStateIsGrounded(options: HintParseOptions): void {
       break;
     }
   }
-  if (!latestAssistantShowsHostility(latestAssistant)) {
+  if (latestAssistantShowsHostility(latestAssistant)) {
+    return SERVER_NO_PASTEABLE_REASON;
+  }
+  // 認不出逐客令≠模型判斷錯了。latestAssistantShowsHostility 認得出「不要再
+  // 聯絡我」，認不出「我們到此為止吧」這種講法。
+  //
+  // 前兩發照擋（retry 有機會生出兩句真的可貼句），最後一發改端出**不提她**的
+  // 中性說明——我們沒有證據就不替她說話，但也不能因此讓使用者拿到 503
+  //（2026-08-06 Eric：不准有 503）。
+  return SERVER_NO_PASTEABLE_REASON_NEUTRAL;
+}
+
+function assertNoPasteableStateIsGrounded(options: HintParseOptions): void {
+  if (options.enforceGeneratedQuality !== true) return;
+  if (options.salvagePass === true) return;
+  if (resolveNoPasteableReason(options) !== SERVER_NO_PASTEABLE_REASON) {
     throw new Error("hint_no_pasteable_unsupported_state");
   }
 }
@@ -2439,6 +2468,8 @@ function assertGeneratedHintQuality(opts: {
   parseOptions: HintParseOptions;
 }): void {
   if (opts.parseOptions.enforceGeneratedQuality !== true) return;
+  // 最後一發：紅線以外全部讓路（紅線在 requiredString 就跑完了，見 salvagePass）。
+  if (opts.parseOptions.salvagePass === true) return;
   if (
     normalizedPracticeText(opts.warmUp) ===
       normalizedPracticeText(opts.steady) &&
@@ -2580,6 +2611,13 @@ export function salvageHintCandidate<T>(opts: {
 export const SERVER_NO_PASTEABLE_REASON =
   "她已經明確表示不想再收到訊息，這一輪沒有可以貼給她的句子。";
 
+/**
+ * 逐字稿裡看不出她畫了逐客令時用的版本：**不替她說話**，只陳述我們的結論。
+ * 見 resolveNoPasteableReason。
+ */
+export const SERVER_NO_PASTEABLE_REASON_NEUTRAL =
+  "這一輪沒有適合送出的句子。";
+
 export function parseHintResult(
   raw: string,
   options: HintParseOptions = {},
@@ -2622,7 +2660,7 @@ export function parseHintResult(
     return {
       replies: [],
       coaching: coachingOnly,
-      noPasteableReason: SERVER_NO_PASTEABLE_REASON,
+      noPasteableReason: resolveNoPasteableReason(options),
     };
   }
 
@@ -2665,7 +2703,7 @@ export function parseHintResult(
     return {
       replies: [],
       coaching,
-      noPasteableReason: SERVER_NO_PASTEABLE_REASON,
+      noPasteableReason: resolveNoPasteableReason(options),
     };
   }
   if (

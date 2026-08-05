@@ -3787,7 +3787,10 @@ for (const mode of ["beginner", "game"] as const) {
     assertEquals(releaseDebriefCalls(state).length, 0);
   });
 
-  Deno.test(`${mode} Debrief dual fact transfer fails retryably without a snapshot`, async () => {
+  // 2026-08-06 Eric 拍板把捏造事實移出 salvage 紅線，推翻了原本的「兩發都移植
+  // 對方事實＝503」。代價已當面講過（兩發都編時會講出她沒說過的事），他選擇
+  // 字面上的零 503。前兩發仍照擋，所以這裡 claudeCalls 仍是 2。
+  Deno.test(`${mode} Debrief 兩發都移植對方事實時 salvage 端出而不是 503`, async () => {
     const bad = mode === "game"
       ? debriefCardWithLine(
         "我的生活圈也在台南，這也太巧。",
@@ -3802,15 +3805,11 @@ for (const mode of ["beginner", "game"] as const) {
       { ...body, requestId: `typed-debrief-dual-${mode}` },
     );
 
-    assertEquals(response.status, 503);
-    assertEquals(json, {
-      error: "practice_debrief_generation_retryable",
-      retryable: true,
-      failureReason: "content",
-    });
+    assertEquals(response.status, 200, JSON.stringify(json));
     assertEquals(state.claudeCalls.length, 2);
-    assertEquals(recordDebriefCalls(state).length, 0);
-    assertEquals(releaseDebriefCalls(state).length, 1);
+    // 搶救成功＝卡片照常入帳、不得釋放 generation token
+    assertEquals(recordDebriefCalls(state).length, 1);
+    assertEquals(releaseDebriefCalls(state).length, 0);
   });
 }
 
@@ -3960,7 +3959,9 @@ Deno.test("debrief overlong half-sentence kills the shot instead of recording a 
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
-Deno.test("both overlong Debrief providers fail retryably without recording a card", async () => {
+// 2026-08-06（Eric：不准有 503）：超長是形狀壞掉不是內容壞掉，最後一發切到
+// 上限端出。前兩發仍照擋。
+Deno.test("兩發 Debrief 都超長時 salvage 切到上限端出而不是 503", async () => {
   const overlong = validDebriefJson({
     watchouts: ["下班".repeat(51)],
   });
@@ -3970,14 +3971,9 @@ Deno.test("both overlong Debrief providers fail retryably without recording a ca
     claudeReplies: [overlong],
   }, debriefBody({ requestId: "debrief-overlong-no-record" }));
 
-  assertEquals(response.status, 503);
-  assertEquals(json, {
-    error: "practice_debrief_generation_retryable",
-    retryable: true,
-    failureReason: "content",
-  });
-  assertEquals(recordDebriefCalls(state).length, 0);
-  assertEquals(releaseDebriefCalls(state).length, 1);
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(recordDebriefCalls(state).length, 1);
+  assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
 Deno.test("debrief returns retryable error and stores no card when both shots fail", async () => {
@@ -5134,7 +5130,10 @@ Deno.test("Hint never records when both shots fail the hard safety guard", async
   assertEquals(releaseHintCalls(state).length, 1);
 });
 
-Deno.test("invented Hint details from both shots fail retryably without a snapshot", async () => {
+// 2026-08-06 Eric 拍板把捏造事實移出 salvage 紅線。這顆測試從此**釘住那個代價**：
+// 兩發都編造時，「黑露」這種她沒說過的細節會端到使用者面前。他知情並選擇零 503。
+// 前兩發照擋沒有變（claudeCalls 仍是 2），所以只有「兩發都編」才會走到這裡。
+Deno.test("兩發 Hint 都捏造細節時 salvage 端出（Eric 2026-08-06 拍板接受的代價）", async () => {
   const invented = JSON.stringify({
     warmUp: "鼻子靈是基本配備😂 我在中山站巷子裡發現的。",
     steady: "妳說我鼻子也太靈，那間咖啡店叫『黑露』。",
@@ -5155,14 +5154,19 @@ Deno.test("invented Hint details from both shots fail retryably without a snapsh
     }),
   );
 
-  assertEquals(response.status, 503);
-  assertEquals(json.retryable, true);
+  assertEquals(response.status, 200, JSON.stringify(json));
   assertEquals(state.claudeCalls.length, 2);
-  assertEquals(recordHintCalls(state).length, 0);
-  assertEquals(releaseHintCalls(state).length, 1);
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
+  // 代價寫成斷言，將來有人想改回來會先看到這行。
+  assertEquals(
+    JSON.stringify(json).includes("黑露"),
+    true,
+    "捏造細節已刻意放行（Eric 2026-08-06）；要改回來＝重新對齊他",
+  );
 });
 
-Deno.test("Beginner and Game reject paraphrased partner facts before recording", async () => {
+Deno.test("Beginner 與 Game 第一發鏡射對方事實時照擋，兩發全滅才端出", async () => {
   for (const mode of ["beginner", "game"] as const) {
     const invalidMirror = validHintJson({
       warmUp: "我住的地方也是台南，難怪生活圈很像。",
@@ -5224,14 +5228,15 @@ Deno.test("Beginner and Game reject paraphrased partner facts before recording",
         turns,
       }),
     );
-    assertEquals(failed.response.status, 503, mode);
-    assertEquals(failed.json, {
-      error: "practice_hint_generation_retryable",
-      retryable: true,
-      failureReason: "content",
-    }, mode);
-    assertEquals(recordHintCalls(failed.state).length, 0, mode);
-    assertEquals(releaseHintCalls(failed.state).length, 1, mode);
+    // 2026-08-06 Eric 拍板：捏造事實不在 salvage 紅線內。兩發都鏡射對方的
+    // typed fact 時改成端出而不是 503（第一發仍照擋，見上面的 failover 斷言）。
+    assertEquals(
+      failed.response.status,
+      200,
+      `${mode}:${JSON.stringify(failed.json)}`,
+    );
+    assertEquals(recordHintCalls(failed.state).length, 1, mode);
+    assertEquals(releaseHintCalls(failed.state).length, 0, mode);
   }
 });
 
@@ -7690,4 +7695,47 @@ Deno.test("她已封鎖時：沒宣告能力的舊 client 仍 fail-closed 回 50
   );
 
   assertEquals(response.status, 503);
+});
+
+// ── 2026-08-06 黑名單契約的兩顆端到端釘子（Eric 拍板）──
+// 翻成黑名單之後，「哪些東西還會擋人」變成整個系統最重要的一句話。這兩顆測試
+// 就是那句話：紅線擋、其他一律端出去。
+
+Deno.test("紅線：兩發都露骨時仍然擋死，不得端給使用者", async () => {
+  const unsafe = validHintJson({
+    warmUp: "偷偷加重量還不能拒絕吧，現在跟我回家",
+    steady: "妳今天穿那樣就是想被我脫掉吧",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      claudeReplies: [unsafe, unsafe],
+    },
+    hintBody({ practiceMode: "beginner", requestId: "hint-l4-red-line" }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals("replies" in json, false);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
+Deno.test("非紅線：兩發都只是品質不夠好時一律端出，不再 503", async () => {
+  // 純問句＋沒有實質動作＋不接地：以前這組會連踩三道守門 → 兩發全滅 → 503。
+  const weak = validHintJson({
+    warmUp: "那你呢？",
+    steady: "真的假的？",
+    coaching: "先接住她的話再說。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      claudeReplies: [weak, weak],
+    },
+    hintBody({ practiceMode: "beginner", requestId: "hint-weak-but-served" }),
+  );
+
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(state.claudeCalls.length, 2, "前兩發照擋，沒有變成一發就放行");
+  assertEquals(recordHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 0);
 });

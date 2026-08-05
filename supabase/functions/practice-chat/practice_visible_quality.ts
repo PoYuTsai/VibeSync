@@ -341,43 +341,36 @@ export function normalizedPracticeText(value: string): string {
 }
 
 /**
- * salvage 只原諒「我們明確決定要原諒的那幾道 gate」，白名單制。
+ * salvage 的**唯一**否決名單（2026-08-06 Eric 拍板，把白名單翻成黑名單）。
  *
- * 其他 gate 目前都是 deterministic（同一份 raw 重跑必然再敗），所以未列名的敗因
- * 本來就救不起來——但那是「碰巧安全」。一旦未來某道 gate 變成非決定性（依時間、
- * 外部狀態或隨機性），salvage 會默默把它放行。故明確以敗因碼收斂，不倚賴
- * determinism（Codex 二審建議）。
+ * 為什麼翻：白名單（列出「哪些失敗可以放行」）本質上要一條一條吵，守門碼有
+ * 五十幾個，每審一輪就冒出新的邊界要討論，而使用者拿到的還是 503。Eric 的要求
+ * 很明確——我們自己的守門不准造成 503。對應的做法就是反過來：**只有紅線可以
+ * 殺，其他一律端出去**。
  *
- * 名單只有三類：
- * 1. 字面 grounding——它擋的是「萬用模板」，是偏好不是否決權；寒暄局/emoji 局
- *    下正確答案必然通不過詞面比對。
- * 2. hintAssessment 隱藏記帳——DebriefCard 型別裡根本沒有這個欄位（驗證完就
- *    丟掉），內部記帳不該毀掉一張使用者看得到的好卡；salvage 會開既有的
- *    repairPreservedHintCritique 修補它。
- * 3. 結構／格式缺陷（2026-08-06 W3）——模型的**內容**是好的、只是形狀壞了：
- *    超長、兩句寫成同一句、旁白句填進可貼欄、vibe/dateChance 用了列舉外的字、
- *    Game 拆盤這個可選區塊殘缺。salvage 會開 degradeStructuralDefects 修補或
- *    降級（切長度／去重／丟掉可選區塊／落安全預設），而不是丟掉整份。
+ * 紅線只有三類，刻意講得完：
+ * 1. `_l4_unsafe`——露骨性內容。
+ * 2. `_internal_label_leak` / `_temperature_leak`——洩漏我們的內部機制。
+ * 3. `_canned_visible_text`——我們自己寫死的罐頭句混進模型輸出。
  *
- * 捏造類（fact ledger unsupported_detail）、安全類（L4）、罐頭簽名一律不入名單。
+ * **捏造事實（unsupported_detail）刻意不在紅線內**：Eric 2026-08-06 拍板拿掉。
+ * 我提過代價——兩發都編造時，AI 可能跟使用者說她沒說過的事，使用者照著聊會被
+ * 拆穿——他選擇字面上的零 503。前兩發仍照擋，所以只有「兩發都編」才會漏出去。
+ * 要推翻這條＝重新對齊 Eric，別自己改回來。
  *
- * 主觀品質類（pure_questions／invite_route／substantive_move…）刻意**不**入名單：
- * 2026-08-06 撈近 7 天 ai_logs，它們各只出現 1 次且都與 not_grounded 同一筆
- * ＝早就被救回，擴名單買不到任何東西，卻要整批放寬品質底線。
+ * 注意這是**敗因碼**的名單，不是 gate 的名單：salvage 重解時還要靠
+ * `salvagePass` 讓非紅線的 gate 自己讓路，兩邊要一起看。
  */
-const SALVAGEABLE_FAILURE_CODE_PARTS = [
-  "not_grounded",
-  "debrief_hint_assessment_missing",
-  "debrief_hint_assessment_revision_required",
-  "hint_quality_invalid_overlong",
-  "hint_quality_invalid_duplicate_replies",
-  "hint_stage_direction_reply",
-  "debrief_invalid_vibe",
-  "debrief_invalid_date_chance",
-  "debrief_game_breakdown_missing_fields",
+const NEVER_SALVAGEABLE_FAILURE_CODE_PARTS = [
+  "_l4_unsafe",
+  "_internal_label_leak",
+  "_temperature_leak",
+  "_canned_visible_text",
 ] as const;
 
 export function isSalvageableFailureCode(code?: string): boolean {
-  return typeof code === "string" &&
-    SALVAGEABLE_FAILURE_CODE_PARTS.some((part) => code.includes(part));
+  if (typeof code !== "string" || code.length === 0) return false;
+  return !NEVER_SALVAGEABLE_FAILURE_CODE_PARTS.some((part) =>
+    code.includes(part)
+  );
 }

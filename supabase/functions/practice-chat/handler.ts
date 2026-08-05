@@ -2584,6 +2584,7 @@ export function createPracticeChatHandler(
           override?: {
             skipLexicalGrounding?: boolean;
             degradeStructuralDefects?: boolean;
+            salvagePass?: boolean;
           },
         ) => ReturnType<typeof parseHintResult>)
         | null = null;
@@ -2749,6 +2750,7 @@ export function createPracticeChatHandler(
                 hintParseCandidate!(raw, {
                   skipLexicalGrounding: true,
                   degradeStructuralDefects: true,
+                  salvagePass: true,
                 }),
             })
             : null;

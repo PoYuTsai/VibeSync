@@ -215,6 +215,13 @@ export function clampList(
     .slice(0, maxItems);
 }
 
+/**
+ * salvage 時超長改成切到上限而不是丟整張卡。用 module-scope 旗標而不是把參數
+ * 穿過 11 個呼叫點：parseDebriefCard 全程同步、沒有 await，JS 單執行緒下不可能
+ * 有第二個 parse 交錯進來。進出一律成對（try/finally）。
+ */
+let degradeOverlongDuringParse = false;
+
 function generatedVisibleString(
   value: unknown,
   legacyMax: number,
@@ -223,10 +230,15 @@ function generatedVisibleString(
 ): string {
   if (typeof value !== "string") return "";
   const trimmed = toTraditionalChinese(value.trim());
-  if (enforceGeneratedQuality && trimmed.length > generatedMax) {
+  if (
+    enforceGeneratedQuality && trimmed.length > generatedMax &&
+    !degradeOverlongDuringParse
+  ) {
     throw new Error("debrief_quality_invalid_overlong");
   }
-  return enforceGeneratedQuality ? trimmed : trimmed.slice(0, legacyMax);
+  return enforceGeneratedQuality
+    ? trimmed.slice(0, generatedMax)
+    : trimmed.slice(0, legacyMax);
 }
 
 function generatedVisibleList(
@@ -1519,6 +1531,7 @@ function assertGeneratedDebriefQuality(
     trustedFactClaims?: HintFactClaim[];
     relaxSubjectiveQualityRubrics?: boolean;
     skipLexicalGrounding?: boolean;
+    salvagePass?: boolean;
   },
 ): void {
   const relaxSubjective = opts.relaxSubjectiveQualityRubrics === true;
@@ -1526,6 +1539,9 @@ function assertGeneratedDebriefQuality(
   for (const field of visibleFields) {
     rejectKnownCannedPracticeText(field, "debrief_canned_visible_text");
   }
+  // 最後一發：紅線（罐頭在上面、露骨／洩漏在 guardVisibleText）以外全部讓路。
+  // 含 assertNoInventedPartnerInitiative——捏造已由 Eric 拍板移出紅線。
+  if (opts.salvagePass === true) return;
   assertNoInventedPartnerInitiative(card, opts.turns);
   if (!relaxSubjective) {
     assertGeneratedDebriefFieldSubstance(card);
@@ -1680,7 +1696,27 @@ export function parseDebriefCard(
      * 前兩發刻意不開：留給 retry 產出完整卡的機會。
      */
     degradeStructuralDefects?: boolean;
+    /**
+     * salvage pass 的總開關（2026-08-06 Eric 拍板把白名單翻成黑名單）。開了就
+     * 等於宣告「不端出去使用者就拿到 503」，此時紅線（露骨／內部洩漏／溫度
+     * 洩漏／罐頭）以外的 gate 一律讓路，包含捏造事實。前兩發完全不受影響。
+     */
+    salvagePass?: boolean;
   } = {},
+): DebriefCard {
+  if (opts.salvagePass === true) {
+    degradeOverlongDuringParse = true;
+  }
+  try {
+    return parseDebriefCardInner(raw, opts);
+  } finally {
+    degradeOverlongDuringParse = false;
+  }
+}
+
+function parseDebriefCardInner(
+  raw: string,
+  opts: Parameters<typeof parseDebriefCard>[1] & object,
 ): DebriefCard {
   const cleaned = extractJsonObject(raw);
   let parsed: unknown;
@@ -1761,7 +1797,7 @@ export function parseDebriefCard(
 
   // Handler 的正式生成路徑採完整契約；寬鬆模式只留給舊快照/純 parser 相容。
   // 缺欄位交給第二次修復型生成，避免 UI 把殘缺卡誤認為模型成功。
-  if (opts.requireCompleteCard === true) {
+  if (opts.requireCompleteCard === true && opts.salvagePass !== true) {
     if (
       strengths.length === 0 || watchouts.length === 0 ||
       dateChanceReason.length === 0 || nextInviteMove.length === 0
@@ -1862,6 +1898,7 @@ export function salvageDebriefCandidate(opts: {
         ...opts.parseOptions,
         skipLexicalGrounding: true,
         degradeStructuralDefects: true,
+        salvagePass: true,
         // 重生成已用盡：hintAssessment 這類隱藏記帳改用既有修補路徑補上預設值，
         // 而不是讓使用者拿不到卡（前兩發仍維持 false＝偏好重生成）。
         repairPreservedHintCritique: true,

@@ -3992,11 +3992,10 @@ Deno.test("salvageDebriefCandidate：沒有 raw（傳輸層失敗）或全部搶
   );
 });
 
-// Codex 二審 #4：salvage 只該原諒「我們決定要原諒的那道 gate」。目前其他 gate
-// 都是 deterministic（同一份 raw 重跑必然再敗），所以非 grounding 敗因本來就救
-// 不起來；但這是「碰巧安全」，一旦未來某道 gate 變成非決定性（依時間/外部狀態），
-// salvage 就會默默把它放行。故明確以敗因碼收斂，不倚賴 determinism。
-Deno.test("salvage 只收 grounding 敗因：其他敗因即使 raw 解得開也不搶救", () => {
+// 2026-08-06 Eric 拍板把 salvage 從白名單翻成黑名單，推翻了原本的
+// 「salvage 只收 grounding 敗因」（Codex 二審 #4 訂下的規則）。
+// 新規則：只有紅線（露骨／內部洩漏／溫度洩漏／罐頭）不得搶救，其他一律端出去。
+Deno.test("salvage 黑名單：非紅線敗因照常搶救，紅線敗因一律不救", () => {
   const parseOptions = {
     requireCompleteCard: true,
     enforceGeneratedQuality: true,
@@ -4006,30 +4005,39 @@ Deno.test("salvage 只收 grounding 敗因：其他敗因即使 raw 解得開也
   const goodRaw = salvageGreetingCard(
     "嗨～剛看到你資料上有健身教練，平常帶課會很累嗎？",
   );
-  // 敗因是別的 gate → 不得搶救
-  assertEquals(
-    salvageDebriefCandidate({
-      failures: [{
-        model: "claude-sonnet-5",
-        code: "debrief_quality_invalid_hint_accountability",
-        raw: goodRaw,
-      }],
-      parseOptions,
-    }),
-    null,
-  );
-  // 敗因是 grounding → 照常搶救
-  assertEquals(
-    salvageDebriefCandidate({
-      failures: [{
-        model: "claude-sonnet-5",
-        code: "debrief_quality_invalid_suggested_line_not_grounded",
-        raw: goodRaw,
-      }],
-      parseOptions,
-    })?.model,
-    "claude-sonnet-5",
-  );
+  for (
+    const code of [
+      "debrief_quality_invalid_hint_accountability",
+      "debrief_quality_invalid_suggested_line_not_grounded",
+      "debrief_quality_invalid_partner_initiative",
+      "debrief_missing_fields",
+    ]
+  ) {
+    assertEquals(
+      salvageDebriefCandidate({
+        failures: [{ model: "claude-sonnet-5", code, raw: goodRaw }],
+        parseOptions,
+      })?.model,
+      "claude-sonnet-5",
+      code,
+    );
+  }
+  for (
+    const code of [
+      "debrief_l4_unsafe",
+      "debrief_canned_visible_text",
+      "debrief_temperature_leak",
+    ]
+  ) {
+    assertEquals(
+      salvageDebriefCandidate({
+        failures: [{ model: "claude-sonnet-5", code, raw: goodRaw }],
+        parseOptions,
+      }),
+      null,
+      code,
+    );
+  }
 });
 
 // ── 槓桿一（2026-08-05）：隱藏記帳欄位不該毀掉一張使用者看得到的好卡 ──
