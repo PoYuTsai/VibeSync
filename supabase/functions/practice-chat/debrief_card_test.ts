@@ -13,6 +13,7 @@ import {
   debriefToolSchemaFor,
   parseDebriefCard,
   repairFlattenedGameBreakdown,
+  salvageDebriefCandidate,
   VIBES,
 } from "./debrief_card.ts";
 
@@ -3047,15 +3048,18 @@ const fieldTurns = [
   },
   {
     role: "ai" as const,
-    text: "喔～你懂喔？練腿那天我一定吃爆，不然隔天直接變殘廢😂 等等 你該不會也有在練吧",
+    text:
+      "喔～你懂喔？練腿那天我一定吃爆，不然隔天直接變殘廢😂 等等 你該不會也有在練吧",
   },
   {
     role: "user" as const,
-    text: "有啦，有在練。不過我的菜單沒妳那麼講究，練腿那天也是亂吃😂 妳練腿通常吃爆什麼？",
+    text:
+      "有啦，有在練。不過我的菜單沒妳那麼講究，練腿那天也是亂吃😂 妳練腿通常吃爆什麼？",
   },
   {
     role: "ai" as const,
-    text: "白飯配雞胸肉啊 再補個蛋 碳水蛋白質一起來 練完那餐真的不能省 不然腿會抗議😂",
+    text:
+      "白飯配雞胸肉啊 再補個蛋 碳水蛋白質一起來 練完那餐真的不能省 不然腿會抗議😂",
   },
 ];
 
@@ -3073,19 +3077,24 @@ const fieldSonnetCard = {
   vibe: "中性",
   dateChance: "medium",
   dateChanceReason: "她願意細聊飲食細節、接梗自然，但沒有釋出時間或場景線索",
-  nextInviteMove: "先別邀約，順著飲食話題多聊一輪感受，等她主動提時間或地點再接",
+  nextInviteMove:
+    "先別邀約，順著飲食話題多聊一輪感受，等她主動提時間或地點再接",
   gameBreakdown: {
     phaseReached: "還在開場熟悉階段，聊得算輕鬆但沒往下一層推進",
     missedVariable: "她的情緒和感受沒被聊到，一直停在飲食資訊上",
-    failureState: "卡在一問一答的資訊乒乓，內容都是「吃什麼」沒有延伸到她的心情或畫面",
-    nextFirstLine: "白飯配雞胸這麼扎實，妳這樣吃完會不會反而更有精神想出去晃晃？",
-    inviteDirection: "先不邀約，順勢聊她練完的感受或放鬆方式，鋪墊夠了再找時間窗口",
+    failureState:
+      "卡在一問一答的資訊乒乓，內容都是「吃什麼」沒有延伸到她的心情或畫面",
+    nextFirstLine:
+      "白飯配雞胸這麼扎實，妳這樣吃完會不會反而更有精神想出去晃晃？",
+    inviteDirection:
+      "先不邀約，順勢聊她練完的感受或放鬆方式，鋪墊夠了再找時間窗口",
   },
   hintAssessment: { verdict: "preserved", revisedEvidenceQuote: null },
 };
 
 const fieldHaikuCard = {
-  summary: "照著提示聊，接住她的疲累和訓練邏輯，聊天節奏順暢，但還沒有往邀約方向推進。",
+  summary:
+    "照著提示聊，接住她的疲累和訓練邏輯，聊天節奏順暢，但還沒有往邀約方向推進。",
   strengths: [
     "你有接住她練完很累的狀態，沒有硬推話題，讓她舒服地分享",
     "你問的「練腿吃什麼」貼到她的生活細節，她願意延伸說明碳水蛋白質配置",
@@ -3094,17 +3103,25 @@ const fieldHaikuCard = {
     "聊天停在資訊交換，還沒有帶出你自己的立場，容易變成問卷式對話",
     "她最後一句有時間線索（練完那餐很重要），但你沒有接住這個窗口往下推",
   ],
-  suggestedLine: "「練完不能省這點我同意，所以妳練腿那天根本沒得偷懶，我下次也跟著妳的邏輯來。」",
+  suggestedLine:
+    "「練完不能省這點我同意，所以妳練腿那天根本沒得偷懶，我下次也跟著妳的邏輯來。」",
   vibe: "中性",
   dateChance: "medium",
-  dateChanceReason: "聊天舒服但還在熟悉階段，沒有具體場景或時間線索被接住推進。",
-  nextInviteMove: "先不邀約，繼續建立默契；下一步可以聊她練腿的頻率或訓練風格，找到一個可以一起行動的切點。",
+  dateChanceReason:
+    "聊天舒服但還在熟悉階段，沒有具體場景或時間線索被接住推進。",
+  nextInviteMove:
+    "先不邀約，繼續建立默契；下一步可以聊她練腿的頻率或訓練風格，找到一個可以一起行動的切點。",
   gameBreakdown: {
-    phaseReached: "開場到資訊交換階段，聊天流暢但還停在她的訓練和飲食習慣，沒有往價值或感受層推進。",
-    missedVariable: "你的立場和感受還沒有進來，聊天是單向接收她的資訊，缺少「我們」的互動感。",
-    failureState: "她最後提到「練完那餐真的不能省」是一個時間線索和生活樣本，但你沒有接住這個窗口往邀約或共同行動的方向推。",
-    nextFirstLine: "「練完不能省這點我同意，所以妳練腿那天根本沒得偷懶，我下次也跟著妳的邏輯來。」",
-    inviteDirection: "先修建立你自己的立場和感受，讓她看到你也有訓練邏輯；之後可以聊一起練或一起吃的可能性。",
+    phaseReached:
+      "開場到資訊交換階段，聊天流暢但還停在她的訓練和飲食習慣，沒有往價值或感受層推進。",
+    missedVariable:
+      "你的立場和感受還沒有進來，聊天是單向接收她的資訊，缺少「我們」的互動感。",
+    failureState:
+      "她最後提到「練完那餐真的不能省」是一個時間線索和生活樣本，但你沒有接住這個窗口往邀約或共同行動的方向推。",
+    nextFirstLine:
+      "「練完不能省這點我同意，所以妳練腿那天根本沒得偷懶，我下次也跟著妳的邏輯來。」",
+    inviteDirection:
+      "先修建立你自己的立場和感受，讓她看到你也有訓練邏輯；之後可以聊一起練或一起吃的可能性。",
   },
   hintAssessment: { verdict: "preserved", revisedEvidenceQuote: null },
 };
@@ -3200,7 +3217,10 @@ Deno.test("真機回歸 2026-07-23：eval 抓到的 FP 措辭家族全放行", (
     // credit＋但＋進度陳述（整場停在資訊交換）
     { summary: "你接住健身話題並照提示延伸，但整場仍停在資訊交換階段" },
     // credit＋但＋缺乏下一步鋪墊（negEval 不得只因「照提示」就咬）
-    { summary: "照提示接住她的訓練節奏，聊天自然流暢，但缺乏下一步鋪墊，投入度停留在舒適分享。" },
+    {
+      summary:
+        "照提示接住她的訓練節奏，聊天自然流暢，但缺乏下一步鋪墊，投入度停留在舒適分享。",
+    },
     // 「不要急著邀約」＝build 路線語，不是 repair
     {
       nextInviteMove:
@@ -3215,7 +3235,8 @@ Deno.test("真機回歸 2026-07-23：eval 抓到的 FP 措辭家族全放行", (
     {
       gameBreakdown: {
         ...fieldSonnetCard.gameBreakdown,
-        inviteDirection: "先別邀約，順著訓練話題多聊幾輪，等她主動釋出時間或場景再考慮邀約",
+        inviteDirection:
+          "先別邀約，順著訓練話題多聊幾輪，等她主動釋出時間或場景再考慮邀約",
       },
     },
   ];
@@ -3405,11 +3426,13 @@ Deno.test("preserved debrief may suggest a soft next-step invite after a build h
     { role: "ai" as const, text: "今天剛下課，練完腿整個人像被卡車輾過😂" },
     {
       role: "user" as const,
-      text: "有啦，有在練。不過我的菜單沒妳那麼講究，練腿那天也是亂吃😂 妳練腿通常吃爆什麼？",
+      text:
+        "有啦，有在練。不過我的菜單沒妳那麼講究，練腿那天也是亂吃😂 妳練腿通常吃爆什麼？",
     },
     {
       role: "ai" as const,
-      text: "白飯配雞胸肉啊 再補個蛋 碳水蛋白質一起來 練完那餐真的不能省 不然腿會抗議😂",
+      text:
+        "白飯配雞胸肉啊 再補個蛋 碳水蛋白質一起來 練完那餐真的不能省 不然腿會抗議😂",
     },
   ];
   const gd6Hint = {
@@ -3442,13 +3465,15 @@ Deno.test("preserved debrief may suggest a soft next-step invite after a build h
     suggestedLine: "練完那餐聽起來超扎實，改天找間高蛋白餐廳一起吃如何？",
     vibe: "中性",
     dateChance: "medium",
-    dateChanceReason: "她願意展開細節、帶emoji回應，但沒有主動釋出時間或場景線索",
+    dateChanceReason:
+      "她願意展開細節、帶emoji回應，但沒有主動釋出時間或場景線索",
     nextInviteMove: "先分享自己對健身飲食的看法，拉近距離後再提低壓約法",
     gameBreakdown: {
       phaseReached: "還在建立熟悉階段，聊她的健身生活但沒往感受面推進",
       missedVariable: "少了讓她多聊感受或你自我揭露的部分，一直停在資訊問答",
       failureState: "整場你問她答，像做問卷，她配合度尚可但沒被打開情緒",
-      nextFirstLine: "哈哈那你算是很自律的教練了，我光聽都覺得餓，你都怎麼犒賞自己？",
+      nextFirstLine:
+        "哈哈那你算是很自律的教練了，我光聽都覺得餓，你都怎麼犒賞自己？",
       inviteDirection: "先建立多一點生活感的交流，等她主動聊更多再提約吃飯",
     },
     hintAssessment: { verdict: "preserved", revisedEvidenceQuote: null },
@@ -3484,7 +3509,11 @@ Deno.test("preserved debrief may suggest a soft next-step invite after a build h
         ...parseOptions,
         appliedHintTurns: [{
           ...gd6Hint,
-          decision: { ...gd6Hint.decision, move: "repair", inviteRoute: "repair" },
+          decision: {
+            ...gd6Hint.decision,
+            move: "repair",
+            inviteRoute: "repair",
+          },
         }],
       }),
     Error,
@@ -3511,7 +3540,8 @@ Deno.test("preserved debrief may give build-route guidance after a repair hint (
     },
     {
       role: "ai" as const,
-      text: "沒關係。我通常邊躺邊追劇啦，反正耍廢就要徹底一點哈哈。下午工作卡住，正好不想動。",
+      text:
+        "沒關係。我通常邊躺邊追劇啦，反正耍廢就要徹底一點哈哈。下午工作卡住，正好不想動。",
     },
   ];
   const mabelRepairHint = {
@@ -3526,7 +3556,8 @@ Deno.test("preserved debrief may give build-route guidance after a repair hint (
       targetVariable: "safety + Frame",
       move: "repair" as const,
       inviteRoute: "repair" as const,
-      rationale: "只依據本場逐字稿與已知角色資料；貼句已依目前關係階段與邀約路線校驗。",
+      rationale:
+        "只依據本場逐字稿與已知角色資料；貼句已依目前關係階段與邀約路線校驗。",
     },
   };
   const mabelCard = {
@@ -3562,7 +3593,10 @@ Deno.test("preserved debrief may give build-route guidance after a repair hint (
     appliedHintTurns: [mabelRepairHint],
   };
   const card = parseDebriefCard(JSON.stringify(mabelCard), mabelParseOptions);
-  assertEquals(card.gameBreakdown?.inviteDirection.includes("先別提邀約"), true);
+  assertEquals(
+    card.gameBreakdown?.inviteDirection.includes("先別提邀約"),
+    true,
+  );
 
   // repair 局任何可貼邀約句照舊全擋：soft 邀約 suggestedLine 仍整卡打回。
   assertThrows(
@@ -3596,7 +3630,8 @@ Deno.test("preserved debrief may give build-route guidance after a repair hint (
   // 「她需要更多安定感才能考慮見面」＝斟酌條件句不是「她邀約過」宣稱。
   const mabelHaikuCard = {
     ...mabelCard,
-    summary: "照著提示道歉後接住她的狀態，但後續沒有進一步鋪墊，邀約時機還不成熟。",
+    summary:
+      "照著提示道歉後接住她的狀態，但後續沒有進一步鋪墊，邀約時機還不成熟。",
     strengths: [
       "你有照提示做，及時修復了那句話帶來的冒犯感",
       "接住她說的『下午工作卡住』，展現了傾聽而不是只想約",
@@ -3683,7 +3718,8 @@ Deno.test("preserved debrief may give build-route guidance after a repair hint (
       parseDebriefCard(
         JSON.stringify({
           ...mabelCard,
-          nextInviteMove: "比起照提示道歉，最佳策略是先建立吸引力再看邀約時機。",
+          nextInviteMove:
+            "比起照提示道歉，最佳策略是先建立吸引力再看邀約時機。",
         }),
         mabelParseOptions,
       ),
@@ -3703,7 +3739,10 @@ Deno.test("preserved debrief may give build-route guidance after a repair hint (
     }),
     mabelParseOptions,
   );
-  assertEquals(commaWarningCard.gameBreakdown?.failureState.includes("壓力"), true);
+  assertEquals(
+    commaWarningCard.gameBreakdown?.failureState.includes("壓力"),
+    true,
+  );
   // 正向後果（含詞表歧義字）與「但值得一試」轉折＝實質 direct 建議照擋。
   for (
     const failureState of [
@@ -3753,4 +3792,197 @@ Deno.test("preserved debrief may give build-route guidance after a repair hint (
     mabelParseOptions,
   );
   assertEquals(praiseCard.strengths.length, 2);
+});
+
+// ===== 2026-08-05 salvage pass：grounding 降級為偏好，不可退讓守門照跑 =====
+// 事故：ai_logs practice_debrief_standard 08-05 13:44:47/13:45:19 兩筆，逐字稿
+// 只有「你好」「嗨～你好」，錨點集合只剩 {你好, 嗨你好}，唯一能通過詞面比對的
+// 建議句是複讀「你好」——最糟的教練建議，兩顆模型都不會產出，兩發全滅轉 503。
+//
+// 裁決（Eric 2026-08-05）：hint/debrief × 新手/一般/Game 正常一定要有輸出。
+// grounding 的職責是擋「完全沒碰這場對話的萬用模板」，它是偏好不是否決權：
+// 前兩發沒過就換模型，兩發都沒過時進 salvage 端出最佳候選。skipLexicalGrounding
+// 只有 salvage 能開；安全/洩漏/罐頭/捏造等不可退讓守門在 salvage 一律照跑。
+
+const salvageGreetingTurns = [
+  { role: "user" as const, text: "你好" },
+  { role: "ai" as const, text: "嗨～你好" },
+];
+
+const salvageOptions = {
+  requireCompleteCard: true,
+  enforceGeneratedQuality: true,
+  relaxSubjectiveQualityRubrics: true,
+  skipLexicalGrounding: true,
+  turns: salvageGreetingTurns,
+} as const;
+
+function salvageGreetingCard(suggestedLine: string): string {
+  return JSON.stringify({
+    summary: "對話僅止於打招呼，尚未展開任何話題，無法判斷互動品質。",
+    strengths: ["有主動開口打招呼，禮貌開場"],
+    watchouts: ["未接續任何話題，對話停在寒暄無法留下記憶點"],
+    suggestedLine,
+    vibe: "中性",
+    dateChance: "low",
+    dateChanceReason: "她只回了「嗨～你好」，未釋出任何延伸或時間線索。",
+    nextInviteMove: "先從她的背景聊起，建立輕鬆話題後再觀察熱度。",
+  });
+}
+
+Deno.test("salvage：ai_logs 當天被打回的真實候選解得出來", () => {
+  const card = parseDebriefCard(
+    salvageGreetingCard("嗨～剛看到你資料上有健身教練，平常帶課會很累嗎？"),
+    salvageOptions,
+  );
+  assertEquals(
+    card.suggestedLine,
+    "嗨～剛看到你資料上有健身教練，平常帶課會很累嗎？",
+  );
+  assertEquals(card.dateChance, "low");
+});
+
+Deno.test("salvage 不放掉 L4：露骨越界候選照樣打回", () => {
+  // 樣本取自 visible_text_guard_test.ts:167 的 L4 fail-closed 攻擊字串。
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        salvageGreetingCard("偷偷加重量還不能拒絕吧，現在跟我回家"),
+        salvageOptions,
+      ),
+    Error,
+    "debrief_l4_unsafe",
+  );
+});
+
+Deno.test("salvage 不放掉罐頭簽名", () => {
+  // 樣本取自 practice_visible_quality.ts 的 KNOWN_CANNED_SIGNATURES。
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        salvageGreetingCard(
+          "妳剛說的那個點我有記住，我先分享我的版本，再聽妳的。",
+        ),
+        salvageOptions,
+      ),
+    Error,
+    "debrief_canned_visible_text",
+  );
+});
+
+Deno.test("salvage 不放掉捏造對方主動邀約", () => {
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          summary: "她主動提出要見面，你沒有接住這個機會。",
+          strengths: ["有禮貌開場"],
+          watchouts: ["她主動約你出來，你沒有回應"],
+          suggestedLine: "妳說想見面的話，我這邊都可以配合。",
+          vibe: "暖",
+          dateChance: "high",
+          dateChanceReason: "她主動提出見面。",
+          nextInviteMove: "直接敲定時間。",
+        }),
+        salvageOptions,
+      ),
+    Error,
+  );
+});
+
+Deno.test("沒開 skipLexicalGrounding：前兩發守門行為完全不變", () => {
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        salvageGreetingCard("嗨～剛看到你資料上有健身教練，平常帶課會很累嗎？"),
+        { ...salvageOptions, skipLexicalGrounding: false },
+      ),
+    Error,
+    "debrief_quality_invalid_suggested_line_not_grounded",
+  );
+});
+
+Deno.test("salvageDebriefCandidate：優先採用主模型候選（attemptFailures 順序）", () => {
+  const salvaged = salvageDebriefCandidate({
+    failures: [
+      {
+        model: "claude-sonnet-5",
+        raw: salvageGreetingCard(
+          "嗨～剛看到你資料上有健身教練，平常帶課會很累嗎？",
+        ),
+      },
+      {
+        model: "claude-haiku-4-5-20251001",
+        raw: salvageGreetingCard("最近在忙什麼？還是剛下課放鬆中？"),
+      },
+    ],
+    parseOptions: {
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      relaxSubjectiveQualityRubrics: true,
+      turns: salvageGreetingTurns,
+    },
+  });
+  assertEquals(salvaged?.model, "claude-sonnet-5");
+  assertEquals(
+    salvaged?.card.suggestedLine,
+    "嗨～剛看到你資料上有健身教練，平常帶課會很累嗎？",
+  );
+});
+
+Deno.test("salvageDebriefCandidate：主模型候選違反不可退讓守門時，換下一張", () => {
+  const salvaged = salvageDebriefCandidate({
+    failures: [
+      // Sonnet 這張踩 L4，不可搶救
+      {
+        model: "claude-sonnet-5",
+        raw: salvageGreetingCard("偷偷加重量還不能拒絕吧，現在跟我回家"),
+      },
+      {
+        model: "claude-haiku-4-5-20251001",
+        raw: salvageGreetingCard("最近在忙什麼？還是剛下課放鬆中？"),
+      },
+    ],
+    parseOptions: {
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      relaxSubjectiveQualityRubrics: true,
+      turns: salvageGreetingTurns,
+    },
+  });
+  assertEquals(salvaged?.model, "claude-haiku-4-5-20251001");
+});
+
+Deno.test("salvageDebriefCandidate：沒有 raw（傳輸層失敗）或全部搶救失敗 → null", () => {
+  const parseOptions = {
+    requireCompleteCard: true,
+    enforceGeneratedQuality: true,
+    relaxSubjectiveQualityRubrics: true,
+    turns: salvageGreetingTurns,
+  };
+  // 逾時/5xx 這類傳輸失敗沒有候選原文
+  assertEquals(
+    salvageDebriefCandidate({
+      failures: [
+        { model: "claude-sonnet-5" },
+        { model: "claude-haiku-4-5-20251001" },
+      ],
+      parseOptions,
+    }),
+    null,
+  );
+  // 兩張都踩不可退讓守門
+  assertEquals(
+    salvageDebriefCandidate({
+      failures: [
+        {
+          model: "claude-sonnet-5",
+          raw: salvageGreetingCard("偷偷加重量還不能拒絕吧，現在跟我回家"),
+        },
+        { model: "claude-haiku-4-5-20251001", raw: "這根本不是 JSON" },
+      ],
+      parseOptions,
+    }),
+    null,
+  );
 });

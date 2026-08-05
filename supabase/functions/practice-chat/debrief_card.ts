@@ -761,7 +761,7 @@ function partnerClauseContainsInviteEvidence(value: string): boolean {
     return false;
   }
   return /要不要.{0,8}一起|(?:跟|和)[妳你].{0,10}(?:見面|碰面|喝咖啡|吃飯|散步|看展|逛街)/u
-      .test(compact) ||
+    .test(compact) ||
     // 她自報空檔（我這週六下午剛好有空）＝主動釋出時間窗口
     // （2026-07-23 gd1 eval：卡片寫「她釋出時間窗口」被誤殺）。
     /我.{0,10}(?:有空|沒事|有時間|都可以|沒排)/u.test(compact) ||
@@ -815,7 +815,9 @@ function clauseClaimsPartnerInitiatedInvite(value: string): boolean {
   return /(?:她|對方).{0,28}(?:主動(?:提(?:了|出)?|說|問|給|丟|發出)?|(?:提(?:了|出)?|說想|說要|問|給|丟|發出|表示想|想|(?<!需)要|願意))(?:(?!窗口|機會|時機|的).){0,12}(?:見面|碰面|邀約|約你|邀你)/u
     .test(withoutThreshold) ||
     // 「邀約窗口/機會/時機」是機會描述不是「她發出過邀約」的宣稱，不觸發本 gate
-    /(?:她|對方)的.{0,10}(?:邀約(?!窗口|機會|時機)|見面提議|約見)/u.test(withoutThreshold);
+    /(?:她|對方)的.{0,10}(?:邀約(?!窗口|機會|時機)|見面提議|約見)/u.test(
+      withoutThreshold,
+    );
 }
 
 function assertNoInventedPartnerInitiative(
@@ -977,7 +979,9 @@ function hintCreditHasUnscopedAdversative(value: string): boolean {
           .test(tail);
       const isForwardCoaching = hasForwardCoachingScope(tail) &&
         !/(?:照提示|照貼|提示那句|原本提示|hint)/iu.test(tail);
-      if (hasPartnerSubject(tail) || targetsOtherUserTurn || isForwardCoaching) {
+      if (
+        hasPartnerSubject(tail) || targetsOtherUserTurn || isForwardCoaching
+      ) {
         continue;
       }
       // 契約收斂（2026-07-23 真機 debrief 全滅）：轉折尾只有「詞表批評」或
@@ -1120,7 +1124,11 @@ function preservedCardCritiquesExactHint(
           !/(?:你|妳)/u.test(compact) &&
           !hasPartnerSubject(clause) &&
           !hasForwardCoachingScope(clause) &&
-          !critiqueClearlyTargetsAnotherUserTurn(clause, turns, appliedHintTurns)
+          !critiqueClearlyTargetsAnotherUserTurn(
+            clause,
+            turns,
+            appliedHintTurns,
+          )
         ) {
           return true;
         }
@@ -1495,6 +1503,7 @@ function assertGeneratedDebriefQuality(
     partnerFactualEvidence?: string[];
     trustedFactClaims?: HintFactClaim[];
     relaxSubjectiveQualityRubrics?: boolean;
+    skipLexicalGrounding?: boolean;
   },
 ): void {
   const relaxSubjective = opts.relaxSubjectiveQualityRubrics === true;
@@ -1584,16 +1593,23 @@ function assertGeneratedDebriefQuality(
 
   // 貼句欄是「下次可傳的第一句」，不必逐字複讀最新句；引用整場任何具體
   // 細節都算有憑有據（latestOnly 舊制 2026-07-23 判定表 8/11 誤殺）。
-  assertPracticeTextGroundedInTurns({
-    visibleText: card.suggestedLine,
-    turns: opts.turns,
-    errorCode: "debrief_quality_invalid_suggested_line_not_grounded",
-  });
+  //
+  // grounding 是偏好不是否決權：前兩發（Sonnet→Haiku）照擋，兩發都沒過時由
+  // salvage pass 開 skipLexicalGrounding 端出最佳候選，而不是讓使用者拿到 503
+  //（2026-08-05 Eric 拍板：hint/debrief × 新手/一般/Game 正常一定要有輸出）。
+  // 只有 salvage 能開這個旗標；其餘不可退讓守門在 salvage 一律照跑。
+  if (opts.skipLexicalGrounding !== true) {
+    assertPracticeTextGroundedInTurns({
+      visibleText: card.suggestedLine,
+      turns: opts.turns,
+      errorCode: "debrief_quality_invalid_suggested_line_not_grounded",
+    });
+  }
   // 分析欄位（summary/strengths/watchouts…）是後設評語（投入度/單向/缺自
   // 揭），詞面 n-gram 接地檢查天生不適用（判定表 20/20 全誤殺）——捏造防線
   // 由 fact ledger（assertHintFactClaimsSupported）與罐頭簽名檢查負責，
   // 這裡不再做詞面 grounding。gameBreakdown 同理只查可貼的 nextFirstLine。
-  if (card.gameBreakdown) {
+  if (card.gameBreakdown && opts.skipLexicalGrounding !== true) {
     assertPracticeTextGroundedInTurns({
       visibleText: card.gameBreakdown.nextFirstLine,
       turns: opts.turns,
@@ -1636,6 +1652,11 @@ export function parseDebriefCard(
      * 守門詞表、breakdown 完整性一律照擋。
      */
     relaxSubjectiveQualityRubrics?: boolean;
+    /**
+     * 只有 salvage pass 可以開（見 assertGeneratedDebriefQuality 的說明）。
+     * 跳過字面 n-gram grounding，其餘守門照跑。
+     */
+    skipLexicalGrounding?: boolean;
   } = {},
 ): DebriefCard {
   const cleaned = extractJsonObject(raw);
@@ -1783,6 +1804,38 @@ export function parseDebriefCard(
     assertGeneratedDebriefQuality(card, opts);
   }
   return card;
+}
+
+/**
+ * Salvage pass：兩發（Sonnet→Haiku）都被 gate 打回時，從候選原文裡搶救一張
+ * 可以端出的卡，而不是讓使用者拿到 503。
+ *
+ * 2026-08-05 Eric 拍板的產品不變量：hint/debrief × 新手/一般/Game，正常一定
+ * 要有輸出。被打回的候選內容通常是合格的（該日 ai_logs 兩筆全滅，四張候選的
+ * 摘要/亮點/注意點/建議句都正確），只是沒通過字面 grounding 這道偏好性守門。
+ *
+ * 只放掉字面 grounding；安全/L4、內部詞洩漏、罐頭簽名、捏造對方主動邀約、
+ * fact ledger 等不可退讓守門一律照跑，全部候選都救不起來才回 null（→ 503）。
+ *
+ * 候選順序＝attemptFailures 順序（主模型在前），故優先採用 Sonnet 的候選。
+ */
+export function salvageDebriefCandidate(opts: {
+  failures: readonly { model: string; raw?: string }[];
+  parseOptions: Parameters<typeof parseDebriefCard>[1];
+}): { card: DebriefCard; model: string } | null {
+  for (const failure of opts.failures) {
+    if (typeof failure.raw !== "string" || failure.raw.length === 0) continue;
+    try {
+      const card = parseDebriefCard(failure.raw, {
+        ...opts.parseOptions,
+        skipLexicalGrounding: true,
+      });
+      return { card, model: failure.model };
+    } catch {
+      continue; // 這張救不了（踩到不可退讓守門或格式壞掉），換下一張
+    }
+  }
+  return null;
 }
 
 /** Strictly extracts the provider object for the semantic review hand-off. */
