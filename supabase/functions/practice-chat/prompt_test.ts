@@ -216,6 +216,8 @@ Deno.test("game buildChatMessages: acquaintance origin overrides memorySummary f
   // Joyce 介紹——gameMode 原本寫「memorySummary...支持即可成立」，沒有例外
   // 語時，這句會被讀成 summary 已經支持 friend intro，跟 server 給的管道打架。
   const origin = getAcquaintanceOrigin("dating_app");
+  const memorySummary =
+    "更早她自己確認過 Joyce 是朋友，也說可以由 Joyce 介紹認識。";
   const sys = buildChatMessages(
     [
       {
@@ -229,10 +231,13 @@ Deno.test("game buildChatMessages: acquaintance origin overrides memorySummary f
       temperatureScore: 40,
       familiarityScore: 20,
       acquaintanceOrigin: origin,
-      memorySummary:
-        "更早她自己確認過 Joyce 是朋友，也說可以由 Joyce 介紹認識。",
+      memorySummary,
     },
   )[0].content;
+
+  // 兩邊證據都真的要進 prompt，不是只驗證例外句本身存在。
+  assertEquals(sys.includes(origin.sharedFact), true);
+  assertEquals(sys.includes(memorySummary), true);
 
   assertEquals(
     sys.includes("How you two met is the one exception to that support list"),
@@ -244,10 +249,81 @@ Deno.test("game buildChatMessages: acquaintance origin overrides memorySummary f
     ),
     true,
   );
-  // 例外語要接在 gameMode 自己的 Reality Anchoring 句子裡，不是另一個獨立區塊。
+
+  // 順序要是 acquaintanceOrigin → memorySummary → gameMode，例外語才讀得出
+  // 「above」指的是誰；memorySummary 一定要出現在 gameMode 之前，否則例外語
+  // 會反過來被讀成允許 summary 事後覆蓋 origin。
+  const originIndex = sys.indexOf(origin.sharedFact);
+  const memoryIndex = sys.indexOf(memorySummary);
   const gameModeIndex = sys.indexOf("gameMode(hidden guidance)");
   const exceptionIndex = sys.indexOf("How you two met is the one exception");
-  assertEquals(gameModeIndex >= 0 && exceptionIndex > gameModeIndex, true);
+  assert(originIndex >= 0 && originIndex < memoryIndex);
+  assert(memoryIndex < gameModeIndex);
+  // 例外語緊接在 gameMode 自己的 Reality Anchoring 句子裡，不是另一個獨立區塊。
+  assert(gameModeIndex < exceptionIndex);
+  const realityAnchoringIndex = sys.indexOf("Reality Anchoring still applies");
+  assert(
+    realityAnchoringIndex >= 0 && realityAnchoringIndex < exceptionIndex,
+  );
+  // 例外句緊跟在「支持才成立」那句後面，中間不該再插其他 gameMode 段落。
+  const betweenAnchoringAndException = sys.slice(
+    realityAnchoringIndex,
+    exceptionIndex,
+  );
+  assertEquals(
+    betweenAnchoringAndException.includes("spicyGameMode(hidden guidance)"),
+    false,
+  );
+});
+
+Deno.test("game buildChatMessages: without a server acquaintance origin, the exception sentence does not appear", () => {
+  // Codex Q1 遺留邊界：acquaintanceOrigin 型別仍允許 null/undefined。若哪天有
+  // 呼叫路徑漏傳 origin，例外句絕不能繼續講「above establishes it」指著空氣。
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    defaultProfile,
+    {
+      practiceMode: "game",
+      temperatureScore: 40,
+      familiarityScore: 20,
+    },
+  )[0].content;
+
+  assertEquals(sys.includes("gameMode(hidden guidance)"), true);
+  assertEquals(sys.includes("Reality Anchoring still applies"), true);
+  assertEquals(
+    sys.includes("How you two met is the one exception to that support list"),
+    false,
+  );
+  assertEquals(
+    sys.includes(
+      "only the server-provided acquaintance origin above establishes it",
+    ),
+    false,
+  );
+});
+
+Deno.test("standard/beginner buildChatMessages never carry the Game-only acquaintance-origin exception sentence", () => {
+  const origin = getAcquaintanceOrigin("dating_app");
+  for (const practiceMode of ["standard", "beginner"] as const) {
+    const sys = buildChatMessages(
+      [{ role: "user", text: "嗨" }],
+      defaultProfile,
+      {
+        practiceMode,
+        acquaintanceOrigin: origin,
+        memorySummary: "更早她自己確認過 Joyce 是朋友。",
+      },
+    )[0].content;
+
+    assertEquals(sys.includes("gameMode(hidden guidance)"), false);
+    assertEquals(
+      sys.includes(
+        "How you two met is the one exception to that support list",
+      ),
+      false,
+    );
+  }
 });
 
 Deno.test("game buildChatMessages includes social-game FSM and persona strategy for every rarity", () => {
