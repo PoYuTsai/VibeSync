@@ -20,6 +20,7 @@ import {
   MAX_COACHING_LENGTH,
   parseHintResult,
   salvageHintCandidate,
+  SERVER_NO_PASTEABLE_REASON,
 } from "./hint.ts";
 import { resolvePracticeProfile } from "./practice_persona.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
@@ -6050,10 +6051,8 @@ Deno.test("無可貼句：她已封鎖時，模型可以誠實說沒有可貼句
     },
   );
   assertEquals(result.replies.length, 0);
-  assertEquals(
-    result.noPasteableReason,
-    "她已經明確要求停止聯絡並封鎖了你，這輪沒有任何適合送出的訊息。",
-  );
+  // 說明句由 server 出（見 SERVER_NO_PASTEABLE_REASON）。
+  assertEquals(result.noPasteableReason, SERVER_NO_PASTEABLE_REASON);
 });
 
 Deno.test("無可貼句：沒有 noPasteableReason 時，兩句可貼回覆仍是必填", () => {
@@ -6091,12 +6090,44 @@ Deno.test("無可貼句：不得同時給 noPasteableReason 與可貼句（語�
   );
 });
 
-Deno.test("無可貼句：安全守門照跑，露骨的 reason 一樣被打回", () => {
+// 2026-08-06 W3（Codex 二審 P1）推翻了 W1 的「reason 過安全守門」：現在說明句
+// 一律由 server 出，模型那段字只當訊號用。這是比「守門擋得住」更強的性質——
+// 模型寫什麼都不可能抵達使用者，捏造面直接歸零。
+Deno.test("無可貼句：模型寫的 reason 一個字都不會抵達使用者", () => {
+  for (
+    const modelReason of [
+      "偷偷加重量還不能拒絕吧，現在跟我回家", // L4
+      "她因為看到你在信義區跟前任約會，所以封鎖你", // 捏造敘事
+      "warmUp：這輪沒東西可貼", // 內部標籤
+    ]
+  ) {
+    const result = parseHintResult(
+      JSON.stringify({
+        noPasteableReason: modelReason,
+        coaching: "她已經把界線畫死，這裡要學的是收手。",
+      }),
+      {
+        mode: "beginner",
+        enforceGeneratedQuality: true,
+        allowNoPasteableReply: true,
+        turns: blockedTurns,
+      },
+    );
+    assertEquals(result.noPasteableReason, SERVER_NO_PASTEABLE_REASON);
+    assertEquals(
+      JSON.stringify(result).includes(modelReason),
+      false,
+      modelReason,
+    );
+  }
+});
+
+Deno.test("無可貼句：reason 是空的仍要打回（那是缺訊號不是沒有可貼句）", () => {
   assertThrows(
     () =>
       parseHintResult(
         JSON.stringify({
-          noPasteableReason: "偷偷加重量還不能拒絕吧，現在跟我回家",
+          noPasteableReason: "   ",
           coaching: "她已經把界線畫死，這裡要學的是收手。",
         }),
         {
@@ -6107,7 +6138,7 @@ Deno.test("無可貼句：安全守門照跑，露骨的 reason 一樣被打回"
         },
       ),
     Error,
-    "hint_l4_unsafe",
+    "hint_missing_noPasteableReason",
   );
 });
 
@@ -6213,8 +6244,8 @@ Deno.test("W3 旁白句：兩欄都是括號旁白時，等同「本輪沒有可
     { ...w3BaseOptions, allowNoPasteableReply: true },
   );
   assertEquals(result.replies.length, 0);
-  // 括號是形狀不是內容，轉成說明時要脫掉，否則使用者看到的是一句舞台指示。
-  assertEquals(result.noPasteableReason, "對話已被封鎖，無法再傳送訊息");
+  // 模型的旁白句只當訊號用，端出去的說明句由 server 出。
+  assertEquals(result.noPasteableReason, SERVER_NO_PASTEABLE_REASON);
 });
 
 Deno.test("W3 旁白句：舊 client（沒宣告能力）一律 fail-closed，不得端出旁白當可貼句", () => {
@@ -6420,6 +6451,11 @@ Deno.test("W3 旁白判定：巢狀括號算旁白，前後有括號但中間有
       "好啊（笑）",
       "（笑）好啊",
       "那我先不吵妳了。",
+      // 全形／半形混用是**標點瑕疵的可貼句**，不是旁白（Codex 二審 P3）。
+      "(好，我不會再聯絡妳了）",
+      "（好，我不會再聯絡妳了)",
+      "",
+      "（",
     ]
   ) {
     assertEquals(isStageDirectionText(pasteable), false, pasteable);

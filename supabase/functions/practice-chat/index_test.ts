@@ -7656,8 +7656,12 @@ Deno.test("她已封鎖時：模型輸出旁白句而 client 有宣告能力，�
 
   assertEquals(response.status, 200);
   assertEquals(json.replies.length, 0);
-  // 括號是形狀不是內容，端給使用者時要脫掉。
-  assertEquals(json.noPasteableReason, "對話已被封鎖，無法再傳送訊息");
+  // 說明句由 server 出，模型寫的那段字一個字都不會抵達使用者
+  //（Codex 二審 P1：狀態守門證明不了模型附帶的敘事）。
+  assertEquals(
+    json.noPasteableReason,
+    "她已經明確表示不想再收到訊息，這一輪沒有可以貼給她的句子。",
+  );
   assertEquals(releaseHintCalls(state).length, 0);
 });
 

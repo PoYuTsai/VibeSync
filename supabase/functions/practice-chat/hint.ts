@@ -222,7 +222,7 @@ export const HINT_TOOL_SCHEMA: Readonly<Record<string, unknown>> = {
     noPasteableReason: {
       type: ["string", "null"],
       description:
-        "只有在對方已封鎖你、或已明確要求停止聯絡時才填：說明本輪為什麼沒有任何適合送出的訊息。填了這欄就不要填 warmUp/steady。",
+        "只有在對方已封鎖你、或已明確要求停止聯絡時才填：說明本輪為什麼沒有任何適合送出的訊息。填了這欄就不要填 warmUp/steady。這一欄只是給系統的旗標，不會顯示給使用者——要讓他懂的話寫在 coaching。",
       maxLength: GENERATED_REPLY_MAX_LENGTH,
     },
   },
@@ -1393,7 +1393,11 @@ export function buildHintMessages(opts: {
         (opts.allowNoPasteableReply === true
           ? "例外：如果她已經封鎖你、或已明確要求停止聯絡，這時沒有任何訊息適合送出，" +
             '就改輸出 {"noPasteableReason":"為什麼這輪沒有可貼句","coaching":"..."}，' +
-            "不要填 warmUp/steady，也不要硬湊一句話術。這種局面要教的是收手與理解界線，不是換句話再試。\n"
+            "不要填 warmUp/steady，也不要硬湊一句話術。這種局面要教的是收手與理解界線，不是換句話再試。" +
+            // noPasteableReason 只當訊號用、不會顯示給使用者（見
+            // SERVER_NO_PASTEABLE_REASON）。不講清楚的話模型會把整段解釋寫進
+            // 那一欄、coaching 只剩一句，使用者就什麼也沒學到。
+            "把該讓他懂的話全部寫在 coaching：noPasteableReason 只是給系統的旗標，不會顯示給他看。\n"
           : "") +
         (opts.practiceMode === "game"
           ? ""
@@ -2408,26 +2412,24 @@ function assertNoPasteableStateIsGrounded(options: HintParseOptions): void {
 export function isStageDirectionText(value: string): boolean {
   const trimmed = value.trim();
   if (trimmed.length < 2) return false;
-  const OPEN = "（(";
-  const CLOSE = "）)";
-  if (!OPEN.includes(trimmed[0])) return false;
-  let depth = 0;
+  const CLOSER_FOR: Record<string, string> = { "（": "）", "(": ")" };
+  if (!(trimmed[0] in CLOSER_FOR)) return false;
+  const expected: string[] = [];
   for (let index = 0; index < trimmed.length; index += 1) {
     const char = trimmed[index];
-    if (OPEN.includes(char)) depth += 1;
-    else if (CLOSE.includes(char)) depth -= 1;
-    if (depth < 0) return false;
-    // 深度在結尾之前歸零＝這組括號已經收掉，後面還有字＝不是單一組旁白。
-    if (depth === 0 && index !== trimmed.length - 1) return false;
+    if (char in CLOSER_FOR) {
+      expected.push(CLOSER_FOR[char]);
+    } else if (char === "）" || char === ")") {
+      // 全形／半形必須自己配自己：「(好，我不會再聯絡妳了）」是標點混用的
+      // **可貼句**，不是旁白（Codex 二審 P3）。
+      if (expected.pop() !== char) return false;
+    } else {
+      continue;
+    }
+    // 括號在結尾之前就收乾淨＝這組已經結束，後面還有字＝不是單一組旁白。
+    if (expected.length === 0 && index !== trimmed.length - 1) return false;
   }
-  return depth === 0;
-}
-
-/** 旁白轉「本輪沒有可貼句」說明時，去掉外層括號（括號是形狀不是內容）。 */
-export function stripStageDirectionMarkers(value: string): string {
-  const trimmed = value.trim();
-  if (!isStageDirectionText(trimmed)) return trimmed;
-  return trimmed.slice(1, -1).trim();
+  return expected.length === 0;
 }
 
 function assertGeneratedHintQuality(opts: {
@@ -2562,6 +2564,22 @@ export function salvageHintCandidate<T>(opts: {
   return null;
 }
 
+/**
+ * 「本輪沒有可貼句」的說明句一律由 server 出，不採用模型寫的那段。
+ *
+ * 理由（Codex 二審 P1）：狀態守門只能證明「她確實畫了逐客令」，證明不了模型在
+ * 說明句裡附帶的敘事。模型可以寫「她因為看到你在信義區跟前任約會，所以封鎖你」
+ * ——狀態是真的，理由和地點是編的，而且會原樣抵達使用者。而通用 fact ledger
+ * 套不上這個欄位（對短狀態句會誤判成 unsupported_detail，見
+ * assertNoPasteableStateIsGrounded 的說明）。
+ *
+ * 我們真正需要模型做的判斷是**布林**——這一輪還有沒有可以貼的句子——不是它的
+ * 文筆。字句由 server 出＝捏造面歸零，比照既有的 server-authored decision。
+ * 「為什麼走到這裡」仍由 coaching 說明，而 coaching 是過 fact ledger 的。
+ */
+export const SERVER_NO_PASTEABLE_REASON =
+  "她已經明確表示不想再收到訊息，這一輪沒有可以貼給她的句子。";
+
 export function parseHintResult(
   raw: string,
   options: HintParseOptions = {},
@@ -2580,12 +2598,14 @@ export function parseHintResult(
       // 同時給「沒有可貼句」與可貼句＝自相矛盾，不猜哪個是真的。
       throw new Error("hint_no_pasteable_conflict");
     }
-    const reason = requiredString(
-      noPasteableRaw,
-      "noPasteableReason",
-      GENERATED_REPLY_MAX_LENGTH,
-      options,
-    );
+    // 模型這段字只當**訊號**用（有沒有可貼句），內容不採用——見
+    // SERVER_NO_PASTEABLE_REASON。故只驗它是不是有內容的字串，不再跑可見文字
+    // 守門：那些守門是為了「會被端出去的字」而存在，這段不會被端出去。
+    if (
+      typeof noPasteableRaw !== "string" || noPasteableRaw.trim().length === 0
+    ) {
+      throw new Error("hint_missing_noPasteableReason");
+    }
     const coachingOnly = requiredString(
       parsed.coaching,
       "coaching",
@@ -2599,7 +2619,11 @@ export function parseHintResult(
       texts: [coachingOnly],
       parseOptions: options,
     });
-    return { replies: [], coaching: coachingOnly, noPasteableReason: reason };
+    return {
+      replies: [],
+      coaching: coachingOnly,
+      noPasteableReason: SERVER_NO_PASTEABLE_REASON,
+    };
   }
 
   const warmUp = requiredString(
@@ -2633,13 +2657,16 @@ export function parseHintResult(
       // 舊 client 畫不出「本輪沒有可貼句」，照鐵則 fail-closed。
       throw new Error("hint_no_pasteable_unsupported_client");
     }
-    const reason = stripStageDirectionMarkers(warmUp);
     assertNoPasteableStateIsGrounded(options);
     assertNoPasteableFactClaimsSupported({
       texts: [coaching],
       parseOptions: options,
     });
-    return { replies: [], coaching, noPasteableReason: reason };
+    return {
+      replies: [],
+      coaching,
+      noPasteableReason: SERVER_NO_PASTEABLE_REASON,
+    };
   }
   if (
     (warmUpIsStageDirection || steadyIsStageDirection) &&
