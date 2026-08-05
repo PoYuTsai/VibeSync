@@ -75,6 +75,7 @@ import {
   type ClaudeArgs,
 } from "./claude.ts";
 import { buildPracticeSceneContext } from "./life_schedule.ts";
+import { buildAcquaintanceOrigin } from "./acquaintance_origin.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import {
   rejectL4UnsafeVisibleText,
@@ -1748,6 +1749,15 @@ export function createPracticeChatHandler(
       visiblePracticeThreadId: request.visiblePracticeThreadId ??
         request.sessionId,
     });
+    // 認識管道：server 唯一真相源、無 DB 狀態，seed 綁 thread（同一段關係跨輪、
+    // 跨 chat/hint/debrief 都是同一個場景），故舊 client 不需改動也拿得到一致背景。
+    const acquaintanceOrigin = buildAcquaintanceOrigin({
+      profile: request.profile,
+      threadId: threadIdForPracticeRequest({
+        sessionId: request.sessionId,
+        visiblePracticeThreadId: request.visiblePracticeThreadId,
+      }),
+    });
 
     const configuredDeepSeekApiKey = deps.getEnv("DEEPSEEK_API_KEY");
     const claudeApiKey = deps.getEnv("CLAUDE_API_KEY");
@@ -2597,6 +2607,7 @@ export function createPracticeChatHandler(
           familiarityScore: hintFamiliarityScore,
           partnerMood: hintPartnerMood,
           sceneContext,
+          acquaintanceOrigin,
           memorySummary: promptMemorySummary,
           gameState: ledgerGameState,
         });
@@ -2604,6 +2615,7 @@ export function createPracticeChatHandler(
           profile: request.profile,
           practiceMode: request.practiceMode,
           sceneContext,
+          acquaintanceOrigin,
           memorySummary: promptMemorySummary,
         });
         const generatedHintParseOptions = {
@@ -3306,6 +3318,7 @@ export function createPracticeChatHandler(
               partnerState: partnerStateFromLedger(ledger) ??
                 relationshipThreadState?.partnerState ?? null,
               sceneContext,
+              acquaintanceOrigin,
               memorySummary: promptMemorySummary,
               gameState: ledgerGameState,
               appliedHintTurns: ledgerAppliedHintTurns,
@@ -3314,6 +3327,7 @@ export function createPracticeChatHandler(
               partnerState: partnerStateFromLedger(ledger) ??
                 relationshipThreadState?.partnerState ?? null,
               sceneContext,
+              acquaintanceOrigin,
               memorySummary: promptMemorySummary,
             },
         );
@@ -3321,6 +3335,7 @@ export function createPracticeChatHandler(
           profile: request.profile,
           practiceMode: debriefPracticeMode,
           sceneContext,
+          acquaintanceOrigin,
           memorySummary: promptMemorySummary,
         });
         const generatedDebriefParseOptions = {
@@ -3682,12 +3697,14 @@ export function createPracticeChatHandler(
                   familiarityScore: currentFamiliarity ?? 0,
                   partnerState: promptPartnerState,
                   sceneContext,
+                  acquaintanceOrigin,
                   memorySummary: promptMemorySummary,
                   gameState: ledgerGameState,
                 }
                 : {
                   partnerState: promptPartnerState,
                   sceneContext,
+                  acquaintanceOrigin,
                   memorySummary: promptMemorySummary,
                 },
             ),
@@ -3831,6 +3848,8 @@ export function createPracticeChatHandler(
       aiTurnCount: newAiCount,
       personaId: request.profile.personaId,
       difficulty: request.profile.difficulty,
+      // 認識管道只記 id（allowlisted 常數，無使用者內容），供分佈與一致性觀測。
+      acquaintanceOriginId: acquaintanceOrigin.id,
       costDeducted: deducted,
     });
 

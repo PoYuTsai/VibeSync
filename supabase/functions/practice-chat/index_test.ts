@@ -21,6 +21,11 @@ import {
   HINT_REVIEW_SCHEMA_VERSION,
 } from "./hint_prefetch.ts";
 import { DEBRIEF_QUALITY_SCHEMA_VERSION } from "./debrief_card.ts";
+import {
+  buildAcquaintanceOrigin,
+  eligibleAcquaintanceOrigins,
+} from "./acquaintance_origin.ts";
+import { resolvePracticeProfile } from "./practice_persona.ts";
 
 const NOW = new Date("2026-06-28T04:00:00.000Z");
 const RESET_AT = "2026-06-28T00:00:00.000Z";
@@ -1949,6 +1954,61 @@ Deno.test("exact applied hint stays non-negative when fallback retry sees stale 
     58,
   );
   assertEquals(learningUpdateCalls(state)[1].params.p_temperature_delta, 0);
+});
+
+Deno.test("chat prompt carries a server-resolved acquaintance origin, stable per thread", async () => {
+  const profile = resolvePracticeProfile({
+    profileId: "practice_girl_001",
+    difficulty: "normal",
+  });
+  const expected = buildAcquaintanceOrigin({
+    profile,
+    threadId: "thread-origin-1",
+  });
+
+  const first = await run(
+    { ledger: ledger() },
+    chatBody({
+      profileId: "practice_girl_001",
+      difficulty: "normal",
+      visiblePracticeThreadId: "thread-origin-1",
+    }),
+  );
+  assertEquals(first.response.status, 200);
+  const firstPrompt = first.state.deepSeekCalls[0].messages
+    .map((message) => message.content)
+    .join("\n");
+  assert(firstPrompt.includes("你們是怎麼認識的"));
+  assert(
+    firstPrompt.includes(expected.sharedFact),
+    `chat prompt should carry the resolved origin: ${expected.id}`,
+  );
+  // 只有一個管道進 prompt，不會同時塞多個場景讓她自相矛盾。
+  const injected = eligibleAcquaintanceOrigins(profile.girl).filter((origin) =>
+    firstPrompt.includes(origin.sharedFact)
+  );
+  assertEquals(injected.length, 1);
+
+  // 同一個 thread 續聊必須拿到同一個管道（她的說法不可跨輪改變）。
+  const second = await run(
+    { ledger: ledger({ ai_count: 1, charged: true }) },
+    chatBody({
+      profileId: "practice_girl_001",
+      difficulty: "normal",
+      visiblePracticeThreadId: "thread-origin-1",
+      roundIndex: 2,
+      turns: [
+        { role: "user", text: "hi" },
+        { role: "ai", text: "嗯嗯" },
+        { role: "user", text: "妳今天還好嗎" },
+      ],
+    }),
+  );
+  assertEquals(second.response.status, 200);
+  const secondPrompt = second.state.deepSeekCalls[0].messages
+    .map((message) => message.content)
+    .join("\n");
+  assert(secondPrompt.includes(expected.sharedFact));
 });
 
 Deno.test("successful beginner classifier uses JSON mode and updates learning state", async () => {

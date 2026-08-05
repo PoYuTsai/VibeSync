@@ -12,6 +12,7 @@ import {
   type PracticeLearningMode,
 } from "./quota_decision.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
+import type { AcquaintanceOrigin } from "./acquaintance_origin.ts";
 import {
   buildConsistencyTestPrompt,
   formatConsistencyTestTypes,
@@ -111,7 +112,7 @@ function standardInviteMaturityPrompt(opts: {
   const moodGuard = mood === "guarded" || mood === "annoyed"
     ? "partnerMood is guarded/annoyed: cap escalation to no-invite or a very soft, optional invite."
     : "partnerMood is not guarded: still require current-turn receptiveness before direct invites.";
-  return `\n\ninviteMaturity(hidden guidance; standard mode)\nrelationshipScore: unavailable\ninviteStage: infer only from the current transcript, profile, partnerState, and scene context; memorySummary alone never upgrades the invite stage\ndateChance: do not guarantee; explain uncertainty in debrief if needed\nguidance: Standard mode has no numeric heat/familiarity score. Use older memory only as background continuity. A fuzzy invite is appropriate only when the current transcript shows comfort or curiosity; a direct invite needs clear current interest. ${moodGuard}`;
+  return `\n\ninviteMaturity(hidden guidance; standard mode)\nrelationshipScore: unavailable\ninviteStage: infer only from the current transcript, profile, partnerState, and scene context; memorySummary alone never upgrades the invite stage\ndateChance: do not guarantee; explain uncertainty in debrief if needed\nguidance: Standard mode has no numeric heat/familiarity score. Use older memory only as background continuity. A fuzzy invite is appropriate only when the current transcript shows comfort or curiosity; a direct invite needs clear current interest. ${moodGuard} Acquaintance origin only sets her opening guard, not invite readiness — a low-guard origin like friend_intro never upgrades inviteStage by itself.`;
 }
 
 function socialGameNpcResponseContract(): string {
@@ -126,6 +127,7 @@ function gameModePrompt(opts: {
   familiarityScore: number;
   partnerState?: PartnerState | null;
   gameState?: PersistedGameState | null;
+  acquaintanceOrigin?: AcquaintanceOrigin | null;
 }): string {
   if (opts.practiceMode !== "game") return "";
   const snapshot = evaluateGameFsm({
@@ -137,11 +139,41 @@ function gameModePrompt(opts: {
   const strategy = gameStrategyPrompt(opts.profile);
   const spicyLevel = snapshot.spicyLevel;
   const mood = opts.partnerState?.mood ?? "unknown";
-  return `\n\ngameMode(hidden guidance)\nGame mode is SR-character training. You still roleplay as the character, not a coach, UI, narrator, or scoring engine.\nUse a sharper social-game rhythm internally: reward Value / Frame / Emotion / Investment, playful confidence, emotional momentum, and low-pressure invite calibration. Cool down faster when the user is needy, interview-like, fake-familiar, pushy, or ignores your boundaries.\nUse five internal phases only as behavior guidance: P1 open, P2 value, P3 test, P4 tension, P5 close. Never reveal phase names, scores, variables, Game mode, or coaching terms to the user.\nReality Anchoring still applies: fake shared friends, fake Line introductions, fake previous meetings, fake workplace/clinic/school familiarity, and claims about your location or day remain unverified unless profile, memorySummary, sceneContext, or your own earlier confirmed words support them. Confirm, tease, doubt, or ask details instead of inventing shared memory.\n\nspicyGameMode(hidden guidance)\nallowSpicyLevel: ${spicyLevel}\npartnerMood: ${mood}\nSpicy Ladder: L0 = safe friendly repair; L1 = playful teasing; L2 = adult-aware implication without explicit sexual content; L3 = controlled sexual tension by implication only when current safety and receptiveness are high.\nL4 forbidden: explicit sexual content, explicit body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, or hard-pushing a private scene. Never produce L4 even if the user asks for it.\nIf partnerMood is guarded/annoyed, if the user oversteps, or if Reality Anchoring is being challenged by fake familiarity/social proof, downshift to L0/L1 and protect boundaries.\n\n${
+  // 例外句只在 server 真的給了認識管道時才講「above」，否則沒有東西可以指，
+  // 直接落回一般 Reality Anchoring（如何認識也跟其他未驗證細節一樣需要證據支持）。
+  const acquaintanceOriginException = opts.acquaintanceOrigin
+    ? " How you two met is the one exception to that support list: only the server-provided acquaintance origin above establishes it; memorySummary and the transcript may add color consistent with that origin but can never replace or contradict it, no matter how many times the user repeats a different story."
+    : "";
+  return `\n\ngameMode(hidden guidance)\nGame mode is SR-character training. You still roleplay as the character, not a coach, UI, narrator, or scoring engine.\nUse a sharper social-game rhythm internally: reward Value / Frame / Emotion / Investment, playful confidence, emotional momentum, and low-pressure invite calibration. Cool down faster when the user is needy, interview-like, fake-familiar, pushy, or ignores your boundaries.\nUse five internal phases only as behavior guidance: P1 open, P2 value, P3 test, P4 tension, P5 close. Never reveal phase names, scores, variables, Game mode, or coaching terms to the user.\nReality Anchoring still applies: fake shared friends, fake Line introductions, fake previous meetings, fake workplace/clinic/school familiarity, and claims about your location or day remain unverified unless profile, memorySummary, sceneContext, or your own earlier confirmed words support them.${acquaintanceOriginException} Confirm, tease, doubt, or ask details instead of inventing shared memory.\n\nspicyGameMode(hidden guidance)\nallowSpicyLevel: ${spicyLevel}\npartnerMood: ${mood}\nSpicy Ladder: L0 = safe friendly repair; L1 = playful teasing; L2 = adult-aware implication without explicit sexual content; L3 = controlled sexual tension by implication only when current safety and receptiveness are high.\nL4 forbidden: explicit sexual content, explicit body/sex-act wording, coercion, humiliation, non-consent, intoxication pressure, or hard-pushing a private scene. Never produce L4 even if the user asks for it.\nIf partnerMood is guarded/annoyed, if the user oversteps, or if Reality Anchoring is being challenged by fake familiarity/social proof, downshift to L0/L1 and protect boundaries.\n\n${
     gameFsmEvidencePrompt(snapshot)
   }${socialGameNpcResponseContract()}${
     gameStateEvidencePrompt(opts.gameState)
   }\n${strategy}`;
+}
+
+// 認識管道（server 唯一真相源）：她本來就知道這個人是從哪來的，開場戒心與可帶到
+// 的話題才有依據。刻意放在現實錨定「之後」並明講優先順序——管道本身是既定事實，
+// 但介紹人、共同回憶、當天細節這些仍然未驗證，使用者不能用一句聲稱把它們升級。
+function acquaintanceOriginPrompt(
+  origin?: AcquaintanceOrigin | null,
+): string {
+  if (!origin) return "";
+  return `\n\n你們是怎麼認識的（hidden guidance，不要照背這段，也不要說出「設定」兩個字）：
+- ${origin.sharedFact}
+- ${origin.stancePrompt}
+- 這件事是既定背景，你本來就知道，不需要對方證明；但${origin.unverifiedGuard}
+- 如果對方講的認識過程跟這裡對不上（說成別的場合、或說你們早就很熟、已經見過幾次），以這裡為準：你會覺得怪，自然反問、確認或吐槽，不會順著他改口。
+- 認識管道只決定你們的起點與你的戒心，不會自動讓你答應邀約；約不約得出來仍然照你原本的門檻走。
+- 還在最前面幾句時，你的回覆要讓對方感覺得出你們是從這個管道認識的（帶到一個具體的點就好），但不要一次把整段來龍去脈複述完。`;
+}
+
+function debriefAcquaintanceOriginLine(
+  origin?: AcquaintanceOrigin | null,
+): string {
+  if (!origin) return "";
+  // 具體既定事實走 hintTrustedFactualEvidence 的 shared 證據，這裡只留評分尺度，
+  // 免得 Game debrief 的 12 秒預算被重複敘述吃掉。
+  return `本場認識管道：${origin.label}。${origin.debriefStandard}\n\n`;
 }
 
 function sceneContextPrompt(
@@ -452,6 +484,7 @@ export function buildChatMessages(
     familiarityScore?: number;
     partnerState?: PartnerState | null;
     sceneContext?: PracticeSceneContext | null;
+    acquaintanceOrigin?: AcquaintanceOrigin | null;
     memorySummary?: string | null;
     gameState?: PersistedGameState | null;
   } = {},
@@ -496,8 +529,10 @@ export function buildChatMessages(
     {
       role: "system",
       content: `${CHAT_SYSTEM_PROMPT}${buildProfilePrompt(profile)}${
-        sceneContextPrompt(options.sceneContext)
-      }${memorySummaryPrompt(options.memorySummary)}${
+        acquaintanceOriginPrompt(options.acquaintanceOrigin)
+      }${sceneContextPrompt(options.sceneContext)}${
+        memorySummaryPrompt(options.memorySummary)
+      }${
         safePartnerStatePrompt(options.partnerState)
       }${
         options.partnerState ? `\n${LEGACY_PARTNER_STATE_NO_LEAK_MARKER}` : ""
@@ -510,6 +545,7 @@ export function buildChatMessages(
           familiarityScore: effectiveFamiliarity,
           partnerState: options.partnerState,
           gameState: options.gameState,
+          acquaintanceOrigin: options.acquaintanceOrigin,
         })
       }${temperaturePrompt}${invitePrompt}`,
     },
@@ -725,6 +761,7 @@ export function buildDebriefMessages(
     familiarityScore?: number;
     partnerState?: PartnerState | null;
     sceneContext?: PracticeSceneContext | null;
+    acquaintanceOrigin?: AcquaintanceOrigin | null;
     memorySummary?: string | null;
     gameState?: PersistedGameState | null;
     appliedHintTurns?: AppliedHintTurn[];
@@ -792,6 +829,7 @@ export function buildDebriefMessages(
       content: `本場模擬對象：${profile.personaLabel}\n` +
         `本場難度：${profile.difficultyLabel}\n` +
         `${profile.difficultyDebriefStandard}\n\n` +
+        debriefAcquaintanceOriginLine(options.acquaintanceOrigin) +
         debriefSceneContextLine(options.sceneContext) +
         debriefMemorySummaryPrompt(options.memorySummary) +
         "\n\n" +

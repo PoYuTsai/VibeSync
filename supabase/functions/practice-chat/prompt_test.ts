@@ -11,7 +11,11 @@ import {
   CHAT_SYSTEM_PROMPT,
   DEBRIEF_SYSTEM_PROMPT,
 } from "./prompt.ts";
-import { buildHintMessages } from "./hint.ts";
+import { buildHintMessages, hintTrustedFactualEvidence } from "./hint.ts";
+import {
+  ACQUAINTANCE_ORIGINS,
+  getAcquaintanceOrigin,
+} from "./acquaintance_origin.ts";
 import {
   temperatureBandDebriefInstruction,
   temperatureBandInstruction,
@@ -29,6 +33,17 @@ const dinnerScene: PracticeSceneContext = {
   promptLine: "妳剛跟朋友吃完飯，在回家的路上，回覆可以比白天放鬆一點。",
   replyTempo: "normal",
 };
+
+// prompt 預算測試用最長的認識管道當上界：新增更長的管道時測試會自己抓到，
+// 不需要人工重挑 worst case。
+const longestHintOrigin = [...ACQUAINTANCE_ORIGINS].sort((a, b) =>
+  (b.label.length + b.sharedFact.length + b.hintFocus.length) -
+  (a.label.length + a.sharedFact.length + a.hintFocus.length)
+)[0];
+const longestDebriefOrigin = [...ACQUAINTANCE_ORIGINS].sort((a, b) =>
+  (b.label.length + b.debriefStandard.length) -
+  (a.label.length + a.debriefStandard.length)
+)[0];
 
 function hasLoneSurrogate(value: string): boolean {
   for (let index = 0; index < value.length; index++) {
@@ -140,6 +155,12 @@ Deno.test("standard buildChatMessages includes no-score invite guidance when con
   assertEquals(sys.includes("relationshipScore: unavailable"), true);
   assertEquals(sys.includes("memorySummary alone never upgrades"), true);
   assertEquals(sys.includes("cap escalation"), true);
+  assertEquals(
+    sys.includes(
+      "Acquaintance origin only sets her opening guard, not invite readiness",
+    ),
+    true,
+  );
 });
 
 Deno.test("standard buildChatMessages includes no-score invite guidance without memory", () => {
@@ -153,6 +174,12 @@ Deno.test("standard buildChatMessages includes no-score invite guidance without 
   );
   assertEquals(sys.includes("relationshipScore: unavailable"), true);
   assertEquals(sys.includes("memorySummary alone never upgrades"), true);
+  assertEquals(
+    sys.includes(
+      "Acquaintance origin only sets her opening guard, not invite readiness",
+    ),
+    true,
+  );
 });
 
 Deno.test("beginner buildChatMessages includes temperature score", () => {
@@ -182,6 +209,121 @@ Deno.test("game buildChatMessages includes game and spicy hidden guidance", () =
   assertEquals(sys.includes("Value / Frame / Emotion / Investment"), true);
   assertEquals(sys.includes("L4 forbidden"), true);
   assertEquals(sys.includes("Reality Anchoring still applies"), true);
+});
+
+Deno.test("game buildChatMessages: acquaintance origin overrides memorySummary for how-they-met claims", () => {
+  // Codex Q1 對抗案例：server 給 dating_app，但 memorySummary 早就「確認過」
+  // Joyce 介紹——gameMode 原本寫「memorySummary...支持即可成立」，沒有例外
+  // 語時，這句會被讀成 summary 已經支持 friend intro，跟 server 給的管道打架。
+  const origin = getAcquaintanceOrigin("dating_app");
+  const memorySummary =
+    "更早她自己確認過 Joyce 是朋友，也說可以由 Joyce 介紹認識。";
+  const sys = buildChatMessages(
+    [
+      {
+        role: "user",
+        text: "上次 Joyce 不是把你的 Line 給我嗎，你應該記得吧",
+      },
+    ],
+    defaultProfile,
+    {
+      practiceMode: "game",
+      temperatureScore: 40,
+      familiarityScore: 20,
+      acquaintanceOrigin: origin,
+      memorySummary,
+    },
+  )[0].content;
+
+  // 兩邊證據都真的要進 prompt，不是只驗證例外句本身存在。
+  assertEquals(sys.includes(origin.sharedFact), true);
+  assertEquals(sys.includes(memorySummary), true);
+
+  assertEquals(
+    sys.includes("How you two met is the one exception to that support list"),
+    true,
+  );
+  assertEquals(
+    sys.includes(
+      "only the server-provided acquaintance origin above establishes it",
+    ),
+    true,
+  );
+
+  // 順序要是 acquaintanceOrigin → memorySummary → gameMode，例外語才讀得出
+  // 「above」指的是誰；memorySummary 一定要出現在 gameMode 之前，否則例外語
+  // 會反過來被讀成允許 summary 事後覆蓋 origin。
+  const originIndex = sys.indexOf(origin.sharedFact);
+  const memoryIndex = sys.indexOf(memorySummary);
+  const gameModeIndex = sys.indexOf("gameMode(hidden guidance)");
+  const exceptionIndex = sys.indexOf("How you two met is the one exception");
+  assert(originIndex >= 0 && originIndex < memoryIndex);
+  assert(memoryIndex < gameModeIndex);
+  // 例外語緊接在 gameMode 自己的 Reality Anchoring 句子裡，不是另一個獨立區塊。
+  assert(gameModeIndex < exceptionIndex);
+  const realityAnchoringIndex = sys.indexOf("Reality Anchoring still applies");
+  assert(
+    realityAnchoringIndex >= 0 && realityAnchoringIndex < exceptionIndex,
+  );
+  // 例外句緊跟在「支持才成立」那句後面，中間不該再插其他 gameMode 段落。
+  const betweenAnchoringAndException = sys.slice(
+    realityAnchoringIndex,
+    exceptionIndex,
+  );
+  assertEquals(
+    betweenAnchoringAndException.includes("spicyGameMode(hidden guidance)"),
+    false,
+  );
+});
+
+Deno.test("game buildChatMessages: without a server acquaintance origin, the exception sentence does not appear", () => {
+  // Codex Q1 遺留邊界：acquaintanceOrigin 型別仍允許 null/undefined。若哪天有
+  // 呼叫路徑漏傳 origin，例外句絕不能繼續講「above establishes it」指著空氣。
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    defaultProfile,
+    {
+      practiceMode: "game",
+      temperatureScore: 40,
+      familiarityScore: 20,
+    },
+  )[0].content;
+
+  assertEquals(sys.includes("gameMode(hidden guidance)"), true);
+  assertEquals(sys.includes("Reality Anchoring still applies"), true);
+  assertEquals(
+    sys.includes("How you two met is the one exception to that support list"),
+    false,
+  );
+  assertEquals(
+    sys.includes(
+      "only the server-provided acquaintance origin above establishes it",
+    ),
+    false,
+  );
+});
+
+Deno.test("standard/beginner buildChatMessages never carry the Game-only acquaintance-origin exception sentence", () => {
+  const origin = getAcquaintanceOrigin("dating_app");
+  for (const practiceMode of ["standard", "beginner"] as const) {
+    const sys = buildChatMessages(
+      [{ role: "user", text: "嗨" }],
+      defaultProfile,
+      {
+        practiceMode,
+        acquaintanceOrigin: origin,
+        memorySummary: "更早她自己確認過 Joyce 是朋友。",
+      },
+    )[0].content;
+
+    assertEquals(sys.includes("gameMode(hidden guidance)"), false);
+    assertEquals(
+      sys.includes(
+        "How you two met is the one exception to that support list",
+      ),
+      false,
+    );
+  }
 });
 
 Deno.test("game buildChatMessages includes social-game FSM and persona strategy for every rarity", () => {
@@ -510,15 +652,19 @@ Deno.test("Game Debrief prompt stays compact enough for its 12-second budget", (
     temperatureScore: 60,
     familiarityScore: 50,
     partnerState: { mood: "amused", innerThought: "" },
+    acquaintanceOrigin: longestDebriefOrigin,
   }).reduce((total, message) => total + message.content.length, 0);
   const beginnerLength = buildDebriefMessages(turns, profile, {
     practiceMode: "beginner",
     temperatureScore: 60,
     familiarityScore: 50,
     partnerState: { mood: "amused", innerThought: "" },
+    acquaintanceOrigin: longestDebriefOrigin,
   }).reduce((total, message) => total + message.content.length, 0);
 
-  assert(gameLength <= 4500, `Game Debrief prompt is too long: ${gameLength}`);
+  // 2026-08-04：每場注入認識管道評分尺度一行（最長管道 ≤70 bytes），
+  // 上限 4500→4570。
+  assert(gameLength <= 4570, `Game Debrief prompt is too long: ${gameLength}`);
   assert(gameLength <= beginnerLength + 2400);
 });
 
@@ -589,6 +735,7 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
         familiarityScore: 20,
         partnerMood: "neutral",
         memorySummary: maxMemorySummary,
+        acquaintanceOrigin: longestHintOrigin,
       }).reduce((total, message) => total + message.content.length, 0);
       const debriefLength = buildDebriefMessages(turns, profile, {
         practiceMode: "game",
@@ -596,6 +743,7 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
         familiarityScore: 20,
         partnerState: { mood: "neutral", innerThought: "" },
         memorySummary: maxMemorySummary,
+        acquaintanceOrigin: longestDebriefOrigin,
       }).reduce((total, message) => total + message.content.length, 0);
       const debriefWithHintMessages = buildDebriefMessages(turns, profile, {
         practiceMode: "game",
@@ -603,6 +751,7 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
         familiarityScore: 20,
         partnerState: { mood: "neutral", innerThought: "" },
         memorySummary: maxMemorySummary,
+        acquaintanceOrigin: longestDebriefOrigin,
         appliedHintTurns,
       });
       const debriefWithHintLength = debriefWithHintMessages.reduce(
@@ -655,10 +804,13 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 展示舞台：特徵指涉不編名不取代稱＋未來之約（改天/下次帶妳去）也算
   // 邀約、賣關子收口」教學一行＋build 階梯 advice 寫死禁令（「下次/改天」
   // 話術留到 soft 階），固定 bytes，上限 5150→5400。
-  if (maxHint > 5400) {
+  // 2026-08-04 認識管道：Hint 每場多一段 origin 證據（label/originContext/
+  // originFocus，最長管道 ≤150 bytes），上限 5400→5550；Debrief 多一行評分
+  // 尺度（≤70 bytes），上限 4500→4570。
+  if (maxHint > 5550) {
     failures.push(`Hint max ${maxHint} at ${maxHintCase}`);
   }
-  if (maxDebrief > 4500) {
+  if (maxDebrief > 4570) {
     failures.push(`Debrief max ${maxDebrief} at ${maxDebriefCase}`);
   }
   // Applied-Hint Debrief intentionally carries the exact Hint plus its
@@ -670,7 +822,8 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 上限 5900→6000。
   // 2026-07-23 round8：建議句「扣回原話字眼」教學一行（對齊詞面 grounding
   // gate——回應句家族 debrief 版收斂），固定 bytes，上限 6000→6100。
-  if (maxDebriefWithHint > 6100) {
+  // 2026-08-04 認識管道：同上一行評分尺度（≤70 bytes），上限 6100→6170。
+  if (maxDebriefWithHint > 6170) {
     failures.push(
       `Debrief+Hint max ${maxDebriefWithHint} at ${maxDebriefWithHintCase}`,
     );
@@ -1036,6 +1189,99 @@ Deno.test("buildChatMessages injects scene context as hidden life-state guidance
   assertEquals(sys.includes("剛跟朋友吃完飯，在回家的路上"), true);
   assertEquals(sys.includes("不要直接說出 sceneContext"), true);
   assertEquals(sys.includes("如果對方問「在幹嘛」"), true);
+});
+
+Deno.test("buildChatMessages injects the acquaintance origin as established background", () => {
+  const origin = getAcquaintanceOrigin("friend_intro");
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨 妳好" }],
+    defaultProfile,
+    { acquaintanceOrigin: origin },
+  )[0].content;
+
+  assertEquals(sys.includes("你們是怎麼認識的"), true);
+  assertEquals(sys.includes(origin.sharedFact), true);
+  assertEquals(sys.includes(origin.stancePrompt), true);
+  // 管道本身既定，但介紹人/共同回憶這類細節仍要維持未驗證。
+  assertEquals(sys.includes(origin.unverifiedGuard), true);
+  assertEquals(sys.includes("以這裡為準"), true);
+  // 認識管道不得變成繞過人設邀約門檻的捷徑。
+  assertEquals(sys.includes("不會自動讓你答應邀約"), true);
+  // 現實錨定仍在，且認識管道段落排在它之後（後段權重較高）。
+  const anchorIndex = sys.indexOf("認知邊界 / 現實錨定");
+  const originIndex = sys.indexOf("你們是怎麼認識的");
+  assertEquals(anchorIndex >= 0 && originIndex > anchorIndex, true);
+});
+
+Deno.test("standard buildChatMessages' invite guidance excludes a low-guard acquaintance origin from invite readiness", () => {
+  const origin = getAcquaintanceOrigin("friend_intro");
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    defaultProfile,
+    { acquaintanceOrigin: origin },
+  )[0].content;
+
+  const originIndex = sys.indexOf("你們是怎麼認識的");
+  const inviteIndex = sys.indexOf("inviteMaturity(hidden guidance");
+  const exclusionIndex = sys.indexOf(
+    "Acquaintance origin only sets her opening guard, not invite readiness",
+  );
+  // 排除語落在 inviteMaturity 區塊本身（模型讀到的最後一段），跟認識管道
+  // bullet 5 分屬兩處提醒——即使前段被模型忽略，決策當下這裡還有一次。
+  assertEquals(originIndex >= 0 && inviteIndex > originIndex, true);
+  assertEquals(exclusionIndex > inviteIndex, true);
+});
+
+Deno.test("buildChatMessages omits the acquaintance origin block when none is supplied", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨 妳好" }],
+    defaultProfile,
+  )[0].content;
+
+  assertEquals(sys.includes("你們是怎麼認識的"), false);
+  assertEquals(sys.includes("acquaintanceOrigin"), false);
+});
+
+Deno.test("buildDebriefMessages grades against the acquaintance origin without leaking labels", () => {
+  const origin = getAcquaintanceOrigin("ig_cold_dm");
+  const msg = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "？" }],
+    defaultProfile,
+    { acquaintanceOrigin: origin },
+  )[1].content;
+
+  assertEquals(msg.includes(`本場認識管道：${origin.label}`), true);
+  assertEquals(msg.includes(origin.debriefStandard), true);
+  assertEquals(msg.includes("acquaintanceOrigin"), false);
+});
+
+Deno.test("buildHintMessages carries the acquaintance origin as trusted shared evidence", () => {
+  const origin = getAcquaintanceOrigin("street_approach");
+  const hintUser = buildHintMessages({
+    turns: [
+      { role: "user", text: "嗨 我是那天在路上跟妳講話的人" },
+      { role: "ai", text: "喔" },
+    ],
+    profile: defaultProfile,
+    practiceMode: "beginner",
+    temperatureScore: 28,
+    familiarityScore: 0,
+    acquaintanceOrigin: origin,
+  })[1].content;
+
+  assertEquals(hintUser.includes(`acquaintanceOrigin: ${origin.label}`), true);
+  assertEquals(hintUser.includes(origin.sharedFact), true);
+  assertEquals(hintUser.includes(origin.hintFocus), true);
+
+  const evidence = hintTrustedFactualEvidence({
+    profile: defaultProfile,
+    practiceMode: "beginner",
+    acquaintanceOrigin: origin,
+  });
+  assertEquals(
+    evidence.shared.some((line) => line.includes(origin.sharedFact)),
+    true,
+  );
 });
 
 Deno.test("buildChatMessages injects memorySummary as hidden evidence", () => {

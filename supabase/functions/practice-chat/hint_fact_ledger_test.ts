@@ -15,6 +15,7 @@ import {
 } from "./hint_fact_ledger.ts";
 import { resolvePracticeProfile } from "./practice_persona.ts";
 import type { PracticeTurn } from "./validate.ts";
+import { ACQUAINTANCE_ORIGINS } from "./acquaintance_origin.ts";
 
 const ERROR = "hint_quality_invalid_unsupported_detail";
 
@@ -2744,4 +2745,26 @@ Deno.test("regression: 「一路來回」副詞不再變 located_at claim（roun
     Error,
     ERROR,
   );
+});
+
+// Codex Q4（2026-08-04）：認識管道 sharedFact 用的是泛稱場所詞（夜店/酒吧/
+// 咖啡店…），不含具體店名。這顆測試鎖住「泛稱詞不會被抽成具體 venue_named
+// 宣稱」的行為——若以後改動 anchor 規則不小心放寬，這裡會先炸，不用等真機
+// 才發現認識管道背景意外開了一道具體場所捏造的後門。
+Deno.test("認識管道 sharedFact 的泛稱場所詞不會被抽成具體 venue_named 宣稱", () => {
+  for (const origin of ACQUAINTANCE_ORIGINS) {
+    const claims = extractHintFactClaims({
+      text: `${origin.label}：${origin.sharedFact}`,
+      perspective: "memory",
+      provenance: "memory",
+      defaultOwner: "shared",
+    });
+    assertEquals(
+      claims.filter((claim) => claim.relation === "venue_named"),
+      [],
+      `${origin.id} sharedFact 被抽成具體場所宣稱：${
+        JSON.stringify(claims)
+      }`,
+    );
+  }
 });
