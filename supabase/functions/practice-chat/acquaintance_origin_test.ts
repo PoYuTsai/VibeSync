@@ -6,6 +6,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   ACQUAINTANCE_ORIGINS,
+  type AcquaintanceOriginId,
   buildAcquaintanceOrigin,
   eligibleAcquaintanceOrigins,
   getAcquaintanceOrigin,
@@ -128,6 +129,36 @@ Deno.test("認識管道素材不含真實品牌／店名這類禁用專名", () 
       );
     }
   }
+});
+
+// Codex Q3（2026-08-04）：buildAcquaintanceOrigin 是 pool[fnv1a(seed) %
+// pool.length] 現場推導、不落庫。同一個 seed 能不能算出同一個管道，完全
+// 依賴 ACQUAINTANCE_ORIGINS 的陣列順序與長度——若日後重排、插入中間、或
+// 刪除既有項目，既有進行中的 thread 會突然換場景（她的說法會前後矛盾）。
+// 這顆測試把既有十項的順序鎖死：只允許在陣列尾端新增新管道（不影響前面
+// 索引），重排/插入中間/刪除都會讓這裡失敗。
+const EXPECTED_ACQUAINTANCE_ORIGIN_ORDER: readonly AcquaintanceOriginId[] = [
+  "friend_intro",
+  "dating_app",
+  "street_approach",
+  "ig_cold_dm",
+  "nightclub",
+  "social_gathering",
+  "campus",
+  "hobby_class",
+  "work_encounter",
+  "travel_trip",
+];
+
+Deno.test("ACQUAINTANCE_ORIGINS 既有管道順序鎖死，只能在陣列尾端新增", () => {
+  const actualOrder = ACQUAINTANCE_ORIGINS.map((origin) => origin.id);
+  assertEquals(
+    actualOrder.slice(0, EXPECTED_ACQUAINTANCE_ORIGIN_ORDER.length),
+    EXPECTED_ACQUAINTANCE_ORIGIN_ORDER,
+    "既有管道的順序或成員被改動了——這會讓進行中的舊 thread 換場景。" +
+      "若是刻意新增管道，請確認新項目加在陣列最後面，再把新 id 補進" +
+      "EXPECTED_ACQUAINTANCE_ORIGIN_ORDER 尾端。",
+  );
 });
 
 Deno.test("id 型別守衛與查表 fallback", () => {
