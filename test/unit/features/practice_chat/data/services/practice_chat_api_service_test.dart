@@ -1132,6 +1132,35 @@ void main() {
       }
     });
 
+    // 2026-08-06 W3（Codex 首審 P1）：server salvage 端出「沒有拆盤但完整」的卡時，
+    // client 不能把它判成 malformed_debrief，否則 server 的降級在這裡被吃掉。
+    test('requestDebrief：Game 模式接受沒有拆盤的完整卡', () async {
+      final svc = serviceReturning(200, {
+        'generationSource': 'model',
+        'fallbackUsed': false,
+        'qualitySchemaVersion': kPracticeDebriefQualitySchemaVersion,
+        'card': {
+          'summary': 'solid',
+          'strengths': ['hook'],
+          'watchouts': ['too fast'],
+          'suggestedLine': 'next line',
+          'vibe': 'neutral',
+          'gameBreakdown': null,
+        },
+        'costDeducted': 0,
+      });
+
+      final result = await svc.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.game,
+      );
+
+      expect(result.gameBreakdown, isNull);
+      expect(result.summary, 'solid');
+    });
+
     test('requestDebrief drops gameBreakdown outside game mode', () async {
       final svc = serviceReturning(200, {
         'generationSource': 'model',

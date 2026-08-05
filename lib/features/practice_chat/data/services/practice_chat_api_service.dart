@@ -820,10 +820,17 @@ class PracticeChatApiService {
     final gameBreakdown = practiceMode == PracticeLearningMode.game
         ? _parseGameBreakdown(card['gameBreakdown'])
         : null;
-    if (practiceMode == PracticeLearningMode.game && gameBreakdown == null) {
-      // The server contract requires all five Game fields. Treat a malformed
-      // 200 like any other retryable generated-card failure and keep the same
-      // idempotency key, rather than showing a partial/empty success card.
+    // 2026-08-06 W3：Game 拆盤改成**可選**區塊。server 兩發都產不出完整拆盤時
+    // 會 salvage 端出一張沒有拆盤的完整卡（丟掉那一塊比丟掉整張卡好），此時
+    // card['gameBreakdown'] 是 null。舊規則會把這種 200 判成 malformed_debrief，
+    // server 端的降級就在 client 這裡被吃掉，503 清零沒有端到端成立
+    //（Codex 首審 P1）。
+    //
+    // 仍要擋的是「有拆盤但殘缺」：那代表契約漂移，不是 server 有意的降級。
+    final rawGameBreakdown = card['gameBreakdown'];
+    if (practiceMode == PracticeLearningMode.game &&
+        gameBreakdown == null &&
+        rawGameBreakdown != null) {
       throw PracticeGenerationFailedException('malformed_debrief');
     }
     final debrief = PracticeDebrief(
