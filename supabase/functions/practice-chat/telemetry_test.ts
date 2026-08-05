@@ -7,6 +7,7 @@ import {
   buildPracticeGenerationTelemetry,
   classifyPracticeGenerationFailure,
   countPromptChars,
+  practiceGenerationRetryAdvice,
   sanitizePracticeFailureCode,
 } from "./telemetry.ts";
 
@@ -657,4 +658,31 @@ Deno.test("一次過的結果：salvageUsed 為 false", () => {
     (row.request_body as unknown as Record<string, unknown>).salvageUsed,
     false,
   );
+});
+
+// ── 2026-08-06 W3 Task 3.3：503 文案要講真話 ──
+// 傳輸類重按會好；內容類重按多半拿到同一個結果。分類錯要錯在「不勸退」那一邊。
+Deno.test("W3 retry advice：只有每一發都是內容類才算 content", () => {
+  assertEquals(practiceGenerationRetryAdvice(["schema_invalid"]), "content");
+  assertEquals(
+    practiceGenerationRetryAdvice(["schema_invalid", "semantic_rejected"]),
+    "content",
+  );
+  assertEquals(
+    practiceGenerationRetryAdvice(["visible_text_guard", "invalid_json"]),
+    "content",
+  );
+});
+
+Deno.test("W3 retry advice：任一發是傳輸類就引導重試", () => {
+  assertEquals(practiceGenerationRetryAdvice(["timeout"]), "transport");
+  assertEquals(practiceGenerationRetryAdvice(["provider_error"]), "transport");
+  // 第一發連線掛掉、第二發才被守門擋掉：連線本來就不穩，重試真的會好。
+  assertEquals(
+    practiceGenerationRetryAdvice(["timeout", "schema_invalid"]),
+    "transport",
+  );
+  // unknown／空陣列＝不知道，寧可讓他多試一次也不要誤勸退。
+  assertEquals(practiceGenerationRetryAdvice(["unknown"]), "transport");
+  assertEquals(practiceGenerationRetryAdvice([]), "transport");
 });

@@ -403,3 +403,43 @@ export function classifyPracticeGenerationFailure(
 
   return "unknown";
 }
+
+/**
+ * 503 要不要引導使用者「再按一次」。
+ *
+ * 2026-08-06 W3：舊文案一律講「可以再按一次」，但兩種失敗的正確反應相反——
+ * 傳輸類（沒送到／模型沒回）重按確實會好；內容類（模型有輸出但被守門擋掉且
+ * salvage 也救不起來）重按多半得到同一個結果，引導重試等於騙使用者多等一輪。
+ *
+ * 這是**分類**不是保底卡：我們寧可誠實說這次產不出來，也不端假的教練建議。
+ */
+export type PracticeGenerationRetryAdvice = "transport" | "content";
+
+function isContentFailureClass(
+  failureClass: PracticeGenerationFailureClass | null | undefined,
+): boolean {
+  switch (failureClass) {
+    case "visible_text_guard":
+    case "invalid_json":
+    case "schema_invalid":
+    case "semantic_rejected":
+      return true;
+    default:
+      // timeout／provider_error／unknown／null 一律算傳輸類。
+      return false;
+  }
+}
+
+/**
+ * 取**所有**發數的分類，而不是最後一發。
+ *
+ * 只看最後一發會出現這種錯：第一發 provider timeout、第二發模型有輸出但被守門
+ * 擋掉，結果告訴使用者「重試無效」——但其實連線就是不穩，重試真的會好。誤判要
+ * 錯在「不勸退」那一邊：只有每一發都是內容類，才敢說重按沒用。
+ */
+export function practiceGenerationRetryAdvice(
+  failureClasses: readonly (PracticeGenerationFailureClass | null)[],
+): PracticeGenerationRetryAdvice {
+  if (failureClasses.length === 0) return "transport";
+  return failureClasses.every(isContentFailureClass) ? "content" : "transport";
+}

@@ -4069,3 +4069,88 @@ Deno.test("salvage：hintAssessment 缺失的候選可被修補後端出", () =>
     false,
   );
 });
+
+// ── 2026-08-06 W3：乙類（結構／格式）改修補或降級，不再丟整張卡 ──
+// 只有 salvage 可以開 degradeStructuralDefects；前兩發照擋，留給 retry 一次
+// 產出完整卡的機會。分類見 docs/plans/2026-08-06-practice-no-503.md。
+
+const w3CompleteCard = {
+  ...JSON.parse(valid),
+  dateChance: "low",
+  dateChanceReason: "還沒看到窗口",
+  nextInviteMove: "先多聊一個具體話題",
+};
+
+Deno.test("W3 debrief：列舉外的 vibe/dateChance 在 salvage 落安全預設而不是丟整張卡", () => {
+  const card = parseDebriefCard(
+    JSON.stringify({ ...w3CompleteCard, vibe: "超熱", dateChance: "爆表" }),
+    { requireCompleteCard: true, degradeStructuralDefects: true },
+  );
+  assertEquals(card.vibe, "中性");
+  // dateChanceReason 非空＝有訊號可談，落 medium（見 parseDebriefCard 的預設）。
+  assertEquals(card.dateChance, "medium");
+  assertEquals(card.summary.length > 0, true);
+});
+
+Deno.test('W3 debrief：Game 拆盤寫成字串 "null" 時，salvage 丟掉那一塊而不是丟整張卡', () => {
+  const raw = JSON.stringify({ ...w3CompleteCard, gameBreakdown: "null" });
+  // 前兩發照擋：Game 卡少了拆盤仍該重生成一次。
+  assertThrows(
+    () =>
+      parseDebriefCard(raw, {
+        requireCompleteCard: true,
+        allowGameBreakdown: true,
+      }),
+    Error,
+    "debrief_game_breakdown_missing_fields",
+  );
+  const card = parseDebriefCard(raw, {
+    requireCompleteCard: true,
+    allowGameBreakdown: true,
+    degradeStructuralDefects: true,
+  });
+  assertEquals(card.gameBreakdown, null);
+  assertEquals(card.summary.length > 0, true);
+});
+
+Deno.test("W3 debrief：Game 拆盤缺欄位時，salvage 丟掉那一塊而不是丟整張卡", () => {
+  const raw = JSON.stringify({
+    ...w3CompleteCard,
+    gameBreakdown: {
+      phaseReached: "賴床話題的熟悉建立",
+      missedVariable: "",
+      failureState: "照貼提示後停在禮貌收尾",
+      nextFirstLine: "慢慢開機也行，我先分享我的起床儀式",
+      inviteDirection: "先延續賴床話題，再看她是否多投入",
+    },
+  });
+  assertThrows(
+    () =>
+      parseDebriefCard(raw, {
+        requireCompleteCard: true,
+        allowGameBreakdown: true,
+      }),
+    Error,
+    "debrief_game_breakdown_missing_fields",
+  );
+  const card = parseDebriefCard(raw, {
+    requireCompleteCard: true,
+    allowGameBreakdown: true,
+    degradeStructuralDefects: true,
+  });
+  assertEquals(card.gameBreakdown, null);
+});
+
+Deno.test("W3 debrief：核心欄位缺席不在降級範圍，degrade 也照擋", () => {
+  // 刻意偏離計畫檔把 debrief_missing_fields 列為乙類：strengths/watchouts 全空的
+  // 卡是「使用者看得到的殘卡」，不是形狀壞掉，端出去比 503 更糟。
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({ ...w3CompleteCard, strengths: [], watchouts: [] }),
+        { requireCompleteCard: true, degradeStructuralDefects: true },
+      ),
+    Error,
+    "debrief_missing_fields",
+  );
+});

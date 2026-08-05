@@ -5,6 +5,7 @@ import {
 import {
   assertPracticeTextGroundedInTurns,
   isGenericPracticeComplimentOrEcho,
+  isSalvageableFailureCode,
   rejectGenericPasteablePracticeText,
   rejectKnownCannedPracticeText,
 } from "./practice_visible_quality.ts";
@@ -462,7 +463,10 @@ const gd3InterviewTurns = [
   { role: "user" as const, text: "妳是哪裡人啊？家裡幾個兄弟姊妹？" },
   { role: "ai" as const, text: "呃，這個問題有點像在做戶口調查耶" },
   { role: "user" as const, text: "抱歉抱歉，我只是想多認識妳" },
-  { role: "ai" as const, text: "沒關係，不過聊天不用像面試啦，你也可以說說你自己" },
+  {
+    role: "ai" as const,
+    text: "沒關係，不過聊天不用像面試啦，你也可以說說你自己",
+  },
 ];
 
 Deno.test("grounding gate fails closed on invited self-disclosure wording — 豁免已撤除 (round16)", () => {
@@ -522,4 +526,61 @@ Deno.test("grounding gate fails closed on invited self-disclosure wording — �
     Error,
     "practice_not_grounded",
   );
+});
+
+// ── 2026-08-06 W3：salvage 白名單的邊界要被釘死 ──
+// salvage 是「兩發全滅時的最後一道供給」，白名單放寬一格就等於全域放寬品質底線。
+Deno.test("W3 salvage 白名單：甲類（安全／誠信紅線）一條都不得入列", () => {
+  for (
+    const code of [
+      "hint_l4_unsafe",
+      "debrief_l4_unsafe",
+      "hint_canned_visible_text",
+      "debrief_canned_visible_text",
+      "hint_internal_label_leak",
+      "debrief_temperature_leak",
+      "hint_quality_invalid_unsupported_detail:third_party:name:is_named",
+      "hint_quality_invalid_unsupported_detail:world:venue:located_at",
+      "debrief_quality_invalid_partner_initiative",
+      // 舊 client 沒宣告能力時的 fail-closed：搶救也救不出它畫得出來的形狀。
+      "hint_no_pasteable_unsupported_client",
+    ]
+  ) {
+    assertEquals(isSalvageableFailureCode(code), false, code);
+  }
+});
+
+Deno.test("W3 salvage 白名單：乙類（結構／格式）與既有兩類要在列", () => {
+  for (
+    const code of [
+      "hint_quality_invalid_not_grounded",
+      "debrief_quality_invalid_suggested_line_not_grounded",
+      "debrief_hint_assessment_missing",
+      "debrief_hint_assessment_revision_required",
+      "hint_quality_invalid_overlong",
+      "hint_quality_invalid_duplicate_replies",
+      "hint_stage_direction_reply",
+      "debrief_invalid_vibe",
+      "debrief_invalid_date_chance",
+      "debrief_game_breakdown_missing_fields",
+    ]
+  ) {
+    assertEquals(isSalvageableFailureCode(code), true, code);
+  }
+});
+
+// 2026-08-06 撈近 7 天 ai_logs：主觀品質類各只出現 1 次，且都與 not_grounded
+// 同一筆＝早就被救回。擴名單買不到東西卻要整批放寬品質底線，故刻意不入列。
+Deno.test("W3 salvage 白名單：主觀品質類刻意不入列", () => {
+  for (
+    const code of [
+      "hint_quality_invalid_pure_questions",
+      "hint_quality_invalid_invite_route",
+      "hint_quality_invalid_substantive_move",
+      "hint_quality_invalid_game_contract",
+      "debrief_quality_invalid_meta_line",
+    ]
+  ) {
+    assertEquals(isSalvageableFailureCode(code), false, code);
+  }
 });

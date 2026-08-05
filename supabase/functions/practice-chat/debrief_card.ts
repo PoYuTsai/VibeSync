@@ -317,11 +317,24 @@ export function repairFlattenedGameBreakdown(
 function parseGameBreakdown(
   value: unknown,
   enforceGeneratedQuality: boolean,
-): GameBreakdown {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  degradeStructuralDefects: boolean,
+): GameBreakdown | null {
+  // 模型有時把 null 寫成字串 "null"（2026-08-06 撈 ai_logs 實例）。那是序列化
+  // 瑕疵不是內容瑕疵，跟真的 null 一樣處理。
+  const normalized = typeof value === "string" &&
+      ["null", "none", ""].includes(value.trim().toLowerCase())
+    ? null
+    : value;
+  if (
+    typeof normalized !== "object" || normalized === null ||
+    Array.isArray(normalized)
+  ) {
+    // salvage 降級：拆盤是**可選**區塊，丟掉它比丟掉整張使用者看得到的卡好。
+    if (degradeStructuralDefects) return null;
     throw new Error("debrief_game_breakdown_missing_fields");
   }
-  const p = value as Record<string, unknown>;
+  const value_ = normalized;
+  const p = value_ as Record<string, unknown>;
   const gameBreakdown = {
     phaseReached: guardVisibleText(
       generatedVisibleString(
@@ -365,6 +378,7 @@ function parseGameBreakdown(
     ),
   };
   if (Object.values(gameBreakdown).some((field) => field.length === 0)) {
+    if (degradeStructuralDefects) return null;
     throw new Error("debrief_game_breakdown_missing_fields");
   }
   return gameBreakdown;
@@ -1658,6 +1672,14 @@ export function parseDebriefCard(
      * 跳過字面 n-gram grounding，其餘守門照跑。
      */
     skipLexicalGrounding?: boolean;
+    /**
+     * 只有 salvage pass 可以開。乙類（結構／格式）缺陷改成修補或降級：超長切到
+     * 上限、vibe/dateChance 落安全預設、Game 拆盤這個**可選**區塊殘缺就丟掉那
+     * 一塊而不是丟整張卡（2026-08-06 W3）。
+     *
+     * 前兩發刻意不開：留給 retry 產出完整卡的機會。
+     */
+    degradeStructuralDefects?: boolean;
   } = {},
 ): DebriefCard {
   const cleaned = extractJsonObject(raw);
@@ -1746,11 +1768,15 @@ export function parseDebriefCard(
     ) {
       throw new Error("debrief_missing_fields");
     }
-    if (!VIBES.includes(vibeRaw)) {
-      throw new Error("debrief_invalid_vibe");
-    }
-    if (!DATE_CHANCES.includes(dateChanceRaw)) {
-      throw new Error("debrief_invalid_date_chance");
+    // salvage 降級：列舉外的 vibe/dateChance 上面已經算好安全預設值了，為了一個
+    // 標籤把整張卡丟掉是純虧（2026-08-06 W3 乙類）。
+    if (opts.degradeStructuralDefects !== true) {
+      if (!VIBES.includes(vibeRaw)) {
+        throw new Error("debrief_invalid_vibe");
+      }
+      if (!DATE_CHANCES.includes(dateChanceRaw)) {
+        throw new Error("debrief_invalid_date_chance");
+      }
     }
   }
 
@@ -1766,7 +1792,11 @@ export function parseDebriefCard(
     // handler 僅在 Game mode 傳 true；Game 卡少任何拆盤欄位都視為格式失敗，
     // 交由既有 retry/fallback 路徑處理，避免殘缺拆盤被當成成功。
     gameBreakdown: opts.allowGameBreakdown === true
-      ? parseGameBreakdown(p.gameBreakdown, enforceGeneratedQuality)
+      ? parseGameBreakdown(
+        p.gameBreakdown,
+        enforceGeneratedQuality,
+        opts.degradeStructuralDefects === true,
+      )
       : null,
   };
   const appliedHintTurns = opts.appliedHintTurns ?? [];
@@ -1831,6 +1861,7 @@ export function salvageDebriefCandidate(opts: {
       const card = parseDebriefCard(failure.raw, {
         ...opts.parseOptions,
         skipLexicalGrounding: true,
+        degradeStructuralDefects: true,
         // 重生成已用盡：hintAssessment 這類隱藏記帳改用既有修補路徑補上預設值，
         // 而不是讓使用者拿不到卡（前兩發仍維持 false＝偏好重生成）。
         repairPreservedHintCritique: true,

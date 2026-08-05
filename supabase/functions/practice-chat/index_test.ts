@@ -3806,6 +3806,7 @@ for (const mode of ["beginner", "game"] as const) {
     assertEquals(json, {
       error: "practice_debrief_generation_retryable",
       retryable: true,
+      failureReason: "content",
     });
     assertEquals(state.claudeCalls.length, 2);
     assertEquals(recordDebriefCalls(state).length, 0);
@@ -3973,6 +3974,7 @@ Deno.test("both overlong Debrief providers fail retryably without recording a ca
   assertEquals(json, {
     error: "practice_debrief_generation_retryable",
     retryable: true,
+    failureReason: "content",
   });
   assertEquals(recordDebriefCalls(state).length, 0);
   assertEquals(releaseDebriefCalls(state).length, 1);
@@ -3988,6 +3990,7 @@ Deno.test("debrief returns retryable error and stores no card when both shots fa
   assertEquals(json, {
     error: "practice_debrief_generation_retryable",
     retryable: true,
+    failureReason: "content",
   });
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 2);
@@ -4810,6 +4813,7 @@ Deno.test("Hint deadline expires before generation without any provider call", a
   assertEquals(json, {
     error: "practice_hint_generation_retryable",
     retryable: true,
+    failureReason: "transport",
   });
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 0);
@@ -4911,6 +4915,9 @@ Deno.test("hostile context with both providers down returns retryable error, nev
   assertEquals(json, {
     error: "practice_hint_generation_retryable",
     retryable: true,
+    // 兩發都是 provider 掛掉＝傳輸類，文案要引導重試（見
+    // practiceGenerationRetryAdvice：只有每一發都是內容類才敢說重按沒用）。
+    failureReason: "transport",
   });
   assertEquals("replies" in json, false);
   assertEquals(recordHintCalls(state).length, 0);
@@ -5221,6 +5228,7 @@ Deno.test("Beginner and Game reject paraphrased partner facts before recording",
     assertEquals(failed.json, {
       error: "practice_hint_generation_retryable",
       retryable: true,
+      failureReason: "content",
     }, mode);
     assertEquals(recordHintCalls(failed.state).length, 0, mode);
     assertEquals(releaseHintCalls(failed.state).length, 1, mode);
@@ -5340,7 +5348,10 @@ Deno.test("Hint overlong visible text kills the shot instead of recording a slic
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("both overlong Hint providers fail retryably without recording a snapshot", async () => {
+// 2026-08-06 W3（Eric 拍板「零 503」）推翻了原本的「兩發都超長＝503」：超長是
+// 形狀壞掉不是內容壞掉，前兩發仍照擋（給 retry 一次產出合規長度的機會），兩發
+// 都沒過才由 salvage 切到上限端出。
+Deno.test("兩發 Hint 都超長時 salvage 切到上限端出而不是 503", async () => {
   const overlong = validHintJson({ coaching: "咖啡".repeat(161) });
   const { response, json, state } = await run(
     {
@@ -5354,13 +5365,15 @@ Deno.test("both overlong Hint providers fail retryably without recording a snaps
     }),
   );
 
-  assertEquals(response.status, 503);
-  assertEquals(json, {
-    error: "practice_hint_generation_retryable",
-    retryable: true,
-  });
-  assertEquals(recordHintCalls(state).length, 0);
-  assertEquals(releaseHintCalls(state).length, 1);
+  assertEquals(response.status, 200);
+  assertEquals(json.coaching.length, 320);
+  // 搶救成功＝不得釋放 generation token
+  assertEquals(releaseHintCalls(state).length, 0);
+  const telemetry = aiLogInserts(state)[0].values;
+  assertEquals(
+    (telemetry.request_body as Record<string, unknown>).salvageUsed,
+    true,
+  );
 });
 
 Deno.test("Hint response decisions stay server-owned under the single-shot pipeline", async () => {
@@ -5415,6 +5428,7 @@ Deno.test("game hint returns retryable error when both shots return malformed JS
   assertEquals(json, {
     error: "practice_hint_generation_retryable",
     retryable: true,
+    failureReason: "content",
   });
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 2);
@@ -5560,6 +5574,7 @@ Deno.test("beginner hint provider failures return retryable error without record
   assertEquals(json, {
     error: "practice_hint_generation_retryable",
     retryable: true,
+    failureReason: "transport",
   });
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(state.claudeCalls.length, 2);
@@ -7260,6 +7275,7 @@ Deno.test("hint both single shots failing returns 503 with single_shot_v2 teleme
   assertEquals(json, {
     error: "practice_hint_generation_retryable",
     retryable: true,
+    failureReason: "transport",
   });
   assertEquals(state.claudeCalls.length, 2);
   assertEquals(recordHintCalls(state).length, 0);
@@ -7459,6 +7475,7 @@ Deno.test("debrief both single shots failing returns 503 with single_shot_v2 tel
   assertEquals(json, {
     error: "practice_debrief_generation_retryable",
     retryable: true,
+    failureReason: "transport",
   });
   assertEquals(state.claudeCalls.length, 2);
   assertEquals(recordDebriefCalls(state).length, 0);
@@ -7608,4 +7625,65 @@ Deno.test("她只回 emoji 時：hint 兩發都沒過 grounding 則 salvage 端�
     (telemetry.request_body as Record<string, unknown>).salvageUsed,
     true,
   );
+});
+
+// ── 2026-08-06 W3 整合回歸：她已封鎖時不再拿到 503 ──
+// 生產實據（2026-08-06 撈 ai_logs 近 7 天）：hint_quality_invalid_duplicate_replies
+// 100% 都是同一個形狀——她已封鎖，模型在兩個可貼欄都寫了括號旁白。模型判斷完全
+// 正確，是契約逼它硬擠兩句可貼句才轉成 503。
+Deno.test("她已封鎖時：模型輸出旁白句而 client 有宣告能力，端出「本輪沒有可貼句」而不是 503", async () => {
+  const stageDirectionHint = JSON.stringify({
+    warmUp: "（對話已被封鎖，無法再傳送訊息）",
+    steady: "（對話已被封鎖，無法再傳送訊息）",
+    coaching:
+      "她已經封鎖你，這段對話送不出任何訊息。根本問題不是話術，是先前越過了她明確畫下的界線。",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      claudeReplies: [stageDirectionHint, stageDirectionHint],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "hint-blocked-stage-direction",
+      acceptsNoPasteableHint: true,
+      turns: [
+        { role: "user", text: "妳不回我是什麼意思" },
+        { role: "ai", text: "我說了不要再傳訊息給我，我把你封鎖了" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.replies.length, 0);
+  // 括號是形狀不是內容，端給使用者時要脫掉。
+  assertEquals(json.noPasteableReason, "對話已被封鎖，無法再傳送訊息");
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
+// 舊 client 畫不出 replies: [] 的形狀，照專案鐵則 fail-closed（缺席能力宣告一律
+// 回舊行為）。這條 503 是刻意留著的，不是漏修。
+Deno.test("她已封鎖時：沒宣告能力的舊 client 仍 fail-closed 回 503", async () => {
+  const stageDirectionHint = JSON.stringify({
+    warmUp: "（對話已被封鎖，無法再傳送訊息）",
+    steady: "（對話已被封鎖，無法再傳送訊息）",
+    coaching:
+      "她已經封鎖你，這段對話送不出任何訊息。根本問題不是話術，是先前越過了她明確畫下的界線。",
+  });
+  const { response } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      claudeReplies: [stageDirectionHint, stageDirectionHint],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "hint-blocked-legacy-client",
+      turns: [
+        { role: "user", text: "妳不回我是什麼意思" },
+        { role: "ai", text: "我說了不要再傳訊息給我，我把你封鎖了" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 503);
 });

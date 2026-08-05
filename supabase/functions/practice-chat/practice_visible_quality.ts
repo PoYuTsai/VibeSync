@@ -348,19 +348,33 @@ export function normalizedPracticeText(value: string): string {
  * 外部狀態或隨機性），salvage 會默默把它放行。故明確以敗因碼收斂，不倚賴
  * determinism（Codex 二審建議）。
  *
- * 名單只有兩類：
+ * 名單只有三類：
  * 1. 字面 grounding——它擋的是「萬用模板」，是偏好不是否決權；寒暄局/emoji 局
  *    下正確答案必然通不過詞面比對。
  * 2. hintAssessment 隱藏記帳——DebriefCard 型別裡根本沒有這個欄位（驗證完就
  *    丟掉），內部記帳不該毀掉一張使用者看得到的好卡；salvage 會開既有的
  *    repairPreservedHintCritique 修補它。
+ * 3. 結構／格式缺陷（2026-08-06 W3）——模型的**內容**是好的、只是形狀壞了：
+ *    超長、兩句寫成同一句、旁白句填進可貼欄、vibe/dateChance 用了列舉外的字、
+ *    Game 拆盤這個可選區塊殘缺。salvage 會開 degradeStructuralDefects 修補或
+ *    降級（切長度／去重／丟掉可選區塊／落安全預設），而不是丟掉整份。
  *
  * 捏造類（fact ledger unsupported_detail）、安全類（L4）、罐頭簽名一律不入名單。
+ *
+ * 主觀品質類（pure_questions／invite_route／substantive_move…）刻意**不**入名單：
+ * 2026-08-06 撈近 7 天 ai_logs，它們各只出現 1 次且都與 not_grounded 同一筆
+ * ＝早就被救回，擴名單買不到任何東西，卻要整批放寬品質底線。
  */
 const SALVAGEABLE_FAILURE_CODE_PARTS = [
   "not_grounded",
   "debrief_hint_assessment_missing",
   "debrief_hint_assessment_revision_required",
+  "hint_quality_invalid_overlong",
+  "hint_quality_invalid_duplicate_replies",
+  "hint_stage_direction_reply",
+  "debrief_invalid_vibe",
+  "debrief_invalid_date_chance",
+  "debrief_game_breakdown_missing_fields",
 ] as const;
 
 export function isSalvageableFailureCode(code?: string): boolean {

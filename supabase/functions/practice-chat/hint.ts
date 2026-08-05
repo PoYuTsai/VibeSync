@@ -168,6 +168,18 @@ interface HintParseOptions {
    * 手動出 build，中間舊 client 收到 replies: [] 會沒有東西可畫。
    */
   allowNoPasteableReply?: boolean;
+  /**
+   * 只有 salvage pass 可以開。乙類（結構／格式）缺陷改成修補或降級，而不是把
+   * 整份內容丟掉。
+   *
+   * 分野：模型的**內容**是好的、只是形狀壞了（超長、兩句寫成同一句、旁白句
+   * 塞進可貼欄）＝修補比 503 好。甲類（L4／罐頭／內部標籤外洩／捏造 fact）
+   * 一律照擋，salvage 也不例外。
+   *
+   * 刻意不在前兩發開：留給 retry 一次產出「完整且合規」的機會，只有兩發全滅
+   * 才降級端出（2026-08-06 W3）。
+   */
+  degradeStructuralDefects?: boolean;
 }
 
 const MAX_REPLY_LENGTH = 80;
@@ -1506,12 +1518,14 @@ function requiredString(
     : GENERATED_REPLY_MAX_LENGTH;
   if (
     options.enforceGeneratedQuality === true &&
-    repaired.length > generatedMaxLength
+    repaired.length > generatedMaxLength &&
+    options.degradeStructuralDefects !== true
   ) {
     throw new Error("hint_quality_invalid_overlong");
   }
   const capped = options.enforceGeneratedQuality === true
-    ? repaired.trim()
+    // salvage 降級：超長是形狀壞掉不是內容壞掉，切到上限比整份丟掉好。
+    ? repaired.slice(0, generatedMaxLength).trim()
     : repaired.slice(0, maxLength).trim();
   if (capped.length === 0) {
     throw new Error(`hint_missing_${field}`);
@@ -2319,6 +2333,24 @@ function assertGeneratedGameCoachingSubstance(coaching: string): void {
   }
 }
 
+/**
+ * 整句被括號包住＝旁白／舞台指示，不是可以貼給對方的訊息。
+ *
+ * 這不是文風判斷，是形狀判斷：使用者按下「貼上」時會把括號一起貼出去。模型
+ * 會寫出這種東西，幾乎都是因為它認為本輪沒有可貼句（她已封鎖／要求停止聯絡），
+ * 只是把話填進了可貼欄位。
+ */
+export function isStageDirectionText(value: string): boolean {
+  return /^[（(][^（()）]*[)）]$/u.test(value.trim());
+}
+
+/** 旁白轉「本輪沒有可貼句」說明時，去掉外層括號（括號是形狀不是內容）。 */
+export function stripStageDirectionMarkers(value: string): string {
+  const trimmed = value.trim();
+  if (!isStageDirectionText(trimmed)) return trimmed;
+  return trimmed.slice(1, -1).trim();
+}
+
 function assertGeneratedHintQuality(opts: {
   warmUp: string;
   steady: string;
@@ -2328,7 +2360,10 @@ function assertGeneratedHintQuality(opts: {
   if (opts.parseOptions.enforceGeneratedQuality !== true) return;
   if (
     normalizedPracticeText(opts.warmUp) ===
-      normalizedPracticeText(opts.steady)
+      normalizedPracticeText(opts.steady) &&
+    // salvage 降級：兩句寫成同一句是形狀壞掉，端出去重後的一句仍是可用建議，
+    // 比整份丟掉好（呼叫端負責只 push 一次，見 parseHintResult）。
+    opts.parseOptions.degradeStructuralDefects !== true
   ) {
     throw new Error("hint_quality_invalid_duplicate_replies");
   }
@@ -2478,14 +2513,8 @@ export function parseHintResult(
       MAX_COACHING_LENGTH,
       options,
     );
-    const noPasteableKeys = Object.keys(parsed).sort();
-    const expectedNoPasteable = ["coaching", "noPasteableReason"];
-    if (
-      noPasteableKeys.length !== expectedNoPasteable.length ||
-      noPasteableKeys.some((key, index) => key !== expectedNoPasteable[index])
-    ) {
-      throw new Error("hint_extra_keys");
-    }
+    // 多餘鍵一律忽略而不是打回：我們只讀白名單欄位，沒讀到的鍵不可能被畫到
+    // 畫面上，為了它把一份好內容轉成 503 是純虧（2026-08-06 W3 乙類）。
     return { replies: [], coaching: coachingOnly, noPasteableReason: reason };
   }
 
@@ -2507,13 +2536,31 @@ export function parseHintResult(
     MAX_COACHING_LENGTH,
     options,
   );
-  const keys = Object.keys(parsed).sort();
-  const expected = ["coaching", "steady", "warmUp"];
+  // 多餘鍵一律忽略而不是打回（理由同上）。
+
+  // 旁白句（整句被括號包住）不是可以貼給她的訊息，而是模型在說「這輪沒有可貼
+  // 句」——它只是填錯欄位。生產實據：2026-08-06 撈 ai_logs，近期
+  // hint_quality_invalid_duplicate_replies 三筆 100% 都是這個形狀
+  //（「（對話已被封鎖，無法再傳送訊息）」）。
+  const warmUpIsStageDirection = isStageDirectionText(warmUp);
+  const steadyIsStageDirection = isStageDirectionText(steady);
+  if (warmUpIsStageDirection && steadyIsStageDirection) {
+    if (options.allowNoPasteableReply !== true) {
+      // 舊 client 畫不出「本輪沒有可貼句」，照鐵則 fail-closed。
+      throw new Error("hint_no_pasteable_unsupported_client");
+    }
+    return {
+      replies: [],
+      coaching,
+      noPasteableReason: stripStageDirectionMarkers(warmUp),
+    };
+  }
   if (
-    keys.length !== expected.length ||
-    keys.some((key, index) => key !== expected[index])
+    (warmUpIsStageDirection || steadyIsStageDirection) &&
+    options.degradeStructuralDefects !== true
   ) {
-    throw new Error("hint_extra_keys");
+    // 只有一欄是旁白：前兩發照擋，讓 retry 有機會生出兩句真的可貼句。
+    throw new Error("hint_stage_direction_reply");
   }
 
   assertGeneratedHintQuality({
@@ -2523,11 +2570,19 @@ export function parseHintResult(
     parseOptions: options,
   });
 
-  return {
-    replies: [
-      { type: "warm_up", label: "升溫回覆", text: warmUp },
-      { type: "steady", label: "穩住回覆", text: steady },
-    ],
-    coaching,
-  };
+  const replies: PracticeHintResult["replies"] = [];
+  if (!warmUpIsStageDirection) {
+    replies.push({ type: "warm_up", label: "升溫回覆", text: warmUp });
+  }
+  const dropsDuplicateSteady = options.degradeStructuralDefects === true &&
+    normalizedPracticeText(steady) === normalizedPracticeText(warmUp);
+  if (!steadyIsStageDirection && !dropsDuplicateSteady) {
+    replies.push({ type: "steady", label: "穩住回覆", text: steady });
+  }
+  if (replies.length === 0) {
+    // 理論上到不了（兩欄都是旁白已在上面處理），留著避免端出空卡。
+    throw new Error("hint_stage_direction_reply");
+  }
+
+  return { replies, coaching };
 }

@@ -116,6 +116,7 @@ import {
   classifyPracticeGenerationFailure,
   countPromptChars,
   type PracticeGenerationFailureClass,
+  practiceGenerationRetryAdvice,
   sanitizePracticeFailureCode,
 } from "./telemetry.ts";
 
@@ -2580,7 +2581,10 @@ export function createPracticeChatHandler(
       let hintParseCandidate:
         | ((
           raw: string,
-          override?: { skipLexicalGrounding?: boolean },
+          override?: {
+            skipLexicalGrounding?: boolean;
+            degradeStructuralDefects?: boolean;
+          },
         ) => ReturnType<typeof parseHintResult>)
         | null = null;
       const hintGenerationStartedAt = performance.now();
@@ -2742,7 +2746,10 @@ export function createPracticeChatHandler(
             ? salvageHintCandidate({
               failures: e.attemptFailures,
               parse: (raw) =>
-                hintParseCandidate!(raw, { skipLexicalGrounding: true }),
+                hintParseCandidate!(raw, {
+                  skipLexicalGrounding: true,
+                  degradeStructuralDefects: true,
+                }),
             })
             : null;
         if (salvagedHint) {
@@ -2810,7 +2817,18 @@ export function createPracticeChatHandler(
             );
           }
           return jsonResponse(
-            { error: "practice_hint_generation_retryable", retryable: true },
+            {
+              error: "practice_hint_generation_retryable",
+              retryable: true,
+              // 2026-08-06 W3：讓 client 講真話。傳輸類重按會好，內容類重按多半
+              // 拿到同一個結果——引導無效重試等於騙使用者多等一輪。舊 client
+              // 沒讀這個鍵，維持原本的通用文案。
+              failureReason: practiceGenerationRetryAdvice(
+                hintFailureClasses.length > 0
+                  ? hintFailureClasses
+                  : [failureClass],
+              ),
+            },
             503,
           );
         }
@@ -3539,7 +3557,16 @@ export function createPracticeChatHandler(
             rejectedCandidates: debriefRejectedCandidates,
           });
           return jsonResponse(
-            { error: "practice_debrief_generation_retryable", retryable: true },
+            {
+              error: "practice_debrief_generation_retryable",
+              retryable: true,
+              // 同 hint：見 practiceGenerationRetryAdvice。
+              failureReason: practiceGenerationRetryAdvice(
+                debriefFailureClasses.length > 0
+                  ? debriefFailureClasses
+                  : [failureClass],
+              ),
+            },
             503,
           );
         }

@@ -5431,17 +5431,22 @@ Deno.test("parseHintResult normalizes simplified Chinese fields to Traditional C
   assert(joined.includes("使用者"));
 });
 
-Deno.test("parseHintResult rejects extra JSON keys", () => {
-  assertThrows(
-    () =>
-      parseHintResult(JSON.stringify({
-        warmUp: "升溫",
-        steady: "穩住",
-        coaching: "心法",
-        extraReply: "不要多出第三個",
-      })),
-    Error,
-    "extra",
+// 2026-08-06 W3（Eric 拍板「乙類＝結構壞掉就修補，不要把好內容轉成 503」）
+// 推翻了原本的「多餘鍵一律打回」：我們只讀白名單欄位，讀不到的鍵不可能被畫到
+// 畫面上，為了它丟掉整份是純虧。
+Deno.test("parseHintResult 忽略多餘 JSON 鍵而不是打回", () => {
+  const result = parseHintResult(JSON.stringify({
+    warmUp: "升溫",
+    steady: "穩住",
+    coaching: "心法",
+    extraReply: "不要多出第三個",
+  }));
+  assertEquals(result.replies.map((reply) => reply.text), ["升溫", "穩住"]);
+  assertEquals(result.coaching, "心法");
+  assertEquals(
+    JSON.stringify(result).includes("不要多出第三個"),
+    false,
+    "多餘鍵不得洩漏到輸出",
   );
 });
 
@@ -6182,4 +6187,140 @@ Deno.test("新 client（已宣告能力）：prompt 有教、parser 收得下", 
     },
   );
   assertEquals(result.replies.length, 0);
+});
+
+// ── 2026-08-06 W3：乙類（結構／格式）改修補或降級，不再打回 ──
+// 分類與裁決見 docs/plans/2026-08-06-practice-no-503.md。鐵則：只有 salvage
+// 可以開 degradeStructuralDefects，前兩發照擋（留給 retry 產出完整內容的機會）。
+
+const w3BaseOptions = {
+  mode: "beginner" as const,
+  enforceGeneratedQuality: true,
+  relaxSubjectiveQualityRubrics: true,
+  skipLexicalGrounding: true,
+  turns: blockedTurns,
+};
+
+Deno.test("W3 旁白句：兩欄都是括號旁白時，等同「本輪沒有可貼句」", () => {
+  const result = parseHintResult(
+    JSON.stringify({
+      warmUp: "（對話已被封鎖，無法再傳送訊息）",
+      steady: "（對話已被封鎖，無法再傳送訊息）",
+      coaching:
+        "她已經封鎖你，這段不是話術能補救的，要學的是尊重她畫下的界線。",
+    }),
+    { ...w3BaseOptions, allowNoPasteableReply: true },
+  );
+  assertEquals(result.replies.length, 0);
+  // 括號是形狀不是內容，轉成說明時要脫掉，否則使用者看到的是一句舞台指示。
+  assertEquals(result.noPasteableReason, "對話已被封鎖，無法再傳送訊息");
+});
+
+Deno.test("W3 旁白句：舊 client（沒宣告能力）一律 fail-closed，不得端出旁白當可貼句", () => {
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "（對話已被封鎖，無法再傳送訊息）",
+          steady: "（對話已被封鎖，無法再傳送訊息）",
+          coaching: "她已經封鎖你，要學的是尊重她畫下的界線。",
+        }),
+        w3BaseOptions,
+      ),
+    Error,
+    "hint_no_pasteable_unsupported_client",
+  );
+});
+
+Deno.test("W3 旁白句：只有一欄是旁白時前兩發照擋，salvage 才端出另一句", () => {
+  const raw = JSON.stringify({
+    warmUp: "（對話已被封鎖，無法再傳送訊息）",
+    steady: "我知道妳不想再聊了，我不會再打擾妳。",
+    coaching: "她已經把界線畫死，這裡唯一該做的是停手。",
+  });
+  assertThrows(
+    () => parseHintResult(raw, w3BaseOptions),
+    Error,
+    "hint_stage_direction_reply",
+  );
+  const salvaged = parseHintResult(raw, {
+    ...w3BaseOptions,
+    degradeStructuralDefects: true,
+  });
+  assertEquals(salvaged.replies.length, 1);
+  assertEquals(
+    salvaged.replies[0].text,
+    "我知道妳不想再聊了，我不會再打擾妳。",
+  );
+});
+
+Deno.test("W3 兩句寫成同一句：前兩發照擋，salvage 去重後端出一句", () => {
+  const raw = JSON.stringify({
+    warmUp: "我知道妳不想再聊了，我不會再打擾妳。",
+    steady: "我知道妳不想再聊了，我不會再打擾妳。",
+    coaching: "她已經把界線畫死，這裡唯一該做的是停手。",
+  });
+  assertThrows(
+    () => parseHintResult(raw, w3BaseOptions),
+    Error,
+    "hint_quality_invalid_duplicate_replies",
+  );
+  const salvaged = parseHintResult(raw, {
+    ...w3BaseOptions,
+    degradeStructuralDefects: true,
+  });
+  assertEquals(salvaged.replies.length, 1);
+  assertEquals(salvaged.replies[0].type, "warm_up");
+});
+
+Deno.test("W3 超長：前兩發照擋，salvage 切到上限而不是丟整份", () => {
+  const raw = JSON.stringify({
+    warmUp: "我知道妳不想再聊了，我不會再打擾妳。",
+    steady: "妳先好好休息，我不會再傳訊息了。",
+    coaching: "咖啡".repeat(161),
+  });
+  assertThrows(
+    () => parseHintResult(raw, w3BaseOptions),
+    Error,
+    "hint_quality_invalid_overlong",
+  );
+  const salvaged = parseHintResult(raw, {
+    ...w3BaseOptions,
+    degradeStructuralDefects: true,
+  });
+  assertEquals(salvaged.coaching.length, MAX_COACHING_LENGTH * 2);
+});
+
+// 降級旗標只放結構，甲類（安全／誠信紅線）一條都不准跟著鬆掉。
+Deno.test("W3 甲類守門在 degradeStructuralDefects 下一樣擋", () => {
+  const cases: { label: string; payload: Record<string, string> }[] = [
+    {
+      label: "L4 露骨",
+      payload: {
+        warmUp: "偷偷加重量還不能拒絕吧，現在跟我回家",
+        steady: "妳先好好休息，我不會再傳訊息了。",
+        coaching: "她已經把界線畫死，這裡唯一該做的是停手。",
+      },
+    },
+    {
+      label: "內部標籤外洩",
+      payload: {
+        warmUp: "我知道妳不想再聊了，我不會再打擾妳。",
+        steady: "妳先好好休息，我不會再傳訊息了。",
+        coaching: "socialGameFsm phase P3_TEST，先別急著追。",
+      },
+    },
+  ];
+  for (const { label, payload } of cases) {
+    assertThrows(
+      () =>
+        parseHintResult(JSON.stringify(payload), {
+          ...w3BaseOptions,
+          degradeStructuralDefects: true,
+        }),
+      Error,
+      undefined,
+      `甲類「${label}」在降級路徑漏放了`,
+    );
+  }
 });
