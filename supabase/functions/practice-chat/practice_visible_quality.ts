@@ -340,6 +340,77 @@ export function normalizedPracticeText(value: string): string {
   return compact(value);
 }
 
+const GAME_BREAKDOWN_ECHO_FRAGMENT_WIDTH = 6;
+const GAME_BREAKDOWN_ECHO_MIN_FIELD_COUNT = 3;
+
+/**
+ * 2026-08-06 真機案例：Game 拆盤五欄中至少 4 欄字面複製同一句籠統描述
+ * （「她剛丟回來的話題」），這種 case 之所以漏得出去，是因為 salvage 只擋
+ * 罐頭句簽名，不查「內容是不是空話」；而正常兩發也從沒檢查過
+ * phaseReached/missedVariable/failureState/inviteDirection 這四欄的實質內容
+ * （唯一被查的可貼句是 nextFirstLine）。
+ *
+ * 這裡不判斷「像不像空話」（regex 對句型窮舉不完），改用更可靠的訊號：
+ * 五個分析不同面向（進度/缺口/卡點/下句/邀約）的欄位，如果有同一段 6 字
+ * 以上的字面原文同時出現在 3 欄以上，且這段原文**不是**逐字出現在對話逐字稿
+ * 裡，就判斷是模型偷懶把同一句籠統話貼滿多欄。
+ *
+ * GLM 對抗審查（2026-08-06）當面反例證實原始版本（純字面重複、無逐字稿豁免、
+ * width=8）誤殺合法內容：教練分析五欄真的引用她原話（"我最近工作壓力很大"）
+ * 或同一個具體提案（"週末一起去那家新開的咖啡廳"）時，本來就該在多欄重複出
+ * 現——這是 grounding 要的行為，不是空話。逐字稿豁免直接解掉這個誤殺，因為
+ * 「是不是模型自己發明的籠統描述」跟「是不是真的在對話裡」剛好是同一條線。
+ * 豁免後才敢把 width 從 8 降到 6，抓住同一位模型審查抓到的短版填充變體
+ * （例如「延續剛剛話題」6 字），而不會反過來吃進更多合法短引句。
+ *
+ * 殘留已知漏洞（GLM 同一輪指出，刻意接受）：模型如果每欄換一種近義說法
+ * （「她剛丟回來的話題」／「她剛拋出的話題」／「她丟過來的話題」……）逐字
+ * 零重疊，或把同一句籠統話只塞進 2 欄而非 3 欄，這裡抓不到。這跟本檔其他
+ * 詞面守門（如 rejectGenericPasteablePracticeText）同樣的取捨：擋住已觀測
+ * 到的失敗模式，不承諾窮舉所有可能措辭。
+ */
+function gameBreakdownFieldFragments(compacted: string): Set<string> {
+  const result = new Set<string>();
+  for (
+    let index = 0;
+    index <= compacted.length - GAME_BREAKDOWN_ECHO_FRAGMENT_WIDTH;
+    index++
+  ) {
+    result.add(
+      compacted.slice(index, index + GAME_BREAKDOWN_ECHO_FRAGMENT_WIDTH),
+    );
+  }
+  return result;
+}
+
+export function rejectGameBreakdownFieldEcho(
+  fields: Readonly<Record<string, string>>,
+  turns: readonly PracticeTurn[] | undefined,
+  errorCode: string,
+): void {
+  const values = Object.values(fields)
+    .map((value) => compact(value))
+    .filter((value) => value.length > 0);
+  if (values.length < GAME_BREAKDOWN_ECHO_MIN_FIELD_COUNT) return;
+  const transcript = compact((turns ?? []).map((turn) => turn.text).join(""));
+  const fieldCountByFragment = new Map<string, number>();
+  for (const value of values) {
+    for (const fragment of gameBreakdownFieldFragments(value)) {
+      // 逐字出現在對話裡＝合法引用/callback，不算空話回聲。
+      if (transcript.length > 0 && transcript.includes(fragment)) continue;
+      fieldCountByFragment.set(
+        fragment,
+        (fieldCountByFragment.get(fragment) ?? 0) + 1,
+      );
+    }
+  }
+  for (const count of fieldCountByFragment.values()) {
+    if (count >= GAME_BREAKDOWN_ECHO_MIN_FIELD_COUNT) {
+      throw new Error(errorCode);
+    }
+  }
+}
+
 /**
  * salvage 的**唯一**否決名單（2026-08-06 Eric 拍板，把白名單翻成黑名單）。
  *
@@ -352,6 +423,13 @@ export function normalizedPracticeText(value: string): string {
  * 1. `_l4_unsafe`——露骨性內容。
  * 2. `_internal_label_leak` / `_temperature_leak`——洩漏我們的內部機制。
  * 3. `_canned_visible_text`——我們自己寫死的罐頭句混進模型輸出。
+ *
+ * Game 拆盤多欄字面複製同一句籠統話（`rejectGameBreakdownFieldEcho`，
+ * 2026-08-06 真機加）刻意**不進**這份名單：GLM 對抗審查指出，若把它當紅線
+ * 會在 salvage 兩發都失敗的情境下把它變成新的不可救、直接 503——跟其他三類
+ * 「使用者絕不能看到」的紅線不同，這只是 Game 拆盤這個**可選**子區塊的內部
+ * 空洞偵測，成本不對等。改走既有的「拆盤缺欄」同一套降級路徑（parser 內
+ * throw／salvage 內 return null 丟掉這個可選區塊），不用整張卡陪葬。
  *
  * **捏造事實（unsupported_detail）刻意不在紅線內**：Eric 2026-08-06 拍板拿掉。
  * 我提過代價——兩發都編造時，AI 可能跟使用者說她沒說過的事，使用者照著聊會被

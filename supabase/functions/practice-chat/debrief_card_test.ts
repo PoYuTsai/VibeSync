@@ -4078,6 +4078,77 @@ Deno.test("salvage：hintAssessment 缺失的候選可被修補後端出", () =>
   );
 });
 
+// 2026-08-06 真機案例：Kelly 局的兩發正式生成都因無關 hint 判斷失敗
+// （debrief_missing_fields／debrief_hint_assessment_revision_required），
+// salvage 從候選裡挑出一張端出去，但候選本身 Game 拆盤四欄字面複製同一句
+// 「她剛丟回來的話題」，salvage 舊規則只擋罐頭簽名，沒擋住這種內容空洞的
+// 候選。GLM 對抗審查後改成跟「拆盤缺欄位」同一套降級路徑：salvage 端把
+// gameBreakdown 整塊丟掉、卡片其餘部分照常端出去，而不是讓整張卡也搶救不了
+// （2026-08-05 Eric 拍板的「正常一定要有輸出」在這裡優先於拆盤完整性）。
+function salvageGameEchoCard(): string {
+  return JSON.stringify({
+    summary: "你有照提示做，她也願意延續話題。",
+    strengths: ["你有照提示做，接住她丟回來的梗"],
+    watchouts: ["下一步別只追問，多補一點生活感"],
+    suggestedLine: "剛剛這個點我有接到，妳比較想先聊哪一段？",
+    vibe: "中性",
+    dateChance: "medium",
+    dateChanceReason: "她願意延續話題和你來回。",
+    nextInviteMove: "先接她剛丟回來的話題，再補一點你的生活畫面。",
+    gameBreakdown: {
+      phaseReached: "熟悉進度仍在延續她剛丟回來的話題。",
+      missedVariable: "下一步缺的是你對她剛丟回來的話題的生活感。",
+      failureState: "她仍停在低壓延續她剛丟回來的話題的節奏。",
+      nextFirstLine: "剛剛這個點我有接到，妳比較想先聊哪一段？",
+      inviteDirection: "先補你對她剛丟回來的話題的生活畫面，保留低壓節奏。",
+    },
+  });
+}
+
+Deno.test("真機回歸 2026-08-06：Game 拆盤四欄複製同句籠統話的候選，salvage 丟掉拆盤區塊而不是丟整張卡", () => {
+  const salvaged = salvageDebriefCandidate({
+    failures: [{
+      model: "claude-haiku-4-5-20251001",
+      code: "debrief_missing_fields",
+      raw: salvageGameEchoCard(),
+    }],
+    parseOptions: {
+      allowGameBreakdown: true,
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      relaxSubjectiveQualityRubrics: true,
+      turns: [
+        { role: "user" as const, text: "下次還要一起去旅行嗎" },
+        { role: "ai" as const, text: "哈哈 想得美喔 你先規劃得動再說" },
+      ],
+    },
+  });
+  assertEquals(salvaged?.model, "claude-haiku-4-5-20251001");
+  assertEquals(salvaged?.card.gameBreakdown, null);
+  assertEquals(
+    salvaged?.card.suggestedLine,
+    "剛剛這個點我有接到，妳比較想先聊哪一段？",
+  );
+});
+
+Deno.test("真機回歸 2026-08-06：Game 拆盤字面回聲在前兩發（非 salvage）仍照擋，逼重生成", () => {
+  assertThrows(
+    () =>
+      parseDebriefCard(salvageGameEchoCard(), {
+        allowGameBreakdown: true,
+        requireCompleteCard: true,
+        enforceGeneratedQuality: true,
+        relaxSubjectiveQualityRubrics: true,
+        turns: [
+          { role: "user" as const, text: "下次還要一起去旅行嗎" },
+          { role: "ai" as const, text: "哈哈 想得美喔 你先規劃得動再說" },
+        ],
+      }),
+    Error,
+    "debrief_game_breakdown_field_echo",
+  );
+});
+
 // ── 2026-08-06 W3：乙類（結構／格式）改修補或降級，不再丟整張卡 ──
 // 只有 salvage 可以開 degradeStructuralDefects；前兩發照擋，留給 retry 一次
 // 產出完整卡的機會。分類見 docs/plans/2026-08-06-practice-no-503.md。

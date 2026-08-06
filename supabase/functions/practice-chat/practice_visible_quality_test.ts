@@ -6,6 +6,7 @@ import {
   assertPracticeTextGroundedInTurns,
   isGenericPracticeComplimentOrEcho,
   isSalvageableFailureCode,
+  rejectGameBreakdownFieldEcho,
   rejectGenericPasteablePracticeText,
   rejectKnownCannedPracticeText,
 } from "./practice_visible_quality.ts";
@@ -590,4 +591,133 @@ Deno.test("salvage 黑名單：結構與主觀品質類一律可搶救", () => {
 Deno.test("salvage 黑名單：沒有敗因碼時不搶救（不知道踩到什麼就別賭）", () => {
   assertEquals(isSalvageableFailureCode(undefined), false);
   assertEquals(isSalvageableFailureCode(""), false);
+});
+
+// 2026-08-06 真機案例：Game 拆盤四欄字面複製同一句「她剛丟回來的話題」，
+// salvage 只擋罐頭簽名沒擋住，端出去給使用者看。這條補上的檢查要能抓到
+// 一模一樣的原始形狀。沒有逐字稿時（turns undefined）不做 grounding 豁免。
+Deno.test("rejectGameBreakdownFieldEcho：四欄複製同一句籠統話會被擋", () => {
+  assertThrows(
+    () =>
+      rejectGameBreakdownFieldEcho(
+        {
+          phaseReached: "熟悉進度仍在延續她剛丟回來的話題。",
+          missedVariable: "下一步缺的是你對她剛丟回來的話題的生活感。",
+          failureState: "她仍停在低壓延續她剛丟回來的話題的節奏。",
+          nextFirstLine: "剛剛這個點我有接到，妳比較想先聊哪一段？",
+          inviteDirection: "先補你對她剛丟回來的話題的生活畫面，保留低壓節奏。",
+        },
+        undefined,
+        "debrief_game_breakdown_field_echo",
+      ),
+    Error,
+    "debrief_game_breakdown_field_echo",
+  );
+});
+
+Deno.test("rejectGameBreakdownFieldEcho：五欄各自具體不同內容放行", () => {
+  rejectGameBreakdownFieldEcho(
+    {
+      phaseReached: "她主動接住晚餐版小行程的提案，願意讓你排。",
+      missedVariable: "還缺一個明確的碰面時段，你只提了審核沒提時間。",
+      failureState: "卡在她要「行動證明」但你只給了口頭承諾。",
+      nextFirstLine: "那我先排週六晚上七點的路線給妳審核，妳先看看方便嗎？",
+      inviteDirection: "下一步直接把週六晚餐時段釘死，別再繞去旅行企劃。",
+    },
+    undefined,
+    "debrief_game_breakdown_field_echo",
+  );
+});
+
+Deno.test("rejectGameBreakdownFieldEcho：兩欄雷同不足以觸發（門檻是三欄以上）", () => {
+  rejectGameBreakdownFieldEcho(
+    {
+      phaseReached: "熟悉進度仍在延續她剛丟回來的話題。",
+      missedVariable: "缺一個明確的碰面時段和地點安排。",
+      failureState: "她仍停在低壓延續她剛丟回來的話題的節奏。",
+      nextFirstLine: "那我先排週六晚上七點的路線給妳審核。",
+      inviteDirection: "下一步直接把週六晚餐時段釘死。",
+    },
+    undefined,
+    "debrief_game_breakdown_field_echo",
+  );
+});
+
+// ── GLM 對抗審查（2026-08-06）反例：原始版本（無逐字稿豁免）會誤殺這兩種
+// 合法卡，且因為當時掛在 salvage 紅線上，誤殺=直接 503。逐字稿豁免修好後，
+// 這兩張卡都必須放行。
+Deno.test("rejectGameBreakdownFieldEcho：五欄都合法引用她原話——逐字稿豁免放行（GLM 反例 I1a）", () => {
+  const turns = [
+    {
+      role: "ai" as const,
+      text: "我最近工作壓力很大，一直在加班。",
+    },
+  ];
+  rejectGameBreakdownFieldEcho(
+    {
+      phaseReached: "你接住了她那句『我最近工作壓力很大』並延續下去。",
+      missedVariable: "缺的是對『我最近工作壓力很大』背後具體情境的好奇。",
+      failureState: "你停在安慰『我最近工作壓力很大』，沒往細節挖。",
+      nextFirstLine: "她說『我最近工作壓力很大』時，妳最想被問哪一塊？",
+      inviteDirection: "順著『我最近工作壓力很大』往她真正在意的事問。",
+    },
+    turns,
+    "debrief_game_breakdown_field_echo",
+  );
+});
+
+Deno.test("rejectGameBreakdownFieldEcho：多欄呼應同一個具體提案——逐字稿豁免放行（GLM 反例 I1b）", () => {
+  const turns = [
+    { role: "user" as const, text: "週末一起去那家新開的咖啡廳？" },
+    { role: "ai" as const, text: "好啊聽起來不錯。" },
+  ];
+  rejectGameBreakdownFieldEcho(
+    {
+      phaseReached: "你們聊到週末一起去那家新開的咖啡廳的雛形。",
+      missedVariable: "缺的是把『週末一起去那家新開的咖啡廳』敲成具體時間。",
+      failureState: "還沒有明確拍板碰面細節。",
+      nextFirstLine: "那我們約週六下午三點在那家新開的咖啡廳見？",
+      inviteDirection: "順著週末一起去那家新開的咖啡廳收一句明確邀約。",
+    },
+    turns,
+    "debrief_game_breakdown_field_echo",
+  );
+});
+
+// GLM 反例 I2：原始 width=8 版本會漏掉的短版填充變體，width 降到 6 後要抓到
+// （沒有逐字稿，這段話不是引用，理應被擋）。
+Deno.test("rejectGameBreakdownFieldEcho：6 字籠統填充語跨欄複製，width 收緊後擋得住（GLM 反例 I2）", () => {
+  assertThrows(
+    () =>
+      rejectGameBreakdownFieldEcho(
+        {
+          phaseReached: "延續剛剛話題還算順。",
+          missedVariable: "缺口在延續剛剛話題的深度。",
+          failureState: "卡在延續剛剛話題沒推進。",
+          nextFirstLine: "延續剛剛話題，妳想聊哪段？",
+          inviteDirection: "延續剛剛話題再找邀約窗口。",
+        },
+        undefined,
+        "debrief_game_breakdown_field_echo",
+      ),
+    Error,
+    "debrief_game_breakdown_field_echo",
+  );
+});
+
+// 已知殘留缺口（GLM I2，刻意接受、不在本輪修）：逐欄近義改寫、逐字零重疊，
+// 或只塞進 2 欄而非 3 欄，這裡抓不到。這條測試把殘留行為釘死，不是要它通過
+// 才算「修好」——是提醒未來如果想再收緊，這是還沒抓到的已知案例。
+Deno.test("rejectGameBreakdownFieldEcho：已知殘留缺口——逐欄近義改寫零重疊會漏放（刻意不修）", () => {
+  rejectGameBreakdownFieldEcho(
+    {
+      phaseReached: "她剛丟回來的話題還在延續。",
+      missedVariable: "她剛拋出的話題缺生活感。",
+      failureState: "她丟過來的話題卡在原地。",
+      nextFirstLine: "她丟回的那句我有接到。",
+      inviteDirection: "順著那句延伸邀約方向。",
+    },
+    undefined,
+    "debrief_game_breakdown_field_echo",
+  );
 });

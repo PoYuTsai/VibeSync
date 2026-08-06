@@ -12,6 +12,7 @@ import {
   isGenericPracticeComplimentOrEcho,
   isSalvageableFailureCode,
   normalizedPracticeText,
+  rejectGameBreakdownFieldEcho,
   rejectGenericPasteablePracticeText,
   rejectKnownCannedPracticeText,
 } from "./practice_visible_quality.ts";
@@ -330,6 +331,7 @@ function parseGameBreakdown(
   value: unknown,
   enforceGeneratedQuality: boolean,
   degradeStructuralDefects: boolean,
+  turns: PracticeTurn[] | undefined,
 ): GameBreakdown | null {
   // 模型有時把 null 寫成字串 "null"（2026-08-06 撈 ai_logs 實例）。那是序列化
   // 瑕疵不是內容瑕疵，跟真的 null 一樣處理。
@@ -392,6 +394,20 @@ function parseGameBreakdown(
   if (Object.values(gameBreakdown).some((field) => field.length === 0)) {
     if (degradeStructuralDefects) return null;
     throw new Error("debrief_game_breakdown_missing_fields");
+  }
+  if (enforceGeneratedQuality) {
+    try {
+      rejectGameBreakdownFieldEcho(
+        gameBreakdown,
+        turns,
+        "debrief_game_breakdown_field_echo",
+      );
+    } catch (error) {
+      // 拆盤是可選區塊：salvage 端丟掉這塊比丟掉整張使用者看得到的卡好
+      // （同一套降級路徑，見上面「缺欄位」分支）；前兩發仍照擋逼重生成。
+      if (degradeStructuralDefects) return null;
+      throw error;
+    }
   }
   return gameBreakdown;
 }
@@ -1539,6 +1555,9 @@ function assertGeneratedDebriefQuality(
   for (const field of visibleFields) {
     rejectKnownCannedPracticeText(field, "debrief_canned_visible_text");
   }
+  // Game 拆盤字面複製同一句籠統話的檢查在 parseGameBreakdown 內做（跟缺欄位
+  // 同一套 degrade/throw 階梯），不擺在這裡：這是可選子區塊的內部瑕疵，不該
+  // 跟罐頭句這類「絕不能給使用者看到」的紅線同一個嚴重度。
   // 最後一發：紅線（罐頭在上面、露骨／洩漏在 guardVisibleText）以外全部讓路。
   // 含 assertNoInventedPartnerInitiative——捏造已由 Eric 拍板移出紅線。
   if (opts.salvagePass === true) return;
@@ -1832,6 +1851,7 @@ function parseDebriefCardInner(
         p.gameBreakdown,
         enforceGeneratedQuality,
         opts.degradeStructuralDefects === true,
+        opts.turns,
       )
       : null,
   };
