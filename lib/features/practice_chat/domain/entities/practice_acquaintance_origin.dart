@@ -66,10 +66,13 @@ const List<_OriginConfig> _origins = [
     label: '交友軟體',
     sharedFact: '你們是在交友軟體上互相配對到才開始聊的，只看過對方的照片和幾行自介，沒見過面。',
   ),
+  // sharedFact 刻意不逐字對照 server：server 版本「你」＝她本人（搭話的人是
+  // 使用者），逐字搬來會變成「她在路上主動搭訕你」，不合常理。事實同一件——
+  // 主動搭話、要聯絡方式的都是使用者——只是敘述視角換成讀者本人。
   _OriginConfig(
     id: 'street_approach',
     label: '街頭搭訕',
-    sharedFact: '對方那天在路上直接跟你搭話，聊沒幾句就要了聯絡方式，你半推半就給了。',
+    sharedFact: '你那天在路上鼓起勇氣跟她搭話，聊沒幾句就跟她要了聯絡方式，她半推半就給了。',
   ),
   // sharedFact 刻意不逐字對照 server：server 版本是寫給 AI 人設看的（「你」=
   // 她本人，私訊的人是使用者），直接搬來給真人使用者看會變成「她主動私訊你」，
@@ -101,10 +104,13 @@ const List<_OriginConfig> _origins = [
     label: '共同興趣場合',
     sharedFact: '你們是在共同興趣的場合認識的（課程、社團、球隊或工作坊那種），會固定在那裡碰到。',
   ),
+  // sharedFact 刻意不逐字對照 server：server 版本「你」＝她本人（工作場合是
+  // 她的），逐字搬來會變成「你的工作場合」，跟 AI 演的「她的工作、你是客人/
+  // 合作對象」直接矛盾。
   _OriginConfig(
     id: 'work_encounter',
     label: '工作場合認識',
-    sharedFact: '你們是在你工作（或打工）的場合認識的——客人、合作對象或同業那種關係，一開始是公事。',
+    sharedFact: '你們是在她工作（或打工）的場合認識的——你是客人、合作對象或同業那種關係，一開始只是公事往來。',
   ),
   _OriginConfig(
     id: 'travel_trip',
