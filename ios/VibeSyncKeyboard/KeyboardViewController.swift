@@ -48,7 +48,6 @@ final class KeyboardViewController: UIInputViewController {
     private let analysisUncertaintyLabel = UILabel()
     private let screenshotSwapButton = UIButton(type: .system)
     private let screenshotActionRow = UIStackView()
-    private let voiceButton = UIButton(type: .system)
     private var styleButtons: [KeyboardReplyStyle: UIButton] = [:]
     private var loadedMessage = ""
     private var pendingLegacyReply: PendingLegacyReply?
@@ -61,9 +60,6 @@ final class KeyboardViewController: UIInputViewController {
     private var keyboardVisibleSince: Date?
     private var overlayHeightSamples: [(at: Date, height: CGFloat)] = []
     private var statusLineBorrowed = false
-    /// nil means "follow whatever the app is set to for this person", which is
-    /// what keeps the keyboard and the app one personality rather than two.
-    private var voiceOverride: KeyboardVoiceName?
     private lazy var replyInsertionCoordinator =
         ReplyInsertionCoordinator { [weak self] text in
             self?.textDocumentProxy.insertText(text)
@@ -237,23 +233,8 @@ final class KeyboardViewController: UIInputViewController {
         mark.font = .systemFont(ofSize: 15, weight: .bold)
         header.addArrangedSubview(mark)
         header.addArrangedSubview(UIView())
-        styleScreenshotButton(voiceButton, color: surface)
-        voiceButton.addTarget(
-            self,
-            action: #selector(cycleVoice),
-            for: .touchUpInside
-        )
-        updateVoiceButton()
-        header.addArrangedSubview(voiceButton)
         header.addArrangedSubview(
             makeButton("單句速回", action: #selector(showTextAssist))
-        )
-        // ABC sits here as an outline, not in a row of its own. It is the floor
-        // — the thing that still works before 完整取用 — so it must be reachable,
-        // but a full-width key made it read as a third product path and cost a
-        // whole row of the surface the suggestions are competing for.
-        header.addArrangedSubview(
-            makeFloorButton("ABC", action: #selector(showTyping))
         )
         assistPanel.addArrangedSubview(header)
 
@@ -320,9 +301,6 @@ final class KeyboardViewController: UIInputViewController {
         header.addArrangedSubview(UIView())
         header.addArrangedSubview(
             makeButton("截圖", action: #selector(showAssist))
-        )
-        header.addArrangedSubview(
-            makeFloorButton("ABC", action: #selector(showTyping))
         )
         aiPanel.addArrangedSubview(header)
 
@@ -678,30 +656,6 @@ final class KeyboardViewController: UIInputViewController {
         return row
     }
 
-    private static let voiceCycle: [KeyboardVoiceName?] = [
-        nil,
-        .steady,
-        .direct,
-        .humorous,
-        .gentle,
-        .playful,
-    ]
-
-    private func voiceTitle(_ voice: KeyboardVoiceName?) -> String {
-        guard let voice else { return "風格：跟隨 App" }
-        switch voice {
-        case .steady: return "風格：穩定"
-        case .direct: return "風格：直接"
-        case .humorous: return "風格：幽默"
-        case .gentle: return "風格：溫柔"
-        case .playful: return "風格：俏皮"
-        }
-    }
-
-    private func updateVoiceButton() {
-        voiceButton.setTitle(voiceTitle(voiceOverride), for: .normal)
-    }
-
     private func styleScreenshotButton(
         _ button: UIButton,
         color: UIColor
@@ -785,30 +739,6 @@ final class KeyboardViewController: UIInputViewController {
         return row
     }
 
-    /// Guideline 4.4.1 requires a keyboard extension to type characters and to
-    /// keep working before 完整取用 is granted, and the latin panel is the only
-    /// thing here that does either. It is a floor, not a feature, so it gets the
-    /// weight of a floor: a quiet outline in the header instead of a full-width
-    /// key in a row of its own.
-    private func makeFloorButton(_ title: String, action: Selector) -> UIButton {
-        let button = UIButton(type: .system)
-        button.setTitle(title, for: .normal)
-        button.setTitleColor(UIColor.white.withAlphaComponent(0.7), for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 11, weight: .medium)
-        button.backgroundColor = .clear
-        button.layer.cornerRadius = 7
-        button.layer.borderWidth = 1
-        button.layer.borderColor = UIColor.white.withAlphaComponent(0.22).cgColor
-        button.contentEdgeInsets = UIEdgeInsets(
-            top: 5,
-            left: 8,
-            bottom: 5,
-            right: 8
-        )
-        button.addTarget(self, action: action, for: .touchUpInside)
-        return button
-    }
-
     private func makeButton(_ title: String, action: Selector) -> UIButton {
         let button = UIButton(type: .system)
         button.setTitle(title, for: .normal)
@@ -846,7 +776,13 @@ final class KeyboardViewController: UIInputViewController {
         pasteButton.isEnabled = enabled
         pasteButton.alpha = enabled ? 1 : 0.45
         if !fullAccessEnabled {
-            statusLabel.text = "請在設定開啟「允許完整取用」；ABC 基本輸入仍可使用"
+            // Guideline 4.4.1: a keyboard extension must still type characters
+            // before 完整取用 is granted. There is no manual ABC entry point
+            // any more (2026-08-06 product decision — nobody actually types
+            // inside a third-party keyboard, they switch to iOS's own), so the
+            // typing panel becomes the automatic floor instead of an opt-in one.
+            statusLabel.text = "請在設定開啟「允許完整取用」"
+            show(.typing)
         } else if SharedAuth.currentSession() == nil {
             statusLabel.text = "請先開啟 VibeSync App 更新登入狀態"
         }
@@ -1274,8 +1210,6 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    @objc private func showTyping() { show(.typing) }
-
     /// Coming back to the screenshot surface re-arms detection. The coordinator
     /// was stood down while the other panels were up, so without this the panel
     /// would sit on whatever it last rendered and ignore a fresh capture.
@@ -1297,14 +1231,6 @@ final class KeyboardViewController: UIInputViewController {
     }
     @objc private func requestNewCandidateBatch() {
         screenshotCoordinator.requestNewBatch()
-    }
-
-    @objc private func cycleVoice() {
-        let cycle = Self.voiceCycle
-        let index = cycle.firstIndex(of: voiceOverride) ?? 0
-        voiceOverride = cycle[(index + 1) % cycle.count]
-        updateVoiceButton()
-        screenshotCoordinator.setVoiceOverride(voiceOverride)
     }
 
     @objc private func retryScreenshotAssist() {

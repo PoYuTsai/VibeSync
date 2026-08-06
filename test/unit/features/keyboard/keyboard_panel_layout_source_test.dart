@@ -187,10 +187,9 @@ void main() {
       contains(r'KeyboardAssistVoice(primary: $0, secondary: nil)'),
     );
     // Falling back to the app-side voice is what keeps one personality.
+    // The manual toggle that used to call setVoiceOverride is gone
+    // (2026-08-06 product decision: nobody manually cycles a voice
+    // override from the keyboard toolbar), so this always resolves.
     expect(source, contains('primary: context?.globalVoice.primary'));
-    expect(
-      controller.readAsStringSync(),
-      contains('風格：跟隨 App'),
-    );
   });
 }
