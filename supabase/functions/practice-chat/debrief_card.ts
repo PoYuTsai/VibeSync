@@ -1257,7 +1257,15 @@ function cardVisiblyReversesPreservedHint(card: DebriefCard): boolean {
     .test(visible);
 }
 
-function preservedHintTopicLabel(value: string): string {
+/**
+ * 2026-08-06 真機根因：這裡原本的兜底值是萬用詞「她剛丟回來的話題」，白名單
+ * 只認四種話題，其他對話（旅行/吃飯/活動…）一律命中兜底——修補模板把這個
+ * 槽填進 summary/strengths/watchouts/拆盤五欄，整張卡變成逐字節相同的空話卡
+ * （Eric 兩局不同對話拿到一模一樣的卡，ai_logs 證實兩次都是真生成＋repair）。
+ * 改法＝認不出主題就回 null，讓呼叫端改用她實際說的話（截短引句）當槽值，
+ * 卡片內容永遠踩在真對話上。
+ */
+function preservedHintTopicLabel(value: string): string | null {
   const normalized = normalizedPracticeText(value);
   if (
     /(?:咖啡|口袋名單|裝潢|氣味|香味|單品|黑咖啡|拿鐵|美式)/u.test(normalized)
@@ -1273,7 +1281,7 @@ function preservedHintTopicLabel(value: string): string {
   if (/(?:賴床|開機|睡醒|醒了)/u.test(normalized)) {
     return "開機狀態";
   }
-  return "她剛丟回來的話題";
+  return null;
 }
 
 function preservedHintRepairNextLine(anchor: string, context = anchor): string {
@@ -1291,6 +1299,12 @@ function preservedHintRepairNextLine(anchor: string, context = anchor): string {
   }
   if (/(?:賴床|開機|睡醒|醒了)/u.test(normalized)) {
     return "那我先陪妳用低速模式聊，等妳慢慢開機。";
+  }
+  // 兜底也要踩在她的原話上：引她最後那句，比「剛剛這個點我有接到」這種
+  // 對任何對話都成立的萬用句誠實（同 2026-08-06 真機根因修法）。
+  const quote = compactDebriefQuote(anchor, 12);
+  if (quote.length > 0) {
+    return `妳說「${quote}」這段我想多聽一點，先從哪裡開始？`;
   }
   return "剛剛這個點我有接到，妳比較想先聊哪一段？";
 }
@@ -1310,7 +1324,10 @@ function repairPreservedHintCritiqueCard(
     assistantTextNearHint(turns, latestHint.turnIndex, "before"),
   );
   const anchor = afterQuote || beforeQuote || "這個話題";
-  const topic = preservedHintTopicLabel(`${afterText}\n${beforeQuote}`);
+  // 白名單認不出主題時，槽值改用她實際說的話（截短引句）——絕不落回
+  // 「她剛丟回來的話題」這種對任何對話都成立的萬用詞（2026-08-06 真機根因）。
+  const topic = preservedHintTopicLabel(`${afterText}\n${beforeQuote}`) ??
+    `她那句「${compactDebriefQuote(afterText, 12)}」`;
   const setup = beforeQuote || anchor;
 
   const summary = guardVisibleText(

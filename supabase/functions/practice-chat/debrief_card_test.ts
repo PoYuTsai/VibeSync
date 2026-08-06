@@ -4131,6 +4131,77 @@ Deno.test("真機回歸 2026-08-06：Game 拆盤四欄複製同句籠統話的�
   );
 });
 
+// ── 真機根因二段（2026-08-06 晚）：Eric 兩局不同對話拿到逐字節相同的空話卡，
+// ai_logs 證實兩次都是真生成——真兇不是模型，是 repairPreservedHintCritiqueCard
+// 的話題槽：白名單只認四種話題，其他對話一律落到萬用詞「她剛丟回來的話題」，
+// 修補模板把它灌進 summary/strengths/watchouts/拆盤五欄。修法＝認不出主題就
+// 引她實際說的話。這條測試重放 Eric 的旅行局（非白名單話題）走完整 salvage+
+// repair 路徑，鎖死「槽值必須踩在她的原話上、萬用詞絕不再出現」。
+Deno.test("真機回歸 2026-08-06：repair 話題槽在非白名單話題引她的原話，不再填萬用詞", () => {
+  const travelHint = {
+    ...appliedExactHint,
+    originalHintText:
+      "哈哈也是，活動上碰幾次就要一起旅行，我這步伐是有點大😂 那先從約下次活動後一起吃飯開始，妳說呢？",
+    sentText:
+      "哈哈也是，活動上碰幾次就要一起旅行，我這步伐是有點大😂 那先從約下次活動後一起吃飯開始，妳說呢？",
+  };
+  const travelTurns = [
+    { role: "user" as const, text: "下次再一起去旅行嗎" },
+    {
+      role: "ai" as const,
+      text: "我們不是才在活動上碰過幾次嗎，你會不會跳太快了哈哈",
+    },
+    { role: "user" as const, text: travelHint.sentText },
+    {
+      role: "ai" as const,
+      text:
+        "你倒是很會順著台階下嘛😂 不過活動後吃個飯確實比旅行實際多了，我還在想要吃什麼",
+    },
+  ];
+  // 候選可見文字檢討提示（偏保守）→ preserved 矛盾 → salvage 走 repair 路徑
+  const blamingTravelCard = {
+    summary: "你有照提示做，但這句提示偏保守，互動停在原地。",
+    strengths: ["你有照提示做，順著她的節奏收回步伐。"],
+    watchouts: ["照提示後球沒有丟回她，話題停住。"],
+    suggestedLine: "那就先從吃飯開始吧！",
+    vibe: "中性",
+    dateChance: "medium",
+    dateChanceReason: "她願意把旅行收斂成吃飯，是實際的推進窗口。",
+    nextInviteMove: "先把吃飯的時間敲下來。",
+    gameBreakdown: {
+      phaseReached: "從玩笑推進到吃飯提案的雛形。",
+      missedVariable: "還缺具體的時間地點。",
+      failureState: "提示偏保守，讓推進停住。",
+      nextFirstLine: "那就先從吃飯開始吧！",
+      inviteDirection: "把吃飯提案敲成具體時間。",
+    },
+    hintAssessment: { verdict: "preserved", revisedEvidenceQuote: null },
+  };
+  const salvaged = salvageDebriefCandidate({
+    failures: [{
+      model: "claude-sonnet-5",
+      code: "debrief_hint_assessment_revision_required",
+      raw: JSON.stringify(blamingTravelCard),
+    }],
+    parseOptions: {
+      allowGameBreakdown: true,
+      requireCompleteCard: true,
+      enforceGeneratedQuality: true,
+      relaxSubjectiveQualityRubrics: true,
+      turns: travelTurns,
+      appliedHintTurns: [travelHint],
+    },
+  });
+  const card = salvaged?.card;
+  assertEquals(card !== undefined, true);
+  const allVisible = JSON.stringify(card);
+  // 萬用詞絕不再出現
+  assertEquals(allVisible.includes("她剛丟回來的話題"), false);
+  assertEquals(allVisible.includes("剛剛這個點我有接到"), false);
+  // 槽值踩在她的原話上（引句來自她最後那句）
+  assertEquals(allVisible.includes("你倒是很會順著台階下"), true);
+});
+
 Deno.test("真機回歸 2026-08-06：Game 拆盤字面回聲在前兩發（非 salvage）仍照擋，逼重生成", () => {
   assertThrows(
     () =>
