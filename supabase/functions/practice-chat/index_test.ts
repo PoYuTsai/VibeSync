@@ -814,6 +814,16 @@ Deno.test("standard chat response does not include temperature and does not judg
   assertEquals(state.deepSeekCalls[0].jsonMode, undefined);
 });
 
+Deno.test("chat reply from DeepSeek is normalized to Traditional Chinese", async () => {
+  const { response, json } = await run({
+    ledger: ledger({ practice_mode: "standard" }),
+    deepSeekReplies: ["嗯？你讲话可以正常一点吗。"],
+  });
+
+  assertEquals(response.status, 200);
+  assertEquals(json.reply, "嗯？你講話可以正常一點嗎。");
+});
+
 Deno.test("free continuation spoof with roundIndex 1 is upgrade-gated before provider", async () => {
   const { response, json, state } = await run(
     {

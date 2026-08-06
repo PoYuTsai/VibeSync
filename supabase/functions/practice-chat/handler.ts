@@ -110,6 +110,7 @@ import {
   type TurnClassification,
 } from "./temperature.ts";
 import { taipeiTimeContextFor } from "./time_context.ts";
+import { toTraditionalChinese } from "./traditional_chinese.ts";
 import {
   buildPracticeAiLogRow,
   buildPracticeGenerationTelemetry,
@@ -3835,6 +3836,9 @@ export function createPracticeChatHandler(
             temperature: CHAT_TEMPERATURE,
             timeoutMs: DEEPSEEK_TIMEOUT_MS,
           });
+          // DeepSeek 偶爾在短/冒犯輸入下退回訓練分佈的簡體字，繁體鐵則守不住；
+          // 其他 AI 輸出欄位（hint/debrief/temperature）都已過這道轉換，這裡補齊。
+          reply = toTraditionalChinese(reply);
           rejectVisibleInternalLabelLeak(reply, "chat_internal_label_leak");
           rejectL4UnsafeVisibleText(reply, "chat_l4_unsafe");
           break;
