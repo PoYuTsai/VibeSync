@@ -889,6 +889,11 @@ final class KeyboardViewController: UIInputViewController {
             screenshotCancelButton.isHidden = false
         case .resultsPreview(let presentation):
             screenshotPanel.isHidden = false
+            // analysisCard already renders cue／turn-state／uncertainty in full
+            // (renderAnalysisCard below); the plain status bubble above it was
+            // showing the same cue text a second time (2026-08-06 dogfood —
+            // real screenshot showed the two blocks saying the same thing).
+            screenshotStatusBubble.isHidden = true
             renderAnalysisCard(presentation)
             renderScreenshotCandidates(presentation.options)
             screenshotCandidateStack.isHidden = false
