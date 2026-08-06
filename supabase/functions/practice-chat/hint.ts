@@ -3,7 +3,6 @@ import { PRACTICE_COACHING_RUBRIC } from "./coaching_rubric.ts";
 import {
   assertPracticeTextGroundedInTurns,
   isGenericPracticeComplimentOrEcho,
-  isSalvageableFailureCode,
   normalizedPracticeText,
   rejectGenericPasteablePracticeText,
   rejectKnownCannedPracticeText,
@@ -77,16 +76,6 @@ export type HintTacticalMove =
 
 export type HintReplyType = "warm_up" | "steady";
 
-export class HintPureQuestionError extends Error {
-  readonly fields: Array<"warmUp" | "steady">;
-
-  constructor(fields: readonly ("warmUp" | "steady")[]) {
-    super("hint_quality_invalid_pure_questions");
-    this.name = "HintPureQuestionError";
-    this.fields = [...new Set(fields)];
-  }
-}
-
 export interface HintReply {
   type: HintReplyType;
   label: "升溫回覆" | "穩住回覆";
@@ -139,27 +128,19 @@ interface HintParseOptions {
   trustedFactClaims?: HintFactClaim[];
   /** Dead legacy fallback tests intentionally do not opt into this gate. */
   enforceGeneratedQuality?: boolean;
-  /** Runtime semantic reviewer owns facts/grounding/style; parser keeps hard safety. */
-  semanticAdjudicated?: boolean;
   /**
-   * 單發管線 profile（2026-07-23 eval 第 1 輪校正）：放行 reviewer 時代主觀
-   * rubric（substantive_move／invite_coaching_conflict／game_coaching_substance／
-   * generic-pasteable）；硬安全、結構、守門詞表、事實接地（fact claims＋
-   * grounding）一律照擋。舊 served 結果從未 enforce 這些主觀 rubric。
-   */
-  relaxSubjectiveQualityRubrics?: boolean;
-  /**
-   * 只有 salvage pass 可以開。跳過字面 n-gram grounding，其餘守門照跑。
+   * 守門嚴重度分級（2026-08-06 Eric 拍板，同 debrief debrief_card.ts）：
+   * 偏好門不否決，違規碼經此 callback 記 telemetry（事件
+   * practice_chat_hint_quality_finding）。未注入＝finding 靜默丟棄
+   * （直呼 parser 的舊測試與 eval 工具）。
    *
-   * grounding 是偏好不是否決權：前兩發（Sonnet→Haiku）照擋，兩發都沒過時由
-   * salvage 端出最佳候選，而不是讓使用者拿到 503（2026-08-05 Eric 拍板：
-   * hint/debrief × 新手/一般/Game 正常一定要有輸出）。
-   *
-   * 這個 gate 對 hint 有結構性盲區：證據窗是整份逐字稿、兩種 role 都算，所以
-   * 她只回一個 emoji 時，一句自然回應她表情的 hint 會因為沒有複讀「我說」的
-   * 原話而被判不接地——等於逼 hint 引用自己而不是回應她。
+   * 偏好門名單：字面 grounding（證據窗盲區——她只回 emoji 時，自然回應她
+   * 表情的句子會因沒複讀「我說」原話被判不接地）、fact ledger、bossy 句型、
+   * 萬用可貼句、雙欄純問句、路線矛盾、實質行動、Game coaching 實質度。
+   * 紅線（罐頭／洩漏／L4／溫度）與結構（壞 JSON／缺欄／超長）不在此列，
+   * 照舊 throw。
    */
-  skipLexicalGrounding?: boolean;
+  onQualityFinding?: (code: string) => void;
   /**
    * client 能力宣告：這台 client 看得懂「本輪沒有可貼句」的回應形狀嗎？
    *
@@ -169,28 +150,21 @@ interface HintParseOptions {
    */
   allowNoPasteableReply?: boolean;
   /**
-   * 只有 salvage pass 可以開。乙類（結構／格式）缺陷改成修補或降級，而不是把
-   * 整份內容丟掉。
+   * 結構 degrade pass 的總開關（2026-08-07 守門嚴重度分級後 salvage 退役，
+   * 這是唯一的「最後手段讓路」旗標，合併了舊 degradeStructuralDefects 與
+   * salvagePass——兩者只會一起開，兩顆旋鈕是漂移源）。只有
+   * degradeStructuralHintCandidate 的呼叫端可以開。
    *
-   * 分野：模型的**內容**是好的、只是形狀壞了（超長、兩句寫成同一句、旁白句
-   * 塞進可貼欄）＝修補比 503 好。甲類（L4／罐頭／內部標籤外洩／捏造 fact）
-   * 一律照擋，salvage 也不例外。
-   *
-   * 刻意不在前兩發開：留給 retry 一次產出「完整且合規」的機會，只有兩發全滅
-   * 才降級端出（2026-08-06 W3）。
-   */
-  degradeStructuralDefects?: boolean;
-  /**
-   * salvage pass 的**總開關**（2026-08-06 Eric 拍板把白名單翻成黑名單）。
-   *
-   * 開了就等於宣告「這是最後一發，不端出去使用者就會拿到 503」。此時除了紅線
-   * （露骨／內部洩漏／罐頭，見 practice_visible_quality.ts 的
-   * NEVER_SALVAGEABLE_FAILURE_CODE_PARTS）以外，所有 gate 一律讓路——包含
-   * 主觀品質、結構格式、字面 grounding，以及捏造事實（Eric 拍板不留在紅線）。
+   * 開了＝宣告「不端出去使用者就會拿到 503」。此時：
+   * - 乙類結構缺陷改修補或降級：超長剪裁、兩句同句剪一句、單欄旁白丟欄。
+   * - server 契約門讓路：邀約階梯（buildHintDecision）、Game 契約 slug、
+   *   無可貼句狀態接地（改端中性說明）。讓路後 inviteRoute 仍照句子實際
+   *   強度標註，不謊報。
+   * - 紅線（L4／罐頭／洩漏）與壞 JSON／缺欄照擋：救不了就 503。
    *
    * 前兩發完全不受影響：該擋照擋，retry 仍有機會產出乾淨的內容。
    */
-  salvagePass?: boolean;
+  finalDegradePass?: boolean;
 }
 
 const MAX_REPLY_LENGTH = 80;
@@ -858,15 +832,16 @@ export function buildHintDecision(
     replyText: string;
     tacticalMove?: HintTacticalMove;
     /**
-     * salvage pass（2026-08-06）。這個函式跑在 parseHintResult **之後**，所以
-     * parse 那邊的 salvagePass 管不到它——生產實例：部署後仍有一筆
-     * hint_quality_invalid_invite_route 打成 503，兩份候選都在、也都可搶救，
-     * 卡在這裡。
+     * 結構 degrade pass（沿革：2026-08-06 salvage）。這個函式跑在
+     * parseHintResult **之後**，所以 parse 那邊的旗標管不到它——生產實例：
+     * 部署後仍有一筆 hint_quality_invalid_invite_route 打成 503，兩份候選
+     * 都在、也都可搶救，卡在這裡。
      *
-     * 邀約階梯不在紅線內（紅線＝露骨／內部洩漏／罐頭），最後一發不得因此擋人。
-     * 不 throw 之後 inviteRoute 仍照**這句話實際的邀約強度**標註，不會謊報。
+     * 邀約階梯不在紅線內（紅線＝露骨／內部洩漏／罐頭），最後手段不得因此
+     * 擋人。不 throw 之後 inviteRoute 仍照**這句話實際的邀約強度**標註，
+     * 不會謊報。
      */
-    salvagePass?: boolean;
+    finalDegradePass?: boolean;
   },
 ): PracticeHintDecision {
   const temperatureScore = clampTemperature(opts.temperatureScore);
@@ -907,7 +882,7 @@ export function buildHintDecision(
       : baseRoute;
     const actualLevel = practiceInviteLevelFor(opts.replyText);
     if (
-      opts.salvagePass !== true &&
+      opts.finalDegradePass !== true &&
       practiceInviteLevelRank(actualLevel) >
         practiceInviteLevelRank(allowedInviteLevelForRoute(allowedRoute))
     ) {
@@ -966,7 +941,7 @@ export function buildHintDecision(
     : baseRoute;
   const actualLevel = practiceInviteLevelFor(opts.replyText);
   if (
-    opts.salvagePass !== true &&
+    opts.finalDegradePass !== true &&
     practiceInviteLevelRank(actualLevel) >
       practiceInviteLevelRank(allowedInviteLevelForRoute(allowedRoute))
   ) {
@@ -1520,6 +1495,22 @@ function rejectBossyPasteableHintReply(
   }
 }
 
+/**
+ * 偏好門執行器（守門嚴重度分級，2026-08-07，同 debrief_card.ts 的 soft()）：
+ * gate 丟出的錯誤碼原樣轉成 finding，不否決。未注入 callback＝靜默丟棄。
+ */
+function softQualityGate(options: HintParseOptions, gate: () => void): void {
+  try {
+    gate();
+  } catch (error) {
+    options.onQualityFinding?.(
+      error instanceof Error && error.message
+        ? error.message
+        : "hint_quality_finding_unknown",
+    );
+  }
+}
+
 function requiredString(
   value: unknown,
   field: "warmUp" | "steady" | "coaching" | "noPasteableReason",
@@ -1546,32 +1537,36 @@ function requiredString(
   if (
     options.enforceGeneratedQuality === true &&
     repaired.length > generatedMaxLength &&
-    options.degradeStructuralDefects !== true
+    options.finalDegradePass !== true
   ) {
     throw new Error("hint_quality_invalid_overlong");
   }
   const capped = options.enforceGeneratedQuality === true
-    // salvage 降級：超長是形狀壞掉不是內容壞掉，切到上限比整份丟掉好。
+    // degrade 剪裁：超長是形狀壞掉不是內容壞掉，切到上限比整份丟掉好。
     ? repaired.slice(0, generatedMaxLength).trim()
     : repaired.slice(0, maxLength).trim();
   if (capped.length === 0) {
     throw new Error(`hint_missing_${field}`);
   }
-  if (field !== "noPasteableReason" && options.salvagePass !== true) {
-    // 命令口吻不在紅線內（紅線＝露骨／內部洩漏／罐頭）。最後一發讓路。
-    rejectBossyPasteableHintReply(capped, field);
+  if (field !== "noPasteableReason") {
+    // 命令口吻不在紅線內（紅線＝露骨／內部洩漏／罐頭）＝偏好門，只記 finding。
+    softQualityGate(
+      options,
+      () => rejectBossyPasteableHintReply(capped, field),
+    );
   }
   rejectInternalLabelLeak(capped);
   rejectL4UnsafeVisibleText(capped, "hint_l4_unsafe");
   if (options.enforceGeneratedQuality === true) {
     rejectKnownCannedPracticeText(capped, "hint_canned_visible_text");
-    if (
-      field !== "coaching" && field !== "noPasteableReason" &&
-      options.semanticAdjudicated !== true &&
-      options.relaxSubjectiveQualityRubrics !== true &&
-      options.salvagePass !== true
-    ) {
-      rejectGenericPasteablePracticeText(capped, "hint_quality_invalid");
+    if (field !== "coaching" && field !== "noPasteableReason") {
+      // 萬用可貼句＝偏好門。ai_logs 21 天實證（debrief 同型）：被它殺掉的
+      // 候選內容是好的，重生成換來的卡沒有更好，只多燒一發延遲。
+      softQualityGate(
+        options,
+        () =>
+          rejectGenericPasteablePracticeText(capped, "hint_quality_invalid"),
+      );
     }
   }
   return capped;
@@ -2379,9 +2374,8 @@ function assertNoPasteableFactClaimsSupported(opts: {
   parseOptions: HintParseOptions;
 }): void {
   if (opts.parseOptions.enforceGeneratedQuality !== true) return;
-  if (opts.parseOptions.semanticAdjudicated === true) return;
-  // 捏造事實已由 Eric 拍板移出紅線（2026-08-06）：前兩發照擋，最後一發讓路。
-  if (opts.parseOptions.salvagePass === true) return;
+  // 捏造事實已由 Eric 拍板移出紅線（2026-08-06）；守門嚴重度分級後與可貼句
+  // 路徑同一待遇：偏好門，第一發即收、只記 finding。
   const factContext = buildHintFactContext({
     turns: opts.parseOptions.turns,
     factualEvidence: opts.parseOptions.factualEvidence,
@@ -2390,11 +2384,12 @@ function assertNoPasteableFactClaimsSupported(opts: {
     trustedFactClaims: opts.parseOptions.trustedFactClaims,
   });
   for (const text of opts.texts) {
-    assertHintFactClaimsSupported({
-      text,
-      field: "coaching",
-      context: factContext,
-    });
+    softQualityGate(opts.parseOptions, () =>
+      assertHintFactClaimsSupported({
+        text,
+        field: "coaching",
+        context: factContext,
+      }));
   }
 }
 
@@ -2433,7 +2428,7 @@ function resolveNoPasteableReason(options: HintParseOptions): string {
 
 function assertNoPasteableStateIsGrounded(options: HintParseOptions): void {
   if (options.enforceGeneratedQuality !== true) return;
-  if (options.salvagePass === true) return;
+  if (options.finalDegradePass === true) return;
   if (resolveNoPasteableReason(options) !== SERVER_NO_PASTEABLE_REASON) {
     throw new Error("hint_no_pasteable_unsupported_state");
   }
@@ -2480,16 +2475,18 @@ function assertGeneratedHintQuality(opts: {
   parseOptions: HintParseOptions;
 }): void {
   if (opts.parseOptions.enforceGeneratedQuality !== true) return;
-  // 最後一發：紅線以外全部讓路（紅線在 requiredString 就跑完了，見 salvagePass）。
-  if (opts.parseOptions.salvagePass === true) return;
+  const options = opts.parseOptions;
+  const degrade = options.finalDegradePass === true;
   if (
-    normalizedPracticeText(opts.warmUp) ===
-      normalizedPracticeText(opts.steady) &&
-    // salvage 降級：兩句寫成同一句是形狀壞掉，端出去重後的一句仍是可用建議，
-    // 比整份丟掉好（呼叫端負責只 push 一次，見 parseHintResult）。
-    opts.parseOptions.degradeStructuralDefects !== true
+    normalizedPracticeText(opts.warmUp) === normalizedPracticeText(opts.steady)
   ) {
-    throw new Error("hint_quality_invalid_duplicate_replies");
+    // 兩句寫成同一句＝模型空轉的結構性瑕疵，重生成有救（同 debrief Game 拆盤
+    // 欄位互抄拍板照擋）。degrade pass 剪成一句端出（parseHintResult 尾段
+    // 負責只 push 一次），仍記 finding 讓 telemetry 看得見。
+    if (!degrade) {
+      throw new Error("hint_quality_invalid_duplicate_replies");
+    }
+    options.onQualityFinding?.("hint_quality_invalid_duplicate_replies");
   }
   const pureQuestionFields = [
     ...(classifyHintQuestionComposition(opts.warmUp) === "definitely_pure"
@@ -2500,42 +2497,46 @@ function assertGeneratedHintQuality(opts: {
       : []),
   ];
   if (pureQuestionFields.length === 2) {
-    throw new HintPureQuestionError(pureQuestionFields);
+    // 雙欄純問句＝查戶口，品味問題不是壞卡（偏好門）。分級前的專用重試
+    // 回饋機制（HintPureQuestionError）一併退役。
+    options.onQualityFinding?.("hint_quality_invalid_pure_questions");
   }
-  if (opts.parseOptions.mode === "game") {
+  if (options.mode === "game") {
     const coaching = normalizedPracticeText(opts.coaching);
     if (
       !coaching.includes("game心法") ||
       !coaching.includes("速約任務") ||
       !/(?:階段|開場|測試|投入|熟悉|安全|窗口|這輪)/u.test(coaching)
     ) {
-      throw new Error("hint_quality_invalid_game_contract");
+      // client 渲染依賴的 deterministic 契約，重生成有救＝照擋;
+      // degrade pass（最後手段）讓路端出，缺 slug 比 503 便宜。
+      if (!degrade) {
+        throw new Error("hint_quality_invalid_game_contract");
+      }
+      options.onQualityFinding?.("hint_quality_invalid_game_contract");
     }
   }
-  // Natural-language truth, grounding, and coaching substance are judged by
-  // the semantic reviewer in production. The visible Game schema above stays
-  // deterministic so a mistaken accept cannot bypass the contract entirely.
-  if (opts.parseOptions.semanticAdjudicated === true) return;
-  const relaxSubjective =
-    opts.parseOptions.relaxSubjectiveQualityRubrics === true;
+  // ── 以下全是偏好門：第一發即收卡，違規碼記 finding（2026-08-06 拍板）──
   const coachingSaysNoInvite =
     /(?:這輪|現在)?(?:先)?(?:不約|不急著約|不硬約)|(?:先鋪墊|等窗口|先累積(?:投入|熟悉))/u
       .test(opts.coaching);
   if (
-    !relaxSubjective &&
     coachingSaysNoInvite &&
     [opts.warmUp, opts.steady].some((reply) =>
       practiceInviteLevelFor(reply) !== "none"
     )
   ) {
-    throw new Error("hint_quality_invalid_invite_coaching_conflict");
+    // 路線矛盾：分級前被 relaxSubjectiveQualityRubrics 靜默跳過，現在復活為
+    // finding（同 debrief hint_strategy_contradiction）——放行行為不變，
+    // 但 telemetry 看得見，finding 率偏高＝回頭修 prompt。
+    options.onQualityFinding?.("hint_quality_invalid_invite_coaching_conflict");
   }
   const factContext = buildHintFactContext({
-    turns: opts.parseOptions.turns,
-    factualEvidence: opts.parseOptions.factualEvidence,
-    sharedFactualEvidence: opts.parseOptions.sharedFactualEvidence,
-    partnerFactualEvidence: opts.parseOptions.partnerFactualEvidence,
-    trustedFactClaims: opts.parseOptions.trustedFactClaims,
+    turns: options.turns,
+    factualEvidence: options.factualEvidence,
+    sharedFactualEvidence: options.sharedFactualEvidence,
+    partnerFactualEvidence: options.partnerFactualEvidence,
+    trustedFactClaims: options.trustedFactClaims,
   });
   for (
     const [visibleText, field] of [
@@ -2544,64 +2545,98 @@ function assertGeneratedHintQuality(opts: {
       [opts.coaching, "coaching"],
     ] as const
   ) {
-    assertHintFactClaimsSupported({
-      text: visibleText,
-      field,
-      context: factContext,
-    });
+    // 捏造事實不在紅線內（Eric 2026-08-06 拍板，見 practice_visible_quality.ts
+    // 黑名單註解；要推翻＝重新對齊 Eric）。
+    softQualityGate(options, () =>
+      assertHintFactClaimsSupported({
+        text: visibleText,
+        field,
+        context: factContext,
+      }));
   }
-  if (!relaxSubjective) {
-    for (const reply of [opts.warmUp, opts.steady]) {
-      if (!hasSubstantiveHintMove(reply)) {
-        throw new Error("hint_quality_invalid_substantive_move");
-      }
+  for (const reply of [opts.warmUp, opts.steady]) {
+    if (!hasSubstantiveHintMove(reply)) {
+      // 分級前被 relaxSubjectiveQualityRubrics 靜默跳過，復活為 finding。
+      options.onQualityFinding?.("hint_quality_invalid_substantive_move");
+      break;
     }
   }
-  // One grounded coaching sentence must not launder two generic pasteable
-  // replies. Every visible choice independently touches the supplied
-  // conversation. 視窗＝全逐字稿：這個 gate 的目的是擋萬用模板，不是逼
-  // 逐字複讀最新句——「引用較早輪次」「回應她的質問句」都是有憑有據
-  //（2026-07-23 判定表 not_grounded 10/10 全誤殺，其中最新句限定是主因）。
-  if (opts.parseOptions.skipLexicalGrounding !== true) {
-    for (const visibleText of [opts.warmUp, opts.steady, opts.coaching]) {
+  // 字面 grounding：視窗＝全逐字稿，目的是擋萬用模板不是逼逐字複讀最新句
+  //（2026-07-23 判定表 not_grounded 10/10 全誤殺）。她只回 emoji 的短局，
+  // 自然回應她表情的句子結構性不可能過——2026-08-05 三連 503 的主因，
+  // 降為偏好門。
+  for (const visibleText of [opts.warmUp, opts.steady, opts.coaching]) {
+    softQualityGate(options, () =>
       assertPracticeTextGroundedInTurns({
         visibleText,
-        turns: opts.parseOptions.turns,
+        turns: options.turns,
         errorCode: "hint_quality_invalid_not_grounded",
-      });
-    }
+      }));
   }
-  if (!relaxSubjective && opts.parseOptions.mode === "game") {
-    assertGeneratedGameCoachingSubstance(opts.coaching);
+  if (options.mode === "game") {
+    // 分級前被 relaxSubjectiveQualityRubrics 靜默跳過，復活為 finding。
+    softQualityGate(
+      options,
+      () => assertGeneratedGameCoachingSubstance(opts.coaching),
+    );
   }
 }
 
 /**
- * Salvage pass：兩發（Sonnet→Haiku）都被 gate 打回時，從候選原文裡搶救一組可以
- * 端出的 hint，而不是讓使用者拿到 503。
+ * 結構 degrade pass 可救的敗因碼白名單。
  *
- * 只放掉字面 grounding；硬安全（L4）、守門詞表、結構、fact claims 等不可退讓
- * 守門一律照跑，全部候選都救不起來才回 null（→ 503）。
+ * 守門嚴重度分級（2026-08-07）後，偏好門不再殺卡，兩發（Sonnet→Haiku）
+ * 都被打回只剩：紅線、結構失敗、server 契約門、API/timeout。其中「內容好、
+ * 只是形狀或契約卡住」的候選還救得回來——就是這份名單，**刻意講得完**：
+ *
+ * - 三個乙類結構缺陷：超長（剪裁）、兩句同句（剪一句）、單欄旁白（丟欄）。
+ * - 四個 server 契約門：邀約階梯兩碼（buildHintDecision 讓路，inviteRoute
+ *   照實標註）、Game 契約 slug（缺 slug 比 503 便宜）、無可貼句狀態接地
+ *   （改端不替她說話的中性說明）。
+ *
+ * 不在名單＝真救不了或不准救：紅線四類（使用者絕不能看到）、壞 JSON／缺欄
+ * （重解一樣炸）、no_pasteable 自相矛盾（不猜哪邊是真的）、舊 client 能力
+ * 缺席（fail-closed 鐵則）、transport 失敗（沒有候選原文）。
+ */
+const DEGRADABLE_FAILURE_CODES: ReadonlySet<string> = new Set([
+  "hint_quality_invalid_overlong",
+  "hint_quality_invalid_duplicate_replies",
+  "hint_stage_direction_reply",
+  "hint_quality_invalid_invite_route",
+  "hint_quality_invalid_semantic_invite_move",
+  "hint_quality_invalid_game_contract",
+  "hint_no_pasteable_unsupported_state",
+]);
+
+/**
+ * 結構 degrade pass（salvage 的窄版後繼，2026-08-07 守門嚴重度分級）：兩發都
+ * 被 gate 打回時，只對白名單敗因的候選用 finalDegradePass 重解一次端出，
+ * 而不是讓使用者拿到 503。全部候選都救不起來才回 null（→ 503）。
  * 候選順序＝attemptFailures 順序（主模型在前）。
  */
-export function salvageHintCandidate<T>(opts: {
+export function degradeStructuralHintCandidate<T>(opts: {
   failures: readonly { model: string; code?: string; raw?: string }[];
   /**
-   * 呼叫端自己的解析closure（必須自行帶 skipLexicalGrounding）。刻意收 callback
+   * 呼叫端自己的解析 closure（必須自行帶 finalDegradePass）。刻意收 callback
    * 而不是 parseOptions：hint 的 validate 在 parseHintResult 之後還要補上
-   * server-authored decision，salvage 必須走同一條路徑，否則兩邊各寫一份必然漂移。
+   * server-authored decision，degrade 必須走同一條路徑，否則兩邊各寫一份
+   * 必然漂移。
    */
   parse: (raw: string) => T;
 }): { result: T; model: string } | null {
   for (const failure of opts.failures) {
     if (typeof failure.raw !== "string" || failure.raw.length === 0) continue;
-    // 只原諒字面 grounding 這道 gate（見 isSalvageableFailureCode）。
-    if (!isSalvageableFailureCode(failure.code)) continue;
+    if (
+      typeof failure.code !== "string" ||
+      !DEGRADABLE_FAILURE_CODES.has(failure.code)
+    ) {
+      continue;
+    }
     try {
       const result = opts.parse(failure.raw);
       return { result, model: failure.model };
     } catch {
-      continue; // 這組救不了（踩到不可退讓守門或格式壞掉），換下一組
+      continue; // 這組救不了（踩到紅線或格式壞掉），換下一組
     }
   }
   return null;
@@ -2627,8 +2662,7 @@ export const SERVER_NO_PASTEABLE_REASON =
  * 逐字稿裡看不出她畫了逐客令時用的版本：**不替她說話**，只陳述我們的結論。
  * 見 resolveNoPasteableReason。
  */
-export const SERVER_NO_PASTEABLE_REASON_NEUTRAL =
-  "這一輪沒有適合送出的句子。";
+export const SERVER_NO_PASTEABLE_REASON_NEUTRAL = "這一輪沒有適合送出的句子。";
 
 export function parseHintResult(
   raw: string,
@@ -2718,12 +2752,13 @@ export function parseHintResult(
       noPasteableReason: resolveNoPasteableReason(options),
     };
   }
-  if (
-    (warmUpIsStageDirection || steadyIsStageDirection) &&
-    options.degradeStructuralDefects !== true
-  ) {
-    // 只有一欄是旁白：前兩發照擋，讓 retry 有機會生出兩句真的可貼句。
-    throw new Error("hint_stage_direction_reply");
+  if (warmUpIsStageDirection || steadyIsStageDirection) {
+    // 只有一欄是旁白：前兩發照擋，讓 retry 有機會生出兩句真的可貼句；
+    // degrade pass 丟掉旁白欄端出另一句，記 finding。
+    if (options.finalDegradePass !== true) {
+      throw new Error("hint_stage_direction_reply");
+    }
+    options.onQualityFinding?.("hint_stage_direction_reply");
   }
 
   assertGeneratedHintQuality({
@@ -2737,7 +2772,7 @@ export function parseHintResult(
   if (!warmUpIsStageDirection) {
     replies.push({ type: "warm_up", label: "升溫回覆", text: warmUp });
   }
-  const dropsDuplicateSteady = options.degradeStructuralDefects === true &&
+  const dropsDuplicateSteady = options.finalDegradePass === true &&
     normalizedPracticeText(steady) === normalizedPracticeText(warmUp);
   if (!steadyIsStageDirection && !dropsDuplicateSteady) {
     replies.push({ type: "steady", label: "穩住回覆", text: steady });

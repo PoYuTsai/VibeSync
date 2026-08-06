@@ -9,6 +9,7 @@ import {
   buildHintDecision,
   buildHintMessages,
   classifyHintQuestionComposition,
+  degradeStructuralHintCandidate,
   GAME_HINT_MOVE_EXAMPLES,
   GAME_INVITE_ROUTE_ADVICE,
   GAME_INVITE_ROUTE_LABEL,
@@ -19,7 +20,6 @@ import {
   isStageDirectionText,
   MAX_COACHING_LENGTH,
   parseHintResult,
-  salvageHintCandidate,
   SERVER_NO_PASTEABLE_REASON,
 } from "./hint.ts";
 import { resolvePracticeProfile } from "./practice_persona.ts";
@@ -27,6 +27,48 @@ import type { PracticeSceneContext } from "./life_schedule.ts";
 import { initialPersistedGameState } from "./game_state.ts";
 
 const profile = resolvePracticeProfile({ profileId: "practice_girl_004" });
+
+// ── 守門嚴重度分級（2026-08-07）測試 helper ──
+// 偏好門不再 throw，改記 finding：舊判定表測試改驗「卡照端出＋碼有記到」。
+function parseWithFindings(
+  raw: string,
+  options: NonNullable<Parameters<typeof parseHintResult>[1]>,
+) {
+  const findings: string[] = [];
+  const result = parseHintResult(raw, {
+    ...options,
+    onQualityFinding: (code) => findings.push(code),
+  });
+  return { result, findings };
+}
+
+function assertQualityFinding(
+  raw: string,
+  options: NonNullable<Parameters<typeof parseHintResult>[1]>,
+  expectedCodePart: string,
+  context?: string,
+) {
+  const { findings } = parseWithFindings(raw, options);
+  assert(
+    findings.some((code) => code.includes(expectedCodePart)),
+    context ??
+      `expected finding ${expectedCodePart}, got [${findings.join(", ")}]`,
+  );
+}
+
+function assertNoQualityFinding(
+  raw: string,
+  options: NonNullable<Parameters<typeof parseHintResult>[1]>,
+  unexpectedCodePart: string,
+  context?: string,
+) {
+  const { findings } = parseWithFindings(raw, options);
+  assert(
+    !findings.some((code) => code.includes(unexpectedCodePart)),
+    context ??
+      `unexpected finding ${unexpectedCodePart} in [${findings.join(", ")}]`,
+  );
+}
 const sceneContext: PracticeSceneContext = {
   id: "after-work-coffee",
   statusLine: "剛下班，在買咖啡回家",
@@ -556,7 +598,6 @@ Deno.test("buildHintMessages recognizes Sylvia's authenticity counter-question i
       mode: "game",
       turns,
       enforceGeneratedQuality: true,
-      semanticAdjudicated: true,
     },
   );
   assert(recognized.coaching.includes("測你是否真有觀察"));
@@ -577,7 +618,6 @@ Deno.test("semantic-adjudicated ordinary Game Hint stays literal while intent re
     mode: "game" as const,
     turns,
     enforceGeneratedQuality: true,
-    semanticAdjudicated: true,
   };
 
   const ordinary = parseHintResult(
@@ -2646,17 +2686,13 @@ Deno.test("generated Hint rejects invented named locations and venue names in Be
         "鼻子靈是基本配備😂 店名是Kuro-Cafe。",
       ]
     ) {
-      assertThrows(
-        () =>
-          parseHintResult(
-            JSON.stringify({
-              warmUp: inventedReply,
-              steady: "妳說我鼻子也太靈，但我只記得咖啡香，位置忘了。",
-              coaching,
-            }),
-            { mode, turns, enforceGeneratedQuality: true },
-          ),
-        Error,
+      assertQualityFinding(
+        JSON.stringify({
+          warmUp: inventedReply,
+          steady: "妳說我鼻子也太靈，但我只記得咖啡香，位置忘了。",
+          coaching,
+        }),
+        { mode, turns, enforceGeneratedQuality: true },
         "hint_quality_invalid_unsupported_detail",
         `mode=${mode} reply=${inventedReply}`,
       );
@@ -2665,46 +2701,38 @@ Deno.test("generated Hint rejects invented named locations and venue names in Be
 });
 
 Deno.test("generated Hint rejects nested and coaching-only unsupported details", () => {
-  assertThrows(
-    () =>
-      parseHintResult(
-        JSON.stringify({
-          warmUp: "鼻子靈是基本配備😂 台北市的咖啡真的很多。",
-          steady: "妳說我鼻子也太靈，我只記得咖啡香。",
-          coaching: "她說鼻子也太靈又問在哪，先回答台北市中山區，再接咖啡香。",
-        }),
-        {
-          mode: "beginner",
-          enforceGeneratedQuality: true,
-          turns: [
-            { role: "user", text: "我只記得在台北市聞到咖啡香" },
-            { role: "ai", text: "喔你鼻子也太靈，在哪啊" },
-          ],
-        },
-      ),
-    Error,
+  assertQualityFinding(
+    JSON.stringify({
+      warmUp: "鼻子靈是基本配備😂 台北市的咖啡真的很多。",
+      steady: "妳說我鼻子也太靈，我只記得咖啡香。",
+      coaching: "她說鼻子也太靈又問在哪，先回答台北市中山區，再接咖啡香。",
+    }),
+    {
+      mode: "beginner",
+      enforceGeneratedQuality: true,
+      turns: [
+        { role: "user", text: "我只記得在台北市聞到咖啡香" },
+        { role: "ai", text: "喔你鼻子也太靈，在哪啊" },
+      ],
+    },
     "hint_quality_invalid_unsupported_detail",
   );
 
-  assertThrows(
-    () =>
-      parseHintResult(
-        JSON.stringify({
-          warmUp: "鼻子靈是基本配備😂 但位置我真的忘了。",
-          steady: "妳說我鼻子也太靈，我只記得咖啡香。",
-          coaching:
-            "Game 心法：她說鼻子也太靈又問在哪，這輪先說在中山站的黑露。速約任務：先交換生活感，不硬約。",
-        }),
-        {
-          mode: "game",
-          enforceGeneratedQuality: true,
-          turns: [
-            { role: "user", text: "剛路過一間咖啡店，聞起來很香" },
-            { role: "ai", text: "喔你鼻子也太靈，在哪啊" },
-          ],
-        },
-      ),
-    Error,
+  assertQualityFinding(
+    JSON.stringify({
+      warmUp: "鼻子靈是基本配備😂 但位置我真的忘了。",
+      steady: "妳說我鼻子也太靈，我只記得咖啡香。",
+      coaching:
+        "Game 心法：她說鼻子也太靈又問在哪，這輪先說在中山站的黑露。速約任務：先交換生活感，不硬約。",
+    }),
+    {
+      mode: "game",
+      enforceGeneratedQuality: true,
+      turns: [
+        { role: "user", text: "剛路過一間咖啡店，聞起來很香" },
+        { role: "ai", text: "喔你鼻子也太靈，在哪啊" },
+      ],
+    },
     "hint_quality_invalid_unsupported_detail",
   );
 });
@@ -2759,34 +2787,30 @@ Deno.test("generated Game Hint can answer which-shop questions without inventing
 });
 
 Deno.test("generated Game Hint still rejects invented concrete venues after which-shop questions", () => {
-  assertThrows(
-    () =>
-      parseHintResult(
-        JSON.stringify({
-          warmUp: "應該是台北車站旁那家咖啡店，我猜妳可能真的知道😂",
-          steady: "如果是信義區那間咖啡店，妳應該會有印象吧？",
-          coaching:
-            "Game 心法：她問哪家，先不編店名，承認只記得香味再接她的好奇。速約任務：先交換咖啡生活感，等她接住再開低壓窗口，避免硬約。",
-        }),
+  // 全窗 grounding 後這型不再靠詞面重疊誤打誤中；
+  // 由 asksPlace（含「哪家」）的 venue fail-closed 正面攔截（現記 finding）。
+  assertQualityFinding(
+    JSON.stringify({
+      warmUp: "應該是台北車站旁那家咖啡店，我猜妳可能真的知道😂",
+      steady: "如果是信義區那間咖啡店，妳應該會有印象吧？",
+      coaching:
+        "Game 心法：她問哪家，先不編店名，承認只記得香味再接她的好奇。速約任務：先交換咖啡生活感，等她接住再開低壓窗口，避免硬約。",
+    }),
+    {
+      mode: "game",
+      enforceGeneratedQuality: true,
+      turns: [
         {
-          mode: "game",
-          enforceGeneratedQuality: true,
-          turns: [
-            {
-              role: "user",
-              text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
-            },
-            {
-              role: "ai",
-              text: "（正在煮水餃）哦真的嗎？哪家啊，說不定我知道。",
-            },
-          ],
-          partnerFactualEvidence: ["她喜歡咖啡。"],
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
         },
-      ),
-    Error,
-    // 全窗 grounding 後這型不再靠詞面重疊誤打誤中；
-    // 由 asksPlace（含「哪家」）的 venue fail-closed 正面攔截。
+        {
+          role: "ai",
+          text: "（正在煮水餃）哦真的嗎？哪家啊，說不定我知道。",
+        },
+      ],
+      partnerFactualEvidence: ["她喜歡咖啡。"],
+    },
     "hint_quality_invalid_unsupported_detail",
   );
 });
@@ -2820,61 +2844,53 @@ Deno.test("generated Game Hint can answer which-road questions without inventing
 });
 
 Deno.test("generated Game Hint still rejects invented concrete roads after which-road questions", () => {
-  assertThrows(
-    () =>
-      parseHintResult(
-        JSON.stringify({
-          warmUp: "應該是在信義路上那家，妳偶爾去咖啡店放空應該會喜歡。",
-          steady: "我猜是忠孝東路那間咖啡店，妳喜歡咖啡應該會懂。",
-          coaching:
-            "Game 心法：她問路名，先不編路名，承認只記得香味，再接她的咖啡店放空習慣。速約任務：先交換挑店標準，等她接住再丟低壓踩點窗口。",
-        }),
+  assertQualityFinding(
+    JSON.stringify({
+      warmUp: "應該是在信義路上那家，妳偶爾去咖啡店放空應該會喜歡。",
+      steady: "我猜是忠孝東路那間咖啡店，妳喜歡咖啡應該會懂。",
+      coaching:
+        "Game 心法：她問路名，先不編路名，承認只記得香味，再接她的咖啡店放空習慣。速約任務：先交換挑店標準，等她接住再丟低壓踩點窗口。",
+    }),
+    {
+      mode: "game",
+      enforceGeneratedQuality: true,
+      turns: [
         {
-          mode: "game",
-          enforceGeneratedQuality: true,
-          turns: [
-            {
-              role: "user",
-              text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
-            },
-            {
-              role: "ai",
-              text: "喔？在哪啊",
-            },
-          ],
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
         },
-      ),
-    Error,
+        {
+          role: "ai",
+          text: "喔？在哪啊",
+        },
+      ],
+    },
     "hint_quality_invalid",
   );
 });
 
 Deno.test("generated Game Hint still rejects remembered concrete roads after which-road questions", () => {
-  assertThrows(
-    () =>
-      parseHintResult(
-        JSON.stringify({
-          warmUp: "路名沒記，只記得信義路上那家。",
-          steady: "在哪我先欠著，只記得那股香味很明顯。",
-          coaching:
-            "Game 心法：她問「在哪」是在要可驗證資訊，先不編路名，承認只記得香味。速約任務：先回答這個問題，因為沒有可驗證資訊要保留可信度，等她接住再把香味窗口轉成低壓踩點。",
-        }),
+  assertQualityFinding(
+    JSON.stringify({
+      warmUp: "路名沒記，只記得信義路上那家。",
+      steady: "在哪我先欠著，只記得那股香味很明顯。",
+      coaching:
+        "Game 心法：她問「在哪」是在要可驗證資訊，先不編路名，承認只記得香味。速約任務：先回答這個問題，因為沒有可驗證資訊要保留可信度，等她接住再把香味窗口轉成低壓踩點。",
+    }),
+    {
+      mode: "game",
+      enforceGeneratedQuality: true,
+      turns: [
         {
-          mode: "game",
-          enforceGeneratedQuality: true,
-          turns: [
-            {
-              role: "user",
-              text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
-            },
-            {
-              role: "ai",
-              text: "喔？在哪啊",
-            },
-          ],
+          role: "user",
+          text: "剛看到妳喜歡咖啡，我今天路過一家聞起來超香的店。",
         },
-      ),
-    Error,
+        {
+          role: "ai",
+          text: "喔？在哪啊",
+        },
+      ],
+    },
     "hint_quality_invalid",
   );
 });
@@ -2936,27 +2952,24 @@ Deno.test("generated Hint rejects unsupported relative place answers", () => {
       "就是轉角那家，我平常很常去。",
     ]
   ) {
-    let rejected = false;
-    try {
-      parseHintResult(
-        JSON.stringify({
-          warmUp,
-          steady: "妳問在哪，但我只記得咖啡香，位置真的忘了。",
-          coaching: "她問在哪，先誠實說忘了，再接週末話題。",
-        }),
-        {
-          mode: "beginner",
-          enforceGeneratedQuality: true,
-          turns: [
-            { role: "user", text: "週末很無聊，有點累" },
-            { role: "ai", text: "你鼻子也太靈了，所以咖啡店在哪啊" },
-          ],
-        },
-      );
-    } catch {
-      rejected = true;
-    }
-    assertEquals(rejected, true, warmUp);
+    // 各案例踩到的門不同（unsupported_detail 或 not_grounded），判定表的
+    // 主張是「這批句子必須被品質門抓到」——分級後＝至少記到一個 finding。
+    const { findings } = parseWithFindings(
+      JSON.stringify({
+        warmUp,
+        steady: "妳問在哪，但我只記得咖啡香，位置真的忘了。",
+        coaching: "她問在哪，先誠實說忘了，再接週末話題。",
+      }),
+      {
+        mode: "beginner",
+        enforceGeneratedQuality: true,
+        turns: [
+          { role: "user", text: "週末很無聊，有點累" },
+          { role: "ai", text: "你鼻子也太靈了，所以咖啡店在哪啊" },
+        ],
+      },
+    );
+    assert(findings.length > 0, warmUp);
   }
 });
 
@@ -3287,29 +3300,25 @@ Deno.test("generated Hint rejects unsupported phone, schedule, person, companion
   ];
   for (const mode of ["beginner", "game"] as const) {
     for (const testCase of cases) {
-      assertThrows(
-        () =>
-          parseHintResult(
-            JSON.stringify({
-              warmUp: testCase.reply,
-              steady: `妳問${
-                testCase.latest.replace(/[？?]/gu, "")
-              }，我先確認一下。`,
-              coaching: mode === "game"
-                ? `Game 心法：她問${
-                  testCase.latest.replace(/[？?]/gu, "")
-                }，這輪先確認事實。速約任務：先累積熟悉，不硬約。`
-                : `她問${
-                  testCase.latest.replace(/[？?]/gu, "")
-                }，先確認事實再回答。`,
-            }),
-            {
-              mode,
-              enforceGeneratedQuality: true,
-              turns: [{ role: "ai", text: testCase.latest }],
-            },
-          ),
-        Error,
+      assertQualityFinding(
+        JSON.stringify({
+          warmUp: testCase.reply,
+          steady: `妳問${
+            testCase.latest.replace(/[？?]/gu, "")
+          }，我先確認一下。`,
+          coaching: mode === "game"
+            ? `Game 心法：她問${
+              testCase.latest.replace(/[？?]/gu, "")
+            }，這輪先確認事實。速約任務：先累積熟悉，不硬約。`
+            : `她問${
+              testCase.latest.replace(/[？?]/gu, "")
+            }，先確認事實再回答。`,
+        }),
+        {
+          mode,
+          enforceGeneratedQuality: true,
+          turns: [{ role: "ai", text: testCase.latest }],
+        },
         "hint_quality_invalid_unsupported_detail",
         `mode=${mode} reply=${testCase.reply}`,
       );
@@ -3457,47 +3466,39 @@ Deno.test("generated Hint never treats her first-person facts as the user's evid
         },
       ]
     ) {
-      assertThrows(
-        () =>
-          parseHintResult(
-            JSON.stringify({
-              warmUp: testCase.warmUp,
-              steady: `妳剛說${
-                testCase.latest.replace(/[？?]/gu, "")
-              }，我的資料先保留。`,
-              coaching: mode === "game"
-                ? "Game 心法：她在交換個人資料，這輪只使用已知事實。速約任務：先累積信任，不硬約。"
-                : "她在交換個人資料，只能使用使用者自己說過的事實。",
-            }),
-            {
-              mode,
-              enforceGeneratedQuality: true,
-              turns: [{ role: "ai", text: testCase.latest }],
-            },
-          ),
-        Error,
+      assertQualityFinding(
+        JSON.stringify({
+          warmUp: testCase.warmUp,
+          steady: `妳剛說${
+            testCase.latest.replace(/[？?]/gu, "")
+          }，我的資料先保留。`,
+          coaching: mode === "game"
+            ? "Game 心法：她在交換個人資料，這輪只使用已知事實。速約任務：先累積信任，不硬約。"
+            : "她在交換個人資料，只能使用使用者自己說過的事實。",
+        }),
+        {
+          mode,
+          enforceGeneratedQuality: true,
+          turns: [{ role: "ai", text: testCase.latest }],
+        },
         "hint_quality_invalid_unsupported_detail",
         `mode=${mode} latest=${testCase.latest}`,
       );
     }
 
-    assertThrows(
-      () =>
-        parseHintResult(
-          JSON.stringify({
-            warmUp: "也在台北市工作，難怪有共鳴。",
-            steady: "台北市工作節奏很硬，我先聽妳吐槽。",
-            coaching: mode === "game"
-              ? "Game 心法：她說在台北市工作，這輪先接工作節奏。速約任務：先累積熟悉，不硬約。"
-              : "她說在台北市工作，只承接她的地點，不替使用者冒認同城。",
-          }),
-          {
-            mode,
-            enforceGeneratedQuality: true,
-            turns: [{ role: "ai", text: "我在台北市工作，你呢？" }],
-          },
-        ),
-      Error,
+    assertQualityFinding(
+      JSON.stringify({
+        warmUp: "也在台北市工作，難怪有共鳴。",
+        steady: "台北市工作節奏很硬，我先聽妳吐槽。",
+        coaching: mode === "game"
+          ? "Game 心法：她說在台北市工作，這輪先接工作節奏。速約任務：先累積熟悉，不硬約。"
+          : "她說在台北市工作，只承接她的地點，不替使用者冒認同城。",
+      }),
+      {
+        mode,
+        enforceGeneratedQuality: true,
+        turns: [{ role: "ai", text: "我在台北市工作，你呢？" }],
+      },
       "hint_quality_invalid_unsupported_detail",
       `implicit actor mode=${mode}`,
     );
@@ -3556,23 +3557,19 @@ Deno.test("generated Hint never treats her first-person facts as the user's evid
         },
       ]
     ) {
-      assertThrows(
-        () =>
-          parseHintResult(
-            JSON.stringify({
-              warmUp: mirrored.warmUp,
-              steady: mirrored.steady,
-              coaching: mode === "game"
-                ? "Game 心法：她分享自己的資料，這輪只承接她已說的事實。速約任務：先累積熟悉，不硬約。"
-                : "她分享自己的資料，不能把她的內容鏡像成使用者的事實。",
-            }),
-            {
-              mode,
-              enforceGeneratedQuality: true,
-              turns: [{ role: "ai", text: mirrored.latest }],
-            },
-          ),
-        Error,
+      assertQualityFinding(
+        JSON.stringify({
+          warmUp: mirrored.warmUp,
+          steady: mirrored.steady,
+          coaching: mode === "game"
+            ? "Game 心法：她分享自己的資料，這輪只承接她已說的事實。速約任務：先累積熟悉，不硬約。"
+            : "她分享自己的資料，不能把她的內容鏡像成使用者的事實。",
+        }),
+        {
+          mode,
+          enforceGeneratedQuality: true,
+          turns: [{ role: "ai", text: mirrored.latest }],
+        },
         "hint_quality_invalid_unsupported_detail",
         `mirrored identity mode=${mode} latest=${mirrored.latest}`,
       );
@@ -3636,22 +3633,17 @@ Deno.test("generated Hint never treats her first-person facts as the user's evid
       },
     ]
   ) {
-    assertThrows(
-      () =>
-        parseHintResult(
-          JSON.stringify({
-            warmUp: testCase.warmUp,
-            steady: testCase.steady,
-            coaching:
-              "她在問使用者的事實，不能把使用者過去說的內容改寫成她的。",
-          }),
-          {
-            mode: "beginner",
-            enforceGeneratedQuality: true,
-            turns: testCase.turns,
-          },
-        ),
-      Error,
+    assertQualityFinding(
+      JSON.stringify({
+        warmUp: testCase.warmUp,
+        steady: testCase.steady,
+        coaching: "她在問使用者的事實，不能把使用者過去說的內容改寫成她的。",
+      }),
+      {
+        mode: "beginner",
+        enforceGeneratedQuality: true,
+        turns: testCase.turns,
+      },
       "hint_quality_invalid_unsupported_detail",
     );
   }
@@ -3817,22 +3809,18 @@ Deno.test("generated Hint keeps partner-owned memory out of user factual evidenc
       },
     ]
   ) {
-    assertThrows(
-      () =>
-        parseHintResult(
-          JSON.stringify({
-            warmUp: testCase.warmUp,
-            steady: testCase.steady,
-            coaching: testCase.coaching,
-          }),
-          {
-            mode: "beginner",
-            enforceGeneratedQuality: true,
-            turns: [{ role: "ai", text: testCase.latest }],
-            sharedFactualEvidence: [testCase.memory],
-          },
-        ),
-      Error,
+    assertQualityFinding(
+      JSON.stringify({
+        warmUp: testCase.warmUp,
+        steady: testCase.steady,
+        coaching: testCase.coaching,
+      }),
+      {
+        mode: "beginner",
+        enforceGeneratedQuality: true,
+        turns: [{ role: "ai", text: testCase.latest }],
+        sharedFactualEvidence: [testCase.memory],
+      },
       "hint_quality_invalid_unsupported_detail",
     );
   }
@@ -3870,44 +3858,36 @@ Deno.test("generated Hint keeps partner-owned memory out of user factual evidenc
 
 Deno.test("generated Hint rejects obfuscated unknown places without false-rejecting supported equivalents", () => {
   for (const venue of ["黑-露", "黑／露", "Kuro_Cafe", "Kuro-Cafe"]) {
-    assertThrows(
-      () =>
-        parseHintResult(
-          JSON.stringify({
-            warmUp: `妳問店名，是${venue}。`,
-            steady: "妳問店名，這個我先確認再回。",
-            coaching: "她問店名，先確認事實再回答。",
-          }),
-          {
-            mode: "beginner",
-            enforceGeneratedQuality: true,
-            turns: [{ role: "ai", text: "那間店名是什麼？" }],
-          },
-        ),
-      Error,
+    assertQualityFinding(
+      JSON.stringify({
+        warmUp: `妳問店名，是${venue}。`,
+        steady: "妳問店名，這個我先確認再回。",
+        coaching: "她問店名，先確認事實再回答。",
+      }),
+      {
+        mode: "beginner",
+        enforceGeneratedQuality: true,
+        turns: [{ role: "ai", text: "那間店名是什麼？" }],
+      },
       "hint_quality_invalid_unsupported_detail",
       venue,
     );
   }
 
-  assertThrows(
-    () =>
-      parseHintResult(
-        JSON.stringify({
-          warmUp: "妳問想聊什麼，妳的公司也在中山站就聊通勤。",
-          steady: "妳問想聊什麼，我先從通勤聊起。",
-          coaching: "她問想聊什麼，只能使用各自主詞正確的事實。",
-        }),
-        {
-          mode: "beginner",
-          enforceGeneratedQuality: true,
-          turns: [
-            { role: "user", text: "我的公司在中山站。" },
-            { role: "ai", text: "那你想聊什麼？" },
-          ],
-        },
-      ),
-    Error,
+  assertQualityFinding(
+    JSON.stringify({
+      warmUp: "妳問想聊什麼，妳的公司也在中山站就聊通勤。",
+      steady: "妳問想聊什麼，我先從通勤聊起。",
+      coaching: "她問想聊什麼，只能使用各自主詞正確的事實。",
+    }),
+    {
+      mode: "beginner",
+      enforceGeneratedQuality: true,
+      turns: [
+        { role: "user", text: "我的公司在中山站。" },
+        { role: "ai", text: "那你想聊什麼？" },
+      ],
+    },
     "hint_quality_invalid_unsupported_detail",
   );
 
@@ -3998,23 +3978,19 @@ Deno.test("generated Hint rejects slot-filled canned replies in Beginner and Gam
         ["賴床這個點我有接到，妳呢？", "沒開機這件事我先記住。"],
       ]
     ) {
-      assertThrows(
-        () =>
-          parseHintResult(
-            JSON.stringify({
-              warmUp,
-              steady,
-              coaching: mode === "game"
-                ? "Game 心法：她在聊賴床，這輪先接住她的狀態。速約任務：先累積熟悉。"
-                : "她在聊賴床，先接住她的狀態。",
-            }),
-            {
-              mode,
-              enforceGeneratedQuality: true,
-              turns: [{ role: "ai", text: "我還在賴床，腦袋根本沒開機" }],
-            },
-          ),
-        Error,
+      assertQualityFinding(
+        JSON.stringify({
+          warmUp,
+          steady,
+          coaching: mode === "game"
+            ? "Game 心法：她在聊賴床，這輪先接住她的狀態。速約任務：先累積熟悉。"
+            : "她在聊賴床，先接住她的狀態。",
+        }),
+        {
+          mode,
+          enforceGeneratedQuality: true,
+          turns: [{ role: "ai", text: "我還在賴床，腦袋根本沒開機" }],
+        },
         "hint_quality_invalid",
       );
     }
@@ -4027,23 +4003,19 @@ Deno.test("generated Hint rejects grounded but generic evaluation questions in B
     { role: "ai" as const, text: "我住台南，最常在中西區活動。" },
   ];
   for (const mode of ["beginner", "game"] as const) {
-    assertThrows(
-      () =>
-        parseHintResult(
-          JSON.stringify({
-            warmUp: "台南這個話題蠻有意思的，妳想多說一點嗎？",
-            steady: "中西區聽起來很有生活感，妳平常喜歡哪種節奏？",
-            coaching: mode === "game"
-              ? "Game 心法：她說自己住台南，這輪先確認生活圈。速約任務：先問她最常去哪一區，因為這輪還在確認生活圈，不硬約。"
-              : "她說自己住台南，下一句要問具體生活圈。",
-          }),
-          {
-            mode,
-            enforceGeneratedQuality: true,
-            turns,
-          },
-        ),
-      Error,
+    assertQualityFinding(
+      JSON.stringify({
+        warmUp: "台南這個話題蠻有意思的，妳想多說一點嗎？",
+        steady: "中西區聽起來很有生活感，妳平常喜歡哪種節奏？",
+        coaching: mode === "game"
+          ? "Game 心法：她說自己住台南，這輪先確認生活圈。速約任務：先問她最常去哪一區，因為這輪還在確認生活圈，不硬約。"
+          : "她說自己住台南，下一句要問具體生活圈。",
+      }),
+      {
+        mode,
+        enforceGeneratedQuality: true,
+        turns,
+      },
       "hint_quality_invalid_substantive_move",
     );
   }
@@ -4123,7 +4095,7 @@ Deno.test("Hint question hard guard is high-precision and keeps unknown prefixes
   }
 });
 
-Deno.test("generated Hint rejects first-person question shells after semantic review", () => {
+Deno.test("generated Hint flags first-person question shells as pure-question findings", () => {
   const turns = [
     {
       role: "user" as const,
@@ -4481,23 +4453,25 @@ Deno.test("generated Hint rejects first-person question shells after semantic re
     ] as const
   ) {
     for (const candidate of [warmUp, steady]) {
-      assertThrows(
-        () =>
-          parseHintResult(
-            JSON.stringify({
-              warmUp: candidate,
-              steady: "妳今天喝什麼？",
-              coaching: "她在追問店家細節，先接住再延伸咖啡話題。",
-            }),
-            {
-              mode: "beginner",
-              enforceGeneratedQuality: true,
-              semanticAdjudicated: true,
-              turns,
-            },
-          ),
-        Error,
-        "hint_quality_invalid_pure_questions",
+      // 守門嚴重度分級（2026-08-07）：雙欄純問句是偏好門，卡照端出、
+      // 違規碼記 finding，不再打回。
+      const findings: string[] = [];
+      const served = parseHintResult(
+        JSON.stringify({
+          warmUp: candidate,
+          steady: "妳今天喝什麼？",
+          coaching: "她在追問店家細節，先接住再延伸咖啡話題。",
+        }),
+        {
+          mode: "beginner",
+          enforceGeneratedQuality: true,
+          onQualityFinding: (code) => findings.push(code),
+          turns,
+        },
+      );
+      assertEquals(served.replies[0].text, candidate);
+      assert(
+        findings.includes("hint_quality_invalid_pure_questions"),
         candidate,
       );
     }
@@ -4766,26 +4740,26 @@ Deno.test("generated Hint rejects first-person question shells after semantic re
   for (const reply of substantiveReplies) {
     // Pair every positive case with a known-pure sentinel. If `reply` is
     // accidentally classified as pure too, the pair must fail this test.
-    try {
-      const substantive = parseHintResult(
-        JSON.stringify({
-          warmUp: reply,
-          steady: "妳猜是哪裡？",
-          coaching: "她問店在哪，先誠實回答已知資訊，再接她的問題。",
-        }),
-        {
-          mode: "beginner",
-          enforceGeneratedQuality: true,
-          semanticAdjudicated: true,
-          turns,
-        },
-      );
-      assertEquals(substantive.replies[0].text, reply);
-    } catch (error) {
-      throw new Error(`substantive reply misclassified: ${reply}`, {
-        cause: error,
-      });
-    }
+    const findings: string[] = [];
+    const substantive = parseHintResult(
+      JSON.stringify({
+        warmUp: reply,
+        steady: "妳猜是哪裡？",
+        coaching: "她問店在哪，先誠實回答已知資訊，再接她的問題。",
+      }),
+      {
+        mode: "beginner",
+        enforceGeneratedQuality: true,
+        onQualityFinding: (code) => findings.push(code),
+        turns,
+      },
+    );
+    assertEquals(substantive.replies[0].text, reply);
+    assertEquals(
+      findings.includes("hint_quality_invalid_pure_questions"),
+      false,
+      `substantive reply misclassified: ${reply}`,
+    );
   }
 });
 
@@ -4798,31 +4772,23 @@ Deno.test("generated Hint rejects grounded compliment-only echoes in Beginner an
     const coaching = mode === "game"
       ? "Game 心法：她這句在說賴床，開場階段先接狀態。速約任務：先接住賴床，因為她還沒開機，不硬約。"
       : "她這句在說賴床，下一句要接她還沒開機的狀態。";
-    assertThrows(
-      () =>
-        parseHintResult(
-          JSON.stringify({
-            warmUp: "賴床聽起來很舒服耶。",
-            steady: "腦袋沒開機感覺很真實。",
-            coaching,
-          }),
-          { mode, enforceGeneratedQuality: true, turns },
-        ),
-      Error,
+    assertQualityFinding(
+      JSON.stringify({
+        warmUp: "賴床聽起來很舒服耶。",
+        steady: "腦袋沒開機感覺很真實。",
+        coaching,
+      }),
+      { mode, enforceGeneratedQuality: true, turns },
       "hint_quality_invalid_substantive_move",
     );
 
-    assertThrows(
-      () =>
-        parseHintResult(
-          JSON.stringify({
-            warmUp: "賴床這個話題很有意思，妳可以再多分享嗎？",
-            steady: "腦袋沒開機聽起來很有生活感，妳願意再說一點嗎？",
-            coaching,
-          }),
-          { mode, enforceGeneratedQuality: true, turns },
-        ),
-      Error,
+    assertQualityFinding(
+      JSON.stringify({
+        warmUp: "賴床這個話題很有意思，妳可以再多分享嗎？",
+        steady: "腦袋沒開機聽起來很有生活感，妳願意再說一點嗎？",
+        coaching,
+      }),
+      { mode, enforceGeneratedQuality: true, turns },
       "hint_quality_invalid_substantive_move",
     );
 
@@ -4854,14 +4820,13 @@ Deno.test("generated Game coaching requires a specific signal, unique task, and 
       "Game 心法：台南階段投入熟悉安全窗口這輪。速約任務：先問她最常去哪一區，因為她還在分享台南生活圈，不硬約。",
     ]
   ) {
-    assertThrows(
-      () =>
-        parseHintResult(JSON.stringify({ ...replies, coaching }), {
-          mode: "game",
-          enforceGeneratedQuality: true,
-          turns,
-        }),
-      Error,
+    assertQualityFinding(
+      JSON.stringify({ ...replies, coaching }),
+      {
+        mode: "game",
+        enforceGeneratedQuality: true,
+        turns,
+      },
       "hint_quality_invalid_game_coaching_substance",
     );
   }
@@ -4932,23 +4897,19 @@ Deno.test("generated Hint permits a named location and venue already present in 
 
 Deno.test("generated Hint quality gate grounds every option instead of letting coaching launder generic replies", () => {
   for (const mode of ["beginner", "game"] as const) {
-    assertThrows(
-      () =>
-        parseHintResult(
-          JSON.stringify({
-            warmUp: "我今天下班想整理書櫃，週末妳都怎麼放空？",
-            steady: "我最近在學做陶器，妳有碰過嗎？",
-            coaching: mode === "game"
-              ? "Game 心法：她這句在聊賴床，開場先累積投入。速約任務：這輪先不約，等窗口。"
-              : "她提到賴床，先接住這個生活狀態。",
-          }),
-          {
-            mode,
-            enforceGeneratedQuality: true,
-            turns: [{ role: "ai", text: "早安～我還在賴床😂" }],
-          },
-        ),
-      Error,
+    assertQualityFinding(
+      JSON.stringify({
+        warmUp: "我今天下班想整理書櫃，週末妳都怎麼放空？",
+        steady: "我最近在學做陶器，妳有碰過嗎？",
+        coaching: mode === "game"
+          ? "Game 心法：她這句在聊賴床，開場先累積投入。速約任務：這輪先不約，等窗口。"
+          : "她提到賴床，先接住這個生活狀態。",
+      }),
+      {
+        mode,
+        enforceGeneratedQuality: true,
+        turns: [{ role: "ai", text: "早安～我還在賴床😂" }],
+      },
       "hint_quality_invalid_not_grounded",
     );
   }
@@ -4956,44 +4917,36 @@ Deno.test("generated Hint quality gate grounds every option instead of letting c
 
 Deno.test("generated Hint fails closed on short, Latin, or emoji-only latest replies instead of serving generic copy", () => {
   for (const latest of ["嗯", "OK", "Okay", "Thanks", "haha", "🙂"]) {
-    assertThrows(
-      () =>
-        parseHintResult(
-          JSON.stringify({
-            warmUp: "我今天下班想整理書櫃，週末妳都怎麼放空？",
-            steady: "我最近在學做陶器，妳有碰過嗎？",
-            coaching:
-              "Game 心法：她這句可能在測試你的節奏，先累積投入。速約任務：這輪先不約，等窗口。",
-          }),
-          {
-            mode: "game",
-            enforceGeneratedQuality: true,
-            turns: [{ role: "ai", text: latest }],
-          },
-        ),
-      Error,
+    assertQualityFinding(
+      JSON.stringify({
+        warmUp: "我今天下班想整理書櫃，週末妳都怎麼放空？",
+        steady: "我最近在學做陶器，妳有碰過嗎？",
+        coaching:
+          "Game 心法：她這句可能在測試你的節奏，先累積投入。速約任務：這輪先不約，等窗口。",
+      }),
+      {
+        mode: "game",
+        enforceGeneratedQuality: true,
+        turns: [{ role: "ai", text: latest }],
+      },
       "hint_quality_invalid_not_grounded",
     );
   }
 });
 
 Deno.test("generated Hint rejects invite options that contradict no-invite coaching", () => {
-  assertThrows(
-    () =>
-      parseHintResult(
-        JSON.stringify({
-          warmUp: "賴床也行，這週六直接一起喝咖啡吧，我找店。",
-          steady: "那就明天下班喝咖啡，我訂位，讓妳繼續賴床。",
-          coaching:
-            "Game 心法：她在聊賴床，現在還是開場先累積熟悉。速約任務：這輪先不約，等窗口。",
-        }),
-        {
-          mode: "game",
-          enforceGeneratedQuality: true,
-          turns: [{ role: "ai", text: "我今天突然很想喝咖啡，但還在賴床" }],
-        },
-      ),
-    Error,
+  assertQualityFinding(
+    JSON.stringify({
+      warmUp: "賴床也行，這週六直接一起喝咖啡吧，我找店。",
+      steady: "那就明天下班喝咖啡，我訂位，讓妳繼續賴床。",
+      coaching:
+        "Game 心法：她在聊賴床，現在還是開場先累積熟悉。速約任務：這輪先不約，等窗口。",
+    }),
+    {
+      mode: "game",
+      enforceGeneratedQuality: true,
+      turns: [{ role: "ai", text: "我今天突然很想喝咖啡，但還在賴床" }],
+    },
     "hint_quality_invalid_invite_coaching_conflict",
   );
 });
@@ -5231,9 +5184,9 @@ Deno.test("parseHintResult rejects bossy or template-like pasteable hint replies
       },
     ]
   ) {
-    assertThrows(
-      () => parseHintResult(JSON.stringify(raw), { mode: "game" }),
-      Error,
+    assertQualityFinding(
+      JSON.stringify(raw),
+      { mode: "game" },
       "hint_bossy_pasteable_reply",
     );
   }
@@ -5268,14 +5221,13 @@ Deno.test("parseHintResult preserves explicitly self-owned answers and still rej
     assertEquals(result.replies[1].text, reply);
   }
 
-  assertThrows(
-    () =>
-      parseHintResult(JSON.stringify({
-        warmUp: "我先交代自己的答案，我會選咖啡；妳先給我一個標準答案。",
-        steady: "我先說自己的想法，我會選咖啡。",
-        coaching: "先提供自己的選擇，但不能接著命令她交答案。",
-      })),
-    Error,
+  assertQualityFinding(
+    JSON.stringify({
+      warmUp: "我先交代自己的答案，我會選咖啡；妳先給我一個標準答案。",
+      steady: "我先說自己的想法，我會選咖啡。",
+      coaching: "先提供自己的選擇，但不能接著命令她交答案。",
+    }),
+    {},
     "hint_bossy_pasteable_reply",
   );
 });
@@ -5308,14 +5260,13 @@ Deno.test("parseHintResult rejects command-style schedule grabs but preserves se
       "週六暫時別答應別人。",
     ]
   ) {
-    assertThrows(
-      () =>
-        parseHintResult(JSON.stringify({
-          warmUp,
-          steady: "賴床這題先聊開，再看彼此週末節奏。",
-          coaching: "她聊賴床，別用命令式排程硬推邀約。",
-        })),
-      Error,
+    assertQualityFinding(
+      JSON.stringify({
+        warmUp,
+        steady: "賴床這題先聊開，再看彼此週末節奏。",
+        coaching: "她聊賴床，別用命令式排程硬推邀約。",
+      }),
+      {},
       "hint_bossy_pasteable_reply",
     );
   }
@@ -5348,19 +5299,15 @@ Deno.test("parseHintResult accepts softened repair lines that mention bossy word
 });
 
 Deno.test("parseHintResult rejects softened prefix followed by bossy pasteable wording", () => {
-  assertThrows(
-    () =>
-      parseHintResult(
-        JSON.stringify({
-          warmUp:
-            "不用給我標準答案，但你先丟一個片單給我，我再看看你品味及不及格。",
-          steady: "不用像交作業，但先給我你的答案，我再決定要不要接。",
-          coaching:
-            "Game 心法：測試階段先推框架。速約任務：不要讓軟化句包住命令感。",
-        }),
-        { mode: "game" },
-      ),
-    Error,
+  assertQualityFinding(
+    JSON.stringify({
+      warmUp:
+        "不用給我標準答案，但你先丟一個片單給我，我再看看你品味及不及格。",
+      steady: "不用像交作業，但先給我你的答案，我再決定要不要接。",
+      coaching:
+        "Game 心法：測試階段先推框架。速約任務：不要讓軟化句包住命令感。",
+    }),
+    { mode: "game" },
     "hint_bossy_pasteable_reply",
   );
 });
@@ -5383,17 +5330,13 @@ Deno.test("parseHintResult keeps playful taste-appraisal 及不及格 callbacks 
   assert(result.replies[1].text.includes("品味及不及格"));
 
   // 真 bossy 照擋：評她本人/她的表現及不及格仍是面試官口吻。
-  assertThrows(
-    () =>
-      parseHintResult(
-        JSON.stringify({
-          warmUp: "妳先唱一段給我聽，我看妳及不及格。",
-          steady: "先穩住節奏就好。",
-          coaching: "Game 心法：這句像面試官，應該被擋。",
-        }),
-        { mode: "game" },
-      ),
-    Error,
+  assertQualityFinding(
+    JSON.stringify({
+      warmUp: "妳先唱一段給我聽，我看妳及不及格。",
+      steady: "先穩住節奏就好。",
+      coaching: "Game 心法：這句像面試官，應該被擋。",
+    }),
+    { mode: "game" },
     "hint_bossy_pasteable_reply",
   );
 });
@@ -5636,23 +5579,19 @@ Deno.test("generated Hint rejects partner facts laundered through natural paraph
 
   for (const mode of ["beginner", "game"] as const) {
     for (const testCase of cases) {
-      assertThrows(
-        () =>
-          parseHintResult(
-            JSON.stringify({
-              warmUp: testCase.warmUp,
-              steady: testCase.steady,
-              coaching: mode === "game"
-                ? `Game 心法：${testCase.coaching}這輪穩定接球。速約任務：先累積熟悉，不硬約。`
-                : testCase.coaching,
-            }),
-            {
-              mode,
-              enforceGeneratedQuality: true,
-              turns: [{ role: "ai", text: testCase.latest }],
-            },
-          ),
-        Error,
+      assertQualityFinding(
+        JSON.stringify({
+          warmUp: testCase.warmUp,
+          steady: testCase.steady,
+          coaching: mode === "game"
+            ? `Game 心法：${testCase.coaching}這輪穩定接球。速約任務：先累積熟悉，不硬約。`
+            : testCase.coaching,
+        }),
+        {
+          mode,
+          enforceGeneratedQuality: true,
+          turns: [{ role: "ai", text: testCase.latest }],
+        },
         "hint_quality_invalid_unsupported_detail",
         `mode=${mode} latest=${testCase.latest} warmUp=${testCase.warmUp}`,
       );
@@ -5758,18 +5697,14 @@ Deno.test("regression: 交作業方向敏感——向她示弱放行、指使她
   );
   assertEquals(result.replies[0].text.includes("交作業"), true);
 
-  assertThrows(
-    () =>
-      parseHintResult(
-        JSON.stringify({
-          warmUp: "妳先去交作業，我看看妳的程度。",
-          steady: "先拍一張給我檢查。",
-          coaching:
-            "Game 心法：她這句可能是在測試，先讓她證明自己再繼續。速約任務：這輪先不約，等窗口。",
-        }),
-        { mode: "game", enforceGeneratedQuality: true, turns },
-      ),
-    Error,
+  assertQualityFinding(
+    JSON.stringify({
+      warmUp: "妳先去交作業，我看看妳的程度。",
+      steady: "先拍一張給我檢查。",
+      coaching:
+        "Game 心法：她這句可能是在測試，先讓她證明自己再繼續。速約任務：這輪先不約，等窗口。",
+    }),
+    { mode: "game", enforceGeneratedQuality: true, turns },
     "hint_bossy_pasteable_reply",
   );
 });
@@ -5836,35 +5771,32 @@ Deno.test("generated Hint exempts honest-avoidance replies from word-surface gro
     {
       mode: "game",
       enforceGeneratedQuality: true,
-      relaxSubjectiveQualityRubrics: true,
       turns: gh5RecordshopTurns,
     },
   );
   assertEquals(result.replies[1].text.includes("想不起來"), true);
 });
 
-Deno.test("generated Hint still rejects challenge-response replies with zero grounding (判定表 #8，裁決不豁免)", () => {
-  assertThrows(
-    () =>
-      parseHintResult(
-        JSON.stringify({
-          warmUp:
-            "哪有，這句是限量版，只有敢跟我拚辣的人才聽得到，妳現在解鎖了",
-          steady:
-            "哈哈被抓包，不過這句我真的只跟嘴硬又吃得下辣的人講，妳算特別版",
-          coaching:
-            "Game心法：她這句「你是不是對每個女生都嗆一樣的話」是在測試你會不會被拆穿就慫掉，這是輕吐槽型測試。這階段要推的是她對你的熟悉感，任務是接住吐槽、順勢把嗆話包裝成「只對她」的專屬版本，展現不被拆穿也不惱羞的從容。不用自證清白，幽默扛住就過關。速約任務：這輪先不約，用「限量/特別版」這類梗把辣度話題變成兩人小劇場，鋪墊熟悉感，先不開邀約窗口。",
-        }),
-        {
-          mode: "game",
-          enforceGeneratedQuality: true,
-          relaxSubjectiveQualityRubrics: true,
-          turns: gh3SpicyTurns,
-        },
-      ),
-    Error,
-    "hint_quality_invalid_not_grounded",
+Deno.test("generated Hint flags zero-grounding challenge responses as findings (判定表 #8，2026-08-07 分級後改記 finding)", () => {
+  // 守門嚴重度分級：字面 grounding 是偏好門——短局結構性不可能過
+  //（2026-08-05 三連 503 主因），卡照端出、碼記 finding。
+  const findings: string[] = [];
+  const served = parseHintResult(
+    JSON.stringify({
+      warmUp: "哪有，這句是限量版，只有敢跟我拚辣的人才聽得到，妳現在解鎖了",
+      steady: "哈哈被抓包，不過這句我真的只跟嘴硬又吃得下辣的人講，妳算特別版",
+      coaching:
+        "Game心法：她這句「你是不是對每個女生都嗆一樣的話」是在測試你會不會被拆穿就慫掉，這是輕吐槽型測試。這階段要推的是她對你的熟悉感，任務是接住吐槽、順勢把嗆話包裝成「只對她」的專屬版本，展現不被拆穿也不惱羞的從容。不用自證清白，幽默扛住就過關。速約任務：這輪先不約，用「限量/特別版」這類梗把辣度話題變成兩人小劇場，鋪墊熟悉感，先不開邀約窗口。",
+    }),
+    {
+      mode: "game",
+      enforceGeneratedQuality: true,
+      onQualityFinding: (code) => findings.push(code),
+      turns: gh3SpicyTurns,
+    },
   );
+  assertEquals(served.replies.length, 2);
+  assert(findings.includes("hint_quality_invalid_not_grounded"));
 });
 
 Deno.test("game hint prompt teaches challenge-handling without self-justification and without gate jargon", () => {
@@ -5900,12 +5832,12 @@ Deno.test("game hint prompt teaches challenge-handling without self-justificatio
   );
 });
 
-// ── 2026-08-05 salvage：hint 也必須「正常一定要有輸出」 ──
+// ── 守門嚴重度分級（2026-08-07，取代 2026-08-05 salvage）──
 // grounding 的證據窗是整份逐字稿、兩種 role 都算，所以她只回一個 emoji 時，
 // 一句自然回應她表情的 hint 會因為「沒有複讀使用者自己的原話」而被判不接地——
 // 這道 gate 實際上在逼 hint 引用「我說」而不是回應「她說」，方向是反的。
-// 裁決（Eric 2026-08-05）：hint/debrief × 新手/一般/Game 正常一定要有輸出。
-// 前兩發照擋（既有裁決不動），兩發都沒過才由 salvage 端出最佳候選。
+// 分級後 grounding 是偏好門：第一發即收卡＋finding，salvage 退役；
+// 兩發都真失敗（結構/契約）時由窄版結構 degrade pass 剪救。
 
 const salvageEmojiTurns = [
   { role: "user" as const, text: "妳今天下班了嗎？看妳限動在健身房" },
@@ -5920,35 +5852,24 @@ function salvageHintJson() {
   });
 }
 
-Deno.test("salvage：她只回 emoji 時，回應她表情的 hint 解得出來", () => {
+Deno.test("分級後：她只回 emoji 時，回應她表情的 hint 第一發即收卡＋grounding 記 finding", () => {
+  // 守門嚴重度分級（2026-08-07）：grounding 是偏好門，不再需要任何旗標
+  // 才能收下這張卡——這正是 2026-08-05 三連 503 的 root-cause 修。
+  const findings: string[] = [];
   const result = parseHintResult(salvageHintJson(), {
     mode: "beginner",
     enforceGeneratedQuality: true,
-    relaxSubjectiveQualityRubrics: true,
-    skipLexicalGrounding: true,
+    onQualityFinding: (code) => findings.push(code),
     turns: salvageEmojiTurns,
   });
   assertEquals(
     result.replies[0].text,
     "哈哈這什麼表情，是懶得打字還是在等我先開話題？",
   );
+  assert(findings.includes("hint_quality_invalid_not_grounded"));
 });
 
-Deno.test("沒開 skipLexicalGrounding：hint 前兩發守門行為完全不變", () => {
-  assertThrows(
-    () =>
-      parseHintResult(salvageHintJson(), {
-        mode: "beginner",
-        enforceGeneratedQuality: true,
-        relaxSubjectiveQualityRubrics: true,
-        turns: salvageEmojiTurns,
-      }),
-    Error,
-    "hint_quality_invalid_not_grounded",
-  );
-});
-
-Deno.test("salvage 不放掉 L4：露骨候選照樣打回", () => {
+Deno.test("分級不放掉 L4：露骨候選照樣打回", () => {
   assertThrows(
     () =>
       parseHintResult(
@@ -5960,8 +5881,6 @@ Deno.test("salvage 不放掉 L4：露骨候選照樣打回", () => {
         {
           mode: "beginner",
           enforceGeneratedQuality: true,
-          relaxSubjectiveQualityRubrics: true,
-          skipLexicalGrounding: true,
           turns: salvageEmojiTurns,
         },
       ),
@@ -5969,39 +5888,48 @@ Deno.test("salvage 不放掉 L4：露骨候選照樣打回", () => {
   );
 });
 
-// salvage 收 parse callback 而不是 parseOptions：hint 的 validate 在 parse 之後
-// 還會補上 server-authored decision，salvage 必須走同一條路徑，否則搶救出來的
-// 結果會少掉 decision（呼叫端與 salvage 各寫一份＝必然漂移）。
-Deno.test("salvageHintCandidate：優先主模型；全部救不起來回 null", () => {
+// degrade pass 收 parse callback 而不是 parseOptions：hint 的 validate 在 parse
+// 之後還會補上 server-authored decision，degrade 必須走同一條路徑，否則救出來
+// 的結果會少掉 decision（呼叫端與 degrade 各寫一份＝必然漂移）。
+Deno.test("degradeStructuralHintCandidate：白名單敗因才救；優先主模型；紅線與壞 JSON 回 null", () => {
   const parse = (raw: string) =>
     parseHintResult(raw, {
       mode: "beginner",
       enforceGeneratedQuality: true,
-      relaxSubjectiveQualityRubrics: true,
-      skipLexicalGrounding: true,
+      finalDegradePass: true,
       turns: salvageEmojiTurns,
     });
-  const grounded = "hint_quality_invalid_not_grounded";
-  const salvaged = salvageHintCandidate({
+  const duplicate = "hint_quality_invalid_duplicate_replies";
+  function duplicateHintJson() {
+    return JSON.stringify({
+      warmUp: "哈哈這什麼表情，是懶得打字還是在等我先開話題？",
+      steady: "哈哈這什麼表情，是懶得打字還是在等我先開話題？",
+      coaching: "她只丟表情＝訊號很淡，先用輕鬆的方式把球接回來，別急著追問。",
+    });
+  }
+  const degraded = degradeStructuralHintCandidate({
     failures: [
-      { model: "claude-sonnet-5", code: grounded, raw: salvageHintJson() },
+      { model: "claude-sonnet-5", code: duplicate, raw: duplicateHintJson() },
       {
         model: "claude-haiku-4-5-20251001",
-        code: grounded,
-        raw: salvageHintJson(),
+        code: duplicate,
+        raw: duplicateHintJson(),
       },
     ],
     parse,
   });
-  assertEquals(salvaged?.model, "claude-sonnet-5");
+  assertEquals(degraded?.model, "claude-sonnet-5");
+  // 兩句同句被剪成一句端出，不是整份丟掉。
+  assertEquals(degraded?.result.replies.length, 1);
 
+  // 白名單敗因但原文壞掉＝救不了；transport 失敗沒有候選原文。
   assertEquals(
-    salvageHintCandidate({
+    degradeStructuralHintCandidate({
       failures: [
         { model: "claude-sonnet-5", code: "claude_timeout" },
         {
           model: "claude-haiku-4-5-20251001",
-          code: grounded,
+          code: duplicate,
           raw: "這根本不是 JSON",
         },
       ],
@@ -6010,37 +5938,28 @@ Deno.test("salvageHintCandidate：優先主模型；全部救不起來回 null",
     null,
   );
 
-  // 2026-08-06 Eric 拍板翻成黑名單，推翻了原本的「敗因不是 grounding 就不搶救」：
-  // 非紅線敗因照常搶救，只有紅線不救。
-  assertEquals(
-    salvageHintCandidate({
-      failures: [{
-        model: "claude-sonnet-5",
-        code: "hint_quality_invalid_substantive_move",
-        raw: salvageHintJson(),
-      }],
-      parse,
-    })?.model,
-    "claude-sonnet-5",
-  );
+  // 分級後偏好門不殺卡，會進 failures 的偏好碼理論上不存在；就算出現
+  //（版本尾差），不在白名單＝不救。紅線與缺欄同理。
   for (
-    const redLine of [
+    const notDegradable of [
       "hint_l4_unsafe",
       "hint_internal_label_leak",
       "hint_canned_visible_text",
+      "hint_missing_coaching",
+      "hint_quality_invalid_not_grounded",
     ]
   ) {
     assertEquals(
-      salvageHintCandidate({
+      degradeStructuralHintCandidate({
         failures: [{
           model: "claude-sonnet-5",
-          code: redLine,
+          code: notDegradable,
           raw: salvageHintJson(),
         }],
         parse,
       }),
       null,
-      redLine,
+      notDegradable,
     );
   }
 });
@@ -6066,7 +5985,6 @@ Deno.test("無可貼句：她已封鎖時，模型可以誠實說沒有可貼句
     {
       mode: "beginner",
       enforceGeneratedQuality: true,
-      relaxSubjectiveQualityRubrics: true,
       allowNoPasteableReply: true,
       turns: blockedTurns,
     },
@@ -6104,10 +6022,14 @@ Deno.test("無可貼句：不得同時給 noPasteableReason 與可貼句（語�
         {
           mode: "beginner",
           enforceGeneratedQuality: true,
+          // 矛盾守門只在 client 宣告能力時才會走到 noPasteable 分支；
+          // 分級後偏好門不 throw，沒這旗標整份會被照常收下。
+          allowNoPasteableReply: true,
           turns: blockedTurns,
         },
       ),
     Error,
+    "hint_no_pasteable_conflict",
   );
 });
 
@@ -6243,14 +6165,13 @@ Deno.test("新 client（已宣告能力）：prompt 有教、parser 收得下", 
 });
 
 // ── 2026-08-06 W3：乙類（結構／格式）改修補或降級，不再打回 ──
-// 分類與裁決見 docs/plans/2026-08-06-practice-no-503.md。鐵則：只有 salvage
-// 可以開 degradeStructuralDefects，前兩發照擋（留給 retry 產出完整內容的機會）。
+// 分類與裁決見 docs/plans/2026-08-06-practice-no-503.md。鐵則：只有結構
+// degrade pass 可以開 finalDegradePass，前兩發照擋（留給 retry 產出完整
+// 內容的機會）。
 
 const w3BaseOptions = {
   mode: "beginner" as const,
   enforceGeneratedQuality: true,
-  relaxSubjectiveQualityRubrics: true,
-  skipLexicalGrounding: true,
   turns: blockedTurns,
 };
 
@@ -6285,7 +6206,7 @@ Deno.test("W3 旁白句：舊 client（沒宣告能力）一律 fail-closed，�
   );
 });
 
-Deno.test("W3 旁白句：只有一欄是旁白時前兩發照擋，salvage 才端出另一句", () => {
+Deno.test("W3 旁白句：只有一欄是旁白時前兩發照擋，degrade pass 才端出另一句", () => {
   const raw = JSON.stringify({
     warmUp: "（對話已被封鎖，無法再傳送訊息）",
     steady: "我知道妳不想再聊了，我不會再打擾妳。",
@@ -6296,18 +6217,18 @@ Deno.test("W3 旁白句：只有一欄是旁白時前兩發照擋，salvage 才�
     Error,
     "hint_stage_direction_reply",
   );
-  const salvaged = parseHintResult(raw, {
+  const degraded = parseHintResult(raw, {
     ...w3BaseOptions,
-    degradeStructuralDefects: true,
+    finalDegradePass: true,
   });
-  assertEquals(salvaged.replies.length, 1);
+  assertEquals(degraded.replies.length, 1);
   assertEquals(
-    salvaged.replies[0].text,
+    degraded.replies[0].text,
     "我知道妳不想再聊了，我不會再打擾妳。",
   );
 });
 
-Deno.test("W3 兩句寫成同一句：前兩發照擋，salvage 去重後端出一句", () => {
+Deno.test("W3 兩句寫成同一句：前兩發照擋，degrade pass 去重後端出一句", () => {
   const raw = JSON.stringify({
     warmUp: "我知道妳不想再聊了，我不會再打擾妳。",
     steady: "我知道妳不想再聊了，我不會再打擾妳。",
@@ -6318,15 +6239,15 @@ Deno.test("W3 兩句寫成同一句：前兩發照擋，salvage 去重後端出�
     Error,
     "hint_quality_invalid_duplicate_replies",
   );
-  const salvaged = parseHintResult(raw, {
+  const degraded = parseHintResult(raw, {
     ...w3BaseOptions,
-    degradeStructuralDefects: true,
+    finalDegradePass: true,
   });
-  assertEquals(salvaged.replies.length, 1);
-  assertEquals(salvaged.replies[0].type, "warm_up");
+  assertEquals(degraded.replies.length, 1);
+  assertEquals(degraded.replies[0].type, "warm_up");
 });
 
-Deno.test("W3 超長：前兩發照擋，salvage 切到上限而不是丟整份", () => {
+Deno.test("W3 超長：前兩發照擋，degrade pass 切到上限而不是丟整份", () => {
   const raw = JSON.stringify({
     warmUp: "我知道妳不想再聊了，我不會再打擾妳。",
     steady: "妳先好好休息，我不會再傳訊息了。",
@@ -6337,15 +6258,15 @@ Deno.test("W3 超長：前兩發照擋，salvage 切到上限而不是丟整份"
     Error,
     "hint_quality_invalid_overlong",
   );
-  const salvaged = parseHintResult(raw, {
+  const degraded = parseHintResult(raw, {
     ...w3BaseOptions,
-    degradeStructuralDefects: true,
+    finalDegradePass: true,
   });
-  assertEquals(salvaged.coaching.length, MAX_COACHING_LENGTH * 2);
+  assertEquals(degraded.coaching.length, MAX_COACHING_LENGTH * 2);
 });
 
 // 降級旗標只放結構，甲類（安全／誠信紅線）一條都不准跟著鬆掉。
-Deno.test("W3 甲類守門在 degradeStructuralDefects 下一樣擋", () => {
+Deno.test("W3 甲類守門在 finalDegradePass 下一樣擋", () => {
   const cases: { label: string; payload: Record<string, string> }[] = [
     {
       label: "L4 露骨",
@@ -6369,7 +6290,7 @@ Deno.test("W3 甲類守門在 degradeStructuralDefects 下一樣擋", () => {
       () =>
         parseHintResult(JSON.stringify(payload), {
           ...w3BaseOptions,
-          degradeStructuralDefects: true,
+          finalDegradePass: true,
         }),
       Error,
       undefined,
@@ -6378,37 +6299,42 @@ Deno.test("W3 甲類守門在 degradeStructuralDefects 下一樣擋", () => {
   }
 });
 
-// 「本輪沒有可貼句」跳過的是**可貼句專屬**守門；捏造事實是甲類紅線，不能跟著
-// 一起跳掉——沒有可貼句時 coaching 就是使用者唯一看得到的教練內容。
-Deno.test("W3 無可貼句：coaching 捏造事實照樣被打回（兩條路徑都要）", () => {
+// 捏造事實不在紅線內（Eric 2026-08-06 拍板）；守門嚴重度分級後與可貼句路徑
+// 同一待遇：卡照端出、碼記 finding。沒有可貼句時 coaching 是使用者唯一看得到
+// 的教練內容，finding 率是它唯一的觀測出口——兩條路徑都要記到。
+Deno.test("W3 無可貼句：coaching 捏造事實記 finding（兩條路徑都要）", () => {
   const fabricated = "你們上週在信義區那間叫黑露的店見過面，這次別再追了。";
   // 路徑一：模型自己用 noPasteableReason（W1）
-  assertThrows(
-    () =>
-      parseHintResult(
-        JSON.stringify({
-          noPasteableReason: "她已經封鎖你，這輪沒有可送出的訊息。",
-          coaching: fabricated,
-        }),
-        { ...w3BaseOptions, allowNoPasteableReply: true },
-      ),
-    Error,
-    "unsupported_detail",
+  const findingsReason: string[] = [];
+  const viaReason = parseHintResult(
+    JSON.stringify({
+      noPasteableReason: "她已經封鎖你，這輪沒有可送出的訊息。",
+      coaching: fabricated,
+    }),
+    {
+      ...w3BaseOptions,
+      allowNoPasteableReply: true,
+      onQualityFinding: (code) => findingsReason.push(code),
+    },
   );
+  assertEquals(viaReason.replies.length, 0);
+  assert(findingsReason.some((code) => code.includes("unsupported_detail")));
   // 路徑二：模型把旁白句填進可貼欄，由 server 轉成「沒有可貼句」（W3）
-  assertThrows(
-    () =>
-      parseHintResult(
-        JSON.stringify({
-          warmUp: "（對話已被封鎖，無法再傳送訊息）",
-          steady: "（對話已被封鎖，無法再傳送訊息）",
-          coaching: fabricated,
-        }),
-        { ...w3BaseOptions, allowNoPasteableReply: true },
-      ),
-    Error,
-    "unsupported_detail",
+  const findingsStage: string[] = [];
+  const viaStageDirection = parseHintResult(
+    JSON.stringify({
+      warmUp: "（對話已被封鎖，無法再傳送訊息）",
+      steady: "（對話已被封鎖，無法再傳送訊息）",
+      coaching: fabricated,
+    }),
+    {
+      ...w3BaseOptions,
+      allowNoPasteableReply: true,
+      onQualityFinding: (code) => findingsStage.push(code),
+    },
   );
+  assertEquals(viaStageDirection.replies.length, 0);
+  assert(findingsStage.some((code) => code.includes("unsupported_detail")));
 });
 
 // ── Codex 首審 P1：「沒有可貼句」這個狀態宣告本身也要有證據 ──
@@ -6485,10 +6411,10 @@ Deno.test("W3 旁白判定：巢狀括號算旁白，前後有括號但中間有
 
 // ── 2026-08-06 生產漏網（部署後 20:25 UTC 一筆真 503）──
 // 邀約階梯這道守門住在 buildHintDecision，跑在 parseHintResult **之後**，
-// 所以 parse 的 salvagePass 管不到它。兩份候選都在、也都可搶救，卻卡在這裡打成
-// 503。教訓：黑名單只在「所有守門都吃得到那個旗標」時才成立——salvage 路徑上的
-// 每一段程式都要檢查過，不能只看 parse。
-Deno.test("邀約階梯：最後一發不得自己造出 503，且不得謊報邀約強度", () => {
+// 所以 parse 的旗標管不到它。兩份候選都在、也都可搶救，卻卡在這裡打成
+// 503。教訓：讓路只在「所有守門都吃得到那個旗標」時才成立——degrade 路徑上
+// 的每一段程式都要檢查過，不能只看 parse。
+Deno.test("邀約階梯：最後手段不得自己造出 503，且不得謊報邀約強度", () => {
   const overStrongForStage = "咖啡收到，明晚七點妳出門就好。";
   const base = {
     turns: [{ role: "ai" as const, text: "我今天突然很想喝咖啡" }],
@@ -6506,7 +6432,7 @@ Deno.test("邀約階梯：最後一發不得自己造出 503，且不得謊報�
     Error,
     "hint_quality_invalid_invite_route",
   );
-  // 最後一發放行，但 inviteRoute 要照這句話**實際的**強度標，不能謊報成安全的
-  const salvaged = buildHintDecision({ ...base, salvagePass: true });
-  assertEquals(salvaged.inviteRoute, "direct");
+  // 最後手段放行，但 inviteRoute 要照這句話**實際的**強度標，不能謊報成安全的
+  const degraded = buildHintDecision({ ...base, finalDegradePass: true });
+  assertEquals(degraded.inviteRoute, "direct");
 });

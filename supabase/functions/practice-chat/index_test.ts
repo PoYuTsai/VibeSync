@@ -4982,7 +4982,7 @@ Deno.test("game hint malformed first shot fails over to Haiku before recording",
   assertEquals(releaseHintCalls(state).length, 0);
 });
 
-Deno.test("Beginner and Game Hint kill invented-location shots mechanically before recording", async () => {
+Deno.test("Beginner and Game Hint 捏造地名第一發即收卡＋finding（分級後不燒補發）", async () => {
   const turns = [
     { role: "user" as const, text: "剛路過一間咖啡店，聞起來很香" },
     { role: "ai" as const, text: "喔你鼻子也太靈，在哪啊" },
@@ -5025,13 +5025,13 @@ Deno.test("Beginner and Game Hint kill invented-location shots mechanically befo
 
     assertEquals(response.status, 200, mode);
     assertEquals(json.provider, "anthropic", mode);
-    // 第一發捏造地名被機械接地 gate 殺掉，第二發 Haiku 全新候選供給。
-    assertEquals(json.failoverUsed, true, mode);
-    assertEquals(json.model, CLAUDE_HAIKU_MODEL, mode);
-    assertEquals(JSON.stringify(json).includes("中山站"), false, mode);
-    assertEquals(JSON.stringify(json).includes("黑露"), false, mode);
+    // 守門嚴重度分級（2026-08-07）：捏造事實是偏好門，第一發即收卡＋finding，
+    // 不再燒補發——這是 Eric 拍板接受的代價（同 5120 那顆釘子）。
+    assertEquals(json.failoverUsed, false, mode);
+    assertEquals(json.model, CLAUDE_SONNET_MODEL, mode);
+    assertEquals(JSON.stringify(json).includes("中山站"), true, mode);
     assertEquals(state.deepSeekCalls.length, 0, mode);
-    assertEquals(state.claudeCalls.length, 2, mode);
+    assertEquals(state.claudeCalls.length, 1, mode);
     assertEquals(state.semanticCalls.length, 0, mode);
     assertEquals(recordHintCalls(state).length, 1, mode);
     assertEquals(releaseHintCalls(state).length, 0, mode);
@@ -5114,10 +5114,10 @@ Deno.test("Hint never records when both shots fail the hard safety guard", async
   assertEquals(releaseHintCalls(state).length, 1);
 });
 
-// 2026-08-06 Eric 拍板把捏造事實移出 salvage 紅線。這顆測試從此**釘住那個代價**：
-// 兩發都編造時，「黑露」這種她沒說過的細節會端到使用者面前。他知情並選擇零 503。
-// 前兩發照擋沒有變（claudeCalls 仍是 2），所以只有「兩發都編」才會走到這裡。
-Deno.test("兩發 Hint 都捏造細節時 salvage 端出（Eric 2026-08-06 拍板接受的代價）", async () => {
+// 2026-08-06 Eric 拍板把捏造事實移出紅線；2026-08-07 守門嚴重度分級後它是
+// 偏好門，第一發即收卡。這顆測試從此**釘住那個代價**：「黑露」這種她沒說過的
+// 細節會端到使用者面前。他知情並選擇零 503＋低延遲，靠 finding 率觀測。
+Deno.test("hint 捏造細節第一發即收卡（Eric 拍板接受的代價）", async () => {
   const invented = JSON.stringify({
     warmUp: "鼻子靈是基本配備😂 我在中山站巷子裡發現的。",
     steady: "妳說我鼻子也太靈，那間咖啡店叫『黑露』。",
@@ -5139,7 +5139,7 @@ Deno.test("兩發 Hint 都捏造細節時 salvage 端出（Eric 2026-08-06 拍�
   );
 
   assertEquals(response.status, 200, JSON.stringify(json));
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 1);
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
   // 代價寫成斷言，將來有人想改回來會先看到這行。
@@ -5150,7 +5150,7 @@ Deno.test("兩發 Hint 都捏造細節時 salvage 端出（Eric 2026-08-06 拍�
   );
 });
 
-Deno.test("Beginner 與 Game 第一發鏡射對方事實時照擋，兩發全滅才端出", async () => {
+Deno.test("Beginner 與 Game 鏡射對方事實第一發即收卡＋finding", async () => {
   for (const mode of ["beginner", "game"] as const) {
     const invalidMirror = validHintJson({
       warmUp: "我住的地方也是台南，難怪生活圈很像。",
@@ -5191,36 +5191,15 @@ Deno.test("Beginner 與 Game 第一發鏡射對方事實時照擋，兩發全滅
 
     assertEquals(response.status, 200, `${mode}:${JSON.stringify(json)}`);
     assertEquals(json.provider, "anthropic", mode);
-    // 鏡射對方 typed fact 的第一發被機械 gate 殺掉，第二發 Haiku 供給。
-    assertEquals(json.failoverUsed, true, mode);
-    assertEquals(json.model, CLAUDE_HAIKU_MODEL, mode);
+    // 守門嚴重度分級（2026-08-07）：鏡射 typed fact 走 fact ledger 偏好門，
+    // 第一發即收卡＋finding，不再燒補發。
+    assertEquals(json.failoverUsed, false, mode);
+    assertEquals(json.model, CLAUDE_SONNET_MODEL, mode);
     assertEquals(state.deepSeekCalls.length, 0, mode);
-    assertEquals(state.claudeCalls.length, 2, mode);
+    assertEquals(state.claudeCalls.length, 1, mode);
     assertEquals(state.semanticCalls.length, 0, mode);
     assertEquals(recordHintCalls(state).length, 1, mode);
     assertEquals(releaseHintCalls(state).length, 0, mode);
-
-    const failed = await run(
-      {
-        ...setup,
-        claudeReplies: [invalidMirror, invalidMirror],
-      },
-      hintBody({
-        practiceMode: mode,
-        profileId: mode === "game" ? "practice_girl_004" : undefined,
-        requestId: `typed-fact-dual-reject-${mode}`,
-        turns,
-      }),
-    );
-    // 2026-08-06 Eric 拍板：捏造事實不在 salvage 紅線內。兩發都鏡射對方的
-    // typed fact 時改成端出而不是 503（第一發仍照擋，見上面的 failover 斷言）。
-    assertEquals(
-      failed.response.status,
-      200,
-      `${mode}:${JSON.stringify(failed.json)}`,
-    );
-    assertEquals(recordHintCalls(failed.state).length, 1, mode);
-    assertEquals(releaseHintCalls(failed.state).length, 0, mode);
   }
 });
 
@@ -7299,20 +7278,21 @@ Deno.test("hint visible-guard failure kills the shot instead of repairing it and
   );
 });
 
-Deno.test("hint ungrounded shot is rejected by the mechanical grounding gate before serving", async () => {
+Deno.test("hint ungrounded 第一發即收卡（grounding 降偏好門，不燒補發）", async () => {
   const fabricated = validHintJson({
     warmUp: "妳週末想去爬山嗎？我知道一條很棒的步道。",
     steady: "爬山裝備我都有，週六出發如何？",
     coaching: "她想去戶外走走，直接約爬山最快。",
   });
-  const { response, state } = await run({
+  const { response, json, state } = await run({
     ledger: beginnerStartedLedger(),
     claudeReplies: [fabricated, validHintJson()],
   }, hintBody({ practiceMode: "beginner" }));
 
   assertEquals(response.status, 200);
-  assertEquals(state.claudeCalls.length, 2);
-  assertEquals(state.claudeCalls[1].model, "claude-haiku-4-5-20251001");
+  assertEquals(state.claudeCalls.length, 1);
+  assertEquals(state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
+  assertEquals(json.replies[0].text.includes("爬山"), true);
 });
 
 Deno.test("game hint single shot still repairs internal jargon into plain visible text", async () => {
@@ -7570,12 +7550,12 @@ Deno.test("寒暄局 debrief：grounding 只記 finding，第一發直接端出"
   );
 });
 
-// ── 2026-08-05 salvage 整合回歸：hint 也「正常一定要有輸出」 ──
+// ── 守門嚴重度分級整合回歸（2026-08-07，取代 2026-08-05 salvage 回歸）──
 // grounding 的證據窗是整份逐字稿、兩種 role 都算，所以她只回一個 emoji 時，
 // 一句自然回應她表情的 hint 會因為沒有複讀「我說」的原話而被判不接地——這道
-// gate 在逼 hint 引用自己而不是回應她。前兩發照擋（既有裁決不動），兩發都沒過
-// 才由 salvage 端出，且必須保留 server-authored decision（走同一條解析路徑）。
-Deno.test("她只回 emoji 時：hint 兩發都沒過 grounding 則 salvage 端出而不是 503", async () => {
+// gate 在逼 hint 引用自己而不是回應她。分級後它是偏好門：第一發即收卡＋
+// finding，不燒補發、不進 degrade pass，server-authored decision 照常補上。
+Deno.test("她只回 emoji 時：hint 第一發即收卡，不再靠 salvage", async () => {
   const emojiHint = JSON.stringify({
     warmUp: "哈哈這什麼表情，是懶得打字還是在等我先開話題？",
     steady: "看來今天話不多，那我先講：我剛也累到只想耍廢。",
@@ -7602,14 +7582,15 @@ Deno.test("她只回 emoji 時：hint 兩發都沒過 grounding 則 salvage 端�
     json.replies[0].text,
     "哈哈這什麼表情，是懶得打字還是在等我先開話題？",
   );
-  // 走同一條解析路徑＝server-authored decision 不得遺失
+  // server-authored decision 不得遺失
   assertEquals(typeof json.replies[0].decision.inviteRoute, "string");
-  // 搶救成功＝不得釋放 generation token
   assertEquals(releaseHintCalls(state).length, 0);
+  // 第一發即收卡＝沒有補發、也沒有 degrade pass
+  assertEquals(state.claudeCalls.length, 1);
   const telemetry = aiLogInserts(state)[0].values;
   assertEquals(telemetry.status, "success");
   assertEquals(
-    (telemetry.request_body as Record<string, unknown>).salvageUsed,
+    (telemetry.request_body as Record<string, unknown>).salvageUsed !== true,
     true,
   );
 });
@@ -7701,8 +7682,9 @@ Deno.test("紅線：兩發都露骨時仍然擋死，不得端給使用者", asy
   assertEquals(recordHintCalls(state).length, 0);
 });
 
-Deno.test("非紅線：兩發都只是品質不夠好時一律端出，不再 503", async () => {
-  // 純問句＋沒有實質動作＋不接地：以前這組會連踩三道守門 → 兩發全滅 → 503。
+Deno.test("非紅線：品質不夠好第一發即收卡，不再 503 也不燒補發", async () => {
+  // 純問句＋沒有實質動作＋不接地：以前這組會連踩三道守門 → 兩發全滅 → 503；
+  // 分級後三道全是偏好門，第一發即收卡＋finding。
   const weak = validHintJson({
     warmUp: "那你呢？",
     steady: "真的假的？",
@@ -7717,7 +7699,7 @@ Deno.test("非紅線：兩發都只是品質不夠好時一律端出，不再 50
   );
 
   assertEquals(response.status, 200, JSON.stringify(json));
-  assertEquals(state.claudeCalls.length, 2, "前兩發照擋，沒有變成一發就放行");
+  assertEquals(state.claudeCalls.length, 1, "偏好門不再燒補發");
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
 });

@@ -61,10 +61,10 @@ import {
 import {
   buildHintDecision,
   buildHintMessages,
+  degradeStructuralHintCandidate,
   HINT_TOOL_SCHEMA,
   hintTrustedFactualEvidence,
   parseHintResult,
-  salvageHintCandidate,
 } from "./hint.ts";
 import {
   runSingleShot,
@@ -2574,19 +2574,20 @@ export function createPracticeChatHandler(
       const hintProvider = "anthropic";
       let hintModel = CLAUDE_SONNET_MODEL;
       let hintFailoverUsed = false;
-      // 兩發都被 gate 打回後靠 salvage 端出的結果；telemetry 要能跟「一次過」分開。
-      let hintSalvageUsed = false;
-      // validate 與 salvage 共用同一條解析路徑（含 server-authored decision），
-      // 兩邊各寫一份必然漂移。宣告在 try 外才進得了 catch；還沒建好就失敗
-      //（例如 claude_unavailable）時為 null＝不搶救。
+      // 兩發都被 gate 打回後靠結構 degrade pass 端出的結果；telemetry 要能跟
+      // 「一次過」分開。
+      let hintDegradeUsed = false;
+      // 守門嚴重度分級（2026-08-07）：偏好門不否決、違規碼記 finding。只保留
+      // 最終被端出那一發的 codes——失敗發的候選連卡帶碼一起丟棄，敗因已在
+      // attemptFailures.code 有跡。
+      let hintQualityFindingCodes: string[] = [];
+      // validate 與 degrade pass 共用同一條解析路徑（含 server-authored
+      // decision），兩邊各寫一份必然漂移。宣告在 try 外才進得了 catch；還沒
+      // 建好就失敗（例如 claude_unavailable）時為 null＝不搶救。
       let hintParseCandidate:
         | ((
           raw: string,
-          override?: {
-            skipLexicalGrounding?: boolean;
-            degradeStructuralDefects?: boolean;
-            salvagePass?: boolean;
-          },
+          override?: { finalDegradePass?: boolean },
         ) => ReturnType<typeof parseHintResult>)
         | null = null;
       const hintGenerationStartedAt = performance.now();
@@ -2648,17 +2649,18 @@ export function createPracticeChatHandler(
           partnerFactualEvidence: hintFactualEvidence.partner,
           trustedFactClaims: hintFactualEvidence.claims,
           enforceGeneratedQuality: true,
-          relaxSubjectiveQualityRubrics: true,
           // client 能力宣告；缺席＝舊 build，維持舊契約（server 也不會教模型
           // 輸出那個形狀，見 buildHintMessages）。
           allowNoPasteableReply: request.acceptsNoPasteableHint === true,
         } as const;
         hintParseCandidate = (raw, override) => {
+          const findingCodes: string[] = [];
           const parsed = parseHintResult(raw, {
             ...generatedHintParseOptions,
+            onQualityFinding: (code) => findingCodes.push(code),
             ...override,
           });
-          return {
+          const result = {
             ...parsed,
             replies: parsed.replies.map((reply) => ({
               ...reply,
@@ -2673,12 +2675,16 @@ export function createPracticeChatHandler(
                 replyType: reply.type,
                 replyText: reply.text,
                 rationale: SERVER_HINT_DECISION_RATIONALE,
-                // 這個 builder 跑在 parseHintResult 之後，parse 的 salvagePass
-                // 管不到它——最後一發要一起讓路，否則邀約階梯會自己造出 503。
-                salvagePass: override?.salvagePass === true,
+                // 這個 builder 跑在 parseHintResult 之後，parse 的旗標管不到
+                // 它——degrade pass 要一起讓路，否則邀約階梯會自己造出 503。
+                finalDegradePass: override?.finalDegradePass === true,
               }),
             })) as typeof parsed.replies,
           };
+          // 走到這裡＝整條解析（含 decision）都成功，這一發就是要端出去的
+          // 那一發；失敗發在上面 throw 掉，findings 隨候選一起丟棄。
+          hintQualityFindingCodes = findingCodes;
+          return result;
         };
         hintPromptChars = countPromptChars(baseHintMessages);
         if (!claudeApiKey || !deps.callClaude) {
@@ -2742,30 +2748,28 @@ export function createPracticeChatHandler(
             typeof failure.raw === "string"
           )
           : [];
-        // Salvage：兩發都沒過 gate 時端出最佳候選，而不是讓使用者拿到 503
-        //（Eric 2026-08-05：正常一定要有輸出）。走 hintParseCandidate 同一條
-        // 路徑以保留 server-authored decision；只放掉字面 grounding，硬安全/
-        // 守門詞表/結構/fact claims 照跑。必須排在 releaseHintGeneration 之前。
-        const salvagedHint =
+        // 結構 degrade pass：兩發都沒過 gate 時，只救白名單敗因（形狀壞掉／
+        // server 契約卡住）的候選端出，而不是讓使用者拿到 503（Eric
+        // 2026-08-05：正常一定要有輸出）。偏好門已不殺卡，會走到這裡的偏好
+        // 違規早已是 finding。走 hintParseCandidate 同一條路徑以保留
+        // server-authored decision。必須排在 releaseHintGeneration 之前。
+        const degradedHint =
           e instanceof SingleShotExhaustedError && hintParseCandidate
-            ? salvageHintCandidate({
+            ? degradeStructuralHintCandidate({
               failures: e.attemptFailures,
               parse: (raw) =>
-                hintParseCandidate!(raw, {
-                  skipLexicalGrounding: true,
-                  degradeStructuralDefects: true,
-                  salvagePass: true,
-                }),
+                hintParseCandidate!(raw, { finalDegradePass: true }),
             })
             : null;
-        if (salvagedHint) {
-          hintResult = salvagedHint.result;
-          hintModel = salvagedHint.model;
-          hintSalvageUsed = true;
+        if (degradedHint) {
+          hintResult = degradedHint.result;
+          hintModel = degradedHint.model;
+          hintDegradeUsed = true;
           hintFailoverUsed = true;
           hintAttemptCount = Math.max(1, hintAttemptCount);
           hintLastFailureClass = null;
-          logInfo("practice_chat_generation_salvaged", {
+          hintQualityFindingCodes.push("hint_structural_degrade_served");
+          logInfo("practice_chat_generation_degraded", {
             user: summarizeUser(user.id),
             mode: "hint",
             practiceMode: request.practiceMode,
@@ -2855,11 +2859,23 @@ export function createPracticeChatHandler(
           failureClass: null,
           fallbackUsed: false,
           failoverUsed: hintFailoverUsed,
-          salvageUsed: hintSalvageUsed,
+          // 共用欄位名跟著 debrief 的 salvage 走；hint 側語意＝degrade pass。
+          salvageUsed: hintDegradeUsed,
           totalDurationMs: hintTotalDurationMs,
           promptChars: hintPromptChars,
         }),
       });
+      if (hintQualityFindingCodes.length > 0) {
+        // 守門嚴重度分級：偏好門違規不否決，這裡是它們唯一的觀測出口。
+        // finding 率長期偏高＝回頭修 prompt 或門本身，絕不加回否決權。
+        logInfo("practice_chat_hint_quality_finding", {
+          user: summarizeUser(user.id),
+          practiceMode: request.practiceMode,
+          model: hintModel,
+          prefetch: requestIsPrefetch,
+          codes: hintQualityFindingCodes,
+        });
+      }
       const recordPolicy = hintRecordPolicy({
         isPrefetch: requestIsPrefetch,
         isTestAccount: accountIsTest,
@@ -2995,7 +3011,7 @@ export function createPracticeChatHandler(
         promptChars: hintPromptChars,
         fallbackUsed: false,
         failoverUsed: hintFailoverUsed,
-        salvageUsed: hintSalvageUsed,
+        salvageUsed: hintDegradeUsed,
         failureClass: null,
         attemptDurationsMs: hintAttemptDurationsMs,
         failureClasses: hintFailureClasses,
