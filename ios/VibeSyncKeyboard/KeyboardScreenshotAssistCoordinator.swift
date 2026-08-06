@@ -334,6 +334,19 @@ final class KeyboardScreenshotAssistCoordinator {
     private var preparedImage: KeyboardPreparedImage?
     private var outbound: KeyboardScreenshotOutboundOperation?
     private var activeTask: KeyboardAssistCancellable?
+    /// Cosmetic only: the network call is a single blocking request with no
+    /// real server-side progress signal, so this just cycles the wording
+    /// while we wait instead of sitting on one static sentence the whole
+    /// time (2026-08-06 product feedback — true token streaming was ruled
+    /// out as too much complexity for a short structured-JSON response).
+    private var loadingMessageTimer: Timer?
+    private var loadingMessageIndex = 0
+    private static let loadingMessages = [
+        "正在讀取這張截圖的對話脈絡…",
+        "正在抓她這句話的語氣…",
+        "正在想怎麼接比較自然…",
+        "快好了，在挑最順的說法…",
+    ]
     private var lifecycleID = UUID()
     private var insertionCheckID: UUID?
     private var speakerChoiceCheckID: UUID?
@@ -1950,7 +1963,7 @@ final class KeyboardScreenshotAssistCoordinator {
                 stage: .readingChat
             )
         )
-        setMessage("正在讀取這張截圖的對話脈絡…")
+        startLoadingMessageCycle()
         send(operation)
     }
 
@@ -2025,6 +2038,7 @@ final class KeyboardScreenshotAssistCoordinator {
             return
         }
         activeTask = nil
+        stopLoadingMessageCycle()
         switch result {
         case .success(let response):
             presentNetworkResponse(
@@ -2325,12 +2339,33 @@ final class KeyboardScreenshotAssistCoordinator {
     private func invalidateAsyncWork() {
         activeTask?.cancel()
         activeTask = nil
+        stopLoadingMessageCycle()
         lifecycleID = makeUUID()
         insertionCheckID = nil
         speakerChoiceCheckID = nil
         previewConfirmationCheckID = nil
         newBatchCheckID = nil
         preprocessingID = nil
+    }
+
+    private func startLoadingMessageCycle() {
+        stopLoadingMessageCycle()
+        loadingMessageIndex = 0
+        setMessage(Self.loadingMessages[loadingMessageIndex])
+        loadingMessageTimer = Timer.scheduledTimer(
+            withTimeInterval: 2.4,
+            repeats: true
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.loadingMessageIndex =
+                (self.loadingMessageIndex + 1) % Self.loadingMessages.count
+            self.setMessage(Self.loadingMessages[self.loadingMessageIndex])
+        }
+    }
+
+    private func stopLoadingMessageCycle() {
+        loadingMessageTimer?.invalidate()
+        loadingMessageTimer = nil
     }
 
     private func clearBoundData(keepingIdentity: Bool = false) {
