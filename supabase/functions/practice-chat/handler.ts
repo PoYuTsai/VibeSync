@@ -3506,9 +3506,10 @@ export function createPracticeChatHandler(
             typeof failure.raw === "string"
           )
           : [];
-        // Salvage：兩發都沒過 gate 時端出最佳候選，而不是讓使用者拿到 503
-        //（Eric 2026-08-05：正常一定要有輸出）。只放掉字面 grounding，安全/
-        // 洩漏/罐頭/捏造等不可退讓守門照跑；救不起來才落回下面的 503。
+        // Salvage：兩發都被打回時端出最佳候選，而不是讓使用者拿到 503
+        //（Eric 2026-08-05：正常一定要有輸出）。偏好門降級後會走到這裡的只剩
+        // 結構性失敗與紅線；紅線（罐頭/洩漏/L4）與核心欄位完整性照擋，救不
+        // 起來才落回下面的 503。
         // 必須排在 releaseDebriefGeneration 之前——成功搶救要繼續走成功路徑，
         // 不能先把 generation token 釋放掉。
         const salvagedDebrief =

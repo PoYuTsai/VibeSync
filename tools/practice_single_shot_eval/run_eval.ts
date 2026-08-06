@@ -298,12 +298,10 @@ async function runDebriefShot(opts: {
     requireCompleteCard: true,
     turns: fixture.turns,
     appliedHintTurns: fixture.appliedHintTurns,
-    repairPreservedHintCritique: false,
     sharedFactualEvidence: evidence.shared,
     partnerFactualEvidence: evidence.partner,
     trustedFactClaims: evidence.claims,
     enforceGeneratedQuality: true,
-    relaxSubjectiveQualityRubrics: true,
   } as const;
   const startedAt = performance.now();
   const rejected: Array<{ code: string; raw: string }> = [];
@@ -316,10 +314,9 @@ async function runDebriefShot(opts: {
         name: "emit_debrief_card",
         description:
           "輸出練習拆解卡：總結、亮點、注意點、建議句與邀約評估（Game 模式含拆盤）。",
-        // 鏡像 handler：有套用 Hint 時 hintAssessment 升為 schema 必填。
+        // 鏡像 handler：hintAssessment 已退役，schema 只分 game 與否。
         inputSchema: debriefToolSchemaFor({
           game: fixture.practiceMode === "game",
-          hintApplied: fixture.appliedHintTurns.length > 0,
         }),
       },
       maxTokens: DEBRIEF_MAX_TOKENS,

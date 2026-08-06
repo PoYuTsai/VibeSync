@@ -432,8 +432,9 @@ export function rejectGameBreakdownFieldEcho(
  * throw／salvage 內 return null 丟掉這個可選區塊），不用整張卡陪葬。
  *
  * **捏造事實（unsupported_detail）刻意不在紅線內**：Eric 2026-08-06 拍板拿掉。
- * 我提過代價——兩發都編造時，AI 可能跟使用者說她沒說過的事，使用者照著聊會被
- * 拆穿——他選擇字面上的零 503。前兩發仍照擋，所以只有「兩發都編」才會漏出去。
+ * 我提過代價——模型編造時，AI 可能跟使用者說她沒說過的事，使用者照著聊會被
+ * 拆穿——他選擇字面上的零 503。守門嚴重度分級後它在正式發也只記 finding
+ * （debrief_card.ts assertGeneratedDebriefQuality），靠 telemetry 盯著。
  * 要推翻這條＝重新對齊 Eric，別自己改回來。
  *
  * 注意這是**敗因碼**的名單，不是 gate 的名單：salvage 重解時還要靠

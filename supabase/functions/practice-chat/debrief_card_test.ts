@@ -1876,6 +1876,40 @@ const fieldParseOptions = {
   appliedHintTurns: [fieldExactHint],
   enforceGeneratedQuality: true,
 };
+// Hint 路線一致性降為 finding-only（Codex 2026-08-06 審查：prompt 有規則、
+// 守門全刪＝觀測盲區）。build 局給硬邀約＝矛盾記碼；同向敘事零 finding。
+Deno.test("hint 路線矛盾＝finding：build 局硬邀約記碼、同向敘事不記", () => {
+  const contradicting = parseWithFindings(
+    JSON.stringify({
+      ...fieldSonnetCard,
+      suggestedLine: "明天晚上七點直接約妳吃飯，我先訂位。",
+      nextInviteMove: "現在直接約她，把時間地點講死。",
+      gameBreakdown: {
+        ...fieldSonnetCard.gameBreakdown,
+        nextFirstLine: "明天晚上七點直接約妳吃飯，我先訂位。",
+      },
+    }),
+    { ...fieldParseOptions },
+  );
+  assert(
+    hasFinding(
+      contradicting.findings,
+      "debrief_quality_hint_strategy_contradiction",
+    ),
+  );
+
+  const aligned = parseWithFindings(
+    JSON.stringify(fieldSonnetCard),
+    { ...fieldParseOptions },
+  );
+  assert(
+    !hasFinding(
+      aligned.findings,
+      "debrief_quality_hint_strategy_contradiction",
+    ),
+  );
+});
+
 Deno.test("debriefToolSchemaFor：hintAssessment 已退役，任何模式都不必填", () => {
   const plain = debriefToolSchemaFor({ game: false });
   const game = debriefToolSchemaFor({ game: true });
@@ -2392,15 +2426,27 @@ Deno.test("W3 debrief：Game 拆盤缺欄位時，salvage 丟掉那一塊而不�
   assertEquals(card.gameBreakdown, null);
 });
 
-Deno.test("W3 debrief：核心欄位缺席不在降級範圍，degrade 也照擋", () => {
+Deno.test("W3 debrief：核心欄位缺席不在降級範圍，degrade 與 salvage 都照擋", () => {
   // 刻意偏離計畫檔把 debrief_missing_fields 列為乙類：strengths/watchouts 全空的
   // 卡是「使用者看得到的殘卡」，不是形狀壞掉，端出去比 503 更糟。
+  // Codex 2026-08-06 審查：舊碼 salvagePass 會繞過這段，測試必須鏡像
+  // production salvage 的完整選項組合。
+  const incompleteCard = JSON.stringify({
+    ...w3CompleteCard,
+    strengths: [],
+    watchouts: [],
+  });
   assertThrows(
     () =>
-      parseDebriefCard(
-        JSON.stringify({ ...w3CompleteCard, strengths: [], watchouts: [] }),
-        { requireCompleteCard: true, degradeStructuralDefects: true },
-      ),
+      parseDebriefCard(incompleteCard, {
+        requireCompleteCard: true,
+        degradeStructuralDefects: true,
+      }),
+    Error,
+    "debrief_missing_fields",
+  );
+  assertThrows(
+    () => parseDebriefCard(incompleteCard, salvageOptions),
     Error,
     "debrief_missing_fields",
   );

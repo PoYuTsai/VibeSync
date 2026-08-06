@@ -4328,8 +4328,8 @@ Deno.test("assisted Debrief 缺 hintAssessment：欄位已退役，第一發直�
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger({ ai_count: 2 }),
-      // 帶 appliedHintTurns 時缺 hintAssessment＝該發判敗（無寬容補欄），
-      // 第二發帶完整 assessment 才能落帳。
+      // hintAssessment 已退役：缺欄不再判敗，第一發直接落帳；保留第二發
+      // reply 佐證它確實沒被打到。
       claudeReplies: [invalid, JSON.stringify(complete)],
       rpc: {
         resolve_practice_hint_decision: [{

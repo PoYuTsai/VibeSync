@@ -16,7 +16,10 @@ import {
   rejectGenericPasteablePracticeText,
   rejectKnownCannedPracticeText,
 } from "./practice_visible_quality.ts";
-import { practiceInviteLevelFor } from "./practice_invite.ts";
+import {
+  type PracticeInviteLevel,
+  practiceInviteLevelFor,
+} from "./practice_invite.ts";
 import { toTraditionalChinese } from "./traditional_chinese.ts";
 import {
   assertHintFactClaimsSupported,
@@ -420,6 +423,131 @@ function debriefVisibleFields(card: DebriefCard): string[] {
   ];
 }
 
+// ── Hint 路線一致性（finding-only）────────────────────────────────
+// hintAssessment 記帳契約退役後，server-authoritative 路線（build 不升約、
+// soft 不升 direct、repair 不邊修邊約）不再有否決權，但矛盾仍要看得見：
+// 降為 finding 記進 telemetry（Codex 2026-08-06 審查：prompt 有規則、
+// 守門全刪＝觀測盲區）。
+function hasCompleteHintDecision(hint: AppliedHintTurn): boolean {
+  const decision = hint.decision;
+  return decision !== undefined &&
+    [
+      decision.phase,
+      decision.targetVariable,
+      decision.move,
+      decision.inviteRoute,
+      decision.rationale,
+    ].every((field) => typeof field === "string" && field.trim().length > 0);
+}
+
+type HintStrategyRoute = "repair" | "build" | "soft" | "direct";
+
+function authoritativeHintRoute(hint: AppliedHintTurn): HintStrategyRoute {
+  const decision = hint.decision!;
+  const route = `${decision.inviteRoute} ${decision.move}`.toLowerCase();
+  if (/(?:repair|safety|降壓|修復|停止)/u.test(route)) return "repair";
+  if (/(?:direct|明確邀約|直接邀約)/u.test(route)) return "direct";
+  if (/(?:soft|低壓邀約|試探邀約)/u.test(route)) return "soft";
+  return "build";
+}
+
+/**
+ * Reads explicit strategy claims, not ordinary retrospective prose. Ordering
+ * matters: 「先累積投入，等她再接才丟窗口」is a build route even though it
+ * mentions a later invitation.
+ */
+function explicitNarrativeRoute(value: string): HintStrategyRoute | null {
+  const text = value.normalize("NFKC").replace(/\s+/gu, "");
+  if (
+    // 「不要急著邀約」是 build（別急）不是 repair（停止）——急著/趕著/馬上族排除。
+    /(?:先|需要|應該|這輪|現在).{0,10}(?:道歉|降壓|修復|修補安全|停下|退開)|(?:停止|不要|不再)(?!急|太快|馬上|趕).{0,8}(?:推進|邀約|打擾)/u
+      .test(text)
+  ) {
+    return "repair";
+  }
+  if (
+    /(?:先|這輪|現在|目前).{0,12}(?:不約|不急著約|別急著約|不硬約|不適合約|鋪墊|累積|建立|延伸|補足|補感受|補投入|熟悉|安全|穩住)|(?:先不要|先別|暫時不要|不要|別|不急著).{0,4}(?:約她|邀她|約對方|邀對方|邀約|問她(?:哪天|何時|什麼時候).{0,6}有空|定.{0,4}時間)|(?:還要|還需|需要)?再.{0,6}(?:累積|建立|延伸|補足|補感受|補投入|穩住)|等.{0,28}(?:再|才).{0,12}(?:約|邀|窗口)|(?:還沒|尚未|未到).{0,10}(?:窗口|時機)|(?:邀約)?窗口(?:還沒|尚未|仍未)(?:開|成熟)|先.{0,28}再.{0,12}(?:約|邀|窗口)|(?:觀察|看)(?:她|對方).{0,20}(?:再|才).{0,12}(?:約|邀|窗口)/u
+      .test(text)
+  ) {
+    return "build";
+  }
+  if (
+    /(?:沒有|沒)(?:做|給|丟|推)?(?:出)?(?:直接|明確)?邀約.{0,10}(?:失誤|錯|問題|可惜)|(?:太被動|偏保守|早該).{0,12}(?:直接)?(?:約|邀約)|(?:現在|這輪|下一句|下一步|接下來|應該|可以|建議|不妨|適合|立刻|趁現在).{0,12}(?:直接|明確)?(?:約她|邀她|約對方|邀對方|問她(?:哪天|何時|什麼時候).{0,6}有空|把.{1,12}收成.{0,4}(?:見面|咖啡|邀約)|去(?:喝咖啡|吃飯|散步|看展|逛街))|(?<!升到)(?<!是否)(?<!考慮)(?<!評估)(?:直接|明確|立刻|趁現在)(?:約|邀約)(?![，,]?會(?!(?:(?![。！？!?]).)*(?:但|不過)(?:(?![。！？!?]).){0,10}(?:值得|該試|可以試|不妨))(?:(?![。！？!?]).){0,12}(?:只想|壓力|反感|嚇|唐突|冒進|扣分|反效果|翻車|界線|防備|距離感|保持距離|拉開距離|退|被拒|打槍|句點|不夠|不太|不舒服|不自在|太快|太急|太衝|踩|錯))|(?:約|邀約).{0,8}(?:時機|窗口)(?:已經)?成熟/u
+      .test(text)
+  ) {
+    return "direct";
+  }
+  if (
+    /(?:低壓|試探|模糊|輕量)(?:約|邀約)|(?:丟|開|給).{0,6}(?:低壓|試探|短聚|短咖啡)?窗口|短(?:咖啡|聚).{0,6}(?:邀約|窗口)/u
+      .test(text)
+  ) {
+    return "soft";
+  }
+  return null;
+}
+
+function strategyBearingFields(card: DebriefCard): string[] {
+  return [
+    card.summary,
+    ...card.watchouts,
+    card.suggestedLine,
+    card.nextInviteMove,
+    ...(card.gameBreakdown
+      ? [
+        card.gameBreakdown.failureState,
+        card.gameBreakdown.nextFirstLine,
+        card.gameBreakdown.inviteDirection,
+      ]
+      : []),
+  ];
+}
+
+function inviteLevelContradicts(
+  authoritative: HintStrategyRoute,
+  actual: PracticeInviteLevel,
+): boolean {
+  if (actual === "none") return false;
+  if (authoritative === "repair") return true;
+  // round14 gd6：build 提示是「該輪先鋪墊」；她接住後 debrief 建議下一句
+  // 走低壓軟邀約（改天…如何）是局勢推進的前瞻指引，不是翻案說提示錯。
+  // build 下只有 direct（具體時間地點的硬邀約）才算與提示策略矛盾；
+  // repair 局任何邀約照舊全擋。
+  if (authoritative === "build") return actual === "direct";
+  return authoritative === "soft" && actual === "direct";
+}
+
+function cardContradictsHintStrategy(
+  card: DebriefCard,
+  appliedHintTurns: AppliedHintTurn[],
+): boolean {
+  const latestHint = appliedHintTurns.reduce((latest, hint) =>
+    hint.turnIndex >= latest.turnIndex ? hint : latest
+  );
+  const authoritative = authoritativeHintRoute(latestHint);
+  const narrativeRoutes = strategyBearingFields(card)
+    .map(explicitNarrativeRoute)
+    .filter((route): route is HintStrategyRoute => route !== null);
+  // 2026-07-24 Mabel FP：repair 提示被照做後，拆解卡的前瞻指引自然轉入
+  // 鋪墊敘事（先別約、累積安全感）——與「修復」同向，是局勢推進不是翻案。
+  // repair 局的 soft/direct 敘事與任何可貼邀約句（下方 invite level）照舊全擋。
+  const narrativeContradicts = narrativeRoutes.some((route) => {
+    if (route === authoritative) return false;
+    if (authoritative === "repair" && route === "build") return false;
+    return true;
+  });
+  if (narrativeContradicts) return true;
+
+  const pasteableInviteLevels = [
+    practiceInviteLevelFor(card.suggestedLine),
+    ...(card.gameBreakdown
+      ? [practiceInviteLevelFor(card.gameBreakdown.nextFirstLine)]
+      : []),
+  ];
+  return pasteableInviteLevels.some((level) =>
+    inviteLevelContradicts(authoritative, level)
+  );
+}
+
 function debriefAnalyticalFields(card: DebriefCard): string[] {
   return [
     card.summary,
@@ -812,6 +940,15 @@ function assertGeneratedDebriefQuality(
       opts.onQualityFinding?.("debrief_quality_invalid_hint_accountability");
     }
   }
+  // Hint 路線一致性（finding-only）：卡的策略敘事/可貼句與 server decision
+  // 的路線矛盾（如 repair 局建議直接約）要看得見，但不否決。
+  if (
+    appliedHints.length > 0 &&
+    appliedHints.every(hasCompleteHintDecision) &&
+    cardContradictsHintStrategy(card, appliedHints)
+  ) {
+    opts.onQualityFinding?.("debrief_quality_hint_strategy_contradiction");
+  }
 
   soft(() => assertGeneratedDebriefFieldRoles(card));
 
@@ -979,8 +1116,10 @@ function parseDebriefCardInner(
     : (dateChanceReason.length > 0 ? "medium" : "low");
 
   // Handler 的正式生成路徑採完整契約；寬鬆模式只留給舊快照/純 parser 相容。
-  // 缺欄位交給第二次修復型生成，避免 UI 把殘缺卡誤認為模型成功。
-  if (opts.requireCompleteCard === true && opts.salvagePass !== true) {
+  // 核心欄位缺席不在降級範圍（W3 乙類），salvage 也照擋——殘缺卡寧可換下一張
+  // 候選或 503，也不端出空區塊（Codex 2026-08-06 審查修補：舊碼 salvagePass
+  // 會繞過這段，跟 W3 測試宣稱的保證矛盾）。
+  if (opts.requireCompleteCard === true) {
     if (
       strengths.length === 0 || watchouts.length === 0 ||
       dateChanceReason.length === 0 || nextInviteMove.length === 0

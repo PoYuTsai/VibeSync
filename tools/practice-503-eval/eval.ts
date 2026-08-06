@@ -73,9 +73,7 @@ function salvageDebrief(
       allowGameBreakdown: mode === "game",
       requireCompleteCard: true,
       turns,
-      repairPreservedHintCritique: false,
       enforceGeneratedQuality: true,
-      semanticAdjudicated: true,
     });
     return true;
   } catch {
