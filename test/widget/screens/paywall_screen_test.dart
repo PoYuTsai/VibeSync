@@ -182,8 +182,13 @@ void main() {
       expect(find.text('每日 3 次'), findsOneWidget);
       expect(find.text('每日 5 次'), findsOneWidget);
       expect(find.text('每日 1 位'), findsNothing); // 舊不實文案絕不回歸
-      expect(find.text('AI 模型'), findsOneWidget);
-      expect(find.text('最新模型'), findsNWidgets(3));
+      // 零資訊「AI 模型」列已移除，換電子書/測驗兩列真差異。
+      expect(find.text('AI 模型'), findsNothing);
+      expect(find.text('互動電子書'), findsOneWidget);
+      expect(find.text('第 1 冊＋試讀'), findsOneWidget);
+      expect(find.text('全 7 冊'), findsOneWidget);
+      expect(find.text('聊天測驗'), findsOneWidget);
+      expect(find.text('全 4 關'), findsNWidgets(2));
       expect(find.textContaining('Haiku'), findsNothing);
       expect(find.textContaining('Sonnet'), findsNothing);
     });
