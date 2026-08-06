@@ -3350,6 +3350,9 @@ export function createPracticeChatHandler(
       // 兩發都被 gate 打回後靠 salvage 端出的卡；telemetry 要能跟「一次過」分開，
       // 否則守門誤殺率會變成看不見的品質債（salvage 率長期偏高＝該回頭修 gate）。
       let debriefSalvageUsed = false;
+      // 偏好門（grounding/主觀 rubric/fact ledger…）降級後的觀測通道：卡照端，
+      // 違規碼記在這裡隨成功 log 出去（finding 率長期偏高＝回頭修 prompt 或門）。
+      let debriefQualityFindingCodes: string[] = [];
       // salvage 在 catch 裡要用同一份解析設定，但它宣告在 try 內；hoist 一個
       // 參照出來。還沒建好就失敗（例如 claude_unavailable）時為 null＝不搶救。
       let debriefParseOptionsForSalvage:
@@ -3427,12 +3430,10 @@ export function createPracticeChatHandler(
           requireCompleteCard: true,
           turns: request.turns,
           appliedHintTurns: ledgerAppliedHintTurns,
-          repairPreservedHintCritique: false,
           sharedFactualEvidence: debriefFactualEvidence.shared,
           partnerFactualEvidence: debriefFactualEvidence.partner,
           trustedFactClaims: debriefFactualEvidence.claims,
           enforceGeneratedQuality: true,
-          relaxSubjectiveQualityRubrics: true,
         } as const;
         debriefParseOptionsForSalvage = generatedDebriefParseOptions;
         debriefPromptChars = countPromptChars(baseDebriefMessages);
@@ -3447,11 +3448,8 @@ export function createPracticeChatHandler(
             name: "emit_debrief_card",
             description:
               "輸出練習拆解卡：總結、亮點、注意點、建議句與邀約評估（Game 模式含拆盤）。",
-            // 有套用 Hint 時 hintAssessment 升為 schema 必填——hidden 欄位
-            // 只靠 prompt 教學時 Sonnet 首發整欄漏掉（2026-07-23 真機全滅）。
             inputSchema: debriefToolSchemaFor({
               game: debriefPracticeMode === "game",
-              hintApplied: (ledgerAppliedHintTurns ?? []).length > 0,
             }),
           },
           maxTokens: DEBRIEF_MAX_TOKENS,
@@ -3460,10 +3458,18 @@ export function createPracticeChatHandler(
           deadlineAtMs: debriefAbsoluteDeadlineAtMs,
           now: monotonicNow,
           models: [CLAUDE_SONNET_MODEL, CLAUDE_HAIKU_MODEL],
-          // 機械守門全套照舊：parseDebriefCard（完整卡契約/守門詞表/接地/
-          // hintAssessment/Game 拆盤）。丟錯＝該發判敗立即進補發，不 repair 復活。
-          validate: (raw) =>
-            parseDebriefCard(raw, { ...generatedDebriefParseOptions }),
+          // 否決權只剩紅線（罐頭/洩漏/L4）與結構性失敗（缺欄/壞 JSON/拆盤
+          // 殘缺）；偏好門降級為 finding 隨成功卡回報（守門嚴重度分級，
+          // 2026-08-06）。findings 逐發收集，只保留「被端出去那張卡」的。
+          validate: (raw) => {
+            const findingCodes: string[] = [];
+            const card = parseDebriefCard(raw, {
+              ...generatedDebriefParseOptions,
+              onQualityFinding: (code) => findingCodes.push(code),
+            });
+            debriefQualityFindingCodes = findingCodes;
+            return card;
+          },
         });
         for (const failure of outcome.attemptFailures) {
           recordDebriefAttemptFailure(failure);
@@ -3598,6 +3604,14 @@ export function createPracticeChatHandler(
           promptChars: debriefPromptChars,
         }),
       });
+      if (debriefQualityFindingCodes.length > 0) {
+        logInfo("practice_chat_debrief_quality_finding", {
+          user: summarizeUser(user.id),
+          practiceMode: debriefPracticeMode,
+          model: debriefModel,
+          codes: debriefQualityFindingCodes,
+        });
+      }
       const debriefResponse = {
         card: debriefCard,
         costDeducted: 0,

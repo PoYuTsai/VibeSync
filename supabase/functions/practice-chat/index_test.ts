@@ -3767,7 +3767,9 @@ for (const mode of ["beginner", "game"] as const) {
     }
     : { ledger: beginnerStartedLedger() };
 
-  Deno.test(`${mode} Debrief kills a fact-transfer shot mechanically before recording`, async () => {
+  // 守門嚴重度分級（2026-08-06）：fact-transfer 屬偏好門，第一發即收卡＋
+  // finding，不再燒第二發。ai_logs 實證被殺的候選整體品質高於 salvage/模板。
+  Deno.test(`${mode} Debrief fact-transfer＝finding：第一發照端出，不再殺發`, async () => {
     const bad = mode === "game"
       ? debriefCardWithLine(
         "妳住台南喔，最常去哪一區？",
@@ -3785,39 +3787,12 @@ for (const mode of ["beginner", "game"] as const) {
 
     assertEquals(response.status, 200);
     assertEquals(json.provider, "anthropic");
-    // 把對方 typed fact 搬到使用者身上的第一發被機械 gate 殺掉，
-    // 第二發 Haiku 全新候選供給，不 repair 復活。
-    assertEquals(json.failoverUsed, true);
-    assertEquals(json.model, CLAUDE_HAIKU_MODEL);
+    assertEquals(json.failoverUsed, false);
+    assertEquals(json.model, CLAUDE_SONNET_MODEL);
     assertEquals(json.qualitySchemaVersion, DEBRIEF_QUALITY_SCHEMA_VERSION);
     assertEquals(state.deepSeekCalls.length, 0);
-    assertEquals(state.claudeCalls.length, 2);
+    assertEquals(state.claudeCalls.length, 1);
     assertEquals(state.semanticCalls.length, 0);
-    assertEquals(recordDebriefCalls(state).length, 1);
-    assertEquals(releaseDebriefCalls(state).length, 0);
-  });
-
-  // 2026-08-06 Eric 拍板把捏造事實移出 salvage 紅線，推翻了原本的「兩發都移植
-  // 對方事實＝503」。代價已當面講過（兩發都編時會講出她沒說過的事），他選擇
-  // 字面上的零 503。前兩發仍照擋，所以這裡 claudeCalls 仍是 2。
-  Deno.test(`${mode} Debrief 兩發都移植對方事實時 salvage 端出而不是 503`, async () => {
-    const bad = mode === "game"
-      ? debriefCardWithLine(
-        "我的生活圈也在台南，這也太巧。",
-        "我也是台南人，這個生活感很熟。",
-      )
-      : debriefCardWithLine("我的生活圈也在台南，這也太巧。");
-    const { response, json, state } = await run(
-      {
-        ...modeOptions,
-        claudeReplies: [bad, bad],
-      },
-      { ...body, requestId: `typed-debrief-dual-${mode}` },
-    );
-
-    assertEquals(response.status, 200, JSON.stringify(json));
-    assertEquals(state.claudeCalls.length, 2);
-    // 搶救成功＝卡片照常入帳、不得釋放 generation token
     assertEquals(recordDebriefCalls(state).length, 1);
     assertEquals(releaseDebriefCalls(state).length, 0);
   });
@@ -4269,7 +4244,7 @@ Deno.test("assisted debrief resolves Hint strategy from the charged server snaps
   assertEquals(prompt.includes("FORGED"), false);
 });
 
-Deno.test("assisted Debrief repairs indirect blame of an exact preserved Hint", async () => {
+Deno.test("assisted Debrief 間接怪罪提示：不再殺發也不再 repair，原卡照端出", async () => {
   const hintText = "還在賴床喔，那今天先准妳慢慢開機。";
   const turns = [
     { role: "user" as const, text: "早安" },
@@ -4290,8 +4265,8 @@ Deno.test("assisted Debrief repairs indirect blame of an exact preserved Hint", 
   const { response, json, state } = await run(
     {
       ledger: beginnerStartedLedger({ ai_count: 2 }),
-      // 第一發把照做的 Hint 反咬成「只是禮貌收尾」＝間接怪罪，
-      // 被機械 gate 殺掉；第二發 Haiku 全新候選供給。
+      // hintAssessment 契約退役（2026-08-06）：間接怪罪提示不再殺發、不再
+      // repair 改寫，第一發原卡照端出。
       claudeReplies: [
         card(
           "只回『還在賴床喔，那今天先准妳慢慢開機』只是禮貌收尾，沒有給她好接的球。",
@@ -4327,16 +4302,15 @@ Deno.test("assisted Debrief repairs indirect blame of an exact preserved Hint", 
 
   assertEquals(response.status, 200);
   assertEquals(json.provider, "anthropic");
-  assertEquals(json.failoverUsed, true);
-  assertEquals(json.card.watchouts[0].includes("下一步"), true);
-  assertEquals(json.card.watchouts[0].includes("禮貌收尾"), false);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.card.watchouts[0].includes("禮貌收尾"), true);
+  assertEquals(state.claudeCalls.length, 1);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
 });
 
-Deno.test("assisted Debrief missing Hint assessment kills the shot instead of tolerant canonicalization", async () => {
+Deno.test("assisted Debrief 缺 hintAssessment：欄位已退役，第一發直接落帳", async () => {
   const hintText = "還在賴床喔，那今天先准妳慢慢開機。";
   const completeJson = validDebriefJson({
     summary: "你有照提示做，她後來也回說慢慢開機了。",
@@ -4391,10 +4365,10 @@ Deno.test("assisted Debrief missing Hint assessment kills the shot instead of to
 
   assertEquals(response.status, 200);
   assertEquals(json.provider, "anthropic");
-  assertEquals(json.failoverUsed, true);
-  assertEquals(json.model, CLAUDE_HAIKU_MODEL);
+  assertEquals(json.failoverUsed, false);
+  assertEquals(json.model, CLAUDE_SONNET_MODEL);
   assertEquals(json.card.summary.includes("照提示"), true);
-  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(state.claudeCalls.length, 1);
   assertEquals(state.semanticCalls.length, 0);
   assertEquals(recordDebriefCalls(state).length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
@@ -7549,13 +7523,11 @@ Deno.test("game debrief single shot keeps the gameBreakdown contract field-for-f
   assertEquals(json.card.gameBreakdown, breakdown);
 });
 
-// ── 2026-08-05 salvage 整合回歸：寒暄局不再拿到 503 ──
-// 真實事故（ai_logs practice_debrief_standard 08-05 13:44:47/13:45:19）：逐字稿
-// 只有「你好」「嗨～你好」，錨點集合只剩 {你好, 嗨你好}，唯一能通過詞面比對的
-// 建議句是複讀「你好」，兩顆模型都不會產出 → 兩發全滅 → 503「拆解卡生成失敗，
-// 可以再按一次」，而再按也不會好（非隨機失敗）。
-// 裁決：hint/debrief × 新手/一般/Game 正常一定要有輸出，故改由 salvage 端出。
-Deno.test("寒暄局 debrief：兩發都沒過 grounding 時 salvage 端出卡片而不是 503", async () => {
+// ── 寒暄局回歸（2026-08-05 事故 → 2026-08-06 守門嚴重度分級）──
+// 原事故：逐字稿只有「你好」「嗨～你好」時 grounding 結構性不可能過，兩發全滅
+// 轉 503。分級後 grounding 是 finding：第一發直接端出，不再燒第二發、不再走
+// salvage。
+Deno.test("寒暄局 debrief：grounding 只記 finding，第一發直接端出", async () => {
   const greetingCard = JSON.stringify({
     summary: "對話僅止於打招呼，尚未展開任何話題，無法判斷互動品質。",
     strengths: ["有主動開口打招呼，禮貌開場"],
@@ -7586,15 +7558,15 @@ Deno.test("寒暄局 debrief：兩發都沒過 grounding 時 salvage 端出卡�
     (json as { card: { suggestedLine: string } }).card.suggestedLine,
     "嗨～剛看到你資料上有健身教練，平常帶課會很累嗎？",
   );
-  // 搶救成功＝不得釋放 generation token，且卡片要照常入帳
+  assertEquals(state.claudeCalls.length, 1);
   assertEquals(releaseDebriefCalls(state).length, 0);
   assertEquals(recordDebriefCalls(state).length, 1);
-  // telemetry：status 仍是 success，但要標記得出來是搶救來的
   const telemetry = aiLogInserts(state)[0].values;
   assertEquals(telemetry.status, "success");
+  // 第一發直接成功＝不再標 salvage。
   assertEquals(
     (telemetry.request_body as Record<string, unknown>).salvageUsed,
-    true,
+    false,
   );
 });
 

@@ -1050,22 +1050,14 @@ Deno.test("debrief prompt separates copied Hint execution from Hint quality", ()
     user.includes("只有 Hint 送出後「她」的新回覆出現明確反證時"),
     true,
   );
-  assertEquals(
-    user.includes(
-      '"hintAssessment":{"verdict":"preserved","revisedEvidenceQuote":null}',
-    ),
-    true,
-  );
-  assertEquals(user.includes("頂層必填hidden"), true);
-  assertEquals(user.includes("不可省略/進card"), true);
-  assertEquals(user.includes("server會移除"), true);
-  assertEquals(user.includes("exact接球未拒=preserved"), true);
-  assertEquals(user.includes("不評Hint"), true);
+  // hintAssessment 記帳欄位已退役（2026-08-06）：prompt 不得再要求隱藏欄位。
+  assertEquals(user.includes("hintAssessment"), false);
+  assertEquals(user.includes("頂層必填hidden"), false);
   assertEquals(user.includes("讀完整末筆她回覆"), true);
   assertEquals(user.includes("有新素材／反問就不是禮貌收尾"), true);
   assertEquals(
     user.includes(
-      "exact＋preserved：不得批 Hint；watchouts／卡點只寫「下一步…」，或明寫「她／提示前／後來」",
+      "watchouts／卡點只寫「下一步…」，或明寫「她／提示前／後來」",
     ),
     true,
   );
