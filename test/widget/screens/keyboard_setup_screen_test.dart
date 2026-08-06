@@ -52,7 +52,16 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('先啟用 VibeSync 鍵盤'), findsOneWidget);
-    expect(find.textContaining('只會將你主動點擊「載入」的文字'), findsOneWidget);
+    // 隱私說明改成點擊才展開（2026-08-06），不再常駐佔版面。
+    expect(find.textContaining('只送出你按下「載入」的文字'), findsNothing);
+    final privacyInfoButton = find.text('資料使用說明');
+    await tester.ensureVisible(privacyInfoButton);
+    await tester.pump();
+    await tester.tap(privacyInfoButton);
+    await tester.pump();
+    expect(find.textContaining('只送出你按下「載入」的文字'), findsOneWidget);
+    await tester.tap(find.text('知道了'));
+    await tester.pump();
 
     // 圖文路徑導引（2026-08-03）：文字路徑「設定 > VibeSync > 鍵盤」使用者
     // 實測會迷路，補一段圖文導引標出完整巢狀路徑跟最終畫面長怎樣。
@@ -80,6 +89,68 @@ void main() {
     expect(find.text('三步就有好回覆'), findsOneWidget);
     expect(find.text('選風格，確認後送出'), findsOneWidget);
   });
+
+  testWidgets(
+    'cold restart after opening Settings resumes past the Full Access page '
+    'instead of resetting to page 1',
+    (tester) async {
+      // 去 iPhone 設定常把整個 app 記憶體回收掉，process 重開時 initState
+      // 重跑、_page/_openedSettings 這些純記憶體狀態全部歸零——2026-08-06
+      // 真機影片重現。SharedPreferences mock 在同一個 test 內是靜態記憶體，
+      // 跨 pumpWidget 仍保留，正好模擬「持久旗標活過 process 重啟」。
+      final router = GoRouter(
+        initialLocation: '/keyboard',
+        routes: [
+          GoRoute(
+            path: '/keyboard',
+            builder: (_, __) => KeyboardSetupScreen(
+              openSettings: () async => true,
+            ),
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        ProviderScope(child: MaterialApp.router(routerConfig: router)),
+      );
+
+      await tester.tap(find.text('下一步'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('先啟用 VibeSync 鍵盤'), findsOneWidget);
+
+      final openSettingsButton = find.text('前往 iPhone 設定');
+      await tester.ensureVisible(openSettingsButton);
+      await tester.pump();
+      await tester.tap(openSettingsButton);
+      await tester.pump();
+
+      // 模擬 process 被系統整個回收：不是切回背景再 resume，而是重新蓋一棵
+      // 全新的 widget tree，舊 state 徹底作廢，只有 SharedPreferences 存活。
+      final freshRouter = GoRouter(
+        initialLocation: '/keyboard',
+        routes: [
+          GoRoute(
+            path: '/keyboard',
+            builder: (_, __) => KeyboardSetupScreen(
+              openSettings: () async => true,
+            ),
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        ProviderScope(child: MaterialApp.router(routerConfig: freshRouter)),
+      );
+      // 讓 SharedPreferences 讀取＋post-frame callback＋PageView jump 這串
+      // async chain 走完；pulse 動畫無限循環，不能用 pumpAndSettle。
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.text('聊天不用再跳出 App'), findsNothing);
+      expect(find.text('先啟用 VibeSync 鍵盤'), findsNothing);
+      expect(find.text('長按地球，切換鍵盤'), findsOneWidget);
+    },
+  );
 
   testWidgets('first-run setup can be postponed and is persisted',
       (tester) async {

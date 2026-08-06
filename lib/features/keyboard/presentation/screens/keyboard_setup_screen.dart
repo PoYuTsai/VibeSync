@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/services/funnel_tracker.dart';
@@ -10,6 +11,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../onboarding/data/onboarding_service.dart';
+import '../../../../shared/widgets/brand/brand_dialog.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../data/providers/keyboard_context_sync_provider.dart';
 import '../../data/services/keyboard_screenshot_setup_coordinator.dart';
@@ -40,6 +42,12 @@ class KeyboardSetupScreen extends ConsumerStatefulWidget {
 
 class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+  // 冷啟動復原：去 iPhone 設定這一步常把整個 app 記憶體回收掉（不是單純
+  // 背景），process 重開後 _page/_openedSettings 這些純記憶體狀態全部歸零，
+  // 使用者退回第 1 頁要重點一輪——2026-08-06 真機影片重現。落一份持久旗標，
+  // 下次啟動看到就直接跳回「允許完整取用」後的那一頁。
+  static const _awaitingFullAccessReturnKey =
+      'keyboard_setup_awaiting_full_access_return';
   final _controller = PageController();
   late final AnimationController _pulse;
   late Future<bool> _hasKeyboardScreenshotConsent;
@@ -59,6 +67,7 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
     _hasLatestScreenshotDetection =
         ref.read(keyboardScreenshotSetupCoordinatorProvider).hasEnabledSetup();
     unawaited(_restoreNativePrivacyCleanupState());
+    unawaited(_resumeAfterColdRestartIfAwaitingFullAccess());
     _pulse = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -75,9 +84,24 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
     super.dispose();
   }
 
+  Future<void> _resumeAfterColdRestartIfAwaitingFullAccess() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_awaitingFullAccessReturnKey) != true) return;
+    await prefs.remove(_awaitingFullAccessReturnKey);
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_controller.hasClients) return;
+      _controller.jumpToPage(2);
+    });
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _openedSettings && _page == 1) {
+      unawaited(
+        SharedPreferences.getInstance()
+            .then((p) => p.remove(_awaitingFullAccessReturnKey)),
+      );
       _controller.animateToPage(
         2,
         duration: const Duration(milliseconds: 360),
@@ -87,11 +111,15 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
   }
 
   Future<void> _openSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_awaitingFullAccessReturnKey, true);
     final opened = await widget.openSettings();
     if (!mounted) return;
     if (opened) {
       setState(() => _openedSettings = true);
     } else {
+      await prefs.remove(_awaitingFullAccessReturnKey);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('無法開啟設定，請手動前往「設定 > VibeSync > 鍵盤」。')),
       );
@@ -119,6 +147,7 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
     // 旗標不分入口：起步清單／設定頁（非 firstRun）走完四頁也要寫，
     // 否則清單的鍵盤項永遠亮不了勾。
     await OnboardingService.markKeyboardCompleted();
+    await _clearAwaitingFullAccessReturn();
     if (!mounted) return;
     if (widget.firstRun) {
       context.go('/');
@@ -129,7 +158,13 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
 
   Future<void> _skipFirstRun() async {
     await OnboardingService.markKeyboardCompleted();
+    await _clearAwaitingFullAccessReturn();
     if (mounted) context.go('/');
+  }
+
+  Future<void> _clearAwaitingFullAccessReturn() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_awaitingFullAccessReturnKey);
   }
 
   Future<void> _revokeKeyboardScreenshotConsent() async {
@@ -394,6 +429,7 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
     if (widget.firstRun) {
       _skipFirstRun();
     } else {
+      unawaited(_clearAwaitingFullAccessReturn());
       context.pop();
     }
   }
@@ -432,10 +468,6 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                           '到 iPhone 設定開啟「VibeSync 鍵盤」與「允許完整取用」。iOS 需要由你親自開啟。',
                       child: Column(
                         children: [
-                          const _PrivacyNotice(),
-                          const SizedBox(height: 16),
-                          const _FullAccessPathGuide(),
-                          const SizedBox(height: 20),
                           BrandPrimaryButton(
                             label: '前往 iPhone 設定',
                             onPressed: _openSettings,
@@ -451,6 +483,10 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                               color: AppColors.onBackgroundSecondary,
                             ),
                           ),
+                          const SizedBox(height: 20),
+                          const _FullAccessPathGuide(),
+                          const SizedBox(height: 12),
+                          const _PrivacyNoticeButton(),
                         ],
                       ),
                     ),
@@ -470,10 +506,10 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                           '貼上文字可以直接產生回覆；也可選擇啟用「最近截圖」輔助。VibeSync 只插入文字，最後由你決定是否送出。',
                       child: Column(
                         children: [
-                          const _ThreeStepDemo(),
-                          const SizedBox(height: 20),
                           _buildLatestScreenshotDetectionSetup(),
                           _buildScreenshotConsentRevocation(),
+                          const SizedBox(height: 20),
+                          const _ThreeStepDemo(),
                         ],
                       ),
                     ),
@@ -571,27 +607,42 @@ class _SetupPage extends StatelessWidget {
   }
 }
 
-class _PrivacyNotice extends StatelessWidget {
-  const _PrivacyNotice();
+/// 文字太長會把「前往 iPhone 設定」擠到摺線下方（2026-08-06 dogfood
+/// 回饋）；改成點擊才展開的資訊鈕，預設只佔一行。
+class _PrivacyNoticeButton extends StatelessWidget {
+  const _PrivacyNoticeButton();
+
+  static const _detail =
+      'VibeSync 只送出你按下「載入」的文字。「最近截圖」需另行同意：啟用後鍵盤開啟時，只分析最近 3 分鐘內一張截圖，自動裁掉鍵盤佔用區塊，不讀取其他聊天紀錄。';
+
+  void _showDetail(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => BrandAlertDialog(
+        title: const Text('資料使用說明'),
+        content: const Text(_detail),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.brandSurface2,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.primary.withValues(alpha: 0.45)),
+  Widget build(BuildContext context) => TextButton.icon(
+        onPressed: () => _showDetail(context),
+        icon: const Icon(
+          Icons.privacy_tip_outlined,
+          color: AppColors.brandFlame,
+          size: 18,
         ),
-        child: const Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.privacy_tip_outlined, color: AppColors.brandFlame),
-            SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'VibeSync 只會將你主動點擊「載入」的文字送去產生回覆；「最近截圖」需另行同意，啟用後會在鍵盤開啟時於本機尋找最近 3 分鐘的系統截圖並自動分析一張，上傳前會裁掉截圖裡 VibeSync 鍵盤自己佔的區塊。不會自動讀取其他聊天紀錄。',
-              ),
-            ),
-          ],
+        label: Text(
+          '資料使用說明',
+          style: AppTypography.bodySmall
+              .copyWith(color: AppColors.onBackgroundSecondary),
         ),
       );
 }
