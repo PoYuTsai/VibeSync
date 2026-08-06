@@ -227,7 +227,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                           hasPartner: true,
                         ),
                         onNoPartner: () => _completeOnboardingTo(
-                          '/practice-collection',
+                          // guide=1：圖鑑落地出 Sydney 引導泡泡，把 onboarding
+                          // 的教練陪伴接到落地頁（只有這條路會帶）。
+                          '/practice-collection?guide=1',
                           hasPartner: false,
                         ),
                       );

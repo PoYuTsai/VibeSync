@@ -207,7 +207,11 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/practice-collection',
-      builder: (context, state) => const PracticeCollectionScreen(),
+      // guide=1 只由 onboarding 分流「還沒，先去練習」帶進來：落地出 Sydney
+      // 引導泡泡。其他入口不帶參數，行為不變。
+      builder: (context, state) => PracticeCollectionScreen(
+        showOnboardingGuide: state.uri.queryParameters['guide'] == '1',
+      ),
     ),
     // literal '/profile/about-me' MUST come before '/profile/:id' so
     // 'about-me' isn't matched as a conversationId by the parametric route.

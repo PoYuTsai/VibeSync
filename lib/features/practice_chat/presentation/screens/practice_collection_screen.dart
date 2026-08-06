@@ -51,7 +51,15 @@ const List<double> _silhouetteMatrix = <double>[
 ];
 
 class PracticeCollectionScreen extends ConsumerStatefulWidget {
-  const PracticeCollectionScreen({super.key});
+  const PracticeCollectionScreen({
+    super.key,
+    this.showOnboardingGuide = false,
+  });
+
+  /// onboarding 分流「還沒，先去練習」落地引導：Sydney 泡泡指向翻牌鈕。
+  /// 只由 `/practice-collection?guide=1` 帶進來（onboarding 一生只完成一次，
+  /// 查詢參數天然只出現那一次），其他入口一律 false，不需要持久化旗標。
+  final bool showOnboardingGuide;
 
   @override
   ConsumerState<PracticeCollectionScreen> createState() =>
@@ -61,6 +69,9 @@ class PracticeCollectionScreen extends ConsumerStatefulWidget {
 class _PracticeCollectionScreenState
     extends ConsumerState<PracticeCollectionScreen>
     with TickerProviderStateMixin {
+  /// 落地引導是否還在畫面上；任一點擊即收，不重現。
+  late bool _guideVisible = widget.showOnboardingGuide;
+
   /// null＝全部；否則只顯示該稀有度。
   PracticeGirlRarity? _filter;
 
@@ -570,7 +581,101 @@ class _PracticeCollectionScreenState
           // 翻牌揭曉儀式 overlay：idle 時透明＋IgnorePointer，不影響底下互動。
           // 全 app 唯一掛載點（Task 4b 由練習室搬來：翻牌入口在本頁，儀式就地揭曉）。
           const Positioned.fill(child: PracticeDrawCeremony()),
+          if (_guideVisible)
+            Positioned.fill(
+              child: _OnboardingGuideOverlay(
+                onDismiss: () => setState(() => _guideVisible = false),
+              ),
+            ),
         ],
+      ),
+    );
+  }
+}
+
+/// onboarding 落地引導層：淡 scrim＋右下角 Sydney＋白泡泡，點任何地方收掉。
+///
+/// 進場淡入＋微上移用 [TweenAnimationBuilder]（單次收斂，pumpAndSettle 可推完）；
+/// 絕不用 Timer 自動消失——fake async 下計時器不收斂是踩過的坑。
+class _OnboardingGuideOverlay extends StatelessWidget {
+  const _OnboardingGuideOverlay({required this.onDismiss});
+
+  final VoidCallback onDismiss;
+
+  static const String guideMessage =
+      '哈囉！這裡是角色圖鑑～先按右上角的『翻牌』，抽出你的第一位練習夥伴吧！';
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    return GestureDetector(
+      key: const ValueKey('collection-onboarding-guide'),
+      behavior: HitTestBehavior.opaque,
+      onTap: onDismiss,
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.35),
+        alignment: Alignment.bottomRight,
+        child: SafeArea(
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: 1),
+            duration: reduceMotion
+                ? Duration.zero
+                : const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            builder: (context, t, child) => Opacity(
+              opacity: t,
+              child: Transform.translate(
+                offset: Offset(0, (1 - t) * 16),
+                child: child,
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 16, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.sizeOf(context).width * 0.72,
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        guideMessage,
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w600,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Semantics(
+                    image: true,
+                    label: 'VibeSync Coach Sydney，欣欣',
+                    child: Image.asset(
+                      'assets/images/coach/sydney_greeting.png',
+                      height: 160,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.medium,
+                      excludeFromSemantics: true,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
