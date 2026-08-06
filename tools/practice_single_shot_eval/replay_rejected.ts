@@ -189,7 +189,6 @@ async function main(): Promise<void> {
             partnerFactualEvidence: evidence.partner,
             trustedFactClaims: evidence.claims,
             enforceGeneratedQuality: true,
-            relaxSubjectiveQualityRubrics: true,
           });
           for (const reply of parsed.replies) {
             buildHintDecision({
@@ -211,12 +210,10 @@ async function main(): Promise<void> {
             requireCompleteCard: true,
             turns: fixture.turns,
             appliedHintTurns: fixture.appliedHintTurns,
-            repairPreservedHintCritique: false,
             sharedFactualEvidence: evidence.shared,
             partnerFactualEvidence: evidence.partner,
             trustedFactClaims: evidence.claims,
             enforceGeneratedQuality: true,
-            relaxSubjectiveQualityRubrics: true,
           });
         }
       } catch (error) {

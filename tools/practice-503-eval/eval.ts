@@ -55,7 +55,6 @@ function salvageHint(
       mode,
       turns,
       enforceGeneratedQuality: true,
-      semanticAdjudicated: true,
     });
     return true;
   } catch {
@@ -399,13 +398,16 @@ for (const c of debriefCases) {
 console.log("=== 逐案結果（注入 verdict → 出口決策）===");
 for (const r of byBatch) {
   console.log(
-    `${r.path.padEnd(16)} ${r.batch.padEnd(24)} old=${r.old.padEnd(5)} new=${r.neu}`,
+    `${r.path.padEnd(16)} ${r.batch.padEnd(24)} old=${
+      r.old.padEnd(5)
+    } new=${r.neu}`,
   );
 }
 
 console.log("\n=== 各路徑 503 率：舊 → 新 ===");
 console.log(
-  "path".padEnd(16) + "n".padEnd(4) + "old503%".padEnd(10) + "new503%".padEnd(10) + "serve",
+  "path".padEnd(16) + "n".padEnd(4) + "old503%".padEnd(10) +
+    "new503%".padEnd(10) + "serve",
 );
 for (const [path, row] of byPath) {
   const oldPct = ((row.old503 / row.total) * 100).toFixed(0) + "%";

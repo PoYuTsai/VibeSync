@@ -17,8 +17,8 @@ import {
 } from "../../supabase/functions/practice-chat/hint.ts";
 import { buildDebriefMessages } from "../../supabase/functions/practice-chat/prompt.ts";
 import {
-  debriefToolSchemaFor,
   type DebriefCard,
+  debriefToolSchemaFor,
   parseDebriefCard,
 } from "../../supabase/functions/practice-chat/debrief_card.ts";
 import {
@@ -184,7 +184,6 @@ async function runHintShot(opts: {
     partnerFactualEvidence: evidence.partner,
     trustedFactClaims: evidence.claims,
     enforceGeneratedQuality: true,
-    relaxSubjectiveQualityRubrics: true,
   } as const;
   const startedAt = performance.now();
   const rejected: Array<{ code: string; raw: string }> = [];
@@ -392,9 +391,8 @@ function summarizeRoute(route: EvalRoute, shots: ShotRecord[]): RouteSummary {
   const durations = routeShots.map((shot) => shot.durationMs).sort((a, b) =>
     a - b
   );
-  const firstShotCount = routeShots.filter((shot) =>
-    shot.outcome === "first_shot"
-  ).length;
+  const firstShotCount =
+    routeShots.filter((shot) => shot.outcome === "first_shot").length;
   const gateFailureCounts: Record<string, number> = {};
   for (const shot of routeShots) {
     for (const code of shot.attemptFailureCodes) {
@@ -410,9 +408,8 @@ function summarizeRoute(route: EvalRoute, shots: ShotRecord[]): RouteSummary {
     firstShotRate: routeShots.length === 0
       ? 0
       : firstShotCount / routeShots.length,
-    secondShotCount: routeShots.filter((shot) =>
-      shot.outcome === "second_shot"
-    ).length,
+    secondShotCount:
+      routeShots.filter((shot) => shot.outcome === "second_shot").length,
     count503: routeShots.filter((shot) => shot.outcome === "http_503").length,
     gateFailureCounts,
   };
