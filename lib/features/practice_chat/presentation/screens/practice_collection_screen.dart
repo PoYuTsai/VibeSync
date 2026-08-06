@@ -235,7 +235,9 @@ class _PracticeCollectionScreenState
     final collectionComplete = unlockedCount >= practiceGirlProfiles.length;
 
     if (!state.isRevealed) {
-      // locked（今日首抽）：Free 每日首抽免費，直接翻（比照 _PracticeLockedEntry）。
+      // locked（今日首抽）：client 不預判額度直接翻，額度由 server 裁決
+      // （Free 每日免費抽已於 2026-08-02 移除，只剩起步清單一次性贈抽；
+      // Free 無額度時 server 回 402 走 drawUpgradeRequired 分支）。
       if (state.drawUpgradeRequired) {
         context.push('/paywall');
         return;
