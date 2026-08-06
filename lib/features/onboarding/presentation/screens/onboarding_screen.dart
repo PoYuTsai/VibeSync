@@ -349,11 +349,18 @@ class _OnboardingBranchingPage extends StatelessWidget {
                   onPressed: onHasPartner,
                   verticalPadding: 16,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 6),
+                // 按之前先講兩條路各通到哪（按之後回一句＝多一次點擊或計時器
+                // 等待，都是在轉化最後一步加摩擦）。「先抽一位練習夥伴」對齊
+                // 真實落地頁：按下去到圖鑑翻牌，Sydney 泡泡接著就叫你抽。
+                _branchHint('先幫你把她這輪的訊號讀懂'),
+                const SizedBox(height: 16),
                 BrandSecondaryButton(
                   label: '還沒，先去練習',
                   onPressed: onNoPartner,
                 ),
+                const SizedBox(height: 6),
+                _branchHint('先抽一位練習夥伴，把手感練起來'),
               ],
             ),
           ),
@@ -361,4 +368,12 @@ class _OnboardingBranchingPage extends StatelessWidget {
       ),
     );
   }
+
+  Widget _branchHint(String text) => Text(
+        text,
+        textAlign: TextAlign.center,
+        style: AppTypography.bodySmall.copyWith(
+          color: AppColors.onBackgroundSecondary.withValues(alpha: 0.76),
+        ),
+      );
 }

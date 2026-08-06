@@ -104,6 +104,25 @@ void main() {
         reason: '應該已翻到第 $page 頁',
       );
       await capture('onboarding_page$page.png');
+
+      // 第 4 頁鏡像卡三態：未選（上面那張）→ 選 1 → 選 2。選擇保留著往下走，
+      // 與真實使用者路徑一致（分流頁會把目標種進 profile stub，無妨）。
+      if (page == 4) {
+        await tester
+            .tap(find.byKey(const ValueKey('onboarding-goal-softInvite')));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('onboarding-mirror-card')),
+          findsOneWidget,
+          reason: '選 1 個目標應出鏡像卡',
+        );
+        await capture('onboarding_page4_selected1.png');
+
+        await tester
+            .tap(find.byKey(const ValueKey('onboarding-goal-comfortableChat')));
+        await tester.pumpAndSettle();
+        await capture('onboarding_page4_selected2.png');
+      }
     }
   });
 }

@@ -53,10 +53,78 @@ void main() {
       onGoalsChanged: (g) => changed = g,
     );
 
-    await tester.tap(find.text('想讓對話更幽默、有來有往'));
+    // 鏡像卡會複誦 chip 同字樣，點擊一律走 chip key 不走文字。
+    await tester.tap(find.byKey(const ValueKey('onboarding-goal-humorousReply')));
     expect(changed, isNull);
 
-    await tester.tap(find.text('想約得出來'));
+    await tester.tap(find.byKey(const ValueKey('onboarding-goal-softInvite')));
     expect(changed, [PracticeGoal.comfortableChat]);
+  });
+
+  group('鏡像卡（選目標即時回饋）', () {
+    const cardKey = ValueKey('onboarding-mirror-card');
+    const softInvitePromise = '教練會幫你盯時機——聊到什麼熱度、出現哪些訊號，就是開口約的時候。';
+    const comfortableChatPromise = '教練會先帶你把節奏放慢，不用急著接好每一句，聊起來自然不緊繃。';
+
+    testWidgets('沒選目標：不出卡，也沒有 fallback 空話', (tester) async {
+      await _pump(tester);
+
+      expect(find.byKey(cardKey), findsNothing);
+      expect(find.textContaining('教練會'), findsNothing);
+    });
+
+    testWidgets('選 1 個：卡片出現，chip 標籤＋承諾句逐字正確', (tester) async {
+      await _pump(tester, goals: const [PracticeGoal.softInvite]);
+
+      expect(find.byKey(cardKey), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(cardKey),
+          matching: find.text('想約得出來'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text(softInvitePromise), findsOneWidget);
+    });
+
+    testWidgets('選 2 個：一目標一組，兩句承諾各自成句', (tester) async {
+      await _pump(
+        tester,
+        goals: const [PracticeGoal.softInvite, PracticeGoal.comfortableChat],
+      );
+
+      expect(find.byKey(cardKey), findsOneWidget);
+      expect(find.text(softInvitePromise), findsOneWidget);
+      expect(find.text(comfortableChatPromise), findsOneWidget);
+    });
+
+    testWidgets('點選→出卡；再點取消回 0→卡片消失', (tester) async {
+      var goals = <PracticeGoal>[];
+      await tester.binding.setSurfaceSize(const Size(390, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) => OnboardingQuestionnairePage(
+                selectedGoals: goals,
+                onGoalsChanged: (g) => setState(() => goals = g),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      const chip = ValueKey('onboarding-goal-softInvite');
+      await tester.tap(find.byKey(chip));
+      await tester.pumpAndSettle();
+      expect(find.byKey(cardKey), findsOneWidget);
+      expect(find.text(softInvitePromise), findsOneWidget);
+
+      await tester.tap(find.byKey(chip));
+      await tester.pumpAndSettle();
+      expect(find.byKey(cardKey), findsNothing);
+    });
   });
 }

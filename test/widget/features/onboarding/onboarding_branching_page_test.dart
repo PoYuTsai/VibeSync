@@ -125,6 +125,14 @@ void main() {
       expect(prefs.getBool('onboarding_completed'), isTrue);
     });
 
+    testWidgets('兩顆分流按鈕下各有一行去向說明小字', (tester) async {
+      await _pumpOnboarding(tester);
+      await _swipeToBranchingPage(tester);
+
+      expect(find.text('先幫你把她這輪的訊號讀懂'), findsOneWidget);
+      expect(find.text('先抽一位練習夥伴，把手感練起來'), findsOneWidget);
+    });
+
     testWidgets('主按鈕導流後 back 可退回首頁（go / 再 push，不卡死）', (tester) async {
       await _pumpOnboarding(tester);
       await _swipeToBranchingPage(tester);
