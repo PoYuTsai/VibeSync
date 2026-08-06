@@ -1286,6 +1286,17 @@ final class KeyboardScreenshotAssistCoordinator {
     }
 
     func cancel() {
+        // 已經在「已停止等待」畫面時再按一次 X：outbound 沒被上一次 cancel
+        // 清掉（「查詢同一筆結果」還要靠它找 requestId），所以會重繪一模
+        // 一樣的畫面，使用者以為 X 沒反應（2026-08-06 dogfood 回饋）。第二次
+        // 按代表使用者是要整個關掉，改走跟「沒有 outbound」一樣的全清路徑。
+        if case .failed(_, .lookupSameRequest) = stateMachine.state {
+            invalidateAsyncWork()
+            clearBoundData(keepingIdentity: true)
+            stateMachine.send(.reset)
+            setMessage("本次截圖未送出。")
+            return
+        }
         if let binding = outbound?.binding {
             invalidateAsyncWork()
             stateMachine = KeyboardAssistStateMachine(
@@ -2165,13 +2176,13 @@ final class KeyboardScreenshotAssistCoordinator {
     private static func readyMessage(
         _ ready: KeyboardAssistReadyResponse
     ) -> String {
-        let scope = ready.source.scope == .screenshotPlusGlobalVoice
-            ? "只根據這張截圖判讀，並套用你的語氣偏好"
-            : "只根據這張截圖判讀"
+        // 「只根據這張截圖判讀，不會假裝知道其他對話」這句每次都會出現，且下方
+        // analysisCueLabel 已經用 💡 卡片重複顯示同一份 cue，純屬版面雜訊
+        // （2026-08-06 dogfood 回饋）；砍掉開頭這句樣板，只留 cue／limitation。
         let uncertainty = ready.uncertainty.map {
             "；限制：\($0)"
         } ?? ""
-        return "\(scope)，不會假裝知道其他對話。\(ready.cue)\(uncertainty)\n點候選才插入。"
+        return "\(ready.cue)\(uncertainty)\n點候選才插入。"
     }
 
     private func retryPolicy(

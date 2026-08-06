@@ -210,12 +210,6 @@ final class KeyboardScreenshotAssistCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(harness.inserter.insertions.count, 0)
         XCTAssertEqual(harness.network.clearedRequestIDs, [])
-        XCTAssertTrue(
-            harness.messages.last?.contains("只根據這張截圖判讀") == true
-        )
-        XCTAssertTrue(
-            harness.messages.last?.contains("不會假裝知道其他對話") == true
-        )
         let candidateID = harness.ready(
             requestID:
                 harness.network.submissions[0].request.requestId
@@ -289,6 +283,36 @@ final class KeyboardScreenshotAssistCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(harness.network.submissions.count, 1)
         XCTAssertEqual(harness.network.lookupRequestIDs, [requestID])
+    }
+
+    func testSecondCancelWhileAlreadyStoppedFullyDismissesInsteadOfNoOp() {
+        // 第一次 cancel 進「已停止等待」畫面；outbound 保留給「查詢同一筆
+        // 結果」用。第二次按 X 是使用者要整個關掉——2026-08-06 dogfood 回
+        // 饋：這裡以前會重繪一模一樣的畫面，看起來像 X 沒反應。
+        let harness = ScreenshotAssistHarness()
+        harness.reachSubmittedRequest()
+        let requestID = harness.network.submissions[0].request.requestId
+
+        harness.coordinator.cancel()
+        guard case .failed(let binding, .lookupSameRequest) =
+                harness.coordinator.stateMachine.state
+        else {
+            return XCTFail("First cancel should enter the stopped state")
+        }
+        XCTAssertEqual(binding?.requestID, requestID)
+
+        harness.coordinator.cancel()
+        if case .failed = harness.coordinator.stateMachine.state {
+            XCTFail("Second cancel while already stopped must not re-enter .failed")
+        }
+        XCTAssertEqual(harness.messages.last, "本次截圖未送出。")
+
+        harness.coordinator.retryFailedRequest()
+        XCTAssertEqual(
+            harness.network.lookupRequestIDs,
+            [],
+            "outbound should be cleared, so retry has nothing to look up"
+        )
     }
 
     func testPreviewTapTimestampIsNotResetAfterPreprocessing() {

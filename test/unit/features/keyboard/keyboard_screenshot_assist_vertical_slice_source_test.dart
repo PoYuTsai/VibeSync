@@ -139,9 +139,7 @@ void main() {
     expect(source, contains('contentMode: .aspectFit'));
   });
 
-  test('production target compiles the coordinator and UI states its scope',
-      () {
-    final source = coordinator.readAsStringSync();
+  test('production target compiles the coordinator and its tests', () {
     final projectSource = project.readAsStringSync();
 
     expect(
@@ -154,7 +152,5 @@ void main() {
       projectSource,
       contains('KeyboardScreenshotAssistCoordinatorTests.swift in Sources'),
     );
-    expect(source, contains('只根據這張截圖判讀'));
-    expect(source, contains('不會假裝知道其他對話'));
   });
 }

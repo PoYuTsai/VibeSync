@@ -246,7 +246,7 @@ final class KeyboardViewController: UIInputViewController {
         updateVoiceButton()
         header.addArrangedSubview(voiceButton)
         header.addArrangedSubview(
-            makeButton("文字", action: #selector(showTextAssist))
+            makeButton("單句速回", action: #selector(showTextAssist))
         )
         // ABC sits here as an outline, not in a row of its own. It is the floor
         // — the thing that still works before 完整取用 — so it must be reachable,
