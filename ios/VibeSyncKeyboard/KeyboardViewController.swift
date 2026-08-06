@@ -48,6 +48,8 @@ final class KeyboardViewController: UIInputViewController {
     private let analysisUncertaintyLabel = UILabel()
     private let screenshotSwapButton = UIButton(type: .system)
     private let screenshotActionRow = UIStackView()
+    private let screenshotFlowMark = UILabel()
+    private var isMarkPulsing = false
     private var styleButtons: [KeyboardReplyStyle: UIButton] = [:]
     private var loadedMessage = ""
     private var pendingLegacyReply: PendingLegacyReply?
@@ -227,11 +229,10 @@ final class KeyboardViewController: UIInputViewController {
         let header = UIStackView()
         header.axis = .horizontal
         header.spacing = 8
-        let mark = UILabel()
-        mark.text = "💜 VibeSync"
-        mark.textColor = .white
-        mark.font = .systemFont(ofSize: 15, weight: .bold)
-        header.addArrangedSubview(mark)
+        screenshotFlowMark.text = "💜 VibeSync"
+        screenshotFlowMark.textColor = .white
+        screenshotFlowMark.font = .systemFont(ofSize: 15, weight: .bold)
+        header.addArrangedSubview(screenshotFlowMark)
         header.addArrangedSubview(UIView())
         header.addArrangedSubview(
             makeButton("單句速回", action: #selector(showTextAssist))
@@ -810,6 +811,7 @@ final class KeyboardViewController: UIInputViewController {
         screenshotStatusLabel.text = renderState.message
         screenshotStatusBubble.isHidden = (renderState.message ?? "").isEmpty
         renderAssistIdleView(renderState)
+        setMarkPulsing(isWaitingOnProvider(renderState.state))
 
         switch renderState.state {
         // These states hide the screenshot panel, which means their own status
@@ -906,6 +908,35 @@ final class KeyboardViewController: UIInputViewController {
         screenshotActionRow.isHidden =
             screenshotSwapButton.isHidden && screenshotCancelButton.isHidden
         updatePreferredHeight()
+    }
+
+    private func isWaitingOnProvider(_ state: KeyboardAssistState) -> Bool {
+        switch state {
+        case .preparing, .generating, .lookingUpStatus:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// A quiet pulse on the brand mark instead of a static "loading" state —
+    /// the wait is a single blocking call with no real progress signal
+    /// (2026-08-06 product decision), so this and the status-line wording
+    /// cycle are the only two things telling the user something is happening.
+    private func setMarkPulsing(_ pulsing: Bool) {
+        guard pulsing != isMarkPulsing else { return }
+        isMarkPulsing = pulsing
+        screenshotFlowMark.layer.removeAllAnimations()
+        guard pulsing else {
+            screenshotFlowMark.alpha = 1
+            return
+        }
+        UIView.animate(
+            withDuration: 0.9,
+            delay: 0,
+            options: [.repeat, .autoreverse, .allowUserInteraction],
+            animations: { self.screenshotFlowMark.alpha = 0.45 }
+        )
     }
 
     /// The capture arrives where the other person's messages live, with one
