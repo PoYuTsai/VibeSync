@@ -147,3 +147,20 @@ if (hintQualityFindingCodes.length > 0) {
 1. 高風險(AI 管線+quota 相鄰)→ 依共享審查流程派**對抗式雙審**。Codex 額度 2026-08-08 15:10 前用罄,期間主審派 **Grok 4.5**(`grok-codex`,大 diff 用 `--cd` 讓它讀檔,prompt 引數傳)。
 2. 審過→依 AGENTS.md 交付鏈:push `main`(無 migration;`practice-chat` 由 push workflow 自動部署,不重複手動 deploy)→ 盯 Edge deploy + exact-SHA `Build & Distribute`。
 3. 上線觀測(寫進收尾回報):隔幾天撈 ai_logs 對比——`practice_chat_generation_attempt` 敗因碼分佈會左移(偏好門碼消失),`practice_chat_hint_quality_finding` 分冷熱看 finding 率;長期偏高=修 prompt/門,**絕不加回否決權**。真機 dogfood:Game/新手各按一次 hint,體感延遲+內容不空話。
+
+---
+
+## 實作註記（2026-08-07 收官時補）
+
+- Task 5 的 degrade 白名單三碼在實作時發現不足：舊 salvage 是黑名單，實際還原諒
+  邀約階梯／Game 契約／無可貼句狀態接地——只留三碼會把 2026-08-05 的 503 修復
+  倒退。白名單最終為**六碼**（+`invite_route`、`game_contract`、
+  `no_pasteable_unsupported_state`）；`semantic_invite_move` 經 Grok 首審 P1
+  拍掉（buildHintDecision 無讓路點，重解一樣炸，列入名單＝名實不符）。
+- `degradeStructuralDefects` 與 `salvagePass` 合併為單一 `finalDegradePass`
+  （兩者只會一起開，兩顆旋鈕是漂移源）。
+- telemetry 鍵名為 `codes`（鏡射 debrief 實際事件形狀；design 檔原寫
+  findingCodes 是措辭錯誤，已更正），並同碼去重。
+- 對抗審由 Grok 4.5 執行（Codex 額度 8/8 前用罄）：APPROVED_WITH_FINDINGS，
+  兩 P1 已修（見上）；P2 follow-up＝degrade 白名單 exact-match 對 code 形狀的
+  契約測試、softQualityGate 只吞 hint_* 機器碼。

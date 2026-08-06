@@ -5947,6 +5947,8 @@ Deno.test("degradeStructuralHintCandidate：白名單敗因才救；優先主模
       "hint_canned_visible_text",
       "hint_missing_coaching",
       "hint_quality_invalid_not_grounded",
+      // buildHintDecision 無讓路點，重解一樣炸（Grok 首審 P1：不准名實不符）
+      "hint_quality_invalid_semantic_invite_move",
     ]
   ) {
     assertEquals(

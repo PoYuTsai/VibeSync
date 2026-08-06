@@ -60,8 +60,9 @@ telemetry 才看得見 finding 率。
 
 ## 三、telemetry、契約與驗證
 
-- 事件名 `practice_chat_hint_quality_finding`,形狀鏡射 debrief 那顆:
-  `findingCodes`(一發可多碼)、`model`、`practiceMode`、`prefetch`。
+- 事件名 `practice_chat_hint_quality_finding`,形狀鏡射 debrief 那顆
+  (handler.ts `practice_chat_debrief_quality_finding`,鍵名是 **`codes`**):
+  `codes`(一發可多類,同碼去重)、`model`、`practiceMode`、`prefetch`。
 - **對比基準警告**:`practice_chat_generation_attempt` 敗因碼分佈會改變
   (偏好門碼從 failure 消失、改出現在 finding)。日後撈 ai_logs 別誤判
   「失敗率驟降」。

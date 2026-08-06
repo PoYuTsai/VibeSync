@@ -7682,6 +7682,30 @@ Deno.test("紅線：兩發都露骨時仍然擋死，不得端給使用者", asy
   assertEquals(recordHintCalls(state).length, 0);
 });
 
+Deno.test("結構全滅：兩發都缺必填欄時 503，degrade pass 救不了", async () => {
+  // design 第三節的窄出口釘子：偏好門退位後，503 集合＝紅線＋結構雙發全滅。
+  const missingCoaching = JSON.stringify({
+    warmUp: "妳今天喝什麼？",
+    steady: "我剛喝了拿鐵，妳呢？",
+  });
+  const { response, json, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      claudeReplies: [missingCoaching, missingCoaching],
+    },
+    hintBody({
+      practiceMode: "beginner",
+      requestId: "hint-structural-dual-fail",
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json.retryable, true);
+  assertEquals(state.claudeCalls.length, 2);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 1);
+});
+
 Deno.test("非紅線：品質不夠好第一發即收卡，不再 503 也不燒補發", async () => {
   // 純問句＋沒有實質動作＋不接地：以前這組會連踩三道守門 → 兩發全滅 → 503；
   // 分級後三道全是偏好門，第一發即收卡＋finding。

@@ -2590,20 +2590,21 @@ function assertGeneratedHintQuality(opts: {
  * 只是形狀或契約卡住」的候選還救得回來——就是這份名單，**刻意講得完**：
  *
  * - 三個乙類結構缺陷：超長（剪裁）、兩句同句（剪一句）、單欄旁白（丟欄）。
- * - 四個 server 契約門：邀約階梯兩碼（buildHintDecision 讓路，inviteRoute
- *   照實標註）、Game 契約 slug（缺 slug 比 503 便宜）、無可貼句狀態接地
- *   （改端不替她說話的中性說明）。
+ * - 三個 server 契約門：邀約階梯 invite_route（buildHintDecision 讓路，
+ *   inviteRoute 照實標註）、Game 契約 slug（缺 slug 比 503 便宜）、
+ *   無可貼句狀態接地（改端不替她說話的中性說明）。
  *
  * 不在名單＝真救不了或不准救：紅線四類（使用者絕不能看到）、壞 JSON／缺欄
- * （重解一樣炸）、no_pasteable 自相矛盾（不猜哪邊是真的）、舊 client 能力
- * 缺席（fail-closed 鐵則）、transport 失敗（沒有候選原文）。
+ * （重解一樣炸）、semantic_invite_move（buildHintDecision 無讓路點，重解
+ * 一樣炸——舊 salvage 也救不了，Grok 首審 P1 拍掉名實不符）、no_pasteable
+ * 自相矛盾（不猜哪邊是真的）、舊 client 能力缺席（fail-closed 鐵則）、
+ * transport 失敗（沒有候選原文）。
  */
 const DEGRADABLE_FAILURE_CODES: ReadonlySet<string> = new Set([
   "hint_quality_invalid_overlong",
   "hint_quality_invalid_duplicate_replies",
   "hint_stage_direction_reply",
   "hint_quality_invalid_invite_route",
-  "hint_quality_invalid_semantic_invite_move",
   "hint_quality_invalid_game_contract",
   "hint_no_pasteable_unsupported_state",
 ]);

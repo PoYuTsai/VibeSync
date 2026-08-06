@@ -2873,7 +2873,9 @@ export function createPracticeChatHandler(
           practiceMode: request.practiceMode,
           model: hintModel,
           prefetch: requestIsPrefetch,
-          codes: hintQualityFindingCodes,
+          // 同碼去重（Grok 首審 P2）：一發三欄都踩同一道門只算一「類」，
+          // 否則 finding 率分母膨脹。
+          codes: [...new Set(hintQualityFindingCodes)],
         });
       }
       const recordPolicy = hintRecordPolicy({
