@@ -3430,6 +3430,11 @@ void main() {
 
     expect(spy.waitingStop, greaterThanOrEqualTo(1));
     expect(spy.looping, isFalse);
+
+    // draw 在途永不完成 → .timeout 的 45s Timer 還掛著；推過它讓 timeout
+    // 觸發（controller 已 dispose，mounted 守門 no-op），否則 !timersPending
+    // 收尾斷言會炸。
+    await tester.pump(kPracticeDrawRequestTimeout + const Duration(seconds: 1));
   });
 
   testWidgets('音效（reset）：normal-motion 不疊舊 chime、master bed 從 reveal 起播',

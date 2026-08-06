@@ -1433,6 +1433,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             visiblePracticeThreadId: prior.visiblePracticeThreadId,
           )
           .timeout(_drawRequestTimeout);
+      // 抽卡中離開頁面（autoDispose）後才回來的結果/timeout：不得碰已
+      // dispose 的 notifier。requestId 不 rotate，下次進場沿用 replay 去重。
+      if (!mounted) return;
       _rotateDrawRequestId(drawRequestId); // 成功 → rotate
       final girl = girlProfileById(result.profile.profileId) ??
           fallbackPracticeProfile().girl;
@@ -1485,6 +1488,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         );
       }
     } on PracticeDrawUpgradeRequiredException catch (e) {
+      if (!mounted) return;
       _rotateDrawRequestId(drawRequestId); // 4xx 明確拒絕 → rotate
       // Free 免費翻牌用完且不可付費額外：導升級。保留原狀態（不揭曉/不漂移）。
       state = prior.copyWith(
@@ -1495,12 +1499,14 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: '升級後每天可以翻更多陪練女孩。',
       );
     } on PracticeQuotaExceededException catch (e) {
+      if (!mounted) return;
       _rotateDrawRequestId(drawRequestId); // 4xx 明確拒絕 → rotate
       state = prior.copyWith(
         drawQuotaExceeded: true,
         errorMessage: e.message,
       );
     } catch (_) {
+      if (!mounted) return;
       // 網路／5xx：id 保留（不 rotate），重試沿用供 server replay 去重。
       // 一般失敗：revealed 時保留目前對象（只報錯）；locked 時標 error 讓 UI 可重抽。
       state = prior.copyWith(
