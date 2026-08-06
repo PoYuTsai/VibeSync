@@ -588,6 +588,55 @@ void main() {
     expect(find.text('merge-stub-p1'), findsOneWidget);
   });
 
+  testWidgets(
+    '冷啟動 48h 通知用 go 收斂 stack 直達本頁時仍有返回鍵可退場',
+    (t) async {
+      // 鏡射 app.dart _handleColdStartNotification：router.go 收斂 stack，
+      // 本頁沒有東西可 pop——標準 AppBar 預設返回鍵不會生成。
+      final router = GoRouter(
+        initialLocation: '/partner/p1',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, __) =>
+                const Scaffold(body: Text('home-stub', key: ValueKey('home-stub'))),
+          ),
+          GoRoute(
+            path: '/partner/:partnerId',
+            builder: (_, state) => PartnerDetailScreen(
+              partnerId: state.pathParameters['partnerId']!,
+            ),
+          ),
+        ],
+      );
+
+      await t.pumpWidget(ProviderScope(
+        overrides: [
+          partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+          coachChatRepositoryProvider
+              .overrideWithValue(MemoryCoachChatRepository()),
+          partnerByIdProvider('p1').overrideWith((_) => _p()),
+          partnerAggregateProvider('p1')
+              .overrideWith((_) => PartnerAggregateView.empty()),
+          dataQualityFlagProvider('p1')
+              .overrideWith((_) => const DataQualityFlag.unflagged()),
+          conversationsByPartnerProvider('p1')
+              .overrideWith((_) => const <Conversation>[]),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ));
+      await t.pumpAndSettle();
+
+      final backButton = find.byIcon(Icons.arrow_back);
+      expect(backButton, findsOneWidget);
+
+      await t.tap(backButton);
+      await t.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('home-stub')), findsOneWidget);
+    },
+  );
+
   testWidgets('renders simplified first-conversation empty state', (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [

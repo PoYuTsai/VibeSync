@@ -191,6 +191,21 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        // 冷啟動 48h 跟進通知用 router.go 收斂 stack 直達本頁，canPop 為
+        // false 時預設 AppBar 不會生返回鍵；顯式補一顆，落回首頁而不是卡死。
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back,
+            color: AppColors.onBackgroundPrimary,
+          ),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/');
+            }
+          },
+        ),
         iconTheme: const IconThemeData(
           color: AppColors.onBackgroundPrimary,
         ),
@@ -504,6 +519,21 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        // 冷啟動 48h 跟進通知用 router.go 收斂 stack 直達本頁，canPop 為
+        // false 時預設 AppBar 不會生返回鍵；顯式補一顆，落回首頁而不是卡死。
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back,
+            color: AppColors.onBackgroundPrimary,
+          ),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/');
+            }
+          },
+        ),
         iconTheme: const IconThemeData(color: AppColors.onBackgroundPrimary),
         title: Text(
           partner.name,
