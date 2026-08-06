@@ -447,6 +447,21 @@ class _PracticeCollectionScreenState
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
+        // debrief「去圖鑑換人」用 context.go 收斂 stack 進來時 canPop 為
+        // false，預設 AppBar 不會生返回鍵；顯式補一顆，落回首頁而不是卡死。
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back,
+            color: AppColors.onBackgroundPrimary,
+          ),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/');
+            }
+          },
+        ),
         title: Text(
           '角色圖鑑',
           style: AppTypography.titleMedium.copyWith(

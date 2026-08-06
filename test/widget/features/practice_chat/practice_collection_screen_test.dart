@@ -473,6 +473,48 @@ void main() {
         findsNothing,
       );
     });
+
+    testWidgets(
+      'debrief「去圖鑑換人」用 go 收斂 stack 進來時仍有返回鍵可退場',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(500, 1600));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        // 鏡射 practice_chat_screen.dart 的 onNewPartner：go 收斂 stack，
+        // 圖鑑頁沒有東西可 pop——標準 AppBar 預設返回鍵不會生成。
+        final router = GoRouter(
+          initialLocation: '/practice-collection',
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (context, state) => const Scaffold(
+                body: Text('home-stub', key: ValueKey('home-stub')),
+              ),
+            ),
+            GoRoute(
+              path: '/practice-collection',
+              builder: (context, state) => const PracticeCollectionScreen(),
+            ),
+          ],
+        );
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: _collectionOverrides(),
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await tester.pump();
+
+        final backButton = find.byIcon(Icons.arrow_back);
+        expect(backButton, findsOneWidget);
+
+        await tester.tap(backButton);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const ValueKey('home-stub')), findsOneWidget);
+      },
+    );
   });
 
   group('圖鑑翻牌鈕 gating', () {
