@@ -494,9 +494,23 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                       icon: Icons.language,
                       title: '長按地球，切換鍵盤',
                       description: '在任何聊天 App 點開輸入框，長按左下角 🌐，再選擇「VibeSync 鍵盤」。',
-                      child: ScaleTransition(
-                        scale: _pulse,
-                        child: const _GlobeDemo(),
+                      child: Column(
+                        children: [
+                          ScaleTransition(
+                            scale: _pulse,
+                            child: const _GlobeDemo(),
+                          ),
+                          const SizedBox(height: 20),
+                          // 剛切完「允許完整取用」後 iOS 會重新註冊 extension，
+                          // 這段空窗清單裡沒有 VibeSync——系統行為，不是我們能救的。
+                          Text(
+                            '剛開好設定的一兩分鐘內，清單裡可能還沒有 VibeSync——這是 iOS 正在註冊新鍵盤，把聊天 App 關掉重開就會立刻出現。',
+                            textAlign: TextAlign.center,
+                            style: AppTypography.bodySmall.copyWith(
+                              color: AppColors.onBackgroundSecondary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     _SetupPage(

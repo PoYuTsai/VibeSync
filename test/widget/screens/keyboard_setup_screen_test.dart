@@ -82,6 +82,12 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('長按地球，切換鍵盤'), findsOneWidget);
+    // 註冊空窗提示（2026-08-07）：切完完整取用後 iOS 重新註冊 extension，
+    // 一兩分鐘內地球鍵清單沒有 VibeSync，實測（Bruce）會誤判成壞掉。
+    expect(
+      find.textContaining('iOS 正在註冊新鍵盤'),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('下一步'));
     await tester.pump();
