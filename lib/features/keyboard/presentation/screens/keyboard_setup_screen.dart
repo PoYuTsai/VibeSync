@@ -475,9 +475,13 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                           ),
                           const SizedBox(height: 12),
                           // 實測 iOS 狀態列的「◀ 返回 App」提示會消失，
-                          // 不可靠——明講用 App 切換器回來。
+                          // 不可靠——明講用 App 切換器回來。另外切「允許完整
+                          // 取用」時 iOS 必定強制重啟 App（權限開關的系統行為，
+                          // 擋不掉），要先預告，不然看起來像閃退。
                           Text(
-                            '開好後從畫面底部上滑並停頓（App 切換器），切回 VibeSync 繼續。',
+                            '開好後從畫面底部上滑並停頓（App 切換器），切回 VibeSync 繼續。'
+                            '切「允許完整取用」時 iOS 會重啟 VibeSync 一次——'
+                            '這是正常的安全機制，回來會自動接回這裡。',
                             textAlign: TextAlign.center,
                             style: AppTypography.bodySmall.copyWith(
                               color: AppColors.onBackgroundSecondary,
