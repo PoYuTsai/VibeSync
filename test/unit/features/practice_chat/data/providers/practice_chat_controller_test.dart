@@ -313,6 +313,7 @@ void main() {
     PracticeAppliedHintStore? appliedHintStore,
     Duration? hintRequestTimeout,
     Duration? sendMessageTimeout,
+    Duration? drawRequestTimeout,
     Duration? hintPrefetchRetryDelay,
   }) {
     final c = PracticeChatController(
@@ -330,6 +331,7 @@ void main() {
       createdAt: DateTime(2026, 6, 26, 13, 0),
       hintRequestTimeout: hintRequestTimeout,
       sendMessageTimeout: sendMessageTimeout,
+      drawRequestTimeout: drawRequestTimeout,
       hintPrefetchRetryDelay: hintPrefetchRetryDelay,
     );
     addTearDown(() {
@@ -807,6 +809,28 @@ void main() {
       expect(s.drawStatus, PracticeDrawStatus.error);
       expect(s.errorMessage, isNotNull);
       expect(s.girl, isNull);
+    });
+
+    test('網路停滯 → timeout 走一般失敗分支、requestId 不 rotate 供重試 replay',
+        () async {
+      // 永不完成的 future 模擬 TCP 停滯；timeout 保證 UI 不會永久轉圈。
+      api.drawHandler = ({currentProfileId}) => Completer<PracticeDrawResult>()
+          .future;
+      final c = makeController(
+        drawRequestTimeout: const Duration(milliseconds: 50),
+      );
+
+      await c.drawNewPracticeGirl();
+      final s = c.currentState;
+      expect(s.drawStatus, PracticeDrawStatus.error);
+      expect(s.errorMessage, isNotNull);
+      final timedOutRequestId = api.lastDrawRequestId;
+
+      // 重試成功：沿用同一 requestId（server replay 去重，不雙扣）。
+      api.drawHandler = ({currentProfileId}) async => drawResult();
+      await c.drawNewPracticeGirl();
+      expect(api.lastDrawRequestId, timedOutRequestId);
+      expect(c.currentState.drawStatus, PracticeDrawStatus.revealed);
     });
 
     test('付費額外翻牌（cost>0）→ 同步訂閱剩餘額度', () async {

@@ -50,6 +50,12 @@ const Duration kPracticeHintRequestTimeout = Duration(seconds: 115);
 /// client 取 120s 留裕度：只防 loading 卡死，不搶在 server 完成前放棄。
 const Duration kPracticeSendMessageTimeout = Duration(seconds: 120);
 
+/// 抽卡請求 timeout：無模型呼叫（純 DB 抽選＋冪等 claim），45s 已極寬裕。
+/// 沒有它，TCP 停滯時抽卡儀式動畫無限轉且無取消鈕（loading 下 await 網路
+/// 一律 .timeout 的鐵則，bug-log 2026-07-04）。逾時走 catch-all 分支：
+/// requestId 不 rotate、重試沿用供 server replay 去重，不會雙扣。
+const Duration kPracticeDrawRequestTimeout = Duration(seconds: 45);
+
 /// Hint prefetch 暫時性失敗（網路／timeout／503 retryable）延遲後用**同一
 /// requestId** 重試恰一次。server 端失敗會釋放 latch，同 id 重 claim 是設計
 /// 上的冪等路徑；若首次其實已 settle，preflight 回 opaqueAck 不重複生成。
@@ -467,6 +473,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     DateTime? now,
     Duration? hintRequestTimeout,
     Duration? sendMessageTimeout,
+    Duration? drawRequestTimeout,
     Duration? hintPrefetchRetryDelay,
   }) : this._(
           api: api,
@@ -488,6 +495,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           now: now ?? DateTime.now(),
           hintRequestTimeout: hintRequestTimeout ?? kPracticeHintRequestTimeout,
           sendMessageTimeout: sendMessageTimeout ?? kPracticeSendMessageTimeout,
+          drawRequestTimeout: drawRequestTimeout ?? kPracticeDrawRequestTimeout,
           hintPrefetchRetryDelay:
               hintPrefetchRetryDelay ?? kPracticeHintPrefetchRetryDelay,
         );
@@ -511,6 +519,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     required DateTime now,
     required Duration hintRequestTimeout,
     required Duration sendMessageTimeout,
+    required Duration drawRequestTimeout,
     required Duration hintPrefetchRetryDelay,
   })  : _api = api,
         _repo = repository,
@@ -524,6 +533,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         _funnelTracker = funnelTracker ?? FunnelTracker(),
         _hintRequestTimeout = hintRequestTimeout,
         _sendMessageTimeout = sendMessageTimeout,
+        _drawRequestTimeout = drawRequestTimeout,
         _hintPrefetchRetryDelay = hintPrefetchRetryDelay,
         super(_initialState(
           initialSession: initialSession,
@@ -550,6 +560,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   final FunnelTracker _funnelTracker;
   final Duration _hintRequestTimeout;
   final Duration _sendMessageTimeout;
+  final Duration _drawRequestTimeout;
   final Duration _hintPrefetchRetryDelay;
   final List<PracticeAppliedHintTurnDto> _appliedHintTurns = [];
   PracticeSuccessfulHintSnapshot? _latestSuccessfulHint;
@@ -1415,11 +1426,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     )));
 
     try {
-      final result = await _api.drawProfile(
-        requestId: drawRequestId,
-        currentProfileId: priorProfileId, // 換一位排除自己
-        visiblePracticeThreadId: prior.visiblePracticeThreadId,
-      );
+      final result = await _api
+          .drawProfile(
+            requestId: drawRequestId,
+            currentProfileId: priorProfileId, // 換一位排除自己
+            visiblePracticeThreadId: prior.visiblePracticeThreadId,
+          )
+          .timeout(_drawRequestTimeout);
+      // 抽卡中離開頁面（autoDispose）後才回來的結果/timeout：不得碰已
+      // dispose 的 notifier。requestId 不 rotate，下次進場沿用 replay 去重。
+      if (!mounted) return;
       _rotateDrawRequestId(drawRequestId); // 成功 → rotate
       final girl = girlProfileById(result.profile.profileId) ??
           fallbackPracticeProfile().girl;
@@ -1472,6 +1488,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         );
       }
     } on PracticeDrawUpgradeRequiredException catch (e) {
+      if (!mounted) return;
       _rotateDrawRequestId(drawRequestId); // 4xx 明確拒絕 → rotate
       // Free 免費翻牌用完且不可付費額外：導升級。保留原狀態（不揭曉/不漂移）。
       state = prior.copyWith(
@@ -1482,12 +1499,14 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: '升級後每天可以翻更多陪練女孩。',
       );
     } on PracticeQuotaExceededException catch (e) {
+      if (!mounted) return;
       _rotateDrawRequestId(drawRequestId); // 4xx 明確拒絕 → rotate
       state = prior.copyWith(
         drawQuotaExceeded: true,
         errorMessage: e.message,
       );
     } catch (_) {
+      if (!mounted) return;
       // 網路／5xx：id 保留（不 rotate），重試沿用供 server replay 去重。
       // 一般失敗：revealed 時保留目前對象（只報錯）；locked 時標 error 讓 UI 可重抽。
       state = prior.copyWith(

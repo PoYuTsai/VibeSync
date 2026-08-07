@@ -161,6 +161,7 @@ Widget collectionApp({
   PracticeChatController? controller,
   SubscriptionState subscription = const SubscriptionState(),
   PracticeCollectionNotifier? collectionNotifier,
+  bool showOnboardingGuide = false,
 }) {
   return ProviderScope(
     overrides: _collectionOverrides(
@@ -169,7 +170,11 @@ Widget collectionApp({
       subscription: subscription,
       collectionNotifier: collectionNotifier,
     ),
-    child: const MaterialApp(home: PracticeCollectionScreen()),
+    child: MaterialApp(
+      home: PracticeCollectionScreen(
+        showOnboardingGuide: showOnboardingGuide,
+      ),
+    ),
   );
 }
 
@@ -515,6 +520,54 @@ void main() {
         expect(find.byKey(const ValueKey('home-stub')), findsOneWidget);
       },
     );
+  });
+
+  group('onboarding 落地引導（Sydney 泡泡）', () {
+    const guideKey = ValueKey('collection-onboarding-guide');
+    const drawButton = ValueKey('collection-draw-button');
+    const guideMessage = '哈囉！這裡是角色圖鑑～先按右上角的『翻牌』，抽出你的第一位練習夥伴吧！';
+
+    // locked seed 下翻牌鈕脈動微光會 repeat，pumpAndSettle 會 hang（檔頭鐵則）；
+    // 一律顯式 pump：入場動畫 200ms，多推 250ms 讓它走完。
+    Future<void> pumpApp(WidgetTester tester, Widget app) async {
+      await tester.binding.setSurfaceSize(const Size(500, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(app);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+    }
+
+    testWidgets('預設（非 onboarding 入口）不出引導層', (tester) async {
+      await pumpApp(tester, collectionApp());
+
+      expect(find.byKey(guideKey), findsNothing);
+      expect(find.text(guideMessage), findsNothing);
+    });
+
+    testWidgets('showOnboardingGuide 出引導層，文案逐字正確', (tester) async {
+      await pumpApp(tester, collectionApp(showOnboardingGuide: true));
+
+      expect(find.byKey(guideKey), findsOneWidget);
+      expect(find.text(guideMessage), findsOneWidget);
+    });
+
+    testWidgets('點任何地方收掉引導層，翻牌鈕恢復可點', (tester) async {
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(
+        tester,
+        collectionApp(showOnboardingGuide: true, controller: controller),
+      );
+
+      // 引導層蓋著時：第一下點擊被引導層吸收（收引導），不觸發翻牌。
+      await tester.tap(find.byKey(guideKey));
+      await tester.pump();
+      expect(find.byKey(guideKey), findsNothing);
+      expect(controller.drawCalls, 0);
+
+      await tester.tap(find.byKey(drawButton));
+      await tester.pump();
+      expect(controller.drawCalls, 1);
+    });
   });
 
   group('圖鑑翻牌鈕 gating', () {

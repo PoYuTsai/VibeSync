@@ -3,7 +3,7 @@
 // 案 3 冷啟動分流（docs/plans/2026-07-06-case3-cold-start-branching-design.md）：
 // onboarding 第 5 頁是分流頁——「你現在有正在聊的對象嗎？」。
 //   - 主按鈕「有，幫我分析對話」→ markCompleted → go('/') → push('/partner/new')
-//   - 次按鈕「還沒，先去練習」→ markCompleted → go('/') → push('/practice-collection')
+//   - 次按鈕「還沒，先去練習」→ markCompleted → go('/') → push('/practice-collection?guide=1')
 //   - 底部「下一步」在分流頁隱藏（分流按鈕在頁內）；「略過」行為不變。
 // 用無 redirect 的 stub GoRouter 驗證真實導流落點＋SharedPreferences 寫入。
 import 'package:flutter/material.dart';
@@ -30,8 +30,14 @@ GoRouter _stubRouter() => GoRouter(
         ),
         GoRoute(
           path: '/practice-collection',
-          builder: (_, __) =>
-              const Scaffold(body: Text('practice-collection-screen')),
+          // 帶出 guide 參數讓測試驗證：分流「還沒」必須帶 guide=1（圖鑑落地
+          // 引導的唯一觸發源）。
+          builder: (_, state) => Scaffold(
+            body: Text(
+              'practice-collection-screen '
+              'guide=${state.uri.queryParameters['guide']}',
+            ),
+          ),
         ),
       ],
     );
@@ -114,9 +120,17 @@ void main() {
       await tester.tap(find.text('還沒，先去練習'));
       await tester.pumpAndSettle();
 
-      expect(find.text('practice-collection-screen'), findsOneWidget);
+      expect(find.text('practice-collection-screen guide=1'), findsOneWidget);
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getBool('onboarding_completed'), isTrue);
+    });
+
+    testWidgets('兩顆分流按鈕下各有一行去向說明小字', (tester) async {
+      await _pumpOnboarding(tester);
+      await _swipeToBranchingPage(tester);
+
+      expect(find.text('先幫你把她這輪的訊號讀懂'), findsOneWidget);
+      expect(find.text('先抽一位練習夥伴，把手感練起來'), findsOneWidget);
     });
 
     testWidgets('主按鈕導流後 back 可退回首頁（go / 再 push，不卡死）', (tester) async {

@@ -86,6 +86,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           '每月 ${starterLimits.monthly} 則 / 每日 ${starterLimits.daily} 則',
           '五種風格全開 + 完整回覆比較',
           '雷達圖五維度剖析',
+          '互動電子書 4 冊＋聊天測驗全關卡',
         ],
       ),
       _PaywallOption(
@@ -101,6 +102,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           '每月 ${starterLimits.monthly} 則 / 每日 ${starterLimits.daily} 則',
           '五種風格全開 + 完整回覆比較',
           '雷達圖五維度剖析',
+          '互動電子書 4 冊＋聊天測驗全關卡',
         ],
       ),
       _PaywallOption(
@@ -116,6 +118,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
           '五種風格全開 + 完整回覆比較',
           '雷達圖 + 對話健檢 + 訊息優化',
+          '《成為獎賞》三冊專屬電子書，全 7 冊解鎖',
         ],
       ),
       _PaywallOption(
@@ -131,6 +134,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
           '五種風格全開 + 完整回覆比較',
           '雷達圖 + 對話健檢 + 訊息優化',
+          '《成為獎賞》三冊專屬電子書，全 7 冊解鎖',
         ],
       ),
     ];
@@ -558,8 +562,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             '全部 5 種',
             '全部 5 種',
           ),
-          _buildComparisonRow('陪練女孩', '每日 1 位', '開放', '開放'),
-          _buildComparisonRow('AI 模型', '最新模型', '最新模型', '最新模型'),
+          // 鏡像 server 真相源 practice-chat/draw_decision.ts：free=0（只剩
+          // 起步清單一次性贈抽）、starter=3、essential=5；額外抽扣 5 則額度。
+          _buildComparisonRow('陪練女孩翻牌', '起步贈抽 1 次', '每日 3 次', '每日 5 次'),
+          // 權限鏡像 assets/learning 宣告：電子書 book1 free（付費書另有首章
+          // 試讀）、2-4 premium、5-7 essential 專屬；測驗 4 關＝1 free＋3 premium。
+          _buildComparisonRow('互動電子書', '第 1 冊＋試讀', '4 冊', '全 7 冊'),
+          _buildComparisonRow('聊天測驗', '第 1 關', '全 4 關', '全 4 關'),
           _buildComparisonRow('雷達圖', '未開放', '可用', '可用'),
           _buildComparisonRow('對話健檢', '未開放', '未開放', '可用'),
           _buildComparisonRow('訊息優化', '未開放', '未開放', '可用'),
@@ -567,8 +576,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           _buildComparisonRow('每月額度', '30 則', '300 則', '800 則'),
           const SizedBox(height: 12),
           Text(
-            'Free 每天仍可翻出新的陪練女孩，但同一位只能練一輪；'
-            '升級後可續聊同一位，把對話練得更完整。',
+            '免費版同一位陪練女孩只能練一輪；升級後每天可翻新的陪練女孩，'
+            '也能續聊同一位，把對話練得更完整。',
             style: AppTypography.caption.copyWith(
               color: AppColors.onBackgroundSecondary,
             ),

@@ -176,11 +176,19 @@ void main() {
         (tester) async {
       await pumpPaywall(tester);
 
-      expect(find.text('陪練女孩'), findsOneWidget);
-      expect(find.text('每日 1 位'), findsOneWidget);
-      expect(find.text('開放'), findsNWidgets(2));
-      expect(find.text('AI 模型'), findsOneWidget);
-      expect(find.text('最新模型'), findsNWidgets(3));
+      // 鏡像 server draw_decision.ts：free=0（起步一次性贈抽）/3/5。
+      expect(find.text('陪練女孩翻牌'), findsOneWidget);
+      expect(find.text('起步贈抽 1 次'), findsOneWidget);
+      expect(find.text('每日 3 次'), findsOneWidget);
+      expect(find.text('每日 5 次'), findsOneWidget);
+      expect(find.text('每日 1 位'), findsNothing); // 舊不實文案絕不回歸
+      // 零資訊「AI 模型」列已移除，換電子書/測驗兩列真差異。
+      expect(find.text('AI 模型'), findsNothing);
+      expect(find.text('互動電子書'), findsOneWidget);
+      expect(find.text('第 1 冊＋試讀'), findsOneWidget);
+      expect(find.text('全 7 冊'), findsOneWidget);
+      expect(find.text('聊天測驗'), findsOneWidget);
+      expect(find.text('全 4 關'), findsNWidgets(2));
       expect(find.textContaining('Haiku'), findsNothing);
       expect(find.textContaining('Sonnet'), findsNothing);
     });
@@ -189,10 +197,11 @@ void main() {
         (tester) async {
       await pumpPaywall(tester);
 
-      // Free can still draw new practice girls daily, but only one round each;
-      // upgrading unlocks continuing the same girl for a fuller practice.
-      expect(find.textContaining('同一位只能練一輪'), findsOneWidget);
+      // Free has no daily draw (removed 2026-08-02); only one round per girl.
+      // Upgrading unlocks daily draws and continuing the same girl.
+      expect(find.textContaining('同一位陪練女孩只能練一輪'), findsOneWidget);
       expect(find.textContaining('續聊同一位'), findsOneWidget);
+      expect(find.textContaining('每天仍可翻出'), findsNothing); // 舊前提絕不回歸
     });
 
     testWidgets('shows four product options while prices are syncing',
