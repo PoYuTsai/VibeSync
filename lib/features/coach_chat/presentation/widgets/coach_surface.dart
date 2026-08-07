@@ -142,6 +142,13 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
   @override
   void didUpdateWidget(covariant CoachSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // 熱切換 scope（問教練頁「問誰」chips）：問句記憶是跟著上一條串的，
+    // 留著會讓 A 串的 progress/error 顯示 B 串的問句、知識庫入口連錯章。
+    // 輸入框草稿刻意不清（設計拍板：切換保留草稿）。
+    if (widget.scope != oldWidget.scope) {
+      _lastAskedQuestion = null;
+      _lastTappedChip = null;
+    }
     if (widget.focusRequestToken != oldWidget.focusRequestToken) {
       final prefill = widget.prefillText?.trim();
       if (prefill != null && prefill.isNotEmpty) {
