@@ -188,7 +188,9 @@ void main() {
       expect(find.text('第 1 冊＋試讀'), findsOneWidget);
       expect(find.text('全 7 冊'), findsOneWidget);
       expect(find.text('聊天測驗'), findsOneWidget);
-      expect(find.text('全 4 關'), findsNWidgets(2));
+      // ADR #38：測驗欄不寫死關數，擴充各批加關不用回頭改這裡。
+      expect(find.text('免費關卡'), findsOneWidget);
+      expect(find.text('全部關卡'), findsNWidgets(2));
       expect(find.textContaining('Haiku'), findsNothing);
       expect(find.textContaining('Sonnet'), findsNothing);
     });
