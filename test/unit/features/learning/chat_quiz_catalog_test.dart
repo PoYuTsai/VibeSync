@@ -150,11 +150,14 @@ void main() {
       );
     });
 
-    test('第 1 期只認兩種題型，型別層擋掉自由輸入答案', () {
+    test('題型是封閉清單，型別層擋掉自由輸入答案', () {
       // 這條守鐵律 7：正解永遠是一個選擇，不會是某個特定字串。
+      // findDeathPoint 於擴充批 A（2026-08-07）引入；doseCheck／gearShift
+      // 屬批 C／D，落地時在這裡補。
       expect(ChatQuizQuestionType.values, <ChatQuizQuestionType>[
         ChatQuizQuestionType.signalRead,
         ChatQuizQuestionType.pickReply,
+        ChatQuizQuestionType.findDeathPoint,
       ]);
     });
   });

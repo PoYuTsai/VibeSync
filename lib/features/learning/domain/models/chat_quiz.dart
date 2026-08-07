@@ -3,7 +3,9 @@
 // 聊天測驗（判讀訓練場）的內容模型。
 //
 // 產品不變量（CC 不自行改動）：
-//   - 第 1 期只有兩種題型：讀燈（signalRead）與選回覆（pickReply）。
+//   - 題型目前有三種：讀燈（signalRead）、選回覆（pickReply）、找死亡點
+//     （findDeathPoint，2026-08-07 擴充批 A 引入）。擴充批 C／D 才會加
+//     doseCheck 與 gearShift。
 //   - **正解永遠是一個選擇，不會是使用者輸入的字串。** 這條由型別層守住：
 //     [ChatQuizQuestion] 只有 choices，沒有任何自由輸入欄位。「自己改一句」
 //     那種題型延到第 3 期，且需要另外授權（會動到 Edge Function 與計費）。
@@ -21,7 +23,7 @@ library;
 import 'ebook.dart';
 
 /// 題型。新增一種就會讓所有 exhaustive switch 編譯失敗，逼著補 UI 與內容守門。
-enum ChatQuizQuestionType { signalRead, pickReply }
+enum ChatQuizQuestionType { signalRead, pickReply, findDeathPoint }
 
 /// 深連目標：這一題背後的原理寫在哪本書的哪一章。
 ///
@@ -129,6 +131,26 @@ final class ChatQuizPickReplyQuestion extends ChatQuizQuestion {
 
   @override
   ChatQuizQuestionType get type => ChatQuizQuestionType.pickReply;
+}
+
+/// 找死亡點：一組候選項裡，選出「哪一個在扣分」。
+///
+/// 載體刻意通用——可以是多回合對話的某一句，也可以是照片清單、自介段落、
+/// 一週行程裡的某一項。同一個認知動作（找出扣分點），不綁死在對話框裡，
+/// 群 3「場外」的題目全靠它。
+final class ChatQuizFindDeathPointQuestion extends ChatQuizQuestion {
+  const ChatQuizFindDeathPointQuestion({
+    required super.id,
+    required super.revision,
+    required super.scenario,
+    required super.question,
+    required super.choices,
+    required super.takeaway,
+    required super.source,
+  });
+
+  @override
+  ChatQuizQuestionType get type => ChatQuizQuestionType.findDeathPoint;
 }
 
 /// 一關。

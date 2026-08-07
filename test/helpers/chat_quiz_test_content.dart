@@ -75,6 +75,15 @@ ChatQuizQuestion buildTestChatQuizQuestion({
         takeaway: '往情緒走，而且給她好答的框架。',
         source: source,
       ),
+    ChatQuizQuestionType.findDeathPoint => ChatQuizFindDeathPointQuestion(
+        id: id,
+        revision: revision,
+        scenario: scenario,
+        question: '哪一個在扣分？',
+        choices: choices,
+        takeaway: '先找出在扣分的那一個，再談怎麼加分。',
+        source: source,
+      ),
   };
 }
 

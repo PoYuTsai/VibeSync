@@ -243,6 +243,15 @@ ChatQuizQuestion _parseQuestion(Map<String, Object?> json, String path) {
         takeaway: takeaway,
         source: source,
       ),
+    ChatQuizQuestionType.findDeathPoint => ChatQuizFindDeathPointQuestion(
+        id: id,
+        revision: revision,
+        scenario: scenario,
+        question: question,
+        choices: choices,
+        takeaway: takeaway,
+        source: source,
+      ),
   };
 }
 
@@ -305,6 +314,7 @@ const Map<String, ChatQuizQuestionType> _questionTypeByName =
     <String, ChatQuizQuestionType>{
   'signalRead': ChatQuizQuestionType.signalRead,
   'pickReply': ChatQuizQuestionType.pickReply,
+  'findDeathPoint': ChatQuizQuestionType.findDeathPoint,
 };
 
 const Map<String, EbookAccess> _accessByName = <String, EbookAccess>{

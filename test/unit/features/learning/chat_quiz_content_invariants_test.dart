@@ -34,9 +34,13 @@ const _expectedLevelCount = 4;
 const _expectedQuestionCount = 60;
 
 /// 題型難度階梯。第一題與最後一題刻意收在簡單題，中間才給難的。
+///
+/// 階梯依擴充規劃 §4.1：signalRead < findDeathPoint < pickReply（＝doseCheck）
+/// < gearShift。既有 4 關首末題全是 signalRead，重排數值不影響它們。
 int _difficulty(ChatQuizQuestionType type) => switch (type) {
       ChatQuizQuestionType.signalRead => 0,
-      ChatQuizQuestionType.pickReply => 1,
+      ChatQuizQuestionType.findDeathPoint => 1,
+      ChatQuizQuestionType.pickReply => 2,
     };
 
 /// 操縱／施壓語彙。出現在錯誤選項或回饋裡是好事（那是在教「這樣做是錯的」），
@@ -271,14 +275,16 @@ void main() {
   group('界線', () {
     test('沒有任何一題的正解是自由輸入字串', () {
       // 型別層就沒有輸入欄位（sealed class 只有 choices），這條守的是
-      // 「題型沒有偷偷長出第三種」。第 3 期的「自己改一句」要另外授權。
-      expect(ChatQuizQuestionType.values, hasLength(2));
+      // 「題型沒有偷偷長出清單外的種類」。「自己改一句」那種自由輸入題
+      // 屬第 3 期，要另外授權。
+      expect(ChatQuizQuestionType.values, hasLength(3));
       for (final question in questions) {
         expect(
           question,
           anyOf(
             isA<ChatQuizSignalReadQuestion>(),
             isA<ChatQuizPickReplyQuestion>(),
+            isA<ChatQuizFindDeathPointQuestion>(),
           ),
           reason: question.id,
         );

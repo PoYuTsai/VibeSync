@@ -127,11 +127,15 @@ class ChatQuizQuestionCard extends StatelessWidget {
   IconData get _typeIcon => switch (question.type) {
         ChatQuizQuestionType.signalRead => Icons.traffic_outlined,
         ChatQuizQuestionType.pickReply => Icons.forum_outlined,
+        ChatQuizQuestionType.findDeathPoint => Icons.troubleshoot_outlined,
       };
 
+  // 找死亡點的標籤刻意寫成通用形「哪一個在扣分」：群 3 的載體是照片、
+  // 自介、行程清單，不是對話，綁死成「對話死在哪一句」在場外關會不貼。
   String get _typeLabel => switch (question.type) {
         ChatQuizQuestionType.signalRead => '讀燈 · 她現在是哪一種',
         ChatQuizQuestionType.pickReply => '選回覆 · 這一句該怎麼接',
+        ChatQuizQuestionType.findDeathPoint => '找死亡點 · 哪一個在扣分',
       };
 }
 
