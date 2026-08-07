@@ -118,6 +118,16 @@ class NewTopicService {
           retrySameRequest: true,
         );
       }
+      // 429 但 payload 沒有額度鍵＝不是訂閱額度（lease/限流等其他 429）：
+      // 同 analysis_service _quotaExceptionFrom429 的鍵判別式，絕不誤開
+      // paywall——額度沒真用完不得擋核心功能。
+      if (errorData['monthlyLimit'] == null &&
+          errorData['dailyLimit'] == null) {
+        throw NewTopicException(
+          serverMessage ?? '請求太頻繁，請稍後再試。',
+          retrySameRequest: true,
+        );
+      }
       throw NewTopicQuotaExceededException(
         message: serverMessage ?? '額度不足，請先升級方案。',
         monthlyRemaining: (errorData['monthlyRemaining'] as num?)?.round(),

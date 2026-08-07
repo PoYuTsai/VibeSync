@@ -245,6 +245,10 @@ void main() {
           data: {
             'error': '額度不足',
             'message': '本月額度不足，升級方案可取得更多新話題與分析額度。',
+            // server buildQuotaExceededPayload 必帶 limit 鍵；client 靠它
+            // 判「真訂閱額度」，缺鍵的 429 不再當 quota（2026-08-07 統一）。
+            'monthlyLimit': 30,
+            'dailyLimit': 10,
             'quotaNeeded': 3,
             'monthlyRemaining': 1,
             'dailyRemaining': 2,
@@ -281,6 +285,31 @@ void main() {
             isNot(isA<NewTopicQuotaExceededException>()),
             isA<NewTopicException>()
                 .having((e) => e.message, 'message', contains('太頻繁'))
+                .having((e) => e.retrySameRequest, 'retry', isTrue),
+          ),
+        ),
+      );
+    });
+
+    test('無額度鍵的 429 不當 quota 例外（lease/未知限流不得誤開 paywall）',
+        () async {
+      final service = NewTopicService(
+        invoker: (_, {required body}) async => const NewTopicInvokeResponse(
+          status: 429,
+          data: {
+            'error': 'Too many requests',
+            'message': '這筆請求正在生成中，請稍候再試。',
+          },
+        ),
+      );
+
+      await expectLater(
+        service.generateTopics(requestId: _requestId),
+        throwsA(
+          allOf(
+            isNot(isA<NewTopicQuotaExceededException>()),
+            isA<NewTopicException>()
+                .having((e) => e.message, 'message', contains('請稍候再試'))
                 .having((e) => e.retrySameRequest, 'retry', isTrue),
           ),
         ),

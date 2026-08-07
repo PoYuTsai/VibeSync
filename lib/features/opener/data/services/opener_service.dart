@@ -464,6 +464,15 @@ class OpenerService {
             errorData['message'] as String? ?? '請求太頻繁，請稍後再試。',
           );
         }
+        // 429 但 payload 沒有額度鍵＝不是訂閱額度（lease/限流等其他 429）：
+        // 同 analysis_service _quotaExceptionFrom429 的鍵判別式，絕不誤開
+        // paywall——額度沒真用完不得擋核心功能。
+        if (errorData['monthlyLimit'] == null &&
+            errorData['dailyLimit'] == null) {
+          throw Exception(
+            errorData['message'] as String? ?? '請求太頻繁，請稍後再試。',
+          );
+        }
         final rawError = errorData['error']?.toString().toLowerCase() ?? '';
         final fallbackMessage = rawError.contains('monthly')
             ? '本月額度不足，升級方案可取得更多開場與分析額度。'

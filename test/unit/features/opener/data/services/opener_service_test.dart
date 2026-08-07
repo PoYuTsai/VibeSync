@@ -419,6 +419,10 @@ void main() {
             data: {
               'error': 'Quota exceeded',
               'message': '額度不足，請先升級方案。',
+              // server buildQuotaExceededPayload 必帶 limit 鍵；client 靠它
+              // 判「真訂閱額度」，缺鍵的 429 不再當 quota（2026-08-07 統一）。
+              'monthlyLimit': 30,
+              'dailyLimit': 10,
               'monthlyRemaining': 1,
               'dailyRemaining': 1,
               'quotaNeeded': 3,
@@ -489,6 +493,35 @@ void main() {
               (e) => e.toString(),
               'message',
               contains('操作太頻繁'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('無額度鍵的 429 不當 quota 例外（lease/未知限流不得誤開 paywall）',
+        () async {
+      final service = OpenerService(
+        invoker: (_, {required body}) async {
+          return const OpenerInvokeResponse(
+            status: 429,
+            data: {
+              'error': 'Too many requests',
+              'message': '這筆請求正在生成中，請稍候再試。',
+            },
+          );
+        },
+      );
+
+      await expectLater(
+        service.generateOpeners(name: 'Candy'),
+        throwsA(
+          allOf(
+            isNot(isA<OpenerQuotaExceededException>()),
+            isA<Exception>().having(
+              (e) => e.toString(),
+              'message',
+              contains('請稍候再試'),
             ),
           ),
         ),
