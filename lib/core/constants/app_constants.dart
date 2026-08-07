@@ -24,6 +24,13 @@ class AppConstants {
   static const starterDailyLimit = 50;
   static const essentialDailyLimit = 120;
 
+  // Practice Draw Limits (陪練女孩每日翻牌)
+  // 鏡像 server 真相源 practice-chat/draw_decision.ts 的
+  // PRACTICE_DRAW_FREE_ALLOWANCE（free=0，只剩起步清單一次性贈抽）。
+  // 改 server 額度必同步這裡，paywall 文案吃這組常數。
+  static const starterDailyDrawLimit = 3;
+  static const essentialDailyDrawLimit = 5;
+
   // Conversation Limits (對話數量)
   static const freeConversationLimit = 3;
   static const starterConversationLimit = 15;

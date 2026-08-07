@@ -256,7 +256,7 @@ class _EbookDetailBody extends ConsumerWidget {
                   book.chapterCount - book.freePreviewChapterCount,
             )
           else if (isLocked)
-            const _LockedNoticeCard()
+            _LockedNoticeCard(isEssentialOnly: book.isEssentialOnly)
           else
             _CompletionCard(
               completed: completed,
@@ -414,7 +414,11 @@ class _CompletionCard extends StatelessWidget {
 /// 整本都能讀。
 /// 沒有試讀章的付費書：說清楚免費範圍到哪，不讓人以為這本也有第一章可讀。
 class _LockedNoticeCard extends StatelessWidget {
-  const _LockedNoticeCard();
+  const _LockedNoticeCard({required this.isEssentialOnly});
+
+  /// 《成為獎賞》三冊（第 5–7 冊）是 Essential 專屬，鎖卡文案要能把
+  /// Essential 的多 3 冊賣出來，也不能對 Starter 謊稱「訂閱就全開」。
+  final bool isEssentialOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -441,8 +445,12 @@ class _LockedNoticeCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '這本的每一章都要訂閱才能讀。免費可以讀完第 1 冊，'
-                  '以及第 2 冊的第一章。訂閱後三本付費書會一次全開。',
+                  isEssentialOnly
+                      ? '《成為獎賞》三冊是 Essential 方案專屬，'
+                          '訂閱 Essential 一次全開；Starter 可讀第 2–4 冊。'
+                      : '這本的每一章都要訂閱才能讀。免費可以讀完第 1 冊，'
+                          '以及第 2 冊的第一章。訂閱後第 2–4 冊一次全開；'
+                          '升級 Essential 再加開《成為獎賞》三冊。',
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.onBackgroundSecondary,
                     height: 1.5,
@@ -488,7 +496,8 @@ class _PreviewNoticeCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   '第一章可以直接讀完，其餘 $lockedChapterCount 章訂閱後開放。'
-                  '訂閱後三本付費書會一次全開，不需要照順序讀。',
+                  '訂閱後第 2–4 冊一次全開，升級 Essential 再加開'
+                  '《成為獎賞》三冊；不需要照順序讀。',
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.onBackgroundSecondary,
                     height: 1.5,

@@ -110,6 +110,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     if (!mounted || selected == null || selected == _selectedPartnerId) return;
 
     if (!await _confirmClearResultIfNeeded()) return;
+    if (!mounted) return;
     setState(() {
       _selectedPartnerId = selected;
       _error = null;
@@ -121,6 +122,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     final next = _situation == value ? null : value;
     if (next == _situation) return;
     if (!await _confirmClearResultIfNeeded()) return;
+    if (!mounted) return;
     setState(() {
       _situation = next;
       _error = null;

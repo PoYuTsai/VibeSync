@@ -138,12 +138,45 @@ void main() {
     expect(find.text('免費試讀第一章'), findsNothing);
     expect(find.text('免費試讀'), findsNothing);
     expect(find.byIcon(Icons.lock_outline), findsNWidgets(3));
+    // premium 鎖卡要把 Essential 的多 3 冊賣出來（稽核 P3 補）。
+    expect(
+      find.textContaining('升級 Essential 再加開'),
+      findsOneWidget,
+    );
 
     // 章節列點下去是 paywall，不是閱讀器。
     await tester.tap(find.text('3.1　第 1 章'));
     await tester.pumpAndSettle();
     expect(find.text(paywallStubText), findsOneWidget);
     expect(find.text('閱讀位置'), findsNothing);
+  });
+
+  testWidgets('Essential 專屬書的鎖卡講「Essential 專屬」，不對 Starter 謊稱訂閱即全開',
+      (tester) async {
+    final catalog = EbookCatalog(
+      books: [
+        buildTestEbook(id: _freeBook, number: 1, title: '免費測試書'),
+        buildTestEbook(
+          id: 'test-book-essential',
+          number: 5,
+          title: 'Essential 測試書',
+          access: EbookAccess.essential,
+          chapterCount: 2,
+        ),
+      ],
+    );
+
+    await pumpEbookApp(
+      tester,
+      initialLocation: '/learning/books/test-book-essential',
+      catalog: catalog,
+      access: const EbookSubscriptionAccess.free(),
+      size: const Size(390, 1400),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Essential 方案專屬'), findsOneWidget);
+    expect(find.textContaining('升級 Essential 再加開'), findsNothing);
   });
 
   testWidgets('有試讀章的付費書仍然走試讀分支', (tester) async {

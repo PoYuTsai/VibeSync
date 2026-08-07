@@ -12,6 +12,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 import '../../../../core/config/environment.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
@@ -563,8 +564,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             '全部 5 種',
           ),
           // 鏡像 server 真相源 practice-chat/draw_decision.ts：free=0（只剩
-          // 起步清單一次性贈抽）、starter=3、essential=5；額外抽扣 5 則額度。
-          _buildComparisonRow('陪練女孩翻牌', '起步贈抽 1 次', '每日 3 次', '每日 5 次'),
+          // 起步清單一次性贈抽）；付費數字吃 AppConstants，改額度不用改文案。
+          _buildComparisonRow(
+            '陪練女孩翻牌',
+            '起步贈抽 1 次',
+            '每日 ${AppConstants.starterDailyDrawLimit} 次',
+            '每日 ${AppConstants.essentialDailyDrawLimit} 次',
+          ),
           // 權限鏡像 assets/learning 宣告：電子書 book1 free（付費書另有首章
           // 試讀）、2-4 premium、5-7 essential 專屬；測驗 4 關＝1 free＋3 premium。
           _buildComparisonRow('互動電子書', '第 1 冊＋試讀', '4 冊', '全 7 冊'),
@@ -572,8 +578,18 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           _buildComparisonRow('雷達圖', '未開放', '可用', '可用'),
           _buildComparisonRow('對話健檢', '未開放', '未開放', '可用'),
           _buildComparisonRow('訊息優化', '未開放', '未開放', '可用'),
-          _buildComparisonRow('每日額度', '15 則', '50 則', '120 則'),
-          _buildComparisonRow('每月額度', '30 則', '300 則', '800 則'),
+          _buildComparisonRow(
+            '每日額度',
+            '${AppConstants.freeDailyLimit} 則',
+            '${AppConstants.starterDailyLimit} 則',
+            '${AppConstants.essentialDailyLimit} 則',
+          ),
+          _buildComparisonRow(
+            '每月額度',
+            '${AppConstants.freeMonthlyLimit} 則',
+            '${AppConstants.starterMonthlyLimit} 則',
+            '${AppConstants.essentialMonthlyLimit} 則',
+          ),
           const SizedBox(height: 12),
           Text(
             '免費版同一位陪練女孩只能練一輪；升級後每天可翻新的陪練女孩，'

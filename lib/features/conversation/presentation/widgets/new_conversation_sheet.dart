@@ -149,8 +149,11 @@ class NewConversationSheet extends ConsumerWidget {
                 style: TextStyle(color: AppColors.unselectedText, fontSize: 12),
               ),
               onTap: () {
+                // pop 後 sheet 的 context 可能已失效；跟上面兩個入口一樣
+                // 先抓 router 再 pop。
+                final router = GoRouter.of(context);
                 Navigator.pop(context);
-                context.push(_openerLocation);
+                router.push(_openerLocation);
               },
             ),
             const SizedBox(height: 16),

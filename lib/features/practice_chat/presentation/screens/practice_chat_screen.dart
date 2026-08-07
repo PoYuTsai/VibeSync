@@ -428,7 +428,9 @@ class _PracticeLockedEntry extends ConsumerWidget {
             ] else if (state.drawQuotaExceeded) ...[
               const SizedBox(height: 16),
               Text(
-                state.errorMessage ?? '額度已用完，明天中午會重置。',
+                // 翻牌窗以台北中午 12 點為界（server draw_decision.ts）；
+                // 「明天中午」在中午前用完的情境是錯的，講週期不講日期。
+                state.errorMessage ?? '額度已用完，每天中午 12 點重置。',
                 key: const ValueKey('practice-draw-quota'),
                 textAlign: TextAlign.center,
                 style: AppTypography.caption.copyWith(

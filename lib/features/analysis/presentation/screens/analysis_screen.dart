@@ -2425,6 +2425,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     await ref
         .read(conversationWriteControllerProvider.notifier)
         .save(conversation);
+    if (!mounted) return;
     ref.invalidate(conversationProvider(widget.conversationId));
     setState(() {
       if (_lastManualAddedMessageId == message.id) {
@@ -2517,6 +2518,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     await ref
         .read(conversationWriteControllerProvider.notifier)
         .save(conversation);
+    if (!mounted) return;
     ref.invalidate(conversationProvider(widget.conversationId));
     setState(() {
       if (_lastManualAddedMessageId == message.id) {
@@ -2566,6 +2568,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     await ref
         .read(conversationWriteControllerProvider.notifier)
         .save(conversation);
+    if (!mounted) return;
     ref.invalidate(conversationProvider(widget.conversationId));
     setState(() {
       if (_lastManualAddedMessageId == message.id) {
@@ -3352,6 +3355,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     await ref
         .read(conversationWriteControllerProvider.notifier)
         .save(conversation);
+    if (!mounted) return;
 
     // 清空輸入框
     _messageController.clear();
@@ -5569,6 +5573,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     });
 
     try {
+      // 無 timeout 時網路停滯會讓 _isSubmittingFeedback 永遠卡 true、按鈕
+      // 無限轉圈；逾時走既有 catch → 「稍後再試」snackbar＋finally 解鎖。
       final response = await Supabase.instance.client.functions.invoke(
         'submit-feedback',
         body: {
@@ -5582,7 +5588,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           'userTier': userTier,
           'modelUsed': modelUsed,
         },
-      );
+      ).timeout(const Duration(seconds: 20));
 
       if (!mounted) {
         return;
