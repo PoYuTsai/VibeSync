@@ -33,6 +33,15 @@ void main() {
         sameUtcMonth(DateTime.utc(2026, 9, 1), DateTime.utc(2026, 8, 31)),
         isFalse,
       );
+      // 跨年（12→1）：只比 month 不比 year 會誤判同月（Grok 雙審 P3 補）。
+      expect(
+        sameUtcMonth(DateTime.utc(2027, 1, 1), DateTime.utc(2026, 12, 31)),
+        isFalse,
+      );
+      expect(
+        sameUtcMonth(DateTime.utc(2026, 12, 1), DateTime.utc(2025, 12, 15)),
+        isFalse,
+      );
     });
   });
 
