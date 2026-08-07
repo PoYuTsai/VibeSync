@@ -1,7 +1,6 @@
 // lib/app/app.dart
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/app_theme.dart';
@@ -9,9 +8,8 @@ import '../core/services/funnel_tracker.dart';
 import '../core/services/keyboard_token_bridge.dart';
 import '../core/services/supabase_service.dart';
 import '../features/follow_up_notification/data/providers/follow_up_notification_service.dart';
-import '../features/onboarding/data/onboarding_service.dart';
-import '../features/onboarding/domain/keyboard_onboarding_gate.dart';
 import '../features/splash/presentation/screens/splash_screen.dart';
+import 'keyboard_onboarding_scheduler.dart';
 import 'routes.dart';
 
 class App extends ConsumerStatefulWidget {
@@ -24,16 +22,23 @@ class App extends ConsumerStatefulWidget {
 class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   bool _splashComplete = false;
   bool _openPaywallAfterSplash = false;
-  bool _keyboardOnboardingPending = false;
+  late final KeyboardOnboardingScheduler _keyboardOnboardingScheduler;
   StreamSubscription<dynamic>? _authSubscription;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    router.routeInformationProvider.addListener(_handleRouteChanged);
+    _keyboardOnboardingScheduler = KeyboardOnboardingScheduler(
+      router: router,
+      isAuthenticated: () => SupabaseService.isAuthenticated,
+      isSplashComplete: () => _splashComplete,
+      trackShown: () => unawaited(
+        ref.read(funnelTrackerProvider).track('keyboard_setup_shown'),
+      ),
+    )..attach();
     _authSubscription = SupabaseService.authStateChanges.listen((_) {
-      _scheduleKeyboardOnboarding();
+      _keyboardOnboardingScheduler.maybeSchedule();
     });
     _handleColdStartNotification();
     _handleKeyboardQuotaSignal();
@@ -42,7 +47,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    router.routeInformationProvider.removeListener(_handleRouteChanged);
+    _keyboardOnboardingScheduler.detach();
     _authSubscription?.cancel();
     super.dispose();
   }
@@ -72,44 +77,6 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     });
   }
 
-  /// Shows the keyboard setup once after the normal app onboarding and login.
-  /// It is intentionally outside the router redirect so dismissing it never
-  /// blocks the core app or deep links.
-  /// 觸發條件抽在 [shouldScheduleKeyboardOnboarding]（iOS 限定＋
-  /// 主 onboarding 同 session 剛完成則延到下次啟動，Tier 1-4）。
-  void _scheduleKeyboardOnboarding() {
-    if (!shouldScheduleKeyboardOnboarding(
-      platform: defaultTargetPlatform,
-      splashComplete: _splashComplete,
-      isAuthenticated: SupabaseService.isAuthenticated,
-      onboardingCompleted: OnboardingService.isCompletedSync,
-      onboardingCompletedThisSession:
-          OnboardingService.completedThisSessionSync,
-      keyboardOnboardingCompleted: OnboardingService.isKeyboardCompletedSync,
-      alreadyPending: _keyboardOnboardingPending,
-    )) {
-      return;
-    }
-
-    _keyboardOnboardingPending = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final currentPath = router.routeInformationProvider.value.uri.path;
-      if (currentPath != '/') {
-        _keyboardOnboardingPending = false;
-        return;
-      }
-      unawaited(
-        ref.read(funnelTrackerProvider).track('keyboard_setup_shown'),
-      );
-      router.push('/settings/keyboard?firstRun=1').whenComplete(() {
-        _keyboardOnboardingPending = false;
-      });
-    });
-  }
-
-  void _handleRouteChanged() => _scheduleKeyboardOnboarding();
-
   /// 冷啟動：若 app 由點擊 48h 跟進通知從終止態啟動，導到該對象跟進頁。
   /// 延到首幀後再導，確保 router 已掛載（冷啟動會先過 splash）。
   Future<void> _handleColdStartNotification() async {
@@ -137,7 +104,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
               _openPaywallAfterSplash = false;
               _openKeyboardPaywall();
             }
-            _scheduleKeyboardOnboarding();
+            _keyboardOnboardingScheduler.maybeSchedule();
           },
         ),
       );
