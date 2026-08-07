@@ -315,6 +315,102 @@ final class KeyboardScreenshotAssistCoordinatorTests: XCTestCase {
         )
     }
 
+    func testCancelFromResultsReturnsToArmedIdleAndNewScreenshotRestarts() {
+        // 2026-08-07 Bruce 真機：分析完按 X，同畫面連截兩張都沒反應。
+        // 結果頁的 X＝「收起結果、回待命」——不可掉進「已停止等待」
+        // （該狀態被新截圖偵測白名單擋掉），也不可清 capability（清了
+        // libraryDidChange 的 guard 永遠失敗，直到鍵盤重開都是死的）。
+        let harness = ScreenshotAssistHarness()
+        harness.reachResults()
+        // ready 的重放標記刻意留到「插入」才清，所以此刻 durable store
+        // 裡還有這一筆可回收的舊結果——收起後的新截圖絕不能被它綁架。
+        let firstRequestID = harness.network.submissions[0].request.requestId
+        harness.network.automaticRecoveryResult = .success(
+            KeyboardAssistRecoveredPending(
+                metadata: harness.pendingMetadata(requestID: firstRequestID),
+                response: .ready(harness.ready(requestID: firstRequestID))
+            )
+        )
+
+        harness.coordinator.cancel()
+
+        XCTAssertEqual(
+            harness.coordinator.stateMachine.state,
+            .idle,
+            "cancel from results must re-arm idle, not enter the stopped state"
+        )
+        XCTAssertEqual(
+            harness.network.clearedRequestIDs,
+            [firstRequestID],
+            "deliberate dismissal must void the ready replay marker"
+        )
+
+        harness.now = harness.now.addingTimeInterval(5)
+        harness.screenshot = LatestScreenshot(
+            assetIdentifier: "asset-b",
+            creationDate: harness.now.addingTimeInterval(-1),
+            thumbnail: UIImage()
+        )
+        harness.coordinator.libraryDidChange(hasFullAccess: true)
+        harness.network.completeCapability(.success(harness.capability))
+
+        guard case .screenshotDetected(let summary) =
+                harness.coordinator.stateMachine.state
+        else {
+            return XCTFail(
+                "a new screenshot after dismissing results must restart detection"
+            )
+        }
+        XCTAssertEqual(summary.assetIdentifier, "asset-b")
+
+        harness.coordinator.requestLocalPreview()
+        harness.coordinator.confirmPreviewAndGenerate()
+        XCTAssertEqual(harness.network.submissions.count, 2)
+        XCTAssertNotEqual(
+            harness.network.submissions[0].request.requestId,
+            harness.network.submissions[1].request.requestId,
+            "the new run must be a fresh request, not a replay of the old one"
+        )
+    }
+
+    func testStoppedWaitingAllowsNewScreenshotToStartFreshRun() {
+        // 分析中按 X＝停止等待（保 requestId 供查詢、不重複送出），但新
+        // 截圖必須能開新一輪：狀態白名單要放行，且已取消請求的重放標記
+        // 要作廢，否則 recoverLatestPending 會把舊請求撿回來蓋掉新截圖。
+        let harness = ScreenshotAssistHarness()
+        harness.reachSubmittedRequest()
+        let cancelledRequestID =
+            harness.network.submissions[0].request.requestId
+
+        harness.coordinator.cancel()
+        guard case .failed(_, .lookupSameRequest) =
+                harness.coordinator.stateMachine.state
+        else {
+            return XCTFail("cancel mid-flight should enter the stopped state")
+        }
+        XCTAssertEqual(
+            harness.network.clearedRequestIDs,
+            [cancelledRequestID],
+            "an abandoned request must not hijack the next run via pending replay"
+        )
+
+        harness.now = harness.now.addingTimeInterval(5)
+        harness.screenshot = LatestScreenshot(
+            assetIdentifier: "asset-b",
+            creationDate: harness.now.addingTimeInterval(-1),
+            thumbnail: UIImage()
+        )
+        harness.coordinator.libraryDidChange(hasFullAccess: true)
+        harness.network.completeCapability(.success(harness.capability))
+
+        guard case .screenshotDetected(let summary) =
+                harness.coordinator.stateMachine.state
+        else {
+            return XCTFail("stopped-waiting must still pick up a new screenshot")
+        }
+        XCTAssertEqual(summary.assetIdentifier, "asset-b")
+    }
+
     func testPreviewTapTimestampIsNotResetAfterPreprocessing() {
         let harness = ScreenshotAssistHarness()
         harness.reachDetectedScreenshot()
@@ -840,6 +936,13 @@ private final class RecordingScreenshotAssistNetwork:
             throw clearPendingError
         }
         clearedRequestIDs.append(requestID)
+        // 模擬 durable store 的真實行為：標記清掉之後，同一筆 requestId
+        // 不可能再被 recoverLatestPending 撿回來。沒有這行，「收起結果後
+        // 新截圖不被舊 pending 綁架」的測試會假綠。
+        if case .success(let recovered) = automaticRecoveryResult,
+           recovered.metadata.requestId == requestID {
+            automaticRecoveryResult = .failure(.noPendingReplay)
+        }
     }
 
     func completeCapability(

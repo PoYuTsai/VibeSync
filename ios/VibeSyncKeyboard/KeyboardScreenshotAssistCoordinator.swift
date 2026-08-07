@@ -1208,7 +1208,11 @@ final class KeyboardScreenshotAssistCoordinator {
              .inserted,
              .recognitionRejected,
              .failed(_, .terminal),
-             .failed(_, .newRequestAfterUserChange):
+             .failed(_, .newRequestAfterUserChange),
+             // 「已停止等待」也要放行：使用者按 X 放棄那筆之後截的新圖，
+             // 必須能開新一輪——之前被擋掉＝分析完按 X 後截圖全沒反應
+             // （2026-08-07 Bruce 真機重現）。
+             .failed(_, .lookupSameRequest):
             break
         default:
             return
@@ -1299,19 +1303,54 @@ final class KeyboardScreenshotAssistCoordinator {
     }
 
     func cancel() {
+        // 結果已經在畫面上（或已插入）：這筆請求早就完成，X 的語意是
+        // 「收起結果、回待命」，不是「停止等待」。成功後 outbound 不會被
+        // 清，走下面的 outbound 分支會掉進 lookupSameRequest 死巷——
+        // 分析完按 X 之後截的新圖全被白名單擋掉（2026-08-07 Bruce 真機）。
+        switch stateMachine.state {
+        case .resultsPreview, .inserted:
+            invalidateAsyncWork()
+            // 主動收起 ≠ crash recovery：ready 的重放標記本來刻意留到
+            // 「插入候選」才清（被動中斷後能攤回結果）。使用者明確按 X
+            // 收起就要作廢，否則下一張新截圖 start() 會先走
+            // recoverLatestPending，把這筆舊結果撿回來蓋掉新分析；
+            // 重開鍵盤也不該再自動攤舊結果。
+            if let binding = outbound?.binding,
+               let session = currentBoundSession() {
+                try? network.clearPendingAfterPresentation(
+                    requestID: binding.requestID,
+                    session: session
+                )
+            }
+            clearRunData()
+            stateMachine.send(.reset)
+            setMessage("已收起本次結果；截新的圖會自動再分析。")
+            return
+        default:
+            break
+        }
         // 已經在「已停止等待」畫面時再按一次 X：outbound 沒被上一次 cancel
         // 清掉（「查詢同一筆結果」還要靠它找 requestId），所以會重繪一模
         // 一樣的畫面，使用者以為 X 沒反應（2026-08-06 dogfood 回饋）。第二次
-        // 按代表使用者是要整個關掉，改走跟「沒有 outbound」一樣的全清路徑。
+        // 按代表使用者是要整個關掉，改走跟「沒有 outbound」一樣的清理路徑。
         if case .failed(_, .lookupSameRequest) = stateMachine.state {
             invalidateAsyncWork()
-            clearBoundData(keepingIdentity: true)
+            clearRunData()
             stateMachine.send(.reset)
             setMessage("本次截圖未送出。")
             return
         }
         if let binding = outbound?.binding {
             invalidateAsyncWork()
+            // 使用者放棄了這一筆：重放標記作廢，之後的新截圖才會開新
+            // 一輪，而不是被 recoverLatestPending 把舊請求撿回來蓋掉。
+            // in-memory outbound 保留，「查詢同一筆結果」照常可用。
+            if let session = currentBoundSession() {
+                try? network.clearPendingAfterPresentation(
+                    requestID: binding.requestID,
+                    session: session
+                )
+            }
             stateMachine = KeyboardAssistStateMachine(
                 state: .failed(binding, .lookupSameRequest)
             )
@@ -1321,9 +1360,20 @@ final class KeyboardScreenshotAssistCoordinator {
             return
         }
         invalidateAsyncWork()
-        clearBoundData(keepingIdentity: true)
+        clearRunData()
         stateMachine.send(.reset)
         setMessage("本次截圖未送出。")
+    }
+
+    /// X（取消／收起）專用的軟清理：run 專屬資料歸零，但 capability／
+    /// context／綁定身分保留。走 clearBoundData 會把 capability 一起清掉，
+    /// 而 libraryDidChange 的 `guard let receipt = capability` 從此永遠失敗
+    /// ——新截圖偵測直到鍵盤重開都是死的（2026-08-07 Bruce 真機重現）。
+    private func clearRunData() {
+        latestScreenshot = nil
+        previewImage = nil
+        preparedImage = nil
+        outbound = nil
     }
 
     private func loadConsentContextThenDetectScreenshot(
