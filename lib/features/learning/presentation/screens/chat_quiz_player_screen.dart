@@ -133,8 +133,8 @@ class _ChatQuizLevelGateState extends ConsumerState<_ChatQuizLevelGate> {
           child: ChatQuizGateMessage(
             icon: Icons.workspace_premium_outlined,
             title: '這一關需要訂閱',
-            message: '第一關「她現在是哪一種」永久免費。訂閱之後其餘關卡會一次全部開放，'
-                '而且重試不限次數。',
+            message: '「她現在是哪一種」和「她讀到你的字之前」兩關永久免費。'
+                '訂閱之後其餘關卡會一次全部開放，而且重試不限次數。',
             primaryLabel: '看訂閱方案',
             onPrimary: () => context.push('/paywall'),
             secondaryLabel: '回關卡地圖',
