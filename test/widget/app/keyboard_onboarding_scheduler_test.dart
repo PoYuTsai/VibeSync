@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/app/keyboard_onboarding_scheduler.dart';
+import 'package:vibesync/features/keyboard/data/keyboard_setup_resume_marker.dart';
 import 'package:vibesync/features/onboarding/data/onboarding_service.dart';
 
 GoRouter _coldStartRouter() => GoRouter(
@@ -29,7 +30,10 @@ GoRouter _coldStartRouter() => GoRouter(
         ),
         GoRoute(
           path: '/settings/keyboard',
-          builder: (_, __) => const Scaffold(body: Text('keyboard-setup')),
+          // query 一併渲染：讓測試分得出 firstRun 引導 vs 中斷復原。
+          builder: (_, state) => Scaffold(
+            body: Text('keyboard-setup q:${state.uri.query}'),
+          ),
         ),
       ],
     );
@@ -70,7 +74,7 @@ void main() {
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pumpAndSettle();
 
-    expect(find.text('keyboard-setup'), findsOneWidget,
+    expect(find.textContaining('keyboard-setup'), findsOneWidget,
         reason: '冷啟動條件齊備時必須自動回到鍵盤設定，不能把使用者丟在首頁');
     expect(shown, 1);
   }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
@@ -86,13 +90,13 @@ void main() {
     s.maybeSchedule();
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pumpAndSettle();
-    expect(find.text('keyboard-setup'), findsOneWidget);
+    expect(find.textContaining('keyboard-setup'), findsOneWidget);
 
     // 使用者按 X 關閉（非完成，不寫 completed 旗標）→ 回首頁。
     router.pop();
     await tester.pumpAndSettle();
     expect(find.text('home'), findsOneWidget);
-    expect(find.text('keyboard-setup'), findsNothing,
+    expect(find.textContaining('keyboard-setup'), findsNothing,
         reason: '同一個 session 關掉後不得立刻再自動彈出（會變成騷擾迴圈）');
   }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 
@@ -109,6 +113,32 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('home'), findsOneWidget);
-    expect(find.text('keyboard-setup'), findsNothing);
+    expect(find.textContaining('keyboard-setup'), findsNothing);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+  testWidgets('mid-setup 被 iOS 殺掉（中斷旗標在）：鍵盤引導已完成也要推回設定頁',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'onboarding_completed': true,
+      'keyboard_onboarding_completed': true,
+      KeyboardSetupResumeMarker.key: true,
+    });
+    await OnboardingService.load();
+    final router = _coldStartRouter();
+    addTearDown(router.dispose);
+    var shown = 0;
+    final s = scheduler(router: router, onShown: () => shown++);
+    s.attach();
+    addTearDown(s.detach);
+
+    await s.primeFullAccessResume();
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('keyboard-setup'), findsOneWidget,
+        reason: '中斷旗標在＝上次在設定流程中被 iOS 殺掉，無視 gate 條件也要接回去');
+    expect(find.textContaining('firstRun=1'), findsNothing,
+        reason: '中斷復原不是首次引導，不掛 firstRun');
+    expect(shown, 0, reason: '復原不打 keyboard_setup_shown，避免污染採用漏斗');
   }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 }

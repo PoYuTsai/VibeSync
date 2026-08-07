@@ -37,6 +37,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         ref.read(funnelTrackerProvider).track('keyboard_setup_shown'),
       ),
     )..attach();
+    unawaited(_keyboardOnboardingScheduler.primeFullAccessResume());
     _authSubscription = SupabaseService.authStateChanges.listen((_) {
       _keyboardOnboardingScheduler.maybeSchedule();
     });

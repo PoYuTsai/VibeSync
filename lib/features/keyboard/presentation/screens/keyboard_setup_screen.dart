@@ -13,6 +13,7 @@ import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../onboarding/data/onboarding_service.dart';
 import '../../../../shared/widgets/brand/brand_dialog.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../data/keyboard_setup_resume_marker.dart';
 import '../../data/providers/keyboard_context_sync_provider.dart';
 import '../../data/services/keyboard_screenshot_setup_coordinator.dart';
 
@@ -45,9 +46,9 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
   // 冷啟動復原：去 iPhone 設定這一步常把整個 app 記憶體回收掉（不是單純
   // 背景），process 重開後 _page/_openedSettings 這些純記憶體狀態全部歸零，
   // 使用者退回第 1 頁要重點一輪——2026-08-06 真機影片重現。落一份持久旗標，
-  // 下次啟動看到就直接跳回「允許完整取用」後的那一頁。
-  static const _awaitingFullAccessReturnKey =
-      'keyboard_setup_awaiting_full_access_return';
+  // 下次啟動看到就直接跳回「允許完整取用」後的那一頁；app 層的
+  // KeyboardOnboardingScheduler 也讀同一旗標把本頁自動推回來。
+  static const _awaitingFullAccessReturnKey = KeyboardSetupResumeMarker.key;
   final _controller = PageController();
   late final AnimationController _pulse;
   late Future<bool> _hasKeyboardScreenshotConsent;
@@ -89,10 +90,21 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
     if (prefs.getBool(_awaitingFullAccessReturnKey) != true) return;
     await prefs.remove(_awaitingFullAccessReturnKey);
     if (!mounted) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_controller.hasClients) return;
+    _jumpToGlobePageWhenReady();
+  }
+
+  /// 舊版單發 postFrame 遇到 PageView 還沒 attach 就靜默放棄，使用者落在
+  /// 第 1 頁（2026-08-07 真機重測命中）——改成逐幀重試直到 attach，
+  /// 上限守門避免異常狀態下空轉。
+  void _jumpToGlobePageWhenReady([int attemptsLeft = 30]) {
+    if (!mounted || attemptsLeft <= 0) return;
+    if (_controller.hasClients) {
       _controller.jumpToPage(2);
-    });
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _jumpToGlobePageWhenReady(attemptsLeft - 1),
+    );
   }
 
   @override
