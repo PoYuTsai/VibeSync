@@ -63,6 +63,43 @@ bool _isExpired(DateTime? value, {DateTime? now}) {
   return !value.toUtc().isAfter((now ?? DateTime.now()).toUtc());
 }
 
+/// 鏡像 server `_shared/quota.ts` 的 UTC 窗判定（稽核 #1，2026-08-07）。
+///
+/// subscriptions row 的原始計數只在下一次扣費時被 server 歸零；client 直讀
+/// row 時必須自己判窗——跨窗後 stale 計數視為 0，否則昨天用完日額度的免費
+/// 用戶今天會被 client 守門擋進 paywall，請求根本到不了 server 的權威判定
+///（額度沒真用完不得擋核心功能）。
+@visibleForTesting
+bool sameUtcDay(DateTime a, DateTime b) {
+  final ua = a.toUtc();
+  final ub = b.toUtc();
+  return ua.year == ub.year && ua.month == ub.month && ua.day == ub.day;
+}
+
+@visibleForTesting
+bool sameUtcMonth(DateTime a, DateTime b) {
+  final ua = a.toUtc();
+  final ub = b.toUtc();
+  return ua.year == ub.year && ua.month == ub.month;
+}
+
+/// row 計數套窗：跨窗（或 reset_at 缺失＝server 視為 never reset）回 0。
+@visibleForTesting
+int usedCountRespectingWindow({
+  required int used,
+  required Object? resetAtRaw,
+  required bool Function(DateTime a, DateTime b) sameWindow,
+  DateTime? now,
+}) {
+  final resetAt = resetAtRaw is DateTime
+      ? resetAtRaw
+      : resetAtRaw is String
+          ? DateTime.tryParse(resetAtRaw)
+          : null;
+  if (resetAt == null) return 0;
+  return sameWindow(now ?? DateTime.now(), resetAt) ? used : 0;
+}
+
 @visibleForTesting
 String resolveStartupSubscriptionTier({
   required String databaseTier,
@@ -907,6 +944,17 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         response['tier'] as String?,
       );
       final renewsAt = _parseDateTime(response['expires_at']);
+      // row 原始計數套窗（稽核 #1）：跨窗 stale 計數不得進 client 守門。
+      final rowMonthlyUsed = usedCountRespectingWindow(
+        used: _readInt(response['monthly_messages_used']),
+        resetAtRaw: response['monthly_reset_at'],
+        sameWindow: sameUtcMonth,
+      );
+      final rowDailyUsed = usedCountRespectingWindow(
+        used: _readInt(response['daily_messages_used']),
+        resetAtRaw: response['daily_reset_at'],
+        sameWindow: sameUtcDay,
+      );
       final revenueCatTier =
           RevenueCatService.getTierFromCustomerInfo(customerInfo);
       final revenueCatAppUserId =
@@ -925,8 +973,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
       state = _applyPendingDowngradeMetadata(state.copyWith(
         tier: displayTier,
-        monthlyMessagesUsed: _readInt(response['monthly_messages_used']),
-        dailyMessagesUsed: _readInt(response['daily_messages_used']),
+        monthlyMessagesUsed: rowMonthlyUsed,
+        dailyMessagesUsed: rowDailyUsed,
         monthlyLimit: displayLimits.monthly,
         dailyLimit: displayLimits.daily,
         renewsAt: renewsAt,
@@ -940,8 +988,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         tier: displayTier,
         monthlyLimit: displayLimits.monthly,
         dailyLimit: displayLimits.daily,
-        monthlyUsed: _readInt(response['monthly_messages_used']),
-        dailyUsed: _readInt(response['daily_messages_used']),
+        monthlyUsed: rowMonthlyUsed,
+        dailyUsed: rowDailyUsed,
         paidExpiresAt: renewsAt,
         clearPaidSnapshot:
             displayTier == SubscriptionTierHelper.free && _isExpired(renewsAt),
@@ -973,8 +1021,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           tier: tier,
           monthlyLimit: limits.monthly,
           dailyLimit: limits.daily,
-          monthlyUsed: _readInt(response['monthly_messages_used']),
-          dailyUsed: _readInt(response['daily_messages_used']),
+          monthlyUsed: rowMonthlyUsed,
+          dailyUsed: rowDailyUsed,
           paidExpiresAt: renewsAt,
           clearPaidSnapshot: _isExpired(renewsAt),
         );

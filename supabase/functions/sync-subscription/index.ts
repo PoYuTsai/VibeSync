@@ -7,6 +7,7 @@ import {
   latestIsoDate,
 } from "./revenuecat_expiration.ts";
 import { shouldResetUsageOnTierSync } from "./usage_reset.ts";
+import { applyResetsIfNeeded } from "../_shared/quota.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -397,6 +398,24 @@ serve(async (req) => {
       syncedRow = data;
     }
 
+    // 稽核 #1（2026-08-07）：row 的原始計數只在下一次扣費時由扣費路徑
+    // 持久化歸零；這裡只讀不寫，但回應必須先在記憶體內套窗歸零——否則
+    // 免費用戶昨天用完日額度，今天 client 守門會拿 stale 計數把 Opener
+    // 擋進 paywall（請求根本到不了 server 的權威判定）。
+    const windowCorrected = syncedRow
+      ? applyResetsIfNeeded(
+        {
+          tier: (syncedRow.tier as string) ?? null,
+          monthly_messages_used:
+            (syncedRow.monthly_messages_used as number) ?? 0,
+          daily_messages_used: (syncedRow.daily_messages_used as number) ?? 0,
+          daily_reset_at: (syncedRow.daily_reset_at as string) ?? null,
+          monthly_reset_at: (syncedRow.monthly_reset_at as string) ?? null,
+        },
+        new Date(),
+      ).sub
+      : null;
+
     return jsonResponse({
       success: true,
       tier: finalTier,
@@ -410,8 +429,8 @@ serve(async (req) => {
       expectedTier,
       tierConfirmedByRevenueCat: revenueCatTier === finalTier,
       tierPreservedReason,
-      monthlyMessagesUsed: syncedRow?.monthly_messages_used ?? 0,
-      dailyMessagesUsed: syncedRow?.daily_messages_used ?? 0,
+      monthlyMessagesUsed: windowCorrected?.monthly_messages_used ?? 0,
+      dailyMessagesUsed: windowCorrected?.daily_messages_used ?? 0,
       expiresAt: syncedRow?.expires_at ?? revenueCatExpiresAt ??
         existingSub?.expires_at ?? null,
       monthlyLimit: limits.monthly,
