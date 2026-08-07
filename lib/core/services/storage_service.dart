@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show debugPrint, kIsWeb, visibleForTesting;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -37,71 +38,64 @@ class StorageService {
     // Get or create encryption key
     final encryptionKey = await _getEncryptionKey();
 
-    // Open encrypted boxes
-    await Hive.openBox<Conversation>(
+    // Open encrypted boxes（損毀/金鑰不符時單顆重建，見 openBoxWithRecovery）
+    final cipher = HiveAesCipher(encryptionKey);
+
+    await openBoxWithRecovery<Conversation>(
       AppConstants.conversationsBox,
-      encryptionCipher: HiveAesCipher(encryptionKey),
+      cipher: cipher,
     );
 
-    await Hive.openBox<Partner>(
+    await openBoxWithRecovery<Partner>(
       AppConstants.partnersBox,
-      encryptionCipher: HiveAesCipher(encryptionKey),
+      cipher: cipher,
     );
 
-    await Hive.openBox<UserProfile>(
-      'user_profile',
-      encryptionCipher: HiveAesCipher(encryptionKey),
-    );
+    await openBoxWithRecovery<UserProfile>('user_profile', cipher: cipher);
 
-    await Hive.openBox<PartnerStyleOverride>(
+    await openBoxWithRecovery<PartnerStyleOverride>(
       'partner_style_overrides',
-      encryptionCipher: HiveAesCipher(encryptionKey),
+      cipher: cipher,
     );
 
-    await Hive.openBox<PartnerDataQualityState>(
+    await openBoxWithRecovery<PartnerDataQualityState>(
       'partner_data_quality_states',
-      encryptionCipher: HiveAesCipher(encryptionKey),
+      cipher: cipher,
     );
 
-    await Hive.openBox<CoachFollowUpResult>(
+    await openBoxWithRecovery<CoachFollowUpResult>(
       'coach_follow_up_results',
-      encryptionCipher: HiveAesCipher(encryptionKey),
+      cipher: cipher,
     );
 
-    await Hive.openBox<CoachChatResult>(
+    await openBoxWithRecovery<CoachChatResult>(
       'coach_chat_results',
-      encryptionCipher: HiveAesCipher(encryptionKey),
+      cipher: cipher,
     );
 
-    await Hive.openBox<UnifiedCoachResult>(
+    await openBoxWithRecovery<UnifiedCoachResult>(
       'unified_coach_results',
-      encryptionCipher: HiveAesCipher(encryptionKey),
+      cipher: cipher,
     );
 
-    await Hive.openBox<CoachingOutcomeEvent>(
+    await openBoxWithRecovery<CoachingOutcomeEvent>(
       AppConstants.coachingOutcomeEventsBox,
-      encryptionCipher: HiveAesCipher(encryptionKey),
+      cipher: cipher,
     );
 
-    await Hive.openBox<AnalysisHistoryEvent>(
+    await openBoxWithRecovery<AnalysisHistoryEvent>(
       AppConstants.analysisHistoryEventsBox,
-      encryptionCipher: HiveAesCipher(encryptionKey),
+      cipher: cipher,
     );
 
-    await Hive.openBox<PracticeSession>(
+    await openBoxWithRecovery<PracticeSession>(
       'practice_sessions',
-      encryptionCipher: HiveAesCipher(encryptionKey),
+      cipher: cipher,
     );
 
-    await Hive.openBox(
-      AppConstants.settingsBox,
-      encryptionCipher: HiveAesCipher(encryptionKey),
-    );
+    await openBoxWithRecovery(AppConstants.settingsBox, cipher: cipher);
 
-    await Hive.openBox(
-      AppConstants.usageBox,
-      encryptionCipher: HiveAesCipher(encryptionKey),
-    );
+    await openBoxWithRecovery(AppConstants.usageBox, cipher: cipher);
 
     // Partner Entity Refactor A1 — Migration runs once on first boot
     // after Partner box is open. Subsequent boots short-circuit on the
@@ -124,6 +118,31 @@ class StorageService {
       ).backfillPartnerIds(conversationsBox.values);
     } catch (error) {
       debugPrint('Analysis history partner backfill failed: $error');
+    }
+  }
+
+  /// 開加密 box 的啟動兜底（2026-08-07 稽核 #6）。
+  ///
+  /// box 檔損毀或金鑰不符（備份還原、Keychain 金鑰遺失）時 openBox 會丟
+  /// HiveError，沒有兜底就是啟動死循環、使用者只能整支刪掉重裝——所有
+  /// box 一起陪葬。這種情況資料本來就解不開了，就地重建犧牲單顆 box 換
+  /// App 可啟動。先重試一次，避免暫時性 I/O 失敗誤殺健康資料。
+  @visibleForTesting
+  static Future<Box<T>> openBoxWithRecovery<T>(
+    String name, {
+    required HiveAesCipher cipher,
+  }) async {
+    try {
+      return await Hive.openBox<T>(name, encryptionCipher: cipher);
+    } catch (error) {
+      debugPrint('Hive box "$name" failed to open, retrying once: $error');
+    }
+    try {
+      return await Hive.openBox<T>(name, encryptionCipher: cipher);
+    } catch (error) {
+      debugPrint('Hive box "$name" unreadable, recreating empty: $error');
+      await Hive.deleteBoxFromDisk(name);
+      return Hive.openBox<T>(name, encryptionCipher: cipher);
     }
   }
 
