@@ -84,6 +84,15 @@ ChatQuizQuestion buildTestChatQuizQuestion({
         takeaway: '先找出在扣分的那一個，再談怎麼加分。',
         source: source,
       ),
+    ChatQuizQuestionType.doseCheck => ChatQuizDoseCheckQuestion(
+        id: id,
+        revision: revision,
+        scenario: scenario,
+        question: '這份草稿多給了什麼？',
+        choices: choices,
+        takeaway: '她給多少，你就給差不多多少。',
+        source: source,
+      ),
   };
 }
 

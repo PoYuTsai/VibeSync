@@ -3,9 +3,9 @@
 // 聊天測驗（判讀訓練場）的內容模型。
 //
 // 產品不變量（CC 不自行改動）：
-//   - 題型目前有三種：讀燈（signalRead）、選回覆（pickReply）、找死亡點
-//     （findDeathPoint，2026-08-07 擴充批 A 引入）。擴充批 C／D 才會加
-//     doseCheck 與 gearShift。
+//   - 題型目前有四種：讀燈（signalRead）、選回覆（pickReply）、找死亡點
+//     （findDeathPoint，擴充批 A）、份量診斷（doseCheck，擴充批 C）。
+//     換檔（gearShift）留給擴充批 D。
 //   - **正解永遠是一個選擇，不會是使用者輸入的字串。** 這條由型別層守住：
 //     [ChatQuizQuestion] 只有 choices，沒有任何自由輸入欄位。「自己改一句」
 //     那種題型延到第 3 期，且需要另外授權（會動到 Edge Function 與計費）。
@@ -23,7 +23,7 @@ library;
 import 'ebook.dart';
 
 /// 題型。新增一種就會讓所有 exhaustive switch 編譯失敗，逼著補 UI 與內容守門。
-enum ChatQuizQuestionType { signalRead, pickReply, findDeathPoint }
+enum ChatQuizQuestionType { signalRead, pickReply, findDeathPoint, doseCheck }
 
 /// 深連目標：這一題背後的原理寫在哪本書的哪一章。
 ///
@@ -151,6 +151,25 @@ final class ChatQuizFindDeathPointQuestion extends ChatQuizQuestion {
 
   @override
   ChatQuizQuestionType get type => ChatQuizQuestionType.findDeathPoint;
+}
+
+/// 份量診斷：給一份「你自己要送出的草稿」，選出它多給了什麼、或少了什麼。
+///
+/// 讀燈看她、選回覆選句子，這一型看的是**你給出去的量**——第十一部「煞車」
+/// 的專屬載體，主場在 5-2 與 6-1。
+final class ChatQuizDoseCheckQuestion extends ChatQuizQuestion {
+  const ChatQuizDoseCheckQuestion({
+    required super.id,
+    required super.revision,
+    required super.scenario,
+    required super.question,
+    required super.choices,
+    required super.takeaway,
+    required super.source,
+  });
+
+  @override
+  ChatQuizQuestionType get type => ChatQuizQuestionType.doseCheck;
 }
 
 /// 一關。
