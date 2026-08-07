@@ -572,9 +572,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             '每日 ${AppConstants.essentialDailyDrawLimit} 次',
           ),
           // 權限鏡像 assets/learning 宣告：電子書 book1 free（付費書另有首章
-          // 試讀）、2-4 premium、5-7 essential 專屬；測驗 4 關＝1 free＋3 premium。
+          // 試讀）、2-4 premium、5-7 essential 專屬。測驗欄刻意不寫死關數
+          // （ADR #38 後擴充批次會一直加關，寫死數字每批都要回來追）；免費
+          // 關清單＝內容不變式測試的 _freeLevelIds。
           _buildComparisonRow('互動電子書', '第 1 冊＋試讀', '4 冊', '全 7 冊'),
-          _buildComparisonRow('聊天測驗', '第 1 關', '全 4 關', '全 4 關'),
+          _buildComparisonRow('聊天測驗', '免費關卡', '全部關卡', '全部關卡'),
           _buildComparisonRow('雷達圖', '未開放', '可用', '可用'),
           _buildComparisonRow('對話健檢', '未開放', '未開放', '可用'),
           _buildComparisonRow('訊息優化', '未開放', '未開放', '可用'),

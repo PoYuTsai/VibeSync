@@ -10,90 +10,15 @@
 // 「一開 App 就被推銷」，而不是任何錯誤。
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/learning/domain/chat_quiz_access.dart';
-import 'package:vibesync/features/learning/domain/models/chat_quiz.dart';
 import 'package:vibesync/features/learning/domain/models/ebook.dart';
 import 'package:vibesync/features/learning/presentation/widgets/ebook_access_gate.dart';
 
 import '../../../helpers/chat_quiz_test_content.dart';
-import '../../../helpers/ebook_test_content.dart';
 
-/// 三本書剛好覆蓋三層權限。
-EbookCatalog _books() => EbookCatalog(
-      books: [
-        buildTestEbook(id: 'book-free', number: 1, access: EbookAccess.free),
-        buildTestEbook(
-          id: 'book-premium',
-          number: 2,
-          access: EbookAccess.premium,
-        ),
-        buildTestEbook(
-          id: 'book-essential',
-          number: 1,
-          unit: EbookUnit.becomeThePrize,
-          access: EbookAccess.essential,
-        ),
-      ],
-    );
-
-ChatQuizLevel _levelSourcedFrom(List<String?> bookIds) {
-  return buildTestChatQuizLevel(
-    questions: [
-      for (var index = 0; index < bookIds.length; index++)
-        buildTestChatQuizQuestion(
-          id: 'q-$index',
-          source: bookIds[index] == null
-              ? null
-              : ChatQuizSource(
-                  bookId: bookIds[index]!,
-                  chapterId: '${bookIds[index]}-chapter-1',
-                ),
-        ),
-    ],
-  );
-}
+// `accessForLevel`（access＝取材推導）已隨 ADR #38 移除：關卡 access 只表達
+// 訂閱檔位，取材的付費保護交給電子書自己的 EbookAccessGate。
 
 void main() {
-  group('accessForLevel', () {
-    test('沒有任何來源的關卡是 free', () {
-      expect(
-        accessForLevel(_levelSourcedFrom([null, null]), _books()),
-        EbookAccess.free,
-      );
-    });
-
-    test('取最高的那一層，不是第一個也不是多數', () {
-      expect(
-        accessForLevel(
-          _levelSourcedFrom(['book-free', 'book-free', 'book-premium']),
-          _books(),
-        ),
-        EbookAccess.premium,
-      );
-      expect(
-        accessForLevel(
-          _levelSourcedFrom(['book-premium', 'book-essential', null]),
-          _books(),
-        ),
-        EbookAccess.essential,
-      );
-      expect(
-        accessForLevel(
-          _levelSourcedFrom(['book-essential', 'book-free']),
-          _books(),
-        ),
-        EbookAccess.essential,
-        reason: '一題取材《成為獎賞》就足以讓整關變成 Essential 專屬',
-      );
-    });
-
-    test('來源書不存在時 fail closed 成 essential，不悄悄降成免費', () {
-      expect(
-        accessForLevel(_levelSourcedFrom(['book-typo']), _books()),
-        EbookAccess.essential,
-      );
-    });
-  });
-
   group('gateFor', () {
     test('free 關永不鎖，任何訂閱狀態都可進', () {
       const states = <EbookSubscriptionAccess>[

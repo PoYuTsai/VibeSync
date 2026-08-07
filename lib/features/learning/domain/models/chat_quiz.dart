@@ -9,10 +9,10 @@
 //   - **正解永遠是一個選擇，不會是使用者輸入的字串。** 這條由型別層守住：
 //     [ChatQuizQuestion] 只有 choices，沒有任何自由輸入欄位。「自己改一句」
 //     那種題型延到第 3 期，且需要另外授權（會動到 Edge Function 與計費）。
-//   - 一關的權限＝這一關所有題目來源書當中最高的那一層（free < premium <
-//     essential）。JSON 裡的 [ChatQuizLevel.access] 是宣告值，由
-//     `chat_quiz_content_invariants_test.dart` 驗證它與來源推導的結果一致——
-//     runtime 不推導，否則內容一改權限就會悄悄跟著飄。
+//   - JSON 裡的 [ChatQuizLevel.access] 只表達「要不要訂閱才能玩這一關」，
+//     **不由取材推導**（ADR #38）。題目可自由取材第 1–7 冊，原理的付費保護
+//     交給電子書自己的 `EbookAccessGate`。免費關不得取材第 5–7 冊由
+//     `chat_quiz_content_invariants_test.dart` 守。
 //   - 測驗進度用自己的 Hive key，絕不併進電子書的 `learning_progress_v1:`。
 //     見 `chat_quiz_progress.dart`。
 //
@@ -174,7 +174,7 @@ class ChatQuizLevel {
   /// 這一關只練一件事，關卡地圖用它當一行說明。
   final String goal;
 
-  /// 內容宣告的權限。真相由不變式測試對照題目來源驗證。
+  /// 內容宣告的權限＝這一關的訂閱檔位（ADR #38：不由取材推導）。
   final EbookAccess access;
 
   /// 過關門檻（答對比例）。第 1 期全部是 0.8。

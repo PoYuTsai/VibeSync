@@ -10,18 +10,19 @@
 //   - 結構與 id 的硬規則在 parser（`chat_quiz_catalog_repository.dart`），
 //     那些是載入時就該爆掉的。
 //   - 「Starter 能不能進」這種 runtime 判斷在 `chat_quiz_access_test.dart`。
-//     這裡守的是它的內容側前提：取材第 5–7 冊的關卡，access 必須宣告 essential。
+//     這裡守的是它的內容側前提：免費關不得取材第 5–7 冊（ADR #38 後，付費
+//     關的取材不再影響 access）。
 //   - 這裡只守「內容寫成什麼樣」。
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vibesync/features/learning/domain/chat_quiz_access.dart';
 import 'package:vibesync/features/learning/domain/models/chat_quiz.dart';
 import 'package:vibesync/features/learning/domain/models/ebook.dart';
 
 import '../../../helpers/chat_quiz_test_content.dart';
 import '../../../helpers/ebook_test_content.dart';
 
-/// 唯一的免費出口。整份內容裡只有這一關是 free。
-const _freeLevelId = 'quiz-level-1-1';
+/// 免費關清單。1-1 是免費櫥窗關；3-1（場外）於擴充批 A 開免費——三條底線
+/// 不鎖付費牆（2026-08-07 Eric 拍板）。
+const _freeLevelIds = ['quiz-level-1-1'];
 
 /// 每一關固定 15 題。
 ///
@@ -175,70 +176,31 @@ void main() {
   });
 
   group('權限', () {
-    test('宣告的 access 不得低於取材推導值——唯一例外是免費櫥窗關', () {
-      // 原始規則是「access ＝ 取材書的最高層」，但它和報告自己的內容表衝突：
-      // 1-1 宣告 free，取材卻包含第 2 冊（premium）。兩者不可能同時成立。
-      //
-      // 取捨：免費關的深連按鈕點下去打的是電子書自己的付費閘門，看到的是
-      // paywall，那正是櫥窗該有的轉換路徑，不是內容外洩。真正的紅線是
-      // 第 5–7 冊（決定 5），由下面兩條測試守。
-      for (final level in levels) {
-        if (level.id == _freeLevelId) continue;
-        expect(
-          level.access.index,
-          greaterThanOrEqualTo(accessForLevel(level, books).index),
-          reason: '${level.id} 宣告的 access 低於它的取材',
-        );
-      }
-    });
-
-    test('免費櫥窗關刻意宣告 free，但取材不得超過 premium', () {
-      final level = catalog.findLevel(_freeLevelId);
-      expect(level?.access, EbookAccess.free);
-      expect(
-        accessForLevel(level!, books).index,
-        lessThanOrEqualTo(EbookAccess.premium.index),
-        reason: '免費關取材到 Essential 教材＝付費牆破洞',
-      );
-    });
-
-    test('只有 1-1 是免費關，其餘全部要付費', () {
+    // ADR #38（2026-08-07）：關卡 access 只表達訂閱檔位，不再由取材推導。
+    // 付費關可自由取材第 1–7 冊——Starter 作答時拿得到 takeaway 判準，點
+    // 「讀原理」深連進書會撞電子書自己的 Essential 閘門，那是轉換路徑不是
+    // 外洩。原本的「access ≥ 取材推導值」「取材 5–7 冊必須宣告 essential」
+    // 兩條隨之移除；免費關的兩條紅線保留如下。
+    test('免費關就是免費關清單，其餘全部要付費', () {
       final freeLevels =
           levels.where((level) => level.access == EbookAccess.free).toList();
-      expect(freeLevels.map((level) => level.id), [_freeLevelId]);
+      expect(freeLevels.map((level) => level.id), _freeLevelIds);
     });
 
     test('免費關的每一題，來源都不是第 5–7 冊', () {
-      final level = catalog.findLevel(_freeLevelId);
-      expect(level, isNotNull, reason: '找不到免費關 $_freeLevelId');
-      for (final question in level!.questions) {
-        final source = question.source;
-        if (source == null) continue;
-        final book = books.findBook(source.bookId);
-        expect(
-          book?.unit,
-          isNot(EbookUnit.becomeThePrize),
-          reason: '${question.id} 取材《成為獎賞》，那是唯一的免費出口，不得外洩',
-        );
-      }
-    });
-
-    test('取材第 5–7 冊的關卡，access 必須宣告 essential', () {
-      // 這是「Starter 讀不到 Essential 取材」的內容側前提。
-      // runtime 側（照抄 isPremium 會破洞）由 chat_quiz_access_test.dart 守。
-      for (final level in levels) {
-        final takesEssential = level.questions.any((question) {
+      for (final levelId in _freeLevelIds) {
+        final level = catalog.findLevel(levelId);
+        expect(level, isNotNull, reason: '找不到免費關 $levelId');
+        for (final question in level!.questions) {
           final source = question.source;
-          if (source == null) return false;
-          return books.findBook(source.bookId)?.unit ==
-              EbookUnit.becomeThePrize;
-        });
-        if (!takesEssential) continue;
-        expect(
-          level.access,
-          EbookAccess.essential,
-          reason: '${level.id} 取材《成為獎賞》卻沒宣告 essential，Starter 會讀到',
-        );
+          if (source == null) continue;
+          final book = books.findBook(source.bookId);
+          expect(
+            book?.unit,
+            isNot(EbookUnit.becomeThePrize),
+            reason: '${question.id} 取材《成為獎賞》，那是唯一的免費出口，不得外洩',
+          );
+        }
       }
     });
   });

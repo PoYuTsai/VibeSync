@@ -939,3 +939,19 @@
 2. 強殺缺口由**重放標記**補上（commit 85944202）：遠端刪除成功即落 marker（存 SharedPreferences，活過 clearAll），本地清理完成才收走；App 啟動時 `AccountDeletionCleanup.replayIfNeeded()` 補完中斷的清理，失敗保留 marker 下次啟動再試。
 
 **驗證**: marker 生命週期／重放順序／失敗保留 marker 單元測試 5 綠；settings_screen 刪帳號流程 widget 測試 27 綠（含清理在途 marker 必須仍在、重試成功才收 marker 兩條新斷言）。
+
+## ADR #38 — [2026-08-07] 聊天測驗權限改制：access 只表達訂閱檔位，不由取材推導（推翻 ADR #36 時代的決定 5）
+
+**狀態**: 🟢 Active
+
+**背景**: 聊天測驗擴充案（5 新群 / 11 關 / 165 題）落地前，舊規則「一關的 access ＝ 取材書的最高層（取材第 5–7 冊 ⇒ 整關 essential）」有三個問題：(1) 免費關 1-1 早已是例外（宣告 free 卻取材 premium 第 2 冊），規則與現實不一致；(2) essential 關會被 `_visibleLevels` 對 Starter 完全隱藏，關號跳號；(3) 擴充後每關取材跨多冊，推導規則會把大半新關推成 essential，Premium 使用者可玩內容大縮水。
+
+**決定**（Eric 拍板）:
+
+1. **關卡 `access` 只表達「要不要訂閱才能玩這一關」**，由內容宣告，不由取材推導。新關一律宣告 `premium`，題目可自由取材第 1–7 冊。
+2. **原理的付費保護交給電子書自己的 `EbookAccessGate`**：Starter 作答時拿得到 takeaway 一行判準，點「讀原理」深連進第 5–7 冊會撞 Essential 閘門——那是轉換路徑，不是外洩。代價（Eric 已知情接受）：Essential 的差異化從「這個概念」變成「這個概念的完整論述」。
+3. **免費關紅線保留**：免費關清單由內容不變式測試逐關列舉（1-1；批 A 起加 3-1「場外」——三條底線不鎖付費牆），免費關每一題不得取材第 5–7 冊。
+4. `accessForLevel()`（取材推導函式）刪除；不變式測試「access ≥ 取材推導值」「取材 5–7 冊必須宣告 essential」兩條移除。
+5. Paywall 比較表的測驗欄改為不寫死關數（「免費關卡／全部關卡」），擴充各批加關不再需要回頭改文案。
+
+**退路**: 若 dogfood 顯示 takeaway 外洩實質傷害 Essential 轉換，改為新關不填第 5–7 冊的 `source`（題照出、無「讀原理」按鈕），其餘不動。

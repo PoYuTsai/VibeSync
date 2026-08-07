@@ -4,9 +4,11 @@
 // （[EbookSubscriptionAccess]），**不新增任何訂閱資料來源**。
 //
 // 硬規則：
-//   - 一關的權限＝這一關所有題目來源書當中最高的那一層（free < premium <
-//     essential）。權限跟著取材走，內容改了取材，權限就該跟著改——由
-//     `chat_quiz_content_invariants_test.dart` 驗宣告值與推導值一致。
+//   - 關卡的 `access` 只表達「要不要訂閱才能玩這一關」，**不由取材推導**
+//     （ADR #38，2026-08-07，推翻 ADR #36 時代的決定 5）。題目可自由取材
+//     第 1–7 冊；原理的付費保護交給電子書自己的 `EbookAccessGate`——點
+//     「讀原理」深連進書時，essential 書照樣擋 Starter。免費關不得取材
+//     第 5–7 冊這條內容紅線仍由 `chat_quiz_content_invariants_test.dart` 守。
 //   - essential 關**不得照抄 `isPremium`**：那個 bool 是 `isStarter ||
 //     isEssential`，照抄會讓 Starter 讀到《成為獎賞》轉化出來的題目。這條在
 //     電子書已經破過一次，測驗要有自己的一份守門。
@@ -37,25 +39,6 @@ enum ChatQuizGate {
   unavailable,
 }
 
-/// 一關的權限＝它所有題目來源書當中最高的那一層。
-///
-/// 沒有 `source` 的題目視為 free（那種題目是純判讀，沒有引用任何付費教材）。
-///
-/// 找不到來源書時回 [EbookAccess.essential]（fail closed）：內容打錯字不該
-/// 悄悄把一關降成免費。正常內容不會走到這裡——deep link 目標是否存在由
-/// 內容不變式測試守。
-EbookAccess accessForLevel(ChatQuizLevel level, EbookCatalog books) {
-  var highest = EbookAccess.free;
-  for (final question in level.questions) {
-    final source = question.source;
-    if (source == null) continue;
-    final book = books.findBook(source.bookId);
-    final access = book?.access ?? EbookAccess.essential;
-    if (access.index > highest.index) highest = access;
-  }
-  return highest;
-}
-
 /// 三態＋一態：可進 / 鎖住 / 還在確認 / 查不到。
 ///
 /// 快取授權的處理與電子書一致（2026-07-26 Eric 拍板）：測驗內容也是隨 App
@@ -83,9 +66,8 @@ ChatQuizGate gateFor(
   return ChatQuizGate.locked;
 }
 
-/// 關卡層的便利包裝。用內容宣告的 [ChatQuizLevel.access]——它與取材推導值
-/// 一致這件事由內容不變式測試保證，runtime 不重算（重算會讓「哪一關要付費」
-/// 隨內容檔飄動）。
+/// 關卡層的便利包裝。用內容宣告的 [ChatQuizLevel.access]——它就是真相
+/// （ADR #38：access 只表達訂閱檔位，不由取材推導），runtime 不重算。
 ChatQuizGate gateForLevel(
   ChatQuizLevel level,
   EbookSubscriptionAccess subscription,
