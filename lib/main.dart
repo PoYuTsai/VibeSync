@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app/app.dart';
 import 'app/routes.dart';
 import 'core/config/environment.dart';
+import 'core/services/account_deletion_cleanup.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/revenuecat_service.dart';
 import 'core/services/keyboard_token_bridge.dart';
@@ -39,6 +40,16 @@ void main() async {
   await RevenueCatService.initialize(
     appUserId: SupabaseService.currentUser?.id,
   );
+
+  // 刪帳號的本機清理若被強殺（稽核 #7）：在任何人進入 App 前補完，
+  // 前用戶資料不得躺在裝置上等下一個帳號。失敗保留 marker 下次啟動
+  // 再試，不擋啟動——遠端 session 已失效，資料要另一個帳號登入才可能
+  // 觸及，風險窗有限。
+  try {
+    await AccountDeletionCleanup.replayIfNeeded();
+  } catch (error) {
+    debugPrint('Account deletion cleanup replay failed: $error');
+  }
 
   // Prime onboarding completion into memory before the router evaluates
   // redirects, so a returning user is never misrouted back to onboarding.

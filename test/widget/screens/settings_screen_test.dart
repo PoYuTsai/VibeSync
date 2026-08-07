@@ -117,6 +117,22 @@ class _FakeAccountDeletionActions extends AccountDeletionActions {
   Future<void> purgeKeyboardCredentials() async {
     purgeKeyboardCredentialsCalls++;
   }
+
+  // 基底預設走真 SharedPreferences（widget 測試沒有 plugin），必須覆寫。
+  var markCleanupPendingCalls = 0;
+  var clearCleanupMarkerCalls = 0;
+  String? pendingOwnerUserId;
+
+  @override
+  Future<void> markLocalCleanupPending({String? ownerUserId}) async {
+    markCleanupPendingCalls++;
+    pendingOwnerUserId = ownerUserId;
+  }
+
+  @override
+  Future<void> clearLocalCleanupMarker() async {
+    clearCleanupMarkerCalls++;
+  }
 }
 
 class _FakeAccountLogoutActions extends AccountLogoutActions {
@@ -576,11 +592,17 @@ void main() {
       expect(actions.clearLocalStorageCalls, 1);
       expect(actions.clearLocalSessionCalls, 1);
       expect(actions.purgeKeyboardCredentialsCalls, 1);
+      // 重放標記（稽核 #7）：遠端刪除成功即落 marker；此刻 session 清理
+      // 還在途，marker 必須仍在——這正是強殺要重放的窗口。
+      expect(actions.markCleanupPendingCalls, 1);
+      expect(actions.clearCleanupMarkerCalls, 0);
       expect(find.text('Login'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
       clearSessionCompleter.complete();
       await tester.pumpAndSettle();
+      // 清理全部完成 → marker 收走。
+      expect(actions.clearCleanupMarkerCalls, 1);
 
       expect(find.text('Login'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
@@ -675,6 +697,9 @@ void main() {
       );
       expect(find.text('重試清理'), findsOneWidget);
       expect(find.text('帳號已刪除。'), findsNothing);
+      // 清理失敗期間 marker 必須留著（強殺後下次啟動要能重放）。
+      expect(actions.markCleanupPendingCalls, 1);
+      expect(actions.clearCleanupMarkerCalls, 0);
 
       // 重試成功 → 才放行 login。
       actions.clearLocalStorageError = null;
@@ -683,6 +708,7 @@ void main() {
 
       expect(actions.clearLocalStorageCalls, 2);
       expect(actions.clearLocalSessionCalls, 1);
+      expect(actions.clearCleanupMarkerCalls, 1);
       expect(find.text('Login'), findsOneWidget);
       expect(find.text('帳號已刪除。'), findsOneWidget);
     });

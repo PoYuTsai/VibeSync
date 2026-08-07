@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../../core/config/environment.dart';
+import '../../../../core/services/account_deletion_cleanup.dart';
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/keyboard_token_bridge.dart';
 import '../../../../core/services/keyboard_privacy_purge_service.dart';
@@ -73,6 +74,17 @@ abstract class AccountDeletionActions {
   Future<void> clearLocalSessionAfterDeletion();
 
   Future<void> purgeKeyboardCredentials();
+
+  // 重放標記（稽核 #7）：遠端刪除成功即落 marker，本機清理完成才收走；
+  // 中途強殺由 main.dart 的 AccountDeletionCleanup.replayIfNeeded 補完。
+  // 具體實作放基底讓測試 fake 免逐一實作（要斷言時再覆寫）。
+  Future<void> markLocalCleanupPending({String? ownerUserId}) {
+    return AccountDeletionCleanup.markPending(ownerUserId: ownerUserId);
+  }
+
+  Future<void> clearLocalCleanupMarker() {
+    return AccountDeletionCleanup.clearMarker();
+  }
 }
 
 class DefaultAccountDeletionActions extends AccountDeletionActions {
@@ -1013,6 +1025,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     // 遠端帳號已刪除：絕不把「帳號已刪除」回報成刪除失敗；但本機清理
     // 沒完成前也絕不放行到 login——同裝置換帳號不得看到前用戶的 Hive 資料。
+    // 先落重放標記：清理期間被強殺，下次啟動由 replayIfNeeded 補完。
+    // marker 寫失敗不擋流程（本輪 dialog 重試仍然守著）。
+    try {
+      await widget.accountDeletionActions.markLocalCleanupPending(
+        ownerUserId: deletionOwnerUserId,
+      );
+    } catch (error) {
+      debugPrint('Account deletion cleanup marker write failed: $error');
+    }
     final cleanupSucceeded = await _tryDeleteAccountLocalCleanup(
       ownerUserId: deletionOwnerUserId,
     );
@@ -1089,6 +1110,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await widget.accountDeletionActions.clearLocalStorage();
       await widget.accountDeletionActions.purgeKeyboardCredentials();
       await widget.accountDeletionActions.clearLocalSessionAfterDeletion();
+      // 清理完成才收 marker；收失敗無害——重放在乾淨裝置上是 no-op。
+      try {
+        await widget.accountDeletionActions.clearLocalCleanupMarker();
+      } catch (error) {
+        debugPrint('Account deletion cleanup marker clear failed: $error');
+      }
       return true;
     } catch (error) {
       debugPrint('Delete-account local cleanup failed: $error');
