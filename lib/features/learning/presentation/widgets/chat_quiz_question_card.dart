@@ -129,6 +129,7 @@ class ChatQuizQuestionCard extends StatelessWidget {
         ChatQuizQuestionType.pickReply => Icons.forum_outlined,
         ChatQuizQuestionType.findDeathPoint => Icons.troubleshoot_outlined,
         ChatQuizQuestionType.doseCheck => Icons.tune_outlined,
+        ChatQuizQuestionType.gearShift => Icons.alt_route_outlined,
       };
 
   // 找死亡點的標籤刻意寫成通用形「哪一個在扣分」：群 3 的載體是照片、
@@ -138,6 +139,7 @@ class ChatQuizQuestionCard extends StatelessWidget {
         ChatQuizQuestionType.pickReply => '選回覆 · 這一句該怎麼接',
         ChatQuizQuestionType.findDeathPoint => '找死亡點 · 哪一個在扣分',
         ChatQuizQuestionType.doseCheck => '份量診斷 · 多了還是少了',
+        ChatQuizQuestionType.gearShift => '換檔 · 推進、維持還是收手',
       };
 }
 

@@ -152,13 +152,13 @@ void main() {
 
     test('題型是封閉清單，型別層擋掉自由輸入答案', () {
       // 這條守鐵律 7：正解永遠是一個選擇，不會是某個特定字串。
-      // findDeathPoint 於擴充批 A 引入、doseCheck 於批 C 引入；gearShift
-      // 屬批 D，落地時在這裡補。
+      // findDeathPoint／doseCheck／gearShift 於擴充批 A／C／D 引入。
       expect(ChatQuizQuestionType.values, <ChatQuizQuestionType>[
         ChatQuizQuestionType.signalRead,
         ChatQuizQuestionType.pickReply,
         ChatQuizQuestionType.findDeathPoint,
         ChatQuizQuestionType.doseCheck,
+        ChatQuizQuestionType.gearShift,
       ]);
     });
   });

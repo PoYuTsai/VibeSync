@@ -3,9 +3,9 @@
 // 聊天測驗（判讀訓練場）的內容模型。
 //
 // 產品不變量（CC 不自行改動）：
-//   - 題型目前有四種：讀燈（signalRead）、選回覆（pickReply）、找死亡點
-//     （findDeathPoint，擴充批 A）、份量診斷（doseCheck，擴充批 C）。
-//     換檔（gearShift）留給擴充批 D。
+//   - 題型有五種：讀燈（signalRead）、選回覆（pickReply）、找死亡點
+//     （findDeathPoint，擴充批 A）、份量診斷（doseCheck，擴充批 C）、
+//     換檔（gearShift，擴充批 D）。清單再長就先回頭看 §7.5 安全測試。
 //   - **正解永遠是一個選擇，不會是使用者輸入的字串。** 這條由型別層守住：
 //     [ChatQuizQuestion] 只有 choices，沒有任何自由輸入欄位。「自己改一句」
 //     那種題型延到第 3 期，且需要另外授權（會動到 Edge Function 與計費）。
@@ -23,7 +23,13 @@ library;
 import 'ebook.dart';
 
 /// 題型。新增一種就會讓所有 exhaustive switch 編譯失敗，逼著補 UI 與內容守門。
-enum ChatQuizQuestionType { signalRead, pickReply, findDeathPoint, doseCheck }
+enum ChatQuizQuestionType {
+  signalRead,
+  pickReply,
+  findDeathPoint,
+  doseCheck,
+  gearShift,
+}
 
 /// 深連目標：這一題背後的原理寫在哪本書的哪一章。
 ///
@@ -170,6 +176,26 @@ final class ChatQuizDoseCheckQuestion extends ChatQuizQuestion {
 
   @override
   ChatQuizQuestionType get type => ChatQuizQuestionType.doseCheck;
+}
+
+/// 換檔：給當下狀態，選推進、維持或收手。
+///
+/// 群 7「推進」的專屬載體，也是 §7.5-4 安全測試的掛鉤：每一題換檔題都
+/// 必須有「收手」選項，且至少一題的正解就是收手——教推進的關卡若沒有
+/// 教停，就是在教糾纏。
+final class ChatQuizGearShiftQuestion extends ChatQuizQuestion {
+  const ChatQuizGearShiftQuestion({
+    required super.id,
+    required super.revision,
+    required super.scenario,
+    required super.question,
+    required super.choices,
+    required super.takeaway,
+    required super.source,
+  });
+
+  @override
+  ChatQuizQuestionType get type => ChatQuizQuestionType.gearShift;
 }
 
 /// 一關。

@@ -45,6 +45,7 @@ int _difficulty(ChatQuizQuestionType type) => switch (type) {
       ChatQuizQuestionType.findDeathPoint => 1,
       ChatQuizQuestionType.pickReply => 2,
       ChatQuizQuestionType.doseCheck => 2,
+      ChatQuizQuestionType.gearShift => 3,
     };
 
 /// 操縱／施壓語彙。出現在錯誤選項或回饋裡是好事（那是在教「這樣做是錯的」），
@@ -242,7 +243,7 @@ void main() {
       // 型別層就沒有輸入欄位（sealed class 只有 choices），這條守的是
       // 「題型沒有偷偷長出清單外的種類」。「自己改一句」那種自由輸入題
       // 屬第 3 期，要另外授權。
-      expect(ChatQuizQuestionType.values, hasLength(4));
+      expect(ChatQuizQuestionType.values, hasLength(5));
       for (final question in questions) {
         expect(
           question,
@@ -251,6 +252,7 @@ void main() {
             isA<ChatQuizPickReplyQuestion>(),
             isA<ChatQuizFindDeathPointQuestion>(),
             isA<ChatQuizDoseCheckQuestion>(),
+            isA<ChatQuizGearShiftQuestion>(),
           ),
           reason: question.id,
         );

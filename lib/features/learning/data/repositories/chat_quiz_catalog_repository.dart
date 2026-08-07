@@ -266,6 +266,15 @@ ChatQuizQuestion _parseQuestion(Map<String, Object?> json, String path) {
         takeaway: takeaway,
         source: source,
       ),
+    ChatQuizQuestionType.gearShift => ChatQuizGearShiftQuestion(
+        id: id,
+        revision: revision,
+        scenario: scenario,
+        question: question,
+        choices: choices,
+        takeaway: takeaway,
+        source: source,
+      ),
   };
 }
 
@@ -330,6 +339,7 @@ const Map<String, ChatQuizQuestionType> _questionTypeByName =
   'pickReply': ChatQuizQuestionType.pickReply,
   'findDeathPoint': ChatQuizQuestionType.findDeathPoint,
   'doseCheck': ChatQuizQuestionType.doseCheck,
+  'gearShift': ChatQuizQuestionType.gearShift,
 };
 
 const Map<String, EbookAccess> _accessByName = <String, EbookAccess>{

@@ -93,6 +93,15 @@ ChatQuizQuestion buildTestChatQuizQuestion({
         takeaway: '她給多少，你就給差不多多少。',
         source: source,
       ),
+    ChatQuizQuestionType.gearShift => ChatQuizGearShiftQuestion(
+        id: id,
+        revision: revision,
+        scenario: scenario,
+        question: '推進、維持，還是收手？',
+        choices: choices,
+        takeaway: '階段沒到硬推會死；階段到了不推會涼。',
+        source: source,
+      ),
   };
 }
 
