@@ -50,11 +50,15 @@ void main() {
     final source = coordinator.readAsStringSync();
     final start = source.indexOf('func libraryDidChange(hasFullAccess: Bool)');
     expect(start, greaterThanOrEqualTo(0));
-    final body = source.substring(start, start + 2200);
+    // 視窗要涵蓋整個函式；2026-08-07 白名單補了停止等待 case＋註解後
+    // 舊的 2200 會把函式尾巴截掉，indexOf 假性 -1。
+    final body = source.substring(start, start + 3000);
 
     // In-flight work owns its request; only a settled panel may restart.
     expect(body, contains('case .idle,'));
     expect(body, contains('.resultsPreview,'));
+    // 2026-08-07 Bruce：按 X 停止等待後截新圖必須能開新一輪。
+    expect(body, contains('.failed(_, .lookupSameRequest):'));
     expect(body, contains('default:\n            return'));
     // Bursts of PhotoKit notifications must not become bursts of round trips.
     expect(body, contains('timeIntervalSince(previous) < 1'));
