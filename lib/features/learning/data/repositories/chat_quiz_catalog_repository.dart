@@ -41,10 +41,12 @@ class ChatQuizCatalogRepository {
 
   /// production 內容資產。順序即關卡地圖的顯示順序。
   ///
-  /// 第 1 期只有兩群：報告 §11 決定 7 拍板不畫「即將推出」的佔位群。
+  /// 不畫「即將推出」的佔位群（§11 決定 7）。擴充批 B–D 落地時依序在
+  /// 這裡加 group_4～group_7。
   static const List<String> productionAssetPaths = <String>[
     'assets/learning/quizzes/group_1_signal.json',
     'assets/learning/quizzes/group_2_lifeline.json',
+    'assets/learning/quizzes/group_3_offstage.json',
   ];
 
   final AssetBundle? _bundle;

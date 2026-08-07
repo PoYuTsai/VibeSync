@@ -182,8 +182,11 @@ class _MapIntro extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
+            // 「場外」一句是群 3 的排序補償：教材要求場外最先讀，但群號必須
+            // 連號、場外只能排第 3 群（擴充規劃 §3.2），用文案把順序講回來。
             '一次一題，先讀懂她現在是哪一種，再決定怎麼回。答錯不扣任何東西，'
-            '想重跑幾次都可以。',
+            '想重跑幾次都可以。「場外」那一群講的是她讀到你的字之前的事——'
+            '覺得配對率才是瓶頸，先從那裡開始。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.onBackgroundSecondary,
               height: 1.5,

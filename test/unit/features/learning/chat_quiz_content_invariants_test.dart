@@ -22,7 +22,7 @@ import '../../../helpers/ebook_test_content.dart';
 
 /// 免費關清單。1-1 是免費櫥窗關；3-1（場外）於擴充批 A 開免費——三條底線
 /// 不鎖付費牆（2026-08-07 Eric 拍板）。
-const _freeLevelIds = ['quiz-level-1-1'];
+const _freeLevelIds = ['quiz-level-1-1', 'quiz-level-3-1'];
 
 /// 每一關固定 15 題。
 ///
@@ -30,9 +30,11 @@ const _freeLevelIds = ['quiz-level-1-1'];
 /// 內容重做（2026-08-02）推翻了它：四關等量，付費關不再比免費關短。
 const _questionsPerLevel = 15;
 
-/// 重做後的規模：4 關、60 題。
-const _expectedLevelCount = 4;
-const _expectedQuestionCount = 60;
+/// 目前規模：擴充批 A（群 3「場外」）之後為 3 群、7 關、105 題。
+/// 批 B–D 落地時依序更新（終點 7 群 / 15 關 / 225 題）。
+const _expectedGroupCount = 3;
+const _expectedLevelCount = 7;
+const _expectedQuestionCount = 105;
 
 /// 題型難度階梯。第一題與最後一題刻意收在簡單題，中間才給難的。
 ///
@@ -98,8 +100,8 @@ void main() {
   });
 
   group('結構', () {
-    test('重做後規模：兩群、四關、60 題', () {
-      expect(catalog.groups, hasLength(2));
+    test('目前規模：群、關、題數與常數一致', () {
+      expect(catalog.groups, hasLength(_expectedGroupCount));
       expect(levels, hasLength(_expectedLevelCount));
       expect(questions, hasLength(_expectedQuestionCount));
     });

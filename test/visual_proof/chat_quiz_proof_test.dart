@@ -141,9 +141,10 @@ void main() {
     );
 
     // 拍到東西才算數：免費視角必須看得到免費關、鎖住的關與唯一的付費入口。
+    // 免費關自批 A 起有兩個：1-1（櫥窗）＋ 3-1（場外，三條底線不鎖付費牆）。
     expect(find.text('1-1　她現在是哪一種'), findsOneWidget);
     expect(find.text('1-2　消極期先止損'), findsOneWidget);
-    expect(find.text('可以開始'), findsOneWidget);
+    expect(find.text('可以開始'), findsNWidgets(2));
     expect(find.text('看訂閱方案'), findsOneWidget);
 
     await capture(tester, rootKey, 'chat_quiz_map_free.png');
