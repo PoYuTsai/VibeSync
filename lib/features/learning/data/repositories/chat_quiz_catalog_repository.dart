@@ -48,6 +48,8 @@ class ChatQuizCatalogRepository {
     'assets/learning/quizzes/group_2_lifeline.json',
     'assets/learning/quizzes/group_3_offstage.json',
     'assets/learning/quizzes/group_4_ask_listen.json',
+    'assets/learning/quizzes/group_5_self.json',
+    'assets/learning/quizzes/group_6_humor.json',
   ];
 
   final AssetBundle? _bundle;

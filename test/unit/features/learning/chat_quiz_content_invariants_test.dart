@@ -30,11 +30,11 @@ const _freeLevelIds = ['quiz-level-1-1', 'quiz-level-3-1'];
 /// 內容重做（2026-08-02）推翻了它：四關等量，付費關不再比免費關短。
 const _questionsPerLevel = 15;
 
-/// 目前規模：擴充批 B（群 4「問與聽」）之後為 4 群、9 關、135 題。
-/// 批 C–D 落地時依序更新（終點 7 群 / 15 關 / 225 題）。
-const _expectedGroupCount = 4;
-const _expectedLevelCount = 9;
-const _expectedQuestionCount = 135;
+/// 目前規模：擴充批 C（群 5「說」＋群 6「幽默」）之後為 6 群、13 關、195 題。
+/// 批 D（群 7）落地時更新為終點 7 群 / 15 關 / 225 題。
+const _expectedGroupCount = 6;
+const _expectedLevelCount = 13;
+const _expectedQuestionCount = 195;
 
 /// 題型難度階梯。第一題與最後一題刻意收在簡單題，中間才給難的。
 ///

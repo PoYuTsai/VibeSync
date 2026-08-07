@@ -126,7 +126,7 @@ void main() {
 
     expect(find.text('聊天測驗'), findsOneWidget);
     expect(find.text('全部關卡 →'), findsOneWidget);
-    expect(find.text('9 關 · 135 題'), findsOneWidget);
+    expect(find.text('13 關 · 195 題'), findsOneWidget);
 
     // 第 2 期才做的東西，第 1 期一個都不畫。
     expect(find.textContaining('今日'), findsNothing);
