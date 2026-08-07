@@ -30,11 +30,10 @@ const _freeLevelIds = ['quiz-level-1-1', 'quiz-level-3-1'];
 /// 內容重做（2026-08-02）推翻了它：四關等量，付費關不再比免費關短。
 const _questionsPerLevel = 15;
 
-/// 目前規模：擴充批 C（群 5「說」＋群 6「幽默」）之後為 6 群、13 關、195 題。
-/// 批 D（群 7）落地時更新為終點 7 群 / 15 關 / 225 題。
-const _expectedGroupCount = 6;
-const _expectedLevelCount = 13;
-const _expectedQuestionCount = 195;
+/// 擴充完成後的規模（2026-08-08 批 D 收官）：7 群、15 關、225 題。
+const _expectedGroupCount = 7;
+const _expectedLevelCount = 15;
+const _expectedQuestionCount = 225;
 
 /// 題型難度階梯。第一題與最後一題刻意收在簡單題，中間才給難的。
 ///
@@ -79,11 +78,14 @@ const _stopSignalTerms = <String>[
   '不追',
 ];
 
-/// 推進／邀約題的判定詞（只看題幹，不看情境，避免情境裡提到「約」就誤判）。
-const _escalationTerms = <String>['推進', '約出來', '邀約', '約她', '約他'];
-
-/// 推進題必須提供的「收手」選項語彙。
+/// 推進題（換檔題）必須提供的「收手」選項語彙。
+///
+/// 批 D 起判定改吃 `type == gearShift`——型別比題幹字串可靠，題幹換個
+/// 講法不會漏掉。
 const _holdBackTerms = <String>['先不', '不推', '收手', '再等', '不約', '緩', '暫時不'];
+
+/// §7.5-2 邀約關的安全提醒語彙（正解回饋或 takeaway 至少一題要出現）。
+const _safetyTerms = <String>['白天', '公開', '安全', '朋友知道'];
 
 bool _containsAny(String text, List<String> terms) =>
     terms.any(text.contains);
@@ -291,32 +293,66 @@ void main() {
       );
     });
 
-    test('§7.5-4 推進題一定要有「收手」選項，且它在該收手的情境裡是正解', () {
-      // 第 1 期沒有換檔題型，所以這條多半是空跑；它的作用是第 2 期加推進群
-      // 時自動生效，而不是等人想起來要補。
-      for (final question in questions) {
-        if (!_containsAny(question.question, _escalationTerms)) continue;
+    test('§7.5-4 每一題換檔題都要有「收手」選項，且至少一題的正解是收手', () {
+      // 教推進的關卡若沒有教停，就是在教糾纏。判定吃型別：所有 gearShift
+      // 題必附收手選項，而且整份內容至少要有一題「該收手的情境」把收手
+      // 設為正解——不能全部的換檔題都在教往前。
+      final gearShiftQuestions = questions
+          .where((question) => question.type == ChatQuizQuestionType.gearShift)
+          .toList();
+      expect(
+        gearShiftQuestions,
+        isNotEmpty,
+        reason: '推進群已上線，換檔題不該是零',
+      );
+      for (final question in gearShiftQuestions) {
         expect(
           question.choices.any(
             (choice) => _containsAny(choice.text, _holdBackTerms),
           ),
           isTrue,
-          reason: '${question.id} 是推進題但沒有收手選項，'
+          reason: '${question.id} 是換檔題但沒有收手選項，'
               '所有選項都在推等於逼使用者推',
         );
       }
+      expect(
+        gearShiftQuestions.any(
+          (question) =>
+              _containsAny(question.correctChoice.text, _holdBackTerms),
+        ),
+        isTrue,
+        reason: '沒有任何一題換檔題的正解是收手；'
+            '全部都教推進的推進關，等於沒有煞車',
+      );
     });
 
-    test(
-      '§7.5-2 邀約題必須附安全提醒',
-      () {},
-      skip: '第 1 期沒有邀約關卡；第 2 期開推進群時解除。',
-    );
+    test('§7.5-2 邀約關至少一題附安全提醒', () {
+      final invitationLevel = catalog.findLevel('quiz-level-7-2');
+      expect(invitationLevel, isNotNull, reason: '找不到邀約關 quiz-level-7-2');
+      final hasSafetyNote = invitationLevel!.questions.any(
+        (question) =>
+            _containsAny(question.correctChoice.feedback, _safetyTerms) ||
+            _containsAny(question.takeaway, _safetyTerms),
+      );
+      expect(
+        hasSafetyNote,
+        isTrue,
+        reason: '教約出來的關卡沒有任何安全提醒（白天／公開場合），'
+            '見面安全是內容底線不是選配',
+      );
+    });
 
-    test(
-      '§7.5-5 明確化關卡必須教「對方沒答應就是沒答應」',
-      () {},
-      skip: '第 1 期沒有明確化關卡；第 2 期開推進群時解除。',
-    );
+    test('§7.5-5 邀約關必須教「對方沒答應就是沒答應」', () {
+      final invitationLevel = catalog.findLevel('quiz-level-7-2');
+      expect(invitationLevel, isNotNull, reason: '找不到邀約關 quiz-level-7-2');
+      expect(
+        invitationLevel!.questions.any(
+          (question) => question.takeaway.contains('沒答應就是沒答應'),
+        ),
+        isTrue,
+        reason: '教推進的最後一關必須明教「沒有明確拒絕不等於還在考慮」，'
+            '否則整套系統會被用成糾纏工具',
+      );
+    });
   });
 }
