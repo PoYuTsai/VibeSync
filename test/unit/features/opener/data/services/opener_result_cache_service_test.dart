@@ -84,7 +84,7 @@ void main() {
       recommendedPick: 'extend',
       costUsed: 3,
     );
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
 
     await service.saveLatest(result);
 
@@ -105,7 +105,7 @@ void main() {
       recommendedReason: 'Best first hook.',
       costUsed: 5,
     );
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
 
     final draft = await service.saveDraft(
       result: result,
@@ -125,7 +125,7 @@ void main() {
   });
 
   test('draft cache keeps only newest 10 drafts', () async {
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
 
     for (var i = 0; i < 12; i += 1) {
       await service.saveDraft(
@@ -145,7 +145,7 @@ void main() {
 
   test('draft cache persists partnerId so drafts can be linked to a person',
       () async {
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
 
     final draft = await service.saveDraft(
       result: const OpenerResult(
@@ -165,7 +165,7 @@ void main() {
   });
 
   test('draft cache filters recent drafts by partner scope', () async {
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
 
     await service.saveDraft(
       result: const OpenerResult(
@@ -211,7 +211,7 @@ void main() {
 
   test('partner-scoped drafts do not overwrite unscoped handoff latest',
       () async {
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
 
     await service.saveDraft(
       result: const OpenerResult(
@@ -238,7 +238,7 @@ void main() {
   });
 
   test('unscoped handoff ignores partner-only drafts', () async {
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
 
     await service.saveDraft(
       result: const OpenerResult(
@@ -258,7 +258,7 @@ void main() {
   });
 
   test('scoped latest uses partner draft instead of global latest', () async {
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
 
     await service.saveLatest(const OpenerResult(
       openers: {'extend': 'global line'},
@@ -280,7 +280,7 @@ void main() {
   });
 
   test('scoped latest does not fall back to another partner draft', () async {
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
 
     await service.saveDraft(
       result: const OpenerResult(
@@ -295,7 +295,7 @@ void main() {
   });
 
   test('draft cache trims partner scope before filtering', () async {
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
 
     await service.saveDraft(
       result: const OpenerResult(
@@ -317,7 +317,7 @@ void main() {
   });
 
   test('legacy drafts without partnerId still parse', () async {
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
     await service.saveDraft(
       result: const OpenerResult(
         openers: {'extend': 'legacy'},
@@ -332,7 +332,7 @@ void main() {
   });
 
   test('draft cache can mark continued and delete draft', () async {
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
     final draft = await service.saveDraft(
       result: const OpenerResult(
         openers: {'extend': 'line'},
@@ -352,7 +352,7 @@ void main() {
     // Batch 4 #4: a free/downgraded user continuing a paid-era draft must not
     // permanently strip the paid styles from local storage. Leak protection
     // is enforced at read time via visibleForAccess, not by rewriting drafts.
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
     final draft = await service.saveDraft(
       result: const OpenerResult(
         openers: {
@@ -388,7 +388,7 @@ void main() {
     // Codex P2 follow-up to Batch 4 #4: a draft without inputPreview falls
     // back to the opener text — that fallback must be access-aware, or the
     // recent-drafts list leaks the locked paid pick to free users.
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
     final draft = await service.saveDraft(
       result: const OpenerResult(
         openers: {
@@ -406,7 +406,7 @@ void main() {
 
   test('draft preview falls back to neutral copy when nothing is visible',
       () async {
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
     final draft = await service.saveDraft(
       result: const OpenerResult(
         openers: {'coldRead': 'locked line'},
@@ -421,7 +421,7 @@ void main() {
 
   test('deleteDraftsForPartner removes only that partner scoped drafts',
       () async {
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
     await service.saveDraft(
       result: const OpenerResult(
         openers: {'extend': 'line a'},
@@ -461,7 +461,7 @@ void main() {
 
   test('deleteDraftsForPartner with blank id never touches global drafts',
       () async {
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
     await service.saveDraft(
       result: const OpenerResult(
         openers: {'extend': 'line global'},
@@ -480,7 +480,7 @@ void main() {
 
   test('reassignDraftsPartner moves source drafts into target scope',
       () async {
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
     await service.saveDraft(
       result: const OpenerResult(
         openers: {'extend': 'line a'},
@@ -526,7 +526,7 @@ void main() {
 
   test('reassignDraftsPartner with blank source never touches global drafts',
       () async {
-    final service = OpenerResultCacheService();
+    final service = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
     await service.saveDraft(
       result: const OpenerResult(
         openers: {'extend': 'line global'},
@@ -545,5 +545,69 @@ void main() {
       service.loadDraftsForScope().map((d) => d.title),
       ['全域入口'],
     );
+  });
+
+  group('owner scoping（2026-08-07 稽核 #5：草稿跨帳號外洩）', () {
+    const result = OpenerResult(
+      openers: {'extend': 'Owner line'},
+      recommendedPick: 'extend',
+    );
+
+    test('不同帳號互看不到草稿與 latest', () async {
+      final ownerA =
+          OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
+      final ownerB =
+          OpenerResultCacheService(ownerIdResolver: () => 'owner-b');
+
+      await ownerA.saveDraft(result: result, displayName: 'A 的草稿');
+      await ownerA.saveLatest(result);
+
+      expect(ownerB.loadDrafts(), isEmpty);
+      expect(ownerB.loadLatest(), isNull);
+      expect(ownerA.loadDrafts().map((d) => d.title), ['A 的草稿']);
+      expect(ownerA.loadLatest(), isNotNull);
+    });
+
+    test('沒有帳號時 fail closed：不寫入、讀取皆空', () async {
+      final noOwner = OpenerResultCacheService(ownerIdResolver: () => null);
+
+      await noOwner.saveDraft(result: result, displayName: '無主草稿');
+      await noOwner.saveLatest(result);
+
+      expect(noOwner.loadDrafts(), isEmpty);
+      expect(noOwner.loadLatest(), isNull);
+      // 也不得寫進未綁 key 讓下一個帳號吸走。
+      final ownerA =
+          OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
+      expect(ownerA.loadDrafts(), isEmpty);
+      expect(ownerA.loadLatest(), isNull);
+    });
+
+    test('舊未綁 key 一次性搬給目前帳號並刪除舊 key', () async {
+      final box = Hive.box(AppConstants.settingsBox);
+      final legacyService =
+          OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
+      // 先用 scoped 服務產生合法 payload，再手動搬回舊 key 模擬升級前資料。
+      await legacyService.saveDraft(result: result, displayName: '舊草稿');
+      await legacyService.saveLatest(result);
+      final draftsRaw = box.get('opener_drafts_v1:owner-a');
+      final latestRaw = box.get('opener_latest_result_v1:owner-a');
+      await box.put('opener_drafts_v1', draftsRaw);
+      await box.put('opener_latest_result_v1', latestRaw);
+      await box.delete('opener_drafts_v1:owner-a');
+      await box.delete('opener_latest_result_v1:owner-a');
+
+      final ownerA =
+          OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
+      expect(ownerA.loadDrafts().map((d) => d.title), ['舊草稿']);
+      expect(ownerA.loadLatest(), isNotNull);
+      // 搬遷後舊 key 必須消失，之後的帳號不會再吸到。
+      expect(box.get('opener_drafts_v1'), isNull);
+      expect(box.get('opener_latest_result_v1'), isNull);
+      final ownerB =
+          OpenerResultCacheService(ownerIdResolver: () => 'owner-b');
+      expect(ownerB.loadDrafts(), isEmpty);
+      expect(ownerB.loadLatest(), isNull);
+    });
   });
 }

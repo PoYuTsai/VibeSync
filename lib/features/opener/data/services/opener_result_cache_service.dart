@@ -1,6 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../../../core/services/storage_service.dart';
+import '../../../../core/services/supabase_service.dart';
 import 'opener_service.dart';
 
 class OpenerDraft {
@@ -119,10 +123,61 @@ class OpenerDraft {
 }
 
 class OpenerResultCacheService {
-  static const _latestResultKey = 'opener_latest_result_v1';
-  static const _draftsKey = 'opener_drafts_v1';
+  /// Key 綁 account id（`<prefix>:<ownerUserId>`，同 chat_quiz/ebook 制度）：
+  /// 草稿含付費開場內容，未綁 key 會讓同機下一個帳號直接看到上一個帳號的
+  /// 草稿。沒有帳號時 fail closed——不讀不寫，不建立共用草稿。
+  OpenerResultCacheService({String? Function()? ownerIdResolver})
+      : _ownerIdResolver = ownerIdResolver ?? _defaultOwnerId;
+
+  /// 測試用：widget 測試無法初始化 Supabase，又碰不到 screen/repo 內部
+  /// 建構的實例，只能從這裡覆蓋預設 owner。
+  @visibleForTesting
+  static String? Function()? debugDefaultOwnerIdOverride;
+
+  static String? _defaultOwnerId() =>
+      debugDefaultOwnerIdOverride != null
+          ? debugDefaultOwnerIdOverride!()
+          : SupabaseService.currentUser?.id;
+
+  static const _latestResultKeyPrefix = 'opener_latest_result_v1';
+  static const _draftsKeyPrefix = 'opener_drafts_v1';
   static const maxDrafts = 10;
   static int _draftSequence = 0;
+
+  final String? Function() _ownerIdResolver;
+
+  String? get _owner {
+    final owner = _ownerIdResolver()?.trim();
+    return (owner == null || owner.isEmpty) ? null : owner;
+  }
+
+  String? get _draftsKey {
+    final owner = _owner;
+    return owner == null ? null : '$_draftsKeyPrefix:$owner';
+  }
+
+  String? get _latestResultKey {
+    final owner = _owner;
+    return owner == null ? null : '$_latestResultKeyPrefix:$owner';
+  }
+
+  /// 未綁帳號的舊 key 一次性搬到目前帳號名下後刪除。單帳號裝置（絕大多數）
+  /// 升級不掉草稿；多帳號裝置最壞情況＝舊資料歸給升級後第一個開 opener 的
+  /// 帳號——跟修復前「永久共用」相比只窄不寬。
+  String? _readScopedWithLegacyMigration(String scopedKey, String legacyKey) {
+    final box = StorageService.settingsBox;
+    final scoped = box.get(scopedKey);
+    if (scoped is String && scoped.trim().isNotEmpty) {
+      return scoped;
+    }
+    final legacy = box.get(legacyKey);
+    if (legacy is! String || legacy.trim().isEmpty) {
+      return null;
+    }
+    unawaited(box.put(scopedKey, legacy));
+    unawaited(box.delete(legacyKey));
+    return legacy;
+  }
 
   Future<OpenerDraft> saveDraft({
     required OpenerResult result,
@@ -157,8 +212,12 @@ class OpenerResultCacheService {
   }
 
   List<OpenerDraft> loadDrafts() {
-    final raw = StorageService.settingsBox.get(_draftsKey);
-    if (raw is! String || raw.trim().isEmpty) {
+    final key = _draftsKey;
+    if (key == null) {
+      return const [];
+    }
+    final raw = _readScopedWithLegacyMigration(key, _draftsKeyPrefix);
+    if (raw == null || raw.trim().isEmpty) {
       return const [];
     }
 
@@ -273,19 +332,29 @@ class OpenerResultCacheService {
   }
 
   Future<void> clearDrafts() async {
-    await StorageService.settingsBox.delete(_draftsKey);
+    // 舊未綁 key 一併清：清理語意是「這台裝置的草稿清單歸零」。
+    await StorageService.settingsBox.delete(_draftsKeyPrefix);
+    final key = _draftsKey;
+    if (key == null) return;
+    await StorageService.settingsBox.delete(key);
   }
 
   Future<void> saveLatest(OpenerResult result) async {
+    final key = _latestResultKey;
+    if (key == null) return;
     await StorageService.settingsBox.put(
-      _latestResultKey,
+      key,
       jsonEncode(result.toJson()),
     );
   }
 
   OpenerResult? loadLatest() {
-    final raw = StorageService.settingsBox.get(_latestResultKey);
-    if (raw is! String || raw.trim().isEmpty) {
+    final key = _latestResultKey;
+    if (key == null) {
+      return null;
+    }
+    final raw = _readScopedWithLegacyMigration(key, _latestResultKeyPrefix);
+    if (raw == null || raw.trim().isEmpty) {
       return null;
     }
 
@@ -307,12 +376,17 @@ class OpenerResultCacheService {
   }
 
   Future<void> clearLatest() async {
-    await StorageService.settingsBox.delete(_latestResultKey);
+    await StorageService.settingsBox.delete(_latestResultKeyPrefix);
+    final key = _latestResultKey;
+    if (key == null) return;
+    await StorageService.settingsBox.delete(key);
   }
 
   Future<void> _saveDrafts(List<OpenerDraft> drafts) async {
+    final key = _draftsKey;
+    if (key == null) return;
     await StorageService.settingsBox.put(
-      _draftsKey,
+      key,
       jsonEncode(drafts.map((draft) => draft.toJson()).toList()),
     );
   }

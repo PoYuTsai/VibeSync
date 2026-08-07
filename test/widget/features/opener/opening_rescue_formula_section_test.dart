@@ -99,9 +99,12 @@ void main() {
 
   setUp(() async {
     await Hive.openBox(AppConstants.settingsBox);
+    // 草稿 key 已綁帳號；screen 內部建構的 service 只能靠預設覆蓋拿到 owner。
+    OpenerResultCacheService.debugDefaultOwnerIdOverride = () => 'owner-a';
   });
 
   tearDown(() async {
+    OpenerResultCacheService.debugDefaultOwnerIdOverride = null;
     await Hive.deleteBoxFromDisk(AppConstants.settingsBox);
   });
 

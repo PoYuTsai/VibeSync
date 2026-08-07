@@ -45,12 +45,14 @@ class PartnerRepository {
     PartnerDataQualityRepository? qualityRepo,
     CoachFollowUpRepository? followUpRepo,
     CoachingOutcomeRepository? outcomeRepo,
+    OpenerResultCacheService? openerDraftCache,
   })  : _box = box ?? StorageService.partnersBox,
         _injectedConversationBox = conversationBox,
         _injectedStyleRepo = styleRepo,
         _injectedQualityRepo = qualityRepo,
         _injectedFollowUpRepo = followUpRepo,
-        _injectedOutcomeRepo = outcomeRepo;
+        _injectedOutcomeRepo = outcomeRepo,
+        _injectedOpenerDraftCache = openerDraftCache;
 
   final Box<Partner> _box;
   final Box<Conversation>? _injectedConversationBox;
@@ -58,6 +60,7 @@ class PartnerRepository {
   final PartnerDataQualityRepository? _injectedQualityRepo;
   final CoachFollowUpRepository? _injectedFollowUpRepo;
   final CoachingOutcomeRepository? _injectedOutcomeRepo;
+  final OpenerResultCacheService? _injectedOpenerDraftCache;
 
   // Lazy so callers that never invoke `merge` (e.g. the A1 migration path
   // and its tests) don't pay for opening the conversations box.
@@ -85,8 +88,10 @@ class PartnerRepository {
       CoachingOutcomeRepositoryImpl(StorageService.coachingOutcomeEventsBox);
 
   // Stateless facade over the shared settings box — safe to construct per
-  // cascade call, no injection seam needed (Batch 4 #1 opener draft cascade).
-  OpenerResultCacheService get _openerDraftCache => OpenerResultCacheService();
+  // cascade call（Batch 4 #1 opener draft cascade）。2026-08-07 起 key 綁
+  // 帳號，測試需注入固定 owner 的實例，故補注入縫。
+  OpenerResultCacheService get _openerDraftCache =>
+      _injectedOpenerDraftCache ?? OpenerResultCacheService();
 
   Partner? getById(String id) => _box.get(id);
 

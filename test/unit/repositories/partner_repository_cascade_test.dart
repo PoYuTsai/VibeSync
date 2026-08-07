@@ -151,6 +151,9 @@ void main() {
       qualityRepo: qualityRepo,
       followUpRepo: followUpRepo,
       outcomeRepo: outcomeRepo,
+      // opener 草稿 key 已綁帳號；cascade 測試統一用固定 owner。
+      openerDraftCache:
+          OpenerResultCacheService(ownerIdResolver: () => 'owner-a'),
     );
   });
 
@@ -525,7 +528,7 @@ void main() {
   // surviving identity, and unscoped (global-entry) drafts are never touched.
 
   Future<void> saveOpenerDraft(String title, {String? partnerId}) async {
-    await OpenerResultCacheService().saveDraft(
+    await OpenerResultCacheService(ownerIdResolver: () => 'owner-a').saveDraft(
       result: const OpenerResult(
         openers: {'extend': 'line'},
         recommendedPick: 'extend',
@@ -541,7 +544,7 @@ void main() {
     final p2 = _partner('p2');
     await partnerBox.put(p1.id, p1);
     await partnerBox.put(p2.id, p2);
-    final cache = OpenerResultCacheService();
+    final cache = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
     await saveOpenerDraft('p1 draft', partnerId: 'p1');
     await saveOpenerDraft('p2 draft', partnerId: 'p2');
     await saveOpenerDraft('global draft');
@@ -583,7 +586,7 @@ void main() {
     );
     // Draft survives the failed delete — atomic-failure semantics.
     expect(
-      OpenerResultCacheService()
+      OpenerResultCacheService(ownerIdResolver: () => 'owner-a')
           .loadDraftsForScope(partnerId: 'p1')
           .map((d) => d.title),
       ['survives guard'],
@@ -595,7 +598,7 @@ void main() {
     final target = _partner('p2');
     await partnerBox.put(source.id, source);
     await partnerBox.put(target.id, target);
-    final cache = OpenerResultCacheService();
+    final cache = OpenerResultCacheService(ownerIdResolver: () => 'owner-a');
     await saveOpenerDraft('source draft', partnerId: 'p1');
     await saveOpenerDraft('target draft', partnerId: 'p2');
     await saveOpenerDraft('global draft');
@@ -625,7 +628,7 @@ void main() {
       throwsA(isA<ArgumentError>()),
     );
     expect(
-      OpenerResultCacheService()
+      OpenerResultCacheService(ownerIdResolver: () => 'owner-a')
           .loadDraftsForScope(partnerId: 'p1')
           .map((d) => d.title),
       ['survives guard'],
