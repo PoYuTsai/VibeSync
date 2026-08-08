@@ -1010,3 +1010,138 @@ Deno.test("claim RPC：贈抽列 FOR UPDATE＋懶消耗同交易＋replay 不消
   // 簽名零改動。
   assert(bonusAtomicMigration.includes("p_charge_quota           BOOLEAN DEFAULT TRUE"));
 });
+
+// ── 訂閱送 SR 限定翻牌（2026-08-08）：券表＋事件標記＋計數排除＋消耗 RPC ────
+const srTicketTableMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260808155202_practice_sr_draw_tickets.sql",
+    import.meta.url,
+  ),
+);
+const srTicketExcludeMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260808155210_claim_draw_exclude_sr_ticket.sql",
+    import.meta.url,
+  ),
+);
+const srTicketRpcMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260808155220_claim_sr_ticket_draw_rpc.sql",
+    import.meta.url,
+  ),
+);
+
+Deno.test("SR 券表：PK user_id（終身一次）＋tier CHECK＋RLS 零 policy＋事件 bonus_source CHECK", () => {
+  assert(
+    srTicketTableMigration.includes(
+      "CREATE TABLE IF NOT EXISTS public.practice_sr_draw_tickets",
+    ),
+  );
+  assert(
+    srTicketTableMigration.includes(
+      "user_id             UUID        PRIMARY KEY",
+    ),
+  );
+  assert(
+    srTicketTableMigration.includes(
+      "CHECK (tier_at_grant IN ('starter', 'essential'))",
+    ),
+  );
+  assert(
+    srTicketTableMigration.includes(
+      "ALTER TABLE public.practice_sr_draw_tickets ENABLE ROW LEVEL SECURITY",
+    ),
+  );
+  assert(!srTicketTableMigration.includes("CREATE POLICY"));
+  // 事件表標記欄：值域鎖死，主 RPC 計數靠它排除券抽。
+  assert(
+    srTicketTableMigration.includes(
+      "ADD COLUMN IF NOT EXISTS bonus_source TEXT",
+    ),
+  );
+  assert(
+    srTicketTableMigration.includes(
+      "CHECK (bonus_source IS NULL OR bonus_source IN ('subscription_sr'))",
+    ),
+  );
+});
+
+Deno.test("主 claim RPC：4 個 free_used 計數位點全部排除券抽，其餘語意鎖不變", () => {
+  assert(
+    srTicketExcludeMigration.includes(
+      "CREATE OR REPLACE FUNCTION public.claim_practice_profile_draw",
+    ),
+  );
+  // 計數位點恰 4 處（step 1 replay、2a、step 3、unique_violation replay）。
+  // 逐行比對（排除檔頭註解裡的字樣）。
+  const excludeCount = srTicketExcludeMigration
+    .split("\n")
+    .filter((line) => line.trim() === "AND bonus_source IS NULL;").length;
+  assert(
+    excludeCount === 4,
+    `expected 4 bonus_source exclusions, got ${excludeCount}`,
+  );
+  // 每處排除都緊跟在 cost=0 條件之後（防呆：不是加在別的查詢上）。
+  const countBlocks = srTicketExcludeMigration.split("cost_messages = 0");
+  assert(countBlocks.length - 1 === 4, "expected 4 cost=0 count sites");
+  for (let i = 1; i < countBlocks.length; i++) {
+    assert(
+      countBlocks[i].trimStart().startsWith("AND bonus_source IS NULL"),
+      `count site ${i} missing bonus_source exclusion`,
+    );
+  }
+  // 20260802120000 的加固語意原樣保留（鎖數、懶消耗條件、簽名）。
+  const lockCount =
+    srTicketExcludeMigration.split("\n  FOR UPDATE;").length - 1;
+  assert(lockCount === 2, `expected 2 FOR UPDATE statements, got ${lockCount}`);
+  assert(
+    srTicketExcludeMigration.includes(
+      "IF v_cost = 0 AND v_bonus_available AND v_free_used >= p_free_allowance",
+    ),
+  );
+  assert(
+    srTicketExcludeMigration.includes(
+      "p_charge_quota           BOOLEAN DEFAULT TRUE",
+    ),
+  );
+  // 一般抽的 INSERT 不寫 bonus_source（維持 NULL＝一般抽）。
+  assert(!srTicketExcludeMigration.includes("'subscription_sr'"));
+});
+
+Deno.test("SR 券消耗 RPC：券列 FOR UPDATE＋鎖前後雙 replay＋事件與 consumed 同交易＋service_role only", () => {
+  assert(
+    srTicketRpcMigration.includes(
+      "CREATE OR REPLACE FUNCTION public.claim_practice_sr_ticket_draw",
+    ),
+  );
+  assert(
+    srTicketRpcMigration.includes("FROM public.practice_sr_draw_tickets"),
+  );
+  const lockCount = srTicketRpcMigration.split("\n  FOR UPDATE;").length - 1;
+  assert(lockCount === 1, `expected 1 FOR UPDATE statement, got ${lockCount}`);
+  assert(
+    srTicketRpcMigration.includes("PRACTICE_SR_TICKET_NOT_AVAILABLE"),
+  );
+  assert(
+    srTicketRpcMigration.includes("PRACTICE_DRAW_PROFILE_CONFLICT"),
+  );
+  // 事件必帶券標記＋cost=0。
+  assert(srTicketRpcMigration.includes("0, 'subscription_sr'"));
+  // 鎖前 replay ＋ 鎖後 replay ＋ unique_violation replay ＝ 3 條回放路徑，
+  // 全部在 consumed 標記之前 return。
+  const replayCount =
+    srTicketRpcMigration.split("'idempotent_replay', TRUE").length - 1;
+  assert(replayCount === 3, `expected 3 replay paths, got ${replayCount}`);
+  const consumeIdx = srTicketRpcMigration.indexOf("SET consumed_at = now()");
+  const lastReplayIdx = srTicketRpcMigration.lastIndexOf(
+    "'idempotent_replay', TRUE",
+  );
+  assert(consumeIdx > lastReplayIdx, "consume must come after all replays");
+  // service_role only。
+  assert(
+    srTicketRpcMigration.includes(
+      "GRANT EXECUTE ON FUNCTION public.claim_practice_sr_ticket_draw",
+    ),
+  );
+  assert(srTicketRpcMigration.includes("FROM authenticated"));
+});
