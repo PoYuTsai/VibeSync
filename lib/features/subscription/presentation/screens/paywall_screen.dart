@@ -350,7 +350,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       ? const SizedBox(width: double.infinity)
                       : EntranceReveal(
                           key: ValueKey('billing-${selected.id}'),
-                          offsetY: 4,
+                          duration: AppMotion.state,
+                          offsetY: 12,
                           child: Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: _buildSelectedBillingCard(

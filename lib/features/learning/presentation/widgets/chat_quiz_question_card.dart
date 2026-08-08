@@ -121,7 +121,8 @@ class ChatQuizQuestionCard extends StatelessWidget {
             child: !revealed
                 ? const SizedBox(width: double.infinity)
                 : EntranceReveal(
-                    offsetY: 0,
+                    duration: AppMotion.state,
+                    offsetY: 12,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -267,7 +268,8 @@ class _ChoiceRow extends StatelessWidget {
                     child: !revealed
                         ? const SizedBox(width: double.infinity)
                         : EntranceReveal(
-                            offsetY: 0,
+                            duration: AppMotion.state,
+                            offsetY: 12,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [

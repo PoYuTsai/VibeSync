@@ -7557,7 +7557,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             child: !_showDetailedAnalysis
                                 ? const SizedBox(width: double.infinity)
                                 : EntranceReveal(
-                                    offsetY: 0,
+                                    duration: AppMotion.state,
+                                    offsetY: 12,
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.stretch,
