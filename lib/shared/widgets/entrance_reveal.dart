@@ -13,8 +13,8 @@ class EntranceReveal extends StatefulWidget {
     required this.child,
     this.duration = AppMotion.enter,
     this.curve = AppMotion.easeOut,
-    this.offsetY = 8,
-    this.beginScale = 1,
+    this.offsetY = 14,
+    this.beginScale = 0.98,
   });
 
   final Widget child;

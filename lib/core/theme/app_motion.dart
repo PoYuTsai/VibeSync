@@ -15,7 +15,9 @@ abstract final class AppMotion {
   static const Duration state = Duration(milliseconds: 240);
   static const Duration celebrate = Duration(milliseconds: 320);
 
-  static const Curve easeOut = Curves.easeOutCubic;
+  /// 強力 ease-out：前段比 easeOutCubic 快、尾段收更長，
+  /// 同樣時長下動作更「有感」。
+  static const Curve easeOut = Cubic(0.23, 1, 0.32, 1);
   static const Curve celebrateCurve = Curves.easeOutBack;
 
   /// 按壓縮放比例（與 GradientButton 既有 0.97 對齊）。
