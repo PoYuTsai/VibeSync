@@ -8,7 +8,6 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
-import '../../../../shared/widgets/entrance_reveal.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/providers/practice_chat_providers.dart';
@@ -302,43 +301,32 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                           children: [
                             // Game 局固定頂部教練泡泡：UI-only，不進
                             // state.messages／API payload／Hive。
-                            if (state.learningMode ==
-                                PracticeLearningMode.game)
+                            if (state.learningMode == PracticeLearningMode.game)
                               const PracticeGameCoachIntro(),
                             for (final m in state.messages) _Bubble(message: m),
-                            if (state.isSending)
-                              const EntranceReveal(child: _ThinkingBubble()),
+                            if (state.isSending) const _ThinkingBubble(),
                             if (state.debrief != null) ...[
                               const SizedBox(height: 8),
-                              // 完成時刻走慶祝檔：抽卡儀式收尾的成果卡
-                              // 不該瞬現。
-                              EntranceReveal(
-                                duration: AppMotion.celebrate,
-                                curve: AppMotion.celebrateCurve,
-                                opacityCurve: AppMotion.easeOut,
-                                beginScale: 0.9,
-                                offsetY: 0,
-                                child: PracticeDebriefCard(
-                                  summary: state.debrief!.summary,
-                                  strengths: state.debrief!.strengths,
-                                  watchouts: state.debrief!.watchouts,
-                                  suggestedLine: state.debrief!.suggestedLine,
-                                  vibe: state.debrief!.vibe,
-                                  dateChance: state.debrief!.dateChance,
-                                  dateChanceReason:
-                                      state.debrief!.dateChanceReason,
-                                  nextInviteMove: state.debrief!.nextInviteMove,
-                                  gameBreakdownPhaseReached: state
-                                      .debrief!.gameBreakdown?.phaseReached,
-                                  gameBreakdownMissedVariable: state
-                                      .debrief!.gameBreakdown?.missedVariable,
-                                  gameBreakdownFailureState: state
-                                      .debrief!.gameBreakdown?.failureState,
-                                  gameBreakdownNextFirstLine: state
-                                      .debrief!.gameBreakdown?.nextFirstLine,
-                                  gameBreakdownInviteDirection: state
-                                      .debrief!.gameBreakdown?.inviteDirection,
-                                ),
+                              PracticeDebriefCard(
+                                summary: state.debrief!.summary,
+                                strengths: state.debrief!.strengths,
+                                watchouts: state.debrief!.watchouts,
+                                suggestedLine: state.debrief!.suggestedLine,
+                                vibe: state.debrief!.vibe,
+                                dateChance: state.debrief!.dateChance,
+                                dateChanceReason:
+                                    state.debrief!.dateChanceReason,
+                                nextInviteMove: state.debrief!.nextInviteMove,
+                                gameBreakdownPhaseReached:
+                                    state.debrief!.gameBreakdown?.phaseReached,
+                                gameBreakdownMissedVariable: state
+                                    .debrief!.gameBreakdown?.missedVariable,
+                                gameBreakdownFailureState:
+                                    state.debrief!.gameBreakdown?.failureState,
+                                gameBreakdownNextFirstLine:
+                                    state.debrief!.gameBreakdown?.nextFirstLine,
+                                gameBreakdownInviteDirection: state
+                                    .debrief!.gameBreakdown?.inviteDirection,
                               ),
                             ],
                             if (state.hasRetiredDebrief) ...[
@@ -675,19 +663,12 @@ class _DifficultyChips extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 6),
-        AnimatedSwitcher(
-          transitionBuilder: AppMotion.fadeThroughTransition,
-          duration: AppMotion.enter,
-          switchInCurve: AppMotion.easeOut,
-          switchOutCurve: AppMotion.easeOut,
-          child: Text(
-            subtitle,
-            key: ValueKey(state.difficultyPreference),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.caption.copyWith(
-              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.8),
-            ),
+        Text(
+          subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTypography.caption.copyWith(
+            color: AppColors.onBackgroundSecondary.withValues(alpha: 0.8),
           ),
         ),
       ],
@@ -827,66 +808,55 @@ class _LearningModeToggle extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        AnimatedSize(
-          duration: AppMotion.state,
-          curve: AppMotion.easeOut,
-          alignment: Alignment.topCenter,
-          child: AnimatedSwitcher(
-            transitionBuilder: AppMotion.fadeThroughTransition,
-            duration: AppMotion.enter,
-            switchInCurve: AppMotion.easeOut,
-            switchOutCurve: AppMotion.easeOut,
-            child: Container(
-              key: ValueKey(
-                'practice-learning-mode-subtitle-${selectedDescriptor.mode.name}',
+        Container(
+          key: ValueKey(
+            'practice-learning-mode-subtitle-${selectedDescriptor.mode.name}',
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: selectedDescriptor.accent.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selectedDescriptor.accent.withValues(alpha: 0.35),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                selectedDescriptor.icon,
+                size: 15,
+                color: selectedDescriptor.accent,
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: selectedDescriptor.accent.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: selectedDescriptor.accent.withValues(alpha: 0.35),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  '${selectedDescriptor.title}｜${selectedDescriptor.summary}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.onBackgroundPrimary.withValues(
+                      alpha: 0.92,
+                    ),
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
-              child: Row(
-                children: [
-                  Icon(
-                    selectedDescriptor.icon,
-                    size: 15,
-                    color: selectedDescriptor.accent,
-                  ),
-                  const SizedBox(width: 7),
-                  Expanded(
-                    child: Text(
-                      '${selectedDescriptor.title}｜${selectedDescriptor.summary}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.onBackgroundPrimary.withValues(
-                          alpha: 0.92,
-                        ),
-                        fontWeight: FontWeight.w800,
-                      ),
+              // Game 選中（必然已解鎖）才有教學卡可重看的 info icon。
+              if (selectedDescriptor.mode == PracticeLearningMode.game)
+                GestureDetector(
+                  key: const ValueKey('practice-game-intro-info'),
+                  onTap: onGameInfoTap,
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: Icon(
+                      Icons.info_outline,
+                      size: 16,
+                      color: selectedDescriptor.accent,
                     ),
                   ),
-                  // Game 選中（必然已解鎖）才有教學卡可重看的 info icon。
-                  if (selectedDescriptor.mode == PracticeLearningMode.game)
-                    GestureDetector(
-                      key: const ValueKey('practice-game-intro-info'),
-                      onTap: onGameInfoTap,
-                      behavior: HitTestBehavior.opaque,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 8),
-                        child: Icon(
-                          Icons.info_outline,
-                          size: 16,
-                          color: selectedDescriptor.accent,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+                ),
+            ],
           ),
         ),
       ],
@@ -1981,8 +1951,7 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
               ),
               TextButton.icon(
                 key: const ValueKey('practice-hint-button'),
-                onPressed:
-                    canRequest ? _requestHintWithNoPasteableGuard : null,
+                onPressed: canRequest ? _requestHintWithNoPasteableGuard : null,
                 icon: state.isHintLoading
                     ? const SizedBox(
                         width: 14,
@@ -2785,24 +2754,21 @@ class _SessionReviewScreen extends StatelessWidget {
             for (final m in session.messages) _Bubble(message: m),
             if (session.hasRestorableDebrief) ...[
               const SizedBox(height: 12),
-              EntranceReveal(
-                child: PracticeDebriefCard(
-                  summary: session.debriefSummary ?? '',
-                  strengths: session.debriefStrengths,
-                  watchouts: session.debriefWatchouts,
-                  suggestedLine: session.debriefSuggestedLine ?? '',
-                  vibe: session.debriefVibe ?? '中性',
-                  dateChance: session.debriefDateChance,
-                  dateChanceReason: session.debriefDateChanceReason,
-                  nextInviteMove: session.debriefNextInviteMove,
-                  gameBreakdownPhaseReached: session.debriefGamePhaseReached,
-                  gameBreakdownMissedVariable:
-                      session.debriefGameMissedVariable,
-                  gameBreakdownFailureState: session.debriefGameFailureState,
-                  gameBreakdownNextFirstLine: session.debriefGameNextFirstLine,
-                  gameBreakdownInviteDirection:
-                      session.debriefGameInviteDirection,
-                ),
+              PracticeDebriefCard(
+                summary: session.debriefSummary ?? '',
+                strengths: session.debriefStrengths,
+                watchouts: session.debriefWatchouts,
+                suggestedLine: session.debriefSuggestedLine ?? '',
+                vibe: session.debriefVibe ?? '中性',
+                dateChance: session.debriefDateChance,
+                dateChanceReason: session.debriefDateChanceReason,
+                nextInviteMove: session.debriefNextInviteMove,
+                gameBreakdownPhaseReached: session.debriefGamePhaseReached,
+                gameBreakdownMissedVariable: session.debriefGameMissedVariable,
+                gameBreakdownFailureState: session.debriefGameFailureState,
+                gameBreakdownNextFirstLine: session.debriefGameNextFirstLine,
+                gameBreakdownInviteDirection:
+                    session.debriefGameInviteDirection,
               ),
             ] else if (session.hasDebrief) ...[
               const SizedBox(height: 12),

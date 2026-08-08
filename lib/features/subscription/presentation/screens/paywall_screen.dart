@@ -21,7 +21,6 @@ import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/services/link_launch_service.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
-import '../../../../shared/widgets/entrance_reveal.dart';
 import '../../../../shared/widgets/pressable_scale.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/quarterly_savings.dart';
@@ -340,28 +339,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     ),
                   ),
                 ),
-                // 選中方案的明細卡：出現/換方案時 240ms 展開＋淡入，
-                // 不瞬跳（key 綁方案 id，切換才重播）。
-                AnimatedSize(
-                  duration: AppMotion.state,
-                  curve: AppMotion.easeOut,
-                  alignment: Alignment.topCenter,
-                  child: selected == null
-                      ? const SizedBox(width: double.infinity)
-                      : EntranceReveal(
-                          key: ValueKey('billing-${selected.id}'),
-                          duration: AppMotion.state,
-                          offsetY: 12,
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: _buildSelectedBillingCard(
-                              option: selected,
-                              isDowngrade: isDowngrade,
-                              isCurrentPlan: isCurrentPlan,
-                            ),
-                          ),
-                        ),
-                ),
+                if (selected != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: _buildSelectedBillingCard(
+                      option: selected,
+                      isDowngrade: isDowngrade,
+                      isCurrentPlan: isCurrentPlan,
+                    ),
+                  ),
                 const SizedBox(height: 8),
                 BrandPrimaryButton(
                   label: _primaryButtonText(
@@ -444,8 +430,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           IgnorePointer(
             ignoring: !_isPurchasing,
             // 單一 scrim 的淡入淡出沒有新舊內容並存的殘影問題，維持預設
-            // cross-fade；套 fadeThroughTransition 會讓退場 spinner 的
-            // ticker 多活半段動畫，spinner 守門測試（2.1(b)）會抓到。
+            // cross-fade（2026-08 殘影拆除刻意保留此處）；退場 spinner 的
+            // ticker 生命週期由 spinner 守門測試（2.1(b)）釘住。
             child: AnimatedSwitcher(
               duration: AppMotion.enter,
               switchInCurve: AppMotion.easeOut,

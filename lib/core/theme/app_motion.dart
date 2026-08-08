@@ -1,5 +1,5 @@
 // lib/core/theme/app_motion.dart
-import 'package:flutter/widgets.dart';
+import 'package:flutter/animation.dart';
 
 /// 全 App 動效 token：新動畫一律從這裡拿 duration/curve，
 /// 不再就地寫 magic number。
@@ -22,22 +22,4 @@ abstract final class AppMotion {
 
   /// 按壓縮放比例（與 GradientButton 既有 0.97 對齊）。
   static const double pressedScale = 0.97;
-
-  /// AnimatedSwitcher 專用 fade-through：舊 child 先完全消失、新 child 才
-  /// 進場，兩者永不重疊。預設的交叉淡化會把新舊內容疊在同一位置同時顯示，
-  /// 深色底＋粗體字下疊影像殘影（Eric 2026-08-08 真機回報）。
-  /// 原理：進場動畫值 0→1、退場是同一條曲線反放 1→0；把可見區間鎖在
-  /// 0.5 以上，前半段（退場的後半）舊的已隱形、新的還沒現身。
-  static Widget fadeThroughTransition(
-    Widget child,
-    Animation<double> animation,
-  ) {
-    return FadeTransition(
-      opacity: CurvedAnimation(
-        parent: animation,
-        curve: const Interval(0.5, 1),
-      ),
-      child: child,
-    );
-  }
 }

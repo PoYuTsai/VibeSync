@@ -19,7 +19,6 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
-import '../../../../shared/widgets/entrance_reveal.dart';
 import '../../../../shared/widgets/pressable_scale.dart';
 import '../../domain/models/chat_quiz.dart';
 
@@ -113,30 +112,19 @@ class ChatQuizQuestionCard extends StatelessWidget {
                 onTap: () => onSelect(choice.id),
               ),
             ),
-          // 送出後就地展開，不瞬跳：高度 240ms 展開＋內容 200ms 淡入。
-          AnimatedSize(
-            duration: AppMotion.state,
-            curve: AppMotion.easeOut,
-            alignment: Alignment.topCenter,
-            child: !revealed
-                ? const SizedBox(width: double.infinity)
-                : EntranceReveal(
-                    duration: AppMotion.state,
-                    offsetY: 12,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 4),
-                        _TakeawayPanel(
-                          takeaway: question.takeaway,
-                          solved: selectedChoiceId != null &&
-                              question.isCorrectChoice(selectedChoiceId!),
-                          onReadSource: onReadSource,
-                        ),
-                      ],
-                    ),
-                  ),
-          ),
+          if (revealed)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                _TakeawayPanel(
+                  takeaway: question.takeaway,
+                  solved: selectedChoiceId != null &&
+                      question.isCorrectChoice(selectedChoiceId!),
+                  onReadSource: onReadSource,
+                ),
+              ],
+            ),
         ],
       ),
     );
@@ -249,14 +237,14 @@ class _ChoiceRow extends StatelessWidget {
                           duration: AppMotion.enter,
                           switchInCurve: AppMotion.easeOut,
                           switchOutCurve: AppMotion.easeOut,
-                          // 這裡是刻意設計的 Scale＋Fade 圖示切換，
-                          // 不套全域 fadeThroughTransition。
+                          // 這裡是刻意設計的 Scale＋Fade 圖示切換（純 icon
+                          // 無文字，不受 2026-08 殘影拆除影響）。
                           transitionBuilder: (child, animation) =>
                               ScaleTransition(
                             scale: Tween<double>(begin: 0.6, end: 1)
                                 .animate(animation),
-                            child:
-                                FadeTransition(opacity: animation, child: child),
+                            child: FadeTransition(
+                                opacity: animation, child: child),
                           ),
                           child: Icon(
                             leadingIcon,
@@ -281,58 +269,47 @@ class _ChoiceRow extends StatelessWidget {
                       ),
                     ],
                   ),
-                  // 送出後就地展開，不瞬跳：高度 240ms 展開＋內容 200ms 淡入。
-                  AnimatedSize(
-                    duration: AppMotion.state,
-                    curve: AppMotion.easeOut,
-                    alignment: Alignment.topCenter,
-                    child: !revealed
-                        ? const SizedBox(width: double.infinity)
-                        : EntranceReveal(
-                            duration: AppMotion.state,
-                            offsetY: 12,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 8),
-                                // Wrap 而非 Row：大字級在窄螢幕時兩個標籤放不進一行。
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 2,
-                                  children: [
-                                    Text(
-                                      verdictLabel,
-                                      style: AppTypography.caption.copyWith(
-                                        color: choice.isCorrect
-                                            ? AppColors.success
-                                            : AppColors.error,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    if (isSelected)
-                                      Text(
-                                        kChatQuizYourPickLabel,
-                                        style: AppTypography.caption.copyWith(
-                                          color: AppColors.onBackgroundSecondary
-                                              .withValues(alpha: 0.75),
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  choice.feedback,
-                                  style: AppTypography.bodySmall.copyWith(
-                                    color: AppColors.onBackgroundSecondary
-                                        .withValues(alpha: 0.85),
-                                    height: 1.45,
-                                  ),
-                                ),
-                              ],
+                  if (revealed)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 8),
+                        // Wrap 而非 Row：大字級在窄螢幕時兩個標籤放不進一行。
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 2,
+                          children: [
+                            Text(
+                              verdictLabel,
+                              style: AppTypography.caption.copyWith(
+                                color: choice.isCorrect
+                                    ? AppColors.success
+                                    : AppColors.error,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
+                            if (isSelected)
+                              Text(
+                                kChatQuizYourPickLabel,
+                                style: AppTypography.caption.copyWith(
+                                  color: AppColors.onBackgroundSecondary
+                                      .withValues(alpha: 0.75),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          choice.feedback,
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.onBackgroundSecondary
+                                .withValues(alpha: 0.85),
+                            height: 1.45,
                           ),
-                  ),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),

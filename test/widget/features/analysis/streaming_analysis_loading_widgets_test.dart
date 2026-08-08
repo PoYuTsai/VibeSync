@@ -30,7 +30,7 @@ void main() {
       expect(find.text('一'), findsOneWidget);
 
       await tester.pump(const Duration(milliseconds: 100));
-      // AnimatedSwitcher cross-fades; both old + new may briefly exist.
+      // 純 Text 直接換字（2026-08 殘影拆除後無過場動畫）。
       expect(find.text('二'), findsOneWidget);
 
       await tester.pump(const Duration(milliseconds: 100));

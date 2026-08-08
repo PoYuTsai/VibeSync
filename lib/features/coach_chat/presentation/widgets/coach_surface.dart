@@ -7,7 +7,6 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
-import '../../../../shared/widgets/entrance_reveal.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
@@ -371,26 +370,22 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
           ),
           if (isLoading) ...[
             const SizedBox(height: 14),
-            EntranceReveal(
-              child: CoachChatProgressNotice(
-                update: progress,
-                question: _lastAskedQuestion,
-              ),
+            CoachChatProgressNotice(
+              update: progress,
+              question: _lastAskedQuestion,
             ),
           ] else if (activeError) ...[
             const SizedBox(height: 14),
-            EntranceReveal(
-              child: _CoachFailureNotice(
-                title: CoachSurface.failureTitleFor(activeErrorObject!),
-                subtitle: CoachSurface.failureSubtitleFor(activeErrorObject),
-                question: _lastAskedQuestion!,
-                message: CoachSurface.failureMessageFor(activeErrorObject),
-                actionLabel:
-                    CoachSurface.failureActionLabelFor(activeErrorObject),
-                onRetry: CoachSurface.isQuotaError(activeErrorObject)
-                    ? (widget.onQuotaExceeded ?? _retryLastQuestion)
-                    : _retryLastQuestion,
-              ),
+            _CoachFailureNotice(
+              title: CoachSurface.failureTitleFor(activeErrorObject!),
+              subtitle: CoachSurface.failureSubtitleFor(activeErrorObject),
+              question: _lastAskedQuestion!,
+              message: CoachSurface.failureMessageFor(activeErrorObject),
+              actionLabel:
+                  CoachSurface.failureActionLabelFor(activeErrorObject),
+              onRetry: CoachSurface.isQuotaError(activeErrorObject)
+                  ? (widget.onQuotaExceeded ?? _retryLastQuestion)
+                  : _retryLastQuestion,
             ),
             if (timeline.isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -462,10 +457,12 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
       final flagged = flag.isFlagged;
       // FutureProvider（2026-08-03 冷啟動風格完整性修）：這裡只是顯示用的
       // 來源標籤，載入中先當沒有風格，resolve 後這個 ConsumerWidget 會自動重繪。
-      final styleContext = ref.watch(coachChatStyleContextProvider((
-        partnerId: partnerId,
-        includePartnerOverride: !flagged,
-      ))).valueOrNull;
+      final styleContext = ref
+          .watch(coachChatStyleContextProvider((
+            partnerId: partnerId,
+            includePartnerOverride: !flagged,
+          )))
+          .valueOrNull;
       if (styleContext != null && styleContext.trim().isNotEmpty) {
         sources.add('你的風格');
       }
@@ -607,16 +604,14 @@ class _CoachChatThreadView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // key 綁 result id：新回覆換 id 重掛載才重播進場，重繪不會閃。
-        EntranceReveal(
+        // key 綁 result id：新回覆換 id 重掛載，內部展開狀態不殘留。
+        CoachChatResultView(
           key: ValueKey('coach-answer-${latest.id}'),
-          child: CoachChatResultView(
-            result: latest,
-            question: latest.question,
-            dailyRemaining: dailyRemaining,
-            onFollowUp: onFollowUp,
-            onForceAnswer: onForceAnswer,
-          ),
+          result: latest,
+          question: latest.question,
+          dailyRemaining: dailyRemaining,
+          onFollowUp: onFollowUp,
+          onForceAnswer: onForceAnswer,
         ),
         if (latest.earlierSummary?.trim().isNotEmpty == true) ...[
           const SizedBox(height: 10),

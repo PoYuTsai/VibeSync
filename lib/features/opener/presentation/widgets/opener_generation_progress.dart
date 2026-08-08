@@ -13,7 +13,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 
 const List<String> kOpenerScreenshotProgressPhrases = <String>[
@@ -99,17 +98,12 @@ class _OpenerGenerationProgressState extends State<OpenerGenerationProgress> {
           valueColor: AlwaysStoppedAnimation<Color>(AppColors.ctaStart),
         ),
         const SizedBox(height: 12),
-        AnimatedSwitcher(
-          transitionBuilder: AppMotion.fadeThroughTransition,
-          duration: const Duration(milliseconds: 300),
-          child: Text(
-            _phrases[stage],
-            key: ValueKey<int>(stage),
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.onBackgroundSecondary,
-            ),
-            textAlign: TextAlign.center,
+        Text(
+          _phrases[stage],
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.onBackgroundSecondary,
           ),
+          textAlign: TextAlign.center,
         ),
       ],
     );
