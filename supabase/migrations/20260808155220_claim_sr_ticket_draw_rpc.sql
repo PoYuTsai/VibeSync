@@ -26,8 +26,9 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_existing public.practice_profile_draw_events;
-  v_ticket   public.practice_sr_draw_tickets;
+  v_existing     public.practice_profile_draw_events;
+  v_ticket       public.practice_sr_draw_tickets;
+  v_ticket_found BOOLEAN;
 BEGIN
   -- 輸入驗證（SECURITY DEFINER 下 RLS 不擋垃圾輸入，逐項明確驗）。
   IF p_user_id IS NULL THEN
@@ -54,18 +55,16 @@ BEGIN
     );
   END IF;
 
-  -- ── 2. 鎖券列；無券或已用 → NOT_AVAILABLE（fail-closed）────────────────────
+  -- ── 2. 鎖券列（先鎖不判：券況判定必須等 2a 回放之後）─────────────────────
   SELECT * INTO v_ticket
   FROM public.practice_sr_draw_tickets
   WHERE user_id = p_user_id
   FOR UPDATE;
-  IF NOT FOUND OR v_ticket.consumed_at IS NOT NULL THEN
-    RAISE EXCEPTION 'PRACTICE_SR_TICKET_NOT_AVAILABLE';
-  END IF;
+  v_ticket_found := FOUND;
 
   -- ── 2a. 鎖後二次 replay：併發同 requestId 的後到者從券鎖醒來時，先到者的
-  --     事件可能已 commit（比照主 claim RPC 2a），不回放會把冪等重試錯打成
-  --     NOT_AVAILABLE。────────────────────────────────────────────────────
+  --     事件已 commit 且券已標 consumed——先判券況會把冪等重試錯打成
+  --     NOT_AVAILABLE（PG16 smoke T2 實測抓到），必須先回放。──────────────
   SELECT * INTO v_existing
   FROM public.practice_profile_draw_events
   WHERE user_id = p_user_id AND request_id = p_request_id;
@@ -74,6 +73,11 @@ BEGIN
       'profile_id', v_existing.profile_id,
       'idempotent_replay', TRUE
     );
+  END IF;
+
+  -- ── 2b. 券況判定；無券或已用 → NOT_AVAILABLE（fail-closed）────────────────
+  IF NOT v_ticket_found OR v_ticket.consumed_at IS NOT NULL THEN
+    RAISE EXCEPTION 'PRACTICE_SR_TICKET_NOT_AVAILABLE';
   END IF;
 
   -- ── 3. 寫事件（unique 防重複 request / 同窗重複 profile）───────────────────
