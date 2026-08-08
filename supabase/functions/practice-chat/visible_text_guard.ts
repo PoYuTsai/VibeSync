@@ -187,20 +187,24 @@ const DEBRIEF_ALLOWED_SENTINELS = ["框架掉了"];
 // 的窄型態。NFKC 後全形數字／斜線已折疊，[\/／] 為雙保險。
 const INTERNAL_SCORE_SHAPE_PATTERN = /投入度[^\d]{0,4}\d{1,3}\s*[\/／]\s*100/u;
 
-// gameLedger P1 破口（2026-08-08 Codex 首審）：模型只抄數值內容
+// gameLedger P1 破口（2026-08-08 Codex 首審＋二審收斂）：模型只抄數值內容
 // （「Investment=22」「最低是 Investment 22 分」）時，標籤詞表攔不到。
-// 契約變數名＋數字這個形狀在中文可見輸出無自然語用法；短縮寫（pv/fp/inv）
-// 誤殺面較大，必須帶 =/: 分隔符才攔。注入端已同步去數值，這裡是雙保險。
+// 二審裁定形狀：帶 =/: 分隔符一律攔；無分隔符只攔「分」結尾的分數語——
+// 「Frame 3 個重點」這類自然英文＋量詞不誤殺。注入端已去數值，這裡是雙保險。
 const INTERNAL_VARIABLE_SCORE_PATTERNS = [
-  /\b(?:Value|Frame|Emotion|Investment|Safety)\s*[=:：]?\s*\d{1,3}\b/iu,
-  /\b(?:pv|fp|inv)\s*[=:：]\s*\d{1,3}\b/iu,
+  /\b(?:Value|Frame|Emotion|Investment|Safety|pv|fp|inv)\s*[=:：]\s*\d{1,3}\b/iu,
+  /\b(?:Value|Frame|Emotion|Investment|Safety)\s+\d{1,3}\s*分/iu,
 ];
 
 function hasVisibleInternalScoreShapeLeak(value: string): boolean {
-  const nfkc = value.normalize("NFKC");
-  if (INTERNAL_SCORE_SHAPE_PATTERN.test(nfkc)) return true;
+  // 零寬/控制字元穿透（Codex 二審：p\u200bv=45、Safety\u200b:\u200b9）：
+  // 先剝 \p{C}\p{M} 與已知混淆填充字再比對；無混淆時剝除是 no-op。
+  const compact = value
+    .normalize("NFKC")
+    .replace(/[\p{C}\p{M}\u115f\u1160\u2800]/gu, "");
+  if (INTERNAL_SCORE_SHAPE_PATTERN.test(compact)) return true;
   return INTERNAL_VARIABLE_SCORE_PATTERNS.some((pattern) =>
-    pattern.test(nfkc)
+    pattern.test(compact)
   );
 }
 

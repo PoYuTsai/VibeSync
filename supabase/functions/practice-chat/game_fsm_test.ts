@@ -117,11 +117,12 @@ Deno.test("evaluateGameFsm accumulates BORING when user interrogates instead of 
   assertEquals(snapshot.targetVariable, "Value + Emotion");
 });
 
-// 2026-08-08 詞表單源化的刻意行為變化（Codex 首審要求鎖定）：pv 自揭加分
-// 先前少了「我也」「我以前」，與 questionPressureScore 的自揭詞表不一致；
-// 收斂成同一 SELF_DISCLOSURE_TERMS 後，「我也…」「我以前…」開頭的自揭句
-// 在兩個機制眼中一致算自揭，pv 拿到 +16。
-Deno.test("evaluateGameFsm：「我也」「我以前」自揭句的 pv 高於無自揭句（與壓力詞表同源）", () => {
+// 2026-08-08 詞表單源化的刻意行為變化（Codex 首審要求鎖定、二審要求鎖強度）：
+// pv 自揭加分先前少了「我也」「我以前」，與 questionPressureScore 的自揭詞表
+// 不一致；收斂成同一 SELF_DISCLOSURE_TERMS 後，新詞句拿到與既有自揭詞完全
+// 等價的待遇。組合效果＝+20：pv 直接 +16，questionPressureScore 的自揭折抵
+// 讓 pressure 變 -1 再貢獻 -pressure*4 = +4。
+Deno.test("evaluateGameFsm：「我也」「我以前」自揭句 pv 與既有自揭詞等價（+20 組合效果）", () => {
   const base = {
     temperatureScore: 50,
     familiarityScore: 50,
@@ -131,14 +132,21 @@ Deno.test("evaluateGameFsm：「我也」「我以前」自揭句的 pv 高於�
     ...base,
     turns: [{ role: "user", text: "嗯嗯這樣啊" }],
   });
+  // 既有自揭詞「我喜歡」當基準（句面刻意避開新詞）。
+  const established = evaluateGameFsm({
+    ...base,
+    turns: [{ role: "user", text: "我喜歡去那間咖啡店放空" }],
+  });
+  assertEquals(established.hidden.pv - plain.hidden.pv, 20);
   for (const text of ["我也超愛那家咖啡店", "我以前住過那一區"]) {
     const disclosed = evaluateGameFsm({
       ...base,
       turns: [{ role: "user", text }],
     });
-    assert(
-      disclosed.hidden.pv > plain.hidden.pv,
-      `expected self-disclosure pv boost for "${text}"`,
+    assertEquals(
+      disclosed.hidden.pv,
+      established.hidden.pv,
+      `"${text}" should earn the same pv as an established disclosure term`,
     );
   }
 });

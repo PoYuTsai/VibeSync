@@ -88,6 +88,9 @@ Deno.test("兩側 gate 攔「契約變數名＋數字」分數形，不誤殺自
       "Value:60",
       "最低是 Investment 22 分",
       "pv=45 還不夠高",
+      // Codex 二審零寬字元穿透樣本：剝 \p{C} 後仍要攔。
+      "Safety\u200b:\u200b9",
+      "p\u200bv=45",
     ]
   ) {
     assertEquals(
@@ -106,6 +109,9 @@ Deno.test("兩側 gate 攔「契約變數名＋數字」分數形，不誤殺自
       "投入感有三個亮點",
       "她給了 22 分的熱情這種說法太浮誇",
       "invite 她週末喝咖啡",
+      // Codex 二審誤殺樣本：自然英文＋量詞（無分隔符、非「分」）要放行。
+      "Frame 3 個重點",
+      "Safety 3 個原則",
     ]
   ) {
     assertEquals(
