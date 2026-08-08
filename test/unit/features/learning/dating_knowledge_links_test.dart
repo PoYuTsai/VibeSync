@@ -27,8 +27,7 @@ Set<String> _realChapterKeys() {
   final keys = <String>{};
   for (final file in dir.listSync().whereType<File>()) {
     if (!file.path.endsWith('.json')) continue;
-    final decoded =
-        jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+    final decoded = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
     final bookId = decoded['id'] as String;
     for (final chapter in (decoded['chapters'] as List)) {
       final chapterId = (chapter as Map<String, dynamic>)['id'] as String;
@@ -97,26 +96,9 @@ void main() {
       }
     });
 
-    test('問教練一句五個快捷問句的目標都存在', () {
-      for (final entry in DatingKnowledgeLinks.coachQuestionTable.entries) {
-        expect(
-          realChapters.contains(_key(entry.value)),
-          isTrue,
-          reason: '問句 "${entry.key}" 指向不存在的章節 ${_key(entry.value)}',
-        );
-      }
-    });
-
     test('查不到的 key 回 null，不 fallback 到任何一章', () {
       expect(DatingKnowledgeLinks.forFollowUpPhase(null), isNull);
       expect(DatingKnowledgeLinks.forFollowUpPhase('nonexistentPhase'), isNull);
-      expect(DatingKnowledgeLinks.forCoachQuestion(null), isNull);
-      expect(DatingKnowledgeLinks.forCoachQuestion('隨便打的問句'), isNull);
-      // prefill 是完整句子而不是 chip 文案，查表本來就該落空。
-      expect(
-        DatingKnowledgeLinks.forCoachQuestion('我們聊天卡住了，接下來該怎麼辦？'),
-        isNull,
-      );
     });
   });
 
@@ -159,43 +141,7 @@ void main() {
       }
     });
 
-    test('問教練一句的每個 chip 文案都在對照表裡', () {
-      final source = File(
-        'lib/features/coach_chat/presentation/widgets/coach_surface.dart',
-      ).readAsStringSync();
-      final block = RegExp(
-        r'static const _chips = <String>\[(.*?)\];',
-        dotAll: true,
-      ).firstMatch(source);
-      expect(block, isNotNull, reason: 'chip 清單解析失敗，守門會變成空跑');
-
-      final chips = RegExp("'([^']+)'")
-          .allMatches(block!.group(1)!)
-          .map((m) => m.group(1)!)
-          .toSet();
-      expect(chips.length, 5);
-
-      for (final chip in chips) {
-        expect(
-          DatingKnowledgeLinks.coachQuestionTable.containsKey(chip),
-          isTrue,
-          reason: '快捷問句 "$chip" 沒有對應章節；'
-              '改了文案就要同步 dating_knowledge_links.dart',
-        );
-      }
-    });
-
-    test('對照表沒有多出 widget 已經不存在的問句', () {
-      final source = File(
-        'lib/features/coach_chat/presentation/widgets/coach_surface.dart',
-      ).readAsStringSync();
-      for (final chip in DatingKnowledgeLinks.coachQuestionTable.keys) {
-        expect(
-          source.contains("'$chip'"),
-          isTrue,
-          reason: '對照表有 "$chip" 但 widget 已經沒有這個 chip 了',
-        );
-      }
-    });
+    // 2026-08-09：CoachSurface 五個快捷問句 chip 整組移除，coachQuestionTable
+    // 隨之退場——本 group 只剩 follow-up 三情境的漂移守門。
   });
 }

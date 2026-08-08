@@ -103,6 +103,11 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
   // the CoachSurface focus token (section's existing focus mechanism).
   bool _openCoachInputRequested = false;
 
+  // 教練輸入框聚焦（＝鍵盤展開）時暫時收掉 FAB：鍵盤打開後 Scaffold 會把
+  // FAB 停在鍵盤上緣右下角，正好壓住輸入框 suffix 的送出鈕。純條件渲染、
+  // 無動畫（本 app 已因殘影拆除文字 widget 的進場動畫，不再新增 fade）。
+  bool _coachInputFocused = false;
+
   // 「詳細特質與趨勢」的展開狀態必須放在這裡而不是 section 自己的 State：
   // body 是 lazy ListView，section 在清單底部，展開後往上捲會滑出
   // viewport + cacheExtent 而被回收。若狀態跟著 Element 走，回收即歸零
@@ -116,7 +121,14 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
     if (widget.partnerId != oldWidget.partnerId) {
       // New partner → the orchestrator restarts; don't leak a stale intent.
       _openCoachInputRequested = false;
+      // 原地切換對象後輸入框必然重掛，別讓舊焦點狀態把 FAB 卡在隱藏。
+      _coachInputFocused = false;
     }
+  }
+
+  void _handleCoachInputFocusChanged(bool focused) {
+    if (!mounted || _coachInputFocused == focused) return;
+    setState(() => _coachInputFocused = focused);
   }
 
   void _handleOpenCoachInputRequested() {
@@ -300,6 +312,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                       onTelemetry: _logCoachFollowUpTelemetry,
                       onQuotaExceeded: () async => context.push('/paywall'),
                       openCoachInputRequested: _openCoachInputRequested,
+                      onCoachInputFocusChanged: _handleCoachInputFocusChanged,
                     ),
                   ),
                 ),
@@ -378,23 +391,26 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
             ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showModalBottomSheet(
-          context: context,
-          backgroundColor: Colors.transparent,
-          // Keep conversations created from this screen attached to the
-          // current Partner, including the manual-entry route.
-          builder: (_) => NewConversationSheet(partnerId: partnerId),
-        ),
-        backgroundColor: AppColors.ctaStart,
-        foregroundColor: Colors.white,
-        elevation: 8,
-        shape: const StadiumBorder(),
-        label: const Text(
-          '+ 分析新片段',
-          style: TextStyle(fontWeight: FontWeight.w600),
-        ),
-      ),
+      // 教練輸入框聚焦時整顆收掉（見 _coachInputFocused 註解）。
+      floatingActionButton: _coachInputFocused
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => showModalBottomSheet(
+                context: context,
+                backgroundColor: Colors.transparent,
+                // Keep conversations created from this screen attached to the
+                // current Partner, including the manual-entry route.
+                builder: (_) => NewConversationSheet(partnerId: partnerId),
+              ),
+              backgroundColor: AppColors.ctaStart,
+              foregroundColor: Colors.white,
+              elevation: 8,
+              shape: const StadiumBorder(),
+              label: const Text(
+                '+ 分析新片段',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
     );
   }
 

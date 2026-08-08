@@ -154,9 +154,9 @@ Future<
       required bool openCoachInputRequested,
     }) =>
         pumpTree(
-      partnerId: partnerId,
-      openCoachInputRequested: openCoachInputRequested,
-    ),
+          partnerId: partnerId,
+          openCoachInputRequested: openCoachInputRequested,
+        ),
   );
 }
 
@@ -240,8 +240,7 @@ void main() {
       expect(surface.prefillText, isNull);
     });
 
-    testWidgets('partnerId 原地切換重置閂鎖 → 新對象 false→true 再次 bump token',
-        (t) async {
+    testWidgets('partnerId 原地切換重置閂鎖 → 新對象 false→true 再次 bump token', (t) async {
       final pumped = await _pump(t, openCoachInputRequested: true);
 
       // 首幀 auto-focus 已發、閂鎖鎖上。
@@ -335,58 +334,117 @@ void main() {
       expect(_surface(t).lifecyclePhase, 'chatStalled');
       expect(pumped.apiCalls, isEmpty);
     });
-
   });
 
-  // CoachSurface 在這棵樹裡被渲染，快捷問句的入口一併在這裡驗。
-  group('CoachSurface — Dating Knowledge Library 入口', () {
-    const linkKey = Key('coach_surface_knowledge_link');
-
-    testWidgets('沒點快捷問句時不出現', (t) async {
-      await _pump(t);
-      expect(find.byKey(linkKey), findsNothing);
-    });
-
-    testWidgets('每個快捷問句都能叫出入口，且都有對應章節', (t) async {
+  // CoachSurface 在這棵樹裡被渲染，composer 的版面／焦點行為一併在這裡驗。
+  group('CoachSurface — composer 版面與焦點', () {
+    testWidgets('五個灰色快捷問句 chip 已整組移除，連同知識庫入口', (t) async {
       await _pump(t);
 
-      for (final question in DatingKnowledgeLinks.coachQuestionTable.keys) {
-        await t.tap(find.text(question));
-        await t.pumpAndSettle();
-
-        expect(
-          find.byKey(linkKey),
-          findsOneWidget,
-          reason: '點了「$question」之後應該出現知識庫入口',
-        );
+      for (final question in const [
+        '她是什麼意思？',
+        '我該怎麼回？',
+        '我是不是太急？',
+        '這局值不值得？',
+        '我該推進嗎？',
+      ]) {
+        expect(find.text(question), findsNothing);
       }
-    });
-
-    testWidgets('把問句改掉之後入口收起來——標籤說「這一題」就不能指著上一題', (t) async {
-      await _pump(t);
-
-      await t.tap(find.text('這局值不值得？'));
-      await t.pumpAndSettle();
-      expect(find.byKey(linkKey), findsOneWidget);
-
-      await t.enterText(
-        find.widgetWithText(TextField, '這局值不值得？'),
-        '她說她很忙是什麼意思',
+      // chip 是知識庫入口唯一的觸發來源，chip 沒了入口也不該再出現。
+      expect(
+        find.byKey(const Key('coach_surface_knowledge_link')),
+        findsNothing,
       );
-      await t.pumpAndSettle();
-
-      expect(find.byKey(linkKey), findsNothing);
     });
 
-    testWidgets('對象頁 chip 種入的 prefill 不算快捷問句，不該叫出入口', (t) async {
+    testWidgets('未聚焦：suffix 只有送出鈕、沒有收起鍵盤', (t) async {
       await _pump(t);
 
-      // 這條 prefill 是完整句子而不是 chip 文案，查表本來就會落空；
-      // 若哪天被誤接成同一條路徑，這裡會紅。
-      await t.tap(find.text('聊天卡住了'));
+      expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
+      expect(find.byTooltip('收起鍵盤'), findsNothing);
+      expect(find.byIcon(Icons.keyboard_hide_outlined), findsNothing);
+    });
+
+    testWidgets('聚焦：收起鍵盤出現在 header（不在輸入框 suffix），點了即失焦', (t) async {
+      await _pump(t);
+
+      await t.showKeyboard(find.byType(TextField));
       await t.pumpAndSettle();
 
-      expect(find.byKey(linkKey), findsNothing);
+      final hideButton = find.byTooltip('收起鍵盤');
+      expect(hideButton, findsOneWidget);
+      // 收起鍵盤已移出輸入框：suffix 只剩送出鈕。
+      expect(
+        find.ancestor(of: hideButton, matching: find.byType(TextField)),
+        findsNothing,
+      );
+      expect(
+        find.ancestor(
+          of: find.byIcon(Icons.arrow_upward_rounded),
+          matching: find.byType(TextField),
+        ),
+        findsOneWidget,
+      );
+
+      await t.tap(hideButton);
+      await t.pumpAndSettle();
+
+      final input = t.widget<TextField>(find.byType(TextField));
+      expect(input.focusNode?.hasFocus, isNot(isTrue));
+      expect(find.byTooltip('收起鍵盤'), findsNothing);
+    });
+
+    testWidgets('onCoachInputFocusChanged 隨聚焦/失焦上拋 true/false', (t) async {
+      final events = <bool>[];
+      await _pumpWithFocusListener(t, events.add);
+
+      await t.showKeyboard(find.byType(TextField));
+      await t.pumpAndSettle();
+      expect(events, [true]);
+
+      t.widget<TextField>(find.byType(TextField)).focusNode?.unfocus();
+      await t.pumpAndSettle();
+      expect(events, [true, false]);
     });
   });
+}
+
+/// 帶焦點監聽的精簡 pump（其餘 overrides 與 [_pump] 對齊）。
+Future<void> _pumpWithFocusListener(
+  WidgetTester tester,
+  ValueChanged<bool> onCoachInputFocusChanged,
+) async {
+  await tester.binding.setSurfaceSize(const Size(430, 1600));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
+        coachChatApiServiceProvider.overrideWithValue(
+          CoachChatApiService(invoker: _recordingInvoker([])),
+        ),
+        coachingOutcomeRepositoryProvider
+            .overrideWithValue(MemoryCoachingOutcomeRepository()),
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        partnerByIdProvider(_partnerId).overrideWith((_) => _partner()),
+        partnerAggregateProvider(_partnerId)
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider(_partnerId)
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: CoachFollowUpSection(
+              partnerId: _partnerId,
+              onCoachInputFocusChanged: onCoachInputFocusChanged,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
 }

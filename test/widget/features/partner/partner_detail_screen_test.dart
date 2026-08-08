@@ -226,6 +226,47 @@ void main() {
         reason: '詳情頁主卡應改用互動摘錄；作戰板 nextStep 留在作戰板內頁');
   });
 
+  // 鍵盤展開後 Scaffold 會把 FAB 停在鍵盤上緣右下角，正好壓住教練輸入框
+  // suffix 的送出鈕——聚焦時整顆收掉，失焦即歸位（無動畫、純條件渲染）。
+  testWidgets('教練輸入框聚焦時收起 FAB，失焦後 FAB 回來', (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 2400));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => _aggregateWithTags()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => [_analyzedConv(nextStep: '先穩住節奏')]),
+        partnerListProvider.overrideWith((_) => [_p()]),
+      ],
+      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    expect(find.byType(FloatingActionButton), findsOneWidget);
+
+    // 教練輸入框在 lazy ListView 深處，先捲到讓它掛載。
+    await _scrollUntilVisible(t, find.text('問教練一句'));
+    await t.showKeyboard(find.byType(TextField));
+    await t.pumpAndSettle();
+
+    expect(find.byType(FloatingActionButton), findsNothing,
+        reason: '輸入框聚焦（鍵盤展開）時 FAB 必須收掉，不能壓住送出鈕');
+
+    t.widget<TextField>(find.byType(TextField)).focusNode?.unfocus();
+    await t.pumpAndSettle();
+
+    expect(find.byType(FloatingActionButton), findsOneWidget,
+        reason: '失焦（鍵盤收合）後 FAB 要回來');
+  });
+
   testWidgets('tile delete confirm calls ConversationWriteController.delete',
       (t) async {
     // Give the surface enough height so ListView's cache extent reaches the
@@ -598,8 +639,8 @@ void main() {
         routes: [
           GoRoute(
             path: '/',
-            builder: (_, __) =>
-                const Scaffold(body: Text('home-stub', key: ValueKey('home-stub'))),
+            builder: (_, __) => const Scaffold(
+                body: Text('home-stub', key: ValueKey('home-stub'))),
           ),
           GoRoute(
             path: '/partner/:partnerId',

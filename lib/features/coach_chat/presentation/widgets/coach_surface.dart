@@ -1,7 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -17,11 +18,6 @@ import '../../data/services/coach_chat_api_service.dart';
 import '../../domain/entities/coach_chat_mode.dart';
 import '../../domain/entities/coach_scope.dart';
 import '../../domain/entities/unified_coach_result.dart';
-import '../../../learning/domain/dating_knowledge_links.dart';
-import '../../../learning/domain/models/learning_link_target.dart';
-import '../../../learning/presentation/screens/ebook_detail_screen.dart'
-    show ebookChapterRoute;
-import '../../../learning/presentation/widgets/knowledge_library_link_row.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import 'coach_chat_progress_notice.dart';
@@ -48,6 +44,11 @@ class CoachSurface extends ConsumerStatefulWidget {
   /// 種入（Task 6）。
   final String? lifecyclePhase;
 
+  /// 輸入框焦點變化通知（true＝取得焦點）。對象頁用來在鍵盤展開時暫時
+  /// 收掉 FAB——鍵盤打開後 Scaffold 會把 FAB 停在鍵盤上緣右下角，
+  /// 正好壓住輸入框 suffix 的送出鈕。
+  final ValueChanged<bool>? onInputFocusChanged;
+
   const CoachSurface({
     super.key,
     required this.scope,
@@ -57,6 +58,7 @@ class CoachSurface extends ConsumerStatefulWidget {
     this.focusRequestToken = 0,
     this.prefillText,
     this.lifecyclePhase,
+    this.onInputFocusChanged,
   });
 
   static bool isQuotaError(Object? error) =>
@@ -120,18 +122,13 @@ class CoachSurface extends ConsumerStatefulWidget {
 class _CoachSurfaceState extends ConsumerState<CoachSurface> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
+
+  /// 掛在輸入框上：聚焦後鍵盤展開，要靠這個 context 做 ensureVisible。
+  final _inputFieldKey = GlobalKey();
+
+  /// 等鍵盤 inset 到位再捲動的排程；失焦／卸載時取消。
+  Timer? _ensureInputVisibleTimer;
   String? _lastAskedQuestion;
-
-  /// 最後一次點到的快捷問句 chip；決定知識庫入口連到哪一章。
-  String? _lastTappedChip;
-
-  static const _chips = <String>[
-    '她是什麼意思？',
-    '我該怎麼回？',
-    '我是不是太急？',
-    '這局值不值得？',
-    '我該推進嗎？',
-  ];
 
   @override
   void initState() {
@@ -143,11 +140,10 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
   void didUpdateWidget(covariant CoachSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
     // 熱切換 scope（問教練頁「問誰」chips）：問句記憶是跟著上一條串的，
-    // 留著會讓 A 串的 progress/error 顯示 B 串的問句、知識庫入口連錯章。
+    // 留著會讓 A 串的 progress/error 顯示 B 串的問句。
     // 輸入框草稿刻意不清（設計拍板：切換保留草稿）。
     if (widget.scope != oldWidget.scope) {
       _lastAskedQuestion = null;
-      _lastTappedChip = null;
     }
     if (widget.focusRequestToken != oldWidget.focusRequestToken) {
       final prefill = widget.prefillText?.trim();
@@ -164,6 +160,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
 
   @override
   void dispose() {
+    _ensureInputVisibleTimer?.cancel();
     _focusNode.removeListener(_handleFocusChange);
     _focusNode.dispose();
     _controller.dispose();
@@ -171,7 +168,37 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
   }
 
   void _handleFocusChange() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    widget.onInputFocusChanged?.call(_focusNode.hasFocus);
+    if (_focusNode.hasFocus) {
+      _scheduleEnsureInputVisible();
+    } else {
+      _ensureInputVisibleTimer?.cancel();
+    }
+    setState(() {});
+  }
+
+  /// 聚焦後把輸入框帶回鍵盤上方。post-frame 先讓聚焦那一輪 rebuild 完成，
+  /// 再等鍵盤 inset 大致到位（iOS 展開動畫約 250ms）才捲動；期間失焦或
+  /// 卸載就整段放棄。CoachSurface 也會掛在非 Scrollable 宿主，
+  /// maybeOf 查無 Scrollable 時直接不捲。
+  void _scheduleEnsureInputVisible() {
+    _ensureInputVisibleTimer?.cancel();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_focusNode.hasFocus) return;
+      _ensureInputVisibleTimer = Timer(const Duration(milliseconds: 280), () {
+        if (!mounted || !_focusNode.hasFocus) return;
+        final fieldContext = _inputFieldKey.currentContext;
+        if (fieldContext == null) return;
+        if (Scrollable.maybeOf(fieldContext) == null) return;
+        Scrollable.ensureVisible(
+          fieldContext,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+        );
+      });
+    });
   }
 
   @override
@@ -268,43 +295,26 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                   ),
                 ),
+              // 收起鍵盤從輸入框 suffix 移到 header：suffix 只留送出鈕，
+              // 避免鍵盤上緣的 FAB／手指擋到兩顆擠在一起的小圖示。
+              if (_focusNode.hasFocus)
+                IconButton(
+                  tooltip: '收起鍵盤',
+                  icon: const Icon(Icons.keyboard_hide_outlined, size: 20),
+                  onPressed: _unfocusInput,
+                  color: AppColors.glassTextSecondary,
+                  visualDensity: VisualDensity.compact,
+                ),
             ],
           ),
           const SizedBox(height: 14),
           _CoachMemorySourceStrip(sources: memorySources),
+          // 五個灰色快捷問句 chip 已整組移除（2026-08-09 拍板）：使用者
+          // 直接打自己的問題；知識庫入口改由對象頁三情境 chip
+          // （CoachFollowUpSection）負責。
           const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _chips
-                .map(
-                  (chip) => ActionChip(
-                    label: Text(chip),
-                    onPressed: () => _onSuggestedChipTap(chip),
-                    visualDensity: VisualDensity.compact,
-                    backgroundColor: Colors.white.withValues(alpha: 0.55),
-                    labelStyle: AppTypography.caption.copyWith(
-                      color: AppColors.glassTextPrimary,
-                    ),
-                    side: BorderSide(
-                      color: AppColors.glassBorder.withValues(alpha: 0.7),
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-          // Dating Knowledge Library：點了快捷問句才出現。沒有問句就沒有
-          // 情境，寧可不給入口，也不連一章不相干的內容。
-          if (_knowledgeLink != null) ...[
-            const SizedBox(height: 10),
-            KnowledgeLibraryLinkRow(
-              key: const Key('coach_surface_knowledge_link'),
-              label: '看這一題的完整原理',
-              onTap: _onKnowledgeLinkTap,
-            ),
-          ],
-          const SizedBox(height: 12),
           TextField(
+            key: _inputFieldKey,
             controller: _controller,
             focusNode: _focusNode,
             maxLength: 240,
@@ -312,7 +322,6 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
             maxLines: 3,
             textInputAction: TextInputAction.done,
             onSubmitted: canSubmit ? (_) => _ask() : null,
-            onChanged: _handleQuestionChanged,
             inputFormatters: [LengthLimitingTextInputFormatter(240)],
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.glassTextPrimary,
@@ -342,29 +351,18 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
                 ),
               ),
               suffixIconConstraints: const BoxConstraints(minWidth: 48),
-              suffixIcon: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_focusNode.hasFocus)
-                    IconButton(
-                      tooltip: '收起鍵盤',
-                      icon: const Icon(Icons.keyboard_hide_outlined),
-                      onPressed: _unfocusInput,
-                      color: AppColors.glassTextSecondary,
-                    ),
-                  IconButton(
-                    tooltip: isLoading ? '教練思考中' : '送出問題',
-                    icon: isLoading
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.arrow_upward_rounded),
-                    onPressed: canSubmit ? _ask : null,
-                    color: AppColors.primary,
-                  ),
-                ],
+              // suffix 只留送出鈕；收起鍵盤在卡片 header（見上）。
+              suffixIcon: IconButton(
+                tooltip: isLoading ? '教練思考中' : '送出問題',
+                icon: isLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.arrow_upward_rounded),
+                onPressed: canSubmit ? _ask : null,
+                color: AppColors.primary,
               ),
             ),
           ),
@@ -511,38 +509,6 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
   void _fillSuggestedQuestion(String question) {
     _controller.text = question;
     _controller.selection = TextSelection.collapsed(offset: question.length);
-  }
-
-  /// 只有「點快捷 chip」會記錄知識庫情境；didUpdateWidget 帶進來的 prefill
-  /// 是完整句子（例如對象頁三情境 chip 的 prefill），不是 chip 文案，
-  /// 查表本來就會落空，所以刻意不走這條路徑。
-  void _onSuggestedChipTap(String chip) {
-    _fillSuggestedQuestion(chip);
-    setState(() => _lastTappedChip = chip);
-  }
-
-  /// 使用者把問句改成別的東西之後，入口就不再是「這一題」的原理了。
-  /// 刻意不每次按鍵都 setState：只有從「還停在該 chip」跨到「已經不是」
-  /// 的那一次才重建，之後 `_lastTappedChip` 已是 null 就直接短路。
-  void _handleQuestionChanged(String value) {
-    if (_lastTappedChip == null) return;
-    if (value.trim() == _lastTappedChip) return;
-    setState(() => _lastTappedChip = null);
-  }
-
-  LearningLinkTarget? get _knowledgeLink =>
-      DatingKnowledgeLinks.forCoachQuestion(_lastTappedChip);
-
-  void _onKnowledgeLinkTap() {
-    final target = _knowledgeLink;
-    if (target == null) return;
-    context.push(
-      ebookChapterRoute(
-        target.bookId,
-        target.chapterId,
-        entryId: target.entryId,
-      ),
-    );
   }
 
   Future<void> _retryLastQuestion() async {

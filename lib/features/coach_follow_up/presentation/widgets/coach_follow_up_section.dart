@@ -51,6 +51,10 @@ class CoachFollowUpSection extends StatefulWidget {
   final bool openCoachInputRequested;
   final bool compactPracticePresentation;
 
+  /// CoachSurface 輸入框焦點變化的上拋通知（對象頁鍵盤展開時收 FAB 用）；
+  /// 本層純轉接，不持有狀態。
+  final ValueChanged<bool>? onCoachInputFocusChanged;
+
   const CoachFollowUpSection({
     super.key,
     required this.partnerId,
@@ -58,6 +62,7 @@ class CoachFollowUpSection extends StatefulWidget {
     this.onQuotaExceeded,
     this.openCoachInputRequested = false,
     this.compactPracticePresentation = false,
+    this.onCoachInputFocusChanged,
   });
 
   @override
@@ -96,8 +101,7 @@ class _CoachFollowUpSectionState extends State<CoachFollowUpSection>
       // orchestrator 負責逐對象收回 flag。
       _didAutoFocusCoachInput = false;
     }
-    if (widget.openCoachInputRequested &&
-        !oldWidget.openCoachInputRequested) {
+    if (widget.openCoachInputRequested && !oldWidget.openCoachInputRequested) {
       _scheduleAutoFocusIfNeeded();
     }
   }
@@ -239,6 +243,7 @@ class _CoachFollowUpSectionState extends State<CoachFollowUpSection>
           focusRequestToken: _focusToken,
           prefillText: _prefill,
           lifecyclePhase: _pendingPhase,
+          onInputFocusChanged: widget.onCoachInputFocusChanged,
         ),
       ],
     );
