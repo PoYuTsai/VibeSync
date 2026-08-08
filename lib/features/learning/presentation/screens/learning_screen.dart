@@ -20,13 +20,45 @@ import '../../data/providers/learning_providers.dart';
 import '../widgets/chat_quiz_section.dart';
 import '../widgets/ebook_shelf_section.dart';
 
-class LearningScreen extends ConsumerWidget {
+/// 文章分類篩選 chips 的測試用 key。
+const Key learningArticleFilterAllKey = ValueKey('learning-article-filter-all');
+Key learningArticleFilterKey(String category) =>
+    ValueKey('learning-article-filter-$category');
+
+class LearningScreen extends ConsumerStatefulWidget {
   const LearningScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LearningScreen> createState() => _LearningScreenState();
+}
+
+class _LearningScreenState extends ConsumerState<LearningScreen> {
+  /// 目前選取的文章分類；`null` = 全部。session-only，刻意不進 Hive。
+  String? _selectedCategory;
+
+  @override
+  Widget build(BuildContext context) {
     final subscription = ref.watch(subscriptionProvider);
     final readService = ref.watch(articleReadServiceProvider);
+
+    // 分類清單直接從文章資料推導（保留出現順序），新增分類不必改這裡。
+    final categories = {
+      for (final article in articles) article.category,
+    }.toList(growable: false);
+    final visibleArticles = _selectedCategory == null
+        ? articles
+        : [
+            for (final article in articles)
+              if (article.category == _selectedCategory) article,
+          ];
+
+    // 2 欄卡寬 =（螢幕寬 − 兩側 16 − 中縫 12）÷ 2；乘上 DPR 當解碼寬度。
+    // 比照收藏頁縮圖的 cacheWidth 降採樣：24 張同屏不解全尺寸原圖。
+    final tileWidth = (MediaQuery.sizeOf(context).width - 32 - 12) / 2;
+    final imageCacheWidth = (tileWidth * MediaQuery.devicePixelRatioOf(context))
+        .round()
+        .clamp(64, 4096)
+        .toInt();
 
     return CustomScrollView(
       slivers: [
@@ -126,6 +158,34 @@ class LearningScreen extends ConsumerWidget {
           ),
         ),
 
+        // 分類篩選 chips（2026-08-09 學習頁減長批）：24 篇攤成一列太長，
+        // 讓使用者先挑分類再滑。樣式比照收藏頁的稀有度篩選 pill。
+        SliverToBoxAdapter(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+            child: Row(
+              children: [
+                _CategoryFilterChip(
+                  chipKey: learningArticleFilterAllKey,
+                  label: '全部',
+                  selected: _selectedCategory == null,
+                  onTap: () => setState(() => _selectedCategory = null),
+                ),
+                for (final category in categories) ...[
+                  const SizedBox(width: 8),
+                  _CategoryFilterChip(
+                    chipKey: learningArticleFilterKey(category),
+                    label: category,
+                    selected: _selectedCategory == category,
+                    onTap: () => setState(() => _selectedCategory = category),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+
         // 2-column image grid
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
@@ -136,9 +196,9 @@ class LearningScreen extends ConsumerWidget {
               mainAxisSpacing: 12,
               childAspectRatio: 0.75,
             ),
-            itemCount: articles.length,
+            itemCount: visibleArticles.length,
             itemBuilder: (context, index) {
-              final article = articles[index];
+              final article = visibleArticles[index];
               return GestureDetector(
                 onTap: () {
                   if (subscription.isFreeUser) {
@@ -154,14 +214,16 @@ class LearningScreen extends ConsumerWidget {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      // Background image
+                      // Background image：cacheWidth 依卡寬×DPR 降採樣
                       Image.asset(
                         article.imagePath,
                         fit: BoxFit.cover,
+                        filterQuality: FilterQuality.low,
+                        cacheWidth: imageCacheWidth,
                         errorBuilder: (context, error, stackTrace) {
                           return Container(
-                            color: AppColors.brandSurface2
-                                .withValues(alpha: 0.6),
+                            color:
+                                AppColors.brandSurface2.withValues(alpha: 0.6),
                             child: const Center(
                               child: Icon(Icons.article_outlined,
                                   size: 40, color: Colors.white54),
@@ -266,6 +328,51 @@ class LearningScreen extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 文章分類篩選 pill，樣式比照收藏頁的 _RarityFilterChip。
+class _CategoryFilterChip extends StatelessWidget {
+  const _CategoryFilterChip({
+    required this.chipKey,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Key chipKey;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      key: chipKey,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.ctaStart.withValues(alpha: 0.18)
+              : Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected
+                ? AppColors.ctaStart
+                : Colors.white.withValues(alpha: 0.14),
+          ),
+        ),
+        child: Text(
+          label,
+          style: AppTypography.caption.copyWith(
+            color:
+                selected ? AppColors.ctaStart : AppColors.onBackgroundSecondary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
     );
   }
 }

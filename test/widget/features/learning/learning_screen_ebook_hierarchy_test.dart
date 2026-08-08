@@ -7,9 +7,14 @@
 //
 // 重點是 quota 提示只出現在文章區（電子書不消耗文章額度），
 // 以及既有 24 篇文章與 article id 沒有被電子書改動。
+//
+// 2026-08-09 學習頁減長批：
+//   - 書架改單元群組收合。無進度＝展開第一單元；有進度＝全收合＋繼續閱讀卡。
+//   - 文章 grid 上方加分類篩選 chips（全部＋4 分類）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/learning/data/articles_data.dart';
 import 'package:vibesync/features/learning/data/providers/chat_quiz_providers.dart';
 import 'package:vibesync/features/learning/data/providers/ebook_providers.dart';
@@ -56,11 +61,17 @@ class _FakeReadService extends ArticleReadService {
 EbookCatalog? _catalog;
 ChatQuizCatalog? _quizCatalog;
 
+/// scrollUntilVisible 的明確目標：頁面現在有兩個 Scrollable（外層
+/// CustomScrollView＋分類 chips 的水平列），不指定會在 chips 進入 cache
+/// extent 後炸 ambiguous。`.first` 依 element 樹序永遠是外層垂直捲動。
+final Finder _verticalScrollable = find.byType(Scrollable).first;
+
 Future<void> pumpLearningScreen(
   WidgetTester tester, {
   required String tier,
   EbookSubscriptionAccess access = const EbookSubscriptionAccess.free(),
   Object? quizCatalogError,
+  Box? progressBox,
 }) async {
   await tester.binding.setSurfaceSize(const Size(390, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -89,7 +100,7 @@ Future<void> pumpLearningScreen(
         ebookProgressOwnerProvider
             .overrideWith((ref) => Stream<String?>.value('learning-owner')),
         ebookProgressRepositoryProvider.overrideWithValue(
-          EbookProgressRepository(box: InMemoryHiveBox()),
+          EbookProgressRepository(box: progressBox ?? InMemoryHiveBox()),
         ),
       ],
       // 練習室入口卡包了 LiquidMotionFrame（無限 ticker）；關動畫讓
@@ -125,7 +136,8 @@ void main() {
     final shelfY = tester.getTopLeft(find.byType(EbookShelfSection)).dy;
     expect(quizY, lessThan(shelfY), reason: '聊天測驗必須在電子書之前');
 
-    await tester.scrollUntilVisible(find.text('短篇實戰文章'), 300);
+    await tester.scrollUntilVisible(find.text('短篇實戰文章'), 300,
+        scrollable: _verticalScrollable);
     await tester.pumpAndSettle();
     expect(find.text('短篇實戰文章'), findsOneWidget);
   });
@@ -156,7 +168,8 @@ void main() {
     expect(find.text('聊天測驗暫時讀不到，其他內容不受影響。'), findsOneWidget);
     expect(find.byType(EbookShelfSection), findsOneWidget);
 
-    await tester.scrollUntilVisible(find.text('短篇實戰文章'), 300);
+    await tester.scrollUntilVisible(find.text('短篇實戰文章'), 300,
+        scrollable: _verticalScrollable);
     await tester.pumpAndSettle();
     expect(find.text('短篇實戰文章'), findsOneWidget);
   });
@@ -168,7 +181,8 @@ void main() {
     expect(find.byType(EbookShelfSection), findsOneWidget);
     expect(find.textContaining('免費閱讀'), findsNothing);
 
-    await tester.scrollUntilVisible(find.textContaining('免費閱讀'), 300);
+    await tester.scrollUntilVisible(find.textContaining('免費閱讀'), 300,
+        scrollable: _verticalScrollable);
     await tester.pumpAndSettle();
 
     expect(find.textContaining('今日剩餘 3 篇免費閱讀'), findsOneWidget);
@@ -187,7 +201,8 @@ void main() {
     );
 
     expect(find.byType(EbookShelfSection), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('短篇實戰文章'), 300);
+    await tester.scrollUntilVisible(find.text('短篇實戰文章'), 300,
+        scrollable: _verticalScrollable);
     await tester.pumpAndSettle();
     expect(find.textContaining('免費閱讀'), findsNothing);
   });
@@ -208,8 +223,97 @@ void main() {
       expect(articleIds.contains(bookId), isFalse);
     }
 
-    await tester.scrollUntilVisible(find.text(articles.first.title), 400);
+    await tester.scrollUntilVisible(find.text(articles.first.title), 400,
+        scrollable: _verticalScrollable);
     await tester.pumpAndSettle();
     expect(find.text(articles.first.title), findsOneWidget);
+  });
+
+  testWidgets('書架預設：無進度展開第一單元，第二單元點了才展開', (tester) async {
+    await pumpLearningScreen(tester, tier: SubscriptionTierHelper.free);
+
+    await tester.scrollUntilVisible(
+      find.byKey(ebookUnitGroupKey(EbookUnit.becomeThePrize)),
+      300,
+      scrollable: _verticalScrollable,
+    );
+    await tester.pumpAndSettle();
+
+    // 無進度：沒有繼續閱讀卡；第一單元的書直接可見，第二單元收合。
+    expect(find.byKey(ebookResumeCardKey), findsNothing);
+    expect(find.text('診斷 · 配對開場'), findsOneWidget);
+    expect(find.text('0/4 本已開始'), findsOneWidget);
+    expect(find.text('0/3 本已開始'), findsOneWidget);
+    expect(find.text('內核 · 吸引怎麼發生'), findsNothing);
+
+    await tester.tap(find.byKey(ebookUnitGroupKey(EbookUnit.becomeThePrize)));
+    await tester.pumpAndSettle();
+    expect(find.text('內核 · 吸引怎麼發生'), findsOneWidget);
+    expect(find.text('框架 · 這段關係誰在主導'), findsOneWidget);
+    expect(find.text('進階聊天 · 讀懂反應再出手'), findsOneWidget);
+  });
+
+  testWidgets('書架有進度：兩單元收合、改出繼續閱讀捷徑卡', (tester) async {
+    final box = InMemoryHiveBox();
+    await EbookProgressRepository(box: box).markChapterCompleted(
+      ownerUserId: 'learning-owner',
+      bookId: 'ebook-2-conversation',
+      chapterId: 'ebook-2-chapter-1',
+    );
+    await pumpLearningScreen(
+      tester,
+      tier: SubscriptionTierHelper.free,
+      progressBox: box,
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(ebookResumeCardKey),
+      300,
+      scrollable: _verticalScrollable,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('繼續閱讀'), findsOneWidget);
+    // 捷徑卡指向開始過且未讀完的那本；書卡本身收合不出現。
+    expect(find.text('續航 · 讓對話活下去'), findsOneWidget);
+    expect(find.text('1/4 本已開始'), findsOneWidget);
+    expect(find.text('診斷 · 配對開場'), findsNothing);
+    expect(find.text('內核 · 吸引怎麼發生'), findsNothing);
+  });
+
+  testWidgets('分類 chips 過濾文章 grid，全部＝24 篇', (tester) async {
+    await pumpLearningScreen(tester, tier: SubscriptionTierHelper.free);
+
+    await tester.scrollUntilVisible(
+      find.byKey(learningArticleFilterAllKey),
+      400,
+      scrollable: _verticalScrollable,
+    );
+    await tester.pumpAndSettle();
+
+    int gridCount() {
+      final grid = tester.widget<SliverGrid>(find.byType(SliverGrid));
+      return (grid.delegate as SliverChildBuilderDelegate).childCount!;
+    }
+
+    expect(gridCount(), 24);
+
+    // 從資料推導期望值，新增文章不必改這個測試。
+    const category = '深度交流';
+    final expected =
+        articles.where((article) => article.category == category).length;
+    expect(expected, greaterThan(0));
+
+    await tester.tap(find.byKey(learningArticleFilterKey(category)));
+    await tester.pumpAndSettle();
+    expect(gridCount(), expected);
+    // grid 首篇必是該分類文章。
+    final firstFiltered =
+        articles.firstWhere((article) => article.category == category);
+    expect(find.text(firstFiltered.title), findsOneWidget);
+
+    await tester.tap(find.byKey(learningArticleFilterAllKey));
+    await tester.pumpAndSettle();
+    expect(gridCount(), 24);
   });
 }
