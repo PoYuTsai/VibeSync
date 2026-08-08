@@ -478,6 +478,8 @@ export interface PracticeDrawRequest {
   currentProfileId?: string;
   visiblePracticeThreadId?: string;
   catalogSize?: number;
+  /** SR 限定翻牌券抽（訂閱一次性權益）：true＝走券路徑（保底 SR、不佔額度）。 */
+  srTicket?: boolean;
 }
 
 // requestId：UUID 或安全 id 字串（client 產，server idempotency key）。長度 1..64
@@ -527,11 +529,16 @@ export function validateDrawRequest(raw: unknown): PracticeDrawRequest {
     catalogSize = raw.catalogSize;
   }
 
+  // srTicket：選填，只認 boolean true；其他值一律靜默忽略（比照 catalogSize
+  // 寬容原則，絕不 throw 400 鎖死舊 client）。
+  const srTicket = raw.srTicket === true ? true : undefined;
+
   return {
     mode: "draw_profile",
     requestId,
     currentProfileId,
     visiblePracticeThreadId,
     catalogSize,
+    srTicket,
   };
 }

@@ -1323,6 +1323,32 @@ Deno.test("draw：catalogSize 非法（型別/小數/非正）→ 靜默降級 u
   }
 });
 
+Deno.test("draw：srTicket=true → 保留（SR 限定翻牌券抽）", () => {
+  const r = validateDrawRequest({
+    mode: "draw_profile",
+    requestId: "req-1",
+    srTicket: true,
+  });
+  assertEquals(r.srTicket, true);
+});
+
+Deno.test("draw：srTicket 缺席/非 true → undefined，絕不 400（比照 catalogSize 寬容）", () => {
+  const bads: unknown[] = [false, "true", 1, {}, [], null];
+  for (const bad of bads) {
+    const r = validateDrawRequest({
+      mode: "draw_profile",
+      requestId: "req-1",
+      srTicket: bad,
+    });
+    assertEquals(r.srTicket, undefined, `srTicket=${String(bad)} 應忽略`);
+  }
+  const missing = validateDrawRequest({
+    mode: "draw_profile",
+    requestId: "req-1",
+  });
+  assertEquals(missing.srTicket, undefined);
+});
+
 Deno.test("draw：visiblePracticeThreadId 過長 → invalid_visiblePracticeThreadId", () => {
   assertThrows(
     () =>
