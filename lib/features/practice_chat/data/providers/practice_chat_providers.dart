@@ -1600,6 +1600,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       hintFailed: false,
       hasRetiredHintForCurrentTurn: false,
       hintReplies: const [],
+      hintNoPasteableReason: null,
       hintCoaching: null,
       hintUsedCount: 0,
       hintLimitReached: false,
@@ -1703,6 +1704,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       restoreText: null,
       hintFailed: false,
       hintReplies: const [],
+      hintNoPasteableReason: null,
       hintCoaching: null,
       hintLimitReached: false,
     );
@@ -1959,6 +1961,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       isHintLoading: true,
       hintFailed: false,
       hintReplies: const [],
+      hintNoPasteableReason: null,
       hintCoaching: null,
       hintLimitReached: false,
       errorMessage: null,
@@ -2066,6 +2069,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         hintFailed: false,
         hasRetiredHintForCurrentTurn: false,
         hintReplies: result.replies,
+        // 「本輪沒有可貼句」是合法結果不是失敗；live 路徑先前漏設這欄，
+        // UI 只看得到「已產生 0 則提示」，被誤讀成產生失敗（2026-08-08）。
+        hintNoPasteableReason: result.noPasteableReason,
         hintCoaching: result.coaching,
         hintUsedCount: result.hintUsedCount,
         hintLimitReached: result.hintUsedCount >= kMaxPracticeHintsPerRound,

@@ -2912,6 +2912,47 @@ void main() {
       expect(repo.getById(s.sessionId)!.hintUsedCount, 1);
     });
 
+    // 2026-08-08 Eric 實測：live 路徑漏設 hintNoPasteableReason，UI 只剩
+    // 「已產生 0 則提示」被誤讀成產生失敗；同時三條清除路徑漏清，stale
+    // reason 會誤標下一輪。
+    test('no-pasteable live hint maps reason into state and next send clears it',
+        () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 12,
+              delta: -18,
+              band: 'frozen',
+              reason: '嚴重越界',
+            ),
+            hintUsedCount: 0,
+          );
+      await c.sendMessage('hello');
+      api.hintHandler = (_, {profile}) async => PracticeHintResult(
+            replies: const [],
+            noPasteableReason: '她已經明確要求停止聯絡，這輪沒有適合送出的句子。',
+            coaching: '尊重她的拒絕，這局該學的是辨識收手時刻。',
+            costDeducted: 1,
+            hintUsedCount: 1,
+            monthlyRemaining: 28,
+            dailyRemaining: 13,
+            qualitySchemaVersion: kPracticeHintQualitySchemaVersion,
+          );
+
+      await c.requestHint();
+
+      expect(c.currentState.hintReplies, isEmpty);
+      expect(c.currentState.hintFailed, false);
+      expect(c.currentState.hintNoPasteableReason, contains('停止聯絡'));
+      expect(c.currentState.hintCoaching, contains('收手'));
+
+      await c.sendMessage('對不起，我不會再打擾了');
+
+      expect(c.currentState.hintNoPasteableReason, isNull);
+    });
+
     test('outdated live Hint response is not rendered or persisted', () async {
       final pendingStore = InMemoryPracticePendingHintStore();
       final appliedStore = InMemoryPracticeAppliedHintStore();
