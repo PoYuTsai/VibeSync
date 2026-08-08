@@ -92,7 +92,16 @@ Future<void> pumpLearningScreen(
           EbookProgressRepository(box: InMemoryHiveBox()),
         ),
       ],
-      child: const MaterialApp(home: Scaffold(body: LearningScreen())),
+      // 練習室入口卡包了 LiquidMotionFrame（無限 ticker）；關動畫讓
+      // pumpAndSettle 可收斂。copyWith 保留視窗尺寸給入口卡的
+      // MediaQuery.sizeOf fallback。
+      child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child!,
+        ),
+        home: const Scaffold(body: LearningScreen()),
+      ),
     ),
   );
   await tester.pump();
@@ -152,8 +161,7 @@ void main() {
     expect(find.text('短篇實戰文章'), findsOneWidget);
   });
 
-  testWidgets('免費使用者的每日額度提示只出現在文章區，並註明電子書不計入',
-      (tester) async {
+  testWidgets('免費使用者的每日額度提示只出現在文章區，並註明電子書不計入', (tester) async {
     await pumpLearningScreen(tester, tier: SubscriptionTierHelper.free);
 
     // 書架剛出現時，畫面上不該有任何額度文案。

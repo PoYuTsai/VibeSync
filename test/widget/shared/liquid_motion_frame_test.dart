@@ -53,6 +53,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('beam 風格動態渲染不炸，reduced motion 下可收斂', (tester) async {
+    await tester.pumpWidget(
+      _host(
+        child: const LiquidMotionFrame(
+          style: LiquidMotionStyle.beam,
+          borderRadius: 78,
+          borderWidth: 2.4,
+          glowRadius: 18,
+          child: SizedBox(width: 200, height: 100, child: Text('光束外框')),
+        ),
+      ),
+    );
+
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(find.text('光束外框'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(
+      _host(
+        disableAnimations: true,
+        child: const LiquidMotionFrame(
+          style: LiquidMotionStyle.beam,
+          child: SizedBox(width: 200, height: 100, child: Text('光束外框')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('光束外框'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('啟用動效後持續重繪但保留 child', (tester) async {
     await tester.pumpWidget(
       _host(

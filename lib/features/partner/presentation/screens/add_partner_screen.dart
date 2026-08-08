@@ -51,6 +51,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../../shared/widgets/brand/liquid_motion_frame.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../domain/entities/partner.dart';
 import '../providers/partner_providers.dart';
@@ -162,42 +163,54 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          BrandSurfaceCard(
-                            padding: const EdgeInsets.fromLTRB(30, 30, 30, 34),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Row(
-                                  children: [
-                                    BrandIconBadge(
-                                      icon: Icons.person_add_alt_1_rounded,
-                                      size: 48,
-                                      iconSize: 24,
-                                    ),
-                                    SizedBox(width: 18),
-                                    Expanded(
-                                      child: Text(
-                                        '先建立一張對象卡',
-                                        style: TextStyle(
-                                          color: AppColors.onBackgroundPrimary,
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w800,
-                                          height: 1.15,
+                          // beam 光束提亮空狀態說明卡；比練習室入口稍弱一檔，
+                          // 不與下方「建立」CTA 搶焦點。
+                          LiquidMotionFrame(
+                            style: LiquidMotionStyle.beam,
+                            borderRadius: 24,
+                            borderWidth: 2,
+                            glowRadius: 14,
+                            strength: 0.85,
+                            duration: const Duration(milliseconds: 5600),
+                            child: BrandSurfaceCard(
+                              padding:
+                                  const EdgeInsets.fromLTRB(30, 30, 30, 34),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Row(
+                                    children: [
+                                      BrandIconBadge(
+                                        icon: Icons.person_add_alt_1_rounded,
+                                        size: 48,
+                                        iconSize: 24,
+                                      ),
+                                      SizedBox(width: 18),
+                                      Expanded(
+                                        child: Text(
+                                          '先建立一張對象卡',
+                                          style: TextStyle(
+                                            color:
+                                                AppColors.onBackgroundPrimary,
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.w800,
+                                            height: 1.15,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 20),
-                                Text(
-                                  '這張卡代表一個人，之後與同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這裡',
-                                  style: AppTypography.bodyLarge.copyWith(
-                                    color: AppColors.onBackgroundSecondary
-                                        .withValues(alpha: 0.84),
-                                    height: 1.55,
+                                    ],
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 20),
+                                  Text(
+                                    '這張卡代表一個人，之後與同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這裡',
+                                    style: AppTypography.bodyLarge.copyWith(
+                                      color: AppColors.onBackgroundSecondary
+                                          .withValues(alpha: 0.84),
+                                      height: 1.55,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                           const SizedBox(height: 24),

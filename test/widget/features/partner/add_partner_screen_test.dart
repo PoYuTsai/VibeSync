@@ -75,7 +75,15 @@ void main() {
         authConversationScopeProvider
             .overrideWith((ref) => authStream ?? Stream.value('u-test')),
       ],
-      child: MaterialApp.router(routerConfig: router),
+      child: MaterialApp.router(
+        routerConfig: router,
+        // 說明卡包了 LiquidMotionFrame（無限 ticker）；關動畫讓
+        // pumpAndSettle 可收斂。
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child!,
+        ),
+      ),
     );
   }
 

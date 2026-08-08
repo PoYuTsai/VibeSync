@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_room_entry_card.dart';
+import 'package:vibesync/shared/widgets/brand/liquid_motion_frame.dart';
 
 void main() {
   testWidgets(
@@ -32,14 +33,17 @@ void main() {
         findsOneWidget);
     expect(find.byKey(const ValueKey('practice-room-entry-glass-panel')),
         findsOneWidget);
+    final frame = tester.widget<LiquidMotionFrame>(
+      find.byType(LiquidMotionFrame),
+    );
+    expect(frame.style, LiquidMotionStyle.beam);
     expect(find.text('翻牌解鎖新女孩'), findsOneWidget);
     expect(find.text('AI 實戰練習室'), findsOneWidget);
     expect(find.text('NEW'), findsOneWidget);
     expect(find.text('跟陪練女孩直接聊天，\n練你的真實反應。'), findsOneWidget);
   });
 
-  testWidgets('點 hero 導航到 /practice-collection（圖鑑為 gacha hub）',
-      (tester) async {
+  testWidgets('點 hero 導航到 /practice-collection（圖鑑為 gacha hub）', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 760));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -64,7 +68,17 @@ void main() {
     );
 
     await tester.pumpWidget(
-      ProviderScope(child: MaterialApp.router(routerConfig: router)),
+      ProviderScope(
+        child: MaterialApp.router(
+          routerConfig: router,
+          // 入口卡包了 LiquidMotionFrame（無限 ticker）；關動畫讓
+          // pumpAndSettle 可收斂。
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child!,
+          ),
+        ),
+      ),
     );
     await tester.pump();
 

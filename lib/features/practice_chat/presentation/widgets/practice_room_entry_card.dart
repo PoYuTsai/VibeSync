@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/liquid_motion_frame.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 
 const String kPracticeRoomEntryHeroAsset =
@@ -53,7 +54,16 @@ class PracticeRoomEntryCard extends StatelessWidget {
                         children: const [
                           _DailyRewardEyebrow(),
                           SizedBox(height: 18),
-                          _PracticeRoomGlassPanel(),
+                          // beam 光束沿玻璃面板邊框追跑，把視線導向 NEW 入口。
+                          LiquidMotionFrame(
+                            style: LiquidMotionStyle.beam,
+                            borderRadius:
+                                _PracticeRoomGlassPanel.panelCornerRadius,
+                            borderWidth: 2.4,
+                            glowRadius: 18,
+                            duration: Duration(milliseconds: 4800),
+                            child: _PracticeRoomGlassPanel(),
+                          ),
                         ],
                       ),
                     ),
@@ -129,7 +139,9 @@ class _WarmReadabilityScrim extends StatelessWidget {
 class _PracticeRoomGlassPanel extends StatelessWidget {
   const _PracticeRoomGlassPanel();
 
-  static const _panelRadius = BorderRadius.all(Radius.circular(78));
+  static const double panelCornerRadius = 78;
+  static const _panelRadius =
+      BorderRadius.all(Radius.circular(panelCornerRadius));
 
   @override
   Widget build(BuildContext context) {
