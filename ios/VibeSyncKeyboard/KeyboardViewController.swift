@@ -24,6 +24,8 @@ final class KeyboardViewController: UIInputViewController {
     private let assistPanel = UIStackView()
     private let aiPanel = UIStackView()
     private let typingPanel = UIStackView()
+    private let typingBannerTitle = UILabel()
+    private let typingBannerSubtitle = UILabel()
     private let assistIdleView = UIStackView()
     private let assistIdleTitle = UILabel()
     private let assistIdleSubtitle = UILabel()
@@ -372,7 +374,7 @@ final class KeyboardViewController: UIInputViewController {
         aiPanel.addArrangedSubview(resultButton)
         // No utility row. 空白／換行／⌫ cannot type a word between them, so
         // editing always meant switching keyboards anyway; they only ever cost
-        // a row. ABC is in the header and the globe is the system's.
+        // a row. The globe is the system's.
     }
 
     private func configureScreenshotAssist() {
@@ -679,6 +681,28 @@ final class KeyboardViewController: UIInputViewController {
         typingPanel.axis = .vertical
         typingPanel.spacing = 6
         rootStack.addArrangedSubview(typingPanel)
+
+        // This panel only ever appears as the 4.4.1 compliance floor, before
+        // 完整取用 is granted. A bare qwerty grid with no explanation reads as
+        // a broken leftover — the banner is what makes it look intentional and
+        // tells the user how to get the keyboard they installed this for.
+        typingBannerTitle.text = "💜 VibeSync"
+        typingBannerTitle.textColor = .white
+        typingBannerTitle.font = .systemFont(ofSize: 15, weight: .bold)
+        typingBannerSubtitle.text =
+            "開啟「允許完整取用」後，這裡就會換成 AI 回覆鍵盤\n設定 → 一般 → 鍵盤 → VibeSync 鍵盤"
+        typingBannerSubtitle.textColor = UIColor.white.withAlphaComponent(0.65)
+        typingBannerSubtitle.font = .systemFont(ofSize: 12)
+        typingBannerSubtitle.numberOfLines = 2
+        typingBannerSubtitle.textAlignment = .center
+        let banner = UIStackView()
+        banner.axis = .vertical
+        banner.spacing = 2
+        banner.alignment = .center
+        banner.addArrangedSubview(typingBannerTitle)
+        banner.addArrangedSubview(typingBannerSubtitle)
+        typingPanel.addArrangedSubview(banner)
+
         for rowText in ["qwertyuiop", "asdfghjkl", "zxcvbnm"] {
             let row = UIStackView()
             row.axis = .horizontal
@@ -698,18 +722,15 @@ final class KeyboardViewController: UIInputViewController {
             common.addArrangedSubview(makeButton(text, action: #selector(typeCharacter(_:))))
         }
         typingPanel.addArrangedSubview(common)
-        typingPanel.addArrangedSubview(
-            makeUtilityRow(
-                toggleTitle: "AI",
-                toggleAction: #selector(showAssist)
-            )
-        )
+        // No AI toggle here. The typing panel only exists while 完整取用 is
+        // off, and every AI surface is gated on it — the old toggle called
+        // showAssist, whose refreshAvailability bounced straight back to
+        // .typing, so the button was a silent no-op that read as a bug. The
+        // banner above explains how to unlock AI instead.
+        typingPanel.addArrangedSubview(makeUtilityRow())
     }
 
-    private func makeUtilityRow(
-        toggleTitle: String? = nil,
-        toggleAction: Selector? = nil
-    ) -> UIStackView {
+    private func makeUtilityRow() -> UIStackView {
         let row = UIStackView()
         row.axis = .horizontal
         row.spacing = 6
@@ -723,11 +744,6 @@ final class KeyboardViewController: UIInputViewController {
             let globe = makeButton("🌐", action: #selector(noop))
             globe.addTarget(self, action: #selector(showInputModeList(_:event:)), for: .allTouchEvents)
             row.addArrangedSubview(globe)
-        }
-        if let toggleTitle, let toggleAction {
-            row.addArrangedSubview(
-                makeButton(toggleTitle, action: toggleAction)
-            )
         }
         let space = makeButton("空白", action: #selector(insertSpace))
         space.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -784,8 +800,17 @@ final class KeyboardViewController: UIInputViewController {
             // typing panel becomes the automatic floor instead of an opt-in one.
             statusLabel.text = "請在設定開啟「允許完整取用」"
             show(.typing)
-        } else if SharedAuth.currentSession() == nil {
-            statusLabel.text = "請先開啟 VibeSync App 更新登入狀態"
+        } else {
+            // The floor is a one-way door without this: nothing else ever
+            // leaves .typing, so a keyboard session that outlives the toggle
+            // would keep showing the qwerty grid after access was granted.
+            // Callers re-arm the screenshot coordinator right after this.
+            if mode == .typing {
+                show(.assist)
+            }
+            if SharedAuth.currentSession() == nil {
+                statusLabel.text = "請先開啟 VibeSync App 更新登入狀態"
+            }
         }
         updateStyleButtons()
     }
@@ -1205,7 +1230,7 @@ final class KeyboardViewController: UIInputViewController {
     private func updatePreferredHeight() {
         switch mode {
         case .typing:
-            preferredContentSize.height = 280
+            preferredContentSize.height = 316
         case .text:
             preferredContentSize.height = resultButton.isHidden ? 300 : 352
         case .assist:
