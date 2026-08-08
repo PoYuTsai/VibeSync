@@ -4807,6 +4807,48 @@ Deno.test("generated Hint rejects grounded compliment-only echoes in Beginner an
   }
 });
 
+// 2026-08-08 #4：prompt 要求 coaching 點名該推的變數（gameHint「該推的要素」），
+// 但 substance gate 沒驗，要求靜默流失。偏好門 finding-only：卡照端出、
+// telemetry 記 hint_quality_missing_variable_callout 觀測缺失率。
+Deno.test("generated Game coaching 沒點名任何變數白話詞＝偏好門 finding，卡照端出", () => {
+  const turns = [{
+    role: "ai" as const,
+    text: "我住台南，最常在中西區活動。",
+  }];
+  const replies = {
+    warmUp: "妳住台南喔，平常最常去哪一區？",
+    steady: "妳住台南又常跑中西區，我先從生活圈接著聊。",
+  };
+  const missing = parseWithFindings(
+    JSON.stringify({
+      ...replies,
+      coaching:
+        "Game 心法：她說自己住台南，這輪先確認生活圈。速約任務：先問她最常去哪一區，因為這輪還在確認生活圈，不硬約。",
+    }),
+    { mode: "game", enforceGeneratedQuality: true, turns },
+  );
+  assertEquals(missing.result.replies.length, 2);
+  assert(
+    missing.findings.includes("hint_quality_missing_variable_callout"),
+    `expected variable callout finding, got [${missing.findings.join(", ")}]`,
+  );
+
+  // 寬鬆比對：「投入感」含詞表的「投入」即算點名。
+  const named = parseWithFindings(
+    JSON.stringify({
+      ...replies,
+      coaching:
+        "Game 心法：她說自己住台南，這輪先堆投入感。速約任務：先問她最常去哪一區，因為投入感還不夠，不硬約。",
+    }),
+    { mode: "game", enforceGeneratedQuality: true, turns },
+  );
+  assertEquals(named.result.replies.length, 2);
+  assertEquals(
+    named.findings.includes("hint_quality_missing_variable_callout"),
+    false,
+  );
+});
+
 Deno.test("generated Game coaching requires a specific signal, unique task, and reason", () => {
   const turns = [{
     role: "ai" as const,

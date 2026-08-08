@@ -2361,6 +2361,23 @@ function assertGeneratedGameCoachingSubstance(coaching: string): void {
 }
 
 /**
+ * Hint 三件套唯一沒守門的一環（2026-08-08 #4）：prompt 要求 coaching 白話
+ * 點名該推的變數（gameHint「coaching 要白話說清階段、該推的要素與這輪任務」），
+ * 但 substance gate 只驗訊號／任務／理由，點名要求會靜默流失。
+ * 偏好門（finding-only、零 503）：coaching 需含 game_vocab 變數白話詞之一，
+ * 寬鬆比對（「投入感」含「投入」即過）；telemetry 觀測缺失率，偏高＝回頭修
+ * prompt。對 decision.targetVariable 的逐變數比對做不到——decision 在 parse
+ * 之後的 buildHintDecision 才產生。
+ */
+function assertGameCoachingNamesVariable(coaching: string): void {
+  const compact = normalizedPracticeText(coaching);
+  const vocabulary = Object.values(GAME_VARIABLE_LABELS);
+  if (!vocabulary.some((label) => compact.includes(label))) {
+    throw new Error("hint_quality_missing_variable_callout");
+  }
+}
+
+/**
  * 「本輪沒有可貼句」這條路徑跳過所有可貼句專屬守門，但捏造事實是甲類紅線，
  * 不能跟著一起跳掉——沒有可貼句時 coaching 就是使用者唯一看得到的教練內容，
  * 在那裡編造她沒說過的事，傷害跟編在可貼句裡一樣大（2026-08-06 W3 補洞：
@@ -2581,6 +2598,10 @@ function assertGeneratedHintQuality(opts: {
     softQualityGate(
       options,
       () => assertGeneratedGameCoachingSubstance(opts.coaching),
+    );
+    softQualityGate(
+      options,
+      () => assertGameCoachingNamesVariable(opts.coaching),
     );
   }
 }
