@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:graphview/GraphView.dart';
 
@@ -140,13 +142,149 @@ class _PartnerMindMapViewState extends State<PartnerMindMapView>
               final onTap = isNextStepLeaf && widget.onNextStepTap != null
                   ? () => widget.onNextStepTap!(data.label)
                   : null;
-              return _MindMapNodeChip(node: data, onTap: onTap);
+              final chip = _MindMapNodeChip(node: data, onTap: onTap);
+              // 作戰板沒有「選取節點」狀態（單擊＝問教練導航），所以焦點
+              // 光暈不做持續呼吸，改成「下一步」葉節點進場時單次吸吐光暈
+              // ——one-shot 才能讓測試的 pumpAndSettle 收斂、也不留無限
+              // ticker。其餘節點維持靜態。
+              return isNextStepLeaf ? _OneShotSwellHalo(child: chip) : chip;
             },
           ),
         ),
       ),
     );
   }
+}
+
+/// 「下一步」葉節點的暖色呼吸光暈——one-shot 版本。
+///
+/// 進場（State 掛載）時做一次「吸氣→吐氣」的光暈膨脹收斂（約 1.5 秒），
+/// 結束即完全靜止；一般 rebuild 不重播。借用練習室翻牌鈕的呼吸光技法，
+/// 但收斂成單次：這裡的測試大量使用 pumpAndSettle，repeat 型 ticker 會
+/// 讓測試永不收斂，也違反本頁「無無限 ticker」的紀律。
+///
+/// 遵守 [MediaQuery.disableAnimations] 與 [TickerMode]：關閉動畫時直接
+/// 跳到終點（光暈已散去＝什麼都不畫）。只用 CustomPaint 畫在 chip 邊框
+/// 外圈，不碰文字透明度（全 App 殘影禁令）。
+class _OneShotSwellHalo extends StatefulWidget {
+  const _OneShotSwellHalo({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_OneShotSwellHalo> createState() => _OneShotSwellHaloState();
+}
+
+class _OneShotSwellHaloState extends State<_OneShotSwellHalo>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1500),
+  );
+
+  /// 是否已決定過要不要播（State 一生只決定一次）。
+  bool _decided = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncMotion();
+  }
+
+  void _syncMotion() {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final enabled = TickerMode.valuesOf(context).enabled && !reduceMotion;
+
+    if (!_decided) {
+      _decided = true;
+      if (enabled) {
+        _controller.forward();
+      } else {
+        // 關閉動畫：停在終點（光暈已散去），不留任何殘影。
+        _controller.value = 1;
+      }
+      return;
+    }
+
+    if (!enabled && _controller.isAnimating) {
+      _controller
+        ..stop()
+        ..value = 1;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      child: widget.child,
+      builder: (context, child) {
+        // sin 包絡：0 → 峰值 → 0，頭尾都自然歸零、不跳變。
+        final intensity = math.sin(math.pi * _controller.value);
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            child!,
+            Positioned.fill(
+              child: IgnorePointer(
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _SwellHaloPainter(intensity: intensity),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _SwellHaloPainter extends CustomPainter {
+  const _SwellHaloPainter({required this.intensity});
+
+  /// 0–1 的光暈強度（sin 包絡的當前值）。
+  final double intensity;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty || intensity <= 0.01) return;
+
+    // chip 圓角 16，光暈畫在外圈一點的位置（inflate）跟著放大。
+    final rect = (Offset.zero & size).inflate(2 + 3 * intensity);
+    final rrect = RRect.fromRectAndRadius(
+      rect,
+      const Radius.circular(18),
+    );
+
+    // 外圈暖橘光暈：模糊描邊，隨 intensity 呼吸。
+    final glow = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..color = AppColors.brandFlame.withValues(alpha: 0.50 * intensity)
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 8 + 6 * intensity);
+    // 內圈蜜桃亮邊：貼著邊框的細亮線，讓光暈有「芯」。
+    final rim = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4
+      ..color = const Color(0xFFFFD2B8).withValues(alpha: 0.75 * intensity);
+
+    canvas
+      ..drawRRect(rrect, glow)
+      ..drawRRect(rrect, rim);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SwellHaloPainter oldDelegate) =>
+      oldDelegate.intensity != intensity;
 }
 
 class _MindMapNodeChip extends StatelessWidget {
