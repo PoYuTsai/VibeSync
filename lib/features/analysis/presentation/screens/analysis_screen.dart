@@ -19,6 +19,8 @@ import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
+import '../../../../shared/widgets/entrance_reveal.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/analysis_preview_dialog.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
@@ -5244,8 +5246,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           refinedText: refinedText,
           requestId: pending.requestId,
           freeRemaining: freeRemaining is num ? freeRemaining.round() : null,
-          freeDailyLimit:
-              freeDailyLimit is num ? freeDailyLimit.round() : null,
+          freeDailyLimit: freeDailyLimit is num ? freeDailyLimit.round() : null,
           chargedQuota: usage is Map && usage['shouldChargeQuota'] == true,
         );
       },
@@ -7521,8 +7522,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   '📝 ${_finalRecommendation!.reason}',
                                   style: AppTypography.bodyMedium,
                                 ),
-                                if (_finalRecommendation!.psychology
-                                        .isNotEmpty &&
+                                if (_finalRecommendation!
+                                        .psychology.isNotEmpty &&
                                     _finalRecommendation!.psychology !=
                                         _finalRecommendation!.reason) ...[
                                   const SizedBox(height: 4),
@@ -7548,486 +7549,615 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             usage: _lastAiResponse?['usage'],
                           ),
                           _buildDetailedAnalysisToggle(),
-                          if (_showDetailedAnalysis) ...[
-                            const SizedBox(height: 12),
-                            ScoreHeroCard(
-                              score: _enthusiasmScore!,
-                              // previousScore: null for now
-                            ),
-
-                            // 五維度剖析 (Starter / Essential only)
-                            if (_dimensionScores != null &&
-                                subscription.isPremium) ...[
-                              const SizedBox(height: 16),
-                              DimensionRadarChart(
-                                scores: DimensionScores(
-                                  heat: _dimensionScores!['heat'] ?? 50,
-                                  engagement:
-                                      _dimensionScores!['engagement'] ?? 50,
-                                  topicDepth:
-                                      _dimensionScores!['topicDepth'] ?? 50,
-                                  replyWillingness:
-                                      _dimensionScores!['replyWillingness'] ??
-                                          50,
-                                  emotionalConnection: _dimensionScores![
-                                          'emotionalConnection'] ??
-                                      50,
-                                ),
-                              ),
-                            ],
-
-                            // 對話階段指示器
-                            if (_gameStage != null) ...[
-                              const SizedBox(height: 16),
-                              GameStageIndicator(
-                                currentStage: _gameStage!.current,
-                                status: _gameStage!.status,
-                                nextStep: _gameStage!.nextStep,
-                              ),
-                            ],
-
-                            // 她話裡的意思
-                            if (_psychology != null) ...[
-                              const SizedBox(height: 16),
-                              BrandSurfaceCard(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
+                          // 展開/收起走 240ms 高度過渡＋內容淡入，不瞬跳。
+                          AnimatedSize(
+                            duration: AppMotion.state,
+                            curve: AppMotion.easeOut,
+                            alignment: Alignment.topCenter,
+                            child: !_showDetailedAnalysis
+                                ? const SizedBox(width: double.infinity)
+                                : EntranceReveal(
+                                    offsetY: 0,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
                                       children: [
-                                        const Text('🧠',
-                                            style: TextStyle(fontSize: 18)),
-                                        const SizedBox(width: 8),
-                                        Text('她話裡的意思',
-                                            style: AppTypography.titleMedium
-                                                .copyWith(
-                                                    color: AppColors
-                                                        .onBackgroundPrimary)),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(_psychology!.subtext,
-                                        style: AppTypography.bodyMedium
-                                            .copyWith(
-                                                color: AppColors
-                                                    .onBackgroundPrimary)),
-                                    if (_psychology!.shitTest != null) ...[
-                                      const SizedBox(height: 8),
-                                      Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.warning
-                                              .withValues(alpha: 0.1),
-                                          borderRadius:
-                                              BorderRadius.circular(4),
+                                        const SizedBox(height: 12),
+                                        ScoreHeroCard(
+                                          score: _enthusiasmScore!,
+                                          // previousScore: null for now
                                         ),
-                                        child: Row(
-                                          children: [
-                                            const Text('⚠️',
-                                                style: TextStyle(fontSize: 14)),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                '互動測試訊號: ${_psychology!.shitTest}',
-                                                style: AppTypography.caption
-                                                    .copyWith(
-                                                        color: AppColors
-                                                            .onBackgroundPrimary),
-                                              ),
+
+                                        // 五維度剖析 (Starter / Essential only)
+                                        if (_dimensionScores != null &&
+                                            subscription.isPremium) ...[
+                                          const SizedBox(height: 16),
+                                          DimensionRadarChart(
+                                            scores: DimensionScores(
+                                              heat: _dimensionScores!['heat'] ??
+                                                  50,
+                                              engagement: _dimensionScores![
+                                                      'engagement'] ??
+                                                  50,
+                                              topicDepth: _dimensionScores![
+                                                      'topicDepth'] ??
+                                                  50,
+                                              replyWillingness:
+                                                  _dimensionScores![
+                                                          'replyWillingness'] ??
+                                                      50,
+                                              emotionalConnection:
+                                                  _dimensionScores![
+                                                          'emotionalConnection'] ??
+                                                      50,
                                             ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                    if (_psychology!.qualificationSignal) ...[
-                                      const SizedBox(height: 8),
-                                      Row(
-                                        children: [
-                                          const Icon(Icons.check_circle,
-                                              size: 16,
-                                              color: AppColors.success),
-                                          const SizedBox(width: 4),
-                                          Text('她有主動投入訊號',
-                                              style: AppTypography.caption
-                                                  .copyWith(
-                                                      color: AppColors
-                                                          .onBackgroundPrimary)),
+                                          ),
                                         ],
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ],
 
-                            // Strategy
-                            if (_strategy != null &&
-                                _strategy!.trim().isNotEmpty) ...[
-                              const SizedBox(height: 16),
-                              BrandSurfaceCard(
-                                child: Row(
-                                  children: [
-                                    const Text('💡',
-                                        style: TextStyle(fontSize: 20)),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        _strategy!,
-                                        style: AppTypography.bodyMedium
-                                            .copyWith(
-                                                color: AppColors
-                                                    .onBackgroundPrimary),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-
-                            // Topic Depth (話題深度)
-                            if (_topicDepth != null) ...[
-                              const SizedBox(height: 16),
-                              BrandSurfaceCard(
-                                child: Row(
-                                  children: [
-                                    Text(_topicDepth!.current.emoji,
-                                        style: const TextStyle(fontSize: 20)),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                              '話題深度: ${_topicDepth!.current.label}',
-                                              style: AppTypography.bodyMedium
-                                                  .copyWith(
-                                                      color: AppColors
-                                                          .onBackgroundPrimary)),
-                                          if (_topicDepth!
-                                              .suggestion.isNotEmpty)
-                                            Text(_topicDepth!.suggestion,
-                                                style: AppTypography.caption
-                                                    .copyWith(
-                                                        color: AppColors
-                                                            .onBackgroundSecondary
-                                                            .withValues(
-                                                                alpha: 0.6))),
+                                        // 對話階段指示器
+                                        if (_gameStage != null) ...[
+                                          const SizedBox(height: 16),
+                                          GameStageIndicator(
+                                            currentStage: _gameStage!.current,
+                                            status: _gameStage!.status,
+                                            nextStep: _gameStage!.nextStep,
+                                          ),
                                         ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
 
-                            // Health Check (對話健檢 - Essential 專屬)
-                            if (_healthCheck != null &&
-                                subscription.isEssential &&
-                                _healthCheck!.issues.isNotEmpty) ...[
-                              const SizedBox(height: 16),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color:
-                                      AppColors.warning.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                      color: AppColors.warning
-                                          .withValues(alpha: 0.3)),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        const Text('🩺',
-                                            style: TextStyle(fontSize: 18)),
-                                        const SizedBox(width: 8),
-                                        Text('對話健檢',
-                                            style: AppTypography.titleMedium),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    ..._healthCheck!.issues
-                                        .map((issue) => Padding(
-                                              padding: const EdgeInsets.only(
-                                                  bottom: 4),
-                                              child: Row(
-                                                children: [
-                                                  const Icon(
-                                                      Icons.warning_amber,
-                                                      size: 16,
-                                                      color: AppColors.warning),
-                                                  const SizedBox(width: 8),
-                                                  Expanded(
-                                                      child: Text(issue,
-                                                          style: AppTypography
-                                                              .bodyMedium)),
-                                                ],
-                                              ),
-                                            )),
-                                    if (_healthCheck!
-                                        .suggestions.isNotEmpty) ...[
-                                      const SizedBox(height: 8),
-                                      ..._healthCheck!.suggestions
-                                          .map((suggestion) => Padding(
-                                                padding: const EdgeInsets.only(
-                                                    bottom: 4),
-                                                child: Row(
+                                        // 她話裡的意思
+                                        if (_psychology != null) ...[
+                                          const SizedBox(height: 16),
+                                          BrandSurfaceCard(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
                                                   children: [
-                                                    const Icon(
-                                                        Icons.lightbulb_outline,
-                                                        size: 16,
-                                                        color:
-                                                            AppColors.success),
+                                                    const Text('🧠',
+                                                        style: TextStyle(
+                                                            fontSize: 18)),
                                                     const SizedBox(width: 8),
-                                                    Expanded(
-                                                        child: Text(suggestion,
-                                                            style: AppTypography
-                                                                .caption)),
+                                                    Text('她話裡的意思',
+                                                        style: AppTypography
+                                                            .titleMedium
+                                                            .copyWith(
+                                                                color: AppColors
+                                                                    .onBackgroundPrimary)),
                                                   ],
                                                 ),
-                                              )),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ],
-
-                            // Reply suggestions (5 種回覆)
-                            if (_replies != null && _replies!.isNotEmpty) ...[
-                              const SizedBox(height: 24),
-                              Row(
-                                children: [
-                                  Text('接法建議・${_replies!.length} 種風格',
-                                      style: AppTypography.titleLarge.copyWith(
-                                          color:
-                                              AppColors.onBackgroundPrimary)),
-                                  const Spacer(),
-                                  Text('← 左右滑動',
-                                      style: AppTypography.caption.copyWith(
-                                          color: AppColors.onBackgroundSecondary
-                                              .withValues(alpha: 0.6))),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              SizedBox(
-                                height: 360,
-                                child: ListView(
-                                  scrollDirection: Axis.horizontal,
-                                  children: [
-                                    if (_replies!.containsKey('extend'))
-                                      _buildHorizontalReplyCard(
-                                          'extend', _replies!['extend']!,
-                                          option: _replyOptions?['extend'],
-                                          isRecommended:
-                                              _isRecommendedReplyType(
-                                                  'extend')),
-                                    if (_replies!.containsKey('resonate'))
-                                      _buildHorizontalReplyCard(
-                                          'resonate', _replies!['resonate']!,
-                                          option: _replyOptions?['resonate'],
-                                          isRecommended:
-                                              _isRecommendedReplyType(
-                                                  'resonate')),
-                                    if (_replies!.containsKey('tease'))
-                                      _buildHorizontalReplyCard(
-                                          'tease', _replies!['tease']!,
-                                          option: _replyOptions?['tease'],
-                                          isRecommended:
-                                              _isRecommendedReplyType('tease')),
-                                    if (_replies!.containsKey('humor'))
-                                      _buildHorizontalReplyCard(
-                                          'humor', _replies!['humor']!,
-                                          option: _replyOptions?['humor'],
-                                          isRecommended:
-                                              _isRecommendedReplyType('humor')),
-                                    if (_replies!.containsKey('coldRead'))
-                                      _buildHorizontalReplyCard(
-                                          'coldRead', _replies!['coldRead']!,
-                                          option: _replyOptions?['coldRead'],
-                                          isRecommended:
-                                              _isRecommendedReplyType(
-                                                  'coldRead')),
-                                  ],
-                                ),
-                              ),
-                              for (final type in const [
-                                'extend',
-                                'resonate',
-                                'tease',
-                                'humor',
-                                'coldRead',
-                              ])
-                                if (_replies!.containsKey(type))
-                                  _buildAnalysisOutcomeBar(
-                                    cardKey: type,
-                                    label: ReplyStyleCard.labels[type] ?? type,
-                                  ),
-                              // Free 固定在雙風格後顯示完整版入口；
-                              // 已升級但還在看舊 Free 結果時也要能重新分析。
-                              if ((subscription.isFreeUser &&
-                                      _replies!.isNotEmpty) ||
-                                  _analysisNeedsReplyRefresh(subscription) ||
-                                  (_replies!.length == 1 &&
-                                      _replies!.containsKey('extend'))) ...[
-                                const SizedBox(height: 12),
-                                Builder(
-                                  builder: (context) {
-                                    // Free 用戶：顯示升級提示
-                                    if (subscription.isFreeUser) {
-                                      return GestureDetector(
-                                        onTap: () async =>
-                                            _showPaywall(context),
-                                        child: Container(
-                                          padding: const EdgeInsets.all(12),
-                                          decoration: BoxDecoration(
-                                            color: AppColors.ctaStart
-                                                .withValues(alpha: 0.1),
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                            border: Border.all(
-                                                color: AppColors.ctaStart
-                                                    .withValues(alpha: 0.3)),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              const Icon(Icons.lock_outline,
-                                                  color: AppColors.ctaStart),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: Text(
-                                                  '你已可比較延展、調情；升級解鎖共鳴、幽默、冷讀等完整 5 種風格',
-                                                  style: AppTypography
-                                                      .bodyMedium
-                                                      .copyWith(
-                                                          color: AppColors
-                                                              .primary),
-                                                ),
-                                              ),
-                                              const Icon(
-                                                  Icons.arrow_forward_ios,
-                                                  size: 16,
-                                                  color: AppColors.ctaStart),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                    if (_analysisNeedsReplyRefresh(
-                                      subscription,
-                                    )) {
-                                      return Container(
-                                        padding: const EdgeInsets.all(12),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.ctaStart
-                                              .withValues(alpha: 0.1),
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                          border: Border.all(
-                                            color: AppColors.ctaStart
-                                                .withValues(alpha: 0.3),
-                                          ),
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Row(
-                                              children: [
-                                                const Icon(
-                                                  Icons.auto_awesome,
-                                                  color: AppColors.ctaStart,
-                                                ),
-                                                const SizedBox(width: 8),
-                                                Expanded(
-                                                  child: Text(
-                                                    '你已升級，這份分析仍是免費版結果。',
+                                                const SizedBox(height: 8),
+                                                Text(_psychology!.subtext,
                                                     style: AppTypography
                                                         .bodyMedium
                                                         .copyWith(
-                                                      color: AppColors.ctaStart,
-                                                      fontWeight:
-                                                          FontWeight.w600,
+                                                            color: AppColors
+                                                                .onBackgroundPrimary)),
+                                                if (_psychology!.shitTest !=
+                                                    null) ...[
+                                                  const SizedBox(height: 8),
+                                                  Container(
+                                                    padding:
+                                                        const EdgeInsets.all(8),
+                                                    decoration: BoxDecoration(
+                                                      color: AppColors.warning
+                                                          .withValues(
+                                                              alpha: 0.1),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              4),
                                                     ),
+                                                    child: Row(
+                                                      children: [
+                                                        const Text('⚠️',
+                                                            style: TextStyle(
+                                                                fontSize: 14)),
+                                                        const SizedBox(
+                                                            width: 8),
+                                                        Expanded(
+                                                          child: Text(
+                                                            '互動測試訊號: ${_psychology!.shitTest}',
+                                                            style: AppTypography
+                                                                .caption
+                                                                .copyWith(
+                                                                    color: AppColors
+                                                                        .onBackgroundPrimary),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ],
+                                                if (_psychology!
+                                                    .qualificationSignal) ...[
+                                                  const SizedBox(height: 8),
+                                                  Row(
+                                                    children: [
+                                                      const Icon(
+                                                          Icons.check_circle,
+                                                          size: 16,
+                                                          color: AppColors
+                                                              .success),
+                                                      const SizedBox(width: 4),
+                                                      Text('她有主動投入訊號',
+                                                          style: AppTypography
+                                                              .caption
+                                                              .copyWith(
+                                                                  color: AppColors
+                                                                      .onBackgroundPrimary)),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+
+                                        // Strategy
+                                        if (_strategy != null &&
+                                            _strategy!.trim().isNotEmpty) ...[
+                                          const SizedBox(height: 16),
+                                          BrandSurfaceCard(
+                                            child: Row(
+                                              children: [
+                                                const Text('💡',
+                                                    style: TextStyle(
+                                                        fontSize: 20)),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    _strategy!,
+                                                    style: AppTypography
+                                                        .bodyMedium
+                                                        .copyWith(
+                                                            color: AppColors
+                                                                .onBackgroundPrimary),
                                                   ),
                                                 ),
                                               ],
                                             ),
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              '重新分析一次，就能拿到完整分析結果。',
-                                              style: AppTypography.caption
-                                                  .copyWith(
-                                                color: AppColors.ctaStart,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 12),
-                                            SizedBox(
-                                              width: double.infinity,
-                                              child: OutlinedButton.icon(
-                                                onPressed: (_isAnalyzing ||
-                                                        _isRefreshingPremiumReplies)
-                                                    ? null
-                                                    : _refreshPremiumReplies,
-                                                icon: (_isAnalyzing ||
-                                                        _isRefreshingPremiumReplies)
-                                                    ? const SizedBox(
-                                                        width: 16,
-                                                        height: 16,
-                                                        child:
-                                                            CircularProgressIndicator(
-                                                          strokeWidth: 2,
-                                                        ),
-                                                      )
-                                                    : const Icon(
-                                                        Icons.refresh_rounded,
-                                                      ),
-                                                label: Text(
-                                                  (_isAnalyzing ||
-                                                          _isRefreshingPremiumReplies)
-                                                      ? '正在刷新完整分析…'
-                                                      : '重新產生完整分析',
+                                          ),
+                                        ],
+
+                                        // Topic Depth (話題深度)
+                                        if (_topicDepth != null) ...[
+                                          const SizedBox(height: 16),
+                                          BrandSurfaceCard(
+                                            child: Row(
+                                              children: [
+                                                Text(_topicDepth!.current.emoji,
+                                                    style: const TextStyle(
+                                                        fontSize: 20)),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Text(
+                                                          '話題深度: ${_topicDepth!.current.label}',
+                                                          style: AppTypography
+                                                              .bodyMedium
+                                                              .copyWith(
+                                                                  color: AppColors
+                                                                      .onBackgroundPrimary)),
+                                                      if (_topicDepth!
+                                                          .suggestion
+                                                          .isNotEmpty)
+                                                        Text(
+                                                            _topicDepth!
+                                                                .suggestion,
+                                                            style: AppTypography.caption.copyWith(
+                                                                color: AppColors
+                                                                    .onBackgroundSecondary
+                                                                    .withValues(
+                                                                        alpha:
+                                                                            0.6))),
+                                                    ],
+                                                  ),
                                                 ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                    }
-                                    // 付費用戶：AI 判斷此情境最適合延展
-                                    return Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.onBackgroundSecondary
-                                            .withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.lightbulb_outline,
-                                              color: AppColors
-                                                  .onBackgroundSecondary),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              'AI 判斷此情境最適合使用延展回覆',
-                                              style: AppTypography.bodyMedium
-                                                  .copyWith(
-                                                color: AppColors
-                                                    .onBackgroundSecondary,
-                                              ),
+                                              ],
                                             ),
                                           ),
                                         ],
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ],
-                          ],
+
+                                        // Health Check (對話健檢 - Essential 專屬)
+                                        if (_healthCheck != null &&
+                                            subscription.isEssential &&
+                                            _healthCheck!
+                                                .issues.isNotEmpty) ...[
+                                          const SizedBox(height: 16),
+                                          Container(
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.warning
+                                                  .withValues(alpha: 0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              border: Border.all(
+                                                  color: AppColors.warning
+                                                      .withValues(alpha: 0.3)),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    const Text('🩺',
+                                                        style: TextStyle(
+                                                            fontSize: 18)),
+                                                    const SizedBox(width: 8),
+                                                    Text('對話健檢',
+                                                        style: AppTypography
+                                                            .titleMedium),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 8),
+                                                ..._healthCheck!.issues
+                                                    .map((issue) => Padding(
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .only(
+                                                                  bottom: 4),
+                                                          child: Row(
+                                                            children: [
+                                                              const Icon(
+                                                                  Icons
+                                                                      .warning_amber,
+                                                                  size: 16,
+                                                                  color: AppColors
+                                                                      .warning),
+                                                              const SizedBox(
+                                                                  width: 8),
+                                                              Expanded(
+                                                                  child: Text(
+                                                                      issue,
+                                                                      style: AppTypography
+                                                                          .bodyMedium)),
+                                                            ],
+                                                          ),
+                                                        )),
+                                                if (_healthCheck!.suggestions
+                                                    .isNotEmpty) ...[
+                                                  const SizedBox(height: 8),
+                                                  ..._healthCheck!.suggestions
+                                                      .map((suggestion) =>
+                                                          Padding(
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .only(
+                                                                    bottom: 4),
+                                                            child: Row(
+                                                              children: [
+                                                                const Icon(
+                                                                    Icons
+                                                                        .lightbulb_outline,
+                                                                    size: 16,
+                                                                    color: AppColors
+                                                                        .success),
+                                                                const SizedBox(
+                                                                    width: 8),
+                                                                Expanded(
+                                                                    child: Text(
+                                                                        suggestion,
+                                                                        style: AppTypography
+                                                                            .caption)),
+                                                              ],
+                                                            ),
+                                                          )),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+
+                                        // Reply suggestions (5 種回覆)
+                                        if (_replies != null &&
+                                            _replies!.isNotEmpty) ...[
+                                          const SizedBox(height: 24),
+                                          Row(
+                                            children: [
+                                              Text(
+                                                  '接法建議・${_replies!.length} 種風格',
+                                                  style: AppTypography
+                                                      .titleLarge
+                                                      .copyWith(
+                                                          color: AppColors
+                                                              .onBackgroundPrimary)),
+                                              const Spacer(),
+                                              Text('← 左右滑動',
+                                                  style: AppTypography.caption
+                                                      .copyWith(
+                                                          color: AppColors
+                                                              .onBackgroundSecondary
+                                                              .withValues(
+                                                                  alpha: 0.6))),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 12),
+                                          SizedBox(
+                                            height: 360,
+                                            child: ListView(
+                                              scrollDirection: Axis.horizontal,
+                                              children: [
+                                                if (_replies!
+                                                    .containsKey('extend'))
+                                                  _buildHorizontalReplyCard(
+                                                      'extend',
+                                                      _replies!['extend']!,
+                                                      option: _replyOptions?[
+                                                          'extend'],
+                                                      isRecommended:
+                                                          _isRecommendedReplyType(
+                                                              'extend')),
+                                                if (_replies!
+                                                    .containsKey('resonate'))
+                                                  _buildHorizontalReplyCard(
+                                                      'resonate',
+                                                      _replies!['resonate']!,
+                                                      option: _replyOptions?[
+                                                          'resonate'],
+                                                      isRecommended:
+                                                          _isRecommendedReplyType(
+                                                              'resonate')),
+                                                if (_replies!
+                                                    .containsKey('tease'))
+                                                  _buildHorizontalReplyCard(
+                                                      'tease',
+                                                      _replies!['tease']!,
+                                                      option: _replyOptions?[
+                                                          'tease'],
+                                                      isRecommended:
+                                                          _isRecommendedReplyType(
+                                                              'tease')),
+                                                if (_replies!
+                                                    .containsKey('humor'))
+                                                  _buildHorizontalReplyCard(
+                                                      'humor',
+                                                      _replies!['humor']!,
+                                                      option: _replyOptions?[
+                                                          'humor'],
+                                                      isRecommended:
+                                                          _isRecommendedReplyType(
+                                                              'humor')),
+                                                if (_replies!
+                                                    .containsKey('coldRead'))
+                                                  _buildHorizontalReplyCard(
+                                                      'coldRead',
+                                                      _replies!['coldRead']!,
+                                                      option: _replyOptions?[
+                                                          'coldRead'],
+                                                      isRecommended:
+                                                          _isRecommendedReplyType(
+                                                              'coldRead')),
+                                              ],
+                                            ),
+                                          ),
+                                          for (final type in const [
+                                            'extend',
+                                            'resonate',
+                                            'tease',
+                                            'humor',
+                                            'coldRead',
+                                          ])
+                                            if (_replies!.containsKey(type))
+                                              _buildAnalysisOutcomeBar(
+                                                cardKey: type,
+                                                label: ReplyStyleCard
+                                                        .labels[type] ??
+                                                    type,
+                                              ),
+                                          // Free 固定在雙風格後顯示完整版入口；
+                                          // 已升級但還在看舊 Free 結果時也要能重新分析。
+                                          if ((subscription.isFreeUser &&
+                                                  _replies!.isNotEmpty) ||
+                                              _analysisNeedsReplyRefresh(
+                                                  subscription) ||
+                                              (_replies!.length == 1 &&
+                                                  _replies!.containsKey(
+                                                      'extend'))) ...[
+                                            const SizedBox(height: 12),
+                                            Builder(
+                                              builder: (context) {
+                                                // Free 用戶：顯示升級提示
+                                                if (subscription.isFreeUser) {
+                                                  return GestureDetector(
+                                                    onTap: () async =>
+                                                        _showPaywall(context),
+                                                    child: Container(
+                                                      padding:
+                                                          const EdgeInsets.all(
+                                                              12),
+                                                      decoration: BoxDecoration(
+                                                        color: AppColors
+                                                            .ctaStart
+                                                            .withValues(
+                                                                alpha: 0.1),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(8),
+                                                        border: Border.all(
+                                                            color: AppColors
+                                                                .ctaStart
+                                                                .withValues(
+                                                                    alpha:
+                                                                        0.3)),
+                                                      ),
+                                                      child: Row(
+                                                        children: [
+                                                          const Icon(
+                                                              Icons
+                                                                  .lock_outline,
+                                                              color: AppColors
+                                                                  .ctaStart),
+                                                          const SizedBox(
+                                                              width: 8),
+                                                          Expanded(
+                                                            child: Text(
+                                                              '你已可比較延展、調情；升級解鎖共鳴、幽默、冷讀等完整 5 種風格',
+                                                              style: AppTypography
+                                                                  .bodyMedium
+                                                                  .copyWith(
+                                                                      color: AppColors
+                                                                          .primary),
+                                                            ),
+                                                          ),
+                                                          const Icon(
+                                                              Icons
+                                                                  .arrow_forward_ios,
+                                                              size: 16,
+                                                              color: AppColors
+                                                                  .ctaStart),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  );
+                                                }
+                                                if (_analysisNeedsReplyRefresh(
+                                                  subscription,
+                                                )) {
+                                                  return Container(
+                                                    padding:
+                                                        const EdgeInsets.all(
+                                                            12),
+                                                    decoration: BoxDecoration(
+                                                      color: AppColors.ctaStart
+                                                          .withValues(
+                                                              alpha: 0.1),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              8),
+                                                      border: Border.all(
+                                                        color: AppColors
+                                                            .ctaStart
+                                                            .withValues(
+                                                                alpha: 0.3),
+                                                      ),
+                                                    ),
+                                                    child: Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      children: [
+                                                        Row(
+                                                          children: [
+                                                            const Icon(
+                                                              Icons
+                                                                  .auto_awesome,
+                                                              color: AppColors
+                                                                  .ctaStart,
+                                                            ),
+                                                            const SizedBox(
+                                                                width: 8),
+                                                            Expanded(
+                                                              child: Text(
+                                                                '你已升級，這份分析仍是免費版結果。',
+                                                                style: AppTypography
+                                                                    .bodyMedium
+                                                                    .copyWith(
+                                                                  color: AppColors
+                                                                      .ctaStart,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w600,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                        const SizedBox(
+                                                            height: 8),
+                                                        Text(
+                                                          '重新分析一次，就能拿到完整分析結果。',
+                                                          style: AppTypography
+                                                              .caption
+                                                              .copyWith(
+                                                            color: AppColors
+                                                                .ctaStart,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(
+                                                            height: 12),
+                                                        SizedBox(
+                                                          width:
+                                                              double.infinity,
+                                                          child: OutlinedButton
+                                                              .icon(
+                                                            onPressed: (_isAnalyzing ||
+                                                                    _isRefreshingPremiumReplies)
+                                                                ? null
+                                                                : _refreshPremiumReplies,
+                                                            icon: (_isAnalyzing ||
+                                                                    _isRefreshingPremiumReplies)
+                                                                ? const SizedBox(
+                                                                    width: 16,
+                                                                    height: 16,
+                                                                    child:
+                                                                        CircularProgressIndicator(
+                                                                      strokeWidth:
+                                                                          2,
+                                                                    ),
+                                                                  )
+                                                                : const Icon(
+                                                                    Icons
+                                                                        .refresh_rounded,
+                                                                  ),
+                                                            label: Text(
+                                                              (_isAnalyzing ||
+                                                                      _isRefreshingPremiumReplies)
+                                                                  ? '正在刷新完整分析…'
+                                                                  : '重新產生完整分析',
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  );
+                                                }
+                                                // 付費用戶：AI 判斷此情境最適合延展
+                                                return Container(
+                                                  padding:
+                                                      const EdgeInsets.all(12),
+                                                  decoration: BoxDecoration(
+                                                    color: AppColors
+                                                        .onBackgroundSecondary
+                                                        .withValues(alpha: 0.1),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            8),
+                                                  ),
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(
+                                                          Icons
+                                                              .lightbulb_outline,
+                                                          color: AppColors
+                                                              .onBackgroundSecondary),
+                                                      const SizedBox(width: 8),
+                                                      Expanded(
+                                                        child: Text(
+                                                          'AI 判斷此情境最適合使用延展回覆',
+                                                          style: AppTypography
+                                                              .bodyMedium
+                                                              .copyWith(
+                                                            color: AppColors
+                                                                .onBackgroundSecondary,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ],
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                          ),
                         ],
 
                         if (_enthusiasmScore != null &&
@@ -8099,7 +8229,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             key: _analysisProgressEndKey,
                             height: 1,
                           ),
-
 
                         // 草稿潤飾功能：使用者已有方向時才用；判斷/策略交給 Coach 1:1。
                         if (_enthusiasmScore != null) ...[
