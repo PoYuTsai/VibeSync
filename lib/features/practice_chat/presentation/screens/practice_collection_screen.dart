@@ -307,6 +307,17 @@ class _PracticeCollectionScreenState
     notifier.drawNewPracticeGirl();
   }
 
+  /// SR 限定翻牌券抽：券固定 SR、不扣額度，沒有「值不值」的猶豫 → 不彈確認框，
+  /// 儀式本身就是慶祝。完成後刷新券狀態（成功→金券收起；已用 409→同樣收起）。
+  Future<void> _onSrTicketPressed() async {
+    final state = ref.read(practiceChatControllerProvider);
+    if (state.isDrawing || state.isPersistingTurn) return;
+    final notifier = ref.read(practiceChatControllerProvider.notifier);
+    await notifier.drawNewPracticeGirl(srTicket: true);
+    if (!mounted) return;
+    ref.invalidate(srTicketStatusProvider);
+  }
+
   /// 滿池後再抽可能重複、免費次數用完則會扣額度；兩者同時發生時合併成同一個
   /// AlertDialog，避免使用者連續確認兩次。
   Future<void> _confirmDraw(
@@ -511,6 +522,14 @@ class _PracticeCollectionScreenState
                       drawEnabled:
                           !chatState.isDrawing && !chatState.isPersistingTurn,
                       onDrawPressed: _onDrawPressed,
+                    ),
+                  ),
+                  // SR 限定翻牌券（訂閱一次性權益，2026-08-08 拍板）三態：
+                  // premium＋未用＝金券（點了直接券抽，儀式即慶祝）；free＝鎖定
+                  // 灰券導 paywall；已用/載入中/讀取失敗＝不顯示（fail-quiet）。
+                  SliverToBoxAdapter(
+                    child: _SrTicketSection(
+                      onDrawTicket: _onSrTicketPressed,
                     ),
                   ),
                   SliverToBoxAdapter(
@@ -1159,6 +1178,132 @@ class _CollectionCardPhoto extends StatelessWidget {
           color: Colors.white,
           fontWeight: FontWeight.w700,
           fontSize: 32,
+        ),
+      ),
+    );
+  }
+}
+
+/// SR 限定翻牌券卡（訂閱一次性權益）三態呈現；同一張卡的鎖定/可用兩個狀態，
+/// 訂閱前後視覺連續（Free 的鎖定灰券就是升級鉤子）。已用/載入中/讀取失敗
+/// 一律收起：券是 bonus 不是主流程，絕不因它擋圖鑑。
+class _SrTicketSection extends ConsumerWidget {
+  const _SrTicketSection({required this.onDrawTicket});
+
+  final Future<void> Function() onDrawTicket;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isPremium =
+        ref.watch(subscriptionProvider.select((s) => s.isPremium));
+    if (!isPremium) {
+      return _SrTicketCard(
+        cardKey: const ValueKey('collection-sr-ticket-locked'),
+        locked: true,
+        onTap: () => context.push('/paywall'),
+      );
+    }
+    final status = ref.watch(srTicketStatusProvider);
+    final available = status.maybeWhen(
+      data: (s) => s.granted && !s.consumed,
+      orElse: () => false,
+    );
+    if (!available) return const SizedBox.shrink();
+    return _SrTicketCard(
+      cardKey: const ValueKey('collection-sr-ticket'),
+      locked: false,
+      onTap: onDrawTicket,
+    );
+  }
+}
+
+class _SrTicketCard extends StatelessWidget {
+  const _SrTicketCard({
+    required this.cardKey,
+    required this.locked,
+    required this.onTap,
+  });
+
+  final Key cardKey;
+  final bool locked;
+  final void Function() onTap;
+
+  static const _gold = AppColors.avatarHerEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = locked ? AppColors.onBackgroundSecondary : _gold;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+      child: GestureDetector(
+        key: cardKey,
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: locked ? 0.06 : 0.10),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: accent.withValues(alpha: 0.55)),
+            boxShadow: locked
+                ? const []
+                : [
+                    BoxShadow(
+                      color: _gold.withValues(alpha: 0.18),
+                      blurRadius: 14,
+                    ),
+                  ],
+          ),
+          child: Row(
+            children: [
+              Icon(
+                locked ? Icons.lock_outline : Icons.auto_awesome,
+                size: 20,
+                color: accent,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'SR 限定翻牌 ×1',
+                      style: AppTypography.labelMedium.copyWith(
+                        color: locked
+                            ? AppColors.onBackgroundPrimary
+                                .withValues(alpha: 0.8)
+                            : _gold,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      locked ? '訂閱就送，翻開必得 SR、直接解鎖 Game' : '保底 SR，翻開直接解鎖 Game',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.onBackgroundSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: locked ? 0.14 : 0.22),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  locked ? '訂閱解鎖' : '翻開',
+                  style: AppTypography.caption.copyWith(
+                    color: locked ? AppColors.onBackgroundPrimary : _gold,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

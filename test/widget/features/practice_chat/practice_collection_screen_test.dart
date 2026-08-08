@@ -60,10 +60,12 @@ class _DrawSpyController extends _SeededPracticeChatController {
 
   int drawCalls = 0;
   int lockQuotaCalls = 0;
+  bool? lastDrawSrTicket;
 
   @override
-  Future<void> drawNewPracticeGirl() async {
+  Future<void> drawNewPracticeGirl({bool srTicket = false}) async {
     drawCalls++;
+    lastDrawSrTicket = srTicket;
   }
 
   @override
