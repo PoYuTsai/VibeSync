@@ -7,6 +7,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
+import '../../../../shared/widgets/entrance_reveal.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
@@ -370,22 +371,26 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
           ),
           if (isLoading) ...[
             const SizedBox(height: 14),
-            CoachChatProgressNotice(
-              update: progress,
-              question: _lastAskedQuestion,
+            EntranceReveal(
+              child: CoachChatProgressNotice(
+                update: progress,
+                question: _lastAskedQuestion,
+              ),
             ),
           ] else if (activeError) ...[
             const SizedBox(height: 14),
-            _CoachFailureNotice(
-              title: CoachSurface.failureTitleFor(activeErrorObject!),
-              subtitle: CoachSurface.failureSubtitleFor(activeErrorObject),
-              question: _lastAskedQuestion!,
-              message: CoachSurface.failureMessageFor(activeErrorObject),
-              actionLabel:
-                  CoachSurface.failureActionLabelFor(activeErrorObject),
-              onRetry: CoachSurface.isQuotaError(activeErrorObject)
-                  ? (widget.onQuotaExceeded ?? _retryLastQuestion)
-                  : _retryLastQuestion,
+            EntranceReveal(
+              child: _CoachFailureNotice(
+                title: CoachSurface.failureTitleFor(activeErrorObject!),
+                subtitle: CoachSurface.failureSubtitleFor(activeErrorObject),
+                question: _lastAskedQuestion!,
+                message: CoachSurface.failureMessageFor(activeErrorObject),
+                actionLabel:
+                    CoachSurface.failureActionLabelFor(activeErrorObject),
+                onRetry: CoachSurface.isQuotaError(activeErrorObject)
+                    ? (widget.onQuotaExceeded ?? _retryLastQuestion)
+                    : _retryLastQuestion,
+              ),
             ),
             if (timeline.isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -602,12 +607,16 @@ class _CoachChatThreadView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        CoachChatResultView(
-          result: latest,
-          question: latest.question,
-          dailyRemaining: dailyRemaining,
-          onFollowUp: onFollowUp,
-          onForceAnswer: onForceAnswer,
+        // key 綁 result id：新回覆換 id 重掛載才重播進場，重繪不會閃。
+        EntranceReveal(
+          key: ValueKey('coach-answer-${latest.id}'),
+          child: CoachChatResultView(
+            result: latest,
+            question: latest.question,
+            dailyRemaining: dailyRemaining,
+            onFollowUp: onFollowUp,
+            onForceAnswer: onForceAnswer,
+          ),
         ),
         if (latest.earlierSummary?.trim().isNotEmpty == true) ...[
           const SizedBox(height: 10),
