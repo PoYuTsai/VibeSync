@@ -91,7 +91,8 @@ class KeyboardOnboardingScheduler {
       if (_resumePending) {
         // 中斷復原：非 firstRun（關閉走 pop 回首頁），也不打
         // keyboard_setup_shown——這不是首次曝光，會污染採用漏斗。
-        // 旗標本體由設定頁 initState 消費並跳回第 3 頁。
+        // 旗標本體由設定頁 initState 消費並跳回「允許完整取用」後的
+        // 相片權限（截圖輔助）頁。
         _resumePending = false;
         unawaited(
           router.push('/settings/keyboard').whenComplete(() {

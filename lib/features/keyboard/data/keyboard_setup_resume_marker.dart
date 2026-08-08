@@ -4,7 +4,7 @@
 // 權限開關必定強殺 App，冷啟動後 app 層據此把設定頁自動推回來——這條
 // 不看 onboarding gate 條件（已完成過鍵盤引導的人從起步清單／設定頁重走
 // 同樣會被殺，2026-08-07 真機重測命中），設定頁 initState 再消費旗標跳回
-// 「長按地球」那一頁。
+// 「允許完整取用」後的相片權限（截圖輔助）頁。
 import 'package:shared_preferences/shared_preferences.dart';
 
 class KeyboardSetupResumeMarker {

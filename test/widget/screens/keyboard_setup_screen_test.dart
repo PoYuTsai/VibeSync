@@ -22,7 +22,7 @@ void main() {
     AiDataSharingConsent.debugUserIdOverride = null;
   });
 
-  testWidgets('teaches settings permission before globe and quick reply',
+  testWidgets('teaches settings permission before screenshot assist and globe',
       (tester) async {
     var settingsOpened = 0;
     final router = GoRouter(
@@ -81,6 +81,17 @@ void main() {
     await tester.tap(find.text('我已完成設定'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
+    // 頁序（2026-08-09）：完整取用之後先到截圖輔助（相片權限）頁，
+    // 地球頁移到最後收尾。
+    expect(find.text('截圖就有好回覆'), findsOneWidget);
+    expect(find.text('選用：啟用「最近截圖」AI 輔助'), findsOneWidget);
+    // 三步示範現在明確框成「貼文字」備援路徑。
+    expect(find.text('不想截圖？貼文字也行：'), findsOneWidget);
+    expect(find.text('選風格，確認後送出'), findsOneWidget);
+
+    await tester.tap(find.text('下一步'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('長按地球，切換鍵盤'), findsOneWidget);
     // 註冊空窗提示（2026-08-07）：切完完整取用後 iOS 重新註冊 extension，
     // 一兩分鐘內地球鍵清單沒有 VibeSync，實測（Bruce）會誤判成壞掉。
@@ -88,12 +99,6 @@ void main() {
       find.textContaining('iOS 正在註冊新鍵盤'),
       findsOneWidget,
     );
-
-    await tester.tap(find.text('下一步'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('三步就有好回覆'), findsOneWidget);
-    expect(find.text('選風格，確認後送出'), findsOneWidget);
   });
 
   testWidgets(
@@ -154,7 +159,10 @@ void main() {
 
       expect(find.text('聊天不用再跳出 App'), findsNothing);
       expect(find.text('先啟用 VibeSync 鍵盤'), findsNothing);
-      expect(find.text('長按地球，切換鍵盤'), findsOneWidget);
+      // 中斷復原要落在「允許完整取用」後的相片權限（截圖輔助）頁，
+      // 不是地球頁（2026-08-09 頁序調整）。
+      expect(find.text('截圖就有好回覆'), findsOneWidget);
+      expect(find.text('長按地球，切換鍵盤'), findsNothing);
     },
   );
 
@@ -229,8 +237,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(OnboardingService.isKeyboardCompletedSync, isTrue);
-    // 非 firstRun 完成後 pop 回前一頁。
-    expect(find.text('三步就有好回覆'), findsNothing);
+    // 非 firstRun 完成後 pop 回前一頁（末頁現在是地球頁）。
+    expect(find.text('長按地球，切換鍵盤'), findsNothing);
   });
 
   testWidgets('revoking screenshot consent purges native keyboard context',
@@ -263,7 +271,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
-    for (var step = 0; step < 3; step++) {
+    // 截圖輔助頁（2026-08-09）在第 3 頁：下一步→我已完成設定就到了。
+    for (var step = 0; step < 2; step++) {
       final label = step == 1 ? '我已完成設定' : '下一步';
       await tester.tap(find.text(label));
       await tester.pump();
@@ -271,7 +280,7 @@ void main() {
     }
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
-    expect(find.text('三步就有好回覆'), findsOneWidget);
+    expect(find.text('截圖就有好回覆'), findsOneWidget);
     expect(find.text('撤回截圖 AI 同意並清除鍵盤脈絡'), findsOneWidget);
 
     await tester.ensureVisible(find.text('撤回截圖 AI 同意並清除鍵盤脈絡'));
@@ -319,7 +328,8 @@ void main() {
 
     expect(channel.scopes, [KeyboardContextPurgeScope.accountDeletion]);
 
-    for (var page = 0; page < 3; page++) {
+    // 撤回入口在截圖輔助頁（2026-08-09 起是第 3 頁），滑兩頁就到。
+    for (var page = 0; page < 2; page++) {
       await tester.drag(
         find.byType(PageView),
         const Offset(-500, 0),
@@ -367,7 +377,8 @@ void main() {
     );
     await tester.pump();
 
-    for (var step = 0; step < 3; step++) {
+    // 截圖輔助頁（2026-08-09）在第 3 頁：下一步→我已完成設定就到了。
+    for (var step = 0; step < 2; step++) {
       final label = step == 1 ? '我已完成設定' : '下一步';
       await tester.tap(find.text(label));
       await tester.pump();
@@ -394,8 +405,11 @@ void main() {
 
     expect(setup.calls, 1);
     expect(find.text('「最近截圖」輔助已啟用'), findsOneWidget);
+    // 成功 snackbar 講真實模型：鍵盤開著時新拍的截圖才自動分析，
+    // 舊截圖（開鍵盤前 3 分鐘內）走手動送出——不得再宣稱「自動用
+    // 最近 3 分鐘的截圖」。
     expect(
-      find.textContaining('自動使用最近 3 分鐘的截圖'),
+      find.textContaining('已啟用「最近截圖」輔助'),
       findsOneWidget,
     );
     expect(
@@ -436,7 +450,8 @@ void main() {
     );
     await tester.pump();
 
-    for (var step = 0; step < 3; step++) {
+    // 截圖輔助頁（2026-08-09）在第 3 頁：下一步→我已完成設定就到了。
+    for (var step = 0; step < 2; step++) {
       final label = step == 1 ? '我已完成設定' : '下一步';
       await tester.tap(find.text(label));
       await tester.pump();
@@ -490,7 +505,8 @@ void main() {
     );
     await tester.pump();
 
-    for (var step = 0; step < 3; step++) {
+    // 截圖輔助頁（2026-08-09）在第 3 頁：下一步→我已完成設定就到了。
+    for (var step = 0; step < 2; step++) {
       final label = step == 1 ? '我已完成設定' : '下一步';
       await tester.tap(find.text(label));
       await tester.pump();

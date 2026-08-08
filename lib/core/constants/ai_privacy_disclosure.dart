@@ -38,8 +38,8 @@ class AiPrivacyDisclosure {
   /// 「最近截圖」是預設關閉、需要獨立同意的選用功能，因此單獨成段，
   /// 不與上面的文字回覆流程混在一起。
   static const String _keyboardScreenshotParagraph =
-      '若你另行同意並啟用鍵盤的「最近截圖」輔助，鍵盤開啟時會在本機尋找最近 3 分鐘的系統截圖並自動分析一張，不會再逐次詢問。\n'
-      '上傳前會裁掉截圖裡 VibeSync 鍵盤自己佔的區塊，鍵盤上也會一直顯示這次用的是哪一張。後端不保存截圖或 OCR 逐字稿，你可以隨時在「設定 > 鍵盤」撤回同意並清除鍵盤脈絡。';
+      '若你另行同意並啟用鍵盤的「最近截圖」輔助，鍵盤開啟期間新拍的系統截圖會在本機讀取並上傳分析一張，不會再逐次詢問；開啟鍵盤前 3 分鐘內的截圖則只在你手動選擇時才分析。\n'
+      '上傳前會裁掉截圖裡 VibeSync 鍵盤自己佔的區塊，鍵盤上也會一直顯示這次用的是哪一張，按 ✕ 可隨時收起結果。後端不保存截圖或 OCR 逐字稿，你可以隨時在「設定 > 鍵盤」撤回同意並清除鍵盤脈絡。';
 
   static const String description =
       '$_openingLine\n$_vendorLine\n$_consentLine\n\n$_uploadParagraph\n\n$_optimizeReplayParagraph\n\n$_keyboardReplayParagraph\n\n$_keyboardScreenshotParagraph';

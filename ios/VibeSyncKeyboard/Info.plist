@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>啟用「最近截圖」輔助後，VibeSync 鍵盤開啟時會在本機尋找最近三分鐘的系統截圖並自動分析一張；鍵盤上會顯示這次用的是哪一張，你可以隨時撤回同意。</string>
+	<string>啟用「最近截圖」輔助後，VibeSync 鍵盤開啟期間新拍的系統截圖會自動分析一張（開啟前 3 分鐘內的截圖可手動選擇分析）；鍵盤上會顯示這次用的是哪一張，你可以隨時撤回同意。</string>
 	<key>CFBundleDisplayName</key>
 	<string>VibeSync 鍵盤</string>
 	<key>CFBundleExecutable</key>

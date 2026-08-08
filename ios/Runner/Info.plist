@@ -27,7 +27,7 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>VibeSync 需要相片權限，讓你選取聊天截圖；若你另行啟用鍵盤「最近截圖」輔助，鍵盤開啟時會在本機尋找最近 3 分鐘的系統截圖並自動分析一張，鍵盤上會顯示這次用的是哪一張，你可以隨時在設定中撤回。</string>
+	<string>VibeSync 需要相片權限，讓你選取聊天截圖；若你另行啟用鍵盤「最近截圖」輔助，鍵盤開啟期間新拍的系統截圖會自動分析一張（開啟前 3 分鐘內的截圖可手動選擇分析），鍵盤上會顯示這次用的是哪一張，你可以隨時在設定中撤回。</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

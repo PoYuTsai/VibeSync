@@ -49,6 +49,9 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
   // 下次啟動看到就直接跳回「允許完整取用」後的那一頁；app 層的
   // KeyboardOnboardingScheduler 也讀同一旗標把本頁自動推回來。
   static const _awaitingFullAccessReturnKey = KeyboardSetupResumeMarker.key;
+  // 「允許完整取用」切完回來要落的那一頁＝相片權限（截圖輔助）頁。
+  // 2026-08-09 頁序調整：截圖輔助提前到完整取用後，地球頁移到最後。
+  static const _kPostFullAccessPage = 2;
   final _controller = PageController();
   late final AnimationController _pulse;
   late Future<bool> _hasKeyboardScreenshotConsent;
@@ -90,20 +93,20 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
     if (prefs.getBool(_awaitingFullAccessReturnKey) != true) return;
     await prefs.remove(_awaitingFullAccessReturnKey);
     if (!mounted) return;
-    _jumpToGlobePageWhenReady();
+    _jumpToPostFullAccessPage();
   }
 
   /// 舊版單發 postFrame 遇到 PageView 還沒 attach 就靜默放棄，使用者落在
   /// 第 1 頁（2026-08-07 真機重測命中）——改成逐幀重試直到 attach，
   /// 上限守門避免異常狀態下空轉。
-  void _jumpToGlobePageWhenReady([int attemptsLeft = 30]) {
+  void _jumpToPostFullAccessPage([int attemptsLeft = 30]) {
     if (!mounted || attemptsLeft <= 0) return;
     if (_controller.hasClients) {
-      _controller.jumpToPage(2);
+      _controller.jumpToPage(_kPostFullAccessPage);
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _jumpToGlobePageWhenReady(attemptsLeft - 1),
+      (_) => _jumpToPostFullAccessPage(attemptsLeft - 1),
     );
   }
 
@@ -115,7 +118,7 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
             .then((p) => p.remove(_awaitingFullAccessReturnKey)),
       );
       _controller.animateToPage(
-        2,
+        _kPostFullAccessPage,
         duration: const Duration(milliseconds: 360),
         curve: Curves.easeOutCubic,
       );
@@ -318,7 +321,7 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
   String _screenshotSetupMessage(KeyboardScreenshotSetupResult result) {
     return switch (result) {
       KeyboardScreenshotSetupResult.enabled =>
-        '已啟用「最近截圖」輔助。鍵盤開啟時會自動使用最近 3 分鐘的截圖，並在鍵盤上顯示用了哪一張。',
+        '已啟用「最近截圖」輔助。鍵盤開著時新拍的截圖會自動分析，並在鍵盤上顯示用了哪一張；開鍵盤前 3 分鐘內的截圖可在鍵盤上手動送出分析。',
       KeyboardScreenshotSetupResult.signedOut => '請先登入 VibeSync，再回來啟用「最近截圖」輔助。',
       KeyboardScreenshotSetupResult.consentMissing =>
         '截圖 AI 同意已失效，沒有啟用。請重新操作一次。',
@@ -381,9 +384,12 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
               ),
               const SizedBox(height: 10),
               Text(
+                // 真實行為（2026-08-09 對過 iOS 端）：鍵盤開著時「新拍」的
+                // 截圖才會自動分析（一次一張）；開鍵盤前 3 分鐘內的舊截圖
+                // 只能在鍵盤上手動送出。別再寫成「自動找最近 3 分鐘的截圖」。
                 enabled
-                    ? '功能啟用後，鍵盤開啟時會在本機尋找最近 3 分鐘的系統截圖並自動分析一張；鍵盤上會顯示這次用的是哪一張。'
-                    : '需要獨立的 AI 資料同意與 iOS 相片權限。啟用後，鍵盤開啟時會在本機尋找最近 3 分鐘的系統截圖並自動分析一張；鍵盤上會顯示這次用的是哪一張。',
+                    ? '鍵盤開著時，新拍的截圖會自動分析並直接給回覆；鍵盤上會顯示這次用的是哪一張，按 ✕ 可收起。開鍵盤前 3 分鐘內的截圖則可在鍵盤上手動送出分析。'
+                    : '需要獨立的 AI 資料同意與 iOS 相片權限。啟用後，鍵盤開著時新拍的截圖會自動分析並直接給回覆；鍵盤上會顯示這次用的是哪一張，按 ✕ 可收起。',
                 style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.onBackgroundSecondary,
                 ),
@@ -478,6 +484,9 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                       title: '先啟用 VibeSync 鍵盤',
                       description:
                           '到 iPhone 設定開啟「VibeSync 鍵盤」與「允許完整取用」。iOS 需要由你親自開啟。',
+                      // 版位順序（2026-08-09）：CTA →「允許完整取用」開關
+                      // 預覽（關鍵視覺，要在不捲動下看得到）→ 重啟預告 →
+                      // 隱私鈕。重啟預告雖降到第三位，仍在同一頁內。
                       child: Column(
                         children: [
                           BrandPrimaryButton(
@@ -485,7 +494,9 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                             onPressed: _openSettings,
                             icon: Icons.open_in_new,
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 14),
+                          const _FullAccessPathGuide(),
+                          const SizedBox(height: 14),
                           // 實測 iOS 狀態列的「◀ 返回 App」提示會消失，
                           // 不可靠——明講用 App 切換器回來。另外切「允許完整
                           // 取用」時 iOS 必定強制重啟 App（權限開關的系統行為，
@@ -499,10 +510,34 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                               color: AppColors.onBackgroundSecondary,
                             ),
                           ),
-                          const SizedBox(height: 20),
-                          const _FullAccessPathGuide(),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 8),
                           const _PrivacyNoticeButton(),
+                        ],
+                      ),
+                    ),
+                    // 頁序（2026-08-09）：截圖輔助（相片權限）提前到完整取用
+                    // 之後——冷啟動／熱切回的 jump 目標（_kPostFullAccessPage）
+                    // 現在落在這頁；地球頁移到最後收尾。
+                    _SetupPage(
+                      icon: Icons.bolt,
+                      title: '截圖就有好回覆',
+                      description:
+                          '鍵盤開著時截一張圖，AI 會自動分析並直接給你回覆；也可以貼上文字產生。VibeSync 只插入文字，最後由你決定是否送出。',
+                      child: Column(
+                        children: [
+                          _buildLatestScreenshotDetectionSetup(),
+                          _buildScreenshotConsentRevocation(),
+                          const SizedBox(height: 20),
+                          // 三步示範講的是「貼文字」備援路徑，不是截圖流程；
+                          // 標明白，避免又跟上面的截圖說明打架。
+                          Text(
+                            '不想截圖？貼文字也行：',
+                            style: AppTypography.labelLarge.copyWith(
+                              color: AppColors.onBackgroundSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          const _ThreeStepDemo(),
                         ],
                       ),
                     ),
@@ -526,20 +561,6 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                               color: AppColors.onBackgroundSecondary,
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                    _SetupPage(
-                      icon: Icons.bolt,
-                      title: '三步就有好回覆',
-                      description:
-                          '貼上文字可以直接產生回覆；也可選擇啟用「最近截圖」輔助。VibeSync 只插入文字，最後由你決定是否送出。',
-                      child: Column(
-                        children: [
-                          _buildLatestScreenshotDetectionSetup(),
-                          _buildScreenshotConsentRevocation(),
-                          const SizedBox(height: 20),
-                          const _ThreeStepDemo(),
                         ],
                       ),
                     ),
@@ -606,30 +627,33 @@ class _SetupPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 頭部收窄（2026-08-09）：96px 大圓＋寬間距把每頁關鍵內容（完整取用
+    // 開關預覽、截圖同意卡）壓到摺線下，實機要捲才看得到——縮成 64px
+    // 並收緊間距，讓頁面主體早點開始。
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       child: Column(
         children: [
           Container(
-            width: 96,
-            height: 96,
+            width: 64,
+            height: 64,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: AppColors.brandFlame.withValues(alpha: 0.14),
             ),
-            child: Icon(icon, size: 46, color: AppColors.brandFlame),
+            child: Icon(icon, size: 34, color: AppColors.brandFlame),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           Text(title,
               style: AppTypography.headlineMedium, textAlign: TextAlign.center),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Text(
             description,
             style: AppTypography.bodyLarge
                 .copyWith(color: AppColors.onBackgroundSecondary),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 30),
+          const SizedBox(height: 20),
           child,
         ],
       ),
@@ -643,7 +667,7 @@ class _PrivacyNoticeButton extends StatelessWidget {
   const _PrivacyNoticeButton();
 
   static const _detail =
-      'VibeSync 只送出你按下「載入」的文字。「最近截圖」需另行同意：啟用後鍵盤開啟時，只分析最近 3 分鐘內一張截圖，自動裁掉鍵盤佔用區塊，不讀取其他聊天紀錄。';
+      'VibeSync 只送出你按下「載入」的文字。「最近截圖」需另行同意：啟用後鍵盤開啟期間，新拍的系統截圖會在本機讀取並上傳分析一張，自動裁掉鍵盤佔用區塊，不讀取其他聊天紀錄；開鍵盤前 3 分鐘內的截圖只在你手動選擇時才分析。隨時可按 ✕ 收起結果或撤回同意。';
 
   void _showDetail(BuildContext context) {
     showDialog<void>(
@@ -724,8 +748,8 @@ class _FullAccessPathGuide extends StatelessWidget {
                   Icon(
                     Icons.chevron_right,
                     size: 18,
-                    color: AppColors.onBackgroundSecondary
-                        .withValues(alpha: 0.6),
+                    color:
+                        AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
                   ),
               ],
             ],

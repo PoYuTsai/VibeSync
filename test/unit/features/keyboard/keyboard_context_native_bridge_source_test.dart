@@ -57,7 +57,7 @@ void main() {
 
     expect(source, contains('NSPhotoLibraryUsageDescription'));
     expect(source, contains('另行啟用'));
-    expect(source, contains('最近 3 分鐘'));
+    expect(source, contains('鍵盤開啟期間新拍的系統截圖'));
     expect(source, contains('自動分析'));
     expect(source, contains('隨時在設定中撤回'));
   });
