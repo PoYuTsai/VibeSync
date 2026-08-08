@@ -79,6 +79,36 @@ Deno.test("internal label gate 攔認識管道注入標籤，但不誤殺自然�
   }
 });
 
+// gameLedger 整場帳注入 debrief prompt 三個標籤，鐵則＝注入內部詞必同步守門。
+Deno.test("internal label gate 攔 gameLedger 注入標籤，但不誤殺自然英文", () => {
+  for (
+    const leak of [
+      "gameLedger 顯示妳這場炸了兩次",
+      "failureCounts: GREASY=2",
+      "lowest variable 是投入感",
+    ]
+  ) {
+    assertEquals(
+      hasVisibleInternalLabelLeak(leak),
+      true,
+      `should reject "${leak}"`,
+    );
+  }
+  for (
+    const safe of [
+      "這局你失誤兩次都在同一種地方",
+      "her lowest point was the silence",
+      "把節奏放低一點會更自然",
+    ]
+  ) {
+    assertEquals(
+      hasVisibleInternalLabelLeak(safe),
+      false,
+      `should allow "${safe}"`,
+    );
+  }
+});
+
 // Codex Q5（2026-08-04）：前一顆測試只驗證英文標籤形（acquaintanceOrigin:
 // ...），沒驗證模型原樣講出中文標籤「認識管道」——normalizeVisibleText 會把
 // 中文剝光，該表本來攔不到，chat/hint/debrief 三側都要補。

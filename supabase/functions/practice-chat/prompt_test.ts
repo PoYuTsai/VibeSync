@@ -430,6 +430,47 @@ Deno.test("game buildChatMessages includes persisted game state when supplied", 
   assertEquals(sys.includes("Emotion + heat"), true);
 });
 
+// debrief 只注入 compactGameFsmEvidencePrompt（fresh 只反映最後一句），第 3 輪
+// 炸 GREASY、最後一句乾淨的局會看到 failureStates: none 卻被要求寫 failureState。
+// gameLedger 把 server 的整場帳（failureCounts＋最弱變數）交給 debrief 模型。
+Deno.test("game buildDebriefMessages 注入整場 gameLedger（failureCounts＋最弱變數契約名）", () => {
+  const all = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "哈囉" }],
+    defaultProfile,
+    {
+      practiceMode: "game",
+      temperatureScore: 60,
+      familiarityScore: 50,
+      gameState: {
+        ...initialPersistedGameState(),
+        pv: 60,
+        fp: 55,
+        inv: 22,
+        safety: 80,
+        failureCounts: {
+          ...initialPersistedGameState().failureCounts,
+          GREASY: 2,
+          BORING: 1,
+        },
+      },
+    },
+  ).map((message) => message.content).join("\n");
+
+  assertEquals(all.includes("gameLedger(hidden evidence)"), true);
+  assertEquals(all.includes("GREASY=2"), true);
+  assertEquals(all.includes("lowestVariable: Investment=22"), true);
+});
+
+Deno.test("game buildDebriefMessages 無整場帳（新局）時不注入 gameLedger", () => {
+  const all = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "哈囉" }],
+    defaultProfile,
+    { practiceMode: "game", temperatureScore: 60, familiarityScore: 50 },
+  ).map((message) => message.content).join("\n");
+
+  assertEquals(all.includes("gameLedger"), false);
+});
+
 Deno.test("standard and beginner buildChatMessages do not include game high-skill guidance", () => {
   const standard = buildChatMessages(
     [{ role: "user", text: "嗨" }],

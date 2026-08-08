@@ -5,6 +5,7 @@ import {
 import type { GameFsmSnapshot } from "./game_fsm.ts";
 import {
   buildNextGameState,
+  compactGameLedgerPrompt,
   effectiveGameFsmSnapshot,
   gameStateEvidencePrompt,
   initialPersistedGameState,
@@ -140,4 +141,30 @@ Deno.test("gameStateEvidencePrompt exposes persisted evidence only as hidden pro
   assert(prompt.includes("GREASY=2"));
   assert(prompt.includes("Investment + invite"));
   assertEquals(prompt.includes("L4"), false);
+});
+
+Deno.test("compactGameLedgerPrompt 給整場 failureCounts 與契約名的最弱變數", () => {
+  const prompt = compactGameLedgerPrompt({
+    ...initialPersistedGameState(),
+    pv: 60,
+    fp: 55,
+    inv: 22,
+    safety: 80,
+    failureCounts: {
+      ...initialPersistedGameState().failureCounts,
+      GREASY: 2,
+      BORING: 1,
+    },
+  });
+
+  assert(prompt.includes("gameLedger(hidden evidence)"));
+  assert(prompt.includes("GREASY=2"));
+  assert(prompt.includes("BORING=1"));
+  // 變數用 debrief 契約標準名（不是 inv 縮寫），模型不用自己猜對照。
+  assert(prompt.includes("lowestVariable: Investment=22"));
+});
+
+Deno.test("compactGameLedgerPrompt 無整場帳（新局）時整塊不注入", () => {
+  assertEquals(compactGameLedgerPrompt(null), "");
+  assertEquals(compactGameLedgerPrompt(undefined), "");
 });

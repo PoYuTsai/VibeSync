@@ -33,6 +33,10 @@ const INTERNAL_VISIBLE_LABELS = [
   "socialgamefsm",
   "hiddenvariables",
   "failurestates",
+  // gameLedger 整場帳注入標籤（debrief evidence）；鐵則＝注入內部詞必同步守門。
+  "gameledger",
+  "failurecounts",
+  "lowestvariable",
   "realityflags",
   "deltaclamp",
   "srstrategy",

@@ -223,6 +223,33 @@ function csvCounts<T extends string>(
   return visible.length > 0 ? visible.join(", ") : "none";
 }
 
+/**
+ * Debrief 專用的整場帳緊湊版。gameDebriefPrompt 只注入單句視角的
+ * compactGameFsmEvidencePrompt（fresh 只反映最後一句），第 3 輪炸過 GREASY、
+ * 最後一句乾淨的局會讓模型看到 failureStates: none 卻被要求寫 failureState。
+ * server 有整場帳（failureCounts＋每變數 ledger），這裡挑「誰最常炸」與
+ * 「哪個變數最弱」兩行給 debrief 模型，變數用 debrief 契約的標準名。
+ * 鐵則：注入的內部詞（gameLedger/failureCounts/lowestVariable）必同步列入
+ * visible_text_guard 的 INTERNAL_VISIBLE_LABELS。
+ */
+export function compactGameLedgerPrompt(
+  state?: PersistedGameState | null,
+): string {
+  if (!state) return "";
+  const contractNames = {
+    pv: "Value",
+    fp: "Frame",
+    inv: "Investment",
+    safety: "Safety",
+  } as const;
+  const [lowestKey, lowestValue] = (["pv", "fp", "inv", "safety"] as const)
+    .map((key) => [key, state[key]] as const)
+    .reduce((lowest, entry) => (entry[1] < lowest[1] ? entry : lowest));
+  return `gameLedger(hidden evidence)\nfailureCounts: ${
+    csvCounts(GAME_FAILURE_STATES, state.failureCounts)
+  }\nlowestVariable: ${contractNames[lowestKey]}=${lowestValue}\n整場帳優先於單句判定：failureState 選次數最高者，missedVariable 對應最弱變數；這些內部詞與數值不可見。\n`;
+}
+
 export function gameStateEvidencePrompt(
   state?: PersistedGameState | null,
 ): string {

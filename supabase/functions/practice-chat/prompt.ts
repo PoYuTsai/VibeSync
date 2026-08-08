@@ -42,6 +42,7 @@ import {
   spicyLevelFor,
 } from "./game_fsm.ts";
 import {
+  compactGameLedgerPrompt,
   effectiveGameFsmSnapshot,
   gameStateEvidencePrompt,
   type PersistedGameState,
@@ -664,7 +665,7 @@ function gameDebriefPrompt(opts: {
   );
   return `gameDebrief(hidden guidance)\n${gameDebriefSkillContract()}\ngameBreakdown 五欄非空且各帶原話：gameBreakdown.phaseReached=階段、missedVariable=缺口、failureState=卡點、nextFirstLine=下次第一句、inviteDirection=方向；不輸出 P1-P5/targetVariable/failureStates。\n${
     compactGameFsmEvidencePrompt(snapshot)
-  }\n${strategy}`;
+  }${compactGameLedgerPrompt(opts.gameState)}\n${strategy}`;
 }
 
 function compactDebriefInvitePrompt(value: string): string {
