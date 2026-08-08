@@ -249,6 +249,8 @@ class _ChoiceRow extends StatelessWidget {
                           duration: AppMotion.enter,
                           switchInCurve: AppMotion.easeOut,
                           switchOutCurve: AppMotion.easeOut,
+                          // 這裡是刻意設計的 Scale＋Fade 圖示切換，
+                          // 不套全域 fadeThroughTransition。
                           transitionBuilder: (child, animation) =>
                               ScaleTransition(
                             scale: Tween<double>(begin: 0.6, end: 1)

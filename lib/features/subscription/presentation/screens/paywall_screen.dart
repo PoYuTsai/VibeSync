@@ -443,6 +443,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           // 購買處理 scrim 淡入淡出，不硬切。
           IgnorePointer(
             ignoring: !_isPurchasing,
+            // 單一 scrim 的淡入淡出沒有新舊內容並存的殘影問題，維持預設
+            // cross-fade；套 fadeThroughTransition 會讓退場 spinner 的
+            // ticker 多活半段動畫，spinner 守門測試（2.1(b)）會抓到。
             child: AnimatedSwitcher(
               duration: AppMotion.enter,
               switchInCurve: AppMotion.easeOut,

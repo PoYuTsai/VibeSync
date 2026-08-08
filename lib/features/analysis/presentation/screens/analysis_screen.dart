@@ -3039,6 +3039,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                       ? null
                       : _recognizeAndAddToConversation,
                   icon: AnimatedSwitcher(
+                    transitionBuilder: AppMotion.fadeThroughTransition,
                     duration: AppMotion.enter,
                     switchInCurve: AppMotion.easeOut,
                     switchOutCurve: AppMotion.easeOut,
@@ -3054,6 +3055,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                         : const Icon(Icons.add_photo_alternate),
                   ),
                   label: AnimatedSwitcher(
+                    transitionBuilder: AppMotion.fadeThroughTransition,
                     duration: AppMotion.enter,
                     switchInCurve: AppMotion.easeOut,
                     switchOutCurve: AppMotion.easeOut,
@@ -7020,6 +7022,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                           ? null
                                           : _recognizeAndAddToConversation,
                                       icon: AnimatedSwitcher(
+                                        transitionBuilder: AppMotion.fadeThroughTransition,
                                         duration: AppMotion.enter,
                                         switchInCurve: AppMotion.easeOut,
                                         switchOutCurve: AppMotion.easeOut,
@@ -7036,6 +7039,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                 Icons.add_photo_alternate),
                                       ),
                                       label: AnimatedSwitcher(
+                                        transitionBuilder: AppMotion.fadeThroughTransition,
                                         duration: AppMotion.enter,
                                         switchInCurve: AppMotion.easeOut,
                                         switchOutCurve: AppMotion.easeOut,
@@ -8056,6 +8060,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                           ? null
                                           : _optimizeMessage,
                                       icon: AnimatedSwitcher(
+                                        transitionBuilder: AppMotion.fadeThroughTransition,
                                         duration: AppMotion.enter,
                                         switchInCurve: AppMotion.easeOut,
                                         switchOutCurve: AppMotion.easeOut,
@@ -8375,6 +8380,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                             ? () => _submitFeedback('negative')
                                             : null,
                                         child: AnimatedSwitcher(
+                                          transitionBuilder: AppMotion.fadeThroughTransition,
                                           duration: AppMotion.enter,
                                           switchInCurve: AppMotion.easeOut,
                                           switchOutCurve: AppMotion.easeOut,
@@ -8634,6 +8640,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                     ? null
                     : _refreshPremiumReplies,
                 icon: AnimatedSwitcher(
+                  transitionBuilder: AppMotion.fadeThroughTransition,
                   duration: AppMotion.enter,
                   switchInCurve: AppMotion.easeOut,
                   switchOutCurve: AppMotion.easeOut,

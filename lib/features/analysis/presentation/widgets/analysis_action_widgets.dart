@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 
 /// Resolves the single floating surface used by the analysis screen.
@@ -387,6 +388,7 @@ class _AnalysisScrollHintState extends State<AnalysisScrollHint>
               ? animatedIcon
               : SlideTransition(position: _offset, child: animatedIcon),
           label: AnimatedSwitcher(
+            transitionBuilder: AppMotion.fadeThroughTransition,
             duration: const Duration(milliseconds: 180),
             child: Text(
               label,

@@ -668,6 +668,7 @@ class _DifficultyChips extends ConsumerWidget {
         ),
         const SizedBox(height: 6),
         AnimatedSwitcher(
+          transitionBuilder: AppMotion.fadeThroughTransition,
           duration: AppMotion.enter,
           switchInCurve: AppMotion.easeOut,
           switchOutCurve: AppMotion.easeOut,
@@ -865,6 +866,7 @@ class _LearningModeToggleState extends State<_LearningModeToggle> {
           curve: AppMotion.easeOut,
           alignment: Alignment.topCenter,
           child: AnimatedSwitcher(
+            transitionBuilder: AppMotion.fadeThroughTransition,
             duration: AppMotion.enter,
             switchInCurve: AppMotion.easeOut,
             switchOutCurve: AppMotion.easeOut,
