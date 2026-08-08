@@ -37,6 +37,7 @@ import {
   compactGameStrategyPrompt,
   evaluateGameFsm,
   gameFsmEvidencePrompt,
+  type GameFsmSnapshot,
   gameStrategyPrompt,
   spicyLevelFor,
 } from "./game_fsm.ts";
@@ -141,13 +142,17 @@ function tensionLadderPrompt(opts: {
   temperatureScore: number;
   familiarityScore: number;
   partnerState?: PartnerState | null;
+  gameSnapshot?: GameFsmSnapshot | null;
 }): string {
   const mood = opts.partnerState?.mood ?? "unknown";
   if (!isAssistedPracticeMode(opts.practiceMode ?? "standard")) {
     // 標準模式：無分數，質化判讀。
     return `\n\ntensionLadder(hidden guidance)\nallowSpicyLevel: no numeric heat/familiarity score in this mode; infer the current ceiling from the transcript itself\npartnerMood: ${mood}\n${TENSION_LADDER_DEFINITION}\nWithout scores, stay at L1 unless the current transcript itself shows comfort, curiosity, or playfulness from you; only sustained warmth in the current conversation earns L2, and L3 needs clear, current receptiveness.`;
   }
-  const level = spicyLevelFor({
+  // Game 模式的階數必須跟 socialGameFsm 的 allowSpicyLevel 同源：這裡若用空
+  // failures/realityFlags 重算，使用者剛越界那輪會同時看到 L0 與 L2 兩個矛盾
+  // 指令，GREASY 壓 L0 的懲罰演出直接失效。新手模式沒有 FSM，才走重算。
+  const level = opts.gameSnapshot?.spicyLevel ?? spicyLevelFor({
     temperatureScore: opts.temperatureScore,
     familiarityScore: opts.familiarityScore,
     partnerMood: opts.partnerState?.mood ?? null,
@@ -158,25 +163,13 @@ function tensionLadderPrompt(opts: {
 }
 
 function gameModePrompt(opts: {
-  turns: PracticeTurn[];
   profile: PracticeProfile;
-  practiceMode?: PracticeLearningMode;
-  temperatureScore: number;
-  familiarityScore: number;
-  partnerState?: PartnerState | null;
+  snapshot: GameFsmSnapshot;
   gameState?: PersistedGameState | null;
   acquaintanceOrigin?: AcquaintanceOrigin | null;
 }): string {
-  if (opts.practiceMode !== "game") return "";
-  const snapshot = evaluateGameFsm({
-    turns: opts.turns,
-    temperatureScore: opts.temperatureScore,
-    familiarityScore: opts.familiarityScore,
-    partnerMood: opts.partnerState?.mood ?? null,
-  });
+  const snapshot = opts.snapshot;
   const strategy = gameStrategyPrompt(opts.profile);
-  const spicyLevel = snapshot.spicyLevel;
-  const mood = opts.partnerState?.mood ?? "unknown";
   // 例外句只在 server 真的給了認識管道時才講「above」，否則沒有東西可以指，
   // 直接落回一般 Reality Anchoring（如何認識也跟其他未驗證細節一樣需要證據支持）。
   const acquaintanceOriginException = opts.acquaintanceOrigin
@@ -564,6 +557,16 @@ export function buildChatMessages(
       partnerState: options.partnerState,
       memorySummary: options.memorySummary,
     });
+  // Game 的 FSM 判定整包只算一次，gameMode 與 tensionLadder 共用同一份
+  // snapshot——兩處各算會在越界輪端出兩個矛盾的 allowSpicyLevel。
+  const gameSnapshot = options.practiceMode === "game"
+    ? evaluateGameFsm({
+      turns,
+      temperatureScore: effectiveTemperature,
+      familiarityScore: effectiveFamiliarity,
+      partnerMood: options.partnerState?.mood ?? null,
+    })
+    : null;
   return [
     {
       role: "system",
@@ -574,22 +577,21 @@ export function buildChatMessages(
       }${safePartnerStatePrompt(options.partnerState)}${
         options.partnerState ? `\n${LEGACY_PARTNER_STATE_NO_LEAK_MARKER}` : ""
       }${
-        gameModePrompt({
-          turns,
-          profile,
-          practiceMode: options.practiceMode,
-          temperatureScore: effectiveTemperature,
-          familiarityScore: effectiveFamiliarity,
-          partnerState: options.partnerState,
-          gameState: options.gameState,
-          acquaintanceOrigin: options.acquaintanceOrigin,
-        })
+        gameSnapshot
+          ? gameModePrompt({
+            profile,
+            snapshot: gameSnapshot,
+            gameState: options.gameState,
+            acquaintanceOrigin: options.acquaintanceOrigin,
+          })
+          : ""
       }${
         tensionLadderPrompt({
           practiceMode: options.practiceMode,
           temperatureScore: effectiveTemperature,
           familiarityScore: effectiveFamiliarity,
           partnerState: options.partnerState,
+          gameSnapshot,
         })
       }${temperaturePrompt}${invitePrompt}`,
     },

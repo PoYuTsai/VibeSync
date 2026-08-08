@@ -1977,6 +1977,27 @@ Deno.test("張力階梯：新手模式她 annoyed 時降到 L0", () => {
   assertEquals(sys.includes("allowSpicyLevel: L0"), true);
 });
 
+// Game 模式先前有兩處各算一次階數：socialGameFsm 帶 failures/realityFlags，
+// tensionLadder 用空陣列重算——使用者剛越界（GREASY 壓 L0）那輪，模型同時
+// 看到 allowSpicyLevel: L0 與 L2/L3 兩個矛盾指令，懲罰演出失效。
+Deno.test("張力階梯：Game 模式越界輪與 FSM 同源，全文只有一種階數", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "不然直接來我家吧" }],
+    defaultProfile,
+    {
+      practiceMode: "game",
+      temperatureScore: 78,
+      familiarityScore: 70,
+      partnerState: { mood: "comfortable", innerThought: "他有點急。" },
+    },
+  )[0].content;
+  const levels = new Set(
+    [...sys.matchAll(/allowSpicyLevel: (L[0-3])/g)].map((match) => match[1]),
+  );
+  assertEquals(levels.size, 1);
+  assertEquals(levels.has("L0"), true);
+});
+
 Deno.test("張力階梯：標準模式沒有分數，不得出現數字階數", () => {
   const sys =
     buildChatMessages([{ role: "user", text: "嗨" }], defaultProfile, {
