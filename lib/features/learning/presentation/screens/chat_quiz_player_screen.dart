@@ -18,6 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
@@ -352,12 +353,23 @@ class _ProgressHeader extends StatelessWidget {
           const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: total == 0 ? 0 : current / total,
-              minHeight: 6,
-              backgroundColor: Colors.white.withValues(alpha: 0.10),
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(AppColors.ctaStart),
+            // 換題時進度滑過去而不是瞬跳；implicit tween 讓中途換值也能接續。
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(
+                begin: 0,
+                end: total == 0 ? 0.0 : current / total,
+              ),
+              duration: AppMotion.state,
+              curve: AppMotion.easeOut,
+              builder: (context, animatedValue, _) {
+                return LinearProgressIndicator(
+                  value: animatedValue,
+                  minHeight: 6,
+                  backgroundColor: Colors.white.withValues(alpha: 0.10),
+                  valueColor:
+                      const AlwaysStoppedAnimation<Color>(AppColors.ctaStart),
+                );
+              },
             ),
           ),
         ],
