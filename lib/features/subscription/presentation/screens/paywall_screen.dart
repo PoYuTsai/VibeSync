@@ -601,6 +601,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             '每日 ${AppConstants.starterDailyDrawLimit} 次',
             '每日 ${AppConstants.essentialDailyDrawLimit} 次',
           ),
+          // 訂閱一次性 SR 限定翻牌（2026-08-08 拍板）：兩檔同權益，白紙黑字
+          // 回答「哪檔才有」；同時是解 Game 鎖的具體承諾。
+          _buildComparisonRow('SR 限定翻牌', '—', '送 1 次', '送 1 次'),
           // 權限鏡像 assets/learning 宣告：電子書 book1 free（付費書另有首章
           // 試讀）、2-4 premium、5-7 essential 專屬。測驗欄刻意不寫死關數
           // （ADR #38 後擴充批次會一直加關，寫死數字每批都要回來追）；免費
@@ -1131,8 +1134,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           result.activeTier == SubscriptionTierHelper.essential
               ? 'Essential'
               : 'Starter';
+      // 輕慶祝（2026-08-08 拍板）：SR 券解鎖訊息搭在同一顆 snackbar，不打斷
+      // 原任務、不強制導頁；券本體由圖鑑金券入口承接（srTicketStatusProvider
+      // watch isPremium，翻轉即自動 ensure，這裡不用另打 API）。
       _showSnackBar(
-        '方案已更新，目前方案：$purchasedTier。',
+        '方案已更新，目前方案：$purchasedTier。🎴 已解鎖 SR 限定翻牌 ×1，到練習室圖鑑翻開。',
         backgroundColor: AppColors.success,
       );
       _leavePaywall(result.activeTier);

@@ -182,6 +182,9 @@ void main() {
       expect(find.text('每日 3 次'), findsOneWidget);
       expect(find.text('每日 5 次'), findsOneWidget);
       expect(find.text('每日 1 位'), findsNothing); // 舊不實文案絕不回歸
+      // SR 限定翻牌（2026-08-08 拍板）：兩檔都送 1 次，白紙黑字回答「哪檔才有」。
+      expect(find.text('SR 限定翻牌'), findsOneWidget);
+      expect(find.text('送 1 次'), findsNWidgets(2));
       // 零資訊「AI 模型」列已移除，換電子書/測驗兩列真差異。
       expect(find.text('AI 模型'), findsNothing);
       expect(find.text('互動電子書'), findsOneWidget);
@@ -502,6 +505,9 @@ void main() {
 
       expect(purchasingOverlay(), findsNothing);
       expect(find.textContaining('方案已更新'), findsOneWidget);
+      // 訂閱成功輕慶祝（2026-08-08 拍板）：同一顆 snackbar 帶 SR 券解鎖訊息，
+      // 不打斷原任務、不強制導頁。
+      expect(find.textContaining('已解鎖 SR 限定翻牌'), findsOneWidget);
       expect(find.text('home-root'), findsOneWidget);
       await flushSnackBars(tester);
     });
