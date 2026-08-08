@@ -1134,12 +1134,24 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           result.activeTier == SubscriptionTierHelper.essential
               ? 'Essential'
               : 'Starter';
-      // 輕慶祝（2026-08-08 拍板）：SR 券解鎖訊息搭在同一顆 snackbar，不打斷
-      // 原任務、不強制導頁；券本體由圖鑑金券入口承接（srTicketStatusProvider
-      // watch isPremium，翻轉即自動 ensure，這裡不用另打 API）。
-      _showSnackBar(
-        '方案已更新，目前方案：$purchasedTier。🎴 已解鎖 SR 限定翻牌 ×1，到練習室圖鑑翻開。',
-        backgroundColor: AppColors.success,
+      // 輕慶祝（2026-08-08 拍板）：SR 券解鎖訊息搭在同一顆 snackbar＋「去翻牌」
+      // action——點了才去、不點不打斷；券本體由圖鑑金券入口承接
+      // （srTicketStatusProvider watch isPremium，翻轉即自動 ensure）。
+      // router 先抓：action 觸發時 paywall 已 pop，不能再用本頁 context 導頁。
+      final router = GoRouter.of(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '方案已更新，目前方案：$purchasedTier。🎴 已解鎖 SR 限定翻牌 ×1。',
+          ),
+          backgroundColor: AppColors.success,
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: '去翻牌',
+            textColor: Colors.white,
+            onPressed: () => router.push('/practice-collection'),
+          ),
+        ),
       );
       _leavePaywall(result.activeTier);
     } on TimeoutException catch (error) {

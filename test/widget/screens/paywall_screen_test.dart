@@ -351,6 +351,12 @@ void main() {
               ),
             ],
           ),
+          GoRoute(
+            path: '/practice-collection',
+            builder: (_, __) => const Scaffold(
+              body: Text('collection-stub', key: ValueKey('collection-stub')),
+            ),
+          ),
         ],
       );
 
@@ -397,6 +403,12 @@ void main() {
           GoRoute(
             path: '/paywall',
             builder: (_, __) => const PaywallScreen(),
+          ),
+          GoRoute(
+            path: '/practice-collection',
+            builder: (_, __) => const Scaffold(
+              body: Text('collection-stub', key: ValueKey('collection-stub')),
+            ),
           ),
         ],
       );
@@ -505,11 +517,17 @@ void main() {
 
       expect(purchasingOverlay(), findsNothing);
       expect(find.textContaining('方案已更新'), findsOneWidget);
-      // 訂閱成功輕慶祝（2026-08-08 拍板）：同一顆 snackbar 帶 SR 券解鎖訊息，
-      // 不打斷原任務、不強制導頁。
+      // 訂閱成功輕慶祝（2026-08-08 拍板）：同一顆 snackbar 帶 SR 券解鎖訊息＋
+      // 「去翻牌」action——點了才去，不點不打斷（Codex 主審 finding 1）。
       expect(find.textContaining('已解鎖 SR 限定翻牌'), findsOneWidget);
       expect(find.text('home-root'), findsOneWidget);
-      await flushSnackBars(tester);
+      final goDrawAction = find.text('去翻牌');
+      expect(goDrawAction, findsOneWidget);
+      // snackbar 進場動畫落定後才點得到 action。
+      await tester.pumpAndSettle();
+      await tester.tap(goDrawAction);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('collection-stub')), findsOneWidget);
     });
 
     testWidgets('top-level paywall purchase success falls back home',
