@@ -1,5 +1,6 @@
 import type { InviteStage } from "./invite_maturity.ts";
 import { looksLikeGameSoftInvite } from "./game_invite_classifier.ts";
+import { SELF_DISCLOSURE_TERMS } from "./game_vocab.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
 import {
   clampTemperature,
@@ -119,14 +120,7 @@ function questionPressureScore(texts: string[]): number {
     const marks = (raw.match(/[?？]/g) ?? []).length;
     const wordHits = questionWords.filter((word) => text.includes(word))
       .length;
-    const hasSelfDisclosure = includesAny(text, [
-      "我也",
-      "我剛",
-      "我今天",
-      "我自己",
-      "我以前",
-      "我喜歡",
-    ]);
+    const hasSelfDisclosure = includesAny(text, SELF_DISCLOSURE_TERMS);
     return score + marks + wordHits - (hasSelfDisclosure ? 1 : 0);
   }, 0);
 }
@@ -769,12 +763,12 @@ export function evaluateGameFsm(opts: {
   }
 
   const bias = classificationBias(classification);
+  // 自揭詞表與 questionPressureScore 同源（game_vocab.ts）：先前這裡少了
+  // 「我也」「我以前」，同一句話在壓力折抵與 pv 加分兩個機制眼中不一致。
   const pv = clampScore(
     temperature * 0.35 +
       familiarity * 0.25 +
-      (includesAny(latestCompact, ["我喜歡", "我剛", "我今天", "我自己"])
-        ? 16
-        : 0) -
+      (includesAny(latestCompact, SELF_DISCLOSURE_TERMS) ? 16 : 0) -
       pressure * 4,
   );
   const fp = clampScore(

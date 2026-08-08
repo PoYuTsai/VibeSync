@@ -36,6 +36,12 @@ import {
   evaluateGameFsm,
 } from "./game_fsm.ts";
 import {
+  GAME_JARGON_TRANSLATIONS,
+  GAME_PHASE_LABELS,
+  GAME_SPICY_LEVEL_LABELS,
+  GAME_VARIABLE_LABELS,
+} from "./game_vocab.ts";
+import {
   ACTIVE_CONSISTENCY_TEST_CONTRACT,
   formatConsistencyTestTypes,
 } from "./consistency_prompt.ts";
@@ -245,20 +251,20 @@ function repairGameVisibleLabels(value: string): string {
     .replace(/((?:避免|不要|禁止|不能|不可))\s*L4\b/gi, "$1露骨越界")
     .replace(/\b(no|avoid|forbid|forbidden)\s*L4\b/gi, "避免露骨越界");
   const replacements: Array<[RegExp, string]> = [
-    [/\bP1_OPEN\b/gi, "開場"],
-    [/\bP2_VALUE\b/gi, "展示"],
-    [/\bP3_TEST\b/gi, "測試"],
-    [/\bP4_TENSION\b/gi, "張力"],
-    [/\bP5_CLOSE\b/gi, "收尾"],
-    [/\bP1\b/gi, "開場"],
-    [/\bP2\b/gi, "展示"],
-    [/\bP3\b/gi, "測試"],
-    [/\bP4\b/gi, "張力"],
-    [/\bP5\b/gi, "收尾"],
-    [/\bL0\b/gi, "先修安全感"],
-    [/\bL1\b/gi, "玩笑試探"],
-    [/\bL2\b/gi, "成人感暗示"],
-    [/\bL3\b/gi, "高張力暗示"],
+    [/\bP1_OPEN\b/gi, GAME_PHASE_LABELS.P1_OPEN],
+    [/\bP2_VALUE\b/gi, GAME_PHASE_LABELS.P2_VALUE],
+    [/\bP3_TEST\b/gi, GAME_PHASE_LABELS.P3_TEST],
+    [/\bP4_TENSION\b/gi, GAME_PHASE_LABELS.P4_TENSION],
+    [/\bP5_CLOSE\b/gi, GAME_PHASE_LABELS.P5_CLOSE],
+    [/\bP1\b/gi, GAME_PHASE_LABELS.P1_OPEN],
+    [/\bP2\b/gi, GAME_PHASE_LABELS.P2_VALUE],
+    [/\bP3\b/gi, GAME_PHASE_LABELS.P3_TEST],
+    [/\bP4\b/gi, GAME_PHASE_LABELS.P4_TENSION],
+    [/\bP5\b/gi, GAME_PHASE_LABELS.P5_CLOSE],
+    [/\bL0\b/gi, GAME_SPICY_LEVEL_LABELS.L0],
+    [/\bL1\b/gi, GAME_SPICY_LEVEL_LABELS.L1],
+    [/\bL2\b/gi, GAME_SPICY_LEVEL_LABELS.L2],
+    [/\bL3\b/gi, GAME_SPICY_LEVEL_LABELS.L3],
     [/\bspeedInviteLadder\s*[:：]?\s*/gi, "速約階梯："],
     [/\bGame\s*Hint\s*[:：]?/gi, "Game 心法："],
     [/\bGame\s*Mode\s*[:：]?/gi, "Game："],
@@ -274,16 +280,25 @@ function repairGameVisibleLabels(value: string): string {
     [/\bno_invite_build_investment\b/gi, "先累積投入感"],
     [/\bno_private_scene_soften\b/gi, "不推私密場景，先放鬆"],
     [/\brepair_before_invite\b/gi, "先修安全感再邀約"],
-    [/\bInvestment\s*\+\s*invite\b/g, "投入 + 邀約"],
-    [/\bEmotion\s*\+\s*heat\b/g, "情緒 + 熱度"],
-    [/\bValue\s*\+\s*Emotion\b/g, "價值 + 情緒"],
-    [/\bFrame\s*\+\s*safety\b/g, "節奏與主見 + 安全感"],
-    [/\bsafety\s*\+\s*Frame\b/gi, "安全感 + 節奏與主見"],
-    [/\bfamiliarity\b/gi, "熟悉感"],
-    [/\bValue\b/g, "價值"],
-    [/\bFrame\b/g, "節奏與主見"],
-    [/\bEmotion\b/g, "情緒"],
-    [/\bInvestment\b/g, "投入"],
+    [/\bInvestment\s*\+\s*invite\b/g, `${GAME_VARIABLE_LABELS.Investment} + 邀約`],
+    [/\bEmotion\s*\+\s*heat\b/g, `${GAME_VARIABLE_LABELS.Emotion} + 熱度`],
+    [
+      /\bValue\s*\+\s*Emotion\b/g,
+      `${GAME_VARIABLE_LABELS.Value} + ${GAME_VARIABLE_LABELS.Emotion}`,
+    ],
+    [
+      /\bFrame\s*\+\s*safety\b/g,
+      `${GAME_VARIABLE_LABELS.Frame} + ${GAME_VARIABLE_LABELS.Safety}`,
+    ],
+    [
+      /\bsafety\s*\+\s*Frame\b/gi,
+      `${GAME_VARIABLE_LABELS.Safety} + ${GAME_VARIABLE_LABELS.Frame}`,
+    ],
+    [/\bfamiliarity\b/gi, GAME_VARIABLE_LABELS.familiarity],
+    [/\bValue\b/g, GAME_VARIABLE_LABELS.Value],
+    [/\bFrame\b/g, GAME_VARIABLE_LABELS.Frame],
+    [/\bEmotion\b/g, GAME_VARIABLE_LABELS.Emotion],
+    [/\bInvestment\b/g, GAME_VARIABLE_LABELS.Investment],
     [/\bBORING\b/g, "查戶口冷場"],
     [/\bTOOL_GUY\b/g, "工具人感"],
     [/\bGREASY\b/g, "太油、壓力太大"],
@@ -310,22 +325,14 @@ const FRAME_COLLAPSE_SENTINEL = "\uE000";
  * 「篩選/賦格」「推拉張力」「資格篩選」等內部詞，小模型有材料照抄；
  * 可見欄位一律轉成安全說法，只放行固定短語「框架掉了」。
  * 詞彙可安全轉譯就不 reject：reject 會觸發重試/fallback，懲罰過重。
+ * 轉譯表單源在 game_vocab.ts（2026-08-08 詞彙統一拍板）。
  */
 function repairChineseJargon(value: string): string {
   let repaired = value.replaceAll(
     FRAME_COLLAPSE_PHRASE,
     FRAME_COLLAPSE_SENTINEL,
   );
-  const replacements: Array<[RegExp, string]> = [
-    [/資格篩選/g, "品味門檻"],
-    [/賦格/g, "品味門檻"],
-    [/篩選/g, "互相合適度"],
-    [/推拉/g, "輕鬆張力"],
-    [/可得性/g, "安全感釋放"],
-    [/框架/g, "節奏與主見"],
-    [/\bDHV\b/gi, "生活樣本"],
-  ];
-  for (const [pattern, replacement] of replacements) {
+  for (const [pattern, replacement] of GAME_JARGON_TRANSLATIONS) {
     repaired = repaired.replace(pattern, replacement);
   }
   return repaired.replaceAll(FRAME_COLLAPSE_SENTINEL, FRAME_COLLAPSE_PHRASE);
@@ -394,22 +401,18 @@ function latestAssistantText(turns: PracticeTurn[]): string {
 function phaseLabelForFallback(
   phase: ReturnType<typeof evaluateGameFsm>["phase"],
 ) {
-  return {
-    P1_OPEN: "開場",
-    P2_VALUE: "展示",
-    P3_TEST: "測試",
-    P4_TENSION: "張力",
-    P5_CLOSE: "收尾",
-  }[phase];
+  return GAME_PHASE_LABELS[phase];
 }
 
 function targetLabelForFallback(target: string): string {
-  if (/investment|投入|invite/i.test(target)) return "投入";
-  if (/emotion|情緒|heat/i.test(target)) return "情緒";
-  if (/frame|框架/i.test(target)) return "節奏與主見";
-  if (/value|價值/i.test(target)) return "價值";
-  if (/safety|安全/i.test(target)) return "安全感";
-  return "熟悉感";
+  if (/investment|投入|invite/i.test(target)) {
+    return GAME_VARIABLE_LABELS.Investment;
+  }
+  if (/emotion|情緒|heat/i.test(target)) return GAME_VARIABLE_LABELS.Emotion;
+  if (/frame|框架/i.test(target)) return GAME_VARIABLE_LABELS.Frame;
+  if (/value|價值/i.test(target)) return GAME_VARIABLE_LABELS.Value;
+  if (/safety|安全/i.test(target)) return GAME_VARIABLE_LABELS.Safety;
+  return GAME_VARIABLE_LABELS.familiarity;
 }
 
 /**
@@ -1256,7 +1259,7 @@ function safeAdvancedGameHintContract(): string {
   return `safeAdvancedGameHintContract:
 - SR 技巧拉滿但安全尊重：條件到位時 10-15 句內低壓見面。
 - 骨架：P1 開場/資訊交換 → P2 展示價值 → P3 篩選/賦格 → P4 推拉張力 → P5 鎖定/收尾。
-- 資格篩選是玩笑品味門檻，不是命令她證明自己；不要說「妳先給我一個標準答案」。共同敘事把最新狀態變兩人小劇場；順勢收尾只用真窗口收成短咖啡、順路散步、小展、宵夜。
+- 資格篩選是玩笑式的小測試，不是命令她證明自己；不要說「妳先給我一個標準答案」。共同敘事把最新狀態變兩人小劇場；順勢收尾只用真窗口收成短咖啡、順路散步、小展、宵夜。
 - 可貼回覆必須先接住她最新狀態。萬用解法：訊號判讀 → 單一招式 → 可貼收口；Give-first＝先給一點自己的品味或小場景，讓她低壓接球。
 - 假熟先確認；店名、地點、共同經歷沒出現就別捏造。禁止命令、面試、性壓力與私密施壓。
 - 被問在哪而逐字稿沒位置時：絕不編地址/方位/車程；階梯到位才順勢轉邀約（例「其實我也還沒去過，要不要哪天一起去找？」），還在鋪墊就賣關子；氛圍回應可以，具體地點細節不行。

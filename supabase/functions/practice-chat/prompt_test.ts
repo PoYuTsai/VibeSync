@@ -461,6 +461,21 @@ Deno.test("game buildDebriefMessages 注入整場 gameLedger（failureCounts＋�
   assertEquals(all.includes("lowestVariable: Investment=22"), true);
 });
 
+// 2026-08-08 詞彙統一拍板：debrief 契約指定用語對標教學卡 glossary
+//（game_vocab.ts 單源）——debrief 對 1.2 原詞是 reject 不是 repair，沒有指定
+// 用語時模型會自行發明第三種白話。
+Deno.test("game debrief 契約指定教學卡五階段與變數白話，品味門檻退場", () => {
+  const all = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "哈囉" }],
+    defaultProfile,
+    { practiceMode: "game", temperatureScore: 60, familiarityScore: 50 },
+  ).map((message) => message.content).join("\n");
+
+  assertEquals(all.includes("開場→展示→測試→張力→收尾"), true);
+  assertEquals(all.includes("價值/節奏與主見/情緒/投入/安全感"), true);
+  assertEquals(all.includes("品味門檻"), false);
+});
+
 Deno.test("game buildDebriefMessages 無整場帳（新局）時不注入 gameLedger", () => {
   const all = buildDebriefMessages(
     [{ role: "user", text: "嗨" }, { role: "ai", text: "哈囉" }],

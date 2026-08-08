@@ -957,8 +957,11 @@ Deno.test("parseHintResult translates Chinese 1.2 jargon out of visible game out
   assert(result.replies[0].text.includes("輕鬆張力"));
   assert(result.replies[1].text.includes("節奏與主見"));
   assert(result.coaching.includes("互相合適度"));
-  assert(result.coaching.includes("品味門檻"));
+  // 2026-08-08 詞彙統一拍板：「品味門檻」退場，資格篩選/賦格改對標教學卡
+  // P3 可見名「測試」（game_vocab.ts 單源）。
+  assert(result.coaching.includes("先做測試"));
   assert(result.coaching.includes("安全感釋放"));
+  assertEquals(result.coaching.includes("品味門檻"), false);
 
   // 招式/變數語境的「框架」不再放行。
   const move = parseHintResult(
