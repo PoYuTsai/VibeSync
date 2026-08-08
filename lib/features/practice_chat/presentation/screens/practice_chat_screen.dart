@@ -91,15 +91,24 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
   }
 
   /// 開啟 Game 教學卡；Free 帳號附訂閱鈎子，點「查看方案」導付費牆。
+  /// 非 SR（鎖定）也開得了：CTA 分流見 sheet；已訂閱點「去圖鑑翻牌」導圖鑑。
+  /// 任何路徑看過即 markSeen（首次自動彈與鎖定點擊共用這條）。
   Future<void> _openGameIntroSheet() async {
     final isPremium = ref.read(subscriptionProvider).isPremium;
+    final locked = !ref.read(practiceChatControllerProvider).canUseGameMode;
+    // async gap 後可能已 unmount，store 先取好再 await。
+    final store = ref.read(practiceGameIntroStoreProvider);
     final result = await showPracticeGameIntroSheet(
       context,
       showUpgradeHook: !isPremium,
+      locked: locked,
     );
+    await store.markSeen();
     if (!mounted) return;
     if (result == PracticeGameIntroResult.viewPlans) {
       context.push('/paywall');
+    } else if (result == PracticeGameIntroResult.goDraw) {
+      context.push('/practice-collection');
     }
   }
 
@@ -123,7 +132,6 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
       return;
     }
     await _openGameIntroSheet();
-    await store.markSeen();
   }
 
   @override
@@ -731,7 +739,7 @@ class _DifficultyChip extends StatelessWidget {
 }
 
 // ── 淺色聊天工作區：沿用 analyze-chat 的對話視窗底色 ─────────────────────
-class _LearningModeToggle extends StatefulWidget {
+class _LearningModeToggle extends StatelessWidget {
   const _LearningModeToggle({
     required this.state,
     required this.onChanged,
@@ -741,47 +749,12 @@ class _LearningModeToggle extends StatefulWidget {
   final PracticeChatState state;
   final ValueChanged<PracticeLearningMode> onChanged;
 
-  /// Game 選中時副文案列尾的 info icon：重開教學卡（一次性彈窗的重看入口）。
+  /// 開 Game 教學卡：Game 選中時 info icon 重看；非 SR 點鎖定分頁也走這
+  /// （2026-08-08 拍板：不分 N/R/SR 都要認識玩法，取代原本只閃鎖定字幕）。
   final VoidCallback onGameInfoTap;
 
   @override
-  State<_LearningModeToggle> createState() => _LearningModeToggleState();
-}
-
-class _LearningModeToggleState extends State<_LearningModeToggle> {
-  // 鎖定提示走下方字幕列（本 widget 內），絕不掛全域 SnackBar：root
-  // ScaffoldMessenger 會連點排隊（每顆 4 秒）且跨路由存活，離開練習室後
-  // 在首頁/圖鑑殘留白色橫條（2026-07-10 SR 提示框 bug 根因）。
-  static const _lockHintDuration = Duration(milliseconds: 2600);
-  Timer? _lockHintTimer;
-  bool _showGameLockHint = false;
-
-  @override
-  void dispose() {
-    _lockHintTimer?.cancel();
-    super.dispose();
-  }
-
-  void _flashGameLockHint() {
-    _lockHintTimer?.cancel();
-    setState(() => _showGameLockHint = true);
-    _lockHintTimer = Timer(_lockHintDuration, () {
-      if (!mounted) return;
-      setState(() => _showGameLockHint = false);
-    });
-  }
-
-  void _dismissGameLockHint() {
-    _lockHintTimer?.cancel();
-    _lockHintTimer = null;
-    if (_showGameLockHint) {
-      setState(() => _showGameLockHint = false);
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final state = widget.state;
     final gameAvailable = state.canUseGameMode;
     final gameLockedByRarity = state.canChangeLearningMode && !gameAvailable;
     final descriptors = [
@@ -813,12 +786,6 @@ class _LearningModeToggleState extends State<_LearningModeToggle> {
     final selectedDescriptor = descriptors.firstWhere(
       (descriptor) => descriptor.mode == state.learningMode,
     );
-    final gameDescriptor = descriptors.firstWhere(
-      (descriptor) => descriptor.mode == PracticeLearningMode.game,
-    );
-    // 點鎖定 Game 時字幕列臨時切成鎖定說明，時間到自動還原。
-    final subtitleDescriptor =
-        _showGameLockHint ? gameDescriptor : selectedDescriptor;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -845,14 +812,13 @@ class _LearningModeToggleState extends State<_LearningModeToggle> {
                     descriptor: descriptor,
                     selected: state.learningMode == descriptor.mode,
                     enabled: enabled,
-                    onTap: () {
-                      _dismissGameLockHint();
-                      widget.onChanged(descriptor.mode);
-                    },
+                    onTap: () => onChanged(descriptor.mode),
+                    // 鎖定的 Game 分頁點了開教學卡（不切模式），讓非 SR
+                    // 用戶也認識玩法；解鎖條件在卡內講清楚。
                     onDisabledTap:
                         descriptor.mode == PracticeLearningMode.game &&
                                 gameLockedByRarity
-                            ? _flashGameLockHint
+                            ? onGameInfoTap
                             : null,
                   ),
                 );
@@ -872,31 +838,27 @@ class _LearningModeToggleState extends State<_LearningModeToggle> {
             switchOutCurve: AppMotion.easeOut,
             child: Container(
               key: ValueKey(
-                _showGameLockHint
-                    ? 'practice-learning-mode-subtitle-game-locked'
-                    : 'practice-learning-mode-subtitle-${selectedDescriptor.mode.name}',
+                'practice-learning-mode-subtitle-${selectedDescriptor.mode.name}',
               ),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: subtitleDescriptor.accent.withValues(alpha: 0.10),
+                color: selectedDescriptor.accent.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: subtitleDescriptor.accent.withValues(alpha: 0.35),
+                  color: selectedDescriptor.accent.withValues(alpha: 0.35),
                 ),
               ),
               child: Row(
                 children: [
                   Icon(
-                    _showGameLockHint
-                        ? Icons.lock_outline
-                        : subtitleDescriptor.icon,
+                    selectedDescriptor.icon,
                     size: 15,
-                    color: subtitleDescriptor.accent,
+                    color: selectedDescriptor.accent,
                   ),
                   const SizedBox(width: 7),
                   Expanded(
                     child: Text(
-                      '${subtitleDescriptor.title}｜${subtitleDescriptor.summary}',
+                      '${selectedDescriptor.title}｜${selectedDescriptor.summary}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppTypography.caption.copyWith(
@@ -907,20 +869,18 @@ class _LearningModeToggleState extends State<_LearningModeToggle> {
                       ),
                     ),
                   ),
-                  // Game 選中（必然已解鎖）才有教學卡可重看；鎖定提示閃現
-                  // 期間字幕列是鎖定說明，不掛 info 入口。
-                  if (!_showGameLockHint &&
-                      selectedDescriptor.mode == PracticeLearningMode.game)
+                  // Game 選中（必然已解鎖）才有教學卡可重看的 info icon。
+                  if (selectedDescriptor.mode == PracticeLearningMode.game)
                     GestureDetector(
                       key: const ValueKey('practice-game-intro-info'),
-                      onTap: widget.onGameInfoTap,
+                      onTap: onGameInfoTap,
                       behavior: HitTestBehavior.opaque,
                       child: Padding(
                         padding: const EdgeInsets.only(left: 8),
                         child: Icon(
                           Icons.info_outline,
                           size: 16,
-                          color: subtitleDescriptor.accent,
+                          color: selectedDescriptor.accent,
                         ),
                       ),
                     ),

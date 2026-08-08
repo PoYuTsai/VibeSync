@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart' show Box;
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_game_intro_store.dart';
@@ -145,6 +146,50 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// 需要驗證導頁去向的測試用：真 GoRouter＋假圖鑑頁。
+  Future<void> pumpScreenWithRouter(
+    WidgetTester tester,
+    PracticeChatController controller, {
+    String tier = SubscriptionTierHelper.free,
+  }) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (_, __) => const PracticeChatScreen(),
+        ),
+        GoRoute(
+          path: '/practice-collection',
+          builder: (_, __) => const Scaffold(
+            key: ValueKey('fake-practice-collection'),
+            body: SizedBox.shrink(),
+          ),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          practiceGameIntroStoreProvider.overrideWithValue(introStore),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              SubscriptionState(
+                tier: tier,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
   Future<void> tapGameSegment(WidgetTester tester) async {
     await tester.tap(
       find.byKey(const ValueKey('practice-learning-mode-game')),
@@ -215,7 +260,20 @@ void main() {
       );
     });
 
-    testWidgets('非 SR 卡點 Game → 不切模式、不彈教學卡', (tester) async {
+    testWidgets('SR 局教學卡底部 CTA 是「開始攻略」', (tester) async {
+      final controller = _SeededPracticeChatController(
+        seed: seedState(sr: true, learningMode: PracticeLearningMode.game),
+        repository: repo,
+      );
+      await pumpScreen(tester, controller);
+
+      expect(find.text('開始攻略'), findsOneWidget);
+    });
+  });
+
+  group('鎖定 Game 點擊（非 SR 也要認識玩法）', () {
+    testWidgets('非 SR + Free 點 Game → 不切模式、彈教學卡、含訂閱鈎子、CTA 是「知道了」',
+        (tester) async {
       final controller = _SeededPracticeChatController(
         seed: seedState(sr: false),
         repository: repo,
@@ -230,7 +288,86 @@ void main() {
       );
       expect(
         find.byKey(const ValueKey('practice-game-intro-sheet')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('practice-game-intro-upsell')),
+        findsOneWidget,
+      );
+      expect(find.text('知道了'), findsOneWidget);
+      expect(find.text('開始攻略'), findsNothing);
+    });
+
+    testWidgets('非 SR 關閉教學卡 → markSeen、模式維持不變', (tester) async {
+      final controller = _SeededPracticeChatController(
+        seed: seedState(sr: false),
+        repository: repo,
+      );
+      await pumpScreen(tester, controller);
+
+      await tapGameSegment(tester);
+      await tester.tap(
+        find.byKey(const ValueKey('practice-game-intro-cta')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('practice-game-intro-sheet')),
         findsNothing,
+      );
+      expect(
+        controller.currentState.learningMode,
+        PracticeLearningMode.standard,
+      );
+      expect(await introStore.isSeen(), isTrue);
+    });
+
+    testWidgets('非 SR + Starter 點 Game → 彈教學卡、無鈎子、CTA 是「去圖鑑翻牌」',
+        (tester) async {
+      final controller = _SeededPracticeChatController(
+        seed: seedState(sr: false),
+        repository: repo,
+      );
+      await pumpScreen(
+        tester,
+        controller,
+        tier: SubscriptionTierHelper.starter,
+      );
+
+      await tapGameSegment(tester);
+
+      expect(
+        find.byKey(const ValueKey('practice-game-intro-sheet')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('practice-game-intro-upsell')),
+        findsNothing,
+      );
+      expect(find.text('去圖鑑翻牌'), findsOneWidget);
+      expect(find.text('開始攻略'), findsNothing);
+    });
+
+    testWidgets('非 SR + Starter 點「去圖鑑翻牌」→ 導角色圖鑑', (tester) async {
+      final controller = _SeededPracticeChatController(
+        seed: seedState(sr: false),
+        repository: repo,
+      );
+      await pumpScreenWithRouter(
+        tester,
+        controller,
+        tier: SubscriptionTierHelper.starter,
+      );
+
+      await tapGameSegment(tester);
+      await tester.tap(
+        find.byKey(const ValueKey('practice-game-intro-cta')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('fake-practice-collection')),
+        findsOneWidget,
       );
     });
   });

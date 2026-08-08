@@ -3,29 +3,42 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 
-/// Game 教學卡收合後的去向：開始攻略＝原地關閉；查看方案＝呼叫端導付費牆。
-enum PracticeGameIntroResult { start, viewPlans }
+/// Game 教學卡收合後的去向：開始攻略＝原地關閉；查看方案＝呼叫端導付費牆；
+/// 去圖鑑翻牌＝呼叫端導角色圖鑑（鎖定＋已訂閱：他有每日翻牌額度）。
+enum PracticeGameIntroResult { start, viewPlans, goDraw }
 
 /// Game 模式一次性教學卡（Eric 拍板：client 靜態文案教原始術語，附 glossary
 /// 對照接回 App 內提示的白話用語；server 端可見詞轉譯規則不變）。
 /// 樣式沿用 showPracticeProfileSheet：深色底、圓角、isScrollControlled。
+///
+/// [locked]＝當前角色非 SR、還進不了 Game（2026-08-08 拍板：點鎖定分頁也開
+/// 教學卡，不分 N/R/SR 都要認識玩法）。鎖定時底部 CTA 分流：Free「知道了」
+/// （升級導流交給鈎子卡）、已訂閱「去圖鑑翻牌」。
 Future<PracticeGameIntroResult?> showPracticeGameIntroSheet(
   BuildContext context, {
   required bool showUpgradeHook,
+  bool locked = false,
 }) {
   return showModalBottomSheet<PracticeGameIntroResult>(
     context: context,
     backgroundColor: AppColors.brandInk,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (_) => _PracticeGameIntroSheet(showUpgradeHook: showUpgradeHook),
+    builder: (_) => _PracticeGameIntroSheet(
+      showUpgradeHook: showUpgradeHook,
+      locked: locked,
+    ),
   );
 }
 
 class _PracticeGameIntroSheet extends StatelessWidget {
-  const _PracticeGameIntroSheet({required this.showUpgradeHook});
+  const _PracticeGameIntroSheet({
+    required this.showUpgradeHook,
+    required this.locked,
+  });
 
   final bool showUpgradeHook;
+  final bool locked;
 
   @override
   Widget build(BuildContext context) {
@@ -186,14 +199,25 @@ class _PracticeGameIntroSheet extends StatelessWidget {
                 width: double.infinity,
                 child: FilledButton(
                   key: const ValueKey('practice-game-intro-cta'),
-                  onPressed: () => Navigator.of(context)
-                      .pop(PracticeGameIntroResult.start),
+                  onPressed: () => Navigator.of(context).pop(
+                    !locked
+                        ? PracticeGameIntroResult.start
+                        : showUpgradeHook
+                            ? null
+                            : PracticeGameIntroResult.goDraw,
+                  ),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.ctaStart,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                  child: const Text('開始攻略'),
+                  child: Text(
+                    !locked
+                        ? '開始攻略'
+                        : showUpgradeHook
+                            ? '知道了'
+                            : '去圖鑑翻牌',
+                  ),
                 ),
               ),
             ),
