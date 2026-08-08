@@ -17,9 +17,12 @@ import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/services/link_launch_service.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../../shared/widgets/entrance_reveal.dart';
+import '../../../../shared/widgets/pressable_scale.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/quarterly_savings.dart';
 import '../../domain/services/subscription_tier_helper.dart';
@@ -337,14 +340,27 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     ),
                   ),
                 ),
-                if (selected != null) ...[
-                  const SizedBox(height: 4),
-                  _buildSelectedBillingCard(
-                    option: selected,
-                    isDowngrade: isDowngrade,
-                    isCurrentPlan: isCurrentPlan,
-                  ),
-                ],
+                // 選中方案的明細卡：出現/換方案時 240ms 展開＋淡入，
+                // 不瞬跳（key 綁方案 id，切換才重播）。
+                AnimatedSize(
+                  duration: AppMotion.state,
+                  curve: AppMotion.easeOut,
+                  alignment: Alignment.topCenter,
+                  child: selected == null
+                      ? const SizedBox(width: double.infinity)
+                      : EntranceReveal(
+                          key: ValueKey('billing-${selected.id}'),
+                          offsetY: 4,
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: _buildSelectedBillingCard(
+                              option: selected,
+                              isDowngrade: isDowngrade,
+                              isCurrentPlan: isCurrentPlan,
+                            ),
+                          ),
+                        ),
+                ),
                 const SizedBox(height: 8),
                 BrandPrimaryButton(
                   label: _primaryButtonText(
@@ -872,148 +888,153 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final billingCycle = option.isQuarterly ? '每 3 個月自動續訂' : '每月自動續訂';
     final isRecommended = option.id == 'essential_quarterly';
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              AppColors.brandSurface2.withValues(alpha: 0.9),
-              AppColors.brandSurface.withValues(alpha: 0.96),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: isSelected
-                ? AppColors.ctaStart.withValues(alpha: 0.8)
-                : Colors.white.withValues(alpha: 0.1),
-            width: isSelected ? 1.8 : 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: isSelected
-                  ? AppColors.ctaStart.withValues(alpha: 0.22)
-                  : Colors.black.withValues(alpha: 0.22),
-              blurRadius: 22,
-              offset: const Offset(0, 14),
+    return PressableScale(
+      child: GestureDetector(
+        onTap: onTap,
+        // 選取狀態切換走 240ms 漸變而不是瞬切（邊框、陰影）。
+        child: AnimatedContainer(
+          duration: AppMotion.state,
+          curve: AppMotion.easeOut,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppColors.brandSurface2.withValues(alpha: 0.9),
+                AppColors.brandSurface.withValues(alpha: 0.96),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: isSelected
+                  ? AppColors.ctaStart.withValues(alpha: 0.8)
+                  : Colors.white.withValues(alpha: 0.1),
+              width: isSelected ? 1.8 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: isSelected
+                    ? AppColors.ctaStart.withValues(alpha: 0.22)
+                    : Colors.black.withValues(alpha: 0.22),
+                blurRadius: 22,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          '${option.name} ${option.period}',
+                          style: AppTypography.titleLarge.copyWith(
+                            color: AppColors.onBackgroundPrimary,
+                          ),
+                        ),
+                        _buildBadge(
+                          label: option.badge,
+                          background: isRecommended
+                              ? const LinearGradient(
+                                  colors: [
+                                    AppColors.ctaStart,
+                                    AppColors.ctaEnd,
+                                  ],
+                                )
+                              : null,
+                          color: isRecommended
+                              ? Colors.white
+                              : AppColors.onBackgroundPrimary,
+                        ),
+                        if (option.discount != null)
+                          _buildBadge(
+                            label: option.discount!,
+                            background: LinearGradient(
+                              colors: [
+                                AppColors.success.withValues(alpha: 0.88),
+                                AppColors.success.withValues(alpha: 0.72),
+                              ],
+                            ),
+                            color: Colors.white,
+                          ),
+                        if (isCurrentPlan)
+                          _buildBadge(
+                            label: '目前',
+                            background: LinearGradient(
+                              colors: [
+                                AppColors.success.withValues(alpha: 0.88),
+                                AppColors.success.withValues(alpha: 0.72),
+                              ],
+                            ),
+                            color: Colors.white,
+                          ),
+                      ],
+                    ),
+                  ),
+                  Radio<String>(
+                    value: option.id,
+                    groupValue: _selectedOptionId,
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _selectedOptionId = value);
+                    },
+                    activeColor: AppColors.ctaStart,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                priceLabel,
+                style: AppTypography.headlineMedium.copyWith(
+                  color: AppColors.onBackgroundPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                option.isReady ? billingCycle : '請重新載入 App Store 價格',
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...option.highlights.map(
+                (item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '${option.name} ${option.period}',
-                        style: AppTypography.titleLarge.copyWith(
-                          color: AppColors.onBackgroundPrimary,
+                      const Padding(
+                        padding: EdgeInsets.only(top: 2),
+                        child: Icon(
+                          Icons.check_circle,
+                          size: 14,
+                          color: AppColors.success,
                         ),
                       ),
-                      _buildBadge(
-                        label: option.badge,
-                        background: isRecommended
-                            ? const LinearGradient(
-                                colors: [
-                                  AppColors.ctaStart,
-                                  AppColors.ctaEnd,
-                                ],
-                              )
-                            : null,
-                        color: isRecommended
-                            ? Colors.white
-                            : AppColors.onBackgroundPrimary,
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          item,
+                          style: AppTypography.bodyMedium.copyWith(
+                            color: AppColors.onBackgroundPrimary,
+                          ),
+                        ),
                       ),
-                      if (option.discount != null)
-                        _buildBadge(
-                          label: option.discount!,
-                          background: LinearGradient(
-                            colors: [
-                              AppColors.success.withValues(alpha: 0.88),
-                              AppColors.success.withValues(alpha: 0.72),
-                            ],
-                          ),
-                          color: Colors.white,
-                        ),
-                      if (isCurrentPlan)
-                        _buildBadge(
-                          label: '目前',
-                          background: LinearGradient(
-                            colors: [
-                              AppColors.success.withValues(alpha: 0.88),
-                              AppColors.success.withValues(alpha: 0.72),
-                            ],
-                          ),
-                          color: Colors.white,
-                        ),
                     ],
                   ),
                 ),
-                Radio<String>(
-                  value: option.id,
-                  groupValue: _selectedOptionId,
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() => _selectedOptionId = value);
-                  },
-                  activeColor: AppColors.ctaStart,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              priceLabel,
-              style: AppTypography.headlineMedium.copyWith(
-                color: AppColors.onBackgroundPrimary,
-                fontWeight: FontWeight.w800,
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              option.isReady ? billingCycle : '請重新載入 App Store 價格',
-              style: AppTypography.caption.copyWith(
-                color: AppColors.onBackgroundSecondary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            ...option.highlights.map(
-              (item) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.only(top: 2),
-                      child: Icon(
-                        Icons.check_circle,
-                        size: 14,
-                        color: AppColors.success,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        item,
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.onBackgroundPrimary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
