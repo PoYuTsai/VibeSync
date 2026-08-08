@@ -265,6 +265,102 @@ Deno.test("加權：deterministic（同 seed + 同池 + 同排除 → 同一位�
   }
 });
 
+// ── SR 限定翻牌券（rarityFilter: 'sr'）─────────────────────────────────────
+
+Deno.test("SR 券選牌：任意 seed 一律出 SR", () => {
+  for (let i = 0; i < 300; i++) {
+    const g = selectPracticeDrawProfile({
+      excludedProfileIds: NONE,
+      seed: `sr-ticket-${i}`,
+      catalogSize: 100,
+      rarityFilter: "sr",
+    });
+    assertEquals(g.rarity, "sr", `seed sr-ticket-${i} 出了 ${g.rarity}`);
+  }
+});
+
+Deno.test("SR 券選牌：已收藏的 SR 被排除，只出未收藏 SR", () => {
+  const srIds = GIRL_PROFILES
+    .filter((g) => g.rarity === "sr")
+    .map((g) => g.profileId);
+  const excluded = new Set(srIds.slice(1)); // 只留第一位 SR
+  for (let i = 0; i < 50; i++) {
+    const g = selectPracticeDrawProfile({
+      excludedProfileIds: excluded,
+      seed: `sr-dedup-${i}`,
+      catalogSize: 100,
+      rarityFilter: "sr",
+    });
+    assertEquals(g.profileId, srIds[0]);
+  }
+});
+
+Deno.test("SR 券選牌：SR 全收藏 → 退避仍只出 SR（允許重複），絕不落 R/N、絕不 throw", () => {
+  const allSr = new Set(
+    GIRL_PROFILES.filter((g) => g.rarity === "sr").map((g) => g.profileId),
+  );
+  for (let i = 0; i < 100; i++) {
+    const g = selectPracticeDrawProfile({
+      excludedProfileIds: allSr,
+      seed: `sr-full-${i}`,
+      catalogSize: 100,
+      rarityFilter: "sr",
+    });
+    assertEquals(g.rarity, "sr");
+  }
+});
+
+Deno.test("SR 券選牌：deterministic（同 seed → 同一位 SR）", () => {
+  for (let i = 0; i < 30; i++) {
+    const args = {
+      excludedProfileIds: NONE,
+      seed: `sr-det-${i}`,
+      catalogSize: 100,
+      rarityFilter: "sr" as const,
+    };
+    assertEquals(
+      selectPracticeDrawProfile(args).profileId,
+      selectPracticeDrawProfile(args).profileId,
+    );
+  }
+});
+
+Deno.test("SR 券 eligible：SR 全排除 → 無候選；留一位 → 有候選（filter 取交集）", () => {
+  const allSr = new Set(
+    GIRL_PROFILES.filter((g) => g.rarity === "sr").map((g) => g.profileId),
+  );
+  assertEquals(
+    hasEligibleDrawCandidate({
+      excludedProfileIds: allSr,
+      catalogSize: 100,
+      rarityFilter: "sr",
+    }),
+    false,
+  );
+  const allButOne = new Set(allSr);
+  allButOne.delete([...allSr][0]);
+  assertEquals(
+    hasEligibleDrawCandidate({
+      excludedProfileIds: allButOne,
+      catalogSize: 100,
+      rarityFilter: "sr",
+    }),
+    true,
+  );
+  // 排除 R/N 不影響 SR 券的 eligible 判定。
+  const allNonSr = new Set(
+    GIRL_PROFILES.filter((g) => g.rarity !== "sr").map((g) => g.profileId),
+  );
+  assertEquals(
+    hasEligibleDrawCandidate({
+      excludedProfileIds: allNonSr,
+      catalogSize: 100,
+      rarityFilter: "sr",
+    }),
+    true,
+  );
+});
+
 // ── 難度調參表（槓桿 A）：起始溫度＋正負 delta 倍率 ─────────────────────
 
 Deno.test("DIFFICULTY_TUNING：三檔精確數值（easy/normal/challenge）", () => {

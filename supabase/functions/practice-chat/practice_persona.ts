@@ -1152,8 +1152,10 @@ export function hasEligibleDrawCandidate(args: {
   currentProfileId?: string;
   excludedProfileIds: Set<string>;
   catalogSize?: unknown;
+  rarityFilter?: PracticeGirlRarityId;
 }): boolean {
-  const base = GIRL_PROFILES.slice(0, resolveDrawPoolSize(args.catalogSize));
+  const base = GIRL_PROFILES.slice(0, resolveDrawPoolSize(args.catalogSize))
+    .filter((g) => !args.rarityFilter || g.rarity === args.rarityFilter);
   return base.some((g) =>
     g.profileId !== args.currentProfileId &&
     !args.excludedProfileIds.has(g.profileId)
@@ -1173,9 +1175,12 @@ export function selectPracticeDrawProfile(args: {
   excludedProfileIds: Set<string>;
   seed: string;
   catalogSize?: unknown;
+  /** SR 限定翻牌券：只從指定稀有度層選（切池後套用）；退避也絕不逃出該層。 */
+  rarityFilter?: PracticeGirlRarityId;
 }): PracticeGirlProfile {
   // 切池：舊 client 抽到 061+ 會 fallback 渲染成第一位且額度白扣，故 base 只含前 n 位。
-  const base = GIRL_PROFILES.slice(0, resolveDrawPoolSize(args.catalogSize));
+  const base = GIRL_PROFILES.slice(0, resolveDrawPoolSize(args.catalogSize))
+    .filter((g) => !args.rarityFilter || g.rarity === args.rarityFilter);
 
   const exclude = new Set(args.excludedProfileIds);
   if (args.currentProfileId) exclude.add(args.currentProfileId);
