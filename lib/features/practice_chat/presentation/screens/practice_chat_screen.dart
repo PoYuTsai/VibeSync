@@ -12,6 +12,7 @@ import '../../../../shared/widgets/entrance_reveal.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/providers/practice_chat_providers.dart';
+import '../../data/repositories/practice_game_intro_store.dart';
 import '../../data/repositories/practice_session_repository.dart';
 import '../../domain/entities/practice_acquaintance_origin.dart';
 import '../../domain/entities/practice_hint.dart';
@@ -20,6 +21,8 @@ import '../../domain/entities/practice_message.dart';
 import '../../domain/entities/practice_profile.dart';
 import '../../domain/entities/practice_session.dart';
 import '../widgets/practice_debrief_card.dart';
+import '../widgets/practice_game_coach_intro.dart';
+import '../widgets/practice_game_intro_sheet.dart';
 import '../widgets/practice_girl_photo.dart';
 import '../widgets/practice_profile_sheet.dart';
 import '../widgets/practice_temperature_style.dart';
@@ -61,6 +64,10 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
   final _scrollController = ScrollController();
   _BoundAppliedHintDraft? _appliedHintDraft;
 
+  // Game 教學卡本場只檢查一次（彈過或已確認 seen 就不再彈）；async gap 前
+  // 先佔位，避免 listener 與 post-frame 兩條觸發路徑重入雙彈。
+  bool _gameIntroChecked = false;
+
   @override
   void initState() {
     super.initState();
@@ -75,6 +82,48 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
             .startSessionWithProfile(startProfileId);
       });
     }
+    // 草稿還原路徑：進場時 learningMode 可能已經是 game（首幀就成立，
+    // ref.listen 等不到轉變事件），post-frame 補一次檢查。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _maybeShowGameIntro();
+    });
+  }
+
+  /// 開啟 Game 教學卡；Free 帳號附訂閱鈎子，點「查看方案」導付費牆。
+  Future<void> _openGameIntroSheet() async {
+    final isPremium = ref.read(subscriptionProvider).isPremium;
+    final result = await showPracticeGameIntroSheet(
+      context,
+      showUpgradeHook: !isPremium,
+    );
+    if (!mounted) return;
+    if (result == PracticeGameIntroResult.viewPlans) {
+      context.push('/paywall');
+    }
+  }
+
+  /// 首次進入 Game（手動選到或草稿還原）且未看過教學卡 → 彈一次。
+  /// CTA／滑掉／點外面關閉都算看過（sheet future resolve 後 markSeen）。
+  Future<void> _maybeShowGameIntro() async {
+    if (_gameIntroChecked) return;
+    final state = ref.read(practiceChatControllerProvider);
+    if (state.learningMode != PracticeLearningMode.game ||
+        state.messages.isNotEmpty) {
+      return;
+    }
+    _gameIntroChecked = true;
+    final store = ref.read(practiceGameIntroStoreProvider);
+    if (await store.isSeen()) return;
+    if (!mounted) return;
+    // async gap 後模式可能已被切走：讓下一次進 game 再觸發。
+    if (ref.read(practiceChatControllerProvider).learningMode !=
+        PracticeLearningMode.game) {
+      _gameIntroChecked = false;
+      return;
+    }
+    await _openGameIntroSheet();
+    await store.markSeen();
   }
 
   @override
@@ -182,6 +231,11 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
           _controller.text.isEmpty) {
         _controller.text = next.restoreText!;
       }
+      // 切到 Game（手動選或草稿還原補水）→ 首次教學卡。
+      if (next.learningMode == PracticeLearningMode.game &&
+          prev?.learningMode != PracticeLearningMode.game) {
+        _maybeShowGameIntro();
+      }
     });
 
     // 尚未翻牌（locked / drawing / error）：不顯示任何對象，只給翻牌入口。
@@ -222,7 +276,10 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
               // 已收斂角色圖鑑）。
               // 開聊後：compact identity header（小圓照片＋名字/職業/難度）。
               if (state.messages.isEmpty)
-                _PracticeOpeningControls(state: state)
+                _PracticeOpeningControls(
+                  state: state,
+                  onGameInfoTap: _openGameIntroSheet,
+                )
               else
                 _PracticeProfileBar(state: state),
               Expanded(
@@ -235,6 +292,11 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                               ScrollViewKeyboardDismissBehavior.onDrag,
                           padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
                           children: [
+                            // Game 局固定頂部教練泡泡：UI-only，不進
+                            // state.messages／API payload／Hive。
+                            if (state.learningMode ==
+                                PracticeLearningMode.game)
+                              const PracticeGameCoachIntro(),
                             for (final m in state.messages) _Bubble(message: m),
                             if (state.isSending)
                               const EntranceReveal(child: _ThinkingBubble()),
@@ -469,9 +531,13 @@ class _PracticeLockedEntry extends ConsumerWidget {
 // ── 開場前控制列：難度 chips（深色 scaffold 底，沿用原樣式）──
 // 換一位入口已收斂角色圖鑑（Task 5）：這裡只留難度與教學模式控制。
 class _PracticeOpeningControls extends ConsumerWidget {
-  const _PracticeOpeningControls({required this.state});
+  const _PracticeOpeningControls({
+    required this.state,
+    required this.onGameInfoTap,
+  });
 
   final PracticeChatState state;
+  final VoidCallback onGameInfoTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -487,6 +553,7 @@ class _PracticeOpeningControls extends ConsumerWidget {
             onChanged: (mode) => ref
                 .read(practiceChatControllerProvider.notifier)
                 .setPracticeLearningMode(mode),
+            onGameInfoTap: onGameInfoTap,
           ),
         ],
       ),
@@ -667,10 +734,14 @@ class _LearningModeToggle extends StatefulWidget {
   const _LearningModeToggle({
     required this.state,
     required this.onChanged,
+    required this.onGameInfoTap,
   });
 
   final PracticeChatState state;
   final ValueChanged<PracticeLearningMode> onChanged;
+
+  /// Game 選中時副文案列尾的 info icon：重開教學卡（一次性彈窗的重看入口）。
+  final VoidCallback onGameInfoTap;
 
   @override
   State<_LearningModeToggle> createState() => _LearningModeToggleState();
@@ -834,6 +905,23 @@ class _LearningModeToggleState extends State<_LearningModeToggle> {
                       ),
                     ),
                   ),
+                  // Game 選中（必然已解鎖）才有教學卡可重看；鎖定提示閃現
+                  // 期間字幕列是鎖定說明，不掛 info 入口。
+                  if (!_showGameLockHint &&
+                      selectedDescriptor.mode == PracticeLearningMode.game)
+                    GestureDetector(
+                      key: const ValueKey('practice-game-intro-info'),
+                      onTap: widget.onGameInfoTap,
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: subtitleDescriptor.accent,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -1157,7 +1245,12 @@ class _PracticeProfileHero extends StatelessWidget {
             ),
             const SizedBox(height: 18),
             Text(
-              '對方是個有自己個性的陪練女孩，不是教練。\n傳第一句出去，看看她怎麼回，練你的真實反應。',
+              state.learningMode == PracticeLearningMode.game
+                  ? '這局是 Game：照五階段推進——開場、展示、測試、張力、收尾。\n'
+                      '第 1 步「開場」：用「狀態＋感受」丟一顆有情緒的球，'
+                      '留一半讓她想追問。別用「在幹嘛」查戶口開局。'
+                  : '對方是個有自己個性的陪練女孩，不是教練。\n傳第一句出去，看看她怎麼回，練你的真實反應。',
+              key: const ValueKey('practice-hero-guidance'),
               textAlign: TextAlign.center,
               style: AppTypography.caption.copyWith(
                 color: AppColors.glassTextSecondary,
