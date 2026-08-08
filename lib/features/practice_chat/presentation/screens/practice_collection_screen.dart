@@ -223,6 +223,24 @@ class _PracticeCollectionScreenState
         position.viewportDimension * 0.25;
   }
 
+  /// 額度列 v1（2026-08-09 Eric 拍板顯示抽數）：只顯示 client 已知的真值——
+  /// 免費翻牌剩餘來自本 session 最近一次 draw 回應（沒有唯讀 status API，
+  /// 準確的跨 session 三檔顯示需 server endpoint，另案）。過了 nextResetAt
+  /// 代表窗已翻轉、數字失真 → 一律不顯示，寧缺勿誤。
+  ({int remaining, int allowance})? _currentFreeQuota(PracticeChatState state) {
+    final allowance = state.drawFreeAllowance;
+    final remaining = state.drawFreeRemaining;
+    if (allowance == null || remaining == null || allowance <= 0) return null;
+    // resetAt 缺失或 parse 失敗＝無法判斷窗是否翻轉 → fail-quiet 不顯示。
+    final resetAt = DateTime.tryParse(state.drawNextResetAt ?? '');
+    if (resetAt == null) return null;
+    // 語意對齊 server：now >= nextResetAt 即失效（雙審 finding）。
+    // 已知取捨：停留本頁跨過重置點時，要到下次 rebuild 才會消失——不掛
+    // Timer（pending timer 會炸 widget 測試），重置點在台北中午、值極低。
+    if (!DateTime.now().isBefore(resetAt)) return null;
+    return (remaining: remaining.clamp(0, allowance), allowance: allowance);
+  }
+
   /// 翻牌鈕 gating（練習室舊 _requestNewPartner 的語義搬家，原件已刪，兩態分流）。
   /// 鐵律：本頁絕不 read-then-navigate autoDispose controller；build 有 watch
   /// 掛著 listener，這裡的 read 只是取當下值。
@@ -522,6 +540,7 @@ class _PracticeCollectionScreenState
                       drawEnabled:
                           !chatState.isDrawing && !chatState.isPersistingTurn,
                       onDrawPressed: _onDrawPressed,
+                      freeQuota: _currentFreeQuota(chatState),
                     ),
                   ),
                   // SR 限定翻牌券（訂閱一次性權益，2026-08-08 拍板）三態：
@@ -579,6 +598,7 @@ class _PracticeCollectionScreenState
                         final card = _CollectionCard(
                           profile: profile,
                           unlocked: unlocked.contains(profile.profileId),
+                          pulse: _drawPulse,
                         );
                         if (profile.profileId != _highlightProfileId) {
                           return card;
@@ -623,8 +643,7 @@ class _OnboardingGuideOverlay extends StatelessWidget {
 
   final VoidCallback onDismiss;
 
-  static const String guideMessage =
-      '哈囉！這裡是角色圖鑑～先按右上角的『翻牌』，抽出你的第一位練習夥伴吧！';
+  static const String guideMessage = '哈囉！這裡是角色圖鑑～先按右上角的『翻牌』，抽出你的第一位練習夥伴吧！';
 
   @override
   Widget build(BuildContext context) {
@@ -761,6 +780,7 @@ class _CollectionHeader extends StatelessWidget {
     required this.drawIsDrawing,
     required this.drawEnabled,
     required this.onDrawPressed,
+    required this.freeQuota,
   });
 
   final int unlockedCount;
@@ -769,6 +789,9 @@ class _CollectionHeader extends StatelessWidget {
   final bool drawIsDrawing;
   final bool drawEnabled;
   final VoidCallback onDrawPressed;
+
+  /// 今日免費翻牌（remaining/allowance）；null＝本 session 尚無可信資料，不顯示。
+  final ({int remaining, int allowance})? freeQuota;
 
   @override
   Widget build(BuildContext context) {
@@ -880,6 +903,27 @@ class _CollectionHeader extends StatelessWidget {
               ),
             ),
           ),
+          if (freeQuota != null) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Icon(
+                  Icons.style_outlined,
+                  size: 14,
+                  color: AppColors.onBackgroundSecondary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '今日免費翻牌 剩 ${freeQuota!.remaining} / ${freeQuota!.allowance}',
+                  key: const ValueKey('collection-free-quota-line'),
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -1008,10 +1052,19 @@ class _RarityFilterChip extends StatelessWidget {
 }
 
 class _CollectionCard extends ConsumerWidget {
-  const _CollectionCard({required this.profile, required this.unlocked});
+  const _CollectionCard({
+    required this.profile,
+    required this.unlocked,
+    required this.pulse,
+  });
 
   final PracticeGirlProfile profile;
   final bool unlocked;
+
+  /// 稀有度呼吸光暈共用 [_drawPulse]（零新增 ticker：revealed 時 pulse 停在 0
+  /// ＝靜光，既有 pumpAndSettle 測試收斂語意不變）。SR 金色強檔、R 紫色弱檔、
+  /// N／鎖卡不動。
+  final Animation<double> pulse;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1019,6 +1072,69 @@ class _CollectionCard extends ConsumerWidget {
     final color = practiceRarityColor(rarity);
     // 批 3：free 每日免費抽已移除，「每日」字樣只對付費 tier 為真。
     final isPremium = ref.watch(subscriptionProvider).isPremium;
+
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                _CollectionCardPhoto(profile: profile, locked: !unlocked),
+                if (unlocked)
+                  Positioned(
+                    top: 6,
+                    left: 6,
+                    child: PracticeRarityBadge(rarity: rarity),
+                  )
+                else
+                  Center(
+                    child: Text(
+                      '？',
+                      key: ValueKey('collection-mystery-${profile.profileId}'),
+                      style: AppTypography.headlineLarge.copyWith(
+                        color: Colors.white.withValues(alpha: 0.55),
+                        fontSize: 44,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          unlocked ? profile.displayName : '？？？',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTypography.titleSmall.copyWith(
+            color: unlocked ? Colors.white : Colors.white70,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          unlocked ? profile.professionLabel : (isPremium ? '每日翻牌解鎖' : '翻牌解鎖'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTypography.caption.copyWith(
+            color: unlocked ? AppColors.onBackgroundSecondary : Colors.white38,
+          ),
+        ),
+        const SizedBox(height: 6),
+        if (unlocked)
+          PracticeRarityStars(rarity: rarity)
+        else
+          const SizedBox(height: 14), // 鎖卡無星等：佔位維持排版高度
+      ],
+    );
+
+    // SR/R 解鎖卡的呼吸光暈幅度；N 與鎖卡走靜態 decoration，不掛 pulse 重繪。
+    final breathing = unlocked &&
+        (rarity == PracticeGirlRarity.sr || rarity == PracticeGirlRarity.r);
 
     return GestureDetector(
       key: ValueKey('collection-card-${profile.profileId}'),
@@ -1037,90 +1153,71 @@ class _CollectionCard extends ConsumerWidget {
             content: Text(isPremium ? '每日翻牌有機會遇到她' : '翻牌有機會遇到她'),
           ));
       },
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: AppColors.brandSurface.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            width: 1.5,
-            color: unlocked
-                ? color.withValues(alpha: 0.85)
-                : Colors.white.withValues(alpha: 0.10),
-          ),
-          boxShadow: unlocked
-              ? [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.24),
-                    blurRadius: 14,
-                    spreadRadius: 1,
-                  ),
-                ]
-              : null,
+      child: breathing
+          ? AnimatedBuilder(
+              animation: pulse,
+              child: content,
+              builder: (context, child) => Container(
+                padding: const EdgeInsets.all(10),
+                decoration: _decoration(color, pulse.value),
+                child: child,
+              ),
+            )
+          : Container(
+              padding: const EdgeInsets.all(10),
+              decoration: _decoration(color, 0),
+              child: content,
+            ),
+    );
+  }
+
+  /// t＝呼吸相位 0..1（pulse 停止時恆 0＝基線靜光，與改前視覺等價）。
+  BoxDecoration _decoration(Color color, double t) {
+    final rarity = profile.rarity;
+    final sr = rarity == PracticeGirlRarity.sr;
+    final double borderAlpha;
+    final List<BoxShadow>? shadows;
+    if (!unlocked) {
+      borderAlpha = 0;
+      shadows = null;
+    } else if (sr) {
+      borderAlpha = 0.80 + 0.20 * t;
+      shadows = [
+        BoxShadow(
+          color: color.withValues(alpha: 0.26 + 0.22 * t),
+          blurRadius: 15 + 5 * t,
+          spreadRadius: 1 + t,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    _CollectionCardPhoto(profile: profile, locked: !unlocked),
-                    if (unlocked)
-                      Positioned(
-                        top: 6,
-                        left: 6,
-                        child: PracticeRarityBadge(rarity: rarity),
-                      )
-                    else
-                      Center(
-                        child: Text(
-                          '？',
-                          key: ValueKey(
-                              'collection-mystery-${profile.profileId}'),
-                          style: AppTypography.headlineLarge.copyWith(
-                            color: Colors.white.withValues(alpha: 0.55),
-                            fontSize: 44,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              unlocked ? profile.displayName : '？？？',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.titleSmall.copyWith(
-                color: unlocked ? Colors.white : Colors.white70,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              unlocked
-                  ? profile.professionLabel
-                  : (isPremium ? '每日翻牌解鎖' : '翻牌解鎖'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.caption.copyWith(
-                color:
-                    unlocked ? AppColors.onBackgroundSecondary : Colors.white38,
-              ),
-            ),
-            const SizedBox(height: 6),
-            if (unlocked)
-              PracticeRarityStars(rarity: rarity)
-            else
-              const SizedBox(height: 14), // 鎖卡無星等：佔位維持排版高度
-          ],
+      ];
+    } else if (rarity == PracticeGirlRarity.r) {
+      borderAlpha = 0.85;
+      shadows = [
+        BoxShadow(
+          color: color.withValues(alpha: 0.22 + 0.10 * t),
+          blurRadius: 14 + 2 * t,
+          spreadRadius: 1,
         ),
+      ];
+    } else {
+      borderAlpha = 0.85;
+      shadows = [
+        BoxShadow(
+          color: color.withValues(alpha: 0.24),
+          blurRadius: 14,
+          spreadRadius: 1,
+        ),
+      ];
+    }
+    return BoxDecoration(
+      color: AppColors.brandSurface.withValues(alpha: 0.6),
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(
+        width: 1.5,
+        color: unlocked
+            ? color.withValues(alpha: borderAlpha)
+            : Colors.white.withValues(alpha: 0.10),
       ),
+      boxShadow: shadows,
     );
   }
 }
