@@ -6481,12 +6481,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           ),
                         ),
                         const SizedBox(width: 4),
-                        Icon(
-                          _showDetailedAnalysis
-                              ? Icons.expand_less
-                              : Icons.expand_more,
-                          color: Colors.white,
-                          size: 20,
+                        AnimatedRotation(
+                          turns: _showDetailedAnalysis ? 0.5 : 0,
+                          duration: AppMotion.state,
+                          curve: AppMotion.easeOut,
+                          child: const Icon(
+                            Icons.expand_more,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                         ),
                       ],
                     ),
