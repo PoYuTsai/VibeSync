@@ -401,6 +401,18 @@ class PracticeDrawUpgradeRequiredException implements Exception {
   String toString() => 'PracticeDrawUpgradeRequiredException: $message';
 }
 
+/// SR 限定翻牌券已用過或不存在（伺服器回 409 `sr_ticket_not_available`）。
+/// 呼叫端應刷新券狀態並收起金券入口，不重試。
+class PracticeSrTicketUnavailableException implements Exception {
+  PracticeSrTicketUnavailableException();
+  @override
+  String toString() => 'PracticeSrTicketUnavailableException';
+}
+
+/// ensure_subscription_sr_ticket 回應：eligible＝tier 有此權益；granted＝券已
+/// 存在（冪等）；consumed＝已用掉。
+typedef SrTicketStatus = ({bool eligible, bool granted, bool consumed});
+
 /// Debrief may use up to six bounded provider calls, but every call shares the
 /// server's request-entry 85s deadline. Keep the 90s client fence below the
 /// 105s server owner fence so record/response and same-request replay have room.
@@ -865,6 +877,25 @@ class PracticeChatApiService {
     return data['consumed'] == true;
   }
 
+  /// 訂閱一次性 SR 限定翻牌券：冪等 grant 兼狀態查詢。server 以訂閱 tier 把關
+  /// （free 不發券回 eligible:false）；既有訂閱者首次呼叫自然回溯補發。
+  /// 失敗丟例外，由呼叫端 best-effort 吞掉。
+  Future<SrTicketStatus> ensureSubscriptionSrTicket() async {
+    final response = await _invoke(
+      _functionName,
+      body: const {'mode': 'ensure_subscription_sr_ticket'},
+    );
+    final data = response.data;
+    if (response.status != 200 || data is! Map) {
+      throw PracticeGenerationFailedException('sr_ticket_ensure_failed');
+    }
+    return (
+      eligible: data['eligible'] == true,
+      granted: data['granted'] == true,
+      consumed: data['consumed'] == true,
+    );
+  }
+
   /// 每日翻牌：server 選一位新對象並原子扣費（免費額度／付費額外）。
   /// [requestId] 是 client 產的冪等 key；[currentProfileId] 帶上目前這位以便排除
   /// （換一位不換回自己）。402 → upgrade required；429 → quota exceeded。
@@ -872,6 +903,7 @@ class PracticeChatApiService {
     required String requestId,
     String? currentProfileId,
     String? visiblePracticeThreadId,
+    bool srTicket = false,
   }) async {
     final response = await _invoke(
       _functionName,
@@ -885,8 +917,14 @@ class PracticeChatApiService {
         // 自己反查不到的新角色（會 fallback 渲染成第一位且額度白扣）。不硬編 100，
         // catalog 擴充/回滾時自動跟上。
         'catalogSize': practiceGirlProfiles.length,
+        // SR 限定翻牌券（訂閱一次性權益）：券路徑保底 SR、不佔每日額度。
+        if (srTicket) 'srTicket': true,
       },
     );
+
+    if (srTicket && response.status == 409) {
+      throw PracticeSrTicketUnavailableException();
+    }
 
     switch (response.status) {
       case 200:

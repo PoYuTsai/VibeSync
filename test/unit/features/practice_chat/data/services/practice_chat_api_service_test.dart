@@ -39,6 +39,7 @@ class _CapturedInvoke {
   /// 翻牌成功回應（draw 測試設定後由 mode==draw_profile 分支回傳）。
   Map<String, dynamic>? drawBody;
   Map<String, dynamic>? hintBody;
+  Map<String, dynamic>? ensureSrTicketBody;
 
   Future<PracticeInvokeResponse> call(
     String fn, {
@@ -51,6 +52,12 @@ class _CapturedInvoke {
     }
     if (body['mode'] == 'hint') {
       return PracticeInvokeResponse(status: 200, data: hintBody ?? const {});
+    }
+    if (body['mode'] == 'ensure_subscription_sr_ticket') {
+      return PracticeInvokeResponse(
+        status: 200,
+        data: ensureSrTicketBody ?? const {},
+      );
     }
     if (body['mode'] == 'debrief') {
       return const PracticeInvokeResponse(
@@ -2445,6 +2452,100 @@ void main() {
 
       expect(captured.body?['roundIndex'], 1);
       expect(captured.body?.containsKey('visiblePracticeThreadId'), false);
+    });
+  });
+
+  group('SR 限定翻牌券', () {
+    Map<String, dynamic> srOkBody() => {
+          'profile': {
+            'profileId': 'practice_girl_016',
+            'nameId': 'mia',
+            'professionId': 'nurse',
+            'photoId': 'practice_girl_016',
+            'personaId': 'cool_rational',
+          },
+          'draw': {
+            'costMessages': 0,
+            'srTicket': true,
+            'freeAllowance': 3,
+            'freeUsed': 0,
+            'freeRemaining': 0,
+            'extraCostMessages': 0,
+            'nextResetAt': '2026-06-27T04:00:00.000Z',
+          },
+          'usage': {
+            'monthlyUsed': 12,
+            'monthlyLimit': 500,
+            'dailyUsed': 3,
+            'dailyLimit': 30,
+          },
+        };
+
+    test('drawProfile(srTicket: true) → body 帶 srTicket', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+      captured.drawBody = srOkBody();
+
+      await svc.drawProfile(requestId: 'req-sr-1', srTicket: true);
+
+      expect(captured.body?['mode'], 'draw_profile');
+      expect(captured.body?['srTicket'], true);
+    });
+
+    test('預設（非券抽）body 不帶 srTicket', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+      captured.drawBody = srOkBody();
+
+      await svc.drawProfile(requestId: 'req-sr-2');
+
+      expect(captured.body?.containsKey('srTicket'), false);
+    });
+
+    test('409 sr_ticket_not_available → PracticeSrTicketUnavailableException',
+        () async {
+      final svc = serviceReturning(409, {'error': 'sr_ticket_not_available'});
+      expect(
+        () => svc.drawProfile(requestId: 'req-sr-3', srTicket: true),
+        throwsA(isA<PracticeSrTicketUnavailableException>()),
+      );
+    });
+
+    test('ensureSubscriptionSrTicket → body 帶 mode、200 解析三欄', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+      captured.ensureSrTicketBody = {
+        'eligible': true,
+        'granted': true,
+        'consumed': false,
+      };
+
+      final r = await svc.ensureSubscriptionSrTicket();
+
+      expect(captured.body?['mode'], 'ensure_subscription_sr_ticket');
+      expect(r.eligible, true);
+      expect(r.granted, true);
+      expect(r.consumed, false);
+    });
+
+    test('ensureSubscriptionSrTicket：free 帳號 → eligible false', () async {
+      final svc = serviceReturning(200, {
+        'eligible': false,
+        'granted': false,
+        'consumed': false,
+      });
+      final r = await svc.ensureSubscriptionSrTicket();
+      expect(r.eligible, false);
+      expect(r.granted, false);
+    });
+
+    test('ensureSubscriptionSrTicket：非 200 → 丟例外（呼叫端 best-effort）',
+        () async {
+      final svc = serviceReturning(500, {'error': 'sr_ticket_ensure_failed'});
+      expect(
+        () => svc.ensureSubscriptionSrTicket(),
+        throwsA(isA<PracticeGenerationFailedException>()),
+      );
     });
   });
 }
