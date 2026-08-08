@@ -339,6 +339,36 @@ export function applyLearningClassification(
   };
 }
 
+/**
+ * 確定性嚴重越界（粗俗性冒犯，Eric 2026-08-08「扣到 0 為止」）：無視難度
+ * 倍率，直接給負向下限（heat -12／familiarity -12；Game 端再由
+ * applyGameLearningDelta 放大並夾 -18）。Easy 的 0.75 倍率會把嚴重越界
+ * 軟化成 -9，這類句子沒有「簡單難度就輕罰」的空間（Codex 首審 High）。
+ */
+export function withMaxNegativeLearningDeltas(
+  judgement: LearningJudgement,
+  currentHeat: number,
+  currentFamiliarity: number,
+): LearningJudgement {
+  const heatDelta = MIN_HEAT_DELTA;
+  const familiarityDelta = MIN_LEARNING_DELTA;
+  const score = clampTemperature(clampTemperature(currentHeat) + heatDelta);
+  const familiarityScore = clampTemperature(
+    clampTemperature(currentFamiliarity) + familiarityDelta,
+  );
+  const stage = relationshipStageFor(familiarityScore, score);
+  return {
+    ...judgement,
+    score,
+    delta: heatDelta,
+    band: temperatureBandFor(score),
+    familiarityScore,
+    familiarityDelta,
+    stage: stage.stage,
+    stageLabel: stage.label,
+  };
+}
+
 function lastUserTurn(turns: PracticeTurn[]): PracticeTurn | null {
   for (let index = turns.length - 1; index >= 0; index--) {
     if (turns[index].role === "user") return turns[index];

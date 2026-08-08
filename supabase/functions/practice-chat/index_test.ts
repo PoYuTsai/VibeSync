@@ -458,15 +458,21 @@ function makeFake(options: FakeOptions = {}) {
           return { data: { new_ai_count: 1, did_charge: true } };
         }
         if (fn === "update_practice_learning_state") {
+          // 鏡射正式 SQL 的 [0,100] 夾制（practice_partner_state.sql
+          // GREATEST(0, LEAST(100, ...))），低溫重扣才不會在 mock 出現負分。
+          const clampScore = (value: number) =>
+            Math.max(0, Math.min(100, value));
           return {
             data: {
               updated: true,
-              temperature_score:
+              temperature_score: clampScore(
                 (params.p_expected_temperature_score as number) +
-                (params.p_temperature_delta as number),
-              familiarity_score:
+                  (params.p_temperature_delta as number),
+              ),
+              familiarity_score: clampScore(
                 (params.p_expected_familiarity_score as number) +
-                (params.p_familiarity_delta as number),
+                  (params.p_familiarity_delta as number),
+              ),
               partner_mood: params.p_partner_mood ?? "neutral",
               partner_inner_thought: params.p_partner_inner_thought ?? "",
             },
@@ -1401,6 +1407,116 @@ Deno.test("game chat overstep deltas use stronger Game clamp and match persisted
   assertEquals(json.temperature.familiarityScore, 2);
 });
 
+// 2026-08-08 Eric 真機回報：粗俗性冒犯有時不扣分。真因＝扣分靠 DeepSeek
+// 分類器，會抖動輕判；失敗 fallback 又是 0。拍板＝確定性詞表兜底，不看
+// 分類器、不看階段（高溫 flirt_allowed 也照扣），每次扣滿一路扣到 0。
+Deno.test("game chat crude sexual offense forces max deduction even at high heat with lenient classifier", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: null,
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [
+        "你這句話讓我很不舒服，到此為止。",
+        CLASSIFIER_CAUGHT_MEDIUM,
+      ],
+    },
+    chatBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      temperatureScore: 88,
+      familiarityScore: 76,
+      turns: [{ role: "user", text: "想幹妳屁眼" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  const update = learningUpdateCalls(state)[0].params;
+  assertEquals(update.p_temperature_delta, -18);
+  assertEquals(json.temperature.delta, -18);
+  assertEquals(json.temperature.score, 70);
+  // 冒犯後她的心情鎖 annoyed，NPC 演出與速約全面降級。
+  assertEquals(update.p_partner_mood, "annoyed");
+});
+
+// 原始事故的回歸鎖（Codex 首審 Medium）：分類器回壞 JSON → fallback 先前是
+// 0 分不扣；現在 fallback 也先過確定性詞表，粗俗冒犯照樣 -18。
+Deno.test("game chat crude offense still hits -18 when classifier returns malformed JSON", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: null,
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [
+        "你這句話讓我很不舒服。",
+        "not-a-json-classification",
+      ],
+    },
+    chatBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      temperatureScore: 60,
+      familiarityScore: 50,
+      turns: [{ role: "user", text: "想幹妳屁眼" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  const update = learningUpdateCalls(state)[0].params;
+  assertEquals(update.p_temperature_delta, -18);
+  assertEquals(json.temperature.score, 42);
+});
+
+// Easy 難度倍率 0.75 不得軟化確定性冒犯扣分（Codex 首審 High）：
+// withMaxNegativeLearningDeltas 在難度倍率之後強制 -12 下限。
+Deno.test("beginner easy crude offense still deducts full -12 despite easy multiplier", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: null,
+      deepSeekReplies: [
+        "這句話很冒犯，我不想聊了。",
+        CLASSIFIER_CAUGHT_MEDIUM,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      difficulty: "easy",
+      temperatureScore: 50,
+      familiarityScore: 40,
+      turns: [{ role: "user", text: "想幹妳屁眼" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  const update = learningUpdateCalls(state)[0].params;
+  assertEquals(update.p_temperature_delta, -12);
+  assertEquals(json.temperature.score, 38);
+  assertEquals(json.temperature.familiarityDelta, -12);
+});
+
+Deno.test("game chat crude sexual offense at threshold floors at zero", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: null,
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [
+        "夠了，不要再傳訊息給我。",
+        CLASSIFIER_CAUGHT_MEDIUM,
+      ],
+    },
+    chatBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      temperatureScore: 10,
+      familiarityScore: 8,
+      turns: [{ role: "user", text: "傳裸照來看看" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  const update = learningUpdateCalls(state)[0].params;
+  assertEquals(update.p_temperature_delta, -18);
+  assertEquals(json.temperature.score, 0);
+});
+
 // ── 續聊保溫：ledger 不存在時，新場首回合以 client 攜帶值 seed 溫度 ─────────
 
 Deno.test("beginner first chat without ledger seeds temperature from client-carried scores", async () => {
@@ -1643,8 +1759,8 @@ Deno.test("beginner first chat：challenge 難度起始溫度 20＋負 delta 放
   // challenge negativeMultiplier=1.3：heat clamp 到 -12、familiarity round 到 -6。
   assertEquals(json.temperature.score, 8); // 20 + (-12)
   assertEquals(json.temperature.delta, -12);
-  // fake RPC 直接回傳 expected+delta（不模擬 clamp，實際 Postgres RPC 才 clamp 下限）。
-  assertEquals(json.temperature.familiarityScore, -6); // 0 + (-6)
+  // fake RPC 已鏡射 Postgres 的 GREATEST(0, ...) 下限（2026-08-08）。
+  assertEquals(json.temperature.familiarityScore, 0); // clamp(0 + (-6))
   assertEquals(json.temperature.familiarityDelta, -6);
   assert(state.deepSeekCalls[0].messages[0].content.includes("20/100"));
   assertEquals(

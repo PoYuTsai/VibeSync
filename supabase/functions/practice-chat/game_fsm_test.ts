@@ -8,6 +8,7 @@ import {
 import {
   applyGameLearningDelta,
   buildGameStrategy,
+  containsCrudeSexualOffense,
   evaluateGameFsm,
   hasExplicitSrGameStrategy,
 } from "./game_fsm.ts";
@@ -163,6 +164,42 @@ Deno.test("evaluateGameFsm flags GREASY when low familiarity over-escalates", ()
   assert(snapshot.failureStates.includes("GHOST_RISK"));
   assertEquals(snapshot.spicyLevel, "L0");
   assert(snapshot.hidden.safety < 40);
+});
+
+// 2026-08-08 Eric 拍板：粗俗性冒犯＝確定性嚴重越界，不看階段——高溫也沒有
+// 豁免。詞表只收無曖昧空間的高精度詞，「很屌」「劇情高潮」這類自然語不攔。
+Deno.test("evaluateGameFsm：粗俗性冒犯即使高溫也判 GREASY＋L0", () => {
+  const snapshot = evaluateGameFsm({
+    turns: [{ role: "user", text: "想幹妳屁眼" }],
+    temperatureScore: 88,
+    familiarityScore: 76,
+    partnerMood: "comfortable",
+  });
+
+  assert(snapshot.failureStates.includes("GREASY"));
+  assert(snapshot.failureStates.includes("GHOST_RISK"));
+  assertEquals(snapshot.spicyLevel, "L0");
+});
+
+Deno.test("containsCrudeSexualOffense：高精度詞命中、自然語放行", () => {
+  for (
+    const offense of ["想幹妳屁眼", "想內射妳", "傳裸照來看看", "妳這騷貨"]
+  ) {
+    assertEquals(containsCrudeSexualOffense(offense), true, offense);
+  }
+  // Codex 首審誤殺樣本：天氣露點、健身醫療、寵物——低精度詞已拔除。
+  for (
+    const benign of [
+      "你也太屌了吧",
+      "這部片的高潮在第三幕",
+      "我今天去健身練胸部",
+      "氣象說今天露點 23 度",
+      "我家狗狗一直舔你不放",
+      "醫生說精液檢查結果正常",
+    ]
+  ) {
+    assertEquals(containsCrudeSexualOffense(benign), false, benign);
+  }
 });
 
 Deno.test("evaluateGameFsm moves frame points and heat on test pass or fail", () => {

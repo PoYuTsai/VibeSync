@@ -125,6 +125,81 @@ function questionPressureScore(texts: string[]): number {
   }, 0);
 }
 
+/**
+ * 粗俗性冒犯詞表（Eric 2026-08-08 拍板「扣到 0 為止」）：命中＝確定性嚴重
+ * 越界，不看分類器、不看關係階段——這類句子沒有「高溫就可以」的豁免。
+ * 詞表只收無曖昧空間的高精度詞（單字「屌」「幹」這類有自然語用法的不收，
+ * 「高潮」有劇情高潮等 benign 用法也不收），寧漏給分類器判，不誤殺。
+ * handler 的溫度判定與這裡的 NPC 行為（GREASY）共用同一份，避免兩面漂移。
+ */
+// Codex 首審修表（2026-08-08）：拔掉有自然語用法的低精度詞（露點=天氣、
+// 胸部/精液/性交/自慰=健身醫療衛教、脫光=洗澡、舔你=寵物），補上同級粗俗
+// 但漏收的高精度詞（幹死妳/插妳/內射/中出/含屌/強姦妳…）。
+const CRUDE_SEXUAL_OFFENSE_TERMS = [
+  "屁眼",
+  "肛交",
+  "口交",
+  "口爆",
+  "顏射",
+  "颜射",
+  "吞精",
+  "做愛",
+  "做爱",
+  "打炮",
+  "約炮",
+  "约炮",
+  "幹你",
+  "幹妳",
+  "幹死你",
+  "幹死妳",
+  "幹爆你",
+  "幹爆妳",
+  "干死你",
+  "干死妳",
+  "肏",
+  "操你",
+  "操妳",
+  "草你",
+  "草妳",
+  "插妳",
+  "內射",
+  "内射",
+  "中出",
+  "強姦你",
+  "強姦妳",
+  "强奸你",
+  "强奸妳",
+  "奶子",
+  "摸奶",
+  "摸胸",
+  "揉胸",
+  "雞雞",
+  "鸡鸡",
+  "雞巴",
+  "鸡巴",
+  "肉棒",
+  "含屌",
+  "吃屌",
+  "騷貨",
+  "骚货",
+  "婊子",
+  "賤貨",
+  "贱货",
+  "蕩婦",
+  "荡妇",
+  "破麻",
+  "打手槍",
+  "打手枪",
+  "尻槍",
+  "裸照",
+  "淫蕩",
+  "淫荡",
+] as const;
+
+export function containsCrudeSexualOffense(text: string): boolean {
+  return includesAny(normalized(text), CRUDE_SEXUAL_OFFENSE_TERMS);
+}
+
 function looksOverEscalated(text: string): boolean {
   const compact = normalized(text);
   return includesAny(compact, [
@@ -142,7 +217,7 @@ function looksOverEscalated(text: string): boolean {
     "親妳",
     "直接來我家",
     "今晚去我家",
-  ]);
+  ]) || includesAny(compact, CRUDE_SEXUAL_OFFENSE_TERMS);
 }
 
 function looksLikeToolGuy(texts: string[]): boolean {

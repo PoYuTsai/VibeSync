@@ -83,7 +83,11 @@ import {
   rejectL4UnsafeVisibleText,
   rejectVisibleInternalLabelLeak,
 } from "./visible_text_guard.ts";
-import { applyGameLearningDelta, evaluateGameFsm } from "./game_fsm.ts";
+import {
+  applyGameLearningDelta,
+  containsCrudeSexualOffense,
+  evaluateGameFsm,
+} from "./game_fsm.ts";
 import {
   buildNextGameState,
   parsePersistedGameState,
@@ -108,6 +112,7 @@ import {
   relationshipStageFor,
   temperatureBandFor,
   type TurnClassification,
+  withMaxNegativeLearningDeltas,
 } from "./temperature.ts";
 import { taipeiTimeContextFor } from "./time_context.ts";
 import { toTraditionalChinese } from "./traditional_chinese.ts";
@@ -331,6 +336,22 @@ function deterministicOverstepClassificationForSnapshot(opts: {
   currentTemperature: number;
   currentFamiliarity: number;
 }): TurnClassification | null {
+  // 粗俗性冒犯（Eric 2026-08-08 拍板）：不看分類器、不看關係階段，直接判
+  // 嚴重越界。動機：扣分靠 DeepSeek 分類器，它對這類句子會抖動（有時輕判
+  // 甚至不扣），失敗時 fallback 又是 0 分——粗俗性辱罵沒有誤判空間，用硬
+  // 規則兜底，每次命中扣滿（Game -18／新手 -12），連續冒犯一路扣到 0。
+  if (containsCrudeSexualOffense(lastUserText(opts.request.turns))) {
+    return {
+      impact: "strong",
+      connection: "overstepped",
+      testHandling: "none",
+      boundary: "overstep",
+      hintAlignment: "diverged",
+      partnerMood: "annoyed",
+      moodConfidence: 1,
+      innerThought: "這句話讓我覺得被冒犯，我不想再聊下去了。",
+    };
+  }
   const stage = relationshipStageFor(
     opts.currentFamiliarity,
     opts.currentTemperature,
@@ -1191,6 +1212,11 @@ async function judgeLearningState(opts: {
 }): Promise<LearningJudgement> {
   // 難度接線（槓桿 A）：正負 delta 倍率只在 beginner 溫度管線生效，作用域內解析一次。
   const tuning = difficultyTuningFor(opts.request.profile.difficulty);
+  // 粗俗性冒犯＝確定性扣滿，不吃難度倍率（Easy 0.75 會把 -12 軟化成 -9，
+  // 這類句子沒有「簡單難度就輕罰」的空間）。分類器成功/失敗兩條路都要蓋。
+  const crudeOffense = containsCrudeSexualOffense(
+    lastUserText(opts.request.turns),
+  );
   const applyGameLearningIfNeeded = (
     judgement: LearningJudgement,
     currentTemperature: number,
@@ -1232,8 +1258,15 @@ async function judgeLearningState(opts: {
         deterministic,
         tuning,
       );
+      const enforcedJudgement = crudeOffense
+        ? withMaxNegativeLearningDeltas(
+          judgement,
+          currentTemperature,
+          currentFamiliarity,
+        )
+        : judgement;
       const withPartnerState = {
-        ...judgement,
+        ...enforcedJudgement,
         partnerState: applyPartnerStateUpdate(
           currentPartnerState,
           deterministic,
@@ -1302,8 +1335,17 @@ async function judgeLearningState(opts: {
       protectedHintType,
       opts.request.practiceMode,
     );
+    // 放在 applied-hint 保護之後：使用者把 hint 改寫成粗俗冒犯句時，保護
+    // 不得替它擋下扣分。
+    const enforcedJudgement = crudeOffense
+      ? withMaxNegativeLearningDeltas(
+        protectedJudgement,
+        currentTemperature,
+        currentFamiliarity,
+      )
+      : protectedJudgement;
     const withPartnerState = {
-      ...protectedJudgement,
+      ...enforcedJudgement,
       partnerState: applyPartnerStateUpdate(
         currentPartnerState,
         classification,
