@@ -228,8 +228,9 @@ class _PracticeGameIntroSheet extends StatelessWidget {
   }
 }
 
-/// 訂閱鈎子：只對 Free 顯示。事實對齊 server（free 每日翻牌 0、續同一位
-/// 付費限定）——文案不承諾 SR 機率、不寫死各檔翻牌數字，避免額度調整後漂移。
+/// 訂閱鈎子：只對 Free 顯示。主承諾＝訂閱送一次 SR 限定翻牌（2026-08-08 拍板，
+/// 機制已上線才講——批 1 曾刻意保留舊話術避免空頭支票）；其餘事實對齊 server
+/// （free 每日翻牌 0）——不承諾 SR 機率、不寫死各檔翻牌數字，避免額度調整後漂移。
 class _IntroUpgradeHook extends StatelessWidget {
   const _IntroUpgradeHook();
 
@@ -251,7 +252,7 @@ class _IntroUpgradeHook extends StatelessWidget {
               Icon(Icons.auto_awesome, size: 16, color: AppColors.ctaStart),
               const SizedBox(width: 6),
               Text(
-                '想每天都有新對象可攻略？',
+                '訂閱直接解鎖 Game',
                 style: AppTypography.labelMedium.copyWith(
                   color: AppColors.ctaStart,
                   fontWeight: FontWeight.w800,
@@ -261,8 +262,9 @@ class _IntroUpgradeHook extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '訂閱後每天都能翻牌認識新對象，遇到 SR 的機會更多；'
-            '也能和同一位連續多局，把五階段從開場一路練到收尾。',
+            '訂閱就送一次 SR 限定翻牌，馬上開一位 SR 對象進 Game；'
+            '之後每天還能翻牌認識新對象、和同一位連續多局，'
+            '把五階段從開場一路練到收尾。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.onBackgroundSecondary,
               height: 1.5,

@@ -420,6 +420,11 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('查看方案'), findsOneWidget);
+      // 批 2 機制上線後的具體承諾（訂閱送 SR 限定翻牌＝馬上解鎖 Game）；
+      // 泛泛升級話術不回歸。
+      expect(find.text('訂閱直接解鎖 Game'), findsOneWidget);
+      expect(find.textContaining('SR 限定翻牌'), findsOneWidget);
+      expect(find.text('想每天都有新對象可攻略？'), findsNothing);
     });
 
     testWidgets('付費帳號教學卡不顯示訂閱鈎子', (tester) async {
