@@ -17,6 +17,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_typography.dart';
 
 /// Visual tone for shared brand primitives.
@@ -427,7 +428,10 @@ class BrandPrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final disabled = onPressed == null || isLoading;
-    return Container(
+    // 灰↔橘可用狀態切換做 240ms 漸變，避免瞬切搶走旁邊動效的注意力。
+    return AnimatedContainer(
+      duration: AppMotion.state,
+      curve: AppMotion.easeOut,
       width: double.infinity,
       decoration: BoxDecoration(
         gradient: LinearGradient(
