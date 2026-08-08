@@ -2,8 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-/// 在既有趨勢線上疊一層持續往前流動的高對比虛線。
+/// 在既有趨勢線上疊一層往前流動的高對比虛線。
 ///
+/// [cycles] 為 null 時無限循環；給定圈數時只在進場流 N 圈，
+/// 最後一圈逐漸淡出後完全停止（資料線本體不受影響）。
 /// 系統開啟 reduced motion 或所在頁面的 TickerMode 關閉時完全靜止。
 class TrendFlowOverlay extends StatefulWidget {
   const TrendFlowOverlay({
@@ -15,12 +17,14 @@ class TrendFlowOverlay extends StatefulWidget {
     required this.flowDuration,
     required this.child,
     this.painterKey,
+    this.cycles,
     this.coreAlpha = 0.68,
     this.glowAlpha = 0.14,
     this.dashLength = 12,
     this.gapLength = 8,
   })  : assert(coreAlpha >= 0 && coreAlpha <= 1),
         assert(glowAlpha >= 0 && glowAlpha <= 1),
+        assert(cycles == null || cycles > 0),
         assert(dashLength > 0),
         assert(gapLength > 0);
 
@@ -31,6 +35,9 @@ class TrendFlowOverlay extends StatefulWidget {
   final Duration flowDuration;
   final Widget child;
   final Key? painterKey;
+
+  /// 流動圈數；null＝無限循環。
+  final int? cycles;
   final double coreAlpha;
   final double glowAlpha;
   final double dashLength;
@@ -44,10 +51,22 @@ class _TrendFlowOverlayState extends State<TrendFlowOverlay>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: widget.flowDuration,
+    duration: _totalDuration,
   );
 
   bool? _motionEnabled;
+
+  /// 一次性模式把 N 圈攤在同一條 0→1 時間軸上，painter 再拆相位。
+  Duration get _totalDuration =>
+      widget.flowDuration * (widget.cycles ?? 1);
+
+  void _play() {
+    if (widget.cycles == null) {
+      _controller.repeat();
+    } else {
+      _controller.forward(from: 0);
+    }
+  }
 
   @override
   void didChangeDependencies() {
@@ -59,7 +78,7 @@ class _TrendFlowOverlayState extends State<TrendFlowOverlay>
     _motionEnabled = enabled;
 
     if (enabled) {
-      _controller.repeat();
+      _play();
     } else {
       _controller
         ..stop()
@@ -70,12 +89,13 @@ class _TrendFlowOverlayState extends State<TrendFlowOverlay>
   @override
   void didUpdateWidget(covariant TrendFlowOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.flowDuration != widget.flowDuration) {
-      _controller.duration = widget.flowDuration;
+    if (oldWidget.flowDuration != widget.flowDuration ||
+        oldWidget.cycles != widget.cycles) {
+      _controller.duration = _totalDuration;
     }
     if (!_samePoints(oldWidget.points, widget.points) &&
         _motionEnabled == true) {
-      _controller.repeat();
+      _play();
     }
   }
 
@@ -110,6 +130,7 @@ class _TrendFlowOverlayState extends State<TrendFlowOverlay>
                   padding: widget.padding,
                   color: widget.color,
                   glowColor: widget.glowColor,
+                  cycles: widget.cycles,
                   coreAlpha: widget.coreAlpha,
                   glowAlpha: widget.glowAlpha,
                   dashLength: widget.dashLength,
@@ -131,6 +152,7 @@ class _TrendFlowPainter extends CustomPainter {
     required this.padding,
     required this.color,
     required this.glowColor,
+    required this.cycles,
     required this.coreAlpha,
     required this.glowAlpha,
     required this.dashLength,
@@ -142,6 +164,7 @@ class _TrendFlowPainter extends CustomPainter {
   final EdgeInsets padding;
   final Color color;
   final Color glowColor;
+  final int? cycles;
   final double coreAlpha;
   final double glowAlpha;
   final double dashLength;
@@ -151,6 +174,22 @@ class _TrendFlowPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final raw = animation.value;
     if (points.length < 2 || raw <= 0 || raw >= 1 || size.isEmpty) return;
+
+    // 一次性模式：0→1 時間軸攤了 N 圈，這裡拆出單圈相位；
+    // 最後一圈把透明度線性收到 0，結束時 raw>=1 直接不畫。
+    final loops = cycles;
+    final double phaseFraction;
+    final double fade;
+    if (loops == null) {
+      phaseFraction = raw;
+      fade = 1;
+    } else {
+      final overall = raw * loops;
+      phaseFraction = overall % 1;
+      final fadeStart = loops - 1.0;
+      fade = overall <= fadeStart ? 1 : (1 - (overall - fadeStart)).clamp(0, 1);
+      if (fade <= 0) return;
+    }
 
     final plot = Rect.fromLTRB(
       padding.left,
@@ -173,7 +212,7 @@ class _TrendFlowPainter extends CustomPainter {
 
     final metric = metrics.first;
     final patternLength = dashLength + gapLength;
-    final phase = raw * patternLength;
+    final phase = phaseFraction * patternLength;
     final dashedPath = Path();
     var distance = -patternLength + phase;
     while (distance < metric.length) {
@@ -194,7 +233,7 @@ class _TrendFlowPainter extends CustomPainter {
         ..strokeWidth = 6
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
-        ..color = glowColor.withValues(alpha: glowAlpha)
+        ..color = glowColor.withValues(alpha: glowAlpha * fade)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
     );
     canvas.drawPath(
@@ -204,7 +243,7 @@ class _TrendFlowPainter extends CustomPainter {
         ..strokeWidth = 2.25
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
-        ..color = color.withValues(alpha: coreAlpha),
+        ..color = color.withValues(alpha: coreAlpha * fade),
     );
     canvas.restore();
   }
@@ -242,6 +281,7 @@ class _TrendFlowPainter extends CustomPainter {
         oldDelegate.padding != padding ||
         oldDelegate.color != color ||
         oldDelegate.glowColor != glowColor ||
+        oldDelegate.cycles != cycles ||
         oldDelegate.coreAlpha != coreAlpha ||
         oldDelegate.glowAlpha != glowAlpha ||
         oldDelegate.dashLength != dashLength ||

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/report/presentation/widgets/trend_flow_overlay.dart';
 
-Widget _subject({bool disableAnimations = false}) {
+Widget _subject({bool disableAnimations = false, int? cycles}) {
   return MaterialApp(
     home: MediaQuery(
       data: MediaQueryData(disableAnimations: disableAnimations),
@@ -20,6 +20,7 @@ Widget _subject({bool disableAnimations = false}) {
             color: Colors.orange,
             glowColor: Colors.deepOrange,
             flowDuration: const Duration(milliseconds: 200),
+            cycles: cycles,
             painterKey: const ValueKey('flow-painter'),
             child: const ColoredBox(color: Colors.black),
           ),
@@ -37,6 +38,22 @@ void main() {
 
     expect(find.byKey(const ValueKey('flow-painter')), findsOneWidget);
     expect(tester.binding.hasScheduledFrame, isTrue);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('一次性模式：流完指定圈數後完全停止', (tester) async {
+    await tester.pumpWidget(_subject(cycles: 2));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // 播放中：仍有下一幀排程。
+    expect(tester.binding.hasScheduledFrame, isTrue);
+
+    // 2 圈 × 200ms = 400ms，跑完後不再排幀。
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(tester.binding.hasScheduledFrame, isFalse);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

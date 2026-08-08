@@ -298,6 +298,8 @@ class HeatTrendChart extends StatelessWidget {
         color: const Color(0xFFFFD2B8),
         glowColor: AppColors.ctaStart,
         flowDuration: const Duration(milliseconds: 900),
+        // 進場流 2 圈後淡出停住：讀資料的圖不留永久裝飾動態。
+        cycles: 2,
         coreAlpha: 0.82,
         glowAlpha: 0.15,
         dashLength: 12,

@@ -225,6 +225,8 @@ class PracticeTemperatureChart extends StatelessWidget {
         color: const Color(0xFFD7CEFF),
         glowColor: AppColors.primaryLight,
         flowDuration: const Duration(milliseconds: 1150),
+        // 進場流 2 圈後淡出停住：讀資料的圖不留永久裝飾動態。
+        cycles: 2,
         coreAlpha: 0.72,
         glowAlpha: 0.13,
         dashLength: 11,
