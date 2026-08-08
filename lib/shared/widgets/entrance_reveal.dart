@@ -13,6 +13,7 @@ class EntranceReveal extends StatefulWidget {
     required this.child,
     this.duration = AppMotion.enter,
     this.curve = AppMotion.easeOut,
+    this.opacityCurve,
     this.offsetY = 14,
     this.beginScale = 0.98,
   });
@@ -20,6 +21,10 @@ class EntranceReveal extends StatefulWidget {
   final Widget child;
   final Duration duration;
   final Curve curve;
+
+  /// 淡入專用曲線；null 時跟 [curve]。easeOutBack 這類過衝曲線
+  /// 會讓 opacity 提前夾到 1、吃掉淡入尾段，慶祝檔要分開給。
+  final Curve? opacityCurve;
 
   /// 進場起始向下位移（邏輯像素），0 = 純 fade。
   final double offsetY;
@@ -67,8 +72,10 @@ class _EntranceRevealState extends State<EntranceReveal>
       child: widget.child,
       builder: (context, child) {
         final t = widget.curve.transform(_controller.value);
+        final ot =
+            (widget.opacityCurve ?? widget.curve).transform(_controller.value);
         // easeOutBack 這類曲線會超過 1，opacity 必須夾住。
-        final opacity = t.clamp(0.0, 1.0);
+        final opacity = ot.clamp(0.0, 1.0);
         Widget result = Opacity(opacity: opacity, child: child);
         if (widget.beginScale != 1) {
           result = Transform.scale(

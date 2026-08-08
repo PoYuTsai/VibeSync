@@ -244,7 +244,8 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                               EntranceReveal(
                                 duration: AppMotion.celebrate,
                                 curve: AppMotion.celebrateCurve,
-                                beginScale: 0.96,
+                                opacityCurve: AppMotion.easeOut,
+                                beginScale: 0.9,
                                 offsetY: 0,
                                 child: PracticeDebriefCard(
                                   summary: state.debrief!.summary,
@@ -2651,21 +2652,24 @@ class _SessionReviewScreen extends StatelessWidget {
             for (final m in session.messages) _Bubble(message: m),
             if (session.hasRestorableDebrief) ...[
               const SizedBox(height: 12),
-              PracticeDebriefCard(
-                summary: session.debriefSummary ?? '',
-                strengths: session.debriefStrengths,
-                watchouts: session.debriefWatchouts,
-                suggestedLine: session.debriefSuggestedLine ?? '',
-                vibe: session.debriefVibe ?? '中性',
-                dateChance: session.debriefDateChance,
-                dateChanceReason: session.debriefDateChanceReason,
-                nextInviteMove: session.debriefNextInviteMove,
-                gameBreakdownPhaseReached: session.debriefGamePhaseReached,
-                gameBreakdownMissedVariable: session.debriefGameMissedVariable,
-                gameBreakdownFailureState: session.debriefGameFailureState,
-                gameBreakdownNextFirstLine: session.debriefGameNextFirstLine,
-                gameBreakdownInviteDirection:
-                    session.debriefGameInviteDirection,
+              EntranceReveal(
+                child: PracticeDebriefCard(
+                  summary: session.debriefSummary ?? '',
+                  strengths: session.debriefStrengths,
+                  watchouts: session.debriefWatchouts,
+                  suggestedLine: session.debriefSuggestedLine ?? '',
+                  vibe: session.debriefVibe ?? '中性',
+                  dateChance: session.debriefDateChance,
+                  dateChanceReason: session.debriefDateChanceReason,
+                  nextInviteMove: session.debriefNextInviteMove,
+                  gameBreakdownPhaseReached: session.debriefGamePhaseReached,
+                  gameBreakdownMissedVariable:
+                      session.debriefGameMissedVariable,
+                  gameBreakdownFailureState: session.debriefGameFailureState,
+                  gameBreakdownNextFirstLine: session.debriefGameNextFirstLine,
+                  gameBreakdownInviteDirection:
+                      session.debriefGameInviteDirection,
+                ),
               ),
             ] else if (session.hasDebrief) ...[
               const SizedBox(height: 12),
