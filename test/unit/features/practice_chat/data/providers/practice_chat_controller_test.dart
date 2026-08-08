@@ -84,6 +84,8 @@ class _FakeApi extends PracticeChatApiService {
   String? lastDrawRequestId;
   String? lastDrawCurrentProfileId;
   String? lastDrawVisibleThreadId;
+  bool? lastDrawSrTicket;
+  final List<String> drawRequestIds = [];
 
   @override
   Future<PracticeChatReply> sendMessage({
@@ -197,11 +199,14 @@ class _FakeApi extends PracticeChatApiService {
     required String requestId,
     String? currentProfileId,
     String? visiblePracticeThreadId,
+    bool srTicket = false,
   }) {
     drawCallCount++;
     lastDrawRequestId = requestId;
     lastDrawCurrentProfileId = currentProfileId;
     lastDrawVisibleThreadId = visiblePracticeThreadId;
+    lastDrawSrTicket = srTicket;
+    drawRequestIds.add(requestId);
     return drawHandler!(currentProfileId: currentProfileId);
   }
 }
@@ -5370,6 +5375,101 @@ void main() {
       await c.endPractice();
 
       expect(history.events, isEmpty); // standard 全程無溫度
+    });
+  });
+
+  group('SR 限定翻牌券抽', () {
+    test('srTicket: true → api 收到旗標，成功揭曉新卡', () async {
+      final c = makeController();
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_016');
+
+      await c.drawNewPracticeGirl(srTicket: true);
+
+      expect(api.lastDrawSrTicket, true);
+      expect(c.currentState.girl?.profileId, 'practice_girl_016');
+      expect(c.currentState.isRevealed, true);
+    });
+
+    test('預設一般抽 → srTicket false', () async {
+      final c = makeController();
+      api.drawHandler = ({currentProfileId}) async => drawResult();
+
+      await c.drawNewPracticeGirl();
+
+      expect(api.lastDrawSrTicket, false);
+    });
+
+    test('券抽成功不覆寫每日翻牌額度欄位（response 佔位值不得污染 UI）', () async {
+      final c = makeController();
+      // 先一般抽建立每日額度基準（allowance 3 / used 1 / remaining 2 / 加抽 5）。
+      api.drawHandler = ({currentProfileId}) async => drawResult(
+            freeAllowance: 3,
+            freeUsed: 1,
+            freeRemaining: 2,
+            extraCost: 5,
+          );
+      await c.drawNewPracticeGirl();
+
+      // 券抽 response 帶佔位值（allowance 3 / used 0 / remaining 0 / 加抽 0）。
+      api.drawHandler = ({currentProfileId}) async => drawResult(
+            profileId: 'practice_girl_016',
+            freeAllowance: 3,
+            freeUsed: 0,
+            freeRemaining: 0,
+            extraCost: 0,
+          );
+      await c.drawNewPracticeGirl(srTicket: true);
+
+      expect(c.currentState.girl?.profileId, 'practice_girl_016');
+      expect(c.currentState.drawFreeAllowance, 3);
+      expect(c.currentState.drawFreeUsed, 1);
+      expect(c.currentState.drawFreeRemaining, 2);
+      expect(c.currentState.drawExtraCost, 5);
+    });
+
+    test('券已用（PracticeSrTicketUnavailableException）→ 保留原對象＋提示', () async {
+      final c = makeController();
+      api.drawHandler = ({currentProfileId}) async => drawResult();
+      await c.drawNewPracticeGirl();
+      final priorGirl = c.currentState.girl?.profileId;
+
+      api.drawHandler = ({currentProfileId}) async =>
+          throw PracticeSrTicketUnavailableException();
+      await c.drawNewPracticeGirl(srTicket: true);
+
+      expect(c.currentState.girl?.profileId, priorGirl);
+      expect(c.currentState.errorMessage, contains('用過'));
+      expect(c.currentState.isRevealed, true);
+    });
+
+    test('券抽網路失敗 → 重試沿用同 requestId（server replay 不雙耗券）', () async {
+      final store = InMemoryPracticePendingDrawStore();
+      final c = makeController(pendingDrawStore: store);
+      api.drawHandler = ({currentProfileId}) async => throw Exception('網路');
+      await c.drawNewPracticeGirl(srTicket: true);
+      final firstId = api.lastDrawRequestId;
+
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_016');
+      await c.drawNewPracticeGirl(srTicket: true);
+
+      expect(api.lastDrawRequestId, firstId);
+      expect(c.currentState.girl?.profileId, 'practice_girl_016');
+    });
+
+    test('一般抽失敗留下的 pending id 不得被券抽沿用（意圖不同）', () async {
+      final store = InMemoryPracticePendingDrawStore();
+      final c = makeController(pendingDrawStore: store);
+      api.drawHandler = ({currentProfileId}) async => throw Exception('網路');
+      await c.drawNewPracticeGirl();
+      final normalId = api.lastDrawRequestId;
+
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_016');
+      await c.drawNewPracticeGirl(srTicket: true);
+
+      expect(api.lastDrawRequestId, isNot(normalId));
     });
   });
 }

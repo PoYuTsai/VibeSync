@@ -1389,7 +1389,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 每日翻牌：呼叫 server 抽一位新對象並原子扣費。換一位（已 revealed 再抽）會帶上
   /// 目前這位以排除自己。成功 → 進 revealed、開全新一場（roundIndex 1）、存 draft。
   /// 任何失敗都**不**污染目前 profile／transcript（保留原狀態），只設對應旗標／訊息。
-  Future<void> drawNewPracticeGirl() async {
+  /// [srTicket]＝SR 限定翻牌券抽（訂閱一次性權益）：保底 SR、不佔每日免費
+  /// 額度、不扣一般 quota；額度欄位不從 response 更新（券路徑回的是佔位值）。
+  Future<void> drawNewPracticeGirl({bool srTicket = false}) async {
     // A failed draw restores its captured prior state. Never let it capture a
     // transient turn-persistence flag whose owner may finish while draw is in
     // flight, otherwise the failure rollback can resurrect a permanent lock.
@@ -1414,8 +1416,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     final priorProfileId = prior.girl?.profileId;
     final storedDraw = _pendingDrawStore.load();
     // TTL：null 指紋（locked 首抽）跨長時間會誤配陳年 id，超齡一律作廢。
+    // 券抽與一般抽指紋不混用（srTicket 必須吻合）。
     final drawRequestId = storedDraw != null &&
             storedDraw.currentProfileId == priorProfileId &&
+            storedDraw.srTicket == srTicket &&
             !storedDraw.isExpired
         ? storedDraw.requestId
         : const Uuid().v4();
@@ -1423,6 +1427,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       currentProfileId: priorProfileId,
       requestId: drawRequestId,
       savedAt: DateTime.now(),
+      srTicket: srTicket,
     )));
 
     try {
@@ -1431,6 +1436,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             requestId: drawRequestId,
             currentProfileId: priorProfileId, // 換一位排除自己
             visiblePracticeThreadId: prior.visiblePracticeThreadId,
+            srTicket: srTicket,
           )
           .timeout(_drawRequestTimeout);
       // 抽卡中離開頁面（autoDispose）後才回來的結果/timeout：不得碰已
@@ -1472,11 +1478,17 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             ? kInitialPracticeRelationshipStageLabel
             : null,
         hintUsedCount: 0,
-        drawFreeAllowance: result.draw.freeAllowance,
-        drawFreeUsed: result.draw.freeUsed,
-        drawFreeRemaining: result.draw.freeRemaining,
-        drawExtraCost: result.draw.extraCostMessages,
-        drawNextResetAt: result.draw.nextResetAt,
+        // 券抽不動每日翻牌額度：response 額度欄是佔位值（Edge 註記），
+        // 一律沿用 prior，避免污染每日翻牌 UI。
+        drawFreeAllowance:
+            srTicket ? prior.drawFreeAllowance : result.draw.freeAllowance,
+        drawFreeUsed: srTicket ? prior.drawFreeUsed : result.draw.freeUsed,
+        drawFreeRemaining:
+            srTicket ? prior.drawFreeRemaining : result.draw.freeRemaining,
+        drawExtraCost:
+            srTicket ? prior.drawExtraCost : result.draw.extraCostMessages,
+        drawNextResetAt:
+            srTicket ? prior.drawNextResetAt : result.draw.nextResetAt,
       );
       await _saveDraftFromState(result.draw.nextResetAt);
       _notifyProfileUnlocked(girl.profileId); // 圖鑑：抽到即解鎖
@@ -1487,6 +1499,13 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           dailyRemaining: result.usage.dailyRemaining,
         );
       }
+    } on PracticeSrTicketUnavailableException {
+      if (!mounted) return;
+      _rotateDrawRequestId(drawRequestId); // 4xx 明確拒絕 → rotate
+      // 券已用/不存在：保留原狀態，UI 端刷新券狀態後收起金券入口。
+      state = prior.copyWith(
+        errorMessage: '這張 SR 限定翻牌已經用過了。',
+      );
     } on PracticeDrawUpgradeRequiredException catch (e) {
       if (!mounted) return;
       _rotateDrawRequestId(drawRequestId); // 4xx 明確拒絕 → rotate
@@ -2658,6 +2677,30 @@ final practiceSessionRepositoryProvider =
     Provider<PracticeSessionRepository>((ref) {
   return PracticeSessionRepository(StorageService.practiceSessionsBox);
 });
+
+/// SR 限定翻牌券狀態（server 為真相源，2026-08-08 拍板）。free 不打 API（直接
+/// eligible false，省冷啟動請求）；premium 走 ensure（冪等 grant 兼查詢，既有
+/// 訂閱者首次自然回溯補發）。watch 訂閱狀態：購買成功 isPremium 翻轉即自動
+/// 重查（paywall 不必另打）。券抽完成後由 UI ref.invalidate 刷新。
+/// 讀取失敗＝AsyncError → UI 收起金券入口（fail-quiet，券是 bonus 非主流程）。
+final srTicketStatusProvider =
+    AsyncNotifierProvider<SrTicketStatusNotifier, SrTicketStatus>(
+  SrTicketStatusNotifier.new,
+);
+
+class SrTicketStatusNotifier extends AsyncNotifier<SrTicketStatus> {
+  @override
+  Future<SrTicketStatus> build() async {
+    final isPremium =
+        ref.watch(subscriptionProvider.select((s) => s.isPremium));
+    if (!isPremium) {
+      return (eligible: false, granted: false, consumed: false);
+    }
+    return ref
+        .read(practiceChatApiServiceProvider)
+        .ensureSubscriptionSrTicket();
+  }
+}
 
 /// 翻牌草稿本地存取（JSON 存進加密 settings box，不新增 Hive typeId）。
 final practiceDrawDraftStoreProvider = Provider<PracticeDrawDraftStore>((ref) {

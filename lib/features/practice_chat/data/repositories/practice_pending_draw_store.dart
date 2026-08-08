@@ -18,6 +18,7 @@ class PracticePendingDraw {
     required this.currentProfileId,
     required this.requestId,
     required this.savedAt,
+    this.srTicket = false,
   });
 
   /// 重試沿用的最大年齡：丟回應的重試都發生在幾分鐘內，超過視為新意圖。
@@ -28,12 +29,17 @@ class PracticePendingDraw {
   final String requestId;
   final DateTime savedAt;
 
+  /// SR 限定翻牌券抽（true）與一般抽（false）指紋不混用：券抽的在途 id 被一般
+  /// 抽沿用（或反之）會讓 server replay 回到錯誤路徑的舊事件。舊格式缺席＝false。
+  final bool srTicket;
+
   bool get isExpired => DateTime.now().difference(savedAt) > ttl;
 
   Map<String, dynamic> toJson() => {
         if (currentProfileId != null) 'currentProfileId': currentProfileId,
         'requestId': requestId,
         'savedAt': savedAt.toIso8601String(),
+        if (srTicket) 'srTicket': true,
       };
 
   /// 欄位缺漏／型別不對回 null（當不存在），絕不丟例外。
@@ -50,6 +56,7 @@ class PracticePendingDraw {
       currentProfileId: currentProfileId as String?,
       requestId: requestId,
       savedAt: savedAt,
+      srTicket: json['srTicket'] == true,
     );
   }
 }
