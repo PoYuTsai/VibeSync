@@ -1570,6 +1570,7 @@ class _BottomBar extends StatelessWidget {
               state: state,
               onRequestHint: onRequestHint,
               onUseReply: useHintReply,
+              onEndPractice: onEndPractice,
             ),
             const SizedBox(height: 8),
           ],
@@ -1856,11 +1857,16 @@ class _HintCoachPanel extends StatefulWidget {
     required this.state,
     required this.onRequestHint,
     required this.onUseReply,
+    required this.onEndPractice,
   });
 
   final PracticeChatState state;
   final VoidCallback onRequestHint;
   final ValueChanged<PracticeHintReply> onUseReply;
+
+  /// 「沒有可貼句」狀態的出口：這局的學習價值在拆盤，別讓使用者困在死局
+  /// 重複燒提示。
+  final VoidCallback onEndPractice;
 
   @override
   State<_HintCoachPanel> createState() => _HintCoachPanelState();
@@ -1889,10 +1895,50 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
     final receivedNewHint = widget.state.hintUsedCount !=
             oldWidget.state.hintUsedCount ||
         widget.state.hintReplies.length != oldWidget.state.hintReplies.length;
-    if (receivedNewHint && widget.state.hintReplies.isNotEmpty) {
+    final reason = widget.state.hintNoPasteableReason?.trim() ?? '';
+    final receivedNewNoPasteable = reason.isNotEmpty &&
+        reason != (oldWidget.state.hintNoPasteableReason?.trim() ?? '');
+    // 「沒有可貼句」是判定不是失敗——折疊起來只剩「0 則提示」會被誤讀成
+    // 產生失敗（2026-08-08 Eric 實測），所以跟收到可貼句一樣自動展開。
+    if ((receivedNewHint && widget.state.hintReplies.isNotEmpty) ||
+        receivedNewNoPasteable) {
       _expanded = true;
     }
     _syncHintWaitTimer();
+  }
+
+  /// 同一輪已判定「沒有可貼句」還再按提示：答案不會變但照扣額度，先確認。
+  /// 她一回新訊息 reason 就會清掉，確認框只擋原地重按。
+  Future<void> _requestHintWithNoPasteableGuard() async {
+    final reason = widget.state.hintNoPasteableReason?.trim() ?? '';
+    if (reason.isEmpty) {
+      widget.onRequestHint();
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('再要一次提示？'),
+        content: const Text(
+          '這輪已判定沒有可以送出的句子，教練建議先收手。\n'
+          '再按一次仍會扣 1 則提示額度，而且判定大概率不會變。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            key: const ValueKey('practice-hint-recharge-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('仍要提示'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      widget.onRequestHint();
+    }
   }
 
   @override
@@ -1973,7 +2019,8 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
               ),
               TextButton.icon(
                 key: const ValueKey('practice-hint-button'),
-                onPressed: canRequest ? widget.onRequestHint : null,
+                onPressed:
+                    canRequest ? _requestHintWithNoPasteableGuard : null,
                 icon: state.isHintLoading
                     ? const SizedBox(
                         width: 14,
@@ -2159,6 +2206,24 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
                   ),
                 ),
               ],
+            ),
+            // 死局的正確出口：這局的學習價值在拆盤（結束卡會指出關鍵轉折與
+            // 下次第一句），別讓使用者原地重按提示。
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const ValueKey('practice-hint-end-practice'),
+                onPressed: widget.onEndPractice,
+                icon: const Icon(Icons.flag_outlined, size: 14),
+                label: const Text('結束練習，看拆盤'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primaryLight,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 28),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
             ),
           ],
           if (_expanded &&

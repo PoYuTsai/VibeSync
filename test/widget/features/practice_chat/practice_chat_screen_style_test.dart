@@ -1778,6 +1778,69 @@ void main() {
     expect(find.byKey(const ValueKey('practice-hint-no-pasteable')),
         findsOneWidget);
     expect(find.textContaining('沒有任何適合送出的訊息'), findsOneWidget);
+    // 死局的正確出口：引導去拆盤，不是原地重按提示（2026-08-08 Eric 拍板）。
+    expect(find.byKey(const ValueKey('practice-hint-end-practice')),
+        findsOneWidget);
+  });
+
+  // ── 2026-08-08：同一輪已判定沒有可貼句還再按提示 → 先確認再扣額度 ──
+  // Eric 實測在死局連按兩次，各扣 1 則拿到同一個「收手」判定。她一回新訊息
+  // reason 就會清掉（provider 側已修），確認框只擋原地重按。
+  testWidgets('no-pasteable 狀態下再按提示先彈確認框，取消不扣額度',
+      (tester) async {
+    const reason = '她已經明確要求停止聯絡並封鎖了你，這輪沒有任何適合送出的訊息。';
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 20,
+      messages: const [
+        PracticeMessage(role: 'user', text: '妳不回我是什麼意思'),
+        PracticeMessage(role: 'ai', text: '我說了不要再傳訊息給我'),
+      ],
+      aiReplyCount: 1,
+      hintReplies: const [],
+      hintNoPasteableReason: reason,
+      hintCoaching: '她已經把界線畫死，再傳任何訊息都只會讓情況更糟。',
+      hintUsedCount: 1,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('再要一次提示？'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('practice-hint-recharge-confirm')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.text('再要一次提示？'), findsNothing);
+    // 取消＝沒有發出新請求（loading 沒被拉起、used count 不變）。
+    expect(controller.currentState.isHintLoading, false);
+    expect(controller.currentState.hintUsedCount, 1);
   });
 
   testWidgets('hint panel can fill the composer with a suggested reply',
