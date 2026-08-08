@@ -232,7 +232,7 @@ class _ChoiceRow extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? AppColors.ctaStart.withValues(alpha: 0.10)
+                    ? AppColors.ctaStart.withValues(alpha: 0.18)
                     : Colors.white.withValues(alpha: 0.04),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: borderColor),
@@ -245,17 +245,36 @@ class _ChoiceRow extends StatelessWidget {
                     children: [
                       Padding(
                         padding: const EdgeInsets.only(top: 2, right: 10),
-                        child: Icon(leadingIcon, size: 18, color: iconColor),
+                        child: AnimatedSwitcher(
+                          duration: AppMotion.enter,
+                          switchInCurve: AppMotion.easeOut,
+                          switchOutCurve: AppMotion.easeOut,
+                          transitionBuilder: (child, animation) =>
+                              ScaleTransition(
+                            scale: Tween<double>(begin: 0.6, end: 1)
+                                .animate(animation),
+                            child:
+                                FadeTransition(opacity: animation, child: child),
+                          ),
+                          child: Icon(
+                            leadingIcon,
+                            key: ValueKey(leadingIcon),
+                            size: 18,
+                            color: iconColor,
+                          ),
+                        ),
                       ),
                       Expanded(
-                        child: Text(
-                          choice.text,
+                        child: AnimatedDefaultTextStyle(
+                          duration: AppMotion.state,
+                          curve: AppMotion.easeOut,
                           style: AppTypography.bodyMedium.copyWith(
                             color: AppColors.onBackgroundPrimary,
                             height: 1.4,
                             fontWeight:
                                 isSelected ? FontWeight.w700 : FontWeight.w500,
                           ),
+                          child: Text(choice.text),
                         ),
                       ),
                     ],
