@@ -3038,18 +3038,25 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   onPressed: (_isRecognizing || _isAnalyzing)
                       ? null
                       : _recognizeAndAddToConversation,
-                  icon: _isRecognizing
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.add_photo_alternate),
+                  icon: AnimatedSwitcher(
+                    duration: AppMotion.enter,
+                    switchInCurve: AppMotion.easeOut,
+                    switchOutCurve: AppMotion.easeOut,
+                    child: _isRecognizing
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.add_photo_alternate),
+                  ),
                   label: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 220),
+                    duration: AppMotion.enter,
+                    switchInCurve: AppMotion.easeOut,
+                    switchOutCurve: AppMotion.easeOut,
                     child: Text(
                       _recognizeButtonLabel,
                       key: ValueKey(_recognizeButtonLabel),
@@ -6668,12 +6675,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           ],
         ),
         if (_isAnalyzing || _isRefreshingPremiumReplies)
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
+          const EntranceReveal(
+            offsetY: 0,
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
             ),
           ),
       ],
@@ -6822,7 +6832,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                         const SizedBox(height: 24),
 
                         if (_isRefreshingPremiumReplies) ...[
-                          Container(
+                          EntranceReveal(
+                              child: Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
                               color: AppColors.ctaStart.withValues(alpha: 0.12),
@@ -6853,7 +6864,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 ),
                               ],
                             ),
-                          ),
+                          )),
                           const SizedBox(height: 16),
                         ],
 
@@ -7010,19 +7021,26 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       onPressed: _isRecognizing
                                           ? null
                                           : _recognizeAndAddToConversation,
-                                      icon: _isRecognizing
-                                          ? const SizedBox(
-                                              width: 20,
-                                              height: 20,
-                                              child: CircularProgressIndicator(
-                                                  strokeWidth: 2,
-                                                  color: Colors.white),
-                                            )
-                                          : const Icon(
-                                              Icons.add_photo_alternate),
+                                      icon: AnimatedSwitcher(
+                                        duration: AppMotion.enter,
+                                        switchInCurve: AppMotion.easeOut,
+                                        switchOutCurve: AppMotion.easeOut,
+                                        child: _isRecognizing
+                                            ? const SizedBox(
+                                                width: 20,
+                                                height: 20,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                        color: Colors.white),
+                                              )
+                                            : const Icon(
+                                                Icons.add_photo_alternate),
+                                      ),
                                       label: AnimatedSwitcher(
-                                        duration:
-                                            const Duration(milliseconds: 220),
+                                        duration: AppMotion.enter,
+                                        switchInCurve: AppMotion.easeOut,
+                                        switchOutCurve: AppMotion.easeOut,
                                         child: Text(
                                           _recognizeButtonLabel,
                                           key: ValueKey(_recognizeButtonLabel),
@@ -8093,21 +8111,34 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                                     _isRefreshingPremiumReplies)
                                                                 ? null
                                                                 : _refreshPremiumReplies,
-                                                            icon: (_isAnalyzing ||
-                                                                    _isRefreshingPremiumReplies)
-                                                                ? const SizedBox(
-                                                                    width: 16,
-                                                                    height: 16,
-                                                                    child:
-                                                                        CircularProgressIndicator(
-                                                                      strokeWidth:
-                                                                          2,
+                                                            icon:
+                                                                AnimatedSwitcher(
+                                                              duration:
+                                                                  AppMotion
+                                                                      .enter,
+                                                              switchInCurve:
+                                                                  AppMotion
+                                                                      .easeOut,
+                                                              switchOutCurve:
+                                                                  AppMotion
+                                                                      .easeOut,
+                                                              child: (_isAnalyzing ||
+                                                                      _isRefreshingPremiumReplies)
+                                                                  ? const SizedBox(
+                                                                      width: 16,
+                                                                      height:
+                                                                          16,
+                                                                      child:
+                                                                          CircularProgressIndicator(
+                                                                        strokeWidth:
+                                                                            2,
+                                                                      ),
+                                                                    )
+                                                                  : const Icon(
+                                                                      Icons
+                                                                          .refresh_rounded,
                                                                     ),
-                                                                  )
-                                                                : const Icon(
-                                                                    Icons
-                                                                        .refresh_rounded,
-                                                                  ),
+                                                            ),
                                                             label: Text(
                                                               (_isAnalyzing ||
                                                                       _isRefreshingPremiumReplies)
@@ -8343,14 +8374,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                   .isEmpty
                                           ? null
                                           : _optimizeMessage,
-                                      icon: _isOptimizing
-                                          ? const SizedBox(
-                                              width: 16,
-                                              height: 16,
-                                              child: CircularProgressIndicator(
-                                                  strokeWidth: 2),
-                                            )
-                                          : const Icon(Icons.auto_fix_high),
+                                      icon: AnimatedSwitcher(
+                                        duration: AppMotion.enter,
+                                        switchInCurve: AppMotion.easeOut,
+                                        switchOutCurve: AppMotion.easeOut,
+                                        child: _isOptimizing
+                                            ? const SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                        strokeWidth: 2),
+                                              )
+                                            : const Icon(Icons.auto_fix_high),
+                                      ),
                                       label: Text(
                                         _isOptimizing ? '優化中…' : '優化這段草稿',
                                       ),
@@ -8656,16 +8693,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                 !_isSubmittingFeedback
                                             ? () => _submitFeedback('negative')
                                             : null,
-                                        child: _isSubmittingFeedback
-                                            ? const SizedBox(
-                                                width: 18,
-                                                height: 18,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                  strokeWidth: 2,
-                                                ),
-                                              )
-                                            : const Text('送出反饋'),
+                                        child: AnimatedSwitcher(
+                                          duration: AppMotion.enter,
+                                          switchInCurve: AppMotion.easeOut,
+                                          switchOutCurve: AppMotion.easeOut,
+                                          child: _isSubmittingFeedback
+                                              ? const SizedBox(
+                                                  width: 18,
+                                                  height: 18,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                  ),
+                                                )
+                                              : const Text('送出反饋'),
+                                        ),
                                       ),
                                     ),
                                   ],

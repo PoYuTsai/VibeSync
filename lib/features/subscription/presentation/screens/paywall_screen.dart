@@ -440,11 +440,21 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               ],
             ),
           ),
-          if (_isPurchasing)
-            Container(
-              color: Colors.black54,
-              child: const Center(child: CircularProgressIndicator()),
+          // 購買處理 scrim 淡入淡出，不硬切。
+          IgnorePointer(
+            ignoring: !_isPurchasing,
+            child: AnimatedSwitcher(
+              duration: AppMotion.enter,
+              switchInCurve: AppMotion.easeOut,
+              switchOutCurve: AppMotion.easeOut,
+              child: _isPurchasing
+                  ? Container(
+                      color: Colors.black54,
+                      child: const Center(child: CircularProgressIndicator()),
+                    )
+                  : const SizedBox.shrink(),
             ),
+          ),
         ],
       ),
     );

@@ -236,7 +236,8 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                           padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
                           children: [
                             for (final m in state.messages) _Bubble(message: m),
-                            if (state.isSending) const _ThinkingBubble(),
+                            if (state.isSending)
+                              const EntranceReveal(child: _ThinkingBubble()),
                             if (state.debrief != null) ...[
                               const SizedBox(height: 8),
                               // 完成時刻走慶祝檔：抽卡儀式收尾的成果卡
