@@ -1479,9 +1479,9 @@ void main() {
     expect(find.byType(SnackBar), findsNothing);
     expect(find.textContaining('抽到 SR 角色卡解鎖 Game'), findsOneWidget);
 
-    // 提示幾秒後自動還原成目前選中模式的字幕。
+    // 提示幾秒後自動還原成目前選中模式的字幕（緩衝需蓋過 AppMotion.enter 淡出）。
     await tester.pump(const Duration(seconds: 3));
-    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.textContaining('抽到 SR 角色卡解鎖 Game'), findsNothing);
     expect(find.textContaining('她照真實反應，沒有教學鷹架'), findsOneWidget);
   });
@@ -1530,9 +1530,9 @@ void main() {
     expect(find.byType(SnackBar), findsNothing);
     expect(find.textContaining('抽到 SR 角色卡解鎖 Game'), findsOneWidget);
 
-    // 最後一點起算的提示時長過後即消失，無任何殘留。
+    // 最後一點起算的提示時長過後即消失，無任何殘留（緩衝蓋過淡出動畫）。
     await tester.pump(const Duration(seconds: 3));
-    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.textContaining('抽到 SR 角色卡解鎖 Game'), findsNothing);
   });
 
