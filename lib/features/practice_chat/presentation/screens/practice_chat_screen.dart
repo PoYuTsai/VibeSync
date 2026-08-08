@@ -5,8 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
+import '../../../../shared/widgets/entrance_reveal.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/providers/practice_chat_providers.dart';
@@ -237,26 +239,34 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                             if (state.isSending) const _ThinkingBubble(),
                             if (state.debrief != null) ...[
                               const SizedBox(height: 8),
-                              PracticeDebriefCard(
-                                summary: state.debrief!.summary,
-                                strengths: state.debrief!.strengths,
-                                watchouts: state.debrief!.watchouts,
-                                suggestedLine: state.debrief!.suggestedLine,
-                                vibe: state.debrief!.vibe,
-                                dateChance: state.debrief!.dateChance,
-                                dateChanceReason:
-                                    state.debrief!.dateChanceReason,
-                                nextInviteMove: state.debrief!.nextInviteMove,
-                                gameBreakdownPhaseReached:
-                                    state.debrief!.gameBreakdown?.phaseReached,
-                                gameBreakdownMissedVariable: state
-                                    .debrief!.gameBreakdown?.missedVariable,
-                                gameBreakdownFailureState:
-                                    state.debrief!.gameBreakdown?.failureState,
-                                gameBreakdownNextFirstLine:
-                                    state.debrief!.gameBreakdown?.nextFirstLine,
-                                gameBreakdownInviteDirection: state
-                                    .debrief!.gameBreakdown?.inviteDirection,
+                              // 完成時刻走慶祝檔：抽卡儀式收尾的成果卡
+                              // 不該瞬現。
+                              EntranceReveal(
+                                duration: AppMotion.celebrate,
+                                curve: AppMotion.celebrateCurve,
+                                beginScale: 0.96,
+                                offsetY: 0,
+                                child: PracticeDebriefCard(
+                                  summary: state.debrief!.summary,
+                                  strengths: state.debrief!.strengths,
+                                  watchouts: state.debrief!.watchouts,
+                                  suggestedLine: state.debrief!.suggestedLine,
+                                  vibe: state.debrief!.vibe,
+                                  dateChance: state.debrief!.dateChance,
+                                  dateChanceReason:
+                                      state.debrief!.dateChanceReason,
+                                  nextInviteMove: state.debrief!.nextInviteMove,
+                                  gameBreakdownPhaseReached: state
+                                      .debrief!.gameBreakdown?.phaseReached,
+                                  gameBreakdownMissedVariable: state
+                                      .debrief!.gameBreakdown?.missedVariable,
+                                  gameBreakdownFailureState: state
+                                      .debrief!.gameBreakdown?.failureState,
+                                  gameBreakdownNextFirstLine: state
+                                      .debrief!.gameBreakdown?.nextFirstLine,
+                                  gameBreakdownInviteDirection: state
+                                      .debrief!.gameBreakdown?.inviteDirection,
+                                ),
                               ),
                             ],
                             if (state.hasRetiredDebrief) ...[
@@ -719,9 +729,7 @@ class _LearningModeToggleState extends State<_LearningModeToggle> {
         icon: Icons.sports_esports_outlined,
         title: 'Game',
         badge: gameAvailable ? 'SR速約' : 'SR解鎖',
-        summary: gameAvailable
-            ? '她會考你、會給診斷，目標是速約'
-            : '抽到 SR 角色卡解鎖 Game',
+        summary: gameAvailable ? '她會考你、會給診斷，目標是速約' : '抽到 SR 角色卡解鎖 Game',
         accent: AppColors.ctaStart,
       ),
     ];
@@ -2028,8 +2036,8 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
                 Icon(
                   Icons.block_outlined,
                   size: 14,
-                  color: AppColors.onBackgroundSecondary
-                      .withValues(alpha: 0.75),
+                  color:
+                      AppColors.onBackgroundSecondary.withValues(alpha: 0.75),
                 ),
                 const SizedBox(width: 6),
                 Expanded(
