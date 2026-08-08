@@ -54,6 +54,9 @@ export const GAME_JARGON_TRANSLATIONS: ReadonlyArray<readonly [RegExp, string]> 
   [
     [/資格篩選/g, GAME_PHASE_LABELS.P3_TEST],
     [/賦格/g, GAME_PHASE_LABELS.P3_TEST],
+    // 退場詞（2026-08-08 拍板）：prompt 已不教，但模型仍可能直接生成
+    //（Codex 首審 P2），hint 側修復、debrief 側 reject（visible_text_guard）。
+    [/品味門檻/g, GAME_PHASE_LABELS.P3_TEST],
     [/篩選/g, GAME_CONCEPT_LABELS.篩選],
     [/推拉/g, GAME_CONCEPT_LABELS.推拉],
     [/可得性/g, GAME_CONCEPT_LABELS.可得性],

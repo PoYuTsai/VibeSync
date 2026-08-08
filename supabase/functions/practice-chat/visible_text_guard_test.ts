@@ -79,6 +79,55 @@ Deno.test("internal label gate 攔認識管道注入標籤，但不誤殺自然�
   }
 });
 
+// Codex 首審 P1（2026-08-08）：模型只抄 gameLedger 的數值內容（不帶標籤）
+// 時，標籤詞表攔不到——契約變數名＋數字這個形狀無自然語用法，兩側 gate 都攔。
+Deno.test("兩側 gate 攔「契約變數名＋數字」分數形，不誤殺自然語", () => {
+  for (
+    const leak of [
+      "Investment=22",
+      "Value:60",
+      "最低是 Investment 22 分",
+      "pv=45 還不夠高",
+    ]
+  ) {
+    assertEquals(
+      hasVisibleInternalLabelLeak(leak),
+      true,
+      `internal label gate should reject "${leak}"`,
+    );
+    assertEquals(
+      hasVisibleTemperatureMechanismLeak(leak),
+      true,
+      `temperature gate should reject "${leak}"`,
+    );
+  }
+  for (
+    const safe of [
+      "投入感有三個亮點",
+      "她給了 22 分的熱情這種說法太浮誇",
+      "invite 她週末喝咖啡",
+    ]
+  ) {
+    assertEquals(
+      hasVisibleInternalLabelLeak(safe),
+      false,
+      `should allow "${safe}"`,
+    );
+  }
+});
+
+// 詞彙統一拍板退場詞（2026-08-08）：debrief 側 reject 模型直接生成的「品味門檻」。
+Deno.test("temperature gate 攔退場詞「品味門檻」，internal label gate 不誤殺", () => {
+  assertEquals(
+    hasVisibleTemperatureMechanismLeak("先過她的品味門檻再說"),
+    true,
+  );
+  assertEquals(
+    hasVisibleTemperatureMechanismLeak("她對咖啡的品味很好，門檻不高"),
+    false,
+  );
+});
+
 // gameLedger 整場帳注入 debrief prompt 三個標籤，鐵則＝注入內部詞必同步守門。
 Deno.test("internal label gate 攔 gameLedger 注入標籤，但不誤殺自然英文", () => {
   for (

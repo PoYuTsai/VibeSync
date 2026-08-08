@@ -944,7 +944,7 @@ Deno.test("parseHintResult translates Chinese 1.2 jargon out of visible game out
       warmUp: "我先給我的版本，不是在推拉妳。妳是哪一派？",
       steady: "先不急著約，我想先看我們的框架合不合。",
       coaching:
-        "Game 心法：她在篩選你，先做資格篩選、展示可得性。速約任務：這輪先鋪墊。",
+        "Game 心法：她在篩選你，先做資格篩選、展示可得性，先過品味門檻。速約任務：這輪先鋪墊。",
     }),
     { mode: "game" },
   );
@@ -958,8 +958,10 @@ Deno.test("parseHintResult translates Chinese 1.2 jargon out of visible game out
   assert(result.replies[1].text.includes("節奏與主見"));
   assert(result.coaching.includes("互相合適度"));
   // 2026-08-08 詞彙統一拍板：「品味門檻」退場，資格篩選/賦格改對標教學卡
-  // P3 可見名「測試」（game_vocab.ts 單源）。
+  // P3 可見名「測試」（game_vocab.ts 單源）；模型直接生成的「品味門檻」
+  // 也修復成「測試」（Codex 首審 P2：input 沒餵這個詞時負斷言是假證明）。
   assert(result.coaching.includes("先做測試"));
+  assert(result.coaching.includes("先過測試"));
   assert(result.coaching.includes("安全感釋放"));
   assertEquals(result.coaching.includes("品味門檻"), false);
 

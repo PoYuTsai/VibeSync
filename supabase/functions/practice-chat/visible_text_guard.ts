@@ -168,6 +168,10 @@ const INTERNAL_MECHANISM_PHRASES = [
   // 這個詞，此表要攔到（鐵則：注入內部詞必同步擴可見輸出守門）。
   "認識管道",
   "认识管道",
+  // 2026-08-08 詞彙統一拍板退場詞：prompt 已不教，模型直接生成時 debrief
+  // 側 reject（hint 側另有 GAME_JARGON_TRANSLATIONS 修復成「測試」）。
+  "品味門檻",
+  "品味门槛",
 ];
 
 /**
@@ -183,8 +187,21 @@ const DEBRIEF_ALLOWED_SENTINELS = ["框架掉了"];
 // 的窄型態。NFKC 後全形數字／斜線已折疊，[\/／] 為雙保險。
 const INTERNAL_SCORE_SHAPE_PATTERN = /投入度[^\d]{0,4}\d{1,3}\s*[\/／]\s*100/u;
 
+// gameLedger P1 破口（2026-08-08 Codex 首審）：模型只抄數值內容
+// （「Investment=22」「最低是 Investment 22 分」）時，標籤詞表攔不到。
+// 契約變數名＋數字這個形狀在中文可見輸出無自然語用法；短縮寫（pv/fp/inv）
+// 誤殺面較大，必須帶 =/: 分隔符才攔。注入端已同步去數值，這裡是雙保險。
+const INTERNAL_VARIABLE_SCORE_PATTERNS = [
+  /\b(?:Value|Frame|Emotion|Investment|Safety)\s*[=:：]?\s*\d{1,3}\b/iu,
+  /\b(?:pv|fp|inv)\s*[=:：]\s*\d{1,3}\b/iu,
+];
+
 function hasVisibleInternalScoreShapeLeak(value: string): boolean {
-  return INTERNAL_SCORE_SHAPE_PATTERN.test(value.normalize("NFKC"));
+  const nfkc = value.normalize("NFKC");
+  if (INTERNAL_SCORE_SHAPE_PATTERN.test(nfkc)) return true;
+  return INTERNAL_VARIABLE_SCORE_PATTERNS.some((pattern) =>
+    pattern.test(nfkc)
+  );
 }
 
 export function hasVisibleTemperatureMechanismLeak(value: string): boolean {

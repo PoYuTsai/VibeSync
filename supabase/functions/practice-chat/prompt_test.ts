@@ -458,7 +458,8 @@ Deno.test("game buildDebriefMessages 注入整場 gameLedger（failureCounts＋�
 
   assertEquals(all.includes("gameLedger(hidden evidence)"), true);
   assertEquals(all.includes("GREASY=2"), true);
-  assertEquals(all.includes("lowestVariable: Investment=22"), true);
+  // 不帶分數（Codex 首審 P1）：模型只抄「Investment=22」時守門攔不到。
+  assertEquals(all.includes("lowestVariable: Investment\n"), true);
 });
 
 // 2026-08-08 詞彙統一拍板：debrief 契約指定用語對標教學卡 glossary

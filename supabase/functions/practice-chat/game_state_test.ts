@@ -160,8 +160,10 @@ Deno.test("compactGameLedgerPrompt 給整場 failureCounts 與契約名的最弱
   assert(prompt.includes("gameLedger(hidden evidence)"));
   assert(prompt.includes("GREASY=2"));
   assert(prompt.includes("BORING=1"));
-  // 變數用 debrief 契約標準名（不是 inv 縮寫），模型不用自己猜對照。
-  assert(prompt.includes("lowestVariable: Investment=22"));
+  // 變數用 debrief 契約標準名（不是 inv 縮寫），模型不用自己猜對照；
+  // 刻意不帶分數（Codex 首審 P1）：不注入數值就沒有材料可洩。
+  assert(prompt.includes("lowestVariable: Investment\n"));
+  assertEquals(/lowestVariable[^\n]*\d/.test(prompt), false);
 });
 
 Deno.test("compactGameLedgerPrompt 無整場帳（新局）時整塊不注入", () => {

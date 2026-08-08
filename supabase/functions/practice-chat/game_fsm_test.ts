@@ -117,6 +117,32 @@ Deno.test("evaluateGameFsm accumulates BORING when user interrogates instead of 
   assertEquals(snapshot.targetVariable, "Value + Emotion");
 });
 
+// 2026-08-08 詞表單源化的刻意行為變化（Codex 首審要求鎖定）：pv 自揭加分
+// 先前少了「我也」「我以前」，與 questionPressureScore 的自揭詞表不一致；
+// 收斂成同一 SELF_DISCLOSURE_TERMS 後，「我也…」「我以前…」開頭的自揭句
+// 在兩個機制眼中一致算自揭，pv 拿到 +16。
+Deno.test("evaluateGameFsm：「我也」「我以前」自揭句的 pv 高於無自揭句（與壓力詞表同源）", () => {
+  const base = {
+    temperatureScore: 50,
+    familiarityScore: 50,
+    partnerMood: "neutral" as const,
+  };
+  const plain = evaluateGameFsm({
+    ...base,
+    turns: [{ role: "user", text: "嗯嗯這樣啊" }],
+  });
+  for (const text of ["我也超愛那家咖啡店", "我以前住過那一區"]) {
+    const disclosed = evaluateGameFsm({
+      ...base,
+      turns: [{ role: "user", text }],
+    });
+    assert(
+      disclosed.hidden.pv > plain.hidden.pv,
+      `expected self-disclosure pv boost for "${text}"`,
+    );
+  }
+});
+
 Deno.test("evaluateGameFsm flags GREASY when low familiarity over-escalates", () => {
   const snapshot = evaluateGameFsm({
     turns: [{ role: "user", text: "今晚直接去我家睡啦" }],

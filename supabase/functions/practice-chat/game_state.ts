@@ -231,6 +231,8 @@ function csvCounts<T extends string>(
  * 「哪個變數最弱」兩行給 debrief 模型，變數用 debrief 契約的標準名。
  * 鐵則：注入的內部詞（gameLedger/failureCounts/lowestVariable）必同步列入
  * visible_text_guard 的 INTERNAL_VISIBLE_LABELS。
+ * lowestVariable 刻意不帶分數（Codex 首審 P1）：模型只抄「Investment=22」
+ * 時標籤詞表攔不到，判最弱變數也不需要數值——不注入就沒有材料可洩。
  */
 export function compactGameLedgerPrompt(
   state?: PersistedGameState | null,
@@ -242,12 +244,14 @@ export function compactGameLedgerPrompt(
     inv: "Investment",
     safety: "Safety",
   } as const;
-  const [lowestKey, lowestValue] = (["pv", "fp", "inv", "safety"] as const)
+  const [lowestKey] = (["pv", "fp", "inv", "safety"] as const)
     .map((key) => [key, state[key]] as const)
     .reduce((lowest, entry) => (entry[1] < lowest[1] ? entry : lowest));
   return `gameLedger(hidden evidence)\nfailureCounts: ${
     csvCounts(GAME_FAILURE_STATES, state.failureCounts)
-  }\nlowestVariable: ${contractNames[lowestKey]}=${lowestValue}\n整場帳優先於單句判定：failureState 選次數最高者，missedVariable 對應最弱變數；這些內部詞與數值不可見。\n`;
+  }\nlowestVariable: ${
+    contractNames[lowestKey]
+  }\n整場帳優先於單句判定：failureState 選次數最高者，missedVariable 對應最弱變數；這些內部詞與數值不可見。\n`;
 }
 
 export function gameStateEvidencePrompt(
