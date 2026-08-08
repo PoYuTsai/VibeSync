@@ -3,6 +3,7 @@ import {
   checkQuota,
   classifyQuotaRpcError,
   isPlainObject,
+  normalizeTier,
   resolveLimits,
   type SubscriptionRow,
   TEST_EMAILS,
@@ -1719,6 +1720,68 @@ export function createPracticeChatHandler(
       rawBody = JSON.parse(rawText);
     } catch {
       return jsonResponse({ error: "invalid_request_body" }, 400);
+    }
+
+    if (
+      isPlainObject(rawBody) &&
+      rawBody.mode === "ensure_subscription_sr_ticket"
+    ) {
+      // 訂閱一次性 SR 限定翻牌券：grant 兼狀態查詢（2026-08-08 拍板）。
+      // server 讀 subscriptions.tier 把關（不信 client 宣稱，與起步贈抽的
+      // client 訊號不同——訂閱狀態 server 本來就有權威值）；冪等 upsert，
+      // 既有訂閱者首次呼叫自然回溯補發。退訂不回收（granted = granted）。
+      const { data: subRow, error: subReadError } = await supabase
+        .from("subscriptions")
+        .select("tier")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (subReadError) {
+        logWarn("practice_sr_ticket_ensure_error", {
+          user: summarizeUser(user.id),
+          error: subReadError.message,
+        });
+        return jsonResponse({ error: "sr_ticket_ensure_failed" }, 500);
+      }
+      const tier = normalizeTier(
+        typeof subRow?.tier === "string" ? subRow.tier : null,
+      );
+      if (tier === "free") {
+        return jsonResponse({
+          eligible: false,
+          granted: false,
+          consumed: false,
+        });
+      }
+      const { error: grantError } = await supabase
+        .from("practice_sr_draw_tickets")
+        .upsert(
+          { user_id: user.id, tier_at_grant: tier },
+          { onConflict: "user_id", ignoreDuplicates: true },
+        );
+      if (grantError) {
+        logWarn("practice_sr_ticket_ensure_error", {
+          user: summarizeUser(user.id),
+          error: grantError.message,
+        });
+        return jsonResponse({ error: "sr_ticket_ensure_failed" }, 500);
+      }
+      const { data: ticketRow, error: ticketReadError } = await supabase
+        .from("practice_sr_draw_tickets")
+        .select("consumed_at")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (ticketReadError || !ticketRow) {
+        logWarn("practice_sr_ticket_ensure_error", {
+          user: summarizeUser(user.id),
+          error: ticketReadError?.message ?? "missing row after grant",
+        });
+        return jsonResponse({ error: "sr_ticket_ensure_failed" }, 500);
+      }
+      return jsonResponse({
+        eligible: true,
+        granted: true,
+        consumed: ticketRow.consumed_at != null,
+      });
     }
 
     if (

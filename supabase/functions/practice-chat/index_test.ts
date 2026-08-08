@@ -46,6 +46,10 @@ interface FakeOptions {
   threadError?: string;
   drawEvents?: ReadonlyArray<Record<string, unknown>>;
   drawEventsError?: string;
+  /** practice_sr_draw_tickets 讀回列（grant 後查詢）；預設未消耗券。 */
+  srTicketRow?: Record<string, unknown> | null;
+  srTicketReadError?: string;
+  srTicketUpsertError?: string;
   aiLogsError?: string;
   aiLogsNeverCompletes?: boolean;
   rpc?: Record<string, RpcResult[]>;
@@ -60,6 +64,7 @@ interface FakeState {
   selects: Array<{ table: string; columns: string }>;
   inserts: Array<{ table: string; values: Record<string, unknown> }>;
   updates: Array<{ table: string; values: Record<string, unknown> }>;
+  upserts: Array<{ table: string; values: Record<string, unknown> }>;
   rpcCalls: Array<{ fn: string; params: Record<string, unknown> }>;
   deepSeekCalls: DeepSeekArgs[];
   claudeCalls: ClaudeArgs[];
@@ -295,6 +300,7 @@ function makeFake(options: FakeOptions = {}) {
     selects: [],
     inserts: [],
     updates: [],
+    upserts: [],
     rpcCalls: [],
     deepSeekCalls: [],
     claudeCalls: [],
@@ -342,6 +348,17 @@ function makeFake(options: FakeOptions = {}) {
             data: null,
             error: table === "ai_logs" && options.aiLogsError
               ? { message: options.aiLogsError }
+              : null,
+          });
+        },
+        upsert(values: Record<string, unknown>, _opts?: Record<string, unknown>) {
+          state.upserts.push({ table, values });
+          state.events.push(`upsert:${table}`);
+          return Promise.resolve({
+            data: null,
+            error: table === "practice_sr_draw_tickets" &&
+                options.srTicketUpsertError
+              ? { message: options.srTicketUpsertError }
               : null,
           });
         },
@@ -401,6 +418,21 @@ function makeFake(options: FakeOptions = {}) {
                       data: options.hintRequest === undefined
                         ? null
                         : options.hintRequest,
+                      error: null,
+                    },
+                );
+              }
+              if (table === "practice_sr_draw_tickets") {
+                return Promise.resolve(
+                  options.srTicketReadError
+                    ? {
+                      data: null,
+                      error: { message: options.srTicketReadError },
+                    }
+                    : {
+                      data: options.srTicketRow === undefined
+                        ? { consumed_at: null }
+                        : options.srTicketRow,
                       error: null,
                     },
                 );
@@ -7842,4 +7874,68 @@ Deno.test("非紅線：品質不夠好第一發即收卡，不再 503 也不燒�
   assertEquals(state.claudeCalls.length, 1, "偏好門不再燒補發");
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
+});
+
+// ── 訂閱送 SR 限定翻牌：ensure_subscription_sr_ticket（grant 兼狀態查詢）────
+
+const ensureSrTicketBody = { mode: "ensure_subscription_sr_ticket" };
+
+Deno.test("SR 券 ensure：free tier → 不發券、eligible false", async () => {
+  const { response, json, state } = await run(
+    { sub: subscription({ tier: "free" }) },
+    ensureSrTicketBody,
+  );
+  assertEquals(response.status, 200);
+  assertEquals(json, { eligible: false, granted: false, consumed: false });
+  assertEquals(
+    state.upserts.filter((u) => u.table === "practice_sr_draw_tickets").length,
+    0,
+  );
+});
+
+Deno.test("SR 券 ensure：starter → 冪等 grant（tier_at_grant=starter）＋回未消耗", async () => {
+  const { response, json, state } = await run(
+    { sub: subscription({ tier: "starter" }) },
+    ensureSrTicketBody,
+  );
+  assertEquals(response.status, 200);
+  assertEquals(json, { eligible: true, granted: true, consumed: false });
+  const upserts = state.upserts.filter(
+    (u) => u.table === "practice_sr_draw_tickets",
+  );
+  assertEquals(upserts.length, 1);
+  assertEquals(upserts[0].values.user_id, "user-1");
+  assertEquals(upserts[0].values.tier_at_grant, "starter");
+});
+
+Deno.test("SR 券 ensure：essential 也有；已消耗 → consumed true", async () => {
+  const { response, json } = await run(
+    {
+      sub: subscription({ tier: "essential" }),
+      srTicketRow: { consumed_at: "2026-08-08T12:00:00.000Z" },
+    },
+    ensureSrTicketBody,
+  );
+  assertEquals(response.status, 200);
+  assertEquals(json, { eligible: true, granted: true, consumed: true });
+});
+
+Deno.test("SR 券 ensure：grant 寫入失敗 → 500 fail-closed", async () => {
+  const { response } = await run(
+    {
+      sub: subscription({ tier: "starter" }),
+      srTicketUpsertError: "insert denied",
+    },
+    ensureSrTicketBody,
+  );
+  assertEquals(response.status, 500);
+});
+
+Deno.test("SR 券 ensure：無訂閱列 → 視同 free、不發券", async () => {
+  const { response, json } = await run(
+    { sub: null },
+    ensureSrTicketBody,
+  );
+  assertEquals(response.status, 200);
+  assertEquals(json, { eligible: false, granted: false, consumed: false });
 });

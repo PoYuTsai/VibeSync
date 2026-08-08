@@ -179,6 +179,23 @@ export async function handleDrawProfile(
     }
   }
 
+  // ── SR 限定翻牌券（訂閱一次性權益）：獨立於每日額度的旁路 ────────────────
+  // 不佔免費額度、不扣一般 quota、不驗當下 tier（授權在 DB 券列，退訂不回收）。
+  // 券消耗與事件寫入在 claim_practice_sr_ticket_draw 交易內原子完成。
+  if (request.srTicket === true) {
+    return await handleSrTicketDraw({
+      supabase,
+      userId,
+      request,
+      window,
+      tier,
+      sub,
+      limits,
+      permanentExcluded,
+      windowExcluded,
+    });
+  }
+
   // 永久去重把切池抽滿 → 降級回現行「當日視窗排除」（允許跨窗重複收藏過的角色），
   // 絕不讓抽卡因無候選而失敗。降級與否都用同一個 excluded 集合走選牌＋撞號重抽。
   let excluded = permanentExcluded;
@@ -293,6 +310,126 @@ export async function handleDrawProfile(
 
   // 連續撞號耗盡（理論上不可達）。
   logError("practice_draw_profile_conflict_exhausted", {
+    user: summarizeUser(userId),
+  });
+  return { body: { error: "draw_failed" }, status: 500 };
+}
+
+/** SR 限定翻牌券抽（訂閱一次性權益）。與每日額度完全隔離：不佔免費額度、
+ * 不扣一般 quota；券的存在與消耗由 claim_practice_sr_ticket_draw 交易內原子
+ * 判定（無券/已用 → 409）。選牌鎖 SR 層；SR 全收藏 → 降級回當日視窗排除
+ * （允許跨窗重複），比照一般抽的 dedup fallback，絕不因無候選而失敗。 */
+async function handleSrTicketDraw(args: {
+  supabase: DrawSupabaseClient;
+  userId: string;
+  request: PracticeDrawRequest;
+  window: { resetWindowStartAt: string; nextResetAt: string };
+  tier: string;
+  sub: SubscriptionRow;
+  limits: { monthly: number; daily: number };
+  permanentExcluded: Set<string>;
+  windowExcluded: Set<string>;
+}): Promise<DrawHandlerResult> {
+  const { supabase, userId, request, window, tier, sub, limits } = args;
+
+  let excluded = args.permanentExcluded;
+  if (
+    !hasEligibleDrawCandidate({
+      currentProfileId: request.currentProfileId,
+      excludedProfileIds: args.permanentExcluded,
+      catalogSize: request.catalogSize,
+      rarityFilter: "sr",
+    })
+  ) {
+    logWarn("practice_sr_ticket_dedup_fallback", {
+      user: summarizeUser(userId),
+      drawnCount: args.permanentExcluded.size,
+    });
+    excluded = args.windowExcluded;
+  }
+
+  for (let attempt = 0; attempt < MAX_DRAW_SELECT_ATTEMPTS; attempt++) {
+    const candidate = selectPracticeDrawProfile({
+      currentProfileId: request.currentProfileId,
+      excludedProfileIds: excluded,
+      seed:
+        `${userId}:${request.requestId}:${window.resetWindowStartAt}:${attempt}`,
+      catalogSize: request.catalogSize,
+      rarityFilter: "sr",
+    });
+
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+      "claim_practice_sr_ticket_draw",
+      {
+        p_user_id: userId,
+        p_request_id: request.requestId,
+        p_profile_id: candidate.profileId,
+        p_reset_window_start_at: window.resetWindowStartAt,
+        p_tier: tier,
+      },
+    );
+
+    if (rpcError) {
+      const msg = rpcError.message ?? "";
+      if (msg.includes("PRACTICE_DRAW_PROFILE_CONFLICT")) {
+        excluded.add(candidate.profileId); // 換一張重抽
+        continue;
+      }
+      if (msg.includes("PRACTICE_SR_TICKET_NOT_AVAILABLE")) {
+        return { status: 409, body: { error: "sr_ticket_not_available" } };
+      }
+      logWarn("practice_sr_ticket_rpc_error", {
+        user: summarizeUser(userId),
+        message: msg,
+      });
+      return { body: { error: "draw_failed" }, status: 500 };
+    }
+
+    const receipt = (Array.isArray(rpcData) ? rpcData[0] : rpcData) as
+      | { profile_id?: unknown; idempotent_replay?: unknown }
+      | null;
+    if (!receipt || typeof receipt.profile_id !== "string") {
+      logError("practice_sr_ticket_empty_receipt", {
+        user: summarizeUser(userId),
+      });
+      return { body: { error: "draw_failed" }, status: 500 };
+    }
+
+    // replay 一律以 ledger 上的 profile_id 反查同一位（不可用本地重選 candidate）。
+    const girl = getPracticeGirlProfile(receipt.profile_id) ?? candidate;
+    return {
+      status: 200,
+      body: {
+        profile: {
+          profileId: girl.profileId,
+          nameId: girl.nameId,
+          professionId: girl.professionId,
+          photoId: girl.photoId,
+          personaId: girl.personaId,
+        },
+        draw: {
+          costMessages: 0,
+          srTicket: true,
+          // 券抽不動每日免費額度。以下三欄僅為 payload 形狀相容（tier 靜態值，
+          // 非本窗即時計數）：client 券路徑不得拿來覆寫每日翻牌 UI 狀態。
+          freeAllowance: drawAllowanceForTier(tier),
+          freeUsed: 0,
+          freeRemaining: 0,
+          extraCostMessages: 0,
+          nextResetAt: window.nextResetAt,
+        },
+        usage: {
+          monthlyUsed: sub.monthly_messages_used,
+          monthlyLimit: limits.monthly,
+          dailyUsed: sub.daily_messages_used,
+          dailyLimit: limits.daily,
+        },
+      },
+    };
+  }
+
+  // 連續撞號耗盡（理論上不可達）。
+  logError("practice_sr_ticket_conflict_exhausted", {
     user: summarizeUser(userId),
   });
   return { body: { error: "draw_failed" }, status: 500 };

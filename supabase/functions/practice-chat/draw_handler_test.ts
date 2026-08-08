@@ -46,10 +46,12 @@ function mockClient(
 ): {
   client: DrawSupabaseClient;
   rpcCalls: Array<Record<string, unknown>>;
+  rpcFns: string[];
   prepareCalls: Array<Record<string, unknown>>;
   subscriptionUpdates: Array<Record<string, unknown>>;
 } {
   const rpcCalls: Array<Record<string, unknown>> = [];
+  const rpcFns: string[] = [];
   const prepareCalls: Array<Record<string, unknown>> = [];
   const subscriptionUpdates: Array<Record<string, unknown>> = [];
   let rpcIdx = 0;
@@ -117,6 +119,7 @@ function mockClient(
         });
       }
       rpcCalls.push(params);
+      rpcFns.push(fn);
       const r = opts.rpc[Math.min(rpcIdx, opts.rpc.length - 1)];
       rpcIdx++;
       return Promise.resolve(
@@ -130,6 +133,7 @@ function mockClient(
   return {
     client: client as DrawSupabaseClient,
     rpcCalls,
+    rpcFns,
     prepareCalls,
     subscriptionUpdates,
   };
@@ -164,9 +168,8 @@ async function run(
   request = req(),
   email: string | null = "user@example.com",
 ) {
-  const { client, rpcCalls, prepareCalls, subscriptionUpdates } = mockClient(
-    opts,
-  );
+  const { client, rpcCalls, rpcFns, prepareCalls, subscriptionUpdates } =
+    mockClient(opts);
   const result = await handleDrawProfile({
     supabase: client,
     userId: "u-1",
@@ -179,6 +182,7 @@ async function run(
     result,
     body: result.body as any,
     rpcCalls,
+    rpcFns,
     prepareCalls,
     subscriptionUpdates,
   };
@@ -600,3 +604,111 @@ Deno.test("duplicate telemetry：idempotent replay 與池滿退避的歷史重�
   );
 });
 
+
+// ── SR 限定翻牌券（srTicket: true）────────────────────────────────────────
+
+import { GIRL_PROFILES } from "./practice_persona.ts";
+
+const SR_IDS = new Set(
+  GIRL_PROFILES.filter((g) => g.rarity === "sr").map((g) => g.profileId),
+);
+const FIRST_SR_ID = [...SR_IDS][0];
+
+function srTicketReq(partial: Partial<PracticeDrawRequest> = {}) {
+  return req({ srTicket: true, catalogSize: 100, ...partial });
+}
+
+Deno.test("SR 券抽：走 claim_practice_sr_ticket_draw、候選必為 SR、cost 0、不碰主 RPC", async () => {
+  const { result, body, rpcCalls, rpcFns, subscriptionUpdates } = await run(
+    {
+      sub: sub("starter"),
+      rpc: [{
+        data: { profile_id: FIRST_SR_ID, idempotent_replay: false },
+      }],
+    },
+    srTicketReq(),
+  );
+  assertEquals(result.status, 200);
+  assertEquals(rpcFns, ["claim_practice_sr_ticket_draw"]);
+  assert(SR_IDS.has(String(rpcCalls[0].p_profile_id)), "候選必為 SR");
+  assertEquals(rpcCalls[0].p_request_id, "req-1");
+  assertEquals(body.profile.profileId, FIRST_SR_ID);
+  assertEquals(body.draw.costMessages, 0);
+  assertEquals(body.draw.srTicket, true);
+  // 券抽不扣一般 quota。
+  assertEquals(subscriptionUpdates.length, 0);
+});
+
+Deno.test("SR 券抽：Free tier 也走券 RPC（授權在 DB 券列，不驗當下 tier）", async () => {
+  const { result, rpcFns } = await run(
+    {
+      sub: sub("free"),
+      rpc: [{
+        data: { profile_id: FIRST_SR_ID, idempotent_replay: false },
+      }],
+    },
+    srTicketReq(),
+  );
+  assertEquals(result.status, 200);
+  assertEquals(rpcFns, ["claim_practice_sr_ticket_draw"]);
+});
+
+Deno.test("SR 券抽：無券/已用 → 409 sr_ticket_not_available", async () => {
+  const { result, body } = await run(
+    {
+      sub: sub("starter"),
+      rpc: [{ error: "PRACTICE_SR_TICKET_NOT_AVAILABLE" }],
+    },
+    srTicketReq(),
+  );
+  assertEquals(result.status, 409);
+  assertEquals(body.error, "sr_ticket_not_available");
+});
+
+Deno.test("SR 券抽：同窗撞號 → 換一張 SR 重抽（兩次候選不同且都 SR）", async () => {
+  const { result, rpcCalls } = await run(
+    {
+      sub: sub("starter"),
+      rpc: [
+        { error: "PRACTICE_DRAW_PROFILE_CONFLICT" },
+        { data: { profile_id: FIRST_SR_ID, idempotent_replay: false } },
+      ],
+    },
+    srTicketReq(),
+  );
+  assertEquals(result.status, 200);
+  assertEquals(rpcCalls.length, 2);
+  assert(SR_IDS.has(String(rpcCalls[0].p_profile_id)));
+  assert(SR_IDS.has(String(rpcCalls[1].p_profile_id)));
+  assert(rpcCalls[0].p_profile_id !== rpcCalls[1].p_profile_id);
+});
+
+Deno.test("SR 券抽：冪等 replay → 一律回 ledger 上原本抽到的 SR", async () => {
+  const { result, body, rpcFns } = await run(
+    {
+      sub: sub("starter"),
+      rpc: [{
+        data: { profile_id: FIRST_SR_ID, idempotent_replay: true },
+      }],
+    },
+    srTicketReq(),
+  );
+  assertEquals(result.status, 200);
+  assertEquals(rpcFns, ["claim_practice_sr_ticket_draw"]);
+  assertEquals(body.profile.profileId, FIRST_SR_ID);
+});
+
+Deno.test("SR 券抽：SR 全收藏 → 降級允許重複，仍只出 SR、不 500", async () => {
+  const { result, rpcCalls } = await run(
+    {
+      sub: sub("starter"),
+      drawn: [...SR_IDS],
+      rpc: [{
+        data: { profile_id: FIRST_SR_ID, idempotent_replay: false },
+      }],
+    },
+    srTicketReq(),
+  );
+  assertEquals(result.status, 200);
+  assert(SR_IDS.has(String(rpcCalls[0].p_profile_id)));
+});
