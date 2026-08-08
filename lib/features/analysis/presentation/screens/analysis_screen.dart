@@ -6420,7 +6420,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Widget _buildDetailedAnalysisToggle() {
     return Semantics(
       button: true,
-      label: _showDetailedAnalysis ? '收起詳細分析與更多回覆' : '展開詳細分析與更多回覆',
+      label: _showDetailedAnalysis ? '收起詳細分析' : '展開詳細分析',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => setState(
@@ -6452,7 +6452,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '詳細分析與更多回覆',
+                          '詳細分析',
                           style: AppTypography.titleMedium.copyWith(
                             color: AppColors.onBackgroundPrimary,
                             fontWeight: FontWeight.w700,
@@ -6460,7 +6460,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          '本次投入、階段、心理訊號、互動雷達與更多回覆風格',
+                          '本次投入、階段、心理訊號與互動雷達',
                           style: AppTypography.caption.copyWith(
                             color: AppColors.onBackgroundSecondary,
                             height: 1.25,
@@ -6512,8 +6512,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                     _buildDetailedAnalysisPill('本次投入 $_enthusiasmScore'),
                   if (_gameStage != null)
                     _buildDetailedAnalysisPill(_gameStage!.current.label),
-                  if (_replies != null && _replies!.isNotEmpty)
-                    _buildDetailedAnalysisPill('${_replies!.length} 種回覆'),
                   if (_dimensionScores != null)
                     _buildDetailedAnalysisPill('互動雷達'),
                 ],
@@ -7505,61 +7503,59 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           ],
                         ],
 
-                        if (_finalRecommendation != null &&
-                            _finalRecommendation!.content
-                                .trim()
-                                .isNotEmpty) ...[
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  AppColors.ctaStart.withValues(alpha: 0.1),
-                                  AppColors.ctaStart.withValues(alpha: 0.05),
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                  color: AppColors.ctaStart
-                                      .withValues(alpha: 0.3)),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                        // 回覆區合併（Bruce dogfood 2026-08-08 拍板）：
+                        // AI 推薦回覆是橫滑卡組第一張，右滑接其他風格；
+                        // 回覆不再藏在詳細分析折疊裡。
+                        if (_hasReplyZoneContent) ...[
+                          Row(
+                            children: [
+                              Text('回覆建議',
+                                  style: AppTypography.titleLarge.copyWith(
+                                      color: AppColors.onBackgroundPrimary)),
+                              const Spacer(),
+                              if (_replyZoneCardCount > 1)
+                                Text('← 左右滑動',
+                                    style: AppTypography.caption.copyWith(
+                                        color: AppColors.onBackgroundSecondary
+                                            .withValues(alpha: 0.6))),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            height: 400,
+                            child: ListView(
+                              key: const ValueKey('analysis-reply-zone'),
+                              scrollDirection: Axis.horizontal,
                               children: [
-                                Row(
-                                  children: [
-                                    const Text('🎯',
-                                        style: TextStyle(fontSize: 20)),
-                                    const SizedBox(width: 8),
-                                    Text('AI 推薦回覆',
-                                        style: AppTypography.titleLarge),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                ..._buildRecommendationContent(
-                                    _finalRecommendation!),
-                                const SizedBox(height: 12),
-                                Text(
-                                  '📝 ${_finalRecommendation!.reason}',
-                                  style: AppTypography.bodyMedium,
-                                ),
-                                if (_finalRecommendation!
-                                        .psychology.isNotEmpty &&
-                                    _finalRecommendation!.psychology !=
-                                        _finalRecommendation!.reason) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '🧠 ${_finalRecommendation!.psychology}',
-                                    style: AppTypography.caption,
-                                  ),
-                                ],
-                                _buildAnalysisOutcomeBar(
-                                  cardKey: 'final',
-                                  label: 'AI 推薦回覆',
-                                ),
+                                if (_showRecommendedReplyCard)
+                                  _buildRecommendedReplyCard(),
+                                for (final type in _replyStyleOrder)
+                                  if ((_replies?.containsKey(type) ?? false) &&
+                                      !(_showRecommendedReplyCard &&
+                                          _isRecommendedReplyType(type)))
+                                    _buildHorizontalReplyCard(
+                                        type, _replies![type]!,
+                                        option: _replyOptions?[type],
+                                        isRecommended:
+                                            _isRecommendedReplyType(type)),
                               ],
                             ),
                           ),
+                          if (_showRecommendedReplyCard)
+                            _buildAnalysisOutcomeBar(
+                              cardKey: 'final',
+                              label: 'AI 推薦回覆',
+                            ),
+                          for (final type in _replyStyleOrder)
+                            if (_replies?.containsKey(type) ?? false)
+                              _buildAnalysisOutcomeBar(
+                                cardKey: type,
+                                label: ReplyStyleCard.labels[type] ?? type,
+                              ),
+                          if (_shouldShowReplyZoneNotice(subscription)) ...[
+                            const SizedBox(height: 12),
+                            _buildReplyZoneNotice(subscription),
+                          ],
                           const SizedBox(height: 16),
                         ],
 
@@ -7873,321 +7869,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                               ],
                                             ),
                                           ),
-                                        ],
-
-                                        // Reply suggestions (5 種回覆)
-                                        if (_replies != null &&
-                                            _replies!.isNotEmpty) ...[
-                                          const SizedBox(height: 24),
-                                          Row(
-                                            children: [
-                                              Text(
-                                                  '接法建議・${_replies!.length} 種風格',
-                                                  style: AppTypography
-                                                      .titleLarge
-                                                      .copyWith(
-                                                          color: AppColors
-                                                              .onBackgroundPrimary)),
-                                              const Spacer(),
-                                              Text('← 左右滑動',
-                                                  style: AppTypography.caption
-                                                      .copyWith(
-                                                          color: AppColors
-                                                              .onBackgroundSecondary
-                                                              .withValues(
-                                                                  alpha: 0.6))),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 12),
-                                          SizedBox(
-                                            height: 360,
-                                            child: ListView(
-                                              scrollDirection: Axis.horizontal,
-                                              children: [
-                                                if (_replies!
-                                                    .containsKey('extend'))
-                                                  _buildHorizontalReplyCard(
-                                                      'extend',
-                                                      _replies!['extend']!,
-                                                      option: _replyOptions?[
-                                                          'extend'],
-                                                      isRecommended:
-                                                          _isRecommendedReplyType(
-                                                              'extend')),
-                                                if (_replies!
-                                                    .containsKey('resonate'))
-                                                  _buildHorizontalReplyCard(
-                                                      'resonate',
-                                                      _replies!['resonate']!,
-                                                      option: _replyOptions?[
-                                                          'resonate'],
-                                                      isRecommended:
-                                                          _isRecommendedReplyType(
-                                                              'resonate')),
-                                                if (_replies!
-                                                    .containsKey('tease'))
-                                                  _buildHorizontalReplyCard(
-                                                      'tease',
-                                                      _replies!['tease']!,
-                                                      option: _replyOptions?[
-                                                          'tease'],
-                                                      isRecommended:
-                                                          _isRecommendedReplyType(
-                                                              'tease')),
-                                                if (_replies!
-                                                    .containsKey('humor'))
-                                                  _buildHorizontalReplyCard(
-                                                      'humor',
-                                                      _replies!['humor']!,
-                                                      option: _replyOptions?[
-                                                          'humor'],
-                                                      isRecommended:
-                                                          _isRecommendedReplyType(
-                                                              'humor')),
-                                                if (_replies!
-                                                    .containsKey('coldRead'))
-                                                  _buildHorizontalReplyCard(
-                                                      'coldRead',
-                                                      _replies!['coldRead']!,
-                                                      option: _replyOptions?[
-                                                          'coldRead'],
-                                                      isRecommended:
-                                                          _isRecommendedReplyType(
-                                                              'coldRead')),
-                                              ],
-                                            ),
-                                          ),
-                                          for (final type in const [
-                                            'extend',
-                                            'resonate',
-                                            'tease',
-                                            'humor',
-                                            'coldRead',
-                                          ])
-                                            if (_replies!.containsKey(type))
-                                              _buildAnalysisOutcomeBar(
-                                                cardKey: type,
-                                                label: ReplyStyleCard
-                                                        .labels[type] ??
-                                                    type,
-                                              ),
-                                          // Free 固定在雙風格後顯示完整版入口；
-                                          // 已升級但還在看舊 Free 結果時也要能重新分析。
-                                          if ((subscription.isFreeUser &&
-                                                  _replies!.isNotEmpty) ||
-                                              _analysisNeedsReplyRefresh(
-                                                  subscription) ||
-                                              (_replies!.length == 1 &&
-                                                  _replies!.containsKey(
-                                                      'extend'))) ...[
-                                            const SizedBox(height: 12),
-                                            Builder(
-                                              builder: (context) {
-                                                // Free 用戶：顯示升級提示
-                                                if (subscription.isFreeUser) {
-                                                  return GestureDetector(
-                                                    onTap: () async =>
-                                                        _showPaywall(context),
-                                                    child: Container(
-                                                      padding:
-                                                          const EdgeInsets.all(
-                                                              12),
-                                                      decoration: BoxDecoration(
-                                                        color: AppColors
-                                                            .ctaStart
-                                                            .withValues(
-                                                                alpha: 0.1),
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(8),
-                                                        border: Border.all(
-                                                            color: AppColors
-                                                                .ctaStart
-                                                                .withValues(
-                                                                    alpha:
-                                                                        0.3)),
-                                                      ),
-                                                      child: Row(
-                                                        children: [
-                                                          const Icon(
-                                                              Icons
-                                                                  .lock_outline,
-                                                              color: AppColors
-                                                                  .ctaStart),
-                                                          const SizedBox(
-                                                              width: 8),
-                                                          Expanded(
-                                                            child: Text(
-                                                              '你已可比較延展、調情；升級解鎖共鳴、幽默、冷讀等完整 5 種風格',
-                                                              style: AppTypography
-                                                                  .bodyMedium
-                                                                  .copyWith(
-                                                                      color: AppColors
-                                                                          .primary),
-                                                            ),
-                                                          ),
-                                                          const Icon(
-                                                              Icons
-                                                                  .arrow_forward_ios,
-                                                              size: 16,
-                                                              color: AppColors
-                                                                  .ctaStart),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  );
-                                                }
-                                                if (_analysisNeedsReplyRefresh(
-                                                  subscription,
-                                                )) {
-                                                  return Container(
-                                                    padding:
-                                                        const EdgeInsets.all(
-                                                            12),
-                                                    decoration: BoxDecoration(
-                                                      color: AppColors.ctaStart
-                                                          .withValues(
-                                                              alpha: 0.1),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              8),
-                                                      border: Border.all(
-                                                        color: AppColors
-                                                            .ctaStart
-                                                            .withValues(
-                                                                alpha: 0.3),
-                                                      ),
-                                                    ),
-                                                    child: Column(
-                                                      crossAxisAlignment:
-                                                          CrossAxisAlignment
-                                                              .start,
-                                                      children: [
-                                                        Row(
-                                                          children: [
-                                                            const Icon(
-                                                              Icons
-                                                                  .auto_awesome,
-                                                              color: AppColors
-                                                                  .ctaStart,
-                                                            ),
-                                                            const SizedBox(
-                                                                width: 8),
-                                                            Expanded(
-                                                              child: Text(
-                                                                '你已升級，這份分析仍是免費版結果。',
-                                                                style: AppTypography
-                                                                    .bodyMedium
-                                                                    .copyWith(
-                                                                  color: AppColors
-                                                                      .ctaStart,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w600,
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                        const SizedBox(
-                                                            height: 8),
-                                                        Text(
-                                                          '重新分析一次，就能拿到完整分析結果。',
-                                                          style: AppTypography
-                                                              .caption
-                                                              .copyWith(
-                                                            color: AppColors
-                                                                .ctaStart,
-                                                          ),
-                                                        ),
-                                                        const SizedBox(
-                                                            height: 12),
-                                                        SizedBox(
-                                                          width:
-                                                              double.infinity,
-                                                          child: OutlinedButton
-                                                              .icon(
-                                                            onPressed: (_isAnalyzing ||
-                                                                    _isRefreshingPremiumReplies)
-                                                                ? null
-                                                                : _refreshPremiumReplies,
-                                                            icon:
-                                                                AnimatedSwitcher(
-                                                              duration:
-                                                                  AppMotion
-                                                                      .enter,
-                                                              switchInCurve:
-                                                                  AppMotion
-                                                                      .easeOut,
-                                                              switchOutCurve:
-                                                                  AppMotion
-                                                                      .easeOut,
-                                                              child: (_isAnalyzing ||
-                                                                      _isRefreshingPremiumReplies)
-                                                                  ? const SizedBox(
-                                                                      width: 16,
-                                                                      height:
-                                                                          16,
-                                                                      child:
-                                                                          CircularProgressIndicator(
-                                                                        strokeWidth:
-                                                                            2,
-                                                                      ),
-                                                                    )
-                                                                  : const Icon(
-                                                                      Icons
-                                                                          .refresh_rounded,
-                                                                    ),
-                                                            ),
-                                                            label: Text(
-                                                              (_isAnalyzing ||
-                                                                      _isRefreshingPremiumReplies)
-                                                                  ? '正在刷新完整分析…'
-                                                                  : '重新產生完整分析',
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  );
-                                                }
-                                                // 付費用戶：AI 判斷此情境最適合延展
-                                                return Container(
-                                                  padding:
-                                                      const EdgeInsets.all(12),
-                                                  decoration: BoxDecoration(
-                                                    color: AppColors
-                                                        .onBackgroundSecondary
-                                                        .withValues(alpha: 0.1),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            8),
-                                                  ),
-                                                  child: Row(
-                                                    children: [
-                                                      Icon(
-                                                          Icons
-                                                              .lightbulb_outline,
-                                                          color: AppColors
-                                                              .onBackgroundSecondary),
-                                                      const SizedBox(width: 8),
-                                                      Expanded(
-                                                        child: Text(
-                                                          'AI 判斷此情境最適合使用延展回覆',
-                                                          style: AppTypography
-                                                              .bodyMedium
-                                                              .copyWith(
-                                                            color: AppColors
-                                                                .onBackgroundSecondary,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                );
-                                              },
-                                            ),
-                                          ],
                                         ],
                                       ],
                                     ),
@@ -8779,6 +8460,222 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       },
       onRefine: (text) => unawaited(
         _refineReply(originText: text, originCardKey: type),
+      ),
+    );
+  }
+
+  static const _replyStyleOrder = [
+    'extend',
+    'resonate',
+    'tease',
+    'humor',
+    'coldRead',
+  ];
+
+  bool get _showRecommendedReplyCard =>
+      _finalRecommendation != null &&
+      _finalRecommendation!.content.trim().isNotEmpty;
+
+  bool get _hasReplyZoneContent =>
+      _showRecommendedReplyCard || (_replies?.isNotEmpty ?? false);
+
+  int get _replyZoneCardCount {
+    final styleCount = _replies?.keys
+            .where((type) =>
+                !(_showRecommendedReplyCard && _isRecommendedReplyType(type)))
+            .length ??
+        0;
+    return styleCount + (_showRecommendedReplyCard ? 1 : 0);
+  }
+
+  /// 回覆區第一張：AI 推薦回覆。內容沿用 [_buildRecommendationContent]
+  /// 三條路徑；比風格卡寬一號、卡內縱向捲動吃掉高度差。
+  Widget _buildRecommendedReplyCard() {
+    final recommendation = _finalRecommendation!;
+    return Container(
+      key: const ValueKey('analysis-recommended-reply-card'),
+      width: 340,
+      margin: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.ctaStart.withValues(alpha: 0.1),
+            AppColors.ctaStart.withValues(alpha: 0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.ctaStart.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('🎯', style: TextStyle(fontSize: 18)),
+              const SizedBox(width: 6),
+              Text(
+                'AI 推薦回覆',
+                style: AppTypography.titleMedium.copyWith(
+                  color: AppColors.ctaStart,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ..._buildRecommendationContent(recommendation),
+                  const SizedBox(height: 12),
+                  Text(
+                    '📝 ${recommendation.reason}',
+                    style: AppTypography.bodyMedium,
+                  ),
+                  if (recommendation.psychology.isNotEmpty &&
+                      recommendation.psychology != recommendation.reason) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      '🧠 ${recommendation.psychology}',
+                      style: AppTypography.caption,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _shouldShowReplyZoneNotice(SubscriptionState subscription) {
+    final replies = _replies;
+    if (replies == null || replies.isEmpty) return false;
+    return subscription.isFreeUser ||
+        _analysisNeedsReplyRefresh(subscription) ||
+        (replies.length == 1 && replies.containsKey('extend'));
+  }
+
+  /// 回覆區尾端提示：Free 升級入口／已升級但看舊 Free 結果的重新分析
+  /// ／付費 fallback 說明。原本在詳細分析折疊內，隨回覆區一起上移。
+  Widget _buildReplyZoneNotice(SubscriptionState subscription) {
+    if (subscription.isFreeUser) {
+      return GestureDetector(
+        onTap: () async => _showPaywall(context),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.ctaStart.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: AppColors.ctaStart.withValues(alpha: 0.3),
+            ),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.lock_outline, color: AppColors.ctaStart),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '你已可比較延展、調情；升級解鎖共鳴、幽默、冷讀等完整 5 種風格',
+                  style: AppTypography.bodyMedium
+                      .copyWith(color: AppColors.primary),
+                ),
+              ),
+              const Icon(Icons.arrow_forward_ios,
+                  size: 16, color: AppColors.ctaStart),
+            ],
+          ),
+        ),
+      );
+    }
+    if (_analysisNeedsReplyRefresh(subscription)) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.ctaStart.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: AppColors.ctaStart.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.auto_awesome, color: AppColors.ctaStart),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '你已升級，這份分析仍是免費版結果。',
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.ctaStart,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '重新分析一次，就能拿到完整分析結果。',
+              style: AppTypography.caption.copyWith(color: AppColors.ctaStart),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: (_isAnalyzing || _isRefreshingPremiumReplies)
+                    ? null
+                    : _refreshPremiumReplies,
+                icon: AnimatedSwitcher(
+                  duration: AppMotion.enter,
+                  switchInCurve: AppMotion.easeOut,
+                  switchOutCurve: AppMotion.easeOut,
+                  child: (_isAnalyzing || _isRefreshingPremiumReplies)
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh_rounded),
+                ),
+                label: Text(
+                  (_isAnalyzing || _isRefreshingPremiumReplies)
+                      ? '正在刷新完整分析…'
+                      : '重新產生完整分析',
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    // 付費用戶：AI 判斷此情境最適合延展
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.onBackgroundSecondary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.lightbulb_outline, color: AppColors.onBackgroundSecondary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'AI 判斷此情境最適合使用延展回覆',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.onBackgroundSecondary,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

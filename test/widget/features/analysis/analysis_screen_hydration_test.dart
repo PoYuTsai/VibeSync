@@ -2223,6 +2223,49 @@ void main() {
     );
 
     testWidgets(
+      '回覆區合併：推薦卡是橫滑第一張、同型風格卡去重、折疊區不再含回覆',
+      (tester) async {
+        final conversation = _conversation(
+          lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
+          lastAnalyzedMessageCount: 1,
+          lastEnthusiasmScore: 33,
+        );
+
+        await _pumpHydratedAnalysisScreenWithRepo(
+          tester,
+          seed: const StreamingAnalysisState.idle(),
+          conversation: conversation,
+          archiveStore: _MemoryConversationArchiveStore(),
+        );
+        tester.takeException();
+
+        // 推薦卡在橫滑回覆區裡，且整個畫面只有這一張推薦卡。
+        expect(
+            find.byKey(const ValueKey('analysis-reply-zone')), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('analysis-reply-zone')),
+            matching:
+                find.byKey(const ValueKey('analysis-recommended-reply-card')),
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('回覆建議'), findsOneWidget);
+
+        // pick=extend：延展風格卡與推薦卡同內容，去重不再出現；
+        // 下一張是共鳴（在視口內會被 mount）。
+        expect(find.text('🔄 延展', skipOffstage: false), findsNothing);
+        expect(find.text('💬 共鳴', skipOffstage: false), findsOneWidget);
+
+        // 折疊區改名且不再帶回覆相關文案。
+        expect(find.text('詳細分析'), findsOneWidget);
+        expect(find.text('詳細分析與更多回覆'), findsNothing);
+        expect(find.textContaining('接法建議'), findsNothing);
+        expect(find.textContaining('種回覆'), findsNothing);
+      },
+    );
+
+    testWidgets(
       'done for an older message count shows stale-result retry and skips stale persist',
       (tester) async {
         final raw = _fullRawResponse();
