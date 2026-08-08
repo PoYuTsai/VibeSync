@@ -909,16 +909,16 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
               color: isSelected
-                  ? AppColors.ctaStart.withValues(alpha: 0.8)
+                  ? AppColors.ctaStart.withValues(alpha: 0.9)
                   : Colors.white.withValues(alpha: 0.1),
-              width: isSelected ? 1.8 : 1,
+              width: isSelected ? 2.5 : 1,
             ),
             boxShadow: [
               BoxShadow(
                 color: isSelected
-                    ? AppColors.ctaStart.withValues(alpha: 0.22)
+                    ? AppColors.ctaStart.withValues(alpha: 0.45)
                     : Colors.black.withValues(alpha: 0.22),
-                blurRadius: 22,
+                blurRadius: isSelected ? 28 : 22,
                 offset: const Offset(0, 14),
               ),
             ],
