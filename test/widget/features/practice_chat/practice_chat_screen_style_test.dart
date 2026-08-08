@@ -147,6 +147,7 @@ class _NoopPracticeChatApi extends PracticeChatApiService {
     required String requestId,
     String? currentProfileId,
     String? visiblePracticeThreadId,
+    bool srTicket = false,
   }) async {
     // 換一位／翻牌：回固定一位（與目前不同），給 seeded 控制器的 draw 路徑用。
     final next = practiceGirlProfiles.firstWhere(
@@ -169,6 +170,7 @@ class _DrawApi extends PracticeChatApiService {
     required String requestId,
     String? currentProfileId,
     String? visiblePracticeThreadId,
+    bool srTicket = false,
   }) {
     drawCalls++;
     return _handler!();

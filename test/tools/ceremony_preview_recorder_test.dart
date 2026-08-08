@@ -69,6 +69,7 @@ class _DrawApi extends PracticeChatApiService {
     required String requestId,
     String? currentProfileId,
     String? visiblePracticeThreadId,
+    bool srTicket = false,
   }) =>
       _handler();
   @override
