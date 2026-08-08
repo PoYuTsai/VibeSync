@@ -74,7 +74,11 @@ void main() {
     expect(source, contains('#selector(generateReply(_:))'));
     expect(source, contains('#selector(insertGeneratedReply)'));
 
-    expect(source, contains('private enum Mode { case assist, text, typing }'));
+    // The qwerty compliance floor is gone on purpose (2026-08-08 product
+    // decision): the keyboard is only the screenshot and paste surfaces, and
+    // the 4.4.1 typing requirement is an accepted App Review risk.
+    expect(source, contains('private enum Mode { case assist, text }'));
+    expect(source, isNot(contains('typingPanel')));
     expect(
       source,
       contains('show(.assist)'),
