@@ -600,7 +600,9 @@ class _DifficultyChips extends ConsumerWidget {
         ),
         const SizedBox(height: 6),
         AnimatedSwitcher(
-          duration: const Duration(milliseconds: 150),
+          duration: AppMotion.enter,
+          switchInCurve: AppMotion.easeOut,
+          switchOutCurve: AppMotion.easeOut,
           child: Text(
             subtitle,
             key: ValueKey(state.difficultyPreference),
@@ -632,7 +634,8 @@ class _DifficultyChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
+        duration: AppMotion.state,
+        curve: AppMotion.easeOut,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
           color: selected
@@ -785,46 +788,53 @@ class _LearningModeToggleState extends State<_LearningModeToggle> {
           ),
         ),
         const SizedBox(height: 8),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 150),
-          child: Container(
-            key: ValueKey(
-              _showGameLockHint
-                  ? 'practice-learning-mode-subtitle-game-locked'
-                  : 'practice-learning-mode-subtitle-${selectedDescriptor.mode.name}',
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: subtitleDescriptor.accent.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: subtitleDescriptor.accent.withValues(alpha: 0.35),
+        AnimatedSize(
+          duration: AppMotion.state,
+          curve: AppMotion.easeOut,
+          alignment: Alignment.topCenter,
+          child: AnimatedSwitcher(
+            duration: AppMotion.enter,
+            switchInCurve: AppMotion.easeOut,
+            switchOutCurve: AppMotion.easeOut,
+            child: Container(
+              key: ValueKey(
+                _showGameLockHint
+                    ? 'practice-learning-mode-subtitle-game-locked'
+                    : 'practice-learning-mode-subtitle-${selectedDescriptor.mode.name}',
               ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  _showGameLockHint
-                      ? Icons.lock_outline
-                      : subtitleDescriptor.icon,
-                  size: 15,
-                  color: subtitleDescriptor.accent,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: subtitleDescriptor.accent.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: subtitleDescriptor.accent.withValues(alpha: 0.35),
                 ),
-                const SizedBox(width: 7),
-                Expanded(
-                  child: Text(
-                    '${subtitleDescriptor.title}｜${subtitleDescriptor.summary}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.onBackgroundPrimary.withValues(
-                        alpha: 0.92,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _showGameLockHint
+                        ? Icons.lock_outline
+                        : subtitleDescriptor.icon,
+                    size: 15,
+                    color: subtitleDescriptor.accent,
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      '${subtitleDescriptor.title}｜${subtitleDescriptor.summary}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.onBackgroundPrimary.withValues(
+                          alpha: 0.92,
+                        ),
+                        fontWeight: FontWeight.w800,
                       ),
-                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -891,7 +901,8 @@ class _LearningModeSegment extends StatelessWidget {
             borderRadius: BorderRadius.circular(11),
             onTap: enabled ? onTap : onDisabledTap,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
+              duration: AppMotion.state,
+              curve: AppMotion.easeOut,
               height: 58,
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
               decoration: BoxDecoration(
@@ -1540,7 +1551,8 @@ class _BottomBar extends StatelessWidget {
                 child: ListenableBuilder(
                   listenable: inputFocusNode,
                   builder: (context, child) => AnimatedContainer(
-                    duration: const Duration(milliseconds: 160),
+                    duration: AppMotion.state,
+                    curve: AppMotion.easeOut,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: inputFocusNode.hasFocus
