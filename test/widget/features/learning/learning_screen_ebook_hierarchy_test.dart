@@ -145,7 +145,7 @@ void main() {
   testWidgets('測驗區塊只有入口卡，第 2 期的東西都不出現', (tester) async {
     await pumpLearningScreen(tester, tier: SubscriptionTierHelper.free);
 
-    expect(find.text('聊天測驗'), findsOneWidget);
+    expect(find.text('聊天新手村'), findsOneWidget);
     expect(find.text('全部關卡 →'), findsOneWidget);
     expect(find.text('15 關 · 225 題'), findsOneWidget);
 

@@ -61,11 +61,16 @@ class _QuizEntryCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // 2026-08-09 拍板：入口改叫「聊天新手村」，字級升到與學習頁
+                    // 其他 hero 大標同級（headlineLarge w900），讓這區在頁面階層
+                    // 上與書架 hero 平起平坐。內頁（地圖／答題器）與 paywall 仍
+                    // 沿用「聊天測驗」功能名，不在此批範圍。
                     Text(
-                      '聊天測驗',
-                      style: AppTypography.titleMedium.copyWith(
+                      '聊天新手村',
+                      style: AppTypography.headlineLarge.copyWith(
                         color: AppColors.onBackgroundPrimary,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w900,
+                        height: 1.2,
                       ),
                     ),
                     Text(
