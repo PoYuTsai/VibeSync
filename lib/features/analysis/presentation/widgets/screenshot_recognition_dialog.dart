@@ -69,6 +69,12 @@ class _ScreenshotRecognitionDialogState
   late UserGoal? _selectedGoal;
   late final List<_EditableRecognizedMessage> _editableMessages;
   String? _editValidationMessage;
+
+  /// 同對象確認格的定位錨與一次性閃光 token（沒勾就按「確認本次內容」時
+  /// 自動捲到格子並閃一下——按鈕不再 disabled 裝死，2026-08-09 Eric 真機回報
+  /// 「根本不知道要勾」）。
+  final _samePartnerBlockKey = GlobalKey();
+  int _samePartnerFlashRequest = 0;
   bool _confirmedSamePartner = false;
 
   static const _swipeTutorialEntryDelay = Duration(milliseconds: 650);
@@ -351,7 +357,19 @@ class _ScreenshotRecognitionDialogState
   void _submit() {
     if (_requiresSamePartnerConfirmation && !_confirmedSamePartner) {
       setState(() {
-        _editValidationMessage = '請先確認這些截圖都是目前這位對象；如果是另一人，請取消後到正確對象再匯入。';
+        _editValidationMessage = '請先勾選上方的確認格：這些截圖都是目前這位對象；如果是另一人，請取消後到正確對象再匯入。';
+        _samePartnerFlashRequest++;
+      });
+      // 捲到確認格再閃：訊息可能在視口外，光有紅字使用者還是找不到。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final blockContext = _samePartnerBlockKey.currentContext;
+        if (blockContext == null || !blockContext.mounted) return;
+        Scrollable.ensureVisible(
+          blockContext,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOut,
+          alignment: 0.2,
+        );
       });
       return;
     }
@@ -1018,46 +1036,76 @@ class _ScreenshotRecognitionDialogState
             ],
             if (_requiresSamePartnerConfirmation) ...[
               const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.error.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: AppColors.error.withValues(alpha: 0.24),
-                  ),
-                ),
-                child: Material(
-                  type: MaterialType.transparency,
-                  child: CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    value: _confirmedSamePartner,
-                    onChanged: (value) {
-                      setState(() {
-                        _confirmedSamePartner = value ?? false;
-                        _editValidationMessage = null;
-                      });
-                    },
-                    title: Text(
-                      widget.expectedPartnerName?.trim().isNotEmpty == true
-                          ? '我確認這些是「${widget.expectedPartnerName!.trim()}」的聊天'
-                          : '我確認這些截圖都是目前這位對象',
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.onBackgroundPrimary,
-                        fontWeight: FontWeight.w700,
+              // 2026-08-09 顯眼化（Eric 真機回報「根本不知道要勾」）：沒勾時
+              // 用 ctaStart 粗框＋靜態光暈當全 dialog 最亮的元素，勾了轉
+              // success 定心色收光。閃光只在被擋的送出時單發一次。
+              _AttentionFlash(
+                key: _samePartnerBlockKey,
+                flashRequest: _samePartnerFlashRequest,
+                builder: (context, flash) {
+                  final confirmed = _confirmedSamePartner;
+                  final accent =
+                      confirmed ? AppColors.success : AppColors.ctaStart;
+                  return Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(
+                        alpha: confirmed ? 0.10 : 0.14 + 0.10 * flash,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: accent.withValues(
+                          alpha: confirmed ? 0.45 : 0.85,
+                        ),
+                        width: confirmed ? 1 : 1.6,
+                      ),
+                      boxShadow: confirmed
+                          ? null
+                          : [
+                              BoxShadow(
+                                color: AppColors.ctaStart.withValues(
+                                  alpha: 0.30 + 0.35 * flash,
+                                ),
+                                blurRadius: 16 + 8 * flash,
+                              ),
+                            ],
+                    ),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        value: _confirmedSamePartner,
+                        activeColor: AppColors.success,
+                        onChanged: (value) {
+                          setState(() {
+                            _confirmedSamePartner = value ?? false;
+                            _editValidationMessage = null;
+                          });
+                        },
+                        title: Text(
+                          widget.expectedPartnerName?.trim().isNotEmpty == true
+                              ? '我確認這些是「${widget.expectedPartnerName!.trim()}」的聊天'
+                              : '我確認這些截圖都是目前這位對象',
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.onBackgroundPrimary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        subtitle: Text(
+                          confirmed
+                              ? '已確認。如果是另一人，請取消並回到正確對象再匯入。'
+                              : '要先勾這格才能開始分析；如果是另一人，請取消並回到正確對象再匯入。',
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.onBackgroundSecondary,
+                            height: 1.35,
+                          ),
+                        ),
                       ),
                     ),
-                    subtitle: Text(
-                      '如果是另一人，請取消並回到正確對象再匯入。',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.onBackgroundSecondary,
-                        height: 1.35,
-                      ),
-                    ),
-                  ),
-                ),
+                  );
+                },
               ),
             ],
             if (!_isPartnerBound) ...[
@@ -1253,9 +1301,9 @@ class _ScreenshotRecognitionDialogState
           ),
         ),
         ElevatedButton(
-          onPressed: _requiresSamePartnerConfirmation && !_confirmedSamePartner
-              ? null
-              : _submit,
+          // 沒勾同對象確認不再 disabled 裝死：一律可按，_submit 內擋下並
+          // 捲到確認格＋閃光＋紅字說明（使用者才知道卡在哪）。
+          onPressed: _submit,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.ctaStart,
             foregroundColor: Colors.white,
@@ -1313,5 +1361,59 @@ class _EditableRecognizedMessage {
   void dispose() {
     controller.dispose();
     quotedReplyController?.dispose();
+  }
+}
+
+/// 同對象確認格的一次性提醒閃光。
+///
+/// [flashRequest] 變動時單發 forward→reverse（約 640ms 即收斂，不 repeat，
+/// pumpAndSettle 安全）。遵守 [MediaQuery.disableAnimations] 與 [TickerMode]：
+/// 關閉動畫時不閃，只靠靜態高亮（builder 收到的 flash 恆 0）。
+/// 動的是 decoration 色彩/陰影（非文字、非透明度），符合殘影禁令。
+class _AttentionFlash extends StatefulWidget {
+  const _AttentionFlash({
+    super.key,
+    required this.flashRequest,
+    required this.builder,
+  });
+
+  final int flashRequest;
+  final Widget Function(BuildContext context, double flash) builder;
+
+  @override
+  State<_AttentionFlash> createState() => _AttentionFlashState();
+}
+
+class _AttentionFlashState extends State<_AttentionFlash>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+  );
+
+  @override
+  void didUpdateWidget(covariant _AttentionFlash oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.flashRequest == oldWidget.flashRequest) return;
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduceMotion || !TickerMode.valuesOf(context).enabled) return;
+    _controller.forward(from: 0).then((_) {
+      if (mounted) _controller.reverse();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) => widget.builder(context, _controller.value),
+    );
   }
 }

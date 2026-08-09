@@ -273,28 +273,18 @@ void main() {
         find.textContaining('如果是另一人，請取消並回到正確對象'),
         findsOneWidget,
       );
-      expect(
-        tester
-            .widget<ElevatedButton>(find.widgetWithText(
-              ElevatedButton,
-              '確認本次內容',
-            ))
-            .onPressed,
-        isNull,
-      );
+      // 2026-08-09 改版：沒勾時按鈕不再 disabled 裝死——可以按，但 _submit
+      // 擋下、dialog 不關、出現指引並捲到確認格（真機回報「根本不知道要勾」）。
+      await _tapVisible(tester, find.text('確認本次內容'));
+      await tester.pumpAndSettle();
+      expect(result, isNull);
+      expect(find.textContaining('請先勾選上方的確認格'), findsOneWidget);
 
       await _tapVisible(tester, find.text('我確認這些截圖都是目前這位對象'));
       await tester.pumpAndSettle();
+      // 勾選後指引消失。
+      expect(find.textContaining('請先勾選上方的確認格'), findsNothing);
 
-      expect(
-        tester
-            .widget<ElevatedButton>(find.widgetWithText(
-              ElevatedButton,
-              '確認本次內容',
-            ))
-            .onPressed,
-        isNotNull,
-      );
       await _tapVisible(tester, find.text('確認本次內容'));
       await tester.pumpAndSettle();
 
@@ -380,15 +370,11 @@ void main() {
         find.text('我確認這些是「Bruce」的聊天'),
         findsOneWidget,
       );
-      expect(
-        tester
-            .widget<ElevatedButton>(find.widgetWithText(
-              ElevatedButton,
-              '確認本次內容',
-            ))
-            .onPressed,
-        isNull,
-      );
+      // 沒勾時按鈕可按但 _submit 擋下（2026-08-09 顯眼化改版）。
+      await _tapVisible(tester, find.text('確認本次內容'));
+      await tester.pumpAndSettle();
+      expect(result, isNull);
+      expect(find.textContaining('請先勾選上方的確認格'), findsOneWidget);
       expect(find.text('對方名字'), findsNothing);
 
       await _tapVisible(tester, find.text('我確認這些是「Bruce」的聊天'));
