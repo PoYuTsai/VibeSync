@@ -263,6 +263,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   final _messageFocusNode = FocusNode();
   final _messageInputKey = GlobalKey();
   final _coachSurfaceKey = GlobalKey();
+  final _replyZoneSectionKey = GlobalKey();
+  // 使用者手指是否正在拖動主捲軸。分析完成的一次性自動捲動只在使用者沒在
+  // 拖動時執行，避免把他手上的捲動搶走。不進 setState：純行為旗標，不影響
+  // 渲染。
+  bool _userDragInProgress = false;
   String? _lastManualAddedMessageId;
   String? _lastManualAddedContent;
   bool? _lastManualAddedIsFromMe;
@@ -642,6 +647,26 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     if (!mounted || !_isAnalyzing || !_followLiveAnalysis) return;
     setState(() {
       _followLiveAnalysis = false;
+    });
+  }
+
+  /// 分析完成後的一次性自動捲動：把「回覆建議」區頂帶到視口上緣附近。
+  ///
+  /// 錨的是回覆區、不是上方的「下一步」卡（2026-08-09 拍板）：完成當下使用者
+  /// 要的是可以直接抄的回覆。只掛在 live 完成轉場
+  /// （[_onStreamingAnalyzeStateChanged] 的 done case）；回頁 hydrate 不捲，
+  /// 免得使用者一回來就被跳位。使用者手指還在拖動時跳過。
+  void _scheduleSnapToReplyZone() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _userDragInProgress) return;
+      final replyZoneContext = _replyZoneSectionKey.currentContext;
+      if (replyZoneContext == null || !replyZoneContext.mounted) return;
+      unawaited(Scrollable.ensureVisible(
+        replyZoneContext,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+        alignment: 0.04,
+      ));
     });
   }
 
@@ -4868,6 +4893,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           // Ignore errors in test environment.
         });
         _syncSubscriptionUsageFromResult(result, showChargeToast: true);
+        // 一次性捲到「回覆建議」區頂。只在 live 完成轉場做（hydrate 不做），
+        // setState 排定的重建幀之後才量得到新位置。
+        _scheduleSnapToReplyZone();
         break;
       case StreamingAnalyzePhase.failedAfterRecommendation:
         setState(() {
@@ -6677,398 +6705,482 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               children: [
                 _buildRoutePopScopeRegistration(),
                 Expanded(
-                  child: _AnalysisScrollView(
-                    onUserScrollTowardStart: _stopFollowingForUserScroll,
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    // 移除 physics 設定，使用平台預設（與第一頁一致）
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Messages preview
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.96),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: AppColors.ctaStart.withValues(alpha: 0.24),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.12),
-                                blurRadius: 18,
-                                offset: const Offset(0, 10),
+                  child: NotificationListener<ScrollNotification>(
+                    // 追蹤使用者拖動狀態，給分析完成的一次性自動捲動判斷用
+                    //（拖動中不搶捲）。dragDetails != null 才算手指拖動，
+                    // 程式的 animateTo 不會誤判。
+                    onNotification: (notification) {
+                      if (notification is ScrollStartNotification) {
+                        _userDragInProgress = notification.dragDetails != null;
+                      } else if (notification is ScrollUpdateNotification) {
+                        if (notification.dragDetails != null) {
+                          _userDragInProgress = true;
+                        }
+                      } else if (notification is ScrollEndNotification) {
+                        _userDragInProgress = false;
+                      }
+                      return false;
+                    },
+                    child: _AnalysisScrollView(
+                      onUserScrollTowardStart: _stopFollowingForUserScroll,
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(16),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      // 移除 physics 設定，使用平台預設（與第一頁一致）
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Messages preview
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.96),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color:
+                                    AppColors.ctaStart.withValues(alpha: 0.24),
                               ),
-                            ],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      isPendingAnalysisFragment
-                                          ? '待分析的新片段'
-                                          : isCompletedAnalysisFragment
-                                              ? '本次分析片段'
-                                              : '新的分析片段',
-                                      style: AppTypography.titleMedium.copyWith(
-                                        color: AppColors.glassTextPrimary,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  _buildConversationSourcePill(conversation),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                isPendingAnalysisFragment
-                                    ? '這批新聊天會獨立分析，不會接回上一筆紀錄。'
-                                    : isCompletedAnalysisFragment
-                                        ? '這次分析已獨立封存，內容唯讀；新內容請另開分析片段。'
-                                        : '先加入這次想給 AI 解析的聊天；不會接回舊紀錄。',
-                                style: AppTypography.bodySmall.copyWith(
-                                  color: AppColors.glassTextSecondary,
-                                  height: 1.35,
-                                ),
-                              ),
-                              if (_analysisRecordNeedsRepair) ...[
-                                const SizedBox(height: 7),
-                                Text(
-                                  '分析已完成，但紀錄尚未儲存；系統會自動重試。',
-                                  key: const ValueKey(
-                                    'analysis-record-repair-warning',
-                                  ),
-                                  style: AppTypography.bodySmall.copyWith(
-                                    color: AppColors.warning,
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.12),
+                                  blurRadius: 18,
+                                  offset: const Offset(0, 10),
                                 ),
                               ],
-                              const SizedBox(height: 10),
-                              if (analysisFragmentMessages.isEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 20,
-                                    horizontal: 8,
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Icon(
-                                        Icons.chat_bubble_outline,
-                                        color: AppColors.ctaStart,
-                                        size: 34,
-                                      ),
-                                      const SizedBox(height: 10),
-                                      Text(
-                                        '還沒有訊息',
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        isPendingAnalysisFragment
+                                            ? '待分析的新片段'
+                                            : isCompletedAnalysisFragment
+                                                ? '本次分析片段'
+                                                : '新的分析片段',
                                         style:
                                             AppTypography.titleMedium.copyWith(
                                           color: AppColors.glassTextPrimary,
-                                          fontWeight: FontWeight.w700,
+                                          fontWeight: FontWeight.w800,
                                         ),
                                       ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        isScreenshotOnlyEmptyState
-                                            ? '先上傳 1–3 張聊天截圖，確認文字後作為本次片段。'
-                                            : '請回到上一頁建立新的獨立分析片段。',
-                                        textAlign: TextAlign.center,
-                                        style: AppTypography.bodySmall.copyWith(
-                                          color: AppColors.glassTextSecondary,
-                                          height: 1.35,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    _buildConversationSourcePill(conversation),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  isPendingAnalysisFragment
+                                      ? '這批新聊天會獨立分析，不會接回上一筆紀錄。'
+                                      : isCompletedAnalysisFragment
+                                          ? '這次分析已獨立封存，內容唯讀；新內容請另開分析片段。'
+                                          : '先加入這次想給 AI 解析的聊天；不會接回舊紀錄。',
+                                  style: AppTypography.bodySmall.copyWith(
+                                    color: AppColors.glassTextSecondary,
+                                    height: 1.35,
+                                  ),
+                                ),
+                                if (_analysisRecordNeedsRepair) ...[
+                                  const SizedBox(height: 7),
+                                  Text(
+                                    '分析已完成，但紀錄尚未儲存；系統會自動重試。',
+                                    key: const ValueKey(
+                                      'analysis-record-repair-warning',
+                                    ),
+                                    style: AppTypography.bodySmall.copyWith(
+                                      color: AppColors.warning,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: 10),
+                                if (analysisFragmentMessages.isEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 20,
+                                      horizontal: 8,
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          Icons.chat_bubble_outline,
+                                          color: AppColors.ctaStart,
+                                          size: 34,
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Text(
+                                          '還沒有訊息',
+                                          style: AppTypography.titleMedium
+                                              .copyWith(
+                                            color: AppColors.glassTextPrimary,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          isScreenshotOnlyEmptyState
+                                              ? '先上傳 1–3 張聊天截圖，確認文字後作為本次片段。'
+                                              : '請回到上一頁建立新的獨立分析片段。',
+                                          textAlign: TextAlign.center,
+                                          style:
+                                              AppTypography.bodySmall.copyWith(
+                                            color: AppColors.glassTextSecondary,
+                                            height: 1.35,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ...analysisFragmentMessages.map((m) =>
+                                    MessageBubble(
+                                      message: m,
+                                      onEdit: _isAnalyzing ||
+                                              !_canMutateMessage(
+                                                  conversation, m)
+                                          ? null
+                                          : () => _editMessage(conversation, m),
+                                      onSwapSide: _isAnalyzing ||
+                                              !_canMutateMessage(
+                                                  conversation, m)
+                                          ? null
+                                          : () =>
+                                              _swapMessageSide(conversation, m),
+                                      onDelete: _isAnalyzing ||
+                                              !_canMutateMessage(
+                                                  conversation, m)
+                                          ? null
+                                          : () =>
+                                              _deleteMessage(conversation, m),
+                                    )),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          if (_isRefreshingPremiumReplies) ...[
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color:
+                                    AppColors.ctaStart.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: AppColors.ctaStart
+                                      .withValues(alpha: 0.28),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      '正在重新產生完整分析，完成後會更新新版回覆選項。',
+                                      style: AppTypography.bodyMedium.copyWith(
+                                        color: AppColors.ctaStart,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          // Error message
+                          if (_errorMessage != null) ...[
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: AppColors.error.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color:
+                                        AppColors.error.withValues(alpha: 0.3)),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.error_outline,
+                                          color: AppColors.error),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          _errorMessage!,
+                                          style: AppTypography.bodyMedium
+                                              .copyWith(color: AppColors.error),
                                         ),
                                       ),
                                     ],
                                   ),
-                                ),
-                              ...analysisFragmentMessages.map((m) =>
-                                  MessageBubble(
-                                    message: m,
-                                    onEdit: _isAnalyzing ||
-                                            !_canMutateMessage(conversation, m)
-                                        ? null
-                                        : () => _editMessage(conversation, m),
-                                    onSwapSide: _isAnalyzing ||
-                                            !_canMutateMessage(conversation, m)
-                                        ? null
-                                        : () =>
-                                            _swapMessageSide(conversation, m),
-                                    onDelete: _isAnalyzing ||
-                                            !_canMutateMessage(conversation, m)
-                                        ? null
-                                        : () => _deleteMessage(conversation, m),
-                                  )),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        if (_isRefreshingPremiumReplies) ...[
-                          Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: AppColors.ctaStart.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color:
-                                    AppColors.ctaStart.withValues(alpha: 0.28),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    '正在重新產生完整分析，完成後會更新新版回覆選項。',
-                                    style: AppTypography.bodyMedium.copyWith(
-                                      color: AppColors.ctaStart,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-
-                        // Error message
-                        if (_errorMessage != null) ...[
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: AppColors.error.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                  color:
-                                      AppColors.error.withValues(alpha: 0.3)),
-                            ),
-                            child: Column(
-                              children: [
-                                Row(
-                                  children: [
-                                    const Icon(Icons.error_outline,
-                                        color: AppColors.error),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        _errorMessage!,
-                                        style: AppTypography.bodyMedium
-                                            .copyWith(color: AppColors.error),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                if (_errorGuidance != null) ...[
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    _errorGuidance!,
-                                    style: AppTypography.bodySmall.copyWith(
-                                        color: AppColors.textSecondary),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
-                                const SizedBox(height: 12),
-                                Wrap(
-                                  alignment: WrapAlignment.center,
-                                  spacing: 10,
-                                  runSpacing: 10,
-                                  children: [
-                                    if (_errorAction != null)
-                                      ElevatedButton(
-                                        onPressed:
-                                            _isAnalyzing || _isRecognizing
-                                                ? null
-                                                : () => _handleErrorAction(
-                                                    _errorAction!),
-                                        child: Text(
-                                          _primaryErrorActionLabel(
-                                            _errorAction!,
-                                          ),
-                                        ),
-                                      ),
-                                    // 強制重新辨識按鈕（當有之前的圖片可以重試時）
-                                    if (_canForceReRecognize &&
-                                        _errorOrigin ==
-                                            _AnalysisErrorOrigin.recognition)
-                                      OutlinedButton.icon(
-                                        onPressed:
-                                            _isAnalyzing || _isRecognizing
-                                                ? null
-                                                : _forceReRecognizeLastBatch,
-                                        icon: const Icon(Icons.refresh_rounded),
-                                        label: const Text('強制重新辨識'),
-                                      ),
-                                    if (_shouldShowSecondaryErrorAction())
-                                      OutlinedButton(
-                                        onPressed: _isAnalyzing ||
-                                                _isRecognizing
-                                            ? null
-                                            : () => setState(_resetErrorState),
-                                        child: Text(
-                                          _secondaryErrorActionLabel(),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-
-                        // 手動分析按鈕 (尚未分析時顯示)
-                        if (showInitialScreenshotSetup) ...[
-                          Container(
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              color: AppColors.ctaStart.withValues(alpha: 0.05),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                  color: AppColors.ctaStart
-                                      .withValues(alpha: 0.2)),
-                            ),
-                            child: Column(
-                              children: [
-                                if (conversation.messages.isNotEmpty) ...[
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.ctaStart
-                                          .withValues(alpha: 0.08),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: AppColors.ctaStart
-                                            .withValues(alpha: 0.22),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      '本次片段已有 ${conversation.messages.length} 則訊息。重新選擇 1–3 張截圖會整批取代目前內容，不會往下追加。',
+                                  if (_errorGuidance != null) ...[
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      _errorGuidance!,
                                       style: AppTypography.bodySmall.copyWith(
-                                        color: AppColors.onBackgroundPrimary,
-                                        height: 1.4,
-                                      ),
+                                          color: AppColors.textSecondary),
                                       textAlign: TextAlign.center,
                                     ),
+                                  ],
+                                  const SizedBox(height: 12),
+                                  Wrap(
+                                    alignment: WrapAlignment.center,
+                                    spacing: 10,
+                                    runSpacing: 10,
+                                    children: [
+                                      if (_errorAction != null)
+                                        ElevatedButton(
+                                          onPressed:
+                                              _isAnalyzing || _isRecognizing
+                                                  ? null
+                                                  : () => _handleErrorAction(
+                                                      _errorAction!),
+                                          child: Text(
+                                            _primaryErrorActionLabel(
+                                              _errorAction!,
+                                            ),
+                                          ),
+                                        ),
+                                      // 強制重新辨識按鈕（當有之前的圖片可以重試時）
+                                      if (_canForceReRecognize &&
+                                          _errorOrigin ==
+                                              _AnalysisErrorOrigin.recognition)
+                                        OutlinedButton.icon(
+                                          onPressed:
+                                              _isAnalyzing || _isRecognizing
+                                                  ? null
+                                                  : _forceReRecognizeLastBatch,
+                                          icon:
+                                              const Icon(Icons.refresh_rounded),
+                                          label: const Text('強制重新辨識'),
+                                        ),
+                                      if (_shouldShowSecondaryErrorAction())
+                                        OutlinedButton(
+                                          onPressed: _isAnalyzing ||
+                                                  _isRecognizing
+                                              ? null
+                                              : () =>
+                                                  setState(_resetErrorState),
+                                          child: Text(
+                                            _secondaryErrorActionLabel(),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                          ],
+
+                          // 手動分析按鈕 (尚未分析時顯示)
+                          if (showInitialScreenshotSetup) ...[
+                            Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                color:
+                                    AppColors.ctaStart.withValues(alpha: 0.05),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                    color: AppColors.ctaStart
+                                        .withValues(alpha: 0.2)),
+                              ),
+                              child: Column(
+                                children: [
+                                  if (conversation.messages.isNotEmpty) ...[
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.ctaStart
+                                            .withValues(alpha: 0.08),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: AppColors.ctaStart
+                                              .withValues(alpha: 0.22),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '本次片段已有 ${conversation.messages.length} 則訊息。重新選擇 1–3 張截圖會整批取代目前內容，不會往下追加。',
+                                        style: AppTypography.bodySmall.copyWith(
+                                          color: AppColors.onBackgroundPrimary,
+                                          height: 1.4,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                  ],
+                                  // 動作優先：選圖按鈕置頂，介紹文字降到 caption。
+                                  ImagePickerWidget(
+                                    maxImages: 3,
+                                    externalImages: _selectedImages, // 同步外部狀態
+                                    helperTextColor:
+                                        AppColors.onBackgroundSecondary,
+                                    onImagesChanged:
+                                        _handleSelectedImagesChanged,
+                                    onMetricsChanged:
+                                        _handleSelectedImageMetricsChanged,
+                                  ),
+                                  _buildScreenshotSettingSection(),
+                                  const SizedBox(height: 8),
+
+                                  // 對話長度提示
+                                  Text(
+                                    '建議每張截圖保留 15 則內完整對話；過長請拆成 2-3 張，辨識會更穩。',
+                                    style: AppTypography.bodySmall.copyWith(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.55),
+                                    ),
+                                    textAlign: TextAlign.center,
                                   ),
                                   const SizedBox(height: 12),
-                                ],
-                                // 動作優先：選圖按鈕置頂，介紹文字降到 caption。
-                                ImagePickerWidget(
-                                  maxImages: 3,
-                                  externalImages: _selectedImages, // 同步外部狀態
-                                  helperTextColor:
-                                      AppColors.onBackgroundSecondary,
-                                  onImagesChanged: _handleSelectedImagesChanged,
-                                  onMetricsChanged:
-                                      _handleSelectedImageMetricsChanged,
-                                ),
-                                _buildScreenshotSettingSection(),
-                                const SizedBox(height: 8),
 
-                                // 對話長度提示
-                                Text(
-                                  '建議每張截圖保留 15 則內完整對話；過長請拆成 2-3 張，辨識會更穩。',
-                                  style: AppTypography.bodySmall.copyWith(
-                                    color: Colors.white.withValues(alpha: 0.55),
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(height: 12),
-
-                                // 如果有截圖，先顯示「辨識截圖文字」按鈕
-                                if (_selectedImages.isNotEmpty) ...[
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton.icon(
-                                      onPressed: _isRecognizing
-                                          ? null
-                                          : _recognizeAndAddToConversation,
-                                      icon: _isRecognizing
-                                          ? const SizedBox(
-                                              width: 20,
-                                              height: 20,
-                                              child: CircularProgressIndicator(
-                                                  strokeWidth: 2,
-                                                  color: Colors.white),
-                                            )
-                                          : const Icon(
-                                              Icons.add_photo_alternate),
-                                      label: Text(_recognizeButtonLabel),
-                                      /*
+                                  // 如果有截圖，先顯示「辨識截圖文字」按鈕
+                                  if (_selectedImages.isNotEmpty) ...[
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton.icon(
+                                        onPressed: _isRecognizing
+                                            ? null
+                                            : _recognizeAndAddToConversation,
+                                        icon: _isRecognizing
+                                            ? const SizedBox(
+                                                width: 20,
+                                                height: 20,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                        color: Colors.white),
+                                              )
+                                            : const Icon(
+                                                Icons.add_photo_alternate),
+                                        label: Text(_recognizeButtonLabel),
+                                        /*
                                             ? '辨識中…'
                                             : '辨識截圖文字 （${_selectedImages.length} 張）'),
                                         */
-                                      style: ElevatedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 14),
-                                        backgroundColor: AppColors.ctaStart,
-                                        foregroundColor: Colors.white,
-                                        disabledBackgroundColor: AppColors
-                                            .primary
-                                            .withValues(alpha: 0.7),
-                                        disabledForegroundColor: Colors.white
-                                            .withValues(alpha: 0.95),
+                                        style: ElevatedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 14),
+                                          backgroundColor: AppColors.ctaStart,
+                                          foregroundColor: Colors.white,
+                                          disabledBackgroundColor: AppColors
+                                              .primary
+                                              .withValues(alpha: 0.7),
+                                          disabledForegroundColor: Colors.white
+                                              .withValues(alpha: 0.95),
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  // Debug 狀態顯示
-                                  if (_showTelemetryDiagnostics &&
-                                      _isRecognizing)
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: Colors.orange
-                                            .withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                            color: Colors.orange
-                                                .withValues(alpha: 0.3)),
-                                      ),
-                                      child: Column(
-                                        children: [
-                                          Text(
-                                            '目前階段：${_recognizeStageLabel(_recognizeStage)} ($_recognizeElapsedSeconds 秒)',
-                                            style: AppTypography.bodySmall
-                                                .copyWith(
-                                              color: Colors.orange,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            '圖片：${_selectedImages.length} 張｜原始 ${_formatBytes(_totalOriginalImageBytes)} -> 壓縮 ${_formatBytes(_totalCompressedImageBytes)}',
-                                            style:
-                                                AppTypography.caption.copyWith(
+                                    const SizedBox(height: 8),
+                                    // Debug 狀態顯示
+                                    if (_showTelemetryDiagnostics &&
+                                        _isRecognizing)
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.orange
+                                              .withValues(alpha: 0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                          border: Border.all(
                                               color: Colors.orange
-                                                  .withValues(alpha: 0.8),
-                                              fontFamily: 'monospace',
-                                              fontSize: 10,
-                                            ),
-                                          ),
-                                          if (_lastRecognizeTelemetry != null)
+                                                  .withValues(alpha: 0.3)),
+                                        ),
+                                        child: Column(
+                                          children: [
                                             Text(
-                                              _lastRecognizeTelemetry!.cacheHit
-                                                  ? '本次直接使用本機快取結果，未重新送出 OCR 請求'
-                                                  : '請求 ${_formatBytes(_lastRecognizeTelemetry!.requestBodyBytes)}｜本機準備 ${_formatDuration(_lastRecognizeTelemetry!.payloadPreparationDuration)}｜往返 ${_formatDuration(_lastRecognizeTelemetry!.roundTripDuration)}',
+                                              '目前階段：${_recognizeStageLabel(_recognizeStage)} ($_recognizeElapsedSeconds 秒)',
+                                              style: AppTypography.bodySmall
+                                                  .copyWith(
+                                                color: Colors.orange,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '圖片：${_selectedImages.length} 張｜原始 ${_formatBytes(_totalOriginalImageBytes)} -> 壓縮 ${_formatBytes(_totalCompressedImageBytes)}',
+                                              style: AppTypography.caption
+                                                  .copyWith(
+                                                color: Colors.orange
+                                                    .withValues(alpha: 0.8),
+                                                fontFamily: 'monospace',
+                                                fontSize: 10,
+                                              ),
+                                            ),
+                                            if (_lastRecognizeTelemetry != null)
+                                              Text(
+                                                _lastRecognizeTelemetry!
+                                                        .cacheHit
+                                                    ? '本次直接使用本機快取結果，未重新送出 OCR 請求'
+                                                    : '請求 ${_formatBytes(_lastRecognizeTelemetry!.requestBodyBytes)}｜本機準備 ${_formatDuration(_lastRecognizeTelemetry!.payloadPreparationDuration)}｜往返 ${_formatDuration(_lastRecognizeTelemetry!.roundTripDuration)}',
+                                                style: AppTypography.caption
+                                                    .copyWith(
+                                                  color: Colors.orange
+                                                      .withValues(alpha: 0.8),
+                                                  fontSize: 10,
+                                                ),
+                                              ),
+                                            if (_lastRecognizeTelemetry != null)
+                                              Text(
+                                                _lastRecognizeTelemetry!
+                                                        .cacheHit
+                                                    ? '本次使用本機快取，未重新上傳或呼叫 AI'
+                                                    : 'AI ${_formatDuration(_lastRecognizeTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastRecognizeTelemetry!.estimatedTransferDuration)}',
+                                                style: AppTypography.caption
+                                                    .copyWith(
+                                                  color: Colors.orange
+                                                      .withValues(alpha: 0.8),
+                                                  fontSize: 10,
+                                                ),
+                                              ),
+                                            if (_lastRecognizeTelemetry !=
+                                                    null &&
+                                                _recognizeTelemetryRecognitionSummary(
+                                                        _lastRecognizeTelemetry!) !=
+                                                    null)
+                                              Text(
+                                                _recognizeTelemetryRecognitionSummary(
+                                                    _lastRecognizeTelemetry!)!,
+                                                style: AppTypography.caption
+                                                    .copyWith(
+                                                  color: Colors.orange
+                                                      .withValues(alpha: 0.8),
+                                                  fontSize: 10,
+                                                ),
+                                              ),
+                                            if (_lastRecognizeTelemetry !=
+                                                    null &&
+                                                _recognizeTelemetryNormalizationSummary(
+                                                        _lastRecognizeTelemetry!) !=
+                                                    null)
+                                              Text(
+                                                _recognizeTelemetryNormalizationSummary(
+                                                    _lastRecognizeTelemetry!)!,
+                                                style: AppTypography.caption
+                                                    .copyWith(
+                                                  color: Colors.orange
+                                                      .withValues(alpha: 0.8),
+                                                  fontSize: 10,
+                                                ),
+                                              ),
+                                            Text(
+                                              '若超過 130 秒仍無結果，建議換更少訊息的截圖再試。',
                                               style: AppTypography.caption
                                                   .copyWith(
                                                 color: Colors.orange
@@ -7076,56 +7188,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                 fontSize: 10,
                                               ),
                                             ),
-                                          if (_lastRecognizeTelemetry != null)
-                                            Text(
-                                              _lastRecognizeTelemetry!.cacheHit
-                                                  ? '本次使用本機快取，未重新上傳或呼叫 AI'
-                                                  : 'AI ${_formatDuration(_lastRecognizeTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastRecognizeTelemetry!.estimatedTransferDuration)}',
-                                              style: AppTypography.caption
-                                                  .copyWith(
-                                                color: Colors.orange
-                                                    .withValues(alpha: 0.8),
-                                                fontSize: 10,
-                                              ),
-                                            ),
-                                          if (_lastRecognizeTelemetry != null &&
-                                              _recognizeTelemetryRecognitionSummary(
-                                                      _lastRecognizeTelemetry!) !=
-                                                  null)
-                                            Text(
-                                              _recognizeTelemetryRecognitionSummary(
-                                                  _lastRecognizeTelemetry!)!,
-                                              style: AppTypography.caption
-                                                  .copyWith(
-                                                color: Colors.orange
-                                                    .withValues(alpha: 0.8),
-                                                fontSize: 10,
-                                              ),
-                                            ),
-                                          if (_lastRecognizeTelemetry != null &&
-                                              _recognizeTelemetryNormalizationSummary(
-                                                      _lastRecognizeTelemetry!) !=
-                                                  null)
-                                            Text(
-                                              _recognizeTelemetryNormalizationSummary(
-                                                  _lastRecognizeTelemetry!)!,
-                                              style: AppTypography.caption
-                                                  .copyWith(
-                                                color: Colors.orange
-                                                    .withValues(alpha: 0.8),
-                                                fontSize: 10,
-                                              ),
-                                            ),
-                                          Text(
-                                            '若超過 130 秒仍無結果，建議換更少訊息的截圖再試。',
-                                            style:
-                                                AppTypography.caption.copyWith(
-                                              color: Colors.orange
-                                                  .withValues(alpha: 0.8),
-                                              fontSize: 10,
-                                            ),
-                                          ),
-                                          /*
+                                            /*
                                             Text(
                                               '正在辨識截圖… ($_recognizeElapsedSeconds 秒)',
                                               style: AppTypography.bodySmall
@@ -7157,7 +7220,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                             const SizedBox(height: 8),
                                             // 取消按鈕
                                             */
-                                          /*
+                                            /*
                                             TextButton(
                                               onPressed: _cancelRecognize,
                                               child: Text(
@@ -7169,22 +7232,22 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                               ),
                                             ),
                                             */
-                                          TextButton(
-                                            onPressed: _cancelRecognize,
-                                            child: const Text('取消'),
-                                          ),
-                                        ],
+                                            TextButton(
+                                              onPressed: _cancelRecognize,
+                                              child: const Text('取消'),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  if (!_isRecognizing)
-                                    Text(
-                                      '截圖會先辨識成對話文字。請確認我說／她說與內容；確認後會成為本次完整片段。',
-                                      style: AppTypography.bodySmall.copyWith(
-                                        color: AppColors.warning,
+                                    if (!_isRecognizing)
+                                      Text(
+                                        '截圖會先辨識成對話文字。請確認我說／她說與內容；確認後會成為本次完整片段。',
+                                        style: AppTypography.bodySmall.copyWith(
+                                          color: AppColors.warning,
+                                        ),
+                                        textAlign: TextAlign.center,
                                       ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  /*
+                                    /*
                                       // 提示：有截圖時要先識別
                                       Text(
                                         '請先點擊上方按鈕辨識截圖，再進行分析',
@@ -7194,1056 +7257,780 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         textAlign: TextAlign.center,
                                       ),
                                     */
-                                  const SizedBox(height: 12),
+                                    const SizedBox(height: 12),
+                                  ],
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'AI 會分析對方這次的投入度、讀懂語意，教你最適合的回覆方式',
+                                    style: AppTypography.bodySmall.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
                                 ],
-                                const SizedBox(height: 16),
-                                Text(
-                                  'AI 會分析對方這次的投入度、讀懂語意，教你最適合的回覆方式',
-                                  style: AppTypography.bodySmall.copyWith(
-                                    color: AppColors.textSecondary,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-
-                        // 截圖識別結果
-                        if (_showTelemetryDiagnostics &&
-                            _lastRecognizeTelemetry != null &&
-                            !_isRecognizing) ...[
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.ctaStart.withValues(alpha: 0.06),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color:
-                                    AppColors.ctaStart.withValues(alpha: 0.16),
                               ),
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '上次 OCR 量測',
-                                  style: AppTypography.bodyMedium.copyWith(
-                                    color: AppColors.onBackgroundPrimary,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  _lastRecognizeTelemetry!.cacheHit
-                                      ? '本次直接使用本機快取結果，未重新送出 OCR 請求'
-                                      : '請求 ${_formatBytes(_lastRecognizeTelemetry!.requestBodyBytes)}｜本機準備 ${_formatDuration(_lastRecognizeTelemetry!.payloadPreparationDuration)}｜往返 ${_formatDuration(_lastRecognizeTelemetry!.roundTripDuration)}',
-                                  style: AppTypography.caption.copyWith(
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                                if (_analysisTelemetryQuotaSummary(
-                                        _lastRecognizeTelemetry!) !=
-                                    null)
-                                  Text(
-                                    _analysisTelemetryQuotaSummary(
-                                      _lastRecognizeTelemetry!,
-                                    )!,
-                                    style: AppTypography.caption.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                Text(
-                                  _lastRecognizeTelemetry!.cacheHit
-                                      ? '本次使用本機快取，未重新上傳或呼叫 AI'
-                                      : 'AI ${_formatDuration(_lastRecognizeTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastRecognizeTelemetry!.estimatedTransferDuration)}',
-                                  style: AppTypography.caption.copyWith(
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                                if (_recognizeTelemetryRecognitionSummary(
-                                        _lastRecognizeTelemetry!) !=
-                                    null)
-                                  Text(
-                                    _recognizeTelemetryRecognitionSummary(
-                                        _lastRecognizeTelemetry!)!,
-                                    style: AppTypography.caption.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                if (_recognizeTelemetryNormalizationSummary(
-                                        _lastRecognizeTelemetry!) !=
-                                    null)
-                                  Text(
-                                    _recognizeTelemetryNormalizationSummary(
-                                        _lastRecognizeTelemetry!)!,
-                                    style: AppTypography.caption.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                if (_recognizeTelemetryContextSummary(
-                                        _lastRecognizeTelemetry!) !=
-                                    null)
-                                  Text(
-                                    _recognizeTelemetryContextSummary(
-                                        _lastRecognizeTelemetry!)!,
-                                    style: AppTypography.caption.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                _buildTelemetryGuardrailSection(
-                                  _lastRecognizeTelemetry!,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
+                            const SizedBox(height: 24),
+                          ],
 
-                        if (_showTelemetryDiagnostics &&
-                            _lastAnalysisTelemetry != null &&
-                            !_isAnalyzing) ...[
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.info.withValues(alpha: 0.06),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: AppColors.info.withValues(alpha: 0.16),
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _analysisTelemetryRequestLabel(
-                                    _lastAnalysisTelemetry!,
-                                  ),
-                                  style: AppTypography.bodyMedium.copyWith(
-                                    color: AppColors.onBackgroundPrimary,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  _analysisTelemetryTransportSummary(
-                                    _lastAnalysisTelemetry!,
-                                  ),
-                                  style: AppTypography.caption.copyWith(
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                                if (_analysisTelemetryQuotaSummary(
-                                        _lastAnalysisTelemetry!) !=
-                                    null)
-                                  Text(
-                                    _analysisTelemetryQuotaSummary(
-                                      _lastAnalysisTelemetry!,
-                                    )!,
-                                    style: AppTypography.caption.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                Text(
-                                  'AI ${_formatDuration(_lastAnalysisTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastAnalysisTelemetry!.estimatedTransferDuration)}',
-                                  style: AppTypography.caption.copyWith(
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                                if (_recognizeTelemetryContextSummary(
-                                        _lastAnalysisTelemetry!) !=
-                                    null)
-                                  Text(
-                                    _recognizeTelemetryContextSummary(
-                                      _lastAnalysisTelemetry!,
-                                    )!,
-                                    style: AppTypography.caption.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                _buildTelemetryGuardrailSection(
-                                  _lastAnalysisTelemetry!,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-
-                        // 這張「已讀取 N 則…尚未開始分析」辨識預覽卡只在分析真正
-                        // 尚未開始時出現：分析中（_isAnalyzing）或已完成
-                        // （_enthusiasmScore != null）都必須隱藏，否則會殘留誤導
-                        // 的「尚未開始分析」提示。重新讀圖會清空 _enthusiasmScore
-                        // （見 _recognizeAndAddToConversation），卡片即正確重現。
-                        if (!_isAnalyzing &&
-                            _enthusiasmScore == null &&
-                            _recognizedConversation != null &&
-                            _recognizedConversation!.messageCount > 0) ...[
-                          _buildRecognizedConversationCard(),
-                          const SizedBox(height: 16),
-                        ],
-
-                        if (_enthusiasmScore != null) ...[
-                          if (_shouldGiveUp) ...[
+                          // 截圖識別結果
+                          if (_showTelemetryDiagnostics &&
+                              _lastRecognizeTelemetry != null &&
+                              !_isRecognizing) ...[
                             Container(
+                              width: double.infinity,
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: AppColors.error.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(8),
+                                color:
+                                    AppColors.ctaStart.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                    color:
-                                        AppColors.error.withValues(alpha: 0.3)),
+                                  color: AppColors.ctaStart
+                                      .withValues(alpha: 0.16),
+                                ),
                               ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '上次 OCR 量測',
+                                    style: AppTypography.bodyMedium.copyWith(
+                                      color: AppColors.onBackgroundPrimary,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    _lastRecognizeTelemetry!.cacheHit
+                                        ? '本次直接使用本機快取結果，未重新送出 OCR 請求'
+                                        : '請求 ${_formatBytes(_lastRecognizeTelemetry!.requestBodyBytes)}｜本機準備 ${_formatDuration(_lastRecognizeTelemetry!.payloadPreparationDuration)}｜往返 ${_formatDuration(_lastRecognizeTelemetry!.roundTripDuration)}',
+                                    style: AppTypography.caption.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                  if (_analysisTelemetryQuotaSummary(
+                                          _lastRecognizeTelemetry!) !=
+                                      null)
+                                    Text(
+                                      _analysisTelemetryQuotaSummary(
+                                        _lastRecognizeTelemetry!,
+                                      )!,
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  Text(
+                                    _lastRecognizeTelemetry!.cacheHit
+                                        ? '本次使用本機快取，未重新上傳或呼叫 AI'
+                                        : 'AI ${_formatDuration(_lastRecognizeTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastRecognizeTelemetry!.estimatedTransferDuration)}',
+                                    style: AppTypography.caption.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                  if (_recognizeTelemetryRecognitionSummary(
+                                          _lastRecognizeTelemetry!) !=
+                                      null)
+                                    Text(
+                                      _recognizeTelemetryRecognitionSummary(
+                                          _lastRecognizeTelemetry!)!,
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  if (_recognizeTelemetryNormalizationSummary(
+                                          _lastRecognizeTelemetry!) !=
+                                      null)
+                                    Text(
+                                      _recognizeTelemetryNormalizationSummary(
+                                          _lastRecognizeTelemetry!)!,
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  if (_recognizeTelemetryContextSummary(
+                                          _lastRecognizeTelemetry!) !=
+                                      null)
+                                    Text(
+                                      _recognizeTelemetryContextSummary(
+                                          _lastRecognizeTelemetry!)!,
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  _buildTelemetryGuardrailSection(
+                                    _lastRecognizeTelemetry!,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          if (_showTelemetryDiagnostics &&
+                              _lastAnalysisTelemetry != null &&
+                              !_isAnalyzing) ...[
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.info.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: AppColors.info.withValues(alpha: 0.16),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _analysisTelemetryRequestLabel(
+                                      _lastAnalysisTelemetry!,
+                                    ),
+                                    style: AppTypography.bodyMedium.copyWith(
+                                      color: AppColors.onBackgroundPrimary,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    _analysisTelemetryTransportSummary(
+                                      _lastAnalysisTelemetry!,
+                                    ),
+                                    style: AppTypography.caption.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                  if (_analysisTelemetryQuotaSummary(
+                                          _lastAnalysisTelemetry!) !=
+                                      null)
+                                    Text(
+                                      _analysisTelemetryQuotaSummary(
+                                        _lastAnalysisTelemetry!,
+                                      )!,
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  Text(
+                                    'AI ${_formatDuration(_lastAnalysisTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastAnalysisTelemetry!.estimatedTransferDuration)}',
+                                    style: AppTypography.caption.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                  if (_recognizeTelemetryContextSummary(
+                                          _lastAnalysisTelemetry!) !=
+                                      null)
+                                    Text(
+                                      _recognizeTelemetryContextSummary(
+                                        _lastAnalysisTelemetry!,
+                                      )!,
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  _buildTelemetryGuardrailSection(
+                                    _lastAnalysisTelemetry!,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          // 這張「已讀取 N 則…尚未開始分析」辨識預覽卡只在分析真正
+                          // 尚未開始時出現：分析中（_isAnalyzing）或已完成
+                          // （_enthusiasmScore != null）都必須隱藏，否則會殘留誤導
+                          // 的「尚未開始分析」提示。重新讀圖會清空 _enthusiasmScore
+                          // （見 _recognizeAndAddToConversation），卡片即正確重現。
+                          if (!_isAnalyzing &&
+                              _enthusiasmScore == null &&
+                              _recognizedConversation != null &&
+                              _recognizedConversation!.messageCount > 0) ...[
+                            _buildRecognizedConversationCard(),
+                            const SizedBox(height: 16),
+                          ],
+
+                          if (_enthusiasmScore != null) ...[
+                            if (_shouldGiveUp) ...[
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppColors.error.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                      color: AppColors.error
+                                          .withValues(alpha: 0.3)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Text('⚠️',
+                                        style: TextStyle(fontSize: 20)),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        '這段互動目前不建議再投入，先保護自己的時間與情緒成本。',
+                                        style: AppTypography.bodyMedium,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                            ] else if (_gameStage != null &&
+                                _finalRecommendation != null) ...[
+                              Builder(
+                                builder: (context) {
+                                  final conversation = ref.watch(
+                                      conversationProvider(
+                                          widget.conversationId));
+                                  final partnerId = conversation?.partnerId;
+                                  final flagged = partnerId != null
+                                      ? ref
+                                          .watch(dataQualityFlagProvider(
+                                              partnerId))
+                                          .isFlagged
+                                      : false;
+                                  final practiceGoals = partnerId != null
+                                      ? ref
+                                          .watch(
+                                              effectiveStyleProvider(partnerId))
+                                          .practiceGoals
+                                      : const <PracticeGoal>[];
+                                  final stuckPoints = partnerId != null
+                                      ? ref
+                                          .watch(
+                                              effectiveStyleProvider(partnerId))
+                                          .stuckPoints
+                                      : const <StuckPoint>[];
+
+                                  final cardData = CoachActionPolicy.evaluate(
+                                    heatScore: _enthusiasmScore!,
+                                    gameStage: _gameStage!,
+                                    finalRecommendation: _finalRecommendation!,
+                                    messages: conversation?.messages ??
+                                        const <Message>[],
+                                    practiceGoals: practiceGoals,
+                                    stuckPoints: stuckPoints,
+                                    isDataQualityFlagged: flagged,
+                                    coachActionHint: _coachActionHint,
+                                    psychology: _psychology,
+                                  );
+
+                                  return CoachActionCard(
+                                    data: cardData,
+                                    onLearningLinkTap: (target) {
+                                      _clearAnalysisSnackBarsBeforePush();
+                                      context.push(
+                                        ebookChapterRoute(
+                                          target.bookId,
+                                          target.chapterId,
+                                          entryId: target.entryId,
+                                        ),
+                                      );
+                                    },
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                            ],
+                          ],
+
+                          // 回覆區合併（Bruce dogfood 2026-08-08 拍板）：
+                          // AI 推薦回覆是橫滑卡組第一張，右滑接其他風格；
+                          // 回覆不再藏在詳細分析折疊裡。
+                          if (_hasReplyZoneContent) ...[
+                            // 分析完成的一次性自動捲動錨在這裡（回覆區頂、不錨
+                            // 上方的「下一步」卡）。
+                            KeyedSubtree(
+                              key: _replyZoneSectionKey,
                               child: Row(
                                 children: [
-                                  const Text('⚠️',
-                                      style: TextStyle(fontSize: 20)),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      '這段互動目前不建議再投入，先保護自己的時間與情緒成本。',
-                                      style: AppTypography.bodyMedium,
-                                    ),
-                                  ),
+                                  Text('回覆建議',
+                                      style: AppTypography.titleLarge.copyWith(
+                                          color:
+                                              AppColors.onBackgroundPrimary)),
+                                  const Spacer(),
+                                  if (_replyZoneCardCount > 1)
+                                    Text('← 左右滑動',
+                                        style: AppTypography.caption.copyWith(
+                                            color: AppColors
+                                                .onBackgroundSecondary
+                                                .withValues(alpha: 0.6))),
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 16),
-                          ] else if (_gameStage != null &&
-                              _finalRecommendation != null) ...[
-                            Builder(
-                              builder: (context) {
-                                final conversation = ref.watch(
-                                    conversationProvider(
-                                        widget.conversationId));
-                                final partnerId = conversation?.partnerId;
-                                final flagged = partnerId != null
-                                    ? ref
-                                        .watch(
-                                            dataQualityFlagProvider(partnerId))
-                                        .isFlagged
-                                    : false;
-                                final practiceGoals = partnerId != null
-                                    ? ref
-                                        .watch(
-                                            effectiveStyleProvider(partnerId))
-                                        .practiceGoals
-                                    : const <PracticeGoal>[];
-                                final stuckPoints = partnerId != null
-                                    ? ref
-                                        .watch(
-                                            effectiveStyleProvider(partnerId))
-                                        .stuckPoints
-                                    : const <StuckPoint>[];
-
-                                final cardData = CoachActionPolicy.evaluate(
-                                  heatScore: _enthusiasmScore!,
-                                  gameStage: _gameStage!,
-                                  finalRecommendation: _finalRecommendation!,
-                                  messages: conversation?.messages ??
-                                      const <Message>[],
-                                  practiceGoals: practiceGoals,
-                                  stuckPoints: stuckPoints,
-                                  isDataQualityFlagged: flagged,
-                                  coachActionHint: _coachActionHint,
-                                  psychology: _psychology,
-                                );
-
-                                return CoachActionCard(
-                                  data: cardData,
-                                  onLearningLinkTap: (target) {
-                                    _clearAnalysisSnackBarsBeforePush();
-                                    context.push(
-                                      ebookChapterRoute(
-                                        target.bookId,
-                                        target.chapterId,
-                                        entryId: target.entryId,
-                                      ),
-                                    );
-                                  },
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-                        ],
-
-                        // 回覆區合併（Bruce dogfood 2026-08-08 拍板）：
-                        // AI 推薦回覆是橫滑卡組第一張，右滑接其他風格；
-                        // 回覆不再藏在詳細分析折疊裡。
-                        if (_hasReplyZoneContent) ...[
-                          Row(
-                            children: [
-                              Text('回覆建議',
-                                  style: AppTypography.titleLarge.copyWith(
-                                      color: AppColors.onBackgroundPrimary)),
-                              const Spacer(),
-                              if (_replyZoneCardCount > 1)
-                                Text('← 左右滑動',
-                                    style: AppTypography.caption.copyWith(
-                                        color: AppColors.onBackgroundSecondary
-                                            .withValues(alpha: 0.6))),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            height: 400,
-                            child: ListView(
+                            const SizedBox(height: 12),
+                            // 高度自適應（2026-08-09 拍板）：拆掉固定 400 高，改由
+                            // 最高那張卡決定整列高度——訊息組球數多時卡自然變大，
+                            // 卡內不再需要捲。IntrinsicHeight 需要非 lazy 的 Row；
+                            // 卡最多 6 張，放棄 ListView 的懶載無感。
+                            SingleChildScrollView(
                               key: const ValueKey('analysis-reply-zone'),
                               scrollDirection: Axis.horizontal,
-                              children: [
-                                if (_showRecommendedReplyCard)
-                                  _buildRecommendedReplyCard(),
-                                for (final type in _replyStyleOrder)
-                                  if ((_replies?.containsKey(type) ?? false) &&
-                                      !(_showRecommendedReplyCard &&
-                                          _isRecommendedReplyType(type)))
-                                    _buildHorizontalReplyCard(
-                                        type, _replies![type]!,
-                                        option: _replyOptions?[type],
-                                        isRecommended:
-                                            _isRecommendedReplyType(type)),
-                              ],
-                            ),
-                          ),
-                          if (_showRecommendedReplyCard)
-                            _buildAnalysisOutcomeBar(
-                              cardKey: 'final',
-                              label: 'AI 推薦回覆',
-                            ),
-                          for (final type in _replyStyleOrder)
-                            if (_replies?.containsKey(type) ?? false)
-                              _buildAnalysisOutcomeBar(
-                                cardKey: type,
-                                label: ReplyStyleCard.labels[type] ?? type,
-                              ),
-                          if (_shouldShowReplyZoneNotice(subscription)) ...[
-                            const SizedBox(height: 12),
-                            _buildReplyZoneNotice(subscription),
-                          ],
-                          const SizedBox(height: 16),
-                        ],
-
-                        if (_enthusiasmScore != null) ...[
-                          // 實扣顯示常駐行（smoke P2 fix 2026-06-11）：
-                          // 隨快照持久化，回看也顯示；SnackBar 保留即時感知。
-                          AnalysisUsageSummaryLine(
-                            usage: _lastAiResponse?['usage'],
-                          ),
-                          _buildDetailedAnalysisToggle(),
-                          if (_showDetailedAnalysis)
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                const SizedBox(height: 12),
-                                ScoreHeroCard(
-                                  score: _enthusiasmScore!,
-                                  // previousScore: null for now
+                              child: ConstrainedBox(
+                                constraints:
+                                    const BoxConstraints(minHeight: 260),
+                                child: IntrinsicHeight(
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      if (_showRecommendedReplyCard)
+                                        _buildRecommendedReplyCard(),
+                                      for (final type in _replyStyleOrder)
+                                        if ((_replies?.containsKey(type) ??
+                                                false) &&
+                                            !(_showRecommendedReplyCard &&
+                                                _isRecommendedReplyType(type)))
+                                          _buildHorizontalReplyCard(
+                                              type, _replies![type]!,
+                                              option: _replyOptions?[type],
+                                              isRecommended:
+                                                  _isRecommendedReplyType(
+                                                      type)),
+                                    ],
+                                  ),
                                 ),
+                              ),
+                            ),
+                            if (_showRecommendedReplyCard)
+                              _buildAnalysisOutcomeBar(
+                                cardKey: 'final',
+                                label: 'AI 推薦回覆',
+                              ),
+                            for (final type in _replyStyleOrder)
+                              if (_replies?.containsKey(type) ?? false)
+                                _buildAnalysisOutcomeBar(
+                                  cardKey: type,
+                                  label: ReplyStyleCard.labels[type] ?? type,
+                                ),
+                            if (_shouldShowReplyZoneNotice(subscription)) ...[
+                              const SizedBox(height: 12),
+                              _buildReplyZoneNotice(subscription),
+                            ],
+                            const SizedBox(height: 16),
+                          ],
 
-                                // 五維度剖析 (Starter / Essential only)
-                                if (_dimensionScores != null &&
-                                    subscription.isPremium) ...[
-                                  const SizedBox(height: 16),
-                                  DimensionRadarChart(
-                                    scores: DimensionScores(
-                                      heat: _dimensionScores!['heat'] ?? 50,
-                                      engagement:
-                                          _dimensionScores!['engagement'] ?? 50,
-                                      topicDepth:
-                                          _dimensionScores!['topicDepth'] ?? 50,
-                                      replyWillingness: _dimensionScores![
-                                              'replyWillingness'] ??
-                                          50,
-                                      emotionalConnection: _dimensionScores![
-                                              'emotionalConnection'] ??
-                                          50,
+                          if (_enthusiasmScore != null) ...[
+                            // 實扣顯示常駐行（smoke P2 fix 2026-06-11）：
+                            // 隨快照持久化，回看也顯示；SnackBar 保留即時感知。
+                            AnalysisUsageSummaryLine(
+                              usage: _lastAiResponse?['usage'],
+                            ),
+                          ],
+
+                          // 問教練上移到詳細分析之前（2026-08-09 回覆區滿版批）：
+                          // 完成後首屏留給「下一步＋回覆建議」，往下滑先遇到可以
+                          // 行動的問教練，詳細分析（參考資料）沉到更下面。
+                          if (_enthusiasmScore != null &&
+                              _gameStage != null &&
+                              _finalRecommendation != null) ...[
+                            KeyedSubtree(
+                              key: _coachSurfaceKey,
+                              child: CoachSurface(
+                                scope: CoachScope.conversation(
+                                  widget.conversationId,
+                                ),
+                                analysisSnapshot:
+                                    _buildCoachChatAnalysisSnapshot(),
+                                focusRequestToken: _coachChatFocusRequest,
+                                prefillText: _coachChatPrefill,
+                                onReturnToAnalysis: _returnToAnalysisOverview,
+                                onQuotaExceeded: () {
+                                  unawaited(_handleCoachChatQuotaExceeded());
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          if (_enthusiasmScore != null) ...[
+                            _buildDetailedAnalysisToggle(),
+                            if (_showDetailedAnalysis)
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  const SizedBox(height: 12),
+                                  ScoreHeroCard(
+                                    score: _enthusiasmScore!,
+                                    // previousScore: null for now
+                                  ),
+
+                                  // 五維度剖析 (Starter / Essential only)
+                                  if (_dimensionScores != null &&
+                                      subscription.isPremium) ...[
+                                    const SizedBox(height: 16),
+                                    DimensionRadarChart(
+                                      scores: DimensionScores(
+                                        heat: _dimensionScores!['heat'] ?? 50,
+                                        engagement:
+                                            _dimensionScores!['engagement'] ??
+                                                50,
+                                        topicDepth:
+                                            _dimensionScores!['topicDepth'] ??
+                                                50,
+                                        replyWillingness: _dimensionScores![
+                                                'replyWillingness'] ??
+                                            50,
+                                        emotionalConnection: _dimensionScores![
+                                                'emotionalConnection'] ??
+                                            50,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
 
-                                // 對話階段指示器
-                                if (_gameStage != null) ...[
-                                  const SizedBox(height: 16),
-                                  GameStageIndicator(
-                                    currentStage: _gameStage!.current,
-                                    status: _gameStage!.status,
-                                    nextStep: _gameStage!.nextStep,
-                                  ),
-                                ],
+                                  // 對話階段指示器
+                                  if (_gameStage != null) ...[
+                                    const SizedBox(height: 16),
+                                    GameStageIndicator(
+                                      currentStage: _gameStage!.current,
+                                      status: _gameStage!.status,
+                                      nextStep: _gameStage!.nextStep,
+                                    ),
+                                  ],
 
-                                // 她話裡的意思
-                                if (_psychology != null) ...[
-                                  const SizedBox(height: 16),
-                                  BrandSurfaceCard(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            const Text('🧠',
-                                                style: TextStyle(fontSize: 18)),
-                                            const SizedBox(width: 8),
-                                            Text('她話裡的意思',
-                                                style: AppTypography.titleMedium
-                                                    .copyWith(
-                                                        color: AppColors
-                                                            .onBackgroundPrimary)),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(_psychology!.subtext,
-                                            style: AppTypography.bodyMedium
-                                                .copyWith(
-                                                    color: AppColors
-                                                        .onBackgroundPrimary)),
-                                        if (_psychology!.shitTest != null) ...[
-                                          const SizedBox(height: 8),
-                                          Container(
-                                            padding: const EdgeInsets.all(8),
-                                            decoration: BoxDecoration(
-                                              color: AppColors.warning
-                                                  .withValues(alpha: 0.1),
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                            child: Row(
-                                              children: [
-                                                const Text('⚠️',
-                                                    style: TextStyle(
-                                                        fontSize: 14)),
-                                                const SizedBox(width: 8),
-                                                Expanded(
-                                                  child: Text(
-                                                    '互動測試訊號: ${_psychology!.shitTest}',
-                                                    style: AppTypography.caption
-                                                        .copyWith(
-                                                            color: AppColors
-                                                                .onBackgroundPrimary),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                        if (_psychology!
-                                            .qualificationSignal) ...[
-                                          const SizedBox(height: 8),
+                                  // 她話裡的意思
+                                  if (_psychology != null) ...[
+                                    const SizedBox(height: 16),
+                                    BrandSurfaceCard(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
                                           Row(
                                             children: [
-                                              const Icon(Icons.check_circle,
-                                                  size: 16,
-                                                  color: AppColors.success),
-                                              const SizedBox(width: 4),
-                                              Text('她有主動投入訊號',
-                                                  style: AppTypography.caption
+                                              const Text('🧠',
+                                                  style:
+                                                      TextStyle(fontSize: 18)),
+                                              const SizedBox(width: 8),
+                                              Text('她話裡的意思',
+                                                  style: AppTypography
+                                                      .titleMedium
                                                       .copyWith(
                                                           color: AppColors
                                                               .onBackgroundPrimary)),
                                             ],
                                           ),
+                                          const SizedBox(height: 8),
+                                          Text(_psychology!.subtext,
+                                              style: AppTypography.bodyMedium
+                                                  .copyWith(
+                                                      color: AppColors
+                                                          .onBackgroundPrimary)),
+                                          if (_psychology!.shitTest !=
+                                              null) ...[
+                                            const SizedBox(height: 8),
+                                            Container(
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.warning
+                                                    .withValues(alpha: 0.1),
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  const Text('⚠️',
+                                                      style: TextStyle(
+                                                          fontSize: 14)),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: Text(
+                                                      '互動測試訊號: ${_psychology!.shitTest}',
+                                                      style: AppTypography
+                                                          .caption
+                                                          .copyWith(
+                                                              color: AppColors
+                                                                  .onBackgroundPrimary),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                          if (_psychology!
+                                              .qualificationSignal) ...[
+                                            const SizedBox(height: 8),
+                                            Row(
+                                              children: [
+                                                const Icon(Icons.check_circle,
+                                                    size: 16,
+                                                    color: AppColors.success),
+                                                const SizedBox(width: 4),
+                                                Text('她有主動投入訊號',
+                                                    style: AppTypography.caption
+                                                        .copyWith(
+                                                            color: AppColors
+                                                                .onBackgroundPrimary)),
+                                              ],
+                                            ),
+                                          ],
                                         ],
-                                      ],
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
 
-                                // Strategy
-                                if (_strategy != null &&
-                                    _strategy!.trim().isNotEmpty) ...[
-                                  const SizedBox(height: 16),
-                                  BrandSurfaceCard(
+                                  // Strategy
+                                  if (_strategy != null &&
+                                      _strategy!.trim().isNotEmpty) ...[
+                                    const SizedBox(height: 16),
+                                    BrandSurfaceCard(
+                                      child: Row(
+                                        children: [
+                                          const Text('💡',
+                                              style: TextStyle(fontSize: 20)),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              _strategy!,
+                                              style: AppTypography.bodyMedium
+                                                  .copyWith(
+                                                      color: AppColors
+                                                          .onBackgroundPrimary),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+
+                                  // Topic Depth (話題深度)
+                                  if (_topicDepth != null) ...[
+                                    const SizedBox(height: 16),
+                                    BrandSurfaceCard(
+                                      child: Row(
+                                        children: [
+                                          Text(_topicDepth!.current.emoji,
+                                              style: const TextStyle(
+                                                  fontSize: 20)),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                    '話題深度: ${_topicDepth!.current.label}',
+                                                    style: AppTypography
+                                                        .bodyMedium
+                                                        .copyWith(
+                                                            color: AppColors
+                                                                .onBackgroundPrimary)),
+                                                if (_topicDepth!
+                                                    .suggestion.isNotEmpty)
+                                                  Text(_topicDepth!.suggestion,
+                                                      style: AppTypography
+                                                          .caption
+                                                          .copyWith(
+                                                              color: AppColors
+                                                                  .onBackgroundSecondary
+                                                                  .withValues(
+                                                                      alpha:
+                                                                          0.6))),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+
+                                  // Health Check (對話健檢 - Essential 專屬)
+                                  if (_healthCheck != null &&
+                                      subscription.isEssential &&
+                                      _healthCheck!.issues.isNotEmpty) ...[
+                                    const SizedBox(height: 16),
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.warning
+                                            .withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                            color: AppColors.warning
+                                                .withValues(alpha: 0.3)),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              const Text('🩺',
+                                                  style:
+                                                      TextStyle(fontSize: 18)),
+                                              const SizedBox(width: 8),
+                                              Text('對話健檢',
+                                                  style: AppTypography
+                                                      .titleMedium),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 8),
+                                          ..._healthCheck!.issues.map((issue) =>
+                                              Padding(
+                                                padding: const EdgeInsets.only(
+                                                    bottom: 4),
+                                                child: Row(
+                                                  children: [
+                                                    const Icon(
+                                                        Icons.warning_amber,
+                                                        size: 16,
+                                                        color:
+                                                            AppColors.warning),
+                                                    const SizedBox(width: 8),
+                                                    Expanded(
+                                                        child: Text(issue,
+                                                            style: AppTypography
+                                                                .bodyMedium)),
+                                                  ],
+                                                ),
+                                              )),
+                                          if (_healthCheck!
+                                              .suggestions.isNotEmpty) ...[
+                                            const SizedBox(height: 8),
+                                            ..._healthCheck!.suggestions
+                                                .map((suggestion) => Padding(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                              bottom: 4),
+                                                      child: Row(
+                                                        children: [
+                                                          const Icon(
+                                                              Icons
+                                                                  .lightbulb_outline,
+                                                              size: 16,
+                                                              color: AppColors
+                                                                  .success),
+                                                          const SizedBox(
+                                                              width: 8),
+                                                          Expanded(
+                                                              child: Text(
+                                                                  suggestion,
+                                                                  style: AppTypography
+                                                                      .caption)),
+                                                        ],
+                                                      ),
+                                                    )),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                          ],
+
+                          if (_isAnalyzing && _enthusiasmScore == null) ...[
+                            Center(
+                              child: StreamingAnalysisLoader(
+                                label: _streamProgressLabel,
+                                detail: _streamProgressDetail,
+                              ),
+                            ),
+                          ],
+
+                          if ((_isAnalyzing || _fullErrorMessage != null) &&
+                              _streamContents.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            _buildStreamingContentCard(),
+                          ],
+
+                          // gate 含 _quotaExceededInfo：fresh-start quota 429
+                          // （failedBeforeRecommendation）只設 quota state、
+                          // 不設 _fullErrorMessage（Codex 雙審 r1-P2a）。
+                          if (_fullErrorMessage != null ||
+                              _quotaExceededInfo != null) ...[
+                            const SizedBox(height: 12),
+                            // Quota 429 分流：額度不足不是技術失敗，渲染升級卡
+                            // 而非「無法再重試」（smoke P1 fix 2026-06-11）。
+                            if (_quotaExceededInfo != null)
+                              QuotaExceededUpgradeCard(
+                                isMonthly: _quotaExceededInfo!.isMonthly,
+                                remaining: _quotaExceededInfo!.remaining,
+                                quotaNeeded: _quotaExceededInfo!.quotaNeeded,
+                                onViewPlans: () => _showPaywall(context),
+                              )
+                            else
+                              FullAnalysisRetryCard(
+                                retriesRemaining: _fullErrorRetriesRemaining,
+                                errorMessage: _fullErrorMessage,
+                                onRetry: _fullErrorRetriesRemaining > 0
+                                    ? _retryFullAnalysis
+                                    : null,
+                              ),
+                          ],
+
+                          if (_isAnalyzing ||
+                              _fullErrorMessage != null ||
+                              _quotaExceededInfo != null)
+                            SizedBox(
+                              key: _analysisProgressEndKey,
+                              height: 1,
+                            ),
+
+                          // 草稿潤飾功能：使用者已有方向時才用；判斷/策略交給 Coach 1:1。
+                          if (_enthusiasmScore != null) ...[
+                            const SizedBox(height: 24),
+                            BrandSurfaceCard(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  GestureDetector(
+                                    onTap: () => setState(() =>
+                                        _showOptimizeInput =
+                                            !_showOptimizeInput),
                                     child: Row(
                                       children: [
-                                        const Text('💡',
+                                        const Text('✏️',
                                             style: TextStyle(fontSize: 20)),
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
-                                            _strategy!,
-                                            style: AppTypography.bodyMedium
+                                            '我已有草稿，幫我修自然',
+                                            style: AppTypography.titleMedium
                                                 .copyWith(
                                                     color: AppColors
                                                         .onBackgroundPrimary),
                                           ),
                                         ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-
-                                // Topic Depth (話題深度)
-                                if (_topicDepth != null) ...[
-                                  const SizedBox(height: 16),
-                                  BrandSurfaceCard(
-                                    child: Row(
-                                      children: [
-                                        Text(_topicDepth!.current.emoji,
-                                            style:
-                                                const TextStyle(fontSize: 20)),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                  '話題深度: ${_topicDepth!.current.label}',
-                                                  style: AppTypography
-                                                      .bodyMedium
-                                                      .copyWith(
-                                                          color: AppColors
-                                                              .onBackgroundPrimary)),
-                                              if (_topicDepth!
-                                                  .suggestion.isNotEmpty)
-                                                Text(_topicDepth!.suggestion,
-                                                    style: AppTypography.caption
-                                                        .copyWith(
-                                                            color: AppColors
-                                                                .onBackgroundSecondary
-                                                                .withValues(
-                                                                    alpha:
-                                                                        0.6))),
-                                            ],
-                                          ),
+                                        Icon(
+                                          _showOptimizeInput
+                                              ? Icons.expand_less
+                                              : Icons.expand_more,
+                                          color: AppColors.onBackgroundSecondary
+                                              .withValues(alpha: 0.6),
                                         ),
                                       ],
                                     ),
-                                  ),
-                                ],
-
-                                // Health Check (對話健檢 - Essential 專屬)
-                                if (_healthCheck != null &&
-                                    subscription.isEssential &&
-                                    _healthCheck!.issues.isNotEmpty) ...[
-                                  const SizedBox(height: 16),
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.warning
-                                          .withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                          color: AppColors.warning
-                                              .withValues(alpha: 0.3)),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            const Text('🩺',
-                                                style: TextStyle(fontSize: 18)),
-                                            const SizedBox(width: 8),
-                                            Text('對話健檢',
-                                                style:
-                                                    AppTypography.titleMedium),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 8),
-                                        ..._healthCheck!.issues.map((issue) =>
-                                            Padding(
-                                              padding: const EdgeInsets.only(
-                                                  bottom: 4),
-                                              child: Row(
-                                                children: [
-                                                  const Icon(
-                                                      Icons.warning_amber,
-                                                      size: 16,
-                                                      color: AppColors.warning),
-                                                  const SizedBox(width: 8),
-                                                  Expanded(
-                                                      child: Text(issue,
-                                                          style: AppTypography
-                                                              .bodyMedium)),
-                                                ],
-                                              ),
-                                            )),
-                                        if (_healthCheck!
-                                            .suggestions.isNotEmpty) ...[
-                                          const SizedBox(height: 8),
-                                          ..._healthCheck!.suggestions
-                                              .map((suggestion) => Padding(
-                                                    padding:
-                                                        const EdgeInsets.only(
-                                                            bottom: 4),
-                                                    child: Row(
-                                                      children: [
-                                                        const Icon(
-                                                            Icons
-                                                                .lightbulb_outline,
-                                                            size: 16,
-                                                            color: AppColors
-                                                                .success),
-                                                        const SizedBox(
-                                                            width: 8),
-                                                        Expanded(
-                                                            child: Text(
-                                                                suggestion,
-                                                                style: AppTypography
-                                                                    .caption)),
-                                                      ],
-                                                    ),
-                                                  )),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                        ],
-
-                        if (_enthusiasmScore != null &&
-                            _gameStage != null &&
-                            _finalRecommendation != null) ...[
-                          KeyedSubtree(
-                            key: _coachSurfaceKey,
-                            child: CoachSurface(
-                              scope: CoachScope.conversation(
-                                widget.conversationId,
-                              ),
-                              analysisSnapshot:
-                                  _buildCoachChatAnalysisSnapshot(),
-                              focusRequestToken: _coachChatFocusRequest,
-                              prefillText: _coachChatPrefill,
-                              onReturnToAnalysis: _returnToAnalysisOverview,
-                              onQuotaExceeded: () {
-                                unawaited(_handleCoachChatQuotaExceeded());
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-
-                        if (_isAnalyzing && _enthusiasmScore == null) ...[
-                          Center(
-                            child: StreamingAnalysisLoader(
-                              label: _streamProgressLabel,
-                              detail: _streamProgressDetail,
-                            ),
-                          ),
-                        ],
-
-                        if ((_isAnalyzing || _fullErrorMessage != null) &&
-                            _streamContents.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          _buildStreamingContentCard(),
-                        ],
-
-                        // gate 含 _quotaExceededInfo：fresh-start quota 429
-                        // （failedBeforeRecommendation）只設 quota state、
-                        // 不設 _fullErrorMessage（Codex 雙審 r1-P2a）。
-                        if (_fullErrorMessage != null ||
-                            _quotaExceededInfo != null) ...[
-                          const SizedBox(height: 12),
-                          // Quota 429 分流：額度不足不是技術失敗，渲染升級卡
-                          // 而非「無法再重試」（smoke P1 fix 2026-06-11）。
-                          if (_quotaExceededInfo != null)
-                            QuotaExceededUpgradeCard(
-                              isMonthly: _quotaExceededInfo!.isMonthly,
-                              remaining: _quotaExceededInfo!.remaining,
-                              quotaNeeded: _quotaExceededInfo!.quotaNeeded,
-                              onViewPlans: () => _showPaywall(context),
-                            )
-                          else
-                            FullAnalysisRetryCard(
-                              retriesRemaining: _fullErrorRetriesRemaining,
-                              errorMessage: _fullErrorMessage,
-                              onRetry: _fullErrorRetriesRemaining > 0
-                                  ? _retryFullAnalysis
-                                  : null,
-                            ),
-                        ],
-
-                        if (_isAnalyzing ||
-                            _fullErrorMessage != null ||
-                            _quotaExceededInfo != null)
-                          SizedBox(
-                            key: _analysisProgressEndKey,
-                            height: 1,
-                          ),
-
-                        // 草稿潤飾功能：使用者已有方向時才用；判斷/策略交給 Coach 1:1。
-                        if (_enthusiasmScore != null) ...[
-                          const SizedBox(height: 24),
-                          BrandSurfaceCard(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                GestureDetector(
-                                  onTap: () => setState(() =>
-                                      _showOptimizeInput = !_showOptimizeInput),
-                                  child: Row(
-                                    children: [
-                                      const Text('✏️',
-                                          style: TextStyle(fontSize: 20)),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          '我已有草稿，幫我修自然',
-                                          style: AppTypography.titleMedium
-                                              .copyWith(
-                                                  color: AppColors
-                                                      .onBackgroundPrimary),
-                                        ),
-                                      ),
-                                      Icon(
-                                        _showOptimizeInput
-                                            ? Icons.expand_less
-                                            : Icons.expand_more,
-                                        color: AppColors.onBackgroundSecondary
-                                            .withValues(alpha: 0.6),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '適合你已經知道想回什麼，只想調整語氣、長度和壓迫感。還不確定該不該回，就用「問教練」。',
-                                  style: AppTypography.bodySmall.copyWith(
-                                    color: AppColors.onBackgroundSecondary,
-                                    height: 1.35,
-                                  ),
-                                ),
-                                if (_showOptimizeInput) ...[
-                                  const SizedBox(height: 12),
-                                  TextField(
-                                    controller: _optimizeController,
-                                    style: AppTypography.bodyMedium.copyWith(
-                                        color: AppColors.onBackgroundPrimary),
-                                    decoration: InputDecoration(
-                                      hintText: '貼上你原本想傳的訊息…',
-                                      helperText:
-                                          '這裡只修草稿；成功完成使用 1 則。想討論下一步，請用「問教練」。',
-                                      hintStyle:
-                                          AppTypography.bodyMedium.copyWith(
-                                        color: AppColors.onBackgroundSecondary
-                                            .withValues(alpha: 0.6),
-                                      ),
-                                      helperStyle:
-                                          AppTypography.caption.copyWith(
-                                        color: AppColors.onBackgroundSecondary
-                                            .withValues(alpha: 0.6),
-                                      ),
-                                      filled: true,
-                                      fillColor: AppColors.brandInk
-                                          .withValues(alpha: 0.4),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: BorderSide(
-                                            color: Colors.white
-                                                .withValues(alpha: 0.12)),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: BorderSide(
-                                            color: Colors.white
-                                                .withValues(alpha: 0.12)),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: const BorderSide(
-                                            color: AppColors.ctaStart,
-                                            width: 1.5),
-                                      ),
-                                      suffixIcon: IconButton(
-                                        icon: Icon(Icons.keyboard_hide,
-                                            color: AppColors
-                                                .onBackgroundSecondary
-                                                .withValues(alpha: 0.6)),
-                                        onPressed: _dismissKeyboard,
-                                        tooltip: '收起鍵盤',
-                                      ),
-                                    ),
-                                    maxLines: 3,
-                                    textInputAction: TextInputAction.done,
-                                    onEditingComplete: _dismissKeyboard,
-                                    onTapOutside: (_) => _dismissKeyboard(),
-                                    enabled: !_isOptimizing,
-                                    onChanged: (_) => setState(() {}),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton.icon(
-                                      onPressed: _isOptimizing ||
-                                              _optimizeController.text
-                                                  .trim()
-                                                  .isEmpty
-                                          ? null
-                                          : _optimizeMessage,
-                                      icon: _isOptimizing
-                                          ? const SizedBox(
-                                              width: 16,
-                                              height: 16,
-                                              child: CircularProgressIndicator(
-                                                  strokeWidth: 2),
-                                            )
-                                          : const Icon(Icons.auto_fix_high),
-                                      label: Text(
-                                        _isOptimizing ? '優化中…' : '優化這段草稿',
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                                // 顯示優化結果
-                                if (_optimizedMessage != null &&
-                                    _optimizedMessage!
-                                        .optimized.isNotEmpty) ...[
-                                  const SizedBox(height: 16),
-                                  const Divider(),
-                                  const SizedBox(height: 12),
-                                  Row(
-                                    children: [
-                                      const Text('✨',
-                                          style: TextStyle(fontSize: 18)),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        '優化後草稿',
-                                        style:
-                                            AppTypography.titleMedium.copyWith(
-                                          color: AppColors.onBackgroundPrimary,
-                                        ),
-                                      ),
-                                    ],
                                   ),
                                   const SizedBox(height: 8),
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        colors: [
-                                          AppColors.brandSurface2
-                                              .withValues(alpha: 0.94),
-                                          AppColors.brandSurface
-                                              .withValues(alpha: 0.88),
-                                        ],
-                                      ),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: AppColors.ctaStart
-                                            .withValues(alpha: 0.55),
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black
-                                              .withValues(alpha: 0.22),
-                                          blurRadius: 12,
-                                          offset: const Offset(0, 4),
-                                        ),
-                                      ],
-                                    ),
-                                    child: Text(
-                                      _optimizedMessage!.optimized,
-                                      style: AppTypography.bodyLarge.copyWith(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                  Text(
+                                    '適合你已經知道想回什麼，只想調整語氣、長度和壓迫感。還不確定該不該回，就用「問教練」。',
+                                    style: AppTypography.bodySmall.copyWith(
+                                      color: AppColors.onBackgroundSecondary,
+                                      height: 1.35,
                                     ),
                                   ),
-                                  if (_optimizedMessage!.reason.isNotEmpty) ...[
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      '💡 ${_optimizedMessage!.reason}',
-                                      style: AppTypography.caption.copyWith(
-                                        color: AppColors.onBackgroundPrimary,
-                                      ),
-                                    ),
-                                  ],
-                                  const SizedBox(height: 12),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: OutlinedButton.icon(
-                                      onPressed: () {
-                                        Clipboard.setData(ClipboardData(
-                                            text:
-                                                _optimizedMessage!.optimized));
-                                        unawaited(_recordAnalysisCopy(
-                                          cardKey: 'polish',
-                                          copiedText:
-                                              _optimizedMessage!.optimized,
-                                        ));
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          const SnackBar(
-                                              content:
-                                                  Text('已複製草稿，發出後記得回來回報結果')),
-                                        );
-                                      },
-                                      icon: const Icon(Icons.copy),
-                                      label: const Text('複製草稿'),
-                                    ),
-                                  ),
-                                  _buildRefineButton(
-                                    _optimizedMessage!.optimized,
-                                    originCardKey: 'polish',
-                                  ),
-                                  _buildAnalysisOutcomeBar(
-                                    cardKey: 'polish',
-                                    label: '潤飾草稿',
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
-
-                        // 一致性提醒
-                        if (_reminder != null &&
-                            _reminder!.trim().isNotEmpty) ...[
-                          const SizedBox(height: 16),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.info.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                const Text('💬',
-                                    style: TextStyle(fontSize: 18)),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    _reminder!,
-                                    style: AppTypography.bodyMedium.copyWith(
-                                      fontStyle: FontStyle.italic,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-
-                        // 反饋區塊 (有分析結果時顯示)
-                        if (_enthusiasmScore != null) ...[
-                          const SizedBox(height: 24),
-                          if (!_feedbackSubmitted) ...[
-                            Divider(
-                                color: AppColors.onBackgroundSecondary
-                                    .withValues(alpha: 0.5)),
-                            const SizedBox(height: 16),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text('這個建議有幫助嗎？',
-                                    style: AppTypography.bodyMedium.copyWith(
-                                        color: AppColors.onBackgroundPrimary)),
-                                const SizedBox(width: 16),
-                                IconButton(
-                                  icon: const Icon(Icons.thumb_up_outlined),
-                                  onPressed: _isSubmittingFeedback
-                                      ? null
-                                      : () => _submitFeedback('positive'),
-                                  tooltip: '有幫助',
-                                  color: AppColors.success,
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.thumb_down_outlined),
-                                  onPressed: _isSubmittingFeedback
-                                      ? null
-                                      : () => setState(
-                                          () => _showFeedbackForm = true),
-                                  tooltip: '需要改進',
-                                  color: AppColors.error,
-                                ),
-                              ],
-                            ),
-                            if (_showFeedbackForm) ...[
-                              const SizedBox(height: 16),
-                              BrandSurfaceCard(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('哪裡需要改進？',
-                                        style: AppTypography.bodyLarge.copyWith(
-                                            color:
-                                                AppColors.onBackgroundPrimary)),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      '預設只送評分類別與結構化分析資訊，不附原始對話。',
-                                      style: AppTypography.caption.copyWith(
-                                        color: AppColors.onBackgroundSecondary
-                                            .withValues(alpha: 0.6),
-                                      ),
-                                    ),
+                                  if (_showOptimizeInput) ...[
                                     const SizedBox(height: 12),
-                                    Wrap(
-                                      spacing: 8,
-                                      runSpacing: 8,
-                                      children: [
-                                        _buildFeedbackCategoryChip(
-                                            'too_direct', '太直接'),
-                                        _buildFeedbackCategoryChip(
-                                            'unnatural', '不自然'),
-                                        _buildFeedbackCategoryChip(
-                                            'too_long', '回覆太長'),
-                                        _buildFeedbackCategoryChip(
-                                            'wrong_style', '不符合我的風格'),
-                                        _buildFeedbackCategoryChip(
-                                            'other', '其他'),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 16),
-                                    Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Checkbox(
-                                          value: _includeFeedbackContext,
-                                          onChanged: _isSubmittingFeedback
-                                              ? null
-                                              : (value) {
-                                                  setState(() {
-                                                    _includeFeedbackContext =
-                                                        value ?? false;
-                                                  });
-                                                },
-                                        ),
-                                        Expanded(
-                                          child: Padding(
-                                            padding:
-                                                const EdgeInsets.only(top: 12),
-                                            child: Text(
-                                              '附上最後 6 則對話片段，幫助我們排查（選填）',
-                                              style: AppTypography.bodySmall
-                                                  .copyWith(
-                                                color: AppColors
-                                                    .onBackgroundPrimary,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
                                     TextField(
-                                      controller: _feedbackCommentController,
-                                      enabled: !_isSubmittingFeedback,
+                                      controller: _optimizeController,
                                       style: AppTypography.bodyMedium.copyWith(
                                           color: AppColors.onBackgroundPrimary),
                                       decoration: InputDecoration(
-                                        hintText: '補充說明（選填）',
-                                        helperText: '輸入完可先收起鍵盤，再送出反饋。',
-                                        hintStyle: AppTypography.bodyMedium
-                                            .copyWith(
-                                                color: AppColors
-                                                    .onBackgroundSecondary
-                                                    .withValues(alpha: 0.6)),
+                                        hintText: '貼上你原本想傳的訊息…',
+                                        helperText:
+                                            '這裡只修草稿；成功完成使用 1 則。想討論下一步，請用「問教練」。',
+                                        hintStyle:
+                                            AppTypography.bodyMedium.copyWith(
+                                          color: AppColors.onBackgroundSecondary
+                                              .withValues(alpha: 0.6),
+                                        ),
                                         helperStyle:
                                             AppTypography.caption.copyWith(
                                           color: AppColors.onBackgroundSecondary
                                               .withValues(alpha: 0.6),
                                         ),
-                                        isDense: true,
                                         filled: true,
                                         fillColor: AppColors.brandInk
                                             .withValues(alpha: 0.4),
@@ -8277,49 +8064,377 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                           tooltip: '收起鍵盤',
                                         ),
                                       ),
-                                      maxLength: 300,
                                       maxLines: 3,
                                       textInputAction: TextInputAction.done,
                                       onEditingComplete: _dismissKeyboard,
                                       onTapOutside: (_) => _dismissKeyboard(),
+                                      enabled: !_isOptimizing,
+                                      onChanged: (_) => setState(() {}),
                                     ),
-                                    const SizedBox(height: 16),
+                                    const SizedBox(height: 12),
                                     SizedBox(
                                       width: double.infinity,
-                                      child: ElevatedButton(
-                                        onPressed: _feedbackCategory != null &&
-                                                !_isSubmittingFeedback
-                                            ? () => _submitFeedback('negative')
-                                            : null,
-                                        child: _isSubmittingFeedback
+                                      child: ElevatedButton.icon(
+                                        onPressed: _isOptimizing ||
+                                                _optimizeController.text
+                                                    .trim()
+                                                    .isEmpty
+                                            ? null
+                                            : _optimizeMessage,
+                                        icon: _isOptimizing
                                             ? const SizedBox(
-                                                width: 18,
-                                                height: 18,
+                                                width: 16,
+                                                height: 16,
                                                 child:
                                                     CircularProgressIndicator(
-                                                  strokeWidth: 2,
-                                                ),
+                                                        strokeWidth: 2),
                                               )
-                                            : const Text('送出反饋'),
+                                            : const Icon(Icons.auto_fix_high),
+                                        label: Text(
+                                          _isOptimizing ? '優化中…' : '優化這段草稿',
+                                        ),
                                       ),
                                     ),
                                   ],
-                                ),
-                              ),
-                            ],
-                          ] else ...[
-                            Center(
-                              child: Text(
-                                '已收到你的回饋',
-                                style: AppTypography.bodyMedium
-                                    .copyWith(color: AppColors.textSecondary),
+                                  // 顯示優化結果
+                                  if (_optimizedMessage != null &&
+                                      _optimizedMessage!
+                                          .optimized.isNotEmpty) ...[
+                                    const SizedBox(height: 16),
+                                    const Divider(),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      children: [
+                                        const Text('✨',
+                                            style: TextStyle(fontSize: 18)),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          '優化後草稿',
+                                          style: AppTypography.titleMedium
+                                              .copyWith(
+                                            color:
+                                                AppColors.onBackgroundPrimary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            AppColors.brandSurface2
+                                                .withValues(alpha: 0.94),
+                                            AppColors.brandSurface
+                                                .withValues(alpha: 0.88),
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: AppColors.ctaStart
+                                              .withValues(alpha: 0.55),
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black
+                                                .withValues(alpha: 0.22),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Text(
+                                        _optimizedMessage!.optimized,
+                                        style: AppTypography.bodyLarge.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    if (_optimizedMessage!
+                                        .reason.isNotEmpty) ...[
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        '💡 ${_optimizedMessage!.reason}',
+                                        style: AppTypography.caption.copyWith(
+                                          color: AppColors.onBackgroundPrimary,
+                                        ),
+                                      ),
+                                    ],
+                                    const SizedBox(height: 12),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: OutlinedButton.icon(
+                                        onPressed: () {
+                                          Clipboard.setData(ClipboardData(
+                                              text: _optimizedMessage!
+                                                  .optimized));
+                                          unawaited(_recordAnalysisCopy(
+                                            cardKey: 'polish',
+                                            copiedText:
+                                                _optimizedMessage!.optimized,
+                                          ));
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            const SnackBar(
+                                                content:
+                                                    Text('已複製草稿，發出後記得回來回報結果')),
+                                          );
+                                        },
+                                        icon: const Icon(Icons.copy),
+                                        label: const Text('複製草稿'),
+                                      ),
+                                    ),
+                                    _buildRefineButton(
+                                      _optimizedMessage!.optimized,
+                                      originCardKey: 'polish',
+                                    ),
+                                    _buildAnalysisOutcomeBar(
+                                      cardKey: 'polish',
+                                      label: '潤飾草稿',
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
                           ],
-                        ],
 
-                        const SizedBox(height: 24),
-                      ],
+                          // 一致性提醒
+                          if (_reminder != null &&
+                              _reminder!.trim().isNotEmpty) ...[
+                            const SizedBox(height: 16),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.info.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Text('💬',
+                                      style: TextStyle(fontSize: 18)),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      _reminder!,
+                                      style: AppTypography.bodyMedium.copyWith(
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+
+                          // 反饋區塊 (有分析結果時顯示)
+                          if (_enthusiasmScore != null) ...[
+                            const SizedBox(height: 24),
+                            if (!_feedbackSubmitted) ...[
+                              Divider(
+                                  color: AppColors.onBackgroundSecondary
+                                      .withValues(alpha: 0.5)),
+                              const SizedBox(height: 16),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text('這個建議有幫助嗎？',
+                                      style: AppTypography.bodyMedium.copyWith(
+                                          color:
+                                              AppColors.onBackgroundPrimary)),
+                                  const SizedBox(width: 16),
+                                  IconButton(
+                                    icon: const Icon(Icons.thumb_up_outlined),
+                                    onPressed: _isSubmittingFeedback
+                                        ? null
+                                        : () => _submitFeedback('positive'),
+                                    tooltip: '有幫助',
+                                    color: AppColors.success,
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.thumb_down_outlined),
+                                    onPressed: _isSubmittingFeedback
+                                        ? null
+                                        : () => setState(
+                                            () => _showFeedbackForm = true),
+                                    tooltip: '需要改進',
+                                    color: AppColors.error,
+                                  ),
+                                ],
+                              ),
+                              if (_showFeedbackForm) ...[
+                                const SizedBox(height: 16),
+                                BrandSurfaceCard(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text('哪裡需要改進？',
+                                          style: AppTypography.bodyLarge
+                                              .copyWith(
+                                                  color: AppColors
+                                                      .onBackgroundPrimary)),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        '預設只送評分類別與結構化分析資訊，不附原始對話。',
+                                        style: AppTypography.caption.copyWith(
+                                          color: AppColors.onBackgroundSecondary
+                                              .withValues(alpha: 0.6),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          _buildFeedbackCategoryChip(
+                                              'too_direct', '太直接'),
+                                          _buildFeedbackCategoryChip(
+                                              'unnatural', '不自然'),
+                                          _buildFeedbackCategoryChip(
+                                              'too_long', '回覆太長'),
+                                          _buildFeedbackCategoryChip(
+                                              'wrong_style', '不符合我的風格'),
+                                          _buildFeedbackCategoryChip(
+                                              'other', '其他'),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Checkbox(
+                                            value: _includeFeedbackContext,
+                                            onChanged: _isSubmittingFeedback
+                                                ? null
+                                                : (value) {
+                                                    setState(() {
+                                                      _includeFeedbackContext =
+                                                          value ?? false;
+                                                    });
+                                                  },
+                                          ),
+                                          Expanded(
+                                            child: Padding(
+                                              padding: const EdgeInsets.only(
+                                                  top: 12),
+                                              child: Text(
+                                                '附上最後 6 則對話片段，幫助我們排查（選填）',
+                                                style: AppTypography.bodySmall
+                                                    .copyWith(
+                                                  color: AppColors
+                                                      .onBackgroundPrimary,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: _feedbackCommentController,
+                                        enabled: !_isSubmittingFeedback,
+                                        style: AppTypography.bodyMedium
+                                            .copyWith(
+                                                color: AppColors
+                                                    .onBackgroundPrimary),
+                                        decoration: InputDecoration(
+                                          hintText: '補充說明（選填）',
+                                          helperText: '輸入完可先收起鍵盤，再送出反饋。',
+                                          hintStyle: AppTypography.bodyMedium
+                                              .copyWith(
+                                                  color: AppColors
+                                                      .onBackgroundSecondary
+                                                      .withValues(alpha: 0.6)),
+                                          helperStyle:
+                                              AppTypography.caption.copyWith(
+                                            color: AppColors
+                                                .onBackgroundSecondary
+                                                .withValues(alpha: 0.6),
+                                          ),
+                                          isDense: true,
+                                          filled: true,
+                                          fillColor: AppColors.brandInk
+                                              .withValues(alpha: 0.4),
+                                          border: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            borderSide: BorderSide(
+                                                color: Colors.white
+                                                    .withValues(alpha: 0.12)),
+                                          ),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            borderSide: BorderSide(
+                                                color: Colors.white
+                                                    .withValues(alpha: 0.12)),
+                                          ),
+                                          focusedBorder: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            borderSide: const BorderSide(
+                                                color: AppColors.ctaStart,
+                                                width: 1.5),
+                                          ),
+                                          suffixIcon: IconButton(
+                                            icon: Icon(Icons.keyboard_hide,
+                                                color: AppColors
+                                                    .onBackgroundSecondary
+                                                    .withValues(alpha: 0.6)),
+                                            onPressed: _dismissKeyboard,
+                                            tooltip: '收起鍵盤',
+                                          ),
+                                        ),
+                                        maxLength: 300,
+                                        maxLines: 3,
+                                        textInputAction: TextInputAction.done,
+                                        onEditingComplete: _dismissKeyboard,
+                                        onTapOutside: (_) => _dismissKeyboard(),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton(
+                                          onPressed: _feedbackCategory !=
+                                                      null &&
+                                                  !_isSubmittingFeedback
+                                              ? () =>
+                                                  _submitFeedback('negative')
+                                              : null,
+                                          child: _isSubmittingFeedback
+                                              ? const SizedBox(
+                                                  width: 18,
+                                                  height: 18,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                  ),
+                                                )
+                                              : const Text('送出反饋'),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ] else ...[
+                              Center(
+                                child: Text(
+                                  '已收到你的回饋',
+                                  style: AppTypography.bodyMedium
+                                      .copyWith(color: AppColors.textSecondary),
+                                ),
+                              ),
+                            ],
+                          ],
+
+                          const SizedBox(height: 24),
+                        ],
+                      ),
                     ),
                   ),
                 ),
