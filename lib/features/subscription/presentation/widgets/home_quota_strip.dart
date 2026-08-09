@@ -125,15 +125,33 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
                 Icon(Icons.bolt_rounded, size: 16, color: accent),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    '本月免費額度還剩 $remaining 則',
-                    style: TextStyle(
-                      color: urgent
-                          ? AppColors.ctaStart
-                          : AppColors.onBackgroundPrimary,
-                      fontSize: 13,
-                      fontWeight: urgent ? FontWeight.w700 : FontWeight.w500,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '本月免費額度還剩 $remaining 則',
+                        style: TextStyle(
+                          color: urgent
+                              ? AppColors.ctaStart
+                              : AppColors.onBackgroundPrimary,
+                          fontSize: 13,
+                          fontWeight:
+                              urgent ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      // 本日上限與月額度並行存在（free 另有每日 cap），只補顯示
+                      // 一行；醒目色仍只跟月額度走，不另加 urgent 條件。
+                      Text(
+                        '本日免費額度剩 ${subscription.dailyRemaining} 則',
+                        style: TextStyle(
+                          color: AppColors.onBackgroundSecondary
+                              .withValues(alpha: 0.9),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 Icon(Icons.info_outline_rounded, size: 15, color: accent),

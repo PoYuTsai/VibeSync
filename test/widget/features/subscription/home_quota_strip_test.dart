@@ -90,6 +90,22 @@ void main() {
     expect(refreshCalls, 1);
   });
 
+  testWidgets('免費用戶同時顯示本日剩餘額度行', (tester) async {
+    await _pumpStrip(
+      tester,
+      subscription: const SubscriptionState(
+        tier: SubscriptionTierHelper.free,
+        monthlyMessagesUsed: 7,
+        monthlyLimit: 30,
+        dailyMessagesUsed: 10,
+        dailyLimit: 15,
+      ),
+    );
+
+    expect(find.text('本月免費額度還剩 23 則'), findsOneWidget);
+    expect(find.text('本日免費額度剩 5 則'), findsOneWidget);
+  });
+
   testWidgets('付費用戶整條隱藏', (tester) async {
     await _pumpStrip(
       tester,
