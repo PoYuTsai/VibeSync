@@ -114,9 +114,11 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
         pendingThinRecommendation = revalidated;
       }
     } else {
-      if (raw?.type === "analysis.decision") {
-        decisionSelectedStyle = options.prechargedRecommendation.selectedStyle;
-      }
+      // resume 錨點風格一律照記（decision 與 legacy 全卡皆是）：telemetry 的
+      // selected 判定才不會在 legacy 全卡 resume 整條標 unknown（Codex 雙審
+      // P2）。legacy 全卡 officialRecommendationEmitted 已為 true，tryLateBind
+      // 不會因此合成第二張卡，行為不變。
+      decisionSelectedStyle = options.prechargedRecommendation.selectedStyle;
       assembler.absorb(toRecommendationEvent(options.prechargedRecommendation));
     }
   }
@@ -247,18 +249,28 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     // option 記一行覆蓋數，上線一週後對拍驗 prompt 成效（黑箱重驗）。
     if (inventory && style) {
       const verdict = validateSelectedSegments(inventory, segments);
-      const isSelected = style === selectedStyleNow();
+      // 錨點（瘦卡/decision）還沒建立時標 unknown，不誤標 non-selected 污染
+      // telemetry（Codex 雙審 P2；precharged legacy 路徑可能整條無錨）。
+      const anchor = selectedStyleNow();
+      const selectedLabel = anchor == null ? "unknown" : `${style === anchor}`;
       const covered = coveredIndependentBalls(inventory, segments);
+      // indices 必記：same-set 對拍要比「集合」，只看 covered 數會把
+      // {1,2,3} 與 {3,4,5} 都當 3/N（Codex 雙審 Spec P1）。
+      const indices = [...covered].sort((a, b) => a - b).join(",");
       console.log(
-        `[ball_coverage] style=${style} selected=${isSelected} ` +
+        `[ball_coverage] style=${style} selected=${selectedLabel} ` +
           `covered=${covered.size}/${inventory.independentCount} ` +
-          `floor=${segmentFloor(inventory)} segments=${segments.length} ` +
-          `ok=${verdict.ok}`,
+          `indices=[${indices}] floor=${segmentFloor(inventory)} ` +
+          `segments=${segments.length} ok=${verdict.ok}`,
       );
       if (!verdict.ok) {
         console.warn(
           `[ball_inventory] soft-pass ${
-            isSelected ? "selected" : "non-selected"
+            anchor == null
+              ? "unanchored"
+              : style === anchor
+              ? "selected"
+              : "non-selected"
           } style ${style}: ${verdict.reason}`,
         );
       }

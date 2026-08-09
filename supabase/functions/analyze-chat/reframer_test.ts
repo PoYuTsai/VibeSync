@@ -2472,6 +2472,132 @@ Deno.test("fail-soft: selected style segment sourced from 略 ball is NOT blocke
   ));
 });
 
+// ---------------------------------------------------------------------------
+// 球數對齊批（2026-08-09）：[ball_coverage] telemetry — 每個 option 記一行
+// 覆蓋集合（indices），selected 三態（true/false/unknown），fail-soft 不變。
+// ---------------------------------------------------------------------------
+
+async function _withCapturedConsole(
+  run: () => Promise<void>,
+): Promise<{ logs: string[]; warns: string[] }> {
+  const logs: string[] = [];
+  const warns: string[] = [];
+  const origLog = console.log;
+  const origWarn = console.warn;
+  console.log = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+  console.warn = (...args: unknown[]) => warns.push(args.map(String).join(" "));
+  try {
+    await run();
+  } finally {
+    console.log = origLog;
+    console.warn = origWarn;
+  }
+  return { logs, warns };
+}
+
+Deno.test("ball_coverage: every option logs one line with covered indices and selected flag", async () => {
+  const events: StreamOutputEvent[] = [];
+  const { logs } = await _withCapturedConsole(async () => {
+    const reframer = createStreamReframer({
+      emit(event) {
+        events.push(event);
+      },
+      onRecommendation() {
+        return { charged: true };
+      },
+    });
+    reframer.pushText(inventoryLine(FOUR_CATCHABLE));
+    reframer.pushText(decisionLine("coldRead"));
+    reframer.pushText(thinRecommendationLine("coldRead"));
+    reframer.pushText(replyOptionLine("coldRead", [4, 5, 6]));
+    reframer.pushText(replyOptionLine("extend", [3, 4, 5]));
+    await reframer.flush();
+  });
+
+  const coverage = logs.filter((entry) => entry.includes("[ball_coverage]"));
+  assertEquals(coverage.length, 2);
+  assert(coverage[0].includes("style=coldRead"));
+  assert(coverage[0].includes("selected=true"));
+  assert(coverage[0].includes("covered=3/4"));
+  // same-set 對拍靠集合本身，不能只看 covered 數（Codex 雙審 Spec P1）。
+  assert(coverage[0].includes("indices=[4,5,6]"));
+  assert(coverage[1].includes("style=extend"));
+  assert(coverage[1].includes("selected=false"));
+  assert(coverage[1].includes("indices=[3,4,5]"));
+});
+
+Deno.test("ball_coverage: non-selected below floor logs warn but still emits the option (fail-soft)", async () => {
+  const events: StreamOutputEvent[] = [];
+  const { warns } = await _withCapturedConsole(async () => {
+    const reframer = createStreamReframer({
+      emit(event) {
+        events.push(event);
+      },
+      onRecommendation() {
+        return { charged: true };
+      },
+    });
+    reframer.pushText(inventoryLine(FOUR_CATCHABLE));
+    reframer.pushText(decisionLine("coldRead"));
+    reframer.pushText(thinRecommendationLine("coldRead"));
+    reframer.pushText(replyOptionLine("coldRead", [4, 5, 6]));
+    reframer.pushText(replyOptionLine("extend", [3])); // 1 段 < floor 3
+    await reframer.flush();
+  });
+
+  assert(
+    warns.some((entry) =>
+      entry.includes("[ball_inventory] soft-pass non-selected style extend")
+    ),
+  );
+  assert(!events.some((e) => e.type === "analysis.error"));
+  assert(events.some(
+    (e) => e.type === "analysis.reply_option" &&
+      (e as Record<string, unknown>).style === "extend",
+  ));
+});
+
+Deno.test("ball_coverage: legacy full-card resume labels selected correctly (not unknown)", async () => {
+  // Codex 雙審 P2：legacy 全卡 resume 原本不寫 decisionSelectedStyle，整條
+  // telemetry 會被標成 non-selected/unknown。修法＝resume 錨點風格一律照記。
+  const events: StreamOutputEvent[] = [];
+  const { logs } = await _withCapturedConsole(async () => {
+    const reframer = createStreamReframer({
+      emit(event) {
+        events.push(event);
+      },
+      onRecommendation() {
+        return { charged: true };
+      },
+      prechargedRecommendation: {
+        selectedStyle: "coldRead",
+        message: "已扣費的舊全卡",
+        reason: "r",
+        quotedContext: "q",
+        warnings: [],
+        raw: {
+          type: "analysis.recommendation",
+          selectedStyle: "coldRead",
+          message: "已扣費的舊全卡",
+          reason: "r",
+          quotedContext: "q",
+        },
+      },
+    });
+    reframer.pushText(inventoryLine(FOUR_CATCHABLE));
+    reframer.pushText(replyOptionLine("coldRead", [4, 5, 6]));
+    reframer.pushText(replyOptionLine("extend", [3, 4, 5]));
+    await reframer.flush();
+  });
+
+  const coverage = logs.filter((entry) => entry.includes("[ball_coverage]"));
+  assertEquals(coverage.length, 2);
+  assert(coverage[0].includes("style=coldRead"));
+  assert(coverage[0].includes("selected=true"));
+  assert(coverage[1].includes("style=extend"));
+  assert(coverage[1].includes("selected=false"));
+});
+
 Deno.test("metrics gameStage record flows into finalResult and keeps decision nextStep", async () => {
   // 2026-07-02 dogfood：stream 協議 v2 後沒有任何 required 事件承載 gameStage，
   // assembler 種子預設 opening 永遠外流 → UI 對話進度永遠卡在破冰。修法＝

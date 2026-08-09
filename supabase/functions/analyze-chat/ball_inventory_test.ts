@@ -4,6 +4,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   type BallInventory,
+  coveredIndependentBalls,
   parseBallInventory,
   validateSelectedSegments,
 } from "./ball_inventory.ts";
@@ -243,4 +244,30 @@ Deno.test("validateSelectedSegments does not 誤殺: an extra absent-index segme
     validateSelectedSegments(inv, [seg(3), seg(4), seg(5), seg(9)]),
     { ok: true },
   );
+});
+
+// 球數對齊批（2026-08-09）：coveredIndependentBalls 是下限計數與
+// [ball_coverage] telemetry 的共用來源，直接鎖住它的邊界行為。
+
+Deno.test("coveredIndependentBalls counts distinct 接 only — duplicates, 併/略, absent index all excluded", () => {
+  const inv = inventoryOf([[1, "略"], [2, "併"], [3, "接"], [4, "接"]]);
+  const covered = coveredIndependentBalls(inv, [
+    seg(3),
+    seg(3), // 重複只算一次
+    seg(4),
+    seg(1), // 略：不算
+    seg(2), // 併：不算
+    seg(9), // 盤點外：不算
+  ]);
+  assertEquals([...covered].sort((a, b) => a - b), [3, 4]);
+});
+
+Deno.test("coveredIndependentBalls ignores segments without a numeric sourceIndex", () => {
+  const inv = inventoryOf([[3, "接"]]);
+  const covered = coveredIndependentBalls(inv, [
+    { sourceIndex: "3" },
+    { sourceIndex: Number.NaN },
+    {},
+  ]);
+  assertEquals(covered.size, 0);
 });

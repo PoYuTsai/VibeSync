@@ -86,8 +86,9 @@ export function segmentFloor(inventory: BallInventory): number {
 //   (1) 不來自標「併／略」的球（INV-H6 segments ⊆ 接）；未在盤點出現的
 //       sourceIndex 視為放行（絕不誤殺，盤點可能漏列）。
 //   (2) 段數 ≥ segmentFloor（治 (b) inventory→reply 斷層）。
-// 不改既有合法 segment 的處理（INV-H5）；只回 ok/理由，reframer 失敗時走
-// 既有 STREAM_INCOMPLETE_REPLY_OPTIONS 路徑（INV-H2）。
+// 不改既有合法 segment 的處理（INV-H5）；只回 ok/理由。2026-06-13 起 reframer
+// 對失敗僅記 log（fail-soft），不再 reject／走 INCOMPLETE。函式名裡的
+// Selected 是歷史沿革（原本只驗選中風格）；改名會牽動大量測試，刻意保留。
 export function validateSelectedSegments(
   inventory: BallInventory,
   segments: readonly Record<string, unknown>[],
