@@ -4,6 +4,7 @@
 // N 60%），本頁只負責呈現（邊框／badge／星等），不影響扣費。解鎖集合來自
 // practiceCollectionProvider（settings box 持久化），翻牌成功／還原舊場即時 +1。
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -40,6 +41,62 @@ double collectionHighlightIntensityAt(double t) {
   if (g < 0.18) return g / 0.18;
   if (g < 0.62) return 1;
   return (1 - (g - 0.62) / 0.38).clamp(0.0, 1.0);
+}
+
+/// SR 卡稀有度光段 painter：金色光段沿卡框圓角矩形繞圈（確定性、零 Random）。
+/// 對稱亮心（中央最亮最粗、往兩端平滑淡出）——這是常駐身分光的克制版，
+/// 刻意不做彗星頭尾式（那是一次性時刻光的語彙，見 OneShotCometBorder）。
+@visibleForTesting
+class SrRarityLightBandPainter extends CustomPainter {
+  SrRarityLightBandPainter({
+    required this.progress,
+    required this.color,
+    required this.borderRadius,
+  });
+
+  /// 0..1＝光段中心沿卡框繞一整圈。
+  final double progress;
+  final Color color;
+  final double borderRadius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    // 對齊 1.5px 邊框的中心線（半寬 0.75）。
+    final rect = (Offset.zero & size).deflate(0.75);
+    final path = Path()
+      ..addRRect(RRect.fromRectAndRadius(
+        rect,
+        Radius.circular(math.max(0, borderRadius - 0.75)),
+      ));
+    final paint = Paint()
+      ..style = PaintingStyle.fill
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    for (final metric in path.computeMetrics()) {
+      final len = metric.length;
+      final center = progress * len;
+      final bandLen = len * 0.30; // 光段約占周長 30%
+      const steps = 24;
+      for (var s = 0; s < steps; s++) {
+        final frac = s / (steps - 1); // 0..1 橫跨整段光
+        final offset = (center + bandLen * (frac - 0.5)) % len;
+        final tan =
+            metric.getTangentForOffset(offset < 0 ? offset + len : offset);
+        if (tan == null) continue;
+        final w = math.sin(frac * math.pi); // 0→1→0 對稱亮心
+        paint.color = color.withValues(
+          alpha: (0.10 + 0.42 * w * w).clamp(0.0, 1.0),
+        );
+        canvas.drawCircle(tan.position, 1.2 + 1.8 * w, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(SrRarityLightBandPainter old) =>
+      old.progress != progress ||
+      old.color != color ||
+      old.borderRadius != borderRadius;
 }
 
 /// 鎖卡剪影：灰階×0.07 近全黑，只留人形輪廓隱約可辨。
@@ -1061,9 +1118,9 @@ class _CollectionCard extends ConsumerWidget {
   final PracticeGirlProfile profile;
   final bool unlocked;
 
-  /// 稀有度呼吸光暈共用 [_drawPulse]（零新增 ticker：revealed 時 pulse 停在 0
-  /// ＝靜光，既有 pumpAndSettle 測試收斂語意不變）。SR 金色強檔、R 紫色弱檔、
-  /// N／鎖卡不動。
+  /// 稀有度常駐光共用 [_drawPulse]（零新增 ticker：pulse 停止＝SR 光段整層
+  /// 不畫、R 呼吸停在 0＝靜光，既有 pumpAndSettle 測試收斂語意不變）。
+  /// SR 金色光段繞框、R 紫色弱檔呼吸、N／鎖卡不動。
   final Animation<double> pulse;
 
   @override
@@ -1132,9 +1189,69 @@ class _CollectionCard extends ConsumerWidget {
       ],
     );
 
-    // SR/R 解鎖卡的呼吸光暈幅度；N 與鎖卡走靜態 decoration，不掛 pulse 重繪。
-    final breathing = unlocked &&
-        (rarity == PracticeGirlRarity.sr || rarity == PracticeGirlRarity.r);
+    // 解鎖 SR 卡＝金色光段沿框繞圈（2026-08-09 取代呼吸光）；R 保留紫色弱檔
+    // 呼吸；N 與鎖卡走靜態 decoration，不掛 pulse 重繪。
+    final srBand = unlocked && rarity == PracticeGirlRarity.sr;
+    final breathing = unlocked && rarity == PracticeGirlRarity.r;
+
+    final Widget body;
+    if (srBand) {
+      body = AnimatedBuilder(
+        animation: pulse,
+        child: content,
+        builder: (context, child) {
+          // reverse-repeat 相位攤平成連續繞圈：去程走上半圈、回程走下半圈，
+          // 方向永不回頭（直接用 value 會變成來回擺，不是「繞」）。
+          final status = pulse.status;
+          final sweeping = status == AnimationStatus.forward ||
+              status == AnimationStatus.reverse;
+          final progress = status == AnimationStatus.reverse
+              ? (2 - pulse.value) / 2
+              : pulse.value / 2;
+          return Stack(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: _decoration(color, 0),
+                child: child,
+              ),
+              // pulse 停止（revealed／reduce-motion）＝整層拿掉：零殘光、
+              // 零繪製成本，回到基線靜光。
+              if (sweeping)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        painter: SrRarityLightBandPainter(
+                          progress: progress,
+                          color: color,
+                          borderRadius: 18,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      );
+    } else if (breathing) {
+      body = AnimatedBuilder(
+        animation: pulse,
+        child: content,
+        builder: (context, child) => Container(
+          padding: const EdgeInsets.all(10),
+          decoration: _decoration(color, pulse.value),
+          child: child,
+        ),
+      );
+    } else {
+      body = Container(
+        padding: const EdgeInsets.all(10),
+        decoration: _decoration(color, 0),
+        child: content,
+      );
+    }
 
     return GestureDetector(
       key: ValueKey('collection-card-${profile.profileId}'),
@@ -1153,25 +1270,12 @@ class _CollectionCard extends ConsumerWidget {
             content: Text(isPremium ? '每日翻牌有機會遇到她' : '翻牌有機會遇到她'),
           ));
       },
-      child: breathing
-          ? AnimatedBuilder(
-              animation: pulse,
-              child: content,
-              builder: (context, child) => Container(
-                padding: const EdgeInsets.all(10),
-                decoration: _decoration(color, pulse.value),
-                child: child,
-              ),
-            )
-          : Container(
-              padding: const EdgeInsets.all(10),
-              decoration: _decoration(color, 0),
-              child: content,
-            ),
+      child: body,
     );
   }
 
-  /// t＝呼吸相位 0..1（pulse 停止時恆 0＝基線靜光，與改前視覺等價）。
+  /// t＝R 卡呼吸相位 0..1（pulse 停止時恆 0＝基線靜光）；SR 恆傳 0
+  /// （底光固定基線，動態交給繞框光段）。
   BoxDecoration _decoration(Color color, double t) {
     final rarity = profile.rarity;
     final sr = rarity == PracticeGirlRarity.sr;
@@ -1181,12 +1285,13 @@ class _CollectionCard extends ConsumerWidget {
       borderAlpha = 0;
       shadows = null;
     } else if (sr) {
-      borderAlpha = 0.80 + 0.20 * t;
+      // SR 底光固定在基線（動的部分交給繞框光段，不再呼吸）。
+      borderAlpha = 0.80;
       shadows = [
         BoxShadow(
-          color: color.withValues(alpha: 0.26 + 0.22 * t),
-          blurRadius: 15 + 5 * t,
-          spreadRadius: 1 + t,
+          color: color.withValues(alpha: 0.26),
+          blurRadius: 15,
+          spreadRadius: 1,
         ),
       ];
     } else if (rarity == PracticeGirlRarity.r) {

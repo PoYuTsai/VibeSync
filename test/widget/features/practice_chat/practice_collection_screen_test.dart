@@ -880,6 +880,58 @@ void main() {
       expect(find.byKey(drawButton), findsOneWidget);
     });
 
+    testWidgets('SR 繞框光段跟 pulse 啟停：locked 畫、revealed settle 後整層收乾',
+        (tester) async {
+      Finder band() => find.byWidgetPredicate(
+            (w) => w is CustomPaint && w.painter is SrRarityLightBandPainter,
+          );
+
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(
+        tester,
+        collectionApp(controller: controller, unlocked: {'practice_girl_004'}),
+      );
+
+      // locked：pulse repeat 中 → 解鎖 SR 卡有繞框光段（逐幀推進，不 settle）。
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(band(), findsOneWidget);
+
+      // revealed：pulse 停 → 光段整層拿掉、settle 收斂（會 hang 即 fail）。
+      controller.debugSetState(_revealedSeed());
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(band(), findsNothing);
+    });
+
+    testWidgets('reduce-motion：SR 光段整段不出現，維持基線靜光', (tester) async {
+      final controller = _DrawSpyController(_lockedSeed());
+      await tester.binding.setSurfaceSize(const Size(500, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: _collectionOverrides(
+            unlocked: {'practice_girl_004'},
+            controller: controller,
+          ),
+          child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(disableAnimations: true),
+              child: child!,
+            ),
+            home: const PracticeCollectionScreen(),
+          ),
+        ),
+      );
+      // reduce-motion 下 locked 也不 repeat：settle 必收斂、光段不出現。
+      await tester.pumpAndSettle();
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is CustomPaint && w.painter is SrRarityLightBandPainter,
+        ),
+        findsNothing,
+      );
+    });
+
     testWidgets('draw 事後 402 → 直接導 paywall＋觸發訂閱重同步（不出升級 snackbar）',
         (tester) async {
       var refreshCalls = 0;
