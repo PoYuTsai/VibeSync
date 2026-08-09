@@ -296,6 +296,64 @@ void main() {
     expect(find.text('Essential 解鎖'), findsNWidgets(3));
   });
 
+  testWidgets('進度到位前不拍板預設：有進度的使用者絕不閃現第一單元展開', (tester) async {
+    final box = InMemoryHiveBox();
+    final repo = EbookProgressRepository(box: box);
+    await repo.markChapterCompleted(
+      ownerUserId: 'shelf-owner',
+      bookId: 'ebook-2-conversation',
+      chapterId: 'ebook-2-chapter-1',
+    );
+
+    await pumpShelf(
+      tester,
+      catalog: _realCatalog,
+      progressBox: box,
+      size: const Size(390, 1600),
+    );
+
+    // 逐幀推進到收斂：進度 provider 第一幀是 loading（人人看似無進度），
+    // 那時若就拍板預設，會先閃現第一單元展開、下一幀又收回。任何一幀都
+    // 不得出現第一單元的書卡。
+    for (var i = 0; i < 24; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text('診斷 · 配對開場'), findsNothing);
+    }
+    await tester.pumpAndSettle();
+
+    expect(find.text('診斷 · 配對開場'), findsNothing);
+    expect(find.byKey(ebookResumeCardKey), findsOneWidget);
+  });
+
+  testWidgets('session 中進度更新：繼續閱讀卡即時出現，使用者展開狀態不重置', (tester) async {
+    final container = await pumpShelf(
+      tester,
+      catalog: _realCatalog,
+      size: const Size(390, 2000),
+    );
+    await tester.pumpAndSettle();
+
+    // 無進度預設：第一單元展開、沒有繼續閱讀卡。
+    expect(find.text('診斷 · 配對開場'), findsOneWidget);
+    expect(find.byKey(ebookResumeCardKey), findsNothing);
+
+    // 模擬同 session 讀完一章回到書架（進度 reload）。
+    await container
+        .read(ebookProgressControllerProvider.notifier)
+        .markChapterCompleted(
+          bookId: 'ebook-1-bottleneck',
+          chapterId: 'ebook-1-chapter-1',
+        );
+    await tester.pumpAndSettle();
+
+    // 繼續閱讀卡即時出現；已決定過的展開狀態不因進度更新被重置收合。
+    // 書名出現兩次＝繼續閱讀卡＋仍展開的書卡；同單元另一本也還看得到。
+    expect(find.byKey(ebookResumeCardKey), findsOneWidget);
+    expect(find.text('1/4 本已開始'), findsOneWidget);
+    expect(find.text('診斷 · 配對開場'), findsNWidgets(2));
+    expect(find.text('續航 · 讓對話活下去'), findsOneWidget);
+  });
+
   testWidgets('點繼續閱讀卡直接進該書目錄頁', (tester) async {
     final box = InMemoryHiveBox();
     final repo = EbookProgressRepository(box: box);
