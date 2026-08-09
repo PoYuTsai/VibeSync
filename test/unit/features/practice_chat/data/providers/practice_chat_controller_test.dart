@@ -907,6 +907,60 @@ void main() {
       expect(c.currentState.drawNextResetAt, before.drawNextResetAt);
     });
 
+    test('補水在途 draw「嘗試」失敗（client timeout/網路）→ 舊快照仍作廢不倒寫', () async {
+      // server 可能已入帳而 client 端失敗：抽前拍的 status 快照已不可信。
+      final gate = Completer<PracticeDrawQuotaStatus>();
+      api.statusHandler = () => gate.future;
+      final c = await makeRevealed(); // draw 回應已種：allowance 1 / remaining 0
+      final before = c.currentState;
+
+      final refresh = c.refreshDrawQuotaStatus();
+      api.drawHandler =
+          ({currentProfileId}) async => throw Exception('network');
+      await c.drawNewPracticeGirl(); // 失敗回滾，但 epoch 已在起手遞增
+
+      gate.complete((
+        freeAllowance: 9,
+        freeUsed: 0,
+        freeRemaining: 9,
+        nextResetAt: '2999-01-01T04:00:00.000Z',
+      ));
+      await refresh;
+
+      expect(c.currentState.drawFreeAllowance, before.drawFreeAllowance);
+      expect(c.currentState.drawFreeRemaining, before.drawFreeRemaining);
+    });
+
+    test('並行兩發補水 → 只有最後一發落地，舊發不互蓋', () async {
+      final slow = Completer<PracticeDrawQuotaStatus>();
+      var call = 0;
+      api.statusHandler = () {
+        call++;
+        if (call == 1) return slow.future; // 第一發慢
+        return Future.value((
+          freeAllowance: 3,
+          freeUsed: 1,
+          freeRemaining: 2,
+          nextResetAt: '2999-01-01T04:00:00.000Z',
+        ));
+      };
+      final c = makeController();
+
+      final first = c.refreshDrawQuotaStatus();
+      await c.refreshDrawQuotaStatus(); // 第二發先完成落地
+
+      slow.complete((
+        freeAllowance: 9,
+        freeUsed: 9,
+        freeRemaining: 0,
+        nextResetAt: '2999-01-01T04:00:00.000Z',
+      ));
+      await first;
+
+      expect(c.currentState.drawFreeRemaining, 2); // 第二發的值
+      expect(c.currentState.drawFreeAllowance, 3);
+    });
+
     test('補水在途完成一次 draw → 舊快照不倒寫（draw 回應為最新真相）', () async {
       final gate = Completer<PracticeDrawQuotaStatus>();
       api.statusHandler = () => gate.future;

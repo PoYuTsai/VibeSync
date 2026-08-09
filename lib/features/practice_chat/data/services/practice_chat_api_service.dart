@@ -924,11 +924,16 @@ class PracticeChatApiService {
     final used = _asInt(draw['freeUsed']);
     final remaining = _asInt(draw['freeRemaining']);
     final nextResetAt = draw['nextResetAt'];
+    // typed-but-invalid（負數／不可解析的重置點）一律拒收：污染 state 比
+    // 沒資料糟（額度列寧缺勿誤）。
     if (allowance == null ||
         used == null ||
         remaining == null ||
+        allowance < 0 ||
+        used < 0 ||
+        remaining < 0 ||
         nextResetAt is! String ||
-        nextResetAt.isEmpty) {
+        DateTime.tryParse(nextResetAt) == null) {
       throw PracticeGenerationFailedException('draw_status_failed');
     }
     return (

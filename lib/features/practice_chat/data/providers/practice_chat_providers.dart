@@ -1391,8 +1391,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 任何失敗都**不**污染目前 profile／transcript（保留原狀態），只設對應旗標／訊息。
   /// [srTicket]＝SR 限定翻牌券抽（訂閱一次性權益）：保底 SR、不佔每日免費
   /// 額度、不扣一般 quota；額度欄位不從 response 更新（券路徑回的是佔位值）。
-  /// draw 回應套用額度欄位的世代計數：唯讀 status 補水（[refreshDrawQuotaStatus]）
-  /// 在途時若有 draw 完成，status 的舊快照不得倒寫回去（draw 回應才是最新真相）。
+  /// 額度欄位的世代計數。兩處遞增：(1) 每次 draw「嘗試」起手——client 端
+  /// timeout／失敗時 server 可能已入帳，抽前拍的 status 快照一律作廢，不得
+  /// 倒寫（Codex 雙審 blocking 2）；(2) 每次補水自己起手——並行補水只有最後
+  /// 一發落地，舊發不互蓋。
   int _drawQuotaEpoch = 0;
 
   /// 圖鑑額度列 v2：唯讀補水本窗翻牌額度（app 重啟後跨 session 也準確）。
@@ -1400,7 +1402,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 刻意不動 drawExtraCost——那是 draw 回應在宣傳的加抽價，status 不帶。
   Future<void> refreshDrawQuotaStatus() async {
     if (state.isDrawing) return;
-    final epoch = _drawQuotaEpoch;
+    final epoch = ++_drawQuotaEpoch;
     try {
       final status = await _api.fetchDrawQuotaStatus();
       if (!mounted || state.isDrawing || epoch != _drawQuotaEpoch) return;
@@ -1425,6 +1427,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       return;
     }
     final prior = state;
+    // 起手就作廢在途 status 補水：即使本次 draw 在 client 端 timeout／失敗，
+    // server 可能已入帳，抽前拍的快照已不可信（Codex 雙審 blocking 2）。
+    _drawQuotaEpoch++;
     state = state.copyWith(
       drawStatus: PracticeDrawStatus.drawing,
       errorMessage: null,
@@ -1479,7 +1484,6 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           : practiceDifficultyId(prior.difficultyPreference);
       final learningMode = _modeAllowedForGirl(prior.learningMode, girl);
 
-      _drawQuotaEpoch++; // draw 回應即最新額度真相：作廢在途 status 補水
       state = PracticeChatState(
         sessionId: sessionId,
         createdAt: DateTime.now(),

@@ -748,15 +748,16 @@ Deno.test("draw_status：Starter → 唯讀 RPC 收 allowance 3＋台北中午�
   assertEquals(body.draw.nextResetAt, "2026-06-27T04:00:00.000Z");
 });
 
-Deno.test("draw_status：無訂閱列 → 視為 free（allowance 0），贈抽由 RPC 合併後仍可顯示", async () => {
+Deno.test("draw_status：無訂閱列 → 403 fail-closed（claim 同語意），不呼叫 RPC", async () => {
   const { result, body, rpcCalls } = await runStatus({
     sub: null,
     rpc: [{ data: { free_allowance: 1, free_used: 0, free_remaining: 1 } }],
   });
-  assertEquals(result.status, 200);
-  assertEquals(rpcCalls[0].p_free_allowance, 0);
-  assertEquals(body.draw.freeAllowance, 1); // RPC 已含未消耗贈抽 +1
-  assertEquals(body.draw.freeRemaining, 1);
+  // 真 draw 對無訂閱列必 403（PRACTICE_DRAW_NO_SUBSCRIPTION）；status 不得
+  // 憑未消耗贈抽顯示「還能抽」（Codex 雙審 blocking）。client fail-quiet 隱藏。
+  assertEquals(result.status, 403);
+  assertEquals(body.error, "No subscription found");
+  assertEquals(rpcCalls.length, 0);
 });
 
 Deno.test("draw_status：訂閱讀取失敗 → 500 draw_status_failed（client fail-quiet）", async () => {

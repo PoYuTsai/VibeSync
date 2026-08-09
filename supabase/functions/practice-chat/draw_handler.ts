@@ -339,8 +339,13 @@ export async function handleDrawStatus(args: {
     });
     return { body: { error: "draw_status_failed" }, status: 500 };
   }
+  if (!subRow) {
+    // claim 同語意 fail-closed：無訂閱列時真 draw 必 403（NO_SUBSCRIPTION），
+    // status 不得憑贈抽顯示「還能抽」（Codex 雙審 blocking 1）。
+    return { body: { error: "No subscription found" }, status: 403 };
+  }
   const tier = normalizeTier(
-    typeof subRow?.tier === "string" ? subRow.tier : null,
+    typeof subRow.tier === "string" ? subRow.tier : null,
   );
   const window = taipeiNoonResetWindow(now);
 

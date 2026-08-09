@@ -314,7 +314,8 @@ void main() {
 
     // 逐幀推進到收斂：進度 provider 第一幀是 loading（人人看似無進度），
     // 那時若就拍板預設，會先閃現第一單元展開、下一幀又收回。任何一幀都
-    // 不得出現第一單元的書卡。
+    // 不得出現第一單元的書卡——含 pumpWidget 已產出的首幀（先斷言再推進）。
+    expect(find.text('診斷 · 配對開場'), findsNothing);
     for (var i = 0; i < 24; i++) {
       await tester.pump(const Duration(milliseconds: 50));
       expect(find.text('診斷 · 配對開場'), findsNothing);
