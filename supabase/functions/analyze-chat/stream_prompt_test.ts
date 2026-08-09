@@ -64,7 +64,9 @@ Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
   // 2026-08 關於我重新定位案 批3：reply_option 新增必填 stretchLevel
   // （within/stretch/far），與 Task 11 的 coachFollowUpMaxChars 500→900
   // 同一批次拍板的刻意放寬，非無意義膨脹。
-  assert(prompt.length < 6500);
+  // 2026-08-09 球數對齊批：floor 擴成 EVERY option＋同接球集合＋equal effort
+  // （實測 6643），再放寬一檔，仍鎖上限防 contract 無限膨脹。
+  assert(prompt.length < 6800);
 });
 
 Deno.test("stream prompt trims the base prompt before appending contract", () => {
@@ -241,6 +243,24 @@ Deno.test("callback(c): prompt tells model not to mark a personal callback 略 f
     prompt.includes(
       "acknowledgement, duplicate, or detail that needs no reply",
     ),
+  );
+});
+
+Deno.test("compliance(b3): floor applies to EVERY option — same 接 ball set, equal effort", () => {
+  // 2026-08-09 球數對齊批：黑箱實證模型會把非選中風格寫少段，使用者橫滑挑
+  // 其他風格時吃到漏球版。floor 從 SELECTED 擴成 EVERY option，並要求與選中
+  // 同一組接球集合＋equal effort（覆蓋等量、字數不強求）。
+  const prompt = buildStreamSystemPrompt("BASE");
+
+  assert(prompt.includes("EVERY `analysis.reply_option`"));
+  assert(prompt.includes("not only the selected style"));
+  assert(
+    prompt.includes("cover the same set of `接` balls as the selected style"),
+  );
+  assert(prompt.includes("if any option misses that floor"));
+  assert(prompt.includes("write every option with equal effort"));
+  assert(
+    prompt.includes("equal effort means equal ball coverage, not equal word count"),
   );
 });
 

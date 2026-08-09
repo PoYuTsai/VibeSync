@@ -42,8 +42,11 @@ export function buildStreamSystemPrompt(
     //    floor 現為 prompt-only 準則，違反只記 log（見 reframer.ts ball_inventory canary）。
     //    這句「server rejects」措辭刻意保留——它是模型乖乖達標的 compliance 壓力來源，
     //    dogfood 已驗證有效。絕不據此句重新加硬 enforcement。改字串＝動高風險 prompt，必黑箱重驗。
-    "Server-enforced floor: the SELECTED style must contain at least min(3, number of independent balls marked 接) segments, each sourced from a different `接` ball. A `併` line enriches a related segment but does not raise the floor. The server rejects and forces a retry if the selected style misses that floor or pulls from a `略` ball, so satisfy it without inventing extra balls.",
-    "The selected style is the reply the user will actually send. It must cover the independent `接` balls required by the floor, but it does not need to match the longest alternative. Keep each segment sharp; precision beats padding.",
+    //    2026-08-09 球數對齊批：floor 從「只約束 SELECTED」擴成 EVERY option——黑箱
+    //    實證模型會把非選中風格寫少段（見 b2），使用者橫滑挑其他風格時吃到漏球版。
+    //    上線一週後用 [ball_coverage] telemetry 對拍驗成效（黑箱重驗）。
+    "Server-enforced floor: EVERY `analysis.reply_option` — not only the selected style — must contain at least min(3, number of independent balls marked 接) segments, each sourced from a different `接` ball, and every option must cover the same set of `接` balls as the selected style. A `併` line enriches a related segment but does not raise the floor. The server rejects and forces a retry if any option misses that floor or pulls from a `略` ball, so satisfy it without inventing extra balls.",
+    "The selected style is the reply the user will actually send, but write every option with equal effort: same `接` ball coverage, full quality in that style's own voice. An option does not need to match the longest alternative in length — equal effort means equal ball coverage, not equal word count. Keep each segment sharp; precision beats padding.",
     'Example reply_option line: {"type":"analysis.reply_option","style":"extend","reason":"把排隊併進晚餐球，再接夜市行程","stretchLevel":"stretch","segments":[{"sourceIndex":1,"sourceMessage":"剛來吃晚餐","reply":"排那麼久，希望真的有好吃到值得","reason":"接晚餐並合併排隊背景"},{"sourceIndex":3,"sourceMessage":"等等去樂華夜市","reply":"夜市幫我吃份地瓜球","reason":"接另一個獨立行程球"}]}',
     "4. `analysis.metrics` once. Include `gameStage`: `current` one of `opening`/`premise`/`qualification`/`narrative`/`close`, `status` one of `normal`/`stuckFriend`/`canAdvance`/`shouldRetreat`. Judge the stage from the whole conversation plus the 認識場景 context — 已是伴侶 or clearly dating is never `opening` unless restarting after a long silence.",
     "5. `analysis.coach_hint` once when useful.",

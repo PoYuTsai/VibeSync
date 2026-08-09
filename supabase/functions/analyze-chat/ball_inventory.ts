@@ -81,7 +81,8 @@ export function segmentFloor(inventory: BallInventory): number {
   return Math.min(3, inventory.independentCount);
 }
 
-// 硬版唯一新增閘：選中風格的 segments 必須
+// 硬版唯一新增閘（2026-08-09 球數對齊批起，reframer 對每個風格都跑這個檢查，
+// 不再只驗選中風格；fail-soft log-only 不變）：option 的 segments 必須
 //   (1) 不來自標「併／略」的球（INV-H6 segments ⊆ 接）；未在盤點出現的
 //       sourceIndex 視為放行（絕不誤殺，盤點可能漏列）。
 //   (2) 段數 ≥ segmentFloor（治 (b) inventory→reply 斷層）。
@@ -100,15 +101,13 @@ export function validateSelectedSegments(
     if (disposition === "略") {
       return {
         ok: false,
-        reason:
-          `選中風格 segment 來自標「略」的球 (sourceIndex=${sourceIndex})`,
+        reason: `segment 來自標「略」的球 (sourceIndex=${sourceIndex})`,
       };
     }
     if (disposition === "併") {
       return {
         ok: false,
-        reason:
-          `選中風格 segment 把標「併」的背景獨立成段 (sourceIndex=${sourceIndex})`,
+        reason: `segment 把標「併」的背景獨立成段 (sourceIndex=${sourceIndex})`,
       };
     }
   }
@@ -116,26 +115,37 @@ export function validateSelectedSegments(
   // 下限數「不同的獨立接球」而非段數（Codex adversarial P2）：重複 sourceIndex
   // 只算一次，盤點外（absent）的索引不算真接球。盤點外的段不會單獨致 REJECT
   // ——達標後多帶一段盤點外的句子仍放行（不誤殺 INV-H6'）。
-  const distinctIndependent = new Set<number>();
+  const covered = coveredIndependentBalls(inventory, segments);
+
+  const floor = segmentFloor(inventory);
+  if (covered.size < floor) {
+    return {
+      ok: false,
+      reason: `風格實際接到 ${covered.size} 顆不同的獨立接球，未達下限 ${floor}`,
+    };
+  }
+
+  return { ok: true };
+}
+
+// 一個 option 的 segments 實際覆蓋到哪些「接」球（去重、盤點外索引不算）。
+// validateSelectedSegments 的下限計數與 reframer 的 [ball_coverage] telemetry
+// 共用這一份，兩邊數字才對得起來。
+export function coveredIndependentBalls(
+  inventory: BallInventory,
+  segments: readonly Record<string, unknown>[],
+): Set<number> {
+  const covered = new Set<number>();
   for (const segment of segments) {
     const sourceIndex = segment?.sourceIndex;
     if (typeof sourceIndex !== "number" || !Number.isFinite(sourceIndex)) {
       continue;
     }
-    const disposition = inventory.dispositions.get(sourceIndex);
-    if (disposition === "接") distinctIndependent.add(sourceIndex);
+    if (inventory.dispositions.get(sourceIndex) === "接") {
+      covered.add(sourceIndex);
+    }
   }
-
-  const floor = segmentFloor(inventory);
-  if (distinctIndependent.size < floor) {
-    return {
-      ok: false,
-      reason:
-        `選中風格實際接到 ${distinctIndependent.size} 顆不同的獨立接球，未達下限 ${floor}`,
-    };
-  }
-
-  return { ok: true };
+  return covered;
 }
 
 export { BALL_DISPOSITIONS };

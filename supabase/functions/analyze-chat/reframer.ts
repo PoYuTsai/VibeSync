@@ -6,7 +6,9 @@ import {
 } from "./stream_events.ts";
 import {
   type BallInventory,
+  coveredIndependentBalls,
   parseBallInventory,
+  segmentFloor,
   validateSelectedSegments,
 } from "./ball_inventory.ts";
 import {
@@ -239,11 +241,25 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     // dogfood 已不存在的問題＝YAGNI。此處永久保留為 observability canary：
     // verdict.ok=false 的 log 是「prompt 接球率退步」的免費預警，不擋用戶。
     // ⚠️ 絕不把此 block 改回丟 option／終局 INCOMPLETE——那正是炸過的 guard。
-    if (inventory && style && style === selectedStyleNow()) {
+    //
+    // 2026-08-09 球數對齊批：檢查從「只驗選中風格」擴成每個 option 都驗（prompt
+    // 同批改成 EVERY option 適用 floor），仍然 log-only。[ball_coverage] 每個
+    // option 記一行覆蓋數，上線一週後對拍驗 prompt 成效（黑箱重驗）。
+    if (inventory && style) {
       const verdict = validateSelectedSegments(inventory, segments);
+      const isSelected = style === selectedStyleNow();
+      const covered = coveredIndependentBalls(inventory, segments);
+      console.log(
+        `[ball_coverage] style=${style} selected=${isSelected} ` +
+          `covered=${covered.size}/${inventory.independentCount} ` +
+          `floor=${segmentFloor(inventory)} segments=${segments.length} ` +
+          `ok=${verdict.ok}`,
+      );
       if (!verdict.ok) {
         console.warn(
-          `[ball_inventory] soft-pass selected style ${style}: ${verdict.reason}`,
+          `[ball_inventory] soft-pass ${
+            isSelected ? "selected" : "non-selected"
+          } style ${style}: ${verdict.reason}`,
         );
       }
     }
