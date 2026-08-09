@@ -163,15 +163,16 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // beam 光束提亮空狀態說明卡；比練習室入口稍弱一檔，
-                          // 不與下方「建立」CTA 搶焦點。
+                          // beam 光束提亮空狀態說明卡；參數與練習室入口完全
+                          // 一致（LiquidBeamEntryPreset，2026-08-09 Eric 拍板，
+                          // 推翻先前「弱一檔」的設定），只有圓角跟卡片走。
                           LiquidMotionFrame(
                             style: LiquidMotionStyle.beam,
                             borderRadius: 24,
-                            borderWidth: 2,
-                            glowRadius: 14,
-                            strength: 0.85,
-                            duration: const Duration(milliseconds: 5600),
+                            borderWidth: LiquidBeamEntryPreset.borderWidth,
+                            glowRadius: LiquidBeamEntryPreset.glowRadius,
+                            strength: LiquidBeamEntryPreset.strength,
+                            duration: LiquidBeamEntryPreset.duration,
                             child: BrandSurfaceCard(
                               padding:
                                   const EdgeInsets.fromLTRB(30, 30, 30, 34),

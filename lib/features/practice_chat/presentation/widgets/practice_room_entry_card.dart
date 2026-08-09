@@ -55,13 +55,15 @@ class PracticeRoomEntryCard extends StatelessWidget {
                           _DailyRewardEyebrow(),
                           SizedBox(height: 18),
                           // beam 光束沿玻璃面板邊框追跑，把視線導向 NEW 入口。
+                          // 參數＝LiquidBeamEntryPreset（與建立對象卡完全一致）。
                           LiquidMotionFrame(
                             style: LiquidMotionStyle.beam,
                             borderRadius:
                                 _PracticeRoomGlassPanel.panelCornerRadius,
-                            borderWidth: 2.4,
-                            glowRadius: 18,
-                            duration: Duration(milliseconds: 4800),
+                            borderWidth: LiquidBeamEntryPreset.borderWidth,
+                            glowRadius: LiquidBeamEntryPreset.glowRadius,
+                            strength: LiquidBeamEntryPreset.strength,
+                            duration: LiquidBeamEntryPreset.duration,
                             child: _PracticeRoomGlassPanel(),
                           ),
                         ],

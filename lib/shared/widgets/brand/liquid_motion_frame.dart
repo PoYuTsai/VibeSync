@@ -14,6 +14,18 @@ enum LiquidMotionStyle {
   beam,
 }
 
+/// 入口卡 beam 光暈的統一參數。
+///
+/// 2026-08-09 Eric 拍板：練習室入口與「先建立一張對象卡」兩個入口區塊的
+/// 光暈必須完全一致（原本對象卡刻意弱一檔，已推翻）。兩個呼叫端都吃這份
+/// preset，只有 borderRadius 跟各自卡片圓角走。新入口卡要掛 beam 也用這份。
+abstract final class LiquidBeamEntryPreset {
+  static const double borderWidth = 2.4;
+  static const double glowRadius = 18;
+  static const double strength = 1;
+  static const Duration duration = Duration(milliseconds: 4800);
+}
+
 /// 官網 Liquid Hero 在 App 內的輕量視覺語彙：慢速蜜桃粉流光、局部暖色高光，
 /// 以及不影響點擊與語意樹的外框光暈。
 ///
@@ -158,7 +170,6 @@ class _LiquidMotionFramePainter extends CustomPainter {
   // beam 光束的頭尾錨點（單一光束佔圓周的比例；第二道固定偏移 0.5）。
   static const double _beamTailStart = 0.08;
   static const double _beamHead = 0.25;
-  static const double _beamFrontEdge = 0.26;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -240,12 +251,13 @@ class _LiquidMotionFramePainter extends CustomPainter {
 
   /// 雙光束：頭亮尾淡、前緣銳利收掉，讓大部分邊框保持透明拉出對比。
   void _paintBeam(Canvas canvas, Rect rect, double rotation) {
-    // frontFade＝光束頭到全暗的弧長。描邊用預設 0.01（銳利 torch 前緣是設計
-    // 語彙）；外溢光暈必須傳長尾（見 glowPaint）——同用 0.01 時大半徑模糊會
-    // 把急停放大成一道貼著前緣的直線斷層（2026-08-09 Eric 真機紅框回報）。
+    // frontFade＝光束頭到全暗的弧長。描邊 0.045、光暈 0.07——兩層原本都是
+    // 0.01 的急停：描邊在真機上是亮金→灰黑的刀切、光暈被大半徑模糊放大成
+    // 一道貼著前緣的直線斷層（2026-08-09 Eric/Bruce 真機紅框回報，銳利
+    // torch 前緣語彙就此退役）。
     SweepGradient beamGradient({
       required double headAlpha,
-      double frontFade = _beamFrontEdge - _beamHead,
+      required double frontFade,
     }) {
       Color tail(double a) => AppColors.ctaStart.withValues(alpha: a);
       final head = const Color(0xFFFFD2B8).withValues(alpha: headAlpha * 0.94);
@@ -299,12 +311,14 @@ class _LiquidMotionFramePainter extends CustomPainter {
           beamGradient(headAlpha: 0.62, frontFade: 0.07).createShader(rect)
       ..colorFilter = strengthFilter()
       ..maskFilter = MaskFilter.blur(BlurStyle.normal, glowRadius);
-    // 光束本體：貼著邊框的高亮描邊。
+    // 光束本體：貼著邊框的高亮描邊。前緣同樣走短漸層收掉（0.045）——原本
+    // 0.01 的「銳利 torch 前緣」在真機上是亮金→灰黑的刀切斷層（2026-08-09
+    // Eric/Bruce 回報），頭仍是最亮點、收得快，但不再急停。
     final strokePaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = borderWidth
       ..strokeCap = StrokeCap.round
-      ..shader = beamGradient(headAlpha: 1).createShader(rect)
+      ..shader = beamGradient(headAlpha: 1, frontFade: 0.045).createShader(rect)
       ..colorFilter = strengthFilter();
 
     if (shape == BoxShape.circle) {
