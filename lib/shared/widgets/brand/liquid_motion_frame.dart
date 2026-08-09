@@ -23,7 +23,10 @@ abstract final class LiquidBeamEntryPreset {
   static const double borderWidth = 2.4;
   static const double glowRadius = 18;
   static const double strength = 1;
-  static const Duration duration = Duration(milliseconds: 4800);
+
+  /// 一圈 6800ms＝對齊首頁對象卡頭像 flow 光的角速度（2026-08-09 Bruce 回報
+  /// 原 4800ms 偏快，指名頭像那圈的流速才自然）。
+  static const Duration duration = Duration(milliseconds: 6800);
 }
 
 /// 官網 Liquid Hero 在 App 內的輕量視覺語彙：慢速蜜桃粉流光、局部暖色高光，
