@@ -350,20 +350,11 @@ class _ShelfHero extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          // 標題與品牌點刻意分成兩段：字級大時「·」才不會被換行拆到下一行開頭。
-          Text.rich(
-            TextSpan(
-              children: [
-                const TextSpan(text: '交友軟體實戰'),
-                TextSpan(
-                  text: ' · ',
-                  style: TextStyle(
-                    color: AppColors.brandBlush.withValues(alpha: 0.9),
-                  ),
-                ),
-                const TextSpan(text: '終極指引'),
-              ],
-            ),
+          // 2026-08-09 拍板：hero 大標改成書架的「總稱」，與下方單元群組卡的
+          // 「交友軟體實戰 · 終極指引」脫鉤——先前兩者同字面，看起來像重複列了
+          // 兩次。單元卡標題（unit.fullTitle）維持不動。
+          Text(
+            '高階互動指南',
             style: AppTypography.headlineLarge.copyWith(
               color: AppColors.onBackgroundPrimary,
               fontWeight: FontWeight.w900,
