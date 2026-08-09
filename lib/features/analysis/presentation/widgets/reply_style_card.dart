@@ -98,7 +98,11 @@ class ReplyStyleCard extends StatelessWidget {
       child: BrandSurfaceCard(
         padding: const EdgeInsets.all(14),
         borderRadius: 18,
+        // 卡高照內容自然長（回覆區已無固定高、頂端對齊）：不再用
+        // Expanded＋內捲吃高度差——那需要外部給定高度，也是風格卡被拉伸
+        // 出底部空白的來源。
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -114,65 +118,53 @@ class ReplyStyleCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (approach.isNotEmpty) ...[
-                      Text(
-                        '接法',
-                        style: AppTypography.caption.copyWith(
-                          color: AppColors.ctaStart,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        approach,
-                        style: AppTypography.caption.copyWith(
-                          color: AppColors.onBackgroundSecondary,
-                          height: 1.35,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-                    Text(
-                      '訊息組',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.onBackgroundSecondary
-                            .withValues(alpha: 0.6),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    for (var i = 0; i < visibleMessages.length; i++) ...[
-                      _ReplyOptionMessageRow(
-                        segment: visibleMessages[i],
-                        index: i,
-                        total: messages.length,
-                        onCopy: onCopy,
-                        onRefine: onRefine,
-                      ),
-                      if (i != visibleMessages.length - 1)
-                        const SizedBox(height: 6),
-                    ],
-                    if (messages.length > visibleMessages.length) ...[
-                      const SizedBox(height: 5),
-                      // server 段數上限也是 5，正常到不了這裡；防禦分支。
-                      // 舊文案「可在推薦卡查看」對非選中風格不成立，改中性說法。
-                      Text(
-                        '還有 ${messages.length - visibleMessages.length} 則未顯示',
-                        style: AppTypography.caption.copyWith(
-                          color: AppColors.onBackgroundSecondary
-                              .withValues(alpha: 0.6),
-                        ),
-                      ),
-                    ],
-                  ],
+            if (approach.isNotEmpty) ...[
+              Text(
+                '接法',
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.ctaStart,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
+              const SizedBox(height: 3),
+              Text(
+                approach,
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            Text(
+              '訊息組',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
+                fontWeight: FontWeight.w700,
+              ),
             ),
+            const SizedBox(height: 5),
+            for (var i = 0; i < visibleMessages.length; i++) ...[
+              _ReplyOptionMessageRow(
+                segment: visibleMessages[i],
+                index: i,
+                total: messages.length,
+                onCopy: onCopy,
+                onRefine: onRefine,
+              ),
+              if (i != visibleMessages.length - 1) const SizedBox(height: 6),
+            ],
+            if (messages.length > visibleMessages.length) ...[
+              const SizedBox(height: 5),
+              // server 段數上限也是 5，正常到不了這裡；防禦分支。
+              // 舊文案「可在推薦卡查看」對非選中風格不成立，改中性說法。
+              Text(
+                '還有 ${messages.length - visibleMessages.length} 則未顯示',
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
             Row(
               children: [

@@ -7560,37 +7560,30 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               ),
                             ),
                             const SizedBox(height: 12),
-                            // 高度自適應（2026-08-09 拍板）：拆掉固定 400 高，改由
-                            // 最高那張卡決定整列高度——訊息組球數多時卡自然變大，
-                            // 卡內不再需要捲。IntrinsicHeight 需要非 lazy 的 Row；
-                            // 卡最多 6 張，放棄 ListView 的懶載無感。
+                            // 高度自適應（2026-08-09 拍板）：拆掉固定 400 高，
+                            // 每張卡各自照內容長高、頂端對齊——推薦卡長是它自己
+                            // 的事，其他風格卡不跟著拉伸（同日 Eric 真機回報
+                            // stretch 版風格卡下方一大塊空白不自然）。卡最多
+                            // 6 張，放棄 ListView 的懶載無感。
                             SingleChildScrollView(
                               key: const ValueKey('analysis-reply-zone'),
                               scrollDirection: Axis.horizontal,
-                              child: ConstrainedBox(
-                                constraints:
-                                    const BoxConstraints(minHeight: 260),
-                                child: IntrinsicHeight(
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      if (_showRecommendedReplyCard)
-                                        _buildRecommendedReplyCard(),
-                                      for (final type in _replyStyleOrder)
-                                        if ((_replies?.containsKey(type) ??
-                                                false) &&
-                                            !(_showRecommendedReplyCard &&
-                                                _isRecommendedReplyType(type)))
-                                          _buildHorizontalReplyCard(
-                                              type, _replies![type]!,
-                                              option: _replyOptions?[type],
-                                              isRecommended:
-                                                  _isRecommendedReplyType(
-                                                      type)),
-                                    ],
-                                  ),
-                                ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (_showRecommendedReplyCard)
+                                    _buildRecommendedReplyCard(),
+                                  for (final type in _replyStyleOrder)
+                                    if ((_replies?.containsKey(type) ??
+                                            false) &&
+                                        !(_showRecommendedReplyCard &&
+                                            _isRecommendedReplyType(type)))
+                                      _buildHorizontalReplyCard(
+                                          type, _replies![type]!,
+                                          option: _replyOptions?[type],
+                                          isRecommended:
+                                              _isRecommendedReplyType(type)),
+                                ],
                               ),
                             ),
                             if (_showRecommendedReplyCard)
@@ -8516,7 +8509,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   /// 回覆區第一張：AI 推薦回覆。內容沿用 [_buildRecommendationContent]
-  /// 三條路徑；比風格卡寬一號、卡內縱向捲動吃掉高度差。
+  /// 三條路徑；比風格卡寬一號、卡高照內容自然長（回覆區已無固定高，
+  /// 卡內不再需要縱向捲動吃高度差）。
   Widget _buildRecommendedReplyCard() {
     final recommendation = _finalRecommendation!;
     return Container(
@@ -8535,6 +8529,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         border: Border.all(color: AppColors.ctaStart.withValues(alpha: 0.3)),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -8551,29 +8546,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             ],
           ),
           const SizedBox(height: 10),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ..._buildRecommendationContent(recommendation),
-                  const SizedBox(height: 12),
-                  Text(
-                    '📝 ${recommendation.reason}',
-                    style: AppTypography.bodyMedium,
-                  ),
-                  if (recommendation.psychology.isNotEmpty &&
-                      recommendation.psychology != recommendation.reason) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      '🧠 ${recommendation.psychology}',
-                      style: AppTypography.caption,
-                    ),
-                  ],
-                ],
-              ),
-            ),
+          ..._buildRecommendationContent(recommendation),
+          const SizedBox(height: 12),
+          Text(
+            '📝 ${recommendation.reason}',
+            style: AppTypography.bodyMedium,
           ),
+          if (recommendation.psychology.isNotEmpty &&
+              recommendation.psychology != recommendation.reason) ...[
+            const SizedBox(height: 4),
+            Text(
+              '🧠 ${recommendation.psychology}',
+              style: AppTypography.caption,
+            ),
+          ],
         ],
       ),
     );
