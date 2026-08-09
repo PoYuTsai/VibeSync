@@ -240,7 +240,13 @@ class _LiquidMotionFramePainter extends CustomPainter {
 
   /// 雙光束：頭亮尾淡、前緣銳利收掉，讓大部分邊框保持透明拉出對比。
   void _paintBeam(Canvas canvas, Rect rect, double rotation) {
-    SweepGradient beamGradient({required double headAlpha}) {
+    // frontFade＝光束頭到全暗的弧長。描邊用預設 0.01（銳利 torch 前緣是設計
+    // 語彙）；外溢光暈必須傳長尾（見 glowPaint）——同用 0.01 時大半徑模糊會
+    // 把急停放大成一道貼著前緣的直線斷層（2026-08-09 Eric 真機紅框回報）。
+    SweepGradient beamGradient({
+      required double headAlpha,
+      double frontFade = _beamFrontEdge - _beamHead,
+    }) {
       Color tail(double a) => AppColors.ctaStart.withValues(alpha: a);
       final head = const Color(0xFFFFD2B8).withValues(alpha: headAlpha * 0.94);
       final core = const Color(0xFFFFF1E4).withValues(alpha: headAlpha);
@@ -259,16 +265,16 @@ class _LiquidMotionFramePainter extends CustomPainter {
           t,
           t,
         ],
-        stops: const [
+        stops: [
           0,
           _beamTailStart,
           _beamHead - 0.015,
           _beamHead,
-          _beamFrontEdge,
+          _beamHead + frontFade,
           0.5 + _beamTailStart,
           0.5 + _beamHead - 0.015,
           0.5 + _beamHead,
-          0.5 + _beamFrontEdge,
+          0.5 + _beamHead + frontFade,
           1,
         ],
       );
@@ -285,10 +291,12 @@ class _LiquidMotionFramePainter extends CustomPainter {
       ..strokeWidth = borderWidth
       ..color = AppColors.ctaStart.withValues(alpha: 0.10 * strength);
     // 外溢光暈：比描邊寬一圈再整段模糊，讓光束「照亮」卡片外側。
+    // frontFade 拉長到 0.07：光暈在頭前緣平滑收掉，不跟描邊一起急停。
     final glowPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = borderWidth + 9
-      ..shader = beamGradient(headAlpha: 0.62).createShader(rect)
+      ..shader =
+          beamGradient(headAlpha: 0.62, frontFade: 0.07).createShader(rect)
       ..colorFilter = strengthFilter()
       ..maskFilter = MaskFilter.blur(BlurStyle.normal, glowRadius);
     // 光束本體：貼著邊框的高亮描邊。
