@@ -87,7 +87,10 @@ class ReplyStyleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final approach = option?.approach.trim() ?? '';
     final messages = _messages;
-    final visibleMessages = messages.take(3).toList();
+    // 顯示上限對齊 server 段數上限（up to 5）。原本 take(3) 是固定高橫滑列
+    // 時代的殘留：2026-08-09 球數對齊後每個風格都該接滿同一組球，卡高也已
+    // 自適應，砍到 3 段會讓對齊在 UI 上看不見（Eric 真機回報）。
+    final visibleMessages = messages.take(5).toList();
 
     return Container(
       width: 312,
@@ -156,8 +159,10 @@ class ReplyStyleCard extends StatelessWidget {
                     ],
                     if (messages.length > visibleMessages.length) ...[
                       const SizedBox(height: 5),
+                      // server 段數上限也是 5，正常到不了這裡；防禦分支。
+                      // 舊文案「可在推薦卡查看」對非選中風格不成立，改中性說法。
                       Text(
-                        '還有 ${messages.length - visibleMessages.length} 則可在推薦卡查看',
+                        '還有 ${messages.length - visibleMessages.length} 則未顯示',
                         style: AppTypography.caption.copyWith(
                           color: AppColors.onBackgroundSecondary
                               .withValues(alpha: 0.6),

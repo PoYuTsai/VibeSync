@@ -258,6 +258,11 @@ Deno.test("compliance(b3): floor applies to EVERY option — same 接 ball set, 
     prompt.includes("cover the same set of `接` balls as the selected style"),
   );
   assert(prompt.includes("if any option misses that floor"));
+  // 同日追修：威嚇句必須把「漏接選中已覆蓋的接球」列為違規（首筆真機
+  // telemetry 顯示模型只把 reject 當 floor=3 合規線）。
+  assert(
+    prompt.includes("drops a `接` ball the selected style covers"),
+  );
   assert(prompt.includes("write every option with equal effort"));
   assert(
     prompt.includes("equal effort means equal ball coverage, not equal word count"),
