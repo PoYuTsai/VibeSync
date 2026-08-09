@@ -16,12 +16,14 @@ void main() {
   final n = practiceGirlProfiles.first; // practice_girl_001
 
   group('practiceRarityColor', () {
-    test('SR 金／R 紫／N 冷灰藍（與圖鑑 _rarityColor 同一真相）', () {
+    test('SR 金／R 青藍／N 中性銀灰（與圖鑑 _rarityColor 同一真相）', () {
+      // 2026-08-09 改版：N 去藍味退成銀灰、R 改青藍（暗紫背景上與 N 拉開），
+      // 階梯＝銀灰→藍→金。
       expect(practiceRarityColor(PracticeGirlRarity.sr),
           const Color(0xFFFFB34D));
       expect(practiceRarityColor(PracticeGirlRarity.n),
-          const Color(0xFF8FA0BE));
-      // R 用品牌紫（AppColors.primaryLight）；只驗三色互異避免鎖死主題常數。
+          const Color(0xFFA9B0B8));
+      // R 用 AppColors.cold 青藍；只驗三色互異避免鎖死主題常數。
       expect(
         practiceRarityColor(PracticeGirlRarity.r),
         isNot(practiceRarityColor(PracticeGirlRarity.sr)),

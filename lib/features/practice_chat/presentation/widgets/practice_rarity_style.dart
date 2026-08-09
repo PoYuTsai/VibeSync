@@ -6,15 +6,19 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../domain/entities/practice_girl_rarity.dart';
 
-/// 稀有度主色：SR 金、R 紫、N 冷灰藍。只用於邊框／badge／星等。
+/// 稀有度主色：SR 金、R 青藍、N 中性銀灰。只用於邊框／badge／星等。
+///
+/// 2026-08-09 改版（Eric 真機回報 R 紫＋N 灰藍在暗紫背景上顏色疲乏）：
+/// N 去藍味退成銀灰（普通卡視覺讓位）、R 改青藍（與背景紫拉開色相），
+/// 階梯＝銀灰→藍→金，亮度與色相同時遞進。R 卡呼吸光吃同一份色自動跟上。
 Color practiceRarityColor(PracticeGirlRarity rarity) {
   switch (rarity) {
     case PracticeGirlRarity.sr:
       return const Color(0xFFFFB34D);
     case PracticeGirlRarity.r:
-      return AppColors.primaryLight;
+      return AppColors.cold;
     case PracticeGirlRarity.n:
-      return const Color(0xFF8FA0BE);
+      return const Color(0xFFA9B0B8);
   }
 }
 
