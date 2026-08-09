@@ -121,9 +121,10 @@ void main() {
     await pumpShelf(tester, catalog: _realCatalog, size: const Size(390, 2000));
     await tester.pumpAndSettle();
 
-    // 書架標題是整套教材的名字（2026-07-27 夥伴回饋），不是「互動電子書」。
-    // THE FIELD GUIDE 出現兩次：標題卡＋第一單元群組卡。
-    expect(find.text('THE FIELD GUIDE'), findsNWidgets(2));
+    // 2026-08-09 拍板二輪：hero 副標改「系統化實戰教材」，THE FIELD GUIDE
+    // 只留在第一單元群組卡（kicker 移到中文標題下方），不再重複兩次。
+    expect(find.text('系統化實戰教材'), findsOneWidget);
+    expect(find.text('THE FIELD GUIDE'), findsOneWidget);
     expect(find.text('THE PRIZE'), findsOneWidget);
     expect(find.textContaining('成為獎賞'), findsOneWidget);
     expect(find.text('互動電子書'), findsNothing);

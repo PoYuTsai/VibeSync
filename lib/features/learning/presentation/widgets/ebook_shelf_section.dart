@@ -267,6 +267,17 @@ class _UnitGroupHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // 2026-08-09 拍板二輪：中文標題在上、橘色英文 kicker 在下，
+                // 與書架 hero／聊天新手村的「大標上、副標下」階層一致。
+                Text(
+                  unit.fullTitle,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.titleSmall.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
                 Text(
                   unit.kicker,
                   textScaler: kickerScaler,
@@ -276,15 +287,6 @@ class _UnitGroupHeader extends StatelessWidget {
                     color: AppColors.ctaStart,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  unit.fullTitle,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.titleSmall.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -323,43 +325,48 @@ class _ShelfHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 2026-08-09 拍板二輪：排版對標「聊天新手村」入口卡——icon＋中文大標在
+    // 上、橘色副標在下。副標不再用 THE FIELD GUIDE（那是下方終極指引單元卡
+    // 的 kicker，同字面會像重複列兩次），改為定位句「系統化實戰教材」，
+    // 與新手村的「判讀訓練場」同句式。大標維持與單元卡標題脫鉤的總稱。
     return BrandSurfaceCard(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const BrandIconBadge(
                   icon: Icons.menu_book_outlined, size: 26, iconSize: 14),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
-                // 金色 kicker 進頁時掃一次 shimmer（splash wordmark 同款
-                // ShaderMask 技法，已核可的例外：modulate 調色、非透明度）。
-                child: _OneShotKickerShimmer(
-                  child: Text(
-                    kEbookCollectionKicker,
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.ctaStart,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2.2,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '高階互動指南',
+                      style: AppTypography.headlineLarge.copyWith(
+                        color: AppColors.onBackgroundPrimary,
+                        fontWeight: FontWeight.w900,
+                        height: 1.2,
+                      ),
                     ),
-                  ),
+                    // 橘色副標進頁時掃一次 shimmer（splash wordmark 同款
+                    // ShaderMask 技法，已核可的例外：modulate 調色、非透明度）。
+                    _OneShotKickerShimmer(
+                      child: Text(
+                        '系統化實戰教材',
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.ctaStart,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 8),
-          // 2026-08-09 拍板：hero 大標改成書架的「總稱」，與下方單元群組卡的
-          // 「交友軟體實戰 · 終極指引」脫鉤——先前兩者同字面，看起來像重複列了
-          // 兩次。單元卡標題（unit.fullTitle）維持不動。
-          Text(
-            '高階互動指南',
-            style: AppTypography.headlineLarge.copyWith(
-              color: AppColors.onBackgroundPrimary,
-              fontWeight: FontWeight.w900,
-              height: 1.2,
-            ),
           ),
           const SizedBox(height: 10),
           Text(
