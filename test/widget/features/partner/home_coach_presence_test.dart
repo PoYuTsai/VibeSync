@@ -38,7 +38,7 @@ void main() {
 
       expect(provider.assetName, pose.assetPath);
       expect(image.fit, BoxFit.fitHeight);
-      expect(image.alignment, Alignment.bottomRight);
+      expect(image.alignment, Alignment.bottomCenter);
       expect(
         find.byKey(ValueKey('home-coach-pose-${pose.name}')),
         findsOneWidget,
@@ -59,10 +59,13 @@ void main() {
     expect(tester.renderObject<RenderImage>(image).image, isNotNull);
   });
 
-  testWidgets('keeps every Sydney pose at the same display size', (
+  // 2026-08-09 拍板：以 greeting（雙手張開）為基準做人物正規化——任何姿勢
+  // 的「人物顯示高度」一致、人物中心水平置中、底邊錨定，且不放大超過畫布
+  //（不切身）。舊的「畫布同尺寸＋靠右錨定」規格已推翻。
+  testWidgets('keeps every Sydney pose figure at the same visual height', (
     tester,
   ) async {
-    Size? referenceSize;
+    double? referenceFigureHeight;
 
     for (final pose in HomeCoachPose.values) {
       await tester.pumpWidget(_subject(pose));
@@ -70,27 +73,36 @@ void main() {
 
       final image = find.byKey(ValueKey('home-coach-pose-${pose.name}'));
       final size = tester.getSize(image);
-      referenceSize ??= size;
+      final figureHeight = size.height * pose.figureHeightFraction;
+      referenceFigureHeight ??= figureHeight;
 
-      expect(size, referenceSize);
+      expect(figureHeight, closeTo(referenceFigureHeight, 0.5));
+
+      // 不切身：渲染高不超過 presence 高度。
+      final presenceRect = tester.getRect(find.byType(HomeCoachPresence));
+      expect(size.height, lessThanOrEqualTo(presenceRect.height + 0.01));
+      // 底邊錨定。
+      final imageRect = tester.getRect(image);
+      expect(imageRect.bottom, closeTo(presenceRect.bottom, 0.01));
     }
   });
 
-  testWidgets('anchors Sydney on the right side of the home canvas', (
+  testWidgets('centers the figure (not the canvas) on the home midline', (
     tester,
   ) async {
-    await tester.pumpWidget(_subject(HomeCoachPose.greeting));
+    for (final pose in HomeCoachPose.values) {
+      await tester.pumpWidget(_subject(pose));
+      await tester.pump();
 
-    final presenceRect = tester.getRect(find.byType(HomeCoachPresence));
-    final imageRect = tester.getRect(
-      find.byKey(const ValueKey('home-coach-pose-greeting')),
-    );
+      final presenceRect = tester.getRect(find.byType(HomeCoachPresence));
+      final imageRect = tester.getRect(
+        find.byKey(ValueKey('home-coach-pose-${pose.name}')),
+      );
+      final figureCenterX =
+          imageRect.left + imageRect.width * pose.figureCenterX;
 
-    expect(imageRect.right, closeTo(presenceRect.right, 0.01));
-    expect(
-      imageRect.left,
-      greaterThan(presenceRect.left + presenceRect.width * 0.2),
-    );
+      expect(figureCenterX, closeTo(presenceRect.center.dx, 0.5));
+    }
   });
 
   testWidgets('switches pose immediately without an animation widget', (
