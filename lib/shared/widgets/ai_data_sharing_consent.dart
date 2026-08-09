@@ -368,60 +368,92 @@ class _AiDataSharingConsentDialogState
     extends State<_AiDataSharingConsentDialog> {
   bool _hasReviewedAndAgreed = false;
 
+  /// 「用途」block 已有標題，body 再以「用途：」開頭會重複一次；只在呈現層
+  /// 剝掉前綴，常數本身不動（合規揭露文案是共用單一來源）。
+  String get _purposeBody {
+    const prefix = '用途：';
+    return widget.purposeText.startsWith(prefix)
+        ? widget.purposeText.substring(prefix.length)
+        : widget.purposeText;
+  }
+
   @override
   Widget build(BuildContext context) {
+    // 2026-08-09 重排（只動呈現層）：長文攤成「一眼一 block」，勾選框釘在
+    // 捲動區外——小螢幕上縮的是揭露內文的捲動區，勾勾與按鈕永遠不用捲就
+    // 按得到。揭露內容、同意語句與按鈕語意完全不變。
     return AlertDialog(
       title: const Text('第三方 AI 資料使用同意'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '使用「${widget.featureLabel}」前，VibeSync 需要先取得你的同意。',
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '你主動送出的資料會經由 VibeSync 後端服務（Supabase Edge Functions）傳送至 ${widget.destinationLabel}，用來產生本次 AI 結果。',
-            ),
-            const SizedBox(height: 12),
-            _ConsentBullet(text: widget.dataDescription),
-            _ConsentBullet(text: widget.purposeText),
-            const _ConsentBullet(
-              text: '如果不同意，本次 AI 請求不會送出，也不會扣除本次 AI 額度。',
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                TextButton(
-                  onPressed: () => LinkLaunchService.open(widget.termsUrl),
-                  child: const Text('查看服務條款'),
-                ),
-                TextButton(
-                  onPressed: () => LinkLaunchService.open(widget.privacyUrl),
-                  child: const Text('查看隱私權政策'),
-                ),
-              ],
-            ),
-            CheckboxListTile(
-              value: _hasReviewedAndAgreed,
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              onChanged: (value) {
-                setState(() => _hasReviewedAndAgreed = value ?? false);
-              },
-              title: Text(
-                '我已閱讀並同意服務條款與隱私權政策，並同意 VibeSync 將上述資料傳送至 Supabase Edge Functions 與 ${widget.destinationLabel} 以產生本次 AI 結果。',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '使用「${widget.featureLabel}」前，VibeSync 需要先取得你的同意。',
+                  ),
+                  const SizedBox(height: 12),
+                  _ConsentBlock(
+                    header: '資料會送到哪',
+                    body:
+                        '你主動送出的資料會經由 VibeSync 後端服務（Supabase Edge Functions）傳送至 ${widget.destinationLabel}，用來產生本次 AI 結果。',
+                  ),
+                  _ConsentBlock(
+                    header: '會送出什麼',
+                    body: widget.dataDescription,
+                  ),
+                  _ConsentBlock(
+                    header: '用途',
+                    body: _purposeBody,
+                  ),
+                  const _ConsentBlock(
+                    header: '如果不同意',
+                    body: '如果不同意，本次 AI 請求不會送出，也不會扣除本次 AI 額度。',
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      TextButton(
+                        onPressed: () =>
+                            LinkLaunchService.open(widget.termsUrl),
+                        child: const Text('查看服務條款'),
+                      ),
+                      TextButton(
+                        onPressed: () =>
+                            LinkLaunchService.open(widget.privacyUrl),
+                        child: const Text('查看隱私權政策'),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            const Text(
-              '同意後，這個帳號之後不會重複提醒。',
-              style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 4),
+          CheckboxListTile(
+            value: _hasReviewedAndAgreed,
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            controlAffinity: ListTileControlAffinity.leading,
+            onChanged: (value) {
+              setState(() => _hasReviewedAndAgreed = value ?? false);
+            },
+            title: Text(
+              '我已閱讀並同意服務條款與隱私權政策，並同意 VibeSync 將上述資料傳送至 Supabase Edge Functions 與 ${widget.destinationLabel} 以產生本次 AI 結果。',
+              style: const TextStyle(fontSize: 12.5, height: 1.35),
             ),
-          ],
-        ),
+          ),
+          const Text(
+            '同意後，這個帳號之後不會重複提醒。',
+            style: TextStyle(fontSize: 12),
+          ),
+        ],
       ),
       actions: [
         TextButton(
@@ -439,20 +471,37 @@ class _AiDataSharingConsentDialogState
   }
 }
 
-class _ConsentBullet extends StatelessWidget {
-  const _ConsentBullet({required this.text});
+/// 揭露內文的單一 block：小標＋內文各成一張淺底卡，一眼一件事。
+class _ConsentBlock extends StatelessWidget {
+  const _ConsentBlock({required this.header, required this.body});
 
-  final String text;
+  final String header;
+  final String body;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 11),
+      decoration: BoxDecoration(
+        color: colorScheme.onSurface.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('- '),
-          Expanded(child: Text(text)),
+          Text(
+            header,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(body, style: const TextStyle(fontSize: 13.5, height: 1.4)),
         ],
       ),
     );
