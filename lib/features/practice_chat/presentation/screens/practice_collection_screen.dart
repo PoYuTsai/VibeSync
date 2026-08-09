@@ -132,6 +132,21 @@ class _PracticeCollectionScreenState
   /// null＝全部；否則只顯示該稀有度。
   PracticeGirlRarity? _filter;
 
+  @override
+  void initState() {
+    super.initState();
+    // 額度列 v2：進場唯讀補水本窗翻牌額度（跨 session 也準確）。fail-quiet
+    // 在 controller 內；post-frame 才 read＝避開 initState 期碰 provider。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        ref
+            .read(practiceChatControllerProvider.notifier)
+            .refreshDrawQuotaStatus(),
+      );
+    });
+  }
+
   /// grid 版面常數：估算新卡捲動位置（[_estimatedCardOffset]）與 sliver 版面
   /// 共用單一真相，改版面不會讓捲動定位漂掉。
   static const int _gridCrossAxisCount = 2;
@@ -280,10 +295,10 @@ class _PracticeCollectionScreenState
         position.viewportDimension * 0.25;
   }
 
-  /// 額度列 v1（2026-08-09 Eric 拍板顯示抽數）：只顯示 client 已知的真值——
-  /// 免費翻牌剩餘來自本 session 最近一次 draw 回應（沒有唯讀 status API，
-  /// 準確的跨 session 三檔顯示需 server endpoint，另案）。過了 nextResetAt
-  /// 代表窗已翻轉、數字失真 → 一律不顯示，寧缺勿誤。
+  /// 額度列 v2（2026-08-09）：值來自進場唯讀 status 補水
+  /// （[PracticeChatController.refreshDrawQuotaStatus]）與本 session draw
+  /// 回應，何者較新用何者（epoch 防倒流）。仍只顯示已知真值：補水失敗／
+  /// 過了 nextResetAt（窗已翻轉、數字失真）一律不顯示，寧缺勿誤。
   ({int remaining, int allowance})? _currentFreeQuota(PracticeChatState state) {
     final allowance = state.drawFreeAllowance;
     final remaining = state.drawFreeRemaining;

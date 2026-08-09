@@ -315,6 +315,76 @@ export async function handleDrawProfile(
   return { body: { error: "draw_failed" }, status: 500 };
 }
 
+/** 唯讀翻牌額度狀態（圖鑑額度列 v2）。不 reset、不鎖列、不寫任何東西：
+ * tier 讀 subscriptions 現值（無列＝normalizeTier→free）；窗用與 claim 呼叫
+ * 同一個 taipeiNoonResetWindow（全系統窗實作單一份）；本窗 free_used 由唯讀
+ * RPC get_practice_draw_status 在 SQL 數（謂詞與 claim 同語意，含未消耗
+ * 起步贈抽 +1）。任何失敗回 500，client 端 fail-quiet 隱藏額度列。 */
+export async function handleDrawStatus(args: {
+  supabase: DrawSupabaseClient;
+  userId: string;
+  now: Date;
+}): Promise<DrawHandlerResult> {
+  const { supabase, userId, now } = args;
+
+  const { data: subRow, error: subError } = await supabase
+    .from("subscriptions")
+    .select("tier")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (subError) {
+    logWarn("practice_draw_status_sub_error", {
+      user: summarizeUser(userId),
+      error: subError.message,
+    });
+    return { body: { error: "draw_status_failed" }, status: 500 };
+  }
+  const tier = normalizeTier(
+    typeof subRow?.tier === "string" ? subRow.tier : null,
+  );
+  const window = taipeiNoonResetWindow(now);
+
+  const { data: rpcData, error: rpcError } = await supabase.rpc(
+    "get_practice_draw_status",
+    {
+      p_user_id: userId,
+      p_reset_window_start_at: window.resetWindowStartAt,
+      p_free_allowance: drawAllowanceForTier(tier),
+    },
+  );
+  if (rpcError) {
+    logWarn("practice_draw_status_rpc_error", {
+      user: summarizeUser(userId),
+      error: rpcError.message,
+    });
+    return { body: { error: "draw_status_failed" }, status: 500 };
+  }
+  const row = (Array.isArray(rpcData) ? rpcData[0] : rpcData) as
+    | Record<string, unknown>
+    | null;
+  const allowance = row?.free_allowance;
+  const used = row?.free_used;
+  const remaining = row?.free_remaining;
+  if (
+    typeof allowance !== "number" || typeof used !== "number" ||
+    typeof remaining !== "number"
+  ) {
+    logError("practice_draw_status_malformed", { user: summarizeUser(userId) });
+    return { body: { error: "draw_status_failed" }, status: 500 };
+  }
+  return {
+    status: 200,
+    body: {
+      draw: {
+        freeAllowance: allowance,
+        freeUsed: used,
+        freeRemaining: remaining,
+        nextResetAt: window.nextResetAt,
+      },
+    },
+  };
+}
+
 /** SR 限定翻牌券抽（訂閱一次性權益）。與每日額度完全隔離：不佔免費額度、
  * 不扣一般 quota；券的存在與消耗由 claim_practice_sr_ticket_draw 交易內原子
  * 判定（無券/已用 → 409）。選牌鎖 SR 層；SR 全收藏 → 降級回當日視窗排除

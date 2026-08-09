@@ -76,6 +76,14 @@ class _DrawSpyController extends _SeededPracticeChatController {
     super.lockDrawQuotaExceeded(message: message);
   }
 
+  /// 額度列 v2：圖鑑進場的唯讀補水呼叫計數（不真打 API）。
+  int quotaStatusRefreshCalls = 0;
+
+  @override
+  Future<void> refreshDrawQuotaStatus() async {
+    quotaStatusRefreshCalls++;
+  }
+
   /// StateNotifier 的 state setter 是 protected，只能從子類開縫給測試切狀態。
   void debugSetState(PracticeChatState next) => state = next;
 }
@@ -878,6 +886,44 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(drawButton), findsOneWidget);
+    });
+
+    testWidgets('進場即發唯讀額度補水（額度列 v2）', (tester) async {
+      final controller = _DrawSpyController(_revealedSeed());
+      await pumpApp(tester, collectionApp(controller: controller));
+      await tester.pump(); // post-frame callback 落地
+
+      expect(controller.quotaStatusRefreshCalls, 1);
+    });
+
+    testWidgets('額度列：有已知額度＋未過重置點 → 顯示「剩 x / y」', (tester) async {
+      final controller = _DrawSpyController(
+        _revealedSeed(freeAllowance: 3, freeRemaining: 2)
+            .copyWith(drawNextResetAt: '2999-01-01T04:00:00.000Z'),
+      );
+      await pumpApp(tester, collectionApp(controller: controller));
+
+      expect(find.text('今日免費翻牌 剩 2 / 3'), findsOneWidget);
+    });
+
+    testWidgets('額度列寧缺勿誤：過了重置點或 allowance 0 都不顯示', (tester) async {
+      const lineKey = ValueKey('collection-free-quota-line');
+
+      // 過了 nextResetAt：窗已翻轉、數字失真 → 不顯示。
+      final expired = _DrawSpyController(
+        _revealedSeed(freeAllowance: 3, freeRemaining: 2)
+            .copyWith(drawNextResetAt: '2020-01-01T04:00:00.000Z'),
+      );
+      await pumpApp(tester, collectionApp(controller: expired));
+      expect(find.byKey(lineKey), findsNothing);
+
+      // allowance 0（Free 無每日額度）：沒有可顯示的配額。
+      final zero = _DrawSpyController(
+        _revealedSeed(freeAllowance: 0, freeRemaining: 0)
+            .copyWith(drawNextResetAt: '2999-01-01T04:00:00.000Z'),
+      );
+      await pumpApp(tester, collectionApp(controller: zero));
+      expect(find.byKey(lineKey), findsNothing);
     });
 
     testWidgets('SR 繞框光段跟 pulse 啟停：locked 畫、revealed settle 後整層收乾',

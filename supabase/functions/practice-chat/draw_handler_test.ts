@@ -9,7 +9,11 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { type DrawSupabaseClient, handleDrawProfile } from "./draw_handler.ts";
+import {
+  type DrawSupabaseClient,
+  handleDrawProfile,
+  handleDrawStatus,
+} from "./draw_handler.ts";
 import type { PracticeDrawRequest } from "./validate.ts";
 
 // 固定 now = Taipei 14:00（過中午 → 今日視窗）；sub reset_at 設同一 UTC 日/月 → 不觸發 reset。
@@ -711,4 +715,71 @@ Deno.test("SR 券抽：SR 全收藏 → 降級允許重複，仍只出 SR、不 
   );
   assertEquals(result.status, 200);
   assert(SR_IDS.has(String(rpcCalls[0].p_profile_id)));
+});
+
+// ── draw_status（圖鑑額度列 v2：唯讀，不 prepare、不扣費）─────────────────
+
+async function runStatus(opts: MockOpts) {
+  const { client, rpcCalls, rpcFns, prepareCalls } = mockClient(opts);
+  const result = await handleDrawStatus({
+    supabase: client,
+    userId: "u-1",
+    now: NOW,
+  });
+  // deno-lint-ignore no-explicit-any
+  return { result, body: result.body as any, rpcCalls, rpcFns, prepareCalls };
+}
+
+Deno.test("draw_status：Starter → 唯讀 RPC 收 allowance 3＋台北中午窗；200 對映回值", async () => {
+  const { result, body, rpcCalls, rpcFns, prepareCalls } = await runStatus({
+    sub: sub("starter"),
+    rpc: [{ data: { free_allowance: 3, free_used: 1, free_remaining: 2 } }],
+  });
+  assertEquals(result.status, 200);
+  // 唯讀鐵則：絕不呼叫 prepare（那會 row lock＋reset 寫入）。
+  assertEquals(prepareCalls.length, 0);
+  assertEquals(rpcFns, ["get_practice_draw_status"]);
+  assertEquals(rpcCalls[0].p_free_allowance, 3);
+  // NOW=Taipei 14:00 → 窗起點今日台北中午（04:00Z）、下次重置明日同時刻。
+  assertEquals(rpcCalls[0].p_reset_window_start_at, "2026-06-26T04:00:00.000Z");
+  assertEquals(body.draw.freeAllowance, 3);
+  assertEquals(body.draw.freeUsed, 1);
+  assertEquals(body.draw.freeRemaining, 2);
+  assertEquals(body.draw.nextResetAt, "2026-06-27T04:00:00.000Z");
+});
+
+Deno.test("draw_status：無訂閱列 → 視為 free（allowance 0），贈抽由 RPC 合併後仍可顯示", async () => {
+  const { result, body, rpcCalls } = await runStatus({
+    sub: null,
+    rpc: [{ data: { free_allowance: 1, free_used: 0, free_remaining: 1 } }],
+  });
+  assertEquals(result.status, 200);
+  assertEquals(rpcCalls[0].p_free_allowance, 0);
+  assertEquals(body.draw.freeAllowance, 1); // RPC 已含未消耗贈抽 +1
+  assertEquals(body.draw.freeRemaining, 1);
+});
+
+Deno.test("draw_status：訂閱讀取失敗 → 500 draw_status_failed（client fail-quiet）", async () => {
+  const { result, body } = await runStatus({
+    sub: null,
+    subError: "boom",
+    rpc: [],
+  });
+  assertEquals(result.status, 500);
+  assertEquals(body.error, "draw_status_failed");
+});
+
+Deno.test("draw_status：RPC 失敗或回形狀不對 → 一律 500", async () => {
+  const rpcErr = await runStatus({
+    sub: sub("essential"),
+    rpc: [{ error: "boom" }],
+  });
+  assertEquals(rpcErr.result.status, 500);
+
+  const malformed = await runStatus({
+    sub: sub("essential"),
+    rpc: [{ data: { free_allowance: "5" } }],
+  });
+  assertEquals(malformed.result.status, 500);
+  assertEquals(malformed.body.error, "draw_status_failed");
 });

@@ -1391,6 +1391,30 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 任何失敗都**不**污染目前 profile／transcript（保留原狀態），只設對應旗標／訊息。
   /// [srTicket]＝SR 限定翻牌券抽（訂閱一次性權益）：保底 SR、不佔每日免費
   /// 額度、不扣一般 quota；額度欄位不從 response 更新（券路徑回的是佔位值）。
+  /// draw 回應套用額度欄位的世代計數：唯讀 status 補水（[refreshDrawQuotaStatus]）
+  /// 在途時若有 draw 完成，status 的舊快照不得倒寫回去（draw 回應才是最新真相）。
+  int _drawQuotaEpoch = 0;
+
+  /// 圖鑑額度列 v2：唯讀補水本窗翻牌額度（app 重啟後跨 session 也準確）。
+  /// fail-quiet：任何失敗保持現狀，額度列顯示已知值或不顯示（寧缺勿誤）。
+  /// 刻意不動 drawExtraCost——那是 draw 回應在宣傳的加抽價，status 不帶。
+  Future<void> refreshDrawQuotaStatus() async {
+    if (state.isDrawing) return;
+    final epoch = _drawQuotaEpoch;
+    try {
+      final status = await _api.fetchDrawQuotaStatus();
+      if (!mounted || state.isDrawing || epoch != _drawQuotaEpoch) return;
+      state = state.copyWith(
+        drawFreeAllowance: status.freeAllowance,
+        drawFreeUsed: status.freeUsed,
+        drawFreeRemaining: status.freeRemaining,
+        drawNextResetAt: status.nextResetAt,
+      );
+    } catch (_) {
+      // fail-quiet：唯讀補水失敗不打擾使用者，也不覆蓋既有已知值。
+    }
+  }
+
   Future<void> drawNewPracticeGirl({bool srTicket = false}) async {
     // A failed draw restores its captured prior state. Never let it capture a
     // transient turn-persistence flag whose owner may finish while draw is in
@@ -1455,6 +1479,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           : practiceDifficultyId(prior.difficultyPreference);
       final learningMode = _modeAllowedForGirl(prior.learningMode, girl);
 
+      _drawQuotaEpoch++; // draw 回應即最新額度真相：作廢在途 status 補水
       state = PracticeChatState(
         sessionId: sessionId,
         createdAt: DateTime.now(),

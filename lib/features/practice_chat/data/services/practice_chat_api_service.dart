@@ -413,6 +413,14 @@ class PracticeSrTicketUnavailableException implements Exception {
 /// 存在（冪等）；consumed＝已用掉。
 typedef SrTicketStatus = ({bool eligible, bool granted, bool consumed});
 
+/// `mode: draw_status` 回應（唯讀翻牌額度狀態，圖鑑額度列 v2）。
+typedef PracticeDrawQuotaStatus = ({
+  int freeAllowance,
+  int freeUsed,
+  int freeRemaining,
+  String nextResetAt,
+});
+
 /// Debrief may use up to six bounded provider calls, but every call shares the
 /// server's request-entry 85s deadline. Keep the 90s client fence below the
 /// 105s server owner fence so record/response and same-request replay have room.
@@ -893,6 +901,41 @@ class PracticeChatApiService {
       eligible: data['eligible'] == true,
       granted: data['granted'] == true,
       consumed: data['consumed'] == true,
+    );
+  }
+
+  /// 唯讀翻牌額度狀態（圖鑑額度列 v2）：本窗免費翻牌 allowance/used/remaining
+  /// ＋下次重置點。server 端不 reset、不扣費、不寫任何東西。失敗丟例外，
+  /// 由呼叫端 fail-quiet 吞掉（額度列寧缺勿誤）。
+  Future<PracticeDrawQuotaStatus> fetchDrawQuotaStatus() async {
+    final response = await _invoke(
+      _functionName,
+      body: const {'mode': 'draw_status'},
+    );
+    final data = response.data;
+    if (response.status != 200 || data is! Map) {
+      throw PracticeGenerationFailedException('draw_status_failed');
+    }
+    final draw = data['draw'];
+    if (draw is! Map) {
+      throw PracticeGenerationFailedException('draw_status_failed');
+    }
+    final allowance = _asInt(draw['freeAllowance']);
+    final used = _asInt(draw['freeUsed']);
+    final remaining = _asInt(draw['freeRemaining']);
+    final nextResetAt = draw['nextResetAt'];
+    if (allowance == null ||
+        used == null ||
+        remaining == null ||
+        nextResetAt is! String ||
+        nextResetAt.isEmpty) {
+      throw PracticeGenerationFailedException('draw_status_failed');
+    }
+    return (
+      freeAllowance: allowance,
+      freeUsed: used,
+      freeRemaining: remaining,
+      nextResetAt: nextResetAt,
     );
   }
 

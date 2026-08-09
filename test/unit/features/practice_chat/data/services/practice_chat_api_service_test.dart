@@ -1356,6 +1356,55 @@ void main() {
     });
   });
 
+  group('fetchDrawQuotaStatus（額度列 v2 唯讀）', () {
+    test('body 只帶 mode: draw_status；200 正確拆包', () async {
+      String? fn;
+      Map<String, dynamic>? sent;
+      final svc = PracticeChatApiService(
+        invoker: (name, {required body}) async {
+          fn = name;
+          sent = body;
+          return const PracticeInvokeResponse(status: 200, data: {
+            'draw': {
+              'freeAllowance': 5,
+              'freeUsed': 2,
+              'freeRemaining': 3,
+              'nextResetAt': '2026-06-27T04:00:00.000Z',
+            },
+          });
+        },
+      );
+
+      final status = await svc.fetchDrawQuotaStatus();
+
+      expect(fn, 'practice-chat');
+      expect(sent, {'mode': 'draw_status'});
+      expect(status.freeAllowance, 5);
+      expect(status.freeUsed, 2);
+      expect(status.freeRemaining, 3);
+      expect(status.nextResetAt, '2026-06-27T04:00:00.000Z');
+    });
+
+    test('非 200 或欄位殘缺 → 丟例外（呼叫端 fail-quiet 吞掉）', () async {
+      Future<void> expectThrows(int status, Object? data) {
+        final svc = PracticeChatApiService(
+          invoker: (name, {required body}) async =>
+              PracticeInvokeResponse(status: status, data: data),
+        );
+        return expectLater(
+          svc.fetchDrawQuotaStatus(),
+          throwsA(isA<PracticeGenerationFailedException>()),
+        );
+      }
+
+      await expectThrows(500, {'error': 'draw_status_failed'});
+      await expectThrows(200, {
+        'draw': {'freeAllowance': 5},
+      });
+      await expectThrows(200, {'nope': true});
+    });
+  });
+
   group('drawProfile', () {
     Map<String, dynamic> okBody() => {
           'profile': {

@@ -209,6 +209,16 @@ class _FakeApi extends PracticeChatApiService {
     drawRequestIds.add(requestId);
     return drawHandler!(currentProfileId: currentProfileId);
   }
+
+  // 唯讀額度補水（額度列 v2）。
+  Future<PracticeDrawQuotaStatus> Function()? statusHandler;
+  int statusCallCount = 0;
+
+  @override
+  Future<PracticeDrawQuotaStatus> fetchDrawQuotaStatus() {
+    statusCallCount++;
+    return statusHandler!();
+  }
 }
 
 class _ControlledPracticeSessionRepository extends PracticeSessionRepository {
@@ -864,6 +874,60 @@ void main() {
   });
 
   // ── 換一位入口都走 draw；續玩/切難度都不走 draw ───────────────────────────
+  group('refreshDrawQuotaStatus（額度列 v2 唯讀補水）', () {
+    test('成功 → 只更新四個額度欄位，不動 drawStatus/extraCost', () async {
+      api.statusHandler = () async => (
+            freeAllowance: 5,
+            freeUsed: 2,
+            freeRemaining: 3,
+            nextResetAt: '2999-01-01T04:00:00.000Z',
+          );
+      final c = makeController();
+      final priorStatus = c.currentState.drawStatus;
+      final priorExtraCost = c.currentState.drawExtraCost;
+
+      await c.refreshDrawQuotaStatus();
+      final s = c.currentState;
+      expect(s.drawFreeAllowance, 5);
+      expect(s.drawFreeUsed, 2);
+      expect(s.drawFreeRemaining, 3);
+      expect(s.drawNextResetAt, '2999-01-01T04:00:00.000Z');
+      expect(s.drawStatus, priorStatus);
+      expect(s.drawExtraCost, priorExtraCost);
+    });
+
+    test('失敗 → fail-quiet，既有已知值原封不動', () async {
+      api.statusHandler = () async => throw Exception('boom');
+      final c = await makeRevealed(); // draw 回應已種額度
+      final before = c.currentState;
+
+      await c.refreshDrawQuotaStatus();
+      expect(c.currentState.drawFreeAllowance, before.drawFreeAllowance);
+      expect(c.currentState.drawFreeRemaining, before.drawFreeRemaining);
+      expect(c.currentState.drawNextResetAt, before.drawNextResetAt);
+    });
+
+    test('補水在途完成一次 draw → 舊快照不倒寫（draw 回應為最新真相）', () async {
+      final gate = Completer<PracticeDrawQuotaStatus>();
+      api.statusHandler = () => gate.future;
+      final c = makeController();
+
+      final refresh = c.refreshDrawQuotaStatus();
+      await c.drawNewPracticeGirl(); // 預設 drawResult：allowance 1／remaining 0
+
+      gate.complete((
+        freeAllowance: 9,
+        freeUsed: 0,
+        freeRemaining: 9,
+        nextResetAt: '2999-01-01T04:00:00.000Z',
+      ));
+      await refresh;
+
+      expect(c.currentState.drawFreeAllowance, 1);
+      expect(c.currentState.drawFreeRemaining, 0);
+    });
+  });
+
   group('入口路由', () {
     test('局後換一位（drawNewPracticeGirl）→ 走 draw', () async {
       final c = makeControllerFrom(round1Done());

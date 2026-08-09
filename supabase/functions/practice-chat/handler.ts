@@ -30,7 +30,11 @@ import {
   isHintPrefetchEnabled,
   isReplayableModelHintResult,
 } from "./hint_prefetch.ts";
-import { type DrawSupabaseClient, handleDrawProfile } from "./draw_handler.ts";
+import {
+  type DrawSupabaseClient,
+  handleDrawProfile,
+  handleDrawStatus,
+} from "./draw_handler.ts";
 import {
   buildChatMessages,
   buildDebriefMessages,
@@ -1819,6 +1823,16 @@ export function createPracticeChatHandler(
         granted: true,
         consumed: bonusRow.consumed_at != null,
       });
+    }
+
+    if (isPlainObject(rawBody) && rawBody.mode === "draw_status") {
+      // 圖鑑額度列 v2：唯讀翻牌額度狀態（不 reset、不扣費、不寫任何東西）。
+      const statusResult = await handleDrawStatus({
+        supabase: supabase as unknown as DrawSupabaseClient,
+        userId: user.id,
+        now: deps.now?.() ?? new Date(),
+      });
+      return jsonResponse(statusResult.body, statusResult.status);
     }
 
     if (isPlainObject(rawBody) && rawBody.mode === "draw_profile") {
