@@ -48,6 +48,7 @@
 | shimmer 掃光 | `splash_screen.dart`、`ebook_shelf_section.dart`（白色掃光，非漸層文字） | 品牌 wordmark 儀式；splash 整頁另案（階段 C 最後） |
 | 邊緣淡出遮罩 | `home_coach_presence.dart` ShaderMask（dstIn） | 功能性遮罩，稽核誤報 |
 | OCR 確認格單發閃光 | `screenshot_recognition_dialog.dart`（ctaStart 脈衝） | 2026-08-09 拍板的注意力提示，功能性 |
+| 練習室輸入框聚焦光 | `practice_chat_screen.dart`（聚焦時 ctaStart@.22，失焦即收） | 瞬態 focus 回饋，功能性非裝飾 |
 | Collection 漸層大標 | `practice_collection_screen.dart` hero「Collection」金→橘→粉 ShaderMask | Eric 2026-08-10 翻案保留：抽卡儀式頁的華麗感 |
 
 規則：想把新的彩色光暈/漸層加進產品＝先加進這張表並說明理由，否則視為 slop。
@@ -75,3 +76,14 @@
 ## 10. 驗證
 
 `flutter analyze` → 相關 `flutter test` → `test/visual_proof/` 出改前改後 PNG 對照 → 對比值重算 → 真機。
+視覺改動一律先出改前/改後對照圖給 Eric 過目才 commit（2026-08-10 拍板鐵則）。
+
+## 11. 防回歸棘輪（階段 D，2026-08-10 上線）
+
+`test/lint/slop_ratchet_test.dart` 隨測試套件跑，對 `lib/` 掃四種機械可判定
+slop（<12px 字、出格圓角、白名單外彩色陰影、theme 外硬寫 Color(0x)），與
+`slop_baseline.json` 逐檔比對：**超過基準＝紅（新 slop 進場）**；低於基準＝
+綠＋提示重產基準鎖緊。既存 399 筆債（B5–B8 標的）已入基準。
+
+- 還債後鎖緊：`dart test/lint/slop_baseline_generator.dart`
+- 新的刻意保留：登記 §7 ＋ `slop_scan.dart` 白名單——**不得**用重產基準放行新 slop。
