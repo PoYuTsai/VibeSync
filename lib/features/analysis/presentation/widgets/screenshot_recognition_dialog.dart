@@ -1153,6 +1153,9 @@ class _ScreenshotRecognitionDialogState
                   return ChoiceChip(
                     label: Text(meetingContext.label),
                     selected: isSelected,
+                    // 勾勾淡入淡出在快速切換時會留殘影＋寬度跳動，
+                    // 全 App chips 一律不顯示（本檔三排同規則）。
+                    showCheckmark: false,
                     onSelected: (selected) {
                       setState(() {
                         _selectedMeeting = selected ? meetingContext : null;
@@ -1191,6 +1194,7 @@ class _ScreenshotRecognitionDialogState
                   return ChoiceChip(
                     label: Text(duration.label),
                     selected: isSelected,
+                    showCheckmark: false,
                     onSelected: (selected) {
                       setState(() {
                         _selectedDuration = selected ? duration : null;
@@ -1229,6 +1233,7 @@ class _ScreenshotRecognitionDialogState
                   return ChoiceChip(
                     label: Text(goal.label),
                     selected: isSelected,
+                    showCheckmark: false,
                     onSelected: (selected) {
                       setState(() {
                         _selectedGoal = selected ? goal : null;

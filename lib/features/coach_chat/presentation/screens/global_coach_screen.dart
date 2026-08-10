@@ -100,6 +100,9 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
         key: key,
         label: Text(label),
         selected: selected,
+        // 勾勾的淡入淡出會在快速切換時留殘影＋寬度跳動（2026-08-10
+        // Eric 真機回報；同 CoachFollowUpSection 的既有修法）。
+        showCheckmark: false,
         onSelected: (_) => onTap(),
       ),
     );

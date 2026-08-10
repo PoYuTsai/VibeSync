@@ -6423,6 +6423,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
+      // 勾勾淡入淡出在快速切換時會留殘影＋寬度跳動，全 App chips 一律不顯示。
+      showCheckmark: false,
       onSelected: _isSubmittingFeedback
           ? null
           : (selected) {
