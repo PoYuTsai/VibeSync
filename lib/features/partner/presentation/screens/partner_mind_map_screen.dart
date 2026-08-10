@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/mindmap/mind_map_builder.dart';
 import '../../domain/mindmap/mind_map_models.dart';
 import '../providers/partner_providers.dart';
@@ -40,19 +41,7 @@ class PartnerMindMapScreen extends ConsumerWidget {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         extendBodyBehindAppBar: true,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          centerTitle: true,
-          title: Text(
-            '${partner.name} 的作戰板',
-            style: AppTypography.titleMedium.copyWith(
-              color: AppColors.onBackgroundPrimary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          iconTheme: const IconThemeData(color: AppColors.onBackgroundPrimary),
-        ),
+        appBar: brandAppBar(title: '${partner.name} 的作戰板'),
         body: Container(
           decoration: BoxDecoration(
             color: AppColors.brandInk.withValues(alpha: 0.34),
@@ -253,40 +242,15 @@ class _EmptyState extends StatelessWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
-        child: Container(
-          width: double.infinity,
+        child: BrandSurfaceCard(
           padding: const EdgeInsets.all(22),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                AppColors.brandSurface.withValues(alpha: 0.94),
-                AppColors.brandSurface2.withValues(alpha: 0.90),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [AppColors.ctaStart, AppColors.brandBlush],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: const Icon(
-                  Icons.account_tree_rounded,
-                  color: Colors.white,
-                  size: 24,
-                ),
+              const BrandIconBadge(
+                icon: Icons.account_tree_rounded,
+                size: 48,
+                iconSize: 24,
               ),
               const SizedBox(height: 14),
               Text(
