@@ -64,13 +64,15 @@ String? _flutterSdkRoot() {
 }
 
 Future<void> loadProofFonts() async {
+  // FontLoader 吃 .ttc 集合檔會靜默失敗（載入回報成功、glyph 全豆腐，
+  // 2026-08-10 踩到），所以單檔 .ttf/.otf 一律排在 fc-match 的 .ttc 前面。
   final fontconfigTc = _fontconfigMatch('Noto Sans CJK TC');
   final tc = File(_firstExistingPath([
-    if (fontconfigTc != null) fontconfigTc,
-    '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
-    '/usr/share/fonts/opentype/noto/NotoSansCJKtc-Regular.otf',
     'C:/Windows/Fonts/NotoSansTC-VF.ttf',
     '/mnt/c/Windows/Fonts/NotoSansTC-VF.ttf',
+    '/usr/share/fonts/opentype/noto/NotoSansCJKtc-Regular.otf',
+    if (fontconfigTc != null && !fontconfigTc.endsWith('.ttc')) fontconfigTc,
+    '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
   ])).readAsBytesSync();
   await (FontLoader('AppTC')..addFont(Future.value(ByteData.view(tc.buffer))))
       .load();
